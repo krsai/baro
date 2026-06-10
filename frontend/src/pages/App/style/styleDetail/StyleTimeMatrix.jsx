@@ -1,6 +1,8 @@
-﻿import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Box,
+  Chip,
+  Collapse,
   Paper,
   Stack,
   Table,
@@ -10,6 +12,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
@@ -29,562 +32,331 @@ import {
 } from '../../../../utils/processDisplay';
 
 const MANUAL_ST_SET_BY = new Set(['MANUAL', 'LEGACY', 'ASSIGNMENT_DETAIL']);
-
-const MESSAGES = {
-  ko: {
-    title: '\uC218\uB7C9\uBCC4 PT/ST/AT (\uCD08)',
-    processColumn: '\uACF5\uC815',
-    metricColumn: '\uAD6C\uBD84',
-    pt: 'PT',
-    st: 'ST',
-    at: 'AT',
-    ptLegend: 'PT: \uACF5\uC815 \uC815\uBCF4\uC5D0\uC11C \uC785\uB825\uD55C \uAE30\uBCF8 \uC2DC\uAC04 (\uC218\uC815 \uBD88\uAC00)',
-    stInputLegend: 'ST: \uC774 \uD398\uC774\uC9C0\uC5D0\uC11C \uC218\uB3D9 \uC785\uB825 \uAC00\uB2A5',
-    atLegend: 'AT: \uC791\uC5C5\uAE30\uB85D\uC73C\uB85C \uC790\uB3D9 \uD559\uC2B5\uB41C \uC2E4\uC81C \uC2DC\uAC04',
-    unitLegend: '\uBAA8\uB4E0 \uAC12 \uB2E8\uC704: \uCD08',
-    empty: '\uB4F1\uB85D\uB41C \uACF5\uC815\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.',
-  },
-  en: {
-    title: 'PT/ST/AT by Quantity (sec)',
-    processColumn: 'Process',
-    metricColumn: 'Metric',
-    pt: 'PT',
-    st: 'ST',
-    at: 'AT',
-    ptLegend: 'PT: fixed base time from process setup (read-only)',
-    stInputLegend: 'ST: editable on this page',
-    atLegend: 'AT: auto-learned from work records',
-    unitLegend: 'All values are in seconds',
-    empty: 'No process rows registered.',
-  },
-  vi: {
-    title: 'PT/ST/AT theo so luong (giay)',
-    processColumn: 'Cong doan',
-    metricColumn: 'Muc',
-    pt: 'PT',
-    st: 'ST',
-    at: 'AT',
-    ptLegend: 'PT: thoi gian co ban tu thiet lap cong doan (khong sua)',
-    stInputLegend: 'ST: co the nhap tay tren trang nay',
-    atLegend: 'AT: tu dong hoc tu ban ghi lam viec',
-    unitLegend: 'Tat ca gia tri deu tinh theo giay',
-    empty: 'Chua co cong doan nao.',
-  },
-};
-
-const resolveMessage = (languageCode, key) => {
-  const locale =
-    languageCode === 'ko' || languageCode === 'vi' || languageCode === 'en'
-      ? languageCode
-      : 'en';
-  return MESSAGES[locale]?.[key] || MESSAGES.en[key] || '';
-};
-
-const roundToScale = (value, digits = 4) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 0;
-  const factor = 10 ** digits;
-  return Math.round(parsed * factor) / factor;
-};
-
-const resolveProcessLabel = (process, languageCode) => {
-  const localizedName = resolveLocalizedProcessName(process, languageCode);
-  return (
-    formatProcessNameWithQuantity(
-      localizedName || process?.name || process?.code || '-',
-      process?.timesPerPiece ?? process?.quantity
-    ) || '-'
-  );
-};
-
-const resolveExactStEntry = (process, quantity) => {
-  const bucketQuantity = resolveStBucketQuantity(quantity);
-  const stBuckets = Array.isArray(process?.stBuckets)
-    ? process.stBuckets
-    : Array.isArray(process?.stValues)
-      ? process.stValues
-      : [];
-  return (
-    stBuckets.find(
-      (entry) => Number(entry?.bucketQuantity ?? entry?.quantity) === Number(bucketQuantity)
-    ) ||
-    null
-  );
-};
-
-const isManualStEntry = (entry) => {
-  if (!entry) return false;
-  const setBy = String(entry?.setBy || '')
-    .trim()
-    .toUpperCase();
-  if (!setBy) return true;
-  return MANUAL_ST_SET_BY.has(setBy);
-};
-
-const formatSecondsPlain = (value) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return '-';
-  return formatNumberWithCommas(roundToScale(parsed, 4), {
-    fallback: '-',
-    maximumFractionDigits: 4,
-  });
-};
-
-const toEditableSecondsText = (value) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return '';
-  const rounded = roundToScale(parsed, 4);
-  return String(rounded)
-    .replace(/\.0+$/, '')
-    .replace(/(\.\d*?[1-9])0+$/, '$1');
-};
-
-const parseStInput = (value) => {
-  const text = String(value ?? '')
-    .replace(/,/g, '')
-    .trim();
-  if (!text) {
-    return { isValid: true, seconds: null };
-  }
-  const parsed = Number(text);
-  if (!Number.isFinite(parsed)) {
-    return { isValid: false, seconds: null };
-  }
-  return {
-    isValid: true,
-    seconds: roundToScale(Math.max(0, parsed), 4),
-  };
-};
-
-const upsertProcessStBuckets = (process, quantity, seconds, setBy = 'MANUAL') => {
-  const normalized = normalizeProcess(process);
-  const resolvedQuantity = resolveStBucketQuantity(quantity);
-  const nextBuckets = (Array.isArray(normalized?.stBuckets) ? normalized.stBuckets : []).filter(
-    (value) => Number(value?.bucketQuantity ?? value?.quantity) !== resolvedQuantity
-  );
-
-  if (seconds != null) {
-    nextBuckets.push({
-      bucketQuantity: resolvedQuantity,
-      bucketStSeconds: seconds,
-      setBy,
-      setAt: null,
-      updatedAt: null,
-    });
-  }
-
-  nextBuckets.sort((left, right) => Number(left.bucketQuantity) - Number(right.bucketQuantity));
-  return normalizeProcess({
-    ...normalized,
-    stBuckets: nextBuckets,
-    ct: null,
-    stManual: false,
-  });
-};
-
-const buildDraftKey = (processInstanceId, quantity) =>
-  `${String(processInstanceId || '')}::${String(quantity)}`;
-const SECONDS_CELL_WIDTH = 82;
-const MATRIX_BORDER_WIDTH = 0.75;
-const MATRIX_BORDER_COLOR = alpha('#111827', 0.16);
 const PROCESS_GROUP_ACCENTS = ['#3B82F6', '#10B981', '#F97316', '#A855F7', '#0EA5E9', '#E11D48'];
-const BASE_MATRIX_INPUT_SX = {
-  width: SECONDS_CELL_WIDTH,
-  minWidth: 0,
-  '& .MuiInputBase-input': {
-    textAlign: 'right',
-    px: 0.75,
-    py: 0.625,
-    fontSize: 12,
-    fontVariantNumeric: 'tabular-nums',
-    lineHeight: 1.25,
-  },
-  '& .MuiOutlinedInput-root': {
-    minHeight: 32,
-    borderRadius: 1,
-    backgroundColor: '#FFFFFF',
-    '& .MuiOutlinedInput-notchedOutline': {
-      borderWidth: MATRIX_BORDER_WIDTH,
-      borderColor: MATRIX_BORDER_COLOR,
-    },
-    '&:hover .MuiOutlinedInput-notchedOutline': {
-      borderColor: alpha('#1F2937', 0.26),
-    },
-  },
+const MATRIX_BORDER = '1px solid rgba(17,24,39,0.1)';
+const ST_CELL_WIDTH = 78;
+
+// ── helpers ────────────────────────────────────────────────────────────────
+
+const roundTo = (v, d = 4) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  const f = 10 ** d;
+  return Math.round(n * f) / f;
 };
 
-const resolveProcessGroupPalette = (processIndex = 0) => {
-  const safeIndex = Number.isFinite(Number(processIndex)) ? Math.abs(Number(processIndex)) : 0;
-  const accent = PROCESS_GROUP_ACCENTS[safeIndex % PROCESS_GROUP_ACCENTS.length];
-  return {
-    accent,
-    rowBackground: alpha(accent, 0.055),
-    rowBorder: alpha(accent, 0.14),
-    processCellBackground: alpha(accent, 0.12),
-    metricCellBackground: alpha(accent, 0.08),
-  };
+const fmtSec = (v) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '-';
+  return formatNumberWithCommas(roundTo(n, 4), { fallback: '-', maximumFractionDigits: 4 });
 };
 
-const renderPtBox = (value) => {
-  const hasValue = value != null;
-  const displayValue = hasValue ? formatSecondsPlain(value) : '-';
+const toEditText = (v) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '';
+  return String(roundTo(n, 4)).replace(/\.0+$/, '').replace(/(\.\d*?[1-9])0+$/, '$1');
+};
+
+const parseStInput = (v) => {
+  const t = String(v ?? '').replace(/,/g, '').trim();
+  if (!t) return { ok: true, seconds: null };
+  const n = Number(t);
+  if (!Number.isFinite(n)) return { ok: false, seconds: null };
+  return { ok: true, seconds: roundTo(Math.max(0, n), 4) };
+};
+
+const resolveStEntry = (process, quantity) => {
+  const q = resolveStBucketQuantity(quantity);
+  const buckets = Array.isArray(process?.stBuckets)
+    ? process.stBuckets
+    : Array.isArray(process?.stValues) ? process.stValues : [];
+  return buckets.find((e) => Number(e?.bucketQuantity ?? e?.quantity) === Number(q)) || null;
+};
+
+const isManualSt = (entry) => {
+  if (!entry) return false;
+  const s = String(entry?.setBy || '').trim().toUpperCase();
+  return !s || MANUAL_ST_SET_BY.has(s);
+};
+
+const upsertStBuckets = (process, quantity, seconds) => {
+  const norm = normalizeProcess(process);
+  const q = resolveStBucketQuantity(quantity);
+  const next = (Array.isArray(norm?.stBuckets) ? norm.stBuckets : [])
+    .filter((e) => Number(e?.bucketQuantity ?? e?.quantity) !== q);
+  if (seconds != null) {
+    next.push({ bucketQuantity: q, bucketStSeconds: seconds, setBy: 'MANUAL', setAt: null, updatedAt: null });
+  }
+  next.sort((a, b) => Number(a.bucketQuantity) - Number(b.bucketQuantity));
+  return normalizeProcess({ ...norm, stBuckets: next, ct: null, stManual: false });
+};
+
+const draftKey = (id, qty) => `${id}::${qty}`;
+
+const getAccent = (i) => PROCESS_GROUP_ACCENTS[Math.abs(i) % PROCESS_GROUP_ACCENTS.length];
+
+// ── StCell ─────────────────────────────────────────────────────────────────
+
+const StCell = React.memo(({ processIndex, processInstanceId, quantity, process, stDrafts, onStChange, onStBlur, isVariant }) => {
+  const dk = draftKey(processInstanceId, quantity);
+  const entry = resolveStEntry(process, quantity);
+  const resolved = resolveProcessStPerPieceSeconds(process, quantity);
+  const manual = isManualSt(entry);
+  const value = Object.prototype.hasOwnProperty.call(stDrafts, dk) ? stDrafts[dk] : toEditText(resolved);
+
   return (
-    <Box
-      sx={{
-        width: SECONDS_CELL_WIDTH,
-        minWidth: 0,
-        height: 28,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-        px: 0.75,
-        borderRadius: 1,
-        fontSize: 12,
-        fontWeight: hasValue ? 600 : 400,
-        fontVariantNumeric: 'tabular-nums',
-        color: hasValue ? 'rgba(55, 65, 81, 0.8)' : 'rgba(156, 163, 175, 0.7)',
-        userSelect: 'none',
-      }}
-    >
-      {displayValue}
-    </Box>
+    <TableCell key={dk} align="center" sx={{ p: '4px 3px', border: 'none' }}>
+      <TextField
+        value={value}
+        onChange={(e) => onStChange(processInstanceId, quantity, e.target.value)}
+        onBlur={(e) => onStBlur(processIndex, processInstanceId, quantity, e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+        size="small"
+        inputProps={{ inputMode: 'decimal' }}
+        sx={{
+          width: ST_CELL_WIDTH,
+          '& .MuiInputBase-input': {
+            textAlign: 'center',
+            px: 0.5,
+            py: 0.5,
+            fontSize: 12,
+            fontVariantNumeric: 'tabular-nums',
+            fontWeight: manual ? 700 : 400,
+          },
+          '& .MuiOutlinedInput-root': {
+            borderRadius: 1,
+            backgroundColor: manual
+              ? (isVariant ? '#DBEAFE' : '#EFF6FF')
+              : '#FAFAFA',
+            '& fieldset': {
+              borderColor: manual
+                ? (isVariant ? '#3B82F6' : alpha('#3B82F6', 0.45))
+                : 'rgba(17,24,39,0.13)',
+              borderWidth: manual ? (isVariant ? 1.5 : 1) : 1,
+            },
+            '&:hover fieldset': { borderColor: '#3B82F6' },
+            '&.Mui-focused fieldset': { borderColor: '#1D4ED8', borderWidth: 1.5 },
+          },
+        }}
+      />
+    </TableCell>
   );
-};
+});
 
-const renderAtBox = (value) => {
-  const hasValue = value != null;
-  const displayValue = hasValue ? formatSecondsPlain(value) : '-';
-  return (
-    <Box
-      sx={{
-        width: SECONDS_CELL_WIDTH,
-        minWidth: 0,
-        height: 28,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-        px: 0.75,
-        borderRadius: 1,
-        fontSize: 12,
-        fontWeight: hasValue ? 600 : 400,
-        fontVariantNumeric: 'tabular-nums',
-        color: hasValue ? 'rgba(21, 128, 61, 0.85)' : 'rgba(156, 163, 175, 0.55)',
-        fontStyle: hasValue ? 'normal' : 'italic',
-        userSelect: 'none',
-      }}
-    >
-      {displayValue}
-    </Box>
-  );
-};
+// ── StyleTimeMatrix ─────────────────────────────────────────────────────────
+
 const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
   const { languageCode } = useLanguage();
   const safeProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
-  const quantityBuckets = ST_STANDARD_BUCKETS;
-  const [stDraftValues, setStDraftValues] = useState({});
+  const [stDrafts, setStDrafts] = useState({});
+  const [showAt, setShowAt] = useState(false);
 
-  const handleStInputChange = useCallback((processInstanceId, quantity, value) => {
-    const draftKey = buildDraftKey(processInstanceId, quantity);
-    setStDraftValues((prev) => ({
-      ...prev,
-      [draftKey]: value,
-    }));
+  // detect if any process has real AT data
+  const hasAnyAt = useMemo(() =>
+    safeProcesses.some((p) =>
+      ST_STANDARD_BUCKETS.some((q) => resolveProcessAtPerPieceSeconds(p, q) != null)
+    ), [safeProcesses]);
+
+  const handleStChange = useCallback((id, qty, val) => {
+    setStDrafts((prev) => ({ ...prev, [draftKey(id, qty)]: val }));
   }, []);
 
-  const handleStInputBlur = useCallback(
-    (processIndex, processInstanceId, quantity, value) => {
-      const draftKey = buildDraftKey(processInstanceId, quantity);
-      const hasDraftValue = Object.prototype.hasOwnProperty.call(stDraftValues, draftKey);
-      if (!hasDraftValue) return;
+  const handleStBlur = useCallback((pIdx, id, qty, val) => {
+    const dk = draftKey(id, qty);
+    if (!Object.prototype.hasOwnProperty.call(stDrafts, dk)) return;
+    setStDrafts((prev) => { const n = { ...prev }; delete n[dk]; return n; });
+    const parsed = parseStInput(val);
+    if (!parsed.ok || typeof onProcessesChange !== 'function') return;
+    const target = safeProcesses[pIdx];
+    if (!target) return;
+    const cur = resolveStEntry(target, qty);
+    const curSec = cur ? Number(cur.bucketStSeconds ?? cur.seconds) : null;
+    const nxt = parsed.seconds;
+    if (curSec == null && nxt == null) return;
+    if (curSec != null && nxt != null && Math.abs(curSec - nxt) < 1e-9) return;
+    onProcessesChange(safeProcesses.map((p, i) => i === pIdx ? upsertStBuckets(p, qty, nxt) : p));
+  }, [onProcessesChange, safeProcesses, stDrafts]);
 
-      setStDraftValues((prev) => {
-        const next = { ...prev };
-        delete next[draftKey];
-        return next;
-      });
+  const msg = (key) => ({
+    ko: { title: '수량별 ST (초)', pt: 'PT', st: 'ST', at: 'AT', uniform: '전 구간 동일', showAt: 'AT 표시', hideAt: 'AT 숨기기', empty: '등록된 공정이 없습니다.', ptHint: 'PT: 공정 정보에서 입력한 기본 물리 시간 (수정 불가)', stHint: 'ST: 수량 구간별 표준 시간 (수동 입력 가능)', atHint: 'AT: 작업기록에서 자동 학습한 실제 시간', unitHint: '단위: 초 / 1장 기준' },
+    en: { title: 'ST by Quantity (sec)', pt: 'PT', st: 'ST', at: 'AT', uniform: 'Uniform', showAt: 'Show AT', hideAt: 'Hide AT', empty: 'No processes.', ptHint: 'PT: base physical time from process setup (read-only)', stHint: 'ST: standard time per quantity bucket (editable)', atHint: 'AT: auto-learned from work records', unitHint: 'Unit: seconds / per piece' },
+    vi: { title: 'ST theo so luong (giay)', pt: 'PT', st: 'ST', at: 'AT', uniform: 'Dong deu', showAt: 'Hien AT', hideAt: 'An AT', empty: 'Chua co cong doan.', ptHint: 'PT: thoi gian co ban (khong sua)', stHint: 'ST: thoi gian chuan theo so luong (co the sua)', atHint: 'AT: tu dong hoc tu ban ghi lam viec', unitHint: 'Don vi: giay / 1 san pham' },
+  }[languageCode === 'vi' ? 'vi' : languageCode === 'en' ? 'en' : 'ko'][key]);
 
-      const parsed = parseStInput(value);
-      if (!parsed.isValid || typeof onProcessesChange !== 'function') return;
-
-      const targetProcess = safeProcesses[processIndex];
-      if (!targetProcess) return;
-      const currentExactSt = resolveExactStEntry(targetProcess, quantity);
-      const currentExactSeconds = currentExactSt
-        ? Number(currentExactSt.bucketStSeconds ?? currentExactSt.seconds)
-        : null;
-      const nextSeconds = parsed.seconds;
-
-      if (currentExactSeconds == null && nextSeconds == null) return;
-      if (
-        currentExactSeconds != null &&
-        nextSeconds != null &&
-        Math.abs(currentExactSeconds - nextSeconds) < 1e-9
-      ) {
-        return;
-      }
-
-      const nextProcesses = safeProcesses.map((processItem, index) =>
-        index === processIndex
-          ? upsertProcessStBuckets(processItem, quantity, nextSeconds, 'MANUAL')
-          : processItem
-      );
-      onProcessesChange(nextProcesses);
-    },
-    [onProcessesChange, safeProcesses, stDraftValues]
-  );
+  if (safeProcesses.length === 0) {
+    return (
+      <Paper variant="outlined" sx={{ borderRadius: 2, p: 4, textAlign: 'center' }}>
+        <Typography color="text.secondary">{msg('empty')}</Typography>
+      </Paper>
+    );
+  }
 
   return (
-    <Paper variant="outlined" sx={{ borderRadius: 2, p: 2 }}>
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={1.5}
-        sx={{
-          justifyContent: 'space-between',
-          alignItems: { xs: 'flex-start', sm: 'center' },
-          mb: 1.25,
-        }}
-      >
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>
-          {resolveMessage(languageCode, 'title')}
-        </Typography>
-        <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap" useFlexGap>
-          <Stack direction="row" spacing={0.5} alignItems="center">
-            <Typography variant="caption" sx={{ color: 'rgba(55, 65, 81, 0.65)', fontStyle: 'italic' }}>
-              PT
-            </Typography>
-            <Typography variant="caption" color="text.disabled">
-              {resolveMessage(languageCode, 'ptLegend').replace(/^PT:\s*/, '')}
-            </Typography>
-          </Stack>
-          <Typography variant="caption" color="text.disabled">·</Typography>
-          <Stack direction="row" spacing={0.5} alignItems="center">
-            <Box
-              sx={{
-                width: 12,
-                height: 12,
-                borderRadius: 0.75,
-                border: '1.5px solid #2563EB',
-                backgroundColor: '#EAF2FF',
-                flexShrink: 0,
-              }}
-            />
-            <Typography variant="caption" color="text.secondary">
-              {resolveMessage(languageCode, 'stInputLegend')}
-            </Typography>
-          </Stack>
-          <Typography variant="caption" color="text.disabled">·</Typography>
-          <Stack direction="row" spacing={0.5} alignItems="center">
-            <Typography variant="caption" sx={{ color: 'rgba(21, 128, 61, 0.75)', fontStyle: 'italic' }}>
-              AT
-            </Typography>
-            <Typography variant="caption" color="text.disabled">
-              {resolveMessage(languageCode, 'atLegend').replace(/^AT:\s*/, '')}
-            </Typography>
-          </Stack>
-          <Typography variant="caption" color="text.disabled">
-            · {resolveMessage(languageCode, 'unitLegend')}
-          </Typography>
+    <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
+      {/* Header */}
+      <Box sx={{ px: 2.5, pt: 2, pb: 1.5, borderBottom: MATRIX_BORDER, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{msg('title')}</Typography>
+        <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Tooltip title={msg('ptHint')} placement="top">
+            <Chip label="PT" size="small" variant="outlined" sx={{ fontSize: 11, height: 20, color: 'text.secondary', borderColor: 'divider', cursor: 'default' }} />
+          </Tooltip>
+          <Tooltip title={msg('stHint')} placement="top">
+            <Chip label="ST 수동 입력" size="small" sx={{ fontSize: 11, height: 20, backgroundColor: '#DBEAFE', color: '#1D4ED8', cursor: 'default' }} />
+          </Tooltip>
+          {hasAnyAt && (
+            <Tooltip title={msg('atHint')} placement="top">
+              <Chip
+                label={showAt ? msg('hideAt') : msg('showAt')}
+                size="small"
+                onClick={() => setShowAt((v) => !v)}
+                sx={{ fontSize: 11, height: 20, backgroundColor: showAt ? '#DCFCE7' : undefined, color: showAt ? '#15803D' : 'text.secondary', cursor: 'pointer' }}
+              />
+            </Tooltip>
+          )}
+          <Typography variant="caption" color="text.disabled">{msg('unitHint')}</Typography>
         </Stack>
-      </Stack>
+      </Box>
 
-      <TableContainer
-        sx={{
-          border: `${MATRIX_BORDER_WIDTH}px solid`,
-          borderColor: MATRIX_BORDER_COLOR,
-          borderRadius: 1.5,
-        }}
-      >
-        <Table
-          size="small"
-          sx={{
-            minWidth: Math.max(1040, 300 + quantityBuckets.length * 96),
-            tableLayout: 'fixed',
-            '& .MuiTableCell-root': {
-              fontVariantNumeric: 'tabular-nums',
-              borderBottom: `${MATRIX_BORDER_WIDTH}px solid`,
-              borderBottomColor: MATRIX_BORDER_COLOR,
-            },
-            '& .MuiTableCell-head': {
-              backgroundColor: '#F8FAFC',
-              borderBottom: `${MATRIX_BORDER_WIDTH}px solid`,
-              borderBottomColor: MATRIX_BORDER_COLOR,
-            },
-          }}
-        >
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ minWidth: 240, width: 240, fontWeight: 700 }}>
-                {resolveMessage(languageCode, 'processColumn')}
-              </TableCell>
-              <TableCell sx={{ width: 72, minWidth: 72, fontWeight: 700 }}>
-                {resolveMessage(languageCode, 'metricColumn')}
-              </TableCell>
-              {quantityBuckets.map((quantity) => (
-                <TableCell key={`quantity-${quantity}`} align="center" sx={{ fontWeight: 700 }}>
-                  {`${formatNumberWithCommas(quantity, {
-                    fallback: String(quantity),
-                    maximumFractionDigits: 0,
-                  })}~`}
-                </TableCell>
-              ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {safeProcesses.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={2 + quantityBuckets.length}
-                  align="center"
-                  sx={{ py: 4, color: 'text.secondary' }}
-                >
-                  {resolveMessage(languageCode, 'empty')}
-                </TableCell>
-              </TableRow>
-            ) : (
-              safeProcesses.map((process, processIndex) => {
-                const processLabel = resolveProcessLabel(process, languageCode);
-                const ptPerPiece = Number.isFinite(Number(process?.pt)) ? Number(process.pt) : null;
-                const processInstanceId =
-                  process?.instanceId || process?.id || process?.code || `PROCESS-${processIndex + 1}`;
-                const groupPalette = resolveProcessGroupPalette(processIndex);
-                const processRowSx = {
-                  '& > td': {
-                    backgroundColor: groupPalette.rowBackground,
-                    borderBottomColor: groupPalette.rowBorder,
-                  },
-                };
+      {/* Process cards */}
+      <Stack spacing={0} divider={<Box sx={{ borderBottom: MATRIX_BORDER }} />}>
+        {safeProcesses.map((process, pIdx) => {
+          const accent = getAccent(pIdx);
+          const id = process?.instanceId || process?.id || process?.code || `P${pIdx + 1}`;
+          const label = formatProcessNameWithQuantity(
+            resolveLocalizedProcessName(process, languageCode) || process?.name || process?.code || '-',
+            process?.timesPerPiece ?? process?.quantity
+          ) || '-';
+          const pt = Number.isFinite(Number(process?.pt)) ? Number(process.pt) : null;
 
-                return (
-                  <React.Fragment key={processInstanceId}>
-                    <TableRow sx={processRowSx}>
-                      <TableCell
-                        rowSpan={3}
-                        sx={{
-                          fontWeight: 700,
-                          verticalAlign: 'middle',
-                          borderLeft: `2px solid ${groupPalette.accent}`,
-                          backgroundColor: `${groupPalette.processCellBackground} !important`,
-                        }}
-                      >
-                        {processLabel}
+          // check if ST varies across buckets
+          const stValues = ST_STANDARD_BUCKETS.map((q) => resolveProcessStPerPieceSeconds(process, q));
+          const uniqueStValues = new Set(stValues.filter((v) => v != null).map((v) => roundTo(v, 4)));
+          const isUniform = uniqueStValues.size <= 1;
+          const minSt = Math.min(...stValues.filter((v) => v != null));
+          const maxSt = Math.max(...stValues.filter((v) => v != null));
+
+          // AT data
+          const atValues = ST_STANDARD_BUCKETS.map((q) => resolveProcessAtPerPieceSeconds(process, q));
+          const hasAt = atValues.some((v) => v != null);
+
+          return (
+            <Box key={id}>
+              {/* Process header row */}
+              <Box sx={{
+                display: 'flex',
+                alignItems: 'center',
+                px: 2,
+                py: 1,
+                gap: 1.5,
+                backgroundColor: alpha(accent, 0.04),
+                borderLeft: `3px solid ${accent}`,
+              }}>
+                <Typography variant="body2" sx={{ fontWeight: 700, flex: 1, minWidth: 0, lineHeight: 1.4 }}>
+                  {label}
+                </Typography>
+                <Stack direction="row" spacing={1} alignItems="center" flexShrink={0}>
+                  {pt != null && (
+                    <Tooltip title={msg('ptHint')} placement="top">
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 10 }}>PT</Typography>
+                        <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}>
+                          {fmtSec(pt)}
+                        </Typography>
+                      </Box>
+                    </Tooltip>
+                  )}
+                  {isUniform ? (
+                    <Chip
+                      label={`${msg('uniform')} · ${fmtSec(stValues.find((v) => v != null))}`}
+                      size="small"
+                      sx={{ fontSize: 11, height: 20, backgroundColor: alpha(accent, 0.12), color: accent, fontVariantNumeric: 'tabular-nums' }}
+                    />
+                  ) : (
+                    <Chip
+                      label={`${fmtSec(minSt)} ~ ${fmtSec(maxSt)}`}
+                      size="small"
+                      sx={{ fontSize: 11, height: 20, backgroundColor: '#FEF9C3', color: '#92400E', fontVariantNumeric: 'tabular-nums' }}
+                    />
+                  )}
+                </Stack>
+              </Box>
+
+              {/* ST grid */}
+              <Box sx={{ overflowX: 'auto', borderLeft: `3px solid ${alpha(accent, 0.3)}` }}>
+                <Table size="small" sx={{ tableLayout: 'fixed', minWidth: ST_STANDARD_BUCKETS.length * (ST_CELL_WIDTH + 6) + 60 }}>
+                  <TableHead>
+                    <TableRow sx={{ '& th': { py: '3px', px: '3px', fontSize: 11, fontWeight: 600, textAlign: 'center', backgroundColor: alpha(accent, 0.06), color: 'text.secondary', border: 'none', borderBottom: MATRIX_BORDER } }}>
+                      <TableCell sx={{ width: 40, textAlign: 'left !important', pl: '10px !important' }}>
+                        {msg('st')}
                       </TableCell>
-                      <TableCell
-                        sx={{
-                          fontWeight: 700,
-                          backgroundColor: `${groupPalette.metricCellBackground} !important`,
-                        }}
-                      >
-                        {resolveMessage(languageCode, 'pt')}
-                      </TableCell>
-                      {quantityBuckets.map((quantity) => (
-                        <TableCell key={`${processInstanceId}-pt-${quantity}`} align="center">
-                          {renderPtBox(ptPerPiece)}
+                      {ST_STANDARD_BUCKETS.map((q) => (
+                        <TableCell key={q} sx={{ width: ST_CELL_WIDTH + 6 }}>
+                          {`${formatNumberWithCommas(q, { maximumFractionDigits: 0 })}~`}
                         </TableCell>
                       ))}
                     </TableRow>
-
-                    <TableRow sx={processRowSx}>
-                      <TableCell
-                        sx={{
-                          fontWeight: 700,
-                          color: '#1D4ED8',
-                          backgroundColor: '#EEF4FF !important',
-                        }}
-                      >
-                        {resolveMessage(languageCode, 'st')}
+                  </TableHead>
+                  <TableBody>
+                    {/* ST row */}
+                    <TableRow sx={{ '& td': { py: '4px' } }}>
+                      <TableCell sx={{ width: 40, border: 'none', pl: '8px' }}>
+                        <Typography variant="caption" sx={{ fontWeight: 700, color: '#1D4ED8', fontSize: 11 }}>ST</Typography>
                       </TableCell>
-                      {quantityBuckets.map((quantity) => {
-                        const draftKey = buildDraftKey(processInstanceId, quantity);
-                        const exactStEntry = resolveExactStEntry(process, quantity);
-                        const resolvedStPerPiece = resolveProcessStPerPieceSeconds(process, quantity);
-                        const hasManualSt = isManualStEntry(exactStEntry);
-                        const inputValue = Object.prototype.hasOwnProperty.call(stDraftValues, draftKey)
-                          ? stDraftValues[draftKey]
-                          : toEditableSecondsText(resolvedStPerPiece);
-
+                      {ST_STANDARD_BUCKETS.map((qty, qIdx) => {
+                        const stVal = resolveProcessStPerPieceSeconds(process, qty);
+                        const isVariant = !isUniform && stVal != null && stVal !== stValues[0];
                         return (
-                          <TableCell key={`${processInstanceId}-st-${quantity}`} align="center">
-                            <TextField
-                              value={inputValue}
-                              onChange={(event) =>
-                                handleStInputChange(processInstanceId, quantity, event.target.value)
-                              }
-                              onBlur={(event) =>
-                                handleStInputBlur(
-                                  processIndex,
-                                  processInstanceId,
-                                  quantity,
-                                  event.target.value
-                                )
-                              }
-                              onKeyDown={(event) => {
-                                if (event.key === 'Enter') {
-                                  event.preventDefault();
-                                  event.currentTarget.blur();
-                                }
-                              }}
-                              size="small"
-                              inputProps={{
-                                inputMode: 'decimal',
-                              }}
-                              sx={{
-                                ...BASE_MATRIX_INPUT_SX,
-                                '& .MuiInputBase-input': {
-                                  ...BASE_MATRIX_INPUT_SX['& .MuiInputBase-input'],
-                                  fontWeight: hasManualSt ? 600 : 500,
-                                },
-                                '& .MuiOutlinedInput-root': {
-                                  ...BASE_MATRIX_INPUT_SX['& .MuiOutlinedInput-root'],
-                                  backgroundColor: hasManualSt ? '#EAF2FF' : '#FFFFFF',
-                                  '& .MuiOutlinedInput-notchedOutline': {
-                                    borderWidth: MATRIX_BORDER_WIDTH,
-                                    borderColor: hasManualSt ? '#3B82F6' : alpha('#3B82F6', 0.38),
-                                  },
-                                  '&:hover .MuiOutlinedInput-notchedOutline': {
-                                    borderColor: '#2563EB',
-                                  },
-                                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                                    borderColor: '#1D4ED8',
-                                    borderWidth: 1.2,
-                                  },
-                                },
-                              }}
-                            />
-                          </TableCell>
+                          <StCell
+                            key={qty}
+                            processIndex={pIdx}
+                            processInstanceId={id}
+                            quantity={qty}
+                            process={process}
+                            stDrafts={stDrafts}
+                            onStChange={handleStChange}
+                            onStBlur={handleStBlur}
+                            isVariant={isVariant}
+                          />
                         );
                       })}
                     </TableRow>
 
-                    <TableRow sx={processRowSx}>
-                      <TableCell
-                        sx={{
-                          fontWeight: 700,
-                          color: 'rgba(21, 128, 61, 0.75)',
-                          backgroundColor: '#F0FDF4 !important',
-                        }}
-                      >
-                        {resolveMessage(languageCode, 'at')}
+                    {/* AT row — only when showAt and has data */}
+                    <Collapse in={showAt && hasAt} component="tr" sx={{ display: showAt && hasAt ? undefined : 'none' }}>
+                      <TableCell sx={{ border: 'none', pl: '8px' }}>
+                        <Typography variant="caption" sx={{ fontWeight: 700, color: '#15803D', fontSize: 11 }}>AT</Typography>
                       </TableCell>
-                      {quantityBuckets.map((quantity) => {
-                        const atPerPiece = resolveProcessAtPerPieceSeconds(process, quantity);
+                      {ST_STANDARD_BUCKETS.map((qty) => {
+                        const atVal = resolveProcessAtPerPieceSeconds(process, qty);
                         return (
-                          <TableCell key={`${processInstanceId}-at-${quantity}`} align="center">
-                            {renderAtBox(atPerPiece)}
+                          <TableCell key={qty} align="center" sx={{ border: 'none', p: '2px 3px' }}>
+                            <Box sx={{
+                              width: ST_CELL_WIDTH,
+                              height: 26,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: 11,
+                              fontVariantNumeric: 'tabular-nums',
+                              color: atVal != null ? '#15803D' : 'text.disabled',
+                              fontStyle: atVal == null ? 'italic' : 'normal',
+                              fontWeight: atVal != null ? 600 : 400,
+                            }}>
+                              {atVal != null ? fmtSec(atVal) : '·'}
+                            </Box>
                           </TableCell>
                         );
                       })}
-                    </TableRow>
-                  </React.Fragment>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+                    </Collapse>
+                  </TableBody>
+                </Table>
+              </Box>
+            </Box>
+          );
+        })}
+      </Stack>
     </Paper>
   );
 };
 
 export default StyleTimeMatrix;
-
-
