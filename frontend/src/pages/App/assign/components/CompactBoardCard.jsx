@@ -14,7 +14,7 @@ const CardField = ({ label, value, minWidth = 120, children }) => (
     <Typography
       variant="caption"
       color="text.secondary"
-      sx={{ display: 'block', mb: 0.25 }}
+      sx={{ display: 'block', lineHeight: 1.1 }}
     >
       {label}
     </Typography>
@@ -107,7 +107,7 @@ const CompactBoardCard = ({
       sx={{
         width: '100%',
         minWidth: 0,
-        minHeight: 88,
+        minHeight: 64,
         borderRadius: 2,
         border: '1px solid',
         borderColor: isOver
@@ -130,20 +130,20 @@ const CompactBoardCard = ({
     >
       <Box
         sx={{
-          width: 5,
+          width: 4,
           backgroundColor: accentColor,
           flexShrink: 0,
         }}
       />
       <Stack
         direction="row"
-        spacing={1.5}
+        spacing={1.25}
         useFlexGap
         sx={{
           flex: 1,
           minWidth: 0,
-          px: 1.5,
-          py: 1.25,
+          px: 1.25,
+          py: 0.75,
           alignItems: 'center',
           flexWrap: { xs: 'wrap', lg: 'nowrap' },
         }}
@@ -153,14 +153,14 @@ const CompactBoardCard = ({
             src={previewUrl}
             alt={styleName}
             variant="rounded"
-            sx={{ width: 56, height: 56, flexShrink: 0 }}
+            sx={{ width: 44, height: 44, flexShrink: 0 }}
           />
         ) : (
           <Avatar
             variant="rounded"
             sx={{
-              width: 56,
-              height: 56,
+              width: 44,
+              height: 44,
               flexShrink: 0,
               bgcolor: 'rgba(37, 99, 235, 0.10)',
               color: accentColor,
@@ -190,7 +190,7 @@ const CompactBoardCard = ({
               direction="row"
               spacing={0.5}
               useFlexGap
-              sx={{ flexWrap: 'wrap', rowGap: 0.5, mt: 0.5 }}
+              sx={{ flexWrap: 'wrap', rowGap: 0.25, mt: 0.25 }}
             >
               {chips.map((chip, index) => (
                 <Chip
@@ -200,10 +200,10 @@ const CompactBoardCard = ({
                   color={chip.color || 'default'}
                   variant={chip.variant || 'filled'}
                   sx={{
-                    height: 20,
+                    height: 18,
                     '& .MuiChip-label': {
-                      px: 0.75,
-                      fontSize: '0.68rem',
+                      px: 0.625,
+                      fontSize: '0.64rem',
                     },
                   }}
                 />
@@ -214,7 +214,7 @@ const CompactBoardCard = ({
             <Typography
               variant="caption"
               color="text.secondary"
-              sx={{ display: 'block', mt: 0.5 }}
+              sx={{ display: 'block', mt: 0.25, lineHeight: 1.1 }}
             >
               {footer}
             </Typography>
@@ -229,7 +229,7 @@ const CompactBoardCard = ({
           label={getUiMessage('assign.cardProgressLabel', 'Progress', languageCode)}
           minWidth={160}
         >
-          <Stack spacing={0.5}>
+          <Stack spacing={0.25}>
             <Typography variant="body2" sx={{ fontWeight: 700 }}>
               {displayProgress}%
             </Typography>
@@ -237,7 +237,7 @@ const CompactBoardCard = ({
               variant="determinate"
               value={progressBarValue}
               sx={{
-                height: 7,
+                height: 5,
                 borderRadius: 999,
                 backgroundColor: 'rgba(0,0,0,0.08)',
               }}

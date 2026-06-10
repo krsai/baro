@@ -148,22 +148,18 @@ const LineAssignmentDropSlot = memo(function LineAssignmentDropSlot({
       sx={{
         width: '100%',
         minWidth: 0,
-        height: 28,
-        borderRadius: 2,
-        border: '1px dashed',
-        borderColor: isOver ? 'primary.main' : 'divider',
-        backgroundColor: isOver ? 'rgba(37, 99, 235, 0.08)' : '#FCFCFD',
+        height: 10,
+        borderRadius: 1,
+        borderTop: '2px solid',
+        borderColor: isOver ? 'primary.main' : 'transparent',
+        backgroundColor: isOver ? 'rgba(37, 99, 235, 0.05)' : 'transparent',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        color: isOver ? 'primary.main' : 'text.secondary',
         flexShrink: 0,
+        transition: 'border-color 0.12s ease, background-color 0.12s ease',
       }}
-    >
-      <Typography variant="caption" sx={{ fontWeight: 700 }}>
-        +
-      </Typography>
-    </Box>
+    />
   );
 });
 
@@ -541,7 +537,7 @@ const LineMonthCapacityBoard = ({
                               languageCode
                             )}
                           </Typography>
-                          <Stack spacing={0.75}>
+                          <Stack spacing={0}>
                             {row.queuedAssignments.length > 0 ? (
                               <>
                                 <LineAssignmentDropSlot

@@ -276,44 +276,39 @@ const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
   });
 
   return (
-    <Stack spacing={1}>
-      <Typography variant="subtitle2">
-        {getUiMessage('assign.assignmentCancelSection', 'Cancel assignment', languageCode)}
-      </Typography>
-      <Paper
-        ref={setNodeRef}
-        variant="outlined"
-        sx={{
-          px: 2,
-          py: 2.25,
-          borderStyle: 'dashed',
-          borderWidth: 2,
-          borderColor: isOver ? 'error.main' : 'divider',
-          backgroundColor: isOver ? 'rgba(211, 47, 47, 0.08)' : '#FAFAFB',
-          textAlign: 'center',
-          transition: 'border-color 0.12s ease, background-color 0.12s ease',
-        }}
+    <Paper
+      ref={setNodeRef}
+      variant="outlined"
+      sx={{
+        px: 2,
+        py: 1.25,
+        borderStyle: 'dashed',
+        borderWidth: 2,
+        borderColor: isOver ? 'error.main' : 'divider',
+        backgroundColor: isOver ? 'rgba(211, 47, 47, 0.08)' : '#FAFAFB',
+        textAlign: 'center',
+        transition: 'border-color 0.12s ease, background-color 0.12s ease',
+      }}
+    >
+      <Typography
+        variant="body2"
+        sx={{ fontWeight: 700 }}
+        color={isOver ? 'error.main' : 'text.primary'}
       >
-        <Typography
-          variant="body2"
-          sx={{ fontWeight: 700 }}
-          color={isOver ? 'error.main' : 'text.primary'}
-        >
-          {getUiMessage(
-            'assign.assignmentCancelDropHint',
-            'Drop an assigned task here to return it to unassigned work.',
-            languageCode
-          )}
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          {getUiMessage(
-            'assign.assignmentCancelRecordedWorkHint',
-            'Tasks with work records cannot be unassigned.',
-            languageCode
-          )}
-        </Typography>
-      </Paper>
-    </Stack>
+        {getUiMessage(
+          'assign.assignmentCancelDropHint',
+          'Drop an assigned task here to return it to unassigned work.',
+          languageCode
+        )}
+      </Typography>
+      <Typography variant="caption" color="text.secondary">
+        {getUiMessage(
+          'assign.assignmentCancelRecordedWorkHint',
+          'Tasks with work records cannot be unassigned.',
+          languageCode
+        )}
+      </Typography>
+    </Paper>
   );
 });
 
