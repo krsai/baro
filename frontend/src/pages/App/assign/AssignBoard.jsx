@@ -22,7 +22,7 @@ import {
   Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { DndContext, DragOverlay, useDroppable } from '@dnd-kit/core';
+import { DndContext, DragOverlay, useDroppable, pointerWithin, closestCenter } from '@dnd-kit/core';
 import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
 import { useAssignBoardDnd } from './hooks/useAssignBoardDnd';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -97,6 +97,12 @@ import {
 
 const { useDeferredValue } = React;
 const ASSIGN_BOARD_SYNC_SOURCE = 'assignment-board';
+
+const assignBoardCollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  if (pointerCollisions.length > 0) return pointerCollisions;
+  return closestCenter(args);
+};
 
 const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
 const toNonNegativeNumber = (value, fallback = 0) => {
@@ -274,47 +280,49 @@ const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
   });
 
   return (
-    <Paper
+    <Box
       ref={setNodeRef}
-      variant="outlined"
       sx={{
-        px: 1.5,
-        py: 2,
-        borderStyle: 'dashed',
-        borderWidth: 2,
-        borderColor: isOver ? 'error.main' : 'divider',
-        backgroundColor: isOver ? 'rgba(211, 47, 47, 0.08)' : '#FAFAFB',
-        textAlign: 'center',
-        transition: 'border-color 0.12s ease, background-color 0.12s ease',
         height: '100%',
         minHeight: 120,
         display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 0.5,
-        boxSizing: 'border-box',
+        alignItems: 'stretch',
       }}
     >
-      <Typography
-        variant="body2"
-        sx={{ fontWeight: 700, writingMode: { lg: 'vertical-lr' }, textOrientation: { lg: 'mixed' } }}
-        color={isOver ? 'error.main' : 'text.primary'}
+      <Paper
+        variant="outlined"
+        sx={{
+          px: 0.75,
+          py: 2,
+          borderStyle: 'dashed',
+          borderWidth: 2,
+          borderColor: isOver ? 'error.main' : 'divider',
+          backgroundColor: isOver ? 'rgba(211, 47, 47, 0.08)' : '#FAFAFB',
+          textAlign: 'center',
+          transition: 'border-color 0.12s ease, background-color 0.12s ease',
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 1,
+        }}
       >
-        {getUiMessage(
-          'assign.assignmentCancelDropHint',
-          'Drop an assigned task here to return it to unassigned work.',
-          languageCode
-        )}
-      </Typography>
-      <Typography variant="caption" color="text.secondary" sx={{ writingMode: { lg: 'vertical-lr' }, textOrientation: { lg: 'mixed' } }}>
-        {getUiMessage(
-          'assign.assignmentCancelRecordedWorkHint',
-          'Tasks with work records cannot be unassigned.',
-          languageCode
-        )}
-      </Typography>
-    </Paper>
+        <Typography
+          variant="caption"
+          sx={{
+            fontWeight: 700,
+            writingMode: 'vertical-lr',
+            textOrientation: 'mixed',
+            userSelect: 'none',
+            letterSpacing: '0.04em',
+          }}
+          color={isOver ? 'error.main' : 'text.primary'}
+        >
+          {getUiMessage('assign.assignmentCancelLabel', '배정 취소', languageCode)}
+        </Typography>
+      </Paper>
+    </Box>
   );
 });
 
@@ -6173,6 +6181,7 @@ const AssignBoard = () => {
     >
       <DndContext
         sensors={sensors}
+        collisionDetection={assignBoardCollisionDetection}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
@@ -6238,7 +6247,7 @@ const AssignBoard = () => {
             )}
           </Alert>
         ) : null}
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '6fr 1fr 3fr' }, gap: 2, alignItems: 'start', minWidth: 0 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 60px 320px' }, gap: 2, alignItems: 'stretch', minWidth: 0, overflow: 'hidden' }}>
           <Stack spacing={1.5} sx={{ minWidth: 0 }}>
             <Box
               sx={{
@@ -6304,12 +6313,10 @@ const AssignBoard = () => {
               />
             </Stack>
           </Stack>
-          <Box sx={{ alignSelf: 'stretch' }}>
-            <AssignmentCancelDropZone
-              activeDragType={activeDrag?.type || null}
-              languageCode={languageCode}
-            />
-          </Box>
+          <AssignmentCancelDropZone
+            activeDragType={activeDrag?.type || null}
+            languageCode={languageCode}
+          />
           <Box sx={{ minWidth: 0 }}>
             <UnassignedCardGroupsPanel
               filteredCardCount={filteredCards.length}
