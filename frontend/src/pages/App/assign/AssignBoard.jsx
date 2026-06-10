@@ -23,6 +23,7 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { DndContext, DragOverlay, useDroppable, pointerWithin, closestCenter } from '@dnd-kit/core';
+import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
 import { useAssignBoardDnd } from './hooks/useAssignBoardDnd';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -6333,7 +6334,7 @@ const AssignBoard = () => {
           </Box>
         </Box>
 
-        <DragOverlay style={{ zIndex: 50 }} >
+        <DragOverlay style={{ zIndex: 50 }} modifiers={[snapCenterToCursor]}>
           {activeDrag ? (
             <Box
               sx={{
