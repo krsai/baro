@@ -1437,18 +1437,17 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         if (workerJobDiff !== 0) return workerJobDiff;
       }
 
-      const aJoinedAt = new Date(aEmployee?.joinedAt || a?.approvedAt || '').getTime();
-      const bJoinedAt = new Date(bEmployee?.joinedAt || b?.approvedAt || '').getTime();
-      const safeAJoinedAt = Number.isFinite(aJoinedAt) ? aJoinedAt : Number.MAX_SAFE_INTEGER;
-      const safeBJoinedAt = Number.isFinite(bJoinedAt) ? bJoinedAt : Number.MAX_SAFE_INTEGER;
-      if (safeAJoinedAt !== safeBJoinedAt) return safeAJoinedAt - safeBJoinedAt;
+      const aNo = String(aEmployee?.employeeNo || '');
+      const bNo = String(bEmployee?.employeeNo || '');
+      if (aNo && bNo) {
+        const noCompare = aNo.localeCompare(bNo, undefined, { numeric: true, sensitivity: 'base' });
+        if (noCompare !== 0) return noCompare;
+      } else if (aNo) return -1;
+      else if (bNo) return 1;
 
       const aName = getEmployeeDisplayName(a, aEmployee, myEmail, currentUserName);
       const bName = getEmployeeDisplayName(b, bEmployee, myEmail, currentUserName);
-      const nameDiff = aName.localeCompare(bName, 'ko');
-      if (nameDiff !== 0) return nameDiff;
-
-      return getMemberIdentityLabel(a).localeCompare(getMemberIdentityLabel(b), 'ko');
+      return aName.localeCompare(bName, 'ko');
     });
   }, [
     currentUserName,
