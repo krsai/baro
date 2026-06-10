@@ -111,7 +111,7 @@ const EMPLOYEE_BOARD_TEXT = {
     vi: 'Tim ten, email, hoac vai tro',
   },
   nameColumn: { ko: '이름', en: 'Name', vi: 'Ten' },
-  emailOrCodeColumn: { ko: '이메일/사번', en: 'Email/Code', vi: 'Email/Ma NV' },
+  emailOrCodeColumn: { ko: '이메일', en: 'Email', vi: 'Email' },
   employeeNoColumn: { ko: '사번', en: 'Employee No.', vi: 'Ma NV' },
   employeeNoLabel: { ko: '사번', en: 'Employee No.', vi: 'Ma NV' },
   employeeNoAutoHint: { ko: '공장 코드 기준으로 자동 생성됩니다.', en: 'Auto-generated from factory code.', vi: 'Tu dong tao tu ma nha may.' },
@@ -207,6 +207,7 @@ const EMPLOYEE_BOARD_TEXT = {
     vi: 'Email nay da duoc dang ky.',
   },
   errEmployeeSaveFailed: { ko: '직원 저장에 실패했습니다.', en: 'Failed to save employee.', vi: 'Luu nhan vien that bai.' },
+  errEmployeeNoDuplicate: { ko: '이미 사용 중인 사번입니다.', en: 'Employee number already in use.', vi: 'Ma nhan vien da duoc su dung.' },
 };
 const resolveLocalized = (entry, languageCode = 'ko') =>
   entry?.[languageCode] || entry?.ko || entry?.en || entry?.vi || '';
@@ -273,9 +274,7 @@ const getMemberUniqueCode = (memberId, orgId) => {
   return `EMP-${orgText}-${idText}`;
 };
 const getMemberIdentityLabel = (member) =>
-  isInternalMemberEmail(member?.email)
-    ? getMemberUniqueCode(member?.id, member?.orgId)
-    : String(member?.email || '-');
+  isInternalMemberEmail(member?.email) ? '' : String(member?.email || '');
 const isLoginRequiredRole = (role) =>
   LOGIN_REQUIRED_ROLES.has(String(role || '').toUpperCase());
 const canViewFixedSalaryByRole = (role) =>
@@ -396,6 +395,7 @@ const buildEmployeeDraft = (member, employee, options = {}) => {
     payType: String(employee?.payType || employee?.effectivePayType || defaultPayType).toUpperCase(),
     fixedSalary: formatMoneyInput(employee?.fixedSalary),
     factoryId: employee?.factoryId ? String(employee.factoryId) : '',
+    employeeNo: employee?.employeeNo || '',
     joinedAt: formatDateInput(employee?.joinedAt || member?.approvedAt),
     leftAt: formatDateInput(employee?.leftAt),
     status: member.status,
@@ -674,6 +674,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     payType: 'CT',
     fixedSalary: '',
     factoryId: '',
+    employeeNo: '',
     joinedAt: '',
     leftAt: '',
     status: 'ACTIVE',
@@ -1050,6 +1051,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         };
 
         if (draft.factoryId) employeePayload.factoryId = Number(draft.factoryId);
+        if (Object.prototype.hasOwnProperty.call(draft, 'employeeNo')) {
+          employeePayload.employeeNo = String(draft.employeeNo || '').trim() || null;
+        }
         if (draft.joinedAt) employeePayload.joinedAt = draft.joinedAt;
         if (Object.prototype.hasOwnProperty.call(draft, 'leftAt')) {
           const normalizedLeftAt = String(draft.leftAt || '').trim();
@@ -1120,6 +1124,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       payType: defaultRole === 'WORKER' ? 'CT' : 'FIXED',
       fixedSalary: '',
       factoryId: defaultFactoryId,
+      employeeNo: '',
       joinedAt: formatDateInput(new Date()),
       leftAt: '',
       status: 'ACTIVE',
@@ -1319,9 +1324,12 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         setIsAddDrawerOpen(false);
       }
     } catch (error) {
+      const isConflict = error?.details?.error === 'employeeNo already in use' || error?.status === 409;
       setStatusMessage({
         type: 'error',
-        text: error?.message || text('errEmployeeSaveFailed', languageCode),
+        text: isConflict
+          ? text('errEmployeeNoDuplicate', languageCode)
+          : error?.message || text('errEmployeeSaveFailed', languageCode),
       });
     } finally {
       setIsDrawerSaving(false);
@@ -1523,24 +1531,15 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 autoFocus
                 helperText={text('loginEmailHelperAllOptional', languageCode)}
               />
-              {!isCreateDrawerMode && (() => {
-                const emp = employeeByMembership.get(selectedMember?.id);
-                const empNo = emp?.employeeNo;
-                return empNo ? (
-                  <TextField
-                    size="small"
-                    label={text('employeeNoLabel', languageCode)}
-                    value={empNo}
-                    InputProps={{ readOnly: true }}
-                    sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
-                  />
-                ) : null;
-              })()}
-              {isCreateDrawerMode && (
-                <Typography variant="caption" color="text.secondary">
-                  {text('employeeNoAutoHint', languageCode)}
-                </Typography>
-              )}
+              <TextField
+                size="small"
+                label={text('employeeNoLabel', languageCode)}
+                value={drawerDraft.employeeNo}
+                onChange={(e) => handleDrawerDraftChange({ employeeNo: e.target.value })}
+                disabled={isDrawerSaving}
+                placeholder={isCreateDrawerMode ? text('employeeNoAutoHint', languageCode) : ''}
+                inputProps={{ style: { letterSpacing: 1 } }}
+              />
               <TextField
                 size="small"
                 label={text('nameLabel', languageCode)}

@@ -286,6 +286,7 @@ export const createEmployeeRouter = ({
       name,
       bankName,
       bankAccountNumber,
+      employeeNo,
       joinedAt,
       leftAt,
     } = req.body ?? {};
@@ -410,9 +411,29 @@ export const createEmployeeRouter = ({
     }
 
     const isNewEmployee = !existingEmployee;
-    let autoEmployeeNo: string | null = null;
-    if (isNewEmployee && resolvedFactoryId) {
-      autoEmployeeNo = await generateEmployeeNo(membership.orgId, resolvedFactoryId);
+
+    // employeeNo 처리: 명시적으로 전달된 값 우선, 없으면 신규 생성 시 자동 채번
+    let resolvedEmployeeNo: string | null | undefined = undefined; // undefined = 변경 없음
+    if (employeeNo !== undefined) {
+      const trimmed = typeof employeeNo === "string" ? employeeNo.trim() : null;
+      if (trimmed) {
+        // 중복 체크 (같은 orgId에서 다른 직원이 이미 사용 중인지)
+        const conflict = await prisma.employee.findFirst({
+          where: {
+            orgId: membership.orgId,
+            employeeNo: trimmed,
+            ...(existingEmployee ? { id: { not: existingEmployee.id } } : {}),
+          },
+        });
+        if (conflict) {
+          return res.status(409).json({ ok: false, error: "employeeNo already in use" });
+        }
+        resolvedEmployeeNo = trimmed;
+      } else {
+        resolvedEmployeeNo = null;
+      }
+    } else if (isNewEmployee && resolvedFactoryId) {
+      resolvedEmployeeNo = await generateEmployeeNo(membership.orgId, resolvedFactoryId);
     }
 
     const data: any = {
@@ -429,7 +450,7 @@ export const createEmployeeRouter = ({
         existingEmployee?.bankAccountNumber ?? null
       ),
       position: resolveOptionalString(position, existingEmployee?.position ?? null),
-      ...(isNewEmployee && autoEmployeeNo ? { employeeNo: autoEmployeeNo } : {}),
+      ...(resolvedEmployeeNo !== undefined ? { employeeNo: resolvedEmployeeNo } : {}),
       ...(joinedAtParseResult.hasInput ? { joinedAt: joinedAtParseResult.value } : {}),
       ...(leftAtParseResult.hasInput ? { leftAt: leftAtParseResult.value } : {}),
     };
