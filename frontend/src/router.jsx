@@ -299,7 +299,7 @@ const router = createBrowserRouter([
           },
           {
             path: 'batch-progress',
-            element: <BatchProgress />,
+            element: <Navigate to="/workspace" replace />,
           },
           {
             path: 'assignment',

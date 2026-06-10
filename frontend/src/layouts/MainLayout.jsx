@@ -518,6 +518,7 @@ const MainLayout = () => {
             label: getUiMessage('menu.batchProgress', '\uC0DD\uC0B0 \uD604\uD669', languageCode),
             icon: <DashboardIcon />,
             path: '/batch-progress',
+            disabled: true,
           },
         ],
       },
