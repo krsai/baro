@@ -1,11 +1,30 @@
 import React, { memo, useCallback } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
-import { Avatar, Box, Chip, Stack, Typography } from '@mui/material';
+import { Avatar, Box, Chip, LinearProgress, Stack, Typography } from '@mui/material';
+import { getUiMessage } from '../../../../constants/uiMessages';
+import { formatNumberWithCommas } from '../../../../utils/numberFormat';
 
 const resolveInitial = (value = '') => {
   const trimmed = String(value || '').trim();
   return trimmed ? trimmed.slice(0, 1).toUpperCase() : '?';
 };
+
+const CardField = ({ label, value, minWidth = 120, children }) => (
+  <Box sx={{ minWidth, flex: 1 }}>
+    <Typography
+      variant="caption"
+      color="text.secondary"
+      sx={{ display: 'block', mb: 0.25 }}
+    >
+      {label}
+    </Typography>
+    {children || (
+      <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
+        {value || '-'}
+      </Typography>
+    )}
+  </Box>
+);
 
 const CompactBoardCard = ({
   draggableId,
@@ -13,9 +32,12 @@ const CompactBoardCard = ({
   droppableData = null,
   disabled = false,
   selected = false,
-  title = '',
-  subtitle = '',
-  meta = '',
+  languageCode = 'en',
+  customer = '',
+  orderNo = '',
+  styleName = '',
+  quantity = null,
+  progressPercent = 0,
   chips = [],
   footer = '',
   previewUrl = '',
@@ -61,6 +83,19 @@ const CompactBoardCard = ({
     });
   };
 
+  const parsedProgress = Number(progressPercent);
+  const displayProgress = Number.isFinite(parsedProgress)
+    ? Math.max(0, Math.round(parsedProgress * 10) / 10)
+    : 0;
+  const progressBarValue = Math.min(100, displayProgress);
+  const quantityLabel =
+    quantity == null || !Number.isFinite(Number(quantity))
+      ? '-'
+      : formatNumberWithCommas(Math.max(0, Number(quantity)), {
+          fallback: '0',
+          maximumFractionDigits: 0,
+        });
+
   return (
     <Box
       ref={setNodeRef}
@@ -70,9 +105,9 @@ const CompactBoardCard = ({
       onClick={onClick}
       onContextMenu={onContextMenu}
       sx={{
-        minWidth: 240,
-        maxWidth: 280,
-        height: 92,
+        width: '100%',
+        minWidth: 0,
+        minHeight: 88,
         borderRadius: 2,
         border: '1px solid',
         borderColor: isOver
@@ -102,57 +137,61 @@ const CompactBoardCard = ({
       />
       <Stack
         direction="row"
-        spacing={1.25}
+        spacing={1.5}
+        useFlexGap
         sx={{
           flex: 1,
           minWidth: 0,
-          px: 1.25,
-          py: 1,
-          alignItems: 'flex-start',
+          px: 1.5,
+          py: 1.25,
+          alignItems: 'center',
+          flexWrap: { xs: 'wrap', lg: 'nowrap' },
         }}
       >
         {previewUrl ? (
           <Avatar
             src={previewUrl}
-            alt={title}
+            alt={styleName}
             variant="rounded"
-            sx={{ width: 42, height: 42, flexShrink: 0 }}
+            sx={{ width: 56, height: 56, flexShrink: 0 }}
           />
         ) : (
           <Avatar
             variant="rounded"
             sx={{
-              width: 42,
-              height: 42,
+              width: 56,
+              height: 56,
               flexShrink: 0,
               bgcolor: 'rgba(37, 99, 235, 0.10)',
               color: accentColor,
               fontWeight: 700,
             }}
           >
-            {resolveInitial(title)}
+            {resolveInitial(styleName)}
           </Avatar>
         )}
-        <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
-          <Box sx={{ minWidth: 0 }}>
-            <Typography
-              variant="caption"
-              sx={{ display: 'block', color: 'text.secondary', fontWeight: 700 }}
-              noWrap
-            >
-              {subtitle || '-'}
-            </Typography>
-            <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
-              {title || '-'}
-            </Typography>
-            {meta ? (
-              <Typography variant="caption" color="text.secondary" noWrap>
-                {meta}
-              </Typography>
-            ) : null}
-          </Box>
+        <CardField
+          label={getUiMessage('assign.cardCustomerLabel', 'Customer', languageCode)}
+          value={customer}
+        />
+        <CardField
+          label={getUiMessage('assign.cardOrderNoLabel', 'Order No.', languageCode)}
+          value={orderNo}
+        />
+        <CardField
+          label={getUiMessage('assign.cardStyleLabel', 'Style', languageCode)}
+          minWidth={160}
+        >
+          <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
+            {styleName || '-'}
+          </Typography>
           {chips.length > 0 ? (
-            <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
+            <Stack
+              direction="row"
+              spacing={0.5}
+              useFlexGap
+              sx={{ flexWrap: 'wrap', rowGap: 0.5, mt: 0.5 }}
+            >
               {chips.map((chip, index) => (
                 <Chip
                   key={`${draggableId}:${index}:${chip.label}`}
@@ -172,11 +211,39 @@ const CompactBoardCard = ({
             </Stack>
           ) : null}
           {footer ? (
-            <Typography variant="caption" color="text.secondary" noWrap>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: 'block', mt: 0.5 }}
+            >
               {footer}
             </Typography>
           ) : null}
-        </Stack>
+        </CardField>
+        <CardField
+          label={getUiMessage('assign.cardQuantityLabel', 'Quantity', languageCode)}
+          value={quantityLabel}
+          minWidth={80}
+        />
+        <CardField
+          label={getUiMessage('assign.cardProgressLabel', 'Progress', languageCode)}
+          minWidth={160}
+        >
+          <Stack spacing={0.5}>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+              {displayProgress}%
+            </Typography>
+            <LinearProgress
+              variant="determinate"
+              value={progressBarValue}
+              sx={{
+                height: 7,
+                borderRadius: 999,
+                backgroundColor: 'rgba(0,0,0,0.08)',
+              }}
+            />
+          </Stack>
+        </CardField>
       </Stack>
     </Box>
   );

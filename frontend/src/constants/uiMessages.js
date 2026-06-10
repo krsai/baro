@@ -170,7 +170,7 @@ export const UI_MESSAGES = {
       en: 'Search styles/customers/colors',
       vi: 'Tim style/khach hang/mau',
     },
-    unassignedCards: { ko: '미배정 카드', en: 'Unassigned Cards', vi: 'The chua phan cong' },
+    unassignedCards: { ko: '미배정 작업', en: 'Unassigned Work', vi: 'Cong viec chua phan cong' },
     cardsSyncing: { ko: '카드 동기화 중...', en: 'Syncing cards...', vi: 'Dang dong bo the...' },
     cardSummary: {
       ko: '{cardCount}개 · {orderCount}주문',
@@ -183,9 +183,9 @@ export const UI_MESSAGES = {
       vi: 'Don {orderNo}',
     },
     noUnassignedCards: {
-      ko: '미배정 카드가 없습니다.',
-      en: 'No unassigned cards.',
-      vi: 'Khong co the chua phan cong.',
+      ko: '미배정 작업이 없습니다.',
+      en: 'No unassigned work.',
+      vi: 'Khong co cong viec chua phan cong.',
     },
     progressCompact: { ko: '진행 {percent}', en: 'Progress {percent}', vi: 'Tien do {percent}' },
     orderNoFallback: { ko: '주문 없음', en: 'No order', vi: 'Khong co don' },
@@ -201,6 +201,26 @@ export const UI_MESSAGES = {
       vi: 'Nhat ky chua lien ket',
     },
     lineCapacityBoard: { ko: '라인 용량', en: 'Line Capacity', vi: 'Cong suat chuyen' },
+    assignmentCancelSection: {
+      ko: '배정 취소',
+      en: 'Cancel Assignment',
+      vi: 'Huy phan cong',
+    },
+    assignmentCancelDropHint: {
+      ko: '배정된 작업을 여기에 놓으면 미배정 작업으로 돌아갑니다.',
+      en: 'Drop an assigned task here to return it to unassigned work.',
+      vi: 'Tha cong viec da phan cong vao day de dua ve danh sach chua phan cong.',
+    },
+    assignmentCancelRecordedWorkHint: {
+      ko: '작업기록이 입력된 작업은 배정을 취소할 수 없습니다.',
+      en: 'Tasks with work records cannot be unassigned.',
+      vi: 'Khong the huy phan cong cong viec da co nhat ky san xuat.',
+    },
+    cannotCancelAssignmentWithWorkRecords: {
+      ko: '작업기록이 입력된 작업은 미배정으로 되돌릴 수 없습니다.',
+      en: 'Assignments with work records cannot be returned to unassigned work.',
+      vi: 'Khong the dua cong viec da co nhat ky san xuat ve danh sach chua phan cong.',
+    },
     capacityMode: { ko: '용량', en: 'Capacity', vi: 'Cong suat' },
     timelineMode: { ko: '타임라인', en: 'Timeline', vi: 'Tien do' },
     capacitySummaryHint: {
@@ -220,7 +240,21 @@ export const UI_MESSAGES = {
       en: 'Assigned work this month',
       vi: 'Cong viec duoc giao thang nay',
     },
-    actualOutput: { ko: '실제 산출', en: 'Actual output', vi: 'San luong thuc te' },
+    actualOutput: {
+      ko: '이번달 누적 생산',
+      en: 'Cumulative production this month',
+      vi: 'San luong luy ke thang nay',
+    },
+    workRecordsThroughCompact: {
+      ko: '기록 기준 {date}',
+      en: 'Records through {date}',
+      vi: 'Ghi nhan den {date}',
+    },
+    noRecentWorkRecord: {
+      ko: '최근 기록 없음',
+      en: 'No recent records',
+      vi: 'Khong co ghi nhan gan day',
+    },
     totalEstimatedLoad: { ko: '총 예상', en: 'Total est.', vi: 'Tong du kien' },
     carryOutCompact: { ko: '이월 {hours}', en: 'Carry {hours}', vi: 'Chuyen sang {hours}' },
     capacityCompact: { ko: '용량 {hours}', en: 'Capacity {hours}', vi: 'Cong suat {hours}' },
@@ -350,6 +384,11 @@ export const UI_MESSAGES = {
     genderLabel: { ko: '성별', en: 'Gender', vi: 'Gioi tinh' },
     customerLabel: { ko: '고객', en: 'Customer', vi: 'Khach hang' },
     styleLabel: { ko: '스타일', en: 'Style', vi: 'Style' },
+    cardCustomerLabel: { ko: '고객사', en: 'Customer', vi: 'Khach hang' },
+    cardOrderNoLabel: { ko: '주문번호', en: 'Order No.', vi: 'Ma don hang' },
+    cardStyleLabel: { ko: '스타일', en: 'Style', vi: 'Style' },
+    cardQuantityLabel: { ko: '수량', en: 'Quantity', vi: 'So luong' },
+    cardProgressLabel: { ko: '진행도', en: 'Progress', vi: 'Tien do' },
     lineLabel: { ko: '라인', en: 'Line', vi: 'Chuyen' },
     imageUnavailable: {
       ko: '이미지\n없음',

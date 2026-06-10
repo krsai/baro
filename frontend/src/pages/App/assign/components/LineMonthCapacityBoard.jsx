@@ -19,7 +19,6 @@ import {
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import { getUiMessage } from '../../../../constants/uiMessages';
-import { formatNumberWithCommas } from '../../../../utils/numberFormat';
 import CompactBoardCard from './CompactBoardCard';
 
 const formatMonthLabel = (monthKey = '') => {
@@ -34,25 +33,9 @@ const formatPercentLabel = (value, fallback = '-') => {
   return `${Math.round(parsed * 10) / 10}%`;
 };
 
-const formatHoursLabel = (seconds, fallback = '-') => {
-  const parsed = Number(seconds);
-  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
-  const hours = Math.round((parsed / 3600) * 10) / 10;
-  return `${formatNumberWithCommas(hours, { fallback: '0', maximumFractionDigits: 1 })}h`;
-};
-
 const formatDateKeyLabel = (dateKey = '', fallback = '-') => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return fallback;
   return dateKey;
-};
-
-const formatDaysLabel = (value, fallback = '-') => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
-  return `${formatNumberWithCommas(Math.round(parsed * 10) / 10, {
-    fallback: '0',
-    maximumFractionDigits: 1,
-  })}d`;
 };
 
 const formatLineCompletionLabel = (dateKey, languageCode = 'en') => {
@@ -65,33 +48,21 @@ const formatLineCompletionLabel = (dateKey, languageCode = 'en') => {
   return template.replace('{date}', formatDateKeyLabel(dateKey, '-'));
 };
 
-const formatQuantityLabel = (quantity, languageCode = 'en') =>
-  getUiMessage('assign.quantityCompact', 'Qty {quantity}', languageCode, {
-    quantity: formatNumberWithCommas(Math.max(0, Number(quantity) || 0), {
-      fallback: '0',
-      maximumFractionDigits: 0,
-    }),
-  });
-
-const formatProgressChipLabel = (value, languageCode = 'en') =>
-  getUiMessage('assign.progressCompact', 'Progress {percent}', languageCode, {
-    percent: formatPercentLabel(value, '0%'),
-  });
-
-const formatHoursChipLabel = (
-  key,
-  fallback,
-  seconds,
-  languageCode = 'en'
-) =>
-  getUiMessage(key, fallback, languageCode, {
-    hours: formatHoursLabel(seconds, '-'),
-  });
-
-const formatDaysChipLabel = (key, fallback, days, languageCode = 'en') =>
-  getUiMessage(key, fallback, languageCode, {
-    days: formatDaysLabel(days, '-'),
-  });
+const formatWorkRecordDateLabel = (dateKey, languageCode = 'en') => {
+  if (!dateKey) {
+    return getUiMessage(
+      'assign.noRecentWorkRecord',
+      'No recent records',
+      languageCode
+    );
+  }
+  return getUiMessage(
+    'assign.workRecordsThroughCompact',
+    'Records through {date}',
+    languageCode,
+    { date: formatDateKeyLabel(dateKey, '-') }
+  );
+};
 
 const resolvePlanTone = (plannedLoadPercent) => {
   const value = Number(plannedLoadPercent);
@@ -175,9 +146,9 @@ const LineAssignmentDropSlot = memo(function LineAssignmentDropSlot({
       ref={setNodeRef}
       aria-label={getUiMessage('assign.insertAssignmentAria', 'Insert assignment here', languageCode)}
       sx={{
-        width: 26,
-        minWidth: 26,
-        height: 92,
+        width: '100%',
+        minWidth: 0,
+        height: 28,
         borderRadius: 2,
         border: '1px dashed',
         borderColor: isOver ? 'primary.main' : 'divider',
@@ -228,47 +199,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
           color: 'warning',
         }
       : null,
-    {
-      label: formatProgressChipLabel(assignment.progressPercent, languageCode),
-      variant: 'outlined',
-    },
-    !isCompleted
-      ? {
-          label: formatHoursChipLabel(
-            'assign.remainingHoursCompact',
-            'Remain {hours}',
-            assignment.remainingStTotalSeconds,
-            languageCode
-          ),
-          variant: 'outlined',
-        }
-      : null,
-    !isCompleted
-      ? {
-          label: formatDaysChipLabel(
-            'assign.etaDaysCompact',
-            'ETA {days}',
-            assignment.estimatedRemainingWorkDays,
-            languageCode
-          ),
-          variant: 'outlined',
-        }
-      : null,
-    !isCompleted && Number(assignment?.queuePosition) > 0
-      ? {
-          label: getUiMessage('assign.queuePositionCompact', 'Q{position}', languageCode, {
-            position: assignment.queuePosition,
-          }),
-          variant: 'outlined',
-        }
-      : null,
   ];
-  if (Number(assignment?.quantity) > 0) {
-    chips.push({
-      label: formatQuantityLabel(assignment.quantity, languageCode),
-      variant: 'outlined',
-    });
-  }
   const footer = isCompleted
     ? assignment.completedAt
       ? getUiMessage(
@@ -317,9 +248,12 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
           : { dropId: `assign-drop-${assignment.id}`, dropMode: 'assignment-card' }
       }
       disabled={isLocked}
-      title={assignment.label || '-'}
-      subtitle={assignment.orderNo || getUiMessage('assign.orderNoFallback', 'No order', languageCode)}
-      meta={[assignment.customer, assignment.colorName].filter(Boolean).join(' / ')}
+      languageCode={languageCode}
+      customer={assignment.customer || '-'}
+      orderNo={assignment.orderNo || getUiMessage('assign.orderNoFallback', 'No order', languageCode)}
+      styleName={assignment.label || '-'}
+      quantity={assignment.quantity}
+      progressPercent={assignment.progressPercent}
       chips={chips.filter(Boolean)}
       footer={footer}
       previewUrl={assignment.previewUrl || ''}
@@ -534,9 +468,32 @@ const LineMonthCapacityBoard = ({
                                 />
                               </Box>
                               <Box>
-                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                  {getUiMessage('assign.actualOutput', 'Actual output', languageCode)}
-                                </Typography>
+                                <Stack
+                                  direction="row"
+                                  spacing={1}
+                                  alignItems="baseline"
+                                  justifyContent="space-between"
+                                  useFlexGap
+                                  sx={{ width: '100%' }}
+                                >
+                                  <Typography variant="caption" color="text.secondary">
+                                    {getUiMessage(
+                                      'assign.actualOutput',
+                                      'Cumulative production this month',
+                                      languageCode
+                                    )}
+                                  </Typography>
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{ textAlign: 'right' }}
+                                  >
+                                    {formatWorkRecordDateLabel(
+                                      summary?.actualOutputRecordedThroughDateKey,
+                                      languageCode
+                                    )}
+                                  </Typography>
+                                </Stack>
                                 <Typography variant="body2" sx={{ fontWeight: 700 }}>
                                   {formatPercentLabel(summary?.actualOutputPercent)}
                                 </Typography>
@@ -584,7 +541,7 @@ const LineMonthCapacityBoard = ({
                               languageCode
                             )}
                           </Typography>
-                          <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 0.5, alignItems: 'stretch' }}>
+                          <Stack spacing={0.75}>
                             {row.queuedAssignments.length > 0 ? (
                               <>
                                 <LineAssignmentDropSlot
@@ -635,7 +592,7 @@ const LineMonthCapacityBoard = ({
                               languageCode
                             )}
                           </Typography>
-                          <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 0.5, alignItems: 'stretch' }}>
+                          <Stack spacing={1}>
                             {row.completedAssignments.length > 0 ? (
                               row.completedAssignments.map((assignment) => (
                                 <AssignmentDetailCard

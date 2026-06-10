@@ -22,7 +22,7 @@ import {
   Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { DndContext, DragOverlay } from '@dnd-kit/core';
+import { DndContext, DragOverlay, useDroppable } from '@dnd-kit/core';
 import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
 import { useAssignBoardDnd } from './hooks/useAssignBoardDnd';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -208,12 +208,6 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
   const basis = getCardBasis(card);
   const isLocked = isCardManualOrderLocked(card);
   const stHoursLabel = formatCompactHoursLabel(resolveCardStTotalSeconds(card));
-  const quantityLabel = getUiMessage(
-    'assign.quantityCompact',
-    'Qty {quantity}',
-    languageCode,
-    { quantity: resolveCardQuantity(card, 0) }
-  );
   const basisLabel =
     basis === 'NONE'
       ? getUiMessage('assign.ctMissingCompact', 'Time missing', languageCode)
@@ -225,11 +219,13 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
       droppableData={{ dropId: `card-drop-${card.id}` }}
       disabled={!isLocked || basis === 'NONE'}
       selected={isSelected}
-      title={card.styleName}
-      subtitle={card.orderNo || getUiMessage('assign.orderNoFallback', 'No order', languageCode)}
-      meta={card.customer || card.colorName || ''}
+      languageCode={languageCode}
+      customer={card.customer || '-'}
+      orderNo={card.orderNo || getUiMessage('assign.orderNoFallback', 'No order', languageCode)}
+      styleName={card.styleName}
+      quantity={resolveCardQuantity(card, 0)}
+      progressPercent={0}
       chips={[
-        { label: quantityLabel, variant: 'outlined' },
         ...(stHoursLabel ? [{ label: stHoursLabel, variant: 'outlined' }] : []),
         { label: basisLabel, color: basis === 'NONE' ? 'warning' : 'primary' },
       ]}
@@ -265,6 +261,59 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
         })
       }
     />
+  );
+});
+
+const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
+  activeDragType,
+  languageCode,
+}) {
+  const acceptsAssignment = activeDragType === 'assignment';
+  const { setNodeRef, isOver } = useDroppable({
+    id: 'assignment-cancel-drop',
+    disabled: !acceptsAssignment,
+    data: { dropMode: 'assignment-cancel' },
+  });
+
+  return (
+    <Stack spacing={1}>
+      <Typography variant="subtitle2">
+        {getUiMessage('assign.assignmentCancelSection', 'Cancel assignment', languageCode)}
+      </Typography>
+      <Paper
+        ref={setNodeRef}
+        variant="outlined"
+        sx={{
+          px: 2,
+          py: 2.25,
+          borderStyle: 'dashed',
+          borderWidth: 2,
+          borderColor: isOver ? 'error.main' : 'divider',
+          backgroundColor: isOver ? 'rgba(211, 47, 47, 0.08)' : '#FAFAFB',
+          textAlign: 'center',
+          transition: 'border-color 0.12s ease, background-color 0.12s ease',
+        }}
+      >
+        <Typography
+          variant="body2"
+          sx={{ fontWeight: 700 }}
+          color={isOver ? 'error.main' : 'text.primary'}
+        >
+          {getUiMessage(
+            'assign.assignmentCancelDropHint',
+            'Drop an assigned task here to return it to unassigned work.',
+            languageCode
+          )}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {getUiMessage(
+            'assign.assignmentCancelRecordedWorkHint',
+            'Tasks with work records cannot be unassigned.',
+            languageCode
+          )}
+        </Typography>
+      </Paper>
+    </Stack>
   );
 });
 
@@ -307,7 +356,7 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
     <Stack spacing={1.5} sx={{ minWidth: 0 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="subtitle2">
-          {getUiMessage('assign.unassignedCards', '미배정 카드', languageCode)}
+          {getUiMessage('assign.unassignedCards', '미배정 작업', languageCode)}
         </Typography>
         <Typography variant="caption" color="text.secondary">
           {loading ? summaryText : `${summaryText} · ${quantitySummary}`}
@@ -383,12 +432,7 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
               </Typography>
             </Box>
             <Stack
-              direction="row"
               spacing={1}
-              sx={{
-                overflowX: 'auto',
-                pb: 0.5,
-              }}
             >
               {group.cards.map((card) => (
                 <UnassignedCardItem
@@ -5142,13 +5186,6 @@ const AssignBoard = () => {
     }
     const { active, over } = event;
     if (!over) {
-      if (String(active.id).startsWith('assign-')) {
-        const assignmentId = String(active.id).replace('assign-', '');
-        const targetAssignment = assignmentById.get(assignmentId);
-        if (!targetAssignment?.isCompleted) {
-          setAssignments((prev) => prev.filter((item) => item.id !== assignmentId));
-        }
-      }
       setActiveDrag(null);
       return;
     }
@@ -5180,6 +5217,39 @@ const AssignBoard = () => {
     }
 
     const overDropMode = String(over?.data?.current?.dropMode || '').trim();
+    if (overDropMode === 'assignment-cancel') {
+      if (!activeId.startsWith('assign-')) {
+        setActiveDrag(null);
+        return;
+      }
+      const assignmentId = activeId.replace('assign-', '');
+      const movingAssignment = assignmentById.get(assignmentId);
+      const progressRow = assignmentProgressById[assignmentId] || null;
+      const hasWorkRecords =
+        Number(progressRow?.producedQuantity ?? movingAssignment?.producedQuantity ?? 0) > 0 ||
+        Number(
+          progressRow?.operationalProgressPercent ??
+            progressRow?.progressPercent ??
+            movingAssignment?.progressPercent ??
+            0
+        ) > 0 ||
+        Boolean(progressRow?.firstWorkDate || progressRow?.lastWorkDate);
+      if (hasWorkRecords) {
+        showNotification(
+          getUiMessage(
+            'assign.cannotCancelAssignmentWithWorkRecords',
+            'Assignments with work records cannot be returned to unassigned work.',
+            languageCode
+          ),
+          'warning'
+        );
+        setActiveDrag(null);
+        return;
+      }
+      setAssignments((prev) => prev.filter((item) => item.id !== assignmentId));
+      setActiveDrag(null);
+      return;
+    }
     if (overDropMode === 'line-row' || overDropMode === 'line-slot') {
       const placement = resolveLineStripDropPlacement({
         lineId: over?.data?.current?.lineId,
@@ -5391,13 +5461,6 @@ const AssignBoard = () => {
       if (activeId.startsWith('card-')) {
         const sourceCardId = activeId.replace('card-', '');
         if (mergeUnassignedCards(targetCardId, sourceCardId)) {
-          setActiveDrag(null);
-          return;
-        }
-      }
-      if (activeId.startsWith('assign-')) {
-        const assignmentId = activeId.replace('assign-', '');
-        if (mergeAssignmentIntoCardTarget(targetCardId, assignmentId)) {
           setActiveDrag(null);
           return;
         }
@@ -5914,23 +5977,6 @@ const AssignBoard = () => {
     return true;
   };
 
-  const mergeAssignmentIntoCardTarget = (targetCardId, sourceAssignmentId) => {
-    const targetCard = cardById.get(targetCardId);
-    const sourceAssignment = assignmentById.get(sourceAssignmentId);
-    if (!targetCard || !sourceAssignment) return false;
-    if (getCardOriginId(targetCard) !== getAssignmentOriginId(sourceAssignment)) return false;
-
-    const sourceCard = buildCardFromAssignment(sourceAssignment);
-    const mergedCard = buildMergedCardData(targetCard, sourceCard);
-    setCards((prev) =>
-      prev
-        .filter((item) => item.id !== sourceCard.id)
-        .map((item) => (item.id === targetCardId ? mergedCard : item))
-    );
-    setAssignments((prev) => prev.filter((item) => item.id !== sourceAssignmentId));
-    return true;
-  };
-
   const mergeAssignments = (targetAssignmentId, sourceAssignmentId) => {
     if (!targetAssignmentId || !sourceAssignmentId || targetAssignmentId === sourceAssignmentId) return false;
     const target = assignmentById.get(targetAssignmentId);
@@ -6257,6 +6303,10 @@ const AssignBoard = () => {
               />
             </Stack>
           </Stack>
+          <AssignmentCancelDropZone
+            activeDragType={activeDrag?.type || null}
+            languageCode={languageCode}
+          />
           <Box sx={{ minWidth: 0, pt: 0.5 }}>
             <UnassignedCardGroupsPanel
               filteredCardCount={filteredCards.length}

@@ -16734,6 +16734,7 @@ const buildLineMonthCapacityRows = async ({
       headcountDayUnits: number;
       lineMonthlyCapacitySeconds: number;
       lineMonthlyActualOutputStSeconds: number;
+      actualOutputRecordedThroughDateKey: string | null;
       orphanWorkRecordCount: number;
       latestActualCoverageEndDateKey: string | null;
       forecastAnchorDateKey: string | null;
@@ -16769,6 +16770,7 @@ const buildLineMonthCapacityRows = async ({
         headcountDayUnits: 0,
         lineMonthlyCapacitySeconds: 0,
         lineMonthlyActualOutputStSeconds: 0,
+        actualOutputRecordedThroughDateKey: null,
         orphanWorkRecordCount: 0,
         latestActualCoverageEndDateKey:
           forecastMeta?.latestActualCoverageEndDateKey || null,
@@ -16920,6 +16922,20 @@ const buildLineMonthCapacityRows = async ({
         coverageEndDate,
         monthKeys: internalMonthKeys,
         holidaySet,
+      });
+      monthWeightRows.forEach(({ monthKey }) => {
+        const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
+        const monthEndDateKey =
+          getMonthEndDateKeyForLineMonthCapacity(monthKey) || coverageEndDate;
+        const recordedThroughDateKey =
+          coverageEndDate < monthEndDateKey ? coverageEndDate : monthEndDateKey;
+        if (
+          target &&
+          (!target.actualOutputRecordedThroughDateKey ||
+            recordedThroughDateKey > target.actualOutputRecordedThroughDateKey)
+        ) {
+          target.actualOutputRecordedThroughDateKey = recordedThroughDateKey;
+        }
       });
       const monthAllocations =
         distributeIntegerTotalByWeightsForLineMonthCapacity({
@@ -17176,6 +17192,8 @@ const buildLineMonthCapacityRows = async ({
         lineMonthlyCapacitySeconds: row.lineMonthlyCapacitySeconds,
         lineMonthlyActualOutputStSeconds: row.lineMonthlyActualOutputStSeconds,
         actualOutputPercent,
+        actualOutputRecordedThroughDateKey:
+          row.actualOutputRecordedThroughDateKey,
         orphanWorkRecordCount: row.orphanWorkRecordCount,
         latestActualCoverageEndDateKey: row.latestActualCoverageEndDateKey,
         forecastAnchorDateKey: row.forecastAnchorDateKey,

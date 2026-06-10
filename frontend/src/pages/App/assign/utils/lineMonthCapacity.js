@@ -671,6 +671,8 @@ export const buildLineMonthCapacityBoardRows = ({
         normalizeDateKey(backendRow?.latestActualCoverageEndDateKey) ||
         lineMeta?.latestActualCoverageEndDateKey ||
         null;
+      const actualOutputRecordedThroughDateKey =
+        normalizeDateKey(backendRow?.actualOutputRecordedThroughDateKey) || null;
       const rowForecastAnchorDateKey =
         normalizeDateKey(backendRow?.forecastAnchorDateKey) || forecastAnchorDateKey;
       const inferredMonthType =
@@ -749,6 +751,7 @@ export const buildLineMonthCapacityBoardRows = ({
                 lineMonthlyActualOutputStSeconds,
                 lineMonthlyCapacitySeconds
               ),
+        actualOutputRecordedThroughDateKey,
         latestActualCoverageEndDateKey,
         forecastAnchorDateKey: rowForecastAnchorDateKey || null,
         forecastWindowStartDateKey,
@@ -810,6 +813,8 @@ export const buildLineMonthCapacityBoardRows = ({
                 lineMonthlyActualOutputStSeconds,
                 lineMonthlyCapacitySeconds
               ),
+        actualOutputRecordedThroughDateKey:
+          normalizeDateKey(backendRow?.actualOutputRecordedThroughDateKey) || null,
         latestActualCoverageEndDateKey:
           normalizeDateKey(backendRow?.latestActualCoverageEndDateKey) ||
           lineMeta?.latestActualCoverageEndDateKey ||
