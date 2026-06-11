@@ -132,6 +132,15 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
 
   const colCount = 2 + VISIBLE_BUCKETS.length; // 공정명 + ST/AT라벨 + 수량열
 
+  const totalStByBucket = useMemo(() =>
+    VISIBLE_BUCKETS.map((q) =>
+      safeProcesses.reduce((sum, process) => {
+        const st = resolveProcessStPerPieceSeconds(process, q);
+        return sum + (st != null ? st : 0);
+      }, 0)
+    ),
+  [safeProcesses]);
+
   return (
     <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
       {/* 헤더 */}
@@ -178,6 +187,23 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                   sx={{ width: ST_CELL_W + 8, fontWeight: 700, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}
                 >
                   {`${formatNumberWithCommas(q, { maximumFractionDigits: 0 })}~`}
+                </TableCell>
+              ))}
+            </TableRow>
+            <TableRow sx={{ backgroundColor: '#FFFBEB' }}>
+              <TableCell sx={{ pl: 2, py: 0.75, fontWeight: 700, fontSize: 11, color: '#92400E' }}>
+                {languageCode === 'vi' ? 'Tong ST' : languageCode === 'en' ? 'Total ST' : '합계 ST'}
+              </TableCell>
+              <TableCell sx={{ py: 0.75, fontSize: 11, color: '#92400E', fontWeight: 700 }}>
+                {languageCode === 'vi' ? '(giay)' : languageCode === 'en' ? '(sec)' : '(초)'}
+              </TableCell>
+              {totalStByBucket.map((total, i) => (
+                <TableCell
+                  key={VISIBLE_BUCKETS[i]}
+                  align="center"
+                  sx={{ py: 0.75, fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: total > 0 ? '#92400E' : 'text.disabled' }}
+                >
+                  {total > 0 ? fmtSec(total) : '-'}
                 </TableCell>
               ))}
             </TableRow>
