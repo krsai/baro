@@ -94,15 +94,9 @@ const resolvePlanTone = (plannedLoadPercent) => {
   };
 };
 
-const LineRowDropArea = memo(function LineRowDropArea({ lineId, languageCode }) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: `line-row-drop::${lineId}`,
-    data: { dropMode: 'line-row', lineId },
-  });
-
+const LineRowDropHint = memo(function LineRowDropHint({ isOver, languageCode }) {
   return (
     <Box
-      ref={setNodeRef}
       sx={{
         mt: 1,
         px: 1,
@@ -111,6 +105,7 @@ const LineRowDropArea = memo(function LineRowDropArea({ lineId, languageCode }) 
         border: '1px dashed',
         borderColor: isOver ? 'primary.main' : 'divider',
         backgroundColor: isOver ? 'rgba(37, 99, 235, 0.08)' : '#F8FAFC',
+        transition: 'border-color 0.12s ease, background-color 0.12s ease',
       }}
     >
       <Typography variant="caption" color={isOver ? 'primary.main' : 'text.secondary'}>
@@ -270,6 +265,208 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
   );
 });
 
+const LineCapacityMainRow = memo(function LineCapacityMainRow({
+  row,
+  normalizedMonthKeys,
+  languageCode,
+  isExpanded,
+  onToggleExpand,
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `line-row-drop::${row.lineId}`,
+    data: { dropMode: 'line-row', lineId: row.lineId },
+  });
+
+  return (
+    <TableRow
+      ref={setNodeRef}
+      sx={{
+        backgroundColor: isOver ? 'rgba(37, 99, 235, 0.06)' : undefined,
+        outline: isOver ? '2px solid #2563EB' : undefined,
+        outlineOffset: -2,
+        transition: 'background-color 0.12s ease, outline 0.12s ease',
+      }}
+    >
+      <TableCell sx={{ verticalAlign: 'top' }}>
+        <Stack direction="row" spacing={1} alignItems="flex-start">
+          <IconButton
+            size="small"
+            onClick={onToggleExpand}
+            aria-label={getUiMessage(
+              isExpanded ? 'assign.collapseLineAria' : 'assign.expandLineAria',
+              isExpanded ? 'Collapse line' : 'Expand line',
+              languageCode
+            )}
+            sx={{ mt: -0.25 }}
+          >
+            {isExpanded ? <KeyboardArrowDownIcon fontSize="small" /> : <KeyboardArrowRightIcon fontSize="small" />}
+          </IconButton>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="subtitle2">{row.lineName}</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {getUiMessage('assign.headcount', '{count} ppl', languageCode, {
+                count: row.headcount || 0,
+              })}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              {getUiMessage(
+                'assign.queueCountCompact',
+                '{count} queued',
+                languageCode,
+                { count: row.activeAssignmentCount || 0 }
+              )}
+            </Typography>
+            {Number(row.stUnknownAssignmentCount) > 0 ? (
+              <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
+                {getUiMessage(
+                  'assign.stUnknownExcludedCompact',
+                  '{count} ST-missing excluded',
+                  languageCode,
+                  { count: row.stUnknownAssignmentCount }
+                )}
+              </Typography>
+            ) : null}
+            <LineRowDropHint isOver={isOver} languageCode={languageCode} />
+          </Box>
+        </Stack>
+      </TableCell>
+      {normalizedMonthKeys.map((monthKey) => {
+        const summary =
+          (Array.isArray(row.months) ? row.months : []).find(
+            (item) => item?.monthKey === monthKey
+          ) || null;
+        const tone = resolvePlanTone(summary?.plannedLoadPercent);
+        const isForecastMonth = Boolean(summary?.isForecastMonth);
+        const isAnchorMonth = Boolean(summary?.isAnchorMonth);
+        const isHistoricalMonth = Boolean(summary?.isHistoricalMonth);
+        const planBarValue = Math.max(
+          0,
+          Math.min(
+            100,
+            isHistoricalMonth ? 0 : Number(summary?.plannedLoadPercent) || 0
+          )
+        );
+        const actualBarValue = Math.max(
+          0,
+          Math.min(100, Number(summary?.actualOutputPercent) || 0)
+        );
+        return (
+          <TableCell key={`${row.lineId}:${monthKey}`} sx={{ verticalAlign: 'top' }}>
+            <Box
+              sx={{
+                borderRadius: 1.5,
+                p: 1,
+                backgroundColor: isOver ? 'rgba(37, 99, 235, 0.05)' : tone.backgroundColor,
+                border: isOver ? '1px solid rgba(37, 99, 235, 0.3)' : '1px solid rgba(0,0,0,0.05)',
+                minHeight: 108,
+                transition: 'background-color 0.12s ease, border-color 0.12s ease',
+              }}
+            >
+              <Stack spacing={0.75}>
+                <Box>
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="baseline"
+                    justifyContent="space-between"
+                    useFlexGap
+                    sx={{ width: '100%' }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      {getUiMessage(
+                        isForecastMonth ? 'assign.forecastLoad' : 'assign.plannedLoad',
+                        isForecastMonth ? 'Forecast load' : 'Planned load',
+                        languageCode
+                      )}
+                    </Typography>
+                    {isAnchorMonth ? (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ textAlign: 'right' }}
+                      >
+                        {row.lineFreeDateKey
+                          ? formatLineCompletionLabel(row.lineFreeDateKey, languageCode)
+                          : Number(row.activeAssignmentCount) > 0
+                            ? getUiMessage('assign.etaUnavailableCompact', 'ETA unavailable', languageCode)
+                            : getUiMessage('assign.lineFreeNowCompact', 'Free now', languageCode)}
+                      </Typography>
+                    ) : null}
+                  </Stack>
+                  <Typography variant="body2" sx={{ fontWeight: 700, color: tone.textColor }}>
+                    {formatPercentLabel(isHistoricalMonth ? null : summary?.plannedLoadPercent)}
+                  </Typography>
+                  <LinearProgress
+                    variant="determinate"
+                    value={planBarValue}
+                    sx={{
+                      mt: 0.5,
+                      height: 6,
+                      borderRadius: 999,
+                      backgroundColor: 'rgba(0,0,0,0.08)',
+                      '& .MuiLinearProgress-bar': { backgroundColor: tone.barColor },
+                    }}
+                  />
+                </Box>
+                <Box>
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="baseline"
+                    justifyContent="space-between"
+                    useFlexGap
+                    sx={{ width: '100%' }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      {getUiMessage(
+                        'assign.actualOutput',
+                        'Cumulative production this month',
+                        languageCode
+                      )}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'right' }}>
+                      {formatWorkRecordDateLabel(
+                        summary?.actualOutputRecordedThroughDateKey,
+                        languageCode
+                      )}
+                    </Typography>
+                  </Stack>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                    {formatPercentLabel(summary?.actualOutputPercent)}
+                  </Typography>
+                  <LinearProgress
+                    variant="determinate"
+                    value={actualBarValue}
+                    sx={{
+                      mt: 0.5,
+                      height: 6,
+                      borderRadius: 999,
+                      backgroundColor: 'rgba(0,0,0,0.08)',
+                    }}
+                  />
+                </Box>
+                {Number(summary?.orphanWorkRecordCount) > 0 ? (
+                  <Chip
+                    size="small"
+                    color="warning"
+                    label={getUiMessage(
+                      'assign.unlinkedWorkLogsWithCount',
+                      'Unlinked logs {count}',
+                      languageCode,
+                      { count: summary.orphanWorkRecordCount }
+                    )}
+                    sx={{ alignSelf: 'flex-start' }}
+                  />
+                ) : null}
+              </Stack>
+            </Box>
+          </TableCell>
+        );
+      })}
+    </TableRow>
+  );
+});
+
 const LineMonthCapacityBoard = ({
   rows,
   monthKeys,
@@ -323,206 +520,13 @@ const LineMonthCapacityBoard = ({
               const isExpanded = expandedLineIds.has(row.lineId);
               return (
                 <React.Fragment key={row.lineId}>
-                  <TableRow hover>
-                    <TableCell sx={{ verticalAlign: 'top' }}>
-                      <Stack direction="row" spacing={1} alignItems="flex-start">
-                        <IconButton
-                          size="small"
-                          onClick={() => toggleExpanded(row.lineId)}
-                          aria-label={getUiMessage(
-                            isExpanded
-                              ? 'assign.collapseLineAria'
-                              : 'assign.expandLineAria',
-                            isExpanded ? 'Collapse line' : 'Expand line',
-                            languageCode
-                          )}
-                          sx={{ mt: -0.25 }}
-                        >
-                          {isExpanded ? <KeyboardArrowDownIcon fontSize="small" /> : <KeyboardArrowRightIcon fontSize="small" />}
-                        </IconButton>
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography variant="subtitle2">{row.lineName}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {getUiMessage('assign.headcount', '{count} ppl', languageCode, {
-                              count: row.headcount || 0,
-                            })}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                            {getUiMessage(
-                              'assign.queueCountCompact',
-                              '{count} queued',
-                              languageCode,
-                              { count: row.activeAssignmentCount || 0 }
-                            )}
-                          </Typography>
-                          {Number(row.stUnknownAssignmentCount) > 0 ? (
-                            <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
-                              {getUiMessage(
-                                'assign.stUnknownExcludedCompact',
-                                '{count} ST-missing excluded',
-                                languageCode,
-                                {
-                                  count: row.stUnknownAssignmentCount,
-                                }
-                              )}
-                            </Typography>
-                          ) : null}
-                          <LineRowDropArea lineId={row.lineId} languageCode={languageCode} />
-                        </Box>
-                      </Stack>
-                    </TableCell>
-                    {normalizedMonthKeys.map((monthKey) => {
-                      const summary =
-                        (Array.isArray(row.months) ? row.months : []).find(
-                          (item) => item?.monthKey === monthKey
-                        ) || null;
-                      const tone = resolvePlanTone(summary?.plannedLoadPercent);
-                      const isForecastMonth = Boolean(summary?.isForecastMonth);
-                      const isAnchorMonth = Boolean(summary?.isAnchorMonth);
-                      const isHistoricalMonth = Boolean(summary?.isHistoricalMonth);
-                      const planBarValue = Math.max(
-                        0,
-                        Math.min(
-                          100,
-                          isHistoricalMonth ? 0 : Number(summary?.plannedLoadPercent) || 0
-                        )
-                      );
-                      const actualBarValue = Math.max(
-                        0,
-                        Math.min(100, Number(summary?.actualOutputPercent) || 0)
-                      );
-                      return (
-                        <TableCell key={`${row.lineId}:${monthKey}`} sx={{ verticalAlign: 'top' }}>
-                          <Box
-                            sx={{
-                              borderRadius: 1.5,
-                              p: 1,
-                              backgroundColor: tone.backgroundColor,
-                              border: '1px solid rgba(0,0,0,0.05)',
-                              minHeight: 108,
-                            }}
-                          >
-                            <Stack spacing={0.75}>
-                              <Box>
-                                <Stack
-                                  direction="row"
-                                  spacing={1}
-                                  alignItems="baseline"
-                                  justifyContent="space-between"
-                                  useFlexGap
-                                  sx={{ width: '100%' }}
-                                >
-                                  <Typography variant="caption" color="text.secondary">
-                                    {getUiMessage(
-                                      isForecastMonth ? 'assign.forecastLoad' : 'assign.plannedLoad',
-                                      isForecastMonth ? 'Forecast load' : 'Planned load',
-                                      languageCode
-                                    )}
-                                  </Typography>
-                                  {isAnchorMonth ? (
-                                    <Typography
-                                      variant="caption"
-                                      color="text.secondary"
-                                      sx={{ textAlign: 'right' }}
-                                    >
-                                      {row.lineFreeDateKey
-                                        ? formatLineCompletionLabel(
-                                            row.lineFreeDateKey,
-                                            languageCode
-                                          )
-                                        : Number(row.activeAssignmentCount) > 0
-                                          ? getUiMessage(
-                                              'assign.etaUnavailableCompact',
-                                              'ETA unavailable',
-                                              languageCode
-                                            )
-                                          : getUiMessage(
-                                              'assign.lineFreeNowCompact',
-                                              'Free now',
-                                              languageCode
-                                            )}
-                                    </Typography>
-                                  ) : null}
-                                </Stack>
-                                <Typography variant="body2" sx={{ fontWeight: 700, color: tone.textColor }}>
-                                  {formatPercentLabel(
-                                    isHistoricalMonth ? null : summary?.plannedLoadPercent
-                                  )}
-                                </Typography>
-                                <LinearProgress
-                                  variant="determinate"
-                                  value={planBarValue}
-                                  sx={{
-                                    mt: 0.5,
-                                    height: 6,
-                                    borderRadius: 999,
-                                    backgroundColor: 'rgba(0,0,0,0.08)',
-                                    '& .MuiLinearProgress-bar': {
-                                      backgroundColor: tone.barColor,
-                                    },
-                                  }}
-                                />
-                              </Box>
-                              <Box>
-                                <Stack
-                                  direction="row"
-                                  spacing={1}
-                                  alignItems="baseline"
-                                  justifyContent="space-between"
-                                  useFlexGap
-                                  sx={{ width: '100%' }}
-                                >
-                                  <Typography variant="caption" color="text.secondary">
-                                    {getUiMessage(
-                                      'assign.actualOutput',
-                                      'Cumulative production this month',
-                                      languageCode
-                                    )}
-                                  </Typography>
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    sx={{ textAlign: 'right' }}
-                                  >
-                                    {formatWorkRecordDateLabel(
-                                      summary?.actualOutputRecordedThroughDateKey,
-                                      languageCode
-                                    )}
-                                  </Typography>
-                                </Stack>
-                                <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                                  {formatPercentLabel(summary?.actualOutputPercent)}
-                                </Typography>
-                                <LinearProgress
-                                  variant="determinate"
-                                  value={actualBarValue}
-                                  sx={{
-                                    mt: 0.5,
-                                    height: 6,
-                                    borderRadius: 999,
-                                    backgroundColor: 'rgba(0,0,0,0.08)',
-                                  }}
-                                />
-                              </Box>
-                              {Number(summary?.orphanWorkRecordCount) > 0 ? (
-                                <Chip
-                                  size="small"
-                                  color="warning"
-                                  label={getUiMessage(
-                                    'assign.unlinkedWorkLogsWithCount',
-                                    'Unlinked logs {count}',
-                                    languageCode,
-                                    { count: summary.orphanWorkRecordCount }
-                                  )}
-                                  sx={{ alignSelf: 'flex-start' }}
-                                />
-                              ) : null}
-                            </Stack>
-                          </Box>
-                        </TableCell>
-                      );
-                    })}
-                  </TableRow>
+                  <LineCapacityMainRow
+                    row={row}
+                    normalizedMonthKeys={normalizedMonthKeys}
+                    languageCode={languageCode}
+                    isExpanded={isExpanded}
+                    onToggleExpand={() => toggleExpanded(row.lineId)}
+                  />
                   <TableRow>
                     <TableCell
                       colSpan={normalizedMonthKeys.length + 1}
