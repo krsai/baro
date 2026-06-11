@@ -4553,6 +4553,14 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
     orderNumber,
     buyerOrgId: resolvedBuyerOrgId,
     buyerOrgName: resolvedBuyerOrgName,
+    buyerOrgNameKo: resolveOptionalString(
+      payload?.buyerOrgNameKo,
+      fallback?.buyerOrgNameKo ?? null
+    ),
+    buyerOrgNameVi: resolveOptionalString(
+      payload?.buyerOrgNameVi,
+      fallback?.buyerOrgNameVi ?? null
+    ),
     sellerOrgId: toNumberOrNull(
       payload?.sellerOrgId !== undefined
         ? payload.sellerOrgId
@@ -4607,7 +4615,7 @@ const resolveOrderPartiesOrThrow = async ({
 
   const organizations = await prisma.organization.findMany({
     where: { id: { in: [buyerOrgId, sellerOrgId] } },
-    select: { id: true, name: true, type: true },
+    select: { id: true, name: true, nameKo: true, nameVi: true, type: true },
   });
 
   const buyer = organizations.find((item) => item.id === buyerOrgId) ?? null;
@@ -4800,6 +4808,8 @@ const toOrderResponse = (
     orderNumber: order.orderNumber ?? "",
     buyerOrgId: order.buyerOrgId ?? null,
     buyerOrgName: order.buyerOrgName ?? "",
+    buyerOrgNameKo: order.buyerOrgNameKo ?? "",
+    buyerOrgNameVi: order.buyerOrgNameVi ?? "",
     sellerOrgId: order.sellerOrgId ?? null,
     sellerOrgName: order.sellerOrgName ?? "",
     customerId: order.customerId ?? order.buyerOrgId ?? null,
@@ -20982,6 +20992,8 @@ app.post("/orders", async (req, res) => {
   });
   normalized.buyerOrgId = buyer.id;
   normalized.buyerOrgName = buyer.name ?? "";
+  normalized.buyerOrgNameKo = (buyer as any).nameKo ?? "";
+  normalized.buyerOrgNameVi = (buyer as any).nameVi ?? "";
   normalized.customerId = buyer.id;
   normalized.customerName = buyer.name ?? "";
   normalized.sellerOrgId = seller.id;
@@ -21049,6 +21061,8 @@ app.put("/orders/:orderId", async (req, res) => {
   });
   normalized.buyerOrgId = buyer.id;
   normalized.buyerOrgName = buyer.name ?? "";
+  normalized.buyerOrgNameKo = (buyer as any).nameKo ?? "";
+  normalized.buyerOrgNameVi = (buyer as any).nameVi ?? "";
   normalized.customerId = buyer.id;
   normalized.customerName = buyer.name ?? "";
   normalized.sellerOrgId = seller.id;
@@ -22832,6 +22846,7 @@ let atAutoSyncRunHistoryTableReady = false;
 let atAutoSyncRunHistoryTableUnsupported = false;
 let workRecordCanonicalSchemaReady = false;
 let organizationLocalizationColumnsReady = false;
+let workOrderLocalizationColumnsReady = false;
 
 const ensureOrganizationLocalizationColumnsReady = async () => {
   if (organizationLocalizationColumnsReady) return;
@@ -22844,6 +22859,19 @@ const ensureOrganizationLocalizationColumnsReady = async () => {
       ADD COLUMN IF NOT EXISTS "nameVi" TEXT
   `);
   organizationLocalizationColumnsReady = true;
+};
+
+const ensureWorkOrderLocalizationColumnsReady = async () => {
+  if (workOrderLocalizationColumnsReady) return;
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "WorkOrder"
+      ADD COLUMN IF NOT EXISTS "buyerOrgNameKo" TEXT
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "WorkOrder"
+      ADD COLUMN IF NOT EXISTS "buyerOrgNameVi" TEXT
+  `);
+  workOrderLocalizationColumnsReady = true;
 };
 
 type AutoAtSyncSummary = {
@@ -23341,6 +23369,7 @@ const bootstrapApplicationServices = async () => {
   try {
     await ensureDatabaseReady();
     await ensureOrganizationLocalizationColumnsReady();
+    await ensureWorkOrderLocalizationColumnsReady();
     await ensureWorkRecordCanonicalSchemaReady();
     await ensureWorkOrderStatusSchemaReady();
     await ensureProcessMasterOptionTypeSchemaReady();

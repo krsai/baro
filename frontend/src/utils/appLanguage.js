@@ -135,6 +135,16 @@ export const resolveLocalizedAttributeName = (item, languageCode = currentLangua
   return nameEn || name || nameKo || nameVi || attributeCode;
 };
 
+export const resolveCustomerDisplayName = (customer, languageCode = currentLanguageCode) => {
+  const code = normalizeLanguageCode(languageCode);
+  const name = toTrimmedText(customer?.name);
+  const nameKo = toTrimmedText(customer?.nameKo);
+  const nameVi = toTrimmedText(customer?.nameVi);
+  if (code === 'ko') return nameKo || name || nameVi || '';
+  if (code === 'vi') return nameVi || name || nameKo || '';
+  return name || nameKo || nameVi || '';
+};
+
 export const collectAttributeTextCandidates = (item, languageCode = currentLanguageCode) =>
   Array.from(
     new Set(

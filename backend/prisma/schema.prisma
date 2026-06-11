@@ -606,9 +606,11 @@ model WorkOrder {
   orgId         Int
   orderId       String
   orderNumber   String
-  buyerOrgId    Int?
-  buyerOrgName  String?
-  sellerOrgId   Int?
+  buyerOrgId      Int?
+  buyerOrgName    String?
+  buyerOrgNameKo  String?
+  buyerOrgNameVi  String?
+  sellerOrgId     Int?
   sellerOrgName String?
   customerId    Int?
   customerName  String?

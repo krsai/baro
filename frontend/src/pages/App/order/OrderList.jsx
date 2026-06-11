@@ -56,7 +56,7 @@ import {
   getGenderLabel,
   normalizeGenderCode,
 } from '../../../constants/productAttributes';
-import { collectAttributeTextCandidates, resolveLocalizedAttributeName } from '../../../utils/appLanguage';
+import { collectAttributeTextCandidates, resolveLocalizedAttributeName, resolveCustomerDisplayName } from '../../../utils/appLanguage';
 import {
   ORDER_STATUS_KEYS,
   ORDER_STATUS_OPTIONS,
@@ -2504,6 +2504,8 @@ const OrderList = () => {
         ...prev,
         buyerOrgId: nextBuyerOrgId,
         buyerOrgName: nextBuyerOrgName,
+        buyerOrgNameKo: customer?.nameKo || '',
+        buyerOrgNameVi: customer?.nameVi || '',
         customerId: nextBuyerOrgId,
         customerName: nextBuyerOrgName,
         items: prev.items.map((item) => ({
@@ -3458,7 +3460,10 @@ const OrderList = () => {
                         </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.orderNumber}</TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
-                          {order.buyerOrgName || order.customerName || order.customer || '-'}
+                          {resolveCustomerDisplayName(
+                            { name: order.buyerOrgName || order.customerName || order.customer, nameKo: order.buyerOrgNameKo, nameVi: order.buyerOrgNameVi },
+                            languageCode
+                          ) || '-'}
                         </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
                           {order.sellerOrgName || '-'}

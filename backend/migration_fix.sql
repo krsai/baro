@@ -1,3 +1,7 @@
+-- Step 0c: work order localized buyer name fields (20260611)
+ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "buyerOrgNameKo" TEXT;
+ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "buyerOrgNameVi" TEXT;
+
 -- Step 0b: organization localized name fields (20260611)
 ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "nameKo" TEXT;
 ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "nameVi" TEXT;

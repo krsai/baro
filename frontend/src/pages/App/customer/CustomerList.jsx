@@ -32,6 +32,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import { resolveCustomerDisplayName } from '../../../utils/appLanguage';
 
 const COUNTRY_CODE_BY_COUNTRY = {
   KR: '+82',
@@ -98,11 +99,6 @@ const buildFormData = (customer) => {
   };
 };
 
-const resolveDisplayName = (customer, languageCode) => {
-  if (languageCode === 'ko' && customer?.nameKo) return customer.nameKo;
-  if (languageCode === 'vi' && customer?.nameVi) return customer.nameVi;
-  return customer?.name || '-';
-};
 
 const CustomerList = () => {
   const { showNotification } = useAppActions();
@@ -390,7 +386,7 @@ const CustomerList = () => {
                     return (
                       <>
                   <TableCell>{customer.code || '-'}</TableCell>
-                  <TableCell>{resolveDisplayName(customer, languageCode)}</TableCell>
+                  <TableCell>{resolveCustomerDisplayName(customer, languageCode) || '-'}</TableCell>
                   <TableCell>{countryLabel || '-'}</TableCell>
                   <TableCell>{customer.manager || '-'}</TableCell>
                   <TableCell>
