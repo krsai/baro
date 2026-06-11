@@ -643,6 +643,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const activeOrgId = overrideOrgId != null ? overrideOrgId : authOrgId;
   const activeOrgType = overrideOrgType != null ? overrideOrgType : authOrgType;
   const isSystemProfile = activeProfile?.entryType === 'SYSTEM';
+  // overrideOrgId가 있으면 시스템 관리자가 특정 조직을 직접 조회하는 상황 — systemOnly 적용 안 함
+  const isBrowsingOrgAsSystemAdmin = isSystemProfile && overrideOrgId != null;
   const myEmail = useMemo(
     () => normalizeEmail(user?.email || activeProfile?.email || ''),
     [activeProfile?.email, user?.email]
@@ -738,7 +740,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       const data = await requestJSON(
         `/org-memberships${buildQueryString({
           orgId,
-          systemOnly: isSystemProfile ? '1' : undefined,
+          systemOnly: isSystemProfile && !isBrowsingOrgAsSystemAdmin ? '1' : undefined,
         })}`
       );
       const list = Array.isArray(data) ? data : [];
@@ -757,7 +759,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       emitMembershipUpdated({ orgId, pendingCount: 0 });
       setStatusMessage({ type: 'error', text: text('errLoadMembership', languageCode) });
     }
-  }, [isSystemProfile, languageCode]);
+  }, [isBrowsingOrgAsSystemAdmin, isSystemProfile, languageCode]);
 
   const fetchFactories = useCallback(async (orgId, orgType) => {
     if (!orgId) return;
@@ -791,14 +793,14 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         `/employees${buildQueryString({
           orgId,
           factoryId: factoryId || undefined,
-          systemOnly: isSystemProfile ? '1' : undefined,
+          systemOnly: isSystemProfile && !isBrowsingOrgAsSystemAdmin ? '1' : undefined,
         })}`
       );
       setEmployees(Array.isArray(data) ? data : []);
     } catch (_error) {
       setStatusMessage({ type: 'error', text: text('errLoadEmployee', languageCode) });
     }
-  }, [activeOrgType, isAdmin, isSystemProfile, languageCode, operatorFactoryId]);
+  }, [activeOrgType, isBrowsingOrgAsSystemAdmin, isAdmin, isSystemProfile, languageCode, operatorFactoryId]);
 
   const fetchJobRoles = useCallback(async (orgId) => {
     if (!orgId) return;
