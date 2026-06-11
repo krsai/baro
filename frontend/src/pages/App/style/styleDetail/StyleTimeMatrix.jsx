@@ -182,8 +182,8 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
               {VISIBLE_BUCKETS.map((q) => (
                 <TableCell
                   key={q}
-                  align="center"
-                  sx={{ width: ST_CELL_W + 8, fontWeight: 700, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}
+                  align="right"
+                  sx={{ width: ST_CELL_W + 8, fontWeight: 700, fontSize: 12, fontVariantNumeric: 'tabular-nums', pr: 1.5 }}
                 >
                   {`${formatNumberWithCommas(q, { maximumFractionDigits: 0 })}~`}
                 </TableCell>
@@ -199,8 +199,8 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
               {totalStByBucket.map((total, i) => (
                 <TableCell
                   key={VISIBLE_BUCKETS[i]}
-                  align="center"
-                  sx={{ py: 0.75, fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: total > 0 ? '#92400E' : 'text.disabled' }}
+                  align="right"
+                  sx={{ py: 0.75, fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: total > 0 ? '#92400E' : 'text.disabled', pr: 1.5 }}
                 >
                   {total > 0 ? fmtSec(total) : '-'}
                 </TableCell>
@@ -282,7 +282,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                           : toEditText(resolved);
 
                         return (
-                          <TableCell key={qty} align="center" sx={{ py: '4px', px: '4px', backgroundColor: rowBg }}>
+                          <TableCell key={qty} align="right" sx={{ py: '4px', px: '4px', backgroundColor: rowBg }}>
                             <TextField
                               value={value}
                               onChange={(e) => handleStChange(id, qty, e.target.value)}
@@ -293,8 +293,8 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                               sx={{
                                 width: ST_CELL_W,
                                 '& .MuiInputBase-input': {
-                                  textAlign: 'center',
-                                  px: 0.5,
+                                  textAlign: 'right',
+                                  px: 0.75,
                                   py: 0.5,
                                   fontSize: 12,
                                   fontVariantNumeric: 'tabular-nums',
@@ -322,14 +322,12 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                       {VISIBLE_BUCKETS.map((qty) => {
                         const atVal = resolveProcessAtPerPieceSeconds(process, qty);
                         return (
-                          <TableCell key={qty} align="center" sx={{ py: '4px', backgroundColor: rowBg }}>
+                          <TableCell key={qty} align="right" sx={{ py: '4px', pr: 1.5, backgroundColor: rowBg }}>
                             <Box sx={{
-                              width: ST_CELL_W,
-                              mx: 'auto',
                               height: 28,
                               display: 'flex',
                               alignItems: 'center',
-                              justifyContent: 'center',
+                              justifyContent: 'flex-end',
                               fontSize: 12,
                               fontVariantNumeric: 'tabular-nums',
                               color: atVal != null ? 'text.secondary' : 'rgba(156,163,175,0.6)',
