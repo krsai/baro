@@ -117,7 +117,7 @@ const createEmptyStyle = () => ({
   processes: [],
   bom: [],
   bomNotes: '',
-  unitPriceUsd: null,
+  revenuePriceBuckets: [],
   revenueMemo: '',
 });
 
@@ -402,18 +402,18 @@ const StyleDetail = () => {
           <ToggleButton value="basicInfo">
             {getStyleDetailMessage(languageCode, 'tabBasicInfo')}
           </ToggleButton>
-          {canViewProcessInfo ? (
-            <ToggleButton value="processInfo">
-              {getStyleDetailMessage(languageCode, 'tabProcessInfo')}
-            </ToggleButton>
-          ) : null}
+          <ToggleButton value="bom">{getStyleDetailMessage(languageCode, 'tabBom')}</ToggleButton>
+          <ToggleButton value="revenue">{getStyleDetailMessage(languageCode, 'tabRevenue')}</ToggleButton>
           {canViewProcessInfo ? (
             <ToggleButton value="timeMatrix">
               {getStyleDetailMessage(languageCode, 'tabTimeMatrix')}
             </ToggleButton>
           ) : null}
-          <ToggleButton value="bom">{getStyleDetailMessage(languageCode, 'tabBom')}</ToggleButton>
-          <ToggleButton value="revenue">{getStyleDetailMessage(languageCode, 'tabRevenue')}</ToggleButton>
+          {canViewProcessInfo ? (
+            <ToggleButton value="processInfo">
+              {getStyleDetailMessage(languageCode, 'tabProcessInfo')}
+            </ToggleButton>
+          ) : null}
         </ToggleButtonGroup>
 
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>

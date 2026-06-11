@@ -7,6 +7,7 @@ import {
   formatSeconds,
   hasAnyProcessTime,
   normalizeProcesses,
+  resolveProcessStPerPieceSeconds,
 } from '../../../../utils/processTime';
 
 const parseCurrencyValue = (value) => {
@@ -54,6 +55,17 @@ const StyleAnalysis = ({ processes = [] }) => {
     [normalizedProcesses]
   );
 
+  const totalST = useMemo(
+    () =>
+      normalizedProcesses.reduce((sum, p) => {
+        const st = resolveProcessStPerPieceSeconds(p, DEFAULT_TIME_REF_QUANTITY);
+        return sum + (st != null ? st : 0);
+      }, 0),
+    [normalizedProcesses]
+  );
+
+  const hasTotalST = totalST > 0;
+
   const subtotal = costData.reduce((acc, item) => acc + parseCurrencyValue(item.cost), 0);
   const overhead = subtotal * 0.1;
   const totalCost = subtotal + overhead;
@@ -91,7 +103,7 @@ const StyleAnalysis = ({ processes = [] }) => {
             color="text.secondary"
             sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1 }}
           >
-            총 PT
+            총 PT(1,000)
           </Typography>
           <Typography
             variant="body2"
@@ -107,7 +119,23 @@ const StyleAnalysis = ({ processes = [] }) => {
             color="text.secondary"
             sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1 }}
           >
-            총 AT
+            총 ST(1,000)
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right', fontWeight: 500 }}
+          >
+            {hasTotalST ? formatSeconds(totalST) : '-'}
+          </Typography>
+        </Box>
+
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1 }}
+          >
+            총 AT(1,000)
           </Typography>
           <Typography
             variant="body2"

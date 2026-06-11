@@ -30,7 +30,6 @@ import {
 } from '../../../../utils/processDisplay';
 
 const MANUAL_ST_SET_BY = new Set(['MANUAL', 'LEGACY', 'ASSIGNMENT_DETAIL']);
-const PROCESS_GROUP_ACCENTS = ['#3B82F6', '#10B981', '#F97316', '#A855F7', '#0EA5E9', '#E11D48'];
 
 // 2~, 20~ 숨김 처리
 const HIDDEN_BUCKETS = new Set([2, 20]);
@@ -95,7 +94,7 @@ const upsertStBuckets = (process, quantity, seconds) => {
 };
 
 const dk = (id, qty) => `${id}::${qty}`;
-const getAccent = (i) => PROCESS_GROUP_ACCENTS[Math.abs(i) % PROCESS_GROUP_ACCENTS.length];
+const ROW_BG = ['#FFFFFF', '#F9FAFB'];
 
 // ── StyleTimeMatrix ─────────────────────────────────────────────────────────
 
@@ -218,7 +217,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
               </TableRow>
             ) : (
               safeProcesses.map((process, pIdx) => {
-                const accent = getAccent(pIdx);
+                const rowBg = ROW_BG[pIdx % 2];
                 const id = process?.instanceId || process?.id || process?.code || `P${pIdx + 1}`;
                 const label = formatProcessNameWithQuantity(
                   resolveLocalizedProcessName(process, languageCode) || process?.name || process?.code || '-',
@@ -232,33 +231,20 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                 const maxSt = validSt.length ? Math.max(...validSt) : null;
                 const isUniform = validSt.length === 0 || Math.abs((maxSt ?? 0) - (minSt ?? 0)) < 1e-9;
 
-                const rowBorderTop = pIdx > 0
-                  ? `2px solid ${alpha(accent, 0.25)}`
-                  : `1px solid ${alpha(accent, 0.15)}`;
-
-                // 공통 셀 sx
                 const nameColSx = {
-                  borderLeft: `3px solid ${accent}`,
                   verticalAlign: 'middle',
                   pl: 1.5,
-                  backgroundColor: alpha(accent, 0.04),
+                  backgroundColor: rowBg,
+                  borderTop: pIdx > 0 ? '2px solid rgba(17,24,39,0.07)' : undefined,
                 };
 
                 return (
                   <React.Fragment key={id}>
                     {/* ST 행 */}
-                    <TableRow
-                      sx={{
-                        '& td': { borderTop: rowBorderTop },
-                        '&:hover td': { backgroundColor: alpha(accent, 0.03) },
-                      }}
-                    >
+                    <TableRow>
                       {/* 공정명 — ST+AT 2행 rowSpan */}
-                      <TableCell
-                        rowSpan={2}
-                        sx={nameColSx}
-                      >
-                        <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.4 }}>
+                      <TableCell rowSpan={2} sx={nameColSx}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.4 }}>
                           {label}
                         </Typography>
                         {pt != null && (
@@ -273,7 +259,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                         )}
                         {!isUniform && minSt != null && (
                           <Box sx={{ mt: 0.25 }}>
-                            <Typography variant="caption" sx={{ color: '#92400E', backgroundColor: '#FEF9C3', px: 0.5, borderRadius: 0.5, fontSize: 10, fontVariantNumeric: 'tabular-nums' }}>
+                            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: 10, fontVariantNumeric: 'tabular-nums' }}>
                               {fmtSec(minSt)} ~ {fmtSec(maxSt)}
                             </Typography>
                           </Box>
@@ -281,7 +267,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                       </TableCell>
 
                       {/* ST 라벨 */}
-                      <TableCell sx={{ fontWeight: 700, fontSize: 11, color: '#1D4ED8', backgroundColor: '#EFF6FF', py: 0.5 }}>
+                      <TableCell sx={{ fontWeight: 600, fontSize: 11, color: 'text.secondary', backgroundColor: rowBg, py: 0.5 }}>
                         ST
                       </TableCell>
 
@@ -291,13 +277,12 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                         const entry = resolveStEntry(process, qty);
                         const resolved = resolveProcessStPerPieceSeconds(process, qty);
                         const manual = isManualSt(entry);
-                        const isVariant = !isUniform && resolved != null && roundTo(resolved, 4) !== roundTo(stValues[0], 4);
                         const value = Object.prototype.hasOwnProperty.call(stDrafts, draftK)
                           ? stDrafts[draftK]
                           : toEditText(resolved);
 
                         return (
-                          <TableCell key={qty} align="center" sx={{ py: '4px', px: '4px', backgroundColor: '#EFF6FF' }}>
+                          <TableCell key={qty} align="center" sx={{ py: '4px', px: '4px', backgroundColor: rowBg }}>
                             <TextField
                               value={value}
                               onChange={(e) => handleStChange(id, qty, e.target.value)}
@@ -313,17 +298,14 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                                   py: 0.5,
                                   fontSize: 12,
                                   fontVariantNumeric: 'tabular-nums',
-                                  fontWeight: manual ? 700 : 400,
+                                  fontWeight: manual ? 600 : 400,
                                 },
                                 '& .MuiOutlinedInput-root': {
                                   borderRadius: 1,
-                                  backgroundColor: isVariant ? '#DBEAFE' : (manual ? '#EFF6FF' : '#FAFAFA'),
-                                  '& fieldset': {
-                                    borderColor: manual ? (isVariant ? '#2563EB' : alpha('#3B82F6', 0.5)) : 'rgba(17,24,39,0.15)',
-                                    borderWidth: isVariant ? 1.5 : 1,
-                                  },
-                                  '&:hover fieldset': { borderColor: '#3B82F6' },
-                                  '&.Mui-focused fieldset': { borderColor: '#1D4ED8', borderWidth: 1.5 },
+                                  backgroundColor: manual ? 'rgba(17,24,39,0.04)' : 'transparent',
+                                  '& fieldset': { borderColor: 'rgba(17,24,39,0.15)' },
+                                  '&:hover fieldset': { borderColor: 'rgba(17,24,39,0.35)' },
+                                  '&.Mui-focused fieldset': { borderColor: 'primary.main' },
                                 },
                               }}
                             />
@@ -333,14 +315,14 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                     </TableRow>
 
                     {/* AT 행 */}
-                    <TableRow sx={{ '& td': { borderBottom: `1px solid ${alpha(accent, 0.15)}` } }}>
-                      <TableCell sx={{ fontWeight: 700, fontSize: 11, color: '#15803D', backgroundColor: '#F0FDF4', py: 0.5 }}>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 600, fontSize: 11, color: 'text.disabled', backgroundColor: rowBg, py: 0.5 }}>
                         AT
                       </TableCell>
                       {VISIBLE_BUCKETS.map((qty) => {
                         const atVal = resolveProcessAtPerPieceSeconds(process, qty);
                         return (
-                          <TableCell key={qty} align="center" sx={{ py: '4px', backgroundColor: '#F0FDF4' }}>
+                          <TableCell key={qty} align="center" sx={{ py: '4px', backgroundColor: rowBg }}>
                             <Box sx={{
                               width: ST_CELL_W,
                               mx: 'auto',
@@ -350,8 +332,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                               justifyContent: 'center',
                               fontSize: 12,
                               fontVariantNumeric: 'tabular-nums',
-                              color: atVal != null ? '#15803D' : 'rgba(156,163,175,0.8)',
-                              fontWeight: atVal != null ? 700 : 400,
+                              color: atVal != null ? 'text.secondary' : 'rgba(156,163,175,0.6)',
                               fontStyle: atVal == null ? 'italic' : 'normal',
                             }}>
                               {atVal != null ? fmtSec(atVal) : '-'}

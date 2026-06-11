@@ -1,146 +1,151 @@
 import React, { useMemo } from 'react';
 import {
   Box,
-  Divider,
   InputAdornment,
   Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   TextField,
   Typography,
 } from '@mui/material';
 import { useLanguage } from '../../../../context/LanguageContext';
-import { formatNumberWithCommas, parseNumberLike } from '../../../../utils/numberFormat';
+import { ST_STANDARD_BUCKETS } from '../../../../utils/processTime';
+import { formatNumberWithCommas } from '../../../../utils/numberFormat';
+
+const HIDDEN_BUCKETS = new Set([2, 20]);
+const PRICE_BUCKETS = ST_STANDARD_BUCKETS.filter((q) => !HIDDEN_BUCKETS.has(q));
 
 const MSG = {
   ko: {
     title: '매출 단가',
-    unitPrice: '장당 단가',
-    unitPriceHelper: '1장(피스)당 판매 단가 (달러)',
+    qty: '수량',
+    price: '한 벌당 단가 (USD)',
     memo: '메모',
     memoHelper: '가격 조건, 계약 참고사항 등',
-    summaryTitle: '참고 계산',
-    summaryHint: '장당 단가를 입력하면 주문 수량별 예상 매출을 확인할 수 있습니다.',
   },
   en: {
-    title: 'Revenue',
-    unitPrice: 'Unit Price',
-    unitPriceHelper: 'Selling price per piece (USD)',
+    title: 'Revenue Price',
+    qty: 'Quantity',
+    price: 'Unit Price (USD)',
     memo: 'Memo',
     memoHelper: 'Price conditions, contract notes, etc.',
-    summaryTitle: 'Reference',
-    summaryHint: 'Enter a unit price to estimate revenue by order quantity.',
   },
   vi: {
-    title: 'Doanh thu',
-    unitPrice: 'Don gia / san pham',
-    unitPriceHelper: 'Gia ban moi san pham (USD)',
+    title: 'Don gia ban',
+    qty: 'So luong',
+    price: 'Don gia / chiec (USD)',
     memo: 'Ghi chu',
     memoHelper: 'Dieu kien gia, ghi chu hop dong...',
-    summaryTitle: 'Tham khao',
-    summaryHint: 'Nhap don gia de uoc tinh doanh thu theo so luong.',
   },
 };
 
-const SAMPLE_QTYS = [100, 300, 500, 1000, 3000, 5000];
-
-const fmtUsd = (v) => {
-  if (v == null || !Number.isFinite(Number(v))) return '-';
-  return `$${formatNumberWithCommas(Number(v), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
+const fmtQty = (q) => formatNumberWithCommas(q, { maximumFractionDigits: 0 });
 
 const StyleRevenue = ({ formData, handleInputChange }) => {
   const { languageCode } = useLanguage();
   const msg = MSG[languageCode === 'vi' ? 'vi' : languageCode === 'en' ? 'en' : 'ko'];
 
-  const unitPrice = formData?.unitPriceUsd;
-  const parsedPrice = parseNumberLike(String(unitPrice ?? '').replace(/,/g, ''));
-  const hasPrice = Number.isFinite(parsedPrice) && parsedPrice > 0;
+  const priceMap = useMemo(() => {
+    const buckets = Array.isArray(formData?.revenuePriceBuckets) ? formData.revenuePriceBuckets : [];
+    const map = {};
+    buckets.forEach(({ bucketQuantity, priceUsd }) => {
+      if (bucketQuantity != null) map[bucketQuantity] = priceUsd;
+    });
+    return map;
+  }, [formData?.revenuePriceBuckets]);
 
-  const handleUnitPriceChange = (e) => {
-    const raw = e.target.value.replace(/[^\d.]/g, '');
-    handleInputChange({ target: { name: 'unitPriceUsd', value: raw === '' ? null : Number(raw) || raw } });
+  const handlePriceChange = (bucketQuantity, rawValue) => {
+    const cleaned = rawValue.replace(/[^\d.]/g, '');
+    const parsed = cleaned === '' ? null : Number(cleaned);
+    const value = cleaned === '' ? null : (Number.isFinite(parsed) ? parsed : rawValue);
+
+    const current = Array.isArray(formData?.revenuePriceBuckets) ? [...formData.revenuePriceBuckets] : [];
+    const idx = current.findIndex((b) => b.bucketQuantity === bucketQuantity);
+    if (idx >= 0) {
+      current[idx] = { bucketQuantity, priceUsd: value };
+    } else {
+      current.push({ bucketQuantity, priceUsd: value });
+    }
+    handleInputChange({ target: { name: 'revenuePriceBuckets', value: current } });
   };
 
-  const displayPrice = useMemo(() => {
-    if (unitPrice == null || unitPrice === '') return '';
-    const n = Number(String(unitPrice).replace(/,/g, ''));
-    if (!Number.isFinite(n)) return String(unitPrice);
-    return n % 1 === 0 ? String(n) : n.toFixed(2);
-  }, [unitPrice]);
-
   return (
-    <Box sx={{ maxWidth: 640 }}>
+    <Box sx={{ maxWidth: 480 }}>
       <Paper variant="outlined" sx={{ borderRadius: 2, p: 3 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2.5 }}>
           {msg.title}
         </Typography>
 
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-          {/* 장당 단가 */}
-          <TextField
-            label={msg.unitPrice}
-            name="unitPriceUsd"
-            value={displayPrice}
-            onChange={handleUnitPriceChange}
-            size="small"
-            helperText={msg.unitPriceHelper}
-            inputProps={{ inputMode: 'decimal', style: { fontVariantNumeric: 'tabular-nums', fontSize: 15, fontWeight: 600 } }}
-            InputProps={{
-              startAdornment: <InputAdornment position="start">$</InputAdornment>,
-            }}
-            sx={{ maxWidth: 220 }}
-          />
+        <Table size="small" sx={{ mb: 3 }}>
+          <TableHead>
+            <TableRow sx={{ backgroundColor: '#F8FAFC' }}>
+              <TableCell sx={{ fontWeight: 600, color: 'text.secondary', fontSize: 12, width: 100 }}>
+                {msg.qty}
+              </TableCell>
+              <TableCell sx={{ fontWeight: 600, color: 'text.secondary', fontSize: 12 }}>
+                {msg.price}
+              </TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {PRICE_BUCKETS.map((qty, i) => {
+              const priceVal = priceMap[qty];
+              const displayVal = priceVal == null ? '' : String(priceVal);
+              const rowBg = i % 2 === 0 ? '#FFFFFF' : '#F9FAFB';
+              return (
+                <TableRow key={qty} sx={{ backgroundColor: rowBg }}>
+                  <TableCell
+                    sx={{
+                      fontVariantNumeric: 'tabular-nums',
+                      color: 'text.secondary',
+                      fontSize: 13,
+                    }}
+                  >
+                    {fmtQty(qty)}
+                  </TableCell>
+                  <TableCell sx={{ py: '4px' }}>
+                    <TextField
+                      value={displayVal}
+                      onChange={(e) => handlePriceChange(qty, e.target.value)}
+                      size="small"
+                      placeholder="-"
+                      inputProps={{
+                        inputMode: 'decimal',
+                        style: { fontVariantNumeric: 'tabular-nums', textAlign: 'right', fontSize: 13 },
+                      }}
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                      }}
+                      sx={{
+                        width: 140,
+                        '& .MuiOutlinedInput-root': {
+                          backgroundColor: displayVal ? 'rgba(17,24,39,0.02)' : 'transparent',
+                          '& fieldset': { borderColor: 'rgba(17,24,39,0.15)' },
+                          '&:hover fieldset': { borderColor: 'rgba(17,24,39,0.35)' },
+                        },
+                      }}
+                    />
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
 
-          {/* 메모 */}
-          <TextField
-            label={msg.memo}
-            name="revenueMemo"
-            value={formData?.revenueMemo || ''}
-            onChange={handleInputChange}
-            size="small"
-            multiline
-            minRows={3}
-            helperText={msg.memoHelper}
-            fullWidth
-          />
-        </Box>
-
-        {/* 참고 계산 */}
-        {hasPrice && (
-          <>
-            <Divider sx={{ my: 3 }} />
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5, color: 'text.secondary' }}>
-              {msg.summaryTitle}
-            </Typography>
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: 1,
-              }}
-            >
-              {SAMPLE_QTYS.map((qty) => (
-                <Box
-                  key={qty}
-                  sx={{
-                    px: 2,
-                    py: 1.25,
-                    borderRadius: 1.5,
-                    backgroundColor: '#F8FAFC',
-                    border: '1px solid rgba(17,24,39,0.08)',
-                    textAlign: 'center',
-                  }}
-                >
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>
-                    {formatNumberWithCommas(qty, { maximumFractionDigits: 0 })}장
-                  </Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'text.primary' }}>
-                    {fmtUsd(parsedPrice * qty)}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
-          </>
-        )}
+        <TextField
+          label={msg.memo}
+          name="revenueMemo"
+          value={formData?.revenueMemo || ''}
+          onChange={handleInputChange}
+          size="small"
+          multiline
+          minRows={3}
+          helperText={msg.memoHelper}
+          fullWidth
+        />
       </Paper>
     </Box>
   );
