@@ -362,6 +362,12 @@ const resolveOrganizationByQuery = async (
       if (!isSystemAdmin && !isActiveMember) {
         throw createHttpError(403, "organization access denied");
       }
+
+      const withSubscription = await attachOrganizationSubscription(organization);
+      return ensureOrganizationAccessible(
+        withSubscription,
+        isSystemAdmin ? { ...options, allowSuspended: true } : options
+      );
     }
 
     const withSubscription = await attachOrganizationSubscription(organization);
