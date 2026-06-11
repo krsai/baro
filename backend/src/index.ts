@@ -22849,13 +22849,15 @@ const ensureWorkRecordCanonicalSchemaReady = async () => {
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "WorkRecord"
       ADD COLUMN IF NOT EXISTS "orderNo" TEXT,
-      ADD COLUMN IF NOT EXISTS "lineId" INTEGER;
-
+      ADD COLUMN IF NOT EXISTS "lineId" INTEGER
+  `);
+  await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_orderNo_idx"
-      ON "WorkRecord"("orgId", "orderNo");
-
+      ON "WorkRecord"("orgId", "orderNo")
+  `);
+  await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_lineId_idx"
-      ON "WorkRecord"("orgId", "lineId");
+      ON "WorkRecord"("orgId", "lineId")
   `);
   workRecordCanonicalSchemaReady = true;
 };
