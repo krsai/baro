@@ -1053,8 +1053,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         };
 
         if (draft.factoryId) employeePayload.factoryId = Number(draft.factoryId);
-        if (Object.prototype.hasOwnProperty.call(draft, 'employeeNo')) {
-          employeePayload.employeeNo = String(draft.employeeNo || '').trim() || null;
+        const trimmedEmployeeNo = String(draft.employeeNo || '').trim();
+        if (trimmedEmployeeNo) {
+          employeePayload.employeeNo = trimmedEmployeeNo;
         }
         if (draft.joinedAt) employeePayload.joinedAt = draft.joinedAt;
         if (Object.prototype.hasOwnProperty.call(draft, 'leftAt')) {

@@ -79,7 +79,7 @@ const generateEmployeeNo = async (orgId: number, factoryId: number): Promise<str
       if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
     }
   }
-  return `${code}-${String(maxSeq + 1).padStart(4, "0")}`;
+  return `${code}-${String(maxSeq + 1).padStart(3, "0")}`;
 };
 
 const toEmployeeResponse = (employee: any) => ({
