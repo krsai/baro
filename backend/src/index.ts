@@ -22831,6 +22831,20 @@ let atAutoSyncLastTrainingMonthKey: string | null = null;
 let atAutoSyncRunHistoryTableReady = false;
 let atAutoSyncRunHistoryTableUnsupported = false;
 let workRecordCanonicalSchemaReady = false;
+let organizationLocalizationColumnsReady = false;
+
+const ensureOrganizationLocalizationColumnsReady = async () => {
+  if (organizationLocalizationColumnsReady) return;
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "Organization"
+      ADD COLUMN IF NOT EXISTS "nameKo" TEXT
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "Organization"
+      ADD COLUMN IF NOT EXISTS "nameVi" TEXT
+  `);
+  organizationLocalizationColumnsReady = true;
+};
 
 type AutoAtSyncSummary = {
   manufacturerCount: number;
@@ -23326,6 +23340,7 @@ const bootstrapApplicationServices = async () => {
 
   try {
     await ensureDatabaseReady();
+    await ensureOrganizationLocalizationColumnsReady();
     await ensureWorkRecordCanonicalSchemaReady();
     await ensureWorkOrderStatusSchemaReady();
     await ensureProcessMasterOptionTypeSchemaReady();
