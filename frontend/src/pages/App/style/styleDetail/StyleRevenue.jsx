@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box,
   InputAdornment,
@@ -44,9 +44,16 @@ const MSG = {
 
 const fmtQty = (q) => formatNumberWithCommas(q, { maximumFractionDigits: 0 });
 
+const formatPriceDisplay = (val) => {
+  if (val == null || val === '') return '';
+  const num = parseFloat(String(val));
+  return Number.isFinite(num) ? num.toFixed(2) : String(val);
+};
+
 const StyleRevenue = ({ formData, handleInputChange }) => {
   const { languageCode } = useLanguage();
   const msg = MSG[languageCode === 'vi' ? 'vi' : languageCode === 'en' ? 'en' : 'ko'];
+  const [focusedBucket, setFocusedBucket] = useState(null);
 
   const priceMap = useMemo(() => {
     const buckets = Array.isArray(formData?.revenuePriceBuckets) ? formData.revenuePriceBuckets : [];
@@ -59,8 +66,7 @@ const StyleRevenue = ({ formData, handleInputChange }) => {
 
   const handlePriceChange = (bucketQuantity, rawValue) => {
     const cleaned = rawValue.replace(/[^\d.]/g, '');
-    const parsed = cleaned === '' ? null : Number(cleaned);
-    const value = cleaned === '' ? null : (Number.isFinite(parsed) ? parsed : rawValue);
+    const value = cleaned === '' ? null : cleaned;
 
     const current = Array.isArray(formData?.revenuePriceBuckets) ? [...formData.revenuePriceBuckets] : [];
     const idx = current.findIndex((b) => b.bucketQuantity === bucketQuantity);
@@ -93,7 +99,9 @@ const StyleRevenue = ({ formData, handleInputChange }) => {
           <TableBody>
             {PRICE_BUCKETS.map((qty, i) => {
               const priceVal = priceMap[qty];
-              const displayVal = priceVal == null ? '' : String(priceVal);
+              const displayVal = focusedBucket === qty
+                ? (priceVal == null ? '' : String(priceVal))
+                : formatPriceDisplay(priceVal);
               const rowBg = i % 2 === 0 ? '#FFFFFF' : '#F9FAFB';
               return (
                 <TableRow key={qty} sx={{ backgroundColor: rowBg }}>
@@ -110,6 +118,8 @@ const StyleRevenue = ({ formData, handleInputChange }) => {
                     <TextField
                       value={displayVal}
                       onChange={(e) => handlePriceChange(qty, e.target.value)}
+                      onFocus={() => setFocusedBucket(qty)}
+                      onBlur={() => setFocusedBucket(null)}
                       size="small"
                       placeholder="-"
                       inputProps={{
