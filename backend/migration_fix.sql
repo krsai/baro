@@ -1,3 +1,12 @@
+-- Step 0d: style localized customer name fields (20260611)
+ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "customerNameKo" TEXT;
+ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "customerNameVi" TEXT;
+UPDATE "Style" s
+  SET "customerNameKo" = o."nameKo", "customerNameVi" = o."nameVi"
+  FROM "Organization" o
+  WHERE s."orgId" = o.id AND (o."nameKo" IS NOT NULL OR o."nameVi" IS NOT NULL)
+    AND s."customerNameKo" IS NULL AND s."customerNameVi" IS NULL;
+
 -- Step 0c: work order localized buyer name fields (20260611)
 ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "buyerOrgNameKo" TEXT;
 ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "buyerOrgNameVi" TEXT;

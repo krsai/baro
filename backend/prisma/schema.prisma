@@ -491,6 +491,8 @@ model Style {
   styleCode        String
   name             String
   customer         String
+  customerNameKo   String?
+  customerNameVi   String?
   registrationDate String?
   designer         String?
   collection       String?

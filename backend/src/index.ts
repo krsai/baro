@@ -3428,6 +3428,8 @@ const resolveStyleOwnerForCreateOrThrow = async ({
     return {
       ownerOrgId: organization.id,
       ownerOrgName: String(organization?.name || "").trim(),
+      ownerOrgNameKo: String(organization?.nameKo || "").trim(),
+      ownerOrgNameVi: String(organization?.nameVi || "").trim(),
     };
   }
   if (!isManufacturerOrg(organization)) {
@@ -3454,6 +3456,8 @@ const resolveStyleOwnerForCreateOrThrow = async ({
     return {
       ownerOrgId: relationship.brand.id,
       ownerOrgName: String(relationship.brand.name || "").trim(),
+      ownerOrgNameKo: String((relationship.brand as any).nameKo || "").trim(),
+      ownerOrgNameVi: String((relationship.brand as any).nameVi || "").trim(),
     };
   }
 
@@ -3485,6 +3489,8 @@ const resolveStyleOwnerForCreateOrThrow = async ({
   return {
     ownerOrgId: matched[0].brand.id,
     ownerOrgName: String(matched[0].brand.name || "").trim(),
+    ownerOrgNameKo: String((matched[0].brand as any).nameKo || "").trim(),
+    ownerOrgNameVi: String((matched[0].brand as any).nameVi || "").trim(),
   };
 };
 
@@ -4121,6 +4127,8 @@ const toStyleResponse = (
   styleCode: style.styleCode ?? "",
   name: style.name ?? "",
   customer: style.customer ?? "",
+  customerNameKo: style.customerNameKo ?? "",
+  customerNameVi: style.customerNameVi ?? "",
   registrationDate: style.registrationDate ?? "",
   designer: style.designer ?? "",
   collection: style.collection ?? "",
@@ -21770,6 +21778,8 @@ app.post("/styles", async (req, res) => {
     payload: req.body ?? {},
   });
   payload.customer = owner.ownerOrgName || payload.customer;
+  (payload as any).customerNameKo = (owner as any).ownerOrgNameKo || "";
+  (payload as any).customerNameVi = (owner as any).ownerOrgNameVi || "";
   if (!payload.customer) {
     return res.status(400).json({ ok: false, error: "customer is required" });
   }
@@ -21813,7 +21823,9 @@ app.post("/styles", async (req, res) => {
     const createdStyle = await tx.style.create({
       data: {
         orgId: owner.ownerOrgId,
-        ...payload,
+        ...(payload as any),
+        customerNameKo: (payload as any).customerNameKo || undefined,
+        customerNameVi: (payload as any).customerNameVi || undefined,
         processes: syncedProcesses,
       },
     });
@@ -21940,6 +21952,8 @@ app.put("/styles/:styleId", async (req, res) => {
         styleCode: normalized.styleCode,
         name: normalized.name,
         customer: normalized.customer,
+        customerNameKo: (existing as any).customerNameKo ?? undefined,
+        customerNameVi: (existing as any).customerNameVi ?? undefined,
         registrationDate: normalized.registrationDate,
         designer: normalized.designer,
         collection: normalized.collection,
@@ -22097,6 +22111,8 @@ app.post("/styles/import", async (req, res) => {
       return {
         ...item.normalized,
         customer: owner.ownerOrgName || item.normalized.customer,
+        customerNameKo: (owner as any).ownerOrgNameKo || "",
+        customerNameVi: (owner as any).ownerOrgNameVi || "",
         ownerOrgId: owner.ownerOrgId,
       };
     })
@@ -22192,6 +22208,8 @@ app.post("/styles/import", async (req, res) => {
           styleCode: stylePayload.styleCode,
           name: stylePayload.name,
           customer: stylePayload.customer,
+          customerNameKo: stylePayload.customerNameKo || undefined,
+          customerNameVi: stylePayload.customerNameVi || undefined,
           registrationDate: stylePayload.registrationDate,
           designer: stylePayload.designer,
           collection: stylePayload.collection,
@@ -22847,6 +22865,7 @@ let atAutoSyncRunHistoryTableUnsupported = false;
 let workRecordCanonicalSchemaReady = false;
 let organizationLocalizationColumnsReady = false;
 let workOrderLocalizationColumnsReady = false;
+let styleLocalizationColumnsReady = false;
 
 const ensureOrganizationLocalizationColumnsReady = async () => {
   if (organizationLocalizationColumnsReady) return;
@@ -22872,6 +22891,25 @@ const ensureWorkOrderLocalizationColumnsReady = async () => {
       ADD COLUMN IF NOT EXISTS "buyerOrgNameVi" TEXT
   `);
   workOrderLocalizationColumnsReady = true;
+};
+
+const ensureStyleLocalizationColumnsReady = async () => {
+  if (styleLocalizationColumnsReady) return;
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "customerNameKo" TEXT
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "customerNameVi" TEXT
+  `);
+  await prisma.$executeRawUnsafe(`
+    UPDATE "Style" s
+      SET "customerNameKo" = o."nameKo", "customerNameVi" = o."nameVi"
+      FROM "Organization" o
+      WHERE s."orgId" = o.id
+        AND (o."nameKo" IS NOT NULL OR o."nameVi" IS NOT NULL)
+        AND s."customerNameKo" IS NULL AND s."customerNameVi" IS NULL
+  `);
+  styleLocalizationColumnsReady = true;
 };
 
 type AutoAtSyncSummary = {
@@ -23370,6 +23408,7 @@ const bootstrapApplicationServices = async () => {
     await ensureDatabaseReady();
     await ensureOrganizationLocalizationColumnsReady();
     await ensureWorkOrderLocalizationColumnsReady();
+    await ensureStyleLocalizationColumnsReady();
     await ensureWorkRecordCanonicalSchemaReady();
     await ensureWorkOrderStatusSchemaReady();
     await ensureProcessMasterOptionTypeSchemaReady();

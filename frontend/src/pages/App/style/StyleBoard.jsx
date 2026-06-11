@@ -35,6 +35,7 @@ import {
 } from '../../../utils/styleApi';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
+import { resolveCustomerDisplayName } from '../../../utils/appLanguage';
 import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import {
   AT_RELIABILITY_STATUS,
@@ -448,7 +449,7 @@ const StyleBoard = () => {
                   onDoubleClick={() => handleRowDoubleClick(style)}
                   sx={{ cursor: 'pointer' }}
                 >
-                  <TableCell>{style.customer || '-'}</TableCell>
+                  <TableCell>{resolveCustomerDisplayName({ name: style.customer, nameKo: style.customerNameKo, nameVi: style.customerNameVi }, languageCode) || '-'}</TableCell>
                   <TableCell>{style.name || '-'}</TableCell>
                   <TableCell>{style.styleCode || style.id || '-'}</TableCell>
                   {canViewProcessSummary ? (

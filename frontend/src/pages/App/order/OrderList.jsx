@@ -3619,7 +3619,7 @@ const OrderList = () => {
                 options={buyerOptions}
                 value={buyerValue}
                 onChange={handleBuyerChange}
-                getOptionLabel={(option) => option?.name || ''}
+                getOptionLabel={(option) => resolveCustomerDisplayName(option, languageCode) || option?.name || ''}
                 isOptionEqualToValue={(option, value) => option?.id === value?.id}
                 loading={loadingParties}
                 renderInput={(params) => (

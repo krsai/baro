@@ -8,6 +8,7 @@ import {
   normalizeProcesses,
   resolveProcessStPerPieceSeconds,
 } from '../../../../utils/processTime';
+import { formatNumberWithCommas } from '../../../../utils/numberFormat';
 
 const SUMMARY_LABEL_WIDTH = '30%';
 const SUMMARY_VALUE_WIDTH = '70%';
