@@ -392,8 +392,8 @@ const StyleInfo = ({
 
   return (
     <Box>
-      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={3}>
-        <Paper sx={{ p: 2, width: sectionWidth }}>
+      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={3} alignItems="stretch">
+        <Paper sx={{ p: 2, width: sectionWidth, display: 'flex', flexDirection: 'column' }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
             <Typography variant="h6">스타일 사진</Typography>
             <Chip
@@ -402,11 +402,12 @@ const StyleInfo = ({
               sx={{ fontWeight: 600 }}
             />
           </Stack>
-          <Stack spacing={2} alignItems="center" sx={{ mt: 2.5 }}>
+          <Stack spacing={2} alignItems="center" sx={{ mt: 2.5, flex: 1 }}>
             <Box
               sx={{
                 width: '100%',
-                aspectRatio: '1 / 1',
+                flex: 1,
+                minHeight: 200,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',

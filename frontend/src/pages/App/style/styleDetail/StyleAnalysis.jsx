@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
-import { Box, Divider, Paper, Stack, Typography } from '@mui/material';
-import { formatNumberWithCommas } from '../../../../utils/numberFormat';
+import { Box, Stack, Typography } from '@mui/material';
 import {
   DEFAULT_TIME_REF_QUANTITY,
   calculateProcessTotalForOrderQuantity,
@@ -10,17 +9,10 @@ import {
   resolveProcessStPerPieceSeconds,
 } from '../../../../utils/processTime';
 
-const parseCurrencyValue = (value) => {
-  const normalized = String(value ?? '').replace(/[^\d.-]/g, '');
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
 const SUMMARY_LABEL_WIDTH = '30%';
 const SUMMARY_VALUE_WIDTH = '70%';
 
 const StyleAnalysis = ({ processes = [] }) => {
-  const costData = [];
   const normalizedProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
 
   // PT/AT are entered/reviewed as per-piece seconds at the 1,000 reference quantity.
@@ -65,10 +57,6 @@ const StyleAnalysis = ({ processes = [] }) => {
   );
 
   const hasTotalST = totalST > 0;
-
-  const subtotal = costData.reduce((acc, item) => acc + parseCurrencyValue(item.cost), 0);
-  const overhead = subtotal * 0.1;
-  const totalCost = subtotal + overhead;
 
   return (
     <Box>
@@ -146,100 +134,6 @@ const StyleAnalysis = ({ processes = [] }) => {
         </Box>
       </Stack>
 
-      <Divider sx={{ my: 4 }} />
-
-      <Typography variant="h6" gutterBottom>
-        예상 비용
-      </Typography>
-      <Paper elevation={2} sx={{ p: 2, mt: 2.5, bgcolor: 'grey.50' }}>
-        <Stack spacing={2}>
-          <Box sx={{ display: 'flex', alignItems: 'center', color: 'text.secondary' }}>
-            <Typography variant="body2" sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1 }}>
-              항목
-            </Typography>
-            <Typography
-              variant="body2"
-              sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right' }}
-            >
-              금액
-            </Typography>
-          </Box>
-          <Divider />
-
-          {costData.map((row) => (
-            <Box key={row.item} sx={{ display: 'flex', alignItems: 'center' }}>
-              <Typography variant="body2" sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1 }}>
-                {row.item}
-              </Typography>
-              <Typography
-                variant="body2"
-                sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right' }}
-              >
-                {row.cost}
-              </Typography>
-            </Box>
-          ))}
-
-          <Divider sx={{ my: 1 }} />
-
-          <Stack spacing={1}>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <Typography variant="body1" sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1 }}>
-                소계
-              </Typography>
-              <Typography
-                variant="body1"
-                sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right' }}
-              >
-                {`${formatNumberWithCommas(subtotal, {
-                  fallback: '0',
-                  maximumFractionDigits: 2,
-                })} 원`}
-              </Typography>
-            </Box>
-
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1 }}
-              >
-                추가 비용 (10%)
-              </Typography>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right' }}
-              >
-                {`${formatNumberWithCommas(overhead, {
-                  fallback: '0',
-                  maximumFractionDigits: 2,
-                })} 원`}
-              </Typography>
-            </Box>
-          </Stack>
-
-          <Divider sx={{ my: 1 }} />
-
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Typography
-              variant="h6"
-              sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1, fontWeight: 'bold' }}
-            >
-              총비용
-            </Typography>
-            <Typography
-              variant="h6"
-              sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right', fontWeight: 'bold' }}
-            >
-              {`${formatNumberWithCommas(totalCost, {
-                fallback: '0',
-                maximumFractionDigits: 2,
-              })} 원`}
-            </Typography>
-          </Box>
-        </Stack>
-      </Paper>
     </Box>
   );
 };

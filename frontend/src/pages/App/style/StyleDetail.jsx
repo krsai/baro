@@ -402,7 +402,6 @@ const StyleDetail = () => {
           <ToggleButton value="basicInfo">
             {getStyleDetailMessage(languageCode, 'tabBasicInfo')}
           </ToggleButton>
-          <ToggleButton value="bom">{getStyleDetailMessage(languageCode, 'tabBom')}</ToggleButton>
           <ToggleButton value="revenue">{getStyleDetailMessage(languageCode, 'tabRevenue')}</ToggleButton>
           {canViewProcessInfo ? (
             <ToggleButton value="timeMatrix">
@@ -414,6 +413,7 @@ const StyleDetail = () => {
               {getStyleDetailMessage(languageCode, 'tabProcessInfo')}
             </ToggleButton>
           ) : null}
+          <ToggleButton value="bom">{getStyleDetailMessage(languageCode, 'tabBom')}</ToggleButton>
         </ToggleButtonGroup>
 
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
