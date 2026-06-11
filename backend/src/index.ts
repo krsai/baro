@@ -467,16 +467,16 @@ const DEFAULT_TIME_REF_QUANTITY = 1000;
 const DEFAULT_ST_BUCKET_QUANTITY = 1;
 const ST_STANDARD_BUCKETS = Object.freeze([
   DEFAULT_ST_BUCKET_QUANTITY,
-  3,
+  2,
   5,
   10,
-  30,
+  20,
   50,
   100,
-  300,
+  200,
   500,
   1000,
-  3000,
+  2000,
   5000,
   10000,
 ]);

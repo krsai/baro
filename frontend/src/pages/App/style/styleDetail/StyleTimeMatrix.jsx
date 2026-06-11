@@ -32,8 +32,8 @@ import {
 const MANUAL_ST_SET_BY = new Set(['MANUAL', 'LEGACY', 'ASSIGNMENT_DETAIL']);
 const PROCESS_GROUP_ACCENTS = ['#3B82F6', '#10B981', '#F97316', '#A855F7', '#0EA5E9', '#E11D48'];
 
-// 3~, 30~ 숨김 처리
-const HIDDEN_BUCKETS = new Set([3, 30]);
+// 2~, 20~ 숨김 처리
+const HIDDEN_BUCKETS = new Set([2, 20]);
 const VISIBLE_BUCKETS = ST_STANDARD_BUCKETS.filter((q) => !HIDDEN_BUCKETS.has(q));
 
 const BORDER = '1px solid rgba(17,24,39,0.1)';

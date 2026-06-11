@@ -3,16 +3,16 @@
 export const DEFAULT_TIME_REF_QUANTITY = 1000;
 export const ST_STANDARD_BUCKETS = Object.freeze([
   1,
-  3,
+  2,
   5,
   10,
-  30,
+  20,
   50,
   100,
-  300,
+  200,
   500,
   1000,
-  3000,
+  2000,
   5000,
   10000,
 ]);
