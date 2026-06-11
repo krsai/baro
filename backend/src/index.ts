@@ -21157,6 +21157,24 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
     );
   }
 
+  if (!requestedLocked) {
+    const cardPrefix = `${orderId}::`;
+    const planWithWorkRecords = await prisma.assignmentPlan.findFirst({
+      where: {
+        orgId: organization.id,
+        originOrderId: { startsWith: cardPrefix },
+        workRecords: { some: {} },
+      },
+      select: { id: true },
+    });
+    if (planWithWorkRecords) {
+      return res.status(409).json({
+        ok: false,
+        error: ORDER_MODIFICATION_UNLOCK_ASSIGNMENT_RELEASE_REQUIRED_ERROR,
+      });
+    }
+  }
+
   const lockedBy =
     resolveOptionalString(req.body?.lockedBy, null) ??
     getRequesterEmail(req) ??
@@ -21182,6 +21200,45 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
             },
         include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
       });
+      if (!requestedLocked) {
+        const cardPrefix = `${orderId}::`;
+        const orderCardRows = await prisma.assignmentCard.findMany({
+          where: { orgId: organization.id, cardId: { startsWith: cardPrefix } },
+          select: { cardId: true },
+        });
+        const orderCardIdSet = new Set(orderCardRows.map((r) => r.cardId));
+        await prisma.assignmentPlan.deleteMany({
+          where: {
+            orgId: organization.id,
+            OR: [
+              { originOrderId: { startsWith: cardPrefix } },
+              ...(orderCardIdSet.size > 0
+                ? [{ cardId: { in: Array.from(orderCardIdSet) } }]
+                : []),
+            ],
+          },
+        });
+        await prisma.assignmentCard.deleteMany({
+          where: { orgId: organization.id, cardId: { startsWith: cardPrefix } },
+        });
+        const boardState = await prisma.assignmentBoardState.findUnique({
+          where: { orgId: organization.id },
+        });
+        if (boardState) {
+          const currentAssignments = ensureArray(boardState.assignments);
+          const filteredAssignments = currentAssignments.filter((a: any) => {
+            const aOriginId = resolveOptionalString(a?.originOrderId, null) ?? "";
+            const aCardId = resolveOptionalString(a?.cardId, null) ?? "";
+            return !aOriginId.startsWith(cardPrefix) && !orderCardIdSet.has(aCardId);
+          });
+          if (filteredAssignments.length !== currentAssignments.length) {
+            await prisma.assignmentBoardState.update({
+              where: { orgId: organization.id },
+              data: { assignments: filteredAssignments },
+            });
+          }
+        }
+      }
       await syncOrderProgressStatusesForOrg({
         orgId: organization.id,
         orderIds: [updated.orderId],

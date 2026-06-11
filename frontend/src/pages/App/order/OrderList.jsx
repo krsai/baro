@@ -1298,10 +1298,10 @@ const OrderList = () => {
             : '주문 잠금 상태를 변경하는 중 오류가 발생했습니다.',
       lockUnlockReleaseRequired:
         languageCode === 'vi'
-          ? 'De mo khoa, truoc tien hay huy cac phan cong lien quan.'
+          ? 'Don hang nay da co lich su ghi nhan cong viec, khong the chinh sua.'
           : languageCode === 'en'
-            ? 'To unlock this order, release related assignments first.'
-            : '잠금을 해제하려면 관련 배정을 먼저 해제해야 합니다.',
+            ? 'This order has existing work records and cannot be modified.'
+            : '이 주문은 작업 기록이 이미 생성되어 수정이 불가능합니다.',
       lockUnlockPastReleaseConfirmRequired:
         languageCode === 'vi'
           ? 'Co phan cong da bat dau truoc hom nay. Hay xac nhan them mot lan nua.'
