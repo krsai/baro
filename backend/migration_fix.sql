@@ -1,3 +1,7 @@
+-- Step 0b: organization localized name fields (20260611)
+ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "nameKo" TEXT;
+ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "nameVi" TEXT;
+
 -- Step 0a: style revenue fields (20260611)
 ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "unitPriceUsd" DOUBLE PRECISION;
 ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "revenueMemo" TEXT;

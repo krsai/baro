@@ -845,6 +845,14 @@ const buildSharedCustomerOrganizationData = (
       payload?.name !== undefined
         ? resolveOptionalString(payload.name, null)
         : resolveOptionalString(fallbackOrganization?.name, null),
+    nameKo:
+      payload?.nameKo !== undefined
+        ? resolveOptionalString(payload.nameKo, null)
+        : resolveOptionalString(fallbackOrganization?.nameKo, null),
+    nameVi:
+      payload?.nameVi !== undefined
+        ? resolveOptionalString(payload.nameVi, null)
+        : resolveOptionalString(fallbackOrganization?.nameVi, null),
     address:
       payload?.address !== undefined
         ? resolveOptionalString(payload.address, null)
@@ -886,6 +894,8 @@ const toCustomerResponse = (relationship: any, perspective: string = "MANUFACTUR
     manufacturerOrgId: relationship.manufacturerOrgId,
     code: targetCode,
     name: targetOrg.name ?? "",
+    nameKo: (targetOrg as any)?.nameKo ?? null,
+    nameVi: (targetOrg as any)?.nameVi ?? null,
     address: targetOrg.address ?? "",
     country: (targetOrg as any)?.country ?? null,
     countryCode: (targetOrg as any)?.countryCode ?? null,
@@ -21379,6 +21389,8 @@ app.post("/customers", async (req, res) => {
       where: { id: targetOrganization.id },
       data: {
         name: nextTargetData.name,
+        nameKo: nextTargetData.nameKo,
+        nameVi: nextTargetData.nameVi,
         code: normalizedCode,
         address: nextTargetData.address,
         country: nextTargetData.country,
@@ -21409,6 +21421,8 @@ app.post("/customers", async (req, res) => {
         where: { id: existingCodeOwner.id },
         data: {
           name: nextTargetData.name,
+          nameKo: nextTargetData.nameKo,
+          nameVi: nextTargetData.nameVi,
           code: normalizedCode,
           address: nextTargetData.address,
           country: nextTargetData.country,
@@ -21422,6 +21436,8 @@ app.post("/customers", async (req, res) => {
       targetOrganization = await prisma.organization.create({
         data: {
           name: nextTargetData.name,
+          nameKo: nextTargetData.nameKo,
+          nameVi: nextTargetData.nameVi,
           code: normalizedCode,
           address: nextTargetData.address,
           country: nextTargetData.country,
@@ -21556,6 +21572,8 @@ app.put("/customers/:id", async (req, res) => {
     where: { id: targetOrganizationId },
     data: {
       name: nextTargetData.name ?? targetOrganization?.name ?? "",
+      nameKo: nextTargetData.nameKo,
+      nameVi: nextTargetData.nameVi,
       ...(normalizedCode ? { code: normalizedCode } : {}),
       address: nextTargetData.address,
       country: nextTargetData.country,

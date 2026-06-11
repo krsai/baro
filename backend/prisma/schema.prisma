@@ -146,6 +146,8 @@ model ProcessMasterOptionRelation {
 model Organization {
   id             Int              @id @default(autoincrement())
   name           String
+  nameKo         String?
+  nameVi         String?
   code           String?          @unique
   businessNumber String?
   representative String?

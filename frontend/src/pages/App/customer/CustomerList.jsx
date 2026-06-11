@@ -87,6 +87,8 @@ const buildFormData = (customer) => {
   return {
     code: customer?.code ?? '',
     name: customer?.name ?? '',
+    nameKo: customer?.nameKo ?? '',
+    nameVi: customer?.nameVi ?? '',
     country,
     address: customer?.address ?? '',
     countryCode,
@@ -94,6 +96,12 @@ const buildFormData = (customer) => {
     manager: customer?.manager ?? '',
     email: customer?.email ?? '',
   };
+};
+
+const resolveDisplayName = (customer, languageCode) => {
+  if (languageCode === 'ko' && customer?.nameKo) return customer.nameKo;
+  if (languageCode === 'vi' && customer?.nameVi) return customer.nameVi;
+  return customer?.name || '-';
 };
 
 const CustomerList = () => {
@@ -210,6 +218,8 @@ const CustomerList = () => {
         : '';
       const searchable = [
         customer?.name,
+        customer?.nameKo,
+        customer?.nameVi,
         customer?.code,
         customer?.manager,
         customer?.address,
@@ -275,6 +285,8 @@ const CustomerList = () => {
     const payload = {
       code,
       name,
+      nameKo: String(formData.nameKo || '').trim() || null,
+      nameVi: String(formData.nameVi || '').trim() || null,
       country: normalizeCountry(formData.country) || null,
       address: String(formData.address || '').trim(),
       countryCode: String(formData.countryCode || '').trim(),
@@ -378,7 +390,7 @@ const CustomerList = () => {
                     return (
                       <>
                   <TableCell>{customer.code || '-'}</TableCell>
-                  <TableCell>{customer.name || '-'}</TableCell>
+                  <TableCell>{resolveDisplayName(customer, languageCode)}</TableCell>
                   <TableCell>{countryLabel || '-'}</TableCell>
                   <TableCell>{customer.manager || '-'}</TableCell>
                   <TableCell>
@@ -446,15 +458,33 @@ const CustomerList = () => {
               onChange={handleInputChange}
               disabled={saving}
             />
-            <TextField
-              fullWidth
-              required
-              label={customerText.name}
-              name="name"
-              value={formData.name}
-              onChange={handleInputChange}
-              disabled={saving}
-            />
+            <Stack direction="row" spacing={1.5}>
+              <TextField
+                fullWidth
+                required
+                label="고객명 (영문)"
+                name="name"
+                value={formData.name}
+                onChange={handleInputChange}
+                disabled={saving}
+              />
+              <TextField
+                fullWidth
+                label="고객명 (한글)"
+                name="nameKo"
+                value={formData.nameKo}
+                onChange={handleInputChange}
+                disabled={saving}
+              />
+              <TextField
+                fullWidth
+                label="고객명 (베트남어)"
+                name="nameVi"
+                value={formData.nameVi}
+                onChange={handleInputChange}
+                disabled={saving}
+              />
+            </Stack>
             <TextField
               fullWidth
               select
