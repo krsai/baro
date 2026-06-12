@@ -50,6 +50,7 @@ AT(q) = a*q + b
   - `lineId`가 스키마 FK 없이 `records` JSON 안에 비정규화 저장됨 (DB 조인 불가 — 구조적 한계).
 - **WorkRecord**: WorkLog 하위 상세 행. 한 행 = `(작업자, 스타일, 공정, 색상, 수량, ctSeconds)`.
   - `ctSeconds`는 해당 작업 상세의 급여/계약 기준 시간이다. 스케줄러 계획 길이의 기준은 아니다.
+  - `effectiveCoverageStartDate/effectiveCoverageEndDate`는 WorkLog 기간과 작업자의 입사일/퇴사일을 교차해 저장한 작업자별 유효 작업기간 스냅샷이다. 월간 입력 중 중도 입사/퇴사자가 있으면 이 범위로 자동 절단하고 WorkLog 비고에 조정 내역을 남긴다.
   - `lineId Int?` 컬럼은 실제로 존재하지만 FK는 없다. `Line` 테이블과 조인 가능한 정규화 관계가 아니라 비정규화 보조 필드다.
   - 같은 작업자가 같은 기간(또는 같은 날) 여러 공정 입력 가능.
   - 스케줄러 연결의 핵심 키는 `WorkRecord.assignmentPlanId`.
@@ -58,6 +59,7 @@ AT(q) = a*q + b
 
 ### WorkLog 날짜 규칙 (강제)
 - 계산/판정 로직(스케줄러, 진행도, 완료일 추정)에서는 항상 기간 `[coverageStartDate, coverageEndDate]`를 기준으로 해석한다.
+- 작업자별 계산에서는 WorkRecord의 `effectiveCoverageStartDate/effectiveCoverageEndDate`가 있으면 그 범위를 우선 사용한다. 이 값은 WorkLog 기간을 벗어날 수 없다.
 - `displayDate`는 UI 목록 표시/정렬 용도로만 사용한다. 계산 로직의 기준 날짜로 절대 사용하지 않는다.
 - `coverageEndDate || displayDate` 형태의 fallback 브릿지 로직은 신규 코드에 추가하지 않는다.
 - 기간 입력(`coverageStartDate !== coverageEndDate`)은 절대 하루치로 뭉개지면 안 된다.

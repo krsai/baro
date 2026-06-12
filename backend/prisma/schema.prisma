@@ -795,6 +795,8 @@ model WorkRecord {
   colorId          Int?
   colorCode        String?
   assignmentPlanId Int?
+  effectiveCoverageStartDate String?
+  effectiveCoverageEndDate   String?
   ctSeconds        Int      @default(0)
   quantity         Int      @default(0)
   createdAt        DateTime @default(now())

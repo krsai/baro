@@ -69,6 +69,11 @@ import {
   WORK_RECORD_WITH_REFS_INCLUDE,
 } from "./work-records/workRecord.shared";
 import {
+  buildWorkLogNoteWithEmploymentAdjustments,
+  resolveWorkRecordEmploymentCoverage,
+  type WorkRecordEmploymentAdjustment,
+} from "./work-records/workRecordEmployment";
+import {
   AT_MONTHLY_A_CLAMP_RATIO,
   fitAtParamsWithProportionalAllocation,
   type AtTrainingDayBucket,
@@ -123,6 +128,8 @@ const WORK_LOG_DETAIL_RECORD_SELECT = {
     colorId: true,
     colorCode: true,
     assignmentPlanId: true,
+    effectiveCoverageStartDate: true,
+    effectiveCoverageEndDate: true,
     ctSeconds: true,
     quantity: true,
     process: {
@@ -174,6 +181,12 @@ function assertGeneratedPrismaClientShape() {
   }
   if (!hasField("WorkRecord", "lineId")) {
     staleSignals.push("WorkRecord.lineId missing");
+  }
+  if (!hasField("WorkRecord", "effectiveCoverageStartDate")) {
+    staleSignals.push("WorkRecord.effectiveCoverageStartDate missing");
+  }
+  if (!hasField("WorkRecord", "effectiveCoverageEndDate")) {
+    staleSignals.push("WorkRecord.effectiveCoverageEndDate missing");
   }
   if (!hasField("Organization", "assignmentCards")) {
     staleSignals.push("Organization.assignmentCards missing");
@@ -2165,6 +2178,8 @@ const loadAtTrainingSourceWorkLogs = async ({
               },
             },
             quantity: true,
+            effectiveCoverageStartDate: true,
+            effectiveCoverageEndDate: true,
           },
         },
       },
@@ -2199,6 +2214,8 @@ const loadAtTrainingSourceWorkLogs = async ({
               },
             },
             quantity: true,
+            effectiveCoverageStartDate: true,
+            effectiveCoverageEndDate: true,
           },
         },
       },
@@ -2389,7 +2406,9 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       const workerId = toPositiveIntOrNull(worker.id);
       if (workerId === null) return;
       if (worker.membership?.role !== "WORKER") return;
-      if (worker.membership?.status !== "ACTIVE") return;
+      if (!["ACTIVE", "TERMINATED"].includes(String(worker.membership?.status))) {
+        return;
+      }
       const workerRoleCode = String(worker.role?.code ?? "").trim().toUpperCase();
       if (workerRoleCode !== DEFAULT_EMPLOYEE_ROLE_CODE_SEWING) return;
       eligibleWorkerDateWindowById.set(workerId, {
@@ -2655,6 +2674,12 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
           styleProcessId,
           quantity,
           workerId: toPositiveIntOrNull(record.workerId),
+          effectiveCoverageStartDate:
+            resolveWorkRecordEffectiveCoverageStartDate(record, workLog) ||
+            periodStartDateKey,
+          effectiveCoverageEndDate:
+            resolveWorkRecordEffectiveCoverageEndDate(record, workLog) ||
+            normalizedCoverageEndDate,
         };
       })
       .filter(Boolean) as Array<{
@@ -2662,6 +2687,8 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       styleProcessId: number;
       quantity: number;
       workerId: number | null;
+      effectiveCoverageStartDate: string;
+      effectiveCoverageEndDate: string;
     }>;
     if (resolvedRows.length === 0) {
       return drafts;
@@ -2669,6 +2696,10 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
 
     const perProcessGroups = new Map<number, AtTrainingBucketProcessDraft>();
     const workerIdsForDay = new Set<number>();
+    const coverageByWorkerId = new Map<
+      number,
+      { startDateKey: string; endDateKey: string }
+    >();
     resolvedRows.forEach((row) => {
       const current = perProcessGroups.get(row.styleProcessId) || {
         styleUid: row.styleUid,
@@ -2679,16 +2710,40 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       perProcessGroups.set(row.styleProcessId, current);
       if (row.workerId !== null) {
         workerIdsForDay.add(row.workerId);
+        const currentCoverage = coverageByWorkerId.get(row.workerId);
+        if (!currentCoverage) {
+          coverageByWorkerId.set(row.workerId, {
+            startDateKey: row.effectiveCoverageStartDate,
+            endDateKey: row.effectiveCoverageEndDate,
+          });
+        } else {
+          currentCoverage.startDateKey =
+            row.effectiveCoverageStartDate < currentCoverage.startDateKey
+              ? row.effectiveCoverageStartDate
+              : currentCoverage.startDateKey;
+          currentCoverage.endDateKey =
+            row.effectiveCoverageEndDate > currentCoverage.endDateKey
+              ? row.effectiveCoverageEndDate
+              : currentCoverage.endDateKey;
+        }
       }
     });
 
     const workerSecondsById = new Map<number, number>();
     workerIdsForDay.forEach((workerId) => {
+      const effectiveCoverage = coverageByWorkerId.get(workerId);
+      if (
+        !effectiveCoverage ||
+        effectiveCoverage.startDateKey > effectiveCoverage.endDateKey
+      ) {
+        workerSecondsById.set(workerId, 0);
+        return;
+      }
       workerSecondsById.set(
         workerId,
         resolveWorkerSecondsForPeriod({
-          periodStartDateKey,
-          periodEndDateKey: normalizedCoverageEndDate,
+          periodStartDateKey: effectiveCoverage.startDateKey,
+          periodEndDateKey: effectiveCoverage.endDateKey,
           workerId,
           resolvedFactoryId,
         })
@@ -7210,15 +7265,19 @@ const validateWorkLogLineWorkers = async ({
   lineId,
   factoryId,
   workDate,
+  coverageEndDate = null,
   workerIds,
 }: {
   orgId: number;
   lineId: number | null;
   factoryId: number | null;
   workDate: string;
+  coverageEndDate?: string | null;
   workerIds: number[];
 }) => {
   const normalizedWorkDate = normalizeDateKey(workDate);
+  const normalizedCoverageEndDate =
+    normalizeDateKey(coverageEndDate) || normalizedWorkDate;
   if (!normalizedWorkDate) {
     return {
       status: 400,
@@ -7259,8 +7318,13 @@ const validateWorkLogLineWorkers = async ({
     };
   }
 
-  const dateRange = buildWorkDateRange(normalizedWorkDate);
-  if (!dateRange) {
+  const startDateRange = buildWorkDateRange(normalizedWorkDate);
+  const endDateRange = buildWorkDateRange(normalizedCoverageEndDate);
+  if (
+    !startDateRange ||
+    !endDateRange ||
+    normalizedWorkDate > normalizedCoverageEndDate
+  ) {
     return {
       status: 400,
       error: "invalid workDate",
@@ -7282,8 +7346,8 @@ const validateWorkLogLineWorkers = async ({
     where: {
       lineId: line.id,
       employeeId: { in: workerIds },
-      startAt: { lte: dateRange.endAt },
-      OR: [{ endAt: null }, { endAt: { gte: dateRange.startAt } }],
+      startAt: { lte: endDateRange.endAt },
+      OR: [{ endAt: null }, { endAt: { gte: startDateRange.startAt } }],
     },
     select: { employeeId: true },
   });
@@ -7331,7 +7395,7 @@ const validateWorkLogLineWorkers = async ({
         },
         membership: {
           role: "WORKER",
-          status: "ACTIVE",
+          status: { in: ["ACTIVE", "TERMINATED"] },
         },
         role: {
           code: DEFAULT_EMPLOYEE_ROLE_CODE_SEWING,
@@ -7347,12 +7411,13 @@ const validateWorkLogLineWorkers = async ({
     fallbackLegacyWorkers.forEach((worker) => {
       const workerId = toPositiveIntOrNull(worker.id);
       if (workerId === null) return;
-      const employmentCheck = evaluateWorkerEmploymentOnDateKey({
-        joinedAt: worker.joinedAt,
-        leftAt: worker.leftAt,
-        targetDateKey: normalizedWorkDate,
+      const employmentCoverage = resolveWorkRecordEmploymentCoverage({
+        coverageStartDate: normalizedWorkDate,
+        coverageEndDate: normalizedCoverageEndDate,
+        joinedDateKey: toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE),
+        leftDateKey: toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE),
       });
-      if (!employmentCheck.passed) return;
+      if (!employmentCoverage.valid) return;
       matchedWorkerIdSet.add(workerId);
     });
     missingWorkerIds = workerIds.filter(
@@ -7369,46 +7434,44 @@ const validateWorkLogLineWorkers = async ({
 };
 const validateWorkLogWorkerEmploymentWindow = async ({
   orgId,
-  factoryId,
-  workDate,
+  coverageStartDate,
+  coverageEndDate,
   workerIds,
 }: {
   orgId: number;
-  factoryId: number | null;
-  workDate: string;
+  coverageStartDate: string;
+  coverageEndDate: string;
   workerIds: number[];
 }) => {
-  const normalizedWorkDate = normalizeDateKey(workDate);
-  if (!normalizedWorkDate) {
+  const normalizedCoverageStartDate = normalizeDateKey(coverageStartDate);
+  const normalizedCoverageEndDate = normalizeDateKey(coverageEndDate);
+  if (
+    !normalizedCoverageStartDate ||
+    !normalizedCoverageEndDate ||
+    normalizedCoverageStartDate > normalizedCoverageEndDate
+  ) {
     return {
       status: 400,
       error: "invalid workDate",
       invalidWorkerIds: [] as number[],
+      coverageByWorkerId: new Map<
+        number,
+        { effectiveStartDate: string; effectiveEndDate: string }
+      >(),
+      adjustments: [] as WorkRecordEmploymentAdjustment[],
     };
   }
-
-  const isWorkerAvailableOnWorkDate = (
-    worker: {
-      joinedAt?: unknown;
-      leftAt?: unknown;
-      membershipStatus?: unknown;
-    } | null | undefined,
-    targetWorkDate: string
-  ) => {
-    if (!worker) return false;
-    const employmentCheck = evaluateWorkerEmploymentOnDateKey({
-      joinedAt: worker.joinedAt,
-      leftAt: worker.leftAt,
-      targetDateKey: targetWorkDate,
-    });
-    return employmentCheck.passed;
-  };
 
   if (workerIds.length === 0) {
     return {
       status: 200,
       error: null as string | null,
       invalidWorkerIds: [] as number[],
+      coverageByWorkerId: new Map<
+        number,
+        { effectiveStartDate: string; effectiveEndDate: string }
+      >(),
+      adjustments: [] as WorkRecordEmploymentAdjustment[],
     };
   }
 
@@ -7419,35 +7482,57 @@ const validateWorkLogWorkerEmploymentWindow = async ({
     },
     select: {
       id: true,
+      name: true,
       joinedAt: true,
       leftAt: true,
-      membership: {
-        select: {
-          status: true,
-        },
-      },
     },
   });
   const workerById = new Map<
     number,
-    { joinedAt: unknown; leftAt: unknown; membershipStatus: unknown }
+    { name: string; joinedAt: unknown; leftAt: unknown }
   >();
   workers.forEach((worker) => {
     const workerId = toPositiveIntOrNull(worker.id);
     if (workerId === null) return;
     workerById.set(workerId, {
+      name: resolveOptionalString(worker.name, "") || "",
       joinedAt: worker.joinedAt,
       leftAt: worker.leftAt,
-      membershipStatus: worker.membership?.status,
     });
   });
 
   const invalidWorkerIds: number[] = [];
+  const coverageByWorkerId = new Map<
+    number,
+    { effectiveStartDate: string; effectiveEndDate: string }
+  >();
+  const adjustments: WorkRecordEmploymentAdjustment[] = [];
   workerIds.forEach((workerId) => {
     const worker = workerById.get(workerId);
-    if (!worker) return;
-    if (!isWorkerAvailableOnWorkDate(worker, normalizedWorkDate)) {
+    if (!worker) {
       invalidWorkerIds.push(workerId);
+      return;
+    }
+    const coverage = resolveWorkRecordEmploymentCoverage({
+      coverageStartDate: normalizedCoverageStartDate,
+      coverageEndDate: normalizedCoverageEndDate,
+      joinedDateKey: toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE),
+      leftDateKey: toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE),
+    });
+    if (!coverage.valid) {
+      invalidWorkerIds.push(workerId);
+      return;
+    }
+    coverageByWorkerId.set(workerId, {
+      effectiveStartDate: coverage.effectiveStartDate,
+      effectiveEndDate: coverage.effectiveEndDate,
+    });
+    if (coverage.adjusted) {
+      adjustments.push({
+        workerId,
+        workerName: worker.name,
+        ...coverage,
+      });
     }
   });
 
@@ -7455,6 +7540,8 @@ const validateWorkLogWorkerEmploymentWindow = async ({
     status: 200,
     error: null as string | null,
     invalidWorkerIds,
+    coverageByWorkerId,
+    adjustments,
   };
 };
 const translateWorkLogErrorMessage = (error: any) => {
@@ -7541,6 +7628,10 @@ const toWorkRecordResponse = (record: any) => ({
   ctSeconds: toNonNegativeInt(record?.ctSeconds, 0),
   quantity: toNonNegativeInt(record?.quantity, 0),
   assignmentPlanId: record?.assignmentPlanId ?? null,
+  effectiveCoverageStartDate:
+    normalizeDateKey(record?.effectiveCoverageStartDate) || null,
+  effectiveCoverageEndDate:
+    normalizeDateKey(record?.effectiveCoverageEndDate) || null,
 });
 const resolveWorkLogCoverageStartDate = (source: any, fallbackDate: string | null = null) =>
   normalizeDateKey(source?.coverageStartDate) ||
@@ -7551,6 +7642,28 @@ const resolveWorkLogCoverageEndDate = (source: any, fallbackDate: string | null 
   normalizeDateKey(source?.coverageEndDate) ||
   normalizeDateKey(fallbackDate) ||
   null;
+
+function resolveWorkRecordEffectiveCoverageStartDate(
+  record: any,
+  workLog: any = record?.workLog
+): string | null {
+  return (
+    normalizeDateKey(record?.effectiveCoverageStartDate) ||
+    normalizeDateKey(workLog?.coverageStartDate) ||
+    null
+  );
+}
+
+function resolveWorkRecordEffectiveCoverageEndDate(
+  record: any,
+  workLog: any = record?.workLog
+): string | null {
+  return (
+    normalizeDateKey(record?.effectiveCoverageEndDate) ||
+    normalizeDateKey(workLog?.coverageEndDate) ||
+    null
+  );
+}
 
 const resolveWorkLogEntryMode = ({
   coverageStartDate,
@@ -16092,6 +16205,8 @@ const loadAssignmentPlanProgressWorkRows = async ({
         processId: true,
         processCode: true,
         quantity: true,
+        effectiveCoverageStartDate: true,
+        effectiveCoverageEndDate: true,
         workLog: {
           select: {
             displayDate: true,
@@ -16599,8 +16714,10 @@ const buildLineMonthCapacityRows = async ({
     const plannedQuantity = resolveAssignmentQuantity(plan);
     const plannedStTotalSeconds = resolveAssignmentStTotalSeconds(plan);
     ensureArray(workRowsByPlanId.get(planId)).forEach((record) => {
-      const coverageStartDate = resolveStrictWorkLogCoverageStartDate(record?.workLog);
-      const coverageEndDate = resolveStrictWorkLogCoverageEndDate(record?.workLog);
+      const coverageStartDate =
+        resolveWorkRecordEffectiveCoverageStartDate(record);
+      const coverageEndDate =
+        resolveWorkRecordEffectiveCoverageEndDate(record);
       if (!coverageStartDate || !coverageEndDate || coverageStartDate > coverageEndDate) {
         return;
       }
@@ -16944,8 +17061,10 @@ const buildLineMonthCapacityRows = async ({
     ensureArray(workRowsByPlanId.get(planId)).forEach((record) => {
       const quantity = Math.max(0, Math.round(Number(record?.quantity ?? 0)));
       if (quantity <= 0) return;
-      const coverageStartDate = resolveStrictWorkLogCoverageStartDate(record?.workLog);
-      const coverageEndDate = resolveStrictWorkLogCoverageEndDate(record?.workLog);
+      const coverageStartDate =
+        resolveWorkRecordEffectiveCoverageStartDate(record);
+      const coverageEndDate =
+        resolveWorkRecordEffectiveCoverageEndDate(record);
       if (!coverageStartDate || !coverageEndDate || coverageStartDate > coverageEndDate) {
         return;
       }
@@ -17053,6 +17172,8 @@ const buildLineMonthCapacityRows = async ({
       },
       select: {
         lineId: true,
+        effectiveCoverageStartDate: true,
+        effectiveCoverageEndDate: true,
         workLog: {
           select: {
             coverageStartDate: true,
@@ -17069,8 +17190,10 @@ const buildLineMonthCapacityRows = async ({
   orphanRows.forEach((record) => {
     const lineId = toPositiveIntOrNull(record?.lineId);
     if (!lineId || !requestedLineIdSet.has(lineId)) return;
-    const coverageStartDate = resolveStrictWorkLogCoverageStartDate(record?.workLog);
-    const coverageEndDate = resolveStrictWorkLogCoverageEndDate(record?.workLog);
+    const coverageStartDate =
+      resolveWorkRecordEffectiveCoverageStartDate(record);
+    const coverageEndDate =
+      resolveWorkRecordEffectiveCoverageEndDate(record);
     if (!coverageStartDate || !coverageEndDate || coverageStartDate > coverageEndDate) {
       return;
     }
@@ -17400,14 +17523,10 @@ const buildAssignmentPlanProgressRows = async (
       (stats.processTotalsByKey.get(processKey) || 0) + quantity
     );
 
-    const coverageStartDate = resolveWorkLogCoverageStartDate(
-      record?.workLog,
-      record?.workLog?.displayDate
-    );
-    const coverageEndDate = resolveWorkLogCoverageEndDate(
-      record?.workLog,
-      record?.workLog?.displayDate
-    );
+    const coverageStartDate =
+      resolveWorkRecordEffectiveCoverageStartDate(record);
+    const coverageEndDate =
+      resolveWorkRecordEffectiveCoverageEndDate(record);
     if (coverageStartDate && (!stats.firstWorkDate || coverageStartDate < stats.firstWorkDate)) {
       stats.firstWorkDate = coverageStartDate;
     }
@@ -17427,7 +17546,7 @@ const buildAssignmentPlanProgressRows = async (
       stats.hasRangeCoverage = true;
     }
 
-    const workDateKey = normalizeDateKey(record?.workLog?.displayDate) || coverageEndDate;
+    const workDateKey = coverageEndDate;
     if (!workDateKey) return;
     const byDate =
       stats.dailyProcessTotalsByDate.get(workDateKey) || new Map<string, number>();
@@ -19420,8 +19539,8 @@ app.post("/work-logs", async (req, res) => {
   const workerFilterDateKey = normalizeDateKey(normalized.coverageStartDate) || normalized.displayDate;
   const employmentValidation = await validateWorkLogWorkerEmploymentWindow({
     orgId: organization.id,
-    factoryId: normalized.factoryId,
-    workDate: workerFilterDateKey,
+    coverageStartDate: normalized.coverageStartDate,
+    coverageEndDate: normalized.coverageEndDate,
     workerIds,
   });
   if (employmentValidation.error) {
@@ -19440,12 +19559,31 @@ app.post("/work-logs", async (req, res) => {
   updateWorkLogMutationTrace(trace, "employment-validated", {
     workerIds,
     workerFilterDateKey,
+    adjustmentCount: employmentValidation.adjustments.length,
+  });
+  normalized.records = normalized.records.map((record: any) => {
+    const workerId = toPositiveIntOrNull(record?.workerId);
+    const effectiveCoverage = workerId
+      ? employmentValidation.coverageByWorkerId.get(workerId)
+      : null;
+    return {
+      ...record,
+      effectiveCoverageStartDate:
+        effectiveCoverage?.effectiveStartDate ?? normalized.coverageStartDate,
+      effectiveCoverageEndDate:
+        effectiveCoverage?.effectiveEndDate ?? normalized.coverageEndDate,
+    };
+  });
+  normalized.note = buildWorkLogNoteWithEmploymentAdjustments({
+    note: normalized.note,
+    adjustments: employmentValidation.adjustments,
   });
   const lineValidation = await validateWorkLogLineWorkers({
     orgId: organization.id,
     lineId: normalized.lineId,
     factoryId: normalized.factoryId,
     workDate: workerFilterDateKey,
+    coverageEndDate: normalized.coverageEndDate,
     workerIds,
   });
   if (lineValidation.error) {
@@ -19573,6 +19711,10 @@ app.post("/work-logs", async (req, res) => {
             processCode: record.processCode ?? null,
             colorId: record.colorId ?? null,
             colorCode: record.colorCode ?? null,
+            effectiveCoverageStartDate:
+              record.effectiveCoverageStartDate ?? normalized.coverageStartDate,
+            effectiveCoverageEndDate:
+              record.effectiveCoverageEndDate ?? normalized.coverageEndDate,
             ctSeconds: record.ctSeconds ?? 0,
             quantity: record.quantity ?? 0,
             assignmentPlanId: record.assignmentPlanId ?? null,
@@ -19692,8 +19834,8 @@ app.put("/work-logs/:id", async (req, res) => {
   const workerFilterDateKey = normalizeDateKey(normalized.coverageStartDate) || normalized.displayDate;
   const employmentValidation = await validateWorkLogWorkerEmploymentWindow({
     orgId: organization.id,
-    factoryId: normalized.factoryId,
-    workDate: workerFilterDateKey,
+    coverageStartDate: normalized.coverageStartDate,
+    coverageEndDate: normalized.coverageEndDate,
     workerIds,
   });
   if (employmentValidation.error) {
@@ -19712,12 +19854,31 @@ app.put("/work-logs/:id", async (req, res) => {
   updateWorkLogMutationTrace(trace, "employment-validated", {
     workerIds,
     workerFilterDateKey,
+    adjustmentCount: employmentValidation.adjustments.length,
+  });
+  normalized.records = normalized.records.map((record: any) => {
+    const workerId = toPositiveIntOrNull(record?.workerId);
+    const effectiveCoverage = workerId
+      ? employmentValidation.coverageByWorkerId.get(workerId)
+      : null;
+    return {
+      ...record,
+      effectiveCoverageStartDate:
+        effectiveCoverage?.effectiveStartDate ?? normalized.coverageStartDate,
+      effectiveCoverageEndDate:
+        effectiveCoverage?.effectiveEndDate ?? normalized.coverageEndDate,
+    };
+  });
+  normalized.note = buildWorkLogNoteWithEmploymentAdjustments({
+    note: normalized.note,
+    adjustments: employmentValidation.adjustments,
   });
   const lineValidation = await validateWorkLogLineWorkers({
     orgId: organization.id,
     lineId: normalized.lineId,
     factoryId: normalized.factoryId,
     workDate: workerFilterDateKey,
+    coverageEndDate: normalized.coverageEndDate,
     workerIds,
   });
   if (lineValidation.error) {
@@ -19856,6 +20017,10 @@ app.put("/work-logs/:id", async (req, res) => {
             processCode: record.processCode ?? null,
             colorId: record.colorId ?? null,
             colorCode: record.colorCode ?? null,
+            effectiveCoverageStartDate:
+              record.effectiveCoverageStartDate ?? normalized.coverageStartDate,
+            effectiveCoverageEndDate:
+              record.effectiveCoverageEndDate ?? normalized.coverageEndDate,
             ctSeconds: record.ctSeconds ?? 0,
             quantity: record.quantity ?? 0,
             assignmentPlanId: record.assignmentPlanId ?? null,

@@ -272,7 +272,106 @@ WHERE "payload" IS NOT NULL
 -- Step 5: WorkRecord canonical snapshot fields
 ALTER TABLE "WorkRecord"
   ADD COLUMN IF NOT EXISTS "orderNo" TEXT,
-  ADD COLUMN IF NOT EXISTS "lineId" INTEGER;
+  ADD COLUMN IF NOT EXISTS "lineId" INTEGER,
+  ADD COLUMN IF NOT EXISTS "effectiveCoverageStartDate" TEXT,
+  ADD COLUMN IF NOT EXISTS "effectiveCoverageEndDate" TEXT;
+
+UPDATE "WorkRecord" AS wr
+SET
+  "effectiveCoverageStartDate" = GREATEST(
+    wl."coverageStartDate",
+    COALESCE(
+      (
+        SELECT TO_CHAR(e."joinedAt", 'YYYY-MM-DD')
+        FROM "Employee" AS e
+        WHERE e."orgId" = wl."orgId"
+          AND e."id" = wr."workerId"
+      ),
+      wl."coverageStartDate"
+    )
+  ),
+  "effectiveCoverageEndDate" = LEAST(
+    wl."coverageEndDate",
+    COALESCE(
+      (
+        SELECT TO_CHAR(e."leftAt", 'YYYY-MM-DD')
+        FROM "Employee" AS e
+        WHERE e."orgId" = wl."orgId"
+          AND e."id" = wr."workerId"
+      ),
+      wl."coverageEndDate"
+    )
+  )
+FROM "WorkLog" AS wl
+WHERE wr."workLogId" = wl."id"
+  AND wl."coverageStartDate" IS NOT NULL
+  AND wl."coverageEndDate" IS NOT NULL
+  AND (
+    wr."effectiveCoverageStartDate" IS NULL
+    OR wr."effectiveCoverageEndDate" IS NULL
+  );
+
+WITH adjusted_workers AS (
+  SELECT DISTINCT
+    wl."id" AS "workLogId",
+    wr."workerId",
+    COALESCE(NULLIF(BTRIM(e."name"), ''), '작업자 #' || wr."workerId"::TEXT) AS "workerLabel",
+    wl."coverageStartDate",
+    wl."coverageEndDate",
+    wr."effectiveCoverageStartDate",
+    wr."effectiveCoverageEndDate",
+    TO_CHAR(e."joinedAt", 'YYYY-MM-DD') AS "joinedDateKey",
+    TO_CHAR(e."leftAt", 'YYYY-MM-DD') AS "leftDateKey"
+  FROM "WorkRecord" AS wr
+  JOIN "WorkLog" AS wl
+    ON wl."id" = wr."workLogId"
+  LEFT JOIN "Employee" AS e
+    ON e."orgId" = wr."orgId"
+   AND e."id" = wr."workerId"
+  WHERE wr."effectiveCoverageStartDate" IS NOT NULL
+    AND wr."effectiveCoverageEndDate" IS NOT NULL
+    AND wr."effectiveCoverageStartDate" <= wr."effectiveCoverageEndDate"
+    AND (
+      wr."effectiveCoverageStartDate" <> wl."coverageStartDate"
+      OR wr."effectiveCoverageEndDate" <> wl."coverageEndDate"
+    )
+),
+adjustment_notes AS (
+  SELECT
+    "workLogId",
+    STRING_AGG(
+      '- ' || "workerLabel" || ': '
+      || "coverageStartDate" || '~' || "coverageEndDate"
+      || ' → '
+      || "effectiveCoverageStartDate" || '~' || "effectiveCoverageEndDate"
+      || CASE
+        WHEN "joinedDateKey" IS NOT NULL
+          AND "effectiveCoverageStartDate" <> "coverageStartDate"
+          AND "leftDateKey" IS NOT NULL
+          AND "effectiveCoverageEndDate" <> "coverageEndDate"
+          THEN ' (입사일 ' || "joinedDateKey" || ', 퇴사일 ' || "leftDateKey" || ')'
+        WHEN "joinedDateKey" IS NOT NULL
+          AND "effectiveCoverageStartDate" <> "coverageStartDate"
+          THEN ' (입사일 ' || "joinedDateKey" || ')'
+        WHEN "leftDateKey" IS NOT NULL
+          AND "effectiveCoverageEndDate" <> "coverageEndDate"
+          THEN ' (퇴사일 ' || "leftDateKey" || ')'
+        ELSE ''
+      END,
+      E'\n' ORDER BY "workerId"
+    ) AS "adjustmentNote"
+  FROM adjusted_workers
+  GROUP BY "workLogId"
+)
+UPDATE "WorkLog" AS wl
+SET "note" = CASE
+  WHEN NULLIF(BTRIM(wl."note"), '') IS NULL
+    THEN '[재직기간 자동 조정]' || E'\n' || notes."adjustmentNote"
+  ELSE RTRIM(wl."note") || E'\n\n[재직기간 자동 조정]\n' || notes."adjustmentNote"
+END
+FROM adjustment_notes AS notes
+WHERE wl."id" = notes."workLogId"
+  AND POSITION('[재직기간 자동 조정]' IN COALESCE(wl."note", '')) = 0;
 
 CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_orderNo_idx"
   ON "WorkRecord"("orgId", "orderNo");

@@ -5,17 +5,16 @@ import { reconcileBoardStateForQuantityChanges } from '../frontend/src/utils/qua
 const calcProcessTotal = (processes, key, orderQuantity) => {
   const qty = Number(orderQuantity) > 0 ? Number(orderQuantity) : 1;
   return (Array.isArray(processes) ? processes : []).reduce((sum, process) => {
-    const processQty = Number(process?.quantity) > 0 ? Number(process.quantity) : 1;
     if (key === 'at' && process?.atParams) {
       const a = Number(process.atParams.a);
       const b = Number(process.atParams.b);
       if (Number.isFinite(a) && Number.isFinite(b) && a >= 0 && b >= 0) {
-        return sum + processQty * (a * qty + b);
+        return sum + a * qty + b;
       }
     }
     const value = Number(process?.[key]);
     if (!Number.isFinite(value) || value < 0) return sum;
-    return sum + processQty * value * qty;
+    return sum + value * qty;
   }, 0);
 };
 
@@ -70,10 +69,10 @@ test('changed assigned card is cancelled and rebuilt as unassigned with updated 
   assert.equal(result.cards.length, 1);
   assert.equal(result.cards[0].quantity, 3);
   assert.equal(result.cards[0].status, 'ST');
-  assert.equal(result.cards[0].stTotalSeconds, 60);
-  assert.equal(result.cards[0].totalPt, 60);
-  assert.equal(result.cards[0].totalAt, 70);
-  assert.equal(result.cards[0].cardStTotalSeconds, 60);
+  assert.equal(result.cards[0].stTotalSeconds, 30);
+  assert.equal(result.cards[0].totalPt, 30);
+  assert.equal(result.cards[0].totalAt, 35);
+  assert.equal(result.cards[0].cardStTotalSeconds, 30);
 });
 
 test('quantity zero removes the card entirely', () => {

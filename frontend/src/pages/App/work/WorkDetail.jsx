@@ -55,6 +55,8 @@ const { useDeferredValue } = React;
 const COLLATOR = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
 const AUTO_NOTE_PREFIX = '[자동 메모]';
 const AUTO_NOTE_MARKER = `\n\n${AUTO_NOTE_PREFIX}\n`;
+const EMPLOYMENT_AUTO_NOTE_PREFIX = '[재직기간 자동 조정]';
+const EMPLOYMENT_AUTO_NOTE_MARKER = `\n\n${EMPLOYMENT_AUTO_NOTE_PREFIX}\n`;
 const DESKTOP_PANEL_BOTTOM_GAP = 16;
 const LABELS = {
   title: '기록 상세',
@@ -357,12 +359,26 @@ const buildInitialCoverageStartDate = (log) => {
 };
 const stripAutoNoteFromText = (value) => {
   const text = String(value || '');
-  const leadingPrefix = `${AUTO_NOTE_PREFIX}\n`;
-  if (text.startsWith(leadingPrefix)) return '';
-  const leadingMarkerIndex = text.indexOf(leadingPrefix);
-  if (leadingMarkerIndex >= 0) return text.slice(0, leadingMarkerIndex).trimEnd();
-  const markerIndex = text.indexOf(AUTO_NOTE_MARKER);
-  return markerIndex >= 0 ? text.slice(0, markerIndex) : text;
+  const prefixes = [
+    `${AUTO_NOTE_PREFIX}\n`,
+    `${EMPLOYMENT_AUTO_NOTE_PREFIX}\n`,
+  ];
+  if (prefixes.some((prefix) => text.startsWith(prefix))) return '';
+  const markerIndices = [
+    text.indexOf(AUTO_NOTE_MARKER),
+    text.indexOf(EMPLOYMENT_AUTO_NOTE_MARKER),
+    ...prefixes.map((prefix) => text.indexOf(prefix)),
+  ].filter((index) => index >= 0);
+  if (markerIndices.length === 0) return text;
+  return text.slice(0, Math.min(...markerIndices)).trimEnd();
+};
+const extractEmploymentAutoNoteFromText = (value) => {
+  const text = String(value || '');
+  const prefixIndex = text.indexOf(`${EMPLOYMENT_AUTO_NOTE_PREFIX}\n`);
+  if (prefixIndex < 0) return '';
+  return text
+    .slice(prefixIndex + EMPLOYMENT_AUTO_NOTE_PREFIX.length + 1)
+    .trim();
 };
 const buildCombinedNote = ({ manualNote, autoNote }) => {
   const trimmedManual = toText(manualNote);
@@ -1897,6 +1913,10 @@ const WorkDetail = ({
         .join('\n'),
     [assignmentProcessUsageBuckets]
   );
+  const savedEmploymentAutoNote = useMemo(
+    () => extractEmploymentAutoNoteFromText(initialLog?.note || ''),
+    [initialLog?.note]
+  );
   const initialComparableSnapshot = useMemo(() => {
     if (!initialLog?.id) return null;
     const initialCoverageEndDate = toText(initialLog?.coverageEndDate || initialLog?.workDate);
@@ -2948,6 +2968,7 @@ const WorkDetail = ({
               </Typography>
             </Stack>
             <TextField label={LABELS.note} value={note} onChange={(event) => setNote(event.target.value)} placeholder={LABELS.notePlaceholder} size="small" fullWidth multiline minRows={2} />
+            {savedEmploymentAutoNote ? <Alert severity="info"><Box><Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>{EMPLOYMENT_AUTO_NOTE_PREFIX}</Typography><Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>{savedEmploymentAutoNote}</Typography></Box></Alert> : null}
             {!initialLog?.id && selectedLineId && !lineDataLoading && coverageSuggestion.previousCoverageEndDate && coverageSuggestion.suggestedCoverageStartDate ? (
               <Alert severity="info">
                 {`${LABELS.coverageSuggestionPrefix} ${coverageSuggestion.previousCoverageEndDate}입니다. ${coverageSuggestion.suggestedCoverageStartDate}부터 ${LABELS.coverageSuggestionSuffix}`}
