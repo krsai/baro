@@ -612,6 +612,11 @@ const MainLayout = () => {
             path: '/attendance',
           },
           {
+            label: getUiMessage('menu.holiday', '\uD734\uC77C \uAD00\uB9AC', languageCode),
+            icon: <CalendarMonthIcon />,
+            path: '/holiday',
+          },
+          {
             label: getUiMessage('menu.customer', '\uACE0\uAC1D \uAD00\uB9AC', languageCode),
             icon: <PeopleIcon />,
             path: '/customer',
@@ -642,11 +647,6 @@ const MainLayout = () => {
             label: getUiMessage('menu.business', '\uC0AC\uC5C5\uCCB4 \uAD00\uB9AC', languageCode),
             icon: <BusinessIcon />,
             path: '/business',
-          },
-          {
-            label: getUiMessage('menu.holiday', '\uD734\uC77C \uAD00\uB9AC', languageCode),
-            icon: <CalendarMonthIcon />,
-            path: '/holiday',
           },
         ],
       },

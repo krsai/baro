@@ -24,6 +24,10 @@ import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { getPayTypeOptions } from '../../../constants/payType';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
+import {
+  getStaticOptionLabel,
+  getStaticOptionOptions,
+} from '../../../constants/staticOptionRegistry';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { fetchAttributes } from '../../../utils/attributeApi';
 
@@ -35,12 +39,6 @@ const EMPLOYEE_STATUS_LABELS = {
   SUSPENDED: { ko: '휴직', en: 'Suspended', vi: 'Tam nghi' },
   TERMINATED: { ko: '퇴사', en: 'Terminated', vi: 'Nghi viec' },
   ALL: { ko: '전체 상태', en: 'All statuses', vi: 'Tat ca trang thai' },
-};
-const ORG_ROLE_LABELS = {
-  ADMIN: { ko: '관리자', en: 'Admin', vi: 'Quan tri' },
-  OPERATOR: { ko: '운영자', en: 'Operator', vi: 'Van hanh' },
-  ACCOUNTANT: { ko: '회계사', en: 'Accountant', vi: 'Ke toan' },
-  WORKER: { ko: '작업자', en: 'Cong nhan' },
 };
 const EMPLOYEE_BOARD_TEXT = {
   pageTitle: { ko: '직원 관리', en: 'Employee Management', vi: 'Quan ly nhan vien' },
@@ -224,10 +222,9 @@ const getEmployeeStatusFilterOptions = (languageCode = 'ko') =>
     label: resolveLocalized(EMPLOYEE_STATUS_LABELS[value], languageCode),
   }));
 const getOrgRoleOptions = (languageCode = 'ko') =>
-  ORG_ROLE_VALUES.map((value) => ({
-    value,
-    label: resolveLocalized(ORG_ROLE_LABELS[value], languageCode),
-  }));
+  getStaticOptionOptions('orgRole', languageCode).filter((option) =>
+    ORG_ROLE_VALUES.includes(option.value)
+  );
 
 const WORKER_JOB_ROLE_CODES = new Set([
   'WORKER_SUPERVISOR',
@@ -289,7 +286,35 @@ const isWorkerOrgRole = (value) => String(value || '').toUpperCase() === 'WORKER
 const isWorkerJobRoleOption = (role) =>
   WORKER_JOB_ROLE_CODES.has(String(role?.code || '').trim().toUpperCase());
 const getOrgRoleLabel = (value, languageCode = 'ko') =>
-  resolveLocalized(ORG_ROLE_LABELS[String(value || '').toUpperCase()], languageCode) || '-';
+  getStaticOptionLabel('orgRole', value, '-', languageCode);
+const getJobRoleLabel = (role, languageCode = 'ko', fallback = '-') => {
+  const code = String(role?.code || role?.roleCode || '').trim().toUpperCase();
+  const storedName = String(role?.name || role?.roleName || '').trim();
+  return getStaticOptionLabel(
+    'jobRole',
+    code,
+    storedName || code || fallback,
+    languageCode
+  );
+};
+const resolveEmployeeJobRoleLabel = (
+  employee,
+  jobRoleOptions,
+  languageCode = 'ko',
+  fallback = '-'
+) => {
+  const matchedRole = jobRoleOptions.find(
+    (role) => String(role?.id) === String(employee?.roleId)
+  );
+  return getJobRoleLabel(
+    {
+      code: employee?.roleCode || matchedRole?.code,
+      name: matchedRole?.name || employee?.roleName,
+    },
+    languageCode,
+    fallback
+  );
+};
 const getOrgRoleSortOrder = (value) =>
   ORG_ROLE_SORT_ORDER[String(value || '').toUpperCase()] || Number.MAX_SAFE_INTEGER;
 const getEmployeeStatusLabel = (value, languageCode = 'ko') =>
@@ -554,7 +579,7 @@ const EmployeeRow = React.memo(
             >
               {jobRoleOptions.map((role) => (
                 <MenuItem key={role.id} value={String(role.id)}>
-                  {role.name || role.code}
+                  {getJobRoleLabel(role, languageCode)}
                 </MenuItem>
               ))}
             </TextField>
@@ -1380,10 +1405,12 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     return statusFilteredActiveMembers.filter((member) => {
       const employee = employeeByMembership.get(member.id) || null;
       const roleLabel = getOrgRoleLabel(member.role, languageCode);
-      const jobRoleLabel =
-        employee?.roleName ||
-        jobRoleOptions.find((role) => String(role?.id) === String(employee?.roleId))?.name ||
-        '';
+      const jobRoleLabel = resolveEmployeeJobRoleLabel(
+        employee,
+        jobRoleOptions,
+        languageCode,
+        ''
+      );
       const statusLabel = getEmployeeStatusLabel(member.status, languageCode);
       const factoryName =
         factoryById.get(String(employee?.factoryId || ''))?.name || '';
@@ -1590,7 +1617,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 >
                   {jobRoleOptions.map((role) => (
                     <MenuItem key={role.id} value={String(role.id)}>
-                      {role.name || role.code}
+                      {getJobRoleLabel(role, languageCode)}
                     </MenuItem>
                   ))}
                 </TextField>
@@ -1906,11 +1933,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   sortedActiveMembers.map((member) => {
                     const employee = employeeByMembership.get(member.id) || null;
                     const roleLabel = getOrgRoleLabel(member.role, languageCode);
-                    const jobRoleLabel =
-                      employee?.roleName ||
-                      jobRoleOptions.find((role) => String(role?.id) === String(employee?.roleId))
-                        ?.name ||
-                      '-';
+                    const jobRoleLabel = resolveEmployeeJobRoleLabel(
+                      employee,
+                      jobRoleOptions,
+                      languageCode
+                    );
                     const payTypeValue = String(
                       employee?.effectivePayType ||
                       employee?.payType ||

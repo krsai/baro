@@ -166,6 +166,11 @@ const RAW_STATIC_OPTION_GROUPS = [
     key: 'jobRole',
     title: '직무 / 작업 역할',
     items: [
+      createItem(
+        'WORKER_SUPERVISOR',
+        { ko: '감독', en: 'Supervisor', vi: 'Giam sat' },
+        ['감독']
+      ),
       createItem('WORKER_CUTTING', { ko: '재단', en: 'Cutting', vi: 'Cat' }, ['재단']),
       createItem('WORKER_SEWING', { ko: '봉제', en: 'Sewing', vi: 'May' }, ['봉제']),
       createItem('WORKER_IRONING', { ko: '다림', en: 'Ironing', vi: 'Ui' }, ['다림']),
