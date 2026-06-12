@@ -5,6 +5,7 @@ import {
   canUseWorkspaceForOrganizationSubscriptionStatus,
   normalizeOrganizationSubscriptionStatus,
 } from '../constants/organizationAccess';
+import { sanitizeRoleAccessPolicy } from '../utils/roleAccessPolicy';
 
 const AuthContext = createContext(null);
 
@@ -282,6 +283,7 @@ const normalizeAccessProfile = (profile) => {
   if (!profile || typeof profile !== 'object') return null;
 
   const entryType = normalizeUpper(profile.entryType || 'ORG');
+  const accessPolicy = sanitizeRoleAccessPolicy(profile.accessPolicy);
   if (entryType === 'SYSTEM') {
     return {
       entryType: 'SYSTEM',
@@ -293,6 +295,7 @@ const normalizeAccessProfile = (profile) => {
       employeeName: null,
       email: typeof profile.email === 'string' ? profile.email.trim().toLowerCase() : '',
       subscription: normalizeSubscription(profile.subscription),
+      accessPolicy,
       systemAdminContactEmail:
         typeof profile.systemAdminContactEmail === 'string'
           ? profile.systemAdminContactEmail.trim().toLowerCase()
@@ -332,6 +335,7 @@ const normalizeAccessProfile = (profile) => {
       pendingMembershipCount,
       latestRegistrationRequest,
       onboardingRequired: true,
+      accessPolicy,
       systemAdminContactEmail:
         typeof profile.systemAdminContactEmail === 'string'
           ? profile.systemAdminContactEmail.trim().toLowerCase()
@@ -367,6 +371,7 @@ const normalizeAccessProfile = (profile) => {
     employeeName,
     factoryId,
     subscription,
+    accessPolicy,
     subscriptionStatus,
     subscriptionBlocked,
     systemAdminContactEmail:
@@ -449,6 +454,7 @@ export const AuthProvider = ({ children }) => {
           })}`,
           {
             skipGlobalLoading: true,
+            skipCache: true,
             signal: accessProfileAbortController.signal,
           }
         );

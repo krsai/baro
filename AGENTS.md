@@ -311,6 +311,10 @@ AT(q) = a*q + b
 ### 접근 제어 (`middleware/access.ts`)
 - 구독 상태(`TRIAL`, `ACTIVE`, `GRACE`) 기반 워크스페이스 접근 제어
 - `entryType` 분기: `SYSTEM` / `ORG` / `ONBOARDING`
+- 조직 역할별 메뉴 접근 정책은 `SystemSetting`의 `ROLE_ACCESS_POLICY`에 공용 저장한다.
+- `GET/PUT /system/access-policy`는 시스템 관리자만 사용하며, `/auth/context`가 현재 정책을 각 조직 계정에 전달한다.
+- 프론트의 사이드바와 보호 라우트는 같은 `accessPolicy`를 사용한다. 정책 조회와 `/auth/context`는 계정 전환 및 저장 직후 반영을 위해 GET 캐시를 사용하지 않는다.
+- 접근 권한 화면의 메뉴 트리는 `MainLayout`의 실제 SaaS 메뉴 blueprint를 사용하므로 그룹, 순서, 메뉴명, 비활성 상태와 현재 언어를 그대로 반영한다.
 
 ### 감사 필드
 - `AsyncLocalStorage`로 요청 주체 추적, Prisma extension으로 `createdBy`/`updatedBy` 자동 주입

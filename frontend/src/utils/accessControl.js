@@ -1,7 +1,7 @@
 import {
   getAllowedFeaturesForRole,
-  loadRoleAccessPolicy,
-} from './roleAccessPolicy';
+  sanitizeRoleAccessPolicy,
+} from './roleAccessPolicyCore.mjs';
 
 const ORG_TYPES = {
   MANUFACTURER: 'MANUFACTURER',
@@ -78,12 +78,11 @@ const hasOrgType = (context, ...orgTypes) =>
 
 const resolveFeatureSetForContext = (context) => {
   if (!context || context.entryType !== 'ORG') return new Set();
-  const policy = loadRoleAccessPolicy();
   return new Set(
     getAllowedFeaturesForRole({
       orgType: context.orgType,
       orgRole: context.orgRole,
-      policy,
+      policy: context.accessPolicy,
     })
   );
 };
@@ -95,7 +94,7 @@ const buildAccessContext = ({
   accessProfile,
 }) => {
   if (!isAuthenticated) return null;
-  const baseProfile = devBypass ? devProfile : accessProfile;
+  const baseProfile = devBypass ? (accessProfile || devProfile) : accessProfile;
   if (!baseProfile || typeof baseProfile !== 'object') return null;
 
   const entryType = normalizeUpper(baseProfile?.entryType || 'ORG');
@@ -121,6 +120,7 @@ const buildAccessContext = ({
     orgType,
     orgRole,
     isLineLeader: isLineLeaderActive(baseProfile),
+    accessPolicy: sanitizeRoleAccessPolicy(baseProfile?.accessPolicy),
   };
 };
 

@@ -197,6 +197,9 @@ function assertGeneratedPrismaClientShape() {
   if (!modelByName.has("OrganizationHoliday")) {
     staleSignals.push("OrganizationHoliday model missing");
   }
+  if (!modelByName.has("SystemSetting")) {
+    staleSignals.push("SystemSetting model missing");
+  }
   if (hasField("WorkRecord", "processName")) {
     staleSignals.push("WorkRecord.processName still present");
   }
@@ -569,6 +572,139 @@ type OrganizationTypeKey =
 const ONBOARDING_ORGANIZATION_TYPE_OPTIONS = new Set<OrganizationTypeKey>(
   Object.values(ORGANIZATION_TYPE_KEYS)
 );
+const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
+const ROLE_ACCESS_POLICY_FEATURES = [
+  "ORDER",
+  "STYLE",
+  "ST_REVIEW",
+  "SHIPMENT_REVIEW",
+  "ASSIGNMENT",
+  "PRODUCTION_PLAN",
+  "PRODUCTION_RESULT",
+  "INVENTORY",
+  "ATTENDANCE",
+  "WORK_HISTORY",
+  "PAYROLL",
+  "BUSINESS",
+  "LINE",
+  "EMPLOYEE",
+  "CUSTOMER",
+  "PERMISSION",
+  "HOLIDAY",
+] as const;
+type RoleAccessPolicyFeature = (typeof ROLE_ACCESS_POLICY_FEATURES)[number];
+type RoleAccessPolicy = Record<
+  OrganizationTypeKey,
+  Record<OrgUserRole, RoleAccessPolicyFeature[]>
+>;
+const ROLE_ACCESS_POLICY_FEATURE_SET = new Set<string>(
+  ROLE_ACCESS_POLICY_FEATURES
+);
+const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
+  MANUFACTURER: {
+    ADMIN: [...ROLE_ACCESS_POLICY_FEATURES],
+    OPERATOR: [
+      "ORDER",
+      "STYLE",
+      "ST_REVIEW",
+      "SHIPMENT_REVIEW",
+      "ASSIGNMENT",
+      "PRODUCTION_PLAN",
+      "INVENTORY",
+      "ATTENDANCE",
+      "WORK_HISTORY",
+      "LINE",
+      "CUSTOMER",
+    ],
+    ACCOUNTANT: [
+      "PAYROLL",
+      "PRODUCTION_RESULT",
+      "BUSINESS",
+      "EMPLOYEE",
+      "HOLIDAY",
+    ],
+    WORKER: [],
+  },
+  BRAND: {
+    ADMIN: ["ORDER", "STYLE"],
+    OPERATOR: ["ORDER", "STYLE"],
+    ACCOUNTANT: [],
+    WORKER: [],
+  },
+};
+const cloneRoleAccessPolicy = (value: RoleAccessPolicy): RoleAccessPolicy =>
+  JSON.parse(JSON.stringify(value));
+const sanitizeRoleAccessPolicyFeatureList = (
+  value: unknown
+): RoleAccessPolicyFeature[] => {
+  const featureSet = new Set<RoleAccessPolicyFeature>();
+  ensureArray(value).forEach((feature) => {
+    const normalized = String(feature || "").trim().toUpperCase();
+    if (!ROLE_ACCESS_POLICY_FEATURE_SET.has(normalized)) return;
+    featureSet.add(normalized as RoleAccessPolicyFeature);
+  });
+  return Array.from(featureSet);
+};
+const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
+  const policy = cloneRoleAccessPolicy(DEFAULT_ROLE_ACCESS_POLICY);
+  if (!value || typeof value !== "object" || Array.isArray(value)) return policy;
+  (Object.values(ORGANIZATION_TYPE_KEYS) as OrganizationTypeKey[]).forEach(
+    (orgType) => {
+      const sourceByRole = (value as any)?.[orgType];
+      if (!sourceByRole || typeof sourceByRole !== "object" || Array.isArray(sourceByRole)) {
+        return;
+      }
+      ORG_ACCESS_ROLES.forEach((role) => {
+        if (sourceByRole[role] === undefined) return;
+        policy[orgType][role] = sanitizeRoleAccessPolicyFeatureList(
+          sourceByRole[role]
+        );
+      });
+    }
+  );
+  return policy;
+};
+let systemSettingStorageReadyPromise: Promise<void> | null = null;
+let systemSettingStorageReady = false;
+const ensureSystemSettingStorageReady = async () => {
+  if (systemSettingStorageReady) return;
+  if (systemSettingStorageReadyPromise) {
+    await systemSettingStorageReadyPromise;
+    return;
+  }
+  systemSettingStorageReadyPromise = prisma
+    .$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "SystemSetting" (
+        "key" TEXT NOT NULL,
+        "value" JSONB NOT NULL,
+        "updatedBy" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "SystemSetting_pkey" PRIMARY KEY ("key")
+      )
+    `)
+    .then(() => {
+      systemSettingStorageReady = true;
+    });
+  try {
+    await systemSettingStorageReadyPromise;
+  } finally {
+    systemSettingStorageReadyPromise = null;
+  }
+};
+const loadRoleAccessPolicySetting = async () => {
+  await ensureSystemSettingStorageReady();
+  const stored = await prisma.systemSetting.findUnique({
+    where: { key: ROLE_ACCESS_POLICY_SETTING_KEY },
+    select: { value: true, updatedAt: true, updatedBy: true },
+  });
+  return {
+    policy: sanitizeRoleAccessPolicy(stored?.value),
+    stored: Boolean(stored),
+    updatedAt: stored?.updatedAt ?? null,
+    updatedBy: stored?.updatedBy ?? null,
+  };
+};
 const ONBOARDING_ORGANIZATION_TYPE_TOKENS: Record<string, OrganizationTypeKey> = {
   manufacturer: ORGANIZATION_TYPE_KEYS.MANUFACTURER,
   factory: ORGANIZATION_TYPE_KEYS.MANUFACTURER,
@@ -15048,6 +15184,7 @@ app.get("/auth/context", async (req, res) => {
   if (!requesterEmail || !requesterEmail.includes("@")) {
     return res.status(400).json({ ok: false, error: "email is required" });
   }
+  const roleAccessPolicy = (await loadRoleAccessPolicySetting()).policy;
 
   // Auto-provision system admin on first login
   if (requesterEmail === getHardCodedSystemAdminEmail()) {
@@ -15088,6 +15225,7 @@ app.get("/auth/context", async (req, res) => {
       orgRole: null,
       employeeName: null,
       subscription: buildSubscriptionResponse(organization?.subscription),
+      accessPolicy: roleAccessPolicy,
       systemAdminContactEmail: getSystemAdminContactEmail(),
     });
   }
@@ -15124,6 +15262,7 @@ app.get("/auth/context", async (req, res) => {
         factoryId: membership.employee?.factoryId ?? null,
         employeeName: membership.employee?.name ?? null,
         subscription: buildSubscriptionResponse(organization?.subscription),
+        accessPolicy: roleAccessPolicy,
         systemAdminContactEmail: getSystemAdminContactEmail(),
       });
     }
@@ -15169,6 +15308,7 @@ app.get("/auth/context", async (req, res) => {
       latestRegistrationRequest: latestRegistrationRequest
         ? toOnboardingRequestSummary(latestRegistrationRequest)
         : null,
+      accessPolicy: roleAccessPolicy,
       systemAdminContactEmail: getSystemAdminContactEmail(),
     });
   }
@@ -15185,7 +15325,45 @@ app.get("/auth/context", async (req, res) => {
     factoryId: membership.employee?.factoryId ?? null,
     employeeName: membership.employee?.name ?? null,
     subscription: buildSubscriptionResponse(organization?.subscription),
+    accessPolicy: roleAccessPolicy,
     systemAdminContactEmail: getSystemAdminContactEmail(),
+  });
+});
+
+app.get("/system/access-policy", async (req, res) => {
+  if (!(await requireSystemAdmin(req, res))) return;
+  return res.json(await loadRoleAccessPolicySetting());
+});
+
+app.put("/system/access-policy", async (req, res) => {
+  const systemAdmin = await requireSystemAdmin(req, res);
+  if (!systemAdmin) return;
+
+  const policy = sanitizeRoleAccessPolicy(req.body?.policy ?? req.body);
+  await ensureSystemSettingStorageReady();
+  const saved = await prisma.systemSetting.upsert({
+    where: { key: ROLE_ACCESS_POLICY_SETTING_KEY },
+    create: {
+      key: ROLE_ACCESS_POLICY_SETTING_KEY,
+      value: policy as Prisma.InputJsonValue,
+      updatedBy: systemAdmin.requesterEmail,
+    },
+    update: {
+      value: policy as Prisma.InputJsonValue,
+      updatedBy: systemAdmin.requesterEmail,
+    },
+    select: {
+      value: true,
+      updatedAt: true,
+      updatedBy: true,
+    },
+  });
+
+  return res.json({
+    policy: sanitizeRoleAccessPolicy(saved.value),
+    stored: true,
+    updatedAt: saved.updatedAt,
+    updatedBy: saved.updatedBy,
   });
 });
 

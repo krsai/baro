@@ -23,12 +23,13 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { getUiMessage } from '../../../constants/uiMessages';
 import { resolveFeatureByPath } from '../../../utils/accessControl';
 import {
+  fetchRoleAccessPolicy,
   getDefaultRoleAccessPolicy,
-  loadRoleAccessPolicy,
+  loadLegacyRoleAccessPolicy,
   ORG_ROLE_KEYS,
   ORG_TYPE_KEYS,
   saveRoleAccessPolicy,
-  resetRoleAccessPolicy,
+  sanitizeRoleAccessPolicy,
 } from '../../../utils/roleAccessPolicy';
 
 const MENU_BLUEPRINT_EVENT = 'baro:menu-blueprint-updated';
@@ -192,6 +193,24 @@ const toEditablePolicy = (policy) => {
   };
 };
 
+const serializeComparablePolicy = (policy) => {
+  const sanitized = sanitizeRoleAccessPolicy(policy);
+  const comparable = {};
+  Object.keys(sanitized)
+    .sort()
+    .forEach((orgType) => {
+      comparable[orgType] = {};
+      Object.keys(sanitized[orgType] || {})
+        .sort()
+        .forEach((role) => {
+          comparable[orgType][role] = [
+            ...(sanitized[orgType]?.[role] || []),
+          ].sort();
+        });
+    });
+  return JSON.stringify(comparable);
+};
+
 const AccessPolicyBoard = () => {
   const { activeProfile } = useAuth();
   const { showNotification } = useAppActions();
@@ -209,14 +228,44 @@ const AccessPolicyBoard = () => {
     activeProfile?.entryType === 'SYSTEM' && activeProfile?.systemRole === 'SYSTEM_ADMIN';
 
   const [menuBlueprint, setMenuBlueprint] = React.useState(() => readMenuBlueprint());
-  const [draftPolicy, setDraftPolicy] = React.useState(() =>
-    toEditablePolicy(loadRoleAccessPolicy())
+  const [savedPolicy, setSavedPolicy] = React.useState(() =>
+    toEditablePolicy(getDefaultRoleAccessPolicy())
   );
+  const [draftPolicy, setDraftPolicy] = React.useState(() =>
+    toEditablePolicy(getDefaultRoleAccessPolicy())
+  );
+  const [loadingPolicy, setLoadingPolicy] = React.useState(true);
+  const [savingPolicy, setSavingPolicy] = React.useState(false);
 
   React.useEffect(() => {
-    const syncFromStorage = () => setDraftPolicy(toEditablePolicy(loadRoleAccessPolicy()));
-    syncFromStorage();
-  }, []);
+    let cancelled = false;
+
+    const loadPolicy = async () => {
+      setLoadingPolicy(true);
+      try {
+        const response = await fetchRoleAccessPolicy();
+        let nextPolicy = response.policy;
+        const legacyPolicy = !response.stored ? loadLegacyRoleAccessPolicy() : null;
+        if (legacyPolicy) {
+          nextPolicy = await saveRoleAccessPolicy(legacyPolicy);
+        }
+        if (cancelled) return;
+        const editable = toEditablePolicy(nextPolicy);
+        setSavedPolicy(editable);
+        setDraftPolicy(editable);
+      } catch (error) {
+        if (cancelled) return;
+        showNotification(error?.message || 'Failed to load access policy.', 'error');
+      } finally {
+        if (!cancelled) setLoadingPolicy(false);
+      }
+    };
+
+    loadPolicy();
+    return () => {
+      cancelled = true;
+    };
+  }, [showNotification]);
 
   React.useEffect(() => {
     const handleBlueprintUpdate = (event) => {
@@ -269,22 +318,38 @@ const AccessPolicyBoard = () => {
     [hasFeature]
   );
 
-  const handleSave = React.useCallback(() => {
-    const saved = saveRoleAccessPolicy(draftPolicy);
-    setDraftPolicy(toEditablePolicy(saved));
-    showNotification(
-      getUiMessage(
-        'accessPolicy.saved',
-        resolveLocalizedText(ACCESS_POLICY_TEXT.saved, languageCode),
-        languageCode
-      ),
-      'success'
-    );
-  }, [draftPolicy, languageCode, showNotification]);
+  const isDirty = React.useMemo(
+    () =>
+      serializeComparablePolicy(draftPolicy) !==
+      serializeComparablePolicy(savedPolicy),
+    [draftPolicy, savedPolicy]
+  );
+
+  const handleSave = React.useCallback(async () => {
+    if (!isDirty || savingPolicy) return;
+    setSavingPolicy(true);
+    try {
+      const saved = await saveRoleAccessPolicy(draftPolicy);
+      const editable = toEditablePolicy(saved);
+      setSavedPolicy(editable);
+      setDraftPolicy(editable);
+      showNotification(
+        getUiMessage(
+          'accessPolicy.saved',
+          resolveLocalizedText(ACCESS_POLICY_TEXT.saved, languageCode),
+          languageCode
+        ),
+        'success'
+      );
+    } catch (error) {
+      showNotification(error?.message || 'Failed to save access policy.', 'error');
+    } finally {
+      setSavingPolicy(false);
+    }
+  }, [draftPolicy, isDirty, languageCode, savingPolicy, showNotification]);
 
   const handleReset = React.useCallback(() => {
-    const defaults = resetRoleAccessPolicy();
-    setDraftPolicy(toEditablePolicy(defaults));
+    setDraftPolicy(toEditablePolicy(getDefaultRoleAccessPolicy()));
     showNotification(
       getUiMessage(
         'accessPolicy.reset',
@@ -329,11 +394,19 @@ const AccessPolicyBoard = () => {
             )}
           </Typography>
           <Stack direction="row" spacing={1}>
-            <Button variant="outlined" onClick={handleReset}>
-              {getUiMessage('common.reset', 'Reset', languageCode)}
+            <Button
+              variant="outlined"
+              onClick={handleReset}
+              disabled={loadingPolicy || savingPolicy}
+            >
+              {getUiMessage('accessPolicy.resetButton', 'Reset', languageCode)}
             </Button>
-            <Button variant="contained" onClick={handleSave}>
-              {getUiMessage('common.save', 'Save', languageCode)}
+            <Button
+              variant="contained"
+              onClick={handleSave}
+              disabled={!isDirty || loadingPolicy || savingPolicy}
+            >
+              {getUiMessage('accessPolicy.save', 'Save', languageCode)}
             </Button>
           </Stack>
         </Box>
@@ -465,7 +538,12 @@ const AccessPolicyBoard = () => {
                               checked={
                                 row.fixedAccess || hasFeature(role, row.featureKey)
                               }
-                              disabled={row.disabled || row.fixedAccess}
+                              disabled={
+                                loadingPolicy ||
+                                savingPolicy ||
+                                row.disabled ||
+                                row.fixedAccess
+                              }
                               onChange={(event) =>
                                 setFeature(role, row.featureKey, event.target.checked)
                               }

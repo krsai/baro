@@ -105,6 +105,16 @@ ALTER TABLE "WorkLog"
   ADD COLUMN IF NOT EXISTS "coverageEndDate" TEXT,
   ADD COLUMN IF NOT EXISTS "entryMode" TEXT;
 
+-- Global system settings, including shared role access policy.
+CREATE TABLE IF NOT EXISTS "SystemSetting" (
+  "key" TEXT NOT NULL,
+  "value" JSONB NOT NULL,
+  "updatedBy" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "SystemSetting_pkey" PRIMARY KEY ("key")
+);
+
 -- Step 4: Schedule realization fields (20260521)
 ALTER TABLE "AssignmentPlan"
   ADD COLUMN IF NOT EXISTS "productionCompletedAt" TIMESTAMP(3),

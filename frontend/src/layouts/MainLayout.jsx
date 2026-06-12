@@ -66,16 +66,6 @@ const EMPTY_WORKSPACE_HINT = {
   vi: 'Hay su dung menu.',
 };
 const ORG_MEMBERSHIPS_UPDATED_EVENT = 'baro:org-memberships-updated';
-const PRODUCTION_MANAGEMENT_LABELS = {
-  ko: '\uC0DD\uC0B0 \uAD00\uB9AC',
-  en: 'Production',
-  vi: 'Quan ly san xuat',
-};
-const DASHBOARD_LABELS = {
-  ko: '\uB300\uC2DC\uBCF4\uB4DC',
-  en: 'Dashboard',
-  vi: 'Bang dieu khien',
-};
 const MENU_GROUP_KEYS = {
   ORDER: 'ORDER',
   RECORDS: 'RECORDS',
@@ -493,7 +483,7 @@ const MainLayout = () => {
   const baseMenuBlueprint = useMemo(() => {
     return [
       {
-        label: resolveLocalizedLabel(DASHBOARD_LABELS, languageCode),
+        label: getUiMessage('menu.dashboard', 'Dashboard', languageCode),
         icon: <DashboardIcon />,
         path: '/dashboard',
       },
@@ -523,7 +513,7 @@ const MainLayout = () => {
         ],
       },
       {
-        label: resolveLocalizedLabel(PRODUCTION_MANAGEMENT_LABELS, languageCode),
+        label: getUiMessage('menu.production', 'Production', languageCode),
         icon: <HistoryIcon />,
         isParent: true,
         menuGroupKey: MENU_GROUP_KEYS.RECORDS,
