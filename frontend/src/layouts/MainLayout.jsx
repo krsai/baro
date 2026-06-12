@@ -530,6 +530,11 @@ const MainLayout = () => {
         isOpen: recordsOpen,
         children: [
           {
+            label: getUiMessage('menu.line', '라인 관리', languageCode),
+            icon: <ContentCut />,
+            path: '/line',
+          },
+          {
             label: getUiMessage('menu.assignment', '\uBC30\uC815', languageCode),
             icon: <ContentCut />,
             path: '/assignment',
@@ -557,6 +562,7 @@ const MainLayout = () => {
             label: getUiMessage('menu.qcReview', '검수', languageCode),
             icon: <LocalShippingIcon />,
             path: '/qc-review',
+            disabled: true,
           },
           {
             label: getUiMessage('menu.inventoryIssue', '\uC7AC\uACE0 \uBD88\uCD9C', languageCode),
@@ -577,6 +583,7 @@ const MainLayout = () => {
             label: getUiMessage('menu.shipmentReview', '\uC218\uB7C9 \uC815\uC0B0', languageCode),
             icon: <LocalShippingIcon />,
             path: '/shipment-review',
+            disabled: true,
           },
           {
             label: getUiMessage('menu.payroll', '\uAE09\uC5EC \uACC4\uC0B0', languageCode),
@@ -622,11 +629,6 @@ const MainLayout = () => {
                 },
               ]
             : []),
-          {
-            label: getUiMessage('menu.line', '라인 관리', languageCode),
-            icon: <ContentCut />,
-            path: '/line',
-          },
         ],
       },
       {
@@ -763,22 +765,109 @@ const MainLayout = () => {
     systemOpen,
   ]);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.__BARO_MENU_BLUEPRINT__ = baseMenuBlueprint;
-    window.dispatchEvent(
-      new CustomEvent('baro:menu-blueprint-updated', {
-        detail: { items: baseMenuBlueprint },
-      })
-    );
+  const menuStructureBlueprint = useMemo(() => {
+    const customerMenuItem = baseMenuBlueprint
+      .flatMap((item) => (Array.isArray(item?.children) ? item.children : []))
+      .find((item) => item?.path === '/customer');
+
+    return baseMenuBlueprint.map((item) => {
+      if (!item.isParent || !Array.isArray(item.children)) return item;
+
+      let orderedChildren = [...item.children];
+      const childPaths = new Set(orderedChildren.map((child) => child.path));
+
+      if (childPaths.has('/order') && childPaths.has('/style')) {
+        const preferredSalesPaths = ['/style', '/order', '/batch-progress'];
+        orderedChildren = [
+          customerMenuItem,
+          ...preferredSalesPaths.map(
+            (path) => orderedChildren.find((child) => child.path === path) || null
+          ),
+          ...orderedChildren.filter(
+            (child) => !['/customer', ...preferredSalesPaths].includes(child.path)
+          ),
+        ].filter(Boolean);
+      }
+
+      if (childPaths.has('/employee')) {
+        orderedChildren = orderedChildren.filter((child) => child.path !== '/customer');
+      }
+
+      if (childPaths.has('/assignment') && childPaths.has('/work-history')) {
+        const preferredRecordPaths = [
+          '/line',
+          '/assignment',
+          '/work-history',
+          '/qc-review',
+          '/attendance',
+        ];
+        orderedChildren = [
+          ...preferredRecordPaths.map(
+            (path) => orderedChildren.find((child) => child.path === path) || null
+          ),
+          ...orderedChildren.filter(
+            (child) => !preferredRecordPaths.includes(child.path)
+          ),
+        ].filter(Boolean);
+      }
+
+      return {
+        ...item,
+        children: orderedChildren,
+      };
+    });
   }, [baseMenuBlueprint]);
 
+  const accessPolicyMenuBlueprint = useMemo(
+    () =>
+      menuStructureBlueprint
+        .filter(
+          (item) =>
+            ![MENU_GROUP_KEYS.PROCESS_MASTER, MENU_GROUP_KEYS.SYSTEM].includes(
+              item?.menuGroupKey
+            )
+        )
+        .map((item) => {
+          if (!item.isParent || !Array.isArray(item.children)) return item;
+
+          if (item.menuGroupKey === MENU_GROUP_KEYS.ATTRIBUTE) {
+            return {
+              ...item,
+              children: [
+                {
+                  label: getUiMessage(
+                    'menu.attributeProcesses',
+                    '\uACF5\uC815 \uAD00\uB9AC',
+                    languageCode
+                  ),
+                  icon: <DnsIcon />,
+                  path: '/attribute/processes',
+                },
+              ],
+            };
+          }
+
+          return {
+            ...item,
+            children: item.children.filter(
+              (child) => child.path !== '/system-setting'
+            ),
+          };
+        }),
+    [languageCode, menuStructureBlueprint]
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.__BARO_MENU_BLUEPRINT__ = accessPolicyMenuBlueprint;
+    window.dispatchEvent(
+      new CustomEvent('baro:menu-blueprint-updated', {
+        detail: { items: accessPolicyMenuBlueprint },
+      })
+    );
+  }, [accessPolicyMenuBlueprint]);
+
   const menuItems = useMemo(() => {
-    const customerMenuItem = {
-      label: getUiMessage('menu.customer', '\uACE0\uAC1D', languageCode),
-      icon: <PeopleIcon />,
-      path: '/customer',
-    };
     const filterVisibleMenuChildren = (children = []) =>
       (Array.isArray(children) ? children : [])
         .map((child) => {
@@ -794,60 +883,12 @@ const MainLayout = () => {
         })
         .filter(Boolean);
 
-    return baseMenuBlueprint
+    return menuStructureBlueprint
       .map((item) => {
         if (!item.isParent) {
           return hasPathAccess(item.path) ? item : null;
         }
-        let visibleChildren = filterVisibleMenuChildren(item.children);
-        visibleChildren = visibleChildren.map((child) =>
-          child.path === '/work-history'
-            ? {
-                ...child,
-                label: getUiMessage(
-                  'menu.workHistory',
-                  '\uC791\uC5C5 \uAE30\uB85D',
-                  languageCode
-                ),
-              }
-              : child
-        );
-        const childPaths = new Set(item.children.map((child) => child.path));
-
-        if (childPaths.has('/order') && childPaths.has('/style')) {
-          const preferredSalesPaths = ['/style', '/order', '/batch-progress'];
-          visibleChildren = [
-            hasPathAccess(customerMenuItem.path) ? customerMenuItem : null,
-            ...preferredSalesPaths.map(
-              (path) => visibleChildren.find((child) => child.path === path) || null
-            ),
-            ...visibleChildren.filter(
-              (child) => !['/customer', ...preferredSalesPaths].includes(child.path)
-            ),
-          ].filter(Boolean);
-        }
-
-        if (childPaths.has('/employee')) {
-          visibleChildren = visibleChildren.filter((child) => child.path !== '/customer');
-        }
-
-        if (childPaths.has('/assignment') && childPaths.has('/work-history')) {
-          const preferredRecordPaths = [
-            '/assignment',
-            '/work-history',
-            '/qc-review',
-            '/attendance',
-          ];
-          visibleChildren = [
-            ...preferredRecordPaths.map(
-              (path) => visibleChildren.find((child) => child.path === path) || null
-            ),
-            ...visibleChildren.filter(
-              (child) => !preferredRecordPaths.includes(child.path)
-            ),
-          ].filter(Boolean);
-        }
-
+        const visibleChildren = filterVisibleMenuChildren(item.children);
         if (visibleChildren.length === 0) return null;
         return {
           ...item,
@@ -855,11 +896,7 @@ const MainLayout = () => {
         };
       })
       .filter(Boolean);
-  }, [
-    baseMenuBlueprint,
-    hasPathAccess,
-    languageCode,
-  ]);
+  }, [hasPathAccess, menuStructureBlueprint]);
   const flattenedMenuItems = useMemo(
     () => flattenNestedMenuItems(menuItems),
     [menuItems]

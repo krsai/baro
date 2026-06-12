@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   Paper,
   Stack,
   Switch,
@@ -68,57 +69,35 @@ const ACCESS_POLICY_TEXT = {
     vi: 'Chi quan tri he thong moi co the sua chinh sach truy cap.',
   },
   autoLinked: {
-    ko: '이 표는 현재 메뉴 순서와 자동으로 연결됩니다.',
-    en: 'This table is linked to current menu order automatically.',
-    vi: 'Bang nay tu dong lien ket voi thu tu menu hien tai.',
+    ko: '현재 SaaS 사용자 메뉴의 그룹, 순서, 비활성 상태를 그대로 반영합니다. 메뉴 구성이 바뀌면 이 트리도 자동으로 갱신됩니다.',
+    en: 'This tree mirrors the current SaaS user menu groups, order, and disabled state. It updates automatically when the menu changes.',
+    vi: 'Cay nay phan anh nhom, thu tu va trang thai vo hieu hoa cua menu nguoi dung SaaS hien tai. Cay se tu dong cap nhat khi menu thay doi.',
   },
   targetScope: {
     ko: '적용 대상: 제조사 조직 역할',
     en: 'Target scope: Manufacturer organization roles',
     vi: 'Pham vi ap dung: vai tro to chuc nha san xuat',
   },
-  group: {
-    ko: '그룹',
-    en: 'Group',
-    vi: 'Nhom',
+  menuTree: {
+    ko: '메뉴 구성',
+    en: 'Menu structure',
+    vi: 'Cau truc menu',
   },
-  menu: {
-    ko: '메뉴',
-    en: 'Menu',
-    vi: 'Menu',
+  globallyDisabled: {
+    ko: '메뉴 비활성',
+    en: 'Menu disabled',
+    vi: 'Menu bi vo hieu hoa',
   },
-  feature: {
-    ko: '기능',
-    en: 'Feature',
-    vi: 'Tinh nang',
+  alwaysAvailable: {
+    ko: '기본 제공',
+    en: 'Always available',
+    vi: 'Luon kha dung',
   },
   noMenu: {
     ko: '아직 메뉴 구성을 불러오지 못했습니다.',
     en: 'Menu blueprint not available yet.',
     vi: 'Chua the tai cau hinh menu.',
   },
-};
-
-const FEATURE_LABELS = {
-  ORDER: { ko: '주문', en: 'Order', vi: 'Don hang' },
-  STYLE: { ko: '스타일', en: 'Style', vi: 'Style' },
-  ST_REVIEW: { ko: '표준 공임 검토', en: 'ST Review', vi: 'Xem xet cong chuan' },
-  SHIPMENT_REVIEW: { ko: '수량 정산', en: 'Quantity Settlement', vi: 'Doi chieu so luong' },
-  ASSIGNMENT: { ko: '배정', en: 'Assignment', vi: 'Phan cong' },
-  PRODUCTION_PLAN: { ko: '생산 계획', en: 'Production Plan', vi: 'Ke hoach san xuat' },
-  PRODUCTION_RESULT: { ko: '생산 결과', en: 'Production Result', vi: 'Ket qua san xuat' },
-  INVENTORY: { ko: '재고', en: 'Inventory', vi: 'Ton kho' },
-  ATTENDANCE: { ko: '출퇴근', en: 'Attendance', vi: 'Cham cong' },
-  WORK_HISTORY: { ko: '작업 기록', en: 'Work History', vi: 'Lich su cong viec' },
-  PAYROLL: { ko: '급여 계산', en: 'Payroll', vi: 'Tinh luong' },
-  BUSINESS: { ko: '사업체', en: 'Business', vi: 'Doanh nghiep' },
-  LINE: { ko: '라인', en: 'Line', vi: 'Chuyen may' },
-  EMPLOYEE: { ko: '직원', en: 'Employee', vi: 'Nhan vien' },
-  CUSTOMER: { ko: '고객', en: 'Customer', vi: 'Khach hang' },
-  ATTRIBUTE: { ko: '속성', en: 'Attribute', vi: 'Thuoc tinh' },
-  PERMISSION: { ko: '권한', en: 'Permission', vi: 'Quyen han' },
-  HOLIDAY: { ko: '휴일', en: 'Holiday', vi: 'Ngay nghi' },
-  SUBSCRIPTION: { ko: '구독', en: 'Subscription', vi: 'Goi dich vu' },
 };
 
 const resolveLocalizedText = (localizedText, languageCode) => {
@@ -139,41 +118,64 @@ const readMenuBlueprint = () => {
   return Array.isArray(rows) ? rows : [];
 };
 
-const appendMenuRows = (nodes = [], groupLabels = [], orderedRows = []) => {
-  (Array.isArray(nodes) ? nodes : []).forEach((node) => {
-    const nodeLabel = String(node?.label || '').trim();
-    if (Array.isArray(node?.children) && node.children.length > 0) {
-      appendMenuRows(
-        node.children,
-        nodeLabel ? [...groupLabels, nodeLabel] : groupLabels,
-        orderedRows
-      );
-      return;
-    }
+const buildMenuTree = (nodes = [], parentId = 'root') =>
+  (Array.isArray(nodes) ? nodes : [])
+    .map((node, index) => {
+      const nodeLabel = String(node?.label || '').trim();
+      const path = String(node?.path || '').trim();
+      const nodeId = `${parentId}:${node?.menuGroupKey || path || index}`;
 
-    const path = String(node?.path || '').trim();
-    if (!path) return;
-    const featureKey = resolveFeatureByPath(path);
-    if (!featureKey || NON_EDITABLE_FEATURE_KEYS.has(featureKey)) return;
-    orderedRows.push({
-      groupLabel: groupLabels.filter(Boolean).join(' > ') || '-',
-      menuLabel: nodeLabel || path,
-      path,
-      featureKey,
-    });
+      if (Array.isArray(node?.children) && node.children.length > 0) {
+        const children = buildMenuTree(node.children, nodeId);
+        if (children.length === 0) return null;
+        return {
+          id: nodeId,
+          type: 'group',
+          label: nodeLabel || '-',
+          icon: node?.icon || null,
+          children,
+          featureKeys: Array.from(
+            new Set(children.flatMap((child) => child.featureKeys || []))
+          ),
+        };
+      }
+
+      if (!path) return null;
+      const featureKey = resolveFeatureByPath(path);
+      if (NON_EDITABLE_FEATURE_KEYS.has(featureKey)) return null;
+      if (!featureKey && path !== '/dashboard') return null;
+      return {
+        id: nodeId,
+        type: 'menu',
+        label: nodeLabel || path,
+        icon: node?.icon || null,
+        path,
+        featureKey,
+        featureKeys: featureKey ? [featureKey] : [],
+        fixedAccess: !featureKey,
+        disabled: Boolean(node?.disabled),
+      };
+    })
+    .filter(Boolean);
+
+const flattenMenuTree = (nodes = [], depth = 0) =>
+  (Array.isArray(nodes) ? nodes : []).flatMap((node) => [
+    {
+      ...node,
+      depth,
+    },
+    ...(node.type === 'group' ? flattenMenuTree(node.children, depth + 1) : []),
+  ]);
+
+const cloneMenuIcon = (icon) => {
+  if (!React.isValidElement(icon)) return null;
+  return React.cloneElement(icon, {
+    sx: {
+      ...(icon.props?.sx || {}),
+      color: 'text.secondary',
+      fontSize: 20,
+    },
   });
-};
-
-const extractMenuRows = (menuBlueprint = []) => {
-  const orderedRows = [];
-
-  (Array.isArray(menuBlueprint) ? menuBlueprint : []).forEach((group) => {
-    if (!group?.isParent || !Array.isArray(group?.children)) return;
-    const groupLabel = String(group?.label || '').trim() || '-';
-    appendMenuRows(group.children, [groupLabel], orderedRows);
-  });
-
-  return orderedRows;
 };
 
 const toEditablePolicy = (policy) => {
@@ -216,8 +218,9 @@ const AccessPolicyBoard = () => {
   }, []);
 
   React.useEffect(() => {
-    const handleBlueprintUpdate = () => {
-      setMenuBlueprint(readMenuBlueprint());
+    const handleBlueprintUpdate = (event) => {
+      const eventItems = event?.detail?.items;
+      setMenuBlueprint(Array.isArray(eventItems) ? eventItems : readMenuBlueprint());
     };
     handleBlueprintUpdate();
     if (typeof window === 'undefined') return undefined;
@@ -225,7 +228,10 @@ const AccessPolicyBoard = () => {
     return () => window.removeEventListener(MENU_BLUEPRINT_EVENT, handleBlueprintUpdate);
   }, []);
 
-  const rows = React.useMemo(() => extractMenuRows(menuBlueprint), [menuBlueprint]);
+  const rows = React.useMemo(
+    () => flattenMenuTree(buildMenuTree(menuBlueprint)),
+    [menuBlueprint]
+  );
 
   const hasFeature = React.useCallback(
     (role, featureKey) => {
@@ -253,6 +259,14 @@ const AccessPolicyBoard = () => {
       return next;
     });
   }, []);
+
+  const countGroupFeatures = React.useCallback(
+    (role, featureKeys) =>
+      (Array.isArray(featureKeys) ? featureKeys : []).filter((featureKey) =>
+        hasFeature(role, featureKey)
+      ).length,
+    [hasFeature]
+  );
 
   const handleSave = React.useCallback(() => {
     const saved = saveRoleAccessPolicy(draftPolicy);
@@ -328,24 +342,10 @@ const AccessPolicyBoard = () => {
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ minWidth: 150 }}>
+                  <TableCell sx={{ minWidth: 360 }}>
                     {getUiMessage(
-                      'accessPolicy.group',
-                      resolveLocalizedText(ACCESS_POLICY_TEXT.group, languageCode),
-                      languageCode
-                    )}
-                  </TableCell>
-                  <TableCell sx={{ minWidth: 180 }}>
-                    {getUiMessage(
-                      'accessPolicy.menu',
-                      resolveLocalizedText(ACCESS_POLICY_TEXT.menu, languageCode),
-                      languageCode
-                    )}
-                  </TableCell>
-                  <TableCell sx={{ minWidth: 130 }}>
-                    {getUiMessage(
-                      'accessPolicy.feature',
-                      resolveLocalizedText(ACCESS_POLICY_TEXT.feature, languageCode),
+                      'accessPolicy.menuTree',
+                      resolveLocalizedText(ACCESS_POLICY_TEXT.menuTree, languageCode),
                       languageCode
                     )}
                   </TableCell>
@@ -359,7 +359,7 @@ const AccessPolicyBoard = () => {
               <TableBody>
                 {rows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={3 + EDITABLE_ROLE_ORDER.length}>
+                    <TableCell colSpan={1 + EDITABLE_ROLE_ORDER.length}>
                       {getUiMessage(
                         'accessPolicy.noMenu',
                         resolveLocalizedText(ACCESS_POLICY_TEXT.noMenu, languageCode),
@@ -368,34 +368,118 @@ const AccessPolicyBoard = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  rows.map((row) => (
-                    <TableRow key={`${row.path}:${row.featureKey}`} hover>
-                      <TableCell>{row.groupLabel}</TableCell>
-                      <TableCell>
-                        <Stack spacing={0.25}>
-                          <span>{row.menuLabel}</span>
-                          <Typography variant="caption" color="text.secondary">
-                            {row.path}
-                          </Typography>
-                        </Stack>
-                      </TableCell>
-                      <TableCell>
-                        {resolveLocalizedText(FEATURE_LABELS[row.featureKey], languageCode) ||
-                          row.featureKey}
-                      </TableCell>
-                      {EDITABLE_ROLE_ORDER.map((role) => (
-                        <TableCell key={`${row.featureKey}:${role}`} align="center">
-                          <Switch
-                            size="small"
-                            checked={hasFeature(role, row.featureKey)}
-                            onChange={(event) =>
-                              setFeature(role, row.featureKey, event.target.checked)
-                            }
-                          />
+                  rows.map((row) =>
+                    row.type === 'group' ? (
+                      <TableRow
+                        key={row.id}
+                        sx={{
+                          bgcolor: 'action.hover',
+                          '& td': {
+                            borderBottomColor: 'divider',
+                          },
+                        }}
+                      >
+                        <TableCell>
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            alignItems="center"
+                            sx={{ pl: row.depth * 2 }}
+                          >
+                            {cloneMenuIcon(row.icon)}
+                            <Typography variant="subtitle2" fontWeight={700}>
+                              {row.label}
+                            </Typography>
+                          </Stack>
                         </TableCell>
-                      ))}
-                    </TableRow>
-                  ))
+                        {EDITABLE_ROLE_ORDER.map((role) => (
+                          <TableCell key={`${row.id}:${role}`} align="center">
+                            <Typography variant="caption" color="text.secondary">
+                              {countGroupFeatures(role, row.featureKeys)}/
+                              {row.featureKeys.length}
+                            </Typography>
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ) : (
+                      <TableRow key={row.id} hover>
+                        <TableCell>
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            alignItems="center"
+                            sx={{ pl: row.depth * 2 }}
+                          >
+                            {cloneMenuIcon(row.icon)}
+                            <Stack spacing={0.25} sx={{ minWidth: 0 }}>
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <Typography
+                                  variant="body2"
+                                  color={row.disabled ? 'text.disabled' : 'text.primary'}
+                                >
+                                  {row.label}
+                                </Typography>
+                                {row.disabled && (
+                                  <Chip
+                                    size="small"
+                                    variant="outlined"
+                                    label={getUiMessage(
+                                      'accessPolicy.globallyDisabled',
+                                      resolveLocalizedText(
+                                        ACCESS_POLICY_TEXT.globallyDisabled,
+                                        languageCode
+                                      ),
+                                      languageCode
+                                    )}
+                                    sx={{ height: 22 }}
+                                  />
+                                )}
+                                {row.fixedAccess && (
+                                  <Chip
+                                    size="small"
+                                    variant="outlined"
+                                    color="primary"
+                                    label={getUiMessage(
+                                      'accessPolicy.alwaysAvailable',
+                                      resolveLocalizedText(
+                                        ACCESS_POLICY_TEXT.alwaysAvailable,
+                                        languageCode
+                                      ),
+                                      languageCode
+                                    )}
+                                    sx={{ height: 22 }}
+                                  />
+                                )}
+                              </Stack>
+                              <Typography variant="caption" color="text.secondary">
+                                {row.path}
+                              </Typography>
+                            </Stack>
+                          </Stack>
+                        </TableCell>
+                        {EDITABLE_ROLE_ORDER.map((role) => (
+                          <TableCell key={`${row.featureKey}:${role}`} align="center">
+                            <Switch
+                              size="small"
+                              checked={
+                                row.fixedAccess || hasFeature(role, row.featureKey)
+                              }
+                              disabled={row.disabled || row.fixedAccess}
+                              onChange={(event) =>
+                                setFeature(role, row.featureKey, event.target.checked)
+                              }
+                              inputProps={{
+                                'aria-label': `${row.label} ${resolveLocalizedText(
+                                  ORG_ROLE_DEFAULT_LABELS[role],
+                                  languageCode
+                                )}`,
+                              }}
+                            />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    )
+                  )
                 )}
               </TableBody>
             </Table>
