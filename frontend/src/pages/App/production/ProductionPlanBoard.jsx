@@ -898,14 +898,9 @@ const ProductionPlanBoard = () => {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const drawerContainerRef = useRef(null);
   const todayKey = useMemo(() => buildDateKey(new Date()), []);
-  const isLineLeaderView = activeOrgRole === 'WORKER';
   const lineQuery = useMemo(
-    () =>
-      buildQueryString({
-        orgId: activeOrgId,
-        ...(isLineLeaderView ? { managedOnly: 1 } : {}),
-      }),
-    [activeOrgId, isLineLeaderView]
+    () => buildQueryString({ orgId: activeOrgId }),
+    [activeOrgId]
   );
 
   const lineById = useMemo(
@@ -939,12 +934,7 @@ const ProductionPlanBoard = () => {
   }, [lineWorkers]);
 
   const assignmentsForView = useMemo(() => {
-    const sourceAssignments = (Array.isArray(assignments) ? assignments : []).filter((assignment) => {
-      if (!isLineLeaderView) return true;
-      const lineIdKey = String(assignment?.lineId || '').trim();
-      if (!lineIdKey) return false;
-      return visibleLineIdSet.has(lineIdKey);
-    });
+    const sourceAssignments = Array.isArray(assignments) ? assignments : [];
 
     return sourceAssignments
       .map((assignment) => {
@@ -1029,7 +1019,6 @@ const ProductionPlanBoard = () => {
       });
   }, [
     assignments,
-    isLineLeaderView,
     visibleLineIdSet,
     cardById,
     styleById,

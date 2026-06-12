@@ -157,8 +157,7 @@ const StyleBoard = () => {
   const { activeOrgId, activeOrgType } = useAuth();
   const { languageCode } = useLanguage();
   const { navigateToPath, showNotification } = useAppActions();
-  const isBrandOrg = activeOrgType === 'BRAND';
-  const canViewProcessSummary = !isBrandOrg;
+  const canViewProcessSummary = true;
   const isStyleRouteActive = location.pathname === '/style';
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
@@ -298,17 +297,6 @@ const StyleBoard = () => {
   const rows = useMemo(
     () =>
       [...filteredStyles].sort(compareStyleDefaultOrder).map((style) => {
-        if (!canViewProcessSummary) {
-          return {
-            ...style,
-            totalPT: 0,
-            totalAT: 0,
-            totalST: 0,
-            hasTotalPT: false,
-            hasTotalAT: false,
-            hasTotalST: false,
-          };
-        }
         const processes = normalizeProcesses(style.processes);
         const totalPT =
           calculateProcessTotalForOrderQuantity(
@@ -425,7 +413,7 @@ const StyleBoard = () => {
               {rows.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={canViewProcessSummary ? 8 : 5}
+                    colSpan={8}
                     sx={{ textAlign: 'center', color: 'text.secondary' }}
                   >
                     {loading

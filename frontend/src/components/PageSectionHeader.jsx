@@ -1,6 +1,5 @@
 import React from 'react';
 import { Box, Button, Typography } from '@mui/material';
-import LastUpdaterLabel from './LastUpdaterLabel';
 
 const PageSectionHeader = ({
   title,
@@ -49,7 +48,6 @@ const PageSectionHeader = ({
           gap: 1,
         }}
       >
-        <LastUpdaterLabel />
         {resolvedActions}
       </Box>
     </Box>

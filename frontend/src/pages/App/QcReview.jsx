@@ -409,7 +409,7 @@ const resolveQcReviewEmptyMessage = ({
 };
 
 const QcReview = () => {
-  const { activeOrgId, activeFactoryId, activeOrgRole } = useAuth();
+  const { activeOrgId, activeFactoryId } = useAuth();
   const { showNotification } = useAppActions();
   const todayKey = useMemo(() => todayDateKey(), []);
 
@@ -445,15 +445,11 @@ const QcReview = () => {
     const query = buildQueryString({ orgId: activeOrgId });
     const response = await requestJSON(`/factories${query}`, { skipGlobalLoading: true }).catch(() => []);
     const safeRows = Array.isArray(response) ? response : [];
-    const visibleRows =
-      activeOrgRole === 'ADMIN' || !activeFactoryId
-        ? safeRows
-        : safeRows.filter((factory) => Number(factory?.id) === Number(activeFactoryId));
-    setFactories(visibleRows);
-    if (!toPositiveIntOrNull(selectedFactoryId) && visibleRows.length > 0) {
-      setSelectedFactoryId(toPositiveIntOrNull(visibleRows[0]?.id));
+    setFactories(safeRows);
+    if (!toPositiveIntOrNull(selectedFactoryId) && safeRows.length > 0) {
+      setSelectedFactoryId(toPositiveIntOrNull(safeRows[0]?.id));
     }
-  }, [activeFactoryId, activeOrgId, activeOrgRole, selectedFactoryId]);
+  }, [activeOrgId, selectedFactoryId]);
 
   const loadLines = useCallback(async () => {
     const factoryId = toPositiveIntOrNull(selectedFactoryId);

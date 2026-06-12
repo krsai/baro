@@ -214,7 +214,7 @@ const FactoryList = () => {
             <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
               <TableRow>
                 <TableCell sx={{ fontWeight: 'bold' }}>{text.columnName}</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', width: 80 }}>{text.columnCode}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', width: 100, whiteSpace: 'nowrap' }}>{text.columnCode}</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>{text.columnAddress}</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>{text.columnContact}</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>{text.columnManager}</TableCell>
@@ -245,7 +245,7 @@ const FactoryList = () => {
                       sx={{ cursor: 'pointer' }}
                     >
                       <TableCell>{factory.name || '-'}</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', color: 'primary.main', letterSpacing: 1 }}>{factory.factoryCode || '-'}</TableCell>
+                      <TableCell sx={{ fontWeight: 'bold', color: 'primary.main' }}>{factory.factoryCode || '-'}</TableCell>
                       <TableCell>{factory.address || '-'}</TableCell>
                       <TableCell>{formatFactoryContact(factory)}</TableCell>
                       <TableCell>{factory.manager || '-'}</TableCell>

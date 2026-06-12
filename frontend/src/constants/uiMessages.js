@@ -725,6 +725,7 @@ Object.assign(UI_MESSAGES, {
     addFactory: { ko: '\uACF5\uC7A5 \uCD94\uAC00', en: 'Add Factory', vi: 'Them nha may' },
     deleteFactory: { ko: '\uACF5\uC7A5 \uC0AD\uC81C', en: 'Delete Factory', vi: 'Xoa nha may' },
     columnName: { ko: '\uACF5\uC7A5\uBA85', en: 'Factory Name', vi: 'Ten nha may' },
+    columnCode: { ko: '\uACF5\uC7A5 \uCF54\uB4DC', en: 'Code', vi: 'Ma nha may' },
     columnAddress: { ko: '\uC8FC\uC18C', en: 'Address', vi: 'Dia chi' },
     columnContact: { ko: '\uC5F0\uB77D\uCC98', en: 'Contact', vi: 'Lien he' },
     columnManager: { ko: '\uAD00\uB9AC\uC790', en: 'Manager', vi: 'Quan ly' },

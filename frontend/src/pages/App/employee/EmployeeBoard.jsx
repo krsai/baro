@@ -249,7 +249,6 @@ const getRoleOptionsByOrgType = (orgType, languageCode = 'ko') =>
     : getOrgRoleOptions(languageCode);
 const MEMBER_REVIEWER_ROLES = new Set(['ADMIN', 'OPERATOR', 'ACCOUNTANT']);
 const LOGIN_REQUIRED_ROLES = new Set(['ADMIN', 'OPERATOR']);
-const FIXED_SALARY_VIEWER_ROLES = new Set(['ADMIN', 'ACCOUNTANT']);
 const INTERNAL_MEMBER_EMAIL_PREFIX = 'emp+';
 const INTERNAL_MEMBER_EMAIL_DOMAIN = 'baro.local';
 const ORG_MEMBERSHIPS_UPDATED_EVENT = 'baro:org-memberships-updated';
@@ -274,8 +273,6 @@ const getMemberIdentityLabel = (member) =>
   isInternalMemberEmail(member?.email) ? '' : String(member?.email || '');
 const isLoginRequiredRole = (role) =>
   LOGIN_REQUIRED_ROLES.has(String(role || '').toUpperCase());
-const canViewFixedSalaryByRole = (role) =>
-  FIXED_SALARY_VIEWER_ROLES.has(String(role || '').toUpperCase());
 const isSalaryAmountPayType = (payType) => {
   const normalizedPayType = String(payType || '').toUpperCase();
   return normalizedPayType === 'FIXED' || normalizedPayType === 'CT';
@@ -725,15 +722,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     [languageCode]
   );
   const isAdmin = overrideOrgId != null ? true : isAdminOrgRole(activeOrgRole);
-  const canViewFixedSalary =
-    overrideOrgId != null || canViewFixedSalaryByRole(activeOrgRole);
+  const canViewFixedSalary = true;
   const canManageMembers =
     overrideOrgId != null ||
     MEMBER_REVIEWER_ROLES.has(String(activeOrgRole || '').toUpperCase());
-  const operatorFactoryId =
-    !isAdmin && Number.isInteger(Number(activeFactoryId)) && Number(activeFactoryId) > 0
-      ? String(activeFactoryId)
-      : '';
+  const operatorFactoryId = '';
   const canFilterByFactory = activeOrgType !== 'BRAND' && factories.length > 0;
   const defaultPendingFactoryId = operatorFactoryId || selectedFactoryFilterId || '';
   const currentUserName = String(activeProfile?.employeeName || '').trim();
@@ -796,23 +789,14 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     try {
       const data = await requestJSON(`/factories${buildQueryString({ orgId })}`);
       const allFactories = Array.isArray(data) ? data : [];
-      const visibleFactories = isAdmin
-        ? allFactories
-        : operatorFactoryId
-          ? allFactories.filter((factory) => String(factory?.id) === operatorFactoryId)
-          : allFactories;
-      setFactories(visibleFactories);
+      setFactories(allFactories);
     } catch (_error) {
       setStatusMessage({ type: 'error', text: text('errLoadFactory', languageCode) });
     }
-  }, [isAdmin, languageCode, operatorFactoryId]);
+  }, [languageCode]);
 
   const fetchEmployees = useCallback(async (orgId, factoryId) => {
     if (!orgId) return;
-    if (!isAdmin && operatorFactoryId && !factoryId && activeOrgType !== 'BRAND') {
-      setEmployees([]);
-      return;
-    }
     try {
       const data = await requestJSON(
         `/employees${buildQueryString({
@@ -825,7 +809,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     } catch (_error) {
       setStatusMessage({ type: 'error', text: text('errLoadEmployee', languageCode) });
     }
-  }, [activeOrgType, isBrowsingOrgAsSystemAdmin, isAdmin, isSystemProfile, languageCode, operatorFactoryId]);
+  }, [isBrowsingOrgAsSystemAdmin, isSystemProfile, languageCode]);
 
   const fetchJobRoles = useCallback(async (orgId) => {
     if (!orgId) return;
@@ -859,13 +843,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       return;
     }
     if (!canFilterByFactory) {
-      if (!isAdmin) {
-        setSelectedFactoryFilterId(operatorFactoryId);
-      }
-      return;
-    }
-    if (!isAdmin) {
-      setSelectedFactoryFilterId(operatorFactoryId);
       return;
     }
     setSelectedFactoryFilterId((prev) => {
@@ -873,7 +850,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       const exists = factories.some((factory) => String(factory?.id) === String(prev));
       return exists ? prev : '';
     });
-  }, [activeOrgType, canFilterByFactory, factories, isAdmin, operatorFactoryId]);
+  }, [activeOrgType, canFilterByFactory, factories]);
 
   useEffect(() => {
     if (!activeOrgId) return;
@@ -1137,9 +1114,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     const defaultFactoryId =
       activeOrgType === 'BRAND'
         ? ''
-        : !isAdmin && operatorFactoryId
-          ? operatorFactoryId
-          : selectedFactoryFilterId || '';
+        : selectedFactoryFilterId || '';
     setDrawerMode('create');
     setSelectedMemberId(null);
     setDrawerEmail('');
@@ -1161,8 +1136,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   }, [
     activeOrgType,
     defaultWorkerJobRoleId,
-    isAdmin,
-    operatorFactoryId,
     roleOptions,
     selectedFactoryFilterId,
   ]);
@@ -1234,8 +1207,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     const resolvedStatus = normalizedLeftAt ? 'TERMINATED' : normalizedStatus;
     const normalizedDrawerEmail = normalizeEmail(drawerEmail);
     const roleNeedsLoginEmail = isLoginRequiredRole(normalizedOrgRole);
-    const selectedFactoryId =
-      !isAdmin && operatorFactoryId ? operatorFactoryId : drawerDraft.factoryId;
+    const selectedFactoryId = drawerDraft.factoryId;
 
     if (normalizedDrawerEmail && !normalizedDrawerEmail.includes('@')) {
       setStatusMessage({ type: 'error', text: text('errInvalidEmail', languageCode) });
@@ -1372,10 +1344,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     drawerEmail,
     drawerMode,
     handleEmployeeSave,
-    isAdmin,
     isDrawerSaving,
     languageCode,
-    operatorFactoryId,
     pendingMembers,
     roleOptions,
     selectedMemberId,
@@ -1630,14 +1600,10 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   required
                   value={drawerDraft.factoryId}
                   onChange={(e) => handleDrawerDraftChange({ factoryId: e.target.value })}
-                  disabled={isDrawerSaving || (!isAdmin && Boolean(operatorFactoryId))}
-                  helperText={
-                    !isAdmin && Boolean(operatorFactoryId)
-                      ? text('factoryRequiredAuto', languageCode)
-                      : text('requiredInput', languageCode)
-                  }
+                  disabled={isDrawerSaving}
+                  helperText={text('requiredInput', languageCode)}
                 >
-                  {isAdmin && <MenuItem value="">{text('factorySelect', languageCode)}</MenuItem>}
+                  <MenuItem value="">{text('factorySelect', languageCode)}</MenuItem>
                   {factories.map((factory) => (
                     <MenuItem key={factory.id} value={String(factory.id)}>
                       {factory.name}
@@ -1659,7 +1625,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   </MenuItem>
                 ))}
               </TextField>
-              {isSalaryAmountPayType(drawerDraft.payType) && canViewFixedSalary && (
+              {isSalaryAmountPayType(drawerDraft.payType) && (
                 <TextField
                   size="small"
                   label={text(
@@ -1767,10 +1733,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                                 [member.id]: e.target.value,
                               }))
                             }
-                            disabled={!isAdmin}
                             sx={{ minWidth: 150 }}
                           >
-                            {isAdmin && <MenuItem value="">{text('factorySelect', languageCode)}</MenuItem>}
+                            <MenuItem value="">{text('factorySelect', languageCode)}</MenuItem>
                             {factories.map((factory) => (
                               <MenuItem key={factory.id} value={String(factory.id)}>
                                 {factory.name}
@@ -1886,10 +1851,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   size="small"
                   value={selectedFactoryFilterId}
                   onChange={(e) => setSelectedFactoryFilterId(e.target.value)}
-                  disabled={!isAdmin}
                   sx={{ minWidth: 220, width: { xs: '100%', md: 'auto' } }}
                 >
-                  {isAdmin && <MenuItem value="">{text('allFactory', languageCode)}</MenuItem>}
+                  <MenuItem value="">{text('allFactory', languageCode)}</MenuItem>
                   {factories.map((factory) => (
                     <MenuItem key={factory.id} value={String(factory.id)}>
                       {factory.name}
@@ -1910,9 +1874,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   <TableCell>{text('roleLabel', languageCode)}</TableCell>
                   <TableCell>{text('jobLabel', languageCode)}</TableCell>
                   <TableCell>{text('payTypeColumn', languageCode)}</TableCell>
-                  {canViewFixedSalary && (
-                    <TableCell align="right">{text('fixedSalaryLabel', languageCode)}</TableCell>
-                  )}
+                  <TableCell align="right">{text('fixedSalaryLabel', languageCode)}</TableCell>
                   <TableCell>{text('statusLabel', languageCode)}</TableCell>
                   <TableCell>{text('joinedAtColumn', languageCode)}</TableCell>
                   <TableCell>{text('leftAtColumn', languageCode)}</TableCell>
@@ -1921,7 +1883,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TableBody>
                 {sortedActiveMembers.length === 0 ? (
                   <TableStatusRow
-                    colSpan={canViewFixedSalary ? 10 : 9}
+                    colSpan={10}
                     message={
                       searchTerm
                         ? text('noSearchResult', languageCode)
@@ -1971,9 +1933,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                         <TableCell>{roleLabel}</TableCell>
                         <TableCell>{jobRoleLabel}</TableCell>
                         <TableCell>{payTypeLabel}</TableCell>
-                        {canViewFixedSalary && (
-                          <TableCell align="right">{fixedSalaryDisplay}</TableCell>
-                        )}
+                        <TableCell align="right">{fixedSalaryDisplay}</TableCell>
                         <TableCell>{getEmployeeStatusLabel(member.status, languageCode)}</TableCell>
                         <TableCell>{formatDate(employee?.joinedAt || member.approvedAt)}</TableCell>
                         <TableCell>{formatDate(employee?.leftAt)}</TableCell>
