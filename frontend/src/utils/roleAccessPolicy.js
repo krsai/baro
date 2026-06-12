@@ -1,8 +1,5 @@
 import { requestJSON } from './apiClient';
-import {
-  getDefaultRoleAccessPolicy,
-  sanitizeRoleAccessPolicy,
-} from './roleAccessPolicyCore.mjs';
+import { sanitizeRoleAccessPolicy } from './roleAccessPolicyCore.mjs';
 export {
   ACCESS_FEATURE_KEYS,
   getAllowedFeaturesForRole,
@@ -16,20 +13,6 @@ export {
 } from './roleAccessPolicyCore.mjs';
 
 export const ACCESS_POLICY_STORAGE_KEY = 'baro:role-access-policy:v1';
-export const ACCESS_POLICY_CHANGED_EVENT = 'baro:role-access-policy-changed';
-
-const dispatchPolicyChangedEvent = (policy) => {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(
-    new CustomEvent(ACCESS_POLICY_CHANGED_EVENT, {
-      detail: { policy: sanitizeRoleAccessPolicy(policy) },
-    })
-  );
-};
-
-export const loadRoleAccessPolicy = () => {
-  return getDefaultRoleAccessPolicy();
-};
 
 export const loadLegacyRoleAccessPolicy = () => {
   if (typeof window === 'undefined') return null;
@@ -68,6 +51,5 @@ export const saveRoleAccessPolicy = async (policy) => {
   });
   const saved = sanitizeRoleAccessPolicy(response?.policy);
   clearLegacyRoleAccessPolicy();
-  dispatchPolicyChangedEvent(saved);
   return saved;
 };
