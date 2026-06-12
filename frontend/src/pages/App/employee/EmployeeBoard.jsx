@@ -247,7 +247,7 @@ const getRoleOptionsByOrgType = (orgType, languageCode = 'ko') =>
   String(orgType || '').toUpperCase() === 'BRAND'
     ? getOrgRoleOptions(languageCode).filter((option) => option.value !== 'WORKER')
     : getOrgRoleOptions(languageCode);
-const MEMBER_REVIEWER_ROLES = new Set(['ADMIN', 'OPERATOR']);
+const MEMBER_REVIEWER_ROLES = new Set(['ADMIN', 'OPERATOR', 'ACCOUNTANT']);
 const LOGIN_REQUIRED_ROLES = new Set(['ADMIN', 'OPERATOR']);
 const FIXED_SALARY_VIEWER_ROLES = new Set(['ADMIN', 'ACCOUNTANT']);
 const INTERNAL_MEMBER_EMAIL_PREFIX = 'emp+';
