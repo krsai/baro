@@ -544,11 +544,6 @@ const MainLayout = () => {
             icon: <HistoryIcon />,
             path: '/work-history',
           },
-          {
-            label: getUiMessage('menu.attendance', '\uCD9C\uD1F4\uADFC', languageCode),
-            icon: <ScheduleIcon />,
-            path: '/attendance',
-          },
         ],
       },
       {
@@ -612,6 +607,11 @@ const MainLayout = () => {
             badgeCount: pendingEmployeeCount,
           },
           {
+            label: getUiMessage('menu.attendance', '\uCD9C\uD1F4\uADFC', languageCode),
+            icon: <ScheduleIcon />,
+            path: '/attendance',
+          },
+          {
             label: getUiMessage('menu.customer', '\uACE0\uAC1D \uAD00\uB9AC', languageCode),
             icon: <PeopleIcon />,
             path: '/customer',
@@ -650,15 +650,15 @@ const MainLayout = () => {
           },
         ],
       },
-      {
-        label: getUiMessage('menu.attribute', '\uC18D\uC131 \uAD00\uB9AC', languageCode),
-        icon: <DnsIcon />,
-        isParent: true,
-        menuGroupKey: MENU_GROUP_KEYS.ATTRIBUTE,
-        isOpen: attributeOpen,
-        children: [
-          ...(isSystemProfile
-            ? [
+      ...(isSystemProfile
+        ? [
+            {
+              label: getUiMessage('menu.attribute', '\uC18D\uC131 \uAD00\uB9AC', languageCode),
+              icon: <DnsIcon />,
+              isParent: true,
+              menuGroupKey: MENU_GROUP_KEYS.ATTRIBUTE,
+              isOpen: attributeOpen,
+              children: [
                 {
                   label: getUiMessage(
                     'menu.attributeColors',
@@ -677,20 +677,10 @@ const MainLayout = () => {
                   icon: <DnsIcon />,
                   path: '/attribute/categories',
                 },
-              ]
-            : [
-                {
-                  label: getUiMessage(
-                    'menu.attributeProcesses',
-                    '\uACF5\uC815 \uAD00\uB9AC',
-                    languageCode
-                  ),
-                  icon: <DnsIcon />,
-                  path: '/attribute/processes',
-                },
-              ]),
-        ],
-      },
+              ],
+            },
+          ]
+        : []),
       ...(isSystemProfile
         ? [
             {
@@ -799,7 +789,6 @@ const MainLayout = () => {
           '/assignment',
           '/work-history',
           '/qc-review',
-          '/attendance',
         ];
         orderedChildren = [
           ...preferredRecordPaths.map(
@@ -823,29 +812,14 @@ const MainLayout = () => {
       menuStructureBlueprint
         .filter(
           (item) =>
-            ![MENU_GROUP_KEYS.PROCESS_MASTER, MENU_GROUP_KEYS.SYSTEM].includes(
-              item?.menuGroupKey
-            )
+            ![
+              MENU_GROUP_KEYS.ATTRIBUTE,
+              MENU_GROUP_KEYS.PROCESS_MASTER,
+              MENU_GROUP_KEYS.SYSTEM,
+            ].includes(item?.menuGroupKey)
         )
         .map((item) => {
           if (!item.isParent || !Array.isArray(item.children)) return item;
-
-          if (item.menuGroupKey === MENU_GROUP_KEYS.ATTRIBUTE) {
-            return {
-              ...item,
-              children: [
-                {
-                  label: getUiMessage(
-                    'menu.attributeProcesses',
-                    '\uACF5\uC815 \uAD00\uB9AC',
-                    languageCode
-                  ),
-                  icon: <DnsIcon />,
-                  path: '/attribute/processes',
-                },
-              ],
-            };
-          }
 
           return {
             ...item,
@@ -854,7 +828,7 @@ const MainLayout = () => {
             ),
           };
         }),
-    [languageCode, menuStructureBlueprint]
+    [menuStructureBlueprint]
   );
 
   useEffect(() => {

@@ -26,7 +26,6 @@ export const ACCESS_FEATURE_KEYS = {
   LINE: 'LINE',
   EMPLOYEE: 'EMPLOYEE',
   CUSTOMER: 'CUSTOMER',
-  ATTRIBUTE: 'ATTRIBUTE',
   PERMISSION: 'PERMISSION',
   HOLIDAY: 'HOLIDAY',
   SUBSCRIPTION: 'SUBSCRIPTION',
@@ -69,7 +68,6 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
       ACCESS_FEATURE_KEYS.LINE,
       ACCESS_FEATURE_KEYS.EMPLOYEE,
       ACCESS_FEATURE_KEYS.CUSTOMER,
-      ACCESS_FEATURE_KEYS.ATTRIBUTE,
       ACCESS_FEATURE_KEYS.HOLIDAY,
     ]),
     [ORG_ROLE_KEYS.ACCOUNTANT]: Object.freeze([
@@ -155,7 +153,12 @@ export const loadRoleAccessPolicy = () => {
   if (!raw) return getDefaultRoleAccessPolicy();
   try {
     const parsed = JSON.parse(raw);
-    return sanitizeRoleAccessPolicy(parsed);
+    const sanitized = sanitizeRoleAccessPolicy(parsed);
+    const sanitizedJson = JSON.stringify(sanitized);
+    if (raw !== sanitizedJson) {
+      window.localStorage.setItem(ACCESS_POLICY_STORAGE_KEY, sanitizedJson);
+    }
+    return sanitized;
   } catch (_error) {
     return getDefaultRoleAccessPolicy();
   }
