@@ -48,6 +48,7 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import { buildQueryString, cancelAllTrackedRequests, requestJSON } from '../utils/apiClient';
 import { subscribeOrderDeleted } from '../utils/orderSyncEvents';
@@ -71,6 +72,7 @@ const MENU_GROUP_KEYS = {
   RECORDS: 'RECORDS',
   INVENTORY: 'INVENTORY',
   ACCOUNTING: 'ACCOUNTING',
+  OPERATIONS: 'OPERATIONS',
   ADMIN: 'ADMIN',
   MISC: 'MISC',
   ATTRIBUTE: 'ATTRIBUTE',
@@ -298,6 +300,7 @@ const MainLayout = () => {
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [accountingOpen, setAccountingOpen] = useState(false);
+  const [operationsOpen, setOperationsOpen] = useState(false);
   const [miscOpen, setMiscOpen] = useState(false);
   const [attributeOpen, setAttributeOpen] = useState(false);
   const [processMasterOpen, setProcessMasterOpen] = useState(false);
@@ -321,6 +324,7 @@ const MainLayout = () => {
     setRecordsOpen(menuGroupKey === MENU_GROUP_KEYS.RECORDS);
     setInventoryOpen(menuGroupKey === MENU_GROUP_KEYS.INVENTORY);
     setAccountingOpen(menuGroupKey === MENU_GROUP_KEYS.ACCOUNTING);
+    setOperationsOpen(menuGroupKey === MENU_GROUP_KEYS.OPERATIONS);
     setAdminOpen(menuGroupKey === MENU_GROUP_KEYS.ADMIN);
     setMiscOpen(menuGroupKey === MENU_GROUP_KEYS.MISC);
     setAttributeOpen(menuGroupKey === MENU_GROUP_KEYS.ATTRIBUTE);
@@ -346,6 +350,10 @@ const MainLayout = () => {
       currentPath.startsWith('/system-onboarding')
     ) {
       setExpandedMenuGroup(MENU_GROUP_KEYS.SYSTEM);
+      return;
+    }
+    if (currentPath.startsWith('/revenue-analysis')) {
+      setExpandedMenuGroup(MENU_GROUP_KEYS.OPERATIONS);
     }
   }, [currentPath, setExpandedMenuGroup]);
 
@@ -584,6 +592,20 @@ const MainLayout = () => {
         ],
       },
       {
+        label: getUiMessage('menu.operations', '운영 관리', languageCode),
+        icon: <TrendingUpIcon />,
+        isParent: true,
+        menuGroupKey: MENU_GROUP_KEYS.OPERATIONS,
+        isOpen: operationsOpen,
+        children: [
+          {
+            label: getUiMessage('menu.revenueAnalysis', '수익 분석', languageCode),
+            icon: <TrendingUpIcon />,
+            path: '/revenue-analysis',
+          },
+        ],
+      },
+      {
         label: getUiMessage('menu.organization', '\uC870\uC9C1 \uAD00\uB9AC', languageCode),
         icon: <OrganizationIcon />,
         isParent: true,
@@ -735,6 +757,7 @@ const MainLayout = () => {
     inventoryOpen,
     languageCode,
     miscOpen,
+    operationsOpen,
     orderOpen,
     pendingEmployeeCount,
     pendingOnboardingCount,
