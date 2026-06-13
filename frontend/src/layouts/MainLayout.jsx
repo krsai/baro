@@ -1185,6 +1185,10 @@ const MainLayout = () => {
         if (nextPathname.startsWith('/attendance/') && nextPathname !== '/attendance') {
           openOptions.replacePrefix = '/attendance/';
         }
+        // For customer detail pages, keep a single detail workspace open.
+        if (nextPathname.startsWith('/customer/') && nextPathname !== '/customer') {
+          openOptions.replacePrefix = '/customer/';
+        }
         // For payroll detail pages, ensure only one detail tab is open.
         if (nextPathname.startsWith('/payroll/') && nextPathname !== '/payroll') {
           openOptions.replacePrefix = '/payroll/';
