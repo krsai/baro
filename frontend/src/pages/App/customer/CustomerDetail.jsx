@@ -4,12 +4,10 @@ import {
   Box,
   Button,
   Chip,
-  FormControlLabel,
   IconButton,
   MenuItem,
   Paper,
   Stack,
-  Switch,
   Table,
   TableBody,
   TableCell,
@@ -22,16 +20,16 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import OpenInNewRoundedIcon from '@mui/icons-material/OpenInNewRounded';
 import ExpandLessRoundedIcon from '@mui/icons-material/ExpandLessRounded';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
-import OpenInNewRoundedIcon from '@mui/icons-material/OpenInNewRounded';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import { getUiMessage } from '../../../constants/uiMessages';
-import { getStaticOptionLabel, getStaticOptionOptions } from '../../../constants/staticOptionRegistry';
+import { getStaticOptionOptions } from '../../../constants/staticOptionRegistry';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -46,206 +44,171 @@ import {
   buildCustomerPayload,
   createEmptyCustomerFormData,
   formatCustomerDate,
+  normalizeCountry,
   resolveCustomerStyleOwnerOrgId,
   resolveDefaultCountryCode,
-  normalizeCountry,
 } from './customerFormShared';
+
 const HIDDEN_BUCKETS = new Set([2, 20]);
 const PRICE_BUCKETS = ST_STANDARD_BUCKETS.filter((quantity) => !HIDDEN_BUCKETS.has(quantity));
 const TRADE_TYPES = ['CMPT', 'FOB'];
-const PROTOTYPE_STORAGE_PREFIX = 'baro:customer-pricing-prototype';
 
-const DETAIL_TEXT = {
+const TEXT = {
   ko: {
     newTab: '고객 추가',
     detailTab: '고객: {name}',
     titleNew: '고객 추가',
     titleDetail: '고객 상세',
-    subtitle: '고객 기본정보와 고객별 스타일 단가를 한 화면에서 관리합니다.',
     tabBasic: '기본정보',
     tabPricing: '단가 관리',
-    basicInfo: '기본정보',
-    pricingInfo: '단가 관리',
     saveCustomer: '고객 저장',
-    pricingSaveDraft: '브라우저 임시 저장',
-    resetDraft: '되돌리기',
     saveCustomerSuccess: '고객 정보를 저장했습니다.',
-    saveDraftSuccess: '단가 프로토타입을 이 브라우저에 저장했습니다.',
     saveError: '고객 정보를 저장하지 못했습니다.',
     customerLoadError: '고객 정보를 불러오지 못했습니다.',
+    pricingLoadError: '고객 단가를 불러오지 못했습니다.',
+    pricingSaveError: '고객 단가를 저장하지 못했습니다.',
     stylesLoadError: '스타일 목록을 불러오지 못했습니다.',
     codeRequired: '고객 코드를 입력해주세요.',
     nameRequired: '고객명을 입력해주세요.',
     pricingDisabledTitle: '고객을 먼저 저장해주세요.',
-    pricingDisabledBody: '단가 표는 저장된 고객 상세에서만 확인할 수 있습니다.',
-    prototypeNotice:
-      '단가 관리 탭은 UX 검토용 프로토타입입니다. 현재 저장은 브라우저 임시 저장으로만 동작합니다.',
+    pricingDisabledBody: '단가 관리는 저장된 고객에서만 사용할 수 있습니다.',
+    pricingPrototypeHint: '단가를 수정하면 서버에 바로 저장됩니다.',
+    customerCode: '고객 코드',
+    customerName: '고객명',
+    country: '국가',
+    registeredAt: '등록일',
+    address: '주소',
+    manager: '담당자',
+    countryCode: '국가번호',
+    phoneNumber: '전화번호',
+    email: '이메일',
+    customerPricingTitle: '고객별 스타일 단가',
     defaultTradeType: '기본 거래방식',
-    pricingMemo: '단가 메모',
-    pricingMemoPlaceholder: '고객별 거래 기준이나 예외 메모를 남겨보세요.',
     styleSearch: '스타일 검색',
-    incompleteOnly: '미입력만',
-    exceptionsOnly: '예외만',
-    showAltPrices: '보조 타입 펼치기',
     stylesCount: '스타일',
     startedCount: '입력 시작',
     completeCount: '입력 완료',
     exceptionCount: '예외',
-    primaryPrice: '기본 표',
-    alternatePrice: '보조 표',
-    styleCode: '스타일 코드',
+    saveIdle: '모든 변경이 저장되었습니다.',
+    saveSaving: '저장 중...',
+    saveErrorStatus: '저장 실패',
     styleName: '스타일명',
     pricingRule: '적용 방식',
     actions: '작업',
     emptyStyles: '연결된 스타일이 없습니다.',
     loadingStyles: '스타일을 불러오는 중입니다.',
-    draftOpen: '보조 단가',
-    draftClose: '접기',
     ruleDefault: '기본 사용',
     ruleCmpt: 'CMPT만',
     ruleFob: 'FOB만',
     ruleBoth: '둘 다',
     basicRuleSuffix: '{type} 기본',
-    compareModeHelper: '스타일별 예외가 있으면 적용 방식을 바꿔서 다른 타입 단가를 함께 입력할 수 있습니다.',
     manageStyle: '스타일 열기',
-    viewPricing: '단가 관리 열기',
-    infoSavedAt: '등록일',
-    infoCountry: '국가',
-    infoManager: '담당자',
-    infoEmail: '이메일',
-    customerName: '고객명',
-    customerCode: '고객 코드',
-    countryCode: '국가번호',
-    phoneNumber: '전화번호',
-    registeredStyles: '등록 스타일',
+    draftOpen: '보조 단가',
+    draftClose: '접기',
   },
   en: {
     newTab: 'Add Customer',
     detailTab: 'Customer: {name}',
     titleNew: 'Add Customer',
     titleDetail: 'Customer Detail',
-    subtitle: 'Manage the customer profile and customer-level style pricing together.',
     tabBasic: 'Basic Info',
     tabPricing: 'Pricing',
-    basicInfo: 'Basic Info',
-    pricingInfo: 'Pricing',
     saveCustomer: 'Save Customer',
-    pricingSaveDraft: 'Save Browser Draft',
-    resetDraft: 'Revert',
     saveCustomerSuccess: 'Customer information has been saved.',
-    saveDraftSuccess: 'Pricing prototype draft was saved in this browser.',
     saveError: 'Failed to save customer information.',
     customerLoadError: 'Failed to load customer information.',
+    pricingLoadError: 'Failed to load pricing data.',
+    pricingSaveError: 'Failed to save pricing data.',
     stylesLoadError: 'Failed to load styles.',
     codeRequired: 'Enter a customer code.',
     nameRequired: 'Enter a customer name.',
     pricingDisabledTitle: 'Save the customer first.',
-    pricingDisabledBody: 'The pricing matrix is available after the customer record exists.',
-    prototypeNotice:
-      'The pricing tab is a UX prototype. Saving currently writes to a browser-only draft.',
+    pricingDisabledBody: 'Pricing is available only after the customer exists.',
+    pricingPrototypeHint: 'Changes save to the server automatically.',
+    customerCode: 'Customer Code',
+    customerName: 'Customer Name',
+    country: 'Country',
+    registeredAt: 'Registered',
+    address: 'Address',
+    manager: 'Manager',
+    countryCode: 'Country Code',
+    phoneNumber: 'Phone Number',
+    email: 'Email',
+    customerPricingTitle: 'Customer Style Pricing',
     defaultTradeType: 'Default Trade Type',
-    pricingMemo: 'Pricing Memo',
-    pricingMemoPlaceholder: 'Leave notes for the customer pricing policy or exceptions.',
     styleSearch: 'Search styles',
-    incompleteOnly: 'Incomplete only',
-    exceptionsOnly: 'Exceptions only',
-    showAltPrices: 'Expand alternate prices',
     stylesCount: 'Styles',
     startedCount: 'Started',
     completeCount: 'Complete',
     exceptionCount: 'Exceptions',
-    primaryPrice: 'Primary grid',
-    alternatePrice: 'Alternate grid',
-    styleCode: 'Style Code',
+    saveIdle: 'All changes saved.',
+    saveSaving: 'Saving...',
+    saveErrorStatus: 'Save failed',
     styleName: 'Style Name',
     pricingRule: 'Rule',
     actions: 'Actions',
     emptyStyles: 'No linked styles found.',
     loadingStyles: 'Loading styles...',
-    draftOpen: 'Alt prices',
-    draftClose: 'Collapse',
     ruleDefault: 'Use default',
     ruleCmpt: 'CMPT only',
     ruleFob: 'FOB only',
     ruleBoth: 'Both',
     basicRuleSuffix: 'Default {type}',
-    compareModeHelper:
-      'Switch a style to an exception rule when it needs the other trade type or both.',
     manageStyle: 'Open style',
-    viewPricing: 'Open pricing',
-    infoSavedAt: 'Registered',
-    infoCountry: 'Country',
-    infoManager: 'Manager',
-    infoEmail: 'Email',
-    customerName: 'Customer Name',
-    customerCode: 'Customer Code',
-    countryCode: 'Country Code',
-    phoneNumber: 'Phone Number',
-    registeredStyles: 'Linked styles',
+    draftOpen: 'Alt prices',
+    draftClose: 'Collapse',
   },
   vi: {
     newTab: 'Them khach hang',
     detailTab: 'Khach hang: {name}',
     titleNew: 'Them khach hang',
     titleDetail: 'Chi tiet khach hang',
-    subtitle: 'Quan ly thong tin khach hang va bang don gia theo style trong cung mot man hinh.',
     tabBasic: 'Thong tin co ban',
     tabPricing: 'Don gia',
-    basicInfo: 'Thong tin co ban',
-    pricingInfo: 'Don gia',
     saveCustomer: 'Luu khach hang',
-    pricingSaveDraft: 'Luu nhap tren trinh duyet',
-    resetDraft: 'Hoan tac',
     saveCustomerSuccess: 'Da luu thong tin khach hang.',
-    saveDraftSuccess: 'Da luu ban nhap don gia tren trinh duyet.',
     saveError: 'Khong the luu thong tin khach hang.',
     customerLoadError: 'Khong the tai thong tin khach hang.',
+    pricingLoadError: 'Khong the tai don gia khach hang.',
+    pricingSaveError: 'Khong the luu don gia khach hang.',
     stylesLoadError: 'Khong the tai danh sach style.',
     codeRequired: 'Hay nhap ma khach hang.',
     nameRequired: 'Hay nhap ten khach hang.',
     pricingDisabledTitle: 'Hay luu khach hang truoc.',
-    pricingDisabledBody: 'Bang don gia chi hien khi da co ban ghi khach hang.',
-    prototypeNotice:
-      'Tab don gia la ban mau UX. Hien tai chi luu tam tren trinh duyet.',
+    pricingDisabledBody: 'Chi co the quan ly don gia sau khi da tao khach hang.',
+    pricingPrototypeHint: 'Moi thay doi se duoc luu ngay len may chu.',
+    customerCode: 'Ma khach hang',
+    customerName: 'Ten khach hang',
+    country: 'Quoc gia',
+    registeredAt: 'Ngay dang ky',
+    address: 'Dia chi',
+    manager: 'Nguoi phu trach',
+    countryCode: 'Ma quoc gia',
+    phoneNumber: 'So dien thoai',
+    email: 'Email',
+    customerPricingTitle: 'Don gia style theo khach hang',
     defaultTradeType: 'Loai giao dich mac dinh',
-    pricingMemo: 'Ghi chu don gia',
-    pricingMemoPlaceholder: 'Ghi chu chinh sach gia hoac ngoai le cho khach hang.',
     styleSearch: 'Tim style',
-    incompleteOnly: 'Chi hien thieu',
-    exceptionsOnly: 'Chi hien ngoai le',
-    showAltPrices: 'Mo don gia bo sung',
     stylesCount: 'Style',
     startedCount: 'Da nhap',
     completeCount: 'Hoan tat',
     exceptionCount: 'Ngoai le',
-    primaryPrice: 'Bang chinh',
-    alternatePrice: 'Bang phu',
-    styleCode: 'Ma style',
+    saveIdle: 'Da luu tat ca thay doi.',
+    saveSaving: 'Dang luu...',
+    saveErrorStatus: 'Luu that bai',
     styleName: 'Ten style',
     pricingRule: 'Quy tac',
     actions: 'Tac vu',
     emptyStyles: 'Khong co style lien ket.',
     loadingStyles: 'Dang tai style...',
-    draftOpen: 'Gia bo sung',
-    draftClose: 'Thu gon',
     ruleDefault: 'Dung mac dinh',
     ruleCmpt: 'Chi CMPT',
     ruleFob: 'Chi FOB',
     ruleBoth: 'Ca hai',
     basicRuleSuffix: 'Mac dinh {type}',
-    compareModeHelper:
-      'Doi quy tac cua tung style neu can giao dich khac loai hoac can luu ca hai loai gia.',
     manageStyle: 'Mo style',
-    viewPricing: 'Mo don gia',
-    infoSavedAt: 'Ngay dang ky',
-    infoCountry: 'Quoc gia',
-    infoManager: 'Nguoi phu trach',
-    infoEmail: 'Email',
-    customerName: 'Ten khach hang',
-    customerCode: 'Ma khach hang',
-    countryCode: 'Ma quoc gia',
-    phoneNumber: 'So dien thoai',
-    registeredStyles: 'Style lien ket',
+    draftOpen: 'Gia bo sung',
+    draftClose: 'Thu gon',
   },
 };
 
@@ -254,12 +217,11 @@ const createMessageGetter = (languageCode) => {
     languageCode === 'ko' || languageCode === 'en' || languageCode === 'vi'
       ? languageCode
       : 'en';
-  const dictionary = DETAIL_TEXT[locale] || DETAIL_TEXT.en;
+  const dictionary = TEXT[locale] || TEXT.en;
   return (key, params = {}) =>
     Object.entries(params).reduce(
-      (message, [token, value]) =>
-        message.replaceAll(`{${token}}`, String(value ?? '')),
-      dictionary[key] ?? DETAIL_TEXT.en[key] ?? key
+      (message, [token, value]) => message.replaceAll(`{${token}}`, String(value ?? '')),
+      dictionary[key] ?? TEXT.en[key] ?? key
     );
 };
 
@@ -273,7 +235,6 @@ const createEmptyPricingRow = () => ({
 
 const createEmptyPricingDraft = () => ({
   defaultTradeType: 'CMPT',
-  memo: '',
   rows: {},
 });
 
@@ -310,8 +271,6 @@ const normalizePricingRow = (value = {}) => {
 const normalizePricingDraft = (value = {}) => {
   const next = createEmptyPricingDraft();
   next.defaultTradeType = normalizeTradeType(value?.defaultTradeType);
-  next.memo = typeof value?.memo === 'string' ? value.memo : '';
-
   if (value?.rows && typeof value.rows === 'object') {
     Object.entries(value.rows).forEach(([styleId, rowValue]) => {
       const key = String(styleId || '').trim();
@@ -319,27 +278,7 @@ const normalizePricingDraft = (value = {}) => {
       next.rows[key] = normalizePricingRow(rowValue);
     });
   }
-
   return next;
-};
-
-const getPricingStorageKey = (orgId, customerId) =>
-  `${PROTOTYPE_STORAGE_PREFIX}:${orgId || 'global'}:${customerId || 'new'}`;
-
-const readPricingDraft = (storageKey) => {
-  if (typeof window === 'undefined' || !storageKey) return createEmptyPricingDraft();
-  try {
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) return createEmptyPricingDraft();
-    return normalizePricingDraft(JSON.parse(raw));
-  } catch (_error) {
-    return createEmptyPricingDraft();
-  }
-};
-
-const writePricingDraft = (storageKey, draft) => {
-  if (typeof window === 'undefined' || !storageKey) return;
-  window.localStorage.setItem(storageKey, JSON.stringify(normalizePricingDraft(draft)));
 };
 
 const mergeDraftWithStyles = (draft, styles = []) => {
@@ -376,20 +315,13 @@ const hasAnyPriceForTradeType = (row, tradeType) =>
 const hasCompletePriceForTradeType = (row, tradeType) =>
   PRICE_BUCKETS.every((bucketQuantity) => hasBucketValue(row, tradeType, bucketQuantity));
 
-const formatPriceDisplay = (value) => {
-  if (value == null || value === '') return '';
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return String(value);
-  return numeric % 1 === 0 ? String(numeric) : numeric.toFixed(2);
-};
-
 const compareStyles = (left, right) => {
-  const codeDiff = String(left?.styleCode || '').localeCompare(String(right?.styleCode || ''), undefined, {
+  const nameDiff = String(left?.name || '').localeCompare(String(right?.name || ''), undefined, {
     numeric: true,
     sensitivity: 'base',
   });
-  if (codeDiff !== 0) return codeDiff;
-  return String(left?.name || '').localeCompare(String(right?.name || ''), undefined, {
+  if (nameDiff !== 0) return nameDiff;
+  return String(left?.styleCode || '').localeCompare(String(right?.styleCode || ''), undefined, {
     numeric: true,
     sensitivity: 'base',
   });
@@ -403,7 +335,7 @@ const CustomerDetail = () => {
   const { languageCode } = useLanguage();
   const { showNotification, navigateToPath } = useAppActions();
 
-  const detailMessage = useMemo(() => createMessageGetter(languageCode), [languageCode]);
+  const t = useMemo(() => createMessageGetter(languageCode), [languageCode]);
   const customerId = String(customerIdParam || '').trim();
   const isNew = customerId === 'new';
   const customerQuery = useMemo(() => buildQueryString({ orgId: activeOrgId }), [activeOrgId]);
@@ -423,14 +355,17 @@ const CustomerDetail = () => {
   const [originalCustomerData, setOriginalCustomerData] = useState(createEmptyCustomerFormData);
   const [loadingCustomer, setLoadingCustomer] = useState(!isNew);
   const [savingCustomer, setSavingCustomer] = useState(false);
-  const [pricingDraft, setPricingDraft] = useState(createEmptyPricingDraft);
-  const [savedPricingSnapshot, setSavedPricingSnapshot] = useState(JSON.stringify(createEmptyPricingDraft()));
-  const [loadingStyles, setLoadingStyles] = useState(false);
+
   const [styles, setStyles] = useState([]);
+  const [loadingStyles, setLoadingStyles] = useState(false);
+  const [pricingDraft, setPricingDraft] = useState(createEmptyPricingDraft);
+  const [savedPricingSnapshot, setSavedPricingSnapshot] = useState(
+    JSON.stringify(createEmptyPricingDraft())
+  );
+  const [pricingLoaded, setPricingLoaded] = useState(false);
+  const [pricingSaveState, setPricingSaveState] = useState('idle');
+  const [pricingSaveError, setPricingSaveError] = useState('');
   const [styleSearchTerm, setStyleSearchTerm] = useState('');
-  const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
-  const [showExceptionsOnly, setShowExceptionsOnly] = useState(false);
-  const [showAlternatePrices, setShowAlternatePrices] = useState(false);
   const [expandedStyleIds, setExpandedStyleIds] = useState({});
 
   const countryOptions = useMemo(
@@ -441,14 +376,22 @@ const CustomerDetail = () => {
   const detailTabLabel = useMemo(
     () =>
       isNew
-        ? detailMessage('newTab')
-        : detailMessage('detailTab', {
+        ? t('newTab')
+        : t('detailTab', {
             name:
               resolveCustomerDisplayName(customerFormData, languageCode) ||
               resolveCustomerDisplayName(originalCustomerData, languageCode) ||
               customerId,
           }),
-    [customerFormData, customerId, detailMessage, isNew, languageCode, originalCustomerData]
+    [customerFormData, customerId, isNew, languageCode, originalCustomerData, t]
+  );
+
+  const customerName = useMemo(
+    () =>
+      resolveCustomerDisplayName(customerFormData, languageCode) ||
+      customerFormData.code ||
+      t('titleDetail'),
+    [customerFormData, languageCode, t]
   );
 
   useEffect(() => {
@@ -481,9 +424,8 @@ const CustomerDetail = () => {
         const matched = Array.isArray(customers)
           ? customers.find((item) => String(item?.id || '') === customerId)
           : null;
-
         if (!matched) {
-          throw new Error(detailMessage('customerLoadError'));
+          throw new Error(t('customerLoadError'));
         }
 
         const nextData = buildCustomerFormData(matched);
@@ -492,7 +434,7 @@ const CustomerDetail = () => {
         setOriginalCustomerData(nextData);
       } catch (error) {
         if (!active) return;
-        showNotification(error?.message || detailMessage('customerLoadError'), 'error');
+        showNotification(error?.message || t('customerLoadError'), 'error');
       } finally {
         if (active) {
           setLoadingCustomer(false);
@@ -504,12 +446,7 @@ const CustomerDetail = () => {
     return () => {
       active = false;
     };
-  }, [customerId, customerQuery, detailMessage, isNew, showNotification]);
-
-  const pricingStorageKey = useMemo(
-    () => (isNew ? '' : getPricingStorageKey(activeOrgId, customerId)),
-    [activeOrgId, customerId, isNew]
-  );
+  }, [customerId, customerQuery, isNew, showNotification, t]);
 
   const styleOwnerOrgId = useMemo(
     () => resolveCustomerStyleOwnerOrgId(customerFormData, activeOrgId),
@@ -519,36 +456,42 @@ const CustomerDetail = () => {
   useEffect(() => {
     let active = true;
 
-    const loadCustomerStyles = async () => {
-      if (isNew || !styleOwnerOrgId) {
-        setStyles([]);
-        setPricingDraft(createEmptyPricingDraft());
-        setSavedPricingSnapshot(JSON.stringify(createEmptyPricingDraft()));
+    const loadPricing = async () => {
+      if (isNew || !loadedTabs.pricing || !styleOwnerOrgId || !customerFormData.id) {
         return;
       }
 
       setLoadingStyles(true);
+      setPricingLoaded(false);
+      setPricingSaveState('idle');
+      setPricingSaveError('');
+
       try {
-        const nextStyles = await fetchStyles({
-          orgId: activeOrgId,
-          ownerOrgId: styleOwnerOrgId,
-          compact: true,
-          forceRefresh: true,
-          skipGlobalLoading: true,
-        });
+        const [nextStyles, pricingResponse] = await Promise.all([
+          fetchStyles({
+            orgId: activeOrgId,
+            ownerOrgId: styleOwnerOrgId,
+            compact: true,
+            forceRefresh: true,
+            skipGlobalLoading: true,
+          }),
+          requestJSON(`/customers/${customerId}/pricing${customerQuery}`, {
+            skipGlobalLoading: true,
+          }),
+        ]);
 
         if (!active) return;
         const sortedStyles = [...nextStyles].sort(compareStyles);
-        setStyles(sortedStyles);
-
-        const mergedDraft = mergeDraftWithStyles(readPricingDraft(pricingStorageKey), sortedStyles);
+        const mergedDraft = mergeDraftWithStyles(pricingResponse, sortedStyles);
         const snapshot = JSON.stringify(mergedDraft);
+        setStyles(sortedStyles);
+        setExpandedStyleIds({});
         setPricingDraft(mergedDraft);
         setSavedPricingSnapshot(snapshot);
+        setPricingLoaded(true);
       } catch (error) {
         if (!active) return;
-        setStyles([]);
-        showNotification(error?.message || detailMessage('stylesLoadError'), 'error');
+        showNotification(error?.message || t('pricingLoadError'), 'error');
       } finally {
         if (active) {
           setLoadingStyles(false);
@@ -556,11 +499,21 @@ const CustomerDetail = () => {
       }
     };
 
-    loadCustomerStyles();
+    loadPricing();
     return () => {
       active = false;
     };
-  }, [activeOrgId, detailMessage, isNew, pricingStorageKey, showNotification, styleOwnerOrgId]);
+  }, [
+    activeOrgId,
+    customerFormData.id,
+    customerId,
+    customerQuery,
+    isNew,
+    loadedTabs.pricing,
+    showNotification,
+    styleOwnerOrgId,
+    t,
+  ]);
 
   const customerDirty = useMemo(
     () => JSON.stringify(customerFormData) !== JSON.stringify(originalCustomerData),
@@ -571,6 +524,45 @@ const CustomerDetail = () => {
     [pricingDraft, savedPricingSnapshot]
   );
   useUnsavedChanges(customerDirty || pricingDirty);
+
+  useEffect(() => {
+    if (isNew || !pricingLoaded) return undefined;
+    const nextSnapshot = JSON.stringify(pricingDraft);
+    if (nextSnapshot === savedPricingSnapshot) return undefined;
+
+    const controller = new AbortController();
+    const timerId = window.setTimeout(async () => {
+      setPricingSaveState('saving');
+      setPricingSaveError('');
+      try {
+        const response = await requestJSON(`/customers/${customerId}/pricing${customerQuery}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(pricingDraft),
+          skipGlobalLoading: true,
+          signal: controller.signal,
+        });
+
+        if (controller.signal.aborted) return;
+        const mergedDraft = mergeDraftWithStyles(response, styles);
+        const mergedSnapshot = JSON.stringify(mergedDraft);
+        setSavedPricingSnapshot(mergedSnapshot);
+        setPricingDraft((prev) =>
+          JSON.stringify(prev) === nextSnapshot ? mergedDraft : prev
+        );
+        setPricingSaveState('idle');
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setPricingSaveState('error');
+        setPricingSaveError(error?.message || t('pricingSaveError'));
+      }
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timerId);
+      controller.abort();
+    };
+  }, [customerId, customerQuery, isNew, pricingDraft, pricingLoaded, savedPricingSnapshot, styles, t]);
 
   const handleBasicFieldChange = useCallback((event) => {
     const { name, value } = event.target;
@@ -591,11 +583,11 @@ const CustomerDetail = () => {
 
     const payload = buildCustomerPayload(customerFormData);
     if (!payload.code) {
-      showNotification(detailMessage('codeRequired'), 'error');
+      showNotification(t('codeRequired'), 'error');
       return;
     }
     if (!payload.name) {
-      showNotification(detailMessage('nameRequired'), 'error');
+      showNotification(t('nameRequired'), 'error');
       return;
     }
 
@@ -609,15 +601,14 @@ const CustomerDetail = () => {
           body: JSON.stringify(payload),
         }
       );
-
       const nextData = buildCustomerFormData(response);
       setCustomerFormData(nextData);
       setOriginalCustomerData(nextData);
-      showNotification(detailMessage('saveCustomerSuccess'), 'success');
+      showNotification(t('saveCustomerSuccess'), 'success');
 
       if (isNew) {
         navigateToPath(`/customer/${response.id}`, {
-          label: detailMessage('detailTab', {
+          label: t('detailTab', {
             name: resolveCustomerDisplayName(response, languageCode) || response?.code || response?.id,
           }),
           closeTabId: '/customer/new',
@@ -625,7 +616,7 @@ const CustomerDetail = () => {
         });
       }
     } catch (error) {
-      showNotification(error?.message || detailMessage('saveError'), 'error');
+      showNotification(error?.message || t('saveError'), 'error');
     } finally {
       setSavingCustomer(false);
     }
@@ -633,22 +624,24 @@ const CustomerDetail = () => {
     customerFormData,
     customerId,
     customerQuery,
-    detailMessage,
     isNew,
     languageCode,
     navigateToPath,
     savingCustomer,
     showNotification,
+    t,
   ]);
 
   const updatePricingDraft = useCallback((updater) => {
-    setPricingDraft((prev) => normalizePricingDraft(typeof updater === 'function' ? updater(prev) : updater));
+    setPricingDraft((prev) =>
+      normalizePricingDraft(typeof updater === 'function' ? updater(prev) : updater)
+    );
   }, []);
 
-  const handlePricingMetaChange = useCallback((field, value) => {
+  const handleDefaultTradeTypeChange = useCallback((nextTradeType) => {
     updatePricingDraft((prev) => ({
       ...prev,
-      [field]: value,
+      defaultTradeType: nextTradeType,
     }));
   }, [updatePricingDraft]);
 
@@ -669,9 +662,7 @@ const CustomerDetail = () => {
     const normalizedValue = normalizePriceInput(rawValue);
     updatePricingDraft((prev) => {
       const currentRow = normalizePricingRow(prev.rows[styleId]);
-      const nextTradeTypeMap = {
-        ...currentRow.prices[tradeType],
-      };
+      const nextTradeTypeMap = { ...currentRow.prices[tradeType] };
 
       if (normalizedValue === '') {
         delete nextTradeTypeMap[bucketQuantity];
@@ -695,38 +686,16 @@ const CustomerDetail = () => {
     });
   }, [updatePricingDraft]);
 
-  const handleSavePricingDraft = useCallback(() => {
-    if (!pricingStorageKey) return;
-    const normalized = normalizePricingDraft(pricingDraft);
-    writePricingDraft(pricingStorageKey, normalized);
-    setSavedPricingSnapshot(JSON.stringify(normalized));
-    showNotification(detailMessage('saveDraftSuccess'), 'success');
-  }, [detailMessage, pricingDraft, pricingStorageKey, showNotification]);
-
-  const handleResetPricingDraft = useCallback(() => {
-    const restored = normalizePricingDraft(JSON.parse(savedPricingSnapshot));
-    setPricingDraft(restored);
-  }, [savedPricingSnapshot]);
-
   const handleOpenStyle = useCallback((style) => {
-    const ownerOrgId = resolveCustomerStyleOwnerOrgId({ brandOrgId: style?.ownerOrgId }, activeOrgId);
+    const ownerOrgId = resolveCustomerStyleOwnerOrgId(
+      { brandOrgId: style?.ownerOrgId },
+      activeOrgId
+    );
     const query = buildQueryString({ ownerOrgId });
     navigateToPath(`/style/${style.id}${query}`, {
       label: style?.name || style?.styleCode || style?.id || getUiMessage('menu.style', 'Style', languageCode),
     });
   }, [activeOrgId, languageCode, navigateToPath]);
-
-  const openPricingTabFromBasic = useCallback(() => {
-    const params = new URLSearchParams(location.search);
-    params.set('tab', 'pricing');
-    navigate(
-      {
-        pathname: location.pathname,
-        search: `?${params.toString()}`,
-      },
-      { replace: true }
-    );
-  }, [location.pathname, location.search, navigate]);
 
   const handleTabChange = useCallback((_, nextTab) => {
     if (!nextTab) return;
@@ -741,6 +710,7 @@ const CustomerDetail = () => {
     } else {
       params.delete('tab');
     }
+
     const nextSearch = params.toString();
     navigate(
       {
@@ -754,21 +724,11 @@ const CustomerDetail = () => {
   const filteredStyles = useMemo(() => {
     const lowerSearch = styleSearchTerm.trim().toLowerCase();
     return styles.filter((style) => {
-      const row = normalizePricingRow(pricingDraft.rows[style.id]);
-      const primaryTradeType = resolvePrimaryTradeType(row, pricingDraft.defaultTradeType);
-      const isException = row.mode !== 'DEFAULT';
-      const isIncomplete = !hasCompletePriceForTradeType(row, primaryTradeType);
       const matchesSearch =
-        !lowerSearch ||
-        String(style?.styleCode || '').toLowerCase().includes(lowerSearch) ||
-        String(style?.name || '').toLowerCase().includes(lowerSearch);
-
-      if (!matchesSearch) return false;
-      if (showIncompleteOnly && !isIncomplete) return false;
-      if (showExceptionsOnly && !isException) return false;
-      return true;
+        !lowerSearch || String(style?.name || '').toLowerCase().includes(lowerSearch);
+      return matchesSearch;
     });
-  }, [pricingDraft, showExceptionsOnly, showIncompleteOnly, styleSearchTerm, styles]);
+  }, [styleSearchTerm, styles]);
 
   const pricingStats = useMemo(() => {
     let started = 0;
@@ -791,65 +751,25 @@ const CustomerDetail = () => {
     };
   }, [pricingDraft, styles]);
 
-  const summaryItems = useMemo(
-    () => [
-      {
-        label: detailMessage('infoCountry'),
-        value:
-          getStaticOptionLabel(
-            'country',
-            normalizeCountry(customerFormData.country),
-            customerFormData.country || '-',
-            languageCode
-          ) || '-',
-      },
-      {
-        label: detailMessage('infoManager'),
-        value: customerFormData.manager || '-',
-      },
-      {
-        label: detailMessage('infoEmail'),
-        value: customerFormData.email || '-',
-      },
-      {
-        label: detailMessage('registeredStyles'),
-        value: String(pricingStats.total || 0),
-      },
-    ],
-    [customerFormData.country, customerFormData.email, customerFormData.manager, detailMessage, languageCode, pricingStats.total]
-  );
+  const pricingStatusLabel = useMemo(() => {
+    if (pricingSaveState === 'error') return t('saveErrorStatus');
+    if (pricingDirty || pricingSaveState === 'saving') return t('saveSaving');
+    return t('saveIdle');
+  }, [pricingDirty, pricingSaveState, t]);
 
   return (
     <AppPageContainer
-      title={isNew ? detailMessage('titleNew') : detailMessage('titleDetail')}
+      title={isNew ? t('titleNew') : t('titleDetail')}
       titleActions={
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-          {currentTab === 'pricing' ? (
-            <>
-              <Button
-                variant="outlined"
-                onClick={handleResetPricingDraft}
-                disabled={!pricingDirty}
-              >
-                {detailMessage('resetDraft')}
-              </Button>
-              <SaveButton
-                onClick={handleSavePricingDraft}
-                disabled={loadingStyles || isNew || !pricingDirty}
-              >
-                {detailMessage('pricingSaveDraft')}
-              </SaveButton>
-            </>
-          ) : (
-            <SaveButton
-              onClick={handleCustomerSave}
-              disabled={loadingCustomer || savingCustomer || !customerDirty}
-              loading={savingCustomer}
-            >
-              {detailMessage('saveCustomer')}
-            </SaveButton>
-          )}
-        </Stack>
+        currentTab === 'basic' ? (
+          <SaveButton
+            onClick={handleCustomerSave}
+            disabled={loadingCustomer || savingCustomer || !customerDirty}
+            loading={savingCustomer}
+          >
+            {t('saveCustomer')}
+          </SaveButton>
+        ) : null
       }
       toolbar={
         <PageToolbar
@@ -860,73 +780,16 @@ const CustomerDetail = () => {
               onChange={handleTabChange}
               aria-label="customer detail tabs"
             >
-              <ToggleButton value="basic">{detailMessage('tabBasic')}</ToggleButton>
+              <ToggleButton value="basic">{t('tabBasic')}</ToggleButton>
               <ToggleButton value="pricing" disabled={isNew}>
-                {detailMessage('tabPricing')}
+                {t('tabPricing')}
               </ToggleButton>
             </ToggleButtonGroup>
           }
-          right={(
-            <Typography variant="body2" color="text.secondary">
-              {detailMessage('subtitle')}
-            </Typography>
-          )}
         />
       }
     >
       <Stack spacing={2.5}>
-        <Paper variant="outlined" sx={{ borderRadius: 2, p: 2.25 }}>
-          <Stack spacing={1.5}>
-            <Stack
-              direction={{ xs: 'column', md: 'row' }}
-              spacing={1.5}
-              justifyContent="space-between"
-              sx={{ alignItems: { md: 'center' } }}
-            >
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                  {resolveCustomerDisplayName(customerFormData, languageCode) ||
-                    customerFormData.code ||
-                    detailMessage('titleNew')}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {customerFormData.code || '-'}
-                </Typography>
-              </Box>
-              {!isNew && currentTab !== 'pricing' && (
-                <Button
-                  variant="outlined"
-                  endIcon={<OpenInNewRoundedIcon fontSize="small" />}
-                  onClick={openPricingTabFromBasic}
-                >
-                  {detailMessage('viewPricing')}
-                </Button>
-              )}
-            </Stack>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap flexWrap="wrap">
-              {summaryItems.map((item) => (
-                <Box
-                  key={item.label}
-                  sx={{
-                    minWidth: 148,
-                    px: 1.5,
-                    py: 1.25,
-                    borderRadius: 1.5,
-                    bgcolor: 'rgba(15, 23, 42, 0.03)',
-                  }}
-                >
-                  <Typography variant="caption" color="text.secondary">
-                    {item.label}
-                  </Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                    {item.value}
-                  </Typography>
-                </Box>
-              ))}
-            </Stack>
-          </Stack>
-        </Paper>
-
         {loadedTabs.basic && (
           <Box sx={{ display: currentTab === 'basic' ? 'block' : 'none' }}>
             <Paper variant="outlined" sx={{ borderRadius: 2, p: 3 }}>
@@ -935,7 +798,7 @@ const CustomerDetail = () => {
                   <TextField
                     fullWidth
                     required
-                    label={detailMessage('customerCode')}
+                    label={t('customerCode')}
                     name="code"
                     value={customerFormData.code}
                     onChange={handleBasicFieldChange}
@@ -944,7 +807,7 @@ const CustomerDetail = () => {
                   <TextField
                     fullWidth
                     required
-                    label={detailMessage('customerName')}
+                    label={t('customerName')}
                     name="name"
                     value={customerFormData.name}
                     onChange={handleBasicFieldChange}
@@ -954,7 +817,7 @@ const CustomerDetail = () => {
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
                   <TextField
                     fullWidth
-                    label="고객명 (한국어)"
+                    label="고객명 (한글)"
                     name="nameKo"
                     value={customerFormData.nameKo}
                     onChange={handleBasicFieldChange}
@@ -973,7 +836,7 @@ const CustomerDetail = () => {
                   <TextField
                     fullWidth
                     select
-                    label={detailMessage('infoCountry')}
+                    label={t('country')}
                     name="country"
                     value={normalizeCountry(customerFormData.country) || 'VN'}
                     onChange={handleCountryChange}
@@ -987,14 +850,14 @@ const CustomerDetail = () => {
                   </TextField>
                   <TextField
                     fullWidth
-                    label={detailMessage('infoSavedAt')}
+                    label={t('registeredAt')}
                     value={formatCustomerDate(customerFormData.registeredAt, languageCode)}
                     disabled
                   />
                 </Stack>
                 <TextField
                   fullWidth
-                  label={getUiMessage('customerBoard.address', 'Address', languageCode)}
+                  label={t('address')}
                   name="address"
                   value={customerFormData.address}
                   onChange={handleBasicFieldChange}
@@ -1002,7 +865,7 @@ const CustomerDetail = () => {
                 />
                 <TextField
                   fullWidth
-                  label={detailMessage('infoManager')}
+                  label={t('manager')}
                   name="manager"
                   value={customerFormData.manager}
                   onChange={handleBasicFieldChange}
@@ -1011,7 +874,7 @@ const CustomerDetail = () => {
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
                   <TextField
                     fullWidth
-                    label={detailMessage('countryCode')}
+                    label={t('countryCode')}
                     name="countryCode"
                     value={customerFormData.countryCode}
                     onChange={handleBasicFieldChange}
@@ -1019,7 +882,7 @@ const CustomerDetail = () => {
                   />
                   <TextField
                     fullWidth
-                    label={detailMessage('phoneNumber')}
+                    label={t('phoneNumber')}
                     name="phoneNumber"
                     value={customerFormData.phoneNumber}
                     onChange={handleBasicFieldChange}
@@ -1028,7 +891,7 @@ const CustomerDetail = () => {
                 </Stack>
                 <TextField
                   fullWidth
-                  label={detailMessage('infoEmail')}
+                  label={t('email')}
                   name="email"
                   type="email"
                   value={customerFormData.email}
@@ -1045,25 +908,36 @@ const CustomerDetail = () => {
             {isNew ? (
               <Alert severity="info">
                 <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                  {detailMessage('pricingDisabledTitle')}
+                  {t('pricingDisabledTitle')}
                 </Typography>
-                <Typography variant="body2">{detailMessage('pricingDisabledBody')}</Typography>
+                <Typography variant="body2">{t('pricingDisabledBody')}</Typography>
               </Alert>
             ) : (
               <Stack spacing={2}>
-                <Alert severity="info">{detailMessage('prototypeNotice')}</Alert>
-
-                <Paper variant="outlined" sx={{ borderRadius: 2, p: 2.25 }}>
-                  <Stack spacing={2}>
+                <Paper variant="outlined" sx={{ borderRadius: 2, p: 2 }}>
+                  <Stack spacing={1.75}>
                     <Stack
-                      direction={{ xs: 'column', lg: 'row' }}
-                      spacing={2}
+                      direction={{ xs: 'column', xl: 'row' }}
+                      spacing={1.5}
                       justifyContent="space-between"
-                      sx={{ alignItems: { lg: 'center' } }}
+                      sx={{ alignItems: { xl: 'center' } }}
                     >
-                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ alignItems: { md: 'center' } }}>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                        <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                          {customerName}
+                        </Typography>
+                        <Chip size="small" label="USD" color="primary" variant="outlined" />
+                        <Typography
+                          variant="body2"
+                          color={pricingSaveState === 'error' ? 'error.main' : 'text.secondary'}
+                        >
+                          {pricingStatusLabel}
+                        </Typography>
+                      </Stack>
+
+                      <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
                         <Typography variant="body2" color="text.secondary">
-                          {detailMessage('defaultTradeType')}
+                          {t('defaultTradeType')}
                         </Typography>
                         <ToggleButtonGroup
                           size="small"
@@ -1071,7 +945,7 @@ const CustomerDetail = () => {
                           exclusive
                           onChange={(_event, nextTradeType) => {
                             if (!nextTradeType) return;
-                            handlePricingMetaChange('defaultTradeType', nextTradeType);
+                            handleDefaultTradeTypeChange(nextTradeType);
                           }}
                         >
                           {TRADE_TYPES.map((tradeType) => (
@@ -1081,116 +955,82 @@ const CustomerDetail = () => {
                           ))}
                         </ToggleButtonGroup>
                       </Stack>
-                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-                        <Box sx={{ minWidth: { md: 260 } }}>
-                          <SearchInput
-                            placeholder={detailMessage('styleSearch')}
-                            value={styleSearchTerm}
-                            onChange={(event) => setStyleSearchTerm(event.target.value)}
-                          />
-                        </Box>
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              checked={showIncompleteOnly}
-                              onChange={(event) => setShowIncompleteOnly(event.target.checked)}
-                            />
-                          }
-                          label={detailMessage('incompleteOnly')}
-                        />
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              checked={showExceptionsOnly}
-                              onChange={(event) => setShowExceptionsOnly(event.target.checked)}
-                            />
-                          }
-                          label={detailMessage('exceptionsOnly')}
-                        />
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              checked={showAlternatePrices}
-                              onChange={(event) => setShowAlternatePrices(event.target.checked)}
-                            />
-                          }
-                          label={detailMessage('showAltPrices')}
-                        />
-                      </Stack>
                     </Stack>
 
-                    <TextField
-                      multiline
-                      minRows={2}
-                      label={detailMessage('pricingMemo')}
-                      placeholder={detailMessage('pricingMemoPlaceholder')}
-                      value={pricingDraft.memo}
-                      onChange={(event) => handlePricingMetaChange('memo', event.target.value)}
-                    />
-
                     <Typography variant="body2" color="text.secondary">
-                      {detailMessage('compareModeHelper')}
+                      {t('pricingPrototypeHint')}
                     </Typography>
 
-                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} useFlexGap flexWrap="wrap">
-                      <Chip label={`${detailMessage('stylesCount')} ${pricingStats.total}`} />
-                      <Chip color="info" variant="outlined" label={`${detailMessage('startedCount')} ${pricingStats.started}`} />
-                      <Chip color="success" variant="outlined" label={`${detailMessage('completeCount')} ${pricingStats.complete}`} />
-                      <Chip color="warning" variant="outlined" label={`${detailMessage('exceptionCount')} ${pricingStats.exceptions}`} />
+                    <Stack
+                      direction={{ xs: 'column', lg: 'row' }}
+                      spacing={1.5}
+                      sx={{ alignItems: { lg: 'center' } }}
+                    >
+                      <Box sx={{ width: { xs: '100%', md: 280 }, maxWidth: '100%' }}>
+                        <SearchInput
+                          placeholder={t('styleSearch')}
+                          value={styleSearchTerm}
+                          onChange={(event) => setStyleSearchTerm(event.target.value)}
+                        />
+                      </Box>
+
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{
+                          flexWrap: 'wrap',
+                          justifyContent: { lg: 'flex-end' },
+                          ml: { lg: 'auto' },
+                        }}
+                      >
+                        <Chip size="small" label={`${t('stylesCount')} ${pricingStats.total}`} />
+                        <Chip size="small" variant="outlined" color="info" label={`${t('startedCount')} ${pricingStats.started}`} />
+                        <Chip size="small" variant="outlined" color="success" label={`${t('completeCount')} ${pricingStats.complete}`} />
+                        <Chip size="small" variant="outlined" color="warning" label={`${t('exceptionCount')} ${pricingStats.exceptions}`} />
+                      </Stack>
                     </Stack>
                   </Stack>
                 </Paper>
 
+                {pricingSaveState === 'error' && pricingSaveError ? (
+                  <Alert severity="error">{pricingSaveError}</Alert>
+                ) : null}
+
                 <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
-                  <TableContainer sx={{ maxHeight: 'calc(100vh - 360px)' }}>
-                    <Table stickyHeader size="small" sx={{ minWidth: 1600 }}>
+                  <TableContainer sx={{ maxHeight: 'calc(100vh - 320px)', overflowX: 'hidden' }}>
+                    <Table stickyHeader size="small" sx={{ width: '100%', tableLayout: 'fixed' }}>
+                      <colgroup>
+                        <col style={{ width: '16%' }} />
+                        <col style={{ width: '10%' }} />
+                        {PRICE_BUCKETS.map((bucketQuantity) => (
+                          <col key={`col:${bucketQuantity}`} style={{ width: `${68 / PRICE_BUCKETS.length}%` }} />
+                        ))}
+                        <col style={{ width: '6%' }} />
+                      </colgroup>
                       <TableHead>
                         <TableRow>
-                          <TableCell
-                            sx={{
-                              left: 0,
-                              position: 'sticky',
-                              zIndex: 3,
-                              minWidth: 132,
-                              backgroundColor: 'background.paper',
-                            }}
-                          >
-                            {detailMessage('styleCode')}
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              left: 132,
-                              position: 'sticky',
-                              zIndex: 3,
-                              minWidth: 220,
-                              backgroundColor: 'background.paper',
-                            }}
-                          >
-                            {detailMessage('styleName')}
-                          </TableCell>
-                          <TableCell sx={{ minWidth: 136 }}>{detailMessage('pricingRule')}</TableCell>
+                          <TableCell>{t('styleName')}</TableCell>
+                          <TableCell align="center">{t('pricingRule')}</TableCell>
                           {PRICE_BUCKETS.map((bucketQuantity) => (
-                            <TableCell key={`bucket:${bucketQuantity}`} align="center" sx={{ minWidth: 108 }}>
+                            <TableCell key={`bucket:${bucketQuantity}`} align="center">
                               {formatNumberWithCommas(bucketQuantity)}
                             </TableCell>
                           ))}
-                          <TableCell align="center" sx={{ minWidth: 120 }}>
-                            {detailMessage('actions')}
-                          </TableCell>
+                          <TableCell align="center">{t('actions')}</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {loadingStyles && (
                           <TableRow>
-                            <TableCell colSpan={PRICE_BUCKETS.length + 4} sx={{ py: 3, textAlign: 'center' }}>
-                              {detailMessage('loadingStyles')}
+                            <TableCell colSpan={PRICE_BUCKETS.length + 3} sx={{ py: 3, textAlign: 'center' }}>
+                              {t('loadingStyles')}
                             </TableCell>
                           </TableRow>
                         )}
                         {!loadingStyles && filteredStyles.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={PRICE_BUCKETS.length + 4} sx={{ py: 3, textAlign: 'center' }}>
-                              {detailMessage('emptyStyles')}
+                            <TableCell colSpan={PRICE_BUCKETS.length + 3} sx={{ py: 3, textAlign: 'center' }}>
+                              {t('emptyStyles')}
                             </TableCell>
                           </TableRow>
                         )}
@@ -1199,69 +1039,50 @@ const CustomerDetail = () => {
                           const primaryTradeType = resolvePrimaryTradeType(row, pricingDraft.defaultTradeType);
                           const alternateTradeType = resolveAlternateTradeType(primaryTradeType);
                           const isExpanded =
-                            showAlternatePrices ||
-                            expandedStyleIds[style.id] === true ||
-                            row.mode === 'BOTH';
+                            expandedStyleIds[style.id] === true || row.mode === 'BOTH';
                           const isComplete = hasCompletePriceForTradeType(row, primaryTradeType);
                           const isStarted = hasAnyPriceForTradeType(row, primaryTradeType);
                           const ruleLabelMap = {
-                            DEFAULT: detailMessage('ruleDefault'),
-                            CMPT: detailMessage('ruleCmpt'),
-                            FOB: detailMessage('ruleFob'),
-                            BOTH: detailMessage('ruleBoth'),
+                            DEFAULT: t('ruleDefault'),
+                            CMPT: t('ruleCmpt'),
+                            FOB: t('ruleFob'),
+                            BOTH: t('ruleBoth'),
                           };
 
                           return (
                             <React.Fragment key={style.id}>
-                              <TableRow
-                                hover
-                                sx={{
-                                  '& > .sticky-cell': {
-                                    backgroundColor: row.mode !== 'DEFAULT' ? 'rgba(254, 243, 199, 0.55)' : 'background.paper',
-                                  },
-                                }}
-                              >
-                                <TableCell
-                                  className="sticky-cell"
-                                  sx={{
-                                    left: 0,
-                                    position: 'sticky',
-                                    zIndex: 2,
-                                    backgroundColor: 'background.paper',
-                                    fontVariantNumeric: 'tabular-nums',
-                                  }}
-                                >
-                                  {style.styleCode || style.id || '-'}
-                                </TableCell>
-                                <TableCell
-                                  className="sticky-cell"
-                                  sx={{
-                                    left: 132,
-                                    position: 'sticky',
-                                    zIndex: 2,
-                                    backgroundColor: 'background.paper',
-                                  }}
-                                >
+                              <TableRow hover>
+                                <TableCell>
                                   <Stack spacing={0.5}>
-                                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                    <Typography
+                                      variant="body2"
+                                      sx={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                    >
                                       {style.name || '-'}
                                     </Typography>
-                                    <Stack direction="row" spacing={0.75}>
+                                    <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap' }}>
                                       <Chip
                                         size="small"
                                         variant={row.mode === 'DEFAULT' ? 'outlined' : 'filled'}
                                         color={row.mode === 'DEFAULT' ? 'default' : 'warning'}
-                                        label={row.mode === 'DEFAULT'
-                                          ? detailMessage('basicRuleSuffix', { type: primaryTradeType })
-                                          : ruleLabelMap[row.mode]}
+                                        label={
+                                          row.mode === 'DEFAULT'
+                                            ? t('basicRuleSuffix', { type: primaryTradeType })
+                                            : ruleLabelMap[row.mode]
+                                        }
                                       />
                                       {isStarted ? (
-                                        <Chip size="small" color={isComplete ? 'success' : 'info'} label={isComplete ? detailMessage('completeCount') : detailMessage('startedCount')} />
+                                        <Chip
+                                          size="small"
+                                          color={isComplete ? 'success' : 'info'}
+                                          variant="outlined"
+                                          label={isComplete ? t('completeCount') : t('startedCount')}
+                                        />
                                       ) : null}
                                     </Stack>
                                   </Stack>
                                 </TableCell>
-                                <TableCell>
+                                <TableCell align="center">
                                   <TextField
                                     select
                                     size="small"
@@ -1269,12 +1090,12 @@ const CustomerDetail = () => {
                                     onChange={(event) =>
                                       handlePricingModeChange(style.id, event.target.value)
                                     }
-                                    sx={{ minWidth: 112 }}
+                                    sx={{ width: '100%' }}
                                   >
-                                    <MenuItem value="DEFAULT">{detailMessage('ruleDefault')}</MenuItem>
-                                    <MenuItem value="CMPT">{detailMessage('ruleCmpt')}</MenuItem>
-                                    <MenuItem value="FOB">{detailMessage('ruleFob')}</MenuItem>
-                                    <MenuItem value="BOTH">{detailMessage('ruleBoth')}</MenuItem>
+                                    <MenuItem value="DEFAULT">{t('ruleDefault')}</MenuItem>
+                                    <MenuItem value="CMPT">{t('ruleCmpt')}</MenuItem>
+                                    <MenuItem value="FOB">{t('ruleFob')}</MenuItem>
+                                    <MenuItem value="BOTH">{t('ruleBoth')}</MenuItem>
                                   </TextField>
                                 </TableCell>
                                 {PRICE_BUCKETS.map((bucketQuantity) => {
@@ -1296,13 +1117,14 @@ const CustomerDetail = () => {
                                         inputProps={{
                                           inputMode: 'decimal',
                                           style: {
-                                            width: 84,
+                                            width: '100%',
                                             textAlign: 'right',
                                             fontSize: 13,
                                             fontVariantNumeric: 'tabular-nums',
                                           },
                                         }}
                                         sx={{
+                                          width: '100%',
                                           '& .MuiOutlinedInput-root': {
                                             backgroundColor: value
                                               ? 'rgba(15, 23, 42, 0.03)'
@@ -1314,13 +1136,13 @@ const CustomerDetail = () => {
                                   );
                                 })}
                                 <TableCell align="center">
-                                  <Stack direction="row" justifyContent="center" spacing={0.5}>
-                                    <Tooltip title={detailMessage('manageStyle')}>
+                                  <Stack direction="row" justifyContent="center" spacing={0.25}>
+                                    <Tooltip title={t('manageStyle')}>
                                       <IconButton size="small" onClick={() => handleOpenStyle(style)}>
                                         <OpenInNewRoundedIcon fontSize="small" />
                                       </IconButton>
                                     </Tooltip>
-                                    <Tooltip title={isExpanded ? detailMessage('draftClose') : detailMessage('draftOpen')}>
+                                    <Tooltip title={isExpanded ? t('draftClose') : t('draftOpen')}>
                                       <IconButton
                                         size="small"
                                         onClick={() =>
@@ -1342,21 +1164,16 @@ const CustomerDetail = () => {
                               </TableRow>
 
                               {isExpanded && (
-                                <TableRow sx={{ backgroundColor: 'rgba(248, 250, 252, 0.85)' }}>
-                                  <TableCell className="sticky-cell" sx={{ left: 0, position: 'sticky', zIndex: 1, backgroundColor: 'rgba(248, 250, 252, 0.98)' }}>
-                                    {alternateTradeType}
-                                  </TableCell>
-                                  <TableCell className="sticky-cell" sx={{ left: 132, position: 'sticky', zIndex: 1, backgroundColor: 'rgba(248, 250, 252, 0.98)' }}>
-                                    <Stack spacing={0.25}>
-                                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                                        {detailMessage('alternatePrice')}
-                                      </Typography>
-                                      <Typography variant="caption" color="text.secondary">
-                                        {style.name || '-'}
-                                      </Typography>
-                                    </Stack>
-                                  </TableCell>
+                                <TableRow sx={{ backgroundColor: 'rgba(248, 250, 252, 0.8)' }}>
                                   <TableCell>
+                                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                      {style.name || '-'}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {alternateTradeType}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell align="center">
                                     <Chip size="small" variant="outlined" label={alternateTradeType} />
                                   </TableCell>
                                   {PRICE_BUCKETS.map((bucketQuantity) => {
@@ -1378,25 +1195,18 @@ const CustomerDetail = () => {
                                           inputProps={{
                                             inputMode: 'decimal',
                                             style: {
-                                              width: 84,
+                                              width: '100%',
                                               textAlign: 'right',
                                               fontSize: 13,
                                               fontVariantNumeric: 'tabular-nums',
                                             },
                                           }}
+                                          sx={{ width: '100%' }}
                                         />
                                       </TableCell>
                                     );
                                   })}
-                                  <TableCell align="center">
-                                    <Typography variant="caption" color="text.secondary">
-                                      {formatPriceDisplay(
-                                        PRICE_BUCKETS
-                                          .map((bucketQuantity) => row.prices?.[alternateTradeType]?.[bucketQuantity])
-                                          .find((value) => String(value || '').trim() !== '')
-                                      ) || '-'}
-                                    </Typography>
-                                  </TableCell>
+                                  <TableCell />
                                 </TableRow>
                               )}
                             </React.Fragment>

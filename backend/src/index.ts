@@ -496,6 +496,8 @@ const ST_STANDARD_BUCKETS = Object.freeze([
   5000,
   10000,
 ]);
+const CUSTOMER_PRICING_TRADE_TYPES = new Set(["CMPT", "FOB"]);
+const CUSTOMER_PRICING_ROW_MODES = new Set(["DEFAULT", "CMPT", "FOB", "BOTH"]);
 // 출퇴근 입력값을 AT 계산에 반영한다.
 // 출퇴근 기록이 있는 봉제 작업자(재직자)의 실제 근로시간만 AT 집계에 사용한다.
 const USE_ATTENDANCE_INPUT_FOR_AT = true;
@@ -1054,9 +1056,92 @@ const toCustomerResponse = (relationship: any, perspective: string = "MANUFACTUR
     email: targetOrg.email ?? relationship.managerEmail ?? "",
     targetMonthlyWage: (targetOrg as any)?.targetMonthlyWage ?? null,
     wagePerSecond: (targetOrg as any)?.wagePerSecond ?? null,
+    pricingDefaultTradeType:
+      typeof relationship?.pricingDefaultTradeType === "string"
+        ? relationship.pricingDefaultTradeType
+        : null,
     registeredAt: relationship.createdAt,
     brand: relationship.brand ?? null,
     manufacturer: relationship.manufacturer ?? null,
+  };
+};
+
+const normalizeCustomerPricingTradeType = (value: any, fallback = "CMPT") => {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return CUSTOMER_PRICING_TRADE_TYPES.has(normalized) ? normalized : fallback;
+};
+
+const normalizeCustomerPricingRowMode = (value: any, fallback = "DEFAULT") => {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return CUSTOMER_PRICING_ROW_MODES.has(normalized) ? normalized : fallback;
+};
+
+const normalizeCustomerPricingAmount = (value: any) => {
+  if (value === "" || value === null || value === undefined) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return roundToScale(parsed, 4);
+};
+
+const normalizeCustomerPricingRows = (value: any) => {
+  const nextRows: Record<string, any> = {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return nextRows;
+
+  Object.entries(value).forEach(([rawStyleId, rawRowValue]) => {
+    const styleId = String(rawStyleId || "").trim();
+    if (!styleId) return;
+
+    const normalizedRow = {
+      mode: normalizeCustomerPricingRowMode((rawRowValue as any)?.mode),
+      prices: {
+        CMPT: {} as Record<string, number>,
+        FOB: {} as Record<string, number>,
+      },
+    };
+
+    CUSTOMER_PRICING_TRADE_TYPES.forEach((tradeType) => {
+      const source = (rawRowValue as any)?.prices?.[tradeType];
+      if (!source || typeof source !== "object" || Array.isArray(source)) return;
+
+      Object.entries(source).forEach(([rawBucketQuantity, rawAmount]) => {
+        const bucketQuantity = toPositiveInt(rawBucketQuantity, 0);
+        if (!ST_STANDARD_BUCKETS.includes(bucketQuantity)) return;
+        const normalizedAmount = normalizeCustomerPricingAmount(rawAmount);
+        if (normalizedAmount === null) return;
+        normalizedRow.prices[tradeType as "CMPT" | "FOB"][String(bucketQuantity)] =
+          normalizedAmount;
+      });
+    });
+
+    const hasAnyPrice =
+      Object.keys(normalizedRow.prices.CMPT).length > 0 ||
+      Object.keys(normalizedRow.prices.FOB).length > 0;
+    if (!hasAnyPrice && normalizedRow.mode === "DEFAULT") return;
+    nextRows[styleId] = normalizedRow;
+  });
+
+  return nextRows;
+};
+
+const normalizeCustomerPricingPayload = (value: any = {}) => ({
+  defaultTradeType: normalizeCustomerPricingTradeType(
+    value?.defaultTradeType,
+    "CMPT"
+  ),
+  rows: normalizeCustomerPricingRows(value?.rows),
+});
+
+const toCustomerPricingResponse = (relationship: any) => {
+  const normalized = normalizeCustomerPricingPayload({
+    defaultTradeType: relationship?.pricingDefaultTradeType,
+    rows: relationship?.pricingMatrix,
+  });
+
+  return {
+    defaultTradeType: normalized.defaultTradeType,
+    rows: normalized.rows,
+    currencyCode: "USD",
+    updatedAt: relationship?.updatedAt ?? null,
   };
 };
 
@@ -21248,6 +21333,45 @@ app.get("/customers", async (req, res) => {
   res.json(relationships.map((item) => toCustomerResponse(item, perspective)));
 });
 
+app.get("/customers/:id/pricing", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ ok: false, error: "invalid id" });
+  }
+
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const perspective = resolveCustomerPerspective(organization);
+  if (!perspective) {
+    return res.status(400).json({
+      ok: false,
+      error: "invalid organization type",
+    });
+  }
+
+  const relationship = await prisma.orgRelationship.findFirst({
+    where:
+      perspective === "MANUFACTURER"
+        ? { id, manufacturerOrgId: organization.id }
+        : { id, brandOrgId: organization.id },
+    select: {
+      id: true,
+      pricingDefaultTradeType: true,
+      pricingMatrix: true,
+      updatedAt: true,
+    },
+  });
+
+  if (!relationship) {
+    return res.status(404).json({ ok: false, error: "customer not found" });
+  }
+
+  res.json(toCustomerPricingResponse(relationship));
+});
+
 app.get("/order-parties", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {
@@ -21967,6 +22091,65 @@ app.put("/customers/:id", async (req, res) => {
   });
 
   res.json(toCustomerResponse(refreshed, perspective));
+});
+
+app.put("/customers/:id/pricing", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ ok: false, error: "invalid id" });
+  }
+
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const perspective = resolveCustomerPerspective(organization);
+  if (!perspective) {
+    return res.status(400).json({
+      ok: false,
+      error: "invalid organization type",
+    });
+  }
+
+  const existing = await prisma.orgRelationship.findFirst({
+    where:
+      perspective === "MANUFACTURER"
+        ? { id, manufacturerOrgId: organization.id }
+        : { id, brandOrgId: organization.id },
+    select: {
+      id: true,
+      pricingDefaultTradeType: true,
+      pricingMatrix: true,
+      updatedAt: true,
+    },
+  });
+
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: "customer not found" });
+  }
+
+  const normalizedPayload = normalizeCustomerPricingPayload(req.body ?? {});
+
+  const updated = await prisma.orgRelationship.update({
+    where: { id: existing.id },
+    data: {
+      pricingDefaultTradeType: normalizedPayload.defaultTradeType,
+      pricingMatrix: normalizedPayload.rows,
+    },
+    select: {
+      id: true,
+      pricingDefaultTradeType: true,
+      pricingMatrix: true,
+      updatedAt: true,
+    },
+  });
+
+  res.json(toCustomerPricingResponse(updated));
 });
 
 app.delete("/customers/:id", async (req, res) => {

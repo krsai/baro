@@ -419,6 +419,8 @@ model OrgRelationship {
   managerPhone      String?
   managerEmail      String?
   memo              String?
+  pricingDefaultTradeType String?
+  pricingMatrix     Json?
   createdAt         DateTime @default(now())
   createdBy String   @default("system@baro.local")
   updatedAt         DateTime @updatedAt

@@ -7,6 +7,10 @@ UPDATE "Style" s
   WHERE s."orgId" = o.id AND (o."nameKo" IS NOT NULL OR o."nameVi" IS NOT NULL)
     AND s."customerNameKo" IS NULL AND s."customerNameVi" IS NULL;
 
+-- Step 0e: customer pricing prototype storage (20260613)
+ALTER TABLE "OrgRelationship" ADD COLUMN IF NOT EXISTS "pricingDefaultTradeType" TEXT;
+ALTER TABLE "OrgRelationship" ADD COLUMN IF NOT EXISTS "pricingMatrix" JSONB;
+
 -- Step 0c: work order localized buyer name fields (20260611)
 ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "buyerOrgNameKo" TEXT;
 ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "buyerOrgNameVi" TEXT;
