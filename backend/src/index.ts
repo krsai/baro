@@ -530,7 +530,7 @@ const STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT =
   String(process.env.STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT ?? "true")
     .trim()
     .toLowerCase() !== "false";
-const STARTUP_REQUIRED_RENAMED_COLUMNS = [
+const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "StyleProcess", columnName: "timesPerPiece" },
   { tableName: "StyleProcessStandard", columnName: "bucketQuantity" },
   { tableName: "StyleProcessStandard", columnName: "bucketStSeconds" },
@@ -538,6 +538,8 @@ const STARTUP_REQUIRED_RENAMED_COLUMNS = [
   { tableName: "AssignmentPlan", columnName: "assignmentStTotalSeconds" },
   { tableName: "AssignmentPlan", columnName: "assignmentCtTotalSeconds" },
   { tableName: "AssignmentPlan", columnName: "assignmentCtSnapshot" },
+  { tableName: "OrgRelationship", columnName: "pricingDefaultTradeType" },
+  { tableName: "OrgRelationship", columnName: "pricingMatrix" },
 ] as const;
 const ROLE_OPTIONS = new Set(["ADMIN", "OPERATOR", "ACCOUNTANT", "WORKER"]);
 const ORG_ACCESS_ROLES: OrgUserRole[] = [
@@ -23692,19 +23694,22 @@ const ensureDatabaseReady = async () => {
   throw lastError;
 };
 
-const findMissingRuntimeRenameColumns = async (): Promise<string[]> => {
+const findMissingRuntimeSchemaColumns = async (): Promise<string[]> => {
+  const targetTableNames = Array.from(
+    new Set(STARTUP_REQUIRED_RUNTIME_COLUMNS.map((column) => column.tableName))
+  );
   const rows = await prisma.$queryRaw<
     Array<{ table_name: string; column_name: string }>
   >`
     SELECT table_name, column_name
     FROM information_schema.columns
     WHERE table_schema = 'public'
-      AND table_name IN ('StyleProcess', 'StyleProcessStandard', 'AssignmentPlan')
+      AND table_name = ANY(${targetTableNames}::text[])
   `;
   const available = new Set(
     rows.map((row) => `${row.table_name}.${row.column_name}`)
   );
-  return STARTUP_REQUIRED_RENAMED_COLUMNS
+  return STARTUP_REQUIRED_RUNTIME_COLUMNS
     .map((column) => `${column.tableName}.${column.columnName}`)
     .filter((columnKey) => !available.has(columnKey));
 };
@@ -23712,7 +23717,7 @@ const findMissingRuntimeRenameColumns = async (): Promise<string[]> => {
 const applyMigrationFixForRuntimeSchemaDrift = async (missingColumns: string[]) => {
   if (!STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT) {
     throw new Error(
-      `[startup] Required renamed DB columns are missing and automatic migration is disabled: ${missingColumns.join(
+      `[startup] Required DB columns are missing and automatic migration is disabled: ${missingColumns.join(
         ", "
       )}`
     );
@@ -23773,19 +23778,19 @@ const applyMigrationFixForRuntimeSchemaDrift = async (missingColumns: string[]) 
     );
   }
 
-  const remainingColumns = await findMissingRuntimeRenameColumns();
+  const remainingColumns = await findMissingRuntimeSchemaColumns();
   if (remainingColumns.length > 0) {
     throw new Error(
-      `[startup] migration_fix.sql completed but required columns are still missing: ${remainingColumns.join(
+      `[startup] migration_fix.sql completed but required DB columns are still missing: ${remainingColumns.join(
         ", "
       )}`
     );
   }
-  console.log("[startup] migration_fix.sql completed and required renamed columns are present.");
+  console.log("[startup] migration_fix.sql completed and required DB columns are present.");
 };
 
-const ensureRuntimeRenameSchemaReady = async () => {
-  const missingColumns = await findMissingRuntimeRenameColumns();
+const ensureRuntimeSchemaReady = async () => {
+  const missingColumns = await findMissingRuntimeSchemaColumns();
   if (missingColumns.length === 0) return;
   await applyMigrationFixForRuntimeSchemaDrift(missingColumns);
 };
@@ -23966,7 +23971,7 @@ const bootstrapApplicationServices = async () => {
 
 const startServer = async () => {
   await ensureDatabaseReady();
-  await ensureRuntimeRenameSchemaReady();
+  await ensureRuntimeSchemaReady();
   app.listen(port, host, () => {
     console.log(`API running on http://${host}:${port}`);
   });

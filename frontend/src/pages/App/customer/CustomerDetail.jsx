@@ -2,9 +2,9 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
-  Button,
   Chip,
   IconButton,
+  InputAdornment,
   MenuItem,
   Paper,
   Stack,
@@ -67,12 +67,13 @@ const TEXT = {
     customerLoadError: '고객 정보를 불러오지 못했습니다.',
     pricingLoadError: '고객 단가를 불러오지 못했습니다.',
     pricingSaveError: '고객 단가를 저장하지 못했습니다.',
+    savePricing: '단가 저장',
+    savePricingSuccess: '고객 단가를 저장했습니다.',
     stylesLoadError: '스타일 목록을 불러오지 못했습니다.',
     codeRequired: '고객 코드를 입력해주세요.',
     nameRequired: '고객명을 입력해주세요.',
     pricingDisabledTitle: '고객을 먼저 저장해주세요.',
     pricingDisabledBody: '단가 관리는 저장된 고객에서만 사용할 수 있습니다.',
-    pricingPrototypeHint: '단가를 수정하면 서버에 바로 저장됩니다.',
     customerCode: '고객 코드',
     customerName: '고객명',
     country: '국가',
@@ -89,9 +90,6 @@ const TEXT = {
     startedCount: '입력 시작',
     completeCount: '입력 완료',
     exceptionCount: '예외',
-    saveIdle: '모든 변경이 저장되었습니다.',
-    saveSaving: '저장 중...',
-    saveErrorStatus: '저장 실패',
     styleName: '스타일명',
     pricingRule: '적용 방식',
     actions: '작업',
@@ -119,12 +117,13 @@ const TEXT = {
     customerLoadError: 'Failed to load customer information.',
     pricingLoadError: 'Failed to load pricing data.',
     pricingSaveError: 'Failed to save pricing data.',
+    savePricing: 'Save Pricing',
+    savePricingSuccess: 'Pricing has been saved.',
     stylesLoadError: 'Failed to load styles.',
     codeRequired: 'Enter a customer code.',
     nameRequired: 'Enter a customer name.',
     pricingDisabledTitle: 'Save the customer first.',
     pricingDisabledBody: 'Pricing is available only after the customer exists.',
-    pricingPrototypeHint: 'Changes save to the server automatically.',
     customerCode: 'Customer Code',
     customerName: 'Customer Name',
     country: 'Country',
@@ -141,9 +140,6 @@ const TEXT = {
     startedCount: 'Started',
     completeCount: 'Complete',
     exceptionCount: 'Exceptions',
-    saveIdle: 'All changes saved.',
-    saveSaving: 'Saving...',
-    saveErrorStatus: 'Save failed',
     styleName: 'Style Name',
     pricingRule: 'Rule',
     actions: 'Actions',
@@ -171,12 +167,13 @@ const TEXT = {
     customerLoadError: 'Khong the tai thong tin khach hang.',
     pricingLoadError: 'Khong the tai don gia khach hang.',
     pricingSaveError: 'Khong the luu don gia khach hang.',
+    savePricing: 'Luu don gia',
+    savePricingSuccess: 'Da luu don gia khach hang.',
     stylesLoadError: 'Khong the tai danh sach style.',
     codeRequired: 'Hay nhap ma khach hang.',
     nameRequired: 'Hay nhap ten khach hang.',
     pricingDisabledTitle: 'Hay luu khach hang truoc.',
     pricingDisabledBody: 'Chi co the quan ly don gia sau khi da tao khach hang.',
-    pricingPrototypeHint: 'Moi thay doi se duoc luu ngay len may chu.',
     customerCode: 'Ma khach hang',
     customerName: 'Ten khach hang',
     country: 'Quoc gia',
@@ -193,9 +190,6 @@ const TEXT = {
     startedCount: 'Da nhap',
     completeCount: 'Hoan tat',
     exceptionCount: 'Ngoai le',
-    saveIdle: 'Da luu tat ca thay doi.',
-    saveSaving: 'Dang luu...',
-    saveErrorStatus: 'Luu that bai',
     styleName: 'Ten style',
     pricingRule: 'Quy tac',
     actions: 'Tac vu',
@@ -363,7 +357,7 @@ const CustomerDetail = () => {
     JSON.stringify(createEmptyPricingDraft())
   );
   const [pricingLoaded, setPricingLoaded] = useState(false);
-  const [pricingSaveState, setPricingSaveState] = useState('idle');
+  const [savingPricing, setSavingPricing] = useState(false);
   const [pricingSaveError, setPricingSaveError] = useState('');
   const [styleSearchTerm, setStyleSearchTerm] = useState('');
   const [expandedStyleIds, setExpandedStyleIds] = useState({});
@@ -463,7 +457,7 @@ const CustomerDetail = () => {
 
       setLoadingStyles(true);
       setPricingLoaded(false);
-      setPricingSaveState('idle');
+      setSavingPricing(false);
       setPricingSaveError('');
 
       try {
@@ -524,45 +518,6 @@ const CustomerDetail = () => {
     [pricingDraft, savedPricingSnapshot]
   );
   useUnsavedChanges(customerDirty || pricingDirty);
-
-  useEffect(() => {
-    if (isNew || !pricingLoaded) return undefined;
-    const nextSnapshot = JSON.stringify(pricingDraft);
-    if (nextSnapshot === savedPricingSnapshot) return undefined;
-
-    const controller = new AbortController();
-    const timerId = window.setTimeout(async () => {
-      setPricingSaveState('saving');
-      setPricingSaveError('');
-      try {
-        const response = await requestJSON(`/customers/${customerId}/pricing${customerQuery}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(pricingDraft),
-          skipGlobalLoading: true,
-          signal: controller.signal,
-        });
-
-        if (controller.signal.aborted) return;
-        const mergedDraft = mergeDraftWithStyles(response, styles);
-        const mergedSnapshot = JSON.stringify(mergedDraft);
-        setSavedPricingSnapshot(mergedSnapshot);
-        setPricingDraft((prev) =>
-          JSON.stringify(prev) === nextSnapshot ? mergedDraft : prev
-        );
-        setPricingSaveState('idle');
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        setPricingSaveState('error');
-        setPricingSaveError(error?.message || t('pricingSaveError'));
-      }
-    }, 350);
-
-    return () => {
-      window.clearTimeout(timerId);
-      controller.abort();
-    };
-  }, [customerId, customerQuery, isNew, pricingDraft, pricingLoaded, savedPricingSnapshot, styles, t]);
 
   const handleBasicFieldChange = useCallback((event) => {
     const { name, value } = event.target;
@@ -632,7 +587,44 @@ const CustomerDetail = () => {
     t,
   ]);
 
+  const handlePricingSave = useCallback(async () => {
+    if (isNew || savingPricing || !pricingLoaded || !pricingDirty) return;
+
+    setSavingPricing(true);
+    setPricingSaveError('');
+    try {
+      const response = await requestJSON(`/customers/${customerId}/pricing${customerQuery}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pricingDraft),
+        skipGlobalLoading: true,
+      });
+
+      const mergedDraft = mergeDraftWithStyles(response, styles);
+      const mergedSnapshot = JSON.stringify(mergedDraft);
+      setSavedPricingSnapshot(mergedSnapshot);
+      setPricingDraft(mergedDraft);
+      showNotification(t('savePricingSuccess'), 'success');
+    } catch (error) {
+      setPricingSaveError(error?.message || t('pricingSaveError'));
+    } finally {
+      setSavingPricing(false);
+    }
+  }, [
+    customerId,
+    customerQuery,
+    isNew,
+    pricingDirty,
+    pricingDraft,
+    pricingLoaded,
+    savingPricing,
+    showNotification,
+    styles,
+    t,
+  ]);
+
   const updatePricingDraft = useCallback((updater) => {
+    setPricingSaveError('');
     setPricingDraft((prev) =>
       normalizePricingDraft(typeof updater === 'function' ? updater(prev) : updater)
     );
@@ -751,12 +743,6 @@ const CustomerDetail = () => {
     };
   }, [pricingDraft, styles]);
 
-  const pricingStatusLabel = useMemo(() => {
-    if (pricingSaveState === 'error') return t('saveErrorStatus');
-    if (pricingDirty || pricingSaveState === 'saving') return t('saveSaving');
-    return t('saveIdle');
-  }, [pricingDirty, pricingSaveState, t]);
-
   return (
     <AppPageContainer
       title={isNew ? t('titleNew') : t('titleDetail')}
@@ -768,6 +754,14 @@ const CustomerDetail = () => {
             loading={savingCustomer}
           >
             {t('saveCustomer')}
+          </SaveButton>
+        ) : currentTab === 'pricing' && !isNew ? (
+          <SaveButton
+            onClick={handlePricingSave}
+            disabled={loadingStyles || savingPricing || !pricingLoaded || !pricingDirty}
+            loading={savingPricing}
+          >
+            {t('savePricing')}
           </SaveButton>
         ) : null
       }
@@ -926,13 +920,6 @@ const CustomerDetail = () => {
                         <Typography variant="h6" sx={{ fontWeight: 800 }}>
                           {customerName}
                         </Typography>
-                        <Chip size="small" label="USD" color="primary" variant="outlined" />
-                        <Typography
-                          variant="body2"
-                          color={pricingSaveState === 'error' ? 'error.main' : 'text.secondary'}
-                        >
-                          {pricingStatusLabel}
-                        </Typography>
                       </Stack>
 
                       <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
@@ -957,14 +944,14 @@ const CustomerDetail = () => {
                       </Stack>
                     </Stack>
 
-                    <Typography variant="body2" color="text.secondary">
-                      {t('pricingPrototypeHint')}
-                    </Typography>
-
-                    <Stack
-                      direction={{ xs: 'column', lg: 'row' }}
-                      spacing={1.5}
-                      sx={{ alignItems: { lg: 'center' } }}
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        flexDirection: { xs: 'column', lg: 'row' },
+                        alignItems: { lg: 'center' },
+                        gap: 1.5,
+                        width: '100%',
+                      }}
                     >
                       <Box sx={{ width: { xs: '100%', md: 280 }, maxWidth: '100%' }}>
                         <SearchInput
@@ -977,10 +964,13 @@ const CustomerDetail = () => {
                       <Stack
                         direction="row"
                         spacing={1}
+                        useFlexGap
                         sx={{
                           flexWrap: 'wrap',
-                          justifyContent: { lg: 'flex-end' },
-                          ml: { lg: 'auto' },
+                          flex: { lg: '1 1 auto' },
+                          justifyContent: { xs: 'flex-start', lg: 'flex-end' },
+                          marginLeft: { lg: 'auto' },
+                          width: { xs: '100%', lg: 'auto' },
                         }}
                       >
                         <Chip size="small" label={`${t('stylesCount')} ${pricingStats.total}`} />
@@ -988,11 +978,11 @@ const CustomerDetail = () => {
                         <Chip size="small" variant="outlined" color="success" label={`${t('completeCount')} ${pricingStats.complete}`} />
                         <Chip size="small" variant="outlined" color="warning" label={`${t('exceptionCount')} ${pricingStats.exceptions}`} />
                       </Stack>
-                    </Stack>
+                    </Box>
                   </Stack>
                 </Paper>
 
-                {pricingSaveState === 'error' && pricingSaveError ? (
+                {pricingSaveError ? (
                   <Alert severity="error">{pricingSaveError}</Alert>
                 ) : null}
 
@@ -1123,6 +1113,11 @@ const CustomerDetail = () => {
                                             fontVariantNumeric: 'tabular-nums',
                                           },
                                         }}
+                                        InputProps={{
+                                          startAdornment: value ? (
+                                            <InputAdornment position="start">$</InputAdornment>
+                                          ) : null,
+                                        }}
                                         sx={{
                                           width: '100%',
                                           '& .MuiOutlinedInput-root': {
@@ -1200,6 +1195,11 @@ const CustomerDetail = () => {
                                               fontSize: 13,
                                               fontVariantNumeric: 'tabular-nums',
                                             },
+                                          }}
+                                          InputProps={{
+                                            startAdornment: value ? (
+                                              <InputAdornment position="start">$</InputAdornment>
+                                            ) : null,
                                           }}
                                           sx={{ width: '100%' }}
                                         />
