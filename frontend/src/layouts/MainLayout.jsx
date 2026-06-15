@@ -1774,6 +1774,7 @@ const MainLayout = () => {
           <Box sx={{ flexGrow: 1 }}>
             <Button
               color="primary"
+              onClick={() => navigate('/workspace')}
               sx={{
                 fontSize: { xs: '1.1rem', sm: '1.25rem' },
                 fontWeight: 'bold',
