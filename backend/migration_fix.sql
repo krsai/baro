@@ -30,6 +30,71 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Factory_orgId_factoryCode_key"
 
 ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "employeeNo" TEXT;
 
+-- Step 0aa: four-digit employee numbers and missing-number backfill (20260615)
+UPDATE "Employee"
+SET "employeeNo" = regexp_replace(
+  "employeeNo",
+  '[0-9]+$',
+  lpad(substring("employeeNo" from '([0-9]+)$'), 4, '0')
+)
+WHERE "employeeNo" ~ '^.+-[0-9]{1,3}$';
+
+WITH factory_sequences AS (
+  SELECT
+    f.id AS "factoryId",
+    f."orgId",
+    trim(f."factoryCode") AS "factoryCode",
+    COALESCE(
+      MAX(
+        CASE
+          WHEN left(
+            e."employeeNo",
+            char_length(trim(f."factoryCode")) + 1
+          ) = trim(f."factoryCode") || '-'
+            AND substring(
+              e."employeeNo"
+              from char_length(trim(f."factoryCode")) + 2
+            ) ~ '^[0-9]+$'
+          THEN substring(
+            e."employeeNo"
+            from char_length(trim(f."factoryCode")) + 2
+          )::bigint
+          ELSE 0
+        END
+      ),
+      0
+    ) AS "maxSequence"
+  FROM "Factory" f
+  LEFT JOIN "Employee" e
+    ON e."orgId" = f."orgId"
+    AND e."factoryId" = f.id
+  WHERE NULLIF(trim(f."factoryCode"), '') IS NOT NULL
+  GROUP BY f.id, f."orgId", trim(f."factoryCode")
+),
+missing_employee_numbers AS (
+  SELECT
+    e.id,
+    fs."factoryCode",
+    fs."maxSequence"
+      + ROW_NUMBER() OVER (
+          PARTITION BY fs."factoryId"
+          ORDER BY e.id
+        ) AS "nextSequence"
+  FROM "Employee" e
+  JOIN factory_sequences fs
+    ON fs."orgId" = e."orgId"
+    AND fs."factoryId" = e."factoryId"
+  WHERE NULLIF(trim(e."employeeNo"), '') IS NULL
+)
+UPDATE "Employee" e
+SET "employeeNo" = men."factoryCode" || '-'
+  || lpad(men."nextSequence"::text, 4, '0')
+FROM missing_employee_numbers men
+WHERE e.id = men.id;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "Employee_orgId_employeeNo_key"
+  ON "Employee"("orgId", "employeeNo");
+
 -- Step 1: close fields (20260517)
 DO $$ BEGIN
   CREATE TYPE "AssignmentCloseMode" AS ENUM ('FULL', 'SHORT', 'OVER');

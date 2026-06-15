@@ -44,6 +44,12 @@ AT(q) = a*q + b
 
 ## 데이터 구조 핵심
 
+### 사원번호
+- 제조사 직원의 사원번호는 `{공장코드}-{4자리 순번}` 형식이다. 예: `HN-0001`.
+- 직접 직원 등록과 가입 승인 모두 해당 공장의 현재 최대 순번 다음 번호를 자동 부여한다.
+- 기존 1~3자리 숫자 suffix는 배포 migration에서 4자리로 정규화한다. 예: `HN-001` → `HN-0001`.
+- 사원번호는 조직 내에서 중복될 수 없다.
+
 ### WorkLog / WorkRecord
 - **WorkLog**: 기간 헤더. `coverageStartDate`(시작), `coverageEndDate`(종료)가 소스오브트루스.
   - `displayDate` (DB 컬럼명 `workDate`, Prisma `@map("workDate")`): 목록 표시/정렬 전용 대표 날짜. 항상 `coverageEndDate`와 동일. **계산 로직 사용 금지.**

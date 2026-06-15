@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * 전체 직원에게 HN-001부터 오름차순으로 사번을 부여합니다.
- * baro.garment@gmail.com → HN-001, 나머지는 membership.id 오름차순으로 HN-002, HN-003, ...
+ * 전체 직원에게 HN-0001부터 오름차순으로 사번을 부여합니다.
+ * baro.garment@gmail.com → HN-0001, 나머지는 membership.id 오름차순으로 HN-0002, HN-0003, ...
  *
  * 사용법:
  *   확인:  node scripts/assign-employee-numbers.js
@@ -53,7 +53,7 @@ async function main() {
   console.log(`총 ${ordered.length}명 사번 부여 예정:\n`);
   const assignments = ordered.map((r, i) => ({
     ...r,
-    newNo: `${PREFIX}-${String(i + 1).padStart(3, '0')}`,
+    newNo: `${PREFIX}-${String(i + 1).padStart(4, '0')}`,
   }));
 
   for (const a of assignments) {

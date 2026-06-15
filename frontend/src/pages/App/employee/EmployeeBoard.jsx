@@ -112,7 +112,11 @@ const EMPLOYEE_BOARD_TEXT = {
   emailOrCodeColumn: { ko: '이메일', en: 'Email', vi: 'Email' },
   employeeNoColumn: { ko: '사번', en: 'Employee No.', vi: 'Ma NV' },
   employeeNoLabel: { ko: '사번', en: 'Employee No.', vi: 'Ma NV' },
-  employeeNoAutoHint: { ko: '공장 코드 기준으로 자동 생성됩니다.', en: 'Auto-generated from factory code.', vi: 'Tu dong tao tu ma nha may.' },
+  employeeNoAutoHint: {
+    ko: '공장 코드 + 4자리 순번으로 자동 생성됩니다. 예: HN-0001',
+    en: 'Auto-generated as factory code + 4 digits, e.g. HN-0001.',
+    vi: 'Tu dong tao theo ma nha may + 4 chu so, vi du HN-0001.',
+  },
   loginEmailHelperAllOptional: {
     ko: '이메일 없이 저장하면 사번으로만 로그인 불가. 나중에 이메일 추가 가능.',
     en: 'Without email, login is unavailable. Email can be added later.',

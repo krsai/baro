@@ -355,6 +355,7 @@ model Employee {
   @@index([orgId])
   @@index([factoryId])
   @@index([roleId])
+  @@unique([orgId, employeeNo])
 }
 
 model AttendanceEntry {

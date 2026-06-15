@@ -27,6 +27,12 @@ export const UI_MESSAGES = {
   },
   menu: {
     dashboard: { ko: '\uB300\uC2DC\uBCF4\uB4DC', en: 'Dashboard', vi: 'Bang dieu khien' },
+    operations: { ko: '운영 관리', en: 'Operations', vi: 'Quan ly van hanh' },
+    revenueAnalysis: {
+      ko: '수익 분석',
+      en: 'Revenue Analysis',
+      vi: 'Phan tich doanh thu',
+    },
     batchProgress: { ko: '\uC0DD\uC0B0 \uD604\uD669', en: 'Production Status', vi: 'Tinh hinh san xuat' },
     qcReview: { ko: '\uAC80\uC218', en: 'Inspection', vi: 'Kiem tra' },
     processMaster: { ko: '\uACF5\uC815 \uB9C8\uC2A4\uD130', en: 'Process Master', vi: 'Danh muc cong doan' },

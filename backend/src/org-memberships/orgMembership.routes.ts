@@ -2,6 +2,10 @@ import { Prisma, type OrgUserRole } from "@prisma/client";
 import { type Request, type Response, Router } from "express";
 import { prisma } from "../db";
 import {
+  generateNextEmployeeNo,
+  normalizeEmployeeNo,
+} from "../employees/employeeNumber";
+import {
   getOrganizationByQuery,
   getRequesterEmail,
   requireSystemAdmin,
@@ -278,26 +282,36 @@ export const createOrgMembershipRouter = ({
         factoryIdNum !== null && factoryIdNum !== undefined
           ? factoryIdNum
           : existingEmployee?.factoryId ?? null;
-      await prisma.employee.upsert({
-        where: { orgMembershipId: membership.id },
-        update: {
-          orgId: orgIdNum,
-          factoryId: resolvedFactoryId,
-          roleId: resolvedRoleId,
-          payType: resolvedPayType,
-          joinedAt: existingEmployee?.joinedAt ?? now,
-          leftAt: null,
-          leaveStartAt: null,
-          leaveEndAt: null,
-        },
-        create: {
-          orgId: orgIdNum,
-          orgMembershipId: membership.id,
-          factoryId: resolvedFactoryId,
-          roleId: resolvedRoleId,
-          payType: resolvedPayType,
-          joinedAt: now,
-        },
+      await prisma.$transaction(async (tx) => {
+        const employeeNo =
+          normalizeEmployeeNo(existingEmployee?.employeeNo) ||
+          (resolvedFactoryId
+            ? await generateNextEmployeeNo(tx, orgIdNum, resolvedFactoryId)
+            : null);
+
+        await tx.employee.upsert({
+          where: { orgMembershipId: membership.id },
+          update: {
+            orgId: orgIdNum,
+            factoryId: resolvedFactoryId,
+            roleId: resolvedRoleId,
+            payType: resolvedPayType,
+            ...(employeeNo ? { employeeNo } : {}),
+            joinedAt: existingEmployee?.joinedAt ?? now,
+            leftAt: null,
+            leaveStartAt: null,
+            leaveEndAt: null,
+          },
+          create: {
+            orgId: orgIdNum,
+            orgMembershipId: membership.id,
+            factoryId: resolvedFactoryId,
+            roleId: resolvedRoleId,
+            payType: resolvedPayType,
+            employeeNo,
+            joinedAt: now,
+          },
+        });
       });
     }
 
@@ -451,26 +465,36 @@ export const createOrgMembershipRouter = ({
         roleId: resolvedEmployeeRoleId,
         payType: existingEmployee?.payType,
       });
-      await prisma.employee.upsert({
-        where: { orgMembershipId: membership.id },
-        update: {
-          orgId: membership.orgId,
-          factoryId: factoryIdNum,
-          roleId: resolvedEmployeeRoleId,
-          payType: resolvedPayType,
-          joinedAt: existingEmployee?.joinedAt ?? now,
-          leftAt: null,
-          leaveStartAt: null,
-          leaveEndAt: null,
-        },
-        create: {
-          orgId: membership.orgId,
-          orgMembershipId: membership.id,
-          factoryId: factoryIdNum,
-          roleId: resolvedEmployeeRoleId,
-          payType: resolvedPayType,
-          joinedAt: now,
-        },
+      await prisma.$transaction(async (tx) => {
+        const employeeNo =
+          normalizeEmployeeNo(existingEmployee?.employeeNo) ||
+          (factoryIdNum
+            ? await generateNextEmployeeNo(tx, membership.orgId, factoryIdNum)
+            : null);
+
+        await tx.employee.upsert({
+          where: { orgMembershipId: membership.id },
+          update: {
+            orgId: membership.orgId,
+            factoryId: factoryIdNum,
+            roleId: resolvedEmployeeRoleId,
+            payType: resolvedPayType,
+            ...(employeeNo ? { employeeNo } : {}),
+            joinedAt: existingEmployee?.joinedAt ?? now,
+            leftAt: null,
+            leaveStartAt: null,
+            leaveEndAt: null,
+          },
+          create: {
+            orgId: membership.orgId,
+            orgMembershipId: membership.id,
+            factoryId: factoryIdNum,
+            roleId: resolvedEmployeeRoleId,
+            payType: resolvedPayType,
+            employeeNo,
+            joinedAt: now,
+          },
+        });
       });
     }
 
@@ -658,14 +682,32 @@ export const createOrgMembershipRouter = ({
         employeeData.leftAt = now;
       }
 
-      const upsertedEmployee = await prisma.employee.upsert({
-        where: { orgMembershipId: membership.id },
-        update: employeeData,
-        create: {
-          orgMembershipId: membership.id,
-          joinedAt: existingEmployee?.joinedAt ?? now,
-          ...employeeData,
-        },
+      const upsertedEmployee = await prisma.$transaction(async (tx) => {
+        const resolvedFactoryId = existingEmployee?.factoryId ?? null;
+        const employeeNo =
+          normalizeEmployeeNo(existingEmployee?.employeeNo) ||
+          (currentStatus === "ACTIVE" && resolvedFactoryId
+            ? await generateNextEmployeeNo(
+                tx,
+                membership.orgId,
+                resolvedFactoryId
+              )
+            : null);
+
+        return tx.employee.upsert({
+          where: { orgMembershipId: membership.id },
+          update: {
+            ...employeeData,
+            ...(employeeNo ? { employeeNo } : {}),
+          },
+          create: {
+            orgMembershipId: membership.id,
+            factoryId: resolvedFactoryId,
+            employeeNo,
+            joinedAt: existingEmployee?.joinedAt ?? now,
+            ...employeeData,
+          },
+        });
       });
 
       if (currentStatus === "ACTIVE" && membership.status === "TERMINATED") {

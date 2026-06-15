@@ -7,6 +7,10 @@ import {
   resolveEmployeeEffectivePayType,
   resolveRoleDefaultPayType,
 } from "./employeeCompensation";
+import {
+  generateNextEmployeeNo,
+  normalizeEmployeeNo,
+} from "./employeeNumber";
 import { resolveOptionalString } from "../utils/common";
 
 type EmployeeRoutesDeps = {
@@ -60,26 +64,6 @@ const toOptionalDateOrNull = (
     return { ok: false };
   }
   return { ok: true, hasInput: true, value: parsedDate };
-};
-
-const generateEmployeeNo = async (orgId: number, factoryId: number): Promise<string | null> => {
-  const factory = await prisma.factory.findFirst({ where: { id: factoryId, orgId } });
-  const code = (factory as any)?.factoryCode;
-  if (!code) return null;
-
-  const existing = await prisma.employee.findMany({
-    where: { factoryId, orgId },
-    select: { employeeNo: true },
-  });
-  const prefix = `${code}-`;
-  let maxSeq = 0;
-  for (const emp of existing) {
-    if (typeof emp.employeeNo === "string" && emp.employeeNo.startsWith(prefix)) {
-      const seq = parseInt(emp.employeeNo.slice(prefix.length), 10);
-      if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
-    }
-  }
-  return `${code}-${String(maxSeq + 1).padStart(3, "0")}`;
 };
 
 const toEmployeeResponse = (employee: any) => ({
@@ -410,31 +394,31 @@ export const createEmployeeRouter = ({
       });
     }
 
-    const isNewEmployee = !existingEmployee;
-
-    // employeeNo 처리: 명시적으로 전달된 값 우선, 없으면 신규 생성 시 자동 채번
+    // employeeNo 처리: 명시적으로 전달된 값 우선, 없거나 비어 있으면 자동 채번
     let resolvedEmployeeNo: string | null | undefined = undefined; // undefined = 변경 없음
     if (employeeNo !== undefined) {
-      const trimmed = typeof employeeNo === "string" ? employeeNo.trim() : null;
-      if (trimmed) {
+      const normalized = normalizeEmployeeNo(employeeNo);
+      if (normalized) {
         // 중복 체크 (같은 orgId에서 다른 직원이 이미 사용 중인지)
         const conflict = await prisma.employee.findFirst({
           where: {
             orgId: membership.orgId,
-            employeeNo: trimmed,
+            employeeNo: normalized,
             ...(existingEmployee ? { id: { not: existingEmployee.id } } : {}),
           },
         });
         if (conflict) {
           return res.status(409).json({ ok: false, error: "employeeNo already in use" });
         }
-        resolvedEmployeeNo = trimmed;
+        resolvedEmployeeNo = normalized;
       } else {
-        resolvedEmployeeNo = null;
+        resolvedEmployeeNo = undefined;
       }
-    } else if (isNewEmployee && resolvedFactoryId) {
-      resolvedEmployeeNo = await generateEmployeeNo(membership.orgId, resolvedFactoryId);
     }
+    const shouldGenerateEmployeeNo =
+      resolvedEmployeeNo === undefined &&
+      Boolean(resolvedFactoryId) &&
+      !normalizeEmployeeNo(existingEmployee?.employeeNo);
 
     const data: any = {
       orgId: membership.orgId,
@@ -455,11 +439,30 @@ export const createEmployeeRouter = ({
       ...(leftAtParseResult.hasInput ? { leftAt: leftAtParseResult.value } : {}),
     };
 
-    const employee = await prisma.employee.upsert({
-      where: { orgMembershipId: membership.id },
-      update: data,
-      create: data,
-    });
+    let employee;
+    try {
+      employee = await prisma.$transaction(async (tx) => {
+        const transactionData = { ...data };
+        if (shouldGenerateEmployeeNo && resolvedFactoryId) {
+          transactionData.employeeNo = await generateNextEmployeeNo(
+            tx,
+            membership.orgId,
+            resolvedFactoryId
+          );
+        }
+
+        return tx.employee.upsert({
+          where: { orgMembershipId: membership.id },
+          update: transactionData,
+          create: transactionData,
+        });
+      });
+    } catch (error) {
+      if ((error as { code?: string })?.code === "P2002") {
+        return res.status(409).json({ ok: false, error: "employeeNo already in use" });
+      }
+      throw error;
+    }
 
     const activeAssignment = await prisma.lineAssignment.findFirst({
       where: {
