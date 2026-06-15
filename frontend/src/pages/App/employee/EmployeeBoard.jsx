@@ -104,9 +104,9 @@ const EMPLOYEE_BOARD_TEXT = {
     vi: 'Danh sach nhan vien dang lam/nghi viec',
   },
   searchPlaceholder: {
-    ko: '이름, 이메일, 직무 검색',
-    en: 'Search name, email, or job role',
-    vi: 'Tim ten, email, hoac vai tro',
+    ko: '이름, 사번, 이메일, 직무 검색',
+    en: 'Search name, employee no., email, or job role',
+    vi: 'Tim ten, ma NV, email, hoac vai tro',
   },
   nameColumn: { ko: '이름', en: 'Name', vi: 'Ten' },
   emailOrCodeColumn: { ko: '이메일', en: 'Email', vi: 'Email' },
@@ -1386,6 +1386,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         factoryById.get(String(employee?.factoryId || ''))?.name || '';
       const searchableText = [
         employee?.name,
+        employee?.employeeNo,
         getMemberIdentityLabel(member),
         getMemberUniqueCode(member?.id, member?.orgId),
         employee?.bankName,

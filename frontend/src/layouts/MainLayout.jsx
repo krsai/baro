@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAppActions, useAppState } from '../context/AppContext';
@@ -496,6 +496,20 @@ const MainLayout = () => {
         path: '/dashboard',
       },
       {
+        label: getUiMessage('menu.operations', '\uC6B4\uC601 \uAD00\uB9AC', languageCode),
+        icon: <TrendingUpIcon />,
+        isParent: true,
+        menuGroupKey: MENU_GROUP_KEYS.OPERATIONS,
+        isOpen: operationsOpen,
+        children: [
+          {
+            label: getUiMessage('menu.revenueAnalysis', '\uC218\uC775 \uBD84\uC11D', languageCode),
+            icon: <TrendingUpIcon />,
+            path: '/revenue-analysis',
+          },
+        ],
+      },
+      {
         label: getUiMessage('menu.sales', '\uC601\uC5C5 \uAD00\uB9AC', languageCode),
         icon: <ShoppingCartIcon />,
         isParent: true,
@@ -588,20 +602,6 @@ const MainLayout = () => {
             icon: <ListAltIcon />,
             path: '/production-result',
             disabled: true,
-          },
-        ],
-      },
-      {
-        label: getUiMessage('menu.operations', '운영 관리', languageCode),
-        icon: <TrendingUpIcon />,
-        isParent: true,
-        menuGroupKey: MENU_GROUP_KEYS.OPERATIONS,
-        isOpen: operationsOpen,
-        children: [
-          {
-            label: getUiMessage('menu.revenueAnalysis', '수익 분석', languageCode),
-            icon: <TrendingUpIcon />,
-            path: '/revenue-analysis',
           },
         ],
       },
