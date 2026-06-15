@@ -104,6 +104,11 @@ const EMPLOYEE_BOARD_TEXT = {
     en: 'Active/Former Employees',
     vi: 'Danh sach nhan vien dang lam/nghi viec',
   },
+  draftDeleteHint: {
+    ko: '삭제 버튼은 이름/계좌 등 핵심 정보가 비어 있는 잘못 생성된 임시 직원 행에만 표시됩니다.',
+    en: 'The delete button only appears for malformed temporary employee rows with empty core profile fields.',
+    vi: 'Nut xoa chi hien cho dong nhan vien tam bi tao loi khi cac thong tin chinh nhu ten/tai khoan de trong.',
+  },
   searchPlaceholder: {
     ko: '이름, 사번, 이메일, 직무 검색',
     en: 'Search name, employee no., email, or job role',
@@ -190,6 +195,7 @@ const EMPLOYEE_BOARD_TEXT = {
     vi: 'Xoa dong nhan vien that bai.',
   },
   deleteButton: { ko: '삭제', en: 'Delete', vi: 'Xoa' },
+  protectedRowLabel: { ko: '보존', en: 'Kept', vi: 'Giu lai' },
   errNoEditPermission: { ko: '직원 수정 권한이 없습니다.', en: 'No permission to edit employees.', vi: 'Ban khong co quyen sua nhan vien.' },
   errInvalidEmail: { ko: '유효한 이메일 형식이 아닙니다.', en: 'Invalid email format.', vi: 'Dinh dang email khong hop le.' },
   errNameRequired: { ko: '이름은 필수 입력입니다.', en: 'Name is required.', vi: 'Ten la bat buoc.' },
@@ -1969,6 +1975,20 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   value={selectedFactoryFilterId}
                   onChange={(e) => setSelectedFactoryFilterId(e.target.value)}
                   sx={{ minWidth: 220, width: { xs: '100%', md: 'auto' } }}
+                  SelectProps={{
+                    displayEmpty: true,
+                    renderValue: (value) => {
+                      const normalizedValue = String(value || '');
+                      if (!normalizedValue) {
+                        return text('allFactory', languageCode);
+                      }
+                      return (
+                        factories.find((factory) => String(factory?.id) === normalizedValue)?.name ||
+                        text('allFactory', languageCode)
+                      );
+                    },
+                  }}
+                  InputLabelProps={{ shrink: true }}
                 >
                   <MenuItem value="">{text('allFactory', languageCode)}</MenuItem>
                   {factories.map((factory) => (
@@ -1980,6 +2000,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               )}
             </Box>
           </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+            {text('draftDeleteHint', languageCode)}
+          </Typography>
 
           <TableContainer>
             <Table size="small">
@@ -2069,7 +2092,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                                 : text('deleteButton', languageCode)}
                             </Button>
                           ) : (
-                            '-'
+                            <Typography variant="caption" color="text.disabled">
+                              {text('protectedRowLabel', languageCode)}
+                            </Typography>
                           )}
                         </TableCell>
                       </TableRow>
