@@ -1,48 +1,46 @@
-# BARO 로컬 설정
+# BARO
 
-## 1. 최초 1회 실행
-프로젝트 루트에서 아래 명령을 실행하세요.
+BARO is a garment factory production management SaaS project.
+The main product areas are AT estimation and the scheduler.
+
+Detailed domain rules, operations notes, and current source-of-truth guidance live in [AGENTS.md](./AGENTS.md).
+
+## Docs Policy
+
+- `AGENTS.md`: single source of truth for domain and operations rules
+- `CLAUDE.md`: minimal pointer file for AI tooling
+- Legacy planning notes and boilerplate READMEs are not kept
+
+## Setup
+
+Create local env files:
 
 ```powershell
 npm run setup:env
 ```
 
-아래 파일이 자동 생성됩니다.
-- `frontend/.env` (`frontend/.env.example` 기반)
-- `backend/.env` (`backend/.env.example` 기반)
-
-## 2. 실제 값 입력
-`frontend/.env`
-
-```dotenv
-VITE_API_BASE_URL=http://localhost:4000
-VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
-VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
-VITE_ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT=10
-```
-
-`backend/.env`
-
-```dotenv
-DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DB_NAME?schema=public
-PORT=4000
-BUSINESS_TIME_ZONE=Asia/Seoul
-```
-
-## 3. 실행
+Start the app:
 
 ```powershell
 npm run dev
 ```
 
-## 4. 회귀 테스트
+Run regression tests:
 
 ```powershell
 npm run test:regression
 ```
 
-## 사무실/노트북 공유 권장 방식
-- 키 구조는 `frontend/.env.example`, `backend/.env.example`를 git에 공유합니다.
-- `backend/.env`는 DB 비밀번호가 포함되므로 git에 커밋하지 않습니다.
-- `VITE_SUPABASE_ANON_KEY`는 클라이언트 키이지만 프로젝트 설정값이므로 신뢰 가능한 채널에서만 공유하세요.
-- 실제 값은 비밀번호 관리자 Secure Note(또는 사내 시크릿 저장소)에 보관하고, 각 PC의 `.env`에 반영하는 방식을 권장합니다.
+## Main Paths
+
+- Frontend: `frontend`
+- Backend: `backend`
+- Main project guide: `AGENTS.md`
+- Baseline reset script: `backend/scripts/reset-to-baseline.js`
+
+## Stack
+
+- Frontend: `Vite + React 19`
+- Backend: `Express + TypeScript + Prisma + PostgreSQL`
+
+When README and AGENTS differ, follow `AGENTS.md`.
