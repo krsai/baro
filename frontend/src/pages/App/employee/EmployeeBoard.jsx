@@ -30,6 +30,7 @@ import {
 } from '../../../constants/staticOptionRegistry';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { fetchAttributes } from '../../../utils/attributeApi';
+import { canAccessFeature, FEATURE_KEYS } from '../../../utils/accessControl';
 
 const EMPLOYEE_STATUS_VALUES = ['ACTIVE', 'SUSPENDED', 'TERMINATED'];
 const EMPLOYEE_STATUS_FILTER_VALUES = [...EMPLOYEE_STATUS_VALUES, 'ALL'];
@@ -251,7 +252,6 @@ const getRoleOptionsByOrgType = (orgType, languageCode = 'ko') =>
   String(orgType || '').toUpperCase() === 'BRAND'
     ? getOrgRoleOptions(languageCode).filter((option) => option.value !== 'WORKER')
     : getOrgRoleOptions(languageCode);
-const MEMBER_REVIEWER_ROLES = new Set(['ADMIN', 'OPERATOR', 'ACCOUNTANT']);
 const LOGIN_REQUIRED_ROLES = new Set(['ADMIN', 'OPERATOR']);
 const INTERNAL_MEMBER_EMAIL_PREFIX = 'emp+';
 const INTERNAL_MEMBER_EMAIL_DOMAIN = 'baro.local';
@@ -662,6 +662,10 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     activeOrgType: authOrgType,
     activeOrgRole,
     activeFactoryId,
+    accessProfile,
+    devBypass,
+    devProfile,
+    isAuthenticated,
   } = useAuth();
   const { showNotification } = useAppActions();
   const { languageCode } = useLanguage();
@@ -729,7 +733,12 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const canViewFixedSalary = true;
   const canManageMembers =
     overrideOrgId != null ||
-    MEMBER_REVIEWER_ROLES.has(String(activeOrgRole || '').toUpperCase());
+    canAccessFeature(FEATURE_KEYS.EMPLOYEE, {
+      isAuthenticated,
+      devBypass,
+      devProfile,
+      accessProfile,
+    });
   const operatorFactoryId = '';
   const canFilterByFactory = activeOrgType !== 'BRAND' && factories.length > 0;
   const defaultPendingFactoryId = operatorFactoryId || selectedFactoryFilterId || '';

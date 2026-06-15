@@ -14,6 +14,11 @@ import { normalizeEmail } from "../utils/common";
 
 type OrgMembershipRoutesDeps = {
   closeActiveLineAssignments: (employeeId: number, endedAt?: Date) => Promise<number[]>;
+  hasOrgFeatureAccess: (args: {
+    orgType: unknown;
+    orgRole: OrgUserRole;
+    feature: "EMPLOYEE";
+  }) => Promise<boolean>;
   isManufacturerOrg: (org: { type?: string | null } | null | undefined) => boolean;
   resolveDefaultEmployeeRoleId: (orgId: number) => Promise<number | null>;
   resolveEmployeeStoredPayType: (args: {
@@ -28,6 +33,7 @@ type OrgMembershipRoutesDeps = {
 
 export const createOrgMembershipRouter = ({
   closeActiveLineAssignments,
+  hasOrgFeatureAccess,
   isManufacturerOrg,
   resolveDefaultEmployeeRoleId,
   resolveEmployeeStoredPayType,
@@ -35,7 +41,6 @@ export const createOrgMembershipRouter = ({
   resolveStatus,
 }: OrgMembershipRoutesDeps) => {
   const orgMembershipRouter = Router();
-  const REQUEST_REVIEWER_ROLES = new Set<OrgUserRole>(["ADMIN", "OPERATOR"]);
   const LOGIN_REQUIRED_ROLES = new Set<OrgUserRole>(["ADMIN", "OPERATOR"]);
   const INTERNAL_MEMBER_EMAIL_PREFIX = "emp+";
   const INTERNAL_MEMBER_EMAIL_DOMAIN = "baro.local";
@@ -88,12 +93,23 @@ export const createOrgMembershipRouter = ({
       select: {
         status: true,
         role: true,
+        organization: {
+          select: {
+            type: true,
+          },
+        },
       },
     });
 
+    const hasEmployeeAccess =
+      requesterMembership?.status === "ACTIVE" &&
+      (await hasOrgFeatureAccess({
+        orgType: requesterMembership.organization?.type,
+        orgRole: requesterMembership.role,
+        feature: "EMPLOYEE",
+      }));
     if (
-      requesterMembership?.status !== "ACTIVE" ||
-      !REQUEST_REVIEWER_ROLES.has(requesterMembership.role)
+      !hasEmployeeAccess
     ) {
       const systemUser = await prisma.systemUser.findUnique({
         where: { email: requesterEmail },
@@ -102,7 +118,7 @@ export const createOrgMembershipRouter = ({
       if (systemUser?.systemRole !== "SYSTEM_ADMIN") {
         res.status(403).json({
           ok: false,
-          error: "org admin/operator access required",
+          error: "employee access required",
         });
         return null;
       }

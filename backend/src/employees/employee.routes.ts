@@ -14,6 +14,11 @@ import {
 import { resolveOptionalString } from "../utils/common";
 
 type EmployeeRoutesDeps = {
+  hasOrgFeatureAccess: (args: {
+    orgType: unknown;
+    orgRole: OrgUserRole;
+    feature: "EMPLOYEE";
+  }) => Promise<boolean>;
   isManufacturerOrg: (org: { type?: string | null } | null | undefined) => boolean;
   resolveDefaultEmployeeRoleId: (orgId: number) => Promise<number | null>;
   resolveEmployeeStoredPayType: (args: {
@@ -94,6 +99,7 @@ const toEmployeeResponse = (employee: any) => ({
 });
 
 export const createEmployeeRouter = ({
+  hasOrgFeatureAccess,
   isManufacturerOrg,
   resolveDefaultEmployeeRoleId,
   resolveEmployeeStoredPayType,
@@ -287,6 +293,42 @@ export const createEmployeeRouter = ({
 
     if (!membership) {
       return res.status(404).json({ ok: false, error: "membership not found" });
+    }
+
+    const requesterEmail = getRequesterEmail(req);
+    if (!requesterEmail) {
+      return res.status(401).json({ ok: false, error: "request user email is required" });
+    }
+    const [requesterSystemUser, requesterMembership] = await Promise.all([
+      prisma.systemUser.findUnique({
+        where: { email: requesterEmail },
+        select: { systemRole: true },
+      }),
+      prisma.orgMembership.findUnique({
+        where: {
+          orgId_email: {
+            orgId: membership.orgId,
+            email: requesterEmail,
+          },
+        },
+        select: {
+          status: true,
+          role: true,
+        },
+      }),
+    ]);
+    const hasEmployeeAccess =
+      requesterSystemUser?.systemRole === "SYSTEM_ADMIN" ||
+      (
+        requesterMembership?.status === "ACTIVE" &&
+        await hasOrgFeatureAccess({
+          orgType: membership.organization?.type,
+          orgRole: requesterMembership.role,
+          feature: "EMPLOYEE",
+        })
+      );
+    if (!hasEmployeeAccess) {
+      return res.status(403).json({ ok: false, error: "employee access required" });
     }
 
     if (membership.status === "PENDING" || membership.status === "REJECTED") {

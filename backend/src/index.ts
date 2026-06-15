@@ -709,6 +709,28 @@ const loadRoleAccessPolicySetting = async () => {
     updatedBy: stored?.updatedBy ?? null,
   };
 };
+const hasRoleAccessPolicyFeature = async ({
+  orgType,
+  orgRole,
+  feature,
+}: {
+  orgType: unknown;
+  orgRole: OrgUserRole;
+  feature: RoleAccessPolicyFeature;
+}) => {
+  const normalizedOrgType = String(orgType ?? "")
+    .trim()
+    .toUpperCase() as OrganizationTypeKey;
+  if (
+    normalizedOrgType !== ORGANIZATION_TYPE_KEYS.MANUFACTURER &&
+    normalizedOrgType !== ORGANIZATION_TYPE_KEYS.BRAND
+  ) {
+    return false;
+  }
+
+  const { policy } = await loadRoleAccessPolicySetting();
+  return policy[normalizedOrgType][orgRole].includes(feature);
+};
 const ONBOARDING_ORGANIZATION_TYPE_TOKENS: Record<string, OrganizationTypeKey> = {
   manufacturer: ORGANIZATION_TYPE_KEYS.MANUFACTURER,
   factory: ORGANIZATION_TYPE_KEYS.MANUFACTURER,
@@ -15849,6 +15871,7 @@ app.use(
 app.use(
   createOrgMembershipRouter({
     closeActiveLineAssignments,
+    hasOrgFeatureAccess: hasRoleAccessPolicyFeature,
     isManufacturerOrg,
     resolveDefaultEmployeeRoleId,
     resolveEmployeeStoredPayType,
@@ -15859,6 +15882,7 @@ app.use(
 
 app.use(
   createEmployeeRouter({
+    hasOrgFeatureAccess: hasRoleAccessPolicyFeature,
     isManufacturerOrg,
     resolveDefaultEmployeeRoleId,
     resolveEmployeeStoredPayType,
