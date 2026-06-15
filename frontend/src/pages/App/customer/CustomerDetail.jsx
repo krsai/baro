@@ -994,7 +994,7 @@ const CustomerDetail = () => {
                           <TableCell align="center">{t('pricingRule')}</TableCell>
                           {PRICE_BUCKETS.map((bucketQuantity) => (
                             <TableCell key={`bucket:${bucketQuantity}`} align="center">
-                              {formatNumberWithCommas(bucketQuantity)}
+                              {formatNumberWithCommas(bucketQuantity)}~
                             </TableCell>
                           ))}
                           <TableCell align="center">{t('actions')}</TableCell>
