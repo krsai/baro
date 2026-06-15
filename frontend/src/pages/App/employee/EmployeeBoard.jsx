@@ -94,7 +94,6 @@ const EMPLOYEE_BOARD_TEXT = {
   pendingTitle: { ko: '승인 대기 목록', en: 'Pending Approvals', vi: 'Danh sach cho duyet' },
   emailColumn: { ko: '이메일', en: 'Email', vi: 'Email' },
   requestDateColumn: { ko: '요청일', en: 'Requested At', vi: 'Ngay yeu cau' },
-  actionColumn: { ko: '액션', en: 'Action', vi: 'Tac vu' },
   approve: { ko: '승인', en: 'Approve', vi: 'Duyet' },
   approving: { ko: '승인 중...', en: 'Approving...', vi: 'Dang duyet...' },
   reject: { ko: '반려', en: 'Reject', vi: 'Tu choi' },
@@ -103,11 +102,6 @@ const EMPLOYEE_BOARD_TEXT = {
     ko: '재직/퇴직 직원 목록',
     en: 'Active/Former Employees',
     vi: 'Danh sach nhan vien dang lam/nghi viec',
-  },
-  draftDeleteHint: {
-    ko: '삭제 버튼은 이름/계좌 등 핵심 정보가 비어 있는 잘못 생성된 임시 직원 행에만 표시됩니다.',
-    en: 'The delete button only appears for malformed temporary employee rows with empty core profile fields.',
-    vi: 'Nut xoa chi hien cho dong nhan vien tam bi tao loi khi cac thong tin chinh nhu ten/tai khoan de trong.',
   },
   searchPlaceholder: {
     ko: '이름, 사번, 이메일, 직무 검색',
@@ -179,23 +173,6 @@ const EMPLOYEE_BOARD_TEXT = {
   rejectError: { ko: '반려 처리에 실패했습니다.', en: 'Rejection failed.', vi: 'Tu choi that bai.' },
   employeeSaved: { ko: '직원 정보가 저장되었습니다.', en: 'Employee information saved.', vi: 'Da luu thong tin nhan vien.' },
   employeeSaveError: { ko: '직원 정보 저장에 실패했습니다.', en: 'Failed to save employee information.', vi: 'Khong the luu thong tin nhan vien.' },
-  deleteDraftConfirm: {
-    ko: '이 잘못 생성된 직원 행을 삭제하시겠습니까? 연결된 빈 계정도 함께 정리됩니다.',
-    en: 'Delete this malformed employee row? The linked empty account will also be removed.',
-    vi: 'Ban co muon xoa dong nhan vien loi nay khong? Tai khoan trong lien ket cung se bi xoa.',
-  },
-  deleteDraftSuccess: {
-    ko: '잘못 생성된 직원 행을 삭제했습니다.',
-    en: 'Malformed employee row deleted.',
-    vi: 'Da xoa dong nhan vien loi.',
-  },
-  deleteDraftError: {
-    ko: '직원 삭제에 실패했습니다.',
-    en: 'Failed to delete employee row.',
-    vi: 'Xoa dong nhan vien that bai.',
-  },
-  deleteButton: { ko: '삭제', en: 'Delete', vi: 'Xoa' },
-  protectedRowLabel: { ko: '보존', en: 'Kept', vi: 'Giu lai' },
   errNoEditPermission: { ko: '직원 수정 권한이 없습니다.', en: 'No permission to edit employees.', vi: 'Ban khong co quyen sua nhan vien.' },
   errInvalidEmail: { ko: '유효한 이메일 형식이 아닙니다.', en: 'Invalid email format.', vi: 'Dinh dang email khong hop le.' },
   errNameRequired: { ko: '이름은 필수 입력입니다.', en: 'Name is required.', vi: 'Ten la bat buoc.' },
@@ -457,19 +434,6 @@ const getEmployeeDisplayName = (member, employee, myEmail, currentUserName) => {
     '-'
   );
 };
-const isEmptyEmployeeDraft = (employee) =>
-  !employee ||
-  (
-    !String(employee?.name || '').trim() &&
-    !String(employee?.bankName || '').trim() &&
-    !String(employee?.bankAccountNumber || '').trim() &&
-    !String(employee?.phone || '').trim() &&
-    !String(employee?.position || '').trim()
-  );
-const isDraftCleanupCandidate = (member, employee, myEmail) =>
-  Boolean(member?.id) &&
-  normalizeEmail(member?.email) !== normalizeEmail(myEmail) &&
-  isEmptyEmployeeDraft(employee);
 
 const EmployeeRow = React.memo(
   ({
@@ -751,7 +715,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const [pendingRoleOverrides, setPendingRoleOverrides] = useState({});
   const [updatingMembershipIds, setUpdatingMembershipIds] = useState({});
   const [updatingEmployeeIds, setUpdatingEmployeeIds] = useState({});
-  const [deletingDraftMemberId, setDeletingDraftMemberId] = useState(null);
 
   const roleOptions = useMemo(
     () => getRoleOptionsByOrgType(activeOrgType, languageCode),
@@ -1429,50 +1392,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     upsertActiveMember,
   ]);
 
-  const handleDeleteDraftMember = useCallback(
-    async (event, member, employee) => {
-      event.stopPropagation();
-      if (!isDraftCleanupCandidate(member, employee, myEmail)) return;
-      if (deletingDraftMemberId) return;
-      const confirmed = window.confirm(text('deleteDraftConfirm', languageCode));
-      if (!confirmed) return;
-
-      setDeletingDraftMemberId(member.id);
-      setStatusMessage(null);
-      try {
-        await requestJSON(`/org-memberships/${member.id}/draft-cleanup`, {
-          method: 'DELETE',
-        });
-        await Promise.all([
-          fetchMemberships(activeOrgId),
-          fetchEmployees(activeOrgId, selectedFactoryFilterId),
-        ]);
-        if (selectedMemberId === member.id) {
-          setIsAddDrawerOpen(false);
-          setSelectedMemberId(null);
-        }
-        setStatusMessage({ type: 'success', text: text('deleteDraftSuccess', languageCode) });
-      } catch (error) {
-        setStatusMessage({
-          type: 'error',
-          text: error?.message || text('deleteDraftError', languageCode),
-        });
-      } finally {
-        setDeletingDraftMemberId(null);
-      }
-    },
-    [
-      activeOrgId,
-      deletingDraftMemberId,
-      fetchEmployees,
-      fetchMemberships,
-      languageCode,
-      myEmail,
-      selectedFactoryFilterId,
-      selectedMemberId,
-    ]
-  );
-
   const visibleActiveMembers = useMemo(() => {
     if (!selectedFactoryFilterId) return activeMembers;
     return activeMembers.filter((member) => {
@@ -1832,7 +1751,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                       <TableCell>{text('factoryLabel', languageCode)}</TableCell>
                       <TableCell>{text('roleLabel', languageCode)}</TableCell>
                       <TableCell>{text('requestDateColumn', languageCode)}</TableCell>
-                      <TableCell>{text('actionColumn', languageCode)}</TableCell>
                     </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1889,31 +1807,34 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                         </TextField>
                       </TableCell>
 
-                      <TableCell>{formatDate(member.requestedAt)}</TableCell>
-
                       <TableCell>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                          <Button
-                            variant="contained"
-                            size="small"
-                            onClick={() => handleApprove(member)}
-                            disabled={Boolean(approvingId) || Boolean(rejectingId)}
-                          >
-                            {approvingId === member.id
-                              ? text('approving', languageCode)
-                              : text('approve', languageCode)}
-                          </Button>
-                          <Button
-                            variant="outlined"
-                            color="error"
-                            size="small"
-                            onClick={() => handleReject(member)}
-                            disabled={Boolean(approvingId) || Boolean(rejectingId)}
-                          >
-                            {rejectingId === member.id
-                              ? text('rejecting', languageCode)
-                              : text('reject', languageCode)}
-                          </Button>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                          <Typography variant="body2">
+                            {formatDate(member.requestedAt)}
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            <Button
+                              variant="contained"
+                              size="small"
+                              onClick={() => handleApprove(member)}
+                              disabled={Boolean(approvingId) || Boolean(rejectingId)}
+                            >
+                              {approvingId === member.id
+                                ? text('approving', languageCode)
+                                : text('approve', languageCode)}
+                            </Button>
+                            <Button
+                              variant="outlined"
+                              color="error"
+                              size="small"
+                              onClick={() => handleReject(member)}
+                              disabled={Boolean(approvingId) || Boolean(rejectingId)}
+                            >
+                              {rejectingId === member.id
+                                ? text('rejecting', languageCode)
+                                : text('reject', languageCode)}
+                            </Button>
+                          </Box>
                         </Box>
                       </TableCell>
                     </TableRow>
@@ -2000,10 +1921,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               )}
             </Box>
           </Box>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-            {text('draftDeleteHint', languageCode)}
-          </Typography>
-
           <TableContainer>
             <Table size="small">
               <TableHead>
@@ -2018,13 +1935,12 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   <TableCell>{text('statusLabel', languageCode)}</TableCell>
                   <TableCell>{text('joinedAtColumn', languageCode)}</TableCell>
                   <TableCell>{text('leftAtColumn', languageCode)}</TableCell>
-                  <TableCell align="right">{text('actionColumn', languageCode)}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {sortedActiveMembers.length === 0 ? (
                   <TableStatusRow
-                    colSpan={11}
+                    colSpan={10}
                     message={
                       searchTerm
                         ? text('noSearchResult', languageCode)
@@ -2059,7 +1975,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                       myEmail,
                       currentUserName
                     );
-                    const canDeleteDraft = isDraftCleanupCandidate(member, employee, myEmail);
                     return (
                       <TableRow
                         key={member.id}
@@ -2079,24 +1994,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                         <TableCell>{getEmployeeStatusLabel(member.status, languageCode)}</TableCell>
                         <TableCell>{formatDate(employee?.joinedAt || member.approvedAt)}</TableCell>
                         <TableCell>{formatDate(employee?.leftAt)}</TableCell>
-                        <TableCell align="right">
-                          {canDeleteDraft ? (
-                            <Button
-                              size="small"
-                              color="error"
-                              onClick={(event) => handleDeleteDraftMember(event, member, employee)}
-                              disabled={Boolean(deletingDraftMemberId)}
-                            >
-                              {deletingDraftMemberId === member.id
-                                ? `${text('deleteButton', languageCode)}...`
-                                : text('deleteButton', languageCode)}
-                            </Button>
-                          ) : (
-                            <Typography variant="caption" color="text.disabled">
-                              {text('protectedRowLabel', languageCode)}
-                            </Typography>
-                          )}
-                        </TableCell>
                       </TableRow>
                     );
                   })
