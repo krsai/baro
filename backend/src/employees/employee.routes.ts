@@ -77,7 +77,7 @@ const toEmployeeResponse = (employee: any) => ({
   orgMembershipId: employee?.orgMembershipId ?? null,
   factoryId: employee?.factoryId ?? null,
   roleId: employee?.roleId ?? null,
-  employeeNo: employee?.employeeNo ?? null,
+  employeeNo: normalizeEmployeeNo(employee?.employeeNo) ?? null,
   roleCode: String(employee?.role?.code ?? "").trim(),
   roleName: String(employee?.role?.name ?? "").trim(),
   roleDefaultPayType: resolveRoleDefaultPayType(employee?.role),

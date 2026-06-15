@@ -10,7 +10,7 @@ import {
   getRequesterEmail,
   requireSystemAdmin,
 } from "../middleware/access";
-import { normalizeEmail } from "../utils/common";
+import { normalizeEmail, resolveOptionalString } from "../utils/common";
 
 type OrgMembershipRoutesDeps = {
   closeActiveLineAssignments: (employeeId: number, endedAt?: Date) => Promise<number[]>;
@@ -71,6 +71,56 @@ export const createOrgMembershipRouter = ({
     }
     throw new Error("failed to generate unique internal member email");
   };
+  const toFixedSalaryOrNull = (
+    value: unknown
+  ): { ok: true; value: number | null } | { ok: false } => {
+    if (value === undefined || value === null || value === "") {
+      return { ok: true, value: null };
+    }
+
+    const sanitized =
+      typeof value === "string" ? value.replace(/[,\s]/g, "") : value;
+    const parsed = Number(sanitized);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return { ok: false };
+    }
+    return { ok: true, value: Math.round(parsed) };
+  };
+  const toOptionalDateOrNull = (
+    value: unknown
+  ):
+    | { ok: true; hasInput: false; value: null }
+    | { ok: true; hasInput: true; value: Date | null }
+    | { ok: false } => {
+    if (value === undefined) {
+      return { ok: true, hasInput: false, value: null };
+    }
+    if (value === null || value === "") {
+      return { ok: true, hasInput: true, value: null };
+    }
+
+    const normalizedText = String(value).trim();
+    if (!normalizedText) {
+      return { ok: true, hasInput: true, value: null };
+    }
+
+    const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(normalizedText)
+      ? new Date(`${normalizedText}T00:00:00.000Z`)
+      : new Date(normalizedText);
+    if (Number.isNaN(parsedDate.getTime())) {
+      return { ok: false };
+    }
+    return { ok: true, hasInput: true, value: parsedDate };
+  };
+  const isEmptyEmployeeDraft = (employee: any) =>
+    !employee ||
+    (
+      !resolveOptionalString(employee?.name, null) &&
+      !resolveOptionalString(employee?.bankName, null) &&
+      !resolveOptionalString(employee?.bankAccountNumber, null) &&
+      !resolveOptionalString(employee?.phone, null) &&
+      !resolveOptionalString(employee?.position, null)
+    );
 
   const requireOrgMembershipReviewer = async (
     req: Request,
@@ -202,7 +252,23 @@ export const createOrgMembershipRouter = ({
   orgMembershipRouter.get("/org-memberships", listOrgMemberships);
 
   orgMembershipRouter.post("/org-memberships", async (req, res) => {
-    const { orgId, email, role, factoryId } = req.body ?? {};
+    const {
+      orgId,
+      email,
+      role,
+      status,
+      factoryId,
+      name,
+      bankName,
+      bankAccountNumber,
+      position,
+      employeeRoleId,
+      payType,
+      fixedSalary,
+      employeeNo,
+      joinedAt,
+      leftAt,
+    } = req.body ?? {};
     const orgIdNum = Number(orgId);
 
     if (!Number.isFinite(orgIdNum)) {
@@ -220,6 +286,14 @@ export const createOrgMembershipRouter = ({
     if (!requesterEmail) return;
 
     const safeRole = resolveRole(role, "WORKER");
+    const requestedStatus = status === undefined ? "ACTIVE" : resolveStatus(status);
+    if (
+      !requestedStatus ||
+      requestedStatus === "PENDING" ||
+      requestedStatus === "REJECTED"
+    ) {
+      return res.status(400).json({ ok: false, error: "invalid status" });
+    }
     const normalizedEmailInput = normalizeEmail(email);
     if (normalizedEmailInput && !isValidEmail(normalizedEmailInput)) {
       return res.status(400).json({ ok: false, error: "invalid email" });
@@ -256,6 +330,49 @@ export const createOrgMembershipRouter = ({
         return res.status(404).json({ ok: false, error: "factory not found" });
       }
     }
+    let employeeRoleIdNum = null;
+    if (
+      employeeRoleId !== "" &&
+      employeeRoleId !== null &&
+      employeeRoleId !== undefined
+    ) {
+      const parsedRoleId = Number(employeeRoleId);
+      if (!Number.isFinite(parsedRoleId)) {
+        return res.status(400).json({ ok: false, error: "invalid employeeRoleId" });
+      }
+      const attrRole = await prisma.attrRole.findFirst({
+        where: { id: parsedRoleId, orgId: orgIdNum },
+      });
+      if (!attrRole) {
+        return res.status(404).json({ ok: false, error: "role not found" });
+      }
+      employeeRoleIdNum = parsedRoleId;
+    }
+    let payTypeValue = null;
+    if (payType !== undefined) {
+      if (payType === "" || payType === null) {
+        payTypeValue = null;
+      } else {
+        const normalizedPayType = String(payType).trim().toUpperCase();
+        if (normalizedPayType !== "CT" && normalizedPayType !== "FIXED") {
+          return res.status(400).json({ ok: false, error: "invalid payType" });
+        }
+        payTypeValue = normalizedPayType as "CT" | "FIXED";
+      }
+    }
+    const fixedSalaryParseResult = toFixedSalaryOrNull(fixedSalary);
+    if (!fixedSalaryParseResult.ok) {
+      return res.status(400).json({ ok: false, error: "invalid fixedSalary" });
+    }
+    const hasFixedSalaryInput = fixedSalary !== undefined;
+    const joinedAtParseResult = toOptionalDateOrNull(joinedAt);
+    if (!joinedAtParseResult.ok) {
+      return res.status(400).json({ ok: false, error: "invalid joinedAt" });
+    }
+    const leftAtParseResult = toOptionalDateOrNull(leftAt);
+    if (!leftAtParseResult.ok) {
+      return res.status(400).json({ ok: false, error: "invalid leftAt" });
+    }
     const now = new Date();
     const existingMembership = await prisma.orgMembership.findUnique({
       where: { orgId_email: { orgId: orgIdNum, email: resolvedMembershipEmail } },
@@ -265,7 +382,7 @@ export const createOrgMembershipRouter = ({
       where: { orgId_email: { orgId: orgIdNum, email: resolvedMembershipEmail } },
       update: {
         role: safeRole,
-        status: "ACTIVE",
+        status: requestedStatus as any,
         approvedAt: now,
         approvedBy: requesterEmail,
       },
@@ -273,7 +390,7 @@ export const createOrgMembershipRouter = ({
         orgId: orgIdNum,
         email: resolvedMembershipEmail,
         role: safeRole,
-        status: "ACTIVE",
+        status: requestedStatus as any,
         requestedAt: now,
         approvedAt: now,
         approvedBy: requesterEmail,
@@ -286,52 +403,195 @@ export const createOrgMembershipRouter = ({
       });
       const resolvedRoleId =
         safeRole === "WORKER"
-          ? existingEmployee?.roleId ?? (await resolveDefaultEmployeeRoleId(orgIdNum))
+          ? employeeRoleIdNum !== null && employeeRoleIdNum !== undefined
+            ? employeeRoleIdNum
+            : existingEmployee?.roleId ?? (await resolveDefaultEmployeeRoleId(orgIdNum))
           : null;
       const resolvedPayType = await resolveEmployeeStoredPayType({
         orgId: orgIdNum,
         membershipRole: safeRole,
         roleId: resolvedRoleId,
-        payType: existingEmployee?.payType,
+        payType: payType !== undefined ? payTypeValue : existingEmployee?.payType,
       });
       const resolvedFactoryId =
         factoryIdNum !== null && factoryIdNum !== undefined
           ? factoryIdNum
           : existingEmployee?.factoryId ?? null;
-      await prisma.$transaction(async (tx) => {
-        const employeeNo =
-          normalizeEmployeeNo(existingEmployee?.employeeNo) ||
-          (resolvedFactoryId
-            ? await generateNextEmployeeNo(tx, orgIdNum, resolvedFactoryId)
-            : null);
-
-        await tx.employee.upsert({
-          where: { orgMembershipId: membership.id },
-          update: {
-            orgId: orgIdNum,
-            factoryId: resolvedFactoryId,
-            roleId: resolvedRoleId,
-            payType: resolvedPayType,
-            ...(employeeNo ? { employeeNo } : {}),
-            joinedAt: existingEmployee?.joinedAt ?? now,
-            leftAt: null,
-            leaveStartAt: null,
-            leaveEndAt: null,
-          },
-          create: {
-            orgId: orgIdNum,
-            orgMembershipId: membership.id,
-            factoryId: resolvedFactoryId,
-            roleId: resolvedRoleId,
-            payType: resolvedPayType,
-            employeeNo,
-            joinedAt: now,
-          },
+      const resolvedFixedSalary = hasFixedSalaryInput
+        ? fixedSalaryParseResult.value
+        : existingEmployee?.fixedSalary ?? null;
+      if (
+        safeRole === "WORKER" &&
+        (resolvedFactoryId === null || resolvedFactoryId === undefined)
+      ) {
+        return res.status(400).json({
+          ok: false,
+          error: "factoryId is required for worker employees",
         });
-      });
+      }
+      let resolvedEmployeeNo: string | null | undefined = undefined;
+      if (employeeNo !== undefined) {
+        const normalizedEmployeeNo = normalizeEmployeeNo(employeeNo);
+        if (normalizedEmployeeNo) {
+          const conflict = await prisma.employee.findFirst({
+            where: {
+              orgId: orgIdNum,
+              employeeNo: normalizedEmployeeNo,
+              ...(existingEmployee ? { id: { not: existingEmployee.id } } : {}),
+            },
+            select: { id: true },
+          });
+          if (conflict) {
+            return res.status(409).json({ ok: false, error: "employeeNo already in use" });
+          }
+          resolvedEmployeeNo = normalizedEmployeeNo;
+        }
+      }
+      try {
+        await prisma.$transaction(async (tx) => {
+          const transactionEmployeeNo =
+            resolvedEmployeeNo !== undefined
+              ? resolvedEmployeeNo
+              : normalizeEmployeeNo(existingEmployee?.employeeNo) ||
+                (resolvedFactoryId
+                  ? await generateNextEmployeeNo(tx, orgIdNum, resolvedFactoryId)
+                  : null);
+
+          await tx.employee.upsert({
+            where: { orgMembershipId: membership.id },
+            update: {
+              orgId: orgIdNum,
+              factoryId: resolvedFactoryId,
+              roleId: resolvedRoleId,
+              payType: resolvedPayType,
+              fixedSalary: resolvedFixedSalary,
+              name: resolveOptionalString(name, existingEmployee?.name ?? null),
+              bankName: resolveOptionalString(bankName, existingEmployee?.bankName ?? null),
+              bankAccountNumber: resolveOptionalString(
+                bankAccountNumber,
+                existingEmployee?.bankAccountNumber ?? null
+              ),
+              position: resolveOptionalString(position, existingEmployee?.position ?? null),
+              ...(transactionEmployeeNo ? { employeeNo: transactionEmployeeNo } : {}),
+              joinedAt: joinedAtParseResult.hasInput
+                ? joinedAtParseResult.value
+                : existingEmployee?.joinedAt ?? now,
+              leftAt: leftAtParseResult.hasInput ? leftAtParseResult.value : null,
+              leaveStartAt: null,
+              leaveEndAt: null,
+            },
+            create: {
+              orgId: orgIdNum,
+              orgMembershipId: membership.id,
+              factoryId: resolvedFactoryId,
+              roleId: resolvedRoleId,
+              payType: resolvedPayType,
+              fixedSalary: resolvedFixedSalary,
+              name: resolveOptionalString(name, null),
+              bankName: resolveOptionalString(bankName, null),
+              bankAccountNumber: resolveOptionalString(bankAccountNumber, null),
+              position: resolveOptionalString(position, null),
+              employeeNo: transactionEmployeeNo,
+              joinedAt: joinedAtParseResult.hasInput ? joinedAtParseResult.value : now,
+              leftAt: leftAtParseResult.hasInput ? leftAtParseResult.value : null,
+            },
+          });
+        });
+      } catch (error) {
+        if ((error as { code?: string })?.code === "P2002") {
+          return res.status(409).json({ ok: false, error: "employeeNo already in use" });
+        }
+        throw error;
+      }
     }
 
     return res.status(existingMembership ? 200 : 201).json(membership);
+  });
+
+  orgMembershipRouter.delete("/org-memberships/:id/draft-cleanup", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ ok: false, error: "invalid id" });
+    }
+
+    const membership = await prisma.orgMembership.findUnique({
+      where: { id },
+      include: {
+        employee: true,
+      },
+    });
+
+    if (!membership) {
+      return res.status(404).json({ ok: false, error: "membership not found" });
+    }
+
+    const requesterEmail = await requireOrgMembershipReviewer(req, res, membership.orgId);
+    if (!requesterEmail) return;
+    if (normalizeEmail(membership.email) === requesterEmail) {
+      return res.status(400).json({ ok: false, error: "cannot delete current user membership" });
+    }
+
+    if (!isEmptyEmployeeDraft(membership.employee)) {
+      return res.status(409).json({
+        ok: false,
+        error: "only empty draft employees can be deleted",
+      });
+    }
+
+    const employeeId = membership.employee?.id ?? null;
+    if (employeeId) {
+      const [attendanceCount, lineAssignmentCount, managedLineCount, workRecordCount] =
+        await Promise.all([
+          prisma.attendanceEntry.count({
+            where: { orgId: membership.orgId, workerId: employeeId },
+          }),
+          prisma.lineAssignment.count({
+            where: { employeeId },
+          }),
+          prisma.line.count({
+            where: { managerEmployeeId: employeeId },
+          }),
+          prisma.workRecord.count({
+            where: { orgId: membership.orgId, workerId: employeeId },
+          }),
+        ]);
+
+      if (
+        attendanceCount > 0 ||
+        lineAssignmentCount > 0 ||
+        managedLineCount > 0 ||
+        workRecordCount > 0
+      ) {
+        return res.status(409).json({
+          ok: false,
+          error: "employee has dependent data",
+          details: {
+            attendanceCount,
+            lineAssignmentCount,
+            managedLineCount,
+            workRecordCount,
+          },
+        });
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (employeeId) {
+        await tx.employee.delete({
+          where: { id: employeeId },
+        });
+      }
+      await tx.orgMembership.delete({
+        where: { id: membership.id },
+      });
+    });
+
+    return res.json({
+      ok: true,
+      deletedMembershipId: membership.id,
+      deletedEmployeeId: employeeId,
+      internalEmail: isInternalMemberEmail(membership.email),
+    });
   });
 
   orgMembershipRouter.post("/org-memberships/apply", async (req, res) => {

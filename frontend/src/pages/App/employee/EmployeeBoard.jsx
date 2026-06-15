@@ -174,6 +174,22 @@ const EMPLOYEE_BOARD_TEXT = {
   rejectError: { ko: '반려 처리에 실패했습니다.', en: 'Rejection failed.', vi: 'Tu choi that bai.' },
   employeeSaved: { ko: '직원 정보가 저장되었습니다.', en: 'Employee information saved.', vi: 'Da luu thong tin nhan vien.' },
   employeeSaveError: { ko: '직원 정보 저장에 실패했습니다.', en: 'Failed to save employee information.', vi: 'Khong the luu thong tin nhan vien.' },
+  deleteDraftConfirm: {
+    ko: '이 잘못 생성된 직원 행을 삭제하시겠습니까? 연결된 빈 계정도 함께 정리됩니다.',
+    en: 'Delete this malformed employee row? The linked empty account will also be removed.',
+    vi: 'Ban co muon xoa dong nhan vien loi nay khong? Tai khoan trong lien ket cung se bi xoa.',
+  },
+  deleteDraftSuccess: {
+    ko: '잘못 생성된 직원 행을 삭제했습니다.',
+    en: 'Malformed employee row deleted.',
+    vi: 'Da xoa dong nhan vien loi.',
+  },
+  deleteDraftError: {
+    ko: '직원 삭제에 실패했습니다.',
+    en: 'Failed to delete employee row.',
+    vi: 'Xoa dong nhan vien that bai.',
+  },
+  deleteButton: { ko: '삭제', en: 'Delete', vi: 'Xoa' },
   errNoEditPermission: { ko: '직원 수정 권한이 없습니다.', en: 'No permission to edit employees.', vi: 'Ban khong co quyen sua nhan vien.' },
   errInvalidEmail: { ko: '유효한 이메일 형식이 아닙니다.', en: 'Invalid email format.', vi: 'Dinh dang email khong hop le.' },
   errNameRequired: { ko: '이름은 필수 입력입니다.', en: 'Name is required.', vi: 'Ten la bat buoc.' },
@@ -435,6 +451,19 @@ const getEmployeeDisplayName = (member, employee, myEmail, currentUserName) => {
     '-'
   );
 };
+const isEmptyEmployeeDraft = (employee) =>
+  !employee ||
+  (
+    !String(employee?.name || '').trim() &&
+    !String(employee?.bankName || '').trim() &&
+    !String(employee?.bankAccountNumber || '').trim() &&
+    !String(employee?.phone || '').trim() &&
+    !String(employee?.position || '').trim()
+  );
+const isDraftCleanupCandidate = (member, employee, myEmail) =>
+  Boolean(member?.id) &&
+  normalizeEmail(member?.email) !== normalizeEmail(myEmail) &&
+  isEmptyEmployeeDraft(employee);
 
 const EmployeeRow = React.memo(
   ({
@@ -716,6 +745,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const [pendingRoleOverrides, setPendingRoleOverrides] = useState({});
   const [updatingMembershipIds, setUpdatingMembershipIds] = useState({});
   const [updatingEmployeeIds, setUpdatingEmployeeIds] = useState({});
+  const [deletingDraftMemberId, setDeletingDraftMemberId] = useState(null);
 
   const roleOptions = useMemo(
     () => getRoleOptionsByOrgType(activeOrgType, languageCode),
@@ -1257,6 +1287,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     try {
       let targetMember = null;
       let membershipEmailForSave;
+      const parsedDrawerFixedSalary = parseMoneyInput(drawerDraft.fixedSalary);
+      const trimmedDrawerEmployeeNo = String(drawerDraft.employeeNo || '').trim();
 
       if (drawerMode === 'create') {
         if (normalizedDrawerEmail) {
@@ -1274,12 +1306,34 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           body: JSON.stringify({
             orgId: activeOrgId,
             role: normalizedOrgRole || resolveDefaultInviteRole(roleOptions),
+            status: resolvedStatus,
+            name: normalizedName,
+            bankName: drawerDraft.bankName,
+            bankAccountNumber: drawerDraft.bankAccountNumber,
+            employeeRoleId:
+              normalizedOrgRole === 'WORKER' && effectiveJobRoleId
+                ? Number(effectiveJobRoleId)
+                : null,
+            payType: normalizedPayType,
+            fixedSalary: parsedDrawerFixedSalary,
+            ...(trimmedDrawerEmployeeNo ? { employeeNo: trimmedDrawerEmployeeNo } : {}),
+            ...(normalizedJoinedAt ? { joinedAt: normalizedJoinedAt } : {}),
+            ...(normalizedLeftAt ? { leftAt: normalizedLeftAt } : {}),
             ...(normalizedDrawerEmail ? { email: normalizedDrawerEmail } : {}),
             ...(activeOrgType !== 'BRAND' && selectedFactoryId
               ? { factoryId: Number(selectedFactoryId) }
               : {}),
           }),
         });
+
+        await Promise.all([
+          fetchMemberships(activeOrgId),
+          fetchEmployees(activeOrgId, selectedFactoryFilterId),
+        ]);
+        upsertActiveMember(targetMember);
+        setStatusMessage({ type: 'success', text: text('employeeSaved', languageCode) });
+        setIsAddDrawerOpen(false);
+        return;
       } else {
         targetMember = activeMembers.find((member) => member.id === selectedMemberId) || null;
         if (!targetMember) {
@@ -1356,13 +1410,62 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     drawerDraft,
     drawerEmail,
     drawerMode,
+    fetchEmployees,
+    fetchMemberships,
     handleEmployeeSave,
     isDrawerSaving,
     languageCode,
+    myEmail,
     pendingMembers,
     roleOptions,
+    selectedFactoryFilterId,
     selectedMemberId,
+    upsertActiveMember,
   ]);
+
+  const handleDeleteDraftMember = useCallback(
+    async (event, member, employee) => {
+      event.stopPropagation();
+      if (!isDraftCleanupCandidate(member, employee, myEmail)) return;
+      if (deletingDraftMemberId) return;
+      const confirmed = window.confirm(text('deleteDraftConfirm', languageCode));
+      if (!confirmed) return;
+
+      setDeletingDraftMemberId(member.id);
+      setStatusMessage(null);
+      try {
+        await requestJSON(`/org-memberships/${member.id}/draft-cleanup`, {
+          method: 'DELETE',
+        });
+        await Promise.all([
+          fetchMemberships(activeOrgId),
+          fetchEmployees(activeOrgId, selectedFactoryFilterId),
+        ]);
+        if (selectedMemberId === member.id) {
+          setIsAddDrawerOpen(false);
+          setSelectedMemberId(null);
+        }
+        setStatusMessage({ type: 'success', text: text('deleteDraftSuccess', languageCode) });
+      } catch (error) {
+        setStatusMessage({
+          type: 'error',
+          text: error?.message || text('deleteDraftError', languageCode),
+        });
+      } finally {
+        setDeletingDraftMemberId(null);
+      }
+    },
+    [
+      activeOrgId,
+      deletingDraftMemberId,
+      fetchEmployees,
+      fetchMemberships,
+      languageCode,
+      myEmail,
+      selectedFactoryFilterId,
+      selectedMemberId,
+    ]
+  );
 
   const visibleActiveMembers = useMemo(() => {
     if (!selectedFactoryFilterId) return activeMembers;
@@ -1892,12 +1995,13 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   <TableCell>{text('statusLabel', languageCode)}</TableCell>
                   <TableCell>{text('joinedAtColumn', languageCode)}</TableCell>
                   <TableCell>{text('leftAtColumn', languageCode)}</TableCell>
+                  <TableCell align="right">{text('actionColumn', languageCode)}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {sortedActiveMembers.length === 0 ? (
                   <TableStatusRow
-                    colSpan={10}
+                    colSpan={11}
                     message={
                       searchTerm
                         ? text('noSearchResult', languageCode)
@@ -1932,6 +2036,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                       myEmail,
                       currentUserName
                     );
+                    const canDeleteDraft = isDraftCleanupCandidate(member, employee, myEmail);
                     return (
                       <TableRow
                         key={member.id}
@@ -1951,6 +2056,22 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                         <TableCell>{getEmployeeStatusLabel(member.status, languageCode)}</TableCell>
                         <TableCell>{formatDate(employee?.joinedAt || member.approvedAt)}</TableCell>
                         <TableCell>{formatDate(employee?.leftAt)}</TableCell>
+                        <TableCell align="right">
+                          {canDeleteDraft ? (
+                            <Button
+                              size="small"
+                              color="error"
+                              onClick={(event) => handleDeleteDraftMember(event, member, employee)}
+                              disabled={Boolean(deletingDraftMemberId)}
+                            >
+                              {deletingDraftMemberId === member.id
+                                ? `${text('deleteButton', languageCode)}...`
+                                : text('deleteButton', languageCode)}
+                            </Button>
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
                       </TableRow>
                     );
                   })
