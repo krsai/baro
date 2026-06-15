@@ -26,6 +26,7 @@ import dayjs from 'dayjs';
 import { GENDER_CODES, SIZE_CODES, getGenderLabel } from '../../../../constants/productAttributes';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { useLanguage } from '../../../../context/LanguageContext';
+import { getUiMessage } from '../../../../constants/uiMessages';
 import { fetchAttributes } from '../../../../utils/attributeApi';
 import { requestJSON } from '../../../../utils/apiClient';
 import StyleAnalysis from './StyleAnalysis';
@@ -318,9 +319,15 @@ const StyleInfo = ({
     const baseOptions = isBrandOrg ? [] : customers;
     if (!resolvedCustomerValue) return baseOptions;
 
-    const hasResolvedCustomer = baseOptions.some(
-      (customer) => String(customer?.name || '').trim() === resolvedCustomerValue
-    );
+    const resolvedOrgId = formData.customerOrgId ? Number(formData.customerOrgId) : null;
+    const hasResolvedCustomer = baseOptions.some((customer) => {
+      if (String(customer?.name || '').trim() === resolvedCustomerValue) return true;
+      if (resolvedOrgId) {
+        const optId = Number(customer?.brandOrgId ?? customer?.id);
+        return Number.isInteger(optId) && optId > 0 && optId === resolvedOrgId;
+      }
+      return false;
+    });
     if (hasResolvedCustomer) return baseOptions;
 
     return [
@@ -350,8 +357,15 @@ const StyleInfo = ({
       ...categories,
     ];
   }, [categories, formData.collection]);
+  const resolvedCustomerOrgId = formData.customerOrgId ? Number(formData.customerOrgId) : null;
   const selectedCustomer =
     customerOptions.find((customer) => String(customer?.name || '').trim() === resolvedCustomerValue) ||
+    (resolvedCustomerOrgId
+      ? customerOptions.find((customer) => {
+          const optId = Number(customer?.brandOrgId ?? customer?.id);
+          return Number.isInteger(optId) && optId > 0 && optId === resolvedCustomerOrgId;
+        })
+      : null) ||
     null;
   const selectedCategory =
     categoryOptions.find((category) => String(category?.name || '').trim() === String(formData.collection || '').trim()) ||
@@ -742,10 +756,10 @@ const StyleInfo = ({
 
           <Divider sx={{ my: 4 }} />
 
-          <Typography variant="h6" gutterBottom>세부 정보</Typography>
+          <Typography variant="h6" gutterBottom>{getUiMessage('styleInfo.detailsSection', '세부 정보', languageCode)}</Typography>
           <Stack spacing={2} mt={2.5}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">Fabric</Typography>
+              <Typography variant="body2" color="text.secondary">{getUiMessage('styleInfo.fabric', 'Fabric', languageCode)}</Typography>
               <SearchableSelect
                 size="small"
                 options={FABRIC_OPTIONS}
@@ -757,7 +771,7 @@ const StyleInfo = ({
               />
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">Size Spec</Typography>
+              <Typography variant="body2" color="text.secondary">{getUiMessage('styleInfo.sizeSpec', 'Size Spec', languageCode)}</Typography>
               <SearchableSelect
                 size="small"
                 options={sizeSpecOptions}
@@ -769,7 +783,7 @@ const StyleInfo = ({
               />
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">Gender</Typography>
+              <Typography variant="body2" color="text.secondary">{getUiMessage('styleInfo.gender', 'Gender', languageCode)}</Typography>
               <SearchableSelect
                 size="small"
                 options={GENDER_CODES}
@@ -781,7 +795,7 @@ const StyleInfo = ({
               />
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">Colorway</Typography>
+              <Typography variant="body2" color="text.secondary">{getUiMessage('styleInfo.colorway', 'Colorway', languageCode)}</Typography>
               <SearchableSelect
                 size="small"
                 options={COLORWAY_OPTIONS}
