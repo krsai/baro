@@ -84,22 +84,13 @@ const TEXT = {
     phoneNumber: '전화번호',
     email: '이메일',
     customerPricingTitle: '고객별 스타일 단가',
-    defaultTradeType: '기본 거래방식',
     styleSearch: '스타일 검색',
     stylesCount: '스타일',
-    startedCount: '입력 시작',
-    completeCount: '입력 완료',
-    exceptionCount: '예외',
     styleName: '스타일명',
-    pricingRule: '적용 방식',
+    pricingRule: '조건',
     actions: '작업',
     emptyStyles: '연결된 스타일이 없습니다.',
     loadingStyles: '스타일을 불러오는 중입니다.',
-    ruleDefault: '기본 사용',
-    ruleCmpt: 'CMPT만',
-    ruleFob: 'FOB만',
-    ruleBoth: '둘 다',
-    basicRuleSuffix: '{type} 기본',
     manageStyle: '스타일 열기',
     draftOpen: '보조 단가',
     draftClose: '접기',
@@ -134,22 +125,13 @@ const TEXT = {
     phoneNumber: 'Phone Number',
     email: 'Email',
     customerPricingTitle: 'Customer Style Pricing',
-    defaultTradeType: 'Default Trade Type',
     styleSearch: 'Search styles',
     stylesCount: 'Styles',
-    startedCount: 'Started',
-    completeCount: 'Complete',
-    exceptionCount: 'Exceptions',
     styleName: 'Style Name',
-    pricingRule: 'Rule',
+    pricingRule: 'Condition',
     actions: 'Actions',
     emptyStyles: 'No linked styles found.',
     loadingStyles: 'Loading styles...',
-    ruleDefault: 'Use default',
-    ruleCmpt: 'CMPT only',
-    ruleFob: 'FOB only',
-    ruleBoth: 'Both',
-    basicRuleSuffix: 'Default {type}',
     manageStyle: 'Open style',
     draftOpen: 'Alt prices',
     draftClose: 'Collapse',
@@ -184,22 +166,13 @@ const TEXT = {
     phoneNumber: 'So dien thoai',
     email: 'Email',
     customerPricingTitle: 'Don gia style theo khach hang',
-    defaultTradeType: 'Loai giao dich mac dinh',
     styleSearch: 'Tim style',
     stylesCount: 'Style',
-    startedCount: 'Da nhap',
-    completeCount: 'Hoan tat',
-    exceptionCount: 'Ngoai le',
     styleName: 'Ten style',
-    pricingRule: 'Quy tac',
+    pricingRule: 'Dieu kien',
     actions: 'Tac vu',
     emptyStyles: 'Khong co style lien ket.',
     loadingStyles: 'Dang tai style...',
-    ruleDefault: 'Dung mac dinh',
-    ruleCmpt: 'Chi CMPT',
-    ruleFob: 'Chi FOB',
-    ruleBoth: 'Ca hai',
-    basicRuleSuffix: 'Mac dinh {type}',
     manageStyle: 'Mo style',
     draftOpen: 'Gia bo sung',
     draftClose: 'Thu gon',
@@ -243,6 +216,60 @@ const normalizePriceInput = (value) => {
     .replace(/[^\d.]/g, '')
     .replace(/(\..*)\./g, '$1');
   return cleaned;
+};
+
+const formatPriceDisplay = (value) => {
+  const normalized = normalizePriceInput(value);
+  if (!normalized || normalized === '.') return '';
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed.toFixed(2) : '';
+};
+
+const PricingAmountField = ({ value, onChange, shaded = false }) => {
+  const [isFocused, setIsFocused] = useState(false);
+  const rawValue = String(value ?? '');
+  const displayValue = isFocused ? rawValue : formatPriceDisplay(rawValue);
+
+  return (
+    <TextField
+      value={displayValue}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => {
+        setIsFocused(false);
+        const formattedValue = formatPriceDisplay(rawValue);
+        if (formattedValue !== rawValue) onChange(formattedValue);
+      }}
+      onChange={(event) => onChange(event.target.value)}
+      size="small"
+      placeholder="-"
+      inputProps={{
+        inputMode: 'decimal',
+        style: {
+          width: '100%',
+          textAlign: 'right',
+          fontSize: 13,
+          fontVariantNumeric: 'tabular-nums',
+        },
+      }}
+      InputProps={{
+        startAdornment: displayValue ? (
+          <InputAdornment position="start">$</InputAdornment>
+        ) : null,
+      }}
+      sx={{
+        width: '100%',
+        ...(shaded
+          ? {
+              '& .MuiOutlinedInput-root': {
+                backgroundColor: displayValue
+                  ? 'rgba(15, 23, 42, 0.03)'
+                  : 'rgba(248, 250, 252, 0.95)',
+              },
+            }
+          : {}),
+      }}
+    />
+  );
 };
 
 const normalizePricingRow = (value = {}) => {
@@ -299,15 +326,6 @@ const resolvePrimaryTradeType = (row, defaultTradeType) => {
 
 const resolveAlternateTradeType = (tradeType) =>
   normalizeTradeType(tradeType) === 'CMPT' ? 'FOB' : 'CMPT';
-
-const hasBucketValue = (row, tradeType, bucketQuantity) =>
-  String(row?.prices?.[tradeType]?.[bucketQuantity] ?? '').trim() !== '';
-
-const hasAnyPriceForTradeType = (row, tradeType) =>
-  PRICE_BUCKETS.some((bucketQuantity) => hasBucketValue(row, tradeType, bucketQuantity));
-
-const hasCompletePriceForTradeType = (row, tradeType) =>
-  PRICE_BUCKETS.every((bucketQuantity) => hasBucketValue(row, tradeType, bucketQuantity));
 
 const compareStyles = (left, right) => {
   const nameDiff = String(left?.name || '').localeCompare(String(right?.name || ''), undefined, {
@@ -722,27 +740,6 @@ const CustomerDetail = () => {
     });
   }, [styleSearchTerm, styles]);
 
-  const pricingStats = useMemo(() => {
-    let started = 0;
-    let complete = 0;
-    let exceptions = 0;
-
-    styles.forEach((style) => {
-      const row = normalizePricingRow(pricingDraft.rows[style.id]);
-      const primaryTradeType = resolvePrimaryTradeType(row, pricingDraft.defaultTradeType);
-      if (hasAnyPriceForTradeType(row, primaryTradeType)) started += 1;
-      if (hasCompletePriceForTradeType(row, primaryTradeType)) complete += 1;
-      if (row.mode !== 'DEFAULT') exceptions += 1;
-    });
-
-    return {
-      total: styles.length,
-      started,
-      complete,
-      exceptions,
-    };
-  }, [pricingDraft, styles]);
-
   return (
     <AppPageContainer
       title={isNew ? t('titleNew') : t('titleDetail')}
@@ -923,9 +920,6 @@ const CustomerDetail = () => {
                       </Stack>
 
                       <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
-                        <Typography variant="body2" color="text.secondary">
-                          {t('defaultTradeType')}
-                        </Typography>
                         <ToggleButtonGroup
                           size="small"
                           value={pricingDraft.defaultTradeType}
@@ -973,10 +967,7 @@ const CustomerDetail = () => {
                           width: { xs: '100%', lg: 'auto' },
                         }}
                       >
-                        <Chip size="small" label={`${t('stylesCount')} ${pricingStats.total}`} />
-                        <Chip size="small" variant="outlined" color="info" label={`${t('startedCount')} ${pricingStats.started}`} />
-                        <Chip size="small" variant="outlined" color="success" label={`${t('completeCount')} ${pricingStats.complete}`} />
-                        <Chip size="small" variant="outlined" color="warning" label={`${t('exceptionCount')} ${pricingStats.exceptions}`} />
+                        <Chip size="small" label={`${t('stylesCount')} ${styles.length}`} />
                       </Stack>
                     </Box>
                   </Stack>
@@ -990,12 +981,12 @@ const CustomerDetail = () => {
                   <TableContainer sx={{ maxHeight: 'calc(100vh - 320px)', overflowX: 'hidden' }}>
                     <Table stickyHeader size="small" sx={{ width: '100%', tableLayout: 'fixed' }}>
                       <colgroup>
-                        <col style={{ width: '16%' }} />
                         <col style={{ width: '10%' }} />
+                        <col style={{ width: '7%' }} />
                         {PRICE_BUCKETS.map((bucketQuantity) => (
-                          <col key={`col:${bucketQuantity}`} style={{ width: `${68 / PRICE_BUCKETS.length}%` }} />
+                          <col key={`col:${bucketQuantity}`} style={{ width: `${78 / PRICE_BUCKETS.length}%` }} />
                         ))}
-                        <col style={{ width: '6%' }} />
+                        <col style={{ width: '5%' }} />
                       </colgroup>
                       <TableHead>
                         <TableRow>
@@ -1030,102 +1021,56 @@ const CustomerDetail = () => {
                           const alternateTradeType = resolveAlternateTradeType(primaryTradeType);
                           const isExpanded =
                             expandedStyleIds[style.id] === true || row.mode === 'BOTH';
-                          const isComplete = hasCompletePriceForTradeType(row, primaryTradeType);
-                          const isStarted = hasAnyPriceForTradeType(row, primaryTradeType);
-                          const ruleLabelMap = {
-                            DEFAULT: t('ruleDefault'),
-                            CMPT: t('ruleCmpt'),
-                            FOB: t('ruleFob'),
-                            BOTH: t('ruleBoth'),
-                          };
 
                           return (
                             <React.Fragment key={style.id}>
                               <TableRow hover>
                                 <TableCell>
-                                  <Stack spacing={0.5}>
-                                    <Typography
-                                      variant="body2"
-                                      sx={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                                    >
-                                      {style.name || '-'}
-                                    </Typography>
-                                    <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap' }}>
-                                      <Chip
-                                        size="small"
-                                        variant={row.mode === 'DEFAULT' ? 'outlined' : 'filled'}
-                                        color={row.mode === 'DEFAULT' ? 'default' : 'warning'}
-                                        label={
-                                          row.mode === 'DEFAULT'
-                                            ? t('basicRuleSuffix', { type: primaryTradeType })
-                                            : ruleLabelMap[row.mode]
-                                        }
-                                      />
-                                      {isStarted ? (
-                                        <Chip
-                                          size="small"
-                                          color={isComplete ? 'success' : 'info'}
-                                          variant="outlined"
-                                          label={isComplete ? t('completeCount') : t('startedCount')}
-                                        />
-                                      ) : null}
-                                    </Stack>
-                                  </Stack>
+                                  <Typography
+                                    variant="body2"
+                                    sx={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                  >
+                                    {style.name || '-'}
+                                  </Typography>
                                 </TableCell>
                                 <TableCell align="center">
                                   <TextField
                                     select
                                     size="small"
-                                    value={row.mode}
-                                    onChange={(event) =>
-                                      handlePricingModeChange(style.id, event.target.value)
-                                    }
+                                    value={primaryTradeType}
+                                    onChange={(event) => {
+                                      const nextTradeType = event.target.value;
+                                      handlePricingModeChange(
+                                        style.id,
+                                        nextTradeType === pricingDraft.defaultTradeType
+                                          ? 'DEFAULT'
+                                          : nextTradeType
+                                      );
+                                    }}
                                     sx={{ width: '100%' }}
                                   >
-                                    <MenuItem value="DEFAULT">{t('ruleDefault')}</MenuItem>
-                                    <MenuItem value="CMPT">{t('ruleCmpt')}</MenuItem>
-                                    <MenuItem value="FOB">{t('ruleFob')}</MenuItem>
-                                    <MenuItem value="BOTH">{t('ruleBoth')}</MenuItem>
+                                    {TRADE_TYPES.map((tradeType) => (
+                                      <MenuItem key={tradeType} value={tradeType}>
+                                        {tradeType}
+                                      </MenuItem>
+                                    ))}
                                   </TextField>
                                 </TableCell>
                                 {PRICE_BUCKETS.map((bucketQuantity) => {
                                   const value = row.prices?.[primaryTradeType]?.[bucketQuantity] ?? '';
                                   return (
                                     <TableCell key={`${style.id}:${primaryTradeType}:${bucketQuantity}`} align="center">
-                                      <TextField
+                                      <PricingAmountField
                                         value={value}
-                                        onChange={(event) =>
+                                        onChange={(nextValue) =>
                                           handlePriceChange(
                                             style.id,
                                             primaryTradeType,
                                             bucketQuantity,
-                                            event.target.value
+                                            nextValue
                                           )
                                         }
-                                        size="small"
-                                        placeholder="-"
-                                        inputProps={{
-                                          inputMode: 'decimal',
-                                          style: {
-                                            width: '100%',
-                                            textAlign: 'right',
-                                            fontSize: 13,
-                                            fontVariantNumeric: 'tabular-nums',
-                                          },
-                                        }}
-                                        InputProps={{
-                                          startAdornment: value ? (
-                                            <InputAdornment position="start">$</InputAdornment>
-                                          ) : null,
-                                        }}
-                                        sx={{
-                                          width: '100%',
-                                          '& .MuiOutlinedInput-root': {
-                                            backgroundColor: value
-                                              ? 'rgba(15, 23, 42, 0.03)'
-                                              : 'rgba(248, 250, 252, 0.95)',
-                                          },
-                                        }}
+                                        shaded
                                       />
                                     </TableCell>
                                   );
@@ -1175,33 +1120,16 @@ const CustomerDetail = () => {
                                     const value = row.prices?.[alternateTradeType]?.[bucketQuantity] ?? '';
                                     return (
                                       <TableCell key={`${style.id}:${alternateTradeType}:${bucketQuantity}`} align="center">
-                                        <TextField
+                                        <PricingAmountField
                                           value={value}
-                                          onChange={(event) =>
+                                          onChange={(nextValue) =>
                                             handlePriceChange(
                                               style.id,
                                               alternateTradeType,
                                               bucketQuantity,
-                                              event.target.value
+                                              nextValue
                                             )
                                           }
-                                          size="small"
-                                          placeholder="-"
-                                          inputProps={{
-                                            inputMode: 'decimal',
-                                            style: {
-                                              width: '100%',
-                                              textAlign: 'right',
-                                              fontSize: 13,
-                                              fontVariantNumeric: 'tabular-nums',
-                                            },
-                                          }}
-                                          InputProps={{
-                                            startAdornment: value ? (
-                                              <InputAdornment position="start">$</InputAdornment>
-                                            ) : null,
-                                          }}
-                                          sx={{ width: '100%' }}
                                         />
                                       </TableCell>
                                     );
