@@ -4036,9 +4036,13 @@ const AssignBoard = () => {
         });
         setAssignmentProgressById(nextMap);
       })
-      .catch(() => {
+      .catch((error) => {
+        // Keep the last known-good progress map on fetch failure (e.g. a
+        // transient 503 right after save). Wiping it to {} made every
+        // assignment look ST-unknown and collapsed forecast load/ETA to 0
+        // even though nothing about the assignment itself had changed.
         if (!cancelled) {
-          setAssignmentProgressById({});
+          console.warn('[assignment-plan-progress] fetch failed, keeping previous data', error);
         }
       });
 
@@ -4678,9 +4682,15 @@ const AssignBoard = () => {
         if (cancelled) return;
         setLineMonthCapacityRows(Array.isArray(payload?.rows) ? payload.rows : []);
       })
-      .catch(() => {
+      .catch((error) => {
+        // Keep the last known-good capacity rows on fetch failure. An empty
+        // backendRows list makes every month resolve to "historical" in
+        // buildLineMonthCapacityBoardRows, which hides the ETA label and
+        // forces planned load to show as 0% even though the board itself
+        // is fine - this turned transient network/503 errors into a fake
+        // "load reset to 0 after save" regression.
         if (!cancelled) {
-          setLineMonthCapacityRows([]);
+          console.warn('[line-month-capacity] fetch failed, keeping previous data', error);
         }
       })
       .finally(() => {
