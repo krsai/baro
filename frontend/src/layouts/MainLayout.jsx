@@ -542,7 +542,7 @@ const MainLayout = () => {
         isOpen: recordsOpen,
         children: [
           {
-            label: getUiMessage('menu.line', '라인 관리', languageCode),
+            label: getUiMessage('menu.line', '라인', languageCode),
             icon: <ContentCut />,
             path: '/line',
           },
@@ -587,21 +587,9 @@ const MainLayout = () => {
         isOpen: accountingOpen,
         children: [
           {
-            label: getUiMessage('menu.shipmentReview', '\uC218\uB7C9 \uC815\uC0B0', languageCode),
-            icon: <LocalShippingIcon />,
-            path: '/shipment-review',
-            disabled: true,
-          },
-          {
             label: getUiMessage('menu.payroll', '\uAE09\uC5EC \uACC4\uC0B0', languageCode),
             icon: <CalculateIcon />,
             path: '/payroll',
-          },
-          {
-            label: getUiMessage('menu.productionResult', '\uC0DD\uC0B0 \uACB0\uACFC', languageCode),
-            icon: <ListAltIcon />,
-            path: '/production-result',
-            disabled: true,
           },
         ],
       },

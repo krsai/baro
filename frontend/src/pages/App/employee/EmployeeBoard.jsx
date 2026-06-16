@@ -117,11 +117,6 @@ const EMPLOYEE_BOARD_TEXT = {
     en: 'Auto-generated as factory code + 4 digits, e.g. HN-0001.',
     vi: 'Tu dong tao theo ma nha may + 4 chu so, vi du HN-0001.',
   },
-  loginEmailHelperAllOptional: {
-    ko: '이메일 없이 저장하면 사번으로만 로그인 불가. 나중에 이메일 추가 가능.',
-    en: 'Without email, login is unavailable. Email can be added later.',
-    vi: 'Khong co email, khong the dang nhap. Co the them email sau.',
-  },
   payTypeColumn: { ko: '급여 타입', en: 'Pay Type', vi: 'Loai luong' },
   joinedAtColumn: { ko: '입사일', en: 'Join Date', vi: 'Ngay vao lam' },
   leftAtColumn: { ko: '퇴사일', en: 'Leave Date', vi: 'Ngay nghi viec' },
@@ -176,6 +171,7 @@ const EMPLOYEE_BOARD_TEXT = {
   errNoEditPermission: { ko: '직원 수정 권한이 없습니다.', en: 'No permission to edit employees.', vi: 'Ban khong co quyen sua nhan vien.' },
   errInvalidEmail: { ko: '유효한 이메일 형식이 아닙니다.', en: 'Invalid email format.', vi: 'Dinh dang email khong hop le.' },
   errNameRequired: { ko: '이름은 필수 입력입니다.', en: 'Name is required.', vi: 'Ten la bat buoc.' },
+  errEmailRequired: { ko: '이메일은 필수 입력입니다.', en: 'Email is required.', vi: 'Email la bat buoc.' },
   errNeedLoginEmail: {
     ko: '관리자/운영자는 로그인 이메일이 필요합니다.',
     en: 'Admin/Operator roles require a login email.',
@@ -1221,15 +1217,18 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     const roleNeedsLoginEmail = isLoginRequiredRole(normalizedOrgRole);
     const selectedFactoryId = drawerDraft.factoryId;
 
-    if (normalizedDrawerEmail && !normalizedDrawerEmail.includes('@')) {
-      setStatusMessage({ type: 'error', text: text('errInvalidEmail', languageCode) });
-      return;
-    }
     if (!normalizedName) {
       setStatusMessage({ type: 'error', text: text('errNameRequired', languageCode) });
       return;
     }
-    // email is optional for all roles
+    if (!normalizedDrawerEmail) {
+      setStatusMessage({ type: 'error', text: text('errEmailRequired', languageCode) });
+      return;
+    }
+    if (!normalizedDrawerEmail.includes('@')) {
+      setStatusMessage({ type: 'error', text: text('errInvalidEmail', languageCode) });
+      return;
+    }
     if (!isValidDateInput(normalizedJoinedAt) || !isValidDateInput(normalizedLeftAt)) {
       setStatusMessage({ type: 'error', text: text('errInvalidDateRange', languageCode) });
       return;
@@ -1565,12 +1564,13 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TextField
                 size="small"
                 label={text('loginEmailLabel', languageCode)}
+                required
                 value={drawerEmail}
                 onChange={(e) => setDrawerEmail(e.target.value)}
                 placeholder="admin@company.com"
                 disabled={isDrawerSaving}
                 autoFocus
-                helperText={text('loginEmailHelperAllOptional', languageCode)}
+                helperText={text('requiredInput', languageCode)}
               />
               <TextField
                 size="small"
