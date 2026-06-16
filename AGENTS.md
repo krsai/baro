@@ -1300,8 +1300,8 @@ runtime 조회값:
 
 - 수동 생산완료 확정 UI를 `AssignBoard.jsx` 상세 드로어로 이전했다. `handleConfirmProductionComplete`가 기존 백엔드 엔드포인트(`PATCH /assignment-plans/:externalId/production-complete`)를 그대로 호출한다.
 - 진입 경로(둘 다 동일한 `handleConfirmProductionComplete`를 호출):
-  - 빠른 경로: 배정 보드에서 미완료 카드 우클릭 → 컨텍스트 메뉴의 "생산 완료 처리" → `window.prompt`로 확정 수량 입력.
-  - 상세 경로: 우클릭 → "Open Detail" → 상세 드로어 하단의 "생산 완료 처리" 패널에서 확정 수량 입력 후 확정.
+  - 빠른 경로: 배정 보드에서 미완료 카드 우클릭 → 컨텍스트 메뉴의 "수동 완료" → `window.prompt`로 확정 수량 입력.
+  - 상세 경로: 우클릭 → "Open Detail" → 상세 드로어 하단의 "수동 완료" 패널에서 확정 수량 입력 후 확정.
 - 백엔드 `completeAssignmentPlanProduction`과 급여 잠금/중복완료 체크 로직은 변경하지 않았다.
 - 완료된 assignment를 다시 미완료로 되돌리는 "되돌리기" 기능은 이번 범위에 포함하지 않았다 (백엔드에 reopen 엔드포인트가 없고, 완료 assignment는 읽기 전용 원칙을 유지).
 - 구 레거시 메뉴 "생산 현황"(`menu.batchProgress`, 경로 `/batch-progress`, `frontend/src/pages/App/BatchProgress.jsx`)은 완전히 삭제했다. 이 메뉴는 이미 `disabled: true` + `/workspace` 리다이렉트 상태였고, 그 안의 `handleConfirmClose`가 production-complete를 호출하는 유일한 코드였는데 메뉴 비활성화로 사실상 도달 불가능했던 고아 코드였다.

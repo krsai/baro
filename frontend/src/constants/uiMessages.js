@@ -460,9 +460,9 @@ export const UI_MESSAGES = {
     },
     quantityLabel: { ko: '수량', en: 'Quantity', vi: 'So luong' },
     markProductionComplete: {
-      ko: '생산 완료 처리',
-      en: 'Confirm Production Completion',
-      vi: 'Xac nhan hoan thanh san xuat',
+      ko: '수동 완료',
+      en: 'Manual Completion',
+      vi: 'Hoan thanh thu cong',
     },
     confirmedQtyLabel: { ko: '확정 수량', en: 'Confirmed Quantity', vi: 'So luong xac nhan' },
     confirmedQtyPrompt: {

@@ -6510,7 +6510,7 @@ const AssignBoard = () => {
             onClick={handleContextMarkProductionComplete}
             disabled={controlsDisabled || contextMarkCompleteDisabled}
           >
-            {getUiMessage('assign.markProductionComplete', 'Confirm Production Completion', languageCode)}
+            {getUiMessage('assign.markProductionComplete', 'Manual Completion', languageCode)}
           </MenuItem>
         </Menu>
 
@@ -6906,7 +6906,7 @@ const AssignBoard = () => {
                       <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
                         {getUiMessage(
                           'assign.markProductionComplete',
-                          'Confirm Production Completion',
+                          'Manual Completion',
                           languageCode
                         )}
                       </Typography>
@@ -6970,7 +6970,7 @@ const AssignBoard = () => {
                             handleConfirmProductionComplete(detailAssignment?.id, parsedQty);
                           }}
                         >
-                          {getUiMessage('assign.markProductionComplete', 'Confirm Production Completion', languageCode)}
+                          {getUiMessage('assign.markProductionComplete', 'Manual Completion', languageCode)}
                         </Button>
                       </Stack>
                     </Stack>
