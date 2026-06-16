@@ -697,6 +697,10 @@ const normalizeAssignmentLayout = (assignment) => {
   const startDayOffsetPercent = clampPercent(assignment.startDayOffsetPercent, 0, 99.999);
   const startDayPercent = clampPercent(assignment.startDayPercent, 100, 100);
   const endDayPercent = clampPercent(assignment.endDayPercent, startDayPercent, 100);
+  const stTotalSeconds = toNonNegativeInt(
+    assignment?.stTotalSeconds ?? assignment?.assignmentStTotalSeconds,
+    0
+  );
   const version = toNonNegativeInt(assignment.version, 0);
   const versionUpdatedAt =
     typeof assignment.versionUpdatedAt === 'string' && assignment.versionUpdatedAt.trim()
@@ -706,7 +710,7 @@ const normalizeAssignmentLayout = (assignment) => {
   return {
     ...assignment,
     lineId: String(assignment.lineId ?? ''),
-    stTotalSeconds: toNonNegativeInt(assignment.stTotalSeconds, 0),
+    stTotalSeconds,
     startIndex,
     endIndex,
     startDayOffsetPercent,
@@ -2934,6 +2938,12 @@ const AssignBoard = () => {
         : Array.isArray(fallbackCards)
           ? fallbackCards.map(normalizeAssignmentCardForBoard)
           : [];
+      const fallbackAssignmentById = new Map(
+        (Array.isArray(fallbackAssignments) ? fallbackAssignments : [])
+          .map((item) => normalizeAssignmentLayout(item))
+          .filter((item) => item?.id)
+          .map((item) => [String(item.id), item])
+      );
       const persistedAssignmentsRaw = Array.isArray(payload?.assignments)
         ? payload.assignments
         : Array.isArray(fallbackAssignments)
@@ -2941,9 +2951,23 @@ const AssignBoard = () => {
           : [];
       return {
         persistedCards,
-        persistedAssignments: persistedAssignmentsRaw.map((item) =>
-          remapAssignmentToDayWindow(item, days)
-        ),
+        persistedAssignments: persistedAssignmentsRaw.map((item) => {
+          const assignmentId = String(item?.id || '').trim();
+          const fallbackItem = assignmentId
+            ? fallbackAssignmentById.get(assignmentId) || null
+            : null;
+          const mergedItem = fallbackItem
+            ? {
+                ...fallbackItem,
+                ...item,
+                stTotalSeconds:
+                  item?.stTotalSeconds ??
+                  item?.assignmentStTotalSeconds ??
+                  fallbackItem.stTotalSeconds,
+              }
+            : item;
+          return remapAssignmentToDayWindow(mergedItem, days);
+        }),
       };
     },
     [days]

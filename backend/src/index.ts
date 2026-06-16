@@ -9326,12 +9326,17 @@ const resolveAssignmentPlanExternalIds = (items: any) =>
 const mergeAssignmentPlanResponsesWithState = (plans: any[], stateAssignments: any[]) => {
   const applyPlanStateMerge = (base: any, stateItem: any) => {
     if (!stateItem || typeof stateItem !== "object") return base;
+    const baseStTotalSeconds = resolveAssignmentStTotalSeconds(base);
+    const stateStTotalSeconds = resolveAssignmentStTotalSeconds(stateItem);
     const merged = {
       ...stateItem,
       ...base,
       id: base.id,
       lineId: String(base.lineId),
     };
+    if (baseStTotalSeconds === null && stateStTotalSeconds !== null) {
+      merged.stTotalSeconds = stateStTotalSeconds;
+    }
     const stateStartIndex = toNumberOrNull(stateItem?.startIndex);
     const stateEndIndex = toNumberOrNull(stateItem?.endIndex);
     const stateStartDayOffsetPercent = toOptionalFloat(
