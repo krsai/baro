@@ -2956,14 +2956,44 @@ const AssignBoard = () => {
           const fallbackItem = assignmentId
             ? fallbackAssignmentById.get(assignmentId) || null
             : null;
+          const responseStTotalSeconds = toNonNegativeInt(
+            item?.stTotalSeconds ?? item?.assignmentStTotalSeconds,
+            0
+          );
+          const fallbackStTotalSeconds = toNonNegativeInt(
+            fallbackItem?.stTotalSeconds ?? fallbackItem?.assignmentStTotalSeconds,
+            0
+          );
+          const mergedStTotalSeconds =
+            responseStTotalSeconds > 0
+              ? responseStTotalSeconds
+              : fallbackStTotalSeconds > 0
+                ? fallbackStTotalSeconds
+                : responseStTotalSeconds;
+          const responsePlannedStTotalSeconds = toNonNegativeInt(
+            item?.plannedStTotalSeconds,
+            0
+          );
+          const rawRemainingStTotalSeconds = Number(item?.remainingStTotalSeconds);
+          const hasPositiveRemainingStTotalSeconds =
+            Number.isFinite(rawRemainingStTotalSeconds) && rawRemainingStTotalSeconds > 0;
+          const isCompleted = Boolean(item?.isCompleted ?? fallbackItem?.isCompleted);
           const mergedItem = fallbackItem
             ? {
                 ...fallbackItem,
                 ...item,
-                stTotalSeconds:
-                  item?.stTotalSeconds ??
-                  item?.assignmentStTotalSeconds ??
-                  fallbackItem.stTotalSeconds,
+                stTotalSeconds: mergedStTotalSeconds,
+                plannedStTotalSeconds:
+                  responsePlannedStTotalSeconds > 0
+                    ? responsePlannedStTotalSeconds
+                    : mergedStTotalSeconds > 0
+                      ? mergedStTotalSeconds
+                      : null,
+                remainingStTotalSeconds: hasPositiveRemainingStTotalSeconds
+                  ? Math.round(rawRemainingStTotalSeconds)
+                  : isCompleted
+                    ? 0
+                    : null,
               }
             : item;
           return remapAssignmentToDayWindow(mergedItem, days);
@@ -3699,6 +3729,7 @@ const AssignBoard = () => {
         getUiMessage('assign.saveSuccess', 'Assignment saved.', languageCode),
         'success'
       );
+      requestExternalBoardReload();
     } catch (error) {
       showNotification(
         resolveBoardSaveErrorMessage(
@@ -4469,7 +4500,9 @@ const AssignBoard = () => {
               ? Math.max(0, Number(progressRow.remainingStTotalSeconds) || 0)
               : isCompleted
                 ? 0
-                : null,
+                : Number(item?.remainingStTotalSeconds) > 0
+                  ? Math.max(0, Number(item.remainingStTotalSeconds) || 0)
+                  : null,
           producedQuantity:
             progressRow?.producedQuantity ?? item?.producedQuantity ?? null,
           completedAt:
