@@ -601,7 +601,7 @@ const MainLayout = () => {
         isOpen: adminOpen,
         children: [
           {
-            label: getUiMessage('menu.employee', '\uC9C1\uC6D0 \uAD00\uB9AC', languageCode),
+            label: getUiMessage('menu.employee', '\uC9C1\uC6D0', languageCode),
             icon: <GroupIcon />,
             path: '/employee',
             badgeCount: pendingEmployeeCount,
@@ -612,7 +612,7 @@ const MainLayout = () => {
             path: '/attendance',
           },
           {
-            label: getUiMessage('menu.holiday', '\uD734\uC77C \uAD00\uB9AC', languageCode),
+            label: getUiMessage('menu.holiday', '\uD734\uC77C', languageCode),
             icon: <CalendarMonthIcon />,
             path: '/holiday',
           },
@@ -644,7 +644,7 @@ const MainLayout = () => {
         isOpen: miscOpen,
         children: [
           {
-            label: getUiMessage('menu.business', '\uC0AC\uC5C5\uCCB4 \uAD00\uB9AC', languageCode),
+            label: getUiMessage('menu.business', '\uC0AC\uC5C5\uCCB4', languageCode),
             icon: <BusinessIcon />,
             path: '/business',
           },
