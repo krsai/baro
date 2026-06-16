@@ -4440,6 +4440,14 @@ const AssignBoard = () => {
         const progressRow = assignmentProgressById[assignmentId] || null;
         const startIndex = Math.max(0, toSignedInt(item?.startIndex, 0));
         const endIndex = Math.max(startIndex, toSignedInt(item?.endIndex, startIndex));
+        const isCompleted = Boolean(
+          progressRow?.isCompleted ??
+            item?.isCompleted ??
+            progressRow?.completedAt ??
+            progressRow?.productionCompletedAt ??
+            item?.completedAt ??
+            item?.productionCompletedAt
+        );
         const fallbackStartDateKey =
           typeof days[startIndex]?.key === 'string' ? days[startIndex].key : '';
         const fallbackEndDateKey =
@@ -4451,7 +4459,17 @@ const AssignBoard = () => {
           endDateKey:
             normalizeCapacityDateKey(item?.endDateKey) || fallbackEndDateKey || null,
           plannedStTotalSeconds:
-            Number(item?.plannedStTotalSeconds ?? item?.stTotalSeconds) || 0,
+            Number(
+              progressRow?.plannedStTotalSeconds ??
+                item?.stTotalSeconds ??
+                item?.assignmentStTotalSeconds
+            ) || 0,
+          remainingStTotalSeconds:
+            progressRow?.remainingStTotalSeconds != null
+              ? Math.max(0, Number(progressRow.remainingStTotalSeconds) || 0)
+              : isCompleted
+                ? 0
+                : null,
           producedQuantity:
             progressRow?.producedQuantity ?? item?.producedQuantity ?? null,
           completedAt:
