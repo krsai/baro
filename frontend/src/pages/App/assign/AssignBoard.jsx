@@ -1520,16 +1520,13 @@ const applyAssignmentCtSnapshotForSave = ({
     updatedAt,
     updatedBy,
   });
-  const nextStTotalSeconds = Math.max(
-    0,
-    Math.round(
-      Number(
-        resolveCardStTotalSeconds(card) ??
-          assignment?.stTotalSeconds ??
-          0
-      ) || 0
-    )
+  const cardStTotalSeconds = toNonNegativeInt(resolveCardStTotalSeconds(card), 0);
+  const existingAssignmentStTotalSeconds = toNonNegativeInt(
+    assignment?.stTotalSeconds ?? assignment?.assignmentStTotalSeconds,
+    0
   );
+  const nextStTotalSeconds =
+    cardStTotalSeconds > 0 ? cardStTotalSeconds : existingAssignmentStTotalSeconds;
   const nextCtTotalSeconds =
     ctSnapshot?.assignmentCtTotalSeconds != null
       ? Math.max(0, Math.round(Number(ctSnapshot.assignmentCtTotalSeconds) || 0))
@@ -1922,7 +1919,78 @@ const isAssignmentSchedulerCompleted = (assignment) => {
   return String(assignment?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED';
 };
 
+const resolveAssignmentUiStMeta = ({
+  progressRow = null,
+  assignment = null,
+  isCompleted = false,
+} = {}) => {
+  const progressPlannedStTotalSeconds = toNonNegativeInt(
+    progressRow?.plannedStTotalSeconds,
+    0
+  );
+  const assignmentPlannedStTotalSeconds = toNonNegativeInt(
+    assignment?.stTotalSeconds ?? assignment?.assignmentStTotalSeconds,
+    0
+  );
+  const plannedStTotalSeconds =
+    progressPlannedStTotalSeconds > 0
+      ? progressPlannedStTotalSeconds
+      : assignmentPlannedStTotalSeconds > 0
+        ? assignmentPlannedStTotalSeconds
+        : Math.max(progressPlannedStTotalSeconds, assignmentPlannedStTotalSeconds);
+  const hasUsableProgressSt =
+    progressPlannedStTotalSeconds > 0 && !Boolean(progressRow?.isStUnknown);
+  const hasCompletionSignal = Boolean(
+    progressRow?.actualProducedCompletedAt ??
+      progressRow?.productionCompletedAt ??
+      progressRow?.completedAt ??
+      assignment?.actualProducedCompletedAt ??
+      assignment?.productionCompletedAt ??
+      assignment?.completedAt
+  );
+  const isStUnknown =
+    !isCompleted &&
+    plannedStTotalSeconds <= 0 &&
+    Boolean(progressRow?.isStUnknown ?? assignment?.isStUnknown ?? true);
+  const progressRemainingStTotalSeconds = Number(progressRow?.remainingStTotalSeconds);
+  const assignmentRemainingStTotalSeconds = Number(assignment?.remainingStTotalSeconds);
+
+  let remainingStTotalSeconds = null;
+  if (
+    hasUsableProgressSt &&
+    Number.isFinite(progressRemainingStTotalSeconds) &&
+    progressRemainingStTotalSeconds >= 0
+  ) {
+    remainingStTotalSeconds = Math.max(
+      0,
+      Math.round(progressRemainingStTotalSeconds || 0)
+    );
+  } else if (
+    !isStUnknown &&
+    Number.isFinite(assignmentRemainingStTotalSeconds) &&
+    (assignmentRemainingStTotalSeconds > 0 ||
+      (assignmentRemainingStTotalSeconds === 0 && hasCompletionSignal))
+  ) {
+    remainingStTotalSeconds = Math.max(
+      0,
+      Math.round(assignmentRemainingStTotalSeconds || 0)
+    );
+  } else if (isCompleted) {
+    remainingStTotalSeconds = 0;
+  }
+
+  return {
+    plannedStTotalSeconds,
+    remainingStTotalSeconds,
+    isStUnknown,
+    hasUsableProgressSt,
+  };
+};
+
 const resolveAssignmentRemainingStTotalSeconds = (assignment) => {
+  if (Boolean(assignment?.isStUnknown) && !isAssignmentSchedulerCompleted(assignment)) {
+    return null;
+  }
   const parsed = Number(assignment?.remainingStTotalSeconds);
   if (!Number.isFinite(parsed) || parsed < 0) return null;
   return Math.max(0, Math.round(parsed));
@@ -4000,18 +4068,21 @@ const AssignBoard = () => {
         const progressRow = assignmentProgressById[assignmentId] || null;
         const scheduleStatus = String(progressRow?.scheduleStatus || item?.scheduleStatus || '').trim();
         const isCompleted = Boolean(progressRow?.isCompleted ?? item?.isCompleted);
+        const {
+          plannedStTotalSeconds,
+          remainingStTotalSeconds,
+          isStUnknown,
+        } = resolveAssignmentUiStMeta({
+          progressRow,
+          assignment: item,
+          isCompleted,
+        });
         const next = {
           ...item,
           isCompleted,
           scheduleStatus: scheduleStatus || item?.scheduleStatus || null,
-          plannedStTotalSeconds:
-            Number(progressRow?.plannedStTotalSeconds ?? item?.stTotalSeconds) || 0,
-          remainingStTotalSeconds:
-            progressRow?.remainingStTotalSeconds != null
-              ? Math.max(0, Number(progressRow.remainingStTotalSeconds) || 0)
-              : isCompleted
-                ? 0
-                : null,
+          plannedStTotalSeconds,
+          remainingStTotalSeconds,
           completedStTotalSeconds:
             progressRow?.completedStTotalSeconds != null
               ? Math.max(0, Number(progressRow.completedStTotalSeconds) || 0)
@@ -4039,7 +4110,7 @@ const AssignBoard = () => {
             progressRow?.schedulerProgressPercent != null
               ? clampPercentValue(progressRow.schedulerProgressPercent)
               : item?.schedulerProgressPercent ?? null,
-          isStUnknown: Boolean(progressRow?.isStUnknown ?? item?.isStUnknown),
+          isStUnknown,
           hasRangeCoverage: Boolean(progressRow?.hasRangeCoverage ?? item?.hasRangeCoverage),
           lineOrphanWorkRecordCount:
             Number(
@@ -4276,6 +4347,15 @@ const AssignBoard = () => {
         );
         const scheduleStatus = String(progressRow?.scheduleStatus || '').trim();
         const isCompleted = Boolean(progressRow?.isCompleted ?? item?.isCompleted);
+        const {
+          plannedStTotalSeconds,
+          remainingStTotalSeconds,
+          isStUnknown,
+        } = resolveAssignmentUiStMeta({
+          progressRow,
+          assignment: item,
+          isCompleted,
+        });
         const workProgressPercent = rawProgressPercent;
         const qcProgressPercent = 0;
         const renderStartDateKey =
@@ -4354,14 +4434,8 @@ const AssignBoard = () => {
             Number(progressRow?.completionGapQuantity ?? item?.completionGapQuantity) || 0,
           producedQuantity:
             progressRow?.producedQuantity ?? item?.producedQuantity ?? null,
-          plannedStTotalSeconds:
-            Number(progressRow?.plannedStTotalSeconds ?? item?.stTotalSeconds) || 0,
-          remainingStTotalSeconds:
-            progressRow?.remainingStTotalSeconds != null
-              ? Math.max(0, Number(progressRow.remainingStTotalSeconds) || 0)
-              : isCompleted
-                ? 0
-                : null,
+          plannedStTotalSeconds,
+          remainingStTotalSeconds,
           completedStTotalSeconds:
             progressRow?.completedStTotalSeconds != null
               ? Math.max(0, Number(progressRow.completedStTotalSeconds) || 0)
@@ -4389,7 +4463,7 @@ const AssignBoard = () => {
             progressRow?.schedulerProgressPercent != null
               ? clampPercentValue(progressRow.schedulerProgressPercent)
               : item?.schedulerProgressPercent ?? null,
-          isStUnknown: Boolean(progressRow?.isStUnknown ?? item?.isStUnknown),
+          isStUnknown,
           hasRangeCoverage: Boolean(progressRow?.hasRangeCoverage ?? item?.hasRangeCoverage),
           lineOrphanWorkRecordCount:
             Number(
@@ -4479,6 +4553,15 @@ const AssignBoard = () => {
             item?.completedAt ??
             item?.productionCompletedAt
         );
+        const {
+          plannedStTotalSeconds,
+          remainingStTotalSeconds,
+          isStUnknown,
+        } = resolveAssignmentUiStMeta({
+          progressRow,
+          assignment: item,
+          isCompleted,
+        });
         const fallbackStartDateKey =
           typeof days[startIndex]?.key === 'string' ? days[startIndex].key : '';
         const fallbackEndDateKey =
@@ -4489,20 +4572,9 @@ const AssignBoard = () => {
             normalizeCapacityDateKey(item?.startDateKey) || fallbackStartDateKey || null,
           endDateKey:
             normalizeCapacityDateKey(item?.endDateKey) || fallbackEndDateKey || null,
-          plannedStTotalSeconds:
-            Number(
-              progressRow?.plannedStTotalSeconds ??
-                item?.stTotalSeconds ??
-                item?.assignmentStTotalSeconds
-            ) || 0,
-          remainingStTotalSeconds:
-            progressRow?.remainingStTotalSeconds != null
-              ? Math.max(0, Number(progressRow.remainingStTotalSeconds) || 0)
-              : isCompleted
-                ? 0
-                : Number(item?.remainingStTotalSeconds) > 0
-                  ? Math.max(0, Number(item.remainingStTotalSeconds) || 0)
-                  : null,
+          plannedStTotalSeconds,
+          remainingStTotalSeconds,
+          isStUnknown,
           producedQuantity:
             progressRow?.producedQuantity ?? item?.producedQuantity ?? null,
           completedAt:

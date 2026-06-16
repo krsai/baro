@@ -301,16 +301,19 @@ const buildLineQueueForecast = ({
   let readyToCompleteCount = 0;
 
   (Array.isArray(assignments) ? assignments : []).forEach((assignment) => {
+    const isCompleted = Boolean(assignment?.isCompleted);
+    const isStUnknown = Boolean(assignment?.isStUnknown) && !isCompleted;
     const rawRemainingStTotalSeconds =
-      assignment?.remainingStTotalSeconds ??
-      assignment?.plannedStTotalSeconds ??
-      assignment?.stTotalSeconds ??
-      null;
+      isStUnknown
+        ? null
+        : assignment?.remainingStTotalSeconds ??
+          assignment?.plannedStTotalSeconds ??
+          assignment?.stTotalSeconds ??
+          null;
     const remainingStTotalSeconds =
       rawRemainingStTotalSeconds == null
         ? null
         : Math.max(0, Math.round(Number(rawRemainingStTotalSeconds) || 0));
-    const isCompleted = Boolean(assignment?.isCompleted);
     const actualProducedCompletedAt = normalizeDateKey(
       assignment?.actualProducedCompletedAt
     );
@@ -437,6 +440,9 @@ const buildFallbackLineMonthlyCapacitySeconds = (line, monthKey, holidaySet) => 
 };
 
 const resolveAssignmentForecastStTotalSeconds = (assignment) => {
+  if (Boolean(assignment?.isStUnknown) && !Boolean(assignment?.isCompleted)) {
+    return null;
+  }
   const rawValue =
     assignment?.remainingStTotalSeconds ??
     assignment?.plannedStTotalSeconds ??
@@ -581,6 +587,7 @@ export const buildLineMonthCapacityBoardRows = ({
             assignment?.remainingStTotalSeconds == null
               ? null
               : Math.max(0, Math.round(Number(assignment.remainingStTotalSeconds) || 0)),
+          isStUnknown: Boolean(assignment?.isStUnknown),
           progressPercent:
             assignment?.progressPercent == null
               ? null

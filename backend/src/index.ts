@@ -8154,7 +8154,7 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     color: resolveOptionalString(plan?.color, "") ?? "",
     assignmentQuantity: resolveAssignmentQuantity(plan),
     assignmentCtTotalSeconds: resolveAssignmentCtTotalSeconds(plan),
-    assignmentStTotalSeconds: resolveAssignmentStTotalSeconds(plan),
+    assignmentStTotalSeconds: resolvePersistedAssignmentPlanStTotalSeconds(plan),
     assignmentCtSnapshot: normalizedSnapshot,
     ctUpdatedBy: normalizedSnapshot?.updatedBy ?? "",
     ctUpdatedAt: normalizedSnapshot?.updatedAt ?? null,
@@ -8564,7 +8564,7 @@ const buildWorkLogContextResponse = async ({
                 colorName: item.colorName ?? null,
                 assignmentQuantity: resolveAssignmentQuantity(item),
                 assignmentCtTotalSeconds: resolveAssignmentCtTotalSeconds(item),
-                assignmentStTotalSeconds: resolveAssignmentStTotalSeconds(item),
+                assignmentStTotalSeconds: resolveStateAssignmentStTotalSeconds(item),
                 assignmentCtSnapshot: item.assignmentCtSnapshot ?? item.ctSnapshot ?? null,
                 color: item.color ?? null,
                 startIndex: item.startIndex ?? 0,
@@ -9175,20 +9175,52 @@ const resolveAssignmentCtTotalSeconds = (item: any) => {
 };
 const resolveAssignmentQuantity = (item: any): number | null =>
   toOptionalNonNegativeInt(item?.assignmentQuantity ?? item?.quantity, null);
-const resolveAssignmentStTotalSeconds = (item: any): number | null =>
-  toOptionalNonNegativeInt(item?.assignmentStTotalSeconds ?? item?.stTotalSeconds, null);
+const resolveStateAssignmentStTotalSeconds = (item: any): number | null => {
+  const canonical = toOptionalNonNegativeInt(item?.stTotalSeconds, null);
+  if (canonical != null && canonical > 0) return canonical;
+  const compatibility = toOptionalNonNegativeInt(
+    item?.assignmentStTotalSeconds,
+    null
+  );
+  if (compatibility != null && compatibility > 0) return compatibility;
+  return canonical ?? compatibility ?? null;
+};
+const resolvePersistedAssignmentPlanStTotalSeconds = (
+  item: any
+): number | null => {
+  const persisted = toOptionalNonNegativeInt(
+    item?.assignmentStTotalSeconds,
+    null
+  );
+  if (persisted != null && persisted > 0) return persisted;
+  const compatibility = toOptionalNonNegativeInt(item?.stTotalSeconds, null);
+  if (compatibility != null && compatibility > 0) return compatibility;
+  return persisted ?? compatibility ?? null;
+};
+const resolveComparableAssignmentStTotalSeconds = (item: any): number | null => {
+  const stateStTotalSeconds = resolveStateAssignmentStTotalSeconds(item);
+  if (stateStTotalSeconds != null && stateStTotalSeconds > 0) {
+    return stateStTotalSeconds;
+  }
+  const persistedStTotalSeconds = resolvePersistedAssignmentPlanStTotalSeconds(item);
+  if (persistedStTotalSeconds != null && persistedStTotalSeconds > 0) {
+    return persistedStTotalSeconds;
+  }
+  return stateStTotalSeconds ?? persistedStTotalSeconds ?? null;
+};
 
 const normalizeStateAssignmentItem = (item: any): any => {
   if (!item || typeof item !== "object") return item;
   const externalId = resolveAssignmentExternalId(item);
   const ctTotalSeconds = resolveAssignmentCtTotalSeconds(item);
-  const stTotalSeconds = resolveAssignmentStTotalSeconds(item);
+  const stTotalSeconds = resolveStateAssignmentStTotalSeconds(item);
   const version = toNonNegativeInt(item?.version, 0);
   const versionUpdatedAt = toIsoDateStringOrNull(item?.versionUpdatedAt);
   const assignmentCtSnapshot = resolveNormalizedAssignmentCtSnapshot(item);
   const {
     ctSnapshot: _ctSnapshot,
     assignmentCtSnapshot: _assignmentCtSnapshot,
+    assignmentStTotalSeconds: _assignmentStTotalSeconds,
     proposalSeconds: _proposalSeconds,
     ctStatus: _ctStatus,
     ctSource: _ctSource,
@@ -9365,8 +9397,8 @@ const resolveAssignmentPlanExternalIds = (items: any) =>
 const mergeAssignmentPlanResponsesWithState = (plans: any[], stateAssignments: any[]) => {
   const applyPlanStateMerge = (base: any, stateItem: any) => {
     if (!stateItem || typeof stateItem !== "object") return base;
-    const baseStTotalSeconds = resolveAssignmentStTotalSeconds(base);
-    const stateStTotalSeconds = resolveAssignmentStTotalSeconds(stateItem);
+    const baseStTotalSeconds = resolvePersistedAssignmentPlanStTotalSeconds(base);
+    const stateStTotalSeconds = resolveStateAssignmentStTotalSeconds(stateItem);
     const merged = {
       ...stateItem,
       ...base,
@@ -10951,7 +10983,7 @@ const toAssignmentPlanResponse = (plan: any) => {
     ctUpdatedAt: assignmentCtSnapshot?.updatedAt ?? null,
     color: plan.color ?? "",
     stripeColor: plan.stripeColor ?? "",
-    stTotalSeconds: resolveAssignmentStTotalSeconds(plan),
+    stTotalSeconds: resolvePersistedAssignmentPlanStTotalSeconds(plan),
     startIndex: plan.startIndex,
     endIndex: plan.endIndex,
     startDayOffsetPercent: plan.startDayOffsetPercent ?? null,
@@ -10990,7 +11022,7 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
         ...item,
         assignmentCtSnapshot,
       });
-      const stTotalSeconds = resolveAssignmentStTotalSeconds(item);
+      const stTotalSeconds = resolveStateAssignmentStTotalSeconds(item);
       return {
         lineId: lineIdNum,
         externalId,
@@ -11123,7 +11155,7 @@ const toAssignmentPlanWriteData = (item: any) => {
     assignmentCtSnapshot: (assignmentCtSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
     color: item.color ?? null,
     stripeColor: item.stripeColor ?? null,
-    assignmentStTotalSeconds: item.assignmentStTotalSeconds ?? item.stTotalSeconds ?? null,
+    assignmentStTotalSeconds: resolveStateAssignmentStTotalSeconds(item),
     startIndex: item.startIndex,
     endIndex: item.endIndex,
     startDayOffsetPercent: item.startDayOffsetPercent ?? null,
@@ -11195,10 +11227,7 @@ const buildCompletedAssignmentWriteComparable = (item: any) => {
     assignmentCtSnapshot,
     color: resolveOptionalString(item?.color, null),
     stripeColor: resolveOptionalString(item?.stripeColor, null),
-    assignmentStTotalSeconds: toOptionalNonNegativeInt(
-      item?.assignmentStTotalSeconds ?? item?.stTotalSeconds,
-      null
-    ),
+    assignmentStTotalSeconds: resolveComparableAssignmentStTotalSeconds(item),
     startIndex: toSignedInt(item?.startIndex, 0),
     endIndex: Math.max(
       toSignedInt(item?.startIndex, 0),
@@ -11462,13 +11491,18 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     const stDrafts = stDraftsByExternalId.get(externalId) ?? new Map<string, number>();
     const hasStDrafts = stDrafts.size > 0;
     const hasStructuralChange = hasAssignmentStructuralStChange(assignment, existingPlan);
-    const existingAssignmentStTotalSeconds = resolveAssignmentStTotalSeconds(existingPlan);
+    const existingAssignmentStTotalSeconds =
+      resolvePersistedAssignmentPlanStTotalSeconds(existingPlan);
+    const isExistingAssignmentStMissingOrInvalid =
+      existingAssignmentStTotalSeconds == null ||
+      existingAssignmentStTotalSeconds <= 0;
 
     const styleId = resolveAssignmentStyleIdForStCalculation({
       assignment,
       cardById,
     });
-    const shouldRecalculate = hasStDrafts || hasStructuralChange;
+    const shouldRecalculate =
+      hasStDrafts || hasStructuralChange || isExistingAssignmentStMissingOrInvalid;
     if (shouldRecalculate && styleId) assignmentStyleIds.add(styleId);
 
     targetByExternalId.set(externalId, {
@@ -17045,7 +17079,7 @@ const buildLineMonthCapacityRows = async ({
     const lineId = toPositiveIntOrNull(plan?.lineId);
     if (!planId || !lineId || !requestedLineIdSet.has(lineId)) return;
     const plannedQuantity = resolveAssignmentQuantity(plan);
-    const plannedStTotalSeconds = resolveAssignmentStTotalSeconds(plan);
+    const plannedStTotalSeconds = resolvePersistedAssignmentPlanStTotalSeconds(plan);
     ensureArray(workRowsByPlanId.get(planId)).forEach((record) => {
       const coverageStartDate =
         resolveWorkRecordEffectiveCoverageStartDate(record);
@@ -17965,7 +17999,7 @@ const buildAssignmentPlanProgressRows = async (
       progressForRemainingRatio == null
         ? null
         : Math.min(100, Math.round(progressForRemainingRatio * 100));
-    const plannedStTotalSeconds = resolveAssignmentStTotalSeconds(plan);
+    const plannedStTotalSeconds = resolvePersistedAssignmentPlanStTotalSeconds(plan);
     const isStUnknown =
       plannedStTotalSeconds == null || plannedStTotalSeconds <= 0;
     const remainingStTotalSeconds =
