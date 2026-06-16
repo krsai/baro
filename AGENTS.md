@@ -125,7 +125,7 @@ AT(q) = a*q + b
 ```
 1. QcReview.jsx: 검수 이력 입력/취소 전용
 2. POST /qc-pass-events, PATCH /qc-pass-events/:id/cancel
-3. BatchProgress.jsx(handleConfirmClose): PATCH /assignment-plans/:externalId/production-complete 호출
+3. AssignBoard.jsx 상세 드로어(handleConfirmProductionComplete): PATCH /assignment-plans/:externalId/production-complete 호출
 4. 백엔드 completeAssignmentPlanProduction: production completed 상태 확정 + 일정/진행도 스냅샷 동기화
 5. 완료 시: isCompleted=true, completedAt/productionCompletedAt/closedQty 갱신
 ```
@@ -133,7 +133,7 @@ AT(q) = a*q + b
 ### Task 1 관련 상태
 - 기존 `/assignment-plans/:externalId/complete` 기반 QC hard block 시나리오는 현재 코드 경로에서 사용되지 않음.
 - 현재 완료 경로(`/assignment-plans/:externalId/production-complete` → `completeAssignmentPlanProduction`)에는 `producedQuantity < finalQuantity` 하드 블록이 없음.
-- `QcReview.jsx`는 검수 이력(`qc-pass-events`) 전용이며, 생산 완료 확정은 `BatchProgress.jsx`에서 수행.
+- `QcReview.jsx`는 검수 이력(`qc-pass-events`) 전용이며, 생산 완료 확정은 배정 보드(`AssignBoard.jsx`) 상세 드로어에서 수행한다 (2026-06-16 이전).
 
 ---
 
@@ -1179,7 +1179,7 @@ runtime 조회값:
 - assignment 공식 진행도/완료 판정은 `WorkRecord.assignmentPlanId`가 명확한 행만 사용한다. orphan/추정 매칭 WorkRecord는 공식 완료 근거에서 제외한다.
 - 작업기록 기반 자동 완료는 `AssignmentPlan.closedBy = "system:auto-worklog"` 표식으로 남긴다.
 - 작업기록 기반 자동 롤백은 위 표식으로 자동 완료된 assignment에만 적용한다. 수동/QC 완료 assignment는 이 자동 롤백이 덮어쓰지 않는다.
-- 구 생산 현황 경로 `/production-result`는 2026-06-16 완전히 삭제됐다 (라우트, 페이지, FEATURE_KEYS, 메뉴 권한 전부 제거).
+- 구 생산 결과 경로 `/production-result`는 2026-06-16 완전히 삭제됐다 (라우트, 페이지, FEATURE_KEYS, 메뉴 권한 전부 제거). 같은 날 별도의 레거시 메뉴 "생산 현황"(`/batch-progress`)도 함께 삭제됐다 — 자세한 내용은 36번 섹션 참고.
 
 ### 28. 2026-06-05 Auto Completion Phase 2 Payroll Lock
 
@@ -1295,3 +1295,13 @@ runtime 조회값:
   - `assignmentStTotalSeconds` 미산정 또는 0
   - period-only 기반 low-confidence free-date estimate
   - `producedRatio`와 `totalDoneRatio` 차이가 큰 공정 불균형
+
+### 36. 2026-06-16 Manual Production Completion Relocated to Assignment Board
+
+- 수동 생산완료 확정 UI를 `AssignBoard.jsx` 상세 드로어로 이전했다. `handleConfirmProductionComplete`가 기존 백엔드 엔드포인트(`PATCH /assignment-plans/:externalId/production-complete`)를 그대로 호출한다.
+- 진입 경로: 배정 보드에서 미완료 카드 우클릭 → "Open Detail" → 상세 드로어 하단의 "생산 완료 처리" 패널에서 확정 수량 입력 후 확정.
+- 백엔드 `completeAssignmentPlanProduction`과 급여 잠금/중복완료 체크 로직은 변경하지 않았다.
+- 완료된 assignment를 다시 미완료로 되돌리는 "되돌리기" 기능은 이번 범위에 포함하지 않았다 (백엔드에 reopen 엔드포인트가 없고, 완료 assignment는 읽기 전용 원칙을 유지).
+- 구 레거시 메뉴 "생산 현황"(`menu.batchProgress`, 경로 `/batch-progress`, `frontend/src/pages/App/BatchProgress.jsx`)은 완전히 삭제했다. 이 메뉴는 이미 `disabled: true` + `/workspace` 리다이렉트 상태였고, 그 안의 `handleConfirmClose`가 production-complete를 호출하는 유일한 코드였는데 메뉴 비활성화로 사실상 도달 불가능했던 고아 코드였다.
+- `QcReview.jsx`의 "제작 완료 확정은 배치 진행 메뉴에서 처리합니다" 안내 문구는 "배정 화면 상세에서 처리합니다"로 갱신했다.
+- 참고: `production-result`(생산 결과, `menu.productionResult`)는 이번 항목과 다른, 별도로 먼저 삭제된 플레이스홀더 메뉴다.

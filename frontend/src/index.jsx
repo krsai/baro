@@ -69,6 +69,14 @@ window.addEventListener('unhandledrejection', (event) => {
   attemptChunkRecoveryReload();
 });
 
+window.addEventListener(
+  'contextmenu',
+  (event) => {
+    event.preventDefault();
+  },
+  { capture: true }
+);
+
 const resolveCanonicalOrigin = () => {
   const raw = String(import.meta.env.VITE_CANONICAL_ORIGIN || '').trim();
   if (!raw) return '';

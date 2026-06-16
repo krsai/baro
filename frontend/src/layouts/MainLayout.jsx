@@ -526,12 +526,6 @@ const MainLayout = () => {
             icon: <StyleIcon />,
             path: '/style',
           },
-          {
-            label: getUiMessage('menu.batchProgress', '\uC0DD\uC0B0 \uD604\uD669', languageCode),
-            icon: <DashboardIcon />,
-            path: '/batch-progress',
-            disabled: true,
-          },
         ],
       },
       {
@@ -768,7 +762,7 @@ const MainLayout = () => {
       const childPaths = new Set(orderedChildren.map((child) => child.path));
 
       if (childPaths.has('/order') && childPaths.has('/style')) {
-        const preferredSalesPaths = ['/style', '/order', '/batch-progress'];
+        const preferredSalesPaths = ['/style', '/order'];
         orderedChildren = [
           customerMenuItem,
           ...preferredSalesPaths.map(

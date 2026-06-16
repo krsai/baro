@@ -131,6 +131,26 @@ const formatLineShiftLabel = (line) => {
   }
   return `${shiftHours}h`;
 };
+const resolveProductionCloseMode = (closedQty, targetQty) => {
+  const order = Number(targetQty) || 0;
+  const closed = Number(closedQty) || 0;
+  if (order <= 0) return null;
+  if (closed === order) return 'FULL';
+  if (closed < order) return 'SHORT';
+  return 'OVER';
+};
+const getProductionCloseModeLabel = (closeMode, languageCode) => {
+  switch (closeMode) {
+    case 'FULL':
+      return getUiMessage('assign.closeModeFull', 'Exact', languageCode);
+    case 'SHORT':
+      return getUiMessage('assign.closeModeShort', 'Short', languageCode);
+    case 'OVER':
+      return getUiMessage('assign.closeModeOver', 'Over', languageCode);
+    default:
+      return '-';
+  }
+};
 const CT_INPUT_REGEX = /^\d*(?:\.\d{0,2})?$/;
 const toPositiveInt = (value, fallback = 1) => {
   const parsed = Number.parseInt(value, 10);
@@ -2561,6 +2581,8 @@ const AssignBoard = () => {
   const [lines, setLines] = useState(() => initialLines);
   const [assignments, setAssignments] = useState(initialAssignments);
   const [assignmentProgressById, setAssignmentProgressById] = useState({});
+  const [completingAssignmentId, setCompletingAssignmentId] = useState(null);
+  const [completionQtyDraft, setCompletionQtyDraft] = useState('');
   const [lineMonthCapacityRows, setLineMonthCapacityRows] = useState([]);
   const [lineMonthCapacityLoading, setLineMonthCapacityLoading] = useState(false);
   const [activeDrag, setActiveDrag] = useState(null);
@@ -4789,6 +4811,18 @@ const AssignBoard = () => {
     }
     return `card:${String(detailState.cardId || '')}`;
   }, [detailState]);
+  useEffect(() => {
+    if (detailState?.targetType !== 'assignment') {
+      setCompletionQtyDraft('');
+      return;
+    }
+    const assignmentId = String(detailState?.assignmentId || '');
+    const produced = assignmentProgressById[assignmentId]?.producedQuantity;
+    setCompletionQtyDraft(
+      produced != null ? String(Math.max(0, Math.round(Number(produced) || 0))) : '0'
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailTargetKey]);
   const detailDraftByProcess = useMemo(
     () => detailDraftsByTarget[detailTargetKey] || {},
     [detailDraftsByTarget, detailTargetKey]
@@ -5066,6 +5100,68 @@ const AssignBoard = () => {
     blurActiveElement();
     setDetailState(null);
   }, [blurActiveElement]);
+  const handleConfirmProductionComplete = useCallback(
+    async (confirmedQty) => {
+      if (!detailAssignment?.id) return;
+      const assignmentId = detailAssignment.id;
+      setCompletingAssignmentId(assignmentId);
+      try {
+        await requestJSON(
+          `/assignment-plans/${encodeURIComponent(String(assignmentId))}/production-complete` +
+            buildQueryString({ orgId: activeOrgId }),
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirmedQty }),
+          }
+        );
+        showNotification(
+          getUiMessage('assign.productionCompleteSuccess', 'Production completion confirmed.', languageCode),
+          'success'
+        );
+        emitWorkspaceDataChanged({
+          topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+          orgId: activeOrgId,
+          assignmentIds: [assignmentId],
+          source: 'assign-detail-complete',
+        });
+        requestExternalBoardReload();
+        handleCloseDetail();
+      } catch (error) {
+        const message = String(error?.message || '').trim();
+        if (message.includes('assignment plan payroll locked')) {
+          showNotification(
+            getUiMessage(
+              'assign.productionCompletePayrollLocked',
+              'Payroll-locked assignments cannot have their completed quantity changed.',
+              languageCode
+            ),
+            'warning'
+          );
+        } else {
+          showNotification(
+            message ||
+              getUiMessage(
+                'assign.productionCompleteError',
+                'Failed to confirm production completion.',
+                languageCode
+              ),
+            'error'
+          );
+        }
+      } finally {
+        setCompletingAssignmentId(null);
+      }
+    },
+    [
+      activeOrgId,
+      detailAssignment,
+      handleCloseDetail,
+      languageCode,
+      requestExternalBoardReload,
+      showNotification,
+    ]
+  );
   const handleDetailDraftInput = useCallback((processKey, value) => {
     if (!detailTargetKey || !processKey) return;
     if (detailAssignmentIsCompleted) return;
@@ -6773,6 +6869,83 @@ const AssignBoard = () => {
                           : 'When you save the assignment, the current ST/CT inputs are stored in the snapshot.'}
                   </Typography>
                 </Paper>
+
+                {detailAssignment && !detailAssignmentIsCompleted ? (
+                  <Paper variant="outlined" sx={{ p: 1.5 }}>
+                    <Stack spacing={1.25}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                        {getUiMessage(
+                          'assign.markProductionComplete',
+                          'Confirm Production Completion',
+                          languageCode
+                        )}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {getUiMessage(
+                          'assign.confirmedQtyHelper',
+                          'Review the produced quantity from work records, then confirm the final completed quantity.',
+                          languageCode
+                        )}
+                      </Typography>
+                      <Stack
+                        direction={{ xs: 'column', sm: 'row' }}
+                        spacing={1.5}
+                        alignItems={{ xs: 'stretch', sm: 'center' }}
+                      >
+                        <TextField
+                          label={getUiMessage('assign.confirmedQtyLabel', 'Confirmed Quantity', languageCode)}
+                          size="small"
+                          type="number"
+                          value={completionQtyDraft}
+                          onChange={(event) => setCompletionQtyDraft(event.target.value)}
+                          disabled={Boolean(completingAssignmentId) || controlsDisabled}
+                          sx={{ width: { xs: '100%', sm: 160 } }}
+                        />
+                        <Typography variant="body2" color="text.secondary">
+                          {getUiMessage('assign.quantityLabel', 'Quantity', languageCode)}:{' '}
+                          {formatNumberWithCommas(detailAssignment?.quantity ?? 0, {
+                            fallback: '0',
+                            maximumFractionDigits: 0,
+                          })}
+                        </Typography>
+                        {(() => {
+                          const closeMode = resolveProductionCloseMode(
+                            completionQtyDraft,
+                            detailAssignment?.quantity
+                          );
+                          if (!closeMode) return null;
+                          return (
+                            <Chip
+                              size="small"
+                              color={
+                                closeMode === 'FULL'
+                                  ? 'success'
+                                  : closeMode === 'OVER'
+                                    ? 'info'
+                                    : 'warning'
+                              }
+                              label={getProductionCloseModeLabel(closeMode, languageCode)}
+                            />
+                          );
+                        })()}
+                      </Stack>
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          variant="contained"
+                          color="success"
+                          size="small"
+                          disabled={Boolean(completingAssignmentId) || controlsDisabled}
+                          onClick={() => {
+                            const parsedQty = Math.max(0, Math.round(Number(completionQtyDraft) || 0));
+                            handleConfirmProductionComplete(parsedQty);
+                          }}
+                        >
+                          {getUiMessage('assign.markProductionComplete', 'Confirm Production Completion', languageCode)}
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  </Paper>
+                ) : null}
               </>
             )}
           </Stack>

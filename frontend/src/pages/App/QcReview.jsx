@@ -403,7 +403,7 @@ const resolveQcReviewEmptyMessage = ({
     return '진행 중 상태에 맞는 검수 대상이 없습니다. 제작 완료 배치를 보려면 상태를 "제작 완료" 또는 "전체"로 바꿔 주세요.';
   }
   if (visibleRowCount === 0 && statusFilter === 'completed') {
-    return '제작 완료 상태의 검수 대상이 없습니다. 먼저 배치 진행에서 제작 완료를 확정해 주세요.';
+    return '제작 완료 상태의 검수 대상이 없습니다. 먼저 배정 화면 상세에서 제작 완료를 확정해 주세요.';
   }
   return '표시할 검수 대상이 없습니다.';
 };
@@ -998,7 +998,7 @@ const QcReview = () => {
             검수
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            검수 이력을 날짜별로 추가하고 누적 상태를 확인합니다. 제작 완료 확정은 배치 진행 메뉴에서 처리합니다.
+            검수 이력을 날짜별로 추가하고 누적 상태를 확인합니다. 제작 완료 확정은 배정 화면 상세에서 처리합니다.
           </Typography>
         </Stack>
       }
@@ -1074,7 +1074,7 @@ const QcReview = () => {
         </Paper>
 
         <Alert severity="info">
-          QC 화면은 검수 통과 이력을 쌓는 용도입니다. 제작 완료 확정은 배치 진행 메뉴에서만 처리합니다.
+          QC 화면은 검수 통과 이력을 쌓는 용도입니다. 제작 완료 확정은 배정 화면 상세에서만 처리합니다.
         </Alert>
         {!loading && loadError ? <Alert severity="error">{loadError}</Alert> : null}
         {!loading && !loadError && visibleRows.length === 0 ? (
