@@ -465,6 +465,11 @@ export const UI_MESSAGES = {
       vi: 'Xac nhan hoan thanh san xuat',
     },
     confirmedQtyLabel: { ko: '확정 수량', en: 'Confirmed Quantity', vi: 'So luong xac nhan' },
+    confirmedQtyPrompt: {
+      ko: '확정할 완료 수량을 입력하세요',
+      en: 'Enter the confirmed completed quantity',
+      vi: 'Nhap so luong hoan thanh can xac nhan',
+    },
     confirmedQtyHelper: {
       ko: '작업기록 생산수량을 검토한 뒤, 이 배정의 완료 수량을 확정합니다.',
       en: 'Review the produced quantity from work records, then confirm the final completed quantity.',

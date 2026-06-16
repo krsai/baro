@@ -5067,6 +5067,11 @@ const AssignBoard = () => {
     contextMenuTargetAssignment,
     contextMenuTargetCard,
   ]);
+  const contextMarkCompleteDisabled = useMemo(() => {
+    if (!contextMenuState || contextMenuState.targetType !== 'assignment') return true;
+    if (!contextMenuTargetAssignment) return true;
+    return Boolean(contextMenuTargetAssignment?.isCompleted);
+  }, [contextMenuState, contextMenuTargetAssignment]);
 
   const handleContextMenuOpen = useCallback((payload) => {
     if (!persistReady || loading) return;
@@ -5101,9 +5106,8 @@ const AssignBoard = () => {
     setDetailState(null);
   }, [blurActiveElement]);
   const handleConfirmProductionComplete = useCallback(
-    async (confirmedQty) => {
-      if (!detailAssignment?.id) return;
-      const assignmentId = detailAssignment.id;
+    async (assignmentId, confirmedQty) => {
+      if (!assignmentId) return;
       setCompletingAssignmentId(assignmentId);
       try {
         await requestJSON(
@@ -5153,14 +5157,7 @@ const AssignBoard = () => {
         setCompletingAssignmentId(null);
       }
     },
-    [
-      activeOrgId,
-      detailAssignment,
-      handleCloseDetail,
-      languageCode,
-      requestExternalBoardReload,
-      showNotification,
-    ]
+    [activeOrgId, handleCloseDetail, languageCode, requestExternalBoardReload, showNotification]
   );
   const handleDetailDraftInput = useCallback((processKey, value) => {
     if (!detailTargetKey || !processKey) return;
@@ -5991,6 +5988,32 @@ const AssignBoard = () => {
     setContextMenuState(null);
   }, [contextMenuState, handleSplitAssignment, handleSplitCard]);
 
+  const promptConfirmedQuantity = useCallback((assignment) => {
+    const produced = assignmentProgressById[assignment?.id]?.producedQuantity;
+    const defaultQty = Math.max(
+      0,
+      Math.round(Number(produced != null ? produced : assignment?.quantity ?? 0) || 0)
+    );
+    const input = window.prompt(
+      getUiMessage('assign.confirmedQtyPrompt', 'Enter the confirmed completed quantity', languageCode),
+      String(defaultQty)
+    );
+    if (input == null) return null;
+    const value = Number(input);
+    if (!Number.isFinite(value) || value < 0) return null;
+    return Math.round(value);
+  }, [assignmentProgressById, languageCode]);
+
+  const handleContextMarkProductionComplete = useCallback(() => {
+    if (!contextMenuState || contextMenuState.targetType !== 'assignment') return;
+    const assignment = assignmentById.get(contextMenuState.id);
+    setContextMenuState(null);
+    if (!assignment?.id || assignment.isCompleted) return;
+    const confirmedQty = promptConfirmedQuantity(assignment);
+    if (confirmedQty == null) return;
+    handleConfirmProductionComplete(assignment.id, confirmedQty);
+  }, [contextMenuState, assignmentById, promptConfirmedQuantity, handleConfirmProductionComplete]);
+
   const getAssignmentOriginId = (assignment) => {
     if (!assignment) return null;
     if (assignment.originOrderId) return assignment.originOrderId;
@@ -6482,6 +6505,13 @@ const AssignBoard = () => {
           <MenuItem onClick={handleContextSplit} disabled={controlsDisabled || contextSplitDisabled}>
             {getUiMessage('assign.contextSplitQuantity', 'Split Quantity', languageCode)}
           </MenuItem>
+          <Divider />
+          <MenuItem
+            onClick={handleContextMarkProductionComplete}
+            disabled={controlsDisabled || contextMarkCompleteDisabled}
+          >
+            {getUiMessage('assign.markProductionComplete', 'Confirm Production Completion', languageCode)}
+          </MenuItem>
         </Menu>
 
         <Drawer
@@ -6937,7 +6967,7 @@ const AssignBoard = () => {
                           disabled={Boolean(completingAssignmentId) || controlsDisabled}
                           onClick={() => {
                             const parsedQty = Math.max(0, Math.round(Number(completionQtyDraft) || 0));
-                            handleConfirmProductionComplete(parsedQty);
+                            handleConfirmProductionComplete(detailAssignment?.id, parsedQty);
                           }}
                         >
                           {getUiMessage('assign.markProductionComplete', 'Confirm Production Completion', languageCode)}
