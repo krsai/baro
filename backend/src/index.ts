@@ -3667,6 +3667,8 @@ const normalizeStylePayload = (
 const toOrganizationOption = (organization: any) => ({
   id: organization?.id ?? null,
   name: organization?.name ?? "",
+  nameKo: (organization as any)?.nameKo ?? null,
+  nameVi: (organization as any)?.nameVi ?? null,
   code: organization?.code ?? null,
   type: organization?.type ?? null,
 });

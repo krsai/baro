@@ -1409,6 +1409,8 @@ const OrderList = () => {
     return {
       id: currentOrgId,
       name: currentOrgOption?.name || '',
+      nameKo: currentOrgOption?.nameKo || '',
+      nameVi: currentOrgOption?.nameVi || '',
     };
   }, [partyRoleHint, currentOrgOption]);
   const isSellerLocked = Boolean(fixedSellerOrg);
@@ -3642,7 +3644,7 @@ const OrderList = () => {
                 value={sellerValue}
                 onChange={handleSellerChange}
                 disabled={loadingParties || isSellerLocked}
-                getOptionLabel={(option) => option?.name || ''}
+                getOptionLabel={(option) => resolveCustomerDisplayName(option, languageCode) || option?.name || ''}
                 isOptionEqualToValue={(option, value) => option?.id === value?.id}
                 loading={loadingParties}
                 renderInput={(params) => (

@@ -109,6 +109,8 @@ const createEmptyStyle = () => ({
   styleCode: '',
   name: '',
   customer: '',
+  customerNameKo: '',
+  customerNameVi: '',
   registrationDate: '',
   designer: '',
   collection: '',

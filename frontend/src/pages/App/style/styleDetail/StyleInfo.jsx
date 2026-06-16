@@ -29,6 +29,7 @@ import { useLanguage } from '../../../../context/LanguageContext';
 import { getUiMessage } from '../../../../constants/uiMessages';
 import { fetchAttributes } from '../../../../utils/attributeApi';
 import { requestJSON } from '../../../../utils/apiClient';
+import { resolveCustomerDisplayName } from '../../../../utils/appLanguage';
 import StyleAnalysis from './StyleAnalysis';
 
 const CUSTOMERS_CACHE_TTL_MS = 30 * 1000;
@@ -322,6 +323,8 @@ const StyleInfo = ({
     const resolvedOrgId = formData.customerOrgId ? Number(formData.customerOrgId) : null;
     const hasResolvedCustomer = baseOptions.some((customer) => {
       if (String(customer?.name || '').trim() === resolvedCustomerValue) return true;
+      if (String(customer?.nameKo || '').trim() === resolvedCustomerValue) return true;
+      if (String(customer?.nameVi || '').trim() === resolvedCustomerValue) return true;
       if (resolvedOrgId) {
         const optId = Number(customer?.brandOrgId ?? customer?.id);
         return Number.isInteger(optId) && optId > 0 && optId === resolvedOrgId;
@@ -334,11 +337,20 @@ const StyleInfo = ({
       {
         id: formData.customerOrgId ?? `customer-${resolvedCustomerValue}`,
         name: resolvedCustomerValue,
+        nameKo: formData.customerNameKo || '',
+        nameVi: formData.customerNameVi || '',
         brandOrgId: formData.customerOrgId ?? null,
       },
       ...baseOptions,
     ];
-  }, [customers, formData.customerOrgId, isBrandOrg, resolvedCustomerValue]);
+  }, [
+    customers,
+    formData.customerNameKo,
+    formData.customerNameVi,
+    formData.customerOrgId,
+    isBrandOrg,
+    resolvedCustomerValue,
+  ]);
   const categoryOptions = useMemo(() => {
     const collectionValue = String(formData.collection || '').trim();
     if (!collectionValue) return categories;
@@ -360,6 +372,8 @@ const StyleInfo = ({
   const resolvedCustomerOrgId = formData.customerOrgId ? Number(formData.customerOrgId) : null;
   const selectedCustomer =
     customerOptions.find((customer) => String(customer?.name || '').trim() === resolvedCustomerValue) ||
+    customerOptions.find((customer) => String(customer?.nameKo || '').trim() === resolvedCustomerValue) ||
+    customerOptions.find((customer) => String(customer?.nameVi || '').trim() === resolvedCustomerValue) ||
     (resolvedCustomerOrgId
       ? customerOptions.find((customer) => {
           const optId = Number(customer?.brandOrgId ?? customer?.id);
@@ -395,6 +409,8 @@ const StyleInfo = ({
 
     const parsedOrgId = Number(nextCustomer?.brandOrgId ?? nextCustomer?.id);
     emitInputChange('customer', nextCustomerName);
+    emitInputChange('customerNameKo', nextCustomer?.nameKo || '');
+    emitInputChange('customerNameVi', nextCustomer?.nameVi || '');
     emitInputChange('customerOrgId', Number.isInteger(parsedOrgId) && parsedOrgId > 0 ? parsedOrgId : null);
   };
 
@@ -685,10 +701,12 @@ const StyleInfo = ({
                 loading={loadingCustomers}
                 loadingText="불러오는 중..."
                 noOptionsText="등록된 고객사가 없습니다"
-                getOptionLabel={(option) => option?.name || ''}
+                getOptionLabel={(option) => resolveCustomerDisplayName(option, languageCode) || option?.name || ''}
                 isOptionEqualToValue={(option, value) =>
                   String(option?.id || '') === String(value?.id || '') ||
-                  String(option?.name || '').trim() === String(value?.name || '').trim()
+                  String(option?.name || '').trim() === String(value?.name || '').trim() ||
+                  String(option?.nameKo || '').trim() === String(value?.nameKo || '').trim() ||
+                  String(option?.nameVi || '').trim() === String(value?.nameVi || '').trim()
                 }
                 sx={fieldControlSx}
                 textFieldProps={selectTextFieldProps}

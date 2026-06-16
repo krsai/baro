@@ -31,6 +31,8 @@ const normalizeStyle = (value = {}) => ({
   styleCode: value.styleCode || '',
   name: value.name || '',
   customer: value.customer || '',
+  customerNameKo: value.customerNameKo || '',
+  customerNameVi: value.customerNameVi || '',
   registrationDate: value.registrationDate || '',
   designer: value.designer || '',
   collection: value.collection || '',

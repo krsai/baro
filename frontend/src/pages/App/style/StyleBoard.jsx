@@ -289,6 +289,8 @@ const StyleBoard = () => {
       (style) =>
         (style.name || '').toLowerCase().includes(lower) ||
         (style.customer || '').toLowerCase().includes(lower) ||
+        (style.customerNameKo || '').toLowerCase().includes(lower) ||
+        (style.customerNameVi || '').toLowerCase().includes(lower) ||
         (style.styleCode || '').toLowerCase().includes(lower) ||
         (style.id || '').toLowerCase().includes(lower)
     );
