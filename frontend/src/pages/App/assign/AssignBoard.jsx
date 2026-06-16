@@ -1520,13 +1520,15 @@ const applyAssignmentCtSnapshotForSave = ({
     updatedAt,
     updatedBy,
   });
-  const cardStTotalSeconds = toNonNegativeInt(resolveCardStTotalSeconds(card), 0);
   const existingAssignmentStTotalSeconds = toNonNegativeInt(
     assignment?.stTotalSeconds ?? assignment?.assignmentStTotalSeconds,
     0
   );
+  const cardStTotalSeconds = toNonNegativeInt(resolveCardStTotalSeconds(card), 0);
   const nextStTotalSeconds =
-    cardStTotalSeconds > 0 ? cardStTotalSeconds : existingAssignmentStTotalSeconds;
+    existingAssignmentStTotalSeconds > 0
+      ? existingAssignmentStTotalSeconds
+      : cardStTotalSeconds;
   const nextCtTotalSeconds =
     ctSnapshot?.assignmentCtTotalSeconds != null
       ? Math.max(0, Math.round(Number(ctSnapshot.assignmentCtTotalSeconds) || 0))

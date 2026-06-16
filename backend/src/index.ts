@@ -11488,11 +11488,16 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     if (!externalId || Boolean(assignment?.isCompleted)) return;
 
     const existingPlan = existingPlanByExternalId.get(externalId) ?? null;
+    const incomingAssignmentStTotalSeconds =
+      resolveStateAssignmentStTotalSeconds(assignment);
     const stDrafts = stDraftsByExternalId.get(externalId) ?? new Map<string, number>();
     const hasStDrafts = stDrafts.size > 0;
     const hasStructuralChange = hasAssignmentStructuralStChange(assignment, existingPlan);
     const existingAssignmentStTotalSeconds =
       resolvePersistedAssignmentPlanStTotalSeconds(existingPlan);
+    const hasUsableIncomingAssignmentSt =
+      incomingAssignmentStTotalSeconds != null &&
+      incomingAssignmentStTotalSeconds > 0;
     const isExistingAssignmentStMissingOrInvalid =
       existingAssignmentStTotalSeconds == null ||
       existingAssignmentStTotalSeconds <= 0;
@@ -11502,12 +11507,16 @@ const prepareAssignmentBoardStTotalsForSave = async ({
       cardById,
     });
     const shouldRecalculate =
-      hasStDrafts || hasStructuralChange || isExistingAssignmentStMissingOrInvalid;
+      hasStDrafts ||
+      (!hasUsableIncomingAssignmentSt &&
+        (hasStructuralChange || isExistingAssignmentStMissingOrInvalid));
     if (shouldRecalculate && styleId) assignmentStyleIds.add(styleId);
 
     targetByExternalId.set(externalId, {
       assignment,
       existingPlan,
+      incomingAssignmentStTotalSeconds,
+      hasUsableIncomingAssignmentSt,
       existingAssignmentStTotalSeconds,
       stDrafts,
       hasStDrafts,
@@ -11524,19 +11533,21 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     const assignmentsWithExistingTotals = normalizedAssignments.map((assignment) => {
       const externalId = resolveAssignmentExternalId(assignment);
       const target = externalId ? targetByExternalId.get(externalId) : null;
-      const existingAssignmentStTotalSeconds =
-        target?.existingAssignmentStTotalSeconds ?? null;
-      if (existingAssignmentStTotalSeconds === null) return assignment;
+      const canonicalAssignmentStTotalSeconds =
+        target?.hasUsableIncomingAssignmentSt
+          ? target?.incomingAssignmentStTotalSeconds ?? null
+          : target?.existingAssignmentStTotalSeconds ?? null;
+      if (canonicalAssignmentStTotalSeconds === null) return assignment;
       if (
         externalId &&
         toOptionalNonNegativeInt(assignment?.stTotalSeconds, null) !==
-        existingAssignmentStTotalSeconds
+        canonicalAssignmentStTotalSeconds
       ) {
         changedExternalIds.add(externalId);
       }
       return {
         ...assignment,
-        stTotalSeconds: existingAssignmentStTotalSeconds,
+        stTotalSeconds: canonicalAssignmentStTotalSeconds,
       };
     });
     return { assignments: assignmentsWithExistingTotals, warnings, changedExternalIds };
@@ -11712,10 +11723,14 @@ const prepareAssignmentBoardStTotalsForSave = async ({
   const assignmentStTotalSecondsByExternalId = new Map<string, number>();
   targetByExternalId.forEach((target, externalId) => {
     if (!target.shouldRecalculate) {
-      if (target.existingAssignmentStTotalSeconds !== null) {
+      const canonicalAssignmentStTotalSeconds =
+        target.hasUsableIncomingAssignmentSt
+          ? target.incomingAssignmentStTotalSeconds
+          : target.existingAssignmentStTotalSeconds;
+      if (canonicalAssignmentStTotalSeconds !== null) {
         assignmentStTotalSecondsByExternalId.set(
           externalId,
-          target.existingAssignmentStTotalSeconds
+          canonicalAssignmentStTotalSeconds
         );
       }
       return;
