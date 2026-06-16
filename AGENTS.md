@@ -285,7 +285,7 @@ AT(q) = a*q + b
 - `/workspace`, `/assignment`, `/work-history`, `/work-history-monthly`
 - `/attendance`, `/payroll`, `/style`, `/order`, `/customer`
 - `/line`, `/business`, `/employee`, `/profile`, `/holiday`
-- 비활성화(메뉴에서 숨김): `/production-plan`, `/st-review`, `/shipment-review`, `/inventory`, `/production-result`
+- 비활성화(메뉴에서 숨김): `/production-plan`, `/st-review`, `/shipment-review`, `/inventory`
 
 ### 구독 관리 접근 규칙
 - `/system-setting`의 구독 관리 화면과 메뉴는 `entryType=SYSTEM`이면서 `systemRole=SYSTEM_ADMIN`인 시스템 운영 계정에만 노출한다.
@@ -386,7 +386,7 @@ AT(q) = a*q + b
 | 재고 | 프로토타입 |
 | ST Review / Shipment Review | 플레이스홀더 |
 | 생산계획 보드 | 코드 구현됨, 메뉴 비활성화 |
-| 생산실적 / 대시보드 | 플레이스홀더 |
+| 대시보드 | 플레이스홀더 |
 | 휴일 관리 | localStorage 기반 (서버 미저장) |
 
 ---
@@ -447,7 +447,7 @@ npm run test:regression
 1. `backend/src/index.ts` 단일 파일 비대화 — 도메인 경계 흐림
 2. 실시간 동기화 부재 — 다중 사용자 동시 편집 시 서버 push 없음
 3. 휴일 관리 localStorage 의존 — 계정/기기 간 일관성 없음
-4. 플레이스홀더 다수 — 권한, 검토, 생산실적 화면 미완성
+4. 플레이스홀더 다수 — 권한, 검토 화면 미완성
 
 ---
 
@@ -1179,7 +1179,7 @@ runtime 조회값:
 - assignment 공식 진행도/완료 판정은 `WorkRecord.assignmentPlanId`가 명확한 행만 사용한다. orphan/추정 매칭 WorkRecord는 공식 완료 근거에서 제외한다.
 - 작업기록 기반 자동 완료는 `AssignmentPlan.closedBy = "system:auto-worklog"` 표식으로 남긴다.
 - 작업기록 기반 자동 롤백은 위 표식으로 자동 완료된 assignment에만 적용한다. 수동/QC 완료 assignment는 이 자동 롤백이 덮어쓰지 않는다.
-- 구 생산 현황 경로 `/production-result`는 재설계 전까지 비활성화하고 워크스페이스로 리다이렉트한다.
+- 구 생산 현황 경로 `/production-result`는 2026-06-16 완전히 삭제됐다 (라우트, 페이지, FEATURE_KEYS, 메뉴 권한 전부 제거).
 
 ### 28. 2026-06-05 Auto Completion Phase 2 Payroll Lock
 

@@ -53,7 +53,6 @@ export const UI_MESSAGES = {
     inventoryIssue: { ko: '재고 불출', en: 'Inventory Issue', vi: 'Xuat kho' },
     accounting: { ko: '회계 관리', en: 'Accounting', vi: 'Ke toan' },
     payroll: { ko: '급여 계산', en: 'Payroll', vi: 'Tinh luong' },
-    productionResult: { ko: '생산 결과', en: 'Production Result', vi: 'Ket qua san xuat' },
     organization: { ko: '조직 관리', en: 'Organization', vi: 'To chuc' },
     business: { ko: '사업체', en: 'Business', vi: 'Doanh nghiep' },
     line: { ko: '라인', en: 'Line', vi: 'Chuyen' },

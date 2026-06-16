@@ -352,10 +352,6 @@ const router = createBrowserRouter([
             element: <ProductionPlan />,
           },
           {
-            path: 'production-result',
-            element: <Navigate to="/workspace" replace />,
-          },
-          {
             path: 'inventory',
             element: <Inventory />,
           },
