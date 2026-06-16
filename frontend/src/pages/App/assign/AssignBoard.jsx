@@ -1595,7 +1595,15 @@ function doesAssignmentScheduleNeedRecompute(
 const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null) => {
   if (!assignment || !card) return assignment;
 
-  const stTotalSeconds = resolveCardStTotalSeconds(card);
+  const persistedStTotalSeconds = toNonNegativeInt(
+    assignment?.plannedStTotalSeconds ??
+      assignment?.stTotalSeconds ??
+      assignment?.assignmentStTotalSeconds,
+    0
+  );
+  const cardStTotalSeconds = toNonNegativeInt(resolveCardStTotalSeconds(card), 0);
+  const stTotalSeconds =
+    persistedStTotalSeconds > 0 ? persistedStTotalSeconds : cardStTotalSeconds;
   if (!Number.isFinite(stTotalSeconds) || stTotalSeconds <= 0) return assignment;
 
   const basis = getCardBasis(card);
@@ -1606,13 +1614,13 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
     label: card.styleName,
     colorName: card.colorName ?? assignment.colorName,
     gender: card.gender ?? assignment.gender,
-        previewUrl: card.previewUrl ?? assignment.previewUrl,
-        imageUrl: card.imageUrl ?? assignment.imageUrl,
-        thumbnailUrl: card.thumbnailUrl ?? assignment.thumbnailUrl,
-        quantity: card.quantity ?? assignment.quantity,
-        basis,
-        stTotalSeconds,
-        ctTotalSeconds: assignment.ctTotalSeconds ?? null,
+    previewUrl: card.previewUrl ?? assignment.previewUrl,
+    imageUrl: card.imageUrl ?? assignment.imageUrl,
+    thumbnailUrl: card.thumbnailUrl ?? assignment.thumbnailUrl,
+    quantity: assignment.quantity ?? card.quantity,
+    basis: assignment.basis ?? basis,
+    stTotalSeconds,
+    ctTotalSeconds: assignment.ctTotalSeconds ?? null,
   };
   const hasAbsoluteScheduleKeys = Boolean(parseDateKey(assignment?.startDateKey));
   // Keep persisted schedule anchors intact on board reload.
@@ -1620,7 +1628,7 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
   if (hasAbsoluteScheduleKeys) {
     return next;
   }
-  const range = recomputeAssignmentRange(next, nextStTotalSeconds, days, lineCapacityById);
+  const range = recomputeAssignmentRange(next, stTotalSeconds, days, lineCapacityById);
   return {
     ...next,
     ...range,
@@ -3252,9 +3260,15 @@ const AssignBoard = () => {
         : [];
       const projectedMaxEndIndex = normalizedSavedAssignments.reduce((max, item) => {
         const linkedCard = restoredCardById.get(item.cardId);
-        const stTotalSeconds = linkedCard
-          ? resolveCardStTotalSeconds(linkedCard)
-          : toNonNegativeInt(item.stTotalSeconds, 0);
+        const stTotalSeconds = Math.max(
+          toNonNegativeInt(
+            item?.plannedStTotalSeconds ??
+              item?.stTotalSeconds ??
+              item?.assignmentStTotalSeconds,
+            0
+          ),
+          linkedCard ? toNonNegativeInt(resolveCardStTotalSeconds(linkedCard), 0) : 0
+        );
         const lineCapacity = Math.max(
           1,
           getLineCapacitySeconds(item.lineId, nextLineCapacityById)
