@@ -12,6 +12,7 @@ export {
   getPolicyOrgTypes,
   ORG_ROLE_KEYS,
   ORG_TYPE_KEYS,
+  ROLE_ACCESS_POLICY_SCHEMA_VERSION,
   sanitizeRoleAccessPolicy,
 } from './roleAccessPolicyCore.mjs';
 

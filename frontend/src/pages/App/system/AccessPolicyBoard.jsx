@@ -28,12 +28,14 @@ import {
   loadLegacyRoleAccessPolicy,
   ORG_ROLE_KEYS,
   ORG_TYPE_KEYS,
+  ROLE_ACCESS_POLICY_SCHEMA_VERSION,
   saveRoleAccessPolicy,
   sanitizeRoleAccessPolicy,
 } from '../../../utils/roleAccessPolicy';
 
 const MENU_BLUEPRINT_EVENT = 'baro:menu-blueprint-updated';
 const MENU_BLUEPRINT_GLOBAL_KEY = '__BARO_MENU_BLUEPRINT__';
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const EDITABLE_ROLE_ORDER = [
   ORG_ROLE_KEYS.ADMIN,
   ORG_ROLE_KEYS.OPERATOR,
@@ -184,7 +186,12 @@ const toEditablePolicy = (policy) => {
   const defaults = getDefaultRoleAccessPolicy();
   const source =
     policy && typeof policy === 'object' && !Array.isArray(policy) ? policy : defaults;
+  const sourceSchemaVersion = Number(source?.[ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY]);
   return {
+    [ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY]:
+      Number.isFinite(sourceSchemaVersion) && sourceSchemaVersion > 0
+        ? sourceSchemaVersion
+        : ROLE_ACCESS_POLICY_SCHEMA_VERSION,
     ...defaults,
     [EDITABLE_ORG_TYPE]: {
       ...defaults[EDITABLE_ORG_TYPE],
