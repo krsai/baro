@@ -1997,6 +1997,101 @@ const resolveAssignmentUiStMeta = ({
   };
 };
 
+const mergeSavedAssignmentProgressRows = (prevMap, savedAssignments) => {
+  const nextMap =
+    prevMap && typeof prevMap === 'object' && !Array.isArray(prevMap)
+      ? { ...prevMap }
+      : {};
+
+  (Array.isArray(savedAssignments) ? savedAssignments : []).forEach((assignment) => {
+    const assignmentId = String(assignment?.id || '').trim();
+    if (!assignmentId) return;
+
+    const previousRow = nextMap[assignmentId] || null;
+    const plannedStTotalSeconds = toNonNegativeInt(
+      assignment?.stTotalSeconds ?? assignment?.assignmentStTotalSeconds,
+      0
+    );
+    const isCompleted = Boolean(
+      assignment?.isCompleted ??
+        previousRow?.isCompleted ??
+        assignment?.completedAt ??
+        assignment?.productionCompletedAt ??
+        assignment?.closedAt
+    );
+    const rawProgressForRemainingRatio = Number(
+      previousRow?.progressForRemainingRatio ??
+        previousRow?.producedRatio ??
+        previousRow?.operationalProgressRatio
+    );
+    const progressForRemainingRatio = Number.isFinite(rawProgressForRemainingRatio)
+      ? Math.max(0, Math.min(1, rawProgressForRemainingRatio))
+      : null;
+    const remainingStTotalSeconds =
+      plannedStTotalSeconds > 0
+        ? isCompleted
+          ? 0
+          : progressForRemainingRatio == null
+            ? plannedStTotalSeconds
+            : Math.max(
+                0,
+                Math.round(
+                  plannedStTotalSeconds *
+                    (progressForRemainingRatio >= 1 ? 0 : 1 - progressForRemainingRatio)
+                )
+              )
+        : isCompleted
+          ? 0
+          : previousRow?.remainingStTotalSeconds ?? null;
+    const completedStTotalSeconds =
+      plannedStTotalSeconds > 0 && remainingStTotalSeconds != null
+        ? Math.max(0, plannedStTotalSeconds - remainingStTotalSeconds)
+        : previousRow?.completedStTotalSeconds ?? null;
+
+    nextMap[assignmentId] = {
+      ...previousRow,
+      id: assignmentId,
+      isCompleted,
+      scheduleStatus: isCompleted
+        ? 'PRODUCTION_COMPLETED'
+        : previousRow?.scheduleStatus ?? assignment?.scheduleStatus ?? null,
+      plannedStTotalSeconds:
+        plannedStTotalSeconds > 0
+          ? plannedStTotalSeconds
+          : previousRow?.plannedStTotalSeconds ?? null,
+      remainingStTotalSeconds,
+      completedStTotalSeconds,
+      isStUnknown:
+        plannedStTotalSeconds > 0
+          ? false
+          : Boolean(previousRow?.isStUnknown ?? assignment?.isStUnknown ?? true),
+      producedQuantity: previousRow?.producedQuantity ?? assignment?.producedQuantity ?? null,
+      operationalProgressRatio:
+        previousRow?.operationalProgressRatio ?? assignment?.operationalProgressRatio ?? null,
+      producedRatio: previousRow?.producedRatio ?? assignment?.producedRatio ?? null,
+      progressForRemainingRatio:
+        progressForRemainingRatio ??
+        previousRow?.progressForRemainingRatio ??
+        assignment?.progressForRemainingRatio ??
+        null,
+      progressPercent:
+        previousRow?.progressPercent ?? assignment?.progressPercent ?? null,
+      operationalProgressPercent:
+        previousRow?.operationalProgressPercent ??
+        assignment?.operationalProgressPercent ??
+        previousRow?.progressPercent ??
+        assignment?.progressPercent ??
+        null,
+      schedulerProgressPercent:
+        progressForRemainingRatio != null
+          ? clampPercentValue(progressForRemainingRatio * 100)
+          : previousRow?.schedulerProgressPercent ?? assignment?.schedulerProgressPercent ?? null,
+    };
+  });
+
+  return nextMap;
+};
+
 const resolveAssignmentRemainingStTotalSeconds = (assignment) => {
   if (Boolean(assignment?.isStUnknown) && !isAssignmentSchedulerCompleted(assignment)) {
     return null;
@@ -3080,78 +3175,12 @@ const AssignBoard = () => {
     },
     [days]
   );
-  const parsePersistSnapshotAssignments = useCallback((snapshotText) => {
-    try {
-      const parsed = JSON.parse(snapshotText || '{}');
-      return Array.isArray(parsed?.assignments) ? parsed.assignments : [];
-    } catch (_error) {
-      return [];
-    }
+  const alignAssignmentsForBoardPut = useCallback(async (nextAssignments) => {
+    // PUT /assignment-board-state already rebases versions from current server
+    // state, so the legacy GET /assignment-board-versions preflight only adds
+    // save latency and extra failure noise without improving correctness.
+    return Array.isArray(nextAssignments) ? nextAssignments : [];
   }, []);
-  const resolveAssignmentVersionKey = useCallback((item) => {
-    if (!item || typeof item !== 'object') return '';
-    return String(item?.id ?? item?.externalId ?? '').trim();
-  }, []);
-  const mergeServerAssignmentVersions = useCallback(
-    (nextAssignments, serverAssignments, _savedAssignments) => {
-      const serverById = new Map(
-        (Array.isArray(serverAssignments) ? serverAssignments : [])
-          .map((item) => normalizeAssignmentLayout(item))
-          .map((item) => [resolveAssignmentVersionKey(item), item])
-          .filter((row) => row[0])
-      );
-
-      return (Array.isArray(nextAssignments) ? nextAssignments : []).map((item) => {
-        const normalized = normalizeAssignmentLayout(item);
-        const assignmentId = resolveAssignmentVersionKey(normalized);
-        if (!assignmentId) return normalized;
-
-        const serverItem = serverById.get(assignmentId);
-        if (!serverItem) return normalized;
-
-        // Always take the server version. repairAssignmentScheduleDriftForOrg
-        // (called inside GET /assignment-board-versions) bumps versions AND changes
-        // startDateKey/endDateKey ? the old saved-vs-server comparison failed on those
-        // fields and sent a stale version, causing phantom 409s. The backend's
-        // isSameAssignmentStateContent is the real conflict guard.
-        return normalizeAssignmentLayout({
-          ...normalized,
-          id: normalized?.id ?? serverItem?.id ?? assignmentId,
-          version: toNonNegativeInt(serverItem?.version, normalized?.version ?? 0),
-          versionUpdatedAt:
-            typeof serverItem?.versionUpdatedAt === 'string' && serverItem.versionUpdatedAt.trim()
-              ? serverItem.versionUpdatedAt
-              : normalized?.versionUpdatedAt ?? null,
-        });
-      });
-    },
-    [resolveAssignmentVersionKey]
-  );
-  const alignAssignmentsForBoardPut = useCallback(
-    async (nextAssignments) => {
-      if (!activeOrgId) {
-        return Array.isArray(nextAssignments) ? nextAssignments : [];
-      }
-
-      try {
-        const latestAssignments = await requestJSON(
-          '/assignment-board-versions' + buildQueryString({ orgId: activeOrgId }),
-          {
-            forceRefresh: true,
-            skipGlobalLoading: true,
-          }
-        );
-        return mergeServerAssignmentVersions(
-          nextAssignments,
-          latestAssignments?.assignments,
-          parsePersistSnapshotAssignments(lastSavedSnapshotRef.current)
-        );
-      } catch (_error) {
-        return Array.isArray(nextAssignments) ? nextAssignments : [];
-      }
-    },
-    [activeOrgId, mergeServerAssignmentVersions, parsePersistSnapshotAssignments]
-  );
   const resolveBoardSaveErrorMessage = useCallback((error, fallbackMessage) => {
     const raw = String(error?.message || '').trim();
     if (raw.toLowerCase().includes('assignment version conflict')) {
@@ -3744,22 +3773,9 @@ const AssignBoard = () => {
           skipGlobalLoading: true,
         });
 
-      let assignmentsForPut = await alignAssignmentsForBoardPut(normalizedAssignments);
-      let stDraftsForPut = buildStDraftPayload(assignmentsForPut);
-      let response = null;
-      try {
-        response = await persistBoardState(assignmentsForPut, stDraftsForPut);
-      } catch (error) {
-        const rawMessage = String(error?.message || '').toLowerCase();
-        if (!rawMessage.includes('assignment version conflict')) {
-          throw error;
-        }
-        // One retry with a fresh server-version merge narrows the race window
-        // when board state updates between preflight and PUT.
-        assignmentsForPut = await alignAssignmentsForBoardPut(normalizedAssignments);
-        stDraftsForPut = buildStDraftPayload(assignmentsForPut);
-        response = await persistBoardState(assignmentsForPut, stDraftsForPut);
-      }
+      const assignmentsForPut = await alignAssignmentsForBoardPut(normalizedAssignments);
+      const stDraftsForPut = buildStDraftPayload(assignmentsForPut);
+      const response = await persistBoardState(assignmentsForPut, stDraftsForPut);
       const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
         response,
         currentCards,
@@ -3772,6 +3788,9 @@ const AssignBoard = () => {
       historyApplyingRef.current = true;
       setCards(persistedCards);
       setAssignments(persistedAssignments);
+      setAssignmentProgressById((prev) =>
+        mergeSavedAssignmentProgressRows(prev, persistedAssignments)
+      );
       setDetailDraftsByTarget({});
       setDetailStDraftsByTarget({});
       lastSavedSnapshotRef.current = createPersistSnapshotText(
@@ -3813,7 +3832,6 @@ const AssignBoard = () => {
         getUiMessage('assign.saveSuccess', 'Assignment saved.', languageCode),
         'success'
       );
-      requestExternalBoardReload();
     } catch (error) {
       showNotification(
         resolveBoardSaveErrorMessage(
