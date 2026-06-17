@@ -16,6 +16,7 @@ const ORG_ROLES = {
 };
 
 const FEATURE_KEYS = {
+  DASHBOARD: 'DASHBOARD',
   ORDER: 'ORDER',
   STYLE: 'STYLE',
   ST_REVIEW: 'ST_REVIEW',
@@ -131,7 +132,8 @@ const canAccessFeatureByContext = (featureKey, context) => {
   if (context.entryType === 'SYSTEM') {
     return (
       context.systemRole === 'SYSTEM_ADMIN' &&
-      (featureKey === FEATURE_KEYS.ATTRIBUTE ||
+      (featureKey === FEATURE_KEYS.DASHBOARD ||
+        featureKey === FEATURE_KEYS.ATTRIBUTE ||
         featureKey === FEATURE_KEYS.SUBSCRIPTION ||
         featureKey === FEATURE_KEYS.SYSTEM_SETTING ||
         featureKey === FEATURE_KEYS.SYSTEM_ONBOARDING ||
@@ -158,6 +160,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
 export const resolveFeatureByPath = (pathname) => {
   const path = normalizePathname(pathname);
   if (path === '/') return null;
+  if (path.startsWith('/dashboard')) return FEATURE_KEYS.DASHBOARD;
   if (path.startsWith('/order')) return FEATURE_KEYS.ORDER;
   if (path.startsWith('/style')) return FEATURE_KEYS.STYLE;
   if (path.startsWith('/st-review')) return FEATURE_KEYS.ST_REVIEW;
@@ -201,6 +204,7 @@ export const canAccessFeature = (featureKey, authState) => {
 
 const ACCESS_PATH_PRIORITY = [
   '/workspace',
+  '/dashboard',
   '/order',
   '/style',
   '/st-review',

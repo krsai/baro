@@ -145,7 +145,7 @@ const buildMenuTree = (nodes = [], parentId = 'root') =>
       if (!path) return null;
       const featureKey = resolveFeatureByPath(path);
       if (NON_EDITABLE_FEATURE_KEYS.has(featureKey)) return null;
-      if (!featureKey && path !== '/dashboard') return null;
+      if (!featureKey) return null;
       return {
         id: nodeId,
         type: 'menu',

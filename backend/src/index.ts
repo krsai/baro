@@ -577,7 +577,10 @@ const ONBOARDING_ORGANIZATION_TYPE_OPTIONS = new Set<OrganizationTypeKey>(
   Object.values(ORGANIZATION_TYPE_KEYS)
 );
 const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 2;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
+  "DASHBOARD",
   "ORDER",
   "STYLE",
   "ST_REVIEW",
@@ -600,6 +603,9 @@ type RoleAccessPolicy = Record<
   OrganizationTypeKey,
   Record<OrgUserRole, RoleAccessPolicyFeature[]>
 >;
+type SerializedRoleAccessPolicy = RoleAccessPolicy & {
+  [ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY]: number;
+};
 const ROLE_ACCESS_POLICY_FEATURE_SET = new Set<string>(
   ROLE_ACCESS_POLICY_FEATURES
 );
@@ -607,6 +613,7 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
   MANUFACTURER: {
     ADMIN: [...ROLE_ACCESS_POLICY_FEATURES],
     OPERATOR: [
+      "DASHBOARD",
       "ORDER",
       "STYLE",
       "ST_REVIEW",
@@ -620,18 +627,19 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
       "CUSTOMER",
     ],
     ACCOUNTANT: [
+      "DASHBOARD",
       "PAYROLL",
       "BUSINESS",
       "EMPLOYEE",
       "HOLIDAY",
     ],
-    WORKER: [],
+    WORKER: ["DASHBOARD"],
   },
   BRAND: {
-    ADMIN: ["ORDER", "STYLE"],
-    OPERATOR: ["ORDER", "STYLE"],
-    ACCOUNTANT: [],
-    WORKER: [],
+    ADMIN: ["DASHBOARD", "ORDER", "STYLE"],
+    OPERATOR: ["DASHBOARD", "ORDER", "STYLE"],
+    ACCOUNTANT: ["DASHBOARD"],
+    WORKER: ["DASHBOARD"],
   },
 };
 const cloneRoleAccessPolicy = (value: RoleAccessPolicy): RoleAccessPolicy =>
@@ -646,6 +654,29 @@ const sanitizeRoleAccessPolicyFeatureList = (
     featureSet.add(normalized as RoleAccessPolicyFeature);
   });
   return Array.from(featureSet);
+};
+const hasRoleAccessPolicySchemaVersion = (value: unknown): boolean => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const schemaVersion = Number(
+    (value as any)?.[ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY] ??
+      (value as any)?.schemaVersion ??
+      0
+  );
+  return (
+    Number.isFinite(schemaVersion) &&
+    schemaVersion >= ROLE_ACCESS_POLICY_SCHEMA_VERSION
+  );
+};
+const applyLegacyDashboardDefault = (policy: RoleAccessPolicy): void => {
+  (Object.values(ORGANIZATION_TYPE_KEYS) as OrganizationTypeKey[]).forEach(
+    (orgType) => {
+      ORG_ACCESS_ROLES.forEach((role) => {
+        const features = policy[orgType][role];
+        if (features.includes("DASHBOARD")) return;
+        features.unshift("DASHBOARD");
+      });
+    }
+  );
 };
 const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
   const policy = cloneRoleAccessPolicy(DEFAULT_ROLE_ACCESS_POLICY);
@@ -664,8 +695,18 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
       });
     }
   );
+  if (!hasRoleAccessPolicySchemaVersion(value)) {
+    applyLegacyDashboardDefault(policy);
+  }
   return policy;
 };
+const serializeRoleAccessPolicy = (
+  policy: RoleAccessPolicy
+): SerializedRoleAccessPolicy =>
+  ({
+    ...policy,
+    [ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY]: ROLE_ACCESS_POLICY_SCHEMA_VERSION,
+  } as SerializedRoleAccessPolicy);
 let systemSettingStorageReadyPromise: Promise<void> | null = null;
 let systemSettingStorageReady = false;
 const ensureSystemSettingStorageReady = async () => {
@@ -700,8 +741,9 @@ const loadRoleAccessPolicySetting = async () => {
     where: { key: ROLE_ACCESS_POLICY_SETTING_KEY },
     select: { value: true, updatedAt: true, updatedBy: true },
   });
+  const policy = sanitizeRoleAccessPolicy(stored?.value);
   return {
-    policy: sanitizeRoleAccessPolicy(stored?.value),
+    policy: serializeRoleAccessPolicy(policy),
     stored: Boolean(stored),
     updatedAt: stored?.updatedAt ?? null,
     updatedBy: stored?.updatedBy ?? null,
@@ -15547,11 +15589,11 @@ app.put("/system/access-policy", async (req, res) => {
     where: { key: ROLE_ACCESS_POLICY_SETTING_KEY },
     create: {
       key: ROLE_ACCESS_POLICY_SETTING_KEY,
-      value: policy as Prisma.InputJsonValue,
+      value: serializeRoleAccessPolicy(policy) as Prisma.InputJsonValue,
       updatedBy: systemAdmin.requesterEmail,
     },
     update: {
-      value: policy as Prisma.InputJsonValue,
+      value: serializeRoleAccessPolicy(policy) as Prisma.InputJsonValue,
       updatedBy: systemAdmin.requesterEmail,
     },
     select: {
@@ -15562,7 +15604,7 @@ app.put("/system/access-policy", async (req, res) => {
   });
 
   return res.json({
-    policy: sanitizeRoleAccessPolicy(saved.value),
+    policy: serializeRoleAccessPolicy(sanitizeRoleAccessPolicy(saved.value)),
     stored: true,
     updatedAt: saved.updatedAt,
     updatedBy: saved.updatedBy,

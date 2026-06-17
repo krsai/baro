@@ -11,6 +11,7 @@ export const ORG_ROLE_KEYS = {
 };
 
 export const ACCESS_FEATURE_KEYS = {
+  DASHBOARD: 'DASHBOARD',
   ORDER: 'ORDER',
   STYLE: 'STYLE',
   ST_REVIEW: 'ST_REVIEW',
@@ -30,6 +31,8 @@ export const ACCESS_FEATURE_KEYS = {
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 2;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND];
 const POLICY_ORG_ROLES = [
   ORG_ROLE_KEYS.ADMIN,
@@ -45,6 +48,7 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
   [ORG_TYPE_KEYS.MANUFACTURER]: Object.freeze({
     [ORG_ROLE_KEYS.ADMIN]: Object.freeze([...POLICY_FEATURES]),
     [ORG_ROLE_KEYS.OPERATOR]: Object.freeze([
+      ACCESS_FEATURE_KEYS.DASHBOARD,
       ACCESS_FEATURE_KEYS.ORDER,
       ACCESS_FEATURE_KEYS.STYLE,
       ACCESS_FEATURE_KEYS.ST_REVIEW,
@@ -58,24 +62,27 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
       ACCESS_FEATURE_KEYS.CUSTOMER,
     ]),
     [ORG_ROLE_KEYS.ACCOUNTANT]: Object.freeze([
+      ACCESS_FEATURE_KEYS.DASHBOARD,
       ACCESS_FEATURE_KEYS.PAYROLL,
       ACCESS_FEATURE_KEYS.BUSINESS,
       ACCESS_FEATURE_KEYS.EMPLOYEE,
       ACCESS_FEATURE_KEYS.HOLIDAY,
     ]),
-    [ORG_ROLE_KEYS.WORKER]: Object.freeze([]),
+    [ORG_ROLE_KEYS.WORKER]: Object.freeze([ACCESS_FEATURE_KEYS.DASHBOARD]),
   }),
   [ORG_TYPE_KEYS.BRAND]: Object.freeze({
     [ORG_ROLE_KEYS.ADMIN]: Object.freeze([
+      ACCESS_FEATURE_KEYS.DASHBOARD,
       ACCESS_FEATURE_KEYS.ORDER,
       ACCESS_FEATURE_KEYS.STYLE,
     ]),
     [ORG_ROLE_KEYS.OPERATOR]: Object.freeze([
+      ACCESS_FEATURE_KEYS.DASHBOARD,
       ACCESS_FEATURE_KEYS.ORDER,
       ACCESS_FEATURE_KEYS.STYLE,
     ]),
-    [ORG_ROLE_KEYS.ACCOUNTANT]: Object.freeze([]),
-    [ORG_ROLE_KEYS.WORKER]: Object.freeze([]),
+    [ORG_ROLE_KEYS.ACCOUNTANT]: Object.freeze([ACCESS_FEATURE_KEYS.DASHBOARD]),
+    [ORG_ROLE_KEYS.WORKER]: Object.freeze([ACCESS_FEATURE_KEYS.DASHBOARD]),
   }),
 });
 
@@ -103,6 +110,27 @@ const sanitizeFeatureArray = (value) => {
   );
 };
 
+const hasPolicySchemaVersion = (value) => {
+  const schemaVersion = Number(
+    value?.[ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY] ?? value?.schemaVersion ?? 0
+  );
+  return (
+    Number.isFinite(schemaVersion) &&
+    schemaVersion >= ROLE_ACCESS_POLICY_SCHEMA_VERSION
+  );
+};
+
+const applyLegacyDashboardDefault = (policy) => {
+  POLICY_ORG_TYPES.forEach((orgType) => {
+    POLICY_ORG_ROLES.forEach((role) => {
+      const features = policy?.[orgType]?.[role];
+      if (!Array.isArray(features)) return;
+      if (features.includes(ACCESS_FEATURE_KEYS.DASHBOARD)) return;
+      features.unshift(ACCESS_FEATURE_KEYS.DASHBOARD);
+    });
+  });
+};
+
 export const getDefaultRoleAccessPolicy = () =>
   cloneDeepJson(DEFAULT_ROLE_ACCESS_POLICY);
 
@@ -125,7 +153,22 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
     });
   });
 
+  if (!hasPolicySchemaVersion(candidate)) {
+    applyLegacyDashboardDefault(base);
+  }
+
   return base;
+};
+
+export const serializeRoleAccessPolicy = (policy) => {
+  const versionedPolicy = {
+    [ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY]: ROLE_ACCESS_POLICY_SCHEMA_VERSION,
+    ...(policy && typeof policy === 'object' && !Array.isArray(policy) ? policy : {}),
+  };
+  return {
+    [ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY]: ROLE_ACCESS_POLICY_SCHEMA_VERSION,
+    ...sanitizeRoleAccessPolicy(versionedPolicy),
+  };
 };
 
 export const getAllowedFeaturesForRole = ({ orgType, orgRole, policy = null }) => {

@@ -1,5 +1,8 @@
 import { requestJSON } from './apiClient';
-import { sanitizeRoleAccessPolicy } from './roleAccessPolicyCore.mjs';
+import {
+  sanitizeRoleAccessPolicy,
+  serializeRoleAccessPolicy,
+} from './roleAccessPolicyCore.mjs';
 export {
   ACCESS_FEATURE_KEYS,
   getAllowedFeaturesForRole,
@@ -48,7 +51,7 @@ export const saveRoleAccessPolicy = async (policy) => {
   const response = await requestJSON('/system/access-policy', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ policy: sanitized }),
+    body: JSON.stringify({ policy: serializeRoleAccessPolicy(sanitized) }),
   });
   const saved = sanitizeRoleAccessPolicy(response?.policy);
   clearLegacyRoleAccessPolicy();
