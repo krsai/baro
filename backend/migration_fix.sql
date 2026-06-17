@@ -11,6 +11,15 @@ UPDATE "Style" s
 ALTER TABLE "OrgRelationship" ADD COLUMN IF NOT EXISTS "pricingDefaultTradeType" TEXT;
 ALTER TABLE "OrgRelationship" ADD COLUMN IF NOT EXISTS "pricingMatrix" JSONB;
 
+-- Step 0f: org membership onboarding request name (20260618)
+ALTER TABLE "OrgMembership" ADD COLUMN IF NOT EXISTS "requestedName" TEXT;
+
+-- Step 0g: org membership email nullable + remove generated worker emails (20260618)
+ALTER TABLE "OrgMembership" ALTER COLUMN "email" DROP NOT NULL;
+UPDATE "OrgMembership"
+SET "email" = NULL
+WHERE "email" LIKE 'emp+%@baro.local';
+
 -- Step 0c: work order localized buyer name fields (20260611)
 ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "buyerOrgNameKo" TEXT;
 ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "buyerOrgNameVi" TEXT;

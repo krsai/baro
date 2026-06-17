@@ -53,14 +53,14 @@ const EMPLOYEE_BOARD_TEXT = {
   },
   loginEmailLabel: { ko: '로그인 이메일', en: 'Login Email', vi: 'Email dang nhap' },
   loginEmailHelperRequired: {
-    ko: '관리자/운영자는 로그인 이메일이 필요합니다.',
-    en: 'Admin/Operator roles require a login email.',
-    vi: 'Vai tro Quan tri/Van hanh can email dang nhap.',
+    ko: '관리자/운영자/회계사는 로그인 이메일이 필요합니다.',
+    en: 'Admin/Operator/Accountant roles require a login email.',
+    vi: 'Vai tro Quan tri/Van hanh/Ke toan can email dang nhap.',
   },
   loginEmailHelperOptional: {
-    ko: '작업자/회계사는 비워두면 사번(내부키)으로 생성됩니다.',
-    en: 'For Worker/Accountant, leave blank to generate an internal employee code.',
-    vi: 'Voi Cong nhan/Ke toan, de trong de tao ma nhan vien noi bo.',
+    ko: '작업자는 이메일을 비워둘 수 있습니다.',
+    en: 'Workers may leave the email blank.',
+    vi: 'Cong nhan co the de trong email nay.',
   },
   employeeCodePrefix: { ko: '사번', en: 'Employee Code', vi: 'Ma nhan vien' },
   nameLabel: { ko: '이름', en: 'Name', vi: 'Ten' },
@@ -173,9 +173,9 @@ const EMPLOYEE_BOARD_TEXT = {
   errNameRequired: { ko: '이름은 필수 입력입니다.', en: 'Name is required.', vi: 'Ten la bat buoc.' },
   errEmailRequired: { ko: '이메일은 필수 입력입니다.', en: 'Email is required.', vi: 'Email la bat buoc.' },
   errNeedLoginEmail: {
-    ko: '관리자/운영자는 로그인 이메일이 필요합니다.',
-    en: 'Admin/Operator roles require a login email.',
-    vi: 'Vai tro Quan tri/Van hanh can email dang nhap.',
+    ko: '관리자/운영자/회계사는 로그인 이메일이 필요합니다.',
+    en: 'Admin/Operator/Accountant roles require a login email.',
+    vi: 'Vai tro Quan tri/Van hanh/Ke toan can email dang nhap.',
   },
   errInvalidDateRange: {
     ko: '입사일/퇴사일 형식이 올바르지 않습니다.',
@@ -247,9 +247,7 @@ const getRoleOptionsByOrgType = (orgType, languageCode = 'ko') =>
   String(orgType || '').toUpperCase() === 'BRAND'
     ? getOrgRoleOptions(languageCode).filter((option) => option.value !== 'WORKER')
     : getOrgRoleOptions(languageCode);
-const LOGIN_REQUIRED_ROLES = new Set(['ADMIN', 'OPERATOR']);
-const INTERNAL_MEMBER_EMAIL_PREFIX = 'emp+';
-const INTERNAL_MEMBER_EMAIL_DOMAIN = 'baro.local';
+const LOGIN_REQUIRED_ROLES = new Set(['ADMIN', 'OPERATOR', 'ACCOUNTANT']);
 const ORG_MEMBERSHIPS_UPDATED_EVENT = 'baro:org-memberships-updated';
 const resolveDefaultInviteRole = (roleOptions = []) => {
   const workerOption = roleOptions.find((option) => option.value === 'WORKER');
@@ -258,18 +256,13 @@ const resolveDefaultInviteRole = (roleOptions = []) => {
   if (firstOption?.value) return firstOption.value;
   return 'WORKER';
 };
-const isInternalMemberEmail = (value) => {
-  const normalized = normalizeEmail(value);
-  return normalized.startsWith(INTERNAL_MEMBER_EMAIL_PREFIX)
-    && normalized.endsWith(`@${INTERNAL_MEMBER_EMAIL_DOMAIN}`);
-};
 const getMemberUniqueCode = (memberId, orgId) => {
   const orgText = String(Math.max(0, Number(orgId) || 0)).padStart(3, '0');
   const idText = String(Math.max(0, Number(memberId) || 0)).padStart(5, '0');
   return `EMP-${orgText}-${idText}`;
 };
 const getMemberIdentityLabel = (member) =>
-  isInternalMemberEmail(member?.email) ? '' : String(member?.email || '');
+  String(member?.email || '');
 const isLoginRequiredRole = (role) =>
   LOGIN_REQUIRED_ROLES.has(String(role || '').toUpperCase());
 const isSalaryAmountPayType = (payType) => {
@@ -527,7 +520,7 @@ const EmployeeRow = React.memo(
           />
         </TableCell>
 
-        <TableCell>{member.email}</TableCell>
+        <TableCell>{member.email || '-'}</TableCell>
 
         <TableCell>
           <TextField
@@ -1153,7 +1146,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     const normalizedMemberEmail = normalizeEmail(member?.email);
     setDrawerMode('edit');
     setSelectedMemberId(member.id);
-    setDrawerEmail(isInternalMemberEmail(member?.email) ? '' : (member.email || ''));
+    setDrawerEmail(member?.email || '');
     setDrawerDraft(
       buildEmployeeDraft(member, employee, {
         useEmailFallback: normalizedMemberEmail === myEmail,
@@ -1319,18 +1312,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             throw new Error(text('errEmailAlreadyRegistered', languageCode));
           }
           membershipEmailForSave = normalizedDrawerEmail;
-        } else if (
-          !normalizedDrawerEmail
-          && roleNeedsLoginEmail
-          && isInternalMemberEmail(currentMemberEmail)
-        ) {
+        } else if (!normalizedDrawerEmail && roleNeedsLoginEmail) {
           throw new Error(text('errNeedLoginEmail', languageCode));
-        } else if (
-          !normalizedDrawerEmail
-          && !roleNeedsLoginEmail
-          && !isInternalMemberEmail(currentMemberEmail)
-          && currentMemberEmail
-        ) {
+        } else if (!normalizedDrawerEmail && !roleNeedsLoginEmail && currentMemberEmail) {
           membershipEmailForSave = '';
         }
       }
@@ -1752,17 +1736,19 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             <TableContainer>
               <Table size="small">
                 <TableHead>
-                    <TableRow>
-                      <TableCell>{text('emailColumn', languageCode)}</TableCell>
-                      <TableCell>{text('factoryLabel', languageCode)}</TableCell>
-                      <TableCell>{text('roleLabel', languageCode)}</TableCell>
-                      <TableCell>{text('requestDateColumn', languageCode)}</TableCell>
-                    </TableRow>
+                  <TableRow>
+                    <TableCell>{text('nameColumn', languageCode)}</TableCell>
+                    <TableCell>{text('emailColumn', languageCode)}</TableCell>
+                    <TableCell>{text('factoryLabel', languageCode)}</TableCell>
+                    <TableCell>{text('roleLabel', languageCode)}</TableCell>
+                    <TableCell>{text('requestDateColumn', languageCode)}</TableCell>
+                  </TableRow>
                 </TableHead>
                 <TableBody>
                   {pendingMembers.map((member) => (
                     <TableRow key={member.id}>
-                      <TableCell>{member.email}</TableCell>
+                      <TableCell>{member.requestedName || '-'}</TableCell>
+                      <TableCell>{member.email || '-'}</TableCell>
 
                       <TableCell>
                         {activeOrgType === 'BRAND' ? (
@@ -1992,7 +1978,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                         <TableCell sx={{ fontWeight: 'bold', letterSpacing: 1, color: 'text.secondary' }}>
                           {employee?.employeeNo || '-'}
                         </TableCell>
-                        <TableCell>{getMemberIdentityLabel(member)}</TableCell>
+                        <TableCell>{getMemberIdentityLabel(member) || '-'}</TableCell>
                         <TableCell>{roleLabel}</TableCell>
                         <TableCell>{jobRoleLabel}</TableCell>
                         <TableCell>{payTypeLabel}</TableCell>

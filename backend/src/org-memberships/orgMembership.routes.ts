@@ -41,36 +41,14 @@ export const createOrgMembershipRouter = ({
   resolveStatus,
 }: OrgMembershipRoutesDeps) => {
   const orgMembershipRouter = Router();
-  const LOGIN_REQUIRED_ROLES = new Set<OrgUserRole>(["ADMIN", "OPERATOR"]);
-  const INTERNAL_MEMBER_EMAIL_PREFIX = "emp+";
-  const INTERNAL_MEMBER_EMAIL_DOMAIN = "baro.local";
-  const INTERNAL_MEMBER_EMAIL_MAX_GENERATION_RETRY = 10;
+  const LOGIN_REQUIRED_ROLES = new Set<OrgUserRole>(["ADMIN", "OPERATOR", "ACCOUNTANT"]);
+  const REQUESTED_NAME_MAX_LENGTH = 80;
 
   const isRoleRequiringLoginEmail = (role: OrgUserRole) =>
     LOGIN_REQUIRED_ROLES.has(role);
   const isValidEmail = (value: string) => value.includes("@");
-  const isInternalMemberEmail = (value: unknown) => {
-    const normalized = normalizeEmail(value);
-    return (
-      normalized.startsWith(INTERNAL_MEMBER_EMAIL_PREFIX) &&
-      normalized.endsWith(`@${INTERNAL_MEMBER_EMAIL_DOMAIN}`)
-    );
-  };
-  const generateInternalMemberEmailCandidate = (orgId: number) => {
-    const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
-    return `${INTERNAL_MEMBER_EMAIL_PREFIX}${orgId}-${token}@${INTERNAL_MEMBER_EMAIL_DOMAIN}`;
-  };
-  const generateAvailableInternalMemberEmail = async (orgId: number) => {
-    for (let attempt = 0; attempt < INTERNAL_MEMBER_EMAIL_MAX_GENERATION_RETRY; attempt += 1) {
-      const candidate = generateInternalMemberEmailCandidate(orgId);
-      const existing = await prisma.orgMembership.findUnique({
-        where: { orgId_email: { orgId, email: candidate } },
-        select: { id: true },
-      });
-      if (!existing) return candidate;
-    }
-    throw new Error("failed to generate unique internal member email");
-  };
+  const normalizeRequestedName = (value: unknown) =>
+    typeof value === "string" ? value.trim() : "";
   const toFixedSalaryOrNull = (
     value: unknown
   ): { ok: true; value: number | null } | { ok: false } => {
@@ -287,6 +265,7 @@ export const createOrgMembershipRouter = ({
 
     const safeRole = resolveRole(role, "WORKER");
     const requestedStatus = status === undefined ? "ACTIVE" : resolveStatus(status);
+    const requestedName = normalizeRequestedName(name);
     if (
       !requestedStatus ||
       requestedStatus === "PENDING" ||
@@ -301,13 +280,14 @@ export const createOrgMembershipRouter = ({
     if (isRoleRequiringLoginEmail(safeRole) && !isValidEmail(normalizedEmailInput)) {
       return res.status(400).json({
         ok: false,
-        error: "email is required for admin/operator",
+        error: "email is required for admin/operator/accountant",
       });
     }
+    if (requestedName.length > REQUESTED_NAME_MAX_LENGTH) {
+      return res.status(400).json({ ok: false, error: "name is too long" });
+    }
 
-    const resolvedMembershipEmail =
-      normalizedEmailInput ||
-      (await generateAvailableInternalMemberEmail(orgIdNum));
+    const resolvedMembershipEmail = normalizedEmailInput || null;
     const isManufacturer = isManufacturerOrg(organization);
     let factoryIdNum = null;
     if (factoryId !== "" && factoryId !== null && factoryId !== undefined) {
@@ -374,28 +354,35 @@ export const createOrgMembershipRouter = ({
       return res.status(400).json({ ok: false, error: "invalid leftAt" });
     }
     const now = new Date();
-    const existingMembership = await prisma.orgMembership.findUnique({
-      where: { orgId_email: { orgId: orgIdNum, email: resolvedMembershipEmail } },
-    });
+    const existingMembership = resolvedMembershipEmail
+      ? await prisma.orgMembership.findUnique({
+          where: { orgId_email: { orgId: orgIdNum, email: resolvedMembershipEmail } },
+        })
+      : null;
 
-    const membership = await prisma.orgMembership.upsert({
-      where: { orgId_email: { orgId: orgIdNum, email: resolvedMembershipEmail } },
-      update: {
-        role: safeRole,
-        status: requestedStatus as any,
-        approvedAt: now,
-        approvedBy: requesterEmail,
-      },
-      create: {
-        orgId: orgIdNum,
-        email: resolvedMembershipEmail,
-        role: safeRole,
-        status: requestedStatus as any,
-        requestedAt: now,
-        approvedAt: now,
-        approvedBy: requesterEmail,
-      },
-    });
+    const membership = existingMembership
+      ? await prisma.orgMembership.update({
+          where: { id: existingMembership.id },
+          data: {
+            role: safeRole,
+            status: requestedStatus as any,
+            requestedName: requestedName || existingMembership.requestedName || null,
+            approvedAt: now,
+            approvedBy: requesterEmail,
+          },
+        })
+      : await prisma.orgMembership.create({
+          data: {
+            orgId: orgIdNum,
+            email: resolvedMembershipEmail,
+            role: safeRole,
+            status: requestedStatus as any,
+            requestedName: requestedName || null,
+            requestedAt: now,
+            approvedAt: now,
+            approvedBy: requesterEmail,
+          },
+        });
 
     if (isManufacturer) {
       const existingEmployee = await prisma.employee.findUnique({
@@ -590,15 +577,15 @@ export const createOrgMembershipRouter = ({
       ok: true,
       deletedMembershipId: membership.id,
       deletedEmployeeId: employeeId,
-      internalEmail: isInternalMemberEmail(membership.email),
     });
   });
 
   orgMembershipRouter.post("/org-memberships/apply", async (req, res) => {
-    const { orgId, email, role } = req.body ?? {};
+    const { orgId, email, role, name } = req.body ?? {};
     const orgIdNum = Number(orgId);
     const requesterEmail = normalizeEmail(getRequesterEmail(req));
     const normalizedEmail = requesterEmail || normalizeEmail(email);
+    const requestedName = normalizeRequestedName(name);
 
     if (!Number.isFinite(orgIdNum)) {
       return res.status(400).json({ ok: false, error: "orgId is required" });
@@ -606,6 +593,12 @@ export const createOrgMembershipRouter = ({
 
     if (!normalizedEmail || !normalizedEmail.includes("@")) {
       return res.status(400).json({ ok: false, error: "email is required" });
+    }
+    if (!requestedName) {
+      return res.status(400).json({ ok: false, error: "name is required" });
+    }
+    if (requestedName.length > REQUESTED_NAME_MAX_LENGTH) {
+      return res.status(400).json({ ok: false, error: "name is too long" });
     }
     if (requesterEmail && normalizeEmail(email) && normalizeEmail(email) !== requesterEmail) {
       return res.status(403).json({ ok: false, error: "email does not match request user" });
@@ -633,6 +626,7 @@ export const createOrgMembershipRouter = ({
         where: { id: existing.id },
         data: {
           role: safeRole,
+          requestedName,
           status: "PENDING",
           requestedAt: new Date(),
           approvedAt: null,
@@ -647,6 +641,7 @@ export const createOrgMembershipRouter = ({
         orgId: orgIdNum,
         email: normalizedEmail,
         role: safeRole,
+        requestedName,
         status: "PENDING",
         requestedAt: new Date(),
       },
@@ -755,6 +750,7 @@ export const createOrgMembershipRouter = ({
             factoryId: factoryIdNum,
             roleId: resolvedEmployeeRoleId,
             payType: resolvedPayType,
+            name: resolveOptionalString(existingEmployee?.name, membership.requestedName ?? null),
             ...(employeeNo ? { employeeNo } : {}),
             joinedAt: existingEmployee?.joinedAt ?? now,
             leftAt: null,
@@ -767,6 +763,7 @@ export const createOrgMembershipRouter = ({
             factoryId: factoryIdNum,
             roleId: resolvedEmployeeRoleId,
             payType: resolvedPayType,
+            name: resolveOptionalString(existingEmployee?.name, membership.requestedName ?? null),
             employeeNo,
             joinedAt: now,
           },
@@ -863,28 +860,31 @@ export const createOrgMembershipRouter = ({
       return res.status(400).json({ ok: false, error: "invalid email" });
     }
 
-    let nextEmail = membership.email;
+    let nextEmail = membership.email ?? null;
     if (hasEmailInput) {
       if (isRoleRequiringLoginEmail(nextRole)) {
         if (!isValidEmail(normalizedEmailInput)) {
           return res.status(400).json({
             ok: false,
-            error: "email is required for admin/operator",
+            error: "email is required for admin/operator/accountant",
           });
         }
         nextEmail = normalizedEmailInput;
       } else {
-        nextEmail =
-          normalizedEmailInput || (await generateAvailableInternalMemberEmail(membership.orgId));
+        nextEmail = normalizedEmailInput || null;
       }
-    } else if (role && isRoleRequiringLoginEmail(nextRole) && isInternalMemberEmail(nextEmail)) {
+    } else if (
+      role &&
+      isRoleRequiringLoginEmail(nextRole) &&
+      !isValidEmail(nextEmail || "")
+    ) {
       return res.status(400).json({
         ok: false,
-        error: "admin/operator role requires login email",
+        error: "admin/operator/accountant role requires login email",
       });
     }
 
-    if (nextEmail !== membership.email) {
+    if (nextEmail !== membership.email && nextEmail) {
       const duplicateMembership = await prisma.orgMembership.findUnique({
         where: {
           orgId_email: {
@@ -939,6 +939,7 @@ export const createOrgMembershipRouter = ({
         orgId: membership.orgId,
         roleId: resolvedRoleId,
         payType: resolvedPayType,
+        name: resolveOptionalString(existingEmployee?.name, membership.requestedName ?? null),
       };
 
       if (currentStatus === "ACTIVE") {

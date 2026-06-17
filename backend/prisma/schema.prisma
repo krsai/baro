@@ -254,10 +254,11 @@ model OrganizationSubscription {
 model OrgMembership {
   id          Int                 @id @default(autoincrement())
   orgId       Int
-  email       String
+  email       String?
   role        OrgUserRole         @default(OPERATOR)
   status      OrgMembershipStatus @default(ACTIVE)
   requestedAt DateTime?
+  requestedName String?
   approvedAt  DateTime?
   approvedBy  String?
   createdAt   DateTime            @default(now())

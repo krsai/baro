@@ -25,6 +25,7 @@ import { matchesAutocompleteSearch } from '../../utils/autocompleteSearch';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import SystemProviderFooter from '../../components/SystemProviderFooter';
+import { getStaticOptionOptions } from '../../constants/staticOptionRegistry';
 import {
   ORGANIZATION_TYPE_OPTIONS,
   normalizeOrganizationType,
@@ -78,6 +79,16 @@ const ONBOARDING_TEXT = {
     ko: '\uc18c\uc18d \ud68c\uc0ac \uc694\uccad \uc911 \uc624\ub958\uac00 \ubc1c\uc0dd\ud588\uc2b5\ub2c8\ub2e4.',
     en: 'An error occurred while requesting company access.',
     vi: 'Da xay ra loi khi gui yeu cau tham gia cong ty.',
+  },
+  joinNameRequired: {
+    ko: '\uc774\ub984\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694.',
+    en: 'Please enter your name.',
+    vi: 'Vui long nhap ten cua ban.',
+  },
+  joinRoleRequired: {
+    ko: '\uc2e0\uccad\ud560 \uad8c\ud55c\uc744 \uc120\ud0dd\ud574 \uc8fc\uc138\uc694.',
+    en: 'Please choose the role you are requesting.',
+    vi: 'Vui long chon quyen muon dang ky.',
   },
   registerNameError: {
     ko: '\ud68c\uc0ac\uba85\uc740 {min}~{max}\uc790\ub85c \uc785\ub825\ud574 \uc8fc\uc138\uc694.',
@@ -158,6 +169,16 @@ const ONBOARDING_TEXT = {
     ko: '\uc18c\uc18d \ud68c\uc0ac \uc120\ud0dd',
     en: 'Select your company',
     vi: 'Chon cong ty cua ban',
+  },
+  applicantName: {
+    ko: '\uc774\ub984',
+    en: 'Name',
+    vi: 'Ten',
+  },
+  requestedRole: {
+    ko: '\uc2e0\uccad \uad8c\ud55c',
+    en: 'Requested role',
+    vi: 'Quyen dang ky',
   },
   registerCompany: {
     ko: '\uc2e0\uaddc \ud68c\uc0ac \ub4f1\ub85d',
@@ -251,6 +272,21 @@ const normalizeCompactLower = (value) =>
 
 const normalizeUpper = (value) => String(value || '').trim().toUpperCase();
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+const normalizeText = (value) => String(value || '').trim();
+
+const getJoinRoleOptions = (organizationType, languageCode) => {
+  const options = getStaticOptionOptions('orgRole', languageCode);
+  return normalizeOrganizationType(organizationType) === 'BRAND'
+    ? options.filter((option) => option.value !== 'WORKER')
+    : options;
+};
+
+const resolveDefaultJoinRole = (roleOptions = []) =>
+  ['WORKER', 'OPERATOR', 'ACCOUNTANT', 'ADMIN'].find((role) =>
+    roleOptions.some((option) => option.value === role)
+  ) ||
+  roleOptions[0]?.value ||
+  '';
 
 const normalizeBusinessNumber = (value) =>
   String(value || '')
@@ -312,6 +348,8 @@ const Onboarding = () => {
   const [loadingOrganizations, setLoadingOrganizations] = useState(false);
   const [companySearchText, setCompanySearchText] = useState('');
   const [selectedOrganization, setSelectedOrganization] = useState(null);
+  const [joinName, setJoinName] = useState('');
+  const [joinRole, setJoinRole] = useState('');
   const [joinSubmitting, setJoinSubmitting] = useState(false);
 
   const [registerDrawerOpen, setRegisterDrawerOpen] = useState(false);
@@ -327,6 +365,15 @@ const Onboarding = () => {
     const fromProfile = normalizeEmail(accessProfile?.email);
     return fromUser || fromProfile;
   }, [accessProfile?.email, user?.email]);
+  const requesterName = useMemo(() => {
+    const candidates = [
+      user?.user_metadata?.full_name,
+      user?.user_metadata?.name,
+      user?.user_metadata?.user_name,
+      accessProfile?.employeeName,
+    ];
+    return candidates.map(normalizeText).find(Boolean) || '';
+  }, [accessProfile?.employeeName, user?.user_metadata]);
   const t = (key, params = null) => resolveOnboardingText(key, languageCode, params);
   const countryOptions = useMemo(
     () =>
@@ -347,6 +394,25 @@ const Onboarding = () => {
       })),
     [languageCode]
   );
+  const joinRoleOptions = useMemo(
+    () => getJoinRoleOptions(selectedOrganization?.type, languageCode),
+    [languageCode, selectedOrganization?.type]
+  );
+
+  useEffect(() => {
+    setJoinName((prev) => prev || requesterName);
+  }, [requesterName]);
+
+  useEffect(() => {
+    if (!joinRoleOptions.length) {
+      setJoinRole('');
+      return;
+    }
+    if (joinRoleOptions.some((option) => option.value === joinRole)) {
+      return;
+    }
+    setJoinRole(resolveDefaultJoinRole(joinRoleOptions));
+  }, [joinRole, joinRoleOptions]);
 
   useEffect(() => {
     setRegisterForm((prev) => {
@@ -425,8 +491,17 @@ const Onboarding = () => {
   const handleJoinCompany = async () => {
     clearMessages();
     const orgIdNum = Number(selectedOrganization?.id);
+    const normalizedJoinName = normalizeText(joinName);
     if (!Number.isFinite(orgIdNum) || orgIdNum <= 0) {
       setErrorMessage(t('selectOrganizationFirst'));
+      return;
+    }
+    if (!normalizedJoinName) {
+      setErrorMessage(t('joinNameRequired'));
+      return;
+    }
+    if (!joinRoleOptions.some((option) => option.value === joinRole)) {
+      setErrorMessage(t('joinRoleRequired'));
       return;
     }
     if (!requesterEmail) {
@@ -442,7 +517,8 @@ const Onboarding = () => {
         body: JSON.stringify({
           orgId: orgIdNum,
           email: requesterEmail,
-          role: 'OPERATOR',
+          role: joinRole,
+          name: normalizedJoinName,
         }),
       });
       setSuccessMessage(t('joinSuccess'));
@@ -689,6 +765,31 @@ const Onboarding = () => {
                 loading={loadingOrganizations}
                 loadingText={t('organizationLoading')}
               />
+
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2}>
+                <TextField
+                  fullWidth
+                  required
+                  label={t('applicantName')}
+                  value={joinName}
+                  onChange={(event) => setJoinName(event.target.value)}
+                />
+                <TextField
+                  fullWidth
+                  required
+                  select
+                  label={t('requestedRole')}
+                  value={joinRole}
+                  onChange={(event) => setJoinRole(event.target.value)}
+                  disabled={!selectedOrganization}
+                >
+                  {joinRoleOptions.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Stack>
 
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2}>
                 <Button

@@ -50,6 +50,11 @@ AT(q) = a*q + b
 - 기존 1~3자리 숫자 suffix는 배포 migration에서 4자리로 정규화한다. 예: `HN-001` → `HN-0001`.
 - 사원번호는 조직 내에서 중복될 수 없다.
 
+### 조직 멤버십 / 로그인 이메일
+- 조직 멤버십 역할 중 `ADMIN`, `OPERATOR`, `ACCOUNTANT`는 로그인 이메일이 필수다.
+- `WORKER`는 이메일이 선택이다. 비어 있으면 DB에도 실제로 `NULL`로 저장하며, 가짜 내부 이메일을 만들거나 빈값처럼 숨기지 않는다.
+- 소셜 로그인 후 온보딩의 기존 회사 가입 신청은 `회사`, `신청 권한`, `신청자 이름`을 함께 저장한다.
+
 ### WorkLog / WorkRecord
 - **WorkLog**: 기간 헤더. `coverageStartDate`(시작), `coverageEndDate`(종료)가 소스오브트루스.
   - `displayDate` (DB 컬럼명 `workDate`, Prisma `@map("workDate")`): 목록 표시/정렬 전용 대표 날짜. 항상 `coverageEndDate`와 동일. **계산 로직 사용 금지.**
