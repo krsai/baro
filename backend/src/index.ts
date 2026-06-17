@@ -5759,7 +5759,7 @@ const isWorkLogCoverageMissingColumnError = (error: any) => {
     resolveOptionalString((error as any)?.meta?.column, null) ||
     resolveOptionalString((error as any)?.message, "");
   if (!missingColumn) return false;
-  return /(WorkLog\.)?(coverageStartDate|coverageEndDate|entryMode)/i.test(
+  return /((WorkLog\.)?(coverageStartDate|coverageEndDate|entryMode))|((WorkRecord\.)?(effectiveCoverageStartDate|effectiveCoverageEndDate))/i.test(
     missingColumn
   );
 };
@@ -16614,9 +16614,11 @@ const loadAssignmentPlanProgressWorkRows = async ({
   const selectWorkRows = async ({
     where,
     includeCoverage,
+    includeEffectiveCoverage,
   }: {
     where: Prisma.WorkRecordWhereInput;
     includeCoverage: boolean;
+    includeEffectiveCoverage: boolean;
   }) =>
     prisma.workRecord.findMany({
       where,
@@ -16629,8 +16631,12 @@ const loadAssignmentPlanProgressWorkRows = async ({
         processId: true,
         processCode: true,
         quantity: true,
-        effectiveCoverageStartDate: true,
-        effectiveCoverageEndDate: true,
+        ...(includeEffectiveCoverage
+          ? {
+              effectiveCoverageStartDate: true,
+              effectiveCoverageEndDate: true,
+            }
+          : {}),
         workLog: {
           select: {
             displayDate: true,
@@ -16655,18 +16661,37 @@ const loadAssignmentPlanProgressWorkRows = async ({
         assignmentPlanId: { in: planIds },
       },
       includeCoverage: true,
+      includeEffectiveCoverage: true,
     });
   } catch (error) {
     if (!isWorkLogCoverageMissingColumnError(error)) throw error;
-    directRows = await selectWorkRows({
-      where: {
-        orgId,
-        assignmentPlanId: { in: planIds },
-      },
-      includeCoverage: false,
-    });
+    const fallbackModes = [
+      { includeCoverage: true, includeEffectiveCoverage: false },
+      { includeCoverage: false, includeEffectiveCoverage: true },
+      { includeCoverage: false, includeEffectiveCoverage: false },
+    ];
+    let recovered = false;
+    for (const mode of fallbackModes) {
+      try {
+        directRows = await selectWorkRows({
+          where: {
+            orgId,
+            assignmentPlanId: { in: planIds },
+          },
+          includeCoverage: mode.includeCoverage,
+          includeEffectiveCoverage: mode.includeEffectiveCoverage,
+        });
+        recovered = true;
+        break;
+      } catch (fallbackError) {
+        if (!isWorkLogCoverageMissingColumnError(fallbackError)) {
+          throw fallbackError;
+        }
+      }
+    }
+    if (!recovered) throw error;
     console.warn(
-      `[assignment-plan-progress] orgId=${orgId} ${context}: missing work-log coverage columns; fallback work-record projection activated`
+      `[assignment-plan-progress] orgId=${orgId} ${context}: missing work-log/work-record coverage columns; fallback work-record projection activated`
     );
   }
 
@@ -18956,57 +18981,79 @@ const completeAssignmentPlanProduction = async ({
 };
 
 app.get("/assignment-plan-progress", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
+  try {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) {
+      return res.status(404).json({ ok: false, error: "organization not found" });
+    }
+
+    const idsQuery = resolveOptionalString(req.query.ids, "") || "";
+    const externalIds = idsQuery
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    const rows = await buildAssignmentPlanProgressRows(organization.id, externalIds);
+    res.json(rows);
+  } catch (error) {
+    console.error("[assignment-plan-progress] request failed", {
+      orgId: req.query?.orgId ?? null,
+      ids: resolveOptionalString(req.query?.ids, "") || "",
+      message: getErrorMessage(error, "unknown assignment-plan-progress error"),
+      code: getErrorCode(error),
+    });
+    throw error;
   }
-
-  const idsQuery = resolveOptionalString(req.query.ids, "") || "";
-  const externalIds = idsQuery
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  const rows = await buildAssignmentPlanProgressRows(organization.id, externalIds);
-  res.json(rows);
 });
 
 app.get("/line-month-capacity", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  try {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) {
+      return res.status(404).json({ ok: false, error: "organization not found" });
+    }
 
-  const todayMonthKey = todayDateKey().slice(0, 7);
-  const monthFrom =
-    normalizeMonthKey(req.query.monthFrom) ||
-    normalizeMonthKey(req.query.monthKey) ||
-    todayMonthKey;
-  const monthTo =
-    normalizeMonthKey(req.query.monthTo) || monthFrom;
-  if (!monthFrom || !monthTo || monthFrom > monthTo) {
-    return res.status(400).json({
-      ok: false,
-      error: "invalid month range",
+    const todayMonthKey = todayDateKey().slice(0, 7);
+    const monthFrom =
+      normalizeMonthKey(req.query.monthFrom) ||
+      normalizeMonthKey(req.query.monthKey) ||
+      todayMonthKey;
+    const monthTo =
+      normalizeMonthKey(req.query.monthTo) || monthFrom;
+    if (!monthFrom || !monthTo || monthFrom > monthTo) {
+      return res.status(400).json({
+        ok: false,
+        error: "invalid month range",
+      });
+    }
+
+    const monthKeys = buildMonthKeyRangeForLineMonthCapacity(monthFrom, monthTo);
+    if (monthKeys.length === 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "month range exceeds supported span",
+      });
+    }
+
+    const lineIds = parseLineIdsForLineMonthCapacity(req.query.lineIds);
+    const payload = await buildLineMonthCapacityRows({
+      orgId: organization.id,
+      monthFrom,
+      monthTo,
+      lineIds,
     });
-  }
-
-  const monthKeys = buildMonthKeyRangeForLineMonthCapacity(monthFrom, monthTo);
-  if (monthKeys.length === 0) {
-    return res.status(400).json({
-      ok: false,
-      error: "month range exceeds supported span",
+    res.json(payload);
+  } catch (error) {
+    console.error("[line-month-capacity] request failed", {
+      orgId: req.query?.orgId ?? null,
+      monthFrom: resolveOptionalString(req.query?.monthFrom ?? req.query?.monthKey, null),
+      monthTo: resolveOptionalString(req.query?.monthTo, null),
+      lineIds: resolveOptionalString(req.query?.lineIds, null),
+      message: getErrorMessage(error, "unknown line-month-capacity error"),
+      code: getErrorCode(error),
     });
+    throw error;
   }
-
-  const lineIds = parseLineIdsForLineMonthCapacity(req.query.lineIds);
-  const payload = await buildLineMonthCapacityRows({
-    orgId: organization.id,
-    monthFrom,
-    monthTo,
-    lineIds,
-  });
-  res.json(payload);
 });
 
 app.get("/assignment-plans/:externalId/qc-history", async (req, res) => {
