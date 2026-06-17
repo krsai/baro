@@ -47,7 +47,8 @@ export const saveRoleAccessPolicy = async (policy) => {
   const sanitized = sanitizeRoleAccessPolicy(policy);
   const response = await requestJSON('/system/access-policy', {
     method: 'PUT',
-    body: { policy: sanitized },
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ policy: sanitized }),
   });
   const saved = sanitizeRoleAccessPolicy(response?.policy);
   clearLegacyRoleAccessPolicy();
