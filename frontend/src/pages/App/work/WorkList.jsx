@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -22,6 +22,7 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
@@ -37,8 +38,24 @@ import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { deleteWorkLog, loadWorkLogs } from './workLogStorage';
+import {
+  formatWorkLogImportError,
+  importWorkLogRows,
+  parseWorkLogImportWorkbook,
+} from './workLogImport';
 
 const TEXT = {
+  import: { ko: '엑셀 업로드', en: 'Import Excel', vi: 'Nhap Excel' },
+  importSuccess: {
+    ko: '엑셀 작업기록을 저장했습니다.',
+    en: 'Excel work logs imported.',
+    vi: 'Da nhap ghi chep tu Excel.',
+  },
+  importError: {
+    ko: '엑셀 작업기록 업로드에 실패했습니다.',
+    en: 'Failed to import Excel work logs.',
+    vi: 'Khong the nhap ghi chep Excel.',
+  },
   add: { ko: '기록 추가', en: 'Add Log', vi: 'Them ghi chep' },
   searchPlaceholder: {
     ko: '날짜, 공장, 라인 검색',
@@ -245,6 +262,9 @@ const WorkList = ({
     () => storedFilters?.dateFilterEnd || getMonthEnd(new Date())
   );
   const [deletingId, setDeletingId] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const importInputRef = useRef(null);
 
   const selectedFactoryIdNumber = useMemo(() => {
     const parsed = Number(selectedFactoryId);
@@ -355,6 +375,7 @@ const WorkList = ({
     dateFrom,
     dateTo,
     languageCode,
+    reloadNonce,
     selectedFactoryIdNumber,
     showNotification,
   ]);
@@ -442,6 +463,48 @@ const WorkList = ({
     [activeOrgId, languageCode, showNotification]
   );
 
+  const handleImportClick = useCallback(() => {
+    importInputRef.current?.click?.();
+  }, []);
+
+  const handleImportFileChange = useCallback(
+    async (event) => {
+      const input = event?.target;
+      const [file] = Array.from(input?.files || []);
+      if (!file || importing) {
+        if (input) input.value = '';
+        return;
+      }
+
+      setImporting(true);
+      try {
+        const rows = await parseWorkLogImportWorkbook(file);
+        const result = await importWorkLogRows({
+          orgId: activeOrgId,
+          fileName: file.name,
+          rows,
+        });
+        setReloadNonce((current) => current + 1);
+        const createdCount = Number(result?.createdCount ?? 0) || 0;
+        const recordCount = Number(result?.recordCount ?? rows.length) || rows.length;
+        showNotification(
+          `${resolveText(TEXT.importSuccess, languageCode, 'Excel work logs imported.')} (${recordCount} rows, ${createdCount} logs)`,
+          'success'
+        );
+      } catch (error) {
+        showNotification(
+          formatWorkLogImportError(error) ||
+            resolveText(TEXT.importError, languageCode, 'Failed to import Excel work logs.'),
+          'error'
+        );
+      } finally {
+        setImporting(false);
+        if (input) input.value = '';
+      }
+    },
+    [activeOrgId, importing, languageCode, showNotification]
+  );
+
   const handleDateFilterStartChange = useCallback((value) => {
     if (!value?.isValid?.()) return;
     const nextStart = normalizeFilterDate(value.toDate());
@@ -484,9 +547,26 @@ const WorkList = ({
               languageCode
             )}
             actions={
-              <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
+              <Stack direction="row" spacing={1}>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleImportFileChange}
+                  style={{ display: 'none' }}
+                />
+                <Button
+                  variant="outlined"
+                  startIcon={<UploadFileIcon />}
+                  onClick={handleImportClick}
+                  disabled={importing}
+                >
+                  {resolveText(TEXT.import, languageCode, 'Import Excel')}
+                </Button>
+                <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
                 {resolveText(TEXT.add, languageCode, '기록 추가')}
               </Button>
+              </Stack>
             }
           />
           <Box

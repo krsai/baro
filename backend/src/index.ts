@@ -12,6 +12,7 @@ import {
   resolveOrgRoleLabel,
   resolveRoleDefaultPayType,
 } from "./employees/employeeCompensation";
+import { normalizeEmployeeNo } from "./employees/employeeNumber";
 import { createEmployeeRouter } from "./employees/employee.routes";
 import { createFactoryRouter } from "./factories/factory.routes";
 import { createLineRouter } from "./lines/line.routes";
@@ -8048,6 +8049,344 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
     invalidWorkerRecordIndex: normalizedRecords.invalidWorkerRecordIndex,
   };
 };
+type WorkLogImportIssue = {
+  rowNumber: number;
+  sheetName: string | null;
+  code: string;
+  message: string;
+};
+
+const formatWorkLogImportIssueLocation = (row: {
+  rowNumber?: number | null;
+  sheetName?: string | null;
+}) => {
+  const parts = [
+    resolveOptionalString(row?.sheetName, null),
+    row?.rowNumber ? `row ${row.rowNumber}` : null,
+  ].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(" / ") : "import row";
+};
+
+const buildWorkLogImportIssue = ({
+  row,
+  code,
+  message,
+}: {
+  row: { rowNumber?: number | null; sheetName?: string | null };
+  code: string;
+  message: string;
+}): WorkLogImportIssue => ({
+  rowNumber: toPositiveIntOrNull(row?.rowNumber) ?? 0,
+  sheetName: resolveOptionalString(row?.sheetName, null),
+  code,
+  message: `${formatWorkLogImportIssueLocation(row)}: ${message}`,
+});
+
+const summarizeWorkLogImportIssues = (
+  issues: WorkLogImportIssue[],
+  prefix = "Work-log import failed"
+) => {
+  const safeIssues = ensureArray(issues).filter(
+    (issue) => issue && typeof issue === "object"
+  ) as WorkLogImportIssue[];
+  if (safeIssues.length === 0) return prefix;
+  const preview = safeIssues
+    .slice(0, 5)
+    .map((issue) => issue.message)
+    .join("; ");
+  const extraCount = safeIssues.length - 5;
+  return `${prefix} (${safeIssues.length} issues): ${preview}${
+    extraCount > 0 ? `; +${extraCount} more` : ""
+  }`;
+};
+
+const normalizeImportedWorkLogRows = (rows: any) =>
+  ensureArray(rows)
+    .filter((row) => row && typeof row === "object")
+    .map((row: any, index: number) => {
+      const rowNumber = toPositiveIntOrNull(row?.rowNumber) ?? index + 2;
+      const coverageEndDate =
+        normalizeDateKey(row?.coverageEndDate) ??
+        normalizeDateKey(row?.workDate) ??
+        null;
+      const rawCoverageStartDate =
+        normalizeDateKey(row?.coverageStartDate) ??
+        normalizeDateKey(row?.dateStart) ??
+        null;
+      const coverageStartDate = rawCoverageStartDate || coverageEndDate;
+      return {
+        rowNumber,
+        sheetName: resolveOptionalString(row?.sheetName, null),
+        coverageStartDate,
+        coverageEndDate,
+        employeeNo: normalizeEmployeeNo(row?.employeeNo),
+        employeeName: resolveOptionalString(row?.employeeName, null),
+        orderNo: resolveOptionalString(row?.orderNo, null),
+        styleId: resolveOptionalString(row?.styleId, null),
+        processCode: resolveOptionalString(row?.processCode, null),
+        quantity: toNonNegativeInt(row?.quantity, 0),
+      };
+    });
+
+const buildWorkLogImportLineLookup = (lines: any[]) =>
+  ensureArray(lines).reduce((map, line) => {
+    const factoryId = toPositiveIntOrNull(line?.factoryId);
+    const nameKey = normalizeComparableText(line?.name);
+    if (!factoryId || !nameKey) return map;
+    const key = `${factoryId}:${nameKey}`;
+    const current = map.get(key) || [];
+    current.push({
+      id: toPositiveIntOrNull(line?.id),
+      factoryId,
+      name: resolveOptionalString(line?.name, "") ?? "",
+    });
+    map.set(key, current);
+    return map;
+  }, new Map<string, Array<{ id: number | null; factoryId: number; name: string }>>());
+
+const doesWorkLogImportLineAssignmentCoverDate = ({
+  assignment,
+  coverageEndDate,
+}: {
+  assignment: any;
+  coverageEndDate: string;
+}) => {
+  const dateRange = buildWorkDateRange(coverageEndDate);
+  if (!dateRange) return false;
+  const startAt = assignment?.startAt ? new Date(assignment.startAt) : null;
+  const endAt = assignment?.endAt ? new Date(assignment.endAt) : null;
+  if (!startAt || Number.isNaN(startAt.getTime())) return false;
+  if (startAt > dateRange.endAt) return false;
+  if (endAt && !Number.isNaN(endAt.getTime()) && endAt < dateRange.startAt) {
+    return false;
+  }
+  return true;
+};
+
+const resolveWorkLogImportLineForEmployee = ({
+  employee,
+  coverageEndDate,
+  lineAssignmentsByEmployeeId,
+  lineLookupByFactoryAndName,
+}: {
+  employee: any;
+  coverageEndDate: string;
+  lineAssignmentsByEmployeeId: Map<number, any[]>;
+  lineLookupByFactoryAndName: Map<
+    string,
+    Array<{ id: number | null; factoryId: number; name: string }>
+  >;
+}) => {
+  const employeeId = toPositiveIntOrNull(employee?.id);
+  const assignments = employeeId
+    ? ensureArray(lineAssignmentsByEmployeeId.get(employeeId))
+    : [];
+  const activeMatches = assignments.filter((assignment) =>
+    doesWorkLogImportLineAssignmentCoverDate({
+      assignment,
+      coverageEndDate,
+    })
+  );
+  const activeLineMatches = Array.from(
+    new Map(
+      activeMatches
+        .map((assignment) => {
+          const lineId = toPositiveIntOrNull(assignment?.line?.id ?? assignment?.lineId);
+          const factoryId = toPositiveIntOrNull(assignment?.line?.factoryId);
+          const lineName = resolveOptionalString(assignment?.line?.name, null);
+          if (!lineId || !factoryId || !lineName) return null;
+          return [
+            lineId,
+            {
+              id: lineId,
+              factoryId,
+              name: lineName,
+              source: "line_assignment",
+            },
+          ] as const;
+        })
+        .filter(Boolean) as Array<
+        readonly [
+          number,
+          { id: number; factoryId: number; name: string; source: string }
+        ]
+      >
+    ).values()
+  );
+  if (activeLineMatches.length === 1) {
+    return { line: activeLineMatches[0], error: null as string | null };
+  }
+  if (activeLineMatches.length > 1) {
+    return {
+      line: null,
+      error: "multiple line assignments matched the work date",
+    };
+  }
+
+  const factoryId = toPositiveIntOrNull(employee?.factoryId);
+  const lineName = resolveOptionalString(employee?.lineName, null);
+  if (factoryId && lineName) {
+    const fallbackMatches =
+      lineLookupByFactoryAndName.get(
+        `${factoryId}:${normalizeComparableText(lineName)}`
+      ) || [];
+    if (fallbackMatches.length === 1 && fallbackMatches[0]?.id) {
+      return {
+        line: {
+          id: Number(fallbackMatches[0].id),
+          factoryId: fallbackMatches[0].factoryId,
+          name: fallbackMatches[0].name,
+          source: "employee_line_name",
+        },
+        error: null as string | null,
+      };
+    }
+    if (fallbackMatches.length > 1) {
+      return {
+        line: null,
+        error: "employee line name matched multiple lines in the factory",
+      };
+    }
+  }
+
+  return {
+    line: null,
+    error: "line could not be resolved for the employee on the work date",
+  };
+};
+
+const buildWorkLogImportPlanProcessOptions = (plan: any) => {
+  const snapshot = resolveNormalizedAssignmentCtSnapshot(plan);
+  return ensureArray(snapshot?.processes).map((process: any, index: number) => {
+    const fallbackName =
+      resolveOptionalString(process?.name, null) ??
+      resolveOptionalString(process?.processName, null) ??
+      `process ${index + 1}`;
+    return {
+      processId: toPositiveIntOrNull(
+        process?.id ??
+          process?.processId ??
+          process?.processAttributeId ??
+          process?.attributeId
+      ),
+      processCode:
+        resolveOptionalString(process?.processCode ?? process?.code, null) ??
+        resolveOptionalString(process?.processKey, null),
+      processName: fallbackName,
+      ctSeconds: Math.max(
+        0,
+        Math.round(
+          Number(
+            process?.pieceCtSeconds ??
+              process?.snapshotCtSeconds ??
+              process?.ctPerPieceSeconds ??
+              process?.ctSeconds
+          ) || 0
+        )
+      ),
+    };
+  });
+};
+
+const resolveWorkLogImportMatchedProcess = ({
+  plan,
+  processCode,
+}: {
+  plan: any;
+  processCode: string;
+}) => {
+  const processToken = resolveOptionalString(processCode, null);
+  if (!processToken) return null;
+  const normalizedProcessCode = normalizeProcessCodeKey(processToken);
+  const normalizedProcessName = normalizeProcessNameKey(processToken);
+  return (
+    buildWorkLogImportPlanProcessOptions(plan).find((process) =>
+      resolveAssignmentSnapshotProcessCodeCandidates(process).includes(
+        normalizedProcessCode
+      ) ||
+      normalizeProcessNameKey(process?.processName) === normalizedProcessName
+    ) ?? null
+  );
+};
+
+const resolveWorkLogImportAssignmentCandidate = ({
+  row,
+  lineId,
+  plans,
+}: {
+  row: any;
+  lineId: number;
+  plans: any[];
+}) => {
+  const orderKey = normalizeComparableText(row?.orderNo);
+  const styleKey = normalizeComparableText(row?.styleId);
+  const processCodeKey = normalizeProcessCodeKey(row?.processCode);
+  if (!orderKey || !styleKey || !processCodeKey) {
+    return {
+      plan: null,
+      process: null,
+      error: "order, style, and process are required to match an assignment",
+    };
+  }
+
+  let candidates = ensureArray(plans).filter(
+    (plan) =>
+      toPositiveIntOrNull(plan?.lineId) === lineId &&
+      normalizeComparableText(plan?.orderNo) === orderKey
+  );
+  if (candidates.length === 0) {
+    return {
+      plan: null,
+      process: null,
+      error: `order ${row.orderNo} was not found on the resolved line`,
+    };
+  }
+
+  const styleMatches = candidates.filter((plan) =>
+    resolveAssignmentPlanStyleQueryValues(plan).some(
+      (value) => normalizeComparableText(value) === styleKey
+    )
+  );
+  if (styleMatches.length === 0) {
+    return {
+      plan: null,
+      process: null,
+      error: `style ${row.styleId} does not match order ${row.orderNo} on the resolved line`,
+    };
+  }
+  candidates = styleMatches;
+
+  const processMatches = candidates
+    .map((plan) => ({
+      plan,
+      process: resolveWorkLogImportMatchedProcess({
+        plan,
+        processCode: row.processCode,
+      }),
+    }))
+    .filter((item) => item.process !== null);
+  if (processMatches.length === 0) {
+    return {
+      plan: null,
+      process: null,
+      error: `process ${row.processCode} does not match order ${row.orderNo} / style ${row.styleId}`,
+    };
+  }
+  if (processMatches.length > 1) {
+    return {
+      plan: null,
+      process: null,
+      error: `multiple assignment plans matched order ${row.orderNo} / style ${row.styleId} / process ${row.processCode}`,
+    };
+  }
+
+  return {
+    plan: processMatches[0]?.plan ?? null,
+    process: processMatches[0]?.process ?? null,
+    error: null as string | null,
+  };
+};
+
 const collectMissingWorkRecordAssignmentPlanLinkIndices = (records: any): number[] =>
   ensureArray(records).reduce((indices, record, index) => {
     if (!record || typeof record !== "object") return indices;
@@ -19931,6 +20270,761 @@ app.get("/work-logs/:id", async (req, res) => {
   res.json({
     ...response,
     context,
+  });
+});
+
+app.post("/work-logs/import", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const importedRows = normalizeImportedWorkLogRows(req.body?.rows);
+  if (importedRows.length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: "Work-log import failed: no rows were provided.",
+      issues: [],
+    });
+  }
+
+  const issues: WorkLogImportIssue[] = [];
+  const respondWithIssues = () =>
+    res.status(400).json({
+      ok: false,
+      error: summarizeWorkLogImportIssues(issues),
+      issues,
+    });
+
+  importedRows.forEach((row) => {
+    if (!row.coverageEndDate) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row,
+          code: "MISSING_END_DATE",
+          message: "DATE(END) is required.",
+        })
+      );
+    }
+    if (!row.coverageStartDate) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row,
+          code: "MISSING_START_DATE",
+          message: "DATE(START) is invalid.",
+        })
+      );
+    }
+    if (
+      row.coverageStartDate &&
+      row.coverageEndDate &&
+      row.coverageStartDate > row.coverageEndDate
+    ) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row,
+          code: "INVALID_DATE_RANGE",
+          message: "DATE(START) cannot be later than DATE(END).",
+        })
+      );
+    }
+    if (!row.employeeNo) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row,
+          code: "MISSING_EMPLOYEE_NO",
+          message: "Employee code is required.",
+        })
+      );
+    }
+    if (!row.orderNo) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row,
+          code: "MISSING_ORDER_NO",
+          message: "ORDER# is required.",
+        })
+      );
+    }
+    if (!row.styleId) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row,
+          code: "MISSING_STYLE_ID",
+          message: "STYLE is required.",
+        })
+      );
+    }
+    if (!row.processCode) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row,
+          code: "MISSING_PROCESS_CODE",
+          message: "JOB(process) is required.",
+        })
+      );
+    }
+    if (row.quantity <= 0) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row,
+          code: "INVALID_QUANTITY",
+          message: "JOB(quantity) must be greater than 0.",
+        })
+      );
+    }
+  });
+
+  if (issues.length > 0) {
+    return respondWithIssues();
+  }
+
+  const employeeNos = Array.from(
+    new Set(
+      importedRows
+        .map((row) => resolveOptionalString(row.employeeNo, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const employees =
+    employeeNos.length > 0
+      ? await prisma.employee.findMany({
+          where: {
+            orgId: organization.id,
+            employeeNo: { in: employeeNos },
+          },
+          select: {
+            id: true,
+            employeeNo: true,
+            name: true,
+            factoryId: true,
+            lineName: true,
+            joinedAt: true,
+            leftAt: true,
+          },
+        })
+      : [];
+  const employeeByNo = new Map<string, any>();
+  employees.forEach((employee) => {
+    const employeeNo = normalizeEmployeeNo(employee?.employeeNo);
+    if (!employeeNo || employeeByNo.has(employeeNo)) return;
+    employeeByNo.set(employeeNo, employee);
+  });
+
+  importedRows.forEach((row) => {
+    const employee = row.employeeNo ? employeeByNo.get(row.employeeNo) ?? null : null;
+    if (!employee) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row,
+          code: "EMPLOYEE_NOT_FOUND",
+          message: `Employee code ${row.employeeNo || "(blank)"} was not found.`,
+        })
+      );
+      return;
+    }
+    const importNameKey = normalizeComparableText(row.employeeName);
+    const employeeNameKey = normalizeComparableText(employee?.name);
+    if (importNameKey && employeeNameKey && importNameKey !== employeeNameKey) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row,
+          code: "EMPLOYEE_NAME_MISMATCH",
+          message: `Employee code ${row.employeeNo} belongs to ${resolveOptionalString(
+            employee?.name,
+            "another employee"
+          )}, not ${row.employeeName}.`,
+        })
+      );
+    }
+  });
+
+  if (issues.length > 0) {
+    return respondWithIssues();
+  }
+
+  const employeeIds = employees
+    .map((employee) => toPositiveIntOrNull(employee?.id))
+    .filter((value): value is number => value !== null);
+  const [lineAssignments, lines] = await Promise.all([
+    employeeIds.length > 0
+      ? prisma.lineAssignment.findMany({
+          where: {
+            employeeId: { in: employeeIds },
+            line: { orgId: organization.id },
+          },
+          select: {
+            employeeId: true,
+            startAt: true,
+            endAt: true,
+            lineId: true,
+            line: {
+              select: {
+                id: true,
+                factoryId: true,
+                name: true,
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
+    prisma.line.findMany({
+      where: { orgId: organization.id },
+      select: { id: true, factoryId: true, name: true },
+    }),
+  ]);
+
+  const lineAssignmentsByEmployeeId = ensureArray(lineAssignments).reduce((map, assignment) => {
+    const employeeId = toPositiveIntOrNull(assignment?.employeeId);
+    if (!employeeId) return map;
+    const bucket = map.get(employeeId) || [];
+    bucket.push(assignment);
+    map.set(employeeId, bucket);
+    return map;
+  }, new Map<number, any[]>());
+  const lineLookupByFactoryAndName = buildWorkLogImportLineLookup(lines);
+  const lineById = ensureArray(lines).reduce((map, line) => {
+    const lineId = toPositiveIntOrNull(line?.id);
+    if (!lineId || map.has(lineId)) return map;
+    map.set(lineId, line);
+    return map;
+  }, new Map<number, any>());
+
+  const preparedRows: Array<{
+    row: (typeof importedRows)[number];
+    employee: any;
+    line: { id: number; factoryId: number; name: string; source: string };
+  }> = [];
+
+  importedRows.forEach((row) => {
+    const employee = row.employeeNo ? employeeByNo.get(row.employeeNo) ?? null : null;
+    if (!employee || !row.coverageEndDate) return;
+    const resolvedLine = resolveWorkLogImportLineForEmployee({
+      employee,
+      coverageEndDate: row.coverageEndDate,
+      lineAssignmentsByEmployeeId,
+      lineLookupByFactoryAndName,
+    });
+    if (resolvedLine.error || !resolvedLine.line?.id || !resolvedLine.line?.factoryId) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row,
+          code: "LINE_RESOLUTION_FAILED",
+          message:
+            resolvedLine.error ||
+            "line could not be resolved for the employee on the work date",
+        })
+      );
+      return;
+    }
+    preparedRows.push({
+      row,
+      employee,
+      line: resolvedLine.line,
+    });
+  });
+
+  if (issues.length > 0) {
+    return respondWithIssues();
+  }
+
+  const planLineIds = Array.from(new Set(preparedRows.map((item) => item.line.id)));
+  const planOrderNos = Array.from(
+    new Set(
+      preparedRows
+        .map((item) => resolveOptionalString(item.row.orderNo, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const assignmentPlans =
+    planLineIds.length > 0 && planOrderNos.length > 0
+      ? await findAssignmentPlansWithSelectFallback({
+          where: {
+            orgId: organization.id,
+            lineId: { in: planLineIds },
+            orderNo: { in: planOrderNos },
+          },
+          orderBy: [{ lineId: "asc" }, { id: "asc" }],
+          selectAttempts: [
+            ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
+            ASSIGNMENT_PLAN_SELECT_CORE,
+            ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY,
+            ASSIGNMENT_PLAN_SELECT_LEGACY,
+          ],
+          context: "work-logs:import",
+        })
+      : [];
+
+  const matchedRows: Array<{
+    row: (typeof importedRows)[number];
+    employee: any;
+    line: { id: number; factoryId: number; name: string; source: string };
+    plan: any;
+    process: any;
+  }> = [];
+
+  preparedRows.forEach((item) => {
+    const assignmentMatch = resolveWorkLogImportAssignmentCandidate({
+      row: item.row,
+      lineId: item.line.id,
+      plans: assignmentPlans,
+    });
+    if (assignmentMatch.error || !assignmentMatch.plan || !assignmentMatch.process) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row: item.row,
+          code: "ASSIGNMENT_MATCH_FAILED",
+          message:
+            assignmentMatch.error ||
+            "assignment plan could not be matched from order/style/process.",
+        })
+      );
+      return;
+    }
+    matchedRows.push({
+      ...item,
+      plan: assignmentMatch.plan,
+      process: assignmentMatch.process,
+    });
+  });
+
+  if (issues.length > 0) {
+    return respondWithIssues();
+  }
+
+  const factoryIds = Array.from(new Set(matchedRows.map((item) => item.line.factoryId)));
+  const factories =
+    factoryIds.length > 0
+      ? await prisma.factory.findMany({
+          where: { orgId: organization.id, id: { in: factoryIds } },
+          select: { id: true, name: true, wagePerSecond: true },
+        })
+      : [];
+  const factoryById = ensureArray(factories).reduce((map, factory) => {
+    const factoryId = toPositiveIntOrNull(factory?.id);
+    if (!factoryId || map.has(factoryId)) return map;
+    map.set(factoryId, factory);
+    return map;
+  }, new Map<number, any>());
+
+  const groups = new Map<
+    string,
+    {
+      line: any;
+      factory: any;
+      rows: Array<(typeof importedRows)[number]>;
+      records: any[];
+      normalized?: any;
+    }
+  >();
+
+  matchedRows.forEach((item) => {
+    const line = lineById.get(item.line.id) ?? item.line;
+    const factory = factoryById.get(item.line.factoryId) ?? null;
+    if (!factory) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row: item.row,
+          code: "FACTORY_NOT_FOUND",
+          message: "Factory for the resolved line was not found.",
+        })
+      );
+      return;
+    }
+    const groupKey = [
+      item.line.factoryId,
+      item.line.id,
+      item.row.coverageStartDate,
+      item.row.coverageEndDate,
+    ].join("::");
+    const currentGroup = groups.get(groupKey) || {
+      line,
+      factory,
+      rows: [],
+      records: [],
+    };
+    currentGroup.rows.push(item.row);
+    currentGroup.records.push({
+      workerId: item.employee.id,
+      workerName:
+        resolveOptionalString(item.employee?.name, null) ??
+        resolveOptionalString(item.row.employeeName, null),
+      customerName: resolveOptionalString(item.plan?.customer, null),
+      orderNo: resolveOptionalString(item.plan?.orderNo ?? item.row.orderNo, null),
+      lineId: item.line.id,
+      styleId: resolveOptionalString(item.row.styleId, null),
+      styleName: null,
+      processId: toPositiveIntOrNull(item.process?.processId),
+      processCode: resolveOptionalString(
+        item.process?.processCode ?? item.row.processCode,
+        null
+      ),
+      processName: resolveOptionalString(item.process?.processName, null),
+      ctSeconds: Math.max(
+        0,
+        Math.round(Number(item.process?.ctSeconds ?? 0) || 0)
+      ),
+      quantity: Math.max(0, Math.round(Number(item.row.quantity ?? 0) || 0)),
+      assignmentPlanId: toPositiveIntOrNull(item.plan?.id),
+    });
+    groups.set(groupKey, currentGroup);
+  });
+
+  if (issues.length > 0) {
+    return respondWithIssues();
+  }
+
+  const validatedGroups: Array<{
+    line: any;
+    sourceRows: Array<(typeof importedRows)[number]>;
+    normalized: any;
+  }> = [];
+
+  for (const group of groups.values()) {
+    const payload = {
+      workDate: group.rows[0]?.coverageEndDate ?? null,
+      coverageStartDate: group.rows[0]?.coverageStartDate ?? null,
+      coverageEndDate: group.rows[0]?.coverageEndDate ?? null,
+      factoryId: group.factory?.id ?? null,
+      factoryName: resolveOptionalString(group.factory?.name, null),
+      lineId: group.line?.id ?? null,
+      lineName: resolveOptionalString(group.line?.name, null),
+      factoryWagePerSecond: toOptionalFiniteNumber(group.factory?.wagePerSecond, null),
+      ctBasis: "CT",
+      workerCount: new Set(
+        group.records
+          .map((record) => toPositiveIntOrNull(record?.workerId))
+          .filter((value): value is number => value !== null)
+      ).size,
+      itemCount: group.records.length,
+      totalCtSeconds: group.records.reduce(
+        (sum, record) =>
+          sum +
+          Math.max(0, Math.round(Number(record?.ctSeconds ?? 0) || 0)) *
+            Math.max(0, Math.round(Number(record?.quantity ?? 0) || 0)),
+        0
+      ),
+      note: null,
+      records: group.records,
+    };
+    const normalized = normalizeWorkLogPayload(payload);
+    const groupAnchorRow = group.rows[0] ?? {
+      rowNumber: 0,
+      sheetName: null,
+    };
+
+    if (normalized.invalidWorkerRecordIndex >= 0) {
+      const sourceRow =
+        group.rows[normalized.invalidWorkerRecordIndex] ?? groupAnchorRow;
+      issues.push(
+        buildWorkLogImportIssue({
+          row: sourceRow,
+          code: "INVALID_WORKER",
+          message: "Worker could not be resolved for this row.",
+        })
+      );
+      continue;
+    }
+
+    const workerIds = collectWorkRecordWorkerIds(normalized.records);
+    const workerFilterDateKey =
+      normalizeDateKey(normalized.coverageStartDate) || normalized.displayDate;
+    const employmentValidation = await validateWorkLogWorkerEmploymentWindow({
+      orgId: organization.id,
+      coverageStartDate: normalized.coverageStartDate,
+      coverageEndDate: normalized.coverageEndDate,
+      workerIds,
+    });
+    if (employmentValidation.error) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row: groupAnchorRow,
+          code: "EMPLOYMENT_VALIDATION_FAILED",
+          message: employmentValidation.error,
+        })
+      );
+      continue;
+    }
+    if (employmentValidation.invalidWorkerIds.length > 0) {
+      const invalidWorkerIdSet = new Set(employmentValidation.invalidWorkerIds);
+      group.records.forEach((record, index) => {
+        const workerId = toPositiveIntOrNull(record?.workerId);
+        if (!workerId || !invalidWorkerIdSet.has(workerId)) return;
+        issues.push(
+          buildWorkLogImportIssue({
+            row: group.rows[index] ?? groupAnchorRow,
+            code: "EMPLOYMENT_MISMATCH",
+            message: "Worker employment dates do not cover the imported period.",
+          })
+        );
+      });
+      continue;
+    }
+
+    normalized.records = normalized.records.map((record: any) => {
+      const workerId = toPositiveIntOrNull(record?.workerId);
+      const effectiveCoverage = workerId
+        ? employmentValidation.coverageByWorkerId.get(workerId)
+        : null;
+      return {
+        ...record,
+        effectiveCoverageStartDate:
+          effectiveCoverage?.effectiveStartDate ?? normalized.coverageStartDate,
+        effectiveCoverageEndDate:
+          effectiveCoverage?.effectiveEndDate ?? normalized.coverageEndDate,
+      };
+    });
+    normalized.note = buildWorkLogNoteWithEmploymentAdjustments({
+      note: normalized.note,
+      adjustments: employmentValidation.adjustments,
+    });
+
+    const lineValidation = await validateWorkLogLineWorkers({
+      orgId: organization.id,
+      lineId: normalized.lineId,
+      factoryId: normalized.factoryId,
+      workDate: workerFilterDateKey,
+      coverageEndDate: normalized.coverageEndDate,
+      workerIds,
+    });
+    if (lineValidation.error) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row: groupAnchorRow,
+          code: "LINE_VALIDATION_FAILED",
+          message: lineValidation.error,
+        })
+      );
+      continue;
+    }
+    if (lineValidation.missingWorkerIds.length > 0) {
+      const missingWorkerIdSet = new Set(lineValidation.missingWorkerIds);
+      group.records.forEach((record, index) => {
+        const workerId = toPositiveIntOrNull(record?.workerId);
+        if (!workerId || !missingWorkerIdSet.has(workerId)) return;
+        issues.push(
+          buildWorkLogImportIssue({
+            row: group.rows[index] ?? groupAnchorRow,
+            code: "LINE_WORKER_MISMATCH",
+            message: "Worker is not assigned to the resolved line for the imported period.",
+          })
+        );
+      });
+      continue;
+    }
+
+    normalized.records = await syncWorkRecordRefs({
+      orgId: organization.id,
+      records: normalized.records,
+    });
+
+    const missingAssignmentPlanLinkIndices =
+      collectMissingWorkRecordAssignmentPlanLinkIndices(normalized.records);
+    if (missingAssignmentPlanLinkIndices.length > 0) {
+      missingAssignmentPlanLinkIndices.forEach((index) => {
+        issues.push(
+          buildWorkLogImportIssue({
+            row: group.rows[index] ?? groupAnchorRow,
+            code: "MISSING_ASSIGNMENT_PLAN",
+            message: "Assignment plan link is required for every imported row.",
+          })
+        );
+      });
+      continue;
+    }
+
+    const duplicateValidation = await validateWorkLogWorkerStyleProcessDuplicates({
+      orgId: organization.id,
+      workDate: normalized.displayDate,
+      records: normalized.records,
+    });
+    if (duplicateValidation.error) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row: groupAnchorRow,
+          code: "DUPLICATE_WORK_RECORD",
+          message: duplicateValidation.error,
+        })
+      );
+      continue;
+    }
+
+    const allowCompletedAssignmentPlanIds =
+      normalized.coverageEndDate < todayDateKey()
+        ? collectWorkRecordAssignmentPlanIds(normalized.records)
+        : [];
+    const ctSnapshotValidation = await validateWorkLogAssignmentPlanCtSnapshot({
+      orgId: organization.id,
+      lineId: lineValidation.line?.id ?? normalized.lineId,
+      records: normalized.records,
+      allowCompletedAssignmentPlanIds,
+    });
+    if (ctSnapshotValidation.error) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row: groupAnchorRow,
+          code: "CT_SNAPSHOT_VALIDATION_FAILED",
+          message: ctSnapshotValidation.error,
+        })
+      );
+      continue;
+    }
+
+    const payrollLockValidation = await validateAssignmentPlanPayrollLock({
+      orgId: organization.id,
+      assignmentPlanIds: collectWorkRecordAssignmentPlanIds(normalized.records),
+    });
+    if (payrollLockValidation.error) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row: groupAnchorRow,
+          code: "PAYROLL_LOCKED",
+          message: payrollLockValidation.error,
+        })
+      );
+      continue;
+    }
+
+    normalized.records = await attachCanonicalFieldsToWorkRecords({
+      orgId: organization.id,
+      lineId: lineValidation.line?.id ?? normalized.lineId,
+      records: normalized.records,
+    });
+
+    validatedGroups.push({
+      line: lineValidation.line ?? group.line,
+      sourceRows: group.rows,
+      normalized,
+    });
+  }
+
+  if (issues.length > 0) {
+    return respondWithIssues();
+  }
+
+  const seenImportSignatureByDisplayDate = new Map<
+    string,
+    { row: { rowNumber?: number | null; sheetName?: string | null } }
+  >();
+  validatedGroups.forEach((group) => {
+    group.normalized.records.forEach((record: any, index: number) => {
+      const signature = buildWorkRecordWorkerStyleProcessSignature(record);
+      if (!signature) return;
+      const displayDate = normalizeDateKey(group.normalized.displayDate) || "";
+      const compositeKey = `${displayDate}::${signature}`;
+      const sourceRow =
+        group.sourceRows[index] ?? group.sourceRows[0] ?? { rowNumber: 0, sheetName: null };
+      const previous = seenImportSignatureByDisplayDate.get(compositeKey);
+      if (!previous) {
+        seenImportSignatureByDisplayDate.set(compositeKey, { row: sourceRow });
+        return;
+      }
+      issues.push(
+        buildWorkLogImportIssue({
+          row: sourceRow,
+          code: "DUPLICATE_IMPORT_RECORD",
+          message: `duplicate worker/style/process on ${displayDate} also appears in ${formatWorkLogImportIssueLocation(
+            previous.row
+          )}.`,
+        })
+      );
+    });
+  });
+
+  if (issues.length > 0) {
+    return respondWithIssues();
+  }
+
+  const updatedBy = await resolveWorkLogUpdatedBy(organization.id, req);
+  const createImportTransaction = async (includeCoverage: boolean) =>
+    prisma.$transaction(
+      async (tx) => {
+        const createdWorkLogIds: number[] = [];
+        for (const group of validatedGroups) {
+          const {
+            records,
+            invalidWorkerRecordIndex: _invalidWorkerRecordIndex,
+            lineId: _lineId,
+            lineName: _lineName,
+            ...workLogData
+          } = group.normalized;
+          const createData = {
+            orgId: organization.id,
+            ...buildWorkLogWriteDataWithOptionalCoverage(workLogData, {
+              includeCoverage,
+            }),
+            updatedBy,
+            records: {
+              lineId: group.line?.id ?? null,
+              lineName: group.line?.name ?? null,
+            },
+          } as unknown as Prisma.WorkLogUncheckedCreateInput;
+          const next = await tx.workLog.create({
+            data: createData,
+            select: { id: true },
+          });
+          if (records.length > 0) {
+            await tx.workRecord.createMany({
+              data: records.map((record: any) => ({
+                orgId: organization.id,
+                workLogId: next.id,
+                workerId: record.workerId,
+                workerName: record.workerName ?? null,
+                customerName: record.customerName ?? null,
+                orderNo: record.orderNo ?? null,
+                lineId: record.lineId ?? null,
+                styleId: record.styleId ?? null,
+                styleUid: record.styleUid ?? null,
+                styleName: record.styleName ?? null,
+                processId: record.processId ?? null,
+                processCode: record.processCode ?? null,
+                colorId: record.colorId ?? null,
+                colorCode: record.colorCode ?? null,
+                effectiveCoverageStartDate:
+                  record.effectiveCoverageStartDate ?? group.normalized.coverageStartDate,
+                effectiveCoverageEndDate:
+                  record.effectiveCoverageEndDate ?? group.normalized.coverageEndDate,
+                ctSeconds: record.ctSeconds ?? 0,
+                quantity: record.quantity ?? 0,
+                assignmentPlanId: record.assignmentPlanId ?? null,
+              })),
+            });
+          }
+          createdWorkLogIds.push(next.id);
+        }
+        return createdWorkLogIds;
+      },
+      { timeout: 30000 }
+    );
+
+  let createdWorkLogIds: number[] = [];
+  try {
+    createdWorkLogIds = await createImportTransaction(true);
+  } catch (error) {
+    if (!isWorkLogCoverageMissingColumnError(error)) throw error;
+    console.warn(
+      `[work-logs:import] orgId=${organization.id} missing work-log coverage columns; retrying import without coverage fields`
+    );
+    createdWorkLogIds = await createImportTransaction(false);
+  }
+
+  const importedRecords = validatedGroups.flatMap((group) => ensureArray(group.normalized.records));
+  await trySyncConfirmedOrdersToInProgressFromWorkRecords({
+    orgId: organization.id,
+    records: importedRecords,
+    mode: "create",
+  });
+  await trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({
+    orgId: organization.id,
+    assignmentPlanIds: collectWorkRecordAssignmentPlanIds(importedRecords),
+    mode: "create",
+  });
+
+  res.status(201).json({
+    ok: true,
+    createdCount: createdWorkLogIds.length,
+    recordCount: importedRecords.length,
+    workLogIds: createdWorkLogIds,
   });
 });
 
