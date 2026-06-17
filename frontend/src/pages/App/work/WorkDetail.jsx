@@ -48,6 +48,7 @@ import { fetchProcessAttributes } from '../../../utils/attributeApi';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { hasAssignmentCtSnapshot, resolveAssignmentCtSnapshot } from '../../../utils/assignmentCt';
 import { resolveLocalizedProcessName } from '../../../utils/processDisplay';
+import { formatSeconds } from '../../../utils/processTime';
 import { loadWorkLogContext } from './workLogStorage';
 
 const { useDeferredValue } = React;
@@ -87,7 +88,12 @@ const LABELS = {
   process: '공정',
   processPlaceholder: '공정을 선택하세요.',
   noProcessesAvailable: '선택 가능한 공정이 없습니다.',
+  ctSeconds: 'CT',
   quantity: '생산량',
+  quantityCtTotal: '수량 x CT',
+  recordCount: '작업 행',
+  totalQuantity: '총 생산량',
+  totalQuantityCt: '총 수량 x CT',
   moveUp: '위로 이동',
   moveDown: '아래로 이동',
   addBelow: '아래 작업자 추가',
@@ -206,6 +212,24 @@ const formatCount = (value) =>
     fallback: '0',
     maximumFractionDigits: 0,
   });
+const resolveRowCtDisplayMeta = ({ row, rowProcess, selectedProcessOption }) => {
+  const process = selectedProcessOption?.process || rowProcess || row?.process || null;
+  const hasProcess = Boolean(process);
+  const ctSeconds = Math.max(
+    0,
+    Math.round(Number(process?.ctSeconds ?? row?.ctSeconds) || 0)
+  );
+  const quantity = Math.max(0, Math.round(Number(row?.quantity) || 0));
+  const totalCtSeconds = ctSeconds * quantity;
+
+  return {
+    ctSeconds,
+    quantity,
+    totalCtSeconds,
+    ctValue: hasProcess ? formatSeconds(ctSeconds) : '-',
+    totalCtValue: hasProcess && quantity > 0 ? formatSeconds(totalCtSeconds) : '-',
+  };
+};
 const buildComparableWorkRecord = (record = {}) => {
   const workerId = toPositiveIdOrNull(record?.workerId);
   const assignmentPlanId = toPositiveIdOrNull(record?.assignmentPlanId);
@@ -1794,7 +1818,11 @@ const WorkDetail = ({
       (sum, record) => sum + record.ctSeconds * record.quantity,
       0
     );
-    return { records, workerCount, workLogCtTotalSeconds };
+    const workLogQuantityTotal = records.reduce(
+      (sum, record) => sum + record.quantity,
+      0
+    );
+    return { records, workerCount, workLogCtTotalSeconds, workLogQuantityTotal };
   }, [resolveAssignmentForRow, resolveProcessForRow, rowResolvedMetaById, rows]);
   const assignmentLimitGroupMeta = useMemo(() => {
     const planMetaById = new Map();
@@ -2690,6 +2718,11 @@ const WorkDetail = ({
                 maximumFractionDigits: 0,
               })
             : '-';
+        const rowCtMeta = resolveRowCtDisplayMeta({
+          row,
+          rowProcess,
+          selectedProcessOption,
+        });
         return {
           row,
           rowAssignment,
@@ -2721,6 +2754,10 @@ const WorkDetail = ({
           processPlaceholder,
           rowGroupMeta,
           groupBackgroundColor,
+          ctSecondsNumber: rowCtMeta.ctSeconds,
+          totalCtSecondsNumber: rowCtMeta.totalCtSeconds,
+          ctValue: rowCtMeta.ctValue,
+          totalCtValue: rowCtMeta.totalCtValue,
           quantityValue,
         };
       }),
@@ -3025,6 +3062,24 @@ const WorkDetail = ({
               {missingAssignmentPlanLinkMessage ? (
                 <Alert severity="warning">{missingAssignmentPlanLinkMessage}</Alert>
               ) : null}
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                <Chip
+                  variant="outlined"
+                  size="small"
+                  label={`${LABELS.recordCount} ${formatCount(summary.records.length)}`}
+                />
+                <Chip
+                  variant="outlined"
+                  size="small"
+                  label={`${LABELS.totalQuantity} ${formatCount(summary.workLogQuantityTotal)}`}
+                />
+                <Chip
+                  color="primary"
+                  variant="outlined"
+                  size="small"
+                  label={`${LABELS.totalQuantityCt} ${formatSeconds(summary.workLogCtTotalSeconds)}`}
+                />
+              </Stack>
               {isMobile ? (
                 <Stack spacing={1}>
                   {visibleRowViewModels.map((rowViewModel) => {
@@ -3054,6 +3109,8 @@ const WorkDetail = ({
                       processPlaceholder,
                       rowGroupMeta,
                       groupBackgroundColor,
+                      ctValue,
+                      totalCtValue,
                     } = rowViewModel;
 
                     return (
@@ -3247,6 +3304,22 @@ const WorkDetail = ({
                             fullWidth
                             autoFocus={shouldFocusQuantity}
                           />
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                            <TextField
+                              label={LABELS.ctSeconds}
+                              size="small"
+                              value={ctValue}
+                              InputProps={{ readOnly: true }}
+                              fullWidth
+                            />
+                            <TextField
+                              label={LABELS.quantityCtTotal}
+                              size="small"
+                              value={totalCtValue}
+                              InputProps={{ readOnly: true }}
+                              fullWidth
+                            />
+                          </Stack>
                           <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
                             <Tooltip title={LABELS.addBelow}>
                               <span>
@@ -3333,10 +3406,12 @@ const WorkDetail = ({
                     <TableHead>
                       <TableRow>
                         <TableCell sx={{ width: 56 }} align="center">{LABELS.rowNumber}</TableCell>
-                        <TableCell sx={{ width: '16%' }}>{LABELS.worker}</TableCell>
-                        <TableCell sx={{ width: '28%' }}>{LABELS.style}</TableCell>
-                        <TableCell sx={{ width: '25%' }}>{LABELS.process}</TableCell>
-                        <TableCell sx={{ width: '11%' }} align="right">{LABELS.quantity}</TableCell>
+                        <TableCell sx={{ width: '14%' }}>{LABELS.worker}</TableCell>
+                        <TableCell sx={{ width: '24%' }}>{LABELS.style}</TableCell>
+                        <TableCell sx={{ width: '21%' }}>{LABELS.process}</TableCell>
+                        <TableCell sx={{ width: '10%' }} align="right">{LABELS.ctSeconds}</TableCell>
+                        <TableCell sx={{ width: '9%' }} align="right">{LABELS.quantity}</TableCell>
+                        <TableCell sx={{ width: '12%' }} align="right">{LABELS.quantityCtTotal}</TableCell>
                         <TableCell sx={{ width: 148 }} align="right">&nbsp;</TableCell>
                       </TableRow>
                     </TableHead>
@@ -3371,6 +3446,8 @@ const WorkDetail = ({
                         processPlaceholder,
                         rowGroupMeta,
                         groupBackgroundColor,
+                        ctValue,
+                        totalCtValue,
                         quantityValue,
                       } = rowViewModel;
 
@@ -3604,6 +3681,11 @@ const WorkDetail = ({
                             )}
                           </TableCell>
                           <TableCell align="right" sx={{ py: 0.75, verticalAlign: 'middle' }}>
+                            <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                              {ctValue}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right" sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             {isEditingRow ? (
                               <TextField
                                 type="number"
@@ -3660,6 +3742,11 @@ const WorkDetail = ({
                                 {quantityValue}
                               </Box>
                             )}
+                          </TableCell>
+                          <TableCell align="right" sx={{ py: 0.75, verticalAlign: 'middle' }}>
+                            <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                              {totalCtValue}
+                            </Typography>
                           </TableCell>
                           <TableCell align="right" sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             <Stack

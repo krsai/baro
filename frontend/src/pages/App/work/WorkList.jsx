@@ -45,7 +45,7 @@ import {
 } from './workLogImport';
 
 const TEXT = {
-  import: { ko: '엑셀 업로드', en: 'Import Excel', vi: 'Nhap Excel' },
+  import: { ko: '파일 등록', en: 'Import File', vi: 'Nhap tep' },
   importSuccess: {
     ko: '엑셀 작업기록을 저장했습니다.',
     en: 'Excel work logs imported.',
@@ -546,35 +546,15 @@ const WorkList = ({
               '\uC791\uC5C5 \uAE30\uB85D',
               languageCode
             )}
-            actions={
-              <Stack direction="row" spacing={1}>
-                <input
-                  ref={importInputRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={handleImportFileChange}
-                  style={{ display: 'none' }}
-                />
-                <Button
-                  variant="outlined"
-                  startIcon={<UploadFileIcon />}
-                  onClick={handleImportClick}
-                  disabled={importing}
-                >
-                  {resolveText(TEXT.import, languageCode, 'Import Excel')}
-                </Button>
-                <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
-                {resolveText(TEXT.add, languageCode, '기록 추가')}
-              </Button>
-              </Stack>
-            }
           />
           <Box
             sx={{
               display: 'flex',
-              alignItems: { xs: 'stretch', xl: 'center' },
-              flexDirection: { xs: 'column', xl: 'row' },
-              gap: 1,
+              alignItems: { xs: 'stretch', lg: 'center' },
+              justifyContent: 'space-between',
+              flexDirection: { xs: 'column', lg: 'row' },
+              gap: 1.25,
+              minWidth: 0,
             }}
           >
             <SearchInput
@@ -613,12 +593,13 @@ const WorkList = ({
             <Box
               sx={{
                 display: 'flex',
-                alignItems: { xs: 'stretch', sm: 'center' },
-                justifyContent: { xs: 'flex-start', xl: 'flex-end' },
-                flexDirection: { xs: 'column', sm: 'row' },
+                alignItems: { xs: 'stretch', lg: 'center' },
+                justifyContent: { xs: 'flex-start', lg: 'flex-end' },
+                flexDirection: { xs: 'column', lg: 'row' },
                 gap: 1,
+                flexWrap: 'wrap',
                 flexShrink: 0,
-                ml: { xl: 'auto' },
+                minWidth: 0,
               }}
             >
               <Stack
@@ -626,7 +607,7 @@ const WorkList = ({
                 spacing={1}
                 sx={{
                   alignItems: 'center',
-                  justifyContent: { xs: 'flex-start', sm: 'flex-end' },
+                  justifyContent: { xs: 'flex-start', lg: 'flex-end' },
                   flexWrap: 'wrap',
                   flexShrink: 0,
                 }}
@@ -662,6 +643,17 @@ const WorkList = ({
                     M-
                   </Button>
                 </Stack>
+                <Button
+                  variant="outlined"
+                  startIcon={<UploadFileIcon />}
+                  onClick={handleImportClick}
+                  disabled={importing}
+                >
+                  {resolveText(TEXT.import, languageCode, 'Import File')}
+                </Button>
+                <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
+                  {resolveText(TEXT.add, languageCode, '기록 추가')}
+                </Button>
                 <ToggleButtonGroup
                   size="small"
                   exclusive
@@ -682,6 +674,13 @@ const WorkList = ({
         </Stack>
       }
     >
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        onChange={handleImportFileChange}
+        style={{ display: 'none' }}
+      />
       <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
         <Box sx={{ display: { xs: 'block', sm: 'none' }, p: 1.25 }}>
           {loading ? (
