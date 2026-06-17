@@ -532,6 +532,13 @@ const STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT =
     .trim()
     .toLowerCase() !== "false";
 const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
+  { tableName: "WorkLog", columnName: "coverageStartDate" },
+  { tableName: "WorkLog", columnName: "coverageEndDate" },
+  { tableName: "WorkLog", columnName: "entryMode" },
+  { tableName: "WorkRecord", columnName: "orderNo" },
+  { tableName: "WorkRecord", columnName: "lineId" },
+  { tableName: "WorkRecord", columnName: "effectiveCoverageStartDate" },
+  { tableName: "WorkRecord", columnName: "effectiveCoverageEndDate" },
   { tableName: "StyleProcess", columnName: "timesPerPiece" },
   { tableName: "StyleProcessStandard", columnName: "bucketQuantity" },
   { tableName: "StyleProcessStandard", columnName: "bucketStSeconds" },
@@ -24709,7 +24716,9 @@ const ensureWorkRecordCanonicalSchemaReady = async () => {
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "WorkRecord"
       ADD COLUMN IF NOT EXISTS "orderNo" TEXT,
-      ADD COLUMN IF NOT EXISTS "lineId" INTEGER
+      ADD COLUMN IF NOT EXISTS "lineId" INTEGER,
+      ADD COLUMN IF NOT EXISTS "effectiveCoverageStartDate" TEXT,
+      ADD COLUMN IF NOT EXISTS "effectiveCoverageEndDate" TEXT
   `);
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_orderNo_idx"
