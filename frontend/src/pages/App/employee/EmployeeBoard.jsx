@@ -1221,11 +1221,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       setStatusMessage({ type: 'error', text: text('errNameRequired', languageCode) });
       return;
     }
-    if (!normalizedDrawerEmail) {
-      setStatusMessage({ type: 'error', text: text('errEmailRequired', languageCode) });
+    if (roleNeedsLoginEmail && !normalizedDrawerEmail) {
+      setStatusMessage({ type: 'error', text: text('errNeedLoginEmail', languageCode) });
       return;
     }
-    if (!normalizedDrawerEmail.includes('@')) {
+    if (normalizedDrawerEmail && !normalizedDrawerEmail.includes('@')) {
       setStatusMessage({ type: 'error', text: text('errInvalidEmail', languageCode) });
       return;
     }
@@ -1506,6 +1506,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const drawerEffectiveJobRoleId = drawerIsWorker
     ? drawerDraft.jobRoleId || defaultWorkerJobRoleId
     : '';
+  const drawerNeedsLoginEmail = isLoginRequiredRole(drawerDraft.orgRole);
 
   return (
     <AppPageContainer
@@ -1564,13 +1565,18 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TextField
                 size="small"
                 label={text('loginEmailLabel', languageCode)}
-                required
+                required={drawerNeedsLoginEmail}
                 value={drawerEmail}
                 onChange={(e) => setDrawerEmail(e.target.value)}
                 placeholder="admin@company.com"
                 disabled={isDrawerSaving}
                 autoFocus
-                helperText={text('requiredInput', languageCode)}
+                helperText={text(
+                  drawerNeedsLoginEmail
+                    ? 'loginEmailHelperRequired'
+                    : 'loginEmailHelperOptional',
+                  languageCode
+                )}
               />
               <TextField
                 size="small"
