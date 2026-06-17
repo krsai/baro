@@ -1929,6 +1929,33 @@ const isAssignmentSchedulerCompleted = (assignment) => {
   return String(assignment?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED';
 };
 
+const toOptionalUnitRatio = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.min(1, parsed));
+};
+
+const resolveAssignmentProgressRatio = ({
+  progressRow = null,
+  assignment = null,
+  isCompleted = false,
+} = {}) => {
+  if (isCompleted) return 1;
+  const candidates = [
+    progressRow?.progressForRemainingRatio,
+    assignment?.progressForRemainingRatio,
+    progressRow?.producedRatio,
+    assignment?.producedRatio,
+    progressRow?.operationalProgressRatio,
+    assignment?.operationalProgressRatio,
+  ];
+  for (const candidate of candidates) {
+    const ratio = toOptionalUnitRatio(candidate);
+    if (ratio != null) return ratio;
+  }
+  return null;
+};
+
 const resolveAssignmentUiStMeta = ({
   progressRow = null,
   assignment = null,
@@ -1958,6 +1985,11 @@ const resolveAssignmentUiStMeta = ({
       assignment?.productionCompletedAt ??
       assignment?.completedAt
   );
+  const progressRatio = resolveAssignmentProgressRatio({
+    progressRow,
+    assignment,
+    isCompleted,
+  });
   const isStUnknown =
     !isCompleted &&
     plannedStTotalSeconds <= 0 &&
@@ -1966,8 +1998,14 @@ const resolveAssignmentUiStMeta = ({
   const assignmentRemainingStTotalSeconds = Number(assignment?.remainingStTotalSeconds);
 
   let remainingStTotalSeconds = null;
-  if (
+  if (plannedStTotalSeconds > 0 && progressRatio != null) {
+    remainingStTotalSeconds = Math.max(
+      0,
+      Math.round(plannedStTotalSeconds * (progressRatio >= 1 ? 0 : 1 - progressRatio))
+    );
+  } else if (
     hasUsableProgressSt &&
+    assignmentPlannedStTotalSeconds <= 0 &&
     Number.isFinite(progressRemainingStTotalSeconds) &&
     progressRemainingStTotalSeconds >= 0
   ) {
@@ -1997,99 +2035,132 @@ const resolveAssignmentUiStMeta = ({
   };
 };
 
-const mergeSavedAssignmentProgressRows = (prevMap, savedAssignments) => {
-  const nextMap =
-    prevMap && typeof prevMap === 'object' && !Array.isArray(prevMap)
-      ? { ...prevMap }
-      : {};
-
-  (Array.isArray(savedAssignments) ? savedAssignments : []).forEach((assignment) => {
-    const assignmentId = String(assignment?.id || '').trim();
-    if (!assignmentId) return;
-
-    const previousRow = nextMap[assignmentId] || null;
-    const plannedStTotalSeconds = toNonNegativeInt(
-      assignment?.stTotalSeconds ?? assignment?.assignmentStTotalSeconds,
-      0
-    );
-    const isCompleted = Boolean(
+const resolveAssignmentProgressState = ({
+  assignment = null,
+  progressRow = null,
+} = {}) => {
+  const scheduleStatus =
+    String(progressRow?.scheduleStatus || assignment?.scheduleStatus || '').trim() || null;
+  const isCompleted = Boolean(
+    progressRow?.isCompleted ??
       assignment?.isCompleted ??
-        previousRow?.isCompleted ??
-        assignment?.completedAt ??
-        assignment?.productionCompletedAt ??
-        assignment?.closedAt
-    );
-    const rawProgressForRemainingRatio = Number(
-      previousRow?.progressForRemainingRatio ??
-        previousRow?.producedRatio ??
-        previousRow?.operationalProgressRatio
-    );
-    const progressForRemainingRatio = Number.isFinite(rawProgressForRemainingRatio)
-      ? Math.max(0, Math.min(1, rawProgressForRemainingRatio))
-      : null;
-    const remainingStTotalSeconds =
-      plannedStTotalSeconds > 0
-        ? isCompleted
-          ? 0
-          : progressForRemainingRatio == null
-            ? plannedStTotalSeconds
-            : Math.max(
-                0,
-                Math.round(
-                  plannedStTotalSeconds *
-                    (progressForRemainingRatio >= 1 ? 0 : 1 - progressForRemainingRatio)
-                )
-              )
-        : isCompleted
-          ? 0
-          : previousRow?.remainingStTotalSeconds ?? null;
-    const completedStTotalSeconds =
-      plannedStTotalSeconds > 0 && remainingStTotalSeconds != null
-        ? Math.max(0, plannedStTotalSeconds - remainingStTotalSeconds)
-        : previousRow?.completedStTotalSeconds ?? null;
-
-    nextMap[assignmentId] = {
-      ...previousRow,
-      id: assignmentId,
-      isCompleted,
-      scheduleStatus: isCompleted
-        ? 'PRODUCTION_COMPLETED'
-        : previousRow?.scheduleStatus ?? assignment?.scheduleStatus ?? null,
-      plannedStTotalSeconds:
-        plannedStTotalSeconds > 0
-          ? plannedStTotalSeconds
-          : previousRow?.plannedStTotalSeconds ?? null,
-      remainingStTotalSeconds,
-      completedStTotalSeconds,
-      isStUnknown:
-        plannedStTotalSeconds > 0
-          ? false
-          : Boolean(previousRow?.isStUnknown ?? assignment?.isStUnknown ?? true),
-      producedQuantity: previousRow?.producedQuantity ?? assignment?.producedQuantity ?? null,
-      operationalProgressRatio:
-        previousRow?.operationalProgressRatio ?? assignment?.operationalProgressRatio ?? null,
-      producedRatio: previousRow?.producedRatio ?? assignment?.producedRatio ?? null,
-      progressForRemainingRatio:
-        progressForRemainingRatio ??
-        previousRow?.progressForRemainingRatio ??
-        assignment?.progressForRemainingRatio ??
-        null,
-      progressPercent:
-        previousRow?.progressPercent ?? assignment?.progressPercent ?? null,
-      operationalProgressPercent:
-        previousRow?.operationalProgressPercent ??
-        assignment?.operationalProgressPercent ??
-        previousRow?.progressPercent ??
-        assignment?.progressPercent ??
-        null,
-      schedulerProgressPercent:
-        progressForRemainingRatio != null
-          ? clampPercentValue(progressForRemainingRatio * 100)
-          : previousRow?.schedulerProgressPercent ?? assignment?.schedulerProgressPercent ?? null,
-    };
+      progressRow?.completedAt ??
+      progressRow?.productionCompletedAt ??
+      assignment?.completedAt ??
+      assignment?.productionCompletedAt
+  );
+  const {
+    plannedStTotalSeconds,
+    remainingStTotalSeconds,
+    isStUnknown,
+  } = resolveAssignmentUiStMeta({
+    progressRow,
+    assignment,
+    isCompleted,
   });
+  const progressForRemainingRatio = resolveAssignmentProgressRatio({
+    progressRow,
+    assignment,
+    isCompleted,
+  });
+  const completedStTotalSeconds =
+    progressRow?.completedStTotalSeconds != null
+      ? Math.max(0, Number(progressRow.completedStTotalSeconds) || 0)
+      : plannedStTotalSeconds > 0 && remainingStTotalSeconds != null
+        ? Math.max(0, plannedStTotalSeconds - remainingStTotalSeconds)
+        : assignment?.completedStTotalSeconds ?? null;
+  const operationalProgressRatio =
+    toOptionalUnitRatio(progressRow?.operationalProgressRatio) ??
+    toOptionalUnitRatio(assignment?.operationalProgressRatio);
+  const producedRatio =
+    toOptionalUnitRatio(progressRow?.producedRatio) ??
+    toOptionalUnitRatio(assignment?.producedRatio);
+  const progressImbalanceGapRatio =
+    progressRow?.progressImbalanceGapRatio != null
+      ? Math.max(0, Number(progressRow.progressImbalanceGapRatio) || 0)
+      : Math.max(0, Number(assignment?.progressImbalanceGapRatio) || 0);
+  const rawWorkProgressPercent = toRawPercentValue(
+    progressRow?.operationalProgressPercent ??
+      progressRow?.progressPercent ??
+      assignment?.workProgressPercent ??
+      assignment?.progressPercent ??
+      0
+  );
 
-  return nextMap;
+  return {
+    plannedQuantity: Number(
+      progressRow?.plannedQuantity ?? assignment?.quantity ?? assignment?.plannedQuantity ?? 0
+    ),
+    scheduleStatus,
+    isCompleted,
+    plannedStTotalSeconds,
+    remainingStTotalSeconds,
+    completedStTotalSeconds,
+    operationalProgressRatio,
+    producedRatio,
+    progressForRemainingRatio,
+    progressImbalanceGapRatio,
+    hasProgressImbalanceWarning: Boolean(
+      progressRow?.hasProgressImbalanceWarning ?? assignment?.hasProgressImbalanceWarning
+    ),
+    schedulerProgressPercent:
+      progressRow?.schedulerProgressPercent != null
+        ? clampPercentValue(progressRow.schedulerProgressPercent)
+        : progressForRemainingRatio != null
+          ? clampPercentValue(progressForRemainingRatio * 100)
+          : assignment?.schedulerProgressPercent ?? null,
+    isStUnknown,
+    hasRangeCoverage: Boolean(progressRow?.hasRangeCoverage ?? assignment?.hasRangeCoverage),
+    lineOrphanWorkRecordCount:
+      Number(progressRow?.lineOrphanWorkRecordCount ?? assignment?.lineOrphanWorkRecordCount) ||
+      0,
+    hasOrphanWorkRecords: Boolean(
+      progressRow?.hasOrphanWorkRecords ?? assignment?.hasOrphanWorkRecords
+    ),
+    progressPercent: clampPercentValue(rawWorkProgressPercent),
+    workProgressPercent: rawWorkProgressPercent,
+    producedQuantity: progressRow?.producedQuantity ?? assignment?.producedQuantity ?? null,
+    completedAt:
+      progressRow?.productionCompletedAt ??
+      progressRow?.completedAt ??
+      progressRow?.closedAt ??
+      assignment?.completedAt ??
+      assignment?.closedAt ??
+      null,
+    productionCompletedAt:
+      progressRow?.productionCompletedAt ?? assignment?.productionCompletedAt ?? null,
+    actualProducedCompletedAt:
+      progressRow?.actualProducedCompletedAt ?? assignment?.actualProducedCompletedAt ?? null,
+    closedAt: progressRow?.closedAt ?? assignment?.closedAt ?? assignment?.completedAt ?? null,
+    closedQty: progressRow?.closedQty ?? assignment?.closedQty ?? assignment?.finalQuantity ?? null,
+    closeMode: progressRow?.closeMode ?? assignment?.closeMode ?? null,
+    closeBasis: progressRow?.closeBasis ?? assignment?.closeBasis ?? null,
+    isCompletionInconsistent: Boolean(
+      progressRow?.isCompletionInconsistent ?? assignment?.isCompletionInconsistent
+    ),
+    completionWarningCode:
+      progressRow?.completionWarningCode ?? assignment?.completionWarningCode ?? null,
+    completionGapQuantity:
+      Number(progressRow?.completionGapQuantity ?? assignment?.completionGapQuantity) || 0,
+    candidateEndDate: progressRow?.candidateEndDate ?? assignment?.candidateEndDate ?? null,
+    renderStartDate:
+      progressRow?.renderStartDate ??
+      assignment?.renderStartDate ??
+      assignment?.startDateKey ??
+      null,
+    renderEndDate:
+      progressRow?.renderEndDate ??
+      progressRow?.candidateEndDate ??
+      assignment?.renderEndDate ??
+      null,
+    forecastCompletedAt:
+      progressRow?.forecastCompletedAt ?? assignment?.forecastCompletedAt ?? null,
+    forecastBasis: progressRow?.forecastBasis ?? assignment?.forecastBasis ?? null,
+    firstWorkDate: progressRow?.firstWorkDate ?? assignment?.firstWorkDate ?? null,
+    lastWorkDate: progressRow?.lastWorkDate ?? assignment?.lastWorkDate ?? null,
+    elapsedDays: progressRow?.elapsedDays ?? assignment?.elapsedDays ?? null,
+    confidence: progressRow?.confidence ?? assignment?.confidence ?? null,
+  };
 };
 
 const resolveAssignmentRemainingStTotalSeconds = (assignment) => {
@@ -3175,12 +3246,6 @@ const AssignBoard = () => {
     },
     [days]
   );
-  const alignAssignmentsForBoardPut = useCallback(async (nextAssignments) => {
-    // PUT /assignment-board-state already rebases versions from current server
-    // state, so the legacy GET /assignment-board-versions preflight only adds
-    // save latency and extra failure noise without improving correctness.
-    return Array.isArray(nextAssignments) ? nextAssignments : [];
-  }, []);
   const resolveBoardSaveErrorMessage = useCallback((error, fallbackMessage) => {
     const raw = String(error?.message || '').trim();
     if (raw.toLowerCase().includes('assignment version conflict')) {
@@ -3773,13 +3838,12 @@ const AssignBoard = () => {
           skipGlobalLoading: true,
         });
 
-      const assignmentsForPut = await alignAssignmentsForBoardPut(normalizedAssignments);
-      const stDraftsForPut = buildStDraftPayload(assignmentsForPut);
-      const response = await persistBoardState(assignmentsForPut, stDraftsForPut);
+      const stDraftsForPut = buildStDraftPayload(normalizedAssignments);
+      const response = await persistBoardState(normalizedAssignments, stDraftsForPut);
       const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
         response,
         currentCards,
-        assignmentsForPut
+        normalizedAssignments
       );
       const ignoredStDraftWarnings = Array.isArray(response?.warnings)
         ? response.warnings.filter((item) => item?.type === 'ST_DRAFT_PROCESS_IGNORED')
@@ -3788,9 +3852,6 @@ const AssignBoard = () => {
       historyApplyingRef.current = true;
       setCards(persistedCards);
       setAssignments(persistedAssignments);
-      setAssignmentProgressById((prev) =>
-        mergeSavedAssignmentProgressRows(prev, persistedAssignments)
-      );
       setDetailDraftsByTarget({});
       setDetailStDraftsByTarget({});
       lastSavedSnapshotRef.current = createPersistSnapshotText(
@@ -4104,69 +4165,16 @@ const AssignBoard = () => {
       return (Array.isArray(inputAssignments) ? inputAssignments : []).map((item) => {
         const assignmentId = String(item?.id || '').trim();
         const progressRow = assignmentProgressById[assignmentId] || null;
-        const scheduleStatus = String(progressRow?.scheduleStatus || item?.scheduleStatus || '').trim();
-        const isCompleted = Boolean(progressRow?.isCompleted ?? item?.isCompleted);
-        const {
-          plannedStTotalSeconds,
-          remainingStTotalSeconds,
-          isStUnknown,
-        } = resolveAssignmentUiStMeta({
-          progressRow,
+        const progressState = resolveAssignmentProgressState({
           assignment: item,
-          isCompleted,
+          progressRow,
         });
         const next = {
           ...item,
-          isCompleted,
-          scheduleStatus: scheduleStatus || item?.scheduleStatus || null,
-          plannedStTotalSeconds,
-          remainingStTotalSeconds,
-          completedStTotalSeconds:
-            progressRow?.completedStTotalSeconds != null
-              ? Math.max(0, Number(progressRow.completedStTotalSeconds) || 0)
-              : item?.completedStTotalSeconds ?? null,
-          operationalProgressRatio:
-            progressRow?.operationalProgressRatio != null
-              ? Math.max(0, Math.min(1, Number(progressRow.operationalProgressRatio) || 0))
-              : item?.operationalProgressRatio ?? null,
-          producedRatio:
-            progressRow?.producedRatio != null
-              ? Math.max(0, Math.min(1, Number(progressRow.producedRatio) || 0))
-              : item?.producedRatio ?? null,
-          progressForRemainingRatio:
-            progressRow?.progressForRemainingRatio != null
-              ? Math.max(0, Math.min(1, Number(progressRow.progressForRemainingRatio) || 0))
-              : item?.progressForRemainingRatio ?? null,
-          progressImbalanceGapRatio:
-            progressRow?.progressImbalanceGapRatio != null
-              ? Math.max(0, Number(progressRow.progressImbalanceGapRatio) || 0)
-              : item?.progressImbalanceGapRatio ?? 0,
-          hasProgressImbalanceWarning: Boolean(
-            progressRow?.hasProgressImbalanceWarning ?? item?.hasProgressImbalanceWarning
-          ),
-          schedulerProgressPercent:
-            progressRow?.schedulerProgressPercent != null
-              ? clampPercentValue(progressRow.schedulerProgressPercent)
-              : item?.schedulerProgressPercent ?? null,
-          isStUnknown,
-          hasRangeCoverage: Boolean(progressRow?.hasRangeCoverage ?? item?.hasRangeCoverage),
-          lineOrphanWorkRecordCount:
-            Number(
-              progressRow?.lineOrphanWorkRecordCount ?? item?.lineOrphanWorkRecordCount
-            ) || 0,
-          hasOrphanWorkRecords: Boolean(
-            progressRow?.hasOrphanWorkRecords ?? item?.hasOrphanWorkRecords
-          ),
-          progressPercent: clampPercentValue(
-            progressRow?.operationalProgressPercent ??
-              progressRow?.progressPercent ??
-              item?.workProgressPercent ??
-              item?.progressPercent ??
-              0
-          ),
+          ...progressState,
         };
 
-        if (!useCompletedRenderRange || !isCompleted) {
+        if (!useCompletedRenderRange || !progressState.isCompleted) {
           return next;
         }
 
@@ -4176,19 +4184,13 @@ const AssignBoard = () => {
           toSignedInt(item?.endIndex, defaultStartIndex)
         );
         const renderStartDateKey =
-          resolveDateKey(progressRow?.renderStartDate) ||
-          (typeof item?.renderStartDate === 'string' && item.renderStartDate.trim()
-            ? item.renderStartDate.trim()
-            : null) ||
+          resolveDateKey(progressState.renderStartDate) ||
           (typeof item?.startDateKey === 'string' && item.startDateKey.trim()
             ? item.startDateKey.trim()
             : null);
         const renderEndDateKey =
-          resolveDateKey(progressRow?.renderEndDate) ||
-          resolveDateKey(progressRow?.candidateEndDate) ||
-          (typeof item?.renderEndDate === 'string' && item.renderEndDate.trim()
-            ? item.renderEndDate.trim()
-            : null) ||
+          resolveDateKey(progressState.renderEndDate) ||
+          resolveDateKey(progressState.candidateEndDate) ||
           (typeof item?.endDateKey === 'string' && item.endDateKey.trim()
             ? item.endDateKey.trim()
             : null);
@@ -4367,49 +4369,40 @@ const AssignBoard = () => {
       return Math.round((targetDate.getTime() - firstDayDate.getTime()) / 86400000);
     };
 
-    const mappedAssignments = assignments
+    const { assignments: predictiveAssignments } = buildPredictiveAssignments(
+      assignments,
+      {
+        daysOverride: days,
+        lineCapacityOverride: lineCapacityById,
+        useCompletedRenderRange: true,
+      }
+    );
+    const mappedAssignments = predictiveAssignments
       .filter((item) => item.endIndex >= 0 && item.startIndex < dayCount)
       .map((item) => {
-        const assignmentId = String(item?.id || '').trim();
-        const progressRow = assignmentProgressById[assignmentId] || null;
-        const plannedQuantity = Number(
-          progressRow?.plannedQuantity ?? item?.quantity ?? item?.plannedQuantity ?? 0
-        );
+        const plannedQuantity = Number(item?.plannedQuantity ?? item?.quantity ?? 0);
         const qcDisplayQuantity = 0;
-        const rawProgressPercent = toRawPercentValue(
-          progressRow?.operationalProgressPercent ??
-            progressRow?.progressPercent ??
-            item?.workProgressPercent ??
-            item?.progressPercent ??
-            0
+        const workProgressPercent = toRawPercentValue(
+          item?.workProgressPercent ?? item?.progressPercent ?? 0
         );
-        const scheduleStatus = String(progressRow?.scheduleStatus || '').trim();
-        const isCompleted = Boolean(progressRow?.isCompleted ?? item?.isCompleted);
-        const {
-          plannedStTotalSeconds,
-          remainingStTotalSeconds,
-          isStUnknown,
-        } = resolveAssignmentUiStMeta({
-          progressRow,
-          assignment: item,
-          isCompleted,
-        });
-        const workProgressPercent = rawProgressPercent;
-        const qcProgressPercent = 0;
         const renderStartDateKey =
-          resolveDateKey(progressRow?.renderStartDate) ||
+          resolveDateKey(item?.renderStartDate) ||
           (typeof item?.startDateKey === 'string' && item.startDateKey.trim()
             ? item.startDateKey.trim()
             : null);
         const renderEndDateKey =
-          resolveDateKey(progressRow?.renderEndDate) ||
-          resolveDateKey(progressRow?.candidateEndDate) ||
+          resolveDateKey(item?.renderEndDate) ||
+          resolveDateKey(item?.candidateEndDate) ||
           (typeof item?.endDateKey === 'string' && item.endDateKey.trim()
             ? item.endDateKey.trim()
             : null);
         const defaultStartIndex = toSignedInt(item?.startIndex, 0);
-        const defaultEndIndex = Math.max(defaultStartIndex, toSignedInt(item?.endIndex, defaultStartIndex));
-        const useRenderDateRange = isCompleted && Boolean(renderStartDateKey && renderEndDateKey);
+        const defaultEndIndex = Math.max(
+          defaultStartIndex,
+          toSignedInt(item?.endIndex, defaultStartIndex)
+        );
+        const useRenderDateRange =
+          Boolean(item?.isCompleted) && Boolean(renderStartDateKey && renderEndDateKey);
         const renderStartIndex = useRenderDateRange
           ? resolveIndexFromDateKey(renderStartDateKey, defaultStartIndex)
           : defaultStartIndex;
@@ -4420,7 +4413,7 @@ const AssignBoard = () => {
             )
           : defaultEndIndex;
         const statusType = resolveAssignmentVisualStatus({
-          isCompleted,
+          isCompleted: Boolean(item?.isCompleted),
           startDateKey: renderStartDateKey || item?.startDateKey,
           endDateKey: renderEndDateKey || item?.endDateKey,
           todayDateKey,
@@ -4433,87 +4426,18 @@ const AssignBoard = () => {
           ...item,
           quantity: item.quantity ?? card.quantity,
           gender: item.gender ?? card.gender,
-          isCompleted,
-          completedAt:
-            progressRow?.productionCompletedAt ??
-            progressRow?.completedAt ??
-            progressRow?.closedAt ??
-            item?.completedAt ??
-            item?.closedAt ??
-            null,
-          productionCompletedAt:
-            progressRow?.productionCompletedAt ?? item?.productionCompletedAt ?? null,
-          scheduleStatus: scheduleStatus || item?.scheduleStatus || null,
+          plannedQuantity,
           useRenderDateRange,
-          candidateEndDate:
-            progressRow?.candidateEndDate ?? item?.candidateEndDate ?? null,
-          renderStartDate:
-            progressRow?.renderStartDate ?? item?.renderStartDate ?? item?.startDateKey ?? null,
-          renderEndDate:
-            progressRow?.renderEndDate ?? progressRow?.candidateEndDate ?? item?.renderEndDate ?? null,
           startDateKey: item?.startDateKey,
           endDateKey: item?.endDateKey,
           startIndex: defaultStartIndex,
           endIndex: defaultEndIndex,
           renderStartIndex,
           renderEndIndex,
-          closedAt:
-            progressRow?.closedAt ?? item?.closedAt ?? item?.completedAt ?? null,
-          closedQty:
-            progressRow?.closedQty ?? item?.closedQty ?? item?.finalQuantity ?? null,
-          closeMode: progressRow?.closeMode ?? item?.closeMode ?? null,
-          closeBasis: progressRow?.closeBasis ?? item?.closeBasis ?? null,
-          isCompletionInconsistent: Boolean(
-            progressRow?.isCompletionInconsistent ?? item?.isCompletionInconsistent
-          ),
-          completionWarningCode:
-            progressRow?.completionWarningCode ?? item?.completionWarningCode ?? null,
-          completionGapQuantity:
-            Number(progressRow?.completionGapQuantity ?? item?.completionGapQuantity) || 0,
-          producedQuantity:
-            progressRow?.producedQuantity ?? item?.producedQuantity ?? null,
-          plannedStTotalSeconds,
-          remainingStTotalSeconds,
-          completedStTotalSeconds:
-            progressRow?.completedStTotalSeconds != null
-              ? Math.max(0, Number(progressRow.completedStTotalSeconds) || 0)
-              : null,
-          operationalProgressRatio:
-            progressRow?.operationalProgressRatio != null
-              ? Math.max(0, Math.min(1, Number(progressRow.operationalProgressRatio) || 0))
-              : null,
-          producedRatio:
-            progressRow?.producedRatio != null
-              ? Math.max(0, Math.min(1, Number(progressRow.producedRatio) || 0))
-              : item?.producedRatio ?? null,
-          progressForRemainingRatio:
-            progressRow?.progressForRemainingRatio != null
-              ? Math.max(0, Math.min(1, Number(progressRow.progressForRemainingRatio) || 0))
-              : item?.progressForRemainingRatio ?? null,
-          progressImbalanceGapRatio:
-            progressRow?.progressImbalanceGapRatio != null
-              ? Math.max(0, Number(progressRow.progressImbalanceGapRatio) || 0)
-              : item?.progressImbalanceGapRatio ?? 0,
-          hasProgressImbalanceWarning: Boolean(
-            progressRow?.hasProgressImbalanceWarning ?? item?.hasProgressImbalanceWarning
-          ),
-          schedulerProgressPercent:
-            progressRow?.schedulerProgressPercent != null
-              ? clampPercentValue(progressRow.schedulerProgressPercent)
-              : item?.schedulerProgressPercent ?? null,
-          isStUnknown,
-          hasRangeCoverage: Boolean(progressRow?.hasRangeCoverage ?? item?.hasRangeCoverage),
-          lineOrphanWorkRecordCount:
-            Number(
-              progressRow?.lineOrphanWorkRecordCount ?? item?.lineOrphanWorkRecordCount
-            ) || 0,
-          hasOrphanWorkRecords: Boolean(
-            progressRow?.hasOrphanWorkRecords ?? item?.hasOrphanWorkRecords
-          ),
           progressPercent: clampPercentValue(workProgressPercent),
           workProgressPercent,
           qcPassedTotal: qcDisplayQuantity || 0,
-          qcProgressPercent,
+          qcProgressPercent: 0,
           qcDisplaySource: 'none',
           latestQcDate: null,
           statusType,
@@ -4522,14 +4446,6 @@ const AssignBoard = () => {
             (hasSavedCtSnapshot(item) ? 'SAVED' : 'UNSAVED'),
         };
       });
-    const { assignments: predictiveAssignments } = buildPredictiveAssignments(
-      mappedAssignments,
-      {
-        daysOverride: days,
-        lineCapacityOverride: lineCapacityById,
-        useCompletedRenderRange: true,
-      }
-    );
 
     const compareDisplayOrder = (left, right) => {
       const leftLineId = String(left?.lineId ?? '');
@@ -4556,12 +4472,11 @@ const AssignBoard = () => {
       });
     };
 
-    return [...predictiveAssignments].sort(compareDisplayOrder);
+    return [...mappedAssignments].sort(compareDisplayOrder);
   }, [
     assignments,
     buildPredictiveAssignments,
     assignmentCtDisplayStateById,
-    assignmentProgressById,
     cardById,
     days,
     dayCount,
@@ -4579,27 +4494,8 @@ const AssignBoard = () => {
         useCompletedRenderRange: false,
         daysOverride: days,
       }).map((item) => {
-        const assignmentId = String(item?.id || '').trim();
-        const progressRow = assignmentProgressById[assignmentId] || null;
         const startIndex = Math.max(0, toSignedInt(item?.startIndex, 0));
         const endIndex = Math.max(startIndex, toSignedInt(item?.endIndex, startIndex));
-        const isCompleted = Boolean(
-          progressRow?.isCompleted ??
-            item?.isCompleted ??
-            progressRow?.completedAt ??
-            progressRow?.productionCompletedAt ??
-            item?.completedAt ??
-            item?.productionCompletedAt
-        );
-        const {
-          plannedStTotalSeconds,
-          remainingStTotalSeconds,
-          isStUnknown,
-        } = resolveAssignmentUiStMeta({
-          progressRow,
-          assignment: item,
-          isCompleted,
-        });
         const fallbackStartDateKey =
           typeof days[startIndex]?.key === 'string' ? days[startIndex].key : '';
         const fallbackEndDateKey =
@@ -4610,41 +4506,9 @@ const AssignBoard = () => {
             normalizeCapacityDateKey(item?.startDateKey) || fallbackStartDateKey || null,
           endDateKey:
             normalizeCapacityDateKey(item?.endDateKey) || fallbackEndDateKey || null,
-          plannedStTotalSeconds,
-          remainingStTotalSeconds,
-          isStUnknown,
-          producedQuantity:
-            progressRow?.producedQuantity ?? item?.producedQuantity ?? null,
-          completedAt:
-            progressRow?.completedAt ??
-            progressRow?.productionCompletedAt ??
-            progressRow?.closedAt ??
-            item?.completedAt ??
-            item?.closedAt ??
-            null,
-          productionCompletedAt:
-            progressRow?.productionCompletedAt ?? item?.productionCompletedAt ?? null,
-          actualProducedCompletedAt:
-            progressRow?.actualProducedCompletedAt ?? item?.actualProducedCompletedAt ?? null,
-          candidateEndDate:
-            progressRow?.candidateEndDate ?? item?.candidateEndDate ?? null,
-          renderEndDate:
-            progressRow?.renderEndDate ?? item?.renderEndDate ?? null,
-          forecastCompletedAt:
-            progressRow?.forecastCompletedAt ?? item?.forecastCompletedAt ?? null,
-          forecastBasis:
-            progressRow?.forecastBasis ?? item?.forecastBasis ?? null,
-          firstWorkDate:
-            progressRow?.firstWorkDate ?? item?.firstWorkDate ?? null,
-          lastWorkDate:
-            progressRow?.lastWorkDate ?? item?.lastWorkDate ?? null,
-          elapsedDays:
-            progressRow?.elapsedDays ?? item?.elapsedDays ?? null,
-          confidence:
-            progressRow?.confidence ?? item?.confidence ?? null,
         };
       }),
-    [applySchedulerProgressToAssignments, assignmentProgressById, assignments, days]
+    [applySchedulerProgressToAssignments, assignments, days]
   );
   const planningMonthKeys = useMemo(
     () =>

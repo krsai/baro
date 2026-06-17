@@ -9337,44 +9337,6 @@ const buildAssignmentVersionMap = (items: any[]): Map<string, number> =>
     map.set(externalId, toNonNegativeInt(item?.version, 0));
     return map;
   }, new Map<string, number>());
-const findAssignmentVersionConflicts = (
-  incomingAssignments: any[],
-  currentVersionByExternalId: Map<string, number>
-) => {
-  const seen = new Set<string>();
-  return ensureArray(incomingAssignments).reduce((rows: any[], item) => {
-    if (!item || typeof item !== "object") return rows;
-    const externalId = resolveAssignmentExternalId(item);
-    if (!externalId || seen.has(externalId)) return rows;
-    seen.add(externalId);
-    const expectedVersion = toNonNegativeInt(item?.version, 0);
-    const currentVersion = currentVersionByExternalId.get(externalId) ?? 0;
-    if (expectedVersion === currentVersion) return rows;
-    rows.push({
-      id: externalId,
-      expectedVersion,
-      currentVersion,
-    });
-    return rows;
-  }, [] as any[]);
-};
-const withIncrementedAssignmentVersions = (
-  incomingAssignments: any[],
-  currentVersionByExternalId: Map<string, number>,
-  nowIso: string
-): any[] =>
-  ensureArray(incomingAssignments).map((item) => {
-    if (!item || typeof item !== "object") return item;
-    const externalId = resolveAssignmentExternalId(item);
-    if (!externalId) return item;
-    const currentVersion = currentVersionByExternalId.get(externalId) ?? 0;
-    return normalizeStateAssignmentItem({
-      ...item,
-      id: externalId,
-      version: currentVersion + 1,
-      versionUpdatedAt: nowIso,
-    });
-  });
 const toStableJsonText = (value: any): string => {
   if (value === null || value === undefined) {
     return JSON.stringify(value);
@@ -21205,16 +21167,6 @@ app.put("/assignment-board-state", async (req, res) => {
         );
       }
     }
-    const versionConflicts = findAssignmentVersionConflicts(
-      changedIncomingAssignments,
-      currentVersionByExternalId
-    );
-    // Last-write-wins for assignment board saves:
-    // when versions diverge (often due background/system sync), accept the user's
-    // incoming board payload and rebase version counters from current server values.
-    // We still increment from currentVersion below, so version history remains monotonic.
-    void versionConflicts;
-
     const nextAssignmentExternalIds = Array.from(nextAssignmentsByExternalId.keys()).map(
       (externalId) => String(externalId)
     );
