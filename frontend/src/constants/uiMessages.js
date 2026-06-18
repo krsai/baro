@@ -529,6 +529,11 @@ export const UI_MESSAGES = {
       en: 'Enter the quantity to split (1 to {max})',
       vi: 'Nhap so luong can tach (1 den {max})',
     },
+    splitAssignedBlocked: {
+      ko: '배정된 작업은 분할할 수 없습니다. 미배정 상태에서만 분할하세요.',
+      en: 'Assigned work cannot be split. Split it while it is still unassigned.',
+      vi: 'Khong the tach cong viec da duoc phan cong. Chi tach khi con o trang thai chua phan cong.',
+    },
     saveSuccess: {
       ko: '작업 배정을 저장했습니다.',
       en: 'Assignment saved.',

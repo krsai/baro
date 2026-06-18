@@ -6382,9 +6382,9 @@ const resolveAssignmentProducedQuantityFromProcessTotals = ({
   processTotals: number[];
   baselineQuantity: number | null;
 }): number => {
-  const normalizedTotals = ensureArray(processTotals)
-    .map((value) => Math.max(0, Math.round(Number(value) || 0)))
-    .filter((value) => value > 0);
+  const normalizedTotals = ensureArray(processTotals).map((value) =>
+    Math.max(0, Math.round(Number(value) || 0))
+  );
   if (normalizedTotals.length === 0) return 0;
   if (normalizedTotals.length === 1) return normalizedTotals[0]!;
   // 완제품 수량은 공정별 누적의 최소값으로 본다.
@@ -6651,6 +6651,7 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
       externalId: true,
       lineId: true,
       assignmentQuantity: true,
+      assignmentCtSnapshot: true,
       startIndex: true,
       endIndex: true,
       startDayOffsetPercent: true,
@@ -6718,6 +6719,7 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
   linePlans.forEach((plan) => {
     const baselineQuantity = baselineQuantityByPlanId.get(plan.id);
     if (baselineQuantity == null || baselineQuantity <= 0) return;
+    const processKeyGroups = resolveAssignmentPlanRequiredProcessGroups(plan);
 
     const byDate = processBucketsByPlanDate.get(plan.id);
     if (!byDate || byDate.size === 0) return;
@@ -6734,9 +6736,9 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
         );
       });
 
-      const producedQuantity = resolveAssignmentProducedQuantityFromProcessTotals({
-        processTotals: Array.from(cumulativeByProcess.values()),
-        baselineQuantity,
+      const producedQuantity = resolveProducedQtyFromProcessKeyTotals({
+        processTotalsByKey: cumulativeByProcess,
+        processKeyGroups,
       });
       if (producedQuantity >= baselineQuantity) {
         completionDateByPlanId.set(plan.id, dateKey);

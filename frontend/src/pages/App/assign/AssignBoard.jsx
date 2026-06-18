@@ -5111,15 +5111,12 @@ const AssignBoard = () => {
   const contextSplitDisabled = useMemo(() => {
     if (!contextMenuState) return true;
     if (contextMenuState.targetType === 'assignment') {
-      if (!contextMenuTargetAssignment) return true;
-      if (Boolean(contextMenuTargetAssignment?.isCompleted)) return true;
-      return Number(contextMenuTargetAssignment.quantity ?? 0) <= 1;
+      return true;
     }
     if (!contextMenuTargetCard) return true;
     return Number(contextMenuTargetCard.quantity ?? 0) <= 1;
   }, [
     contextMenuState,
-    contextMenuTargetAssignment,
     contextMenuTargetCard,
   ]);
   const contextMarkCompleteDisabled = useMemo(() => {
@@ -5971,68 +5968,16 @@ const AssignBoard = () => {
 
   const handleSplitAssignment = useCallback((assignmentId) => {
     const target = assignmentById.get(assignmentId);
-    if (!target?.cardId) return;
-    if (target?.isCompleted) {
-      showNotification(
-        getUiMessage(
-          'assign.completedReadOnlyAction',
-          'Completed assignments cannot be modified.',
-          languageCode
-        ),
-        'warning'
-      );
-      return;
-    }
-    const card = cardById.get(target.cardId);
-    if (!card) return;
-    const quantity = Number(card.quantity ?? target.quantity);
-    const splitQty = promptSplitQuantity(quantity);
-    if (!splitQty) return;
-    const remainQty = quantity - splitQty;
-    const ratio = splitQty / quantity;
-    const remainRatio = remainQty / quantity;
-    const newId = `${card.id}-S${splitCounterRef.current++}`;
-    const updatedCard = buildSplitCard(card, remainQty, remainRatio, card.id);
-    const splitCard = buildSplitCard(card, splitQty, ratio, newId);
-
-    setCards((prev) => prev.map((item) => (item.id === card.id ? updatedCard : item)).concat(splitCard));
-
-    const recalculatedStTotalSeconds =
-      resolveCardStTotalSeconds(updatedCard) || scaleValue(target.stTotalSeconds, remainRatio) || 1;
-    const range = recomputeAssignmentRange(
-      target,
-      recalculatedStTotalSeconds,
-      days,
-      lineCapacityById
+    if (!target) return;
+    showNotification(
+      getUiMessage(
+        'assign.splitAssignedBlocked',
+        'Assigned work cannot be split. Split it while it is still unassigned.',
+        languageCode
+      ),
+      'warning'
     );
-    setAssignments((prev) =>
-      prev.map((item) =>
-        item.id === assignmentId
-          ? syncAssignmentDateKeys(
-              {
-                ...item,
-                quantity: remainQty,
-                basis: getCardBasis(updatedCard),
-                stTotalSeconds: recalculatedStTotalSeconds,
-                ctTotalSeconds: null,
-                assignmentCtSnapshot: null,
-                ...range,
-              },
-              startDateRef.current
-            )
-          : item
-      )
-    );
-  }, [
-    assignmentById,
-    cardById,
-    promptSplitQuantity,
-    buildSplitCard,
-    days,
-    lineCapacityById,
-    showNotification,
-    languageCode,
-  ]);
+  }, [assignmentById, showNotification, languageCode]);
   const handleContextSplit = useCallback(() => {
     if (!contextMenuState) return;
     if (contextMenuState.targetType === 'assignment') {
