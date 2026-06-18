@@ -345,6 +345,26 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
                 { count: row.activeAssignmentCount || 0 }
               )}
             </Typography>
+            {Number(row.reviewRequiredAssignmentCount) > 0 ? (
+              <Typography variant="caption" color="error.main" sx={{ display: 'block' }}>
+                {getUiMessage(
+                  'assign.reviewCountCompact',
+                  '{count} in review',
+                  languageCode,
+                  { count: row.reviewRequiredAssignmentCount || 0 }
+                )}
+              </Typography>
+            ) : null}
+            {Number(row.readyToCompleteAssignmentCount) > 0 ? (
+              <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
+                {getUiMessage(
+                  'assign.workDoneCountCompact',
+                  '{count} work done',
+                  languageCode,
+                  { count: row.readyToCompleteAssignmentCount || 0 }
+                )}
+              </Typography>
+            ) : null}
             {Number(row.stUnknownAssignmentCount) > 0 ? (
               <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
                 {getUiMessage(
@@ -610,6 +630,58 @@ const LineMonthCapacityBoard = ({
                               </>
                             )}
                           </Stack>
+                          {row.reviewRequiredAssignments.length > 0 ? (
+                            <>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: 'block', mt: 1.5, mb: 1 }}
+                              >
+                                {getUiMessage(
+                                  'assign.reviewAssignmentsHeader',
+                                  'Review required',
+                                  languageCode
+                                )}
+                              </Typography>
+                              <Stack spacing={1}>
+                                {row.reviewRequiredAssignments.map((assignment) => (
+                                  <AssignmentDetailCard
+                                    key={assignment.id || `${row.lineId}:${assignment.label}:review`}
+                                    assignment={assignment}
+                                    languageCode={languageCode}
+                                    onOpenDetail={onOpenAssignmentDetail}
+                                    onOpenContextMenu={onOpenContextMenu}
+                                  />
+                                ))}
+                              </Stack>
+                            </>
+                          ) : null}
+                          {row.readyToCompleteAssignments.length > 0 ? (
+                            <>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: 'block', mt: 1.5, mb: 1 }}
+                              >
+                                {getUiMessage(
+                                  'assign.readyAssignmentsHeader',
+                                  'Work done',
+                                  languageCode
+                                )}
+                              </Typography>
+                              <Stack spacing={1}>
+                                {row.readyToCompleteAssignments.map((assignment) => (
+                                  <AssignmentDetailCard
+                                    key={assignment.id || `${row.lineId}:${assignment.label}:ready`}
+                                    assignment={assignment}
+                                    languageCode={languageCode}
+                                    onOpenDetail={onOpenAssignmentDetail}
+                                    onOpenContextMenu={onOpenContextMenu}
+                                  />
+                                ))}
+                              </Stack>
+                            </>
+                          ) : null}
                           <Typography
                             variant="caption"
                             color="text.secondary"

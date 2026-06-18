@@ -571,6 +571,26 @@ export const UI_MESSAGES = {
       en: 'Review required',
       vi: 'Can xem xet',
     },
+    reviewCountCompact: {
+      ko: '검토 {count}건',
+      en: '{count} in review',
+      vi: '{count} can xem xet',
+    },
+    workDoneCountCompact: {
+      ko: '작업 완료 {count}건',
+      en: '{count} work done',
+      vi: '{count} da xong viec',
+    },
+    reviewAssignmentsHeader: {
+      ko: '검토 필요',
+      en: 'Review required',
+      vi: 'Can xem xet',
+    },
+    readyAssignmentsHeader: {
+      ko: '작업 완료',
+      en: 'Work done',
+      vi: 'Da xong viec',
+    },
     saveSuccess: {
       ko: '작업 배정을 저장했습니다.',
       en: 'Assignment saved.',

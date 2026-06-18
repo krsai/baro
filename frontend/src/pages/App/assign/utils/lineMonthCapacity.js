@@ -295,9 +295,12 @@ const buildLineQueueForecast = ({
     new Date().toISOString().slice(0, 10);
   const dailyCapacitySeconds = resolveLineDailyCapacitySeconds(line);
   const queuedAssignments = [];
+  const reviewRequiredAssignments = [];
+  const readyToCompleteAssignments = [];
   const completedAssignments = [];
   let queuedCount = 0;
   let completedCount = 0;
+  let reviewRequiredCount = 0;
   let readyToCompleteCount = 0;
 
   (Array.isArray(assignments) ? assignments : []).forEach((assignment) => {
@@ -354,6 +357,27 @@ const buildLineQueueForecast = ({
     }
     if (isReadyToComplete) {
       readyToCompleteCount += 1;
+      readyToCompleteAssignments.push({
+        ...baseAssignment,
+        queuePosition: readyToCompleteCount,
+        queueStatus: 'ready_to_complete',
+        estimatedRemainingWorkDays: 0,
+        forecastStartDateKey: null,
+        forecastEndDateKey: completedAt || null,
+      });
+      return;
+    }
+    if (isReviewRequired) {
+      reviewRequiredCount += 1;
+      reviewRequiredAssignments.push({
+        ...baseAssignment,
+        queuePosition: reviewRequiredCount,
+        queueStatus: 'review_required',
+        estimatedRemainingWorkDays: 0,
+        forecastStartDateKey: null,
+        forecastEndDateKey: completedAt || null,
+      });
+      return;
     }
 
     const estimatedRemainingWorkDays =
@@ -403,8 +427,11 @@ const buildLineQueueForecast = ({
   return {
     dailyCapacitySeconds,
     queuedAssignments,
+    reviewRequiredAssignments,
+    readyToCompleteAssignments,
     completedAssignments,
     completedCount,
+    reviewRequiredCount,
     readyToCompleteCount,
     totalRemainingStTotalSeconds,
     queueBacklogDays: roundDaysEstimate(totalRemainingStTotalSeconds, dailyCapacitySeconds),
@@ -597,6 +624,7 @@ export const buildLineMonthCapacityBoardRows = ({
             assignment?.progressPercent == null
               ? null
               : Math.max(0, Math.min(100, Number(assignment.progressPercent) || 0)),
+          scheduleStatus: String(assignment?.scheduleStatus || '').trim() || null,
           visiblePlannedStTotalSeconds: 0,
           isCompleted: Boolean(assignment?.isCompleted),
           completedAt: normalizeDateKey(assignment?.completedAt),
@@ -877,12 +905,18 @@ export const buildLineMonthCapacityBoardRows = ({
       queueBacklogDays: queueForecast.queueBacklogDays,
       lineFreeDateKey: queueForecast.lineFreeDateKey || null,
       activeAssignmentCount: queueForecast.queuedAssignments.length,
+      reviewRequiredAssignmentCount: queueForecast.reviewRequiredCount,
       completedAssignmentCount: queueForecast.completedCount,
       readyToCompleteAssignmentCount: queueForecast.readyToCompleteCount,
+      completionPendingAssignmentCount:
+        queueForecast.reviewRequiredAssignments.length +
+        queueForecast.readyToCompleteAssignments.length,
       finishedAssignmentCount: queueForecast.completedAssignments.length,
       months,
       assignments: assignmentsForLine,
       queuedAssignments: queueForecast.queuedAssignments,
+      reviewRequiredAssignments: queueForecast.reviewRequiredAssignments,
+      readyToCompleteAssignments: queueForecast.readyToCompleteAssignments,
       completedAssignments: queueForecast.completedAssignments,
     };
   });
