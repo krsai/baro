@@ -1197,6 +1197,28 @@ runtime 조회값:
 - progress row는 `isPayrollLocked`, `payrollLockMonth`를 노출할 수 있고, UI는 이 값을 경고/버튼 차단에 사용한다.
 - 이 잠금 규칙은 이후 시스템 관리자용 비상 복구 기능과 별개다.
 
+### 28A. 2026-06-18 Board Visibility Follow-up
+
+- Canonical completion statuses are now:
+  - `IN_PROGRESS`
+  - `REVIEW_REQUIRED`
+  - `READY_TO_COMPLETE`
+  - `PRODUCTION_COMPLETED`
+- line-month capacity UI must group cards by canonical status.
+- A card with work progress `100%` must not remain in the active queued group when its `scheduleStatus` is `REVIEW_REQUIRED` or `READY_TO_COMPLETE`.
+- Current UI lock:
+  - `queued` = still actively in progress
+  - `review_required` = progress reached 100% but process quantity exactness needs review
+  - `ready_to_complete` = system-validated or manually confirmed work done, but not payroll-finalized
+  - `completed` = payroll-finalized canonical completion
+- Hiding `PRODUCTION_COMPLETED` assignments from operational boards after payroll is intentionally deferred.
+- Reason for defer:
+  - payroll detail UX and historical lookup/report requirements are not finalized yet
+  - current priority is preserving canonical status semantics and visible grouping first
+- Follow-up implementation target:
+  - decide whether post-payroll hiding should be frontend-only, API-default filtering, or both
+  - once payroll UX is fixed, document the default visibility contract for `/assignment-board-view` and `/line-month-capacity`
+
 ### 29. 2026-06-05 Scheduler Length Adjustment Phase 1 Lock
 
 - 이 섹션은 `카드 길이 계산 기준`만 잠근다.
