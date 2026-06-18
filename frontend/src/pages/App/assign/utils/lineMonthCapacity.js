@@ -302,6 +302,7 @@ const buildLineQueueForecast = ({
 
   (Array.isArray(assignments) ? assignments : []).forEach((assignment) => {
     const isCompleted = Boolean(assignment?.isCompleted);
+    const scheduleStatus = String(assignment?.scheduleStatus || '').trim();
     const isStUnknown = Boolean(assignment?.isStUnknown) && !isCompleted;
     const rawRemainingStTotalSeconds =
       isStUnknown
@@ -323,8 +324,8 @@ const buildLineQueueForecast = ({
     const persistedCompletedAt =
       productionCompletedAt || normalizeDateKey(assignment?.completedAt);
     const completedAt = persistedCompletedAt || actualProducedCompletedAt || null;
-    const isReadyToComplete =
-      !isCompleted && Boolean(actualProducedCompletedAt);
+    const isReadyToComplete = !isCompleted && scheduleStatus === 'READY_TO_COMPLETE';
+    const isReviewRequired = !isCompleted && scheduleStatus === 'REVIEW_REQUIRED';
     const elapsedDays = Math.max(0, Number(assignment?.elapsedDays) || 0);
     const baseAssignment = {
       ...assignment,
@@ -364,7 +365,11 @@ const buildLineQueueForecast = ({
     queuedAssignments.push({
       ...baseAssignment,
       queuePosition: queuedCount,
-      queueStatus: isReadyToComplete ? 'ready_to_complete' : 'queued',
+      queueStatus: isReadyToComplete
+        ? 'ready_to_complete'
+        : isReviewRequired
+          ? 'review_required'
+          : 'queued',
       estimatedRemainingWorkDays,
       forecastStartDateKey: null,
       forecastEndDateKey: null,

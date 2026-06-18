@@ -372,6 +372,12 @@ export const UI_MESSAGES = {
     etaUnavailableCompact: { ko: 'ETA 계산 불가', en: 'ETA unavailable', vi: 'Khong tinh duoc ETA' },
     completedStatusCompact: { ko: '완료', en: 'Completed', vi: 'Hoan thanh' },
     readyStatusCompact: { ko: '작업 완료', en: 'Work done', vi: 'Da xong viec' },
+    reviewStatusCompact: { ko: '검토 필요', en: 'Review required', vi: 'Can xem xet' },
+    reviewRequiredCompact: {
+      ko: '수량 검토 필요',
+      en: 'Quantity review required',
+      vi: 'Can xem lai so luong',
+    },
     stUnknownExcludedCompact: {
       ko: 'ST 미설정 {count}건 제외',
       en: '{count} ST-missing excluded',
@@ -501,7 +507,7 @@ export const UI_MESSAGES = {
     cardOrderNoLabel: { ko: '주문번호', en: 'Order No.', vi: 'Ma don hang' },
     cardStyleLabel: { ko: '스타일', en: 'Style', vi: 'Style' },
     cardQuantityLabel: { ko: '수량', en: 'Quantity', vi: 'So luong' },
-    cardProgressLabel: { ko: '진행도', en: 'Progress', vi: 'Tien do' },
+    cardProgressLabel: { ko: '진행률', en: 'Progress', vi: 'Tien do' },
     lineLabel: { ko: '라인', en: 'Line', vi: 'Chuyen' },
     imageUnavailable: {
       ko: '이미지\n없음',
@@ -533,6 +539,37 @@ export const UI_MESSAGES = {
       ko: '배정된 작업은 분할할 수 없습니다. 미배정 상태에서만 분할하세요.',
       en: 'Assigned work cannot be split. Split it while it is still unassigned.',
       vi: 'Khong the tach cong viec da duoc phan cong. Chi tach khi con o trang thai chua phan cong.',
+    },
+    confirmWorkDone: {
+      ko: '작업 완료 확인',
+      en: 'Confirm work done',
+      vi: 'Xac nhan da xong viec',
+    },
+    confirmWorkDoneHelper: {
+      ko: '작업기록 수량을 검토한 뒤 작업 완료 수량을 확인하세요.',
+      en: 'Review work record quantities, then confirm the completed quantity.',
+      vi: 'Kiem tra so luong trong nhat ky roi xac nhan so luong hoan thanh.',
+    },
+    confirmWorkDoneQtyPrompt: {
+      ko: '확인할 작업 완료 수량을 입력하세요',
+      en: 'Enter the confirmed work-done quantity',
+      vi: 'Nhap so luong cong viec da xac nhan hoan thanh',
+    },
+    workDoneConfirmBlocked: {
+      ko: '검토 필요 또는 작업 완료 상태에서만 완료 확인을 할 수 있습니다.',
+      en: 'Completion can only be confirmed from Review Required or Work Done status.',
+      vi: 'Chi co the xac nhan hoan thanh khi o trang thai Can xem xet hoac Da xong viec.',
+    },
+    workDoneConfirmSuccess: {
+      ko: '작업 완료를 확인했습니다.',
+      en: 'Work done has been confirmed.',
+      vi: 'Da xac nhan cong viec hoan thanh.',
+    },
+    statusReady: { ko: '작업 완료', en: 'Work done', vi: 'Da xong viec' },
+    statusReviewRequired: {
+      ko: '검토 필요',
+      en: 'Review required',
+      vi: 'Can xem xet',
     },
     saveSuccess: {
       ko: '작업 배정을 저장했습니다.',

@@ -17,6 +17,9 @@ import {
 } from "../work-records/workRecord.shared";
 import { assertQuantitySettlementReadyForPayroll } from "../quantity-settlement/quantitySettlement.service";
 
+const ASSIGNMENT_STATUS_READY_TO_COMPLETE = "READY_TO_COMPLETE";
+const ASSIGNMENT_STATUS_PRODUCTION_COMPLETED = "PRODUCTION_COMPLETED";
+
 const toPayrollAmountOrNull = (value: unknown): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -36,6 +39,46 @@ const assertPayrollMonth = (month: string) => {
   if (!/^\d{4}-\d{2}$/.test(String(month || ""))) {
     throw createHttpError(400, "month is required (format: YYYY-MM)");
   }
+};
+
+const resolvePayrollMonthDateRange = (month: string) => {
+  const [yearText, monthText] = String(month || "").split("-");
+  const year = Number(yearText);
+  const monthIndex = Number(monthText) - 1;
+  const start = new Date(Date.UTC(year, monthIndex, 1));
+  const end = new Date(Date.UTC(year, monthIndex + 1, 1));
+  return { start, end };
+};
+
+const syncAssignmentPlanPayrollFinalization = async ({
+  orgId,
+  month,
+  finalized,
+}: {
+  orgId: number;
+  month: string;
+  finalized: boolean;
+}) => {
+  const { start, end } = resolvePayrollMonthDateRange(month);
+  await prisma.assignmentPlan.updateMany({
+    where: {
+      orgId,
+      productionCompletedAt: {
+        gte: start,
+        lt: end,
+      },
+      scheduleStatus: finalized
+        ? ASSIGNMENT_STATUS_READY_TO_COMPLETE
+        : ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
+    },
+    data: {
+      isCompleted: finalized,
+      scheduleStatus: finalized
+        ? ASSIGNMENT_STATUS_PRODUCTION_COMPLETED
+        : ASSIGNMENT_STATUS_READY_TO_COMPLETE,
+      updatedAt: new Date(),
+    },
+  });
 };
 
 const getPayrollMonthRange = (month: string) => {
@@ -518,7 +561,7 @@ export const savePayrollSnapshot = async ({
   const savedAt = new Date();
   const savedByText = String(savedBy || "unknown");
 
-  return prisma.payrollSnapshot.upsert({
+  const snapshot = await prisma.payrollSnapshot.upsert({
     where: { orgId_month: { orgId, month } },
     create: {
       orgId,
@@ -533,6 +576,8 @@ export const savePayrollSnapshot = async ({
       lockedBy: savedByText,
     },
   });
+  await syncAssignmentPlanPayrollFinalization({ orgId, month, finalized: true });
+  return snapshot;
 };
 
 export const deletePayrollSnapshot = async (orgId: number, monthInput: string) => {
@@ -553,6 +598,8 @@ export const deletePayrollSnapshot = async (orgId: number, monthInput: string) =
   await prisma.payrollSnapshot.delete({
     where: { id: existing.id },
   });
+
+  await syncAssignmentPlanPayrollFinalization({ orgId, month, finalized: false });
 
   return { ok: true, month };
 };

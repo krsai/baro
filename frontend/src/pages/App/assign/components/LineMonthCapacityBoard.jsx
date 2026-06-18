@@ -167,6 +167,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
   const queueStatus = assignment?.queueStatus || (assignment?.isCompleted ? 'completed' : 'queued');
   const isCompleted = queueStatus === 'completed';
   const isReadyToComplete = queueStatus === 'ready_to_complete';
+  const isReviewRequired = queueStatus === 'review_required';
   const isLocked = isCompleted;
   const chips = [
     isCompleted
@@ -179,6 +180,16 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
           variant: 'outlined',
           color: 'success',
         }
+      : isReviewRequired
+        ? {
+            label: getUiMessage(
+              'assign.reviewStatusCompact',
+              '검토 필요',
+              languageCode
+            ),
+            variant: 'outlined',
+            color: 'error',
+          }
       : isReadyToComplete
         ? {
             label: getUiMessage(
@@ -206,7 +217,13 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
           }
         )
       : ''
-    : isReadyToComplete
+    : isReviewRequired
+      ? getUiMessage(
+          'assign.reviewRequiredCompact',
+          '수량 검토 필요',
+          languageCode
+        )
+      : isReadyToComplete
       ? assignment.completedAt
         ? getUiMessage(
             assignment.completionDateIsEstimated
@@ -226,8 +243,20 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
             languageCode
           )
       : '';
-  const accentColor = isCompleted ? '#15803D' : isReadyToComplete ? '#D97706' : '#2563EB';
-  const backgroundColor = isCompleted ? '#F3F4F6' : isReadyToComplete ? '#FFF7ED' : '#FFFFFF';
+  const accentColor = isCompleted
+    ? '#15803D'
+    : isReviewRequired
+      ? '#B91C1C'
+      : isReadyToComplete
+        ? '#D97706'
+        : '#2563EB';
+  const backgroundColor = isCompleted
+    ? '#F3F4F6'
+    : isReviewRequired
+      ? '#FEF2F2'
+      : isReadyToComplete
+        ? '#FFF7ED'
+        : '#FFFFFF';
 
   return (
     <CompactBoardCard

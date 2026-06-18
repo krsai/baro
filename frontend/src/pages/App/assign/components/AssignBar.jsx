@@ -117,7 +117,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
   const completionWarningMessage = hasCompletionWarning
     ? getUiMessage(
         'assign.completionWarning',
-        '완료 상태지만 현재 작업기록 합계가 계획 수량보다 부족합니다.',
+        '완료 확인 수량과 현재 작업기록 수량이 맞지 않습니다.',
         languageCode
       )
     : '';
@@ -134,6 +134,24 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
             ? 'rgba(245,158,11,0.72)'
             : 'rgba(100,116,139,0.38)',
         }
+      : statusType === 'ready'
+        ? {
+            label: getUiMessage('assign.statusReady', '작업 완료', languageCode),
+            chipBg: 'rgba(255,247,237,0.96)',
+            chipColor: '#B45309',
+            cardBg: '#FFF7ED',
+            progressBg: '#F6AD55',
+            borderColor: 'rgba(217,119,6,0.34)',
+          }
+      : statusType === 'review'
+        ? {
+            label: getUiMessage('assign.statusReviewRequired', '검토 필요', languageCode),
+            chipBg: 'rgba(254,242,242,0.96)',
+            chipColor: '#B91C1C',
+            cardBg: '#FEF2F2',
+            progressBg: '#FCA5A5',
+            borderColor: 'rgba(220,38,38,0.36)',
+          }
       : statusType === 'overdue'
         ? {
             label: getUiMessage('assign.statusOverdue', '지연', languageCode),

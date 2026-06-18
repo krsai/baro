@@ -348,6 +348,7 @@ const buildAssignmentProgressMap = (rows) =>
         String(row.id),
         {
           isCompleted: Boolean(row?.isCompleted),
+          scheduleStatus: String(row?.scheduleStatus || '').trim() || null,
           finalQuantity:
             Number.isFinite(Number(row?.finalQuantity)) && Number(row?.finalQuantity) >= 0
               ? Number(row.finalQuantity)
@@ -367,21 +368,13 @@ const buildAssignmentProgressMap = (rows) =>
       ])
   );
 const isAssignmentWorkCompleted = (assignment) => {
-  if (assignment?.progress?.isCompleted) {
-    return true;
-  }
-  const baselineQuantity = Number(assignment?.progress?.baselineQuantity);
-  const producedQuantity = Number(assignment?.progress?.producedQuantity);
+  const scheduleStatus = String(assignment?.progress?.scheduleStatus || '').trim();
   if (
-    Number.isFinite(baselineQuantity) &&
-    baselineQuantity > 0 &&
-    Number.isFinite(producedQuantity)
+    scheduleStatus === 'READY_TO_COMPLETE' ||
+    scheduleStatus === 'PRODUCTION_COMPLETED' ||
+    assignment?.progress?.isCompleted
   ) {
-    return producedQuantity >= baselineQuantity;
-  }
-  const progressPercent = Number(assignment?.progress?.progressPercent);
-  if (Number.isFinite(progressPercent)) {
-    return progressPercent >= 100;
+    return true;
   }
   return false;
 };
@@ -2072,6 +2065,21 @@ const ProductionPlanBoard = () => {
                       const rowSelected = String(selectedAssignment?.id || '') === String(assignment.id);
                       const isSaved = snapshotState === 'SAVED';
                       const isCompleted = isAssignmentWorkCompleted(assignment);
+                      const workScheduleStatus = String(
+                        assignment?.progress?.scheduleStatus || ''
+                      ).trim();
+                      const workStatusChip =
+                        workScheduleStatus === 'PRODUCTION_COMPLETED'
+                          ? { label: '최종 완료', color: 'success', variant: 'filled' }
+                          : workScheduleStatus === 'READY_TO_COMPLETE'
+                            ? { label: '작업 완료', color: 'success', variant: 'outlined' }
+                            : workScheduleStatus === 'REVIEW_REQUIRED'
+                              ? { label: '검토 필요', color: 'error', variant: 'outlined' }
+                              : {
+                                  label: isCompleted ? '완료' : '진행',
+                                  color: isCompleted ? 'success' : 'default',
+                                  variant: isCompleted ? 'filled' : 'outlined',
+                                };
 
                       return (
                         <TableRow
@@ -2150,7 +2158,10 @@ const ProductionPlanBoard = () => {
                                   color={
                                     Number(assignment.progress?.overflowQuantity) > 0
                                       ? 'error'
-                                      : Number(assignment.progress?.progressPercent) >= 100
+                                      : workScheduleStatus === 'REVIEW_REQUIRED'
+                                        ? 'error'
+                                        : workScheduleStatus === 'READY_TO_COMPLETE' ||
+                                            workScheduleStatus === 'PRODUCTION_COMPLETED'
                                         ? 'success'
                                         : 'primary'
                                   }
@@ -2171,9 +2182,9 @@ const ProductionPlanBoard = () => {
                             {isSaved ? (
                               <Chip
                                 size="small"
-                                label={isCompleted ? '완료' : '진행'}
-                                color={isCompleted ? 'success' : 'default'}
-                                variant={isCompleted ? 'filled' : 'outlined'}
+                                label={workStatusChip.label}
+                                color={workStatusChip.color}
+                                variant={workStatusChip.variant}
                               />
                             ) : (
                               <Typography variant="caption" color="text.secondary">

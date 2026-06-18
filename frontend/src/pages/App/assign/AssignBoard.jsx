@@ -1655,12 +1655,15 @@ const toRawPercentValue = (value, fallback = 0) => {
 };
 const resolveAssignmentVisualStatus = ({
   isCompleted = false,
+  scheduleStatus = null,
   startDateKey = null,
   endDateKey = null,
   todayDateKey,
   workProgressPercent = null,
 }) => {
   if (isCompleted) return 'completed';
+  if (String(scheduleStatus || '').trim() === 'REVIEW_REQUIRED') return 'review';
+  if (String(scheduleStatus || '').trim() === 'READY_TO_COMPLETE') return 'ready';
   const normalizedProgressPercent = clampPercentValue(workProgressPercent);
   const normalizedTodayDateKey = typeof todayDateKey === 'string' ? todayDateKey : '';
   const normalizedStartDateKey =
@@ -1927,6 +1930,11 @@ const isAssignmentSchedulerCompleted = (assignment) => {
   if (!assignment || typeof assignment !== 'object') return false;
   if (assignment?.isCompleted) return true;
   return String(assignment?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED';
+};
+
+const canAssignmentConfirmWorkDone = (assignment) => {
+  const scheduleStatus = String(assignment?.scheduleStatus || '').trim();
+  return scheduleStatus === 'REVIEW_REQUIRED' || scheduleStatus === 'READY_TO_COMPLETE';
 };
 
 const toOptionalUnitRatio = (value) => {
@@ -4414,6 +4422,7 @@ const AssignBoard = () => {
           : defaultEndIndex;
         const statusType = resolveAssignmentVisualStatus({
           isCompleted: Boolean(item?.isCompleted),
+          scheduleStatus: item?.scheduleStatus,
           startDateKey: renderStartDateKey || item?.startDateKey,
           endDateKey: renderEndDateKey || item?.endDateKey,
           todayDateKey,
@@ -5122,7 +5131,10 @@ const AssignBoard = () => {
   const contextMarkCompleteDisabled = useMemo(() => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return true;
     if (!contextMenuTargetAssignment) return true;
-    return Boolean(contextMenuTargetAssignment?.isCompleted);
+    return (
+      Boolean(contextMenuTargetAssignment?.isCompleted) ||
+      !canAssignmentConfirmWorkDone(contextMenuTargetAssignment)
+    );
   }, [contextMenuState, contextMenuTargetAssignment]);
 
   const handleContextMenuOpen = useCallback((payload) => {
@@ -5160,6 +5172,18 @@ const AssignBoard = () => {
   const handleConfirmProductionComplete = useCallback(
     async (assignmentId, confirmedQty) => {
       if (!assignmentId) return;
+      const targetAssignment = assignmentById.get(String(assignmentId)) || null;
+      if (!canAssignmentConfirmWorkDone(targetAssignment)) {
+        showNotification(
+          getUiMessage(
+            'assign.workDoneConfirmBlocked',
+            '검토 필요 또는 작업 완료 상태에서만 완료 확인을 할 수 있습니다.',
+            languageCode
+          ),
+          'warning'
+        );
+        return;
+      }
       setCompletingAssignmentId(assignmentId);
       try {
         await requestJSON(
@@ -5172,7 +5196,7 @@ const AssignBoard = () => {
           }
         );
         showNotification(
-          getUiMessage('assign.productionCompleteSuccess', 'Production completion confirmed.', languageCode),
+          getUiMessage('assign.workDoneConfirmSuccess', '작업 완료를 확인했습니다.', languageCode),
           'success'
         );
         emitWorkspaceDataChanged({
@@ -5209,7 +5233,14 @@ const AssignBoard = () => {
         setCompletingAssignmentId(null);
       }
     },
-    [activeOrgId, handleCloseDetail, languageCode, requestExternalBoardReload, showNotification]
+    [
+      activeOrgId,
+      assignmentById,
+      handleCloseDetail,
+      languageCode,
+      requestExternalBoardReload,
+      showNotification,
+    ]
   );
   const handleDetailDraftInput = useCallback((processKey, value) => {
     if (!detailTargetKey || !processKey) return;
@@ -5995,7 +6026,7 @@ const AssignBoard = () => {
       Math.round(Number(produced != null ? produced : assignment?.quantity ?? 0) || 0)
     );
     const input = window.prompt(
-      getUiMessage('assign.confirmedQtyPrompt', 'Enter the confirmed completed quantity', languageCode),
+      getUiMessage('assign.confirmWorkDoneQtyPrompt', '확인할 작업 완료 수량을 입력하세요', languageCode),
       String(defaultQty)
     );
     if (input == null) return null;
@@ -6510,7 +6541,7 @@ const AssignBoard = () => {
             onClick={handleContextMarkProductionComplete}
             disabled={controlsDisabled || contextMarkCompleteDisabled}
           >
-            {getUiMessage('assign.markProductionComplete', 'Manual Completion', languageCode)}
+            {getUiMessage('assign.confirmWorkDone', '작업 완료 확인', languageCode)}
           </MenuItem>
         </Menu>
 
@@ -6900,20 +6931,22 @@ const AssignBoard = () => {
                   </Typography>
                 </Paper>
 
-                {detailAssignment && !detailAssignmentIsCompleted ? (
+                {detailAssignment &&
+                !detailAssignmentIsCompleted &&
+                canAssignmentConfirmWorkDone(detailAssignment) ? (
                   <Paper variant="outlined" sx={{ p: 1.5 }}>
                     <Stack spacing={1.25}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
                         {getUiMessage(
-                          'assign.markProductionComplete',
-                          'Manual Completion',
+                          'assign.confirmWorkDone',
+                          '작업 완료 확인',
                           languageCode
                         )}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
                         {getUiMessage(
-                          'assign.confirmedQtyHelper',
-                          'Review the produced quantity from work records, then confirm the final completed quantity.',
+                          'assign.confirmWorkDoneHelper',
+                          '작업기록 수량을 검토한 뒤 작업 완료 수량을 확인하세요.',
                           languageCode
                         )}
                       </Typography>
@@ -6964,13 +6997,17 @@ const AssignBoard = () => {
                           variant="contained"
                           color="success"
                           size="small"
-                          disabled={Boolean(completingAssignmentId) || controlsDisabled}
+                          disabled={
+                            Boolean(completingAssignmentId) ||
+                            controlsDisabled ||
+                            !canAssignmentConfirmWorkDone(detailAssignment)
+                          }
                           onClick={() => {
                             const parsedQty = Math.max(0, Math.round(Number(completionQtyDraft) || 0));
                             handleConfirmProductionComplete(detailAssignment?.id, parsedQty);
                           }}
                         >
-                          {getUiMessage('assign.markProductionComplete', 'Manual Completion', languageCode)}
+                          {getUiMessage('assign.confirmWorkDone', '작업 완료 확인', languageCode)}
                         </Button>
                       </Stack>
                     </Stack>
