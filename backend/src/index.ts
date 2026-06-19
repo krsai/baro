@@ -549,6 +549,9 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "OrgRelationship", columnName: "pricingDefaultTradeType" },
   { tableName: "OrgRelationship", columnName: "pricingMatrix" },
 ] as const;
+const STARTUP_REQUIRED_RUNTIME_ENUM_VALUES = [
+  { enumName: "OrgMembershipStatus", value: "TERMINATED" },
+] as const;
 const ROLE_OPTIONS = new Set(["ADMIN", "OPERATOR", "ACCOUNTANT", "WORKER"]);
 const ORG_ACCESS_ROLES: OrgUserRole[] = [
   "ADMIN",
@@ -25024,10 +25027,50 @@ const findMissingRuntimeSchemaColumns = async (): Promise<string[]> => {
     .filter((columnKey) => !available.has(columnKey));
 };
 
-const applyMigrationFixForRuntimeSchemaDrift = async (missingColumns: string[]) => {
+const findRuntimeSchemaDriftReasons = async (): Promise<string[]> => {
+  const driftReasons = await findMissingRuntimeSchemaColumns();
+
+  const membershipEmailRows = await prisma.$queryRaw<
+    Array<{ is_nullable: string | null }>
+  >`
+    SELECT is_nullable
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'OrgMembership'
+      AND column_name = 'email'
+  `;
+  if (membershipEmailRows[0]?.is_nullable !== "YES") {
+    driftReasons.push("OrgMembership.email nullable");
+  }
+
+  const enumNames = Array.from(
+    new Set(STARTUP_REQUIRED_RUNTIME_ENUM_VALUES.map((item) => item.enumName))
+  );
+  const enumRows = await prisma.$queryRaw<
+    Array<{ enum_name: string; enumlabel: string }>
+  >`
+    SELECT t.typname AS enum_name, e.enumlabel
+    FROM pg_enum e
+    JOIN pg_type t ON e.enumtypid = t.oid
+    WHERE t.typname = ANY(${enumNames}::text[])
+  `;
+  const availableEnumValues = new Set(
+    enumRows.map((row) => `${row.enum_name}.${row.enumlabel}`)
+  );
+  STARTUP_REQUIRED_RUNTIME_ENUM_VALUES.forEach((item) => {
+    const key = `${item.enumName}.${item.value}`;
+    if (!availableEnumValues.has(key)) {
+      driftReasons.push(key);
+    }
+  });
+
+  return driftReasons;
+};
+
+const applyMigrationFixForRuntimeSchemaDrift = async (driftReasons: string[]) => {
   if (!STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT) {
     throw new Error(
-      `[startup] Required DB columns are missing and automatic migration is disabled: ${missingColumns.join(
+      `[startup] Required DB schema updates are missing and automatic migration is disabled: ${driftReasons.join(
         ", "
       )}`
     );
@@ -25043,7 +25086,7 @@ const applyMigrationFixForRuntimeSchemaDrift = async (missingColumns: string[]) 
   }
 
   console.warn(
-    `[startup] Runtime DB schema drift detected (${missingColumns.join(
+    `[startup] Runtime DB schema drift detected (${driftReasons.join(
       ", "
     )}). Applying migration_fix.sql before accepting traffic.`
   );
@@ -25088,21 +25131,21 @@ const applyMigrationFixForRuntimeSchemaDrift = async (missingColumns: string[]) 
     );
   }
 
-  const remainingColumns = await findMissingRuntimeSchemaColumns();
-  if (remainingColumns.length > 0) {
+  const remainingDriftReasons = await findRuntimeSchemaDriftReasons();
+  if (remainingDriftReasons.length > 0) {
     throw new Error(
-      `[startup] migration_fix.sql completed but required DB columns are still missing: ${remainingColumns.join(
+      `[startup] migration_fix.sql completed but required DB schema updates are still missing: ${remainingDriftReasons.join(
         ", "
       )}`
     );
   }
-  console.log("[startup] migration_fix.sql completed and required DB columns are present.");
+  console.log("[startup] migration_fix.sql completed and required DB schema updates are present.");
 };
 
 const ensureRuntimeSchemaReady = async () => {
-  const missingColumns = await findMissingRuntimeSchemaColumns();
-  if (missingColumns.length === 0) return;
-  await applyMigrationFixForRuntimeSchemaDrift(missingColumns);
+  const driftReasons = await findRuntimeSchemaDriftReasons();
+  if (driftReasons.length === 0) return;
+  await applyMigrationFixForRuntimeSchemaDrift(driftReasons);
 };
 
 const ensureWorkOrderStatusSchemaReady = async () => {

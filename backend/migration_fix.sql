@@ -20,6 +20,9 @@ UPDATE "OrgMembership"
 SET "email" = NULL
 WHERE "email" LIKE 'emp+%@baro.local';
 
+-- Step 0h: org membership terminated status for employee offboarding (20260619)
+ALTER TYPE "OrgMembershipStatus" ADD VALUE IF NOT EXISTS 'TERMINATED';
+
 -- Step 0c: work order localized buyer name fields (20260611)
 ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "buyerOrgNameKo" TEXT;
 ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "buyerOrgNameVi" TEXT;

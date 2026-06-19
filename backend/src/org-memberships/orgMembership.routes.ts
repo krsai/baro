@@ -360,51 +360,35 @@ export const createOrgMembershipRouter = ({
         })
       : null;
 
-    const membership = existingMembership
-      ? await prisma.orgMembership.update({
-          where: { id: existingMembership.id },
-          data: {
-            role: safeRole,
-            status: requestedStatus as any,
-            requestedName: requestedName || existingMembership.requestedName || null,
-            approvedAt: now,
-            approvedBy: requesterEmail,
-          },
-        })
-      : await prisma.orgMembership.create({
-          data: {
-            orgId: orgIdNum,
-            email: resolvedMembershipEmail,
-            role: safeRole,
-            status: requestedStatus as any,
-            requestedName: requestedName || null,
-            requestedAt: now,
-            approvedAt: now,
-            approvedBy: requesterEmail,
-          },
-        });
-
+    const existingEmployee =
+      isManufacturer && existingMembership
+        ? await prisma.employee.findUnique({
+            where: { orgMembershipId: existingMembership.id },
+          })
+        : null;
+    let resolvedRoleId: number | null = null;
+    let resolvedPayType: "CT" | "FIXED" = "FIXED";
+    let resolvedFactoryId: number | null = null;
+    let resolvedFixedSalary: number | null = null;
+    let resolvedEmployeeNo: string | null | undefined = undefined;
     if (isManufacturer) {
-      const existingEmployee = await prisma.employee.findUnique({
-        where: { orgMembershipId: membership.id },
-      });
-      const resolvedRoleId =
+      resolvedRoleId =
         safeRole === "WORKER"
           ? employeeRoleIdNum !== null && employeeRoleIdNum !== undefined
             ? employeeRoleIdNum
             : existingEmployee?.roleId ?? (await resolveDefaultEmployeeRoleId(orgIdNum))
           : null;
-      const resolvedPayType = await resolveEmployeeStoredPayType({
+      resolvedPayType = await resolveEmployeeStoredPayType({
         orgId: orgIdNum,
         membershipRole: safeRole,
         roleId: resolvedRoleId,
         payType: payType !== undefined ? payTypeValue : existingEmployee?.payType,
       });
-      const resolvedFactoryId =
+      resolvedFactoryId =
         factoryIdNum !== null && factoryIdNum !== undefined
           ? factoryIdNum
           : existingEmployee?.factoryId ?? null;
-      const resolvedFixedSalary = hasFixedSalaryInput
+      resolvedFixedSalary = hasFixedSalaryInput
         ? fixedSalaryParseResult.value
         : existingEmployee?.fixedSalary ?? null;
       if (
@@ -416,7 +400,6 @@ export const createOrgMembershipRouter = ({
           error: "factoryId is required for worker employees",
         });
       }
-      let resolvedEmployeeNo: string | null | undefined = undefined;
       if (employeeNo !== undefined) {
         const normalizedEmployeeNo = normalizeEmployeeNo(employeeNo);
         if (normalizedEmployeeNo) {
@@ -434,8 +417,35 @@ export const createOrgMembershipRouter = ({
           resolvedEmployeeNo = normalizedEmployeeNo;
         }
       }
-      try {
-        await prisma.$transaction(async (tx) => {
+    }
+
+    try {
+      const membership = await prisma.$transaction(async (tx) => {
+        const membership = existingMembership
+          ? await tx.orgMembership.update({
+              where: { id: existingMembership.id },
+              data: {
+                role: safeRole,
+                status: requestedStatus as any,
+                requestedName: requestedName || existingMembership.requestedName || null,
+                approvedAt: now,
+                approvedBy: requesterEmail,
+              },
+            })
+          : await tx.orgMembership.create({
+              data: {
+                orgId: orgIdNum,
+                email: resolvedMembershipEmail,
+                role: safeRole,
+                status: requestedStatus as any,
+                requestedName: requestedName || null,
+                requestedAt: now,
+                approvedAt: now,
+                approvedBy: requesterEmail,
+              },
+            });
+
+        if (isManufacturer) {
           const transactionEmployeeNo =
             resolvedEmployeeNo !== undefined
               ? resolvedEmployeeNo
@@ -483,16 +493,31 @@ export const createOrgMembershipRouter = ({
               leftAt: leftAtParseResult.hasInput ? leftAtParseResult.value : null,
             },
           });
-        });
-      } catch (error) {
-        if ((error as { code?: string })?.code === "P2002") {
-          return res.status(409).json({ ok: false, error: "employeeNo already in use" });
         }
-        throw error;
-      }
-    }
 
-    return res.status(existingMembership ? 200 : 201).json(membership);
+        return membership;
+      });
+
+      return res.status(existingMembership ? 200 : 201).json(membership);
+    } catch (error) {
+      const knownError = error as { code?: string; meta?: { target?: unknown } };
+      const targetText = JSON.stringify(knownError.meta?.target ?? "");
+      if (knownError.code === "P2002") {
+        if (targetText.includes("email")) {
+          return res
+            .status(409)
+            .json({ ok: false, error: "active org membership already exists" });
+        }
+        return res.status(409).json({ ok: false, error: "employeeNo already in use" });
+      }
+      if (knownError.code === "P2011" && targetText.includes("email")) {
+        return res.status(503).json({
+          ok: false,
+          error: "worker email optional schema migration is required",
+        });
+      }
+      throw error;
+    }
   });
 
   orgMembershipRouter.delete("/org-memberships/:id/draft-cleanup", async (req, res) => {
