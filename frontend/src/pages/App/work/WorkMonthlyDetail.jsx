@@ -29,12 +29,11 @@ const TEXT = {
   line: { ko: '라인', en: 'Line', vi: 'Chuyen' },
   attendance: { ko: '근태', en: 'Attendance', vi: 'Cham cong' },
   items: { ko: '기록건수', en: 'Entries', vi: 'So dong' },
-  averageCt: {
-    ko: '근무일 평균 CT',
-    en: 'Avg CT / Worked Day',
-    vi: 'CT trung binh / ngay lam',
+  ctDayRatio: {
+    ko: '작업CT/기대CT',
+    en: 'Work CT / Expected CT',
+    vi: 'CT lam duoc / CT ky vong',
   },
-  recordTotalCt: { ko: '기록 총 CT', en: 'Record CT Total', vi: 'Tong CT ban ghi' },
   attendanceWorked: { ko: '근무', en: 'Worked', vi: 'Di lam' },
   attendanceMissing: { ko: '미입력', en: 'Missing', vi: 'Chua nhap' },
   worker: { ko: '작업자', en: 'Worker', vi: 'Cong nhan' },
@@ -60,13 +59,23 @@ const TEXT = {
 const resolveText = (bundle, languageCode, fallback = '') =>
   bundle?.[languageCode] || bundle?.ko || fallback;
 
-const formatDuration = (seconds, languageCode) => {
-  const totalSeconds = Math.max(0, Math.round(Number(seconds) || 0));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  if (languageCode === 'en') return `${hours}h ${minutes}m`;
-  if (languageCode === 'vi') return `${hours} gio ${minutes} phut`;
-  return `${hours}시간 ${minutes}분`;
+const formatCtDayCount = (value, languageCode) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '-';
+  const rounded = Math.round(number * 10) / 10;
+  const display = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  if (languageCode === 'en') return `${display}d`;
+  if (languageCode === 'vi') return `${display} ngay`;
+  return `${display}일`;
+};
+
+const formatCtDayRatio = (workCtDayCount, expectedCtDayCount, languageCode) => {
+  const workNumber = Number(workCtDayCount);
+  if (!Number.isFinite(workNumber)) return '-';
+  return `${formatCtDayCount(workNumber, languageCode)}/${formatCtDayCount(
+    expectedCtDayCount,
+    languageCode
+  )}`;
 };
 
 const buildMonthlyListTabLabel = (languageCode) => {
@@ -262,11 +271,12 @@ const WorkMonthlyDetail = () => {
           value: String(summary.recordCount || 0),
         },
         {
-          label: resolveText(TEXT.averageCt, languageCode, '근무일 평균 CT'),
-          value:
-            summary.averageCtPerDaySeconds == null
-              ? '-'
-              : formatDuration(summary.averageCtPerDaySeconds, languageCode),
+          label: resolveText(TEXT.ctDayRatio, languageCode, '작업CT/기대CT'),
+          value: formatCtDayRatio(
+            summary.workCtDayCount,
+            summary.expectedCtDayCount,
+            languageCode
+          ),
         },
       ]
     : [];
@@ -331,7 +341,7 @@ const WorkMonthlyDetail = () => {
                     <TableCell align="right">
                       {resolveText(TEXT.items, languageCode, '기록건수')}
                     </TableCell>
-                    <TableCell>{resolveText(TEXT.recordTotalCt, languageCode, '기록 총 CT')}</TableCell>
+                    <TableCell>{resolveText(TEXT.ctDayRatio, languageCode, '작업CT/기대CT')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -358,9 +368,11 @@ const WorkMonthlyDetail = () => {
                         </TableCell>
                         <TableCell align="right">{row.recordCount || 0}</TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                          {row.recordTotalCtSeconds == null
-                            ? '-'
-                            : formatDuration(row.recordTotalCtSeconds, languageCode)}
+                          {formatCtDayRatio(
+                            row.workCtDayCount,
+                            row.expectedCtDayCount,
+                            languageCode
+                          )}
                         </TableCell>
                       </TableRow>
                     ))

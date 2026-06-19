@@ -62,10 +62,10 @@ const TEXT = {
   line: { ko: '라인', en: 'Line', vi: 'Chuyen' },
   attendance: { ko: '근태', en: 'Attendance', vi: 'Cham cong' },
   items: { ko: '기록건수', en: 'Entries', vi: 'So dong' },
-  averageCtPerDay: {
-    ko: '근무일 평균 CT',
-    en: 'Avg CT / Worked Day',
-    vi: 'CT trung binh / ngay lam',
+  ctDayRatio: {
+    ko: '작업CT/기대CT',
+    en: 'Work CT / Expected CT',
+    vi: 'CT lam duoc / CT ky vong',
   },
   loading: {
     ko: '월간 기록을 불러오는 중입니다.',
@@ -112,13 +112,23 @@ const getDatePickerLocaleText = (languageCode) => {
   return datePickerEnUS.components.MuiLocalizationProvider.defaultProps.localeText;
 };
 
-const formatDuration = (seconds, languageCode) => {
-  const totalSeconds = Math.max(0, Math.round(Number(seconds) || 0));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  if (languageCode === 'en') return `${hours}h ${minutes}m`;
-  if (languageCode === 'vi') return `${hours} gio ${minutes} phut`;
-  return `${hours}시간 ${minutes}분`;
+const formatCtDayCount = (value, languageCode) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '-';
+  const rounded = Math.round(number * 10) / 10;
+  const display = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  if (languageCode === 'en') return `${display}d`;
+  if (languageCode === 'vi') return `${display} ngay`;
+  return `${display}일`;
+};
+
+const formatCtDayRatio = (workCtDayCount, expectedCtDayCount, languageCode) => {
+  const workNumber = Number(workCtDayCount);
+  if (!Number.isFinite(workNumber)) return '-';
+  return `${formatCtDayCount(workNumber, languageCode)}/${formatCtDayCount(
+    expectedCtDayCount,
+    languageCode
+  )}`;
 };
 
 const buildMonthlyDetailTabLabel = (workerName, monthKey, languageCode) => {
@@ -502,11 +512,11 @@ const WorkMonthlyBoard = ({
                         {`${resolveText(TEXT.items, languageCode, '기록건수')} ${row.recordCount || 0}`}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {`${resolveText(TEXT.averageCtPerDay, languageCode, '근무일 평균 CT')} ${
-                          row.averageCtPerDaySeconds == null
-                            ? '-'
-                            : formatDuration(row.averageCtPerDaySeconds, languageCode)
-                        }`}
+                        {`${resolveText(TEXT.ctDayRatio, languageCode, '작업CT/기대CT')} ${formatCtDayRatio(
+                          row.workCtDayCount,
+                          row.expectedCtDayCount,
+                          languageCode
+                        )}`}
                       </Typography>
                     </Box>
                   </Stack>
@@ -528,7 +538,7 @@ const WorkMonthlyBoard = ({
                 <TableCell align="right">
                   {resolveText(TEXT.items, languageCode, '기록건수')}
                 </TableCell>
-                <TableCell>{resolveText(TEXT.averageCtPerDay, languageCode, '근무일 평균 CT')}</TableCell>
+                <TableCell>{resolveText(TEXT.ctDayRatio, languageCode, '작업CT/기대CT')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -557,9 +567,11 @@ const WorkMonthlyBoard = ({
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.attendanceDisplay}</TableCell>
                     <TableCell align="right">{row.recordCount || 0}</TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      {row.averageCtPerDaySeconds == null
-                        ? '-'
-                        : formatDuration(row.averageCtPerDaySeconds, languageCode)}
+                      {formatCtDayRatio(
+                        row.workCtDayCount,
+                        row.expectedCtDayCount,
+                        languageCode
+                      )}
                     </TableCell>
                   </TableRow>
                 ))

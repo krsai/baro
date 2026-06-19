@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 
 const SEWING_WORKER_ROLE_CODE = 'WORKER_SEWING';
+const CT_DAY_SECONDS = 8 * 60 * 60;
 
 export const normalizePositiveId = (value) => {
   const parsed = Number(value);
@@ -175,6 +176,11 @@ const maxDateKey = (...values) => {
 const minDateKey = (...values) =>
   values.map((value) => normalizeDateKey(value)).filter(Boolean).sort()[0] || '';
 
+const toCtDayCount = (seconds) => {
+  const normalizedSeconds = Math.max(0, Number(seconds) || 0);
+  return Math.round((normalizedSeconds / CT_DAY_SECONDS) * 10) / 10;
+};
+
 const addWorkingDateRange = ({
   targetDates,
   startDateKey,
@@ -326,7 +332,7 @@ export const aggregateMonthlyWorkerRows = ({
       row.workerId ? attendanceWorkedDateMap.get(String(row.workerId)) || new Set() : new Set();
     const attendanceWorkedDays =
       hasAttendanceRows ? workedAttendanceDates.size : null;
-    const averageDayCount =
+    const expectedCtDayCount =
       attendanceWorkedDays !== null ? attendanceWorkedDays : workDayCount;
 
     return {
@@ -338,8 +344,8 @@ export const aggregateMonthlyWorkerRows = ({
       lineName,
       workDayCount,
       recordCount: row.recordCount,
-      averageCtPerDaySeconds:
-        averageDayCount > 0 ? Math.round(row.totalCtSeconds / averageDayCount) : null,
+      workCtDayCount: toCtDayCount(row.totalCtSeconds),
+      expectedCtDayCount,
       attendanceWorkedDays,
       attendanceTargetDays,
       attendanceDisplay:
@@ -378,6 +384,7 @@ export const buildMonthlyWorkerDetail = ({
   const summary =
     summaryRows.find((row) => Number(row.workerId) === normalizedWorkerId) || null;
   const attendanceWorkedDateMap = buildAttendanceWorkedDateMap(attendanceRows);
+  const hasAttendanceRows = Array.isArray(attendanceRows) && attendanceRows.length > 0;
   const attendanceWorkedDates =
     attendanceWorkedDateMap.get(String(normalizedWorkerId)) || new Set();
   const bucketByDate = new Map();
@@ -418,6 +425,7 @@ export const buildMonthlyWorkerDetail = ({
     .sort((left, right) => right.localeCompare(left))
     .map((dateKey) => {
       const bucket = bucketByDate.get(dateKey) || null;
+      const attendanceWorked = attendanceWorkedDates.has(dateKey);
       return {
         workDate: dateKey,
         lineName:
@@ -425,8 +433,16 @@ export const buildMonthlyWorkerDetail = ({
           normalizeLabel(employee?.lineName) ||
           '-',
         recordCount: bucket?.recordCount || 0,
-        recordTotalCtSeconds: bucket && bucket.recordCount > 0 ? bucket.totalCtSeconds : null,
-        attendanceWorked: attendanceWorkedDates.has(dateKey),
+        workCtDayCount:
+          bucket && bucket.recordCount > 0 ? toCtDayCount(bucket.totalCtSeconds) : null,
+        expectedCtDayCount: hasAttendanceRows
+          ? attendanceWorked
+            ? 1
+            : 0
+          : bucket && bucket.recordCount > 0
+            ? 1
+            : null,
+        attendanceWorked,
       };
     });
 
