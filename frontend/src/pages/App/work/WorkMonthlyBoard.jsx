@@ -228,7 +228,7 @@ const WorkMonthlyBoard = ({
             `/employees${buildQueryString({
               orgId: activeOrgId,
               factoryId: selectedFactoryIdNumber,
-              excludeMembershipRole: 'ADMIN',
+              membershipRole: 'WORKER',
             })}`,
             {
               skipGlobalLoading: true,

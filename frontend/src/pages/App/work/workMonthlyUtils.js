@@ -1,5 +1,7 @@
 import dayjs from 'dayjs';
 
+const SEWING_WORKER_ROLE_CODE = 'WORKER_SEWING';
+
 export const normalizePositiveId = (value) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
@@ -37,6 +39,46 @@ export const resolveEmploymentDateKey = (value) => {
 };
 
 const normalizeLabel = (value) => String(value || '').trim();
+
+const normalizeRoleCode = (value) => normalizeLabel(value).toUpperCase();
+
+const normalizeKoreanRoleName = (value) => normalizeLabel(value).replace(/\s+/g, '');
+
+export const isSewingWorkerEmployee = (employee) => {
+  const roleCode = normalizeRoleCode(employee?.roleCode || employee?.role?.code);
+  if (roleCode === SEWING_WORKER_ROLE_CODE) return true;
+
+  const roleName = normalizeKoreanRoleName(
+    employee?.roleName || employee?.role?.name || employee?.position
+  );
+  return roleName === '봉제';
+};
+
+export const hasEmploymentDateOverlap = ({
+  periodStart,
+  periodEnd,
+  joinedDateKey = '',
+  leftDateKey = '',
+}) => {
+  const startKey = normalizeDateKey(periodStart);
+  const endKey = normalizeDateKey(periodEnd);
+  if (!startKey || !endKey || endKey < startKey) return false;
+
+  const joinedKey = resolveEmploymentDateKey(joinedDateKey);
+  const leftKey = resolveEmploymentDateKey(leftDateKey);
+  if (joinedKey && joinedKey > endKey) return false;
+  if (leftKey && leftKey < startKey) return false;
+  return true;
+};
+
+export const isEligibleMonthlyWorker = (employee, monthRange) =>
+  isSewingWorkerEmployee(employee) &&
+  hasEmploymentDateOverlap({
+    periodStart: monthRange?.dateFrom,
+    periodEnd: monthRange?.dateTo,
+    joinedDateKey: employee?.joinedAt,
+    leftDateKey: employee?.leftAt,
+  });
 
 const incrementLabelCount = (counts, value) => {
   const label = normalizeLabel(value);
@@ -145,7 +187,7 @@ export const aggregateMonthlyWorkerRows = ({
     (Array.isArray(holidayKeys) ? holidayKeys : []).map((key) => normalizeDateKey(key)).filter(Boolean)
   );
   const attendanceWorkedDateMap = buildAttendanceWorkedDateMap(attendanceRows);
-  const employeeById = new Map();
+  const eligibleEmployeeById = new Map();
   const rowByKey = new Map();
 
   const ensureRow = ({ workerId, workerName = '' }) => {
@@ -175,7 +217,8 @@ export const aggregateMonthlyWorkerRows = ({
   (Array.isArray(employees) ? employees : []).forEach((employee) => {
     const workerId = normalizePositiveId(employee?.id);
     if (!workerId) return;
-    employeeById.set(String(workerId), employee);
+    if (!isEligibleMonthlyWorker(employee, monthRange)) return;
+    eligibleEmployeeById.set(String(workerId), employee);
     const row = ensureRow({
       workerId,
       workerName: normalizeLabel(employee?.name),
@@ -191,9 +234,11 @@ export const aggregateMonthlyWorkerRows = ({
 
     (Array.isArray(log?.records) ? log.records : []).forEach((record) => {
       const workerId = normalizePositiveId(record?.workerId);
+      const employee = workerId ? eligibleEmployeeById.get(String(workerId)) || null : null;
+      if (!employee) return;
       const row = ensureRow({
         workerId,
-        workerName: normalizeLabel(record?.workerName),
+        workerName: normalizeLabel(record?.workerName) || normalizeLabel(employee?.name),
       });
       if (!row) return;
 
@@ -216,7 +261,7 @@ export const aggregateMonthlyWorkerRows = ({
   });
 
   return Array.from(rowByKey.values()).map((row) => {
-    const employee = row.workerId ? employeeById.get(String(row.workerId)) || null : null;
+    const employee = row.workerId ? eligibleEmployeeById.get(String(row.workerId)) || null : null;
     const lineName =
       resolveDominantLabel(row.lineNameCounts, '') ||
       normalizeLabel(employee?.lineName) ||
