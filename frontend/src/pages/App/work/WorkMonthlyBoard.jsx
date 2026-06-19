@@ -16,7 +16,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -63,7 +62,11 @@ const TEXT = {
   line: { ko: '라인', en: 'Line', vi: 'Chuyen' },
   attendance: { ko: '근태', en: 'Attendance', vi: 'Cham cong' },
   items: { ko: '기록건수', en: 'Entries', vi: 'So dong' },
-  averageCtPerDay: { ko: '1일 평균 CT', en: 'Avg CT / Day', vi: 'CT trung binh / ngay' },
+  averageCtPerDay: {
+    ko: '근무일 평균 CT',
+    en: 'Avg CT / Worked Day',
+    vi: 'CT trung binh / ngay lam',
+  },
   loading: {
     ko: '월간 기록을 불러오는 중입니다.',
     en: 'Loading monthly records...',
@@ -499,7 +502,7 @@ const WorkMonthlyBoard = ({
                         {`${resolveText(TEXT.items, languageCode, '기록건수')} ${row.recordCount || 0}`}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {`${resolveText(TEXT.averageCtPerDay, languageCode, '1일 평균 CT')} ${
+                        {`${resolveText(TEXT.averageCtPerDay, languageCode, '근무일 평균 CT')} ${
                           row.averageCtPerDaySeconds == null
                             ? '-'
                             : formatDuration(row.averageCtPerDaySeconds, languageCode)
@@ -525,7 +528,7 @@ const WorkMonthlyBoard = ({
                 <TableCell align="right">
                   {resolveText(TEXT.items, languageCode, '기록건수')}
                 </TableCell>
-                <TableCell>{resolveText(TEXT.averageCtPerDay, languageCode, '1일 평균 CT')}</TableCell>
+                <TableCell>{resolveText(TEXT.averageCtPerDay, languageCode, '근무일 평균 CT')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>

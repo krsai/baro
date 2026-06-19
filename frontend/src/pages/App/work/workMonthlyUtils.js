@@ -167,6 +167,39 @@ export const countWorkingDaysForEmployment = ({
   return count;
 };
 
+const maxDateKey = (...values) => {
+  const dateKeys = values.map((value) => normalizeDateKey(value)).filter(Boolean).sort();
+  return dateKeys[dateKeys.length - 1] || '';
+};
+
+const minDateKey = (...values) =>
+  values.map((value) => normalizeDateKey(value)).filter(Boolean).sort()[0] || '';
+
+const addWorkingDateRange = ({
+  targetDates,
+  startDateKey,
+  endDateKey,
+  monthRange,
+  holidaySet,
+  joinedDateKey = '',
+  leftDateKey = '',
+}) => {
+  if (!targetDates || typeof targetDates.add !== 'function') return;
+  const startKey = maxDateKey(startDateKey, monthRange?.dateFrom, joinedDateKey);
+  const endKey = minDateKey(endDateKey, monthRange?.dateTo, leftDateKey);
+  if (!startKey || !endKey || endKey < startKey) return;
+
+  let cursor = dayjs(startKey);
+  const end = dayjs(endKey);
+  while (cursor.isValid() && !cursor.isAfter(end, 'day')) {
+    const dateKey = cursor.format('YYYY-MM-DD');
+    if (!isNonWorkingDate(dateKey, holidaySet)) {
+      targetDates.add(dateKey);
+    }
+    cursor = cursor.add(1, 'day');
+  }
+};
+
 const buildWorkerRowKey = (workerId, workerName = '') => {
   if (workerId) return `id:${workerId}`;
   const safeName = normalizeLabel(workerName).toLowerCase();
@@ -186,6 +219,7 @@ export const aggregateMonthlyWorkerRows = ({
   const holidaySet = new Set(
     (Array.isArray(holidayKeys) ? holidayKeys : []).map((key) => normalizeDateKey(key)).filter(Boolean)
   );
+  const hasAttendanceRows = Array.isArray(attendanceRows) && attendanceRows.length > 0;
   const attendanceWorkedDateMap = buildAttendanceWorkedDateMap(attendanceRows);
   const eligibleEmployeeById = new Map();
   const rowByKey = new Map();
@@ -229,6 +263,8 @@ export const aggregateMonthlyWorkerRows = ({
 
   (Array.isArray(logs) ? logs : []).forEach((log) => {
     const workDate = normalizeDateKey(log?.workDate);
+    const logCoverageStartDate = normalizeDateKey(log?.coverageStartDate) || workDate;
+    const logCoverageEndDate = normalizeDateKey(log?.coverageEndDate) || workDate;
     const logFactoryName = normalizeLabel(log?.factoryName);
     const logLineName = normalizeLabel(log?.lineName);
 
@@ -254,9 +290,18 @@ export const aggregateMonthlyWorkerRows = ({
       const quantity = Math.max(0, Math.round(Number(record?.quantity) || 0));
       row.totalCtSeconds += ctSeconds * quantity;
       row.recordCount += 1;
-      if (workDate) {
-        row.workDates.add(workDate);
-      }
+
+      addWorkingDateRange({
+        targetDates: row.workDates,
+        startDateKey:
+          normalizeDateKey(record?.effectiveCoverageStartDate) || logCoverageStartDate,
+        endDateKey:
+          normalizeDateKey(record?.effectiveCoverageEndDate) || logCoverageEndDate,
+        monthRange,
+        holidaySet,
+        joinedDateKey: resolveEmploymentDateKey(employee?.joinedAt),
+        leftDateKey: resolveEmploymentDateKey(employee?.leftAt),
+      });
     });
   });
 
@@ -280,7 +325,9 @@ export const aggregateMonthlyWorkerRows = ({
     const workedAttendanceDates =
       row.workerId ? attendanceWorkedDateMap.get(String(row.workerId)) || new Set() : new Set();
     const attendanceWorkedDays =
-      attendanceRows.length > 0 ? workedAttendanceDates.size : null;
+      hasAttendanceRows ? workedAttendanceDates.size : null;
+    const averageDayCount =
+      attendanceWorkedDays !== null ? attendanceWorkedDays : workDayCount;
 
     return {
       key: row.key,
@@ -292,7 +339,7 @@ export const aggregateMonthlyWorkerRows = ({
       workDayCount,
       recordCount: row.recordCount,
       averageCtPerDaySeconds:
-        workDayCount > 0 ? Math.round(row.totalCtSeconds / workDayCount) : null,
+        averageDayCount > 0 ? Math.round(row.totalCtSeconds / averageDayCount) : null,
       attendanceWorkedDays,
       attendanceTargetDays,
       attendanceDisplay:
@@ -378,7 +425,7 @@ export const buildMonthlyWorkerDetail = ({
           normalizeLabel(employee?.lineName) ||
           '-',
         recordCount: bucket?.recordCount || 0,
-        averageCtSeconds: bucket && bucket.recordCount > 0 ? bucket.totalCtSeconds : null,
+        recordTotalCtSeconds: bucket && bucket.recordCount > 0 ? bucket.totalCtSeconds : null,
         attendanceWorked: attendanceWorkedDates.has(dateKey),
       };
     });

@@ -29,7 +29,12 @@ const TEXT = {
   line: { ko: '라인', en: 'Line', vi: 'Chuyen' },
   attendance: { ko: '근태', en: 'Attendance', vi: 'Cham cong' },
   items: { ko: '기록건수', en: 'Entries', vi: 'So dong' },
-  averageCt: { ko: '1일 평균 CT', en: 'Avg CT / Day', vi: 'CT trung binh / ngay' },
+  averageCt: {
+    ko: '근무일 평균 CT',
+    en: 'Avg CT / Worked Day',
+    vi: 'CT trung binh / ngay lam',
+  },
+  recordTotalCt: { ko: '기록 총 CT', en: 'Record CT Total', vi: 'Tong CT ban ghi' },
   attendanceWorked: { ko: '근무', en: 'Worked', vi: 'Di lam' },
   attendanceMissing: { ko: '미입력', en: 'Missing', vi: 'Chua nhap' },
   worker: { ko: '작업자', en: 'Worker', vi: 'Cong nhan' },
@@ -257,7 +262,7 @@ const WorkMonthlyDetail = () => {
           value: String(summary.recordCount || 0),
         },
         {
-          label: resolveText(TEXT.averageCt, languageCode, '1일 평균 CT'),
+          label: resolveText(TEXT.averageCt, languageCode, '근무일 평균 CT'),
           value:
             summary.averageCtPerDaySeconds == null
               ? '-'
@@ -326,7 +331,7 @@ const WorkMonthlyDetail = () => {
                     <TableCell align="right">
                       {resolveText(TEXT.items, languageCode, '기록건수')}
                     </TableCell>
-                    <TableCell>{resolveText(TEXT.averageCt, languageCode, '1일 평균 CT')}</TableCell>
+                    <TableCell>{resolveText(TEXT.recordTotalCt, languageCode, '기록 총 CT')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -353,9 +358,9 @@ const WorkMonthlyDetail = () => {
                         </TableCell>
                         <TableCell align="right">{row.recordCount || 0}</TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                          {row.averageCtSeconds == null
+                          {row.recordTotalCtSeconds == null
                             ? '-'
-                            : formatDuration(row.averageCtSeconds, languageCode)}
+                            : formatDuration(row.recordTotalCtSeconds, languageCode)}
                         </TableCell>
                       </TableRow>
                     ))
