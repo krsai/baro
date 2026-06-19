@@ -35,6 +35,7 @@ const CompactBoardCard = ({
   languageCode = 'en',
   customer = '',
   orderNo = '',
+  orderNoLabel = null,
   styleName = '',
   quantity = null,
   progressPercent = 0,
@@ -176,7 +177,7 @@ const CompactBoardCard = ({
           value={customer}
         />
         <CardField
-          label={getUiMessage('assign.cardOrderNoLabel', 'Order No.', languageCode)}
+          label={orderNoLabel || getUiMessage('assign.cardOrderNoLabel', 'Order No.', languageCode)}
           value={orderNo}
         />
         <CardField

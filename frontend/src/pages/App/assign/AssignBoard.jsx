@@ -238,6 +238,11 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
     basis === 'NONE'
       ? getUiMessage('assign.ctMissingCompact', 'Time missing', languageCode)
       : `${basis}`;
+  const styleLabel =
+    card.styleName ||
+    card.styleCode ||
+    card.styleId ||
+    '-';
   return (
     <CompactBoardCard
       draggableId={`card-${card.id}`}
@@ -247,7 +252,8 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
       selected={isSelected}
       languageCode={languageCode}
       customer={card.customer || '-'}
-      orderNo={card.orderNo || getUiMessage('assign.orderNoFallback', 'No order', languageCode)}
+      orderNoLabel={getUiMessage('assign.cardStyleLabel', 'Style', languageCode)}
+      orderNo={styleLabel}
       styleName={card.styleName}
       quantity={resolveCardQuantity(card, 0)}
       showProgress={false}
