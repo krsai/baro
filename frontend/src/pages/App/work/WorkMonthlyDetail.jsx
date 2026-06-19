@@ -18,8 +18,16 @@ import {
 } from './workMonthlyUtils';
 
 const TEXT = {
-  title: { ko: '월간 기록 상세', en: 'Monthly Detail', vi: 'Chi tiet thang' },
-  backToList: { ko: '작업 기록 목록', en: 'Work Logs', vi: 'Nhat ky cong viec' },
+  title: {
+    ko: '생산 분석 상세',
+    en: 'Production Analysis Detail',
+    vi: 'Chi tiet phan tich san xuat',
+  },
+  backToList: {
+    ko: '생산 분석',
+    en: 'Production Analysis',
+    vi: 'Phan tich san xuat',
+  },
   searchPlaceholder: {
     ko: '작업일, 라인 검색',
     en: 'Search date, line',
@@ -89,9 +97,9 @@ const formatAttendanceDays = (summary, languageCode) => {
 };
 
 const buildMonthlyListTabLabel = (languageCode) => {
-  if (languageCode === 'en') return 'Work Logs';
-  if (languageCode === 'vi') return 'Nhat ky cong viec';
-  return '작업 기록';
+  if (languageCode === 'en') return 'Production Analysis';
+  if (languageCode === 'vi') return 'Phan tich san xuat';
+  return '생산 분석';
 };
 
 const WorkMonthlyDetail = () => {
@@ -119,9 +127,9 @@ const WorkMonthlyDetail = () => {
   const closeDetail = useCallback(() => {
     const closeTabId =
       normalizedMonthKey && normalizedFactoryId && normalizedWorkerId
-        ? `/work-history-monthly/${normalizedMonthKey}/${normalizedFactoryId}/${normalizedWorkerId}`
+        ? `/production-analysis/${normalizedMonthKey}/${normalizedFactoryId}/${normalizedWorkerId}`
         : null;
-    navigateToPath('/work-history?view=monthly', {
+    navigateToPath('/production-analysis', {
       label: buildMonthlyListTabLabel(languageCode),
       ...(closeTabId ? { closeTabId } : {}),
     });
@@ -304,10 +312,10 @@ const WorkMonthlyDetail = () => {
 
   return (
     <AppPageContainer
-      title={resolveText(TEXT.title, languageCode, '월간 기록 상세')}
+      title={resolveText(TEXT.title, languageCode, '생산 분석 상세')}
       titleActions={(
         <Button variant="outlined" onClick={closeDetail}>
-          {resolveText(TEXT.backToList, languageCode, '작업 기록 목록')}
+          {resolveText(TEXT.backToList, languageCode, '생산 분석')}
         </Button>
       )}
       toolbar={(

@@ -1,8 +1,13 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 
 const WorkMonthly = () => {
-  return <Navigate to="/work-history?view=monthly" replace />;
+  const { monthKey, factoryId, workerId } = useParams();
+  if (monthKey && factoryId && workerId) {
+    return <Navigate to={`/production-analysis/${monthKey}/${factoryId}/${workerId}`} replace />;
+  }
+
+  return <Navigate to="/production-analysis" replace />;
 };
 
 export default WorkMonthly;

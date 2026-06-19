@@ -9,8 +9,6 @@ import {
   Paper,
   Select,
   Stack,
-  ToggleButton,
-  ToggleButtonGroup,
   Table,
   TableBody,
   TableCell,
@@ -109,10 +107,6 @@ const DAILY_LOG_LABELS = {
   vi: 'Ghi chep ngay',
 };
 
-const WORK_VIEW_MODES = {
-  DAILY: 'daily',
-  MONTHLY: 'monthly',
-};
 const WORK_LIST_FILTER_STORAGE_PREFIX = 'work-history:list-filters:v1';
 
 const FILTER_DATE_PICKER_SLOT_PROPS = {
@@ -235,10 +229,7 @@ const resolveAverageCtSecondsPerWorker = (log) => {
   return Math.round(totalCtSeconds / workerCount);
 };
 
-const WorkList = ({
-  viewMode = WORK_VIEW_MODES.DAILY,
-  onViewModeChange = () => {},
-}) => {
+const WorkList = () => {
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
@@ -410,15 +401,6 @@ const WorkList = ({
       label: buildWorkCreateTabLabel(languageCode),
     });
   }, [languageCode, navigateToPath]);
-
-  const handleViewModeToggle = useCallback(
-    (_event, nextMode) => {
-      if (!nextMode || nextMode === viewMode) return;
-      if (nextMode !== WORK_VIEW_MODES.DAILY && nextMode !== WORK_VIEW_MODES.MONTHLY) return;
-      onViewModeChange(nextMode);
-    },
-    [onViewModeChange, viewMode]
-  );
 
   const handleOpen = useCallback(
     (log) => {
@@ -654,20 +636,6 @@ const WorkList = ({
                 <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
                   {resolveText(TEXT.add, languageCode, '기록 추가')}
                 </Button>
-                <ToggleButtonGroup
-                  size="small"
-                  exclusive
-                  value={viewMode}
-                  onChange={handleViewModeToggle}
-                  aria-label="work-history-view-mode"
-                >
-                  <ToggleButton value={WORK_VIEW_MODES.DAILY}>
-                    {getUiMessage('workHistoryView.daily', '\uC77C\uAC04', languageCode)}
-                  </ToggleButton>
-                  <ToggleButton value={WORK_VIEW_MODES.MONTHLY}>
-                    {getUiMessage('workHistoryView.monthly', '\uC6D4\uAC04', languageCode)}
-                  </ToggleButton>
-                </ToggleButtonGroup>
               </Stack>
             </Box>
           </Box>

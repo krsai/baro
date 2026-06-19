@@ -8,8 +8,6 @@ import {
   Paper,
   Select,
   Stack,
-  ToggleButton,
-  ToggleButtonGroup,
   Table,
   TableBody,
   TableCell,
@@ -50,7 +48,7 @@ import {
 
 const TEXT = {
   add: { ko: '\uAE30\uB85D \uCD94\uAC00', en: 'Add Log', vi: 'Them ghi chep' },
-  title: { ko: '월간 기록', en: 'Monthly Records', vi: 'Ghi chep thang' },
+  title: { ko: '생산 분석', en: 'Production Analysis', vi: 'Phan tich san xuat' },
   searchPlaceholder: {
     ko: '작업자, 라인 검색',
     en: 'Search worker, line',
@@ -82,11 +80,6 @@ const TEXT = {
   prevMonth: { ko: '이전 달', en: 'Previous month', vi: 'Thang truoc' },
   nextMonth: { ko: '다음 달', en: 'Next month', vi: 'Thang sau' },
   selectFactory: { ko: '공장 선택', en: 'Select factory', vi: 'Chon nha may' },
-};
-
-const WORK_VIEW_MODES = {
-  DAILY: 'daily',
-  MONTHLY: 'monthly',
 };
 
 const MONTH_PICKER_SLOT_PROPS = {
@@ -144,10 +137,10 @@ const formatAttendanceDays = (row, languageCode) => {
 const buildMonthlyDetailTabLabel = (workerName, monthKey, languageCode) => {
   const title =
     languageCode === 'en'
-      ? 'Monthly Detail'
+      ? 'Production Analysis Detail'
       : languageCode === 'vi'
-        ? 'Chi tiet thang'
-        : '월간 기록 상세';
+        ? 'Chi tiet phan tich san xuat'
+        : '생산 분석 상세';
   const parts = [title, workerName, monthKey].filter(Boolean);
   return parts.join(': ');
 };
@@ -158,10 +151,7 @@ const buildWorkCreateTabLabel = (languageCode) => {
   return '\uC77C\uAC04 \uAE30\uB85D \uC2E0\uADDC';
 };
 
-const WorkMonthlyBoard = ({
-  viewMode = WORK_VIEW_MODES.MONTHLY,
-  onViewModeChange = () => {},
-}) => {
+const WorkMonthlyBoard = () => {
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
@@ -357,21 +347,12 @@ const WorkMonthlyBoard = ({
   const handleOpenDetail = useCallback(
     (row) => {
       if (!row?.workerId || !selectedFactoryIdNumber) return;
-      const targetPath = `/work-history-monthly/${monthRange.monthKey}/${selectedFactoryIdNumber}/${row.workerId}`;
+      const targetPath = `/production-analysis/${monthRange.monthKey}/${selectedFactoryIdNumber}/${row.workerId}`;
       navigateToPath(targetPath, {
         label: buildMonthlyDetailTabLabel(row.workerName, monthRange.monthKey, languageCode),
       });
     },
     [languageCode, monthRange.monthKey, navigateToPath, selectedFactoryIdNumber]
-  );
-
-  const handleViewModeToggle = useCallback(
-    (_event, nextMode) => {
-      if (!nextMode || nextMode === viewMode) return;
-      if (nextMode !== WORK_VIEW_MODES.DAILY && nextMode !== WORK_VIEW_MODES.MONTHLY) return;
-      onViewModeChange(nextMode);
-    },
-    [onViewModeChange, viewMode]
   );
 
   const handleAdd = useCallback(() => {
@@ -383,8 +364,8 @@ const WorkMonthlyBoard = ({
   return (
     <AppPageContainer
       title={getUiMessage(
-        'menu.workHistory',
-        resolveText(TEXT.title, languageCode, '월간 기록'),
+        'menu.productionAnalysis',
+        resolveText(TEXT.title, languageCode, '생산 분석'),
         languageCode
       )}
       titleActions={(
@@ -436,21 +417,6 @@ const WorkMonthlyBoard = ({
                 slotProps={MONTH_PICKER_SLOT_PROPS}
               />
             </LocalizationProvider>,
-            <ToggleButtonGroup
-              key="view-mode"
-              size="small"
-              exclusive
-              value={viewMode}
-              onChange={handleViewModeToggle}
-              aria-label="work-history-view-mode"
-            >
-              <ToggleButton value={WORK_VIEW_MODES.DAILY}>
-                {getUiMessage('workHistoryView.daily', '\uC77C\uAC04', languageCode)}
-              </ToggleButton>
-              <ToggleButton value={WORK_VIEW_MODES.MONTHLY}>
-                {getUiMessage('workHistoryView.monthly', '\uC6D4\uAC04', languageCode)}
-              </ToggleButton>
-            </ToggleButtonGroup>,
             <Stack key="month-shift" sx={{ gap: '2px' }}>
               <Button
                 size="small"

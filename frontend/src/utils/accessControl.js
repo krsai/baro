@@ -170,6 +170,7 @@ export const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/production-plan')) return FEATURE_KEYS.PRODUCTION_PLAN;
   if (path.startsWith('/inventory')) return FEATURE_KEYS.INVENTORY;
   if (path.startsWith('/attendance')) return FEATURE_KEYS.ATTENDANCE;
+  if (path.startsWith('/production-analysis')) return FEATURE_KEYS.WORK_HISTORY;
   if (path.startsWith('/work-history')) return FEATURE_KEYS.WORK_HISTORY;
   if (path.startsWith('/payroll')) return FEATURE_KEYS.PAYROLL;
   if (path.startsWith('/revenue-analysis')) return FEATURE_KEYS.BUSINESS;
@@ -214,6 +215,7 @@ const ACCESS_PATH_PRIORITY = [
   '/production-plan',
   '/inventory',
   '/work-history',
+  '/production-analysis',
   '/attendance',
   '/payroll',
   '/business',

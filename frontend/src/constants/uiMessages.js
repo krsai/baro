@@ -33,6 +33,11 @@ export const UI_MESSAGES = {
       en: 'Revenue Analysis',
       vi: 'Phan tich doanh thu',
     },
+    productionAnalysis: {
+      ko: '생산 분석',
+      en: 'Production Analysis',
+      vi: 'Phan tich san xuat',
+    },
     qcReview: { ko: '\uAC80\uC218', en: 'Inspection', vi: 'Kiem tra' },
     processMaster: { ko: '\uACF5\uC815 \uB9C8\uC2A4\uD130', en: 'Process Master', vi: 'Danh muc cong doan' },
     processTargets: { ko: '\uB300\uC0C1 \uAD00\uB9AC', en: 'Target Management', vi: 'Quan ly doi tuong' },

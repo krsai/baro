@@ -352,7 +352,10 @@ const MainLayout = () => {
       setExpandedMenuGroup(MENU_GROUP_KEYS.SYSTEM);
       return;
     }
-    if (currentPath.startsWith('/revenue-analysis')) {
+    if (
+      currentPath.startsWith('/production-analysis') ||
+      currentPath.startsWith('/revenue-analysis')
+    ) {
       setExpandedMenuGroup(MENU_GROUP_KEYS.OPERATIONS);
     }
   }, [currentPath, setExpandedMenuGroup]);
@@ -502,6 +505,11 @@ const MainLayout = () => {
         menuGroupKey: MENU_GROUP_KEYS.OPERATIONS,
         isOpen: operationsOpen,
         children: [
+          {
+            label: getUiMessage('menu.productionAnalysis', '생산 분석', languageCode),
+            icon: <TrendingUpIcon />,
+            path: '/production-analysis',
+          },
           {
             label: getUiMessage('menu.revenueAnalysis', '\uC218\uC775 \uBD84\uC11D', languageCode),
             icon: <TrendingUpIcon />,
@@ -888,11 +896,11 @@ const MainLayout = () => {
     },
     [languageCode]
   );
-  const resolveWorkHistoryMonthlyTabLabel = React.useCallback(
+  const resolveProductionAnalysisTabLabel = React.useCallback(
     (kind = 'list') => {
       const baseLabel = getUiMessage(
-        'menu.workHistory',
-        '\uC791\uC5C5 \uAE30\uB85D',
+        'menu.productionAnalysis',
+        '생산 분석',
         languageCode
       );
       const suffixByKind =
@@ -935,11 +943,14 @@ const MainLayout = () => {
       if (path.startsWith('/work-history/') && path !== '/work-history') {
         return resolveWorkHistoryTabLabel('detail');
       }
-      if (path === '/work-history-monthly') {
-        return resolveWorkHistoryMonthlyTabLabel('list');
+      if (path === '/production-analysis' || path === '/work-history-monthly') {
+        return resolveProductionAnalysisTabLabel('list');
       }
-      if (path.startsWith('/work-history-monthly/') && path !== '/work-history-monthly') {
-        return resolveWorkHistoryMonthlyTabLabel('detail');
+      if (
+        (path.startsWith('/production-analysis/') && path !== '/production-analysis') ||
+        (path.startsWith('/work-history-monthly/') && path !== '/work-history-monthly')
+      ) {
+        return resolveProductionAnalysisTabLabel('detail');
       }
       if (path === '/attendance') {
         return resolveAttendanceTabLabel('list');
@@ -959,7 +970,7 @@ const MainLayout = () => {
       flattenedMenuItems,
       languageCode,
       resolveAttendanceTabLabel,
-      resolveWorkHistoryMonthlyTabLabel,
+      resolveProductionAnalysisTabLabel,
       resolveWorkHistoryTabLabel,
     ]
   );
@@ -991,22 +1002,22 @@ const MainLayout = () => {
       if (tabPath.startsWith('/work-history/') && tabPath !== '/work-history') {
         return resolveWorkHistoryTabLabel('detail');
       }
-      if (tabPath === '/work-history-monthly') {
-        return resolveWorkHistoryMonthlyTabLabel('list');
+      if (tabPath === '/production-analysis' || tabPath === '/work-history-monthly') {
+        return resolveProductionAnalysisTabLabel('list');
       }
       if (
-        tabPath.startsWith('/work-history-monthly/') &&
-        tabPath !== '/work-history-monthly' &&
+        ((tabPath.startsWith('/production-analysis/') && tabPath !== '/production-analysis') ||
+          (tabPath.startsWith('/work-history-monthly/') && tabPath !== '/work-history-monthly')) &&
         typeof tab?.label === 'string' &&
         tab.label.trim()
       ) {
         return tab.label;
       }
       if (
-        tabPath.startsWith('/work-history-monthly/') &&
-        tabPath !== '/work-history-monthly'
+        (tabPath.startsWith('/production-analysis/') && tabPath !== '/production-analysis') ||
+        (tabPath.startsWith('/work-history-monthly/') && tabPath !== '/work-history-monthly')
       ) {
-        return resolveWorkHistoryMonthlyTabLabel('detail');
+        return resolveProductionAnalysisTabLabel('detail');
       }
       if (tabPath === '/attendance') {
         return resolveAttendanceTabLabel('list');
@@ -1035,7 +1046,7 @@ const MainLayout = () => {
       flattenedMenuItems,
       languageCode,
       resolveAttendanceTabLabel,
-      resolveWorkHistoryMonthlyTabLabel,
+      resolveProductionAnalysisTabLabel,
       resolveWorkHistoryTabLabel,
     ]
   );
@@ -1178,7 +1189,14 @@ const MainLayout = () => {
         if (nextPathname.startsWith('/work-history/') && nextPathname !== '/work-history') {
           openOptions.replacePrefix = '/work-history/';
         }
-        // For monthly work history detail pages, ensure only one detail tab is open.
+        // For production analysis detail pages, ensure only one detail tab is open.
+        if (
+          nextPathname.startsWith('/production-analysis/') &&
+          nextPathname !== '/production-analysis'
+        ) {
+          openOptions.replacePrefix = '/production-analysis/';
+        }
+        // Keep the legacy monthly work history detail route compatible.
         if (
           nextPathname.startsWith('/work-history-monthly/') &&
           nextPathname !== '/work-history-monthly'
