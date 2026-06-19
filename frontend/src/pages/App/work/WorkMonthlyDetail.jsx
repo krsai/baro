@@ -29,11 +29,8 @@ const TEXT = {
   line: { ko: '라인', en: 'Line', vi: 'Chuyen' },
   attendance: { ko: '근태', en: 'Attendance', vi: 'Cham cong' },
   items: { ko: '기록건수', en: 'Entries', vi: 'So dong' },
-  ctDayRatio: {
-    ko: '작업CT/기대CT',
-    en: 'Work CT / Expected CT',
-    vi: 'CT lam duoc / CT ky vong',
-  },
+  averageCt: { ko: '평균 CT', en: 'Avg CT', vi: 'CT trung binh' },
+  totalCt: { ko: '총 CT', en: 'Total CT', vi: 'Tong CT' },
   attendanceWorked: { ko: '근무', en: 'Worked', vi: 'Di lam' },
   attendanceMissing: { ko: '미입력', en: 'Missing', vi: 'Chua nhap' },
   worker: { ko: '작업자', en: 'Worker', vi: 'Cong nhan' },
@@ -59,7 +56,17 @@ const TEXT = {
 const resolveText = (bundle, languageCode, fallback = '') =>
   bundle?.[languageCode] || bundle?.ko || fallback;
 
+const formatDuration = (seconds, languageCode) => {
+  const totalSeconds = Math.max(0, Math.round(Number(seconds) || 0));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (languageCode === 'en') return `${hours}h ${minutes}m`;
+  if (languageCode === 'vi') return `${hours} gio ${minutes} phut`;
+  return `${hours}시간 ${minutes}분`;
+};
+
 const formatCtDayCount = (value, languageCode) => {
+  if (value === null || value === undefined || value === '') return '-';
   const number = Number(value);
   if (!Number.isFinite(number)) return '-';
   const rounded = Math.round(number * 10) / 10;
@@ -271,7 +278,14 @@ const WorkMonthlyDetail = () => {
           value: String(summary.recordCount || 0),
         },
         {
-          label: resolveText(TEXT.ctDayRatio, languageCode, '작업CT/기대CT'),
+          label: resolveText(TEXT.averageCt, languageCode, '평균 CT'),
+          value:
+            summary.averageCtPerDaySeconds == null
+              ? '-'
+              : formatDuration(summary.averageCtPerDaySeconds, languageCode),
+        },
+        {
+          label: resolveText(TEXT.totalCt, languageCode, '총 CT'),
           value: formatCtDayRatio(
             summary.workCtDayCount,
             summary.expectedCtDayCount,
@@ -337,22 +351,23 @@ const WorkMonthlyDetail = () => {
                   <TableRow>
                     <TableCell>{resolveText(TEXT.workDate, languageCode, '작업일')}</TableCell>
                     <TableCell>{resolveText(TEXT.line, languageCode, '라인')}</TableCell>
-                    <TableCell>{resolveText(TEXT.attendance, languageCode, '근태')}</TableCell>
                     <TableCell align="right">
                       {resolveText(TEXT.items, languageCode, '기록건수')}
                     </TableCell>
-                    <TableCell>{resolveText(TEXT.ctDayRatio, languageCode, '작업CT/기대CT')}</TableCell>
+                    <TableCell>{resolveText(TEXT.averageCt, languageCode, '평균 CT')}</TableCell>
+                    <TableCell>{resolveText(TEXT.attendance, languageCode, '근태')}</TableCell>
+                    <TableCell>{resolveText(TEXT.totalCt, languageCode, '총 CT')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {loading ? (
                     <TableStatusRow
-                      colSpan={5}
+                      colSpan={6}
                       message={resolveText(TEXT.loading, languageCode, '월간 기록 상세를 불러오는 중입니다.')}
                     />
                   ) : filteredRows.length === 0 ? (
                     <TableStatusRow
-                      colSpan={5}
+                      colSpan={6}
                       message={emptyStateMessage}
                       sx={emptyStateSx}
                     />
@@ -361,12 +376,17 @@ const WorkMonthlyDetail = () => {
                       <TableRow key={row.workDate}>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.workDate}</TableCell>
                         <TableCell>{row.lineName || '-'}</TableCell>
+                        <TableCell align="right">{row.recordCount || 0}</TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                          {row.averageCtPerDaySeconds == null
+                            ? '-'
+                            : formatDuration(row.averageCtPerDaySeconds, languageCode)}
+                        </TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>
                           {row.attendanceWorked
                             ? resolveText(TEXT.attendanceWorked, languageCode, '근무')
                             : resolveText(TEXT.attendanceMissing, languageCode, '미입력')}
                         </TableCell>
-                        <TableCell align="right">{row.recordCount || 0}</TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>
                           {formatCtDayRatio(
                             row.workCtDayCount,

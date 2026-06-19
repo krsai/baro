@@ -334,6 +334,8 @@ export const aggregateMonthlyWorkerRows = ({
       hasAttendanceRows ? workedAttendanceDates.size : null;
     const expectedCtDayCount =
       attendanceWorkedDays !== null ? attendanceWorkedDays : workDayCount;
+    const averageCtPerDaySeconds =
+      expectedCtDayCount > 0 ? Math.round(row.totalCtSeconds / expectedCtDayCount) : null;
 
     return {
       key: row.key,
@@ -344,6 +346,7 @@ export const aggregateMonthlyWorkerRows = ({
       lineName,
       workDayCount,
       recordCount: row.recordCount,
+      averageCtPerDaySeconds,
       workCtDayCount: toCtDayCount(row.totalCtSeconds),
       expectedCtDayCount,
       attendanceWorkedDays,
@@ -426,6 +429,17 @@ export const buildMonthlyWorkerDetail = ({
     .map((dateKey) => {
       const bucket = bucketByDate.get(dateKey) || null;
       const attendanceWorked = attendanceWorkedDates.has(dateKey);
+      const expectedCtDayCount = hasAttendanceRows
+        ? attendanceWorked
+          ? 1
+          : 0
+        : bucket && bucket.recordCount > 0
+          ? 1
+          : null;
+      const totalCtSeconds =
+        bucket && bucket.recordCount > 0
+          ? Math.max(0, Math.round(Number(bucket.totalCtSeconds) || 0))
+          : null;
       return {
         workDate: dateKey,
         lineName:
@@ -433,15 +447,12 @@ export const buildMonthlyWorkerDetail = ({
           normalizeLabel(employee?.lineName) ||
           '-',
         recordCount: bucket?.recordCount || 0,
-        workCtDayCount:
-          bucket && bucket.recordCount > 0 ? toCtDayCount(bucket.totalCtSeconds) : null,
-        expectedCtDayCount: hasAttendanceRows
-          ? attendanceWorked
-            ? 1
-            : 0
-          : bucket && bucket.recordCount > 0
-            ? 1
+        averageCtPerDaySeconds:
+          totalCtSeconds != null && expectedCtDayCount > 0
+            ? Math.round(totalCtSeconds / expectedCtDayCount)
             : null,
+        workCtDayCount: totalCtSeconds != null ? toCtDayCount(totalCtSeconds) : null,
+        expectedCtDayCount,
         attendanceWorked,
       };
     });

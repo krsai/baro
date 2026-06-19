@@ -62,11 +62,8 @@ const TEXT = {
   line: { ko: '라인', en: 'Line', vi: 'Chuyen' },
   attendance: { ko: '근태', en: 'Attendance', vi: 'Cham cong' },
   items: { ko: '기록건수', en: 'Entries', vi: 'So dong' },
-  ctDayRatio: {
-    ko: '작업CT/기대CT',
-    en: 'Work CT / Expected CT',
-    vi: 'CT lam duoc / CT ky vong',
-  },
+  averageCt: { ko: '평균 CT', en: 'Avg CT', vi: 'CT trung binh' },
+  totalCt: { ko: '총 CT', en: 'Total CT', vi: 'Tong CT' },
   loading: {
     ko: '월간 기록을 불러오는 중입니다.',
     en: 'Loading monthly records...',
@@ -112,7 +109,17 @@ const getDatePickerLocaleText = (languageCode) => {
   return datePickerEnUS.components.MuiLocalizationProvider.defaultProps.localeText;
 };
 
+const formatDuration = (seconds, languageCode) => {
+  const totalSeconds = Math.max(0, Math.round(Number(seconds) || 0));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (languageCode === 'en') return `${hours}h ${minutes}m`;
+  if (languageCode === 'vi') return `${hours} gio ${minutes} phut`;
+  return `${hours}시간 ${minutes}분`;
+};
+
 const formatCtDayCount = (value, languageCode) => {
+  if (value === null || value === undefined || value === '') return '-';
   const number = Number(value);
   if (!Number.isFinite(number)) return '-';
   const rounded = Math.round(number * 10) / 10;
@@ -502,17 +509,24 @@ const WorkMonthlyBoard = ({
                       sx={{
                         display: 'grid',
                         gap: 0.75,
-                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                       }}
                     >
-                      <Typography variant="caption" color="text.secondary">
-                        {`${resolveText(TEXT.attendance, languageCode, '근태')} ${row.attendanceDisplay}`}
-                      </Typography>
                       <Typography variant="caption" color="text.secondary">
                         {`${resolveText(TEXT.items, languageCode, '기록건수')} ${row.recordCount || 0}`}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {`${resolveText(TEXT.ctDayRatio, languageCode, '작업CT/기대CT')} ${formatCtDayRatio(
+                        {`${resolveText(TEXT.averageCt, languageCode, '평균 CT')} ${
+                          row.averageCtPerDaySeconds == null
+                            ? '-'
+                            : formatDuration(row.averageCtPerDaySeconds, languageCode)
+                        }`}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {`${resolveText(TEXT.attendance, languageCode, '근태')} ${row.attendanceDisplay}`}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {`${resolveText(TEXT.totalCt, languageCode, '총 CT')} ${formatCtDayRatio(
                           row.workCtDayCount,
                           row.expectedCtDayCount,
                           languageCode
@@ -530,25 +544,26 @@ const WorkMonthlyBoard = ({
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>{resolveText(TEXT.worker, languageCode, '작업자')}</TableCell>
                 <TableCell>{resolveText(TEXT.workMonth, languageCode, '작업월')}</TableCell>
+                <TableCell>{resolveText(TEXT.worker, languageCode, '작업자')}</TableCell>
                 <TableCell>{resolveText(TEXT.factory, languageCode, '공장')}</TableCell>
                 <TableCell>{resolveText(TEXT.line, languageCode, '라인')}</TableCell>
-                <TableCell>{resolveText(TEXT.attendance, languageCode, '근태')}</TableCell>
                 <TableCell align="right">
                   {resolveText(TEXT.items, languageCode, '기록건수')}
                 </TableCell>
-                <TableCell>{resolveText(TEXT.ctDayRatio, languageCode, '작업CT/기대CT')}</TableCell>
+                <TableCell>{resolveText(TEXT.averageCt, languageCode, '평균 CT')}</TableCell>
+                <TableCell>{resolveText(TEXT.attendance, languageCode, '근태')}</TableCell>
+                <TableCell>{resolveText(TEXT.totalCt, languageCode, '총 CT')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loadingRows || loadingFactories ? (
                 <TableStatusRow
-                  colSpan={7}
+                  colSpan={8}
                   message={resolveText(TEXT.loading, languageCode, '월간 기록을 불러오는 중입니다.')}
                 />
               ) : filteredRows.length === 0 ? (
-                <TableStatusRow colSpan={7} message={emptyStateMessage} sx={emptyStateSx} />
+                <TableStatusRow colSpan={8} message={emptyStateMessage} sx={emptyStateSx} />
               ) : (
                 filteredRows.map((row) => (
                   <TableRow
@@ -560,12 +575,17 @@ const WorkMonthlyBoard = ({
                       '& td': { verticalAlign: 'middle' },
                     }}
                   >
-                    <TableCell>{row.workerName || '-'}</TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.workMonth || '-'}</TableCell>
+                    <TableCell>{row.workerName || '-'}</TableCell>
                     <TableCell>{row.factoryName || '-'}</TableCell>
                     <TableCell>{row.lineName || '-'}</TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.attendanceDisplay}</TableCell>
                     <TableCell align="right">{row.recordCount || 0}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      {row.averageCtPerDaySeconds == null
+                        ? '-'
+                        : formatDuration(row.averageCtPerDaySeconds, languageCode)}
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.attendanceDisplay}</TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       {formatCtDayRatio(
                         row.workCtDayCount,
