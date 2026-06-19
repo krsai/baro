@@ -628,6 +628,11 @@ const MainLayout = () => {
                 },
               ]
             : []),
+          {
+            label: getUiMessage('menu.business', '\uC0AC\uC5C5\uCCB4', languageCode),
+            icon: <BusinessIcon />,
+            path: '/business',
+          },
         ],
       },
       {
@@ -636,13 +641,7 @@ const MainLayout = () => {
         isParent: true,
         menuGroupKey: MENU_GROUP_KEYS.MISC,
         isOpen: miscOpen,
-        children: [
-          {
-            label: getUiMessage('menu.business', '\uC0AC\uC5C5\uCCB4', languageCode),
-            icon: <BusinessIcon />,
-            path: '/business',
-          },
-        ],
+        children: [],
       },
       ...(isSystemProfile
         ? [
