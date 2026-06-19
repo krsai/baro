@@ -109,33 +109,36 @@ const getDatePickerLocaleText = (languageCode) => {
   return datePickerEnUS.components.MuiLocalizationProvider.defaultProps.localeText;
 };
 
-const formatDuration = (seconds, languageCode) => {
+const formatAverageCtHours = (seconds, languageCode) => {
   const totalSeconds = Math.max(0, Math.round(Number(seconds) || 0));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  if (languageCode === 'en') return `${hours}h ${minutes}m`;
-  if (languageCode === 'vi') return `${hours} gio ${minutes} phut`;
-  return `${hours}시간 ${minutes}분`;
+  const hours = Math.round(totalSeconds / 3600);
+  if (languageCode === 'en') return `${hours}h`;
+  if (languageCode === 'vi') return `${hours} gio`;
+  return `${hours}시간`;
 };
 
-const formatCtDayCount = (value, languageCode) => {
+const formatDayNumber = (value) => {
   if (value === null || value === undefined || value === '') return '-';
   const number = Number(value);
   if (!Number.isFinite(number)) return '-';
   const rounded = Math.round(number * 10) / 10;
-  const display = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-  if (languageCode === 'en') return `${display}d`;
-  if (languageCode === 'vi') return `${display} ngay`;
-  return `${display}일`;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 };
 
-const formatCtDayRatio = (workCtDayCount, expectedCtDayCount, languageCode) => {
-  const workNumber = Number(workCtDayCount);
-  if (!Number.isFinite(workNumber)) return '-';
-  return `${formatCtDayCount(workNumber, languageCode)}/${formatCtDayCount(
-    expectedCtDayCount,
-    languageCode
-  )}`;
+const formatDayRatio = (leftValue, rightValue, languageCode) => {
+  const left = formatDayNumber(leftValue);
+  if (left === '-') return '-';
+  const right = formatDayNumber(rightValue);
+  const suffix = languageCode === 'en' ? 'd' : languageCode === 'vi' ? ' ngay' : '일';
+  return `${left}/${right}${suffix}`;
+};
+
+const formatAttendanceDays = (row, languageCode) => {
+  const workedDays =
+    row?.attendanceWorkedDays === null || row?.attendanceWorkedDays === undefined
+      ? '-'
+      : row.attendanceWorkedDays;
+  return formatDayRatio(workedDays, row?.attendanceTargetDays, languageCode);
 };
 
 const buildMonthlyDetailTabLabel = (workerName, monthKey, languageCode) => {
@@ -519,14 +522,17 @@ const WorkMonthlyBoard = ({
                         {`${resolveText(TEXT.averageCt, languageCode, '평균 CT')} ${
                           row.averageCtPerDaySeconds == null
                             ? '-'
-                            : formatDuration(row.averageCtPerDaySeconds, languageCode)
+                            : formatAverageCtHours(row.averageCtPerDaySeconds, languageCode)
                         }`}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {`${resolveText(TEXT.attendance, languageCode, '근태')} ${row.attendanceDisplay}`}
+                        {`${resolveText(TEXT.attendance, languageCode, '근태')} ${formatAttendanceDays(
+                          row,
+                          languageCode
+                        )}`}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {`${resolveText(TEXT.totalCt, languageCode, '총 CT')} ${formatCtDayRatio(
+                        {`${resolveText(TEXT.totalCt, languageCode, '총 CT')} ${formatDayRatio(
                           row.workCtDayCount,
                           row.expectedCtDayCount,
                           languageCode
@@ -583,11 +589,13 @@ const WorkMonthlyBoard = ({
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       {row.averageCtPerDaySeconds == null
                         ? '-'
-                        : formatDuration(row.averageCtPerDaySeconds, languageCode)}
+                        : formatAverageCtHours(row.averageCtPerDaySeconds, languageCode)}
                     </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.attendanceDisplay}</TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      {formatCtDayRatio(
+                      {formatAttendanceDays(row, languageCode)}
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      {formatDayRatio(
                         row.workCtDayCount,
                         row.expectedCtDayCount,
                         languageCode
