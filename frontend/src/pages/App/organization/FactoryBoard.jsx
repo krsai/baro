@@ -119,6 +119,7 @@ const FactoryList = () => {
 
     const payload = {
       name: savedData.name,
+      factoryCode: savedData.factoryCode,
       address: savedData.address,
       country: savedData.country,
       countryCode: savedData.countryCode,
@@ -149,8 +150,8 @@ const FactoryList = () => {
 
       handleDetailClose();
       showNotification(text.saveSuccess, 'success');
-    } catch (_error) {
-      showNotification(text.saveError, 'error');
+    } catch (error) {
+      showNotification(error?.message || text.saveError, 'error');
     } finally {
       setSaving(false);
     }
