@@ -1,5 +1,6 @@
 ﻿import { Router } from "express";
 import { prisma } from "../db";
+import { normalizeEmployeeNo } from "../employees/employeeNumber";
 import { getOrganizationByQuery } from "../middleware/access";
 import { toNumberOrNull } from "../utils/common";
 
@@ -8,6 +9,7 @@ type FactoryRoutesDeps = {
 };
 
 const FACTORY_WORK_SECONDS_PER_MONTH = 26 * 8 * 60 * 60;
+const FACTORY_EMPLOYEE_NUMBER_WIDTH = 4;
 const FACTORY_DIAL_CODE_BY_COUNTRY: Record<string, string> = {
   KR: "+82",
   VN: "+84",
@@ -40,6 +42,24 @@ const normalizeFactoryCode = (value: unknown): string | null => {
   const normalized = value.trim().toUpperCase().replace(/[^A-Z]/g, "");
   if (normalized.length < 2 || normalized.length > 3) return null;
   return normalized;
+};
+
+const rebuildEmployeeNoWithFactoryCode = (
+  employeeNoInput: unknown,
+  factoryCodeInput: unknown
+): string | null => {
+  const factoryCode = normalizeFactoryCode(factoryCodeInput);
+  const normalizedEmployeeNo = normalizeEmployeeNo(employeeNoInput);
+  if (!factoryCode || !normalizedEmployeeNo) return null;
+
+  const suffixMatch = normalizedEmployeeNo.match(/(\d+)$/);
+  const sequenceText = suffixMatch?.[1];
+  if (!sequenceText) return null;
+
+  return `${factoryCode}-${sequenceText.padStart(
+    FACTORY_EMPLOYEE_NUMBER_WIDTH,
+    "0"
+  )}`;
 };
 
 const normalizeFactoryCountry = (value: unknown): string | null => {
@@ -211,6 +231,71 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       resolvedCode = normalizedCode;
     }
 
+    const previousCode = normalizeFactoryCode((existing as any)?.factoryCode);
+    const nextCode = normalizeFactoryCode(resolvedCode);
+    const shouldSyncEmployeeNumbers = Boolean(nextCode) && previousCode !== nextCode;
+    const employeeRowsToSync = shouldSyncEmployeeNumbers
+      ? await prisma.employee.findMany({
+          where: {
+            orgId: organization.id,
+            factoryId: existing.id,
+          },
+          select: {
+            id: true,
+            employeeNo: true,
+          },
+          orderBy: [{ id: "asc" }],
+        })
+      : [];
+    const employeeNumberUpdates = employeeRowsToSync
+      .map((employee) => {
+        const nextEmployeeNo = rebuildEmployeeNoWithFactoryCode(
+          employee.employeeNo,
+          nextCode
+        );
+        if (!nextEmployeeNo) return null;
+        const currentEmployeeNo = normalizeEmployeeNo(employee.employeeNo);
+        if (currentEmployeeNo === nextEmployeeNo) return null;
+        return {
+          id: employee.id,
+          employeeNo: nextEmployeeNo,
+        };
+      })
+      .filter((row): row is { id: number; employeeNo: string } => Boolean(row));
+
+    if (employeeNumberUpdates.length > 0) {
+      const duplicateEmployeeNo = employeeNumberUpdates.find((candidate, index, rows) =>
+        rows.findIndex((row) => row.employeeNo === candidate.employeeNo) !== index
+      );
+      if (duplicateEmployeeNo) {
+        return res.status(409).json({
+          ok: false,
+          error:
+            "factoryCode change would create duplicate employee numbers in this factory",
+        });
+      }
+
+      const conflictingEmployees = await prisma.employee.findMany({
+        where: {
+          orgId: organization.id,
+          id: { notIn: employeeNumberUpdates.map((row) => row.id) },
+          employeeNo: { in: employeeNumberUpdates.map((row) => row.employeeNo) },
+        },
+        select: {
+          id: true,
+          employeeNo: true,
+        },
+        orderBy: [{ id: "asc" }],
+      });
+      if (conflictingEmployees.length > 0) {
+        return res.status(409).json({
+          ok: false,
+          error:
+            "factoryCode change would conflict with existing employee numbers",
+        });
+      }
+    }
+
     const wageFields = resolveFactoryWageFields(targetMonthlyWage, wagePerSecond);
     const phoneFields = resolveFactoryPhoneFields({
       countryInput: country,
@@ -219,20 +304,43 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       fallbackCountryCode: existing.countryCode,
     });
 
-    const factory = await prisma.factory.update({
-      where: { id },
-      data: {
-        name: typeof name === "string" ? name.trim() : existing.name,
-        factoryCode: resolvedCode,
-        address: address?.trim?.() ?? address ?? null,
-        country: phoneFields.country,
-        countryCode: phoneFields.countryCode,
-        phoneNumber: phoneNumber?.trim?.() ?? phoneNumber ?? null,
-        manager: manager?.trim?.() ?? manager ?? null,
-        targetMonthlyWage: wageFields.targetMonthlyWage,
-        wagePerSecond: wageFields.wagePerSecond,
-      },
-    });
+    let factory;
+    try {
+      factory = await prisma.$transaction(async (tx) => {
+        const updatedFactory = await tx.factory.update({
+          where: { id },
+          data: {
+            name: typeof name === "string" ? name.trim() : existing.name,
+            factoryCode: resolvedCode,
+            address: address?.trim?.() ?? address ?? null,
+            country: phoneFields.country,
+            countryCode: phoneFields.countryCode,
+            phoneNumber: phoneNumber?.trim?.() ?? phoneNumber ?? null,
+            manager: manager?.trim?.() ?? manager ?? null,
+            targetMonthlyWage: wageFields.targetMonthlyWage,
+            wagePerSecond: wageFields.wagePerSecond,
+          },
+        });
+
+        for (const employeeUpdate of employeeNumberUpdates) {
+          await tx.employee.update({
+            where: { id: employeeUpdate.id },
+            data: { employeeNo: employeeUpdate.employeeNo },
+          });
+        }
+
+        return updatedFactory;
+      });
+    } catch (error) {
+      if ((error as { code?: string })?.code === "P2002") {
+        return res.status(409).json({
+          ok: false,
+          error:
+            "factoryCode change would conflict with existing employee numbers",
+        });
+      }
+      throw error;
+    }
 
     return res.json(factory);
   });
