@@ -1379,7 +1379,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     if (!selectedFactoryFilterId) return activeMembers;
     return activeMembers.filter((member) => {
       const employee = employeeByMembership.get(member.id);
-      if (!employee) return true;
+      if (!employee) return false;
       return String(employee?.factoryId || '') === String(selectedFactoryFilterId);
     });
   }, [activeMembers, employeeByMembership, selectedFactoryFilterId]);
