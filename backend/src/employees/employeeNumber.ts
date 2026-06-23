@@ -25,8 +25,8 @@ export const generateNextEmployeeNo = async (
 ): Promise<string | null> => {
   await db.$queryRaw`
     SELECT pg_advisory_xact_lock(
-      ${EMPLOYEE_NUMBER_LOCK_NAMESPACE},
-      ${factoryId}
+      ${EMPLOYEE_NUMBER_LOCK_NAMESPACE}::integer,
+      ${factoryId}::integer
     )
   `;
 

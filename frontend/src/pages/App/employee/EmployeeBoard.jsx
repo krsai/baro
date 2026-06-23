@@ -117,6 +117,11 @@ const EMPLOYEE_BOARD_TEXT = {
     en: 'Auto-generated as factory code + 4 digits, e.g. HN-0001.',
     vi: 'Tu dong tao theo ma nha may + 4 chu so, vi du HN-0001.',
   },
+  employeeNoAutoPlaceholder: {
+    ko: '저장 시 자동 생성',
+    en: 'Generated on save',
+    vi: 'Tu dong tao khi luu',
+  },
   payTypeColumn: { ko: '급여 타입', en: 'Pay Type', vi: 'Loai luong' },
   joinedAtColumn: { ko: '입사일', en: 'Join Date', vi: 'Ngay vao lam' },
   leftAtColumn: { ko: '퇴사일', en: 'Leave Date', vi: 'Ngay nghi viec' },
@@ -1056,10 +1061,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         };
 
         if (draft.factoryId) employeePayload.factoryId = Number(draft.factoryId);
-        const trimmedEmployeeNo = String(draft.employeeNo || '').trim();
-        if (trimmedEmployeeNo) {
-          employeePayload.employeeNo = trimmedEmployeeNo;
-        }
         if (draft.joinedAt) employeePayload.joinedAt = draft.joinedAt;
         if (Object.prototype.hasOwnProperty.call(draft, 'leftAt')) {
           const normalizedLeftAt = String(draft.leftAt || '').trim();
@@ -1249,7 +1250,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       let targetMember = null;
       let membershipEmailForSave;
       const parsedDrawerFixedSalary = parseMoneyInput(drawerDraft.fixedSalary);
-      const trimmedDrawerEmployeeNo = String(drawerDraft.employeeNo || '').trim();
 
       if (drawerMode === 'create') {
         if (normalizedDrawerEmail) {
@@ -1277,7 +1277,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 : null,
             payType: normalizedPayType,
             fixedSalary: parsedDrawerFixedSalary,
-            ...(trimmedDrawerEmployeeNo ? { employeeNo: trimmedDrawerEmployeeNo } : {}),
             ...(normalizedJoinedAt ? { joinedAt: normalizedJoinedAt } : {}),
             ...(normalizedLeftAt ? { leftAt: normalizedLeftAt } : {}),
             ...(normalizedDrawerEmail ? { email: normalizedDrawerEmail } : {}),
@@ -1565,10 +1564,13 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TextField
                 size="small"
                 label={text('employeeNoLabel', languageCode)}
-                value={drawerDraft.employeeNo}
-                onChange={(e) => handleDrawerDraftChange({ employeeNo: e.target.value })}
+                value={isCreateDrawerMode ? '' : drawerDraft.employeeNo}
                 disabled={isDrawerSaving}
-                placeholder={isCreateDrawerMode ? text('employeeNoAutoHint', languageCode) : ''}
+                placeholder={isCreateDrawerMode
+                  ? text('employeeNoAutoPlaceholder', languageCode)
+                  : ''}
+                helperText={isCreateDrawerMode ? text('employeeNoAutoHint', languageCode) : ''}
+                InputProps={{ readOnly: true }}
                 inputProps={{ style: { letterSpacing: 1 } }}
               />
               <TextField
