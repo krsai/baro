@@ -5,7 +5,7 @@ const EMPLOYEE_NUMBER_LOCK_NAMESPACE = 20421;
 
 type EmployeeNumberClient = Pick<
   Prisma.TransactionClient,
-  "$queryRaw" | "employee" | "factory"
+  "$executeRaw" | "employee" | "factory"
 >;
 
 export const normalizeEmployeeNo = (value: unknown): string | null => {
@@ -23,7 +23,7 @@ export const generateNextEmployeeNo = async (
   orgId: number,
   factoryId: number
 ): Promise<string | null> => {
-  await db.$queryRaw`
+  await db.$executeRaw`
     SELECT pg_advisory_xact_lock(
       ${EMPLOYEE_NUMBER_LOCK_NAMESPACE}::integer,
       ${factoryId}::integer
