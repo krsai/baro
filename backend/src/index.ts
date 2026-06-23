@@ -6569,7 +6569,7 @@ const resolveWorkRecordProcessBucketKeyForAssignmentSchedule = (
   const processId = toPositiveIntOrNull(value?.processId);
   if (processId != null) return `id:${processId}`;
   const processCode = resolveOptionalString(value?.processCode, null);
-  if (processCode) return `code:${normalizeComparableText(processCode)}`;
+  if (processCode) return `code:${normalizeProcessCodeKey(processCode)}`;
   return "unknown";
 };
 const allocateExtendedDurationsByPlannedRatio = (
