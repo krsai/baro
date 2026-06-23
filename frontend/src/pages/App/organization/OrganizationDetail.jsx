@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SaveButton from '../../../components/SaveButton';
+import { getOrganizationTypeLabel } from '../../../constants/organizationType';
 import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -18,11 +19,26 @@ const buildCompanyInfo = (data = {}) => ({
   name: data.name ?? '',
   businessNumber: data.businessNumber ?? '',
   representative: data.representative ?? '',
-  industry: data.industry ?? '',
+  industry: String(data.industry ?? '').trim() || getOrganizationTypeLabel(data.type, ''),
   address: data.address ?? '',
   phone: data.phone ?? '',
   email: data.email ?? '',
 });
+
+const InfoRow = ({ label, value, name, onChange }) => (
+  <Box sx={{ py: 1.5, borderBottom: '1px solid #eee' }}>
+    <Typography variant="subtitle2" sx={{ color: 'text.secondary', mb: 0.5 }}>
+      {label}
+    </Typography>
+    <TextField
+      fullWidth
+      name={name}
+      value={value}
+      onChange={onChange}
+      sx={{ '& .MuiInputBase-input': { fontWeight: 500 } }}
+    />
+  </Box>
+);
 
 const OrganizationDetail = () => {
   const { languageCode } = useLanguage();
@@ -136,21 +152,6 @@ const OrganizationDetail = () => {
     }
   };
 
-  const InfoRow = ({ label, value, name }) => (
-    <Box sx={{ py: 1.5, borderBottom: '1px solid #eee' }}>
-      <Typography variant="subtitle2" sx={{ color: 'text.secondary', mb: 0.5 }}>
-        {label}
-      </Typography>
-      <TextField
-        fullWidth
-        name={name}
-        value={value}
-        onChange={handleInputChange}
-        sx={{ '& .MuiInputBase-input': { fontWeight: 500 } }}
-      />
-    </Box>
-  );
-
   return (
     <AppPageContainer
       title={text.title}
@@ -163,21 +164,48 @@ const OrganizationDetail = () => {
       )}
     >
       <Paper variant="outlined" sx={{ width: '100%', p: 3, borderRadius: 2 }}>
-        <InfoRow label={text.name} name="name" value={formData.name} />
+        <InfoRow
+          label={text.name}
+          name="name"
+          value={formData.name}
+          onChange={handleInputChange}
+        />
         <InfoRow
           label={text.businessNumber}
           name="businessNumber"
           value={formData.businessNumber}
+          onChange={handleInputChange}
         />
         <InfoRow
           label={text.representative}
           name="representative"
           value={formData.representative}
+          onChange={handleInputChange}
         />
-        <InfoRow label={text.industry} name="industry" value={formData.industry} />
-        <InfoRow label={text.address} name="address" value={formData.address} />
-        <InfoRow label={text.phone} name="phone" value={formData.phone} />
-        <InfoRow label={text.email} name="email" value={formData.email} />
+        <InfoRow
+          label={text.industry}
+          name="industry"
+          value={formData.industry}
+          onChange={handleInputChange}
+        />
+        <InfoRow
+          label={text.address}
+          name="address"
+          value={formData.address}
+          onChange={handleInputChange}
+        />
+        <InfoRow
+          label={text.phone}
+          name="phone"
+          value={formData.phone}
+          onChange={handleInputChange}
+        />
+        <InfoRow
+          label={text.email}
+          name="email"
+          value={formData.email}
+          onChange={handleInputChange}
+        />
       </Paper>
     </AppPageContainer>
   );
