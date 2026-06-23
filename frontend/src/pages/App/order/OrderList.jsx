@@ -37,7 +37,7 @@ import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
 import LockToggleSwitch from '../../../components/LockToggleSwitch';
 import SaveButton from '../../../components/SaveButton';
 import CustomDatePicker from '../../../components/CustomDatePicker';
-import PageSectionHeader from '../../../components/PageSectionHeader';
+import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import SearchableSelect from '../../../components/SearchableSelect';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
@@ -3273,105 +3273,97 @@ const OrderList = () => {
   if (!isDetailMode) {
     return (
       <AppPageContainer
-        header={
-          <PageSectionHeader
-            title={orderPageText.listTitle}
-            actionLabel={orderPageText.addOrder}
-            actionIcon={<AddIcon />}
-            onAction={handleAdd}
-          />
-        }
-      >
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: { xs: 'stretch', xl: 'center' },
-            flexDirection: { xs: 'column', xl: 'row' },
-            gap: 1,
-            mb: 2,
-          }}
-        >
-          <SearchInput
-            value={searchTerm}
-            placeholder={orderPartyText.searchPlaceholder}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            sx={{
-              width: { xs: '100%', sm: 'auto' },
-              minWidth: { sm: 320 },
-              maxWidth: { lg: 640 },
-              flex: 1,
-            }}
-          />
-          <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0 }}>
-            <InputLabel id="order-progress-filter-label">{ORDER_STATUS_TEXT.fieldLabel}</InputLabel>
-            <Select
-              labelId="order-progress-filter-label"
-              value={progressFilter}
-              label={ORDER_STATUS_TEXT.fieldLabel}
-              onChange={(event) => setProgressFilter(event.target.value)}
-            >
-              {orderProgressFilterOptions.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: { xs: 'stretch', sm: 'center' },
-              justifyContent: { xs: 'flex-start', xl: 'flex-end' },
-              flexDirection: { xs: 'column', sm: 'row' },
-              gap: 1,
-              flexShrink: 0,
-              ml: { xl: 'auto' },
-            }}
-          >
-            <Stack
-              direction="row"
-              spacing={1}
-              sx={{
-                alignItems: 'center',
-                justifyContent: { xs: 'flex-start', sm: 'flex-end' },
-                flexWrap: 'wrap',
-                flexShrink: 0,
-              }}
-            >
-              <CustomDatePicker
-                value={dueDateFilterStart}
-                onChange={handleDueDateFilterStartChange}
-                slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
-              />
-              <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>
-                ~
-              </Typography>
-              <CustomDatePicker
-                value={dueDateFilterEnd}
-                onChange={handleDueDateFilterEndChange}
-                slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
-              />
-              <Stack sx={{ gap: '2px' }}>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => shiftDueDateFilterMonth(1)}
-                  sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-                >
-                  M+
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => shiftDueDateFilterMonth(-1)}
-                  sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-                >
-                  M-
-                </Button>
+        title={orderPageText.listTitle}
+        titleActions={(
+          <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
+            {orderPageText.addOrder}
+          </Button>
+        )}
+        toolbar={(
+          <PageToolbar
+            showLastUpdater={false}
+            left={(
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={1}
+                sx={{
+                  alignItems: { xs: 'stretch', sm: 'center' },
+                  minWidth: 0,
+                }}
+              >
+                <SearchInput
+                  value={searchTerm}
+                  placeholder={orderPartyText.searchPlaceholder}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  sx={{
+                    width: { xs: '100%', sm: 360, md: 420 },
+                    flexShrink: 0,
+                  }}
+                />
+                <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0 }}>
+                  <InputLabel id="order-progress-filter-label">{ORDER_STATUS_TEXT.fieldLabel}</InputLabel>
+                  <Select
+                    labelId="order-progress-filter-label"
+                    value={progressFilter}
+                    label={ORDER_STATUS_TEXT.fieldLabel}
+                    onChange={(event) => setProgressFilter(event.target.value)}
+                  >
+                    {orderProgressFilterOptions.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Stack>
-            </Stack>
-          </Box>
-        </Box>
+            )}
+            right={(
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                  alignItems: 'center',
+                  justifyContent: { xs: 'flex-start', lg: 'flex-end' },
+                  flexWrap: 'wrap',
+                  flexShrink: 0,
+                }}
+              >
+                <CustomDatePicker
+                  value={dueDateFilterStart}
+                  onChange={handleDueDateFilterStartChange}
+                  slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
+                />
+                <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>
+                  ~
+                </Typography>
+                <CustomDatePicker
+                  value={dueDateFilterEnd}
+                  onChange={handleDueDateFilterEndChange}
+                  slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
+                />
+                <Stack sx={{ gap: '2px' }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => shiftDueDateFilterMonth(1)}
+                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                  >
+                    M+
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => shiftDueDateFilterMonth(-1)}
+                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                  >
+                    M-
+                  </Button>
+                </Stack>
+              </Stack>
+            )}
+          />
+        )}
+      >
         <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden' }}>
           <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
             <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', minWidth: 980 }}>
@@ -3515,10 +3507,57 @@ const OrderList = () => {
   }
 
   return (
-    <AppPageContainer>
+    <AppPageContainer
+      title={
+        isNewOrder
+          ? getUiMessage('orderDetail.newTitle', 'New Order', languageCode)
+          : getUiMessage('orderDetail.editTitle', 'Edit Order', languageCode)
+      }
+      titleActions={(
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{ alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}
+        >
+          {!isNewOrder && (
+            <Tooltip title={currentOrderLockTooltipText}>
+              <span>
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="inherit"
+                  startIcon={
+                    isCurrentOrderModificationLocked ? <LockOutlinedIcon /> : <LockOpenOutlinedIcon />
+                  }
+                  onClick={() =>
+                    handleModificationLockToggle(!isCurrentOrderModificationLocked)
+                  }
+                  disabled={isModificationLockToggleDisabled}
+                  sx={getOrderLockButtonSx(isCurrentOrderModificationLocked)}
+                >
+                  {isCurrentOrderModificationLocked
+                    ? getUiMessage('orderDetail.lockedShort', '🔒', languageCode)
+                    : getUiMessage('orderDetail.unlockedShort', '🔓', languageCode)}
+                </Button>
+              </span>
+            </Tooltip>
+          )}
+          {isTogglingModificationLock && <CircularProgress size={16} />}
+          <LastUpdaterLabel />
+          <SaveButton
+            onClick={handleSave}
+            disabled={
+              isSavingOrder ||
+              (!isNewOrder && (!hasFormChanges || isCurrentOrderModificationLocked))
+            }
+            loading={isSavingOrder}
+          />
+        </Stack>
+      )}
+    >
       <Box
         sx={{
-          display: 'flex',
+          display: 'none',
           justifyContent: 'space-between',
           alignItems: { xs: 'stretch', md: 'center' },
           flexDirection: { xs: 'column', md: 'row' },

@@ -9,6 +9,7 @@ import {
 import { useLocation, useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
+import PageToolbar from '../../../components/PageToolbar';
 import SaveButton from '../../../components/SaveButton';
 import StyleInfo from './styleDetail/StyleInfo';
 import StyleBom from './styleDetail/StyleBom';
@@ -393,31 +394,9 @@ const StyleDetail = () => {
   };
 
   return (
-    <AppPageContainer>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <ToggleButtonGroup
-          value={currentTab}
-          exclusive
-          onChange={handleChange}
-          aria-label="style management toggle"
-        >
-          <ToggleButton value="basicInfo">
-            {getStyleDetailMessage(languageCode, 'tabBasicInfo')}
-          </ToggleButton>
-          <ToggleButton value="revenue">{getStyleDetailMessage(languageCode, 'tabRevenue')}</ToggleButton>
-          {canViewProcessInfo ? (
-            <ToggleButton value="timeMatrix">
-              {getStyleDetailMessage(languageCode, 'tabTimeMatrix')}
-            </ToggleButton>
-          ) : null}
-          {canViewProcessInfo ? (
-            <ToggleButton value="processInfo">
-              {getStyleDetailMessage(languageCode, 'tabProcessInfo')}
-            </ToggleButton>
-          ) : null}
-          <ToggleButton value="bom">{getStyleDetailMessage(languageCode, 'tabBom')}</ToggleButton>
-        </ToggleButtonGroup>
-
+    <AppPageContainer
+      title={detailTabLabel}
+      titleActions={(
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <LastUpdaterLabel />
           <SaveButton
@@ -425,8 +404,40 @@ const StyleDetail = () => {
             disabled={loadingStyle || (!isNew && !isDirty)}
           />
         </Stack>
-      </Box>
-
+      )}
+      toolbar={(
+        <PageToolbar
+          showLastUpdater={false}
+          left={(
+            <ToggleButtonGroup
+              value={currentTab}
+              exclusive
+              onChange={handleChange}
+              aria-label="style management toggle"
+              sx={{ maxWidth: '100%', overflowX: 'auto' }}
+            >
+              <ToggleButton value="basicInfo">
+                {getStyleDetailMessage(languageCode, 'tabBasicInfo')}
+              </ToggleButton>
+              <ToggleButton value="revenue">
+                {getStyleDetailMessage(languageCode, 'tabRevenue')}
+              </ToggleButton>
+              {canViewProcessInfo ? (
+                <ToggleButton value="timeMatrix">
+                  {getStyleDetailMessage(languageCode, 'tabTimeMatrix')}
+                </ToggleButton>
+              ) : null}
+              {canViewProcessInfo ? (
+                <ToggleButton value="processInfo">
+                  {getStyleDetailMessage(languageCode, 'tabProcessInfo')}
+                </ToggleButton>
+              ) : null}
+              <ToggleButton value="bom">{getStyleDetailMessage(languageCode, 'tabBom')}</ToggleButton>
+            </ToggleButtonGroup>
+          )}
+        />
+      )}
+    >
       {loadingStyle && !isNew ? (
         <Typography color="text.secondary">{getStyleDetailMessage(languageCode, 'loading')}</Typography>
       ) : (

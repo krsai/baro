@@ -485,11 +485,22 @@ const PayrollEntry = () => {
   ]);
 
   return (
-    <AppPageContainer>
+    <AppPageContainer
+      title={isNew ? '湲됱뿬 怨꾩궛' : `湲됱뿬 ${monthFromParam}`}
+      titleActions={payrollData ? (
+        <SaveButton
+          onClick={handleSaveSnapshot}
+          disabled={!canEditCurrentPayroll || savingSnapshot || computedEmployees.length === 0}
+          loading={savingSnapshot}
+        >
+          ???
+        </SaveButton>
+      ) : null}
+    >
       <Box sx={{ width: '100%', maxWidth: 1280 }}>
         <Box
           sx={{
-            display: 'flex',
+            display: 'none',
             justifyContent: 'space-between',
             alignItems: { xs: 'stretch', md: 'center' },
             flexDirection: { xs: 'column', md: 'row' },
