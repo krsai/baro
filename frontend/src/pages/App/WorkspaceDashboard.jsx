@@ -239,6 +239,49 @@ const formatPlainValue = (value, loading) => {
   return formatInteger(Math.max(0, Number(value) || 0));
 };
 
+const SUMMARY_CARD_SX = {
+  p: 1.5,
+  borderRadius: 1,
+  borderColor: 'divider',
+  bgcolor: '#fcfcfd',
+};
+
+const SUMMARY_TITLE_SX = {
+  fontSize: 13,
+  lineHeight: 1.35,
+  fontWeight: 700,
+};
+
+const SUMMARY_BADGE_SX = {
+  height: 22,
+  borderRadius: '11px',
+  fontSize: 11,
+  fontWeight: 500,
+  '& .MuiChip-label': {
+    px: 0.85,
+  },
+};
+
+const SUMMARY_LABEL_SX = {
+  fontSize: 12,
+  lineHeight: 1.45,
+};
+
+const SUMMARY_VALUE_SX = {
+  fontSize: 13,
+  lineHeight: 1.45,
+  fontWeight: 600,
+  fontVariantNumeric: 'tabular-nums',
+  color: 'text.primary',
+};
+
+const SUMMARY_DESCRIPTION_SX = {
+  display: 'block',
+  mt: 0.75,
+  fontSize: 11.5,
+  lineHeight: 1.45,
+};
+
 const buildSummaryData = ({ orders, assignments }) => {
   const summary = createEmptySummary();
 
@@ -685,11 +728,7 @@ const WorkspaceDashboard = () => {
               <Paper
                 key={card.key}
                 variant="outlined"
-                sx={{
-                  p: 1.75,
-                  borderRadius: 1.5,
-                  borderStyle: 'dashed',
-                }}
+                sx={SUMMARY_CARD_SX}
               >
                 <Stack
                   direction="row"
@@ -697,10 +736,15 @@ const WorkspaceDashboard = () => {
                   justifyContent="space-between"
                   sx={{ mb: 0.75 }}
                 >
-                  <Typography variant="subtitle2">
+                  <Typography variant="subtitle2" sx={SUMMARY_TITLE_SX}>
                     {resolveText(card.title, languageCode)}
                   </Typography>
-                  <Chip label={card.badge} size="small" variant="outlined" />
+                  <Chip
+                    label={card.badge}
+                    size="small"
+                    variant="outlined"
+                    sx={SUMMARY_BADGE_SX}
+                  />
                 </Stack>
                 {Array.isArray(card.statusItems) && card.statusItems.length > 0 ? (
                   <Stack spacing={0.5} sx={{ mb: 0.5 }}>
@@ -711,21 +755,29 @@ const WorkspaceDashboard = () => {
                         justifyContent="space-between"
                         alignItems="center"
                       >
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={SUMMARY_LABEL_SX}
+                        >
                           {resolveText(status.label, languageCode)}
                         </Typography>
-                        <Typography variant="body1" sx={{ lineHeight: 1.3 }}>
+                        <Typography variant="body2" sx={SUMMARY_VALUE_SX}>
                           {status.value}
                         </Typography>
                       </Stack>
                     ))}
                   </Stack>
                 ) : (
-                  <Typography variant="body1" sx={{ lineHeight: 1.3, mb: 0.5 }}>
+                  <Typography variant="body2" sx={SUMMARY_VALUE_SX}>
                     {card.value}
                   </Typography>
                 )}
-                <Typography variant="caption" color="text.secondary">
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={SUMMARY_DESCRIPTION_SX}
+                >
                   {resolveText(card.description, languageCode)}
                 </Typography>
               </Paper>
