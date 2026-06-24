@@ -308,9 +308,9 @@ export const UI_MESSAGES = {
     capacityMode: { ko: '용량', en: 'Capacity', vi: 'Cong suat' },
     timelineMode: { ko: '타임라인', en: 'Timeline', vi: 'Tien do' },
     capacitySummaryHint: {
-      ko: '기록월은 실제 생산을 보여주고, 마지막 기록 다음 작업일부터 남은 배정 예측 부하를 표시합니다. 미연결 작업기록 경고는 저장된 작업기록 기준입니다.',
-      en: 'Recorded months show actual production. Remaining assigned work is forecast from the next workday after the latest record. Unlinked-log warnings follow saved work logs.',
-      vi: 'Thang da ghi nhan hien thi san luong thuc te. Cong viec con lai duoc du bao tu ngay lam viec tiep theo sau ghi nhan moi nhat. Canh bao nhat ky chua lien ket theo work log da luu.',
+      ko: '과거 기록월의 계획 부하는 월 작업 가능량을 100% 기준으로 표시하고, 실제 생산은 저장된 작업기록을 따릅니다. 마지막 기록 다음 작업일부터는 남은 배정 예측 부하를 표시합니다.',
+      en: 'For recorded past months, planned load uses the month capacity as 100%. Actual production follows saved work logs, and remaining assignments are forecast from the next workday after the latest record.',
+      vi: 'Voi thang da ghi nhan, tai trong ke hoach lay cong suat thang lam moc 100%. San luong thuc te theo work log da luu, va phan viec con lai duoc du bao tu ngay lam viec tiep theo sau ghi nhan moi nhat.',
     },
     lineCapacityHeader: { ko: '라인', en: 'Line', vi: 'Chuyen' },
     assignmentCountCompact: {
@@ -319,16 +319,6 @@ export const UI_MESSAGES = {
       vi: '{count} phan cong',
     },
     plannedLoad: { ko: '계획 부하', en: 'Planned load', vi: 'Tai trong ke hoach' },
-    recordedMonthLoad: {
-      ko: '기록월',
-      en: 'Recorded month',
-      vi: 'Thang da ghi nhan',
-    },
-    noRemainingForecast: {
-      ko: '남은 예측 없음',
-      en: 'No remaining forecast',
-      vi: 'Khong con du bao',
-    },
     forecastLoad: {
       ko: '이번달 배정된 작업',
       en: 'Assigned work this month',

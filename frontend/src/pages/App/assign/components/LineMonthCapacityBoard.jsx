@@ -386,25 +386,18 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
           ) || null;
         const isForecastMonth = Boolean(summary?.isForecastMonth);
         const isAnchorMonth = Boolean(summary?.isAnchorMonth);
-        const isHistoricalMonth = Boolean(summary?.isHistoricalMonth);
-        const tone = resolvePlanTone(
-          isHistoricalMonth ? null : summary?.plannedLoadPercent
+        const tone = resolvePlanTone(summary?.plannedLoadPercent);
+        const loadLabel = getUiMessage(
+          isForecastMonth ? 'assign.forecastLoad' : 'assign.plannedLoad',
+          isForecastMonth ? 'Assigned work this month' : 'Planned load',
+          languageCode
         );
-        const loadLabel = isHistoricalMonth
-          ? getUiMessage('assign.recordedMonthLoad', 'Recorded month', languageCode)
-          : getUiMessage(
-              isForecastMonth ? 'assign.forecastLoad' : 'assign.plannedLoad',
-              isForecastMonth ? 'Assigned work this month' : 'Planned load',
-              languageCode
-            );
-        const loadValueLabel = isHistoricalMonth
-          ? getUiMessage('assign.noRemainingForecast', 'No remaining forecast', languageCode)
-          : formatPercentLabel(summary?.plannedLoadPercent);
+        const loadValueLabel = formatPercentLabel(summary?.plannedLoadPercent);
         const planBarValue = Math.max(
           0,
           Math.min(
             100,
-            isHistoricalMonth ? 0 : Number(summary?.plannedLoadPercent) || 0
+            Number(summary?.plannedLoadPercent) || 0
           )
         );
         const actualBarValue = Math.max(
@@ -453,19 +446,17 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
                   <Typography variant="body2" sx={{ fontWeight: 700, color: tone.textColor }}>
                     {loadValueLabel}
                   </Typography>
-                  {!isHistoricalMonth ? (
-                    <LinearProgress
-                      variant="determinate"
-                      value={planBarValue}
-                      sx={{
-                        mt: 0.5,
-                        height: 6,
-                        borderRadius: 999,
-                        backgroundColor: 'rgba(0,0,0,0.08)',
-                        '& .MuiLinearProgress-bar': { backgroundColor: tone.barColor },
-                      }}
-                    />
-                  ) : null}
+                  <LinearProgress
+                    variant="determinate"
+                    value={planBarValue}
+                    sx={{
+                      mt: 0.5,
+                      height: 6,
+                      borderRadius: 999,
+                      backgroundColor: 'rgba(0,0,0,0.08)',
+                      '& .MuiLinearProgress-bar': { backgroundColor: tone.barColor },
+                    }}
+                  />
                 </Box>
                 <Box>
                   <Stack

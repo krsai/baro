@@ -799,12 +799,10 @@ export const buildLineMonthCapacityBoardRows = ({
         forecastAvailableCapacitySeconds,
         forecastWorkingDayCount,
         forecastLoadStSeconds,
-        plannedLoadPercent: roundPercent(
-          forecastLoadStSeconds,
+        plannedLoadPercent:
           inferredMonthType === 'historical'
-            ? lineMonthlyCapacitySeconds
-            : forecastAvailableCapacitySeconds
-        ),
+            ? roundPercent(lineMonthlyCapacitySeconds, lineMonthlyCapacitySeconds)
+            : roundPercent(forecastLoadStSeconds, forecastAvailableCapacitySeconds),
         carryInStSeconds,
         carryOutStSeconds,
         carryOutDateKey,
@@ -868,7 +866,10 @@ export const buildLineMonthCapacityBoardRows = ({
         forecastAvailableCapacitySeconds: 0,
         forecastWorkingDayCount: 0,
         forecastLoadStSeconds: 0,
-        plannedLoadPercent: 0,
+        plannedLoadPercent: roundPercent(
+          lineMonthlyCapacitySeconds,
+          lineMonthlyCapacitySeconds
+        ),
         carryInStSeconds: 0,
         carryOutStSeconds: 0,
         carryOutDateKey: '',
