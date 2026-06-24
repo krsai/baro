@@ -1079,6 +1079,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
         upsertActiveMember(savedMember);
         upsertEmployeeForCurrentFilter(savedEmployee);
+        emitMembershipUpdated({ orgId: activeOrgId });
         setStatusMessage({ type: 'success', text: text('employeeSaved', languageCode) });
         return true;
       } catch (error) {
@@ -1093,6 +1094,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       }
     },
     [
+      activeOrgId,
       languageCode,
       myEmail,
       canViewFixedSalary,

@@ -35,6 +35,19 @@ import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 
+const LINE_ASSIGNMENTS_UPDATED_EVENT = 'baro:line-assignments-updated';
+
+const emitLineAssignmentsUpdated = ({ orgId }) => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent(LINE_ASSIGNMENTS_UPDATED_EVENT, {
+      detail: {
+        orgId: Number(orgId) || null,
+      },
+    })
+  );
+};
+
 const buildWorkerLabel = (worker) => {
   if (worker?.name && worker.name.trim()) return worker.name.trim();
   if (worker?.email && worker.email.trim()) return worker.email.trim();
@@ -439,6 +452,7 @@ const LineBoard = () => {
       setOriginalSnapshot(buildDraftSnapshot(normalized.lines, normalized.workers));
       clearInlineEdit();
       setNewLineName('');
+      emitLineAssignmentsUpdated({ orgId: activeOrgId });
       showNotification('라인 변경사항이 저장되었습니다.', 'success');
     } catch (error) {
       showNotification(error?.message || '라인 저장에 실패했습니다.', 'error');
@@ -446,6 +460,7 @@ const LineBoard = () => {
       setSaving(false);
     }
   }, [
+    activeOrgId,
     buildOrgQuery,
     clearInlineEdit,
     commitLineNameEdit,
