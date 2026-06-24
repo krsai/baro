@@ -384,12 +384,11 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
           (Array.isArray(row.months) ? row.months : []).find(
             (item) => item?.monthKey === monthKey
           ) || null;
-        const isForecastMonth = Boolean(summary?.isForecastMonth);
         const isAnchorMonth = Boolean(summary?.isAnchorMonth);
         const tone = resolvePlanTone(summary?.plannedLoadPercent);
         const loadLabel = getUiMessage(
-          isForecastMonth ? 'assign.forecastLoad' : 'assign.plannedLoad',
-          isForecastMonth ? 'Assigned work this month' : 'Planned load',
+          'assign.plannedLoad',
+          'Planned load',
           languageCode
         );
         const loadValueLabel = formatPercentLabel(summary?.plannedLoadPercent);
@@ -470,7 +469,7 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
                     <Typography variant="caption" color="text.secondary">
                       {getUiMessage(
                         'assign.actualOutput',
-                        'Cumulative production this month',
+                        'Monthly actual production',
                         languageCode
                       )}
                     </Typography>

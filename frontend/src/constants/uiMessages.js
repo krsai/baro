@@ -319,11 +319,6 @@ export const UI_MESSAGES = {
       vi: '{count} phan cong',
     },
     plannedLoad: { ko: '계획 부하', en: 'Planned load', vi: 'Tai trong ke hoach' },
-    forecastLoad: {
-      ko: '이번달 배정된 작업',
-      en: 'Assigned work this month',
-      vi: 'Cong viec duoc giao thang nay',
-    },
     actualOutput: {
       ko: '월간 실제 생산',
       en: 'Monthly actual production',

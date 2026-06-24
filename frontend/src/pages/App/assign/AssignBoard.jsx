@@ -6456,7 +6456,7 @@ const AssignBoard = () => {
               <Typography variant="caption" color="text.secondary">
                 {getUiMessage(
                   'assign.capacitySummaryHint',
-                  'Planned load follows the current board. Actual output and unlinked-log warnings follow saved work logs.',
+                  'For recorded past months, planned load uses the month capacity as 100%. Actual production follows saved work logs, and remaining assignments are forecast from the next workday after the latest record.',
                   languageCode
                 )}
               </Typography>
