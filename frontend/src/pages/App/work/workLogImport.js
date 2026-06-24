@@ -4,6 +4,434 @@ import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 const toText = (value) => String(value ?? '').trim();
 const normalizeHeader = (value) => toText(value).toUpperCase();
 
+const IMPORT_ERROR_TEXT = {
+  failedTitle: {
+    ko: '작업기록 파일 등록 실패',
+    en: 'Work-log import failed',
+    vi: 'Nhap tep ghi chep that bai',
+  },
+  noRowsProvided: {
+    ko: '가져올 행이 없습니다.',
+    en: 'No rows were provided.',
+    vi: 'Khong co dong nao de nhap.',
+  },
+  noRowsFound: {
+    ko: '파일에서 가져올 수 있는 작업기록 행을 찾지 못했습니다.',
+    en: 'No importable work-log rows were found in the workbook.',
+    vi: 'Khong tim thay dong ghi chep co the nhap trong tep.',
+  },
+  skippedSheets: {
+    ko: '건너뛴 시트',
+    en: 'Skipped sheets',
+    vi: 'Trang tinh da bo qua',
+  },
+  sheetMissingColumns: {
+    ko: '필수 열이 없습니다',
+    en: 'is missing required columns',
+    vi: 'thieu cot bat buoc',
+  },
+  importRow: {
+    ko: '가져오기 행',
+    en: 'import row',
+    vi: 'dong nhap',
+  },
+  row: {
+    ko: '행',
+    en: 'row',
+    vi: 'dong',
+  },
+  more: {
+    ko: '건 더 있음',
+    en: 'more',
+    vi: 'loi khac',
+  },
+  fallbackIssue: {
+    ko: '가져오기 검증에 실패했습니다.',
+    en: 'Import validation failed.',
+    vi: 'Kiem tra du lieu nhap khong thanh cong.',
+  },
+};
+
+const resolveImportText = (key, languageCode, fallback = '') =>
+  IMPORT_ERROR_TEXT[key]?.[languageCode] || IMPORT_ERROR_TEXT[key]?.ko || fallback;
+
+const formatIssueCount = (count, languageCode) => {
+  if (languageCode === 'en') return `${count} issue${count === 1 ? '' : 's'}`;
+  if (languageCode === 'vi') return `${count} loi`;
+  return `오류 ${count}건`;
+};
+
+const formatIssueLocation = (issue, languageCode) => {
+  const parts = [];
+  const sheetName = toText(issue?.sheetName);
+  const rowNumber = Number(issue?.rowNumber);
+  if (sheetName) parts.push(sheetName);
+  if (Number.isFinite(rowNumber) && rowNumber > 0) {
+    const rowLabel = resolveImportText('row', languageCode, 'row');
+    parts.push(languageCode === 'ko' ? `${rowNumber}${rowLabel}` : `${rowLabel} ${rowNumber}`);
+  }
+  return parts.length > 0
+    ? parts.join(' / ')
+    : resolveImportText('importRow', languageCode, 'import row');
+};
+
+const stripIssueLocation = (issue) => {
+  const message = toText(issue?.message || issue?.label);
+  const marker = ': ';
+  const markerIndex = message.indexOf(marker);
+  return markerIndex >= 0 ? message.slice(markerIndex + marker.length).trim() : message;
+};
+
+const parseDetail = (detail, pattern, keys = []) => {
+  const match = toText(detail).match(pattern);
+  if (!match) return null;
+  return keys.reduce((values, key, index) => {
+    values[key] = toText(match[index + 1]);
+    return values;
+  }, {});
+};
+
+const wrapWithDetail = (message, detail) => {
+  const normalizedDetail = toText(detail);
+  return normalizedDetail ? `${message} (${normalizedDetail})` : message;
+};
+
+const translateLineResolutionIssue = (detail, languageCode) => {
+  if (/multiple line assignments matched the work date/i.test(detail)) {
+    if (languageCode === 'en') return 'Multiple line assignments match the work date.';
+    if (languageCode === 'vi') return 'Co nhieu chuyen khop voi ngay lam viec.';
+    return '작업일자에 해당하는 라인 배정이 여러 개입니다.';
+  }
+  if (/employee line name matched multiple lines in the factory/i.test(detail)) {
+    if (languageCode === 'en') {
+      return 'The employee line name matches multiple lines in the factory.';
+    }
+    if (languageCode === 'vi') {
+      return 'Ten chuyen cua nhan vien khop voi nhieu chuyen trong nha may.';
+    }
+    return '직원 라인명이 공장 안의 여러 라인과 일치합니다.';
+  }
+  if (/line could not be resolved for the employee on the work date/i.test(detail)) {
+    if (languageCode === 'en') {
+      return 'The employee line could not be resolved for the work date.';
+    }
+    if (languageCode === 'vi') {
+      return 'Khong xac dinh duoc chuyen cua nhan vien vao ngay lam viec.';
+    }
+    return '작업일자 기준 직원의 라인을 찾을 수 없습니다.';
+  }
+  return wrapWithDetail(
+    languageCode === 'en'
+      ? 'Could not resolve the employee line.'
+      : languageCode === 'vi'
+        ? 'Khong xac dinh duoc chuyen cua nhan vien.'
+        : '직원의 라인을 찾을 수 없습니다.',
+    detail
+  );
+};
+
+const translateAssignmentMatchIssue = (detail, languageCode) => {
+  const orderMissing = parseDetail(
+    detail,
+    /^order (.+) was not found on the resolved line\.?$/i,
+    ['orderNo']
+  );
+  if (orderMissing) {
+    if (languageCode === 'en') {
+      return `Order ${orderMissing.orderNo} was not found on the resolved line.`;
+    }
+    if (languageCode === 'vi') {
+      return `Khong tim thay don ${orderMissing.orderNo} tren chuyen da xac dinh.`;
+    }
+    return `확인된 라인에서 주문 ${orderMissing.orderNo}를 찾을 수 없습니다.`;
+  }
+
+  const styleMismatch = parseDetail(
+    detail,
+    /^style (.+) does not match order (.+) on the resolved line\.?$/i,
+    ['styleId', 'orderNo']
+  );
+  if (styleMismatch) {
+    if (languageCode === 'en') {
+      return `Style ${styleMismatch.styleId} does not match order ${styleMismatch.orderNo} on the resolved line.`;
+    }
+    if (languageCode === 'vi') {
+      return `Ma hang ${styleMismatch.styleId} khong khop voi don ${styleMismatch.orderNo} tren chuyen da xac dinh.`;
+    }
+    return `확인된 라인에서 스타일 ${styleMismatch.styleId}이 주문 ${styleMismatch.orderNo}와 일치하지 않습니다.`;
+  }
+
+  const processMismatch = parseDetail(
+    detail,
+    /^process (.+) does not match order (.+) \/ style (.+)\.?$/i,
+    ['processCode', 'orderNo', 'styleId']
+  );
+  if (processMismatch) {
+    if (languageCode === 'en') {
+      return `Process ${processMismatch.processCode} does not match order ${processMismatch.orderNo} / style ${processMismatch.styleId}.`;
+    }
+    if (languageCode === 'vi') {
+      return `Cong doan ${processMismatch.processCode} khong khop voi don ${processMismatch.orderNo} / ma hang ${processMismatch.styleId}.`;
+    }
+    return `주문 ${processMismatch.orderNo} / 스타일 ${processMismatch.styleId}에 공정 ${processMismatch.processCode}이 없습니다.`;
+  }
+
+  const multiplePlans = parseDetail(
+    detail,
+    /^multiple assignment plans matched order (.+) \/ style (.+) \/ process (.+)\.?$/i,
+    ['orderNo', 'styleId', 'processCode']
+  );
+  if (multiplePlans) {
+    if (languageCode === 'en') {
+      return `Multiple assignment cards match order ${multiplePlans.orderNo} / style ${multiplePlans.styleId} / process ${multiplePlans.processCode}.`;
+    }
+    if (languageCode === 'vi') {
+      return `Co nhieu the phan cong khop voi don ${multiplePlans.orderNo} / ma hang ${multiplePlans.styleId} / cong doan ${multiplePlans.processCode}.`;
+    }
+    return `주문 ${multiplePlans.orderNo} / 스타일 ${multiplePlans.styleId} / 공정 ${multiplePlans.processCode}에 일치하는 배정 카드가 여러 개입니다.`;
+  }
+
+  if (/order, style, and process are required to match an assignment/i.test(detail)) {
+    if (languageCode === 'en') {
+      return 'Order, style, and process are required to match an assignment card.';
+    }
+    if (languageCode === 'vi') {
+      return 'Can co don hang, ma hang va cong doan de khop voi the phan cong.';
+    }
+    return '배정 카드를 찾으려면 주문, 스타일, 공정이 모두 필요합니다.';
+  }
+
+  return wrapWithDetail(
+    languageCode === 'en'
+      ? 'Could not match the row to an assignment card.'
+      : languageCode === 'vi'
+        ? 'Khong khop duoc dong nay voi the phan cong.'
+        : '이 행을 배정 카드와 연결할 수 없습니다.',
+    detail
+  );
+};
+
+const translateImportIssueDetail = (issue, languageCode) => {
+  const detail = stripIssueLocation(issue);
+  const code = toText(issue?.code).toUpperCase();
+
+  switch (code) {
+    case 'MISSING_END_DATE':
+      return languageCode === 'en'
+        ? 'DATE(END) is required.'
+        : languageCode === 'vi'
+          ? 'Can nhap DATE(END).'
+          : 'DATE(END)를 입력해야 합니다.';
+    case 'MISSING_START_DATE':
+      return languageCode === 'en'
+        ? 'DATE(START) is invalid.'
+        : languageCode === 'vi'
+          ? 'DATE(START) khong hop le.'
+          : 'DATE(START)가 올바르지 않습니다.';
+    case 'INVALID_DATE_RANGE':
+      return languageCode === 'en'
+        ? 'DATE(START) cannot be later than DATE(END).'
+        : languageCode === 'vi'
+          ? 'DATE(START) khong duoc sau DATE(END).'
+          : 'DATE(START)는 DATE(END)보다 늦을 수 없습니다.';
+    case 'MISSING_EMPLOYEE_NO':
+      return languageCode === 'en'
+        ? 'Employee code is required.'
+        : languageCode === 'vi'
+          ? 'Can nhap ma nhan vien.'
+          : '직원 코드가 필요합니다.';
+    case 'MISSING_ORDER_NO':
+      return languageCode === 'en'
+        ? 'ORDER# is required.'
+        : languageCode === 'vi'
+          ? 'Can nhap ORDER#.'
+          : 'ORDER#를 입력해야 합니다.';
+    case 'MISSING_STYLE_ID':
+      return languageCode === 'en'
+        ? 'STYLE is required.'
+        : languageCode === 'vi'
+          ? 'Can nhap STYLE.'
+          : 'STYLE을 입력해야 합니다.';
+    case 'MISSING_PROCESS_CODE':
+      return languageCode === 'en'
+        ? 'JOB(process) is required.'
+        : languageCode === 'vi'
+          ? 'Can nhap JOB(cong doan).'
+          : 'JOB(공정)을 입력해야 합니다.';
+    case 'INVALID_QUANTITY':
+      return languageCode === 'en'
+        ? 'JOB(quantity) must be greater than 0.'
+        : languageCode === 'vi'
+          ? 'JOB(so luong) phai lon hon 0.'
+          : 'JOB(수량)은 0보다 커야 합니다.';
+    case 'EMPLOYEE_NOT_FOUND': {
+      const parsed = parseDetail(detail, /^Employee code (.+) was not found\.?$/i, [
+        'employeeNo',
+      ]);
+      const employeeNo = parsed?.employeeNo || '';
+      if (languageCode === 'en') return `Employee code ${employeeNo} was not found.`;
+      if (languageCode === 'vi') return `Khong tim thay ma nhan vien ${employeeNo}.`;
+      return `직원 코드 ${employeeNo}를 찾을 수 없습니다.`;
+    }
+    case 'EMPLOYEE_NAME_MISMATCH': {
+      const parsed = parseDetail(
+        detail,
+        /^Employee code (.+) belongs to (.+), not (.+)\.?$/i,
+        ['employeeNo', 'actualName', 'importName']
+      );
+      if (!parsed) {
+        return wrapWithDetail(
+          languageCode === 'en'
+            ? 'Employee code and name do not match.'
+            : languageCode === 'vi'
+              ? 'Ma nhan vien va ten khong khop.'
+              : '직원 코드와 이름이 일치하지 않습니다.',
+          detail
+        );
+      }
+      if (languageCode === 'en') {
+        return `Employee code ${parsed.employeeNo} belongs to ${parsed.actualName}, not ${parsed.importName}.`;
+      }
+      if (languageCode === 'vi') {
+        return `Ma nhan vien ${parsed.employeeNo} thuoc ve ${parsed.actualName}, khong phai ${parsed.importName}.`;
+      }
+      return `직원 코드 ${parsed.employeeNo}는 ${parsed.importName}이 아니라 ${parsed.actualName} 직원입니다.`;
+    }
+    case 'LINE_RESOLUTION_FAILED':
+      return translateLineResolutionIssue(detail, languageCode);
+    case 'ASSIGNMENT_MATCH_FAILED':
+      return translateAssignmentMatchIssue(detail, languageCode);
+    case 'FACTORY_NOT_FOUND':
+      return languageCode === 'en'
+        ? 'The factory for the resolved line was not found.'
+        : languageCode === 'vi'
+          ? 'Khong tim thay nha may cua chuyen da xac dinh.'
+          : '확인된 라인의 공장을 찾을 수 없습니다.';
+    case 'INVALID_WORKER':
+      return languageCode === 'en'
+        ? 'Worker could not be resolved for this row.'
+        : languageCode === 'vi'
+          ? 'Khong xac dinh duoc cong nhan cho dong nay.'
+          : '이 행의 작업자를 찾을 수 없습니다.';
+    case 'EMPLOYMENT_VALIDATION_FAILED':
+    case 'EMPLOYMENT_MISMATCH':
+      return languageCode === 'en'
+        ? 'Worker employment dates do not cover the imported period.'
+        : languageCode === 'vi'
+          ? 'Ngay vao/nghi viec cua cong nhan khong bao phu ky nhap.'
+          : '작업자의 입사/퇴사 기간이 가져온 작업 기간을 포함하지 않습니다.';
+    case 'LINE_VALIDATION_FAILED':
+    case 'LINE_WORKER_MISMATCH':
+      return languageCode === 'en'
+        ? 'Worker is not assigned to the resolved line for the imported period.'
+        : languageCode === 'vi'
+          ? 'Cong nhan khong duoc phan vao chuyen da xac dinh trong ky nhap.'
+          : '작업자가 가져온 기간에 해당 라인에 배정되어 있지 않습니다.';
+    case 'MISSING_ASSIGNMENT_PLAN':
+      return languageCode === 'en'
+        ? 'Every imported row must be linked to an assignment card.'
+        : languageCode === 'vi'
+          ? 'Moi dong nhap phai duoc lien ket voi the phan cong.'
+          : '가져온 모든 행은 배정 카드와 연결되어야 합니다.';
+    case 'DUPLICATE_WORK_RECORD':
+      return wrapWithDetail(
+        languageCode === 'en'
+          ? 'Duplicate worker/style/process records exist on the work date.'
+          : languageCode === 'vi'
+            ? 'Bi trung cong nhan/ma hang/cong doan trong ngay lam viec.'
+            : '같은 작업일자에 작업자/스타일/공정이 중복되었습니다.',
+        detail.replace(/^duplicate worker-style-process on workDate:\s*/i, '')
+      );
+    case 'CT_SNAPSHOT_VALIDATION_FAILED':
+      if (/assignment plan already completed/i.test(detail)) {
+        return languageCode === 'en'
+          ? 'A completed assignment card is included.'
+          : languageCode === 'vi'
+            ? 'Co the phan cong da hoan tat.'
+            : '이미 완료된 배정 카드가 포함되어 있습니다.';
+      }
+      if (/ct snapshot required before work log|ct agreement required before work log/i.test(detail)) {
+        return languageCode === 'en'
+          ? 'Only assignment cards with saved CT snapshots can be imported as work logs.'
+          : languageCode === 'vi'
+            ? 'Chi the nhap ghi chep cho the phan cong da luu CT snapshot.'
+            : 'CT 스냅샷이 저장된 배정 카드만 작업기록으로 가져올 수 있습니다.';
+      }
+      return wrapWithDetail(
+        languageCode === 'en'
+          ? 'Assignment card CT validation failed.'
+          : languageCode === 'vi'
+            ? 'Kiem tra CT cua the phan cong khong thanh cong.'
+            : '배정 카드 CT 검증에 실패했습니다.',
+        detail
+      );
+    case 'PAYROLL_LOCKED':
+      return languageCode === 'en'
+        ? 'A payroll-locked assignment card is included.'
+        : languageCode === 'vi'
+          ? 'Co the phan cong da khoa bang luong.'
+          : '급여 마감된 배정 카드가 포함되어 있습니다.';
+    case 'DUPLICATE_IMPORT_RECORD':
+      return wrapWithDetail(
+        languageCode === 'en'
+          ? 'The same worker/style/process appears more than once in the import file.'
+          : languageCode === 'vi'
+            ? 'Cung cong nhan/ma hang/cong doan xuat hien nhieu lan trong tep nhap.'
+            : '파일 안에 같은 작업자/스타일/공정 행이 중복되어 있습니다.',
+        detail
+      );
+    default:
+      return wrapWithDetail(
+        resolveImportText('fallbackIssue', languageCode, 'Import validation failed.'),
+        detail
+      );
+  }
+};
+
+const translateBaseImportError = (message, languageCode) => {
+  const normalized = toText(message);
+  if (!normalized) return '';
+
+  if (/Work-log import failed:\s*no rows were provided\./i.test(normalized)) {
+    return `${resolveImportText('failedTitle', languageCode)}: ${resolveImportText(
+      'noRowsProvided',
+      languageCode
+    )}`;
+  }
+
+  const noRowsMatch = normalized.match(
+    /^No importable work-log rows were found in the workbook\.(?:\s*Skipped sheets:\s*(.+)\.)?$/i
+  );
+  if (noRowsMatch) {
+    const skippedSheets = toText(noRowsMatch[1]);
+    const skippedText = skippedSheets
+      ? ` ${resolveImportText('skippedSheets', languageCode)}: ${skippedSheets}.`
+      : '';
+    return `${resolveImportText('noRowsFound', languageCode)}${skippedText}`;
+  }
+
+  const missingColumnsMatch = normalized.match(
+    /^Sheet "(.+)" is missing required columns:\s*(.+)$/i
+  );
+  if (missingColumnsMatch) {
+    const sheetName = missingColumnsMatch[1];
+    const columns = missingColumnsMatch[2];
+    if (languageCode === 'en') return normalized;
+    if (languageCode === 'vi') {
+      return `Trang tinh "${sheetName}" ${resolveImportText(
+        'sheetMissingColumns',
+        languageCode
+      )}: ${columns}`;
+    }
+    return `시트 "${sheetName}"에 ${resolveImportText(
+      'sheetMissingColumns',
+      languageCode
+    )}: ${columns}`;
+  }
+
+  return normalized;
+};
+
 const REQUIRED_HEADERS = [
   'DATE(START)',
   'DATE(END)',
@@ -174,20 +602,33 @@ export const importWorkLogRows = async ({ orgId, fileName, rows }) => {
   });
 };
 
-export const formatWorkLogImportError = (error) => {
+export const formatWorkLogImportError = (error, languageCode = 'ko') => {
   const baseMessage = toText(error?.message || error?.details?.error);
   const issues = Array.isArray(error?.details?.issues) ? error.details.issues : [];
   if (issues.length === 0) {
-    return baseMessage || 'Work-log import failed.';
+    return (
+      translateBaseImportError(baseMessage, languageCode) ||
+      resolveImportText('failedTitle', languageCode, 'Work-log import failed.')
+    );
   }
 
   const preview = issues
     .slice(0, 5)
-    .map((issue) => toText(issue?.message || issue?.label))
+    .map((issue) => {
+      const location = formatIssueLocation(issue, languageCode);
+      const detail = translateImportIssueDetail(issue, languageCode);
+      return `${location}: ${detail}`;
+    })
     .filter(Boolean)
-    .join(' | ');
+    .join('; ');
   const extraCount = issues.length - 5;
-  return `${baseMessage || 'Work-log import failed.'} ${preview}${
-    extraCount > 0 ? ` | +${extraCount} more` : ''
+  return `${resolveImportText(
+    'failedTitle',
+    languageCode,
+    'Work-log import failed'
+  )} (${formatIssueCount(issues.length, languageCode)}): ${preview}${
+    extraCount > 0
+      ? `; +${extraCount} ${resolveImportText('more', languageCode, 'more')}`
+      : ''
   }`.trim();
 };

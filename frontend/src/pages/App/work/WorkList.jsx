@@ -475,7 +475,7 @@ const WorkList = () => {
         );
       } catch (error) {
         showNotification(
-          formatWorkLogImportError(error) ||
+          formatWorkLogImportError(error, languageCode) ||
             resolveText(TEXT.importError, languageCode, 'Failed to import Excel work logs.'),
           'error'
         );
