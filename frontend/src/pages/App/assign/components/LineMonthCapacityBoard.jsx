@@ -384,10 +384,22 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
           (Array.isArray(row.months) ? row.months : []).find(
             (item) => item?.monthKey === monthKey
           ) || null;
-        const tone = resolvePlanTone(summary?.plannedLoadPercent);
         const isForecastMonth = Boolean(summary?.isForecastMonth);
         const isAnchorMonth = Boolean(summary?.isAnchorMonth);
         const isHistoricalMonth = Boolean(summary?.isHistoricalMonth);
+        const tone = resolvePlanTone(
+          isHistoricalMonth ? null : summary?.plannedLoadPercent
+        );
+        const loadLabel = isHistoricalMonth
+          ? getUiMessage('assign.recordedMonthLoad', 'Recorded month', languageCode)
+          : getUiMessage(
+              isForecastMonth ? 'assign.forecastLoad' : 'assign.plannedLoad',
+              isForecastMonth ? 'Assigned work this month' : 'Planned load',
+              languageCode
+            );
+        const loadValueLabel = isHistoricalMonth
+          ? getUiMessage('assign.noRemainingForecast', 'No remaining forecast', languageCode)
+          : formatPercentLabel(summary?.plannedLoadPercent);
         const planBarValue = Math.max(
           0,
           Math.min(
@@ -422,11 +434,7 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
                     sx={{ width: '100%' }}
                   >
                     <Typography variant="caption" color="text.secondary">
-                      {getUiMessage(
-                        isForecastMonth ? 'assign.forecastLoad' : 'assign.plannedLoad',
-                        isForecastMonth ? 'Forecast load' : 'Planned load',
-                        languageCode
-                      )}
+                      {loadLabel}
                     </Typography>
                     {isAnchorMonth ? (
                       <Typography
@@ -443,19 +451,21 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
                     ) : null}
                   </Stack>
                   <Typography variant="body2" sx={{ fontWeight: 700, color: tone.textColor }}>
-                    {formatPercentLabel(isHistoricalMonth ? null : summary?.plannedLoadPercent)}
+                    {loadValueLabel}
                   </Typography>
-                  <LinearProgress
-                    variant="determinate"
-                    value={planBarValue}
-                    sx={{
-                      mt: 0.5,
-                      height: 6,
-                      borderRadius: 999,
-                      backgroundColor: 'rgba(0,0,0,0.08)',
-                      '& .MuiLinearProgress-bar': { backgroundColor: tone.barColor },
-                    }}
-                  />
+                  {!isHistoricalMonth ? (
+                    <LinearProgress
+                      variant="determinate"
+                      value={planBarValue}
+                      sx={{
+                        mt: 0.5,
+                        height: 6,
+                        borderRadius: 999,
+                        backgroundColor: 'rgba(0,0,0,0.08)',
+                        '& .MuiLinearProgress-bar': { backgroundColor: tone.barColor },
+                      }}
+                    />
+                  ) : null}
                 </Box>
                 <Box>
                   <Stack
