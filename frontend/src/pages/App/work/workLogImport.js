@@ -138,10 +138,13 @@ const translateAssignmentMatchIssue = (detail, languageCode) => {
   );
   if (orderMissing) {
     if (languageCode === 'en') {
-      return `Order ${orderMissing.orderNo} has no assignment card in the worker factory.`;
+      return `Order ${orderMissing.orderNo} has no matching assignment card in the worker's factory.`;
     }
     if (languageCode === 'vi') {
-      return `Don ${orderMissing.orderNo} khong co the phan cong nao trong nha may cua cong nhan.`;
+      return `Don ${orderMissing.orderNo} khong co the phan cong phu hop nao trong nha may cua cong nhan.`;
+    }
+    if (languageCode === 'ko') {
+      return `\uC8FC\uBB38 ${orderMissing.orderNo}\uC5D0 \uC5F0\uACB0\uB41C \uBC30\uC815 \uCE74\uB4DC\uAC00 \uC791\uC5C5\uC790 \uAE30\uC900 \uACF5\uC7A5 \uC548\uC5D0 \uC5C6\uC2B5\uB2C8\uB2E4.`;
     }
     if (languageCode === 'ko') {
       return `주문 ${orderMissing.orderNo}에 연결된 배정 카드가 작업자 공장 안에 없습니다.`;
@@ -156,10 +159,13 @@ const translateAssignmentMatchIssue = (detail, languageCode) => {
   );
   if (styleMismatch) {
     if (languageCode === 'en') {
-      return `Style ${styleMismatch.styleId} is not assigned for order ${styleMismatch.orderNo} in the worker factory.`;
+      return `Order ${styleMismatch.orderNo} has no assignment card for style ${styleMismatch.styleId}.`;
     }
     if (languageCode === 'vi') {
-      return `Khong co line nao trong nha may cua cong nhan duoc gan don ${styleMismatch.orderNo} / ma hang ${styleMismatch.styleId}.`;
+      return `Don ${styleMismatch.orderNo} khong co the phan cong cho ma hang ${styleMismatch.styleId}.`;
+    }
+    if (languageCode === 'ko') {
+      return `\uC8FC\uBB38 ${styleMismatch.orderNo}\uC5D0\uB294 \uC2A4\uD0C0\uC77C ${styleMismatch.styleId} \uBC30\uC815 \uCE74\uB4DC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.`;
     }
     if (languageCode === 'ko') {
       return `주문 ${styleMismatch.orderNo} / 스타일 ${styleMismatch.styleId}가 배정된 라인이 없습니다.`;
@@ -174,10 +180,13 @@ const translateAssignmentMatchIssue = (detail, languageCode) => {
   );
   if (processMismatch) {
     if (languageCode === 'en') {
-      return `Process ${processMismatch.processCode} is not assigned for order ${processMismatch.orderNo} / style ${processMismatch.styleId} in the worker factory.`;
+      return `Order ${processMismatch.orderNo} / style ${processMismatch.styleId} has no assignment card for process ${processMismatch.processCode}.`;
     }
     if (languageCode === 'vi') {
-      return `Khong co the phan cong nao trong nha may cua cong nhan khop don ${processMismatch.orderNo} / ma hang ${processMismatch.styleId} / cong doan ${processMismatch.processCode}.`;
+      return `Don ${processMismatch.orderNo} / ma hang ${processMismatch.styleId} khong co the phan cong cho cong doan ${processMismatch.processCode}.`;
+    }
+    if (languageCode === 'ko') {
+      return `\uC8FC\uBB38 ${processMismatch.orderNo} / \uC2A4\uD0C0\uC77C ${processMismatch.styleId}\uC5D0\uB294 \uACF5\uC815 ${processMismatch.processCode} \uBC30\uC815 \uCE74\uB4DC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.`;
     }
     if (languageCode === 'ko') {
       return `주문 ${processMismatch.orderNo} / 스타일 ${processMismatch.styleId}에 공정 ${processMismatch.processCode}가 배정된 라인이 없습니다.`;

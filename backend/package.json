@@ -27,6 +27,7 @@
     "verify:snapshot-st-backfill": "node scripts/verify-snapshot-st-backfill.js",
     "test:work-record-employment": "npm run build && node scripts/test-work-record-employment.js",
     "realign:time-model": "node scripts/reset-to-baseline.js time-model",
+    "backfill:missing-attendance": "node scripts/backfill-missing-attendance.js",
     "process-master:cleanup-duplicates": "node scripts/cleanup-process-master-duplicates.js",
     "process-master:cleanup-duplicates:apply": "node scripts/cleanup-process-master-duplicates.js --apply",
     "process-master:clear-specs": "node scripts/clear-process-master-specs.js",
