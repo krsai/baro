@@ -1298,6 +1298,54 @@ const toComparableCtSnapshot = (snapshot) => {
   return rest;
 };
 
+const toTimestampOrNull = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.getTime();
+};
+
+const resolveStyleProcessSnapshotKey = (process, index) =>
+  String(
+    process?.instanceId ||
+      process?.id ||
+      process?.code ||
+      `PROCESS-${index + 1}`
+  ).trim();
+
+const shouldRefreshAssignmentCtSnapshotFromStyle = ({
+  style = null,
+  existingSnapshot = null,
+  styleProcesses = [],
+}) => {
+  if (!style || !Array.isArray(styleProcesses) || styleProcesses.length === 0) {
+    return false;
+  }
+  const existingProcesses = Array.isArray(existingSnapshot?.processes)
+    ? existingSnapshot.processes
+    : [];
+  if (existingProcesses.length === 0) return true;
+
+  const styleKeys = styleProcesses.map((process, index) =>
+    resolveStyleProcessSnapshotKey(process, index)
+  );
+  const snapshotKeys = existingProcesses.map((process, index) =>
+    String(process?.processKey || `PROCESS-${index + 1}`).trim()
+  );
+  if (
+    styleKeys.length !== snapshotKeys.length ||
+    styleKeys.some((key, index) => key !== snapshotKeys[index])
+  ) {
+    return true;
+  }
+
+  const styleUpdatedAt = toTimestampOrNull(style?.updatedAt);
+  const snapshotUpdatedAt = toTimestampOrNull(existingSnapshot?.updatedAt);
+  if (styleUpdatedAt == null) return false;
+  if (snapshotUpdatedAt == null) return true;
+  return styleUpdatedAt > snapshotUpdatedAt + 1000;
+};
+
 const buildAssignmentCtSnapshotForSave = ({
   assignment,
   card = null,
@@ -1307,6 +1355,7 @@ const buildAssignmentCtSnapshotForSave = ({
   baseDate = null,
   updatedAt = null,
   updatedBy = null,
+  preferStyleProcessSeconds = false,
 }) => {
   if (!assignment || typeof assignment !== 'object') return null;
 
@@ -1321,14 +1370,19 @@ const buildAssignmentCtSnapshotForSave = ({
     )
   );
   const styleProcesses = normalizeProcesses(style?.processes);
+  const shouldRefreshStyleSeconds =
+    preferStyleProcessSeconds &&
+    shouldRefreshAssignmentCtSnapshotFromStyle({
+      style,
+      existingSnapshot,
+      styleProcesses,
+    });
   const processSeeds =
     styleProcesses.length > 0
       ? styleProcesses.map((process, index) => ({
           source: 'STYLE',
           process,
-          processKey: String(
-            process?.instanceId || process?.id || process?.code || `PROCESS-${index + 1}`
-          ).trim(),
+          processKey: resolveStyleProcessSnapshotKey(process, index),
           processName:
             process?.name || process?.processName || process?.code || `공정 ${index + 1}`,
           processNameKo: String(
@@ -1412,7 +1466,11 @@ const buildAssignmentCtSnapshotForSave = ({
       const baseSeconds =
         stDraftSeconds ??
         toOptionalPositiveNumber(stSeedInfo?.seconds);
-      const ctSeconds = ctDraftSeconds ?? snapshotCtSeconds ?? baseSeconds;
+      const ctSeconds =
+        ctDraftSeconds ??
+        (shouldRefreshStyleSeconds && seed.source === 'STYLE'
+          ? baseSeconds ?? snapshotCtSeconds
+          : snapshotCtSeconds ?? baseSeconds);
       if (ctSeconds == null) return null;
       const resolvedCtSeconds = ctSeconds;
       const processCode =
@@ -1515,6 +1573,7 @@ const applyAssignmentCtSnapshotForSave = ({
   baseDate = null,
   updatedAt = null,
   updatedBy = null,
+  preferStyleProcessSeconds = false,
 }) => {
   const ctSnapshot = buildAssignmentCtSnapshotForSave({
     assignment,
@@ -1525,6 +1584,7 @@ const applyAssignmentCtSnapshotForSave = ({
     baseDate,
     updatedAt,
     updatedBy,
+    preferStyleProcessSeconds,
   });
   const existingAssignmentStTotalSeconds = toNonNegativeInt(
     assignment?.stTotalSeconds ?? assignment?.assignmentStTotalSeconds,
@@ -1532,9 +1592,9 @@ const applyAssignmentCtSnapshotForSave = ({
   );
   const cardStTotalSeconds = toNonNegativeInt(resolveCardStTotalSeconds(card), 0);
   const nextStTotalSeconds =
-    existingAssignmentStTotalSeconds > 0
-      ? existingAssignmentStTotalSeconds
-      : cardStTotalSeconds;
+    cardStTotalSeconds > 0
+      ? cardStTotalSeconds
+      : existingAssignmentStTotalSeconds;
   const nextCtTotalSeconds =
     ctSnapshot?.assignmentCtTotalSeconds != null
       ? Math.max(0, Math.round(Number(ctSnapshot.assignmentCtTotalSeconds) || 0))
@@ -1580,6 +1640,29 @@ const hasAssignmentCtDraftChange = ({
   return (
     toStableJsonText(savedSnapshotComparable) !==
     toStableJsonText(nextSnapshotComparable)
+  );
+};
+
+const hasLinkedWorkRecords = (assignment, progressRow = null) => {
+  const producedQty = Number(
+    progressRow?.producedQuantity ?? assignment?.producedQuantity ?? 0
+  );
+  if (Number.isFinite(producedQty) && producedQty > 0) return true;
+
+  const progressPercent = Number(
+    progressRow?.operationalProgressPercent ??
+      progressRow?.progressPercent ??
+      assignment?.operationalProgressPercent ??
+      assignment?.progressPercent ??
+      0
+  );
+  if (Number.isFinite(progressPercent) && progressPercent > 0) return true;
+
+  return Boolean(
+    progressRow?.firstWorkDate ||
+      progressRow?.lastWorkDate ||
+      assignment?.firstWorkDate ||
+      assignment?.lastWorkDate
   );
 };
 
@@ -2898,6 +2981,7 @@ const AssignBoard = () => {
   const cardsRef = useRef(cards);
   const linesRef = useRef(lines);
   const assignmentsRef = useRef(assignments);
+  const assignmentProgressByIdRef = useRef(assignmentProgressById);
   const daysRef = useRef(days);
   const detailDraftsRef = useRef(detailDraftsByTarget);
   const detailStDraftsRef = useRef(detailStDraftsByTarget);
@@ -3002,6 +3086,10 @@ const AssignBoard = () => {
   useEffect(() => {
     assignmentsRef.current = assignments;
   }, [assignments]);
+
+  useEffect(() => {
+    assignmentProgressByIdRef.current = assignmentProgressById;
+  }, [assignmentProgressById]);
 
   useEffect(() => {
     daysRef.current = days;
@@ -3749,6 +3837,10 @@ const AssignBoard = () => {
       detailStDraftsRef.current && typeof detailStDraftsRef.current === 'object'
         ? detailStDraftsRef.current
         : {};
+    const currentAssignmentProgressById =
+      assignmentProgressByIdRef.current && typeof assignmentProgressByIdRef.current === 'object'
+        ? assignmentProgressByIdRef.current
+        : {};
     const nowIso = new Date().toISOString();
     const updatedBy =
       String(
@@ -3760,6 +3852,11 @@ const AssignBoard = () => {
       ).trim() || 'OPERATOR';
     const applyCtSnapshotForPersistence = (assignment, baseDate = startDateRef.current) => {
       if (assignment?.isCompleted) return assignment;
+      const assignmentId = String(assignment?.id || '').trim();
+      const progressRow = assignmentId ? currentAssignmentProgressById[assignmentId] || null : null;
+      if (hasLinkedWorkRecords(assignment, progressRow)) {
+        return assignment;
+      }
       const card = currentCardById.get(String(assignment?.cardId || '')) || null;
       const styleId = String(card?.styleId || '').trim();
       const style = styleId ? currentStyleById.get(styleId) || null : null;
@@ -3774,6 +3871,7 @@ const AssignBoard = () => {
         baseDate,
         updatedAt: nowIso,
         updatedBy,
+        preferStyleProcessSeconds: true,
       });
     };
     const assignmentsWithCtSnapshot = currentAssignments.map((item) =>
@@ -5417,16 +5515,7 @@ const AssignBoard = () => {
       const assignmentId = activeId.replace('assign-', '');
       const movingAssignment = assignmentById.get(assignmentId);
       const progressRow = assignmentProgressById[assignmentId] || null;
-      const hasWorkRecords =
-        Number(progressRow?.producedQuantity ?? movingAssignment?.producedQuantity ?? 0) > 0 ||
-        Number(
-          progressRow?.operationalProgressPercent ??
-            progressRow?.progressPercent ??
-            movingAssignment?.progressPercent ??
-            0
-        ) > 0 ||
-        Boolean(progressRow?.firstWorkDate || progressRow?.lastWorkDate);
-      if (hasWorkRecords) {
+      if (hasLinkedWorkRecords(movingAssignment, progressRow)) {
         showNotification(
           getUiMessage(
             'assign.cannotCancelAssignmentWithWorkRecords',

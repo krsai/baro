@@ -10372,6 +10372,7 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
         customer: true,
         imageUrls: true,
         processes: true,
+        updatedAt: true,
       },
     }),
     prisma.workOrder.findMany({
@@ -10424,6 +10425,11 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
   await syncOrderProgressStatusesForOrg({
     orgId,
     cards: syncedCards,
+  });
+  await refreshUnlinkedAssignmentPlanSnapshotsForOrg({
+    orgId,
+    cards: syncedCards,
+    styles: hydratedStyles,
   });
   return syncedCards;
 };
@@ -10610,6 +10616,368 @@ const loadLinkedWorkRecordPlanIds = async ({
   });
   return normalizePlanIdList(rows.map((row: any) => row?.assignmentPlanId));
 };
+
+const toTimestampMsOrNull = (value: any): number | null => {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.getTime();
+};
+
+const resolveStyleProcessSnapshotKeyForAssignment = (process: any, index: number) =>
+  resolveOptionalString(
+    process?.instanceId ?? process?.id ?? process?.code,
+    null
+  ) ?? `PROCESS-${index + 1}`;
+
+const shouldRefreshAssignmentSnapshotFromStyle = ({
+  style,
+  existingSnapshot,
+  styleProcesses,
+}: {
+  style: any;
+  existingSnapshot: any;
+  styleProcesses: any[];
+}) => {
+  if (!style || !Array.isArray(styleProcesses) || styleProcesses.length === 0) {
+    return false;
+  }
+  const existingProcesses = ensureArray(existingSnapshot?.processes);
+  if (existingProcesses.length === 0) return true;
+
+  const styleKeys = styleProcesses.map((process, index) =>
+    resolveStyleProcessSnapshotKeyForAssignment(process, index)
+  );
+  const snapshotKeys = existingProcesses.map(
+    (process, index) =>
+      resolveOptionalString(process?.processKey, null) ?? `PROCESS-${index + 1}`
+  );
+  if (
+    styleKeys.length !== snapshotKeys.length ||
+    styleKeys.some((key, index) => key !== snapshotKeys[index])
+  ) {
+    return true;
+  }
+
+  const styleUpdatedAt = toTimestampMsOrNull(style?.updatedAt);
+  const snapshotUpdatedAt = toTimestampMsOrNull(existingSnapshot?.updatedAt);
+  if (styleUpdatedAt === null) return false;
+  if (snapshotUpdatedAt === null) return true;
+  return styleUpdatedAt > snapshotUpdatedAt + 1000;
+};
+
+const resolveAssignmentCardStTotalSecondsForSnapshot = (card: any): number | null => {
+  const direct = toOptionalNonNegativeInt(card?.cardStTotalSeconds ?? card?.totalSt, null);
+  if (direct !== null && direct > 0) return direct;
+  const status = resolveAssignmentCardPayloadStatus(card);
+  if (status === "ST") {
+    const legacy = toOptionalNonNegativeInt(card?.stTotalSeconds, null);
+    if (legacy !== null && legacy > 0) return legacy;
+  }
+  return null;
+};
+
+const buildRefreshedUnlinkedAssignmentSnapshot = ({
+  assignment,
+  card,
+  style,
+  updatedAt,
+  updatedBy,
+}: {
+  assignment: any;
+  card: any;
+  style: any;
+  updatedAt: string;
+  updatedBy: string;
+}) => {
+  const styleProcesses = normalizeStyleProcesses(style?.processes);
+  const existingSnapshot = resolveNormalizedAssignmentCtSnapshot(assignment);
+  if (
+    !shouldRefreshAssignmentSnapshotFromStyle({
+      style,
+      existingSnapshot,
+      styleProcesses,
+    })
+  ) {
+    return assignment;
+  }
+
+  const orderQuantity = toPositiveInt(
+    resolveAssignmentQuantity(assignment) ??
+      card?.cardQuantity ??
+      card?.quantity ??
+      existingSnapshot?.quantity ??
+      1,
+    1
+  );
+  const existingProcessByKey = ensureArray(existingSnapshot?.processes).reduce(
+    (map, process) => {
+      const key = resolveOptionalString(process?.processKey, null);
+      if (key && !map.has(key)) map.set(key, process);
+      return map;
+    },
+    new Map<string, any>()
+  );
+  const processes = styleProcesses
+    .map((process, index) => {
+      const processKey = resolveStyleProcessSnapshotKeyForAssignment(process, index);
+      const previousProcess = existingProcessByKey.get(processKey) ?? null;
+      const styleSeconds = resolveAssignmentCardStSeedSeconds({
+        process,
+        orderQuantity,
+      });
+      const fallbackSeconds = toOptionalFloat(
+        previousProcess?.pieceCtSeconds ??
+          previousProcess?.snapshotCtSeconds ??
+          previousProcess?.ctPerPieceSeconds ??
+          previousProcess?.ctSeconds,
+        null
+      );
+      const resolvedSeconds = toOptionalFloat(styleSeconds ?? fallbackSeconds, null);
+      if (resolvedSeconds === null || resolvedSeconds <= 0) return null;
+      const processCode = resolveOptionalString(
+        process?.code ?? process?.storageCode ?? previousProcess?.processCode,
+        null
+      );
+      const name =
+        resolveOptionalString(process?.name ?? process?.processName, null) ??
+        resolveOptionalString(process?.nameEn ?? previousProcess?.name, null) ??
+        `Process ${index + 1}`;
+      return {
+        processKey,
+        processCode,
+        name,
+        nameKo: resolveOptionalString(
+          process?.nameKo ?? process?.processNameKo ?? previousProcess?.nameKo,
+          null
+        ),
+        nameEn: resolveOptionalString(
+          process?.nameEn ?? process?.processNameEn ?? previousProcess?.nameEn,
+          null
+        ),
+        nameVi: resolveOptionalString(
+          process?.nameVi ?? process?.processNameVi ?? previousProcess?.nameVi,
+          null
+        ),
+        timesPerPiece: Math.max(
+          1,
+          toOptionalNonNegativeInt(process?.timesPerPiece ?? process?.quantity, 1) ?? 1
+        ),
+        basis: styleSeconds !== null ? "ST" : previousProcess?.basis ?? "CT",
+        snapshotCtSeconds: resolvedSeconds,
+        pieceCtSeconds: resolvedSeconds,
+      };
+    })
+    .filter((process): process is any => Boolean(process));
+  if (processes.length === 0) return assignment;
+
+  const pieceCtTotalSeconds = processes.reduce(
+    (sum, process) => sum + (Number(process?.pieceCtSeconds) || 0),
+    0
+  );
+  const assignmentCtTotalSeconds = Math.max(
+    0,
+    Math.round(pieceCtTotalSeconds * orderQuantity)
+  );
+  const cardStTotalSeconds =
+    resolveAssignmentCardStTotalSecondsForSnapshot(card) ??
+    calculateAssignmentCardStTotalForOrderQuantity(styleProcesses, orderQuantity);
+  const nextStTotalSeconds =
+    cardStTotalSeconds != null && cardStTotalSeconds > 0
+      ? Math.max(0, Math.round(cardStTotalSeconds))
+      : resolveStateAssignmentStTotalSeconds(assignment);
+
+  const snapshot = {
+    sourceAssignmentId: resolveAssignmentExternalId(assignment),
+    lineId: assignment?.lineId ?? null,
+    quantity: orderQuantity,
+    schedule: {
+      startIndex: toOptionalNonNegativeInt(assignment?.startIndex, null),
+      endIndex: toOptionalNonNegativeInt(assignment?.endIndex, null),
+      startDayOffsetPercent: toOptionalFloat(assignment?.startDayOffsetPercent, null),
+      startDayPercent: toOptionalFloat(assignment?.startDayPercent, null),
+      endDayPercent: toOptionalFloat(assignment?.endDayPercent, null),
+      startDateKey: normalizeDateKey(assignment?.startDateKey),
+      endDateKey: normalizeDateKey(assignment?.endDateKey),
+    },
+    pieceCtTotalSeconds,
+    assignmentCtTotalSeconds,
+    processes,
+    updatedAt,
+    updatedBy,
+  };
+
+  return {
+    ...assignment,
+    quantity: orderQuantity,
+    stTotalSeconds: nextStTotalSeconds,
+    assignmentStTotalSeconds: nextStTotalSeconds,
+    ctTotalSeconds: assignmentCtTotalSeconds,
+    assignmentCtTotalSeconds,
+    assignmentCtSnapshot: normalizeAssignmentCtSnapshot(snapshot),
+  };
+};
+
+const refreshUnlinkedAssignmentPlanSnapshotsForOrg = async ({
+  orgId,
+  cards,
+  styles,
+}: {
+  orgId: number;
+  cards: any[];
+  styles: any[];
+}) => {
+  const state = await prisma.assignmentBoardState.findUnique({
+    where: { orgId },
+    select: { id: true, assignments: true },
+  });
+  if (!state || !Array.isArray(state.assignments)) return;
+
+  const assignments = normalizeStateAssignments(state.assignments);
+  const activeExternalIds = assignments
+    .map((assignment) => resolveAssignmentExternalId(assignment))
+    .filter((value): value is string => Boolean(value));
+  if (activeExternalIds.length === 0) return;
+
+  const [plans] = await Promise.all([
+    prisma.assignmentPlan.findMany({
+      where: { orgId, externalId: { in: activeExternalIds } },
+      select: {
+        id: true,
+        externalId: true,
+        lineId: true,
+        cardId: true,
+        assignmentQuantity: true,
+        assignmentStTotalSeconds: true,
+        assignmentCtTotalSeconds: true,
+        assignmentCtSnapshot: true,
+        startIndex: true,
+        endIndex: true,
+        startDayOffsetPercent: true,
+        startDayPercent: true,
+        endDayPercent: true,
+        isCompleted: true,
+      } as any,
+    }),
+  ]);
+  const linkedPlanIds = await loadLinkedWorkRecordPlanIds({
+    planIds: plans.map((plan: any) => plan?.id),
+  });
+  const linkedPlanIdSet = new Set(linkedPlanIds);
+  const planByExternalId = ensureArray(plans).reduce((map, plan) => {
+    const externalId = resolveOptionalString(plan?.externalId, null);
+    if (externalId && !map.has(externalId)) map.set(externalId, plan);
+    return map;
+  }, new Map<string, any>());
+  const cardById = ensureArray(cards).reduce((map, card) => {
+    const cardId = resolveOptionalString(card?.id, null);
+    if (cardId && !map.has(cardId)) map.set(cardId, card);
+    return map;
+  }, new Map<string, any>());
+  const styleByStyleId = ensureArray(styles).reduce((map, style) => {
+    const styleId = resolveOptionalString(style?.styleId ?? style?.id, null);
+    if (styleId && !map.has(styleId)) map.set(styleId, style);
+    return map;
+  }, new Map<string, any>());
+
+  const updatedAt = new Date().toISOString();
+  const updatedBy = "SYSTEM:STYLE_SYNC";
+  let boardChanged = false;
+  const refreshedAssignments = assignments.map((assignment) => {
+    const externalId = resolveAssignmentExternalId(assignment);
+    const plan = externalId ? planByExternalId.get(externalId) ?? null : null;
+    if (Boolean(assignment?.isCompleted) || Boolean(plan?.isCompleted)) return assignment;
+    if (plan?.id && linkedPlanIdSet.has(Number(plan.id))) return assignment;
+
+    const cardId =
+      resolveOptionalString(assignment?.cardId, null) ??
+      resolveOptionalString(plan?.cardId, null);
+    const card = cardId ? cardById.get(cardId) ?? null : null;
+    if (!card) return assignment;
+    const styleId = resolveOptionalString(card?.styleId, null);
+    const style = styleId ? styleByStyleId.get(styleId) ?? null : null;
+    if (!style) return assignment;
+
+    const mergedAssignment = {
+      ...assignment,
+      ...(plan
+        ? {
+            assignmentCtSnapshot:
+              assignment?.assignmentCtSnapshot ?? plan?.assignmentCtSnapshot,
+            assignmentCtTotalSeconds:
+              assignment?.assignmentCtTotalSeconds ?? plan?.assignmentCtTotalSeconds,
+            ctTotalSeconds: assignment?.ctTotalSeconds ?? plan?.assignmentCtTotalSeconds,
+            assignmentStTotalSeconds:
+              assignment?.assignmentStTotalSeconds ?? plan?.assignmentStTotalSeconds,
+            stTotalSeconds: assignment?.stTotalSeconds ?? plan?.assignmentStTotalSeconds,
+          }
+        : {}),
+    };
+    const refreshed = buildRefreshedUnlinkedAssignmentSnapshot({
+      assignment: mergedAssignment,
+      card,
+      style,
+      updatedAt,
+      updatedBy,
+    });
+    if (!isDeepEqualByStableJson(normalizeStateAssignmentItem(assignment), normalizeStateAssignmentItem(refreshed))) {
+      boardChanged = true;
+    }
+    return refreshed;
+  });
+
+  const planUpdates = refreshedAssignments
+    .map((assignment) => {
+      const externalId = resolveAssignmentExternalId(assignment);
+      const plan = externalId ? planByExternalId.get(externalId) ?? null : null;
+      if (!plan?.id || linkedPlanIdSet.has(Number(plan.id))) return null;
+      const before = {
+        quantity: resolveAssignmentQuantity({
+          assignmentQuantity: plan.assignmentQuantity,
+        }),
+        stTotalSeconds: plan.assignmentStTotalSeconds,
+        ctTotalSeconds: plan.assignmentCtTotalSeconds,
+        assignmentCtSnapshot: resolveNormalizedAssignmentCtSnapshot(plan),
+      };
+      const after = {
+        quantity: resolveAssignmentQuantity(assignment),
+        stTotalSeconds: resolveStateAssignmentStTotalSeconds(assignment),
+        ctTotalSeconds: resolveAssignmentCtTotalSeconds(assignment),
+        assignmentCtSnapshot: resolveNormalizedAssignmentCtSnapshot(assignment),
+      };
+      if (isDeepEqualByStableJson(before, after)) return null;
+      return {
+        id: Number(plan.id),
+        data: {
+          assignmentQuantity: resolveAssignmentQuantity(assignment),
+          assignmentStTotalSeconds: resolveStateAssignmentStTotalSeconds(assignment),
+          assignmentCtTotalSeconds: resolveAssignmentCtTotalSeconds(assignment),
+          assignmentCtSnapshot: (resolveNormalizedAssignmentCtSnapshot(assignment) ??
+            Prisma.JsonNull) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
+          updatedAt: new Date(updatedAt),
+        },
+      };
+    })
+    .filter((value): value is { id: number; data: any } => Boolean(value));
+
+  if (!boardChanged && planUpdates.length === 0) return;
+
+  await prisma.$transaction(async (tx) => {
+    if (boardChanged) {
+      await tx.assignmentBoardState.update({
+        where: { id: state.id },
+        data: { assignments: refreshedAssignments },
+      });
+    }
+    for (const update of planUpdates) {
+      await tx.assignmentPlan.update({
+        where: { id: update.id },
+        data: update.data,
+      });
+    }
+  });
+};
+
 const assertAssignmentPlansCanBeDetached = async ({
   planIds,
   db = prisma,
@@ -21837,6 +22205,7 @@ app.get("/assignment-cards", async (req, res) => {
     styleCode: true,
     name: true,
     customer: true,
+    updatedAt: true,
     ...(includeProcesses ? { processes: true } : {}),
   };
   const styles =
@@ -22337,6 +22706,8 @@ app.put("/assignment-board-state", async (req, res) => {
               assignmentQuantity: true,
               startIndex: true,
               endIndex: true,
+              assignmentCtTotalSeconds: true,
+              assignmentCtSnapshot: true,
               assignmentStTotalSeconds: true,
               cardId: true,
               originOrderId: true,
@@ -22349,6 +22720,52 @@ app.put("/assignment-board-state", async (req, res) => {
         .map((plan: any) => [resolveOptionalString(plan?.externalId, null), plan])
         .filter((entry): entry is [string, any] => Boolean(entry[0]))
     );
+    const linkedWorkRecordPlanIds = await loadLinkedWorkRecordPlanIds({
+      planIds: existingPlanRowsForStTotals.map((plan: any) => plan?.id),
+      db: tx,
+    });
+    const linkedWorkRecordPlanIdSet = new Set(linkedWorkRecordPlanIds);
+    const linkedWorkRecordExternalIdSet = new Set(
+      existingPlanRowsForStTotals
+        .filter((plan: any) => linkedWorkRecordPlanIdSet.has(Number(plan?.id)))
+        .map((plan: any) => resolveOptionalString(plan?.externalId, null))
+        .filter((value): value is string => Boolean(value))
+    );
+    stDraftsByExternalId.forEach((_drafts, externalId) => {
+      if (!linkedWorkRecordExternalIdSet.has(externalId)) return;
+      throw createHttpError(
+        409,
+        `assignment with linked work records cannot change ST: ${externalId}`
+      );
+    });
+    nextAssignmentsNormalized = nextAssignmentsNormalized.map((assignment) => {
+      const externalId = resolveAssignmentExternalId(assignment);
+      if (!externalId || !linkedWorkRecordExternalIdSet.has(externalId)) {
+        return assignment;
+      }
+      const existingPlan = existingPlanByExternalIdForStTotals.get(externalId);
+      if (!existingPlan) return assignment;
+      const preservedCtSnapshot = resolveNormalizedAssignmentCtSnapshot(existingPlan);
+      const preservedCtTotalSeconds = resolveAssignmentCtTotalSeconds(existingPlan);
+      const preservedStTotalSeconds =
+        resolvePersistedAssignmentPlanStTotalSeconds(existingPlan);
+      return {
+        ...assignment,
+        ...(preservedCtSnapshot ? { assignmentCtSnapshot: preservedCtSnapshot } : {}),
+        ...(preservedCtTotalSeconds != null
+          ? {
+              ctTotalSeconds: preservedCtTotalSeconds,
+              assignmentCtTotalSeconds: preservedCtTotalSeconds,
+            }
+          : {}),
+        ...(preservedStTotalSeconds != null
+          ? {
+              stTotalSeconds: preservedStTotalSeconds,
+              assignmentStTotalSeconds: preservedStTotalSeconds,
+            }
+          : {}),
+      };
+    });
     const stTotalPreparation = await prepareAssignmentBoardStTotalsForSave({
       organization,
       accessibleStyleOwnerOrgIds,
