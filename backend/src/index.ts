@@ -75,6 +75,11 @@ import {
   type WorkRecordEmploymentAdjustment,
 } from "./work-records/workRecordEmployment";
 import {
+  buildWorkLogNoteWithCrossLineAssignments,
+  buildWorkLogWarningResponse,
+  type WorkLogCrossLineAssignmentWarning,
+} from "./work-records/workRecordCrossLine";
+import {
   AT_MONTHLY_A_CLAMP_RATIO,
   fitAtParamsWithProportionalAllocation,
   type AtTrainingDayBucket,
@@ -5731,6 +5736,103 @@ const attachCanonicalFieldsToWorkRecords = async ({
     };
   });
 };
+const collectWorkLogCrossLineAssignmentWarnings = async ({
+  orgId,
+  workLogLineId,
+  workLogLineName = null,
+  records,
+  db = prisma,
+}: {
+  orgId: number;
+  workLogLineId: number | null;
+  workLogLineName?: string | null;
+  records: any[];
+  db?: any;
+}): Promise<WorkLogCrossLineAssignmentWarning[]> => {
+  const normalizedWorkLogLineId = toPositiveIntOrNull(workLogLineId);
+  if (normalizedWorkLogLineId === null) return [];
+
+  const normalizedRecords = ensureArray(records).filter(
+    (record) => record && typeof record === "object"
+  );
+  if (normalizedRecords.length === 0) return [];
+
+  const assignmentPlanIds = collectWorkRecordAssignmentPlanIds(normalizedRecords);
+  if (assignmentPlanIds.length === 0) return [];
+
+  const plans = await db.assignmentPlan.findMany({
+    where: {
+      orgId,
+      id: { in: assignmentPlanIds },
+    },
+    select: {
+      id: true,
+      lineId: true,
+      orderNo: true,
+      label: true,
+    },
+  });
+  const planById = new Map(
+    ensureArray(plans).map((plan) => [toPositiveIntOrNull(plan?.id), plan])
+  );
+
+  const lineIds = collectPositiveIntSet(
+    normalizedWorkLogLineId,
+    ...ensureArray(plans).map((plan) => plan?.lineId)
+  );
+  const lines =
+    lineIds.length > 0
+      ? await db.line.findMany({
+          where: {
+            orgId,
+            id: { in: lineIds },
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+        })
+      : [];
+  const lineById = new Map(
+    ensureArray(lines).map((line) => [toPositiveIntOrNull(line?.id), line])
+  );
+  const fallbackWorkLogLineName =
+    resolveOptionalString(workLogLineName, null) ??
+    resolveOptionalString(lineById.get(normalizedWorkLogLineId)?.name, null);
+
+  return normalizedRecords.reduce(
+    (warnings: WorkLogCrossLineAssignmentWarning[], record) => {
+      const assignmentPlanId = toPositiveIntOrNull(record?.assignmentPlanId);
+      if (assignmentPlanId === null) return warnings;
+      const plan = planById.get(assignmentPlanId) ?? null;
+      const assignmentLineId = toPositiveIntOrNull(plan?.lineId);
+      if (
+        assignmentLineId === null ||
+        assignmentLineId === normalizedWorkLogLineId
+      ) {
+        return warnings;
+      }
+      warnings.push({
+        workerId: toPositiveIntOrNull(record?.workerId),
+        workerName: resolveOptionalString(record?.workerName, null),
+        workLogLineId: normalizedWorkLogLineId,
+        workLogLineName: fallbackWorkLogLineName,
+        assignmentLineId,
+        assignmentLineName:
+          resolveOptionalString(lineById.get(assignmentLineId)?.name, null) ?? null,
+        orderNo:
+          resolveOptionalString(record?.orderNo, null) ??
+          resolveOptionalString(plan?.orderNo, null),
+        styleId: resolveOptionalString(record?.styleId, null),
+        styleName: resolveOptionalString(record?.styleName, null),
+        processCode: resolveOptionalString(record?.processCode, null),
+        processName: resolveOptionalString(record?.processName, null),
+      });
+      return warnings;
+    },
+    []
+  );
+};
 const buildWorkDateRange = (workDate: any) => {
   const normalized = normalizeDateKey(workDate);
   if (!normalized) return null;
@@ -8324,16 +8426,17 @@ const resolveWorkLogImportMatchedProcess = ({
 const resolveWorkLogImportAssignmentCandidate = ({
   row,
   lineId,
+  factoryLineIds,
   plans,
 }: {
   row: any;
   lineId: number;
+  factoryLineIds: number[];
   plans: any[];
 }) => {
   const orderKey = normalizeComparableText(row?.orderNo);
   const styleKey = normalizeComparableText(row?.styleId);
-  const processCodeKey = normalizeProcessCodeKey(row?.processCode);
-  if (!orderKey || !styleKey || !processCodeKey) {
+  if (!orderKey || !styleKey || !normalizeProcessCodeKey(row?.processCode)) {
     return {
       plan: null,
       process: null,
@@ -8341,50 +8444,79 @@ const resolveWorkLogImportAssignmentCandidate = ({
     };
   }
 
-  let candidates = ensureArray(plans).filter(
+  const factoryLineIdSet = new Set(
+    ensureArray(factoryLineIds)
+      .map((value) => toPositiveIntOrNull(value))
+      .filter((value): value is number => value !== null)
+  );
+  const orderCandidates = ensureArray(plans).filter(
     (plan) =>
-      toPositiveIntOrNull(plan?.lineId) === lineId &&
+      factoryLineIdSet.has(toPositiveIntOrNull(plan?.lineId) ?? -1) &&
       normalizeComparableText(plan?.orderNo) === orderKey
   );
-  if (candidates.length === 0) {
+  if (orderCandidates.length === 0) {
     return {
       plan: null,
       process: null,
-      error: `order ${row.orderNo} was not found on the resolved line`,
+      error: `order ${row.orderNo} has no assignment card in the worker factory`,
     };
   }
 
-  const styleMatches = candidates.filter((plan) =>
-    resolveAssignmentPlanStyleQueryValues(plan).some(
-      (value) => normalizeComparableText(value) === styleKey
-    )
+  const styleCandidates = orderCandidates.filter((plan) =>
+    resolveAssignmentPlanStyleQueryValues(plan).some((value) => {
+      return normalizeComparableText(value) === styleKey;
+    })
   );
-  if (styleMatches.length === 0) {
+  if (styleCandidates.length === 0) {
     return {
       plan: null,
       process: null,
-      error: `style ${row.styleId} does not match order ${row.orderNo} on the resolved line`,
+      error: `style ${row.styleId} is not assigned for order ${row.orderNo} in the worker factory`,
     };
   }
-  candidates = styleMatches;
 
-  const processMatches = candidates
-    .map((plan) => ({
-      plan,
-      process: resolveWorkLogImportMatchedProcess({
+  const findProcessMatches = (candidatePlans: any[]) =>
+    candidatePlans
+      .map((plan) => ({
         plan,
-        processCode: row.processCode,
-      }),
-    }))
-    .filter((item) => item.process !== null);
-  if (processMatches.length === 0) {
+        process: resolveWorkLogImportMatchedProcess({
+          plan,
+          processCode: row.processCode,
+        }),
+      }))
+      .filter((item) => item.process !== null);
+  const sameLineStyleCandidates = styleCandidates.filter(
+    (plan) => toPositiveIntOrNull(plan?.lineId) === lineId
+  );
+  const sameLineProcessMatches = findProcessMatches(sameLineStyleCandidates);
+  if (sameLineProcessMatches.length > 1) {
     return {
       plan: null,
       process: null,
-      error: `process ${row.processCode} does not match order ${row.orderNo} / style ${row.styleId}`,
+      error: `multiple assignment plans matched order ${row.orderNo} / style ${row.styleId} / process ${row.processCode}`,
     };
   }
-  if (processMatches.length > 1) {
+  if (sameLineProcessMatches.length === 1) {
+    return {
+      plan: sameLineProcessMatches[0]?.plan ?? null,
+      process: sameLineProcessMatches[0]?.process ?? null,
+      error: null as string | null,
+      matchedOnOtherLine: false,
+    };
+  }
+
+  const otherLineStyleCandidates = styleCandidates.filter(
+    (plan) => toPositiveIntOrNull(plan?.lineId) !== lineId
+  );
+  const otherLineProcessMatches = findProcessMatches(otherLineStyleCandidates);
+  if (otherLineProcessMatches.length === 0) {
+    return {
+      plan: null,
+      process: null,
+      error: `process ${row.processCode} is not assigned for order ${row.orderNo} / style ${row.styleId} in the worker factory`,
+    };
+  }
+  if (otherLineProcessMatches.length > 1) {
     return {
       plan: null,
       process: null,
@@ -8392,10 +8524,12 @@ const resolveWorkLogImportAssignmentCandidate = ({
     };
   }
 
+  const matched = otherLineProcessMatches[0] ?? null;
   return {
-    plan: processMatches[0]?.plan ?? null,
-    process: processMatches[0]?.process ?? null,
+    plan: matched?.plan ?? null,
+    process: matched?.process ?? null,
     error: null as string | null,
+    matchedOnOtherLine: true,
   };
 };
 
@@ -20955,7 +21089,13 @@ app.post("/work-logs/import", async (req, res) => {
     return respondWithIssues();
   }
 
-  const planLineIds = Array.from(new Set(preparedRows.map((item) => item.line.id)));
+  const planFactoryIds = Array.from(
+    new Set(preparedRows.map((item) => item.line.factoryId))
+  );
+  const assignmentPlanLineIds = ensureArray(lines)
+    .filter((line) => planFactoryIds.includes(line.factoryId))
+    .map((line) => toPositiveIntOrNull(line?.id))
+    .filter((value): value is number => value !== null);
   const planOrderNos = Array.from(
     new Set(
       preparedRows
@@ -20964,11 +21104,11 @@ app.post("/work-logs/import", async (req, res) => {
     )
   );
   const assignmentPlans =
-    planLineIds.length > 0 && planOrderNos.length > 0
+    assignmentPlanLineIds.length > 0 && planOrderNos.length > 0
       ? await findAssignmentPlansWithSelectFallback({
           where: {
             orgId: organization.id,
-            lineId: { in: planLineIds },
+            lineId: { in: assignmentPlanLineIds },
             orderNo: { in: planOrderNos },
           },
           orderBy: [{ lineId: "asc" }, { id: "asc" }],
@@ -20988,12 +21128,16 @@ app.post("/work-logs/import", async (req, res) => {
     line: { id: number; factoryId: number; name: string; source: string };
     plan: any;
     process: any;
+    matchedOnOtherLine: boolean;
   }> = [];
 
   preparedRows.forEach((item) => {
     const assignmentMatch = resolveWorkLogImportAssignmentCandidate({
       row: item.row,
       lineId: item.line.id,
+      factoryLineIds: ensureArray(lines)
+        .filter((line) => line.factoryId === item.line.factoryId)
+        .map((line) => line.id),
       plans: assignmentPlans,
     });
     if (assignmentMatch.error || !assignmentMatch.plan || !assignmentMatch.process) {
@@ -21012,6 +21156,7 @@ app.post("/work-logs/import", async (req, res) => {
       ...item,
       plan: assignmentMatch.plan,
       process: assignmentMatch.process,
+      matchedOnOtherLine: Boolean((assignmentMatch as any).matchedOnOtherLine),
     });
   });
 
@@ -21105,6 +21250,7 @@ app.post("/work-logs/import", async (req, res) => {
     line: any;
     sourceRows: Array<(typeof importedRows)[number]>;
     normalized: any;
+    crossLineWarnings: WorkLogCrossLineAssignmentWarning[];
   }> = [];
 
   for (const group of groups.values()) {
@@ -21201,11 +21347,6 @@ app.post("/work-logs/import", async (req, res) => {
           effectiveCoverage?.effectiveEndDate ?? normalized.coverageEndDate,
       };
     });
-    normalized.note = buildWorkLogNoteWithEmploymentAdjustments({
-      note: normalized.note,
-      adjustments: employmentValidation.adjustments,
-    });
-
     const lineValidation = await validateWorkLogLineWorkers({
       orgId: organization.id,
       lineId: normalized.lineId,
@@ -21312,6 +21453,26 @@ app.post("/work-logs/import", async (req, res) => {
       continue;
     }
 
+    const crossLineWarnings = await collectWorkLogCrossLineAssignmentWarnings({
+      orgId: organization.id,
+      workLogLineId: lineValidation.line?.id ?? normalized.lineId,
+      workLogLineName:
+        resolveOptionalString(lineValidation.line?.name, null) ??
+        resolveOptionalString(group.line?.name, null),
+      records: normalized.records,
+    });
+    normalized.note = buildWorkLogNoteWithCrossLineAssignments({
+      note: normalized.note,
+      workLogLineId: lineValidation.line?.id ?? normalized.lineId,
+      workLogLineName:
+        resolveOptionalString(lineValidation.line?.name, null) ??
+        resolveOptionalString(group.line?.name, null),
+      warnings: crossLineWarnings,
+    });
+    normalized.note = buildWorkLogNoteWithEmploymentAdjustments({
+      note: normalized.note,
+      adjustments: employmentValidation.adjustments,
+    });
     normalized.records = await attachCanonicalFieldsToWorkRecords({
       orgId: organization.id,
       lineId: lineValidation.line?.id ?? normalized.lineId,
@@ -21322,6 +21483,7 @@ app.post("/work-logs/import", async (req, res) => {
       line: lineValidation.line ?? group.line,
       sourceRows: group.rows,
       normalized,
+      crossLineWarnings,
     });
   }
 
@@ -21436,6 +21598,9 @@ app.post("/work-logs/import", async (req, res) => {
   }
 
   const importedRecords = validatedGroups.flatMap((group) => ensureArray(group.normalized.records));
+  const importCrossLineWarnings = validatedGroups.flatMap((group) =>
+    ensureArray(group.crossLineWarnings)
+  );
   await trySyncConfirmedOrdersToInProgressFromWorkRecords({
     orgId: organization.id,
     records: importedRecords,
@@ -21452,6 +21617,9 @@ app.post("/work-logs/import", async (req, res) => {
     createdCount: createdWorkLogIds.length,
     recordCount: importedRecords.length,
     workLogIds: createdWorkLogIds,
+    warnings: buildWorkLogWarningResponse({
+      crossLineWarnings: importCrossLineWarnings,
+    }),
   });
 });
 
@@ -21527,10 +21695,6 @@ app.post("/work-logs", async (req, res) => {
       effectiveCoverageEndDate:
         effectiveCoverage?.effectiveEndDate ?? normalized.coverageEndDate,
     };
-  });
-  normalized.note = buildWorkLogNoteWithEmploymentAdjustments({
-    note: normalized.note,
-    adjustments: employmentValidation.adjustments,
   });
   const lineValidation = await validateWorkLogLineWorkers({
     orgId: organization.id,
@@ -21609,6 +21773,26 @@ app.post("/work-logs", async (req, res) => {
     });
   }
   updateWorkLogMutationTrace(trace, "payroll-lock-validated");
+  const crossLineWarnings = await collectWorkLogCrossLineAssignmentWarnings({
+    orgId: organization.id,
+    workLogLineId: lineValidation.line?.id ?? normalized.lineId,
+    workLogLineName:
+      resolveOptionalString(lineValidation.line?.name, null) ??
+      resolveOptionalString(normalized.lineName, null),
+    records: normalized.records,
+  });
+  normalized.note = buildWorkLogNoteWithCrossLineAssignments({
+    note: normalized.note,
+    workLogLineId: lineValidation.line?.id ?? normalized.lineId,
+    workLogLineName:
+      resolveOptionalString(lineValidation.line?.name, null) ??
+      resolveOptionalString(normalized.lineName, null),
+    warnings: crossLineWarnings,
+  });
+  normalized.note = buildWorkLogNoteWithEmploymentAdjustments({
+    note: normalized.note,
+    adjustments: employmentValidation.adjustments,
+  });
   normalized.records = await attachCanonicalFieldsToWorkRecords({
     orgId: organization.id,
     lineId: lineValidation.line?.id ?? normalized.lineId,
@@ -21720,7 +21904,12 @@ app.post("/work-logs", async (req, res) => {
   updateWorkLogMutationTrace(trace, "response-ready", {
     workLogId: created.id,
   });
-  res.status(201).json(toWorkLogResponse(createdWithRecords ?? created));
+  res.status(201).json({
+    ...toWorkLogResponse(createdWithRecords ?? created),
+    warnings: buildWorkLogWarningResponse({
+      crossLineWarnings,
+    }),
+  });
 });
 
 app.put("/work-logs/:id", async (req, res) => {
@@ -21823,10 +22012,6 @@ app.put("/work-logs/:id", async (req, res) => {
         effectiveCoverage?.effectiveEndDate ?? normalized.coverageEndDate,
     };
   });
-  normalized.note = buildWorkLogNoteWithEmploymentAdjustments({
-    note: normalized.note,
-    adjustments: employmentValidation.adjustments,
-  });
   const lineValidation = await validateWorkLogLineWorkers({
     orgId: organization.id,
     lineId: normalized.lineId,
@@ -21910,6 +22095,26 @@ app.put("/work-logs/:id", async (req, res) => {
   }
   updateWorkLogMutationTrace(trace, "payroll-lock-validated", {
     assignmentPlanIds: normalizePlanIdList([...previousPlanIds, ...nextPlanIds]),
+  });
+  const crossLineWarnings = await collectWorkLogCrossLineAssignmentWarnings({
+    orgId: organization.id,
+    workLogLineId: lineValidation.line?.id ?? normalized.lineId,
+    workLogLineName:
+      resolveOptionalString(lineValidation.line?.name, null) ??
+      resolveOptionalString(normalized.lineName, null),
+    records: normalized.records,
+  });
+  normalized.note = buildWorkLogNoteWithCrossLineAssignments({
+    note: normalized.note,
+    workLogLineId: lineValidation.line?.id ?? normalized.lineId,
+    workLogLineName:
+      resolveOptionalString(lineValidation.line?.name, null) ??
+      resolveOptionalString(normalized.lineName, null),
+    warnings: crossLineWarnings,
+  });
+  normalized.note = buildWorkLogNoteWithEmploymentAdjustments({
+    note: normalized.note,
+    adjustments: employmentValidation.adjustments,
   });
   normalized.records = await attachCanonicalFieldsToWorkRecords({
     orgId: organization.id,
@@ -22026,7 +22231,12 @@ app.put("/work-logs/:id", async (req, res) => {
   updateWorkLogMutationTrace(trace, "response-ready", {
     workLogId: updated.id,
   });
-  res.json(toWorkLogResponse(updatedWithRecords ?? updated));
+  res.json({
+    ...toWorkLogResponse(updatedWithRecords ?? updated),
+    warnings: buildWorkLogWarningResponse({
+      crossLineWarnings,
+    }),
+  });
 });
 
 app.delete("/work-logs/:id", async (req, res) => {

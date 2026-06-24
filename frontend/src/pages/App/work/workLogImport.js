@@ -133,45 +133,54 @@ const translateLineResolutionIssue = (detail, languageCode) => {
 const translateAssignmentMatchIssue = (detail, languageCode) => {
   const orderMissing = parseDetail(
     detail,
-    /^order (.+) was not found on the resolved line\.?$/i,
+    /^order (.+) has no assignment card in the worker factory\.?$/i,
     ['orderNo']
   );
   if (orderMissing) {
     if (languageCode === 'en') {
-      return `Order ${orderMissing.orderNo} was not found on the resolved line.`;
+      return `Order ${orderMissing.orderNo} has no assignment card in the worker factory.`;
     }
     if (languageCode === 'vi') {
-      return `Khong tim thay don ${orderMissing.orderNo} tren chuyen da xac dinh.`;
+      return `Don ${orderMissing.orderNo} khong co the phan cong nao trong nha may cua cong nhan.`;
+    }
+    if (languageCode === 'ko') {
+      return `주문 ${orderMissing.orderNo}에 연결된 배정 카드가 작업자 공장 안에 없습니다.`;
     }
     return `확인된 라인에서 주문 ${orderMissing.orderNo}를 찾을 수 없습니다.`;
   }
 
   const styleMismatch = parseDetail(
     detail,
-    /^style (.+) does not match order (.+) on the resolved line\.?$/i,
+    /^style (.+) is not assigned for order (.+) in the worker factory\.?$/i,
     ['styleId', 'orderNo']
   );
   if (styleMismatch) {
     if (languageCode === 'en') {
-      return `Style ${styleMismatch.styleId} does not match order ${styleMismatch.orderNo} on the resolved line.`;
+      return `Style ${styleMismatch.styleId} is not assigned for order ${styleMismatch.orderNo} in the worker factory.`;
     }
     if (languageCode === 'vi') {
-      return `Ma hang ${styleMismatch.styleId} khong khop voi don ${styleMismatch.orderNo} tren chuyen da xac dinh.`;
+      return `Khong co line nao trong nha may cua cong nhan duoc gan don ${styleMismatch.orderNo} / ma hang ${styleMismatch.styleId}.`;
+    }
+    if (languageCode === 'ko') {
+      return `주문 ${styleMismatch.orderNo} / 스타일 ${styleMismatch.styleId}가 배정된 라인이 없습니다.`;
     }
     return `확인된 라인에서 스타일 ${styleMismatch.styleId}이 주문 ${styleMismatch.orderNo}와 일치하지 않습니다.`;
   }
 
   const processMismatch = parseDetail(
     detail,
-    /^process (.+) does not match order (.+) \/ style (.+)\.?$/i,
+    /^process (.+) is not assigned for order (.+) \/ style (.+) in the worker factory\.?$/i,
     ['processCode', 'orderNo', 'styleId']
   );
   if (processMismatch) {
     if (languageCode === 'en') {
-      return `Process ${processMismatch.processCode} does not match order ${processMismatch.orderNo} / style ${processMismatch.styleId}.`;
+      return `Process ${processMismatch.processCode} is not assigned for order ${processMismatch.orderNo} / style ${processMismatch.styleId} in the worker factory.`;
     }
     if (languageCode === 'vi') {
-      return `Cong doan ${processMismatch.processCode} khong khop voi don ${processMismatch.orderNo} / ma hang ${processMismatch.styleId}.`;
+      return `Khong co the phan cong nao trong nha may cua cong nhan khop don ${processMismatch.orderNo} / ma hang ${processMismatch.styleId} / cong doan ${processMismatch.processCode}.`;
+    }
+    if (languageCode === 'ko') {
+      return `주문 ${processMismatch.orderNo} / 스타일 ${processMismatch.styleId}에 공정 ${processMismatch.processCode}가 배정된 라인이 없습니다.`;
     }
     return `주문 ${processMismatch.orderNo} / 스타일 ${processMismatch.styleId}에 공정 ${processMismatch.processCode}이 없습니다.`;
   }
