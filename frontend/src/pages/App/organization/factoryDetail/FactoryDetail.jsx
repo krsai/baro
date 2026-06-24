@@ -233,7 +233,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
               value={formData.factoryCode}
               onChange={handleInputChange}
               required
-              inputProps={{ maxLength: 3, style: { textTransform: 'uppercase', letterSpacing: 2 } }}
+              inputProps={{ maxLength: 3, style: { textTransform: 'uppercase' } }}
               helperText={factoryCodeError || ' '}
               error={!!factoryCodeError}
             />
