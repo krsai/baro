@@ -18017,10 +18017,46 @@ const buildLineMonthCapacityRows = async ({
     map.set(planId, bucket);
     return map;
   }, new Map<number, any[]>());
+  const actualOutputStyleIds = Array.from(
+    new Set(
+      workRows
+        .map((row) => resolveOptionalString(row?.styleId, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const actualOutputStyleRows =
+    actualOutputStyleIds.length > 0
+      ? await prisma.style.findMany({
+          where: {
+            orgId,
+            styleId: { in: actualOutputStyleIds },
+          },
+          select: {
+            uid: true,
+            styleId: true,
+          },
+        })
+      : [];
+  const actualOutputStyleUidByStyleId = new Map(
+    actualOutputStyleRows
+      .map((row) => {
+        const styleId = resolveOptionalString(row?.styleId, null);
+        const uid = toPositiveIntOrNull(row?.uid);
+        return styleId && uid !== null ? [styleId, uid] : null;
+      })
+      .filter((row): row is [string, number] => Boolean(row))
+  );
   const actualOutputStyleUids = Array.from(
     new Set(
       workRows
-        .map((row) => toPositiveIntOrNull(row?.styleUid))
+        .map(
+          (row) =>
+            toPositiveIntOrNull(row?.styleUid) ??
+            actualOutputStyleUidByStyleId.get(
+              resolveOptionalString(row?.styleId, null) || ""
+            ) ??
+            null
+        )
         .filter((value): value is number => value !== null)
     )
   );
@@ -18056,7 +18092,12 @@ const buildLineMonthCapacityRows = async ({
     record: any;
     bucketQuantity: number;
   }) => {
-    const styleUid = toPositiveIntOrNull(record?.styleUid);
+    const styleUid =
+      toPositiveIntOrNull(record?.styleUid) ??
+      actualOutputStyleUidByStyleId.get(
+        resolveOptionalString(record?.styleId, null) || ""
+      ) ??
+      null;
     if (styleUid === null) return null;
     const matchedRow = actualOutputStyleProcessLookup.resolveRowForWorkRecord(
       styleUid,
