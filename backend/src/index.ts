@@ -12249,8 +12249,17 @@ const buildStyleProcessLookupForStCalculation = (styleProcessRows: any[]) => {
     return null;
   };
 
+  const resolveRowForWorkRecord = (styleUid: number, record: any) => {
+    const codeKey = normalizeProcessCodeKey(record?.processCode);
+    if (codeKey) {
+      return byStyleUidAndCode.get(`${styleUid}::${codeKey}`) ?? null;
+    }
+    return null;
+  };
+
   return {
     resolveRowForSnapshotProcess,
+    resolveRowForWorkRecord,
   };
 };
 
@@ -17477,6 +17486,7 @@ const loadAssignmentPlanProgressWorkRows = async ({
         orderNo: true,
         lineId: true,
         styleId: true,
+        styleUid: true,
         styleName: true,
         processId: true,
         processCode: true,
@@ -18007,6 +18017,54 @@ const buildLineMonthCapacityRows = async ({
     map.set(planId, bucket);
     return map;
   }, new Map<number, any[]>());
+  const actualOutputStyleUids = Array.from(
+    new Set(
+      workRows
+        .map((row) => toPositiveIntOrNull(row?.styleUid))
+        .filter((value): value is number => value !== null)
+    )
+  );
+  const actualOutputStyleProcessRows =
+    actualOutputStyleUids.length > 0
+      ? await prisma.styleProcess.findMany({
+          where: {
+            orgId,
+            styleUid: { in: actualOutputStyleUids },
+          },
+          select: {
+            id: true,
+            styleUid: true,
+            processCode: true,
+            processName: true,
+            ptSeconds: true,
+            standards: {
+              select: {
+                bucketQuantity: true,
+                bucketStSeconds: true,
+              },
+            },
+          },
+        })
+      : [];
+  const actualOutputStyleProcessLookup = buildStyleProcessLookupForStCalculation(
+    actualOutputStyleProcessRows
+  );
+  const resolveWorkRecordStSecondsForLineMonthCapacity = ({
+    record,
+    bucketQuantity,
+  }: {
+    record: any;
+    bucketQuantity: number;
+  }) => {
+    const styleUid = toPositiveIntOrNull(record?.styleUid);
+    if (styleUid === null) return null;
+    const matchedRow = actualOutputStyleProcessLookup.resolveRowForWorkRecord(
+      styleUid,
+      record
+    );
+    if (!matchedRow) return null;
+    return resolveStyleProcessBucketStSeconds(matchedRow, bucketQuantity);
+  };
   const lineLatestActualCoverageEndDateKeyByLineId = new Map<number, string>();
   const lineRemainingBacklogStSecondsByLineId = new Map<number, number>();
   const lineStUnknownAssignmentCountByLineId = new Map<number, number>();
@@ -18369,6 +18427,10 @@ const buildLineMonthCapacityRows = async ({
       requiredProcessGroups,
       totalExpected,
     } = progressMeta;
+    const bucketQuantity = resolveStBucketQuantity(plannedQuantity);
+    const monthlyDirectActualOutputStSecondsByMonthKey = new Map<string, number>();
+    let canUseDirectActualOutputStSeconds = true;
+    let hasDirectActualOutputStSeconds = false;
     const monthlyProcessTotalsByMonthKey = new Map<string, Map<string, number>>();
     const monthlyTotalDoneByMonthKey = new Map<string, number>();
 
@@ -18408,6 +18470,23 @@ const buildLineMonthCapacityRows = async ({
           weightedRows: monthWeightRows,
         });
       if (monthAllocations.length === 0) return;
+      const processStSeconds = resolveWorkRecordStSecondsForLineMonthCapacity({
+        record,
+        bucketQuantity,
+      });
+      if (processStSeconds === null) {
+        canUseDirectActualOutputStSeconds = false;
+      } else {
+        hasDirectActualOutputStSeconds = true;
+        monthAllocations.forEach(({ monthKey, allocatedTotal }) => {
+          if (allocatedTotal <= 0) return;
+          monthlyDirectActualOutputStSecondsByMonthKey.set(
+            monthKey,
+            (monthlyDirectActualOutputStSecondsByMonthKey.get(monthKey) || 0) +
+              Math.max(0, Math.round(processStSeconds * allocatedTotal))
+          );
+        });
+      }
       const processKey =
         resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record) || "unknown";
       monthAllocations.forEach(({ monthKey, allocatedTotal }) => {
@@ -18425,6 +18504,18 @@ const buildLineMonthCapacityRows = async ({
         monthlyProcessTotalsByMonthKey.set(monthKey, processTotalsByKey);
       });
     });
+
+    if (hasDirectActualOutputStSeconds && canUseDirectActualOutputStSeconds) {
+      monthlyDirectActualOutputStSecondsByMonthKey.forEach((seconds, monthKey) => {
+        const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
+        if (!target) return;
+        target.lineMonthlyActualOutputStSeconds += Math.max(
+          0,
+          Math.round(Number(seconds) || 0)
+        );
+      });
+      return;
+    }
 
     const cumulativeProcessTotalsByKey = new Map<string, number>();
     let cumulativeTotalDone = 0;
