@@ -20,6 +20,7 @@ export const ACCESS_FEATURE_KEYS = {
   PRODUCTION_PLAN: 'PRODUCTION_PLAN',
   INVENTORY: 'INVENTORY',
   ATTENDANCE: 'ATTENDANCE',
+  PRODUCTION_ANALYSIS: 'PRODUCTION_ANALYSIS',
   WORK_HISTORY: 'WORK_HISTORY',
   PAYROLL: 'PAYROLL',
   BUSINESS: 'BUSINESS',
@@ -31,7 +32,7 @@ export const ACCESS_FEATURE_KEYS = {
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
-export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 2;
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 3;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND];
 const POLICY_ORG_ROLES = [
@@ -57,6 +58,7 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
       ACCESS_FEATURE_KEYS.PRODUCTION_PLAN,
       ACCESS_FEATURE_KEYS.INVENTORY,
       ACCESS_FEATURE_KEYS.ATTENDANCE,
+      ACCESS_FEATURE_KEYS.PRODUCTION_ANALYSIS,
       ACCESS_FEATURE_KEYS.WORK_HISTORY,
       ACCESS_FEATURE_KEYS.LINE,
       ACCESS_FEATURE_KEYS.CUSTOMER,
@@ -131,6 +133,23 @@ const applyLegacyDashboardDefault = (policy) => {
   });
 };
 
+const applyLegacyProductionAnalysisDefault = (policy) => {
+  POLICY_ORG_TYPES.forEach((orgType) => {
+    POLICY_ORG_ROLES.forEach((role) => {
+      const features = policy?.[orgType]?.[role];
+      if (!Array.isArray(features)) return;
+      if (!features.includes(ACCESS_FEATURE_KEYS.WORK_HISTORY)) return;
+      if (features.includes(ACCESS_FEATURE_KEYS.PRODUCTION_ANALYSIS)) return;
+      const workHistoryIndex = features.indexOf(ACCESS_FEATURE_KEYS.WORK_HISTORY);
+      features.splice(
+        Math.max(0, workHistoryIndex),
+        0,
+        ACCESS_FEATURE_KEYS.PRODUCTION_ANALYSIS
+      );
+    });
+  });
+};
+
 export const getDefaultRoleAccessPolicy = () =>
   cloneDeepJson(DEFAULT_ROLE_ACCESS_POLICY);
 
@@ -155,6 +174,7 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
 
   if (!hasPolicySchemaVersion(candidate)) {
     applyLegacyDashboardDefault(base);
+    applyLegacyProductionAnalysisDefault(base);
   }
 
   return base;
@@ -173,7 +193,12 @@ export const serializeRoleAccessPolicy = (policy) => {
 
 export const getAllowedFeaturesForRole = ({ orgType, orgRole, policy = null }) => {
   const resolvedPolicy = sanitizeRoleAccessPolicy(
-    policy ?? getDefaultRoleAccessPolicy()
+    policy
+      ? {
+          [ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY]: ROLE_ACCESS_POLICY_SCHEMA_VERSION,
+          ...policy,
+        }
+      : getDefaultRoleAccessPolicy()
   );
   const normalizedOrgType = normalizeOrgTypeKey(orgType);
   const normalizedOrgRole = normalizeRoleKey(orgRole);

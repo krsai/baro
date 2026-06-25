@@ -593,7 +593,7 @@ const ONBOARDING_ORGANIZATION_TYPE_OPTIONS = new Set<OrganizationTypeKey>(
   Object.values(ORGANIZATION_TYPE_KEYS)
 );
 const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 2;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 3;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
   "DASHBOARD",
@@ -605,6 +605,7 @@ const ROLE_ACCESS_POLICY_FEATURES = [
   "PRODUCTION_PLAN",
   "INVENTORY",
   "ATTENDANCE",
+  "PRODUCTION_ANALYSIS",
   "WORK_HISTORY",
   "PAYROLL",
   "BUSINESS",
@@ -638,6 +639,7 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
       "PRODUCTION_PLAN",
       "INVENTORY",
       "ATTENDANCE",
+      "PRODUCTION_ANALYSIS",
       "WORK_HISTORY",
       "LINE",
       "CUSTOMER",
@@ -694,6 +696,19 @@ const applyLegacyDashboardDefault = (policy: RoleAccessPolicy): void => {
     }
   );
 };
+const applyLegacyProductionAnalysisDefault = (policy: RoleAccessPolicy): void => {
+  (Object.values(ORGANIZATION_TYPE_KEYS) as OrganizationTypeKey[]).forEach(
+    (orgType) => {
+      ORG_ACCESS_ROLES.forEach((role) => {
+        const features = policy[orgType][role];
+        if (!features.includes("WORK_HISTORY")) return;
+        if (features.includes("PRODUCTION_ANALYSIS")) return;
+        const workHistoryIndex = features.indexOf("WORK_HISTORY");
+        features.splice(Math.max(0, workHistoryIndex), 0, "PRODUCTION_ANALYSIS");
+      });
+    }
+  );
+};
 const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
   const policy = cloneRoleAccessPolicy(DEFAULT_ROLE_ACCESS_POLICY);
   if (!value || typeof value !== "object" || Array.isArray(value)) return policy;
@@ -713,6 +728,7 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
   );
   if (!hasRoleAccessPolicySchemaVersion(value)) {
     applyLegacyDashboardDefault(policy);
+    applyLegacyProductionAnalysisDefault(policy);
   }
   return policy;
 };
