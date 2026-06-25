@@ -4666,6 +4666,7 @@ const AssignBoard = () => {
           monthFrom: planningMonthKeys[0],
           monthTo: planningMonthKeys[planningMonthKeys.length - 1],
           lineIds: lineIdsKey,
+          debug: 'actual-output',
         }),
       {
         forceRefresh: true,
@@ -4675,7 +4676,45 @@ const AssignBoard = () => {
     )
       .then((payload) => {
         if (cancelled) return;
-        setLineMonthCapacityRows(Array.isArray(payload?.rows) ? payload.rows : []);
+        const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+        setLineMonthCapacityRows(rows);
+        const debugRows = rows
+          .map((row) => row?.actualOutputDebug)
+          .filter(Boolean);
+        if (debugRows.length > 0) {
+          console.groupCollapsed('[line-month-capacity] actual output debug');
+          console.table(
+            debugRows.map((debug) => ({
+              lineId: debug.lineId,
+              monthKey: debug.monthKey,
+              actualPercent: debug.actualOutputPercent,
+              capacityHours: Math.round((Number(debug.lineMonthlyCapacitySeconds) || 0) / 360) / 10,
+              actualHours:
+                Math.round((Number(debug.lineMonthlyActualOutputStSeconds) || 0) / 360) / 10,
+              directCandidateRecords: debug.directCandidateRecordCount,
+              directMatchedRecords: debug.directMatchedRecordCount,
+              directFailedRecords: debug.directFailedRecordCount,
+              directCandidateHours:
+                Math.round((Number(debug.directCandidateStSeconds) || 0) / 360) / 10,
+              directUsedHours: Math.round((Number(debug.directUsedStSeconds) || 0) / 360) / 10,
+              directUsedPlans: debug.directUsedPlanCount,
+              fallbackHours: Math.round((Number(debug.fallbackStSeconds) || 0) / 360) / 10,
+              fallbackPlans: debug.fallbackPlanCount,
+              fallbackReasons: JSON.stringify(debug.fallbackReasonCounts || {}),
+            }))
+          );
+          const failureSamples = debugRows.flatMap((debug) =>
+            (Array.isArray(debug.sampleFailures) ? debug.sampleFailures : []).map((sample) => ({
+              lineId: debug.lineId,
+              monthKey: debug.monthKey,
+              ...sample,
+            }))
+          );
+          if (failureSamples.length > 0) {
+            console.table(failureSamples);
+          }
+          console.groupEnd();
+        }
       })
       .catch((error) => {
         // Keep the last known-good capacity rows on fetch failure. An empty
