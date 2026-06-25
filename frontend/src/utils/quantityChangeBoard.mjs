@@ -5,8 +5,6 @@ const toNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const DEFAULT_TIME_REF_QUANTITY = 1000;
-
 const findExactStSeconds = (values, orderQuantity) => {
   if (!Array.isArray(values) || values.length === 0) return null;
   const resolvedOrderQuantity = Math.max(1, Math.trunc(toNumber(orderQuantity, 1)));
@@ -22,36 +20,13 @@ const resolveProcessStPerPieceSeconds = (process, orderQuantity = 1) => {
   const stBuckets = Array.isArray(process?.stBuckets) ? process.stBuckets : process?.stValues;
   const exactSt = findExactStSeconds(stBuckets, orderQuantity);
   if (exactSt != null) return exactSt;
-
-  const pt = toNumber(process?.pt, NaN);
-  if (Number.isFinite(pt) && pt > 0) return pt;
-
-  if (Array.isArray(stBuckets) && stBuckets.length > 0) {
-    return null;
-  }
-
-  const legacyCt = toNumber(process?.ct, NaN);
-  const legacyQuantity = Math.max(
-    1,
-    Math.trunc(toNumber(process?.timeRefQuantity, DEFAULT_TIME_REF_QUANTITY))
-  );
-  const resolvedOrderQuantity = Math.max(1, Math.trunc(toNumber(orderQuantity, 1)));
-  if (
-    process?.stManual === true &&
-    Number.isFinite(legacyCt) &&
-    legacyCt > 0 &&
-    legacyQuantity === resolvedOrderQuantity
-  ) {
-    return legacyCt;
-  }
-
   return null;
 };
 
 const resolveProcessStTotalSeconds = (process, orderQuantity = 1) => {
   const resolvedOrderQuantity = Math.max(1, Math.trunc(toNumber(orderQuantity, 1)));
   const stPerPiece = resolveProcessStPerPieceSeconds(process, resolvedOrderQuantity);
-  if (stPerPiece == null) return 0;
+  if (stPerPiece == null) return null;
   return stPerPiece * resolvedOrderQuantity;
 };
 
@@ -130,32 +105,6 @@ export const reconcileBoardStateForQuantityChanges = ({
         previousCard || {};
       const styleId = normalizeBoardKey(nextVariant?.styleId);
 
-      const previousQty = toNumber(
-        previousCardBase.cardQuantity ?? previousCardBase.quantity,
-        0
-      );
-      const fallbackUnitPt =
-        previousQty > 0
-          ? toNumber(
-              previousCardBase.cardPtTotalSeconds ?? previousCardBase.totalPt,
-              0
-            ) / previousQty
-          : 0;
-      const fallbackUnitAt =
-        previousQty > 0
-          ? toNumber(
-              previousCardBase.cardAtTotalSeconds ?? previousCardBase.totalAt,
-              0
-            ) / previousQty
-          : 0;
-      const fallbackUnitSt =
-        previousQty > 0
-          ? toNumber(
-              previousCardBase.cardStTotalSeconds ?? previousCardBase.totalSt,
-              0
-            ) / previousQty
-          : 0;
-
       const processSummary = styleSummaryMap.get(styleId) || null;
       const hasProcessSummary =
         canCalculateProcessTotal &&
@@ -163,21 +112,24 @@ export const reconcileBoardStateForQuantityChanges = ({
         processSummary.processes.length > 0;
       const totalPt = hasProcessSummary
         ? calculateProcessTotalForOrderQuantity(processSummary.processes, 'pt', nextQty)
-        : fallbackUnitPt * nextQty;
+        : 0;
       const totalAt = hasProcessSummary
         ? calculateProcessTotalForOrderQuantity(processSummary.processes, 'at', nextQty)
-        : fallbackUnitAt * nextQty;
-      const totalSt = hasProcessSummary
-        ? processSummary.processes.reduce(
-            (sum, process) =>
-              sum + toNumber(resolveProcessStTotalSeconds(process, nextQty), 0),
-            0
-          )
-        : fallbackUnitSt * nextQty;
+        : 0;
+      const stProcessTotals = hasProcessSummary
+        ? processSummary.processes.map((process) => resolveProcessStTotalSeconds(process, nextQty))
+        : [];
+      const hasCompleteSt =
+        hasProcessSummary &&
+        stProcessTotals.length === processSummary.processes.length &&
+        stProcessTotals.every((seconds) => Number.isFinite(seconds) && seconds > 0);
+      const totalSt = hasCompleteSt
+        ? stProcessTotals.reduce((sum, seconds) => sum + seconds, 0)
+        : 0;
       const hasSt = totalSt > 0;
       const hasPt = totalPt > 0;
       const status = hasSt ? 'ST' : hasPt ? 'PT' : 'NONE';
-      const stTotalSeconds = hasSt ? totalSt : totalPt;
+      const stTotalSeconds = hasSt ? totalSt : 0;
 
       return {
         ...previousCardBase,
@@ -199,7 +151,7 @@ export const reconcileBoardStateForQuantityChanges = ({
         quantity: nextQty,
         processCount: hasProcessSummary
           ? toNumber(processSummary.processCount, 0)
-          : toNumber(previousCardBase.processCount, 0),
+          : 0,
         status,
         cardQuantity: nextQty,
         cardPtTotalSeconds: totalPt,

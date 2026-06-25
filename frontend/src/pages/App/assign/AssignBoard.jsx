@@ -570,11 +570,7 @@ const resolveProcessStSeedSeconds = ({
     resolveProcessExactStPerPieceSeconds(process, orderQuantity)
   );
   if (manualSt != null) return { seconds: manualSt, source: 'ST' };
-
-  const ptInfo = resolveProcessPtInfo(process, orderQuantity);
-  if (ptInfo.seconds != null) return { seconds: ptInfo.seconds, source: 'PT' };
-
-  return { seconds: 0, source: 'NONE' };
+  return { seconds: null, source: 'NONE' };
 };
 const hasSavedCtSnapshot = (assignment) => hasAssignmentCtSnapshot(assignment);
 
@@ -991,16 +987,24 @@ const mergeFactorySeconds = (first = [], second = []) => {
 
 const getTotalForOrderQuantity = (processes, field, orderQuantity) =>
   calculateProcessTotalForOrderQuantity(processes, field, orderQuantity);
-const getTotalStForOrderQuantity = (processes, orderQuantity) =>
-  normalizeProcesses(processes).reduce((sum, process) => {
+const getTotalStForOrderQuantity = (processes, orderQuantity) => {
+  const normalizedProcesses = normalizeProcesses(processes);
+  if (normalizedProcesses.length === 0) return null;
+  let hasMissingSt = false;
+  const total = normalizedProcesses.reduce((sum, process) => {
     const stSeed = resolveProcessStSeedSeconds({
       process,
       orderQuantity,
     });
     const stPerPiece = toOptionalPositiveNumber(stSeed?.seconds);
-    if (stPerPiece == null) return sum;
+    if (stPerPiece == null) {
+      hasMissingSt = true;
+      return sum;
+    }
     return sum + stPerPiece * orderQuantity;
   }, 0);
+  return hasMissingSt ? null : total;
+};
 
 const createCardId = (orderId, styleId) =>
   `${normalizeKey(orderId)}::${normalizeKey(styleId)}`;
@@ -1074,7 +1078,7 @@ const buildCardsFromOrders = ({ orders, styles }) => {
       const hasSt = totalSt > 0;
       const hasPt = totalPt > 0;
       const status = hasSt ? 'ST' : hasPt ? 'PT' : 'NONE';
-      const stTotalSeconds = hasSt ? totalSt : totalPt;
+      const stTotalSeconds = hasSt ? totalSt : 0;
       const cardId = createCardId(
         order?.id ?? order?.orderNumber ?? `order-${orderIndex}`,
         styleId
@@ -1509,36 +1513,19 @@ const buildAssignmentCtSnapshotForSave = ({
     })
     .filter(Boolean);
 
-  const fallbackStSeconds = Math.max(
-    0,
-    Math.round(
-      Number(
-        resolveCardStTotalSeconds(card) ||
-          assignment?.stTotalSeconds ||
-          0
-      ) || 0
-    )
-  );
-  const fallbackCtSeconds = Math.max(
-    0,
-    Math.round(
-      Number(resolveAssignmentCtTotalSeconds(assignment) || fallbackStSeconds || 0) || 0
-    )
-  );
+  if (processes.length === 0 || processes.length !== processSeeds.length) return null;
+
   const pieceCtTotalSeconds =
-    processes.length > 0
-      ? processes.reduce(
-          (sum, process) => sum + (Number(process?.pieceCtSeconds) || 0),
-          0
-        )
-      : Number(existingSnapshot?.pieceCtTotalSeconds) || fallbackCtSeconds / orderQuantity;
+    processes.reduce(
+      (sum, process) => sum + (Number(process?.pieceCtSeconds) || 0),
+      0
+    );
+  if (!Number.isFinite(pieceCtTotalSeconds) || pieceCtTotalSeconds <= 0) {
+    return null;
+  }
   const assignmentCtTotalSeconds = Math.max(
     0,
-    Math.round(
-      pieceCtTotalSeconds > 0
-        ? pieceCtTotalSeconds * orderQuantity
-        : fallbackCtSeconds
-    )
+    Math.round(pieceCtTotalSeconds * orderQuantity)
   );
   const snapshotCore = {
     sourceAssignmentId: String(assignment?.id || '').trim() || null,
@@ -3306,16 +3293,6 @@ const AssignBoard = () => {
             item?.stTotalSeconds ?? item?.assignmentStTotalSeconds,
             0
           );
-          const fallbackStTotalSeconds = toNonNegativeInt(
-            fallbackItem?.stTotalSeconds ?? fallbackItem?.assignmentStTotalSeconds,
-            0
-          );
-          const mergedStTotalSeconds =
-            responseStTotalSeconds > 0
-              ? responseStTotalSeconds
-              : fallbackStTotalSeconds > 0
-                ? fallbackStTotalSeconds
-                : responseStTotalSeconds;
           const responsePlannedStTotalSeconds = toNonNegativeInt(
             item?.plannedStTotalSeconds,
             0
@@ -3328,7 +3305,7 @@ const AssignBoard = () => {
             ? {
                 ...fallbackItem,
                 ...item,
-                stTotalSeconds: mergedStTotalSeconds,
+                stTotalSeconds: responseStTotalSeconds,
                 plannedStTotalSeconds:
                   responsePlannedStTotalSeconds > 0
                     ? responsePlannedStTotalSeconds
@@ -4136,7 +4113,7 @@ const AssignBoard = () => {
     if (!styleId) return null;
     return styleById.get(styleId) || null;
   }, [styleById]);
-  const rebuildCardTimeTotalsForQuantity = useCallback((card, quantity, fallbackRatio = null) => {
+  const rebuildCardTimeTotalsForQuantity = useCallback((card, quantity) => {
     const assignmentQuantity = Math.max(0, toNonNegativeInt(quantity, 0));
     const style = resolveCardStyle(card);
     const styleProcesses = normalizeProcesses(style?.processes);
@@ -4144,46 +4121,26 @@ const AssignBoard = () => {
       const totalPt = getTotalForOrderQuantity(styleProcesses, 'pt', assignmentQuantity);
       const totalAt = getTotalForOrderQuantity(styleProcesses, 'at', assignmentQuantity);
       const totalSt = getTotalStForOrderQuantity(styleProcesses, assignmentQuantity);
+      const hasSt = Number.isFinite(totalSt) && totalSt > 0;
       return normalizeAssignmentCardForBoard({
         ...card,
         styleId: card?.styleId || style?.id,
         cardQuantity: assignmentQuantity,
         processCount: styleProcesses.length,
-        cardStTotalSeconds: totalSt,
+        cardStTotalSeconds: hasSt ? totalSt : 0,
         cardPtTotalSeconds: totalPt,
         cardAtTotalSeconds: totalAt,
-        status: resolveCardStatus(card, totalPt, totalAt, totalSt),
+        status: resolveCardStatus(card, totalPt, totalAt, hasSt ? totalSt : 0),
       });
     }
 
-    const totalPt =
-      fallbackRatio == null
-        ? resolveCardPtTotalSeconds(card, 0)
-        : scaleValue(resolveCardPtTotalSeconds(card, 0), fallbackRatio);
-    const totalAt =
-      fallbackRatio == null
-        ? resolveCardAtTotalSeconds(card, 0)
-        : scaleValue(resolveCardAtTotalSeconds(card, 0), fallbackRatio);
-    const totalSt =
-      fallbackRatio == null
-        ? resolveCardStOnlyTotalSeconds(card, 0)
-        : scaleValue(resolveCardStOnlyTotalSeconds(card, 0), fallbackRatio);
-    const fallbackStTotalSeconds =
-      fallbackRatio == null
-        ? resolveCardStTotalSeconds(card)
-        : scaleValue(resolveCardStTotalSeconds(card), fallbackRatio);
-    const stTotalSeconds = Math.max(0, Math.round(Number(fallbackStTotalSeconds) || 0));
-    const fallbackStatus =
-      getCardBasis(card) === 'ST' && stTotalSeconds > 0
-        ? 'ST'
-        : resolveCardStatus(card, totalPt, totalAt, totalSt);
     return normalizeAssignmentCardForBoard({
       ...card,
       cardQuantity: assignmentQuantity,
-      cardStTotalSeconds: totalSt,
-      cardPtTotalSeconds: totalPt,
-      cardAtTotalSeconds: totalAt,
-      status: fallbackStatus,
+      cardStTotalSeconds: 0,
+      cardPtTotalSeconds: 0,
+      cardAtTotalSeconds: 0,
+      status: 'NONE',
     });
   }, [resolveCardStyle]);
   const assignmentProgressIdsKey = useMemo(
@@ -5096,16 +5053,21 @@ const AssignBoard = () => {
       const savedSnapshotCtSeconds = savedSnapshotEntry?.snapshotCtSeconds ?? null;
       const stDraftSeconds = toOptionalPositiveNumber(detailStDraftByProcess[processKey]);
       const ctDraftSeconds = toOptionalPositiveNumber(detailDraftByProcess[processKey]);
-      const baseSeconds = stDraftSeconds ?? baseStSeedInfo.seconds;
+      const baseStSeedSeconds = toOptionalPositiveNumber(baseStSeedInfo.seconds);
+      const baseSeconds = stDraftSeconds ?? baseStSeedSeconds;
       const hasStDraftChange =
         stDraftSeconds != null &&
-        Math.abs(stDraftSeconds - baseStSeedInfo.seconds) > 1e-6;
+        baseStSeedSeconds != null &&
+        Math.abs(stDraftSeconds - baseStSeedSeconds) > 1e-6;
       const proposedSeconds = ctDraftSeconds ?? savedSnapshotCtSeconds ?? baseSeconds;
       const savedSeconds = savedSnapshotCtSeconds ?? baseSeconds;
       const basePerPieceSeconds = baseSeconds;
       const proposedPerPieceSeconds = proposedSeconds;
       const savedPerPieceSeconds = savedSeconds == null ? null : savedSeconds;
-      const totalProposedSeconds = proposedPerPieceSeconds * orderQuantity;
+      const totalBaseSeconds =
+        basePerPieceSeconds == null ? null : basePerPieceSeconds * orderQuantity;
+      const totalProposedSeconds =
+        proposedPerPieceSeconds == null ? null : proposedPerPieceSeconds * orderQuantity;
       return {
         processKey,
         processName,
@@ -5126,14 +5088,21 @@ const AssignBoard = () => {
         proposedPerPieceSeconds,
         savedSeconds,
         savedPerPieceSeconds,
-        totalBaseSeconds: basePerPieceSeconds * orderQuantity,
+        totalBaseSeconds,
         totalRequestedSeconds: totalProposedSeconds,
         totalProposedSeconds,
         proposedUnitCost: resolveCtUnitCost(proposedSeconds, wagePerSecond),
         savedUnitCost: resolveCtUnitCost(savedSeconds, wagePerSecond),
-        perPieceCost: wagePerSecond == null ? null : proposedPerPieceSeconds * wagePerSecond,
-        expectedCost: wagePerSecond == null ? null : totalProposedSeconds * wagePerSecond,
+        perPieceCost:
+          wagePerSecond == null || proposedPerPieceSeconds == null
+            ? null
+            : proposedPerPieceSeconds * wagePerSecond,
+        expectedCost:
+          wagePerSecond == null || totalProposedSeconds == null
+            ? null
+            : totalProposedSeconds * wagePerSecond,
         expectedDays:
+          totalProposedSeconds != null &&
           Number.isFinite(lineDailyCapacitySeconds) && lineDailyCapacitySeconds > 0
             ? totalProposedSeconds / lineDailyCapacitySeconds
             : null,
@@ -5159,34 +5128,26 @@ const AssignBoard = () => {
       1,
       toPositiveInt(detailAssignment?.quantity ?? detailCard?.quantity ?? 1, 1)
     );
+    const sumProcessSeconds = (field) => {
+      if (detailProcessRows.length === 0) return null;
+      let total = 0;
+      for (const row of detailProcessRows) {
+        const value = toOptionalPositiveNumber(row?.[field]);
+        if (value == null) return null;
+        total += value;
+      }
+      return total;
+    };
     const lineDailyCapacitySeconds = Number(
       detailAssignment
         ? getLineCapacitySeconds(detailAssignment.lineId, lineCapacityById)
         : DAILY_CAPACITY_SECONDS
     );
-    const totalBasePerPieceSeconds =
-      detailProcessRows.length > 0
-        ? detailProcessRows.reduce((sum, row) => sum + row.basePerPieceSeconds, 0)
-        : Number(detailCard?.stTotalSeconds || 0) / orderQuantity;
-    const totalRequestedPerPieceSeconds =
-      detailProcessRows.length > 0
-        ? detailProcessRows.reduce((sum, row) => sum + row.requestedPerPieceSeconds, 0)
-        : Number(detailAssignment?.stTotalSeconds || detailCard?.stTotalSeconds || 0) / orderQuantity;
-    const totalSavedPerPieceSeconds =
-      detailProcessRows.length > 0
-        ? detailProcessRows.reduce(
-            (sum, row) => sum + (Number(row?.savedPerPieceSeconds) || 0),
-            0
-          )
-        : Number(resolveAssignmentCtTotalSeconds(detailAssignment) || 0) / orderQuantity;
-    const totalRequestedSeconds =
-      detailProcessRows.length > 0
-        ? detailProcessRows.reduce((sum, row) => sum + row.totalRequestedSeconds, 0)
-        : Number(detailAssignment?.stTotalSeconds || detailCard?.stTotalSeconds || 0);
-    const totalBaseSeconds =
-      detailProcessRows.length > 0
-        ? detailProcessRows.reduce((sum, row) => sum + row.totalBaseSeconds, 0)
-        : Number(detailCard?.stTotalSeconds || 0);
+    const totalBasePerPieceSeconds = sumProcessSeconds('basePerPieceSeconds');
+    const totalRequestedPerPieceSeconds = sumProcessSeconds('requestedPerPieceSeconds');
+    const totalSavedPerPieceSeconds = sumProcessSeconds('savedPerPieceSeconds');
+    const totalRequestedSeconds = sumProcessSeconds('totalRequestedSeconds');
+    const totalBaseSeconds = sumProcessSeconds('totalBaseSeconds');
     const headcount = Math.max(1, Number(detailLine?.headcount || 1));
     const wagePerSecond = toOptionalPositiveNumber(
       detailLine?.factoryWagePerSecond ??
@@ -5195,8 +5156,11 @@ const AssignBoard = () => {
         detailAssignment?.wagePerSecond
     );
     const expectedCost =
-      wagePerSecond == null ? null : totalRequestedSeconds * wagePerSecond;
+      wagePerSecond == null || totalRequestedSeconds == null
+        ? null
+        : totalRequestedSeconds * wagePerSecond;
     const totalDurationDays =
+      totalRequestedSeconds != null &&
       Number.isFinite(lineDailyCapacitySeconds) && lineDailyCapacitySeconds > 0
         ? totalRequestedSeconds / lineDailyCapacitySeconds
         : null;
@@ -6105,13 +6069,13 @@ const AssignBoard = () => {
     return qty;
   }, [languageCode]);
 
-  const buildSplitCard = useCallback((card, quantity, ratio, newId) => {
+  const buildSplitCard = useCallback((card, quantity, newId) => {
     const originOrderId = getCardOriginId(card) ?? card.id;
     return rebuildCardTimeTotalsForQuantity({
       ...card,
       id: newId,
       originOrderId,
-    }, quantity, ratio);
+    }, quantity);
   }, [rebuildCardTimeTotalsForQuantity]);
 
   const handleSplitCard = useCallback((cardId) => {
@@ -6121,11 +6085,9 @@ const AssignBoard = () => {
     const splitQty = promptSplitQuantity(quantity);
     if (!splitQty) return;
     const remainQty = quantity - splitQty;
-    const ratio = splitQty / quantity;
-    const remainRatio = remainQty / quantity;
     const newId = `${card.id}-S${splitCounterRef.current++}`;
-    const updatedCard = buildSplitCard(card, remainQty, remainRatio, card.id);
-    const splitCard = buildSplitCard(card, splitQty, ratio, newId);
+    const updatedCard = buildSplitCard(card, remainQty, card.id);
+    const splitCard = buildSplitCard(card, splitQty, newId);
 
     setCards((prev) => prev.map((item) => (item.id === card.id ? updatedCard : item)).concat(splitCard));
   }, [cardById, promptSplitQuantity, buildSplitCard]);

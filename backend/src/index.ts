@@ -1398,36 +1398,13 @@ const toStyleStBucket = (value: any): StyleStBucket | null => {
   };
 };
 
-const normalizeStyleProcessStBuckets = (
-  values: any,
-  legacyProcess: any = null
-): StyleStBucket[] => {
+const normalizeStyleProcessStBuckets = (values: any): StyleStBucket[] => {
   const byQuantity = new Map<number, StyleStBucket>();
   ensureArray(values).forEach((value) => {
     const normalized = toStyleStBucket(value);
     if (!normalized) return;
     byQuantity.set(normalized.bucketQuantity, normalized);
   });
-
-  const legacyCt = toOptionalProcessSeconds((legacyProcess as any)?.ct);
-  const legacyQuantity = resolveStBucketQuantity(
-    (legacyProcess as any)?.timeRefQuantity ??
-      (legacyProcess as any)?.referenceQuantity,
-    DEFAULT_TIME_REF_QUANTITY
-  );
-  if (
-    byQuantity.size === 0 &&
-    (legacyProcess as any)?.stManual === true &&
-    legacyCt !== null
-  ) {
-    byQuantity.set(legacyQuantity, {
-      bucketQuantity: legacyQuantity,
-      bucketStSeconds: legacyCt,
-      setBy: "LEGACY",
-      setAt: null,
-      updatedAt: null,
-    });
-  }
 
   return Array.from(byQuantity.values()).sort(
     (left, right) => left.bucketQuantity - right.bucketQuantity
@@ -2182,8 +2159,7 @@ const normalizeStyleProcess = (process: any) => {
     (next as any).nameVi = explicitManualName;
   }
   const normalizedStBuckets = normalizeStyleProcessStBuckets(
-    _rawStBuckets ?? _legacyStValues,
-    next
+    _rawStBuckets ?? _legacyStValues
   );
   const resolvedTimeRefQuantity = toPositiveInt(
     (next as any).timeRefQuantity ??
@@ -2196,9 +2172,7 @@ const normalizeStyleProcess = (process: any) => {
     resolvedTimeRefQuantity
   );
   if ("pt" in next) next.pt = toOptionalProcessSeconds(next.pt);
-  const legacyCt =
-    normalizedStBuckets.length === 0 ? toOptionalProcessSeconds(next.ct) : null;
-  next.ct = exactStBucket?.bucketStSeconds ?? legacyCt;
+  next.ct = exactStBucket?.bucketStSeconds ?? toOptionalProcessSeconds(next.ct);
   const normalizedAtParams = toStyleAtParams((next as any).atParams);
   if (normalizedAtParams) {
     (next as any).atParams = normalizedAtParams;
@@ -2217,16 +2191,9 @@ const normalizeStyleProcess = (process: any) => {
     delete (next as any).stValues;
   }
   next.timeRefQuantity = resolvedTimeRefQuantity;
-  const hasCt = next.ct !== null && next.ct !== undefined;
-  const atPerPiece = resolveStyleProcessAtPerPieceSecondsForReferenceQuantity(next);
-  const hasAt = atPerPiece !== null;
-  const isLikelyAutoCt =
-    hasCt &&
-    hasAt &&
-    Math.abs(Number(next.ct) - Number(atPerPiece)) < 1e-4;
   next.stManual =
     exactStBucket !== null ||
-    (typeof next.stManual === "boolean" ? next.stManual : hasCt && !isLikelyAutoCt);
+    (typeof next.stManual === "boolean" ? next.stManual && normalizedStBuckets.length > 0 : false);
   if ("referenceQuantity" in next) {
     delete (next as any).referenceQuantity;
   }
@@ -2256,23 +2223,6 @@ const resolveStyleProcessExactStPerPieceSeconds = (
   );
   if (exactStBucket) return exactStBucket.bucketStSeconds;
 
-  if (ensureArray((normalized as any)?.stBuckets).length > 0) {
-    return null;
-  }
-
-  const resolvedOrderQuantity = resolveStBucketQuantity(orderQuantity);
-  const legacyQuantity = resolveStBucketQuantity(
-    (normalized as any)?.timeRefQuantity,
-    DEFAULT_TIME_REF_QUANTITY
-  );
-  const legacyCt = toOptionalProcessSeconds((normalized as any)?.ct);
-  if (
-    (normalized as any)?.stManual === true &&
-    legacyCt !== null &&
-    legacyQuantity === resolvedOrderQuantity
-  ) {
-    return legacyCt;
-  }
   return null;
 };
 
@@ -2428,18 +2378,6 @@ type AtTrainingBucketDraft = {
 
 const toAtTrainingStyleProcessMetricKey = (styleProcessId: number) =>
   `STYLE_PROCESS:${styleProcessId}`;
-
-const resolveStoredStyleProcessFallbackPerPieceSeconds = (processRow: any) => {
-  const ptSeconds = toOptionalSeconds(processRow?.ptSeconds);
-  if (ptSeconds != null) {
-    return roundToScale(ptSeconds, 4);
-  }
-  return resolveStyleProcessAtPerPieceSecondsForReferenceQuantity({
-    timesPerPiece: processRow?.timesPerPiece,
-    atParams: processRow?.atParams,
-    timeRefQuantity: DEFAULT_TIME_REF_QUANTITY,
-  });
-};
 
 const loadAtTrainingSourceWorkLogs = async ({
   orgId,
@@ -3334,7 +3272,6 @@ const loadAtTrainingDataFromBuckets = async ({
   if (!normalizedUpToMonthKey) {
     return {
       trainingDayBuckets: [] as AtTrainingDayBucket[],
-      fallbackPerPieceByMetricKey: new Map<string, number | null>(),
       metricTrainingQualityByMetricKey: new Map<string, AtTrainingMetricQuality>(),
       styleProcessRowsById: new Map<number, any>(),
     };
@@ -3365,7 +3302,6 @@ const loadAtTrainingDataFromBuckets = async ({
   if (bucketRows.length === 0) {
     return {
       trainingDayBuckets: [] as AtTrainingDayBucket[],
-      fallbackPerPieceByMetricKey: new Map<string, number | null>(),
       metricTrainingQualityByMetricKey: new Map<string, AtTrainingMetricQuality>(),
       styleProcessRowsById: new Map<number, any>(),
     };
@@ -3425,7 +3361,6 @@ const loadAtTrainingDataFromBuckets = async ({
   );
 
   const trainingDayBuckets: AtTrainingDayBucket[] = [];
-  const fallbackPerPieceByMetricKey = new Map<string, number | null>();
   const metricTrainingQualityByMetricKey = new Map<
     string,
     AtTrainingMetricQuality
@@ -3463,18 +3398,6 @@ const loadAtTrainingDataFromBuckets = async ({
       qualityCurrent.observationCount += 1;
       metricTrainingQualityByMetricKey.set(metricKey, qualityCurrent);
 
-      if (!fallbackPerPieceByMetricKey.has(metricKey)) {
-        fallbackPerPieceByMetricKey.set(
-          metricKey,
-          resolveStoredStyleProcessFallbackPerPieceSeconds(styleProcessRow)
-        );
-      } else if (fallbackPerPieceByMetricKey.get(metricKey) == null) {
-        const resolvedFallback =
-          resolveStoredStyleProcessFallbackPerPieceSeconds(styleProcessRow);
-        if (resolvedFallback != null) {
-          fallbackPerPieceByMetricKey.set(metricKey, resolvedFallback);
-        }
-      }
     });
 
     if (dayProcessRows.length === 0) return;
@@ -3488,7 +3411,6 @@ const loadAtTrainingDataFromBuckets = async ({
 
   return {
     trainingDayBuckets,
-    fallbackPerPieceByMetricKey,
     metricTrainingQualityByMetricKey,
     styleProcessRowsById,
   };
@@ -3686,8 +3608,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
     }
 
     const fittingResult = fitAtParamsWithProportionalAllocation(
-      bucketTrainingData.trainingDayBuckets,
-      bucketTrainingData.fallbackPerPieceByMetricKey
+      bucketTrainingData.trainingDayBuckets
     );
     const fittedParamsByMetric = fittingResult.paramsByMetric;
     if (fittedParamsByMetric.size === 0) {
@@ -4013,8 +3934,7 @@ const buildStyleProcessStorageDrafts = (processes: any): any[] =>
       ptSeconds: toOptionalProcessSeconds((process as any)?.pt),
       atParams: toStyleAtParams((process as any)?.atParams),
       stBuckets: normalizeStyleProcessStBuckets(
-        (process as any)?.stBuckets ?? (process as any)?.stValues,
-        process
+        (process as any)?.stBuckets ?? (process as any)?.stValues
       ),
     };
   });
@@ -10110,9 +10030,6 @@ const resolveAssignmentCardStSeedSeconds = ({
     orderQuantity
   );
   if (manualSt != null) return manualSt;
-
-  const pt = toOptionalSeconds(normalized?.pt);
-  if (pt != null) return pt;
   return null;
 };
 const calculateAssignmentCardTotalForOrderQuantity = (
@@ -10139,14 +10056,21 @@ const calculateAssignmentCardStTotalForOrderQuantity = (
   processes: any,
   orderQuantity = 1
 ) => {
-  const total = normalizeStyleProcesses(processes).reduce((acc, process) => {
+  const normalizedProcesses = normalizeStyleProcesses(processes);
+  if (normalizedProcesses.length === 0) return null;
+  let hasMissingSt = false;
+  const total = normalizedProcesses.reduce((acc, process) => {
     const stPerPiece = resolveAssignmentCardStSeedSeconds({
       process,
       orderQuantity,
     });
-    if (stPerPiece == null) return acc;
+    if (stPerPiece == null) {
+      hasMissingSt = true;
+      return acc;
+    }
     return acc + stPerPiece * toPositiveInt(orderQuantity, 1);
   }, 0);
+  if (hasMissingSt) return null;
   return Math.round(total);
 };
 const resolveAssignmentCardStatus = ({
@@ -10282,7 +10206,7 @@ const buildAssignmentCardsFromOrders = ({
       );
       const status = resolveAssignmentCardStatus({
         totalPt,
-        cardStTotalSeconds: totalSt,
+        cardStTotalSeconds: totalSt ?? 0,
       });
       const resolvedOrderId =
         resolveOptionalString(order?.orderId ?? order?.id, null) ??
@@ -10313,7 +10237,7 @@ const buildAssignmentCardsFromOrders = ({
         status,
         cardPtTotalSeconds: totalPt,
         cardAtTotalSeconds: totalAt,
-        cardStTotalSeconds: totalSt,
+        cardStTotalSeconds: totalSt ?? 0,
         previewUrl,
       });
     });
@@ -10894,14 +10818,7 @@ const buildRefreshedUnlinkedAssignmentSnapshot = ({
         process,
         orderQuantity,
       });
-      const fallbackSeconds = toOptionalFloat(
-        previousProcess?.pieceCtSeconds ??
-          previousProcess?.snapshotCtSeconds ??
-          previousProcess?.ctPerPieceSeconds ??
-          previousProcess?.ctSeconds,
-        null
-      );
-      const resolvedSeconds = toOptionalFloat(styleSeconds ?? fallbackSeconds, null);
+      const resolvedSeconds = toOptionalFloat(styleSeconds, null);
       if (resolvedSeconds === null || resolvedSeconds <= 0) return null;
       const processCode = resolveOptionalString(
         process?.code ?? process?.storageCode ?? previousProcess?.processCode,
@@ -10937,7 +10854,9 @@ const buildRefreshedUnlinkedAssignmentSnapshot = ({
       };
     })
     .filter((process): process is any => Boolean(process));
-  if (processes.length === 0) return assignment;
+  if (processes.length === 0 || processes.length !== styleProcesses.length) {
+    return assignment;
+  }
 
   const pieceCtTotalSeconds = processes.reduce(
     (sum, process) => sum + (Number(process?.pieceCtSeconds) || 0),
@@ -12284,14 +12203,13 @@ const calculateAssignmentStTotalSecondsFromStyleRows = ({
   bucketQuantity: number;
 }) => {
   let pieceStTotalSeconds = 0;
-  let hasAnyProcessSt = false;
-  ensureArray(styleProcessRows).forEach((row) => {
+  const rows = ensureArray(styleProcessRows);
+  if (rows.length === 0) return null;
+  for (const row of rows) {
     const bucketStSeconds = resolveStyleProcessBucketStSeconds(row, bucketQuantity);
-    if (bucketStSeconds === null) return;
+    if (bucketStSeconds === null) return null;
     pieceStTotalSeconds += bucketStSeconds;
-    hasAnyProcessSt = true;
-  });
-  if (!hasAnyProcessSt) return null;
+  }
   return Math.max(0, Math.round(pieceStTotalSeconds * assignmentQuantity));
 };
 
@@ -12309,8 +12227,9 @@ const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
   styleProcessLookup: ReturnType<typeof buildStyleProcessLookupForStCalculation>;
 }) => {
   let pieceStTotalSeconds = 0;
-  let hasAnyProcessSt = false;
-  ensureArray(snapshotProcesses).forEach((process) => {
+  const processes = ensureArray(snapshotProcesses);
+  if (processes.length === 0) return null;
+  for (const process of processes) {
     const matchedRow =
       styleUid === null
         ? null
@@ -12319,11 +12238,9 @@ const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
       matchedRow !== null
         ? resolveStyleProcessBucketStSeconds(matchedRow, bucketQuantity)
         : null;
-    if (bucketStSeconds === null) return;
+    if (bucketStSeconds === null) return null;
     pieceStTotalSeconds += bucketStSeconds;
-    hasAnyProcessSt = true;
-  });
-  if (!hasAnyProcessSt) return null;
+  }
   return Math.max(0, Math.round(pieceStTotalSeconds * assignmentQuantity));
 };
 
@@ -12650,13 +12567,6 @@ const prepareAssignmentBoardStTotalsForSave = async ({
         assignmentQuantity,
         bucketQuantity,
       });
-      if (assignmentStTotalSeconds === null && style) {
-        const fallbackTotal = calculateAssignmentCardStTotalForOrderQuantity(
-          style.processes,
-          assignmentQuantity
-        );
-        assignmentStTotalSeconds = fallbackTotal > 0 ? fallbackTotal : null;
-      }
     } else {
       const ctSnapshot = resolveNormalizedAssignmentCtSnapshot(target.assignment);
       assignmentStTotalSeconds = calculateAssignmentStTotalSecondsFromSnapshotProcesses({

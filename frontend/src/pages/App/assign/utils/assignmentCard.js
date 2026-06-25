@@ -23,15 +23,10 @@ export const resolveCardQuantity = (card, fallback = 0) =>
   toNonNegativeIntOrNull(card?.cardQuantity ?? card?.quantity) ?? fallback;
 
 export const resolveCardPtTotalSeconds = (card, fallback = 0) => {
-  const hasExplicitStTotal =
-    toPositiveSecondsOrNull(card?.cardStTotalSeconds ?? card?.totalSt) !== null;
   return (
     toPositiveSecondsOrNull(
       card?.cardPtTotalSeconds ??
-        card?.totalPt ??
-        (getAssignmentCardStatus(card) !== 'ST' && !hasExplicitStTotal
-          ? card?.stTotalSeconds
-          : null)
+        card?.totalPt
     ) ?? fallback
   );
 };
@@ -59,14 +54,7 @@ export const resolveAssignmentCardBasis = (card) => {
 export const resolveCardScheduleTotalSeconds = (card, fallback = 0) => {
   const basis = resolveAssignmentCardBasis(card);
   if (basis === 'ST') {
-    return (
-      resolveCardStOnlyTotalSeconds(card, 0) ||
-      toPositiveSecondsOrNull(card?.cardStTotalSeconds ?? card?.stTotalSeconds) ||
-      fallback
-    );
-  }
-  if (basis === 'PT') {
-    return resolveCardPtTotalSeconds(card, 0) || toPositiveSecondsOrNull(card?.stTotalSeconds) || fallback;
+    return resolveCardStOnlyTotalSeconds(card, fallback);
   }
   return fallback;
 };
@@ -98,8 +86,8 @@ export const normalizeAssignmentCardForBoard = (card) => {
     status || resolveAssignmentCardStatus({ card, cardPtTotalSeconds, cardStTotalSeconds });
   const scheduledTotalSeconds =
     nextStatus === 'ST'
-      ? cardStTotalSeconds || toPositiveSecondsOrNull(card?.stTotalSeconds) || 0
-      : cardPtTotalSeconds || toPositiveSecondsOrNull(card?.stTotalSeconds) || 0;
+      ? cardStTotalSeconds
+      : 0;
 
   return {
     ...card,

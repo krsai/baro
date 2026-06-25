@@ -114,20 +114,6 @@ const toAtRegressionPoints = (
     })
     .filter((point): point is WeightedRegressionPoint => point !== null);
 
-const weightedMeanSecondsPerUnit = (
-  points: WeightedRegressionPoint[]
-): number | null => {
-  let weightedSum = 0;
-  let totalWeight = 0;
-  points.forEach((point) => {
-    if (point.x <= 0 || point.weight <= 0) return;
-    weightedSum += point.weight * (point.y / point.x);
-    totalWeight += point.weight;
-  });
-  if (!Number.isFinite(weightedSum) || totalWeight <= 0) return null;
-  return weightedSum / totalWeight;
-};
-
 const fitWeightedLinearRegression = (
   points: WeightedRegressionPoint[]
 ): { a: number; b: number } | null => {
@@ -158,23 +144,6 @@ const fitWeightedLinearRegression = (
   return { a, b };
 };
 
-const fitWeightedSlopeOnly = (points: WeightedRegressionPoint[]): number | null => {
-  let sxx = 0;
-  let sxy = 0;
-
-  points.forEach((point) => {
-    const { x, y, weight } = point;
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(weight)) return;
-    if (x <= 0 || weight <= 0) return;
-    sxx += weight * x * x;
-    sxy += weight * x * y;
-  });
-
-  if (sxx <= AT_WLS_DETERMINANT_EPSILON) return null;
-  const slope = sxy / sxx;
-  return Number.isFinite(slope) ? slope : null;
-};
-
 const applyResidualMagnitudeWeights = (
   points: WeightedRegressionPoint[],
   model: { a: number; b: number }
@@ -191,10 +160,8 @@ const applyResidualMagnitudeWeights = (
   });
 
 const fitAtParamsFromWeightedPoints = (
-  pointsInput: WeightedRegressionPoint[],
-  fallbackPerPieceSeconds: number | null = null
+  pointsInput: WeightedRegressionPoint[]
 ): { a: number; b: number } | null => {
-  const fallback = toOptionalSeconds(fallbackPerPieceSeconds);
   const points = ensureArray<WeightedRegressionPoint>(pointsInput).filter(
     (point) =>
       Number.isFinite(point.x) &&
@@ -205,43 +172,18 @@ const fitAtParamsFromWeightedPoints = (
       point.weight > 0
   );
 
-  if (points.length === 0) {
-    return fallback == null ? null : { a: fallback, b: 0 };
-  }
-
-  const basePerPiece = weightedMeanSecondsPerUnit(points);
-  if (points.length < 2) {
-    const a = toOptionalSeconds(basePerPiece ?? fallback);
-    return a == null ? null : { a, b: 0 };
-  }
+  if (points.length < 2) return null;
 
   const firstFit = fitWeightedLinearRegression(points);
+  if (!firstFit) return null;
   const secondPoints =
-    firstFit == null ? points : applyResidualMagnitudeWeights(points, firstFit);
-  const secondFit = fitWeightedLinearRegression(secondPoints) || firstFit;
+    applyResidualMagnitudeWeights(points, firstFit);
+  const secondFit = fitWeightedLinearRegression(secondPoints);
+  if (!secondFit) return null;
 
-  let a: number | null = secondFit?.a ?? basePerPiece ?? fallback;
-  let b: number = secondFit?.b ?? 0;
-
-  if (a == null || !Number.isFinite(a) || a < 0 || !Number.isFinite(b)) {
-    const slopeOnly = fitWeightedSlopeOnly(secondPoints);
-    if (slopeOnly != null && slopeOnly >= 0) {
-      a = slopeOnly;
-      b = 0;
-    } else {
-      a = basePerPiece ?? fallback;
-      b = 0;
-    }
-  }
-
-  if (a == null || !Number.isFinite(a) || a < 0) return null;
-  if (!Number.isFinite(b) || b < 0) {
-    const slopeOnly = fitWeightedSlopeOnly(secondPoints);
-    if (slopeOnly != null && slopeOnly >= 0) {
-      a = slopeOnly;
-    }
-    b = 0;
-  }
+  const a = secondFit.a;
+  const b = secondFit.b;
+  if (!Number.isFinite(a) || a < 0 || !Number.isFinite(b) || b < 0) return null;
 
   const normalizedA = toOptionalSeconds(a);
   const normalizedB = toOptionalSeconds(b);
@@ -250,11 +192,10 @@ const fitAtParamsFromWeightedPoints = (
 };
 
 const fitAtParamsFromObservations = (
-  observations: AtMetricObservation[],
-  fallbackPerPieceSeconds: number | null = null
+  observations: AtMetricObservation[]
 ): { a: number; b: number } | null => {
   const points = toAtRegressionPoints(observations);
-  return fitAtParamsFromWeightedPoints(points, fallbackPerPieceSeconds);
+  return fitAtParamsFromWeightedPoints(points);
 };
 
 const allocateDaySecondsAcrossProcesses = (
@@ -273,26 +214,33 @@ const allocateDaySecondsAcrossProcesses = (
 
   if (validRows.length === 0) return [];
 
+  if (validRows.length === 1) {
+    const row = validRows[0]!;
+    return [
+      {
+        dayKey: day.dayKey,
+        order: day.order,
+        metricKey: row.metricKey,
+        quantity: row.quantity,
+        laborInputSeconds: day.laborInputSeconds,
+      },
+    ];
+  }
+
   const withWork = validRows.map((row) => {
-    const perPiece = toOptionalSeconds(perPieceByMetricKey.get(row.metricKey)) ?? 1;
-    const safePerPiece = perPiece > 0 ? perPiece : 1;
+    const perPiece = toOptionalSeconds(perPieceByMetricKey.get(row.metricKey));
+    if (perPiece === null || perPiece <= 0) return null;
     return {
       ...row,
-      work: row.quantity * safePerPiece,
+      work: row.quantity * perPiece,
     };
-  });
+  }).filter((row): row is { metricKey: string; quantity: number; work: number } => Boolean(row));
+
+  if (withWork.length !== validRows.length) return [];
 
   let totalWork = withWork.reduce((sum, row) => sum + row.work, 0);
   if (!Number.isFinite(totalWork) || totalWork <= 0) {
-    totalWork = withWork.reduce((sum, row) => sum + row.quantity, 0);
-    if (!Number.isFinite(totalWork) || totalWork <= 0) return [];
-    return withWork.map((row) => ({
-      dayKey: day.dayKey,
-      order: day.order,
-      metricKey: row.metricKey,
-      quantity: row.quantity,
-      laborInputSeconds: day.laborInputSeconds * (row.quantity / totalWork),
-    }));
+    return [];
   }
 
   return withWork.map((row) => ({
@@ -332,8 +280,7 @@ const buildAllocatedObservations = (
 
 const buildDayTrendWeights = (
   days: AtTrainingDayBucket[],
-  provisionalParamsByMetric: Map<string, { a: number; b: number }>,
-  fallbackPerPieceByMetric: Map<string, number | null>
+  provisionalParamsByMetric: Map<string, { a: number; b: number }>
 ): Map<string, number> => {
   const sortedDays = ensureArray<AtTrainingDayBucket>(days)
     .slice()
@@ -345,6 +292,7 @@ const buildDayTrendWeights = (
 
   sortedDays.forEach((day) => {
     const laborInputSeconds = Math.max(1, Number(day?.laborInputSeconds) || 0);
+    let hasCompletePrediction = true;
     const predictedLaborInputSeconds = ensureArray<AtTrainingDayProcessRow>(day?.processRows).reduce(
       (sum, row) => {
         const quantity = Number(row?.quantity);
@@ -355,11 +303,16 @@ const buildDayTrendWeights = (
         if (fitted) {
           return sum + fitted.a * quantity + fitted.b;
         }
-        const fallbackPerPiece = toOptionalSeconds(fallbackPerPieceByMetric.get(metricKey)) ?? 1;
-        return sum + fallbackPerPiece * quantity;
+        hasCompletePrediction = false;
+        return sum;
       },
       0
     );
+
+    if (!hasCompletePrediction || predictedLaborInputSeconds <= 0) {
+      dayWeightByKey.set(day.dayKey, AT_TREND_BASE_WEIGHT);
+      return;
+    }
 
     const residualRatio = (laborInputSeconds - predictedLaborInputSeconds) / laborInputSeconds;
     const magnitudeScaled =
@@ -399,8 +352,7 @@ const buildDayTrendWeights = (
 };
 
 export const fitAtParamsWithProportionalAllocation = (
-  days: AtTrainingDayBucket[],
-  fallbackPerPieceByMetric: Map<string, number | null>
+  days: AtTrainingDayBucket[]
 ): {
   paramsByMetric: Map<string, { a: number; b: number }>;
   iterationCount: number;
@@ -414,18 +366,9 @@ export const fitAtParamsWithProportionalAllocation = (
     });
   });
 
-  fallbackPerPieceByMetric.forEach((_value, metricKey) => {
-    const normalizedKey = String(metricKey || "").trim();
-    if (normalizedKey) metricKeySet.add(normalizedKey);
-  });
-
   const metricKeys = Array.from(metricKeySet.values());
 
   let perPieceByMetricKey = new Map<string, number>();
-  metricKeys.forEach((metricKey) => {
-    const fallback = toOptionalSeconds(fallbackPerPieceByMetric.get(metricKey));
-    perPieceByMetricKey.set(metricKey, fallback ?? 1);
-  });
 
   let iterationCount = 0;
   let converged = false;
@@ -448,23 +391,22 @@ export const fitAtParamsWithProportionalAllocation = (
 
     metricKeys.forEach((metricKey) => {
       const observations = observationsByMetric.get(metricKey) || [];
-      const fallback =
-        toOptionalSeconds(fallbackPerPieceByMetric.get(metricKey)) ??
-        toOptionalSeconds(perPieceByMetricKey.get(metricKey));
-      const fitted = fitAtParamsFromObservations(observations, fallback);
+      const fitted = fitAtParamsFromObservations(observations);
       if (!fitted) return;
 
       nextParamsByMetric.set(metricKey, fitted);
-      const previousPerPiece =
-        toOptionalSeconds(perPieceByMetricKey.get(metricKey)) ?? 1;
+      const previousPerPiece = toOptionalSeconds(perPieceByMetricKey.get(metricKey));
       const nextPerPiece = Math.max(AT_WLS_MIN_WEIGHT, fitted.a);
       nextPerPieceByMetricKey.set(metricKey, nextPerPiece);
-      const relativeChange =
-        Math.abs(nextPerPiece - previousPerPiece) /
-        Math.max(AT_WLS_MIN_WEIGHT, Math.abs(previousPerPiece));
-
-      if (Number.isFinite(relativeChange)) {
-        maxRelativeChange = Math.max(maxRelativeChange, relativeChange);
+      if (previousPerPiece === null) {
+        maxRelativeChange = Number.POSITIVE_INFINITY;
+      } else {
+        const relativeChange =
+          Math.abs(nextPerPiece - previousPerPiece) /
+          Math.max(AT_WLS_MIN_WEIGHT, Math.abs(previousPerPiece));
+        if (Number.isFinite(relativeChange)) {
+          maxRelativeChange = Math.max(maxRelativeChange, relativeChange);
+        }
       }
     });
 
@@ -484,11 +426,7 @@ export const fitAtParamsWithProportionalAllocation = (
   }
 
   const { observations } = buildAllocatedObservations(days, perPieceByMetricKey);
-  const dayWeightByKey = buildDayTrendWeights(
-    days,
-    provisionalParamsByMetric,
-    fallbackPerPieceByMetric
-  );
+  const dayWeightByKey = buildDayTrendWeights(days, provisionalParamsByMetric);
 
   const weightedPointsByMetric = new Map<string, WeightedRegressionPoint[]>();
   observations.forEach((observation) => {
@@ -520,11 +458,8 @@ export const fitAtParamsWithProportionalAllocation = (
   const finalParamsByMetric = new Map<string, { a: number; b: number }>();
   metricKeys.forEach((metricKey) => {
     const weightedPoints = weightedPointsByMetric.get(metricKey) || [];
-    const fallback =
-      toOptionalSeconds(fallbackPerPieceByMetric.get(metricKey)) ??
-      toOptionalSeconds(perPieceByMetricKey.get(metricKey));
     const fitted =
-      fitAtParamsFromWeightedPoints(weightedPoints, fallback) ||
+      fitAtParamsFromWeightedPoints(weightedPoints) ||
       provisionalParamsByMetric.get(metricKey);
     if (!fitted) return;
     finalParamsByMetric.set(metricKey, fitted);

@@ -1379,42 +1379,22 @@ const ProductionPlanBoard = () => {
     const lineDailyCapacitySeconds = Number(selectedAssignment.lineDailyCapacitySeconds);
 
     if (selectedProcessRows.length === 0) {
-      const fallbackAssignedSeconds = resolveCurrentStTotalSeconds(selectedAssignment);
-      const fallbackSavedSeconds = hasSavedSnapshot
-        ? resolveSavedSeconds(selectedAssignment)
-        : null;
-      const fallbackTotalCost = wagePerSecond == null ? null : fallbackAssignedSeconds * wagePerSecond;
-      const fallbackPerPieceCost = fallbackTotalCost == null ? null : fallbackTotalCost / orderQuantity;
-      const fallbackDurationDays =
-        Number.isFinite(lineDailyCapacitySeconds) && lineDailyCapacitySeconds > 0
-          ? fallbackAssignedSeconds / lineDailyCapacitySeconds
-          : null;
-      const fallbackPerPersonExpected = fallbackTotalCost == null ? null : fallbackTotalCost / headcount;
-      const fallbackMonthly =
-        fallbackPerPersonExpected == null || workingDays <= 0
-          ? null
-          : (fallbackPerPersonExpected / workingDays) * 26;
-      const fallbackSavedPerPieceSeconds =
-        hasSavedSnapshot && Number(fallbackSavedSeconds) > 0
-          ? fallbackSavedSeconds / orderQuantity
-          : null;
-
       return {
-        totalBasePerPieceSeconds: fallbackAssignedSeconds / orderQuantity,
-        totalAssignedPerPieceSeconds: fallbackAssignedSeconds / orderQuantity,
-        totalSavedPerPieceSeconds: fallbackSavedPerPieceSeconds,
-        totalBaseSeconds: fallbackAssignedSeconds,
-        totalAssignedSeconds: fallbackAssignedSeconds,
+        totalBasePerPieceSeconds: null,
+        totalAssignedPerPieceSeconds: null,
+        totalSavedPerPieceSeconds: null,
+        totalBaseSeconds: null,
+        totalAssignedSeconds: null,
         totalAtPerPieceSeconds: null,
         totalAtSeconds: null,
         atVsBasePercent: null,
         needsStReview: false,
         atCoverageCount: 0,
-        perPieceCost: fallbackPerPieceCost,
-        totalCost: fallbackTotalCost,
-        totalDurationDays: fallbackDurationDays,
-        perPersonExpectedCost: fallbackPerPersonExpected,
-        monthlyPerPersonExpected: fallbackMonthly,
+        perPieceCost: null,
+        totalCost: null,
+        totalDurationDays: null,
+        perPersonExpectedCost: null,
+        monthlyPerPersonExpected: null,
       };
     }
 

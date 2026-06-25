@@ -119,33 +119,13 @@ const normalizeProcessStBucket = (value) => {
   };
 };
 
-const normalizeProcessStBuckets = (values, legacyProcess = null) => {
+const normalizeProcessStBuckets = (values) => {
   const byQuantity = new Map();
   (Array.isArray(values) ? values : []).forEach((value) => {
     const normalized = normalizeProcessStBucket(value);
     if (!normalized) return;
     byQuantity.set(normalized.bucketQuantity, normalized);
   });
-
-  const legacyCt = clampProcessSeconds(legacyProcess?.ct);
-  const legacyQuantity = resolveStBucketQuantity(
-    legacyProcess?.timeRefQuantity ?? legacyProcess?.referenceQuantity,
-    DEFAULT_TIME_REF_QUANTITY
-  );
-  if (
-    byQuantity.size === 0 &&
-    legacyProcess?.stManual === true &&
-    legacyCt !== null &&
-    legacyQuantity > 0
-  ) {
-    byQuantity.set(legacyQuantity, {
-      bucketQuantity: legacyQuantity,
-      bucketStSeconds: legacyCt,
-      setBy: 'LEGACY',
-      setAt: null,
-      updatedAt: null,
-    });
-  }
 
   return Array.from(byQuantity.values()).sort(
     (left, right) => left.bucketQuantity - right.bucketQuantity
@@ -484,7 +464,7 @@ export const normalizeProcess = (process = {}, index = 0) => {
     stBuckets: _rawStBuckets,
     ...safeProcess
   } = process || {};
-  const normalizedStBuckets = normalizeProcessStBuckets(_rawStBuckets ?? _legacyStValues, process);
+  const normalizedStBuckets = normalizeProcessStBuckets(_rawStBuckets ?? _legacyStValues);
   const resolvedTimeRefQuantity = toPositiveInt(
     process?.timeRefQuantity ??
       process?.referenceQuantity ??
@@ -492,25 +472,13 @@ export const normalizeProcess = (process = {}, index = 0) => {
     DEFAULT_TIME_REF_QUANTITY
   );
   const exactStValue = findExactProcessStBucket(normalizedStBuckets, resolvedTimeRefQuantity);
-  const legacyCt =
-    normalizedStBuckets.length === 0 ? clampProcessSeconds(safeProcess.ct) : null;
-  const normalizedCt = exactStValue?.bucketStSeconds ?? legacyCt;
+  const normalizedCt = exactStValue?.bucketStSeconds ?? clampProcessSeconds(safeProcess.ct);
   const normalizedAtParams = resolveAtParamsMeta(process);
-  const normalizedAt =
-    normalizedAtParams === null
-      ? null
-      : toOptionalNumber(
-          normalizedAtParams.a + normalizedAtParams.b / resolvedTimeRefQuantity
-        );
-  const isLikelyAutoCt =
-    hasTime(normalizedCt) &&
-    hasTime(normalizedAt) &&
-    Math.abs(normalizedCt - normalizedAt) < 1e-4;
   const normalizedStManual =
     exactStValue != null ||
     (typeof safeProcess.stManual === 'boolean'
-      ? safeProcess.stManual
-      : hasTime(normalizedCt) && !isLikelyAutoCt);
+      ? safeProcess.stManual && normalizedStBuckets.length > 0
+      : false);
 
   return {
     ...safeProcess,
@@ -633,20 +601,6 @@ export const resolveProcessExactStPerPieceSeconds = (process, orderQuantity = 1)
   const normalized = normalizeProcess(process);
   const exactStValue = findExactProcessStBucket(normalized?.stBuckets, orderQuantity);
   if (exactStValue) return exactStValue.bucketStSeconds;
-
-  if (Array.isArray(normalized?.stBuckets) && normalized.stBuckets.length > 0) {
-    return null;
-  }
-
-  const resolvedOrderQuantity = resolveStBucketQuantity(orderQuantity);
-  const legacyQuantity = resolveStBucketQuantity(
-    normalized?.timeRefQuantity,
-    DEFAULT_TIME_REF_QUANTITY
-  );
-  const legacyCt = clampProcessSeconds(normalized?.ct);
-  if (normalized?.stManual === true && legacyCt !== null && legacyQuantity === resolvedOrderQuantity) {
-    return legacyCt;
-  }
   return null;
 };
 
@@ -654,9 +608,6 @@ export const resolveProcessStPerPieceSeconds = (process, orderQuantity = 1) => {
   const normalized = normalizeProcess(process);
   const exactSt = resolveProcessExactStPerPieceSeconds(normalized, orderQuantity);
   if (exactSt !== null) return exactSt;
-
-  const pt = toOptionalNumber(normalized?.pt);
-  if (pt !== null) return pt;
   return null;
 };
 
@@ -690,7 +641,7 @@ export const calculateProcessTotalForOrderQuantity = (processes, key, orderQuant
   }, 0);
 };
 
-// Official ST baseline priority: manual ct -> pt -> legacy ct.
+// Official ST baseline priority: exact ST bucket only.
 export const resolveProcessCtBaseSeconds = (process, orderQuantity = 1) => {
   if (!process) return null;
   return resolveProcessStPerPieceSeconds(process, orderQuantity);
