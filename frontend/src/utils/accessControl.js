@@ -28,6 +28,7 @@ const FEATURE_KEYS = {
   PRODUCTION_ANALYSIS: 'PRODUCTION_ANALYSIS',
   WORK_HISTORY: 'WORK_HISTORY',
   PAYROLL: 'PAYROLL',
+  REVENUE_ANALYSIS: 'REVENUE_ANALYSIS',
   BUSINESS: 'BUSINESS',
   LINE: 'LINE',
   EMPLOYEE: 'EMPLOYEE',
@@ -174,7 +175,7 @@ export const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/production-analysis')) return FEATURE_KEYS.PRODUCTION_ANALYSIS;
   if (path.startsWith('/work-history')) return FEATURE_KEYS.WORK_HISTORY;
   if (path.startsWith('/payroll')) return FEATURE_KEYS.PAYROLL;
-  if (path.startsWith('/revenue-analysis')) return FEATURE_KEYS.BUSINESS;
+  if (path.startsWith('/revenue-analysis')) return FEATURE_KEYS.REVENUE_ANALYSIS;
   if (path.startsWith('/business')) return FEATURE_KEYS.BUSINESS;
   if (path.startsWith('/line')) return FEATURE_KEYS.LINE;
   if (path.startsWith('/employee')) return FEATURE_KEYS.EMPLOYEE;

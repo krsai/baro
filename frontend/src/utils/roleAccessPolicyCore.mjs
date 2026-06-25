@@ -23,6 +23,7 @@ export const ACCESS_FEATURE_KEYS = {
   PRODUCTION_ANALYSIS: 'PRODUCTION_ANALYSIS',
   WORK_HISTORY: 'WORK_HISTORY',
   PAYROLL: 'PAYROLL',
+  REVENUE_ANALYSIS: 'REVENUE_ANALYSIS',
   BUSINESS: 'BUSINESS',
   LINE: 'LINE',
   EMPLOYEE: 'EMPLOYEE',
@@ -32,7 +33,7 @@ export const ACCESS_FEATURE_KEYS = {
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
-export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 3;
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 4;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND];
 const POLICY_ORG_ROLES = [
@@ -66,6 +67,7 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
     [ORG_ROLE_KEYS.ACCOUNTANT]: Object.freeze([
       ACCESS_FEATURE_KEYS.DASHBOARD,
       ACCESS_FEATURE_KEYS.PAYROLL,
+      ACCESS_FEATURE_KEYS.REVENUE_ANALYSIS,
       ACCESS_FEATURE_KEYS.BUSINESS,
       ACCESS_FEATURE_KEYS.EMPLOYEE,
       ACCESS_FEATURE_KEYS.HOLIDAY,
@@ -150,6 +152,23 @@ const applyLegacyProductionAnalysisDefault = (policy) => {
   });
 };
 
+const applyLegacyRevenueAnalysisDefault = (policy) => {
+  POLICY_ORG_TYPES.forEach((orgType) => {
+    POLICY_ORG_ROLES.forEach((role) => {
+      const features = policy?.[orgType]?.[role];
+      if (!Array.isArray(features)) return;
+      if (!features.includes(ACCESS_FEATURE_KEYS.BUSINESS)) return;
+      if (features.includes(ACCESS_FEATURE_KEYS.REVENUE_ANALYSIS)) return;
+      const businessIndex = features.indexOf(ACCESS_FEATURE_KEYS.BUSINESS);
+      features.splice(
+        Math.max(0, businessIndex),
+        0,
+        ACCESS_FEATURE_KEYS.REVENUE_ANALYSIS
+      );
+    });
+  });
+};
+
 export const getDefaultRoleAccessPolicy = () =>
   cloneDeepJson(DEFAULT_ROLE_ACCESS_POLICY);
 
@@ -175,6 +194,7 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
   if (!hasPolicySchemaVersion(candidate)) {
     applyLegacyDashboardDefault(base);
     applyLegacyProductionAnalysisDefault(base);
+    applyLegacyRevenueAnalysisDefault(base);
   }
 
   return base;

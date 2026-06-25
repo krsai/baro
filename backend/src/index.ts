@@ -593,7 +593,7 @@ const ONBOARDING_ORGANIZATION_TYPE_OPTIONS = new Set<OrganizationTypeKey>(
   Object.values(ORGANIZATION_TYPE_KEYS)
 );
 const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 3;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 4;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
   "DASHBOARD",
@@ -608,6 +608,7 @@ const ROLE_ACCESS_POLICY_FEATURES = [
   "PRODUCTION_ANALYSIS",
   "WORK_HISTORY",
   "PAYROLL",
+  "REVENUE_ANALYSIS",
   "BUSINESS",
   "LINE",
   "EMPLOYEE",
@@ -647,6 +648,7 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
     ACCOUNTANT: [
       "DASHBOARD",
       "PAYROLL",
+      "REVENUE_ANALYSIS",
       "BUSINESS",
       "EMPLOYEE",
       "HOLIDAY",
@@ -709,6 +711,19 @@ const applyLegacyProductionAnalysisDefault = (policy: RoleAccessPolicy): void =>
     }
   );
 };
+const applyLegacyRevenueAnalysisDefault = (policy: RoleAccessPolicy): void => {
+  (Object.values(ORGANIZATION_TYPE_KEYS) as OrganizationTypeKey[]).forEach(
+    (orgType) => {
+      ORG_ACCESS_ROLES.forEach((role) => {
+        const features = policy[orgType][role];
+        if (!features.includes("BUSINESS")) return;
+        if (features.includes("REVENUE_ANALYSIS")) return;
+        const businessIndex = features.indexOf("BUSINESS");
+        features.splice(Math.max(0, businessIndex), 0, "REVENUE_ANALYSIS");
+      });
+    }
+  );
+};
 const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
   const policy = cloneRoleAccessPolicy(DEFAULT_ROLE_ACCESS_POLICY);
   if (!value || typeof value !== "object" || Array.isArray(value)) return policy;
@@ -729,6 +744,7 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
   if (!hasRoleAccessPolicySchemaVersion(value)) {
     applyLegacyDashboardDefault(policy);
     applyLegacyProductionAnalysisDefault(policy);
+    applyLegacyRevenueAnalysisDefault(policy);
   }
   return policy;
 };

@@ -36,6 +36,8 @@ test('manufacturer accountant defaults include employee and holiday menus', () =
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.EMPLOYEE), true);
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.HOLIDAY), true);
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.ATTENDANCE), false);
+  assert.equal(features.includes(ACCESS_FEATURE_KEYS.REVENUE_ANALYSIS), true);
+  assert.equal(features.includes(ACCESS_FEATURE_KEYS.BUSINESS), true);
 });
 
 test('manufacturer operator defaults retain operational menus', () => {
@@ -141,6 +143,52 @@ test('legacy work history policies keep production analysis access after schema 
   );
   assert.equal(
     sanitized.MANUFACTURER.OPERATOR.includes(ACCESS_FEATURE_KEYS.WORK_HISTORY),
+    true
+  );
+});
+
+test('revenue analysis and business route access are independent', () => {
+  const revenueOnlyPolicy = getDefaultRoleAccessPolicy();
+  revenueOnlyPolicy.MANUFACTURER.ACCOUNTANT = [
+    ACCESS_FEATURE_KEYS.REVENUE_ANALYSIS,
+  ];
+  const revenueOnlyAuthState = buildOrgAuthState({
+    orgRole: ORG_ROLE_KEYS.ACCOUNTANT,
+    policy: revenueOnlyPolicy,
+  });
+
+  assert.equal(canAccessPath('/revenue-analysis', revenueOnlyAuthState), true);
+  assert.equal(canAccessPath('/business', revenueOnlyAuthState), false);
+
+  const businessOnlyPolicy = getDefaultRoleAccessPolicy();
+  businessOnlyPolicy.MANUFACTURER.ACCOUNTANT = [
+    ACCESS_FEATURE_KEYS.BUSINESS,
+  ];
+  const businessOnlyAuthState = buildOrgAuthState({
+    orgRole: ORG_ROLE_KEYS.ACCOUNTANT,
+    policy: businessOnlyPolicy,
+  });
+
+  assert.equal(canAccessPath('/revenue-analysis', businessOnlyAuthState), false);
+  assert.equal(canAccessPath('/business', businessOnlyAuthState), true);
+});
+
+test('legacy business policies keep revenue analysis access after schema upgrade', () => {
+  const sanitized = sanitizeRoleAccessPolicy({
+    __schemaVersion: 3,
+    MANUFACTURER: {
+      ACCOUNTANT: [ACCESS_FEATURE_KEYS.BUSINESS],
+    },
+  });
+
+  assert.equal(
+    sanitized.MANUFACTURER.ACCOUNTANT.includes(
+      ACCESS_FEATURE_KEYS.REVENUE_ANALYSIS
+    ),
+    true
+  );
+  assert.equal(
+    sanitized.MANUFACTURER.ACCOUNTANT.includes(ACCESS_FEATURE_KEYS.BUSINESS),
     true
   );
 });

@@ -327,6 +327,7 @@ AT(q) = a*q + b
 - `GET/PUT /system/access-policy`는 시스템 관리자만 사용하며, `/auth/context`가 현재 정책을 각 조직 계정에 전달한다.
 - 프론트의 사이드바와 보호 라우트는 같은 `accessPolicy`를 사용한다. 정책 조회와 `/auth/context`는 계정 전환 및 저장 직후 반영을 위해 GET 캐시를 사용하지 않는다.
 - `생산 분석`(`/production-analysis`)과 `작업 기록`(`/work-history`)은 별도 권한 항목이다. 각각 `PRODUCTION_ANALYSIS`, `WORK_HISTORY` feature key를 사용하며, 접근 권한 화면에서 함께 토글되면 안 된다.
+- `수익 분석`(`/revenue-analysis`)과 `사업체`(`/business`)도 별도 권한 항목이다. 각각 `REVENUE_ANALYSIS`, `BUSINESS` feature key를 사용하며, 접근 권한 화면에서 함께 토글되면 안 된다.
 - 직원 등록/수정, 가입 승인/반려, 퇴사/재입사 같은 직원 관리 mutation API도 역할명 하드코딩이 아니라 `ROLE_ACCESS_POLICY`의 `EMPLOYEE` 권한을 사용한다.
 - 직원 관리의 신규 추가는 `/org-memberships` 생성 시 employee 기본정보(이름, 공장, 직무, 급여 타입, 사번, 입사/퇴사일)를 함께 저장한다. 빈 draft row 정리용 삭제는 이름 등 핵심 프로필이 비어 있고 출퇴근/라인배정/작업기록이 없는 membership+employee 쌍에만 허용한다.
 - 접근 권한 화면의 메뉴 트리는 `MainLayout`의 실제 SaaS 메뉴 blueprint를 사용하므로 그룹, 순서, 메뉴명, 비활성 상태와 현재 언어를 그대로 반영한다.
