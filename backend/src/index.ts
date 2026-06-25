@@ -18516,10 +18516,8 @@ const buildLineMonthCapacityRows = async ({
         directCandidateStSeconds: 0,
         directUsedPlanCount: 0,
         directUsedStSeconds: 0,
-        fallbackPlanCount: 0,
-        fallbackStSeconds: 0,
-        fallbackBasisCounts: {},
-        fallbackReasonCounts: {},
+        skippedPlanCount: 0,
+        skipReasonCounts: {},
         sampleFailures: [],
       });
     }
@@ -18530,19 +18528,8 @@ const buildLineMonthCapacityRows = async ({
     reason: string | null | undefined
   ) => {
     const key = reason || "UNKNOWN";
-    debug.fallbackReasonCounts[key] =
-      Math.max(0, Math.round(Number(debug.fallbackReasonCounts[key] || 0))) + 1;
-  };
-  const incrementActualOutputDebugFallbackBasis = (
-    debug: any,
-    basis: string | null | undefined
-  ) => {
-    const key = basis || "UNKNOWN";
-    if (!debug.fallbackBasisCounts || typeof debug.fallbackBasisCounts !== "object") {
-      debug.fallbackBasisCounts = {};
-    }
-    debug.fallbackBasisCounts[key] =
-      Math.max(0, Math.round(Number(debug.fallbackBasisCounts[key] || 0))) + 1;
+    debug.skipReasonCounts[key] =
+      Math.max(0, Math.round(Number(debug.skipReasonCounts[key] || 0))) + 1;
   };
   const pushActualOutputDebugFailure = (debug: any, sample: any) => {
     if (!Array.isArray(debug.sampleFailures) || debug.sampleFailures.length >= 8) {
@@ -18558,9 +18545,6 @@ const buildLineMonthCapacityRows = async ({
     if (!planId || !lineId || !progressMeta || !requestedLineIdSet.has(lineId)) return;
     const {
       plannedQuantity,
-      plannedStTotalSeconds,
-      requiredProcessGroups,
-      totalExpected,
     } = progressMeta;
     const bucketQuantity = resolveStBucketQuantity(plannedQuantity);
     const monthlyDirectActualOutputStSecondsByMonthKey = new Map<string, number>();
@@ -18574,8 +18558,7 @@ const buildLineMonthCapacityRows = async ({
         (planActualOutputFailureReasons.get(key) || 0) + 1
       );
     };
-    const monthlyProcessTotalsByMonthKey = new Map<string, Map<string, number>>();
-    const monthlyTotalDoneByMonthKey = new Map<string, number>();
+    const planTouchedMonthKeys = new Set<string>();
 
     ensureArray(workRowsByPlanId.get(planId)).forEach((record) => {
       const quantity = Math.max(0, Math.round(Number(record?.quantity ?? 0)));
@@ -18613,6 +18596,9 @@ const buildLineMonthCapacityRows = async ({
           weightedRows: monthWeightRows,
         });
       if (monthAllocations.length === 0) return;
+      monthAllocations.forEach(({ monthKey }) => {
+        planTouchedMonthKeys.add(monthKey);
+      });
       const processSt = resolveWorkRecordStSecondsForLineMonthCapacity({
         record,
         bucketQuantity,
@@ -18665,22 +18651,6 @@ const buildLineMonthCapacityRows = async ({
           }
         });
       }
-      const processKey =
-        resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record) || "unknown";
-      monthAllocations.forEach(({ monthKey, allocatedTotal }) => {
-        if (allocatedTotal <= 0) return;
-        monthlyTotalDoneByMonthKey.set(
-          monthKey,
-          (monthlyTotalDoneByMonthKey.get(monthKey) || 0) + allocatedTotal
-        );
-        const processTotalsByKey =
-          monthlyProcessTotalsByMonthKey.get(monthKey) || new Map<string, number>();
-        processTotalsByKey.set(
-          processKey,
-          (processTotalsByKey.get(processKey) || 0) + allocatedTotal
-        );
-        monthlyProcessTotalsByMonthKey.set(monthKey, processTotalsByKey);
-      });
     });
 
     if (hasDirectActualOutputStSeconds && canUseDirectActualOutputStSeconds) {
@@ -18700,63 +18670,10 @@ const buildLineMonthCapacityRows = async ({
       return;
     }
 
-    const cumulativeProcessTotalsByKey = new Map<string, number>();
-    let cumulativeTotalDone = 0;
-    let previousCompletedStTotalSeconds = 0;
-    internalMonthKeys.forEach((monthKey) => {
-      cumulativeTotalDone +=
-        Math.max(0, Math.round(Number(monthlyTotalDoneByMonthKey.get(monthKey) || 0)));
-      const monthlyProcessTotals =
-        monthlyProcessTotalsByMonthKey.get(monthKey) || new Map<string, number>();
-      monthlyProcessTotals.forEach((value, processKey) => {
-        cumulativeProcessTotalsByKey.set(
-          processKey,
-          (cumulativeProcessTotalsByKey.get(processKey) || 0) +
-            Math.max(0, Math.round(Number(value) || 0))
-        );
-      });
-
-      const producedQuantity = resolveProducedQtyFromProcessKeyTotals({
-        processTotalsByKey: cumulativeProcessTotalsByKey,
-        processKeyGroups: requiredProcessGroups,
-      });
-      const producedRatio =
-        plannedQuantity > 0
-          ? Math.max(0, Math.min(1, producedQuantity / plannedQuantity))
-          : null;
-      const operationalProgressRatio =
-        totalExpected != null && totalExpected > 0
-          ? Math.max(0, Math.min(1, cumulativeTotalDone / totalExpected))
-          : null;
-      // Actual output is performed process work, not finished-garment progress.
-      // If direct per-process ST is unavailable, approximate by process-unit share.
-      const actualOutputFallbackRatio =
-        operationalProgressRatio ?? producedRatio ?? null;
-      const actualOutputFallbackBasis =
-        operationalProgressRatio != null
-          ? "PROCESS_UNIT_ST_SHARE"
-          : producedRatio != null
-            ? "COMPLETION_PROGRESS_ST_SHARE"
-            : "UNAVAILABLE";
-      const completedStTotalSeconds =
-        actualOutputFallbackRatio == null
-          ? previousCompletedStTotalSeconds
-          : Math.max(
-              0,
-              Math.round(plannedStTotalSeconds * actualOutputFallbackRatio)
-            );
-      const monthlyActualOutputStSeconds = Math.max(
-        0,
-        completedStTotalSeconds - previousCompletedStTotalSeconds
-      );
-      previousCompletedStTotalSeconds = completedStTotalSeconds;
-      const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
-      if (!target) return;
-      if (includeActualOutputDebug && monthlyActualOutputStSeconds > 0) {
+    if (includeActualOutputDebug && planTouchedMonthKeys.size > 0) {
+      planTouchedMonthKeys.forEach((monthKey) => {
         const debug = ensureActualOutputDebug(lineId, monthKey);
-        debug.fallbackPlanCount += 1;
-        debug.fallbackStSeconds += monthlyActualOutputStSeconds;
-        incrementActualOutputDebugFallbackBasis(debug, actualOutputFallbackBasis);
+        debug.skippedPlanCount += 1;
         if (planActualOutputFailureReasons.size === 0) {
           incrementActualOutputDebugReason(debug, "DIRECT_ST_NOT_AVAILABLE");
         } else {
@@ -18766,9 +18683,8 @@ const buildLineMonthCapacityRows = async ({
             }
           });
         }
-      }
-      target.lineMonthlyActualOutputStSeconds += monthlyActualOutputStSeconds;
-    });
+      });
+    }
   });
 
   let orphanRows: any[] = [];
@@ -18961,10 +18877,8 @@ const buildLineMonthCapacityRows = async ({
                 directCandidateStSeconds: 0,
                 directUsedPlanCount: 0,
                 directUsedStSeconds: 0,
-                fallbackPlanCount: 0,
-                fallbackStSeconds: 0,
-                fallbackBasisCounts: {},
-                fallbackReasonCounts: {},
+                skippedPlanCount: 0,
+                skipReasonCounts: {},
                 sampleFailures: [],
               }),
             lineMonthlyCapacitySeconds: row.lineMonthlyCapacitySeconds,

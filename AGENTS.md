@@ -32,6 +32,12 @@
 - 같은 의미는 같은 단어를 쓴다. 공정 단위는 `stSeconds`/`ctSeconds`, 배정카드 총합은 `stTotalSeconds`/`ctTotalSeconds`, AT 투입 노동 시간은 `laborInputSeconds`.
 - 신규 코드에서 `contractedSeconds`나 도메인 필드명 `totalSeconds`를 추가하지 않는다. `totalSeconds`는 화면 포맷팅 같은 일반 지역 변수에만 허용한다.
 
+### 정확 계산 원칙 (강제)
+- 핵심 지표(생산률, 실제 생산 ST, 진행률, 급여, AT 학습 입력)는 정확한 소스오브트루스가 연결될 때만 계산한다.
+- 계산에 필요한 FK/마스터/ST bucket/작업기록 연결이 없으면 임의 추정, 우회 공식, 보완 fallback으로 그럴듯한 값을 만들지 않는다.
+- 계산 실패는 0/null/미계산 상태와 진단 로그로 드러내며, 조용히 다른 공식으로 대체하지 않는다.
+- 호환성 dual-read나 schema migration fallback은 명시된 migration 단계에서만 허용한다. 운영 지표 계산 로직에 섞지 않는다.
+
 ### AT 모델
 ```
 AT(q) = a*q + b
