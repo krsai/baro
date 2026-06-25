@@ -333,7 +333,7 @@ export const aggregateMonthlyWorkerRows = ({
     const attendanceWorkedDays =
       hasAttendanceRows ? workedAttendanceDates.size : null;
     const expectedCtDayCount =
-      attendanceWorkedDays !== null ? attendanceWorkedDays : workDayCount;
+      attendanceWorkedDays > 0 ? attendanceWorkedDays : workDayCount;
     const averageCtPerDaySeconds =
       expectedCtDayCount > 0 ? Math.round(row.totalCtSeconds / expectedCtDayCount) : null;
 
@@ -429,13 +429,13 @@ export const buildMonthlyWorkerDetail = ({
     .map((dateKey) => {
       const bucket = bucketByDate.get(dateKey) || null;
       const attendanceWorked = attendanceWorkedDates.has(dateKey);
-      const expectedCtDayCount = hasAttendanceRows
-        ? attendanceWorked
-          ? 1
-          : 0
+      const expectedCtDayCount = attendanceWorked
+        ? 1
         : bucket && bucket.recordCount > 0
           ? 1
-          : null;
+          : hasAttendanceRows
+            ? 0
+            : null;
       const totalCtSeconds =
         bucket && bucket.recordCount > 0
           ? Math.max(0, Math.round(Number(bucket.totalCtSeconds) || 0))

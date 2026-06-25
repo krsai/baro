@@ -3,7 +3,7 @@
 
 const path = require('path');
 
-require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '..', '.env'), quiet: true });
 process.env.DIRECT_URL ||= process.env.DATABASE_URL || '';
 process.env.PRISMA_CLIENT_ENGINE_TYPE ||= 'binary';
 
@@ -30,6 +30,9 @@ function parseArgs(argv) {
     orgId: null,
     factoryId: null,
     factoryName: '',
+    workerNames: [],
+    dateFrom: '',
+    dateTo: '',
     holidays: [],
     apply: false,
   };
@@ -60,6 +63,21 @@ function parseArgs(argv) {
       options.factoryName = String(arg.slice('--factory-name='.length)).trim();
       return;
     }
+    if (arg.startsWith('--worker-names=')) {
+      options.workerNames = String(arg.slice('--worker-names='.length))
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+      return;
+    }
+    if (arg.startsWith('--date-from=')) {
+      options.dateFrom = normalizeDateKey(arg.slice('--date-from='.length));
+      return;
+    }
+    if (arg.startsWith('--date-to=')) {
+      options.dateTo = normalizeDateKey(arg.slice('--date-to='.length));
+      return;
+    }
     if (arg.startsWith('--holidays=')) {
       options.holidays = String(arg.slice('--holidays='.length))
         .split(',')
@@ -79,6 +97,10 @@ function normalizeMonthKey(value) {
 function normalizeDateKey(value) {
   const text = String(value || '').trim().slice(0, 10);
   return DATE_KEY_PATTERN.test(text) ? text : '';
+}
+
+function normalizeNameKey(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
 }
 
 function resolveEmploymentDateKey(value) {
@@ -204,8 +226,22 @@ async function main() {
   }
 
   const monthRanges = monthKeys.map((monthKey) => monthRange(monthKey)).filter(Boolean);
-  const minDate = monthRanges.map((item) => item.dateFrom).sort()[0];
-  const maxDate = monthRanges.map((item) => item.dateTo).sort().slice(-1)[0];
+  if (options.dateFrom && options.dateTo && options.dateTo < options.dateFrom) {
+    throw new Error('--date-to must be greater than or equal to --date-from');
+  }
+  const boundedMonthRanges = monthRanges
+    .map((range) => ({
+      ...range,
+      dateFrom: options.dateFrom && options.dateFrom > range.dateFrom ? options.dateFrom : range.dateFrom,
+      dateTo: options.dateTo && options.dateTo < range.dateTo ? options.dateTo : range.dateTo,
+    }))
+    .filter((range) => range.dateFrom <= range.dateTo);
+  if (boundedMonthRanges.length === 0) {
+    throw new Error('No working date range remains after applying date bounds.');
+  }
+  const minDate = boundedMonthRanges.map((item) => item.dateFrom).sort()[0];
+  const maxDate = boundedMonthRanges.map((item) => item.dateTo).sort().slice(-1)[0];
+  const workerNameSet = new Set(options.workerNames.map((value) => normalizeNameKey(value)));
 
   const employeeWhere = {
     factoryId: { not: null },
@@ -256,7 +292,19 @@ async function main() {
     orderBy: [{ orgId: 'asc' }, { factoryId: 'asc' }, { id: 'asc' }],
   });
 
-  const eligibleEmployees = employees.filter((employee) => isBackfillEligibleEmployee(employee));
+  const nameFilteredEmployees =
+    workerNameSet.size > 0
+      ? employees.filter((employee) => workerNameSet.has(normalizeNameKey(employee.name)))
+      : employees;
+  const eligibleEmployees = nameFilteredEmployees.filter((employee) =>
+    isBackfillEligibleEmployee(employee)
+  );
+  const matchedWorkerNames = new Set(
+    eligibleEmployees.map((employee) => normalizeNameKey(employee.name))
+  );
+  const unmatchedWorkerNames = options.workerNames.filter(
+    (name) => !matchedWorkerNames.has(normalizeNameKey(name))
+  );
   const attendanceRows = await prisma.attendanceEntry.findMany({
     where: {
       workDate: {
@@ -280,7 +328,7 @@ async function main() {
 
   const attendanceDateSet = new Set();
   attendanceRows.forEach((row) => {
-    attendanceDateSet.add(`${row.orgId}:${row.workerId}:${row.workDate}`);
+    attendanceDateSet.add(`${row.orgId}:${row.factoryId}:${row.workerId}:${row.workDate}`);
   });
 
   const holidayMap = await loadHolidayMap(
@@ -292,7 +340,7 @@ async function main() {
   eligibleEmployees.forEach((employee) => {
     const joinedDateKey = resolveEmploymentDateKey(employee.joinedAt);
     const leftDateKey = resolveEmploymentDateKey(employee.leftAt);
-    monthRanges.forEach((range) => {
+    boundedMonthRanges.forEach((range) => {
       const workingDates = buildWorkingDates({
         dateFrom: range.dateFrom,
         dateTo: range.dateTo,
@@ -302,10 +350,13 @@ async function main() {
       });
       if (workingDates.length === 0) return;
 
-      const recordedDates = workingDates.filter((dateKey) =>
-        attendanceDateSet.has(`${employee.orgId}:${employee.id}:${dateKey}`)
+      const missingDates = workingDates.filter(
+        (dateKey) =>
+          !attendanceDateSet.has(
+            `${employee.orgId}:${employee.factoryId}:${employee.id}:${dateKey}`
+          )
       );
-      if (recordedDates.length > 0) return;
+      if (missingDates.length === 0) return;
 
       workerMonthPlans.push({
         orgId: employee.orgId,
@@ -315,7 +366,7 @@ async function main() {
         workerId: employee.id,
         workerName: employee.name || '',
         membershipRole: String(employee?.membership?.role || '').trim().toUpperCase(),
-        workingDates,
+        workingDates: missingDates,
       });
     });
   });
@@ -356,6 +407,10 @@ async function main() {
           orgId: options.orgId,
           factoryId: options.factoryId,
           factoryName: options.factoryName || null,
+          workerNames: options.workerNames,
+          unmatchedWorkerNames,
+          dateFrom: options.dateFrom || null,
+          dateTo: options.dateTo || null,
           holidays: options.holidays,
         },
         summary: Array.from(summaryMap.values()),
