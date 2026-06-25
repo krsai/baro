@@ -4503,6 +4503,8 @@ const toStyleResponse = (
   revenueMemo: style.revenueMemo ?? "",
   createdAt: style.createdAt,
   updatedAt: style.updatedAt,
+  workRecordCount: Number(style._count?.workRecords ?? 0),
+  hasWorkRecords: Number(style._count?.workRecords ?? 0) > 0,
 });
 
 const sumOrderItemQuantity = (item: any = {}) => {
@@ -24148,39 +24150,91 @@ app.get("/styles", async (req, res) => {
     return res.status(403).json({ ok: false, error: "style access denied" });
   }
 
-  const styles = await prisma.style.findMany({
-    where: { orgId: { in: ownerScope } },
-    orderBy: { uid: "asc" },
-    ...(compact
-      ? {
-          // Skip heavy BOM payload for list pages that only need summary/process data.
-          select: {
-            uid: true,
-            orgId: true,
-            styleId: true,
-            styleCode: true,
-            name: true,
-            customer: true,
-            registrationDate: true,
-            designer: true,
-            collection: true,
-            season: true,
-            imageUrls: true,
-            processes: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        }
-      : {}),
-  });
+  const styles: any[] = compact
+    ? await prisma.style.findMany({
+        where: { orgId: { in: ownerScope } },
+        orderBy: { uid: "asc" },
+        // Skip heavy BOM payload for list pages that only need summary/process data.
+        select: {
+          uid: true,
+          orgId: true,
+          styleId: true,
+          styleCode: true,
+          name: true,
+          customer: true,
+          registrationDate: true,
+          designer: true,
+          collection: true,
+          season: true,
+          imageUrls: true,
+          processes: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: { select: { workRecords: true } },
+        },
+      })
+    : await prisma.style.findMany({
+        where: { orgId: { in: ownerScope } },
+        orderBy: { uid: "asc" },
+        include: {
+          _count: { select: { workRecords: true } },
+        },
+      });
   const processMirrorMap = includeProcesses
     ? await ensureStyleProcessStorageForStyles(styles, {
         processOrgId: organization.id,
       })
     : new Map<number, any[]>();
+  const fallbackStyleIds = Array.from(
+    new Set(
+      styles
+        .map((style) => String(style.styleId || "").trim())
+        .filter(Boolean)
+    )
+  );
+  const fallbackStyleOwnerOrgIds = Array.from(
+    new Set(
+      styles
+        .map((style) => Number(style.orgId))
+        .filter((orgId) => Number.isInteger(orgId) && orgId > 0)
+    )
+  );
+  const fallbackWorkRecordCounts =
+    fallbackStyleIds.length > 0 && fallbackStyleOwnerOrgIds.length > 0
+      ? await prisma.workRecord.groupBy({
+          by: ["orgId", "styleId"],
+          where: {
+            styleUid: null,
+            orgId: { in: fallbackStyleOwnerOrgIds },
+            styleId: { in: fallbackStyleIds },
+          },
+          _count: { _all: true },
+        })
+      : [];
+  const fallbackWorkRecordCountByStyleKey = new Map(
+    fallbackWorkRecordCounts.map((row) => [
+      `${row.orgId}:${String(row.styleId || "").trim()}`,
+      row._count._all,
+    ])
+  );
+  const stylesWithWorkRecordCounts = styles.map((style) => {
+    const fallbackCount =
+      fallbackWorkRecordCountByStyleKey.get(
+        `${style.orgId}:${String(style.styleId || "").trim()}`
+      ) || 0;
+    if (fallbackCount <= 0) return style;
+    const workRecordCount = Number(style._count?.workRecords ?? 0) + fallbackCount;
+    return {
+      ...style,
+      _count: {
+        ...(style._count ?? {}),
+        workRecords: workRecordCount,
+      },
+    };
+  });
 
   res.json(
-    styles.map((style) =>
+    stylesWithWorkRecordCounts.map((style) =>
       toStyleResponse(style, { includeProcesses, processMirrorMap })
     )
   );
@@ -24482,6 +24536,26 @@ app.delete("/styles/:styleId", async (req, res) => {
     return res
       .status(403)
       .json({ ok: false, error: "only owner organization can delete style" });
+  }
+
+  const inUseWorkRecord = await prisma.workRecord.findFirst({
+    where: {
+      OR: [
+        { styleUid: existing.uid },
+        {
+          styleUid: null,
+          orgId: existing.orgId,
+          styleId: existing.styleId,
+        },
+      ],
+    },
+    select: { id: true },
+  });
+  if (inUseWorkRecord) {
+    return res.status(409).json({
+      ok: false,
+      error: "작업기록이 존재해서 삭제할 수 없습니다.",
+    });
   }
 
   const inUseOrderItem = await prisma.workOrderItem.findFirst({

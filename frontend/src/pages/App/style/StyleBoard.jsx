@@ -89,6 +89,15 @@ const formatAtReliabilityBadgeLabel = (reliability, languageCode) => {
   if (languageCode === 'vi') return `Do tin cay ${percentLabel}`;
   return `신뢰도 ${percentLabel}`;
 };
+const resolveStyleDeleteBlockedByWorkRecordsMessage = (languageCode) => {
+  if (languageCode === 'en') {
+    return 'Work records exist, so this style cannot be deleted.';
+  }
+  if (languageCode === 'vi') {
+    return 'Style nay da co nhat ky san xuat nen khong the xoa.';
+  }
+  return '작업기록이 존재해서 삭제할 수 없습니다.';
+};
 const resolveStAtGapPalette = (meta) =>
   ST_AT_GAP_PALETTE[meta?.severity] || ST_AT_GAP_PALETTE[TIME_DIVERGENCE_SEVERITY.NORMAL];
 const toTimestamp = (value) => {
@@ -247,6 +256,10 @@ const StyleBoard = () => {
 
   const handleDeleteClick = (style, event) => {
     event.stopPropagation();
+    if (style?.hasWorkRecords) {
+      showNotification(resolveStyleDeleteBlockedByWorkRecordsMessage(languageCode), 'warning');
+      return;
+    }
     setStyleToDelete(style);
     setConfirmOpen(true);
   };
@@ -258,6 +271,11 @@ const StyleBoard = () => {
 
   const handleDeleteConfirm = async () => {
     if (!styleToDelete) return;
+    if (styleToDelete.hasWorkRecords) {
+      showNotification(resolveStyleDeleteBlockedByWorkRecordsMessage(languageCode), 'warning');
+      handleConfirmClose();
+      return;
+    }
 
     try {
       await deleteStyle(styleToDelete.id, {
@@ -432,80 +450,102 @@ const StyleBoard = () => {
                   </TableCell>
                 </TableRow>
               )}
-              {rows.map((style) => (
-                <TableRow
-                  hover
-                  key={style.id}
-                  onDoubleClick={() => handleRowDoubleClick(style)}
-                  sx={{ cursor: 'pointer' }}
-                >
-                  <TableCell>{resolveCustomerDisplayName({ name: style.customer, nameKo: style.customerNameKo, nameVi: style.customerNameVi }, languageCode) || '-'}</TableCell>
-                  <TableCell>{style.name || '-'}</TableCell>
-                  <TableCell>{style.styleCode || style.id || '-'}</TableCell>
-                  {canViewProcessSummary ? (
-                    <TableCell>
-                      {style.hasTotalPT ? formatLocalizedSeconds(style.totalPT, languageCode) : '-'}
-                    </TableCell>
-                  ) : null}
-                  {canViewProcessSummary ? (
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                        {style.hasTotalAT ? formatLocalizedSeconds(style.totalAT, languageCode) : '-'}
-                        {style.styleAtReliability && style.hasTotalAT && (
-                          <Chip
-                            size="small"
-                            label={formatAtReliabilityBadgeLabel(
-                              style.styleAtReliability,
-                              languageCode
-                            )}
-                            sx={{
-                              ...AT_RELIABILITY_CHIP_SX,
-                              backgroundColor: (AT_RELIABILITY_PALETTE[style.styleAtReliability.status] || AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING]).bg,
-                              color: (AT_RELIABILITY_PALETTE[style.styleAtReliability.status] || AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING]).text,
-                            }}
-                          />
-                        )}
-                      </Box>
-                    </TableCell>
-                  ) : null}
-                  {canViewProcessSummary ? (
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                        {style.hasTotalST ? formatLocalizedSeconds(style.totalST, languageCode) : '-'}
-                        {style.hasTotalAT && style.hasTotalST && style.stGapPercent != null && (
-                          <Tooltip
-                            title={
-                              style.stGapMeta?.needsReview
-                                ? `AT와 ST 차이가 ${formatDivergencePercentLabel(style.stGapPercent)}로 커서 ST 조정 검토가 필요합니다.`
-                                : `AT와 ST 차이율 ${formatDivergencePercentLabel(style.stGapPercent)}`
-                            }
-                          >
+              {rows.map((style) => {
+                const deleteBlocked = Boolean(style.hasWorkRecords);
+                const deleteTooltipTitle = deleteBlocked
+                  ? resolveStyleDeleteBlockedByWorkRecordsMessage(languageCode)
+                  : getUiMessage('common.delete', '삭제', languageCode);
+                return (
+                  <TableRow
+                    hover
+                    key={style.id}
+                    onDoubleClick={() => handleRowDoubleClick(style)}
+                    sx={{ cursor: 'pointer' }}
+                  >
+                    <TableCell>{resolveCustomerDisplayName({ name: style.customer, nameKo: style.customerNameKo, nameVi: style.customerNameVi }, languageCode) || '-'}</TableCell>
+                    <TableCell>{style.name || '-'}</TableCell>
+                    <TableCell>{style.styleCode || style.id || '-'}</TableCell>
+                    {canViewProcessSummary ? (
+                      <TableCell>
+                        {style.hasTotalPT ? formatLocalizedSeconds(style.totalPT, languageCode) : '-'}
+                      </TableCell>
+                    ) : null}
+                    {canViewProcessSummary ? (
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          {style.hasTotalAT ? formatLocalizedSeconds(style.totalAT, languageCode) : '-'}
+                          {style.styleAtReliability && style.hasTotalAT && (
                             <Chip
                               size="small"
-                              label={formatDivergencePercentLabel(style.stGapPercent)}
+                              label={formatAtReliabilityBadgeLabel(
+                                style.styleAtReliability,
+                                languageCode
+                              )}
                               sx={{
-                                ...ST_AT_GAP_CHIP_SX,
-                                backgroundColor: resolveStAtGapPalette(style.stGapMeta).bg,
-                                color: resolveStAtGapPalette(style.stGapMeta).text,
+                                ...AT_RELIABILITY_CHIP_SX,
+                                backgroundColor: (AT_RELIABILITY_PALETTE[style.styleAtReliability.status] || AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING]).bg,
+                                color: (AT_RELIABILITY_PALETTE[style.styleAtReliability.status] || AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING]).text,
                               }}
                             />
-                          </Tooltip>
-                        )}
-                      </Box>
+                          )}
+                        </Box>
+                      </TableCell>
+                    ) : null}
+                    {canViewProcessSummary ? (
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          {style.hasTotalST ? formatLocalizedSeconds(style.totalST, languageCode) : '-'}
+                          {style.hasTotalAT && style.hasTotalST && style.stGapPercent != null && (
+                            <Tooltip
+                              title={
+                                style.stGapMeta?.needsReview
+                                  ? `AT와 ST 차이가 ${formatDivergencePercentLabel(style.stGapPercent)}로 커서 ST 조정 검토가 필요합니다.`
+                                  : `AT와 ST 차이율 ${formatDivergencePercentLabel(style.stGapPercent)}`
+                              }
+                            >
+                              <Chip
+                                size="small"
+                                label={formatDivergencePercentLabel(style.stGapPercent)}
+                                sx={{
+                                  ...ST_AT_GAP_CHIP_SX,
+                                  backgroundColor: resolveStAtGapPalette(style.stGapMeta).bg,
+                                  color: resolveStAtGapPalette(style.stGapMeta).text,
+                                }}
+                              />
+                            </Tooltip>
+                          )}
+                        </Box>
+                      </TableCell>
+                    ) : null}
+                    <TableCell>{style.registrationDate || '-'}</TableCell>
+                    <TableCell align="center">
+                      <Tooltip title={deleteTooltipTitle}>
+                        <span
+                          onClick={(event) => event.stopPropagation()}
+                          onDoubleClick={(event) => event.stopPropagation()}
+                          style={{ display: 'inline-flex' }}
+                        >
+                          <IconButton
+                            aria-label="delete"
+                            size="small"
+                            color={deleteBlocked ? 'default' : 'error'}
+                            disabled={deleteBlocked}
+                            onClick={(event) => handleDeleteClick(style, event)}
+                            sx={{
+                              color: deleteBlocked ? 'action.disabled' : 'error.main',
+                              '&.Mui-disabled': {
+                                color: 'action.disabled',
+                              },
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
                     </TableCell>
-                  ) : null}
-                  <TableCell>{style.registrationDate || '-'}</TableCell>
-                  <TableCell align="center">
-                    <IconButton
-                      aria-label="delete"
-                      size="small"
-                      onClick={(e) => handleDeleteClick(style, e)}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>

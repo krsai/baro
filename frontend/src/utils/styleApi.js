@@ -41,6 +41,8 @@ const normalizeStyle = (value = {}) => ({
   processes: normalizeProcesses(value.processes),
   bom: normalizeArray(value.bom),
   bomNotes: value.bomNotes || '',
+  workRecordCount: Math.max(0, Number(value.workRecordCount) || 0),
+  hasWorkRecords: Boolean(value.hasWorkRecords) || (Number(value.workRecordCount) || 0) > 0,
   createdAt: value.createdAt || null,
   updatedAt: value.updatedAt || null,
 });
