@@ -18518,6 +18518,7 @@ const buildLineMonthCapacityRows = async ({
         directUsedStSeconds: 0,
         fallbackPlanCount: 0,
         fallbackStSeconds: 0,
+        fallbackBasisCounts: {},
         fallbackReasonCounts: {},
         sampleFailures: [],
       });
@@ -18531,6 +18532,17 @@ const buildLineMonthCapacityRows = async ({
     const key = reason || "UNKNOWN";
     debug.fallbackReasonCounts[key] =
       Math.max(0, Math.round(Number(debug.fallbackReasonCounts[key] || 0))) + 1;
+  };
+  const incrementActualOutputDebugFallbackBasis = (
+    debug: any,
+    basis: string | null | undefined
+  ) => {
+    const key = basis || "UNKNOWN";
+    if (!debug.fallbackBasisCounts || typeof debug.fallbackBasisCounts !== "object") {
+      debug.fallbackBasisCounts = {};
+    }
+    debug.fallbackBasisCounts[key] =
+      Math.max(0, Math.round(Number(debug.fallbackBasisCounts[key] || 0))) + 1;
   };
   const pushActualOutputDebugFailure = (debug: any, sample: any) => {
     if (!Array.isArray(debug.sampleFailures) || debug.sampleFailures.length >= 8) {
@@ -18716,16 +18728,22 @@ const buildLineMonthCapacityRows = async ({
         totalExpected != null && totalExpected > 0
           ? Math.max(0, Math.min(1, cumulativeTotalDone / totalExpected))
           : null;
-      const progressRatio =
-        producedRatio != null && operationalProgressRatio != null
-          ? Math.min(producedRatio, operationalProgressRatio)
-          : producedRatio ?? operationalProgressRatio ?? null;
+      // Actual output is performed process work, not finished-garment progress.
+      // If direct per-process ST is unavailable, approximate by process-unit share.
+      const actualOutputFallbackRatio =
+        operationalProgressRatio ?? producedRatio ?? null;
+      const actualOutputFallbackBasis =
+        operationalProgressRatio != null
+          ? "PROCESS_UNIT_ST_SHARE"
+          : producedRatio != null
+            ? "COMPLETION_PROGRESS_ST_SHARE"
+            : "UNAVAILABLE";
       const completedStTotalSeconds =
-        progressRatio == null
+        actualOutputFallbackRatio == null
           ? previousCompletedStTotalSeconds
           : Math.max(
               0,
-              Math.round(plannedStTotalSeconds * progressRatio)
+              Math.round(plannedStTotalSeconds * actualOutputFallbackRatio)
             );
       const monthlyActualOutputStSeconds = Math.max(
         0,
@@ -18738,6 +18756,7 @@ const buildLineMonthCapacityRows = async ({
         const debug = ensureActualOutputDebug(lineId, monthKey);
         debug.fallbackPlanCount += 1;
         debug.fallbackStSeconds += monthlyActualOutputStSeconds;
+        incrementActualOutputDebugFallbackBasis(debug, actualOutputFallbackBasis);
         if (planActualOutputFailureReasons.size === 0) {
           incrementActualOutputDebugReason(debug, "DIRECT_ST_NOT_AVAILABLE");
         } else {
@@ -18944,6 +18963,7 @@ const buildLineMonthCapacityRows = async ({
                 directUsedStSeconds: 0,
                 fallbackPlanCount: 0,
                 fallbackStSeconds: 0,
+                fallbackBasisCounts: {},
                 fallbackReasonCounts: {},
                 sampleFailures: [],
               }),

@@ -4700,6 +4700,7 @@ const AssignBoard = () => {
               directUsedPlans: debug.directUsedPlanCount,
               fallbackHours: Math.round((Number(debug.fallbackStSeconds) || 0) / 360) / 10,
               fallbackPlans: debug.fallbackPlanCount,
+              fallbackBasis: JSON.stringify(debug.fallbackBasisCounts || {}),
               fallbackReasons: JSON.stringify(debug.fallbackReasonCounts || {}),
             }))
           );
