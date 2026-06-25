@@ -467,6 +467,7 @@ npm run test:regression
 - 데이터: Prisma schema/마이그레이션/리셋 스크립트 동기화
 - 회귀: `test:regression` 통과 여부
 - 문서: `AGENTS.md` 업데이트 여부
+- 배포 준비: 변경 후 검증 결과를 확인하고, 관련 변경분을 커밋한 뒤 원격 브랜치에 푸쉬한다.
 
 ---
 
