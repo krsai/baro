@@ -4667,7 +4667,65 @@ const AssignBoard = () => {
             }))
           );
           if (failureSamples.length > 0) {
-            console.table(failureSamples);
+            console.table(
+              failureSamples.map((sample) => ({
+                lineId: sample.lineId,
+                monthKey: sample.monthKey,
+                reason: sample.reason,
+                workRecordId: sample.workRecordId,
+                workLogId: sample.workLogId,
+                planId: sample.planId,
+                assignmentExternalId: sample.assignmentExternalId,
+                assignmentQuantity: sample.assignmentQuantity,
+                recordOrderNo: sample.recordOrderNo,
+                workerName: sample.workerName,
+                styleId: sample.styleId,
+                recordStyleUid: sample.recordStyleUid,
+                styleUidFromStyleId: sample.styleUidFromStyleId,
+                resolvedStyleUid: sample.resolvedStyleUid,
+                styleUidSource: sample.styleUidSource,
+                processCode: sample.processCode,
+                recordProcessId: sample.recordProcessId,
+                bucketQuantity: sample.bucketQuantity,
+                matchedProcessId: sample.matchedProcessId,
+                matchedBuckets: JSON.stringify(sample.matchedBuckets || []),
+                availableProcessCodes: (sample.availableProcesses || [])
+                  .map((process) => `${process.processCode || '-'}:${JSON.stringify(process.stBuckets || [])}`)
+                  .join(', '),
+                quantity: sample.quantity,
+                allocatedQuantity: sample.allocatedQuantity,
+                coverageStartDate: sample.coverageStartDate,
+                coverageEndDate: sample.coverageEndDate,
+              }))
+            );
+            console.log('[line-month-capacity] failed work-record raw samples', failureSamples);
+          }
+          const matchSamples = debugRows.flatMap((debug) =>
+            (Array.isArray(debug.sampleMatches) ? debug.sampleMatches : []).map((sample) => ({
+              lineId: debug.lineId,
+              monthKey: debug.monthKey,
+              ...sample,
+            }))
+          );
+          if (matchSamples.length > 0) {
+            console.table(
+              matchSamples.map((sample) => ({
+                lineId: sample.lineId,
+                monthKey: sample.monthKey,
+                workRecordId: sample.workRecordId,
+                planId: sample.planId,
+                styleId: sample.styleId,
+                resolvedStyleUid: sample.resolvedStyleUid,
+                processCode: sample.processCode,
+                matchedProcessId: sample.matchedProcessId,
+                matchedProcessCode: sample.matchedProcessCode,
+                bucketQuantity: sample.bucketQuantity,
+                stSeconds: sample.stSeconds,
+                allocatedQuantity: sample.allocatedQuantity,
+                directSeconds: sample.directSeconds,
+              }))
+            );
+            console.log('[line-month-capacity] matched work-record raw samples', matchSamples);
           }
           console.groupEnd();
         }

@@ -17392,7 +17392,11 @@ const loadAssignmentPlanProgressWorkRows = async ({
     prisma.workRecord.findMany({
       where,
       select: {
+        id: true,
+        workLogId: true,
         assignmentPlanId: true,
+        workerId: true,
+        workerName: true,
         orderNo: true,
         lineId: true,
         styleId: true,
@@ -17400,6 +17404,7 @@ const loadAssignmentPlanProgressWorkRows = async ({
         styleName: true,
         processId: true,
         processCode: true,
+        ctSeconds: true,
         quantity: true,
         ...(includeEffectiveCoverage
           ? {
@@ -17997,6 +18002,27 @@ const buildLineMonthCapacityRows = async ({
   const actualOutputStyleProcessLookup = buildStyleProcessLookupForStCalculation(
     actualOutputStyleProcessRows
   );
+  const actualOutputStyleProcessDebugByStyleUid = new Map<number, any[]>();
+  actualOutputStyleProcessRows.forEach((row) => {
+    const styleUid = toPositiveIntOrNull(row?.styleUid);
+    if (styleUid === null) return;
+    const bucketQuantities = ensureArray(row?.standards)
+      .map((item) => resolveStBucketQuantity((item as any)?.bucketQuantity))
+      .filter((value): value is number => value !== null);
+    const item = {
+      styleProcessId: toPositiveIntOrNull(row?.id),
+      processCode: resolveOptionalString(row?.processCode, null),
+      processName: resolveOptionalString(row?.processName, null),
+      stBuckets: Array.from(new Set(bucketQuantities)).sort((left, right) => left - right),
+    };
+    const list = actualOutputStyleProcessDebugByStyleUid.get(styleUid) || [];
+    list.push(item);
+    actualOutputStyleProcessDebugByStyleUid.set(styleUid, list);
+  });
+  const resolveActualOutputStyleProcessDebugList = (styleUid: number | null) => {
+    if (styleUid === null) return [];
+    return ensureArray(actualOutputStyleProcessDebugByStyleUid.get(styleUid)).slice(0, 30);
+  };
   const resolveWorkRecordStSecondsForLineMonthCapacity = ({
     record,
     bucketQuantity,
@@ -18005,17 +18031,29 @@ const buildLineMonthCapacityRows = async ({
     bucketQuantity: number;
   }) => {
     const styleId = resolveOptionalString(record?.styleId, null);
+    const recordStyleUid = toPositiveIntOrNull(record?.styleUid);
+    const styleUidFromStyleId = actualOutputStyleUidByStyleId.get(styleId || "") ?? null;
     const styleUid =
-      toPositiveIntOrNull(record?.styleUid) ??
-      actualOutputStyleUidByStyleId.get(styleId || "") ??
+      recordStyleUid ??
+      styleUidFromStyleId ??
       null;
+    const styleUidSource =
+      recordStyleUid !== null
+        ? "WorkRecord.styleUid"
+        : styleUidFromStyleId !== null
+          ? "Style.styleId lookup"
+          : null;
     if (styleUid === null) {
       return {
         stSeconds: null,
         reason: styleId ? "STYLE_ID_NOT_FOUND" : "STYLE_REF_MISSING",
         styleId,
         styleUid: null,
+        styleUidSource,
+        recordStyleUid,
+        styleUidFromStyleId,
         processCode: resolveOptionalString(record?.processCode, null),
+        availableProcesses: [],
       };
     }
     const processCode = resolveOptionalString(record?.processCode, null);
@@ -18025,7 +18063,11 @@ const buildLineMonthCapacityRows = async ({
         reason: "PROCESS_CODE_MISSING",
         styleId,
         styleUid,
+        styleUidSource,
+        recordStyleUid,
+        styleUidFromStyleId,
         processCode,
+        availableProcesses: resolveActualOutputStyleProcessDebugList(styleUid),
       };
     }
     const matchedRow = actualOutputStyleProcessLookup.resolveRowForWorkRecord(
@@ -18038,18 +18080,36 @@ const buildLineMonthCapacityRows = async ({
         reason: "PROCESS_NOT_MATCHED",
         styleId,
         styleUid,
+        styleUidSource,
+        recordStyleUid,
+        styleUidFromStyleId,
         processCode,
+        availableProcesses: resolveActualOutputStyleProcessDebugList(styleUid),
       };
     }
     const stSeconds = resolveStyleProcessBucketStSeconds(matchedRow, bucketQuantity);
+    const matchedProcessId = toPositiveIntOrNull(matchedRow?.id);
+    const matchedProcessCode = resolveOptionalString(matchedRow?.processCode, null);
+    const matchedProcessName = resolveOptionalString(matchedRow?.processName, null);
+    const matchedBuckets = ensureArray(matchedRow?.standards)
+      .map((item) => resolveStBucketQuantity((item as any)?.bucketQuantity))
+      .filter((value): value is number => value !== null)
+      .sort((left, right) => left - right);
     if (stSeconds === null) {
       return {
         stSeconds: null,
         reason: "ST_BUCKET_NOT_FOUND",
         styleId,
         styleUid,
+        styleUidSource,
+        recordStyleUid,
+        styleUidFromStyleId,
         processCode,
-        matchedProcessId: toPositiveIntOrNull(matchedRow?.id),
+        matchedProcessId,
+        matchedProcessCode,
+        matchedProcessName,
+        matchedBuckets,
+        availableProcesses: resolveActualOutputStyleProcessDebugList(styleUid),
       };
     }
     return {
@@ -18057,8 +18117,14 @@ const buildLineMonthCapacityRows = async ({
       reason: "OK",
       styleId,
       styleUid,
+      styleUidSource,
+      recordStyleUid,
+      styleUidFromStyleId,
       processCode,
-      matchedProcessId: toPositiveIntOrNull(matchedRow?.id),
+      matchedProcessId,
+      matchedProcessCode,
+      matchedProcessName,
+      matchedBuckets,
     };
   };
   const lineLatestActualCoverageEndDateKeyByLineId = new Map<number, string>();
@@ -18429,6 +18495,7 @@ const buildLineMonthCapacityRows = async ({
         skippedPlanCount: 0,
         skipReasonCounts: {},
         sampleFailures: [],
+        sampleMatches: [],
       });
     }
     return actualOutputDebugByLineMonthKey.get(key);
@@ -18442,10 +18509,16 @@ const buildLineMonthCapacityRows = async ({
       Math.max(0, Math.round(Number(debug.skipReasonCounts[key] || 0))) + 1;
   };
   const pushActualOutputDebugFailure = (debug: any, sample: any) => {
-    if (!Array.isArray(debug.sampleFailures) || debug.sampleFailures.length >= 8) {
+    if (!Array.isArray(debug.sampleFailures) || debug.sampleFailures.length >= 30) {
       return;
     }
     debug.sampleFailures.push(sample);
+  };
+  const pushActualOutputDebugMatch = (debug: any, sample: any) => {
+    if (!Array.isArray(debug.sampleMatches) || debug.sampleMatches.length >= 12) {
+      return;
+    }
+    debug.sampleMatches.push(sample);
   };
 
   plans.forEach((plan) => {
@@ -18525,12 +18598,40 @@ const buildLineMonthCapacityRows = async ({
             );
             incrementActualOutputDebugReason(debug, processSt.reason);
             pushActualOutputDebugFailure(debug, {
+              workRecordId: toPositiveIntOrNull(record?.id),
+              workLogId: toPositiveIntOrNull(record?.workLogId),
               planId,
+              assignmentExternalId: resolveOptionalString(plan?.externalId, null),
+              assignmentCardId: resolveOptionalString(plan?.cardId, null),
+              assignmentOrderNo: resolveOptionalString(plan?.orderNo, null),
+              assignmentLabel: resolveOptionalString(plan?.label, null),
+              assignmentQuantity: plannedQuantity,
+              recordOrderNo: resolveOptionalString(record?.orderNo, null),
+              workerId: toPositiveIntOrNull(record?.workerId),
+              workerName: resolveOptionalString(record?.workerName, null),
               styleId: processSt.styleId,
-              styleUid: processSt.styleUid,
+              recordStyleUid: processSt.recordStyleUid,
+              styleUidFromStyleId: processSt.styleUidFromStyleId,
+              resolvedStyleUid: processSt.styleUid,
+              styleUidSource: processSt.styleUidSource,
+              styleName: resolveOptionalString(record?.styleName, null),
+              recordProcessId: toPositiveIntOrNull(record?.processId),
               processCode: processSt.processCode,
+              quantity,
+              allocatedQuantity: Math.max(0, Math.round(Number(allocatedTotal) || 0)),
+              ctSeconds: Math.max(0, Math.round(Number(record?.ctSeconds) || 0)),
+              coverageStartDate,
+              coverageEndDate,
+              workLogCoverageStartDate: resolveStrictWorkLogCoverageStartDate(record?.workLog),
+              workLogCoverageEndDate: resolveStrictWorkLogCoverageEndDate(record?.workLog),
+              workLogDisplayDate: normalizeDateKey(record?.workLog?.displayDate),
               bucketQuantity,
               reason: processSt.reason,
+              matchedProcessId: processSt.matchedProcessId ?? null,
+              matchedProcessCode: processSt.matchedProcessCode ?? null,
+              matchedProcessName: processSt.matchedProcessName ?? null,
+              matchedBuckets: processSt.matchedBuckets ?? [],
+              availableProcesses: processSt.availableProcesses ?? [],
             });
           });
         }
@@ -18556,6 +18657,30 @@ const buildLineMonthCapacityRows = async ({
               Math.round(Number(allocatedTotal) || 0)
             );
             debug.directCandidateStSeconds += directSeconds;
+            pushActualOutputDebugMatch(debug, {
+              workRecordId: toPositiveIntOrNull(record?.id),
+              workLogId: toPositiveIntOrNull(record?.workLogId),
+              planId,
+              assignmentExternalId: resolveOptionalString(plan?.externalId, null),
+              assignmentQuantity: plannedQuantity,
+              recordOrderNo: resolveOptionalString(record?.orderNo, null),
+              workerName: resolveOptionalString(record?.workerName, null),
+              styleId: processSt.styleId,
+              recordStyleUid: processSt.recordStyleUid,
+              resolvedStyleUid: processSt.styleUid,
+              styleUidSource: processSt.styleUidSource,
+              processCode: processSt.processCode,
+              matchedProcessId: processSt.matchedProcessId ?? null,
+              matchedProcessCode: processSt.matchedProcessCode ?? null,
+              matchedProcessName: processSt.matchedProcessName ?? null,
+              matchedBuckets: processSt.matchedBuckets ?? [],
+              bucketQuantity,
+              allocatedQuantity: Math.max(0, Math.round(Number(allocatedTotal) || 0)),
+              stSeconds: processSt.stSeconds,
+              directSeconds,
+              coverageStartDate,
+              coverageEndDate,
+            });
           }
         });
       }
@@ -18788,6 +18913,7 @@ const buildLineMonthCapacityRows = async ({
                 skippedPlanCount: 0,
                 skipReasonCounts: {},
                 sampleFailures: [],
+                sampleMatches: [],
               }),
             lineMonthlyCapacitySeconds: row.lineMonthlyCapacitySeconds,
             lineMonthlyActualOutputStSeconds: row.lineMonthlyActualOutputStSeconds,
