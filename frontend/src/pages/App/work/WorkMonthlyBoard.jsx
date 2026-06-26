@@ -14,9 +14,10 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
@@ -41,27 +42,35 @@ import useHolidayCalendar from '../../../hooks/useHolidayCalendar';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { loadWorkLogs } from './workLogStorage';
 import {
+  aggregateMonthlyLineRows,
   aggregateMonthlyWorkerRows,
   buildMonthRange,
   normalizePositiveId,
 } from './workMonthlyUtils';
 
 const TEXT = {
-  add: { ko: '\uAE30\uB85D \uCD94\uAC00', en: 'Add Log', vi: 'Them ghi chep' },
   title: { ko: '생산 분석', en: 'Production Analysis', vi: 'Phan tich san xuat' },
   searchPlaceholder: {
     ko: '작업자, 라인 검색',
     en: 'Search worker, line',
     vi: 'Tim cong nhan, chuyen',
   },
+  lineSearchPlaceholder: {
+    ko: '라인 검색',
+    en: 'Search line',
+    vi: 'Tim chuyen',
+  },
+  lineView: { ko: '라인', en: 'Line', vi: 'Chuyen' },
+  workerView: { ko: '개인', en: 'Individual', vi: 'Ca nhan' },
   factory: { ko: '공장', en: 'Factory', vi: 'Nha may' },
   worker: { ko: '작업자', en: 'Worker', vi: 'Cong nhan' },
+  workerCount: { ko: '작업인원', en: 'Workers', vi: 'Cong nhan' },
   workMonth: { ko: '작업월', en: 'Month', vi: 'Thang lam viec' },
   line: { ko: '라인', en: 'Line', vi: 'Chuyen' },
   attendance: { ko: '근태', en: 'Attendance', vi: 'Cham cong' },
+  averageAttendance: { ko: '평균 근태', en: 'Avg Attendance', vi: 'Cham cong TB' },
   items: { ko: '기록건수', en: 'Entries', vi: 'So dong' },
   averageCt: { ko: '평균 CT', en: 'Avg CT', vi: 'CT trung binh' },
-  totalCt: { ko: '총 CT', en: 'Total CT', vi: 'Tong CT' },
   loading: {
     ko: '월간 기록을 불러오는 중입니다.',
     en: 'Loading monthly records...',
@@ -145,12 +154,6 @@ const buildMonthlyDetailTabLabel = (workerName, monthKey, languageCode) => {
   return parts.join(': ');
 };
 
-const buildWorkCreateTabLabel = (languageCode) => {
-  if (languageCode === 'en') return 'New Daily Record';
-  if (languageCode === 'vi') return 'Tao ghi chep ngay';
-  return '\uC77C\uAC04 \uAE30\uB85D \uC2E0\uADDC';
-};
-
 const WorkMonthlyBoard = () => {
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
@@ -164,6 +167,7 @@ const WorkMonthlyBoard = () => {
   const [loadingFactories, setLoadingFactories] = useState(false);
   const [loadingRows, setLoadingRows] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState('line');
   const { holidayKeys } = useHolidayCalendar(activeOrgId);
 
   const monthRange = useMemo(() => buildMonthRange(selectedMonth), [selectedMonth]);
@@ -319,11 +323,21 @@ const WorkMonthlyBoard = () => {
     loadError || resolveText(TEXT.empty, languageCode, '해당 월에 표시할 기록이 없습니다.');
   const emptyStateSx = loadError ? { color: 'error.main' } : undefined;
 
+  const lineRows = useMemo(() => aggregateMonthlyLineRows(rows), [rows]);
+  const displayRows = viewMode === 'line' ? lineRows : rows;
+  const tableColumnCount = viewMode === 'line' ? 6 : 7;
+
   const filteredRows = useMemo(() => {
     const keyword = String(searchTerm || '').trim().toLowerCase();
-    const sorted = [...rows].sort((left, right) => {
-      const lineCompare = String(left?.lineName || '').localeCompare(String(right?.lineName || ''), 'ko');
+    const sorted = [...displayRows].sort((left, right) => {
+      const lineCompare = String(left?.lineName || '').localeCompare(
+        String(right?.lineName || ''),
+        'ko'
+      );
       if (lineCompare !== 0) return lineCompare;
+      if (viewMode === 'line') {
+        return String(left?.factoryName || '').localeCompare(String(right?.factoryName || ''), 'ko');
+      }
       return String(left?.workerName || '').localeCompare(String(right?.workerName || ''), 'ko');
     });
 
@@ -331,7 +345,7 @@ const WorkMonthlyBoard = () => {
 
     return sorted.filter((row) => {
       const searchText = [
-        row?.workerName,
+        viewMode === 'worker' ? row?.workerName : null,
         row?.lineName,
         row?.factoryName,
         row?.workMonth,
@@ -342,7 +356,7 @@ const WorkMonthlyBoard = () => {
         .toLowerCase();
       return searchText.includes(keyword);
     });
-  }, [rows, searchTerm]);
+  }, [displayRows, searchTerm, viewMode]);
 
   const handleOpenDetail = useCallback(
     (row) => {
@@ -355,12 +369,6 @@ const WorkMonthlyBoard = () => {
     [languageCode, monthRange.monthKey, navigateToPath, selectedFactoryIdNumber]
   );
 
-  const handleAdd = useCallback(() => {
-    navigateToPath('/work-history/new', {
-      label: buildWorkCreateTabLabel(languageCode),
-    });
-  }, [languageCode, navigateToPath]);
-
   return (
     <AppPageContainer
       title={getUiMessage(
@@ -369,9 +377,22 @@ const WorkMonthlyBoard = () => {
         languageCode
       )}
       titleActions={(
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
-          {resolveText(TEXT.add, languageCode, '\uAE30\uB85D \uCD94\uAC00')}
-        </Button>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={viewMode}
+          onChange={(_event, nextMode) => {
+            if (nextMode) setViewMode(nextMode);
+          }}
+          aria-label="production analysis view"
+        >
+          <ToggleButton value="line" sx={{ px: 2 }}>
+            {resolveText(TEXT.lineView, languageCode, '라인')}
+          </ToggleButton>
+          <ToggleButton value="worker" sx={{ px: 2 }}>
+            {resolveText(TEXT.workerView, languageCode, '개인')}
+          </ToggleButton>
+        </ToggleButtonGroup>
       )}
       toolbar={(
         <PageToolbar
@@ -380,7 +401,11 @@ const WorkMonthlyBoard = () => {
             <SearchInput
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder={resolveText(TEXT.searchPlaceholder, languageCode, '작업자, 라인 검색')}
+              placeholder={
+                viewMode === 'line'
+                  ? resolveText(TEXT.lineSearchPlaceholder, languageCode, '라인 검색')
+                  : resolveText(TEXT.searchPlaceholder, languageCode, '작업자, 라인 검색')
+              }
             />
           )}
           right={[
@@ -455,24 +480,28 @@ const WorkMonthlyBoard = () => {
                 <Paper
                   key={row.key}
                   variant="outlined"
-                  onDoubleClick={() => handleOpenDetail(row)}
+                  onDoubleClick={() => {
+                    if (viewMode === 'worker') handleOpenDetail(row);
+                  }}
                   sx={{
                     p: 1.25,
                     borderRadius: 1.5,
-                    cursor: row.workerId ? 'pointer' : 'default',
+                    cursor: viewMode === 'worker' && row.workerId ? 'pointer' : 'default',
                   }}
                 >
                   <Stack spacing={0.75}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                        {row.workerName || '-'}
+                        {viewMode === 'line' ? row.lineName || '-' : row.workerName || '-'}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
                         {row.workMonth}
                       </Typography>
                     </Box>
                     <Typography variant="body2" color="text.secondary">
-                      {[row.factoryName, row.lineName].filter(Boolean).join(' / ') || '-'}
+                      {viewMode === 'line'
+                        ? row.factoryName || '-'
+                        : [row.factoryName, row.lineName].filter(Boolean).join(' / ') || '-'}
                     </Typography>
                     <Box
                       sx={{
@@ -481,21 +510,36 @@ const WorkMonthlyBoard = () => {
                         gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                       }}
                     >
-                      <Typography variant="caption" color="text.secondary">
-                        {`${resolveText(TEXT.items, languageCode, '기록건수')} ${row.recordCount || 0}`}
-                      </Typography>
+                      {viewMode === 'line' ? (
+                        <Typography variant="caption" color="text.secondary">
+                          {`${resolveText(TEXT.workerCount, languageCode, '작업인원')} ${row.workerCount || 0}`}
+                        </Typography>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">
+                          {`${resolveText(TEXT.items, languageCode, '기록건수')} ${row.recordCount || 0}`}
+                        </Typography>
+                      )}
+                      {viewMode === 'line' ? (
+                        <Typography variant="caption" color="text.secondary">
+                          {`${resolveText(TEXT.averageAttendance, languageCode, '평균 근태')} ${formatAttendanceDays(
+                            row,
+                            languageCode
+                          )}`}
+                        </Typography>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">
+                          {`${resolveText(TEXT.attendance, languageCode, '근태')} ${formatAttendanceDays(
+                            row,
+                            languageCode
+                          )}`}
+                        </Typography>
+                      )}
                       <Typography variant="caption" color="text.secondary">
                         {`${resolveText(TEXT.averageCt, languageCode, '평균 CT')} ${
                           row.averageCtPerDaySeconds == null
                             ? '-'
                             : formatAverageCtHours(row.averageCtPerDaySeconds, languageCode)
                         }`}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {`${resolveText(TEXT.attendance, languageCode, '근태')} ${formatAttendanceDays(
-                          row,
-                          languageCode
-                        )}`}
                       </Typography>
                     </Box>
                   </Stack>
@@ -508,54 +552,96 @@ const WorkMonthlyBoard = () => {
         <TableContainer sx={{ display: { xs: 'none', sm: 'block' } }}>
           <Table size="small">
             <TableHead>
-              <TableRow>
-                <TableCell>{resolveText(TEXT.workMonth, languageCode, '작업월')}</TableCell>
-                <TableCell>{resolveText(TEXT.worker, languageCode, '작업자')}</TableCell>
-                <TableCell>{resolveText(TEXT.factory, languageCode, '공장')}</TableCell>
-                <TableCell>{resolveText(TEXT.line, languageCode, '라인')}</TableCell>
-                <TableCell align="right">
-                  {resolveText(TEXT.items, languageCode, '기록건수')}
-                </TableCell>
-                <TableCell align="right">
-                  {resolveText(TEXT.averageCt, languageCode, '평균 CT')}
-                </TableCell>
-                <TableCell align="right">
-                  {resolveText(TEXT.attendance, languageCode, '근태')}
-                </TableCell>
-              </TableRow>
+              {viewMode === 'line' ? (
+                <TableRow>
+                  <TableCell>{resolveText(TEXT.workMonth, languageCode, '작업월')}</TableCell>
+                  <TableCell>{resolveText(TEXT.factory, languageCode, '공장')}</TableCell>
+                  <TableCell>{resolveText(TEXT.line, languageCode, '라인')}</TableCell>
+                  <TableCell align="right">
+                    {resolveText(TEXT.workerCount, languageCode, '작업인원')}
+                  </TableCell>
+                  <TableCell align="right">
+                    {resolveText(TEXT.averageAttendance, languageCode, '평균 근태')}
+                  </TableCell>
+                  <TableCell align="right">
+                    {resolveText(TEXT.averageCt, languageCode, '평균 CT')}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                <TableRow>
+                  <TableCell>{resolveText(TEXT.workMonth, languageCode, '작업월')}</TableCell>
+                  <TableCell>{resolveText(TEXT.worker, languageCode, '작업자')}</TableCell>
+                  <TableCell>{resolveText(TEXT.factory, languageCode, '공장')}</TableCell>
+                  <TableCell>{resolveText(TEXT.line, languageCode, '라인')}</TableCell>
+                  <TableCell align="right">
+                    {resolveText(TEXT.items, languageCode, '기록건수')}
+                  </TableCell>
+                  <TableCell align="right">
+                    {resolveText(TEXT.averageCt, languageCode, '평균 CT')}
+                  </TableCell>
+                  <TableCell align="right">
+                    {resolveText(TEXT.attendance, languageCode, '근태')}
+                  </TableCell>
+                </TableRow>
+              )}
             </TableHead>
             <TableBody>
               {loadingRows || loadingFactories ? (
                 <TableStatusRow
-                  colSpan={7}
+                  colSpan={tableColumnCount}
                   message={resolveText(TEXT.loading, languageCode, '월간 기록을 불러오는 중입니다.')}
                 />
               ) : filteredRows.length === 0 ? (
-                <TableStatusRow colSpan={7} message={emptyStateMessage} sx={emptyStateSx} />
+                <TableStatusRow
+                  colSpan={tableColumnCount}
+                  message={emptyStateMessage}
+                  sx={emptyStateSx}
+                />
               ) : (
                 filteredRows.map((row) => (
                   <TableRow
                     key={row.key}
-                    hover={Boolean(row.workerId)}
-                    onDoubleClick={() => handleOpenDetail(row)}
+                    hover={viewMode === 'worker' && Boolean(row.workerId)}
+                    onDoubleClick={() => {
+                      if (viewMode === 'worker') handleOpenDetail(row);
+                    }}
                     sx={{
-                      cursor: row.workerId ? 'pointer' : 'default',
+                      cursor: viewMode === 'worker' && row.workerId ? 'pointer' : 'default',
                       '& td': { verticalAlign: 'middle' },
                     }}
                   >
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.workMonth || '-'}</TableCell>
-                    <TableCell>{row.workerName || '-'}</TableCell>
-                    <TableCell>{row.factoryName || '-'}</TableCell>
-                    <TableCell>{row.lineName || '-'}</TableCell>
-                    <TableCell align="right">{row.recordCount || 0}</TableCell>
-                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                      {row.averageCtPerDaySeconds == null
-                        ? '-'
-                        : formatAverageCtHours(row.averageCtPerDaySeconds, languageCode)}
-                    </TableCell>
-                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                      {formatAttendanceDays(row, languageCode)}
-                    </TableCell>
+                    {viewMode === 'line' ? (
+                      <>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.workMonth || '-'}</TableCell>
+                        <TableCell>{row.factoryName || '-'}</TableCell>
+                        <TableCell>{row.lineName || '-'}</TableCell>
+                        <TableCell align="right">{row.workerCount || 0}</TableCell>
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                          {formatAttendanceDays(row, languageCode)}
+                        </TableCell>
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                          {row.averageCtPerDaySeconds == null
+                            ? '-'
+                            : formatAverageCtHours(row.averageCtPerDaySeconds, languageCode)}
+                        </TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.workMonth || '-'}</TableCell>
+                        <TableCell>{row.workerName || '-'}</TableCell>
+                        <TableCell>{row.factoryName || '-'}</TableCell>
+                        <TableCell>{row.lineName || '-'}</TableCell>
+                        <TableCell align="right">{row.recordCount || 0}</TableCell>
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                          {row.averageCtPerDaySeconds == null
+                            ? '-'
+                            : formatAverageCtHours(row.averageCtPerDaySeconds, languageCode)}
+                        </TableCell>
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                          {formatAttendanceDays(row, languageCode)}
+                        </TableCell>
+                      </>
+                    )}
                   </TableRow>
                 ))
               )}

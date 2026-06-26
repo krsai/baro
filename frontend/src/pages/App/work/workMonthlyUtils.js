@@ -181,6 +181,12 @@ const toCtDayCount = (seconds) => {
   return Math.round((normalizedSeconds / CT_DAY_SECONDS) * 10) / 10;
 };
 
+const roundDayCount = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 0;
+  return Math.round(number * 10) / 10;
+};
+
 const addWorkingDateRange = ({
   targetDates,
   startDateKey,
@@ -346,9 +352,90 @@ export const aggregateMonthlyWorkerRows = ({
       lineName,
       workDayCount,
       recordCount: row.recordCount,
+      totalCtSeconds: row.totalCtSeconds,
       averageCtPerDaySeconds,
       workCtDayCount: toCtDayCount(row.totalCtSeconds),
       expectedCtDayCount,
+      attendanceWorkedDays,
+      attendanceTargetDays,
+      attendanceDisplay:
+        attendanceWorkedDays === null
+          ? `-/${attendanceTargetDays}`
+          : `${attendanceWorkedDays}/${attendanceTargetDays}`,
+    };
+  });
+};
+
+export const aggregateMonthlyLineRows = (workerRows = []) => {
+  const rowByKey = new Map();
+
+  (Array.isArray(workerRows) ? workerRows : []).forEach((workerRow) => {
+    const workMonth = normalizeMonthKey(workerRow?.workMonth);
+    const factoryName = normalizeLabel(workerRow?.factoryName) || '-';
+    const lineName = normalizeLabel(workerRow?.lineName) || '-';
+    if (!workMonth) return;
+
+    const key = [workMonth, factoryName, lineName].join('::');
+    if (!rowByKey.has(key)) {
+      rowByKey.set(key, {
+        key: `line:${key}`,
+        workMonth,
+        factoryName,
+        lineName,
+        workerCount: 0,
+        recordCount: 0,
+        totalCtSeconds: 0,
+        expectedCtDayCount: 0,
+        attendanceWorkedDays: null,
+        attendanceTargetDays: 0,
+        attendanceWorkedDaySum: 0,
+        hasAttendanceWorkedDays: false,
+      });
+    }
+
+    const row = rowByKey.get(key);
+    row.workerCount += 1;
+    row.recordCount += Math.max(0, Math.trunc(Number(workerRow?.recordCount) || 0));
+    row.totalCtSeconds += Math.max(0, Math.round(Number(workerRow?.totalCtSeconds) || 0));
+
+    const expectedCtDayCount = Number(workerRow?.expectedCtDayCount);
+    if (Number.isFinite(expectedCtDayCount) && expectedCtDayCount > 0) {
+      row.expectedCtDayCount += expectedCtDayCount;
+    }
+
+    const attendanceTargetDays = Number(workerRow?.attendanceTargetDays);
+    if (Number.isFinite(attendanceTargetDays) && attendanceTargetDays > 0) {
+      row.attendanceTargetDays += attendanceTargetDays;
+    }
+
+    const attendanceWorkedDays = Number(workerRow?.attendanceWorkedDays);
+    if (Number.isFinite(attendanceWorkedDays) && attendanceWorkedDays >= 0) {
+      row.hasAttendanceWorkedDays = true;
+      row.attendanceWorkedDaySum += attendanceWorkedDays;
+    }
+  });
+
+  return Array.from(rowByKey.values()).map((row) => {
+    const averageCtPerDaySeconds =
+      row.expectedCtDayCount > 0
+        ? Math.round(row.totalCtSeconds / row.expectedCtDayCount)
+        : null;
+    const attendanceWorkedDays =
+      row.hasAttendanceWorkedDays && row.workerCount > 0
+        ? roundDayCount(row.attendanceWorkedDaySum / row.workerCount)
+        : null;
+    const attendanceTargetDays =
+      row.workerCount > 0 ? roundDayCount(row.attendanceTargetDays / row.workerCount) : 0;
+
+    return {
+      key: row.key,
+      workMonth: row.workMonth,
+      factoryName: row.factoryName,
+      lineName: row.lineName,
+      workerCount: row.workerCount,
+      recordCount: row.recordCount,
+      totalCtSeconds: row.totalCtSeconds,
+      averageCtPerDaySeconds,
       attendanceWorkedDays,
       attendanceTargetDays,
       attendanceDisplay:
