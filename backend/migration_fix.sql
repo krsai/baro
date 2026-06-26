@@ -297,6 +297,106 @@ BEGIN
   END IF;
 END $$;
 
+-- 11. Backfill WorkRecord.styleUid from linked AssignmentPlan card identity (20260626)
+-- Source of truth: WorkRecord.assignmentPlanId -> AssignmentPlan.cardId/originOrderId
+-- -> WorkOrderItem.styleUid. Ambiguous rows are intentionally left unchanged.
+CREATE TABLE IF NOT EXISTS "_BaroMigrationState" (
+  "key" TEXT PRIMARY KEY,
+  "appliedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+      AND column_name = 'styleUid'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+      AND column_name = 'assignmentPlanId'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'AssignmentPlan'
+      AND column_name = 'cardId'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkOrderItem'
+      AND column_name = 'styleUid'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM "_BaroMigrationState"
+    WHERE "key" = '20260626_work_record_style_uid_from_assignment_plan_v1'
+  ) THEN
+    WITH plan_identity AS (
+      SELECT
+        ap.id AS "planId",
+        ap."orgId" AS "orgId",
+        split_part(raw_identity.identity, '::', 1) AS "orderId",
+        split_part(raw_identity.identity, '::', 2) AS "styleId"
+      FROM "AssignmentPlan" ap
+      CROSS JOIN LATERAL (
+        VALUES (ap."cardId"), (ap."originOrderId")
+      ) AS raw_identity(identity)
+      WHERE raw_identity.identity IS NOT NULL
+        AND position('::' IN raw_identity.identity) > 0
+        AND split_part(raw_identity.identity, '::', 1) <> ''
+        AND split_part(raw_identity.identity, '::', 2) <> ''
+    ),
+    candidate AS (
+      SELECT
+        pi."planId",
+        woi."styleUid",
+        COALESCE(s."styleId", woi."styleId") AS "styleId",
+        COALESCE(s."name", woi."styleName") AS "styleName"
+      FROM plan_identity pi
+      JOIN "WorkOrder" wo
+        ON wo."orderId" = pi."orderId"
+       AND (
+            wo."orgId" = pi."orgId"
+         OR wo."buyerOrgId" = pi."orgId"
+         OR wo."sellerOrgId" = pi."orgId"
+       )
+      JOIN "WorkOrderItem" woi
+        ON woi."workOrderId" = wo.id
+       AND woi."styleId" = pi."styleId"
+      LEFT JOIN "Style" s
+        ON s.uid = woi."styleUid"
+      WHERE woi."styleUid" IS NOT NULL
+    ),
+    canonical AS (
+      SELECT
+        "planId",
+        MIN("styleUid") AS "styleUid",
+        MAX("styleId") AS "styleId",
+        MAX("styleName") AS "styleName"
+      FROM candidate
+      GROUP BY "planId"
+      HAVING COUNT(DISTINCT "styleUid") = 1
+    )
+    UPDATE "WorkRecord" wr
+    SET
+      "styleUid" = canonical."styleUid",
+      "styleId" = COALESCE(canonical."styleId", wr."styleId"),
+      "styleName" = COALESCE(canonical."styleName", wr."styleName")
+    FROM canonical, "WorkLog" wl
+    WHERE wr."assignmentPlanId" = canonical."planId"
+      AND wr."workLogId" = wl.id
+      AND COALESCE(wl."coverageEndDate", wl."workDate") >= '2026-04-01'
+      AND (
+        wr."styleUid" IS DISTINCT FROM canonical."styleUid"
+        OR wr."styleId" IS DISTINCT FROM COALESCE(canonical."styleId", wr."styleId")
+        OR wr."styleName" IS DISTINCT FROM COALESCE(canonical."styleName", wr."styleName")
+      );
+
+    INSERT INTO "_BaroMigrationState" ("key")
+    VALUES ('20260626_work_record_style_uid_from_assignment_plan_v1');
+  END IF;
+END $$;
+
 -- Step 4b-safety: ensure final column names exist even when neither old nor new name existed
 ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentQuantity" INTEGER;
 ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentStTotalSeconds" INTEGER;

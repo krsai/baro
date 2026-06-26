@@ -5647,6 +5647,123 @@ const syncWorkRecordRefs = async ({
     };
   });
 };
+const resolveAssignmentPlanStyleMetaById = async ({
+  orgId,
+  assignmentPlanIds,
+  db = prisma,
+}: {
+  orgId: number;
+  assignmentPlanIds: number[];
+  db?: any;
+}) => {
+  const normalizedPlanIds = collectPositiveIntSet(...assignmentPlanIds);
+  if (normalizedPlanIds.length === 0) return new Map<number, any>();
+
+  const plans = await db.assignmentPlan.findMany({
+    where: { orgId, id: { in: normalizedPlanIds } },
+    select: {
+      id: true,
+      cardId: true,
+      originOrderId: true,
+    },
+  });
+  const identityRows = ensureArray(plans).flatMap((plan) => {
+    const planId = toPositiveIntOrNull(plan?.id);
+    if (planId === null) return [];
+    return [plan?.cardId, plan?.originOrderId]
+      .map((value) => parseAssignmentCardIdentity(value))
+      .filter((identity) => Boolean(identity?.orderId && identity?.styleId))
+      .map((identity) => ({
+        planId,
+        orderId: String(identity?.orderId || ""),
+        styleId: String(identity?.styleId || ""),
+      }));
+  });
+  if (identityRows.length === 0) return new Map<number, any>();
+
+  const orderIds = Array.from(
+    new Set(identityRows.map((item) => item.orderId).filter(Boolean))
+  );
+  const orders =
+    orderIds.length > 0
+      ? await db.workOrder.findMany({
+          where: {
+            orderId: { in: orderIds },
+            OR: [{ orgId }, { buyerOrgId: orgId }, { sellerOrgId: orgId }],
+          },
+          select: {
+            orderId: true,
+            workOrderItems: {
+              select: {
+                styleId: true,
+                styleUid: true,
+                styleName: true,
+                styleCode: true,
+                style: {
+                  select: {
+                    uid: true,
+                    styleId: true,
+                    styleCode: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        })
+      : [];
+
+  const itemCandidatesByOrderStyleId = new Map<string, any[]>();
+  ensureArray(orders).forEach((order) => {
+    const orderId = resolveOptionalString(order?.orderId, null);
+    if (!orderId) return;
+    ensureArray(order?.workOrderItems).forEach((item) => {
+      const itemStyleId = resolveOptionalString(item?.styleId, null);
+      if (!itemStyleId) return;
+      const key = `${orderId}::${itemStyleId}`;
+      const current = itemCandidatesByOrderStyleId.get(key) || [];
+      current.push(item);
+      itemCandidatesByOrderStyleId.set(key, current);
+    });
+  });
+
+  const styleMetaByPlanId = new Map<number, any>();
+  identityRows.forEach((identity) => {
+    if (styleMetaByPlanId.has(identity.planId)) return;
+    const candidates = itemCandidatesByOrderStyleId.get(
+      `${identity.orderId}::${identity.styleId}`
+    ) || [];
+    const resolvedCandidates = candidates
+      .map((item) => {
+        const styleUid = toPositiveIntOrNull(item?.style?.uid ?? item?.styleUid);
+        if (styleUid === null) return null;
+        return {
+          styleUid,
+          styleId: resolveOptionalString(item?.style?.styleId ?? item?.styleId, null),
+          styleName: resolveOptionalString(item?.style?.name ?? item?.styleName, null),
+          styleCode: resolveOptionalString(item?.style?.styleCode ?? item?.styleCode, null),
+        };
+      })
+      .filter(
+        (
+          item
+        ): item is {
+          styleUid: number;
+          styleId: string | null;
+          styleName: string | null;
+          styleCode: string | null;
+        } => Boolean(item)
+      );
+    const uniqueStyleUids = Array.from(
+      new Set(resolvedCandidates.map((item) => item.styleUid))
+    );
+    if (uniqueStyleUids.length !== 1) return;
+    styleMetaByPlanId.set(identity.planId, resolvedCandidates[0]);
+  });
+
+  return styleMetaByPlanId;
+};
+
 const attachCanonicalFieldsToWorkRecords = async ({
   orgId,
   lineId,
@@ -5678,15 +5795,25 @@ const attachCanonicalFieldsToWorkRecords = async ({
       resolveOptionalString(plan?.orderNo, null),
     ])
   );
+  const styleMetaByPlanId = await resolveAssignmentPlanStyleMetaById({
+    orgId,
+    assignmentPlanIds,
+    db,
+  });
 
   return normalizedRecords.map((record) => {
     const assignmentPlanId = toPositiveIntOrNull(record?.assignmentPlanId);
     const planOrderNo =
       assignmentPlanId != null ? orderNoByPlanId.get(assignmentPlanId) ?? null : null;
+    const planStyleMeta =
+      assignmentPlanId != null ? styleMetaByPlanId.get(assignmentPlanId) ?? null : null;
     return {
       ...record,
       orderNo: resolveOptionalString(planOrderNo ?? record?.orderNo, null),
       lineId: normalizedLineId ?? toPositiveIntOrNull(record?.lineId),
+      styleUid: planStyleMeta?.styleUid ?? toPositiveIntOrNull(record?.styleUid),
+      styleId: resolveOptionalString(planStyleMeta?.styleId ?? record?.styleId, null),
+      styleName: resolveOptionalString(planStyleMeta?.styleName ?? record?.styleName, null),
     };
   });
 };
@@ -10166,6 +10293,7 @@ const buildAssignmentCardsFromOrders = ({
         quantity: number;
         itemIndex: number;
         style: any;
+        styleUid: number | null;
         styleName: string | null;
         styleCode: string | null;
       }
@@ -10188,6 +10316,7 @@ const buildAssignmentCardsFromOrders = ({
           quantity,
           itemIndex,
           style,
+          styleUid: toPositiveIntOrNull(item?.styleUid ?? style?.uid),
           styleName: resolveOptionalString(item?.styleName, null),
           styleCode: resolveOptionalString(item?.styleCode, null),
         });
@@ -10195,6 +10324,9 @@ const buildAssignmentCardsFromOrders = ({
       }
       current.quantity += quantity;
       if (!current.style && style) current.style = style;
+      if (current.styleUid === null) {
+        current.styleUid = toPositiveIntOrNull(item?.styleUid ?? style?.uid);
+      }
       if (!current.styleName) {
         current.styleName = resolveOptionalString(item?.styleName, null);
       }
@@ -10238,6 +10370,7 @@ const buildAssignmentCardsFromOrders = ({
         dueDate: resolveOptionalString(order?.dueDate, null) || "",
         customer:
           resolveOptionalString(order?.customerName ?? order?.customer, null) || "-",
+        styleUid: toPositiveIntOrNull(group.style?.uid ?? group.styleUid),
         styleId,
         styleName:
           group.styleName ??
@@ -17116,6 +17249,7 @@ app.get("/assignment-plans", async (req, res) => {
         id: plan.externalId,
         lineId: String(plan.lineId),
         cardId,
+        styleUid: toPositiveIntOrNull(matchedCard?.styleUid),
         styleId:
           resolveOptionalString(matchedCard?.styleId, null) ??
           resolveOptionalString(matchedCard?.styleCode, null) ??
@@ -18033,26 +18167,10 @@ const buildLineMonthCapacityRows = async ({
           orderBy: [{ orgId: "asc" }, { uid: "asc" }],
         })
       : [];
-  const actualOutputStyleUidByStyleId = new Map(
-    actualOutputStyleRows
-      .map((row) => {
-        const styleId = resolveOptionalString(row?.styleId, null);
-        const uid = toPositiveIntOrNull(row?.uid);
-        return styleId && uid !== null ? [styleId, uid] : null;
-      })
-      .filter((row): row is [string, number] => Boolean(row))
-  );
   const actualOutputStyleUids = Array.from(
     new Set(
       workRows
-        .map((row) => {
-          const styleMeta = resolveWorkRecordStyleIdForActualOutput(row);
-          return (
-            actualOutputStyleUidByStyleId.get(styleMeta.styleId || "") ??
-            toPositiveIntOrNull(row?.styleUid) ??
-            null
-          );
-        })
+        .map((row) => toPositiveIntOrNull(row?.styleUid))
         .filter((value): value is number => value !== null)
     )
   );
@@ -18123,6 +18241,12 @@ const buildLineMonthCapacityRows = async ({
         workRowsWithoutAssignmentPlanId: workRows.filter(
           (row) => !toPositiveIntOrNull(row?.assignmentPlanId)
         ).length,
+        workRowsWithStyleUid: workRows.filter(
+          (row) => toPositiveIntOrNull(row?.styleUid) !== null
+        ).length,
+        workRowsWithoutStyleUid: workRows.filter(
+          (row) => toPositiveIntOrNull(row?.styleUid) === null
+        ).length,
         styleInputCount: actualOutputStyleIds.length,
         styleInputs: actualOutputStyleIds.slice(0, 100),
         styleIdMatchCount: actualOutputStyleRows.length,
@@ -18183,27 +18307,17 @@ const buildLineMonthCapacityRows = async ({
     const styleId = styleMeta.styleId;
     const styleIdSource = styleMeta.styleIdSource;
     const recordStyleUid = toPositiveIntOrNull(record?.styleUid);
-    const styleUidFromStyleId = actualOutputStyleUidByStyleId.get(styleId || "") ?? null;
-    const styleUid =
-      styleUidFromStyleId ??
-      recordStyleUid ??
-      null;
-    const styleUidSource =
-      styleUidFromStyleId !== null
-          ? "Style.styleId lookup"
-          : recordStyleUid !== null
-            ? "WorkRecord.styleUid"
-            : null;
+    const styleUid = recordStyleUid ?? null;
+    const styleUidSource = recordStyleUid !== null ? "WorkRecord.styleUid" : null;
     if (styleUid === null) {
       return {
         stSeconds: null,
-        reason: styleId ? "STYLE_ID_NOT_FOUND" : "STYLE_REF_MISSING",
+        reason: "STYLE_UID_MISSING",
         styleId,
         styleIdSource,
         styleUid: null,
         styleUidSource,
         recordStyleUid,
-        styleUidFromStyleId,
         planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
         planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
         processCode: resolveOptionalString(record?.processCode, null),
@@ -18221,7 +18335,6 @@ const buildLineMonthCapacityRows = async ({
         styleUid,
         styleUidSource,
         recordStyleUid,
-        styleUidFromStyleId,
         planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
         planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
         processCode,
@@ -18241,7 +18354,6 @@ const buildLineMonthCapacityRows = async ({
         styleUid,
         styleUidSource,
         recordStyleUid,
-        styleUidFromStyleId,
         planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
         planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
         processCode,
@@ -18265,7 +18377,6 @@ const buildLineMonthCapacityRows = async ({
         styleUid,
         styleUidSource,
         recordStyleUid,
-        styleUidFromStyleId,
         planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
         planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
         processCode,
@@ -18284,7 +18395,6 @@ const buildLineMonthCapacityRows = async ({
       styleUid,
       styleUidSource,
       recordStyleUid,
-      styleUidFromStyleId,
       planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
       planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
       processCode,
@@ -18857,7 +18967,6 @@ const buildLineMonthCapacityRows = async ({
               recordStyleUid: processSt.recordStyleUid,
               planStyleId: processSt.planStyleId,
               planStyleCandidates: processSt.planStyleCandidates ?? [],
-              styleUidFromStyleId: processSt.styleUidFromStyleId,
               resolvedStyleUid: processSt.styleUid,
               styleUidSource: processSt.styleUidSource,
               styleName: resolveOptionalString(record?.styleName, null),
