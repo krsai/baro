@@ -25,6 +25,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import { DndContext, DragOverlay, useDroppable, pointerWithin, closestCenter } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
+import dayjs from 'dayjs';
 import { useAssignBoardDnd } from './hooks/useAssignBoardDnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
@@ -1784,6 +1785,17 @@ const getMonthEndDate = (value = new Date()) => {
   return date;
 };
 
+const ASSIGNMENT_OPERATION_START_DATE_KEY = '2026-04-01';
+const ASSIGNMENT_OPERATION_START_DAY = dayjs(ASSIGNMENT_OPERATION_START_DATE_KEY).startOf('day');
+const getAssignmentOperationStartDate = () => new Date(2026, 3, 1);
+const clampAssignmentViewDate = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return getAssignmentOperationStartDate();
+  date.setHours(0, 0, 0, 0);
+  const minDate = getAssignmentOperationStartDate();
+  return date < minDate ? minDate : date;
+};
+
 const getDateRangeDayCount = (start, end) =>
   Math.max(1, Math.round((end - start) / 86400000) + 1);
 
@@ -2925,7 +2937,7 @@ const AssignBoard = () => {
   const hasLoadedSourceDataRef = useRef(false);
   const lastLoadedOrgIdRef = useRef(null);
   const detailStyleFetchAttemptRef = useRef(new Set());
-  const startDateRef = useRef(getMonthStartDate());
+  const startDateRef = useRef(clampAssignmentViewDate(getMonthStartDate()));
   const splitCounterRef = useRef(1);
   const disabledCardDragNoticeAtRef = useRef(0);
   const cursorWarningTimerRef = useRef(null);
@@ -2937,8 +2949,8 @@ const AssignBoard = () => {
   const [historyStatus, setHistoryStatus] = useState({ undoCount: 0, redoCount: 0 });
   const { holidaySet } = useHolidayCalendar(activeOrgId);
   const MAX_RANGE_DAYS = 92;
-  const [viewStart, setViewStart] = useState(() => getMonthStartDate());
-  const [viewEnd, setViewEnd] = useState(() => getMonthEndDate());
+  const [viewStart, setViewStart] = useState(() => clampAssignmentViewDate(getMonthStartDate()));
+  const [viewEnd, setViewEnd] = useState(() => getMonthEndDate(clampAssignmentViewDate(getMonthStartDate())));
   // viewStart 변경 시 assignment 인덱스 재계산을 위한 이전값 추적
   const prevViewStartRef = useRef(null);
   const dayCount = useMemo(() => {
@@ -6394,10 +6406,8 @@ const AssignBoard = () => {
 
   const applyViewRange = useCallback(
     (nextStart, nextEnd) => {
-      const normalizedStart = new Date(nextStart);
-      normalizedStart.setHours(0, 0, 0, 0);
-      const normalizedEnd = new Date(nextEnd);
-      normalizedEnd.setHours(0, 0, 0, 0);
+      const normalizedStart = clampAssignmentViewDate(nextStart);
+      const normalizedEnd = clampAssignmentViewDate(nextEnd);
 
       if (normalizedStart > normalizedEnd) return false;
       if (
@@ -6419,8 +6429,8 @@ const AssignBoard = () => {
   const toMonthEnd   = (d) => { const r = new Date(d); r.setDate(1); r.setMonth(r.getMonth()+1); r.setDate(0); r.setHours(0,0,0,0); return r; };
 
   const handleViewStartChange = (newStart) => {
-    const s = new Date(newStart); s.setHours(0,0,0,0);
-    const e = new Date(viewEnd);
+    const s = clampAssignmentViewDate(newStart);
+    const e = clampAssignmentViewDate(viewEnd);
     if (s > e) return;
     const range = Math.round((e - s) / 86400000) + 1;
     if (range > MAX_RANGE_DAYS) {
@@ -6431,8 +6441,8 @@ const AssignBoard = () => {
     applyViewRange(s, e);
   };
   const handleViewEndChange = (newEnd) => {
-    const e = new Date(newEnd); e.setHours(0,0,0,0);
-    const s = new Date(viewStart);
+    const e = clampAssignmentViewDate(newEnd);
+    const s = clampAssignmentViewDate(viewStart);
     if (e < s) return;
     const range = Math.round((e - s) / 86400000) + 1;
     if (range > MAX_RANGE_DAYS) return;
@@ -6462,6 +6472,9 @@ const AssignBoard = () => {
     applyViewRange(newStart, newEnd);
   };
   const controlsDisabled = persisting || loading;
+  const monthMinusDisabled =
+    controlsDisabled ||
+    toMonthStart(viewStart).getTime() <= getAssignmentOperationStartDate().getTime();
 
   return (
     <AppPageContainer
@@ -6570,12 +6583,14 @@ const AssignBoard = () => {
                   value={viewStart}
                   onChange={(val) => { if (val?.isValid?.()) handleViewStartChange(val.toDate()); }}
                   disabled={controlsDisabled}
+                  minDate={ASSIGNMENT_OPERATION_START_DAY}
                 />
                 <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>~</Typography>
                 <CustomDatePicker
                   value={viewEnd}
                   onChange={(val) => { if (val?.isValid?.()) handleViewEndChange(val.toDate()); }}
                   disabled={controlsDisabled}
+                  minDate={ASSIGNMENT_OPERATION_START_DAY}
                 />
                 <Stack sx={{ gap: '2px' }}>
                   <Button
@@ -6591,7 +6606,7 @@ const AssignBoard = () => {
                     size="small"
                     variant="outlined"
                     onClick={handleMonthMinus}
-                    disabled={controlsDisabled}
+                    disabled={monthMinusDisabled}
                     sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
                   >
                     M-

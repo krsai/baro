@@ -117,6 +117,10 @@ const FILTER_DATE_PICKER_SLOT_PROPS = {
   },
 };
 
+const WORK_HISTORY_OPERATION_START_DATE_KEY = '2026-04-01';
+const WORK_HISTORY_OPERATION_START_DAY = dayjs(WORK_HISTORY_OPERATION_START_DATE_KEY).startOf('day');
+const WORK_HISTORY_OPERATION_START_MONTH = WORK_HISTORY_OPERATION_START_DAY.startOf('month');
+
 const resolveText = (bundle, languageCode, fallback = '') =>
   bundle?.[languageCode] || bundle?.ko || fallback;
 const getCrossLineAssignmentWarning = (payload) =>
@@ -137,6 +141,35 @@ const buildImportSuccessMessage = ({
     return `엑셀 작업기록을 저장했습니다. 다른 라인 배정 작업 ${crossLineRowCount}건을 상세 비고에 남겼습니다. (${recordCount}행, ${createdCount}개 기록)`;
   }
   return `${resolveText(TEXT.importSuccess, languageCode, 'Excel work logs imported.')} (${recordCount} rows, ${createdCount} logs)`;
+};
+
+const normalizeImportText = (value) => String(value ?? '').trim();
+const isImportDateBeforeOperationStart = (value) => {
+  const text = normalizeImportText(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) && text < WORK_HISTORY_OPERATION_START_DATE_KEY;
+};
+const findImportRowsBeforeOperationStart = (rows) =>
+  (Array.isArray(rows) ? rows : []).filter(
+    (row) =>
+      isImportDateBeforeOperationStart(row?.coverageStartDate) ||
+      isImportDateBeforeOperationStart(row?.coverageEndDate)
+  );
+const buildImportStartDateErrorMessage = (rows, languageCode) => {
+  const [firstRow] = Array.isArray(rows) ? rows : [];
+  const location = [
+    normalizeImportText(firstRow?.sheetName),
+    firstRow?.rowNumber ? `row ${firstRow.rowNumber}` : '',
+  ]
+    .filter(Boolean)
+    .join(' / ');
+  const suffix = location ? ` (${location})` : '';
+  if (languageCode === 'ko') {
+    return `\uC791\uC5C5\uAE30\uB85D\uC740 ${WORK_HISTORY_OPERATION_START_DATE_KEY} \uC774\uD6C4\uB9CC \uC5C5\uB85C\uB4DC\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.${suffix}`;
+  }
+  if (languageCode === 'vi') {
+    return `Chi co the nhap ghi chep tu ${WORK_HISTORY_OPERATION_START_DATE_KEY} tro di.${suffix}`;
+  }
+  return `Only work logs from ${WORK_HISTORY_OPERATION_START_DATE_KEY} onward can be imported.${suffix}`;
 };
 
 const buildWorkDateKey = (value) => dayjs(value).format('YYYY-MM-DD');
@@ -172,24 +205,37 @@ const normalizeFilterDate = (value) => {
   return normalized.startOf('day').toDate();
 };
 
-const buildFilterDateKey = (value) => {
+const clampWorkHistoryFilterDate = (value) => {
   const normalized = normalizeFilterDate(value);
+  if (!normalized) return WORK_HISTORY_OPERATION_START_DAY.toDate();
+  return dayjs(normalized).isBefore(WORK_HISTORY_OPERATION_START_DAY, 'day')
+    ? WORK_HISTORY_OPERATION_START_DAY.toDate()
+    : normalized;
+};
+
+const buildFilterDateKey = (value) => {
+  const normalized = clampWorkHistoryFilterDate(value);
   return normalized ? dayjs(normalized).format('YYYY-MM-DD') : '';
 };
 
 const getMonthStart = (value) => {
-  const normalized = normalizeFilterDate(value) || new Date();
-  return dayjs(normalized).startOf('month').toDate();
+  const normalized = clampWorkHistoryFilterDate(value || new Date());
+  const month = dayjs(normalized).startOf('month');
+  return month.isBefore(WORK_HISTORY_OPERATION_START_MONTH, 'month')
+    ? WORK_HISTORY_OPERATION_START_MONTH.toDate()
+    : month.toDate();
 };
 
 const getMonthEnd = (value) => {
-  const normalized = normalizeFilterDate(value) || new Date();
-  return dayjs(normalized).endOf('month').toDate();
+  return dayjs(getMonthStart(value)).endOf('month').toDate();
 };
 
 const addMonths = (value, amount) => {
-  const normalized = normalizeFilterDate(value) || new Date();
-  return dayjs(normalized).add(amount, 'month').startOf('month').toDate();
+  const normalized = clampWorkHistoryFilterDate(value || new Date());
+  const month = dayjs(normalized).add(amount, 'month').startOf('month');
+  return month.isBefore(WORK_HISTORY_OPERATION_START_MONTH, 'month')
+    ? WORK_HISTORY_OPERATION_START_MONTH.toDate()
+    : month.toDate();
 };
 const buildWorkListFilterStorageKey = (orgId) =>
   `${WORK_LIST_FILTER_STORAGE_PREFIX}:${String(orgId || 'global').trim() || 'global'}`;
@@ -207,8 +253,10 @@ const readStoredWorkListFilters = (orgId) => {
     );
     const selectedFactoryId = String(parsed?.selectedFactoryId || '').trim();
     if (!storedStart && !storedEnd && !selectedFactoryId) return null;
-    const dateFilterStart = storedStart || storedEnd || getMonthStart(new Date());
-    const endCandidate = storedEnd || storedStart || dateFilterStart;
+    const dateFilterStart = clampWorkHistoryFilterDate(
+      storedStart || storedEnd || getMonthStart(new Date())
+    );
+    const endCandidate = clampWorkHistoryFilterDate(storedEnd || storedStart || dateFilterStart);
     const dateFilterEnd = endCandidate >= dateFilterStart ? endCandidate : dateFilterStart;
     return {
       selectedFactoryId,
@@ -283,6 +331,13 @@ const WorkList = () => {
 
   const dateFrom = useMemo(() => buildFilterDateKey(dateFilterStart), [dateFilterStart]);
   const dateTo = useMemo(() => buildFilterDateKey(dateFilterEnd), [dateFilterEnd]);
+  const dateFilterAtOperationStartMonth = useMemo(
+    () =>
+      !dayjs(dateFilterStart)
+        .startOf('month')
+        .isAfter(WORK_HISTORY_OPERATION_START_MONTH, 'month'),
+    [dateFilterStart]
+  );
   useEffect(() => {
     persistWorkListFilters(activeOrgId, {
       selectedFactoryId: activeFactoryId ? String(activeFactoryId) : selectedFactoryId,
@@ -480,6 +535,14 @@ const WorkList = () => {
       setImporting(true);
       try {
         const rows = await parseWorkLogImportWorkbook(file);
+        const rowsBeforeStart = findImportRowsBeforeOperationStart(rows);
+        if (rowsBeforeStart.length > 0) {
+          showNotification(
+            buildImportStartDateErrorMessage(rowsBeforeStart, languageCode),
+            'error'
+          );
+          return;
+        }
         const result = await importWorkLogRows({
           orgId: activeOrgId,
           fileName: file.name,
@@ -514,7 +577,7 @@ const WorkList = () => {
 
   const handleDateFilterStartChange = useCallback((value) => {
     if (!value?.isValid?.()) return;
-    const nextStart = normalizeFilterDate(value.toDate());
+    const nextStart = clampWorkHistoryFilterDate(value.toDate());
     if (!nextStart) return;
     setDateFilterStart(nextStart);
     setDateFilterEnd((prev) => {
@@ -525,7 +588,7 @@ const WorkList = () => {
 
   const handleDateFilterEndChange = useCallback((value) => {
     if (!value?.isValid?.()) return;
-    const nextEnd = normalizeFilterDate(value.toDate());
+    const nextEnd = clampWorkHistoryFilterDate(value.toDate());
     if (!nextEnd) return;
     setDateFilterEnd(nextEnd);
     setDateFilterStart((prev) => {
@@ -623,6 +686,7 @@ const WorkList = () => {
                   value={dateFilterStart}
                   onChange={handleDateFilterStartChange}
                   slotProps={FILTER_DATE_PICKER_SLOT_PROPS}
+                  minDate={WORK_HISTORY_OPERATION_START_DAY}
                 />
                 <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>
                   ~
@@ -631,6 +695,7 @@ const WorkList = () => {
                   value={dateFilterEnd}
                   onChange={handleDateFilterEndChange}
                   slotProps={FILTER_DATE_PICKER_SLOT_PROPS}
+                  minDate={WORK_HISTORY_OPERATION_START_DAY}
                 />
                 <Stack sx={{ gap: '2px' }}>
                   <Button
@@ -645,6 +710,7 @@ const WorkList = () => {
                     size="small"
                     variant="outlined"
                     onClick={() => shiftDateFilterMonth(-1)}
+                    disabled={dateFilterAtOperationStartMonth}
                     sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
                   >
                     M-

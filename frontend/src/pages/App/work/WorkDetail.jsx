@@ -110,6 +110,21 @@ const LABELS = {
 };
 
 const toText = (value) => String(value || '').trim();
+const WORK_LOG_OPERATION_START_DATE_KEY = '2026-04-01';
+const WORK_LOG_OPERATION_START_DAY = dayjs(WORK_LOG_OPERATION_START_DATE_KEY).startOf('day');
+const WORK_LOG_OPERATION_START_ERROR_MESSAGE =
+  '\uC791\uC5C5\uAE30\uB85D\uC740 2026-04-01 \uC774\uD6C4\uB9CC \uC785\uB825\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.';
+const clampWorkLogDay = (value) => {
+  const parsed = dayjs(value);
+  const normalized = parsed.isValid() ? parsed.startOf('day') : dayjs().startOf('day');
+  return normalized.isBefore(WORK_LOG_OPERATION_START_DAY, 'day')
+    ? WORK_LOG_OPERATION_START_DAY
+    : normalized;
+};
+const isWorkLogDateBeforeOperationStart = (value) => {
+  const text = toText(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) && text < WORK_LOG_OPERATION_START_DATE_KEY;
+};
 const toKey = (value) => toText(value).toLowerCase();
 const equalsText = (left, right) => toKey(left) === toKey(right);
 const normalizeProcessCode = (value) =>
@@ -373,13 +388,13 @@ const buildLineSelection = (log) => {
 };
 const buildInitialWorkDate = (log) => {
   const nextDate = dayjs(log?.coverageEndDate || log?.workDate || log?.createdAt || undefined);
-  return nextDate.isValid() ? nextDate : dayjs();
+  return clampWorkLogDay(nextDate.isValid() ? nextDate : dayjs());
 };
 const buildInitialCoverageStartDate = (log) => {
   const nextDate = dayjs(
     log?.coverageStartDate || log?.coverageEndDate || log?.workDate || log?.createdAt || undefined
   );
-  return nextDate.isValid() ? nextDate : dayjs();
+  return clampWorkLogDay(nextDate.isValid() ? nextDate : dayjs());
 };
 const stripAutoNoteFromText = (value) => {
   const text = String(value || '');
@@ -1192,11 +1207,11 @@ const WorkDetail = ({
 
   const selectedFactoryId = toPositiveIdOrNull(selectedFactory?.id);
   const selectedLineId = toPositiveIdOrNull(selectedLine?.id);
-  const workDateKey = useMemo(() => (workDate?.isValid?.() ? workDate.format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD')), [workDate]);
+  const workDateKey = useMemo(() => clampWorkLogDay(workDate).format('YYYY-MM-DD'), [workDate]);
   const coverageStartDateKey = useMemo(
     () =>
       coverageStartDate?.isValid?.()
-        ? coverageStartDate.format('YYYY-MM-DD')
+        ? clampWorkLogDay(coverageStartDate).format('YYYY-MM-DD')
         : workDateKey,
     [coverageStartDate, workDateKey]
   );
@@ -1509,8 +1524,8 @@ const WorkDetail = ({
             : null;
           setCoverageStartDate(
             suggestedStartDate?.isValid?.()
-              ? suggestedStartDate
-              : (workDate?.isValid?.() ? workDate : dayjs())
+              ? clampWorkLogDay(suggestedStartDate)
+              : clampWorkLogDay(workDate?.isValid?.() ? workDate : dayjs())
           );
         }
         if (context?.line) {
@@ -2380,7 +2395,7 @@ const WorkDetail = ({
       isFirstLineWorkLog: false,
     });
     if (!initialLog?.id) {
-      setCoverageStartDate(workDate?.isValid?.() ? workDate : dayjs());
+      setCoverageStartDate(clampWorkLogDay(workDate?.isValid?.() ? workDate : dayjs()));
     }
     setRows([]);
     setFormError('');
@@ -2396,7 +2411,7 @@ const WorkDetail = ({
       isFirstLineWorkLog: false,
     });
     if (!initialLog?.id) {
-      setCoverageStartDate(workDate?.isValid?.() ? workDate : dayjs());
+      setCoverageStartDate(clampWorkLogDay(workDate?.isValid?.() ? workDate : dayjs()));
     }
     setRows([]);
     setFormError('');
@@ -2405,7 +2420,7 @@ const WorkDetail = ({
     initialRowsHydratedRef.current = Boolean(initialLog?.id);
   }, [initialLog?.id, workDate]);
   const handleWorkDateChange = useCallback((nextDate) => {
-    const resolvedNextDate = nextDate || dayjs();
+    const resolvedNextDate = clampWorkLogDay(nextDate || dayjs());
     setWorkDate(resolvedNextDate);
     setCoverageSuggestion({
       previousCoverageEndDate: null,
@@ -2414,7 +2429,8 @@ const WorkDetail = ({
     });
     setCoverageStartDate((current) => {
       if (!current?.isValid?.()) return resolvedNextDate;
-      return current.isAfter(resolvedNextDate, 'day') ? resolvedNextDate : current;
+      const normalizedCurrent = clampWorkLogDay(current);
+      return normalizedCurrent.isAfter(resolvedNextDate, 'day') ? resolvedNextDate : normalizedCurrent;
     });
     setRows([]);
     setFormError('');
@@ -2423,7 +2439,7 @@ const WorkDetail = ({
     initialRowsHydratedRef.current = Boolean(initialLog?.id);
   }, [initialLog?.id]);
   const handleCoverageStartDateChange = useCallback((nextDate) => {
-    setCoverageStartDate(nextDate || workDate || dayjs());
+    setCoverageStartDate(clampWorkLogDay(nextDate || workDate || dayjs()));
     setFormError('');
   }, [workDate]);
   const handleWorkerChange = useCallback((rowId, nextWorker) => {
@@ -2557,6 +2573,13 @@ const WorkDetail = ({
     }
     if (coverageStartDateKey > workDateKey) {
       setFormError(LABELS.coverageValidation);
+      return;
+    }
+    if (
+      isWorkLogDateBeforeOperationStart(coverageStartDateKey) ||
+      isWorkLogDateBeforeOperationStart(workDateKey)
+    ) {
+      setFormError(WORK_LOG_OPERATION_START_ERROR_MESSAGE);
       return;
     }
     if (!selectedFactoryId) {
@@ -2989,10 +3012,10 @@ const WorkDetail = ({
           <Stack spacing={1.5}>
             <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', xl: 'minmax(180px, 0.9fr) minmax(180px, 0.9fr) minmax(220px, 1fr) minmax(220px, 1fr) minmax(180px, 0.8fr)' }, alignItems: 'start' }}>
               <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode} localeText={buildDatePickerLocaleText(languageCode)}>
-                <DatePicker label={LABELS.coverageStartDate} value={coverageStartDate} onChange={handleCoverageStartDateChange} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
+                <DatePicker label={LABELS.coverageStartDate} value={coverageStartDate} onChange={handleCoverageStartDateChange} minDate={WORK_LOG_OPERATION_START_DAY} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
               </LocalizationProvider>
               <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode} localeText={buildDatePickerLocaleText(languageCode)}>
-                <DatePicker label={LABELS.workDate} value={workDate} onChange={handleWorkDateChange} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
+                <DatePicker label={LABELS.workDate} value={workDate} onChange={handleWorkDateChange} minDate={WORK_LOG_OPERATION_START_DAY} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
               </LocalizationProvider>
               <SearchableSelect label={!loading && factories.length === 1 ? LABELS.autoFactory : LABELS.factory} options={factories} value={selectedFactory} onChange={(_event, value) => handleFactoryChange(value)} disabled={factories.length === 1} autoHighlight openOnFocus selectOnFocus clearOnBlur={false} handleHomeEndKeys getOptionLabel={(option) => option?.name || ''} isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')} textFieldProps={{ size: 'small' }} />
               <SearchableSelect label={LABELS.line} options={lines} value={selectedLine} onChange={(_event, value) => handleLineChange(value)} disabled={!selectedFactoryId || lines.length === 0} autoHighlight openOnFocus selectOnFocus clearOnBlur={false} handleHomeEndKeys getOptionLabel={(option) => option?.name || ''} isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')} textFieldProps={{ size: 'small' }} />

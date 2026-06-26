@@ -6274,6 +6274,24 @@ const summarizeWorkLogPayloadForDebug = (payload: any = {}) => {
     recordsPreview: summarizeWorkLogRecordsForDebug(records),
   };
 };
+const WORK_LOG_OPERATION_START_DATE_KEY = "2026-04-01";
+const validateWorkLogOperationStartDateRange = ({
+  coverageStartDate,
+  coverageEndDate,
+}: {
+  coverageStartDate?: string | null;
+  coverageEndDate?: string | null;
+}) => {
+  const startDate = normalizeDateKey(coverageStartDate);
+  const endDate = normalizeDateKey(coverageEndDate);
+  if (
+    (startDate && startDate < WORK_LOG_OPERATION_START_DATE_KEY) ||
+    (endDate && endDate < WORK_LOG_OPERATION_START_DATE_KEY)
+  ) {
+    return `Work logs before ${WORK_LOG_OPERATION_START_DATE_KEY} are not accepted.`;
+  }
+  return null;
+};
 const createWorkLogMutationTrace = ({
   req,
   mode,
@@ -21195,6 +21213,19 @@ app.post("/work-logs/import", async (req, res) => {
         })
       );
     }
+    const operationStartError = validateWorkLogOperationStartDateRange({
+      coverageStartDate: row.coverageStartDate,
+      coverageEndDate: row.coverageEndDate,
+    });
+    if (operationStartError) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row,
+          code: "DATE_BEFORE_OPERATION_START",
+          message: operationStartError,
+        })
+      );
+    }
     if (!row.employeeNo) {
       issues.push(
         buildWorkLogImportIssue({
@@ -21942,6 +21973,13 @@ app.post("/work-logs", async (req, res) => {
   });
   const normalized = normalizeWorkLogPayload(req.body ?? {});
   updateWorkLogMutationTrace(trace, "normalized", summarizeWorkLogPayloadForDebug(normalized));
+  const operationStartError = validateWorkLogOperationStartDateRange(normalized);
+  if (operationStartError) {
+    return res.status(400).json({
+      ok: false,
+      error: operationStartError,
+    });
+  }
   if (normalized.invalidWorkerRecordIndex >= 0) {
     return res.status(400).json({
       ok: false,
@@ -22258,6 +22296,13 @@ app.put("/work-logs/:id", async (req, res) => {
   }
   const normalized = normalizeWorkLogPayload(req.body ?? {}, existing);
   updateWorkLogMutationTrace(trace, "normalized", summarizeWorkLogPayloadForDebug(normalized));
+  const operationStartError = validateWorkLogOperationStartDateRange(normalized);
+  if (operationStartError) {
+    return res.status(400).json({
+      ok: false,
+      error: operationStartError,
+    });
+  }
   if (normalized.invalidWorkerRecordIndex >= 0) {
     return res.status(400).json({
       ok: false,
