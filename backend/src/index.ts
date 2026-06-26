@@ -17971,6 +17971,8 @@ const buildLineMonthCapacityRows = async ({
     );
     return resolveOptionalString(parsedIdentity?.styleId, null);
   };
+  const resolveAssignmentPlanStyleCandidatesForActualOutput = (plan: any) =>
+    resolveAssignmentPlanStyleQueryValues(plan);
   const resolveWorkRecordStyleIdForActualOutput = (row: any) => {
     const recordStyleId = resolveOptionalString(row?.styleId, null);
     if (recordStyleId) {
@@ -18005,6 +18007,28 @@ const buildLineMonthCapacityRows = async ({
             uid: true,
             orgId: true,
             styleId: true,
+          },
+          orderBy: [{ orgId: "asc" }, { uid: "asc" }],
+        })
+      : [];
+  const actualOutputStyleLookupRows =
+    includeActualOutputDebug && actualOutputStyleIds.length > 0
+      ? await prisma.style.findMany({
+          where: {
+            orgId: { in: accessibleStyleOwnerOrgIds },
+            OR: [
+              { styleId: { in: actualOutputStyleIds } },
+              { styleCode: { in: actualOutputStyleIds } },
+              { name: { in: actualOutputStyleIds } },
+            ],
+          },
+          select: {
+            uid: true,
+            orgId: true,
+            styleId: true,
+            styleCode: true,
+            name: true,
+            customer: true,
           },
           orderBy: [{ orgId: "asc" }, { uid: "asc" }],
         })
@@ -18057,6 +18081,74 @@ const buildLineMonthCapacityRows = async ({
   const actualOutputStyleProcessLookup = buildStyleProcessLookupForStCalculation(
     actualOutputStyleProcessRows
   );
+  const actualOutputMatchedStyleIdSet = new Set(
+    actualOutputStyleRows
+      .map((row) => resolveOptionalString(row?.styleId, null))
+      .filter((value): value is string => Boolean(value))
+  );
+  const actualOutputMissingStyleIds = actualOutputStyleIds.filter(
+    (styleId) => !actualOutputMatchedStyleIdSet.has(styleId)
+  );
+  const actualOutputAlternateStyleMatches = includeActualOutputDebug
+    ? actualOutputMissingStyleIds.slice(0, 50).map((styleId) => {
+        const matches = actualOutputStyleLookupRows.filter(
+          (row) =>
+            resolveOptionalString(row?.styleCode, null) === styleId ||
+            resolveOptionalString(row?.name, null) === styleId
+        );
+        return {
+          styleId,
+          matches: matches.slice(0, 10).map((row) => ({
+            uid: toPositiveIntOrNull(row?.uid),
+            orgId: toPositiveIntOrNull(row?.orgId),
+            styleId: resolveOptionalString(row?.styleId, null),
+            styleCode: resolveOptionalString(row?.styleCode, null),
+            name: resolveOptionalString(row?.name, null),
+            customer: resolveOptionalString(row?.customer, null),
+          })),
+        };
+      })
+    : [];
+  const actualOutputRequestDiagnostics = includeActualOutputDebug
+    ? {
+        orgId,
+        accessibleStyleOwnerOrgIds,
+        requestedLineIds,
+        requestedMonthKeys,
+        planCount: plans.length,
+        workRowCount: workRows.length,
+        workRowsWithAssignmentPlanId: workRows.filter((row) =>
+          Boolean(toPositiveIntOrNull(row?.assignmentPlanId))
+        ).length,
+        workRowsWithoutAssignmentPlanId: workRows.filter(
+          (row) => !toPositiveIntOrNull(row?.assignmentPlanId)
+        ).length,
+        styleInputCount: actualOutputStyleIds.length,
+        styleInputs: actualOutputStyleIds.slice(0, 100),
+        styleIdMatchCount: actualOutputStyleRows.length,
+        styleIdMatches: actualOutputStyleRows.slice(0, 100).map((row) => ({
+          uid: toPositiveIntOrNull(row?.uid),
+          orgId: toPositiveIntOrNull(row?.orgId),
+          styleId: resolveOptionalString(row?.styleId, null),
+        })),
+        missingStyleIdCount: actualOutputMissingStyleIds.length,
+        missingStyleIds: actualOutputMissingStyleIds.slice(0, 100),
+        alternateStyleMatches: actualOutputAlternateStyleMatches,
+        styleUidCount: actualOutputStyleUids.length,
+        styleUids: actualOutputStyleUids.slice(0, 100),
+        styleProcessRowCount: actualOutputStyleProcessRows.length,
+        styleProcessRows: actualOutputStyleProcessRows.slice(0, 100).map((row) => ({
+          id: toPositiveIntOrNull(row?.id),
+          styleUid: toPositiveIntOrNull(row?.styleUid),
+          processCode: resolveOptionalString(row?.processCode, null),
+          processName: resolveOptionalString(row?.processName, null),
+          stBuckets: ensureArray(row?.standards)
+            .map((item) => resolveStBucketQuantity((item as any)?.bucketQuantity))
+            .filter((value): value is number => value !== null)
+            .sort((left, right) => left - right),
+        })),
+      }
+    : null;
   const actualOutputStyleProcessDebugByStyleUid = new Map<number, any[]>();
   actualOutputStyleProcessRows.forEach((row) => {
     const styleUid = toPositiveIntOrNull(row?.styleUid);
@@ -18113,6 +18205,7 @@ const buildLineMonthCapacityRows = async ({
         recordStyleUid,
         styleUidFromStyleId,
         planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
+        planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
         processCode: resolveOptionalString(record?.processCode, null),
         availableProcesses: [],
       };
@@ -18130,6 +18223,7 @@ const buildLineMonthCapacityRows = async ({
         recordStyleUid,
         styleUidFromStyleId,
         planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
+        planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
         processCode,
         availableProcesses: resolveActualOutputStyleProcessDebugList(styleUid),
       };
@@ -18149,6 +18243,7 @@ const buildLineMonthCapacityRows = async ({
         recordStyleUid,
         styleUidFromStyleId,
         planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
+        planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
         processCode,
         availableProcesses: resolveActualOutputStyleProcessDebugList(styleUid),
       };
@@ -18172,6 +18267,7 @@ const buildLineMonthCapacityRows = async ({
         recordStyleUid,
         styleUidFromStyleId,
         planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
+        planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
         processCode,
         matchedProcessId,
         matchedProcessCode,
@@ -18190,6 +18286,7 @@ const buildLineMonthCapacityRows = async ({
       recordStyleUid,
       styleUidFromStyleId,
       planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
+      planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
       processCode,
       matchedProcessId,
       matchedProcessCode,
@@ -18748,6 +18845,7 @@ const buildLineMonthCapacityRows = async ({
               planId,
               assignmentExternalId: resolveOptionalString(plan?.externalId, null),
               assignmentCardId: resolveOptionalString(plan?.cardId, null),
+              assignmentOriginOrderId: resolveOptionalString(plan?.originOrderId, null),
               assignmentOrderNo: resolveOptionalString(plan?.orderNo, null),
               assignmentLabel: resolveOptionalString(plan?.label, null),
               assignmentQuantity: plannedQuantity,
@@ -18758,6 +18856,7 @@ const buildLineMonthCapacityRows = async ({
               styleIdSource: processSt.styleIdSource,
               recordStyleUid: processSt.recordStyleUid,
               planStyleId: processSt.planStyleId,
+              planStyleCandidates: processSt.planStyleCandidates ?? [],
               styleUidFromStyleId: processSt.styleUidFromStyleId,
               resolvedStyleUid: processSt.styleUid,
               styleUidSource: processSt.styleUidSource,
@@ -18809,6 +18908,8 @@ const buildLineMonthCapacityRows = async ({
               workLogId: toPositiveIntOrNull(record?.workLogId),
               planId,
               assignmentExternalId: resolveOptionalString(plan?.externalId, null),
+              assignmentCardId: resolveOptionalString(plan?.cardId, null),
+              assignmentOriginOrderId: resolveOptionalString(plan?.originOrderId, null),
               assignmentQuantity: plannedQuantity,
               recordOrderNo: resolveOptionalString(record?.orderNo, null),
               workerName: resolveOptionalString(record?.workerName, null),
@@ -18816,6 +18917,7 @@ const buildLineMonthCapacityRows = async ({
               styleIdSource: processSt.styleIdSource,
               recordStyleUid: processSt.recordStyleUid,
               planStyleId: processSt.planStyleId,
+              planStyleCandidates: processSt.planStyleCandidates ?? [],
               resolvedStyleUid: processSt.styleUid,
               styleUidSource: processSt.styleUidSource,
               processCode: processSt.processCode,
@@ -19114,7 +19216,13 @@ const buildLineMonthCapacityRows = async ({
       };
     });
 
-  return { monthKeys: requestedMonthKeys, rows };
+  return {
+    monthKeys: requestedMonthKeys,
+    rows,
+    ...(includeActualOutputDebug && actualOutputRequestDiagnostics
+      ? { actualOutputDiagnostics: actualOutputRequestDiagnostics }
+      : {}),
+  };
 };
 
 const buildAssignmentPlanProgressRows = async (

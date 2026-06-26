@@ -4628,15 +4628,24 @@ const AssignBoard = () => {
     let cancelled = false;
     const abortController = new AbortController();
     setLineMonthCapacityLoading(true);
-    requestJSON(
+    const lineMonthCapacityPath =
       '/line-month-capacity' +
-        buildQueryString({
-          orgId: normalizedOrgId,
-          monthFrom: planningMonthKeys[0],
-          monthTo: planningMonthKeys[planningMonthKeys.length - 1],
-          lineIds: lineIdsKey,
-          debug: 'actual-output',
-        }),
+      buildQueryString({
+        orgId: normalizedOrgId,
+        monthFrom: planningMonthKeys[0],
+        monthTo: planningMonthKeys[planningMonthKeys.length - 1],
+        lineIds: lineIdsKey,
+        debug: 'actual-output',
+      });
+    console.log('[line-month-capacity] request', {
+      path: lineMonthCapacityPath,
+      orgId: normalizedOrgId,
+      monthFrom: planningMonthKeys[0],
+      monthTo: planningMonthKeys[planningMonthKeys.length - 1],
+      lineIds: lineIdsKey,
+    });
+    requestJSON(
+      lineMonthCapacityPath,
       {
         forceRefresh: true,
         skipGlobalLoading: true,
@@ -4647,6 +4656,52 @@ const AssignBoard = () => {
         if (cancelled) return;
         const rows = Array.isArray(payload?.rows) ? payload.rows : [];
         setLineMonthCapacityRows(rows);
+        console.log('[line-month-capacity] response', {
+          rowCount: rows.length,
+          monthKeys: payload?.monthKeys || [],
+          hasDiagnostics: Boolean(payload?.actualOutputDiagnostics),
+        });
+        if (payload?.actualOutputDiagnostics) {
+          const diagnostics = payload.actualOutputDiagnostics;
+          console.groupCollapsed('[line-month-capacity] actual output request diagnostics');
+          console.log('summary', {
+            orgId: diagnostics.orgId,
+            accessibleStyleOwnerOrgIds: diagnostics.accessibleStyleOwnerOrgIds,
+            requestedLineIds: diagnostics.requestedLineIds,
+            requestedMonthKeys: diagnostics.requestedMonthKeys,
+            planCount: diagnostics.planCount,
+            workRowCount: diagnostics.workRowCount,
+            workRowsWithAssignmentPlanId: diagnostics.workRowsWithAssignmentPlanId,
+            workRowsWithoutAssignmentPlanId: diagnostics.workRowsWithoutAssignmentPlanId,
+            styleInputCount: diagnostics.styleInputCount,
+            styleIdMatchCount: diagnostics.styleIdMatchCount,
+            missingStyleIdCount: diagnostics.missingStyleIdCount,
+            styleUidCount: diagnostics.styleUidCount,
+            styleProcessRowCount: diagnostics.styleProcessRowCount,
+          });
+          console.table(
+            (diagnostics.styleIdMatches || []).map((row) => ({
+              uid: row.uid,
+              orgId: row.orgId,
+              styleId: row.styleId,
+            }))
+          );
+          console.table(
+            (diagnostics.missingStyleIds || []).map((styleId) => ({ styleId }))
+          );
+          console.log('style inputs', diagnostics.styleInputs || []);
+          console.log('alternate style matches', diagnostics.alternateStyleMatches || []);
+          console.table(
+            (diagnostics.styleProcessRows || []).map((row) => ({
+              id: row.id,
+              styleUid: row.styleUid,
+              processCode: row.processCode,
+              processName: row.processName,
+              stBuckets: JSON.stringify(row.stBuckets || []),
+            }))
+          );
+          console.groupEnd();
+        }
         const debugRows = rows
           .map((row) => row?.actualOutputDebug)
           .filter(Boolean);
@@ -4694,12 +4749,15 @@ const AssignBoard = () => {
                 workLogId: sample.workLogId,
                 planId: sample.planId,
                 assignmentExternalId: sample.assignmentExternalId,
+                assignmentCardId: sample.assignmentCardId,
+                assignmentOriginOrderId: sample.assignmentOriginOrderId,
                 assignmentQuantity: sample.assignmentQuantity,
                 recordOrderNo: sample.recordOrderNo,
                 workerName: sample.workerName,
                 styleId: sample.styleId,
                 styleIdSource: sample.styleIdSource,
                 planStyleId: sample.planStyleId,
+                planStyleCandidates: JSON.stringify(sample.planStyleCandidates || []),
                 recordStyleUid: sample.recordStyleUid,
                 styleUidFromStyleId: sample.styleUidFromStyleId,
                 resolvedStyleUid: sample.resolvedStyleUid,
@@ -4734,9 +4792,12 @@ const AssignBoard = () => {
                 monthKey: sample.monthKey,
                 workRecordId: sample.workRecordId,
                 planId: sample.planId,
+                assignmentCardId: sample.assignmentCardId,
+                assignmentOriginOrderId: sample.assignmentOriginOrderId,
                 styleId: sample.styleId,
                 styleIdSource: sample.styleIdSource,
                 planStyleId: sample.planStyleId,
+                planStyleCandidates: JSON.stringify(sample.planStyleCandidates || []),
                 resolvedStyleUid: sample.resolvedStyleUid,
                 processCode: sample.processCode,
                 matchedProcessId: sample.matchedProcessId,
