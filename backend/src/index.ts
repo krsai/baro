@@ -12190,7 +12190,7 @@ const resolveStyleProcessBucketStSeconds = (row: any, bucketQuantity: number) =>
   );
   const bucketStSeconds = toOptionalProcessSeconds((standard as any)?.bucketStSeconds);
   if (bucketStSeconds !== null) return bucketStSeconds;
-  return toOptionalProcessSeconds(row?.ptSeconds);
+  return null;
 };
 
 const calculateAssignmentStTotalSecondsFromStyleRows = ({
@@ -18458,7 +18458,6 @@ const buildLineMonthCapacityRows = async ({
     } = progressMeta;
     const bucketQuantity = resolveStBucketQuantity(plannedQuantity);
     const monthlyDirectActualOutputStSecondsByMonthKey = new Map<string, number>();
-    let canUseDirectActualOutputStSeconds = true;
     let hasDirectActualOutputStSeconds = false;
     const planActualOutputFailureReasons = new Map<string, number>();
     const addPlanActualOutputFailureReason = (reason: string | null | undefined) => {
@@ -18514,7 +18513,6 @@ const buildLineMonthCapacityRows = async ({
         bucketQuantity,
       });
       if (processSt.stSeconds === null) {
-        canUseDirectActualOutputStSeconds = false;
         addPlanActualOutputFailureReason(processSt.reason);
         if (includeActualOutputDebug) {
           monthAllocations.forEach(({ monthKey, allocatedTotal }) => {
@@ -18563,7 +18561,7 @@ const buildLineMonthCapacityRows = async ({
       }
     });
 
-    if (hasDirectActualOutputStSeconds && canUseDirectActualOutputStSeconds) {
+    if (hasDirectActualOutputStSeconds) {
       monthlyDirectActualOutputStSecondsByMonthKey.forEach((seconds, monthKey) => {
         const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
         if (!target) return;
