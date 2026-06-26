@@ -98,8 +98,18 @@ const MONTH_PICKER_SLOT_PROPS = {
   },
 };
 
+const PRODUCTION_ANALYSIS_MIN_MONTH = dayjs('2026-04-01').startOf('month');
+
 const resolveText = (bundle, languageCode, fallback = '') =>
   bundle?.[languageCode] || bundle?.ko || fallback;
+
+const normalizeProductionAnalysisMonth = (value) => {
+  const parsed = dayjs(value);
+  const month = parsed.isValid() ? parsed.startOf('month') : dayjs().startOf('month');
+  return month.isBefore(PRODUCTION_ANALYSIS_MIN_MONTH, 'month')
+    ? PRODUCTION_ANALYSIS_MIN_MONTH
+    : month;
+};
 
 const getDatePickerLocaleText = (languageCode) => {
   if (languageCode === 'ko') {
@@ -159,7 +169,9 @@ const WorkMonthlyBoard = () => {
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
 
-  const [selectedMonth, setSelectedMonth] = useState(() => dayjs().startOf('month'));
+  const [selectedMonth, setSelectedMonth] = useState(() =>
+    normalizeProductionAnalysisMonth(dayjs())
+  );
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
   const [rows, setRows] = useState([]);
@@ -171,6 +183,10 @@ const WorkMonthlyBoard = () => {
   const { holidayKeys } = useHolidayCalendar(activeOrgId);
 
   const monthRange = useMemo(() => buildMonthRange(selectedMonth), [selectedMonth]);
+  const canMoveToPreviousMonth = selectedMonth.isAfter(
+    PRODUCTION_ANALYSIS_MIN_MONTH,
+    'month'
+  );
   const selectedFactoryIdNumber = useMemo(
     () => normalizePositiveId(selectedFactoryId),
     [selectedFactoryId]
@@ -437,8 +453,9 @@ const WorkMonthlyBoard = () => {
               <DatePicker
                 views={['year', 'month']}
                 value={selectedMonth}
-                onChange={(value) => setSelectedMonth((value || dayjs()).startOf('month'))}
+                onChange={(value) => setSelectedMonth(normalizeProductionAnalysisMonth(value))}
                 format="YYYY-MM"
+                minDate={PRODUCTION_ANALYSIS_MIN_MONTH}
                 slotProps={MONTH_PICKER_SLOT_PROPS}
               />
             </LocalizationProvider>,
@@ -454,7 +471,12 @@ const WorkMonthlyBoard = () => {
               <Button
                 size="small"
                 variant="outlined"
-                onClick={() => setSelectedMonth((prev) => prev.subtract(1, 'month'))}
+                disabled={!canMoveToPreviousMonth}
+                onClick={() =>
+                  setSelectedMonth((prev) =>
+                    normalizeProductionAnalysisMonth(prev.subtract(1, 'month'))
+                  )
+                }
                 sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
               >
                 M-

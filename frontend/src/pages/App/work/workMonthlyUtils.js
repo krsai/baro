@@ -372,8 +372,8 @@ export const aggregateMonthlyLineRows = (workerRows = []) => {
   (Array.isArray(workerRows) ? workerRows : []).forEach((workerRow) => {
     const workMonth = normalizeMonthKey(workerRow?.workMonth);
     const factoryName = normalizeLabel(workerRow?.factoryName) || '-';
-    const lineName = normalizeLabel(workerRow?.lineName) || '-';
-    if (!workMonth) return;
+    const lineName = normalizeLabel(workerRow?.lineName);
+    if (!workMonth || !lineName || lineName === '-') return;
 
     const key = [workMonth, factoryName, lineName].join('::');
     if (!rowByKey.has(key)) {
