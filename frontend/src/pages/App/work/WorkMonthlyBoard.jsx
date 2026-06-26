@@ -497,13 +497,6 @@ const WorkMonthlyBoard = () => {
                           languageCode
                         )}`}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {`${resolveText(TEXT.totalCt, languageCode, '총 CT')} ${formatDayRatio(
-                          row.workCtDayCount,
-                          row.expectedCtDayCount,
-                          languageCode
-                        )}`}
-                      </Typography>
                     </Box>
                   </Stack>
                 </Paper>
@@ -523,19 +516,22 @@ const WorkMonthlyBoard = () => {
                 <TableCell align="right">
                   {resolveText(TEXT.items, languageCode, '기록건수')}
                 </TableCell>
-                <TableCell>{resolveText(TEXT.averageCt, languageCode, '평균 CT')}</TableCell>
-                <TableCell>{resolveText(TEXT.attendance, languageCode, '근태')}</TableCell>
-                <TableCell>{resolveText(TEXT.totalCt, languageCode, '총 CT')}</TableCell>
+                <TableCell align="right">
+                  {resolveText(TEXT.averageCt, languageCode, '평균 CT')}
+                </TableCell>
+                <TableCell align="right">
+                  {resolveText(TEXT.attendance, languageCode, '근태')}
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loadingRows || loadingFactories ? (
                 <TableStatusRow
-                  colSpan={8}
+                  colSpan={7}
                   message={resolveText(TEXT.loading, languageCode, '월간 기록을 불러오는 중입니다.')}
                 />
               ) : filteredRows.length === 0 ? (
-                <TableStatusRow colSpan={8} message={emptyStateMessage} sx={emptyStateSx} />
+                <TableStatusRow colSpan={7} message={emptyStateMessage} sx={emptyStateSx} />
               ) : (
                 filteredRows.map((row) => (
                   <TableRow
@@ -552,20 +548,13 @@ const WorkMonthlyBoard = () => {
                     <TableCell>{row.factoryName || '-'}</TableCell>
                     <TableCell>{row.lineName || '-'}</TableCell>
                     <TableCell align="right">{row.recordCount || 0}</TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                       {row.averageCtPerDaySeconds == null
                         ? '-'
                         : formatAverageCtHours(row.averageCtPerDaySeconds, languageCode)}
                     </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                       {formatAttendanceDays(row, languageCode)}
-                    </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      {formatDayRatio(
-                        row.workCtDayCount,
-                        row.expectedCtDayCount,
-                        languageCode
-                      )}
                     </TableCell>
                   </TableRow>
                 ))
