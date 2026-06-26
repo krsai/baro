@@ -12187,6 +12187,11 @@ const buildStyleProcessLookupForStCalculation = (styleProcessRows: any[]) => {
   };
 
   const resolveRowForWorkRecord = (styleUid: number, record: any) => {
+    const processId = toPositiveIntOrNull(record?.processId);
+    if (processId !== null) {
+      const byId = byStyleUidAndId.get(`${styleUid}::${processId}`);
+      if (byId) return byId;
+    }
     const codeKey = normalizeProcessCodeKey(record?.processCode);
     if (codeKey) {
       return byStyleUidAndCode.get(`${styleUid}::${codeKey}`) ?? null;
@@ -17862,12 +17867,14 @@ const parseLineIdsForLineMonthCapacity = (input: any): number[] =>
   );
 
 const buildLineMonthCapacityRows = async ({
+  organization,
   orgId,
   monthFrom,
   monthTo,
   lineIds = [],
   includeActualOutputDebug = false,
 }: {
+  organization: any;
   orgId: number;
   monthFrom: string;
   monthTo: string;
@@ -17952,10 +17959,38 @@ const buildLineMonthCapacityRows = async ({
     map.set(planId, bucket);
     return map;
   }, new Map<number, any[]>());
+  const planById = plans.reduce((map, plan) => {
+    const planId = toPositiveIntOrNull(plan?.id);
+    if (planId !== null) map.set(planId, plan);
+    return map;
+  }, new Map<number, any>());
+  const accessibleStyleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
+  const resolveAssignmentPlanStyleIdForActualOutput = (plan: any) => {
+    const parsedIdentity = parseAssignmentCardIdentity(
+      resolveOptionalString(plan?.cardId ?? plan?.originOrderId, null)
+    );
+    return resolveOptionalString(parsedIdentity?.styleId, null);
+  };
+  const resolveWorkRecordStyleIdForActualOutput = (row: any) => {
+    const recordStyleId = resolveOptionalString(row?.styleId, null);
+    if (recordStyleId) {
+      return {
+        styleId: recordStyleId,
+        styleIdSource: "WorkRecord.styleId",
+      };
+    }
+    const planId = toPositiveIntOrNull(row?.assignmentPlanId);
+    const plan = planId !== null ? planById.get(planId) ?? null : null;
+    const planStyleId = resolveAssignmentPlanStyleIdForActualOutput(plan);
+    return {
+      styleId: planStyleId,
+      styleIdSource: planStyleId ? "AssignmentPlan.cardId" : null,
+    };
+  };
   const actualOutputStyleIds = Array.from(
     new Set(
       workRows
-        .map((row) => resolveOptionalString(row?.styleId, null))
+        .map((row) => resolveWorkRecordStyleIdForActualOutput(row).styleId)
         .filter((value): value is string => Boolean(value))
     )
   );
@@ -17963,13 +17998,15 @@ const buildLineMonthCapacityRows = async ({
     actualOutputStyleIds.length > 0
       ? await prisma.style.findMany({
           where: {
-            orgId,
+            orgId: { in: accessibleStyleOwnerOrgIds },
             styleId: { in: actualOutputStyleIds },
           },
           select: {
             uid: true,
+            orgId: true,
             styleId: true,
           },
+          orderBy: [{ orgId: "asc" }, { uid: "asc" }],
         })
       : [];
   const actualOutputStyleUidByStyleId = new Map(
@@ -17984,22 +18021,22 @@ const buildLineMonthCapacityRows = async ({
   const actualOutputStyleUids = Array.from(
     new Set(
       workRows
-        .map(
-          (row) =>
+        .map((row) => {
+          const styleMeta = resolveWorkRecordStyleIdForActualOutput(row);
+          return (
+            actualOutputStyleUidByStyleId.get(styleMeta.styleId || "") ??
             toPositiveIntOrNull(row?.styleUid) ??
-            actualOutputStyleUidByStyleId.get(
-              resolveOptionalString(row?.styleId, null) || ""
-            ) ??
             null
-        )
+          );
+        })
         .filter((value): value is number => value !== null)
     )
   );
   const actualOutputStyleProcessRows =
     actualOutputStyleUids.length > 0
-      ? await prisma.styleProcess.findMany({
+        ? await prisma.styleProcess.findMany({
           where: {
-            orgId,
+            orgId: { in: accessibleStyleOwnerOrgIds },
             styleUid: { in: actualOutputStyleUids },
           },
           select: {
@@ -18043,47 +18080,56 @@ const buildLineMonthCapacityRows = async ({
   };
   const resolveWorkRecordStSecondsForLineMonthCapacity = ({
     record,
+    plan,
     bucketQuantity,
   }: {
     record: any;
+    plan: any;
     bucketQuantity: number;
   }) => {
-    const styleId = resolveOptionalString(record?.styleId, null);
+    const styleMeta = resolveWorkRecordStyleIdForActualOutput(record);
+    const styleId = styleMeta.styleId;
+    const styleIdSource = styleMeta.styleIdSource;
     const recordStyleUid = toPositiveIntOrNull(record?.styleUid);
     const styleUidFromStyleId = actualOutputStyleUidByStyleId.get(styleId || "") ?? null;
     const styleUid =
-      recordStyleUid ??
       styleUidFromStyleId ??
+      recordStyleUid ??
       null;
     const styleUidSource =
-      recordStyleUid !== null
-        ? "WorkRecord.styleUid"
-        : styleUidFromStyleId !== null
+      styleUidFromStyleId !== null
           ? "Style.styleId lookup"
-          : null;
+          : recordStyleUid !== null
+            ? "WorkRecord.styleUid"
+            : null;
     if (styleUid === null) {
       return {
         stSeconds: null,
         reason: styleId ? "STYLE_ID_NOT_FOUND" : "STYLE_REF_MISSING",
         styleId,
+        styleIdSource,
         styleUid: null,
         styleUidSource,
         recordStyleUid,
         styleUidFromStyleId,
+        planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
         processCode: resolveOptionalString(record?.processCode, null),
         availableProcesses: [],
       };
     }
+    const processId = toPositiveIntOrNull(record?.processId);
     const processCode = resolveOptionalString(record?.processCode, null);
-    if (!normalizeProcessCodeKey(processCode)) {
+    if (processId === null && !normalizeProcessCodeKey(processCode)) {
       return {
         stSeconds: null,
         reason: "PROCESS_CODE_MISSING",
         styleId,
+        styleIdSource,
         styleUid,
         styleUidSource,
         recordStyleUid,
         styleUidFromStyleId,
+        planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
         processCode,
         availableProcesses: resolveActualOutputStyleProcessDebugList(styleUid),
       };
@@ -18097,10 +18143,12 @@ const buildLineMonthCapacityRows = async ({
         stSeconds: null,
         reason: "PROCESS_NOT_MATCHED",
         styleId,
+        styleIdSource,
         styleUid,
         styleUidSource,
         recordStyleUid,
         styleUidFromStyleId,
+        planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
         processCode,
         availableProcesses: resolveActualOutputStyleProcessDebugList(styleUid),
       };
@@ -18118,10 +18166,12 @@ const buildLineMonthCapacityRows = async ({
         stSeconds: null,
         reason: "ST_BUCKET_NOT_FOUND",
         styleId,
+        styleIdSource,
         styleUid,
         styleUidSource,
         recordStyleUid,
         styleUidFromStyleId,
+        planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
         processCode,
         matchedProcessId,
         matchedProcessCode,
@@ -18134,10 +18184,12 @@ const buildLineMonthCapacityRows = async ({
       stSeconds,
       reason: "OK",
       styleId,
+      styleIdSource,
       styleUid,
       styleUidSource,
       recordStyleUid,
       styleUidFromStyleId,
+      planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
       processCode,
       matchedProcessId,
       matchedProcessCode,
@@ -18334,6 +18386,10 @@ const buildLineMonthCapacityRows = async ({
       workingDayCount: number;
       headcountDayUnits: number;
       lineMonthlyCapacitySeconds: number;
+      lineMonthlyAttendanceSeconds: number;
+      lineMonthlyDefaultCapacitySeconds: number;
+      attendanceWorkerDayCount: number;
+      defaultCapacityWorkerDayCount: number;
       lineMonthlyActualOutputStSeconds: number;
       actualOutputRecordedThroughDateKey: string | null;
       orphanWorkRecordCount: number;
@@ -18370,6 +18426,10 @@ const buildLineMonthCapacityRows = async ({
         workingDayCount,
         headcountDayUnits: 0,
         lineMonthlyCapacitySeconds: 0,
+        lineMonthlyAttendanceSeconds: 0,
+        lineMonthlyDefaultCapacitySeconds: 0,
+        attendanceWorkerDayCount: 0,
+        defaultCapacityWorkerDayCount: 0,
         lineMonthlyActualOutputStSeconds: 0,
         actualOutputRecordedThroughDateKey: null,
         orphanWorkRecordCount: 0,
@@ -18483,17 +18543,83 @@ const buildLineMonthCapacityRows = async ({
     });
   });
 
+  const activeEmployeeIdsForCapacity = Array.from(
+    new Set(
+      Array.from(employeeIdsByLineDateKey.values()).flatMap((employeeIds) =>
+        Array.from(employeeIds.values())
+      )
+    )
+  );
+  const attendanceRowsForCapacity =
+    activeEmployeeIdsForCapacity.length > 0
+      ? await prisma.attendanceEntry.findMany({
+          where: {
+            orgId,
+            workerId: { in: activeEmployeeIdsForCapacity },
+            workDate: {
+              gte: internalStartDateKey,
+              lte: internalEndDateKey,
+            },
+          },
+          select: {
+            workerId: true,
+            workDate: true,
+            workedSeconds: true,
+          },
+        })
+      : [];
+  const attendanceSecondsByWorkerDateKey = new Map<string, number>();
+  attendanceRowsForCapacity.forEach((row) => {
+    const workerId = toPositiveIntOrNull(row?.workerId);
+    const workDate = normalizeDateKey(row?.workDate);
+    const workedSeconds = toOptionalNonNegativeInt(row?.workedSeconds, null);
+    if (!workerId || !workDate || workedSeconds === null) return;
+    const key = `${workerId}:${workDate}`;
+    attendanceSecondsByWorkerDateKey.set(
+      key,
+      (attendanceSecondsByWorkerDateKey.get(key) || 0) + workedSeconds
+    );
+  });
+  const resolveLineWorkerCapacitySecondsForDate = ({
+    employeeId,
+    dateKey,
+  }: {
+    employeeId: number;
+    dateKey: string;
+  }) => {
+    const key = `${employeeId}:${dateKey}`;
+    if (attendanceSecondsByWorkerDateKey.has(key)) {
+      return {
+        seconds: Math.max(0, Math.round(Number(attendanceSecondsByWorkerDateKey.get(key)) || 0)),
+        source: "attendance" as const,
+      };
+    }
+    return {
+      seconds: DEFAULT_LINE_DAILY_WORK_SECONDS,
+      source: "default_8h" as const,
+    };
+  };
+
   employeeIdsByLineDateKey.forEach((employeeIds, compositeKey) => {
     const [lineIdText, dateKey] = compositeKey.split(":");
     const lineId = toPositiveIntOrNull(lineIdText);
     const monthKey = normalizeMonthKey(dateKey?.slice(0, 7));
-    if (!lineId || !monthKey) return;
+    if (!lineId || !dateKey || !monthKey) return;
     const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
     if (!target) return;
     const dayHeadcount = employeeIds.size;
     target.headcountDayUnits += dayHeadcount;
-    target.lineMonthlyCapacitySeconds +=
-      dayHeadcount * DEFAULT_LINE_DAILY_WORK_SECONDS;
+    Array.from(employeeIds.values()).forEach((employeeId) => {
+      const capacity = resolveLineWorkerCapacitySecondsForDate({ employeeId, dateKey });
+      target.lineMonthlyCapacitySeconds += capacity.seconds;
+      if (capacity.source === "attendance") {
+        target.lineMonthlyAttendanceSeconds += capacity.seconds;
+        target.attendanceWorkerDayCount += 1;
+      } else {
+        target.lineMonthlyDefaultCapacitySeconds += capacity.seconds;
+        target.defaultCapacityWorkerDayCount += 1;
+      }
+    });
   });
 
   const actualOutputDebugByLineMonthKey = new Map<string, any>();
@@ -18601,6 +18727,7 @@ const buildLineMonthCapacityRows = async ({
       });
       const processSt = resolveWorkRecordStSecondsForLineMonthCapacity({
         record,
+        plan,
         bucketQuantity,
       });
       if (processSt.stSeconds === null) {
@@ -18628,7 +18755,9 @@ const buildLineMonthCapacityRows = async ({
               workerId: toPositiveIntOrNull(record?.workerId),
               workerName: resolveOptionalString(record?.workerName, null),
               styleId: processSt.styleId,
+              styleIdSource: processSt.styleIdSource,
               recordStyleUid: processSt.recordStyleUid,
+              planStyleId: processSt.planStyleId,
               styleUidFromStyleId: processSt.styleUidFromStyleId,
               resolvedStyleUid: processSt.styleUid,
               styleUidSource: processSt.styleUidSource,
@@ -18684,7 +18813,9 @@ const buildLineMonthCapacityRows = async ({
               recordOrderNo: resolveOptionalString(record?.orderNo, null),
               workerName: resolveOptionalString(record?.workerName, null),
               styleId: processSt.styleId,
+              styleIdSource: processSt.styleIdSource,
               recordStyleUid: processSt.recordStyleUid,
+              planStyleId: processSt.planStyleId,
               resolvedStyleUid: processSt.styleUid,
               styleUidSource: processSt.styleUidSource,
               processCode: processSt.processCode,
@@ -18797,9 +18928,16 @@ const buildLineMonthCapacityRows = async ({
     listDateKeysInclusiveForLineMonthCapacity(startDateKey, endDateKey).reduce(
       (sum, dateKey) => {
         const employeeIds = employeeIdsByLineDateKey.get(`${lineId}:${dateKey}`);
+        if (!employeeIds || employeeIds.size === 0) return sum;
         return (
           sum +
-          Math.max(0, (employeeIds?.size || 0) * DEFAULT_LINE_DAILY_WORK_SECONDS)
+          Array.from(employeeIds.values()).reduce((daySum, employeeId) => {
+            const capacity = resolveLineWorkerCapacitySecondsForDate({
+              employeeId,
+              dateKey,
+            });
+            return daySum + capacity.seconds;
+          }, 0)
         );
       },
       0
@@ -18934,6 +19072,10 @@ const buildLineMonthCapacityRows = async ({
                 sampleMatches: [],
               }),
             lineMonthlyCapacitySeconds: row.lineMonthlyCapacitySeconds,
+            lineMonthlyAttendanceSeconds: row.lineMonthlyAttendanceSeconds,
+            lineMonthlyDefaultCapacitySeconds: row.lineMonthlyDefaultCapacitySeconds,
+            attendanceWorkerDayCount: row.attendanceWorkerDayCount,
+            defaultCapacityWorkerDayCount: row.defaultCapacityWorkerDayCount,
             lineMonthlyActualOutputStSeconds: row.lineMonthlyActualOutputStSeconds,
             actualOutputPercent,
           }
@@ -18944,6 +19086,10 @@ const buildLineMonthCapacityRows = async ({
         workingDayCount: row.workingDayCount,
         averageHeadcount,
         lineMonthlyCapacitySeconds: row.lineMonthlyCapacitySeconds,
+        lineMonthlyAttendanceSeconds: row.lineMonthlyAttendanceSeconds,
+        lineMonthlyDefaultCapacitySeconds: row.lineMonthlyDefaultCapacitySeconds,
+        attendanceWorkerDayCount: row.attendanceWorkerDayCount,
+        defaultCapacityWorkerDayCount: row.defaultCapacityWorkerDayCount,
         lineMonthlyActualOutputStSeconds: row.lineMonthlyActualOutputStSeconds,
         actualOutputPercent,
         ...(includeActualOutputDebug ? { actualOutputDebug } : {}),
@@ -20222,6 +20368,7 @@ app.get("/line-month-capacity", async (req, res) => {
     const includeActualOutputDebug =
       debugMode === "actual-output" || debugMode === "1" || debugMode === "true";
     const payload = await buildLineMonthCapacityRows({
+      organization,
       orgId: organization.id,
       monthFrom,
       monthTo,

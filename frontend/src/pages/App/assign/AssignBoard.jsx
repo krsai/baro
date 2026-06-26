@@ -4658,6 +4658,12 @@ const AssignBoard = () => {
               monthKey: debug.monthKey,
               actualPercent: debug.actualOutputPercent,
               capacityHours: Math.round((Number(debug.lineMonthlyCapacitySeconds) || 0) / 360) / 10,
+              attendanceHours:
+                Math.round((Number(debug.lineMonthlyAttendanceSeconds) || 0) / 360) / 10,
+              defaultCapacityHours:
+                Math.round((Number(debug.lineMonthlyDefaultCapacitySeconds) || 0) / 360) / 10,
+              attendanceWorkerDays: debug.attendanceWorkerDayCount,
+              defaultCapacityWorkerDays: debug.defaultCapacityWorkerDayCount,
               actualHours:
                 Math.round((Number(debug.lineMonthlyActualOutputStSeconds) || 0) / 360) / 10,
               directCandidateRecords: debug.directCandidateRecordCount,
@@ -4692,6 +4698,8 @@ const AssignBoard = () => {
                 recordOrderNo: sample.recordOrderNo,
                 workerName: sample.workerName,
                 styleId: sample.styleId,
+                styleIdSource: sample.styleIdSource,
+                planStyleId: sample.planStyleId,
                 recordStyleUid: sample.recordStyleUid,
                 styleUidFromStyleId: sample.styleUidFromStyleId,
                 resolvedStyleUid: sample.resolvedStyleUid,
@@ -4727,6 +4735,8 @@ const AssignBoard = () => {
                 workRecordId: sample.workRecordId,
                 planId: sample.planId,
                 styleId: sample.styleId,
+                styleIdSource: sample.styleIdSource,
+                planStyleId: sample.planStyleId,
                 resolvedStyleUid: sample.resolvedStyleUid,
                 processCode: sample.processCode,
                 matchedProcessId: sample.matchedProcessId,
