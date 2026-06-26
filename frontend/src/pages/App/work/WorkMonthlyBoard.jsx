@@ -70,7 +70,7 @@ const TEXT = {
   attendance: { ko: '근태', en: 'Attendance', vi: 'Cham cong' },
   averageAttendance: { ko: '평균 근태', en: 'Avg Attendance', vi: 'Cham cong TB' },
   items: { ko: '기록건수', en: 'Entries', vi: 'So dong' },
-  averageCt: { ko: '평균 CT', en: 'Avg CT', vi: 'CT trung binh' },
+  averageCt: { ko: '일평균 CT', en: 'Daily Avg CT', vi: 'CT TB/ngay' },
   loading: {
     ko: '월간 기록을 불러오는 중입니다.',
     en: 'Loading monthly records...',
@@ -535,7 +535,7 @@ const WorkMonthlyBoard = () => {
                         </Typography>
                       )}
                       <Typography variant="caption" color="text.secondary">
-                        {`${resolveText(TEXT.averageCt, languageCode, '평균 CT')} ${
+                        {`${resolveText(TEXT.averageCt, languageCode, '일평균 CT')} ${
                           row.averageCtPerDaySeconds == null
                             ? '-'
                             : formatAverageCtHours(row.averageCtPerDaySeconds, languageCode)
@@ -564,7 +564,7 @@ const WorkMonthlyBoard = () => {
                     {resolveText(TEXT.averageAttendance, languageCode, '평균 근태')}
                   </TableCell>
                   <TableCell align="right">
-                    {resolveText(TEXT.averageCt, languageCode, '평균 CT')}
+                    {resolveText(TEXT.averageCt, languageCode, '일평균 CT')}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -577,7 +577,7 @@ const WorkMonthlyBoard = () => {
                     {resolveText(TEXT.items, languageCode, '기록건수')}
                   </TableCell>
                   <TableCell align="right">
-                    {resolveText(TEXT.averageCt, languageCode, '평균 CT')}
+                    {resolveText(TEXT.averageCt, languageCode, '일평균 CT')}
                   </TableCell>
                   <TableCell align="right">
                     {resolveText(TEXT.attendance, languageCode, '근태')}

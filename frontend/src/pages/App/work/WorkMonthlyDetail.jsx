@@ -37,7 +37,7 @@ const TEXT = {
   line: { ko: '라인', en: 'Line', vi: 'Chuyen' },
   attendance: { ko: '근태', en: 'Attendance', vi: 'Cham cong' },
   items: { ko: '기록건수', en: 'Entries', vi: 'So dong' },
-  averageCt: { ko: '평균 CT', en: 'Avg CT', vi: 'CT trung binh' },
+  averageCt: { ko: '일평균 CT', en: 'Daily Avg CT', vi: 'CT TB/ngay' },
   totalCt: { ko: '총 CT', en: 'Total CT', vi: 'Tong CT' },
   attendanceWorked: { ko: '근무', en: 'Worked', vi: 'Di lam' },
   attendanceMissing: { ko: '미입력', en: 'Missing', vi: 'Chua nhap' },
@@ -289,7 +289,7 @@ const WorkMonthlyDetail = () => {
           value: String(summary.recordCount || 0),
         },
         {
-          label: resolveText(TEXT.averageCt, languageCode, '평균 CT'),
+          label: resolveText(TEXT.averageCt, languageCode, '일평균 CT'),
           value:
             summary.averageCtPerDaySeconds == null
               ? '-'
@@ -365,7 +365,7 @@ const WorkMonthlyDetail = () => {
                     <TableCell align="right">
                       {resolveText(TEXT.items, languageCode, '기록건수')}
                     </TableCell>
-                    <TableCell>{resolveText(TEXT.averageCt, languageCode, '평균 CT')}</TableCell>
+                    <TableCell>{resolveText(TEXT.averageCt, languageCode, '일평균 CT')}</TableCell>
                     <TableCell>{resolveText(TEXT.attendance, languageCode, '근태')}</TableCell>
                     <TableCell>{resolveText(TEXT.totalCt, languageCode, '총 CT')}</TableCell>
                   </TableRow>
