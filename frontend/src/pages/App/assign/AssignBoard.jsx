@@ -4612,10 +4612,8 @@ const AssignBoard = () => {
         .join(','),
     [lines]
   );
-  const shouldDebugLineMonthCapacity =
-    import.meta.env.DEV &&
-    typeof window !== 'undefined' &&
-    window.localStorage?.getItem('baro.debugActualOutput') === '1';
+  // Forced on while investigating monthly actual-output aggregation.
+  const shouldDebugLineMonthCapacity = true;
   useEffect(() => {
     const normalizedOrgId = Number(activeOrgId);
     if (
@@ -4683,6 +4681,10 @@ const AssignBoard = () => {
             workRowsWithoutAssignmentPlanId: diagnostics.workRowsWithoutAssignmentPlanId,
             workRowsWithStyleUid: diagnostics.workRowsWithStyleUid,
             workRowsWithoutStyleUid: diagnostics.workRowsWithoutStyleUid,
+            workRowsWithProcessCode: diagnostics.workRowsWithProcessCode,
+            workRowsWithoutProcessCode: diagnostics.workRowsWithoutProcessCode,
+            workRowsWithCoverageRange: diagnostics.workRowsWithCoverageRange,
+            workRowsWithoutCoverageRange: diagnostics.workRowsWithoutCoverageRange,
             styleInputCount: diagnostics.styleInputCount,
             styleIdMatchCount: diagnostics.styleIdMatchCount,
             missingStyleIdCount: diagnostics.missingStyleIdCount,
@@ -4722,11 +4724,20 @@ const AssignBoard = () => {
               lineId: debug.lineId,
               monthKey: debug.monthKey,
               actualPercent: debug.actualOutputPercent,
+              numeratorStSeconds: debug.actualOutputNumeratorStSeconds,
+              denominatorCapacitySeconds: debug.actualOutputDenominatorCapacitySeconds,
+              numeratorHours:
+                Math.round((Number(debug.actualOutputNumeratorStSeconds) || 0) / 360) / 10,
+              denominatorHours:
+                Math.round((Number(debug.actualOutputDenominatorCapacitySeconds) || 0) / 360) / 10,
               capacityHours: Math.round((Number(debug.lineMonthlyCapacitySeconds) || 0) / 360) / 10,
               attendanceHours:
                 Math.round((Number(debug.lineMonthlyAttendanceSeconds) || 0) / 360) / 10,
               defaultCapacityHours:
                 Math.round((Number(debug.lineMonthlyDefaultCapacitySeconds) || 0) / 360) / 10,
+              workingDays: debug.workingDayCount,
+              headcountDayUnits: debug.headcountDayUnits,
+              averageHeadcount: debug.averageHeadcount,
               attendanceWorkerDays: debug.attendanceWorkerDayCount,
               defaultCapacityWorkerDays: debug.defaultCapacityWorkerDayCount,
               actualHours:
@@ -4734,14 +4745,56 @@ const AssignBoard = () => {
               directCandidateRecords: debug.directCandidateRecordCount,
               directMatchedRecords: debug.directMatchedRecordCount,
               directFailedRecords: debug.directFailedRecordCount,
+              invalidCoverageRecords: debug.invalidCoverageRecordCount,
+              emptyMonthAllocations: debug.emptyMonthAllocationRecordCount,
               directCandidateHours:
                 Math.round((Number(debug.directCandidateStSeconds) || 0) / 360) / 10,
               directUsedHours: Math.round((Number(debug.directUsedStSeconds) || 0) / 360) / 10,
               directUsedPlans: debug.directUsedPlanCount,
               skippedPlans: debug.skippedPlanCount,
+              numeratorZeroReason: debug.actualOutputNumeratorZeroReason,
+              denominatorZeroReason: debug.actualOutputDenominatorZeroReason,
+              recordedThrough: debug.actualOutputRecordedThroughDateKey,
+              orphanWorkRecordCount: debug.orphanWorkRecordCount,
               skipReasons: JSON.stringify(debug.skipReasonCounts || {}),
             }))
           );
+          debugRows.forEach((debug) => {
+            console.groupCollapsed(
+              `[line-month-capacity] formula ${debug.lineId}/${debug.monthKey}`
+            );
+            console.log('formula', debug.actualOutputFormula);
+            console.log('numerator', {
+              lineMonthlyActualOutputStSeconds: debug.actualOutputNumeratorStSeconds,
+              hours:
+                Math.round((Number(debug.actualOutputNumeratorStSeconds) || 0) / 360) / 10,
+              zeroReason: debug.actualOutputNumeratorZeroReason,
+            });
+            console.log('denominator', {
+              lineMonthlyCapacitySeconds: debug.actualOutputDenominatorCapacitySeconds,
+              hours:
+                Math.round((Number(debug.actualOutputDenominatorCapacitySeconds) || 0) / 360) / 10,
+              source: debug.actualOutputDenominatorSource,
+              zeroReason: debug.actualOutputDenominatorZeroReason,
+              workingDayCount: debug.workingDayCount,
+              headcountDayUnits: debug.headcountDayUnits,
+              averageHeadcount: debug.averageHeadcount,
+              defaultCapacityWorkerDayCount: debug.defaultCapacityWorkerDayCount,
+            });
+            console.log('matching summary', {
+              directCandidateRecordCount: debug.directCandidateRecordCount,
+              directMatchedRecordCount: debug.directMatchedRecordCount,
+              directFailedRecordCount: debug.directFailedRecordCount,
+              invalidCoverageRecordCount: debug.invalidCoverageRecordCount,
+              emptyMonthAllocationRecordCount: debug.emptyMonthAllocationRecordCount,
+              directUsedPlanCount: debug.directUsedPlanCount,
+              directUsedStSeconds: debug.directUsedStSeconds,
+              skipReasonCounts: debug.skipReasonCounts || {},
+              orphanWorkRecordCount: debug.orphanWorkRecordCount,
+              actualOutputRecordedThroughDateKey: debug.actualOutputRecordedThroughDateKey,
+            });
+            console.groupEnd();
+          });
           const failureSamples = debugRows.flatMap((debug) =>
             (Array.isArray(debug.sampleFailures) ? debug.sampleFailures : []).map((sample) => ({
               lineId: debug.lineId,

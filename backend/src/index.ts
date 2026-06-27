@@ -18194,7 +18194,7 @@ const buildLineMonthCapacityRows = async ({
       : [];
   const actualOutputStyleUids = Array.from(
     new Set(
-      workRows
+      canonicalWorkRows
         .map((row) => toPositiveIntOrNull(row?.styleUid))
         .filter((value): value is number => value !== null)
     )
@@ -18272,6 +18272,22 @@ const buildLineMonthCapacityRows = async ({
         workRowsWithoutStyleUid: canonicalWorkRows.filter(
           (row) => toPositiveIntOrNull(row?.styleUid) === null
         ).length,
+        workRowsWithProcessCode: canonicalWorkRows.filter((row) =>
+          Boolean(normalizeProcessCodeKey(row?.processCode ?? row?.process?.code))
+        ).length,
+        workRowsWithoutProcessCode: canonicalWorkRows.filter(
+          (row) => !normalizeProcessCodeKey(row?.processCode ?? row?.process?.code)
+        ).length,
+        workRowsWithCoverageRange: canonicalWorkRows.filter((row) => {
+          const startDate = resolveWorkRecordEffectiveCoverageStartDate(row);
+          const endDate = resolveWorkRecordEffectiveCoverageEndDate(row);
+          return Boolean(startDate && endDate && startDate <= endDate);
+        }).length,
+        workRowsWithoutCoverageRange: canonicalWorkRows.filter((row) => {
+          const startDate = resolveWorkRecordEffectiveCoverageStartDate(row);
+          const endDate = resolveWorkRecordEffectiveCoverageEndDate(row);
+          return !(startDate && endDate && startDate <= endDate);
+        }).length,
         styleInputCount: actualOutputStyleIds.length,
         styleInputs: actualOutputStyleIds.slice(0, 100),
         styleIdMatchCount: actualOutputStyleRows.length,
@@ -18869,6 +18885,8 @@ const buildLineMonthCapacityRows = async ({
         directCandidateRecordCount: 0,
         directMatchedRecordCount: 0,
         directFailedRecordCount: 0,
+        invalidCoverageRecordCount: 0,
+        emptyMonthAllocationRecordCount: 0,
         directCandidateQuantity: 0,
         directCandidateStSeconds: 0,
         directUsedPlanCount: 0,
@@ -18931,6 +18949,49 @@ const buildLineMonthCapacityRows = async ({
       const coverageEndDate =
         resolveWorkRecordEffectiveCoverageEndDate(record);
       if (!coverageStartDate || !coverageEndDate || coverageStartDate > coverageEndDate) {
+        if (includeActualOutputDebug) {
+          const fallbackMonthKey = normalizeMonthKey(
+            (
+              coverageEndDate ||
+              coverageStartDate ||
+              resolveStrictWorkLogCoverageEndDate(record?.workLog) ||
+              resolveStrictWorkLogCoverageStartDate(record?.workLog) ||
+              normalizeDateKey(record?.workLog?.displayDate) ||
+              requestedMonthKeys[0] ||
+              ""
+            ).slice(0, 7)
+          );
+          const debugMonthKeys =
+            fallbackMonthKey && internalMonthKeys.includes(fallbackMonthKey)
+              ? [fallbackMonthKey]
+              : requestedMonthKeys.length > 0
+                ? requestedMonthKeys
+                : internalMonthKeys;
+          debugMonthKeys.forEach((monthKey) => {
+            const debug = ensureActualOutputDebug(lineId, monthKey);
+            debug.invalidCoverageRecordCount += 1;
+            incrementActualOutputDebugReason(debug, "COVERAGE_DATE_MISSING_OR_INVALID");
+            pushActualOutputDebugFailure(debug, {
+              workRecordId: toPositiveIntOrNull(record?.id),
+              workLogId: toPositiveIntOrNull(record?.workLogId),
+              planId,
+              assignmentExternalId: resolveOptionalString(plan?.externalId, null),
+              assignmentCardId: resolveOptionalString(plan?.cardId, null),
+              assignmentOriginOrderId: resolveOptionalString(plan?.originOrderId, null),
+              assignmentQuantity: plannedQuantity,
+              recordOrderNo: resolveOptionalString(record?.orderNo, null),
+              workerId: toPositiveIntOrNull(record?.workerId),
+              workerName: resolveOptionalString(record?.workerName, null),
+              quantity,
+              coverageStartDate,
+              coverageEndDate,
+              workLogCoverageStartDate: resolveStrictWorkLogCoverageStartDate(record?.workLog),
+              workLogCoverageEndDate: resolveStrictWorkLogCoverageEndDate(record?.workLog),
+              workLogDisplayDate: normalizeDateKey(record?.workLog?.displayDate),
+              reason: "COVERAGE_DATE_MISSING_OR_INVALID",
+            });
+          });
+        }
         return;
       }
       const monthWeightRows = buildLineMonthCapacityWeightRows({
@@ -18958,7 +19019,32 @@ const buildLineMonthCapacityRows = async ({
           total: quantity,
           weightedRows: monthWeightRows,
         });
-      if (monthAllocations.length === 0) return;
+      if (monthAllocations.length === 0) {
+        if (includeActualOutputDebug) {
+          monthWeightRows.forEach(({ monthKey }) => {
+            const debug = ensureActualOutputDebug(lineId, monthKey);
+            debug.emptyMonthAllocationRecordCount += 1;
+            incrementActualOutputDebugReason(debug, "MONTH_ALLOCATION_EMPTY");
+            pushActualOutputDebugFailure(debug, {
+              workRecordId: toPositiveIntOrNull(record?.id),
+              workLogId: toPositiveIntOrNull(record?.workLogId),
+              planId,
+              assignmentExternalId: resolveOptionalString(plan?.externalId, null),
+              assignmentCardId: resolveOptionalString(plan?.cardId, null),
+              assignmentOriginOrderId: resolveOptionalString(plan?.originOrderId, null),
+              assignmentQuantity: plannedQuantity,
+              recordOrderNo: resolveOptionalString(record?.orderNo, null),
+              workerId: toPositiveIntOrNull(record?.workerId),
+              workerName: resolveOptionalString(record?.workerName, null),
+              quantity,
+              coverageStartDate,
+              coverageEndDate,
+              reason: "MONTH_ALLOCATION_EMPTY",
+            });
+          });
+        }
+        return;
+      }
       monthAllocations.forEach(({ monthKey }) => {
         planTouchedMonthKeys.add(monthKey);
       });
@@ -19294,6 +19380,8 @@ const buildLineMonthCapacityRows = async ({
                 directCandidateRecordCount: 0,
                 directMatchedRecordCount: 0,
                 directFailedRecordCount: 0,
+                invalidCoverageRecordCount: 0,
+                emptyMonthAllocationRecordCount: 0,
                 directCandidateQuantity: 0,
                 directCandidateStSeconds: 0,
                 directUsedPlanCount: 0,
@@ -19303,6 +19391,29 @@ const buildLineMonthCapacityRows = async ({
                 sampleFailures: [],
                 sampleMatches: [],
               }),
+            actualOutputNumeratorStSeconds: row.lineMonthlyActualOutputStSeconds,
+            actualOutputDenominatorCapacitySeconds: row.lineMonthlyCapacitySeconds,
+            actualOutputFormula:
+              "actualOutputPercent = lineMonthlyActualOutputStSeconds / lineMonthlyCapacitySeconds * 100",
+            actualOutputDenominatorSource:
+              "active line assignments x working days x 8h",
+            actualOutputDenominatorZeroReason:
+              row.lineMonthlyCapacitySeconds > 0
+                ? null
+                : row.workingDayCount <= 0
+                  ? "WORKING_DAY_COUNT_ZERO"
+                  : row.defaultCapacityWorkerDayCount <= 0
+                    ? "NO_ACTIVE_LINE_ASSIGNMENTS"
+                    : "CAPACITY_SECONDS_ZERO",
+            actualOutputNumeratorZeroReason:
+              row.lineMonthlyActualOutputStSeconds > 0
+                ? null
+                : row.orphanWorkRecordCount > 0
+                  ? "MATCHED_PLAN_RECORD_ST_SECONDS_ZERO_OR_ORPHAN_RECORDS_PRESENT"
+                  : "MATCHED_PLAN_RECORD_ST_SECONDS_ZERO",
+            workingDayCount: row.workingDayCount,
+            headcountDayUnits: row.headcountDayUnits,
+            averageHeadcount,
             lineMonthlyCapacitySeconds: row.lineMonthlyCapacitySeconds,
             lineMonthlyAttendanceSeconds: row.lineMonthlyAttendanceSeconds,
             lineMonthlyDefaultCapacitySeconds: row.lineMonthlyDefaultCapacitySeconds,
@@ -19310,6 +19421,8 @@ const buildLineMonthCapacityRows = async ({
             defaultCapacityWorkerDayCount: row.defaultCapacityWorkerDayCount,
             lineMonthlyActualOutputStSeconds: row.lineMonthlyActualOutputStSeconds,
             actualOutputPercent,
+            actualOutputRecordedThroughDateKey: row.actualOutputRecordedThroughDateKey,
+            orphanWorkRecordCount: row.orphanWorkRecordCount,
           }
         : null;
       return {
