@@ -4612,6 +4612,10 @@ const AssignBoard = () => {
         .join(','),
     [lines]
   );
+  const shouldDebugLineMonthCapacity =
+    import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    window.localStorage?.getItem('baro.debugActualOutput') === '1';
   useEffect(() => {
     const normalizedOrgId = Number(activeOrgId);
     if (
@@ -4635,15 +4639,17 @@ const AssignBoard = () => {
         monthFrom: planningMonthKeys[0],
         monthTo: planningMonthKeys[planningMonthKeys.length - 1],
         lineIds: lineIdsKey,
-        debug: 'actual-output',
+        ...(shouldDebugLineMonthCapacity ? { debug: 'actual-output' } : {}),
       });
-    console.log('[line-month-capacity] request', {
-      path: lineMonthCapacityPath,
-      orgId: normalizedOrgId,
-      monthFrom: planningMonthKeys[0],
-      monthTo: planningMonthKeys[planningMonthKeys.length - 1],
-      lineIds: lineIdsKey,
-    });
+    if (shouldDebugLineMonthCapacity) {
+      console.log('[line-month-capacity] request', {
+        path: lineMonthCapacityPath,
+        orgId: normalizedOrgId,
+        monthFrom: planningMonthKeys[0],
+        monthTo: planningMonthKeys[planningMonthKeys.length - 1],
+        lineIds: lineIdsKey,
+      });
+    }
     requestJSON(
       lineMonthCapacityPath,
       {
@@ -4656,12 +4662,14 @@ const AssignBoard = () => {
         if (cancelled) return;
         const rows = Array.isArray(payload?.rows) ? payload.rows : [];
         setLineMonthCapacityRows(rows);
-        console.log('[line-month-capacity] response', {
-          rowCount: rows.length,
-          monthKeys: payload?.monthKeys || [],
-          hasDiagnostics: Boolean(payload?.actualOutputDiagnostics),
-        });
-        if (payload?.actualOutputDiagnostics) {
+        if (shouldDebugLineMonthCapacity) {
+          console.log('[line-month-capacity] response', {
+            rowCount: rows.length,
+            monthKeys: payload?.monthKeys || [],
+            hasDiagnostics: Boolean(payload?.actualOutputDiagnostics),
+          });
+        }
+        if (shouldDebugLineMonthCapacity && payload?.actualOutputDiagnostics) {
           const diagnostics = payload.actualOutputDiagnostics;
           console.groupCollapsed('[line-month-capacity] actual output request diagnostics');
           console.log('summary', {
@@ -4707,7 +4715,7 @@ const AssignBoard = () => {
         const debugRows = rows
           .map((row) => row?.actualOutputDebug)
           .filter(Boolean);
-        if (debugRows.length > 0) {
+        if (shouldDebugLineMonthCapacity && debugRows.length > 0) {
           console.groupCollapsed('[line-month-capacity] actual output debug');
           console.table(
             debugRows.map((debug) => ({
@@ -4836,7 +4844,14 @@ const AssignBoard = () => {
       cancelled = true;
       abortController.abort();
     };
-  }, [activeOrgId, externalReloadTick, lineIdsKey, planningMonthKeys, planningMonthKeysKey]);
+  }, [
+    activeOrgId,
+    externalReloadTick,
+    lineIdsKey,
+    planningMonthKeys,
+    planningMonthKeysKey,
+    shouldDebugLineMonthCapacity,
+  ]);
   const lineMonthCapacityBoardRows = useMemo(
     () =>
       buildLineMonthCapacityBoardRows({

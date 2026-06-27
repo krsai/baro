@@ -12320,14 +12320,28 @@ const buildStyleProcessLookupForStCalculation = (styleProcessRows: any[]) => {
   };
 
   const resolveRowForWorkRecord = (styleUid: number, record: any) => {
-    const processId = toPositiveIntOrNull(record?.processId);
-    if (processId !== null) {
-      const byId = byStyleUidAndId.get(`${styleUid}::${processId}`);
-      if (byId) return byId;
+    const codeCandidates = Array.from(
+      new Set(
+        [record?.processCode, record?.process?.code]
+          .map((value) => normalizeProcessCodeKey(value))
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+    for (const codeKey of codeCandidates) {
+      const byCode = byStyleUidAndCode.get(`${styleUid}::${codeKey}`);
+      if (byCode) return byCode;
     }
-    const codeKey = normalizeProcessCodeKey(record?.processCode);
-    if (codeKey) {
-      return byStyleUidAndCode.get(`${styleUid}::${codeKey}`) ?? null;
+
+    const nameCandidates = Array.from(
+      new Set(
+        [record?.processName, record?.process?.name]
+          .map((value) => normalizeProcessNameKey(value))
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+    for (const nameKey of nameCandidates) {
+      const byName = byStyleUidAndName.get(`${styleUid}::${nameKey}`);
+      if (byName) return byName;
     }
     return null;
   };
@@ -17561,6 +17575,12 @@ const loadAssignmentPlanProgressWorkRows = async ({
         styleName: true,
         processId: true,
         processCode: true,
+        process: {
+          select: {
+            code: true,
+            name: true,
+          },
+        },
         ctSeconds: true,
         quantity: true,
         ...(includeEffectiveCoverage
@@ -18085,7 +18105,12 @@ const buildLineMonthCapacityRows = async ({
     stateAssignmentsByExternalId,
     context: "buildLineMonthCapacityRows",
   });
-  const workRowsByPlanId = workRows.reduce((map, row) => {
+  const canonicalWorkRows = await attachCanonicalFieldsToWorkRecords({
+    orgId,
+    lineId: null,
+    records: workRows,
+  });
+  const workRowsByPlanId = canonicalWorkRows.reduce((map, row) => {
     const planId = toPositiveIntOrNull(row?.assignmentPlanId);
     if (!planId) return map;
     const bucket = map.get(planId) || [];
@@ -18125,7 +18150,7 @@ const buildLineMonthCapacityRows = async ({
   };
   const actualOutputStyleIds = Array.from(
     new Set(
-      workRows
+      canonicalWorkRows
         .map((row) => resolveWorkRecordStyleIdForActualOutput(row).styleId)
         .filter((value): value is string => Boolean(value))
     )
@@ -18234,17 +18259,17 @@ const buildLineMonthCapacityRows = async ({
         requestedLineIds,
         requestedMonthKeys,
         planCount: plans.length,
-        workRowCount: workRows.length,
-        workRowsWithAssignmentPlanId: workRows.filter((row) =>
+        workRowCount: canonicalWorkRows.length,
+        workRowsWithAssignmentPlanId: canonicalWorkRows.filter((row) =>
           Boolean(toPositiveIntOrNull(row?.assignmentPlanId))
         ).length,
-        workRowsWithoutAssignmentPlanId: workRows.filter(
+        workRowsWithoutAssignmentPlanId: canonicalWorkRows.filter(
           (row) => !toPositiveIntOrNull(row?.assignmentPlanId)
         ).length,
-        workRowsWithStyleUid: workRows.filter(
+        workRowsWithStyleUid: canonicalWorkRows.filter(
           (row) => toPositiveIntOrNull(row?.styleUid) !== null
         ).length,
-        workRowsWithoutStyleUid: workRows.filter(
+        workRowsWithoutStyleUid: canonicalWorkRows.filter(
           (row) => toPositiveIntOrNull(row?.styleUid) === null
         ).length,
         styleInputCount: actualOutputStyleIds.length,
@@ -18325,8 +18350,15 @@ const buildLineMonthCapacityRows = async ({
       };
     }
     const processId = toPositiveIntOrNull(record?.processId);
-    const processCode = resolveOptionalString(record?.processCode, null);
-    if (processId === null && !normalizeProcessCodeKey(processCode)) {
+    const processCode = resolveOptionalString(
+      record?.processCode ?? record?.process?.code,
+      null
+    );
+    if (
+      processId === null &&
+      !normalizeProcessCodeKey(processCode) &&
+      !normalizeProcessNameKey(record?.process?.name)
+    ) {
       return {
         stSeconds: null,
         reason: "PROCESS_CODE_MISSING",
@@ -18787,7 +18819,7 @@ const buildLineMonthCapacityRows = async ({
       (attendanceSecondsByWorkerDateKey.get(key) || 0) + workedSeconds
     );
   });
-  const resolveLineWorkerCapacitySecondsForDate = ({
+  const resolveLineWorkerAttendanceSecondsForDate = ({
     employeeId,
     dateKey,
   }: {
@@ -18796,15 +18828,9 @@ const buildLineMonthCapacityRows = async ({
   }) => {
     const key = `${employeeId}:${dateKey}`;
     if (attendanceSecondsByWorkerDateKey.has(key)) {
-      return {
-        seconds: Math.max(0, Math.round(Number(attendanceSecondsByWorkerDateKey.get(key)) || 0)),
-        source: "attendance" as const,
-      };
+      return Math.max(0, Math.round(Number(attendanceSecondsByWorkerDateKey.get(key)) || 0));
     }
-    return {
-      seconds: DEFAULT_LINE_DAILY_WORK_SECONDS,
-      source: "default_8h" as const,
-    };
+    return null;
   };
 
   employeeIdsByLineDateKey.forEach((employeeIds, compositeKey) => {
@@ -18817,14 +18843,18 @@ const buildLineMonthCapacityRows = async ({
     const dayHeadcount = employeeIds.size;
     target.headcountDayUnits += dayHeadcount;
     Array.from(employeeIds.values()).forEach((employeeId) => {
-      const capacity = resolveLineWorkerCapacitySecondsForDate({ employeeId, dateKey });
-      target.lineMonthlyCapacitySeconds += capacity.seconds;
-      if (capacity.source === "attendance") {
-        target.lineMonthlyAttendanceSeconds += capacity.seconds;
+      // Monthly actual production rate uses baseline capacity:
+      // active line workers * working days * 8h, regardless of attendance logs.
+      target.lineMonthlyCapacitySeconds += DEFAULT_LINE_DAILY_WORK_SECONDS;
+      target.lineMonthlyDefaultCapacitySeconds += DEFAULT_LINE_DAILY_WORK_SECONDS;
+      target.defaultCapacityWorkerDayCount += 1;
+      const attendanceSeconds = resolveLineWorkerAttendanceSecondsForDate({
+        employeeId,
+        dateKey,
+      });
+      if (attendanceSeconds !== null) {
+        target.lineMonthlyAttendanceSeconds += attendanceSeconds;
         target.attendanceWorkerDayCount += 1;
-      } else {
-        target.lineMonthlyDefaultCapacitySeconds += capacity.seconds;
-        target.defaultCapacityWorkerDayCount += 1;
       }
     });
   });
@@ -19140,16 +19170,7 @@ const buildLineMonthCapacityRows = async ({
       (sum, dateKey) => {
         const employeeIds = employeeIdsByLineDateKey.get(`${lineId}:${dateKey}`);
         if (!employeeIds || employeeIds.size === 0) return sum;
-        return (
-          sum +
-          Array.from(employeeIds.values()).reduce((daySum, employeeId) => {
-            const capacity = resolveLineWorkerCapacitySecondsForDate({
-              employeeId,
-              dateKey,
-            });
-            return daySum + capacity.seconds;
-          }, 0)
-        );
+        return sum + employeeIds.size * DEFAULT_LINE_DAILY_WORK_SECONDS;
       },
       0
     );
