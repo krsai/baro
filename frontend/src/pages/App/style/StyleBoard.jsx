@@ -265,6 +265,12 @@ const StyleBoard = () => {
                 result.diagnostics.source.excludedIneligibleWorkerRecordCount,
               bucketDraftCount: result.diagnostics.bucketDraftCount,
               trainingDayBucketCount: result.diagnostics.trainingDayBucketCount,
+              reason: result.reason ?? 'done',
+              initialSeedMetricCount: result.diagnostics.initialSeedMetricCount ?? 0,
+              initialSeedMetricCountFromSt:
+                result.diagnostics.initialSeedMetricCountFromSt ?? 0,
+              missingInitialSeedMetricCount:
+                result.diagnostics.missingInitialSeedMetricCount ?? 0,
               fittedMetricCount: result.diagnostics.fittedMetricCount ?? 0,
             },
           ]);
@@ -272,6 +278,12 @@ const StyleBoard = () => {
             console.log(
               '[at-sync] excluded record samples',
               result.diagnostics.source.sampleExcludedRecords
+            );
+          }
+          if (Array.isArray(result.diagnostics.missingInitialSeedSamples)) {
+            console.log(
+              '[at-sync] missing initial ST seed samples',
+              result.diagnostics.missingInitialSeedSamples
             );
           }
         }

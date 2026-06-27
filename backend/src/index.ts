@@ -3561,6 +3561,12 @@ const loadAtTrainingDataFromBuckets = async ({
             timesPerPiece: true,
             ptSeconds: true,
             atParams: true,
+            standards: {
+              select: {
+                bucketQuantity: true,
+                bucketStSeconds: true,
+              },
+            },
           },
         })
       : [];
@@ -3621,6 +3627,114 @@ const loadAtTrainingDataFromBuckets = async ({
     trainingDayBuckets,
     metricTrainingQualityByMetricKey,
     styleProcessRowsById,
+  };
+};
+
+const buildAtTrainingInitialSeedFromSt = ({
+  trainingDayBuckets,
+  styleProcessRowsById,
+}: {
+  trainingDayBuckets: AtTrainingDayBucket[];
+  styleProcessRowsById: Map<number, any>;
+}) => {
+  const styleProcessRowByMetricKey = new Map<string, any>();
+  styleProcessRowsById.forEach((processRow, styleProcessId) => {
+    const normalizedStyleProcessId = toPositiveIntOrNull(styleProcessId);
+    if (normalizedStyleProcessId === null) return;
+    styleProcessRowByMetricKey.set(
+      toAtTrainingStyleProcessMetricKey(normalizedStyleProcessId),
+      processRow
+    );
+  });
+
+  const metricKeysFromTraining = new Set<string>();
+  const weightedSeedStatsByMetricKey = new Map<
+    string,
+    { weightedStSeconds: number; totalQuantity: number; observationCount: number }
+  >();
+  const missingSeedSamples: Array<Record<string, any>> = [];
+  const pushMissingSeedSample = (sample: Record<string, any>) => {
+    if (missingSeedSamples.length >= 30) return;
+    missingSeedSamples.push(sample);
+  };
+
+  ensureArray(trainingDayBuckets).forEach((dayBucket) => {
+    ensureArray(dayBucket?.processRows).forEach((processRow) => {
+      const metricKey = String(processRow?.metricKey || "").trim();
+      const quantity = Number(processRow?.quantity) || 0;
+      if (!metricKey || quantity <= 0) return;
+      metricKeysFromTraining.add(metricKey);
+
+      const styleProcessRow = styleProcessRowByMetricKey.get(metricKey) ?? null;
+      if (!styleProcessRow) {
+        pushMissingSeedSample({
+          reason: "STYLE_PROCESS_ROW_NOT_FOUND",
+          metricKey,
+          dayKey: resolveOptionalString((dayBucket as any)?.dayKey, null),
+          quantity,
+        });
+        return;
+      }
+
+      const bucketQuantity = resolveStBucketQuantity(quantity);
+      if (bucketQuantity === null) {
+        pushMissingSeedSample({
+          reason: "ST_BUCKET_QUANTITY_NOT_RESOLVED",
+          metricKey,
+          styleProcessId: toPositiveIntOrNull(styleProcessRow?.id),
+          dayKey: resolveOptionalString((dayBucket as any)?.dayKey, null),
+          quantity,
+        });
+        return;
+      }
+
+      const bucketStSeconds = resolveStyleProcessBucketStSeconds(styleProcessRow, bucketQuantity);
+      if (bucketStSeconds === null || bucketStSeconds <= 0) {
+        pushMissingSeedSample({
+          reason: "ST_BUCKET_SECONDS_NOT_FOUND",
+          metricKey,
+          styleProcessId: toPositiveIntOrNull(styleProcessRow?.id),
+          dayKey: resolveOptionalString((dayBucket as any)?.dayKey, null),
+          quantity,
+          bucketQuantity,
+          availableBucketQuantities: ensureArray(styleProcessRow?.standards)
+            .map((standard) =>
+              resolveStBucketQuantity((standard as any)?.bucketQuantity ?? DEFAULT_TIME_REF_QUANTITY)
+            )
+            .filter((value): value is number => value !== null),
+        });
+        return;
+      }
+
+      const current = weightedSeedStatsByMetricKey.get(metricKey) || {
+        weightedStSeconds: 0,
+        totalQuantity: 0,
+        observationCount: 0,
+      };
+      current.weightedStSeconds += bucketStSeconds * quantity;
+      current.totalQuantity += quantity;
+      current.observationCount += 1;
+      weightedSeedStatsByMetricKey.set(metricKey, current);
+    });
+  });
+
+  const initialPerPieceByMetricKey = new Map<string, number>();
+  weightedSeedStatsByMetricKey.forEach((stats, metricKey) => {
+    if (stats.totalQuantity <= 0) return;
+    const seedSeconds = roundToScale(stats.weightedStSeconds / stats.totalQuantity, 4);
+    if (!Number.isFinite(seedSeconds) || seedSeconds <= 0) return;
+    initialPerPieceByMetricKey.set(metricKey, seedSeconds);
+  });
+
+  const missingSeedMetricKeys = Array.from(metricKeysFromTraining.values()).filter(
+    (metricKey) => !initialPerPieceByMetricKey.has(metricKey)
+  );
+
+  return {
+    initialPerPieceByMetricKey,
+    seedMetricCountFromSt: initialPerPieceByMetricKey.size,
+    missingSeedMetricCount: missingSeedMetricKeys.length,
+    missingSeedSamples,
   };
 };
 
@@ -3791,10 +3905,16 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
           diagnostics.source.sampleExcludedRecords
         );
       }
+      if (Array.isArray(diagnostics?.missingInitialSeedSamples)) {
+        console.log(
+          "[AT sync] missing initial ST seed samples",
+          diagnostics.missingInitialSeedSamples
+        );
+      }
     }
     return diagnostics
-      ? { updatedStyles, updatedProcesses, diagnostics }
-      : { updatedStyles, updatedProcesses };
+      ? { updatedStyles, updatedProcesses, reason, diagnostics }
+      : { updatedStyles, updatedProcesses, reason };
   };
   console.log(`[AT sync] start orgId=${orgId} month=${trainingMonthKey}`);
   {
@@ -3841,37 +3961,27 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       return finish(0, 0, "no_metric_observations", diagnosticsSummary);
     }
 
-    const initialPerPieceByMetricKey = new Map<string, number>();
-    let seedMetricCountFromExistingAt = 0;
-    let seedMetricCountFromPt = 0;
-    bucketTrainingData.styleProcessRowsById.forEach((processRow, styleProcessId) => {
-      const metricKey = toAtTrainingStyleProcessMetricKey(Number(styleProcessId));
-      const currentAtParams = toStyleAtParams((processRow as any)?.atParams);
-      const seedSeconds =
-        currentAtParams?.a && currentAtParams.a > 0
-          ? currentAtParams.a
-          : toOptionalSeconds((processRow as any)?.ptSeconds);
-      if (seedSeconds == null || seedSeconds <= 0) return;
-      initialPerPieceByMetricKey.set(metricKey, seedSeconds);
-      if (currentAtParams?.a && currentAtParams.a > 0) {
-        seedMetricCountFromExistingAt += 1;
-      } else {
-        seedMetricCountFromPt += 1;
-      }
+    const initialSeedResult = buildAtTrainingInitialSeedFromSt({
+      trainingDayBuckets: bucketTrainingData.trainingDayBuckets,
+      styleProcessRowsById: bucketTrainingData.styleProcessRowsById,
     });
     const seededDiagnosticsSummary =
       diagnosticsSummary === null
         ? null
         : {
             ...diagnosticsSummary,
-            initialSeedMetricCount: initialPerPieceByMetricKey.size,
-            initialSeedMetricCountFromExistingAt: seedMetricCountFromExistingAt,
-            initialSeedMetricCountFromPt: seedMetricCountFromPt,
+            initialSeedMetricCount: initialSeedResult.initialPerPieceByMetricKey.size,
+            initialSeedMetricCountFromSt: initialSeedResult.seedMetricCountFromSt,
+            missingInitialSeedMetricCount: initialSeedResult.missingSeedMetricCount,
+            missingInitialSeedSamples: initialSeedResult.missingSeedSamples,
           };
+    if (initialSeedResult.initialPerPieceByMetricKey.size === 0) {
+      return finish(0, 0, "no_initial_st_seeds", seededDiagnosticsSummary);
+    }
 
     const fittingResult = fitAtParamsWithProportionalAllocation(
       bucketTrainingData.trainingDayBuckets,
-      { initialPerPieceByMetricKey }
+      { initialPerPieceByMetricKey: initialSeedResult.initialPerPieceByMetricKey }
     );
     const fittedParamsByMetric = fittingResult.paramsByMetric;
     if (fittedParamsByMetric.size === 0) {
@@ -26244,6 +26354,7 @@ app.post("/at-sync/run-now", async (req, res) => {
     trainingMonthKey: resolvedTrainingMonthKey,
     updatedStyles: Number(result?.updatedStyles || 0),
     updatedProcesses: Number(result?.updatedProcesses || 0),
+    reason: resolveOptionalString(result?.reason, null) || "done",
     durationMs: Date.now() - startedAt,
     ...(debug && result?.diagnostics ? { diagnostics: result.diagnostics } : {}),
   });
