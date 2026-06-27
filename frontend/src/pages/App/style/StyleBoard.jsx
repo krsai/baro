@@ -67,7 +67,7 @@ const AT_RELIABILITY_PALETTE = {
 };
 const AT_RELIABILITY_CHIP_SX = {
   height: 18,
-  '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem', lineHeight: 1.1 },
+  '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem', lineHeight: 1.1, fontWeight: 400 },
 };
 const STYLE_BOARD_AT_SYNC_MARKER = 'style-board-at-sync-2026-06-27-3';
 const ST_AT_GAP_PALETTE = {
@@ -77,19 +77,14 @@ const ST_AT_GAP_PALETTE = {
 };
 const ST_AT_GAP_CHIP_SX = {
   height: 18,
-  '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem', lineHeight: 1.1, fontWeight: 700 },
+  '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem', lineHeight: 1.1, fontWeight: 400 },
 };
 const formatAtReliabilityLabel = (reliability) => {
   const percent = Number(reliability?.percent);
   if (!Number.isFinite(percent)) return '0%';
   return `${Math.max(0, Math.min(100, Math.round(percent)))}%`;
 };
-const formatAtReliabilityBadgeLabel = (reliability, languageCode) => {
-  const percentLabel = formatAtReliabilityLabel(reliability);
-  if (languageCode === 'en') return `Reliability ${percentLabel}`;
-  if (languageCode === 'vi') return `Do tin cay ${percentLabel}`;
-  return `신뢰도 ${percentLabel}`;
-};
+const formatAtReliabilityBadgeLabel = (reliability) => formatAtReliabilityLabel(reliability);
 const resolveStyleDeleteBlockedByWorkRecordsMessage = (languageCode) => {
   if (languageCode === 'en') {
     return 'Work records exist, so this style cannot be deleted.';
@@ -564,8 +559,8 @@ const StyleBoard = () => {
                   {getUiMessage('styleBoard.styleCode', '스타일 코드', languageCode)}
                 </TableCell>
                 {canViewProcessSummary ? <TableCell>{'PT'}</TableCell> : null}
-                {canViewProcessSummary ? <TableCell>{'AT'}</TableCell> : null}
                 {canViewProcessSummary ? <TableCell>{'ST'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell>{'AT'}</TableCell> : null}
                 <TableCell>
                   {getUiMessage('styleBoard.registrationDate', '등록일', languageCode)}
                 </TableCell>
@@ -618,27 +613,6 @@ const StyleBoard = () => {
                     {canViewProcessSummary ? (
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                          {style.hasTotalAT ? formatLocalizedSeconds(style.totalAT, languageCode) : '-'}
-                          {style.styleAtReliability && style.hasTotalAT && (
-                            <Chip
-                              size="small"
-                              label={formatAtReliabilityBadgeLabel(
-                                style.styleAtReliability,
-                                languageCode
-                              )}
-                              sx={{
-                                ...AT_RELIABILITY_CHIP_SX,
-                                backgroundColor: (AT_RELIABILITY_PALETTE[style.styleAtReliability.status] || AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING]).bg,
-                                color: (AT_RELIABILITY_PALETTE[style.styleAtReliability.status] || AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING]).text,
-                              }}
-                            />
-                          )}
-                        </Box>
-                      </TableCell>
-                    ) : null}
-                    {canViewProcessSummary ? (
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                           {style.hasTotalST ? formatLocalizedSeconds(style.totalST, languageCode) : '-'}
                           {style.hasTotalAT && style.hasTotalST && style.stGapPercent != null && (
                             <Tooltip
@@ -658,6 +632,24 @@ const StyleBoard = () => {
                                 }}
                               />
                             </Tooltip>
+                          )}
+                        </Box>
+                      </TableCell>
+                    ) : null}
+                    {canViewProcessSummary ? (
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          {style.hasTotalAT ? formatLocalizedSeconds(style.totalAT, languageCode) : '-'}
+                          {style.styleAtReliability && style.hasTotalAT && (
+                            <Chip
+                              size="small"
+                              label={formatAtReliabilityBadgeLabel(style.styleAtReliability)}
+                              sx={{
+                                ...AT_RELIABILITY_CHIP_SX,
+                                backgroundColor: (AT_RELIABILITY_PALETTE[style.styleAtReliability.status] || AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING]).bg,
+                                color: (AT_RELIABILITY_PALETTE[style.styleAtReliability.status] || AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING]).text,
+                              }}
+                            />
                           )}
                         </Box>
                       </TableCell>
