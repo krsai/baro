@@ -2411,6 +2411,18 @@ type AtTrainingSourceDiagnostics = {
   excludedMissingWorkerRecordCount: number;
   excludedIneligibleWorkerRecordCount: number;
   excludedMissingAttendanceRecordCount: number;
+  earlyExitStage: string | null;
+  rawStyleIdCount: number;
+  rawStyleUidCount: number;
+  rawStyleIdSamples: string[];
+  rawStyleUidSamples: number[];
+  styleCandidateCount: number;
+  styleCandidateSamples: Array<{
+    uid: number | null;
+    orgId: number | null;
+    styleId: string | null;
+    styleName: string | null;
+  }>;
   sampleExcludedRecords: AtTrainingSourceDiagnosticSample[];
 };
 type AtTrainingBucketBuildResult = {
@@ -2443,6 +2455,13 @@ const createAtTrainingSourceDiagnostics = (
   excludedMissingWorkerRecordCount: 0,
   excludedIneligibleWorkerRecordCount: 0,
   excludedMissingAttendanceRecordCount: 0,
+  earlyExitStage: null,
+  rawStyleIdCount: 0,
+  rawStyleUidCount: 0,
+  rawStyleIdSamples: [],
+  rawStyleUidSamples: [],
+  styleCandidateCount: 0,
+  styleCandidateSamples: [],
   sampleExcludedRecords: [],
 });
 
@@ -2606,6 +2625,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     0
   );
   if (workLogs.length === 0) {
+    diagnostics.earlyExitStage = "NO_WORK_LOGS";
     return { drafts: [], diagnostics };
   }
   const normalizedRequestedWorkDate = normalizeDateKey(workDate);
@@ -2626,7 +2646,12 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         .filter((styleUid): styleUid is number => styleUid !== null)
     )
   );
+  diagnostics.rawStyleIdCount = styleIds.length;
+  diagnostics.rawStyleUidCount = styleUids.length;
+  diagnostics.rawStyleIdSamples = styleIds.slice(0, 20);
+  diagnostics.rawStyleUidSamples = styleUids.slice(0, 20);
   if (styleIds.length === 0 && styleUids.length === 0) {
+    diagnostics.earlyExitStage = "NO_STYLE_KEYS";
     return { drafts: [], diagnostics };
   }
 
@@ -2648,7 +2673,15 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       processes: true,
     },
   });
+  diagnostics.styleCandidateCount = styleCandidates.length;
+  diagnostics.styleCandidateSamples = styleCandidates.slice(0, 20).map((style) => ({
+    uid: toPositiveIntOrNull(style?.uid),
+    orgId: toPositiveIntOrNull(style?.orgId),
+    styleId: resolveOptionalString(style?.styleId, null),
+    styleName: resolveOptionalString(style?.name, null),
+  }));
   if (styleCandidates.length === 0) {
+    diagnostics.earlyExitStage = "NO_STYLE_CANDIDATES";
     return { drafts: [], diagnostics };
   }
 

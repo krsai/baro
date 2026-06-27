@@ -238,6 +238,15 @@ const StyleBoard = () => {
         }
       );
       console.log('[at-sync] response', result);
+      if (result?.reason && result?.reason !== 'done') {
+        console.warn('[at-sync] non-success reason', {
+          reason: result.reason,
+          earlyExitStage: result?.diagnostics?.source?.earlyExitStage ?? null,
+          rawStyleIdCount: result?.diagnostics?.source?.rawStyleIdCount ?? 0,
+          rawStyleUidCount: result?.diagnostics?.source?.rawStyleUidCount ?? 0,
+          styleCandidateCount: result?.diagnostics?.source?.styleCandidateCount ?? 0,
+        });
+      }
       if (result?.diagnostics) {
         console.groupCollapsed('[at-sync] diagnostics');
         console.log('summary', result.diagnostics);
@@ -259,6 +268,10 @@ const StyleBoard = () => {
                 result.diagnostics.source.skippedNoUsableRowsWorkLogCount,
               skippedNoLaborInput:
                 result.diagnostics.source.skippedNoLaborInputWorkLogCount,
+              earlyExitStage: result.diagnostics.source.earlyExitStage ?? null,
+              rawStyleIdCount: result.diagnostics.source.rawStyleIdCount ?? 0,
+              rawStyleUidCount: result.diagnostics.source.rawStyleUidCount ?? 0,
+              styleCandidateCount: result.diagnostics.source.styleCandidateCount ?? 0,
               excludedMissingWorker:
                 result.diagnostics.source.excludedMissingWorkerRecordCount,
               excludedMissingAttendance:
@@ -286,6 +299,24 @@ const StyleBoard = () => {
             console.log(
               '[at-sync] excluded record samples',
               result.diagnostics.source.sampleExcludedRecords
+            );
+          }
+          if (Array.isArray(result.diagnostics.source.rawStyleIdSamples)) {
+            console.log(
+              '[at-sync] raw style id samples',
+              result.diagnostics.source.rawStyleIdSamples
+            );
+          }
+          if (Array.isArray(result.diagnostics.source.rawStyleUidSamples)) {
+            console.log(
+              '[at-sync] raw style uid samples',
+              result.diagnostics.source.rawStyleUidSamples
+            );
+          }
+          if (Array.isArray(result.diagnostics.source.styleCandidateSamples)) {
+            console.log(
+              '[at-sync] style candidate samples',
+              result.diagnostics.source.styleCandidateSamples
             );
           }
           if (Array.isArray(result.diagnostics.missingInitialSeedSamples)) {
