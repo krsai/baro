@@ -2476,7 +2476,7 @@ const pushAtTrainingSourceDiagnosticSample = (
 const toAtTrainingStyleProcessMetricKey = (styleProcessId: number) =>
   `STYLE_PROCESS:${styleProcessId}`;
 
-const AT_SYNC_RUNTIME_MARKER = "at-sync-runtime-2026-06-27-2";
+const AT_SYNC_RUNTIME_MARKER = "at-sync-runtime-2026-06-27-3";
 
 const loadAtTrainingSourceWorkLogs = async ({
   orgId,
@@ -3982,6 +3982,20 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       );
     }
 
+    const stylesForStorageSync = await prisma.style.findMany({
+      where: { orgId },
+      select: {
+        uid: true,
+        orgId: true,
+        processes: true,
+      },
+    });
+    if (stylesForStorageSync.length > 0) {
+      await ensureStyleProcessStorageForStyles(stylesForStorageSync, {
+        processOrgId: orgId,
+      });
+    }
+
     const bucketSyncResult = await prisma.$transaction(
       async (tx) => {
         return syncAtTrainingBucketsForMonth({
@@ -4730,6 +4744,60 @@ const syncStyleProcessStorageForStyle = async ({
   return buildStyleProcessMirrorFromRows(rows, processNameLookup, processes);
 };
 
+const buildStyleProcessBucketSignature = (values: any): string =>
+  ensureArray(values)
+    .map((value) => {
+      const bucketQuantity = toPositiveIntOrNull((value as any)?.bucketQuantity);
+      const bucketStSeconds = toOptionalProcessSeconds(
+        (value as any)?.bucketStSeconds
+      );
+      if (bucketQuantity === null || bucketStSeconds === null) return null;
+      return `${bucketQuantity}:${bucketStSeconds}`;
+    })
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => left.localeCompare(right))
+    .join("|");
+
+const isStyleProcessStorageOutOfSync = ({
+  style,
+  rows,
+}: {
+  style: any;
+  rows: any[];
+}) => {
+  const drafts = buildStyleProcessStorageDrafts(style?.processes);
+  if (drafts.length === 0) return false;
+  if (rows.length !== drafts.length) return true;
+
+  const rowsByCode = ensureArray(rows).reduce((map, row) => {
+    const codeKey = normalizeProcessCodeKey(row?.processCode);
+    if (!codeKey) return map;
+    map.set(codeKey, row);
+    return map;
+  }, new Map<string, any>());
+
+  for (const draft of drafts) {
+    const codeKey = normalizeProcessCodeKey(draft?.processCode);
+    if (!codeKey) return true;
+    const row = rowsByCode.get(codeKey);
+    if (!row) return true;
+
+    const draftPtSeconds = toOptionalProcessSeconds(draft?.ptSeconds);
+    const rowPtSeconds = toOptionalProcessSeconds(row?.ptSeconds);
+    if (draftPtSeconds !== rowPtSeconds) return true;
+
+    const draftTimesPerPiece = toPositiveInt(draft?.timesPerPiece, 1);
+    const rowTimesPerPiece = toPositiveInt(row?.timesPerPiece, 1);
+    if (draftTimesPerPiece !== rowTimesPerPiece) return true;
+
+    const draftBucketSignature = buildStyleProcessBucketSignature(draft?.stBuckets);
+    const rowBucketSignature = buildStyleProcessBucketSignature(row?.standards);
+    if (draftBucketSignature !== rowBucketSignature) return true;
+  }
+
+  return false;
+};
+
 const ensureStyleProcessStorageForStyles = async (
   styles: any[],
   options: {
@@ -4765,6 +4833,31 @@ const ensureStyleProcessStorageForStyles = async (
   }
 
   if (missingStyles.length > 0) {
+    rowsByStyleUid = await loadStyleProcessRowsByStyleUid(
+      styleRows.map((style) => Number(style.uid)),
+      { processOrgId, db }
+    );
+  }
+
+  const outOfSyncStyles = styleRows.filter((style) =>
+    isStyleProcessStorageOutOfSync({
+      style,
+      rows: rowsByStyleUid.get(Number(style.uid)) || [],
+    })
+  );
+
+  for (const style of outOfSyncStyles) {
+    const seedOrgId = processOrgId ?? Number(style.orgId);
+    if (!Number.isFinite(seedOrgId) || seedOrgId <= 0) continue;
+    await syncStyleProcessStorageForStyle({
+      styleUid: Number(style.uid),
+      orgId: seedOrgId,
+      processes: style.processes,
+      db,
+    });
+  }
+
+  if (outOfSyncStyles.length > 0) {
     rowsByStyleUid = await loadStyleProcessRowsByStyleUid(
       styleRows.map((style) => Number(style.uid)),
       { processOrgId, db }
