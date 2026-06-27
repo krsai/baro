@@ -180,6 +180,7 @@ const StyleBoard = () => {
     try {
       const items = await fetchStylesFromApi({ orgId: activeOrgId, forceRefresh });
       setStyles(items);
+      return items;
     } catch (error) {
       setStyles([]);
       showNotification(
@@ -187,6 +188,7 @@ const StyleBoard = () => {
           getUiMessage('styleBoard.fetchError', '스타일 목록을 불러오지 못했습니다.', languageCode),
         'error'
       );
+      return [];
     } finally {
       setLoading(false);
     }
@@ -222,15 +224,63 @@ const StyleBoard = () => {
     if (!activeOrgId || isAtSyncRunning) return;
     setAtSyncRunning(true);
     try {
+      console.log('[at-sync] request', {
+        orgId: activeOrgId,
+        mode: 'previous',
+        debug: true,
+      });
       const result = await requestJSON(
         `/at-sync/run-now${buildQueryString({ orgId: activeOrgId })}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'current' }),
+          body: JSON.stringify({ mode: 'previous', debug: true }),
         }
       );
-      await refreshStyles({ forceRefresh: true });
+      console.log('[at-sync] response', result);
+      if (result?.diagnostics) {
+        console.groupCollapsed('[at-sync] diagnostics');
+        console.log('summary', result.diagnostics);
+        if (result?.diagnostics?.source) {
+          console.table([
+            {
+              trainingMonthKey: result.diagnostics.trainingMonthKey,
+              sourceWorkLogs: result.diagnostics.source.sourceWorkLogCount,
+              filteredWorkLogs: result.diagnostics.source.filteredWorkLogCount,
+              includedWorkLogs: result.diagnostics.source.includedWorkLogCount,
+              sourceWorkRecords: result.diagnostics.source.sourceWorkRecordCount,
+              filteredWorkRecords: result.diagnostics.source.filteredWorkRecordCount,
+              includedWorkRecords: result.diagnostics.source.includedWorkRecordCount,
+              excludedMissingWorker:
+                result.diagnostics.source.excludedMissingWorkerRecordCount,
+              excludedMissingAttendance:
+                result.diagnostics.source.excludedMissingAttendanceRecordCount,
+              excludedStyleNotResolved:
+                result.diagnostics.source.excludedStyleNotResolvedRecordCount,
+              excludedProcessNotResolved:
+                result.diagnostics.source.excludedProcessNotResolvedRecordCount,
+              excludedCoverageInvalid:
+                result.diagnostics.source.excludedCoverageInvalidRecordCount,
+              excludedIneligibleWorker:
+                result.diagnostics.source.excludedIneligibleWorkerRecordCount,
+              bucketDraftCount: result.diagnostics.bucketDraftCount,
+              trainingDayBucketCount: result.diagnostics.trainingDayBucketCount,
+              fittedMetricCount: result.diagnostics.fittedMetricCount ?? 0,
+            },
+          ]);
+          if (Array.isArray(result.diagnostics.source.sampleExcludedRecords)) {
+            console.log(
+              '[at-sync] excluded record samples',
+              result.diagnostics.source.sampleExcludedRecords
+            );
+          }
+        }
+        console.groupEnd();
+      }
+      const refreshedStyles = await refreshStyles({ forceRefresh: true });
+      console.log('[at-sync] styles refreshed', {
+        styleCount: Array.isArray(refreshedStyles) ? refreshedStyles.length : 0,
+      });
       showNotification(
         getUiMessage(
           'styleBoard.atSyncSuccess',

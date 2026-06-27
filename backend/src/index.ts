@@ -2343,6 +2343,7 @@ const resolveStyleSyncTargetOrgIds = async (orgId: number) => {
 
 type AtSyncRunOptions = {
   trainingMonthKey?: string | null;
+  debug?: boolean;
 };
 
 const resolveAtSyncTrainingMonthKey = (options: AtSyncRunOptions = {}) => {
@@ -2374,6 +2375,83 @@ type AtTrainingBucketDraft = {
   laborInputSeconds: number;
   attendanceCoverage: number | null;
   processRows: AtTrainingBucketProcessDraft[];
+};
+type AtTrainingSourceDiagnosticSample = {
+  workLogId: number | null;
+  workerId: number | null;
+  styleId: string | null;
+  styleUid: number | null;
+  processCode: string | null;
+  processName: string | null;
+  quantity: number;
+  coverageStartDate: string | null;
+  coverageEndDate: string | null;
+  reason: string;
+};
+type AtTrainingSourceDiagnostics = {
+  trainingMonthKey: string | null;
+  sourceWorkLogCount: number;
+  sourceWorkRecordCount: number;
+  filteredWorkLogCount: number;
+  filteredWorkRecordCount: number;
+  includedWorkLogCount: number;
+  includedWorkRecordCount: number;
+  excludedWorkLogCount: number;
+  excludedWorkRecordCount: number;
+  draftCount: number;
+  eligibleWorkerCount: number;
+  attendanceRowCount: number;
+  skippedBeforeAttendanceCoverageWorkLogCount: number;
+  skippedInvalidWorkLogCount: number;
+  skippedNoUsableRowsWorkLogCount: number;
+  skippedNoLaborInputWorkLogCount: number;
+  excludedStyleNotResolvedRecordCount: number;
+  excludedProcessNotResolvedRecordCount: number;
+  excludedCoverageInvalidRecordCount: number;
+  excludedMissingWorkerRecordCount: number;
+  excludedIneligibleWorkerRecordCount: number;
+  excludedMissingAttendanceRecordCount: number;
+  sampleExcludedRecords: AtTrainingSourceDiagnosticSample[];
+};
+type AtTrainingBucketBuildResult = {
+  drafts: AtTrainingBucketDraft[];
+  diagnostics: AtTrainingSourceDiagnostics;
+};
+
+const createAtTrainingSourceDiagnostics = (
+  trainingMonthKey: string | null
+): AtTrainingSourceDiagnostics => ({
+  trainingMonthKey,
+  sourceWorkLogCount: 0,
+  sourceWorkRecordCount: 0,
+  filteredWorkLogCount: 0,
+  filteredWorkRecordCount: 0,
+  includedWorkLogCount: 0,
+  includedWorkRecordCount: 0,
+  excludedWorkLogCount: 0,
+  excludedWorkRecordCount: 0,
+  draftCount: 0,
+  eligibleWorkerCount: 0,
+  attendanceRowCount: 0,
+  skippedBeforeAttendanceCoverageWorkLogCount: 0,
+  skippedInvalidWorkLogCount: 0,
+  skippedNoUsableRowsWorkLogCount: 0,
+  skippedNoLaborInputWorkLogCount: 0,
+  excludedStyleNotResolvedRecordCount: 0,
+  excludedProcessNotResolvedRecordCount: 0,
+  excludedCoverageInvalidRecordCount: 0,
+  excludedMissingWorkerRecordCount: 0,
+  excludedIneligibleWorkerRecordCount: 0,
+  excludedMissingAttendanceRecordCount: 0,
+  sampleExcludedRecords: [],
+});
+
+const pushAtTrainingSourceDiagnosticSample = (
+  diagnostics: AtTrainingSourceDiagnostics,
+  sample: AtTrainingSourceDiagnosticSample
+) => {
+  if (diagnostics.sampleExcludedRecords.length >= 30) return;
+  diagnostics.sampleExcludedRecords.push(sample);
 };
 
 const toAtTrainingStyleProcessMetricKey = (styleProcessId: number) =>
@@ -2509,7 +2587,11 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
   workDate?: string | null;
   factoryId?: number | null;
   db?: AtTrainingBucketStoreClient;
-}): Promise<AtTrainingBucketDraft[]> => {
+}): Promise<AtTrainingBucketBuildResult> => {
+  const normalizedTrainingMonthKey = normalizeMonthKey(trainingMonthKey);
+  const diagnostics = createAtTrainingSourceDiagnostics(
+    normalizedTrainingMonthKey || null
+  );
   const workLogs = await loadAtTrainingSourceWorkLogs({
     orgId,
     trainingMonthKey,
@@ -2518,8 +2600,14 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     factoryId,
     db,
   });
-  if (workLogs.length === 0) return [];
-  const normalizedTrainingMonthKey = normalizeMonthKey(trainingMonthKey);
+  diagnostics.sourceWorkLogCount = workLogs.length;
+  diagnostics.sourceWorkRecordCount = workLogs.reduce(
+    (sum, workLog) => sum + ensureArray((workLog as any)?.workRecords).length,
+    0
+  );
+  if (workLogs.length === 0) {
+    return { drafts: [], diagnostics };
+  }
   const normalizedRequestedWorkDate = normalizeDateKey(workDate);
 
   const styleIds = Array.from(
@@ -2538,7 +2626,9 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         .filter((styleUid): styleUid is number => styleUid !== null)
     )
   );
-  if (styleIds.length === 0 && styleUids.length === 0) return [];
+  if (styleIds.length === 0 && styleUids.length === 0) {
+    return { drafts: [], diagnostics };
+  }
 
   const syncTargetOrgIds = await resolveStyleSyncTargetOrgIds(orgId);
   const styleCandidates = await db.style.findMany({
@@ -2558,7 +2648,9 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       processes: true,
     },
   });
-  if (styleCandidates.length === 0) return [];
+  if (styleCandidates.length === 0) {
+    return { drafts: [], diagnostics };
+  }
 
   await ensureStyleProcessStorageForStyles(styleCandidates, {
     processOrgId: orgId,
@@ -2688,6 +2780,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       });
     });
   }
+  diagnostics.eligibleWorkerCount = eligibleWorkerDateWindowById.size;
   const isEligibleWorkerOnDate = (
     workerId: number | null,
     normalizedWorkDate: string
@@ -2747,6 +2840,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
             workedSeconds: true,
           },
         });
+        diagnostics.attendanceRowCount = attendanceRows.length;
         attendanceRows.forEach((row) => {
           const normalizedWorkDate = normalizeDateKey(row.workDate);
           const resolvedFactoryId = toPositiveIntOrNull((row as any).factoryId);
@@ -2881,11 +2975,24 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
           return maxAttendanceDate !== "" && normalizedWorkDate <= maxAttendanceDate;
         })
       : workLogs;
-  if (filteredWorkLogs.length === 0) return [];
+  diagnostics.filteredWorkLogCount = filteredWorkLogs.length;
+  diagnostics.filteredWorkRecordCount = filteredWorkLogs.reduce(
+    (sum, workLog) => sum + ensureArray((workLog as any)?.workRecords).length,
+    0
+  );
+  diagnostics.skippedBeforeAttendanceCoverageWorkLogCount = Math.max(
+    0,
+    diagnostics.sourceWorkLogCount - diagnostics.filteredWorkLogCount
+  );
+  if (filteredWorkLogs.length === 0) {
+    diagnostics.excludedWorkLogCount = diagnostics.sourceWorkLogCount;
+    diagnostics.excludedWorkRecordCount = diagnostics.sourceWorkRecordCount;
+    return { drafts: [], diagnostics };
+  }
 
   const previousPeriodEndDateByFactory = new Map<string, string>();
 
-  return filteredWorkLogs.reduce((drafts, workLog) => {
+  const drafts = filteredWorkLogs.reduce((draftRows, workLog) => {
     const normalizedWorkDate = normalizeDateKey(workLog.displayDate);
     const normalizedCoverageEndDate =
       resolveWorkLogCoverageEndDate(workLog, normalizedWorkDate) || normalizedWorkDate;
@@ -2893,10 +3000,10 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     const resolvedFactoryId = toPositiveIntOrNull((workLog as any).factoryId);
     const workLogId = toPositiveIntOrNull(workLog.id);
     if (!normalizedWorkDate || !normalizedCoverageEndDate || !monthKey || workLogId === null) {
-      return drafts;
+      diagnostics.skippedInvalidWorkLogCount += 1;
+      return draftRows;
     }
 
-    // Prefer explicit coverage dates. Fallback to previous-input-date inference by factory.
     const periodTrackerKey =
       resolvedFactoryId === null ? "__factory_null__" : String(resolvedFactoryId);
     const previousPeriodEndDateKey =
@@ -2916,87 +3023,154 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       explicitCoverageStartDate && explicitCoverageStartDate <= normalizedCoverageEndDate
         ? explicitCoverageStartDate
         : inferredPeriodStartDateKey;
-    const periodDayCount = Math.max(
-      1,
-      countDateRangeDaysInclusive(periodStartDateKey, normalizedCoverageEndDate)
-    );
 
-    const resolvedRows = workLog.workRecords
+    const preliminaryRows = workLog.workRecords
       .map((record) => {
         const quantity = Number(record.quantity) || 0;
         if (quantity <= 0) return null;
+        const workerId = toPositiveIntOrNull(record.workerId);
+        const processCode = resolveOptionalString(record.processCode, null);
+        const processName = resolveOptionalString(
+          resolveWorkRecordProcessName(record),
+          null
+        );
         const resolvedStyle = resolveCandidateStyle(record);
-        if (!resolvedStyle) return null;
+        const effectiveCoverageStartDate =
+          resolveWorkRecordEffectiveCoverageStartDate(record, workLog) || periodStartDateKey;
+        const effectiveCoverageEndDate =
+          resolveWorkRecordEffectiveCoverageEndDate(record, workLog) ||
+          normalizedCoverageEndDate;
+        const sampleBase = {
+          workLogId,
+          workerId,
+          styleId: resolveOptionalString(record.styleId, null),
+          styleUid: toPositiveIntOrNull((record as any).styleUid),
+          processCode,
+          processName,
+          quantity: Math.max(0, Math.round(quantity)),
+          coverageStartDate: effectiveCoverageStartDate || null,
+          coverageEndDate: effectiveCoverageEndDate || null,
+        };
+        if (!resolvedStyle) {
+          diagnostics.excludedStyleNotResolvedRecordCount += 1;
+          pushAtTrainingSourceDiagnosticSample(diagnostics, {
+            ...sampleBase,
+            reason: "STYLE_NOT_RESOLVED",
+          });
+          return null;
+        }
         const processCodeKey = normalizeProcessCodeKey(record.processCode);
         const processNameKey = normalizeProcessNameKey(
           resolveWorkRecordProcessName(record)
         );
-        if (!processCodeKey && !processNameKey) return null;
+        if (!processCodeKey && !processNameKey) {
+          diagnostics.excludedProcessNotResolvedRecordCount += 1;
+          pushAtTrainingSourceDiagnosticSample(diagnostics, {
+            ...sampleBase,
+            reason: "PROCESS_NOT_RESOLVED",
+          });
+          return null;
+        }
         const lookup = processLookupByStyleUid.get(Number(resolvedStyle.uid));
-        if (!lookup) return null;
+        if (!lookup) {
+          diagnostics.excludedProcessNotResolvedRecordCount += 1;
+          pushAtTrainingSourceDiagnosticSample(diagnostics, {
+            ...sampleBase,
+            reason: "PROCESS_NOT_RESOLVED",
+          });
+          return null;
+        }
         const matchedStyleProcess =
           (processCodeKey ? lookup.byCode.get(processCodeKey) : null) ||
           (processNameKey ? lookup.byName.get(processNameKey) : null) ||
           null;
         const styleProcessId = toPositiveIntOrNull(matchedStyleProcess?.id);
-        if (styleProcessId === null) return null;
+        if (styleProcessId === null) {
+          diagnostics.excludedProcessNotResolvedRecordCount += 1;
+          pushAtTrainingSourceDiagnosticSample(diagnostics, {
+            ...sampleBase,
+            reason: "PROCESS_NOT_RESOLVED",
+          });
+          return null;
+        }
+        if (
+          !effectiveCoverageStartDate ||
+          !effectiveCoverageEndDate ||
+          effectiveCoverageStartDate > effectiveCoverageEndDate
+        ) {
+          diagnostics.excludedCoverageInvalidRecordCount += 1;
+          pushAtTrainingSourceDiagnosticSample(diagnostics, {
+            ...sampleBase,
+            reason: "COVERAGE_INVALID",
+          });
+          return null;
+        }
+        if (workerId === null) {
+          diagnostics.excludedMissingWorkerRecordCount += 1;
+          pushAtTrainingSourceDiagnosticSample(diagnostics, {
+            ...sampleBase,
+            reason: "MISSING_WORKER",
+          });
+          return null;
+        }
+        if (
+          !isEligibleWorkerOnDate(workerId, effectiveCoverageStartDate) ||
+          !isEligibleWorkerOnDate(workerId, effectiveCoverageEndDate)
+        ) {
+          diagnostics.excludedIneligibleWorkerRecordCount += 1;
+          pushAtTrainingSourceDiagnosticSample(diagnostics, {
+            ...sampleBase,
+            reason: "WORKER_OUTSIDE_EMPLOYMENT",
+          });
+          return null;
+        }
         return {
           styleUid: Number(resolvedStyle.uid),
           styleProcessId,
           quantity,
-          workerId: toPositiveIntOrNull(record.workerId),
-          effectiveCoverageStartDate:
-            resolveWorkRecordEffectiveCoverageStartDate(record, workLog) ||
-            periodStartDateKey,
-          effectiveCoverageEndDate:
-            resolveWorkRecordEffectiveCoverageEndDate(record, workLog) ||
-            normalizedCoverageEndDate,
+          workerId,
+          styleId: sampleBase.styleId,
+          processCode,
+          processName,
+          effectiveCoverageStartDate,
+          effectiveCoverageEndDate,
         };
       })
       .filter(Boolean) as Array<{
       styleUid: number;
       styleProcessId: number;
       quantity: number;
-      workerId: number | null;
+      workerId: number;
+      styleId: string | null;
+      processCode: string | null;
+      processName: string | null;
       effectiveCoverageStartDate: string;
       effectiveCoverageEndDate: string;
     }>;
-    if (resolvedRows.length === 0) {
-      return drafts;
+    if (preliminaryRows.length === 0) {
+      diagnostics.skippedNoUsableRowsWorkLogCount += 1;
+      return draftRows;
     }
 
-    const perProcessGroups = new Map<number, AtTrainingBucketProcessDraft>();
     const workerIdsForDay = new Set<number>();
-    const coverageByWorkerId = new Map<
-      number,
-      { startDateKey: string; endDateKey: string }
-    >();
-    resolvedRows.forEach((row) => {
-      const current = perProcessGroups.get(row.styleProcessId) || {
-        styleUid: row.styleUid,
-        styleProcessId: row.styleProcessId,
-        quantity: 0,
-      };
-      current.quantity += row.quantity;
-      perProcessGroups.set(row.styleProcessId, current);
-      if (row.workerId !== null) {
-        workerIdsForDay.add(row.workerId);
-        const currentCoverage = coverageByWorkerId.get(row.workerId);
-        if (!currentCoverage) {
-          coverageByWorkerId.set(row.workerId, {
-            startDateKey: row.effectiveCoverageStartDate,
-            endDateKey: row.effectiveCoverageEndDate,
-          });
-        } else {
-          currentCoverage.startDateKey =
-            row.effectiveCoverageStartDate < currentCoverage.startDateKey
-              ? row.effectiveCoverageStartDate
-              : currentCoverage.startDateKey;
-          currentCoverage.endDateKey =
-            row.effectiveCoverageEndDate > currentCoverage.endDateKey
-              ? row.effectiveCoverageEndDate
-              : currentCoverage.endDateKey;
-        }
+    const coverageByWorkerId = new Map<number, { startDateKey: string; endDateKey: string }>();
+    preliminaryRows.forEach((row) => {
+      workerIdsForDay.add(row.workerId);
+      const currentCoverage = coverageByWorkerId.get(row.workerId);
+      if (!currentCoverage) {
+        coverageByWorkerId.set(row.workerId, {
+          startDateKey: row.effectiveCoverageStartDate,
+          endDateKey: row.effectiveCoverageEndDate,
+        });
+      } else {
+        currentCoverage.startDateKey =
+          row.effectiveCoverageStartDate < currentCoverage.startDateKey
+            ? row.effectiveCoverageStartDate
+            : currentCoverage.startDateKey;
+        currentCoverage.endDateKey =
+          row.effectiveCoverageEndDate > currentCoverage.endDateKey
+            ? row.effectiveCoverageEndDate
+            : currentCoverage.endDateKey;
       }
     });
 
@@ -3021,39 +3195,52 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       );
     });
 
-    let attendanceCoverage: number | null = null;
-    if (!USE_ATTENDANCE_INPUT_FOR_AT) {
-      attendanceCoverage = 1;
-    } else if (workerIdsForDay.size > 0) {
-      if (resolvedFactoryId === null) {
-        attendanceCoverage = 0;
-      } else {
-        let attendanceProvidedCount = 0;
-        workerSecondsById.forEach((seconds) => {
-          if (seconds > 0) {
-            attendanceProvidedCount += 1;
-          }
-        });
-        attendanceCoverage = attendanceProvidedCount / workerIdsForDay.size;
-      }
-    }
-    if (!Number.isFinite(attendanceCoverage as number)) {
-      attendanceCoverage = null;
-    } else if (attendanceCoverage !== null) {
-      attendanceCoverage = roundToScale(
-        Math.min(1, Math.max(0, attendanceCoverage)),
-        4
-      );
+    const includedRows = preliminaryRows.filter((row) => {
+      const workerSeconds = workerSecondsById.get(row.workerId) || 0;
+      if (workerSeconds > 0) return true;
+      diagnostics.excludedMissingAttendanceRecordCount += 1;
+      pushAtTrainingSourceDiagnosticSample(diagnostics, {
+        workLogId,
+        workerId: row.workerId,
+        styleId: row.styleId,
+        styleUid: row.styleUid,
+        processCode: row.processCode,
+        processName: row.processName,
+        quantity: Math.max(0, Math.round(row.quantity)),
+        coverageStartDate: row.effectiveCoverageStartDate,
+        coverageEndDate: row.effectiveCoverageEndDate,
+        reason: "MISSING_ATTENDANCE",
+      });
+      return false;
+    });
+    if (includedRows.length === 0) {
+      diagnostics.skippedNoUsableRowsWorkLogCount += 1;
+      return draftRows;
     }
 
+    const perProcessGroups = new Map<number, AtTrainingBucketProcessDraft>();
+    const includedWorkerIds = new Set<number>();
+    includedRows.forEach((row) => {
+      const current = perProcessGroups.get(row.styleProcessId) || {
+        styleUid: row.styleUid,
+        styleProcessId: row.styleProcessId,
+        quantity: 0,
+      };
+      current.quantity += row.quantity;
+      perProcessGroups.set(row.styleProcessId, current);
+      includedWorkerIds.add(row.workerId);
+    });
+
     const laborInputSeconds =
-      workerIdsForDay.size > 0
-        ? Array.from(workerSecondsById.values()).reduce((sum, seconds) => sum + seconds, 0)
-        : Math.max(1, toPositiveIntOrNull((workLog as any).workerCount) ?? 1) *
-          ATTENDANCE_DEFAULT_WORK_SECONDS *
-          periodDayCount;
+      includedWorkerIds.size > 0
+        ? Array.from(includedWorkerIds.values()).reduce(
+            (sum, workerId) => sum + Math.max(0, workerSecondsById.get(workerId) || 0),
+            0
+          )
+        : 0;
     if (!Number.isFinite(laborInputSeconds) || laborInputSeconds <= 0) {
-      return drafts;
+      diagnostics.skippedNoLaborInputWorkLogCount += 1;
+      return draftRows;
     }
 
     const processRows = Array.from(perProcessGroups.values()).filter(
@@ -3064,21 +3251,34 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         item.quantity > 0
     );
     if (processRows.length === 0) {
-      return drafts;
+      diagnostics.skippedNoUsableRowsWorkLogCount += 1;
+      return draftRows;
     }
 
-    drafts.push({
+    diagnostics.includedWorkRecordCount += includedRows.length;
+    draftRows.push({
       sourceWorkLogId: workLogId,
       monthKey,
       workDate: normalizedCoverageEndDate,
       factoryId: resolvedFactoryId,
       laborInputSeconds: Math.max(1, Math.round(laborInputSeconds)),
-      attendanceCoverage,
+      attendanceCoverage: 1,
       processRows,
     });
     previousPeriodEndDateByFactory.set(periodTrackerKey, normalizedCoverageEndDate);
-    return drafts;
+    return draftRows;
   }, [] as AtTrainingBucketDraft[]);
+  diagnostics.draftCount = drafts.length;
+  diagnostics.includedWorkLogCount = drafts.length;
+  diagnostics.excludedWorkLogCount = Math.max(
+    0,
+    diagnostics.sourceWorkLogCount - diagnostics.includedWorkLogCount
+  );
+  diagnostics.excludedWorkRecordCount = Math.max(
+    0,
+    diagnostics.sourceWorkRecordCount - diagnostics.includedWorkRecordCount
+  );
+  return { drafts, diagnostics };
 };
 
 const replaceAtTrainingBucketsForMonth = async ({
@@ -3170,8 +3370,13 @@ const syncAtTrainingBucketsForMonth = async ({
   db?: AtTrainingBucketStoreClient;
 }) => {
   const normalizedTrainingMonthKey = normalizeMonthKey(trainingMonthKey);
-  if (!normalizedTrainingMonthKey) return 0;
-  const drafts = await buildAtTrainingBucketDraftsFromRawSource({
+  if (!normalizedTrainingMonthKey) {
+    return {
+      draftCount: 0,
+      diagnostics: createAtTrainingSourceDiagnostics(null),
+    };
+  }
+  const buildResult = await buildAtTrainingBucketDraftsFromRawSource({
     orgId,
     trainingMonthKey: normalizedTrainingMonthKey,
     db,
@@ -3179,10 +3384,13 @@ const syncAtTrainingBucketsForMonth = async ({
   await replaceAtTrainingBucketsForMonth({
     orgId,
     trainingMonthKey: normalizedTrainingMonthKey,
-    drafts,
+    drafts: buildResult.drafts,
     db,
   });
-  return drafts.length;
+  return {
+    draftCount: buildResult.drafts.length,
+    diagnostics: buildResult.diagnostics,
+  };
 };
 
 const collectRawAtTrainingMonthKeysForOrg = async (orgId: number) => {
@@ -3564,16 +3772,29 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
   options: AtSyncRunOptions = {}
 ) => {
   const trainingMonthKey = resolveAtSyncTrainingMonthKey(options);
+  const includeDebugDiagnostics = options.debug === true;
   const startedAt = Date.now();
   const finish = (
     updatedStyles: number,
     updatedProcesses: number,
-    reason = "done"
+    reason = "done",
+    diagnostics: Record<string, any> | null = null
   ) => {
     console.log(
       `[AT sync] orgId=${orgId} month=${trainingMonthKey} updatedStyles=${updatedStyles} updatedProcesses=${updatedProcesses} reason=${reason} durationMs=${Date.now() - startedAt}`
     );
-    return { updatedStyles, updatedProcesses };
+    if (includeDebugDiagnostics && diagnostics) {
+      console.log("[AT sync] diagnostics summary", diagnostics);
+      if (Array.isArray(diagnostics?.source?.sampleExcludedRecords)) {
+        console.log(
+          "[AT sync] excluded record samples",
+          diagnostics.source.sampleExcludedRecords
+        );
+      }
+    }
+    return diagnostics
+      ? { updatedStyles, updatedProcesses, diagnostics }
+      : { updatedStyles, updatedProcesses };
   };
   console.log(`[AT sync] start orgId=${orgId} month=${trainingMonthKey}`);
   {
@@ -3588,9 +3809,9 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       );
     }
 
-    await prisma.$transaction(
+    const bucketSyncResult = await prisma.$transaction(
       async (tx) => {
-        await syncAtTrainingBucketsForMonth({
+        return syncAtTrainingBucketsForMonth({
           orgId,
           trainingMonthKey,
           db: tx,
@@ -3603,8 +3824,21 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       orgId,
       upToMonthKey: trainingMonthKey,
     });
+    const diagnosticsSummary = includeDebugDiagnostics
+      ? {
+          trainingMonthKey,
+          backfilledMonthKeys,
+          source: bucketSyncResult.diagnostics,
+          bucketDraftCount: Number(bucketSyncResult?.draftCount || 0),
+          trainingDayBucketCount: bucketTrainingData.trainingDayBuckets.length,
+          trainingMetricCount:
+            bucketTrainingData.metricTrainingQualityByMetricKey.size,
+          styleProcessCandidateCount:
+            bucketTrainingData.styleProcessRowsById.size,
+        }
+      : null;
     if (bucketTrainingData.trainingDayBuckets.length === 0) {
-      return finish(0, 0, "no_metric_observations");
+      return finish(0, 0, "no_metric_observations", diagnosticsSummary);
     }
 
     const fittingResult = fitAtParamsWithProportionalAllocation(
@@ -3612,7 +3846,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
     );
     const fittedParamsByMetric = fittingResult.paramsByMetric;
     if (fittedParamsByMetric.size === 0) {
-      return finish(0, 0, "no_fitted_metrics");
+      return finish(0, 0, "no_fitted_metrics", diagnosticsSummary);
     }
     console.log(
       `[AT sync] orgId=${orgId} month=${trainingMonthKey} metrics=${fittedParamsByMetric.size} dayBuckets=${bucketTrainingData.trainingDayBuckets.length} iterations=${fittingResult.iterationCount} converged=${fittingResult.converged}`
@@ -3631,13 +3865,24 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
         `[AT sync] orgId=${orgId} month=${trainingMonthKey} clampAdjustedProcesses=${applyResult.clampAdjustedProcesses} clampRatio=${AT_MONTHLY_A_CLAMP_RATIO}`
       );
     }
+    const nextDiagnosticsSummary =
+      diagnosticsSummary === null
+        ? null
+        : {
+            ...diagnosticsSummary,
+            fittedMetricCount: fittedParamsByMetric.size,
+            fittingIterationCount: fittingResult.iterationCount,
+            fittingConverged: fittingResult.converged,
+            clampAdjustedProcesses: applyResult.clampAdjustedProcesses,
+          };
 
     return finish(
       applyResult.updatedStyles,
       applyResult.updatedProcesses,
       backfilledMonthKeys.length > 0
         ? `done+backfilled_${backfilledMonthKeys.length}`
-        : "done"
+        : "done",
+      nextDiagnosticsSummary
     );
   }
 };
@@ -25921,6 +26166,7 @@ app.post("/at-sync/run-now", async (req, res) => {
   const mode = String(req.body?.mode ?? "")
     .trim()
     .toLowerCase();
+  const debug = req.body?.debug === true;
   const explicitTrainingMonthKey = normalizeMonthKey(req.body?.trainingMonthKey);
   const hasTrainingMonthField = req.body?.trainingMonthKey !== undefined;
 
@@ -25959,6 +26205,7 @@ app.post("/at-sync/run-now", async (req, res) => {
   const startedAt = Date.now();
   const result = await syncStyleProcessActualTimesFromWorkRecords(access.organization.id, {
     trainingMonthKey: overrideTrainingMonthKey,
+    debug,
   });
 
   return res.json({
@@ -25969,6 +26216,7 @@ app.post("/at-sync/run-now", async (req, res) => {
     updatedStyles: Number(result?.updatedStyles || 0),
     updatedProcesses: Number(result?.updatedProcesses || 0),
     durationMs: Date.now() - startedAt,
+    ...(debug && result?.diagnostics ? { diagnostics: result.diagnostics } : {}),
   });
 });
 
@@ -26846,8 +27094,6 @@ const bootstrapApplicationServices = async () => {
     await ensureProcessMasterOptionTypeSchemaReady();
     await ensureProcessMasterOptionRelationSchemaReady();
     await ensureHardcodedSystemAdmin();
-    await ensureAtAutoSyncRunHistoryTable();
-    startAutoAtSyncScheduler();
     startupLifecycleState = "ready";
     console.log(
       `[startup] Background bootstrap completed on attempt ${startupBootstrapAttempt}.`
