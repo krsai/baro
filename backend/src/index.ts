@@ -2533,6 +2533,7 @@ const loadAtTrainingSourceWorkLogs = async ({
           },
           select: {
             workerId: true,
+            assignmentPlanId: true,
             styleUid: true,
             styleId: true,
             styleName: true,
@@ -2569,6 +2570,7 @@ const loadAtTrainingSourceWorkLogs = async ({
           },
           select: {
             workerId: true,
+            assignmentPlanId: true,
             styleUid: true,
             styleId: true,
             styleName: true,
@@ -2629,10 +2631,35 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     return { drafts: [], diagnostics };
   }
   const normalizedRequestedWorkDate = normalizeDateKey(workDate);
+  const assignmentPlanIds = collectWorkRecordAssignmentPlanIds(
+    workLogs.flatMap((workLog) => ensureArray((workLog as any)?.workRecords))
+  );
+  const styleMetaByPlanId = await resolveAssignmentPlanStyleMetaById({
+    orgId,
+    assignmentPlanIds,
+    db,
+  });
+  const normalizedWorkLogs = workLogs.map((workLog) => ({
+    ...workLog,
+    workRecords: ensureArray((workLog as any)?.workRecords).map((record) => {
+      const assignmentPlanId = toPositiveIntOrNull((record as any)?.assignmentPlanId);
+      const planStyleMeta =
+        assignmentPlanId !== null ? styleMetaByPlanId.get(assignmentPlanId) ?? null : null;
+      return {
+        ...record,
+        styleUid: planStyleMeta?.styleUid ?? toPositiveIntOrNull((record as any)?.styleUid),
+        styleId: resolveOptionalString(planStyleMeta?.styleId ?? (record as any)?.styleId, null),
+        styleName: resolveOptionalString(
+          planStyleMeta?.styleName ?? (record as any)?.styleName,
+          null
+        ),
+      };
+    }),
+  }));
 
   const styleIds = Array.from(
     new Set(
-      workLogs
+      normalizedWorkLogs
         .flatMap((item) => item.workRecords)
         .map((record) => String(record.styleId || "").trim())
         .filter((styleId) => styleId !== "")
@@ -2640,7 +2667,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
   );
   const styleUids = Array.from(
     new Set(
-      workLogs
+      normalizedWorkLogs
         .flatMap((item) => item.workRecords)
         .map((record) => toPositiveIntOrNull((record as any).styleUid))
         .filter((styleUid): styleUid is number => styleUid !== null)
@@ -2765,7 +2792,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
 
   const workerIds = Array.from(
     new Set(
-      workLogs
+      normalizedWorkLogs
         .flatMap((workLog) => workLog.workRecords)
         .map((record) => toPositiveIntOrNull(record.workerId))
         .filter((workerId): workerId is number => workerId !== null)
@@ -2832,17 +2859,17 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
 
   const attendanceSecondsByWorkerDate = new Map<string, number>();
   const maxAttendanceDateByFactory = new Map<string, string>();
-  if (USE_ATTENDANCE_INPUT_FOR_AT && workLogs.length > 0) {
+  if (USE_ATTENDANCE_INPUT_FOR_AT && normalizedWorkLogs.length > 0) {
     const explicitWorkDates = Array.from(
       new Set(
-        workLogs
+        normalizedWorkLogs
           .map((workLog) => normalizeDateKey(workLog.displayDate))
           .filter((value) => value !== "")
       )
     );
     const factoryIds = Array.from(
       new Set(
-        workLogs
+        normalizedWorkLogs
           .map((workLog) => toPositiveIntOrNull((workLog as any).factoryId))
           .filter((resolvedFactoryId): resolvedFactoryId is number => resolvedFactoryId !== null)
       )
@@ -2995,7 +3022,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     }
     return sum;
   };
-  const filteredWorkLogs = workLogs;
+  const filteredWorkLogs = normalizedWorkLogs;
   diagnostics.filteredWorkLogCount = filteredWorkLogs.length;
   diagnostics.filteredWorkRecordCount = filteredWorkLogs.reduce(
     (sum, workLog) => sum + ensureArray((workLog as any)?.workRecords).length,
