@@ -2476,6 +2476,8 @@ const pushAtTrainingSourceDiagnosticSample = (
 const toAtTrainingStyleProcessMetricKey = (styleProcessId: number) =>
   `STYLE_PROCESS:${styleProcessId}`;
 
+const AT_SYNC_RUNTIME_MARKER = "at-sync-runtime-2026-06-27-1";
+
 const loadAtTrainingSourceWorkLogs = async ({
   orgId,
   trainingMonthKey = null,
@@ -3940,7 +3942,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
     diagnostics: Record<string, any> | null = null
   ) => {
     console.log(
-      `[AT sync] orgId=${orgId} month=${trainingMonthKey} updatedStyles=${updatedStyles} updatedProcesses=${updatedProcesses} reason=${reason} durationMs=${Date.now() - startedAt}`
+      `[AT sync] marker=${AT_SYNC_RUNTIME_MARKER} orgId=${orgId} month=${trainingMonthKey} updatedStyles=${updatedStyles} updatedProcesses=${updatedProcesses} reason=${reason} durationMs=${Date.now() - startedAt}`
     );
     if (includeDebugDiagnostics && diagnostics) {
       console.log("[AT sync] diagnostics summary", diagnostics);
@@ -3967,7 +3969,9 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       ? { updatedStyles, updatedProcesses, reason, diagnostics }
       : { updatedStyles, updatedProcesses, reason };
   };
-  console.log(`[AT sync] start orgId=${orgId} month=${trainingMonthKey}`);
+  console.log(
+    `[AT sync] marker=${AT_SYNC_RUNTIME_MARKER} start orgId=${orgId} month=${trainingMonthKey}`
+  );
   {
     const backfilledMonthKeys = await ensureHistoricalAtTrainingBucketsForOrg({
       orgId,
@@ -26409,6 +26413,7 @@ app.post("/at-sync/run-now", async (req, res) => {
     ok: true,
     orgId: access.organization.id,
     mode: mode || (overrideTrainingMonthKey ? "override" : "auto"),
+    runtimeMarker: AT_SYNC_RUNTIME_MARKER,
     trainingMonthKey: resolvedTrainingMonthKey,
     updatedStyles: Number(result?.updatedStyles || 0),
     updatedProcesses: Number(result?.updatedProcesses || 0),

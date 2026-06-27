@@ -69,6 +69,7 @@ const AT_RELIABILITY_CHIP_SX = {
   height: 18,
   '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem', lineHeight: 1.1 },
 };
+const STYLE_BOARD_AT_SYNC_MARKER = 'style-board-at-sync-2026-06-27-1';
 const ST_AT_GAP_PALETTE = {
   [TIME_DIVERGENCE_SEVERITY.NORMAL]: { bg: '#DCEAF8', text: '#245A95' },
   [TIME_DIVERGENCE_SEVERITY.REVIEW]: { bg: '#F7DCC8', text: '#AC6424' },
@@ -252,6 +253,7 @@ const StyleBoard = () => {
     setAtSyncRunning(true);
     try {
       console.log('[at-sync] request', {
+        clientMarker: STYLE_BOARD_AT_SYNC_MARKER,
         orgId: activeOrgId,
         mode: 'previous',
         debug: true,
@@ -267,6 +269,8 @@ const StyleBoard = () => {
       console.log('[at-sync] response', result);
       if (!isAtSyncSuccessReason(result?.reason)) {
         console.warn('[at-sync] non-success reason', {
+          clientMarker: STYLE_BOARD_AT_SYNC_MARKER,
+          runtimeMarker: result?.runtimeMarker ?? null,
           reason: result.reason,
           earlyExitStage: result?.diagnostics?.source?.earlyExitStage ?? null,
           rawStyleIdCount: result?.diagnostics?.source?.rawStyleIdCount ?? 0,
