@@ -444,6 +444,39 @@ const buildAllocatedObservations = (
   return { observations, observationsByMetric };
 };
 
+const buildProvisionalParamsFromWeightedPoints = (
+  pointsInput: WeightedRegressionPoint[]
+): { a: number; b: number } | null => {
+  const points = ensureArray<WeightedRegressionPoint>(pointsInput).filter(
+    (point) =>
+      Number.isFinite(point.x) &&
+      Number.isFinite(point.y) &&
+      Number.isFinite(point.weight) &&
+      point.x > 0 &&
+      point.y > 0 &&
+      point.weight > 0
+  );
+
+  if (points.length === 0) return null;
+
+  let totalWeight = 0;
+  let weightedPerPieceSum = 0;
+  points.forEach((point) => {
+    const perPiece = point.y / point.x;
+    if (!Number.isFinite(perPiece) || perPiece <= 0) return;
+    totalWeight += point.weight;
+    weightedPerPieceSum += point.weight * perPiece;
+  });
+
+  if (!Number.isFinite(totalWeight) || totalWeight <= 0) return null;
+  const provisionalA = toOptionalSeconds(weightedPerPieceSum / totalWeight);
+  if (provisionalA == null || provisionalA <= 0) return null;
+  return {
+    a: provisionalA,
+    b: 0,
+  };
+};
+
 const buildDayTrendWeights = (
   days: AtTrainingDayBucket[],
   provisionalParamsByMetric: Map<string, { a: number; b: number }>
@@ -638,10 +671,14 @@ export const fitAtParamsWithProportionalAllocation = (
   const finalParamsByMetric = new Map<string, { a: number; b: number }>();
   const metricDiagnostics: AtMetricFitDiagnostic[] = [];
   const statusCounts = new Map<string, number>();
+  let provisionalMetricCount = 0;
   metricKeys.forEach((metricKey) => {
     const weightedPoints = weightedPointsByMetric.get(metricKey) || [];
     const inspected = inspectAtFitFromWeightedPoints(weightedPoints);
-    const provisional = provisionalParamsByMetric.get(metricKey) || null;
+    const provisional =
+      provisionalParamsByMetric.get(metricKey) ||
+      buildProvisionalParamsFromWeightedPoints(weightedPoints) ||
+      null;
     const fitted = inspected.params || provisional;
     const status: AtMetricFitStatus = inspected.params
       ? "FITTED"
@@ -649,6 +686,9 @@ export const fitAtParamsWithProportionalAllocation = (
         ? "USED_PROVISIONAL"
         : inspected.status;
     statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+    if (provisional !== null) {
+      provisionalMetricCount += 1;
+    }
     const numericStyleProcessId = Number(metricKey.replace(/^sp:/, ""));
     metricDiagnostics.push({
       metricKey,
@@ -675,7 +715,7 @@ export const fitAtParamsWithProportionalAllocation = (
     diagnostics: {
       metricCount: metricKeys.length,
       weightedPointMetricCount: weightedPointsByMetric.size,
-      provisionalMetricCount: provisionalParamsByMetric.size,
+      provisionalMetricCount,
       fittedMetricCount: finalParamsByMetric.size,
       statusCounts: Object.fromEntries(statusCounts.entries()),
       metricSamples: metricDiagnostics
