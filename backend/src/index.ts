@@ -1372,7 +1372,7 @@ const toStyleAtParams = (value: any): StyleAtParams | null => {
 
 const toStyleStBucket = (value: any): StyleStBucket | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const bucketQuantity = resolveStBucketQuantity(
+  const bucketQuantity = toPositiveIntOrNull(
     (value as any).bucketQuantity ?? (value as any).quantity
   );
   const bucketStSeconds = toOptionalProcessSeconds(
@@ -3745,9 +3745,7 @@ const buildAtTrainingInitialSeedFromSt = ({
           quantity,
           bucketQuantity,
           availableBucketQuantities: ensureArray(styleProcessRow?.standards)
-            .map((standard) =>
-              resolveStBucketQuantity((standard as any)?.bucketQuantity ?? DEFAULT_TIME_REF_QUANTITY)
-            )
+            .map((standard) => toPositiveIntOrNull((standard as any)?.bucketQuantity))
             .filter((value): value is number => value !== null),
         });
         return;
@@ -4513,9 +4511,7 @@ const buildStyleProcessMirrorFromRows = (
           pt: toOptionalProcessSeconds(row.ptSeconds),
           atParams: toStyleAtParams(row.atParams),
           stBuckets: ensureArray(row.standards).map((standard) => ({
-            bucketQuantity: resolveStBucketQuantity(
-              (standard as any)?.bucketQuantity ?? DEFAULT_TIME_REF_QUANTITY
-            ),
+            bucketQuantity: toPositiveIntOrNull((standard as any)?.bucketQuantity),
             bucketStSeconds: toOptionalProcessSeconds((standard as any)?.bucketStSeconds),
             setBy: resolveOptionalString((standard as any)?.setBy, null),
             setAt:
@@ -4836,7 +4832,7 @@ const ensureStyleStandardsForQuantities = async ({
     for (const processRow of processRows) {
       const existingQuantities = new Set(
         ensureArray(processRow.standards).map((standard) =>
-          resolveStBucketQuantity((standard as any)?.bucketQuantity ?? 1)
+          toPositiveIntOrNull((standard as any)?.bucketQuantity)
         )
       );
       const ptSeconds = toOptionalProcessSeconds(processRow.ptSeconds);
@@ -12801,7 +12797,7 @@ const buildStyleProcessLookupForStCalculation = (styleProcessRows: any[]) => {
 const resolveStyleProcessBucketStSeconds = (row: any, bucketQuantity: number) => {
   const standard = ensureArray(row?.standards).find(
     (item) =>
-      resolveStBucketQuantity((item as any)?.bucketQuantity ?? DEFAULT_TIME_REF_QUANTITY) ===
+      toPositiveIntOrNull((item as any)?.bucketQuantity) ===
       bucketQuantity
   );
   const bucketStSeconds = toOptionalProcessSeconds((standard as any)?.bucketStSeconds);
@@ -18754,7 +18750,7 @@ const buildLineMonthCapacityRows = async ({
           processCode: resolveOptionalString(row?.processCode, null),
           processName: resolveOptionalString(row?.processName, null),
           stBuckets: ensureArray(row?.standards)
-            .map((item) => resolveStBucketQuantity((item as any)?.bucketQuantity))
+            .map((item) => toPositiveIntOrNull((item as any)?.bucketQuantity))
             .filter((value): value is number => value !== null)
             .sort((left, right) => left - right),
         })),
@@ -18765,7 +18761,7 @@ const buildLineMonthCapacityRows = async ({
     const styleUid = toPositiveIntOrNull(row?.styleUid);
     if (styleUid === null) return;
     const bucketQuantities = ensureArray(row?.standards)
-      .map((item) => resolveStBucketQuantity((item as any)?.bucketQuantity))
+      .map((item) => toPositiveIntOrNull((item as any)?.bucketQuantity))
       .filter((value): value is number => value !== null);
     const item = {
       styleProcessId: toPositiveIntOrNull(row?.id),
@@ -18859,7 +18855,7 @@ const buildLineMonthCapacityRows = async ({
     const matchedProcessCode = resolveOptionalString(matchedRow?.processCode, null);
     const matchedProcessName = resolveOptionalString(matchedRow?.processName, null);
     const matchedBuckets = ensureArray(matchedRow?.standards)
-      .map((item) => resolveStBucketQuantity((item as any)?.bucketQuantity))
+      .map((item) => toPositiveIntOrNull((item as any)?.bucketQuantity))
       .filter((value): value is number => value !== null)
       .sort((left, right) => left - right);
     if (stSeconds === null) {

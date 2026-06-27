@@ -104,7 +104,7 @@ export const formatStBucketQuantityLabel = (bucketQuantity, locale = 'ko-KR') =>
 
 const normalizeProcessStBucket = (value) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const bucketQuantity = resolveStBucketQuantity(value.bucketQuantity ?? value.quantity);
+  const bucketQuantity = toBucketQuantity(value.bucketQuantity ?? value.quantity, 0);
   const bucketStSeconds = clampProcessSeconds(value.bucketStSeconds ?? value.seconds);
   if (bucketQuantity <= 0 || bucketStSeconds === null) return null;
   return {

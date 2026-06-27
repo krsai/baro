@@ -308,6 +308,101 @@ CREATE TABLE IF NOT EXISTS "_BaroMigrationState" (
 DO $$
 BEGIN
   IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'bucketQuantity'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM "_BaroMigrationState"
+    WHERE "key" = '20260627_st_bucket_standard_v1'
+  ) THEN
+    DELETE FROM "StyleProcessStandard" legacy
+    USING "StyleProcessStandard" target
+    WHERE legacy."styleProcessId" = target."styleProcessId"
+      AND (
+        (legacy."bucketQuantity" = 2 AND target."bucketQuantity" = 3)
+        OR (legacy."bucketQuantity" = 20 AND target."bucketQuantity" = 30)
+        OR (legacy."bucketQuantity" = 200 AND target."bucketQuantity" = 300)
+        OR (legacy."bucketQuantity" = 2000 AND target."bucketQuantity" = 3000)
+      );
+
+    UPDATE "StyleProcessStandard"
+    SET "bucketQuantity" = CASE
+      WHEN "bucketQuantity" = 2 THEN 3
+      WHEN "bucketQuantity" = 20 THEN 30
+      WHEN "bucketQuantity" = 200 THEN 300
+      WHEN "bucketQuantity" = 2000 THEN 3000
+      ELSE "bucketQuantity"
+    END
+    WHERE "bucketQuantity" IN (2, 20, 200, 2000);
+
+    UPDATE "Style"
+    SET "processes" = (
+      SELECT COALESCE(
+        jsonb_agg(
+          proc
+          || CASE
+            WHEN jsonb_typeof(COALESCE(proc -> 'stBuckets', proc -> 'stValues')) = 'array' THEN
+              jsonb_build_object(
+                'stBuckets',
+                (
+                  SELECT COALESCE(
+                    jsonb_agg(
+                      (
+                        bucket - 'quantity'
+                        || jsonb_build_object(
+                          'bucketQuantity',
+                          to_jsonb(
+                            CASE
+                              WHEN COALESCE((bucket ->> 'bucketQuantity')::int, (bucket ->> 'quantity')::int) = 2 THEN 3
+                              WHEN COALESCE((bucket ->> 'bucketQuantity')::int, (bucket ->> 'quantity')::int) = 20 THEN 30
+                              WHEN COALESCE((bucket ->> 'bucketQuantity')::int, (bucket ->> 'quantity')::int) = 200 THEN 300
+                              WHEN COALESCE((bucket ->> 'bucketQuantity')::int, (bucket ->> 'quantity')::int) = 2000 THEN 3000
+                              ELSE COALESCE((bucket ->> 'bucketQuantity')::int, (bucket ->> 'quantity')::int)
+                            END
+                          )
+                        )
+                      )
+                      ORDER BY bucket_ord
+                    ),
+                    '[]'::jsonb
+                  )
+                  FROM jsonb_array_elements(COALESCE(proc -> 'stBuckets', proc -> 'stValues', '[]'::jsonb))
+                    WITH ORDINALITY AS bucket_items(bucket, bucket_ord)
+                )
+              )
+            ELSE '{}'::jsonb
+          END
+          ORDER BY proc_ord
+        ),
+        '[]'::jsonb
+      )
+      FROM jsonb_array_elements(COALESCE("processes"::jsonb, '[]'::jsonb))
+        WITH ORDINALITY AS proc_items(proc, proc_ord)
+    )
+    WHERE "processes" IS NOT NULL
+      AND jsonb_typeof("processes"::jsonb) = 'array'
+      AND (
+        "processes"::text LIKE '%"bucketQuantity": 2%'
+        OR "processes"::text LIKE '%"bucketQuantity": 20%'
+        OR "processes"::text LIKE '%"bucketQuantity": 200%'
+        OR "processes"::text LIKE '%"bucketQuantity": 2000%'
+        OR "processes"::text LIKE '%"quantity": 2%'
+        OR "processes"::text LIKE '%"quantity": 20%'
+        OR "processes"::text LIKE '%"quantity": 200%'
+        OR "processes"::text LIKE '%"quantity": 2000%'
+      );
+
+    INSERT INTO "_BaroMigrationState" ("key")
+    VALUES ('20260627_st_bucket_standard_v1');
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema = 'public'
       AND table_name = 'WorkRecord'
