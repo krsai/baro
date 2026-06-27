@@ -3956,6 +3956,12 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
           diagnostics.missingInitialSeedSamples
         );
       }
+      if (Array.isArray(diagnostics?.fitting?.metricSamples)) {
+        console.log(
+          "[AT sync] fitting metric samples",
+          diagnostics.fitting.metricSamples
+        );
+      }
     }
     return diagnostics
       ? { updatedStyles, updatedProcesses, reason, diagnostics }
@@ -4029,8 +4035,15 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       { initialPerPieceByMetricKey: initialSeedResult.initialPerPieceByMetricKey }
     );
     const fittedParamsByMetric = fittingResult.paramsByMetric;
+    const fittedDiagnosticsSummary =
+      seededDiagnosticsSummary === null
+        ? null
+        : {
+            ...seededDiagnosticsSummary,
+            fitting: fittingResult.diagnostics,
+          };
     if (fittedParamsByMetric.size === 0) {
-      return finish(0, 0, "no_fitted_metrics", seededDiagnosticsSummary);
+      return finish(0, 0, "no_fitted_metrics", fittedDiagnosticsSummary);
     }
     console.log(
       `[AT sync] orgId=${orgId} month=${trainingMonthKey} metrics=${fittedParamsByMetric.size} dayBuckets=${bucketTrainingData.trainingDayBuckets.length} iterations=${fittingResult.iterationCount} converged=${fittingResult.converged}`
@@ -4050,10 +4063,10 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       );
     }
     const nextDiagnosticsSummary =
-      seededDiagnosticsSummary === null
+      fittedDiagnosticsSummary === null
         ? null
         : {
-            ...seededDiagnosticsSummary,
+            ...fittedDiagnosticsSummary,
             fittedMetricCount: fittedParamsByMetric.size,
             fittingIterationCount: fittingResult.iterationCount,
             fittingConverged: fittingResult.converged,

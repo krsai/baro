@@ -156,6 +156,33 @@ const resolveStyleWorkspaceTabLabel = (languageCode, name) => {
   return `Style: ${resolvedName}`;
 };
 
+const isAtSyncSuccessReason = (reason) => {
+  const normalized = String(reason || 'done').trim().toLowerCase();
+  return normalized === 'done' || normalized.startsWith('done+backfilled_');
+};
+
+const resolveAtSyncNonSuccessMessage = (languageCode, result) => {
+  const monthKey =
+    String(result?.trainingMonthKey || result?.diagnostics?.trainingMonthKey || '').trim() || '-';
+  const reason = String(result?.reason || '').trim() || 'unknown';
+  if (languageCode === 'ko') {
+    if (reason === 'no_fitted_metrics') {
+      return `AT 갱신 미완료 (회귀식 생성 실패, 기준월 ${monthKey})`;
+    }
+    if (reason === 'no_initial_st_seeds') {
+      return `AT 갱신 미완료 (초기 ST 시드 없음, 기준월 ${monthKey})`;
+    }
+    if (reason === 'no_metric_observations') {
+      return `AT 갱신 미완료 (학습 관측치 없음, 기준월 ${monthKey})`;
+    }
+    return `AT 갱신 미완료 (${reason}, 기준월 ${monthKey})`;
+  }
+  if (languageCode === 'vi') {
+    return `AT update incomplete (${reason}, thang ${monthKey})`;
+  }
+  return `AT update incomplete (${reason}, month ${monthKey})`;
+};
+
 const StyleBoard = () => {
   const location = useLocation();
   const { styleId } = useParams();
@@ -238,13 +265,14 @@ const StyleBoard = () => {
         }
       );
       console.log('[at-sync] response', result);
-      if (result?.reason && result?.reason !== 'done') {
+      if (!isAtSyncSuccessReason(result?.reason)) {
         console.warn('[at-sync] non-success reason', {
           reason: result.reason,
           earlyExitStage: result?.diagnostics?.source?.earlyExitStage ?? null,
           rawStyleIdCount: result?.diagnostics?.source?.rawStyleIdCount ?? 0,
           rawStyleUidCount: result?.diagnostics?.source?.rawStyleUidCount ?? 0,
           styleCandidateCount: result?.diagnostics?.source?.styleCandidateCount ?? 0,
+          fittingStatusCounts: result?.diagnostics?.fitting?.statusCounts ?? {},
         });
       }
       if (result?.diagnostics) {
@@ -293,6 +321,11 @@ const StyleBoard = () => {
               missingInitialSeedMetricCount:
                 result.diagnostics.missingInitialSeedMetricCount ?? 0,
               fittedMetricCount: result.diagnostics.fittedMetricCount ?? 0,
+              fittingMetricCount: result.diagnostics.fitting?.metricCount ?? 0,
+              fittingWeightedPointMetricCount:
+                result.diagnostics.fitting?.weightedPointMetricCount ?? 0,
+              fittingProvisionalMetricCount:
+                result.diagnostics.fitting?.provisionalMetricCount ?? 0,
             },
           ]);
           if (Array.isArray(result.diagnostics.source.sampleExcludedRecords)) {
@@ -325,6 +358,9 @@ const StyleBoard = () => {
               result.diagnostics.missingInitialSeedSamples
             );
           }
+          if (Array.isArray(result.diagnostics?.fitting?.metricSamples)) {
+            console.table(result.diagnostics.fitting.metricSamples);
+          }
         }
         console.groupEnd();
       }
@@ -332,14 +368,18 @@ const StyleBoard = () => {
       console.log('[at-sync] styles refreshed', {
         styleCount: Array.isArray(refreshedStyles) ? refreshedStyles.length : 0,
       });
-      showNotification(
-        getUiMessage(
-          'styleBoard.atSyncSuccess',
-          `AT 갱신 완료 (${result?.updatedProcesses ?? 0}개 공정, 기준월 ${result?.trainingMonthKey || '-'})`,
-          languageCode
-        ),
-        'success'
-      );
+      if (isAtSyncSuccessReason(result?.reason)) {
+        showNotification(
+          getUiMessage(
+            'styleBoard.atSyncSuccess',
+            `AT 갱신 완료 (${result?.updatedProcesses ?? 0}개 공정, 기준월 ${result?.trainingMonthKey || '-'})`,
+            languageCode
+          ),
+          'success'
+        );
+      } else {
+        showNotification(resolveAtSyncNonSuccessMessage(languageCode, result), 'warning');
+      }
     } catch (error) {
       showNotification(
         error?.message ||

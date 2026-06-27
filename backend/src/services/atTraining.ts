@@ -16,6 +16,37 @@ export type AtTrainingDayBucket = {
   processRows: AtTrainingDayProcessRow[];
 };
 
+export type AtMetricFitStatus =
+  | "FITTED"
+  | "USED_PROVISIONAL"
+  | "INSUFFICIENT_POINTS"
+  | "NO_QUANTITY_VARIATION"
+  | "FIRST_REGRESSION_FAILED"
+  | "SECOND_REGRESSION_FAILED"
+  | "NEGATIVE_OR_INVALID_PARAMS"
+  | "NORMALIZED_A_MISSING";
+
+export type AtMetricFitDiagnostic = {
+  metricKey: string;
+  styleProcessId: number | null;
+  weightedPointCount: number;
+  distinctQuantityCount: number;
+  minQuantity: number | null;
+  maxQuantity: number | null;
+  quantitySamples: number[];
+  provisionalAvailable: boolean;
+  status: AtMetricFitStatus;
+};
+
+export type AtFittingDiagnostics = {
+  metricCount: number;
+  weightedPointMetricCount: number;
+  provisionalMetricCount: number;
+  fittedMetricCount: number;
+  statusCounts: Record<string, number>;
+  metricSamples: AtMetricFitDiagnostic[];
+};
+
 type AtAllocatedObservation = {
   dayKey: string;
   order: number;
@@ -28,6 +59,16 @@ type WeightedRegressionPoint = {
   x: number;
   y: number;
   weight: number;
+};
+
+type AtWeightedFitAttempt = {
+  params: { a: number; b: number } | null;
+  status: AtMetricFitStatus;
+  weightedPointCount: number;
+  distinctQuantityCount: number;
+  minQuantity: number | null;
+  maxQuantity: number | null;
+  quantitySamples: number[];
 };
 
 const toPositiveInt = (value: unknown, fallback = 1): number => {
@@ -172,7 +213,18 @@ const fitAtParamsFromWeightedPoints = (
       point.weight > 0
   );
 
-  if (points.length < 2) return null;
+  const distinctQuantities = Array.from(
+    new Set(points.map((point) => roundToScale(point.x, 4)))
+  ).sort((left, right) => left - right);
+  const quantitySamples = distinctQuantities.slice(0, 10);
+  const minQuantity = quantitySamples.length > 0 ? distinctQuantities[0] ?? null : null;
+  const maxQuantity =
+    quantitySamples.length > 0
+      ? distinctQuantities[distinctQuantities.length - 1] ?? null
+      : null;
+  if (points.length < 2) {
+    return null;
+  }
 
   const firstFit = fitWeightedLinearRegression(points);
   if (!firstFit) return null;
@@ -189,6 +241,120 @@ const fitAtParamsFromWeightedPoints = (
   const normalizedB = toOptionalSeconds(b);
   if (normalizedA == null) return null;
   return { a: normalizedA, b: normalizedB ?? 0 };
+};
+
+const inspectAtFitFromWeightedPoints = (
+  pointsInput: WeightedRegressionPoint[]
+): AtWeightedFitAttempt => {
+  const points = ensureArray<WeightedRegressionPoint>(pointsInput).filter(
+    (point) =>
+      Number.isFinite(point.x) &&
+      Number.isFinite(point.y) &&
+      Number.isFinite(point.weight) &&
+      point.x > 0 &&
+      point.y > 0 &&
+      point.weight > 0
+  );
+
+  const distinctQuantities = Array.from(
+    new Set(points.map((point) => roundToScale(point.x, 4)))
+  ).sort((left, right) => left - right);
+  const quantitySamples = distinctQuantities.slice(0, 10);
+  const minQuantity =
+    distinctQuantities.length > 0 ? distinctQuantities[0] ?? null : null;
+  const maxQuantity =
+    distinctQuantities.length > 0
+      ? distinctQuantities[distinctQuantities.length - 1] ?? null
+      : null;
+
+  if (points.length < 2) {
+    return {
+      params: null,
+      status: "INSUFFICIENT_POINTS",
+      weightedPointCount: points.length,
+      distinctQuantityCount: distinctQuantities.length,
+      minQuantity,
+      maxQuantity,
+      quantitySamples,
+    };
+  }
+
+  if (distinctQuantities.length < 2) {
+    return {
+      params: null,
+      status: "NO_QUANTITY_VARIATION",
+      weightedPointCount: points.length,
+      distinctQuantityCount: distinctQuantities.length,
+      minQuantity,
+      maxQuantity,
+      quantitySamples,
+    };
+  }
+
+  const firstFit = fitWeightedLinearRegression(points);
+  if (!firstFit) {
+    return {
+      params: null,
+      status: "FIRST_REGRESSION_FAILED",
+      weightedPointCount: points.length,
+      distinctQuantityCount: distinctQuantities.length,
+      minQuantity,
+      maxQuantity,
+      quantitySamples,
+    };
+  }
+
+  const secondPoints = applyResidualMagnitudeWeights(points, firstFit);
+  const secondFit = fitWeightedLinearRegression(secondPoints);
+  if (!secondFit) {
+    return {
+      params: null,
+      status: "SECOND_REGRESSION_FAILED",
+      weightedPointCount: points.length,
+      distinctQuantityCount: distinctQuantities.length,
+      minQuantity,
+      maxQuantity,
+      quantitySamples,
+    };
+  }
+
+  const a = secondFit.a;
+  const b = secondFit.b;
+  if (!Number.isFinite(a) || a < 0 || !Number.isFinite(b) || b < 0) {
+    return {
+      params: null,
+      status: "NEGATIVE_OR_INVALID_PARAMS",
+      weightedPointCount: points.length,
+      distinctQuantityCount: distinctQuantities.length,
+      minQuantity,
+      maxQuantity,
+      quantitySamples,
+    };
+  }
+
+  const normalizedA = toOptionalSeconds(a);
+  const normalizedB = toOptionalSeconds(b);
+  if (normalizedA == null) {
+    return {
+      params: null,
+      status: "NORMALIZED_A_MISSING",
+      weightedPointCount: points.length,
+      distinctQuantityCount: distinctQuantities.length,
+      minQuantity,
+      maxQuantity,
+      quantitySamples,
+    };
+  }
+
+  return {
+    params: { a: normalizedA, b: normalizedB ?? 0 },
+    status: "FITTED",
+    weightedPointCount: points.length,
+    distinctQuantityCount: distinctQuantities.length,
+    minQuantity,
+    maxQuantity,
+    quantitySamples,
+  };
 };
 
 const fitAtParamsFromObservations = (
@@ -360,6 +526,7 @@ export const fitAtParamsWithProportionalAllocation = (
   paramsByMetric: Map<string, { a: number; b: number }>;
   iterationCount: number;
   converged: boolean;
+  diagnostics: AtFittingDiagnostics;
 } => {
   const metricKeySet = new Set<string>();
   ensureArray<AtTrainingDayBucket>(days).forEach((day) => {
@@ -469,11 +636,34 @@ export const fitAtParamsWithProportionalAllocation = (
   });
 
   const finalParamsByMetric = new Map<string, { a: number; b: number }>();
+  const metricDiagnostics: AtMetricFitDiagnostic[] = [];
+  const statusCounts = new Map<string, number>();
   metricKeys.forEach((metricKey) => {
     const weightedPoints = weightedPointsByMetric.get(metricKey) || [];
-    const fitted =
-      fitAtParamsFromWeightedPoints(weightedPoints) ||
-      provisionalParamsByMetric.get(metricKey);
+    const inspected = inspectAtFitFromWeightedPoints(weightedPoints);
+    const provisional = provisionalParamsByMetric.get(metricKey) || null;
+    const fitted = inspected.params || provisional;
+    const status: AtMetricFitStatus = inspected.params
+      ? "FITTED"
+      : provisional
+        ? "USED_PROVISIONAL"
+        : inspected.status;
+    statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+    const numericStyleProcessId = Number(metricKey.replace(/^sp:/, ""));
+    metricDiagnostics.push({
+      metricKey,
+      styleProcessId:
+        Number.isInteger(numericStyleProcessId) && numericStyleProcessId > 0
+          ? numericStyleProcessId
+          : null,
+      weightedPointCount: inspected.weightedPointCount,
+      distinctQuantityCount: inspected.distinctQuantityCount,
+      minQuantity: inspected.minQuantity,
+      maxQuantity: inspected.maxQuantity,
+      quantitySamples: inspected.quantitySamples,
+      provisionalAvailable: provisional !== null,
+      status,
+    });
     if (!fitted) return;
     finalParamsByMetric.set(metricKey, fitted);
   });
@@ -482,5 +672,21 @@ export const fitAtParamsWithProportionalAllocation = (
     paramsByMetric: finalParamsByMetric,
     iterationCount,
     converged,
+    diagnostics: {
+      metricCount: metricKeys.length,
+      weightedPointMetricCount: weightedPointsByMetric.size,
+      provisionalMetricCount: provisionalParamsByMetric.size,
+      fittedMetricCount: finalParamsByMetric.size,
+      statusCounts: Object.fromEntries(statusCounts.entries()),
+      metricSamples: metricDiagnostics
+        .slice()
+        .sort((left, right) => {
+          if (left.status === right.status) {
+            return String(left.metricKey).localeCompare(String(right.metricKey));
+          }
+          return String(left.status).localeCompare(String(right.status));
+        })
+        .slice(0, 50),
+    },
   };
 };
