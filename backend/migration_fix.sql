@@ -403,6 +403,58 @@ END $$;
 DO $$
 BEGIN
   IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcess'
+      AND column_name = 'ptSeconds'
+  ) AND EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'bucketQuantity'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM "_BaroMigrationState"
+    WHERE "key" = '20260627_pt_seed_missing_st_buckets_v1'
+  ) THEN
+    INSERT INTO "StyleProcessStandard" (
+      "orgId",
+      "styleProcessId",
+      "bucketQuantity",
+      "bucketStSeconds",
+      "setBy",
+      "setAt",
+      "updatedAt"
+    )
+    SELECT
+      sp."orgId",
+      sp.id,
+      buckets."bucketQuantity",
+      sp."ptSeconds",
+      'PT_DERIVED',
+      CURRENT_TIMESTAMP,
+      CURRENT_TIMESTAMP
+    FROM "StyleProcess" sp
+    CROSS JOIN (
+      VALUES (1), (3), (5), (10), (30), (50), (100), (300), (500), (1000), (3000), (5000), (10000)
+    ) AS buckets("bucketQuantity")
+    LEFT JOIN "StyleProcessStandard" existing
+      ON existing."styleProcessId" = sp.id
+     AND existing."bucketQuantity" = buckets."bucketQuantity"
+    WHERE sp."ptSeconds" IS NOT NULL
+      AND sp."ptSeconds" > 0
+      AND existing.id IS NULL;
+
+    INSERT INTO "_BaroMigrationState" ("key")
+    VALUES ('20260627_pt_seed_missing_st_buckets_v1');
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema = 'public'
       AND table_name = 'WorkRecord'

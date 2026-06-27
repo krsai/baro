@@ -2476,7 +2476,7 @@ const pushAtTrainingSourceDiagnosticSample = (
 const toAtTrainingStyleProcessMetricKey = (styleProcessId: number) =>
   `STYLE_PROCESS:${styleProcessId}`;
 
-const AT_SYNC_RUNTIME_MARKER = "at-sync-runtime-2026-06-27-1";
+const AT_SYNC_RUNTIME_MARKER = "at-sync-runtime-2026-06-27-2";
 
 const loadAtTrainingSourceWorkLogs = async ({
   orgId,
@@ -4344,11 +4344,51 @@ const resolveStyleProcessStorageCode = (process: any, index: number) => {
   return `PROC_${index + 1}`;
 };
 
+const buildCompleteStyleProcessStBuckets = ({
+  ptSeconds,
+  stBuckets,
+}: {
+  ptSeconds: number | null;
+  stBuckets: StyleStBucket[];
+}): StyleStBucket[] => {
+  const byQuantity = new Map<number, StyleStBucket>();
+  ensureArray(stBuckets).forEach((bucket) => {
+    const bucketQuantity = toPositiveIntOrNull((bucket as any)?.bucketQuantity);
+    const bucketStSeconds = toOptionalProcessSeconds((bucket as any)?.bucketStSeconds);
+    if (bucketQuantity === null || bucketStSeconds === null || bucketStSeconds <= 0) return;
+    byQuantity.set(bucketQuantity, {
+      bucketQuantity,
+      bucketStSeconds,
+      setBy: resolveOptionalString((bucket as any)?.setBy, null),
+      setAt: resolveOptionalString((bucket as any)?.setAt, null),
+      updatedAt: resolveOptionalString((bucket as any)?.updatedAt, null),
+    });
+  });
+
+  if (ptSeconds !== null && ptSeconds > 0) {
+    ST_STANDARD_BUCKETS.forEach((bucketQuantity) => {
+      if (byQuantity.has(bucketQuantity)) return;
+      byQuantity.set(bucketQuantity, {
+        bucketQuantity,
+        bucketStSeconds: ptSeconds,
+        setBy: "PT_DERIVED",
+        setAt: null,
+        updatedAt: null,
+      });
+    });
+  }
+
+  return Array.from(byQuantity.values()).sort(
+    (left, right) => left.bucketQuantity - right.bucketQuantity
+  );
+};
+
 const buildStyleProcessStorageDrafts = (processes: any): any[] =>
   normalizeStyleProcesses(processes).map((process, index) => {
     const normalizedComposition = normalizeStyleProcessComposition(
       (process as any)?.processComposition
     );
+    const ptSeconds = toOptionalProcessSeconds((process as any)?.pt);
     const localizedNames = buildStyleProcessLocalizedNamesFromComposition(
       normalizedComposition,
       {
@@ -4375,11 +4415,14 @@ const buildStyleProcessStorageDrafts = (processes: any): any[] =>
         1
       ),
       sortOrder: index,
-      ptSeconds: toOptionalProcessSeconds((process as any)?.pt),
+      ptSeconds,
       atParams: toStyleAtParams((process as any)?.atParams),
-      stBuckets: normalizeStyleProcessStBuckets(
-        (process as any)?.stBuckets ?? (process as any)?.stValues
-      ),
+      stBuckets: buildCompleteStyleProcessStBuckets({
+        ptSeconds,
+        stBuckets: normalizeStyleProcessStBuckets(
+          (process as any)?.stBuckets ?? (process as any)?.stValues
+        ),
+      }),
     };
   });
 
