@@ -3841,12 +3841,41 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       return finish(0, 0, "no_metric_observations", diagnosticsSummary);
     }
 
+    const initialPerPieceByMetricKey = new Map<string, number>();
+    let seedMetricCountFromExistingAt = 0;
+    let seedMetricCountFromPt = 0;
+    bucketTrainingData.styleProcessRowsById.forEach((processRow, styleProcessId) => {
+      const metricKey = toAtTrainingStyleProcessMetricKey(Number(styleProcessId));
+      const currentAtParams = toStyleAtParams((processRow as any)?.atParams);
+      const seedSeconds =
+        currentAtParams?.a && currentAtParams.a > 0
+          ? currentAtParams.a
+          : toOptionalSeconds((processRow as any)?.ptSeconds);
+      if (seedSeconds == null || seedSeconds <= 0) return;
+      initialPerPieceByMetricKey.set(metricKey, seedSeconds);
+      if (currentAtParams?.a && currentAtParams.a > 0) {
+        seedMetricCountFromExistingAt += 1;
+      } else {
+        seedMetricCountFromPt += 1;
+      }
+    });
+    const seededDiagnosticsSummary =
+      diagnosticsSummary === null
+        ? null
+        : {
+            ...diagnosticsSummary,
+            initialSeedMetricCount: initialPerPieceByMetricKey.size,
+            initialSeedMetricCountFromExistingAt: seedMetricCountFromExistingAt,
+            initialSeedMetricCountFromPt: seedMetricCountFromPt,
+          };
+
     const fittingResult = fitAtParamsWithProportionalAllocation(
-      bucketTrainingData.trainingDayBuckets
+      bucketTrainingData.trainingDayBuckets,
+      { initialPerPieceByMetricKey }
     );
     const fittedParamsByMetric = fittingResult.paramsByMetric;
     if (fittedParamsByMetric.size === 0) {
-      return finish(0, 0, "no_fitted_metrics", diagnosticsSummary);
+      return finish(0, 0, "no_fitted_metrics", seededDiagnosticsSummary);
     }
     console.log(
       `[AT sync] orgId=${orgId} month=${trainingMonthKey} metrics=${fittedParamsByMetric.size} dayBuckets=${bucketTrainingData.trainingDayBuckets.length} iterations=${fittingResult.iterationCount} converged=${fittingResult.converged}`
@@ -3866,10 +3895,10 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       );
     }
     const nextDiagnosticsSummary =
-      diagnosticsSummary === null
+      seededDiagnosticsSummary === null
         ? null
         : {
-            ...diagnosticsSummary,
+            ...seededDiagnosticsSummary,
             fittedMetricCount: fittedParamsByMetric.size,
             fittingIterationCount: fittingResult.iterationCount,
             fittingConverged: fittingResult.converged,

@@ -352,7 +352,10 @@ const buildDayTrendWeights = (
 };
 
 export const fitAtParamsWithProportionalAllocation = (
-  days: AtTrainingDayBucket[]
+  days: AtTrainingDayBucket[],
+  options: {
+    initialPerPieceByMetricKey?: Map<string, number>;
+  } = {}
 ): {
   paramsByMetric: Map<string, { a: number; b: number }>;
   iterationCount: number;
@@ -368,7 +371,17 @@ export const fitAtParamsWithProportionalAllocation = (
 
   const metricKeys = Array.from(metricKeySet.values());
 
-  let perPieceByMetricKey = new Map<string, number>();
+  const seededPerPieceByMetricKey = options.initialPerPieceByMetricKey instanceof Map
+    ? new Map(
+        Array.from(options.initialPerPieceByMetricKey.entries()).filter(
+          ([metricKey, value]) =>
+            Boolean(String(metricKey || "").trim()) &&
+            Number.isFinite(Number(value)) &&
+            Number(value) > 0
+        ).map(([metricKey, value]) => [String(metricKey).trim(), Number(value)])
+      )
+    : new Map<string, number>();
+  let perPieceByMetricKey = seededPerPieceByMetricKey;
 
   let iterationCount = 0;
   let converged = false;
