@@ -320,9 +320,9 @@ export const UI_MESSAGES = {
     },
     plannedLoad: { ko: '계획 부하', en: 'Planned load', vi: 'Tai trong ke hoach' },
     actualOutput: {
-      ko: '월간 실제 생산',
-      en: 'Monthly actual production',
-      vi: 'San luong thuc te theo thang',
+      ko: '실제 생산률',
+      en: 'Actual production rate',
+      vi: 'Ty le san xuat thuc te',
     },
     workRecordsThroughCompact: {
       ko: '기록 기준 {date}',

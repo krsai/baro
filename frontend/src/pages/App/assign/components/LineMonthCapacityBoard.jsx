@@ -469,7 +469,7 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
                     <Typography variant="caption" color="text.secondary">
                       {getUiMessage(
                         'assign.actualOutput',
-                        'Monthly actual production',
+                        'Actual production rate',
                         languageCode
                       )}
                     </Typography>
