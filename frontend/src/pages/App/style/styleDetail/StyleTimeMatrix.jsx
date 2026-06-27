@@ -31,7 +31,7 @@ import {
 
 const MANUAL_ST_SET_BY = new Set(['MANUAL', 'LEGACY', 'ASSIGNMENT_DETAIL']);
 
-// 2~, 20~ 숨김 처리
+// Legacy 2~/20~ buckets stay hidden if old data still exists.
 const HIDDEN_BUCKETS = new Set([2, 20]);
 const VISIBLE_BUCKETS = ST_STANDARD_BUCKETS.filter((q) => !HIDDEN_BUCKETS.has(q));
 
