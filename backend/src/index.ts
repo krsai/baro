@@ -2962,28 +2962,13 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     }
     return sum;
   };
-  const filteredWorkLogs =
-    USE_ATTENDANCE_INPUT_FOR_AT && normalizedRequestedWorkDate === ""
-      ? workLogs.filter((workLog) => {
-          const normalizedWorkDate = normalizeDateKey(workLog.displayDate);
-          const resolvedFactoryId = toPositiveIntOrNull((workLog as any).factoryId);
-          if (!normalizedWorkDate || resolvedFactoryId === null) {
-            return false;
-          }
-          const maxAttendanceDate =
-            maxAttendanceDateByFactory.get(String(resolvedFactoryId)) || "";
-          return maxAttendanceDate !== "" && normalizedWorkDate <= maxAttendanceDate;
-        })
-      : workLogs;
+  const filteredWorkLogs = workLogs;
   diagnostics.filteredWorkLogCount = filteredWorkLogs.length;
   diagnostics.filteredWorkRecordCount = filteredWorkLogs.reduce(
     (sum, workLog) => sum + ensureArray((workLog as any)?.workRecords).length,
     0
   );
-  diagnostics.skippedBeforeAttendanceCoverageWorkLogCount = Math.max(
-    0,
-    diagnostics.sourceWorkLogCount - diagnostics.filteredWorkLogCount
-  );
+  diagnostics.skippedBeforeAttendanceCoverageWorkLogCount = 0;
   if (filteredWorkLogs.length === 0) {
     diagnostics.excludedWorkLogCount = diagnostics.sourceWorkLogCount;
     diagnostics.excludedWorkRecordCount = diagnostics.sourceWorkRecordCount;

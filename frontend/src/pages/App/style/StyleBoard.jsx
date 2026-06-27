@@ -251,6 +251,14 @@ const StyleBoard = () => {
               sourceWorkRecords: result.diagnostics.source.sourceWorkRecordCount,
               filteredWorkRecords: result.diagnostics.source.filteredWorkRecordCount,
               includedWorkRecords: result.diagnostics.source.includedWorkRecordCount,
+              eligibleWorkers: result.diagnostics.source.eligibleWorkerCount,
+              attendanceRows: result.diagnostics.source.attendanceRowCount,
+              skippedBeforeAttendanceCoverage:
+                result.diagnostics.source.skippedBeforeAttendanceCoverageWorkLogCount,
+              skippedNoUsableRows:
+                result.diagnostics.source.skippedNoUsableRowsWorkLogCount,
+              skippedNoLaborInput:
+                result.diagnostics.source.skippedNoLaborInputWorkLogCount,
               excludedMissingWorker:
                 result.diagnostics.source.excludedMissingWorkerRecordCount,
               excludedMissingAttendance:
