@@ -26,6 +26,13 @@ const normalizeComparableText = (value) =>
     .replace(/\s+/g, " ")
     .toUpperCase();
 
+const buildOrgScopedKey = (orgId, value) => {
+  const normalizedOrgId = toPositiveIntOrNull(orgId);
+  const normalizedValue = resolveOptionalString(String(value ?? ""), null);
+  if (!normalizedOrgId || !normalizedValue) return "";
+  return `${normalizedOrgId}::${normalizeComparableText(normalizedValue)}`;
+};
+
 const normalizeDateKey = (value) => {
   const text = resolveOptionalString(value, null);
   if (!text) return null;
@@ -73,11 +80,7 @@ const resolveWorkRecordProcessBucketKey = (record) => {
 };
 
 const resolveAssignmentPlanRequiredProcessGroups = (plan) => {
-  const snapshot = plan?.assignmentCtSnapshot && typeof plan.assignmentCtSnapshot === "object"
-    ? plan.assignmentCtSnapshot
-    : plan?.ctSnapshot && typeof plan.ctSnapshot === "object"
-      ? plan.ctSnapshot
-      : null;
+  const snapshot = resolveAssignmentPlanSnapshot(plan);
   const processRows = Array.isArray(snapshot?.processes) ? snapshot.processes : [];
   if (processRows.length === 0) return [];
   return processRows
@@ -90,6 +93,23 @@ const resolveAssignmentPlanRequiredProcessGroups = (plan) => {
       return Array.from(new Set(candidates));
     })
     .filter((group) => Array.isArray(group) && group.length > 0);
+};
+
+function resolveAssignmentPlanSnapshot(plan) {
+  return plan?.assignmentCtSnapshot && typeof plan.assignmentCtSnapshot === "object"
+    ? plan.assignmentCtSnapshot
+    : plan?.ctSnapshot && typeof plan.ctSnapshot === "object"
+      ? plan.ctSnapshot
+      : null;
+}
+
+const resolveAssignmentPlanPrimaryStyleId = (plan) => {
+  const snapshot = resolveAssignmentPlanSnapshot(plan);
+  return (
+    parseAssignmentCardIdentity(plan?.cardId)?.styleId ??
+    parseAssignmentCardIdentity(plan?.originOrderId)?.styleId ??
+    resolveOptionalString(snapshot?.styleId, null)
+  );
 };
 
 const resolveAssignmentPlanStyleMatchKeys = (plan) => {
@@ -214,11 +234,21 @@ async function main() {
   let directOrderNoUpdated = 0;
   let heuristicOrderNoUpdated = 0;
   let lineIdUpdated = 0;
+  let styleRefUpdated = 0;
+  let processRefUpdated = 0;
 
   while (true) {
     const rows = await prisma.workRecord.findMany({
       where: {
-        OR: [{ orderNo: null }, { lineId: null }],
+        OR: [
+          { orderNo: null },
+          { lineId: null },
+          { styleId: null },
+          { styleUid: null },
+          { styleName: null },
+          { processId: null },
+          { processCode: null },
+        ],
       },
       orderBy: { id: "asc" },
       take: BATCH_SIZE,
@@ -231,6 +261,7 @@ async function main() {
         orderNo: true,
         lineId: true,
         styleId: true,
+        styleUid: true,
         styleName: true,
         processId: true,
         processCode: true,
@@ -246,8 +277,35 @@ async function main() {
       new Set(rows.map((row) => toPositiveIntOrNull(row.assignmentPlanId)).filter(Boolean))
     );
     const orgIds = Array.from(new Set(rows.map((row) => row.orgId).filter(Boolean)));
+    const styleIds = Array.from(
+      new Set(
+        rows
+          .map((row) => resolveOptionalString(row.styleId, null))
+          .filter(Boolean)
+      )
+    );
+    const styleNames = Array.from(
+      new Set(
+        rows
+          .map((row) => resolveOptionalString(row.styleName, null))
+          .filter(Boolean)
+      )
+    );
+    const styleUids = Array.from(
+      new Set(rows.map((row) => toPositiveIntOrNull(row.styleUid)).filter(Boolean))
+    );
+    const processIds = Array.from(
+      new Set(rows.map((row) => toPositiveIntOrNull(row.processId)).filter(Boolean))
+    );
+    const processCodes = Array.from(
+      new Set(
+        rows
+          .map((row) => resolveOptionalString(row.processCode, null))
+          .filter(Boolean)
+      )
+    );
 
-    const [workLogs, planRows, boardStates, orgPlanRows] = await Promise.all([
+    const [workLogs, planRows, boardStates, orgPlanRows, styles, processes] = await Promise.all([
       prisma.workLog.findMany({
         where: { id: { in: workLogIds } },
         select: { id: true, workDate: true, records: true },
@@ -255,7 +313,13 @@ async function main() {
       assignmentPlanIds.length > 0
         ? prisma.assignmentPlan.findMany({
             where: { id: { in: assignmentPlanIds } },
-            select: { id: true, orderNo: true },
+            select: {
+              id: true,
+              orderNo: true,
+              cardId: true,
+              originOrderId: true,
+              assignmentCtSnapshot: true,
+            },
           })
         : Promise.resolve([]),
       orgIds.length > 0
@@ -280,11 +344,68 @@ async function main() {
             },
           })
         : Promise.resolve([]),
+      orgIds.length > 0 &&
+      (styleIds.length > 0 || styleNames.length > 0 || styleUids.length > 0)
+        ? prisma.style.findMany({
+            where: {
+              orgId: { in: orgIds },
+              OR: [
+                ...(styleUids.length > 0 ? [{ uid: { in: styleUids } }] : []),
+                ...(styleIds.length > 0 ? [{ styleId: { in: styleIds } }] : []),
+                ...(styleNames.length > 0 ? [{ name: { in: styleNames } }] : []),
+              ],
+            },
+            select: {
+              uid: true,
+              orgId: true,
+              styleId: true,
+              name: true,
+            },
+          })
+        : Promise.resolve([]),
+      orgIds.length > 0 && (processIds.length > 0 || processCodes.length > 0)
+        ? prisma.attrProcess.findMany({
+            where: {
+              orgId: { in: orgIds },
+              OR: [
+                ...(processIds.length > 0 ? [{ id: { in: processIds } }] : []),
+                ...(processCodes.length > 0 ? [{ code: { in: processCodes } }] : []),
+              ],
+            },
+            select: {
+              id: true,
+              orgId: true,
+              code: true,
+              name: true,
+            },
+          })
+        : Promise.resolve([]),
     ]);
 
     const workLogById = new Map(workLogs.map((workLog) => [workLog.id, workLog]));
     const planById = new Map(
-      planRows.map((plan) => [toPositiveIntOrNull(plan.id), resolveOptionalString(plan.orderNo, null)])
+      planRows.map((plan) => [toPositiveIntOrNull(plan.id), plan])
+    );
+    const styleByUid = new Map(
+      styles.map((style) => [toPositiveIntOrNull(style.uid), style])
+    );
+    const styleById = new Map(
+      styles
+        .map((style) => [buildOrgScopedKey(style.orgId, style.styleId), style])
+        .filter(([key]) => Boolean(key))
+    );
+    const styleByName = new Map(
+      styles
+        .map((style) => [buildOrgScopedKey(style.orgId, style.name), style])
+        .filter(([key]) => Boolean(key))
+    );
+    const processById = new Map(
+      processes.map((process) => [toPositiveIntOrNull(process.id), process])
+    );
+    const processByCode = new Map(
+      processes
+        .map((process) => [buildOrgScopedKey(process.orgId, process.code), process])
+        .filter(([key]) => Boolean(key))
     );
     const assignmentByExternalIdByOrg = new Map();
     boardStates.forEach((row) => {
@@ -322,10 +443,11 @@ async function main() {
 
       let nextOrderNo = resolveOptionalString(row.orderNo, null);
       const assignmentPlanId = toPositiveIntOrNull(row.assignmentPlanId);
+      const linkedPlan = assignmentPlanId != null ? planById.get(assignmentPlanId) ?? null : null;
       let updateSource = null;
 
-      if (!nextOrderNo && assignmentPlanId != null) {
-        nextOrderNo = planById.get(assignmentPlanId) ?? null;
+      if (!nextOrderNo && linkedPlan) {
+        nextOrderNo = resolveOptionalString(linkedPlan.orderNo, null);
         if (nextOrderNo) updateSource = "direct";
       }
 
@@ -339,18 +461,81 @@ async function main() {
         if (nextOrderNo) updateSource = "heuristic";
       }
 
+      let nextStyleId = resolveOptionalString(row.styleId, null);
+      if (!nextStyleId && linkedPlan) {
+        nextStyleId = resolveAssignmentPlanPrimaryStyleId(linkedPlan);
+      }
+
+      let linkedStyle =
+        (toPositiveIntOrNull(row.styleUid)
+          ? styleByUid.get(toPositiveIntOrNull(row.styleUid)) ?? null
+          : null) ??
+        (nextStyleId
+          ? styleById.get(buildOrgScopedKey(row.orgId, nextStyleId)) ?? null
+          : null) ??
+        (resolveOptionalString(row.styleName, null)
+          ? styleByName.get(buildOrgScopedKey(row.orgId, row.styleName)) ?? null
+          : null);
+
+      nextStyleId = nextStyleId ?? resolveOptionalString(linkedStyle?.styleId, null);
+      const nextStyleUid =
+        toPositiveIntOrNull(row.styleUid) ?? toPositiveIntOrNull(linkedStyle?.uid);
+      const nextStyleName =
+        resolveOptionalString(row.styleName, null) ??
+        resolveOptionalString(linkedStyle?.name, null);
+
+      const linkedProcess =
+        (toPositiveIntOrNull(row.processId)
+          ? processById.get(toPositiveIntOrNull(row.processId)) ?? null
+          : null) ??
+        (resolveOptionalString(row.processCode, null)
+          ? processByCode.get(buildOrgScopedKey(row.orgId, row.processCode)) ?? null
+          : null);
+      const nextProcessId =
+        toPositiveIntOrNull(row.processId) ?? toPositiveIntOrNull(linkedProcess?.id);
+      const nextProcessCode =
+        resolveOptionalString(row.processCode, null) ??
+        resolveOptionalString(linkedProcess?.code, null);
+
       const lineChanged = (toPositiveIntOrNull(row.lineId) ?? null) !== nextLineId;
       const orderNoChanged = resolveOptionalString(row.orderNo, null) !== nextOrderNo;
-      if (!lineChanged && !orderNoChanged) return;
+      const styleIdChanged = resolveOptionalString(row.styleId, null) !== nextStyleId;
+      const styleUidChanged =
+        (toPositiveIntOrNull(row.styleUid) ?? null) !== (nextStyleUid ?? null);
+      const styleNameChanged =
+        resolveOptionalString(row.styleName, null) !== nextStyleName;
+      const processIdChanged =
+        (toPositiveIntOrNull(row.processId) ?? null) !== (nextProcessId ?? null);
+      const processCodeChanged =
+        resolveOptionalString(row.processCode, null) !== nextProcessCode;
+
+      if (
+        !lineChanged &&
+        !orderNoChanged &&
+        !styleIdChanged &&
+        !styleUidChanged &&
+        !styleNameChanged &&
+        !processIdChanged &&
+        !processCodeChanged
+      ) {
+        return;
+      }
 
       updates.push({
         id: row.id,
         data: {
           ...(lineChanged ? { lineId: nextLineId } : {}),
           ...(orderNoChanged ? { orderNo: nextOrderNo } : {}),
+          ...(styleIdChanged ? { styleId: nextStyleId } : {}),
+          ...(styleUidChanged ? { styleUid: nextStyleUid } : {}),
+          ...(styleNameChanged ? { styleName: nextStyleName } : {}),
+          ...(processIdChanged ? { processId: nextProcessId } : {}),
+          ...(processCodeChanged ? { processCode: nextProcessCode } : {}),
         },
         updateSource,
         lineChanged,
+        styleChanged: styleIdChanged || styleUidChanged || styleNameChanged,
+        processChanged: processIdChanged || processCodeChanged,
       });
     });
 
@@ -368,16 +553,18 @@ async function main() {
         if (update.lineChanged) lineIdUpdated += 1;
         if (update.updateSource === "direct") directOrderNoUpdated += 1;
         if (update.updateSource === "heuristic") heuristicOrderNoUpdated += 1;
+        if (update.styleChanged) styleRefUpdated += 1;
+        if (update.processChanged) processRefUpdated += 1;
       });
     }
 
     console.log(
-      `[backfill-workrecord-canonical-fields] scanned=${scanned} updated=${updated} directOrderNoUpdated=${directOrderNoUpdated} heuristicOrderNoUpdated=${heuristicOrderNoUpdated} lineIdUpdated=${lineIdUpdated}`
+      `[backfill-workrecord-canonical-fields] scanned=${scanned} updated=${updated} directOrderNoUpdated=${directOrderNoUpdated} heuristicOrderNoUpdated=${heuristicOrderNoUpdated} lineIdUpdated=${lineIdUpdated} styleRefUpdated=${styleRefUpdated} processRefUpdated=${processRefUpdated}`
     );
   }
 
   console.log(
-    `[backfill-workrecord-canonical-fields] done scanned=${scanned} updated=${updated} directOrderNoUpdated=${directOrderNoUpdated} heuristicOrderNoUpdated=${heuristicOrderNoUpdated} lineIdUpdated=${lineIdUpdated}`
+    `[backfill-workrecord-canonical-fields] done scanned=${scanned} updated=${updated} directOrderNoUpdated=${directOrderNoUpdated} heuristicOrderNoUpdated=${heuristicOrderNoUpdated} lineIdUpdated=${lineIdUpdated} styleRefUpdated=${styleRefUpdated} processRefUpdated=${processRefUpdated}`
   );
 }
 

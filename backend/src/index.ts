@@ -4127,7 +4127,6 @@ const normalizeStylePayload = (
     processes: includeProcesses ? normalizeStyleProcesses(payload?.processes) : [],
     bom: ensureArray(payload?.bom),
     bomNotes: resolveOptionalString(payload?.bomNotes, null),
-    unitPriceUsd: payload?.unitPriceUsd != null ? Number(payload.unitPriceUsd) || null : null,
     revenueMemo: resolveOptionalString(payload?.revenueMemo, null),
   };
 };
@@ -5029,7 +5028,6 @@ const toStyleResponse = (
         normalizeStyleProcesses(style.processes),
   bom: ensureArray(style.bom),
   bomNotes: style.bomNotes ?? "",
-  unitPriceUsd: style.unitPriceUsd ?? null,
   revenueMemo: style.revenueMemo ?? "",
   createdAt: style.createdAt,
   updatedAt: style.updatedAt,
@@ -5831,10 +5829,32 @@ const parseTimeToMinutes = (value: any): number | null => {
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
   return hours * 60 + minutes;
 };
-const calculateWorkedSeconds = (clockIn: any, clockOut: any): number | null => {
+const ATTENDANCE_DEFAULT_CLOCK_IN = "08:00";
+const ATTENDANCE_DEFAULT_CLOCK_OUT = "18:00";
+const resolveAttendanceWorkedMinuteRange = (
+  clockIn: any,
+  clockOut: any
+): { inMinutes: number; outMinutes: number } | null => {
   const inMinutes = parseTimeToMinutes(clockIn);
   const outMinutes = parseTimeToMinutes(clockOut);
-  if (inMinutes === null || outMinutes === null) return null;
+  if (inMinutes === null && outMinutes === null) return null;
+
+  // One-sided punches are treated as the standard workday boundary.
+  const resolvedInMinutes =
+    inMinutes ?? parseTimeToMinutes(ATTENDANCE_DEFAULT_CLOCK_IN);
+  const resolvedOutMinutes =
+    outMinutes ?? parseTimeToMinutes(ATTENDANCE_DEFAULT_CLOCK_OUT);
+  if (resolvedInMinutes === null || resolvedOutMinutes === null) return null;
+
+  return {
+    inMinutes: resolvedInMinutes,
+    outMinutes: resolvedOutMinutes,
+  };
+};
+const calculateWorkedSeconds = (clockIn: any, clockOut: any): number | null => {
+  const resolvedRange = resolveAttendanceWorkedMinuteRange(clockIn, clockOut);
+  if (!resolvedRange) return null;
+  const { inMinutes, outMinutes } = resolvedRange;
   const diffMinutes =
     outMinutes >= inMinutes
       ? outMinutes - inMinutes
@@ -6120,7 +6140,14 @@ const syncWorkRecordRefs = async ({
               ...(processNames.length > 0 ? [{ name: { in: processNames } }] : []),
             ],
           },
-          select: { id: true, code: true, name: true },
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            nameKo: true,
+            nameEn: true,
+            nameVi: true,
+          },
         })
       : Promise.resolve([]),
     colorIds.length > 0 || colorCodes.length > 0 || colorNames.length > 0
@@ -6217,6 +6244,18 @@ const syncWorkRecordRefs = async ({
       ),
       processName: resolveOptionalString(
         linkedProcess?.name ?? record?.processName,
+        null
+      ),
+      processNameKo: resolveOptionalString(
+        linkedProcess?.nameKo ?? record?.processNameKo,
+        null
+      ),
+      processNameEn: resolveOptionalString(
+        linkedProcess?.nameEn ?? record?.processNameEn,
+        null
+      ),
+      processNameVi: resolveOptionalString(
+        linkedProcess?.nameVi ?? record?.processNameVi,
         null
       ),
       colorId: linkedColor?.id ?? toPositiveIntOrNull(record?.colorId),
@@ -9235,7 +9274,18 @@ const buildWorkLogWriteDataWithOptionalCoverage = <T extends Record<string, any>
   options.includeCoverage
     ? workLogData
     : stripCoverageFieldsFromWorkLogData(workLogData);
-const toWorkLogResponse = (workLog: any) => {
+const buildWorkLogResponseRecordList = async (workLog: any) => {
+  const sourceRecords = resolveWorkLogRecordResponses(workLog);
+  if (sourceRecords.length === 0) return [];
+  const normalizedOrgId = toPositiveIntOrNull(workLog?.orgId);
+  if (!normalizedOrgId) return sourceRecords;
+  const syncedRecords = await syncWorkRecordRefs({
+    orgId: normalizedOrgId,
+    records: sourceRecords,
+  });
+  return syncedRecords.map(toWorkRecordResponse);
+};
+const toWorkLogResponse = async (workLog: any) => {
   const lineMeta = resolveWorkLogLineMeta(workLog?.records);
   const coverageEndDate = resolveWorkLogCoverageEndDate(workLog, workLog?.displayDate);
   const coverageStartDate = resolveWorkLogCoverageStartDate(workLog, coverageEndDate);
@@ -9260,7 +9310,7 @@ const toWorkLogResponse = (workLog: any) => {
     itemCount: workLog.itemCount ?? 0,
     totalCtSeconds: workLog.totalCtSeconds ?? 0,
     note: workLog.note ?? "",
-    records: resolveWorkLogRecordResponses(workLog),
+    records: await buildWorkLogResponseRecordList(workLog),
     createdAt: workLog.createdAt,
     updatedAt: workLog.updatedAt,
     updatedBy: resolveOptionalString(workLog.updatedBy, null),
@@ -22125,7 +22175,7 @@ app.get("/work-logs", async (req, res) => {
     );
   }
 
-  res.json(workLogs.map(toWorkLogResponse));
+  res.json(await Promise.all(workLogs.map((workLog) => toWorkLogResponse(workLog))));
 });
 
 app.get("/work-log-context", async (req, res) => {
@@ -22221,7 +22271,7 @@ app.get("/work-logs/:id", async (req, res) => {
       })
     : null;
 
-  const response = toWorkLogResponse({
+  const response = await toWorkLogResponse({
     ...baseWorkLog,
   });
   if (!includeContext) {
@@ -23325,7 +23375,7 @@ app.post("/work-logs", async (req, res) => {
     workLogId: created.id,
   });
   res.status(201).json({
-    ...toWorkLogResponse(createdWithRecords ?? created),
+    ...(await toWorkLogResponse(createdWithRecords ?? created)),
     warnings: buildWorkLogWarningResponse({
       crossLineWarnings,
     }),
@@ -23659,7 +23709,7 @@ app.put("/work-logs/:id", async (req, res) => {
     workLogId: updated.id,
   });
   res.json({
-    ...toWorkLogResponse(updatedWithRecords ?? updated),
+    ...(await toWorkLogResponse(updatedWithRecords ?? updated)),
     warnings: buildWorkLogWarningResponse({
       crossLineWarnings,
     }),

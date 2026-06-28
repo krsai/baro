@@ -55,10 +55,23 @@ const parseTimeToMinutes = (value) => {
   return hours * 60 + minutes;
 };
 
-const calcWorkedMinutes = (clockIn, clockOut) => {
+const ATTENDANCE_DEFAULT_CLOCK_IN = '08:00';
+const ATTENDANCE_DEFAULT_CLOCK_OUT = '18:00';
+
+const resolveWorkedMinuteRange = (clockIn, clockOut) => {
   const inMinutes = parseTimeToMinutes(clockIn);
   const outMinutes = parseTimeToMinutes(clockOut);
-  if (inMinutes == null || outMinutes == null) return null;
+  if (inMinutes == null && outMinutes == null) return null;
+  return {
+    inMinutes: inMinutes ?? parseTimeToMinutes(ATTENDANCE_DEFAULT_CLOCK_IN),
+    outMinutes: outMinutes ?? parseTimeToMinutes(ATTENDANCE_DEFAULT_CLOCK_OUT),
+  };
+};
+
+const calcWorkedMinutes = (clockIn, clockOut) => {
+  const resolvedRange = resolveWorkedMinuteRange(clockIn, clockOut);
+  if (!resolvedRange) return null;
+  const { inMinutes, outMinutes } = resolvedRange;
   if (outMinutes >= inMinutes) return outMinutes - inMinutes;
   return 24 * 60 - inMinutes + outMinutes;
 };

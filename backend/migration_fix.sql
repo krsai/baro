@@ -32,7 +32,7 @@ ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "nameKo" TEXT;
 ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "nameVi" TEXT;
 
 -- Step 0a: style revenue fields (20260611)
-ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "unitPriceUsd" DOUBLE PRECISION;
+ALTER TABLE "Style" DROP COLUMN IF EXISTS "unitPriceUsd";
 ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "revenueMemo" TEXT;
 
 -- Step 0: factory code and employee number (20260610)
