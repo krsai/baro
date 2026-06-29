@@ -27,6 +27,66 @@ ALTER TYPE "OrgMembershipStatus" ADD VALUE IF NOT EXISTS 'TERMINATED';
 ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "buyerOrgNameKo" TEXT;
 ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "buyerOrgNameVi" TEXT;
 
+-- Step 0i: assignment plan -> work order FK normalization (20260629)
+ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "workOrderId" INTEGER;
+
+WITH assignment_plan_work_order_candidates AS (
+  SELECT DISTINCT ON (ap.id)
+    ap.id AS "assignmentPlanId",
+    wo.id AS "workOrderId"
+  FROM "AssignmentPlan" ap
+  JOIN "WorkOrder" wo
+    ON wo."orderId" = NULLIF(
+      split_part(
+        COALESCE(NULLIF(ap."cardId", ''), NULLIF(ap."originOrderId", '')),
+        '::',
+        1
+      ),
+      ''
+    )
+   AND (
+     wo."orgId" = ap."orgId"
+     OR wo."sellerOrgId" = ap."orgId"
+     OR wo."buyerOrgId" = ap."orgId"
+   )
+  WHERE ap."workOrderId" IS NULL
+  ORDER BY
+    ap.id,
+    CASE
+      WHEN wo."orgId" = ap."orgId" THEN 0
+      WHEN wo."sellerOrgId" = ap."orgId" THEN 1
+      WHEN wo."buyerOrgId" = ap."orgId" THEN 2
+      ELSE 3
+    END,
+    wo.id
+)
+UPDATE "AssignmentPlan" ap
+SET "workOrderId" = candidate."workOrderId"
+FROM assignment_plan_work_order_candidates candidate
+WHERE ap.id = candidate."assignmentPlanId"
+  AND ap."workOrderId" IS NULL;
+
+UPDATE "AssignmentPlan" ap
+SET
+  "orderNo" = COALESCE(ap."orderNo", wo."orderNumber"),
+  "customer" = COALESCE(ap."customer", wo."customerName", wo."buyerOrgName")
+FROM "WorkOrder" wo
+WHERE ap."workOrderId" = wo.id
+  AND (
+    ap."orderNo" IS NULL
+    OR ap."customer" IS NULL
+  );
+
+CREATE INDEX IF NOT EXISTS "AssignmentPlan_workOrderId_idx"
+  ON "AssignmentPlan"("workOrderId");
+
+DO $$ BEGIN
+  ALTER TABLE "AssignmentPlan"
+    ADD CONSTRAINT "AssignmentPlan_workOrderId_fkey"
+    FOREIGN KEY ("workOrderId") REFERENCES "WorkOrder"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- Step 0b: organization localized name fields (20260611)
 ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "nameKo" TEXT;
 ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "nameVi" TEXT;

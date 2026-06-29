@@ -641,6 +641,7 @@ model WorkOrder {
 
   organization   Organization    @relation(fields: [orgId], references: [id])
   workOrderItems WorkOrderItem[]
+  assignmentPlans AssignmentPlan[]
 
   @@unique([orgId, orderId])
   @@unique([orgId, customerId, orderNumber])
@@ -682,6 +683,7 @@ model AssignmentPlan {
   lineId                Int
   externalId            String
   cardId                String?
+  workOrderId           Int?
   orderNo               String?
   customer              String?
   label                 String?
@@ -727,12 +729,14 @@ model AssignmentPlan {
 
   line         Line         @relation(fields: [lineId], references: [id])
   organization Organization @relation(fields: [orgId], references: [id])
+  workOrder    WorkOrder?   @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   attrColor    AttrColor?   @relation(fields: [colorId], references: [id], onDelete: SetNull)
   workRecords  WorkRecord[]
   qcPassEvents QcPassEvent[]
 
   @@unique([orgId, externalId])
   @@index([orgId, lineId])
+  @@index([workOrderId])
   @@index([colorId])
 }
 

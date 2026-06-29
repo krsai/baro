@@ -35,6 +35,7 @@ export const WORK_RECORD_WITH_REFS_INCLUDE = {
       select: {
         id: true,
         lineId: true,
+        workOrderId: true,
         orderNo: true,
         customer: true,
         label: true,

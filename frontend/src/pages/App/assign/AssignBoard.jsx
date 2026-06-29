@@ -1088,6 +1088,7 @@ const buildCardsFromOrders = ({ orders, styles }) => {
       cards.push(normalizeAssignmentCardForBoard({
         id: cardId,
         originOrderId: cardId,
+        workOrderId: Number.isFinite(Number(order?.id)) ? Number(order.id) : null,
         orderNo: order?.orderNumber || order?.id || '-',
         dueDate: order?.dueDate || '',
         customer: order?.customerName || order?.customer || '-',
@@ -5786,6 +5787,7 @@ const AssignBoard = () => {
         const newItem = {
           id: `A-${cardId}-${placement.lineId}-${placement.insertIndex}`,
           cardId,
+          workOrderId: card.workOrderId ?? null,
           lineId: placement.lineId,
           orderNo: card.orderNo ?? `ORD-NEW-${cardId}`,
           customer: card.customer,
@@ -6075,6 +6077,7 @@ const AssignBoard = () => {
       const newItem = {
         id: `A-${cardId}-${lineId}-${dayIndex}`,
         cardId,
+        workOrderId: card.workOrderId ?? null,
         lineId,
         orderNo: card.orderNo ?? `ORD-NEW-${cardId}`,
         customer: card.customer,
@@ -6357,6 +6360,7 @@ const AssignBoard = () => {
     return {
       id: assignment.cardId ?? assignment.id,
       originOrderId: assignment.originOrderId ?? assignment.cardId ?? assignment.id,
+      workOrderId: assignment.workOrderId ?? null,
       styleId,
       styleName: assignment.label || getUiMessage('assign.styleLabel', 'Style', languageCode),
       colorName: assignment.colorName || '',
