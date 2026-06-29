@@ -28,8 +28,9 @@
 - 작업기록과 배정의 연결: `WorkRecord.assignmentPlanId`
 - 스타일 FK: `WorkRecord.styleUid`
 - 사람이 보는 스타일 코드: `WorkRecord.styleId`
-- 공정 마스터 FK: `WorkRecord.processId` (`AttrProcess.id`)
-- 스타일별 ST 매칭 키: `WorkRecord.processCode -> StyleProcess.processCode`
+- 스타일별 공정/ST FK: `WorkRecord.styleProcessId -> StyleProcess.id`
+- 공정 마스터 보조 FK: `WorkRecord.processId` (`AttrProcess.id`, ST 매칭 키 아님)
+- 사람이 보는 공정 코드: `WorkRecord.processCode`
 - 실제 생산 시간: `StyleProcessStandard.bucketStSeconds * WorkRecord.quantity`
 
 ### 주의
@@ -37,16 +38,17 @@
 - `styleId`는 FK가 아니라 표시/진단용 코드다.
 - 실제 생산 계산에서 `styleId`로 `Style.uid`를 다시 찾는 계산은 하지 않는다.
 - `WorkRecord.processId`는 `StyleProcess.id`가 아니므로 ST 매칭 키로 직접 쓰지 않는다.
-- ST 매칭은 `styleUid + processCode + bucketQuantity`로 한다.
+- ST 매칭은 `styleProcessId + bucketQuantity`로 한다.
+- `ctSeconds`는 작업기록 저장 당시 급여/계약 CT 스냅샷이므로 유지한다. 실제 생산률/ST 계산에는 사용하지 않는다.
 
 ### 해야 할 일
 
-1. 신규 작업기록 저장 시 모든 row에 `assignmentPlanId`, `styleUid`, `processId`, `processCode`가 남도록 강제한다.
-2. 4월 이후 기존 `WorkRecord` 중 `assignmentPlanId/styleUid/processCode` 누락 row를 집계한다.
+1. 신규 작업기록 저장 시 모든 row에 `assignmentPlanId`, `styleUid`, `styleProcessId`, `processCode`가 남도록 강제한다.
+2. 4월 이후 기존 `WorkRecord` 중 `assignmentPlanId/styleUid/styleProcessId/processCode` 누락 row를 집계한다.
 3. 4월 이후 기존 `WorkRecord`의 결정 가능한 null을 DB migration으로 채운다.
    - `assignmentPlanId -> AssignmentPlan.orderNo/lineId`
    - `assignmentPlanId -> AssignmentPlan.cardId/originOrderId -> WorkOrderItem.styleUid`
-   - `processCode/processId -> AttrProcess`
+   - `styleUid + processCode -> StyleProcess.id`
 4. 결정 불가능한 row는 임의 추정하지 않고 남겨서 명시적으로 확인한다.
 5. 실제 생산 계산 로그는 정리 결과 검증용으로만 사용한다.
    - 계산식
@@ -59,10 +61,12 @@
    - 실패 사유별 개수
    - 실패 sample row
    - `styleUidSource`, `processCodeSource`
+   - `styleProcessIdSource`
 6. 실패 사유는 다음처럼 분리한다.
    - `STYLE_UID_MISSING`
-   - `PROCESS_CODE_MISSING`
-   - `PROCESS_NOT_MATCHED`
+   - `STYLE_PROCESS_ID_MISSING`
+   - `STYLE_PROCESS_NOT_FOUND`
+   - `STYLE_PROCESS_STYLE_MISMATCH`
    - `ST_BUCKET_NOT_FOUND`
    - `COVERAGE_DATE_MISSING_OR_INVALID`
    - `MONTH_ALLOCATION_EMPTY`
@@ -84,7 +88,7 @@
 
 - `workRowsWithoutAssignmentPlanId = 0`
 - `workRowsWithoutStyleUid = 0`
-- `workRowsWithoutProcessCode = 0`
+- `workRowsWithoutStyleProcessId = 0`
 - 실패 sample이 있다면 어떤 DB 필드가 문제인지 설명 가능해야 한다.
 
 2026-06-29 1차 반영:
@@ -108,10 +112,35 @@
 2026-06-29 4차 반영:
 
 - `/line-month-capacity` 실제 생산 계산에서 조회 시점의 `attachCanonicalFieldsToWorkRecords` 보정을 제거한다.
-- 실제 생산 ST 매칭은 DB에 저장된 `WorkRecord.styleUid + WorkRecord.processCode + bucketQuantity`만 사용한다.
+- 당시 실제 생산 ST 매칭은 DB에 저장된 `WorkRecord.styleUid/processCode` 조합만 사용하도록 줄였으나, 5차에서 `WorkRecord.styleProcessId` 기준으로 대체한다.
 - `styleId/styleCode/name`으로 `Style.uid`를 다시 찾는 조회 계산을 제거한다.
 - `AttrProcess.code`나 공정명으로 `processCode`를 대신 맞추는 계산을 제거한다.
 - 콘솔 진단은 fallback 결과가 아니라 DB에 저장된 canonical 필드의 누락 여부를 보여준다.
+
+2026-06-29 5차 반영:
+
+- `WorkRecord.styleProcessId` 컬럼/FK를 추가한다.
+- 2026-04-01 이후 row 중 `styleUid + processCode`로 `StyleProcess.id`가 단 하나로 결정되는 경우만 `styleProcessId`를 백필한다.
+- 신규 작업기록 저장/수정/import에서 `styleProcessId`가 없으면 저장을 거부한다.
+- `/line-month-capacity` 실제 생산 계산은 `WorkRecord.styleProcessId -> StyleProcessStandard.bucketStSeconds`만 사용한다.
+- 작업기록 상세 조회는 조회 시점의 `syncWorkRecordRefs` 보정을 하지 않고 DB에 저장된 값을 그대로 응답한다.
+
+### WorkRecord 컬럼 분류
+
+유지:
+
+- `assignmentPlanId`: 배정 카드 DB FK. 작업기록과 배정/스케줄러 연결의 핵심.
+- `workerId`: 작업자 FK.
+- `styleUid`: 스타일 FK.
+- `styleProcessId`: 스타일별 공정/ST FK.
+- `ctSeconds`: 저장 당시 급여/계약 CT 스냅샷. CT 변경 이력을 보존해야 하므로 유지.
+- `quantity`, `effectiveCoverageStartDate`, `effectiveCoverageEndDate`: 작업 사실과 기간 스냅샷.
+
+삭제 후보:
+
+- `workerName`, `customerName`, `orderNo`, `styleId`, `styleName`, `colorCode`: 정규 FK가 아니라 표시/레거시 스냅샷. 화면/API 참조 제거 후 삭제 검토.
+- `processId`: `AttrProcess.id` 보조 참조. `styleProcessId` 전환 이후 업무상 필요성이 사라지면 삭제 검토.
+- `colorId`: 색상/사이즈 단위 작업기록 정책을 확정하기 전까지 보류.
 
 ### DB 컬럼 삭제 순서
 

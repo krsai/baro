@@ -109,6 +109,13 @@ const WORK_LOG_RECORD_INCLUDE = {
         nameVi: true,
       },
     },
+    styleProcess: {
+      select: {
+        id: true,
+        processCode: true,
+        processName: true,
+      },
+    },
     color: {
       select: {
         id: true,
@@ -129,6 +136,7 @@ const WORK_LOG_DETAIL_RECORD_SELECT = {
     styleUid: true,
     styleId: true,
     styleName: true,
+    styleProcessId: true,
     processId: true,
     processCode: true,
     colorId: true,
@@ -146,6 +154,13 @@ const WORK_LOG_DETAIL_RECORD_SELECT = {
         nameKo: true,
         nameEn: true,
         nameVi: true,
+      },
+    },
+    styleProcess: {
+      select: {
+        id: true,
+        processCode: true,
+        processName: true,
       },
     },
     color: {
@@ -6033,6 +6048,7 @@ const normalizeWorkRecordPayloadList = (records: any) => {
       styleId: resolveOptionalString(record.styleId, null),
       styleUid: toPositiveIntOrNull(record.styleUid),
       styleName: resolveOptionalString(record.styleName, null),
+      styleProcessId: toPositiveIntOrNull(record.styleProcessId),
       processId: toPositiveIntOrNull(record.processId),
       processCode: resolveOptionalString(record.processCode, null),
       processName: resolveOptionalString(record.processName, null),
@@ -6059,68 +6075,50 @@ const syncWorkRecordRefs = async ({
   );
   if (normalizedRecords.length === 0) return [];
 
-  const styleIds = Array.from(
-    new Set(
-      normalizedRecords
-        .map((record) => resolveOptionalString(record?.styleId, null))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
+  const assignmentPlanIds = collectWorkRecordAssignmentPlanIds(normalizedRecords);
+  const styleMetaByPlanId = await resolveAssignmentPlanStyleMetaById({
+    orgId,
+    assignmentPlanIds,
+  });
+  const normalizedWithPlanStyle = normalizedRecords.map((record) => {
+    const assignmentPlanId = toPositiveIntOrNull(record?.assignmentPlanId);
+    const planStyleMeta =
+      assignmentPlanId !== null ? styleMetaByPlanId.get(assignmentPlanId) ?? null : null;
+    const recordStyleUid = toPositiveIntOrNull(record?.styleUid);
+    return {
+      ...record,
+      styleUid: planStyleMeta?.styleUid ?? recordStyleUid,
+      styleId: resolveOptionalString(planStyleMeta?.styleId ?? record?.styleId, null),
+      styleName: resolveOptionalString(planStyleMeta?.styleName ?? record?.styleName, null),
+    };
+  });
+
   const styleUids = collectPositiveIntSet(
-    ...normalizedRecords.map((record) => record?.styleUid)
+    ...normalizedWithPlanStyle.map((record) => record?.styleUid)
   );
-  const styleNames = Array.from(
-    new Set(
-      normalizedRecords
-        .map((record) => resolveOptionalString(record?.styleName, null))
-        .filter((value): value is string => Boolean(value))
-    )
+  const styleProcessIds = collectPositiveIntSet(
+    ...normalizedWithPlanStyle.map((record) => record?.styleProcessId)
   );
   const processIds = collectPositiveIntSet(
-    ...normalizedRecords.map((record) => record?.processId)
+    ...normalizedWithPlanStyle.map((record) => record?.processId)
   );
   const processCodes = Array.from(
     new Set(
-      normalizedRecords
+      normalizedWithPlanStyle
         .map((record) => resolveOptionalString(record?.processCode, null))
         .filter((value): value is string => Boolean(value))
     )
   );
-  const processNames = Array.from(
-    new Set(
-      normalizedRecords
-        .map((record) => resolveOptionalString(record?.processName, null))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
   const colorIds = collectPositiveIntSet(
-    ...normalizedRecords.map((record) => record?.colorId)
-  );
-  const colorCodes = Array.from(
-    new Set(
-      normalizedRecords
-        .map((record) => resolveOptionalString(record?.colorCode, null))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
-  const colorNames = Array.from(
-    new Set(
-      normalizedRecords
-        .map((record) => resolveOptionalString(record?.colorName, null))
-        .filter((value): value is string => Boolean(value))
-    )
+    ...normalizedWithPlanStyle.map((record) => record?.colorId)
   );
 
-  const [styles, processes, colors] = await Promise.all([
-    styleUids.length > 0 || styleIds.length > 0 || styleNames.length > 0
+  const [styles, styleProcessRowsById, styleProcessRowsByCode, processes, colors] =
+    await Promise.all([
+    styleUids.length > 0
       ? prisma.style.findMany({
           where: {
-            orgId,
-            OR: [
-              ...(styleUids.length > 0 ? [{ uid: { in: styleUids } }] : []),
-              ...(styleIds.length > 0 ? [{ styleId: { in: styleIds } }] : []),
-              ...(styleNames.length > 0 ? [{ name: { in: styleNames } }] : []),
-            ],
+            uid: { in: styleUids },
           },
           select: {
             uid: true,
@@ -6130,14 +6128,40 @@ const syncWorkRecordRefs = async ({
           },
         })
       : Promise.resolve([]),
-    processIds.length > 0 || processCodes.length > 0 || processNames.length > 0
+    styleProcessIds.length > 0
+      ? prisma.styleProcess.findMany({
+          where: {
+            id: { in: styleProcessIds },
+          },
+          select: {
+            id: true,
+            styleUid: true,
+            processCode: true,
+            processName: true,
+          },
+        })
+      : Promise.resolve([]),
+    styleUids.length > 0 && processCodes.length > 0
+      ? prisma.styleProcess.findMany({
+          where: {
+            styleUid: { in: styleUids },
+            processCode: { in: processCodes },
+          },
+          select: {
+            id: true,
+            styleUid: true,
+            processCode: true,
+            processName: true,
+          },
+        })
+      : Promise.resolve([]),
+    processIds.length > 0 || processCodes.length > 0
       ? prisma.attrProcess.findMany({
           where: {
             orgId,
             OR: [
               ...(processIds.length > 0 ? [{ id: { in: processIds } }] : []),
               ...(processCodes.length > 0 ? [{ code: { in: processCodes } }] : []),
-              ...(processNames.length > 0 ? [{ name: { in: processNames } }] : []),
             ],
           },
           select: {
@@ -6150,14 +6174,10 @@ const syncWorkRecordRefs = async ({
           },
         })
       : Promise.resolve([]),
-    colorIds.length > 0 || colorCodes.length > 0 || colorNames.length > 0
+    colorIds.length > 0
       ? prisma.attrColor.findMany({
           where: {
-            OR: [
-              ...(colorIds.length > 0 ? [{ id: { in: colorIds } }] : []),
-              ...(colorCodes.length > 0 ? [{ code: { in: colorCodes } }] : []),
-              ...(colorNames.length > 0 ? [{ name: { in: colorNames } }] : []),
-            ],
+            id: { in: colorIds },
           },
           select: { id: true, code: true, name: true },
         })
@@ -6165,85 +6185,79 @@ const syncWorkRecordRefs = async ({
   ]);
 
   const styleByUid = new Map(styles.map((style) => [style.uid, style]));
-  const styleById = new Map(
-    styles
-      .filter((style) => style.styleId)
-      .map((style) => [normalizeComparableText(style.styleId), style])
+  const styleProcessById = new Map(
+    styleProcessRowsById.map((row) => [Number(row.id), row])
   );
-  const styleByName = new Map(
-    styles
-      .filter((style) => style.name)
-      .map((style) => [normalizeComparableText(style.name), style])
-  );
+  const styleProcessByCanonicalKey = new Map<string, any>();
+  styleProcessRowsByCode.forEach((row) => {
+    const styleUid = toPositiveIntOrNull(row?.styleUid);
+    const processCodeKey = normalizeProcessCodeKey(row?.processCode);
+    if (styleUid === null || !processCodeKey) return;
+    const key = `${styleUid}::${processCodeKey}`;
+    if (styleProcessByCanonicalKey.has(key)) {
+      styleProcessByCanonicalKey.set(key, null);
+      return;
+    }
+    styleProcessByCanonicalKey.set(key, row);
+  });
   const processById = new Map(processes.map((process) => [process.id, process]));
   const processByCode = new Map(
     processes
       .filter((process) => process.code)
       .map((process) => [normalizeComparableText(process.code), process])
   );
-  const processByName = new Map(
-    processes
-      .filter((process) => process.name)
-      .map((process) => [normalizeComparableText(process.name), process])
-  );
   const colorById = new Map(colors.map((color) => [color.id, color]));
-  const colorByCode = new Map(
-    colors
-      .filter((color) => color.code)
-      .map((color) => [normalizeComparableText(color.code), color])
-  );
-  const colorByName = new Map(
-    colors
-      .filter((color) => color.name)
-      .map((color) => [normalizeComparableText(color.name), color])
-  );
 
-  return normalizedRecords.map((record) => {
+  return normalizedWithPlanStyle.map((record) => {
+    const recordStyleUid = toPositiveIntOrNull(record?.styleUid);
     const linkedStyle =
-      (toPositiveIntOrNull(record?.styleUid)
-        ? styleByUid.get(Number(record.styleUid)) ?? null
-        : null) ??
-      (resolveOptionalString(record?.styleId, null)
-        ? styleById.get(normalizeComparableText(record.styleId)) ?? null
-        : null) ??
-      (resolveOptionalString(record?.styleName, null)
-        ? styleByName.get(normalizeComparableText(record.styleName)) ?? null
-        : null);
+      recordStyleUid !== null ? styleByUid.get(recordStyleUid) ?? null : null;
+    const directStyleProcessId = toPositiveIntOrNull(record?.styleProcessId);
+    const directStyleProcess =
+      directStyleProcessId !== null
+        ? styleProcessById.get(directStyleProcessId) ?? null
+        : null;
+    const directStyleProcessMatchesStyle =
+      directStyleProcess &&
+      (recordStyleUid === null ||
+        toPositiveIntOrNull(directStyleProcess?.styleUid) === recordStyleUid);
+    const processCodeKey = normalizeProcessCodeKey(record?.processCode);
+    const codeMatchedStyleProcess =
+      recordStyleUid !== null && processCodeKey
+        ? styleProcessByCanonicalKey.get(`${recordStyleUid}::${processCodeKey}`) ?? null
+        : null;
+    const linkedStyleProcess =
+      (directStyleProcessMatchesStyle ? directStyleProcess : null) ??
+      codeMatchedStyleProcess ??
+      null;
     const linkedProcess =
       (toPositiveIntOrNull(record?.processId)
         ? processById.get(Number(record.processId)) ?? null
         : null) ??
       (resolveOptionalString(record?.processCode, null)
         ? processByCode.get(normalizeComparableText(record.processCode)) ?? null
-        : null) ??
-      (resolveOptionalString(record?.processName, null)
-        ? processByName.get(normalizeComparableText(record.processName)) ?? null
         : null);
     const linkedColor =
       (toPositiveIntOrNull(record?.colorId)
         ? colorById.get(Number(record.colorId)) ?? null
-        : null) ??
-      (resolveOptionalString(record?.colorCode, null)
-        ? colorByCode.get(normalizeComparableText(record.colorCode)) ?? null
-        : null) ??
-      (resolveOptionalString(record?.colorName, null)
-        ? colorByName.get(normalizeComparableText(record.colorName)) ?? null
         : null);
 
     return {
       ...record,
       orderNo: resolveOptionalString(record?.orderNo, null),
       lineId: toPositiveIntOrNull(record?.lineId),
-      styleUid: linkedStyle?.uid ?? toPositiveIntOrNull(record?.styleUid),
+      styleUid: linkedStyle?.uid ?? recordStyleUid,
       styleId: resolveOptionalString(linkedStyle?.styleId ?? record?.styleId, null),
       styleName: resolveOptionalString(linkedStyle?.name ?? record?.styleName, null),
+      styleProcessId:
+        toPositiveIntOrNull(linkedStyleProcess?.id) ?? directStyleProcessId,
       processId: linkedProcess?.id ?? toPositiveIntOrNull(record?.processId),
       processCode: resolveOptionalString(
-        linkedProcess?.code ?? record?.processCode,
+        linkedStyleProcess?.processCode ?? linkedProcess?.code ?? record?.processCode,
         null
       ),
       processName: resolveOptionalString(
-        linkedProcess?.name ?? record?.processName,
+        linkedStyleProcess?.processName ?? linkedProcess?.name ?? record?.processName,
         null
       ),
       processNameKo: resolveOptionalString(
@@ -8016,10 +8030,22 @@ const resolveWorkRecordProcessMetric = (
   };
 };
 const resolveWorkRecordProcessMetricFromRecord = (record: any) =>
-  resolveWorkRecordProcessMetric(
-    record?.processCode,
-    resolveWorkRecordProcessName(record)
-  );
+  (() => {
+    const styleProcessId = toPositiveIntOrNull(record?.styleProcessId);
+    if (styleProcessId !== null) {
+      return {
+        processMetricKey: `styleProcess:${styleProcessId}`,
+        processLabel:
+          resolveOptionalString(record?.processCode, null) ??
+          resolveWorkRecordProcessName(record) ??
+          `StyleProcess#${styleProcessId}`,
+      };
+    }
+    return resolveWorkRecordProcessMetric(
+      record?.processCode,
+      resolveWorkRecordProcessName(record)
+    );
+  })();
 const resolveWorkRecordStyleMetric = (record: any) => {
   const styleUid = toPositiveIntOrNull(record?.styleUid);
   if (styleUid) {
@@ -8029,27 +8055,6 @@ const resolveWorkRecordStyleMetric = (record: any) => {
         resolveOptionalString(record?.styleId, null) ??
         resolveOptionalString(record?.styleName, null) ??
         `UID:${styleUid}`,
-    };
-  }
-  const styleId = resolveOptionalString(record?.styleId, null);
-  if (styleId) {
-    return {
-      styleMetricKey: `id:${normalizeComparableText(styleId)}`,
-      styleLabel: styleId,
-    };
-  }
-  const styleName = resolveOptionalString(record?.styleName, null);
-  if (styleName) {
-    return {
-      styleMetricKey: `name:${normalizeComparableText(styleName)}`,
-      styleLabel: styleName,
-    };
-  }
-  const assignmentPlanId = toPositiveIntOrNull(record?.assignmentPlanId);
-  if (assignmentPlanId) {
-    return {
-      styleMetricKey: `plan:${assignmentPlanId}`,
-      styleLabel: `assignmentPlan#${assignmentPlanId}`,
     };
   }
   return { styleMetricKey: "", styleLabel: "미지정 스타일" };
@@ -8344,6 +8349,7 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
       styleUid: true,
       styleId: true,
       styleName: true,
+      styleProcessId: true,
       processId: true,
       processCode: true,
       assignmentPlanId: true,
@@ -8361,6 +8367,7 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
       styleUid: row.styleUid,
       styleId: row.styleId,
       styleName: row.styleName,
+      styleProcessId: row.styleProcessId,
       processId: row.processId,
       processCode: row.processCode,
       processName: row.process?.name ?? null,
@@ -8731,6 +8738,9 @@ const translateWorkLogErrorMessage = (error: any) => {
   if (/records\[\d+\]\.styleUid is required/i.test(text)) {
     return "작업기록의 스타일 참조(styleUid)를 확정할 수 없습니다. 배정 카드와 주문 스타일 연결을 확인해 주세요.";
   }
+  if (/records\[\d+\]\.styleProcessId is required/i.test(text)) {
+    return "작업기록의 스타일별 공정 참조(styleProcessId)를 확정할 수 없습니다. 스타일 공정과 배정 카드 연결을 확인해 주세요.";
+  }
   if (/records\[\d+\]\.processId is required/i.test(text)) {
     return "작업기록의 공정 참조(processId)를 확정할 수 없습니다. 공정 마스터와 작업기록 공정 코드를 확인해 주세요.";
   }
@@ -8749,8 +8759,10 @@ const toWorkRecordResponse = (record: any) => ({
   styleUid: resolveWorkRecordStyleUid(record),
   styleId: resolveWorkRecordStyleId(record) ?? "",
   styleName: resolveWorkRecordStyleName(record) ?? "",
+  styleProcessId: toPositiveIntOrNull(record?.styleProcess?.id ?? record?.styleProcessId),
   processId: toPositiveIntOrNull(record?.process?.id ?? record?.processId),
-  processCode: record?.process?.code ?? record?.processCode ?? "",
+  processCode:
+    record?.styleProcess?.processCode ?? record?.process?.code ?? record?.processCode ?? "",
   processName: resolveWorkRecordProcessName(record) ?? "",
   processNameKo:
     resolveOptionalString(record?.process?.nameKo ?? record?.processNameKo, null) ?? "",
@@ -9277,7 +9289,10 @@ const collectMissingWorkRecordAssignmentPlanLinkIndices = (records: any): number
 const collectMissingWorkRecordCanonicalRefIssues = (records: any) =>
   ensureArray(records).reduce(
     (
-      issues: Array<{ index: number; field: "styleUid" | "processId" | "processCode" }>,
+      issues: Array<{
+        index: number;
+        field: "styleUid" | "styleProcessId" | "processCode";
+      }>,
       record,
       index
     ) => {
@@ -9285,8 +9300,8 @@ const collectMissingWorkRecordCanonicalRefIssues = (records: any) =>
       if (toPositiveIntOrNull(record?.styleUid) === null) {
         issues.push({ index, field: "styleUid" });
       }
-      if (toPositiveIntOrNull(record?.processId) === null) {
-        issues.push({ index, field: "processId" });
+      if (toPositiveIntOrNull(record?.styleProcessId) === null) {
+        issues.push({ index, field: "styleProcessId" });
       }
       if (!resolveOptionalString(record?.processCode, null)) {
         issues.push({ index, field: "processCode" });
@@ -9316,13 +9331,7 @@ const buildWorkLogWriteDataWithOptionalCoverage = <T extends Record<string, any>
 const buildWorkLogResponseRecordList = async (workLog: any) => {
   const sourceRecords = resolveWorkLogRecordResponses(workLog);
   if (sourceRecords.length === 0) return [];
-  const normalizedOrgId = toPositiveIntOrNull(workLog?.orgId);
-  if (!normalizedOrgId) return sourceRecords;
-  const syncedRecords = await syncWorkRecordRefs({
-    orgId: normalizedOrgId,
-    records: sourceRecords,
-  });
-  return syncedRecords.map(toWorkRecordResponse);
+  return sourceRecords.map(toWorkRecordResponse);
 };
 const toWorkLogResponse = async (workLog: any) => {
   const lineMeta = resolveWorkLogLineMeta(workLog?.records);
@@ -18240,6 +18249,7 @@ const loadAssignmentPlanProgressWorkRows = async ({
         styleId: true,
         styleUid: true,
         styleName: true,
+        styleProcessId: true,
         processId: true,
         processCode: true,
         process: {
@@ -18788,31 +18798,6 @@ const buildLineMonthCapacityRows = async ({
     if (planId !== null) map.set(planId, plan);
     return map;
   }, new Map<number, any>());
-  const accessibleStyleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
-  const resolveAssignmentPlanStyleIdForActualOutput = (plan: any) => {
-    const parsedIdentity = parseAssignmentCardIdentity(
-      resolveOptionalString(plan?.cardId ?? plan?.originOrderId, null)
-    );
-    return resolveOptionalString(parsedIdentity?.styleId, null);
-  };
-  const resolveAssignmentPlanStyleCandidatesForActualOutput = (plan: any) =>
-    resolveAssignmentPlanStyleQueryValues(plan);
-  const resolveWorkRecordStyleIdForActualOutput = (row: any) => {
-    const recordStyleId = resolveOptionalString(row?.styleId, null);
-    if (recordStyleId) {
-      return {
-        styleId: recordStyleId,
-        styleIdSource: "WorkRecord.styleId",
-      };
-    }
-    const planId = toPositiveIntOrNull(row?.assignmentPlanId);
-    const plan = planId !== null ? planById.get(planId) ?? null : null;
-    const planStyleId = resolveAssignmentPlanStyleIdForActualOutput(plan);
-    return {
-      styleId: planStyleId,
-      styleIdSource: planStyleId ? "AssignmentPlan.cardId" : null,
-    };
-  };
   const actualOutputStyleUids = Array.from(
     new Set(
       canonicalWorkRows
@@ -18820,12 +18805,18 @@ const buildLineMonthCapacityRows = async ({
         .filter((value): value is number => value !== null)
     )
   );
+  const actualOutputStyleProcessIds = Array.from(
+    new Set(
+      canonicalWorkRows
+        .map((row) => toPositiveIntOrNull(row?.styleProcessId))
+        .filter((value): value is number => value !== null)
+    )
+  );
   const actualOutputStyleProcessRows =
-    actualOutputStyleUids.length > 0
+    actualOutputStyleProcessIds.length > 0
         ? await prisma.styleProcess.findMany({
           where: {
-            orgId: { in: accessibleStyleOwnerOrgIds },
-            styleUid: { in: actualOutputStyleUids },
+            id: { in: actualOutputStyleProcessIds },
           },
           select: {
             id: true,
@@ -18842,33 +18833,20 @@ const buildLineMonthCapacityRows = async ({
           },
         })
       : [];
-  const actualOutputStyleProcessByCanonicalKey = new Map<string, any>();
-  actualOutputStyleProcessRows.forEach((row) => {
-    const styleUid = toPositiveIntOrNull(row?.styleUid);
-    const processCodeKey = normalizeProcessCodeKey(row?.processCode);
-    if (styleUid === null || !processCodeKey) return;
-    actualOutputStyleProcessByCanonicalKey.set(`${styleUid}::${processCodeKey}`, row);
-  });
-  const resolveActualOutputStyleProcessByCode = (
-    styleUid: number,
-    processCode: string | null
-  ) => {
-    const processCodeKey = normalizeProcessCodeKey(processCode);
-    if (!processCodeKey) return null;
-    return actualOutputStyleProcessByCanonicalKey.get(`${styleUid}::${processCodeKey}`) ?? null;
-  };
+  const actualOutputStyleProcessById = new Map(
+    actualOutputStyleProcessRows.map((row) => [Number(row.id), row])
+  );
   const actualOutputRequestDiagnostics = includeActualOutputDebug
     ? {
         calculationRule:
           "actualOutputStSeconds = sum(monthAllocatedQuantity * StyleProcessStandard.bucketStSeconds)",
         styleMatchRule:
-          "WorkRecord.styleUid only. Read-time styleId/styleCode/name lookup is not allowed.",
+          "WorkRecord.styleUid must be stored. styleId/styleCode/name lookup is not allowed.",
         processMatchRule:
-          "WorkRecord.processCode -> StyleProcess.processCode only. AttrProcess/process name fallback is not allowed.",
+          "WorkRecord.styleProcessId -> StyleProcess.id only. processCode/process name fallback is not allowed.",
         processIdRole:
           "WorkRecord.processId is AttrProcess.id. It is diagnostic/reference data, not StyleProcess.id.",
         orgId,
-        accessibleStyleOwnerOrgIds,
         requestedLineIds,
         requestedMonthKeys,
         planCount: plans.length,
@@ -18891,6 +18869,12 @@ const buildLineMonthCapacityRows = async ({
         workRowsWithoutProcessId: canonicalWorkRows.filter(
           (row) => toPositiveIntOrNull(row?.processId) === null
         ).length,
+        workRowsWithStyleProcessId: canonicalWorkRows.filter(
+          (row) => toPositiveIntOrNull(row?.styleProcessId) !== null
+        ).length,
+        workRowsWithoutStyleProcessId: canonicalWorkRows.filter(
+          (row) => toPositiveIntOrNull(row?.styleProcessId) === null
+        ).length,
         workRowsWithProcessCode: canonicalWorkRows.filter((row) =>
           Boolean(normalizeProcessCodeKey(row?.processCode))
         ).length,
@@ -18909,8 +18893,9 @@ const buildLineMonthCapacityRows = async ({
         }).length,
         styleUidCount: actualOutputStyleUids.length,
         styleUids: actualOutputStyleUids.slice(0, 100),
+        styleProcessIdCount: actualOutputStyleProcessIds.length,
+        styleProcessIds: actualOutputStyleProcessIds.slice(0, 100),
         styleProcessRowCount: actualOutputStyleProcessRows.length,
-        styleProcessCanonicalKeyCount: actualOutputStyleProcessByCanonicalKey.size,
         styleProcessRows: actualOutputStyleProcessRows.slice(0, 100).map((row) => ({
           id: toPositiveIntOrNull(row?.id),
           styleUid: toPositiveIntOrNull(row?.styleUid),
@@ -18929,6 +18914,11 @@ const buildLineMonthCapacityRows = async ({
           workerName: resolveOptionalString(row?.workerName, null),
           styleUid: toPositiveIntOrNull(row?.styleUid),
           styleUidSource: toPositiveIntOrNull(row?.styleUid) !== null ? "WorkRecord.styleUid" : null,
+          styleProcessId: toPositiveIntOrNull(row?.styleProcessId),
+          styleProcessIdSource:
+            toPositiveIntOrNull(row?.styleProcessId) !== null
+              ? "WorkRecord.styleProcessId"
+              : null,
           styleId: resolveOptionalString(row?.styleId, null),
           processId: toPositiveIntOrNull(row?.processId),
           processCode: resolveOptionalString(row?.processCode, null),
@@ -18941,43 +18931,20 @@ const buildLineMonthCapacityRows = async ({
         })),
       }
     : null;
-  const actualOutputStyleProcessDebugByStyleUid = new Map<number, any[]>();
-  actualOutputStyleProcessRows.forEach((row) => {
-    const styleUid = toPositiveIntOrNull(row?.styleUid);
-    if (styleUid === null) return;
-    const bucketQuantities = ensureArray(row?.standards)
-      .map((item) => toPositiveIntOrNull((item as any)?.bucketQuantity))
-      .filter((value): value is number => value !== null);
-    const item = {
-      styleProcessId: toPositiveIntOrNull(row?.id),
-      processCode: resolveOptionalString(row?.processCode, null),
-      processName: resolveOptionalString(row?.processName, null),
-      stBuckets: Array.from(new Set(bucketQuantities)).sort((left, right) => left - right),
-    };
-    const list = actualOutputStyleProcessDebugByStyleUid.get(styleUid) || [];
-    list.push(item);
-    actualOutputStyleProcessDebugByStyleUid.set(styleUid, list);
-  });
-  const resolveActualOutputStyleProcessDebugList = (styleUid: number | null) => {
-    if (styleUid === null) return [];
-    return ensureArray(actualOutputStyleProcessDebugByStyleUid.get(styleUid)).slice(0, 30);
-  };
   const resolveWorkRecordStSecondsForLineMonthCapacity = ({
     record,
-    plan,
     bucketQuantity,
   }: {
     record: any;
-    plan: any;
     bucketQuantity: number;
   }) => {
-    const styleMeta = resolveWorkRecordStyleIdForActualOutput(record);
-    const styleId = styleMeta.styleId;
-    const styleIdSource = styleMeta.styleIdSource;
     const recordStyleUid = toPositiveIntOrNull(record?.styleUid);
     const styleUid = recordStyleUid ?? null;
     const styleUidSource =
       recordStyleUid !== null ? "WorkRecord.styleUid" : null;
+    const styleProcessId = toPositiveIntOrNull(record?.styleProcessId);
+    const styleProcessIdSource =
+      styleProcessId !== null ? "WorkRecord.styleProcessId" : null;
     const recordProcessCode = resolveOptionalString(record?.processCode, null);
     const processCode = recordProcessCode;
     const processCodeSource = recordProcessCode
@@ -18987,49 +18954,55 @@ const buildLineMonthCapacityRows = async ({
       return {
         stSeconds: null,
         reason: "STYLE_UID_MISSING",
-        styleId,
-        styleIdSource,
         styleUid: null,
         styleUidSource,
+        styleProcessId,
+        styleProcessIdSource,
         recordStyleUid,
-        planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
-        planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
         processCode,
         processCodeSource,
-        availableProcesses: [],
       };
     }
-    if (!normalizeProcessCodeKey(processCode)) {
+    if (styleProcessId === null) {
       return {
         stSeconds: null,
-        reason: "PROCESS_CODE_MISSING",
-        styleId,
-        styleIdSource,
+        reason: "STYLE_PROCESS_ID_MISSING",
         styleUid,
         styleUidSource,
+        styleProcessId: null,
+        styleProcessIdSource,
         recordStyleUid,
-        planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
-        planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
         processCode,
         processCodeSource,
-        availableProcesses: resolveActualOutputStyleProcessDebugList(styleUid),
       };
     }
-    const matchedRow = resolveActualOutputStyleProcessByCode(styleUid, processCode);
+    const matchedRow = actualOutputStyleProcessById.get(styleProcessId) ?? null;
     if (!matchedRow) {
       return {
         stSeconds: null,
-        reason: "PROCESS_NOT_MATCHED",
-        styleId,
-        styleIdSource,
+        reason: "STYLE_PROCESS_NOT_FOUND",
         styleUid,
         styleUidSource,
+        styleProcessId,
+        styleProcessIdSource,
         recordStyleUid,
-        planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
-        planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
         processCode,
         processCodeSource,
-        availableProcesses: resolveActualOutputStyleProcessDebugList(styleUid),
+      };
+    }
+    const matchedStyleUid = toPositiveIntOrNull(matchedRow?.styleUid);
+    if (matchedStyleUid !== null && matchedStyleUid !== styleUid) {
+      return {
+        stSeconds: null,
+        reason: "STYLE_PROCESS_STYLE_MISMATCH",
+        styleUid,
+        styleUidSource,
+        styleProcessId,
+        styleProcessIdSource,
+        recordStyleUid,
+        matchedStyleUid,
+        processCode,
+        processCodeSource,
       };
     }
     const stSeconds = resolveStyleProcessBucketStSeconds(matchedRow, bucketQuantity);
@@ -19044,32 +19017,27 @@ const buildLineMonthCapacityRows = async ({
       return {
         stSeconds: null,
         reason: "ST_BUCKET_NOT_FOUND",
-        styleId,
-        styleIdSource,
         styleUid,
         styleUidSource,
+        styleProcessId,
+        styleProcessIdSource,
         recordStyleUid,
-        planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
-        planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
         processCode,
         processCodeSource,
         matchedProcessId,
         matchedProcessCode,
         matchedProcessName,
         matchedBuckets,
-        availableProcesses: resolveActualOutputStyleProcessDebugList(styleUid),
       };
     }
     return {
       stSeconds,
       reason: "OK",
-      styleId,
-      styleIdSource,
       styleUid,
       styleUidSource,
+      styleProcessId,
+      styleProcessIdSource,
       recordStyleUid,
-      planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
-      planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
       processCode,
       processCodeSource,
       matchedProcessId,
@@ -19676,7 +19644,6 @@ const buildLineMonthCapacityRows = async ({
       });
       const processSt = resolveWorkRecordStSecondsForLineMonthCapacity({
         record,
-        plan,
         bucketQuantity,
       });
       if (processSt.stSeconds === null) {
@@ -19704,13 +19671,11 @@ const buildLineMonthCapacityRows = async ({
               recordOrderNo: resolveOptionalString(record?.orderNo, null),
               workerId: toPositiveIntOrNull(record?.workerId),
               workerName: resolveOptionalString(record?.workerName, null),
-              styleId: processSt.styleId,
-              styleIdSource: processSt.styleIdSource,
               recordStyleUid: processSt.recordStyleUid,
-              planStyleId: processSt.planStyleId,
-              planStyleCandidates: processSt.planStyleCandidates ?? [],
               resolvedStyleUid: processSt.styleUid,
               styleUidSource: processSt.styleUidSource,
+              styleProcessId: processSt.styleProcessId,
+              styleProcessIdSource: processSt.styleProcessIdSource,
               styleName: resolveOptionalString(record?.styleName, null),
               recordProcessId: toPositiveIntOrNull(record?.processId),
               processCode: processSt.processCode,
@@ -19725,11 +19690,11 @@ const buildLineMonthCapacityRows = async ({
               workLogDisplayDate: normalizeDateKey(record?.workLog?.displayDate),
               bucketQuantity,
               reason: processSt.reason,
+              matchedStyleUid: (processSt as any).matchedStyleUid ?? null,
               matchedProcessId: processSt.matchedProcessId ?? null,
               matchedProcessCode: processSt.matchedProcessCode ?? null,
               matchedProcessName: processSt.matchedProcessName ?? null,
               matchedBuckets: processSt.matchedBuckets ?? [],
-              availableProcesses: processSt.availableProcesses ?? [],
             });
           });
         }
@@ -19765,13 +19730,11 @@ const buildLineMonthCapacityRows = async ({
               assignmentQuantity: plannedQuantity,
               recordOrderNo: resolveOptionalString(record?.orderNo, null),
               workerName: resolveOptionalString(record?.workerName, null),
-              styleId: processSt.styleId,
-              styleIdSource: processSt.styleIdSource,
               recordStyleUid: processSt.recordStyleUid,
-              planStyleId: processSt.planStyleId,
-              planStyleCandidates: processSt.planStyleCandidates ?? [],
               resolvedStyleUid: processSt.styleUid,
               styleUidSource: processSt.styleUidSource,
+              styleProcessId: processSt.styleProcessId,
+              styleProcessIdSource: processSt.styleProcessIdSource,
               processCode: processSt.processCode,
               processCodeSource: processSt.processCodeSource,
               matchedProcessId: processSt.matchedProcessId ?? null,
@@ -23043,6 +23006,7 @@ app.post("/work-logs/import", async (req, res) => {
                 styleId: record.styleId ?? null,
                 styleUid: record.styleUid ?? null,
                 styleName: record.styleName ?? null,
+                styleProcessId: record.styleProcessId ?? null,
                 processId: record.processId ?? null,
                 processCode: record.processCode ?? null,
                 colorId: record.colorId ?? null,
@@ -23342,6 +23306,7 @@ app.post("/work-logs", async (req, res) => {
             styleId: record.styleId ?? null,
             styleUid: record.styleUid ?? null,
             styleName: record.styleName ?? null,
+            styleProcessId: record.styleProcessId ?? null,
             processId: record.processId ?? null,
             processCode: record.processCode ?? null,
             colorId: record.colorId ?? null,
@@ -23688,6 +23653,7 @@ app.put("/work-logs/:id", async (req, res) => {
             styleId: record.styleId ?? null,
             styleUid: record.styleUid ?? null,
             styleName: record.styleName ?? null,
+            styleProcessId: record.styleProcessId ?? null,
             processId: record.processId ?? null,
             processCode: record.processCode ?? null,
             colorId: record.colorId ?? null,

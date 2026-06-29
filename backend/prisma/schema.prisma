@@ -549,6 +549,7 @@ model StyleProcess {
   style        Style                 @relation(fields: [styleUid], references: [uid], onDelete: Cascade)
   standards    StyleProcessStandard[]
   trainingBuckets AtTrainingBucketProcess[]
+  workRecords  WorkRecord[]
 
   @@unique([styleUid, orgId, processCode])
   @@index([orgId])
@@ -801,6 +802,7 @@ model WorkRecord {
   styleId          String?
   styleUid         Int?
   styleName        String?
+  styleProcessId   Int?
   processId        Int?
   processCode      String?
   colorId          Int?
@@ -818,6 +820,7 @@ model WorkRecord {
   workLog        WorkLog         @relation(fields: [workLogId], references: [id], onDelete: Cascade)
   assignmentPlan AssignmentPlan? @relation(fields: [assignmentPlanId], references: [id])
   style          Style?          @relation(fields: [styleUid], references: [uid], onDelete: SetNull)
+  styleProcess   StyleProcess?   @relation(fields: [styleProcessId], references: [id], onDelete: SetNull)
   color          AttrColor?      @relation(fields: [colorId], references: [id], onDelete: SetNull)
   process        AttrProcess?    @relation(fields: [processId], references: [id], onDelete: SetNull)
 
@@ -827,6 +830,7 @@ model WorkRecord {
   @@index([orgId, orderNo])
   @@index([orgId, lineId])
   @@index([styleUid])
+  @@index([styleProcessId])
   @@index([assignmentPlanId])
   @@index([workLogId])
   @@index([colorId])

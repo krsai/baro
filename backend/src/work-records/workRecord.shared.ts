@@ -10,7 +10,10 @@ export const resolveWorkRecordStyleName = (record: any) =>
   resolveOptionalString(record?.style?.name ?? record?.styleName, null);
 
 export const resolveWorkRecordProcessName = (record: any) =>
-  resolveOptionalString(record?.process?.name ?? record?.processName, null);
+  resolveOptionalString(
+    record?.styleProcess?.processName ?? record?.process?.name ?? record?.processName,
+    null
+  );
 
 export const resolveWorkRecordColorName = (record: any) =>
   resolveOptionalString(record?.color?.name ?? record?.colorName, null) ??
@@ -36,6 +39,13 @@ export const WORK_RECORD_WITH_REFS_INCLUDE = {
         nameKo: true,
         nameEn: true,
         nameVi: true,
+      },
+    },
+    styleProcess: {
+      select: {
+        id: true,
+        processCode: true,
+        processName: true,
       },
     },
     color: {

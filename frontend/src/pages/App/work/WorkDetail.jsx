@@ -483,6 +483,7 @@ const buildPlanProcessOptions = (plan) => {
       processId: toPositiveIdOrNull(
         process?.id ?? process?.processId ?? process?.processAttributeId ?? process?.attributeId
       ),
+      styleProcessId: toPositiveIdOrNull(process?.styleProcessId),
       processCode: stripProcessInstanceCode(
         process?.processCode || process?.code || process?.processKey
       ),
@@ -509,15 +510,17 @@ const buildPlanProcessOptions = (plan) => {
 const enrichAssignmentPlan = (plan) => ({ ...plan, processes: buildPlanProcessOptions(plan) });
 const buildLegacyProcess = (record, index = 0) => {
   const processId = toPositiveIdOrNull(record?.processId);
+  const styleProcessId = toPositiveIdOrNull(record?.styleProcessId);
   const processCode = toText(record?.processCode);
   const processName = toText(record?.processName);
   const processKey = processId ? `id:${processId}` : processCode || processName || `legacy-process-${index + 1}`;
-  if (!processId && !processCode && !processName) return null;
+  if (!processId && !styleProcessId && !processCode && !processName) return null;
 
   return {
     id: `legacy-process-${index + 1}-${processKey}`,
     processKey,
     processId,
+    styleProcessId,
     code: processCode,
     name: processName,
     nameKo: toText(record?.processNameKo),
@@ -826,9 +829,12 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
         })
       );
     const process = matchedProcess
-      ? {
+        ? {
           ...matchedProcess,
           processId: toPositiveIdOrNull(record?.processId ?? matchedProcess?.processId),
+          styleProcessId: toPositiveIdOrNull(
+            record?.styleProcessId ?? matchedProcess?.styleProcessId
+          ),
           code: toText(record?.processCode || matchedProcess?.code),
           name: toText(record?.processName || matchedProcess?.name),
           nameKo: toText(record?.processNameKo || matchedProcess?.nameKo),
@@ -845,6 +851,7 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
         orderNo: toText(record?.orderNo),
         styleId: toText(record?.styleId),
         styleName: toText(record?.styleName),
+        styleProcessId: record?.styleProcessId ?? null,
         processId: record?.processId ?? null,
         processCode: toText(record?.processCode),
         processName: toText(record?.processName),
@@ -1007,6 +1014,9 @@ const mergeMatchedProcessOption = (rowProcess, matchedProcess) => {
     ...rowProcess,
     ...matchedProcess,
     processId: toPositiveIdOrNull(matchedProcess?.processId ?? rowProcess?.processId),
+    styleProcessId: toPositiveIdOrNull(
+      matchedProcess?.styleProcessId ?? rowProcess?.styleProcessId
+    ),
     code: toText(
       matchedProcess?.code ||
         matchedProcess?.processCode ||
@@ -1107,6 +1117,9 @@ const mergeProcessWithCatalog = (
     ...matchedProcess,
     ...process,
     processId: processId || toPositiveIdOrNull(matchedProcess?.id),
+    styleProcessId: toPositiveIdOrNull(
+      process?.styleProcessId ?? matchedProcess?.styleProcessId
+    ),
     processCode: toText(
       process?.processCode || matchedProcess?.processCode || matchedProcess?.code
     ),
@@ -1816,6 +1829,7 @@ const WorkDetail = ({
         styleId: toText(assignment?.styleId),
         styleName: toText(assignment?.label),
         processId: toPositiveIdOrNull(process?.processId),
+        styleProcessId: toPositiveIdOrNull(process?.styleProcessId),
         processCode: buildDisplayProcessCode(process),
         processName: toText(process?.name),
         processNameKo: toText(process?.nameKo),
@@ -2845,6 +2859,7 @@ const WorkDetail = ({
             rowProcess?.nameEn ||
             rowProcess?.nameVi
         ),
+        styleProcessId: toPositiveIdOrNull(rowProcess?.styleProcessId),
         processId: toPositiveIdOrNull(rowProcess?.processId ?? rowProcess?.id),
       };
     });

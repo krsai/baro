@@ -717,6 +717,29 @@ CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_orderNo_idx"
 CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_lineId_idx"
   ON "WorkRecord"("orgId", "lineId");
 
+-- Step 5a-2: WorkRecord exact style process FK (20260629)
+-- WorkRecord.processId points to AttrProcess and is not enough to join ST.
+-- styleProcessId points to StyleProcess.id and is the canonical ST matching key.
+ALTER TABLE "WorkRecord"
+  ADD COLUMN IF NOT EXISTS "styleProcessId" INTEGER;
+
+CREATE INDEX IF NOT EXISTS "WorkRecord_styleProcessId_idx"
+  ON "WorkRecord"("styleProcessId");
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'WorkRecord_styleProcessId_fkey'
+  ) THEN
+    ALTER TABLE "WorkRecord"
+      ADD CONSTRAINT "WorkRecord_styleProcessId_fkey"
+      FOREIGN KEY ("styleProcessId") REFERENCES "StyleProcess"("id")
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
+
 -- Step 5b: WorkRecord canonical references for operating data (20260629)
 -- Only deterministic fills are allowed. Rows that cannot be resolved from the
 -- linked assignment plan or process master remain unchanged for explicit review.
@@ -839,6 +862,57 @@ BEGIN
 
     INSERT INTO "_BaroMigrationState" ("key")
     VALUES ('20260629_work_record_canonical_refs_v2');
+  END IF;
+END $$;
+
+-- Step 5c: WorkRecord style process FK backfill for operating data (20260629)
+-- This runs after styleUid/processCode canonicalization. It only fills rows
+-- where one exact StyleProcess row matches the stored styleUid + processCode.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+      AND column_name = 'styleProcessId'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+      AND column_name = 'styleUid'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+      AND column_name = 'processCode'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM "_BaroMigrationState"
+    WHERE "key" = '20260629_work_record_style_process_refs_v1'
+  ) THEN
+    WITH deterministic AS (
+      SELECT
+        wr.id AS "workRecordId",
+        MIN(sp.id) AS "styleProcessId"
+      FROM "WorkRecord" wr
+      JOIN "WorkLog" wl
+        ON wl.id = wr."workLogId"
+      JOIN "StyleProcess" sp
+        ON sp."styleUid" = wr."styleUid"
+       AND sp."processCode" = wr."processCode"
+      WHERE COALESCE(wl."coverageEndDate", wl."workDate") >= '2026-04-01'
+        AND wr."styleUid" IS NOT NULL
+        AND wr."processCode" IS NOT NULL
+      GROUP BY wr.id
+      HAVING COUNT(DISTINCT sp.id) = 1
+    )
+    UPDATE "WorkRecord" wr
+    SET "styleProcessId" = deterministic."styleProcessId"
+    FROM deterministic
+    WHERE wr.id = deterministic."workRecordId"
+      AND wr."styleProcessId" IS DISTINCT FROM deterministic."styleProcessId";
+
+    INSERT INTO "_BaroMigrationState" ("key")
+    VALUES ('20260629_work_record_style_process_refs_v1');
   END IF;
 END $$;
 
