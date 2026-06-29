@@ -4670,6 +4670,12 @@ const AssignBoard = () => {
         if (shouldDebugLineMonthCapacity && payload?.actualOutputDiagnostics) {
           const diagnostics = payload.actualOutputDiagnostics;
           console.groupCollapsed('[line-month-capacity] actual output request diagnostics');
+          console.log('rules', {
+            calculationRule: diagnostics.calculationRule,
+            styleMatchRule: diagnostics.styleMatchRule,
+            processMatchRule: diagnostics.processMatchRule,
+            processIdRole: diagnostics.processIdRole,
+          });
           console.log('summary', {
             orgId: diagnostics.orgId,
             accessibleStyleOwnerOrgIds: diagnostics.accessibleStyleOwnerOrgIds,
@@ -4681,6 +4687,8 @@ const AssignBoard = () => {
             workRowsWithoutAssignmentPlanId: diagnostics.workRowsWithoutAssignmentPlanId,
             workRowsWithStyleUid: diagnostics.workRowsWithStyleUid,
             workRowsWithoutStyleUid: diagnostics.workRowsWithoutStyleUid,
+            workRowsWithProcessId: diagnostics.workRowsWithProcessId,
+            workRowsWithoutProcessId: diagnostics.workRowsWithoutProcessId,
             workRowsWithProcessCode: diagnostics.workRowsWithProcessCode,
             workRowsWithoutProcessCode: diagnostics.workRowsWithoutProcessCode,
             workRowsWithCoverageRange: diagnostics.workRowsWithCoverageRange,
@@ -4691,6 +4699,24 @@ const AssignBoard = () => {
             styleUidCount: diagnostics.styleUidCount,
             styleProcessRowCount: diagnostics.styleProcessRowCount,
           });
+          console.table(
+            (diagnostics.workRecordKeySamples || []).map((row) => ({
+              workRecordId: row.workRecordId,
+              workLogId: row.workLogId,
+              assignmentPlanId: row.assignmentPlanId,
+              orderNo: row.orderNo,
+              workerName: row.workerName,
+              styleUid: row.styleUid,
+              styleUidSource: row.styleUidSource,
+              styleId: row.styleId,
+              processId: row.processId,
+              processCode: row.processCode,
+              processCodeSource: row.processCodeSource,
+              quantity: row.quantity,
+              coverageStartDate: row.coverageStartDate,
+              coverageEndDate: row.coverageEndDate,
+            }))
+          );
           console.table(
             (diagnostics.styleIdMatches || []).map((row) => ({
               uid: row.uid,
@@ -4825,6 +4851,7 @@ const AssignBoard = () => {
                 resolvedStyleUid: sample.resolvedStyleUid,
                 styleUidSource: sample.styleUidSource,
                 processCode: sample.processCode,
+                processCodeSource: sample.processCodeSource,
                 recordProcessId: sample.recordProcessId,
                 bucketQuantity: sample.bucketQuantity,
                 matchedProcessId: sample.matchedProcessId,
@@ -4863,6 +4890,7 @@ const AssignBoard = () => {
                 resolvedStyleUid: sample.resolvedStyleUid,
                 styleUidSource: sample.styleUidSource,
                 processCode: sample.processCode,
+                processCodeSource: sample.processCodeSource,
                 matchedProcessId: sample.matchedProcessId,
                 matchedProcessCode: sample.matchedProcessCode,
                 bucketQuantity: sample.bucketQuantity,

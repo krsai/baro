@@ -1,355 +1,240 @@
-# TODO 메모 - 2026-06-28
+# TODO - 레거시 정리와 실제 생산 계산 검증 계획
 
-이 파일은 오늘 점검한 내용을 내일 사무실에서 바로 이어서 볼 수 있게 정리한 메모다.
-내가 이해한 의도, 실제 코드 상태, 지금 건드려도 되는 것과 아직 건드리면 안 되는 것을 같이 적는다.
+기준일: 2026-06-29
 
----
-
-## 0. 오늘 실제로 반영한 것
-
-오늘 코드에 이미 반영해서 커밋/푸시한 내용:
-
-1. 출퇴근 보정 규칙 반영
-   - `in`만 있고 `out`이 없으면 당일 `18:00` 퇴근으로 계산
-   - `out`만 있고 `in`이 없으면 당일 `08:00` 출근으로 계산
-   - 백엔드 계산과 프론트 출퇴근 화면 계산을 둘 다 맞춤
-
-2. `Style.unitPriceUsd` 제거
-   - 실제 사용처가 없어서 스키마와 백엔드 응답에서 제거
-   - 배포 시 DB에서도 같이 내려가도록 `migration_fix.sql` 수정
-
-3. `WorkRecord processName` 보강
-   - 과거 작업기록이 `processId/styleUid`를 못 받은 채 남아 있는 문제를 확인
-   - 읽을 때 `processCode/styleId` 기준으로 다시 보강해서 응답에 공정명이 살아나게 수정
-   - 백필 스크립트도 확장해서 과거 `WorkRecord`의 `styleUid/styleName/processId/processCode`를 메울 수 있게 수정
-
-오늘 반영 커밋(이 메모 전):
-- `40f31cf` - `출퇴근 보정과 작업기록 참조 정리를 반영`
+목표는 "대충 맞는 계산"이 아니라 하나의 정확한 데이터 흐름을 고정하는 것이다.
+임시 우회 계산, 문자열 fallback으로 숫자를 맞추는 방식, 과거 null 데이터를 조용히 끼워 넣는 방식은 금지한다.
 
 ---
 
-## 1. 지금 결론만 먼저
+## 공통 원칙
 
-### 결론 A. `WorkRecord`의 색상 계열 칼럼은 지금 당장 지우면 안 됨
+1. null 컬럼이 보인다고 바로 삭제하지 않는다.
+2. 먼저 소스오브트루스를 확정한다.
+3. 신규 저장 경로가 소스오브트루스를 정확히 저장하는지 확인한다.
+4. 2026-04-01 이후 운영 데이터만 백필/정리 대상으로 본다.
+5. 화면 계산은 정규 참조만 사용한다.
+6. 실패한 데이터는 콘솔 로그에서 `왜 실패했는지`가 보여야 한다.
+7. 참조 제거 -> 검증 -> DB 컬럼 삭제 순서로만 진행한다.
 
-내가 처음 보기엔 사용자 의도상 맞는 말이다.
-- 색상은 주문에서만 구분
-- 배정/작업기록은 색상 없이 수량 집계
+---
 
-그런데 실제 코드에서는 아직 색상 칼럼을 참조하는 곳이 남아 있다.
-특히 아래가 문제:
+## 1. 작업기록 정규 참조와 실제 생산 계산
+
+상태: 진행 시작
+
+### 소스오브트루스
+
+- 작업기록과 배정의 연결: `WorkRecord.assignmentPlanId`
+- 스타일 FK: `WorkRecord.styleUid`
+- 사람이 보는 스타일 코드: `WorkRecord.styleId`
+- 공정 마스터 FK: `WorkRecord.processId` (`AttrProcess.id`)
+- 스타일별 ST 매칭 키: `WorkRecord.processCode -> StyleProcess.processCode`
+- 실제 생산 시간: `StyleProcessStandard.bucketStSeconds * WorkRecord.quantity`
+
+### 주의
+
+- `styleId`는 FK가 아니라 표시/진단용 코드다.
+- 실제 생산 계산에서 `styleId`로 `Style.uid`를 다시 찾는 계산은 하지 않는다.
+- `WorkRecord.processId`는 `StyleProcess.id`가 아니므로 ST 매칭 키로 직접 쓰지 않는다.
+- ST 매칭은 `styleUid + processCode + bucketQuantity`로 한다.
+
+### 해야 할 일
+
+1. 신규 작업기록 저장 시 모든 row에 `assignmentPlanId`, `styleUid`, `processCode`가 남는지 확인한다.
+2. 4월 이후 기존 `WorkRecord` 중 `assignmentPlanId/styleUid/processCode` 누락 row를 집계한다.
+3. 실제 생산 계산 로그에서 다음을 한눈에 보이게 한다.
+   - 계산식
+   - 스타일 매칭 규칙
+   - 공정 매칭 규칙
+   - 분자: 작업기록 ST 합계
+   - 분모: 라인 월 capacity
+   - 포함된 작업행 수
+   - 실패한 작업행 수
+   - 실패 사유별 개수
+   - 실패 sample row
+   - `styleUidSource`, `processCodeSource`
+4. 실패 사유는 다음처럼 분리한다.
+   - `STYLE_UID_MISSING`
+   - `PROCESS_CODE_MISSING`
+   - `PROCESS_NOT_MATCHED`
+   - `ST_BUCKET_NOT_FOUND`
+   - `COVERAGE_DATE_MISSING_OR_INVALID`
+   - `MONTH_ALLOCATION_EMPTY`
+
+### 테스트 방법
+
+브라우저 콘솔에서 배정 화면을 열고 `/assignment`에서 2026-04 또는 2026-05를 조회한다.
+
+확인할 콘솔 그룹:
+
+- `[line-month-capacity] request`
+- `[line-month-capacity] actual output request diagnostics`
+- `[line-month-capacity] actual output debug`
+- `[line-month-capacity] formula {lineId}/{monthKey}`
+- `[line-month-capacity] failed work-record raw samples`
+- `[line-month-capacity] matched work-record raw samples`
+
+성공 기준:
+
+- `workRowsWithoutAssignmentPlanId = 0`
+- `workRowsWithoutStyleUid = 0`
+- `workRowsWithoutProcessCode = 0`
+- 실패 sample이 있다면 어떤 DB 필드가 문제인지 설명 가능해야 한다.
+
+2026-06-29 1차 반영:
+
+- `/line-month-capacity?debug=actual-output` 응답에 계산 규칙과 키 샘플을 추가한다.
+- 브라우저 콘솔 summary에서 `processId`와 `processCode`를 분리해서 보여준다.
+- `processId`는 `AttrProcess.id`, ST 매칭은 `processCode`라는 점을 콘솔 rules에 표시한다.
+
+---
+
+## 2. 4월 이전 자료 숨김
+
+상태: 대기
+
+### 기준
+
+- 작업배정과 작업기록은 2026-04-01부터 운영 데이터로 본다.
+- 2026-03 이전 월은 생산 분석/배정 분석에서 표시하지 않는다.
+
+### 해야 할 일
+
+1. 생산 분석 월 선택의 최소 월을 2026-04로 제한한다.
+2. 배정 화면 실제 생산/히스토리 계산도 2026-04 이전은 제외한다.
+3. 콘솔 진단에서도 요청 월이 2026-03 이하이면 제외 이유가 보이게 한다.
+
+---
+
+## 3. 색상/성별 레거시 정리
+
+상태: 대기
+
+### 현재 판단
+
+색상은 업무 의도상 주문 단위에만 있으면 된다.
+하지만 현재 코드에는 아직 색상/성별 참조가 남아 있으므로 DB 컬럼을 바로 삭제하면 안 된다.
+
+### 주요 참조
+
 - `backend/src/quantity-settlement/quantitySettlement.service.ts`
-- 일부 배정/QC/정산 보조 로직
+- `frontend/src/pages/App/QcReview.jsx`
+- `frontend/src/pages/App/assign/*`
+- `frontend/src/pages/App/work/WorkDetail.jsx`
 
-즉, "의도상 불필요"와 "코드상 실제 미사용"은 아직 다르다.
+### 해야 할 일
 
-내 의견:
-- 지금 바로 DB 컬럼을 삭제하면 높은 확률로 다른 정산 화면이 깨진다.
-- 먼저 "색상 없이도 완전히 동일하게 동작하는지"를 정산/QC 기준으로 정리한 다음 지우는 게 맞다.
+1. 정산/QC/배정/작업기록 화면에서 색상 참조가 실제로 필요한지 확인한다.
+2. 필요 없으면 코드 참조부터 제거한다.
+3. 제거 후 테스트한다.
+4. 마지막에 DB 컬럼을 삭제한다.
 
-### 결론 B. `processName`이 빈 이유는 fallback 때문이라기보다 과거 데이터 정리가 덜 된 쪽
+삭제 보류 컬럼:
 
-핵심 원인:
-- 새로 저장되는 작업기록은 `syncWorkRecordRefs`를 통해 `processId/processName/styleUid/styleName` 등을 채우려는 구조가 있음
-- 그런데 과거 데이터는 그 정규 참조가 비어 있는 row가 남아 있음
-- 기존 백필 스크립트는 사실상 `orderNo`, `lineId` 위주만 채우고 있었음
-
-즉 "아예 설계가 없다"기보다
-"설계는 있는데 과거 데이터가 그 설계 상태로 정리되지 못한 것"에 가깝다.
-
-내 의견:
-- `WorkRecord`는 장기적으로 문자열 `processName`에 의존하면 안 됨
-- 진짜 소스오브트루스는 `processId`
-- 다만 운영 편의를 위해 응답 단계에서 `processCode`로 이름을 보강해 주는 것은 현실적으로 좋음
-
-### 결론 C. `employee.lineName`은 레거시 fallback 성격이 강함
-
-이건 사용자 걱정이 맞다.
-- 직원이 1라인 -> 2라인으로 이동 가능
-- 그런데 `employee.lineName`은 현재 스냅샷 같은 값이라 과거 이력을 제대로 설명하지 못함
-
-실제 더 믿을 수 있는 값:
-- `LineAssignment` 이력
-- `WorkRecord.lineId`
-- `WorkLog.records` 안의 `lineName/lineId`
-
-문제:
-- 일부 월간 화면 유틸이 아직 `employee.lineName` fallback을 씀
-
-내 의견:
-- `employee.lineName`은 당장 삭제 대상은 아님
-- 하지만 "역사 데이터 표시" 기준으로는 절대 메인 소스가 되면 안 됨
-- 장기적으로는 `LineAssignment + WorkRecord.lineId` 중심으로 바꾸는 게 맞다
-
-### 결론 D. 임금(`targetMonthlyWage`, `wagePerSecond`)은 지금 "월 기준 버전 관리"가 없음
-
-현재 실제 급여 계산 흐름:
-- 공장 정보의 `Factory.wagePerSecond` 사용
-- 작업기록 저장 시점에 `WorkLog.factoryWagePerSecond`로 스냅샷 저장
-- 급여 계산은 나중에 `WorkLog.factoryWagePerSecond`를 읽음
-
-즉 지금 구조는:
-- "현재 공장값을 작업기록 저장 시점에 복사해둔다"
-- "월별 정책 이력"은 없음
-
-사용자 의도:
-- 예를 들어 6/28에 바꾸면 6월 작업기록 급여에 새 기준을 default로 쓰고 싶다
-
-내 의견:
-- 이건 맞는 요구다
-- 다만 지금 구조로는 "언제부터 적용"을 명확히 설명할 수 없다
-- 반드시 "공장 공임 이력 테이블" 또는 "월별 wage snapshot 정책"이 필요하다
-
-중요:
-- `Organization.targetMonthlyWage / wagePerSecond`가 null인 것은 현재 급여 계산 핵심 경로가 아니라서 그럴 가능성이 큼
-- 지금 실사용은 조직이 아니라 공장(`Factory`) 쪽이다
-
-### 결론 E. `AssignmentPlan.colorId/colorName/gender`, `WorkRecord.colorId/colorCode`도 일단 삭제 보류
-
-의도상 null이어도 괜찮은 건 맞다.
-하지만 실제 참조가 남아 있어서 지금 물리 삭제는 위험하다.
-
-내 의견:
-- 먼저 "정말로 주문 단에서만 색상 유지"로 구조를 정리
-- 그 다음 DB 컬럼 드랍
+- `WorkRecord.colorId`
+- `WorkRecord.colorCode`
+- `AssignmentPlan.colorId`
+- `AssignmentPlan.colorName`
+- `AssignmentPlan.gender`
 
 ---
 
-## 2. 오늘 코드 점검 결과 상세
+## 4. 라인명 정리
 
-### 2-1. `Style.unitPriceUsd`
+상태: 대기
 
-확인 결과:
-- 스키마에는 있었음
-- 백엔드 저장/응답 DTO에는 있었음
-- 실제 화면 계산/입력 흐름은 `revenuePriceBuckets`, `revenueMemo`를 사용
-- 즉 사실상 죽은 필드에 가까웠음
+### 현재 판단
 
-판단:
-- 제거해도 안전하다고 판단
+`employee.lineName`은 현재 소속 표시용 캐시 성격이다.
+과거 작업기록이나 월간 분석의 기준으로 쓰면 안 된다.
 
-반영:
-- `backend/prisma/schema.prisma`
+### 소스오브트루스
+
+- 작업기록 row: `WorkRecord.lineId`
+- 작업기록 헤더 메타: `WorkLog.records.lineId/lineName`
+- 기간별 소속 이력: `LineAssignment`
+
+### 해야 할 일
+
+1. 생산 분석/작업기록 월간 집계에서 `employee.lineName` fallback을 제거한다.
+2. 필요한 경우 `LineAssignment` 기간 이력을 조회해서 표시한다.
+3. `employee.lineName`은 현재 소속 표시용으로만 남긴다.
+
+---
+
+## 5. 공장 공임 이력
+
+상태: 대기
+
+### 현재 구조
+
+- 공장 현재값: `Factory.targetMonthlyWage`, `Factory.wagePerSecond`
+- 작업기록 스냅샷: `WorkLog.factoryWagePerSecond`
+- 급여 계산: `WorkLog.factoryWagePerSecond` 사용
+
+### 문제
+
+현재 구조에는 "2026-06 공임", "2026-07 공임" 같은 월 기준 이력이 없다.
+월 중간 변경, 소급 변경, 마감 후 재계산 기준을 설명하기 어렵다.
+
+### 방향
+
+`FactoryWageHistory` 같은 월 기준 이력 테이블을 만든다.
+
+예상 필드:
+
+- `factoryId`
+- `effectiveMonth`
+- `targetMonthlyWage`
+- `wagePerSecond`
+- `createdAt`
+- `createdBy`
+
+작업기록에는 계산 당시 스냅샷을 계속 남긴다.
+
+---
+
+## 6. 출퇴근 단측 입력
+
+상태: 반영됨, 검증 필요
+
+현재 규칙:
+
+- `clockIn`만 있으면 `18:00` 퇴근으로 계산
+- `clockOut`만 있으면 `08:00` 출근으로 계산
+- 둘 다 없으면 근무시간 없음
+
+확인 파일:
+
 - `backend/src/index.ts`
-- `backend/migration_fix.sql`
-
-### 2-2. `processName`
-
-확인 결과:
-- `WorkRecord` 테이블에는 `processName` 컬럼 자체가 없음
-- 응답에서 `record.process.name` 또는 runtime `record.processName`을 보여주는 구조
-- 즉 진짜 핵심은 `processId`가 살아 있느냐임
-
-운영 데이터에서 보였던 현상:
-- `styleId`, `processCode`, `assignmentPlanId`, `workerId`, `lineId`는 있는데
-- `styleUid`, `processId`, `styleName`, `processName` 등이 비어 있는 row가 있었음
-
-해석:
-- 과거 저장분이 정규 참조 없이 남아 있었던 것
-
-오늘 조치:
-- 응답 만들 때 `syncWorkRecordRefs`를 한 번 더 태워서 `processCode`로 공정명 복구
-- 백필 스크립트 확장
-
-남은 숙제:
-- 운영 DB 기준으로 백필을 실제 한 번 실행해야 할 수 있음
-
-### 2-3. `lineName`
-
-확인 결과:
-- `employee.lineName`은 아직 코드 여러 곳에서 사용 중
-- 라인 배정/해제/라인명 변경 시 같이 업데이트하는 레거시 방식이 남아 있음
-- 월간 작업 화면 일부는 이것을 fallback으로 사용
-
-왜 찜찜한가:
-- 이 값은 "현재 소속 라인명" 성격이지 "과거 시점의 진실"이 아님
-- 사람이 라인을 옮기면 과거 데이터 해석이 흔들릴 수 있음
-
-내 의견:
-- 조회 편의용 캐시 정도로만 남길 수는 있어도
-- 집계/역사 해석의 기준값으로는 부적절
-
-### 2-4. 공장 공임 / 월 목표 임금
-
-확인 결과:
-- 공장 정보(`Factory`)에는 `targetMonthlyWage`, `wagePerSecond` 저장됨
-- 작업기록 저장 시 `factoryWagePerSecond`를 `WorkLog`에 스냅샷 저장
-- 급여 계산은 이 스냅샷을 읽음
-
-문제:
-- "언제부터 새 값 적용?"에 대한 정책이 없다
-- 월 중간 변경, 소급 변경, 월 마감 이후 재계산 기준이 불명확
-
-내 의견:
-- 이건 지금 null 여부보다 설계가 더 중요한 문제
-- 단순 필드 보정으로 해결할 일이 아님
-
-### 2-5. 출퇴근 단측 입력
-
-확인 결과:
-- 기존 로직은 `clockIn`, `clockOut` 둘 다 있어야만 `workedSeconds` 계산
-- 하나라도 없으면 null
-
-오늘 반영:
-- `in만 있음 -> 18:00 퇴근`
-- `out만 있음 -> 08:00 출근`
-
-내 의견:
-- 이건 실무적으로 매우 타당
-- 나중에 필요하면 "기본 보정값(08:00/18:00)"을 환경설정으로 뺄 수도 있음
+- `frontend/src/pages/App/attendance/AttendanceBoard.jsx`
 
 ---
 
-## 3. 내일 우선순위 추천
+## 7. 삭제 후보
 
-### 1순위: 색상 컬럼 삭제 여부를 결정하기 전에 "참조 제거"부터
+상태: 대기
 
-내일 바로 할 일:
+### 이미 제거 방향이 맞는 항목
 
-1. `quantitySettlement.service.ts`에서 색상 없이도 같은 결과가 나오는지 확인
-2. QC 쪽에서 `colorId`가 정말 없어도 되는지 확인
-3. 배정 보드/작업기록/정산에서 색상 관련 UI가 실제 업무상 필요한지 다시 확인
+- `Style.unitPriceUsd`
 
-내 의견:
-- 컬럼 삭제보다 "참조 제거"가 먼저다
-- 참조가 남아 있는데 컬럼부터 드랍하면 문제를 뒤늦게 찾게 된다
+### 삭제 전 참조 제거가 필요한 항목
 
-### 2순위: `lineName`을 역사 집계에서 밀어내기
-
-목표:
-- 월간 작업 집계/상세에서 `employee.lineName` 의존 줄이기
-
-추천 방향:
-- 우선순위 1: `WorkRecord.lineId`
-- 우선순위 2: `WorkLog`의 line 메타
-- 우선순위 3: 정말 없을 때만 `employee.lineName`
-
-내 의견:
-- 완전 삭제 전까지는 fallback으로 둘 수 있지만
-- "현재 직원 라인명"이 과거 기록까지 설명하는 구조는 빨리 벗어나는 게 좋다
-
-### 3순위: 공장 공임 정책 이력 설계
-
-내가 권하는 방향:
-
-안 1. 월 기준 이력 테이블
-- 예: `FactoryWageHistory`
-- 컬럼 예시:
-  - `factoryId`
-  - `effectiveMonth`
-  - `targetMonthlyWage`
-  - `wagePerSecond`
-  - `createdAt`
-  - `createdBy`
-
-장점:
-- "2026-06은 얼마, 2026-07은 얼마"가 명확
-- 급여 재계산 기준이 설명 가능
-
-안 2. 작업기록 저장 시 스냅샷 유지 + 월 정책 테이블도 같이 운영
-
-장점:
-- 현재 구조를 덜 깨고 갈 수 있음
-
-내 의견:
-- 무조건 안 1 또는 안 2로 가야 한다
-- 지금처럼 "현재 공장값을 작업기록 저장 시 복사"만으로는 기준 설명이 약하다
+- 색상/성별 계열 컬럼
+- `employee.lineName`의 역사 집계 의존
+- 조직 단위 공임 필드가 실제로 더 이상 쓰이지 않는지 확인 필요
 
 ---
 
-## 4. 내일 절대 서두르지 말아야 하는 것
+## 진행 순서
 
-### A. `WorkRecord.colorId/colorCode` 바로 삭제
+1. 작업기록 정규 참조와 실제 생산 계산 진단 정리
+2. 4월 이전 자료 숨김
+3. 색상/성별 참조 제거 여부 결정 및 정리
+4. 라인명 역사 집계 의존 제거
+5. 공장 공임 월 이력 설계/구현
+6. 남은 null 컬럼 삭제 검토
 
-이유:
-- 정산 로직이 아직 참조함
-
-### B. `AssignmentPlan.colorId/colorName/gender` 바로 삭제
-
-이유:
-- 배정/QC/정산 보조 흐름과 엮여 있을 가능성이 큼
-
-### C. `employee.lineName` 바로 삭제
-
-이유:
-- 일부 화면 fallback이 아직 남아 있음
-
-### D. 조직(`Organization`)의 임금 필드를 바로 제거
-
-이유:
-- null이라도 다른 응답 DTO나 UI 표시에서 아직 흔적이 있음
-- 먼저 "정말 레거시인지" 확정해야 함
-
----
-
-## 5. 내가 보기엔 이렇게 가는 게 가장 안전함
-
-### 1단계
-- 오늘 반영한 것 배포 확인
-- 출퇴근 보정 정상 동작 확인
-- 스타일 화면/스타일 저장에서 `unitPriceUsd` 제거 후 문제 없는지 확인
-
-### 2단계
-- 작업기록 상세/월간 화면에서 `processName`이 다시 보이는지 확인
-- 안 보이면 운영 DB에서 백필 스크립트 실행 검토
-
-### 3단계
-- 색상 관련 참조를 하나씩 제거할지, 아니면 유지할지 업무 기준 확정
-
-### 4단계
-- `lineName` 역사값 설계 정리
-
-### 5단계
-- 공장 공임 이력 설계
-
----
-
-## 6. 핵심 파일 메모
-
-내일 다시 볼 때 우선 확인할 파일:
-
-- 출퇴근 계산
-  - `backend/src/index.ts`
-  - `frontend/src/pages/App/attendance/AttendanceBoard.jsx`
-
-- 작업기록 공정/스타일 참조 보강
-  - `backend/src/index.ts`
-  - `backend/scripts/backfill-workrecord-canonical-fields.js`
-
-- 색상 의존 정산
-  - `backend/src/quantity-settlement/quantitySettlement.service.ts`
-
-- 라인명 fallback
-  - `frontend/src/pages/App/work/workMonthlyUtils.js`
-  - `backend/src/lines/line.routes.ts`
-
-- 공장 임금/공임
-  - `backend/src/factories/factory.routes.ts`
-  - `backend/src/payroll/payroll.service.ts`
-  - `frontend/src/pages/App/work/WorkDetail.jsx`
-  - `frontend/src/pages/App/organization/factoryDetail/FactoryDetail.jsx`
-
----
-
-## 7. 내 의견 한 줄 요약
-
-지금 가장 중요한 건 "null 필드를 무조건 지우는 것"이 아니다.
-
-더 중요한 건:
-- 어떤 값이 진짜 소스오브트루스인지 다시 고정하고
-- 과거 데이터가 그 구조를 못 따라간 부분은 백필하고
-- 업무적으로 안 쓰기로 한 필드는 "참조 제거 -> 검증 -> 컬럼 삭제" 순서로 가는 것이다.
-
-색상, 라인명, 공임 이력은 다 이 순서를 지켜야 안전하다.
-
----
-
-## 8. 내일 시작할 때 추천 체크리스트
-
-1. 오늘 반영분 배포 버전인지 먼저 확인
-2. 출퇴근에서 `in만 입력`, `out만 입력` 케이스 테스트
-3. 작업기록/월간 화면에서 `processName` 표시 확인
-4. 정산 화면이 색상 없이도 성립하는지 코드와 화면 둘 다 확인
-5. 공장 공임 변경 시 "6월 작업기록은 어떤 값으로 계산되어야 하는지" 정책 먼저 문장으로 확정
-
-끝.
+현재는 1번부터 진행한다.

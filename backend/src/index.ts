@@ -6424,13 +6424,22 @@ const attachCanonicalFieldsToWorkRecords = async ({
       assignmentPlanId != null ? orderNoByPlanId.get(assignmentPlanId) ?? null : null;
     const planStyleMeta =
       assignmentPlanId != null ? styleMetaByPlanId.get(assignmentPlanId) ?? null : null;
+    const recordStyleUid = toPositiveIntOrNull(record?.styleUid);
+    const nextStyleUid = planStyleMeta?.styleUid ?? recordStyleUid;
+    const canonicalStyleUidSource =
+      planStyleMeta?.styleUid != null
+        ? "AssignmentPlan.workOrderItem.styleUid"
+        : recordStyleUid !== null
+          ? "WorkRecord.styleUid"
+          : null;
     return {
       ...record,
       orderNo: resolveOptionalString(planOrderNo ?? record?.orderNo, null),
       lineId: normalizedLineId ?? toPositiveIntOrNull(record?.lineId),
-      styleUid: planStyleMeta?.styleUid ?? toPositiveIntOrNull(record?.styleUid),
+      styleUid: nextStyleUid,
       styleId: resolveOptionalString(planStyleMeta?.styleId ?? record?.styleId, null),
       styleName: resolveOptionalString(planStyleMeta?.styleName ?? record?.styleName, null),
+      _canonicalStyleUidSource: canonicalStyleUidSource,
     };
   });
 };
@@ -18882,6 +18891,14 @@ const buildLineMonthCapacityRows = async ({
     : [];
   const actualOutputRequestDiagnostics = includeActualOutputDebug
     ? {
+        calculationRule:
+          "actualOutputStSeconds = sum(monthAllocatedQuantity * StyleProcessStandard.bucketStSeconds)",
+        styleMatchRule:
+          "WorkRecord.assignmentPlanId -> AssignmentPlan card -> WorkOrderItem.styleUid; calculation uses styleUid only",
+        processMatchRule:
+          "WorkRecord.processCode or AttrProcess.code -> StyleProcess.processCode",
+        processIdRole:
+          "WorkRecord.processId is AttrProcess.id. It is diagnostic/reference data, not StyleProcess.id.",
         orgId,
         accessibleStyleOwnerOrgIds,
         requestedLineIds,
@@ -18899,6 +18916,12 @@ const buildLineMonthCapacityRows = async ({
         ).length,
         workRowsWithoutStyleUid: canonicalWorkRows.filter(
           (row) => toPositiveIntOrNull(row?.styleUid) === null
+        ).length,
+        workRowsWithProcessId: canonicalWorkRows.filter(
+          (row) => toPositiveIntOrNull(row?.processId ?? row?.process?.id) !== null
+        ).length,
+        workRowsWithoutProcessId: canonicalWorkRows.filter(
+          (row) => toPositiveIntOrNull(row?.processId ?? row?.process?.id) === null
         ).length,
         workRowsWithProcessCode: canonicalWorkRows.filter((row) =>
           Boolean(normalizeProcessCodeKey(row?.processCode ?? row?.process?.code))
@@ -18940,6 +18963,26 @@ const buildLineMonthCapacityRows = async ({
             .filter((value): value is number => value !== null)
             .sort((left, right) => left - right),
         })),
+        workRecordKeySamples: canonicalWorkRows.slice(0, 100).map((row) => ({
+          workRecordId: toPositiveIntOrNull(row?.id),
+          workLogId: toPositiveIntOrNull(row?.workLogId),
+          assignmentPlanId: toPositiveIntOrNull(row?.assignmentPlanId),
+          orderNo: resolveOptionalString(row?.orderNo, null),
+          workerName: resolveOptionalString(row?.workerName, null),
+          styleUid: toPositiveIntOrNull(row?.styleUid),
+          styleUidSource: resolveOptionalString(row?._canonicalStyleUidSource, null),
+          styleId: resolveOptionalString(row?.styleId, null),
+          processId: toPositiveIntOrNull(row?.processId ?? row?.process?.id),
+          processCode: resolveOptionalString(row?.processCode ?? row?.process?.code, null),
+          processCodeSource: resolveOptionalString(row?.processCode, null)
+            ? "WorkRecord.processCode"
+            : resolveOptionalString(row?.process?.code, null)
+              ? "AttrProcess.code"
+              : null,
+          quantity: Math.max(0, Math.round(Number(row?.quantity ?? 0))),
+          coverageStartDate: resolveWorkRecordEffectiveCoverageStartDate(row),
+          coverageEndDate: resolveWorkRecordEffectiveCoverageEndDate(row),
+        })),
       }
     : null;
   const actualOutputStyleProcessDebugByStyleUid = new Map<number, any[]>();
@@ -18977,7 +19020,17 @@ const buildLineMonthCapacityRows = async ({
     const styleIdSource = styleMeta.styleIdSource;
     const recordStyleUid = toPositiveIntOrNull(record?.styleUid);
     const styleUid = recordStyleUid ?? null;
-    const styleUidSource = recordStyleUid !== null ? "WorkRecord.styleUid" : null;
+    const styleUidSource =
+      resolveOptionalString(record?._canonicalStyleUidSource, null) ??
+      (recordStyleUid !== null ? "WorkRecord.styleUid" : null);
+    const recordProcessCode = resolveOptionalString(record?.processCode, null);
+    const relationProcessCode = resolveOptionalString(record?.process?.code, null);
+    const processCode = recordProcessCode ?? relationProcessCode;
+    const processCodeSource = recordProcessCode
+      ? "WorkRecord.processCode"
+      : relationProcessCode
+        ? "AttrProcess.code"
+        : null;
     if (styleUid === null) {
       return {
         stSeconds: null,
@@ -18989,15 +19042,12 @@ const buildLineMonthCapacityRows = async ({
         recordStyleUid,
         planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
         planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
-        processCode: resolveOptionalString(record?.processCode, null),
+        processCode,
+        processCodeSource,
         availableProcesses: [],
       };
     }
     const processId = toPositiveIntOrNull(record?.processId);
-    const processCode = resolveOptionalString(
-      record?.processCode ?? record?.process?.code,
-      null
-    );
     if (
       processId === null &&
       !normalizeProcessCodeKey(processCode) &&
@@ -19014,6 +19064,7 @@ const buildLineMonthCapacityRows = async ({
         planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
         planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
         processCode,
+        processCodeSource,
         availableProcesses: resolveActualOutputStyleProcessDebugList(styleUid),
       };
     }
@@ -19033,6 +19084,7 @@ const buildLineMonthCapacityRows = async ({
         planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
         planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
         processCode,
+        processCodeSource,
         availableProcesses: resolveActualOutputStyleProcessDebugList(styleUid),
       };
     }
@@ -19056,6 +19108,7 @@ const buildLineMonthCapacityRows = async ({
         planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
         planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
         processCode,
+        processCodeSource,
         matchedProcessId,
         matchedProcessCode,
         matchedProcessName,
@@ -19074,6 +19127,7 @@ const buildLineMonthCapacityRows = async ({
       planStyleId: resolveAssignmentPlanStyleIdForActualOutput(plan),
       planStyleCandidates: resolveAssignmentPlanStyleCandidatesForActualOutput(plan),
       processCode,
+      processCodeSource,
       matchedProcessId,
       matchedProcessCode,
       matchedProcessName,
@@ -19716,6 +19770,7 @@ const buildLineMonthCapacityRows = async ({
               styleName: resolveOptionalString(record?.styleName, null),
               recordProcessId: toPositiveIntOrNull(record?.processId),
               processCode: processSt.processCode,
+              processCodeSource: processSt.processCodeSource,
               quantity,
               allocatedQuantity: Math.max(0, Math.round(Number(allocatedTotal) || 0)),
               ctSeconds: Math.max(0, Math.round(Number(record?.ctSeconds) || 0)),
@@ -19774,6 +19829,7 @@ const buildLineMonthCapacityRows = async ({
               resolvedStyleUid: processSt.styleUid,
               styleUidSource: processSt.styleUidSource,
               processCode: processSt.processCode,
+              processCodeSource: processSt.processCodeSource,
               matchedProcessId: processSt.matchedProcessId ?? null,
               matchedProcessCode: processSt.matchedProcessCode ?? null,
               matchedProcessName: processSt.matchedProcessName ?? null,
