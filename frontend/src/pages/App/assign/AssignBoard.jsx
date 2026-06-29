@@ -4639,15 +4639,6 @@ const AssignBoard = () => {
         lineIds: lineIdsKey,
         ...(shouldDebugLineMonthCapacity ? { debug: 'actual-output' } : {}),
       });
-    if (shouldDebugLineMonthCapacity) {
-      console.log('[line-month-capacity] request', {
-        path: lineMonthCapacityPath,
-        orgId: normalizedOrgId,
-        monthFrom: planningMonthKeys[0],
-        monthTo: planningMonthKeys[planningMonthKeys.length - 1],
-        lineIds: lineIdsKey,
-      });
-    }
     requestJSON(
       lineMonthCapacityPath,
       {
@@ -4660,16 +4651,9 @@ const AssignBoard = () => {
         if (cancelled) return;
         const rows = Array.isArray(payload?.rows) ? payload.rows : [];
         setLineMonthCapacityRows(rows);
-        if (shouldDebugLineMonthCapacity) {
-          console.log('[line-month-capacity] response', {
-            rowCount: rows.length,
-            monthKeys: payload?.monthKeys || [],
-            hasDiagnostics: Boolean(payload?.actualOutputDiagnostics),
-          });
-        }
         if (shouldDebugLineMonthCapacity && payload?.actualOutputDiagnostics) {
           const diagnostics = payload.actualOutputDiagnostics;
-          console.groupCollapsed('[line-month-capacity] actual output request diagnostics');
+          console.group('[line-month-capacity] actual output diagnostics');
           console.log('rules', {
             calculationRule: diagnostics.calculationRule,
             styleMatchRule: diagnostics.styleMatchRule,
@@ -4717,34 +4701,13 @@ const AssignBoard = () => {
               coverageEndDate: row.coverageEndDate,
             }))
           );
-          console.table(
-            (diagnostics.styleIdMatches || []).map((row) => ({
-              uid: row.uid,
-              orgId: row.orgId,
-              styleId: row.styleId,
-            }))
-          );
-          console.table(
-            (diagnostics.missingStyleIds || []).map((styleId) => ({ styleId }))
-          );
-          console.log('style inputs', diagnostics.styleInputs || []);
-          console.log('alternate style matches', diagnostics.alternateStyleMatches || []);
-          console.table(
-            (diagnostics.styleProcessRows || []).map((row) => ({
-              id: row.id,
-              styleUid: row.styleUid,
-              processCode: row.processCode,
-              processName: row.processName,
-              stBuckets: JSON.stringify(row.stBuckets || []),
-            }))
-          );
           console.groupEnd();
         }
         const debugRows = rows
           .map((row) => row?.actualOutputDebug)
           .filter(Boolean);
         if (shouldDebugLineMonthCapacity && debugRows.length > 0) {
-          console.groupCollapsed('[line-month-capacity] actual output debug');
+          console.group('[line-month-capacity] actual output debug');
           console.table(
             debugRows.map((debug) => ({
               lineId: debug.lineId,
@@ -4786,7 +4749,7 @@ const AssignBoard = () => {
             }))
           );
           debugRows.forEach((debug) => {
-            console.groupCollapsed(
+            console.group(
               `[line-month-capacity] formula ${debug.lineId}/${debug.monthKey}`
             );
             console.log('formula', debug.actualOutputFormula);
@@ -4829,6 +4792,7 @@ const AssignBoard = () => {
             }))
           );
           if (failureSamples.length > 0) {
+            console.group('[line-month-capacity] failed work-record samples');
             console.table(
               failureSamples.map((sample) => ({
                 lineId: sample.lineId,
@@ -4865,7 +4829,7 @@ const AssignBoard = () => {
                 coverageEndDate: sample.coverageEndDate,
               }))
             );
-            console.log('[line-month-capacity] failed work-record raw samples', failureSamples);
+            console.groupEnd();
           }
           const matchSamples = debugRows.flatMap((debug) =>
             (Array.isArray(debug.sampleMatches) ? debug.sampleMatches : []).map((sample) => ({
@@ -4875,6 +4839,7 @@ const AssignBoard = () => {
             }))
           );
           if (matchSamples.length > 0) {
+            console.group('[line-month-capacity] matched work-record samples');
             console.table(
               matchSamples.map((sample) => ({
                 lineId: sample.lineId,
@@ -4899,7 +4864,7 @@ const AssignBoard = () => {
                 directSeconds: sample.directSeconds,
               }))
             );
-            console.log('[line-month-capacity] matched work-record raw samples', matchSamples);
+            console.groupEnd();
           }
           console.groupEnd();
         }

@@ -88,6 +88,12 @@
 - 브라우저 콘솔 summary에서 `processId`와 `processCode`를 분리해서 보여준다.
 - `processId`는 `AttrProcess.id`, ST 매칭은 `processCode`라는 점을 콘솔 rules에 표시한다.
 
+2026-06-29 2차 반영:
+
+- request/response/style input 보조 로그는 제거한다.
+- 확인해야 하는 콘솔 그룹은 접지 않고 펼친 상태로 출력한다.
+- 남기는 그룹은 `actual output diagnostics`, `actual output debug`, `formula`, 실패/성공 work-record sample이다.
+
 ---
 
 ## 2. 4월 이전 자료 숨김
