@@ -18772,11 +18772,9 @@ const buildLineMonthCapacityRows = async ({
     stateAssignmentsByExternalId,
     context: "buildLineMonthCapacityRows",
   });
-  const canonicalWorkRows = await attachCanonicalFieldsToWorkRecords({
-    orgId,
-    lineId: null,
-    records: workRows,
-  });
+  // Actual output must use the canonical references already stored on WorkRecord.
+  // Read-time backfill hides legacy/null data problems and makes production math untraceable.
+  const canonicalWorkRows = workRows;
   const workRowsByPlanId = canonicalWorkRows.reduce((map, row) => {
     const planId = toPositiveIntOrNull(row?.assignmentPlanId);
     if (!planId) return map;
@@ -18815,50 +18813,6 @@ const buildLineMonthCapacityRows = async ({
       styleIdSource: planStyleId ? "AssignmentPlan.cardId" : null,
     };
   };
-  const actualOutputStyleIds = Array.from(
-    new Set(
-      canonicalWorkRows
-        .map((row) => resolveWorkRecordStyleIdForActualOutput(row).styleId)
-        .filter((value): value is string => Boolean(value))
-    )
-  );
-  const actualOutputStyleRows =
-    actualOutputStyleIds.length > 0
-      ? await prisma.style.findMany({
-          where: {
-            orgId: { in: accessibleStyleOwnerOrgIds },
-            styleId: { in: actualOutputStyleIds },
-          },
-          select: {
-            uid: true,
-            orgId: true,
-            styleId: true,
-          },
-          orderBy: [{ orgId: "asc" }, { uid: "asc" }],
-        })
-      : [];
-  const actualOutputStyleLookupRows =
-    includeActualOutputDebug && actualOutputStyleIds.length > 0
-      ? await prisma.style.findMany({
-          where: {
-            orgId: { in: accessibleStyleOwnerOrgIds },
-            OR: [
-              { styleId: { in: actualOutputStyleIds } },
-              { styleCode: { in: actualOutputStyleIds } },
-              { name: { in: actualOutputStyleIds } },
-            ],
-          },
-          select: {
-            uid: true,
-            orgId: true,
-            styleId: true,
-            styleCode: true,
-            name: true,
-            customer: true,
-          },
-          orderBy: [{ orgId: "asc" }, { uid: "asc" }],
-        })
-      : [];
   const actualOutputStyleUids = Array.from(
     new Set(
       canonicalWorkRows
@@ -18888,45 +18842,29 @@ const buildLineMonthCapacityRows = async ({
           },
         })
       : [];
-  const actualOutputStyleProcessLookup = buildStyleProcessLookupForStCalculation(
-    actualOutputStyleProcessRows
-  );
-  const actualOutputMatchedStyleIdSet = new Set(
-    actualOutputStyleRows
-      .map((row) => resolveOptionalString(row?.styleId, null))
-      .filter((value): value is string => Boolean(value))
-  );
-  const actualOutputMissingStyleIds = actualOutputStyleIds.filter(
-    (styleId) => !actualOutputMatchedStyleIdSet.has(styleId)
-  );
-  const actualOutputAlternateStyleMatches = includeActualOutputDebug
-    ? actualOutputMissingStyleIds.slice(0, 50).map((styleId) => {
-        const matches = actualOutputStyleLookupRows.filter(
-          (row) =>
-            resolveOptionalString(row?.styleCode, null) === styleId ||
-            resolveOptionalString(row?.name, null) === styleId
-        );
-        return {
-          styleId,
-          matches: matches.slice(0, 10).map((row) => ({
-            uid: toPositiveIntOrNull(row?.uid),
-            orgId: toPositiveIntOrNull(row?.orgId),
-            styleId: resolveOptionalString(row?.styleId, null),
-            styleCode: resolveOptionalString(row?.styleCode, null),
-            name: resolveOptionalString(row?.name, null),
-            customer: resolveOptionalString(row?.customer, null),
-          })),
-        };
-      })
-    : [];
+  const actualOutputStyleProcessByCanonicalKey = new Map<string, any>();
+  actualOutputStyleProcessRows.forEach((row) => {
+    const styleUid = toPositiveIntOrNull(row?.styleUid);
+    const processCodeKey = normalizeProcessCodeKey(row?.processCode);
+    if (styleUid === null || !processCodeKey) return;
+    actualOutputStyleProcessByCanonicalKey.set(`${styleUid}::${processCodeKey}`, row);
+  });
+  const resolveActualOutputStyleProcessByCode = (
+    styleUid: number,
+    processCode: string | null
+  ) => {
+    const processCodeKey = normalizeProcessCodeKey(processCode);
+    if (!processCodeKey) return null;
+    return actualOutputStyleProcessByCanonicalKey.get(`${styleUid}::${processCodeKey}`) ?? null;
+  };
   const actualOutputRequestDiagnostics = includeActualOutputDebug
     ? {
         calculationRule:
           "actualOutputStSeconds = sum(monthAllocatedQuantity * StyleProcessStandard.bucketStSeconds)",
         styleMatchRule:
-          "WorkRecord.assignmentPlanId -> AssignmentPlan card -> WorkOrderItem.styleUid; calculation uses styleUid only",
+          "WorkRecord.styleUid only. Read-time styleId/styleCode/name lookup is not allowed.",
         processMatchRule:
-          "WorkRecord.processCode or AttrProcess.code -> StyleProcess.processCode",
+          "WorkRecord.processCode -> StyleProcess.processCode only. AttrProcess/process name fallback is not allowed.",
         processIdRole:
           "WorkRecord.processId is AttrProcess.id. It is diagnostic/reference data, not StyleProcess.id.",
         orgId,
@@ -18948,16 +18886,16 @@ const buildLineMonthCapacityRows = async ({
           (row) => toPositiveIntOrNull(row?.styleUid) === null
         ).length,
         workRowsWithProcessId: canonicalWorkRows.filter(
-          (row) => toPositiveIntOrNull(row?.processId ?? row?.process?.id) !== null
+          (row) => toPositiveIntOrNull(row?.processId) !== null
         ).length,
         workRowsWithoutProcessId: canonicalWorkRows.filter(
-          (row) => toPositiveIntOrNull(row?.processId ?? row?.process?.id) === null
+          (row) => toPositiveIntOrNull(row?.processId) === null
         ).length,
         workRowsWithProcessCode: canonicalWorkRows.filter((row) =>
-          Boolean(normalizeProcessCodeKey(row?.processCode ?? row?.process?.code))
+          Boolean(normalizeProcessCodeKey(row?.processCode))
         ).length,
         workRowsWithoutProcessCode: canonicalWorkRows.filter(
-          (row) => !normalizeProcessCodeKey(row?.processCode ?? row?.process?.code)
+          (row) => !normalizeProcessCodeKey(row?.processCode)
         ).length,
         workRowsWithCoverageRange: canonicalWorkRows.filter((row) => {
           const startDate = resolveWorkRecordEffectiveCoverageStartDate(row);
@@ -18969,20 +18907,10 @@ const buildLineMonthCapacityRows = async ({
           const endDate = resolveWorkRecordEffectiveCoverageEndDate(row);
           return !(startDate && endDate && startDate <= endDate);
         }).length,
-        styleInputCount: actualOutputStyleIds.length,
-        styleInputs: actualOutputStyleIds.slice(0, 100),
-        styleIdMatchCount: actualOutputStyleRows.length,
-        styleIdMatches: actualOutputStyleRows.slice(0, 100).map((row) => ({
-          uid: toPositiveIntOrNull(row?.uid),
-          orgId: toPositiveIntOrNull(row?.orgId),
-          styleId: resolveOptionalString(row?.styleId, null),
-        })),
-        missingStyleIdCount: actualOutputMissingStyleIds.length,
-        missingStyleIds: actualOutputMissingStyleIds.slice(0, 100),
-        alternateStyleMatches: actualOutputAlternateStyleMatches,
         styleUidCount: actualOutputStyleUids.length,
         styleUids: actualOutputStyleUids.slice(0, 100),
         styleProcessRowCount: actualOutputStyleProcessRows.length,
+        styleProcessCanonicalKeyCount: actualOutputStyleProcessByCanonicalKey.size,
         styleProcessRows: actualOutputStyleProcessRows.slice(0, 100).map((row) => ({
           id: toPositiveIntOrNull(row?.id),
           styleUid: toPositiveIntOrNull(row?.styleUid),
@@ -19000,15 +18928,13 @@ const buildLineMonthCapacityRows = async ({
           orderNo: resolveOptionalString(row?.orderNo, null),
           workerName: resolveOptionalString(row?.workerName, null),
           styleUid: toPositiveIntOrNull(row?.styleUid),
-          styleUidSource: resolveOptionalString(row?._canonicalStyleUidSource, null),
+          styleUidSource: toPositiveIntOrNull(row?.styleUid) !== null ? "WorkRecord.styleUid" : null,
           styleId: resolveOptionalString(row?.styleId, null),
-          processId: toPositiveIntOrNull(row?.processId ?? row?.process?.id),
-          processCode: resolveOptionalString(row?.processCode ?? row?.process?.code, null),
+          processId: toPositiveIntOrNull(row?.processId),
+          processCode: resolveOptionalString(row?.processCode, null),
           processCodeSource: resolveOptionalString(row?.processCode, null)
             ? "WorkRecord.processCode"
-            : resolveOptionalString(row?.process?.code, null)
-              ? "AttrProcess.code"
-              : null,
+            : null,
           quantity: Math.max(0, Math.round(Number(row?.quantity ?? 0))),
           coverageStartDate: resolveWorkRecordEffectiveCoverageStartDate(row),
           coverageEndDate: resolveWorkRecordEffectiveCoverageEndDate(row),
@@ -19051,16 +18977,12 @@ const buildLineMonthCapacityRows = async ({
     const recordStyleUid = toPositiveIntOrNull(record?.styleUid);
     const styleUid = recordStyleUid ?? null;
     const styleUidSource =
-      resolveOptionalString(record?._canonicalStyleUidSource, null) ??
-      (recordStyleUid !== null ? "WorkRecord.styleUid" : null);
+      recordStyleUid !== null ? "WorkRecord.styleUid" : null;
     const recordProcessCode = resolveOptionalString(record?.processCode, null);
-    const relationProcessCode = resolveOptionalString(record?.process?.code, null);
-    const processCode = recordProcessCode ?? relationProcessCode;
+    const processCode = recordProcessCode;
     const processCodeSource = recordProcessCode
       ? "WorkRecord.processCode"
-      : relationProcessCode
-        ? "AttrProcess.code"
-        : null;
+      : null;
     if (styleUid === null) {
       return {
         stSeconds: null,
@@ -19077,12 +18999,7 @@ const buildLineMonthCapacityRows = async ({
         availableProcesses: [],
       };
     }
-    const processId = toPositiveIntOrNull(record?.processId);
-    if (
-      processId === null &&
-      !normalizeProcessCodeKey(processCode) &&
-      !normalizeProcessNameKey(record?.process?.name)
-    ) {
+    if (!normalizeProcessCodeKey(processCode)) {
       return {
         stSeconds: null,
         reason: "PROCESS_CODE_MISSING",
@@ -19098,10 +19015,7 @@ const buildLineMonthCapacityRows = async ({
         availableProcesses: resolveActualOutputStyleProcessDebugList(styleUid),
       };
     }
-    const matchedRow = actualOutputStyleProcessLookup.resolveRowForWorkRecord(
-      styleUid,
-      record
-    );
+    const matchedRow = resolveActualOutputStyleProcessByCode(styleUid, processCode);
     if (!matchedRow) {
       return {
         stSeconds: null,

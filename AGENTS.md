@@ -37,6 +37,10 @@
 - 계산에 필요한 FK/마스터/ST bucket/작업기록 연결이 없으면 임의 추정, 우회 공식, 보완 fallback으로 그럴듯한 값을 만들지 않는다.
 - 계산 실패는 0/null/미계산 상태와 진단 로그로 드러내며, 조용히 다른 공식으로 대체하지 않는다.
 - 호환성 dual-read나 schema migration fallback은 명시된 migration 단계에서만 허용한다. 운영 지표 계산 로직에 섞지 않는다.
+- 운영 지표 조회 중에 정규 참조를 다시 붙이는 helper를 호출하지 않는다. 예를 들어 실제 생산 계산은 저장된 `WorkRecord.styleUid`와 `WorkRecord.processCode`만 사용하며, `styleId/styleCode/name`, `AttrProcess.code`, 공정명으로 재탐색하지 않는다.
+- `WorkRecord.assignmentPlanId/styleUid/processId/processCode`는 신규 작업기록 저장 시점에 확정되어야 한다. 비어 있으면 저장을 거부하고 원인을 노출한다.
+- 레거시 컬럼/JSON key는 "백필 -> 신규 저장 차단 -> 운영 조회 참조 제거 -> 검증 -> DB DROP" 순서로만 제거한다. 참조 제거 전 DROP 금지, DROP 대상 컬럼을 새 코드에서 읽는 것도 금지한다.
+- 이 파일의 뒤쪽 phase 기록에 과거 dual-read/fallback 허용 문구가 남아 있더라도 현재 개발 정책은 이 "정확 계산 원칙"을 우선한다.
 
 ### AT 모델
 ```

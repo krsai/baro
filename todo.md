@@ -105,6 +105,29 @@
 - `backend/migration_fix.sql`에 2026-04-01 이후 WorkRecord 정규참조 v2 백필을 추가한다.
 - 이 백필은 결정 가능한 값만 채우며, orphan/ambiguous row를 임의로 연결하지 않는다.
 
+2026-06-29 4차 반영:
+
+- `/line-month-capacity` 실제 생산 계산에서 조회 시점의 `attachCanonicalFieldsToWorkRecords` 보정을 제거한다.
+- 실제 생산 ST 매칭은 DB에 저장된 `WorkRecord.styleUid + WorkRecord.processCode + bucketQuantity`만 사용한다.
+- `styleId/styleCode/name`으로 `Style.uid`를 다시 찾는 조회 계산을 제거한다.
+- `AttrProcess.code`나 공정명으로 `processCode`를 대신 맞추는 계산을 제거한다.
+- 콘솔 진단은 fallback 결과가 아니라 DB에 저장된 canonical 필드의 누락 여부를 보여준다.
+
+### DB 컬럼 삭제 순서
+
+1. 운영 조회 코드가 해당 컬럼을 더 이상 읽지 않게 한다.
+2. 신규 저장 코드가 canonical 컬럼만 저장하도록 차단한다.
+3. 2026-04-01 이후 운영 데이터에 남은 null/legacy 사용량을 집계한다.
+4. 결정 가능한 값만 migration으로 백필한다.
+5. 콘솔/SQL로 남은 legacy 참조가 0인지 확인한다.
+6. 그 다음 `migration_fix.sql`에서 DROP 한다.
+
+삭제 검토 대상:
+
+- 실제 생산 계산에서 `WorkRecord.styleId`는 FK로 사용하지 않는다. 표시/진단 참조가 모두 제거되면 DROP 후보로 본다.
+- 실제 생산 계산에서 `WorkRecord.processId`는 ST 매칭에 사용하지 않는다. 공정 마스터 참조/진단 필요성이 사라지면 DROP 후보로 본다.
+- 색상/성별 관련 컬럼은 3번 항목에서 참조 제거 후 DROP 후보로 본다.
+
 ---
 
 ## 2. 4월 이전 자료 숨김
