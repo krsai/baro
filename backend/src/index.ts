@@ -63,10 +63,11 @@ import {
 } from "./utils/http";
 import {
   resolveWorkRecordColorName,
+  resolveWorkRecordProcessCode,
   resolveWorkRecordProcessName,
-  resolveWorkRecordStyleId,
+  resolveWorkRecordStyleCode,
   resolveWorkRecordStyleName,
-  resolveWorkRecordStyleUid,
+  resolveWorkRecordStyleRefId,
   WORK_RECORD_WITH_REFS_INCLUDE,
 } from "./work-records/workRecord.shared";
 import {
@@ -120,11 +121,8 @@ function assertGeneratedPrismaClientShape() {
   if (hasField("WorkOrderItem", "colorName")) {
     staleSignals.push("WorkOrderItem.colorName still present");
   }
-  if (!hasField("WorkRecord", "styleUid")) {
-    staleSignals.push("WorkRecord.styleUid missing");
-  }
-  if (!hasField("WorkRecord", "orderNo")) {
-    staleSignals.push("WorkRecord.orderNo missing");
+  if (!hasField("WorkRecord", "styleId")) {
+    staleSignals.push("WorkRecord.styleId missing");
   }
   if (!hasField("WorkRecord", "lineId")) {
     staleSignals.push("WorkRecord.lineId missing");
@@ -152,6 +150,30 @@ function assertGeneratedPrismaClientShape() {
   }
   if (hasField("WorkRecord", "colorName")) {
     staleSignals.push("WorkRecord.colorName still present");
+  }
+  if (hasField("WorkRecord", "styleUid")) {
+    staleSignals.push("WorkRecord.styleUid still present");
+  }
+  if (hasField("WorkRecord", "workerName")) {
+    staleSignals.push("WorkRecord.workerName still present");
+  }
+  if (hasField("WorkRecord", "customerName")) {
+    staleSignals.push("WorkRecord.customerName still present");
+  }
+  if (hasField("WorkRecord", "orderNo")) {
+    staleSignals.push("WorkRecord.orderNo still present");
+  }
+  if (hasField("WorkRecord", "styleName")) {
+    staleSignals.push("WorkRecord.styleName still present");
+  }
+  if (hasField("WorkRecord", "processCode")) {
+    staleSignals.push("WorkRecord.processCode still present");
+  }
+  if (hasField("WorkRecord", "colorId")) {
+    staleSignals.push("WorkRecord.colorId still present");
+  }
+  if (hasField("WorkRecord", "colorCode")) {
+    staleSignals.push("WorkRecord.colorCode still present");
   }
 
   if (staleSignals.length > 0) {
@@ -481,7 +503,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "WorkLog", columnName: "coverageStartDate" },
   { tableName: "WorkLog", columnName: "coverageEndDate" },
   { tableName: "WorkLog", columnName: "entryMode" },
-  { tableName: "WorkRecord", columnName: "orderNo" },
+  { tableName: "WorkRecord", columnName: "styleId" },
   { tableName: "WorkRecord", columnName: "lineId" },
   { tableName: "WorkRecord", columnName: "effectiveCoverageStartDate" },
   { tableName: "WorkRecord", columnName: "effectiveCoverageEndDate" },
@@ -2472,16 +2494,31 @@ const loadAtTrainingSourceWorkLogs = async ({
         workRecords: {
           where: {
             quantity: { gt: 0 },
-            OR: [{ styleId: { not: null } }, { styleUid: { not: null } }],
+            styleId: { not: null },
           },
           select: {
             workerId: true,
             assignmentPlanId: true,
-            styleUid: true,
             styleId: true,
-            styleName: true,
-            customerName: true,
-            processCode: true,
+            style: {
+              select: {
+                uid: true,
+                styleId: true,
+                name: true,
+              },
+            },
+            assignmentPlan: {
+              select: {
+                customer: true,
+                orderNo: true,
+              },
+            },
+            styleProcess: {
+              select: {
+                processCode: true,
+                processName: true,
+              },
+            },
             process: {
               select: {
                 id: true,
@@ -2509,16 +2546,31 @@ const loadAtTrainingSourceWorkLogs = async ({
         workRecords: {
           where: {
             quantity: { gt: 0 },
-            OR: [{ styleId: { not: null } }, { styleUid: { not: null } }],
+            styleId: { not: null },
           },
           select: {
             workerId: true,
             assignmentPlanId: true,
-            styleUid: true,
             styleId: true,
-            styleName: true,
-            customerName: true,
-            processCode: true,
+            style: {
+              select: {
+                uid: true,
+                styleId: true,
+                name: true,
+              },
+            },
+            assignmentPlan: {
+              select: {
+                customer: true,
+                orderNo: true,
+              },
+            },
+            styleProcess: {
+              select: {
+                processCode: true,
+                processName: true,
+              },
+            },
             process: {
               select: {
                 id: true,
@@ -2588,14 +2640,26 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       const assignmentPlanId = toPositiveIntOrNull((record as any)?.assignmentPlanId);
       const planStyleMeta =
         assignmentPlanId !== null ? styleMetaByPlanId.get(assignmentPlanId) ?? null : null;
+      const recordStyleRefId = resolveWorkRecordStyleRefId(record);
       return {
         ...record,
-        styleUid: planStyleMeta?.styleUid ?? toPositiveIntOrNull((record as any)?.styleUid),
-        styleId: resolveOptionalString(planStyleMeta?.styleId ?? (record as any)?.styleId, null),
-        styleName: resolveOptionalString(
-          planStyleMeta?.styleName ?? (record as any)?.styleName,
+        customerName: resolveOptionalString(
+          planStyleMeta?.customer ?? (record as any)?.assignmentPlan?.customer,
           null
         ),
+        orderNo: resolveOptionalString((record as any)?.assignmentPlan?.orderNo, null),
+        styleUid: planStyleMeta?.styleUid ?? recordStyleRefId,
+        styleId: resolveOptionalString(
+          planStyleMeta?.styleId ??
+            (record as any)?.style?.styleId ??
+            (recordStyleRefId === null ? (record as any)?.styleId : null),
+          null
+        ),
+        styleName: resolveOptionalString(
+          planStyleMeta?.styleName ?? (record as any)?.style?.name,
+          null
+        ),
+        processCode: resolveWorkRecordProcessCode(record),
       };
     }),
   }));
@@ -5971,8 +6035,14 @@ const normalizeWorkRecordPayloadList = (records: any) => {
       customerName: resolveOptionalString(record.customerName, null),
       orderNo: resolveOptionalString(record.orderNo, null),
       lineId: toPositiveIntOrNull(record.lineId),
-      styleId: resolveOptionalString(record.styleId, null),
-      styleUid: toPositiveIntOrNull(record.styleUid),
+      styleId:
+        toPositiveIntOrNull(record.styleId) ??
+        toPositiveIntOrNull(record.styleUid),
+      styleCode:
+        resolveOptionalString(record.styleCode, null) ??
+        (toPositiveIntOrNull(record.styleId) === null
+          ? resolveOptionalString(record.styleId, null)
+          : null),
       styleName: resolveOptionalString(record.styleName, null),
       styleProcessId: toPositiveIntOrNull(record.styleProcessId),
       processId: toPositiveIntOrNull(record.processId),
@@ -6007,18 +6077,12 @@ const buildCanonicalWorkRecordWriteData = ({
   orgId,
   workLogId,
   workerId: toPositiveIntOrNull(record?.workerId),
-  workerName: null,
-  customerName: null,
-  orderNo: null,
   lineId: toPositiveIntOrNull(record?.lineId) ?? toPositiveIntOrNull(defaultLineId),
-  styleId: null,
-  styleUid: toPositiveIntOrNull(record?.styleUid),
-  styleName: null,
+  styleId:
+    toPositiveIntOrNull(record?.styleId) ??
+    toPositiveIntOrNull(record?.styleUid),
   styleProcessId: toPositiveIntOrNull(record?.styleProcessId),
   processId: toPositiveIntOrNull(record?.processId),
-  processCode: null,
-  colorId: null,
-  colorCode: null,
   effectiveCoverageStartDate:
     resolveOptionalString(record?.effectiveCoverageStartDate, null) ??
     resolveOptionalString(defaultCoverageStartDate, null),
@@ -6050,17 +6114,28 @@ const syncWorkRecordRefs = async ({
     const assignmentPlanId = toPositiveIntOrNull(record?.assignmentPlanId);
     const planStyleMeta =
       assignmentPlanId !== null ? styleMetaByPlanId.get(assignmentPlanId) ?? null : null;
-    const recordStyleUid = toPositiveIntOrNull(record?.styleUid);
+    const recordStyleId =
+      toPositiveIntOrNull(record?.styleId) ??
+      toPositiveIntOrNull(record?.styleUid);
     return {
       ...record,
-      styleUid: planStyleMeta?.styleUid ?? recordStyleUid,
-      styleId: resolveOptionalString(planStyleMeta?.styleId ?? record?.styleId, null),
+      styleId: planStyleMeta?.styleUid ?? recordStyleId,
+      styleCode:
+        resolveOptionalString(planStyleMeta?.styleId ?? record?.styleCode, null) ??
+        (recordStyleId === null ? resolveOptionalString(record?.styleId, null) : null),
       styleName: resolveOptionalString(planStyleMeta?.styleName ?? record?.styleName, null),
     };
   });
 
-  const styleUids = collectPositiveIntSet(
-    ...normalizedWithPlanStyle.map((record) => record?.styleUid)
+  const styleIds = collectPositiveIntSet(
+    ...normalizedWithPlanStyle.map((record) => record?.styleId)
+  );
+  const styleCodes = Array.from(
+    new Set(
+      normalizedWithPlanStyle
+        .map((record) => resolveOptionalString(record?.styleCode, null))
+        .filter((value): value is string => Boolean(value))
+    )
   );
   const styleProcessIds = collectPositiveIntSet(
     ...normalizedWithPlanStyle.map((record) => record?.styleProcessId)
@@ -6075,16 +6150,17 @@ const syncWorkRecordRefs = async ({
         .filter((value): value is string => Boolean(value))
     )
   );
-  const colorIds = collectPositiveIntSet(
-    ...normalizedWithPlanStyle.map((record) => record?.colorId)
-  );
 
-  const [styles, styleProcessRowsById, styleProcessRowsByCode, processes, colors] =
+  const [styles, styleProcessRowsById, styleProcessRowsByCode, processes] =
     await Promise.all([
-    styleUids.length > 0
+    styleIds.length > 0 || styleCodes.length > 0
       ? prisma.style.findMany({
           where: {
-            uid: { in: styleUids },
+            orgId,
+            OR: [
+              ...(styleIds.length > 0 ? [{ uid: { in: styleIds } }] : []),
+              ...(styleCodes.length > 0 ? [{ styleId: { in: styleCodes } }] : []),
+            ],
           },
           select: {
             uid: true,
@@ -6107,10 +6183,10 @@ const syncWorkRecordRefs = async ({
           },
         })
       : Promise.resolve([]),
-    styleUids.length > 0 && processCodes.length > 0
+    styleIds.length > 0 && processCodes.length > 0
       ? prisma.styleProcess.findMany({
           where: {
-            styleUid: { in: styleUids },
+            styleUid: { in: styleIds },
             processCode: { in: processCodes },
           },
           select: {
@@ -6140,17 +6216,14 @@ const syncWorkRecordRefs = async ({
           },
         })
       : Promise.resolve([]),
-    colorIds.length > 0
-      ? prisma.attrColor.findMany({
-          where: {
-            id: { in: colorIds },
-          },
-          select: { id: true, code: true, name: true },
-        })
-      : Promise.resolve([]),
   ]);
 
   const styleByUid = new Map(styles.map((style) => [style.uid, style]));
+  const styleByCode = new Map(
+    styles
+      .filter((style) => resolveOptionalString(style?.styleId, null))
+      .map((style) => [String(style.styleId).trim(), style])
+  );
   const styleProcessById = new Map(
     styleProcessRowsById.map((row) => [Number(row.id), row])
   );
@@ -6172,12 +6245,17 @@ const syncWorkRecordRefs = async ({
       .filter((process) => process.code)
       .map((process) => [normalizeComparableText(process.code), process])
   );
-  const colorById = new Map(colors.map((color) => [color.id, color]));
 
   return normalizedWithPlanStyle.map((record) => {
-    const recordStyleUid = toPositiveIntOrNull(record?.styleUid);
+    const recordStyleId =
+      toPositiveIntOrNull(record?.styleId) ??
+      toPositiveIntOrNull(record?.styleUid);
+    const recordStyleCode =
+      resolveOptionalString(record?.styleCode, null) ??
+      (recordStyleId === null ? resolveOptionalString(record?.styleId, null) : null);
     const linkedStyle =
-      recordStyleUid !== null ? styleByUid.get(recordStyleUid) ?? null : null;
+      (recordStyleId !== null ? styleByUid.get(recordStyleId) ?? null : null) ??
+      (recordStyleCode ? styleByCode.get(recordStyleCode) ?? null : null);
     const directStyleProcessId = toPositiveIntOrNull(record?.styleProcessId);
     const directStyleProcess =
       directStyleProcessId !== null
@@ -6185,12 +6263,12 @@ const syncWorkRecordRefs = async ({
         : null;
     const directStyleProcessMatchesStyle =
       directStyleProcess &&
-      (recordStyleUid === null ||
-        toPositiveIntOrNull(directStyleProcess?.styleUid) === recordStyleUid);
+      (recordStyleId === null ||
+        toPositiveIntOrNull(directStyleProcess?.styleUid) === recordStyleId);
     const processCodeKey = normalizeProcessCodeKey(record?.processCode);
     const codeMatchedStyleProcess =
-      recordStyleUid !== null && processCodeKey
-        ? styleProcessByCanonicalKey.get(`${recordStyleUid}::${processCodeKey}`) ?? null
+      recordStyleId !== null && processCodeKey
+        ? styleProcessByCanonicalKey.get(`${recordStyleId}::${processCodeKey}`) ?? null
         : null;
     const linkedStyleProcess =
       (directStyleProcessMatchesStyle ? directStyleProcess : null) ??
@@ -6203,17 +6281,16 @@ const syncWorkRecordRefs = async ({
       (resolveOptionalString(record?.processCode, null)
         ? processByCode.get(normalizeComparableText(record.processCode)) ?? null
         : null);
-    const linkedColor =
-      (toPositiveIntOrNull(record?.colorId)
-        ? colorById.get(Number(record.colorId)) ?? null
-        : null);
 
     return {
       ...record,
       orderNo: resolveOptionalString(record?.orderNo, null),
       lineId: toPositiveIntOrNull(record?.lineId),
-      styleUid: linkedStyle?.uid ?? recordStyleUid,
-      styleId: resolveOptionalString(linkedStyle?.styleId ?? record?.styleId, null),
+      styleId: linkedStyle?.uid ?? recordStyleId,
+      styleCode: resolveOptionalString(
+        linkedStyle?.styleId ?? recordStyleCode,
+        null
+      ),
       styleName: resolveOptionalString(linkedStyle?.name ?? record?.styleName, null),
       styleProcessId:
         toPositiveIntOrNull(linkedStyleProcess?.id) ?? directStyleProcessId,
@@ -6238,9 +6315,6 @@ const syncWorkRecordRefs = async ({
         linkedProcess?.nameVi ?? record?.processNameVi,
         null
       ),
-      colorId: linkedColor?.id ?? toPositiveIntOrNull(record?.colorId),
-      colorCode: resolveOptionalString(linkedColor?.code ?? record?.colorCode, null),
-      colorName: resolveOptionalString(linkedColor?.name ?? record?.colorName, null),
     };
   });
 };
@@ -6439,22 +6513,26 @@ const attachCanonicalFieldsToWorkRecords = async ({
       assignmentPlanId != null ? orderNoByPlanId.get(assignmentPlanId) ?? null : null;
     const planStyleMeta =
       assignmentPlanId != null ? styleMetaByPlanId.get(assignmentPlanId) ?? null : null;
-    const recordStyleUid = toPositiveIntOrNull(record?.styleUid);
-    const nextStyleUid = planStyleMeta?.styleUid ?? recordStyleUid;
-    const canonicalStyleUidSource =
+    const recordStyleId =
+      toPositiveIntOrNull(record?.styleId) ??
+      toPositiveIntOrNull(record?.styleUid);
+    const nextStyleId = planStyleMeta?.styleUid ?? recordStyleId;
+    const canonicalStyleIdSource =
       planStyleMeta?.styleUid != null
         ? "AssignmentPlan.workOrderItem.styleUid"
-        : recordStyleUid !== null
-          ? "WorkRecord.styleUid"
+        : recordStyleId !== null
+          ? "WorkRecord.styleId"
           : null;
     return {
       ...record,
       orderNo: resolveOptionalString(planOrderNo ?? record?.orderNo, null),
       lineId: normalizedLineId ?? toPositiveIntOrNull(record?.lineId),
-      styleUid: nextStyleUid,
-      styleId: resolveOptionalString(planStyleMeta?.styleId ?? record?.styleId, null),
+      styleId: nextStyleId,
+      styleCode:
+        resolveOptionalString(planStyleMeta?.styleId ?? record?.styleCode, null) ??
+        (recordStyleId === null ? resolveOptionalString(record?.styleId, null) : null),
       styleName: resolveOptionalString(planStyleMeta?.styleName ?? record?.styleName, null),
-      _canonicalStyleUidSource: canonicalStyleUidSource,
+      _canonicalStyleIdSource: canonicalStyleIdSource,
     };
   });
 };
@@ -7420,7 +7498,7 @@ const resolveWorkRecordProcessBucketKeyForAssignmentSchedule = (
 ): string => {
   const processId = toPositiveIntOrNull(value?.processId);
   if (processId != null) return `id:${processId}`;
-  const processCode = resolveOptionalString(value?.processCode, null);
+  const processCode = resolveWorkRecordProcessCode(value);
   if (processCode) return `code:${normalizeProcessCodeKey(processCode)}`;
   return "unknown";
 };
@@ -7522,7 +7600,7 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
   const linePlanIds = linePlans.map((plan) => plan.id);
   const workRecords =
     linePlanIds.length > 0
-      ? await prisma.workRecord.findMany({
+        ? await prisma.workRecord.findMany({
           where: {
             orgId,
             assignmentPlanId: { in: linePlanIds },
@@ -7530,7 +7608,16 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
           select: {
             assignmentPlanId: true,
             processId: true,
-            processCode: true,
+            styleProcess: {
+              select: {
+                processCode: true,
+              },
+            },
+            process: {
+              select: {
+                code: true,
+              },
+            },
             quantity: true,
             workLog: {
               select: {
@@ -8746,8 +8833,11 @@ const translateWorkLogErrorMessage = (error: any) => {
   ) {
     return "CT snapshot이 저장된 배정 카드만 작업 기록으로 저장할 수 있습니다.";
   }
-  if (/records\[\d+\]\.styleUid is required/i.test(text)) {
-    return "작업기록의 스타일 참조(styleUid)를 확정할 수 없습니다. 배정 카드와 주문 스타일 연결을 확인해 주세요.";
+  if (
+    /records\[\d+\]\.styleId is required/i.test(text) ||
+    /records\[\d+\]\.styleUid is required/i.test(text)
+  ) {
+    return "작업기록의 스타일 참조(styleId)를 확정할 수 없습니다. 배정 카드와 주문 스타일 연결을 확인해 주세요.";
   }
   if (/records\[\d+\]\.styleProcessId is required/i.test(text)) {
     return "작업기록의 스타일별 공정 참조(styleProcessId)를 확정할 수 없습니다. 스타일 공정과 배정 카드 연결을 확인해 주세요.";
@@ -8826,8 +8916,8 @@ const loadWorkRecordResponseDisplayContext = async ({
     const styleMeta = styleMetaByPlanId.get(planId) ?? null;
     assignmentPlanMetaById.set(planId, {
       ...plan,
-      styleUid: toPositiveIntOrNull(styleMeta?.styleUid),
-      styleId: resolveOptionalString(styleMeta?.styleId, null),
+      styleId: toPositiveIntOrNull(styleMeta?.styleUid),
+      styleCode: resolveOptionalString(styleMeta?.styleId, null),
       styleName: resolveOptionalString(styleMeta?.styleName, null),
     });
   });
@@ -8860,31 +8950,26 @@ const hydrateWorkRecordResponseDisplayFields = (
 
   return {
     ...record,
-    workerName,
-    customerName:
-      resolveOptionalString(record?.customerName, null) ??
-      resolveOptionalString(assignmentPlanMeta?.customer, null),
-    orderNo:
-      resolveOptionalString(record?.orderNo, null) ??
-      resolveOptionalString(assignmentPlanMeta?.orderNo, null),
+    workerName:
+      workerName ?? resolveOptionalString(record?.worker?.name, null),
+    customerName: resolveOptionalString(assignmentPlanMeta?.customer, null),
+    orderNo: resolveOptionalString(assignmentPlanMeta?.orderNo, null),
     lineId:
       toPositiveIntOrNull(record?.lineId) ??
       toPositiveIntOrNull(assignmentPlanMeta?.lineId),
-    styleUid:
-      resolveWorkRecordStyleUid(record) ??
-      toPositiveIntOrNull(assignmentPlanMeta?.styleUid),
     styleId:
-      resolveWorkRecordStyleId(record) ??
-      resolveOptionalString(assignmentPlanMeta?.styleId, null),
+      resolveWorkRecordStyleRefId(record) ??
+      toPositiveIntOrNull(assignmentPlanMeta?.styleId),
+    styleCode:
+      resolveWorkRecordStyleCode(record) ??
+      resolveOptionalString(assignmentPlanMeta?.styleCode, null),
     styleName:
       resolveWorkRecordStyleName(record) ??
       resolveOptionalString(
         assignmentPlanMeta?.styleName ?? assignmentPlanMeta?.label,
         null
       ),
-    colorId:
-      toPositiveIntOrNull(record?.color?.id ?? record?.colorId) ??
-      toPositiveIntOrNull(assignmentPlanMeta?.colorId),
+    colorId: toPositiveIntOrNull(assignmentPlanMeta?.colorId),
     colorName:
       resolveWorkRecordColorName(record) ??
       resolveOptionalString(assignmentPlanMeta?.colorName, null),
@@ -8899,18 +8984,16 @@ const toWorkRecordResponse = (record: any) => {
     customerName: hydrated?.customerName ?? "",
     orderNo: resolveOptionalString(hydrated?.orderNo, "") ?? "",
     lineId: toPositiveIntOrNull(hydrated?.lineId),
-    styleUid: resolveWorkRecordStyleUid(hydrated),
-    styleId: resolveWorkRecordStyleId(hydrated) ?? "",
+    styleRefId: resolveWorkRecordStyleRefId(hydrated),
+    styleUid: resolveWorkRecordStyleRefId(hydrated),
+    styleId: resolveWorkRecordStyleCode(hydrated) ?? "",
+    styleCode: resolveWorkRecordStyleCode(hydrated) ?? "",
     styleName: resolveWorkRecordStyleName(hydrated) ?? "",
     styleProcessId: toPositiveIntOrNull(
       hydrated?.styleProcess?.id ?? hydrated?.styleProcessId
     ),
     processId: toPositiveIntOrNull(hydrated?.process?.id ?? hydrated?.processId),
-    processCode:
-      hydrated?.styleProcess?.processCode ??
-      hydrated?.process?.code ??
-      hydrated?.processCode ??
-      "",
+    processCode: resolveWorkRecordProcessCode(hydrated) ?? "",
     processName: resolveWorkRecordProcessName(hydrated) ?? "",
     processNameKo:
       resolveOptionalString(hydrated?.process?.nameKo ?? hydrated?.processNameKo, null) ??
@@ -8922,10 +9005,7 @@ const toWorkRecordResponse = (record: any) => {
       resolveOptionalString(hydrated?.process?.nameVi ?? hydrated?.processNameVi, null) ??
       "",
     colorId: toPositiveIntOrNull(hydrated?.colorId),
-    colorCode:
-      hydrated?.color?.code ??
-      hydrated?.colorCode ??
-      "",
+    colorCode: resolveOptionalString(hydrated?.assignmentPlan?.color, "") ?? "",
     colorName:
       resolveWorkRecordColorName(hydrated) ??
       resolveOptionalString(hydrated?.assignmentPlan?.colorName, null),
@@ -9448,14 +9528,17 @@ const collectMissingWorkRecordCanonicalRefIssues = (records: any) =>
     (
       issues: Array<{
         index: number;
-        field: "styleUid" | "styleProcessId" | "processId";
+        field: "styleId" | "styleProcessId" | "processId";
       }>,
       record,
       index
     ) => {
       if (!record || typeof record !== "object") return issues;
-      if (toPositiveIntOrNull(record?.styleUid) === null) {
-        issues.push({ index, field: "styleUid" });
+      if (
+        toPositiveIntOrNull(record?.styleId) === null &&
+        toPositiveIntOrNull(record?.styleUid) === null
+      ) {
+        issues.push({ index, field: "styleId" });
       }
       if (toPositiveIntOrNull(record?.styleProcessId) === null) {
         issues.push({ index, field: "styleProcessId" });
@@ -17290,12 +17373,6 @@ const syncGlobalColorSection = async (items: any) => {
           data: { colorCode: row.code },
         })
       ),
-      ...changedCodes.map((row) =>
-        prisma.workRecord.updateMany({
-          where: { colorId: row.id },
-          data: { colorCode: row.code },
-        })
-      ),
     ]);
   }
 
@@ -19280,7 +19357,7 @@ const buildLineMonthCapacityRows = async ({
         calculationRule:
           "actualOutputStSeconds = sum(monthAllocatedQuantity * StyleProcessStandard.bucketStSeconds)",
         styleMatchRule:
-          "WorkRecord.styleUid must be stored. styleId/styleCode/name lookup is not allowed.",
+          "WorkRecord.styleId (Style.uid FK) must be stored. styleCode/name lookup is not allowed.",
         processMatchRule:
           "WorkRecord.styleProcessId -> StyleProcess.id only. processCode/process name fallback is not allowed.",
         processIdRole:
@@ -19352,7 +19429,8 @@ const buildLineMonthCapacityRows = async ({
           orderNo: resolveOptionalString(row?.orderNo, null),
           workerName: resolveOptionalString(row?.workerName, null),
           styleUid: toPositiveIntOrNull(row?.styleUid),
-          styleUidSource: toPositiveIntOrNull(row?.styleUid) !== null ? "WorkRecord.styleUid" : null,
+          styleUidSource:
+            toPositiveIntOrNull(row?.styleUid) !== null ? "WorkRecord.styleId" : null,
           styleProcessId: toPositiveIntOrNull(row?.styleProcessId),
           styleProcessIdSource:
             toPositiveIntOrNull(row?.styleProcessId) !== null
@@ -19362,7 +19440,7 @@ const buildLineMonthCapacityRows = async ({
           processId: toPositiveIntOrNull(row?.processId),
           processCode: resolveOptionalString(row?.processCode, null),
           processCodeSource: resolveOptionalString(row?.processCode, null)
-            ? "WorkRecord.processCode"
+            ? "WorkRecord.styleProcess/process relation"
             : null,
           quantity: Math.max(0, Math.round(Number(row?.quantity ?? 0))),
           coverageStartDate: resolveWorkRecordEffectiveCoverageStartDate(row),
@@ -19380,14 +19458,14 @@ const buildLineMonthCapacityRows = async ({
     const recordStyleUid = toPositiveIntOrNull(record?.styleUid);
     const styleUid = recordStyleUid ?? null;
     const styleUidSource =
-      recordStyleUid !== null ? "WorkRecord.styleUid" : null;
+      recordStyleUid !== null ? "WorkRecord.styleId" : null;
     const styleProcessId = toPositiveIntOrNull(record?.styleProcessId);
     const styleProcessIdSource =
       styleProcessId !== null ? "WorkRecord.styleProcessId" : null;
     const recordProcessCode = resolveOptionalString(record?.processCode, null);
     const processCode = recordProcessCode;
     const processCodeSource = recordProcessCode
-      ? "WorkRecord.processCode"
+      ? "WorkRecord.styleProcess/process relation"
       : null;
     if (styleUid === null) {
       return {
@@ -26075,56 +26153,8 @@ app.get("/styles", async (req, res) => {
         processOrgId: organization.id,
       })
     : new Map<number, any[]>();
-  const fallbackStyleIds = Array.from(
-    new Set(
-      styles
-        .map((style) => String(style.styleId || "").trim())
-        .filter(Boolean)
-    )
-  );
-  const fallbackStyleOwnerOrgIds = Array.from(
-    new Set(
-      styles
-        .map((style) => Number(style.orgId))
-        .filter((orgId) => Number.isInteger(orgId) && orgId > 0)
-    )
-  );
-  const fallbackWorkRecordCounts =
-    fallbackStyleIds.length > 0 && fallbackStyleOwnerOrgIds.length > 0
-      ? await prisma.workRecord.groupBy({
-          by: ["orgId", "styleId"],
-          where: {
-            styleUid: null,
-            orgId: { in: fallbackStyleOwnerOrgIds },
-            styleId: { in: fallbackStyleIds },
-          },
-          _count: { _all: true },
-        })
-      : [];
-  const fallbackWorkRecordCountByStyleKey = new Map(
-    fallbackWorkRecordCounts.map((row) => [
-      `${row.orgId}:${String(row.styleId || "").trim()}`,
-      row._count._all,
-    ])
-  );
-  const stylesWithWorkRecordCounts = styles.map((style) => {
-    const fallbackCount =
-      fallbackWorkRecordCountByStyleKey.get(
-        `${style.orgId}:${String(style.styleId || "").trim()}`
-      ) || 0;
-    if (fallbackCount <= 0) return style;
-    const workRecordCount = Number(style._count?.workRecords ?? 0) + fallbackCount;
-    return {
-      ...style,
-      _count: {
-        ...(style._count ?? {}),
-        workRecords: workRecordCount,
-      },
-    };
-  });
-
   res.json(
-    stylesWithWorkRecordCounts.map((style) =>
+    styles.map((style) =>
       toStyleResponse(style, { includeProcesses, processMirrorMap })
     )
   );
@@ -26430,14 +26460,7 @@ app.delete("/styles/:styleId", async (req, res) => {
 
   const inUseWorkRecord = await prisma.workRecord.findFirst({
     where: {
-      OR: [
-        { styleUid: existing.uid },
-        {
-          styleUid: null,
-          orgId: existing.orgId,
-          styleId: existing.styleId,
-        },
-      ],
+      styleId: existing.uid,
     },
     select: { id: true },
   });

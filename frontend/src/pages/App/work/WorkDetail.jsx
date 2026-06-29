@@ -1822,7 +1822,13 @@ const WorkDetail = ({
       .map(({ row, assignment, process }) => ({
         rowId: toText(row?.id),
         workerId: toPositiveIdOrNull(row?.worker?.id),
-        styleUid: toPositiveIdOrNull(assignment?.styleUid ?? row?.styleUid),
+        styleId: toPositiveIdOrNull(
+          assignment?.styleUid ??
+            row?.styleRefId ??
+            row?.styleUid ??
+            row?.styleId
+        ),
+        styleCode: toText(row?.styleCode || row?.styleId || assignment?.styleId),
         processId: toPositiveIdOrNull(process?.processId),
         styleProcessId: toPositiveIdOrNull(process?.styleProcessId),
         ctSeconds: Math.max(0, Math.round(Number(process?.ctSeconds) || 0)),

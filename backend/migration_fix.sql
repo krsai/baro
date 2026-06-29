@@ -976,6 +976,150 @@ BEGIN
   END IF;
 END $$;
 
+-- Step 5d: WorkRecord destructive legacy cleanup and canonical style FK rename (20260629)
+DO $$
+DECLARE
+  has_style_id_text BOOLEAN := FALSE;
+  has_style_id_int BOOLEAN := FALSE;
+  has_style_uid BOOLEAN := FALSE;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+      AND column_name = 'styleId'
+      AND data_type = 'text'
+  ) INTO has_style_id_text;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+      AND column_name = 'styleId'
+      AND data_type = 'integer'
+  ) INTO has_style_id_int;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+      AND column_name = 'styleUid'
+  ) INTO has_style_uid;
+
+  IF has_style_id_text AND has_style_uid THEN
+    UPDATE "WorkRecord" wr
+    SET "styleUid" = s.uid
+    FROM "Style" s
+    WHERE wr."orgId" = s."orgId"
+      AND wr."styleUid" IS NULL
+      AND wr."styleId" IS NOT NULL
+      AND BTRIM(wr."styleId") <> ''
+      AND s."styleId" = wr."styleId";
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'WorkRecord_styleUid_fkey'
+  ) THEN
+    ALTER TABLE "WorkRecord" DROP CONSTRAINT "WorkRecord_styleUid_fkey";
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'WorkRecord_colorId_fkey'
+  ) THEN
+    ALTER TABLE "WorkRecord" DROP CONSTRAINT "WorkRecord_colorId_fkey";
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'WorkRecord_workerId_fkey'
+  ) THEN
+    ALTER TABLE "WorkRecord" DROP CONSTRAINT "WorkRecord_workerId_fkey";
+  END IF;
+
+  DROP INDEX IF EXISTS "WorkRecord_orgId_orderNo_idx";
+  DROP INDEX IF EXISTS "WorkRecord_styleUid_idx";
+  DROP INDEX IF EXISTS "WorkRecord_colorId_idx";
+  DROP INDEX IF EXISTS "WorkRecord_orgId_styleId_idx";
+
+  IF has_style_id_text AND has_style_uid AND NOT has_style_id_int THEN
+    ALTER TABLE "WorkRecord" RENAME COLUMN "styleId" TO "styleCodeLegacy";
+    ALTER TABLE "WorkRecord" RENAME COLUMN "styleUid" TO "styleId";
+  ELSIF has_style_id_text AND NOT has_style_uid AND NOT has_style_id_int THEN
+    ALTER TABLE "WorkRecord" ADD COLUMN IF NOT EXISTS "styleIdTemp" INTEGER;
+
+    UPDATE "WorkRecord" wr
+    SET "styleIdTemp" = s.uid
+    FROM "Style" s
+    WHERE wr."orgId" = s."orgId"
+      AND wr."styleIdTemp" IS NULL
+      AND wr."styleId" IS NOT NULL
+      AND BTRIM(wr."styleId") <> ''
+      AND s."styleId" = wr."styleId";
+
+    ALTER TABLE "WorkRecord" RENAME COLUMN "styleId" TO "styleCodeLegacy";
+    ALTER TABLE "WorkRecord" RENAME COLUMN "styleIdTemp" TO "styleId";
+  END IF;
+
+  ALTER TABLE "WorkRecord"
+    DROP COLUMN IF EXISTS "workerName",
+    DROP COLUMN IF EXISTS "customerName",
+    DROP COLUMN IF EXISTS "orderNo",
+    DROP COLUMN IF EXISTS "styleCodeLegacy",
+    DROP COLUMN IF EXISTS "styleName",
+    DROP COLUMN IF EXISTS "processCode",
+    DROP COLUMN IF EXISTS "colorId",
+    DROP COLUMN IF EXISTS "colorCode";
+
+  INSERT INTO "_BaroMigrationState" ("key")
+  SELECT '20260629_work_record_fk_cleanup_v1'
+  WHERE NOT EXISTS (
+    SELECT 1 FROM "_BaroMigrationState"
+    WHERE "key" = '20260629_work_record_fk_cleanup_v1'
+  );
+END $$;
+
+CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_styleId_idx"
+  ON "WorkRecord"("orgId", "styleId");
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+      AND column_name = 'styleId'
+      AND data_type = 'integer'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'WorkRecord_styleId_fkey'
+  ) THEN
+    ALTER TABLE "WorkRecord"
+      ADD CONSTRAINT "WorkRecord_styleId_fkey"
+      FOREIGN KEY ("styleId") REFERENCES "Style"("uid")
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+      AND column_name = 'workerId'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'WorkRecord_workerId_fkey'
+  ) THEN
+    ALTER TABLE "WorkRecord"
+      ADD CONSTRAINT "WorkRecord_workerId_fkey"
+      FOREIGN KEY ("workerId") REFERENCES "Employee"("id")
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
+
 -- 6-0. AssignmentPlan physical snapshot column rename.
 DO $$
 BEGIN

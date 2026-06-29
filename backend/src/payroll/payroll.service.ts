@@ -12,6 +12,7 @@ import {
 } from "../utils/common";
 import { createHttpError } from "../utils/http";
 import {
+  resolveWorkRecordProcessCode,
   resolveWorkRecordProcessName,
   WORK_RECORD_WITH_REFS_INCLUDE,
 } from "../work-records/workRecord.shared";
@@ -429,7 +430,10 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
     for (const record of workLog.workRecords) {
       const employee =
         record.workerId != null ? employeesById.get(Number(record.workerId)) ?? null : null;
-      const workerName = resolvePayrollEmployeeName(employee, record.workerName);
+      const workerName = resolvePayrollEmployeeName(
+        employee,
+        record.worker?.name
+      );
       const key = buildPayrollEmployeeKey(record.workerId, workerName);
       const effectivePayType = employee
         ? resolveEmployeeEffectivePayType(employee)
@@ -471,10 +475,11 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       emp.productionEarnings += earnings;
 
       const processName = resolveWorkRecordProcessName(record) ?? "";
-      const processKey = record.processCode || processName || "unknown";
+      const processCode = resolveWorkRecordProcessCode(record) ?? "";
+      const processKey = processCode || processName || "unknown";
       if (!emp.processes.has(processKey)) {
         emp.processes.set(processKey, {
-          processCode: record.processCode || "",
+          processCode,
           processName: processName || processKey,
           totalQuantity: 0,
           totalCtSeconds: 0,

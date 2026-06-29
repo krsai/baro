@@ -352,6 +352,7 @@ model Employee {
   lineAssignments   LineAssignment[]
   managedLines      Line[]            @relation("LineManager")
   attendanceEntries AttendanceEntry[]
+  workRecords       WorkRecord[]
 
   @@index([orgId])
   @@index([factoryId])
@@ -444,7 +445,6 @@ model AttrColor {
   nameVi String?
 
   workOrderItems  WorkOrderItem[]
-  workRecords     WorkRecord[]
   assignmentPlans AssignmentPlan[]
   qcPassEvents   QcPassEvent[]
 }
@@ -799,18 +799,10 @@ model WorkRecord {
   orgId            Int
   workLogId        Int
   workerId         Int?
-  workerName       String?
-  customerName     String?
-  orderNo          String?
   lineId           Int?
-  styleId          String?
-  styleUid         Int?
-  styleName        String?
+  styleId          Int?
   styleProcessId   Int?
   processId        Int?
-  processCode      String?
-  colorId          Int?
-  colorCode        String?
   assignmentPlanId Int?
   effectiveCoverageStartDate String?
   effectiveCoverageEndDate   String?
@@ -822,22 +814,19 @@ model WorkRecord {
 
   organization   Organization    @relation(fields: [orgId], references: [id])
   workLog        WorkLog         @relation(fields: [workLogId], references: [id], onDelete: Cascade)
+  worker         Employee?       @relation(fields: [workerId], references: [id], onDelete: SetNull)
   assignmentPlan AssignmentPlan? @relation(fields: [assignmentPlanId], references: [id])
-  style          Style?          @relation(fields: [styleUid], references: [uid], onDelete: SetNull)
+  style          Style?          @relation(fields: [styleId], references: [uid], onDelete: SetNull)
   styleProcess   StyleProcess?   @relation(fields: [styleProcessId], references: [id], onDelete: SetNull)
-  color          AttrColor?      @relation(fields: [colorId], references: [id], onDelete: SetNull)
   process        AttrProcess?    @relation(fields: [processId], references: [id], onDelete: SetNull)
 
   @@index([orgId, workLogId])
   @@index([orgId, workerId])
   @@index([orgId, styleId])
-  @@index([orgId, orderNo])
   @@index([orgId, lineId])
-  @@index([styleUid])
   @@index([styleProcessId])
   @@index([assignmentPlanId])
   @@index([workLogId])
-  @@index([colorId])
   @@index([processId])
 }
 

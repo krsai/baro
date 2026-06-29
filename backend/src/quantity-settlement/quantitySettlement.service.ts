@@ -113,16 +113,30 @@ const resolveColorName = (item: any) =>
     ""
   ) || "";
 
-const resolveStyleUid = (item: any) => toPositiveIntOrNull(item?.style?.uid ?? item?.styleUid);
+const resolveStyleUid = (item: any) =>
+  toPositiveIntOrNull(item?.style?.uid ?? item?.styleId ?? item?.styleUid);
 const resolveStyleId = (item: any) =>
-  resolveOptionalString(item?.style?.styleId ?? item?.styleId ?? null, "") || "";
+  resolveOptionalString(
+    item?.style?.styleId ??
+      item?.styleCode ??
+      (toPositiveIntOrNull(item?.styleId) === null ? item?.styleId : null) ??
+      null,
+    ""
+  ) || "";
 const resolveStyleCode = (item: any) =>
   resolveOptionalString(item?.style?.styleCode ?? item?.styleCode ?? null, "") || "";
 const resolveStyleName = (item: any) =>
   resolveOptionalString(item?.style?.name ?? item?.styleName ?? null, "") || "";
-const resolveColorId = (item: any) => toPositiveIntOrNull(item?.color?.id ?? item?.colorId);
+const resolveColorId = (item: any) =>
+  toPositiveIntOrNull(item?.assignmentPlan?.colorId ?? item?.color?.id ?? item?.colorId);
 const resolveColorCode = (item: any) =>
-  resolveOptionalString(item?.color?.code ?? item?.colorCode ?? null, "") || "";
+  resolveOptionalString(
+    item?.assignmentPlan?.color ??
+      item?.color?.code ??
+      item?.colorCode ??
+      null,
+    ""
+  ) || "";
 
 const buildGroupedOrderItemKey = (item: any) =>
   [
@@ -325,17 +339,22 @@ const buildWorkRecordAggregates = (workLogs: any[]) => {
       const quantity = toNonNegativeInt(record?.quantity, 0);
       if (quantity <= 0) return;
       const styleKey = buildAggregateStyleKey({
-        styleUid: record?.styleUid,
-        styleId: record?.styleId,
+        styleUid: resolveStyleUid(record),
+        styleId: resolveStyleId(record),
       });
       const colorKey = buildAggregateColorKey({
-        styleUid: record?.styleUid,
-        styleId: record?.styleId,
-        colorId: record?.colorId,
-        colorCode: record?.colorCode,
+        styleUid: resolveStyleUid(record),
+        styleId: resolveStyleId(record),
+        colorId: resolveColorId(record),
+        colorCode: resolveColorCode(record),
       });
       const processKey =
-        resolveOptionalString(record?.processCode, "") ||
+        resolveOptionalString(
+          record?.styleProcess?.processCode ??
+            record?.process?.code ??
+            record?.processCode,
+          ""
+        ) ||
         String(toPositiveIntOrNull(record?.processId) ?? "unknown");
       appendQuantity(styleOnlyMap, styleKey, processKey, quantity);
       appendQuantity(colorMap, colorKey, processKey, quantity);
@@ -532,12 +551,33 @@ export const getQuantitySettlementByMonth = async (orgId: number, monthInput: st
         id: true,
         workRecords: {
           select: {
-            styleUid: true,
             styleId: true,
-            colorId: true,
-            colorCode: true,
             processId: true,
-            processCode: true,
+            style: {
+              select: {
+                uid: true,
+                styleId: true,
+                styleCode: true,
+                name: true,
+              },
+            },
+            assignmentPlan: {
+              select: {
+                colorId: true,
+                color: true,
+                colorName: true,
+              },
+            },
+            styleProcess: {
+              select: {
+                processCode: true,
+              },
+            },
+            process: {
+              select: {
+                code: true,
+              },
+            },
             quantity: true,
           },
         },
