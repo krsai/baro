@@ -96,82 +96,8 @@ app.use((req, _res, next) =>
   runWithRequestActor(getRequesterEmail(req), () => next())
 );
 
-const WORK_LOG_RECORD_INCLUDE = {
-  orderBy: { id: "asc" as const },
-  include: {
-    process: {
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        nameKo: true,
-        nameEn: true,
-        nameVi: true,
-      },
-    },
-    styleProcess: {
-      select: {
-        id: true,
-        processCode: true,
-        processName: true,
-      },
-    },
-    color: {
-      select: {
-        id: true,
-        code: true,
-        name: true,
-      },
-    },
-  },
-};
-const WORK_LOG_DETAIL_RECORD_SELECT = {
-  orderBy: { id: "asc" as const },
-  select: {
-    workerId: true,
-    workerName: true,
-    customerName: true,
-    orderNo: true,
-    lineId: true,
-    styleUid: true,
-    styleId: true,
-    styleName: true,
-    styleProcessId: true,
-    processId: true,
-    processCode: true,
-    colorId: true,
-    colorCode: true,
-    assignmentPlanId: true,
-    effectiveCoverageStartDate: true,
-    effectiveCoverageEndDate: true,
-    ctSeconds: true,
-    quantity: true,
-    process: {
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        nameKo: true,
-        nameEn: true,
-        nameVi: true,
-      },
-    },
-    styleProcess: {
-      select: {
-        id: true,
-        processCode: true,
-        processName: true,
-      },
-    },
-    color: {
-      select: {
-        id: true,
-        code: true,
-        name: true,
-      },
-    },
-  },
-};
+const WORK_LOG_RECORD_INCLUDE = WORK_RECORD_WITH_REFS_INCLUDE;
+const WORK_LOG_DETAIL_RECORD_SELECT = WORK_RECORD_WITH_REFS_INCLUDE;
 
 function assertGeneratedPrismaClientShape() {
   const modelByName = new Map(
@@ -6063,6 +5989,46 @@ const normalizeWorkRecordPayloadList = (records: any) => {
 
   return { rows, invalidWorkerRecordIndex };
 };
+const buildCanonicalWorkRecordWriteData = ({
+  orgId,
+  workLogId,
+  record,
+  defaultLineId = null,
+  defaultCoverageStartDate = null,
+  defaultCoverageEndDate = null,
+}: {
+  orgId: number;
+  workLogId: number;
+  record: any;
+  defaultLineId?: number | null;
+  defaultCoverageStartDate?: string | null;
+  defaultCoverageEndDate?: string | null;
+}) => ({
+  orgId,
+  workLogId,
+  workerId: toPositiveIntOrNull(record?.workerId),
+  workerName: null,
+  customerName: null,
+  orderNo: null,
+  lineId: toPositiveIntOrNull(record?.lineId) ?? toPositiveIntOrNull(defaultLineId),
+  styleId: null,
+  styleUid: toPositiveIntOrNull(record?.styleUid),
+  styleName: null,
+  styleProcessId: toPositiveIntOrNull(record?.styleProcessId),
+  processId: toPositiveIntOrNull(record?.processId),
+  processCode: null,
+  colorId: null,
+  colorCode: null,
+  effectiveCoverageStartDate:
+    resolveOptionalString(record?.effectiveCoverageStartDate, null) ??
+    resolveOptionalString(defaultCoverageStartDate, null),
+  effectiveCoverageEndDate:
+    resolveOptionalString(record?.effectiveCoverageEndDate, null) ??
+    resolveOptionalString(defaultCoverageEndDate, null),
+  ctSeconds: toNonNegativeInt(record?.ctSeconds, 0),
+  quantity: toNonNegativeInt(record?.quantity, 0),
+  assignmentPlanId: toPositiveIntOrNull(record?.assignmentPlanId),
+});
 const syncWorkRecordRefs = async ({
   orgId,
   records,
@@ -8333,7 +8299,7 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
     return { status: 200, error: null as string | null };
   }
 
-  const existingRows = await prisma.workRecord.findMany({
+  const existingRows: any[] = await prisma.workRecord.findMany({
     where: {
       orgId,
       workerId: { in: workerIds },
@@ -8356,7 +8322,7 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
       process: {
         select: { name: true },
       },
-    },
+    } as any,
   });
 
   const existingSignatureSet = new Set<string>();
@@ -8750,37 +8716,183 @@ const translateWorkLogErrorMessage = (error: any) => {
 
   return text;
 };
-const toWorkRecordResponse = (record: any) => ({
-  workerId: record?.workerId ?? null,
-  workerName: record?.workerName ?? "",
-  customerName: record?.customerName ?? "",
-  orderNo: resolveOptionalString(record?.orderNo, "") ?? "",
-  lineId: toPositiveIntOrNull(record?.lineId),
-  styleUid: resolveWorkRecordStyleUid(record),
-  styleId: resolveWorkRecordStyleId(record) ?? "",
-  styleName: resolveWorkRecordStyleName(record) ?? "",
-  styleProcessId: toPositiveIntOrNull(record?.styleProcess?.id ?? record?.styleProcessId),
-  processId: toPositiveIntOrNull(record?.process?.id ?? record?.processId),
-  processCode:
-    record?.styleProcess?.processCode ?? record?.process?.code ?? record?.processCode ?? "",
-  processName: resolveWorkRecordProcessName(record) ?? "",
-  processNameKo:
-    resolveOptionalString(record?.process?.nameKo ?? record?.processNameKo, null) ?? "",
-  processNameEn:
-    resolveOptionalString(record?.process?.nameEn ?? record?.processNameEn, null) ?? "",
-  processNameVi:
-    resolveOptionalString(record?.process?.nameVi ?? record?.processNameVi, null) ?? "",
-  colorId: toPositiveIntOrNull(record?.color?.id ?? record?.colorId),
-  colorCode: record?.color?.code ?? record?.colorCode ?? "",
-  colorName: resolveWorkRecordColorName(record),
-  ctSeconds: toNonNegativeInt(record?.ctSeconds, 0),
-  quantity: toNonNegativeInt(record?.quantity, 0),
-  assignmentPlanId: record?.assignmentPlanId ?? null,
-  effectiveCoverageStartDate:
-    normalizeDateKey(record?.effectiveCoverageStartDate) || null,
-  effectiveCoverageEndDate:
-    normalizeDateKey(record?.effectiveCoverageEndDate) || null,
-});
+const loadWorkRecordResponseDisplayContext = async ({
+  orgId,
+  records,
+  db = prisma,
+}: {
+  orgId: number | null;
+  records: any;
+  db?: any;
+}) => {
+  const normalizedOrgId = toPositiveIntOrNull(orgId);
+  const normalizedRecords = ensureArray(records).filter(
+    (record) => record && typeof record === "object"
+  );
+  if (normalizedOrgId === null || normalizedRecords.length === 0) {
+    return {
+      workerNameById: new Map<number, string>(),
+      assignmentPlanMetaById: new Map<number, any>(),
+    };
+  }
+
+  const workerIds = collectWorkRecordWorkerIds(normalizedRecords);
+  const assignmentPlanIds = collectWorkRecordAssignmentPlanIds(normalizedRecords);
+  const [workers, plans] = await Promise.all([
+    workerIds.length > 0
+      ? db.employee.findMany({
+          where: { orgId: normalizedOrgId, id: { in: workerIds } },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
+    assignmentPlanIds.length > 0
+      ? db.assignmentPlan.findMany({
+          where: { orgId: normalizedOrgId, id: { in: assignmentPlanIds } },
+          select: {
+            id: true,
+            lineId: true,
+            orderNo: true,
+            customer: true,
+            label: true,
+            colorId: true,
+            colorName: true,
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+  const styleMetaByPlanId = await resolveAssignmentPlanStyleMetaById({
+    orgId: normalizedOrgId,
+    assignmentPlanIds,
+    db,
+  });
+
+  const workerNameById = new Map<number, string>();
+  ensureArray(workers).forEach((worker) => {
+    const workerId = toPositiveIntOrNull(worker?.id);
+    const workerName = resolveOptionalString(worker?.name, null);
+    if (workerId === null || !workerName) return;
+    workerNameById.set(workerId, workerName);
+  });
+
+  const assignmentPlanMetaById = new Map<number, any>();
+  ensureArray(plans).forEach((plan) => {
+    const planId = toPositiveIntOrNull(plan?.id);
+    if (planId === null) return;
+    const styleMeta = styleMetaByPlanId.get(planId) ?? null;
+    assignmentPlanMetaById.set(planId, {
+      ...plan,
+      styleUid: toPositiveIntOrNull(styleMeta?.styleUid),
+      styleId: resolveOptionalString(styleMeta?.styleId, null),
+      styleName: resolveOptionalString(styleMeta?.styleName, null),
+    });
+  });
+
+  return {
+    workerNameById,
+    assignmentPlanMetaById,
+  };
+};
+const hydrateWorkRecordResponseDisplayFields = (
+  record: any,
+  displayContext?: {
+    workerNameById?: Map<number, string>;
+    assignmentPlanMetaById?: Map<number, any>;
+  } | null
+) => {
+  const workerId = toPositiveIntOrNull(record?.workerId);
+  const assignmentPlanId = toPositiveIntOrNull(record?.assignmentPlanId);
+  const workerName =
+    resolveOptionalString(record?.workerName, null) ??
+    (workerId !== null
+      ? resolveOptionalString(displayContext?.workerNameById?.get(workerId), null)
+      : null);
+  const assignmentPlanMeta =
+    assignmentPlanId !== null
+      ? displayContext?.assignmentPlanMetaById?.get(assignmentPlanId) ??
+        record?.assignmentPlan ??
+        null
+      : record?.assignmentPlan ?? null;
+
+  return {
+    ...record,
+    workerName,
+    customerName:
+      resolveOptionalString(record?.customerName, null) ??
+      resolveOptionalString(assignmentPlanMeta?.customer, null),
+    orderNo:
+      resolveOptionalString(record?.orderNo, null) ??
+      resolveOptionalString(assignmentPlanMeta?.orderNo, null),
+    lineId:
+      toPositiveIntOrNull(record?.lineId) ??
+      toPositiveIntOrNull(assignmentPlanMeta?.lineId),
+    styleUid:
+      resolveWorkRecordStyleUid(record) ??
+      toPositiveIntOrNull(assignmentPlanMeta?.styleUid),
+    styleId:
+      resolveWorkRecordStyleId(record) ??
+      resolveOptionalString(assignmentPlanMeta?.styleId, null),
+    styleName:
+      resolveWorkRecordStyleName(record) ??
+      resolveOptionalString(
+        assignmentPlanMeta?.styleName ?? assignmentPlanMeta?.label,
+        null
+      ),
+    colorId:
+      toPositiveIntOrNull(record?.color?.id ?? record?.colorId) ??
+      toPositiveIntOrNull(assignmentPlanMeta?.colorId),
+    colorName:
+      resolveWorkRecordColorName(record) ??
+      resolveOptionalString(assignmentPlanMeta?.colorName, null),
+    assignmentPlan: assignmentPlanMeta,
+  };
+};
+const toWorkRecordResponse = (record: any) => {
+  const hydrated = hydrateWorkRecordResponseDisplayFields(record);
+  return {
+    workerId: hydrated?.workerId ?? null,
+    workerName: hydrated?.workerName ?? "",
+    customerName: hydrated?.customerName ?? "",
+    orderNo: resolveOptionalString(hydrated?.orderNo, "") ?? "",
+    lineId: toPositiveIntOrNull(hydrated?.lineId),
+    styleUid: resolveWorkRecordStyleUid(hydrated),
+    styleId: resolveWorkRecordStyleId(hydrated) ?? "",
+    styleName: resolveWorkRecordStyleName(hydrated) ?? "",
+    styleProcessId: toPositiveIntOrNull(
+      hydrated?.styleProcess?.id ?? hydrated?.styleProcessId
+    ),
+    processId: toPositiveIntOrNull(hydrated?.process?.id ?? hydrated?.processId),
+    processCode:
+      hydrated?.styleProcess?.processCode ??
+      hydrated?.process?.code ??
+      hydrated?.processCode ??
+      "",
+    processName: resolveWorkRecordProcessName(hydrated) ?? "",
+    processNameKo:
+      resolveOptionalString(hydrated?.process?.nameKo ?? hydrated?.processNameKo, null) ??
+      "",
+    processNameEn:
+      resolveOptionalString(hydrated?.process?.nameEn ?? hydrated?.processNameEn, null) ??
+      "",
+    processNameVi:
+      resolveOptionalString(hydrated?.process?.nameVi ?? hydrated?.processNameVi, null) ??
+      "",
+    colorId: toPositiveIntOrNull(hydrated?.colorId),
+    colorCode:
+      hydrated?.color?.code ??
+      hydrated?.colorCode ??
+      "",
+    colorName:
+      resolveWorkRecordColorName(hydrated) ??
+      resolveOptionalString(hydrated?.assignmentPlan?.colorName, null),
+    ctSeconds: toNonNegativeInt(hydrated?.ctSeconds, 0),
+    quantity: toNonNegativeInt(hydrated?.quantity, 0),
+    assignmentPlanId: hydrated?.assignmentPlanId ?? null,
+    effectiveCoverageStartDate:
+      normalizeDateKey(hydrated?.effectiveCoverageStartDate) || null,
+    effectiveCoverageEndDate:
+      normalizeDateKey(hydrated?.effectiveCoverageEndDate) || null,
+  };
+};
 const resolveWorkLogCoverageStartDate = (source: any, fallbackDate: string | null = null) =>
   normalizeDateKey(source?.coverageStartDate) ||
   normalizeDateKey(fallbackDate) ||
@@ -9291,7 +9403,7 @@ const collectMissingWorkRecordCanonicalRefIssues = (records: any) =>
     (
       issues: Array<{
         index: number;
-        field: "styleUid" | "styleProcessId" | "processCode";
+        field: "styleUid" | "styleProcessId" | "processId";
       }>,
       record,
       index
@@ -9303,8 +9415,8 @@ const collectMissingWorkRecordCanonicalRefIssues = (records: any) =>
       if (toPositiveIntOrNull(record?.styleProcessId) === null) {
         issues.push({ index, field: "styleProcessId" });
       }
-      if (!resolveOptionalString(record?.processCode, null)) {
-        issues.push({ index, field: "processCode" });
+      if (toPositiveIntOrNull(record?.processId) === null) {
+        issues.push({ index, field: "processId" });
       }
       return issues;
     },
@@ -9328,12 +9440,61 @@ const buildWorkLogWriteDataWithOptionalCoverage = <T extends Record<string, any>
   options.includeCoverage
     ? workLogData
     : stripCoverageFieldsFromWorkLogData(workLogData);
-const buildWorkLogResponseRecordList = async (workLog: any) => {
+const buildWorkLogResponseRecordList = async ({
+  orgId,
+  workLog,
+  recordDisplayContext = null,
+}: {
+  orgId: number | null;
+  workLog: any;
+  recordDisplayContext?: {
+    workerNameById?: Map<number, string>;
+    assignmentPlanMetaById?: Map<number, any>;
+  } | null;
+}) => {
   const sourceRecords = resolveWorkLogRecordResponses(workLog);
   if (sourceRecords.length === 0) return [];
-  return sourceRecords.map(toWorkRecordResponse);
+  const displayContext =
+    recordDisplayContext ??
+    (await loadWorkRecordResponseDisplayContext({
+      orgId,
+      records: sourceRecords,
+    }));
+  return sourceRecords.map((record: any) =>
+    toWorkRecordResponse(hydrateWorkRecordResponseDisplayFields(record, displayContext))
+  );
 };
-const toWorkLogResponse = async (workLog: any) => {
+const buildWorkLogResponseList = async ({
+  orgId,
+  workLogs,
+}: {
+  orgId: number;
+  workLogs: any[];
+}) => {
+  const normalizedWorkLogs = ensureArray(workLogs).filter(
+    (workLog) => workLog && typeof workLog === "object"
+  );
+  if (normalizedWorkLogs.length === 0) return [];
+  const recordDisplayContext = await loadWorkRecordResponseDisplayContext({
+    orgId,
+    records: normalizedWorkLogs.flatMap((workLog) => resolveWorkLogRecordResponses(workLog)),
+  });
+  return Promise.all(
+    normalizedWorkLogs.map((workLog) =>
+      toWorkLogResponse(workLog, { orgId, recordDisplayContext })
+    )
+  );
+};
+const toWorkLogResponse = async (
+  workLog: any,
+  options: {
+    orgId?: number | null;
+    recordDisplayContext?: {
+      workerNameById?: Map<number, string>;
+      assignmentPlanMetaById?: Map<number, any>;
+    } | null;
+  } = {}
+) => {
   const lineMeta = resolveWorkLogLineMeta(workLog?.records);
   const coverageEndDate = resolveWorkLogCoverageEndDate(workLog, workLog?.displayDate);
   const coverageStartDate = resolveWorkLogCoverageStartDate(workLog, coverageEndDate);
@@ -9358,7 +9519,11 @@ const toWorkLogResponse = async (workLog: any) => {
     itemCount: workLog.itemCount ?? 0,
     totalCtSeconds: workLog.totalCtSeconds ?? 0,
     note: workLog.note ?? "",
-    records: await buildWorkLogResponseRecordList(workLog),
+    records: await buildWorkLogResponseRecordList({
+      orgId: toPositiveIntOrNull(options.orgId),
+      workLog,
+      recordDisplayContext: options.recordDisplayContext ?? null,
+    }),
     createdAt: workLog.createdAt,
     updatedAt: workLog.updatedAt,
     updatedBy: resolveOptionalString(workLog.updatedBy, null),
@@ -18235,7 +18400,7 @@ const loadAssignmentPlanProgressWorkRows = async ({
     where: Prisma.WorkRecordWhereInput;
     includeCoverage: boolean;
     includeEffectiveCoverage: boolean;
-  }) =>
+  }): Promise<any[]> =>
     prisma.workRecord.findMany({
       where,
       select: {
@@ -18279,7 +18444,7 @@ const loadAssignmentPlanProgressWorkRows = async ({
               : {}),
           },
         },
-      },
+      } as any,
     });
 
   let directRows: any[] = [];
@@ -22138,7 +22303,12 @@ app.get("/work-logs", async (req, res) => {
     );
   }
 
-  res.json(await Promise.all(workLogs.map((workLog) => toWorkLogResponse(workLog))));
+  res.json(
+    await buildWorkLogResponseList({
+      orgId: organization.id,
+      workLogs,
+    })
+  );
 });
 
 app.get("/work-log-context", async (req, res) => {
@@ -22234,8 +22404,9 @@ app.get("/work-logs/:id", async (req, res) => {
       })
     : null;
 
-  const response = await toWorkLogResponse({
-    ...baseWorkLog,
+  const [response] = await buildWorkLogResponseList({
+    orgId: organization.id,
+    workLogs: [{ ...baseWorkLog }],
   });
   if (!includeContext) {
     return res.json(response);
@@ -22995,30 +23166,16 @@ app.post("/work-logs/import", async (req, res) => {
           });
           if (records.length > 0) {
             await tx.workRecord.createMany({
-              data: records.map((record: any) => ({
-                orgId: organization.id,
-                workLogId: next.id,
-                workerId: record.workerId,
-                workerName: record.workerName ?? null,
-                customerName: record.customerName ?? null,
-                orderNo: record.orderNo ?? null,
-                lineId: record.lineId ?? null,
-                styleId: record.styleId ?? null,
-                styleUid: record.styleUid ?? null,
-                styleName: record.styleName ?? null,
-                styleProcessId: record.styleProcessId ?? null,
-                processId: record.processId ?? null,
-                processCode: record.processCode ?? null,
-                colorId: record.colorId ?? null,
-                colorCode: record.colorCode ?? null,
-                effectiveCoverageStartDate:
-                  record.effectiveCoverageStartDate ?? group.normalized.coverageStartDate,
-                effectiveCoverageEndDate:
-                  record.effectiveCoverageEndDate ?? group.normalized.coverageEndDate,
-                ctSeconds: record.ctSeconds ?? 0,
-                quantity: record.quantity ?? 0,
-                assignmentPlanId: record.assignmentPlanId ?? null,
-              })),
+              data: records.map((record: any) =>
+                buildCanonicalWorkRecordWriteData({
+                  orgId: organization.id,
+                  workLogId: next.id,
+                  record,
+                  defaultLineId: group.line?.id ?? null,
+                  defaultCoverageStartDate: group.normalized.coverageStartDate,
+                  defaultCoverageEndDate: group.normalized.coverageEndDate,
+                })
+              ),
             });
           }
           createdWorkLogIds.push(next.id);
@@ -23295,30 +23452,16 @@ app.post("/work-logs", async (req, res) => {
 
       if (records.length > 0) {
         await tx.workRecord.createMany({
-          data: records.map((record: any) => ({
-            orgId: organization.id,
-            workLogId: next.id,
-            workerId: record.workerId,
-            workerName: record.workerName ?? null,
-            customerName: record.customerName ?? null,
-            orderNo: record.orderNo ?? null,
-            lineId: record.lineId ?? null,
-            styleId: record.styleId ?? null,
-            styleUid: record.styleUid ?? null,
-            styleName: record.styleName ?? null,
-            styleProcessId: record.styleProcessId ?? null,
-            processId: record.processId ?? null,
-            processCode: record.processCode ?? null,
-            colorId: record.colorId ?? null,
-            colorCode: record.colorCode ?? null,
-            effectiveCoverageStartDate:
-              record.effectiveCoverageStartDate ?? normalized.coverageStartDate,
-            effectiveCoverageEndDate:
-              record.effectiveCoverageEndDate ?? normalized.coverageEndDate,
-            ctSeconds: record.ctSeconds ?? 0,
-            quantity: record.quantity ?? 0,
-            assignmentPlanId: record.assignmentPlanId ?? null,
-          })),
+          data: records.map((record: any) =>
+            buildCanonicalWorkRecordWriteData({
+              orgId: organization.id,
+              workLogId: next.id,
+              record,
+              defaultLineId: lineValidation.line?.id ?? normalized.lineId ?? null,
+              defaultCoverageStartDate: normalized.coverageStartDate,
+              defaultCoverageEndDate: normalized.coverageEndDate,
+            })
+          ),
         });
       }
 
@@ -23367,7 +23510,9 @@ app.post("/work-logs", async (req, res) => {
     workLogId: created.id,
   });
   res.status(201).json({
-    ...(await toWorkLogResponse(createdWithRecords ?? created)),
+    ...(await toWorkLogResponse(createdWithRecords ?? created, {
+      orgId: organization.id,
+    })),
     warnings: buildWorkLogWarningResponse({
       crossLineWarnings,
     }),
@@ -23642,30 +23787,16 @@ app.put("/work-logs/:id", async (req, res) => {
 
       if (records.length > 0) {
         await tx.workRecord.createMany({
-          data: records.map((record: any) => ({
-            orgId: organization.id,
-            workLogId: existing.id,
-            workerId: record.workerId,
-            workerName: record.workerName ?? null,
-            customerName: record.customerName ?? null,
-            orderNo: record.orderNo ?? null,
-            lineId: record.lineId ?? null,
-            styleId: record.styleId ?? null,
-            styleUid: record.styleUid ?? null,
-            styleName: record.styleName ?? null,
-            styleProcessId: record.styleProcessId ?? null,
-            processId: record.processId ?? null,
-            processCode: record.processCode ?? null,
-            colorId: record.colorId ?? null,
-            colorCode: record.colorCode ?? null,
-            effectiveCoverageStartDate:
-              record.effectiveCoverageStartDate ?? normalized.coverageStartDate,
-            effectiveCoverageEndDate:
-              record.effectiveCoverageEndDate ?? normalized.coverageEndDate,
-            ctSeconds: record.ctSeconds ?? 0,
-            quantity: record.quantity ?? 0,
-            assignmentPlanId: record.assignmentPlanId ?? null,
-          })),
+          data: records.map((record: any) =>
+            buildCanonicalWorkRecordWriteData({
+              orgId: organization.id,
+              workLogId: existing.id,
+              record,
+              defaultLineId: lineValidation.line?.id ?? normalized.lineId ?? null,
+              defaultCoverageStartDate: normalized.coverageStartDate,
+              defaultCoverageEndDate: normalized.coverageEndDate,
+            })
+          ),
         });
       }
 
@@ -23714,7 +23845,9 @@ app.put("/work-logs/:id", async (req, res) => {
     workLogId: updated.id,
   });
   res.json({
-    ...(await toWorkLogResponse(updatedWithRecords ?? updated)),
+    ...(await toWorkLogResponse(updatedWithRecords ?? updated, {
+      orgId: organization.id,
+    })),
     warnings: buildWorkLogWarningResponse({
       crossLineWarnings,
     }),

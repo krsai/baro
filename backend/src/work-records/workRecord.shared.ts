@@ -31,6 +31,17 @@ export const WORK_RECORD_WITH_REFS_INCLUDE = {
         name: true,
       },
     },
+    assignmentPlan: {
+      select: {
+        id: true,
+        lineId: true,
+        orderNo: true,
+        customer: true,
+        label: true,
+        colorId: true,
+        colorName: true,
+      },
+    },
     process: {
       select: {
         id: true,
