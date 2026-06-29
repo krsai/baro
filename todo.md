@@ -19,9 +19,9 @@
 
 ---
 
-## 1. 작업기록 정규 참조와 실제 생산 계산
+## 1. 작업기록 정규 참조 null 정리
 
-상태: 진행 시작
+상태: 진행 중
 
 ### 소스오브트루스
 
@@ -41,9 +41,14 @@
 
 ### 해야 할 일
 
-1. 신규 작업기록 저장 시 모든 row에 `assignmentPlanId`, `styleUid`, `processCode`가 남는지 확인한다.
+1. 신규 작업기록 저장 시 모든 row에 `assignmentPlanId`, `styleUid`, `processId`, `processCode`가 남도록 강제한다.
 2. 4월 이후 기존 `WorkRecord` 중 `assignmentPlanId/styleUid/processCode` 누락 row를 집계한다.
-3. 실제 생산 계산 로그에서 다음을 한눈에 보이게 한다.
+3. 4월 이후 기존 `WorkRecord`의 결정 가능한 null을 DB migration으로 채운다.
+   - `assignmentPlanId -> AssignmentPlan.orderNo/lineId`
+   - `assignmentPlanId -> AssignmentPlan.cardId/originOrderId -> WorkOrderItem.styleUid`
+   - `processCode/processId -> AttrProcess`
+4. 결정 불가능한 row는 임의 추정하지 않고 남겨서 명시적으로 확인한다.
+5. 실제 생산 계산 로그는 정리 결과 검증용으로만 사용한다.
    - 계산식
    - 스타일 매칭 규칙
    - 공정 매칭 규칙
@@ -54,7 +59,7 @@
    - 실패 사유별 개수
    - 실패 sample row
    - `styleUidSource`, `processCodeSource`
-4. 실패 사유는 다음처럼 분리한다.
+6. 실패 사유는 다음처럼 분리한다.
    - `STYLE_UID_MISSING`
    - `PROCESS_CODE_MISSING`
    - `PROCESS_NOT_MATCHED`
@@ -93,6 +98,12 @@
 - request/response/style input 보조 로그는 제거한다.
 - 확인해야 하는 콘솔 그룹은 접지 않고 펼친 상태로 출력한다.
 - 남기는 그룹은 `actual output diagnostics`, `actual output debug`, `formula`, 실패/성공 work-record sample이다.
+
+2026-06-29 3차 반영:
+
+- `POST /work-logs`, `PUT /work-logs/:id`, 작업기록 import 저장 직전에 `styleUid/processId/processCode`가 비어 있으면 저장을 거부한다.
+- `backend/migration_fix.sql`에 2026-04-01 이후 WorkRecord 정규참조 v2 백필을 추가한다.
+- 이 백필은 결정 가능한 값만 채우며, orphan/ambiguous row를 임의로 연결하지 않는다.
 
 ---
 

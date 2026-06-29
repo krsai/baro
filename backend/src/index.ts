@@ -8728,6 +8728,15 @@ const translateWorkLogErrorMessage = (error: any) => {
   ) {
     return "CT snapshot이 저장된 배정 카드만 작업 기록으로 저장할 수 있습니다.";
   }
+  if (/records\[\d+\]\.styleUid is required/i.test(text)) {
+    return "작업기록의 스타일 참조(styleUid)를 확정할 수 없습니다. 배정 카드와 주문 스타일 연결을 확인해 주세요.";
+  }
+  if (/records\[\d+\]\.processId is required/i.test(text)) {
+    return "작업기록의 공정 참조(processId)를 확정할 수 없습니다. 공정 마스터와 작업기록 공정 코드를 확인해 주세요.";
+  }
+  if (/records\[\d+\]\.processCode is required/i.test(text)) {
+    return "작업기록의 공정 코드(processCode)를 확정할 수 없습니다. 배정 카드의 공정 정보를 확인해 주세요.";
+  }
 
   return text;
 };
@@ -9265,6 +9274,27 @@ const collectMissingWorkRecordAssignmentPlanLinkIndices = (records: any): number
     indices.push(index);
     return indices;
   }, [] as number[]);
+const collectMissingWorkRecordCanonicalRefIssues = (records: any) =>
+  ensureArray(records).reduce(
+    (
+      issues: Array<{ index: number; field: "styleUid" | "processId" | "processCode" }>,
+      record,
+      index
+    ) => {
+      if (!record || typeof record !== "object") return issues;
+      if (toPositiveIntOrNull(record?.styleUid) === null) {
+        issues.push({ index, field: "styleUid" });
+      }
+      if (toPositiveIntOrNull(record?.processId) === null) {
+        issues.push({ index, field: "processId" });
+      }
+      if (!resolveOptionalString(record?.processCode, null)) {
+        issues.push({ index, field: "processCode" });
+      }
+      return issues;
+    },
+    []
+  );
 const stripCoverageFieldsFromWorkLogData = <T extends Record<string, any>>(
   workLogData: T
 ): Omit<T, "coverageStartDate" | "coverageEndDate" | "entryMode"> => {
@@ -22997,6 +23027,21 @@ app.post("/work-logs/import", async (req, res) => {
       lineId: lineValidation.line?.id ?? normalized.lineId,
       records: normalized.records,
     });
+    const missingCanonicalRefIssues = collectMissingWorkRecordCanonicalRefIssues(
+      normalized.records
+    );
+    if (missingCanonicalRefIssues.length > 0) {
+      missingCanonicalRefIssues.forEach((issue) => {
+        issues.push(
+          buildWorkLogImportIssue({
+            row: group.rows[issue.index] ?? groupAnchorRow,
+            code: "MISSING_CANONICAL_WORK_RECORD_REF",
+            message: `records[${issue.index}].${issue.field} is required`,
+          })
+        );
+      });
+      continue;
+    }
 
     validatedGroups.push({
       line: lineValidation.line ?? group.line,
@@ -23324,6 +23369,18 @@ app.post("/work-logs", async (req, res) => {
     lineId: lineValidation.line?.id ?? normalized.lineId,
     records: normalized.records,
   });
+  const missingCanonicalRefIssues = collectMissingWorkRecordCanonicalRefIssues(
+    normalized.records
+  );
+  if (missingCanonicalRefIssues.length > 0) {
+    const issue = missingCanonicalRefIssues[0]!;
+    return res.status(400).json({
+      ok: false,
+      error: translateWorkLogErrorMessage(
+        `records[${issue.index}].${issue.field} is required`
+      ),
+    });
+  }
   updateWorkLogMutationTrace(trace, "canonical-fields-attached", {
     payload: summarizeWorkLogPayloadForDebug(normalized),
   });
@@ -23654,6 +23711,18 @@ app.put("/work-logs/:id", async (req, res) => {
     lineId: lineValidation.line?.id ?? normalized.lineId,
     records: normalized.records,
   });
+  const missingCanonicalRefIssues = collectMissingWorkRecordCanonicalRefIssues(
+    normalized.records
+  );
+  if (missingCanonicalRefIssues.length > 0) {
+    const issue = missingCanonicalRefIssues[0]!;
+    return res.status(400).json({
+      ok: false,
+      error: translateWorkLogErrorMessage(
+        `records[${issue.index}].${issue.field} is required`
+      ),
+    });
+  }
   updateWorkLogMutationTrace(trace, "canonical-fields-attached", {
     payload: summarizeWorkLogPayloadForDebug(normalized),
   });

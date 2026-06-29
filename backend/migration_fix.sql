@@ -717,6 +717,131 @@ CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_orderNo_idx"
 CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_lineId_idx"
   ON "WorkRecord"("orgId", "lineId");
 
+-- Step 5b: WorkRecord canonical references for operating data (20260629)
+-- Only deterministic fills are allowed. Rows that cannot be resolved from the
+-- linked assignment plan or process master remain unchanged for explicit review.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+      AND column_name = 'assignmentPlanId'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+      AND column_name = 'styleUid'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+      AND column_name = 'processId'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+      AND column_name = 'processCode'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM "_BaroMigrationState"
+    WHERE "key" = '20260629_work_record_canonical_refs_v2'
+  ) THEN
+    UPDATE "WorkRecord" wr
+    SET
+      "orderNo" = COALESCE(wr."orderNo", ap."orderNo"),
+      "lineId" = COALESCE(wr."lineId", ap."lineId")
+    FROM "AssignmentPlan" ap, "WorkLog" wl
+    WHERE wr."assignmentPlanId" = ap.id
+      AND wr."workLogId" = wl.id
+      AND COALESCE(wl."coverageEndDate", wl."workDate") >= '2026-04-01'
+      AND (
+        (wr."orderNo" IS NULL AND ap."orderNo" IS NOT NULL)
+        OR (wr."lineId" IS NULL AND ap."lineId" IS NOT NULL)
+      );
+
+    WITH plan_identity AS (
+      SELECT
+        ap.id AS "planId",
+        ap."orgId" AS "orgId",
+        split_part(raw_identity.identity, '::', 1) AS "orderId",
+        split_part(raw_identity.identity, '::', 2) AS "styleId"
+      FROM "AssignmentPlan" ap
+      CROSS JOIN LATERAL (
+        VALUES (ap."cardId"), (ap."originOrderId")
+      ) AS raw_identity(identity)
+      WHERE raw_identity.identity IS NOT NULL
+        AND position('::' IN raw_identity.identity) > 0
+        AND split_part(raw_identity.identity, '::', 1) <> ''
+        AND split_part(raw_identity.identity, '::', 2) <> ''
+    ),
+    candidate AS (
+      SELECT
+        pi."planId",
+        woi."styleUid",
+        COALESCE(s."styleId", woi."styleId") AS "styleId",
+        COALESCE(s."name", woi."styleName") AS "styleName"
+      FROM plan_identity pi
+      JOIN "WorkOrder" wo
+        ON wo."orderId" = pi."orderId"
+       AND (
+            wo."orgId" = pi."orgId"
+         OR wo."buyerOrgId" = pi."orgId"
+         OR wo."sellerOrgId" = pi."orgId"
+       )
+      JOIN "WorkOrderItem" woi
+        ON woi."workOrderId" = wo.id
+       AND woi."styleId" = pi."styleId"
+      LEFT JOIN "Style" s
+        ON s.uid = woi."styleUid"
+      WHERE woi."styleUid" IS NOT NULL
+    ),
+    canonical AS (
+      SELECT
+        "planId",
+        MIN("styleUid") AS "styleUid",
+        MAX("styleId") AS "styleId",
+        MAX("styleName") AS "styleName"
+      FROM candidate
+      GROUP BY "planId"
+      HAVING COUNT(DISTINCT "styleUid") = 1
+    )
+    UPDATE "WorkRecord" wr
+    SET
+      "styleUid" = canonical."styleUid",
+      "styleId" = COALESCE(canonical."styleId", wr."styleId"),
+      "styleName" = COALESCE(canonical."styleName", wr."styleName")
+    FROM canonical, "WorkLog" wl
+    WHERE wr."assignmentPlanId" = canonical."planId"
+      AND wr."workLogId" = wl.id
+      AND COALESCE(wl."coverageEndDate", wl."workDate") >= '2026-04-01'
+      AND (
+        wr."styleUid" IS DISTINCT FROM canonical."styleUid"
+        OR wr."styleId" IS DISTINCT FROM COALESCE(canonical."styleId", wr."styleId")
+        OR wr."styleName" IS DISTINCT FROM COALESCE(canonical."styleName", wr."styleName")
+      );
+
+    UPDATE "WorkRecord" wr
+    SET
+      "processId" = COALESCE(wr."processId", p.id),
+      "processCode" = COALESCE(wr."processCode", p."code")
+    FROM "AttrProcess" p, "WorkLog" wl
+    WHERE wr."workLogId" = wl.id
+      AND wr."orgId" = p."orgId"
+      AND COALESCE(wl."coverageEndDate", wl."workDate") >= '2026-04-01'
+      AND (
+        (wr."processId" IS NOT NULL AND wr."processId" = p.id)
+        OR (wr."processCode" IS NOT NULL AND wr."processCode" = p."code")
+      )
+      AND (
+        (wr."processId" IS NULL AND p.id IS NOT NULL)
+        OR (wr."processCode" IS NULL AND p."code" IS NOT NULL)
+      );
+
+    INSERT INTO "_BaroMigrationState" ("key")
+    VALUES ('20260629_work_record_canonical_refs_v2');
+  END IF;
+END $$;
+
 -- 6-0. AssignmentPlan physical snapshot column rename.
 DO $$
 BEGIN
