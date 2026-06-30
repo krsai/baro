@@ -1,309 +1,451 @@
-# TODO - 레거시 정리와 실제 생산 계산 검증 계획
+# TODO - WorkRecord 실DB FK 정규화와 레거시 컬럼 정리 인수인계
 
-기준일: 2026-06-29
+기준일: 2026-06-30
 
-목표는 "대충 맞는 계산"이 아니라 하나의 정확한 데이터 흐름을 고정하는 것이다.
-임시 우회 계산, 문자열 fallback으로 숫자를 맞추는 방식, 과거 null 데이터를 조용히 끼워 넣는 방식은 금지한다.
-
----
-
-## 공통 원칙
-
-1. null 컬럼이 보인다고 바로 삭제하지 않는다.
-2. 먼저 소스오브트루스를 확정한다.
-3. 신규 저장 경로가 소스오브트루스를 정확히 저장하는지 확인한다.
-4. 2026-04-01 이후 운영 데이터만 백필/정리 대상으로 본다.
-5. 화면 계산은 정규 참조만 사용한다.
-6. 실패한 데이터는 콘솔 로그에서 `왜 실패했는지`가 보여야 한다.
-7. 참조 제거 -> 검증 -> DB 컬럼 삭제 순서로만 진행한다.
+이 문서는 “지금 코드가 어디까지 바뀌었는지”, “왜 Railway DB에서는 아직 예전 WorkRecord가 보이는지”, “다른 사무실 환경에서 무엇부터 확인하고 어떤 순서로 이어서 해야 하는지”를 정리한 인수인계 문서다.
 
 ---
 
-## 1. 작업기록 정규 참조 null 정리
+## 1. 지금 문제의 핵심
 
-상태: 진행 중
+이번 작업에서 내가 먼저 바꾼 것은 크게 두 가지였다.
 
-### 소스오브트루스
+1. 앱 코드의 WorkRecord 저장/조회 맵핑
+2. WorkRecord를 정규화하는 DB 스키마 + migration SQL
 
-- 작업기록과 배정의 연결: `WorkRecord.assignmentPlanId`
-- 스타일 FK: `WorkRecord.styleUid`
-- 사람이 보는 스타일 코드: `WorkRecord.styleId`
-- 스타일별 공정/ST FK: `WorkRecord.styleProcessId -> StyleProcess.id`
-- 공정 마스터 보조 FK: `WorkRecord.processId` (`AttrProcess.id`, ST 매칭 키 아님)
-- 사람이 보는 공정 코드: `WorkRecord.processCode`
-- 실제 생산 시간: `StyleProcessStandard.bucketStSeconds * WorkRecord.quantity`
+그런데 사용자 입장에서 중요한 것은 맵핑이 아니라 실제 DB다.
 
-### 주의
+즉, 아래 둘이 실제로 완료되어야 의미가 있다.
 
-- `styleId`는 FK가 아니라 표시/진단용 코드다.
-- 실제 생산 계산에서 `styleId`로 `Style.uid`를 다시 찾는 계산은 하지 않는다.
-- `WorkRecord.processId`는 `StyleProcess.id`가 아니므로 ST 매칭 키로 직접 쓰지 않는다.
-- ST 매칭은 `styleProcessId + bucketQuantity`로 한다.
-- `ctSeconds`는 작업기록 저장 당시 급여/계약 CT 스냅샷이므로 유지한다. 실제 생산률/ST 계산에는 사용하지 않는다.
+1. 기존 WorkRecord 실데이터에 FK를 실제로 찾아서 채우는 것
+2. 그 뒤 레거시 컬럼을 실제 DB에서 삭제하는 것
 
-### 해야 할 일
-
-1. 신규 작업기록 저장 시 모든 row에 `assignmentPlanId`, `styleUid`, `styleProcessId`, `processCode`가 남도록 강제한다.
-2. 4월 이후 기존 `WorkRecord` 중 `assignmentPlanId/styleUid/styleProcessId/processCode` 누락 row를 집계한다.
-3. 4월 이후 기존 `WorkRecord`의 결정 가능한 null을 DB migration으로 채운다.
-   - `assignmentPlanId -> AssignmentPlan.orderNo/lineId`
-   - `assignmentPlanId -> AssignmentPlan.cardId/originOrderId -> WorkOrderItem.styleUid`
-   - `styleUid + processCode -> StyleProcess.id`
-4. 결정 불가능한 row는 임의 추정하지 않고 남겨서 명시적으로 확인한다.
-5. 실제 생산 계산 로그는 정리 결과 검증용으로만 사용한다.
-   - 계산식
-   - 스타일 매칭 규칙
-   - 공정 매칭 규칙
-   - 분자: 작업기록 ST 합계
-   - 분모: 라인 월 capacity
-   - 포함된 작업행 수
-   - 실패한 작업행 수
-   - 실패 사유별 개수
-   - 실패 sample row
-   - `styleUidSource`, `processCodeSource`
-   - `styleProcessIdSource`
-6. 실패 사유는 다음처럼 분리한다.
-   - `STYLE_UID_MISSING`
-   - `STYLE_PROCESS_ID_MISSING`
-   - `STYLE_PROCESS_NOT_FOUND`
-   - `STYLE_PROCESS_STYLE_MISMATCH`
-   - `ST_BUCKET_NOT_FOUND`
-   - `COVERAGE_DATE_MISSING_OR_INVALID`
-   - `MONTH_ALLOCATION_EMPTY`
-
-### 테스트 방법
-
-브라우저 콘솔에서 배정 화면을 열고 `/assignment`에서 2026-04 또는 2026-05를 조회한다.
-
-확인할 콘솔 그룹:
-
-- `[line-month-capacity] request`
-- `[line-month-capacity] actual output request diagnostics`
-- `[line-month-capacity] actual output debug`
-- `[line-month-capacity] formula {lineId}/{monthKey}`
-- `[line-month-capacity] failed work-record raw samples`
-- `[line-month-capacity] matched work-record raw samples`
-
-성공 기준:
-
-- `workRowsWithoutAssignmentPlanId = 0`
-- `workRowsWithoutStyleUid = 0`
-- `workRowsWithoutStyleProcessId = 0`
-- 실패 sample이 있다면 어떤 DB 필드가 문제인지 설명 가능해야 한다.
-
-2026-06-29 1차 반영:
-
-- `/line-month-capacity?debug=actual-output` 응답에 계산 규칙과 키 샘플을 추가한다.
-- 브라우저 콘솔 summary에서 `processId`와 `processCode`를 분리해서 보여준다.
-- `processId`는 `AttrProcess.id`, ST 매칭은 `processCode`라는 점을 콘솔 rules에 표시한다.
-
-2026-06-29 2차 반영:
-
-- request/response/style input 보조 로그는 제거한다.
-- 확인해야 하는 콘솔 그룹은 접지 않고 펼친 상태로 출력한다.
-- 남기는 그룹은 `actual output diagnostics`, `actual output debug`, `formula`, 실패/성공 work-record sample이다.
-
-2026-06-29 3차 반영:
-
-- `POST /work-logs`, `PUT /work-logs/:id`, 작업기록 import 저장 직전에 `styleUid/processId/processCode`가 비어 있으면 저장을 거부한다.
-- `backend/migration_fix.sql`에 2026-04-01 이후 WorkRecord 정규참조 v2 백필을 추가한다.
-- 이 백필은 결정 가능한 값만 채우며, orphan/ambiguous row를 임의로 연결하지 않는다.
-
-2026-06-29 4차 반영:
-
-- `/line-month-capacity` 실제 생산 계산에서 조회 시점의 `attachCanonicalFieldsToWorkRecords` 보정을 제거한다.
-- 당시 실제 생산 ST 매칭은 DB에 저장된 `WorkRecord.styleUid/processCode` 조합만 사용하도록 줄였으나, 5차에서 `WorkRecord.styleProcessId` 기준으로 대체한다.
-- `styleId/styleCode/name`으로 `Style.uid`를 다시 찾는 조회 계산을 제거한다.
-- `AttrProcess.code`나 공정명으로 `processCode`를 대신 맞추는 계산을 제거한다.
-- 콘솔 진단은 fallback 결과가 아니라 DB에 저장된 canonical 필드의 누락 여부를 보여준다.
-
-2026-06-29 5차 반영:
-
-- `WorkRecord.styleProcessId` 컬럼/FK를 추가한다.
-- 2026-04-01 이후 row 중 `styleUid + processCode`로 `StyleProcess.id`가 단 하나로 결정되는 경우만 `styleProcessId`를 백필한다.
-- 신규 작업기록 저장/수정/import에서 `styleProcessId`가 없으면 저장을 거부한다.
-- `/line-month-capacity` 실제 생산 계산은 `WorkRecord.styleProcessId -> StyleProcessStandard.bucketStSeconds`만 사용한다.
-- 작업기록 상세 조회는 조회 시점의 `syncWorkRecordRefs` 보정을 하지 않고 DB에 저장된 값을 그대로 응답한다.
-
-### WorkRecord 컬럼 분류
-
-유지:
-
-- `assignmentPlanId`: 배정 카드 DB FK. 작업기록과 배정/스케줄러 연결의 핵심.
-- `workerId`: 작업자 FK.
-- `styleUid`: 스타일 FK.
-- `styleProcessId`: 스타일별 공정/ST FK.
-- `ctSeconds`: 저장 당시 급여/계약 CT 스냅샷. CT 변경 이력을 보존해야 하므로 유지.
-- `quantity`, `effectiveCoverageStartDate`, `effectiveCoverageEndDate`: 작업 사실과 기간 스냅샷.
-
-삭제 후보:
-
-- `workerName`, `customerName`, `orderNo`, `styleId`, `styleName`, `colorCode`: 정규 FK가 아니라 표시/레거시 스냅샷. 화면/API 참조 제거 후 삭제 검토.
-- `processId`: `AttrProcess.id` 보조 참조. `styleProcessId` 전환 이후 업무상 필요성이 사라지면 삭제 검토.
-- `colorId`: 색상/사이즈 단위 작업기록 정책을 확정하기 전까지 보류.
-
-### DB 컬럼 삭제 순서
-
-1. 운영 조회 코드가 해당 컬럼을 더 이상 읽지 않게 한다.
-2. 신규 저장 코드가 canonical 컬럼만 저장하도록 차단한다.
-3. 2026-04-01 이후 운영 데이터에 남은 null/legacy 사용량을 집계한다.
-4. 결정 가능한 값만 migration으로 백필한다.
-5. 콘솔/SQL로 남은 legacy 참조가 0인지 확인한다.
-6. 그 다음 `migration_fix.sql`에서 DROP 한다.
-
-삭제 검토 대상:
-
-- 실제 생산 계산에서 `WorkRecord.styleId`는 FK로 사용하지 않는다. 표시/진단 참조가 모두 제거되면 DROP 후보로 본다.
-- 실제 생산 계산에서 `WorkRecord.processId`는 ST 매칭에 사용하지 않는다. 공정 마스터 참조/진단 필요성이 사라지면 DROP 후보로 본다.
-- 색상/성별 관련 컬럼은 3번 항목에서 참조 제거 후 DROP 후보로 본다.
+지금 Railway 화면에서 보이는 상황은 이 두 번째 단계까지 실제 DB에 아직 반영되지 않았다는 뜻이다.
 
 ---
 
-## 2. 4월 이전 자료 숨김
+## 2. 최종 목표 구조
 
-상태: 대기
+### WorkRecord에서 최종적으로 남겨야 하는 컬럼
 
-### 기준
-
-- 작업배정과 작업기록은 2026-04-01부터 운영 데이터로 본다.
-- 2026-03 이전 월은 생산 분석/배정 분석에서 표시하지 않는다.
-
-### 해야 할 일
-
-1. 생산 분석 월 선택의 최소 월을 2026-04로 제한한다.
-2. 배정 화면 실제 생산/히스토리 계산도 2026-04 이전은 제외한다.
-3. 콘솔 진단에서도 요청 월이 2026-03 이하이면 제외 이유가 보이게 한다.
-
----
-
-## 3. 색상/성별 레거시 정리
-
-상태: 대기
-
-### 현재 판단
-
-색상은 업무 의도상 주문 단위에만 있으면 된다.
-하지만 현재 코드에는 아직 색상/성별 참조가 남아 있으므로 DB 컬럼을 바로 삭제하면 안 된다.
-
-### 주요 참조
-
-- `backend/src/quantity-settlement/quantitySettlement.service.ts`
-- `frontend/src/pages/App/QcReview.jsx`
-- `frontend/src/pages/App/assign/*`
-- `frontend/src/pages/App/work/WorkDetail.jsx`
-
-### 해야 할 일
-
-1. 정산/QC/배정/작업기록 화면에서 색상 참조가 실제로 필요한지 확인한다.
-2. 필요 없으면 코드 참조부터 제거한다.
-3. 제거 후 테스트한다.
-4. 마지막에 DB 컬럼을 삭제한다.
-
-삭제 보류 컬럼:
-
-- `WorkRecord.colorId`
-- `WorkRecord.colorCode`
-- `AssignmentPlan.colorId`
-- `AssignmentPlan.colorName`
-- `AssignmentPlan.gender`
-
----
-
-## 4. 라인명 정리
-
-상태: 대기
-
-### 현재 판단
-
-`employee.lineName`은 현재 소속 표시용 캐시 성격이다.
-과거 작업기록이나 월간 분석의 기준으로 쓰면 안 된다.
-
-### 소스오브트루스
-
-- 작업기록 row: `WorkRecord.lineId`
-- 작업기록 헤더 메타: `WorkLog.records.lineId/lineName`
-- 기간별 소속 이력: `LineAssignment`
-
-### 해야 할 일
-
-1. 생산 분석/작업기록 월간 집계에서 `employee.lineName` fallback을 제거한다.
-2. 필요한 경우 `LineAssignment` 기간 이력을 조회해서 표시한다.
-3. `employee.lineName`은 현재 소속 표시용으로만 남긴다.
-
----
-
-## 5. 공장 공임 이력
-
-상태: 대기
-
-### 현재 구조
-
-- 공장 현재값: `Factory.targetMonthlyWage`, `Factory.wagePerSecond`
-- 작업기록 스냅샷: `WorkLog.factoryWagePerSecond`
-- 급여 계산: `WorkLog.factoryWagePerSecond` 사용
-
-### 문제
-
-현재 구조에는 "2026-06 공임", "2026-07 공임" 같은 월 기준 이력이 없다.
-월 중간 변경, 소급 변경, 마감 후 재계산 기준을 설명하기 어렵다.
-
-### 방향
-
-`FactoryWageHistory` 같은 월 기준 이력 테이블을 만든다.
-
-예상 필드:
-
-- `factoryId`
-- `effectiveMonth`
-- `targetMonthlyWage`
-- `wagePerSecond`
+- `id`
+- `orgId`
+- `workLogId`
+- `workerId`
+- `lineId`
+- `styleId`
+  - 최종 의미: `Style.uid`를 가리키는 정수 FK
+- `styleProcessId`
+  - 최종 의미: `StyleProcess.id`를 가리키는 정수 FK
+  - ST 계산의 핵심 기준
+- `processId`
+  - `AttrProcess.id`
+  - 보조 FK
+- `assignmentPlanId`
+- `effectiveCoverageStartDate`
+- `effectiveCoverageEndDate`
+- `ctSeconds`
+- `quantity`
 - `createdAt`
 - `createdBy`
+- `updatedAt`
 
-작업기록에는 계산 당시 스냅샷을 계속 남긴다.
+### WorkRecord에서 지워야 하는 레거시 컬럼
+
+- `workerName`
+- `customerName`
+- `orderNo`
+- `styleUid`
+- `styleName`
+- `processCode`
+- `colorId`
+- `colorCode`
+
+주의:
+- 최종 구조에서는 `styleId`가 더 이상 스타일 코드 문자열이 아니다.
+- 최종 구조에서는 `styleId = Style.uid` 정수 FK다.
+- 스타일 코드 문자열이 필요하면 `Style.styleId`를 join으로 읽어야 한다.
 
 ---
 
-## 6. 출퇴근 단측 입력
+## 3. 이미 코드에서 바뀐 것
 
-상태: 반영됨, 검증 필요
+### 스키마
 
-현재 규칙:
+파일:
+- `backend/prisma/schema.prisma`
 
-- `clockIn`만 있으면 `18:00` 퇴근으로 계산
-- `clockOut`만 있으면 `08:00` 출근으로 계산
-- 둘 다 없으면 근무시간 없음
+반영 내용:
+- `WorkRecord.styleId`를 `Int?` FK로 바꿈
+- `WorkRecord.style` relation을 `Style.uid`에 연결
+- `WorkRecord.worker` relation 추가
+- `WorkRecord.styleProcessId` 기준 구조 반영
+- 위 레거시 컬럼들을 Prisma 스키마에서 제거
 
-확인 파일:
+### 저장/응답 맵핑
 
+파일:
 - `backend/src/index.ts`
-- `frontend/src/pages/App/attendance/AttendanceBoard.jsx`
+- `backend/src/work-records/workRecord.shared.ts`
+- `frontend/src/pages/App/work/WorkDetail.jsx`
+- `frontend/src/pages/App/work/workLogStorage.js`
+- `backend/src/payroll/payroll.service.ts`
+- `backend/src/quantity-settlement/quantitySettlement.service.ts`
+
+반영 내용:
+- WorkRecord 저장 시 canonical FK 중심으로 저장하도록 수정
+- style/process/worker/customer/order 표시값은 가능하면 relation이나 assignmentPlan에서 복원
+- 레거시 컬럼에 직접 의존하던 조회 경로 일부 제거
+
+중요:
+- 이건 “앱 코드” 기준 반영이다.
+- 실제 Railway DB 테이블이 예전 상태면, 코드는 바뀌어도 DB는 그대로일 수 있다.
 
 ---
 
-## 7. 삭제 후보
+## 4. migration_fix.sql에서 이미 준비된 실제 DB 작업
 
-상태: 대기
+파일:
+- `backend/migration_fix.sql`
 
-### 이미 제거 방향이 맞는 항목
+이번 WorkRecord 관련 핵심 step은 아래 네 단계다.
 
-- `Style.unitPriceUsd`
+### Step 5a-2
 
-### 삭제 전 참조 제거가 필요한 항목
+- `WorkRecord.styleProcessId` 컬럼 추가
+- `WorkRecord.styleProcessId -> StyleProcess.id` FK 추가
 
-- 색상/성별 계열 컬럼
-- `employee.lineName`의 역사 집계 의존
-- 조직 단위 공임 필드가 실제로 더 이상 쓰이지 않는지 확인 필요
+### Step 5b
+
+2026-04-01 이후 운영 데이터에 대해 deterministic하게만 backfill한다.
+
+채우는 값:
+- `orderNo`
+- `lineId`
+- `styleUid`
+- `styleId` 텍스트
+- `styleName`
+- `processId`
+- `processCode`
+
+소스:
+- `assignmentPlanId -> AssignmentPlan`
+- `AssignmentPlan.cardId/originOrderId -> WorkOrder -> WorkOrderItem -> Style`
+- `processCode/processId -> AttrProcess`
+
+중요:
+- 애매한 추정은 하지 않는다.
+- 한 개로 확정되는 경우만 채운다.
+
+### Step 5c
+
+- `styleUid + processCode`가 정확히 1개의 `StyleProcess`와 매칭될 때만
+- `WorkRecord.styleProcessId`를 backfill한다.
+
+### Step 5d
+
+여기서 드디어 destructive cleanup을 한다.
+
+내용:
+- 텍스트 `styleId` + `styleUid` 구조를 canonical 정수 FK 구조로 바꾼다.
+- 필요 시 `styleUid` 값을 새 `styleId`로 승격한다.
+- 레거시 컬럼을 drop한다.
+- 새 FK와 index를 다시 만든다.
+
+즉, 코드만 바꾼 게 아니라 실제 DB 정리 SQL도 이미 들어가 있다.
+지금 Railway 화면이 옛 구조로 보인다는 것은 이 SQL이 그 환경에 아직 적용되지 않았다는 뜻이다.
 
 ---
 
-## 진행 순서
+## 5. 2026-06-30 기준 실제 확인 결과
 
-1. 작업기록 정규 참조와 실제 생산 계산 진단 정리
-2. 4월 이전 자료 숨김
-3. 색상/성별 참조 제거 여부 결정 및 정리
-4. 라인명 역사 집계 의존 제거
-5. 공장 공임 월 이력 설계/구현
-6. 남은 null 컬럼 삭제 검토
+내 현재 작업 환경에서 `DATABASE_URL`로 연결되는 DB에 대해 직접 확인했다.
 
-현재는 1번부터 진행한다.
+### 확인용 스크립트 추가
+
+새로 추가한 파일:
+- `backend/scripts/inspect-workrecord-state.js`
+
+새 npm 명령:
+- `npm run workrecord:inspect`
+
+이 스크립트는 다음을 출력한다.
+
+- 현재 WorkRecord 컬럼 목록
+- `styleId` 타입이 text인지 integer인지
+- legacy 컬럼이 아직 남아 있는지
+- canonical 컬럼이 어느 정도 있는지
+- null summary
+- 문제가 되는 sample row
+
+### 현재 내 환경에서 나온 결과
+
+결과 요약:
+- `WorkRecord.total = 0`
+- `styleIdDataType = "text"`
+- legacy 컬럼들이 그대로 있음
+- `styleProcessId` 없음
+- 즉 `isLegacySchema = true`
+
+이 말은 매우 중요하다.
+
+### 해석
+
+현재 내 로컬 환경의 `DATABASE_URL`은
+
+1. 사용자가 캡처한 Railway DB와 다른 DB이거나
+2. 같은 서비스가 아니거나
+3. 비어 있는 오래된 DB를 보고 있을 가능성이 높다.
+
+왜냐하면:
+- 사용자가 캡처한 화면에는 WorkRecord 행이 실제로 많이 있음
+- 그런데 내 현재 연결 DB에서는 `WorkRecord` row count가 0임
+
+따라서 이 환경에서는 “실제 운영 DB 데이터가 FK로 잘 backfill되었는지”를 끝까지 검증할 수 없었다.
+
+즉:
+- 코드 변경은 끝남
+- migration SQL도 준비됨
+- 하지만 사용자가 보여준 그 Railway DB 자체는 여기서 직접 완료 검증하지 못함
+
+---
+
+## 6. 다른 사무실 환경에서 바로 해야 할 일
+
+여기서부터가 실제 이어서 할 작업 순서다.
+
+### 1단계. 올바른 DB를 보고 있는지 먼저 확인
+
+백엔드 폴더에서:
+
+```bash
+npm run workrecord:inspect
+```
+
+기대하는 것:
+- `WorkRecord.total`이 Railway 화면과 대략 비슷한 수준이어야 함
+- 0이면 잘못된 DB를 보고 있는 것
+
+만약 또 `total = 0`이면:
+- 현재 환경변수의 `DATABASE_URL`이 운영 Railway DB가 아님
+- 이 상태에서는 backfill/cleanup 검증을 하면 안 됨
+
+### 2단계. 실제 운영 DB가 맞다면 schema stage 확인
+
+`npm run workrecord:inspect` 결과에서 아래를 본다.
+
+- `styleIdDataType`
+- `legacyColumnsPresent`
+- `isLegacySchema`
+- `isCanonicalSchema`
+
+현재 Railway 스크린샷처럼 옛 구조라면 대략 아래처럼 나와야 정상이다.
+
+- `styleIdDataType = text`
+- `styleUid` 존재
+- `styleProcessId` 없음
+- `workerName/customerName/orderNo/processCode/colorId/colorCode` 존재
+- `isLegacySchema = true`
+
+### 3단계. 최신 백엔드 코드와 DB migration을 같은 작업 세션에서 반영
+
+매우 중요:
+
+레거시 컬럼 drop는 destructive change다.
+따라서 “옛 백엔드 코드가 계속 떠 있는 상태”에서 DB 컬럼만 먼저 drop하면 서버가 깨질 수 있다.
+
+안전한 순서:
+
+1. 최신 코드 pull
+2. 최신 백엔드 빌드 가능 확인
+3. migration 적용
+4. 최신 백엔드 재시작/배포
+
+명령:
+
+```bash
+cd backend
+npm run prisma:prepare-client
+npm run prisma:apply:migration-fix
+npm run prisma:deploy:safe
+```
+
+설명:
+- `prisma:apply:migration-fix`
+  - `migration_fix.sql` 직접 실행
+- `prisma:deploy:safe`
+  - `prisma db push --skip-generate`
+  - destructive reset 없이 스키마를 맞추는 용도
+
+### 4단계. 적용 후 다시 점검
+
+다시:
+
+```bash
+npm run workrecord:inspect
+```
+
+기대 결과:
+- `styleIdDataType = integer`
+- `styleUid` 없음
+- `styleProcessId` 존재
+- `workerName/customerName/orderNo/styleName/processCode/colorId/colorCode` 없음
+- `isCanonicalSchema = true`
+
+### 5단계. 데이터 손실 없이 row count 유지되는지 확인
+
+확인 포인트:
+- migration 전 WorkRecord row count
+- migration 후 WorkRecord row count
+
+둘이 같아야 한다.
+
+### 6단계. canonical FK가 얼마나 잘 채워졌는지 확인
+
+`workrecord:inspect` 결과와 SQL로 확인할 것:
+
+- `assignmentPlanId` null 개수
+- `styleId` null 개수
+- `styleProcessId` null 개수
+- `processId` null 개수
+
+핵심:
+- `styleProcessId`가 가장 중요하다.
+- 실제 생산 ST 계산은 `WorkRecord.styleProcessId -> StyleProcessStandard`로 가야 하기 때문이다.
+
+### 7단계. 실제 화면 검증
+
+최소 검증 화면:
+
+1. 작업 기록 저장/수정
+2. 작업 기록 목록 조회
+3. 배정 화면 실제 생산 계산
+4. 급여 집계
+5. 스타일/AT 관련 화면
+
+특히 확인할 것:
+- 작업기록 신규 저장이 되는지
+- 기존 작업기록 조회 시 스타일/공정 이름이 정상 표시되는지
+- `/line-month-capacity` 실제 생산 계산이 깨지지 않는지
+
+---
+
+## 7. 왜 “맵핑만 바꾸는 것”이 부족한가
+
+이건 명확히 남겨둬야 한다.
+
+맵핑만 바꾸면 생기는 문제:
+
+1. 기존 DB row는 여전히 텍스트 `styleId`, 별도 `styleUid`, `processCode`, `workerName` 구조로 남아 있음
+2. 새 코드가 relation을 기대해도 old row가 그대로면 실제 계산은 계속 fallback/legacy 의존이 됨
+3. 결국 “정규화된 척하는 코드”가 되고, 실제 데이터는 여전히 정규화되지 않음
+
+그래서 반드시 필요한 순서는 아래다.
+
+1. deterministic backfill
+2. canonical FK 검증
+3. 레거시 컬럼 drop
+4. 앱 코드에서 레거시 참조 제거
+
+이번 repo에서는 1~3에 대한 SQL은 넣어둔 상태다.
+지금 부족한 건 “사용자가 보는 실제 Railway DB에 그 SQL이 적용되었는지 검증”이다.
+
+---
+
+## 8. 지금 시점의 정확한 판단
+
+### 완료된 것
+
+- Prisma 스키마 기준 정규화 방향 확정
+- 앱 코드 저장/조회 맵핑 반영
+- WorkRecord 정리용 `migration_fix.sql` 반영
+- WorkRecord 실DB 점검용 `npm run workrecord:inspect` 추가
+
+### 아직 완료라고 말하면 안 되는 것
+
+- 사용자가 캡처한 Railway DB에 실제 migration이 끝났는지
+- 실제 운영 WorkRecord row가 FK로 얼마나 backfill됐는지
+- 레거시 컬럼 drop가 그 환경에서 이미 끝났는지
+
+즉, “코드는 준비됐는데 실제 운영 DB 완료 검증은 아직”이라고 보는 게 맞다.
+
+---
+
+## 9. 주의할 파일
+
+### 가장 중요한 파일
+
+- `backend/prisma/schema.prisma`
+- `backend/migration_fix.sql`
+- `backend/src/index.ts`
+- `backend/src/work-records/workRecord.shared.ts`
+- `backend/scripts/inspect-workrecord-state.js`
+
+### 주의할 보조 파일
+
+- `backend/scripts/backfill-workrecord-canonical-fields.js`
+
+이 스크립트는 예전 WorkRecord 정리 흐름을 많이 반영하고 있다.
+현재 최종 구조의 소스오브트루스는 이 스크립트보다 `migration_fix.sql` 쪽이다.
+다음 작업에서는 이 스크립트를 그대로 신뢰하지 말고,
+
+1. 삭제할지
+2. 새 구조 기준으로 다시 쓸지
+
+판단해야 한다.
+
+내 의견:
+- 이 스크립트는 지금 이름은 살아 있지만, 현재 구조 기준으로는 stale 가능성이 높다.
+- 다음 작업에서 먼저 열어서 “지금도 필요한지” 판단하는 게 좋다.
+
+---
+
+## 10. 다음 작업 우선순위
+
+### 우선순위 1
+
+실제 운영 Railway DB가 맞는 환경에서 아래 실행:
+
+```bash
+cd backend
+npm run workrecord:inspect
+```
+
+### 우선순위 2
+
+운영 DB가 legacy schema면 아래 실행:
+
+```bash
+npm run prisma:prepare-client
+npm run prisma:apply:migration-fix
+npm run prisma:deploy:safe
+npm run workrecord:inspect
+```
+
+### 우선순위 3
+
+WorkRecord row count와 canonical FK null 개수 확인
+
+### 우선순위 4
+
+배정 화면 실제 생산 계산, 작업기록 저장/조회, 급여 집계를 실제로 테스트
+
+### 우선순위 5
+
+`backfill-workrecord-canonical-fields.js` 정리 여부 판단
+
+---
+
+## 11. 마지막 메모
+
+지금 상태를 한 줄로 요약하면:
+
+“코드는 WorkRecord 정규화 방향으로 바뀌었고 DB 정리 SQL도 들어갔지만, 사용자가 보여준 실제 Railway DB에는 아직 그 변화가 적용된 것으로 확인되지 않았다.”
+
+다음 환경에서는 반드시
+
+1. 올바른 DB를 잡고
+2. `workrecord:inspect`로 현재 상태를 확인한 뒤
+3. migration 적용 여부를 검증
+
+하는 순서로 이어가면 된다.
