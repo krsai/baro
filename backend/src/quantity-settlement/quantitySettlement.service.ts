@@ -142,21 +142,6 @@ const buildGroupedOrderItemKey = (item: any) =>
   [
     resolveStyleUid(item) ?? "",
     resolveStyleId(item),
-    resolveColorId(item) ?? "",
-    resolveColorCode(item),
-  ].join("::");
-
-const buildAggregateColorKey = (value: {
-  styleUid?: unknown;
-  styleId?: unknown;
-  colorId?: unknown;
-  colorCode?: unknown;
-}) =>
-  [
-    toPositiveIntOrNull(value.styleUid) ?? "",
-    resolveOptionalString(value.styleId, "") || "",
-    toPositiveIntOrNull(value.colorId) ?? "",
-    resolveOptionalString(value.colorCode, "") || "",
   ].join("::");
 
 const buildAggregateStyleKey = (value: { styleUid?: unknown; styleId?: unknown }) =>
@@ -169,15 +154,11 @@ const buildRowId = (value: {
   orderId?: unknown;
   styleUid?: unknown;
   styleId?: unknown;
-  colorId?: unknown;
-  colorCode?: unknown;
 }) =>
   [
     resolveOptionalString(value.orderId, "") || "",
     toPositiveIntOrNull(value.styleUid) ?? "",
     resolveOptionalString(value.styleId, "") || "",
-    toPositiveIntOrNull(value.colorId) ?? "",
-    resolveOptionalString(value.colorCode, "") || "",
   ].join("::");
 
 const normalizeProcessQuantityEntry = (entry: any) => ({
@@ -322,7 +303,6 @@ const buildSummary = (rows: any[]) => {
 
 const buildWorkRecordAggregates = (workLogs: any[]) => {
   const styleOnlyMap = new Map<string, Map<string, number>>();
-  const colorMap = new Map<string, Map<string, number>>();
 
   const appendQuantity = (target: Map<string, Map<string, number>>, key: string, processKey: string, quantity: number) => {
     if (!key || quantity <= 0) return;
@@ -342,22 +322,13 @@ const buildWorkRecordAggregates = (workLogs: any[]) => {
         styleUid: resolveStyleUid(record),
         styleId: resolveStyleId(record),
       });
-      const colorKey = buildAggregateColorKey({
-        styleUid: resolveStyleUid(record),
-        styleId: resolveStyleId(record),
-        colorId: resolveColorId(record),
-        colorCode: resolveColorCode(record),
-      });
       const processKey =
         resolveOptionalString(
-          record?.styleProcess?.processCode ??
-            record?.process?.code ??
-            record?.processCode,
+          record?.styleProcess?.processCode,
           ""
         ) ||
-        String(toPositiveIntOrNull(record?.processId) ?? "unknown");
+        `styleProcess:${toPositiveIntOrNull(record?.styleProcessId) ?? "unknown"}`;
       appendQuantity(styleOnlyMap, styleKey, processKey, quantity);
-      appendQuantity(colorMap, colorKey, processKey, quantity);
     });
   });
 
@@ -387,11 +358,10 @@ const buildWorkRecordAggregates = (workLogs: any[]) => {
 
   return {
     styleOnlyMap: mapToSummary(styleOnlyMap),
-    colorMap: mapToSummary(colorMap),
   };
 };
 
-const buildBaseRows = (orders: any[], aggregates: { styleOnlyMap: Map<string, any>; colorMap: Map<string, any> }) => {
+const buildBaseRows = (orders: any[], aggregates: { styleOnlyMap: Map<string, any> }) => {
   const rows: any[] = [];
 
   orders.forEach((order) => {
@@ -427,12 +397,8 @@ const buildBaseRows = (orders: any[], aggregates: { styleOnlyMap: Map<string, an
     });
 
     groupedItems.forEach((group) => {
-      const colorKey = buildAggregateColorKey(group);
       const styleKey = buildAggregateStyleKey(group);
-      const aggregate =
-        (group.colorId || group.colorCode
-          ? aggregates.colorMap.get(colorKey)
-          : aggregates.styleOnlyMap.get(styleKey)) ?? null;
+      const aggregate = aggregates.styleOnlyMap.get(styleKey) ?? null;
       rows.push({
         rowId: buildRowId(group),
         orderId: group.orderId,
@@ -552,7 +518,6 @@ export const getQuantitySettlementByMonth = async (orgId: number, monthInput: st
         workRecords: {
           select: {
             styleId: true,
-            processId: true,
             style: {
               select: {
                 uid: true,
@@ -561,21 +526,10 @@ export const getQuantitySettlementByMonth = async (orgId: number, monthInput: st
                 name: true,
               },
             },
-            assignmentPlan: {
-              select: {
-                colorId: true,
-                color: true,
-                colorName: true,
-              },
-            },
+            styleProcessId: true,
             styleProcess: {
               select: {
                 processCode: true,
-              },
-            },
-            process: {
-              select: {
-                code: true,
               },
             },
             quantity: true,

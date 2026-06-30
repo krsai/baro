@@ -13,6 +13,7 @@ const LEGACY_COLUMNS = [
   "orderNo",
   "styleUid",
   "styleName",
+  "processId",
   "processCode",
   "colorId",
   "colorCode",
@@ -22,7 +23,6 @@ const CANONICAL_COLUMNS = [
   "assignmentPlanId",
   "styleId",
   "styleProcessId",
-  "processId",
   "workerId",
   "lineId",
   "effectiveCoverageStartDate",
@@ -81,11 +81,6 @@ async function loadNullSummary(columnSet, styleIdDataType) {
   if (columnSet.has("styleProcessId")) {
     counters.push(
       `COUNT(*) FILTER (WHERE ${quoteIdent("styleProcessId")} IS NULL)::int AS style_process_nulls`
-    );
-  }
-  if (columnSet.has("processId")) {
-    counters.push(
-      `COUNT(*) FILTER (WHERE ${quoteIdent("processId")} IS NULL)::int AS process_id_nulls`
     );
   }
   if (columnSet.has("processCode")) {
@@ -147,10 +142,6 @@ async function loadSamples(columnSet) {
   if (columnSet.has("styleProcessId")) {
     whereClauses.push(`${quoteIdent("styleProcessId")} IS NULL`);
     selectColumns.push("styleProcessId");
-  }
-  if (columnSet.has("processId")) {
-    whereClauses.push(`${quoteIdent("processId")} IS NULL`);
-    selectColumns.push("processId");
   }
   if (columnSet.has("processCode")) {
     whereClauses.push(`COALESCE(BTRIM(${quoteIdent("processCode")}), '') = ''`);

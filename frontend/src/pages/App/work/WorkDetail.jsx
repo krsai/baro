@@ -248,10 +248,10 @@ const resolveRowCtDisplayMeta = ({ row, rowProcess, selectedProcessOption }) => 
 const buildComparableWorkRecord = (record = {}) => {
   const workerId = toPositiveIdOrNull(record?.workerId);
   const assignmentPlanId = toPositiveIdOrNull(record?.assignmentPlanId);
-  const styleUid = toPositiveIdOrNull(record?.styleUid);
-  const styleIdKey = toKey(record?.styleId);
+  const styleRefId = toPositiveIdOrNull(record?.styleRefId ?? record?.styleId);
+  const styleCodeKey = toKey(record?.styleCode);
   const styleNameKey = toKey(record?.styleName);
-  const processId = toPositiveIdOrNull(record?.processId);
+  const styleProcessId = toPositiveIdOrNull(record?.styleProcessId);
   const processCodeKey = normalizeProcessCode(
     stripProcessInstanceCode(record?.processCode)
   );
@@ -261,15 +261,15 @@ const buildComparableWorkRecord = (record = {}) => {
   const quantity = Math.max(0, Math.round(Number(record?.quantity) || 0));
   const styleKey = assignmentPlanId
     ? `plan:${assignmentPlanId}`
-    : styleUid
-      ? `uid:${styleUid}`
-      : styleIdKey
-        ? `id:${styleIdKey}`
+    : styleRefId
+      ? `style:${styleRefId}`
+      : styleCodeKey
+        ? `code:${styleCodeKey}`
         : styleNameKey
           ? `name:${styleNameKey}`
           : '';
-  const processKey = processId
-    ? `id:${processId}`
+  const processKey = styleProcessId
+    ? `style-process:${styleProcessId}`
     : processCodeKey
       ? `code:${processCodeKey}`
       : processNameKey
@@ -509,17 +509,17 @@ const buildPlanProcessOptions = (plan) => {
 };
 const enrichAssignmentPlan = (plan) => ({ ...plan, processes: buildPlanProcessOptions(plan) });
 const buildLegacyProcess = (record, index = 0) => {
-  const processId = toPositiveIdOrNull(record?.processId);
   const styleProcessId = toPositiveIdOrNull(record?.styleProcessId);
   const processCode = toText(record?.processCode);
   const processName = toText(record?.processName);
-  const processKey = processId ? `id:${processId}` : processCode || processName || `legacy-process-${index + 1}`;
-  if (!processId && !styleProcessId && !processCode && !processName) return null;
+  const processKey = styleProcessId
+    ? `style-process:${styleProcessId}`
+    : processCode || processName || `legacy-process-${index + 1}`;
+  if (!styleProcessId && !processCode && !processName) return null;
 
   return {
     id: `legacy-process-${index + 1}-${processKey}`,
     processKey,
-    processId,
     styleProcessId,
     code: processCode,
     name: processName,
@@ -532,7 +532,7 @@ const buildLegacyProcess = (record, index = 0) => {
 const buildLegacyAssignment = (record, index = 0) => {
   const fallbackProcess = buildLegacyProcess(record, index);
   const assignmentPlanId = toPositiveIdOrNull(record?.assignmentPlanId);
-  const assignmentLabel = toText(record?.styleName) || toText(record?.styleId);
+  const assignmentLabel = toText(record?.styleName) || toText(record?.styleCode);
 
   return {
     dbId: assignmentPlanId || `legacy-assignment-${index + 1}`,
@@ -540,10 +540,7 @@ const buildLegacyAssignment = (record, index = 0) => {
     orderNo: toText(record?.orderNo),
     customer: toText(record?.customerName),
     label: assignmentLabel,
-    styleId: toText(record?.styleId),
-    colorId: toPositiveIdOrNull(record?.colorId),
-    color: toText(record?.colorCode),
-    colorName: toText(record?.colorName || record?.colorCode),
+    styleId: toText(record?.styleCode),
     // A legacy row without a linked assignment has no known planned quantity.
     assignmentQuantity: null,
     finalQuantity: null,
@@ -686,6 +683,13 @@ const buildAssignmentMatchSourceFromRow = (row = {}) => {
   };
 };
 const buildProcessMetric = (process) => {
+  const styleProcessId = toPositiveIdOrNull(process?.styleProcessId);
+  if (styleProcessId) {
+    return {
+      key: `style-process:${styleProcessId}`,
+      label: toText(process?.name) || toText(process?.code) || `StyleProcess#${styleProcessId}`,
+    };
+  }
   const processId = toPositiveIdOrNull(process?.processId);
   if (processId) return { key: `id:${processId}`, label: toText(process?.name) || toText(process?.code) || `ID:${processId}` };
   const code = collectNormalizedProcessCodeCandidates(process)[0] || '';
@@ -700,15 +704,15 @@ const buildProcessMetric = (process) => {
   return { key: 'unknown', label: '미정 공정' };
 };
 const buildStyleMetric = (value = {}) => {
-  const styleUid = toPositiveIdOrNull(value?.styleUid);
-  if (styleUid) {
+  const styleRefId = toPositiveIdOrNull(value?.styleRefId ?? value?.styleId);
+  if (styleRefId) {
     return {
-      key: `uid:${styleUid}`,
-      label: toText(value?.styleId) || toText(value?.styleName) || `UID:${styleUid}`,
+      key: `style:${styleRefId}`,
+      label: toText(value?.styleCode) || toText(value?.styleName) || `Style#${styleRefId}`,
     };
   }
-  const styleId = toText(value?.styleId);
-  if (styleId) return { key: `id:${toKey(styleId)}`, label: styleId };
+  const styleCode = toText(value?.styleCode);
+  if (styleCode) return { key: `code:${toKey(styleCode)}`, label: styleCode };
   const styleName = toText(value?.styleName);
   if (styleName) return { key: `name:${toKey(styleName)}`, label: styleName };
   const assignmentPlanId = toPositiveIdOrNull(value?.assignmentPlanId);
@@ -730,8 +734,9 @@ const buildWorkerStyleProcessSignature = (value = {}) => {
     workerName: value?.workerName ?? value?.worker?.name,
   });
   const styleMetric = buildStyleMetric({
-    styleUid: value?.styleUid ?? value?.assignment?.styleUid,
-    styleId: value?.styleId ?? value?.assignment?.styleId,
+    styleRefId: value?.styleRefId ?? value?.styleId,
+    styleId: value?.styleId,
+    styleCode: value?.styleCode ?? value?.assignment?.styleId,
     styleName:
       value?.styleName ??
       value?.assignment?.label ??
@@ -740,7 +745,8 @@ const buildWorkerStyleProcessSignature = (value = {}) => {
     assignmentPlanId: value?.assignmentPlanId ?? value?.assignment?.dbId,
   });
   const processMetric = buildProcessMetric({
-    processId: value?.processId ?? value?.process?.processId ?? value?.process?.id,
+    styleProcessId: value?.styleProcessId ?? value?.process?.styleProcessId,
+    processId: value?.process?.processId ?? value?.process?.id,
     code: value?.processCode ?? value?.process?.code ?? value?.process?.processCode,
     name:
       value?.processName ??
@@ -799,11 +805,9 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
     const assignment = matchedAssignment
       ? {
           ...matchedAssignment,
-          styleId: toText(record?.styleId || matchedAssignment?.styleId),
+          styleId: toText(record?.styleCode || matchedAssignment?.styleId),
           label: toText(record?.styleName || matchedAssignment?.label),
           customer: toText(record?.customerName || matchedAssignment?.customer),
-          color: toText(record?.colorCode || matchedAssignment?.color),
-          colorName: toText(record?.colorName || record?.colorCode || matchedAssignment?.colorName),
           processes: legacyProcess
             ? ensureOptionIncluded(
                 matchedAssignmentProcesses,
@@ -818,8 +822,8 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
     const matchedProcess =
       matchByIdOrName(
         assignmentProcessOptions,
-        { processId: record?.processId, name: record?.processName },
-        'processId',
+        { styleProcessId: record?.styleProcessId, name: record?.processName },
+        'styleProcessId',
         'name'
       ) ||
       assignmentProcessOptions.find((processOption) =>
@@ -831,7 +835,6 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
     const process = matchedProcess
         ? {
           ...matchedProcess,
-          processId: toPositiveIdOrNull(record?.processId ?? matchedProcess?.processId),
           styleProcessId: toPositiveIdOrNull(
             record?.styleProcessId ?? matchedProcess?.styleProcessId
           ),
@@ -852,7 +855,6 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
         styleId: toText(record?.styleId),
         styleName: toText(record?.styleName),
         styleProcessId: record?.styleProcessId ?? null,
-        processId: record?.processId ?? null,
         processCode: toText(record?.processCode),
         processName: toText(record?.processName),
         assignmentPlanId: record?.assignmentPlanId ?? null,
@@ -883,7 +885,7 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
       process: process
         ? {
             id: toText(process?.id),
-            processId: process?.processId ?? null,
+            styleProcessId: process?.styleProcessId ?? null,
             code: toText(process?.code || process?.processCode),
             name: toText(process?.name),
             nameKo: toText(process?.nameKo),
@@ -912,7 +914,6 @@ const dedupeAssignmentPlans = (plans = []) => {
       toText(plan?.lineId),
       toText(plan?.orderNo),
       toText(plan?.label || plan?.styleId),
-      toText(plan?.colorId || plan?.colorName || plan?.color),
       toText(plan?.assignmentQuantity),
       toText(plan?.startIndex),
       toText(plan?.endIndex),
@@ -990,13 +991,6 @@ const resolveAssignmentOption = (rowAssignment, assignmentMap) => {
     customer: toText(rowAssignment?.customer || matchedAssignment?.customer),
     label: toText(rowAssignment?.label || matchedAssignment?.label || rowAssignment?.styleId || matchedAssignment?.styleId),
     styleId: toText(rowAssignment?.styleId || matchedAssignment?.styleId),
-    color: toText(rowAssignment?.color || matchedAssignment?.color),
-    colorName: toText(
-      rowAssignment?.colorName ||
-        matchedAssignment?.colorName ||
-        rowAssignment?.color ||
-        matchedAssignment?.color
-    ),
     processes: Array.isArray(matchedAssignment?.processes)
       ? matchedAssignment.processes
       : Array.isArray(rowAssignment?.processes)
@@ -1822,14 +1816,8 @@ const WorkDetail = ({
       .map(({ row, assignment, process }) => ({
         rowId: toText(row?.id),
         workerId: toPositiveIdOrNull(row?.worker?.id),
-        styleId: toPositiveIdOrNull(
-          assignment?.styleUid ??
-            row?.styleRefId ??
-            row?.styleUid ??
-            row?.styleId
-        ),
-        styleCode: toText(row?.styleCode || row?.styleId || assignment?.styleId),
-        processId: toPositiveIdOrNull(process?.processId),
+        styleId: toPositiveIdOrNull(row?.styleRefId ?? row?.styleId),
+        styleCode: toText(row?.styleCode || assignment?.styleId),
         styleProcessId: toPositiveIdOrNull(process?.styleProcessId),
         ctSeconds: Math.max(0, Math.round(Number(process?.ctSeconds) || 0)),
         quantity: Math.max(0, Math.round(Number(row?.quantity) || 0)),
@@ -2853,7 +2841,6 @@ const WorkDetail = ({
             rowProcess?.nameVi
         ),
         styleProcessId: toPositiveIdOrNull(rowProcess?.styleProcessId),
-        processId: toPositiveIdOrNull(rowProcess?.processId ?? rowProcess?.id),
       };
     });
     console.log('[WorkDetail.visibleRowMetaLabels]', labelRows);

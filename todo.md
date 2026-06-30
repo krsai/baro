@@ -38,9 +38,6 @@
 - `styleProcessId`
   - 최종 의미: `StyleProcess.id`를 가리키는 정수 FK
   - ST 계산의 핵심 기준
-- `processId`
-  - `AttrProcess.id`
-  - 보조 FK
 - `assignmentPlanId`
 - `effectiveCoverageStartDate`
 - `effectiveCoverageEndDate`
@@ -57,6 +54,7 @@
 - `orderNo`
 - `styleUid`
 - `styleName`
+- `processId`
 - `processCode`
 - `colorId`
 - `colorCode`
@@ -80,7 +78,7 @@
 - `WorkRecord.style` relation을 `Style.uid`에 연결
 - `WorkRecord.worker` relation 추가
 - `WorkRecord.styleProcessId` 기준 구조 반영
-- 위 레거시 컬럼들을 Prisma 스키마에서 제거
+- `processId`를 포함한 위 레거시 컬럼들을 Prisma 스키마에서 제거
 
 ### 저장/응답 맵핑
 
@@ -125,13 +123,12 @@
 - `styleUid`
 - `styleId` 텍스트
 - `styleName`
-- `processId`
 - `processCode`
 
 소스:
 - `assignmentPlanId -> AssignmentPlan`
 - `AssignmentPlan.cardId/originOrderId -> WorkOrder -> WorkOrderItem -> Style`
-- `processCode/processId -> AttrProcess`
+- `processCode -> StyleProcess`
 
 중요:
 - 애매한 추정은 하지 않는다.
@@ -244,7 +241,7 @@ npm run workrecord:inspect
 - `styleIdDataType = text`
 - `styleUid` 존재
 - `styleProcessId` 없음
-- `workerName/customerName/orderNo/processCode/colorId/colorCode` 존재
+- `workerName/customerName/orderNo/processId/processCode/colorId/colorCode` 존재
 - `isLegacySchema = true`
 
 ### 3단계. 최신 백엔드 코드와 DB migration을 같은 작업 세션에서 반영
@@ -290,6 +287,7 @@ npm run workrecord:inspect
 - `styleUid` 없음
 - `styleProcessId` 존재
 - `workerName/customerName/orderNo/styleName/processCode/colorId/colorCode` 없음
+- `processId` 없음
 - `isCanonicalSchema = true`
 
 ### 5단계. 데이터 손실 없이 row count 유지되는지 확인
@@ -307,7 +305,6 @@ npm run workrecord:inspect
 - `assignmentPlanId` null 개수
 - `styleId` null 개수
 - `styleProcessId` null 개수
-- `processId` null 개수
 
 핵심:
 - `styleProcessId`가 가장 중요하다.
@@ -385,18 +382,9 @@ npm run workrecord:inspect
 
 - `backend/scripts/backfill-workrecord-canonical-fields.js`
 
-이 스크립트는 예전 WorkRecord 정리 흐름을 많이 반영하고 있다.
-현재 최종 구조의 소스오브트루스는 이 스크립트보다 `migration_fix.sql` 쪽이다.
-다음 작업에서는 이 스크립트를 그대로 신뢰하지 말고,
-
-1. 삭제할지
-2. 새 구조 기준으로 다시 쓸지
-
-판단해야 한다.
-
-내 의견:
-- 이 스크립트는 지금 이름은 살아 있지만, 현재 구조 기준으로는 stale 가능성이 높다.
-- 다음 작업에서 먼저 열어서 “지금도 필요한지” 판단하는 게 좋다.
+이 스크립트는 더 이상 WorkRecord를 수정하지 않는다.
+현재 최종 구조의 소스오브트루스는 `migration_fix.sql`이다.
+명령 이름은 유지하지만 내용은 스키마/FK 상태를 점검하고 migration 적용 필요 여부를 출력하는 안전한 점검용이다.
 
 ---
 
@@ -432,7 +420,7 @@ WorkRecord row count와 canonical FK null 개수 확인
 
 ### 우선순위 5
 
-`backfill-workrecord-canonical-fields.js` 정리 여부 판단
+작업기록 저장/파일 업로드/배정 실제 생산 화면을 실제 운영 DB에서 확인
 
 ---
 
@@ -449,3 +437,43 @@ WorkRecord row count와 canonical FK null 개수 확인
 3. migration 적용 여부를 검증
 
 하는 순서로 이어가면 된다.
+
+---
+
+## 12. 2026-06-30 추가 작업 기록
+
+이번 세션에서 실제로 반영한 내용:
+
+- `WorkRecord` 저장 payload에서 `workerName`, `customerName`, `orderNo`, `styleUid`, `styleName`, `processId`, `colorId`, `colorCode`, `colorName` 저장 경로를 제거했다.
+- `WorkRecord.styleId`는 `Style.uid` 정수 FK로만 다루고, 화면 표시용 스타일 코드는 `styleCode`로 분리했다.
+- 작업기록 응답에서 `styleUid`, `processId`, `colorId`, `colorCode`, `colorName`을 제거했다.
+- 작업기록 상세 화면 저장 요약에서도 `styleUid`와 색상 필드를 보내지 않도록 정리했다.
+- 작업기록 상세 화면 저장 요약과 디버그 로그에서 WorkRecord 저장값으로 `processId`를 보내거나 표시하지 않도록 정리했다.
+- `/line-month-capacity` 실제 생산 계산은 `WorkRecord.styleId`와 `WorkRecord.styleProcessId`를 기준으로만 진단/계산하도록 정리했다.
+- 진행률/완료량 공정 그룹도 `styleProcessId` 기준으로 맞췄다.
+- 배정 CT 스냅샷 정규화와 파일 업로드 공정 옵션에서 `styleProcessId`를 보존/요구하도록 정리했다.
+- 사용되지 않던 orphan WorkRecord 텍스트 매칭 함수(스타일명/주문번호로 배정 카드를 추정하는 경로)를 제거했다.
+- `backend/scripts/backfill-workrecord-canonical-fields.js`는 더 이상 쓰기 백필을 하지 않고, migration 경로를 안내하는 점검 스크립트로 바꿨다.
+- 백엔드 시작 보정 함수가 `WorkRecord.orderNo`를 다시 추가하지 않도록 제거했다.
+- 수량 정산의 WorkRecord 집계에서 `processId`와 색상별 생산량 집계를 제거하고, 스타일/`styleProcessId` 기준 집계로 정리했다.
+- `AGENTS.md`에 정확 계산 원칙, WorkRecord FK 기준, 색상/사이즈/성별 미사용 원칙, `todo.md` 지속 업데이트 원칙을 반영했다.
+
+검증한 것:
+
+- `backend`: `npm run prisma:prepare-client`, `npm run build`
+- `frontend`: `npm run build`
+- `backend`: `npm run backfill:workrecord-canonical-fields`는 쓰기 없이 schema 점검 결과만 출력하는 것을 확인
+- 현재 이 환경의 `npm run workrecord:inspect` 결과는 `WorkRecord.total = 0`, `isLegacySchema = true`다. 사용자가 캡처한 운영 데이터가 있는 DB와 다른 연결로 보이므로 운영 데이터 backfill 완료 여부는 여기서 검증하지 못했다.
+
+아직 남은 것:
+
+- 실제 운영 Railway DB에서 `npm run workrecord:inspect`로 현재 DB가 canonical schema인지 확인해야 한다.
+- 운영 DB가 legacy schema이면 `npm run prisma:apply:migration-fix` 적용 후 다시 `npm run workrecord:inspect`를 실행해야 한다.
+- `AssignmentPlan.colorId/colorName/color`, `WorkOrderItem.colorId/colorCode/colorName`은 아직 스키마와 여러 화면에 남아 있다. 작업기록/실제생산 계산에서는 제거했지만, 배정/주문 쪽 컬럼 삭제는 별도 범위로 검토해야 한다.
+
+화면 테스트 방법:
+
+- 작업 기록 상세 화면에서 저장 후 Network payload에 `styleUid`, `processId`, `colorId`, `colorCode`, `colorName`이 없는지 확인한다.
+- 작업 기록 상세 화면에서 저장 후 목록을 다시 열어 작업자/스타일/공정 표시가 relation 기반으로 정상 복원되는지 확인한다.
+- 배정 화면(`/assignment`)에서 4월/5월을 열고 콘솔의 `[line-month-capacity] actual output diagnostics`에서 `workRowsWithStyleId`, `workRowsWithStyleProcessId`, `directMatchedRecordCount`, `skipReasonCounts`를 확인한다.
+- 스타일 삭제는 작업기록이 연결된 스타일이면 `WorkRecord.styleId = Style.uid` 기준으로 차단되는지 확인한다.

@@ -771,14 +771,23 @@ FROM adjustment_notes AS notes
 WHERE wl."id" = notes."workLogId"
   AND POSITION('[재직기간 자동 조정]' IN COALESCE(wl."note", '')) = 0;
 
-CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_orderNo_idx"
-  ON "WorkRecord"("orgId", "orderNo");
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+      AND column_name = 'orderNo'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_orderNo_idx"
+      ON "WorkRecord"("orgId", "orderNo");
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_lineId_idx"
   ON "WorkRecord"("orgId", "lineId");
 
 -- Step 5a-2: WorkRecord exact style process FK (20260629)
--- WorkRecord.processId points to AttrProcess and is not enough to join ST.
 -- styleProcessId points to StyleProcess.id and is the canonical ST matching key.
 ALTER TABLE "WorkRecord"
   ADD COLUMN IF NOT EXISTS "styleProcessId" INTEGER;
@@ -815,11 +824,6 @@ BEGIN
     WHERE table_schema = 'public'
       AND table_name = 'WorkRecord'
       AND column_name = 'styleUid'
-  ) AND EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'WorkRecord'
-      AND column_name = 'processId'
   ) AND EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema = 'public'
@@ -901,23 +905,6 @@ BEGIN
         wr."styleUid" IS DISTINCT FROM canonical."styleUid"
         OR wr."styleId" IS DISTINCT FROM COALESCE(canonical."styleId", wr."styleId")
         OR wr."styleName" IS DISTINCT FROM COALESCE(canonical."styleName", wr."styleName")
-      );
-
-    UPDATE "WorkRecord" wr
-    SET
-      "processId" = COALESCE(wr."processId", p.id),
-      "processCode" = COALESCE(wr."processCode", p."code")
-    FROM "AttrProcess" p, "WorkLog" wl
-    WHERE wr."workLogId" = wl.id
-      AND wr."orgId" = p."orgId"
-      AND COALESCE(wl."coverageEndDate", wl."workDate") >= '2026-04-01'
-      AND (
-        (wr."processId" IS NOT NULL AND wr."processId" = p.id)
-        OR (wr."processCode" IS NOT NULL AND wr."processCode" = p."code")
-      )
-      AND (
-        (wr."processId" IS NULL AND p.id IS NOT NULL)
-        OR (wr."processCode" IS NULL AND p."code" IS NOT NULL)
       );
 
     INSERT INTO "_BaroMigrationState" ("key")
@@ -1068,6 +1055,7 @@ BEGIN
     DROP COLUMN IF EXISTS "orderNo",
     DROP COLUMN IF EXISTS "styleCodeLegacy",
     DROP COLUMN IF EXISTS "styleName",
+    DROP COLUMN IF EXISTS "processId",
     DROP COLUMN IF EXISTS "processCode",
     DROP COLUMN IF EXISTS "colorId",
     DROP COLUMN IF EXISTS "colorCode";

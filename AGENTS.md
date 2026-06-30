@@ -38,8 +38,10 @@
 - 계산 실패는 0/null/미계산 상태와 진단 로그로 드러내며, 조용히 다른 공식으로 대체하지 않는다.
 - 호환성 dual-read나 schema migration fallback은 명시된 migration 단계에서만 허용한다. 운영 지표 계산 로직에 섞지 않는다.
 - 운영 지표 조회 중에 정규 참조를 다시 붙이는 helper를 호출하지 않는다. 예를 들어 실제 생산 계산은 저장된 `WorkRecord.styleProcessId`로 `StyleProcess/StyleProcessStandard`를 조회하며, `styleId/styleCode/name`, `processCode`, `AttrProcess.code`, 공정명으로 재탐색하지 않는다.
-- `WorkRecord.assignmentPlanId/styleUid/styleProcessId/processCode`는 신규 작업기록 저장 시점에 확정되어야 한다. 비어 있으면 저장을 거부하고 원인을 노출한다. `processId`는 `AttrProcess.id` 보조 참조이며 ST 매칭 키가 아니다.
+- `WorkRecord.assignmentPlanId/styleId/styleProcessId`는 신규 작업기록 저장 시점에 확정되어야 한다. 비어 있으면 저장을 거부하고 원인을 노출한다. `styleId`는 `Style.uid` 정수 FK이며 스타일 코드 문자열이 아니다. `processId`는 WorkRecord에 저장하지 않는다.
+- 작업기록/배정의 실제 생산 계산은 색상, 사이즈, 성별을 구분하지 않는다. 정산에서 WorkRecord 생산량을 볼 때도 색상 기준으로 나누지 않는다. `colorId`, `colorCode`, `colorName`, `gender`를 WorkRecord 저장값이나 실제 생산/정산 매칭 키로 재도입하지 않는다.
 - 레거시 컬럼/JSON key는 "백필 -> 신규 저장 차단 -> 운영 조회 참조 제거 -> 검증 -> DB DROP" 순서로만 제거한다. 참조 제거 전 DROP 금지, DROP 대상 컬럼을 새 코드에서 읽는 것도 금지한다.
+- 진행 중인 DB/계산 정리 작업은 매 작업 단위로 `todo.md`에 실제로 한 일, 아직 남은 일, 검증 방법만 짧게 업데이트한다. 추정이나 확대 해석을 인수인계 문서에 섞지 않는다.
 - 이 파일의 뒤쪽 phase 기록에 과거 dual-read/fallback 허용 문구가 남아 있더라도 현재 개발 정책은 이 "정확 계산 원칙"을 우선한다.
 
 ### AT 모델
@@ -70,15 +72,17 @@ AT(q) = a*q + b
 - **WorkLog**: 기간 헤더. `coverageStartDate`(시작), `coverageEndDate`(종료)가 소스오브트루스.
   - `displayDate` (DB 컬럼명 `workDate`, Prisma `@map("workDate")`): 목록 표시/정렬 전용 대표 날짜. 항상 `coverageEndDate`와 동일. **계산 로직 사용 금지.**
   - `lineId`가 스키마 FK 없이 `records` JSON 안에 비정규화 저장됨 (DB 조인 불가 — 구조적 한계).
-- **WorkRecord**: WorkLog 하위 상세 행. 한 행 = `(작업자, 스타일, 공정, 색상, 수량, ctSeconds)`.
+- **WorkRecord**: WorkLog 하위 상세 행. 한 행 = `(workerId, styleId, styleProcessId, quantity, ctSeconds)`.
+  - 작업기록은 색상/사이즈/성별을 구분하지 않는다. AJ2102 흰색 S 100장과 검은색 M 100장처럼 주문 상세가 나뉘어도 작업기록은 해당 스타일/공정에서 만든 총 수량만 기록한다.
   - `ctSeconds`는 해당 작업 상세의 급여/계약 기준 시간이다. 스케줄러 계획 길이의 기준은 아니다.
   - `effectiveCoverageStartDate/effectiveCoverageEndDate`는 WorkLog 기간과 작업자의 입사일/퇴사일을 교차해 저장한 작업자별 유효 작업기간 스냅샷이다. 월간 입력 중 중도 입사/퇴사자가 있으면 이 범위로 자동 절단하고 WorkLog 비고에 조정 내역을 남긴다.
   - `lineId Int?` 컬럼은 실제로 존재하지만 FK는 없다. `Line` 테이블과 조인 가능한 정규화 관계가 아니라 비정규화 보조 필드다.
   - 같은 작업자가 같은 기간(또는 같은 날) 여러 공정 입력 가능.
   - 스케줄러 연결의 핵심 키는 `WorkRecord.assignmentPlanId`.
-  - 실제 생산/ST 매칭의 핵심 키는 `WorkRecord.styleProcessId -> StyleProcess.id -> StyleProcessStandard.bucketStSeconds`다. `processId`는 `AttrProcess.id`라 ST 매칭 키로 쓰지 않는다.
-  - 신규 WorkLog 저장/수정에서는 모든 WorkRecord가 `assignmentPlanId`, `styleUid`, `styleProcessId`, `processCode`를 가져야 한다. 연결 없는 작업행은 백엔드에서도 거부한다.
-  - `workerName`, `customerName`, `orderNo`, `styleId`, `styleName`, `colorCode`는 정규 참조가 아니라 레거시/표시 스냅샷으로 취급한다. 운영 계산 로직에서 이 값으로 FK를 역추적하지 않으며, 참조 제거와 검증 후 삭제 후보로 본다.
+  - 실제 생산/ST 매칭의 핵심 키는 `WorkRecord.styleProcessId -> StyleProcess.id -> StyleProcessStandard.bucketStSeconds`다. `processId`는 WorkRecord에 저장하지 않는다.
+  - 신규 WorkLog 저장/수정에서는 모든 WorkRecord가 `assignmentPlanId`, `styleId`, `styleProcessId`를 가져야 한다. 연결 없는 작업행은 백엔드에서도 거부한다.
+  - 업로드/입력의 `orderNo`, 스타일 코드, 공정 코드는 배정 카드와 `StyleProcess`를 찾기 위한 입력값일 뿐 WorkRecord 저장 컬럼이 아니다.
+  - `workerName`, `customerName`, `orderNo`, `styleUid`, `styleName`, `processId`, `processCode`, `colorId`, `colorCode`는 WorkRecord에 재도입하지 않는다. 화면 표시값은 `worker`, `assignmentPlan`, `style`, `styleProcess` relation에서 읽는다.
 - **급여 계산용**: 공정별로 몇 개 만들었는지 집계. 주문 100장이어도 실제로는 95장 또는 105장 만들 수 있음.
 
 ### WorkLog 날짜 규칙 (강제)

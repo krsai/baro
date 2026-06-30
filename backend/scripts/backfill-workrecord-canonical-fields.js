@@ -6,566 +6,76 @@ process.env.PRISMA_CLIENT_ENGINE_TYPE ||= "binary";
 const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
-const BATCH_SIZE = 500;
 
-const resolveOptionalString = (value, fallback = null) => {
-  if (typeof value !== "string") return fallback;
-  const trimmed = value.trim();
-  return trimmed ? trimmed : fallback;
-};
+const LEGACY_COLUMNS = [
+  "workerName",
+  "customerName",
+  "orderNo",
+  "styleUid",
+  "styleName",
+  "processId",
+  "processCode",
+  "colorId",
+  "colorCode",
+];
 
-const toPositiveIntOrNull = (value) => {
-  const parsed = Number.parseInt(String(value ?? ""), 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) return null;
-  return parsed;
-};
+const quoteIdent = (value) => `"${String(value).replace(/"/g, "\"\"")}"`;
 
-const normalizeComparableText = (value) =>
-  String(value ?? "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .toUpperCase();
-
-const buildOrgScopedKey = (orgId, value) => {
-  const normalizedOrgId = toPositiveIntOrNull(orgId);
-  const normalizedValue = resolveOptionalString(String(value ?? ""), null);
-  if (!normalizedOrgId || !normalizedValue) return "";
-  return `${normalizedOrgId}::${normalizeComparableText(normalizedValue)}`;
-};
-
-const normalizeDateKey = (value) => {
-  const text = resolveOptionalString(value, null);
-  if (!text) return null;
-  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  return `${match[1]}-${match[2]}-${match[3]}`;
-};
-
-const parseAssignmentCardIdentity = (value) => {
-  const raw = resolveOptionalString(value, null);
-  if (!raw) return null;
-  const parts = raw.split("::");
-  if (parts.length < 2) return null;
-  const orderId = resolveOptionalString(parts[0], null);
-  const styleId = resolveOptionalString(parts[1], null);
-  if (!orderId || !styleId) return null;
-  return { orderId, styleId };
-};
-
-const normalizeStateAssignments = (value) =>
-  Array.isArray(value) ? value.filter((item) => item && typeof item === "object") : [];
-
-const resolveAssignmentExternalId = (item) =>
-  resolveOptionalString(item?.id ?? item?.externalId, null);
-
-const resolveWorkLogLineMeta = (value) => {
-  const source =
-    value && typeof value === "object" && !Array.isArray(value)
-      ? value
-      : Array.isArray(value)
-        ? value.find((item) => item && typeof item === "object")
-        : null;
-  return {
-    lineId: toPositiveIntOrNull(source?.lineId),
-    lineName: resolveOptionalString(source?.lineName, null),
-  };
-};
-
-const resolveWorkRecordProcessBucketKey = (record) => {
-  const processId = toPositiveIntOrNull(record?.processId);
-  if (processId != null) return `id:${processId}`;
-  const processCode = resolveOptionalString(record?.processCode, null);
-  if (processCode) return `code:${normalizeComparableText(processCode)}`;
-  return "unknown";
-};
-
-const resolveAssignmentPlanRequiredProcessGroups = (plan) => {
-  const snapshot = resolveAssignmentPlanSnapshot(plan);
-  const processRows = Array.isArray(snapshot?.processes) ? snapshot.processes : [];
-  if (processRows.length === 0) return [];
-  return processRows
-    .map((process) => {
-      const candidates = [];
-      const processId = toPositiveIntOrNull(process?.processId ?? process?.id);
-      if (processId) candidates.push(`id:${processId}`);
-      const processCode = resolveOptionalString(process?.processCode ?? process?.code, null);
-      if (processCode) candidates.push(`code:${normalizeComparableText(processCode)}`);
-      return Array.from(new Set(candidates));
-    })
-    .filter((group) => Array.isArray(group) && group.length > 0);
-};
-
-function resolveAssignmentPlanSnapshot(plan) {
-  return plan?.assignmentCtSnapshot && typeof plan.assignmentCtSnapshot === "object"
-    ? plan.assignmentCtSnapshot
-    : plan?.ctSnapshot && typeof plan.ctSnapshot === "object"
-      ? plan.ctSnapshot
-      : null;
+async function loadColumns() {
+  return prisma.$queryRawUnsafe(`
+    SELECT column_name, data_type
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkRecord'
+    ORDER BY ordinal_position
+  `);
 }
 
-const resolveAssignmentPlanPrimaryStyleId = (plan) => {
-  const snapshot = resolveAssignmentPlanSnapshot(plan);
-  return (
-    parseAssignmentCardIdentity(plan?.cardId)?.styleId ??
-    parseAssignmentCardIdentity(plan?.originOrderId)?.styleId ??
-    resolveOptionalString(snapshot?.styleId, null)
-  );
-};
-
-const resolveAssignmentPlanStyleMatchKeys = (plan) => {
-  const snapshot = plan?.assignmentCtSnapshot && typeof plan.assignmentCtSnapshot === "object"
-    ? plan.assignmentCtSnapshot
-    : plan?.ctSnapshot && typeof plan.ctSnapshot === "object"
-      ? plan.ctSnapshot
-      : null;
-  return Array.from(
-    new Set(
-      [
-        parseAssignmentCardIdentity(plan?.cardId)?.styleId,
-        parseAssignmentCardIdentity(plan?.originOrderId)?.styleId,
-        resolveOptionalString(snapshot?.styleId, null),
-        resolveOptionalString(plan?.label, null),
-      ]
-        .filter(Boolean)
-        .map((value) => normalizeComparableText(value))
-        .filter(Boolean)
-    )
-  );
-};
-
-const resolveWorkRecordStyleMatchKeys = (record) =>
-  Array.from(
-    new Set(
-      [record?.styleId, record?.styleName]
-        .map((value) => resolveOptionalString(value, null))
-        .filter(Boolean)
-        .map((value) => normalizeComparableText(value))
-        .filter(Boolean)
-    )
-  );
-
-const doesAssignmentScheduleContainWorkDate = ({ startDateKey, endDateKey, workDateKey }) => {
-  const normalizedWorkDateKey = normalizeDateKey(workDateKey);
-  if (!normalizedWorkDateKey) return false;
-  const normalizedStartDateKey = normalizeDateKey(startDateKey);
-  const normalizedEndDateKey = normalizeDateKey(endDateKey);
-  if (normalizedStartDateKey && normalizedWorkDateKey < normalizedStartDateKey) return false;
-  if (normalizedEndDateKey && normalizedWorkDateKey > normalizedEndDateKey) return false;
-  return Boolean(normalizedStartDateKey || normalizedEndDateKey);
-};
-
-const buildPlanMatchCandidates = (plans, assignmentsByExternalId) =>
-  (Array.isArray(plans) ? plans : [])
-    .map((plan) => {
-      const planId = toPositiveIntOrNull(plan?.id);
-      if (!planId) return null;
-      const externalId = resolveOptionalString(plan?.externalId, null);
-      const assignment = externalId ? assignmentsByExternalId.get(externalId) || null : null;
-      const snapshot = plan?.assignmentCtSnapshot && typeof plan.assignmentCtSnapshot === "object"
-        ? plan.assignmentCtSnapshot
-        : plan?.ctSnapshot && typeof plan.ctSnapshot === "object"
-          ? plan.ctSnapshot
-          : null;
-      const schedule = snapshot?.schedule && typeof snapshot.schedule === "object" ? snapshot.schedule : null;
-      return {
-        planId,
-        orderNo: resolveOptionalString(plan?.orderNo, null),
-        orderNoKey: resolveOptionalString(plan?.orderNo, null)
-          ? normalizeComparableText(plan.orderNo)
-          : null,
-        lineId: toPositiveIntOrNull(plan?.lineId),
-        styleKeys: resolveAssignmentPlanStyleMatchKeys(plan),
-        processKeys: new Set(resolveAssignmentPlanRequiredProcessGroups(plan).flat()),
-        startDateKey:
-          normalizeDateKey(assignment?.startDateKey) ||
-          normalizeDateKey(schedule?.startDateKey) ||
-          null,
-        endDateKey:
-          normalizeDateKey(assignment?.endDateKey) ||
-          normalizeDateKey(schedule?.endDateKey) ||
-          null,
-      };
-    })
-    .filter((candidate) => candidate && candidate.styleKeys.length > 0);
-
-const resolveOrphanOrderNoMatch = ({ record, workLog, candidates }) => {
-  const styleKeys = resolveWorkRecordStyleMatchKeys(record);
-  if (styleKeys.length === 0) return null;
-
-  let narrowed = candidates.filter((candidate) =>
-    candidate.styleKeys.some((styleKey) => styleKeys.includes(styleKey))
-  );
-  if (narrowed.length === 0) return null;
-
-  const lineId = toPositiveIntOrNull(record?.lineId) ?? resolveWorkLogLineMeta(workLog?.records).lineId;
-  if (lineId) {
-    const lineMatched = narrowed.filter((candidate) => candidate.lineId === lineId);
-    if (lineMatched.length > 0) narrowed = lineMatched;
-  }
-
-  const workDateKey = normalizeDateKey(workLog?.workDate);
-  if (workDateKey) {
-    const dateMatched = narrowed.filter((candidate) =>
-      doesAssignmentScheduleContainWorkDate({
-        startDateKey: candidate.startDateKey,
-        endDateKey: candidate.endDateKey,
-        workDateKey,
-      })
+async function loadNullSummary(columnSet) {
+  const counters = [];
+  ["assignmentPlanId", "workerId", "styleId", "styleProcessId"].forEach((column) => {
+    if (!columnSet.has(column)) return;
+    counters.push(
+      `COUNT(*) FILTER (WHERE ${quoteIdent(column)} IS NULL)::int AS ${column.toLowerCase()}_nulls`
     );
-    if (dateMatched.length > 0) narrowed = dateMatched;
-  }
-
-  const processKey = resolveWorkRecordProcessBucketKey(record);
-  if (processKey && processKey !== "unknown") {
-    const processMatched = narrowed.filter(
-      (candidate) =>
-        candidate.processKeys.size === 0 || candidate.processKeys.has(processKey)
-    );
-    if (processMatched.length > 0) narrowed = processMatched;
-  }
-
-  return narrowed.length === 1 ? narrowed[0] : null;
-};
+  });
+  if (counters.length === 0) return {};
+  const rows = await prisma.$queryRawUnsafe(`
+    SELECT ${counters.join(", ")}
+    FROM "WorkRecord"
+  `);
+  return rows?.[0] || {};
+}
 
 async function main() {
-  let cursorId = null;
-  let scanned = 0;
-  let updated = 0;
-  let directOrderNoUpdated = 0;
-  let heuristicOrderNoUpdated = 0;
-  let lineIdUpdated = 0;
-  let styleRefUpdated = 0;
-  let processRefUpdated = 0;
+  const columns = await loadColumns();
+  const columnSet = new Set(columns.map((row) => String(row.column_name)));
+  const legacyColumnsPresent = LEGACY_COLUMNS.filter((column) => columnSet.has(column));
+  const styleIdColumn = columns.find((row) => row.column_name === "styleId") || null;
+  const nullSummary = await loadNullSummary(columnSet);
 
-  while (true) {
-    const rows = await prisma.workRecord.findMany({
-      where: {
-        OR: [
-          { orderNo: null },
-          { lineId: null },
-          { styleId: null },
-          { styleUid: null },
-          { styleName: null },
-          { processId: null },
-          { processCode: null },
-        ],
+  const report = {
+    checkedAt: new Date().toISOString(),
+    message:
+      "This command no longer writes WorkRecord data. Exact backfill and legacy column drops are managed only by backend/migration_fix.sql.",
+    workRecord: {
+      styleIdDataType: styleIdColumn?.data_type || null,
+      legacyColumnsPresent,
+      requiredColumnsPresent: {
+        assignmentPlanId: columnSet.has("assignmentPlanId"),
+        workerId: columnSet.has("workerId"),
+        styleId: columnSet.has("styleId"),
+        styleProcessId: columnSet.has("styleProcessId"),
       },
-      orderBy: { id: "asc" },
-      take: BATCH_SIZE,
-      ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
-      select: {
-        id: true,
-        orgId: true,
-        workLogId: true,
-        assignmentPlanId: true,
-        orderNo: true,
-        lineId: true,
-        styleId: true,
-        styleUid: true,
-        styleName: true,
-        processId: true,
-        processCode: true,
-      },
-    });
+      nullSummary,
+    },
+    nextStep:
+      legacyColumnsPresent.length > 0 || styleIdColumn?.data_type !== "integer"
+        ? "Run the deploy/predeploy migration path that applies backend/migration_fix.sql against the target DB."
+        : "Schema is canonical. Investigate any nullSummary values before accepting new WorkRecord writes.",
+  };
 
-    if (rows.length === 0) break;
-    cursorId = rows[rows.length - 1].id;
-    scanned += rows.length;
-
-    const workLogIds = Array.from(new Set(rows.map((row) => row.workLogId).filter(Boolean)));
-    const assignmentPlanIds = Array.from(
-      new Set(rows.map((row) => toPositiveIntOrNull(row.assignmentPlanId)).filter(Boolean))
-    );
-    const orgIds = Array.from(new Set(rows.map((row) => row.orgId).filter(Boolean)));
-    const styleIds = Array.from(
-      new Set(
-        rows
-          .map((row) => resolveOptionalString(row.styleId, null))
-          .filter(Boolean)
-      )
-    );
-    const styleNames = Array.from(
-      new Set(
-        rows
-          .map((row) => resolveOptionalString(row.styleName, null))
-          .filter(Boolean)
-      )
-    );
-    const styleUids = Array.from(
-      new Set(rows.map((row) => toPositiveIntOrNull(row.styleUid)).filter(Boolean))
-    );
-    const processIds = Array.from(
-      new Set(rows.map((row) => toPositiveIntOrNull(row.processId)).filter(Boolean))
-    );
-    const processCodes = Array.from(
-      new Set(
-        rows
-          .map((row) => resolveOptionalString(row.processCode, null))
-          .filter(Boolean)
-      )
-    );
-
-    const [workLogs, planRows, boardStates, orgPlanRows, styles, processes] = await Promise.all([
-      prisma.workLog.findMany({
-        where: { id: { in: workLogIds } },
-        select: { id: true, workDate: true, records: true },
-      }),
-      assignmentPlanIds.length > 0
-        ? prisma.assignmentPlan.findMany({
-            where: { id: { in: assignmentPlanIds } },
-            select: {
-              id: true,
-              orderNo: true,
-              cardId: true,
-              originOrderId: true,
-              assignmentCtSnapshot: true,
-            },
-          })
-        : Promise.resolve([]),
-      orgIds.length > 0
-        ? prisma.assignmentBoardState.findMany({
-            where: { orgId: { in: orgIds } },
-            select: { orgId: true, assignments: true },
-          })
-        : Promise.resolve([]),
-      orgIds.length > 0
-        ? prisma.assignmentPlan.findMany({
-            where: { orgId: { in: orgIds } },
-            select: {
-              id: true,
-              orgId: true,
-              externalId: true,
-              lineId: true,
-              orderNo: true,
-              label: true,
-              cardId: true,
-              originOrderId: true,
-              assignmentCtSnapshot: true,
-            },
-          })
-        : Promise.resolve([]),
-      orgIds.length > 0 &&
-      (styleIds.length > 0 || styleNames.length > 0 || styleUids.length > 0)
-        ? prisma.style.findMany({
-            where: {
-              orgId: { in: orgIds },
-              OR: [
-                ...(styleUids.length > 0 ? [{ uid: { in: styleUids } }] : []),
-                ...(styleIds.length > 0 ? [{ styleId: { in: styleIds } }] : []),
-                ...(styleNames.length > 0 ? [{ name: { in: styleNames } }] : []),
-              ],
-            },
-            select: {
-              uid: true,
-              orgId: true,
-              styleId: true,
-              name: true,
-            },
-          })
-        : Promise.resolve([]),
-      orgIds.length > 0 && (processIds.length > 0 || processCodes.length > 0)
-        ? prisma.attrProcess.findMany({
-            where: {
-              orgId: { in: orgIds },
-              OR: [
-                ...(processIds.length > 0 ? [{ id: { in: processIds } }] : []),
-                ...(processCodes.length > 0 ? [{ code: { in: processCodes } }] : []),
-              ],
-            },
-            select: {
-              id: true,
-              orgId: true,
-              code: true,
-              name: true,
-            },
-          })
-        : Promise.resolve([]),
-    ]);
-
-    const workLogById = new Map(workLogs.map((workLog) => [workLog.id, workLog]));
-    const planById = new Map(
-      planRows.map((plan) => [toPositiveIntOrNull(plan.id), plan])
-    );
-    const styleByUid = new Map(
-      styles.map((style) => [toPositiveIntOrNull(style.uid), style])
-    );
-    const styleById = new Map(
-      styles
-        .map((style) => [buildOrgScopedKey(style.orgId, style.styleId), style])
-        .filter(([key]) => Boolean(key))
-    );
-    const styleByName = new Map(
-      styles
-        .map((style) => [buildOrgScopedKey(style.orgId, style.name), style])
-        .filter(([key]) => Boolean(key))
-    );
-    const processById = new Map(
-      processes.map((process) => [toPositiveIntOrNull(process.id), process])
-    );
-    const processByCode = new Map(
-      processes
-        .map((process) => [buildOrgScopedKey(process.orgId, process.code), process])
-        .filter(([key]) => Boolean(key))
-    );
-    const assignmentByExternalIdByOrg = new Map();
-    boardStates.forEach((row) => {
-      const map = new Map();
-      normalizeStateAssignments(row.assignments).forEach((assignment) => {
-        const externalId = resolveAssignmentExternalId(assignment);
-        if (!externalId || map.has(externalId)) return;
-        map.set(externalId, assignment);
-      });
-      assignmentByExternalIdByOrg.set(row.orgId, map);
-    });
-    const candidatePlansByOrg = orgPlanRows.reduce((map, plan) => {
-      const orgId = toPositiveIntOrNull(plan?.orgId);
-      if (!orgId) return map;
-      const bucket = map.get(orgId) || [];
-      bucket.push(plan);
-      map.set(orgId, bucket);
-      return map;
-    }, new Map());
-    const candidatesByOrg = new Map();
-    orgIds.forEach((orgId) => {
-      const plansForOrg = candidatePlansByOrg.get(orgId) || [];
-      const assignmentsByExternalId = assignmentByExternalIdByOrg.get(orgId) || new Map();
-      candidatesByOrg.set(
-        orgId,
-        buildPlanMatchCandidates(plansForOrg, assignmentsByExternalId)
-      );
-    });
-
-    const updates = [];
-    rows.forEach((row) => {
-      const workLog = workLogById.get(row.workLogId) || null;
-      const workLogLineId = resolveWorkLogLineMeta(workLog?.records).lineId;
-      const nextLineId = toPositiveIntOrNull(row.lineId) ?? workLogLineId ?? null;
-
-      let nextOrderNo = resolveOptionalString(row.orderNo, null);
-      const assignmentPlanId = toPositiveIntOrNull(row.assignmentPlanId);
-      const linkedPlan = assignmentPlanId != null ? planById.get(assignmentPlanId) ?? null : null;
-      let updateSource = null;
-
-      if (!nextOrderNo && linkedPlan) {
-        nextOrderNo = resolveOptionalString(linkedPlan.orderNo, null);
-        if (nextOrderNo) updateSource = "direct";
-      }
-
-      if (!nextOrderNo && assignmentPlanId == null) {
-        const matched = resolveOrphanOrderNoMatch({
-          record: { ...row, lineId: nextLineId },
-          workLog,
-          candidates: candidatesByOrg.get(row.orgId) || [],
-        });
-        nextOrderNo = resolveOptionalString(matched?.orderNo, null);
-        if (nextOrderNo) updateSource = "heuristic";
-      }
-
-      let nextStyleId = resolveOptionalString(row.styleId, null);
-      if (!nextStyleId && linkedPlan) {
-        nextStyleId = resolveAssignmentPlanPrimaryStyleId(linkedPlan);
-      }
-
-      let linkedStyle =
-        (toPositiveIntOrNull(row.styleUid)
-          ? styleByUid.get(toPositiveIntOrNull(row.styleUid)) ?? null
-          : null) ??
-        (nextStyleId
-          ? styleById.get(buildOrgScopedKey(row.orgId, nextStyleId)) ?? null
-          : null) ??
-        (resolveOptionalString(row.styleName, null)
-          ? styleByName.get(buildOrgScopedKey(row.orgId, row.styleName)) ?? null
-          : null);
-
-      nextStyleId = nextStyleId ?? resolveOptionalString(linkedStyle?.styleId, null);
-      const nextStyleUid =
-        toPositiveIntOrNull(row.styleUid) ?? toPositiveIntOrNull(linkedStyle?.uid);
-      const nextStyleName =
-        resolveOptionalString(row.styleName, null) ??
-        resolveOptionalString(linkedStyle?.name, null);
-
-      const linkedProcess =
-        (toPositiveIntOrNull(row.processId)
-          ? processById.get(toPositiveIntOrNull(row.processId)) ?? null
-          : null) ??
-        (resolveOptionalString(row.processCode, null)
-          ? processByCode.get(buildOrgScopedKey(row.orgId, row.processCode)) ?? null
-          : null);
-      const nextProcessId =
-        toPositiveIntOrNull(row.processId) ?? toPositiveIntOrNull(linkedProcess?.id);
-      const nextProcessCode =
-        resolveOptionalString(row.processCode, null) ??
-        resolveOptionalString(linkedProcess?.code, null);
-
-      const lineChanged = (toPositiveIntOrNull(row.lineId) ?? null) !== nextLineId;
-      const orderNoChanged = resolveOptionalString(row.orderNo, null) !== nextOrderNo;
-      const styleIdChanged = resolveOptionalString(row.styleId, null) !== nextStyleId;
-      const styleUidChanged =
-        (toPositiveIntOrNull(row.styleUid) ?? null) !== (nextStyleUid ?? null);
-      const styleNameChanged =
-        resolveOptionalString(row.styleName, null) !== nextStyleName;
-      const processIdChanged =
-        (toPositiveIntOrNull(row.processId) ?? null) !== (nextProcessId ?? null);
-      const processCodeChanged =
-        resolveOptionalString(row.processCode, null) !== nextProcessCode;
-
-      if (
-        !lineChanged &&
-        !orderNoChanged &&
-        !styleIdChanged &&
-        !styleUidChanged &&
-        !styleNameChanged &&
-        !processIdChanged &&
-        !processCodeChanged
-      ) {
-        return;
-      }
-
-      updates.push({
-        id: row.id,
-        data: {
-          ...(lineChanged ? { lineId: nextLineId } : {}),
-          ...(orderNoChanged ? { orderNo: nextOrderNo } : {}),
-          ...(styleIdChanged ? { styleId: nextStyleId } : {}),
-          ...(styleUidChanged ? { styleUid: nextStyleUid } : {}),
-          ...(styleNameChanged ? { styleName: nextStyleName } : {}),
-          ...(processIdChanged ? { processId: nextProcessId } : {}),
-          ...(processCodeChanged ? { processCode: nextProcessCode } : {}),
-        },
-        updateSource,
-        lineChanged,
-        styleChanged: styleIdChanged || styleUidChanged || styleNameChanged,
-        processChanged: processIdChanged || processCodeChanged,
-      });
-    });
-
-    if (updates.length > 0) {
-      await prisma.$transaction(
-        updates.map((update) =>
-          prisma.workRecord.update({
-            where: { id: update.id },
-            data: update.data,
-          })
-        )
-      );
-      updated += updates.length;
-      updates.forEach((update) => {
-        if (update.lineChanged) lineIdUpdated += 1;
-        if (update.updateSource === "direct") directOrderNoUpdated += 1;
-        if (update.updateSource === "heuristic") heuristicOrderNoUpdated += 1;
-        if (update.styleChanged) styleRefUpdated += 1;
-        if (update.processChanged) processRefUpdated += 1;
-      });
-    }
-
-    console.log(
-      `[backfill-workrecord-canonical-fields] scanned=${scanned} updated=${updated} directOrderNoUpdated=${directOrderNoUpdated} heuristicOrderNoUpdated=${heuristicOrderNoUpdated} lineIdUpdated=${lineIdUpdated} styleRefUpdated=${styleRefUpdated} processRefUpdated=${processRefUpdated}`
-    );
-  }
-
-  console.log(
-    `[backfill-workrecord-canonical-fields] done scanned=${scanned} updated=${updated} directOrderNoUpdated=${directOrderNoUpdated} heuristicOrderNoUpdated=${heuristicOrderNoUpdated} lineIdUpdated=${lineIdUpdated} styleRefUpdated=${styleRefUpdated} processRefUpdated=${processRefUpdated}`
-  );
+  console.log(JSON.stringify(report, null, 2));
 }
 
 main()
