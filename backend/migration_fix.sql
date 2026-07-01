@@ -820,6 +820,8 @@ BEGIN
   END IF;
 
   ALTER TABLE "WorkRecord"
+    DROP COLUMN IF EXISTS "workerName",
+    DROP COLUMN IF EXISTS "orderNo",
     DROP COLUMN IF EXISTS "customerName",
     DROP COLUMN IF EXISTS "styleName",
     DROP COLUMN IF EXISTS "processId",
