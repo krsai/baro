@@ -550,9 +550,9 @@ const StyleBoard = () => {
                 <TableCell>
                   {getUiMessage('styleBoard.styleCode', '스타일 코드', languageCode)}
                 </TableCell>
-                {canViewProcessSummary ? <TableCell>{'PT'}</TableCell> : null}
-                {canViewProcessSummary ? <TableCell>{'ST'}</TableCell> : null}
-                {canViewProcessSummary ? <TableCell>{'AT'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell sx={{ minWidth: 120, width: 120 }}>{'PT'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell sx={{ minWidth: 120, width: 120 }}>{'ST'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell sx={{ minWidth: 120, width: 120 }}>{'AT'}</TableCell> : null}
                 <TableCell>
                   {getUiMessage('styleBoard.registrationDate', '등록일', languageCode)}
                 </TableCell>
