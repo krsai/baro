@@ -164,6 +164,8 @@ Date: 2026-07-01
 - Switched work log / work history / production analysis minimum-date guards from the BARO-only hardcoded date to factory-scoped management start dates.
 - Reworked business and customer basic-info forms to group related fields and support Korean/Vietnamese inputs.
 - Added startup schema drift checks for `Organization.nameKo/nameVi` and `Factory.nameKo/nameVi/managementStartDate` so `/factories` does not serve before those DB columns exist.
+- Made `PUT /factories/:id` preserve existing address/contact/wage fields when omitted from partial payloads.
+- Documented the remaining legacy `workDate` fallback as form-initialization-only and clarified the assignment board's earliest-factory min-date intent in code.
 
 ### Remaining
 - Recheck whether the global assignment board should keep using the earliest factory management start date or move to a stricter per-factory rule.
@@ -176,3 +178,4 @@ Date: 2026-07-01
 - Create/update organization and factory records and confirm localized names persist.
 - Change a factory `managementStartDate` and confirm selected-factory date pickers clamp correctly in work history and production analysis screens.
 - On a DB missing the new business/factory columns, confirm backend startup applies `migration_fix.sql` before accepting `/factories` traffic.
+- Send a partial `PUT /factories/:id` payload that omits address/contact/wage fields and confirm existing DB values are preserved.

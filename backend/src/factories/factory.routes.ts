@@ -42,6 +42,36 @@ const resolveFactoryWageFields = (
   };
 };
 
+const resolveFactoryWageUpdateFields = (params: {
+  targetMonthlyWageInput: unknown;
+  wagePerSecondInput: unknown;
+  fallbackTargetMonthlyWage: unknown;
+  fallbackWagePerSecond: unknown;
+}): { targetMonthlyWage: number | null; wagePerSecond: number | null } => {
+  const {
+    targetMonthlyWageInput,
+    wagePerSecondInput,
+    fallbackTargetMonthlyWage,
+    fallbackWagePerSecond,
+  } = params;
+
+  if (targetMonthlyWageInput === undefined && wagePerSecondInput === undefined) {
+    return {
+      targetMonthlyWage: toNumberOrNull(fallbackTargetMonthlyWage),
+      wagePerSecond: toNumberOrNull(fallbackWagePerSecond),
+    };
+  }
+
+  if (targetMonthlyWageInput !== undefined) {
+    return resolveFactoryWageFields(targetMonthlyWageInput, wagePerSecondInput);
+  }
+
+  return {
+    targetMonthlyWage: toNumberOrNull(fallbackTargetMonthlyWage),
+    wagePerSecond: toNumberOrNull(wagePerSecondInput),
+  };
+};
+
 const normalizeFactoryCode = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toUpperCase().replace(/[^A-Z]/g, "");
@@ -89,6 +119,14 @@ const normalizeOptionalFactoryText = (value: unknown): string | null => {
   const normalized = value.trim();
   return normalized || null;
 };
+
+const resolveOptionalFactoryTextUpdate = (
+  value: unknown,
+  fallbackValue: unknown
+): string | null =>
+  value === undefined
+    ? normalizeOptionalFactoryText(fallbackValue)
+    : normalizeOptionalFactoryText(value);
 
 const resolveFactoryPhoneFields = (params: {
   countryInput: unknown;
@@ -194,11 +232,11 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
         nameVi: normalizeOptionalFactoryText(nameVi),
         factoryCode: normalizedCode,
         managementStartDate: managementStartDateResolved.value,
-        address: address?.trim?.() ?? address ?? null,
+        address: normalizeOptionalFactoryText(address),
         country: phoneFields.country,
         countryCode: phoneFields.countryCode,
-        phoneNumber: phoneNumber?.trim?.() ?? phoneNumber ?? null,
-        manager: manager?.trim?.() ?? manager ?? null,
+        phoneNumber: normalizeOptionalFactoryText(phoneNumber),
+        manager: normalizeOptionalFactoryText(manager),
         targetMonthlyWage: wageFields.targetMonthlyWage,
         wagePerSecond: wageFields.wagePerSecond,
       },
@@ -323,7 +361,12 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       }
     }
 
-    const wageFields = resolveFactoryWageFields(targetMonthlyWage, wagePerSecond);
+    const wageFields = resolveFactoryWageUpdateFields({
+      targetMonthlyWageInput: targetMonthlyWage,
+      wagePerSecondInput: wagePerSecond,
+      fallbackTargetMonthlyWage: existing.targetMonthlyWage,
+      fallbackWagePerSecond: existing.wagePerSecond,
+    });
     const phoneFields = resolveFactoryPhoneFields({
       countryInput: country,
       countryCodeInput: countryCode,
@@ -355,11 +398,17 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
                 : (existing as any)?.nameVi ?? null,
             factoryCode: resolvedCode,
             managementStartDate: managementStartDateResolved.value,
-            address: address?.trim?.() ?? address ?? null,
+            address: resolveOptionalFactoryTextUpdate(
+              address,
+              (existing as any)?.address
+            ),
             country: phoneFields.country,
             countryCode: phoneFields.countryCode,
-            phoneNumber: phoneNumber?.trim?.() ?? phoneNumber ?? null,
-            manager: manager?.trim?.() ?? manager ?? null,
+            phoneNumber: resolveOptionalFactoryTextUpdate(
+              phoneNumber,
+              existing.phoneNumber
+            ),
+            manager: resolveOptionalFactoryTextUpdate(manager, existing.manager),
             targetMonthlyWage: wageFields.targetMonthlyWage,
             wagePerSecond: wageFields.wagePerSecond,
           },

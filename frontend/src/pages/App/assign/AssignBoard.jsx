@@ -3737,6 +3737,8 @@ const AssignBoard = () => {
         if (cancelled) return;
 
         const safeFactories = Array.isArray(factories) ? factories : [];
+        // This board spans multiple factories at once, so keep the global min date at the
+        // earliest configured factory start date until the UX supports factory-scoped windows.
         setAssignmentOperationStartDateKey(
           resolveEarliestFactoryManagementStartDateKey(safeFactories)
         );

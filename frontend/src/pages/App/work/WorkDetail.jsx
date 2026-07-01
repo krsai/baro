@@ -396,14 +396,18 @@ const buildLineSelection = (log) => {
   if (!log?.lineId && !log?.lineName) return null;
   return { id: log?.lineId || '', name: log?.lineName || '' };
 };
+// Legacy rows created before coverage dates were consistently backfilled may still expose only
+// the display date (`workDate`). Keep that fallback limited to form initialization/diffing only.
+const resolveLegacyCoverageEndSeed = (log) =>
+  log?.coverageEndDate || log?.workDate || log?.createdAt || undefined;
+const resolveLegacyCoverageEndDateKey = (log) =>
+  toText(log?.coverageEndDate || log?.workDate);
 const buildInitialWorkDate = (log) => {
-  const nextDate = dayjs(log?.coverageEndDate || log?.workDate || log?.createdAt || undefined);
+  const nextDate = dayjs(resolveLegacyCoverageEndSeed(log));
   return clampWorkLogDay(nextDate.isValid() ? nextDate : dayjs());
 };
 const buildInitialCoverageStartDate = (log) => {
-  const nextDate = dayjs(
-    log?.coverageStartDate || log?.coverageEndDate || log?.workDate || log?.createdAt || undefined
-  );
+  const nextDate = dayjs(log?.coverageStartDate || resolveLegacyCoverageEndSeed(log));
   return clampWorkLogDay(nextDate.isValid() ? nextDate : dayjs());
 };
 const stripAutoNoteFromText = (value) => {
@@ -2007,7 +2011,7 @@ const WorkDetail = ({
   );
   const initialComparableSnapshot = useMemo(() => {
     if (!initialLog?.id) return null;
-    const initialCoverageEndDate = toText(initialLog?.coverageEndDate || initialLog?.workDate);
+    const initialCoverageEndDate = resolveLegacyCoverageEndDateKey(initialLog);
     const initialCoverageStartDate = toText(
       initialLog?.coverageStartDate || initialCoverageEndDate
     );
