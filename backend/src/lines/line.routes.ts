@@ -614,7 +614,7 @@ export const createLineRouter = ({
             orgId: organization.id,
             id: { in: eligibleWorkerIds },
           },
-          data: { lineName: null },
+          data: { lineId: null },
         });
       }
 
@@ -628,7 +628,7 @@ export const createLineRouter = ({
             orgId: organization.id,
             id: { in: employeeIds },
           },
-          data: { lineName: line.name },
+          data: { lineId },
         });
       }
 
@@ -739,21 +739,6 @@ export const createLineRouter = ({
       data,
     });
 
-    if (typeof data.name === "string" && data.name.trim()) {
-      await prisma.employee.updateMany({
-        where: {
-          orgId: organization.id,
-          lineAssignments: {
-            some: {
-              lineId: updated.id,
-              endAt: null,
-            },
-          },
-        },
-        data: { lineName: updated.name },
-      });
-    }
-
     return res.json(updated);
   });
 
@@ -792,7 +777,7 @@ export const createLineRouter = ({
       if (assignedEmployeeIds.length > 0) {
         await tx.employee.updateMany({
           where: { id: { in: assignedEmployeeIds }, orgId: organization.id },
-          data: { lineName: null },
+          data: { lineId: null },
         });
       }
 
@@ -1098,7 +1083,7 @@ export const createLineRouter = ({
 
     await prisma.employee.update({
       where: { id: employee.id },
-      data: { lineName: line.name, factoryId: line.factoryId },
+      data: { lineId: line.id, factoryId: line.factoryId },
     });
 
     const affectedLineIds = [...new Set([...previousLineIds, line.id])];

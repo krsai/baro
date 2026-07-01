@@ -316,6 +316,7 @@ model Line {
   manager         Employee?        @relation("LineManager", fields: [managerEmployeeId], references: [id])
   assignments     LineAssignment[]
   assignmentPlans AssignmentPlan[]
+  employees       Employee[]        @relation("EmployeeCurrentLine")
 
   @@unique([factoryId, name])
   @@index([orgId])
@@ -327,6 +328,7 @@ model Employee {
   orgId             Int
   orgMembershipId   Int       @unique
   factoryId         Int?
+  lineId            Int?
   roleId            Int?
   employeeNo        String?
   payType           String?
@@ -335,7 +337,6 @@ model Employee {
   phone             String?
   bankName          String?
   bankAccountNumber String?
-  lineName          String?
   position          String?
   joinedAt          DateTime?
   leftAt            DateTime?
@@ -348,6 +349,7 @@ model Employee {
   organization      Organization      @relation(fields: [orgId], references: [id])
   membership        OrgMembership     @relation(fields: [orgMembershipId], references: [id])
   factory           Factory?          @relation(fields: [factoryId], references: [id])
+  line              Line?             @relation("EmployeeCurrentLine", fields: [lineId], references: [id], onDelete: SetNull)
   role              AttrRole?         @relation(fields: [roleId], references: [id])
   lineAssignments   LineAssignment[]
   managedLines      Line[]            @relation("LineManager")
@@ -356,6 +358,7 @@ model Employee {
 
   @@index([orgId])
   @@index([factoryId])
+  @@index([lineId])
   @@index([roleId])
   @@unique([orgId, employeeNo])
 }
@@ -500,9 +503,6 @@ model Style {
   orgId            Int
   code             String
   name             String
-  customer         String
-  customerNameKo   String?
-  customerNameVi   String?
   registrationDate String?
   designer         String?
   collection       String?
@@ -524,7 +524,7 @@ model Style {
   workRecords    WorkRecord[]
 
   @@unique([orgId, code])
-  @@unique([orgId, customer, name])
+  @@unique([orgId, name])
   @@index([orgId])
 }
 

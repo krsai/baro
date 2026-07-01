@@ -344,7 +344,6 @@ async function runTimeModelRealignment(prisma, options = {}) {
           orgId: true,
           code: true,
           name: true,
-          customer: true,
         },
       },
       standards: {
@@ -494,7 +493,6 @@ async function runTimeModelRealignment(prisma, options = {}) {
       orgId: true,
       code: true,
       name: true,
-      customer: true,
       processes: true,
     },
   });
@@ -3198,14 +3196,13 @@ async function ensureEmployee({
 
 async function ensureStyles(orgId) {
   for (const style of BASELINE_STYLES) {
-    const { styleId, styleCode, ...styleData } = style;
+    const { styleId, styleCode, customer: _customer, ...styleData } = style;
     const code = styleCode || styleId;
     await prisma.style.upsert({
       where: { orgId_code: { orgId, code } },
       update: {
         code,
         name: style.name,
-        customer: style.customer,
         registrationDate: style.registrationDate,
         designer: style.designer,
         collection: style.collection,

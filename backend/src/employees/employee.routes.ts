@@ -76,6 +76,7 @@ const toEmployeeResponse = (employee: any) => ({
   orgId: employee?.orgId ?? null,
   orgMembershipId: employee?.orgMembershipId ?? null,
   factoryId: employee?.factoryId ?? null,
+  lineId: employee?.lineId ?? null,
   roleId: employee?.roleId ?? null,
   employeeNo: normalizeEmployeeNo(employee?.employeeNo) ?? null,
   roleCode: String(employee?.role?.code ?? "").trim(),
@@ -88,7 +89,7 @@ const toEmployeeResponse = (employee: any) => ({
   phone: employee?.phone ?? null,
   bankName: employee?.bankName ?? null,
   bankAccountNumber: employee?.bankAccountNumber ?? null,
-  lineName: employee?.lineName ?? null,
+  lineName: employee?.line?.name ?? null,
   position: employee?.position ?? null,
   joinedAt: employee?.joinedAt ?? null,
   leftAt: employee?.leftAt ?? null,
@@ -259,6 +260,7 @@ export const createEmployeeRouter = ({
       where,
       include: {
         role: true,
+        line: true,
       },
       orderBy: { id: "asc" },
     });
@@ -514,18 +516,19 @@ export const createEmployeeRouter = ({
       },
       include: {
         line: {
-          select: { name: true },
+          select: { id: true, name: true },
         },
       },
       orderBy: [{ startAt: "desc" }, { id: "desc" }],
     });
 
-    const syncedLineName = activeAssignment?.line?.name ?? null;
+    const syncedLineId = activeAssignment?.line?.id ?? null;
     const refreshedEmployee = await prisma.employee.update({
       where: { id: employee.id },
-      data: { lineName: syncedLineName },
+      data: { lineId: syncedLineId },
       include: {
         role: true,
+        line: true,
       },
     });
 

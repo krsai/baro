@@ -141,6 +141,21 @@ function assertGeneratedPrismaClientShape() {
   if (hasField("Style", "styleCode")) {
     staleSignals.push("Style.styleCode still present");
   }
+  if (hasField("Style", "customer")) {
+    staleSignals.push("Style.customer still present");
+  }
+  if (hasField("Style", "customerNameKo")) {
+    staleSignals.push("Style.customerNameKo still present");
+  }
+  if (hasField("Style", "customerNameVi")) {
+    staleSignals.push("Style.customerNameVi still present");
+  }
+  if (hasField("Employee", "lineName")) {
+    staleSignals.push("Employee.lineName still present");
+  }
+  if (!hasField("Employee", "lineId")) {
+    staleSignals.push("Employee.lineId missing");
+  }
   if (!hasField("WorkRecord", "lineId")) {
     staleSignals.push("WorkRecord.lineId missing");
   }
@@ -2680,8 +2695,10 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       orgId: true,
       code: true,
       name: true,
-      customer: true,
       processes: true,
+      organization: {
+        select: { id: true, name: true, nameKo: true, nameVi: true },
+      },
     },
   });
   diagnostics.styleCandidateCount = styleCandidates.length;
@@ -4204,6 +4221,11 @@ const resolveStyleByIdForAccess = async ({
       id: numericStyleId,
       orgId: { in: ownerScope },
     },
+    include: {
+      organization: {
+        select: { id: true, name: true, nameKo: true, nameVi: true },
+      },
+    },
     orderBy: { id: "asc" },
     take: ownerOrgId === null ? 2 : 1,
   });
@@ -4218,20 +4240,17 @@ const resolveStyleByIdForAccess = async ({
 
 const findStyleConflict = async ({
   orgId,
-  customer,
   name,
   styleCode,
   excludeStyleId = null,
 }: {
   orgId: number;
-  customer: string;
   name: string;
   styleCode: string;
   excludeStyleId?: number | null;
 }) => {
   const where: any = {
     orgId,
-    customer,
     OR: [{ name }, { code: styleCode }],
   };
   if (Number.isFinite(excludeStyleId)) {
@@ -4924,36 +4943,40 @@ const toStyleResponse = (
     includeProcesses?: boolean;
     processMirrorMap?: Map<number, any[]>;
   } = {}
-) => ({
-  id: style.id,
-  styleId: style.id,
-  ownerOrgId: style.orgId ?? null,
-  customerOrgId: style.orgId ?? null,
-  ownerOrgName: style.customer ?? "",
-  code: style.code ?? "",
-  styleCode: style.code ?? "",
-  name: style.name ?? "",
-  customer: style.customer ?? "",
-  customerNameKo: style.customerNameKo ?? "",
-  customerNameVi: style.customerNameVi ?? "",
-  registrationDate: style.registrationDate ?? "",
-  designer: style.designer ?? "",
-  collection: style.collection ?? "",
-  season: style.season ?? "",
-  imageUrls: ensureArray(style.imageUrls),
-  processes:
-    options.includeProcesses === false
-      ? []
-      : options.processMirrorMap?.get(Number(style.id)) ??
-        normalizeStyleProcesses(style.processes),
-  bom: ensureArray(style.bom),
-  bomNotes: style.bomNotes ?? "",
-  revenueMemo: style.revenueMemo ?? "",
-  createdAt: style.createdAt,
-  updatedAt: style.updatedAt,
-  workRecordCount: Number(style._count?.workRecords ?? 0),
-  hasWorkRecords: Number(style._count?.workRecords ?? 0) > 0,
-});
+) => {
+  const owner = style.organization ?? null;
+  const ownerOrgName = resolveOptionalString(owner?.name, "") ?? "";
+  return {
+    id: style.id,
+    styleId: style.id,
+    ownerOrgId: style.orgId ?? null,
+    customerOrgId: style.orgId ?? null,
+    ownerOrgName,
+    code: style.code ?? "",
+    styleCode: style.code ?? "",
+    name: style.name ?? "",
+    customer: ownerOrgName,
+    customerNameKo: resolveOptionalString(owner?.nameKo, "") ?? "",
+    customerNameVi: resolveOptionalString(owner?.nameVi, "") ?? "",
+    registrationDate: style.registrationDate ?? "",
+    designer: style.designer ?? "",
+    collection: style.collection ?? "",
+    season: style.season ?? "",
+    imageUrls: ensureArray(style.imageUrls),
+    processes:
+      options.includeProcesses === false
+        ? []
+        : options.processMirrorMap?.get(Number(style.id)) ??
+          normalizeStyleProcesses(style.processes),
+    bom: ensureArray(style.bom),
+    bomNotes: style.bomNotes ?? "",
+    revenueMemo: style.revenueMemo ?? "",
+    createdAt: style.createdAt,
+    updatedAt: style.updatedAt,
+    workRecordCount: Number(style._count?.workRecords ?? 0),
+    hasWorkRecords: Number(style._count?.workRecords ?? 0) > 0,
+  };
+};
 
 const sumOrderItemQuantity = (item: any = {}) => {
   const direct = Number(item?.totalQuantity);
@@ -8148,54 +8171,6 @@ const validateWorkLogLineWorkers = async ({
     );
   }
 
-  // Legacy fallback: if line assignment history is missing, allow workers whose
-  // denormalized employee.lineName still matches the selected line.
-  if (missingWorkerIds.length > 0) {
-    const fallbackLegacyWorkers = await prisma.employee.findMany({
-      where: {
-        orgId,
-        id: { in: missingWorkerIds },
-        ...(factoryId !== null
-          ? {
-              OR: [{ factoryId }, { factoryId: null }],
-            }
-          : {}),
-        lineName: {
-          equals: line.name,
-          mode: "insensitive",
-        },
-        membership: {
-          role: "WORKER",
-          status: { in: ["ACTIVE", "TERMINATED"] },
-        },
-        role: {
-          code: DEFAULT_EMPLOYEE_ROLE_CODE_SEWING,
-        },
-      },
-      select: {
-        id: true,
-        joinedAt: true,
-        leftAt: true,
-      },
-    });
-
-    fallbackLegacyWorkers.forEach((worker) => {
-      const workerId = toPositiveIntOrNull(worker.id);
-      if (workerId === null) return;
-      const employmentCoverage = resolveWorkRecordEmploymentCoverage({
-        coverageStartDate: normalizedWorkDate,
-        coverageEndDate: normalizedCoverageEndDate,
-        joinedDateKey: toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE),
-        leftDateKey: toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE),
-      });
-      if (!employmentCoverage.valid) return;
-      matchedWorkerIdSet.add(workerId);
-    });
-    missingWorkerIds = workerIds.filter(
-      (workerId) => !matchedWorkerIdSet.has(workerId)
-    );
-  }
-
   return {
     status: 200,
     error: null as string | null,
@@ -8775,15 +8750,10 @@ const resolveWorkLogImportLineForEmployee = ({
   employee,
   coverageEndDate,
   lineAssignmentsByEmployeeId,
-  lineLookupByFactoryAndName,
 }: {
   employee: any;
   coverageEndDate: string;
   lineAssignmentsByEmployeeId: Map<number, any[]>;
-  lineLookupByFactoryAndName: Map<
-    string,
-    Array<{ id: number | null; factoryId: number; name: string }>
-  >;
 }) => {
   const employeeId = toPositiveIntOrNull(employee?.id);
   const assignments = employeeId
@@ -8831,30 +8801,19 @@ const resolveWorkLogImportLineForEmployee = ({
     };
   }
 
-  const factoryId = toPositiveIntOrNull(employee?.factoryId);
-  const lineName = resolveOptionalString(employee?.lineName, null);
-  if (factoryId && lineName) {
-    const fallbackMatches =
-      lineLookupByFactoryAndName.get(
-        `${factoryId}:${normalizeComparableText(lineName)}`
-      ) || [];
-    if (fallbackMatches.length === 1 && fallbackMatches[0]?.id) {
-      return {
-        line: {
-          id: Number(fallbackMatches[0].id),
-          factoryId: fallbackMatches[0].factoryId,
-          name: fallbackMatches[0].name,
-          source: "employee_line_name",
-        },
-        error: null as string | null,
-      };
-    }
-    if (fallbackMatches.length > 1) {
-      return {
-        line: null,
-        error: "employee line name matched multiple lines in the factory",
-      };
-    }
+  const lineId = toPositiveIntOrNull(employee?.line?.id ?? employee?.lineId);
+  const lineFactoryId = toPositiveIntOrNull(employee?.line?.factoryId);
+  const lineName = resolveOptionalString(employee?.line?.name, null);
+  if (lineId && lineFactoryId && lineName) {
+    return {
+      line: {
+        id: lineId,
+        factoryId: lineFactoryId,
+        name: lineName,
+        source: "employee_line_id",
+      },
+      error: null as string | null,
+    };
   }
 
   return {
@@ -9464,7 +9423,14 @@ const buildWorkLogContextResponse = async ({
         orgMembershipId: true,
         name: true,
         factoryId: true,
-        lineName: true,
+        lineId: true,
+        line: {
+          select: {
+            id: true,
+            factoryId: true,
+            name: true,
+          },
+        },
         joinedAt: true,
         leftAt: true,
         role: {
@@ -9868,48 +9834,6 @@ const buildWorkLogContextResponse = async ({
       workersForDate = fallbackWorkers;
       console.log(
         `[work-log-context] orgId=${orgId} lineId=${line.id} workDate=${normalizedWorkDate} filterDate=${employmentFilterDateKey} workers=fallback_active_assignments`
-      );
-    }
-  }
-
-  // Legacy fallback: keep old employee.lineName mapping working when lineAssignment
-  // history is missing or has not been migrated.
-  if (workersForDate.length === 0) {
-    const legacyWorkers = await prisma.employee.findMany({
-      where: {
-        orgId,
-        ...(normalizedFactoryId
-          ? {
-              OR: [{ factoryId: normalizedFactoryId }, { factoryId: null }],
-            }
-          : {}),
-        lineName: {
-          equals: line.name,
-          mode: "insensitive",
-        },
-        membership: {
-          role: "WORKER",
-          status: "ACTIVE",
-        },
-        role: {
-          code: DEFAULT_EMPLOYEE_ROLE_CODE_SEWING,
-        },
-      },
-      select: lineAssignmentSelect.employee.select,
-      orderBy: [{ id: "asc" }],
-    });
-    const legacyWorkersForDate = filterWorkersByEmploymentWindow(
-      legacyWorkers.map((employee) => ({
-        employeeId: employee.id,
-        lineId: line.id,
-        employee,
-      })),
-      "fallback_employee_line_name"
-    );
-    if (legacyWorkersForDate.length > 0) {
-      workersForDate = legacyWorkersForDate;
-      console.log(
-        `[work-log-context] orgId=${orgId} lineId=${line.id} workDate=${normalizedWorkDate} filterDate=${employmentFilterDateKey} workers=fallback_employee_line_name`
       );
     }
   }
@@ -10724,7 +10648,8 @@ const resolveStyleCandidateForAssignmentCard = ({
 
   const sameCustomerCandidates = orderCustomerKey
     ? candidates.filter(
-        (candidate) => normalizeComparableText(candidate?.customer) === orderCustomerKey
+        (candidate) =>
+          normalizeComparableText(candidate?.organization?.name) === orderCustomerKey
       )
     : candidates;
   const sameNameCandidates = itemStyleNameKey
@@ -11083,10 +11008,12 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
         orgId: true,
         code: true,
         name: true,
-        customer: true,
         imageUrls: true,
         processes: true,
         updatedAt: true,
+        organization: {
+          select: { id: true, name: true, nameKo: true, nameVi: true },
+        },
       },
     }),
     prisma.workOrder.findMany({
@@ -12145,9 +12072,12 @@ const loadAssignmentDisplayReferenceMaps = async (
       where: { orgId },
       select: {
         id: true,
+        orgId: true,
         code: true,
         name: true,
-        customer: true,
+        organization: {
+          select: { id: true, name: true, nameKo: true, nameVi: true },
+        },
       },
     }),
   ]);
@@ -12231,7 +12161,7 @@ const resolveAssignmentDisplayFallback = (
     customer:
       resolveOptionalString(order?.customerName, null) ??
       resolveOptionalString(order?.buyerOrgName, null) ??
-      resolveOptionalString(style?.customer, null) ??
+      resolveOptionalString(style?.organization?.name, null) ??
       resolveOptionalString(target?.customer, null),
     styleName,
     colorName:
@@ -13637,10 +13567,9 @@ const closeActiveLineAssignments = async (employeeId: number, endedAt: Date = ne
     data: { managerEmployeeId: null },
   });
 
-  // Keep denormalized employee.lineName aligned with active line assignment.
   await prisma.employee.updateMany({
     where: { id: employeeId },
-    data: { lineName: null },
+    data: { lineId: null },
   });
 
   return lineIds;
@@ -22173,7 +22102,14 @@ app.post("/work-logs/import", async (req, res) => {
             employeeNo: true,
             name: true,
             factoryId: true,
-            lineName: true,
+            lineId: true,
+            line: {
+              select: {
+                id: true,
+                factoryId: true,
+                name: true,
+              },
+            },
             joinedAt: true,
             leftAt: true,
           },
@@ -22257,7 +22193,6 @@ app.post("/work-logs/import", async (req, res) => {
     map.set(employeeId, bucket);
     return map;
   }, new Map<number, any[]>());
-  const lineLookupByFactoryAndName = buildWorkLogImportLineLookup(lines);
   const lineById = ensureArray(lines).reduce((map, line) => {
     const lineId = toPositiveIntOrNull(line?.id);
     if (!lineId || map.has(lineId)) return map;
@@ -22278,7 +22213,6 @@ app.post("/work-logs/import", async (req, res) => {
       employee,
       coverageEndDate: row.coverageEndDate,
       lineAssignmentsByEmployeeId,
-      lineLookupByFactoryAndName,
     });
     if (resolvedLine.error || !resolvedLine.line?.id || !resolvedLine.line?.factoryId) {
       issues.push(
@@ -23639,8 +23573,10 @@ app.get("/assignment-cards", async (req, res) => {
     orgId: true,
     code: true,
     name: true,
-    customer: true,
     updatedAt: true,
+    organization: {
+      select: { id: true, name: true, nameKo: true, nameVi: true },
+    },
     ...(includeProcesses ? { processes: true } : {}),
   };
   const styles =
@@ -25387,7 +25323,9 @@ app.get("/styles", async (req, res) => {
           orgId: true,
           code: true,
           name: true,
-          customer: true,
+          organization: {
+            select: { id: true, name: true, nameKo: true, nameVi: true },
+          },
           registrationDate: true,
           designer: true,
           collection: true,
@@ -25403,6 +25341,9 @@ app.get("/styles", async (req, res) => {
         where: { orgId: { in: ownerScope } },
         orderBy: { id: "asc" },
         include: {
+          organization: {
+            select: { id: true, name: true, nameKo: true, nameVi: true },
+          },
           _count: { select: { workRecords: true } },
         },
       });
@@ -25476,15 +25417,12 @@ app.post("/styles", async (req, res) => {
     payload: req.body ?? {},
   });
   payload.customer = owner.ownerOrgName || payload.customer;
-  (payload as any).customerNameKo = (owner as any).ownerOrgNameKo || "";
-  (payload as any).customerNameVi = (owner as any).ownerOrgNameVi || "";
   if (!payload.customer) {
     return res.status(400).json({ ok: false, error: "customer is required" });
   }
 
   const conflictMessage = await findStyleConflict({
     orgId: owner.ownerOrgId,
-    customer: payload.customer,
     name: payload.name,
     styleCode: payload.code,
   });
@@ -25521,10 +25459,17 @@ app.post("/styles", async (req, res) => {
     const createdStyle = await tx.style.create({
       data: {
         orgId: owner.ownerOrgId,
-        ...(payload as any),
-        customerNameKo: (payload as any).customerNameKo || undefined,
-        customerNameVi: (payload as any).customerNameVi || undefined,
+        code: payload.code,
+        name: payload.name,
+        registrationDate: payload.registrationDate,
+        designer: payload.designer,
+        collection: payload.collection,
+        season: payload.season,
+        imageUrls: payload.imageUrls,
         processes: syncedProcesses,
+        bom: payload.bom,
+        bomNotes: payload.bomNotes,
+        revenueMemo: payload.revenueMemo,
       },
     });
     if (includeProcesses) {
@@ -25537,6 +25482,11 @@ app.post("/styles", async (req, res) => {
     }
     return tx.style.findUniqueOrThrow({
       where: { id: createdStyle.id },
+      include: {
+        organization: {
+          select: { id: true, name: true, nameKo: true, nameVi: true },
+        },
+      },
     });
   });
   const processMirrorMap = includeProcesses
@@ -25583,7 +25533,7 @@ app.put("/styles/:styleId", async (req, res) => {
     {
       code: req.body?.code ?? req.body?.styleCode ?? existing.code,
       name: req.body?.name ?? existing.name,
-      customer: existing.customer,
+      customer: existing.organization?.name,
       registrationDate: req.body?.registrationDate ?? existing.registrationDate,
       designer: req.body?.designer ?? existing.designer,
       collection: req.body?.collection ?? existing.collection,
@@ -25602,9 +25552,6 @@ app.put("/styles/:styleId", async (req, res) => {
   if (!normalized.name) {
     return res.status(400).json({ ok: false, error: "name is required" });
   }
-  if (!normalized.customer) {
-    return res.status(400).json({ ok: false, error: "customer is required" });
-  }
   const duplicateProcess = includeProcesses
     ? findStyleProcessDuplicateIdentity(normalized.processes)
     : null;
@@ -25617,7 +25564,6 @@ app.put("/styles/:styleId", async (req, res) => {
 
   const conflictMessage = await findStyleConflict({
     orgId: existing.orgId,
-    customer: normalized.customer,
     name: normalized.name,
     styleCode: normalized.code,
     excludeStyleId: existing.id,
@@ -25648,9 +25594,6 @@ app.put("/styles/:styleId", async (req, res) => {
       data: {
         code: normalized.code,
         name: normalized.name,
-        customer: normalized.customer,
-        customerNameKo: (existing as any).customerNameKo ?? undefined,
-        customerNameVi: (existing as any).customerNameVi ?? undefined,
         registrationDate: normalized.registrationDate,
         designer: normalized.designer,
         collection: normalized.collection,
@@ -25671,6 +25614,11 @@ app.put("/styles/:styleId", async (req, res) => {
     }
     return tx.style.findUniqueOrThrow({
       where: { id: updatedStyle.id },
+      include: {
+        organization: {
+          select: { id: true, name: true, nameKo: true, nameVi: true },
+        },
+      },
     });
   });
   const processMirrorMap = includeProcesses
@@ -25821,8 +25769,6 @@ app.post("/styles/import", async (req, res) => {
       return {
         ...item.normalized,
         customer: owner.ownerOrgName || item.normalized.customer,
-        customerNameKo: (owner as any).ownerOrgNameKo || "",
-        customerNameVi: (owner as any).ownerOrgNameVi || "",
         ownerOrgId: owner.ownerOrgId,
       };
     })
@@ -25831,7 +25777,7 @@ app.post("/styles/import", async (req, res) => {
   const seenNameKeys = new Set();
   const seenCodeKeys = new Set();
   for (const item of rowsWithOwner) {
-    const nameKey = `${item.ownerOrgId}:${toStyleIdentityKey(item.customer, item.name)}`;
+    const nameKey = `${item.ownerOrgId}:${toStyleIdentityKey(null, item.name)}`;
     if (seenNameKeys.has(nameKey)) {
       return res.status(409).json({
         ok: false,
@@ -25840,10 +25786,7 @@ app.post("/styles/import", async (req, res) => {
     }
     seenNameKeys.add(nameKey);
 
-    const codeKey = `${item.ownerOrgId}:${toStyleIdentityKey(
-      item.customer,
-      item.code
-    )}`;
+    const codeKey = `${item.ownerOrgId}:${toStyleIdentityKey(null, item.code)}`;
     if (seenCodeKeys.has(codeKey)) {
       return res.status(409).json({
         ok: false,
@@ -25873,7 +25816,6 @@ app.post("/styles/import", async (req, res) => {
   for (const item of rowsWithOwner) {
     const conflictMessage = await findStyleConflict({
       orgId: item.ownerOrgId,
-      customer: item.customer,
       name: item.name,
       styleCode: item.code,
       excludeStyleId:
@@ -25887,7 +25829,7 @@ app.post("/styles/import", async (req, res) => {
 
   await prisma.$transaction(async (tx) => {
     for (const item of rowsWithOwner) {
-      const { ownerOrgId, ...stylePayload } = item;
+      const { ownerOrgId, customer: _customer, ...stylePayload } = item;
       const syncedProcesses = includeProcesses
         ? await syncProcessMasterFromStyleProcesses({
             processes: stylePayload.processes,
@@ -25917,9 +25859,6 @@ app.post("/styles/import", async (req, res) => {
         update: {
           code: stylePayload.code,
           name: stylePayload.name,
-          customer: stylePayload.customer,
-          customerNameKo: stylePayload.customerNameKo || undefined,
-          customerNameVi: stylePayload.customerNameVi || undefined,
           registrationDate: stylePayload.registrationDate,
           designer: stylePayload.designer,
           collection: stylePayload.collection,
@@ -25948,6 +25887,11 @@ app.post("/styles/import", async (req, res) => {
 
   const imported = await prisma.style.findMany({
     where: { orgId: { in: uniqueOwnerOrgIds } },
+    include: {
+      organization: {
+        select: { id: true, name: true, nameKo: true, nameVi: true },
+      },
+    },
     orderBy: { id: "asc" },
   });
   const processMirrorMap = includeProcesses
@@ -26611,18 +26555,20 @@ const ensureWorkOrderLocalizationColumnsReady = async () => {
 const ensureStyleLocalizationColumnsReady = async () => {
   if (styleLocalizationColumnsReady) return;
   await prisma.$executeRawUnsafe(`
-    ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "customerNameKo" TEXT
+    ALTER TABLE "Style" DROP CONSTRAINT IF EXISTS "Style_orgId_customer_name_key"
   `);
   await prisma.$executeRawUnsafe(`
-    ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "customerNameVi" TEXT
+    DROP INDEX IF EXISTS "Style_orgId_customer_name_key"
   `);
   await prisma.$executeRawUnsafe(`
-    UPDATE "Style" s
-      SET "customerNameKo" = o."nameKo", "customerNameVi" = o."nameVi"
-      FROM "Organization" o
-      WHERE s."orgId" = o.id
-        AND (o."nameKo" IS NOT NULL OR o."nameVi" IS NOT NULL)
-        AND s."customerNameKo" IS NULL AND s."customerNameVi" IS NULL
+    CREATE UNIQUE INDEX IF NOT EXISTS "Style_orgId_name_key"
+      ON "Style"("orgId", "name")
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "Style"
+      DROP COLUMN IF EXISTS "customer",
+      DROP COLUMN IF EXISTS "customerNameKo",
+      DROP COLUMN IF EXISTS "customerNameVi"
   `);
   styleLocalizationColumnsReady = true;
 };

@@ -1,11 +1,82 @@
--- Step 0d: style localized customer name fields (20260611)
-ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "customerNameKo" TEXT;
-ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "customerNameVi" TEXT;
-UPDATE "Style" s
-  SET "customerNameKo" = o."nameKo", "customerNameVi" = o."nameVi"
-  FROM "Organization" o
-  WHERE s."orgId" = o.id AND (o."nameKo" IS NOT NULL OR o."nameVi" IS NOT NULL)
-    AND s."customerNameKo" IS NULL AND s."customerNameVi" IS NULL;
+-- Step 0d: style customer display fields are derived from Organization (20260701)
+ALTER TABLE "Style" DROP CONSTRAINT IF EXISTS "Style_orgId_customer_name_key";
+DROP INDEX IF EXISTS "Style_orgId_customer_name_key";
+CREATE UNIQUE INDEX IF NOT EXISTS "Style_orgId_name_key"
+  ON "Style"("orgId", "name");
+ALTER TABLE "Style"
+  DROP COLUMN IF EXISTS "customer",
+  DROP COLUMN IF EXISTS "customerNameKo",
+  DROP COLUMN IF EXISTS "customerNameVi";
+
+-- Step 0d-2: employee current line is a FK to Line, not denormalized text (20260701)
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "lineId" INTEGER;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'Employee'
+      AND column_name = 'lineName'
+  ) THEN
+    WITH employee_line_source AS (
+      SELECT
+        e.id AS "employeeId",
+        e."orgId",
+        e."factoryId",
+        btrim(e."lineName") AS "lineName"
+      FROM "Employee" e
+      WHERE e."lineId" IS NULL
+        AND e."lineName" IS NOT NULL
+        AND btrim(e."lineName") <> ''
+    ),
+    line_matches AS (
+      SELECT
+        source."employeeId",
+        l.id AS "lineId",
+        count(*) OVER (PARTITION BY source."employeeId") AS "matchCount"
+      FROM employee_line_source source
+      JOIN "Line" l
+        ON l."orgId" = source."orgId"
+       AND lower(btrim(l."name")) = lower(source."lineName")
+       AND (
+         source."factoryId" IS NULL
+         OR l."factoryId" = source."factoryId"
+       )
+    ),
+    unique_line_matches AS (
+      SELECT "employeeId", "lineId"
+      FROM line_matches
+      WHERE "matchCount" = 1
+    )
+    UPDATE "Employee" e
+    SET "lineId" = unique_line_matches."lineId"
+    FROM unique_line_matches
+    WHERE e.id = unique_line_matches."employeeId"
+      AND e."lineId" IS NULL;
+
+    IF EXISTS (
+      SELECT 1
+      FROM "Employee"
+      WHERE "lineName" IS NOT NULL
+        AND btrim("lineName") <> ''
+        AND "lineId" IS NULL
+    ) THEN
+      RAISE EXCEPTION 'Employee.lineName could not be mapped to exactly one Line.id; resolve Employee.lineId before dropping lineName.';
+    END IF;
+
+    ALTER TABLE "Employee" DROP COLUMN "lineName";
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS "Employee_lineId_idx" ON "Employee"("lineId");
+DO $$ BEGIN
+  ALTER TABLE "Employee"
+    ADD CONSTRAINT "Employee_lineId_fkey"
+    FOREIGN KEY ("lineId") REFERENCES "Line"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Step 0e: customer pricing prototype storage (20260613)
 ALTER TABLE "OrgRelationship" ADD COLUMN IF NOT EXISTS "pricingDefaultTradeType" TEXT;

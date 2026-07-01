@@ -1054,7 +1054,7 @@ export const createOrgMembershipRouter = ({
             });
             await prisma.employee.update({
               where: { id: upsertedEmployee.id },
-              data: { lineName: latestEndedAssignment.line?.name ?? null },
+              data: { lineId: latestEndedAssignment.lineId ?? null },
             });
           }
         }
