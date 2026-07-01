@@ -7,7 +7,7 @@ import {
   parseFactoryManagementStartDateInput,
 } from "./factoryManagementStart";
 import { getOrganizationByQuery } from "../middleware/access";
-import { toNumberOrNull } from "../utils/common";
+import { toNumberOrNull, toPositiveIntOrNull } from "../utils/common";
 
 type FactoryRoutesDeps = {
   isManufacturerOrg: (org: { type?: string | null } | null | undefined) => boolean;
@@ -19,6 +19,13 @@ const FACTORY_DIAL_CODE_BY_COUNTRY: Record<string, string> = {
   KR: "+82",
   VN: "+84",
 };
+const FACTORY_MANAGER_EMPLOYEE_SELECT = {
+  id: true,
+  name: true,
+  employeeNo: true,
+  factoryId: true,
+  orgId: true,
+} as const;
 
 const roundToScale = (value: number, digits = 2): number => {
   const factor = 10 ** digits;
@@ -158,6 +165,79 @@ const resolveFactoryPhoneFields = (params: {
   };
 };
 
+const resolveFactoryManagerEmployeeInput = async (params: {
+  organizationId: number;
+  factoryId: number | null;
+  managerEmployeeIdInput: unknown;
+}): Promise<
+  | { ok: true; hasInput: false; managerEmployeeId: null }
+  | { ok: true; hasInput: true; managerEmployeeId: number | null }
+  | { ok: false; status: number; error: string }
+> => {
+  const { organizationId, factoryId, managerEmployeeIdInput } = params;
+  if (managerEmployeeIdInput === undefined) {
+    return { ok: true, hasInput: false, managerEmployeeId: null };
+  }
+  if (managerEmployeeIdInput === null || managerEmployeeIdInput === "") {
+    return { ok: true, hasInput: true, managerEmployeeId: null };
+  }
+
+  const managerEmployeeId = toPositiveIntOrNull(managerEmployeeIdInput);
+  if (managerEmployeeId === null) {
+    return { ok: false, status: 400, error: "invalid managerEmployeeId" };
+  }
+  if (factoryId === null) {
+    return {
+      ok: false,
+      status: 400,
+      error: "managerEmployeeId can be set only after the factory has been created",
+    };
+  }
+
+  const manager = await prisma.employee.findFirst({
+    where: {
+      id: managerEmployeeId,
+      orgId: organizationId,
+      factoryId,
+    },
+    select: { id: true },
+  });
+  if (!manager) {
+    return {
+      ok: false,
+      status: 400,
+      error: "manager must belong to the factory",
+    };
+  }
+
+  return { ok: true, hasInput: true, managerEmployeeId: manager.id };
+};
+
+const toFactoryResponse = (factory: any) => {
+  const factoryId = toPositiveIntOrNull(factory?.id);
+  const managerEmployee =
+    factory?.managerEmployee &&
+    toPositiveIntOrNull(factory?.managerEmployee?.id) &&
+    toPositiveIntOrNull(factory?.managerEmployee?.factoryId) === factoryId
+      ? {
+          id: factory.managerEmployee.id,
+          name: normalizeOptionalFactoryText(factory.managerEmployee.name),
+          employeeNo: normalizeEmployeeNo(factory.managerEmployee.employeeNo) ?? null,
+        }
+      : null;
+  const legacyManagerName = normalizeOptionalFactoryText(factory?.manager);
+  const managerName = managerEmployee?.name ?? legacyManagerName ?? null;
+
+  return {
+    ...factory,
+    managerEmployee,
+    managerEmployeeId: managerEmployee?.id ?? null,
+    managerEmployeeName: managerName,
+    managerEmployeeNo: managerEmployee?.employeeNo ?? null,
+    manager: managerName,
+  };
+};
+
 export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) => {
   const factoryRouter = Router();
 
@@ -170,9 +250,14 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
 
     const factories = await prisma.factory.findMany({
       where: { orgId: organization.id },
+      include: {
+        managerEmployee: {
+          select: FACTORY_MANAGER_EMPLOYEE_SELECT,
+        },
+      },
       orderBy: { id: "asc" },
     });
-    return res.json(factories);
+    return res.json(factories.map(toFactoryResponse));
   });
 
   factoryRouter.post("/factories", async (req, res) => {
@@ -194,6 +279,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       countryCode,
       phoneNumber,
       manager,
+      managerEmployeeId,
       targetMonthlyWage,
       wagePerSecond,
     } = req.body ?? {};
@@ -223,8 +309,23 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     if (managementStartDateResolved.error) {
       return res.status(400).json({ ok: false, error: managementStartDateResolved.error });
     }
+    const managerEmployeeResolved = await resolveFactoryManagerEmployeeInput({
+      organizationId: organization.id,
+      factoryId: null,
+      managerEmployeeIdInput: managerEmployeeId,
+    });
+    if (!managerEmployeeResolved.ok) {
+      return res
+        .status(managerEmployeeResolved.status)
+        .json({ ok: false, error: managerEmployeeResolved.error });
+    }
 
     const factory = await prisma.factory.create({
+      include: {
+        managerEmployee: {
+          select: FACTORY_MANAGER_EMPLOYEE_SELECT,
+        },
+      },
       data: {
         orgId: organization.id,
         name: name.trim(),
@@ -236,13 +337,17 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
         country: phoneFields.country,
         countryCode: phoneFields.countryCode,
         phoneNumber: normalizeOptionalFactoryText(phoneNumber),
-        manager: normalizeOptionalFactoryText(manager),
+        managerEmployeeId: managerEmployeeResolved.managerEmployeeId,
+        manager:
+          managerEmployeeResolved.hasInput
+            ? null
+            : normalizeOptionalFactoryText(manager),
         targetMonthlyWage: wageFields.targetMonthlyWage,
         wagePerSecond: wageFields.wagePerSecond,
       },
     });
 
-    return res.status(201).json(factory);
+    return res.status(201).json(toFactoryResponse(factory));
   });
 
   factoryRouter.put("/factories/:id", async (req, res) => {
@@ -277,6 +382,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       countryCode,
       phoneNumber,
       manager,
+      managerEmployeeId,
       targetMonthlyWage,
       wagePerSecond,
     } = req.body ?? {};
@@ -380,11 +486,26 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     if (managementStartDateResolved.error) {
       return res.status(400).json({ ok: false, error: managementStartDateResolved.error });
     }
+    const managerEmployeeResolved = await resolveFactoryManagerEmployeeInput({
+      organizationId: organization.id,
+      factoryId: existing.id,
+      managerEmployeeIdInput: managerEmployeeId,
+    });
+    if (!managerEmployeeResolved.ok) {
+      return res
+        .status(managerEmployeeResolved.status)
+        .json({ ok: false, error: managerEmployeeResolved.error });
+    }
 
     let factory;
     try {
       factory = await prisma.$transaction(async (tx) => {
         const updatedFactory = await tx.factory.update({
+          include: {
+            managerEmployee: {
+              select: FACTORY_MANAGER_EMPLOYEE_SELECT,
+            },
+          },
           where: { id },
           data: {
             name: typeof name === "string" ? name.trim() : existing.name,
@@ -408,7 +529,14 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
               phoneNumber,
               existing.phoneNumber
             ),
-            manager: resolveOptionalFactoryTextUpdate(manager, existing.manager),
+            managerEmployeeId:
+              managerEmployeeResolved.hasInput
+                ? managerEmployeeResolved.managerEmployeeId
+                : existing.managerEmployeeId ?? null,
+            manager:
+              managerEmployeeResolved.hasInput
+                ? null
+                : resolveOptionalFactoryTextUpdate(manager, existing.manager),
             targetMonthlyWage: wageFields.targetMonthlyWage,
             wagePerSecond: wageFields.wagePerSecond,
           },
@@ -434,7 +562,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       throw error;
     }
 
-    return res.json(factory);
+    return res.json(toFactoryResponse(factory));
   });
 
   factoryRouter.delete("/factories/:id", async (req, res) => {
@@ -474,6 +602,13 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
         const membershipIds = employees.map((employee) => employee.orgMembershipId);
 
         if (employeeIds.length > 0) {
+          await tx.factory.updateMany({
+            where: {
+              orgId: organization.id,
+              managerEmployeeId: { in: employeeIds },
+            },
+            data: { managerEmployeeId: null },
+          });
           await tx.line.updateMany({
             where: {
               orgId: organization.id,

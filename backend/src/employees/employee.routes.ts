@@ -491,15 +491,28 @@ export const createEmployeeRouter = ({
           transactionData.employeeNo = await generateNextEmployeeNo(
             tx,
             membership.orgId,
-            resolvedFactoryId
-          );
+              resolvedFactoryId
+            );
         }
 
-        return tx.employee.upsert({
+        const upsertedEmployee = await tx.employee.upsert({
           where: { orgMembershipId: membership.id },
           update: transactionData,
           create: transactionData,
         });
+
+        await tx.factory.updateMany({
+          where: {
+            orgId: membership.orgId,
+            managerEmployeeId: upsertedEmployee.id,
+            ...(upsertedEmployee.factoryId
+              ? { id: { not: upsertedEmployee.factoryId } }
+              : {}),
+          },
+          data: { managerEmployeeId: null },
+        });
+
+        return upsertedEmployee;
       });
     } catch (error) {
       if ((error as { code?: string })?.code === "P2002") {

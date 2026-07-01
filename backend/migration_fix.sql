@@ -437,11 +437,70 @@ ALTER TABLE "Factory" ADD COLUMN IF NOT EXISTS "factoryCode" TEXT;
 ALTER TABLE "Factory" ADD COLUMN IF NOT EXISTS "nameKo" TEXT;
 ALTER TABLE "Factory" ADD COLUMN IF NOT EXISTS "nameVi" TEXT;
 ALTER TABLE "Factory" ADD COLUMN IF NOT EXISTS "managementStartDate" TEXT;
+ALTER TABLE "Factory" ADD COLUMN IF NOT EXISTS "managerEmployeeId" INTEGER;
 UPDATE "Factory"
 SET "managementStartDate" = '2026-04-01'
 WHERE "managementStartDate" IS NULL;
+
+WITH unique_factory_manager_matches AS (
+  SELECT
+    f.id AS "factoryId",
+    e.id AS "employeeId",
+    ROW_NUMBER() OVER (PARTITION BY f.id ORDER BY e.id) AS rn,
+    COUNT(*) OVER (PARTITION BY f.id) AS match_count
+  FROM "Factory" f
+  JOIN "Employee" e
+    ON e."orgId" = f."orgId"
+   AND e."factoryId" = f.id
+   AND lower(btrim(COALESCE(e."name", ''))) = lower(btrim(COALESCE(f."manager", '')))
+  WHERE f."managerEmployeeId" IS NULL
+    AND f."manager" IS NOT NULL
+    AND btrim(f."manager") <> ''
+)
+UPDATE "Factory" f
+SET "managerEmployeeId" = matches."employeeId"
+FROM unique_factory_manager_matches matches
+WHERE f.id = matches."factoryId"
+  AND matches.rn = 1
+  AND matches.match_count = 1;
+
 CREATE UNIQUE INDEX IF NOT EXISTS "Factory_orgId_factoryCode_key"
   ON "Factory"("orgId", "factoryCode") WHERE "factoryCode" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "Factory_managerEmployeeId_idx"
+  ON "Factory"("managerEmployeeId");
+
+DO $$
+DECLARE
+  cleared_count INT;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'Factory_managerEmployeeId_fkey'
+      AND table_name = 'Factory'
+  ) THEN
+    UPDATE "Factory" f
+    SET "managerEmployeeId" = NULL
+    WHERE f."managerEmployeeId" IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "Employee" e
+        WHERE e.id = f."managerEmployeeId"
+          AND e."orgId" = f."orgId"
+          AND e."factoryId" = f.id
+      );
+    GET DIAGNOSTICS cleared_count = ROW_COUNT;
+    IF cleared_count > 0 THEN
+      RAISE NOTICE 'Factory: cleared % invalid managerEmployeeId references before FK creation', cleared_count;
+    END IF;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "Factory"
+    ADD CONSTRAINT "Factory_managerEmployeeId_fkey"
+    FOREIGN KEY ("managerEmployeeId") REFERENCES "Employee"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "employeeNo" TEXT;
 

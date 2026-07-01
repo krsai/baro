@@ -88,6 +88,8 @@ const FactoryList = () => {
 
   const formatFactoryLocalizedNames = (factory) =>
     [String(factory?.nameKo || '').trim(), String(factory?.nameVi || '').trim()].filter(Boolean);
+  const resolveFactoryManagerLabel = (factory) =>
+    String(factory?.managerEmployeeName || factory?.manager || '').trim() || '-';
 
   const fetchFactories = async (options = {}) => {
     const isActive = options.isActive ?? (() => true);
@@ -143,7 +145,7 @@ const FactoryList = () => {
       country: savedData.country,
       countryCode: savedData.countryCode,
       phoneNumber: savedData.phoneNumber,
-      manager: savedData.manager,
+      managerEmployeeId: savedData.managerEmployeeId,
       targetMonthlyWage: savedData.targetMonthlyWage,
       wagePerSecond: savedData.wagePerSecond,
     };
@@ -297,7 +299,7 @@ const FactoryList = () => {
                       <TableCell sx={{ fontWeight: 'bold', color: 'primary.main' }}>{factory.factoryCode || '-'}</TableCell>
                       <TableCell>{factory.address || '-'}</TableCell>
                       <TableCell>{formatFactoryContact(factory)}</TableCell>
-                      <TableCell>{factory.manager || '-'}</TableCell>
+                      <TableCell>{resolveFactoryManagerLabel(factory)}</TableCell>
                       <TableCell>{resolveFactoryManagementStartDateKey(factory)}</TableCell>
                       <TableCell>{Number.isFinite(wage) ? wage.toFixed(2) : '-'}</TableCell>
                       <TableCell sx={{ textAlign: 'center' }}>

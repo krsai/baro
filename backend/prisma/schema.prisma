@@ -291,6 +291,7 @@ model Factory {
   countryCode       String?
   phoneNumber       String?
   manager           String?
+  managerEmployeeId Int?
   targetMonthlyWage Float?
   wagePerSecond     Float?
   createdAt         DateTime @default(now())
@@ -298,7 +299,8 @@ model Factory {
   updatedAt         DateTime @updatedAt
 
   organization      Organization      @relation(fields: [orgId], references: [id])
-  employees         Employee[]
+  managerEmployee   Employee?         @relation("FactoryManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
+  employees         Employee[]        @relation("FactoryEmployees")
   lines             Line[]
   attendanceEntries AttendanceEntry[]
   workLogs          WorkLog[]
@@ -306,6 +308,7 @@ model Factory {
 
   @@unique([orgId, factoryCode])
   @@index([orgId])
+  @@index([managerEmployeeId])
 }
 
 model Line {
@@ -357,10 +360,11 @@ model Employee {
 
   organization      Organization      @relation(fields: [orgId], references: [id])
   membership        OrgMembership     @relation(fields: [orgMembershipId], references: [id])
-  factory           Factory?          @relation(fields: [factoryId], references: [id])
+  factory           Factory?          @relation("FactoryEmployees", fields: [factoryId], references: [id])
   line              Line?             @relation("EmployeeCurrentLine", fields: [lineId], references: [id], onDelete: SetNull)
   role              AttrRole?         @relation(fields: [roleId], references: [id])
   lineAssignments   LineAssignment[]
+  managedFactories  Factory[]         @relation("FactoryManager")
   managedLines      Line[]            @relation("LineManager")
   attendanceEntries AttendanceEntry[]
   workRecords       WorkRecord[]

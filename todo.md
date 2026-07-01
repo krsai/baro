@@ -162,6 +162,7 @@ Date: 2026-07-01
 - Added `Organization.nameKo` and `Organization.nameVi`.
 - Updated `migration_fix.sql` to backfill existing factory `managementStartDate` values to `2026-04-01`.
 - Updated `migration_fix.sql` FK-add pattern so `AtTrainingBucket` cleans orphaned `sourceWorkLogId` rows and orphaned `factoryId` references before adding those FKs.
+- Changed factory manager storage to `managerEmployeeId` so the business UI selects a manager from employees assigned to the same factory instead of free-text input.
 - Switched work log / work history / production analysis minimum-date guards from the BARO-only hardcoded date to factory-scoped management start dates.
 - Reworked business and customer basic-info forms to group related fields and support Korean/Vietnamese inputs.
 - Added startup schema drift checks for `Organization.nameKo/nameVi` and `Factory.nameKo/nameVi/managementStartDate` so `/factories` does not serve before those DB columns exist.
@@ -171,6 +172,7 @@ Date: 2026-07-01
 ### Remaining
 - Recheck whether the global assignment board should keep using the earliest factory management start date or move to a stricter per-factory rule.
 - Remove the hidden legacy basic-info block in `frontend/src/pages/App/customer/CustomerDetail.jsx` once the new panel is fully settled.
+- Decide when to fully drop legacy `Factory.manager` text after `managerEmployeeId` backfill has been checked on production data.
 
 ### Verify
 - `npm --prefix backend run prisma:prepare-client`
@@ -181,3 +183,4 @@ Date: 2026-07-01
 - On a DB missing the new business/factory columns, confirm backend startup applies `migration_fix.sql` before accepting `/factories` traffic.
 - Send a partial `PUT /factories/:id` payload that omits address/contact/wage fields and confirm existing DB values are preserved.
 - On a DB with orphaned `AtTrainingBucket.sourceWorkLogId` / `factoryId`, confirm `migration_fix.sql` deletes or nulls the violating rows before FK creation.
+- In the business > factory drawer, confirm manager options come only from `/employees?factoryId={id}` and saving rejects employees from other factories.

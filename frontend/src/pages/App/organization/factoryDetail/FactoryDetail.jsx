@@ -16,6 +16,7 @@ import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../../constants/layout';
 import { getStaticOptionOptions } from '../../../../constants/staticOptionRegistry';
 import { getUiMessage } from '../../../../constants/uiMessages';
 import { useLanguage } from '../../../../context/LanguageContext';
+import { requestJSON } from '../../../../utils/apiClient';
 import {
   DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
   normalizeFactoryManagementStartDateKey,
@@ -34,6 +35,7 @@ const COUNTRY_CODE_BY_COUNTRY = {
 };
 const DEFAULT_COUNTRY = 'VN';
 const DEFAULT_COUNTRY_CODE = COUNTRY_CODE_BY_COUNTRY[DEFAULT_COUNTRY];
+const EMPLOYEE_COLLATOR = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
 
 const parseNumber = (value) => parseNumberLike(value);
 
@@ -59,6 +61,19 @@ const normalizeFactoryCode = (value) =>
     .replace(/[^A-Z]/g, '')
     .slice(0, 3);
 
+const normalizeManagerEmployeeId = (value) => {
+  if (value === null || value === undefined || value === '') return '';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '';
+  return parsed;
+};
+
+const buildEmployeeOptionLabel = (employee) => {
+  const name = String(employee?.name || '').trim() || '-';
+  const employeeNo = String(employee?.employeeNo || '').trim();
+  return employeeNo ? `${name} (${employeeNo})` : name;
+};
+
 const buildFactoryFormData = (factory) => {
   const rawCountry = normalizeCountry(factory?.country);
   const countryFromCode = resolveCountryFromCountryCode(factory?.countryCode);
@@ -75,7 +90,7 @@ const buildFactoryFormData = (factory) => {
     country,
     countryCode: factory?.countryCode || resolveDefaultCountryCode(country),
     phoneNumber: factory?.phoneNumber || '',
-    manager: factory?.manager || '',
+    managerEmployeeId: normalizeManagerEmployeeId(factory?.managerEmployeeId),
     targetMonthlyWage: factory?.targetMonthlyWage ?? '',
     wagePerSecond: factory?.wagePerSecond ?? '',
   };
@@ -167,6 +182,33 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
     () => getStaticOptionOptions('country', languageCode),
     [languageCode]
   );
+  const managerMessages = useMemo(() => {
+    if (languageCode === 'ko') {
+      return {
+        helper: '해당 공장 소속 직원 중에서 관리자를 선택합니다.',
+        empty: '이 공장에 소속된 직원이 없습니다.',
+        saveFirst: '공장을 먼저 저장한 뒤 관리자를 선택할 수 있습니다.',
+        loading: '공장 소속 직원 목록을 불러오는 중입니다.',
+        none: '없음',
+      };
+    }
+    if (languageCode === 'vi') {
+      return {
+        helper: 'Chi co the chon quan ly trong danh sach nhan vien cua nha may nay.',
+        empty: 'Nha may nay chua co nhan vien.',
+        saveFirst: 'Hay luu nha may truoc, sau do moi chon quan ly.',
+        loading: 'Dang tai danh sach nhan vien cua nha may.',
+        none: 'Khong co',
+      };
+    }
+    return {
+      helper: 'Select the manager from employees assigned to this factory.',
+      empty: 'No employees are assigned to this factory yet.',
+      saveFirst: 'Save the factory first, then choose a manager.',
+      loading: 'Loading factory employees.',
+      none: 'None',
+    };
+  }, [languageCode]);
 
   const extraText = useMemo(() => getExtraText(languageCode), [languageCode]);
   const text = useMemo(
@@ -214,10 +256,51 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
   );
 
   const [formData, setFormData] = useState(buildFactoryFormData(null));
+  const [managerEmployees, setManagerEmployees] = useState([]);
+  const [managerEmployeesLoading, setManagerEmployeesLoading] = useState(false);
 
   useEffect(() => {
     setFormData(buildFactoryFormData(factory));
   }, [factory, open]);
+
+  useEffect(() => {
+    let active = true;
+    const factoryId = Number(factory?.id);
+    if (!open || !Number.isFinite(factoryId) || factoryId <= 0) {
+      setManagerEmployees([]);
+      setManagerEmployeesLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    setManagerEmployeesLoading(true);
+    requestJSON(`/employees?factoryId=${factoryId}`)
+      .then((data) => {
+        if (!active) return;
+        const safeEmployees = (Array.isArray(data) ? data : [])
+          .filter((employee) => Number(employee?.factoryId) === factoryId)
+          .sort((left, right) =>
+            EMPLOYEE_COLLATOR.compare(
+              buildEmployeeOptionLabel(left),
+              buildEmployeeOptionLabel(right)
+            )
+          );
+        setManagerEmployees(safeEmployees);
+      })
+      .catch(() => {
+        if (!active) return;
+        setManagerEmployees([]);
+      })
+      .finally(() => {
+        if (!active) return;
+        setManagerEmployeesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [factory?.id, open]);
 
   const factoryCodeError = useMemo(() => {
     const code = normalizeFactoryCode(formData.factoryCode);
@@ -255,6 +338,13 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
       }));
       return;
     }
+    if (name === 'managerEmployeeId') {
+      setFormData((prev) => ({
+        ...prev,
+        managerEmployeeId: normalizeManagerEmployeeId(value),
+      }));
+      return;
+    }
 
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
@@ -272,6 +362,13 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
   const computedWageDisplay = Number.isFinite(computedWagePerSecond)
     ? computedWagePerSecond.toFixed(2)
     : '';
+  const managerHelperText = !factory?.id
+    ? managerMessages.saveFirst
+    : managerEmployeesLoading
+      ? managerMessages.loading
+      : managerEmployees.length === 0
+        ? managerMessages.empty
+        : managerMessages.helper;
 
   const handleSave = () => {
     const targetMonthlyWage = parseNumber(formData.targetMonthlyWage);
@@ -283,6 +380,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
       ...factory,
       ...formData,
       country: normalizeCountry(formData.country) || DEFAULT_COUNTRY,
+      managerEmployeeId: normalizeManagerEmployeeId(formData.managerEmployeeId) || null,
       managementStartDate:
         normalizeFactoryManagementStartDateKey(formData.managementStartDate) ||
         DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
@@ -417,12 +515,22 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
+                  select
                   size="small"
                   label={text.manager}
-                  name="manager"
-                  value={formData.manager}
+                  name="managerEmployeeId"
+                  value={formData.managerEmployeeId}
                   onChange={handleInputChange}
-                />
+                  disabled={managerEmployeesLoading || !factory?.id}
+                  helperText={managerHelperText}
+                >
+                  <MenuItem value="">{managerMessages.none}</MenuItem>
+                  {managerEmployees.map((employee) => (
+                    <MenuItem key={employee.id} value={employee.id}>
+                      {buildEmployeeOptionLabel(employee)}
+                    </MenuItem>
+                  ))}
+                </TextField>
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
