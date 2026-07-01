@@ -553,10 +553,20 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "WorkLog", columnName: "coverageStartDate" },
   { tableName: "WorkLog", columnName: "coverageEndDate" },
   { tableName: "WorkLog", columnName: "entryMode" },
+  { tableName: "WorkLog", columnName: "factoryId" },
+  { tableName: "Employee", columnName: "lineId" },
+  { tableName: "Style", columnName: "id" },
+  { tableName: "Style", columnName: "code" },
   { tableName: "WorkRecord", columnName: "styleId" },
+  { tableName: "WorkRecord", columnName: "styleProcessId" },
   { tableName: "WorkRecord", columnName: "lineId" },
   { tableName: "WorkRecord", columnName: "effectiveCoverageStartDate" },
   { tableName: "WorkRecord", columnName: "effectiveCoverageEndDate" },
+  { tableName: "WorkOrder", columnName: "buyerOrgId" },
+  { tableName: "WorkOrder", columnName: "sellerOrgId" },
+  { tableName: "WorkOrder", columnName: "customerId" },
+  { tableName: "WorkOrderItem", columnName: "styleId" },
+  { tableName: "WorkOrderItem", columnName: "colorId" },
   { tableName: "StyleProcess", columnName: "timesPerPiece" },
   { tableName: "StyleProcessStandard", columnName: "bucketQuantity" },
   { tableName: "StyleProcessStandard", columnName: "bucketStSeconds" },
@@ -566,6 +576,38 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "AssignmentPlan", columnName: "assignmentCtSnapshot" },
   { tableName: "OrgRelationship", columnName: "pricingDefaultTradeType" },
   { tableName: "OrgRelationship", columnName: "pricingMatrix" },
+] as const;
+const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
+  { tableName: "Employee", columnName: "lineName" },
+  { tableName: "Style", columnName: "uid" },
+  { tableName: "Style", columnName: "styleId" },
+  { tableName: "Style", columnName: "styleCode" },
+  { tableName: "Style", columnName: "customer" },
+  { tableName: "Style", columnName: "customerNameKo" },
+  { tableName: "Style", columnName: "customerNameVi" },
+  { tableName: "StyleProcess", columnName: "styleUid" },
+  { tableName: "WorkOrder", columnName: "buyerOrgName" },
+  { tableName: "WorkOrder", columnName: "buyerOrgNameKo" },
+  { tableName: "WorkOrder", columnName: "buyerOrgNameVi" },
+  { tableName: "WorkOrder", columnName: "sellerOrgName" },
+  { tableName: "WorkOrder", columnName: "customerName" },
+  { tableName: "WorkOrderItem", columnName: "styleUid" },
+  { tableName: "WorkOrderItem", columnName: "styleName" },
+  { tableName: "WorkOrderItem", columnName: "styleCode" },
+  { tableName: "WorkOrderItem", columnName: "colorCode" },
+  { tableName: "WorkLog", columnName: "factoryName" },
+  { tableName: "WorkRecord", columnName: "workerName" },
+  { tableName: "WorkRecord", columnName: "customerName" },
+  { tableName: "WorkRecord", columnName: "styleUid" },
+  { tableName: "WorkRecord", columnName: "styleName" },
+  { tableName: "WorkRecord", columnName: "processId" },
+  { tableName: "WorkRecord", columnName: "processCode" },
+  { tableName: "WorkRecord", columnName: "processName" },
+  { tableName: "WorkRecord", columnName: "colorId" },
+  { tableName: "WorkRecord", columnName: "colorCode" },
+  { tableName: "WorkRecord", columnName: "colorName" },
+  { tableName: "WorkRecord", columnName: "gender" },
+  { tableName: "WorkRecord", columnName: "orderNo" },
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_ENUM_VALUES = [
   { enumName: "OrgMembershipStatus", value: "TERMINATED" },
@@ -26851,8 +26893,32 @@ const findMissingRuntimeSchemaColumns = async (): Promise<string[]> => {
     .filter((columnKey) => !available.has(columnKey));
 };
 
+const findForbiddenRuntimeSchemaColumns = async (): Promise<string[]> => {
+  const targetTableNames = Array.from(
+    new Set(STARTUP_FORBIDDEN_RUNTIME_COLUMNS.map((column) => column.tableName))
+  );
+  const rows = await prisma.$queryRaw<
+    Array<{ table_name: string; column_name: string }>
+  >`
+    SELECT table_name, column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = ANY(${targetTableNames}::text[])
+  `;
+  const available = new Set(
+    rows.map((row) => `${row.table_name}.${row.column_name}`)
+  );
+  return STARTUP_FORBIDDEN_RUNTIME_COLUMNS
+    .map((column) => `${column.tableName}.${column.columnName}`)
+    .filter((columnKey) => available.has(columnKey));
+};
+
 const findRuntimeSchemaDriftReasons = async (): Promise<string[]> => {
   const driftReasons = await findMissingRuntimeSchemaColumns();
+  const forbiddenColumns = await findForbiddenRuntimeSchemaColumns();
+  forbiddenColumns.forEach((column) => {
+    driftReasons.push(`${column} still present`);
+  });
 
   const membershipEmailRows = await prisma.$queryRaw<
     Array<{ is_nullable: string | null }>
