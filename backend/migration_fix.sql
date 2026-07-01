@@ -885,6 +885,30 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- AtTrainingBucket FK constraints (sourceWorkLogId → WorkLog, factoryId → Factory)
+-- Clean up orphaned sourceWorkLogId references before adding FK.
+-- ON DELETE CASCADE is the policy, so rows pointing to deleted WorkLogs are removed here
+-- to match what CASCADE would have done had the FK existed earlier.
+DO $$
+DECLARE
+  deleted_count INT;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'AtTrainingBucket_sourceWorkLogId_fkey'
+      AND table_name = 'AtTrainingBucket'
+  ) THEN
+    DELETE FROM "AtTrainingBucket"
+    WHERE "sourceWorkLogId" IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM "WorkLog" WHERE "WorkLog"."id" = "AtTrainingBucket"."sourceWorkLogId"
+      );
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    IF deleted_count > 0 THEN
+      RAISE NOTICE 'AtTrainingBucket: deleted % orphaned rows with missing sourceWorkLogId before FK creation', deleted_count;
+    END IF;
+  END IF;
+END $$;
+
 DO $$ BEGIN
   ALTER TABLE "AtTrainingBucket"
     ADD CONSTRAINT "AtTrainingBucket_sourceWorkLogId_fkey"
