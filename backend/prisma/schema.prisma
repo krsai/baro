@@ -282,7 +282,10 @@ model Factory {
   id                Int      @id @default(autoincrement())
   orgId             Int
   name              String
+  nameKo            String?
+  nameVi            String?
   factoryCode       String?
+  managementStartDate String?
   address           String?
   country           String?
   countryCode       String?

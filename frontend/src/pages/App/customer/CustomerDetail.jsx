@@ -48,6 +48,7 @@ import {
   resolveCustomerStyleOwnerOrgId,
   resolveDefaultCountryCode,
 } from './customerFormShared';
+import CustomerBasicInfoPanel from './CustomerBasicInfoPanel';
 
 const HIDDEN_BUCKETS = new Set([2, 20]);
 const PRICE_BUCKETS = ST_STANDARD_BUCKETS.filter((quantity) => !HIDDEN_BUCKETS.has(quantity));
@@ -783,6 +784,16 @@ const CustomerDetail = () => {
       <Stack spacing={2.5}>
         {loadedTabs.basic && (
           <Box sx={{ display: currentTab === 'basic' ? 'block' : 'none' }}>
+            <CustomerBasicInfoPanel
+              customerFormData={customerFormData}
+              countryOptions={countryOptions}
+              savingCustomer={savingCustomer}
+              languageCode={languageCode}
+              onBasicFieldChange={handleBasicFieldChange}
+              onCountryChange={handleCountryChange}
+              t={t}
+            />
+            {false ? (
             <Paper variant="outlined" sx={{ borderRadius: 2, p: 3 }}>
               <Stack spacing={1.8}>
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
@@ -891,6 +902,7 @@ const CustomerDetail = () => {
                 />
               </Stack>
             </Paper>
+            ) : null}
           </Box>
         )}
 

@@ -47,6 +47,10 @@ import {
   ASSIGN_TIMELINE_CELL_WIDTH,
 } from './constants';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import {
+  DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
+  resolveEarliestFactoryManagementStartDateKey,
+} from '../../../utils/factoryManagementStart';
 import { fetchStyleById } from '../../../utils/styleApi';
 import {
   AT_RELIABILITY_STATUS,
@@ -1786,14 +1790,22 @@ const getMonthEndDate = (value = new Date()) => {
   return date;
 };
 
-const ASSIGNMENT_OPERATION_START_DATE_KEY = '2026-04-01';
-const ASSIGNMENT_OPERATION_START_DAY = dayjs(ASSIGNMENT_OPERATION_START_DATE_KEY).startOf('day');
-const getAssignmentOperationStartDate = () => new Date(2026, 3, 1);
-const clampAssignmentViewDate = (value) => {
+const getAssignmentOperationStartDate = (
+  operationStartDateKey = DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY
+) => {
+  const [year, month, day] = String(operationStartDateKey || DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY)
+    .split('-')
+    .map((item) => Number(item));
+  return new Date(year, month - 1, day);
+};
+const clampAssignmentViewDate = (
+  value,
+  operationStartDateKey = DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY
+) => {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return getAssignmentOperationStartDate();
+  if (Number.isNaN(date.getTime())) return getAssignmentOperationStartDate(operationStartDateKey);
   date.setHours(0, 0, 0, 0);
-  const minDate = getAssignmentOperationStartDate();
+  const minDate = getAssignmentOperationStartDate(operationStartDateKey);
   return date < minDate ? minDate : date;
 };
 
@@ -2938,7 +2950,16 @@ const AssignBoard = () => {
   const hasLoadedSourceDataRef = useRef(false);
   const lastLoadedOrgIdRef = useRef(null);
   const detailStyleFetchAttemptRef = useRef(new Set());
-  const startDateRef = useRef(clampAssignmentViewDate(getMonthStartDate()));
+  const [assignmentOperationStartDateKey, setAssignmentOperationStartDateKey] = useState(
+    DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY
+  );
+  const assignmentOperationStartDay = useMemo(
+    () => dayjs(assignmentOperationStartDateKey).startOf('day'),
+    [assignmentOperationStartDateKey]
+  );
+  const startDateRef = useRef(
+    clampAssignmentViewDate(getMonthStartDate(), DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY)
+  );
   const splitCounterRef = useRef(1);
   const disabledCardDragNoticeAtRef = useRef(0);
   const cursorWarningTimerRef = useRef(null);
@@ -2950,8 +2971,14 @@ const AssignBoard = () => {
   const [historyStatus, setHistoryStatus] = useState({ undoCount: 0, redoCount: 0 });
   const { holidaySet } = useHolidayCalendar(activeOrgId);
   const MAX_RANGE_DAYS = 92;
-  const [viewStart, setViewStart] = useState(() => clampAssignmentViewDate(getMonthStartDate()));
-  const [viewEnd, setViewEnd] = useState(() => getMonthEndDate(clampAssignmentViewDate(getMonthStartDate())));
+  const [viewStart, setViewStart] = useState(() =>
+    clampAssignmentViewDate(getMonthStartDate(), DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY)
+  );
+  const [viewEnd, setViewEnd] = useState(() =>
+    getMonthEndDate(
+      clampAssignmentViewDate(getMonthStartDate(), DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY)
+    )
+  );
   // viewStart 변경 시 assignment 인덱스 재계산을 위한 이전값 추적
   const prevViewStartRef = useRef(null);
   const dayCount = useMemo(() => {
@@ -2991,6 +3018,18 @@ const AssignBoard = () => {
       return buildDays(startDateRef.current, nextLength, holidaySet, languageCode);
     });
   }, [dayCount, holidaySet, languageCode]);
+  useEffect(() => {
+    const normalizedStart = clampAssignmentViewDate(viewStart, assignmentOperationStartDateKey);
+    const normalizedEnd = clampAssignmentViewDate(viewEnd, assignmentOperationStartDateKey);
+    startDateRef.current = normalizedStart;
+    if (
+      normalizedStart.getTime() !== viewStart.getTime() ||
+      normalizedEnd.getTime() !== viewEnd.getTime()
+    ) {
+      setViewStart(normalizedStart);
+      setViewEnd(normalizedEnd < normalizedStart ? getMonthEndDate(normalizedStart) : normalizedEnd);
+    }
+  }, [assignmentOperationStartDateKey, viewEnd, viewStart]);
   const { sensors, handleDragStart, handleDragCancel } = useAssignBoardDnd({
     persistReady,
     loading,
@@ -3698,6 +3737,9 @@ const AssignBoard = () => {
         if (cancelled) return;
 
         const safeFactories = Array.isArray(factories) ? factories : [];
+        setAssignmentOperationStartDateKey(
+          resolveEarliestFactoryManagementStartDateKey(safeFactories)
+        );
         const nextLines = buildAssignableLines({
           factories: safeFactories,
           lines,
@@ -6539,8 +6581,14 @@ const AssignBoard = () => {
 
   const applyViewRange = useCallback(
     (nextStart, nextEnd) => {
-      const normalizedStart = clampAssignmentViewDate(nextStart);
-      const normalizedEnd = clampAssignmentViewDate(nextEnd);
+      const normalizedStart = clampAssignmentViewDate(
+        nextStart,
+        assignmentOperationStartDateKey
+      );
+      const normalizedEnd = clampAssignmentViewDate(
+        nextEnd,
+        assignmentOperationStartDateKey
+      );
 
       if (normalizedStart > normalizedEnd) return false;
       if (
@@ -6554,7 +6602,7 @@ const AssignBoard = () => {
       setViewEnd(normalizedEnd);
       return true;
     },
-    [viewEnd, viewStart]
+    [assignmentOperationStartDateKey, viewEnd, viewStart]
   );
 
   // ── 날짜 범위 네비게이션 헬퍼 ──────────────────────────────────────
@@ -6562,8 +6610,8 @@ const AssignBoard = () => {
   const toMonthEnd   = (d) => { const r = new Date(d); r.setDate(1); r.setMonth(r.getMonth()+1); r.setDate(0); r.setHours(0,0,0,0); return r; };
 
   const handleViewStartChange = (newStart) => {
-    const s = clampAssignmentViewDate(newStart);
-    const e = clampAssignmentViewDate(viewEnd);
+    const s = clampAssignmentViewDate(newStart, assignmentOperationStartDateKey);
+    const e = clampAssignmentViewDate(viewEnd, assignmentOperationStartDateKey);
     if (s > e) return;
     const range = Math.round((e - s) / 86400000) + 1;
     if (range > MAX_RANGE_DAYS) {
@@ -6574,8 +6622,8 @@ const AssignBoard = () => {
     applyViewRange(s, e);
   };
   const handleViewEndChange = (newEnd) => {
-    const e = clampAssignmentViewDate(newEnd);
-    const s = clampAssignmentViewDate(viewStart);
+    const e = clampAssignmentViewDate(newEnd, assignmentOperationStartDateKey);
+    const s = clampAssignmentViewDate(viewStart, assignmentOperationStartDateKey);
     if (e < s) return;
     const range = Math.round((e - s) / 86400000) + 1;
     if (range > MAX_RANGE_DAYS) return;
@@ -6607,7 +6655,8 @@ const AssignBoard = () => {
   const controlsDisabled = persisting || loading;
   const monthMinusDisabled =
     controlsDisabled ||
-    toMonthStart(viewStart).getTime() <= getAssignmentOperationStartDate().getTime();
+    toMonthStart(viewStart).getTime() <=
+      getAssignmentOperationStartDate(assignmentOperationStartDateKey).getTime();
 
   return (
     <AppPageContainer
@@ -6716,14 +6765,14 @@ const AssignBoard = () => {
                   value={viewStart}
                   onChange={(val) => { if (val?.isValid?.()) handleViewStartChange(val.toDate()); }}
                   disabled={controlsDisabled}
-                  minDate={ASSIGNMENT_OPERATION_START_DAY}
+                  minDate={assignmentOperationStartDay}
                 />
                 <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>~</Typography>
                 <CustomDatePicker
                   value={viewEnd}
                   onChange={(val) => { if (val?.isValid?.()) handleViewEndChange(val.toDate()); }}
                   disabled={controlsDisabled}
-                  minDate={ASSIGNMENT_OPERATION_START_DAY}
+                  minDate={assignmentOperationStartDay}
                 />
                 <Stack sx={{ gap: '2px' }}>
                   <Button

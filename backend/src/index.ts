@@ -15,6 +15,11 @@ import {
 import { normalizeEmployeeNo } from "./employees/employeeNumber";
 import { createEmployeeRouter } from "./employees/employee.routes";
 import { createFactoryRouter } from "./factories/factory.routes";
+import {
+  DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
+  normalizeFactoryManagementStartDateKey,
+  resolveFactoryManagementStartDateKey,
+} from "./factories/factoryManagementStart";
 import { createLineRouter } from "./lines/line.routes";
 import { createOrgMembershipRouter } from "./org-memberships/orgMembership.routes";
 import { createOrganizationRouter } from "./organizations/organization.routes";
@@ -6766,21 +6771,25 @@ const summarizeWorkLogPayloadForDebug = (payload: any = {}) => {
     recordsPreview: summarizeWorkLogRecordsForDebug(records),
   };
 };
-const WORK_LOG_OPERATION_START_DATE_KEY = "2026-04-01";
 const validateWorkLogOperationStartDateRange = ({
   coverageStartDate,
   coverageEndDate,
+  operationStartDateKey = DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
 }: {
   coverageStartDate?: string | null;
   coverageEndDate?: string | null;
+  operationStartDateKey?: string | null;
 }) => {
   const startDate = normalizeDateKey(coverageStartDate);
   const endDate = normalizeDateKey(coverageEndDate);
+  const resolvedOperationStartDateKey =
+    normalizeFactoryManagementStartDateKey(operationStartDateKey) ||
+    DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY;
   if (
-    (startDate && startDate < WORK_LOG_OPERATION_START_DATE_KEY) ||
-    (endDate && endDate < WORK_LOG_OPERATION_START_DATE_KEY)
+    (startDate && startDate < resolvedOperationStartDateKey) ||
+    (endDate && endDate < resolvedOperationStartDateKey)
   ) {
-    return `Work logs before ${WORK_LOG_OPERATION_START_DATE_KEY} are not accepted.`;
+    return `Work logs before ${resolvedOperationStartDateKey} are not accepted.`;
   }
   return null;
 };
@@ -22080,19 +22089,6 @@ app.post("/work-logs/import", async (req, res) => {
         })
       );
     }
-    const operationStartError = validateWorkLogOperationStartDateRange({
-      coverageStartDate: row.coverageStartDate,
-      coverageEndDate: row.coverageEndDate,
-    });
-    if (operationStartError) {
-      issues.push(
-        buildWorkLogImportIssue({
-          row,
-          code: "DATE_BEFORE_OPERATION_START",
-          message: operationStartError,
-        })
-      );
-    }
     if (!row.employeeNo) {
       issues.push(
         buildWorkLogImportIssue({
@@ -22378,7 +22374,12 @@ app.post("/work-logs/import", async (req, res) => {
     factoryIds.length > 0
       ? await prisma.factory.findMany({
           where: { orgId: organization.id, id: { in: factoryIds } },
-          select: { id: true, name: true, wagePerSecond: true },
+          select: {
+            id: true,
+            name: true,
+            wagePerSecond: true,
+            managementStartDate: true,
+          },
         })
       : [];
   const factoryById = ensureArray(factories).reduce((map, factory) => {
@@ -22488,6 +22489,21 @@ app.post("/work-logs/import", async (req, res) => {
       rowNumber: 0,
       sheetName: null,
     };
+    const operationStartError = validateWorkLogOperationStartDateRange({
+      coverageStartDate: normalized.coverageStartDate,
+      coverageEndDate: normalized.coverageEndDate,
+      operationStartDateKey: resolveFactoryManagementStartDateKey(group.factory),
+    });
+    if (operationStartError) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row: groupAnchorRow,
+          code: "DATE_BEFORE_OPERATION_START",
+          message: operationStartError,
+        })
+      );
+      continue;
+    }
 
     if (normalized.invalidWorkerRecordIndex >= 0) {
       const sourceRow =
@@ -22841,13 +22857,6 @@ app.post("/work-logs", async (req, res) => {
   });
   const normalized = normalizeWorkLogPayload(req.body ?? {});
   updateWorkLogMutationTrace(trace, "normalized", summarizeWorkLogPayloadForDebug(normalized));
-  const operationStartError = validateWorkLogOperationStartDateRange(normalized);
-  if (operationStartError) {
-    return res.status(400).json({
-      ok: false,
-      error: operationStartError,
-    });
-  }
   if (normalized.invalidWorkerRecordIndex >= 0) {
     return res.status(400).json({
       ok: false,
@@ -22856,15 +22865,27 @@ app.post("/work-logs", async (req, res) => {
       ),
     });
   }
+  let validatedFactory: any = null;
   if (normalized.factoryId !== null) {
-    const factory = await prisma.factory.findFirst({
+    validatedFactory = await prisma.factory.findFirst({
       where: { id: normalized.factoryId, orgId: organization.id },
     });
-    if (!factory) {
+    if (!validatedFactory) {
       return res
         .status(404)
         .json({ ok: false, error: translateWorkLogErrorMessage("factory not found") });
     }
+  }
+  const operationStartError = validateWorkLogOperationStartDateRange({
+    coverageStartDate: normalized.coverageStartDate,
+    coverageEndDate: normalized.coverageEndDate,
+    operationStartDateKey: resolveFactoryManagementStartDateKey(validatedFactory),
+  });
+  if (operationStartError) {
+    return res.status(400).json({
+      ok: false,
+      error: operationStartError,
+    });
   }
   updateWorkLogMutationTrace(trace, "factory-validated", {
     factoryId: normalized.factoryId,
@@ -23165,13 +23186,6 @@ app.put("/work-logs/:id", async (req, res) => {
   }
   const normalized = normalizeWorkLogPayload(req.body ?? {}, existing);
   updateWorkLogMutationTrace(trace, "normalized", summarizeWorkLogPayloadForDebug(normalized));
-  const operationStartError = validateWorkLogOperationStartDateRange(normalized);
-  if (operationStartError) {
-    return res.status(400).json({
-      ok: false,
-      error: operationStartError,
-    });
-  }
   if (normalized.invalidWorkerRecordIndex >= 0) {
     return res.status(400).json({
       ok: false,
@@ -23180,15 +23194,27 @@ app.put("/work-logs/:id", async (req, res) => {
       ),
     });
   }
+  let validatedFactory: any = null;
   if (normalized.factoryId !== null) {
-    const factory = await prisma.factory.findFirst({
+    validatedFactory = await prisma.factory.findFirst({
       where: { id: normalized.factoryId, orgId: organization.id },
     });
-    if (!factory) {
+    if (!validatedFactory) {
       return res
         .status(404)
         .json({ ok: false, error: translateWorkLogErrorMessage("factory not found") });
     }
+  }
+  const operationStartError = validateWorkLogOperationStartDateRange({
+    coverageStartDate: normalized.coverageStartDate,
+    coverageEndDate: normalized.coverageEndDate,
+    operationStartDateKey: resolveFactoryManagementStartDateKey(validatedFactory),
+  });
+  if (operationStartError) {
+    return res.status(400).json({
+      ok: false,
+      error: operationStartError,
+    });
   }
   updateWorkLogMutationTrace(trace, "factory-validated", {
     factoryId: normalized.factoryId,

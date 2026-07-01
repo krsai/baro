@@ -1,6 +1,11 @@
 ﻿import { Router } from "express";
 import { prisma } from "../db";
 import { normalizeEmployeeNo } from "../employees/employeeNumber";
+import {
+  DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
+  normalizeFactoryManagementStartDateKey,
+  parseFactoryManagementStartDateInput,
+} from "./factoryManagementStart";
 import { getOrganizationByQuery } from "../middleware/access";
 import { toNumberOrNull } from "../utils/common";
 
@@ -79,6 +84,12 @@ const normalizeFactoryCountryCode = (value: unknown): string | null => {
   return trimmed;
 };
 
+const normalizeOptionalFactoryText = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized || null;
+};
+
 const resolveFactoryPhoneFields = (params: {
   countryInput: unknown;
   countryCodeInput: unknown;
@@ -136,7 +147,10 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     }
     const {
       name,
+      nameKo,
+      nameVi,
       factoryCode,
+      managementStartDate,
       address,
       country,
       countryCode,
@@ -164,12 +178,22 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       countryInput: country,
       countryCodeInput: countryCode,
     });
+    const managementStartDateResolved = parseFactoryManagementStartDateInput(
+      managementStartDate,
+      DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY
+    );
+    if (managementStartDateResolved.error) {
+      return res.status(400).json({ ok: false, error: managementStartDateResolved.error });
+    }
 
     const factory = await prisma.factory.create({
       data: {
         orgId: organization.id,
         name: name.trim(),
+        nameKo: normalizeOptionalFactoryText(nameKo),
+        nameVi: normalizeOptionalFactoryText(nameVi),
         factoryCode: normalizedCode,
+        managementStartDate: managementStartDateResolved.value,
         address: address?.trim?.() ?? address ?? null,
         country: phoneFields.country,
         countryCode: phoneFields.countryCode,
@@ -206,7 +230,10 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
 
     const {
       name,
+      nameKo,
+      nameVi,
       factoryCode,
+      managementStartDate,
       address,
       country,
       countryCode,
@@ -303,6 +330,13 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       fallbackCountry: (existing as any)?.country ?? null,
       fallbackCountryCode: existing.countryCode,
     });
+    const managementStartDateResolved = parseFactoryManagementStartDateInput(
+      managementStartDate,
+      normalizeFactoryManagementStartDateKey((existing as any)?.managementStartDate)
+    );
+    if (managementStartDateResolved.error) {
+      return res.status(400).json({ ok: false, error: managementStartDateResolved.error });
+    }
 
     let factory;
     try {
@@ -311,7 +345,16 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
           where: { id },
           data: {
             name: typeof name === "string" ? name.trim() : existing.name,
+            nameKo:
+              nameKo !== undefined
+                ? normalizeOptionalFactoryText(nameKo)
+                : (existing as any)?.nameKo ?? null,
+            nameVi:
+              nameVi !== undefined
+                ? normalizeOptionalFactoryText(nameVi)
+                : (existing as any)?.nameVi ?? null,
             factoryCode: resolvedCode,
+            managementStartDate: managementStartDateResolved.value,
             address: address?.trim?.() ?? address ?? null,
             country: phoneFields.country,
             countryCode: phoneFields.countryCode,

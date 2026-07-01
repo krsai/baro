@@ -152,3 +152,25 @@ Date: 2026-07-01
 - `node --check backend/scripts/inspect-workrecord-state.js`
 - `node --check backend/scripts/normalize-process-master-names.js`
 - `node --check backend/scripts/verify-snapshot-st-backfill.js`
+
+---
+
+## 2026-07-01 Factory management start date and business UI
+
+### Done
+- Added `Factory.nameKo`, `Factory.nameVi`, and `Factory.managementStartDate`.
+- Added `Organization.nameKo` and `Organization.nameVi`.
+- Updated `migration_fix.sql` to backfill existing factory `managementStartDate` values to `2026-04-01`.
+- Switched work log / work history / production analysis minimum-date guards from the BARO-only hardcoded date to factory-scoped management start dates.
+- Reworked business and customer basic-info forms to group related fields and support Korean/Vietnamese inputs.
+
+### Remaining
+- Recheck whether the global assignment board should keep using the earliest factory management start date or move to a stricter per-factory rule.
+- Remove the hidden legacy basic-info block in `frontend/src/pages/App/customer/CustomerDetail.jsx` once the new panel is fully settled.
+
+### Verify
+- `npm --prefix backend run prisma:prepare-client`
+- `npm --prefix backend run build`
+- `npm --prefix frontend run build`
+- Create/update organization and factory records and confirm localized names persist.
+- Change a factory `managementStartDate` and confirm selected-factory date pickers clamp correctly in work history and production analysis screens.

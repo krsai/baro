@@ -434,6 +434,12 @@ ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "revenueMemo" TEXT;
 
 -- Step 0: factory code and employee number (20260610)
 ALTER TABLE "Factory" ADD COLUMN IF NOT EXISTS "factoryCode" TEXT;
+ALTER TABLE "Factory" ADD COLUMN IF NOT EXISTS "nameKo" TEXT;
+ALTER TABLE "Factory" ADD COLUMN IF NOT EXISTS "nameVi" TEXT;
+ALTER TABLE "Factory" ADD COLUMN IF NOT EXISTS "managementStartDate" TEXT;
+UPDATE "Factory"
+SET "managementStartDate" = '2026-04-01'
+WHERE "managementStartDate" IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS "Factory_orgId_factoryCode_key"
   ON "Factory"("orgId", "factoryCode") WHERE "factoryCode" IS NOT NULL;
 

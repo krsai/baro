@@ -45,6 +45,13 @@ import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { fetchProcessAttributes } from '../../../utils/attributeApi';
+import {
+  DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
+  clampDateToFactoryManagementStart,
+  isDateBeforeFactoryManagementStart,
+  resolveScopedFactoryManagementStartDateKey,
+  resolveScopedFactoryManagementStartDay,
+} from '../../../utils/factoryManagementStart';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { hasAssignmentCtSnapshot, resolveAssignmentCtSnapshot } from '../../../utils/assignmentCt';
 import { resolveLocalizedProcessName } from '../../../utils/processDisplay';
@@ -110,21 +117,24 @@ const LABELS = {
 };
 
 const toText = (value) => String(value || '').trim();
-const WORK_LOG_OPERATION_START_DATE_KEY = '2026-04-01';
-const WORK_LOG_OPERATION_START_DAY = dayjs(WORK_LOG_OPERATION_START_DATE_KEY).startOf('day');
-const WORK_LOG_OPERATION_START_ERROR_MESSAGE =
-  '\uC791\uC5C5\uAE30\uB85D\uC740 2026-04-01 \uC774\uD6C4\uB9CC \uC785\uB825\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.';
-const clampWorkLogDay = (value) => {
-  const parsed = dayjs(value);
-  const normalized = parsed.isValid() ? parsed.startOf('day') : dayjs().startOf('day');
-  return normalized.isBefore(WORK_LOG_OPERATION_START_DAY, 'day')
-    ? WORK_LOG_OPERATION_START_DAY
-    : normalized;
+const buildWorkLogOperationStartErrorMessage = (languageCode, startDateKey) => {
+  const resolvedStartDateKey = startDateKey || DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY;
+  if (languageCode === 'vi') {
+    return `Chi co the nhap ghi chep tu ${resolvedStartDateKey} tro di.`;
+  }
+  if (languageCode === 'en') {
+    return `Only work logs from ${resolvedStartDateKey} onward can be entered.`;
+  }
+  return `작업기록은 ${resolvedStartDateKey} 이후만 입력할 수 있습니다.`;
 };
-const isWorkLogDateBeforeOperationStart = (value) => {
-  const text = toText(value);
-  return /^\d{4}-\d{2}-\d{2}$/.test(text) && text < WORK_LOG_OPERATION_START_DATE_KEY;
-};
+const clampWorkLogDay = (
+  value,
+  managementStartDateKey = DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY
+) => clampDateToFactoryManagementStart(value, managementStartDateKey);
+const isWorkLogDateBeforeOperationStart = (
+  value,
+  managementStartDateKey = DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY
+) => isDateBeforeFactoryManagementStart(value, managementStartDateKey);
 const toKey = (value) => toText(value).toLowerCase();
 const equalsText = (left, right) => toKey(left) === toKey(right);
 const normalizeProcessCode = (value) =>
@@ -1214,13 +1224,40 @@ const WorkDetail = ({
 
   const selectedFactoryId = toPositiveIdOrNull(selectedFactory?.id);
   const selectedLineId = toPositiveIdOrNull(selectedLine?.id);
-  const workDateKey = useMemo(() => clampWorkLogDay(workDate).format('YYYY-MM-DD'), [workDate]);
+  const currentFactory = useMemo(() => {
+    if (!selectedFactory) return null;
+    return matchByIdOrName(factories, selectedFactory, 'id', 'name') || selectedFactory;
+  }, [factories, selectedFactory]);
+  const workLogOperationStartDateKey = useMemo(
+    () =>
+      resolveScopedFactoryManagementStartDateKey({
+        factory: currentFactory || selectedFactory || null,
+        factories,
+      }),
+    [currentFactory, factories, selectedFactory]
+  );
+  const workLogOperationStartDay = useMemo(
+    () =>
+      resolveScopedFactoryManagementStartDay({
+        factory: currentFactory || selectedFactory || null,
+        factories,
+      }),
+    [currentFactory, factories, selectedFactory]
+  );
+  const workLogOperationStartErrorMessage = useMemo(
+    () => buildWorkLogOperationStartErrorMessage(languageCode, workLogOperationStartDateKey),
+    [languageCode, workLogOperationStartDateKey]
+  );
+  const workDateKey = useMemo(
+    () => clampWorkLogDay(workDate, workLogOperationStartDateKey).format('YYYY-MM-DD'),
+    [workDate, workLogOperationStartDateKey]
+  );
   const coverageStartDateKey = useMemo(
     () =>
       coverageStartDate?.isValid?.()
-        ? clampWorkLogDay(coverageStartDate).format('YYYY-MM-DD')
+        ? clampWorkLogDay(coverageStartDate, workLogOperationStartDateKey).format('YYYY-MM-DD')
         : workDateKey,
-    [coverageStartDate, workDateKey]
+    [coverageStartDate, workDateKey, workLogOperationStartDateKey]
   );
   const entryMode = useMemo(
     () => (coverageStartDateKey === workDateKey ? 'daily' : 'period_summary'),
@@ -1427,6 +1464,19 @@ const WorkDetail = ({
   }, [factories, initialLog?.id, selectedFactory]);
 
   useEffect(() => {
+    if (initialLog?.id || !selectedFactoryId) return;
+    setWorkDate((current) => {
+      const clamped = clampWorkLogDay(current || dayjs(), workLogOperationStartDateKey);
+      return current?.isSame?.(clamped, 'day') ? current : clamped;
+    });
+    setCoverageStartDate((current) => {
+      const base = current?.isValid?.() ? current : workDate || dayjs();
+      const clamped = clampWorkLogDay(base, workLogOperationStartDateKey);
+      return current?.isSame?.(clamped, 'day') ? current : clamped;
+    });
+  }, [initialLog?.id, selectedFactoryId, workDate, workLogOperationStartDateKey]);
+
+  useEffect(() => {
     if (!selectedFactoryId) {
       setLines([]);
       setSelectedLine(null);
@@ -1531,8 +1581,11 @@ const WorkDetail = ({
             : null;
           setCoverageStartDate(
             suggestedStartDate?.isValid?.()
-              ? clampWorkLogDay(suggestedStartDate)
-              : clampWorkLogDay(workDate?.isValid?.() ? workDate : dayjs())
+              ? clampWorkLogDay(suggestedStartDate, workLogOperationStartDateKey)
+              : clampWorkLogDay(
+                  workDate?.isValid?.() ? workDate : dayjs(),
+                  workLogOperationStartDateKey
+                )
           );
         }
         if (context?.line) {
@@ -1579,6 +1632,7 @@ const WorkDetail = ({
     isCancelledRequestError,
     workDate,
     workDateKey,
+    workLogOperationStartDateKey,
     workerDebugEnabled,
   ]);
 
@@ -1622,10 +1676,6 @@ const WorkDetail = ({
     }
   }, [rows]);
 
-  const currentFactory = useMemo(() => {
-    if (!selectedFactory) return null;
-    return matchByIdOrName(factories, selectedFactory, 'id', 'name') || selectedFactory;
-  }, [factories, selectedFactory]);
   const selectedFactoryWagePerSecond = Number(currentFactory?.wagePerSecond ?? currentFactory?.factoryWagePerSecond ?? initialLog?.factoryWagePerSecond);
   const hasFactoryWage = Number.isFinite(selectedFactoryWagePerSecond) && selectedFactoryWagePerSecond > 0;
   const processCatalogById = useMemo(
@@ -2390,14 +2440,19 @@ const WorkDetail = ({
       isFirstLineWorkLog: false,
     });
     if (!initialLog?.id) {
-      setCoverageStartDate(clampWorkLogDay(workDate?.isValid?.() ? workDate : dayjs()));
+      setCoverageStartDate(
+        clampWorkLogDay(
+          workDate?.isValid?.() ? workDate : dayjs(),
+          workLogOperationStartDateKey
+        )
+      );
     }
     setRows([]);
     setFormError('');
     setEditingField(null);
     setSearchTerm('');
     initialRowsHydratedRef.current = Boolean(initialLog?.id);
-  }, [initialLog?.id, workDate]);
+  }, [initialLog?.id, workDate, workLogOperationStartDateKey]);
   const handleLineChange = useCallback((nextLine) => {
     setSelectedLine(nextLine || null);
     setCoverageSuggestion({
@@ -2406,16 +2461,24 @@ const WorkDetail = ({
       isFirstLineWorkLog: false,
     });
     if (!initialLog?.id) {
-      setCoverageStartDate(clampWorkLogDay(workDate?.isValid?.() ? workDate : dayjs()));
+      setCoverageStartDate(
+        clampWorkLogDay(
+          workDate?.isValid?.() ? workDate : dayjs(),
+          workLogOperationStartDateKey
+        )
+      );
     }
     setRows([]);
     setFormError('');
     setEditingField(null);
     setSearchTerm('');
     initialRowsHydratedRef.current = Boolean(initialLog?.id);
-  }, [initialLog?.id, workDate]);
+  }, [initialLog?.id, workDate, workLogOperationStartDateKey]);
   const handleWorkDateChange = useCallback((nextDate) => {
-    const resolvedNextDate = clampWorkLogDay(nextDate || dayjs());
+    const resolvedNextDate = clampWorkLogDay(
+      nextDate || dayjs(),
+      workLogOperationStartDateKey
+    );
     setWorkDate(resolvedNextDate);
     setCoverageSuggestion({
       previousCoverageEndDate: null,
@@ -2424,7 +2487,7 @@ const WorkDetail = ({
     });
     setCoverageStartDate((current) => {
       if (!current?.isValid?.()) return resolvedNextDate;
-      const normalizedCurrent = clampWorkLogDay(current);
+      const normalizedCurrent = clampWorkLogDay(current, workLogOperationStartDateKey);
       return normalizedCurrent.isAfter(resolvedNextDate, 'day') ? resolvedNextDate : normalizedCurrent;
     });
     setRows([]);
@@ -2432,11 +2495,13 @@ const WorkDetail = ({
     setEditingField(null);
     setSearchTerm('');
     initialRowsHydratedRef.current = Boolean(initialLog?.id);
-  }, [initialLog?.id]);
+  }, [initialLog?.id, workLogOperationStartDateKey]);
   const handleCoverageStartDateChange = useCallback((nextDate) => {
-    setCoverageStartDate(clampWorkLogDay(nextDate || workDate || dayjs()));
+    setCoverageStartDate(
+      clampWorkLogDay(nextDate || workDate || dayjs(), workLogOperationStartDateKey)
+    );
     setFormError('');
-  }, [workDate]);
+  }, [workDate, workLogOperationStartDateKey]);
   const handleWorkerChange = useCallback((rowId, nextWorker) => {
     setRows((currentRows) =>
       currentRows.map((row) =>
@@ -2571,10 +2636,13 @@ const WorkDetail = ({
       return;
     }
     if (
-      isWorkLogDateBeforeOperationStart(coverageStartDateKey) ||
-      isWorkLogDateBeforeOperationStart(workDateKey)
+      isWorkLogDateBeforeOperationStart(
+        coverageStartDateKey,
+        workLogOperationStartDateKey
+      ) ||
+      isWorkLogDateBeforeOperationStart(workDateKey, workLogOperationStartDateKey)
     ) {
-      setFormError(WORK_LOG_OPERATION_START_ERROR_MESSAGE);
+      setFormError(workLogOperationStartErrorMessage);
       return;
     }
     if (!selectedFactoryId) {
@@ -2630,7 +2698,7 @@ const WorkDetail = ({
       records: summary.records,
       note: buildCombinedNote({ manualNote: note, autoNote: autoExceededNote }),
     });
-  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, entryMode, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, missingAssignmentPlanLinkMessage, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey]);
+  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, entryMode, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, missingAssignmentPlanLinkMessage, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey, workLogOperationStartDateKey, workLogOperationStartErrorMessage]);
   const rowOrderIndexById = useMemo(() => {
     const map = new Map();
     rows.forEach((row, index) => {
@@ -3007,10 +3075,10 @@ const WorkDetail = ({
           <Stack spacing={1.5}>
             <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', xl: 'minmax(180px, 0.9fr) minmax(180px, 0.9fr) minmax(220px, 1fr) minmax(220px, 1fr) minmax(180px, 0.8fr)' }, alignItems: 'start' }}>
               <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode} localeText={buildDatePickerLocaleText(languageCode)}>
-                <DatePicker label={LABELS.coverageStartDate} value={coverageStartDate} onChange={handleCoverageStartDateChange} minDate={WORK_LOG_OPERATION_START_DAY} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
+                <DatePicker label={LABELS.coverageStartDate} value={coverageStartDate} onChange={handleCoverageStartDateChange} minDate={workLogOperationStartDay} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
               </LocalizationProvider>
               <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode} localeText={buildDatePickerLocaleText(languageCode)}>
-                <DatePicker label={LABELS.workDate} value={workDate} onChange={handleWorkDateChange} minDate={WORK_LOG_OPERATION_START_DAY} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
+                <DatePicker label={LABELS.workDate} value={workDate} onChange={handleWorkDateChange} minDate={workLogOperationStartDay} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
               </LocalizationProvider>
               <SearchableSelect label={!loading && factories.length === 1 ? LABELS.autoFactory : LABELS.factory} options={factories} value={selectedFactory} onChange={(_event, value) => handleFactoryChange(value)} disabled={factories.length === 1} autoHighlight openOnFocus selectOnFocus clearOnBlur={false} handleHomeEndKeys getOptionLabel={(option) => option?.name || ''} isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')} textFieldProps={{ size: 'small' }} />
               <SearchableSelect label={LABELS.line} options={lines} value={selectedLine} onChange={(_event, value) => handleLineChange(value)} disabled={!selectedFactoryId || lines.length === 0} autoHighlight openOnFocus selectOnFocus clearOnBlur={false} handleHomeEndKeys getOptionLabel={(option) => option?.name || ''} isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')} textFieldProps={{ size: 'small' }} />

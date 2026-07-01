@@ -1,7 +1,9 @@
 ﻿import React, { useEffect, useState } from 'react';
 import {
   Button,
+  Chip,
   Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -10,6 +12,7 @@ import {
   TableRow,
   IconButton,
   Tooltip,
+  Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -21,6 +24,7 @@ import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { requestJSON } from '../../../utils/apiClient';
+import { resolveFactoryManagementStartDateKey } from '../../../utils/factoryManagementStart';
 
 const FactoryList = () => {
   const [factories, setFactories] = useState([]);
@@ -41,6 +45,15 @@ const FactoryList = () => {
     columnAddress: getUiMessage('factoryBoard.columnAddress', 'Address', languageCode),
     columnContact: getUiMessage('factoryBoard.columnContact', 'Contact', languageCode),
     columnManager: getUiMessage('factoryBoard.columnManager', 'Manager', languageCode),
+    columnStartDate: getUiMessage(
+      'factoryBoard.columnStartDate',
+      languageCode === 'ko'
+        ? '관리 시작일'
+        : languageCode === 'vi'
+          ? 'Ngay bat dau quan ly'
+          : 'Management Start',
+      languageCode
+    ),
     columnWagePerSecond: getUiMessage('factoryBoard.columnWagePerSecond', 'Wage / sec', languageCode),
     columnAction: getUiMessage('factoryBoard.columnAction', 'Action', languageCode),
     loading: getUiMessage('factoryBoard.loading', 'Loading...', languageCode),
@@ -72,6 +85,9 @@ const FactoryList = () => {
     const phoneNumber = String(factory?.phoneNumber || '').trim();
     return [country, countryCode, phoneNumber].filter(Boolean).join(' ') || '-';
   };
+
+  const formatFactoryLocalizedNames = (factory) =>
+    [String(factory?.nameKo || '').trim(), String(factory?.nameVi || '').trim()].filter(Boolean);
 
   const fetchFactories = async (options = {}) => {
     const isActive = options.isActive ?? (() => true);
@@ -119,7 +135,10 @@ const FactoryList = () => {
 
     const payload = {
       name: savedData.name,
+      nameKo: savedData.nameKo,
+      nameVi: savedData.nameVi,
       factoryCode: savedData.factoryCode,
+      managementStartDate: savedData.managementStartDate,
       address: savedData.address,
       country: savedData.country,
       countryCode: savedData.countryCode,
@@ -197,6 +216,20 @@ const FactoryList = () => {
       title={text.title}
       toolbar={(
         <PageToolbar
+          left={(
+            <Stack direction="row" spacing={1}>
+              <Chip
+                size="small"
+                label={
+                  languageCode === 'ko'
+                    ? `공장 ${factories.length}곳`
+                    : languageCode === 'vi'
+                      ? `${factories.length} nha may`
+                      : `${factories.length} factories`
+                }
+              />
+            </Stack>
+          )}
           right={(
             <Button
               variant="contained"
@@ -219,6 +252,9 @@ const FactoryList = () => {
                 <TableCell sx={{ fontWeight: 'bold' }}>{text.columnAddress}</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>{text.columnContact}</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>{text.columnManager}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                  {text.columnStartDate}
+                </TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>{text.columnWagePerSecond}</TableCell>
                 <TableCell sx={{ fontWeight: 'bold', width: 80, textAlign: 'center' }}>
                   {text.columnAction}
@@ -227,9 +263,9 @@ const FactoryList = () => {
             </TableHead>
             <TableBody>
               {loading ? (
-                <TableStatusRow colSpan={6} message={text.loading} />
+                <TableStatusRow colSpan={8} message={text.loading} />
               ) : factories.length === 0 ? (
-                <TableStatusRow colSpan={7} message={text.empty} />
+                <TableStatusRow colSpan={8} message={text.empty} />
               ) : (
                 factories.map((factory) => {
                   const rawWage = factory.wagePerSecond;
@@ -237,6 +273,7 @@ const FactoryList = () => {
                     rawWage === '' || rawWage === null || rawWage === undefined
                       ? Number.NaN
                       : Number(rawWage);
+                  const localizedNames = formatFactoryLocalizedNames(factory);
 
                   return (
                     <TableRow
@@ -245,11 +282,23 @@ const FactoryList = () => {
                       onDoubleClick={() => handleRowDoubleClick(factory)}
                       sx={{ cursor: 'pointer' }}
                     >
-                      <TableCell>{factory.name || '-'}</TableCell>
+                      <TableCell>
+                        <Stack spacing={0.5}>
+                          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                            {factory.name || '-'}
+                          </Typography>
+                          {localizedNames.length > 0 ? (
+                            <Typography variant="caption" color="text.secondary">
+                              {localizedNames.join(' / ')}
+                            </Typography>
+                          ) : null}
+                        </Stack>
+                      </TableCell>
                       <TableCell sx={{ fontWeight: 'bold', color: 'primary.main' }}>{factory.factoryCode || '-'}</TableCell>
                       <TableCell>{factory.address || '-'}</TableCell>
                       <TableCell>{formatFactoryContact(factory)}</TableCell>
                       <TableCell>{factory.manager || '-'}</TableCell>
+                      <TableCell>{resolveFactoryManagementStartDateKey(factory)}</TableCell>
                       <TableCell>{Number.isFinite(wage) ? wage.toFixed(2) : '-'}</TableCell>
                       <TableCell sx={{ textAlign: 'center' }}>
                         <Tooltip title={text.deleteFactory}>

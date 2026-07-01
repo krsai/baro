@@ -18,6 +18,12 @@ type OrganizationRoutesDeps = {
   toOrganizationResponse: (organization: any) => any;
 };
 
+const normalizeOptionalOrganizationText = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized || null;
+};
+
 export const createOrganizationRouter = ({
   applySubscriptionPayload,
   toOrganizationResponse,
@@ -47,6 +53,8 @@ export const createOrganizationRouter = ({
 
     const {
       name,
+      nameKo,
+      nameVi,
       code,
       businessNumber,
       representative,
@@ -81,6 +89,8 @@ export const createOrganizationRouter = ({
     const organization = await prisma.organization.create({
       data: {
         name,
+        nameKo: normalizeOptionalOrganizationText(nameKo),
+        nameVi: normalizeOptionalOrganizationText(nameVi),
         code: normalizedCode,
         businessNumber,
         representative,
@@ -128,6 +138,8 @@ export const createOrganizationRouter = ({
 
     const {
       name,
+      nameKo,
+      nameVi,
       code,
       businessNumber,
       representative,
@@ -174,6 +186,12 @@ export const createOrganizationRouter = ({
       address,
       phone,
       email,
+      ...(nameKo !== undefined
+        ? { nameKo: normalizeOptionalOrganizationText(nameKo) }
+        : {}),
+      ...(nameVi !== undefined
+        ? { nameVi: normalizeOptionalOrganizationText(nameVi) }
+        : {}),
       ...(isSystemAdmin && type !== undefined ? { type } : {}),
       ...(code !== undefined ? { code: normalizedCode } : {}),
     };
