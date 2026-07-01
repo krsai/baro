@@ -1,13 +1,13 @@
 {
-  "$schema": "https://railway.app/railway.schema.json",
+  "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "builder": "RAILPACK",
     "buildCommand": "npm run prisma:prepare-client && npm run build"
   },
   "deploy": {
-    "preDeployCommand": ["npm run railway:predeploy"],
+    "preDeployCommand": "npm run railway:predeploy",
     "startCommand": "npm start",
-    "healthcheckPath": "/health",
+    "healthcheckPath": "/ready",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
