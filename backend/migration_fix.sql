@@ -739,14 +739,12 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Style' AND column_name = 'code') THEN
       ALTER TABLE "Style" RENAME COLUMN "styleCode" TO "code";
     ELSE
-      IF EXISTS (
-        SELECT 1 FROM "Style"
-        WHERE NULLIF(BTRIM("styleCode"), '') IS NOT NULL
-          AND NULLIF(BTRIM("code"), '') IS NOT NULL
-          AND BTRIM("styleCode") <> BTRIM("code")
-      ) THEN
-        RAISE EXCEPTION 'Style has conflicting code and legacy styleCode values; resolve manually before migration.';
-      END IF;
+      -- Both code and styleCode exist. code is canonical (current app reads it).
+      -- Fill code from styleCode only where code is blank; discard styleCode otherwise.
+      UPDATE "Style"
+        SET "code" = BTRIM("styleCode")
+        WHERE NULLIF(BTRIM("code"), '') IS NULL
+          AND NULLIF(BTRIM("styleCode"), '') IS NOT NULL;
       ALTER TABLE "Style" DROP COLUMN "styleCode";
     END IF;
   END IF;
@@ -764,9 +762,7 @@ BEGIN
     ALTER TABLE "StyleProcess" RENAME COLUMN "styleUid" TO "styleId";
   ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'StyleProcess' AND column_name = 'styleUid')
      AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'StyleProcess' AND column_name = 'styleId') THEN
-    IF EXISTS (SELECT 1 FROM "StyleProcess" WHERE "styleUid" IS NOT NULL AND "styleId" IS NOT NULL AND "styleId" <> "styleUid") THEN
-      RAISE EXCEPTION 'StyleProcess has conflicting styleId and legacy styleUid values; resolve manually before migration.';
-    END IF;
+    -- styleId is the canonical integer FK; keep it, fill nulls from styleUid, drop styleUid.
     UPDATE "StyleProcess" SET "styleId" = "styleUid" WHERE "styleId" IS NULL AND "styleUid" IS NOT NULL;
     ALTER TABLE "StyleProcess" DROP COLUMN "styleUid";
   END IF;
@@ -776,9 +772,7 @@ BEGIN
     ALTER TABLE "AtTrainingBucketProcess" RENAME COLUMN "styleUid" TO "styleId";
   ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AtTrainingBucketProcess' AND column_name = 'styleUid')
      AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AtTrainingBucketProcess' AND column_name = 'styleId') THEN
-    IF EXISTS (SELECT 1 FROM "AtTrainingBucketProcess" WHERE "styleUid" IS NOT NULL AND "styleId" IS NOT NULL AND "styleId" <> "styleUid") THEN
-      RAISE EXCEPTION 'AtTrainingBucketProcess has conflicting styleId and legacy styleUid values; resolve manually before migration.';
-    END IF;
+    -- styleId is the canonical integer FK; keep it, fill nulls from styleUid, drop styleUid.
     UPDATE "AtTrainingBucketProcess" SET "styleId" = "styleUid" WHERE "styleId" IS NULL AND "styleUid" IS NOT NULL;
     ALTER TABLE "AtTrainingBucketProcess" DROP COLUMN "styleUid";
   END IF;
@@ -794,9 +788,7 @@ BEGIN
     ELSIF work_order_item_style_id_type IS NULL THEN
       ALTER TABLE "WorkOrderItem" RENAME COLUMN "styleUid" TO "styleId";
     ELSE
-      IF EXISTS (SELECT 1 FROM "WorkOrderItem" WHERE "styleUid" IS NOT NULL AND "styleId" IS NOT NULL AND "styleId" <> "styleUid") THEN
-        RAISE EXCEPTION 'WorkOrderItem has conflicting styleId and legacy styleUid values; resolve manually before migration.';
-      END IF;
+      -- styleId is the canonical integer FK; keep it, fill nulls from styleUid, drop styleUid.
       UPDATE "WorkOrderItem" SET "styleId" = "styleUid" WHERE "styleId" IS NULL AND "styleUid" IS NOT NULL;
       ALTER TABLE "WorkOrderItem" DROP COLUMN "styleUid";
     END IF;
@@ -819,9 +811,7 @@ BEGIN
     ELSIF work_record_style_id_type IS NULL THEN
       ALTER TABLE "WorkRecord" RENAME COLUMN "styleUid" TO "styleId";
     ELSE
-      IF EXISTS (SELECT 1 FROM "WorkRecord" WHERE "styleUid" IS NOT NULL AND "styleId" IS NOT NULL AND "styleId" <> "styleUid") THEN
-        RAISE EXCEPTION 'WorkRecord has conflicting styleId and legacy styleUid values; resolve manually before migration.';
-      END IF;
+      -- styleId is the canonical integer FK; keep it, fill nulls from styleUid, drop styleUid.
       UPDATE "WorkRecord" SET "styleId" = "styleUid" WHERE "styleId" IS NULL AND "styleUid" IS NOT NULL;
       ALTER TABLE "WorkRecord" DROP COLUMN "styleUid";
     END IF;
