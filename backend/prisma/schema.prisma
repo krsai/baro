@@ -324,7 +324,7 @@ model Line {
 
   organization    Organization     @relation(fields: [orgId], references: [id])
   factory         Factory          @relation(fields: [factoryId], references: [id])
-  manager         Employee?        @relation("LineManager", fields: [managerEmployeeId], references: [id])
+  manager         Employee?        @relation("LineManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
   assignments     LineAssignment[]
   assignmentPlans AssignmentPlan[]
   employees       Employee[]        @relation("EmployeeCurrentLine")
@@ -593,7 +593,7 @@ model AtTrainingBucket {
   sourceWorkLogId    Int
   workDate           String
   factoryId          Int?
-  laborInputSeconds  Int
+  laborInputSeconds  Float
   attendanceCoverage Float?
   createdAt          DateTime @default(now())
   createdBy String   @default("system@baro.local")
@@ -738,7 +738,7 @@ model AssignmentPlan {
   createdBy String   @default("system@baro.local")
   updatedAt             DateTime
 
-  line         Line         @relation(fields: [lineId], references: [id])
+  line         Line         @relation(fields: [lineId], references: [id], onDelete: Restrict)
   organization Organization @relation(fields: [orgId], references: [id])
   workOrder    WorkOrder?   @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   style        Style?       @relation(fields: [styleId], references: [id], onDelete: SetNull)
@@ -791,7 +791,7 @@ model WorkLog {
   ctBasis                String   @default("CT")
   workerCount            Int      @default(0)
   itemCount              Int      @default(0)
-  totalCtSeconds         Int      @default(0)
+  totalCtSeconds         Float    @default(0)
   note                   String?
   records                Json?
   updatedBy              String?
@@ -829,7 +829,7 @@ model WorkRecord {
   organization   Organization    @relation(fields: [orgId], references: [id])
   workLog        WorkLog         @relation(fields: [workLogId], references: [id], onDelete: Cascade)
   worker         Employee?       @relation(fields: [workerId], references: [id], onDelete: SetNull)
-  assignmentPlan AssignmentPlan? @relation(fields: [assignmentPlanId], references: [id])
+  assignmentPlan AssignmentPlan? @relation(fields: [assignmentPlanId], references: [id], onDelete: SetNull)
   style          Style?          @relation(fields: [styleId], references: [id], onDelete: SetNull)
   styleProcess   StyleProcess?   @relation(fields: [styleProcessId], references: [id], onDelete: SetNull)
   line           Line?           @relation("WorkRecordLine", fields: [lineId], references: [id], onDelete: SetNull)

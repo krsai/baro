@@ -1171,6 +1171,29 @@ ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentCtTotalSeconds"
 ALTER TABLE "AtTrainingBucket" ADD COLUMN IF NOT EXISTS "laborInputSeconds" DOUBLE PRECISION;
 ALTER TABLE "WorkLog" ADD COLUMN IF NOT EXISTS "totalCtSeconds" DOUBLE PRECISION;
 
+-- Ensure correct column types (fix environments where columns were created as INTEGER)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'AtTrainingBucket'
+      AND column_name = 'laborInputSeconds'
+      AND data_type = 'integer'
+  ) THEN
+    ALTER TABLE "AtTrainingBucket" ALTER COLUMN "laborInputSeconds" TYPE DOUBLE PRECISION USING "laborInputSeconds"::DOUBLE PRECISION;
+    RAISE NOTICE 'AtTrainingBucket.laborInputSeconds converted from INTEGER to DOUBLE PRECISION';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'WorkLog'
+      AND column_name = 'totalCtSeconds'
+      AND data_type = 'integer'
+  ) THEN
+    ALTER TABLE "WorkLog" ALTER COLUMN "totalCtSeconds" TYPE DOUBLE PRECISION USING "totalCtSeconds"::DOUBLE PRECISION;
+    RAISE NOTICE 'WorkLog.totalCtSeconds converted from INTEGER to DOUBLE PRECISION';
+  END IF;
+END $$;
+
 UPDATE "AssignmentBoardState"
 SET "cards" = (
   SELECT COALESCE(jsonb_agg(
