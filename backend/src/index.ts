@@ -611,6 +611,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_ENUM_VALUES = [
   { enumName: "OrgMembershipStatus", value: "TERMINATED" },
+  { enumName: "WorkOrderStatus", value: "EDITING" },
 ] as const;
 const ROLE_OPTIONS = new Set(["ADMIN", "OPERATOR", "ACCOUNTANT", "WORKER"]);
 const ORG_ACCESS_ROLES: OrgUserRole[] = [
@@ -26953,6 +26954,22 @@ const findRuntimeSchemaDriftReasons = async (): Promise<string[]> => {
       driftReasons.push(key);
     }
   });
+
+  const workOrderStatusDefaultRows = await prisma.$queryRaw<
+    Array<{ column_default: string | null }>
+  >`
+    SELECT column_default
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkOrder'
+      AND column_name = 'status'
+  `;
+  const workOrderStatusDefault =
+    resolveOptionalString(workOrderStatusDefaultRows[0]?.column_default, null) ??
+    "";
+  if (!workOrderStatusDefault.includes("'EDITING'")) {
+    driftReasons.push("WorkOrder.status default EDITING");
+  }
 
   return driftReasons;
 };
