@@ -17,7 +17,10 @@
       "Bash(git -C \"c:\\\\Users\\\\krsai\\\\Desktop\\\\baro\" log --oneline -3)",
       "Bash(git -C \"c:\\\\Users\\\\krsai\\\\Desktop\\\\baro\" add backend/migration_fix.sql)",
       "Bash(git -C 'c:\\\\Users\\\\krsai\\\\Desktop\\\\baro' commit -m ' *)",
-      "Bash(git -C \"c:\\\\Users\\\\krsai\\\\Desktop\\\\baro\" push origin main)"
+      "Bash(git -C \"c:\\\\Users\\\\krsai\\\\Desktop\\\\baro\" push origin main)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\krsai\\Desktop\\baro",
