@@ -2,6 +2,34 @@
 
 ---
 
+## 2026-07-01 WorkRecord styleId / styleProcessId 데이터 유실 조사
+
+FK 도입 이전에 저장된 WorkRecord 행에서 styleId가 비어있는 걸 사용자가 발견해서 조사함.
+
+### 원인
+- `backend/migration_fix.sql:807-820`: `WorkRecord.styleId`는 `styleUid IS NOT NULL`일 때만 백필. FK 도입 이전 대량 입력분은 `styleUid`도 없이 `styleName`/`styleCode` 텍스트만 갖고 있었음.
+- `migration_fix.sql:822-833`: 그 텍스트 컬럼(`styleName`, `processId`, `processCode`, `processName`)을 백필 시도나 검증 없이 그대로 DROP함.
+- 결과: FK 도입 이전 WorkRecord 행은 `styleId`, `styleProcessId`가 DB에서 복구 불가능한 상태로 영구 NULL.
+- `assignmentPlanId` NULL은 이 건과 별개로, AGENTS.md에 이미 "orphan WorkRecord"로 문서화된 알려진 구조적 상태.
+- 근본 원인: AGENTS.md에 명시된 "백필 → 신규 저장 차단 → 참조 제거 → 검증 → DROP" 순서 중 백필/검증 단계 없이 바로 DROP함.
+
+### 영향
+- `정확 계산 원칙`에 따라 이 행들은 fallback 없이 계산에서 제외됨 (숫자 오염은 아님).
+- 다만 해당 기간 작업기록이 AT 학습/진행률/스케줄러 남은작업량 집계에서 조용히 빠짐.
+
+### 재업로드로 복구되는지 여부 (별도 확인 완료)
+- `POST /work-logs/import` (`index.ts:22769-22787`)는 그룹마다 무조건 `workLog.create` + `workRecord.createMany`를 실행하며, 같은 기간/작업자의 기존 WorkLog를 찾아 업데이트하는 로직이 없음.
+- 즉 같은 파일을 재업로드하면 기존 null 행은 그대로 남고 완전히 새 WorkLog+WorkRecord가 추가됨 (중복 생성, 채워지는 게 아님).
+
+## 사용자가 결정/실행해야 할 일
+
+- [ ] 4~5월 초기 대량 입력에 썼던 원본 엑셀/CSV가 남아있는지 확인. 있으면 원본 기준으로 별도 backfill 스크립트 작성 가능(재업로드 아님, 기존 행에 styleId/styleProcessId만 채우는 방식). 없으면 해당 기간 연결은 영구 유실로 받아들여야 함.
+- [ ] 영향 범위(몇 건이 styleId/styleProcessId null인지) 파악 필요. `backend/.env`의 `DATABASE_URL`은 Supabase를 가리키고 있어 실제 운영 DB(Railway Postgres)가 아니므로 여기서 조회하지 않았음. Railway 콘솔에서 실제 운영 `DATABASE_URL`을 가져와 `node backend/scripts/inspect-workrecord-state.js`를 직접 실행해서 확인할 것.
+- [ ] 유실분을 복구 시도할지, 그냥 레거시 미연결 데이터로 받아들이고 넘어갈지 결정.
+- [ ] (선택) 앞으로 같은 사고를 막으려면 DROP COLUMN 전에 "대상 컬럼이 이미 canonical FK로 대체 가능한지" 검증하는 스크립트를 만들어 마이그레이션 배포 전에 강제할지 결정.
+
+---
+
 ## 2026-07-01 Railway 배포 실패 원인 기록
 
 Codex 리팩토링 이후 최근 3개 커밋의 DB 마이그레이션이 프로덕션에 전혀 적용되지 않은 상태에서, 새 배포마다 서버가 시작되지 않고 헬스체크 실패가 반복됐다. 원인은 4가지가 순서대로 겹쳐 있었다.
