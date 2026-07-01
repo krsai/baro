@@ -888,6 +888,10 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 -- Clean up orphaned sourceWorkLogId references before adding FK.
 -- ON DELETE CASCADE is the policy, so rows pointing to deleted WorkLogs are removed here
 -- to match what CASCADE would have done had the FK existed earlier.
+-- Pattern for additive FK migrations:
+--   1. Check whether the FK constraint already exists.
+--   2. If it does not, clean up existing rows that violate the target FK.
+--   3. Only then add the FK constraint.
 DO $$
 DECLARE
   deleted_count INT;
@@ -915,6 +919,29 @@ DO $$ BEGIN
     FOREIGN KEY ("sourceWorkLogId") REFERENCES "WorkLog"("id")
     ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- factoryId uses ON DELETE SET NULL, so orphaned references are nulled before FK creation.
+DO $$
+DECLARE
+  updated_count INT;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'AtTrainingBucket_factoryId_fkey'
+      AND table_name = 'AtTrainingBucket'
+  ) THEN
+    UPDATE "AtTrainingBucket"
+    SET "factoryId" = NULL
+    WHERE "factoryId" IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM "Factory" WHERE "Factory"."id" = "AtTrainingBucket"."factoryId"
+      );
+    GET DIAGNOSTICS updated_count = ROW_COUNT;
+    IF updated_count > 0 THEN
+      RAISE NOTICE 'AtTrainingBucket: cleared % orphaned factoryId references before FK creation', updated_count;
+    END IF;
+  END IF;
+END $$;
 
 DO $$ BEGIN
   ALTER TABLE "AtTrainingBucket"

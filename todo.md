@@ -161,6 +161,7 @@ Date: 2026-07-01
 - Added `Factory.nameKo`, `Factory.nameVi`, and `Factory.managementStartDate`.
 - Added `Organization.nameKo` and `Organization.nameVi`.
 - Updated `migration_fix.sql` to backfill existing factory `managementStartDate` values to `2026-04-01`.
+- Updated `migration_fix.sql` FK-add pattern so `AtTrainingBucket` cleans orphaned `sourceWorkLogId` rows and orphaned `factoryId` references before adding those FKs.
 - Switched work log / work history / production analysis minimum-date guards from the BARO-only hardcoded date to factory-scoped management start dates.
 - Reworked business and customer basic-info forms to group related fields and support Korean/Vietnamese inputs.
 - Added startup schema drift checks for `Organization.nameKo/nameVi` and `Factory.nameKo/nameVi/managementStartDate` so `/factories` does not serve before those DB columns exist.
@@ -179,3 +180,4 @@ Date: 2026-07-01
 - Change a factory `managementStartDate` and confirm selected-factory date pickers clamp correctly in work history and production analysis screens.
 - On a DB missing the new business/factory columns, confirm backend startup applies `migration_fix.sql` before accepting `/factories` traffic.
 - Send a partial `PUT /factories/:id` payload that omits address/contact/wage fields and confirm existing DB values are preserved.
+- On a DB with orphaned `AtTrainingBucket.sourceWorkLogId` / `factoryId`, confirm `migration_fix.sql` deletes or nulls the violating rows before FK creation.
