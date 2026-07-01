@@ -73,6 +73,35 @@ Date: 2026-07-01
 - Stop storing `WorkLog.factoryName`; derive it from `factoryId -> Factory`.
 - Add `WorkRecord.lineId -> Line.id` FK relation.
 
+## 남은 작업 (FK 리팩토링 후속)
+
+### 단기 (다음 배포 전 확인)
+- [ ] Railway 배포 성공 후 migration_fix.sql 로그에서 아래 확인:
+  - `AtTrainingBucket_sourceWorkLogId_fkey` FK constraint 생성됨
+  - `AtTrainingBucket_factoryId_fkey` FK constraint 생성됨
+  - `AtTrainingBucket_factoryId_idx` 인덱스 생성됨
+
+### 중기 (알려진 구조적 한계, 우선순위 낮음)
+- [ ] `WorkLog.records` JSON 안에 `lineId`가 비정규화로 저장됨 (DB FK 없음)
+  - 원인: WorkLog 저장 시 records JSON을 그대로 저장하는 구조
+  - 영향: WorkLog에서 lineId로 DB JOIN 불가
+  - 해결 방향: WorkLog에 lineId 컬럼 추가하거나 현 구조 유지 결정 필요
+- [ ] `AssignmentPlan`에 텍스트 스냅샷 필드가 FK와 함께 존재 (의도적 비정규화)
+  - `orderNo`, `customer`, `colorName`, `color` — 보드 렌더 캐시용
+  - FK(`workOrderId`, `colorId`)가 있으므로 JOIN 가능하지만 텍스트 복사본이 stale해질 수 있음
+  - 해결 방향: 보드 저장 시 FK 기준으로 텍스트 필드도 항상 동기화하거나 제거 결정 필요
+
+### 완료됨
+- [x] Employee.lineName → lineId FK (완료)
+- [x] WorkRecord.workerName/orderNo/etc. 레거시 컬럼 제거 (완료)
+- [x] WorkOrder buyerOrgName/sellerOrgName/customerName → FK (완료)
+- [x] WorkOrderItem colorCode/styleName/styleCode → FK (완료)
+- [x] WorkLog.factoryName → factoryId FK (완료)
+- [x] StyleProcess.styleUid → styleId FK (완료)
+- [x] WorkRecord.lineId FK 추가됨 (Codex가 추가, 이전엔 없었음)
+- [x] AtTrainingBucket.sourceWorkLogId → WorkLog FK 추가 (2026-07-01)
+- [x] AtTrainingBucket.factoryId → Factory FK 추가 (2026-07-01)
+
 ## Check on production DB after deploy
 
 - Railway deploy log shows `migration_fix.sql` applied.
