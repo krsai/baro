@@ -26955,22 +26955,6 @@ const findRuntimeSchemaDriftReasons = async (): Promise<string[]> => {
     }
   });
 
-  const workOrderStatusDefaultRows = await prisma.$queryRaw<
-    Array<{ column_default: string | null }>
-  >`
-    SELECT column_default
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'WorkOrder'
-      AND column_name = 'status'
-  `;
-  const workOrderStatusDefault =
-    resolveOptionalString(workOrderStatusDefaultRows[0]?.column_default, null) ??
-    "";
-  if (!workOrderStatusDefault.includes("'EDITING'")) {
-    driftReasons.push("WorkOrder.status default EDITING");
-  }
-
   return driftReasons;
 };
 
@@ -27096,11 +27080,19 @@ const ensureWorkOrderStatusSchemaReady = async () => {
   const statusColumnDefault =
     resolveOptionalString(defaultRows[0]?.column_default, null) ?? "";
   if (!statusColumnDefault.includes("'EDITING'")) {
-    console.warn(
-      `[startup] WorkOrder.status default is not EDITING (current: ${
-        statusColumnDefault || "missing"
-      }).`
-    );
+    if (supportsWorkOrderEditingStatus) {
+      // ALTER TYPE ADD VALUE runs in migration_fix.sql but SET DEFAULT cannot
+      // follow in the same transaction (PostgreSQL limitation). Apply it here
+      // in a separate Prisma call so it runs after the migration commits.
+      await prisma.$executeRaw`ALTER TABLE "WorkOrder" ALTER COLUMN "status" SET DEFAULT 'EDITING'::"WorkOrderStatus"`;
+      console.log("[startup] WorkOrder.status default set to EDITING.");
+    } else {
+      console.warn(
+        `[startup] WorkOrder.status default is not EDITING (current: ${
+          statusColumnDefault || "missing"
+        }).`
+      );
+    }
   }
 };
 

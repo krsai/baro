@@ -356,8 +356,11 @@ WHERE "email" LIKE 'emp+%@baro.local';
 ALTER TYPE "OrgMembershipStatus" ADD VALUE IF NOT EXISTS 'TERMINATED';
 
 -- Step 0h-2: work order editable draft status (20260701)
+-- NOTE: ALTER TYPE ADD VALUE cannot be followed by use of the new value in the
+-- same transaction (PostgreSQL limitation). The SET DEFAULT for 'EDITING' is
+-- applied separately in ensureWorkOrderStatusSchemaReady() after this migration
+-- commits.
 ALTER TYPE "WorkOrderStatus" ADD VALUE IF NOT EXISTS 'EDITING';
-ALTER TABLE "WorkOrder" ALTER COLUMN "status" SET DEFAULT 'EDITING'::"WorkOrderStatus";
 
 -- Step 0i: assignment plan -> work order FK normalization (20260629)
 ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "workOrderId" INTEGER;
