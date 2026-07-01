@@ -878,6 +878,23 @@ DO $$ BEGIN
     ON DELETE SET NULL ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- AtTrainingBucket FK constraints (sourceWorkLogId → WorkLog, factoryId → Factory)
+DO $$ BEGIN
+  ALTER TABLE "AtTrainingBucket"
+    ADD CONSTRAINT "AtTrainingBucket_sourceWorkLogId_fkey"
+    FOREIGN KEY ("sourceWorkLogId") REFERENCES "WorkLog"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "AtTrainingBucket"
+    ADD CONSTRAINT "AtTrainingBucket_factoryId_fkey"
+    FOREIGN KEY ("factoryId") REFERENCES "Factory"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE INDEX IF NOT EXISTS "AtTrainingBucket_factoryId_idx" ON "AtTrainingBucket"("factoryId");
+
 -- Migration state table for one-off data migrations.
 CREATE TABLE IF NOT EXISTS "_BaroMigrationState" (
   "key" TEXT PRIMARY KEY,

@@ -299,6 +299,7 @@ model Factory {
   lines             Line[]
   attendanceEntries AttendanceEntry[]
   workLogs          WorkLog[]
+  atTrainingBuckets AtTrainingBucket[]
 
   @@unique([orgId, factoryCode])
   @@index([orgId])
@@ -592,11 +593,14 @@ model AtTrainingBucket {
   updatedAt          DateTime @updatedAt
 
   organization Organization             @relation(fields: [orgId], references: [id])
-  processRows  AtTrainingBucketProcess[]
+  sourceWorkLog WorkLog                  @relation(fields: [sourceWorkLogId], references: [id], onDelete: Cascade)
+  factory       Factory?                 @relation(fields: [factoryId], references: [id], onDelete: SetNull)
+  processRows   AtTrainingBucketProcess[]
 
   @@unique([orgId, sourceWorkLogId])
   @@index([orgId, monthKey, workDate])
   @@index([orgId, workDate])
+  @@index([factoryId])
 }
 
 model AtTrainingBucketProcess {
@@ -788,9 +792,10 @@ model WorkLog {
   createdBy String   @default("system@baro.local")
   updatedAt              DateTime @updatedAt
 
-  organization Organization @relation(fields: [orgId], references: [id])
-  factory      Factory?     @relation(fields: [factoryId], references: [id], onDelete: SetNull)
-  workRecords  WorkRecord[]
+  organization     Organization             @relation(fields: [orgId], references: [id])
+  factory          Factory?                 @relation(fields: [factoryId], references: [id], onDelete: SetNull)
+  workRecords      WorkRecord[]
+  atTrainingBuckets AtTrainingBucket[]
 
   @@index([orgId, displayDate])
   @@index([orgId, createdAt])
