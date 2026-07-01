@@ -154,21 +154,7 @@ const buildProcessMirror = (rows = []) =>
       };
     });
 
-const resolveStyleIdFromAssignment = (plan) => {
-  const splitCandidate = (value) => {
-    const raw = String(value || '').trim();
-    if (!raw) return '';
-    const parts = raw.split('::');
-    return String(parts[1] || '').trim();
-  };
-
-  return (
-    splitCandidate(plan?.externalId) ||
-    splitCandidate(plan?.originOrderId) ||
-    splitCandidate(plan?.cardId) ||
-    String(plan?.label || '').trim()
-  );
-};
+const resolveStyleRefIdFromAssignment = (plan) => sampleToPositiveIntOrNull(plan?.styleId);
 
 const resolveColorCodeFromAssignment = (plan) => {
   const splitCandidate = (value) => {
@@ -338,15 +324,15 @@ async function runTimeModelRealignment(prisma, options = {}) {
       ? options.updatedBy.trim()
       : DEFAULT_UPDATED_BY;
   const orgIds = toPositiveIdList(options.orgIds);
-  const styleUids = toStringIdList(options.styleUids);
+  const styleIds = toPositiveIdList(options.styleIds);
   const shouldLog = options.log !== false;
 
   const styleProcessWhere = {};
   if (orgIds.length > 0) {
     styleProcessWhere.orgId = { in: orgIds };
   }
-  if (styleUids.length > 0) {
-    styleProcessWhere.styleUid = { in: styleUids };
+  if (styleIds.length > 0) {
+    styleProcessWhere.styleId = { in: styleIds };
   }
 
   const styleProcessRows = await prisma.styleProcess.findMany({
@@ -354,9 +340,9 @@ async function runTimeModelRealignment(prisma, options = {}) {
     include: {
       style: {
         select: {
-          uid: true,
+          id: true,
           orgId: true,
-          styleId: true,
+          code: true,
           name: true,
           customer: true,
         },
@@ -365,12 +351,12 @@ async function runTimeModelRealignment(prisma, options = {}) {
         orderBy: [{ bucketQuantity: 'asc' }, { id: 'asc' }],
       },
     },
-    orderBy: [{ styleUid: 'asc' }, { sortOrder: 'asc' }, { id: 'asc' }],
+    orderBy: [{ styleId: 'asc' }, { sortOrder: 'asc' }, { id: 'asc' }],
   });
 
   const touchedStyleProcessIds = new Set();
-  const touchedStyleUids = new Set();
-  const candidateStyleUids = new Set(styleProcessRows.map((row) => row.styleUid));
+  const touchedStyleIds = new Set();
+  const candidateStyleIds = new Set(styleProcessRows.map((row) => row.styleId));
 
   for (const row of styleProcessRows) {
     const nextPtSeconds = clampProcessSeconds(row?.ptSeconds);
@@ -460,14 +446,14 @@ async function runTimeModelRealignment(prisma, options = {}) {
     });
 
     touchedStyleProcessIds.add(row.id);
-    touchedStyleUids.add(row.styleUid);
+    touchedStyleIds.add(row.styleId);
   }
 
   const refreshedStyleProcessWhere = {};
-  if (styleUids.length > 0) {
-    refreshedStyleProcessWhere.styleUid = { in: styleUids };
-  } else if (candidateStyleUids.size > 0) {
-    refreshedStyleProcessWhere.styleUid = { in: Array.from(candidateStyleUids) };
+  if (styleIds.length > 0) {
+    refreshedStyleProcessWhere.styleId = { in: styleIds };
+  } else if (candidateStyleIds.size > 0) {
+    refreshedStyleProcessWhere.styleId = { in: Array.from(candidateStyleIds) };
   } else if (orgIds.length > 0) {
     refreshedStyleProcessWhere.orgId = { in: orgIds };
   }
@@ -481,13 +467,13 @@ async function runTimeModelRealignment(prisma, options = {}) {
         orderBy: [{ bucketQuantity: 'asc' }, { id: 'asc' }],
       },
     },
-    orderBy: [{ styleUid: 'asc' }, { sortOrder: 'asc' }, { id: 'asc' }],
+    orderBy: [{ styleId: 'asc' }, { sortOrder: 'asc' }, { id: 'asc' }],
   });
 
-  const styleProcessRowsByStyleUid = refreshedStyleProcessRows.reduce((map, row) => {
-    const current = map.get(row.styleUid) || [];
+  const styleProcessRowsByStyleId = refreshedStyleProcessRows.reduce((map, row) => {
+    const current = map.get(row.styleId) || [];
     current.push(row);
-    map.set(row.styleUid, current);
+    map.set(row.styleId, current);
     return map;
   }, new Map());
 
@@ -495,45 +481,44 @@ async function runTimeModelRealignment(prisma, options = {}) {
   if (orgIds.length > 0) {
     styleWhere.orgId = { in: orgIds };
   }
-  if (styleUids.length > 0) {
-    styleWhere.uid = { in: styleUids };
-  } else if (candidateStyleUids.size > 0) {
-    styleWhere.uid = { in: Array.from(candidateStyleUids) };
+  if (styleIds.length > 0) {
+    styleWhere.id = { in: styleIds };
+  } else if (candidateStyleIds.size > 0) {
+    styleWhere.id = { in: Array.from(candidateStyleIds) };
   }
 
   const styles = await prisma.style.findMany({
     where: Object.keys(styleWhere).length > 0 ? styleWhere : undefined,
     select: {
-      uid: true,
+      id: true,
       orgId: true,
-      styleId: true,
+      code: true,
       name: true,
       customer: true,
       processes: true,
     },
   });
 
-  const styleByOrgAndStyleId = new Map();
+  const styleById = new Map();
   styles.forEach((style) => {
-    const styleId = String(style?.styleId || '').trim();
-    if (!styleId) return;
-    styleByOrgAndStyleId.set(`${style.orgId}::${styleId}`, style);
+    if (!Number.isFinite(Number(style?.id))) return;
+    styleById.set(Number(style.id), style);
   });
 
-  const processMirrorByStyleUid = new Map();
-  Array.from(styleProcessRowsByStyleUid.entries()).forEach(([styleUid, rows]) => {
-    processMirrorByStyleUid.set(styleUid, buildProcessMirror(rows));
+  const processMirrorByStyleId = new Map();
+  Array.from(styleProcessRowsByStyleId.entries()).forEach(([styleId, rows]) => {
+    processMirrorByStyleId.set(styleId, buildProcessMirror(rows));
   });
 
   let updatedStyleMirrorCount = 0;
   for (const style of styles) {
-    const nextProcesses = processMirrorByStyleUid.get(style.uid);
+    const nextProcesses = processMirrorByStyleId.get(style.id);
     if (!nextProcesses) continue;
     if (normalizeJson(style?.processes ?? null) === normalizeJson(nextProcesses)) {
       continue;
     }
     await prisma.style.update({
-      where: { uid: style.uid },
+      where: { id: style.id },
       data: {
         processes: nextProcesses,
       },
@@ -555,6 +540,7 @@ async function runTimeModelRealignment(prisma, options = {}) {
       cardId: true,
       originOrderId: true,
       label: true,
+      styleId: true,
       assignmentQuantity: true,
       finalQuantity: true,
       lineId: true,
@@ -571,11 +557,11 @@ async function runTimeModelRealignment(prisma, options = {}) {
   let assignmentPlanUpdateCount = 0;
 
   for (const plan of assignmentPlans) {
-    const styleId = resolveStyleIdFromAssignment(plan);
+    const styleId = resolveStyleRefIdFromAssignment(plan);
     if (!styleId) continue;
-    const style = styleByOrgAndStyleId.get(`${plan.orgId}::${styleId}`);
+    const style = styleById.get(styleId);
     if (!style) continue;
-    const styleProcesses = processMirrorByStyleUid.get(style.uid) || [];
+    const styleProcesses = processMirrorByStyleId.get(style.id) || [];
     if (styleProcesses.length === 0) continue;
 
     const nextSnapshot = buildAssignmentSnapshot({
@@ -688,7 +674,7 @@ async function runTimeModelRealignment(prisma, options = {}) {
     updatedAt: updatedAtIso,
     summary: {
       touchedStyleProcesses: touchedStyleProcessIds.size,
-      touchedStyles: touchedStyleUids.size,
+      touchedStyles: touchedStyleIds.size,
       updatedStyleMirrors: updatedStyleMirrorCount,
       updatedAssignmentPlans: assignmentPlanUpdateCount,
       updatedBoardStates: boardStateUpdateCount,
@@ -1908,8 +1894,7 @@ const runReplaceStyleProcessMaster = (() => {
             const createdStyle = await tx.style.create({
               data: {
                 orgId: resolvedOrgId,
-                styleId: style.styleId,
-                styleCode: style.styleCode,
+                code: style.styleCode || style.styleId,
                 name: style.name,
                 customer: resolvedCustomerName,
                 registrationDate: new Date().toISOString().slice(0, 10),
@@ -1927,7 +1912,7 @@ const runReplaceStyleProcessMaster = (() => {
               const createdStyleProcess = await tx.styleProcess.create({
                 data: {
                   orgId: resolvedOrgId,
-                  styleUid: createdStyle.uid,
+                  styleId: createdStyle.id,
                   processCode: process.code,
                   processName: process.name,
                   processDescription: process.description,
@@ -1968,12 +1953,11 @@ const runReplaceStyleProcessMaster = (() => {
         prisma.style.findMany({
           where: {
             orgId: resolvedOrgId,
-            styleId: { in: STYLES.map((style) => style.styleId) },
+            code: { in: STYLES.map((style) => style.styleCode || style.styleId) },
           },
-          orderBy: { styleId: "asc" },
+          orderBy: { code: "asc" },
           select: {
-            styleId: true,
-            styleCode: true,
+            code: true,
             name: true,
             processes: true,
           },
@@ -1984,8 +1968,7 @@ const runReplaceStyleProcessMaster = (() => {
       ]);
   
       const summary = styles.map((style) => ({
-        styleId: style.styleId,
-        styleCode: style.styleCode,
+        styleCode: style.code,
         name: style.name,
         processCount: Array.isArray(style.processes) ? style.processes.length : 0,
         totalPt1000: summarizeTotalSeconds(
@@ -2257,8 +2240,7 @@ async function runComposedStyleProcessReplacement({
       const createdStyle = await prisma.style.create({
         data: {
           orgId: resolvedOrgId,
-          styleId: style.styleId,
-          styleCode: style.styleCode,
+          code: style.styleCode || style.styleId,
           name: style.name,
           customer: resolvedCustomerName,
           registrationDate: new Date().toISOString().slice(0, 10),
@@ -2276,7 +2258,7 @@ async function runComposedStyleProcessReplacement({
         const createdStyleProcess = await prisma.styleProcess.create({
           data: {
             orgId: resolvedOrgId,
-            styleUid: createdStyle.uid,
+            styleId: createdStyle.id,
             processCode: process.code,
             processName: process.name,
             processDescription: process.description,
@@ -2311,12 +2293,11 @@ async function runComposedStyleProcessReplacement({
       prisma.style.findMany({
         where: {
           orgId: resolvedOrgId,
-          styleId: { in: COMPOSED_STYLE_SEEDS.map((style) => style.styleId) },
+          code: { in: COMPOSED_STYLE_SEEDS.map((style) => style.styleCode || style.styleId) },
         },
-        orderBy: { styleId: 'asc' },
+        orderBy: { code: 'asc' },
         select: {
-          styleId: true,
-          styleCode: true,
+          code: true,
           name: true,
           processes: true,
         },
@@ -2327,8 +2308,7 @@ async function runComposedStyleProcessReplacement({
     ]);
 
     const summary = styles.map((style) => ({
-      styleId: style.styleId,
-      styleCode: style.styleCode,
+      styleCode: style.code,
       name: style.name,
       processCount: Array.isArray(style.processes) ? style.processes.length : 0,
       totalPt1000: summarizeComposedTotalSeconds(
@@ -3218,10 +3198,12 @@ async function ensureEmployee({
 
 async function ensureStyles(orgId) {
   for (const style of BASELINE_STYLES) {
+    const { styleId, styleCode, ...styleData } = style;
+    const code = styleCode || styleId;
     await prisma.style.upsert({
-      where: { orgId_styleId: { orgId, styleId: style.styleId } },
+      where: { orgId_code: { orgId, code } },
       update: {
-        styleCode: style.styleCode,
+        code,
         name: style.name,
         customer: style.customer,
         registrationDate: style.registrationDate,
@@ -3233,7 +3215,7 @@ async function ensureStyles(orgId) {
         bom: style.bom,
         bomNotes: style.bomNotes,
       },
-      create: { orgId, ...style },
+      create: { orgId, code, ...styleData },
     });
   }
 }
@@ -3246,7 +3228,7 @@ async function cleanupLegacyBaselineStyles(orgId) {
   const result = await prisma.style.deleteMany({
     where: {
       orgId,
-      styleId: { in: LEGACY_BASELINE_STYLE_IDS },
+      code: { in: LEGACY_BASELINE_STYLE_IDS },
     },
   });
 
@@ -4153,7 +4135,7 @@ function sampleBuildPlanProcesses(plan, processMirrorByStyleId) {
     return snapshotProcesses;
   }
 
-  const styleId = resolveStyleIdFromAssignment(plan);
+  const styleId = resolveStyleRefIdFromAssignment(plan);
   if (!styleId || !(processMirrorByStyleId instanceof Map)) {
     return [];
   }
@@ -4221,7 +4203,7 @@ function sampleNormalizePlan(plan, random, processMirrorByStyleId) {
     dbId: sampleToPositiveInt(plan?.dbId, 0),
     externalId: String(plan?.id || ''),
     lineId,
-    styleId: String(plan?.styleId || ''),
+    styleId: sampleToPositiveIntOrNull(plan?.styleId),
     styleName: String(plan?.label || ''),
     orderNo: String(plan?.orderNo || ''),
     customerName: String(plan?.customer || ''),
@@ -4331,7 +4313,9 @@ function sampleNormalizeLookupKey(value) {
 async function sampleLoadWorkRecordRefMaps(orgId, plans) {
   const styleIds = Array.from(
     new Set(
-      plans.map((plan) => String(plan?.styleId || '').trim()).filter(Boolean)
+      plans
+        .map((plan) => sampleToPositiveIntOrNull(plan?.styleId))
+        .filter((styleId) => Number.isFinite(styleId))
     )
   );
   const processCodes = Array.from(
@@ -4345,42 +4329,29 @@ async function sampleLoadWorkRecordRefMaps(orgId, plans) {
         .filter(Boolean)
     )
   );
-  const colorCodes = Array.from(
-    new Set(
-      plans.map((plan) => String(plan?.colorCode || '').trim()).filter(Boolean)
-    )
-  );
 
-  const [styles, processes, colors] = await Promise.all([
-    styleIds.length > 0
-      ? prisma.style.findMany({
-          where: { orgId, styleId: { in: styleIds } },
-          select: { uid: true, styleId: true },
+  const styleProcessRows =
+    styleIds.length > 0 && processCodes.length > 0
+      ? await prisma.styleProcess.findMany({
+          where: {
+            orgId,
+            styleId: { in: styleIds },
+            processCode: { in: processCodes },
+          },
+          select: {
+            id: true,
+            styleId: true,
+            processCode: true,
+          },
         })
-      : Promise.resolve([]),
-    processCodes.length > 0
-      ? prisma.attrProcess.findMany({
-          where: { orgId, code: { in: processCodes } },
-          select: { id: true, code: true },
-        })
-      : Promise.resolve([]),
-    colorCodes.length > 0
-      ? prisma.attrColor.findMany({
-          where: { code: { in: colorCodes } },
-          select: { id: true, code: true },
-        })
-      : Promise.resolve([]),
-  ]);
+      : [];
 
   return {
-    styleUidByStyleId: new Map(
-      styles.map((style) => [sampleNormalizeLookupKey(style.styleId), Number(style.uid)])
-    ),
-    processIdByCode: new Map(
-      processes.map((process) => [sampleNormalizeLookupKey(process.code), Number(process.id)])
-    ),
-    colorIdByCode: new Map(
-      colors.map((color) => [sampleNormalizeLookupKey(color.code), Number(color.id)])
+    styleProcessIdByStyleProcessKey: new Map(
+      styleProcessRows.map((process) => [
+        `${Number(process.styleId)}::${sampleNormalizeLookupKey(process.processCode)}`,
+        Number(process.id),
+      ])
     ),
   };
 }
@@ -4666,12 +4637,12 @@ async function runSampleWorkLogs(options = {}) {
 
   const styles = await prisma.style.findMany({
     where: { orgId: workLogOrgId },
-    select: { styleId: true, processes: true },
+    select: { id: true, processes: true },
   });
   const processMirrorByStyleId = new Map(
     styles
-      .map((style) => [String(style?.styleId || '').trim(), style?.processes])
-      .filter(([styleId, processes]) => styleId && Array.isArray(processes))
+      .map((style) => [Number(style?.id), style?.processes])
+      .filter(([styleId, processes]) => Number.isFinite(styleId) && Array.isArray(processes))
   );
 
   const [rawPlans, existingLogs] = await Promise.all([
@@ -4795,20 +4766,20 @@ async function runSampleWorkLogs(options = {}) {
       continue;
     }
     const requestRecords = records.map((record) => {
-      const normalizedStyleId = sampleNormalizeLookupKey(record.styleId);
+      const normalizedStyleId = sampleToPositiveIntOrNull(record.styleId);
       const normalizedProcessCode = sampleNormalizeLookupKey(record.processCode);
-      const normalizedColorCode = sampleNormalizeLookupKey(record.colorCode);
-      const styleUid = workRecordRefMaps.styleUidByStyleId.get(normalizedStyleId) || null;
-      const processId = workRecordRefMaps.processIdByCode.get(normalizedProcessCode) || null;
-      const colorId = workRecordRefMaps.colorIdByCode.get(normalizedColorCode) || null;
+      const styleProcessId =
+        normalizedStyleId !== null
+          ? workRecordRefMaps.styleProcessIdByStyleProcessKey.get(
+              `${normalizedStyleId}::${normalizedProcessCode}`
+            ) || null
+          : null;
 
       return {
         workerId: record.workerId,
         workerName: record.workerName,
-        styleId: record.styleId || null,
-        ...(styleUid ? { styleUid } : {}),
-        ...(processId ? { processId } : { processCode: record.processCode }),
-        ...(colorId ? { colorId } : record.colorCode ? { colorCode: record.colorCode } : {}),
+        styleId: normalizedStyleId,
+        styleProcessId,
         ctSeconds: record.ctSeconds,
         quantity: record.quantity,
         assignmentPlanId: record.assignmentPlanId,

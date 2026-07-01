@@ -357,9 +357,199 @@ BEGIN
   END IF;
 END $$;
 
--- 11. Backfill WorkRecord.styleUid from linked AssignmentPlan card identity (20260626)
--- Source of truth: WorkRecord.assignmentPlanId -> AssignmentPlan.cardId/originOrderId
--- -> WorkOrderItem.styleUid. Ambiguous rows are intentionally left unchanged.
+-- Step 0j: canonical Style.id / Style.code and styleId FK normalization (20260701)
+-- Rule: every *Id column stores an integer FK. Style's business code is Style.code.
+ALTER TABLE "StyleProcess" DROP CONSTRAINT IF EXISTS "StyleProcess_styleUid_fkey";
+ALTER TABLE "StyleProcess" DROP CONSTRAINT IF EXISTS "StyleProcess_styleId_fkey";
+ALTER TABLE "WorkOrderItem" DROP CONSTRAINT IF EXISTS "WorkOrderItem_styleUid_fkey";
+ALTER TABLE "WorkOrderItem" DROP CONSTRAINT IF EXISTS "WorkOrderItem_styleId_fkey";
+ALTER TABLE "WorkRecord" DROP CONSTRAINT IF EXISTS "WorkRecord_styleUid_fkey";
+ALTER TABLE "WorkRecord" DROP CONSTRAINT IF EXISTS "WorkRecord_styleId_fkey";
+ALTER TABLE "AtTrainingBucketProcess" DROP CONSTRAINT IF EXISTS "AtTrainingBucketProcess_styleUid_fkey";
+ALTER TABLE "AtTrainingBucketProcess" DROP CONSTRAINT IF EXISTS "AtTrainingBucketProcess_styleId_fkey";
+ALTER TABLE "AssignmentPlan" DROP CONSTRAINT IF EXISTS "AssignmentPlan_styleId_fkey";
+
+DROP INDEX IF EXISTS "Style_orgId_styleId_key";
+DROP INDEX IF EXISTS "Style_orgId_styleCode_key";
+DROP INDEX IF EXISTS "StyleProcess_styleUid_idx";
+DROP INDEX IF EXISTS "StyleProcess_styleUid_orgId_processCode_key";
+DROP INDEX IF EXISTS "WorkOrderItem_styleUid_idx";
+DROP INDEX IF EXISTS "WorkRecord_styleUid_idx";
+DROP INDEX IF EXISTS "AtTrainingBucketProcess_orgId_styleUid_idx";
+
+DO $$
+DECLARE
+  work_order_item_style_id_type TEXT;
+  work_record_style_id_type TEXT;
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Style' AND column_name = 'uid')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Style' AND column_name = 'id') THEN
+    ALTER TABLE "Style" RENAME COLUMN "uid" TO "id";
+  ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Style' AND column_name = 'uid')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Style' AND column_name = 'id') THEN
+    RAISE EXCEPTION 'Style has both id and legacy uid; resolve manually before migration.';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Style' AND column_name = 'styleId')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Style' AND column_name = 'code') THEN
+    ALTER TABLE "Style" RENAME COLUMN "styleId" TO "code";
+  ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Style' AND column_name = 'styleId')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Style' AND column_name = 'code') THEN
+    RAISE EXCEPTION 'Style has both code and legacy styleId; resolve manually before migration.';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Style' AND column_name = 'styleCode') THEN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Style' AND column_name = 'code') THEN
+      ALTER TABLE "Style" RENAME COLUMN "styleCode" TO "code";
+    ELSE
+      IF EXISTS (
+        SELECT 1 FROM "Style"
+        WHERE NULLIF(BTRIM("styleCode"), '') IS NOT NULL
+          AND NULLIF(BTRIM("code"), '') IS NOT NULL
+          AND BTRIM("styleCode") <> BTRIM("code")
+      ) THEN
+        RAISE EXCEPTION 'Style has conflicting code and legacy styleCode values; resolve manually before migration.';
+      END IF;
+      ALTER TABLE "Style" DROP COLUMN "styleCode";
+    END IF;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'Style' AND column_name = 'code') THEN
+    RAISE EXCEPTION 'Style.code is missing; resolve manually before migration.';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM "Style" WHERE NULLIF(BTRIM("code"), '') IS NULL) THEN
+    RAISE EXCEPTION 'Style.code contains blank values; resolve manually before migration.';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'StyleProcess' AND column_name = 'styleUid')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'StyleProcess' AND column_name = 'styleId') THEN
+    ALTER TABLE "StyleProcess" RENAME COLUMN "styleUid" TO "styleId";
+  ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'StyleProcess' AND column_name = 'styleUid')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'StyleProcess' AND column_name = 'styleId') THEN
+    IF EXISTS (SELECT 1 FROM "StyleProcess" WHERE "styleUid" IS NOT NULL AND "styleId" IS NOT NULL AND "styleId" <> "styleUid") THEN
+      RAISE EXCEPTION 'StyleProcess has conflicting styleId and legacy styleUid values; resolve manually before migration.';
+    END IF;
+    UPDATE "StyleProcess" SET "styleId" = "styleUid" WHERE "styleId" IS NULL AND "styleUid" IS NOT NULL;
+    ALTER TABLE "StyleProcess" DROP COLUMN "styleUid";
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AtTrainingBucketProcess' AND column_name = 'styleUid')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AtTrainingBucketProcess' AND column_name = 'styleId') THEN
+    ALTER TABLE "AtTrainingBucketProcess" RENAME COLUMN "styleUid" TO "styleId";
+  ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AtTrainingBucketProcess' AND column_name = 'styleUid')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AtTrainingBucketProcess' AND column_name = 'styleId') THEN
+    IF EXISTS (SELECT 1 FROM "AtTrainingBucketProcess" WHERE "styleUid" IS NOT NULL AND "styleId" IS NOT NULL AND "styleId" <> "styleUid") THEN
+      RAISE EXCEPTION 'AtTrainingBucketProcess has conflicting styleId and legacy styleUid values; resolve manually before migration.';
+    END IF;
+    UPDATE "AtTrainingBucketProcess" SET "styleId" = "styleUid" WHERE "styleId" IS NULL AND "styleUid" IS NOT NULL;
+    ALTER TABLE "AtTrainingBucketProcess" DROP COLUMN "styleUid";
+  END IF;
+
+  SELECT data_type INTO work_order_item_style_id_type
+  FROM information_schema.columns
+  WHERE table_schema = 'public' AND table_name = 'WorkOrderItem' AND column_name = 'styleId';
+
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'WorkOrderItem' AND column_name = 'styleUid') THEN
+    IF work_order_item_style_id_type IS NOT NULL AND work_order_item_style_id_type <> 'integer' THEN
+      ALTER TABLE "WorkOrderItem" DROP COLUMN "styleId";
+      ALTER TABLE "WorkOrderItem" RENAME COLUMN "styleUid" TO "styleId";
+    ELSIF work_order_item_style_id_type IS NULL THEN
+      ALTER TABLE "WorkOrderItem" RENAME COLUMN "styleUid" TO "styleId";
+    ELSE
+      IF EXISTS (SELECT 1 FROM "WorkOrderItem" WHERE "styleUid" IS NOT NULL AND "styleId" IS NOT NULL AND "styleId" <> "styleUid") THEN
+        RAISE EXCEPTION 'WorkOrderItem has conflicting styleId and legacy styleUid values; resolve manually before migration.';
+      END IF;
+      UPDATE "WorkOrderItem" SET "styleId" = "styleUid" WHERE "styleId" IS NULL AND "styleUid" IS NOT NULL;
+      ALTER TABLE "WorkOrderItem" DROP COLUMN "styleUid";
+    END IF;
+  ELSIF work_order_item_style_id_type IS NOT NULL AND work_order_item_style_id_type <> 'integer' THEN
+    RAISE EXCEPTION 'WorkOrderItem.styleId is not an integer FK and no legacy styleUid exists; resolve manually before migration.';
+  END IF;
+
+  ALTER TABLE "WorkOrderItem"
+    DROP COLUMN IF EXISTS "styleName",
+    DROP COLUMN IF EXISTS "styleCode";
+
+  SELECT data_type INTO work_record_style_id_type
+  FROM information_schema.columns
+  WHERE table_schema = 'public' AND table_name = 'WorkRecord' AND column_name = 'styleId';
+
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'WorkRecord' AND column_name = 'styleUid') THEN
+    IF work_record_style_id_type IS NOT NULL AND work_record_style_id_type <> 'integer' THEN
+      ALTER TABLE "WorkRecord" DROP COLUMN "styleId";
+      ALTER TABLE "WorkRecord" RENAME COLUMN "styleUid" TO "styleId";
+    ELSIF work_record_style_id_type IS NULL THEN
+      ALTER TABLE "WorkRecord" RENAME COLUMN "styleUid" TO "styleId";
+    ELSE
+      IF EXISTS (SELECT 1 FROM "WorkRecord" WHERE "styleUid" IS NOT NULL AND "styleId" IS NOT NULL AND "styleId" <> "styleUid") THEN
+        RAISE EXCEPTION 'WorkRecord has conflicting styleId and legacy styleUid values; resolve manually before migration.';
+      END IF;
+      UPDATE "WorkRecord" SET "styleId" = "styleUid" WHERE "styleId" IS NULL AND "styleUid" IS NOT NULL;
+      ALTER TABLE "WorkRecord" DROP COLUMN "styleUid";
+    END IF;
+  ELSIF work_record_style_id_type IS NOT NULL AND work_record_style_id_type <> 'integer' THEN
+    RAISE EXCEPTION 'WorkRecord.styleId is not an integer FK and no legacy styleUid exists; resolve manually before migration.';
+  END IF;
+
+  ALTER TABLE "WorkRecord"
+    DROP COLUMN IF EXISTS "customerName",
+    DROP COLUMN IF EXISTS "styleName",
+    DROP COLUMN IF EXISTS "processId",
+    DROP COLUMN IF EXISTS "processCode",
+    DROP COLUMN IF EXISTS "processName",
+    DROP COLUMN IF EXISTS "colorId",
+    DROP COLUMN IF EXISTS "colorCode",
+    DROP COLUMN IF EXISTS "colorName",
+    DROP COLUMN IF EXISTS "gender";
+
+  ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "styleId" INTEGER;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "Style_orgId_code_key" ON "Style"("orgId", "code");
+CREATE INDEX IF NOT EXISTS "StyleProcess_styleId_idx" ON "StyleProcess"("styleId");
+CREATE UNIQUE INDEX IF NOT EXISTS "StyleProcess_styleId_orgId_processCode_key" ON "StyleProcess"("styleId", "orgId", "processCode");
+CREATE INDEX IF NOT EXISTS "WorkOrderItem_styleId_idx" ON "WorkOrderItem"("styleId");
+CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_styleId_idx" ON "WorkRecord"("orgId", "styleId");
+CREATE INDEX IF NOT EXISTS "AtTrainingBucketProcess_orgId_styleId_idx" ON "AtTrainingBucketProcess"("orgId", "styleId");
+CREATE INDEX IF NOT EXISTS "AssignmentPlan_styleId_idx" ON "AssignmentPlan"("styleId");
+
+DO $$ BEGIN
+  ALTER TABLE "StyleProcess"
+    ADD CONSTRAINT "StyleProcess_styleId_fkey"
+    FOREIGN KEY ("styleId") REFERENCES "Style"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "WorkOrderItem"
+    ADD CONSTRAINT "WorkOrderItem_styleId_fkey"
+    FOREIGN KEY ("styleId") REFERENCES "Style"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "WorkRecord"
+    ADD CONSTRAINT "WorkRecord_styleId_fkey"
+    FOREIGN KEY ("styleId") REFERENCES "Style"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "AtTrainingBucketProcess"
+    ADD CONSTRAINT "AtTrainingBucketProcess_styleId_fkey"
+    FOREIGN KEY ("styleId") REFERENCES "Style"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "AssignmentPlan"
+    ADD CONSTRAINT "AssignmentPlan_styleId_fkey"
+    FOREIGN KEY ("styleId") REFERENCES "Style"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Migration state table for one-off data migrations.
 CREATE TABLE IF NOT EXISTS "_BaroMigrationState" (
   "key" TEXT PRIMARY KEY,
   "appliedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -512,99 +702,7 @@ BEGIN
   END IF;
 END $$;
 
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'WorkRecord'
-      AND column_name = 'styleUid'
-  ) AND EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'WorkRecord'
-      AND column_name = 'assignmentPlanId'
-  ) AND EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'AssignmentPlan'
-      AND column_name = 'cardId'
-  ) AND EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'WorkOrderItem'
-      AND column_name = 'styleUid'
-  ) AND NOT EXISTS (
-    SELECT 1 FROM "_BaroMigrationState"
-    WHERE "key" = '20260626_work_record_style_uid_from_assignment_plan_v1'
-  ) THEN
-    WITH plan_identity AS (
-      SELECT
-        ap.id AS "planId",
-        ap."orgId" AS "orgId",
-        split_part(raw_identity.identity, '::', 1) AS "orderId",
-        split_part(raw_identity.identity, '::', 2) AS "styleId"
-      FROM "AssignmentPlan" ap
-      CROSS JOIN LATERAL (
-        VALUES (ap."cardId"), (ap."originOrderId")
-      ) AS raw_identity(identity)
-      WHERE raw_identity.identity IS NOT NULL
-        AND position('::' IN raw_identity.identity) > 0
-        AND split_part(raw_identity.identity, '::', 1) <> ''
-        AND split_part(raw_identity.identity, '::', 2) <> ''
-    ),
-    candidate AS (
-      SELECT
-        pi."planId",
-        woi."styleUid",
-        COALESCE(s."styleId", woi."styleId") AS "styleId",
-        COALESCE(s."name", woi."styleName") AS "styleName"
-      FROM plan_identity pi
-      JOIN "WorkOrder" wo
-        ON wo."orderId" = pi."orderId"
-       AND (
-            wo."orgId" = pi."orgId"
-         OR wo."buyerOrgId" = pi."orgId"
-         OR wo."sellerOrgId" = pi."orgId"
-       )
-      JOIN "WorkOrderItem" woi
-        ON woi."workOrderId" = wo.id
-       AND woi."styleId" = pi."styleId"
-      LEFT JOIN "Style" s
-        ON s.uid = woi."styleUid"
-      WHERE woi."styleUid" IS NOT NULL
-    ),
-    canonical AS (
-      SELECT
-        "planId",
-        MIN("styleUid") AS "styleUid",
-        MAX("styleId") AS "styleId",
-        MAX("styleName") AS "styleName"
-      FROM candidate
-      GROUP BY "planId"
-      HAVING COUNT(DISTINCT "styleUid") = 1
-    )
-    UPDATE "WorkRecord" wr
-    SET
-      "styleUid" = canonical."styleUid",
-      "styleId" = COALESCE(canonical."styleId", wr."styleId"),
-      "styleName" = COALESCE(canonical."styleName", wr."styleName")
-    FROM canonical, "WorkLog" wl
-    WHERE wr."assignmentPlanId" = canonical."planId"
-      AND wr."workLogId" = wl.id
-      AND COALESCE(wl."coverageEndDate", wl."workDate") >= '2026-04-01'
-      AND (
-        wr."styleUid" IS DISTINCT FROM canonical."styleUid"
-        OR wr."styleId" IS DISTINCT FROM COALESCE(canonical."styleId", wr."styleId")
-        OR wr."styleName" IS DISTINCT FROM COALESCE(canonical."styleName", wr."styleName")
-      );
-
-    INSERT INTO "_BaroMigrationState" ("key")
-    VALUES ('20260626_work_record_style_uid_from_assignment_plan_v1');
-  END IF;
-END $$;
-
--- Step 4b-safety: ensure final column names exist even when neither old nor new name existed
+-- Step 4b: ensure final column names exist.
 ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentQuantity" INTEGER;
 ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentStTotalSeconds" INTEGER;
 ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentCtTotalSeconds" INTEGER;
@@ -667,9 +765,8 @@ SET "payload" = "payload"::jsonb - 'totalSeconds' - 'stSeconds' - 'contractedSec
 WHERE "payload" IS NOT NULL
   AND jsonb_typeof("payload"::jsonb) = 'object'
   AND ("payload"::jsonb ? 'totalSeconds' OR "payload"::jsonb ? 'stSeconds' OR "payload"::jsonb ? 'contractedSeconds');
--- Step 5: WorkRecord canonical snapshot fields
+-- Step 5: WorkRecord effective coverage fields
 ALTER TABLE "WorkRecord"
-  ADD COLUMN IF NOT EXISTS "orderNo" TEXT,
   ADD COLUMN IF NOT EXISTS "lineId" INTEGER,
   ADD COLUMN IF NOT EXISTS "effectiveCoverageStartDate" TEXT,
   ADD COLUMN IF NOT EXISTS "effectiveCoverageEndDate" TEXT;
@@ -771,19 +868,6 @@ FROM adjustment_notes AS notes
 WHERE wl."id" = notes."workLogId"
   AND POSITION('[재직기간 자동 조정]' IN COALESCE(wl."note", '')) = 0;
 
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'WorkRecord'
-      AND column_name = 'orderNo'
-  ) THEN
-    CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_orderNo_idx"
-      ON "WorkRecord"("orgId", "orderNo");
-  END IF;
-END $$;
-
 CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_lineId_idx"
   ON "WorkRecord"("orgId", "lineId");
 
@@ -809,265 +893,6 @@ BEGIN
   END IF;
 END $$;
 
--- Step 5b: WorkRecord canonical references for operating data (20260629)
--- Only deterministic fills are allowed. Rows that cannot be resolved from the
--- linked assignment plan or process master remain unchanged for explicit review.
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'WorkRecord'
-      AND column_name = 'assignmentPlanId'
-  ) AND EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'WorkRecord'
-      AND column_name = 'styleUid'
-  ) AND EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'WorkRecord'
-      AND column_name = 'processCode'
-  ) AND NOT EXISTS (
-    SELECT 1 FROM "_BaroMigrationState"
-    WHERE "key" = '20260629_work_record_canonical_refs_v2'
-  ) THEN
-    UPDATE "WorkRecord" wr
-    SET
-      "orderNo" = COALESCE(wr."orderNo", ap."orderNo"),
-      "lineId" = COALESCE(wr."lineId", ap."lineId")
-    FROM "AssignmentPlan" ap, "WorkLog" wl
-    WHERE wr."assignmentPlanId" = ap.id
-      AND wr."workLogId" = wl.id
-      AND COALESCE(wl."coverageEndDate", wl."workDate") >= '2026-04-01'
-      AND (
-        (wr."orderNo" IS NULL AND ap."orderNo" IS NOT NULL)
-        OR (wr."lineId" IS NULL AND ap."lineId" IS NOT NULL)
-      );
-
-    WITH plan_identity AS (
-      SELECT
-        ap.id AS "planId",
-        ap."orgId" AS "orgId",
-        split_part(raw_identity.identity, '::', 1) AS "orderId",
-        split_part(raw_identity.identity, '::', 2) AS "styleId"
-      FROM "AssignmentPlan" ap
-      CROSS JOIN LATERAL (
-        VALUES (ap."cardId"), (ap."originOrderId")
-      ) AS raw_identity(identity)
-      WHERE raw_identity.identity IS NOT NULL
-        AND position('::' IN raw_identity.identity) > 0
-        AND split_part(raw_identity.identity, '::', 1) <> ''
-        AND split_part(raw_identity.identity, '::', 2) <> ''
-    ),
-    candidate AS (
-      SELECT
-        pi."planId",
-        woi."styleUid",
-        COALESCE(s."styleId", woi."styleId") AS "styleId",
-        COALESCE(s."name", woi."styleName") AS "styleName"
-      FROM plan_identity pi
-      JOIN "WorkOrder" wo
-        ON wo."orderId" = pi."orderId"
-       AND (
-            wo."orgId" = pi."orgId"
-         OR wo."buyerOrgId" = pi."orgId"
-         OR wo."sellerOrgId" = pi."orgId"
-       )
-      JOIN "WorkOrderItem" woi
-        ON woi."workOrderId" = wo.id
-       AND woi."styleId" = pi."styleId"
-      LEFT JOIN "Style" s
-        ON s.uid = woi."styleUid"
-      WHERE woi."styleUid" IS NOT NULL
-    ),
-    canonical AS (
-      SELECT
-        "planId",
-        MIN("styleUid") AS "styleUid",
-        MAX("styleId") AS "styleId",
-        MAX("styleName") AS "styleName"
-      FROM candidate
-      GROUP BY "planId"
-      HAVING COUNT(DISTINCT "styleUid") = 1
-    )
-    UPDATE "WorkRecord" wr
-    SET
-      "styleUid" = canonical."styleUid",
-      "styleId" = COALESCE(canonical."styleId", wr."styleId"),
-      "styleName" = COALESCE(canonical."styleName", wr."styleName")
-    FROM canonical, "WorkLog" wl
-    WHERE wr."assignmentPlanId" = canonical."planId"
-      AND wr."workLogId" = wl.id
-      AND COALESCE(wl."coverageEndDate", wl."workDate") >= '2026-04-01'
-      AND (
-        wr."styleUid" IS DISTINCT FROM canonical."styleUid"
-        OR wr."styleId" IS DISTINCT FROM COALESCE(canonical."styleId", wr."styleId")
-        OR wr."styleName" IS DISTINCT FROM COALESCE(canonical."styleName", wr."styleName")
-      );
-
-    INSERT INTO "_BaroMigrationState" ("key")
-    VALUES ('20260629_work_record_canonical_refs_v2');
-  END IF;
-END $$;
-
--- Step 5c: WorkRecord style process FK backfill for operating data (20260629)
--- This runs after styleUid/processCode canonicalization. It only fills rows
--- where one exact StyleProcess row matches the stored styleUid + processCode.
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'WorkRecord'
-      AND column_name = 'styleProcessId'
-  ) AND EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'WorkRecord'
-      AND column_name = 'styleUid'
-  ) AND EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'WorkRecord'
-      AND column_name = 'processCode'
-  ) AND NOT EXISTS (
-    SELECT 1 FROM "_BaroMigrationState"
-    WHERE "key" = '20260629_work_record_style_process_refs_v1'
-  ) THEN
-    WITH deterministic AS (
-      SELECT
-        wr.id AS "workRecordId",
-        MIN(sp.id) AS "styleProcessId"
-      FROM "WorkRecord" wr
-      JOIN "WorkLog" wl
-        ON wl.id = wr."workLogId"
-      JOIN "StyleProcess" sp
-        ON sp."styleUid" = wr."styleUid"
-       AND sp."processCode" = wr."processCode"
-      WHERE COALESCE(wl."coverageEndDate", wl."workDate") >= '2026-04-01'
-        AND wr."styleUid" IS NOT NULL
-        AND wr."processCode" IS NOT NULL
-      GROUP BY wr.id
-      HAVING COUNT(DISTINCT sp.id) = 1
-    )
-    UPDATE "WorkRecord" wr
-    SET "styleProcessId" = deterministic."styleProcessId"
-    FROM deterministic
-    WHERE wr.id = deterministic."workRecordId"
-      AND wr."styleProcessId" IS DISTINCT FROM deterministic."styleProcessId";
-
-    INSERT INTO "_BaroMigrationState" ("key")
-    VALUES ('20260629_work_record_style_process_refs_v1');
-  END IF;
-END $$;
-
--- Step 5d: WorkRecord destructive legacy cleanup and canonical style FK rename (20260629)
-DO $$
-DECLARE
-  has_style_id_text BOOLEAN := FALSE;
-  has_style_id_int BOOLEAN := FALSE;
-  has_style_uid BOOLEAN := FALSE;
-BEGIN
-  SELECT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'WorkRecord'
-      AND column_name = 'styleId'
-      AND data_type = 'text'
-  ) INTO has_style_id_text;
-
-  SELECT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'WorkRecord'
-      AND column_name = 'styleId'
-      AND data_type = 'integer'
-  ) INTO has_style_id_int;
-
-  SELECT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'WorkRecord'
-      AND column_name = 'styleUid'
-  ) INTO has_style_uid;
-
-  IF has_style_id_text AND has_style_uid THEN
-    UPDATE "WorkRecord" wr
-    SET "styleUid" = s.uid
-    FROM "Style" s
-    WHERE wr."orgId" = s."orgId"
-      AND wr."styleUid" IS NULL
-      AND wr."styleId" IS NOT NULL
-      AND BTRIM(wr."styleId") <> ''
-      AND s."styleId" = wr."styleId";
-  END IF;
-
-  IF EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'WorkRecord_styleUid_fkey'
-  ) THEN
-    ALTER TABLE "WorkRecord" DROP CONSTRAINT "WorkRecord_styleUid_fkey";
-  END IF;
-
-  IF EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'WorkRecord_colorId_fkey'
-  ) THEN
-    ALTER TABLE "WorkRecord" DROP CONSTRAINT "WorkRecord_colorId_fkey";
-  END IF;
-
-  IF EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'WorkRecord_workerId_fkey'
-  ) THEN
-    ALTER TABLE "WorkRecord" DROP CONSTRAINT "WorkRecord_workerId_fkey";
-  END IF;
-
-  DROP INDEX IF EXISTS "WorkRecord_orgId_orderNo_idx";
-  DROP INDEX IF EXISTS "WorkRecord_styleUid_idx";
-  DROP INDEX IF EXISTS "WorkRecord_colorId_idx";
-  DROP INDEX IF EXISTS "WorkRecord_orgId_styleId_idx";
-
-  IF has_style_id_text AND has_style_uid AND NOT has_style_id_int THEN
-    ALTER TABLE "WorkRecord" RENAME COLUMN "styleId" TO "styleCodeLegacy";
-    ALTER TABLE "WorkRecord" RENAME COLUMN "styleUid" TO "styleId";
-  ELSIF has_style_id_text AND NOT has_style_uid AND NOT has_style_id_int THEN
-    ALTER TABLE "WorkRecord" ADD COLUMN IF NOT EXISTS "styleIdTemp" INTEGER;
-
-    UPDATE "WorkRecord" wr
-    SET "styleIdTemp" = s.uid
-    FROM "Style" s
-    WHERE wr."orgId" = s."orgId"
-      AND wr."styleIdTemp" IS NULL
-      AND wr."styleId" IS NOT NULL
-      AND BTRIM(wr."styleId") <> ''
-      AND s."styleId" = wr."styleId";
-
-    ALTER TABLE "WorkRecord" RENAME COLUMN "styleId" TO "styleCodeLegacy";
-    ALTER TABLE "WorkRecord" RENAME COLUMN "styleIdTemp" TO "styleId";
-  END IF;
-
-  ALTER TABLE "WorkRecord"
-    DROP COLUMN IF EXISTS "workerName",
-    DROP COLUMN IF EXISTS "customerName",
-    DROP COLUMN IF EXISTS "orderNo",
-    DROP COLUMN IF EXISTS "styleCodeLegacy",
-    DROP COLUMN IF EXISTS "styleName",
-    DROP COLUMN IF EXISTS "processId",
-    DROP COLUMN IF EXISTS "processCode",
-    DROP COLUMN IF EXISTS "colorId",
-    DROP COLUMN IF EXISTS "colorCode";
-
-  INSERT INTO "_BaroMigrationState" ("key")
-  SELECT '20260629_work_record_fk_cleanup_v1'
-  WHERE NOT EXISTS (
-    SELECT 1 FROM "_BaroMigrationState"
-    WHERE "key" = '20260629_work_record_fk_cleanup_v1'
-  );
-END $$;
-
 CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_styleId_idx"
   ON "WorkRecord"("orgId", "styleId");
 
@@ -1085,7 +910,7 @@ BEGIN
   ) THEN
     ALTER TABLE "WorkRecord"
       ADD CONSTRAINT "WorkRecord_styleId_fkey"
-      FOREIGN KEY ("styleId") REFERENCES "Style"("uid")
+      FOREIGN KEY ("styleId") REFERENCES "Style"("id")
       ON DELETE SET NULL ON UPDATE CASCADE;
   END IF;
 END $$;
@@ -1216,7 +1041,7 @@ WHERE "isCompleted" = FALSE
 WITH snapshot_st_targets AS (
   SELECT
     plan."orgId",
-    style."uid" AS "styleUid",
+    style."id" AS "styleId",
     CASE
       WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 10000 THEN 10000
       WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 5000 THEN 5000
@@ -1233,14 +1058,10 @@ WITH snapshot_st_targets AS (
       ELSE 1
     END AS "bucketQuantity",
     ROUND((process ->> 'stSeconds')::numeric)::double precision AS "bucketStSeconds",
-    LOWER(BTRIM(COALESCE(process ->> 'processCode', process ->> 'code', ''))) AS "processCodeKey",
-    LOWER(BTRIM(COALESCE(process ->> 'processKey', ''))) AS "processKey",
-    LOWER(BTRIM(REGEXP_REPLACE(COALESCE(process ->> 'processKey', ''), '-[0-9]+-[0-9]+$', ''))) AS "processKeyBase",
-    LOWER(BTRIM(COALESCE(process ->> 'name', process ->> 'processName', process ->> 'label', ''))) AS "processNameKey"
+    NULLIF(process ->> 'styleProcessId', '')::integer AS "styleProcessId"
   FROM "AssignmentPlan" plan
   JOIN "Style" style
-    ON style."orgId" = plan."orgId"
-   AND style."styleId" = NULLIF(SPLIT_PART(COALESCE(plan."cardId", plan."originOrderId", ''), '::', 2), '')
+    ON style."id" = plan."styleId"
   CROSS JOIN LATERAL jsonb_array_elements(
     CASE
       WHEN jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
@@ -1264,13 +1085,8 @@ matched_snapshot_st AS (
   FROM snapshot_st_targets target
   JOIN "StyleProcess" style_process
     ON style_process."orgId" = target."orgId"
-   AND style_process."styleUid" = target."styleUid"
-   AND (
-      LOWER(BTRIM(style_process."processCode")) = target."processCodeKey"
-      OR LOWER(BTRIM(style_process."processCode")) = target."processKey"
-      OR LOWER(BTRIM(style_process."processCode")) = target."processKeyBase"
-      OR LOWER(BTRIM(style_process."processName")) = target."processNameKey"
-   )
+   AND style_process."styleId" = target."styleId"
+   AND style_process."id" = target."styleProcessId"
   GROUP BY target."orgId", style_process."id", target."bucketQuantity"
 )
 INSERT INTO "StyleProcessStandard" (
@@ -1318,7 +1134,7 @@ BEGIN
   WITH snapshot_st_targets AS (
     SELECT
       plan."orgId",
-      style."uid" AS "styleUid",
+      style."id" AS "styleId",
       CASE
         WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 10000 THEN 10000
         WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 5000 THEN 5000
@@ -1334,14 +1150,10 @@ BEGIN
         WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 3 THEN 3
         ELSE 1
       END AS "bucketQuantity",
-      LOWER(BTRIM(COALESCE(process ->> 'processCode', process ->> 'code', ''))) AS "processCodeKey",
-      LOWER(BTRIM(COALESCE(process ->> 'processKey', ''))) AS "processKey",
-      LOWER(BTRIM(REGEXP_REPLACE(COALESCE(process ->> 'processKey', ''), '-[0-9]+-[0-9]+$', ''))) AS "processKeyBase",
-      LOWER(BTRIM(COALESCE(process ->> 'name', process ->> 'processName', process ->> 'label', ''))) AS "processNameKey"
+      NULLIF(process ->> 'styleProcessId', '')::integer AS "styleProcessId"
     FROM "AssignmentPlan" plan
     JOIN "Style" style
-      ON style."orgId" = plan."orgId"
-     AND style."styleId" = NULLIF(SPLIT_PART(COALESCE(plan."cardId", plan."originOrderId", ''), '::', 2), '')
+      ON style."id" = plan."styleId"
     CROSS JOIN LATERAL jsonb_array_elements(
       CASE
         WHEN jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
@@ -1359,19 +1171,14 @@ BEGIN
   matched_snapshot_st AS (
     SELECT DISTINCT
       target."orgId",
-      target."styleUid",
+      target."styleId",
       target."bucketQuantity",
       style_process."id" AS "styleProcessId"
     FROM snapshot_st_targets target
     JOIN "StyleProcess" style_process
       ON style_process."orgId" = target."orgId"
-     AND style_process."styleUid" = target."styleUid"
-     AND (
-        LOWER(BTRIM(style_process."processCode")) = target."processCodeKey"
-        OR LOWER(BTRIM(style_process."processCode")) = target."processKey"
-        OR LOWER(BTRIM(style_process."processCode")) = target."processKeyBase"
-        OR LOWER(BTRIM(style_process."processName")) = target."processNameKey"
-     )
+     AND style_process."styleId" = target."styleId"
+     AND style_process."id" = target."styleProcessId"
   )
   SELECT COUNT(*)
   INTO unmatched_process_count
@@ -1380,19 +1187,14 @@ BEGIN
     SELECT 1
     FROM "StyleProcess" style_process
     WHERE style_process."orgId" = target."orgId"
-      AND style_process."styleUid" = target."styleUid"
-      AND (
-        LOWER(BTRIM(style_process."processCode")) = target."processCodeKey"
-        OR LOWER(BTRIM(style_process."processCode")) = target."processKey"
-        OR LOWER(BTRIM(style_process."processCode")) = target."processKeyBase"
-        OR LOWER(BTRIM(style_process."processName")) = target."processNameKey"
-      )
+      AND style_process."styleId" = target."styleId"
+      AND style_process."id" = target."styleProcessId"
   );
 
   WITH snapshot_st_targets AS (
     SELECT
       plan."orgId",
-      style."uid" AS "styleUid",
+      style."id" AS "styleId",
       CASE
         WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 10000 THEN 10000
         WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 5000 THEN 5000
@@ -1408,14 +1210,10 @@ BEGIN
         WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 3 THEN 3
         ELSE 1
       END AS "bucketQuantity",
-      LOWER(BTRIM(COALESCE(process ->> 'processCode', process ->> 'code', ''))) AS "processCodeKey",
-      LOWER(BTRIM(COALESCE(process ->> 'processKey', ''))) AS "processKey",
-      LOWER(BTRIM(REGEXP_REPLACE(COALESCE(process ->> 'processKey', ''), '-[0-9]+-[0-9]+$', ''))) AS "processKeyBase",
-      LOWER(BTRIM(COALESCE(process ->> 'name', process ->> 'processName', process ->> 'label', ''))) AS "processNameKey"
+      NULLIF(process ->> 'styleProcessId', '')::integer AS "styleProcessId"
     FROM "AssignmentPlan" plan
     JOIN "Style" style
-      ON style."orgId" = plan."orgId"
-     AND style."styleId" = NULLIF(SPLIT_PART(COALESCE(plan."cardId", plan."originOrderId", ''), '::', 2), '')
+      ON style."id" = plan."styleId"
     CROSS JOIN LATERAL jsonb_array_elements(
       CASE
         WHEN jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
@@ -1437,13 +1235,8 @@ BEGIN
     FROM snapshot_st_targets target
     JOIN "StyleProcess" style_process
       ON style_process."orgId" = target."orgId"
-     AND style_process."styleUid" = target."styleUid"
-     AND (
-        LOWER(BTRIM(style_process."processCode")) = target."processCodeKey"
-        OR LOWER(BTRIM(style_process."processCode")) = target."processKey"
-        OR LOWER(BTRIM(style_process."processCode")) = target."processKeyBase"
-        OR LOWER(BTRIM(style_process."processName")) = target."processNameKey"
-     )
+     AND style_process."styleId" = target."styleId"
+     AND style_process."id" = target."styleProcessId"
   )
   SELECT COUNT(*)
   INTO missing_standard_count

@@ -496,10 +496,9 @@ model AttrProcess {
 }
 
 model Style {
-  uid              Int      @id @default(autoincrement())
+  id               Int      @id @default(autoincrement())
   orgId            Int
-  styleId          String
-  styleCode        String
+  code             String
   name             String
   customer         String
   customerNameKo   String?
@@ -520,18 +519,19 @@ model Style {
   organization   Organization    @relation(fields: [orgId], references: [id])
   styleProcesses StyleProcess[]
   workOrderItems WorkOrderItem[]
+  trainingBuckets AtTrainingBucketProcess[]
+  assignmentPlans AssignmentPlan[]
   workRecords    WorkRecord[]
 
-  @@unique([orgId, styleId])
+  @@unique([orgId, code])
   @@unique([orgId, customer, name])
-  @@unique([orgId, customer, styleCode])
   @@index([orgId])
 }
 
 model StyleProcess {
   id                 Int      @id @default(autoincrement())
   orgId              Int
-  styleUid           Int
+  styleId            Int
   processCode        String
   processName        String
   processComposition Json?
@@ -545,14 +545,14 @@ model StyleProcess {
   updatedAt          DateTime @updatedAt
 
   organization Organization          @relation(fields: [orgId], references: [id])
-  style        Style                 @relation(fields: [styleUid], references: [uid], onDelete: Cascade)
+  style        Style                 @relation(fields: [styleId], references: [id], onDelete: Cascade)
   standards    StyleProcessStandard[]
   trainingBuckets AtTrainingBucketProcess[]
   workRecords  WorkRecord[]
 
-  @@unique([styleUid, orgId, processCode])
+  @@unique([styleId, orgId, processCode])
   @@index([orgId])
-  @@index([styleUid])
+  @@index([styleId])
 }
 
 model StyleProcessStandard {
@@ -598,7 +598,7 @@ model AtTrainingBucketProcess {
   id             Int      @id @default(autoincrement())
   orgId          Int
   bucketId       Int
-  styleUid       Int
+  styleId        Int
   styleProcessId Int
   quantity       Int
   createdAt      DateTime @default(now())
@@ -607,11 +607,12 @@ model AtTrainingBucketProcess {
 
   organization Organization     @relation(fields: [orgId], references: [id])
   bucket       AtTrainingBucket  @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+  style        Style             @relation(fields: [styleId], references: [id], onDelete: Cascade)
   styleProcess StyleProcess      @relation(fields: [styleProcessId], references: [id], onDelete: Cascade)
 
   @@unique([bucketId, styleProcessId])
   @@index([orgId, styleProcessId])
-  @@index([orgId, styleUid])
+  @@index([orgId, styleId])
 }
 
 model WorkOrder {
@@ -653,10 +654,7 @@ model WorkOrderItem {
   id             Int                  @id @default(autoincrement())
   workOrderId    Int
   itemId         String               @default("")
-  styleId        String?
-  styleUid       Int?
-  styleName      String?
-  styleCode      String?
+  styleId        Int?
   colorId        Int?
   colorCode      String?
   gender         WorkOrderItemGender?
@@ -668,11 +666,11 @@ model WorkOrderItem {
   updatedAt      DateTime             @updatedAt
 
   workOrder WorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-  style     Style?     @relation(fields: [styleUid], references: [uid], onDelete: SetNull)
+  style     Style?     @relation(fields: [styleId], references: [id], onDelete: SetNull)
   color     AttrColor? @relation(fields: [colorId], references: [id], onDelete: SetNull)
 
   @@index([workOrderId])
-  @@index([styleUid])
+  @@index([styleId])
   @@index([colorId])
 }
 
@@ -683,6 +681,7 @@ model AssignmentPlan {
   externalId            String
   cardId                String?
   workOrderId           Int?
+  styleId               Int?
   orderNo               String?
   customer              String?
   label                 String?
@@ -729,6 +728,7 @@ model AssignmentPlan {
   line         Line         @relation(fields: [lineId], references: [id])
   organization Organization @relation(fields: [orgId], references: [id])
   workOrder    WorkOrder?   @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  style        Style?       @relation(fields: [styleId], references: [id], onDelete: SetNull)
   attrColor    AttrColor?   @relation(fields: [colorId], references: [id], onDelete: SetNull)
   workRecords  WorkRecord[]
   qcPassEvents QcPassEvent[]
@@ -736,6 +736,7 @@ model AssignmentPlan {
   @@unique([orgId, externalId])
   @@index([orgId, lineId])
   @@index([workOrderId])
+  @@index([styleId])
   @@index([colorId])
 }
 
@@ -814,7 +815,7 @@ model WorkRecord {
   workLog        WorkLog         @relation(fields: [workLogId], references: [id], onDelete: Cascade)
   worker         Employee?       @relation(fields: [workerId], references: [id], onDelete: SetNull)
   assignmentPlan AssignmentPlan? @relation(fields: [assignmentPlanId], references: [id])
-  style          Style?          @relation(fields: [styleId], references: [uid], onDelete: SetNull)
+  style          Style?          @relation(fields: [styleId], references: [id], onDelete: SetNull)
   styleProcess   StyleProcess?   @relation(fields: [styleProcessId], references: [id], onDelete: SetNull)
 
   @@index([orgId, workLogId])

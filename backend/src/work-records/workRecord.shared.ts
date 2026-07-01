@@ -1,10 +1,10 @@
 import { resolveOptionalString, toPositiveIntOrNull } from "../utils/common";
 
 export const resolveWorkRecordStyleRefId = (record: any) =>
-  toPositiveIntOrNull(record?.style?.uid ?? record?.styleId);
+  toPositiveIntOrNull(record?.style?.id ?? record?.styleId);
 
 export const resolveWorkRecordStyleCode = (record: any) =>
-  resolveOptionalString(record?.style?.styleId ?? record?.styleCode ?? null, null);
+  resolveOptionalString(record?.style?.code ?? record?.styleCode ?? null, null);
 
 export const resolveWorkRecordStyleName = (record: any) =>
   resolveOptionalString(record?.style?.name, null);
@@ -32,9 +32,8 @@ export const WORK_RECORD_WITH_REFS_INCLUDE = {
     },
     style: {
       select: {
-        uid: true,
-        styleId: true,
-        styleCode: true,
+        id: true,
+        code: true,
         name: true,
       },
     },

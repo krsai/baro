@@ -11,7 +11,6 @@ const LEGACY_COLUMNS = [
   "workerName",
   "customerName",
   "orderNo",
-  "styleUid",
   "styleName",
   "processId",
   "processCode",
@@ -73,11 +72,6 @@ async function loadNullSummary(columnSet, styleIdDataType) {
       );
     }
   }
-  if (columnSet.has("styleUid")) {
-    counters.push(
-      `COUNT(*) FILTER (WHERE ${quoteIdent("styleUid")} IS NULL)::int AS style_uid_nulls`
-    );
-  }
   if (columnSet.has("styleProcessId")) {
     counters.push(
       `COUNT(*) FILTER (WHERE ${quoteIdent("styleProcessId")} IS NULL)::int AS style_process_nulls`
@@ -130,10 +124,6 @@ async function loadSamples(columnSet) {
   if (columnSet.has("workerId")) {
     whereClauses.push(`${quoteIdent("workerId")} IS NULL`);
     selectColumns.push("workerId");
-  }
-  if (columnSet.has("styleUid")) {
-    whereClauses.push(`${quoteIdent("styleUid")} IS NULL`);
-    selectColumns.push("styleUid");
   }
   if (columnSet.has("styleId")) {
     whereClauses.push(`${quoteIdent("styleId")} IS NULL`);

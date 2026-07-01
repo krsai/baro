@@ -269,7 +269,6 @@ const StyleBoard = () => {
           reason: result.reason,
           earlyExitStage: result?.diagnostics?.source?.earlyExitStage ?? null,
           rawStyleIdCount: result?.diagnostics?.source?.rawStyleIdCount ?? 0,
-          rawStyleUidCount: result?.diagnostics?.source?.rawStyleUidCount ?? 0,
           styleCandidateCount: result?.diagnostics?.source?.styleCandidateCount ?? 0,
           fittingStatusCounts: result?.diagnostics?.fitting?.statusCounts ?? {},
         });
@@ -297,7 +296,6 @@ const StyleBoard = () => {
                 result.diagnostics.source.skippedNoLaborInputWorkLogCount,
               earlyExitStage: result.diagnostics.source.earlyExitStage ?? null,
               rawStyleIdCount: result.diagnostics.source.rawStyleIdCount ?? 0,
-              rawStyleUidCount: result.diagnostics.source.rawStyleUidCount ?? 0,
               styleCandidateCount: result.diagnostics.source.styleCandidateCount ?? 0,
               excludedMissingWorker:
                 result.diagnostics.source.excludedMissingWorkerRecordCount,
@@ -337,12 +335,6 @@ const StyleBoard = () => {
             console.log(
               '[at-sync] raw style id samples',
               result.diagnostics.source.rawStyleIdSamples
-            );
-          }
-          if (Array.isArray(result.diagnostics.source.rawStyleUidSamples)) {
-            console.log(
-              '[at-sync] raw style uid samples',
-              result.diagnostics.source.rawStyleUidSamples
             );
           }
           if (Array.isArray(result.diagnostics.source.styleCandidateSamples)) {

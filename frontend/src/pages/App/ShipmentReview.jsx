@@ -409,7 +409,6 @@ const ShipmentReview = () => {
         orderNumber: row.orderNumber,
         customerName: row.customerName,
         dueDate: row.dueDate,
-        styleUid: row.styleUid,
         styleId: row.styleId,
         styleCode: row.styleCode,
         styleName: row.styleName,

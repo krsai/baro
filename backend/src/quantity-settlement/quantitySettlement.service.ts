@@ -13,9 +13,8 @@ const ORDER_ITEM_WITH_COLOR_INCLUDE = {
   include: {
     style: {
       select: {
-        uid: true,
-        styleId: true,
-        styleCode: true,
+        id: true,
+        code: true,
         name: true,
       },
     },
@@ -113,18 +112,16 @@ const resolveColorName = (item: any) =>
     ""
   ) || "";
 
-const resolveStyleUid = (item: any) =>
-  toPositiveIntOrNull(item?.style?.uid ?? item?.styleId ?? item?.styleUid);
 const resolveStyleId = (item: any) =>
+  toPositiveIntOrNull(item?.style?.id ?? item?.styleId);
+const resolveStyleCode = (item: any) =>
   resolveOptionalString(
-    item?.style?.styleId ??
+    item?.style?.code ??
       item?.styleCode ??
       (toPositiveIntOrNull(item?.styleId) === null ? item?.styleId : null) ??
       null,
     ""
   ) || "";
-const resolveStyleCode = (item: any) =>
-  resolveOptionalString(item?.style?.styleCode ?? item?.styleCode ?? null, "") || "";
 const resolveStyleName = (item: any) =>
   resolveOptionalString(item?.style?.name ?? item?.styleName ?? null, "") || "";
 const resolveColorId = (item: any) =>
@@ -140,25 +137,25 @@ const resolveColorCode = (item: any) =>
 
 const buildGroupedOrderItemKey = (item: any) =>
   [
-    resolveStyleUid(item) ?? "",
-    resolveStyleId(item),
+    resolveStyleId(item) ?? "",
+    resolveStyleCode(item),
   ].join("::");
 
-const buildAggregateStyleKey = (value: { styleUid?: unknown; styleId?: unknown }) =>
+const buildAggregateStyleKey = (value: { styleId?: unknown; styleCode?: unknown }) =>
   [
-    toPositiveIntOrNull(value.styleUid) ?? "",
-    resolveOptionalString(value.styleId, "") || "",
+    toPositiveIntOrNull(value.styleId) ?? "",
+    resolveOptionalString(value.styleCode, "") || "",
   ].join("::");
 
 const buildRowId = (value: {
   orderId?: unknown;
-  styleUid?: unknown;
   styleId?: unknown;
+  styleCode?: unknown;
 }) =>
   [
     resolveOptionalString(value.orderId, "") || "",
-    toPositiveIntOrNull(value.styleUid) ?? "",
-    resolveOptionalString(value.styleId, "") || "",
+    toPositiveIntOrNull(value.styleId) ?? "",
+    resolveOptionalString(value.styleCode, "") || "",
   ].join("::");
 
 const normalizeProcessQuantityEntry = (entry: any) => ({
@@ -177,8 +174,7 @@ const buildNormalizedSnapshotRow = (row: any) => {
     orderNumber: resolveOptionalString(row?.orderNumber, "") || "",
     customerName: resolveOptionalString(row?.customerName, "") || "",
     dueDate: resolveOptionalString(row?.dueDate, "") || "",
-    styleUid: toPositiveIntOrNull(row?.styleUid),
-    styleId: resolveOptionalString(row?.styleId, "") || "",
+    styleId: toPositiveIntOrNull(row?.styleId),
     styleCode: resolveOptionalString(row?.styleCode, "") || "",
     styleName: resolveOptionalString(row?.styleName, "") || "",
     colorId: toPositiveIntOrNull(row?.colorId),
@@ -319,8 +315,8 @@ const buildWorkRecordAggregates = (workLogs: any[]) => {
       const quantity = toNonNegativeInt(record?.quantity, 0);
       if (quantity <= 0) return;
       const styleKey = buildAggregateStyleKey({
-        styleUid: resolveStyleUid(record),
         styleId: resolveStyleId(record),
+        styleCode: resolveStyleCode(record),
       });
       const processKey =
         resolveOptionalString(
@@ -378,7 +374,6 @@ const buildBaseRows = (orders: any[], aggregates: { styleOnlyMap: Map<string, an
           orderNumber: resolveOptionalString(order?.orderNumber, "") || "",
           customerName: resolveOptionalString(order?.customerName ?? order?.buyerOrgName, "") || "",
           dueDate: resolveOptionalString(order?.dueDate, "") || "",
-          styleUid: resolveStyleUid(item),
           styleId: resolveStyleId(item),
           styleCode: resolveStyleCode(item),
           styleName: resolveStyleName(item),
@@ -405,7 +400,6 @@ const buildBaseRows = (orders: any[], aggregates: { styleOnlyMap: Map<string, an
         orderNumber: group.orderNumber,
         customerName: group.customerName,
         dueDate: group.dueDate,
-        styleUid: group.styleUid,
         styleId: group.styleId,
         styleCode: group.styleCode,
         styleName: group.styleName,
@@ -520,9 +514,8 @@ export const getQuantitySettlementByMonth = async (orgId: number, monthInput: st
             styleId: true,
             style: {
               select: {
-                uid: true,
-                styleId: true,
-                styleCode: true,
+                id: true,
+                code: true,
                 name: true,
               },
             },

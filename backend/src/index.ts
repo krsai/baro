@@ -123,6 +123,24 @@ function assertGeneratedPrismaClientShape() {
   if (!hasField("WorkRecord", "styleId")) {
     staleSignals.push("WorkRecord.styleId missing");
   }
+  if (!hasField("WorkRecord", "styleProcessId")) {
+    staleSignals.push("WorkRecord.styleProcessId missing");
+  }
+  if (!hasField("Style", "id")) {
+    staleSignals.push("Style.id missing");
+  }
+  if (!hasField("Style", "code")) {
+    staleSignals.push("Style.code missing");
+  }
+  if (hasField("Style", "uid")) {
+    staleSignals.push("Style.uid still present");
+  }
+  if (hasField("Style", "styleId")) {
+    staleSignals.push("Style.styleId still present");
+  }
+  if (hasField("Style", "styleCode")) {
+    staleSignals.push("Style.styleCode still present");
+  }
   if (!hasField("WorkRecord", "lineId")) {
     staleSignals.push("WorkRecord.lineId missing");
   }
@@ -149,9 +167,6 @@ function assertGeneratedPrismaClientShape() {
   }
   if (hasField("WorkRecord", "colorName")) {
     staleSignals.push("WorkRecord.colorName still present");
-  }
-  if (hasField("WorkRecord", "styleUid")) {
-    staleSignals.push("WorkRecord.styleUid still present");
   }
   if (hasField("WorkRecord", "workerName")) {
     staleSignals.push("WorkRecord.workerName still present");
@@ -2250,12 +2265,10 @@ const collectPositiveIntSet = (...values: any[]) =>
         .filter((value): value is number => value !== null)
     )
   );
-const resolveWorkOrderItemStyleUid = (item: any) =>
-  toPositiveIntOrNull(item?.style?.uid ?? item?.styleUid);
 const resolveWorkOrderItemStyleId = (item: any) =>
-  resolveOptionalString(item?.style?.styleId ?? item?.styleId, null);
+  toPositiveIntOrNull(item?.style?.id ?? item?.styleId);
 const resolveWorkOrderItemStyleCode = (item: any) =>
-  resolveOptionalString(item?.style?.styleCode ?? item?.styleCode, null);
+  resolveOptionalString(item?.style?.code ?? item?.styleCode, null);
 const resolveWorkOrderItemStyleName = (item: any) =>
   resolveOptionalString(item?.style?.name ?? item?.styleName, null);
 const resolveWorkOrderItemColorName = (item: any) =>
@@ -2325,7 +2338,7 @@ type AtTrainingMetricQuality = {
   observationCount: number;
 };
 type AtTrainingBucketProcessDraft = {
-  styleUid: number;
+  styleId: number;
   styleProcessId: number;
   quantity: number;
 };
@@ -2341,8 +2354,8 @@ type AtTrainingBucketDraft = {
 type AtTrainingSourceDiagnosticSample = {
   workLogId: number | null;
   workerId: number | null;
-  styleId: string | null;
-  styleUid: number | null;
+  styleId: number | null;
+  styleCode: string | null;
   processCode: string | null;
   processName: string | null;
   quantity: number;
@@ -2375,15 +2388,13 @@ type AtTrainingSourceDiagnostics = {
   excludedMissingAttendanceRecordCount: number;
   earlyExitStage: string | null;
   rawStyleIdCount: number;
-  rawStyleUidCount: number;
-  rawStyleIdSamples: string[];
-  rawStyleUidSamples: number[];
+  rawStyleIdSamples: number[];
   styleCandidateCount: number;
   styleCandidateSamples: Array<{
-    uid: number | null;
+    id: number | null;
     orgId: number | null;
-    styleId: string | null;
-    styleName: string | null;
+    code: string | null;
+    name: string | null;
   }>;
   sampleExcludedRecords: AtTrainingSourceDiagnosticSample[];
 };
@@ -2419,9 +2430,7 @@ const createAtTrainingSourceDiagnostics = (
   excludedMissingAttendanceRecordCount: 0,
   earlyExitStage: null,
   rawStyleIdCount: 0,
-  rawStyleUidCount: 0,
   rawStyleIdSamples: [],
-  rawStyleUidSamples: [],
   styleCandidateCount: 0,
   styleCandidateSamples: [],
   sampleExcludedRecords: [],
@@ -2501,8 +2510,8 @@ const loadAtTrainingSourceWorkLogs = async ({
             styleId: true,
             style: {
               select: {
-                uid: true,
-                styleId: true,
+                id: true,
+                code: true,
                 name: true,
               },
             },
@@ -2546,8 +2555,8 @@ const loadAtTrainingSourceWorkLogs = async ({
             styleId: true,
             style: {
               select: {
-                uid: true,
-                styleId: true,
+                id: true,
+                code: true,
                 name: true,
               },
             },
@@ -2628,16 +2637,10 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       const recordStyleRefId = resolveWorkRecordStyleRefId(record);
       return {
         ...record,
-        customerName: resolveOptionalString(
-          planStyleMeta?.customer ?? (record as any)?.assignmentPlan?.customer,
-          null
-        ),
         orderNo: resolveOptionalString((record as any)?.assignmentPlan?.orderNo, null),
-        styleUid: planStyleMeta?.styleUid ?? recordStyleRefId,
-        styleId: resolveOptionalString(
-          planStyleMeta?.styleId ??
-            (record as any)?.style?.styleId ??
-            (recordStyleRefId === null ? (record as any)?.styleId : null),
+        styleId: planStyleMeta?.styleId ?? recordStyleRefId,
+        styleCode: resolveOptionalString(
+          planStyleMeta?.styleCode ?? (record as any)?.style?.code,
           null
         ),
         styleName: resolveOptionalString(
@@ -2653,23 +2656,13 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     new Set(
       normalizedWorkLogs
         .flatMap((item) => item.workRecords)
-        .map((record) => String(record.styleId || "").trim())
-        .filter((styleId) => styleId !== "")
-    )
-  );
-  const styleUids = Array.from(
-    new Set(
-      normalizedWorkLogs
-        .flatMap((item) => item.workRecords)
-        .map((record) => toPositiveIntOrNull((record as any).styleUid))
-        .filter((styleUid): styleUid is number => styleUid !== null)
+        .map((record) => toPositiveIntOrNull((record as any).styleId))
+        .filter((styleId): styleId is number => styleId !== null)
     )
   );
   diagnostics.rawStyleIdCount = styleIds.length;
-  diagnostics.rawStyleUidCount = styleUids.length;
   diagnostics.rawStyleIdSamples = styleIds.slice(0, 20);
-  diagnostics.rawStyleUidSamples = styleUids.slice(0, 20);
-  if (styleIds.length === 0 && styleUids.length === 0) {
+  if (styleIds.length === 0) {
     diagnostics.earlyExitStage = "NO_STYLE_KEYS";
     return { drafts: [], diagnostics };
   }
@@ -2679,14 +2672,13 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     where: {
       orgId: { in: syncTargetOrgIds },
       OR: [
-        ...(styleIds.length > 0 ? [{ styleId: { in: styleIds } }] : []),
-        ...(styleUids.length > 0 ? [{ uid: { in: styleUids } }] : []),
+        ...(styleIds.length > 0 ? [{ id: { in: styleIds } }] : []),
       ],
     },
     select: {
-      uid: true,
+      id: true,
       orgId: true,
-      styleId: true,
+      code: true,
       name: true,
       customer: true,
       processes: true,
@@ -2694,10 +2686,10 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
   });
   diagnostics.styleCandidateCount = styleCandidates.length;
   diagnostics.styleCandidateSamples = styleCandidates.slice(0, 20).map((style) => ({
-    uid: toPositiveIntOrNull(style?.uid),
+    id: toPositiveIntOrNull(style?.id),
     orgId: toPositiveIntOrNull(style?.orgId),
-    styleId: resolveOptionalString(style?.styleId, null),
-    styleName: resolveOptionalString(style?.name, null),
+    code: resolveOptionalString(style?.code, null),
+    name: resolveOptionalString(style?.name, null),
   }));
   if (styleCandidates.length === 0) {
     diagnostics.earlyExitStage = "NO_STYLE_CANDIDATES";
@@ -2708,78 +2700,26 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     processOrgId: orgId,
     db,
   });
-  const styleProcessRowsByStyleUid = await loadStyleProcessRowsByStyleUid(
-    styleCandidates.map((style) => Number(style.uid)),
+  const styleProcessRowsByStyleId = await loadStyleProcessRowsByStyleId(
+    styleCandidates.map((style) => Number(style.id)),
     { processOrgId: orgId, db }
   );
 
-  const stylesByStyleId = new Map<string, any[]>();
-  styleCandidates.forEach((style) => {
-    const styleIdKey = String(style.styleId || "").trim();
-    if (!styleIdKey) return;
-    const current = stylesByStyleId.get(styleIdKey) || [];
-    current.push(style);
-    stylesByStyleId.set(styleIdKey, current);
-  });
-  const stylesByUid = new Map(
-    styleCandidates.map((style) => [Number(style.uid), style])
+  const stylesById = new Map(
+    styleCandidates.map((style) => [Number(style.id), style])
   );
-
-  const processLookupByStyleUid = styleCandidates.reduce((map, style) => {
-    const byCode = new Map<string, any>();
-    const byName = new Map<string, any>();
-    ensureArray(styleProcessRowsByStyleUid.get(Number(style.uid))).forEach((processRow) => {
-      const codeKey = normalizeProcessCodeKey(processRow?.processCode);
-      const nameKey = normalizeProcessNameKey(processRow?.processName);
-      if (codeKey && !byCode.has(codeKey)) {
-        byCode.set(codeKey, processRow);
-      }
-      if (nameKey && !byName.has(nameKey)) {
-        byName.set(nameKey, processRow);
-      }
+  const styleProcessRowsById = new Map<number, any>();
+  Array.from(styleProcessRowsByStyleId.values())
+    .flat()
+    .forEach((processRow) => {
+      const styleProcessId = toPositiveIntOrNull(processRow?.id);
+      if (styleProcessId === null) return;
+      styleProcessRowsById.set(styleProcessId, processRow);
     });
-    map.set(Number(style.uid), { byCode, byName });
-    return map;
-  }, new Map<number, { byCode: Map<string, any>; byName: Map<string, any> }>());
 
-  const resolveCandidateStyle = (record: {
-    styleUid?: any;
-    styleId: any;
-    styleName: any;
-    customerName: any;
-  }) => {
-    const directStyleUid = toPositiveIntOrNull((record as any).styleUid);
-    if (directStyleUid !== null && stylesByUid.has(directStyleUid)) {
-      return stylesByUid.get(directStyleUid) ?? null;
-    }
-    const styleId = String(record.styleId || "").trim();
-    if (!styleId) return null;
-    const candidates = stylesByStyleId.get(styleId) || [];
-    if (candidates.length === 0) return null;
-
-    const recordCustomerKey = normalizeComparableText(record.customerName);
-    const recordStyleNameKey = normalizeComparableText(record.styleName);
-    const sameCustomerCandidates = recordCustomerKey
-      ? candidates.filter(
-          (candidate) =>
-            normalizeComparableText(candidate.customer) === recordCustomerKey
-        )
-      : candidates;
-    const sameNameCandidates = recordStyleNameKey
-      ? sameCustomerCandidates.filter(
-          (candidate) => normalizeComparableText(candidate.name) === recordStyleNameKey
-        )
-      : sameCustomerCandidates;
-
-    let resolvedStyle =
-      sameNameCandidates[0] ??
-      sameCustomerCandidates[0] ??
-      candidates.find((candidate) => Number(candidate.orgId) === orgId) ??
-      null;
-    if (!resolvedStyle && candidates.length === 1) {
-      resolvedStyle = candidates[0];
-    }
-    return resolvedStyle;
+  const resolveCandidateStyle = (record: { styleId?: any }) => {
+    const directStyleId = toPositiveIntOrNull((record as any).styleId);
+    return directStyleId !== null ? stylesById.get(directStyleId) ?? null : null;
   };
 
   const workerIds = Array.from(
@@ -3066,12 +3006,22 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         const quantity = Number(record.quantity) || 0;
         if (quantity <= 0) return null;
         const workerId = toPositiveIntOrNull(record.workerId);
-        const processCode = resolveOptionalString(record.processCode, null);
-        const processName = resolveOptionalString(
-          resolveWorkRecordProcessName(record),
+        const resolvedStyle = resolveCandidateStyle(record);
+        const styleProcessId = toPositiveIntOrNull(record.styleProcessId);
+        const matchedStyleProcess =
+          styleProcessId !== null ? styleProcessRowsById.get(styleProcessId) ?? null : null;
+        const processMatchesStyle =
+          matchedStyleProcess &&
+          toPositiveIntOrNull(matchedStyleProcess?.styleId) ===
+            toPositiveIntOrNull(resolvedStyle?.id);
+        const processCode = resolveOptionalString(
+          matchedStyleProcess?.processCode ?? record.processCode,
           null
         );
-        const resolvedStyle = resolveCandidateStyle(record);
+        const processName = resolveOptionalString(
+          matchedStyleProcess?.processName ?? resolveWorkRecordProcessName(record),
+          null
+        );
         const effectiveCoverageStartDate =
           resolveWorkRecordEffectiveCoverageStartDate(record, workLog) || periodStartDateKey;
         const effectiveCoverageEndDate =
@@ -3080,8 +3030,8 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         const sampleBase = {
           workLogId,
           workerId,
-          styleId: resolveOptionalString(record.styleId, null),
-          styleUid: toPositiveIntOrNull((record as any).styleUid),
+          styleId: toPositiveIntOrNull((record as any).styleId),
+          styleCode: resolveOptionalString((record as any).styleCode, null),
           processCode,
           processName,
           quantity: Math.max(0, Math.round(quantity)),
@@ -3096,33 +3046,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
           });
           return null;
         }
-        const processCodeKey = normalizeProcessCodeKey(record.processCode);
-        const processNameKey = normalizeProcessNameKey(
-          resolveWorkRecordProcessName(record)
-        );
-        if (!processCodeKey && !processNameKey) {
-          diagnostics.excludedProcessNotResolvedRecordCount += 1;
-          pushAtTrainingSourceDiagnosticSample(diagnostics, {
-            ...sampleBase,
-            reason: "PROCESS_NOT_RESOLVED",
-          });
-          return null;
-        }
-        const lookup = processLookupByStyleUid.get(Number(resolvedStyle.uid));
-        if (!lookup) {
-          diagnostics.excludedProcessNotResolvedRecordCount += 1;
-          pushAtTrainingSourceDiagnosticSample(diagnostics, {
-            ...sampleBase,
-            reason: "PROCESS_NOT_RESOLVED",
-          });
-          return null;
-        }
-        const matchedStyleProcess =
-          (processCodeKey ? lookup.byCode.get(processCodeKey) : null) ||
-          (processNameKey ? lookup.byName.get(processNameKey) : null) ||
-          null;
-        const styleProcessId = toPositiveIntOrNull(matchedStyleProcess?.id);
-        if (styleProcessId === null) {
+        if (styleProcessId === null || !processMatchesStyle) {
           diagnostics.excludedProcessNotResolvedRecordCount += 1;
           pushAtTrainingSourceDiagnosticSample(diagnostics, {
             ...sampleBase,
@@ -3162,11 +3086,11 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
           return null;
         }
         return {
-          styleUid: Number(resolvedStyle.uid),
+          styleId: Number(resolvedStyle.id),
           styleProcessId,
           quantity,
           workerId,
-          styleId: sampleBase.styleId,
+          styleCode: sampleBase.styleCode,
           processCode,
           processName,
           effectiveCoverageStartDate,
@@ -3174,11 +3098,11 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         };
       })
       .filter(Boolean) as Array<{
-      styleUid: number;
+      styleId: number;
       styleProcessId: number;
       quantity: number;
       workerId: number;
-      styleId: string | null;
+      styleCode: string | null;
       processCode: string | null;
       processName: string | null;
       effectiveCoverageStartDate: string;
@@ -3240,7 +3164,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         workLogId,
         workerId: row.workerId,
         styleId: row.styleId,
-        styleUid: row.styleUid,
+        styleCode: row.styleCode,
         processCode: row.processCode,
         processName: row.processName,
         quantity: Math.max(0, Math.round(row.quantity)),
@@ -3259,7 +3183,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     const includedWorkerIds = new Set<number>();
     includedRows.forEach((row) => {
       const current = perProcessGroups.get(row.styleProcessId) || {
-        styleUid: row.styleUid,
+        styleId: row.styleId,
         styleProcessId: row.styleProcessId,
         quantity: 0,
       };
@@ -3282,7 +3206,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
 
     const processRows = Array.from(perProcessGroups.values()).filter(
       (item) =>
-        item.styleUid > 0 &&
+        item.styleId > 0 &&
         item.styleProcessId > 0 &&
         Number.isFinite(item.quantity) &&
         item.quantity > 0
@@ -3370,7 +3294,7 @@ const replaceAtTrainingBucketsForMonth = async ({
         INSERT INTO "AtTrainingBucketProcess" (
           "orgId",
           "bucketId",
-          "styleUid",
+          "styleId",
           "styleProcessId",
           "quantity",
           "createdBy",
@@ -3383,7 +3307,7 @@ const replaceAtTrainingBucketsForMonth = async ({
             return Prisma.sql`(
               ${orgId},
               ${bucketId},
-              ${processRow.styleUid},
+              ${processRow.styleId},
               ${processRow.styleProcessId},
               ${quantity},
               ${actor},
@@ -3594,7 +3518,7 @@ const loadAtTrainingDataFromBuckets = async ({
           },
           select: {
             id: true,
-            styleUid: true,
+            styleId: true,
             timesPerPiece: true,
             ptSeconds: true,
             atParams: true,
@@ -3788,18 +3712,18 @@ const applyAtTrainingResultsToStyleProcesses = async ({
 }) => {
   let updatedProcesses = 0;
   let clampAdjustedProcesses = 0;
-  const changedStyleUids = new Set<number>();
-  const refreshedStyleUids = new Set<number>();
+  const changedStyleIds = new Set<number>();
+  const refreshedStyleIds = new Set<number>();
 
   for (const processRow of styleProcessRowsById.values()) {
     const styleProcessId = toPositiveIntOrNull(processRow?.id);
-    const styleUid = toPositiveIntOrNull(processRow?.styleUid);
-    if (styleProcessId === null || styleUid === null) continue;
+    const styleId = toPositiveIntOrNull(processRow?.styleId);
+    if (styleProcessId === null || styleId === null) continue;
 
     const metricKey = toAtTrainingStyleProcessMetricKey(styleProcessId);
     const fittedRaw = fittedParamsByMetric.get(metricKey);
     if (!fittedRaw) continue;
-    refreshedStyleUids.add(styleUid);
+    refreshedStyleIds.add(styleId);
 
     const currentAtParams = toStyleAtParams((processRow as any).atParams);
     const qualityStats = metricTrainingQualityByMetricKey.get(metricKey) || null;
@@ -3870,7 +3794,7 @@ const applyAtTrainingResultsToStyleProcesses = async ({
     if (!atParamsChanged) continue;
 
     updatedProcesses += 1;
-    changedStyleUids.add(styleUid);
+    changedStyleIds.add(styleId);
     await prisma.styleProcess.update({
       where: { id: styleProcessId },
       data: {
@@ -3879,19 +3803,19 @@ const applyAtTrainingResultsToStyleProcesses = async ({
     });
   }
 
-  if (refreshedStyleUids.size > 0) {
-    const targetStyleUids = Array.from(refreshedStyleUids.values());
-    const rowsByStyleUid = await refreshStyleProcessMirrorForStyleUids(targetStyleUids, {
+  if (refreshedStyleIds.size > 0) {
+    const targetStyleIds = Array.from(refreshedStyleIds.values());
+    const rowsByStyleId = await refreshStyleProcessMirrorForStyleIds(targetStyleIds, {
       processOrgId: orgId,
     });
     const styles = await prisma.style.findMany({
-      where: { uid: { in: targetStyleUids } },
-      select: { uid: true, processes: true },
+      where: { id: { in: targetStyleIds } },
+      select: { id: true, processes: true },
     });
     for (const style of styles) {
-      const styleUid = Number(style.uid);
+      const styleId = Number(style.id);
       const nextProcesses = buildStyleProcessMirrorFromRows(
-        rowsByStyleUid.get(styleUid) || [],
+        rowsByStyleId.get(styleId) || [],
         undefined,
         style.processes
       );
@@ -3902,7 +3826,7 @@ const applyAtTrainingResultsToStyleProcesses = async ({
         continue;
       }
       await prisma.style.update({
-        where: { uid: styleUid },
+        where: { id: styleId },
         data: { processes: nextProcesses },
       });
     }
@@ -3910,7 +3834,7 @@ const applyAtTrainingResultsToStyleProcesses = async ({
   }
 
   return {
-    updatedStyles: changedStyleUids.size,
+    updatedStyles: changedStyleIds.size,
     updatedProcesses,
     clampAdjustedProcesses,
   };
@@ -3975,7 +3899,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
     const stylesForStorageSync = await prisma.style.findMany({
       where: { orgId },
       select: {
-        uid: true,
+        id: true,
         orgId: true,
         processes: true,
       },
@@ -4092,21 +4016,23 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
 
 const normalizeStylePayload = (
   payload: any,
-  fallbackStyleId: string | null = null,
+  fallbackCode: string | null = null,
   options: { includeProcesses?: boolean } = {}
 ) => {
-  const rawId = typeof payload?.id === "string" ? payload.id.trim() : "";
-  const styleId = rawId || fallbackStyleId || createStyleId();
+  const rawCode =
+    resolveOptionalString(payload?.code, null) ??
+    resolveOptionalString(payload?.styleCode, null) ??
+    (toPositiveIntOrNull(payload?.id) === null
+      ? resolveOptionalString(payload?.id, null)
+      : null);
+  const code = rawCode || fallbackCode || createStyleId();
   const name = typeof payload?.name === "string" ? payload.name.trim() : "";
   const customer =
     typeof payload?.customer === "string" ? payload.customer.trim() : "";
-  const styleCodeInput = resolveOptionalString(payload?.styleCode, null);
-  const styleCode = styleCodeInput ?? styleId;
   const includeProcesses = options.includeProcesses !== false;
 
   return {
-    styleId,
-    styleCode,
+    code,
     name,
     customer,
     registrationDate: resolveOptionalString(payload?.registrationDate, null),
@@ -4261,6 +4187,8 @@ const resolveStyleByIdForAccess = async ({
   styleId: string;
   ownerOrgId: number | null;
 }) => {
+  const numericStyleId = toPositiveIntOrNull(styleId);
+  if (numericStyleId === null) return null;
   const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
   let ownerScope = accessibleOwnerOrgIds;
 
@@ -4273,10 +4201,10 @@ const resolveStyleByIdForAccess = async ({
 
   const styles = await prisma.style.findMany({
     where: {
-      styleId,
+      id: numericStyleId,
       orgId: { in: ownerScope },
     },
-    orderBy: { uid: "asc" },
+    orderBy: { id: "asc" },
     take: ownerOrgId === null ? 2 : 1,
   });
 
@@ -4293,31 +4221,31 @@ const findStyleConflict = async ({
   customer,
   name,
   styleCode,
-  excludeUid = null,
+  excludeStyleId = null,
 }: {
   orgId: number;
   customer: string;
   name: string;
   styleCode: string;
-  excludeUid?: number | null;
+  excludeStyleId?: number | null;
 }) => {
   const where: any = {
     orgId,
     customer,
-    OR: [{ name }, { styleCode }],
+    OR: [{ name }, { code: styleCode }],
   };
-  if (Number.isFinite(excludeUid)) {
-    where.NOT = { uid: excludeUid as number };
+  if (Number.isFinite(excludeStyleId)) {
+    where.NOT = { id: excludeStyleId as number };
   }
   const conflict = await prisma.style.findFirst({
     where,
-    select: { uid: true, name: true, styleCode: true },
+    select: { id: true, name: true, code: true },
   });
   if (!conflict) return null;
   if (conflict.name === name) {
     return "style name already exists for this customer";
   }
-  if (conflict.styleCode === styleCode) {
+  if (conflict.code === styleCode) {
     return "style code already exists for this customer";
   }
   return "style already exists for this customer";
@@ -4576,8 +4504,8 @@ const buildStyleProcessMirrorFromRows = (
       });
   })();
 
-const loadStyleProcessRowsByStyleUid = async (
-  styleUids: number[],
+const loadStyleProcessRowsByStyleId = async (
+  styleIds: number[],
   options: {
     processOrgId?: number | null;
     db?: StyleStorageClient;
@@ -4585,45 +4513,45 @@ const loadStyleProcessRowsByStyleUid = async (
 ) => {
   const db = options.db ?? prisma;
   const processOrgId = toPositiveIntOrNull(options.processOrgId);
-  const normalizedStyleUids = Array.from(
+  const normalizedStyleIds = Array.from(
     new Set(
-      ensureArray(styleUids)
-        .map((styleUid) => toPositiveIntOrNull(styleUid))
-        .filter((styleUid): styleUid is number => styleUid !== null)
+      ensureArray(styleIds)
+        .map((styleId) => toPositiveIntOrNull(styleId))
+        .filter((styleId): styleId is number => styleId !== null)
     )
   );
-  if (normalizedStyleUids.length === 0) return new Map<number, any[]>();
+  if (normalizedStyleIds.length === 0) return new Map<number, any[]>();
   const rows = await db.styleProcess.findMany({
     where: {
-      styleUid: { in: normalizedStyleUids },
+      styleId: { in: normalizedStyleIds },
       ...(processOrgId !== null ? { orgId: processOrgId } : {}),
     },
     include: STYLE_PROCESS_STANDARD_INCLUDE,
-    orderBy: [{ styleUid: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
+    orderBy: [{ styleId: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
   });
   return rows.reduce((map, row) => {
-    const current = map.get(row.styleUid) || [];
+    const current = map.get(row.styleId) || [];
     current.push(row);
-    map.set(row.styleUid, current);
+    map.set(row.styleId, current);
     return map;
   }, new Map<number, any[]>());
 };
 
-const refreshStyleProcessMirrorForStyleUids = async (
-  styleUids: number[],
+const refreshStyleProcessMirrorForStyleIds = async (
+  styleIds: number[],
   options: {
     processOrgId?: number | null;
     db?: StyleStorageClient;
   } = {}
-) => loadStyleProcessRowsByStyleUid(styleUids, options);
+) => loadStyleProcessRowsByStyleId(styleIds, options);
 
 const syncStyleProcessStorageForStyle = async ({
-  styleUid,
+  styleId,
   orgId,
   processes,
   db = prisma,
 }: {
-  styleUid: number;
+  styleId: number;
   orgId: number;
   processes: any;
   db?: StyleStorageClient;
@@ -4634,7 +4562,7 @@ const syncStyleProcessStorageForStyle = async ({
   }
   const drafts = buildStyleProcessStorageDrafts(processes);
   const existingRows = await db.styleProcess.findMany({
-    where: { styleUid, orgId: processOrgId },
+    where: { styleId, orgId: processOrgId },
     select: { id: true, processCode: true },
   });
   const existingByCode = new Map(
@@ -4672,8 +4600,8 @@ const syncStyleProcessStorageForStyle = async ({
         })
       : await db.styleProcess.upsert({
           where: {
-            styleUid_orgId_processCode: {
-              styleUid,
+            styleId_orgId_processCode: {
+              styleId,
               orgId: processOrgId,
               processCode: draft.processCode,
             },
@@ -4689,7 +4617,7 @@ const syncStyleProcessStorageForStyle = async ({
           },
           create: {
             orgId: processOrgId,
-            styleUid,
+            styleId,
             processCode: draft.processCode,
             processName: draft.processName,
             processComposition: draft.processComposition ?? Prisma.JsonNull,
@@ -4720,11 +4648,11 @@ const syncStyleProcessStorageForStyle = async ({
     }
   }
 
-  const rowsByStyleUid = await refreshStyleProcessMirrorForStyleUids([styleUid], {
+  const rowsByStyleId = await refreshStyleProcessMirrorForStyleIds([styleId], {
     processOrgId,
     db,
   });
-  const rows = rowsByStyleUid.get(styleUid) || [];
+  const rows = rowsByStyleId.get(styleId) || [];
   const processNameLookup = await loadStyleProcessNameLookup({
     orgId: processOrgId,
     processCodes: rows.map((row) => row?.processCode),
@@ -4797,16 +4725,16 @@ const ensureStyleProcessStorageForStyles = async (
   const db = options.db ?? prisma;
   const processOrgId = toPositiveIntOrNull(options.processOrgId);
   const styleRows = ensureArray(styles).filter(
-    (style) => style && typeof style === "object" && Number.isFinite(Number(style?.uid))
+    (style) => style && typeof style === "object" && Number.isFinite(Number(style?.id))
   );
   if (styleRows.length === 0) return new Map<number, any[]>();
 
-  let rowsByStyleUid = await loadStyleProcessRowsByStyleUid(
-    styleRows.map((style) => Number(style.uid)),
+  let rowsByStyleId = await loadStyleProcessRowsByStyleId(
+    styleRows.map((style) => Number(style.id)),
     { processOrgId, db }
   );
   const missingStyles = styleRows.filter((style) => {
-    if ((rowsByStyleUid.get(Number(style.uid)) || []).length > 0) return false;
+    if ((rowsByStyleId.get(Number(style.id)) || []).length > 0) return false;
     return normalizeStyleProcesses(style?.processes).length > 0;
   });
 
@@ -4814,7 +4742,7 @@ const ensureStyleProcessStorageForStyles = async (
     const seedOrgId = processOrgId ?? Number(style.orgId);
     if (!Number.isFinite(seedOrgId) || seedOrgId <= 0) continue;
     await syncStyleProcessStorageForStyle({
-      styleUid: Number(style.uid),
+      styleId: Number(style.id),
       orgId: seedOrgId,
       processes: style.processes,
       db,
@@ -4822,8 +4750,8 @@ const ensureStyleProcessStorageForStyles = async (
   }
 
   if (missingStyles.length > 0) {
-    rowsByStyleUid = await loadStyleProcessRowsByStyleUid(
-      styleRows.map((style) => Number(style.uid)),
+    rowsByStyleId = await loadStyleProcessRowsByStyleId(
+      styleRows.map((style) => Number(style.id)),
       { processOrgId, db }
     );
   }
@@ -4831,7 +4759,7 @@ const ensureStyleProcessStorageForStyles = async (
   const outOfSyncStyles = styleRows.filter((style) =>
     isStyleProcessStorageOutOfSync({
       style,
-      rows: rowsByStyleUid.get(Number(style.uid)) || [],
+      rows: rowsByStyleId.get(Number(style.id)) || [],
     })
   );
 
@@ -4839,7 +4767,7 @@ const ensureStyleProcessStorageForStyles = async (
     const seedOrgId = processOrgId ?? Number(style.orgId);
     if (!Number.isFinite(seedOrgId) || seedOrgId <= 0) continue;
     await syncStyleProcessStorageForStyle({
-      styleUid: Number(style.uid),
+      styleId: Number(style.id),
       orgId: seedOrgId,
       processes: style.processes,
       db,
@@ -4847,25 +4775,25 @@ const ensureStyleProcessStorageForStyles = async (
   }
 
   if (outOfSyncStyles.length > 0) {
-    rowsByStyleUid = await loadStyleProcessRowsByStyleUid(
-      styleRows.map((style) => Number(style.uid)),
+    rowsByStyleId = await loadStyleProcessRowsByStyleId(
+      styleRows.map((style) => Number(style.id)),
       { processOrgId, db }
     );
   }
 
   const processNameLookup = await loadStyleProcessNameLookup({
     orgId: processOrgId,
-    processCodes: Array.from(rowsByStyleUid.values()).flatMap((rows) =>
+    processCodes: Array.from(rowsByStyleId.values()).flatMap((rows) =>
       ensureArray(rows).map((row) => row?.processCode)
     ),
     db,
   });
 
   return styleRows.reduce((map, style) => {
-    const styleUid = Number(style.uid);
-    const rows = rowsByStyleUid.get(styleUid) || [];
+    const styleId = Number(style.id);
+    const rows = rowsByStyleId.get(styleId) || [];
     map.set(
-      styleUid,
+      styleId,
       rows.length > 0
         ? buildStyleProcessMirrorFromRows(rows, processNameLookup, style.processes)
         : processOrgId !== null && Number(style.orgId) !== processOrgId
@@ -4883,9 +4811,9 @@ const collectStyleQuantityRequirementsFromOrders = ({
   orders: any[];
   styles: any[];
 }) => {
-  const quantityByStyleUid = new Map<number, Set<number>>();
+  const quantityByStyleId = new Map<number, Set<number>>();
   const styleCandidatesById = ensureArray(styles).reduce((map, style) => {
-    const styleId = resolveOptionalString(style?.styleId, null);
+    const styleId = resolveOptionalString(style?.code, null);
     if (!styleId) return map;
     const current = map.get(styleId) || [];
     current.push(style);
@@ -4894,7 +4822,7 @@ const collectStyleQuantityRequirementsFromOrders = ({
   }, new Map<string, any[]>());
 
   ensureArray(orders).forEach((order) => {
-    const quantityByStyleUidInOrder = new Map<number, number>();
+    const quantityByStyleIdInOrder = new Map<number, number>();
     const itemsFromRelation =
       Array.isArray(order?.workOrderItems) && order.workOrderItems.length > 0
         ? [...order.workOrderItems]
@@ -4908,52 +4836,52 @@ const collectStyleQuantityRequirementsFromOrders = ({
         item,
         styleCandidatesById,
       });
-      const styleUid = toPositiveIntOrNull(style?.uid);
-      if (styleUid === null) return;
+      const styleId = toPositiveIntOrNull(style?.id);
+      if (styleId === null) return;
       const normalizedQuantity = toPositiveIntOrNull(sumOrderItemQuantity(item));
       if (normalizedQuantity === null) return;
-      quantityByStyleUidInOrder.set(
-        styleUid,
-        (quantityByStyleUidInOrder.get(styleUid) || 0) + normalizedQuantity
+      quantityByStyleIdInOrder.set(
+        styleId,
+        (quantityByStyleIdInOrder.get(styleId) || 0) + normalizedQuantity
       );
     });
 
-    quantityByStyleUidInOrder.forEach((quantity, styleUid) => {
-      const current = quantityByStyleUid.get(styleUid) || new Set<number>();
+    quantityByStyleIdInOrder.forEach((quantity, styleId) => {
+      const current = quantityByStyleId.get(styleId) || new Set<number>();
       current.add(resolveStBucketQuantity(quantity));
-      quantityByStyleUid.set(styleUid, current);
+      quantityByStyleId.set(styleId, current);
     });
   });
 
-  return quantityByStyleUid;
+  return quantityByStyleId;
 };
 
 const ensureStyleStandardsForQuantities = async ({
   styles,
-  quantityByStyleUid,
+  quantityByStyleId,
   processOrgId = null,
   db = prisma,
 }: {
   styles: any[];
-  quantityByStyleUid: Map<number, Set<number>>;
+  quantityByStyleId: Map<number, Set<number>>;
   processOrgId?: number | null;
   db?: StyleStorageClient;
 }) => {
-  const styleUids = Array.from(quantityByStyleUid.keys());
-  if (styleUids.length === 0) {
+  const styleIds = Array.from(quantityByStyleId.keys());
+  if (styleIds.length === 0) {
     return ensureStyleProcessStorageForStyles(styles, { processOrgId, db });
   }
 
   await ensureStyleProcessStorageForStyles(styles, { processOrgId, db });
-  const rowsByStyleUid = await loadStyleProcessRowsByStyleUid(styleUids, {
+  const rowsByStyleId = await loadStyleProcessRowsByStyleId(styleIds, {
     processOrgId,
     db,
   });
-  const touchedStyleUids = new Set<number>();
+  const touchedStyleIds = new Set<number>();
 
-  for (const styleUid of styleUids) {
-    const requiredQuantities = Array.from(quantityByStyleUid.get(styleUid) || []);
-    const processRows = rowsByStyleUid.get(styleUid) || [];
+  for (const styleId of styleIds) {
+    const requiredQuantities = Array.from(quantityByStyleId.get(styleId) || []);
+    const processRows = rowsByStyleId.get(styleId) || [];
     for (const processRow of processRows) {
       const existingQuantities = new Set(
         ensureArray(processRow.standards).map((standard) =>
@@ -4976,12 +4904,12 @@ const ensureStyleStandardsForQuantities = async ({
         })),
         skipDuplicates: true,
       });
-      touchedStyleUids.add(styleUid);
+      touchedStyleIds.add(styleId);
     }
   }
 
-  if (touchedStyleUids.size > 0) {
-    await refreshStyleProcessMirrorForStyleUids(Array.from(touchedStyleUids), {
+  if (touchedStyleIds.size > 0) {
+    await refreshStyleProcessMirrorForStyleIds(Array.from(touchedStyleIds), {
       processOrgId,
       db,
     });
@@ -4997,11 +4925,13 @@ const toStyleResponse = (
     processMirrorMap?: Map<number, any[]>;
   } = {}
 ) => ({
-  id: style.styleId,
+  id: style.id,
+  styleId: style.id,
   ownerOrgId: style.orgId ?? null,
   customerOrgId: style.orgId ?? null,
   ownerOrgName: style.customer ?? "",
-  styleCode: style.styleCode ?? "",
+  code: style.code ?? "",
+  styleCode: style.code ?? "",
   name: style.name ?? "",
   customer: style.customer ?? "",
   customerNameKo: style.customerNameKo ?? "",
@@ -5014,7 +4944,7 @@ const toStyleResponse = (
   processes:
     options.includeProcesses === false
       ? []
-      : options.processMirrorMap?.get(Number(style.uid)) ??
+      : options.processMirrorMap?.get(Number(style.id)) ??
         normalizeStyleProcesses(style.processes),
   bom: ensureArray(style.bom),
   bomNotes: style.bomNotes ?? "",
@@ -5223,142 +5153,13 @@ const syncOrderItemColorSnapshots = async (items: any) => {
 };
 const syncOrderItemStyleRefs = async (items: any, orgIds: any[]) => {
   const normalizedItems = normalizeOrderItems(items);
-  const candidateOrgIds = collectPositiveIntSet(...orgIds);
-  const rawStyleUids = Array.from(
-    new Set(
-      normalizedItems
-        .map((item) => toPositiveIntOrNull(item?.styleUid))
-        .filter((value): value is number => value !== null)
-    )
-  );
-  const styleIds = Array.from(
-    new Set(
-      normalizedItems
-        .map((item) => resolveOptionalString(item?.styleId, null))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
-  const styleCodes = Array.from(
-    new Set(
-      normalizedItems
-        .map((item) => resolveOptionalString(item?.styleCode, null))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
-  const styleNames = Array.from(
-    new Set(
-      normalizedItems
-        .map((item) => resolveOptionalString(item?.styleName, null))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
-
-  if (
-    candidateOrgIds.length === 0 &&
-    rawStyleUids.length === 0
-  ) {
-    return normalizedItems.map((item) => ({
-      ...item,
-      styleUid: null,
-      styleId: resolveOptionalString(item?.styleId, null),
-      styleName: resolveOptionalString(item?.styleName, null),
-      styleCode: resolveOptionalString(item?.styleCode, null),
-    }));
-  }
-
-  const styleWhereOr: Prisma.StyleWhereInput[] = [
-    ...(rawStyleUids.length > 0 ? [{ uid: { in: rawStyleUids } }] : []),
-    ...(candidateOrgIds.length > 0 && styleIds.length > 0
-      ? [{ orgId: { in: candidateOrgIds }, styleId: { in: styleIds } }]
-      : []),
-    ...(candidateOrgIds.length > 0 && styleCodes.length > 0
-      ? [{ orgId: { in: candidateOrgIds }, styleCode: { in: styleCodes } }]
-      : []),
-    ...(candidateOrgIds.length > 0 && styleNames.length > 0
-      ? [{ orgId: { in: candidateOrgIds }, name: { in: styleNames } }]
-      : []),
-  ];
-  if (styleWhereOr.length === 0) {
-    return normalizedItems.map((item) => ({
-      ...item,
-      styleUid: null,
-      styleId: resolveOptionalString(item?.styleId, null),
-      styleName: resolveOptionalString(item?.styleName, null),
-      styleCode: resolveOptionalString(item?.styleCode, null),
-    }));
-  }
-  const styles = await prisma.style.findMany({
-    where: { OR: styleWhereOr },
-    select: {
-      uid: true,
-      orgId: true,
-      styleId: true,
-      styleCode: true,
-      name: true,
-    },
-  });
-
-  const styleByUid = new Map<number, any>();
-  const styleByOrgStyleId = new Map<string, any>();
-  const styleByOrgStyleCode = new Map<string, any>();
-  const styleByOrgStyleName = new Map<string, any>();
-  styles.forEach((style) => {
-    styleByUid.set(style.uid, style);
-    const orgId = Number(style.orgId);
-    if (style.styleId) {
-      styleByOrgStyleId.set(`${orgId}:${normalizeComparableText(style.styleId)}`, style);
-    }
-    if (style.styleCode) {
-      styleByOrgStyleCode.set(`${orgId}:${normalizeComparableText(style.styleCode)}`, style);
-    }
-    if (style.name) {
-      styleByOrgStyleName.set(`${orgId}:${normalizeComparableText(style.name)}`, style);
-    }
-  });
-
-  const resolveLinkedStyle = (item: any) => {
-    const existingStyleUid = toPositiveIntOrNull(item?.styleUid);
-    if (existingStyleUid) {
-      const linked = styleByUid.get(existingStyleUid) ?? null;
-      if (linked) return linked;
-    }
-    const styleIdKey = normalizeComparableText(item?.styleId);
-    if (styleIdKey) {
-      for (const orgId of candidateOrgIds) {
-        const linked = styleByOrgStyleId.get(`${orgId}:${styleIdKey}`) ?? null;
-        if (linked) return linked;
-      }
-    }
-    const styleCodeKey = normalizeComparableText(item?.styleCode);
-    if (styleCodeKey) {
-      for (const orgId of candidateOrgIds) {
-        const linked = styleByOrgStyleCode.get(`${orgId}:${styleCodeKey}`) ?? null;
-        if (linked) return linked;
-      }
-    }
-    const styleNameKey = normalizeComparableText(item?.styleName);
-    if (styleNameKey) {
-      for (const orgId of candidateOrgIds) {
-        const linked = styleByOrgStyleName.get(`${orgId}:${styleNameKey}`) ?? null;
-        if (linked) return linked;
-      }
-    }
-    return null;
-  };
-
-  return normalizedItems.map((item) => {
-    const linkedStyle = resolveLinkedStyle(item);
-    return {
-      ...item,
-      styleUid: linkedStyle?.uid ?? null,
-      styleId: resolveOptionalString(linkedStyle?.styleId ?? item?.styleId, null),
-      styleName: resolveOptionalString(linkedStyle?.name ?? item?.styleName, null),
-      styleCode: resolveOptionalString(
-        linkedStyle?.styleCode ?? item?.styleCode,
-        null
-      ),
-    };
-  });
+  void orgIds;
+  return normalizedItems.map((item) => ({
+    ...item,
+    styleId: toPositiveIntOrNull(item?.style?.id ?? item?.styleId),
+    styleName: resolveOptionalString(item?.style?.name ?? item?.styleName, null),
+    styleCode: resolveOptionalString(item?.style?.code ?? item?.styleCode, null),
+  }));
 };
 
 const buildOrderId = () =>
@@ -5369,9 +5170,8 @@ const WORK_ORDER_ITEM_WITH_COLOR_INCLUDE = {
   include: {
     style: {
       select: {
-        uid: true,
-        styleId: true,
-        styleCode: true,
+        id: true,
+        code: true,
         name: true,
       },
     },
@@ -5601,10 +5401,7 @@ const createOrReuseSharedOrder = async ({
               data: itemsToCreate.map((item: any, idx: number) => ({
                 workOrderId: created.id,
                 itemId: item.id || "",
-                styleId: resolveOptionalString(item.styleId, null),
-                styleUid: toPositiveIntOrNull(item.styleUid),
-                styleName: resolveOptionalString(item.styleName, null),
-                styleCode: resolveOptionalString(item.styleCode, null),
+                styleId: toPositiveIntOrNull(item.styleId),
                 colorId: toPositiveIntOrNull(item.colorId),
                 colorCode: resolveOptionalString(item.colorCode, null),
                 gender: normalizeWorkOrderItemGender(item.gender, "M"),
@@ -5656,8 +5453,7 @@ const createOrReuseSharedOrder = async ({
 
 const workOrderItemToItemShape = (row: any) => ({
   id: row.itemId || String(row.id),
-  styleUid: resolveWorkOrderItemStyleUid(row),
-  styleId: resolveWorkOrderItemStyleId(row) ?? "",
+  styleId: resolveWorkOrderItemStyleId(row),
   styleName: resolveWorkOrderItemStyleName(row) ?? "",
   styleCode: resolveWorkOrderItemStyleCode(row) ?? "",
   colorId: toPositiveIntOrNull(row?.color?.id ?? row?.colorId),
@@ -6018,11 +5814,7 @@ const normalizeWorkRecordPayloadList = (records: any) => {
       workerId,
       lineId: toPositiveIntOrNull(record.lineId),
       styleId: toPositiveIntOrNull(record.styleId),
-      styleCode:
-        resolveOptionalString(record.styleCode, null) ??
-        (toPositiveIntOrNull(record.styleId) === null
-          ? resolveOptionalString(record.styleId, null)
-          : null),
+      styleCode: resolveOptionalString(record.styleCode, null),
       styleProcessId: toPositiveIntOrNull(record.styleProcessId),
       processCode: resolveOptionalString(record.processCode, null),
       processName: resolveOptionalString(record.processName, null),
@@ -6089,10 +5881,8 @@ const syncWorkRecordRefs = async ({
     const recordStyleId = toPositiveIntOrNull(record?.styleId);
     return {
       ...record,
-      styleId: planStyleMeta?.styleUid ?? recordStyleId,
-      styleCode:
-        resolveOptionalString(planStyleMeta?.styleId ?? record?.styleCode, null) ??
-        (recordStyleId === null ? resolveOptionalString(record?.styleId, null) : null),
+      styleId: planStyleMeta?.styleId ?? recordStyleId,
+      styleCode: resolveOptionalString(planStyleMeta?.styleCode ?? record?.styleCode, null),
       styleName: resolveOptionalString(planStyleMeta?.styleName ?? record?.styleName, null),
     };
   });
@@ -6100,39 +5890,21 @@ const syncWorkRecordRefs = async ({
   const styleIds = collectPositiveIntSet(
     ...normalizedWithPlanStyle.map((record) => record?.styleId)
   );
-  const styleCodes = Array.from(
-    new Set(
-      normalizedWithPlanStyle
-        .map((record) => resolveOptionalString(record?.styleCode, null))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
   const styleProcessIds = collectPositiveIntSet(
     ...normalizedWithPlanStyle.map((record) => record?.styleProcessId)
   );
-  const processCodes = Array.from(
-    new Set(
-      normalizedWithPlanStyle
-        .map((record) => resolveOptionalString(record?.processCode, null))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
 
-  const [styles, styleProcessRowsById, styleProcessRowsByCode] =
+  const [styles, styleProcessRowsById] =
     await Promise.all([
-    styleIds.length > 0 || styleCodes.length > 0
+    styleIds.length > 0
       ? prisma.style.findMany({
           where: {
             orgId,
-            OR: [
-              ...(styleIds.length > 0 ? [{ uid: { in: styleIds } }] : []),
-              ...(styleCodes.length > 0 ? [{ styleId: { in: styleCodes } }] : []),
-            ],
+            id: { in: styleIds },
           },
           select: {
-            uid: true,
-            styleId: true,
-            styleCode: true,
+            id: true,
+            code: true,
             name: true,
           },
         })
@@ -6144,21 +5916,7 @@ const syncWorkRecordRefs = async ({
           },
           select: {
             id: true,
-            styleUid: true,
-            processCode: true,
-            processName: true,
-          },
-        })
-      : Promise.resolve([]),
-    styleIds.length > 0 && processCodes.length > 0
-      ? prisma.styleProcess.findMany({
-          where: {
-            styleUid: { in: styleIds },
-            processCode: { in: processCodes },
-          },
-          select: {
-            id: true,
-            styleUid: true,
+            styleId: true,
             processCode: true,
             processName: true,
           },
@@ -6166,35 +5924,14 @@ const syncWorkRecordRefs = async ({
       : Promise.resolve([]),
   ]);
 
-  const styleByUid = new Map(styles.map((style) => [style.uid, style]));
-  const styleByCode = new Map(
-    styles
-      .filter((style) => resolveOptionalString(style?.styleId, null))
-      .map((style) => [String(style.styleId).trim(), style])
-  );
+  const styleById = new Map(styles.map((style) => [style.id, style]));
   const styleProcessById = new Map(
     styleProcessRowsById.map((row) => [Number(row.id), row])
   );
-  const styleProcessByCanonicalKey = new Map<string, any>();
-  styleProcessRowsByCode.forEach((row) => {
-    const styleUid = toPositiveIntOrNull(row?.styleUid);
-    const processCodeKey = normalizeProcessCodeKey(row?.processCode);
-    if (styleUid === null || !processCodeKey) return;
-    const key = `${styleUid}::${processCodeKey}`;
-    if (styleProcessByCanonicalKey.has(key)) {
-      styleProcessByCanonicalKey.set(key, null);
-      return;
-    }
-    styleProcessByCanonicalKey.set(key, row);
-  });
   return normalizedWithPlanStyle.map((record) => {
     const recordStyleId = toPositiveIntOrNull(record?.styleId);
-    const recordStyleCode =
-      resolveOptionalString(record?.styleCode, null) ??
-      (recordStyleId === null ? resolveOptionalString(record?.styleId, null) : null);
     const linkedStyle =
-      (recordStyleId !== null ? styleByUid.get(recordStyleId) ?? null : null) ??
-      (recordStyleCode ? styleByCode.get(recordStyleCode) ?? null : null);
+      recordStyleId !== null ? styleById.get(recordStyleId) ?? null : null;
     const directStyleProcessId = toPositiveIntOrNull(record?.styleProcessId);
     const directStyleProcess =
       directStyleProcessId !== null
@@ -6203,33 +5940,26 @@ const syncWorkRecordRefs = async ({
     const directStyleProcessMatchesStyle =
       directStyleProcess &&
       (recordStyleId === null ||
-        toPositiveIntOrNull(directStyleProcess?.styleUid) === recordStyleId);
-    const processCodeKey = normalizeProcessCodeKey(record?.processCode);
-    const codeMatchedStyleProcess =
-      recordStyleId !== null && processCodeKey
-        ? styleProcessByCanonicalKey.get(`${recordStyleId}::${processCodeKey}`) ?? null
-        : null;
+        toPositiveIntOrNull(directStyleProcess?.styleId) === recordStyleId);
     const linkedStyleProcess =
-      (directStyleProcessMatchesStyle ? directStyleProcess : null) ??
-      codeMatchedStyleProcess ??
-      null;
+      directStyleProcessMatchesStyle ? directStyleProcess : null;
     return {
       ...record,
       lineId: toPositiveIntOrNull(record?.lineId),
-      styleId: linkedStyle?.uid ?? recordStyleId,
+      styleId: recordStyleId,
       styleCode: resolveOptionalString(
-        linkedStyle?.styleId ?? recordStyleCode,
+        linkedStyle?.code ?? record?.styleCode,
         null
       ),
       styleName: resolveOptionalString(linkedStyle?.name ?? record?.styleName, null),
       styleProcessId:
-        toPositiveIntOrNull(linkedStyleProcess?.id) ?? directStyleProcessId,
+        toPositiveIntOrNull(linkedStyleProcess?.id),
       processCode: resolveOptionalString(
-        linkedStyleProcess?.processCode ?? record?.processCode,
+        linkedStyleProcess?.processCode,
         null
       ),
       processName: resolveOptionalString(
-        linkedStyleProcess?.processName ?? record?.processName,
+        linkedStyleProcess?.processName,
         null
       ),
       processNameKo: resolveOptionalString(
@@ -6263,137 +5993,26 @@ const resolveAssignmentPlanStyleMetaById = async ({
     where: { orgId, id: { in: normalizedPlanIds } },
     select: {
       id: true,
-      workOrderId: true,
-      cardId: true,
-      originOrderId: true,
+      styleId: true,
+      style: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+        },
+      },
     },
   });
-  const identityRows = ensureArray(plans).flatMap((plan) => {
-    const planId = toPositiveIntOrNull(plan?.id);
-    const workOrderId = toPositiveIntOrNull(plan?.workOrderId);
-    if (planId === null) return [];
-    return [plan?.cardId, plan?.originOrderId]
-      .map((value) => parseAssignmentCardIdentity(value))
-      .filter((identity) => Boolean(identity?.orderId && identity?.styleId))
-      .map((identity) => ({
-        planId,
-        workOrderId,
-        orderId: String(identity?.orderId || ""),
-        styleId: String(identity?.styleId || ""),
-      }));
-  });
-  if (identityRows.length === 0) return new Map<number, any>();
-
-  const workOrderIds = collectPositiveIntSet(
-    ...identityRows.map((item) => item?.workOrderId)
-  );
-  const orderIds = Array.from(
-    new Set(identityRows.map((item) => item.orderId).filter(Boolean))
-  );
-  const orders =
-    workOrderIds.length > 0 || orderIds.length > 0
-      ? await db.workOrder.findMany({
-          where: {
-            AND: [
-              { OR: getOrderAccessWhere(orgId) },
-              {
-                OR: [
-                  ...(workOrderIds.length > 0 ? [{ id: { in: workOrderIds } }] : []),
-                  ...(orderIds.length > 0 ? [{ orderId: { in: orderIds } }] : []),
-                ],
-              },
-            ],
-          },
-          select: {
-            id: true,
-            orderId: true,
-            workOrderItems: {
-              select: {
-                styleId: true,
-                styleUid: true,
-                styleName: true,
-                styleCode: true,
-                style: {
-                  select: {
-                    uid: true,
-                    styleId: true,
-                    styleCode: true,
-                    name: true,
-                  },
-                },
-              },
-            },
-          },
-        })
-      : [];
-
-  const itemCandidatesByOrderStyleId = new Map<string, any[]>();
-  const itemCandidatesByWorkOrderIdStyleId = new Map<string, any[]>();
-  ensureArray(orders).forEach((order) => {
-    const workOrderId = toPositiveIntOrNull(order?.id);
-    const orderId = resolveOptionalString(order?.orderId, null);
-    ensureArray(order?.workOrderItems).forEach((item) => {
-      const itemStyleId = resolveOptionalString(item?.styleId, null);
-      if (!itemStyleId) return;
-      if (orderId) {
-        const orderStyleKey = `${orderId}::${itemStyleId}`;
-        const orderStyleCurrent = itemCandidatesByOrderStyleId.get(orderStyleKey) || [];
-        orderStyleCurrent.push(item);
-        itemCandidatesByOrderStyleId.set(orderStyleKey, orderStyleCurrent);
-      }
-      if (workOrderId !== null) {
-        const workOrderStyleKey = `${workOrderId}::${itemStyleId}`;
-        const workOrderStyleCurrent =
-          itemCandidatesByWorkOrderIdStyleId.get(workOrderStyleKey) || [];
-        workOrderStyleCurrent.push(item);
-        itemCandidatesByWorkOrderIdStyleId.set(
-          workOrderStyleKey,
-          workOrderStyleCurrent
-        );
-      }
-    });
-  });
-
   const styleMetaByPlanId = new Map<number, any>();
-  identityRows.forEach((identity) => {
-    if (styleMetaByPlanId.has(identity.planId)) return;
-    const directCandidates =
-      identity.workOrderId !== null
-        ? itemCandidatesByWorkOrderIdStyleId.get(
-            `${identity.workOrderId}::${identity.styleId}`
-          ) ?? []
-        : [];
-    const resolvedCandidatesSource =
-      directCandidates.length > 0
-        ? directCandidates
-        : itemCandidatesByOrderStyleId.get(`${identity.orderId}::${identity.styleId}`) ||
-          [];
-    const resolvedCandidates = resolvedCandidatesSource
-      .map((item) => {
-        const styleUid = toPositiveIntOrNull(item?.style?.uid ?? item?.styleUid);
-        if (styleUid === null) return null;
-        return {
-          styleUid,
-          styleId: resolveOptionalString(item?.style?.styleId ?? item?.styleId, null),
-          styleName: resolveOptionalString(item?.style?.name ?? item?.styleName, null),
-          styleCode: resolveOptionalString(item?.style?.styleCode ?? item?.styleCode, null),
-        };
-      })
-      .filter(
-        (
-          item
-        ): item is {
-          styleUid: number;
-          styleId: string | null;
-          styleName: string | null;
-          styleCode: string | null;
-        } => Boolean(item)
-      );
-    const uniqueStyleUids = Array.from(
-      new Set(resolvedCandidates.map((item) => item.styleUid))
-    );
-    if (uniqueStyleUids.length !== 1) return;
-    styleMetaByPlanId.set(identity.planId, resolvedCandidates[0]);
+  ensureArray(plans).forEach((plan) => {
+    const planId = toPositiveIntOrNull(plan?.id);
+    const styleId = toPositiveIntOrNull(plan?.style?.id ?? plan?.styleId);
+    if (planId === null || styleId === null) return;
+    styleMetaByPlanId.set(planId, {
+      styleId,
+      styleCode: resolveOptionalString(plan?.style?.code, null),
+      styleName: resolveOptionalString(plan?.style?.name, null),
+    });
   });
 
   return styleMetaByPlanId;
@@ -6428,10 +6047,10 @@ const attachCanonicalFieldsToWorkRecords = async ({
     const planStyleMeta =
       assignmentPlanId != null ? styleMetaByPlanId.get(assignmentPlanId) ?? null : null;
     const recordStyleId = toPositiveIntOrNull(record?.styleId);
-    const nextStyleId = planStyleMeta?.styleUid ?? recordStyleId;
+    const nextStyleId = planStyleMeta?.styleId ?? recordStyleId;
     const canonicalStyleIdSource =
-      planStyleMeta?.styleUid != null
-        ? "AssignmentPlan.workOrderItem.styleUid"
+      planStyleMeta?.styleId != null
+        ? "AssignmentPlan.workOrderItem.styleId"
         : recordStyleId !== null
           ? "WorkRecord.styleId"
           : null;
@@ -6439,9 +6058,7 @@ const attachCanonicalFieldsToWorkRecords = async ({
       ...record,
       lineId: normalizedLineId ?? toPositiveIntOrNull(record?.lineId),
       styleId: nextStyleId,
-      styleCode:
-        resolveOptionalString(planStyleMeta?.styleId ?? record?.styleCode, null) ??
-        (recordStyleId === null ? resolveOptionalString(record?.styleId, null) : null),
+      styleCode: resolveOptionalString(planStyleMeta?.styleCode ?? record?.styleCode, null),
       styleName: resolveOptionalString(planStyleMeta?.styleName ?? record?.styleName, null),
       _canonicalStyleIdSource: canonicalStyleIdSource,
     };
@@ -8375,7 +7992,7 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
         select: { name: true },
       },
       style: {
-        select: { uid: true, styleId: true, name: true },
+        select: { id: true, code: true, name: true },
       },
       styleProcess: {
         select: { id: true, processCode: true, processName: true },
@@ -8827,7 +8444,7 @@ const loadWorkRecordResponseDisplayContext = async ({
     const styleMeta = styleMetaByPlanId.get(planId) ?? null;
     assignmentPlanMetaById.set(planId, {
       ...plan,
-      styleId: toPositiveIntOrNull(styleMeta?.styleUid),
+      styleId: toPositiveIntOrNull(styleMeta?.styleId),
       styleCode: resolveOptionalString(styleMeta?.styleId, null),
       styleName: resolveOptionalString(styleMeta?.styleName, null),
     });
@@ -11127,7 +10744,7 @@ const buildAssignmentCardsFromOrders = ({
 }) => {
   const cards: any[] = [];
   const styleCandidatesById = ensureArray(styles).reduce((map, style) => {
-    const styleId = resolveOptionalString(style?.styleId, null);
+    const styleId = resolveOptionalString(style?.code, null);
     if (!styleId) return map;
     const current = map.get(styleId) || [];
     current.push(style);
@@ -11148,7 +10765,7 @@ const buildAssignmentCardsFromOrders = ({
         quantity: number;
         itemIndex: number;
         style: any;
-        styleUid: number | null;
+        styleId: number | null;
         styleName: string | null;
         styleCode: string | null;
       }
@@ -11171,7 +10788,7 @@ const buildAssignmentCardsFromOrders = ({
           quantity,
           itemIndex,
           style,
-          styleUid: toPositiveIntOrNull(item?.styleUid ?? style?.uid),
+          styleId: toPositiveIntOrNull(item?.styleId ?? style?.id),
           styleName: resolveOptionalString(item?.styleName, null),
           styleCode: resolveOptionalString(item?.styleCode, null),
         });
@@ -11179,8 +10796,8 @@ const buildAssignmentCardsFromOrders = ({
       }
       current.quantity += quantity;
       if (!current.style && style) current.style = style;
-      if (current.styleUid === null) {
-        current.styleUid = toPositiveIntOrNull(item?.styleUid ?? style?.uid);
+      if (current.styleId === null) {
+        current.styleId = toPositiveIntOrNull(item?.styleId ?? style?.id);
       }
       if (!current.styleName) {
         current.styleName = resolveOptionalString(item?.styleName, null);
@@ -11226,15 +10843,14 @@ const buildAssignmentCardsFromOrders = ({
         dueDate: resolveOptionalString(order?.dueDate, null) || "",
         customer:
           resolveOptionalString(order?.customerName ?? order?.customer, null) || "-",
-        styleUid: toPositiveIntOrNull(group.style?.uid ?? group.styleUid),
-        styleId,
+        styleId: toPositiveIntOrNull(group.style?.id ?? group.styleId),
         styleName:
           group.styleName ??
           resolveOptionalString(group.style?.name, null) ??
           `스타일 ${group.itemIndex + 1}`,
         styleCode:
           group.styleCode ??
-          resolveOptionalString(group.style?.styleCode, null) ??
+          resolveOptionalString(group.style?.code, null) ??
           "",
         colorId: null,
         colorName: null,
@@ -11461,12 +11077,11 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
   const [styles, orders, savedCards] = await Promise.all([
     prisma.style.findMany({
       where: { orgId: { in: accessibleOwnerOrgIds } },
-      orderBy: { uid: "asc" },
+      orderBy: { id: "asc" },
       select: {
-        uid: true,
+        id: true,
         orgId: true,
-        styleId: true,
-        styleCode: true,
+        code: true,
         name: true,
         customer: true,
         imageUrls: true,
@@ -11495,23 +11110,23 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
   const stylesWithProcesses = styles.map((style) => ({
     ...style,
     processes:
-      initialProcessMirrorMap.get(Number(style.uid)) ??
+      initialProcessMirrorMap.get(Number(style.id)) ??
       normalizeStyleProcesses(style.processes),
   }));
-  const quantityByStyleUid = collectStyleQuantityRequirementsFromOrders({
+  const quantityByStyleId = collectStyleQuantityRequirementsFromOrders({
     orders,
     styles: stylesWithProcesses,
   });
   const processMirrorMap = await ensureStyleStandardsForQuantities({
     styles,
-    quantityByStyleUid,
+    quantityByStyleId,
     processOrgId: orgId,
   });
   const hydratedStyles = styles.map((style) => ({
     ...style,
     processes:
-      processMirrorMap.get(Number(style.uid)) ??
-      initialProcessMirrorMap.get(Number(style.uid)) ??
+      processMirrorMap.get(Number(style.id)) ??
+      initialProcessMirrorMap.get(Number(style.id)) ??
       normalizeStyleProcesses(style.processes),
   }));
 
@@ -12004,7 +11619,7 @@ const refreshUnlinkedAssignmentPlanSnapshotsForOrg = async ({
     return map;
   }, new Map<string, any>());
   const styleByStyleId = ensureArray(styles).reduce((map, style) => {
-    const styleId = resolveOptionalString(style?.styleId ?? style?.id, null);
+    const styleId = resolveOptionalString(style?.code ?? style?.id, null);
     if (styleId && !map.has(styleId)) map.set(styleId, style);
     return map;
   }, new Map<string, any>());
@@ -12529,7 +12144,8 @@ const loadAssignmentDisplayReferenceMaps = async (
     prisma.style.findMany({
       where: { orgId },
       select: {
-        styleId: true,
+        id: true,
+        code: true,
         name: true,
         customer: true,
       },
@@ -12550,7 +12166,7 @@ const loadAssignmentDisplayReferenceMaps = async (
     return map;
   }, new Map<string, any>());
   const styleByStyleId = styles.reduce((map, style) => {
-    const styleId = resolveOptionalString(style?.styleId, null);
+    const styleId = resolveOptionalString(style?.code, null);
     if (styleId && !map.has(styleId)) {
       map.set(styleId, style);
     }
@@ -13358,19 +12974,19 @@ const resolveAssignmentStyleIdForStCalculation = ({
 };
 
 const buildStyleProcessLookupForStCalculation = (styleProcessRows: any[]) => {
-  const byStyleUidAndId = new Map<string, any>();
+  const byStyleIdAndProcessId = new Map<string, any>();
 
   ensureArray(styleProcessRows).forEach((row) => {
-    const styleUid = toPositiveIntOrNull(row?.styleUid);
+    const styleId = toPositiveIntOrNull(row?.styleId);
     const rowId = toPositiveIntOrNull(row?.id);
-    if (styleUid === null || rowId === null) return;
-    byStyleUidAndId.set(`${styleUid}::${rowId}`, row);
+    if (styleId === null || rowId === null) return;
+    byStyleIdAndProcessId.set(`${styleId}::${rowId}`, row);
   });
 
-  const resolveRowForSnapshotProcess = (styleUid: number, process: any) => {
+  const resolveRowForSnapshotProcess = (styleId: number, process: any) => {
     const styleProcessId = toPositiveIntOrNull(process?.styleProcessId);
     if (styleProcessId !== null) {
-      const byId = byStyleUidAndId.get(`${styleUid}::${styleProcessId}`);
+      const byId = byStyleIdAndProcessId.get(`${styleId}::${styleProcessId}`);
       if (byId) return byId;
     }
     return null;
@@ -13416,13 +13032,13 @@ const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
   snapshotProcesses,
   assignmentQuantity,
   bucketQuantity,
-  styleUid,
+  styleId,
   styleProcessLookup,
 }: {
   snapshotProcesses: any[];
   assignmentQuantity: number;
   bucketQuantity: number;
-  styleUid: number | null;
+  styleId: number | null;
   styleProcessLookup: ReturnType<typeof buildStyleProcessLookupForStCalculation>;
 }) => {
   let pieceStTotalSeconds = 0;
@@ -13430,9 +13046,9 @@ const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
   if (processes.length === 0) return null;
   for (const process of processes) {
     const matchedRow =
-      styleUid === null
+      styleId === null
         ? null
-        : styleProcessLookup.resolveRowForSnapshotProcess(styleUid, process);
+        : styleProcessLookup.resolveRowForSnapshotProcess(styleId, process);
     const bucketStSeconds =
       matchedRow !== null
         ? resolveStyleProcessBucketStSeconds(matchedRow, bucketQuantity)
@@ -13574,63 +13190,61 @@ const prepareAssignmentBoardStTotalsForSave = async ({
       ? await db.style.findMany({
           where: {
             orgId: { in: accessibleStyleOwnerOrgIds },
-            styleId: { in: Array.from(assignmentStyleIds.values()) },
+            id: { in: Array.from(assignmentStyleIds.values()).map((value) => Number(value)).filter((value) => Number.isSafeInteger(value) && value > 0) },
           },
-          orderBy: { uid: "asc" },
+          orderBy: { id: "asc" },
           select: {
-            uid: true,
+            id: true,
             orgId: true,
-            styleId: true,
             processes: true,
           },
         })
       : [];
   const styleByStyleId = ensureArray(styles).reduce((map, style) => {
-    const styleId = resolveOptionalString(style?.styleId, null);
-    const styleUid = toPositiveIntOrNull(style?.uid);
-    if (!styleId || styleUid === null || map.has(styleId)) return map;
+    const styleId = toPositiveIntOrNull(style?.id);
+    if (!styleId || styleId === null || map.has(styleId)) return map;
     map.set(styleId, style);
     return map;
   }, new Map<string, any>());
 
-  const quantityByStyleUid = new Map<number, Set<number>>();
+  const quantityByStyleId = new Map<number, Set<number>>();
   recalcTargets.forEach((target) => {
     const style = target.styleId ? styleByStyleId.get(target.styleId) ?? null : null;
-    const styleUid = toPositiveIntOrNull(style?.uid);
-    if (styleUid === null) return;
+    const styleId = toPositiveIntOrNull(style?.id);
+    if (styleId === null) return;
     const assignmentQuantity = toPositiveInt(target.assignment?.quantity, 1);
     const bucketQuantity = resolveStBucketQuantity(assignmentQuantity);
-    const current = quantityByStyleUid.get(styleUid) ?? new Set<number>();
+    const current = quantityByStyleId.get(styleId) ?? new Set<number>();
     current.add(bucketQuantity);
-    quantityByStyleUid.set(styleUid, current);
+    quantityByStyleId.set(styleId, current);
   });
 
   const styleRowsForStCalculation = Array.from(styleByStyleId.values()) as any[];
-  const styleUids = Array.from(
+  const styleIds = Array.from(
     new Set(
       styleRowsForStCalculation
-        .map((style) => toPositiveIntOrNull(style?.uid))
-        .filter((styleUid): styleUid is number => styleUid !== null)
+        .map((style) => toPositiveIntOrNull(style?.id))
+        .filter((styleId): styleId is number => styleId !== null)
     )
   );
-  if (styleUids.length > 0) {
+  if (styleIds.length > 0) {
     await ensureStyleStandardsForQuantities({
       styles: styleRowsForStCalculation,
-      quantityByStyleUid,
+      quantityByStyleId,
       processOrgId: organization.id,
       db,
     });
   }
 
-  let styleProcessRowsByStyleUid =
-    styleUids.length > 0
-      ? await loadStyleProcessRowsByStyleUid(styleUids, {
+  let styleProcessRowsByStyleId =
+    styleIds.length > 0
+      ? await loadStyleProcessRowsByStyleId(styleIds, {
           processOrgId: organization.id,
           db,
         })
       : new Map<number, any[]>();
   let styleProcessLookup = buildStyleProcessLookupForStCalculation(
-    Array.from(styleProcessRowsByStyleUid.values()).flat()
+    Array.from(styleProcessRowsByStyleId.values()).flat()
   );
 
   const standardUpserts = new Map<
@@ -13643,7 +13257,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     if (!externalId) return;
 
     const style = target.styleId ? styleByStyleId.get(target.styleId) ?? null : null;
-    const styleUid = toPositiveIntOrNull(style?.uid);
+    const styleId = toPositiveIntOrNull(style?.id);
     const assignmentQuantity = toPositiveInt(target.assignment?.quantity, 1);
     const bucketQuantity = resolveStBucketQuantity(assignmentQuantity);
     const ctSnapshot = resolveNormalizedAssignmentCtSnapshot(target.assignment);
@@ -13665,12 +13279,12 @@ const prepareAssignmentBoardStTotalsForSave = async ({
         missingProcessKeys.push(processKey);
         return;
       }
-      if (styleUid === null) {
+      if (styleId === null) {
         unmatchedProcessKeys.push(processKey);
         return;
       }
       const styleProcessRow = styleProcessLookup.resolveRowForSnapshotProcess(
-        styleUid,
+        styleId,
         snapshotProcess
       );
       const styleProcessId = toPositiveIntOrNull(styleProcessRow?.id);
@@ -13727,12 +13341,12 @@ const prepareAssignmentBoardStTotalsForSave = async ({
       )
     );
 
-    styleProcessRowsByStyleUid = await loadStyleProcessRowsByStyleUid(styleUids, {
+    styleProcessRowsByStyleId = await loadStyleProcessRowsByStyleId(styleIds, {
       processOrgId: organization.id,
       db,
     });
     styleProcessLookup = buildStyleProcessLookupForStCalculation(
-      Array.from(styleProcessRowsByStyleUid.values()).flat()
+      Array.from(styleProcessRowsByStyleId.values()).flat()
     );
   }
 
@@ -13753,14 +13367,14 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     }
 
     const style = target.styleId ? styleByStyleId.get(target.styleId) ?? null : null;
-    const styleUid = toPositiveIntOrNull(style?.uid);
+    const styleId = toPositiveIntOrNull(style?.id);
     const assignmentQuantity = toPositiveInt(target.assignment?.quantity, 1);
     const bucketQuantity = resolveStBucketQuantity(assignmentQuantity);
     let assignmentStTotalSeconds: number | null = null;
 
     if (target.hasStructuralChange) {
       const styleProcessRows =
-        styleUid === null ? [] : styleProcessRowsByStyleUid.get(styleUid) ?? [];
+        styleId === null ? [] : styleProcessRowsByStyleId.get(styleId) ?? [];
       assignmentStTotalSeconds = calculateAssignmentStTotalSecondsFromStyleRows({
         styleProcessRows,
         assignmentQuantity,
@@ -13772,7 +13386,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
         snapshotProcesses: ensureArray(ctSnapshot?.processes),
         assignmentQuantity,
         bucketQuantity,
-        styleUid,
+        styleId,
         styleProcessLookup,
       });
     }
@@ -16666,7 +16280,7 @@ const syncStyleProcessNamesFromMaster = async ({
 
   const styleRows = await db.style.findMany({
     where: { orgId },
-    select: { uid: true, processes: true },
+    select: { id: true, processes: true },
   });
   let updatedStyleCount = 0;
 
@@ -16690,7 +16304,7 @@ const syncStyleProcessNamesFromMaster = async ({
 
     if (!touched) continue;
     await db.style.update({
-      where: { uid: style.uid },
+      where: { id: style.id },
       data: { processes: nextProcesses },
     });
     updatedStyleCount += 1;
@@ -18289,11 +17903,7 @@ app.get("/assignment-plans", async (req, res) => {
         lineId: String(plan.lineId),
         cardId,
         workOrderId: toPositiveIntOrNull(plan?.workOrderId),
-        styleUid: toPositiveIntOrNull(matchedCard?.styleUid),
-        styleId:
-          resolveOptionalString(matchedCard?.styleId, null) ??
-          resolveOptionalString(matchedCard?.styleCode, null) ??
-          null,
+        styleId: toPositiveIntOrNull(matchedCard?.styleId),
         styleCode: resolveOptionalString(matchedCard?.styleCode, null) ?? "",
         orderNo: plan.orderNo ?? "",
         label: plan.label ?? "",
@@ -18434,12 +18044,12 @@ const loadAssignmentPlanProgressWorkRows = async ({
           select: { name: true },
         },
         style: {
-          select: { uid: true, styleId: true, name: true },
+          select: { id: true, code: true, name: true },
         },
         styleProcess: {
           select: {
             id: true,
-            styleUid: true,
+            styleId: true,
             processCode: true,
             processName: true,
           },
@@ -19006,7 +18616,7 @@ const buildLineMonthCapacityRows = async ({
           },
           select: {
             id: true,
-            styleUid: true,
+            styleId: true,
             processCode: true,
             processName: true,
             ptSeconds: true,
@@ -19027,7 +18637,7 @@ const buildLineMonthCapacityRows = async ({
         calculationRule:
           "actualOutputStSeconds = sum(monthAllocatedQuantity * StyleProcessStandard.bucketStSeconds)",
         styleMatchRule:
-          "WorkRecord.styleId (Style.uid FK) must be stored. styleCode/name lookup is not allowed.",
+          "WorkRecord.styleId (Style.id FK) must be stored. styleCode/name lookup is not allowed.",
         processMatchRule:
           "WorkRecord.styleProcessId -> StyleProcess.id only. processCode/process name fallback is not allowed.",
         orgId,
@@ -19076,7 +18686,7 @@ const buildLineMonthCapacityRows = async ({
         styleProcessRowCount: actualOutputStyleProcessRows.length,
         styleProcessRows: actualOutputStyleProcessRows.slice(0, 100).map((row) => ({
           id: toPositiveIntOrNull(row?.id),
-          styleId: toPositiveIntOrNull(row?.styleUid),
+          styleId: toPositiveIntOrNull(row?.styleId),
           processCode: resolveOptionalString(row?.processCode, null),
           processName: resolveOptionalString(row?.processName, null),
           stBuckets: ensureArray(row?.standards)
@@ -19167,8 +18777,8 @@ const buildLineMonthCapacityRows = async ({
         processCodeSource,
       };
     }
-    const matchedStyleUid = toPositiveIntOrNull(matchedRow?.styleUid);
-    if (matchedStyleUid !== null && matchedStyleUid !== styleId) {
+    const matchedStyleId = toPositiveIntOrNull(matchedRow?.styleId);
+    if (matchedStyleId !== null && matchedStyleId !== styleId) {
       return {
         stSeconds: null,
         reason: "STYLE_PROCESS_STYLE_MISMATCH",
@@ -19177,7 +18787,7 @@ const buildLineMonthCapacityRows = async ({
         styleProcessId,
         styleProcessIdSource,
         recordStyleId,
-        matchedStyleUid,
+        matchedStyleId,
         processCode,
         processCodeSource,
       };
@@ -19863,7 +19473,7 @@ const buildLineMonthCapacityRows = async ({
               workLogDisplayDate: normalizeDateKey(record?.workLog?.displayDate),
               bucketQuantity,
               reason: processSt.reason,
-              matchedStyleId: (processSt as any).matchedStyleUid ?? null,
+              matchedStyleId: (processSt as any).matchedStyleId ?? null,
               matchedProcessId: processSt.matchedProcessId ?? null,
               matchedProcessCode: processSt.matchedProcessCode ?? null,
               matchedProcessName: processSt.matchedProcessName ?? null,
@@ -24025,10 +23635,9 @@ app.get("/assignment-cards", async (req, res) => {
     };
   });
   const styleSelect = {
-    uid: true,
+    id: true,
     orgId: true,
-    styleId: true,
-    styleCode: true,
+    code: true,
     name: true,
     customer: true,
     updatedAt: true,
@@ -24039,9 +23648,13 @@ app.get("/assignment-cards", async (req, res) => {
       ? await prisma.style.findMany({
           where: {
             orgId: { in: accessibleOwnerOrgIds },
-            styleId: { in: cardStyleIds },
+            id: {
+              in: cardStyleIds
+                .map((value) => Number(value))
+                .filter((value) => Number.isSafeInteger(value) && value > 0),
+            },
           },
-          orderBy: { uid: "asc" },
+          orderBy: { id: "asc" },
           select: styleSelect,
         })
       : [];
@@ -25141,10 +24754,7 @@ app.put("/orders/:orderId", async (req, res) => {
         data: itemsToUpsert.map((item: any, idx: number) => ({
           workOrderId: updatedOrder.id,
           itemId: item.id || "",
-          styleId: resolveOptionalString(item.styleId, null),
-          styleUid: toPositiveIntOrNull(item.styleUid),
-          styleName: resolveOptionalString(item.styleName, null),
-          styleCode: resolveOptionalString(item.styleCode, null),
+          styleId: toPositiveIntOrNull(item.styleId),
           colorId: toPositiveIntOrNull(item.colorId),
           colorCode: resolveOptionalString(item.colorCode, null),
           gender: normalizeWorkOrderItemGender(item.gender, "M"),
@@ -25770,13 +25380,12 @@ app.get("/styles", async (req, res) => {
   const styles: any[] = compact
     ? await prisma.style.findMany({
         where: { orgId: { in: ownerScope } },
-        orderBy: { uid: "asc" },
+        orderBy: { id: "asc" },
         // Skip heavy BOM payload for list pages that only need summary/process data.
         select: {
-          uid: true,
+          id: true,
           orgId: true,
-          styleId: true,
-          styleCode: true,
+          code: true,
           name: true,
           customer: true,
           registrationDate: true,
@@ -25792,7 +25401,7 @@ app.get("/styles", async (req, res) => {
       })
     : await prisma.style.findMany({
         where: { orgId: { in: ownerScope } },
-        orderBy: { uid: "asc" },
+        orderBy: { id: "asc" },
         include: {
           _count: { select: { workRecords: true } },
         },
@@ -25877,14 +25486,14 @@ app.post("/styles", async (req, res) => {
     orgId: owner.ownerOrgId,
     customer: payload.customer,
     name: payload.name,
-    styleCode: payload.styleCode,
+    styleCode: payload.code,
   });
   if (conflictMessage) {
     return res.status(409).json({ ok: false, error: conflictMessage });
   }
 
   const existing = await prisma.style.findFirst({
-    where: { orgId: owner.ownerOrgId, styleId: payload.styleId },
+    where: { orgId: owner.ownerOrgId, code: payload.code },
   });
   if (existing) {
     return res
@@ -25920,14 +25529,14 @@ app.post("/styles", async (req, res) => {
     });
     if (includeProcesses) {
       await syncStyleProcessStorageForStyle({
-        styleUid: createdStyle.uid,
+        styleId: createdStyle.id,
         orgId: organization.id,
         processes: syncedProcesses,
         db: tx,
       });
     }
     return tx.style.findUniqueOrThrow({
-      where: { uid: createdStyle.uid },
+      where: { id: createdStyle.id },
     });
   });
   const processMirrorMap = includeProcesses
@@ -25972,8 +25581,7 @@ app.put("/styles/:styleId", async (req, res) => {
 
   const normalized = normalizeStylePayload(
     {
-      id: existing.styleId,
-      styleCode: req.body?.styleCode ?? existing.styleCode,
+      code: req.body?.code ?? req.body?.styleCode ?? existing.code,
       name: req.body?.name ?? existing.name,
       customer: existing.customer,
       registrationDate: req.body?.registrationDate ?? existing.registrationDate,
@@ -25987,7 +25595,7 @@ app.put("/styles/:styleId", async (req, res) => {
       bom: req.body?.bom ?? existing.bom,
       bomNotes: req.body?.bomNotes ?? existing.bomNotes,
     },
-    existing.styleId,
+    existing.code,
     { includeProcesses: true }
   );
 
@@ -26011,8 +25619,8 @@ app.put("/styles/:styleId", async (req, res) => {
     orgId: existing.orgId,
     customer: normalized.customer,
     name: normalized.name,
-    styleCode: normalized.styleCode,
-    excludeUid: existing.uid,
+    styleCode: normalized.code,
+    excludeStyleId: existing.id,
   });
   if (conflictMessage) {
     return res.status(409).json({ ok: false, error: conflictMessage });
@@ -26036,9 +25644,9 @@ app.put("/styles/:styleId", async (req, res) => {
     }
 
     const updatedStyle = await tx.style.update({
-      where: { uid: existing.uid },
+      where: { id: existing.id },
       data: {
-        styleCode: normalized.styleCode,
+        code: normalized.code,
         name: normalized.name,
         customer: normalized.customer,
         customerNameKo: (existing as any).customerNameKo ?? undefined,
@@ -26055,14 +25663,14 @@ app.put("/styles/:styleId", async (req, res) => {
     });
     if (includeProcesses) {
       await syncStyleProcessStorageForStyle({
-        styleUid: existing.uid,
+        styleId: existing.id,
         orgId: organization.id,
         processes: syncedProcesses,
         db: tx,
       });
     }
     return tx.style.findUniqueOrThrow({
-      where: { uid: updatedStyle.uid },
+      where: { id: updatedStyle.id },
     });
   });
   const processMirrorMap = includeProcesses
@@ -26109,7 +25717,7 @@ app.delete("/styles/:styleId", async (req, res) => {
 
   const inUseWorkRecord = await prisma.workRecord.findFirst({
     where: {
-      styleId: existing.uid,
+      styleId: existing.id,
     },
     select: { id: true },
   });
@@ -26122,7 +25730,7 @@ app.delete("/styles/:styleId", async (req, res) => {
 
   const inUseOrderItem = await prisma.workOrderItem.findFirst({
     where: {
-      styleId,
+      styleId: existing.id,
       workOrder: {
         OR: [{ orgId: existing.orgId }, { buyerOrgId: existing.orgId }],
       },
@@ -26141,7 +25749,7 @@ app.delete("/styles/:styleId", async (req, res) => {
 
   try {
     await prisma.style.delete({
-      where: { uid: existing.uid },
+      where: { id: existing.id },
     });
     res.status(204).send();
   } catch (error) {
@@ -26234,7 +25842,7 @@ app.post("/styles/import", async (req, res) => {
 
     const codeKey = `${item.ownerOrgId}:${toStyleIdentityKey(
       item.customer,
-      item.styleCode
+      item.code
     )}`;
     if (seenCodeKeys.has(codeKey)) {
       return res.status(409).json({
@@ -26248,18 +25856,18 @@ app.post("/styles/import", async (req, res) => {
   const uniqueOwnerOrgIds = Array.from(
     new Set(rowsWithOwner.map((item: any) => item.ownerOrgId))
   );
-  const uniqueStyleIds = Array.from(
-    new Set(rowsWithOwner.map((item: any) => item.styleId))
+  const uniqueStyleCodes = Array.from(
+    new Set(rowsWithOwner.map((item: any) => item.code))
   );
   const existingStyleRows = await prisma.style.findMany({
     where: {
       orgId: { in: uniqueOwnerOrgIds },
-      styleId: { in: uniqueStyleIds },
+      code: { in: uniqueStyleCodes },
     },
-    select: { uid: true, styleId: true, orgId: true },
+    select: { id: true, code: true, orgId: true },
   });
-  const existingStyleUidByOwnerStyle = new Map(
-    existingStyleRows.map((row) => [`${row.orgId}:${row.styleId}`, row.uid])
+  const existingStyleIdByOwnerCode = new Map(
+    existingStyleRows.map((row) => [`${row.orgId}:${row.code}`, row.id])
   );
 
   for (const item of rowsWithOwner) {
@@ -26267,9 +25875,9 @@ app.post("/styles/import", async (req, res) => {
       orgId: item.ownerOrgId,
       customer: item.customer,
       name: item.name,
-      styleCode: item.styleCode,
-      excludeUid:
-        existingStyleUidByOwnerStyle.get(`${item.ownerOrgId}:${item.styleId}`) ??
+      styleCode: item.code,
+      excludeStyleId:
+        existingStyleIdByOwnerCode.get(`${item.ownerOrgId}:${item.code}`) ??
         null,
     });
     if (conflictMessage) {
@@ -26294,20 +25902,20 @@ app.post("/styles/import", async (req, res) => {
           400,
           createStyleProcessDuplicateError(
             syncedDuplicateProcess,
-            `styles[${stylePayload.styleId}].processes`
+            `styles[${stylePayload.code}].processes`
           )
         );
       }
 
       const upserted = await tx.style.upsert({
         where: {
-          orgId_styleId: {
+          orgId_code: {
             orgId: ownerOrgId,
-            styleId: stylePayload.styleId,
+            code: stylePayload.code,
           },
         },
         update: {
-          styleCode: stylePayload.styleCode,
+          code: stylePayload.code,
           name: stylePayload.name,
           customer: stylePayload.customer,
           customerNameKo: stylePayload.customerNameKo || undefined,
@@ -26329,7 +25937,7 @@ app.post("/styles/import", async (req, res) => {
       });
       if (includeProcesses) {
         await syncStyleProcessStorageForStyle({
-          styleUid: upserted.uid,
+          styleId: upserted.id,
           orgId: organization.id,
           processes: syncedProcesses,
           db: tx,
@@ -26340,7 +25948,7 @@ app.post("/styles/import", async (req, res) => {
 
   const imported = await prisma.style.findMany({
     where: { orgId: { in: uniqueOwnerOrgIds } },
-    orderBy: { uid: "asc" },
+    orderBy: { id: "asc" },
   });
   const processMirrorMap = includeProcesses
     ? await ensureStyleProcessStorageForStyles(imported, {
@@ -26779,7 +26387,7 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
   }
   const isForeignKeyConstraintError = prismaErrorCode === "P2003";
   if (isForeignKeyConstraintError) {
-    if (/WorkOrderItem_styleUid_fkey/i.test(prismaConstraint)) {
+    if (/WorkOrderItem_styleId_fkey/i.test(prismaConstraint)) {
       return res.status(409).json({
         ok: false,
         error:
@@ -27596,6 +27204,3 @@ startServer().catch((error) => {
   console.error("failed to start API server", error);
   process.exit(1);
 });
-
-
-

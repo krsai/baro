@@ -112,7 +112,7 @@ WITH snapshot_process_rows AS (
     plan."externalId",
     plan."orgId",
     COALESCE(plan."cardId", plan."originOrderId", '') AS "cardIdentityText",
-    NULLIF(SPLIT_PART(COALESCE(plan."cardId", plan."originOrderId", ''), '::', 2), '') AS "styleId",
+    plan."styleId" AS "styleId",
     CASE
       WHEN COALESCE(plan.${assignmentQuantityColumn}, 1) >= 10000 THEN 10000
       WHEN COALESCE(plan.${assignmentQuantityColumn}, 1) >= 5000 THEN 5000
@@ -129,10 +129,7 @@ WITH snapshot_process_rows AS (
       ELSE 1
     END AS "bucketQuantity",
     ROUND((process ->> 'stSeconds')::numeric)::double precision AS "bucketStSeconds",
-    LOWER(BTRIM(COALESCE(process ->> 'processCode', process ->> 'code', ''))) AS "processCodeKey",
-    LOWER(BTRIM(COALESCE(process ->> 'processKey', ''))) AS "processKey",
-    LOWER(BTRIM(REGEXP_REPLACE(COALESCE(process ->> 'processKey', ''), '-[0-9]+-[0-9]+$', ''))) AS "processKeyBase",
-    LOWER(BTRIM(COALESCE(process ->> 'name', process ->> 'processName', process ->> 'label', ''))) AS "processNameKey"
+    NULLIF(process ->> 'styleProcessId', '')::integer AS "styleProcessId"
   FROM "AssignmentPlan" plan
   CROSS JOIN LATERAL jsonb_array_elements(
     CASE
@@ -151,47 +148,36 @@ WITH snapshot_process_rows AS (
 style_targets AS (
   SELECT
     target.*,
-    style."uid" AS "styleUid"
+    style."id" AS "matchedStyleId"
   FROM snapshot_process_rows target
   LEFT JOIN "Style" style
-    ON style."orgId" = target."orgId"
-   AND style."styleId" = target."styleId"
+    ON style."id" = target."styleId"
 ),
 matched_process_targets AS (
   SELECT DISTINCT
     target."orgId",
-    target."styleUid",
+    target."styleId",
     target."bucketQuantity",
     style_process."id" AS "styleProcessId"
   FROM style_targets target
   JOIN "StyleProcess" style_process
     ON style_process."orgId" = target."orgId"
-   AND style_process."styleUid" = target."styleUid"
-   AND (
-      LOWER(BTRIM(style_process."processCode")) = target."processCodeKey"
-      OR LOWER(BTRIM(style_process."processCode")) = target."processKey"
-      OR LOWER(BTRIM(style_process."processCode")) = target."processKeyBase"
-      OR LOWER(BTRIM(style_process."processName")) = target."processNameKey"
-   )
+   AND style_process."styleId" = target."styleId"
+   AND style_process."id" = target."styleProcessId"
 )
 SELECT
   (SELECT COUNT(*) FROM snapshot_process_rows) AS "snapshotStProcessRows",
-  (SELECT COUNT(*) FROM style_targets WHERE "styleUid" IS NULL) AS "styleLookupFailures",
+  (SELECT COUNT(*) FROM style_targets WHERE "matchedStyleId" IS NULL) AS "styleLookupFailures",
   (
     SELECT COUNT(*)
     FROM style_targets target
-    WHERE target."styleUid" IS NOT NULL
+    WHERE target."matchedStyleId" IS NOT NULL
       AND NOT EXISTS (
         SELECT 1
         FROM "StyleProcess" style_process
         WHERE style_process."orgId" = target."orgId"
-          AND style_process."styleUid" = target."styleUid"
-          AND (
-            LOWER(BTRIM(style_process."processCode")) = target."processCodeKey"
-            OR LOWER(BTRIM(style_process."processCode")) = target."processKey"
-            OR LOWER(BTRIM(style_process."processCode")) = target."processKeyBase"
-            OR LOWER(BTRIM(style_process."processName")) = target."processNameKey"
-          )
+          AND style_process."styleId" = target."styleId"
+          AND style_process."id" = target."styleProcessId"
       )
   ) AS "unmatchedProcesses",
   (
@@ -241,7 +227,7 @@ WITH snapshot_process_rows AS (
     plan."externalId",
     plan."orgId",
     COALESCE(plan."cardId", plan."originOrderId", '') AS "cardIdentityText",
-    NULLIF(SPLIT_PART(COALESCE(plan."cardId", plan."originOrderId", ''), '::', 2), '') AS "styleId"
+    plan."styleId" AS "styleId"
   FROM "AssignmentPlan" plan
   CROSS JOIN LATERAL jsonb_array_elements(
     CASE
@@ -260,9 +246,8 @@ WITH snapshot_process_rows AS (
 SELECT DISTINCT target."externalId", target."orgId", target."cardIdentityText", target."styleId"
 FROM snapshot_process_rows target
 LEFT JOIN "Style" style
-  ON style."orgId" = target."orgId"
- AND style."styleId" = target."styleId"
-WHERE style."uid" IS NULL
+  ON style."id" = target."styleId"
+WHERE style."id" IS NULL
 LIMIT 10;
 `);
 
@@ -271,11 +256,8 @@ WITH snapshot_process_rows AS (
   SELECT
     plan."externalId",
     plan."orgId",
-    NULLIF(SPLIT_PART(COALESCE(plan."cardId", plan."originOrderId", ''), '::', 2), '') AS "styleId",
-    LOWER(BTRIM(COALESCE(process ->> 'processCode', process ->> 'code', ''))) AS "processCodeKey",
-    LOWER(BTRIM(COALESCE(process ->> 'processKey', ''))) AS "processKey",
-    LOWER(BTRIM(REGEXP_REPLACE(COALESCE(process ->> 'processKey', ''), '-[0-9]+-[0-9]+$', ''))) AS "processKeyBase",
-    LOWER(BTRIM(COALESCE(process ->> 'name', process ->> 'processName', process ->> 'label', ''))) AS "processNameKey"
+    plan."styleId" AS "styleId",
+    NULLIF(process ->> 'styleProcessId', '')::integer AS "styleProcessId"
   FROM "AssignmentPlan" plan
   CROSS JOIN LATERAL jsonb_array_elements(
     CASE
@@ -292,26 +274,19 @@ WITH snapshot_process_rows AS (
     AND (process ->> 'stSeconds')::numeric > 0
 ),
 style_targets AS (
-  SELECT target.*, style."uid" AS "styleUid"
+  SELECT target.*, style."id" AS "matchedStyleId"
   FROM snapshot_process_rows target
   JOIN "Style" style
-    ON style."orgId" = target."orgId"
-   AND style."styleId" = target."styleId"
+    ON style."id" = target."styleId"
 )
-SELECT target."externalId", target."orgId", target."styleId",
-  target."processCodeKey", target."processKey", target."processKeyBase", target."processNameKey"
+SELECT target."externalId", target."orgId", target."styleId", target."styleProcessId"
 FROM style_targets target
 WHERE NOT EXISTS (
   SELECT 1
   FROM "StyleProcess" style_process
   WHERE style_process."orgId" = target."orgId"
-    AND style_process."styleUid" = target."styleUid"
-    AND (
-      LOWER(BTRIM(style_process."processCode")) = target."processCodeKey"
-      OR LOWER(BTRIM(style_process."processCode")) = target."processKey"
-      OR LOWER(BTRIM(style_process."processCode")) = target."processKeyBase"
-      OR LOWER(BTRIM(style_process."processName")) = target."processNameKey"
-    )
+    AND style_process."styleId" = target."styleId"
+    AND style_process."id" = target."styleProcessId"
 )
 LIMIT 10;
 `);

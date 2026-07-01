@@ -233,8 +233,8 @@ const normalizeStyleProcessMirror = async (orgId, normalizedByCode) => {
 const normalizeStyleJsonProcesses = async (orgId, normalizedByCode) => {
   const styles = await prisma.style.findMany({
     where: { orgId },
-    select: { uid: true, processes: true },
-    orderBy: { uid: 'asc' },
+    select: { id: true, processes: true },
+    orderBy: { id: 'asc' },
   });
 
   let updatedStyleCount = 0;
@@ -266,7 +266,7 @@ const normalizeStyleJsonProcesses = async (orgId, normalizedByCode) => {
     if (!touched) continue;
 
     await prisma.style.update({
-      where: { uid: style.uid },
+      where: { id: style.id },
       data: { processes: nextProcesses },
     });
     updatedStyleCount += 1;
@@ -330,4 +330,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-
