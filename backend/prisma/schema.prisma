@@ -191,6 +191,9 @@ model Organization {
   manufacturerRelationships OrgRelationship[]         @relation("ManufacturerOrgRelationships")
   brandRelationships        OrgRelationship[]         @relation("BrandOrgRelationships")
   onboardingRequests        OnboardingRequest[]
+  buyerWorkOrders           WorkOrder[]              @relation("WorkOrderBuyerOrg")
+  sellerWorkOrders          WorkOrder[]              @relation("WorkOrderSellerOrg")
+  customerWorkOrders        WorkOrder[]              @relation("WorkOrderCustomerOrg")
 }
 
 model SystemSetting {
@@ -295,6 +298,7 @@ model Factory {
   employees         Employee[]
   lines             Line[]
   attendanceEntries AttendanceEntry[]
+  workLogs          WorkLog[]
 
   @@unique([orgId, factoryCode])
   @@index([orgId])
@@ -317,6 +321,7 @@ model Line {
   assignments     LineAssignment[]
   assignmentPlans AssignmentPlan[]
   employees       Employee[]        @relation("EmployeeCurrentLine")
+  workRecords     WorkRecord[]      @relation("WorkRecordLine")
 
   @@unique([factoryId, name])
   @@index([orgId])
@@ -621,13 +626,8 @@ model WorkOrder {
   orderId       String
   orderNumber   String
   buyerOrgId      Int?
-  buyerOrgName    String?
-  buyerOrgNameKo  String?
-  buyerOrgNameVi  String?
   sellerOrgId     Int?
-  sellerOrgName String?
   customerId    Int?
-  customerName  String?
   dueDate       String?
   status        WorkOrderStatus @default(EDITING)
   confirmationStatus WorkOrderConfirmationStatus @default(PLANNED)
@@ -640,6 +640,9 @@ model WorkOrder {
   updatedAt     DateTime        @updatedAt
 
   organization   Organization    @relation(fields: [orgId], references: [id])
+  buyerOrg       Organization?   @relation("WorkOrderBuyerOrg", fields: [buyerOrgId], references: [id], onDelete: SetNull)
+  sellerOrg      Organization?   @relation("WorkOrderSellerOrg", fields: [sellerOrgId], references: [id], onDelete: SetNull)
+  customerOrg    Organization?   @relation("WorkOrderCustomerOrg", fields: [customerId], references: [id], onDelete: SetNull)
   workOrderItems WorkOrderItem[]
   assignmentPlans AssignmentPlan[]
 
@@ -656,7 +659,6 @@ model WorkOrderItem {
   itemId         String               @default("")
   styleId        Int?
   colorId        Int?
-  colorCode      String?
   gender         WorkOrderItemGender?
   sizeQuantities Json?
   totalQuantity  Int                  @default(0)
@@ -774,7 +776,6 @@ model WorkLog {
   coverageEndDate        String?
   entryMode              String?
   factoryId              Int?
-  factoryName            String?
   factoryWagePerSecond   Float?
   ctBasis                String   @default("CT")
   workerCount            Int      @default(0)
@@ -788,10 +789,12 @@ model WorkLog {
   updatedAt              DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
+  factory      Factory?     @relation(fields: [factoryId], references: [id], onDelete: SetNull)
   workRecords  WorkRecord[]
 
   @@index([orgId, displayDate])
   @@index([orgId, createdAt])
+  @@index([factoryId])
 }
 
 model WorkRecord {
@@ -817,6 +820,7 @@ model WorkRecord {
   assignmentPlan AssignmentPlan? @relation(fields: [assignmentPlanId], references: [id])
   style          Style?          @relation(fields: [styleId], references: [id], onDelete: SetNull)
   styleProcess   StyleProcess?   @relation(fields: [styleProcessId], references: [id], onDelete: SetNull)
+  line           Line?           @relation("WorkRecordLine", fields: [lineId], references: [id], onDelete: SetNull)
 
   @@index([orgId, workLogId])
   @@index([orgId, workerId])

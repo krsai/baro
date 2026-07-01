@@ -78,6 +78,267 @@ DO $$ BEGIN
     ON DELETE SET NULL ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- Step 0d-3: remaining FK-able display columns cleanup (20260701)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'WorkOrder' AND column_name = 'buyerOrgName'
+  ) THEN
+    WITH source_rows AS (
+      SELECT id, btrim("buyerOrgName") AS "orgName"
+      FROM "WorkOrder"
+      WHERE "buyerOrgId" IS NULL
+        AND "buyerOrgName" IS NOT NULL
+        AND btrim("buyerOrgName") <> ''
+    ),
+    matches AS (
+      SELECT
+        source_rows.id AS "workOrderId",
+        o.id AS "orgId",
+        count(*) OVER (PARTITION BY source_rows.id) AS "matchCount"
+      FROM source_rows
+      JOIN "Organization" o
+        ON lower(btrim(o."name")) = lower(source_rows."orgName")
+        OR lower(btrim(COALESCE(o."nameKo", ''))) = lower(source_rows."orgName")
+        OR lower(btrim(COALESCE(o."nameVi", ''))) = lower(source_rows."orgName")
+    ),
+    unique_matches AS (
+      SELECT "workOrderId", "orgId"
+      FROM matches
+      WHERE "matchCount" = 1
+    )
+    UPDATE "WorkOrder" wo
+    SET "buyerOrgId" = unique_matches."orgId"
+    FROM unique_matches
+    WHERE wo.id = unique_matches."workOrderId"
+      AND wo."buyerOrgId" IS NULL;
+
+    IF EXISTS (
+      SELECT 1
+      FROM "WorkOrder"
+      WHERE "buyerOrgName" IS NOT NULL
+        AND btrim("buyerOrgName") <> ''
+        AND "buyerOrgId" IS NULL
+    ) THEN
+      RAISE EXCEPTION 'WorkOrder.buyerOrgName could not be mapped to exactly one Organization.id; resolve buyerOrgId before dropping buyerOrgName.';
+    END IF;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'WorkOrder' AND column_name = 'customerName'
+  ) THEN
+    WITH source_rows AS (
+      SELECT id, btrim("customerName") AS "orgName"
+      FROM "WorkOrder"
+      WHERE "customerId" IS NULL
+        AND "customerName" IS NOT NULL
+        AND btrim("customerName") <> ''
+    ),
+    matches AS (
+      SELECT
+        source_rows.id AS "workOrderId",
+        o.id AS "orgId",
+        count(*) OVER (PARTITION BY source_rows.id) AS "matchCount"
+      FROM source_rows
+      JOIN "Organization" o
+        ON lower(btrim(o."name")) = lower(source_rows."orgName")
+        OR lower(btrim(COALESCE(o."nameKo", ''))) = lower(source_rows."orgName")
+        OR lower(btrim(COALESCE(o."nameVi", ''))) = lower(source_rows."orgName")
+    ),
+    unique_matches AS (
+      SELECT "workOrderId", "orgId"
+      FROM matches
+      WHERE "matchCount" = 1
+    )
+    UPDATE "WorkOrder" wo
+    SET "customerId" = unique_matches."orgId"
+    FROM unique_matches
+    WHERE wo.id = unique_matches."workOrderId"
+      AND wo."customerId" IS NULL;
+
+    IF EXISTS (
+      SELECT 1
+      FROM "WorkOrder"
+      WHERE "customerName" IS NOT NULL
+        AND btrim("customerName") <> ''
+        AND "customerId" IS NULL
+    ) THEN
+      RAISE EXCEPTION 'WorkOrder.customerName could not be mapped to exactly one Organization.id; resolve customerId before dropping customerName.';
+    END IF;
+  END IF;
+
+  UPDATE "WorkOrder"
+  SET "customerId" = "buyerOrgId"
+  WHERE "customerId" IS NULL AND "buyerOrgId" IS NOT NULL;
+
+  UPDATE "WorkOrder"
+  SET "buyerOrgId" = "customerId"
+  WHERE "buyerOrgId" IS NULL AND "customerId" IS NOT NULL;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'WorkOrder' AND column_name = 'sellerOrgName'
+  ) THEN
+    WITH source_rows AS (
+      SELECT id, btrim("sellerOrgName") AS "orgName"
+      FROM "WorkOrder"
+      WHERE "sellerOrgId" IS NULL
+        AND "sellerOrgName" IS NOT NULL
+        AND btrim("sellerOrgName") <> ''
+    ),
+    matches AS (
+      SELECT
+        source_rows.id AS "workOrderId",
+        o.id AS "orgId",
+        count(*) OVER (PARTITION BY source_rows.id) AS "matchCount"
+      FROM source_rows
+      JOIN "Organization" o
+        ON lower(btrim(o."name")) = lower(source_rows."orgName")
+        OR lower(btrim(COALESCE(o."nameKo", ''))) = lower(source_rows."orgName")
+        OR lower(btrim(COALESCE(o."nameVi", ''))) = lower(source_rows."orgName")
+    ),
+    unique_matches AS (
+      SELECT "workOrderId", "orgId"
+      FROM matches
+      WHERE "matchCount" = 1
+    )
+    UPDATE "WorkOrder" wo
+    SET "sellerOrgId" = unique_matches."orgId"
+    FROM unique_matches
+    WHERE wo.id = unique_matches."workOrderId"
+      AND wo."sellerOrgId" IS NULL;
+
+    IF EXISTS (
+      SELECT 1
+      FROM "WorkOrder"
+      WHERE "sellerOrgName" IS NOT NULL
+        AND btrim("sellerOrgName") <> ''
+        AND "sellerOrgId" IS NULL
+    ) THEN
+      RAISE EXCEPTION 'WorkOrder.sellerOrgName could not be mapped to exactly one Organization.id; resolve sellerOrgId before dropping sellerOrgName.';
+    END IF;
+  END IF;
+
+  UPDATE "WorkOrder"
+  SET "sellerOrgId" = "orgId"
+  WHERE "sellerOrgId" IS NULL;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'WorkOrderItem' AND column_name = 'colorCode'
+  ) THEN
+    UPDATE "WorkOrderItem" item
+    SET "colorId" = color.id
+    FROM "AttrColor" color
+    WHERE item."colorId" IS NULL
+      AND item."colorCode" IS NOT NULL
+      AND btrim(item."colorCode") <> ''
+      AND lower(btrim(color."code")) = lower(btrim(item."colorCode"));
+
+    IF EXISTS (
+      SELECT 1
+      FROM "WorkOrderItem"
+      WHERE "colorCode" IS NOT NULL
+        AND btrim("colorCode") <> ''
+        AND "colorId" IS NULL
+    ) THEN
+      RAISE EXCEPTION 'WorkOrderItem.colorCode could not be mapped to AttrColor.id; resolve colorId before dropping colorCode.';
+    END IF;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'WorkLog' AND column_name = 'factoryName'
+  ) THEN
+    WITH source_rows AS (
+      SELECT id, "orgId", btrim("factoryName") AS "factoryName"
+      FROM "WorkLog"
+      WHERE "factoryId" IS NULL
+        AND "factoryName" IS NOT NULL
+        AND btrim("factoryName") <> ''
+    ),
+    matches AS (
+      SELECT
+        source_rows.id AS "workLogId",
+        f.id AS "factoryId",
+        count(*) OVER (PARTITION BY source_rows.id) AS "matchCount"
+      FROM source_rows
+      JOIN "Factory" f
+        ON f."orgId" = source_rows."orgId"
+       AND lower(btrim(f."name")) = lower(source_rows."factoryName")
+    ),
+    unique_matches AS (
+      SELECT "workLogId", "factoryId"
+      FROM matches
+      WHERE "matchCount" = 1
+    )
+    UPDATE "WorkLog" wl
+    SET "factoryId" = unique_matches."factoryId"
+    FROM unique_matches
+    WHERE wl.id = unique_matches."workLogId"
+      AND wl."factoryId" IS NULL;
+
+    IF EXISTS (
+      SELECT 1
+      FROM "WorkLog"
+      WHERE "factoryName" IS NOT NULL
+        AND btrim("factoryName") <> ''
+        AND "factoryId" IS NULL
+    ) THEN
+      RAISE EXCEPTION 'WorkLog.factoryName could not be mapped to exactly one Factory.id; resolve factoryId before dropping factoryName.';
+    END IF;
+  END IF;
+END $$;
+
+ALTER TABLE "WorkOrder"
+  DROP COLUMN IF EXISTS "buyerOrgName",
+  DROP COLUMN IF EXISTS "buyerOrgNameKo",
+  DROP COLUMN IF EXISTS "buyerOrgNameVi",
+  DROP COLUMN IF EXISTS "sellerOrgName",
+  DROP COLUMN IF EXISTS "customerName";
+
+ALTER TABLE "WorkOrderItem" DROP COLUMN IF EXISTS "colorCode";
+ALTER TABLE "WorkLog" DROP COLUMN IF EXISTS "factoryName";
+
+CREATE INDEX IF NOT EXISTS "WorkLog_factoryId_idx" ON "WorkLog"("factoryId");
+
+DO $$ BEGIN
+  ALTER TABLE "WorkOrder"
+    ADD CONSTRAINT "WorkOrder_buyerOrgId_fkey"
+    FOREIGN KEY ("buyerOrgId") REFERENCES "Organization"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "WorkOrder"
+    ADD CONSTRAINT "WorkOrder_sellerOrgId_fkey"
+    FOREIGN KEY ("sellerOrgId") REFERENCES "Organization"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "WorkOrder"
+    ADD CONSTRAINT "WorkOrder_customerId_fkey"
+    FOREIGN KEY ("customerId") REFERENCES "Organization"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "WorkLog"
+    ADD CONSTRAINT "WorkLog_factoryId_fkey"
+    FOREIGN KEY ("factoryId") REFERENCES "Factory"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "WorkRecord"
+    ADD CONSTRAINT "WorkRecord_lineId_fkey"
+    FOREIGN KEY ("lineId") REFERENCES "Line"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- Step 0e: customer pricing prototype storage (20260613)
 ALTER TABLE "OrgRelationship" ADD COLUMN IF NOT EXISTS "pricingDefaultTradeType" TEXT;
 ALTER TABLE "OrgRelationship" ADD COLUMN IF NOT EXISTS "pricingMatrix" JSONB;
@@ -93,10 +354,6 @@ WHERE "email" LIKE 'emp+%@baro.local';
 
 -- Step 0h: org membership terminated status for employee offboarding (20260619)
 ALTER TYPE "OrgMembershipStatus" ADD VALUE IF NOT EXISTS 'TERMINATED';
-
--- Step 0c: work order localized buyer name fields (20260611)
-ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "buyerOrgNameKo" TEXT;
-ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "buyerOrgNameVi" TEXT;
 
 -- Step 0i: assignment plan -> work order FK normalization (20260629)
 ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "workOrderId" INTEGER;
@@ -140,8 +397,10 @@ WHERE ap.id = candidate."assignmentPlanId"
 UPDATE "AssignmentPlan" ap
 SET
   "orderNo" = COALESCE(ap."orderNo", wo."orderNumber"),
-  "customer" = COALESCE(ap."customer", wo."customerName", wo."buyerOrgName")
+  "customer" = COALESCE(ap."customer", customer_org."name", buyer_org."name")
 FROM "WorkOrder" wo
+LEFT JOIN "Organization" customer_org ON customer_org.id = wo."customerId"
+LEFT JOIN "Organization" buyer_org ON buyer_org.id = wo."buyerOrgId"
 WHERE ap."workOrderId" = wo.id
   AND (
     ap."orderNo" IS NULL

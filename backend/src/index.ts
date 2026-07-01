@@ -156,6 +156,27 @@ function assertGeneratedPrismaClientShape() {
   if (!hasField("Employee", "lineId")) {
     staleSignals.push("Employee.lineId missing");
   }
+  if (hasField("WorkOrder", "buyerOrgName")) {
+    staleSignals.push("WorkOrder.buyerOrgName still present");
+  }
+  if (hasField("WorkOrder", "buyerOrgNameKo")) {
+    staleSignals.push("WorkOrder.buyerOrgNameKo still present");
+  }
+  if (hasField("WorkOrder", "buyerOrgNameVi")) {
+    staleSignals.push("WorkOrder.buyerOrgNameVi still present");
+  }
+  if (hasField("WorkOrder", "sellerOrgName")) {
+    staleSignals.push("WorkOrder.sellerOrgName still present");
+  }
+  if (hasField("WorkOrder", "customerName")) {
+    staleSignals.push("WorkOrder.customerName still present");
+  }
+  if (hasField("WorkOrderItem", "colorCode")) {
+    staleSignals.push("WorkOrderItem.colorCode still present");
+  }
+  if (hasField("WorkLog", "factoryName")) {
+    staleSignals.push("WorkLog.factoryName still present");
+  }
   if (!hasField("WorkRecord", "lineId")) {
     staleSignals.push("WorkRecord.lineId missing");
   }
@@ -5207,6 +5228,21 @@ const WORK_ORDER_ITEM_WITH_COLOR_INCLUDE = {
     },
   },
 };
+const WORK_ORDER_PARTY_INCLUDE = {
+  buyerOrg: {
+    select: { id: true, name: true, nameKo: true, nameVi: true },
+  },
+  sellerOrg: {
+    select: { id: true, name: true, nameKo: true, nameVi: true },
+  },
+  customerOrg: {
+    select: { id: true, name: true, nameKo: true, nameVi: true },
+  },
+};
+const WORK_ORDER_RESPONSE_INCLUDE = {
+  ...WORK_ORDER_PARTY_INCLUDE,
+  workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE,
+};
 
 const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
   const fallbackOrderId =
@@ -5237,17 +5273,6 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
   );
   const resolvedCustomerId = customerId ?? buyerOrgId;
   const resolvedBuyerOrgId = buyerOrgId ?? resolvedCustomerId;
-
-  const buyerOrgName = resolveOptionalString(
-    payload?.buyerOrgName ?? payload?.customerName ?? payload?.customer,
-    fallback?.buyerOrgName ?? fallback?.customerName ?? null
-  );
-  const customerName = resolveOptionalString(
-    payload?.customerName ?? payload?.customer ?? payload?.buyerOrgName,
-    fallback?.customerName ?? fallback?.buyerOrgName ?? null
-  );
-  const resolvedCustomerName = customerName ?? buyerOrgName;
-  const resolvedBuyerOrgName = buyerOrgName ?? resolvedCustomerName;
   const confirmationStatus = resolveWorkOrderConfirmationStatus(
     fallback?.confirmationStatus ?? payload?.confirmationStatus,
     "PLANNED"
@@ -5261,26 +5286,12 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
     orderId,
     orderNumber,
     buyerOrgId: resolvedBuyerOrgId,
-    buyerOrgName: resolvedBuyerOrgName,
-    buyerOrgNameKo: resolveOptionalString(
-      payload?.buyerOrgNameKo,
-      fallback?.buyerOrgNameKo ?? null
-    ),
-    buyerOrgNameVi: resolveOptionalString(
-      payload?.buyerOrgNameVi,
-      fallback?.buyerOrgNameVi ?? null
-    ),
     sellerOrgId: toNumberOrNull(
       payload?.sellerOrgId !== undefined
         ? payload.sellerOrgId
         : fallback?.sellerOrgId
     ),
-    sellerOrgName: resolveOptionalString(
-      payload?.sellerOrgName,
-      fallback?.sellerOrgName ?? null
-    ),
     customerId: resolvedCustomerId,
-    customerName: resolvedCustomerName,
     dueDate: resolveOptionalString(payload?.dueDate, fallback?.dueDate ?? null),
     status,
     confirmationStatus,
@@ -5399,6 +5410,7 @@ const createOrReuseSharedOrder = async ({
               sellerOrgId: normalized.sellerOrgId,
               orderNumber: normalized.orderNumber,
             },
+            include: WORK_ORDER_RESPONSE_INCLUDE,
             orderBy: { id: "asc" },
           });
           if (existing) {
@@ -5406,6 +5418,7 @@ const createOrReuseSharedOrder = async ({
               const normalizedExisting = await tx.workOrder.update({
                 where: { id: existing.id },
                 data: { orgId: resolvedOwnerOrgId },
+                include: WORK_ORDER_RESPONSE_INCLUDE,
               });
               return { order: normalizedExisting, created: false };
             }
@@ -5426,7 +5439,6 @@ const createOrReuseSharedOrder = async ({
                 itemId: item.id || "",
                 styleId: toPositiveIntOrNull(item.styleId),
                 colorId: toPositiveIntOrNull(item.colorId),
-                colorCode: resolveOptionalString(item.colorCode, null),
                 gender: normalizeWorkOrderItemGender(item.gender, "M"),
                 sizeQuantities: item.sizeQuantities ?? null,
                 totalQuantity: toNonNegativeInt(item.totalQuantity, 0),
@@ -5436,7 +5448,7 @@ const createOrReuseSharedOrder = async ({
           }
           const createdWithItems = await tx.workOrder.findUnique({
             where: { id: created.id },
-            include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+            include: WORK_ORDER_RESPONSE_INCLUDE,
           });
           return { order: createdWithItems ?? created, created: true };
         },
@@ -5448,19 +5460,21 @@ const createOrReuseSharedOrder = async ({
         continue;
       }
       if (code === "P2002") {
-        const existing = await prisma.workOrder.findFirst({
-          where: {
-            buyerOrgId: normalized.buyerOrgId,
-            sellerOrgId: normalized.sellerOrgId,
-            orderNumber: normalized.orderNumber,
-          },
-          orderBy: { id: "asc" },
-        });
+          const existing = await prisma.workOrder.findFirst({
+            where: {
+              buyerOrgId: normalized.buyerOrgId,
+              sellerOrgId: normalized.sellerOrgId,
+              orderNumber: normalized.orderNumber,
+            },
+            include: WORK_ORDER_RESPONSE_INCLUDE,
+            orderBy: { id: "asc" },
+          });
         if (existing) {
           if (existing.orgId !== resolvedOwnerOrgId) {
             const normalizedExisting = await prisma.workOrder.update({
               where: { id: existing.id },
               data: { orgId: resolvedOwnerOrgId },
+              include: WORK_ORDER_RESPONSE_INCLUDE,
             });
             return { order: normalizedExisting, created: false };
           }
@@ -5480,7 +5494,7 @@ const workOrderItemToItemShape = (row: any) => ({
   styleName: resolveWorkOrderItemStyleName(row) ?? "",
   styleCode: resolveWorkOrderItemStyleCode(row) ?? "",
   colorId: toPositiveIntOrNull(row?.color?.id ?? row?.colorId),
-  colorCode: row?.color?.code ?? row.colorCode ?? "",
+  colorCode: row?.color?.code ?? "",
   colorName: resolveWorkOrderItemColorName(row),
   gender: normalizeWorkOrderItemGender(row?.gender, "M") ?? "M",
   sizeQuantities: row.sizeQuantities ?? {},
@@ -5500,6 +5514,11 @@ const toOrderResponse = (
     : null;
   const items = itemsFromRelation ?? normalizeOrderItems(order?.items);
   const ownerOrgId = order.buyerOrgId ?? order.orgId ?? null;
+  const buyerOrg = order.buyerOrg ?? null;
+  const sellerOrg = order.sellerOrg ?? null;
+  const customerOrg = order.customerOrg ?? buyerOrg;
+  const buyerOrgName = resolveOptionalString(buyerOrg?.name, "") ?? "";
+  const customerName = resolveOptionalString(customerOrg?.name, buyerOrgName) ?? "";
   const isManualModificationLocked = Boolean(order?.modificationLockedAt);
   const isAssignmentModificationLocked = Boolean(options.isAssignmentModificationLocked);
   const isModificationLocked = isManualModificationLocked;
@@ -5512,14 +5531,14 @@ const toOrderResponse = (
     ownerOrgId,
     orderNumber: order.orderNumber ?? "",
     buyerOrgId: order.buyerOrgId ?? null,
-    buyerOrgName: order.buyerOrgName ?? "",
-    buyerOrgNameKo: order.buyerOrgNameKo ?? "",
-    buyerOrgNameVi: order.buyerOrgNameVi ?? "",
+    buyerOrgName,
+    buyerOrgNameKo: resolveOptionalString(buyerOrg?.nameKo, "") ?? "",
+    buyerOrgNameVi: resolveOptionalString(buyerOrg?.nameVi, "") ?? "",
     sellerOrgId: order.sellerOrgId ?? null,
-    sellerOrgName: order.sellerOrgName ?? "",
+    sellerOrgName: resolveOptionalString(sellerOrg?.name, "") ?? "",
     customerId: order.customerId ?? order.buyerOrgId ?? null,
-    customerName: order.customerName ?? order.buyerOrgName ?? "",
-    customer: order.customerName ?? order.buyerOrgName ?? "",
+    customerName,
+    customer: customerName,
     dueDate: order.dueDate ?? "",
     status,
     confirmationStatus: resolveWorkOrderConfirmationStatus(
@@ -6267,7 +6286,9 @@ const buildWorkLogSelectWithOptionalCoverage = ({
     id: true,
     displayDate: true,
     factoryId: true,
-    factoryName: true,
+    factory: {
+      select: { id: true, name: true },
+    },
     factoryWagePerSecond: true,
     ctBasis: true,
     workerCount: true,
@@ -8594,10 +8615,6 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
     factoryId: toNumberOrNull(
       payload?.factoryId !== undefined ? payload.factoryId : fallback?.factoryId
     ),
-    factoryName: resolveOptionalString(
-      payload?.factoryName,
-      fallback?.factoryName ?? null
-    ),
     lineId: toPositiveIntOrNull(
       payload?.lineId !== undefined ? payload?.lineId : fallbackLineMeta.lineId
     ),
@@ -9097,7 +9114,7 @@ const toWorkLogResponse = async (
     coverageEndDate,
     entryMode,
     factoryId: workLog.factoryId ?? null,
-    factoryName: workLog.factoryName ?? "",
+    factoryName: resolveOptionalString(workLog.factory?.name, "") ?? "",
     lineId: lineMeta.lineId,
     lineName: lineMeta.lineName ?? "",
     factoryWagePerSecond: workLog.factoryWagePerSecond ?? null,
@@ -11023,8 +11040,12 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
         orderId: true,
         orderNumber: true,
         dueDate: true,
-        customerName: true,
-        buyerOrgName: true,
+        buyerOrg: {
+          select: { id: true, name: true, nameKo: true, nameVi: true },
+        },
+        customerOrg: {
+          select: { id: true, name: true, nameKo: true, nameVi: true },
+        },
         items: true,
         workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE,
       },
@@ -12062,8 +12083,12 @@ const loadAssignmentDisplayReferenceMaps = async (
       select: {
         orderId: true,
         orderNumber: true,
-        customerName: true,
-        buyerOrgName: true,
+        buyerOrg: {
+          select: { id: true, name: true, nameKo: true, nameVi: true },
+        },
+        customerOrg: {
+          select: { id: true, name: true, nameKo: true, nameVi: true },
+        },
         items: true,
         workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE,
       },
@@ -12529,8 +12554,12 @@ const syncAssignmentPlanWorkOrderRefs = async (
       sellerOrgId: true,
       orderId: true,
       orderNumber: true,
-      customerName: true,
-      buyerOrgName: true,
+      buyerOrg: {
+        select: { id: true, name: true, nameKo: true, nameVi: true },
+      },
+      customerOrg: {
+        select: { id: true, name: true, nameKo: true, nameVi: true },
+      },
     },
   });
   const workOrderById = new Map<number, any>();
@@ -12579,7 +12608,7 @@ const syncAssignmentPlanWorkOrderRefs = async (
         resolveOptionalString(item?.orderNo, null),
       customer:
         resolveOptionalString(
-          matchedWorkOrder?.customerName ?? matchedWorkOrder?.buyerOrgName,
+          matchedWorkOrder?.customerOrg?.name ?? matchedWorkOrder?.buyerOrg?.name,
           null
         ) ?? resolveOptionalString(item?.customer, null),
     };
@@ -16740,17 +16769,6 @@ const syncGlobalColorSection = async (items: any) => {
         })
       )
     );
-  }
-
-  if (changedCodes.length > 0) {
-    await prisma.$transaction([
-      ...changedCodes.map((row) =>
-        prisma.workOrderItem.updateMany({
-          where: { colorId: row.id },
-          data: { colorCode: row.code },
-        })
-      ),
-    ]);
   }
 
   if (changedNames.length > 0) {
@@ -24539,7 +24557,7 @@ app.get("/orders", async (req, res) => {
   const orders = await prisma.workOrder.findMany({
     where: { OR: getOrderAccessWhere(organization.id) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+    include: WORK_ORDER_RESPONSE_INCLUDE,
   });
   const assignmentLockMap = await loadOrderAssignmentModificationLockMap(orders);
   res.json(
@@ -24574,13 +24592,8 @@ app.post("/orders", async (req, res) => {
     requesterOrgId: organization.id,
   });
   normalized.buyerOrgId = buyer.id;
-  normalized.buyerOrgName = buyer.name ?? "";
-  normalized.buyerOrgNameKo = (buyer as any).nameKo ?? "";
-  normalized.buyerOrgNameVi = (buyer as any).nameVi ?? "";
   normalized.customerId = buyer.id;
-  normalized.customerName = buyer.name ?? "";
   normalized.sellerOrgId = seller.id;
-  normalized.sellerOrgName = seller.name ?? "";
   normalized.items = await syncOrderItemColorSnapshots(normalized.items);
   normalized.items = await syncOrderItemStyleRefs(normalized.items, [
     buyer.id,
@@ -24643,13 +24656,8 @@ app.put("/orders/:orderId", async (req, res) => {
     requesterOrgId: organization.id,
   });
   normalized.buyerOrgId = buyer.id;
-  normalized.buyerOrgName = buyer.name ?? "";
-  normalized.buyerOrgNameKo = (buyer as any).nameKo ?? "";
-  normalized.buyerOrgNameVi = (buyer as any).nameVi ?? "";
   normalized.customerId = buyer.id;
-  normalized.customerName = buyer.name ?? "";
   normalized.sellerOrgId = seller.id;
-  normalized.sellerOrgName = seller.name ?? "";
   normalized.items = await syncOrderItemColorSnapshots(normalized.items);
   normalized.items = await syncOrderItemStyleRefs(normalized.items, [
     buyer.id,
@@ -24692,7 +24700,6 @@ app.put("/orders/:orderId", async (req, res) => {
           itemId: item.id || "",
           styleId: toPositiveIntOrNull(item.styleId),
           colorId: toPositiveIntOrNull(item.colorId),
-          colorCode: resolveOptionalString(item.colorCode, null),
           gender: normalizeWorkOrderItemGender(item.gender, "M"),
           sizeQuantities: item.sizeQuantities ?? null,
           totalQuantity: toNonNegativeInt(item.totalQuantity, 0),
@@ -24702,7 +24709,7 @@ app.put("/orders/:orderId", async (req, res) => {
     }
     return tx.workOrder.findUnique({
       where: { id: updatedOrder.id },
-      include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+      include: WORK_ORDER_RESPONSE_INCLUDE,
     });
   }, { timeout: 30000 });
 
@@ -24741,7 +24748,7 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
       orderId,
       OR: getOrderAccessWhere(organization.id),
     },
-    include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+    include: WORK_ORDER_RESPONSE_INCLUDE,
   });
   if (!existing) {
     return res.status(404).json({ ok: false, error: "order not found" });
@@ -24802,7 +24809,7 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
               modificationLockedAt: null,
               modificationLockedBy: null,
             },
-        include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+        include: WORK_ORDER_RESPONSE_INCLUDE,
       });
       if (!requestedLocked) {
         const cardPrefix = `${orderId}::`;
@@ -24850,7 +24857,7 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
       });
       const refreshed = await prisma.workOrder.findUnique({
         where: { id: updated.id },
-        include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+        include: WORK_ORDER_RESPONSE_INCLUDE,
       });
       orderForResponse = refreshed ?? updated;
     } catch (error) {
@@ -24867,7 +24874,7 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
   } else {
     const refreshed = await prisma.workOrder.findUnique({
       where: { id: existing.id },
-      include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+      include: WORK_ORDER_RESPONSE_INCLUDE,
     });
     orderForResponse = refreshed ?? existing;
   }
@@ -26543,11 +26550,11 @@ const ensureWorkOrderLocalizationColumnsReady = async () => {
   if (workOrderLocalizationColumnsReady) return;
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "WorkOrder"
-      ADD COLUMN IF NOT EXISTS "buyerOrgNameKo" TEXT
-  `);
-  await prisma.$executeRawUnsafe(`
-    ALTER TABLE "WorkOrder"
-      ADD COLUMN IF NOT EXISTS "buyerOrgNameVi" TEXT
+      DROP COLUMN IF EXISTS "buyerOrgName",
+      DROP COLUMN IF EXISTS "buyerOrgNameKo",
+      DROP COLUMN IF EXISTS "buyerOrgNameVi",
+      DROP COLUMN IF EXISTS "sellerOrgName",
+      DROP COLUMN IF EXISTS "customerName"
   `);
   workOrderLocalizationColumnsReady = true;
 };

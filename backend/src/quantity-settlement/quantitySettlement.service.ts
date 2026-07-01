@@ -30,6 +30,14 @@ const ORDER_ITEM_WITH_COLOR_INCLUDE = {
     },
   },
 };
+const ORDER_PARTY_INCLUDE = {
+  buyerOrg: {
+    select: { id: true, name: true, nameKo: true, nameVi: true },
+  },
+  customerOrg: {
+    select: { id: true, name: true, nameKo: true, nameVi: true },
+  },
+};
 
 const getOrderAccessWhere = (orgId: number) => [{ orgId }, { buyerOrgId: orgId }, { sellerOrgId: orgId }];
 
@@ -372,7 +380,8 @@ const buildBaseRows = (orders: any[], aggregates: { styleOnlyMap: Map<string, an
         groupedItems.set(groupKey, {
           orderId: resolveOptionalString(order?.orderId, "") || "",
           orderNumber: resolveOptionalString(order?.orderNumber, "") || "",
-          customerName: resolveOptionalString(order?.customerName ?? order?.buyerOrgName, "") || "",
+          customerName:
+            resolveOptionalString(order?.customerOrg?.name ?? order?.buyerOrg?.name, "") || "",
           dueDate: resolveOptionalString(order?.dueDate, "") || "",
           styleId: resolveStyleId(item),
           styleCode: resolveStyleCode(item),
@@ -500,7 +509,7 @@ export const getQuantitySettlementByMonth = async (orgId: number, monthInput: st
         status: { not: "SETTLED" },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      include: { workOrderItems: ORDER_ITEM_WITH_COLOR_INCLUDE },
+      include: { ...ORDER_PARTY_INCLUDE, workOrderItems: ORDER_ITEM_WITH_COLOR_INCLUDE },
     }),
     prisma.workLog.findMany({
       where: {
