@@ -39,12 +39,12 @@
   2. 다른 테이블 PK를 참조하지 않는, 구조가 자주 바뀌는 순수 표시/메타 데이터 (`imageUrls`, `bom` 등).
   - 다른 테이블의 PK를 담거나 이미 FK로 연결된 테이블과 같은 의미의 데이터를 다시 담는 JSON은 신규로 추가하지 않는다.
 - 신규 스키마 변경/리뷰 시 "이 값이 이미 FK로 연결된 다른 테이블에도 존재하는가"를 먼저 확인한다. 존재하면 JSON에 중복 저장하지 말고 relation을 통해 조회한다.
-- **현재 남아있는 JSON-관계형 이중 저장 (기술 부채. 정리 전까지는 두 곳을 항상 같이 갱신해야 하며, 하나만 갱신되면 조용히 어긋난다)**:
-  - `WorkOrder.items` (Json) ↔ `WorkOrderItem` (FK `workOrderId`) — 주문 생성 시 두 곳에 동시 저장한다(`backend/src/index.ts`의 `createOrReuseSharedOrder` 등). 읽기는 `itemsFromRelation ?? normalizeOrderItems(order?.items)` 형태로 relation을 우선하고 JSON을 fallback으로 쓴다.
-  - `Style.processes` (Json) ↔ `StyleProcess` (FK `styleId`)
-  - `WorkLog.records` (Json) ↔ `WorkRecord` (FK `workLogId`) — 단 `WorkRecord.lineId`는 이미 `Line`에 대한 실제 FK가 걸려 있다 (`schema.prisma`의 `"WorkRecordLine"` relation). `WorkLog.records` JSON 내부에 중복 저장된 `lineId`만 비정규화 상태로 남아있다.
-  - `AssignmentBoardState.cards`/`assignments` (Json) ↔ `AssignmentCard`, `AssignmentPlan` (FK) — `PUT /assignment-board-state`는 board JSON을 `$transaction` 안에서 커밋한 뒤, `AssignmentPlan` relation sync(`shouldSyncPlans` 블록)를 트랜잭션 **밖에서** 별도로 실행한다. 이 sync가 커밋 이후 실패하면 board JSON과 `AssignmentPlan` relation이 어긋난 채로 남는다. 새 코드에서 이 "JSON은 트랜잭션 안, relation sync는 트랜잭션 밖" 패턴을 따라 만들지 않는다.
-- 위 이중 저장을 정리할 때는 "JSON을 read source of truth에서 제외 → 코드 전체가 relation만 읽는지 검증 → JSON 컬럼 제거"의 단계적 순서를 따른다 (레거시 컬럼 제거 원칙과 동일).
+- **JSON-관계형 이중 저장 정리 현황 (2026-07-02 업데이트)**:
+  - `WorkOrder.items` (Json) ↔ `WorkOrderItem` (FK `workOrderId`) — **쓰기 중단 완료**. 신규 생성/수정 경로는 더 이상 `items` JSON에 쓰지 않는다(항상 `Prisma.JsonNull`). 읽기 fallback(`itemsFromRelation ?? normalizeOrderItems(order?.items)`)도 전부 제거해 이제 relation만 읽는다(비어 있으면 그냥 빈 배열). `PUT /orders/:orderId`의 부분 업데이트 fallback도 과거엔 `existing.items`(JSON) 을 읽었는데, 이제 `existing.workOrderItems`(relation)를 읽도록 같이 고쳤다 — 그대로 뒀으면 Phase 2 이후 items 없는 payload로 저장할 때마다 기존 주문 품목이 삭제되는 사고였다. 레거시 주문(관계형 행이 없는 주문)은 `migration_fix.sql`의 `Step 0d-5` 백필과 `npm run verify:workorder-item-backfill`로 처리한다. 백필 검증에서 0건이 나오면 컬럼 DROP을 진행할 수 있다.
+  - `Style.processes` (Json) ↔ `StyleProcess`/`StyleProcessStandard` (FK `styleId`) — **쓰기 중단, 응답 fallback 제거 완료**. `POST /styles`, `PUT /styles/:styleId`, `POST /styles/import`는 더 이상 `processes` JSON에 쓰지 않는다. `toStyleResponse`와 카드 빌더의 "mirror 없으면 JSON 읽기" fallback도 제거했다. 다만 `ensureStyleProcessStorageForStyles`(자가치유 백필)는 그대로 유지한다 — 이건 매 요청마다 조용히 JSON을 대신 보여주는 fallback이 아니라, JSON을 시드로 관계형 행을 영구히 다시 써서 그 스타일을 완전히 마이그레이션시키는 1회성 백필이라 성격이 다르다. `npm run verify:style-process-backfill`(진단 전용, 미백필 스타일 수만 셈)로 남은 레거시 스타일을 확인하고, `GET /styles?includeProcesses=1` 호출(또는 스타일 편집 화면에서 재저장)로 개별 마이그레이션시킬 수 있다. `Style.processes` → `StyleProcess` 매핑은 processCode 다단계 fallback/로컬라이즈드 이름 합성 등 복잡한 정규화 로직이 얽혀 있어 raw SQL로 새로 백필하지 않았다 — 잘못 재구현하면 todo.md에 기록된 과거 데이터 유실 사고를 반복할 위험이 커서다. 0건 확인 후 컬럼 DROP.
+  - `WorkLog.records` (Json) ↔ `WorkRecord` (FK `workLogId`) — 애초에 레코드 데이터를 복제 저장한 적이 없다. `{ lineId, lineName }` 헤더 메타데이터만 담으며, 실제 작업기록은 항상 같은 트랜잭션에서 `WorkRecord`로만 저장돼 왔다. 응답 조립 함수(`resolveWorkLogRecordResponses`)에 있던 `records.rows`/`records` 2단계 JSON fallback만 제거했다(이제 `workRecords` relation만 읽는다). `WorkRecord.lineId`는 이미 `Line`에 대한 실제 FK가 걸려 있다. `WorkLog.records` JSON 내부의 `{lineId,lineName}` 메타데이터는 여전히 비정규화 상태이지만, 이는 WorkRecord 데이터 복제가 아니라 별도 트래킹 대상(구조적 문제 #1)이라 이번 정리 범위에 포함하지 않았다.
+  - `AssignmentBoardState.cards`/`assignments` (Json) ↔ `AssignmentCard`, `AssignmentPlan` (FK) — 아직 미착수. `PUT /assignment-board-state`는 board JSON을 `$transaction` 안에서 커밋한 뒤, `AssignmentPlan` relation sync(`shouldSyncPlans` 블록)를 트랜잭션 **밖에서** 별도로 실행한다. 이 sync가 커밋 이후 실패하면 board JSON과 `AssignmentPlan` relation이 어긋난 채로 남는다. 새 코드에서 이 "JSON은 트랜잭션 안, relation sync는 트랜잭션 밖" 패턴을 따라 만들지 않는다.
+- 위 이중 저장을 정리할 때는 "JSON을 read source of truth에서 제외 → 코드 전체가 relation만 읽는지 검증 → JSON 컬럼 제거"의 단계적 순서를 따른다 (레거시 컬럼 제거 원칙과 동일). raw SQL 백필이 원본 정규화 로직(다단계 fallback, 파생 필드 등)을 완전히 재현하기 어려우면 SQL로 새로 만들지 말고 앱이 이미 쓰는 검증된 로직(자가치유 함수, 재저장 트리거 등)을 백필 메커니즘으로 재사용한다.
 
 ### 정확 계산 원칙 (강제)
 - 핵심 지표(생산률, 실제 생산 ST, 진행률, 급여, AT 학습 입력)는 정확한 소스오브트루스가 연결될 때만 계산한다.
@@ -1385,4 +1385,17 @@ runtime 조회값:
   10. `frontend/src/pages/App/assign/components/AssignBar.jsx`의 `getDurationDays`(9-17)와 `ScheduleTimeline.jsx`의 `assignLanes`(108-126) — 위 NaN 인덱스가 전파되면 각각 "NaNd" 배지 표시, 레인 스택 로직 무한/오작동으로 이어질 수 있다. `ScheduleTimeline`은 현재 운영 UI에서 미사용이지만 코드는 남아있다.
   11. `backend/src/payroll/payroll.service.ts`(477-492 부근) — 급여 화면의 공정별 항목 breakdown을 `processCode || processName || "unknown"`으로 그룹핑한다. 급여 합계 자체는 그 전에 `ctSeconds × quantity`로 정확히 계산되므로 급여 금액 오류는 아니지만, 같은 코드를 쓰는 서로 다른 공정이 화면상 한 줄로 합쳐져 보일 수 있다.
 - 확인 결과 문제 없음으로 배제한 항목: JSON 배열 접근은 `ensureArray()`/`Array.isArray` 가드가 일관 적용됨, 진행률/보드 저장 핫패스는 `Map` 기반 조인이라 O(n·m) 루프 없음, 남아있는 dual-read fallback(`assignmentCtSnapshot ?? ctSnapshot`, `stBuckets ?? stValues` 등)은 이 문서가 "정리 대기 중"이라고 이미 명시한 것과 정확히 일치하고 snapshot ST 필드는 신규 write 경로에서 확인상 이미 제거됨(§18/§23과 일치), 프론트 reflow에서 이름 기반(코드/이름 매칭) join은 발견되지 않음.
+- 위 목록의 1번(`syncWorkRecordRefs` orgId 필터 누락)은 2026-07-02에 별도로 수정됨 — `styleProcess.findMany`에 `orgId`를 추가해 타 테넌트 `styleProcessId` 유입을 차단했다. 나머지 항목(2~11번)은 여전히 미수정 상태다.
+
+### 38. 2026-07-02 WorkOrder.items / Style.processes JSON 쓰기·읽기 fallback 제거
+
+- 위 "DB 설계 원칙" 섹션의 이중 저장 표에 정리된 대로, `WorkOrder.items`와 `Style.processes` JSON을 신규 저장 경로에서 완전히 끊고 응답/계산 경로의 fallback도 제거했다. `WorkLog.records`는 애초에 레코드 데이터를 복제한 적이 없어(헤더 메타데이터 `{lineId,lineName}`만 저장) 응답 조립 함수의 2단계 JSON fallback만 제거했다.
+- 구현 중 계획을 일부 조정했다: `Style.processes → StyleProcess` 백필은 raw SQL로 새로 만들지 않았다. `buildStyleProcessStorageDrafts`/`resolveStyleProcessStorageCode`가 processCode 결정에 다단계 fallback(명시 code → storageCode → composition 기반 생성 → name 기반 생성 → `PROC_N`)과 로컬라이즈드 이름 합성을 쓰고 있어, 이를 SQL로 재구현하면 todo.md에 기록된 과거 백필 사고(실제 로직과 미묘하게 다른 백필이 데이터를 틀어지게 한 뒤 검증 없이 DROP)를 반복할 위험이 컸다. 대신 이미 프로덕션에서 검증된 자가치유 함수(`ensureStyleProcessStorageForStyles` → `syncStyleProcessStorageForStyle`, `GET /styles?includeProcesses=1` 호출 시 자동 실행)를 그대로 백필 메커니즘으로 유지했다. `WorkOrderItem`은 JSON 항목 구조가 평탄해 raw SQL 백필이 안전하다고 판단해 원안대로 진행했다.
+- 발견해서 같이 고친 latent 버그: `PUT /orders/:orderId`가 부분 업데이트 시 누락된 필드를 `existing`(직전 조회한 주문)으로 채우는데, `items`만 `existing.items`(JSON 컬럼)를 fallback으로 읽고 있었다. `existing` 조회에 `workOrderItems` relation이 `include`돼 있지 않았던 것과 겹쳐, JSON 쓰기를 끊는 순간부터는 `items` 없는 저장 요청마다 기존 주문 품목이 통째로 사라질 뻔했다. `existing` 조회에 `workOrderItems` relation을 추가하고, fallback도 relation 기반으로 바꿔서 고쳤다(`backend/src/index.ts`의 `normalizeOrderPayload`, `PUT /orders/:orderId`).
+- 신규 검증 스크립트:
+  - `npm run verify:workorder-item-backfill` — 실제 데이터 검증. `WorkOrder.items`에 항목이 있는데 `WorkOrderItem` 행이 없는 주문 수를 센다. 0이어야 컬럼 DROP을 진행할 수 있다.
+  - `npm run verify:style-process-backfill` — 진단 전용(백필 아님). `Style.processes`에 항목이 있는데 `StyleProcess` 행이 0개인 스타일 수를 센다. 0이 아니어도 실패는 아니며, 그 styleId들에 대해 `GET /styles?includeProcesses=1`을 한 번 호출(또는 스타일 편집 화면에서 재저장)하면 자가치유 백필이 실행돼 카운트가 줄어든다.
+  - 두 스크립트 모두 이 개발 환경에는 운영 `DATABASE_URL` 접근 권한이 없어 실행하지 못했다 — 운영 배포 전 반드시 Railway DB를 대상으로 실행해서 확인해야 한다(`todo.md` 참고).
+- `migration_fix.sql`에 `Step 0d-5`로 `WorkOrderItem` 백필 SQL을 추가했다(idempotent, 이미 relation이 있는 주문은 건드리지 않음).
+- 컬럼(`WorkOrder.items`, `Style.processes`) 자체는 이번 패스에서 DROP하지 않았다. 두 verify 스크립트가 운영 DB에서 0을 보고한 뒤 별도 후속 커밋으로 DROP한다.
 - 참고: `production-result`(생산 결과, `menu.productionResult`)는 이번 항목과 다른, 별도로 먼저 삭제된 플레이스홀더 메뉴다.

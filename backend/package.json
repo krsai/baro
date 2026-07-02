@@ -26,6 +26,8 @@
     "repair:assignment-schedule": "node scripts/repair-assignment-schedule.js",
     "workrecord:inspect": "node scripts/inspect-workrecord-state.js",
     "verify:snapshot-st-backfill": "node scripts/verify-snapshot-st-backfill.js",
+    "verify:workorder-item-backfill": "node scripts/verify-workorder-item-backfill.js",
+    "verify:style-process-backfill": "node scripts/verify-style-process-backfill.js",
     "test:work-record-employment": "npm run build && node scripts/test-work-record-employment.js",
     "realign:time-model": "node scripts/reset-to-baseline.js time-model",
     "backfill:missing-attendance": "node scripts/backfill-missing-attendance.js",

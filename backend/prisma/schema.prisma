@@ -526,6 +526,11 @@ model Style {
   collection       String?
   season           String?
   imageUrls        Json?
+  /// Deprecated 2026-07-02. No longer written by new/updated code paths —
+  /// StyleProcess/StyleProcessStandard (FK styleId) are the source of truth. Kept only
+  /// as a one-time seed for `ensureStyleProcessStorageForStyles`' self-healing backfill
+  /// of legacy styles; every response/calculation path reads the relational mirror, not
+  /// this column. Run `npm run verify:style-process-backfill` (0 results) before dropping.
   processes        Json?
   bom              Json?
   bomNotes         String?
@@ -649,6 +654,9 @@ model WorkOrder {
   confirmationStatus WorkOrderConfirmationStatus @default(PLANNED)
   modificationLockedAt DateTime?
   modificationLockedBy String?
+  /// Deprecated 2026-07-02. No longer written by new/updated code paths — WorkOrderItem
+  /// (FK workOrderId) is the source of truth. Read-dead except for legacy pre-relational
+  /// rows; run `npm run verify:workorder-item-backfill` before dropping this column.
   items         Json?
   totalQuantity Int             @default(0)
   createdAt     DateTime        @default(now())
@@ -798,6 +806,9 @@ model WorkLog {
   itemCount              Int      @default(0)
   totalCtSeconds         Float    @default(0)
   note                   String?
+  /// Header metadata only ({ lineId, lineName }) — never a copy of row data. WorkRecord
+  /// (FK workLogId) is and has always been the sole source of truth for record rows;
+  /// do not read this field as a records-list fallback.
   records                Json?
   updatedBy              String?
   createdAt              DateTime @default(now())

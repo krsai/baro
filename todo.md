@@ -2,6 +2,34 @@
 
 ---
 
+## 2026-07-02 WorkOrder.items / Style.processes JSON 이중 저장 제거
+
+### Done
+- `Style.processes` 저장 3곳(`POST /styles`, `PUT /styles/:styleId`, `POST /styles/import`)에서 JSON에 더 이상 쓰지 않음(`Prisma.JsonNull`). 관계형 쓰기(`syncStyleProcessStorageForStyle`)는 그대로 유지.
+- AT 학습 파이프라인이 `StyleProcess.atParams`를 다시 `Style.processes` JSON에 되써넣던 역방향 동기화 블록 제거.
+- `WorkOrder.items`/`Style.processes` 읽기 fallback 전부 제거: `toOrderResponse`, 주문→배정카드 빌더, `collectStyleQuantityRequirementsFromOrders`, `findOrderItemByAssignmentIdentity`, `toStyleResponse`, 카드 빌더의 `stylesWithProcesses`/`hydratedStyles` 두 곳. 전부 relation-only로 전환(비면 빈 배열).
+- `resolveWorkLogRecordResponses`의 `records.rows`/`records` 2단계 JSON fallback 제거 (WorkRecord relation만 읽음). `WorkLog.records`는 원래 레코드 데이터를 복제한 적이 없고 `{lineId,lineName}` 헤더 메타데이터만 저장하는 것으로 확인됨 — 별도 스키마 변경 없음.
+- **부수 발견 및 수정**: `PUT /orders/:orderId`의 부분 업데이트가 누락 필드를 `existing`으로 채우는데 `items`만 `existing.items`(JSON, relation include 안 됨)를 읽고 있었음. JSON 쓰기를 끊으면 `items` 없는 저장 요청마다 기존 주문 품목이 삭제될 뻔했음. `existing` 조회에 `workOrderItems` relation 추가 + fallback을 relation 기반으로 변경.
+- `migration_fix.sql`에 `Step 0d-5`로 `WorkOrderItem` 백필 SQL 추가 (JSON에 항목이 있는데 관계형 행이 0개인 주문만 대상, idempotent).
+- `Style.processes → StyleProcess` 백필은 raw SQL로 새로 만들지 않음 — processCode 다단계 fallback/로컬라이즈드 이름 합성이 복잡해 잘못 재구현하면 데이터가 틀어질 위험이 큼. 기존 자가치유 함수(`ensureStyleProcessStorageForStyles`)를 백필 메커니즘으로 그대로 유지 (JSON을 시드로 관계형 행을 영구히 다시 쓰는 1회성 로직이라 매 요청 조용한 fallback과는 다름).
+- 신규 스크립트: `backend/scripts/verify-workorder-item-backfill.js`(실제 검증), `backend/scripts/verify-style-process-backfill.js`(진단 전용), `backend/package.json`에 `verify:workorder-item-backfill`/`verify:style-process-backfill` 등록.
+- `backend/prisma/schema.prisma`: `WorkOrder.items`, `Style.processes`, `WorkLog.records`에 상태 설명 doc comment 추가. 컬럼은 유지(DROP 안 함).
+- `AGENTS.md` "DB 설계 원칙" 표 및 §38 갱신.
+
+### Verify
+- `npm --prefix backend run prisma:prepare-client`
+- `npm --prefix backend run build`
+- `npm --prefix frontend run build`
+
+### Remaining (배포 전 필수)
+- 이 개발 환경에는 운영 `DATABASE_URL` 접근 권한이 없어 아래를 로컬에서 실행하지 못했음. **운영 배포 후 반드시 Railway DB를 대상으로 실행**:
+  - `npm --prefix backend run verify:workorder-item-backfill` → 0이어야 함 (0이 아니면 `migration_fix.sql`이 아직 적용 안 된 것이거나 재확인 필요).
+  - `npm --prefix backend run verify:style-process-backfill` → 0이 아니어도 실패 아님. 보고된 styleId들에 대해 `GET /styles?includeProcesses=1`을 한 번 호출하거나 스타일 편집 화면에서 재저장하면 자가치유 백필이 실행됨. 전부 0이 될 때까지 반복 확인.
+- 두 verify가 모두 0을 보고하면, `WorkOrder.items`/`Style.processes` 컬럼 물리 DROP은 **별도 후속 커밋**으로 진행한다 (이번 커밋에는 DROP 없음 — todo.md 2026-07-01 WorkRecord styleId 유실 사고 재발 방지).
+- `AssignmentBoardState.cards`/`assignments` JSON ↔ `AssignmentCard`/`AssignmentPlan` 이중 저장은 이번 범위에 포함하지 않음 (AGENTS.md DB 설계 원칙 표에 별도 항목으로 남아있음).
+
+---
+
 ## 2026-07-02 syncWorkRecordRefs 멀티테넌시 필터 누락 수정
 
 ### Done

@@ -1,3 +1,55 @@
+-- Step 0d-5: backfill WorkOrderItem rows from legacy WorkOrder.items JSON (20260702)
+-- Only touches orders that have zero WorkOrderItem rows today (current write paths
+-- already keep WorkOrderItem in sync, so this only affects pre-relational legacy data).
+-- styleId/colorId are copied as already-resolved FK ids from the JSON, not re-resolved
+-- by name/code.
+DO $$
+DECLARE
+  backfilled_count INT;
+BEGIN
+  INSERT INTO "WorkOrderItem" (
+    "workOrderId", "itemId", "styleId", "colorId", "gender",
+    "sizeQuantities", "totalQuantity", "sortOrder",
+    "createdAt", "createdBy", "updatedAt"
+  )
+  SELECT
+    w.id,
+    COALESCE(NULLIF(item.value ->> 'id', ''), ''),
+    CASE
+      WHEN (item.value ->> 'styleId') ~ '^[0-9]+$'
+        THEN (SELECT s.id FROM "Style" s WHERE s.id = (item.value ->> 'styleId')::integer)
+      ELSE NULL
+    END,
+    CASE
+      WHEN (item.value ->> 'colorId') ~ '^[0-9]+$'
+        THEN (SELECT c.id FROM "AttrColor" c WHERE c.id = (item.value ->> 'colorId')::integer)
+      ELSE NULL
+    END,
+    CASE
+      WHEN item.value ->> 'gender' IN ('M', 'W', 'U') THEN (item.value ->> 'gender')::"WorkOrderItemGender"
+      ELSE 'M'::"WorkOrderItemGender"
+    END,
+    item.value -> 'sizeQuantities',
+    CASE
+      WHEN (item.value ->> 'totalQuantity') ~ '^[0-9]+$' THEN (item.value ->> 'totalQuantity')::integer
+      ELSE 0
+    END,
+    (item.ordinality - 1)::integer,
+    NOW(), 'system:migration-backfill', NOW()
+  FROM "WorkOrder" w
+  CROSS JOIN LATERAL jsonb_array_elements(w."items"::jsonb) WITH ORDINALITY AS item(value, ordinality)
+  WHERE w."items" IS NOT NULL
+    AND jsonb_typeof(w."items"::jsonb) = 'array'
+    AND jsonb_array_length(w."items"::jsonb) > 0
+    AND NOT EXISTS (
+      SELECT 1 FROM "WorkOrderItem" wi WHERE wi."workOrderId" = w.id
+    );
+  GET DIAGNOSTICS backfilled_count = ROW_COUNT;
+  IF backfilled_count > 0 THEN
+    RAISE NOTICE 'WorkOrderItem: backfilled % rows from legacy WorkOrder.items JSON', backfilled_count;
+  END IF;
+END $$;
+
 -- Step 0d-4: organization representative uses an employee FK (20260702)
 ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "representativeEmployeeId" INTEGER;
 

@@ -3917,32 +3917,9 @@ const applyAtTrainingResultsToStyleProcesses = async ({
   }
 
   if (refreshedStyleIds.size > 0) {
-    const targetStyleIds = Array.from(refreshedStyleIds.values());
-    const rowsByStyleId = await refreshStyleProcessMirrorForStyleIds(targetStyleIds, {
-      processOrgId: orgId,
-    });
-    const styles = await prisma.style.findMany({
-      where: { id: { in: targetStyleIds } },
-      select: { id: true, processes: true },
-    });
-    for (const style of styles) {
-      const styleId = Number(style.id);
-      const nextProcesses = buildStyleProcessMirrorFromRows(
-        rowsByStyleId.get(styleId) || [],
-        undefined,
-        style.processes
-      );
-      if (
-        JSON.stringify(normalizeStyleProcesses(style?.processes)) ===
-        JSON.stringify(nextProcesses)
-      ) {
-        continue;
-      }
-      await prisma.style.update({
-        where: { id: styleId },
-        data: { processes: nextProcesses },
-      });
-    }
+    // StyleProcess.atParams (updated above) is canonical; Style.processes JSON is no
+    // longer written back here — StyleProcess/StyleProcessStandard are the only
+    // source of truth for process data going forward.
     await rebuildAssignmentCardsForOrgIds(await resolveStyleSyncTargetOrgIds(orgId));
   }
 
@@ -4944,7 +4921,7 @@ const collectStyleQuantityRequirementsFromOrders = ({
             .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
             .map(workOrderItemToItemShape)
         : null;
-    const items = itemsFromRelation ?? normalizeOrderItems(order?.items);
+    const items = itemsFromRelation ?? [];
     items.forEach((item) => {
       const style = resolveStyleCandidateForAssignmentCard({
         order,
@@ -5062,8 +5039,7 @@ const toStyleResponse = (
     processes:
       options.includeProcesses === false
         ? []
-        : options.processMirrorMap?.get(Number(style.id)) ??
-          normalizeStyleProcesses(style.processes),
+        : options.processMirrorMap?.get(Number(style.id)) ?? [],
     bom: ensureArray(style.bom),
     bomNotes: style.bomNotes ?? "",
     revenueMemo: style.revenueMemo ?? "",
@@ -5333,8 +5309,14 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
       ? payload.orderNumber.trim()
       : fallbackOrderNumber;
 
+  const fallbackItemsFromRelation =
+    Array.isArray(fallback?.workOrderItems) && fallback.workOrderItems.length > 0
+      ? [...fallback.workOrderItems]
+          .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+          .map(workOrderItemToItemShape)
+      : [];
   const items = normalizeOrderItems(
-    payload?.items !== undefined ? payload.items : fallback?.items
+    payload?.items !== undefined ? payload.items : fallbackItemsFromRelation
   );
   const computedTotalQuantity = items.reduce(
     (sum, item) => sum + (Number(item?.totalQuantity) || 0),
@@ -5587,7 +5569,7 @@ const toOrderResponse = (
         .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
         .map(workOrderItemToItemShape)
     : null;
-  const items = itemsFromRelation ?? normalizeOrderItems(order?.items);
+  const items = itemsFromRelation ?? [];
   const ownerOrgId = order.buyerOrgId ?? order.orgId ?? null;
   const buyerOrg = order.buyerOrg ?? null;
   const sellerOrg = order.sellerOrg ?? null;
@@ -6518,14 +6500,11 @@ const findPreviousWorkLogCoverageForLine = async ({
   return null;
 };
 const resolveWorkLogRecordResponses = (workLog: any) => {
-  if (Array.isArray(workLog?.workRecords) && workLog.workRecords.length > 0) {
+  // WorkRecord is the sole source of truth for record data. WorkLog.records JSON
+  // only ever stores header metadata ({ lineId, lineName }), never row data, so it
+  // must not be read here as a fallback.
+  if (Array.isArray(workLog?.workRecords)) {
     return workLog.workRecords.map(toWorkRecordResponse);
-  }
-  if (Array.isArray(workLog?.records?.rows)) {
-    return ensureArray(workLog.records.rows).map(toWorkRecordResponse);
-  }
-  if (Array.isArray(workLog?.records)) {
-    return ensureArray(workLog.records).map(toWorkRecordResponse);
   }
   return [];
 };
@@ -10780,7 +10759,7 @@ const buildAssignmentCardsFromOrders = ({
           .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
           .map(workOrderItemToItemShape)
       : null;
-    const items = itemsFromRelation ?? normalizeOrderItems(order?.items);
+    const items = itemsFromRelation ?? [];
     const groupedByStyleId = new Map<
       string,
       {
@@ -11137,9 +11116,7 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
   });
   const stylesWithProcesses = styles.map((style) => ({
     ...style,
-    processes:
-      initialProcessMirrorMap.get(Number(style.id)) ??
-      normalizeStyleProcesses(style.processes),
+    processes: initialProcessMirrorMap.get(Number(style.id)) ?? [],
   }));
   const quantityByStyleId = collectStyleQuantityRequirementsFromOrders({
     orders,
@@ -11155,7 +11132,7 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
     processes:
       processMirrorMap.get(Number(style.id)) ??
       initialProcessMirrorMap.get(Number(style.id)) ??
-      normalizeStyleProcesses(style.processes),
+      [],
   }));
 
   const baseCards = buildAssignmentCardsFromOrders({
@@ -12219,7 +12196,9 @@ const findOrderItemByAssignmentIdentity = (order: any, identity: any): any | nul
   if (!styleId) return null;
   const targetColorKey = normalizeAssignmentDisplayKey(identity?.colorKey);
   const targetGender = normalizeAssignmentDisplayGender(identity?.gender);
-  const items = ensureArray(order?.items);
+  const items: any[] = Array.isArray(order?.workOrderItems)
+    ? order.workOrderItems.map(workOrderItemToItemShape)
+    : [];
   const exact = items.find((item) => {
     if (resolveOptionalString(item?.styleId, null) !== styleId) return false;
     const itemColorKey = normalizeAssignmentDisplayKey(
@@ -24730,6 +24709,7 @@ app.put("/orders/:orderId", async (req, res) => {
       orderId,
       OR: getOrderAccessWhere(organization.id),
     },
+    include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
   });
   if (!existing) {
     return res.status(404).json({ ok: false, error: "order not found" });
@@ -25570,7 +25550,9 @@ app.post("/styles", async (req, res) => {
         collection: payload.collection,
         season: payload.season,
         imageUrls: payload.imageUrls,
-        processes: syncedProcesses,
+        // Style.processes JSON is no longer written; StyleProcess/StyleProcessStandard
+        // (synced below via syncStyleProcessStorageForStyle) are the source of truth.
+        processes: Prisma.JsonNull,
         bom: payload.bom,
         bomNotes: payload.bomNotes,
         revenueMemo: payload.revenueMemo,
@@ -25703,7 +25685,10 @@ app.put("/styles/:styleId", async (req, res) => {
         collection: normalized.collection,
         season: normalized.season,
         imageUrls: normalized.imageUrls,
-        processes: syncedProcesses,
+        // Style.processes JSON is no longer written; StyleProcess/StyleProcessStandard
+        // (synced below via syncStyleProcessStorageForStyle) are the source of truth.
+        // Explicitly clear any legacy value instead of leaving a stale copy behind.
+        processes: Prisma.JsonNull,
         bom: normalized.bom,
         bomNotes: normalized.bomNotes,
       },
@@ -25968,14 +25953,16 @@ app.post("/styles/import", async (req, res) => {
           collection: stylePayload.collection,
           season: stylePayload.season,
           imageUrls: stylePayload.imageUrls,
-          processes: syncedProcesses,
+          // Style.processes JSON is no longer written; StyleProcess/StyleProcessStandard
+          // (synced below via syncStyleProcessStorageForStyle) are the source of truth.
+          processes: Prisma.JsonNull,
           bom: stylePayload.bom,
           bomNotes: stylePayload.bomNotes,
         },
         create: {
           orgId: ownerOrgId,
           ...stylePayload,
-          processes: syncedProcesses,
+          processes: Prisma.JsonNull,
         },
       });
       if (includeProcesses) {
