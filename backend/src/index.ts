@@ -6120,6 +6120,7 @@ const resolveAssignmentPlanStyleMetaById = async ({
     select: {
       id: true,
       styleId: true,
+      cardId: true,
       style: {
         select: {
           id: true,
@@ -6129,16 +6130,60 @@ const resolveAssignmentPlanStyleMetaById = async ({
       },
     },
   });
+
+  // AssignmentPlan.styleId/style relation is not populated by any current write path
+  // (board save never sets it), so it is always null in practice. The linked
+  // AssignmentCard.payload already carries a resolved numeric styleUid (plus display
+  // styleCode/styleName) from when the card was created — reuse that instead of
+  // re-deriving it. Note Style rows are NOT scoped to the AssignmentPlan's orgId
+  // (Style.orgId is the owning brand org, which can differ from the manufacturer org
+  // that owns the AssignmentPlan/AssignmentCard), so do not add an orgId filter here.
+  const cardIds = Array.from(
+    new Set(
+      ensureArray(plans)
+        .map((plan) => resolveOptionalString(plan?.cardId, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const cards = cardIds.length > 0
+    ? await db.assignmentCard.findMany({
+        where: { orgId, cardId: { in: cardIds } },
+        select: { cardId: true, payload: true },
+      })
+    : [];
+  const cardStyleMetaByCardId = new Map<
+    string,
+    { styleId: number; styleCode: string | null; styleName: string | null }
+  >();
+  ensureArray(cards).forEach((card) => {
+    const cardId = resolveOptionalString(card?.cardId, null);
+    const payload = card?.payload as any;
+    const styleId = toPositiveIntOrNull(payload?.styleUid);
+    if (!cardId || styleId === null) return;
+    cardStyleMetaByCardId.set(cardId, {
+      styleId,
+      styleCode: resolveOptionalString(payload?.styleCode, null),
+      styleName: resolveOptionalString(payload?.styleName, null),
+    });
+  });
+
   const styleMetaByPlanId = new Map<number, any>();
   ensureArray(plans).forEach((plan) => {
     const planId = toPositiveIntOrNull(plan?.id);
-    const styleId = toPositiveIntOrNull(plan?.style?.id ?? plan?.styleId);
-    if (planId === null || styleId === null) return;
-    styleMetaByPlanId.set(planId, {
-      styleId,
-      styleCode: resolveOptionalString(plan?.style?.code, null),
-      styleName: resolveOptionalString(plan?.style?.name, null),
-    });
+    if (planId === null) return;
+    const directStyleId = toPositiveIntOrNull(plan?.style?.id ?? plan?.styleId);
+    if (directStyleId !== null) {
+      styleMetaByPlanId.set(planId, {
+        styleId: directStyleId,
+        styleCode: resolveOptionalString(plan?.style?.code, null),
+        styleName: resolveOptionalString(plan?.style?.name, null),
+      });
+      return;
+    }
+    const cardId = resolveOptionalString(plan?.cardId, null);
+    const cardStyleMeta = cardId ? cardStyleMetaByCardId.get(cardId) : null;
+    if (!cardStyleMeta) return;
+    styleMetaByPlanId.set(planId, cardStyleMeta);
   });
 
   return styleMetaByPlanId;
@@ -6168,7 +6213,7 @@ const attachCanonicalFieldsToWorkRecords = async ({
     db,
   });
 
-  return normalizedRecords.map((record) => {
+  const withResolvedStyleId = normalizedRecords.map((record) => {
     const assignmentPlanId = toPositiveIntOrNull(record?.assignmentPlanId);
     const planStyleMeta =
       assignmentPlanId != null ? styleMetaByPlanId.get(assignmentPlanId) ?? null : null;
@@ -6188,6 +6233,48 @@ const attachCanonicalFieldsToWorkRecords = async ({
       styleName: resolveOptionalString(planStyleMeta?.styleName ?? record?.styleName, null),
       _canonicalStyleIdSource: canonicalStyleIdSource,
     };
+  });
+
+  // Callers that resolve a process only from an AssignmentPlan's CT snapshot (e.g. the
+  // work-log Excel import) may not have a real StyleProcess.id yet, since persisted
+  // snapshots do not carry styleProcessId. Backfill it here from (styleId, processCode)
+  // now that styleId is resolved above, instead of leaving it null.
+  const styleProcessLookupKeys = new Set<string>();
+  withResolvedStyleId.forEach((record) => {
+    if (toPositiveIntOrNull(record?.styleProcessId) !== null) return;
+    const styleId = toPositiveIntOrNull(record?.styleId);
+    const processCode = normalizeProcessCodeKey(record?.processCode);
+    if (styleId === null || !processCode) return;
+    styleProcessLookupKeys.add(`${styleId}:${processCode}`);
+  });
+  const styleProcessIdByKey = new Map<string, number>();
+  if (styleProcessLookupKeys.size > 0) {
+    const lookupStyleIds = Array.from(
+      new Set(Array.from(styleProcessLookupKeys).map((key) => Number(key.split(":")[0])))
+    );
+    const candidateProcesses = await db.styleProcess.findMany({
+      where: { orgId, styleId: { in: lookupStyleIds } },
+      select: { id: true, styleId: true, processCode: true },
+    });
+    ensureArray(candidateProcesses).forEach((process: any) => {
+      const styleId = toPositiveIntOrNull(process?.styleId);
+      const processCode = normalizeProcessCodeKey(process?.processCode);
+      const processId = toPositiveIntOrNull(process?.id);
+      if (styleId === null || !processCode || processId === null) return;
+      const key = `${styleId}:${processCode}`;
+      if (!styleProcessIdByKey.has(key)) styleProcessIdByKey.set(key, processId);
+    });
+  }
+
+  return withResolvedStyleId.map((record) => {
+    const existingStyleProcessId = toPositiveIntOrNull(record?.styleProcessId);
+    if (existingStyleProcessId !== null) return record;
+    const styleId = toPositiveIntOrNull(record?.styleId);
+    const processCode = normalizeProcessCodeKey(record?.processCode);
+    if (styleId === null || !processCode) return record;
+    const resolvedStyleProcessId = styleProcessIdByKey.get(`${styleId}:${processCode}`) ?? null;
+    if (resolvedStyleProcessId === null) return record;
+    return { ...record, styleProcessId: resolvedStyleProcessId };
   });
 };
 const collectWorkLogCrossLineAssignmentWarnings = async ({

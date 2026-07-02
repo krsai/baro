@@ -1,5 +1,33 @@
 # TODO
 
+## 2026-07-02 resolveAssignmentPlanStyleMetaById가 죽은 컬럼만 보고 항상 빈 결과를 내던 버그 수정
+
+### 배경
+바로 위 섹션에서 "9행만 고치면 587행 전체 임포트 성공"이라고 결론냈었는데, 그건 매칭 단계(주문+스타일+공정 → AssignmentPlan)까지만 시뮬레이션한 결과였다. 실제로 사용자가 엑셀을 업로드해보니 전혀 다른 오류(`records[N].styleId is required` / `records[N].styleProcessId is required`, 348행 전부, 총 696건)가 떴다 — 앞선 시뮬레이션이 커버 못 한 더 뒷단계(`attachCanonicalFieldsToWorkRecords`)에 있던 버그. 사용자가 "FK+join으로 충분히 찾을 수 있는 데이터인데 제대로 안 한 것 같다"고 정확히 짚어서 확인함.
+
+### 원인 [검증완료]
+- `resolveAssignmentPlanStyleMetaById`(`backend/src/index.ts:6106`)가 `AssignmentPlan.styleId`/`AssignmentPlan.style` relation만 읽었는데, 이 컬럼은 어떤 저장 경로에서도 채워진 적이 없어(`toAssignmentPlanWriteData`에 애초에 styleId 필드가 없음) 운영 DB 25건 전부 NULL로 확인됨(직접 조회로 검증). 그 결과 이 함수는 **항상 빈 Map**을 반환했다.
+- 이 함수는 `attachCanonicalFieldsToWorkRecords`(작업기록 생성/수정/임포트 3개 경로 공통 사용)가 `WorkRecord.styleId`를 채우는 유일한 서버측 소스였는데, 늘 실패하다 보니 `record.styleId`(호출자가 애초에 보낸 값)로만 폴백했다. 수동 입력 화면(`WorkDetail.jsx`)은 프론트에서 이미 실제 숫자 styleId를 채워서 보내기 때문에 이 버그가 가려져 있었지만, 엑셀 임포트는 서버가 스타일 코드 텍스트(`styleCode`)만 만들고 숫자 `styleId`를 채워 보내지 않아서 버그가 그대로 드러남.
+- `AssignmentCard.payload`에는 이미 실제 숫자 Style FK가 `styleUid` 필드로 들어있음(운영 데이터 74/74건 100% 확인) — `AssignmentPlan.cardId`로 카드를 조인하면 바로 얻을 수 있는데 이 조인을 안 하고 있었다.
+- 부수 발견: `Style.orgId`는 스타일을 소유한 **브랜드** 조직 ID이고, `AssignmentPlan.orgId`는 그 스타일로 생산하는 **제조사** 조직 ID라 서로 다르다(예: Style.orgId=2, AssignmentPlan.orgId=1). 만약 Style을 다시 조회하는 방식으로 고쳤다면 orgId 스코프를 잘못 걸어서 또 빈 결과가 나올 뻔했다 — `AssignmentCard.payload`에서 직접 읽는 방식으로 가서 이 함정을 피함.
+- `styleProcessId`도 같은 이유로 항상 비어 있었다: 임포트 경로가 CT 스냅샷의 process 항목에서 `process?.styleProcessId`를 직접 읽으려 했는데, 저장된 스냅샷 process 객체에는 애초에 그 필드가 없다(§9 CT-only 스냅샷 정책 — ST/FK를 스냅샷에 영구 저장하지 않음).
+
+### Done
+- `resolveAssignmentPlanStyleMetaById`: `AssignmentPlan.cardId` → `AssignmentCard.payload.styleUid`/`styleCode`/`styleName`을 조인해서 읽도록 수정. `AssignmentPlan.styleId` 직접 컬럼이 채워져 있으면(향후) 그 값을 우선 사용하고, 없을 때만 카드 조인으로 폴백.
+- `attachCanonicalFieldsToWorkRecords`: `styleId` 해결 후, 아직 `styleProcessId`가 없는 레코드에 한해 `(orgId, styleId, processCode)` 기준으로 `StyleProcess`를 배치 조회해서 채우도록 2단계 처리 추가. `StyleProcess`는 조직별 미러 테이블이라(같은 스타일이라도 제조사 org와 브랜드 org가 각자 자기 orgId로 별도 행을 가짐) `attachCanonicalFieldsToWorkRecords`에 전달된 `orgId`(=WorkRecord/AssignmentPlan을 소유한 제조사 org)로 정확히 스코프됨을 실데이터로 확인.
+- 이 수정은 `attachCanonicalFieldsToWorkRecords`/`resolveAssignmentPlanStyleMetaById` 공용 함수라 엑셀 임포트뿐 아니라 일반 작업기록 생성/수정(`POST`/`PUT /work-logs`)에도 동일하게 적용됨 — 다만 그쪽은 이미 프론트가 styleId를 채워 보내서 이번 버그의 영향을 받지 않았을 가능성이 높음(별도 확인 안 함).
+
+### Verify
+- `npm --prefix backend run prisma:prepare-client && npm --prefix backend run build` 통과.
+- 운영 Railway DB에 대해 직접 조회 스크립트로 검증: AssignmentPlan id=200(스타일 AM01622) → styleId=2 정상 해결, processCode=TS02 → styleProcessId=186 정상 해결. AssignmentPlan id=192(스타일 AJ1528) → styleId=21 정상 해결.
+- 실제 앱에서 엑셀 재업로드 테스트는 아직 안 함 — 배포 후 4월.xlsx(9행 미수정 상태로도 나머지 339행은 정상 진행되는지, canonical ref 오류가 사라졌는지) 확인 필요.
+
+### Remaining
+- 사용자가 4월.xlsx/5월.xlsx의 9행(바로 아래 섹션 참고: L16-1↔L16-2 스타일 7건 + ORDER# 누락 1건)을 고친 뒤 재업로드 예정.
+- 이번에 고친 canonical ref 버그가 매칭 단계보다 뒤에 있었으므로, 9행 수정 + 이번 백엔드 수정을 같이 배포한 뒤에도 혹시 또 다른 뒷단계(급여 잠금, CT 스냅샷 검증, 중복 검사 등) 오류가 새로 나올 수 있음 — 재업로드 결과를 다시 확인해야 함.
+
+---
+
 ## 2026-07-02 작업기록 엑셀 파일 등록(work-logs/import) 실패 원인 진단 + 오류 상세 Dialog 추가
 
 ### 배경
