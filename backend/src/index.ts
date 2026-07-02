@@ -22052,6 +22052,9 @@ app.post("/work-logs/import", async (req, res) => {
       records: [],
     };
     currentGroup.rows.push(item.row);
+    console.warn(
+      `[work-logs/import] row=${item.row?.rowNumber} rowProcessCode=${JSON.stringify(item.row?.processCode)} matchedProcess=${JSON.stringify(item.process)}`
+    );
     currentGroup.records.push({
       workerId: item.employee.id,
       lineId: item.line.id,
