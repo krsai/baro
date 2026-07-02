@@ -469,6 +469,7 @@ const EXPECTED_HEADER_SET = new Set([
   'CLIENT',
   'ORDER#',
   'STYLE',
+  'PROCESS',
   'JOB',
   'INCENTIVE PER PCS',
   'INCENTIVE',
@@ -506,11 +507,17 @@ const parseDateValue = (value) => {
 
 const findColumnIndexes = (headerRow = []) => {
   const normalizedHeaders = headerRow.map(normalizeHeader);
+  const processHeaderIndex = normalizedHeaders.indexOf('PROCESS');
   const firstJobIndex = normalizedHeaders.indexOf('JOB');
   const secondJobIndex =
     firstJobIndex >= 0
       ? normalizedHeaders.indexOf('JOB', firstJobIndex + 1)
       : -1;
+  // Two supported header shapes for the same 3 columns (style, process code, quantity):
+  //   legacy: STYLE, JOB, JOB      -> process code = 1st JOB, quantity = 2nd JOB
+  //   current: STYLE, PROCESS, JOB -> process code = PROCESS,  quantity = JOB
+  const processCode = processHeaderIndex >= 0 ? processHeaderIndex : firstJobIndex;
+  const quantity = processHeaderIndex >= 0 ? firstJobIndex : secondJobIndex;
 
   return {
     startDate: normalizedHeaders.indexOf('DATE(START)'),
@@ -519,8 +526,8 @@ const findColumnIndexes = (headerRow = []) => {
     employeeNo: normalizedHeaders.indexOf('CODE'),
     orderNo: normalizedHeaders.indexOf('ORDER#'),
     styleId: normalizedHeaders.indexOf('STYLE'),
-    processCode: firstJobIndex,
-    quantity: secondJobIndex,
+    processCode,
+    quantity,
     remark: normalizedHeaders.indexOf('REMARK'),
     hasAnyExpectedHeader: normalizedHeaders.some((header) =>
       EXPECTED_HEADER_SET.has(header)
