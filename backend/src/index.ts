@@ -6266,7 +6266,7 @@ const attachCanonicalFieldsToWorkRecords = async ({
     });
   }
 
-  return withResolvedStyleId.map((record) => {
+  const result = withResolvedStyleId.map((record) => {
     const existingStyleProcessId = toPositiveIntOrNull(record?.styleProcessId);
     if (existingStyleProcessId !== null) return record;
     const styleId = toPositiveIntOrNull(record?.styleId);
@@ -6276,6 +6276,24 @@ const attachCanonicalFieldsToWorkRecords = async ({
     if (resolvedStyleProcessId === null) return record;
     return { ...record, styleProcessId: resolvedStyleProcessId };
   });
+  const stillMissing = result.filter(
+    (record) => toPositiveIntOrNull(record?.styleProcessId) === null
+  );
+  if (stillMissing.length > 0) {
+    console.warn(
+      `[attachCanonicalFieldsToWorkRecords] orgId=${orgId} styleProcessId still missing for ${stillMissing.length}/${result.length} records`,
+      JSON.stringify(
+        stillMissing.slice(0, 10).map((record) => ({
+          assignmentPlanId: record?.assignmentPlanId ?? null,
+          styleId: record?.styleId ?? null,
+          styleCode: record?.styleCode ?? null,
+          processCode: record?.processCode ?? null,
+          rawStyleProcessId: record?.styleProcessId ?? null,
+        }))
+      )
+    );
+  }
+  return result;
 };
 const collectWorkLogCrossLineAssignmentWarnings = async ({
   orgId,
