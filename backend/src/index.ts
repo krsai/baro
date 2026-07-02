@@ -6634,7 +6634,7 @@ const syncOrderProgressStatusesForOrg = async ({
   const [resolvedCards, resolvedAssignments] = await Promise.all([
     shouldLoadCards ? loadAssignmentCardsForOrg({ orgId }) : Promise.resolve(cards),
     shouldLoadAssignments
-      ? loadAssignmentPlansForBoardState(orgId, null).then((plans) => ({
+      ? loadAssignmentPlansForBoardState(orgId).then((plans) => ({
           assignments: ensureArray(plans).map((plan) => toAssignmentPlanResponse(plan)),
         }))
       : Promise.resolve({ assignments }),
@@ -7846,7 +7846,8 @@ const formatAssignmentPlanLabel = (plan: any) => {
 };
 const loadLockedPayrollMonthSet = async (
   orgId: number,
-  monthKeys: string[]
+  monthKeys: string[],
+  db: any = prisma
 ): Promise<Set<string>> => {
   const normalizedMonths = Array.from(
     new Set(
@@ -7856,7 +7857,7 @@ const loadLockedPayrollMonthSet = async (
     )
   );
   if (normalizedMonths.length === 0) return new Set<string>();
-  const snapshots = await prisma.payrollSnapshot.findMany({
+  const snapshots = await db.payrollSnapshot.findMany({
     where: {
       orgId,
       month: { in: normalizedMonths },
@@ -7865,8 +7866,8 @@ const loadLockedPayrollMonthSet = async (
   });
   return new Set(
     snapshots
-      .map((snapshot) => resolveOptionalString(snapshot?.month, null))
-      .filter((month): month is string => Boolean(month))
+      .map((snapshot: any) => resolveOptionalString(snapshot?.month, null))
+      .filter((month: string | null): month is string => Boolean(month))
   );
 };
 const validateAssignmentPlanPayrollLock = async ({
@@ -9213,55 +9214,6 @@ const toWorkLogContextWorkerResponse = (row: any) => ({
   factoryId: row?.employee?.factoryId ?? null,
   currentLineId: row?.lineId ?? null,
 });
-const buildWorkLogContextAssignmentDisplayKey = (plan: any) => {
-  const orderNo = resolveOptionalString(plan?.orderNo, "") ?? "";
-  const label =
-    resolveOptionalString(plan?.label, null) ??
-    resolveOptionalString(plan?.styleId, null) ??
-    "";
-  const quantity = toOptionalNonNegativeInt(
-    plan?.finalQuantity ?? resolveAssignmentQuantity(plan),
-    null
-  );
-  if (!orderNo && !label && quantity == null) return "";
-  return [orderNo, label, quantity ?? ""].join("|");
-};
-const summarizeWorkLogContextDuplicateAssignments = (plans: any[] = []) => {
-  const duplicateBuckets = ensureArray(plans).reduce((map, plan) => {
-    const displayKey = buildWorkLogContextAssignmentDisplayKey(plan);
-    if (!displayKey) return map;
-    const current = map.get(displayKey) || {
-      displayKey,
-      count: 0,
-      externalIds: [] as string[],
-      lineIds: [] as string[],
-    };
-    current.count += 1;
-    const externalId = resolveOptionalString(plan?.externalId ?? plan?.id, null);
-    if (externalId) {
-      current.externalIds.push(externalId);
-    }
-    const lineId =
-      resolveOptionalString(plan?.lineId, null) ??
-      (toPositiveIntOrNull(plan?.lineId) !== null
-        ? String(toPositiveIntOrNull(plan?.lineId))
-        : null);
-    if (lineId) {
-      current.lineIds.push(lineId);
-    }
-    map.set(displayKey, current);
-    return map;
-  }, new Map<
-    string,
-    { displayKey: string; count: number; externalIds: string[]; lineIds: string[] }
-  >());
-
-  return Array.from<
-    { displayKey: string; count: number; externalIds: string[]; lineIds: string[] }
-  >(duplicateBuckets.values())
-    .filter((entry) => entry.count > 1)
-    .slice(0, 10);
-};
 const toWorkLogContextAssignmentResponse = (plan: any) => {
   const normalizedSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
   const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
@@ -10293,104 +10245,6 @@ const buildAssignmentByExternalId = (items: any[]) =>
     map.set(externalId, item);
     return map;
   }, new Map<string, any>());
-const applySentTimeoutEscalation = (
-  assignments: any,
-  _nowDate: Date = new Date()
-): { assignments: any[]; changed: boolean } => {
-  return {
-    assignments: normalizeStateAssignments(assignments),
-    changed: false,
-  };
-};
-const resolveAssignmentPlanExternalIds = (items: any) =>
-  ensureArray(items)
-    .map((item) => resolveAssignmentExternalId(item))
-    .filter((value): value is string => Boolean(value));
-const mergeAssignmentPlanResponsesWithState = (plans: any[], stateAssignments: any[]) => {
-  const applyPlanStateMerge = (base: any, stateItem: any) => {
-    if (!stateItem || typeof stateItem !== "object") return base;
-    const baseStTotalSeconds = resolvePersistedAssignmentPlanStTotalSeconds(base);
-    const stateStTotalSeconds = resolveStateAssignmentStTotalSeconds(stateItem);
-    const merged = {
-      ...stateItem,
-      ...base,
-      id: base.id,
-      lineId: String(base.lineId),
-    };
-    if (baseStTotalSeconds === null && stateStTotalSeconds !== null) {
-      merged.stTotalSeconds = stateStTotalSeconds;
-    }
-    const stateStartIndex = toNumberOrNull(stateItem?.startIndex);
-    const stateEndIndex = toNumberOrNull(stateItem?.endIndex);
-    const stateStartDayOffsetPercent = toOptionalFloat(
-      stateItem?.startDayOffsetPercent,
-      undefined
-    );
-    const stateStartDayPercent = toOptionalFloat(
-      stateItem?.startDayPercent,
-      undefined
-    );
-    const stateEndDayPercent = toOptionalFloat(
-      stateItem?.endDayPercent,
-      undefined
-    );
-    if (stateStartIndex !== null) {
-      merged.startIndex = Math.trunc(stateStartIndex);
-    }
-    if (stateEndIndex !== null) {
-      const fallbackStartIndex =
-        stateStartIndex !== null
-          ? Math.trunc(stateStartIndex)
-          : toSignedInt(merged.startIndex, 0);
-      merged.endIndex = Math.max(fallbackStartIndex, Math.trunc(stateEndIndex));
-    }
-    if (stateStartDayOffsetPercent !== undefined) {
-      merged.startDayOffsetPercent = stateStartDayOffsetPercent;
-    }
-    if (stateStartDayPercent !== undefined) {
-      merged.startDayPercent = stateStartDayPercent;
-    }
-    if (stateEndDayPercent !== undefined) {
-      merged.endDayPercent = stateEndDayPercent;
-    }
-    return merged;
-  };
-
-  const normalizedStateAssignments = normalizeStateAssignments(stateAssignments);
-  const planByExternalId = ensureArray(plans).reduce((map, plan) => {
-    const base = toAssignmentPlanResponse(plan);
-    const externalId = resolveAssignmentExternalId(base);
-    if (!externalId || map.has(externalId)) return map;
-    map.set(externalId, base);
-    return map;
-  }, new Map<string, any>());
-
-  const mergedAssignments: any[] = [];
-  normalizedStateAssignments.forEach((stateItem) => {
-    const externalId = resolveAssignmentExternalId(stateItem);
-    if (!externalId) {
-      mergedAssignments.push(normalizeStateAssignmentItem(stateItem));
-      return;
-    }
-    const planBase = planByExternalId.get(externalId);
-    if (!planBase) {
-      // Keep board-state rows even when assignmentPlan sync is temporarily unavailable.
-      // Without this fallback, reload can hide recently saved assignments.
-      mergedAssignments.push(normalizeStateAssignmentItem(stateItem));
-      return;
-    }
-    mergedAssignments.push(applyPlanStateMerge(planBase, stateItem));
-    planByExternalId.delete(externalId);
-  });
-
-  if (planByExternalId.size > 0) {
-    planByExternalId.forEach((planBase: any) => {
-      mergedAssignments.push(planBase);
-    });
-  }
-
-  return mergedAssignments;
-};
 const ASSIGNMENT_TEXT_CORRUPTION_REGEX = /\?{2,}|\uFFFD/u;
 type AssignmentDisplayReferenceMaps = {
   orderByOrderId: Map<string, any>;
@@ -13386,17 +13240,19 @@ const findAssignmentPlansWithSelectFallback = async ({
   orderBy,
   selectAttempts,
   context,
+  db = prisma,
 }: {
   where: Prisma.AssignmentPlanWhereInput;
   orderBy: Prisma.AssignmentPlanOrderByWithRelationInput[];
   selectAttempts: ReadonlyArray<Record<string, true>>;
   context: string;
+  db?: any;
 }): Promise<any[]> => {
   let lastError: any = null;
   for (let index = 0; index < selectAttempts.length; index += 1) {
     const select = selectAttempts[index]!;
     try {
-      return await prisma.assignmentPlan.findMany({
+      return await db.assignmentPlan.findMany({
         where,
         orderBy,
         select: select as any,
@@ -13415,10 +13271,7 @@ const findAssignmentPlansWithSelectFallback = async ({
   }
   throw lastError;
 };
-const loadAssignmentPlansForBoardState = async (
-  orgId: number,
-  _rawAssignments: any
-) => {
+const loadAssignmentPlansForBoardState = async (orgId: number) => {
   return findAssignmentPlansWithSelectFallback({
     where: { orgId },
     orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
@@ -13427,10 +13280,12 @@ const loadAssignmentPlansForBoardState = async (
   });
 };
 const loadAssignmentPlanRowsForBoardTx = async (orgId: number, db: any) =>
-  db.assignmentPlan.findMany({
+  findAssignmentPlansWithSelectFallback({
     where: { orgId },
     orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-    select: ASSIGNMENT_PLAN_SELECT_WITH_CLOSE as any,
+    selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY, ASSIGNMENT_PLAN_SELECT_LEGACY],
+    context: "loadAssignmentPlanRowsForBoardTx",
+    db,
   });
 const buildReadOnlyAssignmentBoardStateResponse = async (
   orgId: number,
@@ -13446,7 +13301,7 @@ const buildReadOnlyAssignmentBoardStateResponse = async (
   const assignmentPlans = includePlans
     ? await annotateAssignmentPlanRowsWithPayrollLocks(
         orgId,
-        await loadAssignmentPlansForBoardState(orgId, null)
+        await loadAssignmentPlansForBoardState(orgId)
       )
     : null;
   const cards = includeCards ? await loadAssignmentCardsForOrg({ orgId }) : [];
@@ -23196,7 +23051,7 @@ app.get("/assignment-board-versions", async (req, res) => {
         updatedAt: true,
       },
     }),
-    loadAssignmentPlansForBoardState(organization.id, null),
+    loadAssignmentPlansForBoardState(organization.id),
   ]);
 
   res.json({
@@ -23319,7 +23174,7 @@ app.get("/assignment-board-state", async (req, res) => {
     }),
     loadAssignmentCardsForOrg({ orgId: organization.id }),
   ]);
-  let assignmentPlans = await loadAssignmentPlansForBoardState(organization.id, null);
+  let assignmentPlans = await loadAssignmentPlansForBoardState(organization.id);
   if (assignmentPlans.length > 0 && assignmentPlans.some(assignmentPlanNeedsDisplayRepair)) {
     const repairedPlans = await repairAssignmentPlanDisplayRows({
       orgId: organization.id,
@@ -23496,8 +23351,7 @@ app.put("/assignment-board-state", async (req, res) => {
   }
   assertFiniteAssignmentScheduleIndices(normalizeStateAssignments(incomingAssignmentsForSave));
   const currentPlanRowsForDetachGuard = await loadAssignmentPlansForBoardState(
-    organization.id,
-    null
+    organization.id
   );
   const currentAssignmentsByExternalIdForDetachGuard = buildAssignmentByExternalId(
     normalizeStateAssignments(
@@ -23725,7 +23579,8 @@ app.put("/assignment-board-state", async (req, res) => {
     });
     const lockedPayrollMonthSet = await loadLockedPayrollMonthSet(
       organization.id,
-      Array.from(payrollLockMonthByExternalId.values())
+      Array.from(payrollLockMonthByExternalId.values()),
+      tx
     );
     const payrollLockedPlanByExternalId = new Map<string, any>();
     payrollLockMonthByExternalId.forEach((monthKey, externalId) => {
@@ -23751,10 +23606,36 @@ app.put("/assignment-board-state", async (req, res) => {
           `payroll locked assignment cannot change ST: ${externalId}`
         );
       }
+      // Force every write-relevant field back to the existing DB value, not just
+      // position -- matching the full field set completed assignments protect via
+      // listCompletedAssignmentWriteDiffFields. Only forcing lineId/startIndex/endIndex
+      // left quantity/CT/color/label free to be silently overwritten for a
+      // payroll-locked assignment.
       const existingResponse = toAssignmentPlanResponse(existingPlan);
       return {
         ...assignment,
         lineId: String(existingPlan.lineId),
+        cardId: existingResponse.cardId,
+        workOrderId: existingResponse.workOrderId,
+        orderNo: existingResponse.orderNo,
+        customer: existingResponse.customer,
+        label: existingResponse.label,
+        colorId: existingResponse.colorId,
+        colorName: existingResponse.colorName,
+        previewUrl: existingResponse.previewUrl,
+        imageUrl: existingResponse.imageUrl,
+        thumbnailUrl: existingResponse.thumbnailUrl,
+        quantity: existingResponse.quantity,
+        assignmentQuantity: existingResponse.quantity,
+        originOrderId: existingResponse.originOrderId,
+        basis: existingResponse.basis,
+        ctTotalSeconds: existingResponse.ctTotalSeconds,
+        assignmentCtTotalSeconds: existingResponse.ctTotalSeconds,
+        assignmentCtSnapshot: existingResponse.assignmentCtSnapshot,
+        color: existingResponse.color,
+        stripeColor: existingResponse.stripeColor,
+        stTotalSeconds: existingResponse.stTotalSeconds,
+        assignmentStTotalSeconds: existingResponse.stTotalSeconds,
         startIndex: existingPlan.startIndex,
         endIndex: existingPlan.endIndex,
         startDateKey: existingResponse.startDateKey,

@@ -2,7 +2,38 @@
 
 ---
 
-## 2026-07-02 Assignment board JSON dual-write removal
+## 2026-07-02 Assignment board JSON dual-write removal — 리뷰 및 보완 (116bdd5)
+
+코덱스가 만든 `116bdd5`(AssignmentBoardState.cards/assignments JSON → AssignmentPlan/AssignmentCard 정식 전환)를 8각도 병렬 리뷰(정확성 3, 재사용/단순화/효율 3, altitude, AGENTS.md 규칙 준수) + 직접 코드 추적으로 검토. 8개 중 7개 각도 완료, 가장 넓은 범위였던 "제거된 동작 감사" 각도는 세션 한도로 미완료 — 추후 이 영역을 다시 건드릴 때 재검토 필요.
+
+### 확인 후 수정함
+- **급여 잠금 assignment 부분 보호 → 전체 필드 보호로 확장**: `PUT /assignment-board-state`의 payroll-lock 블록이 `lineId`/`startIndex`/`endIndex`/날짜·퍼센트 필드만 기존 DB 값으로 강제하고, `quantity`/CT/`assignmentCtSnapshot`/색상/라벨 등 나머지 ~14개 write 필드는 클라이언트가 보낸 값이 그대로 저장될 수 있었음. 완료 assignment 보호(`listCompletedAssignmentWriteDiffFields`, 전체 필드 diff 후 409)와 나란히 있으면서 보호 범위가 훨씬 좁았음. `existingResponse`(`toAssignmentPlanResponse`) 기준으로 전체 write 필드를 강제 복원하도록 확장.
+- **`loadLockedPayrollMonthSet`이 트랜잭션 안에서 `tx` 대신 `prisma`를 사용**: `PUT /assignment-board-state`의 저장 트랜잭션(`prisma.$transaction(async (tx) => ...)`) 안에서 급여 잠금 여부를 체크하면서 정작 그 조회는 트랜잭션 스냅샷 밖(`prisma`)에서 실행되고 있었음. `db` 파라미터 추가(기본값 `prisma`, 하위호환), 해당 호출부에 `tx` 전달.
+- **`loadAssignmentPlanRowsForBoardTx`가 스키마 drift 시 fallback 없이 하드 실패할 수 있었음**: 읽기 경로가 쓰는 `findAssignmentPlansWithSelectFallback`(컬럼 누락 시 구버전 select로 재시도)과 달리, 저장 트랜잭션 안에서만 쓰는 이 함수는 최신 select 하나만 시도하고 실패하면 그대로 예외를 던졌음. `findAssignmentPlansWithSelectFallback`에 `db` 파라미터를 추가해 `tx`를 받을 수 있게 하고, `loadAssignmentPlanRowsForBoardTx`가 그걸 위임하도록 변경 (중복 구현 제거 + 안전망 확보).
+- **`migration_fix.sql`의 백필 검증이 배포 로그의 `RAISE WARNING`뿐, 재실행 가능한 차단형 검증이 없었음**: `WorkOrderItem`/`Style.processes` 정리 때 만든 것과 같은 패턴으로 `backend/scripts/verify-assignment-board-state-backfill.js` 신규 작성(진단 전용, 백필은 안 함 — board-state JSON 항목을 안전하게 자동 매핑할 방법이 없음). `verify:assignment-board-state-backfill` npm script 등록.
+- **고아 코드 제거**: `applySentTimeoutEscalation`(이미 no-op 스텁, 마지막 호출부까지 이번 커밋에서 삭제됨), `mergeAssignmentPlanResponsesWithState`+내부 `applyPlanStateMerge`(JSON/relation 병합 로직, 더 이상 호출 안 됨), `buildWorkLogContextAssignmentDisplayKey`+`summarizeWorkLogContextDuplicateAssignments`(둘 다 호출부 없음), `loadAssignmentPlansForBoardState`의 미사용 `_rawAssignments` 파라미터(호출부 5곳도 같이 정리).
+
+### 확인했지만 버그 아님으로 판단 (재조사 불필요)
+- 조사 각도 하나가 "정상 저장 경로가 `assignmentCtSnapshot.schedule`(startDateKey/endDateKey)을 절대 채우지 않아서 `syncAssignmentSchedulesFromWorkRecordPlans`의 리플로우가 일반 라인에서 조용히 항상 비활성화된다"고 보고했으나, 프론트 코드를 직접 추적한 결과 사실이 아님을 확인함: `AssignBoard.jsx`의 `handleSaveBoard` → `applyCtSnapshotForPersistence` → `buildAssignmentCtSnapshotForSave` → `schedule: buildAssignmentSchedulePatch(assignment, baseDate)` 경로가 완료되지 않고 작업기록이 아직 연결 안 된 모든 assignment에 대해 매 저장마다 `startDateKey`/`endDateKey`를 올바르게 채워서 보냄. 백엔드 `normalizeAssignmentPlanPayload`/`resolveNormalizedAssignmentCtSnapshot`도 들어온 `schedule`을 그대로 보존함.
+- 남는 좁은 범위 리스크: `isCompleted`이거나 이미 작업기록이 연결된(`hasLinkedWorkRecords`) assignment는 저장 시 스냅샷을 다시 안 채우므로, 이 마이그레이션 이전에 이미 완료/연결된 상태였던 레거시 row 중 `assignmentCtSnapshot.schedule`이 한 번도 채워진 적 없는 경우에만 `startDateKey`/`endDateKey`가 null로 보일 수 있음. 이건 광범위한 리플로우 무력화가 아니라 좁은 레거시 데이터 갭.
+
+### 검토했지만 손대지 않음
+- `PUT /assignment-board-state` 저장 트랜잭션 안의 `for (const row of updatePlanRows) { await tx.assignmentPlan.update(...) }`가 순차 실행이라는 지적 — Prisma interactive transaction은 단일 커넥션이라 `Promise.all`로 바꿔도 DB 레벨 병렬 처리 이득이 불확실하고, 실행 순서 가정이 깨질 위험이 있어 보류.
+- 트랜잭션 시작 전 detach-guard용 `AssignmentPlan` 전체 조회 + 트랜잭션 안에서 다시 조회하는 "중복 fetch" 지적 — 트랜잭션을 열기 전에 저비용으로 먼저 검증하고 실패하면 트랜잭션 자체를 안 여는 의도적 설계로 보여 보류.
+
+### Verify
+- `npm --prefix backend run prisma:prepare-client`
+- `npm --prefix backend run build`
+- `npm --prefix frontend run build`
+- `node --check backend/scripts/verify-assignment-board-state-backfill.js`
+
+### Remaining
+- "제거된 동작 감사" 각도(리뷰 중 세션 한도로 미완료)를 다음에 이 영역을 다시 건드릴 때 재실행할 것.
+- `npm run verify:assignment-board-state-backfill`을 운영 DB 대상으로 실행해 0/0 확인 전까지 `AssignmentBoardState.cards`/`assignments` 컬럼 DROP 금지 (WorkOrderItem/Style.processes와 동일 원칙).
+
+---
+
+## 2026-07-02 Assignment board JSON dual-write removal (원본 코덱스 작업 기록)
 
 ### Done
 - `AssignmentCard` and `AssignmentPlan` are now the canonical board stores.
