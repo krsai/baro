@@ -2,6 +2,23 @@
 
 ---
 
+## 2026-07-02 Assignment board payroll-lock guard correction
+
+### Done
+- Fixed the payroll-lock guard bug found after reviewing `d4472e4`.
+- `PUT /assignment-board-state` now checks payroll lock status for both kept and removed assignment externalIds.
+- Payroll-locked assignments are no longer silently rewritten back to DB values. Any write-field change now fails with `409 payroll locked assignment cannot be modified`.
+- Existing `AssignmentPlan` rows used by the board-save guard are selected through `ASSIGNMENT_PLAN_SELECT_FOR_BOARD_SAVE`, so comparison fields are not accidentally missing.
+- Removed the schema-drift select fallback from the board-save transaction path. Board saves should hard fail when the current schema is not present.
+
+### Verify
+- Passed: `npm --prefix backend run prisma:prepare-client`
+- Passed: `npm --prefix backend run build`
+- Passed: `npm --prefix frontend run build`
+- Passed: `node --check backend/scripts/verify-assignment-board-state-backfill.js`
+
+---
+
 ## 2026-07-02 Assignment board JSON dual-write removal — 리뷰 및 보완 (116bdd5)
 
 코덱스가 만든 `116bdd5`(AssignmentBoardState.cards/assignments JSON → AssignmentPlan/AssignmentCard 정식 전환)를 8각도 병렬 리뷰(정확성 3, 재사용/단순화/효율 3, altitude, AGENTS.md 규칙 준수) + 직접 코드 추적으로 검토. 8개 중 7개 각도 완료, 가장 넓은 범위였던 "제거된 동작 감사" 각도는 세션 한도로 미완료 — 추후 이 영역을 다시 건드릴 때 재검토 필요.

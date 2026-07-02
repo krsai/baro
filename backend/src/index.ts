@@ -13179,6 +13179,10 @@ const ASSIGNMENT_PLAN_SELECT_WITH_CLOSE = {
   closeMode: true,
   closeBasis: true,
 } as const;
+const ASSIGNMENT_PLAN_SELECT_FOR_BOARD_SAVE = {
+  ...ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
+  productionCompletedAt: true,
+} as const;
 const ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION = {
   ...ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
   productionCompletedAt: true,
@@ -13240,19 +13244,17 @@ const findAssignmentPlansWithSelectFallback = async ({
   orderBy,
   selectAttempts,
   context,
-  db = prisma,
 }: {
   where: Prisma.AssignmentPlanWhereInput;
   orderBy: Prisma.AssignmentPlanOrderByWithRelationInput[];
   selectAttempts: ReadonlyArray<Record<string, true>>;
   context: string;
-  db?: any;
 }): Promise<any[]> => {
   let lastError: any = null;
   for (let index = 0; index < selectAttempts.length; index += 1) {
     const select = selectAttempts[index]!;
     try {
-      return await db.assignmentPlan.findMany({
+      return await prisma.assignmentPlan.findMany({
         where,
         orderBy,
         select: select as any,
@@ -13280,12 +13282,10 @@ const loadAssignmentPlansForBoardState = async (orgId: number) => {
   });
 };
 const loadAssignmentPlanRowsForBoardTx = async (orgId: number, db: any) =>
-  findAssignmentPlansWithSelectFallback({
+  db.assignmentPlan.findMany({
     where: { orgId },
     orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-    selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY, ASSIGNMENT_PLAN_SELECT_LEGACY],
-    context: "loadAssignmentPlanRowsForBoardTx",
-    db,
+    select: ASSIGNMENT_PLAN_SELECT_FOR_BOARD_SAVE as any,
   });
 const buildReadOnlyAssignmentBoardStateResponse = async (
   orgId: number,
@@ -23537,33 +23537,20 @@ app.put("/assignment-board-state", async (req, res) => {
     const nextAssignmentExternalIds = Array.from(nextAssignmentsByExternalId.keys()).map(
       (externalId) => String(externalId)
     );
+    const guardedAssignmentExternalIds = Array.from(
+      new Set([
+        ...nextAssignmentExternalIds,
+        ...Array.from(removedExternalIds.values()).map((externalId) => String(externalId)),
+      ])
+    );
     const existingPlanRowsForStTotals =
-      nextAssignmentExternalIds.length > 0
+      guardedAssignmentExternalIds.length > 0
         ? await tx.assignmentPlan.findMany({
             where: {
               orgId: organization.id,
-              externalId: { in: nextAssignmentExternalIds },
+              externalId: { in: guardedAssignmentExternalIds },
             },
-            select: {
-              id: true,
-              externalId: true,
-              lineId: true,
-              assignmentQuantity: true,
-              startIndex: true,
-              endIndex: true,
-              startDayOffsetPercent: true,
-              startDayPercent: true,
-              endDayPercent: true,
-              assignmentCtTotalSeconds: true,
-              assignmentCtSnapshot: true,
-              assignmentStTotalSeconds: true,
-              cardId: true,
-              originOrderId: true,
-              isCompleted: true,
-              completedAt: true,
-              closedAt: true,
-              productionCompletedAt: true,
-            } as any,
+            select: ASSIGNMENT_PLAN_SELECT_FOR_BOARD_SAVE as any,
           })
         : [];
     const existingPlanByExternalIdForStTotals = new Map(
@@ -23595,56 +23582,27 @@ app.put("/assignment-board-state", async (req, res) => {
         `payroll locked assignment cannot be removed: ${externalId}`
       );
     }
-    nextAssignmentsNormalized = nextAssignmentsNormalized.map((assignment) => {
+    for (const assignment of nextAssignmentsNormalized) {
       const externalId = resolveAssignmentExternalId(assignment);
-      if (!externalId) return assignment;
+      if (!externalId) continue;
       const existingPlan = payrollLockedPlanByExternalId.get(externalId);
-      if (!existingPlan) return assignment;
+      if (!existingPlan) continue;
       if (stDraftsByExternalId.has(externalId)) {
         throw createHttpError(
           409,
           `payroll locked assignment cannot change ST: ${externalId}`
         );
       }
-      // Force every write-relevant field back to the existing DB value, not just
-      // position -- matching the full field set completed assignments protect via
-      // listCompletedAssignmentWriteDiffFields. Only forcing lineId/startIndex/endIndex
-      // left quantity/CT/color/label free to be silently overwritten for a
-      // payroll-locked assignment.
-      const existingResponse = toAssignmentPlanResponse(existingPlan);
-      return {
-        ...assignment,
-        lineId: String(existingPlan.lineId),
-        cardId: existingResponse.cardId,
-        workOrderId: existingResponse.workOrderId,
-        orderNo: existingResponse.orderNo,
-        customer: existingResponse.customer,
-        label: existingResponse.label,
-        colorId: existingResponse.colorId,
-        colorName: existingResponse.colorName,
-        previewUrl: existingResponse.previewUrl,
-        imageUrl: existingResponse.imageUrl,
-        thumbnailUrl: existingResponse.thumbnailUrl,
-        quantity: existingResponse.quantity,
-        assignmentQuantity: existingResponse.quantity,
-        originOrderId: existingResponse.originOrderId,
-        basis: existingResponse.basis,
-        ctTotalSeconds: existingResponse.ctTotalSeconds,
-        assignmentCtTotalSeconds: existingResponse.ctTotalSeconds,
-        assignmentCtSnapshot: existingResponse.assignmentCtSnapshot,
-        color: existingResponse.color,
-        stripeColor: existingResponse.stripeColor,
-        stTotalSeconds: existingResponse.stTotalSeconds,
-        assignmentStTotalSeconds: existingResponse.stTotalSeconds,
-        startIndex: existingPlan.startIndex,
-        endIndex: existingPlan.endIndex,
-        startDateKey: existingResponse.startDateKey,
-        endDateKey: existingResponse.endDateKey,
-        startDayOffsetPercent: existingPlan.startDayOffsetPercent ?? null,
-        startDayPercent: existingPlan.startDayPercent ?? null,
-        endDayPercent: existingPlan.endDayPercent ?? null,
-      };
-    });
+      const changedFields = listCompletedAssignmentWriteDiffFields(existingPlan, assignment);
+      if (changedFields.length > 0) {
+        throw createHttpError(
+          409,
+          `payroll locked assignment cannot be modified: ${externalId} (${changedFields
+            .slice(0, 6)
+            .join(", ")})`
+        );
+      }
+    }
     nextAssignmentsByExternalId = buildAssignmentByExternalId(nextAssignmentsNormalized);
     const linkedWorkRecordPlanIds = await loadLinkedWorkRecordPlanIds({
       planIds: existingPlanRowsForStTotals.map((plan: any) => plan?.id),
