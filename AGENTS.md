@@ -32,6 +32,20 @@
 - 같은 의미는 같은 단어를 쓴다. 공정 단위는 `stSeconds`/`ctSeconds`, 배정카드 총합은 `stTotalSeconds`/`ctTotalSeconds`, AT 투입 노동 시간은 `laborInputSeconds`.
 - 신규 코드에서 `contractedSeconds`나 도메인 필드명 `totalSeconds`를 추가하지 않는다. `totalSeconds`는 화면 포맷팅 같은 일반 지역 변수에만 허용한다.
 
+### DB 설계 원칙 (강제)
+- 엔티티 간 관계는 JSON blob 안에 값을 복사해서 표현하지 않고 FK 컬럼 + Prisma relation으로 표현한다. "A가 B를 참조한다"는 항상 `aId Int` FK 컬럼과 `@relation`으로 만들고, 조회는 JOIN(Prisma `include`/`select`)으로 한다.
+- `Json?` 필드는 아래 두 용도로만 신규 사용을 허용한다.
+  1. 저장 시점 값을 의도적으로 얼려서 보존해야 하는 스냅샷 (`AssignmentPlan.assignmentCtSnapshot` 등).
+  2. 다른 테이블 PK를 참조하지 않는, 구조가 자주 바뀌는 순수 표시/메타 데이터 (`imageUrls`, `bom` 등).
+  - 다른 테이블의 PK를 담거나 이미 FK로 연결된 테이블과 같은 의미의 데이터를 다시 담는 JSON은 신규로 추가하지 않는다.
+- 신규 스키마 변경/리뷰 시 "이 값이 이미 FK로 연결된 다른 테이블에도 존재하는가"를 먼저 확인한다. 존재하면 JSON에 중복 저장하지 말고 relation을 통해 조회한다.
+- **현재 남아있는 JSON-관계형 이중 저장 (기술 부채. 정리 전까지는 두 곳을 항상 같이 갱신해야 하며, 하나만 갱신되면 조용히 어긋난다)**:
+  - `WorkOrder.items` (Json) ↔ `WorkOrderItem` (FK `workOrderId`) — 주문 생성 시 두 곳에 동시 저장한다(`backend/src/index.ts`의 `createOrReuseSharedOrder` 등). 읽기는 `itemsFromRelation ?? normalizeOrderItems(order?.items)` 형태로 relation을 우선하고 JSON을 fallback으로 쓴다.
+  - `Style.processes` (Json) ↔ `StyleProcess` (FK `styleId`)
+  - `WorkLog.records` (Json) ↔ `WorkRecord` (FK `workLogId`) — 단 `WorkRecord.lineId`는 이미 `Line`에 대한 실제 FK가 걸려 있다 (`schema.prisma`의 `"WorkRecordLine"` relation). `WorkLog.records` JSON 내부에 중복 저장된 `lineId`만 비정규화 상태로 남아있다.
+  - `AssignmentBoardState.cards`/`assignments` (Json) ↔ `AssignmentCard`, `AssignmentPlan` (FK) — `PUT /assignment-board-state`는 board JSON을 `$transaction` 안에서 커밋한 뒤, `AssignmentPlan` relation sync(`shouldSyncPlans` 블록)를 트랜잭션 **밖에서** 별도로 실행한다. 이 sync가 커밋 이후 실패하면 board JSON과 `AssignmentPlan` relation이 어긋난 채로 남는다. 새 코드에서 이 "JSON은 트랜잭션 안, relation sync는 트랜잭션 밖" 패턴을 따라 만들지 않는다.
+- 위 이중 저장을 정리할 때는 "JSON을 read source of truth에서 제외 → 코드 전체가 relation만 읽는지 검증 → JSON 컬럼 제거"의 단계적 순서를 따른다 (레거시 컬럼 제거 원칙과 동일).
+
 ### 정확 계산 원칙 (강제)
 - 핵심 지표(생산률, 실제 생산 ST, 진행률, 급여, AT 학습 입력)는 정확한 소스오브트루스가 연결될 때만 계산한다.
 - 계산에 필요한 FK/마스터/ST bucket/작업기록 연결이 없으면 임의 추정, 우회 공식, 보완 fallback으로 그럴듯한 값을 만들지 않는다.
@@ -250,7 +264,7 @@ AT(q) = a*q + b
 
 | # | 문제 | 위치 | 영향 |
 |---|---|---|---|
-| 1 | WorkLog에 lineId FK 없음, WorkRecord.lineId도 FK 없음 | `backend/prisma/schema.prisma` | 라인별 조인/정합성 분석 제약 |
+| 1 | `WorkLog.records` JSON 내부 `lineId`는 FK 없이 비정규화 저장됨 (해소됨: `WorkRecord.lineId`는 이미 `Line`에 대한 실제 FK다 — `"WorkRecordLine"` relation, `schema.prisma`) | `backend/prisma/schema.prisma` | WorkLog 레벨 라인 조인은 여전히 JSON 파싱 필요, WorkRecord 레벨은 정규 JOIN 가능 |
 | 2 | 재배치 로직이 프론트에 있음 | `frontend/src/pages/App/assign/AssignBoard.jsx` | 서버 이벤트에 자동 반응 불가 |
 | 3 | 소스오브트루스 이중화 | 여러 곳 | WorkLog.records vs WorkRecord, ctSnapshot 등 |
 | 4 | 실행 엔티티 부재 | — | 시작/중단/완료 이벤트 모델 없음 |
@@ -1353,4 +1367,22 @@ runtime 조회값:
 - 완료된 assignment를 다시 미완료로 되돌리는 "되돌리기" 기능은 이번 범위에 포함하지 않았다 (백엔드에 reopen 엔드포인트가 없고, 완료 assignment는 읽기 전용 원칙을 유지).
 - 구 레거시 메뉴 "생산 현황"(`menu.batchProgress`, 경로 `/batch-progress`, `frontend/src/pages/App/BatchProgress.jsx`)은 완전히 삭제했다. 이 메뉴는 이미 `disabled: true` + `/workspace` 리다이렉트 상태였고, 그 안의 `handleConfirmClose`가 production-complete를 호출하는 유일한 코드였는데 메뉴 비활성화로 사실상 도달 불가능했던 고아 코드였다.
 - `QcReview.jsx`의 "제작 완료 확정은 배치 진행 메뉴에서 처리합니다" 안내 문구는 "배정 화면 상세에서 처리합니다"로 갱신했다.
+
+### 37. 2026-07-02 구동 오류 위험 지점 점검 (미수정 — 향후 조치 필요)
+
+- 이 섹션은 코드 리뷰/조사만 수행한 결과이며 아직 수정하지 않았다. 다음에 이 영역을 건드릴 때 아래 항목부터 재확인한다.
+- 심각도 높음 (데이터 오염 / 급여·스케줄 오계산):
+  1. `backend/src/index.ts`의 `syncWorkRecordRefs`(6009-6019 부근) — `styleProcess.findMany`에 `orgId` 필터가 없다. 바로 위 `style.findMany`는 `orgId`로 스코프되어 있는데 이 조회만 빠져 있어, 다른 조직의 `styleProcessId`가 섞여 들어오면 타 테넌트 공정명/코드가 WorkRecord에 저장될 수 있다 (멀티테넌시 유출 가능성).
+  2. `completeAssignmentPlanProduction`(20899-21037)과 `PATCH /assignment-plans/:externalId/final-quantity`(21338-21386) — `isCompleted`를 읽어서 체크한 뒤 별도로 `update`하는데, update의 `where`에 `isCompleted: false` 재확인이 없다. 동시 요청(빠른 완료 vs 상세 드로어 완료, 섹션 36 참고) 시 완료된(읽기 전용이어야 할) plan이 다시 덮어써질 수 있다. §9의 "완료된 assignment는 읽기 전용" 원칙과 충돌한다.
+  3. `resolveWorkRecordProcessBucketKeyForAssignmentSchedule`(7147-7155 부근, `buildAssignmentPlanProgressRows`에서 사용) — `styleProcessId`가 없는 WorkRecord를 `processCode` 문자열로 bucket fallback한다. "정확 계산 원칙"이 금지한 processCode 재탐색이 진행률 계산 경로에 남아있다. 서로 다른 스타일의 동일 processCode가 진행률을 섞을 수 있다.
+  4. `frontend/src/pages/App/assign/AssignBoard.jsx`의 `isAssignmentSchedulerCompleted`(2030-2034)와 이를 쓰는 reflow 전체 — `isPayrollLocked`/`payrollLockMonth`를 전혀 참조하지 않는다. §29/§35가 못박은 "급여 잠금 카드는 anchor로 고정"이 프론트 reflow에는 구현돼 있지 않아, 잠금된 카드가 화면에서 재배치되고 그 좌표가 저장 요청에 실릴 수 있다.
+  5. `toAssignmentPlanWriteData`(`backend/src/index.ts:12837` 부근) — `updatedAt: item.updatedAt ?? new Date()`. 클라이언트가 이전 GET에서 받은 `updatedAt`을 그대로 되돌려보내면(보드 저장 payload 구조상 흔함) 매 저장마다 과거 타임스탬프가 유지되어 실질적으로 "마지막 수정 시각"이 갱신되지 않는다.
+  6. `PUT /assignment-board-state`의 `shouldSyncPlans` 블록(`backend/src/index.ts` 24385-24497 부근) — board JSON은 `$transaction` 안에서 커밋되고, 뒤이은 `AssignmentPlan` relation sync는 트랜잭션 밖에서 실행된다. 커밋 후 이 sync가 실패하면 board JSON과 `AssignmentPlan` relation이 어긋난 채 남는다 (DB 설계 원칙 섹션 참고).
+- 심각도 중간 (크래시 / 화면 오류):
+  7. `AssignBoard.jsx` 드롭 핸들러(6070-6076 부근) — `dayIndex = Number(dayIndexRaw)`를 `=== null`로만 가드하여 `NaN`을 통과시킨다. `startIndex`/`endIndex`에 `NaN`이 저장될 수 있다.
+  8. `AssignBoard.jsx`의 `getAssignmentStartKey`(2008-2011) — `startIndex`가 없는 카드 하나가 `NaN`을 반환해 6곳의 `.sort()` comparator를 오염시켜 라인 전체 카드 순서가 깨질 수 있다.
+  9. `AssignBoard.jsx`의 `getTodayDayIndex`(1864-1868) — 오늘 날짜가 현재 보이는 범위 밖이면 `0`을 반환한다. 미래 달만 보고 있을 때 reflow 기준점이 인덱스 0(과거)으로 잘못 설정될 수 있다.
+  10. `frontend/src/pages/App/assign/components/AssignBar.jsx`의 `getDurationDays`(9-17)와 `ScheduleTimeline.jsx`의 `assignLanes`(108-126) — 위 NaN 인덱스가 전파되면 각각 "NaNd" 배지 표시, 레인 스택 로직 무한/오작동으로 이어질 수 있다. `ScheduleTimeline`은 현재 운영 UI에서 미사용이지만 코드는 남아있다.
+  11. `backend/src/payroll/payroll.service.ts`(477-492 부근) — 급여 화면의 공정별 항목 breakdown을 `processCode || processName || "unknown"`으로 그룹핑한다. 급여 합계 자체는 그 전에 `ctSeconds × quantity`로 정확히 계산되므로 급여 금액 오류는 아니지만, 같은 코드를 쓰는 서로 다른 공정이 화면상 한 줄로 합쳐져 보일 수 있다.
+- 확인 결과 문제 없음으로 배제한 항목: JSON 배열 접근은 `ensureArray()`/`Array.isArray` 가드가 일관 적용됨, 진행률/보드 저장 핫패스는 `Map` 기반 조인이라 O(n·m) 루프 없음, 남아있는 dual-read fallback(`assignmentCtSnapshot ?? ctSnapshot`, `stBuckets ?? stValues` 등)은 이 문서가 "정리 대기 중"이라고 이미 명시한 것과 정확히 일치하고 snapshot ST 필드는 신규 write 경로에서 확인상 이미 제거됨(§18/§23과 일치), 프론트 reflow에서 이름 기반(코드/이름 매칭) join은 발견되지 않음.
 - 참고: `production-result`(생산 결과, `menu.productionResult`)는 이번 항목과 다른, 별도로 먼저 삭제된 플레이스홀더 메뉴다.
