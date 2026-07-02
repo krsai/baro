@@ -1,5 +1,37 @@
 # TODO
 
+## 2026-07-02 작업기록 엑셀 파일 등록(work-logs/import) 실패 원인 진단 + 오류 상세 Dialog 추가
+
+### 배경
+사용자가 작업 기록 화면의 "파일 등록"(엑셀 업로드 → 작업기록 일괄 생성) 기능이 최근 FK+join 매칭 강화 작업 때문에 깨진 게 아닌지 의심함(4월.xlsx/5월.xlsx, 총 587행). 에러 토스트가 이유를 정확히 안 보여줘서 원인을 알 수 없다고 함.
+
+### 진단 결과 — FK/코드 문제 아님, 원본 엑셀 데이터 9행의 실제 불일치였음
+- `POST /work-logs/import`(`backend/src/index.ts:21558`)의 실제 매칭 로직(직원코드→이름대조, 라인 해석, 주문+스타일+공정→AssignmentPlan 매칭)을 그대로 복제한 시뮬레이션 스크립트를 만들어 운영 Railway DB 실데이터에 대고 587행 전부를 검증함(스크립트는 세션 종료 시 삭제, 레포에 안 남음).
+- 결과: 578/587행(98.5%) 정상 매칭. FK 기반 매칭 로직 자체는 문제 없음.
+- 실패한 9행 중 8행은 `ASSIGNMENT_MATCH_FAILED` — 엑셀의 ORDER#가 실제 배정 카드와 다름:
+  - 스타일 AJ1527/AJ2102/AJ2016은 운영 DB에 order=L16-2 배정 카드로 등록돼 있는데 엑셀에는 order=L16-1로 적혀 있음(5월 26, 45, 46, 125, 126, 127, 128행).
+  - 반대로 스타일 AM01160은 L16-1 배정 카드인데 엑셀 5월 97행은 order=L16-2로 적혀 있음.
+- 나머지 1행(5월 118행)은 `MISSING_ORDER_NO` — ORDER# 셀이 비어 있음.
+- `/work-logs/import`는 전체-또는-전무(all-or-nothing) 검증이라, 587행 중 이 9행만 잘못돼도 전체가 거부되고 있었음 — 사용자가 "아예 안 된다"고 느낀 이유.
+- 결론: 엑셀 원본 9행을 사용자가 직접 수정하기로 함(코드 변경 아님). 부분 임포트(잘못된 행만 스킵하고 나머지는 자동 저장) 기능 추가는 이번엔 보류하고 필요시 별도 작업으로 진행하기로 함.
+
+### Done — 오류 상세 확인 UX 개선
+- `frontend/src/pages/App/work/workLogImport.js`: `extractWorkLogImportIssueRows(error, languageCode)` 신규 export. 기존 `formatWorkLogImportError`는 최대 5건까지만 압축해서 하나의 문자열로 합치던 반면, 이 함수는 전체 이슈를 `{ location, detail, code }` 배열로 반환.
+- `frontend/src/pages/App/work/WorkList.jsx`:
+  - 파일 등록 실패 시, 백엔드가 구조화된 `error.details.issues`를 내려주면(=데이터 검증 오류) 토스트는 "데이터 오류로 저장하지 못했습니다. 상세 내용을 확인해 주세요." 정도로 짧게만 띄우고, 동시에 전체 오류 목록을 표로 보여주는 MUI `Dialog`를 자동으로 연다(행 위치 | 오류 사유 2열, 스크롤 가능, 헤더에 총 건수 Chip 표시).
+  - `issues`가 없는 일반 오류(파일에 필수 열이 없음, 가져올 행 자체가 없음 등)는 기존처럼 `formatWorkLogImportError` 기반 토스트만 그대로 유지(다이얼로그 안 뜸).
+  - 기존 "작업 시작일 이전 날짜 포함" 체크(`findImportRowsBeforeOperationStart`)는 손대지 않음 — 이미 대표 행 1개+건수로 비교적 짧게 요약되는 별개의 검증이라 범위 밖으로 둠.
+
+### Verify
+- `npm --prefix frontend run build` 통과.
+- 실제 브라우저에서 다이얼로그 렌더링/스크롤은 확인 안 함 — 다음에 작업기록 화면에서 일부러 잘못된 엑셀을 올려서 다이얼로그가 뜨는지, 행별 사유가 올바르게 표시되는지 육안 확인 필요.
+
+### Remaining
+- 사용자가 4월.xlsx/5월.xlsx의 9행(L16-1↔L16-2 스타일 7건 + ORDER# 누락 1건)을 직접 수정한 뒤 재업로드 예정.
+- 부분 임포트(잘못된 행만 skip) 기능은 이번에 안 함 — 필요해지면 `/work-logs/import`의 단계별 `if (issues.length > 0) return respondWithIssues();` 전체-거부 구조를 "유효한 행/그룹만 계속 진행" 방식으로 리팩터링해야 하며, 급여 잠금·CT 스냅샷 검증·중복 검사 등 이후 단계와의 상호작용을 신중히 재검토해야 함(데이터 쓰기 경로라 리스크 있음).
+
+---
+
 ## 2026-07-02 운영 DB(Railway) 전체 테이블 NULL 전수조사 — 코드 미수정, 조사만 완료
 
 ### 배경

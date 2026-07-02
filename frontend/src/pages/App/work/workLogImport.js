@@ -620,6 +620,16 @@ export const importWorkLogRows = async ({ orgId, fileName, rows }) => {
   });
 };
 
+export const extractWorkLogImportIssueRows = (error, languageCode = 'ko') => {
+  const issues = Array.isArray(error?.details?.issues) ? error.details.issues : [];
+  return issues.map((issue, index) => ({
+    key: `${toText(issue?.sheetName)}-${toText(issue?.rowNumber)}-${index}`,
+    location: formatIssueLocation(issue, languageCode),
+    detail: translateImportIssueDetail(issue, languageCode),
+    code: toText(issue?.code),
+  }));
+};
+
 export const formatWorkLogImportError = (error, languageCode = 'ko') => {
   const baseMessage = toText(error?.message || error?.details?.error);
   const issues = Array.isArray(error?.details?.issues) ? error.details.issues : [];

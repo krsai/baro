@@ -2,6 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Box,
   Button,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   IconButton,
   InputLabel,
@@ -44,6 +49,7 @@ import {
 } from '../../../utils/factoryManagementStart';
 import { deleteWorkLog, loadWorkLogs } from './workLogStorage';
 import {
+  extractWorkLogImportIssueRows,
   formatWorkLogImportError,
   importWorkLogRows,
   parseWorkLogImportWorkbook,
@@ -61,6 +67,24 @@ const TEXT = {
     en: 'Failed to import Excel work logs.',
     vi: 'Khong the nhap ghi chep Excel.',
   },
+  importDataErrorToast: {
+    ko: '데이터 오류로 저장하지 못했습니다. 상세 내용을 확인해 주세요.',
+    en: 'Import failed due to data errors. Check the details.',
+    vi: 'Nhap that bai do loi du lieu. Vui long kiem tra chi tiet.',
+  },
+  importIssueDialogTitle: {
+    ko: '작업기록 파일 등록 오류',
+    en: 'Work-log import errors',
+    vi: 'Loi nhap tep ghi chep',
+  },
+  importIssueDialogDescription: {
+    ko: '아래 행을 엑셀 파일에서 수정한 뒤 다시 등록해 주세요.',
+    en: 'Fix the rows below in the Excel file, then import again.',
+    vi: 'Sua cac dong ben duoi trong tep Excel roi nhap lai.',
+  },
+  importIssueLocation: { ko: '위치', en: 'Location', vi: 'Vi tri' },
+  importIssueReason: { ko: '오류 사유', en: 'Reason', vi: 'Ly do' },
+  close: { ko: '닫기', en: 'Close', vi: 'Dong' },
   add: { ko: '기록 추가', en: 'Add Log', vi: 'Them ghi chep' },
   searchPlaceholder: {
     ko: '날짜, 공장, 라인 검색',
@@ -388,6 +412,8 @@ const WorkList = () => {
   const [deletingId, setDeletingId] = useState('');
   const [importing, setImporting] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [importIssueRows, setImportIssueRows] = useState([]);
+  const [importIssueDialogOpen, setImportIssueDialogOpen] = useState(false);
   const importInputRef = useRef(null);
 
   const selectedFactoryIdNumber = useMemo(() => {
@@ -654,11 +680,25 @@ const WorkList = () => {
           crossLineWarning?.rowCount ? 'warning' : 'success'
         );
       } catch (error) {
-        showNotification(
-          formatWorkLogImportError(error, languageCode) ||
-            resolveText(TEXT.importError, languageCode, 'Failed to import Excel work logs.'),
-          'error'
-        );
+        const issueRows = extractWorkLogImportIssueRows(error, languageCode);
+        if (issueRows.length > 0) {
+          setImportIssueRows(issueRows);
+          setImportIssueDialogOpen(true);
+          showNotification(
+            resolveText(
+              TEXT.importDataErrorToast,
+              languageCode,
+              'Import failed due to data errors. Check the details.'
+            ),
+            'error'
+          );
+        } else {
+          showNotification(
+            formatWorkLogImportError(error, languageCode) ||
+              resolveText(TEXT.importError, languageCode, 'Failed to import Excel work logs.'),
+            'error'
+          );
+        }
       } finally {
         setImporting(false);
         if (input) input.value = '';
@@ -1001,6 +1041,62 @@ const WorkList = () => {
           </Table>
         </TableContainer>
       </Paper>
+      <Dialog
+        open={importIssueDialogOpen}
+        onClose={() => setImportIssueDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          {resolveText(TEXT.importIssueDialogTitle, languageCode, 'Work-log import errors')}
+          {importIssueRows.length > 0 && (
+            <Chip
+              size="small"
+              color="error"
+              label={importIssueRows.length}
+              sx={{ ml: 1 }}
+            />
+          )}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {resolveText(
+              TEXT.importIssueDialogDescription,
+              languageCode,
+              'Fix the rows below in the Excel file, then import again.'
+            )}
+          </Typography>
+          <TableContainer sx={{ maxHeight: 420 }}>
+            <Table size="small" stickyHeader>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    {resolveText(TEXT.importIssueLocation, languageCode, 'Location')}
+                  </TableCell>
+                  <TableCell>
+                    {resolveText(TEXT.importIssueReason, languageCode, 'Reason')}
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {importIssueRows.map((issue) => (
+                  <TableRow key={issue.key}>
+                    <TableCell sx={{ whiteSpace: 'nowrap', verticalAlign: 'top' }}>
+                      {issue.location}
+                    </TableCell>
+                    <TableCell>{issue.detail}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImportIssueDialogOpen(false)}>
+            {resolveText(TEXT.close, languageCode, 'Close')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </AppPageContainer>
   );
 };
