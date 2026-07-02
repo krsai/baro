@@ -2006,8 +2006,10 @@ const planAssignmentDetailed = ({
 const planAssignment = (params) => planAssignmentDetailed(params).planned;
 
 const getAssignmentStartKey = (assignment) => {
-  const offset = (assignment.startDayOffsetPercent ?? 0) / 100;
-  return assignment.startIndex + offset;
+  const startIndex = toSignedInt(assignment?.startIndex, 0);
+  const offsetPercent = Number(assignment?.startDayOffsetPercent ?? 0);
+  const offset = Number.isFinite(offsetPercent) ? offsetPercent / 100 : 0;
+  return startIndex + offset;
 };
 
 const getTargetOnDay = (assignments, lineId, dayIndex) => {
@@ -2030,6 +2032,7 @@ const getAssignmentScheduledStTotalSeconds = (assignment, days, lineCapacityById
 const isAssignmentSchedulerCompleted = (assignment) => {
   if (!assignment || typeof assignment !== 'object') return false;
   if (assignment?.isCompleted) return true;
+  if (assignment?.isPayrollLocked || assignment?.payrollLockMonth) return true;
   return String(assignment?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED';
 };
 
@@ -6069,15 +6072,16 @@ const AssignBoard = () => {
       const dropId = overId;
       const [lineIdRaw, dayIndexRaw] = String(dropId).split('::');
       lineId = lineIdRaw;
-      dayIndex = Number(dayIndexRaw);
+      const parsedDayIndex = Number(dayIndexRaw);
+      dayIndex = Number.isFinite(parsedDayIndex) ? Math.max(0, Math.trunc(parsedDayIndex)) : null;
       targetOnDay = getTargetOnDay(assignments, lineId, dayIndex);
     }
 
-    if (!lineId || dayIndex === null) {
+    if (!lineId || !Number.isFinite(dayIndex)) {
       setActiveDrag(null);
       return;
     }
-    if (targetOnDay?.isCompleted) {
+    if (isAssignmentSchedulerCompleted(targetOnDay)) {
       setActiveDrag(null);
       return;
     }

@@ -2,6 +2,27 @@
 
 ---
 
+## 2026-07-02 Assignment board JSON dual-write removal
+
+### Done
+- `AssignmentCard` and `AssignmentPlan` are now the canonical board stores.
+- `GET /assignment-board-state`, `/assignment-board-view`, `/assignment-board-versions`, and `/assignment-plans` assemble board assignments from `AssignmentPlan` rows instead of `AssignmentBoardState.assignments`.
+- `PUT /assignment-board-state` updates cards/plans in one transaction and stores `AssignmentBoardState.cards/assignments` as `Prisma.JsonNull` metadata only.
+- Board assignment delete/reset and order unlock paths no longer update assignment JSON.
+- Payroll locked assignments preserve persisted coordinates during board save, and invalid `startIndex`/`endIndex` is rejected.
+- Added `migration_fix.sql` diagnostics for legacy JSON rows missing relation rows.
+
+### Verify
+- `npm --prefix backend run prisma:prepare-client`
+- `npm --prefix backend run build`
+- `npm --prefix frontend run build`
+
+### Remaining
+- After deployment, inspect migration warnings for legacy `AssignmentBoardState.cards/assignments` rows missing `AssignmentCard`/`AssignmentPlan`.
+- Physically drop `AssignmentBoardState.cards/assignments` only after relation backfill verification is clean.
+
+---
+
 ## 2026-07-02 WorkOrder/Style JSON 제거 2차 후속 수정 (f76b2cd 코드리뷰 반영)
 
 ### Done
@@ -67,7 +88,7 @@
   - `npm --prefix backend run verify:workorder-item-backfill` → 0이어야 함 (0이 아니면 `migration_fix.sql`이 아직 적용 안 된 것이거나 재확인 필요).
   - `npm --prefix backend run verify:style-process-backfill` → 0이 아니어도 실패 아님. 보고된 styleId들에 대해 `GET /styles?includeProcesses=1`을 한 번 호출하거나 스타일 편집 화면에서 재저장하면 자가치유 백필이 실행됨. 전부 0이 될 때까지 반복 확인.
 - 두 verify가 모두 0을 보고하면, `WorkOrder.items`/`Style.processes` 컬럼 물리 DROP은 **별도 후속 커밋**으로 진행한다 (이번 커밋에는 DROP 없음 — todo.md 2026-07-01 WorkRecord styleId 유실 사고 재발 방지).
-- `AssignmentBoardState.cards`/`assignments` JSON ↔ `AssignmentCard`/`AssignmentPlan` 이중 저장은 이번 범위에 포함하지 않음 (AGENTS.md DB 설계 원칙 표에 별도 항목으로 남아있음).
+- `AssignmentBoardState.cards`/`assignments` JSON ↔ `AssignmentCard`/`AssignmentPlan` 이중 저장은 2026-07-02 Assignment board JSON dual-write removal에서 relation canonical으로 전환함. 물리 DROP은 backfill 진단 확인 뒤 별도 진행.
 
 ---
 

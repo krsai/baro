@@ -894,7 +894,9 @@ model QuantitySettlementSnapshot {
 model AssignmentBoardState {
   id          Int      @id @default(autoincrement())
   orgId       Int      @unique
+  /// Deprecated board payload mirror. AssignmentCard is the canonical card store.
   cards       Json?
+  /// Deprecated board payload mirror. AssignmentPlan is the canonical assignment store.
   assignments Json?
   createdAt   DateTime @default(now())
   createdBy String   @default("system@baro.local")

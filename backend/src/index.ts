@@ -200,6 +200,18 @@ function assertGeneratedPrismaClientShape() {
   if (!hasField("AssignmentCard", "payload")) {
     staleSignals.push("AssignmentCard.payload missing");
   }
+  if (!hasField("AssignmentCard", "cardId")) {
+    staleSignals.push("AssignmentCard.cardId missing");
+  }
+  if (!hasField("AssignmentPlan", "externalId")) {
+    staleSignals.push("AssignmentPlan.externalId missing");
+  }
+  if (!hasField("AssignmentPlan", "startIndex")) {
+    staleSignals.push("AssignmentPlan.startIndex missing");
+  }
+  if (!hasField("AssignmentPlan", "endIndex")) {
+    staleSignals.push("AssignmentPlan.endIndex missing");
+  }
   if (!modelByName.has("OrganizationHoliday")) {
     staleSignals.push("OrganizationHoliday model missing");
   }
@@ -585,6 +597,16 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "StyleProcess", columnName: "timesPerPiece" },
   { tableName: "StyleProcessStandard", columnName: "bucketQuantity" },
   { tableName: "StyleProcessStandard", columnName: "bucketStSeconds" },
+  { tableName: "AssignmentCard", columnName: "cardId" },
+  { tableName: "AssignmentCard", columnName: "payload" },
+  { tableName: "AssignmentCard", columnName: "sortOrder" },
+  { tableName: "AssignmentPlan", columnName: "externalId" },
+  { tableName: "AssignmentPlan", columnName: "lineId" },
+  { tableName: "AssignmentPlan", columnName: "startIndex" },
+  { tableName: "AssignmentPlan", columnName: "endIndex" },
+  { tableName: "AssignmentPlan", columnName: "completedAt" },
+  { tableName: "AssignmentPlan", columnName: "closedAt" },
+  { tableName: "AssignmentPlan", columnName: "productionCompletedAt" },
   { tableName: "AssignmentPlan", columnName: "assignmentQuantity" },
   { tableName: "AssignmentPlan", columnName: "assignmentStTotalSeconds" },
   { tableName: "AssignmentPlan", columnName: "assignmentCtTotalSeconds" },
@@ -6612,10 +6634,9 @@ const syncOrderProgressStatusesForOrg = async ({
   const [resolvedCards, resolvedAssignments] = await Promise.all([
     shouldLoadCards ? loadAssignmentCardsForOrg({ orgId }) : Promise.resolve(cards),
     shouldLoadAssignments
-      ? prisma.assignmentBoardState.findUnique({
-          where: { orgId },
-          select: { assignments: true },
-        })
+      ? loadAssignmentPlansForBoardState(orgId, null).then((plans) => ({
+          assignments: ensureArray(plans).map((plan) => toAssignmentPlanResponse(plan)),
+        }))
       : Promise.resolve({ assignments }),
   ]);
   const coverageByOrderId = buildOrderProgressCoverageByOrderId({
@@ -7205,17 +7226,11 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
     return { updatedAssignmentCount: 0 };
   }
 
-  const [boardState, affectedPlans] = await Promise.all([
-    prisma.assignmentBoardState.findUnique({
-      where: { orgId },
-      select: { id: true, assignments: true },
-    }),
-    prisma.assignmentPlan.findMany({
+  const affectedPlans = await prisma.assignmentPlan.findMany({
       where: { orgId, id: { in: normalizedPlanIds } },
       select: { id: true, externalId: true, lineId: true },
-    }),
-  ]);
-  if (!boardState || affectedPlans.length === 0) {
+    });
+  if (affectedPlans.length === 0) {
     return { updatedAssignmentCount: 0 };
   }
 
@@ -7346,7 +7361,9 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
   }, new Map<string, any>());
   const targetLineIdSet = new Set(lineIds.map((lineId) => String(lineId)));
 
-  const stateAssignments = normalizeStateAssignments(boardState.assignments);
+  const stateAssignments = normalizeStateAssignments(
+    linePlans.map((plan) => toAssignmentPlanResponse(plan))
+  );
   const changedExternalIds = new Set<string>();
 
   const updateAssignmentRange = ({
@@ -7688,24 +7705,16 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
       Boolean(item)
     );
 
-  await prisma.$transaction(async (tx) => {
-    await tx.assignmentBoardState.update({
-      where: { id: boardState.id },
-      data: {
-        assignments: nextAssignments,
-      },
-    });
-    if (planUpdates.length > 0) {
-      await Promise.all(
-        planUpdates.map((row) =>
-          tx.assignmentPlan.update({
-            where: { id: row.id },
-            data: row.data,
-          })
-        )
-      );
-    }
-  });
+  if (planUpdates.length > 0) {
+    await prisma.$transaction(
+      planUpdates.map((row) =>
+        prisma.assignmentPlan.update({
+          where: { id: row.id },
+          data: row.data,
+        })
+      )
+    );
+  }
 
   return {
     updatedAssignmentCount: changedExternalIds.size,
@@ -9619,167 +9628,6 @@ const buildWorkLogContextResponse = async ({
     loadAssignmentPlansForWorkLogContext(),
   ]);
 
-  // Keep work-log style options consistent with scheduler cards.
-  // If board-state has assignments that are missing from AssignmentPlan,
-  // backfill minimal plan rows so work-log context can surface them.
-  if (factoryLineIds.length > 0) {
-    const lineIdSet = new Set(factoryLineIds);
-    const boardState = await prisma.assignmentBoardState.findUnique({
-      where: { orgId },
-      select: { assignments: true },
-    });
-    const activeExternalIds = resolveAssignmentPlanExternalIds(boardState?.assignments);
-    const hasBoardAssignments = Array.isArray(boardState?.assignments);
-    if (activeExternalIds.length > 0) {
-      const existingExternalIdSet = new Set(
-        ensureArray(assignmentPlans)
-          .map((plan) => resolveOptionalString(plan?.externalId, null))
-          .filter((value): value is string => Boolean(value))
-      );
-      const missingPlanSeedAssignments = normalizeStateAssignments(
-        boardState?.assignments
-      ).filter((assignment) => {
-        const externalId = resolveAssignmentExternalId(assignment);
-        if (!externalId || existingExternalIdSet.has(externalId)) return false;
-        if (Boolean(assignment?.isCompleted)) return false;
-        const lineIdNum = toPositiveIntOrNull(assignment?.lineId);
-        if (!lineIdNum || !lineIdSet.has(lineIdNum)) return false;
-        return true;
-      });
-      console.log(
-        `[work-log-context] plan sync check: org=${orgId} lineId=${line.id} boardIds=${activeExternalIds.length} dbIds=${existingExternalIdSet.size} missing=${missingPlanSeedAssignments.length} missingIds=${missingPlanSeedAssignments
-          .map((assignment) => resolveAssignmentExternalId(assignment))
-          .filter((value): value is string => Boolean(value))
-          .slice(0, 10)
-          .join(",")}`
-      );
-
-      if (missingPlanSeedAssignments.length > 0) {
-        const normalizedMissingRowsFallback = await syncAssignmentPlanWorkOrderRefs(
-          orgId,
-          normalizeAssignmentPlanPayload(missingPlanSeedAssignments, lineIdSet)
-        );
-        try {
-          const normalizedMissingRows = await syncAssignmentPlanColorRefs(
-            orgId,
-            normalizedMissingRowsFallback
-          );
-          if (normalizedMissingRows.length > 0) {
-            await prisma.assignmentPlan.createMany({
-              data: normalizedMissingRows.map((item: any) => ({
-                orgId,
-                externalId: item.externalId,
-                ...toAssignmentPlanWriteData(item),
-              })) as Prisma.AssignmentPlanCreateManyInput[],
-              skipDuplicates: true,
-            });
-            assignmentPlans = await loadAssignmentPlansForWorkLogContext();
-            console.warn(
-              `[work-log-context] orgId=${orgId} lineId=${line.id} backfilled ${normalizedMissingRows.length} assignmentPlan rows from board-state`
-            );
-          }
-        } catch (error) {
-          const errCode = (error as any)?.code || "unknown";
-          const message = error instanceof Error ? error.message : String(error);
-          console.warn(
-            `[work-log-context] orgId=${orgId} lineId=${line.id} assignmentPlan backfill FAILED code=${errCode}: ${String(
-              message
-            ).slice(0, 200)}`
-          );
-          if (normalizedMissingRowsFallback.length > 0) {
-            const existingAfterFailure = new Set(
-              ensureArray(assignmentPlans)
-                .map((plan) => resolveOptionalString(plan?.externalId, null))
-                .filter((value): value is string => Boolean(value))
-            );
-            const syntheticRows = normalizedMissingRowsFallback
-              .filter((item: any) => !existingAfterFailure.has(item.externalId))
-              .map((item: any) => ({
-                id: null,
-                externalId: item.externalId,
-                lineId: item.lineId,
-                workOrderId: toPositiveIntOrNull(item?.workOrderId),
-                orderNo: item.orderNo ?? null,
-                customer: item.customer ?? null,
-                label: item.label ?? null,
-                colorId: item.colorId ?? null,
-                colorName: item.colorName ?? null,
-                assignmentQuantity: resolveAssignmentQuantity(item),
-                assignmentCtTotalSeconds: resolveAssignmentCtTotalSeconds(item),
-                assignmentStTotalSeconds: resolveStateAssignmentStTotalSeconds(item),
-                assignmentCtSnapshot: item.assignmentCtSnapshot ?? item.ctSnapshot ?? null,
-                color: item.color ?? null,
-                startIndex: item.startIndex ?? 0,
-                endIndex: item.endIndex ?? 0,
-                isCompleted: false,
-                finalQuantity: null,
-                completedAt: null,
-              }));
-            if (syntheticRows.length > 0) {
-              assignmentPlans = [...assignmentPlans, ...syntheticRows];
-              console.warn(
-                `[work-log-context] orgId=${orgId} lineId=${line.id} using synthetic assignment fallback rows count=${syntheticRows.length}`
-              );
-            }
-          }
-        }
-      }
-    }
-
-    // Exclude stale DB rows that are no longer present in the current board state.
-    // Mirrors the externalId filter already applied in GET /assignment-plans.
-    const assignmentPlansBeforeBoardFilter = [...assignmentPlans];
-    if (hasBoardAssignments) {
-      if (activeExternalIds.length === 0) {
-        assignmentPlans = [];
-      } else {
-        const activeExternalIdSet = new Set(activeExternalIds);
-        assignmentPlans = assignmentPlans.filter((plan) => {
-          const externalId = resolveOptionalString(plan?.externalId, null);
-          if (!externalId) return false;
-          return activeExternalIdSet.has(externalId);
-        });
-      }
-    }
-
-    const removedStaleCount =
-      assignmentPlansBeforeBoardFilter.length - assignmentPlans.length;
-    const duplicateDisplayAssignments =
-      summarizeWorkLogContextDuplicateAssignments(assignmentPlans);
-    console.log(
-      `[buildWorkLogContextResponse] board-sync orgId=${orgId} lineId=${line.id} hasBoardAssignments=${hasBoardAssignments} activeExternalIds=${activeExternalIds.length} assignmentPlansBefore=${assignmentPlansBeforeBoardFilter.length} assignmentPlansAfter=${assignmentPlans.length} removedStale=${removedStaleCount}`
-    );
-    if (removedStaleCount > 0) {
-      const activeExternalIdSet = new Set(activeExternalIds);
-      const removedPlanSummaries = assignmentPlansBeforeBoardFilter
-        .filter((plan) => {
-          const externalId = resolveOptionalString(plan?.externalId, null);
-          if (!externalId) return false;
-          return !activeExternalIdSet.has(externalId);
-        })
-        .slice(0, 10)
-        .map((plan) => ({
-          externalId: resolveOptionalString(plan?.externalId, null),
-          orderNo: resolveOptionalString(plan?.orderNo, null),
-          label: resolveOptionalString(plan?.label, null),
-          quantity: resolveAssignmentQuantity(plan),
-          lineId: toPositiveIntOrNull(plan?.lineId),
-        }));
-      console.log(
-        `[buildWorkLogContextResponse] removed-stale-plans orgId=${orgId} lineId=${line.id} sample=${JSON.stringify(
-          removedPlanSummaries
-        )}`
-      );
-    }
-    if (duplicateDisplayAssignments.length > 0) {
-      console.log(
-        `[buildWorkLogContextResponse] duplicate-display-assignments orgId=${orgId} lineId=${line.id} sample=${JSON.stringify(
-          duplicateDisplayAssignments
-        )}`
-      );
-    }
-  }
-
   const filterDebugStages: Array<{
     stage: string;
     total: number;
@@ -11580,39 +11428,12 @@ const refreshUnlinkedAssignmentPlanSnapshotsForOrg = async ({
   cards: any[];
   styles: any[];
 }) => {
-  const state = await prisma.assignmentBoardState.findUnique({
+  const plans = await prisma.assignmentPlan.findMany({
     where: { orgId },
-    select: { id: true, assignments: true },
+    select: ASSIGNMENT_PLAN_SELECT_WITH_CLOSE as any,
   });
-  if (!state || !Array.isArray(state.assignments)) return;
-
-  const assignments = normalizeStateAssignments(state.assignments);
-  const activeExternalIds = assignments
-    .map((assignment) => resolveAssignmentExternalId(assignment))
-    .filter((value): value is string => Boolean(value));
-  if (activeExternalIds.length === 0) return;
-
-  const [plans] = await Promise.all([
-    prisma.assignmentPlan.findMany({
-      where: { orgId, externalId: { in: activeExternalIds } },
-      select: {
-        id: true,
-        externalId: true,
-        lineId: true,
-        cardId: true,
-        assignmentQuantity: true,
-        assignmentStTotalSeconds: true,
-        assignmentCtTotalSeconds: true,
-        assignmentCtSnapshot: true,
-        startIndex: true,
-        endIndex: true,
-        startDayOffsetPercent: true,
-        startDayPercent: true,
-        endDayPercent: true,
-        isCompleted: true,
-      } as any,
-    }),
-  ]);
+  if (plans.length === 0) return;
+  const assignments = plans.map((plan: any) => toAssignmentPlanResponse(plan));
   const linkedPlanIds = await loadLinkedWorkRecordPlanIds({
     planIds: plans.map((plan: any) => plan?.id),
   });
@@ -11635,7 +11456,6 @@ const refreshUnlinkedAssignmentPlanSnapshotsForOrg = async ({
 
   const updatedAt = new Date().toISOString();
   const updatedBy = "SYSTEM:STYLE_SYNC";
-  let boardChanged = false;
   const refreshedAssignments = assignments.map((assignment) => {
     const externalId = resolveAssignmentExternalId(assignment);
     const plan = externalId ? planByExternalId.get(externalId) ?? null : null;
@@ -11650,6 +11470,8 @@ const refreshUnlinkedAssignmentPlanSnapshotsForOrg = async ({
     const styleId = resolveOptionalString(card?.styleId, null);
     const style = styleId ? styleByStyleId.get(styleId) ?? null : null;
     if (!style) return assignment;
+    const planCtTotalSeconds = resolveAssignmentCtTotalSeconds(plan);
+    const planStTotalSeconds = resolvePersistedAssignmentPlanStTotalSeconds(plan);
 
     const mergedAssignment = {
       ...assignment,
@@ -11658,11 +11480,11 @@ const refreshUnlinkedAssignmentPlanSnapshotsForOrg = async ({
             assignmentCtSnapshot:
               assignment?.assignmentCtSnapshot ?? plan?.assignmentCtSnapshot,
             assignmentCtTotalSeconds:
-              assignment?.assignmentCtTotalSeconds ?? plan?.assignmentCtTotalSeconds,
-            ctTotalSeconds: assignment?.ctTotalSeconds ?? plan?.assignmentCtTotalSeconds,
+              (assignment as any)?.assignmentCtTotalSeconds ?? planCtTotalSeconds,
+            ctTotalSeconds: assignment?.ctTotalSeconds ?? planCtTotalSeconds,
             assignmentStTotalSeconds:
-              assignment?.assignmentStTotalSeconds ?? plan?.assignmentStTotalSeconds,
-            stTotalSeconds: assignment?.stTotalSeconds ?? plan?.assignmentStTotalSeconds,
+              (assignment as any)?.assignmentStTotalSeconds ?? planStTotalSeconds,
+            stTotalSeconds: assignment?.stTotalSeconds ?? planStTotalSeconds,
           }
         : {}),
     };
@@ -11673,9 +11495,6 @@ const refreshUnlinkedAssignmentPlanSnapshotsForOrg = async ({
       updatedAt,
       updatedBy,
     });
-    if (!isDeepEqualByStableJson(normalizeStateAssignmentItem(assignment), normalizeStateAssignmentItem(refreshed))) {
-      boardChanged = true;
-    }
     return refreshed;
   });
 
@@ -11713,15 +11532,9 @@ const refreshUnlinkedAssignmentPlanSnapshotsForOrg = async ({
     })
     .filter((value): value is { id: number; data: any } => Boolean(value));
 
-  if (!boardChanged && planUpdates.length === 0) return;
+  if (planUpdates.length === 0) return;
 
   await prisma.$transaction(async (tx) => {
-    if (boardChanged) {
-      await tx.assignmentBoardState.update({
-        where: { id: state.id },
-        data: { assignments: refreshedAssignments },
-      });
-    }
     for (const update of planUpdates) {
       await tx.assignmentPlan.update({
         where: { id: update.id },
@@ -11811,20 +11624,15 @@ const loadOrderAssignmentReleaseSummary = async ({
   );
   const rows = await Promise.all(
     normalizedOrgIds.map(async (orgId) => {
-      const [state, planCount] = await Promise.all([
-        prisma.assignmentBoardState.findUnique({
-          where: { orgId },
-          select: { assignments: true },
-        }),
-        prisma.assignmentPlan.count({
-          where: {
-            orgId,
-            OR: planWhereOr,
-          },
-        }),
-      ]);
-      const matchingAssignments = normalizeStateAssignments(state?.assignments).filter(
-        (item) => resolveOrderIdFromAssignmentBoardItem(item) === normalizedOrderId
+      const matchingPlanRows = await prisma.assignmentPlan.findMany({
+        where: {
+          orgId,
+          OR: planWhereOr,
+        },
+        select: ASSIGNMENT_PLAN_SELECT_CORE as any,
+      });
+      const matchingAssignments = matchingPlanRows.map((plan) =>
+        toAssignmentPlanResponse(plan)
       );
       let pastStartedCount = 0;
       let earliestPastStartDate: string | null = null;
@@ -11839,7 +11647,7 @@ const loadOrderAssignmentReleaseSummary = async ({
       return {
         orgId,
         assignmentCount: matchingAssignments.length,
-        planCount: toNonNegativeInt(planCount, 0),
+        planCount: matchingPlanRows.length,
         pastStartedCount,
         earliestPastStartDate,
       };
@@ -11919,44 +11727,10 @@ const releaseOrderAssignmentsForUnlock = async ({
 
   for (const orgId of normalizedOrgIds) {
     const releasedForOrg = await prisma.$transaction(async (tx) => {
-      const state = await tx.assignmentBoardState.findUnique({
-        where: { orgId },
-        select: { id: true, assignments: true },
-      });
-      const currentAssignments = normalizeStateAssignments(state?.assignments);
-      const releasedAssignments = currentAssignments.filter(
-        (item) => resolveOrderIdFromAssignmentBoardItem(item) === normalizedOrderId
-      );
-      const releasedAssignmentCountForOrg = releasedAssignments.length;
-      const nextAssignments =
-        releasedAssignmentCountForOrg > 0
-          ? currentAssignments.filter(
-              (item) => resolveOrderIdFromAssignmentBoardItem(item) !== normalizedOrderId
-            )
-          : currentAssignments;
-
-      if (state && releasedAssignmentCountForOrg > 0) {
-        await tx.assignmentBoardState.update({
-          where: { id: state.id },
-          data: { assignments: nextAssignments },
-        });
-      }
-
-      const releasedExternalIds = Array.from(
-        new Set(
-          releasedAssignments
-            .map((item) => resolveAssignmentExternalId(item))
-            .filter((value): value is string => Boolean(value))
-        )
-      );
-      const lookupWhereOr: Prisma.AssignmentPlanWhereInput[] = [...planWhereOr];
-      if (releasedExternalIds.length > 0) {
-        lookupWhereOr.push({ externalId: { in: releasedExternalIds } });
-      }
       const planRows = await tx.assignmentPlan.findMany({
         where: {
           orgId,
-          OR: lookupWhereOr,
+          OR: planWhereOr,
         },
         select: { id: true },
       });
@@ -11965,7 +11739,7 @@ const releaseOrderAssignmentsForUnlock = async ({
         db: tx,
       });
       return {
-        releasedAssignmentCountForOrg,
+        releasedAssignmentCountForOrg: planRows.length,
         releasedPlanCountForOrg: releaseResult.deletedCount,
         detachedWorkRecordCountForOrg: releaseResult.detachedCount,
       };
@@ -12472,6 +12246,10 @@ const repairAssignmentPlanDisplayRows = async ({
 };
 const toAssignmentPlanResponse = (plan: any) => {
   const assignmentCtSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
+  const snapshotSchedule =
+    assignmentCtSnapshot && typeof assignmentCtSnapshot === "object"
+      ? (assignmentCtSnapshot as any).schedule
+      : null;
   const ctTotalSeconds = resolveAssignmentCtTotalSeconds({
     ...plan,
     assignmentCtSnapshot,
@@ -12512,6 +12290,8 @@ const toAssignmentPlanResponse = (plan: any) => {
     stTotalSeconds: resolvePersistedAssignmentPlanStTotalSeconds(plan),
     startIndex: plan.startIndex,
     endIndex: plan.endIndex,
+    startDateKey: normalizeDateKey(snapshotSchedule?.startDateKey),
+    endDateKey: normalizeDateKey(snapshotSchedule?.endDateKey),
     startDayOffsetPercent: plan.startDayOffsetPercent ?? null,
     startDayPercent: plan.startDayPercent ?? null,
     endDayPercent: plan.endDayPercent ?? null,
@@ -12523,9 +12303,36 @@ const toAssignmentPlanResponse = (plan: any) => {
     closedBy: resolveOptionalString(plan?.closedBy, null),
     closeMode,
     closeBasis,
+    isPayrollLocked: Boolean(plan?.isPayrollLocked),
+    payrollLockMonth: resolveOptionalString(plan?.payrollLockMonth, null),
     createdAt: plan.createdAt,
     updatedAt: plan.updatedAt,
   };
+};
+const annotateAssignmentPlanRowsWithPayrollLocks = async (
+  orgId: number,
+  plans: any[]
+) => {
+  const monthByExternalId = new Map<string, string>();
+  ensureArray(plans).forEach((plan) => {
+    const externalId = resolveOptionalString(plan?.externalId, null);
+    const monthKey = resolveAssignmentPlanPayrollLockMonth(plan);
+    if (externalId && monthKey) monthByExternalId.set(externalId, monthKey);
+  });
+  const lockedMonthSet = await loadLockedPayrollMonthSet(
+    orgId,
+    Array.from(monthByExternalId.values())
+  );
+  return ensureArray(plans).map((plan) => {
+    const externalId = resolveOptionalString(plan?.externalId, null);
+    const payrollLockMonth = externalId ? monthByExternalId.get(externalId) || null : null;
+    const isPayrollLocked = payrollLockMonth ? lockedMonthSet.has(payrollLockMonth) : false;
+    return {
+      ...plan,
+      payrollLockMonth,
+      isPayrollLocked,
+    };
+  });
 };
 const resolveAssignmentPlanOrderLinkCandidateOrderId = (item: any): string | null =>
   extractOrderIdFromAssignmentCardText(item?.cardId) ??
@@ -12735,6 +12542,19 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
       acc.rows.push(item);
       return acc;
     }, { seen: new Set<string>(), rows: [] as any[] }).rows;
+const assertFiniteAssignmentScheduleIndices = (items: any[]) => {
+  ensureArray(items).forEach((item, index) => {
+    const externalId = resolveAssignmentExternalId(item) ?? `#${index + 1}`;
+    const startIndex = Number(item?.startIndex);
+    const endIndex = Number(item?.endIndex);
+    if (!Number.isFinite(startIndex)) {
+      throw createHttpError(400, `assignment ${externalId} has invalid startIndex`);
+    }
+    if (!Number.isFinite(endIndex)) {
+      throw createHttpError(400, `assignment ${externalId} has invalid endIndex`);
+    }
+  });
+};
 const resolveAssignmentSnapshotProcessCodeCandidates = (process: any): string[] => {
   const bucket = new Set<string>();
   const pushCode = (value: any) => {
@@ -12754,7 +12574,11 @@ const resolveAssignmentSnapshotProcessCodeCandidates = (process: any): string[] 
   }
   return Array.from(bucket.values());
 };
-const syncAssignmentPlanColorRefs = async (orgId: number, items: any[]) => {
+const syncAssignmentPlanColorRefs = async (
+  orgId: number,
+  items: any[],
+  db: any = prisma
+) => {
   const normalizedItems = ensureArray(items).filter(
     (item) => item && typeof item === "object"
   );
@@ -12774,7 +12598,7 @@ const syncAssignmentPlanColorRefs = async (orgId: number, items: any[]) => {
     return normalizedItems;
   }
 
-  const colors = await prisma.attrColor.findMany({
+  const colors: any[] = await db.attrColor.findMany({
     where: {
       OR: [
         ...(colorIds.length > 0 ? [{ id: { in: colorIds } }] : []),
@@ -12783,11 +12607,11 @@ const syncAssignmentPlanColorRefs = async (orgId: number, items: any[]) => {
     },
     select: { id: true, code: true, name: true },
   });
-  const colorById = new Map(colors.map((color) => [color.id, color]));
+  const colorById = new Map(colors.map((color: any) => [color.id, color]));
   const colorByName = new Map(
     colors
-      .filter((color) => color.name)
-      .map((color) => [normalizeComparableText(color.name), color])
+      .filter((color: any) => color.name)
+      .map((color: any) => [normalizeComparableText(color.name), color])
   );
 
   return normalizedItems.map((item) => {
@@ -12839,7 +12663,7 @@ const toAssignmentPlanWriteData = (item: any) => {
     startDayOffsetPercent: item.startDayOffsetPercent ?? null,
     startDayPercent: item.startDayPercent ?? null,
     endDayPercent: item.endDayPercent ?? null,
-    updatedAt: item.updatedAt ?? new Date(),
+    updatedAt: new Date(),
   };
 };
 const COMPLETED_ASSIGNMENT_PLAN_WRITE_SELECT = {
@@ -13449,14 +13273,12 @@ const toAssignmentBoardStateResponse = (
   assignmentPlans: any[] | null = null,
   cards: any[] | null = null
 ) => {
-  const stateAssignments = normalizeStateAssignments(state?.assignments);
-  const mergedAssignments =
-    Array.isArray(assignmentPlans) && assignmentPlans.length > 0
-      ? mergeAssignmentPlanResponsesWithState(assignmentPlans, stateAssignments)
-      : stateAssignments;
+  const planAssignments = Array.isArray(assignmentPlans)
+    ? assignmentPlans.map((plan) => toAssignmentPlanResponse(plan))
+    : [];
   return {
-    cards: Array.isArray(cards) ? cards : ensureArray(state?.cards),
-    assignments: normalizeStateAssignments(mergedAssignments),
+    cards: Array.isArray(cards) ? cards : [],
+    assignments: normalizeStateAssignments(planAssignments),
     createdAt: state?.createdAt ?? null,
     updatedAt: state?.updatedAt ?? null,
     serverNow: new Date().toISOString(),
@@ -13595,23 +13417,21 @@ const findAssignmentPlansWithSelectFallback = async ({
 };
 const loadAssignmentPlansForBoardState = async (
   orgId: number,
-  rawAssignments: any
+  _rawAssignments: any
 ) => {
-  const activeExternalIds = resolveAssignmentPlanExternalIds(rawAssignments);
-  const hasBoardAssignments = Array.isArray(rawAssignments);
-  if (hasBoardAssignments && activeExternalIds.length === 0) {
-    return [];
-  }
   return findAssignmentPlansWithSelectFallback({
-    where: {
-      orgId,
-      ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
-    },
+    where: { orgId },
     orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
     selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY, ASSIGNMENT_PLAN_SELECT_LEGACY],
     context: "loadAssignmentPlansForBoardState",
   });
 };
+const loadAssignmentPlanRowsForBoardTx = async (orgId: number, db: any) =>
+  db.assignmentPlan.findMany({
+    where: { orgId },
+    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+    select: ASSIGNMENT_PLAN_SELECT_WITH_CLOSE as any,
+  });
 const buildReadOnlyAssignmentBoardStateResponse = async (
   orgId: number,
   state: any,
@@ -13622,17 +13442,12 @@ const buildReadOnlyAssignmentBoardStateResponse = async (
 ) => {
   const includeCards = options.includeCards !== false;
   const includePlans = options.includePlans !== false;
-  const escalatedAssignments = state
-    ? applySentTimeoutEscalation(state.assignments).assignments
-    : [];
-  const nextState = state
-    ? {
-        ...state,
-        assignments: escalatedAssignments,
-      }
-    : null;
+  const nextState = state ?? null;
   const assignmentPlans = includePlans
-    ? await loadAssignmentPlansForBoardState(orgId, nextState?.assignments)
+    ? await annotateAssignmentPlanRowsWithPayrollLocks(
+        orgId,
+        await loadAssignmentPlansForBoardState(orgId, null)
+      )
     : null;
   const cards = includeCards ? await loadAssignmentCardsForOrg({ orgId }) : [];
   return toAssignmentBoardStateResponse(nextState, assignmentPlans, cards);
@@ -17644,190 +17459,26 @@ app.get("/assignment-plans", async (req, res) => {
     }
   }
 
-  let boardState = await prisma.assignmentBoardState.findUnique({
-    where: { orgId: organization.id },
-    select: { id: true, assignments: true },
-  });
   let boardCards = await loadAssignmentCardsForOrg({ orgId: organization.id });
-  let assignmentDisplayRefs: AssignmentDisplayReferenceMaps | null = null;
-  if (boardState) {
-    const repairedBoardState = await safelyRepairAssignmentBoardDisplayState({
-      orgId: organization.id,
-      cards: boardCards,
-      assignments: boardState.assignments,
-      context: "GET /assignment-plans",
-    });
-    assignmentDisplayRefs = repairedBoardState.refs;
-    if (repairedBoardState.changed) {
-      const nextCards = repairedBoardState.cards;
-      const nextAssignments = repairedBoardState.assignments;
-      const updatedBoardState = await prisma.$transaction(async (tx) => {
-        await syncAssignmentCardsForOrg({
-          orgId: organization.id,
-          cards: nextCards,
-          db: tx,
-        });
-        return tx.assignmentBoardState.update({
-          where: { id: boardState!.id },
-          data: {
-            assignments: nextAssignments,
-          },
-          select: { id: true, assignments: true },
-        });
-      });
-      boardState = updatedBoardState;
-      boardCards = nextCards;
-    } else {
-      boardState = {
-        ...boardState,
-        assignments: repairedBoardState.assignments,
-      };
-      boardCards = repairedBoardState.cards;
-    }
-  }
-  const activeExternalIds = resolveAssignmentPlanExternalIds(boardState?.assignments);
-  const hasBoardAssignments = Array.isArray(boardState?.assignments);
-  if (hasBoardAssignments && activeExternalIds.length === 0) {
-    return res.json([]);
-  }
-
   const assignmentPlanLineFilter: Prisma.AssignmentPlanWhereInput["lineId"] =
     lineIds.length === 1 ? lineIds[0]! : { in: lineIds };
   let plans = await findAssignmentPlansWithSelectFallback({
     where: {
       orgId: organization.id,
       lineId: assignmentPlanLineFilter,
-      ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
     },
     orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
     selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY, ASSIGNMENT_PLAN_SELECT_LEGACY],
     context: "GET /assignment-plans",
   });
-  if (hasBoardAssignments && activeExternalIds.length > 0) {
-    const existingExternalIdSet = new Set(
-      ensureArray(plans)
-        .map((plan) => resolveOptionalString(plan?.externalId, null))
-        .filter((value): value is string => Boolean(value))
-    );
-    const lineIdSet = new Set(lineIds);
-    const missingPlanSeedAssignments = normalizeStateAssignments(
-      boardState?.assignments
-    ).filter((assignment) => {
-      const externalId = resolveAssignmentExternalId(assignment);
-      if (!externalId || existingExternalIdSet.has(externalId)) return false;
-      const lineIdNum = toPositiveIntOrNull(assignment?.lineId);
-      if (!lineIdNum || !lineIdSet.has(lineIdNum)) return false;
-      return true;
-    });
-    console.log(
-      `[assignment-plans] board/db sync check: org=${organization.id} boardIds=${activeExternalIds.length} dbIds=${existingExternalIdSet.size} missing=${missingPlanSeedAssignments.length} missingIds=${missingPlanSeedAssignments
-        .map((assignment) => resolveAssignmentExternalId(assignment))
-        .filter((value): value is string => Boolean(value))
-        .slice(0, 10)
-        .join(",")}`
-    );
-    if (missingPlanSeedAssignments.length > 0) {
-      const normalizedMissingRowsFallback = await syncAssignmentPlanWorkOrderRefs(
-        organization.id,
-        normalizeAssignmentPlanPayload(missingPlanSeedAssignments, lineIdSet)
-      );
-      try {
-        const normalizedMissingRows = await syncAssignmentPlanColorRefs(
-          organization.id,
-          normalizedMissingRowsFallback
-        );
-        if (normalizedMissingRows.length > 0) {
-          await prisma.assignmentPlan.createMany({
-            data: normalizedMissingRows.map((item: any) => ({
-              orgId: organization.id,
-              externalId: item.externalId,
-              ...toAssignmentPlanWriteData(item),
-            })) as Prisma.AssignmentPlanCreateManyInput[],
-            skipDuplicates: true,
-          });
-          plans = await findAssignmentPlansWithSelectFallback({
-            where: {
-              orgId: organization.id,
-              lineId: assignmentPlanLineFilter,
-              ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
-            },
-            orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-            selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY, ASSIGNMENT_PLAN_SELECT_LEGACY],
-            context: "GET /assignment-plans",
-          });
-        }
-      } catch (error) {
-        const errCode = (error as any)?.code || "unknown";
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn(
-          `[assignment-plans] backfill FAILED: org=${organization.id} code=${errCode} message=${String(
-            message
-          ).slice(0, 200)}`
-        );
-        if (normalizedMissingRowsFallback.length > 0) {
-          const existingAfterFailure = new Set(
-            ensureArray(plans)
-              .map((plan) => resolveOptionalString(plan?.externalId, null))
-              .filter((value): value is string => Boolean(value))
-          );
-          const syntheticRows = normalizedMissingRowsFallback
-            .filter((item: any) => !existingAfterFailure.has(item.externalId))
-            .map((item: any) => ({
-              id: null,
-              externalId: item.externalId,
-              lineId: item.lineId,
-              cardId: item.cardId ?? null,
-              workOrderId: toPositiveIntOrNull(item?.workOrderId),
-              orderNo: item.orderNo ?? null,
-              customer: item.customer ?? null,
-              label: item.label ?? null,
-              colorId: item.colorId ?? null,
-              colorName: item.colorName ?? null,
-              previewUrl: item.previewUrl ?? null,
-              imageUrl: item.imageUrl ?? null,
-              thumbnailUrl: item.thumbnailUrl ?? null,
-              quantity: item.quantity ?? null,
-              originOrderId: item.originOrderId ?? null,
-              basis: item.basis ?? null,
-              ctTotalSeconds: item.ctTotalSeconds ?? null,
-              assignmentCtSnapshot: item.assignmentCtSnapshot ?? item.ctSnapshot ?? null,
-              color: item.color ?? null,
-              stripeColor: item.stripeColor ?? null,
-              stTotalSeconds: item.stTotalSeconds ?? null,
-              startIndex: item.startIndex ?? 0,
-              endIndex: item.endIndex ?? 0,
-              startDayOffsetPercent: item.startDayOffsetPercent ?? null,
-              startDayPercent: item.startDayPercent ?? null,
-              endDayPercent: item.endDayPercent ?? null,
-              isCompleted: false,
-              finalQuantity: null,
-              completedAt: null,
-              closedQty: null,
-              closedAt: null,
-              closedBy: null,
-              closeMode: null,
-              closeBasis: null,
-              createdAt: null,
-              updatedAt: new Date(),
-            }));
-          if (syntheticRows.length > 0) {
-            plans = [...plans, ...syntheticRows];
-            console.warn(
-              `[assignment-plans] using synthetic fallback rows from board-state: org=${organization.id} count=${syntheticRows.length}`
-            );
-          }
-        }
-      }
-    }
-  }
   if (plans.length > 0 && plans.some(assignmentPlanNeedsDisplayRepair)) {
     const repairedPlans = await repairAssignmentPlanDisplayRows({
       orgId: organization.id,
       plans,
-      refs: assignmentDisplayRefs,
     });
     plans = repairedPlans.plans;
   }
+  plans = await annotateAssignmentPlanRowsWithPayrollLocks(organization.id, plans);
 
   const cardById = boardCards.reduce((map, card) => {
     const key = resolveOptionalString(card?.id, null);
@@ -17835,15 +17486,7 @@ app.get("/assignment-plans", async (req, res) => {
     map.set(key, card);
     return map;
   }, new Map<string, any>());
-  const stateByExternalId = normalizeStateAssignments(boardState?.assignments).reduce(
-    (map, assignment) => {
-      const externalId = resolveAssignmentExternalId(assignment);
-      if (!externalId || map.has(externalId)) return map;
-      map.set(externalId, assignment);
-      return map;
-    },
-    new Map<string, any>()
-  );
+  const stateByExternalId = new Map<string, any>();
 
   res.json(
     plans.map((plan) => {
@@ -17854,11 +17497,14 @@ app.get("/assignment-plans", async (req, res) => {
       const stateAssignment =
         stateByExternalId.get(resolveOptionalString(plan.externalId, null) || "") || null;
       const matchedCard = cardId ? cardById.get(cardId) ?? null : null;
+      const snapshotSchedule = resolveNormalizedAssignmentCtSnapshot(plan)?.schedule || null;
       const startDateKey =
         normalizeDateKey(stateAssignment?.startDateKey) ||
+        normalizeDateKey(snapshotSchedule?.startDateKey) ||
         normalizeDateKey(resolveAssignmentStartDateKey(stateAssignment));
       const endDateKey =
         normalizeDateKey(stateAssignment?.endDateKey) ||
+        normalizeDateKey(snapshotSchedule?.endDateKey) ||
         (startDateKey
           ? shiftDateKeyByDaysForAssignmentSchedule(
               startDateKey,
@@ -19834,39 +19480,26 @@ const buildAssignmentPlanProgressRows = async (
     )
   );
 
-  const [plans, boardState] = await Promise.all([
-    findAssignmentPlansWithSelectFallback({
-      where: {
-        orgId,
-        ...(normalizedExternalIds.length > 0
-          ? { externalId: { in: normalizedExternalIds } }
-          : {}),
-      },
-      orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-      selectAttempts: [
-        ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION,
-        ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
-        ASSIGNMENT_PLAN_SELECT_CORE,
-        ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY,
-        ASSIGNMENT_PLAN_SELECT_LEGACY,
-      ],
-      context: "buildAssignmentPlanProgressRows",
-    }),
-    prisma.assignmentBoardState.findUnique({
-      where: { orgId },
-      select: { assignments: true },
-    }),
-  ]);
+  const plans = await findAssignmentPlansWithSelectFallback({
+    where: {
+      orgId,
+      ...(normalizedExternalIds.length > 0
+        ? { externalId: { in: normalizedExternalIds } }
+        : {}),
+    },
+    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+    selectAttempts: [
+      ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION,
+      ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
+      ASSIGNMENT_PLAN_SELECT_CORE,
+      ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY,
+      ASSIGNMENT_PLAN_SELECT_LEGACY,
+    ],
+    context: "buildAssignmentPlanProgressRows",
+  });
   if (plans.length === 0) return [];
 
-  const stateAssignmentsByExternalId = normalizeStateAssignments(
-    boardState?.assignments
-  ).reduce((map, row) => {
-    const externalId = resolveAssignmentExternalId(row);
-    if (!externalId || map.has(externalId)) return map;
-    map.set(externalId, row);
-    return map;
-  }, new Map<string, any>());
+  const stateAssignmentsByExternalId = new Map<string, any>();
 
   const lineIds = Array.from(
     new Set(
@@ -20744,35 +20377,22 @@ const resolveAssignmentPlanProducedQuantity = async ({
   const normalizedPlanId = toPositiveIntOrNull(planId);
   if (normalizedPlanId === null) return 0;
 
-  const [plans, boardState] = await Promise.all([
-    findAssignmentPlansWithSelectFallback({
-      where: { orgId, id: normalizedPlanId },
-      orderBy: [{ id: "asc" }],
-      selectAttempts: [
-        ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION,
-        ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
-        ASSIGNMENT_PLAN_SELECT_CORE,
-        ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY,
-        ASSIGNMENT_PLAN_SELECT_LEGACY,
-      ],
-      context: "resolveAssignmentPlanProducedQuantity",
-    }),
-    prisma.assignmentBoardState.findUnique({
-      where: { orgId },
-      select: { assignments: true },
-    }),
-  ]);
+  const plans = await findAssignmentPlansWithSelectFallback({
+    where: { orgId, id: normalizedPlanId },
+    orderBy: [{ id: "asc" }],
+    selectAttempts: [
+      ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION,
+      ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
+      ASSIGNMENT_PLAN_SELECT_CORE,
+      ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY,
+      ASSIGNMENT_PLAN_SELECT_LEGACY,
+    ],
+    context: "resolveAssignmentPlanProducedQuantity",
+  });
   const plan = ensureArray(plans)[0];
   if (!plan) return 0;
 
-  const stateAssignmentsByExternalId = normalizeStateAssignments(
-    boardState?.assignments
-  ).reduce((map, row) => {
-    const externalId = resolveAssignmentExternalId(row);
-    if (!externalId || map.has(externalId)) return map;
-    map.set(externalId, row);
-    return map;
-  }, new Map<string, any>());
+  const stateAssignmentsByExternalId = new Map<string, any>();
 
   const workRows = await loadAssignmentPlanProgressWorkRows({
     orgId,
@@ -23568,18 +23188,23 @@ app.get("/assignment-board-versions", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
-  const state = await prisma.assignmentBoardState.findUnique({
-    where: { orgId: organization.id },
-    select: {
-      assignments: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
-  const escalatedAssignments = applySentTimeoutEscalation(state?.assignments).assignments;
+  const [state, assignmentPlans] = await Promise.all([
+    prisma.assignmentBoardState.findUnique({
+      where: { orgId: organization.id },
+      select: {
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
+    loadAssignmentPlansForBoardState(organization.id, null),
+  ]);
 
   res.json({
-    assignments: normalizeStateAssignments(escalatedAssignments),
+    assignments: normalizeStateAssignments(
+      (await annotateAssignmentPlanRowsWithPayrollLocks(organization.id, assignmentPlans)).map(
+        (plan) => toAssignmentPlanResponse(plan)
+      )
+    ),
     createdAt: state?.createdAt ?? null,
     updatedAt: state?.updatedAt ?? null,
     serverNow: new Date().toISOString(),
@@ -23687,68 +23312,14 @@ app.get("/assignment-board-state", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
-  let state = await prisma.assignmentBoardState.findUnique({
-    where: { orgId: organization.id },
-  });
-  let cards = await loadAssignmentCardsForOrg({ orgId: organization.id });
-  if (state) {
-    const {
-      assignments: escalatedAssignments,
-      changed: escalationChanged,
-    } = applySentTimeoutEscalation(state.assignments);
-    if (escalationChanged) {
-      state = await prisma.assignmentBoardState.update({
-        where: { id: state.id },
-        data: { assignments: escalatedAssignments },
-      });
-    }
-    const repairedState = await safelyRepairAssignmentBoardDisplayState({
-      orgId: organization.id,
-      cards,
-      assignments: state.assignments,
-      context: "GET /assignment-board-state",
-    });
-    if (repairedState.changed) {
-      const nextCards = repairedState.cards;
-      const nextAssignments = repairedState.assignments;
-      const updated = await prisma.$transaction(async (tx) => {
-        await syncAssignmentCardsForOrg({
-          orgId: organization.id,
-          cards: nextCards,
-          db: tx,
-        });
-        const nextState = await tx.assignmentBoardState.update({
-          where: { id: state!.id },
-          data: {
-            assignments: nextAssignments,
-          },
-        });
-        return { nextState, nextCards };
-      });
-      state = updated.nextState;
-      cards = updated.nextCards;
-    } else {
-      state = {
-        ...state,
-        assignments: repairedState.assignments,
-      };
-      cards = repairedState.cards;
-    }
-  }
-  const activeExternalIds = resolveAssignmentPlanExternalIds(state?.assignments);
-  const hasBoardAssignments = Array.isArray(state?.assignments);
-  let assignmentPlans =
-    hasBoardAssignments && activeExternalIds.length === 0
-      ? []
-      : await findAssignmentPlansWithSelectFallback({
-          where: {
-            orgId: organization.id,
-            ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
-          },
-          orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-          selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY, ASSIGNMENT_PLAN_SELECT_LEGACY],
-          context: "GET /assignment-board-state",
-        });
+  const [state, cards] = await Promise.all([
+    prisma.assignmentBoardState.findUnique({
+      where: { orgId: organization.id },
+      select: { id: true, createdAt: true, updatedAt: true },
+    }),
+    loadAssignmentCardsForOrg({ orgId: organization.id }),
+  ]);
+  let assignmentPlans = await loadAssignmentPlansForBoardState(organization.id, null);
   if (assignmentPlans.length > 0 && assignmentPlans.some(assignmentPlanNeedsDisplayRepair)) {
     const repairedPlans = await repairAssignmentPlanDisplayRows({
       orgId: organization.id,
@@ -23756,6 +23327,10 @@ app.get("/assignment-board-state", async (req, res) => {
     });
     assignmentPlans = repairedPlans.plans;
   }
+  assignmentPlans = await annotateAssignmentPlanRowsWithPayrollLocks(
+    organization.id,
+    assignmentPlans
+  );
 
   res.json(toAssignmentBoardStateResponse(state, assignmentPlans, cards));
 });
@@ -23777,55 +23352,26 @@ app.delete("/assignment-board-state/assignment/:assignmentId", async (req, res) 
     ? req.body.cardPatch
     : null;
 
-  const existingState = await prisma.assignmentBoardState.findUnique({
-    where: { orgId: organization.id },
-    select: { id: true, assignments: true },
-  });
-  if (!existingState) {
-    return res.status(404).json({ ok: false, error: "board state not found" });
-  }
-
   let currentCards = await loadAssignmentCardsForOrg({
     orgId: organization.id,
   });
-  const currentAssignments = normalizeStateAssignments(existingState.assignments);
-  const targetAssignment = currentAssignments.find(
-    (a: any) => String(a?.id) === assignmentId
-  );
-  if (!targetAssignment) {
+  const targetPlan = await prisma.assignmentPlan.findFirst({
+    where: { orgId: organization.id, externalId: assignmentId },
+    select: { id: true, externalId: true, isCompleted: true },
+  });
+  if (!targetPlan) {
     return res.status(404).json({ ok: false, error: "assignment not found" });
   }
 
-  const targetExternalId = resolveAssignmentExternalId(targetAssignment);
-  const completedPlan = targetExternalId
-    ? await prisma.assignmentPlan.findFirst({
-        where: {
-          orgId: organization.id,
-          externalId: targetExternalId,
-          isCompleted: true,
-        },
-        select: { id: true },
-      })
-    : null;
-  if (Boolean(targetAssignment?.isCompleted) || completedPlan) {
+  if (targetPlan.isCompleted === true) {
     return res.status(409).json({
       ok: false,
       error: "completed assignment cannot be cancelled",
     });
   }
-  if (targetExternalId) {
-    const planRows = await prisma.assignmentPlan.findMany({
-      where: { orgId: organization.id, externalId: targetExternalId },
-      select: { id: true },
-    });
-    await assertAssignmentPlansCanBeDetached({
-      planIds: planRows.map((plan) => plan.id),
-    });
-  }
-
-  const nextAssignments = currentAssignments.filter(
-    (a: any) => String(a?.id) !== assignmentId
-  );
+  await assertAssignmentPlansCanBeDetached({
+    planIds: [targetPlan.id],
+  });
 
   let patchedCard: any = null;
   if (cardId && cardPatch) {
@@ -23844,27 +23390,28 @@ app.delete("/assignment-board-state/assignment/:assignmentId", async (req, res) 
         db: tx,
       });
     }
-    await tx.assignmentBoardState.update({
-      where: { id: existingState.id },
-      data: { assignments: nextAssignments },
+    await tx.assignmentBoardState.upsert({
+      where: { orgId: organization.id },
+      update: {
+        cards: Prisma.JsonNull,
+        assignments: Prisma.JsonNull,
+      },
+      create: {
+        orgId: organization.id,
+        cards: Prisma.JsonNull,
+        assignments: Prisma.JsonNull,
+      },
+    });
+    await detachWorkRecordsAndDeleteAssignmentPlans({
+      planIds: [targetPlan.id],
+      db: tx,
     });
   });
 
   // 해당 assignment의 plan 레코드 제거
-  const externalId = targetExternalId;
-  if (externalId) {
-    const planRows = await prisma.assignmentPlan.findMany({
-      where: { orgId: organization.id, externalId },
-      select: { id: true },
-    });
-    await detachWorkRecordsAndDeleteAssignmentPlans({
-      planIds: planRows.map((plan) => plan.id),
-    });
-  }
   await syncOrderProgressStatusesForOrg({
     orgId: organization.id,
     cards: currentCards,
-    assignments: nextAssignments,
   });
 
   res.json({
@@ -23889,16 +23436,18 @@ app.delete("/assignment-board-state", async (req, res) => {
   });
 
   await prisma.$transaction(async (tx) => {
-    const existing = await tx.assignmentBoardState.findUnique({
+    await tx.assignmentBoardState.upsert({
       where: { orgId: organization.id },
-      select: { id: true },
+      update: {
+        assignments: Prisma.JsonNull,
+        cards: Prisma.JsonNull,
+      },
+      create: {
+        orgId: organization.id,
+        assignments: Prisma.JsonNull,
+        cards: Prisma.JsonNull,
+      },
     });
-    if (existing) {
-      await tx.assignmentBoardState.update({
-        where: { orgId: organization.id },
-        data: { assignments: [], cards: [] },
-      });
-    }
     await tx.assignmentCard.deleteMany({ where: { orgId: organization.id } });
     const planRows = await tx.assignmentPlan.findMany({
       where: { orgId: organization.id },
@@ -23945,15 +23494,15 @@ app.put("/assignment-board-state", async (req, res) => {
     cardsForSave = repairedIncomingPayload.cards;
     incomingAssignmentsForSave = repairedIncomingPayload.assignments;
   }
-  const existingStateForDetachGuard = await prisma.assignmentBoardState.findUnique({
-    where: { orgId: organization.id },
-    select: { assignments: true },
-  });
-  const {
-    assignments: currentAssignmentsForDetachGuard,
-  } = applySentTimeoutEscalation(existingStateForDetachGuard?.assignments);
+  assertFiniteAssignmentScheduleIndices(normalizeStateAssignments(incomingAssignmentsForSave));
+  const currentPlanRowsForDetachGuard = await loadAssignmentPlansForBoardState(
+    organization.id,
+    null
+  );
   const currentAssignmentsByExternalIdForDetachGuard = buildAssignmentByExternalId(
-    normalizeStateAssignments(currentAssignmentsForDetachGuard)
+    normalizeStateAssignments(
+      currentPlanRowsForDetachGuard.map((plan) => toAssignmentPlanResponse(plan))
+    )
   );
   const nextAssignmentsByExternalIdForDetachGuard = buildAssignmentByExternalId(
     normalizeStateAssignments(incomingAssignmentsForSave)
@@ -23978,18 +23527,18 @@ app.put("/assignment-board-state", async (req, res) => {
   const updated = await prisma.$transaction(async (tx) => {
     const existingState = await tx.assignmentBoardState.findUnique({
       where: { orgId: organization.id },
-      select: { id: true, assignments: true },
+      select: { id: true, createdAt: true, updatedAt: true },
     });
-    const {
-      assignments: currentAssignments,
-    } = applySentTimeoutEscalation(existingState?.assignments);
-    const currentAssignmentsNormalized = normalizeStateAssignments(currentAssignments);
+    const currentPlanRows = await loadAssignmentPlanRowsForBoardTx(organization.id, tx);
+    const currentAssignmentsNormalized = normalizeStateAssignments(
+      currentPlanRows.map((plan: any) => toAssignmentPlanResponse(plan))
+    );
     const currentAssignmentsByExternalId =
       buildAssignmentByExternalId(currentAssignmentsNormalized);
     let nextAssignmentsNormalized = normalizeStateAssignments(
       incomingAssignmentsForSave
     );
-    const nextAssignmentsByExternalId =
+    let nextAssignmentsByExternalId =
       buildAssignmentByExternalId(nextAssignmentsNormalized);
     const changedIncomingExternalIds = new Set<string>();
     const removedExternalIds = new Set<string>();
@@ -24092,8 +23641,6 @@ app.put("/assignment-board-state", async (req, res) => {
       }
     });
 
-    const currentVersionByExternalId =
-      buildAssignmentVersionMap(currentAssignmentsNormalized);
     const changedIncomingAssignments = nextAssignmentsNormalized.filter((item) => {
       const externalId = resolveAssignmentExternalId(item);
       return Boolean(externalId && changedIncomingExternalIds.has(externalId));
@@ -24150,12 +23697,18 @@ app.put("/assignment-board-state", async (req, res) => {
               assignmentQuantity: true,
               startIndex: true,
               endIndex: true,
+              startDayOffsetPercent: true,
+              startDayPercent: true,
+              endDayPercent: true,
               assignmentCtTotalSeconds: true,
               assignmentCtSnapshot: true,
               assignmentStTotalSeconds: true,
               cardId: true,
               originOrderId: true,
               isCompleted: true,
+              completedAt: true,
+              closedAt: true,
+              productionCompletedAt: true,
             } as any,
           })
         : [];
@@ -24164,6 +23717,54 @@ app.put("/assignment-board-state", async (req, res) => {
         .map((plan: any) => [resolveOptionalString(plan?.externalId, null), plan])
         .filter((entry): entry is [string, any] => Boolean(entry[0]))
     );
+    const payrollLockMonthByExternalId = new Map<string, string>();
+    existingPlanRowsForStTotals.forEach((plan: any) => {
+      const externalId = resolveOptionalString(plan?.externalId, null);
+      const monthKey = resolveAssignmentPlanPayrollLockMonth(plan);
+      if (externalId && monthKey) payrollLockMonthByExternalId.set(externalId, monthKey);
+    });
+    const lockedPayrollMonthSet = await loadLockedPayrollMonthSet(
+      organization.id,
+      Array.from(payrollLockMonthByExternalId.values())
+    );
+    const payrollLockedPlanByExternalId = new Map<string, any>();
+    payrollLockMonthByExternalId.forEach((monthKey, externalId) => {
+      if (!lockedPayrollMonthSet.has(monthKey)) return;
+      const plan = existingPlanByExternalIdForStTotals.get(externalId);
+      if (plan) payrollLockedPlanByExternalId.set(externalId, plan);
+    });
+    for (const externalId of removedExternalIds.values()) {
+      if (!payrollLockedPlanByExternalId.has(externalId)) continue;
+      throw createHttpError(
+        409,
+        `payroll locked assignment cannot be removed: ${externalId}`
+      );
+    }
+    nextAssignmentsNormalized = nextAssignmentsNormalized.map((assignment) => {
+      const externalId = resolveAssignmentExternalId(assignment);
+      if (!externalId) return assignment;
+      const existingPlan = payrollLockedPlanByExternalId.get(externalId);
+      if (!existingPlan) return assignment;
+      if (stDraftsByExternalId.has(externalId)) {
+        throw createHttpError(
+          409,
+          `payroll locked assignment cannot change ST: ${externalId}`
+        );
+      }
+      const existingResponse = toAssignmentPlanResponse(existingPlan);
+      return {
+        ...assignment,
+        lineId: String(existingPlan.lineId),
+        startIndex: existingPlan.startIndex,
+        endIndex: existingPlan.endIndex,
+        startDateKey: existingResponse.startDateKey,
+        endDateKey: existingResponse.endDateKey,
+        startDayOffsetPercent: existingPlan.startDayOffsetPercent ?? null,
+        startDayPercent: existingPlan.startDayPercent ?? null,
+        endDayPercent: existingPlan.endDayPercent ?? null,
+      };
+    });
+    nextAssignmentsByExternalId = buildAssignmentByExternalId(nextAssignmentsNormalized);
     const linkedWorkRecordPlanIds = await loadLinkedWorkRecordPlanIds({
       planIds: existingPlanRowsForStTotals.map((plan: any) => plan?.id),
       db: tx,
@@ -24223,263 +23824,142 @@ app.put("/assignment-board-state", async (req, res) => {
     stTotalPreparation.changedExternalIds.forEach((externalId) => {
       changedIncomingExternalIds.add(externalId);
     });
+    assertFiniteAssignmentScheduleIndices(nextAssignmentsNormalized);
 
-    const nowIso = new Date().toISOString();
-    const versionedAssignments = nextAssignmentsNormalized.map((item) => {
-      const externalId = resolveAssignmentExternalId(item);
-      if (!externalId) {
-        return normalizeStateAssignmentItem(item);
+    const planSyncTargetAssignments = normalizeStateAssignments(
+      nextAssignmentsNormalized.filter((item) => {
+        const externalId = resolveAssignmentExternalId(item);
+        if (!externalId) return false;
+        const currentItem = currentAssignmentsByExternalId.get(externalId);
+        return (
+          !currentItem ||
+          !isSameAssignmentStateContent(currentItem, item) ||
+          stDraftsByExternalId.has(externalId)
+        );
+      })
+    );
+    const removedExternalIdList = Array.from(removedExternalIds.values());
+    const lineIdSet =
+      planSyncTargetAssignments.length > 0
+        ? new Set(
+            (
+              await tx.line.findMany({
+                where: { orgId: organization.id },
+                select: { id: true },
+              })
+            ).map((line) => line.id)
+          )
+        : null;
+    const normalizedPlanChanges =
+      planSyncTargetAssignments.length > 0
+        ? await syncAssignmentPlanColorRefs(
+            organization.id,
+            await syncAssignmentPlanWorkOrderRefs(
+              organization.id,
+              normalizeAssignmentPlanPayload(planSyncTargetAssignments, lineIdSet),
+              tx
+            ),
+            tx
+          )
+        : [];
+    const planSyncExternalIds = Array.from(
+      new Set([
+        ...normalizedPlanChanges.map((item: any) => item.externalId),
+        ...removedExternalIdList,
+      ])
+    );
+    const existingPlanRows =
+      planSyncExternalIds.length > 0
+        ? await tx.assignmentPlan.findMany({
+            where: {
+              orgId: organization.id,
+              externalId: { in: planSyncExternalIds },
+            },
+            select: { id: true, externalId: true },
+          })
+        : [];
+    const existingPlanByExternalId = new Map(
+      existingPlanRows.map((plan) => [plan.externalId, plan])
+    );
+    const createPlanRows: any[] = [];
+    const updatePlanRows: Array<{ id: number; item: any }> = [];
+    normalizedPlanChanges.forEach((item: any) => {
+      const existingPlan = existingPlanByExternalId.get(item.externalId);
+      if (existingPlan) {
+        updatePlanRows.push({ id: existingPlan.id, item });
+        return;
       }
-
-      const currentItem = currentAssignmentsByExternalId.get(externalId);
-      if (currentItem && !changedIncomingExternalIds.has(externalId)) {
-        return normalizeStateAssignmentItem(currentItem);
-      }
-
-      const currentVersion = currentVersionByExternalId.get(externalId) ?? 0;
-      return normalizeStateAssignmentItem({
-        ...item,
-        id: externalId,
-        version: currentVersion + 1,
-        versionUpdatedAt: nowIso,
-      });
+      createPlanRows.push(item);
     });
-    const {
-      assignments: assignmentsForState,
-    } = applySentTimeoutEscalation(versionedAssignments);
+    if (createPlanRows.length > 0) {
+      await tx.assignmentPlan.createMany({
+        data: createPlanRows.map((item: any) => ({
+          orgId: organization.id,
+          externalId: item.externalId,
+          ...toAssignmentPlanWriteData(item),
+        })) as Prisma.AssignmentPlanCreateManyInput[],
+      });
+    }
+    for (const row of updatePlanRows) {
+      await tx.assignmentPlan.update({
+        where: { id: row.id },
+        data: toAssignmentPlanWriteData(row.item) as Prisma.AssignmentPlanUncheckedUpdateInput,
+        select: { id: true },
+      });
+    }
+    const removedExternalIdSet = new Set(removedExternalIdList);
+    const removedPlanRows = existingPlanRows.filter((plan) =>
+      removedExternalIdSet.has(plan.externalId)
+    );
+    if (removedPlanRows.length > 0) {
+      await detachWorkRecordsAndDeleteAssignmentPlans({
+        planIds: removedPlanRows.map((plan) => plan.id),
+        db: tx,
+      });
+    }
+
     const savedCards = await syncAssignmentCardsForOrg({
       orgId: organization.id,
       cards: cardsForSave,
       db: tx,
     });
-
-    let state: any = null;
-    if (!existingState) {
-      state = await tx.assignmentBoardState.create({
-        data: {
-          orgId: organization.id,
-          assignments: assignmentsForState,
-        },
-      });
-    } else {
-      state = await tx.assignmentBoardState.update({
-        where: { id: existingState.id },
-        data: {
-          assignments: assignmentsForState,
-        },
-      });
-    }
-
-    const changedPlanTargetAssignments = nextAssignmentsNormalized.filter((item) => {
-      const externalId = resolveAssignmentExternalId(item);
-      return Boolean(externalId && changedIncomingExternalIds.has(externalId));
+    const state = await tx.assignmentBoardState.upsert({
+      where: { orgId: organization.id },
+      update: {
+        cards: Prisma.JsonNull,
+        assignments: Prisma.JsonNull,
+      },
+      create: {
+        orgId: organization.id,
+        cards: Prisma.JsonNull,
+        assignments: Prisma.JsonNull,
+      },
     });
-    const removedExternalIdList = Array.from(removedExternalIds.values());
+    const assignmentPlans = await loadAssignmentPlanRowsForBoardTx(organization.id, tx);
 
     return {
       state,
       savedCards,
-      changedPlanTargetAssignments,
-      removedExternalIdList,
+      assignmentPlans,
       stDraftWarnings: stTotalPreparation.warnings,
     };
   }, { timeout: 90000 });
   const updatedState = updated?.state ?? null;
   const updatedCards = ensureArray(updated?.savedCards);
-  const changedPlanTargetAssignments = ensureArray(
-    updated?.changedPlanTargetAssignments
-  );
-  const removedExternalIdList = ensureArray(updated?.removedExternalIdList).map((value) =>
-    String(value)
+  const updatedAssignmentPlans = await annotateAssignmentPlanRowsWithPayrollLocks(
+    organization.id,
+    ensureArray(updated?.assignmentPlans)
   );
   const stDraftWarnings = ensureArray(updated?.stDraftWarnings);
-  const removedExternalIdSet = new Set(removedExternalIdList);
-  const changedPlanTargetExternalIds = new Set(
-    changedPlanTargetAssignments
-      .map((item) => resolveAssignmentExternalId(item))
-      .filter((value): value is string => Boolean(value))
-  );
-  const stateAssignmentsForPlanSync = normalizeStateAssignments(updatedState?.assignments).filter(
-    (item) => {
-      const externalId = resolveAssignmentExternalId(item);
-      if (!externalId) return false;
-      if (removedExternalIdSet.has(externalId)) return false;
-      return true;
-    }
-  );
-  const stateAssignmentByExternalId = buildAssignmentByExternalId(stateAssignmentsForPlanSync);
-  const stateAssignmentExternalIds: string[] = Array.from(
-    stateAssignmentByExternalId.keys()
-  ).map((externalId) => String(externalId));
-  const existingStatePlanRows =
-    stateAssignmentExternalIds.length > 0
-      ? await prisma.assignmentPlan.findMany({
-          where: {
-            orgId: organization.id,
-            externalId: { in: stateAssignmentExternalIds },
-          },
-          select: { externalId: true },
-        })
-      : [];
-  const existingStatePlanExternalIdSet = new Set(
-    existingStatePlanRows
-      .map((row) => resolveOptionalString(row?.externalId, null))
-      .filter((value): value is string => Boolean(value))
-  );
-  const missingStateAssignmentsForPlanSync = stateAssignmentExternalIds
-    .filter((externalId) => !existingStatePlanExternalIdSet.has(externalId))
-    .map((externalId) => stateAssignmentByExternalId.get(externalId))
-    .filter((item): item is any => Boolean(item));
-  const planSyncTargetAssignments = normalizeStateAssignments([
-    ...changedPlanTargetAssignments,
-    ...missingStateAssignmentsForPlanSync,
-  ]).filter((item, index, self) => {
-    const externalId = resolveAssignmentExternalId(item);
-    if (!externalId) return false;
-    return (
-      index ===
-      self.findIndex((candidate) => resolveAssignmentExternalId(candidate) === externalId)
-    );
-  });
-  console.log(
-    `[assignment-board] changedPlanTargetAssignments: org=${organization.id} count=${changedPlanTargetAssignments.length} sample=${JSON.stringify(
-      changedPlanTargetAssignments.slice(0, 2).map((item) => ({
-        id: resolveAssignmentExternalId(item),
-        lineId: item?.lineId,
-        startIndex: item?.startIndex,
-        endIndex: item?.endIndex,
-      }))
-    )}`
-  );
-  const shouldSyncPlans =
-    planSyncTargetAssignments.length > 0 || removedExternalIdList.length > 0;
-  console.log(
-    `[assignment-board] plan sync check: org=${organization.id} shouldSync=${shouldSyncPlans} changed=${changedPlanTargetAssignments.length} missingRecovered=${missingStateAssignmentsForPlanSync.length} removed=${removedExternalIdList.length} totalIncoming=${stateAssignmentsForPlanSync.length} changedIds=${JSON.stringify(
-      Array.from(changedPlanTargetExternalIds).slice(0, 10)
-    )}`
-  );
-  if (shouldSyncPlans) {
-    try {
-      const lineIdSet =
-        planSyncTargetAssignments.length > 0
-          ? new Set(
-              (
-                await prisma.line.findMany({
-                  where: { orgId: organization.id },
-                  select: { id: true },
-                })
-              ).map((line) => line.id)
-            )
-          : null;
-      const normalizedPlanChanges =
-        planSyncTargetAssignments.length > 0
-          ? await syncAssignmentPlanColorRefs(
-              organization.id,
-              await syncAssignmentPlanWorkOrderRefs(
-                organization.id,
-                normalizeAssignmentPlanPayload(planSyncTargetAssignments, lineIdSet)
-              )
-            )
-          : [];
-      const planSyncExternalIds = Array.from(
-        new Set([
-          ...normalizedPlanChanges.map((item: any) => item.externalId),
-          ...removedExternalIdList,
-        ])
-      );
-
-      const existingPlanRows =
-        planSyncExternalIds.length > 0
-          ? await prisma.assignmentPlan.findMany({
-              where: {
-                orgId: organization.id,
-                externalId: { in: planSyncExternalIds },
-              },
-              select: { id: true, externalId: true },
-            })
-          : [];
-      const existingPlanByExternalId = new Map(
-        existingPlanRows.map((plan) => [plan.externalId, plan])
-      );
-
-      const createPlanRows: any[] = [];
-      const updatePlanRows: Array<{ id: number; item: any }> = [];
-      normalizedPlanChanges.forEach((item: any) => {
-        const existingPlan = existingPlanByExternalId.get(item.externalId);
-        if (existingPlan) {
-          updatePlanRows.push({ id: existingPlan.id, item });
-          return;
-        }
-        createPlanRows.push(item);
-      });
-
-      if (createPlanRows.length > 0) {
-        console.log(
-          `[assignment-board] plan createMany: org=${organization.id} count=${createPlanRows.length} externalIds=${createPlanRows
-            .map((item: any) => resolveOptionalString(item?.externalId, ""))
-            .filter(Boolean)
-            .slice(0, 10)
-            .join(",")}`
-        );
-        await prisma.assignmentPlan.createMany({
-          data: createPlanRows.map((item: any) => ({
-            orgId: organization.id,
-            externalId: item.externalId,
-            ...toAssignmentPlanWriteData(item),
-          })) as Prisma.AssignmentPlanCreateManyInput[],
-        });
-      }
-
-      if (updatePlanRows.length > 0) {
-        console.log(
-          `[assignment-board] plan updateMany: org=${organization.id} count=${updatePlanRows.length}`
-        );
-        await Promise.all(
-          updatePlanRows.map((row) =>
-            prisma.assignmentPlan.update({
-              where: { id: row.id },
-              data: toAssignmentPlanWriteData(row.item) as Prisma.AssignmentPlanUncheckedUpdateInput,
-              select: { id: true },
-            })
-          )
-        );
-      }
-
-      const removedExternalIdSet = new Set(removedExternalIdList);
-      const removedPlanRows = existingPlanRows.filter((plan) =>
-        removedExternalIdSet.has(plan.externalId)
-      );
-      if (removedPlanRows.length > 0) {
-        await detachWorkRecordsAndDeleteAssignmentPlans({
-          planIds: removedPlanRows.map((plan) => plan.id),
-        });
-      }
-    } catch (error) {
-      const errCode = (error as any)?.code || "unknown";
-      const errMsg = (error as any)?.message || String(error || "");
-      const isMissingCol = isAssignmentPlanMissingColumnError(error);
-      console.warn(
-        `[assignment-board] plan sync error: org=${organization.id} code=${errCode} isMissingColumn=${isMissingCol} message=${String(
-          errMsg
-        ).slice(0, 200)}`
-      );
-      if (!isMissingCol) {
-        throw error;
-      }
-      console.warn(
-        `[assignment-board] SKIPPED plan sync due to schema drift: org=${organization.id} — run additive SQL to add missing columns`
-      );
-    }
-  }
   // Board save ST reverse propagation is driven only by explicit write-only stDrafts.
   // assignmentCtSnapshot is CT-only and must not be used as an ST source.
   await syncOrderProgressStatusesForOrg({
     orgId: organization.id,
     cards: updatedCards,
-    assignments: updatedState?.assignments,
+    assignments: updatedAssignmentPlans.map((plan) => toAssignmentPlanResponse(plan)),
   });
   res.json({
-    ...toAssignmentBoardStateResponse(updatedState, null, updatedCards),
+    ...toAssignmentBoardStateResponse(updatedState, updatedAssignmentPlans, updatedCards),
     warnings: stDraftWarnings,
   });
 });
@@ -24888,23 +24368,6 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
         await prisma.assignmentCard.deleteMany({
           where: { orgId: organization.id, cardId: { startsWith: cardPrefix } },
         });
-        const boardState = await prisma.assignmentBoardState.findUnique({
-          where: { orgId: organization.id },
-        });
-        if (boardState) {
-          const currentAssignments = ensureArray(boardState.assignments);
-          const filteredAssignments = currentAssignments.filter((a: any) => {
-            const aOriginId = resolveOptionalString(a?.originOrderId, null) ?? "";
-            const aCardId = resolveOptionalString(a?.cardId, null) ?? "";
-            return !aOriginId.startsWith(cardPrefix) && !orderCardIdSet.has(aCardId);
-          });
-          if (filteredAssignments.length !== currentAssignments.length) {
-            await prisma.assignmentBoardState.update({
-              where: { orgId: organization.id },
-              data: { assignments: filteredAssignments },
-            });
-          }
-        }
       }
       await syncOrderProgressStatusesForOrg({
         orgId: organization.id,

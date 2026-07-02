@@ -1397,6 +1397,61 @@ SET "assignments" = (
 )
 WHERE "assignments" IS NOT NULL AND jsonb_typeof("assignments"::jsonb) = 'array';
 
+-- Step 4b-1: AssignmentBoardState JSON is no longer canonical.
+-- Before dropping the legacy JSON columns, verify that every legacy board row
+-- is represented by AssignmentCard/AssignmentPlan.
+DO $$
+DECLARE
+  missing_assignment_count INTEGER := 0;
+  missing_card_count INTEGER := 0;
+BEGIN
+  SELECT COUNT(*)
+    INTO missing_assignment_count
+  FROM "AssignmentBoardState" state
+  CROSS JOIN LATERAL jsonb_array_elements(
+    CASE
+      WHEN jsonb_typeof(state."assignments"::jsonb) = 'array'
+        THEN state."assignments"::jsonb
+      ELSE '[]'::jsonb
+    END
+  ) AS assignment_elem(elem)
+  WHERE COALESCE(assignment_elem.elem ->> 'id', assignment_elem.elem ->> 'externalId') IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1
+      FROM "AssignmentPlan" plan
+      WHERE plan."orgId" = state."orgId"
+        AND plan."externalId" = COALESCE(
+          assignment_elem.elem ->> 'id',
+          assignment_elem.elem ->> 'externalId'
+        )
+    );
+
+  SELECT COUNT(*)
+    INTO missing_card_count
+  FROM "AssignmentBoardState" state
+  CROSS JOIN LATERAL jsonb_array_elements(
+    CASE
+      WHEN jsonb_typeof(state."cards"::jsonb) = 'array'
+        THEN state."cards"::jsonb
+      ELSE '[]'::jsonb
+    END
+  ) AS card_elem(elem)
+  WHERE COALESCE(card_elem.elem ->> 'id', card_elem.elem ->> 'cardId') IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1
+      FROM "AssignmentCard" card
+      WHERE card."orgId" = state."orgId"
+        AND card."cardId" = COALESCE(card_elem.elem ->> 'id', card_elem.elem ->> 'cardId')
+    );
+
+  IF missing_assignment_count > 0 THEN
+    RAISE WARNING 'AssignmentBoardState.assignments has % legacy rows missing AssignmentPlan; keep JSON columns until backfilled', missing_assignment_count;
+  END IF;
+  IF missing_card_count > 0 THEN
+    RAISE WARNING 'AssignmentBoardState.cards has % legacy rows missing AssignmentCard; keep JSON columns until backfilled', missing_card_count;
+  END IF;
+END $$;
+
 UPDATE "AssignmentCard"
 SET "payload" = "payload"::jsonb - 'totalSeconds' - 'stSeconds' - 'contractedSeconds'
   || CASE
@@ -2733,4 +2788,3 @@ BEGIN
     VALUES ('20260604_process_row_total_time_v1');
   END IF;
 END $$;
-
