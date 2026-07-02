@@ -2,6 +2,22 @@
 
 ---
 
+## 2026-07-02 FK calculation/concurrency cleanup
+
+### Done
+- Removed `processCode` fallback from `resolveWorkRecordProcessBucketKeyForAssignmentSchedule`; scheduler/progress production buckets now require `WorkRecord.styleProcessId`.
+- Work records without `styleProcessId` are skipped from schedule/progress/produced-quantity calculations and logged with diagnostics instead of being grouped under code/name/unknown.
+- Removed produced-quantity fallback that used all process totals when assignment snapshot process groups had no FK keys.
+- Payroll breakdown grouping now uses `styleProcessId`; records without `styleProcessId` go into an explicit unresolved bucket without code/name grouping. Payroll total amount formula is unchanged.
+- `production-complete` and `final-quantity` updates now use atomic `updateMany` guards with `isCompleted=false`, empty completion timestamps, and the previously-read `updatedAt`.
+- Assignment board save and progress snapshot writes now re-check `isCompleted=false` at update time so completed plans are not overwritten by stale writes.
+
+### Verify
+- Passed: `npm --prefix backend run build`
+- Passed: `npm --prefix frontend run build`
+
+---
+
 ## 2026-07-02 Assignment board payroll-lock guard correction
 
 ### Done

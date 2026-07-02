@@ -7172,12 +7172,10 @@ const findAssignmentPlanForQcEvent = async ({
 };
 const resolveWorkRecordProcessBucketKeyForAssignmentSchedule = (
   value: any
-): string => {
+): string | null => {
   const styleProcessId = toPositiveIntOrNull(value?.styleProcessId);
   if (styleProcessId != null) return `style-process:${styleProcessId}`;
-  const processCode = resolveWorkRecordProcessCode(value);
-  if (processCode) return `code:${normalizeProcessCodeKey(processCode)}`;
-  return "unknown";
+  return null;
 };
 const allocateExtendedDurationsByPlannedRatio = (
   plannedDurations: number[],
@@ -7305,6 +7303,7 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
     number,
     Map<string, Map<string, number>>
   >();
+  let skippedScheduleWorkRecordCount = 0;
   workRecords.forEach((record) => {
     const planId = toPositiveIntOrNull(record?.assignmentPlanId);
     if (!planId || !baselineQuantityByPlanId.has(planId)) return;
@@ -7313,14 +7312,23 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
     const quantity = Math.max(0, Math.round(Number(record?.quantity ?? 0)));
     if (quantity <= 0) return;
 
+    const processKey = resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record);
+    if (!processKey) {
+      skippedScheduleWorkRecordCount += 1;
+      return;
+    }
     const byDate = processBucketsByPlanDate.get(planId) || new Map<string, Map<string, number>>();
     const byProcess =
       byDate.get(workDateKey) || new Map<string, number>();
-    const processKey = resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record);
     byProcess.set(processKey, (byProcess.get(processKey) || 0) + quantity);
     byDate.set(workDateKey, byProcess);
     processBucketsByPlanDate.set(planId, byDate);
   });
+  if (skippedScheduleWorkRecordCount > 0) {
+    console.warn(
+      `[assignment-schedule-sync] orgId=${orgId} skipped ${skippedScheduleWorkRecordCount} work records without WorkRecord.styleProcessId`
+    );
+  }
 
   const completionDateByPlanId = new Map<number, string>();
   linePlans.forEach((plan) => {
@@ -7761,31 +7769,6 @@ const normalizeAssignmentScheduleRepairPayload = (
     endDateKey,
   };
 };
-const resolveWorkRecordProcessMetric = (
-  processCodeInput: any,
-  processNameInput: any
-) => {
-  const processCode = resolveOptionalString(processCodeInput, null);
-  const processName = resolveOptionalString(processNameInput, null);
-  const codeKey = normalizeProcessCodeKey(processCode);
-  if (codeKey) {
-    return {
-      processMetricKey: `code:${codeKey}`,
-      processLabel: processCode || processName || `CODE:${codeKey}`,
-    };
-  }
-  const nameKey = normalizeProcessNameKey(processName);
-  if (nameKey) {
-    return {
-      processMetricKey: `name:${nameKey}`,
-      processLabel: processName || processCode || `NAME:${nameKey}`,
-    };
-  }
-  return {
-    processMetricKey: "unknown",
-    processLabel: processName || processCode || "미지정 공정",
-  };
-};
 const resolveWorkRecordProcessMetricFromRecord = (record: any) =>
   (() => {
     const styleProcessId = toPositiveIntOrNull(record?.styleProcessId);
@@ -7798,10 +7781,10 @@ const resolveWorkRecordProcessMetricFromRecord = (record: any) =>
           `StyleProcess#${styleProcessId}`,
       };
     }
-    return resolveWorkRecordProcessMetric(
-      resolveWorkRecordProcessCode(record),
-      resolveWorkRecordProcessName(record)
-    );
+    return {
+      processMetricKey: "",
+      processLabel: "미계산 공정",
+    };
   })();
 const resolveWorkRecordStyleMetric = (record: any) => {
   const styleId = toPositiveIntOrNull(record?.styleId);
@@ -17626,9 +17609,7 @@ const resolveAssignmentProcessGroupTotals = ({
     );
   }
 
-  return Array.from(processTotalsByKey.values()).map((value) =>
-    Math.max(0, Math.round(Number(value) || 0))
-  );
+  return [];
 };
 
 const resolveProducedQtyFromProcessKeyTotals = ({
@@ -18373,19 +18354,28 @@ const buildLineMonthCapacityRows = async ({
     const processKeySet = new Set<string>();
     const cumulativeProcessTotalsByKey = new Map<string, number>();
     let cumulativeTotalDone = 0;
+    let skippedWorkRecordWithoutStyleProcessId = 0;
 
     ensureArray(workRowsByPlanId.get(planId)).forEach((record) => {
       const quantity = Math.max(0, Math.round(Number(record?.quantity ?? 0)));
       if (quantity <= 0) return;
+      const processKey = resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record);
+      if (!processKey) {
+        skippedWorkRecordWithoutStyleProcessId += 1;
+        return;
+      }
       cumulativeTotalDone += quantity;
-      const processKey =
-        resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record) || "unknown";
       processKeySet.add(processKey);
       cumulativeProcessTotalsByKey.set(
         processKey,
         (cumulativeProcessTotalsByKey.get(processKey) || 0) + quantity
       );
     });
+    if (skippedWorkRecordWithoutStyleProcessId > 0) {
+      console.warn(
+        `[line-month-capacity] orgId=${orgId} assignmentPlanId=${planId} skipped ${skippedWorkRecordWithoutStyleProcessId} work records without WorkRecord.styleProcessId`
+      );
+    }
 
     const processCountFromRecords =
       processKeySet.size > 0 ? processKeySet.size : null;
@@ -19453,10 +19443,16 @@ const buildAssignmentPlanProgressRows = async (
     if (!planId) return;
     const quantity = Math.max(0, Math.round(Number(record?.quantity ?? 0)));
     if (quantity <= 0) return;
-    sumByPlanId.set(planId, (sumByPlanId.get(planId) || 0) + quantity);
 
     const stats = getStats(planId);
     const processKey = resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record);
+    if (!processKey) {
+      console.warn(
+        `[assignment-plan-progress] orgId=${orgId} assignmentPlanId=${planId} skipped workRecordId=${record?.id ?? "-"} without WorkRecord.styleProcessId`
+      );
+      return;
+    }
+    sumByPlanId.set(planId, (sumByPlanId.get(planId) || 0) + quantity);
     stats.processTotalsByKey.set(
       processKey,
       (stats.processTotalsByKey.get(processKey) || 0) + quantity
@@ -20004,6 +20000,7 @@ const persistAssignmentPlanProgressSnapshot = async ({
   const targetPlans = await prisma.assignmentPlan.findMany({
     where: {
       orgId,
+      isCompleted: false,
       OR: [
         ...(normalizedPlanIds.length > 0 ? [{ id: { in: normalizedPlanIds } }] : []),
         ...(normalizedExternalIds.length > 0
@@ -20208,16 +20205,20 @@ const persistAssignmentPlanProgressSnapshot = async ({
     return { updatedPlanCount: 0 };
   }
 
-  await prisma.$transaction(
+  const updateResults = await prisma.$transaction(
     updates.map((update) =>
-      prisma.assignmentPlan.update({
-        where: { id: update.id },
+      prisma.assignmentPlan.updateMany({
+        where: { id: update.id, isCompleted: false },
         data: update.data,
       })
     )
   );
+  const updatedPlanCount = updateResults.reduce(
+    (sum, result) => sum + Math.max(0, Math.round(Number(result?.count ?? 0))),
+    0
+  );
 
-  return { updatedPlanCount: updates.length };
+  return { updatedPlanCount };
 };
 
 const resolveAssignmentPlanProducedQuantity = async ({
@@ -20256,17 +20257,27 @@ const resolveAssignmentPlanProducedQuantity = async ({
     context: "resolveAssignmentPlanProducedQuantity",
   });
   const processTotalsByKey = new Map<string, number>();
+  let skippedWorkRecordWithoutStyleProcessId = 0;
   workRows.forEach((record) => {
     const matchedPlanId = toPositiveIntOrNull(record?.assignmentPlanId);
     if (matchedPlanId !== normalizedPlanId) return;
     const quantity = Math.max(0, Math.round(Number(record?.quantity ?? 0)));
     if (quantity <= 0) return;
     const processKey = resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record);
+    if (!processKey) {
+      skippedWorkRecordWithoutStyleProcessId += 1;
+      return;
+    }
     processTotalsByKey.set(
       processKey,
       (processTotalsByKey.get(processKey) || 0) + quantity
     );
   });
+  if (skippedWorkRecordWithoutStyleProcessId > 0) {
+    console.warn(
+      `[assignment-produced-quantity] orgId=${orgId} assignmentPlanId=${normalizedPlanId} skipped ${skippedWorkRecordWithoutStyleProcessId} work records without WorkRecord.styleProcessId`
+    );
+  }
 
   const processKeyGroups = resolveAssignmentPlanRequiredProcessGroups(plan);
   return resolveProducedQtyFromProcessKeyTotals({
@@ -20379,6 +20390,7 @@ const completeAssignmentPlanProduction = async ({
       label: true,
       colorName: true,
       productionCompletedAt: true,
+      updatedAt: true,
     },
   });
   if (!plan) {
@@ -20395,11 +20407,15 @@ const completeAssignmentPlanProduction = async ({
       error: payrollLockValidation.error,
     };
   }
-  if (plan.isCompleted === true) {
+  if (
+    plan.isCompleted === true ||
+    toOptionalDateValue(plan.productionCompletedAt, null) !== null ||
+    resolveAssignmentPlanClosedAtValue(plan) !== null
+  ) {
     return {
       ok: false as const,
       status: 409,
-      error: "assignment plan already payroll-completed",
+      error: "assignment plan already completed",
     };
   }
 
@@ -20443,26 +20459,47 @@ const completeAssignmentPlanProduction = async ({
     toDateValueFromDateKeyForAssignmentSchedule(completionDateKey) || completedAt;
   const actor = getCurrentRequestActor();
 
-  const updatedPlan = await prisma.assignmentPlan.update({
-    where: { id: plan.id },
-    data: {
-      productionCompletedAt: completedAt,
-      isCompleted: false,
-      completedAt,
-      finalQuantity: resolvedClosedQty,
-      closedQty: resolvedClosedQty,
-      closedAt: completedAt,
-      closedBy: actor,
-      closeMode,
-      closeBasis,
-      candidateEndDate: completionDate,
-      renderEndDate: completionDate,
-      scheduleStatus: ASSIGNMENT_STATUS_READY_TO_COMPLETE,
-      forecastCompletedAt: null,
-      forecastBasis: ASSIGNMENT_FORECAST_BASIS_UNAVAILABLE,
-      updatedAt: new Date(),
-    },
+  const updatedPlan = await prisma.$transaction(async (tx) => {
+    const updateResult = await tx.assignmentPlan.updateMany({
+      where: {
+        id: plan.id,
+        orgId,
+        isCompleted: false,
+        productionCompletedAt: null,
+        completedAt: null,
+        closedAt: null,
+        updatedAt: plan.updatedAt,
+      },
+      data: {
+        productionCompletedAt: completedAt,
+        isCompleted: false,
+        completedAt,
+        finalQuantity: resolvedClosedQty,
+        closedQty: resolvedClosedQty,
+        closedAt: completedAt,
+        closedBy: actor,
+        closeMode,
+        closeBasis,
+        candidateEndDate: completionDate,
+        renderEndDate: completionDate,
+        scheduleStatus: ASSIGNMENT_STATUS_READY_TO_COMPLETE,
+        forecastCompletedAt: null,
+        forecastBasis: ASSIGNMENT_FORECAST_BASIS_UNAVAILABLE,
+        updatedAt: new Date(),
+      },
+    });
+    if (updateResult.count !== 1) return null;
+    return tx.assignmentPlan.findUnique({
+      where: { id: plan.id },
+    });
   });
+  if (!updatedPlan) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "assignment plan already completed or modified; reload and retry",
+    };
+  }
 
   const shouldMutateScheduleFromProductionComplete =
     resolveOptionalString(process.env.ENABLE_PRODUCTION_COMPLETE_SCHEDULE_SYNC, "")?.toLowerCase?.() ===
@@ -20805,18 +20842,25 @@ app.patch("/assignment-plans/:externalId/final-quantity", async (req, res) => {
       lineId: true,
       isCompleted: true,
       completedAt: true,
+      closedAt: true,
+      productionCompletedAt: true,
       assignmentQuantity: true,
       finalQuantity: true,
       orderNo: true,
       label: true,
       colorName: true,
+      updatedAt: true,
     },
   });
   if (!plan) {
     return res.status(404).json({ ok: false, error: "assignment plan not found" });
   }
 
-  if (plan.isCompleted === true) {
+  if (
+    plan.isCompleted === true ||
+    toOptionalDateValue(plan.productionCompletedAt, null) !== null ||
+    resolveAssignmentPlanClosedAtValue(plan) !== null
+  ) {
     return res.status(409).json({
       ok: false,
       error: "assignment plan already completed",
@@ -20828,13 +20872,33 @@ app.patch("/assignment-plans/:externalId/final-quantity", async (req, res) => {
     return res.status(400).json({ ok: false, error: "finalQuantity is required" });
   }
 
-  const updatedPlan = await prisma.assignmentPlan.update({
-    where: { id: plan.id },
-    data: {
-      finalQuantity,
-      updatedAt: new Date(),
-    },
+  const updatedPlan = await prisma.$transaction(async (tx) => {
+    const updateResult = await tx.assignmentPlan.updateMany({
+      where: {
+        id: plan.id,
+        orgId: organization.id,
+        isCompleted: false,
+        productionCompletedAt: null,
+        completedAt: null,
+        closedAt: null,
+        updatedAt: plan.updatedAt,
+      },
+      data: {
+        finalQuantity,
+        updatedAt: new Date(),
+      },
+    });
+    if (updateResult.count !== 1) return null;
+    return tx.assignmentPlan.findUnique({
+      where: { id: plan.id },
+    });
   });
+  if (!updatedPlan) {
+    return res.status(409).json({
+      ok: false,
+      error: "assignment plan already completed or modified; reload and retry",
+    });
+  }
 
   const plannedQuantity = resolveAssignmentQuantity(updatedPlan);
   const baselineQuantity =
@@ -23740,11 +23804,16 @@ app.put("/assignment-board-state", async (req, res) => {
       });
     }
     for (const row of updatePlanRows) {
-      await tx.assignmentPlan.update({
-        where: { id: row.id },
+      const updateResult = await tx.assignmentPlan.updateMany({
+        where: { id: row.id, isCompleted: false },
         data: toAssignmentPlanWriteData(row.item) as Prisma.AssignmentPlanUncheckedUpdateInput,
-        select: { id: true },
       });
+      if (updateResult.count !== 1) {
+        throw createHttpError(
+          409,
+          `completed assignment cannot be modified: ${row.item?.externalId ?? row.id}`
+        );
+      }
     }
     const removedExternalIdSet = new Set(removedExternalIdList);
     const removedPlanRows = existingPlanRows.filter((plan) =>

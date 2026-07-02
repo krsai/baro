@@ -148,13 +148,15 @@ const normalizePayrollProcessSnapshot = (process: any) => {
   const totalCtSeconds = toPayrollAmount(process?.totalCtSeconds, 0);
   const totalEarnings = toPayrollAmount(process?.totalEarnings, 0);
   const providedWagePerSecond = toPayrollAmountOrNull(process?.wagePerSecond);
+  const styleProcessId = toPositiveIntOrNull(process?.styleProcessId);
 
   return {
+    styleProcessId,
     processCode: resolveOptionalString(process?.processCode, "") || "",
     processName:
       resolveOptionalString(process?.processName, null) ??
-      resolveOptionalString(process?.processCode, null) ??
-      "-",
+      (styleProcessId === null ? "미계산 공정" : "-"),
+    unresolved: Boolean(process?.unresolved),
     totalQuantity: toPayrollAmount(process?.totalQuantity, 0),
     totalCtSeconds,
     wagePerSecond:
@@ -385,8 +387,10 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       processes: Map<
         string,
         {
+          styleProcessId: number | null;
           processCode: string;
           processName: string;
+          unresolved: boolean;
           totalQuantity: number;
           totalCtSeconds: number;
           totalEarnings: number;
@@ -423,6 +427,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
     });
   });
 
+  let payrollBreakdownMissingStyleProcessCount = 0;
   for (const workLog of workLogs) {
     const wagePerSecond = Number(workLog.factoryWagePerSecond);
     const validWage = Number.isFinite(wagePerSecond) && wagePerSecond > 0;
@@ -474,13 +479,26 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       const emp = employeeMap.get(key)!;
       emp.productionEarnings += earnings;
 
-      const processName = resolveWorkRecordProcessName(record) ?? "";
-      const processCode = resolveWorkRecordProcessCode(record) ?? "";
-      const processKey = processCode || processName || "unknown";
+      const styleProcessId = toPositiveIntOrNull(
+        record?.styleProcess?.id ?? record?.styleProcessId
+      );
+      const hasStyleProcess = styleProcessId !== null;
+      const processName = hasStyleProcess ? resolveWorkRecordProcessName(record) ?? "" : "";
+      const processCode = hasStyleProcess ? resolveWorkRecordProcessCode(record) ?? "" : "";
+      const processKey = hasStyleProcess
+        ? `style-process:${styleProcessId}`
+        : "missing-style-process";
+      if (!hasStyleProcess) {
+        payrollBreakdownMissingStyleProcessCount += 1;
+      }
       if (!emp.processes.has(processKey)) {
         emp.processes.set(processKey, {
+          styleProcessId,
           processCode,
-          processName: processName || processKey,
+          processName: hasStyleProcess
+            ? processName || `StyleProcess#${styleProcessId}`
+            : "미계산 공정",
+          unresolved: !hasStyleProcess,
           totalQuantity: 0,
           totalCtSeconds: 0,
           totalEarnings: 0,
@@ -491,6 +509,11 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       proc.totalCtSeconds += totalCtSeconds;
       proc.totalEarnings += earnings;
     }
+  }
+  if (payrollBreakdownMissingStyleProcessCount > 0) {
+    console.warn(
+      `[payroll] orgId=${orgId} month=${month} grouped ${payrollBreakdownMissingStyleProcessCount} work records without WorkRecord.styleProcessId into unresolved payroll breakdown`
+    );
   }
 
   const employees = Array.from(employeeMap.values())
@@ -517,8 +540,10 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
         finalEarnings: resolvedBaseEarnings,
         totalEarnings: resolvedBaseEarnings,
         processes: Array.from(emp.processes.values()).map((process) => ({
+          styleProcessId: process.styleProcessId,
           processCode: process.processCode,
           processName: process.processName,
+          unresolved: process.unresolved,
           totalQuantity: process.totalQuantity,
           totalCtSeconds: process.totalCtSeconds,
           wagePerSecond:
