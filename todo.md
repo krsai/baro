@@ -1,5 +1,49 @@
 # TODO
 
+## 2026-07-02 운영 DB(Railway) 전체 테이블 NULL 전수조사 — 코드 미수정, 조사만 완료
+
+### 배경
+사용자 요청으로 운영 Railway Postgres(`mainline.proxy.rlwy.net:31661/railway`, public proxy URL로 접속)에 직접 연결해 전체 테이블의 nullable 컬럼을 스캔했다. 참고: 이 저장소의 `backend/.env`에 있는 `DATABASE_URL`은 Supabase Postgres를 가리키고 있어 실제 운영 데이터가 아니다(전 테이블 0건 확인됨) — 다음에 이 DB를 조사할 때는 반드시 Railway 콘솔 > Postgres 서비스 > Variables에서 `DATABASE_PUBLIC_URL`을 받아서 써야 한다. 조사에 쓴 스크립트는 임시 파일이었고 세션 종료 시 삭제함(레포에 남지 않음).
+
+### 확인 필요 (다음 작업 후보, 우선순위순)
+
+**1. `AssignmentPlan.styleId` 컬럼이 100% NULL(25/25건) — 단순 미입력이 아니라 죽은 컬럼/미완성 배선**
+- `toAssignmentPlanWriteData()`(`backend/src/index.ts:12470`)의 board 저장 payload에 애초에 `styleId` 필드가 없음 — 이 컬럼에 값을 쓰는 코드 경로 자체가 없다.
+- 화면에는 styleId가 정상적으로 보이는데, 이건 `/assignment-plans` 응답이 이 컬럼을 안 읽고 `AssignmentCard.payload.styleId`를 조인해서 보여주기 때문(`index.ts:17371`, `matchedCard?.styleId`).
+- 더 넓은 영향: `resolveAssignmentPlanStyleMetaById()`(`index.ts:6106`)가 `AssignmentPlan.style` FK relation으로 styleId를 조회하는 함수인데, 기반 컬럼이 항상 NULL이라 실제로는 항상 빈 Map만 반환한다. 이 함수는 `syncWorkRecordRefs` 포함 5곳(`index.ts:2759, 5998, 6165, 6247, 8478`)에서 쓰인다. `syncWorkRecordRefs`에는 `record?.styleId` 폴백이 있어서(`index.ts:6009`) 당장 저장이 깨지진 않지만, 원래 의도였던 "FK 기준 서버측 재검증"은 사실상 항상 no-op이고 클라이언트가 보낸 값을 그냥 신뢰하는 상태다.
+- 조치 방향(미정): (a) 애초에 `AssignmentPlan.styleId`를 채우도록 저장 경로를 고치거나, (b) 이 컬럼이 정말 불필요하면 스키마에서 제거하고 `resolveAssignmentPlanStyleMetaById`도 카드 기반 조회로 바꾸는 두 방향 중 결정 필요.
+
+**2. Factory "THAI BINH"(id=2) — `targetMonthlyWage`, `wagePerSecond` 둘 다 NULL, 급여 계산 기준 단가 자체가 없음**
+- HANOI(id=1)는 8,000,000 / 10.68로 정상 세팅. `Organization` 레벨 3개 조직도 전부 NULL이라 fallback도 없음.
+- AGENTS.md 급여 공식(`CT × 수량 × 초당공임`) 기준으로, THAI BINH 소속 작업기록 급여 계산이 지금 0 또는 실패로 나올 가능성이 큼.
+- 조치: THAI BINH 공장 설정 화면에서 목표월급/초당공임 직접 입력하면 해결(코드 문제 아님, 데이터 입력 누락으로 보임).
+
+**3. `WorkOrder` 7건 중 6건 `dueDate` NULL** (1건만 있음: `order-1776226898799-wlrze5`)
+- 생산계획/스케줄러 화면에서 납기 기준 정렬·경고가 이 6건에서는 동작 안 할 것으로 보임. 데이터 입력 누락으로 추정.
+
+**4. `Employee` 19명 전원 `phone`, `bankName`, `bankAccountNumber` NULL**
+- 은행 이체 기반 급여 지급이나 연락처 기능을 실제로 쓴다면 지금 데이터로는 전원 불가능. 그 기능 자체를 아직 안 쓰는 거면 무시 가능 — 사용자 확인 필요.
+
+**5. `Employee` 중 재직 중인데 `roleId`, `lineId` 둘 다 NULL인 직원 3명** (id=55 Phạm Phương Anh, id=50 Trương Yến Ly, id=1 정동원)
+- 관리자/사무직이라 의도된 걸 수도 있지만, `roleId`까지 없는 건 등록 시 직무 입력 누락일 가능성도 있음.
+
+**6. `AssignmentPlan.actualProducedCompletedAt` / `forecastCompletedAt` — 완료 여부와 무관하게 25건 전부 NULL** (완료된 3건 포함)
+- `closedAt`/`completedAt`/`productionCompletedAt`은 완료 3건에 정상적으로 채워지는데 이 두 필드만 항상 비어있음. forecast/actual 완료일 관련 기능이 있다면 DB에 저장이 안 되고 있거나, 컬럼만 만들고 구현이 안 끝난 상태로 보임 — 코드에서 이 필드를 쓰는 곳이 있는지 확인 필요(이번 조사에서는 안 함).
+
+### 의도된 것으로 확인됨 (코드/AGENTS.md 규칙과 대조 완료, 문제 아님 — 재조사 불필요)
+- `OrgMembership.email` NULL 15건 — 전부 `role=WORKER`(ADMIN/OPERATOR/ACCOUNTANT는 15건 전원 email 있음 — role별 집계로 직접 확인). AGENTS.md "WORKER는 이메일 선택"과 정확히 일치.
+- `AttendanceEntry.clockOut`/`workedSeconds` NULL 18건 — 아직 퇴근 안 찍은 진행 중 출근 기록.
+- `LineAssignment.endAt` NULL 8건 — 현재 진행 중인 라인 배치(종료일 없는 게 정상).
+- `AssignmentPlan`의 `finalQuantity`/`completedAt`/`closedQty`/`closedBy`/`closeMode`/`productionCompletedAt` 88%(22/25) NULL — 완료 3건과 정확히 일치, 미완료 카드는 당연히 비어있어야 함.
+- `Style.designer`/`season`/`bomNotes`/`revenueMemo`, `Organization.phone`, `OrgRelationship.memo` 등 — 전부 선택 입력 메타 필드, 아직 그 기능을 안 쓰는 것으로 보임(급하지 않음).
+- `OrganizationSubscription.trialStartedAt`/`trialEndsAt` — 3개 조직 다 `status=ACTIVE`로 바로 시작해서 트라이얼 단계를 거치지 않음, 정상. `activeEndsAt` NULL은 "만료일 없음(수동 관리)"로 보이는데 의도인지는 미확인 — 접근 제어 로직이 이 값 존재를 가정하면 문제될 수 있음(이번 조사에서는 코드 확인 안 함).
+
+### Remaining
+- 위 6개 중 어느 것부터 처리할지 결정 필요. 1번(AssignmentPlan.styleId)과 2번(THAI BINH 급여 단가)이 체감 영향 가장 큼.
+- 이번 조사는 스캔 + 코드 대조까지만 했고 실제 수정은 하나도 안 함.
+
+---
+
 ## 2026-07-02 F1~F5: 프론트엔드 name/code 기반 클라이언트 매칭(FK 미사용) 제거
 
 ### 배경
@@ -9,7 +53,7 @@
 
 **F1 — `frontend/src/pages/App/work/WorkDetail.jsx`, `resolveHydratedAssignmentMatch`**
 - WorkLog 재오픈 시 `record.assignmentPlanId`로 매칭 실패하면 orderNo 텍스트 → styleName/label 텍스트 → 공정 코드/이름 → 계획수량=생산수량 일치까지 순차로 완화하며 다른 assignment를 추측 매칭하던 로직 전체 삭제.
-- 이제 `assignmentPlanId`가 없거나, 있어도 넘겨받은 assignments 풀에서 `dbId` 일치 항목을 못 찾으면 `null`을 반환한다. 순수 FK 매�터로 축소.
+- 이제 `assignmentPlanId`가 없거나, 있어도 넘겨받은 assignments 풀에서 `dbId` 일치 항목을 못 찾으면 `null`을 반환한다. 순수 FK 매처로 축소.
 - `null` 반환 시 호출부(`buildHydratedRows`)가 원래부터 갖고 있던 `buildLegacyAssignment(record, index)` 폴백으로 자연스럽게 넘어간다 — 이 폴백은 다른 assignment를 추측하지 않고 그 레코드 자신의 저장된 필드(`record.assignmentPlanId`를 dbId로 그대로 보존, `record.styleCode/styleName/processCode` 등)만으로 표시용 객체를 만들기 때문에 완료되어 풀에서 제외된 assignment(§31)에 연결된 기존 기록을 재오픈해도 FK 값 자체는 왜곡되지 않는다.
 - 더 이상 쓰이지 않게 된 `collectAssignmentStyleKeys`, `buildRecordProcessHint` 헬퍼 삭제. `equalsText`/`hasMatchingProcessCode`/`hasMatchingProcessName`/`formatAssignmentLabel`/`resolveBaselineQuantity`는 다른 곳에서 계속 쓰여 유지.
 

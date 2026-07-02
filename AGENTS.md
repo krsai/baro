@@ -7,6 +7,16 @@
 
 ---
 
+## ⚠️ DB 접속 전 필독: Supabase ≠ 운영 DB
+
+- **운영 데이터(주문/스타일/작업기록/배정 등)는 전부 Railway Postgres에 있다. Supabase에는 없다.**
+- Supabase는 **소셜 로그인(Auth, Google OAuth)만** 담당한다. Supabase 안에 Postgres가 딸려 있어서 헷갈리기 쉽지만, 그 Postgres는 앱 데이터 저장용으로 쓰이지 않는다(테이블은 존재해도 전부 빈 상태).
+- **`backend/.env`의 `DATABASE_URL`/`DIRECT_URL`은 현재 Supabase Postgres를 가리키고 있다.** 이 파일을 그대로 믿고 접속하면 "테이블은 다 있는데 전부 0건"인 빈 DB에 연결된다 — 실제로 반복 발생한 혼동의 원인이다.
+- 실제 운영 데이터를 조회/조사해야 하면 `.env`를 쓰지 말고, Railway 콘솔 → **Postgres 서비스 → Variables 탭 → `DATABASE_PUBLIC_URL`** 값을 받아서 그걸로 접속한다. (`DATABASE_URL`이라는 이름의 변수가 Railway Variables에도 있지만 그건 `*.railway.internal` 내부 전용 호스트라 Railway 네트워크 밖에서는 연결 자체가 안 된다. 반드시 `DATABASE_PUBLIC_URL`을 써야 한다.)
+- 이 값은 비밀번호가 포함된 민감정보이므로 세션에서만 임시로 쓰고 `.env`에 영구 저장하지 않는다.
+
+---
+
 ## 핵심 용어
 
 | 용어 | 정의 |
@@ -310,7 +320,7 @@ AT(q) = a*q + b
 
 ### 인증/인프라
 - Supabase Auth (Google OAuth), Railway 배포 (프론트/백/DB 분리 서비스)
-- 운영 데이터베이스는 Railway Postgres 서비스다. Supabase Table Editor에서 데이터가 비어 보여도 운영 DB 기준이 아니다.
+- 운영 DB와 Supabase 혼동 주의: 파일 최상단 "⚠️ DB 접속 전 필독" 참고.
 
 ---
 

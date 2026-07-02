@@ -20,7 +20,12 @@
       "Bash(git -C \"c:\\\\Users\\\\krsai\\\\Desktop\\\\baro\" push origin main)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(npm --prefix frontend run build)",
+      "Bash(node -e ' *)",
+      "Bash(DATABASE_URL=postgresql://postgres:XHvVEMgESxrBLjgnxtraqeFoRVNXcVuf@postgres.railway.internal:5432/railway node -e ' *)",
+      "Bash(node scripts/_tmp_null_audit.js)",
+      "Bash(node scripts/_tmp_null_followup.js)"
     ],
     "additionalDirectories": [
       "c:\\Users\\krsai\\Desktop\\baro",
