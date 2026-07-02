@@ -2,7 +2,120 @@
 
 ---
 
-## 2026-07-02 FK calculation/concurrency cleanup
+## 2026-07-02 우회/땜질 코딩 패턴 전수조사 — 후속 조치 대기 (코드 미수정, 조사만 완료)
+
+### 왜 이 조사를 했는지 (목적)
+사용자가 반복적으로 지적한 문제: 이중저장, 우회조회(FK 대신 이름/코드로 재탐색), 조용한 fallback으로 "일단 동작하게만" 만드는 코딩 스타일. AGENTS.md에 이미 "DB 설계 원칙"/"정확 계산 원칙"으로 문서화돼 있는데도 실제 커밋(코덱스 작업 포함)에서 계속 발견되어, **앱 전체를 대상으로 체계적 전수조사**를 요청받았다. 이 섹션은 조사 결과 기록 전용이며 사용자가 명시적으로 "코딩하지 말고 정리만"이라고 지시해서 코드는 건드리지 않았다. 다음에 이어서 작업할 사람은 아래 항목을 우선순위대로 검증→수정하면 된다.
+
+### 검증 상태 범례
+- **[검증완료]** — Claude가 직접 코드를 읽고 실행 경로(호출부, 데이터 흐름)까지 추적해서 사실로 확인한 것.
+- **[리포트]** — 조사 서브에이전트가 찾아낸 것이며 아직 직접 코드로 재확인하지 않은 것. 착수 전에 먼저 파일:라인을 열어서 재확인할 것.
+
+---
+
+### A. 확정 버그 — 최우선 [검증완료]
+
+**A1. `frontend/src/pages/App/assign/AssignBoard.jsx:3367-3368` — 배정 보드 저장이 서버에는 성공하는데 화면엔 "실패"로 뜬다.**
+- 문제: `resolvePersistedBoardState`(정의 3322) 안에서 `mergedStTotalSeconds`라는 변수를 참조하는데, 이 이름은 전혀 다른 스코프인 모듈 최상위 함수 `mergeCardData`(1188, 변수 선언은 1190) 안에만 존재한다. 클로저 관계 없음 — 순수 `ReferenceError` 유발 코드.
+- 왜 항상 재현되는지: 백엔드 `toAssignmentPlanResponse`(backend/src/index.ts:12247)는 응답에 `plannedStTotalSeconds` 필드를 아예 포함하지 않는다(직접 확인). 그래서 `responsePlannedStTotalSeconds`(3351-3354)가 항상 `0`이 되어 삼항연산자의 `mergedStTotalSeconds` 참조 분기가 항상 실행된다. `fallbackAssignments`로 넘어오는 값은 방금 저장 요청에 담아 보낸 `normalizedAssignments`(호출부 3992-3995)라서, 기존에 저장된 assignment가 하나라도 있으면(=사실상 모든 실제 저장) `fallbackItem`이 항상 존재해 이 코드가 실행된다.
+- 실행 흐름: `handleSaveBoard`의 `try` 블록(3949 시작) 안에서 `await persistBoardState(...)`(3991, PUT /assignment-board-state, **여기서 서버 저장은 이미 성공**) 직후 `resolvePersistedBoardState(...)`(3992) 호출 → `ReferenceError` throw → `catch (error)`(4045)에서 잡혀서 사용자에게 "저장 실패" 알림. `setCards`/`setAssignments`가 새 데이터로 안 갱신되니 화면은 dirty한 옛 상태로 남는다.
+- 목적/영향: 데이터 무결성 자체는 안전(서버는 정상 저장됨)하지만, 사용자가 "저장이 계속 안 된다"고 느껴 반복 재시도하거나 도구를 신뢰 못 하게 되는 UX 신뢰 문제. 체감 심각도 최상.
+- 조치 방향(제안, 미구현): `mergedStTotalSeconds` 참조를 지우거나, 이 스코프에서 실제로 의도했던 값(아마 `responseStTotalSeconds`, 3347-3350에서 이미 계산됨)으로 교체.
+
+**A2. `backend/src/index.ts:7246-7719` (`syncAssignmentSchedulesFromWorkRecordPlans`) — 완료된 AssignmentPlan 보호 공백, 지금은 dormant.**
+- 이건 2026-07-02 "Codex 커밋 f5b995b 4개 항목 검증" 작업(바로 아래 섹션) 중 발견. 코덱스가 4개 요청 항목(FK 계산 fallback 제거, payroll breakdown FK화, production-complete/final-quantity 동시성 가드, 완료 plan update 시점 재차단)을 전부 정확히 구현했는데, **완료 plan 재차단이 이 함수 하나는 놓쳤음**.
+- 문제: `linePlans` 조회(7246)가 `isCompleted` 컬럼을 select조차 안 함 → 리플로우 시뮬레이션 전체가 어떤 plan이 완료됐는지 모르는 채로 진행 → 최종 쓰기(7719)도 `updateMany`+`isCompleted:false` 가드 없이 그냥 `.update()`.
+- 왜 지금 당장 안전한지: 이 함수의 3개 호출부(6912 `ENABLE_WORKLOG_SCHEDULE_SYNC`, 20508 `ENABLE_PRODUCTION_COMPLETE_SCHEDULE_SYNC` 게이트, 7738/7743 경유)가 전부 기본값 `false`인 환경변수 뒤에 있어서 운영에선 코드 자체가 안 돈다.
+- 목적: 나중에 저 플래그 중 하나라도 켜지는 순간, 완료된 AssignmentPlan의 `startIndex`/`endIndex` 등 스케줄 좌표가 보호 없이 덮어써질 수 있다. `PUT /assignment-board-state`(23807 부근)·`completeAssignmentPlanProduction`(20463)·`final-quantity`(20876)·`persistAssignmentPlanProgressSnapshot`(20210)에 이미 적용된 것과 같은 원자적 가드를 여기도 적용해야 한다.
+
+---
+
+### B. Codex 커밋 `f5b995b` "Remove FK calculation fallbacks and guard completions" 검증 결과 [검증완료]
+
+사용자가 코덱스에게 지시한 4개 항목 — 전부 정확히 구현 확인, 빌드도 통과:
+1. `resolveWorkRecordProcessBucketKeyForAssignmentSchedule`(index.ts:7172) — `string`→`string|null`로 바뀌어 `styleProcessId` 없으면 `null` 반환, 5개 호출부 전부 스킵+진단로그 처리. 독립 코드/이름 매칭 함수 `resolveWorkRecordProcessMetric` 통째로 삭제됨.
+2. `backend/src/payroll/payroll.service.ts` — payroll breakdown이 `styleProcessId` 기준 그룹핑으로 전환. **급여 총액(`emp.productionEarnings`) 계산은 이 그룹핑과 완전히 독립**이라 총액 공식 불변 확인.
+3. `completeAssignmentPlanProduction`(20463)/`final-quantity`(20876) — `prisma.$transaction`+`updateMany({where:{...,updatedAt:plan.updatedAt}})` 낙관적 동시성으로 동시 요청 시 409.
+4. `PUT /assignment-board-state`의 `updatePlanRows` 루프(23807)·`persistAssignmentPlanProgressSnapshot`(20210) — `updateMany({where:{...,isCompleted:false}})`+count체크로 원자적 차단. (단, A2에 적은 대로 `syncAssignmentSchedulesFromWorkRecordPlans` 하나는 누락.)
+
+---
+
+### C. 백엔드 — TOCTOU 동시성 경쟁 [리포트, 미검증]
+
+**C1. `backend/src/index.ts:17030` 부근, `PATCH /system/company-requests/:id/approve`** — `companyRequest.status !== "PENDING"` 체크(17045) 후 조직 생성(17098)→멤버십 upsert(17114)→요청 상태 update(17139)까지 진행하는데, 마지막 update의 `where`에 `status:"PENDING"` 재확인이 없다는 주장. 동시 승인 요청 2번이면 조직이 중복 생성될 수 있음. 대칭되는 reject 핸들러(17169-17205)도 동일 패턴이라고 함.
+
+**C2. `backend/src/index.ts:24201-24257`, WorkOrder 수정잠금(lock) 토글** — 읽은 시점의 lock 상태와 재비교 없이 update. 동시 lock/unlock이 서로 덮어쓰거나, stale 읽기 기반 unlock이 `AssignmentPlan` 삭제(24265)까지 이어질 수 있다는 주장.
+
+**C3. `backend/src/index.ts:20778-20800`, QC pass event 취소** — `cancelledAt` null 체크 후 where 가드 없이 update. 동시 취소 2번이면 `syncAssignmentPlanQcAggregate` 중복 실행 가능성.
+
+### D. 백엔드 — FK 대신 텍스트 파싱을 실제 게이트로 사용 [리포트, 미검증]
+
+**D1. `backend/src/index.ts:10976-10977` (`extractOrderIdFromAssignmentCardText`)** — `AssignmentPlan.originOrderId`/`cardId`의 `"orderId::styleId::color::gender"` 조합 문자열에서 orderId를 파싱해서 `loadOrderAssignmentModificationLockMap`(11694)·`isOrderAssignmentModificationLocked`(11716)의 실제 잠금 판정 게이트로 사용 (`workOrderId`가 nullable이라 그 fallback). 파싱 형식이 안 맞는 레거시 데이터가 있으면 잠겨야 할 주문이 안 잠긴 것처럼(또는 반대) 보일 수 있다는 주장.
+
+### E. 백엔드 — 스키마 drift/조회 실패 시 계산 필드가 조용히 누락 [리포트 대부분 미검증, E3만 검증완료]
+
+**E1. `backend/src/index.ts:13181, 13208` (`ASSIGNMENT_PLAN_SELECT_LEGACY`, `ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY`)** — 두 legacy select 상수가 `assignmentStTotalSeconds`/`assignmentCtTotalSeconds`를 아예 제외. `findAssignmentPlansWithSelectFallback`(13225)이 스키마 drift 시 이걸로 재시도하며 `console.warn`만 남김. `buildAssignmentPlanProgressRows`(19328 부근)·`loadAssignmentPlansForBoardState`(13259)가 사용. ST/CT 리네임 마이그레이션 미반영 환경에서 라인 여유일/급여 CT 숫자가 조용히 틀어질 수 있다는 주장.
+
+**E2. `backend/src/index.ts:18005-18014`, `19367-19376`** — `organizationHoliday.findMany` 실패를 로그 없이 `.catch(() => [])`로 삼킴. 실패하면 모든 날짜가 근무일 취급되어 스케줄러 예측이 조용히 틀어질 수 있음.
+
+**E3. `backend/src/index.ts:10698-10741`, 호출부 10832(`rebuildAssignmentCardsForOrg`)** — `syncAssignmentCardsForOrg`가 `deleteMany` 후 카드별 개별 `upsert` 루프인데 이 호출부는 트랜잭션 없이(기본 `prisma`) 실행. 23306/23829 호출부는 `tx`를 넘겨서 안전. 중간에 프로세스가 죽으면 삭제만 되고 재생성 안 된 채 남아 미배정 카드 풀이 원인불명으로 줄어들 수 있음.
+
+**E4. `backend/src/payroll/payroll.service.ts:32-37, 442` (`buildPayrollEmployeeKey`) [검증완료, 원 리포트보다 범위 좁음]** — `WorkRecord.workerId` 컬럼 자체가 **NULL인 고아 레코드에 한해서만** 이름 기반 키(`n-${name}`)로 fallback한다 (employee 매핑 실패가 아니라 workerId 자체가 null일 때만 — 서브에이전트 원 리포트는 "employee 조회 실패시에도 발동"이라 적었는데 이건 부정확, 직접 코드 확인 결과 workerId가 유효하면 employee 조회가 실패해도 `w-{id}`로 정상 그룹핑됨). 같은 표시 이름의 두 작업자가 orphan(workerId NULL) 레코드를 가지면 급여 합계가 한 버킷으로 섞일 위험은 남아있음.
+
+---
+
+### F. 프론트엔드 — name/code 기반 클라이언트 매칭 (FK 미사용) [리포트, 미검증] — **가장 심각하다고 표시된 영역**
+
+**F1. `frontend/src/pages/App/work/WorkDetail.jsx:587-664` (`resolveHydratedAssignmentMatch`)** — WorkLog 재오픈 시 `assignmentPlanId` 매칭이 모호하면 orderNo 텍스트 → styleName/label 텍스트 → **생산수량(producedQuantity)=계획수량(plannedQuantity) 일치**까지 순차로 매칭 기준을 완화. 실제 저장 시 `assignmentPlanId`(1878)가 이 추측 결과로 재기록됨. 분할 오더처럼 스타일/오더/공정/수량이 겹치는 두 배정 카드가 있으면 CT/진행률 추적이 엉뚱한 카드로 오염됨. **AGENTS.md 26절(Meaning Exactness Lock, "계획수량=생산수량 fallback 금지") 정면 위반** — 우선순위 가장 높게 볼 것.
+
+**F2. `frontend/src/pages/App/production/ProductionPlanBoard.jsx:1761-1771` (`findMatchingAssignmentsForDelta`)** — 생산량 증감 델타 적용 대상을 `label` 자유텍스트 또는 styleId+colorName+gender+customer 문자열 동일성으로 찾음. FK 없음.
+
+**F3. `frontend/src/pages/App/QcReview.jsx`** 3곳:
+  - `:124-156` (`buildQcDetailFromOrders`) — 사이즈/컬러 매트릭스를 orderNumber/styleCode 텍스트 비교(교차 fallback 포함, `itemStyleCode === targetStyleId`까지)로 찾음.
+  - `:534-536` — QC 합격수량이 없으면 `finalQuantity`(생산완료수량, 다른 개념)로 슬쩍 대체.
+  - `:224-237` — variant 매칭 0건이면 "미지정" 가짜 행을 계획수량 기준으로 생성해서 보여줌 (매칭 실패를 사용자가 인지 못함).
+
+**F4. `frontend/src/pages/App/order/OrderList.jsx:1596-1626`** — 바이어/셀러 조직 ID 매칭 실패 시 이름 텍스트 매칭, 그마저 실패하면 옵션이 1개뿐이면 자동 선택해서 `buyerOrgId`를 조용히 덮어씀.
+
+**F5. `frontend/src/pages/App/style/styleDetail/StyleInfo.jsx:373-383`** — 스타일 고객사 선택이 `customerOrgId` FK보다 `name`/`nameKo`/`nameVi` 로컬라이즈 문자열 매칭을 먼저 시도.
+
+### G. 프론트엔드 — 진단 없는 silent fallback 렌더링 [리포트, 미검증]
+
+**G1. `frontend/src/pages/App/assign/AssignBoard.jsx:3732-3739`** — 보드 최초 로드 시 `/factories`,`/lines`,`/line-workers`,`/assignment-board-view` 4개 요청이 로그/알림 없이 빈 배열/null로 fallback. 이 파일에 `loadError`/`boardLoadError` 상태 자체가 없음(grep 확인됨). `/lines`만 실패해도 "라인 0개"처럼 정상 렌더링됨.
+
+**G2. `frontend/src/pages/App/assign/AssignBoard.jsx:3763-3766`, `applyLoadedBoardData`(3464-3490)** — `/assignment-board-view` 실패 시 "배정 0건"과 "로드 실패"가 화면상 구분 불가.
+
+**G3. `frontend/src/context/AuthContext.jsx:463-465, 506-518`** — `/auth/context` 실패가 "권한 없음/온보딩 필요" 정상 상태와 뒤섞여 표시됨.
+
+**G4. `frontend/src/pages/App/attribute/ProcessMasterBoard.jsx:1240-1246`** — 공정 마스터 로드 실패 시 폼/원본 데이터를 빈 객체로 리셋. 이후 저장하면 `isDirty` 비교 기준이 빈 데이터라 기존 마스터를 실수로 덮어쓸 위험.
+
+**G5. `frontend/src/pages/App/system/orgMembership.jsx:161-171`** — 조직 목록 로드 실패해도 알림 없이 빈 배열.
+
+**G6. `frontend/src/utils/holidayApi.js:123-129`** — `/holidays` 실패 시 로컬스토리지 구버전 캐시(`baro_holidays_v1`)로 조용히 대체. 스케줄러 근무일(월~토, 휴일 제외) 판정에 직접 쓰임 → forecast가 조용히 왜곡될 수 있음.
+
+**G7. `frontend/src/pages/App/assign/components/AssignBar.jsx:110-114`** — 백엔드가 명시적으로 반환하는 진행률 `null`(=계산불가, AGENTS.md Task 2)을 `|| 0`으로 뭉개서 "실제 0%"와 시각적으로 구분 불가.
+
+### H. 프론트엔드 — 프론트-백엔드 이중 계산 / stale 데이터 [리포트, 미검증]
+
+**H1. `frontend/src/pages/App/payroll/PayrollEntry.jsx:318-357`** — 급여 마감 전 `baseEarnings`/`finalEarnings`를 프론트에서 직접 계산해서 그대로 스냅샷 저장 payload에 담아 전송. 백엔드가 별도 재계산 검증을 안 하면 반올림 등에서 급여가 프론트 산식에 종속될 위험.
+
+**H2. `frontend/src/pages/App/assign/utils/lineMonthCapacity.js:310-316`** — `isStUnknown=false`인데 `remainingStTotalSeconds`가 없으면 계획량 전체(`plannedStTotalSeconds`)로 조용히 대체 → 진행 중인 배정을 0% 진행처럼 취급해 남은 작업량을 과대평가. 별도 경고 카운트 없음 (AGENTS.md 35절의 보수적 `min(producedRatio, totalDoneRatio)` 공식을 우회).
+
+**H3. `frontend/src/pages/App/order/OrderList.jsx` 부근** — 주문 저장 성공 후 보드 동기화(`/assignment-board-view` 재조회)가 실패해도 "주문 저장은 성공 유지" 주석과 함께 무시됨. 스케줄러 카드가 변경된 수량과 어긋난 채 남을 수 있음.
+
+**H4. `frontend/src/pages/App/assign/AssignBoard.jsx:4247-4255, 4915-4925`** — 진행률/capacity fetch 실패 시 의도적으로 이전 데이터 유지(주석 있음 — 과거 "빈 데이터로 wipe하면 forecast가 0%로 붕괴하는 회귀"를 막기 위한 설계). 다만 "이 데이터는 오래됨" 표시 배지가 전혀 없어서 장애가 길어지면 무기한 stale 상태가 정상처럼 보일 수 있음.
+
+### Verify (지금까지 한 것)
+- `npm --prefix backend run prisma:prepare-client`
+- `npm --prefix backend run build`
+- `npm --prefix frontend run build`
+전부 코드 미변경 상태에서 통과 확인 (B 섹션 검증 시점 기준).
+
+### Remaining — 다음 작업자가 할 일
+1. **A1(크래시 버그)부터 고칠 것** — 체감 영향이 가장 크고 원인이 명확함.
+2. A2, F1(WorkDetail 재매칭)을 다음 우선순위로 — 둘 다 AGENTS.md 원칙을 정면 위반하는 게 확인/거의 확인된 상태.
+3. [리포트] 표시된 항목들은 착수 전에 파일:라인을 직접 열어 재확인할 것 — E4처럼 원 리포트가 범위를 과장한 사례가 있었음.
+4. 이 조사 자체는 서브에이전트 다수가 중간에 응답 대신 메타 텍스트만 반환하는 문제가 있어 일부는 재시도/직접 검증으로 보완했음. 특히 C, D, E1/E2/E3, F2-F5, G, H는 아직 "리포트"만 있고 "검증완료" 아님.
 
 ### Done
 - Removed `processCode` fallback from `resolveWorkRecordProcessBucketKeyForAssignmentSchedule`; scheduler/progress production buckets now require `WorkRecord.styleProcessId`.
