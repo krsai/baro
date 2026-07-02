@@ -1,3 +1,62 @@
+-- Step 0d-4: organization representative uses an employee FK (20260702)
+ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "representativeEmployeeId" INTEGER;
+
+WITH unique_organization_representative_matches AS (
+  SELECT
+    o.id AS "organizationId",
+    e.id AS "employeeId",
+    ROW_NUMBER() OVER (PARTITION BY o.id ORDER BY e.id) AS rn,
+    COUNT(*) OVER (PARTITION BY o.id) AS match_count
+  FROM "Organization" o
+  JOIN "Employee" e
+    ON e."orgId" = o.id
+   AND lower(btrim(COALESCE(e."name", ''))) = lower(btrim(COALESCE(o."representative", '')))
+  WHERE o."representativeEmployeeId" IS NULL
+    AND o."representative" IS NOT NULL
+    AND btrim(o."representative") <> ''
+)
+UPDATE "Organization" o
+SET "representativeEmployeeId" = matches."employeeId"
+FROM unique_organization_representative_matches matches
+WHERE o.id = matches."organizationId"
+  AND matches.rn = 1
+  AND matches.match_count = 1;
+
+CREATE INDEX IF NOT EXISTS "Organization_representativeEmployeeId_idx"
+  ON "Organization"("representativeEmployeeId");
+
+DO $$
+DECLARE
+  cleared_count INT;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'Organization_representativeEmployeeId_fkey'
+      AND table_name = 'Organization'
+  ) THEN
+    UPDATE "Organization" o
+    SET "representativeEmployeeId" = NULL
+    WHERE o."representativeEmployeeId" IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "Employee" e
+        WHERE e.id = o."representativeEmployeeId"
+          AND e."orgId" = o.id
+      );
+    GET DIAGNOSTICS cleared_count = ROW_COUNT;
+    IF cleared_count > 0 THEN
+      RAISE NOTICE 'Organization: cleared % invalid representativeEmployeeId references before FK creation', cleared_count;
+    END IF;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "Organization"
+    ADD CONSTRAINT "Organization_representativeEmployeeId_fkey"
+    FOREIGN KEY ("representativeEmployeeId") REFERENCES "Employee"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- Step 0d: style customer display fields are derived from Organization (20260701)
 ALTER TABLE "Style" DROP CONSTRAINT IF EXISTS "Style_orgId_customer_name_key";
 DROP INDEX IF EXISTS "Style_orgId_customer_name_key";

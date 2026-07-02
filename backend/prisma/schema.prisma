@@ -151,6 +151,7 @@ model Organization {
   code           String?          @unique
   businessNumber String?
   representative String?
+  representativeEmployeeId Int?
   industry       String?
   address        String?
   country        String?
@@ -188,12 +189,15 @@ model Organization {
   holidays                  OrganizationHoliday[]
   atTrainingBuckets         AtTrainingBucket[]
   atTrainingBucketProcesses AtTrainingBucketProcess[]
+  representativeEmployee    Employee?                  @relation("OrganizationRepresentative", fields: [representativeEmployeeId], references: [id], onDelete: SetNull)
   manufacturerRelationships OrgRelationship[]         @relation("ManufacturerOrgRelationships")
   brandRelationships        OrgRelationship[]         @relation("BrandOrgRelationships")
   onboardingRequests        OnboardingRequest[]
   buyerWorkOrders           WorkOrder[]              @relation("WorkOrderBuyerOrg")
   sellerWorkOrders          WorkOrder[]              @relation("WorkOrderSellerOrg")
   customerWorkOrders        WorkOrder[]              @relation("WorkOrderCustomerOrg")
+
+  @@index([representativeEmployeeId])
 }
 
 model SystemSetting {
@@ -364,6 +368,7 @@ model Employee {
   line              Line?             @relation("EmployeeCurrentLine", fields: [lineId], references: [id], onDelete: SetNull)
   role              AttrRole?         @relation(fields: [roleId], references: [id])
   lineAssignments   LineAssignment[]
+  representedOrganizations Organization[]     @relation("OrganizationRepresentative")
   managedFactories  Factory[]         @relation("FactoryManager")
   managedLines      Line[]            @relation("LineManager")
   attendanceEntries AttendanceEntry[]

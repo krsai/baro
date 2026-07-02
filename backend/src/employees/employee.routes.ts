@@ -86,6 +86,7 @@ const toEmployeeResponse = (employee: any) => ({
   effectivePayType: resolveEmployeeEffectivePayType(employee),
   fixedSalary: employee?.fixedSalary ?? null,
   name: employee?.name ?? null,
+  email: employee?.membership?.email ?? null,
   phone: employee?.phone ?? null,
   bankName: employee?.bankName ?? null,
   bankAccountNumber: employee?.bankAccountNumber ?? null,
@@ -259,6 +260,9 @@ export const createEmployeeRouter = ({
     const employees = await prisma.employee.findMany({
       where,
       include: {
+        membership: {
+          select: { email: true },
+        },
         role: true,
         line: true,
       },

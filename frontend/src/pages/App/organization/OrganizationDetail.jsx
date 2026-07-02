@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Box,
   Grid,
+  MenuItem,
   Paper,
   Stack,
   TextField,
-  Typography,
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SaveButton from '../../../components/SaveButton';
-import { getOrganizationTypeLabel } from '../../../constants/organizationType';
+import {
+  ORGANIZATION_TYPE_KEYS,
+  normalizeOrganizationType,
+} from '../../../constants/organizationType';
 import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -17,88 +19,88 @@ import { useLanguage } from '../../../context/LanguageContext';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { requestJSON } from '../../../utils/apiClient';
 
-const buildCompanyInfo = (data = {}) => ({
-  name: data.name ?? '',
-  nameKo: data.nameKo ?? '',
-  nameVi: data.nameVi ?? '',
-  businessNumber: data.businessNumber ?? '',
-  representative: data.representative ?? '',
-  industry: String(data.industry ?? '').trim() || getOrganizationTypeLabel(data.type, ''),
-  address: data.address ?? '',
-  phone: data.phone ?? '',
-  email: data.email ?? '',
-});
+const EMPLOYEE_COLLATOR = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
 
-const getLocalizedText = (languageCode) => {
-  if (languageCode === 'ko') {
-    return {
-      identitySection: '법인 기본 정보',
-      identityDescription: '대표 회사명과 사업자 기본 식별 정보를 관리합니다.',
-      localizedSection: '다국어 회사명',
-      localizedDescription: '화면 표시와 문서용 한글/베트남어 이름을 함께 관리합니다.',
-      contactSection: '대표자 및 연락처',
-      contactDescription: '실무 담당자가 바로 찾을 수 있도록 연락 정보를 묶었습니다.',
-      addressSection: '주소 및 메모성 정보',
-      addressDescription: '주소와 업종처럼 자주 함께 보는 항목을 한곳에 배치했습니다.',
-      nameKo: '회사명 (한글)',
-      nameVi: '회사명 (베트남어)',
-    };
-  }
+const normalizePositiveId = (value) => {
+  if (value === null || value === undefined || value === '') return '';
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : '';
+};
 
-  if (languageCode === 'vi') {
-    return {
-      identitySection: 'Thong tin doanh nghiep',
-      identityDescription: 'Quan ly ten cong ty chinh va thong tin dang ky co ban.',
-      localizedSection: 'Ten da ngon ngu',
-      localizedDescription: 'Luu ten tieng Han va tieng Viet de hien thi tren man hinh va tai lieu.',
-      contactSection: 'Nguoi dai dien va lien he',
-      contactDescription: 'Gom cac thong tin lien lac de bo phan van hanh de tim nhanh hon.',
-      addressSection: 'Dia chi va thong tin bo sung',
-      addressDescription: 'Dat dia chi va nganh nghe vao cung mot nhom de de xem hon.',
-      nameKo: 'Ten cong ty (tieng Han)',
-      nameVi: 'Ten cong ty (tieng Viet)',
-    };
-  }
-
+const buildCompanyInfo = (data = {}) => {
+  const representativeEmployee = data.representativeEmployee || null;
   return {
-    identitySection: 'Company Identity',
-    identityDescription: 'Manage the primary company name and business registration details.',
-    localizedSection: 'Localized Names',
-    localizedDescription: 'Store Korean and Vietnamese names for UI and document display.',
-    contactSection: 'Representative & Contact',
-    contactDescription: 'Keep the main business contact details together for faster review.',
-    addressSection: 'Address & Context',
-    addressDescription: 'Group address and industry details that are usually reviewed together.',
-    nameKo: 'Company Name (Korean)',
-    nameVi: 'Company Name (Vietnamese)',
+    name: data.name ?? '',
+    nameKo: data.nameKo ?? '',
+    nameVi: data.nameVi ?? '',
+    businessNumber: data.businessNumber ?? '',
+    representativeEmployeeId: normalizePositiveId(data.representativeEmployeeId),
+    representative: representativeEmployee?.name ?? data.representative ?? '',
+    industry: normalizeOrganizationType(data.industry) || normalizeOrganizationType(data.type),
+    address: data.address ?? '',
+    phone: representativeEmployee ? representativeEmployee.phone ?? '' : data.phone ?? '',
+    email: representativeEmployee ? representativeEmployee.email ?? '' : data.email ?? '',
   };
 };
 
-const SectionCard = ({ title, description, children }) => (
+const buildEmployeeOptionLabel = (employee) => {
+  const name = String(employee?.name || '').trim() || '-';
+  const employeeNo = String(employee?.employeeNo || '').trim();
+  return employeeNo ? `${name} (${employeeNo})` : name;
+};
+
+const getLocalText = (languageCode) => {
+  if (languageCode === 'vi') {
+    return {
+      nameEn: 'Ten cong ty (tieng Anh)',
+      nameKo: 'Ten cong ty (tieng Han)',
+      nameVi: 'Ten cong ty (tieng Viet)',
+      representativeNone: 'Khong co',
+      representativeLoading: 'Dang tai nhan vien.',
+      industryOptions: {
+        [ORGANIZATION_TYPE_KEYS.MANUFACTURER]: 'Nha may',
+        [ORGANIZATION_TYPE_KEYS.BRAND]: 'Thuong hieu',
+      },
+    };
+  }
+  if (languageCode === 'en') {
+    return {
+      nameEn: 'Company Name (English)',
+      nameKo: 'Company Name (Korean)',
+      nameVi: 'Company Name (Vietnamese)',
+      representativeNone: 'None',
+      representativeLoading: 'Loading employees.',
+      industryOptions: {
+        [ORGANIZATION_TYPE_KEYS.MANUFACTURER]: 'Manufacturer',
+        [ORGANIZATION_TYPE_KEYS.BRAND]: 'Brand',
+      },
+    };
+  }
+  return {
+    nameEn: '\uD68C\uC0AC\uBA85 \uC601\uC5B4',
+    nameKo: '\uD68C\uC0AC\uBA85 \uD55C\uAE00',
+    nameVi: '\uD68C\uC0AC\uBA85 \uBCA0\uD2B8\uB0A8\uC5B4',
+    representativeNone: '\uC5C6\uC74C',
+    representativeLoading: '\uC9C1\uC6D0 \uBAA9\uB85D\uC744 \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.',
+    industryOptions: {
+      [ORGANIZATION_TYPE_KEYS.MANUFACTURER]: '\uACF5\uC7A5',
+      [ORGANIZATION_TYPE_KEYS.BRAND]: '\uBE0C\uB79C\uB4DC',
+    },
+  };
+};
+
+const FormGroup = ({ children }) => (
   <Paper
     variant="outlined"
     sx={{
       width: '100%',
       p: { xs: 2, md: 3 },
-      borderRadius: 3,
+      borderRadius: 2,
       borderColor: 'divider',
-      background:
-        'linear-gradient(180deg, rgba(248,250,252,0.72) 0%, rgba(255,255,255,0.96) 100%)',
+      backgroundColor: '#fff',
     }}
   >
-    <Stack spacing={2.25}>
-      <Box>
-        <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-          {title}
-        </Typography>
-        {description ? (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            {description}
-          </Typography>
-        ) : null}
-      </Box>
-      {children}
-    </Stack>
+    <Stack spacing={2.25}>{children}</Stack>
   </Paper>
 );
 
@@ -109,18 +111,14 @@ const OrganizationDetail = () => {
   const [organizationId, setOrganizationId] = useState(null);
   const [formData, setFormData] = useState(buildCompanyInfo());
   const [savedFormData, setSavedFormData] = useState(buildCompanyInfo());
+  const [employees, setEmployees] = useState([]);
+  const [employeesLoading, setEmployeesLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const extraText = useMemo(() => getLocalizedText(languageCode), [languageCode]);
+  const localText = useMemo(() => getLocalText(languageCode), [languageCode]);
   const text = useMemo(
     () => ({
       title: getUiMessage('organizationDetail.title', 'Company Info', languageCode),
-      name: getUiMessage('organizationDetail.name', 'Company Name', languageCode),
-      businessNumber: getUiMessage(
-        'organizationDetail.businessNumber',
-        'Business Registration Number',
-        languageCode
-      ),
       representative: getUiMessage(
         'organizationDetail.representative',
         'Representative',
@@ -156,7 +154,7 @@ const OrganizationDetail = () => {
         setFormData(nextFormData);
         setSavedFormData(nextFormData);
       } catch (_error) {
-        // ignore fetch errors in UI for now
+        // keep the page usable even if the optional detail fetch fails
       }
     };
 
@@ -166,32 +164,101 @@ const OrganizationDetail = () => {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    setEmployeesLoading(true);
+    requestJSON('/employees')
+      .then((data) => {
+        if (!active) return;
+        const safeEmployees = (Array.isArray(data) ? data : []).sort((left, right) =>
+          EMPLOYEE_COLLATOR.compare(
+            buildEmployeeOptionLabel(left),
+            buildEmployeeOptionLabel(right)
+          )
+        );
+        setEmployees(safeEmployees);
+      })
+      .catch(() => {
+        if (!active) return;
+        setEmployees([]);
+      })
+      .finally(() => {
+        if (!active) return;
+        setEmployeesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const employeeOptions = useMemo(() => {
+    const byId = new Map();
+    employees.forEach((employee) => {
+      const employeeId = normalizePositiveId(employee?.id);
+      if (employeeId) byId.set(employeeId, employee);
+    });
+    const selectedId = normalizePositiveId(formData.representativeEmployeeId);
+    if (selectedId && !byId.has(selectedId)) {
+      byId.set(selectedId, {
+        id: selectedId,
+        name: formData.representative,
+        phone: formData.phone,
+        email: formData.email,
+      });
+    }
+    return Array.from(byId.values()).sort((left, right) =>
+      EMPLOYEE_COLLATOR.compare(buildEmployeeOptionLabel(left), buildEmployeeOptionLabel(right))
+    );
+  }, [
+    employees,
+    formData.email,
+    formData.phone,
+    formData.representative,
+    formData.representativeEmployeeId,
+  ]);
+
   const isDirty = useMemo(
     () => JSON.stringify(formData) !== JSON.stringify(savedFormData),
     [formData, savedFormData]
   );
   useUnsavedChanges(isDirty);
 
+  const isNameValid = formData.name.trim().length > 0;
+
   const handleInputChange = (event) => {
     const { name, value } = event.target;
+    if (name === 'representativeEmployeeId') {
+      const representativeEmployeeId = normalizePositiveId(value);
+      const selectedEmployee =
+        employeeOptions.find((employee) => normalizePositiveId(employee?.id) === representativeEmployeeId) ||
+        null;
+      setFormData((prev) => ({
+        ...prev,
+        representativeEmployeeId,
+        representative: selectedEmployee?.name ?? '',
+        phone: selectedEmployee?.phone ?? '',
+        email: selectedEmployee?.email ?? '',
+      }));
+      return;
+    }
+
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSave = async () => {
-    if (!isDirty || isSaving) return;
+    if (!isDirty || isSaving || !isNameValid) return;
 
     setIsSaving(true);
     try {
       const payload = {
-        name: formData.name?.trim(),
+        name: formData.name.trim(),
         nameKo: formData.nameKo?.trim() || null,
         nameVi: formData.nameVi?.trim() || null,
-        businessNumber: formData.businessNumber?.trim(),
-        representative: formData.representative?.trim(),
-        industry: formData.industry?.trim(),
-        address: formData.address?.trim(),
-        phone: formData.phone?.trim(),
-        email: formData.email?.trim(),
+        businessNumber: formData.businessNumber?.trim() || null,
+        representativeEmployeeId: formData.representativeEmployeeId || null,
+        representative: formData.representative?.trim() || null,
+        industry: formData.industry || null,
+        address: formData.address?.trim() || null,
       };
 
       const saved = await requestJSON(
@@ -224,124 +291,123 @@ const OrganizationDetail = () => {
       titleActions={(
         <SaveButton
           onClick={handleSave}
-          disabled={!isDirty || isSaving}
+          disabled={!isDirty || isSaving || !isNameValid}
           loading={isSaving}
         />
       )}
     >
-      <Stack spacing={2}>
-        <SectionCard
-          title={extraText.identitySection}
-          description={extraText.identityDescription}
-        >
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={8}>
-              <TextField
-                fullWidth
-                label={text.name}
-                name="name"
-                value={formData.name}
-                onChange={handleInputChange}
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label={text.businessNumber}
-                name="businessNumber"
-                value={formData.businessNumber}
-                onChange={handleInputChange}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label={text.representative}
-                name="representative"
-                value={formData.representative}
-                onChange={handleInputChange}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label={text.industry}
-                name="industry"
-                value={formData.industry}
-                onChange={handleInputChange}
-              />
-            </Grid>
+      <FormGroup>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              select
+              size="small"
+              label={text.industry}
+              name="industry"
+              value={formData.industry}
+              onChange={handleInputChange}
+            >
+              <MenuItem value="">-</MenuItem>
+              {Object.entries(localText.industryOptions).map(([value, label]) => (
+                <MenuItem key={value} value={value}>
+                  {label}
+                </MenuItem>
+              ))}
+            </TextField>
           </Grid>
-        </SectionCard>
 
-        <SectionCard
-          title={extraText.localizedSection}
-          description={extraText.localizedDescription}
-        >
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label={extraText.nameKo}
-                name="nameKo"
-                value={formData.nameKo}
-                onChange={handleInputChange}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label={extraText.nameVi}
-                name="nameVi"
-                value={formData.nameVi}
-                onChange={handleInputChange}
-              />
-            </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              required
+              size="small"
+              label={localText.nameEn}
+              name="name"
+              value={formData.name}
+              onChange={handleInputChange}
+              error={Boolean(formData.name) && !isNameValid}
+            />
           </Grid>
-        </SectionCard>
-
-        <SectionCard
-          title={extraText.contactSection}
-          description={extraText.contactDescription}
-        >
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label={text.phone}
-                name="phone"
-                value={formData.phone}
-                onChange={handleInputChange}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label={text.email}
-                name="email"
-                type="email"
-                value={formData.email}
-                onChange={handleInputChange}
-              />
-            </Grid>
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              size="small"
+              label={localText.nameKo}
+              name="nameKo"
+              value={formData.nameKo}
+              onChange={handleInputChange}
+            />
           </Grid>
-        </SectionCard>
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              size="small"
+              label={localText.nameVi}
+              name="nameVi"
+              value={formData.nameVi}
+              onChange={handleInputChange}
+            />
+          </Grid>
 
-        <SectionCard
-          title={extraText.addressSection}
-          description={extraText.addressDescription}
-        >
-          <TextField
-            fullWidth
-            multiline
-            minRows={2}
-            label={text.address}
-            name="address"
-            value={formData.address}
-            onChange={handleInputChange}
-          />
-        </SectionCard>
-      </Stack>
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              select
+              size="small"
+              label={text.representative}
+              name="representativeEmployeeId"
+              value={formData.representativeEmployeeId}
+              onChange={handleInputChange}
+              disabled={employeesLoading}
+              helperText={employeesLoading ? localText.representativeLoading : ' '}
+            >
+              <MenuItem value="">{localText.representativeNone}</MenuItem>
+              {employeeOptions.map((employee) => (
+                <MenuItem key={employee.id} value={employee.id}>
+                  {buildEmployeeOptionLabel(employee)}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              size="small"
+              label={text.phone}
+              name="phone"
+              value={formData.phone}
+              InputProps={{ readOnly: true }}
+              sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
+            />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              size="small"
+              label={text.email}
+              name="email"
+              type="email"
+              value={formData.email}
+              InputProps={{ readOnly: true }}
+              sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
+            />
+          </Grid>
+
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              multiline
+              minRows={2}
+              size="small"
+              label={text.address}
+              name="address"
+              value={formData.address}
+              onChange={handleInputChange}
+            />
+          </Grid>
+        </Grid>
+      </FormGroup>
     </AppPageContainer>
   );
 };

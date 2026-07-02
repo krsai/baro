@@ -194,6 +194,9 @@ function assertGeneratedPrismaClientShape() {
   if (!hasField("Organization", "assignmentCards")) {
     staleSignals.push("Organization.assignmentCards missing");
   }
+  if (!hasField("Organization", "representativeEmployeeId")) {
+    staleSignals.push("Organization.representativeEmployeeId missing");
+  }
   if (!hasField("AssignmentCard", "payload")) {
     staleSignals.push("AssignmentCard.payload missing");
   }
@@ -561,6 +564,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "WorkLog", columnName: "factoryId" },
   { tableName: "Organization", columnName: "nameKo" },
   { tableName: "Organization", columnName: "nameVi" },
+  { tableName: "Organization", columnName: "representativeEmployeeId" },
   { tableName: "Factory", columnName: "nameKo" },
   { tableName: "Factory", columnName: "nameVi" },
   { tableName: "Factory", columnName: "managementStartDate" },
@@ -992,9 +996,26 @@ const normalizeDateInput = (
 
 const toOrganizationResponse = (organization: any) => {
   if (!organization) return organization;
-  const { subscription, ...rest } = organization;
+  const { subscription, representativeEmployee, ...rest } = organization;
+  const representativeEmployeeResponse =
+    representativeEmployee && typeof representativeEmployee === "object"
+      ? {
+          id: representativeEmployee.id ?? null,
+          name: resolveOptionalString(representativeEmployee.name, null),
+          employeeNo: normalizeEmployeeNo(representativeEmployee.employeeNo) ?? null,
+          phone: resolveOptionalString(representativeEmployee.phone, null),
+          email: resolveOptionalString(representativeEmployee.membership?.email, null),
+        }
+      : null;
   return {
     ...rest,
+    representativeEmployee: representativeEmployeeResponse,
+    representativeEmployeeId:
+      representativeEmployeeResponse?.id ?? rest.representativeEmployeeId ?? null,
+    representative:
+      representativeEmployeeResponse?.name ?? rest.representative ?? null,
+    phone: representativeEmployeeResponse ? representativeEmployeeResponse.phone : rest.phone ?? null,
+    email: representativeEmployeeResponse ? representativeEmployeeResponse.email : rest.email ?? null,
     subscription: buildSubscriptionResponse(subscription),
   };
 };

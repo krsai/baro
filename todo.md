@@ -2,6 +2,27 @@
 
 ---
 
+## 2026-07-02 Organization representative employee FK
+
+### Done
+- Added `Organization.representativeEmployeeId -> Employee.id`.
+- Added `migration_fix.sql` backfill from unique legacy `Organization.representative` name matches.
+- Updated organization responses to include joined representative employee contact fields.
+- Updated `/employees` responses to include membership email for representative selection.
+- Reworked business/legal info UI into one group: industry, English/Korean/Vietnamese company names, representative, contact/email, address.
+
+### Remaining
+- After deploy, confirm `Organization_representativeEmployeeId_fkey` exists and invalid cross-org representative IDs were cleared.
+- Decide later whether legacy `Organization.representative`, `phone`, and `email` should remain as compatibility snapshots or be fully derived.
+
+### Verify
+- `npm --prefix backend run prisma:prepare-client`
+- `npm --prefix backend run build`
+- `npm --prefix frontend run build`
+- In business > legal info, choose a representative and confirm contact/email are read from the selected employee.
+
+---
+
 ## 2026-07-01 WorkRecord styleId / styleProcessId 데이터 유실 조사
 
 FK 도입 이전에 저장된 WorkRecord 행에서 styleId가 비어있는 걸 사용자가 발견해서 조사함.
