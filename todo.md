@@ -2,6 +2,28 @@
 
 ---
 
+## 2026-07-02 WorkOrder/Style JSON 제거 후속 수정 (코드리뷰 반영)
+
+바로 아래 "WorkOrder.items / Style.processes JSON 이중 저장 제거" 커밋(c3af0df)을 리뷰받아 발견된 실질적 누락 4건을 수정.
+
+### Done
+1. **WorkOrder.items 신규 쓰기가 실제로는 안 끊겨 있었음** — `createOrReuseSharedOrder`(주문 생성)와 `PUT /orders/:orderId`(주문 수정)가 `data: { ...normalized }` 스프레드로 `normalizeOrderPayload()`가 만든 `items` 필드를 그대로 `WorkOrder.items` JSON 컬럼에 쓰고 있었음. 두 곳 모두 `items`를 destructure로 빼고 `items: Prisma.JsonNull`을 명시.
+2. **`PUT /styles/:styleId`가 processes 누락 시 기존 StyleProcess를 삭제할 수 있었음** — `processes: req.body?.processes ?? existing.processes`가 이전 커밋에서 `existing.processes`가 항상 `null`이 되도록 바뀐 것과 충돌해, 이름만 고쳐도 기존 공정이 전부 삭제될 뻔했음. `req.body.processes !== undefined`일 때만 관계형 sync를 실행하도록 수정(`processesProvided` 플래그). 누락 시에는 기존 `StyleProcess`/`StyleProcessStandard`를 건드리지 않음.
+3. **`syncStyleProcessNamesFromMaster`가 여전히 `Style.processes` JSON을 읽고 되쓰고 있었음** — 공정 마스터 이름 변경 시 `StyleProcess.processName` 갱신은 유지하고, `Style.processes` JSON을 순회하며 되쓰던 블록 전체 제거. 반환값 `updatedStyleCount`는 항상 0(호출부에서 미사용 확인).
+4. **WorkOrderItem 백필 검증이 부분 불일치를 놓쳤음** — `verify-workorder-item-backfill.js`가 "관계형 행 0개"만 확인해서 JSON 3개/relation 1개 같은 부분 불일치는 PASS로 처리될 수 있었음. `jsonb_array_length(items) <> COUNT(WorkOrderItem)` 비교로 교체해 부분 불일치도 잡도록 수정. `migration_fix.sql`에도 백필 후 남은 불일치 건수를 `RAISE NOTICE`로 남기는 진단 블록 추가(자동 수정은 안 함 — 부분 불일치는 이름/코드 재탐색 없이 안전하게 자동 병합할 방법이 없음).
+
+### Verify
+- `npm --prefix backend run prisma:prepare-client`
+- `npm --prefix backend run build`
+- `npm --prefix frontend run build`
+- `node --check backend/scripts/verify-workorder-item-backfill.js`
+- `node --check backend/scripts/verify-style-process-backfill.js`
+
+### Remaining
+- 아래 섹션의 "Remaining (배포 전 필수)"와 동일 — 운영 DB에 대해 두 verify 스크립트를 실행해 0 확인 전까지 컬럼 DROP 금지.
+
+---
+
 ## 2026-07-02 WorkOrder.items / Style.processes JSON 이중 저장 제거
 
 ### Done

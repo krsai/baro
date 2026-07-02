@@ -5482,10 +5482,14 @@ const createOrReuseSharedOrder = async ({
             return { order: existing, created: false };
           }
 
+          const { items: _createItems, ...workOrderCreateData } = normalized;
           const created = await tx.workOrder.create({
             data: {
               orgId: resolvedOwnerOrgId,
-              ...normalized,
+              ...workOrderCreateData,
+              // WorkOrderItem (created below) is the source of truth; do not
+              // duplicate the items array into the WorkOrder.items JSON column.
+              items: Prisma.JsonNull,
             },
           });
           const itemsToCreate = normalizeOrderItems(normalized.items);
@@ -16284,6 +16288,9 @@ const syncStyleProcessNamesFromMaster = async ({
     },
   });
 
+  // StyleProcess.processName is the source of truth for process names; Style.processes
+  // JSON is no longer written here (or anywhere else). Callers that need display names
+  // read them from the StyleProcess relation, not from this JSON column.
   let updatedStyleProcessCount = 0;
   for (const row of styleProcessRows) {
     const nextName = codeToName.get(normalizeProcessCodeKey(row.processCode));
@@ -16295,42 +16302,10 @@ const syncStyleProcessNamesFromMaster = async ({
     updatedStyleProcessCount += 1;
   }
 
-  const styleRows = await db.style.findMany({
-    where: { orgId },
-    select: { id: true, processes: true },
-  });
-  let updatedStyleCount = 0;
-
-  for (const style of styleRows) {
-    const styleProcesses = Array.isArray(style.processes) ? style.processes : null;
-    if (!styleProcesses || styleProcesses.length === 0) continue;
-
-    let touched = false;
-    const nextProcesses = styleProcesses.map((process) => {
-      if (!process || typeof process !== "object" || Array.isArray(process)) return process;
-      const codeKey = normalizeProcessCodeKey((process as any)?.code);
-      if (!codeKey) return process;
-      const nextName = codeToName.get(codeKey);
-      if (!nextName || sameTrimmedText((process as any)?.name, nextName)) return process;
-      touched = true;
-      return {
-        ...(process as any),
-        name: nextName,
-      };
-    });
-
-    if (!touched) continue;
-    await db.style.update({
-      where: { id: style.id },
-      data: { processes: nextProcesses },
-    });
-    updatedStyleCount += 1;
-  }
-
   return {
     touchedCodes: targetCodes.length,
     updatedStyleProcessCount,
-    updatedStyleCount,
+    updatedStyleCount: 0,
   };
 };
 
@@ -24761,12 +24736,16 @@ app.put("/orders/:orderId", async (req, res) => {
   normalized.orderId = existing.orderId;
 
   const itemsToUpsert = normalizeOrderItems(normalized.items);
+  const { items: _updateItems, ...workOrderUpdateData } = normalized;
   const updated = await prisma.$transaction(async (tx) => {
     const updatedOrder = await tx.workOrder.update({
       where: { id: existing.id },
       data: {
-        ...normalized,
+        ...workOrderUpdateData,
         orgId: buyer.id,
+        // WorkOrderItem (rewritten below) is the source of truth; do not
+        // duplicate the items array into the WorkOrder.items JSON column.
+        items: Prisma.JsonNull,
       },
     });
     await tx.workOrderItem.deleteMany({ where: { workOrderId: existing.id } });
@@ -25615,6 +25594,11 @@ app.put("/styles/:styleId", async (req, res) => {
     return res.status(404).json({ ok: false, error: "style not found" });
   }
 
+  // Style.processes JSON is no longer persisted (see Phase 2 above), so `existing.processes`
+  // is not a usable "no change" fallback anymore. A request that omits `processes`
+  // entirely means "leave the style's processes untouched", not "clear them".
+  const processesProvided = includeProcesses && req.body?.processes !== undefined;
+
   const normalized = normalizeStylePayload(
     {
       code: req.body?.code ?? req.body?.styleCode ?? existing.code,
@@ -25625,9 +25609,7 @@ app.put("/styles/:styleId", async (req, res) => {
       collection: req.body?.collection ?? existing.collection,
       season: req.body?.season ?? existing.season,
       imageUrls: req.body?.imageUrls ?? existing.imageUrls,
-      processes: includeProcesses
-        ? req.body?.processes ?? existing.processes
-        : existing.processes,
+      processes: processesProvided ? req.body.processes : [],
       bom: req.body?.bom ?? existing.bom,
       bomNotes: req.body?.bomNotes ?? existing.bomNotes,
     },
@@ -25638,7 +25620,7 @@ app.put("/styles/:styleId", async (req, res) => {
   if (!normalized.name) {
     return res.status(400).json({ ok: false, error: "name is required" });
   }
-  const duplicateProcess = includeProcesses
+  const duplicateProcess = processesProvided
     ? findStyleProcessDuplicateIdentity(normalized.processes)
     : null;
   if (duplicateProcess) {
@@ -25659,13 +25641,13 @@ app.put("/styles/:styleId", async (req, res) => {
   }
 
   const updated = await prisma.$transaction(async (tx) => {
-    const syncedProcesses = includeProcesses
+    const syncedProcesses = processesProvided
       ? await syncProcessMasterFromStyleProcesses({
           processes: normalized.processes,
           db: tx,
         })
       : normalized.processes;
-    const syncedDuplicateProcess = includeProcesses
+    const syncedDuplicateProcess = processesProvided
       ? findStyleProcessDuplicateIdentity(syncedProcesses)
       : null;
     if (syncedDuplicateProcess) {
@@ -25693,7 +25675,7 @@ app.put("/styles/:styleId", async (req, res) => {
         bomNotes: normalized.bomNotes,
       },
     });
-    if (includeProcesses) {
+    if (processesProvided) {
       await syncStyleProcessStorageForStyle({
         styleId: existing.id,
         orgId: organization.id,

@@ -24,52 +24,52 @@ const printRows = (title, rows) => {
   });
 };
 
+// This compares jsonb_array_length(items) against COUNT(WorkOrderItem) per order,
+// not just "zero relational rows". A partial mismatch (e.g. JSON has 3 items but
+// only 1 WorkOrderItem row exists) is just as unsafe to drop the JSON column over
+// as a fully-missing order, and the earlier "only checks for zero rows" version of
+// this script would have silently passed that case.
+const MISMATCH_QUERY = `
+SELECT
+  w.id,
+  w."orgId",
+  w."orderId",
+  w."orderNumber",
+  jsonb_array_length(w."items"::jsonb) AS "jsonItemCount",
+  COUNT(wi.id) AS "relationItemCount"
+FROM "WorkOrder" w
+LEFT JOIN "WorkOrderItem" wi ON wi."workOrderId" = w.id
+WHERE w."items" IS NOT NULL
+  AND jsonb_typeof(w."items"::jsonb) = 'array'
+  AND jsonb_array_length(w."items"::jsonb) > 0
+GROUP BY w.id, w."orgId", w."orderId", w."orderNumber", w."items"
+HAVING jsonb_array_length(w."items"::jsonb) <> COUNT(wi.id)
+`;
+
 const main = async () => {
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL or DIRECT_URL is required");
   }
 
-  const [summary] = await prisma.$queryRawUnsafe(`
-SELECT
-  (
-    SELECT COUNT(*)
-    FROM "WorkOrder" w
-    WHERE w."items" IS NOT NULL
-      AND jsonb_typeof(w."items"::jsonb) = 'array'
-      AND jsonb_array_length(w."items"::jsonb) > 0
-      AND NOT EXISTS (
-        SELECT 1 FROM "WorkOrderItem" wi WHERE wi."workOrderId" = w.id
-      )
-  ) AS "ordersMissingRelationalItems"
-`);
-
-  const ordersMissingRelationalItems = toNumber(summary?.ordersMissingRelationalItems);
+  const mismatches = await prisma.$queryRawUnsafe(
+    `SELECT COUNT(*) AS "count" FROM (${MISMATCH_QUERY}) m`
+  );
+  const ordersWithItemCountMismatch = toNumber(mismatches?.[0]?.count);
 
   console.log("WorkOrderItem backfill verification");
-  console.log(`ordersMissingRelationalItems: ${ordersMissingRelationalItems}`);
+  console.log(`ordersWithItemCountMismatch: ${ordersWithItemCountMismatch}`);
 
-  if (ordersMissingRelationalItems === 0) {
+  if (ordersWithItemCountMismatch === 0) {
     console.log(
-      "\nPASS: every WorkOrder with non-empty items JSON has matching WorkOrderItem rows. Safe to drop WorkOrder.items after a final manual review."
+      "\nPASS: every WorkOrder with non-empty items JSON has a matching WorkOrderItem row count. Safe to drop WorkOrder.items after a final manual review."
     );
     return;
   }
 
-  const samples = await prisma.$queryRawUnsafe(`
-SELECT w."orgId", w."orderId", w."orderNumber", jsonb_array_length(w."items"::jsonb) AS "jsonItemCount"
-FROM "WorkOrder" w
-WHERE w."items" IS NOT NULL
-  AND jsonb_typeof(w."items"::jsonb) = 'array'
-  AND jsonb_array_length(w."items"::jsonb) > 0
-  AND NOT EXISTS (
-    SELECT 1 FROM "WorkOrderItem" wi WHERE wi."workOrderId" = w.id
-  )
-LIMIT 10;
-`);
-
-  printRows("Orders still missing WorkOrderItem rows", samples);
+  const samples = await prisma.$queryRawUnsafe(`${MISMATCH_QUERY} ORDER BY w.id LIMIT 20;`);
+  printRows("Orders with WorkOrder.items JSON / WorkOrderItem row count mismatch", samples);
   throw new Error(
-    "WorkOrderItem backfill verification failed; run migration_fix.sql against this database before dropping WorkOrder.items."
+    "WorkOrderItem backfill verification failed; do not drop WorkOrder.items until every order above is resolved (rerun migration_fix.sql for zero-row cases; partial mismatches need manual review since automatic backfill cannot safely tell which JSON items are already represented)."
   );
 };
 

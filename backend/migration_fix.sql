@@ -50,6 +50,33 @@ BEGIN
   END IF;
 END $$;
 
+-- Diagnostic only (does not modify data): orders where WorkOrder.items JSON item
+-- count still does not match WorkOrderItem row count after the backfill above.
+-- The INSERT above only fills orders with zero WorkOrderItem rows; a partial
+-- mismatch (e.g. 3 JSON items but 1 WorkOrderItem row) is not auto-fixed here
+-- because there is no safe way to tell which JSON items are already represented
+-- without re-resolving by name/code. Run `npm run verify:workorder-item-backfill`
+-- for the authoritative count before dropping WorkOrder.items.
+DO $$
+DECLARE
+  mismatch_count INT;
+BEGIN
+  SELECT COUNT(*) INTO mismatch_count
+  FROM (
+    SELECT w.id
+    FROM "WorkOrder" w
+    LEFT JOIN "WorkOrderItem" wi ON wi."workOrderId" = w.id
+    WHERE w."items" IS NOT NULL
+      AND jsonb_typeof(w."items"::jsonb) = 'array'
+      AND jsonb_array_length(w."items"::jsonb) > 0
+    GROUP BY w.id, w."items"
+    HAVING jsonb_array_length(w."items"::jsonb) <> COUNT(wi.id)
+  ) mismatched_orders;
+  IF mismatch_count > 0 THEN
+    RAISE NOTICE 'WorkOrderItem: % order(s) still have a WorkOrder.items JSON / WorkOrderItem row count mismatch after backfill — do not drop WorkOrder.items yet', mismatch_count;
+  END IF;
+END $$;
+
 -- Step 0d-4: organization representative uses an employee FK (20260702)
 ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "representativeEmployeeId" INTEGER;
 
