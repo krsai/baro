@@ -1763,7 +1763,7 @@ const ProductionPlanBoard = () => {
       if (isAssignmentWorkCompleted(a)) return false;
       const card = cardById.get(String(a.cardId));
       return (
-        (card?.styleId === deltaCard.styleId || a.label === deltaCard.label) &&
+        card?.styleId === deltaCard.styleId &&
         (a.colorName || '') === (deltaCard.colorName || '') &&
         (a.gender || '') === (deltaCard.gender || '') &&
         (a.customer || '') === (deltaCard.customer || '')

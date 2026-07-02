@@ -133,7 +133,6 @@ const buildQcDetailFromOrders = ({ row, orders }) => {
     const itemStyleId = String(item?.styleId || '').trim();
     const itemStyleCode = String(item?.styleCode || '').trim();
     if (targetStyleId && itemStyleId === targetStyleId) return true;
-    if (targetStyleId && itemStyleCode === targetStyleId) return true;
     if (targetStyleCode && itemStyleCode === targetStyleCode) return true;
     return false;
   };
@@ -222,18 +221,14 @@ const buildQcDetailFromOrders = ({ row, orders }) => {
   });
 
   if (variants.length === 0) {
-    const fallbackQuantity = Math.max(0, Math.round(Number(row?.plannedQuantity) || 0));
-    variants = [
-      {
-        key: 'fallback',
-        colorId: null,
-        colorName: '미지정',
-        gender: '-',
-        orderedBySize: { FREE: fallbackQuantity },
-        passBySize: { FREE: '0' },
-        orderedQuantity: fallbackQuantity,
-      },
-    ];
+    return {
+      matched: false,
+      error: '주문에서 해당 스타일의 사이즈 정보를 찾지 못했습니다.',
+      orderNumber: matchedOrder.orderNumber || targetOrderNo,
+      sizeKeys: [],
+      variants: [],
+      orderedQuantity: 0,
+    };
   }
 
   const orderedQuantity = variants.reduce((sum, variant) => sum + (Number(variant.orderedQuantity) || 0), 0);
@@ -532,8 +527,7 @@ const QcReview = () => {
             const completedAt = progress?.completedAt || plan?.completedAt || null;
             const draft = draftById.get(id) || null;
             const qcPassedTotal =
-              toNonNegativeIntOrNull(progress?.qcPassedTotal ?? plan?.qcPassedTotal) ??
-              (isCompleted ? finalQuantity ?? 0 : 0);
+              toNonNegativeIntOrNull(progress?.qcPassedTotal ?? plan?.qcPassedTotal) ?? 0;
             const latestQcDate =
               String(progress?.latestQcDate || plan?.latestQcDate || '').trim() || null;
 

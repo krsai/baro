@@ -1594,11 +1594,10 @@ const OrderList = () => {
       let changed = false;
 
       const selectedBuyer =
-        buyerOptions.find((option) => Number(option.id) === Number(prev.buyerOrgId)) ||
-        buyerOptions.find((option) => option.name === prev.buyerOrgName) ||
-        null;
+        buyerOptions.find((option) => Number(option.id) === Number(prev.buyerOrgId)) || null;
       const fallbackBuyer =
-        selectedBuyer || (buyerOptions.length === 1 ? buyerOptions[0] : null);
+        selectedBuyer ||
+        (!prev.buyerOrgId && buyerOptions.length === 1 ? buyerOptions[0] : null);
       if (fallbackBuyer) {
         if (Number(next.buyerOrgId) !== Number(fallbackBuyer.id)) {
           next.buyerOrgId = fallbackBuyer.id;
@@ -1619,11 +1618,11 @@ const OrderList = () => {
       }
 
       const selectedSeller =
-        sellerOptions.find((option) => Number(option.id) === Number(prev.sellerOrgId)) ||
-        sellerOptions.find((option) => option.name === prev.sellerOrgName) ||
-        null;
+        sellerOptions.find((option) => Number(option.id) === Number(prev.sellerOrgId)) || null;
       const fallbackSeller =
-        fixedSellerOrg || selectedSeller || (sellerOptions.length === 1 ? sellerOptions[0] : null);
+        fixedSellerOrg ||
+        selectedSeller ||
+        (!prev.sellerOrgId && sellerOptions.length === 1 ? sellerOptions[0] : null);
       if (fallbackSeller) {
         if (Number(next.sellerOrgId) !== Number(fallbackSeller.id)) {
           next.sellerOrgId = fallbackSeller.id;

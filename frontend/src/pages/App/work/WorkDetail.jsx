@@ -571,96 +571,19 @@ const resolveBaselineQuantity = (plan) => {
   }
   return null;
 };
-const collectAssignmentStyleKeys = (assignment) =>
-  [
-    toKey(assignment?.styleId),
-    toKey(assignment?.label),
-    toKey(assignment?.styleName),
-  ].filter(Boolean);
-const buildRecordProcessHint = (record = {}) => ({
-  processCode: toText(record?.processCode),
-  processName: toText(record?.processName),
-  processNameKo: toText(record?.processNameKo),
-  processNameEn: toText(record?.processNameEn),
-  processNameVi: toText(record?.processNameVi),
-});
+// FK-only match: resolves an assignment strictly by AssignmentPlan.dbId === record.assignmentPlanId.
+// Do not add style/order/process/quantity heuristics here — a wrong guess silently mislinks
+// progress/CT to the wrong assignment (AGENTS.md Meaning Exactness Lock).
 const resolveHydratedAssignmentMatch = (record, assignments = []) => {
   const safeAssignments = Array.isArray(assignments) ? assignments : [];
   if (safeAssignments.length === 0) return null;
 
   const assignmentPlanId = toPositiveIdOrNull(record?.assignmentPlanId);
-  if (assignmentPlanId !== null) {
-    const matchedByPlanId = safeAssignments.find(
-      (item) => toPositiveIdOrNull(item?.dbId) === assignmentPlanId
-    );
-    if (matchedByPlanId) return matchedByPlanId;
-  }
+  if (assignmentPlanId === null) return null;
 
-  const recordStyleKeys = new Set(
-    [toKey(record?.styleId), toKey(record?.styleName)].filter(Boolean)
+  return (
+    safeAssignments.find((item) => toPositiveIdOrNull(item?.dbId) === assignmentPlanId) || null
   );
-  if (recordStyleKeys.size === 0) return null;
-
-  let candidates = safeAssignments.filter((assignment) =>
-    collectAssignmentStyleKeys(assignment).some((styleKey) => recordStyleKeys.has(styleKey))
-  );
-  if (candidates.length === 0) return null;
-  if (candidates.length === 1) return candidates[0];
-
-  const recordOrderNo = toText(record?.orderNo);
-  if (recordOrderNo) {
-    const exactOrderMatches = candidates.filter((assignment) =>
-      equalsText(assignment?.orderNo, recordOrderNo)
-    );
-    if (exactOrderMatches.length === 1) return exactOrderMatches[0];
-    if (exactOrderMatches.length > 0) candidates = exactOrderMatches;
-  }
-
-  const processHint = buildRecordProcessHint(record);
-  const candidatesWithProcess = candidates.filter((assignment) =>
-    (Array.isArray(assignment?.processes) ? assignment.processes : []).some(
-      (process) =>
-        hasMatchingProcessCode(process, processHint) || hasMatchingProcessName(process, processHint)
-    )
-  );
-  if (candidatesWithProcess.length === 1) return candidatesWithProcess[0];
-  if (candidatesWithProcess.length > 0) candidates = candidatesWithProcess;
-
-  const exactStyleIdMatches = candidates.filter((assignment) =>
-    equalsText(assignment?.styleId, record?.styleId)
-  );
-  if (exactStyleIdMatches.length === 1) return exactStyleIdMatches[0];
-  if (exactStyleIdMatches.length > 0) candidates = exactStyleIdMatches;
-
-  const exactLabelMatches = candidates.filter((assignment) =>
-    equalsText(assignment?.label, record?.styleName)
-  );
-  if (exactLabelMatches.length === 1) return exactLabelMatches[0];
-  if (exactLabelMatches.length > 0) candidates = exactLabelMatches;
-
-  const recordQuantity = Math.max(0, Math.round(Number(record?.quantity) || 0));
-  if (recordQuantity > 0) {
-    const quantityMatches = candidates.filter(
-      (assignment) => resolveBaselineQuantity(assignment) === recordQuantity
-    );
-    if (quantityMatches.length === 1) return quantityMatches[0];
-    if (quantityMatches.length > 0) candidates = quantityMatches;
-  }
-
-  const displayMetaKeys = new Set(
-    candidates.map((assignment) =>
-      [
-        toText(assignment?.orderNo),
-        formatAssignmentLabel(assignment),
-        String(resolveBaselineQuantity(assignment) || ''),
-      ].join('|')
-    )
-  );
-  if (displayMetaKeys.size === 1) {
-    return candidates[0];
-  }
-
-  return null;
 };
 const buildAssignmentMatchSourceFromRow = (row = {}) => {
   const rowAssignment = row?.assignment || null;

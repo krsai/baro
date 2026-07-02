@@ -371,15 +371,15 @@ const StyleInfo = ({
   }, [categories, formData.collection]);
   const resolvedCustomerOrgId = formData.customerOrgId ? Number(formData.customerOrgId) : null;
   const selectedCustomer =
-    customerOptions.find((customer) => String(customer?.name || '').trim() === resolvedCustomerValue) ||
-    customerOptions.find((customer) => String(customer?.nameKo || '').trim() === resolvedCustomerValue) ||
-    customerOptions.find((customer) => String(customer?.nameVi || '').trim() === resolvedCustomerValue) ||
     (resolvedCustomerOrgId
       ? customerOptions.find((customer) => {
           const optId = Number(customer?.brandOrgId ?? customer?.id);
           return Number.isInteger(optId) && optId > 0 && optId === resolvedCustomerOrgId;
         })
       : null) ||
+    customerOptions.find((customer) => String(customer?.name || '').trim() === resolvedCustomerValue) ||
+    customerOptions.find((customer) => String(customer?.nameKo || '').trim() === resolvedCustomerValue) ||
+    customerOptions.find((customer) => String(customer?.nameVi || '').trim() === resolvedCustomerValue) ||
     null;
   const selectedCategory =
     categoryOptions.find((category) => String(category?.name || '').trim() === String(formData.collection || '').trim()) ||
