@@ -1,5 +1,37 @@
 # TODO
 
+## 2026-07-03 syncWorkRecordRefs가 attachCanonicalFieldsToWorkRecords보다 먼저 실행돼 processCode를 매번 null로 지우던 버그 수정
+
+### 배경
+바로 아래 섹션(resolveAssignmentPlanStyleMetaById 수정)을 배포한 뒤에도 엑셀 임포트가 여전히 "records[N].styleProcessId is required"로 전량 실패했다. styleId 오류는 사라졌으니 그 수정 자체는 맞았는데, styleProcessId만 계속 안 채워짐 — 로컬 시뮬레이션(Node 스크립트로 실제 Railway DB에 직접 질의)으로는 100% 통과했는데 실제 운영에서는 100% 실패하는 모순이 있어서, 임시 진단 로그를 2단계로 추가해 운영 Deploy Logs에서 직접 원인을 확인했다.
+
+### 원인 [검증완료, Railway Deploy Logs로 직접 확인]
+- `POST /work-logs/import`, `POST /work-logs`, `PUT /work-logs` 3개 엔드포인트 전부 동일한 순서 버그가 있었다:
+  ```
+  (기존, 잘못된 순서)
+  1. syncWorkRecordRefs(...)              # styleProcessId가 이미 있어야 processCode/processName을 재확인
+  2. ...여러 검증...
+  3. attachCanonicalFieldsToWorkRecords(...)  # styleId/styleProcessId를 실제로 채우는 단계
+  ```
+- `syncWorkRecordRefs`(`backend/src/index.ts:5985`)는 `record.styleProcessId`가 **이미 숫자로 채워져 있어야만** 그 값으로 `StyleProcess`를 조회해서 `processCode`/`processName`을 "검증된 값으로 재기록"한다. 입력으로 들어온 `processCode` 텍스트를 그대로 믿고 쓰는 fallback이 의도적으로 없다(AGENTS.md 정확 계산 원칙에 맞는 설계 — FK 없이 텍스트를 신뢰하지 않음).
+- 문제는 엑셀 임포트가 생성하는 신규 레코드는 이 시점에 `styleProcessId`가 아직 `null`이라는 것 — 그걸 채우는 게 바로 `attachCanonicalFieldsToWorkRecords`인데, **그 함수가 `syncWorkRecordRefs`보다 나중에 실행됐다.** 그래서 `syncWorkRecordRefs`는 매번 "styleProcessId 없음 → 검증된 processCode 없음"으로 판단해 `processCode`를 `null`로 덮어썼고, 그 뒤에 실행되는 `attachCanonicalFieldsToWorkRecords`는 이미 `null`이 된 `processCode`로는 `StyleProcess`를 조회할 수 없어 `styleProcessId`를 못 채웠다.
+- Deploy Logs로 직접 확인: 레코드가 그룹에 쌓이는 시점(수정 전)에는 `matchedProcess.processCode`가 "C07", "TS05" 등으로 전부 정상이었는데, `attachCanonicalFieldsToWorkRecords` 직후에는 `processCode:null`로 찍혔다 — 정확히 두 함수 사이에서 사라진 것을 로그로 특정.
+
+### Done
+- 3개 엔드포인트(`/work-logs/import`, `POST /work-logs`, `PUT /work-logs`) 전부에서 `attachCanonicalFieldsToWorkRecords`를 `syncWorkRecordRefs`보다 먼저 실행하도록 순서를 바꿈. 중간에 있던 다른 검증(중복 체크, CT 스냅샷 검증, 급여 잠금 체크, cross-line 경고)은 순서 그대로 유지 — 두 함수의 위치만 맞바꿈.
+- 결과적으로 `syncWorkRecordRefs`는 이제 항상 이미 채워진 `styleProcessId`를 검증/재확인하는 원래 의도대로 동작한다(엑셀 임포트뿐 아니라 수동 작업기록 생성/수정에서도 동일하게 적용).
+- 진단용으로 추가했던 로그 중 매 행마다 찍히는 `[work-logs/import] row=...` 로그는 제거함(너무 시끄러움). `attachCanonicalFieldsToWorkRecords`가 그래도 styleProcessId를 못 채운 레코드가 있을 때만 찍는 `[attachCanonicalFieldsToWorkRecords] ... still missing` 경고는 낮은 노이즈로 계속 유용해서 남겨둠.
+
+### Verify
+- `npm --prefix backend run build` 통과 (3곳 모두).
+- 실제 운영 재업로드 테스트는 아직 안 함 — 배포 후 4월.xlsx 348행으로 재확인 필요.
+
+### Remaining
+- 사용자가 배포 후 4월.xlsx 재업로드해서 실제로 통과하는지 확인 필요.
+- 5월.xlsx는 이전에 찾은 9행(L16-1↔L16-2 스타일 7건 + 누락 주문번호 1건)이 아직 안 고쳐진 상태 — 고친 뒤 같은 방식으로 재검증 필요.
+
+---
+
 ## 2026-07-02 resolveAssignmentPlanStyleMetaById가 죽은 컬럼만 보고 항상 빈 결과를 내던 버그 수정
 
 ### 배경

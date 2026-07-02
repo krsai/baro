@@ -22052,9 +22052,6 @@ app.post("/work-logs/import", async (req, res) => {
       records: [],
     };
     currentGroup.rows.push(item.row);
-    console.warn(
-      `[work-logs/import] row=${item.row?.rowNumber} rowProcessCode=${JSON.stringify(item.row?.processCode)} matchedProcess=${JSON.stringify(item.process)}`
-    );
     currentGroup.records.push({
       workerId: item.employee.id,
       lineId: item.line.id,
@@ -22229,8 +22226,15 @@ app.post("/work-logs/import", async (req, res) => {
       continue;
     }
 
-    normalized.records = await syncWorkRecordRefs({
+    // attachCanonicalFieldsToWorkRecords must run before syncWorkRecordRefs: it is what
+    // resolves styleId/styleProcessId (e.g. from the matched AssignmentPlan CT snapshot
+    // process for a freshly-imported row) in the first place. syncWorkRecordRefs only
+    // trusts an already-resolved styleProcessId to re-derive processCode/processName from
+    // StyleProcess and does not fall back to the caller-supplied processCode, so running it
+    // first (the previous order) always wiped processCode back to null for import rows.
+    normalized.records = await attachCanonicalFieldsToWorkRecords({
       orgId: organization.id,
+      lineId: lineValidation.line?.id ?? normalized.lineId,
       records: normalized.records,
     });
 
@@ -22321,9 +22325,8 @@ app.post("/work-logs/import", async (req, res) => {
       note: normalized.note,
       adjustments: employmentValidation.adjustments,
     });
-    normalized.records = await attachCanonicalFieldsToWorkRecords({
+    normalized.records = await syncWorkRecordRefs({
       orgId: organization.id,
-      lineId: lineValidation.line?.id ?? normalized.lineId,
       records: normalized.records,
     });
     const missingCanonicalRefIssues = collectMissingWorkRecordCanonicalRefIssues(
@@ -22583,12 +22586,13 @@ app.post("/work-logs", async (req, res) => {
     lineId: lineValidation.line?.id ?? normalized.lineId ?? null,
     lineName: lineValidation.line?.name ?? null,
   });
-  normalized.records = await syncWorkRecordRefs({
+  // attachCanonicalFieldsToWorkRecords must run before syncWorkRecordRefs: it is what
+  // resolves styleId/styleProcessId in the first place, and syncWorkRecordRefs only
+  // trusts an already-resolved styleProcessId (no fallback to caller-supplied processCode).
+  normalized.records = await attachCanonicalFieldsToWorkRecords({
     orgId: organization.id,
+    lineId: lineValidation.line?.id ?? normalized.lineId,
     records: normalized.records,
-  });
-  updateWorkLogMutationTrace(trace, "refs-synced", {
-    payload: summarizeWorkLogPayloadForDebug(normalized),
   });
   const missingAssignmentPlanLinkIndices = collectMissingWorkRecordAssignmentPlanLinkIndices(
     normalized.records
@@ -22655,10 +22659,12 @@ app.post("/work-logs", async (req, res) => {
     note: normalized.note,
     adjustments: employmentValidation.adjustments,
   });
-  normalized.records = await attachCanonicalFieldsToWorkRecords({
+  normalized.records = await syncWorkRecordRefs({
     orgId: organization.id,
-    lineId: lineValidation.line?.id ?? normalized.lineId,
     records: normalized.records,
+  });
+  updateWorkLogMutationTrace(trace, "refs-synced", {
+    payload: summarizeWorkLogPayloadForDebug(normalized),
   });
   const missingCanonicalRefIssues = collectMissingWorkRecordCanonicalRefIssues(
     normalized.records
@@ -22912,12 +22918,13 @@ app.put("/work-logs/:id", async (req, res) => {
     lineId: lineValidation.line?.id ?? normalized.lineId ?? null,
     lineName: lineValidation.line?.name ?? null,
   });
-  normalized.records = await syncWorkRecordRefs({
+  // attachCanonicalFieldsToWorkRecords must run before syncWorkRecordRefs: it is what
+  // resolves styleId/styleProcessId in the first place, and syncWorkRecordRefs only
+  // trusts an already-resolved styleProcessId (no fallback to caller-supplied processCode).
+  normalized.records = await attachCanonicalFieldsToWorkRecords({
     orgId: organization.id,
+    lineId: lineValidation.line?.id ?? normalized.lineId,
     records: normalized.records,
-  });
-  updateWorkLogMutationTrace(trace, "refs-synced", {
-    payload: summarizeWorkLogPayloadForDebug(normalized),
   });
   const missingAssignmentPlanLinkIndices = collectMissingWorkRecordAssignmentPlanLinkIndices(
     normalized.records
@@ -22991,10 +22998,12 @@ app.put("/work-logs/:id", async (req, res) => {
     note: normalized.note,
     adjustments: employmentValidation.adjustments,
   });
-  normalized.records = await attachCanonicalFieldsToWorkRecords({
+  normalized.records = await syncWorkRecordRefs({
     orgId: organization.id,
-    lineId: lineValidation.line?.id ?? normalized.lineId,
     records: normalized.records,
+  });
+  updateWorkLogMutationTrace(trace, "refs-synced", {
+    payload: summarizeWorkLogPayloadForDebug(normalized),
   });
   const missingCanonicalRefIssues = collectMissingWorkRecordCanonicalRefIssues(
     normalized.records
