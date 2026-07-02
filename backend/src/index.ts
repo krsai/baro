@@ -6029,6 +6029,7 @@ const syncWorkRecordRefs = async ({
     styleProcessIds.length > 0
       ? prisma.styleProcess.findMany({
           where: {
+            orgId,
             id: { in: styleProcessIds },
           },
           select: {

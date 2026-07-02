@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-07-02 syncWorkRecordRefs 멀티테넌시 필터 누락 수정
+
+### Done
+- `backend/src/index.ts`의 `syncWorkRecordRefs`에서 `prisma.styleProcess.findMany`가 `orgId` 없이 `id: { in: styleProcessIds }`만으로 조회되던 것을 확인. 바로 위 `style.findMany`는 `orgId`로 스코프돼 있었는데 이 조회만 빠져 있었음.
+- `where`에 `orgId`를 추가해 다른 조직의 `StyleProcess`가 섞여 매칭되지 않도록 수정 (한 줄 변경, 이름/코드 fallback 신규 추가 없음).
+
+### Verify
+- `npm --prefix backend run build` 통과 확인.
+- `npm run test:regression`(루트) 등 DB 연결이 필요한 회귀 테스트는 이 환경에 운영 `DATABASE_URL`이 연결돼 있지 않아 실행하지 않음. 배포 전 실제 DB 대상으로 별도 실행 필요.
+
+### Remaining
+- 없음 (단일 지점 수정, 스코프 확장 안 함).
+
+---
+
 ## 2026-07-02 Organization representative employee FK
 
 ### Done
