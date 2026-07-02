@@ -25657,6 +25657,18 @@ app.put("/styles/:styleId", async (req, res) => {
       );
     }
 
+    if (!processesProvided) {
+      // The request isn't touching processes, but this style may still be a legacy
+      // row whose only copy of its process data is the Style.processes JSON we're
+      // about to clear below. Self-heal StyleProcess/StyleProcessStandard from that
+      // JSON first (inside this same transaction, so a failure rolls back and the
+      // JSON is never cleared without a successful relational backfill).
+      await ensureStyleProcessStorageForStyles([existing], {
+        processOrgId: organization.id,
+        db: tx,
+      });
+    }
+
     const updatedStyle = await tx.style.update({
       where: { id: existing.id },
       data: {
@@ -25668,8 +25680,9 @@ app.put("/styles/:styleId", async (req, res) => {
         season: normalized.season,
         imageUrls: normalized.imageUrls,
         // Style.processes JSON is no longer written; StyleProcess/StyleProcessStandard
-        // (synced below via syncStyleProcessStorageForStyle) are the source of truth.
-        // Explicitly clear any legacy value instead of leaving a stale copy behind.
+        // (synced above/below) are the source of truth. Explicitly clear any legacy
+        // value instead of leaving a stale copy behind -- safe now that the branch
+        // above guarantees relational rows exist before this write can commit.
         processes: Prisma.JsonNull,
         bom: normalized.bom,
         bomNotes: normalized.bomNotes,

@@ -37,10 +37,25 @@ BEGIN
     (item.ordinality - 1)::integer,
     NOW(), 'system:migration-backfill', NOW()
   FROM "WorkOrder" w
-  CROSS JOIN LATERAL jsonb_array_elements(w."items"::jsonb) WITH ORDINALITY AS item(value, ordinality)
+  -- jsonb_array_elements/jsonb_array_length raise an error on non-array jsonb, and a
+  -- LATERAL join's function argument is evaluated as part of FROM (before WHERE can
+  -- filter anything out), so the CASE guard below must live inside the function call
+  -- itself rather than relying on a WHERE clause to skip non-array rows first.
+  CROSS JOIN LATERAL jsonb_array_elements(
+    CASE
+      WHEN w."items" IS NOT NULL AND jsonb_typeof(w."items"::jsonb) = 'array'
+        THEN w."items"::jsonb
+      ELSE '[]'::jsonb
+    END
+  ) WITH ORDINALITY AS item(value, ordinality)
   WHERE w."items" IS NOT NULL
     AND jsonb_typeof(w."items"::jsonb) = 'array'
-    AND jsonb_array_length(w."items"::jsonb) > 0
+    AND jsonb_array_length(
+      CASE
+        WHEN jsonb_typeof(w."items"::jsonb) = 'array' THEN w."items"::jsonb
+        ELSE '[]'::jsonb
+      END
+    ) > 0
     AND NOT EXISTS (
       SELECT 1 FROM "WorkOrderItem" wi WHERE wi."workOrderId" = w.id
     );
@@ -68,9 +83,19 @@ BEGIN
     LEFT JOIN "WorkOrderItem" wi ON wi."workOrderId" = w.id
     WHERE w."items" IS NOT NULL
       AND jsonb_typeof(w."items"::jsonb) = 'array'
-      AND jsonb_array_length(w."items"::jsonb) > 0
+      AND jsonb_array_length(
+        CASE
+          WHEN jsonb_typeof(w."items"::jsonb) = 'array' THEN w."items"::jsonb
+          ELSE '[]'::jsonb
+        END
+      ) > 0
     GROUP BY w.id, w."items"
-    HAVING jsonb_array_length(w."items"::jsonb) <> COUNT(wi.id)
+    HAVING jsonb_array_length(
+      CASE
+        WHEN jsonb_typeof(w."items"::jsonb) = 'array' THEN w."items"::jsonb
+        ELSE '[]'::jsonb
+      END
+    ) <> COUNT(wi.id)
   ) mismatched_orders;
   IF mismatch_count > 0 THEN
     RAISE NOTICE 'WorkOrderItem: % order(s) still have a WorkOrder.items JSON / WorkOrderItem row count mismatch after backfill — do not drop WorkOrder.items yet', mismatch_count;

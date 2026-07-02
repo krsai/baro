@@ -2,6 +2,25 @@
 
 ---
 
+## 2026-07-02 WorkOrder/Style JSON 제거 2차 후속 수정 (f76b2cd 코드리뷰 반영)
+
+### Done
+1. **`PUT /styles/:styleId`가 여전히 레거시 seed를 먼저 지울 수 있었음** — `processesProvided=false`여도 `tx.style.update`가 `processes: Prisma.JsonNull`을 무조건 실행해서, `Style.processes` JSON은 있고 `StyleProcess` relation은 없는 레거시 스타일을 이름만 고쳐도 유일한 백필 seed가 지워질 뻔했음. `processesProvided=false`일 때 같은 트랜잭션 안에서 `ensureStyleProcessStorageForStyles([existing], { processOrgId, db: tx })`로 먼저 자가치유 백필을 실행한 뒤에 JSON을 비우도록 순서 변경. 백필 실패 시 트랜잭션 롤백되어 JSON은 지워지지 않음.
+2. **`verify-style-process-backfill.js`가 부분 불일치를 놓쳤음** — "StyleProcess 0개"만 확인하던 것을 `jsonb_array_length(processes) <> COUNT(StyleProcess)` 비교로 교체 (JSON 5개/relation 3개 같은 부분 불일치도 잡음). 출력에 styleId/orgId/code/name/jsonProcessCount/relationProcessCount 샘플 추가. PASS 문구를 "count 비교만으로는 완전한 검증 아님, 최종 수동 리뷰 권장"으로 보수적으로 변경.
+3. **`jsonb_array_elements`/`jsonb_array_length`가 비배열 JSON에 안전하지 않았음** — `migration_fix.sql`의 `CROSS JOIN LATERAL jsonb_array_elements(w."items"::jsonb)`는 WHERE의 `jsonb_typeof = 'array'` 필터와 무관하게 FROM/JOIN 단계에서 먼저 평가되므로, 비배열 `items`가 있으면 WHERE 도달 전에 에러가 날 수 있었음(Postgres AND 평가 순서도 보장 안 됨). `jsonb_array_elements`/`jsonb_array_length` 호출 인자를 전부 `CASE WHEN jsonb_typeof(...)='array' THEN ... ELSE '[]'::jsonb END`로 감싸서, 함수가 항상 안전하게 배열만 받도록 수정 (`migration_fix.sql` Step 0d-5 INSERT/진단 블록, `verify-workorder-item-backfill.js`, `verify-style-process-backfill.js` 전부 동일 패턴 적용).
+
+### Verify
+- `npm --prefix backend run prisma:prepare-client`
+- `npm --prefix backend run build`
+- `npm --prefix frontend run build`
+- `node --check backend/scripts/verify-workorder-item-backfill.js`
+- `node --check backend/scripts/verify-style-process-backfill.js`
+
+### Remaining
+- 여전히 운영 DB 접근 권한이 없어 이 환경에서 실제 SQL 실행/verify 스크립트 실행은 못 함. 배포 후 Railway DB 대상으로 두 verify 스크립트 실행해 0 확인 전까지 `WorkOrder.items`/`Style.processes` 컬럼 DROP 금지 — 위 섹션과 동일.
+
+---
+
 ## 2026-07-02 WorkOrder/Style JSON 제거 후속 수정 (코드리뷰 반영)
 
 바로 아래 "WorkOrder.items / Style.processes JSON 이중 저장 제거" 커밋(c3af0df)을 리뷰받아 발견된 실질적 누락 4건을 수정.

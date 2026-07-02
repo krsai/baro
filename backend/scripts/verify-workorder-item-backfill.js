@@ -29,21 +29,26 @@ const printRows = (title, rows) => {
 // only 1 WorkOrderItem row exists) is just as unsafe to drop the JSON column over
 // as a fully-missing order, and the earlier "only checks for zero rows" version of
 // this script would have silently passed that case.
+//
+// jsonb_array_length raises an error on non-array jsonb, so every call is wrapped
+// in this CASE guard rather than trusting AND-clause evaluation order to filter
+// non-array rows out first (Postgres does not guarantee that order).
+const SAFE_ITEMS_ARRAY = `CASE WHEN w."items" IS NOT NULL AND jsonb_typeof(w."items"::jsonb) = 'array' THEN w."items"::jsonb ELSE '[]'::jsonb END`;
 const MISMATCH_QUERY = `
 SELECT
   w.id,
   w."orgId",
   w."orderId",
   w."orderNumber",
-  jsonb_array_length(w."items"::jsonb) AS "jsonItemCount",
+  jsonb_array_length(${SAFE_ITEMS_ARRAY}) AS "jsonItemCount",
   COUNT(wi.id) AS "relationItemCount"
 FROM "WorkOrder" w
 LEFT JOIN "WorkOrderItem" wi ON wi."workOrderId" = w.id
 WHERE w."items" IS NOT NULL
   AND jsonb_typeof(w."items"::jsonb) = 'array'
-  AND jsonb_array_length(w."items"::jsonb) > 0
+  AND jsonb_array_length(${SAFE_ITEMS_ARRAY}) > 0
 GROUP BY w.id, w."orgId", w."orderId", w."orderNumber", w."items"
-HAVING jsonb_array_length(w."items"::jsonb) <> COUNT(wi.id)
+HAVING jsonb_array_length(${SAFE_ITEMS_ARRAY}) <> COUNT(wi.id)
 `;
 
 const main = async () => {
