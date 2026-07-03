@@ -125,7 +125,7 @@ const STYLE_PROCESS_MESSAGES = {
     specLabel: '대상 규격',
     specPlaceholder: '예: 3선',
     processCodeLabel: '공정코드',
-    processCodePlaceholder: '예: PROC-001 (선택)',
+    processCodePlaceholder: '예: PROC-001',
     repeatCountLabel: '반복횟수',
     previewLabel: '미리보기',
     previewEmpty: '대상과 동작을 등록하면 공정명이 만들어집니다.',
@@ -166,6 +166,7 @@ const STYLE_PROCESS_MESSAGES = {
     validateTargetRequiredForSpec: '대상 규격을 등록하려면 대상을 먼저 선택해주세요.',
     validateActionRequiredForSpec: '동작 규격을 등록하려면 동작을 먼저 선택해주세요.',
     validateTextRequired: '공정 텍스트를 입력해주세요.',
+    validateCodeRequired: '공정코드를 입력해주세요.',
     validateInvalid: '유효한 공정 조합을 입력해주세요.',
     validateDuplicate: '이미 등록된 공정입니다.',
     validateDuplicateCode: '이미 사용 중인 공정코드입니다.',
@@ -199,7 +200,7 @@ const STYLE_PROCESS_MESSAGES = {
     specLabel: 'Target Spec',
     specPlaceholder: 'e.g. 3-line',
     processCodeLabel: 'Process Code',
-    processCodePlaceholder: 'e.g. PROC-001 (optional)',
+    processCodePlaceholder: 'e.g. PROC-001',
     repeatCountLabel: 'Repeat Count',
     previewLabel: 'Preview',
     previewEmpty: 'Register targets and actions to build the process name.',
@@ -240,6 +241,7 @@ const STYLE_PROCESS_MESSAGES = {
     validateTargetRequiredForSpec: 'Select a target first before adding target spec.',
     validateActionRequiredForSpec: 'Select an action first before adding action spec.',
     validateTextRequired: 'Enter process text.',
+    validateCodeRequired: 'Enter a process code.',
     validateInvalid: 'Enter a valid process composition.',
     validateDuplicate: 'This process is already registered.',
     validateDuplicateCode: 'This process code is already in use.',
@@ -273,7 +275,7 @@ const STYLE_PROCESS_MESSAGES = {
     specLabel: 'Quy cach doi tuong',
     specPlaceholder: 'vi du: 3 kim',
     processCodeLabel: 'Ma cong doan',
-    processCodePlaceholder: 'vi du: PROC-001 (tuy chon)',
+    processCodePlaceholder: 'vi du: PROC-001',
     repeatCountLabel: 'So lan lap',
     previewLabel: 'Xem truoc',
     previewEmpty: 'Dang ky doi tuong va thao tac de tao ten cong doan.',
@@ -314,6 +316,7 @@ const STYLE_PROCESS_MESSAGES = {
     validateTargetRequiredForSpec: 'Can chon doi tuong truoc khi them quy cach doi tuong.',
     validateActionRequiredForSpec: 'Can chon thao tac truoc khi them quy cach thao tac.',
     validateTextRequired: 'Hay nhap text cong doan.',
+    validateCodeRequired: 'Hay nhap ma cong doan.',
     validateInvalid: 'Hay nhap mot to hop cong doan hop le.',
     validateDuplicate: 'Cong doan nay da duoc dang ky.',
     validateDuplicateCode: 'Ma cong doan nay da duoc su dung.',
@@ -2342,6 +2345,11 @@ const StyleProcess = ({
       return getStyleProcessMessage(languageCode, 'validateTextRequired');
     }
 
+    const codeKey = normalizeProcessCodeKey(draft?.processCode);
+    if (!codeKey) {
+      return getStyleProcessMessage(languageCode, 'validateCodeRequired');
+    }
+
     const previewProcess = buildProcessPayload(draft, null, timeRefQuantity);
     const identity = getProcessIdentity(previewProcess);
     if (!identity) return getStyleProcessMessage(languageCode, 'validateInvalid');
@@ -2352,14 +2360,11 @@ const StyleProcess = ({
     });
     if (duplicated) return getStyleProcessMessage(languageCode, 'validateDuplicate');
 
-    const codeKey = normalizeProcessCodeKey(draft?.processCode);
-    if (codeKey) {
-      const duplicatedCode = safeProcesses.some((process) => {
-        if (ignoreInstanceId && process.instanceId === ignoreInstanceId) return false;
-        return normalizeProcessCodeKey(process?.code) === codeKey;
-      });
-      if (duplicatedCode) return getStyleProcessMessage(languageCode, 'validateDuplicateCode');
-    }
+    const duplicatedCode = safeProcesses.some((process) => {
+      if (ignoreInstanceId && process.instanceId === ignoreInstanceId) return false;
+      return normalizeProcessCodeKey(process?.code) === codeKey;
+    });
+    if (duplicatedCode) return getStyleProcessMessage(languageCode, 'validateDuplicateCode');
     return '';
   };
 
@@ -2943,6 +2948,7 @@ const StyleProcess = ({
                   sx={{ flex: 2, minWidth: 320 }}
                 />
                 <TextField
+                  required
                   size="small"
                   label={getStyleProcessMessage(languageCode, 'processCodeLabel')}
                   value={addDraft.processCode ?? ''}
@@ -3301,6 +3307,7 @@ const StyleProcess = ({
                         sx={{ width: 140 }}
                       />
                       <TextField
+                        required
                         size="small"
                         label={getStyleProcessMessage(languageCode, 'processCodeLabel')}
                         value={addDraft.processCode ?? ''}
