@@ -1409,3 +1409,16 @@ runtime 조회값:
 - `migration_fix.sql`에 `Step 0d-5`로 `WorkOrderItem` 백필 SQL을 추가했다(idempotent, 이미 relation이 있는 주문은 건드리지 않음).
 - 컬럼(`WorkOrder.items`, `Style.processes`) 자체는 이번 패스에서 DROP하지 않았다. 두 verify 스크립트가 운영 DB에서 0을 보고한 뒤 별도 후속 커밋으로 DROP한다.
 - 참고: `production-result`(생산 결과, `menu.productionResult`)는 이번 항목과 다른, 별도로 먼저 삭제된 플레이스홀더 메뉴다.
+
+### 39. 2026-07-03 주문 잠금 / AssignmentCard 동기화 재설계 (운영 데이터 삭제 사고 대응)
+
+- 사고: 주문 잠금 해제가 그 주문의 `AssignmentPlan`/`AssignmentCard`를 무조건 전부 삭제하도록 되어 있었고(작업기록 있으면 해제 자체를 막는 가드가 있었지만, 작업기록을 먼저 지우면 그 가드가 무력화됨), 실제로 이 순서로 조작이 일어나 운영 `AssignmentPlan` 25건과 `WorkRecord` 전체가 삭제됐다. 백업 없어 복구 불가. 상세 경위와 FK/Join 검토는 `todo.md`의 "2026-07-03 주문 잠금-배정카드 동기화 재설계" 항목 참고.
+- 최종 설계 (현재 코드 상태, 이 문서 우선):
+  - **잠금/해제는 순수 편집 권한 플래그다.** `POST /orders/:orderId/modification-lock`은 `modificationLockedAt/By`를 켜고 끄는 것 외에 `AssignmentCard`/`AssignmentPlan`을 전혀 건드리지 않는다. 잠금 시점에 카드를 만들거나 갱신하지 않는다.
+  - **카드 생성/갱신/제거는 주문 저장(`PUT /orders/:orderId`, `POST /orders`) 시점에 즉시 반영된다.** 잠금까지 미루지 않는다 — 수량이 바뀌면 그 저장에서 바로 카드 수량도 갱신된다.
+  - **작업기록이 연결된 스타일의 카드는 주문에서 제거할 수 없다.** `PUT /orders/:orderId`는 `WorkOrderItem`을 실제로 쓰기 전에, 빠지는 스타일의 카드에 연결된 `AssignmentPlan`이 작업기록을 갖고 있는지 먼저 확인한다(`findOrderStyleRemovalBlockers`, cardId 정확 일치 — 다른 스타일까지 걸리는 prefix 매칭 아님). 걸리면 아무것도 쓰지 않고 `409 { ok:false, error, issues:[{styleId,styleCode,styleName,code:"STYLE_HAS_WORK_RECORDS",message}] }`로 저장 전체를 막는다. 안전하면 `WorkOrderItem` 교체 + 카드 정리 + `AssignmentPlan` 정리를 하나의 `$transaction`으로 원자적으로 처리한다.
+  - **`DELETE /orders/:orderId`도 같은 가드를 쓴다**(주문 삭제 = 그 주문의 모든 스타일이 한꺼번에 빠지는 것과 동치이므로). 이전에는 "해제가 먼저 카드/배정을 지워준다"는 우연한 전제 때문에 삭제 자체에는 이 가드가 없었다 — 그 우연한 전제가 사라졌으므로 명시적으로 추가했다.
+  - 프론트(`frontend/src/pages/App/order/OrderList.jsx`)는 이 409+`issues` 응답을 작업기록 엑셀 임포트 실패와 같은 패턴(짧은 토스트 + 스타일/사유 표를 보여주는 `Dialog`)으로 표시한다.
+  - `OrderList.jsx`의 `handleSave`가 주문 저장 후 별도로 `/assignment-board-view`를 다시 불러와 `reconcileBoardStateForQuantityChanges`로 카드를 재계산해 `PUT /assignment-board-state`를 또 호출하던 경로는 제거했다 — 실패해도 조용히 삼켜지는 이중 저장 경로였고, 이제 카드 동기화는 백엔드 저장 트랜잭션 하나가 전담한다. `frontend/src/utils/quantityChangeBoard.mjs`(`reconcileBoardStateForQuantityChanges`)와 그 전용 테스트(`scripts/quantity-change-regression.test.mjs`)는 이제 프로덕션 호출부가 없는 죽은 코드/테스트로 남아있다(삭제 여부 미정 — `package.json`의 `test:quantity-change`/`test:regression` 스크립트 구성과 얽혀 있어 별도 판단 필요).
+- 알려진 구조적 한계 (이번 범위에서 고치지 않음): `AssignmentCard.cardId`와 `AssignmentPlan.cardId`/`originOrderId`는 DB FK가 아니라 `${orderId}::${styleId}` 문자열 관례로만 연결되어 있다. 이번 수정은 이 관례를 애플리케이션 코드로 정확히 지키도록 만든 것이지, FK 자체를 추가한 것은 아니다. `AssignmentPlan.cardId`/`originOrderId`에는 인덱스도 없다 — 데이터가 늘어나면 이번에 추가한 저장 시점 가드 조회가 순차 스캔이 될 수 있으므로 `@@index([orgId, cardId])` 추가를 후속 과제로 남긴다.
+- 운영 DB 복구 메모: 이 재설계 배포 후 기존 주문을 한 번씩 저장(또는 잠금 토글)하면 살아있는 `WorkOrderItem`을 기준으로 `AssignmentCard`가 다시 채워진다. `AssignmentPlan`(실제 라인 배정)은 자동 복구되지 않으므로 배정판에서 카드를 라인에 다시 드래그해야 한다.

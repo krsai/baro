@@ -33,14 +33,12 @@ export const deleteOrder = async (orderId, { orgId = null } = {}) => {
   });
 };
 
+// Lock/unlock is a pure editing-permission flag on the backend now - it no
+// longer releases/detaches assignments, so there is nothing for
+// releaseAssignments/confirmPastAssignmentRelease to confirm anymore.
 export const toggleOrderModificationLock = async (
   orderId,
-  {
-    locked,
-    lockedBy = '',
-    releaseAssignments = false,
-    confirmPastAssignmentRelease = false,
-  } = {},
+  { locked, lockedBy = '' } = {},
   { orgId = null } = {}
 ) => {
   const query = buildQueryString({ orgId });
@@ -50,8 +48,6 @@ export const toggleOrderModificationLock = async (
     body: JSON.stringify({
       locked: Boolean(locked),
       lockedBy,
-      releaseAssignments: Boolean(releaseAssignments),
-      confirmPastAssignmentRelease: Boolean(confirmPastAssignmentRelease),
     }),
   });
 };

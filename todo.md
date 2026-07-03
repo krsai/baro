@@ -177,3 +177,59 @@
 - 위 5개 파일 모두 실제 브라우저 조작 검증은 아직 안 함 — 다음 작업자(코덱스 검토 포함)가 위 Verify 체크리스트를 실제 화면에서 확인할 것.
 - F2(ProductionPlanBoard)는 메뉴가 비활성화(`/production-plan`, AGENTS.md "기능 상태" 표 참고) 상태라 실사용 경로는 아니지만 코드 자체는 남아 있어 함께 수정함.
 - 이번 수정은 "FK 매칭 실패 시 추측하지 않고 null/미매칭 처리"까지만 했고, F1에서 언급된 "완료된 assignment에 연결된 레코드를 재오픈할 때 그 특정 assignment를 직접 FK로 재조회해서 완전한 정보(공정 목록 등)를 보여주는" 개선은 범위 밖으로 남겨둠(현재는 `buildLegacyAssignment`가 레코드 자체 필드만으로 최소 표시).
+
+---
+
+## 2026-07-03 주문 잠금-배정카드 동기화 재설계 (사고 대응 + 근본 수정)
+
+### 배경: 실제 발생한 운영 데이터 삭제 사고
+주문 잠금 해제(`POST /orders/:orderId/modification-lock`, `locked:false`)가 그 주문에 연결된 `AssignmentPlan`/`AssignmentCard`를 무조건 전부 삭제하도록 되어 있었다(작업기록 있으면 해제 자체를 막는 가드는 있었지만, 그 가드를 무력화한 뒤 해제하면 삭제를 막을 방법이 없었음). 사용자가 작업기록을 먼저 삭제한 뒤 주문 잠금을 전부 해제하면서 이 경로를 그대로 타, 운영 DB의 `AssignmentPlan` 25건과 `WorkRecord` 전체가 삭제됐다. Railway Postgres에 백업(PITR/volume backup)이 꺼져 있어 복구 불가 확인함(`Backups` 탭에서 직접 확인). 사용자는 복구 대신 재설계를 요청했고, 이 세션에서 설계→구현→커밋까지 전량 수행했다(사용자가 자리를 비우면서 확인 요청 없이 진행 + todo.md 기록 + 커밋/푸시까지 요청).
+
+이 사고를 운영 DB에 직접 접속해 조사하면서 확인한 사실(참고용, AGENTS.md 파일 최상단 "DB 접속 전 필독" 절차대로 `DATABASE_PUBLIC_URL`로 접속): `AssignmentCard`는 사고 전부터 이미 0건이었다(별도의, 더 오래된 버그 — 아래 "부수적으로 같이 고친 것" 참고). `AssignmentPlan`은 사고로 25건→0건이 됐다. `WorkOrder`(8건)/`WorkOrderItem`(107건)은 살아있고 JSON 백업 필드와 정확히 일치해 정상이었다.
+
+### 재설계 방향 (사용자 확정 사항)
+- 주문 항목(스타일/수량)이 바뀌면 배정카드도 그 저장 시점에 즉시 정확히 반영되어야 한다 — 다음 잠금 때까지 미루는 설계는 사용자가 명시적으로 반려함("카드의 수량도 당연히 업데이트 되어야지").
+- 이미 작업기록이 연결된 스타일의 카드는 주문에서 제거될 수 없다 — 제거하려는 저장 시도는 토스트+모달로 막고 저장 전체를 실패 처리한다(작업기록 엑셀 임포트 실패 모달과 동일 패턴 재사용).
+- 잠금 해제는 카드/배정을 전혀 건드리지 않고 "다시 편집 가능" 상태로만 전환한다.
+- 이중 저장 경로나 애매한 안전장치를 만들지 않고 한 가지 방식으로만 정확하게 만든다.
+
+### 구현 내용
+
+**백엔드 (`backend/src/index.ts`)**
+- 신규 헬퍼 `findOrderStyleRemovalBlockers`(옛 `loadOrderAssignmentReleaseSummary`/`releaseOrderAssignmentsForUnlock` 자리, 둘 다 아무 데서도 호출되지 않던 죽은 코드라 삭제하고 그 자리에 작성): 주문에서 빠지는 스타일들의 `cardId`(`${orderId}::${styleId}` 정확 일치, prefix 아님)로 `AssignmentPlan`을 찾고, 이미 검증된 `loadLinkedWorkRecordPlanIds`를 재사용해 작업기록 연결 여부를 확인한다. 걸리면 작업기록 엑셀 임포트와 같은 모양(`{ ok:false, error, issues:[{styleId,styleCode,styleName,code,message}] }`)의 409를 반환한다.
+- `PUT /orders/:orderId`: `WorkOrderItem` 교체 트랜잭션을 열기 **전에** 위 가드를 먼저 돌려서, 걸리면 아무것도 쓰지 않고 409로 막는다. 안전하면 같은 트랜잭션 안에서 `WorkOrderItem` 교체 + 제거 확정된 `AssignmentCard` 삭제 + `detachWorkRecordsAndDeleteAssignmentPlans`(기존 함수 재사용, 내부적으로 작업기록 연결을 트랜잭션 안에서 한 번 더 재검증하므로 가드 체크~커밋 사이의 레이스도 막힘)로 해당 `AssignmentPlan` 정리까지 원자적으로 처리한다. 새로 생기거나 수량만 바뀐 스타일은 트랜잭션 커밋 후 기존 `rebuildAssignmentCardsForOrgIds`(변경 없음, 원래도 정상 동작하던 경로)가 그대로 처리한다.
+- `POST /orders/:orderId/modification-lock`: 잠금/해제 양쪽 모두 `modificationLockedAt/By` 토글 외에 아무 것도 하지 않도록 단순화. 기존에 있던 "해제 시 작업기록 있으면 차단" 가드와 "해제 시 카드/배정 전체 삭제" 로직을 통째로 제거(이게 사고 원인이었음).
+- `DELETE /orders/:orderId`: 새 가드 추가. 잠금 해제가 더 이상 카드/배정을 미리 정리해주지 않으므로, 주문 삭제(=그 주문의 모든 스타일 카드가 한꺼번에 없어지는 것과 동치) 앞에도 같은 작업기록 가드가 없으면 똑같은 유형의 사고가 삭제 경로로 재발할 수 있었음. `assignmentPlan.findMany`(cardId prefix, 주문 전체 삭제라 prefix가 정확) → `loadLinkedWorkRecordPlanIds` → 걸리면 409, 안전하면 트랜잭션 안에서 주문 삭제 + `detachWorkRecordsAndDeleteAssignmentPlans`.
+- 미사용 에러 상수 3개(`ORDER_MODIFICATION_LOCK_STATE_CHANGE_ERROR`, `ORDER_MODIFICATION_UNLOCK_ASSIGNMENT_RELEASE_REQUIRED_ERROR`, `ORDER_MODIFICATION_UNLOCK_PAST_ASSIGNMENT_CONFIRMATION_REQUIRED_ERROR`) 삭제.
+
+**부수적으로 같이 고친 것**: `rebuildAssignmentCardsForOrg`가 `syncAssignmentCardsForOrg`를 호출하는 부분(기존에 `db=prisma` 기본값, 트랜잭션 없이 "org 전체 카드 delete → 하나씩 upsert" 순서로 동작)이 원자적이지 않았다. delete는 이미 커밋됐는데 upsert 루프 중간에 실패하면 카드 테이블이 텅 빈 채로 영구히 남는다 — 이번 사고와는 별개로, `AssignmentCard`가 사고 전부터 이미 0건이었던 것도 이 비원자성이 원인일 가능성이 높다고 판단해 `prisma.$transaction`으로 감쌌다. (`PUT /assignment-board-state`가 같은 함수를 호출하는 다른 자리는 원래부터 `db: tx`를 넘기고 있어 이미 안전했음 — 그쪽은 손대지 않음.)
+
+**프론트엔드**
+- `frontend/src/pages/App/order/OrderList.jsx`의 `handleSave`: 주문 저장 성공 후 `/assignment-board-view`를 다시 불러와 `reconcileBoardStateForQuantityChanges`로 카드를 재계산하고 `PUT /assignment-board-state`를 또 한 번 직접 호출하던 별도 경로를 통째로 제거했다. 이 경로는 실패해도 `catch (_boardUpdateErr) { /* 조용히 무시 */ }`로 삼켜져 "저장은 성공했는데 보드는 어긋난" 상태를 만들 수 있었다. 이제 카드/배정 동기화는 백엔드 `PUT /orders/:orderId` 트랜잭션 하나가 책임지므로 프론트가 다시 동기화할 이유가 없다.
+- `handleSave`/`handleDeleteOrder`의 `catch`에 새 로직 추가: 백엔드가 `error.details.issues` 배열을 내려주면(스타일 제거 차단) 작업기록 엑셀 임포트 실패와 동일한 패턴(짧은 토스트 + 스타일/사유 표를 보여주는 MUI `Dialog`)으로 표시. 새 함수 `extractOrderSaveIssueRows`, 새 상태 `saveIssueRows`/`saveIssueDialogOpen`.
+- 이제 아무 데서도 호출되지 않는 `reconcileBoardStateForQuantityChanges` 호출부와 그 준비용으로만 쓰이던 `buildOrderVariantMapForBoard`/`resolveOrderItemQuantityForBoard`/`buildAssignmentOriginCardId`/`styleProcessSummaryById`(및 그 때문에만 쓰이던 `normalizeProcesses` import) 삭제. 잠금 관련 미사용 안내문구/확인문구 4개(`lockUnlockReleaseAssignmentsConfirm`, `lockUnlockPastAssignmentsConfirm`, `lockReleaseSummaryInfo`, `lockReleaseSummaryWithDetachedInfo`)와 백엔드가 더 이상 보내지 않는 에러에 대응하던 문구 2개(`lockUnlockReleaseRequired`, `lockUnlockPastReleaseConfirmRequired`) 삭제, `resolveOrderModificationLockToggleErrorMessage` 단순화.
+- `frontend/src/utils/orderApi.js`의 `toggleOrderModificationLock`: 백엔드가 이제 전혀 읽지 않는 `releaseAssignments`/`confirmPastAssignmentRelease` 파라미터 제거.
+
+### 검토: FK/Join 리스크 (사용자가 명시적으로 요청한 검토 항목)
+
+**정상적으로 잘 되어 있는 부분**
+- `WorkOrderItem.styleId → Style.id`는 실제 FK이고, 이번에 추가한 가드(`existing.workOrderItems`에서 제거될 스타일을 찾는 부분)는 `WORK_ORDER_ITEM_WITH_COLOR_INCLUDE`가 이미 `style` relation을 `include`한 결과(`item.style.id`)를 우선 사용하도록 되어 있는 기존 `resolveWorkOrderItemStyleId`를 그대로 재사용했다 — JSON이나 이름 재매칭이 아니라 진짜 FK+JOIN 결과를 읽는다.
+- `AssignmentPlan → WorkRecord`도 실제 FK(`WorkRecord.assignmentPlanId`, `onDelete: SetNull`)이고, 이번 가드/정리 로직은 전부 기존에 검증되어 실사용 중이던 `loadLinkedWorkRecordPlanIds`/`assertAssignmentPlansCanBeDetached`/`detachWorkRecordsAndDeleteAssignmentPlans`(원래 `PUT /assignment-board-state`가 쓰던 함수)를 그대로 재사용했다. 새로 재구현하지 않았기 때문에 이 부분에서 새로운 FK 버그가 들어갈 여지는 작다.
+- 가드 체크(트랜잭션 밖, 읽기)와 실제 삭제(트랜잭션 안) 사이에 시간차가 있어 이론적으로 레이스가 있을 수 있는데, 삭제를 실제로 수행하는 `detachWorkRecordsAndDeleteAssignmentPlans`가 내부에서 `assertAssignmentPlansCanBeDetached`로 삭제 직전에 한 번 더 재검증한다. 그 사이에 새 작업기록이 생겼다면 트랜잭션 안에서 예외가 던져지고 `$transaction`이 통째로 롤백되므로, 최악의 경우도 "저장 실패"이지 "일부만 반영된 손상 상태"가 아니다.
+
+**구조적으로 남아있는 진짜 문제 (FK 자체가 없음 — 이번 범위에서 고치지 않음, 후속 과제로 남김)**
+- `AssignmentCard.cardId`(String)와 `AssignmentPlan.cardId`/`originOrderId`(둘 다 String?)는 DB 레벨 FK나 relation이 전혀 아니고, `${orderId}::${styleId}` 형식 문자열이 우연히 같은 값이라는 애플리케이션 레벨 관례로만 연결되어 있다(`backend/prisma/schema.prisma` 확인: `AssignmentCard`는 `organization` 외에 relation 없음, `AssignmentPlan`도 `cardId`/`originOrderId`에 `@relation` 없음). 이번 사고의 근본 원인도 결국 이 지점이다 — DB가 관계를 몰라서 삭제할 때 알아서 막아주는 게 없고, 애플리케이션 코드가 매번 직접 조회해서 지켜야 한다. 이번엔 그 "직접 지키는 코드"를 저장 경로에 제대로 박아 넣은 것이지, FK 자체를 놓은 건 아니다. 진짜 근본 해결은 `AssignmentPlan.cardId`를 `AssignmentCard`에 대한 실제 FK로 바꾸는 스키마 마이그레이션인데, 이건 이번 사고 대응 범위를 크게 넘어서고(카드 재생성/캐시 성격이 강한 `AssignmentCard` 테이블 자체의 존재 이유와 부딪힘 — 카드가 지워졌다 다시 만들어질 때마다 FK가 끊기는 문제를 별도로 설계해야 함) 신중한 별도 설계가 필요해 이번엔 손대지 않았다.
+- 위와 직접 연결된 성능 관찰: `AssignmentPlan.cardId`/`originOrderId`에는 인덱스가 전혀 없다(`@@index`는 `[orgId, lineId]`, `workOrderId`, `styleId`, `colorId`뿐). 이번에 추가한 가드가 주문을 저장할 때마다 `cardId`로 `AssignmentPlan`을 조회하므로, 지금은(전체 25건 수준) 문제없지만 데이터가 커지면 이 조회가 순차 스캔이 된다. `@@index([orgId, cardId])` 추가를 후속 마이그레이션 후보로 남긴다.
+- `AssignmentPlan.styleId`는 실제 FK+인덱스가 있는데도 이번 가드에서는 쓰지 않고 문자열 `cardId` 매칭을 썼다. 기존 카드 생성 로직(`buildAssignmentCardsFromOrders`)이 처음부터 `cardId`를 정체성의 기준으로 삼고 있어서 일관성을 위해 맞춘 것이지만, 만약 `AssignmentPlan.styleId`가 항상 정확히 채워진다는 게 보장된다면(2026-07-02 조사 노트에 `AssignmentPlan.styleId`가 100% NULL이라는 별도 미해결 이슈가 todo.md에 남아있음 — 이번 조사에선 관련 없어 보였지만 완전히 배제는 못 함) 그쪽이 더 견고한 FK 매칭이 될 수 있다. 이번엔 기존 관례를 유지하는 쪽을 택했다.
+
+### 검증
+- `npm --prefix backend run build`, `npm --prefix frontend run build` 둘 다 통과.
+- `npm run test:regression` 실행: `test:access-policy`(10/10 통과), `test:time-date`(6/6, 단독 실행으로 확인) 정상. `test:quantity-change`는 이번 세션 시작 전부터 이미 실패 중이던 테스트 1건(`scripts/quantity-change-regression.test.mjs`, "PT" !== "ST")이 있음 — `git diff`로 확인 결과 이 세션에서 그 파일도 그 파일이 테스트하는 `frontend/src/utils/quantityChangeBoard.mjs`도 전혀 건드리지 않았으므로 이번 변경과 무관한 기존 실패다. 다만 `reconcileBoardStateForQuantityChanges`(테스트 대상 함수)를 프로덕션 호출부에서 완전히 제거했으므로, 이 유틸리티와 그 전용 테스트는 이제 죽은 코드를 테스트하는 상태다 — 지우거나 유지할지는 별도 판단 필요(지우려면 `package.json`의 `test:quantity-change`/`test:regression` 스크립트 구성과 AGENTS.md 갱신까지 같이 해야 해서 이번 범위에는 포함 안 함).
+- 실제 브라우저로 "스타일 제거 후 저장 시 토스트+모달이 뜨는지", "잠금/해제가 카드에 영향 안 주는지"는 개발 서버 미기동 상태에서 코드 리뷰 기반으로만 작성했고 육안 확인은 못 함 — 다음 작업자가 실제로 눌러서 확인 필요.
+
+### Remaining
+- **운영 DB 복구 조치 필요**: 배포 후 기존 8개 주문을 각각 한 번씩 저장(또는 잠금 토글)하면 살아있는 `WorkOrderItem`을 기준으로 `AssignmentCard`가 다시 채워진다. `AssignmentPlan`(실제 라인 배정)은 자동 복구 안 됨 — 배정판에서 카드를 라인에 다시 드래그해야 한다(사용자가 이미 인지하고 승인함, 복구 대상 아님).
+- `AssignmentPlan.cardId`/`originOrderId`를 진짜 FK로 바꾸는 스키마 마이그레이션(위 FK/Join 검토 항목) — 설계 필요, 이번 범위 아님.
+- `AssignmentPlan.cardId`에 인덱스 추가 — 위 검토 항목, 이번 범위 아님.
+- `frontend/src/utils/quantityChangeBoard.mjs`와 `scripts/quantity-change-regression.test.mjs`는 이제 프로덕션 호출부가 없는 죽은 코드/테스트 — 삭제 여부 결정 필요.
+- 실제 브라우저 조작 검증(스타일 제거 차단 토스트+모달, 잠금/해제 무영향, 신규 스타일 추가 시 카드 즉시 생성) 안 함 — 다음 작업자가 확인.

@@ -4660,8 +4660,7 @@ const AssignBoard = () => {
         .join(','),
     [lines]
   );
-  // Forced on while investigating monthly actual-output aggregation.
-  const shouldDebugLineMonthCapacity = true;
+  const shouldDebugLineMonthCapacity = false;
   useEffect(() => {
     const normalizedOrgId = Number(activeOrgId);
     if (

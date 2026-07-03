@@ -25,6 +25,11 @@ import {
   Tooltip,
   ToggleButton,
   ToggleButtonGroup,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Chip,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
@@ -87,12 +92,6 @@ import {
   emitWorkspaceDataChanged,
   WORKSPACE_DATA_TOPICS,
 } from '../../../utils/workspaceDataEvents';
-import {
-  calculateProcessTotalForOrderQuantity,
-  normalizeProcesses,
-} from '../../../utils/processTime';
-import { reconcileBoardStateForQuantityChanges } from '../../../utils/quantityChangeBoard.mjs';
-
 const { useDeferredValue } = React;
 
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -365,49 +364,6 @@ const buildColorMergedRows = (rows = [], getColorMergeKey = getItemColorIdentity
   });
 };
 const normalizeBoardKey = (value) => String(value ?? '').trim();
-const buildAssignmentOriginCardId = (orderId, styleId) =>
-  `${normalizeBoardKey(orderId)}::${normalizeBoardKey(styleId)}`;
-const resolveOrderItemQuantityForBoard = (item) => {
-  if (Number(item?.totalQuantity) > 0) return Number(item.totalQuantity);
-  if (item?.sizeQuantities && typeof item.sizeQuantities === 'object') {
-    const qty = sumSizeQuantities(item.sizeQuantities);
-    if (qty > 0) return qty;
-  }
-  return 0;
-};
-const buildOrderVariantMapForBoard = ({ orderId, items }) => {
-  const normalizedOrderId = normalizeBoardKey(orderId);
-  if (!normalizedOrderId) return new Map();
-
-  return (Array.isArray(items) ? items : []).reduce((map, item) => {
-    const styleId = normalizeBoardKey(item?.styleId);
-    if (!styleId) return map;
-
-    const styleName = String(item?.styleName || '').trim();
-    const styleCode = String(item?.styleCode || '').trim();
-    const qty = Number(resolveOrderItemQuantityForBoard(item)) || 0;
-    if (qty <= 0) return map;
-    const originId = buildAssignmentOriginCardId(normalizedOrderId, styleId);
-    const current = map.get(originId);
-    if (!current) {
-      map.set(originId, {
-        originId,
-        styleId,
-        styleName,
-        styleCode,
-        colorId: '',
-        colorName: '',
-        gender: '',
-        quantity: qty,
-      });
-      return map;
-    }
-    current.quantity += qty;
-    if (!current.styleName && styleName) current.styleName = styleName;
-    if (!current.styleCode && styleCode) current.styleCode = styleCode;
-    return map;
-  }, new Map());
-};
 const getStyleColorGenderKey = (styleIdentity, colorIdentity, gender) => {
   const normalizedGender = normalizeGenderCode(gender, '');
   const normalizedColorIdentity = String(colorIdentity || '').trim();
@@ -570,24 +526,28 @@ const resolveOrderSaveErrorMessage = (error, options = {}) => {
   }
   return message || fallbackMessage;
 };
+// Mirrors extractWorkLogImportIssueRows (frontend/src/pages/App/work/workLogImport.js) -
+// backend returns { ok:false, error, issues:[{ styleId, styleCode, styleName, code, message }] }
+// for both PUT /orders/:orderId (partial style removal) and DELETE /orders/:orderId
+// (whole order) when a style with linked work records would be dropped.
+const extractOrderSaveIssueRows = (error) => {
+  const issues = Array.isArray(error?.details?.issues) ? error.details.issues : [];
+  return issues.map((issue, index) => ({
+    key: `${issue?.styleCode || issue?.styleId || 'style'}-${index}`,
+    location: issue?.styleName || issue?.styleCode || (issue?.styleId ? `style ${issue.styleId}` : '-'),
+    detail: issue?.message || issue?.code || '',
+  }));
+};
+// Lock/unlock is now a pure permission-flag toggle on the backend (see
+// AGENTS.md order-lock redesign) - it no longer touches assignment
+// cards/plans, so it no longer has its own family of structured errors.
+// Only the generic modification-locked case remains meaningful here.
 const resolveOrderModificationLockToggleErrorMessage = (error, options = {}) => {
   const {
-    lockChangeNotAllowedMessage = '배정 계약이 있는 주문은 여기서 잠금 상태를 바꿀 수 없습니다.',
-    unlockReleaseRequiredMessage = '잠금을 해제하려면 관련 배정을 먼저 해제해야 합니다.',
-    unlockPastReleaseConfirmMessage = '배정 시작일이 지난 배정이 있어 추가 확인이 필요합니다.',
     modificationLockedMessage = ORDER_MODIFICATION_LOCK_MESSAGE,
     fallbackMessage = '주문 잠금 상태를 변경하는 중 오류가 발생했습니다.',
   } = options;
   const message = String(error?.message || '').trim();
-  if (message.includes('order modification lock cannot be changed')) {
-    return lockChangeNotAllowedMessage;
-  }
-  if (message.includes('order unlock requires assignment release')) {
-    return unlockReleaseRequiredMessage;
-  }
-  if (message.includes('order unlock requires past assignment release confirmation')) {
-    return unlockPastReleaseConfirmMessage;
-  }
   if (message.includes('order modification is locked')) {
     return modificationLockedMessage;
   }
@@ -1116,30 +1076,6 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'You cannot change lock status here for orders with assignment contracts.'
             : '배정 계약이 있는 주문은 여기서 잠금 상태를 바꿀 수 없습니다.',
-      lockUnlockReleaseAssignmentsConfirm:
-        languageCode === 'vi'
-          ? 'Mo khoa don hang se huy cac phan cong lien quan va chuyen ve trang thai chua phan cong. Ban co tiep tuc khong?'
-          : languageCode === 'en'
-            ? 'Unlocking this order will unassign related assignment cards. Continue?'
-            : '주문 잠금을 해제하면 관련 배정 카드가 미배정으로 전환됩니다. 계속할까요?',
-      lockUnlockPastAssignmentsConfirm:
-        languageCode === 'vi'
-          ? 'Co {count} phan cong co ngay bat dau truoc hom nay ({date}). Ban co chac chan muon huy phan cong khong?'
-          : languageCode === 'en'
-            ? '{count} assignments started before today ({date}). Do you still want to unassign them?'
-            : '시작일이 오늘보다 이전인 배정이 {count}건 있습니다. ({date}) 그래도 배정을 해제할까요?',
-      lockReleaseSummaryInfo:
-        languageCode === 'vi'
-          ? 'Da huy {count} phan cong lien quan va mo khoa don hang.'
-          : languageCode === 'en'
-            ? 'Unassigned {count} related assignments and unlocked the order.'
-            : '관련 배정 {count}건을 해제하고 주문 잠금을 해제했습니다.',
-      lockReleaseSummaryWithDetachedInfo:
-        languageCode === 'vi'
-          ? 'Da huy {count} phan cong, tach lien ket {detached} ban ghi cong viec va mo khoa don hang.'
-          : languageCode === 'en'
-            ? 'Unassigned {count} assignments, detached {detached} work records, and unlocked the order.'
-            : '배정 {count}건을 해제하고 작업기록 {detached}건의 연결을 분리한 뒤 잠금을 해제했습니다.',
       lockEnabledSuccess:
         languageCode === 'vi'
           ? 'Da khoa sua don hang.'
@@ -1272,12 +1208,6 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Order to edit was not found.'
             : '수정할 주문 정보를 찾을 수 없습니다.',
-      assignmentCancelledInfo:
-        languageCode === 'vi'
-          ? 'Do thay doi so luong hop dong, {count} phan cong cu da bi huy va chuyen thanh the chua phan cong.'
-          : languageCode === 'en'
-            ? '{count} existing assignments were cancelled and converted to unassigned cards due to contract quantity changes.'
-            : '계약 수량 변경으로 기존 배정 {count}건이 취소되어 미배정 카드로 전환되었습니다.',
       orderSaved:
         languageCode === 'vi'
           ? 'Da luu thong tin don hang.'
@@ -1290,24 +1220,48 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'An error occurred while saving the order.'
             : '주문 저장 중 오류가 발생했습니다.',
+      saveIssueDialogToast:
+        languageCode === 'vi'
+          ? 'Khong the luu vi co kieu dang da co lich su ghi nhan cong viec. Xem chi tiet.'
+          : languageCode === 'en'
+            ? 'Save failed because some styles already have work records. Check the details.'
+            : '작업기록이 있는 스타일이 있어 저장하지 못했습니다. 상세 내용을 확인해 주세요.',
+      saveIssueDialogTitle:
+        languageCode === 'vi'
+          ? 'Loi luu don hang'
+          : languageCode === 'en'
+            ? 'Order save errors'
+            : '주문 저장 오류',
+      saveIssueDialogDescription:
+        languageCode === 'vi'
+          ? 'Cac kieu dang duoi day da co lich su ghi nhan cong viec nen khong the xoa khoi don hang. Hay giu lai cac kieu dang nay roi luu lai.'
+          : languageCode === 'en'
+            ? 'The styles below already have work records and cannot be removed from this order. Keep them on the order and save again.'
+            : '아래 스타일은 이미 작업기록이 있어 주문에서 제거할 수 없습니다. 해당 스타일을 유지한 뒤 다시 저장해 주세요.',
+      saveIssueLocation:
+        languageCode === 'vi'
+          ? 'Kieu dang'
+          : languageCode === 'en'
+            ? 'Style'
+            : '스타일',
+      saveIssueReason:
+        languageCode === 'vi'
+          ? 'Ly do'
+          : languageCode === 'en'
+            ? 'Reason'
+            : '사유',
+      dialogClose:
+        languageCode === 'vi'
+          ? 'Dong'
+          : languageCode === 'en'
+            ? 'Close'
+            : '닫기',
       lockToggleErrorFallback:
         languageCode === 'vi'
           ? 'Da xay ra loi khi thay doi trang thai khoa don hang.'
           : languageCode === 'en'
             ? 'An error occurred while changing order lock status.'
             : '주문 잠금 상태를 변경하는 중 오류가 발생했습니다.',
-      lockUnlockReleaseRequired:
-        languageCode === 'vi'
-          ? 'Don hang nay da co lich su ghi nhan cong viec, khong the chinh sua.'
-          : languageCode === 'en'
-            ? 'This order has existing work records and cannot be modified.'
-            : '이 주문은 작업 기록이 이미 생성되어 수정이 불가능합니다.',
-      lockUnlockPastReleaseConfirmRequired:
-        languageCode === 'vi'
-          ? 'Co phan cong da bat dau truoc hom nay. Hay xac nhan them mot lan nua.'
-          : languageCode === 'en'
-            ? 'Some assignments started before today. One more confirmation is required.'
-            : '오늘보다 이전에 시작한 배정이 있어 한 번 더 확인이 필요합니다.',
       lockSaveErrorFallback:
         languageCode === 'vi'
           ? 'Da xay ra loi khi luu don hang.'
@@ -1874,21 +1828,6 @@ const OrderList = () => {
       },
     ];
   };
-  const styleProcessSummaryById = useMemo(() => {
-    return styles.reduce((map, style) => {
-      const styleId = normalizeBoardKey(style?.id);
-      if (!styleId) return map;
-      const processes = normalizeProcesses(style?.processes);
-      map.set(styleId, {
-        processCount: processes.length,
-        processes,
-        previewUrl:
-          Array.isArray(style?.imageUrls) && style.imageUrls.length > 0 ? style.imageUrls[0] : '',
-      });
-      return map;
-    }, new Map());
-  }, [styles]);
-
   const buyerValue = useMemo(() => {
     if (formData.buyerOrgId) {
       return (
@@ -2150,6 +2089,8 @@ const OrderList = () => {
     return orders.find((order) => order.id === orderId) || null;
   }, [isNewOrder, orderId, orders]);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const [saveIssueRows, setSaveIssueRows] = useState([]);
+  const [saveIssueDialogOpen, setSaveIssueDialogOpen] = useState(false);
   const [isTogglingModificationLock, setIsTogglingModificationLock] = useState(false);
   const orderLockEventSourceRef = useRef(createId('order-lock'));
   const orderDataChangedEventSourceRef = useRef(createId('order-data'));
@@ -2393,10 +2334,6 @@ const OrderList = () => {
       } catch (error) {
         showNotification(
           resolveOrderModificationLockToggleErrorMessage(error, {
-            lockChangeNotAllowedMessage: orderPageText.lockChangeNotAllowed,
-            unlockReleaseRequiredMessage: orderPageText.lockUnlockReleaseRequired,
-            unlockPastReleaseConfirmMessage:
-              orderPageText.lockUnlockPastReleaseConfirmRequired,
             modificationLockedMessage: orderPageText.modificationLocked,
             fallbackMessage: orderPageText.lockToggleErrorFallback,
           }),
@@ -2467,7 +2404,14 @@ const OrderList = () => {
       emitOrderDataChanged();
       showNotification(orderPageText.deleteSuccess, 'success');
     } catch (error) {
-      showNotification(error?.message || orderPageText.deleteError, 'error');
+      const issueRows = extractOrderSaveIssueRows(error);
+      if (issueRows.length > 0) {
+        setSaveIssueRows(issueRows);
+        setSaveIssueDialogOpen(true);
+        showNotification(orderPageText.saveIssueDialogToast, 'error');
+      } else {
+        showNotification(error?.message || orderPageText.deleteError, 'error');
+      }
     }
   };
 
@@ -3141,102 +3085,19 @@ const OrderList = () => {
         }
         payload.id = existingOrder.id;
         payload.createdAt = existingOrder.createdAt || payload.updatedAt;
+        // Assignment card/plan sync (create/update/removal-with-guard) now
+        // happens atomically inside PUT /orders/:orderId on the backend -
+        // there is no separate board reconciliation call here anymore. The
+        // old code re-fetched the board and pushed a second, independently
+        // failable PUT /assignment-board-state, and swallowed that failure
+        // silently, which let an order save "succeed" while board state
+        // quietly diverged. See catch block below for how a blocked
+        // removal (backend 409 with `issues`) now surfaces instead.
         const updated = await updateOrderToApi(existingOrder.id, payload, { orgId: activeOrgId });
         setOrders((prev) =>
           prev.map((order) => (order.id === existingOrder.id ? updated : order))
         );
         setFormData(normalizeOrderForm(updated));
-
-        try {
-          const oldVariantMap = buildOrderVariantMapForBoard({
-            orderId: existingOrder.id,
-            items: existingOrder.items || [],
-          });
-          const nextVariantMap = buildOrderVariantMapForBoard({
-            orderId: existingOrder.id,
-            items: sanitizedItems,
-          });
-          const boardQuery = buildQueryString({ orgId: activeOrgId });
-          const boardState = await requestJSON('/assignment-board-view' + boardQuery).catch(
-            () => ({ cards: [], assignments: [] })
-          );
-          const currentCards = Array.isArray(boardState?.cards) ? boardState.cards : [];
-          const currentAssignments = Array.isArray(boardState?.assignments)
-            ? boardState.assignments
-            : [];
-          const orderPrefix = `${normalizeBoardKey(existingOrder.id)}::`;
-          const currentOrderOriginIds = Array.from(
-            new Set(
-              [
-                ...currentCards.map((card) => normalizeBoardKey(card?.originOrderId || card?.id)),
-                ...currentAssignments.map((assignment) =>
-                  normalizeBoardKey(
-                    assignment?.originOrderId || assignment?.cardId || assignment?.id
-                  )
-                ),
-              ].filter((originId) => originId && originId.startsWith(orderPrefix))
-            )
-          );
-          const changedVariantIdSet = new Set(
-            Array.from(new Set([...oldVariantMap.keys(), ...nextVariantMap.keys()])).filter(
-              (originId) => {
-                const oldQty = Number(oldVariantMap.get(originId)?.quantity) || 0;
-                const nextQty = Number(nextVariantMap.get(originId)?.quantity) || 0;
-                return oldQty !== nextQty;
-              }
-            )
-          );
-          const needsLegacyRegroup = currentOrderOriginIds.some(
-            (originId) => !nextVariantMap.has(originId)
-          );
-          if (needsLegacyRegroup) {
-            currentOrderOriginIds.forEach((originId) => changedVariantIdSet.add(originId));
-            nextVariantMap.forEach((_value, originId) => changedVariantIdSet.add(originId));
-          }
-
-          const changedVariantIds = Array.from(changedVariantIdSet);
-          if (changedVariantIds.length > 0) {
-            const customerName =
-              formData.buyerOrgName ||
-              formData.customerName ||
-              existingOrder.buyerOrgName ||
-              existingOrder.customerName ||
-              existingOrder.customer ||
-              '';
-            const nextBoardState = reconcileBoardStateForQuantityChanges({
-              currentCards,
-              currentAssignments,
-              changedVariantIds,
-              nextVariantMap,
-              styleProcessSummaryById,
-              orderId: existingOrder.id,
-              orderNumber: existingOrder.orderNumber,
-              customerName,
-              calculateProcessTotalForOrderQuantity,
-            });
-
-            await requestJSON('/assignment-board-state' + boardQuery, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                cards: nextBoardState.cards,
-                assignments: nextBoardState.assignments,
-              }),
-            });
-
-            if (nextBoardState.cancelledAssignmentCount > 0) {
-              showNotification(
-                orderPageText.assignmentCancelledInfo.replace(
-                  '{count}',
-                  String(nextBoardState.cancelledAssignmentCount)
-                ),
-                'info'
-              );
-            }
-          }
-        } catch (_boardUpdateErr) {
-          // Keep order save successful even if board sync fails.
-        }
       } else {
         payload.id = createId('order');
         payload.createdAt = payload.updatedAt;
@@ -3255,14 +3116,21 @@ const OrderList = () => {
         });
       }
     } catch (error) {
-      showNotification(
-        resolveOrderSaveErrorMessage(error, {
-          modificationLockedMessage: orderPageText.modificationLocked,
-          duplicateOrderNumberMessage: orderPageText.validationDuplicateOrderNumber,
-          fallbackMessage: orderPageText.saveErrorFallback,
-        }),
-        'error'
-      );
+      const issueRows = extractOrderSaveIssueRows(error);
+      if (issueRows.length > 0) {
+        setSaveIssueRows(issueRows);
+        setSaveIssueDialogOpen(true);
+        showNotification(orderPageText.saveIssueDialogToast, 'error');
+      } else {
+        showNotification(
+          resolveOrderSaveErrorMessage(error, {
+            modificationLockedMessage: orderPageText.modificationLocked,
+            duplicateOrderNumberMessage: orderPageText.validationDuplicateOrderNumber,
+            fallbackMessage: orderPageText.saveErrorFallback,
+          }),
+          'error'
+        );
+      }
     } finally {
       setIsSavingOrder(false);
     }
@@ -3270,6 +3138,7 @@ const OrderList = () => {
 
   if (!isDetailMode) {
     return (
+      <>
       <AppPageContainer
         title={orderPageText.listTitle}
         titleActions={(
@@ -3501,10 +3370,46 @@ const OrderList = () => {
           </TableContainer>
         </Paper>
       </AppPageContainer>
+      <Dialog open={saveIssueDialogOpen} onClose={() => setSaveIssueDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          {orderPageText.saveIssueDialogTitle}
+          {saveIssueRows.length > 0 && (
+            <Chip size="small" color="error" label={saveIssueRows.length} sx={{ ml: 1 }} />
+          )}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {orderPageText.saveIssueDialogDescription}
+          </Typography>
+          <TableContainer sx={{ maxHeight: 420 }}>
+            <Table size="small" stickyHeader>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{orderPageText.saveIssueLocation}</TableCell>
+                  <TableCell>{orderPageText.saveIssueReason}</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {saveIssueRows.map((issue) => (
+                  <TableRow key={issue.key}>
+                    <TableCell sx={{ whiteSpace: 'nowrap', verticalAlign: 'top' }}>{issue.location}</TableCell>
+                    <TableCell>{issue.detail}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSaveIssueDialogOpen(false)}>{orderPageText.dialogClose}</Button>
+        </DialogActions>
+      </Dialog>
+      </>
     );
   }
 
   return (
+    <>
     <AppPageContainer
       title={
         isNewOrder
@@ -4500,6 +4405,41 @@ const OrderList = () => {
         </Box>
       </Box>
     </AppPageContainer>
+    <Dialog open={saveIssueDialogOpen} onClose={() => setSaveIssueDialogOpen(false)} maxWidth="md" fullWidth>
+      <DialogTitle>
+        {orderPageText.saveIssueDialogTitle}
+        {saveIssueRows.length > 0 && (
+          <Chip size="small" color="error" label={saveIssueRows.length} sx={{ ml: 1 }} />
+        )}
+      </DialogTitle>
+      <DialogContent dividers>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {orderPageText.saveIssueDialogDescription}
+        </Typography>
+        <TableContainer sx={{ maxHeight: 420 }}>
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>{orderPageText.saveIssueLocation}</TableCell>
+                <TableCell>{orderPageText.saveIssueReason}</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {saveIssueRows.map((issue) => (
+                <TableRow key={issue.key}>
+                  <TableCell sx={{ whiteSpace: 'nowrap', verticalAlign: 'top' }}>{issue.location}</TableCell>
+                  <TableCell>{issue.detail}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setSaveIssueDialogOpen(false)}>{orderPageText.dialogClose}</Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 };
 
