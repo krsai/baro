@@ -188,11 +188,13 @@ const CompactBoardCard = ({
           label={getUiMessage('assign.cardCustomerLabel', 'Customer', languageCode)}
           value={customer}
           grow={!compact}
+          minWidth={compact ? 70 : 120}
         />
         <CardField
           label={orderNoLabel || getUiMessage('assign.cardOrderNoLabel', 'Order No.', languageCode)}
           value={orderNo}
           grow={!compact}
+          minWidth={compact ? 70 : 120}
         />
         <CardField
           label={getUiMessage('assign.cardStyleLabel', 'Style', languageCode)}
