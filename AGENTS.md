@@ -34,8 +34,8 @@
 - **ST (`stSeconds`)**: 공정 row 1개를 1장 수행하는 전체 표준 시간이다. 스케줄러 예상 기간, 배정 카드 길이, 계획 소요 시간 계산의 기준이며 `timesPerPiece`를 다시 곱하지 않는다.
 - **CT (`ctSeconds`)**: 공정 row 1개를 1장 수행하는 전체 계약/급여 기준 시간이다. 배정 카드에서 수정할 수 있지만, 스케줄러 길이 계산에 사용하면 안 되며 `timesPerPiece`를 다시 곱하지 않는다.
 - **AT**: WorkLog/WorkRecord와 출퇴근 데이터로 학습한 실제 시간 추정값이다. 스케줄 보정/예측 참고값이지 CT가 아니다.
-- `AssignmentPlan.stTotalSeconds`: 배정 카드 전체의 계획 ST 총초. 스케줄러 길이 계산 전용이다. 과거 `totalSeconds`/`stSeconds` 카드 총합 명칭을 대체한다.
-- `AssignmentPlan.ctTotalSeconds`: 배정 카드 전체의 계약 CT 총초. 급여/계약 기준 전용이며 스케줄러 길이 계산에 사용 금지.
+- `AssignmentPlan.assignmentStTotalSeconds`(물리 컬럼명, §24에서 `stTotalSeconds`에서 리네임됨): 배정 카드 전체의 계획 ST 총초. 스케줄러 길이 계산 전용이다. API/board payload 호환 키로 `stTotalSeconds`가 여전히 노출될 수 있다.
+- `AssignmentPlan.assignmentCtTotalSeconds`(물리 컬럼명, §24에서 `ctTotalSeconds`에서 리네임됨): 배정 카드 전체의 계약 CT 총초. 급여/계약 기준 전용이며 스케줄러 길이 계산에 사용 금지. API/board payload 호환 키로 `ctTotalSeconds`가 여전히 노출될 수 있다.
 - `WorkRecord.ctSeconds`: 작업기록 상세 행의 급여 계산용 CT. 진행률/스케줄 실제 기간 계산에서 ST처럼 쓰면 안 된다.
 - `WorkLog.totalCtSeconds`: 작업기록 헤더의 CT 합계. 작업기록 목록/요약과 급여 참고용이며 스케줄러 길이 계산에 사용 금지.
 - `AtTrainingBucket.laborInputSeconds`: AT 학습용 실제/대체 투입 노동 시간 합이다. 스케줄러 계획 시간이나 계약 시간과 섞으면 안 된다.
@@ -120,11 +120,14 @@ AT(q) = a*q + b
 
 ### AssignmentPlan (스케줄 카드)
 - 단위: 기본 `주문 × 스타일` (색상/사이즈 단위 미구현)
-- `stTotalSeconds`: 스케줄러 계획 길이 계산에 쓰는 배정카드 전체 ST 총초. 과거 `totalSeconds`/`stSeconds` 카드 총합 명칭을 대체.
-- `ctTotalSeconds`: 급여/계약 계산에 쓰는 배정카드 전체 CT 총초. 과거 `contractedSeconds` 명칭을 대체하며 스케줄러 길이 계산에 사용 금지.
+- `assignmentQuantity`: 계획 수량. §40(2026-07-05)부터 이 값이 항상 "생산한 만큼"과 같다는 보장은 없다 — 주문에서 스타일이 빠지면 작업기록 유무에 따라 0으로 남을 수 있다(아래 "0-수량 오버플로우" 참고).
+- `assignmentStTotalSeconds`(물리 컬럼명): 스케줄러 계획 길이 계산에 쓰는 배정카드 전체 ST 총초.
+- `assignmentCtTotalSeconds`(물리 컬럼명): 급여/계약 계산에 쓰는 배정카드 전체 CT 총초. 스케줄러 길이 계산에 사용 금지.
 - `assignmentCtSnapshot`: assignment 저장 시점의 CT 스냅샷 JSON. `processes[].snapshotCtSeconds`와 `processes[].pieceCtSeconds`는 급여/계약 CT 기준이며, snapshot 안에 ST 복사본을 저장하지 않는다.
 - `isCompleted / finalQuantity / completedAt`: 생산 완료 확정 결과 (`PATCH /assignment-plans/:externalId/production-complete`)
 - `closedQty / closedAt / closedBy / closeMode / closeBasis`: 제작 완료 확정 상태 스냅샷 (구 `/close` 경로와 신규 `/production-complete` 공통 반영)
+- **카드/배정 생성 시점 (§40, 2026-07-05부터)**: `AssignmentCard`/`AssignmentPlan`은 주문을 **저장**할 때가 아니라 **잠글 때**(`POST /orders/:orderId/modification-lock`, `locked:true`) 만들어지거나 갱신된다. 잠기지 않은 주문은 카드가 아예 없다. 해제는 순수 권한 플래그라 카드/배정에 손대지 않는다.
+- **0-수량 오버플로우 (§40)**: 주문에서 스타일이 빠졌는데 그 스타일에 이미 `WorkRecord`가 있으면, 카드/배정을 지우지 않고 `assignmentQuantity=0`으로만 낮춘다. 이미 생산된 수량은 전부 `overflowQuantity`(진행률 응답 필드)로 잡힌다. 배정 보드에는 별도 "확인 필요" 경고 섹션에 표시되고, 연결된 모든 작업기록의 월이 급여 잠금되면 자동으로 그 섹션에서 빠진다.
 
 ### ⚠️ DB 적용 메모
 - 모든 스키마/데이터 변경은 `backend/migration_fix.sql`로 관리. `backend/railway.json`의 `deploy.preDeployCommand`가 `npm run railway:predeploy`를 실행하도록 설정되어 있어야 하며, 배포 로그에서 migration 실행 여부를 확인한다.
@@ -186,7 +189,7 @@ AT(q) = a*q + b
 ## 스케줄러 로직 분석 결과
 
 ### 이미 구현돼 있는 것
-- **미배정 카드 표시**: `buildCardsFromOrders`가 주문의 모든 카드를 생성. 미배정 카드는 보드 풀(pool)에 남아 있어 눈으로 확인 가능.
+- **미배정 카드 표시**: `buildAssignmentCardsFromOrders`가 **잠긴** 주문의 카드를 생성한다(§40, 2026-07-05부터 — 예전엔 모든 주문이었으나 지금은 잠금 시점에만 생성됨). 미배정 카드는 보드 풀(pool)에 남아 있어 눈으로 확인 가능.
 - **생산 완료 반영**: `completeAssignmentPlanProduction`이 `syncAssignmentSchedulesFromWorkRecordPlans` 및 `persistAssignmentPlanProgressSnapshot`을 호출해 완료 상태와 일정 정보를 갱신.
 - **라인 균형**: 시각적으로 보드에서 확인 가능 (별도 지표 불필요).
 - **`progressPercent` 필드**: `/assignment-plan-progress` 응답에 포함되며, 현재는 `sum(WorkRecord.quantity) / (planQuantity × processCount)` 공식으로 계산.
@@ -195,6 +198,7 @@ AT(q) = a*q + b
 - **rolling forecast 기준**: line-month 보드의 forecast load/carry는 저장된 예전 assignment range가 아니라 **현재 보드의 미완료 assignment queue**와 `remainingStTotalSeconds`를 기준으로 다시 계산한다. 따라서 현재 보드에서 라인 queue가 0건이면 forecast load도 0이어야 한다.
 - **forecast anchor 규칙**: line-level forecast 시작점은 `nextWorkingDay(lastActualCoverageEndDateKey)`다. 아직 actual WorkLog가 하나도 없으면 fallback은 `today` 또는 그 다음 working day다. 기본 working day는 월~토, 일요일과 휴일관리 날짜만 제외한다.
 - **anchor month 의미**: actual이 있는 과거 month는 history다. anchor month와 미래 month는 현재 남은 backlog를 앞으로 capacity에 fill-forward 한 rolling forecast다. 6월 capacity를 먼저 채우고 초과분은 7월, 다시 초과하면 8월로 carry한다.
+- **과거(historical) month의 "계획 부하"는 forecast 공식을 쓰지 않는다(§41, 2026-07-05)**: 이미 닫힌 달은 "남은 backlog를 채운다"는 개념 자체가 성립하지 않는다 — 그 달에 못 채운 건 자동으로 다음 열린 달의 carry-in으로 넘어가기 때문이다. 그래서 과거 달의 "계획 부하"는 같은 달의 `actualOutputPercent`(실제 생산률)를 그대로 따른다. 예전엔 과거 달을 무조건 100%로 하드코딩했던 버그가 있었다 — 실데이터와 무관하게 100%가 나와 배정이 하나도 없어도 "잔여 데이터가 남아있다"는 오해를 유발했다.
 - **anchor month 퍼센트 규칙**: anchor month의 `forecast load percent` 분모는 그 달 전체 capacity가 아니라 **anchor 이후 남은 forecastAvailableCapacitySeconds**다. 예: `2026-06-10~2026-06-30` 구간을 꽉 채우면 6월 cell은 `100%`로 보이고, 보조 문구로 `2026-06-10~2026-06-30` 범위를 함께 보여준다.
 - **UI 최소 정보 원칙**: 라인 요약 행은 `라인명`, `인원`, `배정 작업 수(완료 제외)`, `완료 예상 시점`만 우선 표시한다. 월 cell의 carry는 시간(hours)이 아니라 **다음으로 넘어가는 날짜**로 표시한다.
 - **세로형 drag/drop 작업 목록**: 라인 대기 작업과 미배정 작업은 각각 `카드 1개 = 전체폭 1행`으로 세로 스택한다. 카드에는 이미지, 고객사, 주문번호, 스타일, 수량, 진행도를 우선 표시한다.
@@ -281,12 +285,12 @@ AT(q) = a*q + b
 
 ---
 
-## 현재 상황 (2026-05)
+## 현재 상황 (2026-07-05 기준, 이 섹션은 자주 갱신할 것 — 오래되면 날짜만 보고도 신뢰하지 말 것)
 
-- 4월 데이터 최초 입력 중 (4월 30일에 한달치 일괄 입력)
-- 출퇴근 데이터는 이미 입력 완료 → AT 학습 필터 통과 가능
-- AT 신뢰도는 낮게 시작하지만 누적될수록 개선되는 것이 목표
-- 병렬 생산(라인에서 A+B 동시 작업)은 AT 추정에 문제 없음. 스케줄은 순차 계획이지만 현실은 병렬.
+- 2026-07-03 운영 데이터 삭제 사고(§39) 이후 `AssignmentPlan`/`AssignmentCard`가 전체 조직 0건 상태에서 복구 중. `WorkOrder`/`WorkOrderItem`/`Style`은 살아있음.
+- 카드/배정 생성 로직을 저장 시점 → 잠금 시점으로 재설계(§40)했고, 이 재설계에 실제 버그가 있어 디버깅 진행 중(진단 로그 배포함, Railway 로그 대기 중 — todo.md 최신 항목 참고).
+- 과거(4월) 데이터 입력은 이미 끝났고 지금은 운영 단계 — "최초 입력 중" 문구는 더 이상 유효하지 않음.
+- 병렬 생산(라인에서 A+B 동시 작업)은 AT 추정에 문제 없음. 스케줄은 순차 계획이지만 현실은 병렬 — 이 특성 자체는 변하지 않음.
 
 ---
 
@@ -389,7 +393,7 @@ AT(q) = a*q + b
 | 인증 | `GET /auth/context` |
 | 조직/멤버십 | `GET/POST /organizations`, `PATCH /organizations/:id/subscription`, `GET/POST /org-memberships` |
 | 인사/라인 | `GET/POST /employees`, `GET/POST /factories`, `GET/POST /lines`, `POST /line-assignments/assign\|unassign` |
-| 주문/스타일 | `GET/POST/PUT/DELETE /orders`, `GET/POST/PUT/DELETE /styles`, `POST /styles/import` |
+| 주문/스타일 | `GET/POST/PUT/DELETE /orders`, `POST /orders/:orderId/modification-lock`(§40 — 잠글 때만 카드/배정 동기화), `GET/POST/PUT/DELETE /styles`, `POST /styles/import` |
 | 배정 | `GET /assignment-plans`, `PATCH /assignment-plans/:externalId/production-complete`, `PATCH /assignment-plans/:externalId/final-quantity`, `GET /assignment-board-view`, `GET /assignment-cards`, `GET /line-month-capacity` |
 | 배정 (deprecated) | `POST /assignment-plans/:externalId/close` (`production-complete`로 내부 위임, Deprecation 헤더 반환) |
 | 검수 이력 | `GET /assignment-plans/:externalId/qc-history`, `POST /qc-pass-events`, `PATCH /qc-pass-events/:id/cancel` |
@@ -414,8 +418,9 @@ AT(q) = a*q + b
 - `DATABASE_URL`, `DIRECT_URL`
 - `PORT`
 - `BUSINESS_TIME_ZONE`
-- `WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER`
 - 코드 기본 보정: `DIRECT_URL ||= DATABASE_URL`, `PRISMA_CLIENT_ENGINE_TYPE ||= "binary"`
+- `WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER`는 `.env.example`에만 있고 실제 코드 어디서도 읽지 않는 죽은 설정이다(2026-07-05 grep으로 확인). 실제로 작업기록 수량이 배정 수량 대비 초과되는 걸 막는 코드는 없다.
+- `Factory.managementStartDate`는 스케줄러/계획부하 계산과 무관하다. 작업기록 엑셀 임포트 시 "이 날짜 이전 데이터는 거부"하는 검증에만 쓰인다(2026-07-05 확인). 스케줄 계산의 유일한 기준점은 §25/§34의 anchor(마지막 실제 작업기록 다음 근무일)다.
 
 ---
 
@@ -458,6 +463,7 @@ AT(q) = a*q + b
 - 공정: `P01~P10`
 - 컬러: WHITE, BLACK, NAVY, GRAY-MEL, LT-BLUE, MID-BLUE, INDIGO
 - 리셋 시 WorkOrder/AssignmentCard/AssignmentPlan 삭제, WorkLog/WorkRecord는 보존
+- 리셋 스크립트는 `WorkOrder`를 새로 만들지 않는다(직접 확인, `reset-to-baseline.js`에 관련 코드 없음). §40(2026-07-05)부터 카드는 주문을 **잠글 때만** 생성되므로, 리셋 후 배정 보드에서 카드를 보려면 테스트용 주문을 만든 뒤 반드시 잠가야 한다 — 저장만으로는 더 이상 카드가 생기지 않는다.
 
 ### 회귀 테스트
 ```
