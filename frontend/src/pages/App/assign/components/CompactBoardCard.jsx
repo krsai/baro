@@ -36,6 +36,7 @@ const CompactBoardCard = ({
   customer = '',
   orderNo = '',
   orderNoLabel = null,
+  showOrderNo = true,
   styleName = '',
   quantity = null,
   progressPercent = 0,
@@ -190,12 +191,14 @@ const CompactBoardCard = ({
           grow={!compact}
           minWidth={compact ? 70 : 120}
         />
-        <CardField
-          label={orderNoLabel || getUiMessage('assign.cardOrderNoLabel', 'Order No.', languageCode)}
-          value={orderNo}
-          grow={!compact}
-          minWidth={compact ? 70 : 120}
-        />
+        {showOrderNo ? (
+          <CardField
+            label={orderNoLabel || getUiMessage('assign.cardOrderNoLabel', 'Order No.', languageCode)}
+            value={orderNo}
+            grow={!compact}
+            minWidth={compact ? 70 : 120}
+          />
+        ) : null}
         <CardField
           label={getUiMessage('assign.cardStyleLabel', 'Style', languageCode)}
           minWidth={160}

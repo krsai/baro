@@ -254,7 +254,7 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
       selected={isSelected}
       languageCode={languageCode}
       customer={resolveCardCustomerDisplay(card, languageCode) || '-'}
-      orderNo={card.orderNo || '-'}
+      showOrderNo={false}
       styleName={styleLabel}
       quantity={resolveCardQuantity(card, 0)}
       showProgress={false}
@@ -6751,7 +6751,7 @@ const AssignBoard = () => {
             )}
           </Alert>
         ) : null}
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 60px 320px' }, gap: 2, alignItems: 'stretch', minWidth: 0, overflow: 'hidden' }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 60px 440px' }, gap: 2, alignItems: 'stretch', minWidth: 0, overflow: 'hidden' }}>
           <Stack spacing={1.5} sx={{ minWidth: 0 }}>
             <Box
               sx={{
