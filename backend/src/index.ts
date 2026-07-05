@@ -19576,6 +19576,12 @@ const buildAssignmentPlanProgressRows = async (
 
   const statsByPlanId = new Map<number, AssignmentPlanWorkStats>();
   const sumByPlanId = new Map<number, number>();
+  // Tracks the distinct set of WorkRecord months per plan so a zero-quantity
+  // overflow assignment (AGENTS.md 40번) can be judged "fully settled" once
+  // every one of its linked work-record months has a payroll snapshot -
+  // separate from payrollLockMonthByPlanId above, which only tracks a single
+  // nominal completion month and would stay empty for these plans.
+  const workRecordMonthsByPlanId = new Map<number, Set<string>>();
   const getStats = (planId: number): AssignmentPlanWorkStats => {
     const existing = statsByPlanId.get(planId);
     if (existing) return existing;
@@ -19620,6 +19626,12 @@ const buildAssignmentPlanProgressRows = async (
     if (coverageEndDate && (!stats.lastWorkDate || coverageEndDate > stats.lastWorkDate)) {
       stats.lastWorkDate = coverageEndDate;
     }
+    const workRecordMonthKey = coverageEndDate ? coverageEndDate.slice(0, 7) : null;
+    if (workRecordMonthKey) {
+      const monthSet = workRecordMonthsByPlanId.get(planId) ?? new Set<string>();
+      monthSet.add(workRecordMonthKey);
+      workRecordMonthsByPlanId.set(planId, monthSet);
+    }
     if (
       coverageStartDate &&
       coverageEndDate &&
@@ -19640,6 +19652,18 @@ const buildAssignmentPlanProgressRows = async (
     byDate.set(processKey, (byDate.get(processKey) || 0) + quantity);
     stats.dailyProcessTotalsByDate.set(workDateKey, byDate);
   });
+
+  const allWorkRecordMonths = Array.from(
+    new Set(
+      Array.from(workRecordMonthsByPlanId.values()).flatMap((monthSet) =>
+        Array.from(monthSet)
+      )
+    )
+  );
+  const workRecordPayrollLockedMonthSet = await loadLockedPayrollMonthSet(
+    orgId,
+    allWorkRecordMonths
+  );
 
   const rows = plans.map((plan) => {
     const planId = Number(plan.id);
@@ -19941,6 +19965,23 @@ const buildAssignmentPlanProgressRows = async (
       remainingQty,
       overflowQuantity,
       isOverflow: overflowQuantity > 0,
+      // A style removed from its order while already worked (AGENTS.md 40번)
+      // is kept at plannedQuantity 0 instead of being deleted, so every unit
+      // already produced counts as overflow against a zero baseline.
+      isZeroQuantityOverflow:
+        (baselineQuantityRaw == null || baselineQuantityRaw <= 0) && producedQuantity > 0,
+      // True once every distinct WorkRecord month linked to this plan has a
+      // payroll snapshot - i.e. this overflow has been fully paid out and no
+      // longer needs to sit in a review/warning list. Distinct from
+      // isPayrollLocked below, which only tracks one nominal completion
+      // month and would never be true for a plan that has no completion.
+      isFullyPayrollSettled: (() => {
+        const months = workRecordMonthsByPlanId.get(planId);
+        if (!months || months.size === 0) return false;
+        return Array.from(months).every((month) =>
+          workRecordPayrollLockedMonthSet.has(month)
+        );
+      })(),
       isPayrollLocked,
       payrollLockMonth,
       isCompletionInconsistent,

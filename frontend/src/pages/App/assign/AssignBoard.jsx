@@ -2222,6 +2222,12 @@ const resolveAssignmentProgressState = ({
           ? clampPercentValue(progressForRemainingRatio * 100)
           : assignment?.schedulerProgressPercent ?? null,
     isStUnknown,
+    isZeroQuantityOverflow: Boolean(
+      progressRow?.isZeroQuantityOverflow ?? assignment?.isZeroQuantityOverflow
+    ),
+    isFullyPayrollSettled: Boolean(
+      progressRow?.isFullyPayrollSettled ?? assignment?.isFullyPayrollSettled
+    ),
     hasRangeCoverage: Boolean(progressRow?.hasRangeCoverage ?? assignment?.hasRangeCoverage),
     lineOrphanWorkRecordCount:
       Number(progressRow?.lineOrphanWorkRecordCount ?? assignment?.lineOrphanWorkRecordCount) ||

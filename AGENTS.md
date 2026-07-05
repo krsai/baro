@@ -1424,7 +1424,7 @@ runtime 조회값:
 - 운영 DB 복구 메모: 이 재설계 배포 후 기존 주문을 한 번씩 저장(또는 잠금 토글)하면 살아있는 `WorkOrderItem`을 기준으로 `AssignmentCard`가 다시 채워진다. `AssignmentPlan`(실제 라인 배정)은 자동 복구되지 않으므로 배정판에서 카드를 라인에 다시 드래그해야 한다.
 - **정정 (2026-07-05)**: 위 "저장(또는 잠금 토글)하면 다시 채워진다"는 부정확했다. 실제 코드 확인 결과 `POST /orders/:orderId/modification-lock`은 잠금/해제 어느 쪽이든 `rebuildAssignmentCardsForOrgIds`를 전혀 호출하지 않는다 — 카드가 다시 채워지는 유일한 경로는 주문 **저장**(`PUT /orders/:orderId`)뿐이었다. 이 항목 자체는 아래 40번 재설계로 다시 대체된다.
 
-### 40. 2026-07-05 카드 생성 시점을 주문 잠금으로 재변경 + 스타일 제거를 수량 0 오버플로우로 처리 (백엔드 구현 완료, 보드 UI 경고 섹션 미구현)
+### 40. 2026-07-05 카드 생성 시점을 주문 잠금으로 재변경 + 스타일 제거를 수량 0 오버플로우로 처리 (백엔드+보드 UI 구현 완료, 브라우저 미검증)
 
 - 이 섹션은 바로 위 39번의 "카드 생성/갱신은 저장 시점에 즉시 반영한다, 잠금까지 미루는 설계는 반려한다"는 규칙을 **대체**한다. 다음 세션은 이 카드 생성 타이밍에 대해서는 39번이 아니라 이 40번을 따른다. (39번의 다른 원칙 — 잠금 해제는 순수 플래그라는 것, `DELETE /orders/:orderId` 가드, 프론트 이중저장 제거 등은 그대로 유효하다.)
 - 배경: 39번 설계·배포 이후 실사용 관점에서, "잠금 = 생산 확정" 의미로 카드 생성을 다시 잠금 시점에 묶고 싶다는 요청이 있었다. 동시에 "작업기록이 이미 있는 스타일은 주문에서 못 뺀다"는 39번의 하드 블록이, 실제로는 이미 작업이 진행된 뒤에 고객 요청으로 물량이 줄어드는 정상적인 현장 상황을 시스템이 못 받아주는 문제로 확인되어 같이 재설계했다.
@@ -1460,8 +1460,14 @@ runtime 조회값:
 - **프론트엔드 일부 구현 완료** (`npm run build` 통과):
   - `frontend/src/pages/App/order/OrderList.jsx`의 `performOrderLockToggle`: 잠금 성공 응답의 `zeroedStyles`가 비어있지 않으면 비차단 경고 토스트(`orderPageText.zeroedStylesPrefix`/`zeroedStylesGeneric`, ko/en/vi 전부 작성)를 띄운다.
   - 기존 저장 실패 시 이슈 다이얼로그(`saveIssueRows`/`extractOrderSaveIssueRows`)는 그대로 유지 — `DELETE`가 여전히 같은 모양의 `issues` 배열을 반환하므로 삭제 실패 표시에는 계속 쓰인다. `PUT` 저장은 이제 이 경로를 타지 않는다(더 이상 이 에러를 반환하지 않음).
-- **아직 구현 안 됨 (다음 세션 이어서 할 것)**:
-  - 배정 보드의 "0수량 오버플로우 확인 필요" 별도 경고 섹션 자체를 만들지 않았다. 실제 화면(`AssignBoard.jsx`, `LineMonthCapacityBoard.jsx`, `frontend/src/pages/App/assign/utils/lineMonthCapacity.js`)에는 아직 아무 표시도 없다.
-  - 이 UI를 만들려면 먼저 `assignmentQuantity===0`(및 실제 생산량>0)인 배정을 식별하는 필드와, "연결된 모든 WorkRecord의 월이 전부 급여 잠금됐는지" 판정 필드를 백엔드 응답 어딘가에 노출해야 한다 — 이번 세션에서는 `buildAssignmentPlanProgressRows`(`/assignment-plan-progress`가 쓰는 함수, `backend/src/index.ts:19644` 부근)의 값이 정확히 어느 병합 경로로 `lineMonthCapacity.js`의 `buildLineQueueForecast` 입력(`assignments`)까지 도달하는지 끝까지 추적하지 못한 상태에서 무리하게 배선하면 잘못 연결될 위험이 커서 이번 범위에서 제외했다. 다음에 이어서 할 때는 `AssignBoard.jsx`가 `/assignment-plan-progress` 응답을 어디서 읽어 board assignment 객체에 병합하는지부터 먼저 확인할 것.
-  - split(같은 cardId를 공유하는 배정이 여럿인 경우) 수량 재분배 정책 — 결정된 바 없어 이번에는 그대로 둠(위 구현 현황 참고).
-  - 실제 브라우저로 "잠금 시 카드/수량이 갱신되는지", "스타일 제거 후 재잠금 시 0수량+토스트가 뜨는지"는 개발 서버 미기동 상태에서 코드 작성 + `tsc`/`vite build` 통과만 확인했다. 다음 작업자가 실제로 눌러서 확인 필요.
+- **2026-07-05 후속: 보드 UI 경고 섹션 구현 완료**:
+  - 병합 경로를 끝까지 추적함: `AssignBoard.jsx`가 `/assignment-plan-progress`를 별도로 불러와 `assignmentProgressById`에 저장하고, `resolveAssignmentProgressState({assignment, progressRow})`(`AssignBoard.jsx:2150`)가 화이트리스트 방식으로 필드를 골라 `applySchedulerProgressToAssignments`에서 `{...item, ...progressState}`로 병합한다. 이 병합된 assignment 객체가 `lineMonthCapacity.js`의 `buildLineQueueForecast` 입력이 된다.
+  - `buildAssignmentPlanProgressRows`(`backend/src/index.ts:19468`)의 반환 객체에 `isZeroQuantityOverflow`(`(baselineQuantityRaw==null||<=0) && producedQuantity>0`)와 `isFullyPayrollSettled`(그 플랜에 연결된 **모든** WorkRecord의 월이 전부 급여 잠금됐는지, 새 `workRecordMonthsByPlanId`/`workRecordPayrollLockedMonthSet`로 계산 — 기존 `isPayrollLocked`는 완료 월 1개 전제라 재사용 불가) 두 필드를 추가.
+  - `resolveAssignmentProgressState`(`AssignBoard.jsx:2150`)의 화이트리스트에 두 필드 추가.
+  - `lineMonthCapacity.js`의 `buildLineQueueForecast`: `isZeroQuantityOverflow && !isFullyPayrollSettled`인 assignment를 큐/리뷰/완료 분류보다 먼저 가로채 별도 `zeroQuantityOverflowAssignments` 버킷(`queueStatus:'zero_quantity_overflow'`)에 담는다. 조건을 만족 안 하면(=급여 정산 완료) 자연히 이 버킷에서 빠진다 — 사용자가 요청한 "정산 다 되면 필터" 동작.
+  - `LineMonthCapacityBoard.jsx`: "작업 종료 목록" 섹션 바로 아래에 `row.zeroQuantityOverflowAssignments.length > 0`일 때만 렌더되는 "확인 필요" 섹션 추가(항목 없으면 섹션째로 안 보임 — 다른 섹션과 달리 "없음" 문구도 안 넣음). `AssignmentDetailCard`에 `zero_quantity_overflow` 상태 분기 추가: 드래그 불가(`isLocked`) 처리, 경고색 칩/배경, "주문에서 빠짐 - 이미 N개 생산됨" 푸터.
+  - `uiMessages.js`에 `assign.zeroQuantityOverflowHeader`/`zeroQuantityOverflowStatusCompact`/`zeroQuantityOverflowCompact` ko/en/vi 전부 추가.
+  - `npm --prefix backend run build`, `npm --prefix frontend run build` 둘 다 통과.
+- **아직 남은 것**:
+  - split(같은 cardId를 공유하는 배정이 여럿인 경우) 수량 재분배 정책 — 결정된 바 없어 `syncAssignmentPlansForOrderLock`이 그대로 스킵함(구현 현황 참고).
+  - 실제 브라우저로 "잠금 시 카드/수량이 갱신되는지", "스타일 제거 후 재잠금 시 0수량+토스트가 뜨는지", "보드에 확인 필요 섹션이 뜨고 급여 정산되면 사라지는지"는 개발 서버 미기동 상태에서 코드 작성 + `tsc`/`vite build` 통과만 확인했다. 다음에 반드시 실제로 눌러서 확인할 것.

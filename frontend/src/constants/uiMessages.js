@@ -378,6 +378,16 @@ export const UI_MESSAGES = {
       en: 'Quantity review required',
       vi: 'Can xem lai so luong',
     },
+    zeroQuantityOverflowStatusCompact: {
+      ko: '0수량 오버플로우',
+      en: 'Zero-qty overflow',
+      vi: 'So luong 0 - du san xuat',
+    },
+    zeroQuantityOverflowCompact: {
+      ko: '주문에서 빠짐 - 이미 {quantity}개 생산됨',
+      en: 'Removed from order - already produced {quantity}',
+      vi: 'Da bi xoa khoi don - da san xuat {quantity}',
+    },
     stUnknownExcludedCompact: {
       ko: 'ST 미설정 {count}건 제외',
       en: '{count} ST-missing excluded',
@@ -397,6 +407,11 @@ export const UI_MESSAGES = {
       ko: '작업 종료 목록',
       en: 'Finished on this line',
       vi: 'Cong viec da xong tren chuyen',
+    },
+    zeroQuantityOverflowHeader: {
+      ko: '확인 필요 (주문에서 빠졌지만 이미 작업한 배정)',
+      en: 'Needs review (removed from order, already worked)',
+      vi: 'Can xem xet (da bi xoa khoi don nhung da lam viec)',
     },
     lineAssignments: {
       ko: '이 라인 배정 목록',

@@ -8,10 +8,11 @@
 - `npm --prefix backend run build`, `npm --prefix frontend run build` 둘 다 통과.
 - 상세 설계/구현 내용은 `AGENTS.md` §40 참고.
 
+- 배정 보드 "확인 필요" 경고 섹션도 마저 구현함: 백엔드 `buildAssignmentPlanProgressRows`에 `isZeroQuantityOverflow`/`isFullyPayrollSettled` 추가, `AssignBoard.jsx`/`lineMonthCapacity.js`/`LineMonthCapacityBoard.jsx`/`uiMessages.js`에 전부 배선. `npm run build` 백엔드/프론트 둘 다 통과. 상세는 AGENTS.md §40 참고.
+
 ### Remaining
-- 배정 보드에 "0수량 오버플로우 확인 필요" 경고 섹션 UI 자체를 아직 안 만들었다. `AssignBoard.jsx`가 `/assignment-plan-progress` 응답을 board assignment에 병합하는 지점부터 먼저 확인한 뒤 이어서 작업할 것(AGENTS.md §40 "아직 구현 안 됨" 참고).
 - 같은 cardId를 공유하는 split 배정의 수량 재분배 정책 미정 — 현재는 그대로 두는 것으로 처리(스킵).
-- 실제 브라우저 동작 확인 안 함(개발 서버 미기동, 빌드 통과만 확인) — 다음에 반드시 주문 잠금/해제/스타일 제거 시나리오를 실제로 클릭해서 확인할 것.
+- 실제 브라우저 동작 확인 안 함(개발 서버 미기동, 빌드 통과만 확인) — 다음에 반드시 주문 잠금/해제/스타일 제거/확인 필요 섹션 시나리오를 실제로 클릭해서 확인할 것.
 
 ## 2026-07-05 배정 화면 이상 현상 진단 + 카드/잠금 재설계 방향 확정 (코드 미반영, 설계만 확정)
 

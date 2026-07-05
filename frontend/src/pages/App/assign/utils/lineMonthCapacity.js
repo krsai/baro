@@ -298,12 +298,32 @@ const buildLineQueueForecast = ({
   const reviewRequiredAssignments = [];
   const readyToCompleteAssignments = [];
   const completedAssignments = [];
+  const zeroQuantityOverflowAssignments = [];
   let queuedCount = 0;
   let completedCount = 0;
   let reviewRequiredCount = 0;
   let readyToCompleteCount = 0;
+  let zeroQuantityOverflowCount = 0;
 
   (Array.isArray(assignments) ? assignments : []).forEach((assignment) => {
+    // A style dropped from its order while already worked is kept at
+    // quantity 0 instead of being deleted (AGENTS.md 40번). It never counts
+    // as queued/review/ready/completed capacity - it sits in its own
+    // "needs review" bucket until every linked work-record month is
+    // payroll-settled, at which point it drops out entirely.
+    if (
+      Boolean(assignment?.isZeroQuantityOverflow) &&
+      !Boolean(assignment?.isFullyPayrollSettled)
+    ) {
+      zeroQuantityOverflowCount += 1;
+      zeroQuantityOverflowAssignments.push({
+        ...assignment,
+        queuePosition: zeroQuantityOverflowCount,
+        queueStatus: 'zero_quantity_overflow',
+      });
+      return;
+    }
+
     const isCompleted = Boolean(assignment?.isCompleted);
     const scheduleStatus = String(assignment?.scheduleStatus || '').trim();
     const isStUnknown = Boolean(assignment?.isStUnknown) && !isCompleted;
@@ -436,6 +456,8 @@ const buildLineQueueForecast = ({
     totalRemainingStTotalSeconds,
     queueBacklogDays: roundDaysEstimate(totalRemainingStTotalSeconds, dailyCapacitySeconds),
     lineFreeDateKey,
+    zeroQuantityOverflowAssignments,
+    zeroQuantityOverflowCount,
   };
 };
 
@@ -913,12 +935,14 @@ export const buildLineMonthCapacityBoardRows = ({
         queueForecast.reviewRequiredAssignments.length +
         queueForecast.readyToCompleteAssignments.length,
       finishedAssignmentCount: queueForecast.completedAssignments.length,
+      zeroQuantityOverflowAssignmentCount: queueForecast.zeroQuantityOverflowAssignments.length,
       months,
       assignments: assignmentsForLine,
       queuedAssignments: queueForecast.queuedAssignments,
       reviewRequiredAssignments: queueForecast.reviewRequiredAssignments,
       readyToCompleteAssignments: queueForecast.readyToCompleteAssignments,
       completedAssignments: queueForecast.completedAssignments,
+      zeroQuantityOverflowAssignments: queueForecast.zeroQuantityOverflowAssignments,
     };
   });
 };
