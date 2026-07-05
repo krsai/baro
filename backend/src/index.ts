@@ -10588,8 +10588,14 @@ const buildAssignmentCardsFromOrders = ({
         workOrderId: toPositiveIntOrNull(order?.id),
         orderNo: resolveOptionalString(order?.orderNumber, null) || resolvedOrderId || "-",
         dueDate: resolveOptionalString(order?.dueDate, null) || "",
+        // order.customerName/order.customer never existed on this query's
+        // select shape (it only fetches the buyerOrg/customerOrg relations) -
+        // reading them here always fell through to "-". Same styleId-style
+        // mismatch as AGENTS.md 42: the FK+join was already correct, this
+        // card-building code just never read the join result.
         customer:
-          resolveOptionalString(order?.customerName ?? order?.customer, null) || "-",
+          resolveOptionalString(order?.customerOrg?.name ?? order?.buyerOrg?.name, null) ||
+          "-",
         styleId: toPositiveIntOrNull(group.style?.id ?? group.styleId),
         styleName:
           group.styleName ??
