@@ -7,9 +7,9 @@
 - 같은 버그 패턴이 `loadAssignmentDisplayReferenceMaps`/`findOrderItemByAssignmentIdentity`(표시용 폴백 헬퍼)에도 남아있음 — 카드 생성 경로 아니라 이번엔 안 고침, 다음에 이어서.
 
 ### Remaining
-- 카드는 실제로 생성 확인됨(운영에서 "미배정 작업 8개" 확인). 다만 "고객사"가 전부 `-`로 비어있는 후속 버그 발견 — 같은 클래스(FK+join은 정상, 읽는 코드가 존재하지 않는 flat 필드 참조). `customer: order?.customerName ?? order?.customer` → `order?.customerOrg?.name ?? order?.buyerOrg?.name`로 수정. 같이 발견한 `workOrderId`(select에 `id` 누락)도 수정. 상세는 AGENTS.md §42 후속 항목.
-- 사용자가 재배포 후 고객사 표시까지 정상인지 최종 확인 필요.
-- 진단용으로 추가한 `console.error` 로그들(`[modification-lock] DIAG`, `[rebuildAssignmentCardsForOrg]`)은 원인 확인 후 노이즈 줄이려면 낮은 레벨로 되돌리거나 정리 고려.
+- 카드는 실제로 생성 확인됨(운영에서 "미배정 작업 8개", 고객사 "THE SAN" 정상 표시까지 사용자가 스크린샷으로 확인). 발견 당시 "고객사"가 전부 `-`로 비어있는 후속 버그도 같은 세션에서 수정 완료(`customer: order?.customerName ?? order?.customer` → `order?.customerOrg?.name ?? order?.buyerOrg?.name`, `workOrderId` select 누락도 같이 수정). 상세는 AGENTS.md §42 후속 항목.
+- 원인 확인 완료 후 디버깅용 `console.error` DIAG 로그 전부 정리함(routine 로그 제거, 실제 에러 시에만 찍는 catch 로그만 유지) — Railway 로그에서 정상 동작인데 빨간 에러로 보이던 문제 해소.
+- 다음 세션에서 이어서 할 것: `loadAssignmentDisplayReferenceMaps`/`findOrderItemByAssignmentIdentity`의 같은 클래스 버그(AGENTS.md §42 "남은 것" 참고), 라인에 실제로 카드를 드래그해서 AssignmentPlan이 정상 생성되는지 확인.
 
 ## 2026-07-05 "계획 부하" 과거 달 100% 하드코딩 버그 수정
 - `frontend/src/pages/App/assign/utils/lineMonthCapacity.js`의 `plannedLoadPercent`가 과거 달에 한해 `capacitySeconds/capacitySeconds`(항상 100%) 항등식이었던 걸 확정 진단 후 수정. 이제 과거 달은 `actualOutputPercent`를 그대로 따름. 백엔드 요약 없는 폴백 분기도 같이 고침(이전엔 달 종류 무관하게 무조건 100%였음).
