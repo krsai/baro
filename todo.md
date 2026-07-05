@@ -1,5 +1,26 @@
 # TODO
 
+## 2026-07-05 배정 화면 이상 현상 진단 + 카드/잠금 재설계 방향 확정 (코드 미반영, 설계만 확정)
+
+### 진단 (완료, 운영 DB 직접 조회로 검증)
+- 사용자가 "배정 카드는 안 보이는데 LINE #1 계획 부하는 100%로 뜬다"고 보고. Railway 운영 DB(`DATABASE_PUBLIC_URL`)에 직접 접속해 확인.
+- `AssignmentPlan`, `AssignmentCard` 둘 다 **전체 조직 통틀어 0건**(어제 사고로 삭제된 뒤 아직 아무도 재생성 안 함). `WorkOrder`(8) / `WorkOrderItem`(107) / `Style`(41) / `StyleProcess`(1084)는 살아있음. `WorkLog`/`WorkRecord`도 0건(어제 사고 경위상 사용자가 먼저 지운 것과 일치, 새로운 손실 아님).
+- "주문 잠그면 카드가 생기냐"는 질문에 대한 답: **아니다.** `POST /orders/:orderId/modification-lock`은 잠금/해제 어느 쪽이든 `rebuildAssignmentCardsForOrgIds`를 호출하지 않는다(코드 확인). 카드가 재생성되는 유일한 경로는 주문 **저장**(`PUT /orders/:orderId`, `POST /orders`)이었다.
+- "6월까지 계획 부하 100%, 7월부터 0%"의 원인도 확정: `frontend/src/pages/App/assign/utils/lineMonthCapacity.js:802-805`에서 과거("historical") 달은 `plannedLoadPercent = capacitySeconds / capacitySeconds`로 **항상 100%가 나오는 항등식**이었다. 실제 AssignmentPlan 데이터와 무관하게 과거 달은 무조건 100%, 미래 달만 진짜 backlog 기반 forecast 공식을 쓴다. AssignmentPlan이 0건인 것과 별개로 존재하던 버그.
+- 사용자 지시로 `AssignmentPlan.deleteMany({})` 실행 — 실행 전에도 0건이었으므로 실질적으로는 no-op이었음(확인 목적으로 실행).
+
+### 설계 결정 (AGENTS.md 40번 섹션에 상세 기록, 여기서는 요약만)
+- 카드 생성/갱신 시점을 39번(저장 시점 즉시 반영)에서 **잠금 시점**으로 다시 되돌리기로 확정. 해제는 여전히 순수 플래그(카드/배정 안 건드림) — 이건 유지.
+- 작업기록이 이미 연결된 배정도 잠금 시점에 `assignmentQuantity`가 최신 주문 수량으로 갱신되도록 허용(현재는 `refreshUnlinkedAssignmentPlanSnapshotsForOrg`가 linked plan을 아예 스킵함 — 이 보호를 완화해야 함). 단, `isCompleted`/급여 잠금된 플랜은 계속 보호.
+- 주문에서 스타일이 통째로 빠지고 이미 작업기록이 있어도 저장/잠금을 막지 않음(기존 `findOrderStyleRemovalBlockers` 하드 블록 폐기 예정) — 대신 해당 배정을 삭제하지 않고 수량만 0으로 낮춰서 이미 만든 수량 전부가 `overflowQuantity`로 잡히게 함. 급여/AT 계산 코드는 이미 `assignmentQuantity`가 아니라 `WorkRecord` 기준이라 이 변경에 영향받지 않음(코드로 확인).
+- 청구/정산(billing) 기능은 이 저장소에 아직 없음(grep 0건) — 0-수량 오버플로우 배정을 매출에 반영하는 건 사람이 나중에 고객 협의 후 주문을 재수정하는 수동 프로세스로 남기기로 함.
+
+### Remaining (구현 전 필수 확인 사항, AGENTS.md 40번 "미해결 질문"과 동일)
+- `buildAssignmentCardsFromOrders`(`backend/src/index.ts:10527`)는 `order.workOrderItems`에 없는 스타일은 순회 자체를 안 함 — "주문엔 없지만 작업기록 연결로 인해 0수량 카드는 남아야 하는" 케이스를 만들 신규 로직이 없음. 잠금 처리 파이프라인에 추가 필요.
+- 0-수량 오버플로우 배정을 보드 UI에 어떻게 노출할지(상시 노출 vs 경고 섹션) 미정.
+- 하드 블록 제거 시 비차단 안내 토스트를 보여줄지 미정.
+- 이번 세션에서는 **코드 변경 없음** — 위 설계와 미해결 질문에 대한 답이 나온 뒤 별도 세션에서 구현.
+
 ## 2026-07-03 syncWorkRecordRefs가 attachCanonicalFieldsToWorkRecords보다 먼저 실행돼 processCode를 매번 null로 지우던 버그 수정
 
 ### 배경

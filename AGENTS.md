@@ -1422,3 +1422,23 @@ runtime 조회값:
   - `OrderList.jsx`의 `handleSave`가 주문 저장 후 별도로 `/assignment-board-view`를 다시 불러와 `reconcileBoardStateForQuantityChanges`로 카드를 재계산해 `PUT /assignment-board-state`를 또 호출하던 경로는 제거했다 — 실패해도 조용히 삼켜지는 이중 저장 경로였고, 이제 카드 동기화는 백엔드 저장 트랜잭션 하나가 전담한다. `frontend/src/utils/quantityChangeBoard.mjs`(`reconcileBoardStateForQuantityChanges`)와 그 전용 테스트(`scripts/quantity-change-regression.test.mjs`)는 이제 프로덕션 호출부가 없는 죽은 코드/테스트로 남아있다(삭제 여부 미정 — `package.json`의 `test:quantity-change`/`test:regression` 스크립트 구성과 얽혀 있어 별도 판단 필요).
 - 알려진 구조적 한계 (이번 범위에서 고치지 않음): `AssignmentCard.cardId`와 `AssignmentPlan.cardId`/`originOrderId`는 DB FK가 아니라 `${orderId}::${styleId}` 문자열 관례로만 연결되어 있다. 이번 수정은 이 관례를 애플리케이션 코드로 정확히 지키도록 만든 것이지, FK 자체를 추가한 것은 아니다. `AssignmentPlan.cardId`/`originOrderId`에는 인덱스도 없다 — 데이터가 늘어나면 이번에 추가한 저장 시점 가드 조회가 순차 스캔이 될 수 있으므로 `@@index([orgId, cardId])` 추가를 후속 과제로 남긴다.
 - 운영 DB 복구 메모: 이 재설계 배포 후 기존 주문을 한 번씩 저장(또는 잠금 토글)하면 살아있는 `WorkOrderItem`을 기준으로 `AssignmentCard`가 다시 채워진다. `AssignmentPlan`(실제 라인 배정)은 자동 복구되지 않으므로 배정판에서 카드를 라인에 다시 드래그해야 한다.
+- **정정 (2026-07-05)**: 위 "저장(또는 잠금 토글)하면 다시 채워진다"는 부정확했다. 실제 코드 확인 결과 `POST /orders/:orderId/modification-lock`은 잠금/해제 어느 쪽이든 `rebuildAssignmentCardsForOrgIds`를 전혀 호출하지 않는다 — 카드가 다시 채워지는 유일한 경로는 주문 **저장**(`PUT /orders/:orderId`)뿐이었다. 이 항목 자체는 아래 40번 재설계로 다시 대체된다.
+
+### 40. 2026-07-05 카드 생성 시점을 주문 잠금으로 재변경 + 스타일 제거를 수량 0 오버플로우로 처리 (설계 확정, 구현 예정)
+
+- 이 섹션은 바로 위 39번의 "카드 생성/갱신은 저장 시점에 즉시 반영한다, 잠금까지 미루는 설계는 반려한다"는 규칙을 **대체**한다. 다음 세션은 이 카드 생성 타이밍에 대해서는 39번이 아니라 이 40번을 따른다. (39번의 다른 원칙 — 잠금 해제는 순수 플래그라는 것, `DELETE /orders/:orderId` 가드, 프론트 이중저장 제거 등은 그대로 유효하다.)
+- 배경: 39번 설계·배포 이후 실사용 관점에서, "잠금 = 생산 확정" 의미로 카드 생성을 다시 잠금 시점에 묶고 싶다는 요청이 있었다. 동시에 "작업기록이 이미 있는 스타일은 주문에서 못 뺀다"는 39번의 하드 블록이, 실제로는 이미 작업이 진행된 뒤에 고객 요청으로 물량이 줄어드는 정상적인 현장 상황을 시스템이 못 받아주는 문제로 확인되어 같이 재설계했다.
+- 확정된 설계 (2026-07-05 사용자 결정 — **아직 코드에 반영되지 않음**, 구현 시 이 섹션의 "미해결 질문"부터 해소하고 상태를 갱신할 것):
+  - **카드 생성/갱신은 주문 잠금(`POST /orders/:orderId/modification-lock`, `locked:true`) 시점에만 일어난다.** `PUT /orders/:orderId`(저장)는 `WorkOrderItem`만 갱신하고 `AssignmentCard`/`AssignmentPlan`에는 손대지 않는다. `PUT /orders/:orderId`는 이미 잠긴 주문의 저장을 409로 거부하므로, 실제 편집 흐름은 항상 "해제 → 수정(저장, 카드 영향 없음) → 재잠금(그 시점에 카드/배정 갱신)"이다.
+  - **잠금 해제(`locked:false`)는 여전히 순수 플래그다.** 해제 시점에 카드/배정에 어떤 변경도 가하지 않는다 — 이 부분은 39번과 동일하게 유지, 어제 사고를 재발시키지 않기 위한 핵심 안전장치다. 해제 중에도 보드에는 마지막 잠금 시점의 카드가 그대로 남는다.
+  - **작업기록이 이미 연결된 배정(AssignmentPlan)도 잠금 시점에 수량이 갱신될 수 있다.** 기존 `refreshUnlinkedAssignmentPlanSnapshotsForOrg`가 "작업기록이 연결된(linked) 플랜은 절대 건드리지 않는다"고 보호하던 것을 완화한다 — linked 플랜도 최신 주문 수량으로 `assignmentQuantity`(및 구조 변경이므로 `assignmentStTotalSeconds`)를 갱신 대상에 포함하되, `isCompleted===true`이거나 급여 잠금(`isPayrollLocked`)된 플랜은 여전히 건드리지 않는다. 급여 잠금 배제는 §28 급여 잠금 원칙의 자연스러운 확장이며 별도 협의 없이 이 문서에서 고정한다.
+  - **주문에서 스타일이 통째로 빠지고 그 스타일에 이미 작업기록이 있어도, 더 이상 저장/잠금을 막지 않는다.** 39번의 `findOrderStyleRemovalBlockers` 하드 블록(`409 STYLE_HAS_WORK_RECORDS`)은 폐기한다. 대신: 그 스타일의 `AssignmentCard`/`AssignmentPlan`은 삭제하지 않고 그대로 두되 `assignmentQuantity`(및 카드 수량)를 `0`으로 갱신한다. 이미 생산된 수량은 전부 "초과 생산"으로 계산된다 — `overflowQuantity = producedQuantity - assignmentQuantity`는 `buildAssignmentPlanProgressRows`에 이미 구현되어 있고 음수/0-분모 클램프도 이미 되어 있어(§35 관련 로직 확인, `producedRatio`/`operationalProgressRatio`가 0/0 상황에서 `null`로 안전하게 빠짐) 별도 신규 계산식이 필요 없다. 이 관점에서 "스타일 완전 제거"는 "수량을 0으로 줄이는 일반적인 수량 변경"의 극단값일 뿐이며, 위 문단의 "linked 플랜 수량 갱신 허용"과 같은 파이프라인을 그대로 탄다.
+  - **의미**: 계획 수량이 0인데 생산 기록이 있는 배정 = "주문에서는 빠졌지만 실제로는 만든 것"이며, 이는 데이터 오류가 아니라 정상 상태로 취급한다.
+  - **급여 영향 없음 (코드로 이미 확인됨)**: `backend/src/payroll/payroll.service.ts`는 `assignmentQuantity`를 전혀 참조하지 않고 `WorkRecord.quantity`/`ctSeconds` 기준으로만 급여를 계산한다(grep 확인). 배정 계획 수량이 0으로 바뀌어도 이미 기록된 작업기록의 급여는 그대로 지급된다 — "급여는 생산한 수량만큼 지급한다"는 전제가 이미 코드로 보장되어 있다.
+  - **AT 학습 영향 없음**: AT 파이프라인은 WorkLog/WorkRecord/출퇴근 데이터를 입력으로 쓰고 `AssignmentPlan.assignmentQuantity`를 참조하지 않는다.
+  - **청구/정산(billing)은 이 저장소에 아직 구현되어 있지 않다** (grep 확인, 관련 코드 0건). 수량 0으로 남은 배정을 실제 매출/청구에 반영하는 것은 시스템이 자동으로 하지 않는다 — 고객과 협의 후 사람이 주문을 다시 수정해서(그 스타일을 실제 합의된 최종 수량으로 재추가) 주문 상태를 정산 현실과 맞추는 수동 프로세스로 남긴다. 향후 청구 기능을 만들 때는 "계획 수량 0이지만 작업기록이 있는 배정"을 반드시 별도로 조회해서 노출해야 한다 — 누락하면 매출이 조용히 유실된다.
+  - `DELETE /orders/:orderId`도 같은 원칙을 따른다: 주문 전체 삭제 시에도 작업기록 연결을 이유로 삭제를 막지 않고, 관련 배정을 0-수량 오버플로우로 남긴다(스타일 하나가 빠지는 것의 극단적인 경우 = 스타일 전체가 빠지는 것과 동일 취급).
+- 미해결 질문 (구현 착수 전 반드시 확정할 것):
+  - `buildAssignmentCardsFromOrders`는 현재 `order.workOrderItems`에 없는 스타일은 애초에 순회 대상에서 제외된다(`backend/src/index.ts:10544` 이하) — "주문 item에는 없지만 카드는 0수량으로 남겨야 하는" 케이스를 만들려면, 잠금 처리 파이프라인에 "이 주문에 대해 이전에 존재했던 카드 중 지금 item에는 없지만 작업기록이 연결된 것"을 찾아 0-수량 항목을 강제로 주입하는 로직이 새로 필요하다(현재 코드에 이런 로직 없음).
+  - 0-수량으로 남은 배정을 배정 보드 UI에서 어떻게 노출할지(계속 눈에 띄게 표시 vs 별도 경고 섹션) 미정.
+  - 하드 블록을 없애면서 최소한 비차단 안내(토스트: "이 스타일은 이미 작업기록이 있어 완전히 삭제되지 않고 0개 배정으로 남습니다")를 보여줄지 미정.
