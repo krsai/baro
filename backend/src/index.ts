@@ -10872,9 +10872,6 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
     }),
     loadAssignmentCardsForOrg({ orgId }),
   ]);
-  console.error(
-    `${diagPrefix} accessibleOwnerOrgIds=${JSON.stringify(accessibleOwnerOrgIds)} styles=${styles.length} lockedOrders=${orders.length} savedCards=${savedCards.length}`
-  );
   let initialProcessMirrorMap: Map<number, any[]>;
   try {
     initialProcessMirrorMap = await ensureStyleProcessStorageForStyles(styles, {
@@ -10916,9 +10913,6 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
     styles: hydratedStyles,
   });
   const cards = mergeAssignmentCardsWithSaved(baseCards, savedCards);
-  console.error(
-    `${diagPrefix} baseCards=${baseCards.length} mergedCards=${cards.length}`
-  );
   // syncAssignmentCardsForOrg does a deleteMany followed by a loop of
   // upserts with no transaction of its own - run it inside one here so a
   // mid-loop failure can't leave the org's card catalog partially wiped
@@ -10934,7 +10928,6 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
     console.error(`${diagPrefix} syncAssignmentCardsForOrg transaction threw`, error);
     throw error;
   }
-  console.error(`${diagPrefix} syncedCards=${syncedCards.length}`);
   try {
     await syncOrderProgressStatusesForOrg({
       orgId,
@@ -24409,16 +24402,10 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
 
   const currentLockState = await getOrderModificationLockState(existing);
   const requestedLocked = Boolean(req.body.locked);
-  console.error(
-    `[modification-lock] DIAG order=${existing.orderId} requestedLocked=${requestedLocked} currentlyManualLocked=${currentLockState.isManualLocked} buyerOrgId=${existing.buyerOrgId} sellerOrgId=${existing.sellerOrgId}`
-  );
 
   if (
     requestedLocked === currentLockState.isManualLocked
   ) {
-    console.error(
-      `[modification-lock] DIAG order=${existing.orderId} no-op early return (already in requested state)`
-    );
     const refreshedLockState = await getOrderModificationLockState(existing);
     return res.json(
       toOrderResponse(existing, {
@@ -24476,14 +24463,8 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
   });
   if (requestedLocked) {
     const rebuildOrgIds = affectedOrgIds.length > 0 ? affectedOrgIds : [organization.id];
-    console.error(
-      `[modification-lock] DIAG order=${updated.orderId} calling rebuildAssignmentCardsForOrgIds(${JSON.stringify(rebuildOrgIds)})`
-    );
     try {
       await rebuildAssignmentCardsForOrgIds(rebuildOrgIds);
-      console.error(
-        `[modification-lock] DIAG order=${updated.orderId} rebuildAssignmentCardsForOrgIds completed without throwing`
-      );
     } catch (error) {
       console.error(
         `[modification-lock] rebuildAssignmentCardsForOrgIds threw for order=${updated.orderId} orgIds=${JSON.stringify(rebuildOrgIds)}`,
