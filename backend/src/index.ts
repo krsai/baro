@@ -10856,6 +10856,7 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
       where: { OR: getOrderAccessWhere(orgId), modificationLockedAt: { not: null } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: {
+        id: true,
         orderId: true,
         orderNumber: true,
         dueDate: true,
