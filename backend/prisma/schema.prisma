@@ -706,6 +706,7 @@ model AssignmentPlan {
   lineId                Int
   externalId            String
   cardId                String?
+  assignmentCardId      Int?
   workOrderId           Int?
   styleId               Int?
   orderNo               String?
@@ -751,19 +752,24 @@ model AssignmentPlan {
   createdBy String   @default("system@baro.local")
   updatedAt             DateTime
 
-  line         Line         @relation(fields: [lineId], references: [id], onDelete: Restrict)
-  organization Organization @relation(fields: [orgId], references: [id])
-  workOrder    WorkOrder?   @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
-  style        Style?       @relation(fields: [styleId], references: [id], onDelete: SetNull)
-  attrColor    AttrColor?   @relation(fields: [colorId], references: [id], onDelete: SetNull)
-  workRecords  WorkRecord[]
-  qcPassEvents QcPassEvent[]
+  line           Line            @relation(fields: [lineId], references: [id], onDelete: Restrict)
+  organization   Organization    @relation(fields: [orgId], references: [id])
+  workOrder      WorkOrder?      @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  style          Style?          @relation(fields: [styleId], references: [id], onDelete: SetNull)
+  attrColor      AttrColor?      @relation(fields: [colorId], references: [id], onDelete: SetNull)
+  // Real FK replacing the old "cardId string happens to match" convention
+  // (AGENTS.md structural-problems list). cardId itself is kept for now as
+  // a read compatibility fallback during the migration - see AGENTS.md 43.
+  assignmentCard AssignmentCard? @relation(fields: [assignmentCardId], references: [id], onDelete: SetNull)
+  workRecords    WorkRecord[]
+  qcPassEvents   QcPassEvent[]
 
   @@unique([orgId, externalId])
   @@index([orgId, lineId])
   @@index([workOrderId])
   @@index([styleId])
   @@index([colorId])
+  @@index([assignmentCardId])
 }
 
 model QcPassEvent {
@@ -917,7 +923,8 @@ model AssignmentCard {
   createdBy String   @default("system@baro.local")
   updatedAt DateTime @updatedAt
 
-  organization Organization @relation(fields: [orgId], references: [id])
+  organization    Organization     @relation(fields: [orgId], references: [id])
+  assignmentPlans AssignmentPlan[]
 
   @@unique([orgId, cardId])
   @@index([orgId, sortOrder, id])

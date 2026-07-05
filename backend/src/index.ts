@@ -12630,17 +12630,29 @@ const syncAssignmentPlanColorRefs = async (
     };
   });
 };
-const toAssignmentPlanWriteData = (item: any) => {
+const toAssignmentPlanWriteData = (
+  item: any,
+  cardIdToAssignmentCardId?: Map<string, number>
+) => {
   const assignmentCtSnapshot = resolveNormalizedAssignmentCtSnapshot(item);
   const ctTotalSeconds = resolveAssignmentCtTotalSeconds({
     ...item,
     assignmentCtSnapshot,
   });
+  const cardIdString = resolveOptionalString(item?.cardId, null);
+  // Real FK (AGENTS.md 43), replacing the "cardId string happens to match"
+  // convention. cardId itself is still written below as a read-compatibility
+  // fallback during the migration - do not remove it yet.
+  const assignmentCardId =
+    cardIdString && cardIdToAssignmentCardId
+      ? cardIdToAssignmentCardId.get(cardIdString) ?? null
+      : null;
   // Completion state is owned by dedicated completion endpoints.
   // Assignment board save must not overwrite completion-related fields.
   return {
     lineId: item.lineId,
     cardId: item.cardId ?? null,
+    assignmentCardId,
     workOrderId: toPositiveIntOrNull(item?.workOrderId),
     orderNo: item.orderNo ?? null,
     customer: item.customer ?? null,
@@ -24010,19 +24022,42 @@ app.put("/assignment-board-state", async (req, res) => {
       }
       createPlanRows.push(item);
     });
+    // Real FK lookup (AGENTS.md 43): batch-resolve every distinct cardId
+    // string in this save to its AssignmentCard.id once, instead of each
+    // caller re-deriving the relationship from string matching.
+    const cardIdStringsInThisSave = Array.from(
+      new Set(
+        normalizedPlanChanges
+          .map((item: any) => resolveOptionalString(item?.cardId, null))
+          .filter((value: string | null): value is string => Boolean(value))
+      )
+    );
+    const cardIdToAssignmentCardId = new Map<string, number>();
+    if (cardIdStringsInThisSave.length > 0) {
+      const matchedAssignmentCards = await tx.assignmentCard.findMany({
+        where: { orgId: organization.id, cardId: { in: cardIdStringsInThisSave } },
+        select: { id: true, cardId: true },
+      });
+      matchedAssignmentCards.forEach((card) => {
+        cardIdToAssignmentCardId.set(card.cardId, card.id);
+      });
+    }
     if (createPlanRows.length > 0) {
       await tx.assignmentPlan.createMany({
         data: createPlanRows.map((item: any) => ({
           orgId: organization.id,
           externalId: item.externalId,
-          ...toAssignmentPlanWriteData(item),
+          ...toAssignmentPlanWriteData(item, cardIdToAssignmentCardId),
         })) as Prisma.AssignmentPlanCreateManyInput[],
       });
     }
     for (const row of updatePlanRows) {
       const updateResult = await tx.assignmentPlan.updateMany({
         where: { id: row.id, isCompleted: false },
-        data: toAssignmentPlanWriteData(row.item) as Prisma.AssignmentPlanUncheckedUpdateInput,
+        data: toAssignmentPlanWriteData(
+          row.item,
+          cardIdToAssignmentCardId
+        ) as Prisma.AssignmentPlanUncheckedUpdateInput,
       });
       if (updateResult.count !== 1) {
         throw createHttpError(
