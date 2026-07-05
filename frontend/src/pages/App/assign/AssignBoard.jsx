@@ -258,6 +258,7 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
       styleName={styleLabel}
       quantity={resolveCardQuantity(card, 0)}
       showProgress={false}
+      compact
       footer={
         !isLocked
           ? getUiMessage(
