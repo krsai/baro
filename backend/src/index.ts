@@ -4920,14 +4920,6 @@ const collectStyleQuantityRequirementsFromOrders = ({
   styles: any[];
 }) => {
   const quantityByStyleId = new Map<number, Set<number>>();
-  const styleCandidatesById = ensureArray(styles).reduce((map, style) => {
-    const styleId = resolveOptionalString(style?.code, null);
-    if (!styleId) return map;
-    const current = map.get(styleId) || [];
-    current.push(style);
-    map.set(styleId, current);
-    return map;
-  }, new Map<string, any[]>());
 
   ensureArray(orders).forEach((order) => {
     const quantityByStyleIdInOrder = new Map<number, number>();
@@ -4939,12 +4931,10 @@ const collectStyleQuantityRequirementsFromOrders = ({
         : null;
     const items = itemsFromRelation ?? [];
     items.forEach((item) => {
-      const style = resolveStyleCandidateForAssignmentCard({
-        order,
-        item,
-        styleCandidatesById,
-      });
-      const styleId = toPositiveIntOrNull(style?.id);
+      // item.styleId is the numeric Style FK - look it up directly instead of
+      // via a style.code candidate map (that mismatch was the root cause of
+      // AssignmentCard staying empty, see buildAssignmentCardsFromOrders).
+      const styleId = toPositiveIntOrNull(item?.styleId);
       if (styleId === null) return;
       const normalizedQuantity = toPositiveIntOrNull(sumOrderItemQuantity(item));
       if (normalizedQuantity === null) return;
@@ -10491,39 +10481,6 @@ const resolveAssignmentCardStatus = ({
 };
 const createAssignmentCardId = (orderId: any, styleId: any) =>
   `${String(orderId ?? "").trim()}::${String(styleId ?? "").trim()}`;
-const resolveStyleCandidateForAssignmentCard = ({
-  order,
-  item,
-  styleCandidatesById,
-}: {
-  order: any;
-  item: any;
-  styleCandidatesById: Map<string, any[]>;
-}) => {
-  const styleId = resolveOptionalString(item?.styleId, null);
-  if (!styleId) return null;
-  const candidates = styleCandidatesById.get(styleId) || [];
-  if (candidates.length <= 1) return candidates[0] ?? null;
-
-  const orderCustomerKey = normalizeComparableText(
-    order?.customerName ?? order?.buyerOrgName ?? order?.customer
-  );
-  const itemStyleNameKey = normalizeComparableText(item?.styleName);
-
-  const sameCustomerCandidates = orderCustomerKey
-    ? candidates.filter(
-        (candidate) =>
-          normalizeComparableText(candidate?.organization?.name) === orderCustomerKey
-      )
-    : candidates;
-  const sameNameCandidates = itemStyleNameKey
-    ? sameCustomerCandidates.filter(
-        (candidate) => normalizeComparableText(candidate?.name) === itemStyleNameKey
-      )
-    : sameCustomerCandidates;
-
-  return sameNameCandidates[0] ?? sameCustomerCandidates[0] ?? candidates[0] ?? null;
-};
 const buildAssignmentCardsFromOrders = ({
   orders,
   styles,
@@ -10532,14 +10489,19 @@ const buildAssignmentCardsFromOrders = ({
   styles: any[];
 }) => {
   const cards: any[] = [];
-  const styleCandidatesById = ensureArray(styles).reduce((map, style) => {
-    const styleId = resolveOptionalString(style?.code, null);
-    if (!styleId) return map;
-    const current = map.get(styleId) || [];
-    current.push(style);
-    map.set(styleId, current);
+  // Style.id uniquely identifies one row, so this is a plain FK lookup - no
+  // candidate disambiguation needed. This used to be keyed by style.code
+  // (a string) while item.styleId is the numeric FK, so resolveOptionalString
+  // silently returned "" for every item (it only accepts real strings) and
+  // every order item was skipped before a card could ever be built. That is
+  // the root cause AssignmentCard stayed empty even before the 2026-07-03
+  // incident (see AGENTS.md 39/40).
+  const styleById = ensureArray(styles).reduce((map, style) => {
+    const styleId = toPositiveIntOrNull(style?.id);
+    if (styleId === null) return map;
+    map.set(styleId, style);
     return map;
-  }, new Map<string, any[]>());
+  }, new Map<number, any>());
 
   ensureArray(orders).forEach((order, orderIndex) => {
     const itemsFromRelation = Array.isArray(order?.workOrderItems) && order.workOrderItems.length > 0
@@ -10549,7 +10511,7 @@ const buildAssignmentCardsFromOrders = ({
       : null;
     const items = itemsFromRelation ?? [];
     const groupedByStyleId = new Map<
-      string,
+      number,
       {
         quantity: number;
         itemIndex: number;
@@ -10561,23 +10523,19 @@ const buildAssignmentCardsFromOrders = ({
     >();
 
     items.forEach((item, itemIndex) => {
-      const styleId = resolveOptionalString(item?.styleId, "");
-      if (!styleId) return;
+      const styleId = toPositiveIntOrNull(item?.styleId);
+      if (styleId === null) return;
       const quantity = toPositiveIntOrNull(sumOrderItemQuantity(item));
       if (quantity === null) return;
 
-      const style = resolveStyleCandidateForAssignmentCard({
-        order,
-        item,
-        styleCandidatesById,
-      });
+      const style = styleById.get(styleId) ?? null;
       const current = groupedByStyleId.get(styleId);
       if (!current) {
         groupedByStyleId.set(styleId, {
           quantity,
           itemIndex,
           style,
-          styleId: toPositiveIntOrNull(item?.styleId ?? style?.id),
+          styleId,
           styleName: resolveOptionalString(item?.styleName, null),
           styleCode: resolveOptionalString(item?.styleCode, null),
         });
@@ -10586,7 +10544,7 @@ const buildAssignmentCardsFromOrders = ({
       current.quantity += quantity;
       if (!current.style && style) current.style = style;
       if (current.styleId === null) {
-        current.styleId = toPositiveIntOrNull(item?.styleId ?? style?.id);
+        current.styleId = styleId;
       }
       if (!current.styleName) {
         current.styleName = resolveOptionalString(item?.styleName, null);
@@ -11433,11 +11391,15 @@ const refreshUnlinkedAssignmentPlanSnapshotsForOrg = async ({
     if (cardId && !map.has(cardId)) map.set(cardId, card);
     return map;
   }, new Map<string, any>());
+  // Style.id (numeric FK) uniquely identifies a style - keying by style.code
+  // here while looking it up by the numeric card.styleId (see
+  // buildAssignmentCardsFromOrders) meant this map lookup always missed and
+  // this function was silently a no-op for every assignment.
   const styleByStyleId = ensureArray(styles).reduce((map, style) => {
-    const styleId = resolveOptionalString(style?.code ?? style?.id, null);
-    if (styleId && !map.has(styleId)) map.set(styleId, style);
+    const styleId = toPositiveIntOrNull(style?.id);
+    if (styleId !== null && !map.has(styleId)) map.set(styleId, style);
     return map;
-  }, new Map<string, any>());
+  }, new Map<number, any>());
 
   const updatedAt = new Date().toISOString();
   const updatedBy = "SYSTEM:STYLE_SYNC";
@@ -11452,8 +11414,8 @@ const refreshUnlinkedAssignmentPlanSnapshotsForOrg = async ({
       resolveOptionalString(plan?.cardId, null);
     const card = cardId ? cardById.get(cardId) ?? null : null;
     if (!card) return assignment;
-    const styleId = resolveOptionalString(card?.styleId, null);
-    const style = styleId ? styleByStyleId.get(styleId) ?? null : null;
+    const styleId = toPositiveIntOrNull(card?.styleId);
+    const style = styleId !== null ? styleByStyleId.get(styleId) ?? null : null;
     if (!style) return assignment;
     const planCtTotalSeconds = resolveAssignmentCtTotalSeconds(plan);
     const planStTotalSeconds = resolvePersistedAssignmentPlanStTotalSeconds(plan);
