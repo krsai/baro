@@ -10856,11 +10856,15 @@ const loadAssignmentCardsForOrg = async ({
   return cards;
 };
 const rebuildAssignmentCardsForOrg = async (orgId: number) => {
+  const diagPrefix = `[rebuildAssignmentCardsForOrg] orgId=${orgId}`;
   const organization = await prisma.organization.findUnique({
     where: { id: orgId },
     select: { id: true, type: true },
   });
-  if (!organization) return [];
+  if (!organization) {
+    console.warn(`${diagPrefix} organization not found, skipping`);
+    return [];
+  }
 
   const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
   const [styles, orders, savedCards] = await Promise.all([
@@ -10903,9 +10907,18 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
     }),
     loadAssignmentCardsForOrg({ orgId }),
   ]);
-  const initialProcessMirrorMap = await ensureStyleProcessStorageForStyles(styles, {
-    processOrgId: orgId,
-  });
+  console.log(
+    `${diagPrefix} accessibleOwnerOrgIds=${JSON.stringify(accessibleOwnerOrgIds)} styles=${styles.length} lockedOrders=${orders.length} savedCards=${savedCards.length}`
+  );
+  let initialProcessMirrorMap: Map<number, any[]>;
+  try {
+    initialProcessMirrorMap = await ensureStyleProcessStorageForStyles(styles, {
+      processOrgId: orgId,
+    });
+  } catch (error) {
+    console.error(`${diagPrefix} ensureStyleProcessStorageForStyles threw`, error);
+    throw error;
+  }
   const stylesWithProcesses = styles.map((style) => ({
     ...style,
     processes: initialProcessMirrorMap.get(Number(style.id)) ?? [],
@@ -10914,11 +10927,17 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
     orders,
     styles: stylesWithProcesses,
   });
-  const processMirrorMap = await ensureStyleStandardsForQuantities({
-    styles,
-    quantityByStyleId,
-    processOrgId: orgId,
-  });
+  let processMirrorMap: Map<number, any[]>;
+  try {
+    processMirrorMap = await ensureStyleStandardsForQuantities({
+      styles,
+      quantityByStyleId,
+      processOrgId: orgId,
+    });
+  } catch (error) {
+    console.error(`${diagPrefix} ensureStyleStandardsForQuantities threw`, error);
+    throw error;
+  }
   const hydratedStyles = styles.map((style) => ({
     ...style,
     processes:
@@ -10932,24 +10951,42 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
     styles: hydratedStyles,
   });
   const cards = mergeAssignmentCardsWithSaved(baseCards, savedCards);
+  console.log(
+    `${diagPrefix} baseCards=${baseCards.length} mergedCards=${cards.length}`
+  );
   // syncAssignmentCardsForOrg does a deleteMany followed by a loop of
   // upserts with no transaction of its own - run it inside one here so a
   // mid-loop failure can't leave the org's card catalog partially wiped
   // with nothing to show for it (suspected cause of an earlier incident
   // where AssignmentCard ended up empty for every org).
-  const syncedCards = await prisma.$transaction(
-    (tx) => syncAssignmentCardsForOrg({ orgId, cards, db: tx }),
-    { timeout: 30000 }
-  );
-  await syncOrderProgressStatusesForOrg({
-    orgId,
-    cards: syncedCards,
-  });
-  await refreshUnlinkedAssignmentPlanSnapshotsForOrg({
-    orgId,
-    cards: syncedCards,
-    styles: hydratedStyles,
-  });
+  let syncedCards: any[];
+  try {
+    syncedCards = await prisma.$transaction(
+      (tx) => syncAssignmentCardsForOrg({ orgId, cards, db: tx }),
+      { timeout: 30000 }
+    );
+  } catch (error) {
+    console.error(`${diagPrefix} syncAssignmentCardsForOrg transaction threw`, error);
+    throw error;
+  }
+  console.log(`${diagPrefix} syncedCards=${syncedCards.length}`);
+  try {
+    await syncOrderProgressStatusesForOrg({
+      orgId,
+      cards: syncedCards,
+    });
+    await refreshUnlinkedAssignmentPlanSnapshotsForOrg({
+      orgId,
+      cards: syncedCards,
+      styles: hydratedStyles,
+    });
+  } catch (error) {
+    console.error(
+      `${diagPrefix} post-sync step (syncOrderProgressStatusesForOrg/refreshUnlinkedAssignmentPlanSnapshotsForOrg) threw`,
+      error
+    );
+    throw error;
+  }
   return syncedCards;
 };
 const ASSIGNMENT_CARD_REBUILD_RETRYABLE_PRISMA_CODES = new Set([
@@ -24463,9 +24500,16 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
     include: WORK_ORDER_RESPONSE_INCLUDE,
   });
   if (requestedLocked) {
-    await rebuildAssignmentCardsForOrgIds(
-      affectedOrgIds.length > 0 ? affectedOrgIds : [organization.id]
-    );
+    const rebuildOrgIds = affectedOrgIds.length > 0 ? affectedOrgIds : [organization.id];
+    try {
+      await rebuildAssignmentCardsForOrgIds(rebuildOrgIds);
+    } catch (error) {
+      console.error(
+        `[modification-lock] rebuildAssignmentCardsForOrgIds threw for order=${updated.orderId} orgIds=${JSON.stringify(rebuildOrgIds)}`,
+        error
+      );
+      throw error;
+    }
   }
   await syncOrderProgressStatusesForOrg({
     orgId: organization.id,
