@@ -240,10 +240,6 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
 }) {
   const basis = getCardBasis(card);
   const isLocked = isCardManualOrderLocked(card);
-  const basisLabel =
-    basis === 'NONE'
-      ? getUiMessage('assign.ctMissingCompact', 'Time missing', languageCode)
-      : `${basis}`;
   const styleLabel =
     card.styleName ||
     card.styleCode ||
@@ -258,14 +254,10 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
       selected={isSelected}
       languageCode={languageCode}
       customer={resolveCardCustomerDisplay(card, languageCode) || '-'}
-      orderNoLabel={getUiMessage('assign.cardStyleLabel', 'Style', languageCode)}
-      orderNo={styleLabel}
-      styleName={card.styleName}
+      orderNo={card.orderNo || '-'}
+      styleName={styleLabel}
       quantity={resolveCardQuantity(card, 0)}
       showProgress={false}
-      chips={[
-        { label: basisLabel, color: basis === 'NONE' ? 'warning' : 'primary' },
-      ]}
       footer={
         !isLocked
           ? getUiMessage(
