@@ -7,7 +7,8 @@
 - 같은 버그 패턴이 `loadAssignmentDisplayReferenceMaps`/`findOrderItemByAssignmentIdentity`(표시용 폴백 헬퍼)에도 남아있음 — 카드 생성 경로 아니라 이번엔 안 고침, 다음에 이어서.
 
 ### Remaining
-- 사용자가 재배포 후 실제로 주문 잠가서 카드가 뜨는지 최종 확인 필요.
+- 카드는 실제로 생성 확인됨(운영에서 "미배정 작업 8개" 확인). 다만 "고객사"가 전부 `-`로 비어있는 후속 버그 발견 — 같은 클래스(FK+join은 정상, 읽는 코드가 존재하지 않는 flat 필드 참조). `customer: order?.customerName ?? order?.customer` → `order?.customerOrg?.name ?? order?.buyerOrg?.name`로 수정. 같이 발견한 `workOrderId`(select에 `id` 누락)도 수정. 상세는 AGENTS.md §42 후속 항목.
+- 사용자가 재배포 후 고객사 표시까지 정상인지 최종 확인 필요.
 - 진단용으로 추가한 `console.error` 로그들(`[modification-lock] DIAG`, `[rebuildAssignmentCardsForOrg]`)은 원인 확인 후 노이즈 줄이려면 낮은 레벨로 되돌리거나 정리 고려.
 
 ## 2026-07-05 "계획 부하" 과거 달 100% 하드코딩 버그 수정
