@@ -10593,9 +10593,21 @@ const buildAssignmentCardsFromOrders = ({
         // reading them here always fell through to "-". Same styleId-style
         // mismatch as AGENTS.md 42: the FK+join was already correct, this
         // card-building code just never read the join result.
+        // customer stays the default/English name for backward compatibility
+        // (older card consumers only read this field). customerNameKo/Vi are
+        // sent alongside so the frontend can show the viewer's own UI
+        // language instead of always English - see resolveCardCustomerDisplay.
         customer:
           resolveOptionalString(order?.customerOrg?.name ?? order?.buyerOrg?.name, null) ||
           "-",
+        customerNameKo: resolveOptionalString(
+          order?.customerOrg?.nameKo ?? order?.buyerOrg?.nameKo,
+          null
+        ),
+        customerNameVi: resolveOptionalString(
+          order?.customerOrg?.nameVi ?? order?.buyerOrg?.nameVi,
+          null
+        ),
         styleId: toPositiveIntOrNull(group.style?.id ?? group.styleId),
         styleName:
           group.styleName ??

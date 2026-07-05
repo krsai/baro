@@ -147,7 +147,13 @@ const CompactBoardCard = ({
           px: 1.25,
           py: 0.75,
           alignItems: 'center',
-          flexWrap: { xs: 'wrap', lg: 'nowrap' },
+          // This card is reused inside containers of very different widths
+          // (wide board bars vs. the narrow unassigned-pool sidebar). MUI
+          // breakpoints key off viewport width, not this component's own
+          // container, so `lg: 'nowrap'` kept clipping fields like quantity
+          // off-screen in the narrow sidebar even on a wide viewport. Plain
+          // 'wrap' still renders as a single row whenever there's room.
+          flexWrap: 'wrap',
         }}
       >
         {previewUrl ? (

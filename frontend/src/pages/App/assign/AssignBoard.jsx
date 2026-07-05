@@ -81,6 +81,7 @@ import {
   resolveAssignmentCardBasis,
   resolveAssignmentCardStatus,
   resolveCardAtTotalSeconds,
+  resolveCardCustomerDisplay,
   resolveCardPtTotalSeconds,
   resolveCardQuantity,
   resolveCardScheduleTotalSeconds,
@@ -256,7 +257,7 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
       disabled={!isLocked || basis === 'NONE'}
       selected={isSelected}
       languageCode={languageCode}
-      customer={card.customer || '-'}
+      customer={resolveCardCustomerDisplay(card, languageCode) || '-'}
       orderNoLabel={getUiMessage('assign.cardStyleLabel', 'Style', languageCode)}
       orderNo={styleLabel}
       styleName={card.styleName}
