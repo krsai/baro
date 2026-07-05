@@ -1424,7 +1424,7 @@ runtime 조회값:
 - 운영 DB 복구 메모: 이 재설계 배포 후 기존 주문을 한 번씩 저장(또는 잠금 토글)하면 살아있는 `WorkOrderItem`을 기준으로 `AssignmentCard`가 다시 채워진다. `AssignmentPlan`(실제 라인 배정)은 자동 복구되지 않으므로 배정판에서 카드를 라인에 다시 드래그해야 한다.
 - **정정 (2026-07-05)**: 위 "저장(또는 잠금 토글)하면 다시 채워진다"는 부정확했다. 실제 코드 확인 결과 `POST /orders/:orderId/modification-lock`은 잠금/해제 어느 쪽이든 `rebuildAssignmentCardsForOrgIds`를 전혀 호출하지 않는다 — 카드가 다시 채워지는 유일한 경로는 주문 **저장**(`PUT /orders/:orderId`)뿐이었다. 이 항목 자체는 아래 40번 재설계로 다시 대체된다.
 
-### 40. 2026-07-05 카드 생성 시점을 주문 잠금으로 재변경 + 스타일 제거를 수량 0 오버플로우로 처리 (설계 확정, 구현 예정)
+### 40. 2026-07-05 카드 생성 시점을 주문 잠금으로 재변경 + 스타일 제거를 수량 0 오버플로우로 처리 (백엔드 구현 완료, 보드 UI 경고 섹션 미구현)
 
 - 이 섹션은 바로 위 39번의 "카드 생성/갱신은 저장 시점에 즉시 반영한다, 잠금까지 미루는 설계는 반려한다"는 규칙을 **대체**한다. 다음 세션은 이 카드 생성 타이밍에 대해서는 39번이 아니라 이 40번을 따른다. (39번의 다른 원칙 — 잠금 해제는 순수 플래그라는 것, `DELETE /orders/:orderId` 가드, 프론트 이중저장 제거 등은 그대로 유효하다.)
 - 배경: 39번 설계·배포 이후 실사용 관점에서, "잠금 = 생산 확정" 의미로 카드 생성을 다시 잠금 시점에 묶고 싶다는 요청이 있었다. 동시에 "작업기록이 이미 있는 스타일은 주문에서 못 뺀다"는 39번의 하드 블록이, 실제로는 이미 작업이 진행된 뒤에 고객 요청으로 물량이 줄어드는 정상적인 현장 상황을 시스템이 못 받아주는 문제로 확인되어 같이 재설계했다.
@@ -1443,4 +1443,25 @@ runtime 조회값:
   - **UI 노출 방식**: 배정 보드에 평소 카드 목록과 분리된 **별도 경고 섹션**(예: "확인 필요")을 신설한다. 이 섹션에 표시할 항목이 하나도 없으면 섹션 자체를 렌더링하지 않는다(빈 섹션 노출 금지).
   - **경고 섹션에서 항목이 빠지는(필터되는) 기준**: 그 배정에 연결된 **모든** `WorkRecord`의 소속 월이 전부 급여 잠금(그 달 `PayrollSnapshot` 존재)되면 그 시점에 목록에서 제외한다. **주의**: 이건 "완료 카드가 급여 지급되면 작업 종료 목록에서 빠진다"는 기존 로직을 재사용하는 게 아니라 **신규 구현**이다 — 실제로 그런 필터는 아직 존재하지 않는다(`lineMonthCapacity.js`의 완료 목록 빌더는 `isPayrollLocked`/`payrollLockMonth`를 전혀 참조하지 않음, §28A에도 "post-payroll hiding은 의도적으로 미뤄짐"이라고 이미 명시돼 있었음). 또한 기존 `isPayrollLocked`는 "완료 월 1개"를 전제로 계산되는데(§28), 0-수량 배정은 `plannedQuantity=0`이라 진행률 계산이 분모 0으로 `null`이 되어 전통적인 "진행률 100%→자동완료" 경로를 못 탈 가능성이 높다 — 그래서 이 신규 필터는 완료 월 1개가 아니라 **연결된 모든 WorkRecord 각각의 월이 전부 급여 잠금됐는지**를 별도로 계산해야 한다.
   - **비차단 안내**: 하드 블록을 없애는 대신, 저장/잠금은 그대로 통과시키되 "이 스타일은 이미 작업기록이 있어 완전히 삭제되지 않고 0개 배정으로 남았습니다" 같은 비차단 토스트를 보여준다.
-- **미해결 (다음에 이어서 확인할 것)**: `DELETE /orders/:orderId`가 주문 전체를 삭제할 때, `AssignmentPlan.workOrderId` FK의 `onDelete` 정책이 `Cascade`이면 WorkOrder 삭제와 동시에 우리가 보존하려는 0-수량 배정까지 통째로 DB에서 사라질 수 있다 — 이 섹션의 "DELETE도 같은 원칙을 따른다"는 문장이 실제로 안전한지 스키마 확인이 아직 안 끝났다. 구현 전 `backend/prisma/schema.prisma`에서 `AssignmentPlan.workOrderId` 관계의 `onDelete` 설정을 반드시 확인할 것.
+- **해소됨**: `AssignmentPlan.workOrderId`는 스키마 확인 결과 `onDelete: SetNull`이었다(Cascade 아님) — 다만 위 "DELETE는 스타일 제거와 다르게 취급" 결정으로 이 경로 자체를 애초에 타지 않기로 했으므로(작업기록 있으면 여전히 삭제 자체를 막음) 실질적 영향은 없다.
+
+### 2026-07-05 구현 현황
+
+- **백엔드 구현 완료** (`backend/src/index.ts`, `npm run build` 통과):
+  - `syncAssignmentPlansForOrderLock({ orgId, order, db })` 신규 함수 — `findOrderStyleRemovalBlockers` 바로 아래 위치. 주문의 현재 `WorkOrderItem` 수량(`resolveOrderStyleQuantityMap`)과 그 주문에 속한 기존 `AssignmentPlan`(`buildAssignmentPlanOrderMatchWhereOr`로 cardId/workOrderId 매칭)을 비교해 스타일별로 처리한다.
+  - 같은 `cardId`를 공유하는 `AssignmentPlan`이 2개 이상(라인 분할/split)인 경우는 **의도적으로 건드리지 않는다** — 총량 변경분을 여러 split에 어떻게 재분배할지 결정된 바가 없어서다(알려진 한계, 아래 남은 일 참고).
+  - 수량 0으로 남기는 케이스: `AssignmentPlan.assignmentQuantity/assignmentStTotalSeconds`를 0으로 갱신하고, 대응하는 `AssignmentCard.payload`에 `cardQuantity:0, type:"DELTA"`를 심어 이후 `rebuildAssignmentCardsForOrgIds`가 돌아도 카드가 삭제되지 않고 살아남게 한다(`mergeAssignmentCardsWithSaved`의 기존 DELTA 카드 보존 규칙을 그대로 재사용 — 신규 메커니즘 추가 안 함).
+  - 수량이 바뀌었지만 스타일이 그대로 남아있는 경우: `ensureStyleStandardsForQuantities` + `loadStyleProcessRowsByStyleId` + `calculateAssignmentStTotalSecondsFromStyleRows`(보드 저장 경로가 쓰는 것과 동일한 버킷 조회 함수)로 새 수량 기준 ST를 재계산한다. 버킷을 못 찾으면(`null`) `assignmentQuantity`만 갱신하고 `assignmentStTotalSeconds`는 이전 값을 그대로 둔다 — §35 "ST 미설정시 경고만" 방침과 동일하게 저장을 막지 않는 쪽을 택함.
+  - `isCompleted === true`이거나 급여 잠금(`annotateAssignmentPlanRowsWithPayrollLocks`로 계산한 `isPayrollLocked`)인 플랜은 위 처리에서 전부 제외.
+  - `PUT /orders/:orderId`: `findOrderStyleRemovalBlockers` 호출, 409 하드 블록, 트랜잭션 안 카드/배정 정리, 끝의 `rebuildAssignmentCardsForOrgIds` 호출을 전부 제거 — 이제 `WorkOrderItem`만 갱신하는 순수 저장이다.
+  - `POST /orders/:orderId/modification-lock`: `locked:true`로 바뀌는 전이에서만 `syncAssignmentPlansForOrderLock`을 `$transaction`(30s timeout)으로 감싸 실행한 뒤 `rebuildAssignmentCardsForOrgIds`를 호출한다. 응답 JSON에 `zeroedStyles`(0-수량으로 남은 스타일 목록, 프론트 토스트용) 필드를 추가했다. `locked:false`(해제)는 손대지 않았다 — 여전히 순수 플래그.
+  - `rebuildAssignmentCardsForOrg`의 주문 조회에 `modificationLockedAt: { not: null }` 필터를 추가했다 — 이게 없으면 스타일 저장/색상 동기화 등 다른 트리거가 돌 때마다 잠기지 않은 주문의 카드까지 다시 생겨서 "카드는 잠금 시점에만" 원칙이 깨진다(구현 중 직접 발견해서 같이 고침, 원래 계획에는 명시 안 돼 있었음).
+  - 이제 아무 데서도 안 쓰는 `findOrderStyleRemovalBlockers`/`summarizeOrderStyleRemovalIssues` 삭제. `DELETE /orders/:orderId`는 별도의 자체 인라인 가드(`ORDER_HAS_WORK_RECORDS`)를 계속 쓰고 있어 영향 없음.
+- **프론트엔드 일부 구현 완료** (`npm run build` 통과):
+  - `frontend/src/pages/App/order/OrderList.jsx`의 `performOrderLockToggle`: 잠금 성공 응답의 `zeroedStyles`가 비어있지 않으면 비차단 경고 토스트(`orderPageText.zeroedStylesPrefix`/`zeroedStylesGeneric`, ko/en/vi 전부 작성)를 띄운다.
+  - 기존 저장 실패 시 이슈 다이얼로그(`saveIssueRows`/`extractOrderSaveIssueRows`)는 그대로 유지 — `DELETE`가 여전히 같은 모양의 `issues` 배열을 반환하므로 삭제 실패 표시에는 계속 쓰인다. `PUT` 저장은 이제 이 경로를 타지 않는다(더 이상 이 에러를 반환하지 않음).
+- **아직 구현 안 됨 (다음 세션 이어서 할 것)**:
+  - 배정 보드의 "0수량 오버플로우 확인 필요" 별도 경고 섹션 자체를 만들지 않았다. 실제 화면(`AssignBoard.jsx`, `LineMonthCapacityBoard.jsx`, `frontend/src/pages/App/assign/utils/lineMonthCapacity.js`)에는 아직 아무 표시도 없다.
+  - 이 UI를 만들려면 먼저 `assignmentQuantity===0`(및 실제 생산량>0)인 배정을 식별하는 필드와, "연결된 모든 WorkRecord의 월이 전부 급여 잠금됐는지" 판정 필드를 백엔드 응답 어딘가에 노출해야 한다 — 이번 세션에서는 `buildAssignmentPlanProgressRows`(`/assignment-plan-progress`가 쓰는 함수, `backend/src/index.ts:19644` 부근)의 값이 정확히 어느 병합 경로로 `lineMonthCapacity.js`의 `buildLineQueueForecast` 입력(`assignments`)까지 도달하는지 끝까지 추적하지 못한 상태에서 무리하게 배선하면 잘못 연결될 위험이 커서 이번 범위에서 제외했다. 다음에 이어서 할 때는 `AssignBoard.jsx`가 `/assignment-plan-progress` 응답을 어디서 읽어 board assignment 객체에 병합하는지부터 먼저 확인할 것.
+  - split(같은 cardId를 공유하는 배정이 여럿인 경우) 수량 재분배 정책 — 결정된 바 없어 이번에는 그대로 둠(위 구현 현황 참고).
+  - 실제 브라우저로 "잠금 시 카드/수량이 갱신되는지", "스타일 제거 후 재잠금 시 0수량+토스트가 뜨는지"는 개발 서버 미기동 상태에서 코드 작성 + `tsc`/`vite build` 통과만 확인했다. 다음 작업자가 실제로 눌러서 확인 필요.

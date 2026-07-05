@@ -1088,6 +1088,18 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Order edit lock disabled.'
             : '주문 수정 잠금이 해제되었습니다.',
+      zeroedStylesPrefix:
+        languageCode === 'vi'
+          ? 'Cac style sau da bi xoa khoi don hang nhung van con nhat ky lam viec, nen duoc giu lai voi so luong 0:'
+          : languageCode === 'en'
+            ? 'These styles were removed from the order but already have work records, so they were kept as zero-quantity assignments:'
+            : '아래 스타일은 주문에서 빠졌지만 이미 작업기록이 있어서 수량 0으로 남았습니다:',
+      zeroedStylesGeneric:
+        languageCode === 'vi'
+          ? 'Mot style bi xoa khoi don hang da duoc giu lai voi so luong 0 vi da co nhat ky lam viec.'
+          : languageCode === 'en'
+            ? 'A style removed from the order was kept as a zero-quantity assignment because it already has work records.'
+            : '주문에서 빠진 스타일 하나가 이미 작업기록이 있어서 수량 0으로 남았습니다.',
       lockColumn:
         languageCode === 'vi'
           ? 'Khoa'
@@ -2331,6 +2343,20 @@ const OrderList = () => {
           nextLocked ? orderPageText.lockEnabledSuccess : orderPageText.lockDisabledSuccess,
           'success'
         );
+        const zeroedStyles = Array.isArray(updated?.zeroedStyles) ? updated.zeroedStyles : [];
+        if (zeroedStyles.length > 0) {
+          const zeroedStyleSummary = zeroedStyles
+            .map((issue) => issue?.styleName || issue?.styleCode || '')
+            .filter(Boolean)
+            .slice(0, 5)
+            .join(', ');
+          showNotification(
+            zeroedStyleSummary
+              ? `${orderPageText.zeroedStylesPrefix} ${zeroedStyleSummary}`
+              : orderPageText.zeroedStylesGeneric,
+            'warning'
+          );
+        }
       } catch (error) {
         showNotification(
           resolveOrderModificationLockToggleErrorMessage(error, {

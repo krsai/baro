@@ -10881,7 +10881,11 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
       },
     }),
     prisma.workOrder.findMany({
-      where: { OR: getOrderAccessWhere(orgId) },
+      // Cards only ever reflect locked orders (AGENTS.md 40번) - an unlocked
+      // order is a draft with no production commitment yet, so it must not
+      // contribute any pool card here regardless of which trigger (style
+      // save, color sync, order lock, ...) called this rebuild.
+      where: { OR: getOrderAccessWhere(orgId), modificationLockedAt: { not: null } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: {
         orderId: true,
@@ -11538,90 +11542,222 @@ type OrderStyleRemovalIssue = {
   code: string;
   message: string;
 };
-const summarizeOrderStyleRemovalIssues = (
-  issues: OrderStyleRemovalIssue[],
-  prefix = "Order save blocked"
-) => {
-  const safeIssues = ensureArray(issues).filter(
-    (issue) => issue && typeof issue === "object"
-  ) as OrderStyleRemovalIssue[];
-  if (safeIssues.length === 0) return prefix;
-  const preview = safeIssues
-    .slice(0, 5)
-    .map((issue) => issue.message)
-    .join("; ");
-  const extraCount = safeIssues.length - 5;
-  return `${prefix} (${safeIssues.length} issues): ${preview}${
-    extraCount > 0 ? `; +${extraCount} more` : ""
-  }`;
+// STYLE_HAS_WORK_RECORDS hard-block on style removal was retired in favor of
+// the zero-quantity overflow handling in syncAssignmentPlansForOrderLock
+// (AGENTS.md 40번). DELETE /orders/:orderId keeps its own separate hard block
+// (see the ORDER_HAS_WORK_RECORDS guard below) since deleting the whole order
+// leaves no order left to reopen for later re-billing.
+const resolveOrderStyleQuantityMap = (order: any): Map<number, number> => {
+  const map = new Map<number, number>();
+  ensureArray(order?.workOrderItems).forEach((row: any) => {
+    const item = workOrderItemToItemShape(row);
+    const styleId = toPositiveIntOrNull(item?.styleId);
+    if (styleId === null) return;
+    const quantity = Math.max(0, Math.round(Number(sumOrderItemQuantity(item)) || 0));
+    map.set(styleId, (map.get(styleId) ?? 0) + quantity);
+  });
+  return map;
 };
-// Checks whether removing the given styles from an order would drop any
-// AssignmentCard that still has a linked WorkRecord. Card identity is exact
-// `${orderId}::${styleId}` equality, not an order-wide prefix match, so
-// unrelated styles kept on the order are never affected by this guard.
-const findOrderStyleRemovalBlockers = async ({
-  orderId,
-  removedStyles,
-  orgIds,
+
+// Runs once, when an order transitions to locked (AGENTS.md 40번). Reconciles
+// existing AssignmentPlan rows for this order against the current
+// WorkOrderItem quantities:
+//  - quantity unchanged -> untouched
+//  - quantity changed, style still on the order -> assignmentQuantity/ST
+//    recalculated from the latest StyleProcessStandard buckets (same
+//    structural-change math the board save path uses)
+//  - style removed from the order entirely:
+//      - no linked WorkRecord -> safe to delete, same as the old save-time
+//        guard used to do
+//      - has a linked WorkRecord -> kept, forced to 0 quantity/0 ST instead of
+//        deleted, so the already-produced amount becomes pure overflow
+//        instead of silently disappearing
+// Completed and payroll-locked plans are never touched. Plans split across
+// more than one line (several AssignmentPlan rows sharing the same cardId)
+// are also left untouched - redistributing a changed total across existing
+// splits is ambiguous and was not decided, see AGENTS.md 40번 known limitation.
+const syncAssignmentPlansForOrderLock = async ({
+  orgId,
+  order,
   db = prisma,
 }: {
-  orderId: string;
-  removedStyles: Array<{ styleId: number; styleCode: string; styleName: string }>;
-  orgIds: Array<number | null | undefined>;
+  orgId: number;
+  order: any;
   db?: any;
-}): Promise<{
-  blockedIssues: OrderStyleRemovalIssue[];
-  planIdsSafeToDetach: number[];
-}> => {
-  if (removedStyles.length === 0) {
-    return { blockedIssues: [], planIdsSafeToDetach: [] };
-  }
-  const uniqueOrgIds = Array.from(
-    new Set(
-      orgIds
-        .map((value) => toPositiveIntOrNull(value))
-        .filter((value): value is number => value !== null)
-    )
-  );
-  if (uniqueOrgIds.length === 0) {
-    return { blockedIssues: [], planIdsSafeToDetach: [] };
-  }
-  const cardIdByStyleId = new Map(
-    removedStyles.map((style) => [style.styleId, createAssignmentCardId(orderId, style.styleId)])
-  );
+}): Promise<{ zeroedStyles: OrderStyleRemovalIssue[] }> => {
+  const orderId = resolveOptionalString(order?.orderId, null);
+  if (!orderId) return { zeroedStyles: [] };
+
+  const styleQuantityMap = resolveOrderStyleQuantityMap(order);
+  const workOrderIds = collectPositiveIntSet(order?.id);
   const plans = await db.assignmentPlan.findMany({
-    where: {
-      orgId: { in: uniqueOrgIds },
-      cardId: { in: Array.from(cardIdByStyleId.values()) },
+    where: { orgId, OR: buildAssignmentPlanOrderMatchWhereOr(orderId, workOrderIds) },
+    select: {
+      id: true,
+      externalId: true,
+      cardId: true,
+      isCompleted: true,
+      assignmentQuantity: true,
+      assignmentStTotalSeconds: true,
+      productionCompletedAt: true,
+      closedAt: true,
+      completedAt: true,
     },
-    select: { id: true, cardId: true },
   });
-  const linkedPlanIds = new Set(
-    await loadLinkedWorkRecordPlanIds({ planIds: plans.map((plan: any) => plan.id), db })
+  if (plans.length === 0) return { zeroedStyles: [] };
+
+  const annotatedPlans = await annotateAssignmentPlanRowsWithPayrollLocks(orgId, plans);
+  const planById = new Map<number, any>(
+    annotatedPlans.map((plan) => [Number(plan.id), plan])
   );
-  const blockedCardIds = new Set(
-    plans
-      .filter((plan: any) => linkedPlanIds.has(plan.id))
-      .map((plan: any) => plan.cardId)
+
+  const plansByStyleId = new Map<number, any[]>();
+  plans.forEach((plan: any) => {
+    const identity = parseAssignmentCardIdentity(plan?.cardId);
+    const styleId = toPositiveIntOrNull(identity?.styleId);
+    if (styleId === null) return;
+    const bucket = plansByStyleId.get(styleId) ?? [];
+    bucket.push(plan);
+    plansByStyleId.set(styleId, bucket);
+  });
+
+  const linkedPlanIdSet = new Set(
+    await loadLinkedWorkRecordPlanIds({
+      planIds: plans.map((plan: any) => plan.id),
+      db,
+    })
   );
-  const blockedIssues: OrderStyleRemovalIssue[] = [];
-  removedStyles.forEach((style) => {
-    const cardId = cardIdByStyleId.get(style.styleId);
-    if (cardId && blockedCardIds.has(cardId)) {
-      const label = style.styleName || style.styleCode || `style ${style.styleId}`;
-      blockedIssues.push({
-        styleId: style.styleId,
-        styleCode: style.styleCode,
-        styleName: style.styleName,
-        code: "STYLE_HAS_WORK_RECORDS",
-        message: `${label}: has existing work records and cannot be removed from the order.`,
+
+  const pendingZero: { plan: any; styleId: number; linked: boolean }[] = [];
+  const pendingRecalc: { plan: any; styleId: number; targetQuantity: number }[] = [];
+
+  plansByStyleId.forEach((group, styleId) => {
+    if (group.length > 1) return; // split across lines - left untouched, see comment above
+    const plan = planById.get(Number(group[0].id));
+    if (!plan) return;
+    if (plan.isCompleted === true || plan.isPayrollLocked) return;
+
+    const targetQuantity = styleQuantityMap.get(styleId) ?? 0;
+    const currentQuantity = resolveAssignmentQuantity(plan) ?? 0;
+    if (targetQuantity === currentQuantity) return;
+
+    if (targetQuantity === 0) {
+      pendingZero.push({ plan, styleId, linked: linkedPlanIdSet.has(Number(plan.id)) });
+      return;
+    }
+    pendingRecalc.push({ plan, styleId, targetQuantity });
+  });
+
+  const zeroedStyles: OrderStyleRemovalIssue[] = [];
+
+  if (pendingZero.length > 0) {
+    const cardIds = pendingZero
+      .map((item) => resolveOptionalString(item.plan.cardId, null))
+      .filter((value): value is string => Boolean(value));
+    const existingCardRows =
+      cardIds.length > 0
+        ? await db.assignmentCard.findMany({
+            where: { orgId, cardId: { in: cardIds } },
+            select: { cardId: true, payload: true },
+          })
+        : [];
+    const cardPayloadByCardId = new Map<string, any>(
+      existingCardRows.map((row: any) => [row.cardId, row.payload])
+    );
+
+    const notLinked = pendingZero.filter((item) => !item.linked);
+    if (notLinked.length > 0) {
+      const notLinkedCardIds = notLinked
+        .map((item) => resolveOptionalString(item.plan.cardId, null))
+        .filter((value): value is string => Boolean(value));
+      if (notLinkedCardIds.length > 0) {
+        await db.assignmentCard.deleteMany({
+          where: { orgId, cardId: { in: notLinkedCardIds } },
+        });
+      }
+      await detachWorkRecordsAndDeleteAssignmentPlans({
+        planIds: notLinked.map((item) => item.plan.id),
+        db,
       });
     }
-  });
-  const planIdsSafeToDetach = plans
-    .filter((plan: any) => !linkedPlanIds.has(plan.id))
-    .map((plan: any) => plan.id);
-  return { blockedIssues, planIdsSafeToDetach };
+
+    for (const item of pendingZero) {
+      if (!item.linked) continue;
+      const cardId = resolveOptionalString(item.plan.cardId, null);
+      await db.assignmentPlan.update({
+        where: { id: item.plan.id },
+        data: { assignmentQuantity: 0, assignmentStTotalSeconds: 0 },
+      });
+      const existingPayload = cardId ? cardPayloadByCardId.get(cardId) ?? {} : {};
+      const styleName =
+        resolveOptionalString(existingPayload?.styleName, null) ?? `Style ${item.styleId}`;
+      if (cardId) {
+        const nextPayload = {
+          ...existingPayload,
+          id: cardId,
+          originOrderId: resolveOptionalString(existingPayload?.originOrderId, null) ?? cardId,
+          cardQuantity: 0,
+          type: "DELTA",
+        };
+        await db.assignmentCard.upsert({
+          where: { orgId_cardId: { orgId, cardId } },
+          update: { payload: nextPayload },
+          create: { orgId, cardId, sortOrder: 0, payload: nextPayload },
+        });
+      }
+      zeroedStyles.push({
+        styleId: item.styleId,
+        styleCode: resolveOptionalString(existingPayload?.styleCode, null) ?? "",
+        styleName,
+        code: "STYLE_ZEROED_HAS_WORK_RECORDS",
+        message: `${styleName}: removed from the order but kept as a zero-quantity overflow assignment because it already has work records.`,
+      });
+    }
+  }
+
+  if (pendingRecalc.length > 0) {
+    const styleIds = Array.from(new Set(pendingRecalc.map((item) => item.styleId)));
+    const styles = await db.style.findMany({
+      where: { id: { in: styleIds } },
+      select: { id: true, orgId: true, processes: true },
+    });
+    const quantityByStyleId = new Map<number, Set<number>>();
+    pendingRecalc.forEach((item) => {
+      const bucketQuantity = resolveStBucketQuantity(item.targetQuantity);
+      const current = quantityByStyleId.get(item.styleId) ?? new Set<number>();
+      current.add(bucketQuantity);
+      quantityByStyleId.set(item.styleId, current);
+    });
+    await ensureStyleStandardsForQuantities({
+      styles,
+      quantityByStyleId,
+      processOrgId: orgId,
+      db,
+    });
+    const styleProcessRowsByStyleId = await loadStyleProcessRowsByStyleId(styleIds, {
+      processOrgId: orgId,
+      db,
+    });
+
+    for (const item of pendingRecalc) {
+      const bucketQuantity = resolveStBucketQuantity(item.targetQuantity);
+      const styleProcessRows = styleProcessRowsByStyleId.get(item.styleId) ?? [];
+      const assignmentStTotalSeconds = calculateAssignmentStTotalSecondsFromStyleRows({
+        styleProcessRows,
+        assignmentQuantity: item.targetQuantity,
+        bucketQuantity,
+      });
+      await db.assignmentPlan.update({
+        where: { id: item.plan.id },
+        data: {
+          assignmentQuantity: item.targetQuantity,
+          ...(assignmentStTotalSeconds !== null ? { assignmentStTotalSeconds } : {}),
+        },
+      });
+    }
+  }
+
+  return { zeroedStyles };
 };
 const buildOrderModificationLockState = ({
   order,
@@ -24152,44 +24288,10 @@ app.put("/orders/:orderId", async (req, res) => {
   normalized.orderId = existing.orderId;
 
   const itemsToUpsert = normalizeOrderItems(normalized.items);
-  const affectedOrgIds = [existing.buyerOrgId, existing.sellerOrgId, buyer.id, seller.id]
-    .map((value) => toPositiveIntOrNull(value))
-    .filter((value): value is number => value !== null);
 
-  // A style is "removed" only if it disappears from the item set entirely -
-  // quantity/detail changes on a style that stays are not a removal and are
-  // never blocked here, they just flow into the card rebuild below.
-  const nextStyleIdSet = new Set(
-    itemsToUpsert
-      .map((item: any) => toPositiveIntOrNull(item.styleId))
-      .filter((value: number | null): value is number => value !== null)
-  );
-  const removedStyles = Array.from(
-    new Map(
-      existing.workOrderItems
-        .map((row: any) => workOrderItemToItemShape(row))
-        .filter((item: any) => item.styleId && !nextStyleIdSet.has(item.styleId))
-        .map((item: any) => [item.styleId, {
-          styleId: item.styleId as number,
-          styleCode: item.styleCode || "",
-          styleName: item.styleName || "",
-        }])
-    ).values()
-  );
-
-  const { blockedIssues, planIdsSafeToDetach } = await findOrderStyleRemovalBlockers({
-    orderId: existing.orderId,
-    removedStyles,
-    orgIds: affectedOrgIds,
-  });
-  if (blockedIssues.length > 0) {
-    return res.status(409).json({
-      ok: false,
-      error: summarizeOrderStyleRemovalIssues(blockedIssues, "Order save blocked"),
-      issues: blockedIssues,
-    });
-  }
-
+  // Card/AssignmentPlan sync no longer happens at save time - it happens once,
+  // at order-lock time (POST /orders/:orderId/modification-lock, locked:true).
+  // This endpoint only ever rewrites WorkOrderItem. See AGENTS.md 40번.
   const { items: _updateItems, ...workOrderUpdateData } = normalized;
   const updated = await prisma.$transaction(async (tx) => {
     const updatedOrder = await tx.workOrder.update({
@@ -24217,25 +24319,12 @@ app.put("/orders/:orderId", async (req, res) => {
         })),
       });
     }
-    if (removedStyles.length > 0) {
-      // Safe by construction: findOrderStyleRemovalBlockers already verified
-      // none of these plans have linked WorkRecords, so this is a plain
-      // cleanup, not a second guard decision.
-      const removedCardIds = removedStyles.map((style) =>
-        createAssignmentCardId(existing.orderId, style.styleId)
-      );
-      await tx.assignmentCard.deleteMany({
-        where: { orgId: { in: affectedOrgIds }, cardId: { in: removedCardIds } },
-      });
-      await detachWorkRecordsAndDeleteAssignmentPlans({ planIds: planIdsSafeToDetach, db: tx });
-    }
     return tx.workOrder.findUnique({
       where: { id: updatedOrder.id },
       include: WORK_ORDER_RESPONSE_INCLUDE,
     });
   }, { timeout: 30000 });
 
-  await rebuildAssignmentCardsForOrgIds(affectedOrgIds);
   const updatedLockState = await getOrderModificationLockState(updated);
   res.json(
     toOrderResponse(updated, {
@@ -24285,14 +24374,36 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
     );
   }
 
-  // Lock/unlock is a pure editing-permission flag. It does not create,
-  // update, or delete AssignmentCard/AssignmentPlan rows in either
-  // direction - card sync happens once, atomically, inside PUT
-  // /orders/:orderId at save time (see findOrderStyleRemovalBlockers there).
-  // Unlocking used to hard-delete every AssignmentPlan/AssignmentCard for
-  // the order (guarded only by an order-wide "does anything have work
-  // records" check) - that destructive behavior caused a production data
-  // loss incident and has been removed on purpose. Do not reintroduce it.
+  // Unlocking is still a pure editing-permission flag - it never creates,
+  // updates, or deletes AssignmentCard/AssignmentPlan rows. Unlocking used to
+  // hard-delete every AssignmentPlan/AssignmentCard for the order (guarded
+  // only by an order-wide "does anything have work records" check) - that
+  // destructive behavior caused a production data loss incident and has been
+  // removed on purpose. Do not reintroduce it.
+  //
+  // Locking is the one moment card/plan sync happens (AGENTS.md 40번): the
+  // pool card catalog is rebuilt from the current WorkOrderItem set, and
+  // already-placed AssignmentPlan rows for this order get their quantity/ST
+  // reconciled to match (syncAssignmentPlansForOrderLock). A style dropped
+  // from the order that already has linked work records is kept as a
+  // zero-quantity overflow assignment instead of being deleted.
+  const affectedOrgIds = [existing.buyerOrgId, existing.sellerOrgId]
+    .map((value) => toPositiveIntOrNull(value))
+    .filter((value): value is number => value !== null);
+  let zeroedStyles: OrderStyleRemovalIssue[] = [];
+  if (requestedLocked) {
+    const syncResult = await prisma.$transaction(
+      (tx) =>
+        syncAssignmentPlansForOrderLock({
+          orgId: organization.id,
+          order: existing,
+          db: tx,
+        }),
+      { timeout: 30000 }
+    );
+    zeroedStyles = syncResult.zeroedStyles;
+  }
+
   const lockedBy =
     resolveOptionalString(req.body?.lockedBy, null) ??
     getRequesterEmail(req) ??
@@ -24310,6 +24421,11 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
         },
     include: WORK_ORDER_RESPONSE_INCLUDE,
   });
+  if (requestedLocked) {
+    await rebuildAssignmentCardsForOrgIds(
+      affectedOrgIds.length > 0 ? affectedOrgIds : [organization.id]
+    );
+  }
   await syncOrderProgressStatusesForOrg({
     orgId: organization.id,
     orderIds: [updated.orderId],
@@ -24322,11 +24438,12 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
   const orderForResponse = refreshed ?? updated;
 
   const refreshedLockState = await getOrderModificationLockState(orderForResponse);
-  return res.json(
-    toOrderResponse(orderForResponse, {
+  return res.json({
+    ...toOrderResponse(orderForResponse, {
       isAssignmentModificationLocked: refreshedLockState.isAssignmentLocked,
-    })
-  );
+    }),
+    zeroedStyles,
+  });
 });
 
 app.delete("/orders/:orderId", async (req, res) => {
