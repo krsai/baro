@@ -1,5 +1,11 @@
 # TODO
 
+## 2026-07-05 "계획 부하" 과거 달 100% 하드코딩 버그 수정
+- `frontend/src/pages/App/assign/utils/lineMonthCapacity.js`의 `plannedLoadPercent`가 과거 달에 한해 `capacitySeconds/capacitySeconds`(항상 100%) 항등식이었던 걸 확정 진단 후 수정. 이제 과거 달은 `actualOutputPercent`를 그대로 따름. 백엔드 요약 없는 폴백 분기도 같이 고침(이전엔 달 종류 무관하게 무조건 100%였음).
+- `uiMessages.js`의 `assign.capacitySummaryHint` 캡션도 새 동작에 맞게 수정.
+- `npm --prefix frontend run build` 통과. 실제 브라우저 확인 필요 — 배정 카드/작업기록이 하나도 없는 라인에서 "계획 부하"가 실제 생산률(0%)과 같이 뜨는지 확인할 것.
+- 상세는 AGENTS.md §41 참고.
+
 ## 2026-07-05 잠금 시점 카드/배정 동기화 + 0수량 오버플로우 구현 (백엔드 완료, 보드 UI 남음)
 
 ### Done

@@ -308,9 +308,9 @@ export const UI_MESSAGES = {
     capacityMode: { ko: '용량', en: 'Capacity', vi: 'Cong suat' },
     timelineMode: { ko: '타임라인', en: 'Timeline', vi: 'Tien do' },
     capacitySummaryHint: {
-      ko: '과거 기록월의 계획 부하는 월 작업 가능량을 100% 기준으로 표시하고, 실제 생산은 저장된 작업기록을 따릅니다. 마지막 기록 다음 작업일부터는 남은 배정 예측 부하를 표시합니다.',
-      en: 'For recorded past months, planned load uses the month capacity as 100%. Actual production follows saved work logs, and remaining assignments are forecast from the next workday after the latest record.',
-      vi: 'Voi thang da ghi nhan, tai trong ke hoach lay cong suat thang lam moc 100%. San luong thuc te theo work log da luu, va phan viec con lai duoc du bao tu ngay lam viec tiep theo sau ghi nhan moi nhat.',
+      ko: '과거 기록월의 계획 부하는 실제 생산률과 동일하게 표시됩니다(이미 지난 달은 실제로 일어난 일만 의미가 있습니다). 마지막 기록 다음 작업일부터는 남은 배정 예측 부하를 표시합니다.',
+      en: 'For recorded past months, planned load mirrors actual output (only what actually happened matters for a month that has passed). Remaining assignments are forecast from the next workday after the latest record.',
+      vi: 'Voi thang da ghi nhan, tai trong ke hoach hien thi giong san luong thuc te (thang da qua chi con y nghia voi nhung gi da xay ra). Phan viec con lai duoc du bao tu ngay lam viec tiep theo sau ghi nhan moi nhat.',
     },
     lineCapacityHeader: { ko: '라인', en: 'Line', vi: 'Chuyen' },
     assignmentCountCompact: {

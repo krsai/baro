@@ -1471,3 +1471,13 @@ runtime 조회값:
 - **아직 남은 것**:
   - split(같은 cardId를 공유하는 배정이 여럿인 경우) 수량 재분배 정책 — 결정된 바 없어 `syncAssignmentPlansForOrderLock`이 그대로 스킵함(구현 현황 참고).
   - 실제 브라우저로 "잠금 시 카드/수량이 갱신되는지", "스타일 제거 후 재잠금 시 0수량+토스트가 뜨는지", "보드에 확인 필요 섹션이 뜨고 급여 정산되면 사라지는지"는 개발 서버 미기동 상태에서 코드 작성 + `tsc`/`vite build` 통과만 확인했다. 다음에 반드시 실제로 눌러서 확인할 것.
+
+### 41. 2026-07-05 "계획 부하" 과거 달 100% 하드코딩 버그 수정 (완료)
+
+- §37 진단(코드 리뷰만, 미수정) 이후 사용자가 배포된 화면에서 실제로 재현 — `AssignmentPlan`이 0건인 상태에서도 LINE #1 6월 "계획 부하"가 계속 100%로 표시됨.
+- 원인: `frontend/src/pages/App/assign/utils/lineMonthCapacity.js`의 `plannedLoadPercent` 계산이 과거("historical") 달에 한해 `roundPercent(lineMonthlyCapacitySeconds, lineMonthlyCapacitySeconds)`(분자=분모 항등식)로 **항상 100%**를 반환했다. 실제 `AssignmentPlan`/작업기록 데이터를 전혀 참조하지 않는 계산이라, 배정이 하나도 없어도 100%가 나왔다. 화면 캡션(`assign.capacitySummaryHint`)에도 "과거 기록월은 100% 기준으로 표시"라고 이 동작이 그대로 문서화되어 있었다 — 의도된 동작이었지만, 어제 사고로 배정 데이터가 전부 사라진 뒤에는 "잔여 데이터가 남아있다"는 오해를 유발하는 잘못된 설계였다.
+- 수정: 과거 달의 `plannedLoadPercent`는 이제 같은 달의 `actualOutputPercent`(실제 작업기록 기반 생산률)를 그대로 따른다 — 이미 지난 달은 "계획"이라는 개념 자체가 의미 없고, 실제로 무엇을 만들었는지만 의미가 있다는 논리. 백엔드 요약(`backendRow`)이 없는 폴백 분기도 동일하게 수정(기존엔 이 분기가 달 종류 구분 없이 무조건 100%였음 — 오히려 더 나쁜 상태였음).
+  - `monthSummaryByKey.set(...)` 메인 분기: `resolvedActualOutputPercent`를 로컬 상수로 뽑아서 `actualOutputPercent`/`plannedLoadPercent` 양쪽에 재사용.
+  - 백엔드 요약 없는 폴백 분기(`months.map`): 동일 패턴 적용.
+  - `uiMessages.js`의 `assign.capacitySummaryHint`(ko/en/vi) 캡션 문구를 새 동작에 맞게 갱신.
+- `npm --prefix frontend run build` 통과. 실제 브라우저 확인은 아직 안 함 — 다음에 확인 필요.

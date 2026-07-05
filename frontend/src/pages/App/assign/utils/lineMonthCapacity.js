@@ -792,6 +792,17 @@ export const buildLineMonthCapacityBoardRows = ({
         carryOutStSeconds,
         holidaySet,
       });
+      // A historical (past) month has no forward-looking "plan" left to show
+      // - it already happened. plannedLoadPercent used to hardcode 100% here
+      // (capacitySeconds / capacitySeconds, an identity unrelated to any
+      // real AssignmentPlan data), which kept showing a full load bar for
+      // months where every assignment had since been deleted. For a past
+      // month, what actually got produced is the only real signal left, so
+      // plannedLoadPercent mirrors actualOutputPercent instead.
+      const resolvedActualOutputPercent =
+        backendRow?.actualOutputPercent != null
+          ? Number(backendRow.actualOutputPercent)
+          : roundPercent(lineMonthlyActualOutputStSeconds, lineMonthlyCapacitySeconds);
       monthSummaryByKey.set(monthKey, {
         lineId,
         monthKey,
@@ -806,13 +817,7 @@ export const buildLineMonthCapacityBoardRows = ({
         ),
         lineMonthlyCapacitySeconds,
         lineMonthlyActualOutputStSeconds,
-        actualOutputPercent:
-          backendRow?.actualOutputPercent != null
-            ? Number(backendRow.actualOutputPercent)
-            : roundPercent(
-                lineMonthlyActualOutputStSeconds,
-                lineMonthlyCapacitySeconds
-              ),
+        actualOutputPercent: resolvedActualOutputPercent,
         actualOutputRecordedThroughDateKey,
         latestActualCoverageEndDateKey,
         forecastAnchorDateKey: rowForecastAnchorDateKey || null,
@@ -823,7 +828,7 @@ export const buildLineMonthCapacityBoardRows = ({
         forecastLoadStSeconds,
         plannedLoadPercent:
           inferredMonthType === 'historical'
-            ? roundPercent(lineMonthlyCapacitySeconds, lineMonthlyCapacitySeconds)
+            ? resolvedActualOutputPercent
             : roundPercent(forecastLoadStSeconds, forecastAvailableCapacitySeconds),
         carryInStSeconds,
         carryOutStSeconds,
@@ -852,6 +857,13 @@ export const buildLineMonthCapacityBoardRows = ({
         0,
         Math.round(Number(backendRow?.lineMonthlyActualOutputStSeconds) || 0)
       );
+      // Same fix as the historical branch above: this month has no backend
+      // summary at all, so there is even less basis for a hardcoded 100%
+      // plannedLoadPercent here. Fall back to the real actual-output percent.
+      const resolvedActualOutputPercent =
+        backendRow?.actualOutputPercent != null
+          ? Number(backendRow.actualOutputPercent)
+          : roundPercent(lineMonthlyActualOutputStSeconds, lineMonthlyCapacitySeconds);
       return {
         lineId,
         monthKey,
@@ -866,13 +878,7 @@ export const buildLineMonthCapacityBoardRows = ({
         ),
         lineMonthlyCapacitySeconds,
         lineMonthlyActualOutputStSeconds,
-        actualOutputPercent:
-          backendRow?.actualOutputPercent != null
-            ? Number(backendRow.actualOutputPercent)
-            : roundPercent(
-                lineMonthlyActualOutputStSeconds,
-                lineMonthlyCapacitySeconds
-              ),
+        actualOutputPercent: resolvedActualOutputPercent,
         actualOutputRecordedThroughDateKey:
           normalizeDateKey(backendRow?.actualOutputRecordedThroughDateKey) || null,
         latestActualCoverageEndDateKey:
@@ -888,10 +894,7 @@ export const buildLineMonthCapacityBoardRows = ({
         forecastAvailableCapacitySeconds: 0,
         forecastWorkingDayCount: 0,
         forecastLoadStSeconds: 0,
-        plannedLoadPercent: roundPercent(
-          lineMonthlyCapacitySeconds,
-          lineMonthlyCapacitySeconds
-        ),
+        plannedLoadPercent: resolvedActualOutputPercent,
         carryInStSeconds: 0,
         carryOutStSeconds: 0,
         carryOutDateKey: '',
