@@ -1,5 +1,15 @@
 # TODO
 
+## 2026-07-05 AssignmentPlan.assignmentCardId 실제 FK 추가 (1단계)
+- `AssignmentCard`/`AssignmentPlan`의 `cardId` 문자열 관례 연결을 실제 FK로 대체하는 작업 착수. 스키마에 `assignmentCardId Int?` 추가, `migration_fix.sql` Step 0k에 백필+제약조건 작성(기존 Step 0i workOrderId FK와 동일 패턴), `toAssignmentPlanWriteData`가 이제 새 FK를 채움(`PUT /assignment-board-state`의 create/update 양쪽).
+- 운영 DB에 마이그레이션 직접 실행은 자동 분류기가 차단(정당한 차단) — 다음 배포 때 predeploy가 자동 적용.
+- `npm run build` 통과. 상세는 AGENTS.md §43.
+
+### Remaining
+- 배포 후 `assignmentCardId` 백필이 정상적으로 채워졌는지 확인 필요.
+- 읽기 경로(§42에서 찾은 `loadAssignmentDisplayReferenceMaps`/`findOrderItemByAssignmentIdentity` 등 문자열 기반 헬퍼)를 새 FK로 전환하는 건 아직 안 함 — 다음 phase.
+- `cardId` 문자열 컬럼 제거는 읽기 경로 전환 검증 끝난 뒤.
+
 ## 2026-07-05 AssignmentCard가 계속 0건이던 진짜 원인 발견 (styleId 타입 불일치)
 - 잠금 시점 카드 재생성(§40) 배포 후에도 카드가 안 생겨서 진단 로그로 추적 → `buildAssignmentCardsFromOrders`/`collectStyleQuantityRequirementsFromOrders`가 스타일 조회 맵을 `Style.code`(문자열) 기준으로 만들고, 조회 키는 `item.styleId`(숫자 FK)를 그대로 `resolveOptionalString()`에 넣고 있었음. 이 함수는 문자열이 아니면 무조건 fallback을 반환해서 숫자 styleId가 매번 빈 문자열로 바뀌어 모든 주문 항목이 스킵되고 있었음 — 잠금 여부와 무관하게 카드가 원천적으로 안 만들어지는 구조였음.
 - 이게 §39에서 "사고 전부터 AssignmentCard가 이미 0건"이라고 관찰만 하고 원인을 못 찾았던 바로 그 버그. 스타일 조회 맵을 `Style.id`(숫자) 기준으로 고치고, 이제 불필요해진 후보 disambiguation 함수(`resolveStyleCandidateForAssignmentCard`)는 삭제. 같은 패턴이 있던 `refreshUnlinkedAssignmentPlanSnapshotsForOrg`도 같이 고침.

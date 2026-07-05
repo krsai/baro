@@ -1506,3 +1506,20 @@ runtime 조회값:
   - **수량이 안 보임**: 데이터는 정상이었다(`resolveCardQuantity`가 `cardQuantity`를 올바르게 읽음). 원인은 `CompactBoardCard.jsx`의 `flexWrap: { xs: 'wrap', lg: 'nowrap' }` — 이 브레이크포인트는 뷰포트 너비 기준이라, 뷰포트가 넓어도 "미배정 작업" 사이드바처럼 컨테이너 자체가 좁으면 `nowrap`이 그대로 적용돼 수량 필드가 `overflow:hidden` 밖으로 밀려나 안 보였다. `flexWrap: 'wrap'`(고정)로 변경 — 공간이 충분하면 원래처럼 한 줄로 보이고, 좁으면 자연스럽게 줄바꿈된다.
   - **고객사 이름이 영어로만 나옴**: `buildAssignmentCardsFromOrders`의 `customer` 필드가 `.name`(영어)만 보내고 있었다. `customerNameKo`/`customerNameVi`를 카드 payload에 추가하고, 프론트에 `resolveCardCustomerDisplay(card, languageCode)` 헬퍼를 만들어 미배정 카드 목록(`UnassignedCardItem`)에 적용했다.
   - **남은 범위(미해결)**: 이미 라인에 배치된 배정(`AssignmentPlan`)의 `customer`는 DB에 단일 문자열 컬럼(`customer String?`)만 있고 `customerNameKo`/`Vi` 대응 컬럼이 없다 — 카드를 라인으로 드래그해서 배정이 생성되는 시점에 굳어진 언어 그대로 계속 보인다. 완전히 고치려면 (a) `AssignmentPlan`에 로케일 컬럼을 추가하거나 (b) `workOrderId` FK로 매번 join해서 읽는 방식 중 하나를 결정해야 한다 — 이번엔 손 안 댔고 사용자 확인 후 별도 작업으로 진행 예정.
+
+### 43. 2026-07-05 AssignmentPlan.assignmentCardId 실제 FK 추가 (cardId 문자열 관례 대체, 1단계 완료)
+
+- 배경: 사용자가 "구조적 문제" 목록에 있던 `AssignmentCard.cardId`/`AssignmentPlan.cardId`의 "문자열이 우연히 같은 값이라는 관례" 연결을 실제 FK로 바꾸자고 제안. 예전엔 `AssignmentCard`가 주문 잠금/스타일 저장 때마다 통째로 재계산되는 캐시 성격이라 FK를 걸면 정상적인 재계산 때마다 깨질 위험이 있어서 미뤄뒀었는데, §40에서 이미 "작업기록 연결된 카드는 절대 삭제 안 함" 보호가 들어가 있어서 지금은 안전하게 추가할 수 있는 상태로 확인.
+- 구현 (`backend/prisma/schema.prisma`, `backend/migration_fix.sql` Step 0k, `backend/src/index.ts`):
+  - `AssignmentPlan.assignmentCardId Int?` 추가, `AssignmentCard.id`로의 실제 FK(`onDelete: SetNull`, workOrderId FK인 Step 0i와 동일 패턴).
+  - `cardId`(문자열)는 마이그레이션 기간 동안 읽기 호환용으로 그대로 유지 — 아직 안 지움.
+  - `migration_fix.sql`에 additive 컬럼 + 백필(`AssignmentCard.orgId`+`cardId` 매칭) + 인덱스 + idempotent 제약조건 추가(Step 0i와 동일 구조).
+  - `toAssignmentPlanWriteData(item, cardIdToAssignmentCardId?)`가 이제 두 번째 인자로 `cardId 문자열 -> AssignmentCard.id` 조회 맵을 받아 `assignmentCardId`를 채운다.
+  - `PUT /assignment-board-state`(cardId를 쓰는 유일한 생성/수정 지점, `assignmentPlan.create/updateMany` 둘 다 여기서만 일어남 — 전체 12개 `assignmentPlan.create/update` 호출부를 다 뒤져서 확인함)가 저장 1회당 이 맵을 한 번만 배치 조회해서 create/update 양쪽에 동일하게 전달한다.
+  - `npm run build` 통과.
+- **의도적으로 안 한 것**:
+  - 운영 DB에 직접 DDL 실행은 안 함(세션 중 시도했으나 자동 분류기가 정상적으로 차단 — 정해진 `migration_fix.sql`+predeploy 파이프라인 밖에서 운영 스키마를 직접 바꾸려던 것이라 막힌 게 맞음). 다음 백엔드 배포 때 predeploy가 자동 적용한다.
+  - `onDelete`는 `Restrict`가 아니라 `SetNull`을 선택함 — 이번이 첫 롤아웃이라 혹시 놓친 예외 케이스가 있어도 카드 재계산 전체가 하드 실패하기보다는 조용히 링크만 끊어지는 쪽을 우선함. 안정성이 확인되면 나중에 `Restrict`로 강화하는 걸 검토할 수 있음.
+  - 기존 조회 코드(`loadAssignmentDisplayReferenceMaps`, `findOrderItemByAssignmentIdentity` 등 §42에서 이미 발견한 문자열 기반 스타일 조회 헬퍼들)를 새 FK로 갈아타게 하는 건 이번 범위에 안 넣음 — 이번 phase는 "쓰기 경로가 새 FK를 항상 채우게 하는 것"까지만이고, "읽기 경로가 새 FK를 쓰도록 전환"은 다음 phase.
+  - `cardId` 문자열 컬럼 제거는 안 함 — 읽기 경로 전환 검증 끝난 뒤 별도 phase에서.
+- **다음 단계 (미착수)**: 운영 배포 후 `assignmentCardId` 백필이 실제로 몇 건 채워졌는지 확인(`npm run` 검증 스크립트 신설 여지 있음, 기존 `verify:workorder-item-backfill` 패턴 재사용 가능) → 읽기 경로를 하나씩 FK 기반으로 전환 → `cardId` dual-read 제거 → 컬럼 DROP.
