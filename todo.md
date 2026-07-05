@@ -1,5 +1,15 @@
 # TODO
 
+## 2026-07-05 AssignmentCard가 계속 0건이던 진짜 원인 발견 (styleId 타입 불일치)
+- 잠금 시점 카드 재생성(§40) 배포 후에도 카드가 안 생겨서 진단 로그로 추적 → `buildAssignmentCardsFromOrders`/`collectStyleQuantityRequirementsFromOrders`가 스타일 조회 맵을 `Style.code`(문자열) 기준으로 만들고, 조회 키는 `item.styleId`(숫자 FK)를 그대로 `resolveOptionalString()`에 넣고 있었음. 이 함수는 문자열이 아니면 무조건 fallback을 반환해서 숫자 styleId가 매번 빈 문자열로 바뀌어 모든 주문 항목이 스킵되고 있었음 — 잠금 여부와 무관하게 카드가 원천적으로 안 만들어지는 구조였음.
+- 이게 §39에서 "사고 전부터 AssignmentCard가 이미 0건"이라고 관찰만 하고 원인을 못 찾았던 바로 그 버그. 스타일 조회 맵을 `Style.id`(숫자) 기준으로 고치고, 이제 불필요해진 후보 disambiguation 함수(`resolveStyleCandidateForAssignmentCard`)는 삭제. 같은 패턴이 있던 `refreshUnlinkedAssignmentPlanSnapshotsForOrg`도 같이 고침.
+- 운영 DB 실데이터로 재현 검증 완료(E14-4 주문 → 스타일 3개 카드 정상 생성 확인). `npm run build` 통과. 상세는 AGENTS.md §42.
+- 같은 버그 패턴이 `loadAssignmentDisplayReferenceMaps`/`findOrderItemByAssignmentIdentity`(표시용 폴백 헬퍼)에도 남아있음 — 카드 생성 경로 아니라 이번엔 안 고침, 다음에 이어서.
+
+### Remaining
+- 사용자가 재배포 후 실제로 주문 잠가서 카드가 뜨는지 최종 확인 필요.
+- 진단용으로 추가한 `console.error` 로그들(`[modification-lock] DIAG`, `[rebuildAssignmentCardsForOrg]`)은 원인 확인 후 노이즈 줄이려면 낮은 레벨로 되돌리거나 정리 고려.
+
 ## 2026-07-05 "계획 부하" 과거 달 100% 하드코딩 버그 수정
 - `frontend/src/pages/App/assign/utils/lineMonthCapacity.js`의 `plannedLoadPercent`가 과거 달에 한해 `capacitySeconds/capacitySeconds`(항상 100%) 항등식이었던 걸 확정 진단 후 수정. 이제 과거 달은 `actualOutputPercent`를 그대로 따름. 백엔드 요약 없는 폴백 분기도 같이 고침(이전엔 달 종류 무관하게 무조건 100%였음).
 - `uiMessages.js`의 `assign.capacitySummaryHint` 캡션도 새 동작에 맞게 수정.

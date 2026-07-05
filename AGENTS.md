@@ -1487,3 +1487,15 @@ runtime 조회값:
   - 백엔드 요약 없는 폴백 분기(`months.map`): 동일 패턴 적용.
   - `uiMessages.js`의 `assign.capacitySummaryHint`(ko/en/vi) 캡션 문구를 새 동작에 맞게 갱신.
 - `npm --prefix frontend run build` 통과. 실제 브라우저 확인은 아직 안 함 — 다음에 확인 필요.
+
+### 42. 2026-07-05 AssignmentCard가 사고 이전부터 계속 0건이던 진짜 원인 발견 및 수정 (완료)
+
+- §40 배포 후에도 사용자가 주문을 잠가도 카드가 안 생긴다고 재현 — 진단 로그(`console.error`, Railway 배포 로그로 직접 확인)로 추적한 결과 `styles=41 lockedOrders=2` 등 입력 데이터는 전부 정상인데 `buildAssignmentCardsFromOrders`의 결과물 `baseCards=0`으로 확정.
+- **진짜 원인**: `buildAssignmentCardsFromOrders`와 `collectStyleQuantityRequirementsFromOrders`가 스타일 조회 맵을 `Style.code`(문자열) 기준으로 만들어놓고, 조회 키로는 `item.styleId`(숫자 FK)를 그대로 `resolveOptionalString()`에 넣어 사용했다. `resolveOptionalString(value, fallback)`은 `value`가 실제 문자열일 때만 값을 반환하고, 숫자가 들어오면 무조건 `fallback`을 반환하도록 구현되어 있다(`backend/src/utils/common.ts:48`). 그 결과 `item.styleId`(항상 숫자)는 매번 빈 문자열/`null`로 변환됐고, `if (!styleId) return;` 가드에 걸려 **모든 주문 항목이 예외 없이 스킵**됐다 — 잠금 여부와 무관하게 카드가 원천적으로 하나도 안 만들어지는 구조였다.
+- 이건 §39의 "사고 전부터 AssignmentCard가 이미 0건이었다"는 관찰의 실제 원인이었다. 당시엔 "delete 후 upsert 루프가 원자적이지 않아서"라고 추정하고 `$transaction`으로 감쌌는데(§39, 여전히 유효한 별개의 안전장치), 그건 증상을 완화할 뿐 근본 원인이 아니었다.
+- 수정: 두 함수 모두 스타일 조회 맵을 `Style.id`(숫자) 기준 `Map<number, Style>`로 바꾸고, `item.styleId`를 `toPositiveIntOrNull()`로 직접 비교하도록 변경. `Style.id`는 단일 행을 유일하게 식별하므로, 기존에 있던 "코드가 같은 여러 후보 중 주문 고객사/스타일명으로 가장 비슷한 것 고르기"(`resolveStyleCandidateForAssignmentCard`) 로직 자체가 더 이상 필요 없어 삭제했다 — FK 조회는 항상 정확히 하나의 결과만 나오기 때문이다.
+- 같은 버그가 있던 `refreshUnlinkedAssignmentPlanSnapshotsForOrg`(스타일 변경 시 미연결 배정 CT/ST 스냅샷 갱신)의 `styleByStyleId`도 같은 방식으로 고쳤다. 이 함수는 `AssignmentPlan`이 0건이라 지금 당장 영향은 없었지만, 카드가 다시 생기고 라인 배정이 시작되면 바로 문제가 될 뻔했다.
+- 운영 DB 실데이터로 재현·검증: E14-4 주문의 워크오더아이템을 수정된 로직으로 그룹핑하면 스타일 3개(S-ZIR04V/S-ZIQPQO/S-ZIQDTZ) 카드가 정상적으로 나옴을 확인.
+- `npm --prefix backend run build` 통과.
+- **남은 것 (같은 버그 패턴, 이번엔 손 안 댐)**: `loadAssignmentDisplayReferenceMaps`(`styleByStyleId`, `Style.code`로 키 생성)와 `findOrderItemByAssignmentIdentity`(`resolveOptionalString(item?.styleId, null)`으로 숫자 비교) — 둘 다 `resolveAssignmentDisplayFallback`이 쓰는 표시용 폴백 헬퍼라 카드 생성 경로에는 영향 없다. 다만 언젠가 이 폴백이 실제로 호출되는 상황(예: 손상된 assignment 표시 복구)에서는 지금도 항상 조용히 실패할 것이다. 다음에 이 영역을 건드릴 때 같이 고칠 것.
+- 브라우저 실제 확인 아직 안 함 — 사용자가 재배포 후 잠금 테스트로 확인 예정.
