@@ -9,8 +9,8 @@ const resolveInitial = (value = '') => {
   return trimmed ? trimmed.slice(0, 1).toUpperCase() : '?';
 };
 
-const CardField = ({ label, value, minWidth = 120, children }) => (
-  <Box sx={{ minWidth, flex: 1 }}>
+const CardField = ({ label, value, minWidth = 120, grow = true, children }) => (
+  <Box sx={{ minWidth, flex: grow ? 1 : '0 0 auto' }}>
     <Typography
       variant="caption"
       color="text.secondary"
@@ -36,6 +36,7 @@ const CompactBoardCard = ({
   customer = '',
   orderNo = '',
   orderNoLabel = null,
+  showOrderNo = true,
   styleName = '',
   quantity = null,
   progressPercent = 0,
@@ -45,6 +46,12 @@ const CompactBoardCard = ({
   previewUrl = '',
   accentColor = '#2563EB',
   backgroundColor = '#FFFFFF',
+  // Narrow-container usages (e.g. the unassigned-work sidebar) pass this so
+  // the customer/order-no fields don't flex-grow to fill the whole row -
+  // without it, the first field balloons to consume all remaining width on
+  // its line, pushing the next field down to a new line even though there
+  // was plainly room for both side by side.
+  compact = false,
   onClick,
   onContextMenu,
   onDisabledDragAttempt,
@@ -147,7 +154,13 @@ const CompactBoardCard = ({
           px: 1.25,
           py: 0.75,
           alignItems: 'center',
-          flexWrap: { xs: 'wrap', lg: 'nowrap' },
+          // This card is reused inside containers of very different widths
+          // (wide board bars vs. the narrow unassigned-pool sidebar). MUI
+          // breakpoints key off viewport width, not this component's own
+          // container, so `lg: 'nowrap'` kept clipping fields like quantity
+          // off-screen in the narrow sidebar even on a wide viewport. Plain
+          // 'wrap' still renders as a single row whenever there's room.
+          flexWrap: 'wrap',
         }}
       >
         {previewUrl ? (
@@ -175,11 +188,17 @@ const CompactBoardCard = ({
         <CardField
           label={getUiMessage('assign.cardCustomerLabel', 'Customer', languageCode)}
           value={customer}
+          grow={!compact}
+          minWidth={compact ? 70 : 120}
         />
-        <CardField
-          label={orderNoLabel || getUiMessage('assign.cardOrderNoLabel', 'Order No.', languageCode)}
-          value={orderNo}
-        />
+        {showOrderNo ? (
+          <CardField
+            label={orderNoLabel || getUiMessage('assign.cardOrderNoLabel', 'Order No.', languageCode)}
+            value={orderNo}
+            grow={!compact}
+            minWidth={compact ? 70 : 120}
+          />
+        ) : null}
         <CardField
           label={getUiMessage('assign.cardStyleLabel', 'Style', languageCode)}
           minWidth={160}

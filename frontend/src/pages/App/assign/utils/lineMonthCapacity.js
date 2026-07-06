@@ -298,12 +298,32 @@ const buildLineQueueForecast = ({
   const reviewRequiredAssignments = [];
   const readyToCompleteAssignments = [];
   const completedAssignments = [];
+  const zeroQuantityOverflowAssignments = [];
   let queuedCount = 0;
   let completedCount = 0;
   let reviewRequiredCount = 0;
   let readyToCompleteCount = 0;
+  let zeroQuantityOverflowCount = 0;
 
   (Array.isArray(assignments) ? assignments : []).forEach((assignment) => {
+    // A style dropped from its order while already worked is kept at
+    // quantity 0 instead of being deleted (AGENTS.md 40번). It never counts
+    // as queued/review/ready/completed capacity - it sits in its own
+    // "needs review" bucket until every linked work-record month is
+    // payroll-settled, at which point it drops out entirely.
+    if (
+      Boolean(assignment?.isZeroQuantityOverflow) &&
+      !Boolean(assignment?.isFullyPayrollSettled)
+    ) {
+      zeroQuantityOverflowCount += 1;
+      zeroQuantityOverflowAssignments.push({
+        ...assignment,
+        queuePosition: zeroQuantityOverflowCount,
+        queueStatus: 'zero_quantity_overflow',
+      });
+      return;
+    }
+
     const isCompleted = Boolean(assignment?.isCompleted);
     const scheduleStatus = String(assignment?.scheduleStatus || '').trim();
     const isStUnknown = Boolean(assignment?.isStUnknown) && !isCompleted;
@@ -436,6 +456,8 @@ const buildLineQueueForecast = ({
     totalRemainingStTotalSeconds,
     queueBacklogDays: roundDaysEstimate(totalRemainingStTotalSeconds, dailyCapacitySeconds),
     lineFreeDateKey,
+    zeroQuantityOverflowAssignments,
+    zeroQuantityOverflowCount,
   };
 };
 
@@ -770,6 +792,17 @@ export const buildLineMonthCapacityBoardRows = ({
         carryOutStSeconds,
         holidaySet,
       });
+      // A historical (past) month has no forward-looking "plan" left to show
+      // - it already happened. plannedLoadPercent used to hardcode 100% here
+      // (capacitySeconds / capacitySeconds, an identity unrelated to any
+      // real AssignmentPlan data), which kept showing a full load bar for
+      // months where every assignment had since been deleted. For a past
+      // month, what actually got produced is the only real signal left, so
+      // plannedLoadPercent mirrors actualOutputPercent instead.
+      const resolvedActualOutputPercent =
+        backendRow?.actualOutputPercent != null
+          ? Number(backendRow.actualOutputPercent)
+          : roundPercent(lineMonthlyActualOutputStSeconds, lineMonthlyCapacitySeconds);
       monthSummaryByKey.set(monthKey, {
         lineId,
         monthKey,
@@ -784,13 +817,7 @@ export const buildLineMonthCapacityBoardRows = ({
         ),
         lineMonthlyCapacitySeconds,
         lineMonthlyActualOutputStSeconds,
-        actualOutputPercent:
-          backendRow?.actualOutputPercent != null
-            ? Number(backendRow.actualOutputPercent)
-            : roundPercent(
-                lineMonthlyActualOutputStSeconds,
-                lineMonthlyCapacitySeconds
-              ),
+        actualOutputPercent: resolvedActualOutputPercent,
         actualOutputRecordedThroughDateKey,
         latestActualCoverageEndDateKey,
         forecastAnchorDateKey: rowForecastAnchorDateKey || null,
@@ -801,7 +828,7 @@ export const buildLineMonthCapacityBoardRows = ({
         forecastLoadStSeconds,
         plannedLoadPercent:
           inferredMonthType === 'historical'
-            ? roundPercent(lineMonthlyCapacitySeconds, lineMonthlyCapacitySeconds)
+            ? resolvedActualOutputPercent
             : roundPercent(forecastLoadStSeconds, forecastAvailableCapacitySeconds),
         carryInStSeconds,
         carryOutStSeconds,
@@ -830,6 +857,13 @@ export const buildLineMonthCapacityBoardRows = ({
         0,
         Math.round(Number(backendRow?.lineMonthlyActualOutputStSeconds) || 0)
       );
+      // Same fix as the historical branch above: this month has no backend
+      // summary at all, so there is even less basis for a hardcoded 100%
+      // plannedLoadPercent here. Fall back to the real actual-output percent.
+      const resolvedActualOutputPercent =
+        backendRow?.actualOutputPercent != null
+          ? Number(backendRow.actualOutputPercent)
+          : roundPercent(lineMonthlyActualOutputStSeconds, lineMonthlyCapacitySeconds);
       return {
         lineId,
         monthKey,
@@ -844,13 +878,7 @@ export const buildLineMonthCapacityBoardRows = ({
         ),
         lineMonthlyCapacitySeconds,
         lineMonthlyActualOutputStSeconds,
-        actualOutputPercent:
-          backendRow?.actualOutputPercent != null
-            ? Number(backendRow.actualOutputPercent)
-            : roundPercent(
-                lineMonthlyActualOutputStSeconds,
-                lineMonthlyCapacitySeconds
-              ),
+        actualOutputPercent: resolvedActualOutputPercent,
         actualOutputRecordedThroughDateKey:
           normalizeDateKey(backendRow?.actualOutputRecordedThroughDateKey) || null,
         latestActualCoverageEndDateKey:
@@ -866,10 +894,7 @@ export const buildLineMonthCapacityBoardRows = ({
         forecastAvailableCapacitySeconds: 0,
         forecastWorkingDayCount: 0,
         forecastLoadStSeconds: 0,
-        plannedLoadPercent: roundPercent(
-          lineMonthlyCapacitySeconds,
-          lineMonthlyCapacitySeconds
-        ),
+        plannedLoadPercent: resolvedActualOutputPercent,
         carryInStSeconds: 0,
         carryOutStSeconds: 0,
         carryOutDateKey: '',
@@ -913,12 +938,14 @@ export const buildLineMonthCapacityBoardRows = ({
         queueForecast.reviewRequiredAssignments.length +
         queueForecast.readyToCompleteAssignments.length,
       finishedAssignmentCount: queueForecast.completedAssignments.length,
+      zeroQuantityOverflowAssignmentCount: queueForecast.zeroQuantityOverflowAssignments.length,
       months,
       assignments: assignmentsForLine,
       queuedAssignments: queueForecast.queuedAssignments,
       reviewRequiredAssignments: queueForecast.reviewRequiredAssignments,
       readyToCompleteAssignments: queueForecast.readyToCompleteAssignments,
       completedAssignments: queueForecast.completedAssignments,
+      zeroQuantityOverflowAssignments: queueForecast.zeroQuantityOverflowAssignments,
     };
   });
 };

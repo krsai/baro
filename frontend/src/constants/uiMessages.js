@@ -308,9 +308,9 @@ export const UI_MESSAGES = {
     capacityMode: { ko: '용량', en: 'Capacity', vi: 'Cong suat' },
     timelineMode: { ko: '타임라인', en: 'Timeline', vi: 'Tien do' },
     capacitySummaryHint: {
-      ko: '과거 기록월의 계획 부하는 월 작업 가능량을 100% 기준으로 표시하고, 실제 생산은 저장된 작업기록을 따릅니다. 마지막 기록 다음 작업일부터는 남은 배정 예측 부하를 표시합니다.',
-      en: 'For recorded past months, planned load uses the month capacity as 100%. Actual production follows saved work logs, and remaining assignments are forecast from the next workday after the latest record.',
-      vi: 'Voi thang da ghi nhan, tai trong ke hoach lay cong suat thang lam moc 100%. San luong thuc te theo work log da luu, va phan viec con lai duoc du bao tu ngay lam viec tiep theo sau ghi nhan moi nhat.',
+      ko: '과거 기록월의 계획 부하는 실제 생산률과 동일하게 표시됩니다(이미 지난 달은 실제로 일어난 일만 의미가 있습니다). 마지막 기록 다음 작업일부터는 남은 배정 예측 부하를 표시합니다.',
+      en: 'For recorded past months, planned load mirrors actual output (only what actually happened matters for a month that has passed). Remaining assignments are forecast from the next workday after the latest record.',
+      vi: 'Voi thang da ghi nhan, tai trong ke hoach hien thi giong san luong thuc te (thang da qua chi con y nghia voi nhung gi da xay ra). Phan viec con lai duoc du bao tu ngay lam viec tiep theo sau ghi nhan moi nhat.',
     },
     lineCapacityHeader: { ko: '라인', en: 'Line', vi: 'Chuyen' },
     assignmentCountCompact: {
@@ -378,6 +378,16 @@ export const UI_MESSAGES = {
       en: 'Quantity review required',
       vi: 'Can xem lai so luong',
     },
+    zeroQuantityOverflowStatusCompact: {
+      ko: '0수량 오버플로우',
+      en: 'Zero-qty overflow',
+      vi: 'So luong 0 - du san xuat',
+    },
+    zeroQuantityOverflowCompact: {
+      ko: '주문에서 빠짐 - 이미 {quantity}개 생산됨',
+      en: 'Removed from order - already produced {quantity}',
+      vi: 'Da bi xoa khoi don - da san xuat {quantity}',
+    },
     stUnknownExcludedCompact: {
       ko: 'ST 미설정 {count}건 제외',
       en: '{count} ST-missing excluded',
@@ -397,6 +407,11 @@ export const UI_MESSAGES = {
       ko: '작업 종료 목록',
       en: 'Finished on this line',
       vi: 'Cong viec da xong tren chuyen',
+    },
+    zeroQuantityOverflowHeader: {
+      ko: '확인 필요 (주문에서 빠졌지만 이미 작업한 배정)',
+      en: 'Needs review (removed from order, already worked)',
+      vi: 'Can xem xet (da bi xoa khoi don nhung da lam viec)',
     },
     lineAssignments: {
       ko: '이 라인 배정 목록',

@@ -22,6 +22,16 @@ export const getAssignmentCardStatus = (card) =>
 export const resolveCardQuantity = (card, fallback = 0) =>
   toNonNegativeIntOrNull(card?.cardQuantity ?? card?.quantity) ?? fallback;
 
+// AssignmentCard payloads carry customerNameKo/Vi alongside the default
+// (English) customer name so this can show the viewer's own UI language.
+// Placed-on-line assignments (AssignmentPlan) only ever had a single plain
+// `customer` DB column, so this gracefully falls back to that for them.
+export const resolveCardCustomerDisplay = (card, languageCode = 'en') => {
+  if (languageCode === 'ko' && card?.customerNameKo) return card.customerNameKo;
+  if (languageCode === 'vi' && card?.customerNameVi) return card.customerNameVi;
+  return card?.customer ?? '';
+};
+
 export const resolveCardPtTotalSeconds = (card, fallback = 0) => {
   return (
     toPositiveSecondsOrNull(

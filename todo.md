@@ -1,5 +1,67 @@
 # TODO
 
+## 2026-07-05 AssignmentPlan.assignmentCardId 실제 FK 추가 (1단계)
+- `AssignmentCard`/`AssignmentPlan`의 `cardId` 문자열 관례 연결을 실제 FK로 대체하는 작업 착수. 스키마에 `assignmentCardId Int?` 추가, `migration_fix.sql` Step 0k에 백필+제약조건 작성(기존 Step 0i workOrderId FK와 동일 패턴), `toAssignmentPlanWriteData`가 이제 새 FK를 채움(`PUT /assignment-board-state`의 create/update 양쪽).
+- 운영 DB에 마이그레이션 직접 실행은 자동 분류기가 차단(정당한 차단) — 다음 배포 때 predeploy가 자동 적용.
+- `npm run build` 통과. 상세는 AGENTS.md §43.
+
+### Remaining
+- 배포 후 `assignmentCardId` 백필이 정상적으로 채워졌는지 확인 필요.
+- 읽기 경로(§42에서 찾은 `loadAssignmentDisplayReferenceMaps`/`findOrderItemByAssignmentIdentity` 등 문자열 기반 헬퍼)를 새 FK로 전환하는 건 아직 안 함 — 다음 phase.
+- `cardId` 문자열 컬럼 제거는 읽기 경로 전환 검증 끝난 뒤.
+
+## 2026-07-05 AssignmentCard가 계속 0건이던 진짜 원인 발견 (styleId 타입 불일치)
+- 잠금 시점 카드 재생성(§40) 배포 후에도 카드가 안 생겨서 진단 로그로 추적 → `buildAssignmentCardsFromOrders`/`collectStyleQuantityRequirementsFromOrders`가 스타일 조회 맵을 `Style.code`(문자열) 기준으로 만들고, 조회 키는 `item.styleId`(숫자 FK)를 그대로 `resolveOptionalString()`에 넣고 있었음. 이 함수는 문자열이 아니면 무조건 fallback을 반환해서 숫자 styleId가 매번 빈 문자열로 바뀌어 모든 주문 항목이 스킵되고 있었음 — 잠금 여부와 무관하게 카드가 원천적으로 안 만들어지는 구조였음.
+- 이게 §39에서 "사고 전부터 AssignmentCard가 이미 0건"이라고 관찰만 하고 원인을 못 찾았던 바로 그 버그. 스타일 조회 맵을 `Style.id`(숫자) 기준으로 고치고, 이제 불필요해진 후보 disambiguation 함수(`resolveStyleCandidateForAssignmentCard`)는 삭제. 같은 패턴이 있던 `refreshUnlinkedAssignmentPlanSnapshotsForOrg`도 같이 고침.
+- 운영 DB 실데이터로 재현 검증 완료(E14-4 주문 → 스타일 3개 카드 정상 생성 확인). `npm run build` 통과. 상세는 AGENTS.md §42.
+- 같은 버그 패턴이 `loadAssignmentDisplayReferenceMaps`/`findOrderItemByAssignmentIdentity`(표시용 폴백 헬퍼)에도 남아있음 — 카드 생성 경로 아니라 이번엔 안 고침, 다음에 이어서.
+
+### Remaining
+- 카드는 실제로 생성 확인됨(운영에서 "미배정 작업 8개", 고객사 "THE SAN" 정상 표시까지 사용자가 스크린샷으로 확인). 발견 당시 "고객사"가 전부 `-`로 비어있는 후속 버그도 같은 세션에서 수정 완료(`customer: order?.customerName ?? order?.customer` → `order?.customerOrg?.name ?? order?.buyerOrg?.name`, `workOrderId` select 누락도 같이 수정). 상세는 AGENTS.md §42 후속 항목.
+- 원인 확인 완료 후 디버깅용 `console.error` DIAG 로그 전부 정리함(routine 로그 제거, 실제 에러 시에만 찍는 catch 로그만 유지) — Railway 로그에서 정상 동작인데 빨간 에러로 보이던 문제 해소.
+- 다음 세션에서 이어서 할 것: `loadAssignmentDisplayReferenceMaps`/`findOrderItemByAssignmentIdentity`의 같은 클래스 버그(AGENTS.md §42 "남은 것" 참고), 라인에 실제로 카드를 드래그해서 AssignmentPlan이 정상 생성되는지 확인.
+
+## 2026-07-05 "계획 부하" 과거 달 100% 하드코딩 버그 수정
+- `frontend/src/pages/App/assign/utils/lineMonthCapacity.js`의 `plannedLoadPercent`가 과거 달에 한해 `capacitySeconds/capacitySeconds`(항상 100%) 항등식이었던 걸 확정 진단 후 수정. 이제 과거 달은 `actualOutputPercent`를 그대로 따름. 백엔드 요약 없는 폴백 분기도 같이 고침(이전엔 달 종류 무관하게 무조건 100%였음).
+- `uiMessages.js`의 `assign.capacitySummaryHint` 캡션도 새 동작에 맞게 수정.
+- `npm --prefix frontend run build` 통과. 실제 브라우저 확인 필요 — 배정 카드/작업기록이 하나도 없는 라인에서 "계획 부하"가 실제 생산률(0%)과 같이 뜨는지 확인할 것.
+- 상세는 AGENTS.md §41 참고.
+
+## 2026-07-05 잠금 시점 카드/배정 동기화 + 0수량 오버플로우 구현 (백엔드 완료, 보드 UI 남음)
+
+### Done
+- `backend/src/index.ts`: `syncAssignmentPlansForOrderLock` 신규 함수 추가. `PUT /orders/:orderId`에서 카드/배정 관련 코드(하드 블록, 정리, rebuild) 전부 제거해 순수 `WorkOrderItem` 저장으로 축소. `POST /orders/:orderId/modification-lock`은 `locked:true`로 바뀔 때만 위 함수 + `rebuildAssignmentCardsForOrgIds`를 실행하고 응답에 `zeroedStyles`를 추가. `rebuildAssignmentCardsForOrg`의 주문 조회에 `modificationLockedAt: { not: null }` 필터 추가(안 하면 다른 트리거가 잠기지 않은 주문 카드까지 되살림 — 구현 중 발견). 죽은 함수 `findOrderStyleRemovalBlockers`/`summarizeOrderStyleRemovalIssues` 삭제.
+- `frontend/src/pages/App/order/OrderList.jsx`: 잠금 성공 시 `zeroedStyles` 있으면 비차단 토스트 표시(ko/en/vi 문구 추가).
+- `npm --prefix backend run build`, `npm --prefix frontend run build` 둘 다 통과.
+- 상세 설계/구현 내용은 `AGENTS.md` §40 참고.
+
+- 배정 보드 "확인 필요" 경고 섹션도 마저 구현함: 백엔드 `buildAssignmentPlanProgressRows`에 `isZeroQuantityOverflow`/`isFullyPayrollSettled` 추가, `AssignBoard.jsx`/`lineMonthCapacity.js`/`LineMonthCapacityBoard.jsx`/`uiMessages.js`에 전부 배선. `npm run build` 백엔드/프론트 둘 다 통과. 상세는 AGENTS.md §40 참고.
+
+### Remaining
+- 같은 cardId를 공유하는 split 배정의 수량 재분배 정책 미정 — 현재는 그대로 두는 것으로 처리(스킵).
+- 실제 브라우저 동작 확인 안 함(개발 서버 미기동, 빌드 통과만 확인) — 다음에 반드시 주문 잠금/해제/스타일 제거/확인 필요 섹션 시나리오를 실제로 클릭해서 확인할 것.
+
+## 2026-07-05 배정 화면 이상 현상 진단 + 카드/잠금 재설계 방향 확정 (코드 미반영, 설계만 확정)
+
+### 진단 (완료, 운영 DB 직접 조회로 검증)
+- 사용자가 "배정 카드는 안 보이는데 LINE #1 계획 부하는 100%로 뜬다"고 보고. Railway 운영 DB(`DATABASE_PUBLIC_URL`)에 직접 접속해 확인.
+- `AssignmentPlan`, `AssignmentCard` 둘 다 **전체 조직 통틀어 0건**(어제 사고로 삭제된 뒤 아직 아무도 재생성 안 함). `WorkOrder`(8) / `WorkOrderItem`(107) / `Style`(41) / `StyleProcess`(1084)는 살아있음. `WorkLog`/`WorkRecord`도 0건(어제 사고 경위상 사용자가 먼저 지운 것과 일치, 새로운 손실 아님).
+- "주문 잠그면 카드가 생기냐"는 질문에 대한 답: **아니다.** `POST /orders/:orderId/modification-lock`은 잠금/해제 어느 쪽이든 `rebuildAssignmentCardsForOrgIds`를 호출하지 않는다(코드 확인). 카드가 재생성되는 유일한 경로는 주문 **저장**(`PUT /orders/:orderId`, `POST /orders`)이었다.
+- "6월까지 계획 부하 100%, 7월부터 0%"의 원인도 확정: `frontend/src/pages/App/assign/utils/lineMonthCapacity.js:802-805`에서 과거("historical") 달은 `plannedLoadPercent = capacitySeconds / capacitySeconds`로 **항상 100%가 나오는 항등식**이었다. 실제 AssignmentPlan 데이터와 무관하게 과거 달은 무조건 100%, 미래 달만 진짜 backlog 기반 forecast 공식을 쓴다. AssignmentPlan이 0건인 것과 별개로 존재하던 버그.
+- 사용자 지시로 `AssignmentPlan.deleteMany({})` 실행 — 실행 전에도 0건이었으므로 실질적으로는 no-op이었음(확인 목적으로 실행).
+
+### 설계 결정 (AGENTS.md 40번 섹션에 상세 기록, 여기서는 요약만)
+- 카드 생성/갱신 시점을 39번(저장 시점 즉시 반영)에서 **잠금 시점**으로 다시 되돌리기로 확정. 해제는 여전히 순수 플래그(카드/배정 안 건드림) — 이건 유지.
+- 작업기록이 이미 연결된 배정도 잠금 시점에 `assignmentQuantity`가 최신 주문 수량으로 갱신되도록 허용(현재는 `refreshUnlinkedAssignmentPlanSnapshotsForOrg`가 linked plan을 아예 스킵함 — 이 보호를 완화해야 함). 단, `isCompleted`/급여 잠금된 플랜은 계속 보호.
+- 주문에서 스타일이 통째로 빠지고 이미 작업기록이 있어도 저장/잠금을 막지 않음(기존 `findOrderStyleRemovalBlockers` 하드 블록 폐기 예정) — 대신 해당 배정을 삭제하지 않고 수량만 0으로 낮춰서 이미 만든 수량 전부가 `overflowQuantity`로 잡히게 함. 급여/AT 계산 코드는 이미 `assignmentQuantity`가 아니라 `WorkRecord` 기준이라 이 변경에 영향받지 않음(코드로 확인).
+- 청구/정산(billing) 기능은 이 저장소에 아직 없음(grep 0건) — 0-수량 오버플로우 배정을 매출에 반영하는 건 사람이 나중에 고객 협의 후 주문을 재수정하는 수동 프로세스로 남기기로 함.
+
+### Remaining (구현 전 필수 확인 사항, AGENTS.md 40번 "미해결 질문"과 동일)
+- `buildAssignmentCardsFromOrders`(`backend/src/index.ts:10527`)는 `order.workOrderItems`에 없는 스타일은 순회 자체를 안 함 — "주문엔 없지만 작업기록 연결로 인해 0수량 카드는 남아야 하는" 케이스를 만들 신규 로직이 없음. 잠금 처리 파이프라인에 추가 필요.
+- 0-수량 오버플로우 배정을 보드 UI에 어떻게 노출할지(상시 노출 vs 경고 섹션) 미정.
+- 하드 블록 제거 시 비차단 안내 토스트를 보여줄지 미정.
+- 이번 세션에서는 **코드 변경 없음** — 위 설계와 미해결 질문에 대한 답이 나온 뒤 별도 세션에서 구현.
+
 ## 2026-07-03 syncWorkRecordRefs가 attachCanonicalFieldsToWorkRecords보다 먼저 실행돼 processCode를 매번 null로 지우던 버그 수정
 
 ### 배경

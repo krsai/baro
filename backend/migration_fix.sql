@@ -1,3 +1,29 @@
+-- Step 0k: AssignmentPlan.assignmentCardId real FK to AssignmentCard (20260705)
+-- Replaces the "cardId string happens to match" application-level convention
+-- (AGENTS.md structural-problems list) with a real FK, same pattern as Step 0i
+-- did for workOrderId. cardId itself stays for now as a read fallback during
+-- the migration - see AGENTS.md 43 for the phased plan and why onDelete is
+-- SET NULL rather than RESTRICT for this first rollout.
+ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentCardId" INTEGER;
+
+UPDATE "AssignmentPlan" ap
+SET "assignmentCardId" = ac.id
+FROM "AssignmentCard" ac
+WHERE ap."assignmentCardId" IS NULL
+  AND ap."cardId" IS NOT NULL
+  AND ac."orgId" = ap."orgId"
+  AND ac."cardId" = ap."cardId";
+
+CREATE INDEX IF NOT EXISTS "AssignmentPlan_assignmentCardId_idx"
+  ON "AssignmentPlan"("assignmentCardId");
+
+DO $$ BEGIN
+  ALTER TABLE "AssignmentPlan"
+    ADD CONSTRAINT "AssignmentPlan_assignmentCardId_fkey"
+    FOREIGN KEY ("assignmentCardId") REFERENCES "AssignmentCard"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- Step 0d-5: backfill WorkOrderItem rows from legacy WorkOrder.items JSON (20260702)
 -- Only touches orders that have zero WorkOrderItem rows today (current write paths
 -- already keep WorkOrderItem in sync, so this only affects pre-relational legacy data).

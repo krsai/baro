@@ -34,8 +34,8 @@
 - **ST (`stSeconds`)**: 공정 row 1개를 1장 수행하는 전체 표준 시간이다. 스케줄러 예상 기간, 배정 카드 길이, 계획 소요 시간 계산의 기준이며 `timesPerPiece`를 다시 곱하지 않는다.
 - **CT (`ctSeconds`)**: 공정 row 1개를 1장 수행하는 전체 계약/급여 기준 시간이다. 배정 카드에서 수정할 수 있지만, 스케줄러 길이 계산에 사용하면 안 되며 `timesPerPiece`를 다시 곱하지 않는다.
 - **AT**: WorkLog/WorkRecord와 출퇴근 데이터로 학습한 실제 시간 추정값이다. 스케줄 보정/예측 참고값이지 CT가 아니다.
-- `AssignmentPlan.stTotalSeconds`: 배정 카드 전체의 계획 ST 총초. 스케줄러 길이 계산 전용이다. 과거 `totalSeconds`/`stSeconds` 카드 총합 명칭을 대체한다.
-- `AssignmentPlan.ctTotalSeconds`: 배정 카드 전체의 계약 CT 총초. 급여/계약 기준 전용이며 스케줄러 길이 계산에 사용 금지.
+- `AssignmentPlan.assignmentStTotalSeconds`(물리 컬럼명, §24에서 `stTotalSeconds`에서 리네임됨): 배정 카드 전체의 계획 ST 총초. 스케줄러 길이 계산 전용이다. API/board payload 호환 키로 `stTotalSeconds`가 여전히 노출될 수 있다.
+- `AssignmentPlan.assignmentCtTotalSeconds`(물리 컬럼명, §24에서 `ctTotalSeconds`에서 리네임됨): 배정 카드 전체의 계약 CT 총초. 급여/계약 기준 전용이며 스케줄러 길이 계산에 사용 금지. API/board payload 호환 키로 `ctTotalSeconds`가 여전히 노출될 수 있다.
 - `WorkRecord.ctSeconds`: 작업기록 상세 행의 급여 계산용 CT. 진행률/스케줄 실제 기간 계산에서 ST처럼 쓰면 안 된다.
 - `WorkLog.totalCtSeconds`: 작업기록 헤더의 CT 합계. 작업기록 목록/요약과 급여 참고용이며 스케줄러 길이 계산에 사용 금지.
 - `AtTrainingBucket.laborInputSeconds`: AT 학습용 실제/대체 투입 노동 시간 합이다. 스케줄러 계획 시간이나 계약 시간과 섞으면 안 된다.
@@ -120,11 +120,14 @@ AT(q) = a*q + b
 
 ### AssignmentPlan (스케줄 카드)
 - 단위: 기본 `주문 × 스타일` (색상/사이즈 단위 미구현)
-- `stTotalSeconds`: 스케줄러 계획 길이 계산에 쓰는 배정카드 전체 ST 총초. 과거 `totalSeconds`/`stSeconds` 카드 총합 명칭을 대체.
-- `ctTotalSeconds`: 급여/계약 계산에 쓰는 배정카드 전체 CT 총초. 과거 `contractedSeconds` 명칭을 대체하며 스케줄러 길이 계산에 사용 금지.
+- `assignmentQuantity`: 계획 수량. §40(2026-07-05)부터 이 값이 항상 "생산한 만큼"과 같다는 보장은 없다 — 주문에서 스타일이 빠지면 작업기록 유무에 따라 0으로 남을 수 있다(아래 "0-수량 오버플로우" 참고).
+- `assignmentStTotalSeconds`(물리 컬럼명): 스케줄러 계획 길이 계산에 쓰는 배정카드 전체 ST 총초.
+- `assignmentCtTotalSeconds`(물리 컬럼명): 급여/계약 계산에 쓰는 배정카드 전체 CT 총초. 스케줄러 길이 계산에 사용 금지.
 - `assignmentCtSnapshot`: assignment 저장 시점의 CT 스냅샷 JSON. `processes[].snapshotCtSeconds`와 `processes[].pieceCtSeconds`는 급여/계약 CT 기준이며, snapshot 안에 ST 복사본을 저장하지 않는다.
 - `isCompleted / finalQuantity / completedAt`: 생산 완료 확정 결과 (`PATCH /assignment-plans/:externalId/production-complete`)
 - `closedQty / closedAt / closedBy / closeMode / closeBasis`: 제작 완료 확정 상태 스냅샷 (구 `/close` 경로와 신규 `/production-complete` 공통 반영)
+- **카드/배정 생성 시점 (§40, 2026-07-05부터)**: `AssignmentCard`/`AssignmentPlan`은 주문을 **저장**할 때가 아니라 **잠글 때**(`POST /orders/:orderId/modification-lock`, `locked:true`) 만들어지거나 갱신된다. 잠기지 않은 주문은 카드가 아예 없다. 해제는 순수 권한 플래그라 카드/배정에 손대지 않는다.
+- **0-수량 오버플로우 (§40)**: 주문에서 스타일이 빠졌는데 그 스타일에 이미 `WorkRecord`가 있으면, 카드/배정을 지우지 않고 `assignmentQuantity=0`으로만 낮춘다. 이미 생산된 수량은 전부 `overflowQuantity`(진행률 응답 필드)로 잡힌다. 배정 보드에는 별도 "확인 필요" 경고 섹션에 표시되고, 연결된 모든 작업기록의 월이 급여 잠금되면 자동으로 그 섹션에서 빠진다.
 
 ### ⚠️ DB 적용 메모
 - 모든 스키마/데이터 변경은 `backend/migration_fix.sql`로 관리. `backend/railway.json`의 `deploy.preDeployCommand`가 `npm run railway:predeploy`를 실행하도록 설정되어 있어야 하며, 배포 로그에서 migration 실행 여부를 확인한다.
@@ -186,7 +189,7 @@ AT(q) = a*q + b
 ## 스케줄러 로직 분석 결과
 
 ### 이미 구현돼 있는 것
-- **미배정 카드 표시**: `buildCardsFromOrders`가 주문의 모든 카드를 생성. 미배정 카드는 보드 풀(pool)에 남아 있어 눈으로 확인 가능.
+- **미배정 카드 표시**: `buildAssignmentCardsFromOrders`가 **잠긴** 주문의 카드를 생성한다(§40, 2026-07-05부터 — 예전엔 모든 주문이었으나 지금은 잠금 시점에만 생성됨). 미배정 카드는 보드 풀(pool)에 남아 있어 눈으로 확인 가능.
 - **생산 완료 반영**: `completeAssignmentPlanProduction`이 `syncAssignmentSchedulesFromWorkRecordPlans` 및 `persistAssignmentPlanProgressSnapshot`을 호출해 완료 상태와 일정 정보를 갱신.
 - **라인 균형**: 시각적으로 보드에서 확인 가능 (별도 지표 불필요).
 - **`progressPercent` 필드**: `/assignment-plan-progress` 응답에 포함되며, 현재는 `sum(WorkRecord.quantity) / (planQuantity × processCount)` 공식으로 계산.
@@ -195,6 +198,7 @@ AT(q) = a*q + b
 - **rolling forecast 기준**: line-month 보드의 forecast load/carry는 저장된 예전 assignment range가 아니라 **현재 보드의 미완료 assignment queue**와 `remainingStTotalSeconds`를 기준으로 다시 계산한다. 따라서 현재 보드에서 라인 queue가 0건이면 forecast load도 0이어야 한다.
 - **forecast anchor 규칙**: line-level forecast 시작점은 `nextWorkingDay(lastActualCoverageEndDateKey)`다. 아직 actual WorkLog가 하나도 없으면 fallback은 `today` 또는 그 다음 working day다. 기본 working day는 월~토, 일요일과 휴일관리 날짜만 제외한다.
 - **anchor month 의미**: actual이 있는 과거 month는 history다. anchor month와 미래 month는 현재 남은 backlog를 앞으로 capacity에 fill-forward 한 rolling forecast다. 6월 capacity를 먼저 채우고 초과분은 7월, 다시 초과하면 8월로 carry한다.
+- **과거(historical) month의 "계획 부하"는 forecast 공식을 쓰지 않는다(§41, 2026-07-05)**: 이미 닫힌 달은 "남은 backlog를 채운다"는 개념 자체가 성립하지 않는다 — 그 달에 못 채운 건 자동으로 다음 열린 달의 carry-in으로 넘어가기 때문이다. 그래서 과거 달의 "계획 부하"는 같은 달의 `actualOutputPercent`(실제 생산률)를 그대로 따른다. 예전엔 과거 달을 무조건 100%로 하드코딩했던 버그가 있었다 — 실데이터와 무관하게 100%가 나와 배정이 하나도 없어도 "잔여 데이터가 남아있다"는 오해를 유발했다.
 - **anchor month 퍼센트 규칙**: anchor month의 `forecast load percent` 분모는 그 달 전체 capacity가 아니라 **anchor 이후 남은 forecastAvailableCapacitySeconds**다. 예: `2026-06-10~2026-06-30` 구간을 꽉 채우면 6월 cell은 `100%`로 보이고, 보조 문구로 `2026-06-10~2026-06-30` 범위를 함께 보여준다.
 - **UI 최소 정보 원칙**: 라인 요약 행은 `라인명`, `인원`, `배정 작업 수(완료 제외)`, `완료 예상 시점`만 우선 표시한다. 월 cell의 carry는 시간(hours)이 아니라 **다음으로 넘어가는 날짜**로 표시한다.
 - **세로형 drag/drop 작업 목록**: 라인 대기 작업과 미배정 작업은 각각 `카드 1개 = 전체폭 1행`으로 세로 스택한다. 카드에는 이미지, 고객사, 주문번호, 스타일, 수량, 진행도를 우선 표시한다.
@@ -281,12 +285,12 @@ AT(q) = a*q + b
 
 ---
 
-## 현재 상황 (2026-05)
+## 현재 상황 (2026-07-05 기준, 이 섹션은 자주 갱신할 것 — 오래되면 날짜만 보고도 신뢰하지 말 것)
 
-- 4월 데이터 최초 입력 중 (4월 30일에 한달치 일괄 입력)
-- 출퇴근 데이터는 이미 입력 완료 → AT 학습 필터 통과 가능
-- AT 신뢰도는 낮게 시작하지만 누적될수록 개선되는 것이 목표
-- 병렬 생산(라인에서 A+B 동시 작업)은 AT 추정에 문제 없음. 스케줄은 순차 계획이지만 현실은 병렬.
+- 2026-07-03 운영 데이터 삭제 사고(§39) 이후 `AssignmentPlan`/`AssignmentCard`가 전체 조직 0건 상태에서 복구 중. `WorkOrder`/`WorkOrderItem`/`Style`은 살아있음.
+- 카드/배정 생성 로직을 저장 시점 → 잠금 시점으로 재설계(§40)했고, 이 재설계에 실제 버그가 있어 디버깅 진행 중(진단 로그 배포함, Railway 로그 대기 중 — todo.md 최신 항목 참고).
+- 과거(4월) 데이터 입력은 이미 끝났고 지금은 운영 단계 — "최초 입력 중" 문구는 더 이상 유효하지 않음.
+- 병렬 생산(라인에서 A+B 동시 작업)은 AT 추정에 문제 없음. 스케줄은 순차 계획이지만 현실은 병렬 — 이 특성 자체는 변하지 않음.
 
 ---
 
@@ -389,7 +393,7 @@ AT(q) = a*q + b
 | 인증 | `GET /auth/context` |
 | 조직/멤버십 | `GET/POST /organizations`, `PATCH /organizations/:id/subscription`, `GET/POST /org-memberships` |
 | 인사/라인 | `GET/POST /employees`, `GET/POST /factories`, `GET/POST /lines`, `POST /line-assignments/assign\|unassign` |
-| 주문/스타일 | `GET/POST/PUT/DELETE /orders`, `GET/POST/PUT/DELETE /styles`, `POST /styles/import` |
+| 주문/스타일 | `GET/POST/PUT/DELETE /orders`, `POST /orders/:orderId/modification-lock`(§40 — 잠글 때만 카드/배정 동기화), `GET/POST/PUT/DELETE /styles`, `POST /styles/import` |
 | 배정 | `GET /assignment-plans`, `PATCH /assignment-plans/:externalId/production-complete`, `PATCH /assignment-plans/:externalId/final-quantity`, `GET /assignment-board-view`, `GET /assignment-cards`, `GET /line-month-capacity` |
 | 배정 (deprecated) | `POST /assignment-plans/:externalId/close` (`production-complete`로 내부 위임, Deprecation 헤더 반환) |
 | 검수 이력 | `GET /assignment-plans/:externalId/qc-history`, `POST /qc-pass-events`, `PATCH /qc-pass-events/:id/cancel` |
@@ -414,8 +418,9 @@ AT(q) = a*q + b
 - `DATABASE_URL`, `DIRECT_URL`
 - `PORT`
 - `BUSINESS_TIME_ZONE`
-- `WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER`
 - 코드 기본 보정: `DIRECT_URL ||= DATABASE_URL`, `PRISMA_CLIENT_ENGINE_TYPE ||= "binary"`
+- `WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER`는 `.env.example`에만 있고 실제 코드 어디서도 읽지 않는 죽은 설정이다(2026-07-05 grep으로 확인). 실제로 작업기록 수량이 배정 수량 대비 초과되는 걸 막는 코드는 없다.
+- `Factory.managementStartDate`는 스케줄러/계획부하 계산과 무관하다. 작업기록 엑셀 임포트 시 "이 날짜 이전 데이터는 거부"하는 검증에만 쓰인다(2026-07-05 확인). 스케줄 계산의 유일한 기준점은 §25/§34의 anchor(마지막 실제 작업기록 다음 근무일)다.
 
 ---
 
@@ -458,6 +463,7 @@ AT(q) = a*q + b
 - 공정: `P01~P10`
 - 컬러: WHITE, BLACK, NAVY, GRAY-MEL, LT-BLUE, MID-BLUE, INDIGO
 - 리셋 시 WorkOrder/AssignmentCard/AssignmentPlan 삭제, WorkLog/WorkRecord는 보존
+- 리셋 스크립트는 `WorkOrder`를 새로 만들지 않는다(직접 확인, `reset-to-baseline.js`에 관련 코드 없음). §40(2026-07-05)부터 카드는 주문을 **잠글 때만** 생성되므로, 리셋 후 배정 보드에서 카드를 보려면 테스트용 주문을 만든 뒤 반드시 잠가야 한다 — 저장만으로는 더 이상 카드가 생기지 않는다.
 
 ### 회귀 테스트
 ```
@@ -1422,3 +1428,98 @@ runtime 조회값:
   - `OrderList.jsx`의 `handleSave`가 주문 저장 후 별도로 `/assignment-board-view`를 다시 불러와 `reconcileBoardStateForQuantityChanges`로 카드를 재계산해 `PUT /assignment-board-state`를 또 호출하던 경로는 제거했다 — 실패해도 조용히 삼켜지는 이중 저장 경로였고, 이제 카드 동기화는 백엔드 저장 트랜잭션 하나가 전담한다. `frontend/src/utils/quantityChangeBoard.mjs`(`reconcileBoardStateForQuantityChanges`)와 그 전용 테스트(`scripts/quantity-change-regression.test.mjs`)는 이제 프로덕션 호출부가 없는 죽은 코드/테스트로 남아있다(삭제 여부 미정 — `package.json`의 `test:quantity-change`/`test:regression` 스크립트 구성과 얽혀 있어 별도 판단 필요).
 - 알려진 구조적 한계 (이번 범위에서 고치지 않음): `AssignmentCard.cardId`와 `AssignmentPlan.cardId`/`originOrderId`는 DB FK가 아니라 `${orderId}::${styleId}` 문자열 관례로만 연결되어 있다. 이번 수정은 이 관례를 애플리케이션 코드로 정확히 지키도록 만든 것이지, FK 자체를 추가한 것은 아니다. `AssignmentPlan.cardId`/`originOrderId`에는 인덱스도 없다 — 데이터가 늘어나면 이번에 추가한 저장 시점 가드 조회가 순차 스캔이 될 수 있으므로 `@@index([orgId, cardId])` 추가를 후속 과제로 남긴다.
 - 운영 DB 복구 메모: 이 재설계 배포 후 기존 주문을 한 번씩 저장(또는 잠금 토글)하면 살아있는 `WorkOrderItem`을 기준으로 `AssignmentCard`가 다시 채워진다. `AssignmentPlan`(실제 라인 배정)은 자동 복구되지 않으므로 배정판에서 카드를 라인에 다시 드래그해야 한다.
+- **정정 (2026-07-05)**: 위 "저장(또는 잠금 토글)하면 다시 채워진다"는 부정확했다. 실제 코드 확인 결과 `POST /orders/:orderId/modification-lock`은 잠금/해제 어느 쪽이든 `rebuildAssignmentCardsForOrgIds`를 전혀 호출하지 않는다 — 카드가 다시 채워지는 유일한 경로는 주문 **저장**(`PUT /orders/:orderId`)뿐이었다. 이 항목 자체는 아래 40번 재설계로 다시 대체된다.
+
+### 40. 2026-07-05 카드 생성 시점을 주문 잠금으로 재변경 + 스타일 제거를 수량 0 오버플로우로 처리 (백엔드+보드 UI 구현 완료, 브라우저 미검증)
+
+- 이 섹션은 바로 위 39번의 "카드 생성/갱신은 저장 시점에 즉시 반영한다, 잠금까지 미루는 설계는 반려한다"는 규칙을 **대체**한다. 다음 세션은 이 카드 생성 타이밍에 대해서는 39번이 아니라 이 40번을 따른다. (39번의 다른 원칙 — 잠금 해제는 순수 플래그라는 것, `DELETE /orders/:orderId` 가드, 프론트 이중저장 제거 등은 그대로 유효하다.)
+- 배경: 39번 설계·배포 이후 실사용 관점에서, "잠금 = 생산 확정" 의미로 카드 생성을 다시 잠금 시점에 묶고 싶다는 요청이 있었다. 동시에 "작업기록이 이미 있는 스타일은 주문에서 못 뺀다"는 39번의 하드 블록이, 실제로는 이미 작업이 진행된 뒤에 고객 요청으로 물량이 줄어드는 정상적인 현장 상황을 시스템이 못 받아주는 문제로 확인되어 같이 재설계했다.
+- 확정된 설계 (2026-07-05 사용자 결정 — **아직 코드에 반영되지 않음**, 구현 시 이 섹션의 "미해결 질문"부터 해소하고 상태를 갱신할 것):
+  - **카드 생성/갱신은 주문 잠금(`POST /orders/:orderId/modification-lock`, `locked:true`) 시점에만 일어난다.** `PUT /orders/:orderId`(저장)는 `WorkOrderItem`만 갱신하고 `AssignmentCard`/`AssignmentPlan`에는 손대지 않는다. `PUT /orders/:orderId`는 이미 잠긴 주문의 저장을 409로 거부하므로, 실제 편집 흐름은 항상 "해제 → 수정(저장, 카드 영향 없음) → 재잠금(그 시점에 카드/배정 갱신)"이다.
+  - **잠금 해제(`locked:false`)는 여전히 순수 플래그다.** 해제 시점에 카드/배정에 어떤 변경도 가하지 않는다 — 이 부분은 39번과 동일하게 유지, 어제 사고를 재발시키지 않기 위한 핵심 안전장치다. 해제 중에도 보드에는 마지막 잠금 시점의 카드가 그대로 남는다.
+  - **작업기록이 이미 연결된 배정(AssignmentPlan)도 잠금 시점에 수량이 갱신될 수 있다.** 기존 `refreshUnlinkedAssignmentPlanSnapshotsForOrg`가 "작업기록이 연결된(linked) 플랜은 절대 건드리지 않는다"고 보호하던 것을 완화한다 — linked 플랜도 최신 주문 수량으로 `assignmentQuantity`(및 구조 변경이므로 `assignmentStTotalSeconds`)를 갱신 대상에 포함하되, `isCompleted===true`이거나 급여 잠금(`isPayrollLocked`)된 플랜은 여전히 건드리지 않는다. 급여 잠금 배제는 §28 급여 잠금 원칙의 자연스러운 확장이며 별도 협의 없이 이 문서에서 고정한다.
+  - **주문에서 스타일이 통째로 빠지고 그 스타일에 이미 작업기록이 있어도, 더 이상 저장/잠금을 막지 않는다.** 39번의 `findOrderStyleRemovalBlockers` 하드 블록(`409 STYLE_HAS_WORK_RECORDS`)은 폐기한다. 대신: 그 스타일의 `AssignmentCard`/`AssignmentPlan`은 삭제하지 않고 그대로 두되 `assignmentQuantity`(및 카드 수량)를 `0`으로 갱신한다. 이미 생산된 수량은 전부 "초과 생산"으로 계산된다 — `overflowQuantity = producedQuantity - assignmentQuantity`는 `buildAssignmentPlanProgressRows`에 이미 구현되어 있고 음수/0-분모 클램프도 이미 되어 있어(§35 관련 로직 확인, `producedRatio`/`operationalProgressRatio`가 0/0 상황에서 `null`로 안전하게 빠짐) 별도 신규 계산식이 필요 없다. 이 관점에서 "스타일 완전 제거"는 "수량을 0으로 줄이는 일반적인 수량 변경"의 극단값일 뿐이며, 위 문단의 "linked 플랜 수량 갱신 허용"과 같은 파이프라인을 그대로 탄다.
+  - **의미**: 계획 수량이 0인데 생산 기록이 있는 배정 = "주문에서는 빠졌지만 실제로는 만든 것"이며, 이는 데이터 오류가 아니라 정상 상태로 취급한다.
+  - **급여 영향 없음 (코드로 이미 확인됨)**: `backend/src/payroll/payroll.service.ts`는 `assignmentQuantity`를 전혀 참조하지 않고 `WorkRecord.quantity`/`ctSeconds` 기준으로만 급여를 계산한다(grep 확인). 배정 계획 수량이 0으로 바뀌어도 이미 기록된 작업기록의 급여는 그대로 지급된다 — "급여는 생산한 수량만큼 지급한다"는 전제가 이미 코드로 보장되어 있다.
+  - **AT 학습 영향 없음**: AT 파이프라인은 WorkLog/WorkRecord/출퇴근 데이터를 입력으로 쓰고 `AssignmentPlan.assignmentQuantity`를 참조하지 않는다.
+  - **청구/정산(billing)은 이 저장소에 아직 구현되어 있지 않다** (grep 확인, 관련 코드 0건). 수량 0으로 남은 배정을 실제 매출/청구에 반영하는 것은 시스템이 자동으로 하지 않는다 — 고객과 협의 후 사람이 주문을 다시 수정해서(그 스타일을 실제 합의된 최종 수량으로 재추가) 주문 상태를 정산 현실과 맞추는 수동 프로세스로 남긴다. 향후 청구 기능을 만들 때는 "계획 수량 0이지만 작업기록이 있는 배정"을 반드시 별도로 조회해서 노출해야 한다 — 누락하면 매출이 조용히 유실된다.
+  - **`DELETE /orders/:orderId`는 스타일 제거와 다르게 취급한다 (2026-07-05 정정)**: `AssignmentPlan.workOrderId`는 `onDelete: SetNull`이라 주문이 삭제돼도 배정 행 자체는 안 지워지고 `workOrderId`만 `NULL`이 되는 것까지는 안전하다. 하지만 스타일 하나만 빠지는 경우와 달리, 주문을 통째로 삭제하면 "나중에 고객과 합의된 뒤 그 주문을 다시 열어서 반영"할 원본 주문 자체가 사라진다(재정산 경로가 없어짐). 그래서 **주문 삭제는 스타일 제거와 다르게, 작업기록이 연결돼 있으면 삭제 자체를 계속 하드 블록으로 막는다** — 기존 `DELETE /orders/:orderId` 가드는 그대로 유지한다. 사람이 재정산 흐름을 타고 싶으면 먼저 각 스타일을 개별적으로 주문에서 빼서(0-수량 처리) 작업기록 연결을 끊은 뒤에 주문 자체를 삭제해야 한다.
+- 2026-07-05 확정 (구현 착수 전 미해결 질문이었던 것들 — 사용자 답변으로 확정됨):
+  - **0-수량 보존 기준**: 그 배정에 연결된 `WorkRecord`가 **실제로 하나라도 존재할 때만** 카드/배정을 0-수량으로 보존한다. 라인에 드래그만 해놓고 `WorkRecord`가 하나도 없는 빈 배정은 스타일이 빠지면 그냥 평소처럼(현재 동작 그대로) 삭제한다. `buildAssignmentCardsFromOrders`는 현재 `order.workOrderItems`에 없는 스타일은 애초에 순회 대상에서 제외된다(`backend/src/index.ts:10544` 이하) — 잠금 처리 파이프라인에 "이 주문에 대해 이전에 존재했던 카드 중, 지금 item에는 없지만 `WorkRecord`가 연결된 것"을 찾아 0-수량 항목을 강제로 주입하는 로직을 새로 만들어야 한다(현재 코드에 없음).
+  - **UI 노출 방식**: 배정 보드에 평소 카드 목록과 분리된 **별도 경고 섹션**(예: "확인 필요")을 신설한다. 이 섹션에 표시할 항목이 하나도 없으면 섹션 자체를 렌더링하지 않는다(빈 섹션 노출 금지).
+  - **경고 섹션에서 항목이 빠지는(필터되는) 기준**: 그 배정에 연결된 **모든** `WorkRecord`의 소속 월이 전부 급여 잠금(그 달 `PayrollSnapshot` 존재)되면 그 시점에 목록에서 제외한다. **주의**: 이건 "완료 카드가 급여 지급되면 작업 종료 목록에서 빠진다"는 기존 로직을 재사용하는 게 아니라 **신규 구현**이다 — 실제로 그런 필터는 아직 존재하지 않는다(`lineMonthCapacity.js`의 완료 목록 빌더는 `isPayrollLocked`/`payrollLockMonth`를 전혀 참조하지 않음, §28A에도 "post-payroll hiding은 의도적으로 미뤄짐"이라고 이미 명시돼 있었음). 또한 기존 `isPayrollLocked`는 "완료 월 1개"를 전제로 계산되는데(§28), 0-수량 배정은 `plannedQuantity=0`이라 진행률 계산이 분모 0으로 `null`이 되어 전통적인 "진행률 100%→자동완료" 경로를 못 탈 가능성이 높다 — 그래서 이 신규 필터는 완료 월 1개가 아니라 **연결된 모든 WorkRecord 각각의 월이 전부 급여 잠금됐는지**를 별도로 계산해야 한다.
+  - **비차단 안내**: 하드 블록을 없애는 대신, 저장/잠금은 그대로 통과시키되 "이 스타일은 이미 작업기록이 있어 완전히 삭제되지 않고 0개 배정으로 남았습니다" 같은 비차단 토스트를 보여준다.
+- **해소됨**: `AssignmentPlan.workOrderId`는 스키마 확인 결과 `onDelete: SetNull`이었다(Cascade 아님) — 다만 위 "DELETE는 스타일 제거와 다르게 취급" 결정으로 이 경로 자체를 애초에 타지 않기로 했으므로(작업기록 있으면 여전히 삭제 자체를 막음) 실질적 영향은 없다.
+
+### 2026-07-05 구현 현황
+
+- **백엔드 구현 완료** (`backend/src/index.ts`, `npm run build` 통과):
+  - `syncAssignmentPlansForOrderLock({ orgId, order, db })` 신규 함수 — `findOrderStyleRemovalBlockers` 바로 아래 위치. 주문의 현재 `WorkOrderItem` 수량(`resolveOrderStyleQuantityMap`)과 그 주문에 속한 기존 `AssignmentPlan`(`buildAssignmentPlanOrderMatchWhereOr`로 cardId/workOrderId 매칭)을 비교해 스타일별로 처리한다.
+  - 같은 `cardId`를 공유하는 `AssignmentPlan`이 2개 이상(라인 분할/split)인 경우는 **의도적으로 건드리지 않는다** — 총량 변경분을 여러 split에 어떻게 재분배할지 결정된 바가 없어서다(알려진 한계, 아래 남은 일 참고).
+  - 수량 0으로 남기는 케이스: `AssignmentPlan.assignmentQuantity/assignmentStTotalSeconds`를 0으로 갱신하고, 대응하는 `AssignmentCard.payload`에 `cardQuantity:0, type:"DELTA"`를 심어 이후 `rebuildAssignmentCardsForOrgIds`가 돌아도 카드가 삭제되지 않고 살아남게 한다(`mergeAssignmentCardsWithSaved`의 기존 DELTA 카드 보존 규칙을 그대로 재사용 — 신규 메커니즘 추가 안 함).
+  - 수량이 바뀌었지만 스타일이 그대로 남아있는 경우: `ensureStyleStandardsForQuantities` + `loadStyleProcessRowsByStyleId` + `calculateAssignmentStTotalSecondsFromStyleRows`(보드 저장 경로가 쓰는 것과 동일한 버킷 조회 함수)로 새 수량 기준 ST를 재계산한다. 버킷을 못 찾으면(`null`) `assignmentQuantity`만 갱신하고 `assignmentStTotalSeconds`는 이전 값을 그대로 둔다 — §35 "ST 미설정시 경고만" 방침과 동일하게 저장을 막지 않는 쪽을 택함.
+  - `isCompleted === true`이거나 급여 잠금(`annotateAssignmentPlanRowsWithPayrollLocks`로 계산한 `isPayrollLocked`)인 플랜은 위 처리에서 전부 제외.
+  - `PUT /orders/:orderId`: `findOrderStyleRemovalBlockers` 호출, 409 하드 블록, 트랜잭션 안 카드/배정 정리, 끝의 `rebuildAssignmentCardsForOrgIds` 호출을 전부 제거 — 이제 `WorkOrderItem`만 갱신하는 순수 저장이다.
+  - `POST /orders/:orderId/modification-lock`: `locked:true`로 바뀌는 전이에서만 `syncAssignmentPlansForOrderLock`을 `$transaction`(30s timeout)으로 감싸 실행한 뒤 `rebuildAssignmentCardsForOrgIds`를 호출한다. 응답 JSON에 `zeroedStyles`(0-수량으로 남은 스타일 목록, 프론트 토스트용) 필드를 추가했다. `locked:false`(해제)는 손대지 않았다 — 여전히 순수 플래그.
+  - `rebuildAssignmentCardsForOrg`의 주문 조회에 `modificationLockedAt: { not: null }` 필터를 추가했다 — 이게 없으면 스타일 저장/색상 동기화 등 다른 트리거가 돌 때마다 잠기지 않은 주문의 카드까지 다시 생겨서 "카드는 잠금 시점에만" 원칙이 깨진다(구현 중 직접 발견해서 같이 고침, 원래 계획에는 명시 안 돼 있었음).
+  - 이제 아무 데서도 안 쓰는 `findOrderStyleRemovalBlockers`/`summarizeOrderStyleRemovalIssues` 삭제. `DELETE /orders/:orderId`는 별도의 자체 인라인 가드(`ORDER_HAS_WORK_RECORDS`)를 계속 쓰고 있어 영향 없음.
+- **프론트엔드 일부 구현 완료** (`npm run build` 통과):
+  - `frontend/src/pages/App/order/OrderList.jsx`의 `performOrderLockToggle`: 잠금 성공 응답의 `zeroedStyles`가 비어있지 않으면 비차단 경고 토스트(`orderPageText.zeroedStylesPrefix`/`zeroedStylesGeneric`, ko/en/vi 전부 작성)를 띄운다.
+  - 기존 저장 실패 시 이슈 다이얼로그(`saveIssueRows`/`extractOrderSaveIssueRows`)는 그대로 유지 — `DELETE`가 여전히 같은 모양의 `issues` 배열을 반환하므로 삭제 실패 표시에는 계속 쓰인다. `PUT` 저장은 이제 이 경로를 타지 않는다(더 이상 이 에러를 반환하지 않음).
+- **2026-07-05 후속: 보드 UI 경고 섹션 구현 완료**:
+  - 병합 경로를 끝까지 추적함: `AssignBoard.jsx`가 `/assignment-plan-progress`를 별도로 불러와 `assignmentProgressById`에 저장하고, `resolveAssignmentProgressState({assignment, progressRow})`(`AssignBoard.jsx:2150`)가 화이트리스트 방식으로 필드를 골라 `applySchedulerProgressToAssignments`에서 `{...item, ...progressState}`로 병합한다. 이 병합된 assignment 객체가 `lineMonthCapacity.js`의 `buildLineQueueForecast` 입력이 된다.
+  - `buildAssignmentPlanProgressRows`(`backend/src/index.ts:19468`)의 반환 객체에 `isZeroQuantityOverflow`(`(baselineQuantityRaw==null||<=0) && producedQuantity>0`)와 `isFullyPayrollSettled`(그 플랜에 연결된 **모든** WorkRecord의 월이 전부 급여 잠금됐는지, 새 `workRecordMonthsByPlanId`/`workRecordPayrollLockedMonthSet`로 계산 — 기존 `isPayrollLocked`는 완료 월 1개 전제라 재사용 불가) 두 필드를 추가.
+  - `resolveAssignmentProgressState`(`AssignBoard.jsx:2150`)의 화이트리스트에 두 필드 추가.
+  - `lineMonthCapacity.js`의 `buildLineQueueForecast`: `isZeroQuantityOverflow && !isFullyPayrollSettled`인 assignment를 큐/리뷰/완료 분류보다 먼저 가로채 별도 `zeroQuantityOverflowAssignments` 버킷(`queueStatus:'zero_quantity_overflow'`)에 담는다. 조건을 만족 안 하면(=급여 정산 완료) 자연히 이 버킷에서 빠진다 — 사용자가 요청한 "정산 다 되면 필터" 동작.
+  - `LineMonthCapacityBoard.jsx`: "작업 종료 목록" 섹션 바로 아래에 `row.zeroQuantityOverflowAssignments.length > 0`일 때만 렌더되는 "확인 필요" 섹션 추가(항목 없으면 섹션째로 안 보임 — 다른 섹션과 달리 "없음" 문구도 안 넣음). `AssignmentDetailCard`에 `zero_quantity_overflow` 상태 분기 추가: 드래그 불가(`isLocked`) 처리, 경고색 칩/배경, "주문에서 빠짐 - 이미 N개 생산됨" 푸터.
+  - `uiMessages.js`에 `assign.zeroQuantityOverflowHeader`/`zeroQuantityOverflowStatusCompact`/`zeroQuantityOverflowCompact` ko/en/vi 전부 추가.
+  - `npm --prefix backend run build`, `npm --prefix frontend run build` 둘 다 통과.
+- **아직 남은 것**:
+  - split(같은 cardId를 공유하는 배정이 여럿인 경우) 수량 재분배 정책 — 결정된 바 없어 `syncAssignmentPlansForOrderLock`이 그대로 스킵함(구현 현황 참고).
+  - 실제 브라우저로 "잠금 시 카드/수량이 갱신되는지", "스타일 제거 후 재잠금 시 0수량+토스트가 뜨는지", "보드에 확인 필요 섹션이 뜨고 급여 정산되면 사라지는지"는 개발 서버 미기동 상태에서 코드 작성 + `tsc`/`vite build` 통과만 확인했다. 다음에 반드시 실제로 눌러서 확인할 것.
+
+### 41. 2026-07-05 "계획 부하" 과거 달 100% 하드코딩 버그 수정 (완료)
+
+- §37 진단(코드 리뷰만, 미수정) 이후 사용자가 배포된 화면에서 실제로 재현 — `AssignmentPlan`이 0건인 상태에서도 LINE #1 6월 "계획 부하"가 계속 100%로 표시됨.
+- 원인: `frontend/src/pages/App/assign/utils/lineMonthCapacity.js`의 `plannedLoadPercent` 계산이 과거("historical") 달에 한해 `roundPercent(lineMonthlyCapacitySeconds, lineMonthlyCapacitySeconds)`(분자=분모 항등식)로 **항상 100%**를 반환했다. 실제 `AssignmentPlan`/작업기록 데이터를 전혀 참조하지 않는 계산이라, 배정이 하나도 없어도 100%가 나왔다. 화면 캡션(`assign.capacitySummaryHint`)에도 "과거 기록월은 100% 기준으로 표시"라고 이 동작이 그대로 문서화되어 있었다 — 의도된 동작이었지만, 어제 사고로 배정 데이터가 전부 사라진 뒤에는 "잔여 데이터가 남아있다"는 오해를 유발하는 잘못된 설계였다.
+- 수정: 과거 달의 `plannedLoadPercent`는 이제 같은 달의 `actualOutputPercent`(실제 작업기록 기반 생산률)를 그대로 따른다 — 이미 지난 달은 "계획"이라는 개념 자체가 의미 없고, 실제로 무엇을 만들었는지만 의미가 있다는 논리. 백엔드 요약(`backendRow`)이 없는 폴백 분기도 동일하게 수정(기존엔 이 분기가 달 종류 구분 없이 무조건 100%였음 — 오히려 더 나쁜 상태였음).
+  - `monthSummaryByKey.set(...)` 메인 분기: `resolvedActualOutputPercent`를 로컬 상수로 뽑아서 `actualOutputPercent`/`plannedLoadPercent` 양쪽에 재사용.
+  - 백엔드 요약 없는 폴백 분기(`months.map`): 동일 패턴 적용.
+  - `uiMessages.js`의 `assign.capacitySummaryHint`(ko/en/vi) 캡션 문구를 새 동작에 맞게 갱신.
+- `npm --prefix frontend run build` 통과. 실제 브라우저 확인은 아직 안 함 — 다음에 확인 필요.
+
+### 42. 2026-07-05 AssignmentCard가 사고 이전부터 계속 0건이던 진짜 원인 발견 및 수정 (완료)
+
+- §40 배포 후에도 사용자가 주문을 잠가도 카드가 안 생긴다고 재현 — 진단 로그(`console.error`, Railway 배포 로그로 직접 확인)로 추적한 결과 `styles=41 lockedOrders=2` 등 입력 데이터는 전부 정상인데 `buildAssignmentCardsFromOrders`의 결과물 `baseCards=0`으로 확정.
+- **진짜 원인**: `buildAssignmentCardsFromOrders`와 `collectStyleQuantityRequirementsFromOrders`가 스타일 조회 맵을 `Style.code`(문자열) 기준으로 만들어놓고, 조회 키로는 `item.styleId`(숫자 FK)를 그대로 `resolveOptionalString()`에 넣어 사용했다. `resolveOptionalString(value, fallback)`은 `value`가 실제 문자열일 때만 값을 반환하고, 숫자가 들어오면 무조건 `fallback`을 반환하도록 구현되어 있다(`backend/src/utils/common.ts:48`). 그 결과 `item.styleId`(항상 숫자)는 매번 빈 문자열/`null`로 변환됐고, `if (!styleId) return;` 가드에 걸려 **모든 주문 항목이 예외 없이 스킵**됐다 — 잠금 여부와 무관하게 카드가 원천적으로 하나도 안 만들어지는 구조였다.
+- 이건 §39의 "사고 전부터 AssignmentCard가 이미 0건이었다"는 관찰의 실제 원인이었다. 당시엔 "delete 후 upsert 루프가 원자적이지 않아서"라고 추정하고 `$transaction`으로 감쌌는데(§39, 여전히 유효한 별개의 안전장치), 그건 증상을 완화할 뿐 근본 원인이 아니었다.
+- 수정: 두 함수 모두 스타일 조회 맵을 `Style.id`(숫자) 기준 `Map<number, Style>`로 바꾸고, `item.styleId`를 `toPositiveIntOrNull()`로 직접 비교하도록 변경. `Style.id`는 단일 행을 유일하게 식별하므로, 기존에 있던 "코드가 같은 여러 후보 중 주문 고객사/스타일명으로 가장 비슷한 것 고르기"(`resolveStyleCandidateForAssignmentCard`) 로직 자체가 더 이상 필요 없어 삭제했다 — FK 조회는 항상 정확히 하나의 결과만 나오기 때문이다.
+- 같은 버그가 있던 `refreshUnlinkedAssignmentPlanSnapshotsForOrg`(스타일 변경 시 미연결 배정 CT/ST 스냅샷 갱신)의 `styleByStyleId`도 같은 방식으로 고쳤다. 이 함수는 `AssignmentPlan`이 0건이라 지금 당장 영향은 없었지만, 카드가 다시 생기고 라인 배정이 시작되면 바로 문제가 될 뻔했다.
+- 운영 DB 실데이터로 재현·검증: E14-4 주문의 워크오더아이템을 수정된 로직으로 그룹핑하면 스타일 3개(S-ZIR04V/S-ZIQPQO/S-ZIQDTZ) 카드가 정상적으로 나옴을 확인.
+- `npm --prefix backend run build` 통과.
+- **남은 것 (같은 버그 패턴, 이번엔 손 안 댐)**: `loadAssignmentDisplayReferenceMaps`(`styleByStyleId`, `Style.code`로 키 생성)와 `findOrderItemByAssignmentIdentity`(`resolveOptionalString(item?.styleId, null)`으로 숫자 비교) — 둘 다 `resolveAssignmentDisplayFallback`이 쓰는 표시용 폴백 헬퍼라 카드 생성 경로에는 영향 없다. 다만 언젠가 이 폴백이 실제로 호출되는 상황(예: 손상된 assignment 표시 복구)에서는 지금도 항상 조용히 실패할 것이다. 다음에 이 영역을 건드릴 때 같이 고칠 것.
+- 브라우저 실제 확인 아직 안 함 — 사용자가 재배포 후 잠금 테스트로 확인 예정.
+- **2026-07-05 후속 발견 (같은 버그 패턴, 카드 생성은 됐지만 필드가 비어있던 문제)**: 카드는 실제로 생성됐지만 "고객사"가 전부 `-`로 비어있었다. 원인은 §42와 완전히 같은 클래스: `buildAssignmentCardsFromOrders`의 `customer` 필드가 `order?.customerName ?? order?.customer`를 읽고 있었는데, 이 쿼리의 `select`는 애초에 그런 flat 필드를 조회하지 않는다(`buyerOrg`/`customerOrg` relation만 조회함) — FK+join 자체는 이미 정상인데 그 join 결과를 읽는 코드가 안 붙어있던 것. `order?.customerOrg?.name ?? order?.buyerOrg?.name`로 수정. 운영 데이터로 "THE SAN"(더산) 정상 노출 확인.
+- 같은 조사 중 `workOrderId: toPositiveIntOrNull(order?.id)`도 발견 — 이 쿼리의 `select`에 `id`가 아예 없어서 `order?.id`가 항상 `undefined`였다. `select`에 `id: true` 추가로 수정.
+- **일반화된 교훈**: 이 카드 생성 경로에서 지금까지 찾은 버그 5건(styleId 3곳 + customer + workOrderId)이 전부 "FK+join(relation)은 정상인데, 그 결과를 읽는 코드가 리팩터링 이전의 존재하지 않는 flat 필드를 그대로 참조"하는 동일 패턴이었다. 이 함수(`buildAssignmentCardsFromOrders`)와 그 주변 헬퍼가 오랫동안 실행 자체가 안 됐거나(카드가 항상 0건이라 아무도 필드 값을 눈으로 확인 못함) 조용히 틀린 값만 내고 있었기 때문에 이렇게 오래 안 걸리고 남아있었던 것으로 보인다. 이 함수를 또 건드릴 일이 있으면 `order?.X`/`item?.X` 형태로 접근하는 모든 필드가 실제로 그 쿼리의 `select`에 있는지부터 먼저 대조할 것.
+- **2026-07-05 UI 후속 (카드는 생성됐지만 화면에서 이해하기 어려웠던 문제) — 수정 완료**:
+  - **수량이 안 보임**: 데이터는 정상이었다(`resolveCardQuantity`가 `cardQuantity`를 올바르게 읽음). 원인은 `CompactBoardCard.jsx`의 `flexWrap: { xs: 'wrap', lg: 'nowrap' }` — 이 브레이크포인트는 뷰포트 너비 기준이라, 뷰포트가 넓어도 "미배정 작업" 사이드바처럼 컨테이너 자체가 좁으면 `nowrap`이 그대로 적용돼 수량 필드가 `overflow:hidden` 밖으로 밀려나 안 보였다. `flexWrap: 'wrap'`(고정)로 변경 — 공간이 충분하면 원래처럼 한 줄로 보이고, 좁으면 자연스럽게 줄바꿈된다.
+  - **고객사 이름이 영어로만 나옴**: `buildAssignmentCardsFromOrders`의 `customer` 필드가 `.name`(영어)만 보내고 있었다. `customerNameKo`/`customerNameVi`를 카드 payload에 추가하고, 프론트에 `resolveCardCustomerDisplay(card, languageCode)` 헬퍼를 만들어 미배정 카드 목록(`UnassignedCardItem`)에 적용했다.
+  - **남은 범위(미해결)**: 이미 라인에 배치된 배정(`AssignmentPlan`)의 `customer`는 DB에 단일 문자열 컬럼(`customer String?`)만 있고 `customerNameKo`/`Vi` 대응 컬럼이 없다 — 카드를 라인으로 드래그해서 배정이 생성되는 시점에 굳어진 언어 그대로 계속 보인다. 완전히 고치려면 (a) `AssignmentPlan`에 로케일 컬럼을 추가하거나 (b) `workOrderId` FK로 매번 join해서 읽는 방식 중 하나를 결정해야 한다 — 이번엔 손 안 댔고 사용자 확인 후 별도 작업으로 진행 예정.
+
+### 43. 2026-07-05 AssignmentPlan.assignmentCardId 실제 FK 추가 (cardId 문자열 관례 대체, 1단계 완료)
+
+- 배경: 사용자가 "구조적 문제" 목록에 있던 `AssignmentCard.cardId`/`AssignmentPlan.cardId`의 "문자열이 우연히 같은 값이라는 관례" 연결을 실제 FK로 바꾸자고 제안. 예전엔 `AssignmentCard`가 주문 잠금/스타일 저장 때마다 통째로 재계산되는 캐시 성격이라 FK를 걸면 정상적인 재계산 때마다 깨질 위험이 있어서 미뤄뒀었는데, §40에서 이미 "작업기록 연결된 카드는 절대 삭제 안 함" 보호가 들어가 있어서 지금은 안전하게 추가할 수 있는 상태로 확인.
+- 구현 (`backend/prisma/schema.prisma`, `backend/migration_fix.sql` Step 0k, `backend/src/index.ts`):
+  - `AssignmentPlan.assignmentCardId Int?` 추가, `AssignmentCard.id`로의 실제 FK(`onDelete: SetNull`, workOrderId FK인 Step 0i와 동일 패턴).
+  - `cardId`(문자열)는 마이그레이션 기간 동안 읽기 호환용으로 그대로 유지 — 아직 안 지움.
+  - `migration_fix.sql`에 additive 컬럼 + 백필(`AssignmentCard.orgId`+`cardId` 매칭) + 인덱스 + idempotent 제약조건 추가(Step 0i와 동일 구조).
+  - `toAssignmentPlanWriteData(item, cardIdToAssignmentCardId?)`가 이제 두 번째 인자로 `cardId 문자열 -> AssignmentCard.id` 조회 맵을 받아 `assignmentCardId`를 채운다.
+  - `PUT /assignment-board-state`(cardId를 쓰는 유일한 생성/수정 지점, `assignmentPlan.create/updateMany` 둘 다 여기서만 일어남 — 전체 12개 `assignmentPlan.create/update` 호출부를 다 뒤져서 확인함)가 저장 1회당 이 맵을 한 번만 배치 조회해서 create/update 양쪽에 동일하게 전달한다.
+  - `npm run build` 통과.
+- **의도적으로 안 한 것**:
+  - 운영 DB에 직접 DDL 실행은 안 함(세션 중 시도했으나 자동 분류기가 정상적으로 차단 — 정해진 `migration_fix.sql`+predeploy 파이프라인 밖에서 운영 스키마를 직접 바꾸려던 것이라 막힌 게 맞음). 다음 백엔드 배포 때 predeploy가 자동 적용한다.
+  - `onDelete`는 `Restrict`가 아니라 `SetNull`을 선택함 — 이번이 첫 롤아웃이라 혹시 놓친 예외 케이스가 있어도 카드 재계산 전체가 하드 실패하기보다는 조용히 링크만 끊어지는 쪽을 우선함. 안정성이 확인되면 나중에 `Restrict`로 강화하는 걸 검토할 수 있음.
+  - 기존 조회 코드(`loadAssignmentDisplayReferenceMaps`, `findOrderItemByAssignmentIdentity` 등 §42에서 이미 발견한 문자열 기반 스타일 조회 헬퍼들)를 새 FK로 갈아타게 하는 건 이번 범위에 안 넣음 — 이번 phase는 "쓰기 경로가 새 FK를 항상 채우게 하는 것"까지만이고, "읽기 경로가 새 FK를 쓰도록 전환"은 다음 phase.
+  - `cardId` 문자열 컬럼 제거는 안 함 — 읽기 경로 전환 검증 끝난 뒤 별도 phase에서.
+- **다음 단계 (미착수)**: 운영 배포 후 `assignmentCardId` 백필이 실제로 몇 건 채워졌는지 확인(`npm run` 검증 스크립트 신설 여지 있음, 기존 `verify:workorder-item-backfill` 패턴 재사용 가능) → 읽기 경로를 하나씩 FK 기반으로 전환 → `cardId` dual-read 제거 → 컬럼 DROP.

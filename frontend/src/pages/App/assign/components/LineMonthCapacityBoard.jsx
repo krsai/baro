@@ -168,7 +168,10 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
   const isCompleted = queueStatus === 'completed';
   const isReadyToComplete = queueStatus === 'ready_to_complete';
   const isReviewRequired = queueStatus === 'review_required';
-  const isLocked = isCompleted;
+  const isZeroQuantityOverflow = queueStatus === 'zero_quantity_overflow';
+  // Kept only as a record of already-produced overflow (AGENTS.md 40번) -
+  // its planned quantity is 0, so there is nothing left to drag onto a line.
+  const isLocked = isCompleted || isZeroQuantityOverflow;
   const chips = [
     isCompleted
       ? {
@@ -180,6 +183,16 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
           variant: 'outlined',
           color: 'success',
         }
+      : isZeroQuantityOverflow
+        ? {
+            label: getUiMessage(
+              'assign.zeroQuantityOverflowStatusCompact',
+              'Zero-qty overflow',
+              languageCode
+            ),
+            variant: 'outlined',
+            color: 'warning',
+          }
       : isReviewRequired
         ? {
             label: getUiMessage(
@@ -217,6 +230,13 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
           }
         )
       : ''
+    : isZeroQuantityOverflow
+      ? getUiMessage(
+          'assign.zeroQuantityOverflowCompact',
+          'Removed from order - already produced {quantity}',
+          languageCode,
+          { quantity: Math.max(0, Number(assignment?.producedQuantity) || 0) }
+        )
     : isReviewRequired
       ? getUiMessage(
           'assign.reviewRequiredCompact',
@@ -245,6 +265,8 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
       : '';
   const accentColor = isCompleted
     ? '#15803D'
+    : isZeroQuantityOverflow
+      ? '#B45309'
     : isReviewRequired
       ? '#B91C1C'
       : isReadyToComplete
@@ -252,6 +274,8 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
         : '#2563EB';
   const backgroundColor = isCompleted
     ? '#F3F4F6'
+    : isZeroQuantityOverflow
+      ? '#FFFBEB'
     : isReviewRequired
       ? '#FEF2F2'
       : isReadyToComplete
@@ -714,6 +738,32 @@ const LineMonthCapacityBoard = ({
                               </Typography>
                             )}
                           </Stack>
+                          {row.zeroQuantityOverflowAssignments.length > 0 ? (
+                            <>
+                              <Typography
+                                variant="caption"
+                                color="warning.main"
+                                sx={{ display: 'block', mt: 1.5, mb: 1 }}
+                              >
+                                {getUiMessage(
+                                  'assign.zeroQuantityOverflowHeader',
+                                  'Needs review (removed from order, already worked)',
+                                  languageCode
+                                )}
+                              </Typography>
+                              <Stack spacing={1}>
+                                {row.zeroQuantityOverflowAssignments.map((assignment) => (
+                                  <AssignmentDetailCard
+                                    key={assignment.id || `${row.lineId}:${assignment.label}:zero-overflow`}
+                                    assignment={assignment}
+                                    languageCode={languageCode}
+                                    onOpenDetail={onOpenAssignmentDetail}
+                                    onOpenContextMenu={onOpenContextMenu}
+                                  />
+                                ))}
+                              </Stack>
+                            </>
+                          ) : null}
                         </Box>
                       </Collapse>
                     </TableCell>

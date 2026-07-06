@@ -81,6 +81,7 @@ import {
   resolveAssignmentCardBasis,
   resolveAssignmentCardStatus,
   resolveCardAtTotalSeconds,
+  resolveCardCustomerDisplay,
   resolveCardPtTotalSeconds,
   resolveCardQuantity,
   resolveCardScheduleTotalSeconds,
@@ -239,10 +240,6 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
 }) {
   const basis = getCardBasis(card);
   const isLocked = isCardManualOrderLocked(card);
-  const basisLabel =
-    basis === 'NONE'
-      ? getUiMessage('assign.ctMissingCompact', 'Time missing', languageCode)
-      : `${basis}`;
   const styleLabel =
     card.styleName ||
     card.styleCode ||
@@ -256,15 +253,12 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
       disabled={!isLocked || basis === 'NONE'}
       selected={isSelected}
       languageCode={languageCode}
-      customer={card.customer || '-'}
-      orderNoLabel={getUiMessage('assign.cardStyleLabel', 'Style', languageCode)}
-      orderNo={styleLabel}
-      styleName={card.styleName}
+      customer={resolveCardCustomerDisplay(card, languageCode) || '-'}
+      showOrderNo={false}
+      styleName={styleLabel}
       quantity={resolveCardQuantity(card, 0)}
       showProgress={false}
-      chips={[
-        { label: basisLabel, color: basis === 'NONE' ? 'warning' : 'primary' },
-      ]}
+      compact
       footer={
         !isLocked
           ? getUiMessage(
@@ -2222,6 +2216,12 @@ const resolveAssignmentProgressState = ({
           ? clampPercentValue(progressForRemainingRatio * 100)
           : assignment?.schedulerProgressPercent ?? null,
     isStUnknown,
+    isZeroQuantityOverflow: Boolean(
+      progressRow?.isZeroQuantityOverflow ?? assignment?.isZeroQuantityOverflow
+    ),
+    isFullyPayrollSettled: Boolean(
+      progressRow?.isFullyPayrollSettled ?? assignment?.isFullyPayrollSettled
+    ),
     hasRangeCoverage: Boolean(progressRow?.hasRangeCoverage ?? assignment?.hasRangeCoverage),
     lineOrphanWorkRecordCount:
       Number(progressRow?.lineOrphanWorkRecordCount ?? assignment?.lineOrphanWorkRecordCount) ||
@@ -6751,7 +6751,7 @@ const AssignBoard = () => {
             )}
           </Alert>
         ) : null}
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 60px 320px' }, gap: 2, alignItems: 'stretch', minWidth: 0, overflow: 'hidden' }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 60px 440px' }, gap: 2, alignItems: 'stretch', minWidth: 0, overflow: 'hidden' }}>
           <Stack spacing={1.5} sx={{ minWidth: 0 }}>
             <Box
               sx={{
