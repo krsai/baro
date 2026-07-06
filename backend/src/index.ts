@@ -212,6 +212,9 @@ function assertGeneratedPrismaClientShape() {
   if (!hasField("AssignmentPlan", "endIndex")) {
     staleSignals.push("AssignmentPlan.endIndex missing");
   }
+  if (!hasField("AssignmentPlan", "assignmentCardId")) {
+    staleSignals.push("AssignmentPlan.assignmentCardId missing");
+  }
   if (!modelByName.has("OrganizationHoliday")) {
     staleSignals.push("OrganizationHoliday model missing");
   }

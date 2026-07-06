@@ -1,5 +1,13 @@
 # TODO
 
+## 2026-07-06 운영 저장 장애(503, missing column: assignmentCardId) 긴급 복구
+- 사용자가 배정 보드 저장 실패(503, "server database schema is out of sync ... assignmentCardId")를 보고. 운영 DB를 직접 조회해 `AssignmentPlan` 테이블에 `assignmentCardId` 컬럼이 실제로 없음을 확인 — §43(2026-07-05) FK 마이그레이션(`migration_fix.sql` Step 0k)이 스키마/코드에는 반영됐지만 운영 DB에는 한 번도 적용되지 않은 상태였다.
+- 원인: 사용자가 `railway.json`의 `preDeployCommand`(배포마다 `migration_fix.sql`을 자동 적용하는 장치)를 **의도적으로 꺼둔 상태**("안되더라고") — 즉 배포 자동화 파이프라인이 아예 이 마이그레이션을 실행한 적이 없었다. 서버 시작 시 필수 컬럼 누락을 감지하는 자체 안전장치(`backend/src/index.ts` 상단 `hasField` 체크 목록)에도 `assignmentCardId`가 빠져 있어서, 컬럼이 없는데도 서버가 정상 기동돼 문제가 안 걸러졌다.
+- 조치: 사용자 명시적 확인 하에 `migration_fix.sql` Step 0k와 동일한 SQL(컬럼 추가 + 백필 + 인덱스 + FK 제약, 전부 멱등)을 운영 DB에 직접 실행 — 컬럼/인덱스/제약 전부 정상 추가 확인. 백필은 0건 영향(현재 `AssignmentPlan` 자체가 0건 — 지난 사고 이후 아직 아무도 라인에 재배정 안 한 상태라 정상).
+- 재발 방지로 `hasField("AssignmentPlan", "assignmentCardId")` 체크를 시작 시 필수 컬럼 목록에 추가. `npm run build` 통과.
+- **중요, 미해결**: pre-deploy가 왜 "안 됐는지"는 확인 못 함(사용자가 상세 설명 없이 꺼둔 상태) — 지금 상태로는 앞으로 `migration_fix.sql`에 새 단계가 추가돼도 배포 자동화로는 절대 적용 안 되고, 매번 이렇게 운영 DB에 수동으로 SQL을 직접 실행해야 한다. 다음에 반드시: (a) pre-deploy가 왜 실패했는지 Railway Build/Deploy 로그로 원인 확인, (b) 다시 켤지 아니면 이 수동 적용 방식을 공식 절차로 삼을지 결정.
+
+
 ## 2026-07-06 미배정 카드 UI: 고객사를 주문 그룹 헤더로 옮기고 카드 본문은 사진/스타일/수량만 남김
 - 미배정 작업 사이드바에서 카드마다 "고객사"가 반복 표시되던 게 거슬린다는 사용자 피드백. 이미 주문 단위로 그룹핑되어 있었으므로(`groupedFilteredCards`), 그룹 헤더를 `주문 {orderNo}`에서 `{고객사} {orderNo}`(예: "더산 L15-2")로 바꾸고, 개별 카드(`UnassignedCardItem`)에서는 고객사 필드를 뺐다.
 - `CompactBoardCard`에 `showCustomer` prop 추가(공용 컴포넌트라 다른 사용처의 기본 동작은 안 건드리려고 `showOrderNo`와 같은 패턴으로 추가, 기본값 true). `frontend/src/constants/uiMessages.js`에 `assign.customerWithOrderNumber` 키 추가(ko/en/vi).

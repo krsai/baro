@@ -132,6 +132,7 @@ AT(q) = a*q + b
 ### ⚠️ DB 적용 메모
 - 모든 스키마/데이터 변경은 `backend/migration_fix.sql`로 관리. `backend/railway.json`의 `deploy.preDeployCommand`가 `npm run railway:predeploy`를 실행하도록 설정되어 있어야 하며, 배포 로그에서 migration 실행 여부를 확인한다.
 - rename 필수 컬럼(`StyleProcess.timesPerPiece`, `StyleProcessStandard.bucketQuantity/bucketStSeconds`, `AssignmentPlan.assignment*`)이 운영 DB에 없으면 백엔드 시작 시 `migration_fix.sql`을 먼저 적용하고 나서 traffic을 받는다. 비상 시 `STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT=false`로 자동 적용을 끌 수 있다.
+- **2026-07-06 확인됨: 현재 운영 환경은 `preDeployCommand`가 실제로는 꺼져 있다** (사용자가 의도적으로 비활성화). 즉 위 줄의 "배포마다 자동 적용"은 지금 이 환경에서는 실질적으로 동작하지 않는다. 남은 안전장치는 시작 시 필수 컬럼 체크(`hasField` 목록, `backend/src/index.ts` 상단)뿐인데, 이 목록에 새 컬럼을 추가하는 걸 깜빡하면(§43에서 실제로 그랬음) 드리프트가 감지되지 않고 조용히 운영 장애로 이어진다. **새 컬럼/제약을 `migration_fix.sql`에 추가할 때마다 반드시 이 `hasField` 필수 목록에도 같이 추가하고, 배포 후 실제로 컬럼이 생겼는지 운영 DB를 직접 조회해서 확인할 것** — 자동으로 적용됐을 거라고 가정하지 않는다.
 - Prisma migration history drift로 `prisma migrate deploy`는 사용하지 않음. `prisma db push` 사용.
 - `AssignmentPlan`의 close 관련 컬럼(`closedQty`, `closedAt`, `closedBy`, `closeMode`, `closeBasis`)은 additive SQL로 실DB에 반영됨.
 - 시간 컬럼 리네임 (완료):
@@ -1520,6 +1521,7 @@ runtime 조회값:
   - `npm run build` 통과.
 - **의도적으로 안 한 것**:
   - 운영 DB에 직접 DDL 실행은 안 함(세션 중 시도했으나 자동 분류기가 정상적으로 차단 — 정해진 `migration_fix.sql`+predeploy 파이프라인 밖에서 운영 스키마를 직접 바꾸려던 것이라 막힌 게 맞음). 다음 백엔드 배포 때 predeploy가 자동 적용한다.
+  - **2026-07-06 정정**: 위 가정이 틀렸다. 사용자가 `railway.json`의 `preDeployCommand`를 의도적으로 꺼둔 상태라 배포해도 `migration_fix.sql`이 자동 적용되지 않았고, 그 결과 이 컬럼이 운영 DB에 계속 없는 채로 남아 `PUT /assignment-board-state`가 503(`missing column: assignmentCardId`)으로 전부 실패하는 장애가 실제로 발생했다. 사용자 명시적 확인 하에 이번엔 운영 DB에 Step 0k SQL을 직접 실행해서 복구했다(컬럼/인덱스/FK 추가, 백필은 현재 `AssignmentPlan`이 0건이라 영향 없음). 시작 시 필수 컬럼 체크 목록(`hasField` 목록, 파일 상단)에도 `assignmentCardId`가 빠져있어 이 드리프트를 못 걸렀던 것도 같이 추가함. **pre-deploy가 꺼져 있는 한 앞으로 `migration_fix.sql`에 추가되는 모든 신규 단계는 자동 적용되지 않는다** — 새 마이그레이션을 추가할 때마다 운영 DB에 수동으로 같은 SQL을 직접 실행해야 한다는 뜻이다. pre-deploy를 왜 껐는지(원래 뭐가 안 됐는지)는 아직 확인 안 됨 — todo.md 참고.
   - `onDelete`는 `Restrict`가 아니라 `SetNull`을 선택함 — 이번이 첫 롤아웃이라 혹시 놓친 예외 케이스가 있어도 카드 재계산 전체가 하드 실패하기보다는 조용히 링크만 끊어지는 쪽을 우선함. 안정성이 확인되면 나중에 `Restrict`로 강화하는 걸 검토할 수 있음.
   - 기존 조회 코드(`loadAssignmentDisplayReferenceMaps`, `findOrderItemByAssignmentIdentity` 등 §42에서 이미 발견한 문자열 기반 스타일 조회 헬퍼들)를 새 FK로 갈아타게 하는 건 이번 범위에 안 넣음 — 이번 phase는 "쓰기 경로가 새 FK를 항상 채우게 하는 것"까지만이고, "읽기 경로가 새 FK를 쓰도록 전환"은 다음 phase.
   - `cardId` 문자열 컬럼 제거는 안 함 — 읽기 경로 전환 검증 끝난 뒤 별도 phase에서.
