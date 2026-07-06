@@ -1563,4 +1563,4 @@ runtime 조회값:
   - `assertGeneratedPrismaClientShape`의 `hasField` 체크를 "있으면 문제"로 반전 추가(6개 전부, `Style.uid still present`와 동일 패턴).
   - `npm run prisma:prepare-client` + `npm run build`(backend) 통과 확인. `npm run test:regression`(루트) 중 `test:access-policy`/`test:time-date`는 통과, `test:quantity-change`의 서브테스트 1개(`'PT' !== 'ST'`)는 실패하지만 이번 세션에서 건드리지 않은 `frontend/src/utils/quantityChangeBoard.mjs`의 기존(pre-existing) 이슈로 확인됨 — Phase D 변경과 무관.
 - **응답 하위호환**: `colorId`/`color`/`stripeColor`는 `null`/`""`, `colorName`/`imageUrl`/`thumbnailUrl`은 `""`로 고정 응답. 프론트가 이 필드들을 실제로 다시 읽는 곳이 없음을 이미 확인했으므로(§37 조사) 정적 값으로 고정해도 동작에 영향 없음.
-- **운영 배포 시 필수**: pre-deploy가 꺼져 있으므로 Step 0m도 자동 적용되지 않는다. 배포 후 반드시 운영 DB에 직접 접속해 Step 0m SQL을 수동 실행하고, `information_schema.columns`로 6개 컬럼이 실제로 사라졌는지 직접 확인해야 한다.
+- **운영 DB 적용 완료 (2026-07-06)**: `DATABASE_PUBLIC_URL`로 직접 접속해 적용 전 6개 컬럼 존재 + 전부 non-null 0건(및 `AssignmentPlan` 전체 0행, §39 사고 이후 미복구 상태와 일치)을 먼저 확인한 뒤 Step 0m SQL을 실행했고, 재조회로 6개 컬럼이 모두 사라졌음을 확인했다. Phase A~D 전체 완료.

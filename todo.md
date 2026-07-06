@@ -17,8 +17,9 @@
 - `npm run prisma:prepare-client` + `npm --prefix backend run build` 통과. 루트 `npm run test:regression` 중 `test:access-policy`/`test:time-date` 통과, `test:quantity-change`의 1개 서브테스트(`'PT' !== 'ST'`)는 실패하지만 `frontend/src/utils/quantityChangeBoard.mjs`의 기존 이슈로 확인(이번 변경과 무관, 이번 세션에서 그 파일은 건드리지 않음).
 - 상세는 AGENTS.md §45 참고.
 
+- **운영 DB에 Step 0m 적용 완료**: 사용자 확인 후 `DATABASE_PUBLIC_URL`로 직접 접속해 6개 `ALTER TABLE ... DROP COLUMN`(+FK 제약 DROP)을 실행. 실행 전 `information_schema.columns`/`COUNT(*) WHERE col IS NOT NULL`로 6개 컬럼 모두 존재하되 전부 0건 non-null임을 먼저 확인(`AssignmentPlan` 전체 행 수도 0건 — §39 사고 이후 아직 미복구 상태와 일치). 실행 후 재조회로 6개 컬럼이 실제로 사라졌음을 확인. AssignmentCard/AssignmentPlan FK+join 재설계(Phase A~D) 전체 완료.
+
 ### Remaining
-- **운영 DB에 Step 0m 미적용**: pre-deploy가 꺼져 있어 자동 적용 안 됨. 배포 후 운영 DB에 Step 0m SQL 수동 실행 + `information_schema.columns`로 6개 컬럼이 실제로 사라졌는지 직접 확인 필요(사용자 명시적 확인 후 진행).
 - **quantityChangeBoard.mjs의 `'PT' !== 'ST'` 회귀 테스트 실패**: 이번 작업과 무관해 보이지만 미해결 상태로 남아 있음. 다음에 이 파일을 건드릴 때 우선 조사.
 
 ## 2026-07-06 운영 저장 장애(503, missing column: assignmentCardId) 긴급 복구
