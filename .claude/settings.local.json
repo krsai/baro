@@ -41,7 +41,11 @@
       "Bash(grep -v \"//.*coverageStartDate\\\\|//.*coverageEndDate\")",
       "Bash(grep -v \"//.*workDate\")",
       "Bash(grep -n 'app\\\\.\\\\\\(put\\\\|patch\\\\|post\\\\\\)\\(\"\\\\/orders' index.ts)",
-      "Bash(npm --prefix backend run build)"
+      "Bash(npm --prefix backend run build)",
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }
