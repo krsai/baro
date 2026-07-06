@@ -203,6 +203,15 @@ function assertGeneratedPrismaClientShape() {
   if (!hasField("AssignmentCard", "cardId")) {
     staleSignals.push("AssignmentCard.cardId missing");
   }
+  if (!hasField("AssignmentCard", "styleId")) {
+    staleSignals.push("AssignmentCard.styleId missing");
+  }
+  if (!hasField("AssignmentCard", "workOrderId")) {
+    staleSignals.push("AssignmentCard.workOrderId missing");
+  }
+  if (!hasField("AssignmentCard", "buyerOrgId")) {
+    staleSignals.push("AssignmentCard.buyerOrgId missing");
+  }
   if (!hasField("AssignmentPlan", "externalId")) {
     staleSignals.push("AssignmentPlan.externalId missing");
   }
@@ -214,6 +223,9 @@ function assertGeneratedPrismaClientShape() {
   }
   if (!hasField("AssignmentPlan", "assignmentCardId")) {
     staleSignals.push("AssignmentPlan.assignmentCardId missing");
+  }
+  if (!hasField("AssignmentPlan", "buyerOrgId")) {
+    staleSignals.push("AssignmentPlan.buyerOrgId missing");
   }
   if (!modelByName.has("OrganizationHoliday")) {
     staleSignals.push("OrganizationHoliday model missing");
@@ -6120,9 +6132,12 @@ const resolveAssignmentPlanStyleMetaById = async ({
 
   // AssignmentPlan.styleId/style relation is not populated by any current write path
   // (board save never sets it), so it is always null in practice. The linked
-  // AssignmentCard.payload already carries a resolved numeric styleUid (plus display
+  // AssignmentCard.payload already carries a resolved numeric styleId (plus display
   // styleCode/styleName) from when the card was created — reuse that instead of
-  // re-deriving it. Note Style rows are NOT scoped to the AssignmentPlan's orgId
+  // re-deriving it. (This fallback previously read payload?.styleUid, a typo -
+  // the payload has never had that key, only styleId - so this branch always
+  // silently matched nothing until fixed.) Note Style rows are NOT scoped to
+  // the AssignmentPlan's orgId
   // (Style.orgId is the owning brand org, which can differ from the manufacturer org
   // that owns the AssignmentPlan/AssignmentCard), so do not add an orgId filter here.
   const cardIds = Array.from(
@@ -6145,7 +6160,7 @@ const resolveAssignmentPlanStyleMetaById = async ({
   ensureArray(cards).forEach((card) => {
     const cardId = resolveOptionalString(card?.cardId, null);
     const payload = card?.payload as any;
-    const styleId = toPositiveIntOrNull(payload?.styleUid);
+    const styleId = toPositiveIntOrNull(payload?.styleId);
     if (!cardId || styleId === null) return;
     cardStyleMetaByCardId.set(cardId, {
       styleId,

@@ -1526,3 +1526,18 @@ runtime 조회값:
   - 기존 조회 코드(`loadAssignmentDisplayReferenceMaps`, `findOrderItemByAssignmentIdentity` 등 §42에서 이미 발견한 문자열 기반 스타일 조회 헬퍼들)를 새 FK로 갈아타게 하는 건 이번 범위에 안 넣음 — 이번 phase는 "쓰기 경로가 새 FK를 항상 채우게 하는 것"까지만이고, "읽기 경로가 새 FK를 쓰도록 전환"은 다음 phase.
   - `cardId` 문자열 컬럼 제거는 안 함 — 읽기 경로 전환 검증 끝난 뒤 별도 phase에서.
 - **다음 단계 (미착수)**: 운영 배포 후 `assignmentCardId` 백필이 실제로 몇 건 채워졌는지 확인(`npm run` 검증 스크립트 신설 여지 있음, 기존 `verify:workorder-item-backfill` 패턴 재사용 가능) → 읽기 경로를 하나씩 FK 기반으로 전환 → `cardId` dual-read 제거 → 컬럼 DROP.
+
+### 44. 2026-07-06 AssignmentCard/AssignmentPlan FK+Join 전면 재설계 — Phase A (스키마+백필만, 완료)
+
+- 배경: 사용자가 Railway DB 화면에서 `AssignmentCard.payload` JSON을 직접 보고, FK+join으로 만들어달라고 반복 요청했음에도 실제로는 스타일명/스타일코드/고객사명/이미지URL 등이 전부 텍스트로 중복 저장되고 있는 걸 발견. `AssignmentPlan`도 같은 문제(게다가 `styleId` FK 컬럼이 있는데 어떤 저장 경로도 채운 적이 없어 100% NULL)라고 지적. 세 번의 코드 조사 + Plan 에이전트 설계를 거쳐 4단계 계획을 확정(Phase A~D), 이번 세션은 **Phase A만** 구현.
+- **명명 규칙**: 새 FK는 `customerId`가 아니라 `buyerOrgId`(`Organization` 참조) — `WorkOrder.buyerOrgId`와 동일한 이름. `WorkOrder.buyerOrgId`/`customerId`는 저장 시점에 항상 같은 값으로 맞춰짐(`normalizeOrderPayload`, `backend/src/index.ts:5334-5341` 부근)이 확인되어 `buyerOrgId`를 기준으로 삼음.
+- **Phase A 구현 내용** (`backend/prisma/schema.prisma`, `backend/migration_fix.sql` Step 0l, `backend/src/index.ts`):
+  - `AssignmentCard`에 `styleId Int?`(→Style), `workOrderId Int?`(→WorkOrder), `buyerOrgId Int?`(→Organization, named relation `AssignmentCardBuyerOrg`) 추가. `payload` JSON에 이미 있던 값(styleId/workOrderId는 그대로, buyerOrgId는 workOrderId를 통해 join)을 실제 컬럼으로 승격.
+  - `AssignmentPlan`에 `buyerOrgId Int?`(→Organization, named relation `AssignmentPlanBuyerOrg`) 추가. `styleId` 컬럼 자체는 이미 있었음(Step 0j, 2026-07-01) — 이번엔 컬럼 추가가 아니라 백필만.
+  - `Organization`에 `buyerAssignmentCards`/`buyerAssignmentPlans` named 역관계 추가(기존 unnamed `assignmentCards`/`assignmentPlans`와 공존, `WorkOrder.buyerOrg`가 쓰는 것과 동일한 named-relation 패턴). `Style`/`WorkOrder`에도 `assignmentCards AssignmentCard[]` 역관계 추가.
+  - `migration_fix.sql` 맨 위(기존 Step 0k보다 위)에 **Step 0l** 추가: `AssignmentCard.styleId`/`workOrderId`는 `payload->>'styleId'`/`'workOrderId'`에서 직접 백필(이미 검증된 정수라 모호함 없음), `buyerOrgId`는 방금 채운 `workOrderId`로 `WorkOrder`를 join해서 `COALESCE(buyerOrgId, customerId)`로 백필. **`AssignmentPlan.styleId`/`buyerOrgId`는 반드시 `assignmentCardId`를 통해서만 백필**(`AssignmentPlan.assignmentCardId → AssignmentCard.styleId/buyerOrgId`, 독립 재추정 금지) — `assignmentCardId`가 없는 옛 행은 null로 남김(Step 0k와 동일 원칙).
+  - 시작 시 필수 컬럼 체크(`assertGeneratedPrismaClientShape`, `hasField` 목록)에 이번에 추가한 4개 컬럼 전부를 **같은 커밋**에 추가 — 어제 아침 사고(§43)가 정확히 이 항목을 빼먹어서 났으므로 반드시 같이 넣음.
+  - 별개지만 같이 처리: `resolveAssignmentPlanStyleMetaById`(`backend/src/index.ts:6160` 부근)가 `payload?.styleUid`를 읽던 오타를 `payload?.styleId`로 수정 — `AssignmentCard.payload`는 애초에 `styleUid`라는 키를 가진 적이 없어서 이 폴백 분기가 지금까지 항상 조용히 아무것도 매칭 못 하고 있었음.
+  - `npm run prisma:validate`/`prisma:prepare-client`/`npm run build` 전부 통과.
+- **의도적으로 이번엔 안 한 것 (Phase B/C/D, 별도 세션)**: 새 컬럼에 실제로 값을 쓰는 저장 경로 연결(Phase B), 조회 경로를 JSON 문자열 신뢰 대신 join 기반으로 전환(Phase C), 죽은 컬럼(`AssignmentCard.colorId/colorName/gender`, `AssignmentPlan.colorId/colorName/color/stripeColor/imageUrl/thumbnailUrl` — 전부 이번 조사에서 항상 null이거나 write-only로 확인됨) 삭제(Phase D). `repairAssignmentPlanDisplayRows` 등 문자열 파싱 기반 자가치유 로직도 Phase C에서 제거 예정(스타일 매칭 버그가 있는 걸 이미 확인함).
+- **운영 배포 시 필수**: pre-deploy가 꺼져 있으므로(§43 참고) 배포해도 이 Step 0l이 자동 적용되지 않는다 — 반드시 운영 DB에 직접 접속해 수동으로 SQL을 실행하고, `information_schema.columns`로 컬럼 생성을 직접 확인해야 한다. 자동 적용을 가정하지 말 것.

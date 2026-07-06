@@ -1,3 +1,79 @@
+-- Step 0l: AssignmentCard.styleId/workOrderId/buyerOrgId + AssignmentPlan.buyerOrgId
+-- real FK columns (20260706)
+-- Part of the AssignmentCard/AssignmentPlan FK+join redesign (AGENTS.md, see
+-- the section documenting this phased plan). AssignmentCard.payload already
+-- carries styleId/workOrderId as plain unambiguous integers - this promotes
+-- them to real relation columns. payload itself is left untouched for now
+-- as a read-compatibility fallback during the migration - do not remove yet.
+ALTER TABLE "AssignmentCard" ADD COLUMN IF NOT EXISTS "styleId" INTEGER;
+ALTER TABLE "AssignmentCard" ADD COLUMN IF NOT EXISTS "workOrderId" INTEGER;
+ALTER TABLE "AssignmentCard" ADD COLUMN IF NOT EXISTS "buyerOrgId" INTEGER;
+ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "buyerOrgId" INTEGER;
+
+UPDATE "AssignmentCard"
+SET "styleId" = (payload->>'styleId')::integer
+WHERE "styleId" IS NULL
+  AND payload->>'styleId' ~ '^[0-9]+$';
+
+UPDATE "AssignmentCard"
+SET "workOrderId" = (payload->>'workOrderId')::integer
+WHERE "workOrderId" IS NULL
+  AND payload->>'workOrderId' ~ '^[0-9]+$';
+
+-- buyerOrgId has no raw id in payload (only resolved display strings), so it
+-- must come from a join through the workOrderId just backfilled above.
+UPDATE "AssignmentCard" ac
+SET "buyerOrgId" = COALESCE(wo."buyerOrgId", wo."customerId")
+FROM "WorkOrder" wo
+WHERE ac."workOrderId" = wo.id
+  AND ac."buyerOrgId" IS NULL;
+
+-- AssignmentPlan.styleId/buyerOrgId are backfilled only through
+-- assignmentCardId (Step 0k), never re-derived independently, so a plan
+-- always agrees with the card it was scheduled from. Plans with no
+-- assignmentCardId match (pre-Step-0k stragglers) are left NULL, same as
+-- Step 0k itself did.
+UPDATE "AssignmentPlan" ap
+SET
+  "styleId" = COALESCE(ap."styleId", ac."styleId"),
+  "buyerOrgId" = COALESCE(ap."buyerOrgId", ac."buyerOrgId")
+FROM "AssignmentCard" ac
+WHERE ap."assignmentCardId" = ac.id
+  AND (ap."styleId" IS NULL OR ap."buyerOrgId" IS NULL);
+
+CREATE INDEX IF NOT EXISTS "AssignmentCard_styleId_idx" ON "AssignmentCard"("styleId");
+CREATE INDEX IF NOT EXISTS "AssignmentCard_workOrderId_idx" ON "AssignmentCard"("workOrderId");
+CREATE INDEX IF NOT EXISTS "AssignmentCard_buyerOrgId_idx" ON "AssignmentCard"("buyerOrgId");
+CREATE INDEX IF NOT EXISTS "AssignmentPlan_buyerOrgId_idx" ON "AssignmentPlan"("buyerOrgId");
+
+DO $$ BEGIN
+  ALTER TABLE "AssignmentCard"
+    ADD CONSTRAINT "AssignmentCard_styleId_fkey"
+    FOREIGN KEY ("styleId") REFERENCES "Style"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "AssignmentCard"
+    ADD CONSTRAINT "AssignmentCard_workOrderId_fkey"
+    FOREIGN KEY ("workOrderId") REFERENCES "WorkOrder"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "AssignmentCard"
+    ADD CONSTRAINT "AssignmentCard_buyerOrgId_fkey"
+    FOREIGN KEY ("buyerOrgId") REFERENCES "Organization"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "AssignmentPlan"
+    ADD CONSTRAINT "AssignmentPlan_buyerOrgId_fkey"
+    FOREIGN KEY ("buyerOrgId") REFERENCES "Organization"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- Step 0k: AssignmentPlan.assignmentCardId real FK to AssignmentCard (20260705)
 -- Replaces the "cardId string happens to match" application-level convention
 -- (AGENTS.md structural-problems list) with a real FK, same pattern as Step 0i

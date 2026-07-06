@@ -1,5 +1,16 @@
 # TODO
 
+## 2026-07-06 AssignmentCard/AssignmentPlan FK+Join 재설계 — Phase A
+- 사용자가 Railway DB에서 `AssignmentCard.payload` JSON을 직접 보고 FK+join 미사용 문제를 지적(styleCode/styleName/customer/previewUrl 등이 텍스트 중복 저장, `AssignmentPlan.styleId`는 컬럼만 있고 어디서도 안 채움). 조사 에이전트 3개 + 설계 에이전트 1개로 4단계 계획(Phase A~D)을 확정하고 이번 세션에 Phase A만 구현.
+- `AssignmentCard`에 `styleId`/`workOrderId`/`buyerOrgId`(→Organization, 사용자 지시대로 `customerId`가 아니라 `WorkOrder`와 동일하게 `buyerOrgId`로 명명) 실제 FK 컬럼 추가. `AssignmentPlan`에는 `buyerOrgId`만 추가(`styleId`는 이미 있었는데 안 채워지고 있었음).
+- `migration_fix.sql` Step 0l 추가: 컬럼 + payload/workOrder join 기반 백필 + 인덱스 + FK. `AssignmentPlan` 쪽은 `assignmentCardId`를 통해서만 백필(독립 재추정 금지).
+- 시작 시 필수 컬럼 체크에 4개 컬럼 전부 추가(어제 아침 assignmentCardId 누락 사고 재발 방지 원칙 적용). `resolveAssignmentPlanStyleMetaById`의 `payload?.styleUid` 오타(`styleId`가 맞음, 지금까지 항상 매칭 실패)도 같이 수정.
+- `npm run build` 통과.
+
+### Remaining
+- **Phase B/C/D 미구현**: 새 컬럼에 실제 쓰기 연결(B), 조회 경로 join 전환(C), 죽은 컬럼(`colorId/colorName/gender`, `color/stripeColor`, `imageUrl/thumbnailUrl`) 삭제(D) — 전부 다음 세션.
+- **배포 시 반드시 확인**: pre-deploy가 꺼져 있어 자동 적용 안 됨. 배포 후 운영 DB에 Step 0l SQL 수동 실행 + `information_schema.columns`로 직접 확인 필요. 이번 세션에서는 사용자에게 실행 여부를 확인받고 진행할 것(운영 DB 직접 DDL은 매번 명시적 확인 필요).
+
 ## 2026-07-06 운영 저장 장애(503, missing column: assignmentCardId) 긴급 복구
 - 사용자가 배정 보드 저장 실패(503, "server database schema is out of sync ... assignmentCardId")를 보고. 운영 DB를 직접 조회해 `AssignmentPlan` 테이블에 `assignmentCardId` 컬럼이 실제로 없음을 확인 — §43(2026-07-05) FK 마이그레이션(`migration_fix.sql` Step 0k)이 스키마/코드에는 반영됐지만 운영 DB에는 한 번도 적용되지 않은 상태였다.
 - 원인: 사용자가 `railway.json`의 `preDeployCommand`(배포마다 `migration_fix.sql`을 자동 적용하는 장치)를 **의도적으로 꺼둔 상태**("안되더라고") — 즉 배포 자동화 파이프라인이 아예 이 마이그레이션을 실행한 적이 없었다. 서버 시작 시 필수 컬럼 누락을 감지하는 자체 안전장치(`backend/src/index.ts` 상단 `hasField` 체크 목록)에도 `assignmentCardId`가 빠져 있어서, 컬럼이 없는데도 서버가 정상 기동돼 문제가 안 걸러졌다.
