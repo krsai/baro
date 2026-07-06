@@ -468,7 +468,6 @@ model AttrColor {
   nameVi String?
 
   workOrderItems  WorkOrderItem[]
-  assignmentPlans AssignmentPlan[]
   qcPassEvents   QcPassEvent[]
 }
 
@@ -721,18 +720,12 @@ model AssignmentPlan {
   orderNo               String?
   customer              String?
   label                 String?
-  colorId               Int?
-  colorName             String?
   previewUrl            String?
-  imageUrl              String?
-  thumbnailUrl          String?
   assignmentQuantity       Int?
   originOrderId            String?
   basis                    String?
   assignmentCtTotalSeconds Int?
   assignmentCtSnapshot     Json?
-  color                    String?
-  stripeColor              String?
   assignmentStTotalSeconds Int?
   startIndex               Int
   endIndex                 Int
@@ -765,7 +758,6 @@ model AssignmentPlan {
   organization   Organization    @relation(fields: [orgId], references: [id])
   workOrder      WorkOrder?      @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   style          Style?          @relation(fields: [styleId], references: [id], onDelete: SetNull)
-  attrColor      AttrColor?      @relation(fields: [colorId], references: [id], onDelete: SetNull)
   buyerOrg       Organization?   @relation("AssignmentPlanBuyerOrg", fields: [buyerOrgId], references: [id], onDelete: SetNull)
   // Real FK replacing the old "cardId string happens to match" convention
   // (AGENTS.md structural-problems list). cardId itself is kept for now as
@@ -778,7 +770,6 @@ model AssignmentPlan {
   @@index([orgId, lineId])
   @@index([workOrderId])
   @@index([styleId])
-  @@index([colorId])
   @@index([assignmentCardId])
   @@index([buyerOrgId])
 }

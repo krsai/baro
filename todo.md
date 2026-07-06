@@ -7,9 +7,19 @@
 - 시작 시 필수 컬럼 체크에 4개 컬럼 전부 추가(어제 아침 assignmentCardId 누락 사고 재발 방지 원칙 적용). `resolveAssignmentPlanStyleMetaById`의 `payload?.styleUid` 오타(`styleId`가 맞음, 지금까지 항상 매칭 실패)도 같이 수정.
 - `npm run build` 통과.
 
+### Remaining (Phase A 시점)
+- ~~Phase B/C/D 미구현~~ → 같은 세션에서 이어서 완료함 (아래 새 항목 참고).
+
+## 2026-07-06 AssignmentCard/AssignmentPlan FK+Join 재설계 — Phase B/C/D
+- Phase B: `buildAssignmentCardsFromOrders`/`syncAssignmentCardsForOrg`/`syncAssignmentPlanWorkOrderRefs`/`toAssignmentPlanWriteData`가 새 FK(`styleId`/`workOrderId`/`buyerOrgId`)를 실제로 채우도록 연결.
+- Phase C: `toAssignmentCardFromStoreRow`/`loadAssignmentCardsForOrg`/`toAssignmentPlanResponse`/`GET /assignment-plans`/`buildAssignmentPlanProgressRows`/`buildAssignmentPlanCloseResponse`/`toWorkLogContextAssignmentResponse`를 join-우선 조회로 전환(응답 JSON 필드명 변경 없음, 프론트 무수정). 깨진 read-time 자가치유 로직(`repairAssignmentPlanDisplayRows` 등) 삭제 — write-time 로직은 별개라 유지.
+- Phase D: `AssignmentPlan.colorId/colorName/color/stripeColor/imageUrl/thumbnailUrl` 6개 죽은 컬럼 삭제. `migration_fix.sql` Step 0m 추가(Step 0l보다 위). `syncAssignmentPlanColorRefs`/`resolveAssignmentPlanColorName` 함수 삭제. `assertGeneratedPrismaClientShape`에 6개 "있으면 문제" 체크 추가.
+- `npm run prisma:prepare-client` + `npm --prefix backend run build` 통과. 루트 `npm run test:regression` 중 `test:access-policy`/`test:time-date` 통과, `test:quantity-change`의 1개 서브테스트(`'PT' !== 'ST'`)는 실패하지만 `frontend/src/utils/quantityChangeBoard.mjs`의 기존 이슈로 확인(이번 변경과 무관, 이번 세션에서 그 파일은 건드리지 않음).
+- 상세는 AGENTS.md §45 참고.
+
 ### Remaining
-- **Phase B/C/D 미구현**: 새 컬럼에 실제 쓰기 연결(B), 조회 경로 join 전환(C), 죽은 컬럼(`colorId/colorName/gender`, `color/stripeColor`, `imageUrl/thumbnailUrl`) 삭제(D) — 전부 다음 세션.
-- **배포 시 반드시 확인**: pre-deploy가 꺼져 있어 자동 적용 안 됨. 배포 후 운영 DB에 Step 0l SQL 수동 실행 + `information_schema.columns`로 직접 확인 필요. 이번 세션에서는 사용자에게 실행 여부를 확인받고 진행할 것(운영 DB 직접 DDL은 매번 명시적 확인 필요).
+- **운영 DB에 Step 0m 미적용**: pre-deploy가 꺼져 있어 자동 적용 안 됨. 배포 후 운영 DB에 Step 0m SQL 수동 실행 + `information_schema.columns`로 6개 컬럼이 실제로 사라졌는지 직접 확인 필요(사용자 명시적 확인 후 진행).
+- **quantityChangeBoard.mjs의 `'PT' !== 'ST'` 회귀 테스트 실패**: 이번 작업과 무관해 보이지만 미해결 상태로 남아 있음. 다음에 이 파일을 건드릴 때 우선 조사.
 
 ## 2026-07-06 운영 저장 장애(503, missing column: assignmentCardId) 긴급 복구
 - 사용자가 배정 보드 저장 실패(503, "server database schema is out of sync ... assignmentCardId")를 보고. 운영 DB를 직접 조회해 `AssignmentPlan` 테이블에 `assignmentCardId` 컬럼이 실제로 없음을 확인 — §43(2026-07-05) FK 마이그레이션(`migration_fix.sql` Step 0k)이 스키마/코드에는 반영됐지만 운영 DB에는 한 번도 적용되지 않은 상태였다.

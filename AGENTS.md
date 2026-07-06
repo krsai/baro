@@ -1539,5 +1539,28 @@ runtime 조회값:
   - 시작 시 필수 컬럼 체크(`assertGeneratedPrismaClientShape`, `hasField` 목록)에 이번에 추가한 4개 컬럼 전부를 **같은 커밋**에 추가 — 어제 아침 사고(§43)가 정확히 이 항목을 빼먹어서 났으므로 반드시 같이 넣음.
   - 별개지만 같이 처리: `resolveAssignmentPlanStyleMetaById`(`backend/src/index.ts:6160` 부근)가 `payload?.styleUid`를 읽던 오타를 `payload?.styleId`로 수정 — `AssignmentCard.payload`는 애초에 `styleUid`라는 키를 가진 적이 없어서 이 폴백 분기가 지금까지 항상 조용히 아무것도 매칭 못 하고 있었음.
   - `npm run prisma:validate`/`prisma:prepare-client`/`npm run build` 전부 통과.
-- **의도적으로 이번엔 안 한 것 (Phase B/C/D, 별도 세션)**: 새 컬럼에 실제로 값을 쓰는 저장 경로 연결(Phase B), 조회 경로를 JSON 문자열 신뢰 대신 join 기반으로 전환(Phase C), 죽은 컬럼(`AssignmentCard.colorId/colorName/gender`, `AssignmentPlan.colorId/colorName/color/stripeColor/imageUrl/thumbnailUrl` — 전부 이번 조사에서 항상 null이거나 write-only로 확인됨) 삭제(Phase D). `repairAssignmentPlanDisplayRows` 등 문자열 파싱 기반 자가치유 로직도 Phase C에서 제거 예정(스타일 매칭 버그가 있는 걸 이미 확인함).
+- **Phase A 이후 진행 상황**: Phase B(쓰기 연결)/C(조회 join 전환)/D(죽은 컬럼 삭제)는 아래 §45에서 모두 완료.
 - **운영 배포 시 필수**: pre-deploy가 꺼져 있으므로(§43 참고) 배포해도 이 Step 0l이 자동 적용되지 않는다 — 반드시 운영 DB에 직접 접속해 수동으로 SQL을 실행하고, `information_schema.columns`로 컬럼 생성을 직접 확인해야 한다. 자동 적용을 가정하지 말 것.
+
+### 45. 2026-07-06 AssignmentCard/AssignmentPlan FK+Join 전면 재설계 — Phase B/C/D (완료)
+
+- §44 Phase A(스키마 추가 + 백필)에 이어 나머지 세 단계를 같은 세션에서 완료.
+- **Phase B (신규/수정 저장 경로가 새 FK를 채우도록 연결)**:
+  - `buildAssignmentCardsFromOrders`: 카드 payload에 `buyerOrgId` 추가.
+  - `syncAssignmentCardsForOrg`의 upsert(create/update 양쪽): `styleId`/`workOrderId`/`buyerOrgId` 추가.
+  - `syncAssignmentPlanWorkOrderRefs`: 이미 조회하고 있던 `matchedWorkOrder.buyerOrgId`를 반환 객체에 포함.
+  - `PUT /assignment-board-state`의 `matchedAssignmentCards` 조회를 확장해 `cardId -> {id, styleId, buyerOrgId}` 맵으로 만들고, `toAssignmentPlanWriteData`가 이 맵에서 `styleId`/`buyerOrgId`를 채움(독립 재추정 금지, Phase A와 동일 원칙).
+- **Phase C (조회 경로를 join 기반으로 전환, 깨진 자가치유 로직 제거)**:
+  - `toAssignmentCardFromStoreRow`/`loadAssignmentCardsForOrg`: `select`에 `style`/`workOrder`/`buyerOrg` relation을 포함시키고, `styleName`/`styleCode`/`previewUrl`/`orderNo`/`customer`/`customerNameKo`/`customerNameVi` 등을 "join 값 우선, 없으면 기존 문자열 폴백" 방식으로 전환. 응답 JSON 필드명은 그대로 유지(프론트 수정 불필요).
+  - `toAssignmentPlanResponse`, `ASSIGNMENT_PLAN_SELECT_CORE`/`_LEGACY`, `GET /assignment-plans`, `buildAssignmentPlanProgressRows`, `buildAssignmentPlanCloseResponse`, `toWorkLogContextAssignmentResponse`에 동일한 join-우선 처리(`orderNo`/`customer`/`label`/`previewUrl`) 적용.
+  - `resolveAssignmentPlanStyleMetaById`의 `styleUid` 오타는 Phase A에서 이미 수정됨(§44 참고).
+  - **깨진 자가치유 로직 완전 제거**: `repairAssignmentPlanDisplayRows`, `assignmentPlanNeedsDisplayRepair`, `ASSIGNMENT_PLAN_DISPLAY_FIELDS`와 `GET /assignment-plans`/`GET /assignment-board-state`의 호출부 2곳을 삭제. Phase A 백필이 기존 행을 한 번에 다 채우므로 "서서히 고쳐지는" read-time 폴백 시나리오 자체가 없어졌고, 원래도 스타일 매칭 버그가 있던 로직이라 계속 남겨둘 이유가 없었음. **주의**: 이름이 비슷한 write-time 로직(`shouldRepairAssignmentBoardDisplayPayloadOnWrite`/`safelyRepairAssignmentBoardDisplayState`/`repairAssignmentBoardDisplayState`)은 저장 payload 정제용으로 별개 메커니즘이라 그대로 유지함 — 이번 삭제 대상이 아님. 이들이 공유하는 `hasCorruptedAssignmentDisplayText`/`loadAssignmentDisplayReferenceMaps`/`resolveAssignmentDisplayFallback`/`shouldRepairAssignmentDisplayField`/`findOrderItemByAssignmentIdentity`도 그대로 유지.
+- **Phase D (죽은 컬럼 삭제)**:
+  - 삭제 대상: `AssignmentPlan.colorId`(+FK), `colorName`, `color`, `stripeColor`, `imageUrl`, `thumbnailUrl`. (`AssignmentCard.colorId/colorName/gender`는 애초에 실제 DB 컬럼이 존재한 적이 없어 — payload JSON 안의 죽은 키였을 뿐 — 스키마/migration 변경 대상이 아니었고, Phase A에서 이미 `buildAssignmentCardsFromOrders`의 `colorId: null, colorName: null, gender: null` 세 줄만 제거함.)
+  - `schema.prisma`: 위 6개 필드와 `AssignmentPlan.attrColor` relation, `AttrColor.assignmentPlans` 역관계, `@@index([colorId])` 제거.
+  - `migration_fix.sql` 맨 위에 **Step 0m** 추가(Step 0l보다 위): `DROP CONSTRAINT IF EXISTS "AssignmentPlan_colorId_fkey"` + 6개 컬럼 `DROP COLUMN IF EXISTS`. 이 6개는 (a) `colorId`/`colorName` — 프론트가 실제 색상값을 보낸 적이 없어 항상 null(색상/성별은 배정 단위에서 추적하지 않는다는 도메인 규칙, §37 참고), (b) `color`/`stripeColor` — 이름과 달리 원단 색상이 아니라 CT/ST/PT/AT 기준별 화면 색상 코딩용 write-only 값(프론트는 조회 시 매번 `basis`로 재계산), (c) `imageUrl`/`thumbnailUrl` — `Style`에 별도 썸네일 필드가 없어 join해도 `previewUrl`과 같은 값의 세 번째 사본이 될 뿐이라 삭제로 결정(§44 계획 참고). 백필 대상이 아니므로(원래부터 죽은 값) Phase A류 별도 verify 스크립트 없이 코드 감사로 충분하다고 판단.
+  - 코드에서 이 6개 필드를 쓰거나 읽던 모든 지점 정리: `toAssignmentPlanWriteData`(쓰기 제거), `ASSIGNMENT_PLAN_SELECT_CORE`/`_LEGACY`/`COMPLETED_ASSIGNMENT_PLAN_WRITE_SELECT`(select에서 제거), `toAssignmentPlanResponse`/`GET /assignment-plans`/`buildAssignmentPlanProgressRows`/`buildAssignmentPlanCloseResponse`/`toWorkLogContextAssignmentResponse`(응답 필드는 하위호환을 위해 정적 값 `null`/`""`으로 고정), `syncAssignmentPlanColorRefs` 함수 전체와 `resolveAssignmentPlanColorName` 함수 전체 삭제(둘 다 이 6개 필드 전용이었고 실사용 시 항상 no-op였음이 확인됨), `syncGlobalCategorySection`(AttrColor 이름 변경 시 `AssignmentPlan.colorName`을 역전파하던 블록) 삭제.
+  - `assertGeneratedPrismaClientShape`의 `hasField` 체크를 "있으면 문제"로 반전 추가(6개 전부, `Style.uid still present`와 동일 패턴).
+  - `npm run prisma:prepare-client` + `npm run build`(backend) 통과 확인. `npm run test:regression`(루트) 중 `test:access-policy`/`test:time-date`는 통과, `test:quantity-change`의 서브테스트 1개(`'PT' !== 'ST'`)는 실패하지만 이번 세션에서 건드리지 않은 `frontend/src/utils/quantityChangeBoard.mjs`의 기존(pre-existing) 이슈로 확인됨 — Phase D 변경과 무관.
+- **응답 하위호환**: `colorId`/`color`/`stripeColor`는 `null`/`""`, `colorName`/`imageUrl`/`thumbnailUrl`은 `""`로 고정 응답. 프론트가 이 필드들을 실제로 다시 읽는 곳이 없음을 이미 확인했으므로(§37 조사) 정적 값으로 고정해도 동작에 영향 없음.
+- **운영 배포 시 필수**: pre-deploy가 꺼져 있으므로 Step 0m도 자동 적용되지 않는다. 배포 후 반드시 운영 DB에 직접 접속해 Step 0m SQL을 수동 실행하고, `information_schema.columns`로 6개 컬럼이 실제로 사라졌는지 직접 확인해야 한다.

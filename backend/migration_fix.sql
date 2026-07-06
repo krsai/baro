@@ -1,3 +1,25 @@
+-- Step 0m: drop AssignmentPlan.colorId/colorName/color/stripeColor/imageUrl/
+-- thumbnailUrl (20260706)
+-- Phase D of the AssignmentCard/AssignmentPlan FK+join redesign. All six are
+-- confirmed dead: colorId/colorName were never populated by any real save
+-- (the frontend never sends a real color - color/gender are not tracked at
+-- the assignment level), and color/stripeColor/imageUrl/thumbnailUrl are
+-- write-only (the frontend recomputes basis-color at render time and only
+-- ever reads previewUrl for the card image, confirmed by grep - never these).
+-- Application code no longer reads or writes any of these six columns
+-- (backend/src/index.ts, see the comment in toAssignmentPlanResponse).
+-- Safe regardless of current AssignmentPlan row count: these columns were
+-- never populated with real data by any save path, so existing rows already
+-- have them null (verify with a COUNT(*) WHERE column IS NOT NULL check
+-- before running against production if this needs re-confirming).
+ALTER TABLE "AssignmentPlan" DROP CONSTRAINT IF EXISTS "AssignmentPlan_colorId_fkey";
+ALTER TABLE "AssignmentPlan" DROP COLUMN IF EXISTS "colorId";
+ALTER TABLE "AssignmentPlan" DROP COLUMN IF EXISTS "colorName";
+ALTER TABLE "AssignmentPlan" DROP COLUMN IF EXISTS "color";
+ALTER TABLE "AssignmentPlan" DROP COLUMN IF EXISTS "stripeColor";
+ALTER TABLE "AssignmentPlan" DROP COLUMN IF EXISTS "imageUrl";
+ALTER TABLE "AssignmentPlan" DROP COLUMN IF EXISTS "thumbnailUrl";
+
 -- Step 0l: AssignmentCard.styleId/workOrderId/buyerOrgId + AssignmentPlan.buyerOrgId
 -- real FK columns (20260706)
 -- Part of the AssignmentCard/AssignmentPlan FK+join redesign (AGENTS.md, see

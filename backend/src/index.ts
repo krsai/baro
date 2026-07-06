@@ -227,6 +227,24 @@ function assertGeneratedPrismaClientShape() {
   if (!hasField("AssignmentPlan", "buyerOrgId")) {
     staleSignals.push("AssignmentPlan.buyerOrgId missing");
   }
+  if (hasField("AssignmentPlan", "colorId")) {
+    staleSignals.push("AssignmentPlan.colorId still present");
+  }
+  if (hasField("AssignmentPlan", "colorName")) {
+    staleSignals.push("AssignmentPlan.colorName still present");
+  }
+  if (hasField("AssignmentPlan", "color")) {
+    staleSignals.push("AssignmentPlan.color still present");
+  }
+  if (hasField("AssignmentPlan", "stripeColor")) {
+    staleSignals.push("AssignmentPlan.stripeColor still present");
+  }
+  if (hasField("AssignmentPlan", "imageUrl")) {
+    staleSignals.push("AssignmentPlan.imageUrl still present");
+  }
+  if (hasField("AssignmentPlan", "thumbnailUrl")) {
+    staleSignals.push("AssignmentPlan.thumbnailUrl still present");
+  }
   if (!modelByName.has("OrganizationHoliday")) {
     staleSignals.push("OrganizationHoliday model missing");
   }
@@ -2417,10 +2435,10 @@ const resolveWorkOrderItemColorName = (item: any) =>
   resolveOptionalString(item?.color?.name ?? item?.colorName, null) ??
   resolveOptionalString(item?.color?.code ?? item?.colorCode, null) ??
   "";
-const resolveAssignmentPlanColorName = (plan: any) =>
-  resolveOptionalString(plan?.attrColor?.name ?? plan?.colorName, null) ??
-  resolveOptionalString(plan?.attrColor?.code, null) ??
-  "";
+// resolveAssignmentPlanColorName was retired in Phase D
+// (AssignmentCard/AssignmentPlan FK+join redesign) along with
+// AssignmentPlan.colorId/colorName - color/gender were never tracked at the
+// assignment level.
 
 const resolveStyleSyncTargetOrgIds = async (orgId: number) => {
   const org = await prisma.organization.findUnique({
@@ -7979,7 +7997,6 @@ const validateAssignmentPlanPayrollLock = async ({
       externalId: true,
       orderNo: true,
       label: true,
-      colorName: true,
       completedAt: true,
       closedAt: true,
       productionCompletedAt: true,
@@ -8049,7 +8066,6 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
         assignmentCtTotalSeconds: true,
         orderNo: true,
         label: true,
-        colorName: true,
         isCompleted: true,
         completedAt: true,
       },
@@ -8065,7 +8081,6 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
         assignmentCtSnapshot: true,
         orderNo: true,
         label: true,
-        colorName: true,
         isCompleted: true,
         completedAt: true,
       },
@@ -9334,9 +9349,11 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     orderNo: resolveOptionalString(plan?.orderNo, "") ?? "",
     label: resolveOptionalString(plan?.label, "") ?? "",
     customer: resolveOptionalString(plan?.customer, "") ?? "",
-    colorId: toPositiveIntOrNull(plan?.colorId),
-    colorName: resolveAssignmentPlanColorName(plan),
-    color: resolveOptionalString(plan?.color, "") ?? "",
+    // colorId/colorName/color dropped in Phase D - see the comment in
+    // toAssignmentPlanResponse for why these are static now.
+    colorId: null,
+    colorName: "",
+    color: "",
     assignmentQuantity: resolveAssignmentQuantity(plan),
     assignmentCtTotalSeconds: resolveAssignmentCtTotalSeconds(plan),
     assignmentStTotalSeconds: resolvePersistedAssignmentPlanStTotalSeconds(plan),
@@ -9623,13 +9640,10 @@ const buildWorkLogContextResponse = async ({
           orderNo: true,
           customer: true,
           label: true,
-          colorId: true,
-          colorName: true,
           assignmentQuantity: true,
           assignmentStTotalSeconds: true,
           assignmentCtTotalSeconds: true,
           assignmentCtSnapshot: true,
-          color: true,
           startIndex: true,
           endIndex: true,
           isCompleted: true,
@@ -9649,11 +9663,8 @@ const buildWorkLogContextResponse = async ({
           orderNo: true,
           customer: true,
           label: true,
-          colorId: true,
-          colorName: true,
           assignmentQuantity: true,
           assignmentCtSnapshot: true,
-          color: true,
           startIndex: true,
           endIndex: true,
           isCompleted: true,
@@ -10639,9 +10650,10 @@ const buildAssignmentCardsFromOrders = ({
           group.styleCode ??
           resolveOptionalString(group.style?.code, null) ??
           "",
-        colorId: null,
-        colorName: null,
-        gender: null,
+        // colorId/colorName/gender dropped in Phase D (AssignmentCard/
+        // AssignmentPlan FK+join redesign) - color/gender were never
+        // tracked at the assignment-card level (cards group only by
+        // style+quantity), so these were always hardcoded null anyway.
         cardQuantity: group.quantity,
         processCount,
         status,
@@ -12280,9 +12292,8 @@ const toAssignmentPlanResponse = (plan: any) => {
   const closeBasis = resolveAssignmentPlanCloseBasis(plan);
   // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): prefer the
   // live join through workOrderId/styleId/buyerOrgId over the stored string
-  // copies (same "join first, legacy string fallback" shape as
-  // resolveAssignmentPlanColorName below already used for color). Falls
-  // back to the stored string for any plan whose FK isn't populated yet.
+  // copies. Falls back to the stored string for any plan whose FK isn't
+  // populated yet.
   const joinedOrderNo = resolveOptionalString(plan?.workOrder?.orderNumber, null);
   const joinedCustomer = resolveOptionalString(plan?.buyerOrg?.name, null);
   const joinedLabel = resolveOptionalString(plan?.style?.name, null);
@@ -12298,11 +12309,19 @@ const toAssignmentPlanResponse = (plan: any) => {
     orderNo: joinedOrderNo ?? plan.orderNo ?? "",
     customer: joinedCustomer ?? plan.customer ?? "",
     label: joinedLabel ?? plan.label ?? "",
-    colorId: toPositiveIntOrNull(plan.colorId ?? plan.attrColor?.id),
-    colorName: resolveAssignmentPlanColorName(plan),
+    // colorId/colorName/color/stripeColor/imageUrl/thumbnailUrl were dropped
+    // in Phase D (AssignmentCard/AssignmentPlan FK+join redesign) - color/
+    // gender were never tracked at the assignment level (confirmed always
+    // empty), and color/stripeColor/imageUrl/thumbnailUrl were write-only
+    // (never read back by the frontend, which recomputes basis-color at
+    // render time and only ever reads previewUrl for the image). Kept as
+    // static empty values here, not read from any column, so the response
+    // shape is unchanged for any client still checking these fields.
+    colorId: null,
+    colorName: "",
     previewUrl: joinedPreviewUrl ?? plan.previewUrl ?? "",
-    imageUrl: plan.imageUrl ?? "",
-    thumbnailUrl: plan.thumbnailUrl ?? "",
+    imageUrl: "",
+    thumbnailUrl: "",
     quantity: resolveAssignmentQuantity(plan),
     originOrderId: plan.originOrderId ?? "",
     basis: plan.basis ?? "",
@@ -12310,8 +12329,8 @@ const toAssignmentPlanResponse = (plan: any) => {
     assignmentCtSnapshot,
     ctUpdatedBy: assignmentCtSnapshot?.updatedBy ?? "",
     ctUpdatedAt: assignmentCtSnapshot?.updatedAt ?? null,
-    color: plan.color ?? "",
-    stripeColor: plan.stripeColor ?? "",
+    color: "",
+    stripeColor: "",
     stTotalSeconds: resolvePersistedAssignmentPlanStTotalSeconds(plan),
     startIndex: plan.startIndex,
     endIndex: plan.endIndex,
@@ -12604,62 +12623,11 @@ const resolveAssignmentSnapshotProcessCodeCandidates = (process: any): string[] 
   }
   return Array.from(bucket.values());
 };
-const syncAssignmentPlanColorRefs = async (
-  orgId: number,
-  items: any[],
-  db: any = prisma
-) => {
-  const normalizedItems = ensureArray(items).filter(
-    (item) => item && typeof item === "object"
-  );
-  if (normalizedItems.length === 0) return [];
-
-  const colorIds = collectPositiveIntSet(
-    ...normalizedItems.map((item) => item?.colorId)
-  );
-  const colorNames = Array.from(
-    new Set(
-      normalizedItems
-        .map((item) => resolveOptionalString(item?.colorName, null))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
-  if (colorIds.length === 0 && colorNames.length === 0) {
-    return normalizedItems;
-  }
-
-  const colors: any[] = await db.attrColor.findMany({
-    where: {
-      OR: [
-        ...(colorIds.length > 0 ? [{ id: { in: colorIds } }] : []),
-        ...(colorNames.length > 0 ? [{ name: { in: colorNames } }] : []),
-      ],
-    },
-    select: { id: true, code: true, name: true },
-  });
-  const colorById = new Map(colors.map((color: any) => [color.id, color]));
-  const colorByName = new Map(
-    colors
-      .filter((color: any) => color.name)
-      .map((color: any) => [normalizeComparableText(color.name), color])
-  );
-
-  return normalizedItems.map((item) => {
-    const linkedColor =
-      (toPositiveIntOrNull(item?.colorId)
-        ? colorById.get(Number(item.colorId)) ?? null
-        : null) ??
-      (resolveOptionalString(item?.colorName, null)
-        ? colorByName.get(normalizeComparableText(item.colorName)) ?? null
-        : null);
-
-    return {
-      ...item,
-      colorId: linkedColor?.id ?? toPositiveIntOrNull(item?.colorId),
-      colorName: resolveOptionalString(linkedColor?.name ?? item?.colorName, null),
-    };
-  });
-};
+// syncAssignmentPlanColorRefs was retired in Phase D
+// (AssignmentCard/AssignmentPlan FK+join redesign) along with
+// AssignmentPlan.colorId/colorName - color/gender were never tracked at the
+// assignment level (the frontend never sent a real color, so this function's
+// AttrColor lookup always no-op'd in practice).
 const toAssignmentPlanWriteData = (
   item: any,
   cardIdToAssignmentCardId?: Map<
@@ -12699,18 +12667,15 @@ const toAssignmentPlanWriteData = (
     orderNo: item.orderNo ?? null,
     customer: item.customer ?? null,
     label: item.label ?? null,
-    colorId: item.colorId ?? null,
-    colorName: item.colorName ?? null,
     previewUrl: item.previewUrl ?? null,
-    imageUrl: item.imageUrl ?? null,
-    thumbnailUrl: item.thumbnailUrl ?? null,
+    // colorId/colorName/color/stripeColor/imageUrl/thumbnailUrl dropped in
+    // Phase D - see the comment in toAssignmentPlanResponse. Not written
+    // anymore even if a client still sends them (harmless extra JSON keys).
     assignmentQuantity: item.assignmentQuantity ?? item.quantity ?? null,
     originOrderId: item.originOrderId ?? null,
     basis: item.basis ?? null,
     assignmentCtTotalSeconds: ctTotalSeconds,
     assignmentCtSnapshot: (assignmentCtSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
-    color: item.color ?? null,
-    stripeColor: item.stripeColor ?? null,
     assignmentStTotalSeconds: resolveStateAssignmentStTotalSeconds(item),
     startIndex: item.startIndex,
     endIndex: item.endIndex,
@@ -12729,18 +12694,12 @@ const COMPLETED_ASSIGNMENT_PLAN_WRITE_SELECT = {
   orderNo: true,
   customer: true,
   label: true,
-  colorId: true,
-  colorName: true,
   previewUrl: true,
-  imageUrl: true,
-  thumbnailUrl: true,
   assignmentQuantity: true,
   originOrderId: true,
   basis: true,
   assignmentCtTotalSeconds: true,
   assignmentCtSnapshot: true,
-  color: true,
-  stripeColor: true,
   assignmentStTotalSeconds: true,
   startIndex: true,
   endIndex: true,
@@ -12770,11 +12729,7 @@ const buildCompletedAssignmentWriteComparable = (item: any) => {
     orderNo: resolveOptionalString(item?.orderNo, null),
     customer: resolveOptionalString(item?.customer, null),
     label: resolveOptionalString(item?.label, null),
-    colorId: toPositiveIntOrNull(item?.colorId),
-    colorName: resolveOptionalString(item?.colorName, null),
     previewUrl: resolveOptionalString(item?.previewUrl, null),
-    imageUrl: resolveOptionalString(item?.imageUrl, null),
-    thumbnailUrl: resolveOptionalString(item?.thumbnailUrl, null),
     assignmentQuantity: toOptionalNonNegativeInt(
       item?.assignmentQuantity ?? item?.quantity,
       null
@@ -12783,8 +12738,6 @@ const buildCompletedAssignmentWriteComparable = (item: any) => {
     basis: resolveOptionalString(item?.basis, null),
     assignmentCtTotalSeconds,
     assignmentCtSnapshot,
-    color: resolveOptionalString(item?.color, null),
-    stripeColor: resolveOptionalString(item?.stripeColor, null),
     assignmentStTotalSeconds: resolveComparableAssignmentStTotalSeconds(item),
     startIndex: toSignedInt(item?.startIndex, 0),
     endIndex: Math.max(
@@ -13347,18 +13300,14 @@ const ASSIGNMENT_PLAN_SELECT_CORE = {
   orderNo: true,
   customer: true,
   label: true,
-  colorId: true,
-  colorName: true,
   previewUrl: true,
-  imageUrl: true,
-  thumbnailUrl: true,
+  // colorId/colorName/color/stripeColor/imageUrl/thumbnailUrl dropped in
+  // Phase D - see the comment in toAssignmentPlanResponse.
   assignmentQuantity: true,
   originOrderId: true,
   basis: true,
   assignmentCtTotalSeconds: true,
   assignmentCtSnapshot: true,
-  color: true,
-  stripeColor: true,
   assignmentStTotalSeconds: true,
   startIndex: true,
   endIndex: true,
@@ -13409,17 +13358,11 @@ const ASSIGNMENT_PLAN_SELECT_LEGACY = {
   orderNo: true,
   customer: true,
   label: true,
-  colorId: true,
-  colorName: true,
   previewUrl: true,
-  imageUrl: true,
-  thumbnailUrl: true,
   assignmentQuantity: true,
   originOrderId: true,
   basis: true,
   assignmentCtSnapshot: true,
-  color: true,
-  stripeColor: true,
   startIndex: true,
   endIndex: true,
   startDayOffsetPercent: true,
@@ -16681,16 +16624,10 @@ const syncGlobalColorSection = async (items: any) => {
     );
   }
 
-  if (changedNames.length > 0) {
-    await prisma.$transaction(
-      changedNames.map((row) =>
-        prisma.assignmentPlan.updateMany({
-          where: { colorId: row.id },
-          data: { colorName: row.name },
-        })
-      )
-    );
-  }
+  // AssignmentPlan.colorId/colorName were dropped in Phase D (see the comment
+  // near AssignmentPlan.colorId/colorName in assertGeneratedPrismaClientShape) -
+  // color/gender were never tracked at the assignment level, so there is no
+  // longer a denormalized AssignmentPlan.colorName copy to keep in sync here.
 
   return prisma.attrColor.findMany({ orderBy: { id: "asc" } });
 };
@@ -17596,9 +17533,11 @@ app.get("/assignment-plans", async (req, res) => {
         orderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null) ?? plan.orderNo ?? "",
         label: resolveOptionalString(plan?.style?.name, null) ?? plan.label ?? "",
         customer: resolveOptionalString(plan?.buyerOrg?.name, null) ?? plan.customer ?? "",
-        colorId: toPositiveIntOrNull(plan.colorId),
-        colorName: resolveAssignmentPlanColorName(plan),
-        color: plan.color ?? "",
+        // colorId/colorName/color dropped in Phase D - see the comment in
+        // toAssignmentPlanResponse.
+        colorId: null,
+        colorName: "",
+        color: "",
         quantity: resolveAssignmentQuantity(plan),
         ctTotalSeconds: resolveAssignmentCtTotalSeconds(plan),
         assignmentCtSnapshot: resolveNormalizedAssignmentCtSnapshot(plan),
@@ -20028,8 +19967,10 @@ const buildAssignmentPlanProgressRows = async (
         resolveOptionalString(plan.customer, "") ?? "",
       label: resolveOptionalString(plan?.style?.name, null) ??
         resolveOptionalString(plan.label, "") ?? "",
-      colorId: toPositiveIntOrNull(plan.colorId),
-      colorName: resolveAssignmentPlanColorName(plan),
+      // colorId/colorName dropped in Phase D - see the comment in
+      // toAssignmentPlanResponse.
+      colorId: null,
+      colorName: "",
       plannedQuantity,
       finalQuantity,
       completionTargetQuantity,
@@ -20589,9 +20530,12 @@ const buildAssignmentPlanCloseResponse = (plan: any) => {
     id: plan?.externalId,
     dbId: plan?.id ?? null,
     lineId: String(plan?.lineId ?? ""),
-    orderNo: resolveOptionalString(plan?.orderNo, "") ?? "",
-    label: resolveOptionalString(plan?.label, "") ?? "",
-    colorName: resolveAssignmentPlanColorName(plan),
+    orderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null) ??
+      resolveOptionalString(plan?.orderNo, "") ?? "",
+    label: resolveOptionalString(plan?.style?.name, null) ??
+      resolveOptionalString(plan?.label, "") ?? "",
+    // colorName dropped in Phase D - see the comment in toAssignmentPlanResponse.
+    colorName: "",
     quantity,
     isCompleted,
     finalQuantity,
@@ -20657,7 +20601,6 @@ const completeAssignmentPlanProduction = async ({
       closedBy: true,
       orderNo: true,
       label: true,
-      colorName: true,
       productionCompletedAt: true,
       updatedAt: true,
     },
@@ -21117,7 +21060,6 @@ app.patch("/assignment-plans/:externalId/final-quantity", async (req, res) => {
       finalQuantity: true,
       orderNo: true,
       label: true,
-      colorName: true,
       updatedAt: true,
     },
   });
@@ -24029,13 +23971,9 @@ app.put("/assignment-board-state", async (req, res) => {
         : null;
     const normalizedPlanChanges =
       planSyncTargetAssignments.length > 0
-        ? await syncAssignmentPlanColorRefs(
+        ? await syncAssignmentPlanWorkOrderRefs(
             organization.id,
-            await syncAssignmentPlanWorkOrderRefs(
-              organization.id,
-              normalizeAssignmentPlanPayload(planSyncTargetAssignments, lineIdSet),
-              tx
-            ),
+            normalizeAssignmentPlanPayload(planSyncTargetAssignments, lineIdSet),
             tx
           )
         : [];
