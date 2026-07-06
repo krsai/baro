@@ -1,5 +1,21 @@
 # TODO
 
+## 2026-07-06 미배정 카드 UI: 고객사를 주문 그룹 헤더로 옮기고 카드 본문은 사진/스타일/수량만 남김
+- 미배정 작업 사이드바에서 카드마다 "고객사"가 반복 표시되던 게 거슬린다는 사용자 피드백. 이미 주문 단위로 그룹핑되어 있었으므로(`groupedFilteredCards`), 그룹 헤더를 `주문 {orderNo}`에서 `{고객사} {orderNo}`(예: "더산 L15-2")로 바꾸고, 개별 카드(`UnassignedCardItem`)에서는 고객사 필드를 뺐다.
+- `CompactBoardCard`에 `showCustomer` prop 추가(공용 컴포넌트라 다른 사용처의 기본 동작은 안 건드리려고 `showOrderNo`와 같은 패턴으로 추가, 기본값 true). `frontend/src/constants/uiMessages.js`에 `assign.customerWithOrderNumber` 키 추가(ko/en/vi).
+- `npm --prefix frontend run build` 통과. 실제 브라우저 확인은 안 함.
+
+## 2026-07-06 주말 작업 검토 + buyer/seller 이중 org 배정 동기화 누락 수정
+- 사용자 요청으로 지난 세션(§39~43) 이후 쌓인 AGENTS.md/todo.md 내용을 실제 코드와 대조 검토. `findOrderStyleRemovalBlockers` 삭제, `syncAssignmentPlansForOrderLock` 신규 도입, `rebuildAssignmentCardsForOrg`의 `modificationLockedAt: { not: null }` 필터 등 문서에 적힌 주요 주장은 전부 코드에서 직접 확인해 사실과 일치했다.
+- 검토 중 문서에 언급 안 된 버그 발견: `POST /orders/:orderId/modification-lock`의 `locked:true` 처리에서 `syncAssignmentPlansForOrderLock`이 `orgId: organization.id`(요청자 조직) 하나로만 호출되고 있었는데, 바로 다음 줄의 `rebuildAssignmentCardsForOrgIds`는 buyer+seller 양쪽으로 호출된다 — 비대칭이었다.
+- 사용자 확인: 배정(AssignmentPlan)은 제조사(seller) 전용 개념이고, 주문은 발주사/제조사 아무나 등록·잠금할 수 있는 공유 개념. 즉 발주사 쪽 사용자가 잠그면 `orgId=buyer.id`로 조회해 제조사 쪽 실제 `AssignmentPlan`은 전혀 안 건드리고 조용히 스킵되는 실제 버그였음을 확정.
+- 수정: `affectedOrgIds`(buyer+seller) 각각에 대해 `syncAssignmentPlansForOrderLock`을 돌리도록 변경, `zeroedStyles`는 styleId 기준으로 합침. 배정이 없는 쪽 org는 함수 초입의 `plans.length === 0` early return으로 안전하게 no-op. `npm run build` 통과. 상세는 AGENTS.md §40 "2026-07-06 정정" 참고.
+- 문서 자체의 다른 문제는 못 찾음 — §39가 자기 내용 일부(카드 생성 시점)가 §40으로 대체됐다고 스스로 정정해두는 등 앞뒤가 잘 맞았다. `AssignmentPlan.styleId` 100% NULL(2026-07-02 조사, 아직 미해결)과 `quantityChangeBoard.mjs`/그 테스트가 죽은 코드로 남아있는 것(2026-07-03 기록)은 둘 다 여전히 미해결 상태로 정확히 그대로 기록돼 있었다 — 새로 발견한 문제 아님, 재확인만.
+
+### Remaining
+- 실제 브라우저 확인은 여전히 안 됨(개발 서버 미기동) — 다음에 발주사 계정으로 주문 잠금 → 제조사 쪽 배정 수량이 실제로 갱신되는지 반드시 확인.
+- `AssignmentPlan.styleId` NULL 이슈, `quantityChangeBoard.mjs` 죽은 코드 정리 여부는 여전히 미결정 — 다음 세션에서 우선순위 판단 필요.
+
 ## 2026-07-05 AssignmentPlan.assignmentCardId 실제 FK 추가 (1단계)
 - `AssignmentCard`/`AssignmentPlan`의 `cardId` 문자열 관례 연결을 실제 FK로 대체하는 작업 착수. 스키마에 `assignmentCardId Int?` 추가, `migration_fix.sql` Step 0k에 백필+제약조건 작성(기존 Step 0i workOrderId FK와 동일 패턴), `toAssignmentPlanWriteData`가 이제 새 FK를 채움(`PUT /assignment-board-state`의 create/update 양쪽).
 - 운영 DB에 마이그레이션 직접 실행은 자동 분류기가 차단(정당한 차단) — 다음 배포 때 predeploy가 자동 적용.

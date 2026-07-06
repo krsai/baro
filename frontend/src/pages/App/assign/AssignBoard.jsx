@@ -253,7 +253,7 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
       disabled={!isLocked || basis === 'NONE'}
       selected={isSelected}
       languageCode={languageCode}
-      customer={resolveCardCustomerDisplay(card, languageCode) || '-'}
+      showCustomer={false}
       showOrderNo={false}
       styleName={styleLabel}
       quantity={resolveCardQuantity(card, 0)}
@@ -425,12 +425,19 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
               }}
             >
               <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                {getUiMessage(
-                  'assign.orderWithNumber',
-                  `주문 ${group.orderNo}`,
-                  languageCode,
-                  { orderNo: group.orderNo }
-                )}
+                {group.customer
+                  ? getUiMessage(
+                      'assign.customerWithOrderNumber',
+                      `${group.customer} ${group.orderNo}`,
+                      languageCode,
+                      { customer: group.customer, orderNo: group.orderNo }
+                    )
+                  : getUiMessage(
+                      'assign.orderWithNumber',
+                      `주문 ${group.orderNo}`,
+                      languageCode,
+                      { orderNo: group.orderNo }
+                    )}
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 {group.dueDate
@@ -5060,6 +5067,7 @@ const AssignBoard = () => {
       if (!groups.has(orderNo)) {
         groups.set(orderNo, {
           orderNo,
+          customer: resolveCardCustomerDisplay(card, languageCode) || '',
           dueDate: dueDate || '',
           dueDateTimestamp,
           cards: [],

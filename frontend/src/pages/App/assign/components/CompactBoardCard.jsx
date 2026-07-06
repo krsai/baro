@@ -34,6 +34,7 @@ const CompactBoardCard = ({
   selected = false,
   languageCode = 'en',
   customer = '',
+  showCustomer = true,
   orderNo = '',
   orderNoLabel = null,
   showOrderNo = true,
@@ -185,12 +186,14 @@ const CompactBoardCard = ({
             {resolveInitial(styleName)}
           </Avatar>
         )}
-        <CardField
-          label={getUiMessage('assign.cardCustomerLabel', 'Customer', languageCode)}
-          value={customer}
-          grow={!compact}
-          minWidth={compact ? 70 : 120}
-        />
+        {showCustomer ? (
+          <CardField
+            label={getUiMessage('assign.cardCustomerLabel', 'Customer', languageCode)}
+            value={customer}
+            grow={!compact}
+            minWidth={compact ? 70 : 120}
+          />
+        ) : null}
         {showOrderNo ? (
           <CardField
             label={orderNoLabel || getUiMessage('assign.cardOrderNoLabel', 'Order No.', languageCode)}

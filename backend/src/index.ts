@@ -24479,16 +24479,31 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
     .filter((value): value is number => value !== null);
   let zeroedStyles: OrderStyleRemovalIssue[] = [];
   if (requestedLocked) {
-    const syncResult = await prisma.$transaction(
-      (tx) =>
-        syncAssignmentPlansForOrderLock({
-          orgId: organization.id,
-          order: existing,
-          db: tx,
-        }),
+    // Assignment scheduling is exclusively a manufacturer-side concept, but
+    // either party can register/lock the shared order (buyer or seller) - so
+    // AssignmentPlan rows for this order may live under either org's id, not
+    // necessarily the org that happens to be calling this endpoint. Run the
+    // sync for every org on the order (same set rebuildAssignmentCardsForOrgIds
+    // uses below), not just `organization.id` - the org(s) with no plans just
+    // no-op (syncAssignmentPlansForOrderLock returns early on 0 rows).
+    const orgIdsToSync = affectedOrgIds.length > 0 ? affectedOrgIds : [organization.id];
+    const zeroedStylesByStyleId = new Map<number, OrderStyleRemovalIssue>();
+    await prisma.$transaction(
+      async (tx) => {
+        for (const orgId of orgIdsToSync) {
+          const syncResult = await syncAssignmentPlansForOrderLock({
+            orgId,
+            order: existing,
+            db: tx,
+          });
+          syncResult.zeroedStyles.forEach((issue) => {
+            zeroedStylesByStyleId.set(issue.styleId, issue);
+          });
+        }
+      },
       { timeout: 30000 }
     );
-    zeroedStyles = syncResult.zeroedStyles;
+    zeroedStyles = Array.from(zeroedStylesByStyleId.values());
   }
 
   const lockedBy =

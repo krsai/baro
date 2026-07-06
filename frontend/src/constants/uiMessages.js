@@ -266,6 +266,11 @@ export const UI_MESSAGES = {
       en: 'Order {orderNo}',
       vi: 'Don {orderNo}',
     },
+    customerWithOrderNumber: {
+      ko: '{customer} {orderNo}',
+      en: '{customer} {orderNo}',
+      vi: '{customer} {orderNo}',
+    },
     noUnassignedCards: {
       ko: '미배정 작업이 없습니다.',
       en: 'No unassigned work.',
