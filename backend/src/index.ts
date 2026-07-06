@@ -10626,6 +10626,10 @@ const buildAssignmentCardsFromOrders = ({
           order?.customerOrg?.nameVi ?? order?.buyerOrg?.nameVi,
           null
         ),
+        // Real FK (Phase B of the AssignmentCard/AssignmentPlan FK+join
+        // redesign) - same buyer-org identity the customer display name
+        // above already resolves, just as an id instead of a name.
+        buyerOrgId: toPositiveIntOrNull(order?.customerOrg?.id ?? order?.buyerOrg?.id),
         styleId: toPositiveIntOrNull(group.style?.id ?? group.styleId),
         styleName:
           group.styleName ??
@@ -10781,11 +10785,36 @@ const toAssignmentCardFromStoreRow = (row: any): any | null => {
     resolveOptionalString(row.cardId, null);
   if (!cardId) return null;
   const sanitizedPayload = stripLegacyAssignmentCardPayload(payload);
+  // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): prefer the
+  // live join through the real FK columns over payload's baked-in string
+  // copies. Field names in the returned object are unchanged for backward
+  // compatibility - only where the value comes from changes. Falls back to
+  // the payload copy for any card whose FK columns aren't backfilled yet
+  // (e.g. a row Phase A's SQL backfill couldn't resolve).
+  const style = row.style ?? null;
+  const workOrder = row.workOrder ?? null;
+  const buyerOrg = row.buyerOrg ?? null;
+  const previewUrl =
+    (Array.isArray(style?.imageUrls) && style.imageUrls.length > 0
+      ? style.imageUrls[0]
+      : null) ?? resolveOptionalString((sanitizedPayload as any)?.previewUrl, null);
   return {
     ...(sanitizedPayload as Record<string, unknown>),
     id: cardId,
     originOrderId:
       resolveOptionalString((sanitizedPayload as any)?.originOrderId, null) ?? cardId,
+    styleName: resolveOptionalString(style?.name, null) ?? (sanitizedPayload as any)?.styleName,
+    styleCode: resolveOptionalString(style?.code, null) ?? (sanitizedPayload as any)?.styleCode,
+    previewUrl: previewUrl ?? "",
+    orderNo:
+      resolveOptionalString(workOrder?.orderNumber, null) ?? (sanitizedPayload as any)?.orderNo,
+    dueDate:
+      resolveOptionalString(workOrder?.dueDate, null) ?? (sanitizedPayload as any)?.dueDate,
+    customer: resolveOptionalString(buyerOrg?.name, null) ?? (sanitizedPayload as any)?.customer,
+    customerNameKo:
+      resolveOptionalString(buyerOrg?.nameKo, null) ?? (sanitizedPayload as any)?.customerNameKo,
+    customerNameVi:
+      resolveOptionalString(buyerOrg?.nameVi, null) ?? (sanitizedPayload as any)?.customerNameVi,
   };
 };
 const syncAssignmentCardsForOrg = async ({
@@ -10820,12 +10849,18 @@ const syncAssignmentCardsForOrg = async ({
       update: {
         sortOrder: index,
         payload: card,
+        styleId: toPositiveIntOrNull(card.styleId),
+        workOrderId: toPositiveIntOrNull(card.workOrderId),
+        buyerOrgId: toPositiveIntOrNull(card.buyerOrgId),
       },
       create: {
         orgId,
         cardId,
         sortOrder: index,
         payload: card,
+        styleId: toPositiveIntOrNull(card.styleId),
+        workOrderId: toPositiveIntOrNull(card.workOrderId),
+        buyerOrgId: toPositiveIntOrNull(card.buyerOrgId),
       },
     });
   }
@@ -10842,7 +10877,17 @@ const loadAssignmentCardsForOrg = async ({
   const rows = await db.assignmentCard.findMany({
     where: { orgId },
     orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-    select: { cardId: true, payload: true },
+    select: {
+      cardId: true,
+      payload: true,
+      // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): join
+      // through the real FK columns instead of trusting the payload JSON
+      // copies. Selected here so toAssignmentCardFromStoreRow can prefer
+      // these over payload's baked-in strings.
+      style: { select: { id: true, name: true, code: true, imageUrls: true } },
+      workOrder: { select: { id: true, orderNumber: true, dueDate: true } },
+      buyerOrg: { select: { id: true, name: true, nameKo: true, nameVi: true } },
+    },
   });
   const cards = rows
     .map((row) => toAssignmentCardFromStoreRow(row))
@@ -11050,16 +11095,8 @@ const shouldRepairAssignmentDisplayField = (current: any, fallback: any): boolea
   if (!currentText) return true;
   return hasCorruptedAssignmentDisplayText(currentText);
 };
-// plan의 display 필드 중 하나라도 비어있거나 오염된 경우 true 반환
-// repair 호출 전 빠른 사전 체크용 — refs 로드 없이 실행 가능
-const ASSIGNMENT_PLAN_DISPLAY_FIELDS = ["orderNo", "customer", "label", "colorName"] as const;
-const assignmentPlanNeedsDisplayRepair = (plan: any): boolean => {
-  if (!plan || typeof plan !== "object") return false;
-  return ASSIGNMENT_PLAN_DISPLAY_FIELDS.some((field) => {
-    const text = resolveOptionalString((plan as any)[field], null);
-    return !text || hasCorruptedAssignmentDisplayText(text);
-  });
-};
+// assignmentPlanNeedsDisplayRepair was retired along with
+// repairAssignmentPlanDisplayRows - see the comment above toAssignmentPlanResponse.
 const shouldRepairAssignmentBoardDisplayPayloadOnWrite = ({
   cards,
   assignments,
@@ -11730,8 +11767,22 @@ const syncAssignmentPlansForOrderLock = async ({
         };
         await db.assignmentCard.upsert({
           where: { orgId_cardId: { orgId, cardId } },
+          // update: style/order identity didn't change here, only quantity -
+          // the real FK columns from whenever this card was first created
+          // stay as they were.
           update: { payload: nextPayload },
-          create: { orgId, cardId, sortOrder: 0, payload: nextPayload },
+          // create: rare fallback for a plan whose card row is missing
+          // entirely - derive the real FK columns from what's in scope here
+          // rather than leaving them null.
+          create: {
+            orgId,
+            cardId,
+            sortOrder: 0,
+            payload: nextPayload,
+            styleId: item.styleId,
+            workOrderId: toPositiveIntOrNull(order?.id),
+            buyerOrgId: toPositiveIntOrNull(order?.buyerOrgId ?? order?.customerId),
+          },
         });
       }
       zeroedStyles.push({
@@ -12192,76 +12243,20 @@ const toNullableAssignmentText = (value: any): string | null => {
   const text = resolveOptionalString(value, null);
   return text && text.length > 0 ? text : null;
 };
-const repairAssignmentPlanDisplayRows = async ({
-  orgId,
-  plans,
-  refs = null,
-}: {
-  orgId: number;
-  plans: any[];
-  refs?: AssignmentDisplayReferenceMaps | null;
-}): Promise<{ plans: any[]; changed: boolean; refs: AssignmentDisplayReferenceMaps }> => {
-  const resolvedRefs = refs ?? (await loadAssignmentDisplayReferenceMaps(orgId));
-  const updates: Array<{
-    id: number;
-    data: {
-      orderNo?: string | null;
-      customer?: string | null;
-      label?: string | null;
-      colorName?: string | null;
-    };
-  }> = [];
-  const repairedPlans = ensureArray(plans).map((plan) => {
-    if (!plan || typeof plan !== "object") return plan;
-    const fallback = resolveAssignmentDisplayFallback(
-      plan,
-      resolvedRefs,
-      plan?.cardId ?? plan?.originOrderId ?? plan?.externalId ?? null
-    );
-    let itemChanged = false;
-    const next = { ...plan };
-    const applyField = (field: "orderNo" | "customer" | "label" | "colorName", value: any) => {
-      if (!shouldRepairAssignmentDisplayField((next as any)[field], value)) return;
-      (next as any)[field] = resolveOptionalString(value, (next as any)[field] ?? "");
-      itemChanged = true;
-    };
-    applyField("orderNo", fallback.orderNo);
-    applyField("customer", fallback.customer);
-    applyField("label", fallback.label);
-    applyField("colorName", fallback.colorName);
-
-    const planId = toPositiveIntOrNull(plan?.id);
-    if (itemChanged && planId) {
-      updates.push({
-        id: planId,
-        data: {
-          orderNo: toNullableAssignmentText(next.orderNo),
-          customer: toNullableAssignmentText(next.customer),
-          label: toNullableAssignmentText(next.label),
-          colorName: toNullableAssignmentText(next.colorName),
-        },
-      });
-    }
-    return next;
-  });
-
-  if (updates.length > 0) {
-    await prisma.$transaction(
-      updates.map((row) =>
-        prisma.assignmentPlan.update({
-          where: { id: row.id },
-          data: row.data,
-        })
-      )
-    );
-  }
-
-  return {
-    plans: repairedPlans,
-    changed: updates.length > 0,
-    refs: resolvedRefs,
-  };
-};
+// repairAssignmentPlanDisplayRows was retired here (Phase C of the
+// AssignmentCard/AssignmentPlan FK+join redesign): it re-derived
+// orderNo/customer/label/colorName by string-parsing AssignmentPlan.cardId
+// through loadAssignmentDisplayReferenceMaps/resolveAssignmentDisplayFallback,
+// which had a known-broken style match (Style.code string key vs the numeric
+// styleId embedded in cardId) - the same bug class as AGENTS.md 42. Now that
+// toAssignmentPlanResponse/GET /assignment-plans join through the real
+// workOrderId/styleId/buyerOrgId FKs directly, there's nothing left for this
+// self-heal to do for any row with a resolvable FK, and Phase A's SQL
+// backfill populated every existing row in one shot rather than needing a
+// "repaired gradually over time" mechanism. The write-time payload sanitizer
+// (shouldRepairAssignmentBoardDisplayPayloadOnWrite /
+// safelyRepairAssignmentBoardDisplayState, used by PUT /assignment-board-state)
+// is a separate mechanism and was intentionally left alone.
 const toAssignmentPlanResponse = (plan: any) => {
   const assignmentCtSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
   const snapshotSchedule =
@@ -12283,17 +12278,29 @@ const toAssignmentPlanResponse = (plan: any) => {
       targetQty: resolveAssignmentQuantity(plan),
     });
   const closeBasis = resolveAssignmentPlanCloseBasis(plan);
+  // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): prefer the
+  // live join through workOrderId/styleId/buyerOrgId over the stored string
+  // copies (same "join first, legacy string fallback" shape as
+  // resolveAssignmentPlanColorName below already used for color). Falls
+  // back to the stored string for any plan whose FK isn't populated yet.
+  const joinedOrderNo = resolveOptionalString(plan?.workOrder?.orderNumber, null);
+  const joinedCustomer = resolveOptionalString(plan?.buyerOrg?.name, null);
+  const joinedLabel = resolveOptionalString(plan?.style?.name, null);
+  const joinedPreviewUrl =
+    Array.isArray(plan?.style?.imageUrls) && plan.style.imageUrls.length > 0
+      ? plan.style.imageUrls[0]
+      : null;
   return {
     id: plan.externalId,
     lineId: String(plan.lineId),
     cardId: plan.cardId ?? "",
     workOrderId: toPositiveIntOrNull(plan?.workOrderId),
-    orderNo: plan.orderNo ?? "",
-    customer: plan.customer ?? "",
-    label: plan.label ?? "",
+    orderNo: joinedOrderNo ?? plan.orderNo ?? "",
+    customer: joinedCustomer ?? plan.customer ?? "",
+    label: joinedLabel ?? plan.label ?? "",
     colorId: toPositiveIntOrNull(plan.colorId ?? plan.attrColor?.id),
     colorName: resolveAssignmentPlanColorName(plan),
-    previewUrl: plan.previewUrl ?? "",
+    previewUrl: joinedPreviewUrl ?? plan.previewUrl ?? "",
     imageUrl: plan.imageUrl ?? "",
     thumbnailUrl: plan.thumbnailUrl ?? "",
     quantity: resolveAssignmentQuantity(plan),
@@ -12499,6 +12506,11 @@ const syncAssignmentPlanWorkOrderRefs = async (
           matchedWorkOrder?.customerOrg?.name ?? matchedWorkOrder?.buyerOrg?.name,
           null
         ) ?? resolveOptionalString(item?.customer, null),
+      // Real FK (Phase B) - same join this function already does for the
+      // customer display name above, just carrying the id through too.
+      buyerOrgId:
+        toPositiveIntOrNull(matchedWorkOrder?.customerOrg?.id ?? matchedWorkOrder?.buyerOrg?.id) ??
+        toPositiveIntOrNull(item?.buyerOrgId),
     };
   });
 };
@@ -12650,7 +12662,10 @@ const syncAssignmentPlanColorRefs = async (
 };
 const toAssignmentPlanWriteData = (
   item: any,
-  cardIdToAssignmentCardId?: Map<string, number>
+  cardIdToAssignmentCardId?: Map<
+    string,
+    { id: number; styleId: number | null; buyerOrgId: number | null }
+  >
 ) => {
   const assignmentCtSnapshot = resolveNormalizedAssignmentCtSnapshot(item);
   const ctTotalSeconds = resolveAssignmentCtTotalSeconds({
@@ -12658,19 +12673,28 @@ const toAssignmentPlanWriteData = (
     assignmentCtSnapshot,
   });
   const cardIdString = resolveOptionalString(item?.cardId, null);
-  // Real FK (AGENTS.md 43), replacing the "cardId string happens to match"
-  // convention. cardId itself is still written below as a read-compatibility
-  // fallback during the migration - do not remove it yet.
-  const assignmentCardId =
+  const matchedCard =
     cardIdString && cardIdToAssignmentCardId
       ? cardIdToAssignmentCardId.get(cardIdString) ?? null
       : null;
+  // Real FK (AGENTS.md 43), replacing the "cardId string happens to match"
+  // convention. cardId itself is still written below as a read-compatibility
+  // fallback during the migration - do not remove it yet.
+  const assignmentCardId = matchedCard?.id ?? null;
+  // Real FK (Phase B of the AssignmentCard/AssignmentPlan FK+join redesign):
+  // styleId/buyerOrgId always come from the matched AssignmentCard, never
+  // re-derived independently, so a plan always agrees with the card it was
+  // scheduled from.
+  const styleId = matchedCard?.styleId ?? null;
+  const buyerOrgId = matchedCard?.buyerOrgId ?? null;
   // Completion state is owned by dedicated completion endpoints.
   // Assignment board save must not overwrite completion-related fields.
   return {
     lineId: item.lineId,
     cardId: item.cardId ?? null,
     assignmentCardId,
+    styleId,
+    buyerOrgId,
     workOrderId: toPositiveIntOrNull(item?.workOrderId),
     orderNo: item.orderNo ?? null,
     customer: item.customer ?? null,
@@ -13343,6 +13367,12 @@ const ASSIGNMENT_PLAN_SELECT_CORE = {
   endDayPercent: true,
   createdAt: true,
   updatedAt: true,
+  // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): only on the
+  // non-legacy select - kept off ASSIGNMENT_PLAN_SELECT_LEGACY below the
+  // same way workOrderId already is, so schema-drift tolerance is unaffected.
+  workOrder: { select: { id: true, orderNumber: true } },
+  style: { select: { id: true, name: true, code: true, imageUrls: true } },
+  buyerOrg: { select: { id: true, name: true } },
 } as const;
 const ASSIGNMENT_PLAN_SELECT_WITH_CLOSE = {
   ...ASSIGNMENT_PLAN_SELECT_CORE,
@@ -17502,13 +17532,6 @@ app.get("/assignment-plans", async (req, res) => {
     selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY, ASSIGNMENT_PLAN_SELECT_LEGACY],
     context: "GET /assignment-plans",
   });
-  if (plans.length > 0 && plans.some(assignmentPlanNeedsDisplayRepair)) {
-    const repairedPlans = await repairAssignmentPlanDisplayRows({
-      orgId: organization.id,
-      plans,
-    });
-    plans = repairedPlans.plans;
-  }
   plans = await annotateAssignmentPlanRowsWithPayrollLocks(organization.id, plans);
 
   const cardById = boardCards.reduce((map, card) => {
@@ -17555,17 +17578,24 @@ app.get("/assignment-plans", async (req, res) => {
           targetQty: resolveAssignmentQuantity(plan),
         });
       const closeBasis = resolveAssignmentPlanCloseBasis(plan);
+      // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): prefer the
+      // real styleId/workOrderId/buyerOrgId joins over the matchedCard
+      // string-based lookup above (which stays only as a fallback for plans
+      // whose FK isn't backfilled yet).
       return {
         dbId: plan.id,
         id: plan.externalId,
         lineId: String(plan.lineId),
         cardId,
         workOrderId: toPositiveIntOrNull(plan?.workOrderId),
-        styleId: toPositiveIntOrNull(matchedCard?.styleId),
-        styleCode: resolveOptionalString(matchedCard?.styleCode, null) ?? "",
-        orderNo: plan.orderNo ?? "",
-        label: plan.label ?? "",
-        customer: plan.customer ?? "",
+        styleId: toPositiveIntOrNull(plan?.style?.id) ?? toPositiveIntOrNull(matchedCard?.styleId),
+        styleCode:
+          resolveOptionalString(plan?.style?.code, null) ??
+          resolveOptionalString(matchedCard?.styleCode, null) ??
+          "",
+        orderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null) ?? plan.orderNo ?? "",
+        label: resolveOptionalString(plan?.style?.name, null) ?? plan.label ?? "",
+        customer: resolveOptionalString(plan?.buyerOrg?.name, null) ?? plan.customer ?? "",
         colorId: toPositiveIntOrNull(plan.colorId),
         colorName: resolveAssignmentPlanColorName(plan),
         color: plan.color ?? "",
@@ -19990,9 +20020,14 @@ const buildAssignmentPlanProgressRows = async (
       dbId: planId,
       lineId: String(plan.lineId),
       lineName: lineNameById.get(Number(plan.lineId)) || "",
-      orderNo: resolveOptionalString(plan.orderNo, "") || "",
-      customer: resolveOptionalString(plan.customer, "") || "",
-      label: resolveOptionalString(plan.label, "") || "",
+      // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): prefer the
+      // real workOrderId/styleId/buyerOrgId joins over the stored strings.
+      orderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null) ??
+        resolveOptionalString(plan.orderNo, "") ?? "",
+      customer: resolveOptionalString(plan?.buyerOrg?.name, null) ??
+        resolveOptionalString(plan.customer, "") ?? "",
+      label: resolveOptionalString(plan?.style?.name, null) ??
+        resolveOptionalString(plan.label, "") ?? "",
       colorId: toPositiveIntOrNull(plan.colorId),
       colorName: resolveAssignmentPlanColorName(plan),
       plannedQuantity,
@@ -23485,13 +23520,6 @@ app.get("/assignment-board-state", async (req, res) => {
     loadAssignmentCardsForOrg({ orgId: organization.id }),
   ]);
   let assignmentPlans = await loadAssignmentPlansForBoardState(organization.id);
-  if (assignmentPlans.length > 0 && assignmentPlans.some(assignmentPlanNeedsDisplayRepair)) {
-    const repairedPlans = await repairAssignmentPlanDisplayRows({
-      orgId: organization.id,
-      plans: assignmentPlans,
-    });
-    assignmentPlans = repairedPlans.plans;
-  }
   assignmentPlans = await annotateAssignmentPlanRowsWithPayrollLocks(
     organization.id,
     assignmentPlans
@@ -24050,14 +24078,25 @@ app.put("/assignment-board-state", async (req, res) => {
           .filter((value: string | null): value is string => Boolean(value))
       )
     );
-    const cardIdToAssignmentCardId = new Map<string, number>();
+    // Phase B (AssignmentCard/AssignmentPlan FK+join redesign): the same
+    // batch lookup now also carries the card's own styleId/buyerOrgId, so a
+    // newly created/updated AssignmentPlan always agrees with the card it
+    // was scheduled from instead of re-deriving those independently.
+    const cardIdToAssignmentCardId = new Map<
+      string,
+      { id: number; styleId: number | null; buyerOrgId: number | null }
+    >();
     if (cardIdStringsInThisSave.length > 0) {
       const matchedAssignmentCards = await tx.assignmentCard.findMany({
         where: { orgId: organization.id, cardId: { in: cardIdStringsInThisSave } },
-        select: { id: true, cardId: true },
+        select: { id: true, cardId: true, styleId: true, buyerOrgId: true },
       });
       matchedAssignmentCards.forEach((card) => {
-        cardIdToAssignmentCardId.set(card.cardId, card.id);
+        cardIdToAssignmentCardId.set(card.cardId, {
+          id: card.id,
+          styleId: card.styleId,
+          buyerOrgId: card.buyerOrgId,
+        });
       });
     }
     if (createPlanRows.length > 0) {
