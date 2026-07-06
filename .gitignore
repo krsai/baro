@@ -35,5 +35,9 @@ pnpm-debug.log*
 .vscode/
 .idea/
 
+# Claude Code local settings (personal permission allowlist; can end up
+# containing secrets typed into approved commands - never share/commit)
+.claude/settings.local.json
+
 # project-specific generated files
 backend/src/generated/prisma/
