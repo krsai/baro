@@ -1,3 +1,28 @@
+-- Step 0n: drop AssignmentPlan.orderNo/customer/label/previewUrl (20260706)
+-- Phase E of the AssignmentCard/AssignmentPlan FK+join redesign. Unlike
+-- Phase D's color columns, these four WERE actively written by every board
+-- save up until this phase's code change - they are not "always null" the
+-- way colorId/colorName were. They are fully derivable through
+-- workOrderId/styleId/buyerOrgId (workOrder.orderNumber, style.name,
+-- buyerOrg.name, style.imageUrls[0]) and application code no longer reads or
+-- writes any of them (backend/src/index.ts, see the comment in
+-- toAssignmentPlanResponse and ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE).
+-- Before running against production, re-confirm row count is still safe:
+--   SELECT COUNT(*) FROM "AssignmentPlan";
+--   SELECT COUNT(*) FROM "AssignmentPlan" WHERE "orderNo" IS NOT NULL;
+-- (At the time this step was written, AssignmentPlan had 0 rows in
+-- production - the org's assignment data had not yet been re-populated
+-- since the 2026-07-03 incident, see AGENTS.md 39/40/42 - so there was
+-- nothing to lose. If rows exist by the time this runs, the columns being
+-- dropped are still fully reconstructable from the FK joins for any row
+-- whose workOrderId/styleId/buyerOrgId are populated; only rows that
+-- predate the Phase A backfill AND lack an assignmentCardId link would lose
+-- their orderNo/customer/label/previewUrl display text permanently.)
+ALTER TABLE "AssignmentPlan" DROP COLUMN IF EXISTS "orderNo";
+ALTER TABLE "AssignmentPlan" DROP COLUMN IF EXISTS "customer";
+ALTER TABLE "AssignmentPlan" DROP COLUMN IF EXISTS "label";
+ALTER TABLE "AssignmentPlan" DROP COLUMN IF EXISTS "previewUrl";
+
 -- Step 0m: drop AssignmentPlan.colorId/colorName/color/stripeColor/imageUrl/
 -- thumbnailUrl (20260706)
 -- Phase D of the AssignmentCard/AssignmentPlan FK+join redesign. All six are

@@ -717,10 +717,11 @@ model AssignmentPlan {
   // WorkOrder's own naming - the ordering party (buyer org), same as
   // WorkOrder.buyerOrgId. Backfilled via assignmentCardId -> AssignmentCard.buyerOrgId.
   buyerOrgId            Int?
-  orderNo               String?
-  customer              String?
-  label                 String?
-  previewUrl            String?
+  // orderNo/customer/label/previewUrl were dropped in Phase E (AssignmentCard/
+  // AssignmentPlan FK+join redesign) - all four are fully derivable through
+  // workOrderId/styleId/buyerOrgId (workOrder.orderNumber, style.name,
+  // buyerOrg.name, style.imageUrls[0]), so keeping them as separate text
+  // columns was pure duplication once those FKs existed. See toAssignmentPlanResponse.
   assignmentQuantity       Int?
   originOrderId            String?
   basis                    String?

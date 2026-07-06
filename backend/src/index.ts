@@ -245,6 +245,18 @@ function assertGeneratedPrismaClientShape() {
   if (hasField("AssignmentPlan", "thumbnailUrl")) {
     staleSignals.push("AssignmentPlan.thumbnailUrl still present");
   }
+  if (hasField("AssignmentPlan", "orderNo")) {
+    staleSignals.push("AssignmentPlan.orderNo still present");
+  }
+  if (hasField("AssignmentPlan", "customer")) {
+    staleSignals.push("AssignmentPlan.customer still present");
+  }
+  if (hasField("AssignmentPlan", "label")) {
+    staleSignals.push("AssignmentPlan.label still present");
+  }
+  if (hasField("AssignmentPlan", "previewUrl")) {
+    staleSignals.push("AssignmentPlan.previewUrl still present");
+  }
   if (!modelByName.has("OrganizationHoliday")) {
     staleSignals.push("OrganizationHoliday model missing");
   }
@@ -2677,8 +2689,10 @@ const loadAtTrainingSourceWorkLogs = async ({
             },
             assignmentPlan: {
               select: {
-                customer: true,
-                orderNo: true,
+                // orderNo/customer dropped in Phase E - workOrder.orderNumber
+                // is the only source now (customer itself was already unused
+                // here).
+                workOrder: { select: { orderNumber: true } },
               },
             },
             styleProcess: {
@@ -2722,8 +2736,10 @@ const loadAtTrainingSourceWorkLogs = async ({
             },
             assignmentPlan: {
               select: {
-                customer: true,
-                orderNo: true,
+                // orderNo/customer dropped in Phase E - workOrder.orderNumber
+                // is the only source now (customer itself was already unused
+                // here).
+                workOrder: { select: { orderNumber: true } },
               },
             },
             styleProcess: {
@@ -2797,7 +2813,10 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       const recordStyleRefId = resolveWorkRecordStyleRefId(record);
       return {
         ...record,
-        orderNo: resolveOptionalString((record as any)?.assignmentPlan?.orderNo, null),
+        orderNo: resolveOptionalString(
+          (record as any)?.assignmentPlan?.workOrder?.orderNumber,
+          null
+        ),
         styleId: planStyleMeta?.styleId ?? recordStyleRefId,
         styleCode: resolveOptionalString(
           planStyleMeta?.styleCode ?? (record as any)?.style?.code,
@@ -6349,8 +6368,9 @@ const collectWorkLogCrossLineAssignmentWarnings = async ({
     select: {
       id: true,
       lineId: true,
-      orderNo: true,
-      label: true,
+      // orderNo/label dropped in Phase E - workOrder.orderNumber is the only
+      // source now (label itself was already unused here).
+      workOrder: { select: { orderNumber: true } },
     },
     }),
     workerIds.length > 0
@@ -6421,7 +6441,7 @@ const collectWorkLogCrossLineAssignmentWarnings = async ({
         assignmentLineName:
           resolveOptionalString(lineById.get(assignmentLineId)?.name, null) ?? null,
         orderNo:
-          resolveOptionalString(plan?.orderNo, null),
+          resolveOptionalString(plan?.workOrder?.orderNumber, null),
         styleId:
           resolveOptionalString(
             styleMetaByPlanId.get(assignmentPlanId)?.styleId,
@@ -7945,9 +7965,11 @@ const formatWorkerStyleProcessIdentityLabel = (record: any) => {
   return [workerLabel, styleLabel, processLabel].filter(Boolean).join(" / ");
 };
 const formatAssignmentPlanLabel = (plan: any) => {
+  // orderNo/label dropped in Phase E - workOrder.orderNumber/style.name are
+  // the only source now (see ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE).
   const parts = [
-    resolveOptionalString(plan?.orderNo, null),
-    resolveOptionalString(plan?.label, null),
+    resolveOptionalString(plan?.workOrder?.orderNumber, null),
+    resolveOptionalString(plan?.style?.name, null),
   ].filter((part): part is string => Boolean(part));
   if (parts.length > 0) return parts.join(" · ");
   return resolveOptionalString(plan?.externalId, null) || `assignmentPlan#${plan?.id ?? "?"}`;
@@ -7995,11 +8017,11 @@ const validateAssignmentPlanPayrollLock = async ({
     select: {
       id: true,
       externalId: true,
-      orderNo: true,
-      label: true,
       completedAt: true,
       closedAt: true,
       productionCompletedAt: true,
+      // orderNo/label dropped in Phase E - see ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE.
+      ...ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
     },
   });
   const monthByPlanId = new Map<number, string>();
@@ -8064,10 +8086,10 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
         lineId: true,
         assignmentCtSnapshot: true,
         assignmentCtTotalSeconds: true,
-        orderNo: true,
-        label: true,
         isCompleted: true,
         completedAt: true,
+        // orderNo/label dropped in Phase E - see ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE.
+        ...ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
       },
     });
   } catch (error) {
@@ -8079,10 +8101,9 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
         externalId: true,
         lineId: true,
         assignmentCtSnapshot: true,
-        orderNo: true,
-        label: true,
         isCompleted: true,
         completedAt: true,
+        ...ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
       },
     });
   }
@@ -8590,9 +8611,11 @@ const loadWorkRecordResponseDisplayContext = async ({
           select: {
             id: true,
             lineId: true,
-            orderNo: true,
-            customer: true,
-            label: true,
+            // orderNo/customer/label dropped in Phase E - workOrder.orderNumber/
+            // buyerOrg.name/style.name are the only source now.
+            workOrder: { select: { orderNumber: true } },
+            buyerOrg: { select: { name: true } },
+            style: { select: { name: true } },
           },
         })
       : Promise.resolve([]),
@@ -8618,6 +8641,11 @@ const loadWorkRecordResponseDisplayContext = async ({
     const styleMeta = styleMetaByPlanId.get(planId) ?? null;
     assignmentPlanMetaById.set(planId, {
       ...plan,
+      // orderNo/customer/label dropped in Phase E - resolved here from the
+      // workOrder/buyerOrg/style relations fetched above instead.
+      orderNo: resolveOptionalString((plan as any)?.workOrder?.orderNumber, null),
+      customer: resolveOptionalString((plan as any)?.buyerOrg?.name, null),
+      label: resolveOptionalString((plan as any)?.style?.name, null),
       styleId: toPositiveIntOrNull(styleMeta?.styleId),
       styleCode: resolveOptionalString(styleMeta?.styleId, null),
       styleName: resolveOptionalString(styleMeta?.styleName, null),
@@ -9095,7 +9123,9 @@ const resolveWorkLogImportAssignmentCandidate = ({
   const orderCandidates = ensureArray(plans).filter(
     (plan) =>
       factoryLineIdSet.has(toPositiveIntOrNull(plan?.lineId) ?? -1) &&
-      normalizeComparableText(plan?.orderNo) === orderKey
+      // orderNo column dropped in Phase E - workOrder.orderNumber is the only
+      // source now.
+      normalizeComparableText(plan?.workOrder?.orderNumber) === orderKey
   );
   if (orderCandidates.length === 0) {
     return {
@@ -9333,22 +9363,21 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
   const closeBasis = resolveAssignmentPlanCloseBasis(plan);
   const completedAt = closedAt;
   const isCompleted = plan?.isCompleted === true;
+  // Phase E (AssignmentCard/AssignmentPlan FK+join redesign): orderNo/
+  // customer/label columns are gone - these joins are the only source now.
+  const joinedOrderNo = resolveOptionalString(plan?.workOrder?.orderNumber, null);
+  const joinedCustomer = resolveOptionalString(plan?.buyerOrg?.name, null);
+  const joinedLabel = resolveOptionalString(plan?.style?.name, null);
   return {
     dbId: plan?.id ?? null,
     id: resolveOptionalString(plan?.externalId, "") ?? "",
     lineId: String(plan?.lineId ?? ""),
     lineName: resolveOptionalString(plan?.lineName, "") ?? "",
-    styleId:
-      resolveOptionalString(plan?.label, null) ??
-      resolveOptionalString(plan?.orderNo, null) ??
-      "",
-    styleCode:
-      resolveOptionalString(plan?.label, null) ??
-      resolveOptionalString(plan?.orderNo, null) ??
-      "",
-    orderNo: resolveOptionalString(plan?.orderNo, "") ?? "",
-    label: resolveOptionalString(plan?.label, "") ?? "",
-    customer: resolveOptionalString(plan?.customer, "") ?? "",
+    styleId: joinedLabel ?? joinedOrderNo ?? "",
+    styleCode: joinedLabel ?? joinedOrderNo ?? "",
+    orderNo: joinedOrderNo ?? "",
+    label: joinedLabel ?? "",
+    customer: joinedCustomer ?? "",
     // colorId/colorName/color dropped in Phase D - see the comment in
     // toAssignmentPlanResponse for why these are static now.
     colorId: null,
@@ -9637,9 +9666,6 @@ const buildWorkLogContextResponse = async ({
           id: true,
           externalId: true,
           lineId: true,
-          orderNo: true,
-          customer: true,
-          label: true,
           assignmentQuantity: true,
           assignmentStTotalSeconds: true,
           assignmentCtTotalSeconds: true,
@@ -9649,6 +9675,9 @@ const buildWorkLogContextResponse = async ({
           isCompleted: true,
           finalQuantity: true,
           completedAt: true,
+          // orderNo/customer/label dropped in Phase E - these joins are the
+          // only source now (see toAssignmentPlanResponse).
+          ...ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
         },
         orderBy,
       });
@@ -9660,9 +9689,6 @@ const buildWorkLogContextResponse = async ({
           id: true,
           externalId: true,
           lineId: true,
-          orderNo: true,
-          customer: true,
-          label: true,
           assignmentQuantity: true,
           assignmentCtSnapshot: true,
           startIndex: true,
@@ -9670,6 +9696,7 @@ const buildWorkLogContextResponse = async ({
           isCompleted: true,
           finalQuantity: true,
           completedAt: true,
+          ...ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
         },
         orderBy,
       });
@@ -10755,6 +10782,25 @@ const stripLegacyAssignmentCardPayload = (card: any) => {
     pendingCtProposal: _pendingCtProposal,
     ctAgreedSnapshot: _ctAgreedSnapshot,
     ctAgreementHistory: _ctAgreementHistory,
+    // styleCode/styleName/previewUrl/orderNo/dueDate/customer/customerNameKo/
+    // customerNameVi dropped from the stored payload (AssignmentCard/
+    // AssignmentPlan FK+join redesign, Phase E) - all of these are pure text
+    // copies of data already reachable through the real styleId/workOrderId/
+    // buyerOrgId FK columns, and toAssignmentCardFromStoreRow already
+    // resolves them from those joins at read time. Not stripped: styleId/
+    // workOrderId/buyerOrgId themselves (still read directly off the payload
+    // by toAssignmentCardFromStoreRow's spread, not overridden there) and
+    // cardQuantity/cardPtTotalSeconds/cardAtTotalSeconds/cardStTotalSeconds/
+    // processCount/status, which are computed aggregates (not pure
+    // duplicates of joinable data) and out of scope for this phase.
+    styleCode: _styleCode,
+    styleName: _styleName,
+    previewUrl: _previewUrl,
+    orderNo: _orderNo,
+    dueDate: _dueDate,
+    customer: _customer,
+    customerNameKo: _customerNameKo,
+    customerNameVi: _customerNameVi,
     ...rest
   } = card as Record<string, unknown>;
   return {
@@ -12290,10 +12336,9 @@ const toAssignmentPlanResponse = (plan: any) => {
       targetQty: resolveAssignmentQuantity(plan),
     });
   const closeBasis = resolveAssignmentPlanCloseBasis(plan);
-  // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): prefer the
-  // live join through workOrderId/styleId/buyerOrgId over the stored string
-  // copies. Falls back to the stored string for any plan whose FK isn't
-  // populated yet.
+  // Phase E (AssignmentCard/AssignmentPlan FK+join redesign): orderNo/
+  // customer/label/previewUrl are no longer stored columns at all - these are
+  // now the only source, resolved purely from workOrderId/styleId/buyerOrgId.
   const joinedOrderNo = resolveOptionalString(plan?.workOrder?.orderNumber, null);
   const joinedCustomer = resolveOptionalString(plan?.buyerOrg?.name, null);
   const joinedLabel = resolveOptionalString(plan?.style?.name, null);
@@ -12306,9 +12351,9 @@ const toAssignmentPlanResponse = (plan: any) => {
     lineId: String(plan.lineId),
     cardId: plan.cardId ?? "",
     workOrderId: toPositiveIntOrNull(plan?.workOrderId),
-    orderNo: joinedOrderNo ?? plan.orderNo ?? "",
-    customer: joinedCustomer ?? plan.customer ?? "",
-    label: joinedLabel ?? plan.label ?? "",
+    orderNo: joinedOrderNo ?? "",
+    customer: joinedCustomer ?? "",
+    label: joinedLabel ?? "",
     // colorId/colorName/color/stripeColor/imageUrl/thumbnailUrl were dropped
     // in Phase D (AssignmentCard/AssignmentPlan FK+join redesign) - color/
     // gender were never tracked at the assignment level (confirmed always
@@ -12319,7 +12364,7 @@ const toAssignmentPlanResponse = (plan: any) => {
     // shape is unchanged for any client still checking these fields.
     colorId: null,
     colorName: "",
-    previewUrl: joinedPreviewUrl ?? plan.previewUrl ?? "",
+    previewUrl: joinedPreviewUrl ?? "",
     imageUrl: "",
     thumbnailUrl: "",
     quantity: resolveAssignmentQuantity(plan),
@@ -12514,19 +12559,15 @@ const syncAssignmentPlanWorkOrderRefs = async (
         candidateOrderNo ? workOrdersByOrderNo.get(candidateOrderNo) ?? [] : [],
         orgId
       );
+    // orderNo/customer used to be recomputed and carried through here for
+    // AssignmentPlan.orderNo/customer writes - both dropped in Phase E, so
+    // this function's job is now purely resolving workOrderId/buyerOrgId.
+    // item.orderNo stays untouched as the order-matching input above.
     return {
       ...item,
       workOrderId: toPositiveIntOrNull(matchedWorkOrder?.id),
-      orderNo:
-        resolveOptionalString(matchedWorkOrder?.orderNumber, null) ??
-        resolveOptionalString(item?.orderNo, null),
-      customer:
-        resolveOptionalString(
-          matchedWorkOrder?.customerOrg?.name ?? matchedWorkOrder?.buyerOrg?.name,
-          null
-        ) ?? resolveOptionalString(item?.customer, null),
-      // Real FK (Phase B) - same join this function already does for the
-      // customer display name above, just carrying the id through too.
+      // Real FK (Phase B) - resolved from the same matchedWorkOrder used for
+      // the orderNo/customer matching above.
       buyerOrgId:
         toPositiveIntOrNull(matchedWorkOrder?.customerOrg?.id ?? matchedWorkOrder?.buyerOrg?.id) ??
         toPositiveIntOrNull(item?.buyerOrgId),
@@ -12560,21 +12601,18 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
         externalId,
         cardId: resolveOptionalString(item.cardId, null),
         workOrderId: toPositiveIntOrNull(item?.workOrderId),
+        // orderNo stays as an input signal only - syncAssignmentPlanWorkOrderRefs
+        // still uses it to match a WorkOrder when workOrderId isn't already
+        // known. customer/label/previewUrl and the already-dead
+        // colorId/colorName/imageUrl/thumbnailUrl/color/stripeColor keys are
+        // not carried through anymore: none of them are written to
+        // AssignmentPlan (Phase D/E), so normalizing them here was pointless.
         orderNo: resolveOptionalString(item.orderNo, null),
-        customer: resolveOptionalString(item.customer, null),
-        label: resolveOptionalString(item.label, null),
-        colorId: toPositiveIntOrNull(item.colorId),
-        colorName: resolveOptionalString(item.colorName, null),
-        previewUrl: resolveOptionalString(item.previewUrl, null),
-        imageUrl: resolveOptionalString(item.imageUrl, null),
-        thumbnailUrl: resolveOptionalString(item.thumbnailUrl, null),
         quantity: resolveAssignmentQuantity(item),
         originOrderId: resolveOptionalString(item.originOrderId, null),
         basis: resolveOptionalString(item.basis, null),
         ctTotalSeconds,
         assignmentCtSnapshot,
-        color: resolveOptionalString(item.color, null),
-        stripeColor: resolveOptionalString(item.stripeColor, null),
         stTotalSeconds,
         startIndex,
         endIndex,
@@ -12664,10 +12702,7 @@ const toAssignmentPlanWriteData = (
     styleId,
     buyerOrgId,
     workOrderId: toPositiveIntOrNull(item?.workOrderId),
-    orderNo: item.orderNo ?? null,
-    customer: item.customer ?? null,
-    label: item.label ?? null,
-    previewUrl: item.previewUrl ?? null,
+    // orderNo/customer/label/previewUrl dropped in Phase E, and
     // colorId/colorName/color/stripeColor/imageUrl/thumbnailUrl dropped in
     // Phase D - see the comment in toAssignmentPlanResponse. Not written
     // anymore even if a client still sends them (harmless extra JSON keys).
@@ -12691,10 +12726,10 @@ const COMPLETED_ASSIGNMENT_PLAN_WRITE_SELECT = {
   lineId: true,
   cardId: true,
   workOrderId: true,
-  orderNo: true,
-  customer: true,
-  label: true,
-  previewUrl: true,
+  // orderNo/customer/label/previewUrl dropped in Phase E - see the comment in
+  // toAssignmentPlanResponse. They're no longer real write fields, so they're
+  // no longer part of the completed-assignment structural-change comparison
+  // below either.
   assignmentQuantity: true,
   originOrderId: true,
   basis: true,
@@ -12726,10 +12761,6 @@ const buildCompletedAssignmentWriteComparable = (item: any) => {
     lineId: normalizeAssignmentLineIdForWriteCompare(item?.lineId),
     cardId: resolveOptionalString(item?.cardId, null),
     workOrderId: toPositiveIntOrNull(item?.workOrderId),
-    orderNo: resolveOptionalString(item?.orderNo, null),
-    customer: resolveOptionalString(item?.customer, null),
-    label: resolveOptionalString(item?.label, null),
-    previewUrl: resolveOptionalString(item?.previewUrl, null),
     assignmentQuantity: toOptionalNonNegativeInt(
       item?.assignmentQuantity ?? item?.quantity,
       null
@@ -13291,16 +13322,23 @@ const toAssignmentBoardStateResponse = (
     serverNow: new Date().toISOString(),
   };
 };
+// Shared relation shape for any `findUnique`/`findFirst` call that needs
+// orderNo/customer/label/previewUrl (Phase E dropped those as stored
+// columns - this is the only remaining source, same fields as
+// ASSIGNMENT_PLAN_SELECT_CORE's relations below, just for `include` instead
+// of `select` call sites that otherwise want every scalar column).
+const ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE = {
+  workOrder: { select: { id: true, orderNumber: true } },
+  style: { select: { id: true, name: true, code: true, imageUrls: true } },
+  buyerOrg: { select: { id: true, name: true } },
+} as const;
 const ASSIGNMENT_PLAN_SELECT_CORE = {
   id: true,
   externalId: true,
   lineId: true,
   cardId: true,
   workOrderId: true,
-  orderNo: true,
-  customer: true,
-  label: true,
-  previewUrl: true,
+  // orderNo/customer/label/previewUrl dropped in Phase E, and
   // colorId/colorName/color/stripeColor/imageUrl/thumbnailUrl dropped in
   // Phase D - see the comment in toAssignmentPlanResponse.
   assignmentQuantity: true,
@@ -13316,9 +13354,11 @@ const ASSIGNMENT_PLAN_SELECT_CORE = {
   endDayPercent: true,
   createdAt: true,
   updatedAt: true,
-  // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): only on the
-  // non-legacy select - kept off ASSIGNMENT_PLAN_SELECT_LEGACY below the
-  // same way workOrderId already is, so schema-drift tolerance is unaffected.
+  // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): the only source
+  // of orderNo/customer/label/previewUrl now that Phase E dropped the text
+  // columns. workOrderId/styleId/buyerOrgId are enforced present by the
+  // startup hasField gate, so these relations are safe on every select
+  // attempt including the "legacy" one below.
   workOrder: { select: { id: true, orderNumber: true } },
   style: { select: { id: true, name: true, code: true, imageUrls: true } },
   buyerOrg: { select: { id: true, name: true } },
@@ -13355,10 +13395,6 @@ const ASSIGNMENT_PLAN_SELECT_LEGACY = {
   externalId: true,
   lineId: true,
   cardId: true,
-  orderNo: true,
-  customer: true,
-  label: true,
-  previewUrl: true,
   assignmentQuantity: true,
   originOrderId: true,
   basis: true,
@@ -13370,6 +13406,12 @@ const ASSIGNMENT_PLAN_SELECT_LEGACY = {
   endDayPercent: true,
   createdAt: true,
   updatedAt: true,
+  // See the comment on ASSIGNMENT_PLAN_SELECT_CORE above - orderNo/customer/
+  // label/previewUrl only ever come from these relations now, so this
+  // "legacy" (schema-drift-tolerant) select needs them just as much.
+  workOrder: { select: { id: true, orderNumber: true } },
+  style: { select: { id: true, name: true, code: true, imageUrls: true } },
+  buyerOrg: { select: { id: true, name: true } },
 } as const;
 const ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY = {
   ...ASSIGNMENT_PLAN_SELECT_LEGACY,
@@ -13396,7 +13438,7 @@ const findAssignmentPlansWithSelectFallback = async ({
 }: {
   where: Prisma.AssignmentPlanWhereInput;
   orderBy: Prisma.AssignmentPlanOrderByWithRelationInput[];
-  selectAttempts: ReadonlyArray<Record<string, true>>;
+  selectAttempts: ReadonlyArray<Record<string, any>>;
   context: string;
 }): Promise<any[]> => {
   let lastError: any = null;
@@ -17530,9 +17572,9 @@ app.get("/assignment-plans", async (req, res) => {
           resolveOptionalString(plan?.style?.code, null) ??
           resolveOptionalString(matchedCard?.styleCode, null) ??
           "",
-        orderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null) ?? plan.orderNo ?? "",
-        label: resolveOptionalString(plan?.style?.name, null) ?? plan.label ?? "",
-        customer: resolveOptionalString(plan?.buyerOrg?.name, null) ?? plan.customer ?? "",
+        orderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null) ?? "",
+        label: resolveOptionalString(plan?.style?.name, null) ?? "",
+        customer: resolveOptionalString(plan?.buyerOrg?.name, null) ?? "",
         // colorId/colorName/color dropped in Phase D - see the comment in
         // toAssignmentPlanResponse.
         colorId: null,
@@ -17619,7 +17661,8 @@ const resolveAssignmentPlanStyleQueryValues = (plan: any): string[] => {
         parseAssignmentCardIdentity(plan?.cardId)?.styleId,
         parseAssignmentCardIdentity(plan?.originOrderId)?.styleId,
         (snapshot as any)?.styleId,
-        plan?.label,
+        // label column dropped in Phase E - style.name is the only source now.
+        plan?.style?.name,
       ]
         .map((value) => resolveOptionalString(value, null))
         .filter((value): value is string => Boolean(value))
@@ -19084,8 +19127,8 @@ const buildLineMonthCapacityRows = async ({
               assignmentExternalId: resolveOptionalString(plan?.externalId, null),
               assignmentCardId: resolveOptionalString(plan?.cardId, null),
               assignmentOriginOrderId: resolveOptionalString(plan?.originOrderId, null),
-              assignmentOrderNo: resolveOptionalString(plan?.orderNo, null),
-              assignmentLabel: resolveOptionalString(plan?.label, null),
+              assignmentOrderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null),
+              assignmentLabel: resolveOptionalString(plan?.style?.name, null),
               assignmentQuantity: plannedQuantity,
               workerId: toPositiveIntOrNull(record?.workerId),
               workerName: resolveOptionalString(record?.worker?.name, null),
@@ -19959,14 +20002,11 @@ const buildAssignmentPlanProgressRows = async (
       dbId: planId,
       lineId: String(plan.lineId),
       lineName: lineNameById.get(Number(plan.lineId)) || "",
-      // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): prefer the
-      // real workOrderId/styleId/buyerOrgId joins over the stored strings.
-      orderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null) ??
-        resolveOptionalString(plan.orderNo, "") ?? "",
-      customer: resolveOptionalString(plan?.buyerOrg?.name, null) ??
-        resolveOptionalString(plan.customer, "") ?? "",
-      label: resolveOptionalString(plan?.style?.name, null) ??
-        resolveOptionalString(plan.label, "") ?? "",
+      // Phase E (AssignmentCard/AssignmentPlan FK+join redesign): orderNo/
+      // customer/label columns are gone - these joins are the only source now.
+      orderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null) ?? "",
+      customer: resolveOptionalString(plan?.buyerOrg?.name, null) ?? "",
+      label: resolveOptionalString(plan?.style?.name, null) ?? "",
       // colorId/colorName dropped in Phase D - see the comment in
       // toAssignmentPlanResponse.
       colorId: null,
@@ -20530,10 +20570,8 @@ const buildAssignmentPlanCloseResponse = (plan: any) => {
     id: plan?.externalId,
     dbId: plan?.id ?? null,
     lineId: String(plan?.lineId ?? ""),
-    orderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null) ??
-      resolveOptionalString(plan?.orderNo, "") ?? "",
-    label: resolveOptionalString(plan?.style?.name, null) ??
-      resolveOptionalString(plan?.label, "") ?? "",
+    orderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null) ?? "",
+    label: resolveOptionalString(plan?.style?.name, null) ?? "",
     // colorName dropped in Phase D - see the comment in toAssignmentPlanResponse.
     colorName: "",
     quantity,
@@ -20599,10 +20637,10 @@ const completeAssignmentPlanProduction = async ({
       closeMode: true,
       closeBasis: true,
       closedBy: true,
-      orderNo: true,
-      label: true,
       productionCompletedAt: true,
       updatedAt: true,
+      // orderNo/label dropped in Phase E - see ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE.
+      ...ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
     },
   });
   if (!plan) {
@@ -20703,6 +20741,10 @@ const completeAssignmentPlanProduction = async ({
     if (updateResult.count !== 1) return null;
     return tx.assignmentPlan.findUnique({
       where: { id: plan.id },
+      // orderNo/customer/label/previewUrl are no longer stored columns
+      // (Phase E) - buildAssignmentPlanCloseResponse needs these joins to
+      // resolve them at all.
+      include: ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
     });
   });
   if (!updatedPlan) {
@@ -21058,9 +21100,10 @@ app.patch("/assignment-plans/:externalId/final-quantity", async (req, res) => {
       productionCompletedAt: true,
       assignmentQuantity: true,
       finalQuantity: true,
-      orderNo: true,
-      label: true,
       updatedAt: true,
+      // orderNo/label dropped in Phase E - unused on this initial lookup
+      // (buildAssignmentPlanCloseResponse only reads them from the
+      // ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE-backed updatedPlan below).
     },
   });
   if (!plan) {
@@ -21102,6 +21145,10 @@ app.patch("/assignment-plans/:externalId/final-quantity", async (req, res) => {
     if (updateResult.count !== 1) return null;
     return tx.assignmentPlan.findUnique({
       where: { id: plan.id },
+      // orderNo/customer/label/previewUrl are no longer stored columns
+      // (Phase E) - buildAssignmentPlanCloseResponse needs these joins to
+      // resolve them at all.
+      include: ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
     });
   });
   if (!updatedPlan) {
@@ -22046,7 +22093,10 @@ app.post("/work-logs/import", async (req, res) => {
           where: {
             orgId: organization.id,
             lineId: { in: assignmentPlanLineIds },
-            orderNo: { in: planOrderNos },
+            // orderNo column dropped in Phase E - match through the
+            // workOrder relation instead (workOrderId is populated for every
+            // active plan by syncAssignmentPlanWorkOrderRefs).
+            workOrder: { orderNumber: { in: planOrderNos } },
           },
           orderBy: [{ lineId: "asc" }, { id: "asc" }],
           selectAttempts: [

@@ -19,8 +19,21 @@
 
 - **운영 DB에 Step 0m 적용 완료**: 사용자 확인 후 `DATABASE_PUBLIC_URL`로 직접 접속해 6개 `ALTER TABLE ... DROP COLUMN`(+FK 제약 DROP)을 실행. 실행 전 `information_schema.columns`/`COUNT(*) WHERE col IS NOT NULL`로 6개 컬럼 모두 존재하되 전부 0건 non-null임을 먼저 확인(`AssignmentPlan` 전체 행 수도 0건 — §39 사고 이후 아직 미복구 상태와 일치). 실행 후 재조회로 6개 컬럼이 실제로 사라졌음을 확인. AssignmentCard/AssignmentPlan FK+join 재설계(Phase A~D) 전체 완료.
 
+## 2026-07-06 AssignmentCard/AssignmentPlan FK+Join 재설계 — Phase E
+- 사용자가 §Phase A~D 완료 직후 Railway DB를 다시 확인하고 `AssignmentPlan.orderNo/customer/label/previewUrl`과 `AssignmentCard.payload`의 `styleCode/styleName/previewUrl/customerNameKo/Vi` 등이 여전히 남아있다고 정당하게 지적("결론적으로 시킨거 하나도 반영이 안되어 있어"). 확인 결과 Phase D는 색상 계열 죽은 컬럼만 지웠고, 이 텍스트 중복 필드들은 스킵되어 있었음(착시 아님 — Railway 호스트로 직접 재확인).
+- `AssignmentPlan.orderNo/customer/label/previewUrl` 4개 컬럼 완전 삭제. `migration_fix.sql` Step 0n 추가(Step 0m보다 위, 아직 운영 미적용). 쓰기 경로(`toAssignmentPlanWriteData` 등) 전부 제거, 읽기 경로는 join-only로 전환(`?? plan.orderNo` 폴백 제거).
+- 이 과정에서 Phase C가 "구현 완료"라고 문서화했던 것과 실제 동작이 달랐던 버그를 발견: `completeAssignmentPlanProduction`/`final-quantity` 완료 트랜잭션의 `findUnique`가 `select`/`include` 없이 스칼라만 가져오고 있어서 join 로직이 한 번도 실행된 적이 없었음 — `ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE`를 추가해 실제로 join이 동작하도록 수정.
+- work-logs 엑셀 임포트에서 `orderNo`가 단순 표시값이 아니라 실제 쿼리 매칭 키(WHERE 필터 + 인메모리 매칭)로 쓰이고 있던 것도 발견해 `workOrder.orderNumber` relation 필터/join 값으로 전환. AT 학습 파이프라인, 급여 잠금 검증, 작업기록 표시 컨텍스트(`loadWorkRecordResponseDisplayContext`)의 관련 select도 같이 정리.
+- `AssignmentCard.payload`(JSON)에서도 `styleCode/styleName/previewUrl/orderNo/dueDate/customer/customerNameKo/customerNameVi` 저장을 중단(`stripLegacyAssignmentCardPayload` 확장) — 이미 Phase C에서 join-우선으로 읽던 `toAssignmentCardFromStoreRow`가 그대로 응답을 만들어주므로 응답 필드는 무수정. `styleId/workOrderId/buyerOrgId`(실제 FK라 중복 아님)와 `cardQuantity/cardAtTotalSeconds/cardPtTotalSeconds/cardStTotalSeconds/processCount/status`(Style.processes 기반 **집계값**이라 순수 중복이 아님)는 이번 범위에서 명시적으로 제외.
+- `cardId`(카드 upsert 유일 키, 122+곳에서 매칭에 쓰임)와 `createdBy`(스키마 전체 26개 테이블 공통 감사 필드 패턴)는 이번 범위 밖으로 확인 후 제외 — 사용자에게 설명하고 동의됨.
+- `npm run prisma:prepare-client` + `npm --prefix backend run build` 통과. 루트 `npm run test:regression` 재실행 — `test:quantity-change`의 동일한 1개 서브테스트(`'PT' !== 'ST'`)만 여전히 실패(아래 항목 참고, 무관).
+- 상세는 AGENTS.md §46 참고.
+
 ### Remaining
+- **운영 DB에 Step 0n 미적용**: pre-deploy가 꺼져 있어 자동 적용 안 됨. 배포 후 운영 DB에 Step 0n SQL 수동 실행 + `information_schema.columns`로 4개 컬럼이 실제로 사라졌는지 직접 확인 필요(사용자 명시적 확인 후 진행).
 - **quantityChangeBoard.mjs의 `'PT' !== 'ST'` 회귀 테스트 실패**: 이번 작업과 무관해 보이지만 미해결 상태로 남아 있음. 다음에 이 파일을 건드릴 때 우선 조사.
+- **AssignmentCard의 집계값(cardAtTotalSeconds 등) 저장 vs recompute-on-read 정책 미결정**: Style.processes가 카드 생성 이후 바뀌면 저장된 값은 그대로 굳어있다 — 이걸 의도된 스냅샷으로 유지할지, 조회 시마다 재계산할지 결정 필요.
+- **`cardId` → `assignmentCardId` 전환은 별도 대규모 작업**: 하고 싶다면 122+곳의 매칭 로직을 전부 정수 FK 기준으로 갈아타야 함.
 
 ## 2026-07-06 운영 저장 장애(503, missing column: assignmentCardId) 긴급 복구
 - 사용자가 배정 보드 저장 실패(503, "server database schema is out of sync ... assignmentCardId")를 보고. 운영 DB를 직접 조회해 `AssignmentPlan` 테이블에 `assignmentCardId` 컬럼이 실제로 없음을 확인 — §43(2026-07-05) FK 마이그레이션(`migration_fix.sql` Step 0k)이 스키마/코드에는 반영됐지만 운영 DB에는 한 번도 적용되지 않은 상태였다.
