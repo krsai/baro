@@ -372,3 +372,20 @@
 ### Remaining
 - `OrgMembership` table/drop은 아직 하지 않는다. 한 배포 이상 Employee-only read 상태로 운영한 뒤, `rg "orgMembership"`과 운영 DB 백필 검증이 0건일 때 별도 작업으로 제거한다.
 - 프론트는 기존 `orgMembershipId` compatibility 응답을 계속 받도록 둔 상태다. 다음 단계에서 Employee id 중심으로 화면 payload를 정리할 수 있다.
+## 2026-07-07 OrgMembership physical removal
+
+### Done
+- Removed the Prisma `OrgMembership` model and removed `Employee.orgMembershipId` from the Prisma schema.
+- Reworked org-account routes so the existing `/org-memberships` API URLs are compatibility wrappers backed by `Employee.id`.
+- Updated auth, payroll, organization representative, line, factory, onboarding, and maintenance scripts to read/write Employee account fields directly.
+- Updated `migration_fix.sql` Step 0o to copy any remaining OrgMembership rows into Employee, drop `Employee.orgMembershipId`, and drop the `OrgMembership` table.
+- Added startup drift checks so `OrgMembership` table or `Employee.orgMembershipId` column still present triggers `migration_fix.sql`.
+
+### Verify
+- `npm run prisma:prepare-client` passed in `backend`.
+- `npm run build` passed in `backend`.
+- `npm run build` passed in `frontend`.
+
+### Remaining
+- After Railway deploy/startup migration, verify production DB no longer has `OrgMembership` table and `Employee.orgMembershipId` column.
+- Frontend/API naming still has compatibility names like `/org-memberships` and `orgMembershipId`; these now mean Employee account id and can be renamed in a later UI/API cleanup without another DB migration.

@@ -23,12 +23,14 @@ enum OrgUserRole {
   WORKER
 }
 
-enum OrgMembershipStatus {
+enum EmployeeStatus {
   PENDING
   ACTIVE
   REJECTED
   SUSPENDED
   TERMINATED
+
+  @@map("OrgMembershipStatus")
 }
 
 enum OrganizationSubscriptionStatus {
@@ -175,7 +177,6 @@ model Organization {
   roles                       AttrRole[]
   processes                   AttrProcess[]
   subscription                OrganizationSubscription?
-  memberships                 OrgMembership[]
   factories                   Factory[]
   employees                   Employee[]
   lines                       Line[]
@@ -271,32 +272,6 @@ model OrganizationSubscription {
   @@index([status])
 }
 
-model OrgMembership {
-  id                  Int                 @id @default(autoincrement())
-  orgId               Int
-  email               String?
-  role                OrgUserRole         @default(OPERATOR)
-  status              OrgMembershipStatus @default(ACTIVE)
-  requestedAt         DateTime?
-  requestedName       String?
-  approvedAt          DateTime?
-  approvedBy          String?
-  createdAt           DateTime            @default(now())
-  createdBy           String              @default("system@baro.local")
-  createdByEmployeeId Int?
-  updatedByEmployeeId Int?
-  updatedAt           DateTime            @updatedAt
-
-  organization Organization @relation(fields: [orgId], references: [id])
-  employee     Employee?
-
-  @@unique([orgId, email])
-  @@index([orgId])
-  @@index([email])
-  @@index([status])
-  @@index([orgId, status])
-}
-
 model Factory {
   id                  Int      @id @default(autoincrement())
   orgId               Int
@@ -361,12 +336,9 @@ model Line {
 model Employee {
   id                  Int                 @id @default(autoincrement())
   orgId               Int
-  /// Deprecated compatibility link while OrgMembership is being retired as the
-  /// account source of truth. New account fields live directly on Employee.
-  orgMembershipId     Int?                @unique
   email               String?
   orgRole             OrgUserRole         @default(WORKER)
-  status              OrgMembershipStatus @default(ACTIVE)
+  status              EmployeeStatus      @default(ACTIVE)
   requestedAt         DateTime?
   requestedName       String?
   approvedAt          DateTime?
@@ -393,7 +365,6 @@ model Employee {
   updatedAt           DateTime            @updatedAt
 
   organization             Organization      @relation(fields: [orgId], references: [id])
-  membership               OrgMembership?    @relation(fields: [orgMembershipId], references: [id])
   factory                  Factory?          @relation("FactoryEmployees", fields: [factoryId], references: [id])
   line                     Line?             @relation("EmployeeCurrentLine", fields: [lineId], references: [id], onDelete: SetNull)
   role                     AttrRole?         @relation(fields: [roleId], references: [id])

@@ -209,7 +209,6 @@ const cloneOrganizationAccessValue = (value: any) => {
 
 const EMPLOYEE_ACCESS_SELECT = {
   id: true,
-  orgMembershipId: true,
   orgId: true,
   email: true,
   orgRole: true,
@@ -226,7 +225,7 @@ const setRequestActorEmployeeFromRow = (employee: any) => {
 const toOrgMembershipCompat = (employee: any) =>
   employee
     ? {
-        id: employee.orgMembershipId ?? null,
+        id: employee.id ?? null,
         orgId: employee.orgId ?? null,
         email: employee.email ?? null,
         role: employee.orgRole,
@@ -512,7 +511,6 @@ export const getRequestAccessContext = async (
       },
       select: {
         id: true,
-        orgMembershipId: true,
         orgId: true,
         email: true,
         orgRole: true,

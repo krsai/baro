@@ -140,10 +140,10 @@ function incrementDate(date, days = 1) {
 }
 
 function isBackfillEligibleEmployee(employee) {
-  const membershipRole = String(employee?.membership?.role || '')
+  const membershipRole = String(employee?.orgRole || '')
     .trim()
     .toUpperCase();
-  const membershipStatus = String(employee?.membership?.status || '')
+  const membershipStatus = String(employee?.status || '')
     .trim()
     .toUpperCase();
   if (membershipRole === 'ADMIN') return false;
@@ -245,10 +245,8 @@ async function main() {
 
   const employeeWhere = {
     factoryId: { not: null },
-    membership: {
-      role: { not: 'ADMIN' },
-      status: { in: ['ACTIVE', 'TERMINATED'] },
-    },
+    orgRole: { not: 'ADMIN' },
+    status: { in: ['ACTIVE', 'TERMINATED'] },
     ...(options.orgId ? { orgId: options.orgId } : {}),
     ...(options.factoryId ? { factoryId: options.factoryId } : {}),
     ...(options.factoryName
@@ -270,6 +268,8 @@ async function main() {
       position: true,
       joinedAt: true,
       leftAt: true,
+      orgRole: true,
+      status: true,
       role: {
         select: {
           code: true,
@@ -280,12 +280,6 @@ async function main() {
         select: {
           id: true,
           name: true,
-        },
-      },
-      membership: {
-        select: {
-          role: true,
-          status: true,
         },
       },
     },
@@ -365,7 +359,7 @@ async function main() {
         monthKey: range.monthKey,
         workerId: employee.id,
         workerName: employee.name || '',
-        membershipRole: String(employee?.membership?.role || '').trim().toUpperCase(),
+        membershipRole: String(employee?.orgRole || '').trim().toUpperCase(),
         workingDates: missingDates,
       });
     });

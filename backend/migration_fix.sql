@@ -1,8 +1,6 @@
 -- Step 0o: Employee becomes the canonical organization account table (20260707)
--- OrgMembership is kept as a compatibility shadow during the transition, but
--- login/access/audit data now also lives on Employee. Employee.id is preserved
--- because WorkRecord/AttendanceEntry/LineAssignment already depend on it.
-ALTER TABLE "OrgMembership" ADD COLUMN IF NOT EXISTS "requestedName" TEXT;
+-- Employee.id is the account id. OrgMembership was a temporary compatibility
+-- shadow and is dropped after any remaining rows are copied into Employee.
 ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "email" TEXT;
 ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "orgRole" "OrgUserRole" NOT NULL DEFAULT 'WORKER';
 ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "status" "OrgMembershipStatus" NOT NULL DEFAULT 'ACTIVE';
@@ -10,56 +8,84 @@ ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "requestedAt" TIMESTAMP(3);
 ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "requestedName" TEXT;
 ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "approvedAt" TIMESTAMP(3);
 ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "approvedBy" TEXT;
-ALTER TABLE "Employee" ALTER COLUMN "orgMembershipId" DROP NOT NULL;
 
-UPDATE "Employee" e
-SET
-  "email" = m."email",
-  "orgRole" = m."role",
-  "status" = m."status",
-  "requestedAt" = COALESCE(e."requestedAt", m."requestedAt"),
-  "requestedName" = COALESCE(e."requestedName", m."requestedName"),
-  "approvedAt" = COALESCE(e."approvedAt", m."approvedAt"),
-  "approvedBy" = COALESCE(e."approvedBy", m."approvedBy"),
-  "name" = COALESCE(NULLIF(btrim(e."name"), ''), NULLIF(btrim(m."requestedName"), ''))
-FROM "OrgMembership" m
-WHERE e."orgMembershipId" = m.id;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'OrgMembership'
+  ) THEN
+    ALTER TABLE "OrgMembership" ADD COLUMN IF NOT EXISTS "requestedName" TEXT;
+    ALTER TABLE "OrgMembership" ALTER COLUMN "email" DROP NOT NULL;
+    UPDATE "OrgMembership"
+    SET "email" = NULL
+    WHERE "email" LIKE 'emp+%@baro.local';
 
-INSERT INTO "Employee" (
-  "orgId",
-  "orgMembershipId",
-  "email",
-  "orgRole",
-  "status",
-  "requestedAt",
-  "requestedName",
-  "approvedAt",
-  "approvedBy",
-  "name",
-  "joinedAt",
-  "createdAt",
-  "createdBy",
-  "updatedAt"
-)
-SELECT
-  m."orgId",
-  m.id,
-  m."email",
-  m."role",
-  m."status",
-  m."requestedAt",
-  m."requestedName",
-  m."approvedAt",
-  m."approvedBy",
-  NULLIF(btrim(m."requestedName"), ''),
-  CASE WHEN m."status" = 'ACTIVE' THEN COALESCE(m."approvedAt", m."createdAt") ELSE NULL END,
-  m."createdAt",
-  m."createdBy",
-  m."updatedAt"
-FROM "OrgMembership" m
-WHERE NOT EXISTS (
-  SELECT 1 FROM "Employee" e WHERE e."orgMembershipId" = m.id
-);
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'Employee'
+        AND column_name = 'orgMembershipId'
+    ) THEN
+      ALTER TABLE "Employee" ALTER COLUMN "orgMembershipId" DROP NOT NULL;
+
+      UPDATE "Employee" e
+      SET
+        "email" = m."email",
+        "orgRole" = m."role",
+        "status" = m."status",
+        "requestedAt" = COALESCE(e."requestedAt", m."requestedAt"),
+        "requestedName" = COALESCE(e."requestedName", m."requestedName"),
+        "approvedAt" = COALESCE(e."approvedAt", m."approvedAt"),
+        "approvedBy" = COALESCE(e."approvedBy", m."approvedBy"),
+        "name" = COALESCE(NULLIF(btrim(e."name"), ''), NULLIF(btrim(m."requestedName"), ''))
+      FROM "OrgMembership" m
+      WHERE e."orgMembershipId" = m.id;
+
+      INSERT INTO "Employee" (
+        "orgId",
+        "orgMembershipId",
+        "email",
+        "orgRole",
+        "status",
+        "requestedAt",
+        "requestedName",
+        "approvedAt",
+        "approvedBy",
+        "name",
+        "joinedAt",
+        "createdAt",
+        "createdBy",
+        "updatedAt"
+      )
+      SELECT
+        m."orgId",
+        m.id,
+        m."email",
+        m."role",
+        m."status",
+        m."requestedAt",
+        m."requestedName",
+        m."approvedAt",
+        m."approvedBy",
+        NULLIF(btrim(m."requestedName"), ''),
+        CASE WHEN m."status" = 'ACTIVE' THEN COALESCE(m."approvedAt", m."createdAt") ELSE NULL END,
+        m."createdAt",
+        m."createdBy",
+        m."updatedAt"
+      FROM "OrgMembership" m
+      WHERE NOT EXISTS (
+        SELECT 1 FROM "Employee" e WHERE e."orgMembershipId" = m.id
+      );
+
+      ALTER TABLE "Employee" DROP CONSTRAINT IF EXISTS "Employee_orgMembershipId_fkey";
+      DROP INDEX IF EXISTS "Employee_orgMembershipId_key";
+      ALTER TABLE "Employee" DROP COLUMN IF EXISTS "orgMembershipId";
+    END IF;
+
+    DROP TABLE IF EXISTS "OrgMembership";
+  END IF;
+END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS "Employee_orgId_email_key"
   ON "Employee"("orgId", "email");
@@ -100,7 +126,6 @@ DECLARE
     'Organization',
     'OnboardingRequest',
     'OrganizationSubscription',
-    'OrgMembership',
     'Factory',
     'Line',
     'Employee',
@@ -179,7 +204,6 @@ DECLARE
     'Organization',
     'OnboardingRequest',
     'OrganizationSubscription',
-    'OrgMembership',
     'Factory',
     'Line',
     'Employee',
@@ -898,14 +922,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 ALTER TABLE "OrgRelationship" ADD COLUMN IF NOT EXISTS "pricingDefaultTradeType" TEXT;
 ALTER TABLE "OrgRelationship" ADD COLUMN IF NOT EXISTS "pricingMatrix" JSONB;
 
--- Step 0f: org membership onboarding request name (20260618)
-ALTER TABLE "OrgMembership" ADD COLUMN IF NOT EXISTS "requestedName" TEXT;
-
--- Step 0g: org membership email nullable + remove generated worker emails (20260618)
-ALTER TABLE "OrgMembership" ALTER COLUMN "email" DROP NOT NULL;
-UPDATE "OrgMembership"
-SET "email" = NULL
-WHERE "email" LIKE 'emp+%@baro.local';
+-- Step 0f/0g legacy OrgMembership cleanup is now handled in Step 0o.
 
 -- Step 0h: org membership terminated status for employee offboarding (20260619)
 ALTER TYPE "OrgMembershipStatus" ADD VALUE IF NOT EXISTS 'TERMINATED';

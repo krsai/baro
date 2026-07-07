@@ -32,13 +32,7 @@ const normalizePositiveIdOrNull = (value: unknown): number | null => {
 };
 
 const ORGANIZATION_REPRESENTATIVE_INCLUDE = {
-  representativeEmployee: {
-    include: {
-      membership: {
-        select: { email: true },
-      },
-    },
-  },
+  representativeEmployee: true,
 };
 
 const findOrganizationWithRepresentativeById = (id: number) =>
@@ -89,11 +83,6 @@ const resolveOrganizationRepresentativeEmployeeInput = async (params: {
     where: {
       id: representativeEmployeeId,
       orgId: organizationId,
-    },
-    include: {
-      membership: {
-        select: { email: true },
-      },
     },
   });
   if (!representativeEmployee) {
@@ -301,7 +290,7 @@ export const createOrganizationRouter = ({
       representativeEmployee?.phone
     );
     const representativeEmployeeEmail = normalizeOptionalOrganizationText(
-      representativeEmployee?.email ?? representativeEmployee?.membership?.email
+      representativeEmployee?.email
     );
 
     const organizationUpdateData: Prisma.OrganizationUpdateInput = {

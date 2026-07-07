@@ -596,12 +596,9 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
 
         const employees = await tx.employee.findMany({
           where: { orgId: organization.id, factoryId: existing.id },
-          select: { id: true, orgMembershipId: true },
+          select: { id: true },
         });
         const employeeIds = employees.map((employee) => employee.id);
-        const membershipIds = employees
-          .map((employee) => employee.orgMembershipId)
-          .filter((membershipId): membershipId is number => Number.isFinite(membershipId));
 
         if (employeeIds.length > 0) {
           await tx.factory.updateMany({
@@ -682,17 +679,6 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
           deletedEmployees = result.count;
         }
 
-        let deletedMemberships = 0;
-        if (membershipIds.length > 0) {
-          const result = await tx.orgMembership.deleteMany({
-            where: {
-              orgId: organization.id,
-              id: { in: membershipIds },
-            },
-          });
-          deletedMemberships = result.count;
-        }
-
         await tx.factory.delete({ where: { id: existing.id } });
 
         return {
@@ -700,7 +686,6 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
           deletedAssignmentPlans,
           deletedLines,
           deletedEmployees,
-          deletedMemberships,
         };
       },
       { maxWait: 20_000, timeout: 120_000 }

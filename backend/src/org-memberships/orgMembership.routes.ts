@@ -5,7 +5,6 @@ import {
   generateNextEmployeeNo,
   normalizeEmployeeNo,
 } from "../employees/employeeNumber";
-import { syncEmployeeAccountFromMembership } from "../employees/employeeAccount";
 import {
   getOrganizationByQuery,
   getRequesterEmail,
@@ -47,16 +46,19 @@ export const createOrgMembershipRouter = ({
 
   const isRoleRequiringLoginEmail = (role: OrgUserRole) =>
     LOGIN_REQUIRED_ROLES.has(role);
-  const isValidEmail = (value: string) => value.includes("@");
+  const isValidEmail = (value: string | null | undefined) =>
+    Boolean(value && value.includes("@"));
   const normalizeRequestedName = (value: unknown) =>
     typeof value === "string" ? value.trim() : "";
+  const resolveMemberName = (employee: any) =>
+    resolveOptionalString(employee?.requestedName ?? employee?.name, null);
+
   const toFixedSalaryOrNull = (
     value: unknown
   ): { ok: true; value: number | null } | { ok: false } => {
     if (value === undefined || value === null || value === "") {
       return { ok: true, value: null };
     }
-
     const sanitized =
       typeof value === "string" ? value.replace(/[,\s]/g, "") : value;
     const parsed = Number(sanitized);
@@ -65,6 +67,7 @@ export const createOrgMembershipRouter = ({
     }
     return { ok: true, value: Math.round(parsed) };
   };
+
   const toOptionalDateOrNull = (
     value: unknown
   ):
@@ -82,7 +85,6 @@ export const createOrgMembershipRouter = ({
     if (!normalizedText) {
       return { ok: true, hasInput: true, value: null };
     }
-
     const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(normalizedText)
       ? new Date(`${normalizedText}T00:00:00.000Z`)
       : new Date(normalizedText);
@@ -91,6 +93,7 @@ export const createOrgMembershipRouter = ({
     }
     return { ok: true, hasInput: true, value: parsedDate };
   };
+
   const isEmptyEmployeeDraft = (employee: any) =>
     !employee ||
     (
@@ -102,13 +105,13 @@ export const createOrgMembershipRouter = ({
     );
 
   const toMembershipResponseFromEmployee = (employee: any) => ({
-    id: employee?.orgMembershipId ?? employee?.id ?? null,
+    id: employee?.id ?? null,
     orgId: employee?.orgId ?? null,
     email: employee?.email ?? null,
     role: employee?.orgRole ?? "WORKER",
     status: employee?.status ?? "ACTIVE",
     requestedAt: employee?.requestedAt ?? null,
-    requestedName: employee?.requestedName ?? employee?.name ?? null,
+    requestedName: resolveMemberName(employee),
     approvedAt: employee?.approvedAt ?? null,
     approvedBy: employee?.approvedBy ?? null,
     createdAt: employee?.createdAt ?? null,
@@ -152,9 +155,7 @@ export const createOrgMembershipRouter = ({
         orgRole: requesterEmployee.orgRole,
         feature: "EMPLOYEE",
       }));
-    if (
-      !hasEmployeeAccess
-    ) {
+    if (!hasEmployeeAccess) {
       const systemUser = await prisma.systemUser.findUnique({
         where: { email: requesterEmail },
         select: { systemRole: true },
@@ -170,6 +171,12 @@ export const createOrgMembershipRouter = ({
 
     return requesterEmail;
   };
+
+  const findEmployeeAccount = (id: number) =>
+    prisma.employee.findUnique({
+      where: { id },
+      include: { organization: true },
+    });
 
   const listOrgMemberships = async (req: Request, res: Response) => {
     let organization = null;
@@ -243,6 +250,170 @@ export const createOrgMembershipRouter = ({
     return res.json(members.map(toMembershipResponseFromEmployee));
   };
 
+  const resolveEmployeeAccountPatch = async ({
+    orgId,
+    organization,
+    existingEmployee,
+    role,
+    factoryId,
+    employeeRoleId,
+    payType,
+    fixedSalary,
+    employeeNo,
+    joinedAt,
+    leftAt,
+  }: {
+    orgId: number;
+    organization: any;
+    existingEmployee: any;
+    role: OrgUserRole;
+    factoryId: unknown;
+    employeeRoleId: unknown;
+    payType: unknown;
+    fixedSalary: unknown;
+    employeeNo: unknown;
+    joinedAt: unknown;
+    leftAt: unknown;
+  }) => {
+    const isManufacturer = isManufacturerOrg(organization);
+    let factoryIdNum = null;
+    if (factoryId !== "" && factoryId !== null && factoryId !== undefined) {
+      const parsedFactoryId = Number(factoryId);
+      if (!Number.isFinite(parsedFactoryId)) {
+        return { ok: false as const, status: 400, error: "invalid factoryId" };
+      }
+      factoryIdNum = parsedFactoryId;
+    }
+    if (!isManufacturer && factoryIdNum) {
+      return {
+        ok: false as const,
+        status: 400,
+        error: "brand organizations have no factories",
+      };
+    }
+    if (isManufacturer && factoryIdNum) {
+      const factory = await prisma.factory.findFirst({
+        where: { id: factoryIdNum, orgId },
+      });
+      if (!factory) {
+        return { ok: false as const, status: 404, error: "factory not found" };
+      }
+    }
+
+    let employeeRoleIdNum = null;
+    if (
+      employeeRoleId !== "" &&
+      employeeRoleId !== null &&
+      employeeRoleId !== undefined
+    ) {
+      const parsedRoleId = Number(employeeRoleId);
+      if (!Number.isFinite(parsedRoleId)) {
+        return { ok: false as const, status: 400, error: "invalid employeeRoleId" };
+      }
+      const attrRole = await prisma.attrRole.findFirst({
+        where: { id: parsedRoleId, orgId },
+      });
+      if (!attrRole) {
+        return { ok: false as const, status: 404, error: "role not found" };
+      }
+      employeeRoleIdNum = parsedRoleId;
+    }
+
+    let payTypeValue = null;
+    if (payType !== undefined) {
+      if (payType === "" || payType === null) {
+        payTypeValue = null;
+      } else {
+        const normalizedPayType = String(payType).trim().toUpperCase();
+        if (normalizedPayType !== "CT" && normalizedPayType !== "FIXED") {
+          return { ok: false as const, status: 400, error: "invalid payType" };
+        }
+        payTypeValue = normalizedPayType as "CT" | "FIXED";
+      }
+    }
+
+    const fixedSalaryParseResult = toFixedSalaryOrNull(fixedSalary);
+    if (!fixedSalaryParseResult.ok) {
+      return { ok: false as const, status: 400, error: "invalid fixedSalary" };
+    }
+    const joinedAtParseResult = toOptionalDateOrNull(joinedAt);
+    if (!joinedAtParseResult.ok) {
+      return { ok: false as const, status: 400, error: "invalid joinedAt" };
+    }
+    const leftAtParseResult = toOptionalDateOrNull(leftAt);
+    if (!leftAtParseResult.ok) {
+      return { ok: false as const, status: 400, error: "invalid leftAt" };
+    }
+
+    let resolvedEmployeeNo: string | null | undefined = undefined;
+    if (employeeNo !== undefined) {
+      const normalizedEmployeeNo = normalizeEmployeeNo(employeeNo);
+      if (normalizedEmployeeNo) {
+        const conflict = await prisma.employee.findFirst({
+          where: {
+            orgId,
+            employeeNo: normalizedEmployeeNo,
+            ...(existingEmployee ? { id: { not: existingEmployee.id } } : {}),
+          },
+          select: { id: true },
+        });
+        if (conflict) {
+          return { ok: false as const, status: 409, error: "employeeNo already in use" };
+        }
+        resolvedEmployeeNo = normalizedEmployeeNo;
+      }
+    }
+
+    const resolvedRoleId =
+      isManufacturer && role === "WORKER"
+        ? employeeRoleIdNum !== null && employeeRoleIdNum !== undefined
+          ? employeeRoleIdNum
+          : existingEmployee?.roleId ?? (await resolveDefaultEmployeeRoleId(orgId))
+        : null;
+    const resolvedPayType = isManufacturer
+      ? await resolveEmployeeStoredPayType({
+          orgId,
+          membershipRole: role,
+          roleId: resolvedRoleId,
+          payType: payType !== undefined ? payTypeValue : existingEmployee?.payType,
+        })
+      : null;
+    const resolvedFactoryId = isManufacturer
+      ? factoryIdNum !== null && factoryIdNum !== undefined
+        ? factoryIdNum
+        : existingEmployee?.factoryId ?? null
+      : null;
+    const resolvedFixedSalary = isManufacturer
+      ? fixedSalary !== undefined
+        ? fixedSalaryParseResult.value
+        : existingEmployee?.fixedSalary ?? null
+      : null;
+    if (
+      isManufacturer &&
+      role === "WORKER" &&
+      (resolvedFactoryId === null || resolvedFactoryId === undefined)
+    ) {
+      return {
+        ok: false as const,
+        status: 400,
+        error: "factoryId is required for worker employees",
+      };
+    }
+
+    return {
+      ok: true as const,
+      value: {
+        factoryId: resolvedFactoryId,
+        roleId: resolvedRoleId,
+        payType: resolvedPayType,
+        fixedSalary: resolvedFixedSalary,
+        employeeNo: resolvedEmployeeNo,
+        joinedAtParseResult,
+        leftAtParseResult,
+      },
+    };
+  };
+
   orgMembershipRouter.get("/org-memberships", listOrgMemberships);
 
   orgMembershipRouter.post("/org-memberships", async (req, res) => {
@@ -303,231 +474,100 @@ export const createOrgMembershipRouter = ({
       return res.status(400).json({ ok: false, error: "name is too long" });
     }
 
-    const resolvedMembershipEmail = normalizedEmailInput || null;
-    const isManufacturer = isManufacturerOrg(organization);
-    let factoryIdNum = null;
-    if (factoryId !== "" && factoryId !== null && factoryId !== undefined) {
-      const parsedFactoryId = Number(factoryId);
-      if (!Number.isFinite(parsedFactoryId)) {
-        return res.status(400).json({ ok: false, error: "invalid factoryId" });
-      }
-      factoryIdNum = parsedFactoryId;
-    }
-    if (!isManufacturer && factoryIdNum) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "brand organizations have no factories" });
-    }
-    if (isManufacturer && factoryIdNum) {
-      const factory = await prisma.factory.findFirst({
-        where: { id: factoryIdNum, orgId: orgIdNum },
-      });
-      if (!factory) {
-        return res.status(404).json({ ok: false, error: "factory not found" });
-      }
-    }
-    let employeeRoleIdNum = null;
-    if (
-      employeeRoleId !== "" &&
-      employeeRoleId !== null &&
-      employeeRoleId !== undefined
-    ) {
-      const parsedRoleId = Number(employeeRoleId);
-      if (!Number.isFinite(parsedRoleId)) {
-        return res.status(400).json({ ok: false, error: "invalid employeeRoleId" });
-      }
-      const attrRole = await prisma.attrRole.findFirst({
-        where: { id: parsedRoleId, orgId: orgIdNum },
-      });
-      if (!attrRole) {
-        return res.status(404).json({ ok: false, error: "role not found" });
-      }
-      employeeRoleIdNum = parsedRoleId;
-    }
-    let payTypeValue = null;
-    if (payType !== undefined) {
-      if (payType === "" || payType === null) {
-        payTypeValue = null;
-      } else {
-        const normalizedPayType = String(payType).trim().toUpperCase();
-        if (normalizedPayType !== "CT" && normalizedPayType !== "FIXED") {
-          return res.status(400).json({ ok: false, error: "invalid payType" });
-        }
-        payTypeValue = normalizedPayType as "CT" | "FIXED";
-      }
-    }
-    const fixedSalaryParseResult = toFixedSalaryOrNull(fixedSalary);
-    if (!fixedSalaryParseResult.ok) {
-      return res.status(400).json({ ok: false, error: "invalid fixedSalary" });
-    }
-    const hasFixedSalaryInput = fixedSalary !== undefined;
-    const joinedAtParseResult = toOptionalDateOrNull(joinedAt);
-    if (!joinedAtParseResult.ok) {
-      return res.status(400).json({ ok: false, error: "invalid joinedAt" });
-    }
-    const leftAtParseResult = toOptionalDateOrNull(leftAt);
-    if (!leftAtParseResult.ok) {
-      return res.status(400).json({ ok: false, error: "invalid leftAt" });
-    }
-    const now = new Date();
-    const existingMembership = resolvedMembershipEmail
-      ? await prisma.orgMembership.findUnique({
-          where: { orgId_email: { orgId: orgIdNum, email: resolvedMembershipEmail } },
+    const existingEmployee = normalizedEmailInput
+      ? await prisma.employee.findUnique({
+          where: { orgId_email: { orgId: orgIdNum, email: normalizedEmailInput } },
         })
       : null;
 
-    const existingEmployee = existingMembership
-      ? await prisma.employee.findUnique({
-          where: { orgMembershipId: existingMembership.id },
-        })
-      : resolvedMembershipEmail
-        ? await prisma.employee.findUnique({
-            where: { orgId_email: { orgId: orgIdNum, email: resolvedMembershipEmail } },
-          })
-        : null;
-    let resolvedRoleId: number | null = null;
-    let resolvedPayType: "CT" | "FIXED" = "FIXED";
-    let resolvedFactoryId: number | null = null;
-    let resolvedFixedSalary: number | null = null;
-    let resolvedEmployeeNo: string | null | undefined = undefined;
-    if (isManufacturer) {
-      resolvedRoleId =
-        safeRole === "WORKER"
-          ? employeeRoleIdNum !== null && employeeRoleIdNum !== undefined
-            ? employeeRoleIdNum
-            : existingEmployee?.roleId ?? (await resolveDefaultEmployeeRoleId(orgIdNum))
-          : null;
-      resolvedPayType = await resolveEmployeeStoredPayType({
-        orgId: orgIdNum,
-        membershipRole: safeRole,
-        roleId: resolvedRoleId,
-        payType: payType !== undefined ? payTypeValue : existingEmployee?.payType,
-      });
-      resolvedFactoryId =
-        factoryIdNum !== null && factoryIdNum !== undefined
-          ? factoryIdNum
-          : existingEmployee?.factoryId ?? null;
-      resolvedFixedSalary = hasFixedSalaryInput
-        ? fixedSalaryParseResult.value
-        : existingEmployee?.fixedSalary ?? null;
-      if (
-        safeRole === "WORKER" &&
-        (resolvedFactoryId === null || resolvedFactoryId === undefined)
-      ) {
-        return res.status(400).json({
-          ok: false,
-          error: "factoryId is required for worker employees",
-        });
-      }
-      if (employeeNo !== undefined) {
-        const normalizedEmployeeNo = normalizeEmployeeNo(employeeNo);
-        if (normalizedEmployeeNo) {
-          const conflict = await prisma.employee.findFirst({
-            where: {
-              orgId: orgIdNum,
-              employeeNo: normalizedEmployeeNo,
-              ...(existingEmployee ? { id: { not: existingEmployee.id } } : {}),
-            },
-            select: { id: true },
-          });
-          if (conflict) {
-            return res.status(409).json({ ok: false, error: "employeeNo already in use" });
-          }
-          resolvedEmployeeNo = normalizedEmployeeNo;
-        }
-      }
+    const accountPatch = await resolveEmployeeAccountPatch({
+      orgId: orgIdNum,
+      organization,
+      existingEmployee,
+      role: safeRole,
+      factoryId,
+      employeeRoleId,
+      payType,
+      fixedSalary,
+      employeeNo,
+      joinedAt,
+      leftAt,
+    });
+    if (!accountPatch.ok) {
+      return res.status(accountPatch.status).json({ ok: false, error: accountPatch.error });
+    }
+
+    const now = new Date();
+    const shouldMarkTerminated =
+      accountPatch.value.leftAtParseResult.hasInput &&
+      accountPatch.value.leftAtParseResult.value !== null;
+    const data: any = {
+      orgId: orgIdNum,
+      email: normalizedEmailInput || null,
+      orgRole: safeRole,
+      status: shouldMarkTerminated ? "TERMINATED" : requestedStatus,
+      requestedAt: existingEmployee?.requestedAt ?? now,
+      requestedName: requestedName || existingEmployee?.requestedName || null,
+      approvedAt: existingEmployee?.approvedAt ?? now,
+      approvedBy: requesterEmail,
+      factoryId: accountPatch.value.factoryId,
+      roleId: accountPatch.value.roleId,
+      payType: accountPatch.value.payType,
+      fixedSalary: accountPatch.value.fixedSalary,
+      name: resolveOptionalString(
+        name,
+        (existingEmployee?.name ?? requestedName) || null
+      ),
+      bankName: resolveOptionalString(bankName, existingEmployee?.bankName ?? null),
+      bankAccountNumber: resolveOptionalString(
+        bankAccountNumber,
+        existingEmployee?.bankAccountNumber ?? null
+      ),
+      position: resolveOptionalString(position, existingEmployee?.position ?? null),
+      joinedAt: accountPatch.value.joinedAtParseResult.hasInput
+        ? accountPatch.value.joinedAtParseResult.value
+        : existingEmployee?.joinedAt ?? now,
+      leftAt: accountPatch.value.leftAtParseResult.hasInput
+        ? accountPatch.value.leftAtParseResult.value
+        : null,
+      leaveStartAt: null,
+      leaveEndAt: null,
+    };
+    if (accountPatch.value.employeeNo !== undefined) {
+      data.employeeNo = accountPatch.value.employeeNo;
     }
 
     try {
-      const membership = await prisma.$transaction(async (tx) => {
-        const membership = existingMembership
-          ? await tx.orgMembership.update({
-              where: { id: existingMembership.id },
-              data: {
-                role: safeRole,
-                status: requestedStatus as any,
-                requestedName: requestedName || existingMembership.requestedName || null,
-                approvedAt: now,
-                approvedBy: requesterEmail,
-              },
-            })
-          : await tx.orgMembership.create({
-              data: {
-                orgId: orgIdNum,
-                email: resolvedMembershipEmail,
-                role: safeRole,
-                status: requestedStatus as any,
-                requestedName: requestedName || null,
-                requestedAt: now,
-                approvedAt: now,
-                approvedBy: requesterEmail,
-              },
-            });
+      const employee = await prisma.$transaction(async (tx) => {
+        const transactionData = { ...data };
+        if (
+          isManufacturerOrg(organization) &&
+          transactionData.employeeNo === undefined &&
+          accountPatch.value.factoryId &&
+          !normalizeEmployeeNo(existingEmployee?.employeeNo)
+        ) {
+          transactionData.employeeNo = await generateNextEmployeeNo(
+            tx,
+            orgIdNum,
+            accountPatch.value.factoryId
+          );
+        }
 
-        const transactionEmployeeNo =
-          isManufacturer && resolvedEmployeeNo !== undefined
-            ? resolvedEmployeeNo
-            : isManufacturer
-              ? normalizeEmployeeNo(existingEmployee?.employeeNo) ||
-                (resolvedFactoryId
-                  ? await generateNextEmployeeNo(tx, orgIdNum, resolvedFactoryId)
-                  : null)
-              : null;
-        const employeeUpdateData: Record<string, unknown> = {
-          factoryId: isManufacturer ? resolvedFactoryId : null,
-          roleId: isManufacturer ? resolvedRoleId : null,
-          payType: isManufacturer ? resolvedPayType : null,
-          fixedSalary: isManufacturer ? resolvedFixedSalary : null,
-          name: resolveOptionalString(
-            name,
-            (existingEmployee?.name ?? requestedName) || null
-          ),
-          bankName: resolveOptionalString(bankName, existingEmployee?.bankName ?? null),
-          bankAccountNumber: resolveOptionalString(
-            bankAccountNumber,
-            existingEmployee?.bankAccountNumber ?? null
-          ),
-          position: resolveOptionalString(position, existingEmployee?.position ?? null),
-          ...(isManufacturer && transactionEmployeeNo
-            ? { employeeNo: transactionEmployeeNo }
-            : {}),
-          joinedAt: joinedAtParseResult.hasInput
-            ? joinedAtParseResult.value
-            : existingEmployee?.joinedAt ?? now,
-          leftAt: leftAtParseResult.hasInput ? leftAtParseResult.value : null,
-          leaveStartAt: null,
-          leaveEndAt: null,
-        };
-        await syncEmployeeAccountFromMembership(tx, membership, {
-          update: employeeUpdateData,
-          create: {
-            ...employeeUpdateData,
-            name: resolveOptionalString(name, requestedName || null),
-            joinedAt: joinedAtParseResult.hasInput ? joinedAtParseResult.value : now,
-            leftAt: leftAtParseResult.hasInput ? leftAtParseResult.value : null,
-          },
-        });
-
-        return membership;
+        if (existingEmployee) {
+          return tx.employee.update({
+            where: { id: existingEmployee.id },
+            data: transactionData,
+          });
+        }
+        return tx.employee.create({ data: transactionData });
       });
 
-      return res.status(existingMembership ? 200 : 201).json(membership);
+      return res
+        .status(existingEmployee ? 200 : 201)
+        .json(toMembershipResponseFromEmployee(employee));
     } catch (error) {
-      const knownError = error as { code?: string; meta?: { target?: unknown } };
-      const targetText = JSON.stringify(knownError.meta?.target ?? "");
-      if (knownError.code === "P2002") {
-        if (targetText.includes("email")) {
-          return res
-            .status(409)
-            .json({ ok: false, error: "active org membership already exists" });
-        }
-        return res.status(409).json({ ok: false, error: "employeeNo already in use" });
-      }
-      if (knownError.code === "P2011" && targetText.includes("email")) {
-        return res.status(503).json({
-          ok: false,
-          error: "worker email optional schema migration is required",
-        });
+      if ((error as { code?: string })?.code === "P2002") {
+        return res.status(409).json({ ok: false, error: "email or employeeNo already in use" });
       }
       throw error;
     }
@@ -539,82 +579,64 @@ export const createOrgMembershipRouter = ({
       return res.status(400).json({ ok: false, error: "invalid id" });
     }
 
-    const membership = await prisma.orgMembership.findUnique({
-      where: { id },
-      include: {
-        employee: true,
-      },
-    });
-
-    if (!membership) {
-      return res.status(404).json({ ok: false, error: "membership not found" });
+    const employee = await findEmployeeAccount(id);
+    if (!employee) {
+      return res.status(404).json({ ok: false, error: "employee account not found" });
     }
 
-    const requesterEmail = await requireOrgMembershipReviewer(req, res, membership.orgId);
+    const requesterEmail = await requireOrgMembershipReviewer(req, res, employee.orgId);
     if (!requesterEmail) return;
-    if (normalizeEmail(membership.email) === requesterEmail) {
-      return res.status(400).json({ ok: false, error: "cannot delete current user membership" });
+    if (normalizeEmail(employee.email) === requesterEmail) {
+      return res.status(400).json({ ok: false, error: "cannot delete current user account" });
     }
 
-    if (!isEmptyEmployeeDraft(membership.employee)) {
+    if (!isEmptyEmployeeDraft(employee)) {
       return res.status(409).json({
         ok: false,
         error: "only empty draft employees can be deleted",
       });
     }
 
-    const employeeId = membership.employee?.id ?? null;
-    if (employeeId) {
-      const [attendanceCount, lineAssignmentCount, managedLineCount, workRecordCount] =
-        await Promise.all([
-          prisma.attendanceEntry.count({
-            where: { orgId: membership.orgId, workerId: employeeId },
-          }),
-          prisma.lineAssignment.count({
-            where: { employeeId },
-          }),
-          prisma.line.count({
-            where: { managerEmployeeId: employeeId },
-          }),
-          prisma.workRecord.count({
-            where: { orgId: membership.orgId, workerId: employeeId },
-          }),
-        ]);
+    const [attendanceCount, lineAssignmentCount, managedLineCount, workRecordCount] =
+      await Promise.all([
+        prisma.attendanceEntry.count({
+          where: { orgId: employee.orgId, workerId: employee.id },
+        }),
+        prisma.lineAssignment.count({
+          where: { employeeId: employee.id },
+        }),
+        prisma.line.count({
+          where: { managerEmployeeId: employee.id },
+        }),
+        prisma.workRecord.count({
+          where: { orgId: employee.orgId, workerId: employee.id },
+        }),
+      ]);
 
-      if (
-        attendanceCount > 0 ||
-        lineAssignmentCount > 0 ||
-        managedLineCount > 0 ||
-        workRecordCount > 0
-      ) {
-        return res.status(409).json({
-          ok: false,
-          error: "employee has dependent data",
-          details: {
-            attendanceCount,
-            lineAssignmentCount,
-            managedLineCount,
-            workRecordCount,
-          },
-        });
-      }
+    if (
+      attendanceCount > 0 ||
+      lineAssignmentCount > 0 ||
+      managedLineCount > 0 ||
+      workRecordCount > 0
+    ) {
+      return res.status(409).json({
+        ok: false,
+        error: "employee has dependent data",
+        details: {
+          attendanceCount,
+          lineAssignmentCount,
+          managedLineCount,
+          workRecordCount,
+        },
+      });
     }
 
-    await prisma.$transaction(async (tx) => {
-      if (employeeId) {
-        await tx.employee.delete({
-          where: { id: employeeId },
-        });
-      }
-      await tx.orgMembership.delete({
-        where: { id: membership.id },
-      });
-    });
+    await prisma.employee.delete({ where: { id: employee.id } });
 
     return res.json({
       ok: true,
-      deletedMembershipId: membership.id,
-      deletedEmployeeId: employeeId,
+      deletedMembershipId: employee.id,
+      deletedEmployeeId: employee.id,
     });
   });
 
@@ -628,8 +650,7 @@ export const createOrgMembershipRouter = ({
     if (!Number.isFinite(orgIdNum)) {
       return res.status(400).json({ ok: false, error: "orgId is required" });
     }
-
-    if (!normalizedEmail || !normalizedEmail.includes("@")) {
+    if (!isValidEmail(normalizedEmail)) {
       return res.status(400).json({ ok: false, error: "email is required" });
     }
     if (!requestedName) {
@@ -645,69 +666,51 @@ export const createOrgMembershipRouter = ({
     const organization = await prisma.organization.findUnique({
       where: { id: orgIdNum },
     });
-
     if (!organization) {
       return res.status(404).json({ ok: false, error: "organization not found" });
     }
 
     const safeRole = resolveRole(role, "WORKER");
-    const existing = await prisma.orgMembership.findUnique({
+    const existing = await prisma.employee.findUnique({
       where: { orgId_email: { orgId: orgIdNum, email: normalizedEmail } },
     });
 
-    if (existing) {
-      if (existing.status === "ACTIVE") {
-        await syncEmployeeAccountFromMembership(prisma, existing, {
-          update: {
-            name: resolveOptionalString(requestedName, existing.requestedName ?? null),
-          },
-          create: {
-            name: resolveOptionalString(requestedName, existing.requestedName ?? null),
-          },
-        });
-        return res.json(existing);
-      }
-
-      const updated = await prisma.$transaction(async (tx) => {
-        const updated = await tx.orgMembership.update({
+    if (existing?.status === "ACTIVE") {
+      if (!resolveOptionalString(existing.name, null)) {
+        const updated = await prisma.employee.update({
           where: { id: existing.id },
           data: {
-            role: safeRole,
-            requestedName,
-            status: "PENDING",
-            requestedAt: new Date(),
-            approvedAt: null,
-            approvedBy: null,
+            name: requestedName,
+            requestedName: existing.requestedName ?? requestedName,
           },
         });
-        await syncEmployeeAccountFromMembership(tx, updated, {
-          update: { name: requestedName },
-          create: { name: requestedName },
-        });
-        return updated;
-      });
-      return res.json(updated);
+        return res.json(toMembershipResponseFromEmployee(updated));
+      }
+      return res.json(toMembershipResponseFromEmployee(existing));
     }
 
-    const record = await prisma.$transaction(async (tx) => {
-      const record = await tx.orgMembership.create({
-        data: {
-          orgId: orgIdNum,
-          email: normalizedEmail,
-          role: safeRole,
-          requestedName,
-          status: "PENDING",
-          requestedAt: new Date(),
-        },
-      });
-      await syncEmployeeAccountFromMembership(tx, record, {
-        update: { name: requestedName },
-        create: { name: requestedName },
-      });
-      return record;
-    });
+    const now = new Date();
+    const data = {
+      orgId: orgIdNum,
+      email: normalizedEmail,
+      orgRole: safeRole,
+      requestedName,
+      name: requestedName,
+      status: "PENDING" as const,
+      requestedAt: now,
+      approvedAt: null,
+      approvedBy: null,
+    };
+    const record = existing
+      ? await prisma.employee.update({
+          where: { id: existing.id },
+          data,
+        })
+      : await prisma.employee.create({
+          data,
+        });
 
-    return res.status(201).json(record);
+    return res.status(existing ? 200 : 201).json(toMembershipResponseFromEmployee(record));
   });
 
   orgMembershipRouter.patch("/org-memberships/:id/approve", async (req, res) => {
@@ -719,131 +722,60 @@ export const createOrgMembershipRouter = ({
     const { role, approvedBy, factoryId, employeeRoleId } = req.body ?? {};
     const normalizedApprovedBy = normalizeEmail(approvedBy);
 
-    const membership = await prisma.orgMembership.findUnique({
-      where: { id },
-      include: { organization: true },
-    });
-
-    if (!membership) {
-      return res.status(404).json({ ok: false, error: "membership not found" });
+    const employee = await findEmployeeAccount(id);
+    if (!employee) {
+      return res.status(404).json({ ok: false, error: "employee account not found" });
     }
-    const requesterEmail = await requireOrgMembershipReviewer(req, res, membership.orgId);
+    const requesterEmail = await requireOrgMembershipReviewer(req, res, employee.orgId);
     if (!requesterEmail) return;
 
-    const nextRole = resolveRole(role, membership.role);
-    let factoryIdNum = null;
-    if (factoryId !== "" && factoryId !== null && factoryId !== undefined) {
-      const parsedFactoryId = Number(factoryId);
-      if (!Number.isFinite(parsedFactoryId)) {
-        return res.status(400).json({ ok: false, error: "invalid factoryId" });
-      }
-      factoryIdNum = parsedFactoryId;
+    const nextRole = resolveRole(role, employee.orgRole);
+    const accountPatch = await resolveEmployeeAccountPatch({
+      orgId: employee.orgId,
+      organization: employee.organization,
+      existingEmployee: employee,
+      role: nextRole,
+      factoryId,
+      employeeRoleId,
+      payType: employee.payType,
+      fixedSalary: employee.fixedSalary,
+      employeeNo: undefined,
+      joinedAt: undefined,
+      leftAt: null,
+    });
+    if (!accountPatch.ok) {
+      return res.status(accountPatch.status).json({ ok: false, error: accountPatch.error });
     }
-    let employeeRoleIdNum = null;
-    if (employeeRoleId !== "" && employeeRoleId !== null && employeeRoleId !== undefined) {
-      const parsedRoleId = Number(employeeRoleId);
-      if (!Number.isFinite(parsedRoleId)) {
-        return res.status(400).json({ ok: false, error: "invalid employeeRoleId" });
-      }
-      employeeRoleIdNum = parsedRoleId;
-    }
-    if (!isManufacturerOrg(membership.organization) && factoryIdNum) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "brand organizations have no factories" });
-    }
-    if (isManufacturerOrg(membership.organization) && factoryIdNum) {
-      const factory = await prisma.factory.findFirst({
-        where: { id: factoryIdNum, orgId: membership.orgId },
+
+    const now = new Date();
+    const updated = await prisma.$transaction(async (tx) => {
+      const employeeNo =
+        normalizeEmployeeNo(employee.employeeNo) ||
+        (accountPatch.value.factoryId
+          ? await generateNextEmployeeNo(tx, employee.orgId, accountPatch.value.factoryId)
+          : null);
+      return tx.employee.update({
+        where: { id: employee.id },
+        data: {
+          orgRole: nextRole,
+          status: "ACTIVE",
+          approvedAt: now,
+          approvedBy: requesterEmail || normalizedApprovedBy || employee.approvedBy || null,
+          factoryId: accountPatch.value.factoryId,
+          roleId: accountPatch.value.roleId,
+          payType: accountPatch.value.payType,
+          fixedSalary: accountPatch.value.fixedSalary,
+          name: resolveOptionalString(employee.name, employee.requestedName ?? null),
+          ...(employeeNo ? { employeeNo } : {}),
+          joinedAt: employee.joinedAt ?? now,
+          leftAt: null,
+          leaveStartAt: null,
+          leaveEndAt: null,
+        },
       });
-      if (!factory) {
-        return res.status(404).json({ ok: false, error: "factory not found" });
-      }
-    }
-    if (employeeRoleIdNum) {
-      const attrRole = await prisma.attrRole.findFirst({
-        where: { id: employeeRoleIdNum, orgId: membership.orgId },
-      });
-      if (!attrRole) {
-        return res.status(404).json({ ok: false, error: "role not found" });
-      }
-    }
-    const updated = await prisma.orgMembership.update({
-      where: { id },
-      data: {
-        role: nextRole,
-        status: "ACTIVE",
-        approvedAt: new Date(),
-        approvedBy:
-          requesterEmail || normalizedApprovedBy || membership.approvedBy || null,
-      },
     });
 
-    if (isManufacturerOrg(membership.organization)) {
-      const now = new Date();
-      const existingEmployee = await prisma.employee.findUnique({
-        where: { orgMembershipId: membership.id },
-      });
-      const resolvedEmployeeRoleId =
-        nextRole === "WORKER"
-          ? employeeRoleIdNum !== null && employeeRoleIdNum !== undefined
-            ? employeeRoleIdNum
-            : existingEmployee?.roleId ?? (await resolveDefaultEmployeeRoleId(membership.orgId))
-          : null;
-      const resolvedPayType = await resolveEmployeeStoredPayType({
-        orgId: membership.orgId,
-        membershipRole: nextRole,
-        roleId: resolvedEmployeeRoleId,
-        payType: existingEmployee?.payType,
-      });
-      await prisma.$transaction(async (tx) => {
-        const employeeNo =
-          normalizeEmployeeNo(existingEmployee?.employeeNo) ||
-          (factoryIdNum
-            ? await generateNextEmployeeNo(tx, membership.orgId, factoryIdNum)
-            : null);
-
-        await tx.employee.upsert({
-          where: { orgMembershipId: membership.id },
-          update: {
-            orgId: membership.orgId,
-            factoryId: factoryIdNum,
-            roleId: resolvedEmployeeRoleId,
-            payType: resolvedPayType,
-            name: resolveOptionalString(existingEmployee?.name, membership.requestedName ?? null),
-            ...(employeeNo ? { employeeNo } : {}),
-            joinedAt: existingEmployee?.joinedAt ?? now,
-            leftAt: null,
-            leaveStartAt: null,
-            leaveEndAt: null,
-          },
-          create: {
-            orgId: membership.orgId,
-            orgMembershipId: membership.id,
-            factoryId: factoryIdNum,
-            roleId: resolvedEmployeeRoleId,
-            payType: resolvedPayType,
-            name: resolveOptionalString(existingEmployee?.name, membership.requestedName ?? null),
-            employeeNo,
-            joinedAt: now,
-          },
-        });
-      });
-    }
-
-    await syncEmployeeAccountFromMembership(prisma, updated, {
-      update: {
-        name: resolveOptionalString(membership.requestedName, null),
-        leftAt: null,
-      },
-      create: {
-        name: resolveOptionalString(membership.requestedName, null),
-        joinedAt: new Date(),
-        leftAt: null,
-      },
-    });
-
-    return res.json(updated);
+    return res.json(toMembershipResponseFromEmployee(updated));
   });
 
   orgMembershipRouter.patch("/org-memberships/:id/reject", async (req, res) => {
@@ -855,58 +787,28 @@ export const createOrgMembershipRouter = ({
     const { approvedBy } = req.body ?? {};
     const normalizedApprovedBy = normalizeEmail(approvedBy);
 
-    const membership = await prisma.orgMembership.findUnique({
-      where: { id },
-      include: { organization: true },
-    });
-
-    if (!membership) {
-      return res.status(404).json({ ok: false, error: "membership not found" });
+    const employee = await findEmployeeAccount(id);
+    if (!employee) {
+      return res.status(404).json({ ok: false, error: "employee account not found" });
     }
-    const requesterEmail = await requireOrgMembershipReviewer(req, res, membership.orgId);
+    const requesterEmail = await requireOrgMembershipReviewer(req, res, employee.orgId);
     if (!requesterEmail) return;
 
     const now = new Date();
-    const employee = await prisma.employee.findUnique({
-      where: { orgMembershipId: membership.id },
-    });
-    if (employee) {
-      await closeActiveLineAssignments(employee.id, now);
-      await prisma.employee.update({
-        where: { id: employee.id },
-        data: {
-          leftAt: employee.leftAt ?? now,
-          leaveStartAt: employee.leaveStartAt ?? now,
-          leaveEndAt: employee.leaveEndAt ?? now,
-        },
-      });
-    }
-
-    const updated = await prisma.orgMembership.update({
-      where: { id },
+    await closeActiveLineAssignments(employee.id, now);
+    const updated = await prisma.employee.update({
+      where: { id: employee.id },
       data: {
         status: "REJECTED",
         approvedAt: now,
-        approvedBy:
-          requesterEmail || normalizedApprovedBy || membership.approvedBy || null,
+        approvedBy: requesterEmail || normalizedApprovedBy || employee.approvedBy || null,
+        leftAt: employee.leftAt ?? now,
+        leaveStartAt: employee.leaveStartAt ?? now,
+        leaveEndAt: employee.leaveEndAt ?? now,
       },
     });
 
-    await syncEmployeeAccountFromMembership(prisma, updated, {
-      update: {
-        leftAt: employee?.leftAt ?? now,
-        leaveStartAt: employee?.leaveStartAt ?? now,
-        leaveEndAt: employee?.leaveEndAt ?? now,
-      },
-      create: {
-        name: resolveOptionalString(membership.requestedName, null),
-        leftAt: now,
-        leaveStartAt: now,
-        leaveEndAt: now,
-      },
-    });
-
-    return res.json(updated);
+    return res.json(toMembershipResponseFromEmployee(updated));
   });
 
   orgMembershipRouter.patch("/org-memberships/:id", async (req, res) => {
@@ -926,18 +828,14 @@ export const createOrgMembershipRouter = ({
         .json({ ok: false, error: "role, status or email is required" });
     }
 
-    const membership = await prisma.orgMembership.findUnique({
-      where: { id },
-      include: { organization: true },
-    });
-
-    if (!membership) {
-      return res.status(404).json({ ok: false, error: "membership not found" });
+    const employee = await findEmployeeAccount(id);
+    if (!employee) {
+      return res.status(404).json({ ok: false, error: "employee account not found" });
     }
-    const requesterEmail = await requireOrgMembershipReviewer(req, res, membership.orgId);
+    const requesterEmail = await requireOrgMembershipReviewer(req, res, employee.orgId);
     if (!requesterEmail) return;
 
-    const nextRole = role ? resolveRole(role, membership.role) : membership.role;
+    const nextRole = role ? resolveRole(role, employee.orgRole) : employee.orgRole;
     const nextStatus = status ? resolveStatus(status) : null;
     if (status && !nextStatus) {
       return res.status(400).json({ ok: false, error: "invalid status" });
@@ -946,7 +844,7 @@ export const createOrgMembershipRouter = ({
       return res.status(400).json({ ok: false, error: "invalid email" });
     }
 
-    let nextEmail = membership.email ?? null;
+    let nextEmail = employee.email ?? null;
     if (hasEmailInput) {
       if (isRoleRequiringLoginEmail(nextRole)) {
         if (!isValidEmail(normalizedEmailInput)) {
@@ -970,178 +868,84 @@ export const createOrgMembershipRouter = ({
       });
     }
 
-    if (nextEmail !== membership.email && nextEmail) {
-      const duplicateMembership = await prisma.orgMembership.findUnique({
+    if (nextEmail !== employee.email && nextEmail) {
+      const duplicateEmployee = await prisma.employee.findUnique({
         where: {
           orgId_email: {
-            orgId: membership.orgId,
+            orgId: employee.orgId,
             email: nextEmail,
           },
         },
         select: { id: true },
       });
-      if (duplicateMembership && duplicateMembership.id !== membership.id) {
+      if (duplicateEmployee && duplicateEmployee.id !== employee.id) {
         return res.status(409).json({ ok: false, error: "email already exists" });
       }
     }
 
+    const now = new Date();
+    const effectiveStatus = (nextStatus ?? employee.status) as string;
     const data: any = {
       email: nextEmail,
-      role: nextRole,
-      status: nextStatus ?? membership.status,
+      orgRole: nextRole,
+      status: effectiveStatus,
     };
-
-    if (nextStatus && nextStatus !== membership.status) {
+    if (nextStatus && nextStatus !== employee.status) {
       data.approvedBy =
-        requesterEmail || normalizedApprovedBy || membership.approvedBy || null;
+        requesterEmail || normalizedApprovedBy || employee.approvedBy || null;
       if (nextStatus === "ACTIVE") {
-        data.approvedAt = membership.approvedAt || new Date();
+        data.approvedAt = employee.approvedAt || now;
+        data.joinedAt = employee.joinedAt ?? now;
+        data.leftAt = null;
+        if (employee.status === "SUSPENDED") {
+          data.leaveEndAt = now;
+        } else if (employee.status === "TERMINATED") {
+          data.leaveStartAt = null;
+          data.leaveEndAt = null;
+        }
+      } else if (nextStatus === "SUSPENDED") {
+        data.leaveStartAt = employee.leaveStartAt ?? now;
+        data.leaveEndAt = null;
+        data.leftAt = null;
+      } else if (nextStatus === "TERMINATED") {
+        data.leftAt = employee.leftAt ?? now;
+      } else if (nextStatus === "REJECTED") {
+        data.leftAt = employee.leftAt ?? now;
+        data.leaveStartAt = employee.leaveStartAt ?? now;
+        data.leaveEndAt = employee.leaveEndAt ?? now;
       }
     }
 
-    const updated = await prisma.orgMembership.update({
-      where: { id },
-      data,
-    });
-    const effectiveStatus = data.status ?? membership.status;
-
-    if (isManufacturerOrg(membership.organization)) {
-      const now = new Date();
-      const existingEmployee = await prisma.employee.findUnique({
-        where: { orgMembershipId: membership.id },
-      });
+    if (isManufacturerOrg(employee.organization)) {
       const resolvedRoleId =
         nextRole === "WORKER"
-          ? existingEmployee?.roleId ?? (await resolveDefaultEmployeeRoleId(membership.orgId))
+          ? employee.roleId ?? (await resolveDefaultEmployeeRoleId(employee.orgId))
           : null;
-      const resolvedPayType = await resolveEmployeeStoredPayType({
-        orgId: membership.orgId,
+      data.roleId = resolvedRoleId;
+      data.payType = await resolveEmployeeStoredPayType({
+        orgId: employee.orgId,
         membershipRole: nextRole,
         roleId: resolvedRoleId,
-        payType: existingEmployee?.payType,
+        payType: employee.payType,
       });
-
-      const currentStatus = data.status ?? membership.status;
-      const employeeData: any = {
-        orgId: membership.orgId,
-        roleId: resolvedRoleId,
-        payType: resolvedPayType,
-        name: resolveOptionalString(existingEmployee?.name, membership.requestedName ?? null),
-      };
-
-      if (currentStatus === "ACTIVE") {
-        employeeData.joinedAt = existingEmployee?.joinedAt ?? now;
-        if (membership.status === "SUSPENDED") {
-          employeeData.leaveEndAt = now;
-        } else if (membership.status === "TERMINATED") {
-          employeeData.leaveStartAt = null;
-          employeeData.leaveEndAt = null;
-        }
-        employeeData.leftAt = null;
-      } else if (currentStatus === "SUSPENDED") {
-        employeeData.leaveStartAt = existingEmployee?.leaveStartAt ?? now;
-        employeeData.leaveEndAt = null;
-        employeeData.leftAt = null;
-      } else if (currentStatus === "TERMINATED") {
-        employeeData.leftAt = now;
-      }
-
-      const upsertedEmployee = await prisma.$transaction(async (tx) => {
-        const resolvedFactoryId = existingEmployee?.factoryId ?? null;
-        const employeeNo =
-          normalizeEmployeeNo(existingEmployee?.employeeNo) ||
-          (currentStatus === "ACTIVE" && resolvedFactoryId
-            ? await generateNextEmployeeNo(
-                tx,
-                membership.orgId,
-                resolvedFactoryId
-              )
-            : null);
-
-        return tx.employee.upsert({
-          where: { orgMembershipId: membership.id },
-          update: {
-            ...employeeData,
-            ...(employeeNo ? { employeeNo } : {}),
-          },
-          create: {
-            orgMembershipId: membership.id,
-            factoryId: resolvedFactoryId,
-            employeeNo,
-            joinedAt: existingEmployee?.joinedAt ?? now,
-            ...employeeData,
-          },
-        });
-      });
-
-      if (currentStatus === "ACTIVE" && membership.status === "TERMINATED") {
-        const hasActiveAssignment = await prisma.lineAssignment.findFirst({
-          where: {
-            employeeId: upsertedEmployee.id,
-            endAt: null,
-            line: {
-              orgId: membership.orgId,
-            },
-          },
-          select: { id: true },
-        });
-
-        if (!hasActiveAssignment) {
-          const latestEndedAssignment = await prisma.lineAssignment.findFirst({
-            where: {
-              employeeId: upsertedEmployee.id,
-              endAt: { not: null },
-              line: {
-                orgId: membership.orgId,
-              },
-            },
-            select: {
-              lineId: true,
-              line: {
-                select: {
-                  name: true,
-                },
-              },
-            },
-            orderBy: [{ endAt: "desc" }, { id: "desc" }],
-          });
-
-          if (latestEndedAssignment?.lineId) {
-            await prisma.lineAssignment.create({
-              data: {
-                employeeId: upsertedEmployee.id,
-                lineId: latestEndedAssignment.lineId,
-                startAt: now,
-              },
-            });
-            await prisma.employee.update({
-              where: { id: upsertedEmployee.id },
-              data: { lineId: latestEndedAssignment.lineId ?? null },
-            });
-          }
-        }
-      } else if (currentStatus !== "ACTIVE") {
-        await closeActiveLineAssignments(upsertedEmployee.id, now);
-      }
+    } else {
+      data.factoryId = null;
+      data.roleId = null;
+      data.payType = null;
+      data.fixedSalary = null;
+      data.employeeNo = null;
     }
 
-    const nowForSync = new Date();
-    await syncEmployeeAccountFromMembership(prisma, updated, {
-      update: {
-        ...(effectiveStatus === "ACTIVE" ? { leftAt: null } : {}),
-        ...(effectiveStatus === "SUSPENDED"
-          ? { leaveStartAt: nowForSync, leaveEndAt: null, leftAt: null }
-          : {}),
-        ...(effectiveStatus === "TERMINATED" ? { leftAt: nowForSync } : {}),
-      },
-      create: {
-        name: resolveOptionalString(updated.requestedName, null),
-        joinedAt: effectiveStatus === "ACTIVE" ? updated.approvedAt ?? nowForSync : null,
-        ...(effectiveStatus === "TERMINATED" ? { leftAt: nowForSync } : {}),
-      },
+    const updated = await prisma.employee.update({
+      where: { id: employee.id },
+      data,
     });
 
-    return res.json(updated);
+    if (effectiveStatus !== "ACTIVE") {
+      await closeActiveLineAssignments(updated.id, now);
+    }
+
+    return res.json(toMembershipResponseFromEmployee(updated));
   });
 
   orgMembershipRouter.post("/org-memberships/assign", async (req, res) => {
@@ -1154,42 +958,46 @@ export const createOrgMembershipRouter = ({
     if (!Number.isFinite(orgIdNum)) {
       return res.status(400).json({ ok: false, error: "orgId is required" });
     }
-
-    if (!normalizedEmail || !normalizedEmail.includes("@")) {
+    if (!isValidEmail(normalizedEmail)) {
       return res.status(400).json({ ok: false, error: "email is required" });
     }
 
     const organization = await prisma.organization.findUnique({
       where: { id: orgIdNum },
     });
-
     if (!organization) {
       return res.status(404).json({ ok: false, error: "organization not found" });
     }
 
     const safeRole = resolveRole(role, "OPERATOR");
     const now = new Date();
-
-    const record = await prisma.$transaction(async (tx) => {
-      const record = await tx.orgMembership.upsert({
-        where: { orgId_email: { orgId: orgIdNum, email: normalizedEmail } },
-        update: { role: safeRole, status: "ACTIVE", approvedAt: now },
-        create: {
-          orgId: orgIdNum,
-          email: normalizedEmail,
-          role: safeRole,
-          status: "ACTIVE",
-          approvedAt: now,
-        },
-      });
-      await syncEmployeeAccountFromMembership(tx, record, {
-        update: { joinedAt: now, leftAt: null },
-        create: { joinedAt: now, leftAt: null },
-      });
-      return record;
+    const existing = await prisma.employee.findUnique({
+      where: { orgId_email: { orgId: orgIdNum, email: normalizedEmail } },
     });
+    const record = existing
+      ? await prisma.employee.update({
+          where: { id: existing.id },
+          data: {
+            orgRole: safeRole,
+            status: "ACTIVE",
+            approvedAt: existing.approvedAt ?? now,
+            joinedAt: existing.joinedAt ?? now,
+            leftAt: null,
+          },
+        })
+      : await prisma.employee.create({
+          data: {
+            orgId: orgIdNum,
+            email: normalizedEmail,
+            orgRole: safeRole,
+            status: "ACTIVE",
+            requestedAt: now,
+            approvedAt: now,
+            joinedAt: now,
+          },
+        });
 
-    return res.status(201).json(record);
+    return res.status(existing ? 200 : 201).json(toMembershipResponseFromEmployee(record));
   });
 
   return orgMembershipRouter;

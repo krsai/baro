@@ -74,7 +74,7 @@ const toOptionalDateOrNull = (
 const toEmployeeResponse = (employee: any) => ({
   id: employee?.id ?? null,
   orgId: employee?.orgId ?? null,
-  orgMembershipId: employee?.orgMembershipId ?? null,
+  orgMembershipId: employee?.id ?? null,
   factoryId: employee?.factoryId ?? null,
   lineId: employee?.lineId ?? null,
   roleId: employee?.roleId ?? null,
@@ -86,13 +86,13 @@ const toEmployeeResponse = (employee: any) => ({
   effectivePayType: resolveEmployeeEffectivePayType(employee),
   fixedSalary: employee?.fixedSalary ?? null,
   name: employee?.name ?? null,
-  email: employee?.email ?? employee?.membership?.email ?? null,
-  orgRole: employee?.orgRole ?? employee?.membership?.role ?? null,
-  status: employee?.status ?? employee?.membership?.status ?? null,
-  requestedAt: employee?.requestedAt ?? employee?.membership?.requestedAt ?? null,
-  requestedName: employee?.requestedName ?? employee?.membership?.requestedName ?? null,
-  approvedAt: employee?.approvedAt ?? employee?.membership?.approvedAt ?? null,
-  approvedBy: employee?.approvedBy ?? employee?.membership?.approvedBy ?? null,
+  email: employee?.email ?? null,
+  orgRole: employee?.orgRole ?? null,
+  status: employee?.status ?? null,
+  requestedAt: employee?.requestedAt ?? null,
+  requestedName: employee?.requestedName ?? null,
+  approvedAt: employee?.approvedAt ?? null,
+  approvedBy: employee?.approvedBy ?? null,
   phone: employee?.phone ?? null,
   bankName: employee?.bankName ?? null,
   bankAccountNumber: employee?.bankAccountNumber ?? null,
@@ -265,9 +265,6 @@ export const createEmployeeRouter = ({
     const employees = await prisma.employee.findMany({
       where,
       include: {
-        membership: {
-          select: { email: true },
-        },
         role: true,
         line: true,
       },
@@ -279,6 +276,7 @@ export const createEmployeeRouter = ({
   employeeRouter.post("/employees", async (req, res) => {
     const {
       orgMembershipId,
+      employeeId,
       factoryId,
       position,
       roleId,
@@ -291,19 +289,19 @@ export const createEmployeeRouter = ({
       joinedAt,
       leftAt,
     } = req.body ?? {};
-    const orgMembershipIdNum = Number(orgMembershipId);
+    const employeeIdNum = Number(employeeId ?? orgMembershipId);
 
-    if (!Number.isFinite(orgMembershipIdNum)) {
-      return res.status(400).json({ ok: false, error: "orgMembershipId is required" });
+    if (!Number.isFinite(employeeIdNum)) {
+      return res.status(400).json({ ok: false, error: "employeeId is required" });
     }
 
-    const membership = await prisma.orgMembership.findUnique({
-      where: { id: orgMembershipIdNum },
+    const existingEmployee = await prisma.employee.findUnique({
+      where: { id: employeeIdNum },
       include: { organization: true },
     });
 
-    if (!membership) {
-      return res.status(404).json({ ok: false, error: "membership not found" });
+    if (!existingEmployee) {
+      return res.status(404).json({ ok: false, error: "employee account not found" });
     }
 
     const requesterEmail = getRequesterEmail(req);
@@ -318,7 +316,7 @@ export const createEmployeeRouter = ({
       prisma.employee.findUnique({
         where: {
           orgId_email: {
-            orgId: membership.orgId,
+            orgId: existingEmployee.orgId,
             email: requesterEmail,
           },
         },
@@ -333,7 +331,7 @@ export const createEmployeeRouter = ({
       (
         requesterEmployee?.status === "ACTIVE" &&
         await hasOrgFeatureAccess({
-          orgType: membership.organization?.type,
+          orgType: existingEmployee.organization?.type,
           orgRole: requesterEmployee.orgRole,
           feature: "EMPLOYEE",
         })
@@ -342,8 +340,8 @@ export const createEmployeeRouter = ({
       return res.status(403).json({ ok: false, error: "employee access required" });
     }
 
-    if (membership.status === "PENDING" || membership.status === "REJECTED") {
-      return res.status(400).json({ ok: false, error: "membership is not editable yet" });
+    if (existingEmployee.status === "PENDING" || existingEmployee.status === "REJECTED") {
+      return res.status(400).json({ ok: false, error: "employee account is not editable yet" });
     }
 
     let factoryIdNum = null;
@@ -355,13 +353,13 @@ export const createEmployeeRouter = ({
       factoryIdNum = parsedFactoryId;
     }
 
-    if (!isManufacturerOrg(membership.organization) && factoryIdNum) {
+    if (!isManufacturerOrg(existingEmployee.organization) && factoryIdNum) {
       return res.status(400).json({ ok: false, error: "brand organizations have no factories" });
     }
 
-    if (isManufacturerOrg(membership.organization) && factoryIdNum) {
+    if (isManufacturerOrg(existingEmployee.organization) && factoryIdNum) {
       const factory = await prisma.factory.findFirst({
-        where: { id: factoryIdNum, orgId: membership.orgId },
+        where: { id: factoryIdNum, orgId: existingEmployee.orgId },
       });
       if (!factory) {
         return res.status(404).json({ ok: false, error: "factory not found" });
@@ -375,7 +373,7 @@ export const createEmployeeRouter = ({
         return res.status(400).json({ ok: false, error: "invalid roleId" });
       }
       const attrRole = await prisma.attrRole.findFirst({
-        where: { id: parsedRoleId, orgId: membership.orgId },
+        where: { id: parsedRoleId, orgId: existingEmployee.orgId },
       });
       if (!attrRole) {
         return res.status(404).json({ ok: false, error: "role not found" });
@@ -412,23 +410,20 @@ export const createEmployeeRouter = ({
     const shouldMarkMembershipTerminated =
       leftAtParseResult.hasInput && leftAtParseResult.value !== null;
 
-    const existingEmployee = await prisma.employee.findUnique({
-      where: { orgMembershipId: membership.id },
-    });
-    const resolvedFactoryId = isManufacturerOrg(membership.organization)
+    const resolvedFactoryId = isManufacturerOrg(existingEmployee.organization)
       ? factoryIdNum !== null && factoryIdNum !== undefined
         ? factoryIdNum
         : existingEmployee?.factoryId ?? null
       : null;
     const resolvedRoleId =
-      membership.role === "WORKER"
+      existingEmployee.orgRole === "WORKER"
         ? roleIdNum !== null && roleIdNum !== undefined
           ? roleIdNum
-          : existingEmployee?.roleId ?? (await resolveDefaultEmployeeRoleId(membership.orgId))
+          : existingEmployee?.roleId ?? (await resolveDefaultEmployeeRoleId(existingEmployee.orgId))
         : null;
     const resolvedPayType = await resolveEmployeeStoredPayType({
-      orgId: membership.orgId,
-      membershipRole: membership.role,
+      orgId: existingEmployee.orgId,
+      membershipRole: existingEmployee.orgRole,
       roleId: resolvedRoleId,
       payType: payType !== undefined ? payTypeValue : existingEmployee?.payType,
     });
@@ -437,8 +432,8 @@ export const createEmployeeRouter = ({
       : existingEmployee?.fixedSalary ?? null;
 
     if (
-      isManufacturerOrg(membership.organization) &&
-      membership.role === "WORKER" &&
+      isManufacturerOrg(existingEmployee.organization) &&
+      existingEmployee.orgRole === "WORKER" &&
       (resolvedFactoryId === null || resolvedFactoryId === undefined)
     ) {
       return res.status(400).json({
@@ -455,7 +450,7 @@ export const createEmployeeRouter = ({
         // 중복 체크 (같은 orgId에서 다른 직원이 이미 사용 중인지)
         const conflict = await prisma.employee.findFirst({
           where: {
-            orgId: membership.orgId,
+            orgId: existingEmployee.orgId,
             employeeNo: normalized,
             ...(existingEmployee ? { id: { not: existingEmployee.id } } : {}),
           },
@@ -474,15 +469,7 @@ export const createEmployeeRouter = ({
       !normalizeEmployeeNo(existingEmployee?.employeeNo);
 
     const data: any = {
-      orgId: membership.orgId,
-      orgMembershipId: membership.id,
-      email: membership.email ?? null,
-      orgRole: membership.role,
-      status: shouldMarkMembershipTerminated ? "TERMINATED" : membership.status,
-      requestedAt: membership.requestedAt ?? null,
-      requestedName: membership.requestedName ?? null,
-      approvedAt: membership.approvedAt ?? null,
-      approvedBy: membership.approvedBy ?? null,
+      status: shouldMarkMembershipTerminated ? "TERMINATED" : existingEmployee.status,
       factoryId: resolvedFactoryId,
       roleId: resolvedRoleId,
       payType: resolvedPayType,
@@ -506,20 +493,19 @@ export const createEmployeeRouter = ({
         if (shouldGenerateEmployeeNo && resolvedFactoryId) {
           transactionData.employeeNo = await generateNextEmployeeNo(
             tx,
-            membership.orgId,
-              resolvedFactoryId
-            );
+            existingEmployee.orgId,
+            resolvedFactoryId
+          );
         }
 
-        const upsertedEmployee = await tx.employee.upsert({
-          where: { orgMembershipId: membership.id },
-          update: transactionData,
-          create: transactionData,
+        const upsertedEmployee = await tx.employee.update({
+          where: { id: existingEmployee.id },
+          data: transactionData,
         });
 
         await tx.factory.updateMany({
           where: {
-            orgId: membership.orgId,
+            orgId: existingEmployee.orgId,
             managerEmployeeId: upsertedEmployee.id,
             ...(upsertedEmployee.factoryId
               ? { id: { not: upsertedEmployee.factoryId } }
@@ -541,7 +527,7 @@ export const createEmployeeRouter = ({
       where: {
         employeeId: employee.id,
         endAt: null,
-        line: { orgId: membership.orgId },
+        line: { orgId: existingEmployee.orgId },
       },
       include: {
         line: {
@@ -560,18 +546,6 @@ export const createEmployeeRouter = ({
         line: true,
       },
     });
-
-    if (shouldMarkMembershipTerminated && membership.status !== "TERMINATED") {
-      const requesterEmail = getRequesterEmail(req);
-      await prisma.orgMembership.update({
-        where: { id: membership.id },
-        data: {
-          status: "TERMINATED",
-          approvedAt: membership.approvedAt ?? new Date(),
-          approvedBy: requesterEmail || membership.approvedBy || null,
-        },
-      });
-    }
 
     return res.json(toEmployeeResponse(refreshedEmployee));
   });

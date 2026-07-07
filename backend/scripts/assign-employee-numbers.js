@@ -29,15 +29,13 @@ async function main() {
   // 전체 멤버십 + 직원 조회 (raw SQL로 employeeNo 상태 확인)
   const rows = await prisma.$queryRawUnsafe(`
     SELECT
-      m.id AS "membershipId",
-      m.email,
-      m.role,
       e.id AS "employeeId",
+      e.email,
+      e."orgRole" AS role,
       e."employeeNo"
-    FROM "OrgMembership" m
-    LEFT JOIN "Employee" e ON e."orgMembershipId" = m.id
-    WHERE m.status NOT IN ('PENDING', 'REJECTED')
-    ORDER BY m.id ASC
+    FROM "Employee" e
+    WHERE e.status NOT IN ('PENDING', 'REJECTED')
+    ORDER BY e.id ASC
   `);
 
   if (!rows.length) {

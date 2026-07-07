@@ -2891,21 +2891,24 @@ async function ensureSubscription(orgId, membershipEmail) {
 }
 
 async function ensureMembership(orgId, data) {
-  return prisma.orgMembership.upsert({
+  return prisma.employee.upsert({
     where: { orgId_email: { orgId, email: data.email } },
     update: {
-      role: data.role,
+      orgRole: data.role,
       status: 'ACTIVE',
       approvedBy: 'reset-to-baseline',
       approvedAt: new Date(),
+      leftAt: null,
     },
     create: {
       orgId,
       email: data.email,
-      role: data.role,
+      orgRole: data.role,
       status: 'ACTIVE',
       approvedBy: 'reset-to-baseline',
       approvedAt: new Date(),
+      requestedAt: new Date(),
+      joinedAt: new Date(),
     },
   });
 }
@@ -2964,7 +2967,7 @@ async function cleanupSampleFactoryData(orgId) {
   );
   const sampleFactoryIds = sampleFactories.map((factory) => factory.id);
 
-  const baselineWorkerMemberships = await prisma.orgMembership.findMany({
+  const baselineWorkerEmployees = await prisma.employee.findMany({
     where: {
       orgId,
       OR: [
@@ -2975,20 +2978,16 @@ async function cleanupSampleFactoryData(orgId) {
     },
     select: {
       id: true,
-      employee: { select: { id: true } },
     },
   });
-  const baselineWorkerMembershipIds = baselineWorkerMemberships.map((membership) => membership.id);
-  const baselineWorkerIds = baselineWorkerMemberships
-    .map((membership) => membership.employee?.id ?? null)
-    .filter((id) => Number.isFinite(id));
+  const baselineWorkerIds = baselineWorkerEmployees.map((employee) => employee.id);
 
   if (sampleFactoryIds.length === 0 && baselineWorkerIds.length === 0) {
     return {
       deletedFactories: 0,
       deletedLines: 0,
       deletedWorkers: 0,
-      deletedWorkerMemberships: 0,
+      deletedWorkerAccounts: 0,
     };
   }
 
@@ -3011,7 +3010,7 @@ async function cleanupSampleFactoryData(orgId) {
     if (sampleFactoryIds.length > 0) {
       await tx.employee.updateMany({
         where: { orgId, factoryId: { in: sampleFactoryIds } },
-        data: { factoryId: null, lineName: null },
+        data: { factoryId: null },
       });
     }
 
@@ -3059,12 +3058,6 @@ async function cleanupSampleFactoryData(orgId) {
       });
     }
 
-    if (baselineWorkerMembershipIds.length > 0) {
-      await tx.orgMembership.deleteMany({
-        where: { orgId, id: { in: baselineWorkerMembershipIds } },
-      });
-    }
-
     if (sampleFactoryIds.length > 0) {
       await tx.factory.deleteMany({
         where: { orgId, id: { in: sampleFactoryIds } },
@@ -3076,7 +3069,7 @@ async function cleanupSampleFactoryData(orgId) {
     deletedFactories: sampleFactoryIds.length,
     deletedLines: sampleLineIds.length,
     deletedWorkers: baselineWorkerIds.length,
-    deletedWorkerMemberships: baselineWorkerMembershipIds.length,
+    deletedWorkerAccounts: baselineWorkerIds.length,
   };
 }
 
@@ -3163,26 +3156,23 @@ async function cleanupLegacyCategoryAliases(orgId) {
 
 async function ensureEmployee({
   orgId,
-  orgMembershipId,
+  employeeId,
   factoryId,
   roleId,
   payType,
   name,
-  lineName,
   position,
   phone,
   bankName,
   bankAccountNumber,
 }) {
-  const existing = await prisma.employee.findUnique({ where: { orgMembershipId } });
+  const existing = await prisma.employee.findUnique({ where: { id: employeeId } });
   const data = {
     orgId,
-    orgMembershipId,
     factoryId,
     roleId,
     payType,
     name,
-    lineName,
     position,
     phone: phone ?? null,
     bankName: bankName ?? null,
@@ -4946,12 +4936,11 @@ async function runBaselineReset() {
     const createdMembership = await ensureMembership(manufacturer.id, membership);
     await ensureEmployee({
       orgId: manufacturer.id,
-      orgMembershipId: createdMembership.id,
+      employeeId: createdMembership.id,
       factoryId: null,
       roleId: null,
       payType: membership.payType,
       name: membership.name,
-      lineName: null,
       position: membership.position ?? membership.role,
       bankName: membership.bankName,
       bankAccountNumber: membership.bankAccountNumber,
@@ -4962,12 +4951,11 @@ async function runBaselineReset() {
     const createdMembership = await ensureMembership(brand.id, membership);
     await ensureEmployee({
       orgId: brand.id,
-      orgMembershipId: createdMembership.id,
+      employeeId: createdMembership.id,
       factoryId: null,
       roleId: null,
       payType: membership.payType,
       name: membership.name,
-      lineName: null,
       position: membership.position ?? membership.role,
       bankName: membership.bankName,
       bankAccountNumber: membership.bankAccountNumber,
@@ -4985,12 +4973,11 @@ async function runBaselineReset() {
       });
       const employee = await ensureEmployee({
         orgId: manufacturer.id,
-        orgMembershipId: membership.id,
+        employeeId: membership.id,
         factoryId: factory.id,
         roleId: sewingRole ? sewingRole.id : null,
         payType: 'CT',
         name: toWorkerName(config.workerLabel, index),
-        lineName: config.lineName,
         position: index === 1 ? 'LINE_LEADER' : 'WORKER',
       });
       workerEmployeeIdsByLine.get(config.key).push(employee.id);

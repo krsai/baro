@@ -176,7 +176,7 @@ const buildFactoryLineBoardSnapshot = async (orgId: number, factoryId: number) =
     lines,
     workers: workers.map((worker) => ({
       id: worker.id,
-      orgMembershipId: worker.orgMembershipId,
+      orgMembershipId: worker.id,
       name: worker.name,
       email: worker.email ?? "",
       factoryId: worker.factoryId,
@@ -708,7 +708,6 @@ export const createLineRouter = ({
             factoryId: existing.factoryId,
             ...buildLineEligibleWorkerWhere(todayRange),
           },
-          include: { membership: true },
         });
         if (!manager) {
           return res.status(404).json({ ok: false, error: "manager not found" });
@@ -928,7 +927,7 @@ export const createLineRouter = ({
       return res.json(
         workers.map((worker) => ({
           id: worker.id,
-          orgMembershipId: worker.orgMembershipId,
+          orgMembershipId: worker.id,
           name: worker.name,
           email: worker.email ?? "",
           factoryId: worker.factoryId,
@@ -1017,7 +1016,7 @@ export const createLineRouter = ({
     return res.json(
       workers.map((worker) => ({
         id: worker.id,
-        orgMembershipId: worker.orgMembershipId,
+        orgMembershipId: worker.id,
         name: worker.name,
         email: worker.email ?? "",
         factoryId: worker.factoryId,
@@ -1060,7 +1059,6 @@ export const createLineRouter = ({
         factoryId: line.factoryId,
         ...buildLineEligibleWorkerWhere(todayRange),
       },
-      include: { membership: true },
     });
     if (!employee) {
       return res.status(404).json({ ok: false, error: "worker not found" });
