@@ -23,7 +23,16 @@ if (effectiveDbUrl) {
   env.DATABASE_URL = effectiveDbUrl;
 }
 
-const result = spawnSync(process.execPath, [prismaCli, ...args], {
+const prismaArgs = [...args];
+if (prismaArgs[0] === "db" && prismaArgs[1] === "execute") {
+  const schemaIndex = prismaArgs.indexOf("--schema");
+  const hasUrl = prismaArgs.includes("--url");
+  if (!hasUrl && schemaIndex >= 0 && effectiveDbUrl) {
+    prismaArgs.splice(schemaIndex, 2, "--url", effectiveDbUrl);
+  }
+}
+
+const result = spawnSync(process.execPath, [prismaCli, ...prismaArgs], {
   env,
   stdio: "inherit",
 });
