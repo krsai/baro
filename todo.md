@@ -389,3 +389,14 @@
 ### Remaining
 - After Railway deploy/startup migration, verify production DB no longer has `OrgMembership` table and `Employee.orgMembershipId` column.
 - Frontend/API naming still has compatibility names like `/org-memberships` and `orgMembershipId`; these now mean Employee account id and can be renamed in a later UI/API cleanup without another DB migration.
+
+## 2026-07-07 OrgMembership production drop verification
+
+### Done
+- Applied `backend/migration_fix.sql` directly to Railway Postgres using the session-only public DB URL.
+- Verified `information_schema.tables` has no `OrgMembership` table.
+- Verified `information_schema.columns` has no `Employee.orgMembershipId` column.
+- Verified `Employee` still has account columns: `email`, `orgRole`, `status`, `requestedName`, `approvedAt`.
+
+### Verify
+- Production Employee row count after migration: 20.
