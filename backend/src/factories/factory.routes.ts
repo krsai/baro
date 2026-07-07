@@ -599,7 +599,9 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
           select: { id: true, orgMembershipId: true },
         });
         const employeeIds = employees.map((employee) => employee.id);
-        const membershipIds = employees.map((employee) => employee.orgMembershipId);
+        const membershipIds = employees
+          .map((employee) => employee.orgMembershipId)
+          .filter((membershipId): membershipId is number => Number.isFinite(membershipId));
 
         if (employeeIds.length > 0) {
           await tx.factory.updateMany({

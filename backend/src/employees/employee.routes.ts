@@ -86,7 +86,13 @@ const toEmployeeResponse = (employee: any) => ({
   effectivePayType: resolveEmployeeEffectivePayType(employee),
   fixedSalary: employee?.fixedSalary ?? null,
   name: employee?.name ?? null,
-  email: employee?.membership?.email ?? null,
+  email: employee?.email ?? employee?.membership?.email ?? null,
+  orgRole: employee?.orgRole ?? employee?.membership?.role ?? null,
+  status: employee?.status ?? employee?.membership?.status ?? null,
+  requestedAt: employee?.requestedAt ?? employee?.membership?.requestedAt ?? null,
+  requestedName: employee?.requestedName ?? employee?.membership?.requestedName ?? null,
+  approvedAt: employee?.approvedAt ?? employee?.membership?.approvedAt ?? null,
+  approvedBy: employee?.approvedBy ?? employee?.membership?.approvedBy ?? null,
   phone: employee?.phone ?? null,
   bankName: employee?.bankName ?? null,
   bankAccountNumber: employee?.bankAccountNumber ?? null,
@@ -114,23 +120,22 @@ export const createEmployeeRouter = ({
       return res.status(401).json({ ok: false, error: "request user email is required" });
     }
 
-    const membership = await prisma.orgMembership.findFirst({
+    const employee = await prisma.employee.findFirst({
       where: { email: requesterEmail, status: "ACTIVE" },
-      include: { employee: true },
       orderBy: { id: "asc" },
     });
 
-    if (!membership) {
-      return res.status(404).json({ ok: false, error: "membership not found" });
+    if (!employee) {
+      return res.status(404).json({ ok: false, error: "employee record not found" });
     }
 
     return res.json({
-      email: membership.email,
-      name: membership.employee?.name ?? null,
-      phone: (membership.employee as any)?.phone ?? null,
-      bankName: membership.employee?.bankName ?? null,
-      bankAccountNumber: membership.employee?.bankAccountNumber ?? null,
-      employeeId: membership.employee?.id ?? null,
+      email: employee.email,
+      name: employee.name ?? null,
+      phone: (employee as any)?.phone ?? null,
+      bankName: employee.bankName ?? null,
+      bankAccountNumber: employee.bankAccountNumber ?? null,
+      employeeId: employee.id ?? null,
     });
   });
 
@@ -140,13 +145,13 @@ export const createEmployeeRouter = ({
       return res.status(401).json({ ok: false, error: "request user email is required" });
     }
 
-    const membership = await prisma.orgMembership.findFirst({
+    const employee = await prisma.employee.findFirst({
       where: { email: requesterEmail, status: "ACTIVE" },
-      include: { employee: { select: { id: true } } },
+      select: { id: true, email: true },
       orderBy: { id: "asc" },
     });
 
-    if (!membership || !membership.employee) {
+    if (!employee) {
       return res.status(404).json({ ok: false, error: "employee record not found" });
     }
 
@@ -154,7 +159,7 @@ export const createEmployeeRouter = ({
     const trim = (value: any) => (typeof value === "string" ? value.trim() || null : null);
 
     const updated = await (prisma.employee as any).update({
-      where: { id: membership.employee.id },
+      where: { id: employee.id },
       data: {
         ...(name !== undefined ? { name: trim(name) } : {}),
         ...(phone !== undefined ? { phone: trim(phone) } : {}),
@@ -164,7 +169,7 @@ export const createEmployeeRouter = ({
     });
 
     return res.json({
-      email: membership.email,
+      email: employee.email,
       name: updated.name ?? null,
       phone: updated.phone ?? null,
       bankName: updated.bankName ?? null,
@@ -223,38 +228,38 @@ export const createEmployeeRouter = ({
       typeof req.query.excludeMembershipRole === "string"
         ? req.query.excludeMembershipRole.toUpperCase()
         : null;
-    const membershipFilter =
+    const orgRoleFilter =
       membershipRole && excludeMembershipRole
         ? membershipRole === excludeMembershipRole
           ? null
           : {
               AND: [
-                { role: membershipRole as any },
-                { role: { not: excludeMembershipRole as any } },
+                { orgRole: membershipRole as any },
+                { orgRole: { not: excludeMembershipRole as any } },
               ],
             }
         : membershipRole
-          ? { role: membershipRole as any }
+          ? { orgRole: membershipRole as any }
           : excludeMembershipRole
-            ? { role: { not: excludeMembershipRole as any } }
+            ? { orgRole: { not: excludeMembershipRole as any } }
             : null;
     if (membershipRole && excludeMembershipRole && membershipRole === excludeMembershipRole) {
       return res.json([]);
     }
-    const membershipWhere: any = membershipFilter
+    const employeeAccountWhere: any = orgRoleFilter
       ? {
-          ...membershipFilter,
+          ...orgRoleFilter,
         }
       : {};
     if (systemOnly) {
-      membershipWhere.email = { in: systemUserEmails };
+      employeeAccountWhere.email = { in: systemUserEmails };
     }
 
     const where: any = {
       orgId: organization.id,
       ...(Number.isFinite(factoryId) ? { factoryId } : {}),
-      ...(Object.keys(membershipWhere).length > 0
-        ? { membership: membershipWhere }
+      ...(Object.keys(employeeAccountWhere).length > 0
+        ? employeeAccountWhere
         : {}),
     };
     const employees = await prisma.employee.findMany({
@@ -305,12 +310,12 @@ export const createEmployeeRouter = ({
     if (!requesterEmail) {
       return res.status(401).json({ ok: false, error: "request user email is required" });
     }
-    const [requesterSystemUser, requesterMembership] = await Promise.all([
+    const [requesterSystemUser, requesterEmployee] = await Promise.all([
       prisma.systemUser.findUnique({
         where: { email: requesterEmail },
         select: { systemRole: true },
       }),
-      prisma.orgMembership.findUnique({
+      prisma.employee.findUnique({
         where: {
           orgId_email: {
             orgId: membership.orgId,
@@ -319,17 +324,17 @@ export const createEmployeeRouter = ({
         },
         select: {
           status: true,
-          role: true,
+          orgRole: true,
         },
       }),
     ]);
     const hasEmployeeAccess =
       requesterSystemUser?.systemRole === "SYSTEM_ADMIN" ||
       (
-        requesterMembership?.status === "ACTIVE" &&
+        requesterEmployee?.status === "ACTIVE" &&
         await hasOrgFeatureAccess({
           orgType: membership.organization?.type,
-          orgRole: requesterMembership.role,
+          orgRole: requesterEmployee.orgRole,
           feature: "EMPLOYEE",
         })
       );
@@ -471,6 +476,13 @@ export const createEmployeeRouter = ({
     const data: any = {
       orgId: membership.orgId,
       orgMembershipId: membership.id,
+      email: membership.email ?? null,
+      orgRole: membership.role,
+      status: shouldMarkMembershipTerminated ? "TERMINATED" : membership.status,
+      requestedAt: membership.requestedAt ?? null,
+      requestedName: membership.requestedName ?? null,
+      approvedAt: membership.approvedAt ?? null,
+      approvedBy: membership.approvedBy ?? null,
       factoryId: resolvedFactoryId,
       roleId: resolvedRoleId,
       payType: resolvedPayType,

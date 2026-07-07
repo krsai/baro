@@ -14,6 +14,7 @@ import {
 } from "./employees/employeeCompensation";
 import { normalizeEmployeeNo } from "./employees/employeeNumber";
 import { createEmployeeRouter } from "./employees/employee.routes";
+import { syncEmployeeAccountFromMembership } from "./employees/employeeAccount";
 import { createFactoryRouter } from "./factories/factory.routes";
 import {
   DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
@@ -160,6 +161,18 @@ function assertGeneratedPrismaClientShape() {
   }
   if (!hasField("Employee", "lineId")) {
     staleSignals.push("Employee.lineId missing");
+  }
+  if (!hasField("Employee", "email")) {
+    staleSignals.push("Employee.email missing");
+  }
+  if (!hasField("Employee", "orgRole")) {
+    staleSignals.push("Employee.orgRole missing");
+  }
+  if (!hasField("Employee", "status")) {
+    staleSignals.push("Employee.status missing");
+  }
+  if (!hasField("Employee", "createdByEmployeeId")) {
+    staleSignals.push("Employee.createdByEmployeeId missing");
   }
   if (hasField("WorkOrder", "buyerOrgName")) {
     staleSignals.push("WorkOrder.buyerOrgName still present");
@@ -621,6 +634,17 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "Factory", columnName: "managementStartDate" },
   { tableName: "Factory", columnName: "managerEmployeeId" },
   { tableName: "Employee", columnName: "lineId" },
+  { tableName: "Employee", columnName: "email" },
+  { tableName: "Employee", columnName: "orgRole" },
+  { tableName: "Employee", columnName: "status" },
+  { tableName: "Employee", columnName: "requestedName" },
+  { tableName: "Employee", columnName: "approvedAt" },
+  { tableName: "Employee", columnName: "createdByEmployeeId" },
+  { tableName: "Employee", columnName: "updatedByEmployeeId" },
+  { tableName: "WorkLog", columnName: "createdByEmployeeId" },
+  { tableName: "WorkLog", columnName: "updatedByEmployeeId" },
+  { tableName: "WorkOrder", columnName: "createdByEmployeeId" },
+  { tableName: "WorkOrder", columnName: "updatedByEmployeeId" },
   { tableName: "Style", columnName: "id" },
   { tableName: "Style", columnName: "code" },
   { tableName: "WorkRecord", columnName: "styleId" },
@@ -1065,7 +1089,10 @@ const toOrganizationResponse = (organization: any) => {
           name: resolveOptionalString(representativeEmployee.name, null),
           employeeNo: normalizeEmployeeNo(representativeEmployee.employeeNo) ?? null,
           phone: resolveOptionalString(representativeEmployee.phone, null),
-          email: resolveOptionalString(representativeEmployee.membership?.email, null),
+          email: resolveOptionalString(
+            representativeEmployee.email ?? representativeEmployee.membership?.email,
+            null
+          ),
         }
       : null;
   return {
@@ -2925,6 +2952,8 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         id: true,
         joinedAt: true,
         leftAt: true,
+        orgRole: true,
+        status: true,
         membership: {
           select: {
             role: true,
@@ -2941,8 +2970,8 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     workerRows.forEach((worker) => {
       const workerId = toPositiveIntOrNull(worker.id);
       if (workerId === null) return;
-      if (worker.membership?.role !== "WORKER") return;
-      if (!["ACTIVE", "TERMINATED"].includes(String(worker.membership?.status))) {
+      if ((worker.orgRole ?? worker.membership?.role) !== "WORKER") return;
+      if (!["ACTIVE", "TERMINATED"].includes(String(worker.status ?? worker.membership?.status))) {
         return;
       }
       const workerRoleCode = String(worker.role?.code ?? "").trim().toUpperCase();
@@ -9345,7 +9374,7 @@ const toWorkLogContextWorkerResponse = (row: any) => ({
   id: row?.employee?.id ?? row?.employeeId ?? null,
   orgMembershipId: row?.employee?.orgMembershipId ?? null,
   name: resolveOptionalString(row?.employee?.name, "") ?? "",
-  email: resolveOptionalString(row?.employee?.membership?.email, "") ?? "",
+  email: resolveOptionalString(row?.employee?.email ?? row?.employee?.membership?.email, "") ?? "",
   factoryId: row?.employee?.factoryId ?? null,
   currentLineId: row?.lineId ?? null,
 });
@@ -9598,6 +9627,9 @@ const buildWorkLogContextResponse = async ({
       select: {
         id: true,
         orgMembershipId: true,
+        email: true,
+        orgRole: true,
+        status: true,
         name: true,
         factoryId: true,
         lineId: true,
@@ -9758,8 +9790,8 @@ const buildWorkLogContextResponse = async ({
         assignment?.endAt,
         BUSINESS_TIME_ZONE
       );
-      const membershipStatus = String(employee?.membership?.status ?? "").trim();
-      const membershipRole = String(employee?.membership?.role ?? "").trim();
+      const membershipStatus = String(employee?.status ?? employee?.membership?.status ?? "").trim();
+      const membershipRole = String(employee?.orgRole ?? employee?.membership?.role ?? "").trim();
       const roleCode = String(employee?.role?.code ?? "").trim();
       const baseInfo = {
         employeeId,
@@ -9993,7 +10025,7 @@ const buildWorkLogContextResponse = async ({
       },
       lineAssignmentsOnWorkDateWorkers: lineAssignmentsOnWorkDate.map((assignment) => {
         const employee = assignment?.employee;
-        const membershipStatus = String(employee?.membership?.status ?? "")
+        const membershipStatus = String(employee?.status ?? employee?.membership?.status ?? "")
           .trim()
           .toUpperCase();
         const joinedDateKey = toDateKeyInTimeZone(employee?.joinedAt, BUSINESS_TIME_ZONE);
@@ -10010,7 +10042,7 @@ const buildWorkLogContextResponse = async ({
           workerId: toPositiveIntOrNull(employee?.id ?? assignment?.employeeId),
           workerName: resolveOptionalString(employee?.name, "") ?? "",
           membershipStatus,
-          membershipRole: String(employee?.membership?.role ?? "").trim().toUpperCase(),
+          membershipRole: String(employee?.orgRole ?? employee?.membership?.role ?? "").trim().toUpperCase(),
           roleCode: String(employee?.role?.code ?? "").trim().toUpperCase(),
           workerFactoryId: toPositiveIntOrNull(employee?.factoryId),
           joinedAtRaw: employee?.joinedAt ?? null,
@@ -10048,17 +10080,14 @@ const resolveWorkLogUpdatedBy = async (orgId: number, req: Request): Promise<str
   const requesterEmail = resolveOptionalString(getRequesterEmail(req), null);
   if (!requesterEmail) return null;
 
-  const membership = await prisma.orgMembership.findFirst({
+  const employee = await prisma.employee.findFirst({
     where: {
       orgId,
       email: requesterEmail,
     },
-    include: {
-      employee: true,
-    },
   });
 
-  const employeeName = resolveOptionalString(membership?.employee?.name, null);
+  const employeeName = resolveOptionalString(employee?.name, null);
   if (employeeName) return employeeName;
   return requesterEmail;
 };
@@ -16242,9 +16271,6 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
       orgId,
     },
     include: {
-      membership: {
-        select: { role: true },
-      },
       role: {
         select: { code: true, defaultPayType: true },
       },
@@ -16253,18 +16279,18 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
   const migrateEmployeeIds = workerEmployees
     .filter(
       (employee) =>
-        employee.membership?.role === "WORKER" &&
+        employee.orgRole === "WORKER" &&
         (!employee.roleId || !isWorkerEmployeeRoleCode(employee.role?.code))
     )
     .map((employee) => Number(employee.id))
     .filter((employeeId) => Number.isFinite(employeeId));
   const clearEmployeeRoleIds = workerEmployees
-    .filter((employee) => employee.membership?.role !== "WORKER" && employee.roleId !== null)
+    .filter((employee) => employee.orgRole !== "WORKER" && employee.roleId !== null)
     .map((employee) => Number(employee.id))
     .filter((employeeId) => Number.isFinite(employeeId));
   const workerIdsNeedingCtPayType = workerEmployees
     .filter((employee) => {
-      if (employee.membership?.role !== "WORKER") return false;
+      if (employee.orgRole !== "WORKER") return false;
       if (normalizePayType(employee.payType, null)) return false;
       const nextPayType =
         employee.roleId && isWorkerEmployeeRoleCode(employee.role?.code)
@@ -16276,7 +16302,7 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
     .filter((employeeId) => Number.isFinite(employeeId));
   const workerIdsNeedingFixedPayType = workerEmployees
     .filter((employee) => {
-      if (employee.membership?.role !== "WORKER") return false;
+      if (employee.orgRole !== "WORKER") return false;
       if (normalizePayType(employee.payType, null)) return false;
       const nextPayType =
         employee.roleId && isWorkerEmployeeRoleCode(employee.role?.code)
@@ -16289,7 +16315,7 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
   const nonWorkerIdsNeedingFixedPayType = workerEmployees
     .filter(
       (employee) =>
-        employee.membership?.role !== "WORKER" &&
+        employee.orgRole !== "WORKER" &&
         normalizePayType(employee.payType, null) !== "FIXED"
     )
     .map((employee) => Number(employee.id))
@@ -16896,27 +16922,27 @@ app.get("/auth/context", async (req, res) => {
       return res.status(400).json({ ok: false, error: "invalid orgId" });
     }
 
-    const membership = await prisma.orgMembership.findUnique({
+    const employee = await prisma.employee.findUnique({
       where: {
         orgId_email: {
           orgId: requestedOrgId,
           email: requesterEmail,
         },
       },
-      include: { organization: true, employee: true },
+      include: { organization: true },
     });
-    if (membership && membership.status === "ACTIVE" && membership.organization) {
-      const organization = await attachOrganizationSubscription(membership.organization);
+    if (employee && employee.status === "ACTIVE" && employee.organization) {
+      const organization = await attachOrganizationSubscription(employee.organization);
       return res.json({
         email: requesterEmail,
         entryType: "ORG",
         systemRole: "USER",
-        orgId: organization?.id ?? membership.organization.id,
-        orgName: organization?.name ?? membership.organization.name ?? null,
-        orgType: organization?.type ?? membership.organization.type ?? null,
-        orgRole: membership.role,
-        factoryId: membership.employee?.factoryId ?? null,
-        employeeName: membership.employee?.name ?? null,
+        orgId: organization?.id ?? employee.organization.id,
+        orgName: organization?.name ?? employee.organization.name ?? null,
+        orgType: organization?.type ?? employee.organization.type ?? null,
+        orgRole: employee.orgRole,
+        factoryId: employee.factoryId ?? null,
+        employeeName: employee.name ?? null,
         subscription: buildSubscriptionResponse(organization?.subscription),
         accessPolicy: roleAccessPolicy,
         systemAdminContactEmail: getSystemAdminContactEmail(),
@@ -16925,17 +16951,17 @@ app.get("/auth/context", async (req, res) => {
     // If requested org is stale/unauthorized, fall through and resolve by user's actual access.
   }
 
-  const membership = await prisma.orgMembership.findFirst({
+  const employee = await prisma.employee.findFirst({
     where: {
       email: requesterEmail,
       status: "ACTIVE",
     },
-    include: { organization: true, employee: true },
+    include: { organization: true },
     orderBy: { id: "asc" },
   });
-  if (!membership || !membership.organization) {
+  if (!employee || !employee.organization) {
     const [pendingMembershipCount, latestRegistrationRequest] = await Promise.all([
-      prisma.orgMembership.count({
+      prisma.employee.count({
         where: {
           email: requesterEmail,
           status: "PENDING",
@@ -16969,17 +16995,17 @@ app.get("/auth/context", async (req, res) => {
     });
   }
 
-  const organization = await attachOrganizationSubscription(membership.organization);
+  const organization = await attachOrganizationSubscription(employee.organization);
   res.json({
     email: requesterEmail,
     entryType: "ORG",
     systemRole: "USER",
-    orgId: organization?.id ?? membership.organization.id,
-    orgName: organization?.name ?? membership.organization.name ?? null,
-    orgType: organization?.type ?? membership.organization.type ?? null,
-    orgRole: membership.role,
-    factoryId: membership.employee?.factoryId ?? null,
-    employeeName: membership.employee?.name ?? null,
+    orgId: organization?.id ?? employee.organization.id,
+    orgName: organization?.name ?? employee.organization.name ?? null,
+    orgType: organization?.type ?? employee.organization.type ?? null,
+    orgRole: employee.orgRole,
+    factoryId: employee.factoryId ?? null,
+    employeeName: employee.name ?? null,
     subscription: buildSubscriptionResponse(organization?.subscription),
     accessPolicy: roleAccessPolicy,
     systemAdminContactEmail: getSystemAdminContactEmail(),
@@ -17124,7 +17150,7 @@ app.post("/onboarding/company-requests", async (req, res) => {
     });
   }
 
-  const hasActiveMembership = await prisma.orgMembership.count({
+  const hasActiveMembership = await prisma.employee.count({
     where: {
       email: requesterEmail,
       status: "ACTIVE",
@@ -17313,29 +17339,48 @@ app.patch("/system/company-requests/:id/approve", async (req, res) => {
   await applySubscriptionPayload(organization, subscriptionPayload);
   const organizationWithSubscription = await attachOrganizationSubscription(organization);
 
-  const approvedMembership = await prisma.orgMembership.upsert({
-    where: {
-      orgId_email: {
+  const approvedMembership = await prisma.$transaction(async (tx) => {
+    const approvedMembership = await tx.orgMembership.upsert({
+      where: {
+        orgId_email: {
+          orgId: organization.id,
+          email: companyRequest.requesterEmail,
+        },
+      },
+      update: {
+        role: "ADMIN",
+        status: "ACTIVE",
+        requestedAt: now,
+        requestedName: companyRequest.contactName || null,
+        approvedAt: now,
+        approvedBy: systemAdmin.requesterEmail,
+      },
+      create: {
         orgId: organization.id,
         email: companyRequest.requesterEmail,
+        role: "ADMIN",
+        status: "ACTIVE",
+        requestedAt: now,
+        requestedName: companyRequest.contactName || null,
+        approvedAt: now,
+        approvedBy: systemAdmin.requesterEmail,
       },
-    },
-    update: {
-      role: "ADMIN",
-      status: "ACTIVE",
-      requestedAt: now,
-      approvedAt: now,
-      approvedBy: systemAdmin.requesterEmail,
-    },
-    create: {
-      orgId: organization.id,
-      email: companyRequest.requesterEmail,
-      role: "ADMIN",
-      status: "ACTIVE",
-      requestedAt: now,
-      approvedAt: now,
-      approvedBy: systemAdmin.requesterEmail,
-    },
+    });
+    await syncEmployeeAccountFromMembership(tx, approvedMembership, {
+      update: {
+        name: companyRequest.contactName || null,
+        phone: companyRequest.contactPhone || null,
+        joinedAt: now,
+        leftAt: null,
+      },
+      create: {
+        name: companyRequest.contactName || null,
+        phone: companyRequest.contactPhone || null,
+        joinedAt: now,
+        leftAt: null,
+      },
+    });
+    return approvedMembership;
   });
 
   const updatedRequest = await prisma.onboardingRequest.update({
@@ -21506,12 +21551,8 @@ app.put("/attendance-entries", async (req, res) => {
       select: {
         id: true,
         leftAt: true,
-        membership: {
-          select: {
-            role: true,
-            status: true,
-          },
-        },
+        orgRole: true,
+        status: true,
       },
     });
     const workersById = new Map<
@@ -21526,10 +21567,10 @@ app.put("/attendance-entries", async (req, res) => {
       const workerId = toPositiveIntOrNull(worker.id);
       if (workerId === null) return;
       workersById.set(workerId, {
-        membershipRole: String(worker.membership?.role ?? "")
+        membershipRole: String(worker.orgRole ?? "")
           .trim()
           .toUpperCase(),
-        membershipStatus: String(worker.membership?.status ?? "")
+        membershipStatus: String(worker.status ?? "")
           .trim()
           .toUpperCase(),
         leftDateKey: toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE),

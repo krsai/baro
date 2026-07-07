@@ -355,3 +355,20 @@
 - `AssignmentPlan.cardId`에 인덱스 추가 — 위 검토 항목, 이번 범위 아님.
 - `frontend/src/utils/quantityChangeBoard.mjs`와 `scripts/quantity-change-regression.test.mjs`는 이제 프로덕션 호출부가 없는 죽은 코드/테스트 — 삭제 여부 결정 필요.
 - 실제 브라우저 조작 검증(스타일 제거 차단 토스트+모달, 잠금/해제 무영향, 신규 스타일 추가 시 카드 즉시 생성) 안 함 — 다음 작업자가 확인.
+## 2026-07-07 OrgMembership -> Employee canonical account 통합
+
+### Done
+- `Employee`를 조직 계정의 canonical table로 확장했다: `email`, `orgRole`, `status`, `requestedAt/requestedName`, `approvedAt/approvedBy`를 추가하고 `orgMembershipId`는 nullable compatibility link로 낮췄다.
+- `migration_fix.sql` Step 0o를 추가했다: 기존 `OrgMembership` 값을 `Employee`로 백필하고, `OrgMembership`만 있던 BRAND/신규 조직 ADMIN 계정도 `Employee` row로 만든다.
+- 기존 `createdBy`/`updatedBy` 문자열 snapshot은 유지하면서, auditable table에 `createdByEmployeeId`/`updatedByEmployeeId` nullable 컬럼과 FK를 추가했다. 요청 중 Employee를 찾으면 `db.ts` Prisma extension이 저장 경로별 수정 없이 자동 주입한다.
+- 인증/인가(`middleware/access.ts`), 로그인 프로필(`/auth/profile`), 온보딩 승인, 직원/라인/급여/작업기록 context의 주요 read path를 `Employee.email/orgRole/status` 우선으로 전환했다.
+- `OrgMembership`은 아직 물리 삭제하지 않고 `/org-memberships` 호환 API와 shadow write 대상으로 유지했다. 새 write path는 같은 트랜잭션 또는 직후 sync로 `Employee`를 함께 맞춘다.
+
+### Verify
+- `npm run prisma:prepare-client` 통과.
+- `npm run build` 통과.
+- 운영 DB에는 `.env`를 쓰지 말고 Railway `DATABASE_PUBLIC_URL`로 `migration_fix.sql` Step 0o 적용 여부를 직접 확인해야 한다. 특히 `Employee.email/orgRole/status`, `Employee_orgId_email_key`, audit FK 컬럼 생성 여부 확인.
+
+### Remaining
+- `OrgMembership` table/drop은 아직 하지 않는다. 한 배포 이상 Employee-only read 상태로 운영한 뒤, `rg "orgMembership"`과 운영 DB 백필 검증이 0건일 때 별도 작업으로 제거한다.
+- 프론트는 기존 `orgMembershipId` compatibility 응답을 계속 받도록 둔 상태다. 다음 단계에서 Employee id 중심으로 화면 payload를 정리할 수 있다.

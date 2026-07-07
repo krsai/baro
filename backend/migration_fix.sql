@@ -1,3 +1,202 @@
+-- Step 0o: Employee becomes the canonical organization account table (20260707)
+-- OrgMembership is kept as a compatibility shadow during the transition, but
+-- login/access/audit data now also lives on Employee. Employee.id is preserved
+-- because WorkRecord/AttendanceEntry/LineAssignment already depend on it.
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "email" TEXT;
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "orgRole" "OrgUserRole" NOT NULL DEFAULT 'WORKER';
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "status" "OrgMembershipStatus" NOT NULL DEFAULT 'ACTIVE';
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "requestedAt" TIMESTAMP(3);
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "requestedName" TEXT;
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "approvedAt" TIMESTAMP(3);
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "approvedBy" TEXT;
+ALTER TABLE "Employee" ALTER COLUMN "orgMembershipId" DROP NOT NULL;
+
+UPDATE "Employee" e
+SET
+  "email" = m."email",
+  "orgRole" = m."role",
+  "status" = m."status",
+  "requestedAt" = COALESCE(e."requestedAt", m."requestedAt"),
+  "requestedName" = COALESCE(e."requestedName", m."requestedName"),
+  "approvedAt" = COALESCE(e."approvedAt", m."approvedAt"),
+  "approvedBy" = COALESCE(e."approvedBy", m."approvedBy"),
+  "name" = COALESCE(NULLIF(btrim(e."name"), ''), NULLIF(btrim(m."requestedName"), ''))
+FROM "OrgMembership" m
+WHERE e."orgMembershipId" = m.id;
+
+INSERT INTO "Employee" (
+  "orgId",
+  "orgMembershipId",
+  "email",
+  "orgRole",
+  "status",
+  "requestedAt",
+  "requestedName",
+  "approvedAt",
+  "approvedBy",
+  "name",
+  "joinedAt",
+  "createdAt",
+  "createdBy",
+  "updatedAt"
+)
+SELECT
+  m."orgId",
+  m.id,
+  m."email",
+  m."role",
+  m."status",
+  m."requestedAt",
+  m."requestedName",
+  m."approvedAt",
+  m."approvedBy",
+  NULLIF(btrim(m."requestedName"), ''),
+  CASE WHEN m."status" = 'ACTIVE' THEN COALESCE(m."approvedAt", m."createdAt") ELSE NULL END,
+  m."createdAt",
+  m."createdBy",
+  m."updatedAt"
+FROM "OrgMembership" m
+WHERE NOT EXISTS (
+  SELECT 1 FROM "Employee" e WHERE e."orgMembershipId" = m.id
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "Employee_orgId_email_key"
+  ON "Employee"("orgId", "email");
+CREATE INDEX IF NOT EXISTS "Employee_email_idx" ON "Employee"("email");
+CREATE INDEX IF NOT EXISTS "Employee_status_idx" ON "Employee"("status");
+CREATE INDEX IF NOT EXISTS "Employee_orgId_status_idx" ON "Employee"("orgId", "status");
+
+DO $$
+DECLARE
+  audited_table TEXT;
+  audited_tables TEXT[] := ARRAY[
+    'SystemUser',
+    'ProcessMasterOption',
+    'Organization',
+    'OnboardingRequest',
+    'OrganizationSubscription',
+    'OrgMembership',
+    'Factory',
+    'Line',
+    'Employee',
+    'AttendanceEntry',
+    'OrganizationHoliday',
+    'OrgRelationship',
+    'Style',
+    'StyleProcess',
+    'AtTrainingBucket',
+    'AtTrainingBucketProcess',
+    'WorkOrder',
+    'WorkOrderItem',
+    'AssignmentPlan',
+    'QcPassEvent',
+    'WorkLog',
+    'WorkRecord',
+    'PayrollSnapshot',
+    'QuantitySettlementSnapshot',
+    'AssignmentBoardState',
+    'AssignmentCard'
+  ];
+BEGIN
+  FOREACH audited_table IN ARRAY audited_tables LOOP
+    EXECUTE format('ALTER TABLE %I ADD COLUMN IF NOT EXISTS "createdByEmployeeId" INTEGER', audited_table);
+    EXECUTE format('ALTER TABLE %I ADD COLUMN IF NOT EXISTS "updatedByEmployeeId" INTEGER', audited_table);
+
+    EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I("createdByEmployeeId")', audited_table || '_createdByEmployeeId_idx', audited_table);
+    EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I("updatedByEmployeeId")', audited_table || '_updatedByEmployeeId_idx', audited_table);
+
+    BEGIN
+      EXECUTE format(
+        'ALTER TABLE %I ADD CONSTRAINT %I FOREIGN KEY ("createdByEmployeeId") REFERENCES "Employee"("id") ON DELETE SET NULL ON UPDATE CASCADE',
+        audited_table,
+        audited_table || '_createdByEmployeeId_fkey'
+      );
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+
+    BEGIN
+      EXECUTE format(
+        'ALTER TABLE %I ADD CONSTRAINT %I FOREIGN KEY ("updatedByEmployeeId") REFERENCES "Employee"("id") ON DELETE SET NULL ON UPDATE CASCADE',
+        audited_table,
+        audited_table || '_updatedByEmployeeId_fkey'
+      );
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+  END LOOP;
+
+  ALTER TABLE "SystemSetting" ADD COLUMN IF NOT EXISTS "updatedByEmployeeId" INTEGER;
+  CREATE INDEX IF NOT EXISTS "SystemSetting_updatedByEmployeeId_idx" ON "SystemSetting"("updatedByEmployeeId");
+  BEGIN
+    ALTER TABLE "SystemSetting"
+      ADD CONSTRAINT "SystemSetting_updatedByEmployeeId_fkey"
+      FOREIGN KEY ("updatedByEmployeeId") REFERENCES "Employee"("id")
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END;
+END $$;
+
+DO $$
+DECLARE
+  audited_table TEXT;
+  audited_tables TEXT[] := ARRAY[
+    'Organization',
+    'OnboardingRequest',
+    'OrganizationSubscription',
+    'OrgMembership',
+    'Factory',
+    'Line',
+    'Employee',
+    'AttendanceEntry',
+    'OrganizationHoliday',
+    'OrgRelationship',
+    'Style',
+    'StyleProcess',
+    'AtTrainingBucket',
+    'AtTrainingBucketProcess',
+    'WorkOrder',
+    'AssignmentPlan',
+    'QcPassEvent',
+    'WorkLog',
+    'WorkRecord',
+    'PayrollSnapshot',
+    'QuantitySettlementSnapshot',
+    'AssignmentBoardState',
+    'AssignmentCard'
+  ];
+  has_org_id BOOLEAN;
+  has_created_by BOOLEAN;
+  has_updated_by BOOLEAN;
+BEGIN
+  FOREACH audited_table IN ARRAY audited_tables LOOP
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = audited_table AND column_name = 'orgId'
+    ) INTO has_org_id;
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = audited_table AND column_name = 'createdBy'
+    ) INTO has_created_by;
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = audited_table AND column_name = 'updatedBy'
+    ) INTO has_updated_by;
+
+    IF has_org_id AND has_created_by THEN
+      EXECUTE format(
+        'UPDATE %I t SET "createdByEmployeeId" = e.id FROM "Employee" e WHERE t."createdByEmployeeId" IS NULL AND t."orgId" = e."orgId" AND t."createdBy" IS NOT NULL AND e."email" IS NOT NULL AND lower(btrim(t."createdBy")) = lower(btrim(e."email"))',
+        audited_table
+      );
+    END IF;
+
+    IF has_org_id AND has_updated_by THEN
+      EXECUTE format(
+        'UPDATE %I t SET "updatedByEmployeeId" = e.id FROM "Employee" e WHERE t."updatedByEmployeeId" IS NULL AND t."orgId" = e."orgId" AND t."updatedBy" IS NOT NULL AND e."email" IS NOT NULL AND lower(btrim(t."updatedBy")) = lower(btrim(e."email"))',
+        audited_table
+      );
+    END IF;
+  END LOOP;
+END $$;
+
 -- Step 0n: drop AssignmentPlan.orderNo/customer/label/previewUrl (20260706)
 -- Phase E of the AssignmentCard/AssignmentPlan FK+join redesign. Unlike
 -- Phase D's color columns, these four WERE actively written by every board

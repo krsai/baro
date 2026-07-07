@@ -103,20 +103,20 @@ const isPayrollMonthClosed = (month: string, now = new Date()) => {
 
 const resolvePayrollEmployeeName = (employee: any, fallback: unknown = null): string =>
   resolveOptionalString(
-    employee?.name ?? fallback ?? employee?.membership?.email ?? null,
+    employee?.name ?? fallback ?? employee?.email ?? employee?.membership?.email ?? null,
     null
   ) || "이름없음";
 
 const resolvePayrollRoleName = (employee: any): string =>
   resolveOptionalString(employee?.role?.name, null) ??
-  resolveOrgRoleLabel(employee?.membership?.role) ??
+  resolveOrgRoleLabel(employee?.orgRole ?? employee?.membership?.role) ??
   "";
 
 const isPayrollEmployeeRelevantForMonth = (
   employee: any,
   range: { start: Date; endExclusive: Date }
 ) => {
-  const membershipStatus = String(employee?.membership?.status || "")
+  const membershipStatus = String((employee?.status ?? employee?.membership?.status) || "")
     .trim()
     .toUpperCase();
   if (membershipStatus === "PENDING" || membershipStatus === "REJECTED") {
@@ -124,7 +124,7 @@ const isPayrollEmployeeRelevantForMonth = (
   }
 
   const effectiveStart =
-    employee?.joinedAt ?? employee?.membership?.approvedAt ?? employee?.createdAt ?? null;
+    employee?.joinedAt ?? employee?.approvedAt ?? employee?.membership?.approvedAt ?? employee?.createdAt ?? null;
   const effectiveEnd = employee?.leftAt ?? null;
 
   if (effectiveStart) {
@@ -347,11 +347,11 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       ...(workerIds.length > 0
         ? {
             OR: [
-              { membership: { status: { notIn: ["PENDING", "REJECTED"] } } },
+              { status: { notIn: ["PENDING", "REJECTED"] } },
               { id: { in: workerIds } },
             ],
           }
-        : { membership: { status: { notIn: ["PENDING", "REJECTED"] } } }),
+        : { status: { notIn: ["PENDING", "REJECTED"] } }),
     },
     include: {
       role: true,
@@ -415,7 +415,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       employeeKey,
       workerId: employee?.id ?? null,
       workerName,
-      orgRole: String(employee?.membership?.role || "").trim().toUpperCase(),
+      orgRole: String((employee?.orgRole ?? employee?.membership?.role) || "").trim().toUpperCase(),
       roleName: resolvePayrollRoleName(employee),
       payType,
       bankName: resolveOptionalString(employee?.bankName, null),
@@ -464,7 +464,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
           employeeKey: key,
           workerId: record.workerId ?? null,
           workerName,
-          orgRole: String(employee?.membership?.role || "").trim().toUpperCase(),
+          orgRole: String((employee?.orgRole ?? employee?.membership?.role) || "").trim().toUpperCase(),
           roleName: resolvePayrollRoleName(employee),
           payType: effectivePayType,
           bankName: resolveOptionalString(employee?.bankName, null),

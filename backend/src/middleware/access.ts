@@ -2,6 +2,7 @@
 import { type Request, type Response } from "express";
 import { type OrgUserRole } from "@prisma/client";
 import { prisma } from "../db";
+import { setCurrentRequestActorEmployeeId } from "../requestActor";
 import { normalizeEmail } from "../utils/common";
 import {
   createHttpError,
@@ -206,6 +207,34 @@ const cloneOrganizationAccessValue = (value: any) => {
   };
 };
 
+const EMPLOYEE_ACCESS_SELECT = {
+  id: true,
+  orgMembershipId: true,
+  orgId: true,
+  email: true,
+  orgRole: true,
+  status: true,
+  organization: true,
+} as const;
+
+const setRequestActorEmployeeFromRow = (employee: any) => {
+  if (employee?.id) {
+    setCurrentRequestActorEmployeeId(Number(employee.id));
+  }
+};
+
+const toOrgMembershipCompat = (employee: any) =>
+  employee
+    ? {
+        id: employee.orgMembershipId ?? null,
+        orgId: employee.orgId ?? null,
+        email: employee.email ?? null,
+        role: employee.orgRole,
+        status: employee.status,
+        employee,
+      }
+    : null;
+
 export const ensureOrganizationSubscription = async (organization: any) => {
   if (!organization) return null;
 
@@ -313,7 +342,7 @@ const getSystemAdminDefaultOrganization = async (
 ) => {
   const organizationWithActiveMembers = await prisma.organization.findFirst({
     where: {
-      memberships: {
+      employees: {
         some: { status: "ACTIVE" },
       },
     },
@@ -346,22 +375,23 @@ const resolveOrganizationByQuery = async (
     if (!organization) return null;
 
     if (requesterEmail) {
-      const [systemUser, membership] = await Promise.all([
+      const [systemUser, employee] = await Promise.all([
         prisma.systemUser.findUnique({
           where: { email: requesterEmail },
           select: { systemRole: true },
         }),
-        prisma.orgMembership.findUnique({
+        prisma.employee.findUnique({
           where: { orgId_email: { orgId, email: requesterEmail } },
-          select: { status: true },
+          select: { id: true, status: true },
         }),
       ]);
 
       const isSystemAdmin = systemUser?.systemRole === "SYSTEM_ADMIN";
-      const isActiveMember = membership?.status === "ACTIVE";
+      const isActiveMember = employee?.status === "ACTIVE";
       if (!isSystemAdmin && !isActiveMember) {
         throw createHttpError(403, "organization access denied");
       }
+      if (isActiveMember) setRequestActorEmployeeFromRow(employee);
 
       const withSubscription = await attachOrganizationSubscription(organization);
       return ensureOrganizationAccessible(
@@ -375,24 +405,25 @@ const resolveOrganizationByQuery = async (
   }
 
   if (requesterEmail) {
-    const [systemUser, membership] = await Promise.all([
+    const [systemUser, employee] = await Promise.all([
       prisma.systemUser.findUnique({
         where: { email: requesterEmail },
         select: { systemRole: true },
       }),
-      prisma.orgMembership.findFirst({
+      prisma.employee.findFirst({
         where: {
           email: requesterEmail,
           status: "ACTIVE",
         },
-        include: { organization: true },
+        select: EMPLOYEE_ACCESS_SELECT,
         orderBy: { id: "asc" },
       }),
     ]);
 
-    if (membership?.organization) {
+    if (employee?.organization) {
+      setRequestActorEmployeeFromRow(employee);
       const withSubscription = await attachOrganizationSubscription(
-        membership.organization
+        employee.organization
       );
       return ensureOrganizationAccessible(withSubscription, options);
     }
@@ -463,30 +494,40 @@ export const getRequestAccessContext = async (
       requesterEmail: "",
       systemUser: null,
       orgMembership: null,
+      employee: null,
     };
   }
 
-  const [systemUser, orgMembership] = await Promise.all([
+  const [systemUser, employee] = await Promise.all([
     prisma.systemUser.findUnique({
       where: { email: requesterEmail },
       select: { systemRole: true },
     }),
-    prisma.orgMembership.findUnique({
+    prisma.employee.findUnique({
       where: {
         orgId_email: {
           orgId: organization.id,
           email: requesterEmail,
         },
       },
-      select: { role: true, status: true },
+      select: {
+        id: true,
+        orgMembershipId: true,
+        orgId: true,
+        email: true,
+        orgRole: true,
+        status: true,
+      },
     }),
   ]);
+  setRequestActorEmployeeFromRow(employee);
 
   return {
     organization,
     requesterEmail,
     systemUser,
-    orgMembership,
+    orgMembership: toOrgMembershipCompat(employee),
+    employee,
   };
 };
 
@@ -557,4 +598,3 @@ export const requireSystemAdmin = async (req: Request, res: Response) => {
 
   return { requesterEmail };
 };
-

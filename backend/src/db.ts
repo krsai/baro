@@ -1,10 +1,15 @@
 import "./config/env";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { getCurrentRequestActor } from "./requestActor";
+import {
+  getCurrentRequestActor,
+  getCurrentRequestActorEmployeeId,
+} from "./requestActor";
 
 type AuditModelConfig = {
   hasCreatedBy: boolean;
   hasUpdatedBy: boolean;
+  hasCreatedByEmployeeId: boolean;
+  hasUpdatedByEmployeeId: boolean;
   relationModels: Map<string, string>;
 };
 
@@ -16,6 +21,12 @@ const modelAuditConfig = new Map<string, AuditModelConfig>(
     {
       hasCreatedBy: model.fields.some((field) => field.name === "createdBy"),
       hasUpdatedBy: model.fields.some((field) => field.name === "updatedBy"),
+      hasCreatedByEmployeeId: model.fields.some(
+        (field) => field.name === "createdByEmployeeId"
+      ),
+      hasUpdatedByEmployeeId: model.fields.some(
+        (field) => field.name === "updatedByEmployeeId"
+      ),
       relationModels: new Map(
         model.fields
           .filter((field) => field.kind === "object")
@@ -43,6 +54,17 @@ const assignActorIfMissing = (
   }
 };
 
+const assignActorEmployeeIfMissing = (
+  value: Record<string, unknown>,
+  fieldName: "createdByEmployeeId" | "updatedByEmployeeId",
+  employeeId: number | null
+) => {
+  if (!employeeId) return;
+  if (!hasMeaningfulValue(value[fieldName])) {
+    value[fieldName] = employeeId;
+  }
+};
+
 const applyAuditFieldsToModelData = (
   modelName: string,
   value: unknown,
@@ -65,6 +87,21 @@ const applyAuditFieldsToModelData = (
   }
   if (config.hasUpdatedBy) {
     assignActorIfMissing(value, "updatedBy", actor);
+  }
+  const actorEmployeeId = getCurrentRequestActorEmployeeId();
+  if (mode === "create" && config.hasCreatedByEmployeeId) {
+    assignActorEmployeeIfMissing(
+      value,
+      "createdByEmployeeId",
+      actorEmployeeId
+    );
+  }
+  if (config.hasUpdatedByEmployeeId) {
+    assignActorEmployeeIfMissing(
+      value,
+      "updatedByEmployeeId",
+      actorEmployeeId
+    );
   }
 
   for (const [relationFieldName, relatedModelName] of config.relationModels) {

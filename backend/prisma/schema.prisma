@@ -101,28 +101,32 @@ enum QcPassEventSourceType {
 }
 
 model SystemUser {
-  id         Int        @id @default(autoincrement())
-  email      String     @unique
-  systemRole SystemRole @default(USER)
-  createdAt  DateTime   @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt  DateTime   @updatedAt
+  id                  Int        @id @default(autoincrement())
+  email               String     @unique
+  systemRole          SystemRole @default(USER)
+  createdAt           DateTime   @default(now())
+  createdBy           String     @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime   @updatedAt
 }
 
 model ProcessMasterOption {
-  id        Int                     @id @default(autoincrement())
-  type      ProcessMasterOptionType
-  code      String
-  label     String
-  nameKo    String?
-  nameEn    String?
-  nameVi    String?
-  sortOrder Int                     @default(0)
-  createdAt DateTime                @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt DateTime                @updatedAt
-  parentRelations ProcessMasterOptionRelation[] @relation("ProcessMasterOptionRelationParent")
-  childRelations  ProcessMasterOptionRelation[] @relation("ProcessMasterOptionRelationChild")
+  id                  Int                           @id @default(autoincrement())
+  type                ProcessMasterOptionType
+  code                String
+  label               String
+  nameKo              String?
+  nameEn              String?
+  nameVi              String?
+  sortOrder           Int                           @default(0)
+  createdAt           DateTime                      @default(now())
+  createdBy           String                        @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime                      @updatedAt
+  parentRelations     ProcessMasterOptionRelation[] @relation("ProcessMasterOptionRelationParent")
+  childRelations      ProcessMasterOptionRelation[] @relation("ProcessMasterOptionRelationChild")
 
   @@unique([type, code])
   @@index([type, sortOrder, id])
@@ -144,94 +148,99 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
-  id             Int              @id @default(autoincrement())
-  name           String
-  nameKo         String?
-  nameVi         String?
-  code           String?          @unique
-  businessNumber String?
-  representative String?
+  id                       Int              @id @default(autoincrement())
+  name                     String
+  nameKo                   String?
+  nameVi                   String?
+  code                     String?          @unique
+  businessNumber           String?
+  representative           String?
   representativeEmployeeId Int?
-  industry       String?
-  address        String?
-  country        String?
-  countryCode    String?
-  phone          String?
-  email          String?
-  targetMonthlyWage Float?
-  wagePerSecond     Float?
-  type           OrganizationType @default(MANUFACTURER)
-  createdAt      DateTime         @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt      DateTime         @updatedAt
+  industry                 String?
+  address                  String?
+  country                  String?
+  countryCode              String?
+  phone                    String?
+  email                    String?
+  targetMonthlyWage        Float?
+  wagePerSecond            Float?
+  type                     OrganizationType @default(MANUFACTURER)
+  createdAt                DateTime         @default(now())
+  createdBy                String           @default("system@baro.local")
+  createdByEmployeeId      Int?
+  updatedByEmployeeId      Int?
+  updatedAt                DateTime         @updatedAt
 
-  categories                AttrCategory[]
-  roles                     AttrRole[]
-  processes                 AttrProcess[]
-  subscription              OrganizationSubscription?
-  memberships               OrgMembership[]
-  factories                 Factory[]
-  employees                 Employee[]
-  lines                     Line[]
-  styles                    Style[]
-  styleProcesses            StyleProcess[]
-  styleProcessStandards     StyleProcessStandard[]
-  orders                    WorkOrder[]
-  workLogs                  WorkLog[]
-  workRecords               WorkRecord[]
-  assignmentBoardState      AssignmentBoardState?
-  assignmentCards           AssignmentCard[]
-  assignmentPlans           AssignmentPlan[]
-  buyerAssignmentCards      AssignmentCard[]           @relation("AssignmentCardBuyerOrg")
-  buyerAssignmentPlans      AssignmentPlan[]           @relation("AssignmentPlanBuyerOrg")
-  qcPassEvents             QcPassEvent[]
-  payrollSnapshots          PayrollSnapshot[]
+  categories                  AttrCategory[]
+  roles                       AttrRole[]
+  processes                   AttrProcess[]
+  subscription                OrganizationSubscription?
+  memberships                 OrgMembership[]
+  factories                   Factory[]
+  employees                   Employee[]
+  lines                       Line[]
+  styles                      Style[]
+  styleProcesses              StyleProcess[]
+  styleProcessStandards       StyleProcessStandard[]
+  orders                      WorkOrder[]
+  workLogs                    WorkLog[]
+  workRecords                 WorkRecord[]
+  assignmentBoardState        AssignmentBoardState?
+  assignmentCards             AssignmentCard[]
+  assignmentPlans             AssignmentPlan[]
+  buyerAssignmentCards        AssignmentCard[]             @relation("AssignmentCardBuyerOrg")
+  buyerAssignmentPlans        AssignmentPlan[]             @relation("AssignmentPlanBuyerOrg")
+  qcPassEvents                QcPassEvent[]
+  payrollSnapshots            PayrollSnapshot[]
   quantitySettlementSnapshots QuantitySettlementSnapshot[]
-  attendanceEntries         AttendanceEntry[]
-  holidays                  OrganizationHoliday[]
-  atTrainingBuckets         AtTrainingBucket[]
-  atTrainingBucketProcesses AtTrainingBucketProcess[]
-  representativeEmployee    Employee?                  @relation("OrganizationRepresentative", fields: [representativeEmployeeId], references: [id], onDelete: SetNull)
-  manufacturerRelationships OrgRelationship[]         @relation("ManufacturerOrgRelationships")
-  brandRelationships        OrgRelationship[]         @relation("BrandOrgRelationships")
-  onboardingRequests        OnboardingRequest[]
-  buyerWorkOrders           WorkOrder[]              @relation("WorkOrderBuyerOrg")
-  sellerWorkOrders          WorkOrder[]              @relation("WorkOrderSellerOrg")
-  customerWorkOrders        WorkOrder[]              @relation("WorkOrderCustomerOrg")
+  attendanceEntries           AttendanceEntry[]
+  holidays                    OrganizationHoliday[]
+  atTrainingBuckets           AtTrainingBucket[]
+  atTrainingBucketProcesses   AtTrainingBucketProcess[]
+  representativeEmployee      Employee?                    @relation("OrganizationRepresentative", fields: [representativeEmployeeId], references: [id], onDelete: SetNull)
+  manufacturerRelationships   OrgRelationship[]            @relation("ManufacturerOrgRelationships")
+  brandRelationships          OrgRelationship[]            @relation("BrandOrgRelationships")
+  onboardingRequests          OnboardingRequest[]
+  buyerWorkOrders             WorkOrder[]                  @relation("WorkOrderBuyerOrg")
+  sellerWorkOrders            WorkOrder[]                  @relation("WorkOrderSellerOrg")
+  customerWorkOrders          WorkOrder[]                  @relation("WorkOrderCustomerOrg")
 
   @@index([representativeEmployeeId])
 }
 
 model SystemSetting {
-  key       String   @id
-  value     Json
-  updatedBy String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  key                 String   @id
+  value               Json
+  updatedBy           String?
+  updatedByEmployeeId Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model OnboardingRequest {
-  id                 Int                     @id @default(autoincrement())
-  requesterEmail     String
-  requestType        OnboardingRequestType   @default(REGISTER_ORG)
-  organizationNameEn String
-  organizationType   OrganizationType        @default(MANUFACTURER)
-  country            String                  @default("KR")
-  companyAddress     String                  @default("")
-  businessNumber     String
-  contactName        String                  @default("")
-  contactEmail       String
-  contactPhone       String
-  status             OnboardingRequestStatus @default(PENDING)
-  approvedBy         String?
-  approvedAt         DateTime?
-  rejectedBy         String?
-  rejectedAt         DateTime?
-  rejectionReason    String?
-  organizationId     Int?
-  createdAt          DateTime                @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt          DateTime                @updatedAt
+  id                  Int                     @id @default(autoincrement())
+  requesterEmail      String
+  requestType         OnboardingRequestType   @default(REGISTER_ORG)
+  organizationNameEn  String
+  organizationType    OrganizationType        @default(MANUFACTURER)
+  country             String                  @default("KR")
+  companyAddress      String                  @default("")
+  businessNumber      String
+  contactName         String                  @default("")
+  contactEmail        String
+  contactPhone        String
+  status              OnboardingRequestStatus @default(PENDING)
+  approvedBy          String?
+  approvedAt          DateTime?
+  rejectedBy          String?
+  rejectedAt          DateTime?
+  rejectionReason     String?
+  organizationId      Int?
+  createdAt           DateTime                @default(now())
+  createdBy           String                  @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime                @updatedAt
 
   organization Organization? @relation(fields: [organizationId], references: [id])
 
@@ -241,19 +250,21 @@ model OnboardingRequest {
 }
 
 model OrganizationSubscription {
-  id              Int                            @id @default(autoincrement())
-  orgId           Int                            @unique
-  status          OrganizationSubscriptionStatus @default(NOT_SUBSCRIBED)
-  membershipEmail String?
-  billingEmail    String?
-  trialStartedAt  DateTime?
-  trialEndsAt     DateTime?
-  activatedAt     DateTime?
-  activeEndsAt    DateTime?
-  suspendedAt     DateTime?
-  createdAt       DateTime                       @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt       DateTime                       @updatedAt
+  id                  Int                            @id @default(autoincrement())
+  orgId               Int                            @unique
+  status              OrganizationSubscriptionStatus @default(NOT_SUBSCRIBED)
+  membershipEmail     String?
+  billingEmail        String?
+  trialStartedAt      DateTime?
+  trialEndsAt         DateTime?
+  activatedAt         DateTime?
+  activeEndsAt        DateTime?
+  suspendedAt         DateTime?
+  createdAt           DateTime                       @default(now())
+  createdBy           String                         @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime                       @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
 
@@ -261,18 +272,20 @@ model OrganizationSubscription {
 }
 
 model OrgMembership {
-  id          Int                 @id @default(autoincrement())
-  orgId       Int
-  email       String?
-  role        OrgUserRole         @default(OPERATOR)
-  status      OrgMembershipStatus @default(ACTIVE)
-  requestedAt DateTime?
-  requestedName String?
-  approvedAt  DateTime?
-  approvedBy  String?
-  createdAt   DateTime            @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt   DateTime            @updatedAt
+  id                  Int                 @id @default(autoincrement())
+  orgId               Int
+  email               String?
+  role                OrgUserRole         @default(OPERATOR)
+  status              OrgMembershipStatus @default(ACTIVE)
+  requestedAt         DateTime?
+  requestedName       String?
+  approvedAt          DateTime?
+  approvedBy          String?
+  createdAt           DateTime            @default(now())
+  createdBy           String              @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime            @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
   employee     Employee?
@@ -285,28 +298,30 @@ model OrgMembership {
 }
 
 model Factory {
-  id                Int      @id @default(autoincrement())
-  orgId             Int
-  name              String
-  nameKo            String?
-  nameVi            String?
-  factoryCode       String?
+  id                  Int      @id @default(autoincrement())
+  orgId               Int
+  name                String
+  nameKo              String?
+  nameVi              String?
+  factoryCode         String?
   managementStartDate String?
-  address           String?
-  country           String?
-  countryCode       String?
-  phoneNumber       String?
-  manager           String?
-  managerEmployeeId Int?
-  targetMonthlyWage Float?
-  wagePerSecond     Float?
-  createdAt         DateTime @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt         DateTime @updatedAt
+  address             String?
+  country             String?
+  countryCode         String?
+  phoneNumber         String?
+  manager             String?
+  managerEmployeeId   Int?
+  targetMonthlyWage   Float?
+  wagePerSecond       Float?
+  createdAt           DateTime @default(now())
+  createdBy           String   @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime @updatedAt
 
-  organization      Organization      @relation(fields: [orgId], references: [id])
-  managerEmployee   Employee?         @relation("FactoryManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
-  employees         Employee[]        @relation("FactoryEmployees")
+  organization      Organization       @relation(fields: [orgId], references: [id])
+  managerEmployee   Employee?          @relation("FactoryManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
+  employees         Employee[]         @relation("FactoryEmployees")
   lines             Line[]
   attendanceEntries AttendanceEntry[]
   workLogs          WorkLog[]
@@ -318,23 +333,25 @@ model Factory {
 }
 
 model Line {
-  id                Int      @id @default(autoincrement())
-  orgId             Int
-  factoryId         Int
-  name              String
-  managerEmployeeId Int?
-  isActive          Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt         DateTime @updatedAt
+  id                  Int      @id @default(autoincrement())
+  orgId               Int
+  factoryId           Int
+  name                String
+  managerEmployeeId   Int?
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  createdBy           String   @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime @updatedAt
 
   organization    Organization     @relation(fields: [orgId], references: [id])
   factory         Factory          @relation(fields: [factoryId], references: [id])
   manager         Employee?        @relation("LineManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
   assignments     LineAssignment[]
   assignmentPlans AssignmentPlan[]
-  employees       Employee[]        @relation("EmployeeCurrentLine")
-  workRecords     WorkRecord[]      @relation("WorkRecordLine")
+  employees       Employee[]       @relation("EmployeeCurrentLine")
+  workRecords     WorkRecord[]     @relation("WorkRecordLine")
 
   @@unique([factoryId, name])
   @@index([orgId])
@@ -342,60 +359,77 @@ model Line {
 }
 
 model Employee {
-  id                Int       @id @default(autoincrement())
-  orgId             Int
-  orgMembershipId   Int       @unique
-  factoryId         Int?
-  lineId            Int?
-  roleId            Int?
-  employeeNo        String?
-  payType           String?
-  fixedSalary       Int?
-  name              String?
-  phone             String?
-  bankName          String?
-  bankAccountNumber String?
-  position          String?
-  joinedAt          DateTime?
-  leftAt            DateTime?
-  leaveStartAt      DateTime?
-  leaveEndAt        DateTime?
-  createdAt         DateTime  @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt         DateTime  @updatedAt
+  id                  Int                 @id @default(autoincrement())
+  orgId               Int
+  /// Deprecated compatibility link while OrgMembership is being retired as the
+  /// account source of truth. New account fields live directly on Employee.
+  orgMembershipId     Int?                @unique
+  email               String?
+  orgRole             OrgUserRole         @default(WORKER)
+  status              OrgMembershipStatus @default(ACTIVE)
+  requestedAt         DateTime?
+  requestedName       String?
+  approvedAt          DateTime?
+  approvedBy          String?
+  factoryId           Int?
+  lineId              Int?
+  roleId              Int?
+  employeeNo          String?
+  payType             String?
+  fixedSalary         Int?
+  name                String?
+  phone               String?
+  bankName            String?
+  bankAccountNumber   String?
+  position            String?
+  joinedAt            DateTime?
+  leftAt              DateTime?
+  leaveStartAt        DateTime?
+  leaveEndAt          DateTime?
+  createdAt           DateTime            @default(now())
+  createdBy           String              @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime            @updatedAt
 
-  organization      Organization      @relation(fields: [orgId], references: [id])
-  membership        OrgMembership     @relation(fields: [orgMembershipId], references: [id])
-  factory           Factory?          @relation("FactoryEmployees", fields: [factoryId], references: [id])
-  line              Line?             @relation("EmployeeCurrentLine", fields: [lineId], references: [id], onDelete: SetNull)
-  role              AttrRole?         @relation(fields: [roleId], references: [id])
-  lineAssignments   LineAssignment[]
-  representedOrganizations Organization[]     @relation("OrganizationRepresentative")
-  managedFactories  Factory[]         @relation("FactoryManager")
-  managedLines      Line[]            @relation("LineManager")
-  attendanceEntries AttendanceEntry[]
-  workRecords       WorkRecord[]
+  organization             Organization      @relation(fields: [orgId], references: [id])
+  membership               OrgMembership?    @relation(fields: [orgMembershipId], references: [id])
+  factory                  Factory?          @relation("FactoryEmployees", fields: [factoryId], references: [id])
+  line                     Line?             @relation("EmployeeCurrentLine", fields: [lineId], references: [id], onDelete: SetNull)
+  role                     AttrRole?         @relation(fields: [roleId], references: [id])
+  lineAssignments          LineAssignment[]
+  representedOrganizations Organization[]    @relation("OrganizationRepresentative")
+  managedFactories         Factory[]         @relation("FactoryManager")
+  managedLines             Line[]            @relation("LineManager")
+  attendanceEntries        AttendanceEntry[]
+  workRecords              WorkRecord[]
 
+  @@unique([orgId, email])
+  @@unique([orgId, employeeNo])
   @@index([orgId])
   @@index([factoryId])
   @@index([lineId])
   @@index([roleId])
-  @@unique([orgId, employeeNo])
+  @@index([email])
+  @@index([status])
+  @@index([orgId, status])
 }
 
 model AttendanceEntry {
-  id            Int      @id @default(autoincrement())
-  orgId         Int
-  factoryId     Int
-  workerId      Int
-  workDate      String
-  clockIn       String?
-  clockOut      String?
-  workedSeconds Int?
-  note          String?
-  createdAt     DateTime @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt     DateTime @updatedAt
+  id                  Int      @id @default(autoincrement())
+  orgId               Int
+  factoryId           Int
+  workerId            Int
+  workDate            String
+  clockIn             String?
+  clockOut            String?
+  workedSeconds       Int?
+  note                String?
+  createdAt           DateTime @default(now())
+  createdBy           String   @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
   factory      Factory      @relation(fields: [factoryId], references: [id])
@@ -408,12 +442,14 @@ model AttendanceEntry {
 }
 
 model OrganizationHoliday {
-  id          Int      @id @default(autoincrement())
-  orgId       Int
-  holidayDate String
-  createdAt   DateTime @default(now())
-  createdBy   String   @default("system@baro.local")
-  updatedAt   DateTime @updatedAt
+  id                  Int      @id @default(autoincrement())
+  orgId               Int
+  holidayDate         String
+  createdAt           DateTime @default(now())
+  createdBy           String   @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
 
@@ -437,19 +473,21 @@ model LineAssignment {
 }
 
 model OrgRelationship {
-  id                Int      @id @default(autoincrement())
-  manufacturerOrgId Int
-  brandOrgId        Int
-  customerCode      String?
-  managerName       String?
-  managerPhone      String?
-  managerEmail      String?
-  memo              String?
+  id                      Int      @id @default(autoincrement())
+  manufacturerOrgId       Int
+  brandOrgId              Int
+  customerCode            String?
+  managerName             String?
+  managerPhone            String?
+  managerEmail            String?
+  memo                    String?
   pricingDefaultTradeType String?
-  pricingMatrix     Json?
-  createdAt         DateTime @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt         DateTime @updatedAt
+  pricingMatrix           Json?
+  createdAt               DateTime @default(now())
+  createdBy               String   @default("system@baro.local")
+  createdByEmployeeId     Int?
+  updatedByEmployeeId     Int?
+  updatedAt               DateTime @updatedAt
 
   manufacturer Organization @relation("ManufacturerOrgRelationships", fields: [manufacturerOrgId], references: [id])
   brand        Organization @relation("BrandOrgRelationships", fields: [brandOrgId], references: [id])
@@ -467,7 +505,7 @@ model AttrColor {
   nameEn String?
   nameVi String?
 
-  workOrderItems  WorkOrderItem[]
+  workOrderItems WorkOrderItem[]
   qcPassEvents   QcPassEvent[]
 }
 
@@ -518,35 +556,37 @@ model AttrProcess {
 }
 
 model Style {
-  id               Int      @id @default(autoincrement())
-  orgId            Int
-  code             String
-  name             String
-  registrationDate String?
-  designer         String?
-  collection       String?
-  season           String?
-  imageUrls        Json?
-  /// Deprecated 2026-07-02. No longer written by new/updated code paths —
+  id                  Int      @id @default(autoincrement())
+  orgId               Int
+  code                String
+  name                String
+  registrationDate    String?
+  designer            String?
+  collection          String?
+  season              String?
+  imageUrls           Json?
+  /// Deprecated 2026-07-02. No longer written by new/updated code paths ??
   /// StyleProcess/StyleProcessStandard (FK styleId) are the source of truth. Kept only
   /// as a one-time seed for `ensureStyleProcessStorageForStyles`' self-healing backfill
   /// of legacy styles; every response/calculation path reads the relational mirror, not
   /// this column. Run `npm run verify:style-process-backfill` (0 results) before dropping.
-  processes        Json?
-  bom              Json?
-  bomNotes         String?
-  revenueMemo      String?
-  createdAt        DateTime @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt        DateTime @updatedAt
+  processes           Json?
+  bom                 Json?
+  bomNotes            String?
+  revenueMemo         String?
+  createdAt           DateTime @default(now())
+  createdBy           String   @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime @updatedAt
 
-  organization   Organization    @relation(fields: [orgId], references: [id])
-  styleProcesses StyleProcess[]
-  workOrderItems WorkOrderItem[]
+  organization    Organization              @relation(fields: [orgId], references: [id])
+  styleProcesses  StyleProcess[]
+  workOrderItems  WorkOrderItem[]
   trainingBuckets AtTrainingBucketProcess[]
   assignmentPlans AssignmentPlan[]
   assignmentCards AssignmentCard[]
-  workRecords    WorkRecord[]
+  workRecords     WorkRecord[]
 
   @@unique([orgId, code])
   @@unique([orgId, name])
@@ -554,26 +594,28 @@ model Style {
 }
 
 model StyleProcess {
-  id                 Int      @id @default(autoincrement())
-  orgId              Int
-  styleId            Int
-  processCode        String
-  processName        String
-  processComposition Json?
-  processDescription String?
-  timesPerPiece      Int      @default(1)
-  sortOrder          Int      @default(0)
-  ptSeconds          Float?
-  atParams           Json?
-  createdAt          DateTime @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt          DateTime @updatedAt
+  id                  Int      @id @default(autoincrement())
+  orgId               Int
+  styleId             Int
+  processCode         String
+  processName         String
+  processComposition  Json?
+  processDescription  String?
+  timesPerPiece       Int      @default(1)
+  sortOrder           Int      @default(0)
+  ptSeconds           Float?
+  atParams            Json?
+  createdAt           DateTime @default(now())
+  createdBy           String   @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime @updatedAt
 
-  organization Organization          @relation(fields: [orgId], references: [id])
-  style        Style                 @relation(fields: [styleId], references: [id], onDelete: Cascade)
-  standards    StyleProcessStandard[]
+  organization    Organization              @relation(fields: [orgId], references: [id])
+  style           Style                     @relation(fields: [styleId], references: [id], onDelete: Cascade)
+  standards       StyleProcessStandard[]
   trainingBuckets AtTrainingBucketProcess[]
-  workRecords  WorkRecord[]
+  workRecords     WorkRecord[]
 
   @@unique([styleId, orgId, processCode])
   @@index([orgId])
@@ -581,14 +623,14 @@ model StyleProcess {
 }
 
 model StyleProcessStandard {
-  id             Int      @id @default(autoincrement())
-  orgId          Int
-  styleProcessId Int
-  bucketQuantity Int
+  id              Int      @id @default(autoincrement())
+  orgId           Int
+  styleProcessId  Int
+  bucketQuantity  Int
   bucketStSeconds Float
-  setBy          String?
-  setAt          DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  setBy           String?
+  setAt           DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
   styleProcess StyleProcess @relation(fields: [styleProcessId], references: [id], onDelete: Cascade)
@@ -599,21 +641,23 @@ model StyleProcessStandard {
 }
 
 model AtTrainingBucket {
-  id                 Int      @id @default(autoincrement())
-  orgId              Int
-  monthKey           String
-  sourceWorkLogId    Int
-  workDate           String
-  factoryId          Int?
-  laborInputSeconds  Float
-  attendanceCoverage Float?
-  createdAt          DateTime @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt          DateTime @updatedAt
+  id                  Int      @id @default(autoincrement())
+  orgId               Int
+  monthKey            String
+  sourceWorkLogId     Int
+  workDate            String
+  factoryId           Int?
+  laborInputSeconds   Float
+  attendanceCoverage  Float?
+  createdAt           DateTime @default(now())
+  createdBy           String   @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime @updatedAt
 
-  organization Organization             @relation(fields: [orgId], references: [id])
-  sourceWorkLog WorkLog                  @relation(fields: [sourceWorkLogId], references: [id], onDelete: Cascade)
-  factory       Factory?                 @relation(fields: [factoryId], references: [id], onDelete: SetNull)
+  organization  Organization              @relation(fields: [orgId], references: [id])
+  sourceWorkLog WorkLog                   @relation(fields: [sourceWorkLogId], references: [id], onDelete: Cascade)
+  factory       Factory?                  @relation(fields: [factoryId], references: [id], onDelete: SetNull)
   processRows   AtTrainingBucketProcess[]
 
   @@unique([orgId, sourceWorkLogId])
@@ -623,20 +667,22 @@ model AtTrainingBucket {
 }
 
 model AtTrainingBucketProcess {
-  id             Int      @id @default(autoincrement())
-  orgId          Int
-  bucketId       Int
-  styleId        Int
-  styleProcessId Int
-  quantity       Int
-  createdAt      DateTime @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt      DateTime @updatedAt
+  id                  Int      @id @default(autoincrement())
+  orgId               Int
+  bucketId            Int
+  styleId             Int
+  styleProcessId      Int
+  quantity            Int
+  createdAt           DateTime @default(now())
+  createdBy           String   @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime @updatedAt
 
   organization Organization     @relation(fields: [orgId], references: [id])
-  bucket       AtTrainingBucket  @relation(fields: [bucketId], references: [id], onDelete: Cascade)
-  style        Style             @relation(fields: [styleId], references: [id], onDelete: Cascade)
-  styleProcess StyleProcess      @relation(fields: [styleProcessId], references: [id], onDelete: Cascade)
+  bucket       AtTrainingBucket @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+  style        Style            @relation(fields: [styleId], references: [id], onDelete: Cascade)
+  styleProcess StyleProcess     @relation(fields: [styleProcessId], references: [id], onDelete: Cascade)
 
   @@unique([bucketId, styleProcessId])
   @@index([orgId, styleProcessId])
@@ -644,32 +690,34 @@ model AtTrainingBucketProcess {
 }
 
 model WorkOrder {
-  id            Int             @id @default(autoincrement())
-  orgId         Int
-  orderId       String
-  orderNumber   String
-  buyerOrgId      Int?
-  sellerOrgId     Int?
-  customerId    Int?
-  dueDate       String?
-  status        WorkOrderStatus @default(EDITING)
-  confirmationStatus WorkOrderConfirmationStatus @default(PLANNED)
+  id                   Int                         @id @default(autoincrement())
+  orgId                Int
+  orderId              String
+  orderNumber          String
+  buyerOrgId           Int?
+  sellerOrgId          Int?
+  customerId           Int?
+  dueDate              String?
+  status               WorkOrderStatus             @default(EDITING)
+  confirmationStatus   WorkOrderConfirmationStatus @default(PLANNED)
   modificationLockedAt DateTime?
   modificationLockedBy String?
-  /// Deprecated 2026-07-02. No longer written by new/updated code paths — WorkOrderItem
+  /// Deprecated 2026-07-02. No longer written by new/updated code paths ??WorkOrderItem
   /// (FK workOrderId) is the source of truth. Read-dead except for legacy pre-relational
   /// rows; run `npm run verify:workorder-item-backfill` before dropping this column.
-  items         Json?
-  totalQuantity Int             @default(0)
-  createdAt     DateTime        @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt     DateTime        @updatedAt
+  items                Json?
+  totalQuantity        Int                         @default(0)
+  createdAt            DateTime                    @default(now())
+  createdBy            String                      @default("system@baro.local")
+  createdByEmployeeId  Int?
+  updatedByEmployeeId  Int?
+  updatedAt            DateTime                    @updatedAt
 
-  organization   Organization    @relation(fields: [orgId], references: [id])
-  buyerOrg       Organization?   @relation("WorkOrderBuyerOrg", fields: [buyerOrgId], references: [id], onDelete: SetNull)
-  sellerOrg      Organization?   @relation("WorkOrderSellerOrg", fields: [sellerOrgId], references: [id], onDelete: SetNull)
-  customerOrg    Organization?   @relation("WorkOrderCustomerOrg", fields: [customerId], references: [id], onDelete: SetNull)
-  workOrderItems WorkOrderItem[]
+  organization    Organization     @relation(fields: [orgId], references: [id])
+  buyerOrg        Organization?    @relation("WorkOrderBuyerOrg", fields: [buyerOrgId], references: [id], onDelete: SetNull)
+  sellerOrg       Organization?    @relation("WorkOrderSellerOrg", fields: [sellerOrgId], references: [id], onDelete: SetNull)
+  customerOrg     Organization?    @relation("WorkOrderCustomerOrg", fields: [customerId], references: [id], onDelete: SetNull)
+  workOrderItems  WorkOrderItem[]
   assignmentPlans AssignmentPlan[]
   assignmentCards AssignmentCard[]
 
@@ -681,18 +729,20 @@ model WorkOrder {
 }
 
 model WorkOrderItem {
-  id             Int                  @id @default(autoincrement())
-  workOrderId    Int
-  itemId         String               @default("")
-  styleId        Int?
-  colorId        Int?
-  gender         WorkOrderItemGender?
-  sizeQuantities Json?
-  totalQuantity  Int                  @default(0)
-  sortOrder      Int                  @default(0)
-  createdAt      DateTime             @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt      DateTime             @updatedAt
+  id                  Int                  @id @default(autoincrement())
+  workOrderId         Int
+  itemId              String               @default("")
+  styleId             Int?
+  colorId             Int?
+  gender              WorkOrderItemGender?
+  sizeQuantities      Json?
+  totalQuantity       Int                  @default(0)
+  sortOrder           Int                  @default(0)
+  createdAt           DateTime             @default(now())
+  createdBy           String               @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime             @updatedAt
 
   workOrder WorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
   style     Style?     @relation(fields: [styleId], references: [id], onDelete: SetNull)
@@ -704,56 +754,58 @@ model WorkOrderItem {
 }
 
 model AssignmentPlan {
-  id                    Int       @id @default(autoincrement())
-  orgId                 Int
-  lineId                Int
-  externalId            String
-  cardId                String?
-  assignmentCardId      Int?
-  workOrderId           Int?
-  styleId               Int?
+  id                        Int                   @id @default(autoincrement())
+  orgId                     Int
+  lineId                    Int
+  externalId                String
+  cardId                    String?
+  assignmentCardId          Int?
+  workOrderId               Int?
+  styleId                   Int?
   // Real FK replacing the "customer" string copy (AssignmentCard/AssignmentPlan
   // FK+join redesign, Phase A). Named buyerOrgId (not customerId) to match
   // WorkOrder's own naming - the ordering party (buyer org), same as
   // WorkOrder.buyerOrgId. Backfilled via assignmentCardId -> AssignmentCard.buyerOrgId.
-  buyerOrgId            Int?
+  buyerOrgId                Int?
   // orderNo/customer/label/previewUrl were dropped in Phase E (AssignmentCard/
   // AssignmentPlan FK+join redesign) - all four are fully derivable through
   // workOrderId/styleId/buyerOrgId (workOrder.orderNumber, style.name,
   // buyerOrg.name, style.imageUrls[0]), so keeping them as separate text
   // columns was pure duplication once those FKs existed. See toAssignmentPlanResponse.
-  assignmentQuantity       Int?
-  originOrderId            String?
-  basis                    String?
-  assignmentCtTotalSeconds Int?
-  assignmentCtSnapshot     Json?
-  assignmentStTotalSeconds Int?
-  startIndex               Int
-  endIndex                 Int
-  startDayOffsetPercent    Float?
-  startDayPercent          Float?
-  endDayPercent            Float?
-  isCompleted           Boolean   @default(false)
-  finalQuantity         Int?
-  completedAt           DateTime?
-  productionCompletedAt DateTime?
+  assignmentQuantity        Int?
+  originOrderId             String?
+  basis                     String?
+  assignmentCtTotalSeconds  Int?
+  assignmentCtSnapshot      Json?
+  assignmentStTotalSeconds  Int?
+  startIndex                Int
+  endIndex                  Int
+  startDayOffsetPercent     Float?
+  startDayPercent           Float?
+  endDayPercent             Float?
+  isCompleted               Boolean               @default(false)
+  finalQuantity             Int?
+  completedAt               DateTime?
+  productionCompletedAt     DateTime?
   actualProducedCompletedAt DateTime?
-  candidateEndDate      DateTime?
-  renderEndDate         DateTime?
-  forecastCompletedAt   DateTime?
-  forecastBasis         String?
-  confidence            String?
-  scheduleStatus        String?
-  qcPassedTotal         Int       @default(0)
-  latestQcDate          String?
-  closedQty             Int?
-  closedAt              DateTime?
-  closedBy              String?
-  closeMode             AssignmentCloseMode?
-  closeBasis            AssignmentCloseBasis?
-  createdAt             DateTime  @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt             DateTime
+  candidateEndDate          DateTime?
+  renderEndDate             DateTime?
+  forecastCompletedAt       DateTime?
+  forecastBasis             String?
+  confidence                String?
+  scheduleStatus            String?
+  qcPassedTotal             Int                   @default(0)
+  latestQcDate              String?
+  closedQty                 Int?
+  closedAt                  DateTime?
+  closedBy                  String?
+  closeMode                 AssignmentCloseMode?
+  closeBasis                AssignmentCloseBasis?
+  createdAt                 DateTime              @default(now())
+  createdBy                 String                @default("system@baro.local")
+  createdByEmployeeId       Int?
+  updatedByEmployeeId       Int?
+  updatedAt                 DateTime
 
   line           Line            @relation(fields: [lineId], references: [id], onDelete: Restrict)
   organization   Organization    @relation(fields: [orgId], references: [id])
@@ -776,20 +828,22 @@ model AssignmentPlan {
 }
 
 model QcPassEvent {
-  id               Int                   @id @default(autoincrement())
-  orgId            Int
-  assignmentPlanId Int
-  inspectedOn      String
-  passedQuantity   Int                   @default(0)
-  colorId          Int?
-  sizeKey          String?
-  note             String?
-  sourceType       QcPassEventSourceType @default(MANUAL)
-  cancelledAt      DateTime?
-  cancelledBy      String?
-  createdAt        DateTime              @default(now())
-  createdBy        String                @default("system@baro.local")
-  updatedAt        DateTime              @updatedAt
+  id                  Int                   @id @default(autoincrement())
+  orgId               Int
+  assignmentPlanId    Int
+  inspectedOn         String
+  passedQuantity      Int                   @default(0)
+  colorId             Int?
+  sizeKey             String?
+  note                String?
+  sourceType          QcPassEventSourceType @default(MANUAL)
+  cancelledAt         DateTime?
+  cancelledBy         String?
+  createdAt           DateTime              @default(now())
+  createdBy           String                @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime              @updatedAt
 
   organization   Organization   @relation(fields: [orgId], references: [id])
   assignmentPlan AssignmentPlan @relation(fields: [assignmentPlanId], references: [id], onDelete: Cascade)
@@ -802,31 +856,33 @@ model QcPassEvent {
 }
 
 model WorkLog {
-  id                     Int      @id @default(autoincrement())
-  orgId                  Int
-  displayDate            String   @map("workDate")
-  coverageStartDate      String?
-  coverageEndDate        String?
-  entryMode              String?
-  factoryId              Int?
-  factoryWagePerSecond   Float?
-  ctBasis                String   @default("CT")
-  workerCount            Int      @default(0)
-  itemCount              Int      @default(0)
-  totalCtSeconds         Float    @default(0)
-  note                   String?
-  /// Header metadata only ({ lineId, lineName }) — never a copy of row data. WorkRecord
+  id                   Int      @id @default(autoincrement())
+  orgId                Int
+  displayDate          String   @map("workDate")
+  coverageStartDate    String?
+  coverageEndDate      String?
+  entryMode            String?
+  factoryId            Int?
+  factoryWagePerSecond Float?
+  ctBasis              String   @default("CT")
+  workerCount          Int      @default(0)
+  itemCount            Int      @default(0)
+  totalCtSeconds       Float    @default(0)
+  note                 String?
+  /// Header metadata only ({ lineId, lineName }) ??never a copy of row data. WorkRecord
   /// (FK workLogId) is and has always been the sole source of truth for record rows;
   /// do not read this field as a records-list fallback.
-  records                Json?
-  updatedBy              String?
-  createdAt              DateTime @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt              DateTime @updatedAt
+  records              Json?
+  updatedBy            String?
+  createdAt            DateTime @default(now())
+  createdBy            String   @default("system@baro.local")
+  createdByEmployeeId  Int?
+  updatedByEmployeeId  Int?
+  updatedAt            DateTime @updatedAt
 
-  organization     Organization             @relation(fields: [orgId], references: [id])
-  factory          Factory?                 @relation(fields: [factoryId], references: [id], onDelete: SetNull)
-  workRecords      WorkRecord[]
+  organization      Organization       @relation(fields: [orgId], references: [id])
+  factory           Factory?           @relation(fields: [factoryId], references: [id], onDelete: SetNull)
+  workRecords       WorkRecord[]
   atTrainingBuckets AtTrainingBucket[]
 
   @@index([orgId, displayDate])
@@ -835,21 +891,23 @@ model WorkLog {
 }
 
 model WorkRecord {
-  id               Int      @id @default(autoincrement())
-  orgId            Int
-  workLogId        Int
-  workerId         Int?
-  lineId           Int?
-  styleId          Int?
-  styleProcessId   Int?
-  assignmentPlanId Int?
+  id                         Int      @id @default(autoincrement())
+  orgId                      Int
+  workLogId                  Int
+  workerId                   Int?
+  lineId                     Int?
+  styleId                    Int?
+  styleProcessId             Int?
+  assignmentPlanId           Int?
   effectiveCoverageStartDate String?
   effectiveCoverageEndDate   String?
-  ctSeconds        Int      @default(0)
-  quantity         Int      @default(0)
-  createdAt        DateTime @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt        DateTime @updatedAt
+  ctSeconds                  Int      @default(0)
+  quantity                   Int      @default(0)
+  createdAt                  DateTime @default(now())
+  createdBy                  String   @default("system@baro.local")
+  createdByEmployeeId        Int?
+  updatedByEmployeeId        Int?
+  updatedAt                  DateTime @updatedAt
 
   organization   Organization    @relation(fields: [orgId], references: [id])
   workLog        WorkLog         @relation(fields: [workLogId], references: [id], onDelete: Cascade)
@@ -869,14 +927,16 @@ model WorkRecord {
 }
 
 model PayrollSnapshot {
-  id        Int      @id @default(autoincrement())
-  orgId     Int
-  month     String
-  data      Json
-  lockedAt  DateTime
-  lockedBy  String
-  createdAt DateTime @default(now())
-  createdBy String   @default("system@baro.local")
+  id                  Int      @id @default(autoincrement())
+  orgId               Int
+  month               String
+  data                Json
+  lockedAt            DateTime
+  lockedBy            String
+  createdAt           DateTime @default(now())
+  createdBy           String   @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
 
   organization Organization @relation(fields: [orgId], references: [id])
 
@@ -885,14 +945,16 @@ model PayrollSnapshot {
 }
 
 model QuantitySettlementSnapshot {
-  id        Int      @id @default(autoincrement())
-  orgId     Int
-  month     String
-  data      Json
-  createdAt DateTime @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt DateTime @updatedAt
-  updatedBy String   @default("system@baro.local")
+  id                  Int      @id @default(autoincrement())
+  orgId               Int
+  month               String
+  data                Json
+  createdAt           DateTime @default(now())
+  createdBy           String   @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime @updatedAt
+  updatedBy           String   @default("system@baro.local")
 
   organization Organization @relation(fields: [orgId], references: [id])
 
@@ -901,15 +963,17 @@ model QuantitySettlementSnapshot {
 }
 
 model AssignmentBoardState {
-  id          Int      @id @default(autoincrement())
-  orgId       Int      @unique
+  id                  Int      @id @default(autoincrement())
+  orgId               Int      @unique
   /// Deprecated board payload mirror. AssignmentCard is the canonical card store.
-  cards       Json?
+  cards               Json?
   /// Deprecated board payload mirror. AssignmentPlan is the canonical assignment store.
-  assignments Json?
-  createdAt   DateTime @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt   DateTime @updatedAt
+  assignments         Json?
+  createdAt           DateTime @default(now())
+  createdBy           String   @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
 
@@ -917,14 +981,16 @@ model AssignmentBoardState {
 }
 
 model AssignmentCard {
-  id        Int      @id @default(autoincrement())
-  orgId     Int
-  cardId    String
-  sortOrder Int      @default(0)
-  payload   Json
-  createdAt DateTime @default(now())
-  createdBy String   @default("system@baro.local")
-  updatedAt DateTime @updatedAt
+  id                  Int      @id @default(autoincrement())
+  orgId               Int
+  cardId              String
+  sortOrder           Int      @default(0)
+  payload             Json
+  createdAt           DateTime @default(now())
+  createdBy           String   @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime @updatedAt
 
   // Real FK columns replacing the "payload JSON happens to carry these
   // ints/strings" convention (AGENTS.md AssignmentCard/AssignmentPlan

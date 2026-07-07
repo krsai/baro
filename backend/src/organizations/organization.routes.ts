@@ -222,19 +222,19 @@ export const createOrganizationRouter = ({
       return res.status(401).json({ ok: false, error: "request user email is required" });
     }
 
-    const [systemUser, membership] = await Promise.all([
+    const [systemUser, employee] = await Promise.all([
       prisma.systemUser.findUnique({
         where: { email: requesterEmail },
         select: { systemRole: true },
       }),
-      prisma.orgMembership.findUnique({
+      prisma.employee.findUnique({
         where: { orgId_email: { orgId: id, email: requesterEmail } },
-        select: { status: true, role: true },
+        select: { status: true, orgRole: true },
       }),
     ]);
 
     const isSystemAdmin = systemUser?.systemRole === "SYSTEM_ADMIN";
-    const isOrgAdmin = membership?.status === "ACTIVE" && membership?.role === "ADMIN";
+    const isOrgAdmin = employee?.status === "ACTIVE" && employee?.orgRole === "ADMIN";
 
     if (!isSystemAdmin && !isOrgAdmin) {
       return res.status(403).json({ ok: false, error: "admin access required" });
@@ -301,7 +301,7 @@ export const createOrganizationRouter = ({
       representativeEmployee?.phone
     );
     const representativeEmployeeEmail = normalizeOptionalOrganizationText(
-      representativeEmployee?.membership?.email
+      representativeEmployee?.email ?? representativeEmployee?.membership?.email
     );
 
     const organizationUpdateData: Prisma.OrganizationUpdateInput = {

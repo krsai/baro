@@ -5,6 +5,7 @@ import {
   generateNextEmployeeNo,
   normalizeEmployeeNo,
 } from "../employees/employeeNumber";
+import { syncEmployeeAccountFromMembership } from "../employees/employeeAccount";
 import {
   getOrganizationByQuery,
   getRequesterEmail,
@@ -100,6 +101,21 @@ export const createOrgMembershipRouter = ({
       !resolveOptionalString(employee?.position, null)
     );
 
+  const toMembershipResponseFromEmployee = (employee: any) => ({
+    id: employee?.orgMembershipId ?? employee?.id ?? null,
+    orgId: employee?.orgId ?? null,
+    email: employee?.email ?? null,
+    role: employee?.orgRole ?? "WORKER",
+    status: employee?.status ?? "ACTIVE",
+    requestedAt: employee?.requestedAt ?? null,
+    requestedName: employee?.requestedName ?? employee?.name ?? null,
+    approvedAt: employee?.approvedAt ?? null,
+    approvedBy: employee?.approvedBy ?? null,
+    createdAt: employee?.createdAt ?? null,
+    createdBy: employee?.createdBy ?? "system@baro.local",
+    updatedAt: employee?.updatedAt ?? null,
+  });
+
   const requireOrgMembershipReviewer = async (
     req: Request,
     res: Response,
@@ -111,7 +127,7 @@ export const createOrgMembershipRouter = ({
       return null;
     }
 
-    const requesterMembership = await prisma.orgMembership.findUnique({
+    const requesterEmployee = await prisma.employee.findUnique({
       where: {
         orgId_email: {
           orgId,
@@ -120,7 +136,7 @@ export const createOrgMembershipRouter = ({
       },
       select: {
         status: true,
-        role: true,
+        orgRole: true,
         organization: {
           select: {
             type: true,
@@ -130,10 +146,10 @@ export const createOrgMembershipRouter = ({
     });
 
     const hasEmployeeAccess =
-      requesterMembership?.status === "ACTIVE" &&
+      requesterEmployee?.status === "ACTIVE" &&
       (await hasOrgFeatureAccess({
-        orgType: requesterMembership.organization?.type,
-        orgRole: requesterMembership.role,
+        orgType: requesterEmployee.organization?.type,
+        orgRole: requesterEmployee.orgRole,
         feature: "EMPLOYEE",
       }));
     if (
@@ -209,7 +225,7 @@ export const createOrgMembershipRouter = ({
         return res.json([]);
       }
     }
-    const where: Prisma.OrgMembershipWhereInput = {
+    const where: Prisma.EmployeeWhereInput = {
       orgId: organization.id,
       ...(status ? { status: status as any } : {}),
     };
@@ -220,11 +236,11 @@ export const createOrgMembershipRouter = ({
     } else if (systemOnly) {
       where.email = { in: systemUserEmails };
     }
-    const members = await prisma.orgMembership.findMany({
+    const members = await prisma.employee.findMany({
       where,
       orderBy: { id: "asc" },
     });
-    return res.json(members);
+    return res.json(members.map(toMembershipResponseFromEmployee));
   };
 
   orgMembershipRouter.get("/org-memberships", listOrgMemberships);
@@ -360,10 +376,13 @@ export const createOrgMembershipRouter = ({
         })
       : null;
 
-    const existingEmployee =
-      isManufacturer && existingMembership
+    const existingEmployee = existingMembership
+      ? await prisma.employee.findUnique({
+          where: { orgMembershipId: existingMembership.id },
+        })
+      : resolvedMembershipEmail
         ? await prisma.employee.findUnique({
-            where: { orgMembershipId: existingMembership.id },
+            where: { orgId_email: { orgId: orgIdNum, email: resolvedMembershipEmail } },
           })
         : null;
     let resolvedRoleId: number | null = null;
@@ -445,55 +464,49 @@ export const createOrgMembershipRouter = ({
               },
             });
 
-        if (isManufacturer) {
-          const transactionEmployeeNo =
-            resolvedEmployeeNo !== undefined
-              ? resolvedEmployeeNo
-              : normalizeEmployeeNo(existingEmployee?.employeeNo) ||
+        const transactionEmployeeNo =
+          isManufacturer && resolvedEmployeeNo !== undefined
+            ? resolvedEmployeeNo
+            : isManufacturer
+              ? normalizeEmployeeNo(existingEmployee?.employeeNo) ||
                 (resolvedFactoryId
                   ? await generateNextEmployeeNo(tx, orgIdNum, resolvedFactoryId)
-                  : null);
-
-          await tx.employee.upsert({
-            where: { orgMembershipId: membership.id },
-            update: {
-              orgId: orgIdNum,
-              factoryId: resolvedFactoryId,
-              roleId: resolvedRoleId,
-              payType: resolvedPayType,
-              fixedSalary: resolvedFixedSalary,
-              name: resolveOptionalString(name, existingEmployee?.name ?? null),
-              bankName: resolveOptionalString(bankName, existingEmployee?.bankName ?? null),
-              bankAccountNumber: resolveOptionalString(
-                bankAccountNumber,
-                existingEmployee?.bankAccountNumber ?? null
-              ),
-              position: resolveOptionalString(position, existingEmployee?.position ?? null),
-              ...(transactionEmployeeNo ? { employeeNo: transactionEmployeeNo } : {}),
-              joinedAt: joinedAtParseResult.hasInput
-                ? joinedAtParseResult.value
-                : existingEmployee?.joinedAt ?? now,
-              leftAt: leftAtParseResult.hasInput ? leftAtParseResult.value : null,
-              leaveStartAt: null,
-              leaveEndAt: null,
-            },
-            create: {
-              orgId: orgIdNum,
-              orgMembershipId: membership.id,
-              factoryId: resolvedFactoryId,
-              roleId: resolvedRoleId,
-              payType: resolvedPayType,
-              fixedSalary: resolvedFixedSalary,
-              name: resolveOptionalString(name, null),
-              bankName: resolveOptionalString(bankName, null),
-              bankAccountNumber: resolveOptionalString(bankAccountNumber, null),
-              position: resolveOptionalString(position, null),
-              employeeNo: transactionEmployeeNo,
-              joinedAt: joinedAtParseResult.hasInput ? joinedAtParseResult.value : now,
-              leftAt: leftAtParseResult.hasInput ? leftAtParseResult.value : null,
-            },
-          });
-        }
+                  : null)
+              : null;
+        const employeeUpdateData: Record<string, unknown> = {
+          factoryId: isManufacturer ? resolvedFactoryId : null,
+          roleId: isManufacturer ? resolvedRoleId : null,
+          payType: isManufacturer ? resolvedPayType : null,
+          fixedSalary: isManufacturer ? resolvedFixedSalary : null,
+          name: resolveOptionalString(
+            name,
+            (existingEmployee?.name ?? requestedName) || null
+          ),
+          bankName: resolveOptionalString(bankName, existingEmployee?.bankName ?? null),
+          bankAccountNumber: resolveOptionalString(
+            bankAccountNumber,
+            existingEmployee?.bankAccountNumber ?? null
+          ),
+          position: resolveOptionalString(position, existingEmployee?.position ?? null),
+          ...(isManufacturer && transactionEmployeeNo
+            ? { employeeNo: transactionEmployeeNo }
+            : {}),
+          joinedAt: joinedAtParseResult.hasInput
+            ? joinedAtParseResult.value
+            : existingEmployee?.joinedAt ?? now,
+          leftAt: leftAtParseResult.hasInput ? leftAtParseResult.value : null,
+          leaveStartAt: null,
+          leaveEndAt: null,
+        };
+        await syncEmployeeAccountFromMembership(tx, membership, {
+          update: employeeUpdateData,
+          create: {
+            ...employeeUpdateData,
+            name: resolveOptionalString(name, requestedName || null),
+            joinedAt: joinedAtParseResult.hasInput ? joinedAtParseResult.value : now,
+            leftAt: leftAtParseResult.hasInput ? leftAtParseResult.value : null,
+          },
+        });
 
         return membership;
       });
@@ -644,32 +657,54 @@ export const createOrgMembershipRouter = ({
 
     if (existing) {
       if (existing.status === "ACTIVE") {
+        await syncEmployeeAccountFromMembership(prisma, existing, {
+          update: {
+            name: resolveOptionalString(requestedName, existing.requestedName ?? null),
+          },
+          create: {
+            name: resolveOptionalString(requestedName, existing.requestedName ?? null),
+          },
+        });
         return res.json(existing);
       }
 
-      const updated = await prisma.orgMembership.update({
-        where: { id: existing.id },
-        data: {
-          role: safeRole,
-          requestedName,
-          status: "PENDING",
-          requestedAt: new Date(),
-          approvedAt: null,
-          approvedBy: null,
-        },
+      const updated = await prisma.$transaction(async (tx) => {
+        const updated = await tx.orgMembership.update({
+          where: { id: existing.id },
+          data: {
+            role: safeRole,
+            requestedName,
+            status: "PENDING",
+            requestedAt: new Date(),
+            approvedAt: null,
+            approvedBy: null,
+          },
+        });
+        await syncEmployeeAccountFromMembership(tx, updated, {
+          update: { name: requestedName },
+          create: { name: requestedName },
+        });
+        return updated;
       });
       return res.json(updated);
     }
 
-    const record = await prisma.orgMembership.create({
-      data: {
-        orgId: orgIdNum,
-        email: normalizedEmail,
-        role: safeRole,
-        requestedName,
-        status: "PENDING",
-        requestedAt: new Date(),
-      },
+    const record = await prisma.$transaction(async (tx) => {
+      const record = await tx.orgMembership.create({
+        data: {
+          orgId: orgIdNum,
+          email: normalizedEmail,
+          role: safeRole,
+          requestedName,
+          status: "PENDING",
+          requestedAt: new Date(),
+        },
+      });
+      await syncEmployeeAccountFromMembership(tx, record, {
+        update: { name: requestedName },
+        create: { name: requestedName },
+      });
+      return record;
     });
 
     return res.status(201).json(record);
@@ -796,6 +831,18 @@ export const createOrgMembershipRouter = ({
       });
     }
 
+    await syncEmployeeAccountFromMembership(prisma, updated, {
+      update: {
+        name: resolveOptionalString(membership.requestedName, null),
+        leftAt: null,
+      },
+      create: {
+        name: resolveOptionalString(membership.requestedName, null),
+        joinedAt: new Date(),
+        leftAt: null,
+      },
+    });
+
     return res.json(updated);
   });
 
@@ -842,6 +889,20 @@ export const createOrgMembershipRouter = ({
         approvedAt: now,
         approvedBy:
           requesterEmail || normalizedApprovedBy || membership.approvedBy || null,
+      },
+    });
+
+    await syncEmployeeAccountFromMembership(prisma, updated, {
+      update: {
+        leftAt: employee?.leftAt ?? now,
+        leaveStartAt: employee?.leaveStartAt ?? now,
+        leaveEndAt: employee?.leaveEndAt ?? now,
+      },
+      create: {
+        name: resolveOptionalString(membership.requestedName, null),
+        leftAt: now,
+        leaveStartAt: now,
+        leaveEndAt: now,
       },
     });
 
@@ -942,6 +1003,7 @@ export const createOrgMembershipRouter = ({
       where: { id },
       data,
     });
+    const effectiveStatus = data.status ?? membership.status;
 
     if (isManufacturerOrg(membership.organization)) {
       const now = new Date();
@@ -1063,6 +1125,22 @@ export const createOrgMembershipRouter = ({
       }
     }
 
+    const nowForSync = new Date();
+    await syncEmployeeAccountFromMembership(prisma, updated, {
+      update: {
+        ...(effectiveStatus === "ACTIVE" ? { leftAt: null } : {}),
+        ...(effectiveStatus === "SUSPENDED"
+          ? { leaveStartAt: nowForSync, leaveEndAt: null, leftAt: null }
+          : {}),
+        ...(effectiveStatus === "TERMINATED" ? { leftAt: nowForSync } : {}),
+      },
+      create: {
+        name: resolveOptionalString(updated.requestedName, null),
+        joinedAt: effectiveStatus === "ACTIVE" ? updated.approvedAt ?? nowForSync : null,
+        ...(effectiveStatus === "TERMINATED" ? { leftAt: nowForSync } : {}),
+      },
+    });
+
     return res.json(updated);
   });
 
@@ -1092,16 +1170,23 @@ export const createOrgMembershipRouter = ({
     const safeRole = resolveRole(role, "OPERATOR");
     const now = new Date();
 
-    const record = await prisma.orgMembership.upsert({
-      where: { orgId_email: { orgId: orgIdNum, email: normalizedEmail } },
-      update: { role: safeRole, status: "ACTIVE", approvedAt: now },
-      create: {
-        orgId: orgIdNum,
-        email: normalizedEmail,
-        role: safeRole,
-        status: "ACTIVE",
-        approvedAt: now,
-      },
+    const record = await prisma.$transaction(async (tx) => {
+      const record = await tx.orgMembership.upsert({
+        where: { orgId_email: { orgId: orgIdNum, email: normalizedEmail } },
+        update: { role: safeRole, status: "ACTIVE", approvedAt: now },
+        create: {
+          orgId: orgIdNum,
+          email: normalizedEmail,
+          role: safeRole,
+          status: "ACTIVE",
+          approvedAt: now,
+        },
+      });
+      await syncEmployeeAccountFromMembership(tx, record, {
+        update: { joinedAt: now, leftAt: null },
+        create: { joinedAt: now, leftAt: null },
+      });
+      return record;
     });
 
     return res.status(201).json(record);

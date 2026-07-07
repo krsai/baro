@@ -60,15 +60,16 @@ const buildEffectiveDateRange = (workDate: unknown) =>
 const buildLineEligibleWorkerWhere = (
   dateRange: { startAt: Date; endAt: Date } | null = null
 ): Prisma.EmployeeWhereInput => ({
-  membership: { role: { in: LINE_ELIGIBLE_ROLES }, status: "ACTIVE" },
+  orgRole: { in: LINE_ELIGIBLE_ROLES },
+  status: "ACTIVE",
   role: { code: LINE_ELIGIBLE_WORKER_ROLE_CODE },
   ...(dateRange
     ? {
         AND: [
           { OR: [{ joinedAt: null }, { joinedAt: { lte: dateRange.endAt } }] },
-          // ACTIVE membership is treated as currently employed even if legacy
+          // ACTIVE account status is treated as currently employed even if legacy
           // leftAt data remains populated.
-          { membership: { status: "ACTIVE" } },
+          { status: "ACTIVE" },
         ],
       }
     : {}),
@@ -154,7 +155,6 @@ const buildFactoryLineBoardSnapshot = async (orgId: number, factoryId: number) =
         factoryId,
         ...buildLineEligibleWorkerWhere(todayRange),
       },
-      include: { membership: true },
       orderBy: [{ factoryId: "asc" }, { id: "asc" }],
     }),
     prisma.lineAssignment.findMany({
@@ -178,7 +178,7 @@ const buildFactoryLineBoardSnapshot = async (orgId: number, factoryId: number) =
       id: worker.id,
       orgMembershipId: worker.orgMembershipId,
       name: worker.name,
-      email: worker.membership?.email ?? "",
+      email: worker.email ?? "",
       factoryId: worker.factoryId,
       currentLineId: assignmentByEmployee.get(worker.id) ?? null,
     })),
@@ -220,7 +220,7 @@ export const createLineRouter = ({
       if (!requesterEmail) {
         return res.json([]);
       }
-      const membership = await prisma.orgMembership.findUnique({
+      const requesterEmployee = await prisma.employee.findUnique({
         where: {
           orgId_email: {
             orgId: organization.id,
@@ -229,15 +229,13 @@ export const createLineRouter = ({
         },
         select: {
           status: true,
-          employee: {
-            select: { id: true },
-          },
+          id: true,
         },
       });
-      if (!membership || membership.status !== "ACTIVE" || !membership.employee?.id) {
+      if (!requesterEmployee || requesterEmployee.status !== "ACTIVE" || !requesterEmployee.id) {
         return res.json([]);
       }
-      managerEmployeeId = membership.employee.id;
+      managerEmployeeId = requesterEmployee.id;
     }
 
     const where: Prisma.LineWhereInput = {
@@ -920,7 +918,6 @@ export const createLineRouter = ({
           ...(hasFactoryFilter ? { factoryId } : {}),
           ...buildLineEligibleWorkerWhere(effectiveDateRange),
         },
-        include: { membership: true },
         orderBy: [{ factoryId: "asc" }, { id: "asc" }],
       });
       const assignmentByEmployee = new Map();
@@ -933,7 +930,7 @@ export const createLineRouter = ({
           id: worker.id,
           orgMembershipId: worker.orgMembershipId,
           name: worker.name,
-          email: worker.membership?.email ?? "",
+          email: worker.email ?? "",
           factoryId: worker.factoryId,
           currentLineId: assignmentByEmployee.get(worker.id) ?? null,
         }))
@@ -1004,7 +1001,6 @@ export const createLineRouter = ({
           ...(hasFactoryFilter ? { factoryId } : {}),
           ...buildLineEligibleWorkerWhere(effectiveDateRange),
         },
-        include: { membership: true },
         orderBy: [{ factoryId: "asc" }, { id: "asc" }],
       }),
       prisma.lineAssignment.findMany({
@@ -1023,7 +1019,7 @@ export const createLineRouter = ({
         id: worker.id,
         orgMembershipId: worker.orgMembershipId,
         name: worker.name,
-        email: worker.membership?.email ?? "",
+        email: worker.email ?? "",
         factoryId: worker.factoryId,
         currentLineId: assignmentByEmployee.get(worker.id) ?? null,
       }))
