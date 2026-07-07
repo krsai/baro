@@ -29,8 +29,9 @@
 - `npm run prisma:prepare-client` + `npm --prefix backend run build` 통과. 루트 `npm run test:regression` 재실행 — `test:quantity-change`의 동일한 1개 서브테스트(`'PT' !== 'ST'`)만 여전히 실패(아래 항목 참고, 무관).
 - 상세는 AGENTS.md §46 참고.
 
+- **운영 DB에 Step 0n 적용 완료**: 사용자 확인 후 `DATABASE_PUBLIC_URL`로 직접 접속해 적용 전 4개 컬럼 존재 + 전부 non-null 0건(및 `AssignmentPlan` 전체 0행)을 먼저 확인한 뒤 4개 `ALTER TABLE ... DROP COLUMN`을 실행. 재조회로 4개 컬럼이 실제로 사라졌음을 확인, `AssignmentPlan` 최종 컬럼 목록이 schema.prisma와 정확히 일치함을 확인. AssignmentCard/AssignmentPlan FK+join 재설계(Phase A~E) 전체 완료.
+
 ### Remaining
-- **운영 DB에 Step 0n 미적용**: pre-deploy가 꺼져 있어 자동 적용 안 됨. 배포 후 운영 DB에 Step 0n SQL 수동 실행 + `information_schema.columns`로 4개 컬럼이 실제로 사라졌는지 직접 확인 필요(사용자 명시적 확인 후 진행).
 - **quantityChangeBoard.mjs의 `'PT' !== 'ST'` 회귀 테스트 실패**: 이번 작업과 무관해 보이지만 미해결 상태로 남아 있음. 다음에 이 파일을 건드릴 때 우선 조사.
 - **AssignmentCard의 집계값(cardAtTotalSeconds 등) 저장 vs recompute-on-read 정책 미결정**: Style.processes가 카드 생성 이후 바뀌면 저장된 값은 그대로 굳어있다 — 이걸 의도된 스냅샷으로 유지할지, 조회 시마다 재계산할지 결정 필요.
 - **`cardId` → `assignmentCardId` 전환은 별도 대규모 작업**: 하고 싶다면 122+곳의 매칭 로직을 전부 정수 FK 기준으로 갈아타야 함.
