@@ -42,9 +42,12 @@ export const WORK_RECORD_WITH_REFS_INCLUDE = {
         id: true,
         lineId: true,
         workOrderId: true,
-        orderNo: true,
-        customer: true,
-        label: true,
+        // orderNo/customer/label were dropped from AssignmentPlan (FK+join
+        // redesign Phase E) - workOrder.orderNumber/buyerOrg.name/style.name
+        // are the only source now.
+        workOrder: { select: { orderNumber: true } },
+        buyerOrg: { select: { name: true } },
+        style: { select: { name: true } },
       },
     },
     styleProcess: {

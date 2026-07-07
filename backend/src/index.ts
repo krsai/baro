@@ -8709,8 +8709,20 @@ const hydrateWorkRecordResponseDisplayFields = (
     ...record,
     workerName:
       workerName ?? resolveOptionalString(record?.worker?.name, null),
-    customerName: resolveOptionalString(assignmentPlanMeta?.customer, null),
-    orderNo: resolveOptionalString(assignmentPlanMeta?.orderNo, null),
+    // assignmentPlanMeta is either the pre-resolved flat map entry from
+    // loadWorkRecordResponseDisplayContext (already has orderNo/customer
+    // flattened from the join) or the raw WorkRecord.assignmentPlan relation
+    // (WORK_RECORD_WITH_REFS_INCLUDE - only has the nested workOrder/
+    // buyerOrg/style relations, no flat orderNo/customer/label columns
+    // anymore). Handle both shapes.
+    customerName: resolveOptionalString(
+      assignmentPlanMeta?.customer ?? assignmentPlanMeta?.buyerOrg?.name,
+      null
+    ),
+    orderNo: resolveOptionalString(
+      assignmentPlanMeta?.orderNo ?? assignmentPlanMeta?.workOrder?.orderNumber,
+      null
+    ),
     lineId:
       toPositiveIntOrNull(record?.lineId) ??
       toPositiveIntOrNull(assignmentPlanMeta?.lineId),
@@ -8723,7 +8735,9 @@ const hydrateWorkRecordResponseDisplayFields = (
     styleName:
       resolveWorkRecordStyleName(record) ??
       resolveOptionalString(
-        assignmentPlanMeta?.styleName ?? assignmentPlanMeta?.label,
+        assignmentPlanMeta?.styleName ??
+          assignmentPlanMeta?.label ??
+          assignmentPlanMeta?.style?.name,
         null
       ),
     assignmentPlan: assignmentPlanMeta,
