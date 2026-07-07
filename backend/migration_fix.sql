@@ -2,6 +2,7 @@
 -- OrgMembership is kept as a compatibility shadow during the transition, but
 -- login/access/audit data now also lives on Employee. Employee.id is preserved
 -- because WorkRecord/AttendanceEntry/LineAssignment already depend on it.
+ALTER TABLE "OrgMembership" ADD COLUMN IF NOT EXISTS "requestedName" TEXT;
 ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "email" TEXT;
 ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "orgRole" "OrgUserRole" NOT NULL DEFAULT 'WORKER';
 ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "status" "OrgMembershipStatus" NOT NULL DEFAULT 'ACTIVE';
@@ -66,6 +67,30 @@ CREATE INDEX IF NOT EXISTS "Employee_email_idx" ON "Employee"("email");
 CREATE INDEX IF NOT EXISTS "Employee_status_idx" ON "Employee"("status");
 CREATE INDEX IF NOT EXISTS "Employee_orgId_status_idx" ON "Employee"("orgId", "status");
 
+CREATE TABLE IF NOT EXISTS "QuantitySettlementSnapshot" (
+  "id" SERIAL NOT NULL,
+  "orgId" INTEGER NOT NULL,
+  "month" TEXT NOT NULL,
+  "data" JSONB NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdBy" TEXT NOT NULL DEFAULT 'system@baro.local',
+  "createdByEmployeeId" INTEGER,
+  "updatedByEmployeeId" INTEGER,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedBy" TEXT NOT NULL DEFAULT 'system@baro.local',
+  CONSTRAINT "QuantitySettlementSnapshot_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "QuantitySettlementSnapshot_orgId_month_key"
+  ON "QuantitySettlementSnapshot"("orgId", "month");
+CREATE INDEX IF NOT EXISTS "QuantitySettlementSnapshot_orgId_idx"
+  ON "QuantitySettlementSnapshot"("orgId");
+DO $$ BEGIN
+  ALTER TABLE "QuantitySettlementSnapshot"
+    ADD CONSTRAINT "QuantitySettlementSnapshot_orgId_fkey"
+    FOREIGN KEY ("orgId") REFERENCES "Organization"("id")
+    ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 DO $$
 DECLARE
   audited_table TEXT;
@@ -99,6 +124,13 @@ DECLARE
   ];
 BEGIN
   FOREACH audited_table IN ARRAY audited_tables LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = audited_table
+    ) THEN
+      CONTINUE;
+    END IF;
+
     EXECUTE format('ALTER TABLE %I ADD COLUMN IF NOT EXISTS "createdByEmployeeId" INTEGER', audited_table);
     EXECUTE format('ALTER TABLE %I ADD COLUMN IF NOT EXISTS "updatedByEmployeeId" INTEGER', audited_table);
 
@@ -124,15 +156,20 @@ BEGIN
     END;
   END LOOP;
 
-  ALTER TABLE "SystemSetting" ADD COLUMN IF NOT EXISTS "updatedByEmployeeId" INTEGER;
-  CREATE INDEX IF NOT EXISTS "SystemSetting_updatedByEmployeeId_idx" ON "SystemSetting"("updatedByEmployeeId");
-  BEGIN
-    ALTER TABLE "SystemSetting"
-      ADD CONSTRAINT "SystemSetting_updatedByEmployeeId_fkey"
-      FOREIGN KEY ("updatedByEmployeeId") REFERENCES "Employee"("id")
-      ON DELETE SET NULL ON UPDATE CASCADE;
-  EXCEPTION WHEN duplicate_object THEN NULL;
-  END;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'SystemSetting'
+  ) THEN
+    ALTER TABLE "SystemSetting" ADD COLUMN IF NOT EXISTS "updatedByEmployeeId" INTEGER;
+    CREATE INDEX IF NOT EXISTS "SystemSetting_updatedByEmployeeId_idx" ON "SystemSetting"("updatedByEmployeeId");
+    BEGIN
+      ALTER TABLE "SystemSetting"
+        ADD CONSTRAINT "SystemSetting_updatedByEmployeeId_fkey"
+        FOREIGN KEY ("updatedByEmployeeId") REFERENCES "Employee"("id")
+        ON DELETE SET NULL ON UPDATE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+  END IF;
 END $$;
 
 DO $$
@@ -168,6 +205,13 @@ DECLARE
   has_updated_by BOOLEAN;
 BEGIN
   FOREACH audited_table IN ARRAY audited_tables LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = audited_table
+    ) THEN
+      CONTINUE;
+    END IF;
+
     SELECT EXISTS (
       SELECT 1 FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name = audited_table AND column_name = 'orgId'
@@ -912,18 +956,29 @@ FROM assignment_plan_work_order_candidates candidate
 WHERE ap.id = candidate."assignmentPlanId"
   AND ap."workOrderId" IS NULL;
 
-UPDATE "AssignmentPlan" ap
-SET
-  "orderNo" = COALESCE(ap."orderNo", wo."orderNumber"),
-  "customer" = COALESCE(ap."customer", customer_org."name", buyer_org."name")
-FROM "WorkOrder" wo
-LEFT JOIN "Organization" customer_org ON customer_org.id = wo."customerId"
-LEFT JOIN "Organization" buyer_org ON buyer_org.id = wo."buyerOrgId"
-WHERE ap."workOrderId" = wo.id
-  AND (
-    ap."orderNo" IS NULL
-    OR ap."customer" IS NULL
-  );
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'AssignmentPlan' AND column_name = 'orderNo'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'AssignmentPlan' AND column_name = 'customer'
+  ) THEN
+    UPDATE "AssignmentPlan" ap
+    SET
+      "orderNo" = COALESCE(ap."orderNo", wo."orderNumber"),
+      "customer" = COALESCE(ap."customer", customer_org."name", buyer_org."name")
+    FROM "WorkOrder" wo
+    LEFT JOIN "Organization" customer_org ON customer_org.id = wo."customerId"
+    LEFT JOIN "Organization" buyer_org ON buyer_org.id = wo."buyerOrgId"
+    WHERE ap."workOrderId" = wo.id
+      AND (
+        ap."orderNo" IS NULL
+        OR ap."customer" IS NULL
+      );
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS "AssignmentPlan_workOrderId_idx"
   ON "AssignmentPlan"("workOrderId");

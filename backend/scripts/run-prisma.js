@@ -1,7 +1,7 @@
 const { spawnSync } = require("child_process");
 const dotenv = require("dotenv");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 const prismaCli = require.resolve("prisma/build/index.js");
 
 const args = process.argv.slice(2);
