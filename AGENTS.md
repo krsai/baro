@@ -87,10 +87,13 @@ AT(q) = a*q + b
 - 사원번호는 조직 내에서 중복될 수 없다.
 - 공장 코드가 변경되면 해당 공장 소속 직원의 사원번호 prefix도 같은 순번을 유지한 채 함께 갱신한다. 예: `HN-0007` → `TB-0007`.
 
-### 조직 멤버십 / 로그인 이메일
-- 조직 멤버십 역할 중 `ADMIN`, `OPERATOR`, `ACCOUNTANT`는 로그인 이메일이 필수다.
-- `WORKER`는 이메일이 선택이다. 비어 있으면 DB에도 실제로 `NULL`로 저장하며, 가짜 내부 이메일을 만들거나 빈값처럼 숨기지 않는다.
-- 소셜 로그인 후 온보딩의 기존 회사 가입 신청은 `회사`, `신청 권한`, `신청자 이름`을 함께 저장한다.
+### 조직 계정 / 로그인 이메일 (2026-07-07부터 `Employee`로 통합, §47 참고)
+- **`OrgMembership` 테이블은 더 이상 존재하지 않는다.** 로그인 계정/권한(과거 OrgMembership의 책임)은 이제 `Employee.orgRole`(`OrgUserRole`: ADMIN/OPERATOR/ACCOUNTANT/WORKER)과 `Employee.status`가 담당한다. 제조사든 발주처든 조직 소속 계정은 전부 `Employee` 행 하나로 표현된다.
+- `Employee.orgRole`이 `ADMIN`, `OPERATOR`, `ACCOUNTANT`면 로그인 이메일이 필수다.
+- `Employee.orgRole`이 `WORKER`면 이메일이 선택이다. 비어 있으면 DB에도 실제로 `NULL`로 저장하며, 가짜 내부 이메일을 만들거나 빈값처럼 숨기지 않는다.
+- 소셜 로그인 후 온보딩의 기존 회사 가입 신청은 `Employee.requestedName`/`requestedAt`/`approvedAt`/`approvedBy`에 저장한다.
+- `Employee.roleId`(→`AttrRole`)는 `orgRole`과 별개의 축이다 — 현장 직무(감독/봉제/다림/검수/포장 등, 조직별 커스터마이징 가능)를 나타내며 시스템 접근 권한이 아니다. 이름이 비슷해 혼동하지 않는다.
+- API 경로 `/org-memberships`와 `orgMembershipId`라는 이름은 하위 호환을 위해 남아있지만 내부적으로는 전부 `Employee`를 가리킨다(추가 DB 마이그레이션 없이 나중에 이름만 정리 가능).
 
 ### WorkLog / WorkRecord
 - **WorkLog**: 기간 헤더. `coverageStartDate`(시작), `coverageEndDate`(종료)가 소스오브트루스.
@@ -1587,3 +1590,17 @@ runtime 조회값:
 - **AssignmentCard.payload 순수 중복 텍스트 정리**: `stripLegacyAssignmentCardPayload`(write-time sanitizer, `normalizeAssignmentCardsForStore`가 저장 직전 호출)에서 `styleCode`/`styleName`/`previewUrl`/`orderNo`/`dueDate`/`customer`/`customerNameKo`/`customerNameVi`를 저장 payload에서 제거하도록 확장. `toAssignmentCardFromStoreRow`(Phase C에서 이미 join-우선으로 구현됨)가 이 필드들을 `style`/`workOrder`/`buyerOrg` relation에서만 읽게 되므로 응답 필드 자체는 그대로 유지된다(값의 출처만 payload JSON에서 join으로 완전히 바뀜). **범위에서 제외한 것**: `styleId`/`workOrderId`/`buyerOrgId`(실제 FK 값이라 원래도 중복이 아니었고, `toAssignmentCardFromStoreRow`가 이 3개는 override 없이 payload spread로 그대로 반환하므로 지우면 응답에서 사라짐 — 유지), `cardQuantity`/`cardPtTotalSeconds`/`cardAtTotalSeconds`/`cardStTotalSeconds`/`processCount`/`status`(Style.processes × 수량으로 계산되는 **집계값**이지 순수 텍스트 복사가 아니라서 이번 phase 범위 밖으로 명시적으로 남김 — recompute-on-read로 갈지 계속 저장할지는 별도 정책 결정 필요).
 - 검증: `npm run prisma:prepare-client` + `npm --prefix backend run build` 통과. 루트 `npm run test:regression` 재실행 — `test:access-policy`/`test:time-date` 통과, `test:quantity-change`의 동일한 1개 서브테스트(`'PT' !== 'ST'`)만 실패(§45와 동일하게 `frontend/src/utils/quantityChangeBoard.mjs`의 기존 이슈, 이번 세션 미수정 파일).
 - **운영 DB 적용 완료 (2026-07-06)**: `DATABASE_PUBLIC_URL`로 직접 접속해 적용 전 4개 컬럼 존재 + 전부 non-null 0건(및 `AssignmentPlan` 전체 0행, §39 사고 이후 미복구 상태와 일치)을 먼저 확인한 뒤 Step 0n SQL을 실행했고, 재조회로 4개 컬럼이 모두 사라졌음과 `AssignmentPlan` 최종 컬럼 목록이 `schema.prisma`와 정확히 일치함을 확인했다. Phase A~E 전체 완료.
+
+### 47. 2026-07-07 OrgMembership → Employee 계정 테이블 통합 (Codex 구현, 완료 — 상세 리뷰로 검증됨)
+
+- 배경: `OrgMembership`(로그인 계정/권한)과 `Employee`(제조사 현장 인사정보)가 별도 테이블로 나뉘어 있던 것을, Codex에게 "Employee를 모든 Organization 소속 계정의 canonical table로 승격하고 OrgMembership을 제거"하는 방향으로 구현시켰다. 사전에 이 방향에 대한 설계 리뷰(위험 지점, 이름 충돌, partial index 필요 여부, 단계별 순서)를 별도로 거친 뒤 진행됨.
+- **최종 스키마**: `Employee`에 `email`(nullable), `orgRole`(`OrgUserRole` enum: ADMIN/OPERATOR/ACCOUNTANT/WORKER — 시스템 접근 권한), `status`(`EmployeeStatus` enum: PENDING/ACTIVE/REJECTED/SUSPENDED/TERMINATED, DB 물리 enum 이름은 `@@map("OrgMembershipStatus")`로 유지), `requestedAt`/`requestedName`/`approvedAt`/`approvedBy`가 추가됨. 기존 `Employee.roleId`(→`AttrRole`, 조직별 커스터마이징 가능한 현장 직무 — 감독/봉제/다림/검수/포장 등)는 **리네임하지 않고 그대로 유지** — `orgRole`(시스템 권한)과 `roleId`(현장 직무)는 이름이 비슷해 보이지만 서로 다른 축이며, 이름 하나로 합치지 않은 것이 맞는 선택이었다.
+- **unique 제약**: `@@unique([orgId, email])`, `@@unique([orgId, employeeNo])` 둘 다 **일반(non-partial) Prisma 유니크**로 선언됨 — Postgres는 원래 UNIQUE 제약에서 NULL끼리 서로 다르게 취급하므로 "값이 있을 때만 유일"이 별도 partial index 없이 자동으로 충족된다(`Factory.factoryCode`처럼 raw SQL partial index로 우회할 필요가 없었음).
+- **마이그레이션(`migration_fix.sql` Step 0o)**: 기존 `OrgMembership` 행을 `orgMembershipId`로 매칭되는 `Employee`에 백필하고, 매칭되는 `Employee`가 없는 행(주로 발주처 계정, 그리고 갓 온보딩된 조직의 첫 ADMIN 계정)은 새 `Employee` 행으로 INSERT한 뒤, `orgMembershipId` FK/컬럼을 제거하고 마지막에 `DROP TABLE IF EXISTS "OrgMembership"`. 순서가 안전하게(백필 → FK 제거 → 테이블 삭제) 짜여 있고 전부 `IF EXISTS`로 멱등 처리됨. `emp+%@baro.local` 형태의 가짜 이메일도 이 백필 중 NULL로 정리됨(가짜 이메일 금지 원칙 준수).
+- **audit FK**: `Employee.createdByEmployeeId`/`updatedByEmployeeId`(nullable, self-referencing) 추가. `requestActor.ts`의 AsyncLocalStorage store에 `employeeId` 필드를 추가해서, `middleware/access.ts`가 요청당 한 번 수행하던 기존 Employee 조회 결과를 그대로 그 store에 mutate로 채워넣고(`setCurrentRequestActorEmployeeId`), `db.ts`의 Prisma extension이 그 값을 읽어 `createdByEmployeeId`/`updatedByEmployeeId`를 자동 채운다 — **추가 DB 조회 없이** 기존 인증 조회를 재사용하는 구조로, 26개+ 테이블 저장 경로를 하나도 직접 건드리지 않았다. 문자열 `createdBy`/`updatedBy` 스냅샷은 그대로 유지(SystemUser/배치 작업처럼 Employee가 없는 행위자를 위해 필수).
+- **시작 시 스키마 드리프트 게이트**: `hasField("Employee","orgRole")`/`("Employee","status")` 필수 체크 추가, `modelByName.has("OrgMembership")` "있으면 문제" 역방향 체크 추가, `STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"]`로 물리 테이블 자체의 부재까지 별도로 재확인(3중 방어).
+- **API 하위호환**: `org-memberships/orgMembership.routes.ts` 파일/폴더명과 `/org-memberships` 라우트 경로는 그대로 유지하되 내부 구현은 100% `prisma.employee`로 교체됨(파일 안에 `prisma.orgMembership.*` 호출 0건 확인). 응답 필드도 `role: employee?.orgRole ?? "WORKER"`처럼 프론트가 원래 기대하던 이름(`role`)을 그대로 유지하는 얇은 매핑을 API 경계에서 해줘서 프론트 수정이 거의 필요 없었다(`frontend/src/pages/App/employee/EmployeeBoard.jsx`는 무수정으로 계속 동작).
+- **사후 검증 (Codex, todo.md 기록)**: 세션 전용 `DATABASE_PUBLIC_URL`로 직접 접속해 `information_schema`로 `OrgMembership` 테이블 부재, `Employee.orgMembershipId` 컬럼 부재, `Employee`의 신규 계정 컬럼(`email`/`orgRole`/`status`/`requestedName`/`approvedAt`) 존재를 확인하고 마이그레이션 후 `Employee` 행 수(20건)까지 todo.md에 기록함 — 이 세션에서 확립한 운영 DB 검증 관행을 그대로 따름.
+- **별도 세션에서 사후 전수 검토 수행 (레거시/숨은 폴백 여부 확인)**: `prisma.orgMembership.*` 호출 전체 재검색(0건), `middleware/access.ts`의 `context.orgMembership`/`toOrgMembershipCompat`이 실제로는 이미 조회한 Employee를 재포장만 하는 순수 함수임을 확인(추가 쿼리·구 테이블 접근 없음), `payroll.service.ts`의 `employee.membership.*` 접근이 전부 `employee.*`로 평탄화됐음을 diff로 확인 — **기능적으로 숨겨진 폴백이나 레거시 테이블 참조는 발견되지 않았다.**
+- **발견된 유일한 실제 결함 (같은 세션에서 즉시 수정, 커밋 `72f608e`)**: `backend/src/work-records/workRecord.shared.ts`(이번 통합 작업과 무관하게 몇 주 전부터 있던 별도 모듈)의 `WORK_RECORD_WITH_REFS_INCLUDE` 상수가 §46에서 이미 삭제된 `AssignmentPlan.orderNo/customer/label`을 여전히 select하고 있어서, `GET /work-logs?includeRecords=1`(작업기록 목록 화면)이 매번 500 에러를 내고 있었다. **이건 Codex의 실수가 아니라 §46 작업 중 `backend/src/index.ts`만 grep하고 별도 디렉토리(`src/work-records/`)를 놓친 내 실수였다.** `workOrder.orderNumber`/`buyerOrg.name`/`style.name` join으로 교체하고, 유일한 소비처(`hydrateWorkRecordResponseDisplayFields`)도 join 경로를 읽도록 같이 수정.
+- **사소한 네이밍 잔재 (기능 문제 아님, 정리 안 함)**: `context.orgMembership`/`toOrgMembershipCompat` 함수명, `index.ts` 일부의 `membershipStatus`/`membershipRole` 지역 변수명(실제로는 `worker.status`/`worker.orgRole`를 읽음), `org-memberships` 폴더/라우트 경로 — 전부 이름만 옛 관습이고 실제 데이터 흐름은 Employee 기준. todo.md에 "나중에 API 이름 정리 가능(추가 DB 마이그레이션 불필요)"이라고 이미 기록돼 있음.
