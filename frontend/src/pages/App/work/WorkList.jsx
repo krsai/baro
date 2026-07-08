@@ -739,6 +739,19 @@ const WorkList = () => {
     });
   }, [workHistoryOperationStartDay, workHistoryOperationStartMonth]);
 
+  const handleDateFilterMonthChange = useCallback((value) => {
+    if (!value?.isValid?.()) return;
+    const nextMonthStart = getMonthStart(
+      value.toDate(),
+      workHistoryOperationStartMonth,
+      workHistoryOperationStartDay
+    );
+    setDateFilterStart(nextMonthStart);
+    setDateFilterEnd(
+      getMonthEnd(nextMonthStart, workHistoryOperationStartMonth, workHistoryOperationStartDay)
+    );
+  }, [workHistoryOperationStartDay, workHistoryOperationStartMonth]);
+
   const shiftDateFilterMonth = useCallback(
     (amount) => {
       const nextMonthStart = addMonths(
@@ -833,17 +846,7 @@ const WorkList = () => {
               >
                 <CustomDatePicker
                   value={dateFilterStart}
-                  onChange={handleDateFilterStartChange}
-                  monthOnly
-                  slotProps={FILTER_DATE_PICKER_SLOT_PROPS}
-                  minDate={workHistoryOperationStartDay}
-                />
-                <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>
-                  ~
-                </Typography>
-                <CustomDatePicker
-                  value={dateFilterEnd}
-                  onChange={handleDateFilterEndChange}
+                  onChange={handleDateFilterMonthChange}
                   monthOnly
                   slotProps={FILTER_DATE_PICKER_SLOT_PROPS}
                   minDate={workHistoryOperationStartDay}

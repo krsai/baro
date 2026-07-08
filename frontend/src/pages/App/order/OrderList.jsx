@@ -2286,6 +2286,14 @@ const OrderList = () => {
     });
   };
 
+  const handleDueDateFilterMonthChange = (value) => {
+    if (!value?.isValid?.()) return;
+    const nextMonthStart = getMonthStart(value.toDate());
+    hasTouchedDueDateFilterRef.current = true;
+    setDueDateFilterStart(nextMonthStart);
+    setDueDateFilterEnd(getMonthEnd(nextMonthStart));
+  };
+
   const shiftDueDateFilterMonth = (amount) => {
     hasTouchedDueDateFilterRef.current = true;
     const nextMonthStart = addMonths(dueDateFilterStart, amount);
@@ -3223,16 +3231,7 @@ const OrderList = () => {
               >
                 <CustomDatePicker
                   value={dueDateFilterStart}
-                  onChange={handleDueDateFilterStartChange}
-                  monthOnly
-                  slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
-                />
-                <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>
-                  ~
-                </Typography>
-                <CustomDatePicker
-                  value={dueDateFilterEnd}
-                  onChange={handleDueDateFilterEndChange}
+                  onChange={handleDueDateFilterMonthChange}
                   monthOnly
                   slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
                 />

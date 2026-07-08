@@ -1154,13 +1154,6 @@ const ProductionPlanBoard = () => {
     [calendarMonth]
   );
 
-  const calendarMonthEnd = useMemo(() => {
-    const end = new Date(calendarMonth);
-    end.setMonth(end.getMonth() + 1);
-    end.setDate(0);
-    return end;
-  }, [calendarMonth]);
-
   const weekRows = useMemo(() => {
     const rows = [];
     for (let i = 0; i < calendarDays.length; i += 7) {
@@ -2273,12 +2266,6 @@ const ProductionPlanBoard = () => {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <CustomDatePicker
                     value={calendarMonth}
-                    onChange={(val) => { if (val?.isValid?.()) setCalendarMonth(toMonthStart(val.toDate())); }}
-                    monthOnly
-                  />
-                  <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>~</Typography>
-                  <CustomDatePicker
-                    value={calendarMonthEnd}
                     onChange={(val) => { if (val?.isValid?.()) setCalendarMonth(toMonthStart(val.toDate())); }}
                     monthOnly
                   />

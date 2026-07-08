@@ -6646,6 +6646,10 @@ const AssignBoard = () => {
     if (range > MAX_RANGE_DAYS) return;
     applyViewRange(s, e);
   };
+  const handleViewMonthChange = (newMonth) => {
+    const s = clampAssignmentViewDate(toMonthStart(newMonth), assignmentOperationStartDateKey);
+    applyViewRange(s, getMonthEndDate(s));
+  };
   // ? : FROM → 전달 1일
   const handlePrevMonthFrom = () => {
     const prev = toMonthStart(viewStart); prev.setMonth(prev.getMonth() - 1);
@@ -6780,15 +6784,7 @@ const AssignBoard = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
                 <CustomDatePicker
                   value={viewStart}
-                  onChange={(val) => { if (val?.isValid?.()) handleViewStartChange(val.toDate()); }}
-                  monthOnly
-                  disabled={controlsDisabled}
-                  minDate={assignmentOperationStartDay}
-                />
-                <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>~</Typography>
-                <CustomDatePicker
-                  value={viewEnd}
-                  onChange={(val) => { if (val?.isValid?.()) handleViewEndChange(val.toDate()); }}
+                  onChange={(val) => { if (val?.isValid?.()) handleViewMonthChange(val.toDate()); }}
                   monthOnly
                   disabled={controlsDisabled}
                   minDate={assignmentOperationStartDay}
