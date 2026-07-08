@@ -21,6 +21,8 @@ const CustomDatePicker = ({
   const parsedValue = value ? dayjs(value) : dayjs();
   const safeValue = parsedValue.isValid() ? parsedValue : dayjs();
   const dateValue = monthOnly ? safeValue.startOf('month') : safeValue;
+  const displayMonthValue = dateValue.format('YYYY-MM');
+  const [monthDraft, setMonthDraft] = React.useState(displayMonthValue);
   const textFieldInputProps = {
     ...slotProps?.textField?.inputProps,
     ...(monthOnly && !slotProps?.textField?.inputProps?.placeholder
@@ -29,9 +31,14 @@ const CustomDatePicker = ({
   };
   const monthInputProps = {
     ...textFieldInputProps,
+    maxLength: textFieldInputProps.maxLength || 7,
     ...(minDate && dayjs(minDate).isValid() ? { min: dayjs(minDate).format('YYYY-MM') } : {}),
     ...(maxDate && dayjs(maxDate).isValid() ? { max: dayjs(maxDate).format('YYYY-MM') } : {}),
   };
+
+  React.useEffect(() => {
+    setMonthDraft(displayMonthValue);
+  }, [displayMonthValue]);
 
   const mergedTextFieldProps = {
     size: 'small',
@@ -61,15 +68,37 @@ const CustomDatePicker = ({
     onChange?.(nextValue, context);
   };
 
-  const handleMonthInputChange = (event) => {
-    const nextMonth = String(event.target.value || '').trim();
-    if (!nextMonth) {
-      onChange?.(null);
-      return;
-    }
+  const isValidMonthText = (nextMonth) => {
+    if (!/^\d{4}-\d{2}$/.test(nextMonth)) return false;
+    const month = Number(nextMonth.slice(5, 7));
+    return month >= 1 && month <= 12;
+  };
+
+  const commitMonthInput = (nextMonth) => {
+    if (!isValidMonthText(nextMonth)) return;
     const nextValue = dayjs(`${nextMonth}-01`).startOf('month');
     if (nextValue.isValid()) {
       onChange?.(nextValue);
+    }
+  };
+
+  const handleMonthInputChange = (event) => {
+    const nextMonth = String(event.target.value || '').trim();
+    setMonthDraft(nextMonth);
+    commitMonthInput(nextMonth);
+  };
+
+  const handleMonthInputBlur = () => {
+    if (isValidMonthText(monthDraft)) {
+      commitMonthInput(monthDraft);
+      return;
+    }
+    setMonthDraft(displayMonthValue);
+  };
+
+  const handleMonthInputKeyDown = (event) => {
+    if (event.key === 'Enter') {
+      handleMonthInputBlur();
     }
   };
 
@@ -78,9 +107,11 @@ const CustomDatePicker = ({
       <TextField
         {...pickerProps}
         {...mergedTextFieldProps}
-        type="month"
-        value={dateValue.format('YYYY-MM')}
+        type="text"
+        value={monthDraft}
         onChange={handleMonthInputChange}
+        onBlur={handleMonthInputBlur}
+        onKeyDown={handleMonthInputKeyDown}
         InputLabelProps={{
           shrink: true,
           ...mergedTextFieldProps.InputLabelProps,
