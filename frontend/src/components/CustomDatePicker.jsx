@@ -1,4 +1,5 @@
 import React from 'react';
+import { TextField } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -16,6 +17,7 @@ const CustomDatePicker = ({
   localeText,
   ...props
 }) => {
+  const { minDate, maxDate, format, ...pickerProps } = props;
   const parsedValue = value ? dayjs(value) : dayjs();
   const safeValue = parsedValue.isValid() ? parsedValue : dayjs();
   const dateValue = monthOnly ? safeValue.startOf('month') : safeValue;
@@ -25,23 +27,30 @@ const CustomDatePicker = ({
       ? { placeholder: 'YYYY-MM' }
       : {}),
   };
+  const monthInputProps = {
+    ...textFieldInputProps,
+    ...(minDate && dayjs(minDate).isValid() ? { min: dayjs(minDate).format('YYYY-MM') } : {}),
+    ...(maxDate && dayjs(maxDate).isValid() ? { max: dayjs(maxDate).format('YYYY-MM') } : {}),
+  };
+
+  const mergedTextFieldProps = {
+    size: 'small',
+    ...slotProps?.textField,
+    inputProps: monthOnly ? monthInputProps : textFieldInputProps,
+    sx: {
+      minWidth: 140,
+      '& .MuiOutlinedInput-root': {
+        borderRadius: 2,
+        backgroundColor: 'background.paper',
+      },
+      ...slotProps?.textField?.sx,
+    },
+    className: `compact-date-picker${slotProps?.textField?.className ? ` ${slotProps.textField.className}` : ''}`,
+  };
 
   const mergedSlotProps = {
     ...slotProps,
-    textField: {
-      size: 'small',
-      ...slotProps?.textField,
-      inputProps: textFieldInputProps,
-      sx: {
-        minWidth: 140,
-        '& .MuiOutlinedInput-root': {
-          borderRadius: 2,
-          backgroundColor: 'background.paper',
-        },
-        ...slotProps?.textField?.sx,
-      },
-      className: `compact-date-picker${slotProps?.textField?.className ? ` ${slotProps.textField.className}` : ''}`,
-    },
+    textField: mergedTextFieldProps,
   };
 
   const handleChange = (nextValue, context) => {
@@ -52,13 +61,33 @@ const CustomDatePicker = ({
     onChange?.(nextValue, context);
   };
 
-  const monthPickerProps = monthOnly
-    ? {
-        views: ['year', 'month'],
-        openTo: 'month',
-        disableHighlightToday: true,
-      }
-    : {};
+  const handleMonthInputChange = (event) => {
+    const nextMonth = String(event.target.value || '').trim();
+    if (!nextMonth) {
+      onChange?.(null);
+      return;
+    }
+    const nextValue = dayjs(`${nextMonth}-01`).startOf('month');
+    if (nextValue.isValid()) {
+      onChange?.(nextValue);
+    }
+  };
+
+  if (monthOnly) {
+    return (
+      <TextField
+        {...pickerProps}
+        {...mergedTextFieldProps}
+        type="month"
+        value={dateValue.format('YYYY-MM')}
+        onChange={handleMonthInputChange}
+        InputLabelProps={{
+          shrink: true,
+          ...mergedTextFieldProps.InputLabelProps,
+        }}
+      />
+    );
+  }
 
   return (
     <LocalizationProvider
@@ -67,11 +96,12 @@ const CustomDatePicker = ({
       localeText={localeText}
     >
       <DatePicker
-        {...props}
-        {...monthPickerProps}
+        {...pickerProps}
+        minDate={minDate}
+        maxDate={maxDate}
         value={dateValue}
         onChange={handleChange}
-        format={monthOnly ? 'YYYY-MM' : props.format || 'YYYY-MM-DD'}
+        format={format || 'YYYY-MM-DD'}
         slotProps={mergedSlotProps}
       />
     </LocalizationProvider>
