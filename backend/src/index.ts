@@ -10973,6 +10973,9 @@ const loadAssignmentCardsForOrg = async ({
     orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
     select: {
       cardId: true,
+      styleId: true,
+      workOrderId: true,
+      buyerOrgId: true,
       payload: true,
       // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): join
       // through the real FK columns instead of trusting the payload JSON
@@ -12494,10 +12497,51 @@ const syncAssignmentPlanWorkOrderRefs = async (
   );
   if (normalizedItems.length === 0) return [];
 
+  const cardIds = Array.from(
+    new Set(
+      normalizedItems
+        .map((item) => resolveOptionalString(item?.cardId, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const assignmentCardByCardId = new Map<string, any>();
+  if (cardIds.length > 0) {
+    const assignmentCards = await db.assignmentCard.findMany({
+      where: { orgId, cardId: { in: cardIds } },
+      select: {
+        cardId: true,
+        styleId: true,
+        workOrderId: true,
+        buyerOrgId: true,
+      },
+    });
+    assignmentCards.forEach((card: any) => {
+      const cardId = resolveOptionalString(card?.cardId, null);
+      if (cardId) assignmentCardByCardId.set(cardId, card);
+    });
+  }
+  const itemsWithCardRefs = normalizedItems.map((item) => {
+    const cardId = resolveOptionalString(item?.cardId, null);
+    const card = cardId ? assignmentCardByCardId.get(cardId) ?? null : null;
+    return {
+      ...item,
+      workOrderId:
+        toPositiveIntOrNull(item?.workOrderId) ?? toPositiveIntOrNull(card?.workOrderId),
+      styleId: toPositiveIntOrNull(item?.styleId) ?? toPositiveIntOrNull(card?.styleId),
+      buyerOrgId:
+        toPositiveIntOrNull(item?.buyerOrgId) ?? toPositiveIntOrNull(card?.buyerOrgId),
+    };
+  });
+
   const directWorkOrderIds = collectPositiveIntSet(
-    ...normalizedItems.map((item) => item?.workOrderId)
+    ...itemsWithCardRefs.map((item) => item?.workOrderId)
   );
   if (directWorkOrderIds.length === 0) {
+    console.warn(
+      `[assignment-board-state] orgId=${orgId} missing workOrderId FK after AssignmentCard lookup; cardIds=${cardIds
+        .slice(0, 10)
+        .join(",")}`
+    );
     throw createHttpError(
       409,
       "assignment plan payload is missing workOrderId FK; cannot save assignment plans accurately"
@@ -12534,10 +12578,13 @@ const syncAssignmentPlanWorkOrderRefs = async (
     }
   });
 
-  return normalizedItems.map((item) => {
+  return itemsWithCardRefs.map((item) => {
     const externalId = resolveAssignmentExternalId(item) ?? "(unknown assignment)";
     const directWorkOrderId = toPositiveIntOrNull(item?.workOrderId);
     if (directWorkOrderId === null) {
+      console.warn(
+        `[assignment-board-state] orgId=${orgId} assignment=${externalId} cardId=${resolveOptionalString(item?.cardId, null) ?? ""} missing workOrderId FK`
+      );
       throw createHttpError(
         409,
         `assignment ${externalId} is missing workOrderId FK; cannot save assignment plan accurately`
@@ -12545,6 +12592,9 @@ const syncAssignmentPlanWorkOrderRefs = async (
     }
     const matchedWorkOrder = workOrderById.get(directWorkOrderId) ?? null;
     if (!matchedWorkOrder) {
+      console.warn(
+        `[assignment-board-state] orgId=${orgId} assignment=${externalId} inaccessible workOrderId=${directWorkOrderId}`
+      );
       throw createHttpError(
         409,
         `assignment ${externalId} references an inaccessible or missing workOrderId FK (${directWorkOrderId})`
@@ -24054,69 +24104,69 @@ app.put("/assignment-board-state", async (req, res) => {
     // batch lookup now also carries the card's own styleId/buyerOrgId, so a
     // newly created/updated AssignmentPlan always agrees with the card it
     // was scheduled from instead of re-deriving those independently.
-  const cardIdToAssignmentCardId = new Map<
-    string,
-    { id: number; styleId: number | null; workOrderId: number | null; buyerOrgId: number | null }
-  >();
-  if (cardIdStringsInThisSave.length > 0) {
-    const matchedAssignmentCards = await tx.assignmentCard.findMany({
-      where: { orgId: organization.id, cardId: { in: cardIdStringsInThisSave } },
-      select: { id: true, cardId: true, styleId: true, workOrderId: true, buyerOrgId: true },
-    });
-    matchedAssignmentCards.forEach((card) => {
-      cardIdToAssignmentCardId.set(card.cardId, {
-        id: card.id,
-        styleId: card.styleId,
-        workOrderId: card.workOrderId,
-        buyerOrgId: card.buyerOrgId,
+    const cardIdToAssignmentCardId = new Map<
+      string,
+      { id: number; styleId: number | null; workOrderId: number | null; buyerOrgId: number | null }
+    >();
+    if (cardIdStringsInThisSave.length > 0) {
+      const matchedAssignmentCards = await tx.assignmentCard.findMany({
+        where: { orgId: organization.id, cardId: { in: cardIdStringsInThisSave } },
+        select: { id: true, cardId: true, styleId: true, workOrderId: true, buyerOrgId: true },
       });
-    });
-    const missingCardIds = cardIdStringsInThisSave.filter(
-      (cardId) => !cardIdToAssignmentCardId.has(cardId)
-    );
-    if (missingCardIds.length > 0) {
-      throw createHttpError(
-        409,
-        `assignment card FK missing for plan save: ${missingCardIds.join(", ")}`
+      matchedAssignmentCards.forEach((card) => {
+        cardIdToAssignmentCardId.set(card.cardId, {
+          id: card.id,
+          styleId: card.styleId,
+          workOrderId: card.workOrderId,
+          buyerOrgId: card.buyerOrgId,
+        });
+      });
+      const missingCardIds = cardIdStringsInThisSave.filter(
+        (cardId) => !cardIdToAssignmentCardId.has(cardId)
       );
-    }
-    const cardsMissingRequiredFk = matchedAssignmentCards.filter(
-      (card) =>
-        toPositiveIntOrNull(card.styleId) === null ||
-        toPositiveIntOrNull(card.workOrderId) === null
-    );
-    if (cardsMissingRequiredFk.length > 0) {
-      throw createHttpError(
-        409,
-        `assignment card is missing styleId/workOrderId FK: ${cardsMissingRequiredFk
-          .map((card) => card.cardId)
-          .join(", ")}`
-      );
-    }
-    normalizedPlanChanges.forEach((item: any) => {
-      const cardId = resolveOptionalString(item?.cardId, null);
-      if (!cardId) return;
-      const card = cardIdToAssignmentCardId.get(cardId);
-      const itemWorkOrderId = toPositiveIntOrNull(item?.workOrderId);
-      if (!card || itemWorkOrderId === null || card.workOrderId !== itemWorkOrderId) {
+      if (missingCardIds.length > 0) {
         throw createHttpError(
           409,
-          `assignment ${resolveAssignmentExternalId(item) ?? cardId} workOrderId FK does not match its assignment card`
+          `assignment card FK missing for plan save: ${missingCardIds.join(", ")}`
         );
       }
-      const itemBuyerOrgId = toPositiveIntOrNull(item?.buyerOrgId);
-      if (
-        itemBuyerOrgId !== null &&
-        card.buyerOrgId !== null &&
-        card.buyerOrgId !== itemBuyerOrgId
-      ) {
+      const cardsMissingRequiredFk = matchedAssignmentCards.filter(
+        (card) =>
+          toPositiveIntOrNull(card.styleId) === null ||
+          toPositiveIntOrNull(card.workOrderId) === null
+      );
+      if (cardsMissingRequiredFk.length > 0) {
         throw createHttpError(
           409,
-          `assignment ${resolveAssignmentExternalId(item) ?? cardId} buyerOrgId FK does not match its assignment card`
+          `assignment card is missing styleId/workOrderId FK: ${cardsMissingRequiredFk
+            .map((card) => card.cardId)
+            .join(", ")}`
         );
       }
-    });
-  }
+      normalizedPlanChanges.forEach((item: any) => {
+        const cardId = resolveOptionalString(item?.cardId, null);
+        if (!cardId) return;
+        const card = cardIdToAssignmentCardId.get(cardId);
+        const itemWorkOrderId = toPositiveIntOrNull(item?.workOrderId);
+        if (!card || itemWorkOrderId === null || card.workOrderId !== itemWorkOrderId) {
+          throw createHttpError(
+            409,
+            `assignment ${resolveAssignmentExternalId(item) ?? cardId} workOrderId FK does not match its assignment card`
+          );
+        }
+        const itemBuyerOrgId = toPositiveIntOrNull(item?.buyerOrgId);
+        if (
+          itemBuyerOrgId !== null &&
+          card.buyerOrgId !== null &&
+          card.buyerOrgId !== itemBuyerOrgId
+        ) {
+          throw createHttpError(
+            409,
+            `assignment ${resolveAssignmentExternalId(item) ?? cardId} buyerOrgId FK does not match its assignment card`
+          );
+        }
+      });
+    }
     if (createPlanRows.length > 0) {
       await tx.assignmentPlan.createMany({
         data: createPlanRows.map((item: any) => ({
