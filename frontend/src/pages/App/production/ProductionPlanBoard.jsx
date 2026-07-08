@@ -2274,11 +2274,13 @@ const ProductionPlanBoard = () => {
                   <CustomDatePicker
                     value={calendarMonth}
                     onChange={(val) => { if (val?.isValid?.()) setCalendarMonth(toMonthStart(val.toDate())); }}
+                    monthOnly
                   />
                   <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>~</Typography>
                   <CustomDatePicker
                     value={calendarMonthEnd}
                     onChange={(val) => { if (val?.isValid?.()) setCalendarMonth(toMonthStart(val.toDate())); }}
+                    monthOnly
                   />
                   <Stack sx={{ gap: '2px' }}>
                     <Button

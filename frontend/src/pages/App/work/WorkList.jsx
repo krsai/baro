@@ -302,10 +302,8 @@ const readStoredWorkListFilters = (orgId) => {
     );
     const selectedFactoryId = String(parsed?.selectedFactoryId || '').trim();
     if (!storedStart && !storedEnd && !selectedFactoryId) return null;
-    const dateFilterStart = clampWorkHistoryFilterDate(
-      storedStart || storedEnd || getMonthStart(new Date())
-    );
-    const endCandidate = clampWorkHistoryFilterDate(storedEnd || storedStart || dateFilterStart);
+    const dateFilterStart = getMonthStart(storedStart || storedEnd || new Date());
+    const endCandidate = getMonthEnd(storedEnd || storedStart || dateFilterStart);
     const dateFilterEnd = endCandidate >= dateFilterStart ? endCandidate : dateFilterStart;
     return {
       selectedFactoryId,
@@ -709,25 +707,37 @@ const WorkList = () => {
 
   const handleDateFilterStartChange = useCallback((value) => {
     if (!value?.isValid?.()) return;
-    const nextStart = clampWorkHistoryFilterDate(value.toDate(), workHistoryOperationStartDay);
+    const nextStart = getMonthStart(
+      value.toDate(),
+      workHistoryOperationStartMonth,
+      workHistoryOperationStartDay
+    );
     if (!nextStart) return;
     setDateFilterStart(nextStart);
     setDateFilterEnd((prev) => {
       const currentEnd = normalizeFilterDate(prev);
-      return currentEnd && currentEnd >= nextStart ? currentEnd : nextStart;
+      return currentEnd && currentEnd >= nextStart
+        ? currentEnd
+        : getMonthEnd(nextStart, workHistoryOperationStartMonth, workHistoryOperationStartDay);
     });
-  }, [workHistoryOperationStartDay]);
+  }, [workHistoryOperationStartDay, workHistoryOperationStartMonth]);
 
   const handleDateFilterEndChange = useCallback((value) => {
     if (!value?.isValid?.()) return;
-    const nextEnd = clampWorkHistoryFilterDate(value.toDate(), workHistoryOperationStartDay);
+    const nextEnd = getMonthEnd(
+      value.toDate(),
+      workHistoryOperationStartMonth,
+      workHistoryOperationStartDay
+    );
     if (!nextEnd) return;
     setDateFilterEnd(nextEnd);
     setDateFilterStart((prev) => {
       const currentStart = normalizeFilterDate(prev);
-      return currentStart && currentStart <= nextEnd ? currentStart : nextEnd;
+      return currentStart && currentStart <= nextEnd
+        ? currentStart
+        : getMonthStart(nextEnd, workHistoryOperationStartMonth, workHistoryOperationStartDay);
     });
-  }, [workHistoryOperationStartDay]);
+  }, [workHistoryOperationStartDay, workHistoryOperationStartMonth]);
 
   const shiftDateFilterMonth = useCallback(
     (amount) => {
@@ -824,6 +834,7 @@ const WorkList = () => {
                 <CustomDatePicker
                   value={dateFilterStart}
                   onChange={handleDateFilterStartChange}
+                  monthOnly
                   slotProps={FILTER_DATE_PICKER_SLOT_PROPS}
                   minDate={workHistoryOperationStartDay}
                 />
@@ -833,6 +844,7 @@ const WorkList = () => {
                 <CustomDatePicker
                   value={dateFilterEnd}
                   onChange={handleDateFilterEndChange}
+                  monthOnly
                   slotProps={FILTER_DATE_PICKER_SLOT_PROPS}
                   minDate={workHistoryOperationStartDay}
                 />

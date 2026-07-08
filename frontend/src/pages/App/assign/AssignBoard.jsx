@@ -6623,9 +6623,11 @@ const AssignBoard = () => {
   const toMonthEnd   = (d) => { const r = new Date(d); r.setDate(1); r.setMonth(r.getMonth()+1); r.setDate(0); r.setHours(0,0,0,0); return r; };
 
   const handleViewStartChange = (newStart) => {
-    const s = clampAssignmentViewDate(newStart, assignmentOperationStartDateKey);
-    const e = clampAssignmentViewDate(viewEnd, assignmentOperationStartDateKey);
-    if (s > e) return;
+    const s = clampAssignmentViewDate(toMonthStart(newStart), assignmentOperationStartDateKey);
+    let e = clampAssignmentViewDate(viewEnd, assignmentOperationStartDateKey);
+    if (s > e) {
+      e = getMonthEndDate(s);
+    }
     const range = Math.round((e - s) / 86400000) + 1;
     if (range > MAX_RANGE_DAYS) {
       const cappedEnd = new Date(s); cappedEnd.setDate(cappedEnd.getDate() + MAX_RANGE_DAYS - 1);
@@ -6635,9 +6637,11 @@ const AssignBoard = () => {
     applyViewRange(s, e);
   };
   const handleViewEndChange = (newEnd) => {
-    const e = clampAssignmentViewDate(newEnd, assignmentOperationStartDateKey);
-    const s = clampAssignmentViewDate(viewStart, assignmentOperationStartDateKey);
-    if (e < s) return;
+    const e = clampAssignmentViewDate(toMonthEnd(newEnd), assignmentOperationStartDateKey);
+    let s = clampAssignmentViewDate(viewStart, assignmentOperationStartDateKey);
+    if (e < s) {
+      s = clampAssignmentViewDate(toMonthStart(e), assignmentOperationStartDateKey);
+    }
     const range = Math.round((e - s) / 86400000) + 1;
     if (range > MAX_RANGE_DAYS) return;
     applyViewRange(s, e);
@@ -6777,6 +6781,7 @@ const AssignBoard = () => {
                 <CustomDatePicker
                   value={viewStart}
                   onChange={(val) => { if (val?.isValid?.()) handleViewStartChange(val.toDate()); }}
+                  monthOnly
                   disabled={controlsDisabled}
                   minDate={assignmentOperationStartDay}
                 />
@@ -6784,6 +6789,7 @@ const AssignBoard = () => {
                 <CustomDatePicker
                   value={viewEnd}
                   onChange={(val) => { if (val?.isValid?.()) handleViewEndChange(val.toDate()); }}
+                  monthOnly
                   disabled={controlsDisabled}
                   minDate={assignmentOperationStartDay}
                 />

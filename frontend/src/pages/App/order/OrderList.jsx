@@ -2264,25 +2264,25 @@ const OrderList = () => {
 
   const handleDueDateFilterStartChange = (value) => {
     if (!value?.isValid?.()) return;
-    const nextStart = normalizeFilterDate(value.toDate());
+    const nextStart = getMonthStart(value.toDate());
     if (!nextStart) return;
     hasTouchedDueDateFilterRef.current = true;
     setDueDateFilterStart(nextStart);
     setDueDateFilterEnd((prev) => {
       const currentEnd = normalizeFilterDate(prev);
-      return currentEnd && currentEnd >= nextStart ? currentEnd : nextStart;
+      return currentEnd && currentEnd >= nextStart ? currentEnd : getMonthEnd(nextStart);
     });
   };
 
   const handleDueDateFilterEndChange = (value) => {
     if (!value?.isValid?.()) return;
-    const nextEnd = normalizeFilterDate(value.toDate());
+    const nextEnd = getMonthEnd(value.toDate());
     if (!nextEnd) return;
     hasTouchedDueDateFilterRef.current = true;
     setDueDateFilterEnd(nextEnd);
     setDueDateFilterStart((prev) => {
       const currentStart = normalizeFilterDate(prev);
-      return currentStart && currentStart <= nextEnd ? currentStart : nextEnd;
+      return currentStart && currentStart <= nextEnd ? currentStart : getMonthStart(nextEnd);
     });
   };
 
@@ -3224,6 +3224,7 @@ const OrderList = () => {
                 <CustomDatePicker
                   value={dueDateFilterStart}
                   onChange={handleDueDateFilterStartChange}
+                  monthOnly
                   slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
                 />
                 <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>
@@ -3232,6 +3233,7 @@ const OrderList = () => {
                 <CustomDatePicker
                   value={dueDateFilterEnd}
                   onChange={handleDueDateFilterEndChange}
+                  monthOnly
                   slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
                 />
                 <Stack sx={{ gap: '2px' }}>

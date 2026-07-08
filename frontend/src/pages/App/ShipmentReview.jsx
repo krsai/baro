@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
+  Button,
   Chip,
   MenuItem,
   Paper,
@@ -27,6 +28,22 @@ import {
   fetchQuantitySettlement,
   saveQuantitySettlement,
 } from '../../utils/quantitySettlementApi';
+
+const getLocalMonthKey = (value = new Date()) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return getLocalMonthKey();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const normalizeReviewMonthKey = (value) =>
+  /^\d{4}-\d{2}$/.test(String(value || '').trim())
+    ? String(value).trim()
+    : getLocalMonthKey();
+
+const shiftReviewMonthKey = (value, amount) => {
+  const [year, month] = normalizeReviewMonthKey(value).split('-').map((item) => Number(item));
+  return getLocalMonthKey(new Date(year, month - 1 + amount, 1));
+};
 
 const PAGE_TEXT = {
   title: {
@@ -281,7 +298,7 @@ const ShipmentReview = () => {
   const { activeOrgId, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
 
-  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(() => getLocalMonthKey());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dataset, setDataset] = useState(null);
@@ -575,15 +592,40 @@ const ShipmentReview = () => {
             justifyContent="space-between"
           >
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-              <TextField
-                label={text('month')}
-                type="month"
-                size="small"
-                value={month}
-                onChange={(event) => setMonth(event.target.value)}
-                InputLabelProps={{ shrink: true }}
-                sx={{ width: { xs: '100%', sm: 180 } }}
-              />
+              <Stack
+                direction="row"
+                spacing={0.5}
+                alignItems="center"
+                sx={{ width: { xs: '100%', sm: 'auto' } }}
+              >
+                <TextField
+                  label={text('month')}
+                  type="month"
+                  size="small"
+                  value={month}
+                  onChange={(event) => setMonth(event.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ width: { xs: '100%', sm: 180 } }}
+                />
+                <Stack sx={{ gap: '2px' }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => setMonth((prev) => shiftReviewMonthKey(prev, 1))}
+                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                  >
+                    M+
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => setMonth((prev) => shiftReviewMonthKey(prev, -1))}
+                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                  >
+                    M-
+                  </Button>
+                </Stack>
+              </Stack>
               <TextField
                 label={text('filter')}
                 select

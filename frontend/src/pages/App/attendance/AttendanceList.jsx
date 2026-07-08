@@ -24,15 +24,13 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
 import 'dayjs/locale/vi';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import {
   enUS as datePickerEnUS,
   koKR as datePickerKoKR,
   viVN as datePickerViVN,
 } from '@mui/x-date-pickers/locales';
 import AppPageContainer from '../../../components/AppPageContainer';
+import CustomDatePicker from '../../../components/CustomDatePicker';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -668,26 +666,23 @@ const AttendanceList = () => {
                 ))}
               </Select>
             </FormControl>,
-            <LocalizationProvider
+            <CustomDatePicker
               key="month-picker"
-              dateAdapter={AdapterDayjs}
               adapterLocale={languageCode}
               localeText={getDatePickerLocaleText(languageCode)}
-            >
-              <DatePicker
-                label={resolveText(TEXT.monthLabel, languageCode, 'Month')}
-                views={['year', 'month']}
-                value={selectedMonth}
-                onChange={(value) => setSelectedMonth((value || dayjs()).startOf('month'))}
-                format="YYYY-MM"
-                slotProps={{
-                  textField: {
-                    size: 'small',
-                    sx: { minWidth: 150 },
-                  },
-                }}
-              />
-            </LocalizationProvider>,
+              monthOnly
+              label={resolveText(TEXT.monthLabel, languageCode, 'Month')}
+              value={selectedMonth}
+              onChange={(value) =>
+                setSelectedMonth((value?.isValid?.() ? value : dayjs()).startOf('month'))
+              }
+              slotProps={{
+                textField: {
+                  size: 'small',
+                  sx: { minWidth: 150 },
+                },
+              }}
+            />,
             <Stack key="month-shift" sx={{ gap: '2px' }}>
               <Button
                 size="small"

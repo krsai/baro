@@ -57,6 +57,22 @@ const parseMoneyInput = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const getLocalMonthKey = (value = new Date()) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return getLocalMonthKey();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const normalizePayrollMonthKey = (value) =>
+  /^\d{4}-\d{2}$/.test(String(value || '').trim())
+    ? String(value).trim()
+    : getLocalMonthKey();
+
+const shiftPayrollMonthKey = (value, amount) => {
+  const [year, month] = normalizePayrollMonthKey(value).split('-').map((item) => Number(item));
+  return getLocalMonthKey(new Date(year, month - 1 + amount, 1));
+};
+
 const formatMoneyInput = (value) => {
   const sanitized = sanitizeMoneyInput(value);
   if (!sanitized) return '';
@@ -179,7 +195,7 @@ const PayrollEntry = () => {
   const monthFromParam = isNew ? null : payrollId;
 
   const [payMonth, setPayMonth] = useState(
-    () => monthFromParam ?? new Date().toISOString().slice(0, 7)
+    () => monthFromParam ?? getLocalMonthKey()
   );
   const [loading, setLoading] = useState(false);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
@@ -192,6 +208,12 @@ const PayrollEntry = () => {
       resolvePayrollText(PAYROLL_FLOW_TEXT[key], languageCode, replacements),
     [languageCode]
   );
+
+  const handlePayMonthChange = useCallback((nextMonth) => {
+    setPayMonth(nextMonth);
+    setPayrollData(null);
+    setExpandedWorkerId(null);
+  }, []);
 
   const fetchPayroll = useCallback(
     async (month, options = {}) => {
@@ -530,19 +552,42 @@ const PayrollEntry = () => {
               spacing={2}
               alignItems={{ xs: 'stretch', sm: 'center' }}
             >
-              <TextField
-                label="정산 월"
-                type="month"
-                value={payMonth}
-                onChange={(event) => {
-                  setPayMonth(event.target.value);
-                  setPayrollData(null);
-                  setExpandedWorkerId(null);
-                }}
-                InputLabelProps={{ shrink: true }}
-                size="small"
-                sx={{ width: { xs: '100%', sm: 220 } }}
-              />
+              <Stack
+                direction="row"
+                spacing={0.5}
+                alignItems="center"
+                sx={{ width: { xs: '100%', sm: 'auto' } }}
+              >
+                <TextField
+                  label="정산 월"
+                  type="month"
+                  value={payMonth}
+                  onChange={(event) => handlePayMonthChange(event.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  size="small"
+                  sx={{ width: { xs: '100%', sm: 220 } }}
+                />
+                <Stack sx={{ gap: '2px' }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => handlePayMonthChange(shiftPayrollMonthKey(payMonth, 1))}
+                    disabled={loading || savingSnapshot}
+                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                  >
+                    M+
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => handlePayMonthChange(shiftPayrollMonthKey(payMonth, -1))}
+                    disabled={loading || savingSnapshot}
+                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                  >
+                    M-
+                  </Button>
+                </Stack>
+              </Stack>
               <Button
                 variant="contained"
                 onClick={handleCalculate}

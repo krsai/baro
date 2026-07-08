@@ -3,17 +3,35 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
+import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
+import 'dayjs/locale/vi';
 
-const CustomDatePicker = ({ value, onChange, slotProps, ...props }) => {
-  // value가 없으면 오늘 날짜를 기본값으로 사용
-  const dateValue = value ? dayjs(value) : dayjs();
+const CustomDatePicker = ({
+  value,
+  onChange,
+  slotProps,
+  monthOnly = false,
+  adapterLocale = 'ko',
+  localeText,
+  ...props
+}) => {
+  const parsedValue = value ? dayjs(value) : dayjs();
+  const safeValue = parsedValue.isValid() ? parsedValue : dayjs();
+  const dateValue = monthOnly ? safeValue.startOf('month') : safeValue;
+  const textFieldInputProps = {
+    ...slotProps?.textField?.inputProps,
+    ...(monthOnly && !slotProps?.textField?.inputProps?.placeholder
+      ? { placeholder: 'YYYY-MM' }
+      : {}),
+  };
 
   const mergedSlotProps = {
     ...slotProps,
     textField: {
       size: 'small',
       ...slotProps?.textField,
+      inputProps: textFieldInputProps,
       sx: {
         minWidth: 140,
         '& .MuiOutlinedInput-root': {
@@ -26,14 +44,35 @@ const CustomDatePicker = ({ value, onChange, slotProps, ...props }) => {
     },
   };
 
+  const handleChange = (nextValue, context) => {
+    if (monthOnly && nextValue?.isValid?.()) {
+      onChange?.(nextValue.startOf('month'), context);
+      return;
+    }
+    onChange?.(nextValue, context);
+  };
+
+  const monthPickerProps = monthOnly
+    ? {
+        views: ['year', 'month'],
+        openTo: 'month',
+        disableHighlightToday: true,
+      }
+    : {};
+
   return (
-    <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="ko">
+    <LocalizationProvider
+      dateAdapter={AdapterDayjs}
+      adapterLocale={adapterLocale}
+      localeText={localeText}
+    >
       <DatePicker
-        value={dateValue}
-        onChange={onChange}
-        format="YYYY-MM-DD"
-        slotProps={mergedSlotProps}
         {...props}
+        {...monthPickerProps}
+        value={dateValue}
+        onChange={handleChange}
+        format={monthOnly ? 'YYYY-MM' : props.format || 'YYYY-MM-DD'}
+        slotProps={mergedSlotProps}
       />
     </LocalizationProvider>
   );

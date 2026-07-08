@@ -22,15 +22,13 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
 import 'dayjs/locale/vi';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import {
   enUS as datePickerEnUS,
   koKR as datePickerKoKR,
   viVN as datePickerViVN,
 } from '@mui/x-date-pickers/locales';
 import AppPageContainer from '../../../components/AppPageContainer';
+import CustomDatePicker from '../../../components/CustomDatePicker';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -464,25 +462,20 @@ const WorkMonthlyBoard = () => {
                 ))}
               </Select>
             </FormControl>,
-            <LocalizationProvider
+            <CustomDatePicker
               key="month-picker"
-              dateAdapter={AdapterDayjs}
               adapterLocale={languageCode}
               localeText={getDatePickerLocaleText(languageCode)}
-            >
-              <DatePicker
-                views={['year', 'month']}
-                value={selectedMonth}
-                onChange={(value) =>
-                  setSelectedMonth(
-                    normalizeProductionAnalysisMonth(value, productionAnalysisMinMonth)
-                  )
-                }
-                format="YYYY-MM"
-                minDate={productionAnalysisMinMonth}
-                slotProps={MONTH_PICKER_SLOT_PROPS}
-              />
-            </LocalizationProvider>,
+              monthOnly
+              value={selectedMonth}
+              onChange={(value) =>
+                setSelectedMonth(
+                  normalizeProductionAnalysisMonth(value, productionAnalysisMinMonth)
+                )
+              }
+              minDate={productionAnalysisMinMonth}
+              slotProps={MONTH_PICKER_SLOT_PROPS}
+            />,
             <Stack key="month-shift" sx={{ gap: '2px' }}>
               <Button
                 size="small"
