@@ -10776,11 +10776,12 @@ const stripLegacyAssignmentCardPayload = (card: any) => {
     ctAgreedSnapshot: _ctAgreedSnapshot,
     ctAgreementHistory: _ctAgreementHistory,
     // styleCode/styleName/previewUrl/orderNo/dueDate/customer/customerNameKo/
-    // customerNameVi/styleId/workOrderId/buyerOrgId dropped from the stored
-    // payload (AssignmentCard/AssignmentPlan FK+join redesign). The first
-    // group are pure text copies already reachable through the real
-    // styleId/workOrderId/buyerOrgId FK columns; toAssignmentCardFromStoreRow
-    // resolves them from those joins at read time. styleId/workOrderId/
+    // customerNameVi/colorName/gender/styleId/workOrderId/buyerOrgId dropped
+    // from the stored payload (AssignmentCard/AssignmentPlan FK+join redesign).
+    // The first group are pure text copies already reachable through the real
+    // styleId/workOrderId/buyerOrgId FK columns; color/gender are no longer an
+    // assignment-card identity dimension. toAssignmentCardFromStoreRow resolves
+    // display fields from joins at read time. styleId/workOrderId/
     // buyerOrgId themselves are also stripped here so the row's real FK
     // columns are the only place they're stored - normalizeAssignmentCardsForStore
     // captures them from the incoming card BEFORE calling this function and
@@ -10799,6 +10800,8 @@ const stripLegacyAssignmentCardPayload = (card: any) => {
     customer: _customer,
     customerNameKo: _customerNameKo,
     customerNameVi: _customerNameVi,
+    colorName: _colorName,
+    gender: _gender,
     styleId: _payloadStyleId,
     workOrderId: _payloadWorkOrderId,
     buyerOrgId: _payloadBuyerOrgId,
@@ -10960,6 +10963,29 @@ const syncAssignmentCardsForOrg = async ({
     workOrderId,
     buyerOrgId,
   }));
+};
+const hydrateAssignmentFkRefsFromCards = (assignments: any[], cards: any[]): any[] => {
+  const cardById = new Map<string, any>();
+  ensureArray(cards).forEach((card) => {
+    const cardId = resolveOptionalString(card?.id ?? card?.cardId, null);
+    if (cardId && !cardById.has(cardId)) cardById.set(cardId, card);
+  });
+  return ensureArray(assignments).map((assignment) => {
+    if (!assignment || typeof assignment !== "object" || Array.isArray(assignment)) {
+      return assignment;
+    }
+    const cardId = resolveOptionalString(assignment?.cardId, null);
+    const card = cardId ? cardById.get(cardId) ?? null : null;
+    if (!card) return assignment;
+    return {
+      ...assignment,
+      workOrderId:
+        toPositiveIntOrNull(assignment?.workOrderId) ?? toPositiveIntOrNull(card?.workOrderId),
+      styleId: toPositiveIntOrNull(assignment?.styleId) ?? toPositiveIntOrNull(card?.styleId),
+      buyerOrgId:
+        toPositiveIntOrNull(assignment?.buyerOrgId) ?? toPositiveIntOrNull(card?.buyerOrgId),
+    };
+  });
 };
 const loadAssignmentCardsForOrg = async ({
   orgId,
@@ -12041,9 +12067,23 @@ const loadOrderAssignmentModificationLockMap = async (
     });
   }
   lockedPlans.forEach((plan) => {
+    const planWorkOrderId = toPositiveIntOrNull(plan?.workOrderId);
+    const cardWorkOrderId = toPositiveIntOrNull(plan?.assignmentCard?.workOrderId);
+    if (
+      planWorkOrderId !== null &&
+      cardWorkOrderId !== null &&
+      planWorkOrderId !== cardWorkOrderId
+    ) {
+      console.warn(
+        `[order-lock] AssignmentPlan.workOrderId drift: planWorkOrderId=${planWorkOrderId} cardWorkOrderId=${cardWorkOrderId}`
+      );
+    }
     const workOrderId =
-      toPositiveIntOrNull(plan?.workOrderId) ??
-      toPositiveIntOrNull(plan?.assignmentCard?.workOrderId);
+      planWorkOrderId !== null && workOrderIdSet.has(planWorkOrderId)
+        ? planWorkOrderId
+        : cardWorkOrderId !== null && workOrderIdSet.has(cardWorkOrderId)
+          ? cardWorkOrderId
+          : null;
     if (workOrderId !== null && workOrderIdSet.has(workOrderId)) {
       const matchingOrder = safeOrders.find(
         (order) => toPositiveIntOrNull(order?.id) === workOrderId
@@ -12731,6 +12771,8 @@ const toAssignmentPlanWriteData = (
   // scheduled from.
   const styleId = matchedCard?.styleId ?? null;
   const buyerOrgId = matchedCard?.buyerOrgId ?? null;
+  const workOrderId =
+    toPositiveIntOrNull(matchedCard?.workOrderId) ?? toPositiveIntOrNull(item?.workOrderId);
   // Completion state is owned by dedicated completion endpoints.
   // Assignment board save must not overwrite completion-related fields.
   return {
@@ -12739,7 +12781,7 @@ const toAssignmentPlanWriteData = (
     assignmentCardId,
     styleId,
     buyerOrgId,
-    workOrderId: toPositiveIntOrNull(item?.workOrderId),
+    workOrderId,
     // orderNo/customer/label/previewUrl dropped in Phase E, and
     // colorId/colorName/color/stripeColor/imageUrl/thumbnailUrl dropped in
     // Phase D - see the comment in toAssignmentPlanResponse. Not written
@@ -17700,7 +17742,17 @@ const resolveAssignmentPlanRequiredProcessGroups = (plan: any): string[][] => {
 
 const resolveAssignmentPlanStyleQueryValues = (plan: any): string[] => {
   const styleId = toPositiveIntOrNull(plan?.styleId) ?? toPositiveIntOrNull(plan?.style?.id);
-  return styleId !== null ? [String(styleId)] : [];
+  return Array.from(
+    new Set(
+      [
+        styleId !== null ? String(styleId) : null,
+        plan?.style?.code,
+        plan?.style?.name,
+      ]
+        .map((value) => resolveOptionalString(value, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
 };
 
 const resolveOrphanWorkRecordLineId = (record: any): number | null =>
@@ -23746,6 +23798,15 @@ app.put("/assignment-board-state", async (req, res) => {
     let nextAssignmentsNormalized = normalizeStateAssignments(
       incomingAssignmentsForSave
     );
+    const savedCards = await syncAssignmentCardsForOrg({
+      orgId: organization.id,
+      cards: cardsForSave,
+      db: tx,
+    });
+    nextAssignmentsNormalized = hydrateAssignmentFkRefsFromCards(
+      nextAssignmentsNormalized,
+      savedCards
+    );
     let nextAssignmentsByExternalId =
       buildAssignmentByExternalId(nextAssignmentsNormalized);
     const changedIncomingExternalIds = new Set<string>();
@@ -24202,11 +24263,6 @@ app.put("/assignment-board-state", async (req, res) => {
       });
     }
 
-    const savedCards = await syncAssignmentCardsForOrg({
-      orgId: organization.id,
-      cards: cardsForSave,
-      db: tx,
-    });
     const state = await tx.assignmentBoardState.upsert({
       where: { orgId: organization.id },
       update: {
