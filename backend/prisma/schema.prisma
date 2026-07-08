@@ -111,6 +111,8 @@ model SystemUser {
   createdByEmployeeId Int?
   updatedByEmployeeId Int?
   updatedAt           DateTime   @updatedAt
+  createdByEmployee   Employee?  @relation("SystemUserCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee   Employee?  @relation("SystemUserUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 }
 
 model ProcessMasterOption {
@@ -129,6 +131,9 @@ model ProcessMasterOption {
   updatedAt           DateTime                      @updatedAt
   parentRelations     ProcessMasterOptionRelation[] @relation("ProcessMasterOptionRelationParent")
   childRelations      ProcessMasterOptionRelation[] @relation("ProcessMasterOptionRelationChild")
+
+  createdByEmployee Employee? @relation("ProcessMasterOptionCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("ProcessMasterOptionUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([type, code])
   @@index([type, sortOrder, id])
@@ -206,16 +211,20 @@ model Organization {
   sellerWorkOrders            WorkOrder[]                  @relation("WorkOrderSellerOrg")
   customerWorkOrders          WorkOrder[]                  @relation("WorkOrderCustomerOrg")
 
+  createdByEmployee Employee? @relation("OrganizationCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("OrganizationUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
   @@index([representativeEmployeeId])
 }
 
 model SystemSetting {
-  key                 String   @id
+  key                 String    @id
   value               Json
   updatedBy           String?
   updatedByEmployeeId Int?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  updatedByEmployee   Employee? @relation("SystemSettingUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 }
 
 model OnboardingRequest {
@@ -245,6 +254,9 @@ model OnboardingRequest {
 
   organization Organization? @relation(fields: [organizationId], references: [id])
 
+  createdByEmployee Employee? @relation("OnboardingRequestCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("OnboardingRequestUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
   @@index([status])
   @@index([requesterEmail])
   @@index([requesterEmail, status])
@@ -268,6 +280,9 @@ model OrganizationSubscription {
   updatedAt           DateTime                       @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
+
+  createdByEmployee Employee? @relation("OrganizationSubscriptionCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("OrganizationSubscriptionUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@index([status])
 }
@@ -302,6 +317,9 @@ model Factory {
   workLogs          WorkLog[]
   atTrainingBuckets AtTrainingBucket[]
 
+  createdByEmployee Employee? @relation("FactoryCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("FactoryUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
   @@unique([orgId, factoryCode])
   @@index([orgId])
   @@index([managerEmployeeId])
@@ -328,17 +346,20 @@ model Line {
   employees       Employee[]       @relation("EmployeeCurrentLine")
   workRecords     WorkRecord[]     @relation("WorkRecordLine")
 
+  createdByEmployee Employee? @relation("LineCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("LineUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
   @@unique([factoryId, name])
   @@index([orgId])
   @@index([factoryId])
 }
 
 model Employee {
-  id                  Int                 @id @default(autoincrement())
+  id                  Int            @id @default(autoincrement())
   orgId               Int
   email               String?
-  orgRole             OrgUserRole         @default(WORKER)
-  status              EmployeeStatus      @default(ACTIVE)
+  orgRole             OrgUserRole    @default(WORKER)
+  status              EmployeeStatus @default(ACTIVE)
   requestedAt         DateTime?
   requestedName       String?
   approvedAt          DateTime?
@@ -358,11 +379,11 @@ model Employee {
   leftAt              DateTime?
   leaveStartAt        DateTime?
   leaveEndAt          DateTime?
-  createdAt           DateTime            @default(now())
-  createdBy           String              @default("system@baro.local")
+  createdAt           DateTime       @default(now())
+  createdBy           String         @default("system@baro.local")
   createdByEmployeeId Int?
   updatedByEmployeeId Int?
-  updatedAt           DateTime            @updatedAt
+  updatedAt           DateTime       @updatedAt
 
   organization             Organization      @relation(fields: [orgId], references: [id])
   factory                  Factory?          @relation("FactoryEmployees", fields: [factoryId], references: [id])
@@ -374,6 +395,60 @@ model Employee {
   managedLines             Line[]            @relation("LineManager")
   attendanceEntries        AttendanceEntry[]
   workRecords              WorkRecord[]
+
+  createdByEmployee                  Employee?                    @relation("EmployeeCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee                  Employee?                    @relation("EmployeeUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+  createdSystemUsers                 SystemUser[]                 @relation("SystemUserCreatedByEmployee")
+  updatedSystemUsers                 SystemUser[]                 @relation("SystemUserUpdatedByEmployee")
+  createdProcessMasterOptions        ProcessMasterOption[]        @relation("ProcessMasterOptionCreatedByEmployee")
+  updatedProcessMasterOptions        ProcessMasterOption[]        @relation("ProcessMasterOptionUpdatedByEmployee")
+  createdOrganizations               Organization[]               @relation("OrganizationCreatedByEmployee")
+  updatedOrganizations               Organization[]               @relation("OrganizationUpdatedByEmployee")
+  createdOnboardingRequests          OnboardingRequest[]          @relation("OnboardingRequestCreatedByEmployee")
+  updatedOnboardingRequests          OnboardingRequest[]          @relation("OnboardingRequestUpdatedByEmployee")
+  createdOrganizationSubscriptions   OrganizationSubscription[]   @relation("OrganizationSubscriptionCreatedByEmployee")
+  updatedOrganizationSubscriptions   OrganizationSubscription[]   @relation("OrganizationSubscriptionUpdatedByEmployee")
+  createdFactorys                    Factory[]                    @relation("FactoryCreatedByEmployee")
+  updatedFactorys                    Factory[]                    @relation("FactoryUpdatedByEmployee")
+  createdLines                       Line[]                       @relation("LineCreatedByEmployee")
+  updatedLines                       Line[]                       @relation("LineUpdatedByEmployee")
+  createdAttendanceEntrys            AttendanceEntry[]            @relation("AttendanceEntryCreatedByEmployee")
+  updatedAttendanceEntrys            AttendanceEntry[]            @relation("AttendanceEntryUpdatedByEmployee")
+  createdOrganizationHolidays        OrganizationHoliday[]        @relation("OrganizationHolidayCreatedByEmployee")
+  updatedOrganizationHolidays        OrganizationHoliday[]        @relation("OrganizationHolidayUpdatedByEmployee")
+  createdOrgRelationships            OrgRelationship[]            @relation("OrgRelationshipCreatedByEmployee")
+  updatedOrgRelationships            OrgRelationship[]            @relation("OrgRelationshipUpdatedByEmployee")
+  createdStyles                      Style[]                      @relation("StyleCreatedByEmployee")
+  updatedStyles                      Style[]                      @relation("StyleUpdatedByEmployee")
+  createdStyleProcesss               StyleProcess[]               @relation("StyleProcessCreatedByEmployee")
+  updatedStyleProcesss               StyleProcess[]               @relation("StyleProcessUpdatedByEmployee")
+  createdAtTrainingBuckets           AtTrainingBucket[]           @relation("AtTrainingBucketCreatedByEmployee")
+  updatedAtTrainingBuckets           AtTrainingBucket[]           @relation("AtTrainingBucketUpdatedByEmployee")
+  createdAtTrainingBucketProcesss    AtTrainingBucketProcess[]    @relation("AtTrainingBucketProcessCreatedByEmployee")
+  updatedAtTrainingBucketProcesss    AtTrainingBucketProcess[]    @relation("AtTrainingBucketProcessUpdatedByEmployee")
+  createdWorkOrders                  WorkOrder[]                  @relation("WorkOrderCreatedByEmployee")
+  updatedWorkOrders                  WorkOrder[]                  @relation("WorkOrderUpdatedByEmployee")
+  createdWorkOrderItems              WorkOrderItem[]              @relation("WorkOrderItemCreatedByEmployee")
+  updatedWorkOrderItems              WorkOrderItem[]              @relation("WorkOrderItemUpdatedByEmployee")
+  createdAssignmentPlans             AssignmentPlan[]             @relation("AssignmentPlanCreatedByEmployee")
+  updatedAssignmentPlans             AssignmentPlan[]             @relation("AssignmentPlanUpdatedByEmployee")
+  createdQcPassEvents                QcPassEvent[]                @relation("QcPassEventCreatedByEmployee")
+  updatedQcPassEvents                QcPassEvent[]                @relation("QcPassEventUpdatedByEmployee")
+  createdWorkLogs                    WorkLog[]                    @relation("WorkLogCreatedByEmployee")
+  updatedWorkLogs                    WorkLog[]                    @relation("WorkLogUpdatedByEmployee")
+  createdWorkRecords                 WorkRecord[]                 @relation("WorkRecordCreatedByEmployee")
+  updatedWorkRecords                 WorkRecord[]                 @relation("WorkRecordUpdatedByEmployee")
+  createdPayrollSnapshots            PayrollSnapshot[]            @relation("PayrollSnapshotCreatedByEmployee")
+  updatedPayrollSnapshots            PayrollSnapshot[]            @relation("PayrollSnapshotUpdatedByEmployee")
+  createdQuantitySettlementSnapshots QuantitySettlementSnapshot[] @relation("QuantitySettlementSnapshotCreatedByEmployee")
+  updatedQuantitySettlementSnapshots QuantitySettlementSnapshot[] @relation("QuantitySettlementSnapshotUpdatedByEmployee")
+  createdAssignmentBoardStates       AssignmentBoardState[]       @relation("AssignmentBoardStateCreatedByEmployee")
+  updatedAssignmentBoardStates       AssignmentBoardState[]       @relation("AssignmentBoardStateUpdatedByEmployee")
+  createdAssignmentCards             AssignmentCard[]             @relation("AssignmentCardCreatedByEmployee")
+  updatedAssignmentCards             AssignmentCard[]             @relation("AssignmentCardUpdatedByEmployee")
+  updatedSystemSettings              SystemSetting[]              @relation("SystemSettingUpdatedByEmployee")
+  createdEmployees                   Employee[]                   @relation("EmployeeCreatedByEmployee")
+  updatedEmployees                   Employee[]                   @relation("EmployeeUpdatedByEmployee")
 
   @@unique([orgId, email])
   @@unique([orgId, employeeNo])
@@ -406,6 +481,9 @@ model AttendanceEntry {
   factory      Factory      @relation(fields: [factoryId], references: [id])
   worker       Employee     @relation(fields: [workerId], references: [id])
 
+  createdByEmployee Employee? @relation("AttendanceEntryCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("AttendanceEntryUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
   @@unique([orgId, factoryId, workerId, workDate])
   @@index([orgId, workDate])
   @@index([orgId, factoryId, workDate])
@@ -423,6 +501,9 @@ model OrganizationHoliday {
   updatedAt           DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
+
+  createdByEmployee Employee? @relation("OrganizationHolidayCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("OrganizationHolidayUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([orgId, holidayDate])
   @@index([orgId, holidayDate])
@@ -462,6 +543,9 @@ model OrgRelationship {
 
   manufacturer Organization @relation("ManufacturerOrgRelationships", fields: [manufacturerOrgId], references: [id])
   brand        Organization @relation("BrandOrgRelationships", fields: [brandOrgId], references: [id])
+
+  createdByEmployee Employee? @relation("OrgRelationshipCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("OrgRelationshipUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([manufacturerOrgId, brandOrgId])
   @@index([manufacturerOrgId])
@@ -559,6 +643,9 @@ model Style {
   assignmentCards AssignmentCard[]
   workRecords     WorkRecord[]
 
+  createdByEmployee Employee? @relation("StyleCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("StyleUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
   @@unique([orgId, code])
   @@unique([orgId, name])
   @@index([orgId])
@@ -587,6 +674,9 @@ model StyleProcess {
   standards       StyleProcessStandard[]
   trainingBuckets AtTrainingBucketProcess[]
   workRecords     WorkRecord[]
+
+  createdByEmployee Employee? @relation("StyleProcessCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("StyleProcessUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([styleId, orgId, processCode])
   @@index([orgId])
@@ -631,6 +721,9 @@ model AtTrainingBucket {
   factory       Factory?                  @relation(fields: [factoryId], references: [id], onDelete: SetNull)
   processRows   AtTrainingBucketProcess[]
 
+  createdByEmployee Employee? @relation("AtTrainingBucketCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("AtTrainingBucketUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
   @@unique([orgId, sourceWorkLogId])
   @@index([orgId, monthKey, workDate])
   @@index([orgId, workDate])
@@ -654,6 +747,9 @@ model AtTrainingBucketProcess {
   bucket       AtTrainingBucket @relation(fields: [bucketId], references: [id], onDelete: Cascade)
   style        Style            @relation(fields: [styleId], references: [id], onDelete: Cascade)
   styleProcess StyleProcess     @relation(fields: [styleProcessId], references: [id], onDelete: Cascade)
+
+  createdByEmployee Employee? @relation("AtTrainingBucketProcessCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("AtTrainingBucketProcessUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([bucketId, styleProcessId])
   @@index([orgId, styleProcessId])
@@ -692,6 +788,9 @@ model WorkOrder {
   assignmentPlans AssignmentPlan[]
   assignmentCards AssignmentCard[]
 
+  createdByEmployee Employee? @relation("WorkOrderCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("WorkOrderUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
   @@unique([orgId, orderId])
   @@unique([orgId, customerId, orderNumber])
   @@unique([buyerOrgId, sellerOrgId, orderNumber])
@@ -718,6 +817,9 @@ model WorkOrderItem {
   workOrder WorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
   style     Style?     @relation(fields: [styleId], references: [id], onDelete: SetNull)
   color     AttrColor? @relation(fields: [colorId], references: [id], onDelete: SetNull)
+
+  createdByEmployee Employee? @relation("WorkOrderItemCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("WorkOrderItemUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@index([workOrderId])
   @@index([styleId])
@@ -784,11 +886,14 @@ model AssignmentPlan {
   style          Style?          @relation(fields: [styleId], references: [id], onDelete: SetNull)
   buyerOrg       Organization?   @relation("AssignmentPlanBuyerOrg", fields: [buyerOrgId], references: [id], onDelete: SetNull)
   // Real FK replacing the old "cardId string happens to match" convention
-  // (AGENTS.md structural-problems list). cardId itself is kept for now as
-  // a read compatibility fallback during the migration - see AGENTS.md 43.
+  // (AGENTS.md structural-problems list). cardId itself is kept as the stable
+  // external board identifier; joins must use assignmentCardId/workOrderId/styleId.
   assignmentCard AssignmentCard? @relation(fields: [assignmentCardId], references: [id], onDelete: SetNull)
   workRecords    WorkRecord[]
   qcPassEvents   QcPassEvent[]
+
+  createdByEmployee Employee? @relation("AssignmentPlanCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("AssignmentPlanUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([orgId, externalId])
   @@index([orgId, lineId])
@@ -819,6 +924,9 @@ model QcPassEvent {
   organization   Organization   @relation(fields: [orgId], references: [id])
   assignmentPlan AssignmentPlan @relation(fields: [assignmentPlanId], references: [id], onDelete: Cascade)
   attrColor      AttrColor?     @relation(fields: [colorId], references: [id], onDelete: SetNull)
+
+  createdByEmployee Employee? @relation("QcPassEventCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("QcPassEventUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@index([orgId, assignmentPlanId, inspectedOn])
   @@index([orgId, inspectedOn])
@@ -856,6 +964,9 @@ model WorkLog {
   workRecords       WorkRecord[]
   atTrainingBuckets AtTrainingBucket[]
 
+  createdByEmployee Employee? @relation("WorkLogCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("WorkLogUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
   @@index([orgId, displayDate])
   @@index([orgId, createdAt])
   @@index([factoryId])
@@ -888,6 +999,9 @@ model WorkRecord {
   styleProcess   StyleProcess?   @relation(fields: [styleProcessId], references: [id], onDelete: SetNull)
   line           Line?           @relation("WorkRecordLine", fields: [lineId], references: [id], onDelete: SetNull)
 
+  createdByEmployee Employee? @relation("WorkRecordCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("WorkRecordUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
   @@index([orgId, workLogId])
   @@index([orgId, workerId])
   @@index([orgId, styleId])
@@ -911,6 +1025,9 @@ model PayrollSnapshot {
 
   organization Organization @relation(fields: [orgId], references: [id])
 
+  createdByEmployee Employee? @relation("PayrollSnapshotCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("PayrollSnapshotUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
   @@unique([orgId, month])
   @@index([orgId])
 }
@@ -928,6 +1045,9 @@ model QuantitySettlementSnapshot {
   updatedBy           String   @default("system@baro.local")
 
   organization Organization @relation(fields: [orgId], references: [id])
+
+  createdByEmployee Employee? @relation("QuantitySettlementSnapshotCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("QuantitySettlementSnapshotUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([orgId, month])
   @@index([orgId])
@@ -948,6 +1068,9 @@ model AssignmentBoardState {
 
   organization Organization @relation(fields: [orgId], references: [id])
 
+  createdByEmployee Employee? @relation("AssignmentBoardStateCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("AssignmentBoardStateUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
   @@index([orgId])
 }
 
@@ -965,8 +1088,8 @@ model AssignmentCard {
 
   // Real FK columns replacing the "payload JSON happens to carry these
   // ints/strings" convention (AGENTS.md AssignmentCard/AssignmentPlan
-  // FK+join redesign, Phase A). payload keeps the same values for now as a
-  // read-compatibility fallback during the migration - do not remove yet.
+  // FK+join redesign, Phase A). payload must not be used as the source for
+  // these relations.
   styleId     Int?
   workOrderId Int?
   buyerOrgId  Int?
@@ -976,6 +1099,9 @@ model AssignmentCard {
   workOrder       WorkOrder?       @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   buyerOrg        Organization?    @relation("AssignmentCardBuyerOrg", fields: [buyerOrgId], references: [id], onDelete: SetNull)
   assignmentPlans AssignmentPlan[]
+
+  createdByEmployee Employee? @relation("AssignmentCardCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("AssignmentCardUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([orgId, cardId])
   @@index([orgId, sortOrder, id])

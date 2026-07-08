@@ -644,12 +644,6 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "Employee", columnName: "status" },
   { tableName: "Employee", columnName: "requestedName" },
   { tableName: "Employee", columnName: "approvedAt" },
-  { tableName: "Employee", columnName: "createdByEmployeeId" },
-  { tableName: "Employee", columnName: "updatedByEmployeeId" },
-  { tableName: "WorkLog", columnName: "createdByEmployeeId" },
-  { tableName: "WorkLog", columnName: "updatedByEmployeeId" },
-  { tableName: "WorkOrder", columnName: "createdByEmployeeId" },
-  { tableName: "WorkOrder", columnName: "updatedByEmployeeId" },
   { tableName: "Style", columnName: "id" },
   { tableName: "Style", columnName: "code" },
   { tableName: "WorkRecord", columnName: "styleId" },
@@ -682,6 +676,26 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "OrgRelationship", columnName: "pricingDefaultTradeType" },
   { tableName: "OrgRelationship", columnName: "pricingMatrix" },
 ] as const;
+// createdByEmployeeId/updatedByEmployeeId is an audit FK pattern applied to 24+
+// tables (migration_fix.sql's "audited_tables" DO block) plus SystemSetting
+// (updatedByEmployeeId only). Rather than hand-maintaining one static entry per
+// table/column here - which is exactly how this drift gate went stale before
+// (see AGENTS.md 43: a missed hasField entry let a real production drift go
+// undetected) - derive the required list straight from the generated Prisma
+// Client's DMMF: any model that declares a createdByEmployeeId/updatedByEmployeeId
+// scalar field in schema.prisma is automatically required to have that column in
+// the runtime DB too. New models that adopt this audit pattern are covered
+// without remembering to update a hardcoded list.
+const AUDIT_EMPLOYEE_FK_COLUMN_NAMES = [
+  "createdByEmployeeId",
+  "updatedByEmployeeId",
+] as const;
+const STARTUP_REQUIRED_RUNTIME_AUDIT_FK_COLUMNS = Prisma.dmmf.datamodel.models.flatMap(
+  (model) =>
+    AUDIT_EMPLOYEE_FK_COLUMN_NAMES.filter((columnName) =>
+      model.fields.some((field) => field.name === columnName)
+    ).map((columnName) => ({ tableName: model.name, columnName }))
+);
 const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
   { tableName: "Employee", columnName: "lineName" },
   { tableName: "Employee", columnName: "orgMembershipId" },
@@ -6183,7 +6197,6 @@ const resolveAssignmentPlanStyleMetaById = async ({
     select: {
       id: true,
       styleId: true,
-      cardId: true,
       style: {
         select: {
           id: true,
@@ -6194,62 +6207,20 @@ const resolveAssignmentPlanStyleMetaById = async ({
     },
   });
 
-  // AssignmentPlan.styleId/style relation is not populated by any current write path
-  // (board save never sets it), so it is always null in practice. The linked
-  // AssignmentCard.payload already carries a resolved numeric styleId (plus display
-  // styleCode/styleName) from when the card was created — reuse that instead of
-  // re-deriving it. (This fallback previously read payload?.styleUid, a typo -
-  // the payload has never had that key, only styleId - so this branch always
-  // silently matched nothing until fixed.) Note Style rows are NOT scoped to
-  // the AssignmentPlan's orgId
-  // (Style.orgId is the owning brand org, which can differ from the manufacturer org
-  // that owns the AssignmentPlan/AssignmentCard), so do not add an orgId filter here.
-  const cardIds = Array.from(
-    new Set(
-      ensureArray(plans)
-        .map((plan) => resolveOptionalString(plan?.cardId, null))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
-  const cards = cardIds.length > 0
-    ? await db.assignmentCard.findMany({
-        where: { orgId, cardId: { in: cardIds } },
-        select: { cardId: true, payload: true },
-      })
-    : [];
-  const cardStyleMetaByCardId = new Map<
-    string,
-    { styleId: number; styleCode: string | null; styleName: string | null }
-  >();
-  ensureArray(cards).forEach((card) => {
-    const cardId = resolveOptionalString(card?.cardId, null);
-    const payload = card?.payload as any;
-    const styleId = toPositiveIntOrNull(payload?.styleId);
-    if (!cardId || styleId === null) return;
-    cardStyleMetaByCardId.set(cardId, {
-      styleId,
-      styleCode: resolveOptionalString(payload?.styleCode, null),
-      styleName: resolveOptionalString(payload?.styleName, null),
-    });
-  });
-
+  // AssignmentPlan.styleId/style relation is the only source here. If it is
+  // missing, callers must surface the missing canonical FK instead of guessing
+  // from AssignmentCard payload or cardId strings.
   const styleMetaByPlanId = new Map<number, any>();
   ensureArray(plans).forEach((plan) => {
     const planId = toPositiveIntOrNull(plan?.id);
     if (planId === null) return;
     const directStyleId = toPositiveIntOrNull(plan?.style?.id ?? plan?.styleId);
-    if (directStyleId !== null) {
-      styleMetaByPlanId.set(planId, {
-        styleId: directStyleId,
-        styleCode: resolveOptionalString(plan?.style?.code, null),
-        styleName: resolveOptionalString(plan?.style?.name, null),
-      });
-      return;
-    }
-    const cardId = resolveOptionalString(plan?.cardId, null);
-    const cardStyleMeta = cardId ? cardStyleMetaByCardId.get(cardId) : null;
-    if (!cardStyleMeta) return;
-    styleMetaByPlanId.set(planId, cardStyleMeta);
+    if (directStyleId === null) return;
+    styleMetaByPlanId.set(planId, {
+      styleId: directStyleId,
+      styleCode: resolveOptionalString(plan?.style?.code, null),
+      styleName: resolveOptionalString(plan?.style?.name, null),
+    });
   });
 
   return styleMetaByPlanId;
@@ -6722,26 +6693,24 @@ const collectWorkRecordAssignmentPlanIds = (records: any): number[] =>
         .filter((planId): planId is number => planId !== null)
     )
   );
-const resolveOrderIdFromAssignmentBoardItem = (item: any): string | null =>
-  extractOrderIdFromAssignmentCardText(item?.originOrderId) ??
-  extractOrderIdFromAssignmentCardText(item?.cardId) ??
-  extractOrderIdFromAssignmentCardText(item?.id);
-const buildOrderProgressCoverageByOrderId = ({
+const resolveWorkOrderIdFromAssignmentBoardItem = (item: any): number | null =>
+  toPositiveIntOrNull(item?.workOrderId);
+const buildOrderProgressCoverageByWorkOrderId = ({
   cards,
   assignments,
 }: {
   cards: any;
   assignments: any;
 }) => {
-  const coverageByOrderId = new Map<
-    string,
+  const coverageByWorkOrderId = new Map<
+    number,
     { hasUnassignedCards: boolean; hasAssignments: boolean }
   >();
-  const ensureCoverage = (orderId: string) => {
-    const current = coverageByOrderId.get(orderId);
+  const ensureCoverage = (workOrderId: number) => {
+    const current = coverageByWorkOrderId.get(workOrderId);
     if (current) return current;
     const next = { hasUnassignedCards: false, hasAssignments: false };
-    coverageByOrderId.set(orderId, next);
+    coverageByWorkOrderId.set(workOrderId, next);
     return next;
   };
 
@@ -6749,18 +6718,18 @@ const buildOrderProgressCoverageByOrderId = ({
     if ((resolveOptionalString(card?.type, "") ?? "").toUpperCase() === "DELTA") {
       return;
     }
-    const orderId = resolveOrderIdFromAssignmentBoardItem(card);
-    if (!orderId) return;
-    ensureCoverage(orderId).hasUnassignedCards = true;
+    const workOrderId = resolveWorkOrderIdFromAssignmentBoardItem(card);
+    if (workOrderId === null) return;
+    ensureCoverage(workOrderId).hasUnassignedCards = true;
   });
 
   normalizeStateAssignments(assignments).forEach((assignment) => {
-    const orderId = resolveOrderIdFromAssignmentBoardItem(assignment);
-    if (!orderId) return;
-    ensureCoverage(orderId).hasAssignments = true;
+    const workOrderId = resolveWorkOrderIdFromAssignmentBoardItem(assignment);
+    if (workOrderId === null) return;
+    ensureCoverage(workOrderId).hasAssignments = true;
   });
 
-  return coverageByOrderId;
+  return coverageByWorkOrderId;
 };
 const resolveAutoOrderProgressStatus = ({
   isManualLocked,
@@ -6811,7 +6780,7 @@ const syncOrderProgressStatusesForOrg = async ({
         }))
       : Promise.resolve({ assignments }),
   ]);
-  const coverageByOrderId = buildOrderProgressCoverageByOrderId({
+  const coverageByWorkOrderId = buildOrderProgressCoverageByWorkOrderId({
     cards: resolvedCards,
     assignments: resolvedAssignments?.assignments ?? assignments,
   });
@@ -6841,9 +6810,7 @@ const syncOrderProgressStatusesForOrg = async ({
     const nextStatus = resolveAutoOrderProgressStatus({
       isManualLocked: Boolean(order?.modificationLockedAt),
       coverage:
-        coverageByOrderId.get(
-          resolveOptionalString(order?.orderId, null) ?? ""
-        ) ?? null,
+        coverageByWorkOrderId.get(toPositiveIntOrNull(order?.id) ?? -1) ?? null,
     });
     if (currentStatus === nextStatus) return [];
     return [{ id: order.id, status: nextStatus }];
@@ -6873,8 +6840,6 @@ const syncConfirmedOrdersToInProgressFromWorkRecords = async ({
     where: { orgId, id: { in: assignmentPlanIds } },
     select: {
       workOrderId: true,
-      originOrderId: true,
-      cardId: true,
     },
   });
   const workOrderIds = collectPositiveIntSet(...plans.map((plan) => plan?.workOrderId));
@@ -6887,14 +6852,9 @@ const syncConfirmedOrdersToInProgressFromWorkRecords = async ({
       : [];
   const orderIds = Array.from(
     new Set(
-      [
-        ...linkedOrders.map((order) => resolveOptionalString(order?.orderId, null)),
-        ...plans.map(
-          (plan) =>
-            extractOrderIdFromAssignmentCardText(plan?.originOrderId) ??
-            extractOrderIdFromAssignmentCardText(plan?.cardId)
-        ),
-      ].filter((orderId): orderId is string => Boolean(orderId))
+      linkedOrders
+        .map((order) => resolveOptionalString(order?.orderId, null))
+        .filter((orderId): orderId is string => Boolean(orderId))
     )
   );
   if (orderIds.length === 0) return;
@@ -10816,16 +10776,21 @@ const stripLegacyAssignmentCardPayload = (card: any) => {
     ctAgreedSnapshot: _ctAgreedSnapshot,
     ctAgreementHistory: _ctAgreementHistory,
     // styleCode/styleName/previewUrl/orderNo/dueDate/customer/customerNameKo/
-    // customerNameVi dropped from the stored payload (AssignmentCard/
-    // AssignmentPlan FK+join redesign, Phase E) - all of these are pure text
-    // copies of data already reachable through the real styleId/workOrderId/
-    // buyerOrgId FK columns, and toAssignmentCardFromStoreRow already
-    // resolves them from those joins at read time. Not stripped: styleId/
-    // workOrderId/buyerOrgId themselves (still read directly off the payload
-    // by toAssignmentCardFromStoreRow's spread, not overridden there) and
-    // cardQuantity/cardPtTotalSeconds/cardAtTotalSeconds/cardStTotalSeconds/
-    // processCount/status, which are computed aggregates (not pure
-    // duplicates of joinable data) and out of scope for this phase.
+    // customerNameVi/styleId/workOrderId/buyerOrgId dropped from the stored
+    // payload (AssignmentCard/AssignmentPlan FK+join redesign). The first
+    // group are pure text copies already reachable through the real
+    // styleId/workOrderId/buyerOrgId FK columns; toAssignmentCardFromStoreRow
+    // resolves them from those joins at read time. styleId/workOrderId/
+    // buyerOrgId themselves are also stripped here so the row's real FK
+    // columns are the only place they're stored - normalizeAssignmentCardsForStore
+    // captures them from the incoming card BEFORE calling this function and
+    // writes them straight to the AssignmentCard row columns, and
+    // toAssignmentCardFromStoreRow reattaches them from those same row
+    // columns on read, so a duplicate copy inside payload would just be a
+    // second, driftable source of truth. Not stripped: cardQuantity/
+    // cardPtTotalSeconds/cardAtTotalSeconds/cardStTotalSeconds/processCount/
+    // status, which are computed aggregates (not pure duplicates of joinable
+    // data) and out of scope for this phase.
     styleCode: _styleCode,
     styleName: _styleName,
     previewUrl: _previewUrl,
@@ -10834,6 +10799,9 @@ const stripLegacyAssignmentCardPayload = (card: any) => {
     customer: _customer,
     customerNameKo: _customerNameKo,
     customerNameVi: _customerNameVi,
+    styleId: _payloadStyleId,
+    workOrderId: _payloadWorkOrderId,
+    buyerOrgId: _payloadBuyerOrgId,
     ...rest
   } = card as Record<string, unknown>;
   return {
@@ -10846,21 +10814,40 @@ const stripLegacyAssignmentCardPayload = (card: any) => {
   };
 };
 
-const normalizeAssignmentCardsForStore = (cards: any): any[] => {
+type NormalizedAssignmentCardForStore = {
+  payload: Record<string, unknown>;
+  styleId: number | null;
+  workOrderId: number | null;
+  buyerOrgId: number | null;
+};
+
+const normalizeAssignmentCardsForStore = (
+  cards: any
+): NormalizedAssignmentCardForStore[] => {
   const seen = new Set<string>();
-  const normalized: any[] = [];
+  const normalized: NormalizedAssignmentCardForStore[] = [];
   ensureArray(cards).forEach((card) => {
     if (!card || typeof card !== "object" || Array.isArray(card)) return;
-    const sanitizedCard = stripLegacyAssignmentCardPayload(card);
-    const cardId = resolveOptionalString((sanitizedCard as any)?.id, null);
+    const cardId = resolveOptionalString((card as any)?.id, null);
     if (!cardId || seen.has(cardId)) return;
     seen.add(cardId);
-    normalized.push({
+    // AssignmentCard.styleId/workOrderId/buyerOrgId are the real FK columns
+    // (AGENTS.md AssignmentCard/AssignmentPlan FK+join redesign) - capture
+    // them from the incoming card here, before stripLegacyAssignmentCardPayload
+    // strips them out of the persisted JSON payload below, so the row's FK
+    // columns stay the single write source instead of a second copy inside
+    // payload.
+    const styleId = toPositiveIntOrNull((card as any)?.styleId);
+    const workOrderId = toPositiveIntOrNull((card as any)?.workOrderId);
+    const buyerOrgId = toPositiveIntOrNull((card as any)?.buyerOrgId);
+    const sanitizedCard = stripLegacyAssignmentCardPayload(card);
+    const payload = {
       ...(sanitizedCard as Record<string, unknown>),
       id: cardId,
       originOrderId:
         resolveOptionalString((sanitizedCard as any)?.originOrderId, null) ?? cardId,
-    });
+    };
+    normalized.push({ payload, styleId, workOrderId, buyerOrgId });
   });
   return normalized;
 };
@@ -10876,12 +10863,9 @@ const toAssignmentCardFromStoreRow = (row: any): any | null => {
     resolveOptionalString(row.cardId, null);
   if (!cardId) return null;
   const sanitizedPayload = stripLegacyAssignmentCardPayload(payload);
-  // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): prefer the
-  // live join through the real FK columns over payload's baked-in string
-  // copies. Field names in the returned object are unchanged for backward
-  // compatibility - only where the value comes from changes. Falls back to
-  // the payload copy for any card whose FK columns aren't backfilled yet
-  // (e.g. a row Phase A's SQL backfill couldn't resolve).
+  // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): use the live
+  // joins through real FK columns. Field names in the returned object are
+  // unchanged for backward compatibility, but FK values never come from JSON.
   const style = row.style ?? null;
   const workOrder = row.workOrder ?? null;
   const buyerOrg = row.buyerOrg ?? null;
@@ -10894,6 +10878,12 @@ const toAssignmentCardFromStoreRow = (row: any): any | null => {
     id: cardId,
     originOrderId:
       resolveOptionalString((sanitizedPayload as any)?.originOrderId, null) ?? cardId,
+    // styleId/workOrderId/buyerOrgId are the row's real FK columns - the
+    // single source of truth now that normalizeAssignmentCardsForStore no
+    // longer persists them inside payload.
+    styleId: toPositiveIntOrNull(row.styleId),
+    workOrderId: toPositiveIntOrNull(row.workOrderId),
+    buyerOrgId: toPositiveIntOrNull(row.buyerOrgId),
     styleName: resolveOptionalString(style?.name, null) ?? (sanitizedPayload as any)?.styleName,
     styleCode: resolveOptionalString(style?.code, null) ?? (sanitizedPayload as any)?.styleCode,
     previewUrl: previewUrl ?? "",
@@ -10918,7 +10908,9 @@ const syncAssignmentCardsForOrg = async ({
   db?: AssignmentCardStoreClient;
 }): Promise<any[]> => {
   const normalizedCards = normalizeAssignmentCardsForStore(cards);
-  const nextCardIdSet = new Set(normalizedCards.map((card) => String(card.id)));
+  const nextCardIdSet = new Set(
+    normalizedCards.map((card) => String(card.payload.id))
+  );
   await db.assignmentCard.deleteMany({
     where: {
       orgId,
@@ -10927,9 +10919,9 @@ const syncAssignmentCardsForOrg = async ({
         : {}),
     },
   });
-  for (let index = 0; index < normalizedCards.length; index += 1) {
-    const card = normalizedCards[index];
-    const cardId = String(card.id);
+  for (const [index, entry] of normalizedCards.entries()) {
+    const { payload, styleId, workOrderId, buyerOrgId } = entry;
+    const cardId = String(payload.id);
     await db.assignmentCard.upsert({
       where: {
         orgId_cardId: {
@@ -10939,24 +10931,35 @@ const syncAssignmentCardsForOrg = async ({
       },
       update: {
         sortOrder: index,
-        payload: card,
-        styleId: toPositiveIntOrNull(card.styleId),
-        workOrderId: toPositiveIntOrNull(card.workOrderId),
-        buyerOrgId: toPositiveIntOrNull(card.buyerOrgId),
+        payload: payload as Prisma.InputJsonValue,
+        styleId,
+        workOrderId,
+        buyerOrgId,
       },
       create: {
         orgId,
         cardId,
         sortOrder: index,
-        payload: card,
-        styleId: toPositiveIntOrNull(card.styleId),
-        workOrderId: toPositiveIntOrNull(card.workOrderId),
-        buyerOrgId: toPositiveIntOrNull(card.buyerOrgId),
+        payload: payload as Prisma.InputJsonValue,
+        styleId,
+        workOrderId,
+        buyerOrgId,
       },
     });
   }
 
-  return normalizedCards;
+  // Response/downstream callers (board-save response payload, order progress
+  // sync, mergeAssignmentCardsWithSaved on the next rebuild) still expect a
+  // flat card object with styleId/workOrderId/buyerOrgId readable directly,
+  // matching what toAssignmentCardFromStoreRow returns on a normal read. The
+  // row's real FK columns (not payload) are the source for these three
+  // fields; only the JSON payload itself excludes them now.
+  return normalizedCards.map(({ payload, styleId, workOrderId, buyerOrgId }) => ({
+    ...payload,
+    styleId,
+    workOrderId,
+    buyerOrgId,
+  }));
 };
 const loadAssignmentCardsForOrg = async ({
   orgId,
@@ -11237,8 +11240,6 @@ const parseAssignmentCardIdentity = (
     gender: normalizeAssignmentDisplayGender(parts[3]),
   };
 };
-const extractOrderIdFromAssignmentCardText = (value: any): string | null =>
-  resolveOptionalString(parseAssignmentCardIdentity(value)?.orderId, null);
 const getOrderRelatedOrgIds = (order: any): number[] =>
   Array.from(
     new Set(
@@ -11247,19 +11248,6 @@ const getOrderRelatedOrgIds = (order: any): number[] =>
         .filter((value): value is number => value !== null)
     )
   );
-const buildAssignmentPlanOrderMatchWhereOr = (
-  orderId: string,
-  workOrderIds: number[] = []
-): Prisma.AssignmentPlanWhereInput[] => {
-  const prefix = `${orderId}::`;
-  return [
-    ...(workOrderIds.length > 0 ? [{ workOrderId: { in: workOrderIds } }] : []),
-    { originOrderId: { startsWith: prefix } },
-    { cardId: { startsWith: prefix } },
-    { originOrderId: orderId },
-    { cardId: orderId },
-  ];
-};
 const loadAccessibleWorkOrderIdsForAssignmentOrder = async ({
   orderId,
   orgIds,
@@ -11747,12 +11735,23 @@ const syncAssignmentPlansForOrderLock = async ({
 
   const styleQuantityMap = resolveOrderStyleQuantityMap(order);
   const workOrderIds = collectPositiveIntSet(order?.id);
+  if (workOrderIds.length === 0) {
+    throw createHttpError(409, "order is missing WorkOrder.id; cannot sync assignment plans accurately");
+  }
   const plans = await db.assignmentPlan.findMany({
-    where: { orgId, OR: buildAssignmentPlanOrderMatchWhereOr(orderId, workOrderIds) },
+    where: {
+      orgId,
+      OR: [
+        { workOrderId: { in: workOrderIds } },
+        { assignmentCard: { is: { workOrderId: { in: workOrderIds } } } },
+      ],
+    },
     select: {
       id: true,
       externalId: true,
       cardId: true,
+      workOrderId: true,
+      styleId: true,
       isCompleted: true,
       assignmentQuantity: true,
       assignmentStTotalSeconds: true,
@@ -11769,14 +11768,44 @@ const syncAssignmentPlansForOrderLock = async ({
   );
 
   const plansByStyleId = new Map<number, any[]>();
+  const workOrderIdSet = new Set(workOrderIds);
+  const missingWorkOrderFkPlanIds: string[] = [];
+  const missingStyleFkPlanIds: string[] = [];
   plans.forEach((plan: any) => {
-    const identity = parseAssignmentCardIdentity(plan?.cardId);
-    const styleId = toPositiveIntOrNull(identity?.styleId);
-    if (styleId === null) return;
+    const annotatedPlan = planById.get(Number(plan.id)) ?? plan;
+    if (annotatedPlan.isCompleted === true || annotatedPlan.isPayrollLocked) return;
+    const planWorkOrderId = toPositiveIntOrNull(annotatedPlan?.workOrderId ?? plan?.workOrderId);
+    if (planWorkOrderId === null || !workOrderIdSet.has(planWorkOrderId)) {
+      missingWorkOrderFkPlanIds.push(
+        resolveOptionalString(annotatedPlan?.externalId ?? plan?.externalId, null) ??
+          String(annotatedPlan?.id ?? plan?.id ?? "")
+      );
+      return;
+    }
+    const styleId = toPositiveIntOrNull(annotatedPlan?.styleId ?? plan?.styleId);
+    if (styleId === null) {
+      missingStyleFkPlanIds.push(
+        resolveOptionalString(annotatedPlan?.externalId ?? plan?.externalId, null) ??
+          String(annotatedPlan?.id ?? plan?.id ?? "")
+      );
+      return;
+    }
     const bucket = plansByStyleId.get(styleId) ?? [];
     bucket.push(plan);
     plansByStyleId.set(styleId, bucket);
   });
+  if (missingWorkOrderFkPlanIds.length > 0) {
+    throw createHttpError(
+      409,
+      `assignment plan is missing workOrderId FK; cannot sync order lock accurately (${missingWorkOrderFkPlanIds.join(", ")})`
+    );
+  }
+  if (missingStyleFkPlanIds.length > 0) {
+    throw createHttpError(
+      409,
+      `assignment plan is missing styleId FK; cannot sync order lock accurately (${missingStyleFkPlanIds.join(", ")})`
+    );
+  }
 
   const linkedPlanIdSet = new Set(
     await loadLinkedWorkRecordPlanIds({
@@ -11862,9 +11891,9 @@ const syncAssignmentPlansForOrderLock = async ({
           // the real FK columns from whenever this card was first created
           // stay as they were.
           update: { payload: nextPayload },
-          // create: rare fallback for a plan whose card row is missing
-          // entirely - derive the real FK columns from what's in scope here
-          // rather than leaving them null.
+          // Repair path for a zero-quantity overflow card row that is missing
+          // entirely. The FK columns come from the already-validated
+          // WorkOrder/AssignmentPlan scope, never from payload parsing.
           create: {
             orgId,
             cardId,
@@ -11960,12 +11989,13 @@ const loadOrderAssignmentModificationLockMap = async (
   const lockMap = new Map<string, boolean>();
   if (orderIds.length === 0) return lockMap;
 
-  const orderIdSet = new Set(orderIds);
   const workOrderIdSet = new Set(
     safeOrders
       .map((order) => toPositiveIntOrNull(order?.id))
       .filter((value): value is number => value !== null)
   );
+  if (workOrderIdSet.size === 0) return lockMap;
+  const workOrderIds = Array.from(workOrderIdSet);
   const orgIds = Array.from(
     new Set(safeOrders.flatMap((order) => getOrderRelatedOrgIds(order)))
   );
@@ -11973,19 +12003,21 @@ const loadOrderAssignmentModificationLockMap = async (
 
   let lockedPlans: Array<{
     workOrderId: number | null;
-    originOrderId: string | null;
-    cardId: string | null;
+    assignmentCard: { workOrderId: number | null } | null;
   }> = [];
   try {
     lockedPlans = await prisma.assignmentPlan.findMany({
       where: {
         orgId: { in: orgIds },
         assignmentCtTotalSeconds: { not: null },
+        OR: [
+          { workOrderId: { in: workOrderIds } },
+          { assignmentCard: { is: { workOrderId: { in: workOrderIds } } } },
+        ],
       },
       select: {
         workOrderId: true,
-        originOrderId: true,
-        cardId: true,
+        assignmentCard: { select: { workOrderId: true } },
       },
     });
   } catch (error) {
@@ -11994,16 +12026,21 @@ const loadOrderAssignmentModificationLockMap = async (
       where: {
         orgId: { in: orgIds },
         assignmentCtSnapshot: { not: Prisma.JsonNull },
+        OR: [
+          { workOrderId: { in: workOrderIds } },
+          { assignmentCard: { is: { workOrderId: { in: workOrderIds } } } },
+        ],
       },
       select: {
         workOrderId: true,
-        originOrderId: true,
-        cardId: true,
+        assignmentCard: { select: { workOrderId: true } },
       },
     });
   }
   lockedPlans.forEach((plan) => {
-    const workOrderId = toPositiveIntOrNull(plan?.workOrderId);
+    const workOrderId =
+      toPositiveIntOrNull(plan?.workOrderId) ??
+      toPositiveIntOrNull(plan?.assignmentCard?.workOrderId);
     if (workOrderId !== null && workOrderIdSet.has(workOrderId)) {
       const matchingOrder = safeOrders.find(
         (order) => toPositiveIntOrNull(order?.id) === workOrderId
@@ -12014,22 +12051,15 @@ const loadOrderAssignmentModificationLockMap = async (
       }
       return;
     }
-    const orderId =
-      extractOrderIdFromAssignmentCardText(plan?.originOrderId) ??
-      extractOrderIdFromAssignmentCardText(plan?.cardId);
-    if (!orderId || !orderIdSet.has(orderId)) return;
-    lockMap.set(orderId, true);
   });
   return lockMap;
 };
 const isOrderAssignmentModificationLocked = async (order: any): Promise<boolean> => {
-  const orderId = resolveOptionalString(order?.orderId ?? order?.id, null);
   const workOrderId = toPositiveIntOrNull(order?.id);
-  if (!orderId) return false;
+  if (workOrderId === null) return false;
   const orgIds = getOrderRelatedOrgIds(order);
   if (orgIds.length === 0) return false;
 
-  const prefix = `${orderId}::`;
   let lockedPlan: { id: number } | null = null;
   try {
     lockedPlan = await prisma.assignmentPlan.findFirst({
@@ -12037,9 +12067,8 @@ const isOrderAssignmentModificationLocked = async (order: any): Promise<boolean>
         orgId: { in: orgIds },
         assignmentCtTotalSeconds: { not: null },
         OR: [
-          ...(workOrderId !== null ? [{ workOrderId }] : []),
-          { originOrderId: { startsWith: prefix } },
-          { cardId: { startsWith: prefix } },
+          { workOrderId },
+          { assignmentCard: { is: { workOrderId } } },
         ],
       },
       select: { id: true },
@@ -12051,9 +12080,8 @@ const isOrderAssignmentModificationLocked = async (order: any): Promise<boolean>
         orgId: { in: orgIds },
         assignmentCtSnapshot: { not: Prisma.JsonNull },
         OR: [
-          ...(workOrderId !== null ? [{ workOrderId }] : []),
-          { originOrderId: { startsWith: prefix } },
-          { cardId: { startsWith: prefix } },
+          { workOrderId },
+          { assignmentCard: { is: { workOrderId } } },
         ],
       },
       select: { id: true },
@@ -12456,33 +12484,6 @@ const annotateAssignmentPlanRowsWithPayrollLocks = async (
     };
   });
 };
-const resolveAssignmentPlanOrderLinkCandidateOrderId = (item: any): string | null =>
-  extractOrderIdFromAssignmentCardText(item?.cardId) ??
-  extractOrderIdFromAssignmentCardText(item?.originOrderId);
-const scoreWorkOrderAccessibilityForOrg = (row: any, orgId: number) => {
-  if (toPositiveIntOrNull(row?.orgId) === orgId) return 0;
-  if (toPositiveIntOrNull(row?.sellerOrgId) === orgId) return 1;
-  if (toPositiveIntOrNull(row?.buyerOrgId) === orgId) return 2;
-  return 3;
-};
-const pickBestScopedWorkOrderCandidate = (candidates: any[], orgId: number) => {
-  const scopedCandidates = ensureArray(candidates)
-    .filter((row) => row && typeof row === "object")
-    .sort((left, right) => {
-      const scoreGap =
-        scoreWorkOrderAccessibilityForOrg(left, orgId) -
-        scoreWorkOrderAccessibilityForOrg(right, orgId);
-      if (scoreGap !== 0) return scoreGap;
-      return toSignedInt(left?.id, 0) - toSignedInt(right?.id, 0);
-    });
-  if (scopedCandidates.length === 0) return null;
-  const bestScore = scoreWorkOrderAccessibilityForOrg(scopedCandidates[0], orgId);
-  const topCandidates = scopedCandidates.filter(
-    (row) => scoreWorkOrderAccessibilityForOrg(row, orgId) === bestScore
-  );
-  if (topCandidates.length !== 1) return null;
-  return topCandidates[0] ?? null;
-};
 const syncAssignmentPlanWorkOrderRefs = async (
   orgId: number,
   items: any[],
@@ -12496,47 +12497,18 @@ const syncAssignmentPlanWorkOrderRefs = async (
   const directWorkOrderIds = collectPositiveIntSet(
     ...normalizedItems.map((item) => item?.workOrderId)
   );
-  const candidateOrderIds = Array.from(
-    new Set(
-      normalizedItems
-        .map((item) => resolveAssignmentPlanOrderLinkCandidateOrderId(item))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
-  const candidateOrderNos = Array.from(
-    new Set(
-      normalizedItems
-        .map((item) => resolveOptionalString(item?.orderNo, null))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
-
-  if (
-    directWorkOrderIds.length === 0 &&
-    candidateOrderIds.length === 0 &&
-    candidateOrderNos.length === 0
-  ) {
-    return normalizedItems.map((item) => ({
-      ...item,
-      workOrderId: null,
-    }));
+  if (directWorkOrderIds.length === 0) {
+    throw createHttpError(
+      409,
+      "assignment plan payload is missing workOrderId FK; cannot save assignment plans accurately"
+    );
   }
 
   const workOrders = await db.workOrder.findMany({
     where: {
       AND: [
         { OR: getOrderAccessWhere(orgId) },
-        {
-          OR: [
-            ...(directWorkOrderIds.length > 0 ? [{ id: { in: directWorkOrderIds } }] : []),
-            ...(candidateOrderIds.length > 0
-              ? [{ orderId: { in: candidateOrderIds } }]
-              : []),
-            ...(candidateOrderNos.length > 0
-              ? [{ orderNumber: { in: candidateOrderNos } }]
-              : []),
-          ],
-        },
+        { id: { in: directWorkOrderIds } },
       ],
     },
     select: {
@@ -12555,47 +12527,32 @@ const syncAssignmentPlanWorkOrderRefs = async (
     },
   });
   const workOrderById = new Map<number, any>();
-  const workOrdersByOrderId = new Map<string, any[]>();
-  const workOrdersByOrderNo = new Map<string, any[]>();
   ensureArray(workOrders).forEach((row) => {
     const workOrderId = toPositiveIntOrNull(row?.id);
     if (workOrderId !== null && !workOrderById.has(workOrderId)) {
       workOrderById.set(workOrderId, row);
     }
-    const orderId = resolveOptionalString(row?.orderId, null);
-    if (orderId) {
-      const current = workOrdersByOrderId.get(orderId) || [];
-      current.push(row);
-      workOrdersByOrderId.set(orderId, current);
-    }
-    const orderNo = resolveOptionalString(row?.orderNumber, null);
-    if (orderNo) {
-      const current = workOrdersByOrderNo.get(orderNo) || [];
-      current.push(row);
-      workOrdersByOrderNo.set(orderNo, current);
-    }
   });
 
   return normalizedItems.map((item) => {
+    const externalId = resolveAssignmentExternalId(item) ?? "(unknown assignment)";
     const directWorkOrderId = toPositiveIntOrNull(item?.workOrderId);
-    const directWorkOrder =
-      directWorkOrderId !== null ? workOrderById.get(directWorkOrderId) ?? null : null;
-    const candidateOrderId = resolveAssignmentPlanOrderLinkCandidateOrderId(item);
-    const candidateOrderNo = resolveOptionalString(item?.orderNo, null);
-    const matchedWorkOrder =
-      directWorkOrder ??
-      pickBestScopedWorkOrderCandidate(
-        candidateOrderId ? workOrdersByOrderId.get(candidateOrderId) ?? [] : [],
-        orgId
-      ) ??
-      pickBestScopedWorkOrderCandidate(
-        candidateOrderNo ? workOrdersByOrderNo.get(candidateOrderNo) ?? [] : [],
-        orgId
+    if (directWorkOrderId === null) {
+      throw createHttpError(
+        409,
+        `assignment ${externalId} is missing workOrderId FK; cannot save assignment plan accurately`
       );
-    // orderNo/customer used to be recomputed and carried through here for
-    // AssignmentPlan.orderNo/customer writes - both dropped in Phase E, so
-    // this function's job is now purely resolving workOrderId/buyerOrgId.
-    // item.orderNo stays untouched as the order-matching input above.
+    }
+    const matchedWorkOrder = workOrderById.get(directWorkOrderId) ?? null;
+    if (!matchedWorkOrder) {
+      throw createHttpError(
+        409,
+        `assignment ${externalId} references an inaccessible or missing workOrderId FK (${directWorkOrderId})`
+      );
+    }
+    // orderNo/customer display copies are not written to AssignmentPlan
+    // anymore. This function only verifies workOrderId and resolves buyerOrgId
+    // through the WorkOrder relation.
     return {
       ...item,
       workOrderId: toPositiveIntOrNull(matchedWorkOrder?.id),
@@ -12634,9 +12591,7 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
         externalId,
         cardId: resolveOptionalString(item.cardId, null),
         workOrderId: toPositiveIntOrNull(item?.workOrderId),
-        // orderNo stays as an input signal only - syncAssignmentPlanWorkOrderRefs
-        // still uses it to match a WorkOrder when workOrderId isn't already
-        // known. customer/label/previewUrl and the already-dead
+        // customer/label/previewUrl and the already-dead
         // colorId/colorName/imageUrl/thumbnailUrl/color/stripeColor keys are
         // not carried through anymore: none of them are written to
         // AssignmentPlan (Phase D/E), so normalizing them here was pointless.
@@ -12703,7 +12658,7 @@ const toAssignmentPlanWriteData = (
   item: any,
   cardIdToAssignmentCardId?: Map<
     string,
-    { id: number; styleId: number | null; buyerOrgId: number | null }
+    { id: number; styleId: number | null; workOrderId: number | null; buyerOrgId: number | null }
   >
 ) => {
   const assignmentCtSnapshot = resolveNormalizedAssignmentCtSnapshot(item);
@@ -12717,8 +12672,8 @@ const toAssignmentPlanWriteData = (
       ? cardIdToAssignmentCardId.get(cardIdString) ?? null
       : null;
   // Real FK (AGENTS.md 43), replacing the "cardId string happens to match"
-  // convention. cardId itself is still written below as a read-compatibility
-  // fallback during the migration - do not remove it yet.
+  // convention. cardId itself is still written below as the stable external
+  // board identifier, but joins must use assignmentCardId/styleId/workOrderId.
   const assignmentCardId = matchedCard?.id ?? null;
   // Real FK (Phase B of the AssignmentCard/AssignmentPlan FK+join redesign):
   // styleId/buyerOrgId always come from the matched AssignmentCard, never
@@ -12883,9 +12838,8 @@ const resolveAssignmentStyleIdForStCalculation = ({
     null
   );
   const linkedCard = cardId ? cardById.get(cardId) ?? null : null;
-  const parsedCardIdentity = cardId ? parseAssignmentCardIdentity(cardId) : null;
   return resolveOptionalString(
-    linkedCard?.styleId ?? parsedCardIdentity?.styleId ?? assignment?.styleId,
+    assignment?.styleId ?? linkedCard?.styleId,
     null
   );
 };
@@ -17552,7 +17506,6 @@ app.get("/assignment-plans", async (req, res) => {
     }
   }
 
-  let boardCards = await loadAssignmentCardsForOrg({ orgId: organization.id });
   const assignmentPlanLineFilter: Prisma.AssignmentPlanWhereInput["lineId"] =
     lineIds.length === 1 ? lineIds[0]! : { in: lineIds };
   let plans = await findAssignmentPlansWithSelectFallback({
@@ -17566,12 +17519,6 @@ app.get("/assignment-plans", async (req, res) => {
   });
   plans = await annotateAssignmentPlanRowsWithPayrollLocks(organization.id, plans);
 
-  const cardById = boardCards.reduce((map, card) => {
-    const key = resolveOptionalString(card?.id, null);
-    if (!key || map.has(key)) return map;
-    map.set(key, card);
-    return map;
-  }, new Map<string, any>());
   const stateByExternalId = new Map<string, any>();
 
   res.json(
@@ -17582,7 +17529,6 @@ app.get("/assignment-plans", async (req, res) => {
         null;
       const stateAssignment =
         stateByExternalId.get(resolveOptionalString(plan.externalId, null) || "") || null;
-      const matchedCard = cardId ? cardById.get(cardId) ?? null : null;
       const snapshotSchedule = resolveNormalizedAssignmentCtSnapshot(plan)?.schedule || null;
       const startDateKey =
         normalizeDateKey(stateAssignment?.startDateKey) ||
@@ -17610,21 +17556,17 @@ app.get("/assignment-plans", async (req, res) => {
           targetQty: resolveAssignmentQuantity(plan),
         });
       const closeBasis = resolveAssignmentPlanCloseBasis(plan);
-      // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): prefer the
-      // real styleId/workOrderId/buyerOrgId joins over the matchedCard
-      // string-based lookup above (which stays only as a fallback for plans
-      // whose FK isn't backfilled yet).
+      // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): response
+      // values come from AssignmentPlan's real FK joins, not cardId/payload
+      // lookups.
       return {
         dbId: plan.id,
         id: plan.externalId,
         lineId: String(plan.lineId),
         cardId,
         workOrderId: toPositiveIntOrNull(plan?.workOrderId),
-        styleId: toPositiveIntOrNull(plan?.style?.id) ?? toPositiveIntOrNull(matchedCard?.styleId),
-        styleCode:
-          resolveOptionalString(plan?.style?.code, null) ??
-          resolveOptionalString(matchedCard?.styleCode, null) ??
-          "",
+        styleId: toPositiveIntOrNull(plan?.style?.id),
+        styleCode: resolveOptionalString(plan?.style?.code, null) ?? "",
         orderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null) ?? "",
         label: resolveOptionalString(plan?.style?.name, null) ?? "",
         customer: resolveOptionalString(plan?.buyerOrg?.name, null) ?? "",
@@ -17707,20 +17649,8 @@ const resolveAssignmentPlanRequiredProcessGroups = (plan: any): string[][] => {
 };
 
 const resolveAssignmentPlanStyleQueryValues = (plan: any): string[] => {
-  const snapshot = resolveNormalizedAssignmentCtSnapshot(plan);
-  return Array.from(
-    new Set(
-      [
-        parseAssignmentCardIdentity(plan?.cardId)?.styleId,
-        parseAssignmentCardIdentity(plan?.originOrderId)?.styleId,
-        (snapshot as any)?.styleId,
-        // label column dropped in Phase E - style.name is the only source now.
-        plan?.style?.name,
-      ]
-        .map((value) => resolveOptionalString(value, null))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
+  const styleId = toPositiveIntOrNull(plan?.styleId) ?? toPositiveIntOrNull(plan?.style?.id);
+  return styleId !== null ? [String(styleId)] : [];
 };
 
 const resolveOrphanWorkRecordLineId = (record: any): number | null =>
@@ -23479,25 +23409,20 @@ app.get("/assignment-cards", async (req, res) => {
   const orderManualLockRows = await prisma.workOrder.findMany({
     where: { OR: getOrderAccessWhere(organization.id) },
     select: {
-      orderId: true,
+      id: true,
       modificationLockedAt: true,
     },
   });
-  const manualLockByOrderId = orderManualLockRows.reduce((map, row) => {
-    const orderId = resolveOptionalString(row?.orderId, null);
-    if (!orderId) return map;
-    map.set(orderId, Boolean(row?.modificationLockedAt));
+  const manualLockByWorkOrderId = orderManualLockRows.reduce((map, row) => {
+    const workOrderId = toPositiveIntOrNull(row?.id);
+    if (workOrderId === null) return map;
+    map.set(workOrderId, Boolean(row?.modificationLockedAt));
     return map;
-  }, new Map<string, boolean>());
+  }, new Map<number, boolean>());
   const cardsWithOrderLock = cards.map((card) => {
-    const cardIdentity =
-      resolveOptionalString(card?.originOrderId, null) ??
-      resolveOptionalString(card?.id, null);
-    const orderId = cardIdentity
-      ? extractOrderIdFromAssignmentCardText(cardIdentity)
-      : null;
+    const workOrderId = toPositiveIntOrNull(card?.workOrderId);
     const isManualOrderLocked =
-      orderId == null ? true : Boolean(manualLockByOrderId.get(orderId));
+      workOrderId == null ? true : Boolean(manualLockByWorkOrderId.get(workOrderId));
     return {
       ...card,
       isManualOrderLocked,
@@ -23878,38 +23803,48 @@ app.put("/assignment-board-state", async (req, res) => {
       const externalId = resolveAssignmentExternalId(item);
       return Boolean(externalId && changedIncomingExternalIds.has(externalId));
     });
-    const changedOrderIds = Array.from(
+    const changedWorkOrderIds = Array.from(
       new Set(
         changedIncomingAssignments
-          .map((item) => resolveOrderIdFromAssignmentBoardItem(item))
-          .filter((value): value is string => Boolean(value))
+          .map((item) => toPositiveIntOrNull(item?.workOrderId))
+          .filter((value): value is number => value !== null)
       )
     );
-    if (changedOrderIds.length > 0) {
+    if (changedWorkOrderIds.length > 0) {
       const orderRows = await tx.workOrder.findMany({
         where: {
-          orderId: { in: changedOrderIds },
+          id: { in: changedWorkOrderIds },
           OR: getOrderAccessWhere(organization.id),
         },
         select: {
-          orderId: true,
+          id: true,
+          orderNumber: true,
           modificationLockedAt: true,
         },
       });
-      const manualLockByOrderId = orderRows.reduce((map, row) => {
-        const orderId = resolveOptionalString(row?.orderId, null);
-        if (!orderId) return map;
-        map.set(orderId, Boolean(row?.modificationLockedAt));
+      const manualLockByWorkOrderId = orderRows.reduce((map, row) => {
+        const workOrderId = toPositiveIntOrNull(row?.id);
+        if (workOrderId === null) return map;
+        map.set(workOrderId, Boolean(row?.modificationLockedAt));
         return map;
-      }, new Map<string, boolean>());
-      const unlockedOrderIds = changedOrderIds.filter(
-        (orderId) => !Boolean(manualLockByOrderId.get(orderId))
+      }, new Map<number, boolean>());
+      const orderNumberByWorkOrderId = orderRows.reduce((map, row) => {
+        const workOrderId = toPositiveIntOrNull(row?.id);
+        const orderNumber = resolveOptionalString(row?.orderNumber, null);
+        if (workOrderId !== null && orderNumber) map.set(workOrderId, orderNumber);
+        return map;
+      }, new Map<number, string>());
+      const unlockedWorkOrderIds = changedWorkOrderIds.filter(
+        (workOrderId) => !Boolean(manualLockByWorkOrderId.get(workOrderId))
       );
-      if (unlockedOrderIds.length > 0) {
+      if (unlockedWorkOrderIds.length > 0) {
         throw createHttpError(
           409,
           `order manual lock required before scheduling assignment: ` +
-            unlockedOrderIds.slice(0, 5).join(", ")
+            unlockedWorkOrderIds
+              .slice(0, 5)
+              .map((workOrderId) => orderNumberByWorkOrderId.get(workOrderId) ?? String(workOrderId))
+              .join(", ")
         );
       }
     }
@@ -24119,23 +24054,69 @@ app.put("/assignment-board-state", async (req, res) => {
     // batch lookup now also carries the card's own styleId/buyerOrgId, so a
     // newly created/updated AssignmentPlan always agrees with the card it
     // was scheduled from instead of re-deriving those independently.
-    const cardIdToAssignmentCardId = new Map<
-      string,
-      { id: number; styleId: number | null; buyerOrgId: number | null }
-    >();
-    if (cardIdStringsInThisSave.length > 0) {
-      const matchedAssignmentCards = await tx.assignmentCard.findMany({
-        where: { orgId: organization.id, cardId: { in: cardIdStringsInThisSave } },
-        select: { id: true, cardId: true, styleId: true, buyerOrgId: true },
+  const cardIdToAssignmentCardId = new Map<
+    string,
+    { id: number; styleId: number | null; workOrderId: number | null; buyerOrgId: number | null }
+  >();
+  if (cardIdStringsInThisSave.length > 0) {
+    const matchedAssignmentCards = await tx.assignmentCard.findMany({
+      where: { orgId: organization.id, cardId: { in: cardIdStringsInThisSave } },
+      select: { id: true, cardId: true, styleId: true, workOrderId: true, buyerOrgId: true },
+    });
+    matchedAssignmentCards.forEach((card) => {
+      cardIdToAssignmentCardId.set(card.cardId, {
+        id: card.id,
+        styleId: card.styleId,
+        workOrderId: card.workOrderId,
+        buyerOrgId: card.buyerOrgId,
       });
-      matchedAssignmentCards.forEach((card) => {
-        cardIdToAssignmentCardId.set(card.cardId, {
-          id: card.id,
-          styleId: card.styleId,
-          buyerOrgId: card.buyerOrgId,
-        });
-      });
+    });
+    const missingCardIds = cardIdStringsInThisSave.filter(
+      (cardId) => !cardIdToAssignmentCardId.has(cardId)
+    );
+    if (missingCardIds.length > 0) {
+      throw createHttpError(
+        409,
+        `assignment card FK missing for plan save: ${missingCardIds.join(", ")}`
+      );
     }
+    const cardsMissingRequiredFk = matchedAssignmentCards.filter(
+      (card) =>
+        toPositiveIntOrNull(card.styleId) === null ||
+        toPositiveIntOrNull(card.workOrderId) === null
+    );
+    if (cardsMissingRequiredFk.length > 0) {
+      throw createHttpError(
+        409,
+        `assignment card is missing styleId/workOrderId FK: ${cardsMissingRequiredFk
+          .map((card) => card.cardId)
+          .join(", ")}`
+      );
+    }
+    normalizedPlanChanges.forEach((item: any) => {
+      const cardId = resolveOptionalString(item?.cardId, null);
+      if (!cardId) return;
+      const card = cardIdToAssignmentCardId.get(cardId);
+      const itemWorkOrderId = toPositiveIntOrNull(item?.workOrderId);
+      if (!card || itemWorkOrderId === null || card.workOrderId !== itemWorkOrderId) {
+        throw createHttpError(
+          409,
+          `assignment ${resolveAssignmentExternalId(item) ?? cardId} workOrderId FK does not match its assignment card`
+        );
+      }
+      const itemBuyerOrgId = toPositiveIntOrNull(item?.buyerOrgId);
+      if (
+        itemBuyerOrgId !== null &&
+        card.buyerOrgId !== null &&
+        card.buyerOrgId !== itemBuyerOrgId
+      ) {
+        throw createHttpError(
+          409,
+          `assignment ${resolveAssignmentExternalId(item) ?? cardId} buyerOrgId FK does not match its assignment card`
+        );
+      }
+    });
+  }
     if (createPlanRows.length > 0) {
       await tx.assignmentPlan.createMany({
         data: createPlanRows.map((item: any) => ({
@@ -24685,14 +24666,36 @@ app.delete("/orders/:orderId", async (req, res) => {
   // permission flag (see POST .../modification-lock), this guard is the
   // only thing standing between "delete an unlocked order" and silently
   // detaching real work records from their assignment.
-  const cardPrefix = `${orderId}::`;
   const deletableOrgIds = [existing.buyerOrgId, existing.sellerOrgId]
     .map((value) => toPositiveIntOrNull(value))
     .filter((value): value is number => value !== null);
+  // Match via real FK paths only. If assignmentCard points to this order but
+  // AssignmentPlan.workOrderId is missing, surface the drift explicitly
+  // instead of inferring ownership from cardId/originOrderId strings.
   const plansForOrder = await prisma.assignmentPlan.findMany({
-    where: { orgId: { in: deletableOrgIds }, cardId: { startsWith: cardPrefix } },
-    select: { id: true },
+    where: {
+      orgId: { in: deletableOrgIds },
+      OR: [
+        { workOrderId: existing.id },
+        { assignmentCard: { is: { workOrderId: existing.id } } },
+      ],
+    },
+    select: { id: true, externalId: true, workOrderId: true },
   });
+  const plansMissingWorkOrderFk = plansForOrder.filter(
+    (plan) => toPositiveIntOrNull(plan.workOrderId) !== existing.id
+  );
+  if (plansMissingWorkOrderFk.length > 0) {
+    return res.status(409).json({
+      ok: false,
+      error: "assignment plan is missing workOrderId FK; fix assignment plan relations before deleting this order",
+      issues: plansMissingWorkOrderFk.map((plan) => ({
+        assignmentPlanId: plan.id,
+        externalId: resolveOptionalString(plan.externalId, null),
+        code: "ASSIGNMENT_PLAN_MISSING_WORK_ORDER_FK",
+      })),
+    });
+  }
   const linkedPlanIds = await loadLinkedWorkRecordPlanIds({
     planIds: plansForOrder.map((plan) => plan.id),
   });
@@ -26654,8 +26657,16 @@ const ensureDatabaseReady = async () => {
 };
 
 const findMissingRuntimeSchemaColumns = async (): Promise<string[]> => {
+  const requiredColumnKeys = Array.from(
+    new Set(
+      [
+        ...STARTUP_REQUIRED_RUNTIME_COLUMNS,
+        ...STARTUP_REQUIRED_RUNTIME_AUDIT_FK_COLUMNS,
+      ].map((column) => `${column.tableName}.${column.columnName}`)
+    )
+  );
   const targetTableNames = Array.from(
-    new Set(STARTUP_REQUIRED_RUNTIME_COLUMNS.map((column) => column.tableName))
+    new Set(requiredColumnKeys.map((key) => key.split(".")[0]))
   );
   const rows = await prisma.$queryRaw<
     Array<{ table_name: string; column_name: string }>
@@ -26668,9 +26679,7 @@ const findMissingRuntimeSchemaColumns = async (): Promise<string[]> => {
   const available = new Set(
     rows.map((row) => `${row.table_name}.${row.column_name}`)
   );
-  return STARTUP_REQUIRED_RUNTIME_COLUMNS
-    .map((column) => `${column.tableName}.${column.columnName}`)
-    .filter((columnKey) => !available.has(columnKey));
+  return requiredColumnKeys.filter((columnKey) => !available.has(columnKey));
 };
 
 const findForbiddenRuntimeSchemaColumns = async (): Promise<string[]> => {
