@@ -344,6 +344,7 @@ export const createEmployeeRouter = ({
       return res.status(400).json({ ok: false, error: "employee account is not editable yet" });
     }
 
+    const hasFactoryIdInput = factoryId !== undefined;
     let factoryIdNum = null;
     if (factoryId !== "" && factoryId !== null && factoryId !== undefined) {
       const parsedFactoryId = Number(factoryId);
@@ -411,7 +412,7 @@ export const createEmployeeRouter = ({
       leftAtParseResult.hasInput && leftAtParseResult.value !== null;
 
     const resolvedFactoryId = isManufacturerOrg(existingEmployee.organization)
-      ? factoryIdNum !== null && factoryIdNum !== undefined
+      ? hasFactoryIdInput
         ? factoryIdNum
         : existingEmployee?.factoryId ?? null
       : null;

@@ -276,6 +276,7 @@ export const createOrgMembershipRouter = ({
     leftAt: unknown;
   }) => {
     const isManufacturer = isManufacturerOrg(organization);
+    const hasFactoryIdInput = factoryId !== undefined;
     let factoryIdNum = null;
     if (factoryId !== "" && factoryId !== null && factoryId !== undefined) {
       const parsedFactoryId = Number(factoryId);
@@ -379,7 +380,7 @@ export const createOrgMembershipRouter = ({
         })
       : null;
     const resolvedFactoryId = isManufacturer
-      ? factoryIdNum !== null && factoryIdNum !== undefined
+      ? hasFactoryIdInput
         ? factoryIdNum
         : existingEmployee?.factoryId ?? null
       : null;

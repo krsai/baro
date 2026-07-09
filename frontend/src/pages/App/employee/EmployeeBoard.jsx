@@ -874,7 +874,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         pendingRoleOverrides[member.id] || member.role || ''
       ).toUpperCase();
 
-      if (activeOrgType !== 'BRAND' && !factoryId) {
+      if (activeOrgType !== 'BRAND' && selectedRole === 'WORKER' && !factoryId) {
         setStatusMessage({ type: 'error', text: text('errNeedFactoryBeforeApprove', languageCode) });
         setApprovingId(null);
         return;
@@ -1026,11 +1026,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         };
         const shouldSaveMembershipFirst =
           resolvedMemberStatus !== member.status ||
-          (
-            draft.orgRole !== member.role &&
-            draft.orgRole === 'WORKER' &&
-            resolvedMemberStatus === 'ACTIVE'
-          );
+          draft.orgRole !== member.role;
         let savedMember = member;
 
         if (shouldSaveMembershipFirst) {
@@ -1060,7 +1056,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             : null,
         };
 
-        if (draft.factoryId) employeePayload.factoryId = Number(draft.factoryId);
+        if (Object.prototype.hasOwnProperty.call(draft, 'factoryId')) {
+          employeePayload.factoryId = draft.factoryId ? Number(draft.factoryId) : null;
+        }
         if (draft.joinedAt) employeePayload.joinedAt = draft.joinedAt;
         if (Object.prototype.hasOwnProperty.call(draft, 'leftAt')) {
           const normalizedLeftAt = String(draft.leftAt || '').trim();
@@ -1235,11 +1233,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     }
 
     if (activeOrgType !== 'BRAND') {
-      if (!selectedFactoryId) {
+      if (isWorker && !selectedFactoryId) {
         setStatusMessage({ type: 'error', text: text('errNeedFactory', languageCode) });
         return;
       }
-      if (!Number.isFinite(Number(selectedFactoryId))) {
+      if (selectedFactoryId && !Number.isFinite(Number(selectedFactoryId))) {
         setStatusMessage({ type: 'error', text: text('errInvalidFactory', languageCode) });
         return;
       }
@@ -1633,11 +1631,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   select
                   size="small"
                   label={text('factoryLabel', languageCode)}
-                  required
+                  required={drawerIsWorker}
                   value={drawerDraft.factoryId}
                   onChange={(e) => handleDrawerDraftChange({ factoryId: e.target.value })}
                   disabled={isDrawerSaving}
-                  helperText={text('requiredInput', languageCode)}
+                  helperText={drawerIsWorker ? text('requiredInput', languageCode) : ''}
                 >
                   <MenuItem value="">{text('factorySelect', languageCode)}</MenuItem>
                   {factories.map((factory) => (
