@@ -27,11 +27,32 @@ const toText = (value) => String(value ?? '').trim();
 
 const normalizeLoose = (value) => toText(value).toLowerCase();
 
+// "Đ/đ" (Latin letter D with stroke) is not a combining accent, so NFD does
+// not split it into "d" + a mark - it must be mapped explicitly or it gets
+// silently dropped by the alphanumeric-only strip below.
 const normalizeAscii = (value) =>
   normalizeLoose(value)
+    .replace(/đ/g, 'd')
     .normalize('NFD')
     .replace(VIETNAMESE_DIACRITIC_PATTERN, '')
     .replace(NON_ALPHANUMERIC_PATTERN, '');
+
+// Vietnamese timekeeping devices commonly abbreviate the middle "chữ đệm"
+// (Thị/Như/Thanh/...) to a single initial or drop it, while Baro's employee
+// master keeps the full name. Comparing surname (first token) + given name
+// (last token) only tolerates that gap without guessing at the middle name.
+const buildSurnameGivenNameKey = (value) => {
+  const tokens = normalizeLoose(value)
+    .replace(/đ/g, 'd')
+    .normalize('NFD')
+    .replace(VIETNAMESE_DIACRITIC_PATTERN, '')
+    .replace(/[^a-z]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length < 2) return '';
+  return `${tokens[0]}::${tokens[tokens.length - 1]}`;
+};
 
 const toDigits = (value) => {
   const digits = toText(value).match(DIGIT_PATTERN);
@@ -208,6 +229,7 @@ export const parseAttendanceImportFile = async (file) => {
 const buildEmployeeResolver = (employees = []) => {
   const byNumericId = new Map();
   const byNameBuckets = new Map();
+  const byNameKeyBuckets = new Map();
 
   employees.forEach((employee) => {
     const numericIdKey = String(Number(employee?.id));
@@ -216,11 +238,20 @@ const buildEmployeeResolver = (employees = []) => {
     }
 
     const normalizedName = normalizeAscii(employee?.name);
-    if (!normalizedName) return;
-    if (!byNameBuckets.has(normalizedName)) {
-      byNameBuckets.set(normalizedName, []);
+    if (normalizedName) {
+      if (!byNameBuckets.has(normalizedName)) {
+        byNameBuckets.set(normalizedName, []);
+      }
+      byNameBuckets.get(normalizedName).push(employee);
     }
-    byNameBuckets.get(normalizedName).push(employee);
+
+    const nameKey = buildSurnameGivenNameKey(employee?.name);
+    if (nameKey) {
+      if (!byNameKeyBuckets.has(nameKey)) {
+        byNameKeyBuckets.set(nameKey, []);
+      }
+      byNameKeyBuckets.get(nameKey).push(employee);
+    }
   });
 
   return (event) => {
@@ -244,6 +275,20 @@ const buildEmployeeResolver = (employees = []) => {
     }
     if (byNameList.length > 1) {
       return { employee: null, reason: 'ambiguous_name' };
+    }
+
+    // Full-name match failed (commonly because the device abbreviated the
+    // middle "chữ đệm" to a single initial). Fall back to surname + given
+    // name only; still refuse to guess when that's ambiguous too.
+    const nameKey = buildSurnameGivenNameKey(event?.workerName);
+    if (nameKey) {
+      const byKeyList = byNameKeyBuckets.get(nameKey) || [];
+      if (byKeyList.length === 1) {
+        return { employee: byKeyList[0], reason: 'matched_name_key' };
+      }
+      if (byKeyList.length > 1) {
+        return { employee: null, reason: 'ambiguous_name' };
+      }
     }
 
     return { employee: null, reason: 'unmatched_worker' };
