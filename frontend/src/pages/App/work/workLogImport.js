@@ -179,19 +179,16 @@ const translateAssignmentMatchIssue = (detail, languageCode) => {
     ['processCode', 'orderNo', 'styleId']
   );
   if (processMismatch) {
+    // The assignment card itself exists (order/style already matched) - only
+    // this process is missing from the card's frozen snapshot, so say that
+    // instead of implying the card is missing entirely.
     if (languageCode === 'en') {
-      return `Order ${processMismatch.orderNo} / style ${processMismatch.styleId} has no assignment card for process ${processMismatch.processCode}.`;
+      return `Order ${processMismatch.orderNo} / style ${processMismatch.styleId} assignment card has no info for process ${processMismatch.processCode}.`;
     }
     if (languageCode === 'vi') {
-      return `Don ${processMismatch.orderNo} / ma hang ${processMismatch.styleId} khong co the phan cong cho cong doan ${processMismatch.processCode}.`;
+      return `The phan cong cua don ${processMismatch.orderNo} / ma hang ${processMismatch.styleId} khong co thong tin cong doan ${processMismatch.processCode}.`;
     }
-    if (languageCode === 'ko') {
-      return `\uC8FC\uBB38 ${processMismatch.orderNo} / \uC2A4\uD0C0\uC77C ${processMismatch.styleId}\uC5D0\uB294 \uACF5\uC815 ${processMismatch.processCode} \uBC30\uC815 \uCE74\uB4DC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.`;
-    }
-    if (languageCode === 'ko') {
-      return `주문 ${processMismatch.orderNo} / 스타일 ${processMismatch.styleId}에 공정 ${processMismatch.processCode}가 배정된 라인이 없습니다.`;
-    }
-    return `주문 ${processMismatch.orderNo} / 스타일 ${processMismatch.styleId}에 공정 ${processMismatch.processCode}이 없습니다.`;
+    return `주문 ${processMismatch.orderNo} / 스타일 ${processMismatch.styleId} 배정 카드에 공정 ${processMismatch.processCode} 정보가 없습니다.`;
   }
 
   const multiplePlans = parseDetail(
