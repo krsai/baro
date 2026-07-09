@@ -12793,17 +12793,23 @@ const toAssignmentPlanWriteData = (
     updatedAt: new Date(),
   };
 };
-// Guard for the root cause tracked in AGENTS.md: a brand-new AssignmentPlan's
-// assignmentCtSnapshot.processes[] is entirely client-supplied (frontend
-// AssignBoard.jsx builds it from whatever style data it has in memory, and
-// the backend just stores it as-is - see toAssignmentPlanWriteData above).
-// If the browser's copy of the style was stale (edited in another tab, long
-// idle board, etc.), the persisted snapshot silently ends up missing
-// processes that already existed on the style at save time, and there was
-// previously no server-side check to catch it. This only runs for newly
-// created plans - existing plans intentionally keep their frozen snapshot
-// per AGENTS.md's "assignment freezes composition at creation" lock, so this
-// does not retroactively touch already-broken rows.
+// Diagnostic-only check for the root cause tracked in AGENTS.md: a brand-new
+// AssignmentPlan's assignmentCtSnapshot.processes[] is entirely
+// client-supplied (frontend AssignBoard.jsx builds it from whatever style
+// data it has in memory, and the backend just stores it as-is - see
+// toAssignmentPlanWriteData above). If the browser's copy of the style was
+// stale, the persisted snapshot can silently end up missing processes that
+// already existed on the style at save time.
+// IMPORTANT: this used to reject the save with a 409, but that turned out to
+// be too strict - buildAssignmentCtSnapshotForSave (AssignBoard.jsx) also
+// legitimately omits a process (and falls back to the prior snapshot
+// entirely) whenever it has no resolvable ST/CT seconds yet, which is a
+// normal, tolerated state elsewhere in this app (AGENTS.md section 35:
+// ST-missing assignments are excluded from forecast with a warning, not
+// blocked). A hard block here made it impossible to save any assignment for
+// a style with even one process missing ST/CT data, regardless of staleness.
+// So this only logs now - it does not distinguish "genuinely stale browser"
+// from "process has no ST/CT configured yet", and does not block either way.
 const validateNewAssignmentPlanCtSnapshotProcesses = async ({
   createPlanRows,
   cardIdToAssignmentCardId,
@@ -12866,9 +12872,16 @@ const validateNewAssignmentPlanCtSnapshotProcesses = async ({
   });
 
   if (issues.length > 0) {
-    throw createHttpError(
-      409,
-      `assignment CT snapshot is missing current style processes - refresh the board and retry: ${issues
+    // Non-blocking: a process can legitimately be absent from the snapshot
+    // when the frontend has no resolvable ST/CT seconds for it yet (see
+    // buildAssignmentCtSnapshotForSave in AssignBoard.jsx, which drops the
+    // whole rebuild and falls back to the prior snapshot when any process
+    // can't be resolved) - that is an accepted, tolerated state elsewhere in
+    // this app (AGENTS.md section 35: ST-missing assignments are excluded
+    // from forecast with a warning, not blocked). Surface this as a
+    // diagnostic log only; do not reject the save.
+    console.warn(
+      `[assignment-board-state] new assignment CT snapshot missing current style processes (not blocking save): ${issues
         .map(
           (issue) =>
             `${issue.externalId} (style ${issue.styleId}: ${issue.missingProcessCodes.join(", ")})`
