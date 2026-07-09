@@ -12793,6 +12793,90 @@ const toAssignmentPlanWriteData = (
     updatedAt: new Date(),
   };
 };
+// Guard for the root cause tracked in AGENTS.md: a brand-new AssignmentPlan's
+// assignmentCtSnapshot.processes[] is entirely client-supplied (frontend
+// AssignBoard.jsx builds it from whatever style data it has in memory, and
+// the backend just stores it as-is - see toAssignmentPlanWriteData above).
+// If the browser's copy of the style was stale (edited in another tab, long
+// idle board, etc.), the persisted snapshot silently ends up missing
+// processes that already existed on the style at save time, and there was
+// previously no server-side check to catch it. This only runs for newly
+// created plans - existing plans intentionally keep their frozen snapshot
+// per AGENTS.md's "assignment freezes composition at creation" lock, so this
+// does not retroactively touch already-broken rows.
+const validateNewAssignmentPlanCtSnapshotProcesses = async ({
+  createPlanRows,
+  cardIdToAssignmentCardId,
+  db,
+}: {
+  createPlanRows: any[];
+  cardIdToAssignmentCardId: Map<
+    string,
+    { id: number; styleId: number | null; workOrderId: number | null; buyerOrgId: number | null }
+  >;
+  db: any;
+}) => {
+  if (createPlanRows.length === 0) return;
+
+  const styleIdByExternalId = new Map<string, number>();
+  const styleIdsToCheck = new Set<number>();
+  createPlanRows.forEach((item) => {
+    const externalId = resolveAssignmentExternalId(item);
+    const cardId = resolveOptionalString(item?.cardId, null);
+    const styleId = cardId ? cardIdToAssignmentCardId.get(cardId)?.styleId ?? null : null;
+    if (externalId && styleId !== null) {
+      styleIdByExternalId.set(externalId, styleId);
+      styleIdsToCheck.add(styleId);
+    }
+  });
+  if (styleIdsToCheck.size === 0) return;
+
+  const styleProcessRowsByStyleId = await loadStyleProcessRowsByStyleId(
+    Array.from(styleIdsToCheck),
+    { db }
+  );
+
+  const issues: { externalId: string; styleId: number; missingProcessCodes: string[] }[] = [];
+  createPlanRows.forEach((item) => {
+    const externalId = resolveAssignmentExternalId(item);
+    if (!externalId) return;
+    const styleId = styleIdByExternalId.get(externalId);
+    if (styleId === undefined) return;
+    const liveProcessRows = styleProcessRowsByStyleId.get(styleId) ?? [];
+    if (liveProcessRows.length === 0) return;
+
+    const snapshot = resolveNormalizedAssignmentCtSnapshot(item);
+    const snapshotCodes = new Set<string>();
+    ensureArray(snapshot?.processes).forEach((process: any) => {
+      resolveAssignmentSnapshotProcessCodeCandidates(process).forEach((code) =>
+        snapshotCodes.add(code)
+      );
+    });
+
+    const missingProcessCodes = liveProcessRows
+      .filter((row: any) => {
+        const key = normalizeProcessCodeKey(row?.processCode);
+        return key && !snapshotCodes.has(key);
+      })
+      .map((row: any) => row.processCode);
+
+    if (missingProcessCodes.length > 0) {
+      issues.push({ externalId, styleId, missingProcessCodes });
+    }
+  });
+
+  if (issues.length > 0) {
+    throw createHttpError(
+      409,
+      `assignment CT snapshot is missing current style processes - refresh the board and retry: ${issues
+        .map(
+          (issue) =>
+            `${issue.externalId} (style ${issue.styleId}: ${issue.missingProcessCodes.join(", ")})`
+        )
+        .join("; ")}`
+    );
+  }
+};
 const COMPLETED_ASSIGNMENT_PLAN_WRITE_SELECT = {
   id: true,
   externalId: true,
@@ -24288,6 +24372,11 @@ app.put("/assignment-board-state", async (req, res) => {
       });
     }
     if (createPlanRows.length > 0) {
+      await validateNewAssignmentPlanCtSnapshotProcesses({
+        createPlanRows,
+        cardIdToAssignmentCardId,
+        db: tx,
+      });
       await tx.assignmentPlan.createMany({
         data: createPlanRows.map((item: any) => ({
           orgId: organization.id,

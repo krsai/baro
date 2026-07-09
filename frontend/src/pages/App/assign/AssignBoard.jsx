@@ -3405,6 +3405,17 @@ const AssignBoard = () => {
         languageCode
       );
     }
+    if (raw.toLowerCase().includes('assignment ct snapshot is missing current style processes')) {
+      return getUiMessage(
+        'assign.snapshotStaleProcessesSaveError',
+        languageCode === 'vi'
+          ? 'Du lieu cong doan cua ma hang da thay doi. Vui long lam moi trang va thu lai.'
+          : languageCode === 'en'
+            ? 'The style\'s process list changed since this board was loaded. Refresh the page and try again.'
+            : '이 배정을 만든 뒤 스타일 공정이 바뀌었습니다. 화면을 새로고침하고 다시 시도해 주세요.',
+        languageCode
+      );
+    }
     if (raw.toLowerCase().includes('order manual lock required before scheduling assignment')) {
       return getUiMessage(
         'assign.orderManualLockRequiredSaveError',
