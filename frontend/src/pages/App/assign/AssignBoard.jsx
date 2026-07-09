@@ -22,7 +22,7 @@ import {
   Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { DndContext, DragOverlay, useDroppable, pointerWithin, closestCenter } from '@dnd-kit/core';
+import { DndContext, DragOverlay, useDroppable, pointerWithin, closestCenter, MeasuringStrategy } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -110,6 +110,27 @@ const assignBoardCollisionDetection = (args) => {
   if (pointerCollisions.length > 0) return pointerCollisions;
   return closestCenter(args);
 };
+
+// The default (WhileDragging) strategy only remeasures droppable rects on
+// scroll/resize events it detects. On some Windows display-scaling setups
+// (e.g. a browser window not filling a monitor) that can leave a narrow
+// drop target - the "배정 취소" strip - slightly stale relative to the
+// pointer, so it needs a drag to start elsewhere before it registers.
+// Forcing continuous remeasurement removes that staleness at a small,
+// fixed perf cost given how few droppables this board has.
+const ASSIGN_BOARD_DND_MEASURING = {
+  droppable: { strategy: MeasuringStrategy.Always },
+};
+
+// Visual width of the narrow "배정 취소" column in the board grid
+// (frontend/src/pages/App/assign/AssignBoard.jsx grid template below) - kept
+// as a shared constant so the drop zone's actual (wider) hit area can be
+// centered on it without the two drifting out of sync.
+const ASSIGNMENT_CANCEL_ZONE_VISUAL_WIDTH_PX = 60;
+// Extra invisible hit-area padding on each side, extending into the grid
+// gap (which is otherwise empty space) so a small pointer/rect coordinate
+// mismatch doesn't miss this narrow target.
+const ASSIGNMENT_CANCEL_ZONE_HIT_PADDING_PX = 16;
 
 const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
 const toNonNegativeNumber = (value, fallback = 0) => {
@@ -313,6 +334,14 @@ const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
         minHeight: 120,
         display: 'flex',
         alignItems: 'stretch',
+        justifyContent: 'center',
+        // Hit area is wider than the visible strip below - extends into the
+        // grid gap on each side so a small pointer/rect measurement offset
+        // still lands inside this narrow drop target. See
+        // ASSIGNMENT_CANCEL_ZONE_HIT_PADDING_PX above for why.
+        width: `calc(100% + ${ASSIGNMENT_CANCEL_ZONE_HIT_PADDING_PX * 2}px)`,
+        marginLeft: `-${ASSIGNMENT_CANCEL_ZONE_HIT_PADDING_PX}px`,
+        marginRight: `-${ASSIGNMENT_CANCEL_ZONE_HIT_PADDING_PX}px`,
       }}
     >
       <Paper
@@ -326,7 +355,10 @@ const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
           backgroundColor: isOver ? 'rgba(211, 47, 47, 0.08)' : '#FAFAFB',
           textAlign: 'center',
           transition: 'border-color 0.12s ease, background-color 0.12s ease',
-          width: '100%',
+          // Visual width stays at the original column size - only the
+          // invisible parent hit-box above is wider.
+          width: ASSIGNMENT_CANCEL_ZONE_VISUAL_WIDTH_PX,
+          flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -6722,6 +6754,7 @@ const AssignBoard = () => {
       <DndContext
         sensors={sensors}
         collisionDetection={assignBoardCollisionDetection}
+        measuring={ASSIGN_BOARD_DND_MEASURING}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
