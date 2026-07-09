@@ -13543,6 +13543,68 @@ const findAssignmentPlansWithSelectFallback = async ({
   }
   throw lastError;
 };
+const repairAssignmentPlanFkRefsFromAssignmentCards = async (
+  orgId: number,
+  db: any = prisma
+): Promise<{ updatedCount: number; skippedCount: number }> => {
+  const plans = await db.assignmentPlan.findMany({
+    where: {
+      orgId,
+      assignmentCardId: { not: null },
+      OR: [{ workOrderId: null }, { styleId: null }, { buyerOrgId: null }],
+    },
+    select: {
+      id: true,
+      externalId: true,
+      workOrderId: true,
+      styleId: true,
+      buyerOrgId: true,
+      assignmentCard: {
+        select: {
+          workOrderId: true,
+          styleId: true,
+          buyerOrgId: true,
+        },
+      },
+    },
+  });
+
+  let updatedCount = 0;
+  let skippedCount = 0;
+  for (const plan of plans) {
+    const card = plan?.assignmentCard ?? null;
+    const data: Record<string, number> = {};
+    const cardWorkOrderId = toPositiveIntOrNull(card?.workOrderId);
+    const cardStyleId = toPositiveIntOrNull(card?.styleId);
+    const cardBuyerOrgId = toPositiveIntOrNull(card?.buyerOrgId);
+    if (toPositiveIntOrNull(plan?.workOrderId) === null && cardWorkOrderId !== null) {
+      data.workOrderId = cardWorkOrderId;
+    }
+    if (toPositiveIntOrNull(plan?.styleId) === null && cardStyleId !== null) {
+      data.styleId = cardStyleId;
+    }
+    if (toPositiveIntOrNull(plan?.buyerOrgId) === null && cardBuyerOrgId !== null) {
+      data.buyerOrgId = cardBuyerOrgId;
+    }
+    if (Object.keys(data).length === 0) {
+      skippedCount += 1;
+      continue;
+    }
+    await db.assignmentPlan.update({
+      where: { id: plan.id },
+      data,
+    });
+    updatedCount += 1;
+  }
+
+  if (updatedCount > 0 || skippedCount > 0) {
+    console.warn(
+      `[assignment-board-state] orgId=${orgId} repaired missing AssignmentPlan FK refs from AssignmentCard: updated=${updatedCount} skipped=${skippedCount}`
+    );
+  }
+
+  return { updatedCount, skippedCount };
+};
 const loadAssignmentPlansForBoardState = async (orgId: number) => {
   return findAssignmentPlansWithSelectFallback({
     where: { orgId },
@@ -13568,6 +13630,9 @@ const buildReadOnlyAssignmentBoardStateResponse = async (
   const includeCards = options.includeCards !== false;
   const includePlans = options.includePlans !== false;
   const nextState = state ?? null;
+  if (includePlans) {
+    await repairAssignmentPlanFkRefsFromAssignmentCards(orgId);
+  }
   const assignmentPlans = includePlans
     ? await annotateAssignmentPlanRowsWithPayrollLocks(
         orgId,
@@ -23580,6 +23645,7 @@ app.get("/assignment-board-state", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
+  await repairAssignmentPlanFkRefsFromAssignmentCards(organization.id);
   const [state, cards] = await Promise.all([
     prisma.assignmentBoardState.findUnique({
       where: { orgId: organization.id },

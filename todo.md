@@ -1,5 +1,12 @@
 # TODO
 
+## 2026-07-09 assignment board reload FK repair
+
+- Done: Fixed the reload-only broken assignment display where legacy `AssignmentPlan` rows with missing `workOrderId`/`styleId`/`buyerOrgId` showed internal card ids until the user saved the board. `GET /assignment-board-state` and read-only board responses now fill only missing `AssignmentPlan` FK columns from the linked `AssignmentCard` row's real FK columns via `assignmentCardId`.
+- Data safety: no delete/recreate path added; existing non-null FK values are not overwritten, and payload/string/cardId parsing is not used for repair.
+- Validation: `npm --prefix backend run build` and `npm run test:regression` passed.
+- Remaining: after deploy, reload `/assignment` once and confirm the warning log reports any repaired rows at most once; subsequent reloads should not require pressing Save to restore display fields.
+
 ## 2026-07-08 §47 이후 미흡점 점검 및 수정 (72f608e 500 에러 패턴 재검색 + 5개 항목)
 
 - **Claude 리뷰 후속 반영(2026-07-08)**: `resolveAssignmentPlanStyleQueryValues`가 숫자 `styleId`만 반환해 작업기록 import의 `STYLE` 텍스트(code/name) 매칭이 깨질 수 있던 문제를 수정 — `AssignmentPlan.style` relation의 canonical `code/name` 후보를 복구하되 payload/cardId 파싱은 계속 금지. `AssignmentCard.payload` 저장 sanitizer에서 `colorName/gender`도 제거(배정 카드 identity에서 색상/성별 추적 안 함). `toAssignmentPlanWriteData`의 `workOrderId`도 검증된 `AssignmentCard.workOrderId` 우선으로 통일. `loadOrderAssignmentModificationLockMap`은 plan/card `workOrderId` drift를 warning으로 드러내도록 보강. 보드 저장 트랜잭션은 `AssignmentCard` upsert를 plan sync보다 먼저 실행하고, 그 FK 결과로 assignments를 hydrate해 같은 PUT 안의 카드/배정 동시 저장 순서 문제를 막음. Prisma `Employee` back-relation의 어색한 복수형 4쌍도 정정. 검증: `npm --prefix backend run build`, Prisma validate, `npm run test:regression` 통과.
