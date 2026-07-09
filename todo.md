@@ -1,5 +1,11 @@
 # TODO
 
+## 2026-07-09 attendance import matching safety follow-up
+
+- Note: Current device attendance exports include a numeric-looking worker code such as `'16`, but the site is not currently treating those values as Baro employee ids in real operation, so the immediate risk is low.
+- Risk to fix before future device-id integration: `buildEmployeeResolver` currently tries `event.workerCode` digits against internal `Employee.id` before name matching. If a device worker code ever collides with an unrelated Baro `Employee.id`, attendance rows can be assigned to the wrong employee without checking the name.
+- Follow-up: replace direct `workerCode -> Employee.id` matching with an explicit verified device-id mapping, or require the normalized name to agree before accepting an id match. If stricter Vietnamese abbreviation matching is needed, validate middle initials (e.g. `Nguyen Thi T Huong`) against registered middle-name initials instead of using only surname+given-name uniqueness.
+
 ## 2026-07-09 assignment card save response display hydration
 
 - Done: Fixed the save-only unassigned card display break where cards looked correct after reload but changed to `order number none` / numeric style labels immediately after saving. `syncAssignmentCardsForOrg` now returns freshly persisted `AssignmentCard` rows through `loadAssignmentCardsForOrg`, so the PUT response uses the same FK+join display hydration as normal GET responses.

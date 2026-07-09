@@ -44,6 +44,27 @@ import {
 
 const toDateKey = (value) => dayjs(value).format('YYYY-MM-DD');
 
+const toOptionalDateKey = (value) => {
+  if (!value) return '';
+  const text = String(value || '').trim();
+  const dateMatch = text.match(/^\d{4}-\d{2}-\d{2}/);
+  if (dateMatch) return dateMatch[0];
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed.format('YYYY-MM-DD') : '';
+};
+
+const isAttendanceEmployeeVisibleOnDate = (employee, workDateKey) => {
+  if (String(employee?.status || '').toUpperCase() !== 'ACTIVE') return false;
+
+  const joinedDateKey = toOptionalDateKey(employee?.joinedAt);
+  if (joinedDateKey && workDateKey && workDateKey < joinedDateKey) return false;
+
+  const leftDateKey = toOptionalDateKey(employee?.leftAt);
+  if (leftDateKey && workDateKey && workDateKey > leftDateKey) return false;
+
+  return true;
+};
+
 const parseTimeToMinutes = (value) => {
   const text = String(value || '').trim();
   if (!/^\d{2}:\d{2}$/.test(text)) return null;
@@ -297,17 +318,21 @@ const AttendanceBoard = ({
   const fileInputRef = React.useRef(null);
 
   const dateKey = useMemo(() => toDateKey(selectedDate), [selectedDate]);
+  const attendanceEmployees = useMemo(
+    () => employees.filter((employee) => isAttendanceEmployeeVisibleOnDate(employee, dateKey)),
+    [dateKey, employees]
+  );
   const filteredEmployees = useMemo(() => {
     const keyword = String(searchTerm || '').trim().toLowerCase();
-    if (!keyword) return employees;
-    return employees.filter((employee) => {
+    if (!keyword) return attendanceEmployees;
+    return attendanceEmployees.filter((employee) => {
       const text = [employee?.displayName, employee?.name, employee?.email]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
       return text.includes(keyword);
     });
-  }, [employees, searchTerm]);
+  }, [attendanceEmployees, searchTerm]);
 
   useEffect(() => {
     setSelectedDate(resolveInitialDate(initialWorkDate));
@@ -494,7 +519,7 @@ const AttendanceBoard = ({
       );
       return;
     }
-    if (!employees.length) {
+    if (!attendanceEmployees.length) {
       showNotification(
         resolveText(TEXT.noWorkersToMatch, languageCode, 'No workers available for matching.'),
         'warning'
@@ -515,7 +540,7 @@ const AttendanceBoard = ({
 
       const plan = buildAttendanceImportPlan({
         events: parsed.events,
-        employees,
+        employees: attendanceEmployees,
       });
       const selectedDay = plan.dailyEntries.find((item) => item.workDate === dateKey);
       if (!selectedDay || selectedDay.entries.length === 0) {
@@ -640,10 +665,10 @@ const AttendanceBoard = ({
   };
 
   const summary = useMemo(() => {
-    const workerCount = employees.length;
+    const workerCount = attendanceEmployees.length;
     let enteredCount = 0;
     let workedMinutesTotal = 0;
-    employees.forEach((employee) => {
+    attendanceEmployees.forEach((employee) => {
       const key = String(employee?.id || '');
       const entry = entriesByWorker[key];
       if (!entry) return;
@@ -661,7 +686,7 @@ const AttendanceBoard = ({
       enteredCount,
       workedMinutesTotal,
     };
-  }, [employees, entriesByWorker]);
+  }, [attendanceEmployees, entriesByWorker]);
 
   return (
     <AppPageContainer
