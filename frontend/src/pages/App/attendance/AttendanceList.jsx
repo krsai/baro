@@ -60,7 +60,6 @@ const TEXT = {
   workDate: { ko: '근무일자', en: 'Work Date', vi: 'Ngay lam viec' },
   workType: { ko: '타입', en: 'Type', vi: 'Loai' },
   enteredWorkers: { ko: '인원', en: 'Workers', vi: 'So nguoi' },
-  workedHoursTotal: { ko: '근무시간 합계', en: 'Total Hours', vi: 'Tong gio lam' },
   workedHoursAverage: { ko: '평균 근무시간', en: 'Avg Hours', vi: 'Gio lam trung binh' },
   noteCount: { ko: '메모 건수', en: 'Notes', vi: 'So ghi chu' },
   holidayMark: { ko: '공휴일', en: 'Holiday', vi: 'Ngay le' },
@@ -177,17 +176,48 @@ const toHoursTextFromSeconds = (seconds, languageCode) => {
   if (languageCode === 'vi') return `${roundedHours} gio`;
   return `${roundedHours}시간`;
 };
+
+const toOptionalDateKey = (value) => {
+  if (!value) return '';
+  const text = String(value || '').trim();
+  const dateMatch = text.match(/^\d{4}-\d{2}-\d{2}/);
+  if (dateMatch) return dateMatch[0];
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed.format('YYYY-MM-DD') : '';
+};
+
+const isAttendanceEmployeeVisibleOnDate = (employee, workDateKey) => {
+  if (String(employee?.status || '').toUpperCase() !== 'ACTIVE') return false;
+
+  const joinedDateKey = toOptionalDateKey(employee?.joinedAt);
+  if (joinedDateKey && workDateKey && workDateKey < joinedDateKey) return false;
+
+  const leftDateKey = toOptionalDateKey(employee?.leftAt);
+  if (leftDateKey && workDateKey && workDateKey > leftDateKey) return false;
+
+  return true;
+};
+
+const toWorkerAttendanceRatioText = (enteredWorkerCount, activeWorkerCount) => {
+  const entered = Number(enteredWorkerCount);
+  const active = Number(activeWorkerCount);
+  if (!Number.isFinite(active) || active <= 0) return '-';
+  const safeEntered = Number.isFinite(entered) && entered > 0 ? Math.trunc(entered) : 0;
+  return `${formatNumberWithCommas(safeEntered, {
+    fallback: '0',
+    maximumFractionDigits: 0,
+  })}/${formatNumberWithCommas(active, {
+    fallback: '0',
+    maximumFractionDigits: 0,
+  })}`;
+};
+
 const toAverageHoursTextFromRow = (row, languageCode) => {
   const workerCount = Number(row?.enteredWorkerCount);
   const avgSeconds = Number(row?.workedSecondsAverage);
   if (!Number.isFinite(workerCount) || workerCount <= 0) return '-';
   if (!Number.isFinite(avgSeconds)) return '-';
   return toHoursTextFromSeconds(avgSeconds, languageCode);
-};
-const toTotalHoursTextFromRow = (row, languageCode) => {
-  const totalSeconds = Number(row?.workedSecondsTotal);
-  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return '-';
-  return toHoursTextFromSeconds(totalSeconds, languageCode);
 };
 const toCountTextOrDash = (value) => {
   const count = Number(value);
@@ -252,6 +282,7 @@ const AttendanceList = () => {
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
   const [rows, setRows] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [loadingFactories, setLoadingFactories] = useState(false);
   const [loadingRows, setLoadingRows] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -308,6 +339,7 @@ const AttendanceList = () => {
 
     if (!selectedFactoryId) {
       setRows([]);
+      setEmployees([]);
       setLoadingRows(false);
       return () => {
         cancelled = true;
@@ -323,14 +355,26 @@ const AttendanceList = () => {
           factoryId: selectedFactoryId,
           month: monthKey,
         });
-        const fetched = await requestJSON('/attendance-entries' + query, {
-          signal: controller.signal,
+        const employeeQuery = buildQueryString({
+          orgId: activeOrgId,
+          factoryId: selectedFactoryId,
+          excludeMembershipRole: 'ADMIN',
         });
+        const [fetched, fetchedEmployees] = await Promise.all([
+          requestJSON('/attendance-entries' + query, {
+            signal: controller.signal,
+          }),
+          requestJSON('/employees' + employeeQuery, {
+            signal: controller.signal,
+          }),
+        ]);
         if (cancelled) return;
         setRows(Array.isArray(fetched) ? fetched : []);
+        setEmployees(Array.isArray(fetchedEmployees) ? fetchedEmployees : []);
       } catch (_error) {
         if (cancelled || controller.signal.aborted) return;
         setRows([]);
+        setEmployees([]);
         showNotification(
           resolveText(TEXT.fetchError, languageCode, '출퇴근 기록을 불러오지 못했습니다.'),
           'error'
@@ -359,6 +403,9 @@ const AttendanceList = () => {
     rows.forEach((row) => {
       const workDate = String(row?.workDate || '').trim();
       if (!workDate) return;
+      const workerId = String(row?.workerId || '').trim();
+      const employee = employees.find((item) => String(item?.id || '').trim() === workerId);
+      if (!workerId || !isAttendanceEmployeeVisibleOnDate(employee, workDate)) return;
 
       if (!groupedByDate.has(workDate)) {
         groupedByDate.set(workDate, {
@@ -370,8 +417,7 @@ const AttendanceList = () => {
       }
 
       const bucket = groupedByDate.get(workDate);
-      const workerId = String(row?.workerId || '').trim();
-      if (workerId) bucket.workerIds.add(workerId);
+      bucket.workerIds.add(workerId);
 
       const workedSeconds = Number(row?.workedSeconds);
       if (Number.isFinite(workedSeconds) && workedSeconds > 0) {
@@ -391,12 +437,16 @@ const AttendanceList = () => {
       const workDate = cursor.format('YYYY-MM-DD');
       const item = groupedByDate.get(workDate);
       const enteredWorkerCount = item?.workerIds?.size || 0;
+      const activeWorkerCount = employees.filter((employee) =>
+        isAttendanceEmployeeVisibleOnDate(employee, workDate)
+      ).length;
       const noteCount = item?.noteCount || 0;
       const workedSecondsTotal = item?.workedSecondsTotal || 0;
 
       nextRows.push({
         workDate,
         enteredWorkerCount,
+        activeWorkerCount,
         workedSecondsTotal,
         workedSecondsAverage:
           enteredWorkerCount > 0 ? workedSecondsTotal / enteredWorkerCount : null,
@@ -410,7 +460,7 @@ const AttendanceList = () => {
       (left, right) =>
         dayjs(right.workDate).valueOf() - dayjs(left.workDate).valueOf()
     );
-  }, [rows, selectedMonth]);
+  }, [employees, rows, selectedMonth]);
 
   const filteredRows = useMemo(() => {
     const keyword = String(searchTerm || '').trim().toLowerCase();
@@ -745,9 +795,6 @@ const AttendanceList = () => {
                   {resolveText(TEXT.enteredWorkers, languageCode, 'Entered Workers')}
                 </TableCell>
                 <TableCell align="right">
-                  {resolveText(TEXT.workedHoursTotal, languageCode, 'Total Worked')}
-                </TableCell>
-                <TableCell align="right">
                   {resolveText(TEXT.workedHoursAverage, languageCode, 'Avg Worked')}
                 </TableCell>
                 <TableCell align="right">
@@ -759,12 +806,12 @@ const AttendanceList = () => {
             <TableBody>
               {loadingRows || loadingFactories ? (
                 <TableStatusRow
-                  colSpan={7}
+                  colSpan={6}
                   message={resolveText(TEXT.loading, languageCode, 'Loading attendance...')}
                 />
               ) : !selectedFactoryId || filteredRows.length === 0 ? (
                 <TableStatusRow
-                  colSpan={7}
+                  colSpan={6}
                   message={resolveText(TEXT.empty, languageCode, 'No attendance records found.')}
                 />
               ) : (
@@ -804,8 +851,9 @@ const AttendanceList = () => {
                         {weekdayText ? ` ${weekdayText}` : ''}
                       </TableCell>
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>{workTypeText}</TableCell>
-                      <TableCell align="right">{toCountTextOrDash(row.enteredWorkerCount)}</TableCell>
-                      <TableCell align="right">{toTotalHoursTextFromRow(row, languageCode)}</TableCell>
+                      <TableCell align="right">
+                        {toWorkerAttendanceRatioText(row.enteredWorkerCount, row.activeWorkerCount)}
+                      </TableCell>
                       <TableCell align="right">
                         {toAverageHoursTextFromRow(row, languageCode)}
                       </TableCell>
