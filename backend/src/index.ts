@@ -4746,6 +4746,48 @@ const refreshStyleProcessMirrorForStyleIds = async (
   } = {}
 ) => loadStyleProcessRowsByStyleId(styleIds, options);
 
+const loadStyleProcessMirrorMapForStyleIds = async (
+  styleIds: number[],
+  options: {
+    processOrgId?: number | null;
+    db?: StyleStorageClient;
+  } = {}
+) => {
+  const db = options.db ?? prisma;
+  const processOrgId = toPositiveIntOrNull(options.processOrgId);
+  const normalizedStyleIds = Array.from(
+    new Set(
+      ensureArray(styleIds)
+        .map((styleId) => toPositiveIntOrNull(styleId))
+        .filter((styleId): styleId is number => styleId !== null)
+    )
+  );
+  if (normalizedStyleIds.length === 0) return new Map<number, any[]>();
+
+  const rowsByStyleId = await loadStyleProcessRowsByStyleId(normalizedStyleIds, {
+    processOrgId,
+    db,
+  });
+  const processNameLookup = await loadStyleProcessNameLookup({
+    orgId: processOrgId,
+    processCodes: Array.from(rowsByStyleId.values()).flatMap((rows) =>
+      ensureArray(rows).map((row) => row?.processCode)
+    ),
+    db,
+  });
+
+  return normalizedStyleIds.reduce((map, styleId) => {
+    map.set(
+      styleId,
+      buildStyleProcessMirrorFromRows(
+        rowsByStyleId.get(styleId) || [],
+        processNameLookup
+      )
+    );
+    return map;
+  }, new Map<number, any[]>());
+};
+
 const syncStyleProcessStorageForStyle = async ({
   styleId,
   orgId,
@@ -9046,14 +9088,78 @@ const resolveWorkLogImportLineForEmployee = ({
   };
 };
 
+const buildWorkLogImportProcessCodeCandidates = (process: any): string[] =>
+  Array.from(
+    new Set(
+      [
+        process?.processCode,
+        process?.code,
+        process?.storageCode,
+        process?.processKey,
+      ]
+        .map((value) => normalizeProcessCodeKey(value))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+
+const buildWorkLogImportProcessOptionIdentity = (process: any): string => {
+  const codeKey = buildWorkLogImportProcessCodeCandidates(process)[0] ?? null;
+  if (codeKey) return `code:${codeKey}`;
+  const styleProcessId = toPositiveIntOrNull(process?.styleProcessId);
+  if (styleProcessId !== null) return `style-process:${styleProcessId}`;
+  const nameKey = normalizeProcessNameKey(
+    process?.processName ?? process?.name ?? process?.nameEn
+  );
+  if (nameKey) return `name:${nameKey}`;
+  return "";
+};
+
+const buildWorkLogImportLiveStyleProcessOptions = (plan: any) => {
+  const orderQuantity = toPositiveInt(
+    resolveAssignmentQuantity(plan) ??
+      plan?.assignmentCtSnapshot?.quantity ??
+      plan?.assignmentQuantity ??
+      1,
+    1
+  );
+  return normalizeStyleProcesses(plan?.style?.processes).map(
+    (process: any, index: number) => ({
+      styleProcessId: toPositiveIntOrNull(process?.styleProcessId ?? process?.id),
+      processCode:
+        resolveOptionalString(
+          process?.code ?? process?.storageCode ?? process?.instanceId,
+          null
+        ) ?? `PROCESS-${index + 1}`,
+      processName:
+        resolveOptionalString(
+          process?.name ??
+            process?.processName ??
+            process?.nameEn ??
+            process?.nameKo ??
+            process?.nameVi,
+          null
+        ) ?? `process ${index + 1}`,
+      ctSeconds: Math.max(
+        0,
+        Math.round(
+          Number(
+            resolveStyleProcessExactStPerPieceSeconds(process, orderQuantity) ?? 0
+          ) || 0
+        )
+      ),
+    })
+  );
+};
+
 const buildWorkLogImportPlanProcessOptions = (plan: any) => {
   const snapshot = resolveNormalizedAssignmentCtSnapshot(plan);
-  return ensureArray(snapshot?.processes).map((process: any, index: number) => {
+  const merged = new Map<string, any>();
+  ensureArray(snapshot?.processes).forEach((process: any, index: number) => {
     const fallbackName =
       resolveOptionalString(process?.name, null) ??
       resolveOptionalString(process?.processName, null) ??
       `process ${index + 1}`;
-    return {
+    const option = {
       styleProcessId: toPositiveIntOrNull(process?.styleProcessId),
       processCode:
         resolveOptionalString(process?.processCode ?? process?.code, null) ??
@@ -9071,7 +9177,34 @@ const buildWorkLogImportPlanProcessOptions = (plan: any) => {
         )
       ),
     };
+    const identity = buildWorkLogImportProcessOptionIdentity(option);
+    if (identity) merged.set(identity, option);
   });
+  buildWorkLogImportLiveStyleProcessOptions(plan).forEach((option) => {
+    const identity = buildWorkLogImportProcessOptionIdentity(option);
+    if (!identity) return;
+    const current = merged.get(identity);
+    if (!current) {
+      merged.set(identity, option);
+      return;
+    }
+    merged.set(identity, {
+      styleProcessId:
+        toPositiveIntOrNull(option?.styleProcessId) ??
+        toPositiveIntOrNull(current?.styleProcessId),
+      processCode:
+        resolveOptionalString(current?.processCode, null) ??
+        resolveOptionalString(option?.processCode, null),
+      processName:
+        resolveOptionalString(current?.processName, null) ??
+        resolveOptionalString(option?.processName, null),
+      ctSeconds:
+        Math.max(0, Math.round(Number(current?.ctSeconds ?? 0) || 0)) > 0
+          ? Math.max(0, Math.round(Number(current?.ctSeconds ?? 0) || 0))
+          : Math.max(0, Math.round(Number(option?.ctSeconds ?? 0) || 0)),
+    });
+  });
+  return Array.from(merged.values());
 };
 
 const resolveWorkLogImportMatchedProcess = ({
@@ -9087,9 +9220,7 @@ const resolveWorkLogImportMatchedProcess = ({
   const normalizedProcessName = normalizeProcessNameKey(processToken);
   return (
     buildWorkLogImportPlanProcessOptions(plan).find((process) =>
-      resolveAssignmentSnapshotProcessCodeCandidates(process).includes(
-        normalizedProcessCode
-      ) ||
+      buildWorkLogImportProcessCodeCandidates(process).includes(normalizedProcessCode) ||
       normalizeProcessNameKey(process?.processName) === normalizedProcessName
     ) ?? null
   );
@@ -9703,6 +9834,34 @@ const buildWorkLogContextResponse = async ({
     lineAssignmentsOnWorkDatePromise,
     loadAssignmentPlansForWorkLogContext(),
   ]);
+  const assignmentPlanStyleIds = Array.from(
+    new Set(
+      ensureArray(assignmentPlans)
+        .map((plan) => toPositiveIntOrNull(plan?.style?.id))
+        .filter((styleId): styleId is number => styleId !== null)
+    )
+  );
+  if (assignmentPlanStyleIds.length > 0) {
+    const liveProcessMirrorMap = await loadStyleProcessMirrorMapForStyleIds(
+      assignmentPlanStyleIds,
+      {
+        processOrgId: orgId,
+      }
+    );
+    assignmentPlans = ensureArray(assignmentPlans).map((plan) => {
+      const styleId = toPositiveIntOrNull(plan?.style?.id);
+      if (styleId === null) return plan;
+      const liveProcesses = liveProcessMirrorMap.get(styleId) ?? [];
+      if (liveProcesses.length === 0) return plan;
+      return {
+        ...plan,
+        style: {
+          ...(plan?.style ?? {}),
+          processes: liveProcesses,
+        },
+      };
+    });
+  }
 
   const filterDebugStages: Array<{
     stage: string;
@@ -11656,6 +11815,109 @@ const refreshUnlinkedAssignmentPlanSnapshotsForOrg = async ({
         data: update.data,
       });
     }
+  });
+};
+
+const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
+  organization,
+  accessibleStyleOwnerOrgIds,
+  cards,
+  assignments,
+  skippedExternalIds = new Set<string>(),
+  db,
+}: {
+  organization: any;
+  accessibleStyleOwnerOrgIds: number[];
+  cards: any[];
+  assignments: any[];
+  skippedExternalIds?: Set<string>;
+  db: any;
+}) => {
+  const normalizedAssignments = ensureArray(assignments).filter(
+    (assignment) => assignment && typeof assignment === "object"
+  );
+  if (normalizedAssignments.length === 0) return normalizedAssignments;
+
+  const cardById = ensureArray(cards).reduce((map, card) => {
+    const cardId = resolveOptionalString(card?.id, null);
+    if (!cardId || map.has(cardId)) return map;
+    map.set(cardId, card);
+    return map;
+  }, new Map<string, any>());
+
+  const targetStyleIds = Array.from(
+    new Set(
+      normalizedAssignments
+        .map((assignment) => {
+          const externalId = resolveAssignmentExternalId(assignment);
+          if (!externalId || skippedExternalIds.has(externalId)) return null;
+          if (Boolean(assignment?.isCompleted)) return null;
+          return resolveAssignmentStyleIdForStCalculation({
+            assignment,
+            cardById,
+          });
+        })
+        .filter((styleId): styleId is string => Boolean(styleId))
+        .map((styleId) => Number(styleId))
+        .filter((styleId) => Number.isSafeInteger(styleId) && styleId > 0)
+    )
+  );
+  if (targetStyleIds.length === 0) return normalizedAssignments;
+
+  const styles = await db.style.findMany({
+    where: {
+      orgId: { in: accessibleStyleOwnerOrgIds },
+      id: { in: targetStyleIds },
+    },
+    orderBy: { id: "asc" },
+    select: {
+      id: true,
+      orgId: true,
+      updatedAt: true,
+      processes: true,
+    },
+  });
+  if (styles.length === 0) return normalizedAssignments;
+
+  const processMirrorMap = await ensureStyleProcessStorageForStyles(styles, {
+    processOrgId: organization.id,
+    db,
+  });
+  const styleByStyleId = ensureArray(styles).reduce((map, style) => {
+    const styleId = toPositiveIntOrNull(style?.id);
+    if (styleId === null || map.has(styleId)) return map;
+    map.set(styleId, {
+      ...style,
+      processes:
+        processMirrorMap.get(styleId) ?? normalizeStyleProcesses(style?.processes),
+    });
+    return map;
+  }, new Map<number, any>());
+
+  const updatedAt = new Date().toISOString();
+  const updatedBy = "SYSTEM:BOARD_SAVE_STYLE_SYNC";
+  return normalizedAssignments.map((assignment) => {
+    const externalId = resolveAssignmentExternalId(assignment);
+    if (!externalId || skippedExternalIds.has(externalId)) return assignment;
+    if (Boolean(assignment?.isCompleted)) return assignment;
+
+    const cardId = resolveOptionalString(assignment?.cardId, null);
+    const card = cardId ? cardById.get(cardId) ?? null : null;
+    if (!card) return assignment;
+    const styleId = toPositiveIntOrNull(
+      assignment?.styleId ?? card?.styleId
+    );
+    if (styleId === null) return assignment;
+    const style = styleByStyleId.get(styleId) ?? null;
+    if (!style) return assignment;
+
+    return buildRefreshedUnlinkedAssignmentSnapshot({
+      assignment,
+      card,
+      style,
+      updatedAt,
+      updatedBy,
+    });
   });
 };
 
@@ -24244,6 +24506,18 @@ app.put("/assignment-board-state", async (req, res) => {
     stTotalPreparation.changedExternalIds.forEach((externalId) => {
       changedIncomingExternalIds.add(externalId);
     });
+    nextAssignmentsNormalized = await refreshIncomingAssignmentCtSnapshotsFromStyles({
+      organization,
+      accessibleStyleOwnerOrgIds,
+      cards: savedCards,
+      assignments: nextAssignmentsNormalized,
+      skippedExternalIds: new Set<string>([
+        ...Array.from(linkedWorkRecordExternalIdSet.values()),
+        ...Array.from(payrollLockedPlanByExternalId.keys()),
+      ]),
+      db: tx,
+    });
+    nextAssignmentsByExternalId = buildAssignmentByExternalId(nextAssignmentsNormalized);
     assertFiniteAssignmentScheduleIndices(nextAssignmentsNormalized);
 
     const planSyncTargetAssignments = normalizeStateAssignments(

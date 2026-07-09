@@ -1,5 +1,12 @@
 # TODO
 
+## 2026-07-09 assignment snapshot + worklog import process fallback
+
+- Done: stopped `PUT /assignment-board-state` from blindly persisting an incomplete client CT snapshot for editable assignments. Before create/update, the backend now refreshes unlinked/non-payroll-locked assignment snapshots from the current live style-process mirror, so a stale Assign board tab no longer has final authority over which process codes make it into `AssignmentPlan.assignmentCtSnapshot`.
+- Done: work-log import no longer depends only on `AssignmentPlan.assignmentCtSnapshot.processes[]` to discover matchable processes. It now merges snapshot processes with the current live style-process mirror for that assignment's style, filling missing `styleProcessId` / `processCode` coverage from `StyleProcess` rows when the frozen snapshot is incomplete.
+- Data safety: linked-work-record assignments and payroll-locked assignments are skipped by the save-time snapshot refresh path; the import fallback only broadens process matching options and does not rewrite DB rows by itself.
+- Validation: `npm --prefix backend run build` and `npm --prefix frontend run build` passed.
+
 ## 2026-07-09 attendance import matching safety follow-up
 
 - Note: Current device attendance exports include a numeric-looking worker code such as `'16`, but the site is not currently treating those values as Baro employee ids in real operation, so the immediate risk is low.
