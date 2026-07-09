@@ -56,7 +56,7 @@ import {
 } from './workLogImport';
 
 const TEXT = {
-  import: { ko: '파일 등록', en: 'Import File', vi: 'Nhap tep' },
+  import: { ko: '파일 업로드', en: 'Import File', vi: 'Nhap tep' },
   importSuccess: {
     ko: '엑셀 작업기록을 저장했습니다.',
     en: 'Excel work logs imported.',
@@ -73,12 +73,12 @@ const TEXT = {
     vi: 'Nhap that bai do loi du lieu. Vui long kiem tra chi tiet.',
   },
   importIssueDialogTitle: {
-    ko: '작업기록 파일 등록 오류',
+    ko: '작업기록 파일 업로드 오류',
     en: 'Work-log import errors',
     vi: 'Loi nhap tep ghi chep',
   },
   importIssueDialogDescription: {
-    ko: '아래 행을 엑셀 파일에서 수정한 뒤 다시 등록해 주세요.',
+    ko: '아래 행을 엑셀 파일에서 수정한 뒤 다시 업로드해 주세요.',
     en: 'Fix the rows below in the Excel file, then import again.',
     vi: 'Sua cac dong ben duoi trong tep Excel roi nhap lai.',
   },

@@ -6,7 +6,7 @@ const normalizeHeader = (value) => toText(value).toUpperCase();
 
 const IMPORT_ERROR_TEXT = {
   failedTitle: {
-    ko: '작업기록 파일 등록 실패',
+    ko: '작업기록 파일 업로드 실패',
     en: 'Work-log import failed',
     vi: 'Nhap tep ghi chep that bai',
   },
