@@ -1,5 +1,11 @@
 # TODO
 
+## 2026-07-09 assignment card save response display hydration
+
+- Done: Fixed the save-only unassigned card display break where cards looked correct after reload but changed to `order number none` / numeric style labels immediately after saving. `syncAssignmentCardsForOrg` now returns freshly persisted `AssignmentCard` rows through `loadAssignmentCardsForOrg`, so the PUT response uses the same FK+join display hydration as normal GET responses.
+- Data safety: no DB deletion/rebuild change; persisted JSON still excludes duplicate display fields, and response display fields come from real `styleId`/`workOrderId`/`buyerOrgId` joins.
+- Validation: `npm --prefix backend run build` passed.
+
 ## 2026-07-09 assignment board reload FK repair
 
 - Done: Fixed the reload-only broken assignment display where legacy `AssignmentPlan` rows with missing `workOrderId`/`styleId`/`buyerOrgId` showed internal card ids until the user saved the board. `GET /assignment-board-state` and read-only board responses now fill only missing `AssignmentPlan` FK columns from the linked `AssignmentCard` row's real FK columns via `assignmentCardId`.

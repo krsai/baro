@@ -10951,18 +10951,11 @@ const syncAssignmentCardsForOrg = async ({
     });
   }
 
-  // Response/downstream callers (board-save response payload, order progress
-  // sync, mergeAssignmentCardsWithSaved on the next rebuild) still expect a
-  // flat card object with styleId/workOrderId/buyerOrgId readable directly,
-  // matching what toAssignmentCardFromStoreRow returns on a normal read. The
-  // row's real FK columns (not payload) are the source for these three
-  // fields; only the JSON payload itself excludes them now.
-  return normalizedCards.map(({ payload, styleId, workOrderId, buyerOrgId }) => ({
-    ...payload,
-    styleId,
-    workOrderId,
-    buyerOrgId,
-  }));
+  // The stored JSON intentionally excludes joinable display fields
+  // (orderNo/styleName/customer/etc.). Return the freshly persisted rows
+  // through the same FK+join read path as normal GET responses, otherwise
+  // board-save responses temporarily show stripped cards until the next reload.
+  return loadAssignmentCardsForOrg({ orgId, db });
 };
 const hydrateAssignmentFkRefsFromCards = (assignments: any[], cards: any[]): any[] => {
   const cardById = new Map<string, any>();
