@@ -3359,6 +3359,20 @@ const AssignBoard = () => {
             item?.plannedStTotalSeconds,
             0
           );
+          const fallbackPlannedStTotalSeconds = toNonNegativeInt(
+            fallbackItem?.plannedStTotalSeconds ??
+              fallbackItem?.stTotalSeconds ??
+              fallbackItem?.assignmentStTotalSeconds,
+            0
+          );
+          const mergedPlannedStTotalSeconds =
+            responsePlannedStTotalSeconds > 0
+              ? responsePlannedStTotalSeconds
+              : responseStTotalSeconds > 0
+                ? responseStTotalSeconds
+                : fallbackPlannedStTotalSeconds > 0
+                  ? fallbackPlannedStTotalSeconds
+                  : null;
           const rawRemainingStTotalSeconds = Number(item?.remainingStTotalSeconds);
           const hasPositiveRemainingStTotalSeconds =
             Number.isFinite(rawRemainingStTotalSeconds) && rawRemainingStTotalSeconds > 0;
@@ -3368,12 +3382,7 @@ const AssignBoard = () => {
                 ...fallbackItem,
                 ...item,
                 stTotalSeconds: responseStTotalSeconds,
-                plannedStTotalSeconds:
-                  responsePlannedStTotalSeconds > 0
-                    ? responsePlannedStTotalSeconds
-                    : mergedStTotalSeconds > 0
-                      ? mergedStTotalSeconds
-                      : null,
+                plannedStTotalSeconds: mergedPlannedStTotalSeconds,
                 remainingStTotalSeconds: hasPositiveRemainingStTotalSeconds
                   ? Math.round(rawRemainingStTotalSeconds)
                   : isCompleted
