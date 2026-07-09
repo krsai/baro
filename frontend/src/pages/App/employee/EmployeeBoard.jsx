@@ -33,8 +33,9 @@ import { fetchAttributes } from '../../../utils/attributeApi';
 import { canAccessFeature, FEATURE_KEYS } from '../../../utils/accessControl';
 
 const EMPLOYEE_STATUS_VALUES = ['ACTIVE', 'SUSPENDED', 'TERMINATED'];
-const EMPLOYEE_STATUS_FILTER_VALUES = [...EMPLOYEE_STATUS_VALUES, 'ALL'];
+const EMPLOYEE_STATUS_FILTER_VALUES = ['ALL', ...EMPLOYEE_STATUS_VALUES];
 const ORG_ROLE_VALUES = ['ADMIN', 'OPERATOR', 'ACCOUNTANT', 'WORKER'];
+const NO_FACTORY_FILTER_VALUE = '__NO_FACTORY__';
 const EMPLOYEE_STATUS_LABELS = {
   ACTIVE: { ko: '재직', en: 'Active', vi: 'Dang lam' },
   SUSPENDED: { ko: '휴직', en: 'Suspended', vi: 'Tam nghi' },
@@ -72,6 +73,11 @@ const EMPLOYEE_BOARD_TEXT = {
   factoryLabel: { ko: '공장', en: 'Factory', vi: 'Nha may' },
   factorySelect: { ko: '공장 선택', en: 'Select Factory', vi: 'Chon nha may' },
   allFactory: { ko: '전체 공장', en: 'All Factories', vi: 'Tat ca nha may' },
+  operationsSupportTeam: {
+    ko: '운영 지원팀',
+    en: 'Operations Support Team',
+    vi: 'Bo phan ho tro van hanh',
+  },
   noFactory: { ko: '공장 없음', en: 'No Factory', vi: 'Khong nha may' },
   factoryRequiredAuto: {
     ko: '필수 항목(내 소속 공장으로 자동 설정)',
@@ -392,6 +398,11 @@ const isValidDateInput = (value) => {
   return !Number.isNaN(date.getTime());
 };
 const normalizeSearchText = (value) => String(value || '').trim().toLowerCase();
+const isNoFactoryFilterValue = (value) => String(value || '') === NO_FACTORY_FILTER_VALUE;
+const hasAssignedFactory = (employee) => {
+  const factoryId = Number(employee?.factoryId);
+  return Number.isFinite(factoryId) && factoryId > 0;
+};
 
 const resolveNameFromEmail = (email) => {
   const normalized = normalizeEmail(email);
@@ -734,7 +745,10 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     });
   const operatorFactoryId = '';
   const canFilterByFactory = activeOrgType !== 'BRAND' && factories.length > 0;
-  const defaultPendingFactoryId = operatorFactoryId || selectedFactoryFilterId || '';
+  const defaultPendingFactoryId =
+    operatorFactoryId ||
+    (isNoFactoryFilterValue(selectedFactoryFilterId) ? '' : selectedFactoryFilterId) ||
+    '';
   const currentUserName = String(activeProfile?.employeeName || '').trim();
   const payTypeOptions = useMemo(() => getPayTypeOptions(languageCode), [languageCode]);
 
@@ -804,10 +818,14 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const fetchEmployees = useCallback(async (orgId, factoryId) => {
     if (!orgId) return;
     try {
+      const normalizedFactoryFilterId = String(factoryId || '').trim();
       const data = await requestJSON(
         `/employees${buildQueryString({
           orgId,
-          factoryId: factoryId || undefined,
+          factoryId:
+            normalizedFactoryFilterId && !isNoFactoryFilterValue(normalizedFactoryFilterId)
+              ? normalizedFactoryFilterId
+              : undefined,
           systemOnly: isSystemProfile && !isBrowsingOrgAsSystemAdmin ? '1' : undefined,
         })}`
       );
@@ -852,6 +870,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       return;
     }
     setSelectedFactoryFilterId((prev) => {
+      if (isNoFactoryFilterValue(prev)) return prev;
       if (!prev) return '';
       const exists = factories.some((factory) => String(factory?.id) === String(prev));
       return exists ? prev : '';
@@ -971,7 +990,12 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       const membershipId = Number(nextEmployee.orgMembershipId);
       const activeFilterId = String(selectedFactoryFilterId || '');
       const nextFactoryId = String(nextEmployee?.factoryId || '');
-      const shouldInclude = !activeFilterId || nextFactoryId === activeFilterId;
+      const shouldInclude =
+        !activeFilterId
+          ? true
+          : isNoFactoryFilterValue(activeFilterId)
+            ? true
+            : nextFactoryId === activeFilterId;
 
       setEmployees((prev) => {
         const filtered = prev.filter(
@@ -1116,7 +1140,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     const defaultFactoryId =
       activeOrgType === 'BRAND'
         ? ''
-        : selectedFactoryFilterId || '';
+        : isNoFactoryFilterValue(selectedFactoryFilterId)
+          ? ''
+          : selectedFactoryFilterId || '';
     setDrawerMode('create');
     setSelectedMemberId(null);
     setDrawerEmail('');
@@ -1376,6 +1402,12 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
   const visibleActiveMembers = useMemo(() => {
     if (!selectedFactoryFilterId) return activeMembers;
+    if (isNoFactoryFilterValue(selectedFactoryFilterId)) {
+      return activeMembers.filter((member) => {
+        const employee = employeeByMembership.get(member.id) || null;
+        return !hasAssignedFactory(employee);
+      });
+    }
     return activeMembers.filter((member) => {
       const employee = employeeByMembership.get(member.id);
       if (!employee) return false;
@@ -1897,6 +1929,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                       if (!normalizedValue) {
                         return text('allFactory', languageCode);
                       }
+                      if (isNoFactoryFilterValue(normalizedValue)) {
+                        return text('operationsSupportTeam', languageCode);
+                      }
                       return (
                         factories.find((factory) => String(factory?.id) === normalizedValue)?.name ||
                         text('allFactory', languageCode)
@@ -1906,6 +1941,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   InputLabelProps={{ shrink: true }}
                 >
                   <MenuItem value="">{text('allFactory', languageCode)}</MenuItem>
+                  <MenuItem value={NO_FACTORY_FILTER_VALUE}>
+                    {text('operationsSupportTeam', languageCode)}
+                  </MenuItem>
                   {factories.map((factory) => (
                     <MenuItem key={factory.id} value={String(factory.id)}>
                       {factory.name}
