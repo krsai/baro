@@ -9540,6 +9540,8 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
   // customer/label columns are gone - these joins are the only source now.
   const joinedOrderNo = resolveOptionalString(plan?.workOrder?.orderNumber, null);
   const joinedCustomer = resolveOptionalString(plan?.buyerOrg?.name, null);
+  const joinedCustomerNameKo = resolveOptionalString(plan?.buyerOrg?.nameKo, null);
+  const joinedCustomerNameVi = resolveOptionalString(plan?.buyerOrg?.nameVi, null);
   const joinedLabel = resolveOptionalString(plan?.style?.name, null);
   return {
     dbId: plan?.id ?? null,
@@ -9551,6 +9553,8 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     orderNo: joinedOrderNo ?? "",
     label: joinedLabel ?? "",
     customer: joinedCustomer ?? "",
+    customerNameKo: joinedCustomerNameKo ?? "",
+    customerNameVi: joinedCustomerNameVi ?? "",
     // colorId/colorName/color dropped in Phase D - see the comment in
     // toAssignmentPlanResponse for why these are static now.
     colorId: null,
@@ -12717,6 +12721,8 @@ const toAssignmentPlanResponse = (plan: any) => {
   // now the only source, resolved purely from workOrderId/styleId/buyerOrgId.
   const joinedOrderNo = resolveOptionalString(plan?.workOrder?.orderNumber, null);
   const joinedCustomer = resolveOptionalString(plan?.buyerOrg?.name, null);
+  const joinedCustomerNameKo = resolveOptionalString(plan?.buyerOrg?.nameKo, null);
+  const joinedCustomerNameVi = resolveOptionalString(plan?.buyerOrg?.nameVi, null);
   const joinedLabel = resolveOptionalString(plan?.style?.name, null);
   const joinedPreviewUrl =
     Array.isArray(plan?.style?.imageUrls) && plan.style.imageUrls.length > 0
@@ -12729,6 +12735,12 @@ const toAssignmentPlanResponse = (plan: any) => {
     workOrderId: toPositiveIntOrNull(plan?.workOrderId),
     orderNo: joinedOrderNo ?? "",
     customer: joinedCustomer ?? "",
+    // Organization.nameKo/nameVi via the buyerOrg FK - lets the frontend show
+    // a localized name the same way AssignmentCard already does
+    // (resolveCardCustomerDisplay), instead of always showing whatever
+    // single language buyerOrg.name happens to be in.
+    customerNameKo: joinedCustomerNameKo ?? "",
+    customerNameVi: joinedCustomerNameVi ?? "",
     label: joinedLabel ?? "",
     // colorId/colorName/color/stripeColor/imageUrl/thumbnailUrl were dropped
     // in Phase D (AssignmentCard/AssignmentPlan FK+join redesign) - color/
@@ -13778,7 +13790,7 @@ const toAssignmentBoardStateResponse = (
 const ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE = {
   workOrder: { select: { id: true, orderNumber: true } },
   style: { select: { id: true, name: true, code: true, imageUrls: true } },
-  buyerOrg: { select: { id: true, name: true } },
+  buyerOrg: { select: { id: true, name: true, nameKo: true, nameVi: true } },
 } as const;
 const ASSIGNMENT_PLAN_SELECT_CORE = {
   id: true,
@@ -13809,7 +13821,7 @@ const ASSIGNMENT_PLAN_SELECT_CORE = {
   // attempt including the "legacy" one below.
   workOrder: { select: { id: true, orderNumber: true } },
   style: { select: { id: true, name: true, code: true, imageUrls: true } },
-  buyerOrg: { select: { id: true, name: true } },
+  buyerOrg: { select: { id: true, name: true, nameKo: true, nameVi: true } },
 } as const;
 const ASSIGNMENT_PLAN_SELECT_WITH_CLOSE = {
   ...ASSIGNMENT_PLAN_SELECT_CORE,
@@ -13859,7 +13871,7 @@ const ASSIGNMENT_PLAN_SELECT_LEGACY = {
   // "legacy" (schema-drift-tolerant) select needs them just as much.
   workOrder: { select: { id: true, orderNumber: true } },
   style: { select: { id: true, name: true, code: true, imageUrls: true } },
-  buyerOrg: { select: { id: true, name: true } },
+  buyerOrg: { select: { id: true, name: true, nameKo: true, nameVi: true } },
 } as const;
 const ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY = {
   ...ASSIGNMENT_PLAN_SELECT_LEGACY,
@@ -18096,6 +18108,8 @@ app.get("/assignment-plans", async (req, res) => {
         orderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null) ?? "",
         label: resolveOptionalString(plan?.style?.name, null) ?? "",
         customer: resolveOptionalString(plan?.buyerOrg?.name, null) ?? "",
+        customerNameKo: resolveOptionalString(plan?.buyerOrg?.nameKo, null) ?? "",
+        customerNameVi: resolveOptionalString(plan?.buyerOrg?.nameVi, null) ?? "",
         // colorId/colorName/color dropped in Phase D - see the comment in
         // toAssignmentPlanResponse.
         colorId: null,
@@ -20525,6 +20539,8 @@ const buildAssignmentPlanProgressRows = async (
       // customer/label columns are gone - these joins are the only source now.
       orderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null) ?? "",
       customer: resolveOptionalString(plan?.buyerOrg?.name, null) ?? "",
+      customerNameKo: resolveOptionalString(plan?.buyerOrg?.nameKo, null) ?? "",
+      customerNameVi: resolveOptionalString(plan?.buyerOrg?.nameVi, null) ?? "",
       label: resolveOptionalString(plan?.style?.name, null) ?? "",
       // colorId/colorName dropped in Phase D - see the comment in
       // toAssignmentPlanResponse.

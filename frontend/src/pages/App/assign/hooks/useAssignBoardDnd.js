@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { resolveCardCustomerDisplay } from '../utils/assignmentCard';
 
 /**
  * AssignBoard의 드래그&드롭 sensors와 단순 핸들러를 관리하는 훅.
@@ -17,6 +18,7 @@ export const useAssignBoardDnd = ({
   cardsRef,
   assignmentsRef,
   setActiveDrag,
+  languageCode = 'en',
 }) => {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -40,7 +42,7 @@ export const useAssignBoardDnd = ({
             previewUrl: card.previewUrl,
             imageUrl: card.imageUrl,
             thumbnailUrl: card.thumbnailUrl,
-            customer: card.customer,
+            customer: resolveCardCustomerDisplay(card, languageCode),
           });
         }
         return;
@@ -53,13 +55,13 @@ export const useAssignBoardDnd = ({
           setActiveDrag({
             type: 'assignment',
             label: assignment.label,
-            customer: assignment.customer,
+            customer: resolveCardCustomerDisplay(assignment, languageCode),
             orderNo: assignment.orderNo,
           });
         }
       }
     },
-    [cardsRef, assignmentsRef, loading, persistReady, setActiveDrag],
+    [cardsRef, assignmentsRef, loading, persistReady, setActiveDrag, languageCode],
   );
 
   const handleDragCancel = useCallback(() => {

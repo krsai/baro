@@ -19,6 +19,7 @@ import {
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import { getUiMessage } from '../../../../constants/uiMessages';
+import { resolveCardCustomerDisplay } from '../utils/assignmentCard';
 import CompactBoardCard from './CompactBoardCard';
 
 const formatMonthLabel = (monthKey = '') => {
@@ -121,7 +122,7 @@ const LineRowDropHint = memo(function LineRowDropHint({ isOver, languageCode }) 
 // order (AGENTS.md: the queue "order" only feeds forecast ETA math, not
 // actual production - that always comes from work records). Groups appear
 // in first-seen order with no extra sort pass, per user request.
-const groupAssignmentsByOrderNo = (assignments = []) => {
+const groupAssignmentsByOrderNo = (assignments = [], languageCode = 'en') => {
   const groups = [];
   const groupByOrderNo = new Map();
   (Array.isArray(assignments) ? assignments : []).forEach((assignment) => {
@@ -129,7 +130,7 @@ const groupAssignmentsByOrderNo = (assignments = []) => {
     if (!groupByOrderNo.has(orderNo)) {
       const group = {
         orderNo,
-        customer: assignment?.customer || '',
+        customer: resolveCardCustomerDisplay(assignment, languageCode) || '',
         items: [],
         totalQuantity: 0,
       };
@@ -321,7 +322,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
       }
       disabled={isLocked}
       languageCode={languageCode}
-      customer={assignment.customer || '-'}
+      customer={resolveCardCustomerDisplay(assignment, languageCode) || '-'}
       orderNo={assignment.orderNo || getUiMessage('assign.orderNoFallback', 'No order', languageCode)}
       styleName={assignment.label || '-'}
       quantity={assignment.quantity}
@@ -650,7 +651,7 @@ const LineMonthCapacityBoard = ({
                                   beforeAssignmentId={row.queuedAssignments[0]?.id || null}
                                   languageCode={languageCode}
                                 />
-                                {groupAssignmentsByOrderNo(row.queuedAssignments).map((group) => (
+                                {groupAssignmentsByOrderNo(row.queuedAssignments, languageCode).map((group) => (
                                   <Box key={group.orderNo || `${row.lineId}:no-order`} sx={{ mb: 0.5 }}>
                                     <Box
                                       sx={{

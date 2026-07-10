@@ -3078,6 +3078,7 @@ const AssignBoard = () => {
     cardsRef,
     assignmentsRef,
     setActiveDrag,
+    languageCode,
   });
   const lineCapacityById = useMemo(() => {
     return buildLineCapacityMap(lines);
