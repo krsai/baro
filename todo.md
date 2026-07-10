@@ -4,8 +4,9 @@
 
 - Done: `PUT /assignment-board-state` now treats editable assignment CT as required save data. It refreshes CT snapshots from the live style-process mirror, preserves any existing usable persisted CT snapshot if the client sends an unusable one, and rejects the save with a 409 plus a diagnostic warning when CT still cannot be built. Linked-work-record and payroll-locked assignments keep their existing protection path.
 - Done: Assign board save no longer overwrites a valid existing client CT snapshot with `null` when the frontend rebuild cannot resolve style/process data. Board load failures for assignment cards/processes also leave saving disabled instead of turning an empty/incomplete screen into a persistable state.
+- Follow-up: removed the over-strict frontend save block that treated an empty `styles` cache as fatal even when assignment cards were visible. Server-side CT/ST refresh now follows the persisted `AssignmentCard.styleId` FK directly instead of depending on the separate frontend `styles` response or owner-org relationship filter.
 - Data safety: no work-log import bypass was added; imports still require persisted assignment CT. Existing null CT rows should be repaired by a normal assignment-board save after deploy if their live style/process standards are complete, otherwise the save is blocked and reports the affected assignment ids.
-- Validation: `npm --prefix backend run build`, `npm --prefix frontend run build`, and `npm run test:regression` passed.
+- Validation: `npm --prefix backend run build`, `npm --prefix frontend run build`, and `npm run test:regression` passed; the same three checks passed again after the `AssignmentCard.styleId` FK follow-up.
 
 ## 2026-07-09 assignment snapshot + worklog import process fallback
 

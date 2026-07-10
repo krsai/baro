@@ -11841,14 +11841,12 @@ const refreshUnlinkedAssignmentPlanSnapshotsForOrg = async ({
 
 const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
   organization,
-  accessibleStyleOwnerOrgIds,
   cards,
   assignments,
   skippedExternalIds = new Set<string>(),
   db,
 }: {
   organization: any;
-  accessibleStyleOwnerOrgIds: number[];
   cards: any[];
   assignments: any[];
   skippedExternalIds?: Set<string>;
@@ -11887,7 +11885,6 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
 
   const styles = await db.style.findMany({
     where: {
-      orgId: { in: accessibleStyleOwnerOrgIds },
       id: { in: targetStyleIds },
     },
     orderBy: { id: "asc" },
@@ -13524,7 +13521,6 @@ const hasAssignmentStructuralStChange = (assignment: any, existingPlan: any) => 
 };
 const prepareAssignmentBoardStTotalsForSave = async ({
   organization,
-  accessibleStyleOwnerOrgIds,
   cards,
   assignments,
   existingPlanByExternalId,
@@ -13532,7 +13528,6 @@ const prepareAssignmentBoardStTotalsForSave = async ({
   db,
 }: {
   organization: any;
-  accessibleStyleOwnerOrgIds: number[];
   cards: any[];
   assignments: any[];
   existingPlanByExternalId: Map<string, any>;
@@ -13631,7 +13626,6 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     assignmentStyleIds.size > 0
       ? await db.style.findMany({
           where: {
-            orgId: { in: accessibleStyleOwnerOrgIds },
             id: { in: Array.from(assignmentStyleIds.values()).map((value) => Number(value)).filter((value) => Number.isSafeInteger(value) && value > 0) },
           },
           orderBy: { id: "asc" },
@@ -24045,8 +24039,7 @@ app.get("/assignment-cards", async (req, res) => {
   const includeProcesses = isManufacturerOrg(organization) && !(
     req.query.includeProcesses === "0" || req.query.includeProcesses === "false"
   );
-  const [accessibleOwnerOrgIds, state, cards] = await Promise.all([
-    getAccessibleStyleOwnerOrgIds(organization),
+  const [state, cards] = await Promise.all([
     prisma.assignmentBoardState.findUnique({
       where: { orgId: organization.id },
       select: { updatedAt: true },
@@ -24097,7 +24090,6 @@ app.get("/assignment-cards", async (req, res) => {
     cardStyleIds.length > 0
       ? await prisma.style.findMany({
           where: {
-            orgId: { in: accessibleOwnerOrgIds },
             id: {
               in: cardStyleIds
                 .map((value) => Number(value))
@@ -24290,7 +24282,6 @@ app.put("/assignment-board-state", async (req, res) => {
   const cards = ensureArray(req.body?.cards);
   const incomingAssignments = ensureArray(req.body?.assignments);
   const stDraftsByExternalId = normalizeAssignmentStDraftsPayload(req.body?.stDrafts);
-  const accessibleStyleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
   let cardsForSave = cards;
   let incomingAssignmentsForSave = incomingAssignments;
   if (
@@ -24630,7 +24621,6 @@ app.put("/assignment-board-state", async (req, res) => {
     });
     const stTotalPreparation = await prepareAssignmentBoardStTotalsForSave({
       organization,
-      accessibleStyleOwnerOrgIds,
       cards: cardsForSave,
       assignments: nextAssignmentsNormalized,
       existingPlanByExternalId: existingPlanByExternalIdForStTotals,
@@ -24647,7 +24637,6 @@ app.put("/assignment-board-state", async (req, res) => {
     ]);
     nextAssignmentsNormalized = await refreshIncomingAssignmentCtSnapshotsFromStyles({
       organization,
-      accessibleStyleOwnerOrgIds,
       cards: savedCards,
       assignments: nextAssignmentsNormalized,
       skippedExternalIds: ctSnapshotSkippedExternalIds,

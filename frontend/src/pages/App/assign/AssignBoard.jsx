@@ -3981,22 +3981,6 @@ const AssignBoard = () => {
         .filter((style) => style?.id)
         .map((style) => [String(style.id), style])
     );
-    if ((currentCards.length > 0 || currentAssignments.length > 0) && currentStyles.length === 0) {
-      showNotification(
-        getUiMessage(
-          'assign.assignmentSourceMissingSaveBlocked',
-          languageCode === 'vi'
-            ? 'Khong luu vi du lieu cong doan/kieu dang chua duoc tai. Hay tai lai trang roi thu lai.'
-            : languageCode === 'en'
-              ? 'Assignment was not saved because style/process data is not loaded. Reload the page and try again.'
-              : '스타일/공정 정보를 불러오지 못한 상태라 저장하지 않았습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.',
-          languageCode
-        ),
-        'error'
-      );
-      setPersisting(false);
-      return;
-    }
     const currentDetailDraftsByTarget =
       detailDraftsRef.current && typeof detailDraftsRef.current === 'object'
         ? detailDraftsRef.current
