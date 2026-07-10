@@ -1590,6 +1590,26 @@ const buildAssignmentCtSnapshotForSave = ({
   };
 };
 
+const resolveReusableAssignmentCtSnapshotForSave = (assignment) => {
+  const snapshot = resolveAssignmentCtSnapshot(assignment);
+  const processes = Array.isArray(snapshot?.processes) ? snapshot.processes : [];
+  const pieceCtTotalSeconds = Number(snapshot?.pieceCtTotalSeconds);
+  const hasPositivePieceCtTotalSeconds =
+    Number.isFinite(pieceCtTotalSeconds) && pieceCtTotalSeconds > 0;
+  if (!snapshot || processes.length === 0 || !hasPositivePieceCtTotalSeconds) {
+    return null;
+  }
+  const snapshotTotal = Number(snapshot?.assignmentCtTotalSeconds);
+  const directTotal = Number(assignment?.assignmentCtTotalSeconds ?? assignment?.ctTotalSeconds);
+  const ctTotalSeconds = Number.isFinite(snapshotTotal) && snapshotTotal >= 0
+    ? Math.round(snapshotTotal)
+    : Number.isFinite(directTotal) && directTotal >= 0
+      ? Math.round(directTotal)
+      : null;
+  if (ctTotalSeconds == null) return null;
+  return { snapshot, ctTotalSeconds };
+};
+
 const applyAssignmentCtSnapshotForSave = ({
   assignment,
   card = null,
@@ -1601,6 +1621,7 @@ const applyAssignmentCtSnapshotForSave = ({
   updatedBy = null,
   preferStyleProcessSeconds = false,
 }) => {
+  const reusableSnapshot = resolveReusableAssignmentCtSnapshotForSave(assignment);
   const ctSnapshot = buildAssignmentCtSnapshotForSave({
     assignment,
     card,
@@ -1612,6 +1633,7 @@ const applyAssignmentCtSnapshotForSave = ({
     updatedBy,
     preferStyleProcessSeconds,
   });
+  const ctSnapshotForSave = ctSnapshot ?? reusableSnapshot?.snapshot ?? null;
   const existingAssignmentStTotalSeconds = toNonNegativeInt(
     assignment?.stTotalSeconds ?? assignment?.assignmentStTotalSeconds,
     0
@@ -1624,13 +1646,13 @@ const applyAssignmentCtSnapshotForSave = ({
   const nextCtTotalSeconds =
     ctSnapshot?.assignmentCtTotalSeconds != null
       ? Math.max(0, Math.round(Number(ctSnapshot.assignmentCtTotalSeconds) || 0))
-      : assignment.ctTotalSeconds ?? null;
+      : reusableSnapshot?.ctTotalSeconds ?? assignment.ctTotalSeconds ?? null;
 
   return normalizeAssignmentLayout({
     ...assignment,
     stTotalSeconds: nextStTotalSeconds,
     ctTotalSeconds: nextCtTotalSeconds,
-    assignmentCtSnapshot: ctSnapshot,
+    assignmentCtSnapshot: ctSnapshotForSave,
   });
 };
 
@@ -3431,14 +3453,26 @@ const AssignBoard = () => {
   );
   const resolveBoardSaveErrorMessage = useCallback((error, fallbackMessage) => {
     const raw = String(error?.message || '').trim();
-    if (raw.toLowerCase().includes('assignment version conflict')) {
+    const lowerRaw = raw.toLowerCase();
+    if (lowerRaw.includes('assignment version conflict')) {
       return getUiMessage(
         'assign.versionConflict',
         'The server data is newer than this screen. Reload the assignment page and try again.',
         languageCode
       );
     }
-    if (raw.toLowerCase().includes('order manual lock required before scheduling assignment')) {
+    if (lowerRaw.includes('assignment ct snapshot required before save')) {
+      return getUiMessage(
+        'assign.ctSnapshotRequiredBeforeSave',
+        languageCode === 'vi'
+          ? 'Khong luu phan cong vi chua tao duoc CT cho mot so the. Hay tai lai du lieu cong doan/kieu dang roi thu lai.'
+          : languageCode === 'en'
+            ? 'Assignment was not saved because CT could not be built for some cards. Reload the style/process data and try again.'
+            : '일부 배정 카드의 CT 기준을 만들 수 없어 저장하지 않았습니다. 스타일/공정 정보를 새로고침한 뒤 다시 저장해 주세요.',
+        languageCode
+      );
+    }
+    if (lowerRaw.includes('order manual lock required before scheduling assignment')) {
       return getUiMessage(
         'assign.orderManualLockRequiredSaveError',
         languageCode === 'vi'
@@ -3803,11 +3837,30 @@ const AssignBoard = () => {
         const assignmentCardsResponse = await assignmentCardsPromise;
         if (cancelled) return;
         if (!assignmentCardsResponse) {
-          setStyles([]);
-          setLines(nextLines);
-          setCards([]);
-          setAssignments([]);
-          setPersistReady(true);
+          showNotification(
+            getUiMessage(
+              'assign.assignmentSourceLoadError',
+              languageCode === 'vi'
+                ? 'Khong tai duoc du lieu the phan cong va cong doan. Trang nay se khong cho luu cho den khi tai lai thanh cong.'
+                : languageCode === 'en'
+                  ? 'Assignment cards and process data could not be loaded. Saving is disabled until the board reloads successfully.'
+                  : '배정 카드와 공정 정보를 불러오지 못했습니다. 정상적으로 다시 불러오기 전까지 저장하지 않습니다.',
+              languageCode
+            ),
+            'error'
+          );
+          if (!hasLoadedSourceDataRef.current || lastLoadedOrgIdRef.current !== normalizedOrgId) {
+            setStyles([]);
+            setLines(nextLines);
+            setCards([]);
+            setAssignments([]);
+            lastSavedSnapshotRef.current = createPersistSnapshotText([], []);
+            historyPastRef.current = [];
+            historyFutureRef.current = [];
+            historySnapshotRef.current = createBoardSnapshotText([], []);
+            historyApplyingRef.current = false;
+            syncHistoryStatus();
+          }
           return;
         }
 
@@ -3816,6 +3869,18 @@ const AssignBoard = () => {
         loadedSuccessfully = true;
       } catch (_error) {
         if (!cancelled) {
+          showNotification(
+            getUiMessage(
+              'assign.boardLoadError',
+              languageCode === 'vi'
+                ? 'Khong tai duoc bang phan cong. Trang nay se khong cho luu cho den khi tai lai thanh cong.'
+                : languageCode === 'en'
+                  ? 'The assignment board could not be loaded. Saving is disabled until the board reloads successfully.'
+                  : '배정판을 불러오지 못했습니다. 정상적으로 다시 불러오기 전까지 저장하지 않습니다.',
+              languageCode
+            ),
+            'error'
+          );
           if (!appliedSavedBoardState) {
             setStyles([]);
             setLines([]);
@@ -3828,7 +3893,6 @@ const AssignBoard = () => {
             historyApplyingRef.current = false;
             syncHistoryStatus();
           }
-          setPersistReady(true);
         }
       } finally {
         if (!cancelled) {
@@ -3852,6 +3916,8 @@ const AssignBoard = () => {
     createPersistSnapshotText,
     externalReloadTick,
     isAssignmentRouteActive,
+    languageCode,
+    showNotification,
     syncHistoryStatus,
   ]);
 
@@ -3915,6 +3981,22 @@ const AssignBoard = () => {
         .filter((style) => style?.id)
         .map((style) => [String(style.id), style])
     );
+    if ((currentCards.length > 0 || currentAssignments.length > 0) && currentStyles.length === 0) {
+      showNotification(
+        getUiMessage(
+          'assign.assignmentSourceMissingSaveBlocked',
+          languageCode === 'vi'
+            ? 'Khong luu vi du lieu cong doan/kieu dang chua duoc tai. Hay tai lai trang roi thu lai.'
+            : languageCode === 'en'
+              ? 'Assignment was not saved because style/process data is not loaded. Reload the page and try again.'
+              : '스타일/공정 정보를 불러오지 못한 상태라 저장하지 않았습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.',
+          languageCode
+        ),
+        'error'
+      );
+      setPersisting(false);
+      return;
+    }
     const currentDetailDraftsByTarget =
       detailDraftsRef.current && typeof detailDraftsRef.current === 'object'
         ? detailDraftsRef.current

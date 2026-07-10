@@ -11942,6 +11942,121 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
   });
 };
 
+const resolveAssignmentCtSnapshotSaveReadiness = (assignment: any) => {
+  const snapshot = resolveNormalizedAssignmentCtSnapshot(assignment);
+  const processes = ensureArray(snapshot?.processes);
+  const pieceCtTotalSeconds = toOptionalFloat(snapshot?.pieceCtTotalSeconds, null);
+  const ctTotalSeconds =
+    snapshot && processes.length > 0
+      ? resolveAssignmentCtTotalSeconds({
+          ...assignment,
+          assignmentCtSnapshot: snapshot,
+        })
+      : null;
+  let reason: string | null = null;
+  if (!snapshot) {
+    reason = "missing snapshot";
+  } else if (processes.length === 0) {
+    reason = "snapshot has no processes";
+  } else if (pieceCtTotalSeconds === null || pieceCtTotalSeconds <= 0) {
+    reason = "snapshot piece CT total missing";
+  } else if (ctTotalSeconds === null) {
+    reason = "snapshot assignment CT total missing";
+  }
+
+  return {
+    ready: reason === null,
+    reason,
+    snapshot,
+    ctTotalSeconds,
+    processCount: processes.length,
+    pieceCtTotalSeconds,
+  };
+};
+
+const preserveExistingAssignmentCtSnapshotsForSave = ({
+  assignments,
+  existingPlanByExternalId,
+}: {
+  assignments: any[];
+  existingPlanByExternalId: Map<string, any>;
+}) =>
+  ensureArray(assignments).map((assignment) => {
+    const currentReadiness = resolveAssignmentCtSnapshotSaveReadiness(assignment);
+    if (currentReadiness.ready) return assignment;
+
+    const externalId = resolveAssignmentExternalId(assignment);
+    const existingPlan = externalId
+      ? existingPlanByExternalId.get(externalId) ?? null
+      : null;
+    const existingReadiness = resolveAssignmentCtSnapshotSaveReadiness(existingPlan);
+    if (!existingReadiness.ready || !existingReadiness.snapshot) return assignment;
+
+    return {
+      ...assignment,
+      assignmentCtSnapshot: existingReadiness.snapshot,
+      assignmentCtTotalSeconds: existingReadiness.ctTotalSeconds,
+      ctTotalSeconds: existingReadiness.ctTotalSeconds,
+    };
+  });
+
+const assertAssignmentCtSnapshotsReadyForBoardSave = ({
+  orgId,
+  assignments,
+  skippedExternalIds = new Set<string>(),
+}: {
+  orgId: number;
+  assignments: any[];
+  skippedExternalIds?: Set<string>;
+}) => {
+  const issues = ensureArray(assignments)
+    .map((assignment) => {
+      const externalId = resolveAssignmentExternalId(assignment);
+      if (!externalId) return null;
+      if (Boolean(assignment?.isCompleted)) return null;
+      if (skippedExternalIds.has(externalId)) return null;
+
+      const readiness = resolveAssignmentCtSnapshotSaveReadiness(assignment);
+      if (readiness.ready) return null;
+      return {
+        externalId,
+        cardId: resolveOptionalString(assignment?.cardId, null),
+        styleId: toPositiveIntOrNull(assignment?.styleId),
+        workOrderId: toPositiveIntOrNull(assignment?.workOrderId),
+        quantity: resolveAssignmentQuantity(assignment),
+        reason: readiness.reason ?? "unknown CT snapshot issue",
+      };
+    })
+    .filter((issue): issue is {
+      externalId: string;
+      cardId: string | null;
+      styleId: number | null;
+      workOrderId: number | null;
+      quantity: number | null;
+      reason: string;
+    } => Boolean(issue));
+
+  if (issues.length === 0) return;
+
+  console.warn(
+    `[assignment-board-state] orgId=${orgId} blocked save because editable assignments have no usable CT snapshot: ${issues
+      .slice(0, 20)
+      .map(
+        (issue) =>
+          `${issue.externalId} card=${issue.cardId ?? "-"} styleId=${issue.styleId ?? "-"} workOrderId=${issue.workOrderId ?? "-"} qty=${issue.quantity ?? "-"} reason=${issue.reason}`
+      )
+      .join("; ")}${issues.length > 20 ? `; ... +${issues.length - 20}` : ""}`
+  );
+
+  throw createHttpError(
+    409,
+    `assignment CT snapshot required before save: ${issues
+      .slice(0, 10)
+      .map((issue) => `${issue.externalId} (${issue.reason})`)
+      .join(", ")}`
+  );
+};
+
 const assertAssignmentPlansCanBeDetached = async ({
   planIds,
   db = prisma,
@@ -13084,23 +13199,11 @@ const toAssignmentPlanWriteData = (
     updatedAt: new Date(),
   };
 };
-// Diagnostic-only check for the root cause tracked in AGENTS.md: a brand-new
-// AssignmentPlan's assignmentCtSnapshot.processes[] is entirely
-// client-supplied (frontend AssignBoard.jsx builds it from whatever style
-// data it has in memory, and the backend just stores it as-is - see
-// toAssignmentPlanWriteData above). If the browser's copy of the style was
-// stale, the persisted snapshot can silently end up missing processes that
-// already existed on the style at save time.
-// IMPORTANT: this used to reject the save with a 409, but that turned out to
-// be too strict - buildAssignmentCtSnapshotForSave (AssignBoard.jsx) also
-// legitimately omits a process (and falls back to the prior snapshot
-// entirely) whenever it has no resolvable ST/CT seconds yet, which is a
-// normal, tolerated state elsewhere in this app (AGENTS.md section 35:
-// ST-missing assignments are excluded from forecast with a warning, not
-// blocked). A hard block here made it impossible to save any assignment for
-// a style with even one process missing ST/CT data, regardless of staleness.
-// So this only logs now - it does not distinguish "genuinely stale browser"
-// from "process has no ST/CT configured yet", and does not block either way.
+// Diagnostic-only coverage check for newly created AssignmentPlan rows. The
+// save path now refreshes editable CT snapshots from the live style-process
+// mirror and then blocks if a usable CT snapshot still cannot be built, so
+// this helper should not be the final safety gate. It remains useful for
+// surfacing process-code coverage drift after a create.
 const validateNewAssignmentPlanCtSnapshotProcesses = async ({
   createPlanRows,
   cardIdToAssignmentCardId,
@@ -13163,14 +13266,9 @@ const validateNewAssignmentPlanCtSnapshotProcesses = async ({
   });
 
   if (issues.length > 0) {
-    // Non-blocking: a process can legitimately be absent from the snapshot
-    // when the frontend has no resolvable ST/CT seconds for it yet (see
-    // buildAssignmentCtSnapshotForSave in AssignBoard.jsx, which drops the
-    // whole rebuild and falls back to the prior snapshot when any process
-    // can't be resolved) - that is an accepted, tolerated state elsewhere in
-    // this app (AGENTS.md section 35: ST-missing assignments are excluded
-    // from forecast with a warning, not blocked). Surface this as a
-    // diagnostic log only; do not reject the save.
+    // Non-blocking diagnostic only. The final save gate runs earlier in the
+    // PUT flow after the server has attempted a live style-process refresh;
+    // if CT is still unusable there, the save has already been rejected.
     console.warn(
       `[assignment-board-state] new assignment CT snapshot missing current style processes (not blocking save): ${issues
         .map(
@@ -24543,16 +24641,26 @@ app.put("/assignment-board-state", async (req, res) => {
     stTotalPreparation.changedExternalIds.forEach((externalId) => {
       changedIncomingExternalIds.add(externalId);
     });
+    const ctSnapshotSkippedExternalIds = new Set<string>([
+      ...Array.from(linkedWorkRecordExternalIdSet.values()),
+      ...Array.from(payrollLockedPlanByExternalId.keys()),
+    ]);
     nextAssignmentsNormalized = await refreshIncomingAssignmentCtSnapshotsFromStyles({
       organization,
       accessibleStyleOwnerOrgIds,
       cards: savedCards,
       assignments: nextAssignmentsNormalized,
-      skippedExternalIds: new Set<string>([
-        ...Array.from(linkedWorkRecordExternalIdSet.values()),
-        ...Array.from(payrollLockedPlanByExternalId.keys()),
-      ]),
+      skippedExternalIds: ctSnapshotSkippedExternalIds,
       db: tx,
+    });
+    nextAssignmentsNormalized = preserveExistingAssignmentCtSnapshotsForSave({
+      assignments: nextAssignmentsNormalized,
+      existingPlanByExternalId: existingPlanByExternalIdForStTotals,
+    });
+    assertAssignmentCtSnapshotsReadyForBoardSave({
+      orgId: organization.id,
+      assignments: nextAssignmentsNormalized,
+      skippedExternalIds: ctSnapshotSkippedExternalIds,
     });
     nextAssignmentsByExternalId = buildAssignmentByExternalId(nextAssignmentsNormalized);
     assertFiniteAssignmentScheduleIndices(nextAssignmentsNormalized);

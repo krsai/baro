@@ -1,5 +1,12 @@
 # TODO
 
+## 2026-07-10 assignment CT snapshot save hardening
+
+- Done: `PUT /assignment-board-state` now treats editable assignment CT as required save data. It refreshes CT snapshots from the live style-process mirror, preserves any existing usable persisted CT snapshot if the client sends an unusable one, and rejects the save with a 409 plus a diagnostic warning when CT still cannot be built. Linked-work-record and payroll-locked assignments keep their existing protection path.
+- Done: Assign board save no longer overwrites a valid existing client CT snapshot with `null` when the frontend rebuild cannot resolve style/process data. Board load failures for assignment cards/processes also leave saving disabled instead of turning an empty/incomplete screen into a persistable state.
+- Data safety: no work-log import bypass was added; imports still require persisted assignment CT. Existing null CT rows should be repaired by a normal assignment-board save after deploy if their live style/process standards are complete, otherwise the save is blocked and reports the affected assignment ids.
+- Validation: `npm --prefix backend run build`, `npm --prefix frontend run build`, and `npm run test:regression` passed.
+
 ## 2026-07-09 assignment snapshot + worklog import process fallback
 
 - Done: stopped `PUT /assignment-board-state` from blindly persisting an incomplete client CT snapshot for editable assignments. Before create/update, the backend now refreshes unlinked/non-payroll-locked assignment snapshots from the current live style-process mirror, so a stale Assign board tab no longer has final authority over which process codes make it into `AssignmentPlan.assignmentCtSnapshot`.
