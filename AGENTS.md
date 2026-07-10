@@ -127,7 +127,7 @@ AT(q) = a*q + b
 - `assignmentQuantity`: 계획 수량. §40(2026-07-05)부터 이 값이 항상 "생산한 만큼"과 같다는 보장은 없다 — 주문에서 스타일이 빠지면 작업기록 유무에 따라 0으로 남을 수 있다(아래 "0-수량 오버플로우" 참고).
 - `assignmentStTotalSeconds`(물리 컬럼명): 스케줄러 계획 길이 계산에 쓰는 배정카드 전체 ST 총초.
 - `assignmentCtTotalSeconds`(물리 컬럼명): 급여/계약 계산에 쓰는 배정카드 전체 CT 총초. 스케줄러 길이 계산에 사용 금지.
-- `assignmentCtSnapshot`: assignment 저장 시점의 CT 스냅샷 JSON. `processes[].snapshotCtSeconds`와 `processes[].pieceCtSeconds`는 급여/계약 CT 기준이며, snapshot 안에 ST 복사본을 저장하지 않는다.
+- `assignmentCtSnapshot`: assignment 저장 시점의 CT 스냅샷 JSON. `processes[].snapshotCtSeconds`와 `processes[].pieceCtSeconds`는 급여/계약 CT 기준이며, snapshot 안에 ST 복사본을 저장하지 않는다. `PUT /assignment-board-state`는 편집 가능한 배정에 대해 서버가 라이브 `StyleProcess`/`StyleProcessStandard` 기준으로 CT 스냅샷을 재생성하거나 기존 유효 스냅샷을 보존해야 하며, 그래도 유효한 CT를 만들 수 없으면 저장을 거부한다(조용히 `null` 저장 금지).
 - `isCompleted / finalQuantity / completedAt`: 생산 완료 확정 결과 (`PATCH /assignment-plans/:externalId/production-complete`)
 - `closedQty / closedAt / closedBy / closeMode / closeBasis`: 제작 완료 확정 상태 스냅샷 (구 `/close` 경로와 신규 `/production-complete` 공통 반영)
 - **카드/배정 생성 시점 (§40, 2026-07-05부터)**: `AssignmentCard`/`AssignmentPlan`은 주문을 **저장**할 때가 아니라 **잠글 때**(`POST /orders/:orderId/modification-lock`, `locked:true`) 만들어지거나 갱신된다. 잠기지 않은 주문은 카드가 아예 없다. 해제는 순수 권한 플래그라 카드/배정에 손대지 않는다.
@@ -707,6 +707,7 @@ CT는 assignment snapshot 전용값이다.
   1. `StyleProcessStandard.bucketStSeconds` 역반영
   2. `pieceStTotalSeconds` / `assignmentStTotalSeconds` 재계산
   3. persisted snapshot에는 ST를 남기지 않음
+- `PUT /assignment-board-state`의 최종 CT 저장 책임은 서버 검증이다. 프론트가 보낸 `assignmentCtSnapshot`을 그대로 최종 신뢰하지 않고, 편집 가능한 배정은 라이브 스타일 공정 기준으로 CT 스냅샷을 새로 만들 수 있어야 한다. 기존 DB에 유효한 스냅샷이 있는데 클라이언트가 빈/null 스냅샷을 보내면 기존 값을 보존한다. 라이브 기준으로도 만들 수 없고 기존 유효 스냅샷도 없으면 409로 저장을 막고 진단 로그를 남긴다.
 
 ### 7. ST 수정 정책
 
@@ -1612,6 +1613,7 @@ runtime 조회값:
 
 ### 48. 2026-07-09 배정 CT 스냅샷이 클라이언트 메모리 상태를 그대로 신뢰하던 문제 (신규 배정 생성 시점 검증 추가, 완료)
 
+- **2026-07-10 정정/후속 완료**: 아래 7/9 결론 중 "`validateNewAssignmentPlanCtSnapshotProcesses`는 로그만 남기고 저장은 통과"라는 완화책은 최종 안전장치로 부족했다. 현재 코드는 `PUT /assignment-board-state`에서 편집 가능한 배정의 CT 스냅샷을 서버가 라이브 스타일 공정 기준으로 재생성하고, 클라이언트가 null/불완전 스냅샷을 보내도 기존 유효 스냅샷은 보존한다. 그 후에도 유효한 `assignmentCtSnapshot`/`assignmentCtTotalSeconds`를 만들 수 없으면 저장을 409로 막는다. 작업기록 연결 배정과 급여 잠금 배정은 기존 보호 규칙대로 스냅샷 재작성 대상에서 제외한다. 프론트도 `/assignment-cards?includeProcesses=1` 로딩 실패 상태에서는 저장 가능 상태로 전환하지 않고, CT 재계산 실패 시 기존 유효 스냅샷을 null로 덮어쓰지 않는다.
 - 증상: 작업기록 파일 등록 시 "주문 L15-2 / 스타일 AJ1528에는 공정 TS05 배정 카드가 없습니다" 에러. 그런데 스타일 화면(`스타일 → 공정 정보`)엔 TS05가 실제로 존재함.
 - 1차 오진단(정정됨): 처음엔 "주문을 잠그는 순간 CT 스냅샷을 얼린다"고 설명했으나, 주문 잠금 시점 실행 함수 `syncAssignmentPlansForOrderLock`(`backend/src/index.ts:11746`)을 직접 읽어보니 이 함수는 기존 `AssignmentPlan`의 `assignmentQuantity`/`assignmentStTotalSeconds`만 조정할 뿐 `assignmentCtSnapshot`은 전혀 읽지도 쓰지도 않는다. 주문 저장/잠금은 CT 스냅샷과 무관하다.
 - **확정된 원인**: `AssignmentPlan.assignmentCtSnapshot`은 배정 카드를 라인에 올려 배정 보드에서 저장(`PUT /assignment-board-state`)할 때 찍힌다. 이때 스냅샷의 `processes[]` 목록은 **백엔드가 최신 `StyleProcess`를 다시 조회해서 만드는 게 아니라, 프론트(`AssignBoard.jsx`)가 그 순간 메모리에 들고 있던 스타일 데이터를 그대로 넣어 보낸 값**이다(`toAssignmentPlanWriteData`, `backend/src/index.ts:12740` → `resolveNormalizedAssignmentCtSnapshot(item)`이 요청 바디의 `item.assignmentCtSnapshot`을 그대로 읽음). 만약 그 순간 브라우저 탭이 오래돼서(다른 탭에서 스타일에 공정을 추가한 뒤 이 탭을 새로고침 안 한 경우 등) 스타일 데이터가 오래된 상태였다면, 그 불완전한 목록이 그대로 영구 저장된다. 스타일 편집 이벤트(`workspaceDataEvents.js`)는 `window.dispatchEvent`/`addEventListener` 기반이라 **같은 브라우저 창 안에서만** 전파되고 다른 탭/창은 못 듣는다는 것도 확인됨(Codex 교차검증) — 여러 탭을 띄워두고 작업하는 실제 사용 패턴과 맞물리면 이 문제가 재현되기 쉽다.
