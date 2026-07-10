@@ -115,6 +115,34 @@ const LineRowDropHint = memo(function LineRowDropHint({ isOver, languageCode }) 
   );
 });
 
+// Display-only clustering for the queued-assignments list: purely visual
+// (order-number headers), does not touch queue position/startIndex/endIndex
+// or any schedule/forecast calculation, which are unaffected by rendering
+// order (AGENTS.md: the queue "order" only feeds forecast ETA math, not
+// actual production - that always comes from work records). Groups appear
+// in first-seen order with no extra sort pass, per user request.
+const groupAssignmentsByOrderNo = (assignments = []) => {
+  const groups = [];
+  const groupByOrderNo = new Map();
+  (Array.isArray(assignments) ? assignments : []).forEach((assignment) => {
+    const orderNo = assignment?.orderNo || '';
+    if (!groupByOrderNo.has(orderNo)) {
+      const group = {
+        orderNo,
+        customer: assignment?.customer || '',
+        items: [],
+        totalQuantity: 0,
+      };
+      groupByOrderNo.set(orderNo, group);
+      groups.push(group);
+    }
+    const group = groupByOrderNo.get(orderNo);
+    group.items.push(assignment);
+    group.totalQuantity += Math.max(0, Number(assignment?.quantity) || 0);
+  });
+  return groups;
+};
+
 const LineAssignmentDropSlot = memo(function LineAssignmentDropSlot({
   lineId,
   beforeAssignmentId = null,
@@ -622,20 +650,70 @@ const LineMonthCapacityBoard = ({
                                   beforeAssignmentId={row.queuedAssignments[0]?.id || null}
                                   languageCode={languageCode}
                                 />
-                                {row.queuedAssignments.map((assignment) => (
-                                  <React.Fragment key={assignment.id || `${row.lineId}:${assignment.label}`}>
-                                    <AssignmentDetailCard
-                                      assignment={assignment}
-                                      languageCode={languageCode}
-                                      onOpenDetail={onOpenAssignmentDetail}
-                                      onOpenContextMenu={onOpenContextMenu}
-                                    />
-                                    <LineAssignmentDropSlot
-                                      lineId={row.lineId}
-                                      afterAssignmentId={assignment.id}
-                                      languageCode={languageCode}
-                                    />
-                                  </React.Fragment>
+                                {groupAssignmentsByOrderNo(row.queuedAssignments).map((group) => (
+                                  <Box key={group.orderNo || `${row.lineId}:no-order`} sx={{ mb: 0.5 }}>
+                                    <Box
+                                      sx={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        px: 0.5,
+                                        py: 0.5,
+                                      }}
+                                    >
+                                      <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                                        {group.orderNo
+                                          ? group.customer
+                                            ? getUiMessage(
+                                                'assign.customerWithOrderNumber',
+                                                `${group.customer} ${group.orderNo}`,
+                                                languageCode,
+                                                { customer: group.customer, orderNo: group.orderNo }
+                                              )
+                                            : getUiMessage(
+                                                'assign.orderWithNumber',
+                                                `주문 ${group.orderNo}`,
+                                                languageCode,
+                                                { orderNo: group.orderNo }
+                                              )
+                                          : getUiMessage(
+                                              'assign.fallbackOrderNumber',
+                                              'No Order No.',
+                                              languageCode
+                                            )}
+                                      </Typography>
+                                      <Typography variant="caption" color="text.secondary">
+                                        {getUiMessage(
+                                          'common.itemCountSuffix',
+                                          `${group.items.length}개`,
+                                          languageCode,
+                                          { count: group.items.length }
+                                        )}
+                                        {' · '}
+                                        {getUiMessage(
+                                          'assign.quantityCompact',
+                                          '수량 {quantity}',
+                                          languageCode,
+                                          { quantity: group.totalQuantity }
+                                        )}
+                                      </Typography>
+                                    </Box>
+                                    {group.items.map((assignment) => (
+                                      <React.Fragment key={assignment.id || `${row.lineId}:${assignment.label}`}>
+                                        <AssignmentDetailCard
+                                          assignment={assignment}
+                                          languageCode={languageCode}
+                                          onOpenDetail={onOpenAssignmentDetail}
+                                          onOpenContextMenu={onOpenContextMenu}
+                                        />
+                                        <LineAssignmentDropSlot
+                                          lineId={row.lineId}
+                                          afterAssignmentId={assignment.id}
+                                          languageCode={languageCode}
+                                        />
+                                      </React.Fragment>
+                                    ))}
+                                  </Box>
                                 ))}
                               </>
                             ) : (
