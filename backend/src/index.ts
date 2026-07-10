@@ -4788,6 +4788,47 @@ const loadStyleProcessMirrorMapForStyleIds = async (
   }, new Map<number, any[]>());
 };
 
+const attachLiveStyleProcessMirrorsToAssignmentPlans = async ({
+  orgId,
+  plans,
+  db = prisma,
+}: {
+  orgId: number;
+  plans: any[];
+  db?: StyleStorageClient;
+}) => {
+  const assignmentPlanStyleIds = Array.from(
+    new Set(
+      ensureArray(plans)
+        .map((plan) => toPositiveIntOrNull(plan?.style?.id))
+        .filter((styleId): styleId is number => styleId !== null)
+    )
+  );
+  if (assignmentPlanStyleIds.length === 0) return plans;
+
+  const liveProcessMirrorMap = await loadStyleProcessMirrorMapForStyleIds(
+    assignmentPlanStyleIds,
+    {
+      processOrgId: orgId,
+      db,
+    }
+  );
+
+  return ensureArray(plans).map((plan) => {
+    const styleId = toPositiveIntOrNull(plan?.style?.id);
+    if (styleId === null) return plan;
+    const liveProcesses = liveProcessMirrorMap.get(styleId) ?? [];
+    if (liveProcesses.length === 0) return plan;
+    return {
+      ...plan,
+      style: {
+        ...(plan?.style ?? {}),
+        processes: liveProcesses,
+      },
+    };
+  });
+};
+
 const syncStyleProcessStorageForStyle = async ({
   styleId,
   orgId,
@@ -9834,34 +9875,10 @@ const buildWorkLogContextResponse = async ({
     lineAssignmentsOnWorkDatePromise,
     loadAssignmentPlansForWorkLogContext(),
   ]);
-  const assignmentPlanStyleIds = Array.from(
-    new Set(
-      ensureArray(assignmentPlans)
-        .map((plan) => toPositiveIntOrNull(plan?.style?.id))
-        .filter((styleId): styleId is number => styleId !== null)
-    )
-  );
-  if (assignmentPlanStyleIds.length > 0) {
-    const liveProcessMirrorMap = await loadStyleProcessMirrorMapForStyleIds(
-      assignmentPlanStyleIds,
-      {
-        processOrgId: orgId,
-      }
-    );
-    assignmentPlans = ensureArray(assignmentPlans).map((plan) => {
-      const styleId = toPositiveIntOrNull(plan?.style?.id);
-      if (styleId === null) return plan;
-      const liveProcesses = liveProcessMirrorMap.get(styleId) ?? [];
-      if (liveProcesses.length === 0) return plan;
-      return {
-        ...plan,
-        style: {
-          ...(plan?.style ?? {}),
-          processes: liveProcesses,
-        },
-      };
-    });
-  }
+  assignmentPlans = await attachLiveStyleProcessMirrorsToAssignmentPlans({
+    orgId,
+    plans: assignmentPlans,
+  });
 
   const filterDebugStages: Array<{
     stage: string;
@@ -22585,7 +22602,7 @@ app.post("/work-logs/import", async (req, res) => {
         .filter((value): value is string => Boolean(value))
     )
   );
-  const assignmentPlans =
+  let assignmentPlans =
     assignmentPlanLineIds.length > 0 && planOrderNos.length > 0
       ? await findAssignmentPlansWithSelectFallback({
           where: {
@@ -22606,6 +22623,10 @@ app.post("/work-logs/import", async (req, res) => {
           context: "work-logs:import",
         })
       : [];
+  assignmentPlans = await attachLiveStyleProcessMirrorsToAssignmentPlans({
+    orgId: organization.id,
+    plans: assignmentPlans,
+  });
 
   const matchedRows: Array<{
     row: (typeof importedRows)[number];

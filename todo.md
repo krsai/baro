@@ -4,8 +4,9 @@
 
 - Done: stopped `PUT /assignment-board-state` from blindly persisting an incomplete client CT snapshot for editable assignments. Before create/update, the backend now refreshes unlinked/non-payroll-locked assignment snapshots from the current live style-process mirror, so a stale Assign board tab no longer has final authority over which process codes make it into `AssignmentPlan.assignmentCtSnapshot`.
 - Done: work-log import no longer depends only on `AssignmentPlan.assignmentCtSnapshot.processes[]` to discover matchable processes. It now merges snapshot processes with the current live style-process mirror for that assignment's style, filling missing `styleProcessId` / `processCode` coverage from `StyleProcess` rows when the frozen snapshot is incomplete.
+- Follow-up fix: the actual `/work-logs/import` POST path also needs the live style-process mirror attached to loaded assignment plans before matching; otherwise the fallback has no `style.processes` input and still reports missing TS05/TS08/etc. Connected both the work-log context and upload POST paths through the same helper.
 - Data safety: linked-work-record assignments and payroll-locked assignments are skipped by the save-time snapshot refresh path; the import fallback only broadens process matching options and does not rewrite DB rows by itself.
-- Validation: `npm --prefix backend run build` and `npm --prefix frontend run build` passed.
+- Validation: `npm --prefix backend run build` and `npm --prefix frontend run build` passed for the original fix; `npm --prefix backend run build` passed again after the upload POST follow-up.
 
 ## 2026-07-09 attendance import matching safety follow-up
 
