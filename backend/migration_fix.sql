@@ -2909,6 +2909,45 @@ WHERE "payload" IS NOT NULL
     OR "payload"::jsonb ? 'contractedSeconds'
   );
 
+-- 6-6b. AssignmentCard.payload legacy display/FK copy cleanup.
+-- The row FK columns (styleId/workOrderId/buyerOrgId) and their joins are now
+-- the only source of truth for card display fields. Remove any lingering
+-- payload copies so stale text/ids cannot silently mask FK/join problems.
+UPDATE "AssignmentCard"
+SET "payload" = (
+  "payload"::jsonb
+    - 'styleCode'
+    - 'styleName'
+    - 'previewUrl'
+    - 'orderNo'
+    - 'dueDate'
+    - 'customer'
+    - 'customerNameKo'
+    - 'customerNameVi'
+    - 'colorName'
+    - 'gender'
+    - 'styleId'
+    - 'workOrderId'
+    - 'buyerOrgId'
+)
+WHERE "payload" IS NOT NULL
+  AND jsonb_typeof("payload"::jsonb) = 'object'
+  AND (
+    "payload"::jsonb ? 'styleCode'
+    OR "payload"::jsonb ? 'styleName'
+    OR "payload"::jsonb ? 'previewUrl'
+    OR "payload"::jsonb ? 'orderNo'
+    OR "payload"::jsonb ? 'dueDate'
+    OR "payload"::jsonb ? 'customer'
+    OR "payload"::jsonb ? 'customerNameKo'
+    OR "payload"::jsonb ? 'customerNameVi'
+    OR "payload"::jsonb ? 'colorName'
+    OR "payload"::jsonb ? 'gender'
+    OR "payload"::jsonb ? 'styleId'
+    OR "payload"::jsonb ? 'workOrderId'
+    OR "payload"::jsonb ? 'buyerOrgId'
+  );
+
 -- 7. Style.processes canonical JSON keys for ST buckets and process repeat count.
 --    stValues -> stBuckets
 --    stValues[].quantity -> stBuckets[].bucketQuantity
