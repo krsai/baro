@@ -42,6 +42,13 @@
 - 같은 의미는 같은 단어를 쓴다. 공정 단위는 `stSeconds`/`ctSeconds`, 배정카드 총합은 `stTotalSeconds`/`ctTotalSeconds`, AT 투입 노동 시간은 `laborInputSeconds`.
 - 신규 코드에서 `contractedSeconds`나 도메인 필드명 `totalSeconds`를 추가하지 않는다. `totalSeconds`는 화면 포맷팅 같은 일반 지역 변수에만 허용한다.
 
+### 인증/권한 가드레일 (강제)
+- 백엔드는 `x-user-email`, `x-org-id`, 쿼리 `orgId`를 **신원/권한의 소스오브트루스**로 사용하면 안 된다.
+- 사용자 신원, 조직 소속, 시스템 관리자 판정은 **백엔드가 검증한 인증 토큰(JWT 등)** 에서만 유도한다.
+- 헤더의 이메일/조직 값은 디버그/보조 정보로만 취급할 수 있으며, 검증된 actor context와 불일치하면 401/403으로 거부한다.
+- `createdBy` / `updatedBy` / `requireSystemAdmin` / 조직 범위 접근 체크는 모두 같은 검증된 actor context를 사용해야 한다.
+- **2026-07-11 리뷰 확인:** 현재 코드(`backend/src/middleware/access.ts`, `frontend/src/utils/apiClient.js`)는 이 원칙을 아직 만족하지 못한다. 이 항목은 최우선 미해결 위험이다.
+
 ### DB 설계 원칙 (강제)
 - 엔티티 간 관계는 JSON blob 안에 값을 복사해서 표현하지 않고 FK 컬럼 + Prisma relation으로 표현한다. "A가 B를 참조한다"는 항상 `aId Int` FK 컬럼과 `@relation`으로 만들고, 조회는 JOIN(Prisma `include`/`select`)으로 한다.
 - `Json?` 필드는 아래 두 용도로만 신규 사용을 허용한다.
@@ -66,7 +73,7 @@
 - `WorkRecord.assignmentPlanId/styleId/styleProcessId`는 신규 작업기록 저장 시점에 확정되어야 한다. 비어 있으면 저장을 거부하고 원인을 노출한다. `styleId`는 `Style.uid` 정수 FK이며 스타일 코드 문자열이 아니다. `processId`는 WorkRecord에 저장하지 않는다.
 - 작업기록/배정의 실제 생산 계산은 색상, 사이즈, 성별을 구분하지 않는다. 정산에서 WorkRecord 생산량을 볼 때도 색상 기준으로 나누지 않는다. `colorId`, `colorCode`, `colorName`, `gender`를 WorkRecord 저장값이나 실제 생산/정산 매칭 키로 재도입하지 않는다.
 - 레거시 컬럼/JSON key는 "백필 -> 신규 저장 차단 -> 운영 조회 참조 제거 -> 검증 -> DB DROP" 순서로만 제거한다. 참조 제거 전 DROP 금지, DROP 대상 컬럼을 새 코드에서 읽는 것도 금지한다.
-- 진행 중인 DB/계산 정리 작업은 매 작업 단위로 `todo.md`에 실제로 한 일, 아직 남은 일, 검증 방법만 짧게 업데이트한다. 추정이나 확대 해석을 인수인계 문서에 섞지 않는다.
+- 진행 중인 DB/계산 정리 작업의 **원인 분석, 정책 판단, 로직 메모**는 `AGENTS.md`에 기록한다. `todo.md`에는 **앞으로 해야 할 일과 아직 남은 검증 항목만** 짧게 남긴다.
 - 이 파일의 뒤쪽 phase 기록에 과거 dual-read/fallback 허용 문구가 남아 있더라도 현재 개발 정책은 이 "정확 계산 원칙"을 우선한다.
 
 ### AT 모델
@@ -121,6 +128,7 @@ AT(q) = a*q + b
 - 기간 입력(`coverageStartDate !== coverageEndDate`)은 절대 하루치로 뭉개지면 안 된다.
 - WorkRecord가 AssignmentPlan과 연결되지 않으면(`assignmentPlanId` 없음) 기간이 정확해도 스케줄러/진행도 반영이 불가능하다.
 - 작업기록이 이미 연결된 AssignmentPlan은 배정 해제/삭제로 orphan WorkRecord를 만들 수 없다. 연결된 작업기록이 있으면 해당 assignment 제거를 거부한다.
+- **2026-07-11 리뷰 확인:** 현재 `lines`/`factories` 삭제 경로 중 일부가 이 원칙을 어기고 `WorkRecord.assignmentPlanId = null` 후 `AssignmentPlan`을 삭제한다. 의도된 예외가 아니라 미해결 버그로 취급한다.
 
 ### AssignmentPlan (스케줄 카드)
 - 단위: 기본 `주문 × 스타일` (색상/사이즈 단위 미구현)
@@ -128,6 +136,7 @@ AT(q) = a*q + b
 - `assignmentStTotalSeconds`(물리 컬럼명): 스케줄러 계획 길이 계산에 쓰는 배정카드 전체 ST 총초.
 - `assignmentCtTotalSeconds`(물리 컬럼명): 급여/계약 계산에 쓰는 배정카드 전체 CT 총초. 스케줄러 길이 계산에 사용 금지.
 - `assignmentCtSnapshot`: assignment 저장 시점의 CT 스냅샷 JSON. `processes[].snapshotCtSeconds`와 `processes[].pieceCtSeconds`는 급여/계약 CT 기준이며, snapshot 안에 ST 복사본을 저장하지 않는다. `PUT /assignment-board-state`는 편집 가능한 배정에 대해 서버가 `AssignmentCard.styleId` FK가 가리키는 라이브 `StyleProcess`/`StyleProcessStandard` 기준으로 CT 스냅샷을 재생성하거나 기존 유효 스냅샷을 보존해야 하며, 그래도 유효한 CT를 만들 수 없으면 저장을 거부한다(조용히 `null` 저장 금지).
+- **2026-07-11 리뷰 확인:** 현재 코드의 `preserveExistingAssignmentCtSnapshotsForSave`는 이 "기존 유효 스냅샷 보존"을 너무 넓게 적용한다. 수량/스타일 변경 뒤에도 예전 CT snapshot을 재사용해 저장을 통과시킬 수 있으므로, 미해결 우회 경로로 본다.
 - `isCompleted / finalQuantity / completedAt`: 생산 완료 확정 결과 (`PATCH /assignment-plans/:externalId/production-complete`)
 - `closedQty / closedAt / closedBy / closeMode / closeBasis`: 제작 완료 확정 상태 스냅샷 (구 `/close` 경로와 신규 `/production-complete` 공통 반영)
 - **카드/배정 생성 시점 (§40, 2026-07-05부터)**: `AssignmentCard`/`AssignmentPlan`은 주문을 **저장**할 때가 아니라 **잠글 때**(`POST /orders/:orderId/modification-lock`, `locked:true`) 만들어지거나 갱신된다. 잠기지 않은 주문은 카드가 아예 없다. 해제는 순수 권한 플래그라 카드/배정에 손대지 않는다.
@@ -244,6 +253,13 @@ AT(q) = a*q + b
   1. `WorkRecord.assignmentPlanId` 연결 유효성 확인
   2. progress API의 `renderStartDate/renderEndDate`가 미완료 카드에 과적용되는지 확인
   3. AssignBoard reflow에서 완료 카드가 queue로 재배치되는지 확인
+- **2026-07-11 통합 리뷰 기준 남은 우선순위**
+  1. 인증/조직 컨텍스트를 클라이언트 헤더가 아니라 서버 검증 토큰 기준으로 전환
+  2. 라인/공장 삭제에서 orphan `WorkRecord` 생성 금지
+  3. `preserveExistingAssignmentCtSnapshotsForSave` 우회 제거 또는 축소
+  4. 미완료 assignment 일반 저장에도 optimistic locking 추가
+  5. `AssignBoard.jsx`의 `getTodayDayIndex` 범위 밖 fallback `0` 수정
+  6. 프론트 synthetic card fallback(`cardId`/`originOrderId` 파싱 기반 카드 재구성) 제거
 
 ---
 
