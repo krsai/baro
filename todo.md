@@ -1,5 +1,15 @@
 # TODO
 
+## 2026-07-11 assignment board save 409 (`assignment CT snapshot required before save`) root cause + fix
+
+- Done: traced the live 409 on `/assignment-board-state` to a numeric/string FK bug, not missing style/process master data. `AssignmentCard.styleId` is an `Int` FK, but two save/load paths were still reading it through `resolveOptionalString(...)`, which drops non-string values to `null`.
+- Done: fixed `GET /assignment-cards` so it now collects `cardStyleIds` with numeric FK parsing (`collectPositiveIntSet(...cards.map(card => card.styleId))`) instead of string parsing. Before this, the endpoint could return `cards.length > 0` but `styles: []`, leaving the Assign board without style/process cache even though the DB rows existed.
+- Done: fixed `resolveAssignmentStyleIdForStCalculation` and its callers so board-save ST/CT rebuild uses `toPositiveIntOrNull(...)` for `assignment.styleId` / `AssignmentCard.styleId`. Before this, `refreshIncomingAssignmentCtSnapshotsFromStyles` could not reload the live `StyleProcess` mirror for new assignments, so a drag-created assignment with `assignmentCtSnapshot:null` stayed null and `assertAssignmentCtSnapshotsReadyForBoardSave` threw the 409.
+- Done: removed remaining AssignmentCard display fallbacks that could still show stale payload/order-item text when real FK joins existed. Rebuilt cards now prefer canonical `Style` name/code during card generation, and `toAssignmentCardFromStoreRow` reads `styleName/styleCode/orderNo/customer/previewUrl` only from the row's FK joins (`styleId`/`workOrderId`/`buyerOrgId`), not from legacy payload copies.
+- Validation (live read-only API, before patch): `GET /assignment-board-state?orgId=1` showed the visible cards (e.g. `AA1962`, `AA2006`, `AA2096`, `AM01160`, `AM02040`, `AM02055`, `AM02061`, `AM02062`), `GET /styles?orgId=1&compact=1` and `GET /styles/:id?orgId=1` confirmed those styles still had process rows/ST buckets, but `GET /assignment-cards?orgId=1&includeProcesses=1` returned `cards=45` and `styles=0`. That mismatch is the direct evidence for the broken numeric `styleId` parsing.
+- Validation (local compile): `npm --prefix backend run build` still fails, but on broad pre-existing Prisma/client drift errors unrelated to this patch (`Employee.email/orgRole/status`, `AssignmentCard.styleId/workOrderId/buyerOrgId`, etc.). No new compile issue specific to the changed lines was identified.
+- Remaining: deploy and recheck that `GET /assignment-cards?orgId=1&includeProcesses=1` now returns non-empty `styles`, then verify in the browser that dragging one of the previously failing cards to a line can be saved without the CT snapshot 409.
+
 ## 2026-07-10 assignment CT snapshot save hardening
 
 - Done: `PUT /assignment-board-state` now treats editable assignment CT as required save data. It refreshes CT snapshots from the live style-process mirror, preserves any existing usable persisted CT snapshot if the client sends an unusable one, and rejects the save with a 409 plus a diagnostic warning when CT still cannot be built. Linked-work-record and payroll-locked assignments keep their existing protection path.

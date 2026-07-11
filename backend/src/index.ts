@@ -10843,12 +10843,12 @@ const buildAssignmentCardsFromOrders = ({
         buyerOrgId: toPositiveIntOrNull(order?.customerOrg?.id ?? order?.buyerOrg?.id),
         styleId: toPositiveIntOrNull(group.style?.id ?? group.styleId),
         styleName:
-          group.styleName ??
           resolveOptionalString(group.style?.name, null) ??
+          group.styleName ??
           `스타일 ${group.itemIndex + 1}`,
         styleCode:
-          group.styleCode ??
           resolveOptionalString(group.style?.code, null) ??
+          group.styleCode ??
           "",
         // colorId/colorName/gender dropped in Phase D (AssignmentCard/
         // AssignmentPlan FK+join redesign) - color/gender were never
@@ -11046,16 +11046,17 @@ const toAssignmentCardFromStoreRow = (row: any): any | null => {
     resolveOptionalString(row.cardId, null);
   if (!cardId) return null;
   const sanitizedPayload = stripLegacyAssignmentCardPayload(payload);
-  // Phase C (AssignmentCard/AssignmentPlan FK+join redesign): use the live
-  // joins through real FK columns. Field names in the returned object are
-  // unchanged for backward compatibility, but FK values never come from JSON.
+  // Phase C/E + 2026-07-11 follow-up: use only the live joins through the
+  // row's real FK columns for display fields. Legacy payload text copies are
+  // intentionally not read here anymore; if the joins are missing, the row
+  // should surface that problem instead of silently rendering stale text.
   const style = row.style ?? null;
   const workOrder = row.workOrder ?? null;
   const buyerOrg = row.buyerOrg ?? null;
   const previewUrl =
-    (Array.isArray(style?.imageUrls) && style.imageUrls.length > 0
+    Array.isArray(style?.imageUrls) && style.imageUrls.length > 0
       ? style.imageUrls[0]
-      : null) ?? resolveOptionalString((sanitizedPayload as any)?.previewUrl, null);
+      : null;
   return {
     ...(sanitizedPayload as Record<string, unknown>),
     id: cardId,
@@ -11067,18 +11068,14 @@ const toAssignmentCardFromStoreRow = (row: any): any | null => {
     styleId: toPositiveIntOrNull(row.styleId),
     workOrderId: toPositiveIntOrNull(row.workOrderId),
     buyerOrgId: toPositiveIntOrNull(row.buyerOrgId),
-    styleName: resolveOptionalString(style?.name, null) ?? (sanitizedPayload as any)?.styleName,
-    styleCode: resolveOptionalString(style?.code, null) ?? (sanitizedPayload as any)?.styleCode,
+    styleName: resolveOptionalString(style?.name, null),
+    styleCode: resolveOptionalString(style?.code, null),
     previewUrl: previewUrl ?? "",
-    orderNo:
-      resolveOptionalString(workOrder?.orderNumber, null) ?? (sanitizedPayload as any)?.orderNo,
-    dueDate:
-      resolveOptionalString(workOrder?.dueDate, null) ?? (sanitizedPayload as any)?.dueDate,
-    customer: resolveOptionalString(buyerOrg?.name, null) ?? (sanitizedPayload as any)?.customer,
-    customerNameKo:
-      resolveOptionalString(buyerOrg?.nameKo, null) ?? (sanitizedPayload as any)?.customerNameKo,
-    customerNameVi:
-      resolveOptionalString(buyerOrg?.nameVi, null) ?? (sanitizedPayload as any)?.customerNameVi,
+    orderNo: resolveOptionalString(workOrder?.orderNumber, null),
+    dueDate: resolveOptionalString(workOrder?.dueDate, null),
+    customer: resolveOptionalString(buyerOrg?.name, null),
+    customerNameKo: resolveOptionalString(buyerOrg?.nameKo, null),
+    customerNameVi: resolveOptionalString(buyerOrg?.nameVi, null),
   };
 };
 const syncAssignmentCardsForOrg = async ({
@@ -11876,9 +11873,7 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
             cardById,
           });
         })
-        .filter((styleId): styleId is string => Boolean(styleId))
-        .map((styleId) => Number(styleId))
-        .filter((styleId) => Number.isSafeInteger(styleId) && styleId > 0)
+        .filter((styleId): styleId is number => styleId !== null)
     )
   );
   if (targetStyleIds.length === 0) return normalizedAssignments;
@@ -13406,10 +13401,7 @@ const resolveAssignmentStyleIdForStCalculation = ({
     null
   );
   const linkedCard = cardId ? cardById.get(cardId) ?? null : null;
-  return resolveOptionalString(
-    assignment?.styleId ?? linkedCard?.styleId,
-    null
-  );
+  return toPositiveIntOrNull(assignment?.styleId ?? linkedCard?.styleId);
 };
 
 const buildStyleProcessLookupForStCalculation = (styleProcessRows: any[]) => {
@@ -13551,7 +13543,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
   }, new Map<string, any>());
 
   const targetByExternalId = new Map<string, any>();
-  const assignmentStyleIds = new Set<string>();
+  const assignmentStyleIds = new Set<number>();
   normalizedAssignments.forEach((assignment) => {
     const externalId = resolveAssignmentExternalId(assignment);
     if (!externalId || Boolean(assignment?.isCompleted)) return;
@@ -13579,7 +13571,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
       hasStDrafts ||
       (!hasUsableIncomingAssignmentSt &&
         (hasStructuralChange || isExistingAssignmentStMissingOrInvalid));
-    if (shouldRecalculate && styleId) assignmentStyleIds.add(styleId);
+    if (shouldRecalculate && styleId !== null) assignmentStyleIds.add(styleId);
 
     targetByExternalId.set(externalId, {
       assignment,
@@ -13626,7 +13618,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     assignmentStyleIds.size > 0
       ? await db.style.findMany({
           where: {
-            id: { in: Array.from(assignmentStyleIds.values()).map((value) => Number(value)).filter((value) => Number.isSafeInteger(value) && value > 0) },
+            id: { in: Array.from(assignmentStyleIds.values()) },
           },
           orderBy: { id: "asc" },
           select: {
@@ -13641,7 +13633,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     if (!styleId || styleId === null || map.has(styleId)) return map;
     map.set(styleId, style);
     return map;
-  }, new Map<string, any>());
+  }, new Map<number, any>());
 
   const quantityByStyleId = new Map<number, Set<number>>();
   recalcTargets.forEach((target) => {
@@ -24046,13 +24038,7 @@ app.get("/assignment-cards", async (req, res) => {
     }),
     loadAssignmentCardsForOrg({ orgId: organization.id }),
   ]);
-  const cardStyleIds = Array.from(
-    new Set(
-      cards
-        .map((card) => resolveOptionalString(card?.styleId, null))
-        .filter((styleId): styleId is string => Boolean(styleId))
-    )
-  );
+  const cardStyleIds = collectPositiveIntSet(...cards.map((card) => card?.styleId));
   const orderManualLockRows = await prisma.workOrder.findMany({
     where: { OR: getOrderAccessWhere(organization.id) },
     select: {
@@ -24090,11 +24076,7 @@ app.get("/assignment-cards", async (req, res) => {
     cardStyleIds.length > 0
       ? await prisma.style.findMany({
           where: {
-            id: {
-              in: cardStyleIds
-                .map((value) => Number(value))
-                .filter((value) => Number.isSafeInteger(value) && value > 0),
-            },
+            id: { in: cardStyleIds },
           },
           orderBy: { id: "asc" },
           select: styleSelect,
