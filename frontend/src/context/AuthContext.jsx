@@ -207,6 +207,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [accessProfile, setAccessProfile] = useState(null);
   const [accessLoading, setAccessLoading] = useState(false);
+  const [accessError, setAccessError] = useState('');
   const [accessLookupEmail, setAccessLookupEmail] = useState('');
   const [loading, setLoading] = useState(() => isSupabaseConfigured);
 
@@ -230,6 +231,7 @@ export const AuthProvider = ({ children }) => {
         if (error) {
           setSession(null);
           setUser(null);
+          setAccessError('');
           setRequestContext({ accessToken: '', userEmail: '', orgId: null });
           return;
         }
@@ -246,6 +248,7 @@ export const AuthProvider = ({ children }) => {
         if (ignore) return;
         setSession(null);
         setUser(null);
+        setAccessError('');
         setRequestContext({ accessToken: '', userEmail: '', orgId: null });
       } finally {
         if (!ignore) {
@@ -292,6 +295,7 @@ export const AuthProvider = ({ children }) => {
     const loadAccessProfile = async () => {
       if (!normalizedCurrentUserEmail || !accessToken) {
         if (!cancelled) {
+          setAccessError('');
           setAccessLookupEmail('');
           setAccessProfile(null);
           setAccessLoading(false);
@@ -301,6 +305,7 @@ export const AuthProvider = ({ children }) => {
 
       setAccessLookupEmail(normalizedCurrentUserEmail);
       setAccessLoading(true);
+      setAccessError('');
       let abortTimeoutId = null;
       try {
         accessProfileAbortController = new AbortController();
@@ -321,6 +326,7 @@ export const AuthProvider = ({ children }) => {
       } catch (_error) {
         if (cancelled) return;
         setAccessProfile(null);
+        setAccessError('Failed to load account access context.');
       } finally {
         if (abortTimeoutId !== null) {
           clearTimeout(abortTimeoutId);
@@ -412,6 +418,7 @@ export const AuthProvider = ({ children }) => {
   const signOut = async () => {
     setAccessProfile(null);
     setAccessLoading(false);
+    setAccessError('');
     setAccessLookupEmail('');
     setSession(null);
     setUser(null);
@@ -461,6 +468,7 @@ export const AuthProvider = ({ children }) => {
       activeOrgRole,
       activeFactoryId,
       activeProfile: effectiveProfile,
+      accessError,
       loading: loadingState,
       hasWorkspaceAccess,
       requiresOnboarding,
@@ -477,6 +485,7 @@ export const AuthProvider = ({ children }) => {
       activeOrgId,
       activeOrgRole,
       activeOrgType,
+      accessError,
       effectiveProfile,
       enableDevBypass,
       hasWorkspaceAccess,

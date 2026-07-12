@@ -18,18 +18,24 @@ const LOGIN_COPY_BY_LANGUAGE = {
   ko: {
     loginLoading: '로그인 중...',
     loginWithGoogle: 'Google 계정으로 로그인',
+    authContextError: '로그인 후 사용자 접근 정보를 불러오지 못했습니다.',
+    restartSession: '세션 다시 시작',
     supabaseRequired:
       'Supabase 설정이 필요합니다. `.env`에 `VITE_SUPABASE_URL`과 `VITE_SUPABASE_ANON_KEY`를 추가한 뒤 다시 실행해 주세요.',
   },
   en: {
     loginLoading: 'Signing in...',
     loginWithGoogle: 'Continue with Google',
+    authContextError: 'We could not load your account access context after sign-in.',
+    restartSession: 'Restart session',
     supabaseRequired:
       'Supabase configuration is required. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to `.env` and restart.',
   },
   vi: {
     loginLoading: 'Đang đăng nhập...',
     loginWithGoogle: 'Đăng nhập bằng Google',
+    authContextError: 'Khong the tai thong tin truy cap tai khoan sau khi dang nhap.',
+    restartSession: 'Bat dau lai phien',
     supabaseRequired:
       'Cần cấu hình Supabase. Thêm `VITE_SUPABASE_URL` và `VITE_SUPABASE_ANON_KEY` vào `.env` rồi khởi động lại.',
   },
@@ -50,6 +56,8 @@ const Login = () => {
     loading,
     isSupabaseConfigured,
     accessProfile,
+    accessError,
+    signOut,
   } = useAuth();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -96,6 +104,10 @@ const Login = () => {
 
   useEffect(() => {
     if (!isAuthenticated || loading) return;
+    if (accessError) {
+      setIsNavigatingAfterAuth(false);
+      return;
+    }
     setIsNavigatingAfterAuth(true);
     if (hasWorkspaceAccess) {
       navigate(postAuthPath, { replace: true });
@@ -116,6 +128,7 @@ const Login = () => {
     postAuthPath,
     requiresOnboarding,
     requiresSubscriptionContact,
+    accessError,
   ]);
 
   useEffect(() => {
@@ -133,12 +146,17 @@ const Login = () => {
     }
   };
 
+  const handleRestartSession = async () => {
+    await signOut();
+    setIsNavigatingAfterAuth(false);
+    setIsSubmitting(false);
+  };
+
   const isLoginLocked =
     isSubmitting ||
     loading ||
     isOAuthReturnPending ||
-    isNavigatingAfterAuth ||
-    isAuthenticated;
+    isNavigatingAfterAuth;
 
   return (
     <Container component="main" maxWidth="xs" sx={{ pb: 12 }}>
@@ -190,6 +208,21 @@ const Login = () => {
             <Typography variant="body2" color="error" sx={{ mt: 1 }}>
               {loginCopy.supabaseRequired}
             </Typography>
+          )}
+
+          {isAuthenticated && accessError && (
+            <Box sx={{ mt: 1.5 }}>
+              <Typography variant="body2" color="error">
+                {loginCopy.authContextError}
+              </Typography>
+              <Button
+                size="small"
+                onClick={handleRestartSession}
+                sx={{ mt: 1, px: 0, textTransform: 'none' }}
+              >
+                {loginCopy.restartSession}
+              </Button>
+            </Box>
           )}
         </Box>
       </Box>

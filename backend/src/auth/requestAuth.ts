@@ -9,6 +9,7 @@ import { normalizeEmail, resolveOptionalString } from "../utils/common";
 import { createHttpError, readRequestHeader } from "../utils/http";
 
 const requestAuthSymbol = Symbol("requestAuth");
+const DEFAULT_SUPABASE_URL = "https://mqohhiufmjnfuhxpfwkn.supabase.co";
 
 export type VerifiedRequestAuth = {
   accessToken: string;
@@ -29,7 +30,9 @@ const normalizeSupabaseUrl = (value: unknown) => {
 };
 
 const getSupabaseUrl = () =>
-  normalizeSupabaseUrl(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL);
+  normalizeSupabaseUrl(
+    process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL
+  );
 
 const getSupabaseIssuer = () => {
   const supabaseUrl = getSupabaseUrl();
