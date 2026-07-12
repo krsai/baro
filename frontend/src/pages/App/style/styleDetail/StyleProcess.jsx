@@ -1004,7 +1004,31 @@ const upsertProcessStBuckets = (process, quantity, seconds, setBy = 'MANUAL') =>
   const normalized = normalizeProcess(process);
   const resolvedQuantity = resolveStBucketQuantity(quantity);
   const nextSeconds = toOptionalSeconds(seconds);
-  const nextBuckets = normalizeStBuckets(normalized).filter(
+  const existingBuckets = normalizeStBuckets(normalized);
+  const existingBucket = existingBuckets.find(
+    (value) => toPositiveInt(value?.bucketQuantity ?? value?.quantity, 0) === resolvedQuantity
+  );
+  // If the resolved value matches what's already stored for this bucket, keep the
+  // existing entry (including its original setBy/setAt/updatedAt) untouched instead
+  // of replacing it with a fresh setAt:null entry. Otherwise editing a field and
+  // then reverting it back to the saved value would never clear the dirty state,
+  // since the bucket's metadata would still differ from the original snapshot.
+  const existingSeconds =
+    existingBucket != null ? toOptionalSeconds(existingBucket.bucketStSeconds) : null;
+  if (
+    existingBucket != null &&
+    nextSeconds != null &&
+    roundToScale(nextSeconds, 4) === roundToScale(existingSeconds, 4)
+  ) {
+    return normalizeProcess({
+      ...normalized,
+      stBuckets: existingBuckets,
+      timeRefQuantity: normalized?.timeRefQuantity ?? DEFAULT_TIME_REF_QUANTITY,
+      ct: null,
+      stManual: false,
+    });
+  }
+  const nextBuckets = existingBuckets.filter(
     (value) => toPositiveInt(value?.bucketQuantity ?? value?.quantity, 0) !== resolvedQuantity
   );
   if (nextSeconds != null) {
@@ -2765,7 +2789,7 @@ const StyleProcess = ({
                     size="small"
                     type="number"
                     defaultValue={toDraftNumberText(process.pt)}
-                    onBlur={(e) => handleInlineChange(process, 'pt', e.target.value)}
+                    onChange={(e) => handleInlineChange(process, 'pt', e.target.value)}
                     onKeyDown={handleNumberInputEnterKeyDown}
                     onWheel={(e) => e.target.blur()}
                     inputProps={{ min: 0 }}
@@ -2792,7 +2816,7 @@ const StyleProcess = ({
                             )
                           )
                     }
-                    onBlur={(e) => handleInlineChange(process, 'st', e.target.value)}
+                    onChange={(e) => handleInlineChange(process, 'st', e.target.value)}
                     onKeyDown={handleNumberInputEnterKeyDown}
                     onWheel={(e) => e.target.blur()}
                     inputProps={{ min: 0 }}

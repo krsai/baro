@@ -28,6 +28,7 @@ import {
   updateStyle as updateStyleOnApi,
 } from '../../../utils/styleApi';
 import { todayDateKey } from '../../../utils/dateKey.mjs';
+import { normalizeProcesses } from '../../../utils/processTime';
 
 const STYLE_DETAIL_MESSAGES = {
   ko: {
@@ -125,6 +126,26 @@ const createEmptyStyle = () => ({
 });
 
 const createStyleId = () => `S-${Date.now().toString(36).slice(-6).toUpperCase()}`;
+
+// stBuckets[].setAt/updatedAt are write-only bookkeeping timestamps that the
+// frontend always nulls out on edit (the backend stamps the real value on save).
+// They carry no visible meaning to the user, so they must be excluded from the
+// dirty-check snapshot below - otherwise editing a PT/ST value and then typing it
+// back to the originally saved number would never clear the save button, since
+// the timestamp fields would still differ from the original snapshot even though
+// every value the user can actually see matches again.
+const buildDirtyCheckProcesses = (processes) =>
+  (Array.isArray(processes) ? processes : []).map((process) => {
+    if (!process || typeof process !== 'object') return process;
+    const stBuckets = Array.isArray(process.stBuckets) ? process.stBuckets : [];
+    return {
+      ...process,
+      stBuckets: stBuckets.map(({ setAt: _setAt, updatedAt: _updatedAt, ...rest }) => rest),
+    };
+  });
+
+const buildDirtyCheckSnapshot = (data) =>
+  JSON.stringify({ ...data, processes: buildDirtyCheckProcesses(data?.processes) });
 
 const buildPayload = (data) => {
   const today = todayDateKey();
@@ -248,6 +269,10 @@ const StyleDetail = () => {
           id: style.id || styleId,
           ownerOrgId: toOrgId(style.ownerOrgId ?? style.customerOrgId),
           customerOrgId: toOrgId(style.customerOrgId ?? style.ownerOrgId),
+          // Normalize processes the same way StyleProcess.jsx does before comparing
+          // originalData vs styleFormData, otherwise the dirty-check would keep
+          // reporting a change even after reverting a field back to its saved value.
+          processes: normalizeProcesses(style.processes),
         };
         if (!active) return;
         setOriginalData(normalized);
@@ -288,8 +313,14 @@ const StyleDetail = () => {
     styleId,
   ]);
 
-  const originalSnapshot = useMemo(() => JSON.stringify(originalData), [originalData]);
-  const formSnapshot = useMemo(() => JSON.stringify(styleFormData), [styleFormData]);
+  const originalSnapshot = useMemo(
+    () => buildDirtyCheckSnapshot(originalData),
+    [originalData]
+  );
+  const formSnapshot = useMemo(
+    () => buildDirtyCheckSnapshot(styleFormData),
+    [styleFormData]
+  );
   const isDirty = !loadingStyle && originalSnapshot !== formSnapshot;
   useUnsavedChanges(isDirty);
 
@@ -355,8 +386,9 @@ const StyleDetail = () => {
       try {
         const saved = await createStyleOnApi(payload, { orgId: activeOrgId });
         showNotification(getStyleDetailMessage(languageCode, 'createSuccess'), 'success');
-        setOriginalData(saved);
-        setStyleFormData(saved);
+        const normalizedSaved = { ...saved, processes: normalizeProcesses(saved.processes) };
+        setOriginalData(normalizedSaved);
+        setStyleFormData(normalizedSaved);
         setProcessMasterReloadKey((prev) => prev + 1);
         const savedOwnerOrgId = toOrgId(saved?.ownerOrgId ?? saved?.customerOrgId);
         const savedQuery = buildQueryString({ ownerOrgId: savedOwnerOrgId });
@@ -385,8 +417,9 @@ const StyleDetail = () => {
         ownerOrgId: resolvedOwnerOrgId,
       });
       showNotification(getStyleDetailMessage(languageCode, 'updateSuccess'), 'success');
-      setOriginalData(saved);
-      setStyleFormData(saved);
+      const normalizedSaved = { ...saved, processes: normalizeProcesses(saved.processes) };
+      setOriginalData(normalizedSaved);
+      setStyleFormData(normalizedSaved);
       setProcessMasterReloadKey((prev) => prev + 1);
     } catch (error) {
       showNotification(error?.message || getStyleDetailMessage(languageCode, 'saveError'), 'error');
