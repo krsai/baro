@@ -184,6 +184,11 @@ const toPositiveInt = (value, fallback = 1) => {
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return parsed;
 };
+const toOptionalPositiveInt = (value, fallback = null) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+};
 const toOptionalPositiveNumber = (value) => {
   if (value === '' || value === null || value === undefined) return null;
   const parsed = Number(value);
@@ -1336,16 +1341,11 @@ const toComparableCtSnapshot = (snapshot) => {
   const {
     updatedAt: _updatedAt,
     updatedBy: _updatedBy,
+    unresolvedProcessKeys: _unresolvedProcessKeys,
+    coverageIncomplete: _coverageIncomplete,
     ...rest
   } = snapshot;
   return rest;
-};
-
-const toTimestampOrNull = (value) => {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.getTime();
 };
 
 const resolveStyleProcessSnapshotKey = (process, index) =>
@@ -1356,37 +1356,46 @@ const resolveStyleProcessSnapshotKey = (process, index) =>
       `PROCESS-${index + 1}`
   ).trim();
 
-const shouldRefreshAssignmentCtSnapshotFromStyle = ({
-  style = null,
-  existingSnapshot = null,
-  styleProcesses = [],
+const buildAssignmentCtSnapshotProcessLookup = (snapshot) => {
+  const byStyleProcessId = new Map();
+  const byProcessKey = new Map();
+  const processes = Array.isArray(snapshot?.processes) ? snapshot.processes : [];
+
+  processes.forEach((process, index) => {
+    const processKey = String(process?.processKey || `PROCESS-${index + 1}`).trim();
+    const styleProcessId = toOptionalPositiveInt(
+      process?.styleProcessId ?? process?.processId,
+      null
+    );
+    if (styleProcessId != null && !byStyleProcessId.has(styleProcessId)) {
+      byStyleProcessId.set(styleProcessId, process);
+    }
+    if (processKey && !byProcessKey.has(processKey)) {
+      byProcessKey.set(processKey, process);
+    }
+  });
+
+  return {
+    byStyleProcessId,
+    byProcessKey,
+  };
+};
+
+const resolveAssignmentCtSnapshotProcessForSeed = ({
+  seed,
+  processKey,
+  lookup,
 }) => {
-  if (!style || !Array.isArray(styleProcesses) || styleProcesses.length === 0) {
-    return false;
+  const styleProcessId = toOptionalPositiveInt(seed?.styleProcessId, null);
+  if (styleProcessId != null) {
+    const matchedById = lookup.byStyleProcessId.get(styleProcessId) ?? null;
+    if (matchedById) return matchedById;
   }
-  const existingProcesses = Array.isArray(existingSnapshot?.processes)
-    ? existingSnapshot.processes
-    : [];
-  if (existingProcesses.length === 0) return true;
-
-  const styleKeys = styleProcesses.map((process, index) =>
-    resolveStyleProcessSnapshotKey(process, index)
-  );
-  const snapshotKeys = existingProcesses.map((process, index) =>
-    String(process?.processKey || `PROCESS-${index + 1}`).trim()
-  );
-  if (
-    styleKeys.length !== snapshotKeys.length ||
-    styleKeys.some((key, index) => key !== snapshotKeys[index])
-  ) {
-    return true;
+  if (processKey) {
+    const matchedByProcessKey = lookup.byProcessKey.get(processKey) ?? null;
+    if (matchedByProcessKey) return matchedByProcessKey;
   }
-
-  const styleUpdatedAt = toTimestampOrNull(style?.updatedAt);
-  const snapshotUpdatedAt = toTimestampOrNull(existingSnapshot?.updatedAt);
-  if (styleUpdatedAt == null) return false;
-  if (snapshotUpdatedAt == null) return true;
-  return styleUpdatedAt > snapshotUpdatedAt + 1000;
+  return null;
 };
 
 const buildAssignmentCtSnapshotForSave = ({
@@ -1398,7 +1407,6 @@ const buildAssignmentCtSnapshotForSave = ({
   baseDate = null,
   updatedAt = null,
   updatedBy = null,
-  preferStyleProcessSeconds = false,
 }) => {
   if (!assignment || typeof assignment !== 'object') return null;
 
@@ -1407,24 +1415,17 @@ const buildAssignmentCtSnapshotForSave = ({
     toPositiveInt(assignment?.quantity ?? card?.quantity ?? 1, 1)
   );
   const existingSnapshot = resolveAssignmentCtSnapshot(assignment);
-  const existingProcessMap = new Map(
-    (Array.isArray(existingSnapshot?.processes) ? existingSnapshot.processes : []).map(
-      (process) => [String(process?.processKey || '').trim(), process]
-    )
-  );
+  const existingProcessLookup = buildAssignmentCtSnapshotProcessLookup(existingSnapshot);
   const styleProcesses = normalizeProcesses(style?.processes);
-  const shouldRefreshStyleSeconds =
-    preferStyleProcessSeconds &&
-    shouldRefreshAssignmentCtSnapshotFromStyle({
-      style,
-      existingSnapshot,
-      styleProcesses,
-    });
   const processSeeds =
     styleProcesses.length > 0
       ? styleProcesses.map((process, index) => ({
           source: 'STYLE',
           process,
+          styleProcessId: toOptionalPositiveInt(
+            process?.styleProcessId ?? process?.id,
+            null
+          ),
           processKey: resolveStyleProcessSnapshotKey(process, index),
           processName:
             process?.name || process?.processName || process?.code || `공정 ${index + 1}`,
@@ -1452,6 +1453,10 @@ const buildAssignmentCtSnapshotForSave = ({
           (process, index) => ({
             source: 'SNAPSHOT',
             process,
+            styleProcessId: toOptionalPositiveInt(
+              process?.styleProcessId ?? process?.processId,
+              null
+            ),
             processKey: String(process?.processKey || `PROCESS-${index + 1}`).trim(),
             processName:
               process?.name || process?.processName || process?.processKey || `공정 ${index + 1}`,
@@ -1477,12 +1482,17 @@ const buildAssignmentCtSnapshotForSave = ({
           })
         );
 
+  const unresolvedProcessKeys = [];
   const processes = processSeeds
     .map((seed, index) => {
       const processKey = seed.processKey;
       if (!processKey) return null;
 
-      const snapshotProcess = existingProcessMap.get(processKey) ?? null;
+      const snapshotProcess = resolveAssignmentCtSnapshotProcessForSeed({
+        seed,
+        processKey,
+        lookup: existingProcessLookup,
+      });
       const ctDraftSeconds = toOptionalPositiveNumber(draftByProcess?.[processKey]);
       const stDraftSeconds = toOptionalPositiveNumber(stDraftByProcess?.[processKey]);
       const stSeedInfo =
@@ -1506,16 +1516,16 @@ const buildAssignmentCtSnapshotForSave = ({
           snapshotProcess?.ctPerPieceSeconds ??
           snapshotProcess?.ctSeconds
       );
-      const baseSeconds =
-        stDraftSeconds ??
-        toOptionalPositiveNumber(stSeedInfo?.seconds);
-      const ctSeconds =
+      const stSeedSeconds = toOptionalPositiveNumber(stSeedInfo?.seconds);
+      const resolvedCtSeconds =
         ctDraftSeconds ??
-        (shouldRefreshStyleSeconds && seed.source === 'STYLE'
-          ? baseSeconds ?? snapshotCtSeconds
-          : snapshotCtSeconds ?? baseSeconds);
-      if (ctSeconds == null) return null;
-      const resolvedCtSeconds = ctSeconds;
+        stDraftSeconds ??
+        snapshotCtSeconds ??
+        stSeedSeconds;
+      if (resolvedCtSeconds == null) {
+        unresolvedProcessKeys.push(processKey);
+        return null;
+      }
       const processCode =
         String(
           seed?.process?.code ??
@@ -1523,16 +1533,18 @@ const buildAssignmentCtSnapshotForSave = ({
             snapshotProcess?.code ??
             ''
         ).trim() || null;
-      const resolvedProcessId = Number(
-        seed?.process?.id ?? snapshotProcess?.processId ?? snapshotProcess?.id
+      const styleProcessId = toOptionalPositiveInt(
+        seed?.styleProcessId ??
+          seed?.process?.styleProcessId ??
+          seed?.process?.id ??
+          snapshotProcess?.styleProcessId ??
+          snapshotProcess?.processId,
+        null
       );
 
       return {
+        styleProcessId,
         processKey,
-        processId:
-          Number.isFinite(resolvedProcessId) && resolvedProcessId > 0
-            ? Math.trunc(resolvedProcessId)
-            : null,
         processCode,
         name: seed.processName || `공정 ${index + 1}`,
         nameKo:
@@ -1545,14 +1557,19 @@ const buildAssignmentCtSnapshotForSave = ({
           seed.processNameVi ||
           String(snapshotProcess?.nameVi || snapshotProcess?.processNameVi || '').trim(),
         timesPerPiece: seed.timesPerPiece,
-        basis: stDraftSeconds != null ? 'ST' : seed.process?.basis || snapshotProcess?.basis || 'CT',
+        basis:
+          stDraftSeconds != null
+            ? 'ST'
+            : seed.process?.basis ||
+              snapshotProcess?.basis ||
+              (stSeedSeconds != null ? 'ST' : 'CT'),
         snapshotCtSeconds: resolvedCtSeconds,
         pieceCtSeconds: resolvedCtSeconds,
       };
     })
     .filter(Boolean);
 
-  if (processes.length === 0 || processes.length !== processSeeds.length) return null;
+  if (processes.length === 0) return null;
 
   const pieceCtTotalSeconds =
     processes.reduce(
@@ -1574,6 +1591,8 @@ const buildAssignmentCtSnapshotForSave = ({
     pieceCtTotalSeconds,
     assignmentCtTotalSeconds,
     processes,
+    coverageIncomplete: processes.length !== processSeeds.length,
+    unresolvedProcessKeys,
   };
   const currentComparable = toComparableCtSnapshot(snapshotCore);
   const previousComparable = toComparableCtSnapshot(existingSnapshot);
@@ -1590,26 +1609,6 @@ const buildAssignmentCtSnapshotForSave = ({
   };
 };
 
-const resolveReusableAssignmentCtSnapshotForSave = (assignment) => {
-  const snapshot = resolveAssignmentCtSnapshot(assignment);
-  const processes = Array.isArray(snapshot?.processes) ? snapshot.processes : [];
-  const pieceCtTotalSeconds = Number(snapshot?.pieceCtTotalSeconds);
-  const hasPositivePieceCtTotalSeconds =
-    Number.isFinite(pieceCtTotalSeconds) && pieceCtTotalSeconds > 0;
-  if (!snapshot || processes.length === 0 || !hasPositivePieceCtTotalSeconds) {
-    return null;
-  }
-  const snapshotTotal = Number(snapshot?.assignmentCtTotalSeconds);
-  const directTotal = Number(assignment?.assignmentCtTotalSeconds ?? assignment?.ctTotalSeconds);
-  const ctTotalSeconds = Number.isFinite(snapshotTotal) && snapshotTotal >= 0
-    ? Math.round(snapshotTotal)
-    : Number.isFinite(directTotal) && directTotal >= 0
-      ? Math.round(directTotal)
-      : null;
-  if (ctTotalSeconds == null) return null;
-  return { snapshot, ctTotalSeconds };
-};
-
 const applyAssignmentCtSnapshotForSave = ({
   assignment,
   card = null,
@@ -1619,9 +1618,7 @@ const applyAssignmentCtSnapshotForSave = ({
   baseDate = null,
   updatedAt = null,
   updatedBy = null,
-  preferStyleProcessSeconds = false,
 }) => {
-  const reusableSnapshot = resolveReusableAssignmentCtSnapshotForSave(assignment);
   const ctSnapshot = buildAssignmentCtSnapshotForSave({
     assignment,
     card,
@@ -1631,9 +1628,7 @@ const applyAssignmentCtSnapshotForSave = ({
     baseDate,
     updatedAt,
     updatedBy,
-    preferStyleProcessSeconds,
   });
-  const ctSnapshotForSave = ctSnapshot ?? reusableSnapshot?.snapshot ?? null;
   const existingAssignmentStTotalSeconds = toNonNegativeInt(
     assignment?.stTotalSeconds ?? assignment?.assignmentStTotalSeconds,
     0
@@ -1644,15 +1639,15 @@ const applyAssignmentCtSnapshotForSave = ({
       ? cardStTotalSeconds
       : existingAssignmentStTotalSeconds;
   const nextCtTotalSeconds =
-    ctSnapshot?.assignmentCtTotalSeconds != null
+    ctSnapshot?.assignmentCtTotalSeconds != null && !ctSnapshot?.coverageIncomplete
       ? Math.max(0, Math.round(Number(ctSnapshot.assignmentCtTotalSeconds) || 0))
-      : reusableSnapshot?.ctTotalSeconds ?? assignment.ctTotalSeconds ?? null;
+      : assignment.ctTotalSeconds ?? assignment.assignmentCtTotalSeconds ?? null;
 
   return normalizeAssignmentLayout({
     ...assignment,
     stTotalSeconds: nextStTotalSeconds,
     ctTotalSeconds: nextCtTotalSeconds,
-    assignmentCtSnapshot: ctSnapshotForSave,
+    assignmentCtSnapshot: ctSnapshot,
   });
 };
 
@@ -4023,7 +4018,6 @@ const AssignBoard = () => {
         baseDate,
         updatedAt: nowIso,
         updatedBy,
-        preferStyleProcessSeconds: true,
       });
     };
     const assignmentsWithCtSnapshot = currentAssignments.map((item) =>

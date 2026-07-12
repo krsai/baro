@@ -10,6 +10,11 @@ const toOptionalPositiveNumber = (value, fallback = null) => {
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return parsed;
 };
+const toOptionalPositiveInt = (value, fallback = null) => {
+  const parsed = toOptionalPositiveNumber(value, fallback);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.max(1, Math.trunc(parsed));
+};
 const toOptionalNonNegativeNumber = (value, fallback = null) => {
   const parsed = toOptionalNumber(value, fallback);
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
@@ -50,6 +55,10 @@ const normalizeSnapshotProcess = (process, index = 0) => {
 
   const fallbackName = `\uACF5\uC815 ${index + 1}`;
   return {
+    styleProcessId: toOptionalPositiveInt(
+      process.styleProcessId ?? process.processId,
+      null
+    ),
     processKey,
     processCode: String(process.processCode || process.code || '').trim() || null,
     name: String(process.name || process.processName || fallbackName).trim() || fallbackName,

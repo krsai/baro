@@ -141,7 +141,7 @@ AT(q) = a*q + b
 - `assignmentStTotalSeconds`(물리 컬럼명): 스케줄러 계획 길이 계산에 쓰는 배정카드 전체 ST 총초.
 - `assignmentCtTotalSeconds`(물리 컬럼명): 급여/계약 계산에 쓰는 배정카드 전체 CT 총초. 스케줄러 길이 계산에 사용 금지.
 - `assignmentCtSnapshot`: assignment 저장 시점의 CT 스냅샷 JSON. `processes[].snapshotCtSeconds`와 `processes[].pieceCtSeconds`는 급여/계약 CT 기준이며, snapshot 안에 ST 복사본을 저장하지 않는다. `PUT /assignment-board-state`는 편집 가능한 배정에 대해 서버가 `AssignmentCard.styleId` FK가 가리키는 라이브 `StyleProcess`/`StyleProcessStandard` 기준으로 CT 스냅샷을 재생성하거나 기존 유효 스냅샷을 보존해야 하며, 그래도 유효한 CT를 만들 수 없으면 저장을 거부한다(조용히 `null` 저장 금지).
-- **2026-07-11 리뷰 확인:** 현재 코드의 `preserveExistingAssignmentCtSnapshotsForSave`는 이 "기존 유효 스냅샷 보존"을 너무 넓게 적용한다. 수량/스타일 변경 뒤에도 예전 CT snapshot을 재사용해 저장을 통과시킬 수 있으므로, 미해결 우회 경로로 본다.
+- **2026-07-12 적용 완료:** `PUT /assignment-board-state` 저장 경로에서 `preserveExistingAssignmentCtSnapshotsForSave` 우회는 제거됐다. 편집 가능한 assignment는 저장 직전에 서버가 `AssignmentCard.styleId` FK의 라이브 `StyleProcess`/`StyleProcessStandard` 전체를 기준으로 CT snapshot을 다시 조립하고 검증한다. incoming/existing snapshot의 공정 CT를 재사용하는 경우도 `styleProcessId` 일치 또는 현재 `processKey` 일치일 때만 허용한다. 카드/style FK가 없거나, 라이브 공정 전체를 덮는 CT를 만들 수 없거나, 재조립 결과와 현재 payload snapshot이 다르면 409로 저장을 막는다. 프론트 snapshot payload도 `styleProcessId`를 보존하며 더 이상 "현재 snapshot을 못 만들면 기존 snapshot을 통째로 재사용"하지 않는다.
 - `isCompleted / finalQuantity / completedAt`: 생산 완료 확정 결과 (`PATCH /assignment-plans/:externalId/production-complete`)
 - `closedQty / closedAt / closedBy / closeMode / closeBasis`: 제작 완료 확정 상태 스냅샷 (구 `/close` 경로와 신규 `/production-complete` 공통 반영)
 - **카드/배정 생성 시점 (§40, 2026-07-05부터)**: `AssignmentCard`/`AssignmentPlan`은 주문을 **저장**할 때가 아니라 **잠글 때**(`POST /orders/:orderId/modification-lock`, `locked:true`) 만들어지거나 갱신된다. 잠기지 않은 주문은 카드가 아예 없다. 해제는 순수 권한 플래그라 카드/배정에 손대지 않는다.
@@ -261,10 +261,9 @@ AT(q) = a*q + b
 - **2026-07-11 통합 리뷰 기준 남은 우선순위**
   1. 인증/조직 컨텍스트를 클라이언트 헤더가 아니라 서버 검증 토큰 기준으로 전환
   2. 라인/공장 삭제에서 orphan `WorkRecord` 생성 금지
-  3. `preserveExistingAssignmentCtSnapshotsForSave` 우회 제거 또는 축소
-  4. 미완료 assignment 일반 저장에도 optimistic locking 추가
-  5. `AssignBoard.jsx`의 `getTodayDayIndex` 범위 밖 fallback `0` 수정
-  6. 프론트 synthetic card fallback(`cardId`/`originOrderId` 파싱 기반 카드 재구성) 제거
+  3. 미완료 assignment 일반 저장에도 optimistic locking 추가
+  4. `AssignBoard.jsx`의 `getTodayDayIndex` 범위 밖 fallback `0` 수정
+  5. 프론트 synthetic card fallback(`cardId`/`originOrderId` 파싱 기반 카드 재구성) 제거
 
 ---
 

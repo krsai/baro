@@ -10300,7 +10300,9 @@ const normalizeAssignmentCtSnapshotSchedule = (value: any) => {
 
 const normalizeAssignmentCtSnapshotProcess = (value: any, index = 0) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const styleProcessId = toPositiveIntOrNull(value?.styleProcessId);
+  const styleProcessId = toPositiveIntOrNull(
+    value?.styleProcessId ?? value?.processId
+  );
   const processKey =
     resolveOptionalString(
       value?.processKey ?? value?.code ?? value?.id,
@@ -10382,6 +10384,26 @@ const resolveAssignmentCtSnapshotInput = (item: any) =>
   item?.assignmentCtSnapshot ?? item?.ctSnapshot ?? null;
 const resolveNormalizedAssignmentCtSnapshot = (item: any) =>
   normalizeAssignmentCtSnapshot(resolveAssignmentCtSnapshotInput(item));
+const toComparableAssignmentCtSnapshot = (snapshot: any) => {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    return null;
+  }
+  const {
+    updatedAt: _updatedAt,
+    updatedBy: _updatedBy,
+    unresolvedProcessKeys: _unresolvedProcessKeys,
+    coverageIncomplete: _coverageIncomplete,
+    ...rest
+  } = snapshot;
+  return rest;
+};
+const resolveAssignmentCtSnapshotProcessSeconds = (process: any): number | null =>
+  toOptionalProcessSeconds(
+    process?.pieceCtSeconds ??
+      process?.snapshotCtSeconds ??
+      process?.ctPerPieceSeconds ??
+      process?.ctSeconds
+  );
 
 const resolveAssignmentCtTotalSeconds = (item: any) => {
   const snapshot = resolveNormalizedAssignmentCtSnapshot(item);
@@ -11542,6 +11564,291 @@ const resolveStyleProcessSnapshotKeyForAssignment = (process: any, index: number
     null
   ) ?? `PROCESS-${index + 1}`;
 
+const buildAssignmentCtSnapshotProcessLookup = (snapshot: any) => {
+  const byStyleProcessId = new Map<number, any>();
+  const byProcessKey = new Map<string, any>();
+  const processes = ensureArray(snapshot?.processes)
+    .map((process, index) => normalizeAssignmentCtSnapshotProcess(process, index))
+    .filter((process): process is any => Boolean(process));
+
+  processes.forEach((process) => {
+    const styleProcessId = toPositiveIntOrNull(
+      process?.styleProcessId ?? process?.processId
+    );
+    if (styleProcessId !== null && !byStyleProcessId.has(styleProcessId)) {
+      byStyleProcessId.set(styleProcessId, process);
+    }
+    const processKey = resolveOptionalString(process?.processKey, null);
+    if (processKey && !byProcessKey.has(processKey)) {
+      byProcessKey.set(processKey, process);
+    }
+  });
+
+  return {
+    processes,
+    byStyleProcessId,
+    byProcessKey,
+  };
+};
+
+const resolveSnapshotProcessForLiveStyleProcess = ({
+  styleProcess,
+  processKey,
+  lookup,
+}: {
+  styleProcess: any;
+  processKey: string;
+  lookup: ReturnType<typeof buildAssignmentCtSnapshotProcessLookup>;
+}) => {
+  const styleProcessId = toPositiveIntOrNull(
+    styleProcess?.styleProcessId ?? styleProcess?.id
+  );
+  if (styleProcessId !== null) {
+    const matchedById = lookup.byStyleProcessId.get(styleProcessId) ?? null;
+    if (matchedById) return matchedById;
+  }
+  if (processKey) {
+    const matchedByProcessKey = lookup.byProcessKey.get(processKey) ?? null;
+    if (matchedByProcessKey) return matchedByProcessKey;
+  }
+  return null;
+};
+
+const buildAssignmentCtSnapshotScheduleForSave = (assignment: any) => {
+  const startIndex = toSignedInt(assignment?.startIndex, 0);
+  const endIndex = Math.max(
+    startIndex,
+    toSignedInt(assignment?.endIndex, startIndex)
+  );
+  return {
+    startIndex,
+    endIndex,
+    startDayOffsetPercent: toOptionalFloat(
+      assignment?.startDayOffsetPercent,
+      null
+    ),
+    startDayPercent: toOptionalFloat(assignment?.startDayPercent, null),
+    endDayPercent: toOptionalFloat(assignment?.endDayPercent, null),
+    startDateKey: normalizeDateKey(assignment?.startDateKey),
+    endDateKey: normalizeDateKey(assignment?.endDateKey),
+  };
+};
+
+const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
+  assignment,
+  card,
+  style,
+  existingSnapshot = null,
+  updatedAt,
+  updatedBy,
+}: {
+  assignment: any;
+  card: any;
+  style: any;
+  existingSnapshot?: any;
+  updatedAt: string;
+  updatedBy: string;
+}) => {
+  const liveProcesses = normalizeStyleProcesses(style?.processes);
+  const incomingSnapshot = resolveNormalizedAssignmentCtSnapshot(assignment);
+  const normalizedExistingSnapshot = normalizeAssignmentCtSnapshot(existingSnapshot);
+  const incomingLookup = buildAssignmentCtSnapshotProcessLookup(incomingSnapshot);
+  const existingLookup = buildAssignmentCtSnapshotProcessLookup(
+    normalizedExistingSnapshot
+  );
+  const orderQuantity = toPositiveInt(
+    resolveAssignmentQuantity(assignment) ??
+      card?.cardQuantity ??
+      card?.quantity ??
+      incomingSnapshot?.quantity ??
+      normalizedExistingSnapshot?.quantity ??
+      1,
+    1
+  );
+  const incomingAssignmentStTotalSeconds = resolveStateAssignmentStTotalSeconds(
+    assignment
+  );
+  const fallbackAssignmentStTotalSeconds =
+    resolveAssignmentCardStTotalSecondsForSnapshot(card) ??
+    calculateAssignmentCardStTotalForOrderQuantity(liveProcesses, orderQuantity);
+  const assignmentStTotalSeconds =
+    incomingAssignmentStTotalSeconds != null
+      ? incomingAssignmentStTotalSeconds
+      : fallbackAssignmentStTotalSeconds;
+  const unresolvedProcessKeys: string[] = [];
+  const processes = liveProcesses
+    .map((process, index) => {
+      const processKey = resolveStyleProcessSnapshotKeyForAssignment(process, index);
+      const incomingProcess = resolveSnapshotProcessForLiveStyleProcess({
+        styleProcess: process,
+        processKey,
+        lookup: incomingLookup,
+      });
+      const existingProcess = resolveSnapshotProcessForLiveStyleProcess({
+        styleProcess: process,
+        processKey,
+        lookup: existingLookup,
+      });
+      const manualCtSeconds =
+        resolveAssignmentCtSnapshotProcessSeconds(incomingProcess) ??
+        resolveAssignmentCtSnapshotProcessSeconds(existingProcess);
+      const stSeedSeconds = resolveAssignmentCardStSeedSeconds({
+        process,
+        orderQuantity,
+      });
+      const resolvedCtSeconds = manualCtSeconds ?? stSeedSeconds;
+      if (resolvedCtSeconds === null || resolvedCtSeconds <= 0) {
+        unresolvedProcessKeys.push(processKey);
+        return null;
+      }
+
+      const styleProcessId = toPositiveIntOrNull(
+        process?.styleProcessId ?? process?.id
+      );
+      return {
+        styleProcessId,
+        processKey,
+        processCode:
+          resolveOptionalString(
+            process?.code ??
+              process?.storageCode ??
+              incomingProcess?.processCode ??
+              existingProcess?.processCode,
+            null
+          ) ?? null,
+        name:
+          resolveOptionalString(
+            process?.name ??
+              process?.processName ??
+              incomingProcess?.name ??
+              existingProcess?.name,
+            null
+          ) ?? `Process ${index + 1}`,
+        nameKo: resolveOptionalString(
+          process?.nameKo ??
+            process?.processNameKo ??
+            incomingProcess?.nameKo ??
+            existingProcess?.nameKo,
+          null
+        ),
+        nameEn: resolveOptionalString(
+          process?.nameEn ??
+            process?.processNameEn ??
+            incomingProcess?.nameEn ??
+            existingProcess?.nameEn,
+          null
+        ),
+        nameVi: resolveOptionalString(
+          process?.nameVi ??
+            process?.processNameVi ??
+            incomingProcess?.nameVi ??
+            existingProcess?.nameVi,
+          null
+        ),
+        timesPerPiece: Math.max(
+          1,
+          toOptionalNonNegativeInt(
+            process?.timesPerPiece ??
+              process?.quantity ??
+              incomingProcess?.timesPerPiece ??
+              existingProcess?.timesPerPiece,
+            1
+          ) ?? 1
+        ),
+        basis:
+          resolveOptionalString(
+            incomingProcess?.basis ?? existingProcess?.basis,
+            null
+          ) ?? (stSeedSeconds !== null ? "ST" : "CT"),
+        snapshotCtSeconds: resolvedCtSeconds,
+        pieceCtSeconds: resolvedCtSeconds,
+      };
+    })
+    .filter((process): process is any => Boolean(process));
+
+  const pieceCtTotalSeconds =
+    processes.length > 0
+      ? processes.reduce(
+          (sum, process) => sum + (Number(process?.pieceCtSeconds) || 0),
+          0
+        )
+      : null;
+  const assignmentCtTotalSeconds =
+    pieceCtTotalSeconds != null
+      ? Math.max(0, Math.round(pieceCtTotalSeconds * orderQuantity))
+      : null;
+  const snapshotCore =
+    processes.length > 0
+      ? {
+          sourceAssignmentId: resolveAssignmentExternalId(assignment),
+          lineId: assignment?.lineId ?? null,
+          quantity: orderQuantity,
+          schedule: buildAssignmentCtSnapshotScheduleForSave(assignment),
+          pieceCtTotalSeconds,
+          assignmentCtTotalSeconds,
+          processes,
+        }
+      : null;
+  const comparableSnapshotCore = toComparableAssignmentCtSnapshot(snapshotCore);
+  const previousSnapshotForMeta =
+    comparableSnapshotCore === null
+      ? null
+      : [incomingSnapshot, normalizedExistingSnapshot].find((snapshot) => {
+          const comparableSnapshot = toComparableAssignmentCtSnapshot(snapshot);
+          return (
+            comparableSnapshot !== null &&
+            toStableJsonText(comparableSnapshot) ===
+              toStableJsonText(comparableSnapshotCore)
+          );
+        }) ?? null;
+  const normalizedSnapshot = snapshotCore
+    ? normalizeAssignmentCtSnapshot({
+        ...snapshotCore,
+        updatedAt: previousSnapshotForMeta?.updatedAt ?? updatedAt ?? null,
+        updatedBy: previousSnapshotForMeta?.updatedBy ?? updatedBy ?? null,
+      })
+    : null;
+  const readinessReason =
+    liveProcesses.length === 0
+      ? "style processes missing"
+      : !normalizedSnapshot
+        ? "missing snapshot"
+        : normalizedSnapshot.quantity !== orderQuantity
+          ? "snapshot quantity mismatch"
+          : unresolvedProcessKeys.length > 0
+            ? "live style process CT unresolved"
+            : normalizedSnapshot.processes.length !== liveProcesses.length
+              ? "snapshot process coverage mismatch"
+              : pieceCtTotalSeconds === null || pieceCtTotalSeconds <= 0
+                ? "snapshot piece CT total missing"
+                : assignmentCtTotalSeconds === null
+                  ? "snapshot assignment CT total missing"
+                  : null;
+
+  return {
+    assignment: {
+      ...assignment,
+      quantity: orderQuantity,
+      ...(assignmentStTotalSeconds != null
+        ? {
+            stTotalSeconds: assignmentStTotalSeconds,
+            assignmentStTotalSeconds: assignmentStTotalSeconds,
+          }
+        : {}),
+      assignmentCtSnapshot: normalizedSnapshot,
+      assignmentCtTotalSeconds,
+      ctTotalSeconds: assignmentCtTotalSeconds,
+    },
+    readiness: {
+      ready: readinessReason === null,
+      reason: readinessReason,
+      expectedProcessCount: liveProcesses.length,
+      resolvedProcessCount: normalizedSnapshot?.processes?.length ?? 0,
+      missingProcessKeys: unresolvedProcessKeys,
+    },
+  };
+};
+
 const shouldRefreshAssignmentSnapshotFromStyle = ({
   style,
   existingSnapshot,
@@ -11593,137 +11900,39 @@ const buildRefreshedUnlinkedAssignmentSnapshot = ({
   assignment,
   card,
   style,
+  existingSnapshot = null,
   updatedAt,
   updatedBy,
 }: {
   assignment: any;
   card: any;
   style: any;
+  existingSnapshot?: any;
   updatedAt: string;
   updatedBy: string;
 }) => {
   const styleProcesses = normalizeStyleProcesses(style?.processes);
-  const existingSnapshot = resolveNormalizedAssignmentCtSnapshot(assignment);
+  const currentSnapshot =
+    normalizeAssignmentCtSnapshot(existingSnapshot) ??
+    resolveNormalizedAssignmentCtSnapshot(assignment);
   if (
     !shouldRefreshAssignmentSnapshotFromStyle({
       style,
-      existingSnapshot,
+      existingSnapshot: currentSnapshot,
       styleProcesses,
     })
   ) {
     return assignment;
   }
-
-  const orderQuantity = toPositiveInt(
-    resolveAssignmentQuantity(assignment) ??
-      card?.cardQuantity ??
-      card?.quantity ??
-      existingSnapshot?.quantity ??
-      1,
-    1
-  );
-  const existingProcessByKey = ensureArray(existingSnapshot?.processes).reduce(
-    (map, process) => {
-      const key = resolveOptionalString(process?.processKey, null);
-      if (key && !map.has(key)) map.set(key, process);
-      return map;
-    },
-    new Map<string, any>()
-  );
-  const processes = styleProcesses
-    .map((process, index) => {
-      const processKey = resolveStyleProcessSnapshotKeyForAssignment(process, index);
-      const previousProcess = existingProcessByKey.get(processKey) ?? null;
-      const styleSeconds = resolveAssignmentCardStSeedSeconds({
-        process,
-        orderQuantity,
-      });
-      const resolvedSeconds = toOptionalFloat(styleSeconds, null);
-      if (resolvedSeconds === null || resolvedSeconds <= 0) return null;
-      const processCode = resolveOptionalString(
-        process?.code ?? process?.storageCode ?? previousProcess?.processCode,
-        null
-      );
-      const name =
-        resolveOptionalString(process?.name ?? process?.processName, null) ??
-        resolveOptionalString(process?.nameEn ?? previousProcess?.name, null) ??
-        `Process ${index + 1}`;
-      return {
-        styleProcessId: toPositiveIntOrNull(process?.styleProcessId ?? process?.id),
-        processKey,
-        processCode,
-        name,
-        nameKo: resolveOptionalString(
-          process?.nameKo ?? process?.processNameKo ?? previousProcess?.nameKo,
-          null
-        ),
-        nameEn: resolveOptionalString(
-          process?.nameEn ?? process?.processNameEn ?? previousProcess?.nameEn,
-          null
-        ),
-        nameVi: resolveOptionalString(
-          process?.nameVi ?? process?.processNameVi ?? previousProcess?.nameVi,
-          null
-        ),
-        timesPerPiece: Math.max(
-          1,
-          toOptionalNonNegativeInt(process?.timesPerPiece ?? process?.quantity, 1) ?? 1
-        ),
-        basis: styleSeconds !== null ? "ST" : previousProcess?.basis ?? "CT",
-        snapshotCtSeconds: resolvedSeconds,
-        pieceCtSeconds: resolvedSeconds,
-      };
-    })
-    .filter((process): process is any => Boolean(process));
-  if (processes.length === 0 || processes.length !== styleProcesses.length) {
-    return assignment;
-  }
-
-  const pieceCtTotalSeconds = processes.reduce(
-    (sum, process) => sum + (Number(process?.pieceCtSeconds) || 0),
-    0
-  );
-  const assignmentCtTotalSeconds = Math.max(
-    0,
-    Math.round(pieceCtTotalSeconds * orderQuantity)
-  );
-  const cardStTotalSeconds =
-    resolveAssignmentCardStTotalSecondsForSnapshot(card) ??
-    calculateAssignmentCardStTotalForOrderQuantity(styleProcesses, orderQuantity);
-  const nextStTotalSeconds =
-    cardStTotalSeconds != null && cardStTotalSeconds > 0
-      ? Math.max(0, Math.round(cardStTotalSeconds))
-      : resolveStateAssignmentStTotalSeconds(assignment);
-
-  const snapshot = {
-    sourceAssignmentId: resolveAssignmentExternalId(assignment),
-    lineId: assignment?.lineId ?? null,
-    quantity: orderQuantity,
-    schedule: {
-      startIndex: toOptionalNonNegativeInt(assignment?.startIndex, null),
-      endIndex: toOptionalNonNegativeInt(assignment?.endIndex, null),
-      startDayOffsetPercent: toOptionalFloat(assignment?.startDayOffsetPercent, null),
-      startDayPercent: toOptionalFloat(assignment?.startDayPercent, null),
-      endDayPercent: toOptionalFloat(assignment?.endDayPercent, null),
-      startDateKey: normalizeDateKey(assignment?.startDateKey),
-      endDateKey: normalizeDateKey(assignment?.endDateKey),
-    },
-    pieceCtTotalSeconds,
-    assignmentCtTotalSeconds,
-    processes,
+  const refreshed = buildEditableAssignmentCtSnapshotFromLiveStyle({
+    assignment,
+    card,
+    style,
+    existingSnapshot: currentSnapshot,
     updatedAt,
     updatedBy,
-  };
-
-  return {
-    ...assignment,
-    quantity: orderQuantity,
-    stTotalSeconds: nextStTotalSeconds,
-    assignmentStTotalSeconds: nextStTotalSeconds,
-    ctTotalSeconds: assignmentCtTotalSeconds,
-    assignmentCtTotalSeconds,
-    assignmentCtSnapshot: normalizeAssignmentCtSnapshot(snapshot),
-  };
+  });
+  return refreshed.readiness.ready ? refreshed.assignment : assignment;
 };
 
 const refreshUnlinkedAssignmentPlanSnapshotsForOrg = async ({
@@ -11803,6 +12012,7 @@ const refreshUnlinkedAssignmentPlanSnapshotsForOrg = async ({
       assignment: mergedAssignment,
       card,
       style,
+      existingSnapshot: plan?.assignmentCtSnapshot ?? null,
       updatedAt,
       updatedBy,
     });
@@ -11860,18 +12070,28 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
   cards,
   assignments,
   skippedExternalIds = new Set<string>(),
+  existingPlanByExternalId = new Map<string, any>(),
   db,
 }: {
   organization: any;
   cards: any[];
   assignments: any[];
   skippedExternalIds?: Set<string>;
+  existingPlanByExternalId?: Map<string, any>;
   db: any;
 }) => {
   const normalizedAssignments = ensureArray(assignments).filter(
     (assignment) => assignment && typeof assignment === "object"
   );
-  if (normalizedAssignments.length === 0) return normalizedAssignments;
+  const emptyCardById = new Map<string, any>();
+  const emptyStyleByStyleId = new Map<number, any>();
+  if (normalizedAssignments.length === 0) {
+    return {
+      assignments: normalizedAssignments,
+      cardById: emptyCardById,
+      styleByStyleId: emptyStyleByStyleId,
+    };
+  }
 
   const cardById = ensureArray(cards).reduce((map, card) => {
     const cardId = resolveOptionalString(card?.id, null);
@@ -11880,6 +12100,7 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
     return map;
   }, new Map<string, any>());
 
+  const quantityByStyleId = new Map<number, Set<number>>();
   const targetStyleIds = Array.from(
     new Set(
       normalizedAssignments
@@ -11887,15 +12108,31 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
           const externalId = resolveAssignmentExternalId(assignment);
           if (!externalId || skippedExternalIds.has(externalId)) return null;
           if (Boolean(assignment?.isCompleted)) return null;
-          return resolveAssignmentStyleIdForStCalculation({
+          const styleId = resolveAssignmentStyleIdForStCalculation({
             assignment,
             cardById,
           });
+          if (styleId === null) return null;
+          const assignmentQuantity = toPositiveInt(
+            resolveAssignmentQuantity(assignment),
+            1
+          );
+          const bucketQuantity = resolveStBucketQuantity(assignmentQuantity);
+          const current = quantityByStyleId.get(styleId) ?? new Set<number>();
+          current.add(bucketQuantity);
+          quantityByStyleId.set(styleId, current);
+          return styleId;
         })
         .filter((styleId): styleId is number => styleId !== null)
     )
   );
-  if (targetStyleIds.length === 0) return normalizedAssignments;
+  if (targetStyleIds.length === 0) {
+    return {
+      assignments: normalizedAssignments,
+      cardById,
+      styleByStyleId: emptyStyleByStyleId,
+    };
+  }
 
   const styles = await db.style.findMany({
     where: {
@@ -11909,9 +12146,17 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
       processes: true,
     },
   });
-  if (styles.length === 0) return normalizedAssignments;
+  if (styles.length === 0) {
+    return {
+      assignments: normalizedAssignments,
+      cardById,
+      styleByStyleId: emptyStyleByStyleId,
+    };
+  }
 
-  const processMirrorMap = await ensureStyleProcessStorageForStyles(styles, {
+  const processMirrorMap = await ensureStyleStandardsForQuantities({
+    styles,
+    quantityByStyleId,
     processOrgId: organization.id,
     db,
   });
@@ -11928,32 +12173,49 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
 
   const updatedAt = new Date().toISOString();
   const updatedBy = "SYSTEM:BOARD_SAVE_STYLE_SYNC";
-  return normalizedAssignments.map((assignment) => {
-    const externalId = resolveAssignmentExternalId(assignment);
-    if (!externalId || skippedExternalIds.has(externalId)) return assignment;
-    if (Boolean(assignment?.isCompleted)) return assignment;
+  return {
+    cardById,
+    styleByStyleId,
+    assignments: normalizedAssignments.map((assignment) => {
+      const externalId = resolveAssignmentExternalId(assignment);
+      if (!externalId || skippedExternalIds.has(externalId)) return assignment;
+      if (Boolean(assignment?.isCompleted)) return assignment;
 
-    const cardId = resolveOptionalString(assignment?.cardId, null);
-    const card = cardId ? cardById.get(cardId) ?? null : null;
-    if (!card) return assignment;
-    const styleId = toPositiveIntOrNull(
-      assignment?.styleId ?? card?.styleId
-    );
-    if (styleId === null) return assignment;
-    const style = styleByStyleId.get(styleId) ?? null;
-    if (!style) return assignment;
+      const cardId = resolveOptionalString(assignment?.cardId, null);
+      const card = cardId ? cardById.get(cardId) ?? null : null;
+      if (!card) return assignment;
+      const styleId = toPositiveIntOrNull(assignment?.styleId ?? card?.styleId);
+      if (styleId === null) return assignment;
+      const style = styleByStyleId.get(styleId) ?? null;
+      if (!style) return assignment;
 
-    return buildRefreshedUnlinkedAssignmentSnapshot({
-      assignment,
-      card,
-      style,
-      updatedAt,
-      updatedBy,
-    });
-  });
+      const refreshed = buildEditableAssignmentCtSnapshotFromLiveStyle({
+        assignment,
+        card,
+        style,
+        existingSnapshot: resolveNormalizedAssignmentCtSnapshot(
+          existingPlanByExternalId.get(externalId) ?? null
+        ),
+        updatedAt,
+        updatedBy,
+      });
+      return refreshed.assignment;
+    }),
+  };
 };
 
-const resolveAssignmentCtSnapshotSaveReadiness = (assignment: any) => {
+const resolveAssignmentCtSnapshotSaveReadiness = ({
+  assignment,
+  cardById = new Map<string, any>(),
+  styleByStyleId = new Map<number, any>(),
+  existingPlanByExternalId = new Map<string, any>(),
+}: {
+  assignment: any;
+  cardById?: Map<string, any>;
+  styleByStyleId?: Map<number, any>;
+  existingPlanByExternalId?: Map<string, any>;
+}) => {
+  const externalId = resolveAssignmentExternalId(assignment);
   const snapshot = resolveNormalizedAssignmentCtSnapshot(assignment);
   const processes = ensureArray(snapshot?.processes);
   const pieceCtTotalSeconds = toOptionalFloat(snapshot?.pieceCtTotalSeconds, null);
@@ -11964,8 +12226,20 @@ const resolveAssignmentCtSnapshotSaveReadiness = (assignment: any) => {
           assignmentCtSnapshot: snapshot,
         })
       : null;
+  const cardId = resolveOptionalString(assignment?.cardId, null);
+  const card = cardId ? cardById.get(cardId) ?? null : null;
+  const styleId = toPositiveIntOrNull(assignment?.styleId ?? card?.styleId);
+  const style = styleId !== null ? styleByStyleId.get(styleId) ?? null : null;
+
   let reason: string | null = null;
-  if (!snapshot) {
+  let canonicalSnapshotResult:
+    | ReturnType<typeof buildEditableAssignmentCtSnapshotFromLiveStyle>
+    | null = null;
+  if (!cardId || !card) {
+    reason = "assignment card missing";
+  } else if (styleId === null || !style) {
+    reason = "assignment style missing";
+  } else if (!snapshot) {
     reason = "missing snapshot";
   } else if (processes.length === 0) {
     reason = "snapshot has no processes";
@@ -11973,6 +12247,48 @@ const resolveAssignmentCtSnapshotSaveReadiness = (assignment: any) => {
     reason = "snapshot piece CT total missing";
   } else if (ctTotalSeconds === null) {
     reason = "snapshot assignment CT total missing";
+  } else {
+    canonicalSnapshotResult = buildEditableAssignmentCtSnapshotFromLiveStyle({
+      assignment,
+      card,
+      style,
+      existingSnapshot: resolveNormalizedAssignmentCtSnapshot(
+        (externalId ? existingPlanByExternalId.get(externalId) : null) ?? null
+      ),
+      updatedAt:
+        snapshot?.updatedAt ?? assignment?.ctUpdatedAt ?? new Date(0).toISOString(),
+      updatedBy:
+        snapshot?.updatedBy ??
+        resolveOptionalString(assignment?.ctUpdatedBy, null) ??
+        "SYSTEM:VALIDATION",
+    });
+    if (!canonicalSnapshotResult.readiness.ready) {
+      reason =
+        canonicalSnapshotResult.readiness.reason ?? "live style CT unresolved";
+    } else {
+      const comparableCurrentSnapshot = toComparableAssignmentCtSnapshot(snapshot);
+      const comparableCanonicalSnapshot = toComparableAssignmentCtSnapshot(
+        canonicalSnapshotResult.assignment.assignmentCtSnapshot
+      );
+      if (
+        comparableCurrentSnapshot === null ||
+        comparableCanonicalSnapshot === null ||
+        toStableJsonText(comparableCurrentSnapshot) !==
+          toStableJsonText(comparableCanonicalSnapshot)
+      ) {
+        reason = "snapshot mismatch with live style";
+      } else {
+        const expectedCtTotalSeconds = resolveAssignmentCtTotalSeconds(
+          canonicalSnapshotResult.assignment
+        );
+        if (
+          expectedCtTotalSeconds === null ||
+          expectedCtTotalSeconds !== ctTotalSeconds
+        ) {
+          reason = "snapshot assignment CT total mismatch";
+        }
+      }
+    }
   }
 
   return {
@@ -11982,43 +12298,29 @@ const resolveAssignmentCtSnapshotSaveReadiness = (assignment: any) => {
     ctTotalSeconds,
     processCount: processes.length,
     pieceCtTotalSeconds,
+    expectedProcessCount:
+      canonicalSnapshotResult?.readiness.expectedProcessCount ?? null,
+    resolvedProcessCount:
+      canonicalSnapshotResult?.readiness.resolvedProcessCount ?? null,
+    missingProcessKeys:
+      canonicalSnapshotResult?.readiness.missingProcessKeys ?? [],
   };
 };
-
-const preserveExistingAssignmentCtSnapshotsForSave = ({
-  assignments,
-  existingPlanByExternalId,
-}: {
-  assignments: any[];
-  existingPlanByExternalId: Map<string, any>;
-}) =>
-  ensureArray(assignments).map((assignment) => {
-    const currentReadiness = resolveAssignmentCtSnapshotSaveReadiness(assignment);
-    if (currentReadiness.ready) return assignment;
-
-    const externalId = resolveAssignmentExternalId(assignment);
-    const existingPlan = externalId
-      ? existingPlanByExternalId.get(externalId) ?? null
-      : null;
-    const existingReadiness = resolveAssignmentCtSnapshotSaveReadiness(existingPlan);
-    if (!existingReadiness.ready || !existingReadiness.snapshot) return assignment;
-
-    return {
-      ...assignment,
-      assignmentCtSnapshot: existingReadiness.snapshot,
-      assignmentCtTotalSeconds: existingReadiness.ctTotalSeconds,
-      ctTotalSeconds: existingReadiness.ctTotalSeconds,
-    };
-  });
 
 const assertAssignmentCtSnapshotsReadyForBoardSave = ({
   orgId,
   assignments,
   skippedExternalIds = new Set<string>(),
+  cardById = new Map<string, any>(),
+  styleByStyleId = new Map<number, any>(),
+  existingPlanByExternalId = new Map<string, any>(),
 }: {
   orgId: number;
   assignments: any[];
   skippedExternalIds?: Set<string>;
+  cardById?: Map<string, any>;
+  styleByStyleId?: Map<number, any>;
+  existingPlanByExternalId?: Map<string, any>;
 }) => {
   const issues = ensureArray(assignments)
     .map((assignment) => {
@@ -12026,13 +12328,20 @@ const assertAssignmentCtSnapshotsReadyForBoardSave = ({
       if (!externalId) return null;
       if (Boolean(assignment?.isCompleted)) return null;
       if (skippedExternalIds.has(externalId)) return null;
+      const cardId = resolveOptionalString(assignment?.cardId, null);
+      const card = cardId ? cardById.get(cardId) ?? null : null;
 
-      const readiness = resolveAssignmentCtSnapshotSaveReadiness(assignment);
+      const readiness = resolveAssignmentCtSnapshotSaveReadiness({
+        assignment,
+        cardById,
+        styleByStyleId,
+        existingPlanByExternalId,
+      });
       if (readiness.ready) return null;
       return {
         externalId,
-        cardId: resolveOptionalString(assignment?.cardId, null),
-        styleId: toPositiveIntOrNull(assignment?.styleId),
+        cardId,
+        styleId: toPositiveIntOrNull(assignment?.styleId ?? card?.styleId),
         workOrderId: toPositiveIntOrNull(assignment?.workOrderId),
         quantity: resolveAssignmentQuantity(assignment),
         reason: readiness.reason ?? "unknown CT snapshot issue",
@@ -13434,7 +13743,9 @@ const buildStyleProcessLookupForStCalculation = (styleProcessRows: any[]) => {
   });
 
   const resolveRowForSnapshotProcess = (styleId: number, process: any) => {
-    const styleProcessId = toPositiveIntOrNull(process?.styleProcessId);
+    const styleProcessId = toPositiveIntOrNull(
+      process?.styleProcessId ?? process?.processId
+    );
     if (styleProcessId !== null) {
       const byId = byStyleIdAndProcessId.get(`${styleId}::${styleProcessId}`);
       if (byId) return byId;
@@ -24628,21 +24939,23 @@ app.put("/assignment-board-state", async (req, res) => {
       ...Array.from(linkedWorkRecordExternalIdSet.values()),
       ...Array.from(payrollLockedPlanByExternalId.keys()),
     ]);
-    nextAssignmentsNormalized = await refreshIncomingAssignmentCtSnapshotsFromStyles({
+    const ctSnapshotPreparation =
+      await refreshIncomingAssignmentCtSnapshotsFromStyles({
       organization,
       cards: savedCards,
       assignments: nextAssignmentsNormalized,
       skippedExternalIds: ctSnapshotSkippedExternalIds,
+      existingPlanByExternalId: existingPlanByExternalIdForStTotals,
       db: tx,
     });
-    nextAssignmentsNormalized = preserveExistingAssignmentCtSnapshotsForSave({
-      assignments: nextAssignmentsNormalized,
-      existingPlanByExternalId: existingPlanByExternalIdForStTotals,
-    });
+    nextAssignmentsNormalized = ctSnapshotPreparation.assignments;
     assertAssignmentCtSnapshotsReadyForBoardSave({
       orgId: organization.id,
       assignments: nextAssignmentsNormalized,
       skippedExternalIds: ctSnapshotSkippedExternalIds,
+      cardById: ctSnapshotPreparation.cardById,
+      styleByStyleId: ctSnapshotPreparation.styleByStyleId,
+      existingPlanByExternalId: existingPlanByExternalIdForStTotals,
     });
     nextAssignmentsByExternalId = buildAssignmentByExternalId(nextAssignmentsNormalized);
     assertFiniteAssignmentScheduleIndices(nextAssignmentsNormalized);

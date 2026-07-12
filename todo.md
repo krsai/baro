@@ -7,11 +7,6 @@
   - `WorkRecord.assignmentPlanId = null` 후 `AssignmentPlan` 삭제하는 경로 제거
   - 연결된 작업기록이 있으면 라인/공장 삭제를 409로 막기
 
-- [ ] 배정 저장 시 CT 우회 저장 경로 제거
-  - `preserveExistingAssignmentCtSnapshotsForSave` 재설계 또는 제거
-  - 현재 수량/스타일과 불일치하는 기존 CT snapshot 재사용 금지
-  - live CT 재생성 실패 시 저장을 hard fail로 유지하기
-
 ### 다음 순위
 - [ ] 미완료 assignment 일반 저장에도 optimistic locking 추가
   - `PUT /assignment-board-state`에 `updatedAt` 또는 version 비교 적용
