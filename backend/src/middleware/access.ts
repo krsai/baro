@@ -1,6 +1,7 @@
 ﻿import "../config/env";
 import { type Request, type Response } from "express";
 import { type OrgUserRole } from "@prisma/client";
+import { getVerifiedRequestAuth } from "../auth/requestAuth";
 import { prisma } from "../db";
 import { setCurrentRequestActorEmployeeId } from "../requestActor";
 import { normalizeEmail } from "../utils/common";
@@ -25,6 +26,7 @@ const WORKSPACE_SUBSCRIPTION_STATUSES = new Set(["TRIAL", "ACTIVE", "GRACE"]);
 
 type OrganizationAccessOptions = {
   allowSuspended?: boolean;
+  allowAnonymous?: boolean;
 };
 
 type RequireOrgRoleOptions = OrganizationAccessOptions & {
@@ -61,7 +63,7 @@ const isBaroOrganization = (organization: any) => {
 };
 
 export const getHardCodedSystemAdminEmail = () =>
-  normalizeEmail(process.env.SYSTEM_ADMIN_EMAIL || "krsailer82@gmail.com");
+  normalizeEmail(process.env.SYSTEM_ADMIN_EMAIL);
 
 export const getSystemAdminContactEmail = () => getHardCodedSystemAdminEmail();
 
@@ -313,8 +315,7 @@ const ensureOrganizationAccessible = (organization: any, options: OrganizationAc
 };
 
 export const getRequesterEmail = (req: Request): string => {
-  const headerEmail = normalizeEmail(readRequestHeader(req, "x-user-email"));
-  return headerEmail;
+  return getVerifiedRequestAuth(req)?.email || "";
 };
 
 export const getRequestedOrgIdText = (req: Request): string => {
@@ -363,6 +364,9 @@ const resolveOrganizationByQuery = async (
   options: OrganizationAccessOptions = {}
 ) => {
   if (rawOrgId !== "") {
+    if (!requesterEmail) {
+      throw createHttpError(401, "authentication is required");
+    }
     if (!/^\d+$/.test(rawOrgId)) {
       throw createHttpError(400, "invalid orgId");
     }
@@ -399,8 +403,6 @@ const resolveOrganizationByQuery = async (
       );
     }
 
-    const withSubscription = await attachOrganizationSubscription(organization);
-    return ensureOrganizationAccessible(withSubscription, options);
   }
 
   if (requesterEmail) {
@@ -432,7 +434,11 @@ const resolveOrganizationByQuery = async (
     }
   }
 
-  return getPrimaryOrganization(options);
+  if (options.allowAnonymous) {
+    return getPrimaryOrganization(options);
+  }
+
+  throw createHttpError(401, "authentication is required");
 };
 
 export const getOrganizationByQuery = async (
@@ -554,7 +560,7 @@ export const requireOrgRole = async (
   }
 
   if (!context.requesterEmail) {
-    res.status(401).json({ ok: false, error: "request user email is required" });
+    res.status(401).json({ ok: false, error: "authentication is required" });
     return null;
   }
 
@@ -581,7 +587,7 @@ export const requireOrgRole = async (
 export const requireSystemAdmin = async (req: Request, res: Response) => {
   const requesterEmail = getRequesterEmail(req);
   if (!requesterEmail) {
-    res.status(401).json({ ok: false, error: "request user email is required" });
+    res.status(401).json({ ok: false, error: "authentication is required" });
     return null;
   }
 

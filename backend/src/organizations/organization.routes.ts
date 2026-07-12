@@ -107,7 +107,12 @@ export const createOrganizationRouter = ({
 }: OrganizationRoutesDeps) => {
   const organizationRouter = Router();
 
-  organizationRouter.get("/organizations", async (_req, res) => {
+  organizationRouter.get("/organizations", async (req, res) => {
+    const requesterEmail = getRequesterEmail(req);
+    if (!requesterEmail) {
+      return res.status(401).json({ ok: false, error: "authentication is required" });
+    }
+
     const organizations = await prisma.organization.findMany({
       include: ORGANIZATION_REPRESENTATIVE_INCLUDE,
       orderBy: { id: "asc" },

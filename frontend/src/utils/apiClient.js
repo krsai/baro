@@ -4,6 +4,7 @@ export const API_BASE =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
 const requestContext = {
+  accessToken: '',
   userEmail: '',
   orgId: null,
 };
@@ -239,14 +240,18 @@ export const deactivateRequestScope = (
 };
 
 export const setRequestContext = (next = {}) => {
+  const normalizedAccessToken =
+    typeof next.accessToken === 'string' ? next.accessToken.trim() : '';
   const normalizedEmail =
     typeof next.userEmail === 'string' ? next.userEmail.trim().toLowerCase() : '';
   const parsedOrgId = Number(next.orgId);
+  requestContext.accessToken = normalizedAccessToken;
   requestContext.userEmail = normalizedEmail;
   requestContext.orgId = Number.isFinite(parsedOrgId) && parsedOrgId > 0 ? parsedOrgId : null;
 };
 
 export const getRequestContext = () => ({
+  accessToken: requestContext.accessToken,
   userEmail: requestContext.userEmail,
   orgId: requestContext.orgId,
 });
@@ -435,6 +440,7 @@ export const requestJSON = async (path, options = {}) => {
     ? [
         method,
         String(path || '').trim(),
+        `auth:${requestContext.accessToken ? '1' : '0'}`,
         `org:${requestContext.orgId || ''}`,
         `user:${requestContext.userEmail || ''}`,
         `headers:${normalizeHeadersKey(requestOptions.headers)}`,
@@ -525,8 +531,8 @@ export const requestJSON = async (path, options = {}) => {
 
     try {
       const headers = new Headers(requestOptions.headers || {});
-      if (requestContext.userEmail && !headers.has('x-user-email')) {
-        headers.set('x-user-email', requestContext.userEmail);
+      if (requestContext.accessToken && !headers.has('authorization')) {
+        headers.set('Authorization', `Bearer ${requestContext.accessToken}`);
       }
       if (requestContext.orgId && !headers.has('x-org-id')) {
         headers.set('x-org-id', String(requestContext.orgId));

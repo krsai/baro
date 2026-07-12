@@ -645,14 +645,14 @@ export const createOrgMembershipRouter = ({
     const { orgId, email, role, name } = req.body ?? {};
     const orgIdNum = Number(orgId);
     const requesterEmail = normalizeEmail(getRequesterEmail(req));
-    const normalizedEmail = requesterEmail || normalizeEmail(email);
+    const normalizedEmailInput = normalizeEmail(email);
     const requestedName = normalizeRequestedName(name);
 
     if (!Number.isFinite(orgIdNum)) {
       return res.status(400).json({ ok: false, error: "orgId is required" });
     }
-    if (!isValidEmail(normalizedEmail)) {
-      return res.status(400).json({ ok: false, error: "email is required" });
+    if (!isValidEmail(requesterEmail)) {
+      return res.status(401).json({ ok: false, error: "authentication is required" });
     }
     if (!requestedName) {
       return res.status(400).json({ ok: false, error: "name is required" });
@@ -660,7 +660,7 @@ export const createOrgMembershipRouter = ({
     if (requestedName.length > REQUESTED_NAME_MAX_LENGTH) {
       return res.status(400).json({ ok: false, error: "name is too long" });
     }
-    if (requesterEmail && normalizeEmail(email) && normalizeEmail(email) !== requesterEmail) {
+    if (normalizedEmailInput && normalizedEmailInput !== requesterEmail) {
       return res.status(403).json({ ok: false, error: "email does not match request user" });
     }
 
@@ -673,7 +673,7 @@ export const createOrgMembershipRouter = ({
 
     const safeRole = resolveRole(role, "WORKER");
     const existing = await prisma.employee.findUnique({
-      where: { orgId_email: { orgId: orgIdNum, email: normalizedEmail } },
+      where: { orgId_email: { orgId: orgIdNum, email: requesterEmail } },
     });
 
     if (existing?.status === "ACTIVE") {
@@ -693,7 +693,7 @@ export const createOrgMembershipRouter = ({
     const now = new Date();
     const data = {
       orgId: orgIdNum,
-      email: normalizedEmail,
+      email: requesterEmail,
       orgRole: safeRole,
       requestedName,
       name: requestedName,

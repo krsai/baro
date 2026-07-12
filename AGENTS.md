@@ -102,6 +102,11 @@ AT(q) = a*q + b
 - 소셜 로그인 후 온보딩의 기존 회사 가입 신청은 `Employee.requestedName`/`requestedAt`/`approvedAt`/`approvedBy`에 저장한다.
 - `Employee.roleId`(→`AttrRole`)는 `orgRole`과 별개의 축이다 — 현장 직무(감독/봉제/다림/검수/포장 등, 조직별 커스터마이징 가능)를 나타내며 시스템 접근 권한이 아니다. 이름이 비슷해 혼동하지 않는다.
 - API 경로 `/org-memberships`와 `orgMembershipId`라는 이름은 하위 호환을 위해 남아있지만 내부적으로는 전부 `Employee`를 가리킨다(추가 DB 마이그레이션 없이 나중에 이름만 정리 가능).
+- **인증 소스오브트루스(2026-07-12)**: 백엔드 신원 판별은 `Authorization: Bearer <Supabase access token>` 검증 결과의 이메일만 사용한다. `x-user-email`, `/auth/context?email=...`, 요청 body/query의 이메일을 신원 대용으로 쓰지 않는다.
+- `x-org-id`와 쿼리 `orgId`는 "어느 조직을 보려는가"를 고르는 힌트일 뿐이며, 실제 접근 허용 여부는 검증된 토큰 이메일이 그 조직의 활성 `Employee`이거나 `SystemUser.SYSTEM_ADMIN`인지로 다시 판정한다.
+- `/auth/context`, `/org-memberships/apply`, `/onboarding/company-requests`, `/organizations` 같은 로그인 진입/온보딩 경로도 익명 이메일 입력으로 우회하지 않는다. 토큰이 없으면 401, 이메일이 토큰과 다르면 403으로 드러낸다.
+- `SYSTEM_ADMIN_EMAIL`은 서버 환경변수로만 공급한다. 코드 안의 하드코딩 폴백 이메일은 금지하며, 시스템 관리자 row bootstrap도 서버 설정값이 있을 때만 수행한다.
+- 프론트 로그인 화면의 dev bypass / 테스트 계정 패널은 제거했다. 프론트 API 클라이언트는 Supabase 세션의 access token을 자동으로 `Authorization` 헤더에 붙인다.
 
 ### WorkLog / WorkRecord
 - **WorkLog**: 기간 헤더. `coverageStartDate`(시작), `coverageEndDate`(종료)가 소스오브트루스.

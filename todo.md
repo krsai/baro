@@ -3,11 +3,6 @@
 ## 2026-07-11 통합 리뷰 기준 미적용 항목
 
 ### 최우선
-- [ ] 백엔드 인증/조직 판별을 클라이언트 헤더 신뢰 방식에서 서버 검증 방식으로 전환
-  - `x-user-email`, `x-org-id`, 쿼리 `orgId`를 신원/권한의 소스오브트루스로 쓰지 않기
-  - Supabase JWT를 백엔드에서 검증하고, 사용자/조직 컨텍스트는 검증된 토큰 기준으로만 만들기
-  - `createdBy` / `updatedBy` / `requireSystemAdmin` / 조직 접근 판정을 모두 같은 검증 컨텍스트로 통일하기
-
 - [ ] 라인/공장 삭제 경로에서 orphan `WorkRecord`를 만들지 않도록 수정
   - `WorkRecord.assignmentPlanId = null` 후 `AssignmentPlan` 삭제하는 경로 제거
   - 연결된 작업기록이 있으면 라인/공장 삭제를 409로 막기
@@ -35,6 +30,7 @@
   - FK 기반 조회로 대체하거나 완전히 제거하기
 
 ### 배포 후 확인
+- [ ] Railway 백엔드 환경변수에 `SUPABASE_URL`, `SYSTEM_ADMIN_EMAIL`이 실제로 설정되어 있는지 확인
 - [ ] 운영 배포 후 `GET /assignment-cards?orgId=1&includeProcesses=1`가 비어 있지 않은 `styles`를 반환하는지 확인
 - [ ] 운영 배포 후 `/assignment`에서 기존 CT 409가 나던 카드들을 다시 드래그 저장해 재현이 사라졌는지 확인
 - [ ] `migration_fix.sql`의 `AssignmentCard.payload` legacy key cleanup이 운영 DB에 실제 적용됐는지 확인

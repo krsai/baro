@@ -5,6 +5,10 @@ import { resolve as resolvePath } from "node:path";
 import { spawnSync } from "node:child_process";
 import "./config/env";
 import { Prisma, type OrgUserRole } from "@prisma/client";
+import {
+  populateVerifiedRequestAuth,
+  resolveRequestAuthErrorMessage,
+} from "./auth/requestAuth";
 import { prisma } from "./db";
 import {
   normalizePayType,
@@ -97,9 +101,18 @@ const JSON_BODY_LIMIT =
   String(process.env.JSON_BODY_LIMIT || "10mb").trim() || "10mb";
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
-app.use((req, _res, next) =>
-  runWithRequestActor(getRequesterEmail(req), () => next())
-);
+app.use(async (req, res, next) => {
+  try {
+    const auth = await populateVerifiedRequestAuth(req);
+    return runWithRequestActor(auth?.email, () => next());
+  } catch (error) {
+    const status = getErrorStatus(error) ?? 401;
+    return res.status(status).json({
+      ok: false,
+      error: resolveRequestAuthErrorMessage(error),
+    });
+  }
+});
 
 const WORK_LOG_RECORD_INCLUDE = WORK_RECORD_WITH_REFS_INCLUDE;
 const WORK_LOG_DETAIL_RECORD_SELECT = WORK_RECORD_WITH_REFS_INCLUDE;
@@ -1703,8 +1716,14 @@ const clampAtSlopeByMonthlyChange = (
   return roundToScale(Math.min(maxA, Math.max(minA, nextA)), 4);
 };
 
-const resolveOnboardingRequesterEmail = (req: Request, fallbackEmail?: unknown) =>
-  normalizeEmail(getRequesterEmail(req) || req.query?.email || fallbackEmail);
+const resolveOnboardingRequesterEmail = (req: Request, fallbackEmail?: unknown) => {
+  const requesterEmail = normalizeEmail(getRequesterEmail(req));
+  const requestedEmail = normalizeEmail(fallbackEmail);
+  if (requesterEmail && requestedEmail && requesterEmail !== requestedEmail) {
+    throw createHttpError(403, "email does not match authenticated user");
+  }
+  return requesterEmail;
+};
 
 const resolveOnboardingOrganizationType = (
   value: unknown
@@ -17442,32 +17461,17 @@ app.get("/ready", (_req, res) => {
 });
 
 app.get("/auth/context", async (req, res) => {
-  const requesterEmail = normalizeEmail(req.query.email) || getRequesterEmail(req);
+  const requesterEmail = getRequesterEmail(req);
   if (!requesterEmail || !requesterEmail.includes("@")) {
-    return res.status(400).json({ ok: false, error: "email is required" });
+    return res.status(401).json({ ok: false, error: "authentication is required" });
   }
   const roleAccessPolicy = (await loadRoleAccessPolicySetting()).policy;
-
-  // Auto-provision system admin on first login
-  if (requesterEmail === getHardCodedSystemAdminEmail()) {
-    await prisma.systemUser.upsert({
-      where: { email: requesterEmail },
-      update: { systemRole: "SYSTEM_ADMIN" },
-      create: { email: requesterEmail, systemRole: "SYSTEM_ADMIN" },
-    });
-  }
 
   const systemUser = await prisma.systemUser.findUnique({
     where: { email: requesterEmail },
     select: { systemRole: true },
   });
   if (systemUser?.systemRole === "SYSTEM_ADMIN") {
-    // /auth/context is called before API headers are fully hydrated on first load.
-    // Ensure org resolution can still evaluate system-admin fallback organization.
-    if (!getRequesterEmail(req)) {
-      (req.headers as any)["x-user-email"] = requesterEmail;
-    }
-
     let organization = null;
     try {
       organization = await getOrganizationByQuery(req, { allowSuspended: true });
@@ -17630,12 +17634,19 @@ app.put("/system/access-policy", async (req, res) => {
 });
 
 app.post("/onboarding/company-requests", async (req, res) => {
-  const requesterEmail = resolveOnboardingRequesterEmail(
-    req,
-    req.body?.requesterEmail ?? req.body?.email
-  );
+  let requesterEmail = "";
+  try {
+    requesterEmail = resolveOnboardingRequesterEmail(
+      req,
+      req.body?.requesterEmail ?? req.body?.email
+    );
+  } catch (error) {
+    const status = getErrorStatus(error) ?? 400;
+    const message = getErrorMessage(error, "failed to resolve requester email");
+    return res.status(status).json({ ok: false, error: message });
+  }
   if (!requesterEmail || !requesterEmail.includes("@")) {
-    return res.status(400).json({ ok: false, error: "request user email is required" });
+    return res.status(401).json({ ok: false, error: "authentication is required" });
   }
 
   const organizationNameEn = resolveOptionalString(
