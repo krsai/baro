@@ -1,3 +1,4 @@
+import { supabase } from '../lib/supabaseClient';
 import { recordLastUpdaterForCurrentPath } from './lastUpdater';
 
 export const API_BASE =
@@ -255,6 +256,52 @@ export const getRequestContext = () => ({
   userEmail: requestContext.userEmail,
   orgId: requestContext.orgId,
 });
+
+const syncRequestContextFromSession = (session) => {
+  const accessToken =
+    typeof session?.access_token === 'string' ? session.access_token.trim() : '';
+  const userEmail =
+    typeof session?.user?.email === 'string' ? session.user.email.trim().toLowerCase() : '';
+  if (accessToken) {
+    requestContext.accessToken = accessToken;
+  }
+  if (userEmail) {
+    requestContext.userEmail = userEmail;
+  }
+  return accessToken;
+};
+
+const resolveSupabaseSessionAccessToken = async ({ forceRefresh = false } = {}) => {
+  if (!supabase?.auth) return '';
+  try {
+    if (forceRefresh && typeof supabase.auth.refreshSession === 'function') {
+      const { data, error } = await supabase.auth.refreshSession();
+      if (!error) {
+        const refreshedToken = syncRequestContextFromSession(data?.session ?? null);
+        if (refreshedToken) return refreshedToken;
+      }
+    }
+    if (typeof supabase.auth.getSession === 'function') {
+      const { data, error } = await supabase.auth.getSession();
+      if (!error) {
+        return syncRequestContextFromSession(data?.session ?? null);
+      }
+    }
+  } catch (_error) {
+    // Ignore session read failures here and let the request fail normally.
+  }
+  return '';
+};
+
+const readResponsePayload = async (response) => {
+  const raw = await response.text();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (_error) {
+    return raw;
+  }
+};
 
 const getNetworkLoadingScopesSnapshot = () => {
   const scopeCounts = new Map();
@@ -531,26 +578,40 @@ export const requestJSON = async (path, options = {}) => {
 
     try {
       const headers = new Headers(requestOptions.headers || {});
-      if (requestContext.accessToken && !headers.has('authorization')) {
-        headers.set('Authorization', `Bearer ${requestContext.accessToken}`);
+      const hasExplicitAuthorization = headers.has('authorization');
+      const initialAccessToken =
+        requestContext.accessToken || (!hasExplicitAuthorization
+          ? await resolveSupabaseSessionAccessToken()
+          : '');
+      if (initialAccessToken && !hasExplicitAuthorization) {
+        headers.set('Authorization', `Bearer ${initialAccessToken}`);
       }
       if (requestContext.orgId && !headers.has('x-org-id')) {
         headers.set('x-org-id', String(requestContext.orgId));
       }
 
-      const response = await fetch(`${API_BASE}${path}`, {
-        ...requestOptions,
-        signal: mergedAbortController.signal,
-        headers,
-      });
-      const raw = await response.text();
-      let data = null;
+      const executeFetch = async (nextHeaders) => {
+        const response = await fetch(`${API_BASE}${path}`, {
+          ...requestOptions,
+          signal: mergedAbortController.signal,
+          headers: nextHeaders,
+        });
+        const data = await readResponsePayload(response);
+        return { response, data };
+      };
 
-      if (raw) {
-        try {
-          data = JSON.parse(raw);
-        } catch (_error) {
-          data = raw;
+      let { response, data } = await executeFetch(headers);
+      if (
+        response.status === 401 &&
+        !hasExplicitAuthorization &&
+        !mergedAbortController.signal.aborted
+      ) {
+        const refreshedAccessToken = await resolveSupabaseSessionAccessToken({
+          forceRefresh: true,
+        });
+        if (refreshedAccessToken && refreshedAccessToken !== initialAccessToken) {
+          headers.set('Authorization', `Bearer ${refreshedAccessToken}`);
+          ({ response, data } = await executeFetch(headers));
         }
       }
 
