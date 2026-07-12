@@ -783,55 +783,6 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
         }
       : legacyProcess;
 
-    console.log('[WorkDetail.buildHydratedRows]', {
-      index,
-      record: {
-        workerId: record?.workerId ?? null,
-        workerName: toText(record?.workerName),
-        orderNo: toText(record?.orderNo),
-        styleId: toText(record?.styleId),
-        styleName: toText(record?.styleName),
-        styleProcessId: record?.styleProcessId ?? null,
-        processCode: toText(record?.processCode),
-        processName: toText(record?.processName),
-        assignmentPlanId: record?.assignmentPlanId ?? null,
-        quantity: Number(record?.quantity ?? 0) || 0,
-      },
-      matchedAssignment: matchedAssignment
-        ? {
-            dbId: matchedAssignment?.dbId ?? null,
-            id: toText(matchedAssignment?.id),
-            orderNo: toText(matchedAssignment?.orderNo),
-            label: toText(matchedAssignment?.label),
-            styleId: toText(matchedAssignment?.styleId),
-            quantity: resolveBaselineQuantity(matchedAssignment),
-          }
-        : null,
-      assignment: assignment
-        ? {
-            dbId: assignment?.dbId ?? null,
-            id: toText(assignment?.id),
-            orderNo: toText(assignment?.orderNo),
-            label: toText(assignment?.label),
-            styleId: toText(assignment?.styleId),
-            quantity: resolveBaselineQuantity(assignment),
-            processCount: Array.isArray(assignment?.processes) ? assignment.processes.length : 0,
-            isLegacy: Boolean(assignment?.isLegacy),
-          }
-        : null,
-      process: process
-        ? {
-            id: toText(process?.id),
-            styleProcessId: process?.styleProcessId ?? null,
-            code: toText(process?.code || process?.processCode),
-            name: toText(process?.name),
-            nameKo: toText(process?.nameKo),
-            nameEn: toText(process?.nameEn),
-            nameVi: toText(process?.nameVi),
-          }
-        : null,
-    });
-
     return createBlankRow({
       worker: matchedWorker,
       styleOptionId: resolveStyleOptionId(assignment),
@@ -2838,8 +2789,6 @@ const WorkDetail = ({
         styleProcessId: toPositiveIdOrNull(rowProcess?.styleProcessId),
       };
     });
-    console.log('[WorkDetail.visibleRowMetaLabels]', labelRows);
-    console.table(labelRows);
   }, [desktopVisibleRowViewModels]);
   useEffect(() => {
     if (!editingField?.rowId || !editingField?.field) return;

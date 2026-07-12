@@ -158,15 +158,6 @@ const WorkEntry = () => {
 
   const handleSave = useCallback(
     async (payload) => {
-      console.log('[WorkEntry.handleSave] called', {
-        mode: isEditMode ? 'update' : 'create',
-        workLogId: routeWorkLogId ?? null,
-        orgId: activeOrgId ?? null,
-        workDate: payload?.workDate ?? '',
-        coverageStartDate: payload?.coverageStartDate ?? '',
-        lineId: payload?.lineId ?? null,
-        recordCount: Array.isArray(payload?.records) ? payload.records.length : 0,
-      });
       setSaving(true);
       try {
         if (isEditMode && routeWorkLogId) {

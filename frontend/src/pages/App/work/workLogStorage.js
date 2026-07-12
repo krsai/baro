@@ -13,38 +13,6 @@ const buildReadRequestOptions = (options = {}) => ({
   ...(options?.requestTimeoutMs ? { requestTimeoutMs: options.requestTimeoutMs } : {}),
 });
 const toText = (value) => String(value || '').trim();
-const buildAssignmentDisplayKey = (assignment) => {
-  const orderNo = toText(assignment?.orderNo);
-  const label = toText(assignment?.label || assignment?.styleId);
-  const assignmentQuantityText = toText(
-    assignment?.finalQuantity ?? assignment?.assignmentQuantity
-  );
-  if (!orderNo && !label && !assignmentQuantityText) return '';
-  return [orderNo, label, assignmentQuantityText].join('|');
-};
-const summarizeDuplicateAssignments = (assignments = []) => {
-  const buckets = (Array.isArray(assignments) ? assignments : []).reduce((map, assignment) => {
-    const displayKey = buildAssignmentDisplayKey(assignment);
-    if (!displayKey) return map;
-    const current = map.get(displayKey) || {
-      displayKey,
-      count: 0,
-      assignmentIds: [],
-      lineIds: [],
-    };
-    current.count += 1;
-    const assignmentId = toText(assignment?.id || assignment?.externalId || assignment?.dbId);
-    if (assignmentId) current.assignmentIds.push(assignmentId);
-    const lineId = toText(assignment?.lineId);
-    if (lineId) current.lineIds.push(lineId);
-    map.set(displayKey, current);
-    return map;
-  }, new Map());
-
-  return Array.from(buckets.values())
-    .filter((entry) => entry.count > 1)
-    .slice(0, 10);
-};
 const summarizeWorkLogRecords = (records = []) =>
   (Array.isArray(records) ? records : []).slice(0, 5).map((record, index) => ({
     index,
@@ -58,30 +26,6 @@ const summarizeWorkLogRecords = (records = []) =>
     quantity: Number(record?.quantity ?? 0) || 0,
     assignmentPlanId: record?.assignmentPlanId ?? null,
   }));
-const buildWorkLogRecordDebugRows = (records = []) =>
-  (Array.isArray(records) ? records : []).map((record, index) => ({
-    index: index + 1,
-    workerId: record?.workerId ?? null,
-    workerName: toText(record?.workerName),
-    assignmentPlanId: record?.assignmentPlanId ?? null,
-    orderNo: toText(record?.orderNo),
-    lineId: record?.lineId ?? null,
-    styleId: record?.styleRefId ?? record?.styleId ?? null,
-    styleCode: toText(record?.styleCode),
-    styleName: toText(record?.styleName),
-    styleProcessId: record?.styleProcessId ?? null,
-    processCode: toText(record?.processCode),
-    quantity: Number(record?.quantity ?? 0) || 0,
-    ctSeconds: Number(record?.ctSeconds ?? 0) || 0,
-  }));
-const logWorkLogPayloadDebug = (label, payloadSummary, payload = {}) => {
-  const rows = buildWorkLogRecordDebugRows(payload?.records);
-  console.log(`[${label}] payload-summary`, payloadSummary);
-  if (rows.length === 0) return;
-  console.groupCollapsed(`[${label}] records (${rows.length})`);
-  console.table(rows);
-  console.groupEnd();
-};
 const summarizeWorkLogPayload = (payload = {}) => {
   const records = Array.isArray(payload?.records) ? payload.records : [];
   return {
@@ -135,21 +79,11 @@ export const loadWorkLogs = async (options = {}) => {
 export const appendWorkLog = async (payload, options = {}) => {
   const query = buildQueryString({ orgId: options?.orgId });
   const payloadSummary = summarizeWorkLogPayload(payload);
-  console.log('[appendWorkLog] called', {
-    orgId: options?.orgId ?? null,
-    payload: payloadSummary,
-  });
-  logWorkLogPayloadDebug('appendWorkLog', payloadSummary, payload);
   try {
     const result = await requestJSON('/work-logs' + query, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload ?? {}),
-    });
-    console.log('[appendWorkLog] success', {
-      orgId: options?.orgId ?? null,
-      workLogId: result?.id ?? null,
-      recordCount: Array.isArray(result?.records) ? result.records.length : null,
     });
     emitWorkLogWorkspaceDataChanged({
       orgId: options?.orgId,
@@ -188,14 +122,6 @@ export const findWorkLogById = async (workLogId, options = {}) => {
 };
 
 export const loadWorkLogContext = async (options = {}) => {
-  console.log('[loadWorkLogContext] called', {
-    orgId: options?.orgId ?? null,
-    factoryId: options?.factoryId ?? null,
-    lineId: options?.lineId ?? null,
-    workDate: options?.workDate ?? '',
-    coverageStartDate: options?.coverageStartDate ?? '',
-    debug: Boolean(options?.debug),
-  });
   const query = buildQueryString({
     orgId: options?.orgId,
     factoryId: options?.factoryId,
@@ -210,37 +136,18 @@ export const loadWorkLogContext = async (options = {}) => {
   );
   const workers = Array.isArray(result?.workers) ? result.workers : [];
   const assignments = Array.isArray(result?.assignments) ? result.assignments : [];
-  console.log('[loadWorkLogContext] result', {
-    workerCount: workers.length,
-    assignmentCount: assignments.length,
-    duplicateAssignments: summarizeDuplicateAssignments(assignments),
-    previousCoverageEndDate: result?.previousCoverageEndDate ?? null,
-    suggestedCoverageStartDate: result?.suggestedCoverageStartDate ?? null,
-    isFirstLineWorkLog: Boolean(result?.isFirstLineWorkLog),
-  });
   return result;
 };
 
 export const updateWorkLog = async (workLogId, payload, options = {}) => {
   if (!workLogId) return null;
   const payloadSummary = summarizeWorkLogPayload(payload);
-  console.log('[updateWorkLog] called', {
-    orgId: options?.orgId ?? null,
-    workLogId,
-    payload: payloadSummary,
-  });
-  logWorkLogPayloadDebug('updateWorkLog', payloadSummary, payload);
   try {
     const query = buildQueryString({ orgId: options?.orgId });
     const result = await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}` + query, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload ?? {}),
-    });
-    console.log('[updateWorkLog] success', {
-      orgId: options?.orgId ?? null,
-      workLogId: result?.id ?? workLogId,
-      recordCount: Array.isArray(result?.records) ? result.records.length : null,
     });
     emitWorkLogWorkspaceDataChanged({
       orgId: options?.orgId,
@@ -271,18 +178,10 @@ export const deleteWorkLog = async (workLogId, options = {}) => {
     skipCache: true,
     forceRefresh: true,
   });
-  console.log('[deleteWorkLog] called', {
-    orgId: options?.orgId ?? null,
-    workLogId,
-  });
   try {
     const query = buildQueryString({ orgId: options?.orgId });
     await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}` + query, {
       method: 'DELETE',
-    });
-    console.log('[deleteWorkLog] success', {
-      orgId: options?.orgId ?? null,
-      workLogId,
     });
     emitWorkLogWorkspaceDataChanged({
       orgId: options?.orgId,
