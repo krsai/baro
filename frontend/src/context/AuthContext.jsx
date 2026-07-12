@@ -338,7 +338,15 @@ export const AuthProvider = ({ children }) => {
     };
   }, [session?.access_token, user?.email]);
 
-  const effectiveProfile = accessProfile;
+  const normalizedCurrentUserEmail =
+    typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
+  const normalizedAccessProfileEmail =
+    typeof accessProfile?.email === 'string' ? accessProfile.email.trim().toLowerCase() : '';
+  const isAccessProfileForCurrentUser =
+    !!normalizedCurrentUserEmail &&
+    !!accessProfile &&
+    normalizedAccessProfileEmail === normalizedCurrentUserEmail;
+  const effectiveProfile = isAccessProfileForCurrentUser ? accessProfile : null;
   const activeOrgId = toPositiveOrgId(effectiveProfile?.orgId);
   const activeOrgType = normalizeUpper(effectiveProfile?.orgType);
   const activeOrgRole = normalizeUpper(effectiveProfile?.orgRole);
@@ -361,14 +369,6 @@ export const AuthProvider = ({ children }) => {
     });
   }, [activeOrgId, effectiveProfile?.email, session?.access_token, user?.email]);
 
-  const normalizedCurrentUserEmail =
-    typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
-  const normalizedAccessProfileEmail =
-    typeof accessProfile?.email === 'string' ? accessProfile.email.trim().toLowerCase() : '';
-  const isAccessProfileForCurrentUser =
-    !!normalizedCurrentUserEmail &&
-    !!accessProfile &&
-    normalizedAccessProfileEmail === normalizedCurrentUserEmail;
   const loadingState =
     loading ||
     (!!user && isSupabaseConfigured) &&
@@ -455,12 +455,12 @@ export const AuthProvider = ({ children }) => {
       user,
       devBypass: false,
       devProfile: null,
-      accessProfile: isAccessProfileForCurrentUser ? accessProfile : null,
+      accessProfile: effectiveProfile,
       activeOrgId,
       activeOrgType,
       activeOrgRole,
       activeFactoryId,
-      activeProfile: isAccessProfileForCurrentUser ? effectiveProfile : null,
+      activeProfile: effectiveProfile,
       loading: loadingState,
       hasWorkspaceAccess,
       requiresOnboarding,
@@ -473,7 +473,6 @@ export const AuthProvider = ({ children }) => {
       updateActiveProfile,
     }),
     [
-      accessProfile,
       activeFactoryId,
       activeOrgId,
       activeOrgRole,
@@ -481,7 +480,6 @@ export const AuthProvider = ({ children }) => {
       effectiveProfile,
       enableDevBypass,
       hasWorkspaceAccess,
-      isAccessProfileForCurrentUser,
       loadingState,
       requiresOnboarding,
       requiresSubscriptionContact,

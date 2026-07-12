@@ -26,7 +26,6 @@ const WORKSPACE_SUBSCRIPTION_STATUSES = new Set(["TRIAL", "ACTIVE", "GRACE"]);
 
 type OrganizationAccessOptions = {
   allowSuspended?: boolean;
-  allowAnonymous?: boolean;
 };
 
 type RequireOrgRoleOptions = OrganizationAccessOptions & {
@@ -377,32 +376,29 @@ const resolveOrganizationByQuery = async (
     const organization = await prisma.organization.findUnique({ where: { id: orgId } });
     if (!organization) return null;
 
-    if (requesterEmail) {
-      const [systemUser, employee] = await Promise.all([
-        prisma.systemUser.findUnique({
-          where: { email: requesterEmail },
-          select: { systemRole: true },
-        }),
-        prisma.employee.findUnique({
-          where: { orgId_email: { orgId, email: requesterEmail } },
-          select: { id: true, status: true },
-        }),
-      ]);
+    const [systemUser, employee] = await Promise.all([
+      prisma.systemUser.findUnique({
+        where: { email: requesterEmail },
+        select: { systemRole: true },
+      }),
+      prisma.employee.findUnique({
+        where: { orgId_email: { orgId, email: requesterEmail } },
+        select: { id: true, status: true },
+      }),
+    ]);
 
-      const isSystemAdmin = systemUser?.systemRole === "SYSTEM_ADMIN";
-      const isActiveMember = employee?.status === "ACTIVE";
-      if (!isSystemAdmin && !isActiveMember) {
-        throw createHttpError(403, "organization access denied");
-      }
-      if (isActiveMember) setRequestActorEmployeeFromRow(employee);
-
-      const withSubscription = await attachOrganizationSubscription(organization);
-      return ensureOrganizationAccessible(
-        withSubscription,
-        isSystemAdmin ? { ...options, allowSuspended: true } : options
-      );
+    const isSystemAdmin = systemUser?.systemRole === "SYSTEM_ADMIN";
+    const isActiveMember = employee?.status === "ACTIVE";
+    if (!isSystemAdmin && !isActiveMember) {
+      throw createHttpError(403, "organization access denied");
     }
+    if (isActiveMember) setRequestActorEmployeeFromRow(employee);
 
+    const withSubscription = await attachOrganizationSubscription(organization);
+    return ensureOrganizationAccessible(
+      withSubscription,
+      isSystemAdmin ? { ...options, allowSuspended: true } : options
+    );
   }
 
   if (requesterEmail) {
@@ -432,10 +428,6 @@ const resolveOrganizationByQuery = async (
     if (systemUser?.systemRole === "SYSTEM_ADMIN") {
       return getSystemAdminDefaultOrganization(options);
     }
-  }
-
-  if (options.allowAnonymous) {
-    return getPrimaryOrganization(options);
   }
 
   throw createHttpError(401, "authentication is required");

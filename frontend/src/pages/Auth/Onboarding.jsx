@@ -437,6 +437,13 @@ const Onboarding = () => {
   }, [hasWorkspaceAccess, isAuthenticated, loading, navigate, requiresOnboarding]);
 
   useEffect(() => {
+    if (loading) return undefined;
+    if (!isAuthenticated || !requiresOnboarding) {
+      setOrganizations([]);
+      setLoadingOrganizations(false);
+      return undefined;
+    }
+
     let cancelled = false;
     const loadOrganizations = async () => {
       setLoadingOrganizations(true);
@@ -460,7 +467,7 @@ const Onboarding = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isAuthenticated, loading, requiresOnboarding]);
 
   const matchedOrganizations = useMemo(() => {
     const searchText = String(companySearchText || '').trim();

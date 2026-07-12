@@ -28,10 +28,10 @@ const LOGIN_COPY_BY_LANGUAGE = {
       'Supabase configuration is required. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to `.env` and restart.',
   },
   vi: {
-    loginLoading: 'Dang dang nhap...',
-    loginWithGoogle: 'Dang nhap bang Google',
+    loginLoading: 'Đang đăng nhập...',
+    loginWithGoogle: 'Đăng nhập bằng Google',
     supabaseRequired:
-      'Can cau hinh Supabase. Them `VITE_SUPABASE_URL` va `VITE_SUPABASE_ANON_KEY` vao `.env` roi khoi dong lai.',
+      'Cần cấu hình Supabase. Thêm `VITE_SUPABASE_URL` và `VITE_SUPABASE_ANON_KEY` vào `.env` rồi khởi động lại.',
   },
 };
 

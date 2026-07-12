@@ -97,6 +97,7 @@ const verifySupabaseAccessToken = async (
 
   const { payload } = await jwtVerify(accessToken, getSupabaseJwks(), {
     issuer,
+    audience: "authenticated",
   });
   const email = normalizeEmail(payload.email);
   if (!email) {
