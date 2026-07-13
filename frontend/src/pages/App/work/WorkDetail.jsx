@@ -640,21 +640,12 @@ const buildProcessMetric = (process) => {
   if (name) return { key: `name:${normalizeProcessNameKey(name)}`, label: name };
   return { key: 'unknown', label: '미정 공정' };
 };
-const buildStyleMetric = (value = {}) => {
-  const styleRefId = toPositiveIdOrNull(value?.styleRefId ?? value?.styleId);
-  if (styleRefId) {
-    return {
-      key: `style:${styleRefId}`,
-      label: toText(value?.styleCode) || toText(value?.styleName) || `Style#${styleRefId}`,
-    };
-  }
-  const styleCode = toText(value?.styleCode);
-  if (styleCode) return { key: `code:${toKey(styleCode)}`, label: styleCode };
-  const styleName = toText(value?.styleName);
-  if (styleName) return { key: `name:${toKey(styleName)}`, label: styleName };
-  const assignmentPlanId = toPositiveIdOrNull(value?.assignmentPlanId);
-  if (assignmentPlanId) return { key: `plan:${assignmentPlanId}`, label: `PLAN:${assignmentPlanId}` };
-  return { key: '', label: '' };
+const buildAssignmentPlanMetric = (value = {}) => {
+  const assignmentPlanId = toPositiveIdOrNull(
+    value?.assignmentPlanId ?? value?.assignment?.dbId ?? value?.assignment?.id
+  );
+  if (!assignmentPlanId) return { key: '', label: '' };
+  return { key: `assignment-plan:${assignmentPlanId}`, label: `AssignmentPlan#${assignmentPlanId}` };
 };
 const buildWorkerMetric = (value = {}) => {
   const workerId = toPositiveIdOrNull(value?.workerId);
@@ -670,16 +661,9 @@ const buildWorkerStyleProcessSignature = (value = {}) => {
     workerId: value?.workerId ?? value?.worker?.id,
     workerName: value?.workerName ?? value?.worker?.name,
   });
-  const styleMetric = buildStyleMetric({
-    styleRefId: value?.styleRefId ?? value?.styleId,
-    styleId: value?.styleId,
-    styleCode: value?.styleCode ?? value?.assignment?.styleId,
-    styleName:
-      value?.styleName ??
-      value?.assignment?.label ??
-      value?.assignment?.styleName ??
-      value?.assignment?.styleId,
+  const assignmentPlanMetric = buildAssignmentPlanMetric({
     assignmentPlanId: value?.assignmentPlanId ?? value?.assignment?.dbId,
+    assignment: value?.assignment,
   });
   const processMetric = buildProcessMetric({
     styleProcessId: value?.styleProcessId ?? value?.process?.styleProcessId,
@@ -696,10 +680,10 @@ const buildWorkerStyleProcessSignature = (value = {}) => {
     nameEn: value?.process?.nameEn,
     nameVi: value?.process?.nameVi,
   });
-  if (!workerMetric.key || !styleMetric.key || !processMetric.key || processMetric.key === 'unknown') {
+  if (!workerMetric.key || !assignmentPlanMetric.key || !processMetric.key || processMetric.key === 'unknown') {
     return '';
   }
-  return `${workerMetric.key}:${styleMetric.key}:${processMetric.key}`;
+  return `${workerMetric.key}:${assignmentPlanMetric.key}:${processMetric.key}`;
 };
 const findDuplicateRow = (records = []) => {
   const seen = new Set();
@@ -2552,7 +2536,7 @@ const WorkDetail = ({
       return;
     }
     if (findDuplicateRow(summary.records)) {
-      setFormError('같은 작업자가 같은 스타일의 같은 공정을 같은 날짜에 중복 입력할 수 없습니다.');
+      setFormError('같은 작업자가 같은 배정의 같은 공정을 같은 날짜에 중복 입력할 수 없습니다.');
       return;
     }
     if (missingAssignmentPlanLinkMessage) {
@@ -2982,7 +2966,7 @@ const WorkDetail = ({
             {autoExceededNote ? <Alert severity="info"><Box><Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>{LABELS.autoNote}</Typography><Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>{autoExceededNote}</Typography></Box></Alert> : null}
             {isAggregateLegacyLog ? <Alert severity="warning">라인 정보가 없는 기존 기록은 이 화면에서 수정할 수 없습니다.</Alert> : null}
             {formError ? <Alert severity="error">{formError}</Alert> : null}
-            {findDuplicateRow(summary.records) ? <Alert severity="warning">같은 작업자/스타일/공정 조합이 중복되어 있습니다. 수량으로 합산해 주세요.</Alert> : null}
+            {findDuplicateRow(summary.records) ? <Alert severity="warning">같은 작업자/배정/공정 조합이 중복되어 있습니다. 수량으로 합산해 주세요.</Alert> : null}
           </Stack>
         </Paper>
 

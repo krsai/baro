@@ -3,7 +3,11 @@
 ## 2026-07-13 work-log duplicate check false positive (assignmentPlanId scoping)
 
 - Done: `buildWorkRecordWorkerStyleProcessSignature`(backend/src/index.ts) now scopes duplicate detection by `assignmentPlanId` instead of `styleId`, so the same style used across two different orders no longer false-positives as a duplicate. See AGENTS.md §49.
-- Remaining: the "group anchor row hides the actual duplicate row(s) elsewhere in the group" display issue is still open (not touched by this fix).
+- Done: `WorkDetail.jsx` manual-entry duplicate detection now uses the same `workerId + assignmentPlanId + styleProcessId` policy as the backend, so frontend validation no longer blocks a backend-valid same-style/different-order row.
+- Done: documented that multiple workers may legitimately split the same assignment/process; duplicate detection must include worker identity and must not treat over/under-production as a duplicate-input error.
+- Done: `/work-logs/import` now attaches `DUPLICATE_WORK_RECORD` issues to the actual duplicate row(s) when the duplicate helper can identify them, instead of always using the group anchor row.
+- Remaining: non-duplicate group-level validations can still report the group anchor row; keep this separate unless it causes operator confusion again.
+- Remaining: consider a separate visibility/warning path for order quantity shortfall/overrun if the existing progress/settlement screens are not enough. Do not mix this into duplicate detection.
 
 ## 2026-07-13 attendance menu production grouping
 

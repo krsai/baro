@@ -381,10 +381,10 @@ const translateImportIssueDetail = (issue, languageCode) => {
     case 'DUPLICATE_WORK_RECORD':
       return wrapWithDetail(
         languageCode === 'en'
-          ? 'Duplicate worker/style/process records exist on the work date.'
+          ? 'Duplicate worker/assignment/process records exist on the work date.'
           : languageCode === 'vi'
-            ? 'Bi trung cong nhan/ma hang/cong doan trong ngay lam viec.'
-            : '같은 작업일자에 작업자/스타일/공정이 중복되었습니다.',
+            ? 'Bi trung cong nhan/the phan cong/cong doan trong ngay lam viec.'
+            : '같은 작업일자에 작업자/배정/공정이 중복되었습니다.',
         detail.replace(/^duplicate worker-style-process on workDate:\s*/i, '')
       );
     case 'CT_SNAPSHOT_VALIDATION_FAILED':
@@ -419,10 +419,10 @@ const translateImportIssueDetail = (issue, languageCode) => {
     case 'DUPLICATE_IMPORT_RECORD':
       return wrapWithDetail(
         languageCode === 'en'
-          ? 'The same worker/style/process appears more than once in the import file.'
+          ? 'The same worker/assignment/process appears more than once in the import file.'
           : languageCode === 'vi'
-            ? 'Cung cong nhan/ma hang/cong doan xuat hien nhieu lan trong tep nhap.'
-            : '파일 안에 같은 작업자/스타일/공정 행이 중복되어 있습니다.',
+            ? 'Cung cong nhan/the phan cong/cong doan xuat hien nhieu lan trong tep nhap.'
+            : '파일 안에 같은 작업자/배정/공정 행이 중복되어 있습니다.',
         detail
       );
     default:

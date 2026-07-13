@@ -8422,14 +8422,24 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
 }) => {
   const normalizedWorkDate = normalizeDateKey(workDate);
   if (!normalizedWorkDate) {
-    return { status: 400, error: "invalid workDate" };
+    return {
+      status: 400,
+      error: "invalid workDate",
+      incomingDuplicateRows: [],
+      conflictRows: [],
+    };
   }
 
   const incomingRecords = ensureArray(records).filter(
     (record) => record && typeof record === "object"
   );
   if (incomingRecords.length === 0) {
-    return { status: 200, error: null as string | null };
+    return {
+      status: 200,
+      error: null as string | null,
+      incomingDuplicateRows: [],
+      conflictRows: [],
+    };
   }
 
   const firstIncomingRecordBySignature = new Map<string, any>();
@@ -8456,6 +8466,8 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
     return {
       status: 400,
       error: `duplicate worker-style-process on workDate: ${preview}${extraText}`,
+      incomingDuplicateRows,
+      conflictRows: [],
     };
   }
 
@@ -8463,7 +8475,12 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
     ...incomingRecords.map((record) => record?.workerId)
   );
   if (workerIds.length === 0 || firstIncomingRecordBySignature.size === 0) {
-    return { status: 200, error: null as string | null };
+    return {
+      status: 200,
+      error: null as string | null,
+      incomingDuplicateRows: [],
+      conflictRows: [],
+    };
   }
 
   const existingRows: any[] = await prisma.workRecord.findMany({
@@ -8519,10 +8536,17 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
     return {
       status: 400,
       error: `duplicate worker-style-process on workDate: ${preview}${extraText}`,
+      incomingDuplicateRows: [],
+      conflictRows,
     };
   }
 
-  return { status: 200, error: null as string | null };
+  return {
+    status: 200,
+    error: null as string | null,
+    incomingDuplicateRows: [],
+    conflictRows: [],
+  };
 };
 const validateWorkLogLineWorkers = async ({
   orgId,
@@ -8789,9 +8813,9 @@ const translateWorkLogErrorMessage = (error: any) => {
   if (text.startsWith("duplicate worker-style-process on workDate")) {
     const detail = resolveOptionalString(text.split(":").slice(1).join(":").trim(), null);
     if (detail) {
-      return `같은 작업자가 같은 스타일의 같은 공정을 같은 날짜에 중복 입력할 수 없습니다. (${detail})`;
+      return `같은 작업자가 같은 배정의 같은 공정을 같은 날짜에 중복 입력할 수 없습니다. (${detail})`;
     }
-    return "같은 작업자가 같은 스타일의 같은 공정을 같은 날짜에 중복 입력할 수 없습니다.";
+    return "같은 작업자가 같은 배정의 같은 공정을 같은 날짜에 중복 입력할 수 없습니다.";
   }
   if (text.startsWith("line worker mismatch for workDate")) {
     return "선택한 작업일 기준으로 현재 라인에 속하지 않은 작업자가 포함되어 있습니다. 라인과 작업자를 다시 확인해 주세요.";
@@ -23589,13 +23613,36 @@ app.post("/work-logs/import", async (req, res) => {
       records: normalized.records,
     });
     if (duplicateValidation.error) {
-      issues.push(
-        buildWorkLogImportIssue({
-          row: groupAnchorRow,
-          code: "DUPLICATE_WORK_RECORD",
-          message: duplicateValidation.error,
-        })
-      );
+      const duplicateError = duplicateValidation.error;
+      const duplicateIssueRecords = [
+        ...ensureArray(duplicateValidation.incomingDuplicateRows),
+        ...ensureArray(duplicateValidation.conflictRows),
+      ];
+      if (duplicateIssueRecords.length > 0) {
+        const emittedDuplicateIssueRowKeys = new Set<string>();
+        duplicateIssueRecords.forEach((record: any) => {
+          const recordIndex = normalized.records.indexOf(record);
+          const sourceRow = group.rows[recordIndex] ?? groupAnchorRow;
+          const rowKey = `${sourceRow?.sheetName ?? ""}:${sourceRow?.rowNumber ?? ""}`;
+          if (emittedDuplicateIssueRowKeys.has(rowKey)) return;
+          emittedDuplicateIssueRowKeys.add(rowKey);
+          issues.push(
+            buildWorkLogImportIssue({
+              row: sourceRow,
+              code: "DUPLICATE_WORK_RECORD",
+              message: duplicateError,
+            })
+          );
+        });
+      } else {
+        issues.push(
+          buildWorkLogImportIssue({
+            row: groupAnchorRow,
+            code: "DUPLICATE_WORK_RECORD",
+            message: duplicateError,
+          })
+        );
+      }
       continue;
     }
 
@@ -23708,7 +23755,7 @@ app.post("/work-logs/import", async (req, res) => {
         buildWorkLogImportIssue({
           row: sourceRow,
           code: "DUPLICATE_IMPORT_RECORD",
-          message: `duplicate worker/style/process on ${displayDate} also appears in ${formatWorkLogImportIssueLocation(
+          message: `duplicate worker/assignment/process on ${displayDate} also appears in ${formatWorkLogImportIssueLocation(
             previous.row
           )}.`,
         })
