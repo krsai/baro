@@ -10715,6 +10715,7 @@ const normalizeStateAssignmentItem = (item: any): any => {
     confidence: _confidence,
     scheduleStatus: _scheduleStatus,
     isStUnknown: _isStUnknown,
+    isProgressUnknown: _isProgressUnknown,
     useRenderDateRange: _useRenderDateRange,
     renderStartIndex: _renderStartIndex,
     renderEndIndex: _renderEndIndex,
@@ -19655,6 +19656,7 @@ const buildLineMonthCapacityRows = async ({
   const lineLatestActualCoverageEndDateKeyByLineId = new Map<number, string>();
   const lineRemainingBacklogStSecondsByLineId = new Map<number, number>();
   const lineStUnknownAssignmentCountByLineId = new Map<number, number>();
+  const lineProgressUnknownAssignmentCountByLineId = new Map<number, number>();
   const planProgressMetaById = new Map<
     number,
     {
@@ -19741,12 +19743,26 @@ const buildLineMonthCapacityRows = async ({
       plannedQuantity != null && processCount != null && processCount > 0
         ? plannedQuantity * processCount
         : null;
-    const producedQuantity = resolveProducedQtyFromProcessKeyTotals({
-      processTotalsByKey: cumulativeProcessTotalsByKey,
-      processKeyGroups: requiredProcessGroups,
-    });
+    // requiredProcessGroups comes from assignmentCtSnapshot.processes[].styleProcessId.
+    // Some persisted snapshots have processCode/name but a null styleProcessId per
+    // process (a known data gap - see AGENTS.md), which makes requiredProcessGroups
+    // resolve to []. resolveProducedQtyFromProcessKeyTotals then always returns 0 for
+    // an empty group list, which used to flow straight into producedRatio=0 and, via
+    // Math.min(producedRatio, operationalProgressRatio), forced progressRatio to 0
+    // regardless of how much work was actually recorded - i.e. a plan at 88% real
+    // progress was treated as 0% and its full planned ST re-entered the forecast
+    // backlog every time. Treat "no usable process groups" as producedRatio being
+    // unavailable (null) instead of 0, so the min() falls through to
+    // operationalProgressRatio (which does not depend on styleProcessId) rather than
+    // pinning progress to zero.
+    const producedQuantity = requiredProcessGroups.length > 0
+      ? resolveProducedQtyFromProcessKeyTotals({
+          processTotalsByKey: cumulativeProcessTotalsByKey,
+          processKeyGroups: requiredProcessGroups,
+        })
+      : null;
     const producedRatio =
-      plannedQuantity > 0
+      producedQuantity != null && plannedQuantity > 0
         ? Math.max(0, Math.min(1, producedQuantity / plannedQuantity))
         : null;
     const operationalProgressRatio =
@@ -19757,21 +19773,35 @@ const buildLineMonthCapacityRows = async ({
       producedRatio != null && operationalProgressRatio != null
         ? Math.min(producedRatio, operationalProgressRatio)
         : producedRatio ?? operationalProgressRatio ?? null;
+    // Neither ratio could be computed even though work has actually been recorded
+    // (cumulativeTotalDone > 0) - do not silently fall back to the full planned ST
+    // (that is indistinguishable from "0% done" and re-inflates the forecast). Exclude
+    // it from the backlog sum and surface it as a diagnostic instead.
+    const isProgressUnknown =
+      plan?.isCompleted !== true && progressRatio == null && cumulativeTotalDone > 0;
     const remainingStTotalSeconds =
       plan?.isCompleted === true
         ? 0
-        : progressRatio == null
-          ? plannedStTotalSeconds
-          : Math.max(
-              0,
-              plannedStTotalSeconds -
-                Math.max(0, Math.round(plannedStTotalSeconds * progressRatio))
-            );
-    if (remainingStTotalSeconds > 0) {
+        : isProgressUnknown
+          ? null
+          : progressRatio == null
+            ? plannedStTotalSeconds
+            : Math.max(
+                0,
+                plannedStTotalSeconds -
+                  Math.max(0, Math.round(plannedStTotalSeconds * progressRatio))
+              );
+    if (remainingStTotalSeconds != null && remainingStTotalSeconds > 0) {
       lineRemainingBacklogStSecondsByLineId.set(
         lineId,
         (lineRemainingBacklogStSecondsByLineId.get(lineId) || 0) +
           remainingStTotalSeconds
+      );
+    }
+    if (isProgressUnknown) {
+      lineProgressUnknownAssignmentCountByLineId.set(
+        lineId,
+        (lineProgressUnknownAssignmentCountByLineId.get(lineId) || 0) + 1
       );
     }
     planProgressMetaById.set(planId, {
@@ -19798,6 +19828,7 @@ const buildLineMonthCapacityRows = async ({
       forecastAnchorDateKey: string;
       remainingBacklogStSeconds: number;
       stUnknownAssignmentCount: number;
+      progressUnknownAssignmentCount: number;
     }
   >();
   requestedLineIds.forEach((lineId) => {
@@ -19823,6 +19854,10 @@ const buildLineMonthCapacityRows = async ({
       stUnknownAssignmentCount: Math.max(
         0,
         Math.round(Number(lineStUnknownAssignmentCountByLineId.get(lineId) || 0))
+      ),
+      progressUnknownAssignmentCount: Math.max(
+        0,
+        Math.round(Number(lineProgressUnknownAssignmentCountByLineId.get(lineId) || 0))
       ),
     });
   });
@@ -19948,6 +19983,15 @@ const buildLineMonthCapacityRows = async ({
   });
 
   const employeeIdsByLineDateKey = new Map<string, Set<number>>();
+  // Diagnostics only (does not affect the capacity sums below): tracks which lines
+  // each employee is counted as active on for the same date, so an employee with
+  // overlapping LineAssignment rows across two different lines on the same day can be
+  // surfaced instead of silently double-counted into both lines' capacity. The normal
+  // write path (closeActiveLineAssignments, called from /line-assignments/assign)
+  // already closes an employee's prior active assignment before creating a new one, so
+  // this should only ever fire for legacy data or a rare create-time race - see
+  // AGENTS.md.
+  const lineIdsByEmployeeDateKey = new Map<string, Set<number>>();
   lineAssignmentRows.forEach((row) => {
     const lineId = toPositiveIntOrNull(row?.lineId);
     const employeeId = toPositiveIntOrNull(row?.employeeId);
@@ -20004,8 +20048,38 @@ const buildLineMonthCapacityRows = async ({
       const current = employeeIdsByLineDateKey.get(compositeKey) || new Set<number>();
       current.add(employeeId);
       employeeIdsByLineDateKey.set(compositeKey, current);
+
+      const employeeDateKey = `${employeeId}:${dateKey}`;
+      const lineIdsForEmployeeDate =
+        lineIdsByEmployeeDateKey.get(employeeDateKey) || new Set<number>();
+      lineIdsForEmployeeDate.add(lineId);
+      lineIdsByEmployeeDateKey.set(employeeDateKey, lineIdsForEmployeeDate);
     });
   });
+
+  const capacityOverlapSamples: Array<{
+    employeeId: number;
+    dateKey: string;
+    lineIds: number[];
+  }> = [];
+  let capacityOverlapCount = 0;
+  lineIdsByEmployeeDateKey.forEach((lineIdSet, employeeDateKey) => {
+    if (lineIdSet.size <= 1) return;
+    capacityOverlapCount += 1;
+    if (capacityOverlapSamples.length < 50) {
+      const [employeeIdText, dateKey] = employeeDateKey.split(":");
+      capacityOverlapSamples.push({
+        employeeId: toPositiveIntOrNull(employeeIdText) ?? 0,
+        dateKey: dateKey ?? "",
+        lineIds: Array.from(lineIdSet.values()).sort((left, right) => left - right),
+      });
+    }
+  });
+  if (capacityOverlapCount > 0) {
+    console.warn(
+      `[line-month-capacity] orgId=${orgId} found ${capacityOverlapCount} employee-date pairs active on more than one line (overlapping LineAssignment rows)`
+    );
+  }
 
   const activeEmployeeIdsForCapacity = Array.from(
     new Set(
@@ -20657,12 +20731,24 @@ const buildLineMonthCapacityRows = async ({
           lineForecastMetaByLineId.get(Number(row.lineId))?.remainingBacklogStSeconds ?? 0,
         stUnknownAssignmentCount:
           lineForecastMetaByLineId.get(Number(row.lineId))?.stUnknownAssignmentCount ?? 0,
+        // Assignments with actual recorded work whose progress ratio could not be
+        // computed (e.g. assignmentCtSnapshot processes missing styleProcessId - see
+        // the comment above isProgressUnknown). Excluded from
+        // lineRemainingBacklogStSeconds rather than guessed at, so the forecast can
+        // under-count but never silently re-inflate to the full planned ST.
+        progressUnknownAssignmentCount:
+          lineForecastMetaByLineId.get(Number(row.lineId))?.progressUnknownAssignmentCount ?? 0,
       };
     });
 
   return {
     monthKeys: requestedMonthKeys,
     rows,
+    // Employee active on more than one line the same day (see the comment above
+    // lineIdsByEmployeeDateKey). Read-only diagnostics - does not change any capacity
+    // sum above, which still counts the employee once per line they overlap on.
+    capacityOverlapCount,
+    capacityOverlapSamples,
     ...(includeActualOutputDebug && actualOutputRequestDiagnostics
       ? { actualOutputDiagnostics: actualOutputRequestDiagnostics }
       : {}),
@@ -20922,12 +21008,24 @@ const buildAssignmentPlanProgressRows = async (
         : Math.max(0, baselineQuantityRaw - producedQuantity);
     const overflowQuantity =
       baselineQuantityRaw == null ? 0 : Math.max(0, producedQuantity - baselineQuantityRaw);
+    // requiredProcessGroups comes from assignmentCtSnapshot.processes[].styleProcessId.
+    // Some persisted snapshots have processCode/name but a null styleProcessId per
+    // process (a known data gap - see AGENTS.md), which makes requiredProcessGroups
+    // resolve to [] and producedQuantity always compute as 0 regardless of how much
+    // work was actually recorded. producedQuantity/remainingQty/overflowQuantity below
+    // are left as-is (other UI depends on them), but the RATIO must not treat that 0
+    // as "0% done" - otherwise Math.min(producedRatio, operationalProgressRatio) pins
+    // progress to zero and the plan's full planned ST re-enters the forecast backlog
+    // even at 88%+ real completion.
+    const isProcessGroupUnavailable = requiredProcessGroups.length === 0 && totalDone > 0;
     const producedRatio =
       isMarkedCompleted
         ? 1
-        : baselineQuantityRaw != null && baselineQuantityRaw > 0
-          ? Math.min(1, Math.max(0, producedQuantity / baselineQuantityRaw))
-          : null;
+        : isProcessGroupUnavailable
+          ? null
+          : baselineQuantityRaw != null && baselineQuantityRaw > 0
+            ? Math.min(1, Math.max(0, producedQuantity / baselineQuantityRaw))
+            : null;
     const operationalProgressRatio = isMarkedCompleted
       ? 1
       : totalExpected != null && totalExpected > 0
@@ -20938,6 +21036,11 @@ const buildAssignmentPlanProgressRows = async (
       : producedRatio != null && operationalProgressRatio != null
         ? Math.min(producedRatio, operationalProgressRatio)
         : producedRatio ?? operationalProgressRatio ?? null;
+    // Neither ratio could be computed even though totalDone > 0 - do not silently
+    // treat this as "0% done" (full planned ST) or exclude it either; surface it so
+    // the frontend can show a "확인 필요" state instead of guessing.
+    const isProgressUnknown =
+      !isMarkedCompleted && progressForRemainingRatio == null && totalDone > 0;
     const progressImbalanceGapRatio =
       producedRatio != null && operationalProgressRatio != null
         ? Math.max(0, operationalProgressRatio - producedRatio)
@@ -20969,17 +21072,19 @@ const buildAssignmentPlanProgressRows = async (
     const remainingStTotalSeconds =
       plannedStTotalSeconds == null
         ? null
-        : progressForRemainingRatio == null
-          ? plannedStTotalSeconds
-          : Math.max(
-              0,
-              Math.round(
-                plannedStTotalSeconds *
-                  (progressForRemainingRatio >= 1
-                    ? 0
-                    : 1 - progressForRemainingRatio)
-              )
-            );
+        : isProgressUnknown
+          ? null
+          : progressForRemainingRatio == null
+            ? plannedStTotalSeconds
+            : Math.max(
+                0,
+                Math.round(
+                  plannedStTotalSeconds *
+                    (progressForRemainingRatio >= 1
+                      ? 0
+                      : 1 - progressForRemainingRatio)
+                )
+              );
     const completedStTotalSeconds =
       plannedStTotalSeconds == null || remainingStTotalSeconds == null
         ? null
@@ -21211,6 +21316,7 @@ const buildAssignmentPlanProgressRows = async (
       operationalProgressPercent: progressPercent,
       schedulerProgressPercent,
       isStUnknown,
+      isProgressUnknown,
       hasRangeCoverage: stats.hasRangeCoverage,
       lineOrphanWorkRecordCount,
       hasOrphanWorkRecords: lineOrphanWorkRecordCount > 0,

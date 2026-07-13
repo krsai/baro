@@ -378,6 +378,11 @@ export const UI_MESSAGES = {
     completedStatusCompact: { ko: '완료', en: 'Completed', vi: 'Hoan thanh' },
     readyStatusCompact: { ko: '작업 완료', en: 'Work done', vi: 'Da xong viec' },
     reviewStatusCompact: { ko: '검토 필요', en: 'Review required', vi: 'Can xem xet' },
+    progressUnknownStatusCompact: {
+      ko: '진행률 확인 필요',
+      en: 'Progress unknown',
+      vi: 'Chua ro tien do',
+    },
     reviewRequiredCompact: {
       ko: '수량 검토 필요',
       en: 'Quantity review required',
@@ -397,6 +402,11 @@ export const UI_MESSAGES = {
       ko: 'ST 미설정 {count}건 제외',
       en: '{count} ST-missing excluded',
       vi: 'Loai tru {count} cong viec thieu ST',
+    },
+    progressUnknownExcludedCompact: {
+      ko: '진행률 확인 필요 {count}건 제외',
+      en: '{count} progress unknown - excluded',
+      vi: 'Loai tru {count} cong viec chua ro tien do',
     },
     unlinkedWorkLogsWithCount: {
       ko: '미연결 기록 {count}건',

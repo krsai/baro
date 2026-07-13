@@ -2133,11 +2133,20 @@ const resolveAssignmentUiStMeta = ({
     !isCompleted &&
     plannedStTotalSeconds <= 0 &&
     Boolean(progressRow?.isStUnknown ?? assignment?.isStUnknown ?? true);
+  // Set by the backend when a plan has actual recorded work but its progress ratio
+  // could not be computed (see isProgressUnknown in buildAssignmentPlanProgressRows /
+  // backend/src/index.ts). Must never be silently treated as "0% done" - that is what
+  // previously caused a plan at 88%+ real progress to re-enter the forecast at its
+  // full planned ST every time (AGENTS.md).
+  const isProgressUnknown =
+    !isCompleted && Boolean(progressRow?.isProgressUnknown ?? assignment?.isProgressUnknown);
   const progressRemainingStTotalSeconds = Number(progressRow?.remainingStTotalSeconds);
   const assignmentRemainingStTotalSeconds = Number(assignment?.remainingStTotalSeconds);
 
   let remainingStTotalSeconds = null;
-  if (plannedStTotalSeconds > 0 && progressRatio != null) {
+  if (isProgressUnknown) {
+    remainingStTotalSeconds = null;
+  } else if (plannedStTotalSeconds > 0 && progressRatio != null) {
     remainingStTotalSeconds = Math.max(
       0,
       Math.round(plannedStTotalSeconds * (progressRatio >= 1 ? 0 : 1 - progressRatio))
@@ -2168,6 +2177,7 @@ const resolveAssignmentUiStMeta = ({
 
   return {
     plannedStTotalSeconds,
+    isProgressUnknown,
     remainingStTotalSeconds,
     isStUnknown,
     hasUsableProgressSt,
@@ -2192,6 +2202,7 @@ const resolveAssignmentProgressState = ({
     plannedStTotalSeconds,
     remainingStTotalSeconds,
     isStUnknown,
+    isProgressUnknown,
   } = resolveAssignmentUiStMeta({
     progressRow,
     assignment,
@@ -2249,6 +2260,7 @@ const resolveAssignmentProgressState = ({
           ? clampPercentValue(progressForRemainingRatio * 100)
           : assignment?.schedulerProgressPercent ?? null,
     isStUnknown,
+    isProgressUnknown,
     isZeroQuantityOverflow: Boolean(
       progressRow?.isZeroQuantityOverflow ?? assignment?.isZeroQuantityOverflow
     ),
@@ -4784,6 +4796,18 @@ const AssignBoard = () => {
         if (cancelled) return;
         const rows = Array.isArray(payload?.rows) ? payload.rows : [];
         setLineMonthCapacityRows(rows);
+        if (Number(payload?.capacityOverlapCount) > 0) {
+          // An employee has overlapping LineAssignment rows on two different lines the
+          // same day - read-only diagnostic surfaced by buildLineMonthCapacityRows
+          // (backend/src/index.ts). Does not change any capacity number; see
+          // AGENTS.md for how this can happen despite the normal write path guarding
+          // against it (closeActiveLineAssignments).
+          console.warn(
+            '[line-month-capacity] capacity overlap detected',
+            payload.capacityOverlapCount,
+            payload.capacityOverlapSamples
+          );
+        }
         if (shouldDebugLineMonthCapacity && payload?.actualOutputDiagnostics) {
           const diagnostics = payload.actualOutputDiagnostics;
           console.group('[line-month-capacity] actual output diagnostics');

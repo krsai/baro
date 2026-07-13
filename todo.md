@@ -1,5 +1,18 @@
 # TODO
 
+## 2026-07-13 line-month capacity forecast ignored actual progress (assignmentCtSnapshot.styleProcessId gap)
+
+- Done: `buildLineMonthCapacityRows`/`buildAssignmentPlanProgressRows` (backend/src/index.ts) no longer let `producedRatio` collapse to 0 when `assignmentCtSnapshot.processes[].styleProcessId` is null (processCode present, id missing) - it now falls through to `operationalProgressRatio` instead of poisoning `Math.min(producedRatio, operationalProgressRatio)` to zero. See AGENTS.md §51.
+- Done: Added `isProgressUnknown` (per-assignment) / `progressUnknownAssignmentCount` (per-line) diagnostics for the genuine "work recorded but neither ratio computable" case - excluded from the backlog sum instead of guessed at.
+- Done: Added `capacityOverlapCount`/`capacityOverlapSamples` diagnostics to `/line-month-capacity` for an employee active on two lines the same day. Confirmed the normal LineAssignment write paths already prevent this via `closeActiveLineAssignments` - no write-path change made.
+- Done: Frontend (`lineMonthCapacity.js`) now prefers the backend's own `lineRemainingBacklogStSeconds`/`forecastLoadStSeconds`/`carryInStSeconds`/`carryOutStSeconds`/`forecastLoadPercent` per line/month instead of re-simulating from a live per-assignment sum, and removed the silent `plannedStTotalSeconds` fallback when `isProgressUnknown` is true.
+- Done: Capped `plannedLoadPercent` at 100 for historical months (was mirroring uncapped `actualOutputPercent`, which can legitimately show >100%).
+- Done: `LineMonthCapacityBoard.jsx` shows `progressUnknownAssignmentCount` next to the existing ST-unknown warning, and a "진행률 확인 필요" chip on affected cards.
+- Verified against production data: Line #1's 43 not-completed AssignmentPlans now total 546.9h remaining ST (68.4 worker-days / 8 workers ≈ 8.5 calendar days), matching the expected magnitude instead of the ~3.5-month (738.3 worker-day) figure the bug produced.
+- Remaining: browser-verify LINE #1 at 2026-10 no longer shows a 10월 backlog, and that the ST-unknown/progress-unknown badges aren't over-firing on other lines.
+- Remaining: query `capacityOverlapCount` against production data directly (this session only added the diagnostic, did not check whether it is currently nonzero).
+- Remaining: root-cause why `assignmentCtSnapshot.processes[].styleProcessId` ended up null for existing snapshots (save-path issue, separate from this fix, not investigated here).
+
 ## 2026-07-13 work-log duplicate check false positive (assignmentPlanId scoping)
 
 - Done: `buildWorkRecordWorkerStyleProcessSignature`(backend/src/index.ts) now scopes duplicate detection by `assignmentPlanId` instead of `styleId`, so the same style used across two different orders no longer false-positives as a duplicate. See AGENTS.md §49.

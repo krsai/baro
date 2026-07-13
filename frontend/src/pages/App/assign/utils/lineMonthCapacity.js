@@ -288,6 +288,12 @@ const buildLineQueueForecast = ({
   holidaySet,
   todayDateKey,
   anchorDateKey,
+  // When provided (non-null), this replaces the per-card sum below as the basis for
+  // totalRequiredWorkingDays/lineFreeDateKey/queueBacklogDays. Callers pass the
+  // backend's lineRemainingBacklogStSeconds here so the line summary row's "완료
+  // 예상" agrees with the per-month plannedLoadPercent cells, which are seeded from
+  // the same backend value - see buildLineMonthCapacityBoardRows.
+  remainingBacklogStSecondsOverride = null,
 }) => {
   const normalizedAnchorDateKey =
     normalizeDateKey(anchorDateKey) ||
@@ -327,17 +333,12 @@ const buildLineQueueForecast = ({
     const isCompleted = Boolean(assignment?.isCompleted);
     const scheduleStatus = String(assignment?.scheduleStatus || '').trim();
     const isStUnknown = Boolean(assignment?.isStUnknown) && !isCompleted;
-    const rawRemainingStTotalSeconds =
-      isStUnknown
-        ? null
-        : assignment?.remainingStTotalSeconds ??
-          assignment?.plannedStTotalSeconds ??
-          assignment?.stTotalSeconds ??
-          null;
-    const remainingStTotalSeconds =
-      rawRemainingStTotalSeconds == null
-        ? null
-        : Math.max(0, Math.round(Number(rawRemainingStTotalSeconds) || 0));
+    const isProgressUnknown = Boolean(assignment?.isProgressUnknown) && !isCompleted;
+    // Shares resolveAssignmentForecastStTotalSeconds with the line-level backlog sum
+    // above so a card's own displayed remaining time can never disagree with what the
+    // line total was built from (previously this duplicated the same fallback chain
+    // and, unlike the line-level sum, did not know about isProgressUnknown at all).
+    const remainingStTotalSeconds = resolveAssignmentForecastStTotalSeconds(assignment);
     const actualProducedCompletedAt = normalizeDateKey(
       assignment?.actualProducedCompletedAt
     );
@@ -353,6 +354,8 @@ const buildLineQueueForecast = ({
     const baseAssignment = {
       ...assignment,
       remainingStTotalSeconds,
+      isStUnknown,
+      isProgressUnknown,
       actualProducedCompletedAt: actualProducedCompletedAt || null,
       productionCompletedAt: productionCompletedAt || null,
       completedAt: completedAt || null,
@@ -420,7 +423,7 @@ const buildLineQueueForecast = ({
     });
   });
 
-  const totalRemainingStTotalSeconds = queuedAssignments.reduce(
+  const liveQueuedRemainingStTotalSeconds = queuedAssignments.reduce(
     (sum, assignment) =>
       sum +
       Math.max(
@@ -431,6 +434,10 @@ const buildLineQueueForecast = ({
       ),
     0
   );
+  const totalRemainingStTotalSeconds =
+    remainingBacklogStSecondsOverride != null
+      ? Math.max(0, Math.round(Number(remainingBacklogStSecondsOverride) || 0))
+      : liveQueuedRemainingStTotalSeconds;
   const totalRequiredWorkingDays =
     dailyCapacitySeconds > 0
       ? Math.max(1, Math.ceil(totalRemainingStTotalSeconds / dailyCapacitySeconds))
@@ -494,9 +501,26 @@ const buildFallbackLineMonthlyCapacitySeconds = (line, monthKey, holidaySet) => 
 };
 
 const resolveAssignmentForecastStTotalSeconds = (assignment) => {
-  if (Boolean(assignment?.isStUnknown) && !Boolean(assignment?.isCompleted)) {
+  if (Boolean(assignment?.isCompleted)) {
+    return assignment?.remainingStTotalSeconds != null
+      ? Math.max(0, Math.round(Number(assignment.remainingStTotalSeconds) || 0))
+      : 0;
+  }
+  if (Boolean(assignment?.isStUnknown)) {
     return null;
   }
+  // Set by the backend when this plan has actual recorded work but its progress
+  // ratio could not be resolved (assignmentCtSnapshot gap - see AGENTS.md /
+  // isProgressUnknown). Falling back to plannedStTotalSeconds/stTotalSeconds here is
+  // exactly the bug this flag exists to prevent: it silently re-treats a plan that
+  // may already be 90%+ done as "0% done", inflating the whole line's forecast by
+  // months. Exclude it from the sum instead - the caller counts these separately.
+  if (Boolean(assignment?.isProgressUnknown)) {
+    return null;
+  }
+  // remainingStTotalSeconds is only allowed to be missing here for an assignment
+  // that never had a progress row resolved at all (e.g. a brand-new assignment with
+  // no work records yet) - in that case planned ST is the correct "0% done" value.
   const rawValue =
     assignment?.remainingStTotalSeconds ??
     assignment?.plannedStTotalSeconds ??
@@ -603,6 +627,10 @@ export const buildLineMonthCapacityBoardRows = ({
         0,
         Math.round(Number(sourceRow?.stUnknownAssignmentCount) || 0)
       ),
+      progressUnknownAssignmentCount: Math.max(
+        0,
+        Math.round(Number(sourceRow?.progressUnknownAssignmentCount) || 0)
+      ),
     });
   });
 
@@ -642,6 +670,7 @@ export const buildLineMonthCapacityBoardRows = ({
               ? null
               : Math.max(0, Math.round(Number(assignment.remainingStTotalSeconds) || 0)),
           isStUnknown: Boolean(assignment?.isStUnknown),
+          isProgressUnknown: Boolean(assignment?.isProgressUnknown),
           progressPercent:
             assignment?.progressPercent == null
               ? null
@@ -703,20 +732,54 @@ export const buildLineMonthCapacityBoardRows = ({
     const forecastAnchorMonthKey = normalizeMonthKey(
       forecastAnchorDateKey ? forecastAnchorDateKey.slice(0, 7) : ''
     );
-    const currentBoardRemainingBacklogStSeconds = assignmentsForLine.reduce(
+    // Live re-simulation from the current (possibly unsaved) board state. This is the
+    // fallback source only - see resolvedRemainingBacklogStSeconds below. Kept because
+    // it is still the only source for a line/month combo the backend response never
+    // covered (e.g. backendRows fetch failed outright for this line).
+    const liveBoardRemainingBacklogStSeconds = assignmentsForLine.reduce(
       (sum, assignment) => {
         if (assignment?.isCompleted) return sum;
         return sum + Math.max(0, resolveAssignmentForecastStTotalSeconds(assignment) || 0);
       },
       0
     );
-    const currentBoardStUnknownAssignmentCount = assignmentsForLine.reduce(
+    const liveBoardStUnknownAssignmentCount = assignmentsForLine.reduce(
       (count, assignment) => {
         if (assignment?.isCompleted) return count;
-        return resolveAssignmentForecastStTotalSeconds(assignment) == null ? count + 1 : count;
+        return Boolean(assignment?.isStUnknown) ? count + 1 : count;
       },
       0
     );
+    const liveBoardProgressUnknownAssignmentCount = assignmentsForLine.reduce(
+      (count, assignment) => {
+        if (assignment?.isCompleted) return count;
+        return Boolean(assignment?.isProgressUnknown) ? count + 1 : count;
+      },
+      0
+    );
+    // The backend (buildLineMonthCapacityRows) computes this from actual WorkRecord
+    // progress per assignment, the same source of truth used everywhere else on this
+    // board (AGENTS.md: "실제 진행률 기반 remaining backlog의 소스오브트루스는
+    // backend"). Prefer it whenever the API returned a value for this line; only fall
+    // back to the live per-assignment re-simulation when the backend genuinely has no
+    // data for this line (e.g. the /line-month-capacity fetch failed). This trades
+    // "anchor-month backlog reflects unsaved drag changes instantly" for "anchor-month
+    // backlog can never silently balloon back to the full planned ST of an
+    // already-mostly-produced assignment" - the latter was the actual bug (see
+    // AGENTS.md), and the board still re-fetches /line-month-capacity after every
+    // save, so a save is enough to pick up drag changes.
+    const currentBoardRemainingBacklogStSeconds =
+      lineMeta?.lineRemainingBacklogStSeconds != null
+        ? lineMeta.lineRemainingBacklogStSeconds
+        : liveBoardRemainingBacklogStSeconds;
+    const currentBoardStUnknownAssignmentCount =
+      lineMeta != null
+        ? lineMeta.stUnknownAssignmentCount
+        : liveBoardStUnknownAssignmentCount;
+    const currentBoardProgressUnknownAssignmentCount =
+      lineMeta != null
+        ? lineMeta.progressUnknownAssignmentCount
+        : liveBoardProgressUnknownAssignmentCount;
     const monthSummaryByKey = new Map();
     let previousCarryOutStSeconds = 0;
     internalMonthKeys.forEach((monthKey) => {
@@ -756,24 +819,57 @@ export const buildLineMonthCapacityBoardRows = ({
         inferredMonthType === 'historical'
           ? 0
           : Math.max(0, Math.round(Number(backendRow?.forecastWorkingDayCount) || 0));
-      const carryInStSeconds = inferredMonthType === 'forecast' ? previousCarryOutStSeconds : 0;
-      const backlogEnteringStSeconds =
+      // Local re-simulation, used only as a fallback for a line/month the backend
+      // response did not cover at all (e.g. the /line-month-capacity fetch failed, or
+      // this month is outside the requested range). previousCarryOutStSeconds always
+      // advances from whichever value (backend or local) was actually used below, so
+      // a mix of backend-covered and fallback months still chains correctly.
+      const locallyComputedCarryInStSeconds =
+        inferredMonthType === 'forecast' ? previousCarryOutStSeconds : 0;
+      const locallyComputedBacklogEnteringStSeconds =
         inferredMonthType === 'anchor'
           ? currentBoardRemainingBacklogStSeconds
           : inferredMonthType === 'forecast'
-            ? carryInStSeconds
+            ? locallyComputedCarryInStSeconds
             : 0;
-      const forecastLoadStSeconds =
+      const locallyComputedForecastLoadStSeconds =
         inferredMonthType === 'historical'
           ? 0
           : Math.max(
               0,
-              Math.min(backlogEnteringStSeconds, forecastAvailableCapacitySeconds)
+              Math.min(locallyComputedBacklogEnteringStSeconds, forecastAvailableCapacitySeconds)
             );
+      const locallyComputedCarryOutStSeconds =
+        inferredMonthType === 'historical'
+          ? 0
+          : Math.max(
+              0,
+              locallyComputedBacklogEnteringStSeconds - forecastAvailableCapacitySeconds
+            );
+      // buildLineMonthCapacityRows (backend/src/index.ts) runs this exact same
+      // anchor-month + carry-forward simulation server-side, seeded from actual
+      // WorkRecord progress. Prefer its numbers directly whenever this line/month was
+      // covered by the API response, instead of trusting a second, independent
+      // frontend implementation to never drift from it - the frontend one remains only
+      // as a fallback for whatever the backend response did not cover.
+      const carryInStSeconds =
+        inferredMonthType === 'historical'
+          ? 0
+          : backendRow?.carryInStSeconds != null
+            ? Math.max(0, Math.round(Number(backendRow.carryInStSeconds) || 0))
+            : locallyComputedCarryInStSeconds;
+      const forecastLoadStSeconds =
+        inferredMonthType === 'historical'
+          ? 0
+          : backendRow?.forecastLoadStSeconds != null
+            ? Math.max(0, Math.round(Number(backendRow.forecastLoadStSeconds) || 0))
+            : locallyComputedForecastLoadStSeconds;
       const carryOutStSeconds =
         inferredMonthType === 'historical'
           ? 0
-          : Math.max(0, backlogEnteringStSeconds - forecastAvailableCapacitySeconds);
+          : backendRow?.carryOutStSeconds != null
+            ? Math.max(0, Math.round(Number(backendRow.carryOutStSeconds) || 0))
+            : locallyComputedCarryOutStSeconds;
       if (inferredMonthType !== 'historical') {
         previousCarryOutStSeconds = carryOutStSeconds;
       }
@@ -826,10 +922,29 @@ export const buildLineMonthCapacityBoardRows = ({
         forecastAvailableCapacitySeconds,
         forecastWorkingDayCount,
         forecastLoadStSeconds,
+        // plannedLoadPercent is "how much of this month's capacity is filled",
+        // capped at 100 - it is never allowed to read like 196%, unlike
+        // actualOutputPercent above (which is intentionally uncapped: overproduction
+        // is a real, useful signal). For a historical month this mirrors
+        // actualOutputPercent (see the comment above resolvedActualOutputPercent) but
+        // still clamps to 100, since "filled the month's capacity" tops out at 100%
+        // even when actual output overshot it. For anchor/forecast months this
+        // prefers the backend's own forecastLoadPercent (bounded by construction:
+        // forecastLoadStSeconds = min(entering, available)) over a local recompute.
         plannedLoadPercent:
           inferredMonthType === 'historical'
-            ? resolvedActualOutputPercent
-            : roundPercent(forecastLoadStSeconds, forecastAvailableCapacitySeconds),
+            ? resolvedActualOutputPercent == null
+              ? null
+              : Math.min(100, resolvedActualOutputPercent)
+            : backendRow?.forecastLoadPercent != null
+              ? Math.min(100, Math.max(0, Number(backendRow.forecastLoadPercent) || 0))
+              : (() => {
+                  const localPercent = roundPercent(
+                    forecastLoadStSeconds,
+                    forecastAvailableCapacitySeconds
+                  );
+                  return localPercent == null ? null : Math.min(100, localPercent);
+                })(),
         carryInStSeconds,
         carryOutStSeconds,
         carryOutDateKey,
@@ -894,7 +1009,9 @@ export const buildLineMonthCapacityBoardRows = ({
         forecastAvailableCapacitySeconds: 0,
         forecastWorkingDayCount: 0,
         forecastLoadStSeconds: 0,
-        plannedLoadPercent: resolvedActualOutputPercent,
+        // Capped at 100 - see the comment above plannedLoadPercent in the main branch.
+        plannedLoadPercent:
+          resolvedActualOutputPercent == null ? null : Math.min(100, resolvedActualOutputPercent),
         carryInStSeconds: 0,
         carryOutStSeconds: 0,
         carryOutDateKey: '',
@@ -916,6 +1033,7 @@ export const buildLineMonthCapacityBoardRows = ({
       holidaySet,
       todayDateKey,
       anchorDateKey: lineMeta?.forecastAnchorDateKey || null,
+      remainingBacklogStSecondsOverride: currentBoardRemainingBacklogStSeconds,
     });
 
     return {
@@ -926,6 +1044,7 @@ export const buildLineMonthCapacityBoardRows = ({
       forecastAnchorDateKey: forecastAnchorDateKey,
       lineRemainingBacklogStSeconds: queueForecast.totalRemainingStTotalSeconds,
       stUnknownAssignmentCount: currentBoardStUnknownAssignmentCount,
+      progressUnknownAssignmentCount: currentBoardProgressUnknownAssignmentCount,
       dailyCapacitySeconds: queueForecast.dailyCapacitySeconds,
       totalRemainingStTotalSeconds: queueForecast.totalRemainingStTotalSeconds,
       queueBacklogDays: queueForecast.queueBacklogDays,

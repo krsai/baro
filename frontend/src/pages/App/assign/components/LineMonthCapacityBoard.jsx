@@ -243,6 +243,22 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
           color: 'warning',
         }
       : null,
+    // Orthogonal to the queueStatus chip above - a queued/review/ready card can also
+    // have actual recorded work whose progress ratio the backend could not compute
+    // (see isProgressUnknown, AGENTS.md). Its remaining ST is excluded from the line's
+    // forecast rather than guessed at, so this needs to stay visible to the operator
+    // instead of just quietly under-counting the backlog.
+    !isCompleted && !isZeroQuantityOverflow && Boolean(assignment?.isProgressUnknown)
+      ? {
+          label: getUiMessage(
+            'assign.progressUnknownStatusCompact',
+            'Progress unknown',
+            languageCode
+          ),
+          variant: 'outlined',
+          color: 'warning',
+        }
+      : null,
   ];
   const footer = isCompleted
     ? assignment.completedAt
@@ -425,6 +441,16 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
                   '{count} ST-missing excluded',
                   languageCode,
                   { count: row.stUnknownAssignmentCount }
+                )}
+              </Typography>
+            ) : null}
+            {Number(row.progressUnknownAssignmentCount) > 0 ? (
+              <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
+                {getUiMessage(
+                  'assign.progressUnknownExcludedCompact',
+                  '{count} progress unknown - excluded',
+                  languageCode,
+                  { count: row.progressUnknownAssignmentCount }
                 )}
               </Typography>
             ) : null}
