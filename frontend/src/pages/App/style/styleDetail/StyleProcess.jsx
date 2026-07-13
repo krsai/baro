@@ -162,12 +162,16 @@ const STYLE_PROCESS_MESSAGES = {
     atTooltip: 'AT({quantity}): {quantity}장 주문 기준의 개당 실측 시간(초)입니다.',
     stTooltip: 'ST({quantity}): {quantity}장 주문은 해당 구간 기준의 개당 표준 시간(초)입니다.',
     ptChangeDialogTitle: 'PT 변경 확인',
+    ptChangeMessage:
+      'PT가 변경되었습니다. 기존 ST(q)는 자동으로 변경되지 않습니다. 새 PT 값으로 전체 ST(q)를 일괄 업데이트하시겠습니까?',
     ptChangeNoRecordsMessage:
-      'PT만 변경됩니다. 기존 ST(q) 기준값은 변경되지 않습니다. ST 수정은 매입 단가 탭에서 별도로 진행해주세요.',
+      'ST 유지를 선택하면 PT만 변경됩니다.',
     ptChangeHasRecordsMessage:
-      'PT만 변경됩니다. 기존 ST(q) 기준값은 변경되지 않습니다. 공정 구조가 바뀌는 경우 기존 공정을 덮어쓰기보다 새 공정을 추가해주세요.',
+      '이미 작업기록이 연결된 공정입니다. ST 전체 업데이트는 기존/현재 계획 및 생산 지표에 영향을 줄 수 있습니다.',
     ptChangeSummary: '{processName}: {previousPt} -> {nextPt}',
-    confirmPtChange: '확인 후 저장',
+    keepStOnPtChange: 'ST 유지',
+    updateAllStOnPtChange: 'ST 전체 업데이트',
+    updateAllStDisabled: '새 PT 값이 비어 있거나 0이면 ST(q)를 일괄 업데이트할 수 없습니다.',
     validatePart: '대상을 선택해주세요.',
     validateTarget: '대상을 선택해주세요.',
     validateAction: '동작을 선택해주세요.',
@@ -245,12 +249,16 @@ const STYLE_PROCESS_MESSAGES = {
     atTooltip: 'AT({quantity}): per-piece actual seconds at order qty {quantity}.',
     stTooltip: 'ST({quantity}): per-piece standard seconds for the matched quantity bucket.',
     ptChangeDialogTitle: 'Confirm PT Change',
+    ptChangeMessage:
+      'PT has changed. Existing ST(q) standards are not changed automatically. Update every ST(q) bucket to the new PT value?',
     ptChangeNoRecordsMessage:
-      'Only PT will change. Existing ST(q) standards will stay unchanged. Edit ST from the purchase price tab when needed.',
+      'Choose Keep ST to update PT only.',
     ptChangeHasRecordsMessage:
-      'Only PT will change. Existing ST(q) standards will stay unchanged. Add a new process instead of overwriting this one when the process structure changes.',
+      'This process is already linked to work records. Updating every ST bucket can affect existing/current planning and production metrics.',
     ptChangeSummary: '{processName}: {previousPt} -> {nextPt}',
-    confirmPtChange: 'Confirm and Save',
+    keepStOnPtChange: 'Keep ST',
+    updateAllStOnPtChange: 'Update All ST',
+    updateAllStDisabled: 'ST(q) cannot be updated in bulk when the new PT value is empty or 0.',
     validatePart: 'Select a target.',
     validateTarget: 'Select a target.',
     validateAction: 'Select an action.',
@@ -328,12 +336,16 @@ const STYLE_PROCESS_MESSAGES = {
     atTooltip: 'AT({quantity}): giay thuc te moi san pham tai don hang {quantity}.',
     stTooltip: 'ST({quantity}): giay chuan moi san pham theo nhom so luong phu hop.',
     ptChangeDialogTitle: 'Xac nhan doi PT',
+    ptChangeMessage:
+      'PT da thay doi. ST(q) hien co khong tu dong thay doi. Ban co muon cap nhat tat ca ST(q) theo PT moi khong?',
     ptChangeNoRecordsMessage:
-      'Chi PT thay doi. ST(q) hien co se giu nguyen. Neu can sua ST, hay sua o tab don gia mua.',
+      'Chon Giu ST de chi thay doi PT.',
     ptChangeHasRecordsMessage:
-      'Chi PT thay doi. ST(q) hien co se giu nguyen. Neu cau truc cong doan thay doi, hay them cong doan moi thay vi ghi de cong doan nay.',
+      'Cong doan nay da co ban ghi lam viec. Cap nhat tat ca ST co the anh huong den chi so ke hoach va san xuat hien co.',
     ptChangeSummary: '{processName}: {previousPt} -> {nextPt}',
-    confirmPtChange: 'Xac nhan va luu',
+    keepStOnPtChange: 'Giu ST',
+    updateAllStOnPtChange: 'Cap nhat tat ca ST',
+    updateAllStDisabled: 'Khong the cap nhat hang loat ST(q) khi PT moi bi trong hoac bang 0.',
     validatePart: 'Hay chon doi tuong.',
     validateTarget: 'Hay chon doi tuong.',
     validateAction: 'Hay chon thao tac.',
@@ -471,6 +483,20 @@ const buildPtDerivedStBuckets = (ptSeconds) => {
     setAt: null,
     updatedAt: null,
   }));
+};
+
+const buildProcessWithPtDerivedStUpdate = (process) => {
+  const normalized = normalizeProcess(process);
+  const nextStBuckets = buildPtDerivedStBuckets(normalized?.pt);
+  if (nextStBuckets.length === 0) return normalized;
+  return normalizeProcess({
+    ...normalized,
+    stBuckets: nextStBuckets,
+    stBucketWriteMode: 'MANUAL_EDIT',
+    stBucketUpdateQuantities: ST_STANDARD_BUCKETS,
+    ct: null,
+    stManual: false,
+  });
 };
 
 const formatSecondsOrDash = (value) => {
@@ -2547,15 +2573,31 @@ const StyleProcess = ({
     }
   };
 
-  const handleConfirmPendingPtChange = () => {
+  const handleKeepPendingPtChange = () => {
     if (!pendingPtChange) return;
     applyEditedProcess(pendingPtChange.instanceId, pendingPtChange.nextProcess);
+    setPendingPtChange(null);
+  };
+
+  const handleUpdatePendingPtChangeSt = () => {
+    if (!pendingPtChange) return;
+    const nextProcess = buildProcessWithPtDerivedStUpdate(pendingPtChange.nextProcess);
+    applyEditedProcess(pendingPtChange.instanceId, nextProcess);
     setPendingPtChange(null);
   };
 
   const handleCancelPendingPtChange = () => {
     setPendingPtChange(null);
   };
+
+  const pendingPtDerivedStBuckets = useMemo(
+    () =>
+      pendingPtChange
+        ? buildPtDerivedStBuckets(pendingPtChange.nextProcess?.pt)
+        : [],
+    [pendingPtChange]
+  );
+  const canUpdatePendingPtChangeSt = pendingPtDerivedStBuckets.length > 0;
 
   const handleRemoveProcess = useCallback((instanceId) => {
     onProcessesChange(safeProcesses.filter((process) => process.instanceId !== instanceId));
@@ -3570,6 +3612,9 @@ const StyleProcess = ({
         </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 1.5 }}>
+            {getStyleProcessMessage(languageCode, 'ptChangeMessage')}
+          </DialogContentText>
+          <DialogContentText sx={{ mb: 1.5 }}>
             {pendingPtChange?.hasWorkRecords
               ? getStyleProcessMessage(languageCode, 'ptChangeHasRecordsMessage')
               : getStyleProcessMessage(languageCode, 'ptChangeNoRecordsMessage')}
@@ -3585,11 +3630,26 @@ const StyleProcess = ({
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCancelPendingPtChange}>
-            {getStyleProcessMessage(languageCode, 'cancel')}
-          </Button>
-          <Button variant="contained" onClick={handleConfirmPendingPtChange}>
-            {getStyleProcessMessage(languageCode, 'confirmPtChange')}
+          <Tooltip
+            title={
+              pendingPtChange && !canUpdatePendingPtChangeSt
+                ? getStyleProcessMessage(languageCode, 'updateAllStDisabled')
+                : ''
+            }
+          >
+            <span>
+              <Button
+                color="warning"
+                variant="outlined"
+                disabled={!pendingPtChange || !canUpdatePendingPtChangeSt}
+                onClick={handleUpdatePendingPtChangeSt}
+              >
+                {getStyleProcessMessage(languageCode, 'updateAllStOnPtChange')}
+              </Button>
+            </span>
+          </Tooltip>
+          <Button variant="contained" onClick={handleKeepPendingPtChange}>
+            {getStyleProcessMessage(languageCode, 'keepStOnPtChange')}
           </Button>
         </DialogActions>
       </Dialog>

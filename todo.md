@@ -14,12 +14,14 @@
 ## 2026-07-13 style process PT/ST/AT input semantics
 
 - Done: Changed the style process info tab so ST and AT are display-only there. ST remains editable through the purchase price/time matrix tab, and AT remains an output of the training pipeline rather than a manual input.
-- Done: PT edits no longer reset ST buckets for existing processes. PT changes only update PT; existing ST(q) remains unchanged and must be edited explicitly from the purchase price/time matrix tab.
+- Done: PT edits no longer reset ST buckets automatically for existing processes. The PT-change dialog defaults to keeping ST(q), and only the explicit "Update All ST" action writes every ST bucket from the new PT value.
 - Done: Added per-process `workRecordCount`/`hasWorkRecords` to style process responses so the frontend can make that decision from the relational `StyleProcess -> WorkRecord` link instead of guessing.
 - Done: Added explicit ST write intent for the time matrix path (`stBucketWriteMode: "MANUAL_EDIT"` + `stBucketUpdateQuantities`) so backend style saves only patch the changed bucket(s), not the whole `StyleProcessStandard` set carried in a stale full-process payload.
+- Done: Reused the same explicit ST write intent for the PT-change "Update All ST" action, so bulk ST updates are still intentional and auditable instead of being inferred from a PT edit.
 - Done: Changed backend style process sync to match existing processes by `StyleProcess.id` before `processCode`, preserve existing ST by default, and block deletion of any process that already has linked `WorkRecord` rows.
 - Done: Removed ST bucket comparison from the legacy `Style.processes` self-heal drift check because `StyleProcessStandard` is now the relational source of truth for ST.
 - Validation: `npm --prefix frontend run build` and `npm --prefix backend run build` passed after the policy correction.
+- Validation: `npm --prefix frontend run build` passed after adding the PT-change "Keep ST / Update All ST" modal flow.
 
 ## 2026-07-13 assignment board layout polish
 

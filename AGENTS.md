@@ -1667,3 +1667,11 @@ runtime 조회값:
 - 기존 공정의 ST는 명시된 bucket만 부분 upsert/delete한다. 스타일 저장 과정에서 기존 `StyleProcessStandard` 전체를 delete/recreate하지 않는다.
 - 공정 구조가 바뀌는 경우(AB를 합치거나 A를 나누는 등)는 기존 공정을 덮어쓰거나 삭제하는 것이 아니라 새 공정 row를 추가하는 방향을 우선한다. 작업기록이 연결된 `StyleProcess`를 삭제해 `WorkRecord.styleProcessId`를 orphan으로 만들면 안 된다.
 - `Style.processes` JSON은 ST의 소스오브트루스가 아니다. 관계형 `StyleProcessStandard`와 차이가 난다는 이유만으로 JSON 값을 이용해 ST를 자가치유하거나 덮어쓰지 않는다.
+
+### 50. 2026-07-13 PT 변경 시 ST(q) 일괄 업데이트 선택 정책 (Codex 구현)
+
+- 기존 공정의 PT 변경은 기본적으로 PT만 반영하고 ST(q)는 유지한다. PT 변경 모달의 기본/권장 액션은 `ST 유지`다.
+- 사용자가 `ST 전체 업데이트`를 명시적으로 선택한 경우에만 새 PT 값으로 전체 표준 ST bucket을 업데이트한다.
+- 이 bulk update도 일반 ST 수정과 동일하게 `stBucketWriteMode: "MANUAL_EDIT"`와 `stBucketUpdateQuantities` 전체 bucket 목록을 실어 보낸다. 백엔드는 PT 변경 자체가 아니라 이 명시적 write intent만 보고 ST를 쓴다.
+- 새 PT 값이 비어 있거나 0이면 `ST 전체 업데이트`를 허용하지 않는다. ST 전체 삭제를 PT 입력 실수로 유발하면 안 된다.
+- 작업기록이 연결된 공정에서도 `ST 전체 업데이트`는 가능하지만, 기존/현재 계획 및 생산 지표에 영향을 줄 수 있음을 모달에서 경고한다.
