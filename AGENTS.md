@@ -1721,3 +1721,11 @@ runtime 조회값:
 - **정책 정리**: `producedQuantity`/exact process completion은 "옷 몇 벌이 완성됐는가"와 `READY_TO_COMPLETE`/`REVIEW_REQUIRED` 판정에 필요하다. 하지만 forecast의 남은 계획 부하는 완성 벌수가 아니라 **각 공정별 남은 수량 × 해당 공정 ST(q)**의 합이어야 한다. 예: 39개 공정 중 33개가 끝나고 6개만 남았으면 전체 39개 공정의 ST를 다시 넣으면 안 된다.
 - **수정**: `buildLineMonthCapacityRows`와 `buildAssignmentPlanProgressRows`가 같은 helper(`calculateRemainingStTotalSecondsFromProcessProgress`)를 사용해 CT 스냅샷의 `styleProcessId`별 WorkRecord 수량을 보고 공정별 잔량 ST를 먼저 계산한다. 이 exact remaining ST를 만들 수 있을 때는 기존 ratio fallback보다 우선한다. ST row가 없어 exact 계산이 불가능한 경우에만 기존 ratio 기반 계산으로 내려간다.
 - **운영 DB 재현 결과**: LINE #1 43개 not-completed assignment의 전체 계획 ST는 5,906.5h였고, 예전 min-ratio 방식 남은 ST는 3,549.6h까지 부풀었다. 공정별 ST 잔량 방식으로는 442.2h(8명 × 8h 기준 약 6.9 작업일)이며, 남은 공정의 ST bucket 누락은 0건이었다.
+
+### 54. 2026-07-13 persisted CT snapshot processKey legacy cleanup (Codex 구현)
+
+- **현재 정책**: persisted `AssignmentPlan.assignmentCtSnapshot.processes[]`의 공정 FK identity는 `styleProcessId`뿐이다. `processKey`에서 styleProcessId를 파싱하거나, existing/incoming CT row를 `processKey` 일치만으로 재사용하지 않는다.
+- **남겨도 되는 processKey**: 프론트 UI draft map key, 테이블 row key, 백엔드 진행률 내부 map key(`style-process:{id}`)처럼 메모리 안에서만 쓰는 로컬 키는 허용한다. 이 값은 DB FK 복구/운영 계산/저장 검증의 근거가 아니다.
+- **코드 정리**: `normalizeAssignmentCtSnapshotProcess`의 legacy `processKey` parser를 제거했고, assignment 저장 경로의 CT snapshot lookup도 `styleProcessId` 매칭만 허용한다. 백엔드 canonical snapshot rebuild는 새 persisted process row에 `processKey`를 쓰지 않는다. 프론트 assignment/production CT 조회도 saved snapshot row를 `styleProcessId`로 찾는다.
+- **DB 정리**: `migration_fix.sql` 6-4f는 `styleProcessId`가 이미 있는 CT snapshot process row에서만 `processKey`를 제거한다. 아직 `styleProcessId`가 없는 손상 row는 수리 단서를 보존하기 위해 `processKey`를 남긴다.
+- **운영 확인 메모**: 이 세션에서 제공된 Railway public URL은 `AssignmentPlan` 0건/구스키마(`ctSnapshot` only) DB로 연결되어 populated 운영 데이터 정리 SQL은 실행하지 않았다. 이전 41-row backfill을 적용했던 동일 populated DB에서 6-4f 적용 후 missing `styleProcessId = 0`, persisted `processKey = 0`을 확인해야 한다.

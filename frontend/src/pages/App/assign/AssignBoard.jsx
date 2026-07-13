@@ -1335,11 +1335,9 @@ const resolveStyleProcessSnapshotKey = (process, index) =>
 
 const buildAssignmentCtSnapshotProcessLookup = (snapshot) => {
   const byStyleProcessId = new Map();
-  const byProcessKey = new Map();
   const processes = Array.isArray(snapshot?.processes) ? snapshot.processes : [];
 
   processes.forEach((process, index) => {
-    const processKey = String(process?.processKey || `PROCESS-${index + 1}`).trim();
     const styleProcessId = toOptionalPositiveInt(
       process?.styleProcessId ?? process?.processId,
       null
@@ -1347,30 +1345,21 @@ const buildAssignmentCtSnapshotProcessLookup = (snapshot) => {
     if (styleProcessId != null && !byStyleProcessId.has(styleProcessId)) {
       byStyleProcessId.set(styleProcessId, process);
     }
-    if (processKey && !byProcessKey.has(processKey)) {
-      byProcessKey.set(processKey, process);
-    }
   });
 
   return {
     byStyleProcessId,
-    byProcessKey,
   };
 };
 
 const resolveAssignmentCtSnapshotProcessForSeed = ({
   seed,
-  processKey,
   lookup,
 }) => {
   const styleProcessId = toOptionalPositiveInt(seed?.styleProcessId, null);
   if (styleProcessId != null) {
     const matchedById = lookup.byStyleProcessId.get(styleProcessId) ?? null;
     if (matchedById) return matchedById;
-  }
-  if (processKey) {
-    const matchedByProcessKey = lookup.byProcessKey.get(processKey) ?? null;
-    if (matchedByProcessKey) return matchedByProcessKey;
   }
   return null;
 };
@@ -1467,7 +1456,6 @@ const buildAssignmentCtSnapshotForSave = ({
 
       const snapshotProcess = resolveAssignmentCtSnapshotProcessForSeed({
         seed,
-        processKey,
         lookup: existingProcessLookup,
       });
       const ctDraftSeconds = toOptionalPositiveNumber(draftByProcess?.[processKey]);
@@ -1521,7 +1509,6 @@ const buildAssignmentCtSnapshotForSave = ({
 
       return {
         styleProcessId,
-        processKey,
         processCode,
         name: seed.processName || `공정 ${index + 1}`,
         nameKo:
@@ -5376,9 +5363,9 @@ const AssignBoard = () => {
         ? ctSnapshot.processes
         : []
     ).reduce((map, item) => {
-      const processKey = String(item?.processKey || '').trim();
-      if (!processKey) return map;
-      map.set(processKey, {
+      const styleProcessId = toOptionalPositiveInt(item?.styleProcessId ?? item?.processId, null);
+      if (styleProcessId == null) return map;
+      map.set(styleProcessId, {
         snapshotCtSeconds: toOptionalPositiveNumber(
           item?.pieceCtSeconds ??
             item?.snapshotCtSeconds ??
@@ -5389,6 +5376,10 @@ const AssignBoard = () => {
       return map;
     }, new Map());
     return processes.map((process, index) => {
+      const styleProcessId = toOptionalPositiveInt(
+        process?.styleProcessId ?? process?.id,
+        null
+      );
       const processKey = String(
         process?.instanceId || process?.id || process?.code || `PROCESS-${index + 1}`
       );
@@ -5406,7 +5397,10 @@ const AssignBoard = () => {
         process,
         orderQuantity,
       });
-      const savedSnapshotEntry = savedSnapshotByProcess.get(processKey) ?? null;
+      const savedSnapshotEntry =
+        styleProcessId == null
+          ? null
+          : savedSnapshotByProcess.get(styleProcessId) ?? null;
       const savedSnapshotCtSeconds = savedSnapshotEntry?.snapshotCtSeconds ?? null;
       const stDraftSeconds = toOptionalPositiveNumber(detailStDraftByProcess[processKey]);
       const ctDraftSeconds = toOptionalPositiveNumber(detailDraftByProcess[processKey]);

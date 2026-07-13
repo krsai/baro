@@ -1243,8 +1243,8 @@ const ProductionPlanBoard = () => {
           ? savedSnapshot.processes
           : []
       ).reduce((map, item) => {
-        const processKey = String(item?.processKey || '').trim();
-        if (!processKey) return map;
+        const styleProcessId = toOptionalPositiveInt(item?.styleProcessId ?? item?.processId, null);
+        if (styleProcessId == null) return map;
         const snapshotCtSeconds = toOptionalPositiveNumber(
           item?.pieceCtSeconds ??
             item?.snapshotCtSeconds ??
@@ -1253,7 +1253,7 @@ const ProductionPlanBoard = () => {
         );
         const assignedSeconds = snapshotCtSeconds;
         const savedSeconds = snapshotCtSeconds;
-        map.set(processKey, {
+        map.set(styleProcessId, {
           assignedSeconds,
           savedSeconds,
         });
@@ -1261,6 +1261,10 @@ const ProductionPlanBoard = () => {
       }, new Map());
 
       const baseRows = processes.map((process, index) => {
+        const styleProcessId = toOptionalPositiveInt(
+          process?.styleProcessId ?? process?.id,
+          null
+        );
         const processKey = String(
           process?.instanceId || process?.id || process?.code || `PROCESS-${index + 1}`
         );
@@ -1288,6 +1292,7 @@ const ProductionPlanBoard = () => {
         const totalAtSeconds = atPerPieceSeconds == null ? null : atPerPieceSeconds * orderQuantity;
 
         return {
+          styleProcessId,
           processKey,
           processName,
           timesPerPiece,
@@ -1317,7 +1322,10 @@ const ProductionPlanBoard = () => {
         : null;
 
       return baseRows.map((row) => {
-        const snapshotEntry = savedSnapshotByProcess.get(row.processKey) ?? null;
+        const snapshotEntry =
+          row.styleProcessId == null
+            ? null
+            : savedSnapshotByProcess.get(row.styleProcessId) ?? null;
         const assignedSeconds =
           toOptionalPositiveNumber(snapshotEntry?.assignedSeconds) ??
           resolveDistributedSeconds({
@@ -1641,6 +1649,10 @@ const ProductionPlanBoard = () => {
         const existingSnapshot = resolveAssignmentCtSnapshot(syncedAssignment);
         const processes = normalizeProcesses(style?.processes);
         const baseRows = processes.map((process) => {
+          const styleProcessId = toOptionalPositiveInt(
+            process?.styleProcessId ?? process?.id,
+            null
+          );
           const timesPerPiece = Math.max(
             1,
             toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1)
@@ -1649,6 +1661,7 @@ const ProductionPlanBoard = () => {
           const baseSeconds = stSeedInfo.seconds;
           const basePerPieceSeconds = baseSeconds;
           return {
+            styleProcessId,
             processKey: String(process?.instanceId || process?.id || process?.code || '').trim(),
             name: process?.name || process?.processName || process?.code || '공정',
             timesPerPiece,
@@ -1663,10 +1676,10 @@ const ProductionPlanBoard = () => {
         );
         const snapshotProcesses = baseRows
           .map((row) => {
-            if (!row.processKey) return null;
+            if (row.styleProcessId == null) return null;
             const ctSeconds = row.baseSeconds;
             return {
-              processKey: row.processKey,
+              styleProcessId: row.styleProcessId,
               name: row.name,
               timesPerPiece: row.timesPerPiece,
               basis: row.basis,

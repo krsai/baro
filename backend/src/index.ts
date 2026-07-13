@@ -10510,25 +10510,15 @@ const normalizeAssignmentCtSnapshotSchedule = (value: any) => {
   };
 };
 
-const resolveLegacyStyleProcessIdFromSnapshotProcessKey = (value: any): number | null => {
-  const processKey = resolveOptionalString(value, null);
-  if (!processKey) return null;
-  const directStyleProcessId = toPositiveIntOrNull(processKey);
-  if (directStyleProcessId !== null) return directStyleProcessId;
-  const legacyMatch = processKey.match(/-([0-9]+)-[0-9]+$/);
-  return legacyMatch ? toPositiveIntOrNull(legacyMatch[1]) : null;
-};
-
 const normalizeAssignmentCtSnapshotProcess = (value: any, index = 0) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const processKey =
     resolveOptionalString(
       value?.processKey ?? value?.code ?? value?.id,
       null
-    ) ?? `PROCESS-${index + 1}`;
+    );
   const styleProcessId =
-    toPositiveIntOrNull(value?.styleProcessId ?? value?.processId) ??
-    resolveLegacyStyleProcessIdFromSnapshotProcessKey(processKey);
+    toPositiveIntOrNull(value?.styleProcessId ?? value?.processId);
   const timesPerPiece = Math.max(
     1,
     toOptionalNonNegativeInt(value?.timesPerPiece ?? value?.quantity, 1) ?? 1
@@ -10545,7 +10535,7 @@ const normalizeAssignmentCtSnapshotProcess = (value: any, index = 0) => {
   );
   return {
     styleProcessId,
-    processKey,
+    ...(processKey ? { processKey } : {}),
     processCode,
     name:
       resolveOptionalString(
@@ -11788,7 +11778,6 @@ const resolveStyleProcessSnapshotKeyForAssignment = (process: any, index: number
 
 const buildAssignmentCtSnapshotProcessLookup = (snapshot: any) => {
   const byStyleProcessId = new Map<number, any>();
-  const byProcessKey = new Map<string, any>();
   const processes = ensureArray(snapshot?.processes)
     .map((process, index) => normalizeAssignmentCtSnapshotProcess(process, index))
     .filter((process): process is any => Boolean(process));
@@ -11800,26 +11789,19 @@ const buildAssignmentCtSnapshotProcessLookup = (snapshot: any) => {
     if (styleProcessId !== null && !byStyleProcessId.has(styleProcessId)) {
       byStyleProcessId.set(styleProcessId, process);
     }
-    const processKey = resolveOptionalString(process?.processKey, null);
-    if (processKey && !byProcessKey.has(processKey)) {
-      byProcessKey.set(processKey, process);
-    }
   });
 
   return {
     processes,
     byStyleProcessId,
-    byProcessKey,
   };
 };
 
 const resolveSnapshotProcessForLiveStyleProcess = ({
   styleProcess,
-  processKey,
   lookup,
 }: {
   styleProcess: any;
-  processKey: string;
   lookup: ReturnType<typeof buildAssignmentCtSnapshotProcessLookup>;
 }) => {
   const styleProcessId = toPositiveIntOrNull(
@@ -11828,10 +11810,6 @@ const resolveSnapshotProcessForLiveStyleProcess = ({
   if (styleProcessId !== null) {
     const matchedById = lookup.byStyleProcessId.get(styleProcessId) ?? null;
     if (matchedById) return matchedById;
-  }
-  if (processKey) {
-    const matchedByProcessKey = lookup.byProcessKey.get(processKey) ?? null;
-    if (matchedByProcessKey) return matchedByProcessKey;
   }
   return null;
 };
@@ -11903,12 +11881,10 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
       const processKey = resolveStyleProcessSnapshotKeyForAssignment(process, index);
       const incomingProcess = resolveSnapshotProcessForLiveStyleProcess({
         styleProcess: process,
-        processKey,
         lookup: incomingLookup,
       });
       const existingProcess = resolveSnapshotProcessForLiveStyleProcess({
         styleProcess: process,
-        processKey,
         lookup: existingLookup,
       });
       const manualCtSeconds =
@@ -11929,7 +11905,6 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
       );
       return {
         styleProcessId,
-        processKey,
         processCode:
           resolveOptionalString(
             process?.code ??
@@ -14243,6 +14218,15 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     const ctSnapshot = resolveNormalizedAssignmentCtSnapshot(target.assignment);
     const snapshotProcessByKey = ensureArray(ctSnapshot?.processes).reduce(
       (map, process) => {
+        const styleProcessId = toPositiveIntOrNull(
+          process?.styleProcessId ?? process?.processId
+        );
+        if (styleProcessId !== null) {
+          const numericKey = String(styleProcessId);
+          if (!map.has(numericKey)) map.set(numericKey, process);
+          const canonicalKey = `style-process:${styleProcessId}`;
+          if (!map.has(canonicalKey)) map.set(canonicalKey, process);
+        }
         const processKey = resolveOptionalString(process?.processKey, null);
         if (!processKey || map.has(processKey)) return map;
         map.set(processKey, process);

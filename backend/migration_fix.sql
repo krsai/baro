@@ -2865,6 +2865,108 @@ FROM rebuilt_assignment_ct_snapshots rebuilt
 WHERE plan.id = rebuilt.id
   AND plan."assignmentCtSnapshot"::jsonb IS DISTINCT FROM rebuilt.next_snapshot;
 
+-- 6-4f. Remove legacy processKey from CT snapshots once styleProcessId exists.
+--      processKey used to carry legacy identity such as TA01-1216-0. New runtime
+--      matching must use processes[].styleProcessId only. Keep processKey only on
+--      still-unrepaired rows so the repair evidence is not destroyed.
+WITH rebuilt_assignment_ct_snapshots AS (
+  SELECT
+    plan.id,
+    (
+      plan."assignmentCtSnapshot"::jsonb
+      || jsonb_build_object(
+        'processes',
+        COALESCE(
+          jsonb_agg(
+            CASE
+              WHEN NULLIF(proc.value ->> 'styleProcessId', '') IS NOT NULL
+                THEN proc.value - 'processKey'
+              ELSE proc.value
+            END
+            ORDER BY proc.ordinality
+          ),
+          '[]'::jsonb
+        )
+      )
+    ) AS next_snapshot
+  FROM "AssignmentPlan" plan
+  CROSS JOIN LATERAL jsonb_array_elements(plan."assignmentCtSnapshot"::jsonb -> 'processes')
+    WITH ORDINALITY AS proc(value, ordinality)
+  WHERE plan."assignmentCtSnapshot" IS NOT NULL
+    AND jsonb_typeof(plan."assignmentCtSnapshot"::jsonb) = 'object'
+    AND jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
+    AND EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(plan."assignmentCtSnapshot"::jsonb -> 'processes') existing_proc(value)
+      WHERE existing_proc.value ? 'processKey'
+        AND NULLIF(existing_proc.value ->> 'styleProcessId', '') IS NOT NULL
+    )
+  GROUP BY plan.id, plan."assignmentCtSnapshot"
+)
+UPDATE "AssignmentPlan" plan
+SET "assignmentCtSnapshot" = rebuilt.next_snapshot
+FROM rebuilt_assignment_ct_snapshots rebuilt
+WHERE plan.id = rebuilt.id
+  AND plan."assignmentCtSnapshot"::jsonb IS DISTINCT FROM rebuilt.next_snapshot;
+
+WITH rebuilt_assignment_board_states AS (
+  SELECT
+    state.id,
+    jsonb_agg(
+      CASE
+        WHEN elem.value ? 'assignmentCtSnapshot'
+          AND jsonb_typeof(elem.value -> 'assignmentCtSnapshot') = 'object'
+          AND jsonb_typeof((elem.value -> 'assignmentCtSnapshot') -> 'processes') = 'array'
+          THEN jsonb_set(
+            elem.value,
+            '{assignmentCtSnapshot,processes}',
+            (
+              SELECT COALESCE(
+                jsonb_agg(
+                  CASE
+                    WHEN NULLIF(proc.value ->> 'styleProcessId', '') IS NOT NULL
+                      THEN proc.value - 'processKey'
+                    ELSE proc.value
+                  END
+                  ORDER BY proc.ordinality
+                ),
+                '[]'::jsonb
+              )
+              FROM jsonb_array_elements((elem.value -> 'assignmentCtSnapshot') -> 'processes')
+                WITH ORDINALITY AS proc(value, ordinality)
+            )
+          )
+        ELSE elem.value
+      END
+      ORDER BY elem.ordinality
+    ) AS next_assignments
+  FROM "AssignmentBoardState" state
+  CROSS JOIN LATERAL jsonb_array_elements(state."assignments"::jsonb)
+    WITH ORDINALITY AS elem(value, ordinality)
+  WHERE state."assignments" IS NOT NULL
+    AND jsonb_typeof(state."assignments"::jsonb) = 'array'
+    AND EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(state."assignments"::jsonb) assignment_elem(value)
+      CROSS JOIN LATERAL jsonb_array_elements(
+        CASE
+          WHEN assignment_elem.value ? 'assignmentCtSnapshot'
+            AND jsonb_typeof((assignment_elem.value -> 'assignmentCtSnapshot') -> 'processes') = 'array'
+            THEN (assignment_elem.value -> 'assignmentCtSnapshot') -> 'processes'
+          ELSE '[]'::jsonb
+        END
+      ) proc(value)
+      WHERE proc.value ? 'processKey'
+        AND NULLIF(proc.value ->> 'styleProcessId', '') IS NOT NULL
+    )
+  GROUP BY state.id
+)
+UPDATE "AssignmentBoardState" state
+SET "assignments" = rebuilt.next_assignments
+FROM rebuilt_assignment_board_states rebuilt
+WHERE state.id = rebuilt.id
+  AND state."assignments"::jsonb IS DISTINCT FROM rebuilt.next_assignments;
+
 -- 6-5. AssignmentCard.payload ctAgreedSnapshot cleanup
 UPDATE "AssignmentCard"
 SET "payload" = "payload"::jsonb - 'ctAgreedSnapshot'

@@ -1,5 +1,15 @@
 # TODO
 
+## 2026-07-13 assignment CT snapshot processKey legacy cleanup
+
+- Done: Removed the runtime bridge that restored `styleProcessId` from legacy snapshot `processKey`. New reads now trust only explicit `processes[].styleProcessId` / `processId` for FK identity.
+- Done: Removed CT snapshot reuse by `processKey` in the assignment save path. Existing/incoming CT rows are reused only when their `styleProcessId` matches the live `StyleProcess.id`.
+- Done: Stopped backend canonical CT snapshot rebuilds from writing `processKey` into persisted process rows. Frontend save payload and production-plan helper snapshots were also adjusted away from persisted `processKey`.
+- Done: Updated assignment/production UI snapshot lookups to match saved CT rows by `styleProcessId` instead of `processKey`, so removing persisted `processKey` does not break displayed CT seconds.
+- Done: Added `migration_fix.sql` step 6-4f to remove `processKey` from `AssignmentPlan.assignmentCtSnapshot` and legacy `AssignmentBoardState.assignments[].assignmentCtSnapshot` process rows only when `styleProcessId` is already present.
+- Note: `processKey` still exists as a local UI/draft row key in several components and as an internal `style-process:{id}` grouping key for progress maps. That is not a relation fallback and is intentionally separate from persisted CT snapshot legacy cleanup.
+- Blocked/Note: The Railway URL available in this session connected to an empty/old-schema database (`AssignmentPlan` count 0, only legacy `ctSnapshot` column), so I did not run data cleanup SQL against it. Apply/verify 6-4f against the same populated DB where the previous 41-row CT snapshot backfill was applied.
+
 ## 2026-07-13 line-month capacity exact process remaining ST
 
 - Done: Replaced the forecast backlog calculation for active AssignmentPlans with exact per-process remaining ST when snapshot process IDs and ST buckets are available: `sum(max(0, plannedQty - completedQtyForProcess) * process ST(q))`.
@@ -10,9 +20,9 @@
 
 ## 2026-07-13 assignment CT snapshot styleProcessId legacy backfill
 
-- Done: `normalizeAssignmentCtSnapshotProcess` now restores `styleProcessId` from legacy `processKey` values like `TA01-1216-0` only when the explicit field is missing. This is a legacy snapshot normalization bridge, not a new operational matching key.
+- Superseded: `normalizeAssignmentCtSnapshotProcess` no longer restores `styleProcessId` from legacy `processKey`; persisted CT snapshot rows must carry explicit `styleProcessId`.
 - Done: Added `migration_fix.sql` step 6-4e to backfill `AssignmentPlan.assignmentCtSnapshot.processes[].styleProcessId` idempotently. The parsed id must exist as `StyleProcess.id` and belong to the same `AssignmentPlan.styleId`; otherwise the snapshot is left untouched.
-- Done: Documented the policy in AGENTS.md §52: exact completion/progress remains FK-based, `processKey` is kept only as a legacy/draft/diagnostic bridge until all reads no longer need it.
+- Superseded: AGENTS.md §54 is now the current policy: persisted CT snapshot `processKey` is removed once `styleProcessId` exists; UI/draft row keys are separate.
 - Done: Ran the production backfill. It updated 41 AssignmentPlan rows; missing `assignmentCtSnapshot.processes[].styleProcessId` dropped from 947/998 process rows to 0/998.
 - Done: Verified L16-4/AJ1972 now has 26 required snapshot processes and all 26 WorkRecord totals equal the plan quantity (170/170 each, total 4,420). The persisted `scheduleStatus` column still contains the old `REVIEW_REQUIRED` value until the normal progress-refresh/snapshot persistence path rewrites it, but the exact-completion inputs are now valid.
 - Remaining: browser-verify `/assignment` after reload with authenticated progress API data. No order unlock/relock or assignment cancel/recreate should be needed.
