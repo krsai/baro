@@ -10510,16 +10510,25 @@ const normalizeAssignmentCtSnapshotSchedule = (value: any) => {
   };
 };
 
+const resolveLegacyStyleProcessIdFromSnapshotProcessKey = (value: any): number | null => {
+  const processKey = resolveOptionalString(value, null);
+  if (!processKey) return null;
+  const directStyleProcessId = toPositiveIntOrNull(processKey);
+  if (directStyleProcessId !== null) return directStyleProcessId;
+  const legacyMatch = processKey.match(/-([0-9]+)-[0-9]+$/);
+  return legacyMatch ? toPositiveIntOrNull(legacyMatch[1]) : null;
+};
+
 const normalizeAssignmentCtSnapshotProcess = (value: any, index = 0) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const styleProcessId = toPositiveIntOrNull(
-    value?.styleProcessId ?? value?.processId
-  );
   const processKey =
     resolveOptionalString(
       value?.processKey ?? value?.code ?? value?.id,
       null
     ) ?? `PROCESS-${index + 1}`;
+  const styleProcessId =
+    toPositiveIntOrNull(value?.styleProcessId ?? value?.processId) ??
+    resolveLegacyStyleProcessIdFromSnapshotProcessKey(processKey);
   const timesPerPiece = Math.max(
     1,
     toOptionalNonNegativeInt(value?.timesPerPiece ?? value?.quantity, 1) ?? 1

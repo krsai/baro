@@ -1704,3 +1704,13 @@ runtime 조회값:
   - 검증 시나리오 2~7(과거 달 196% 캡, 입사/퇴사 mid-month, 일요일/휴일 제외, remaining-only forecast, frontend/backend 불일치 방지)은 코드 경로상 이미 구현돼 있거나(캡·holiday·join/leave는 기존 코드가 이미 정확했음, 이번엔 진짜 필요했던 이슈만 고침) 이번 수정으로 자연히 만족되지만, **실제 브라우저로 눈으로 확인한 것은 아니다.** 다음에 이 화면을 열 때 LINE #1을 10월까지 스크롤해서 실제로 8~9일 근처에서 라인이 빈다고 나오는지, "확인 필요"/"ST 미설정" 배지가 잘못 남발되지 않는지 반드시 재확인할 것.
   - `LineAssignment` 쓰기 경로에 대한 신규 가드는 추가하지 않았다 — `closeActiveLineAssignments`가 이미 모든 알려진 생성 경로에서 겹침을 막고 있는 것을 코드로 확인했기 때문. 지금 운영 DB에 실제로 겹치는 `LineAssignment` 레코드가 있는지는 `capacityOverlapCount`가 실제로 0보다 큰 값을 반환하는지로 다음에 확인해야 한다(이번엔 로직만 추가, 운영 데이터로 값 자체를 조회하지는 않음).
   - `assignmentCtSnapshot.processes[].styleProcessId`가 애초에 왜 `null`로 저장됐는지(§48/§49의 CT 스냅샷 생성 이슈와 같은 계열로 보이지만 완전히 같은 원인인지)는 이번에 추적하지 않았다. 이번 수정은 "styleProcessId가 없어도 진행률 계산이 다른 손상되지 않은 신호(operationalProgressRatio)로 정상 동작하게" 만든 것이지, 스냅샷에 `styleProcessId`가 애초에 채워지도록 저장 경로를 고친 것은 아니다 — 근본적으로는 저장 시점에 `styleProcessId`가 채워지는 게 맞고, 이번 수정은 그게 안 채워진 기존/향후 데이터에 대한 방어책이다.
+
+### 52. 2026-07-13 레거시 CT 스냅샷의 styleProcessId 백필 (Codex 구현, 완료)
+
+- **증상**: L16-4/AJ1972처럼 모든 공정 작업수량이 주문 수량과 정확히 일치해 `100%`가 맞는 배정도 `검토 필요`로 남았다. 운영 DB에서 확인한 해당 plan은 `assignmentQuantity=170`이고 26개 `StyleProcess`별 WorkRecord 합계가 전부 `170`이었지만, `AssignmentPlan.assignmentCtSnapshot.processes[].styleProcessId`가 전부 `null`이었다.
+- **원인**: 정확 완료 판정(`resolveAssignmentPlanRequiredProcessGroups`)은 `WorkRecord.styleProcessId`와 CT 스냅샷의 `processes[].styleProcessId`를 FK 기준으로 비교한다. 레거시 스냅샷은 `processKey` 안에 `TA01-1216-0`처럼 styleProcessId를 포함하고 있었지만 명시 필드가 null이라 required process group을 만들 수 없었다. 그래서 총량 기준 진행률은 `100%`여도 공정별 정확 완료 검증은 실패했다.
+- **수정 원칙**: 운영 계산에서 공정명/코드 문자열로 재탐색하지 않는다. 단, 레거시 CT 스냅샷 JSON을 정규화하는 단계에서는 `processKey`에서 후보 id를 파싱한 뒤 그 id가 실제 `StyleProcess.id`이고 같은 `AssignmentPlan.styleId`에 속할 때만 `processes[].styleProcessId`를 복구한다. 검증되지 않은 값은 쓰지 않는다.
+- **코드 수정**: `normalizeAssignmentCtSnapshotProcess`는 명시 `styleProcessId`/`processId`가 없을 때만 레거시 `processKey`의 마지막 두 숫자 구간 중 앞 숫자를 styleProcessId 후보로 복원한다. 이건 런타임 호환용이며 신규 저장의 소스오브트루스는 여전히 FK다.
+- **DB 수정**: `migration_fix.sql` 6-4e가 기존 `AssignmentPlan.assignmentCtSnapshot` JSON을 idempotent하게 백필한다. `processKey`에서 파싱한 후보가 같은 style의 `StyleProcess`로 검증될 때만 JSON에 `styleProcessId`를 추가하고, 기존 값은 덮어쓰지 않는다.
+- **운영 DB 적용 결과**: 2026-07-13에 Railway 운영 DB에 같은 백필을 직접 적용했다. 41개 `AssignmentPlan`이 업데이트됐고, CT 스냅샷 공정 998개 중 missing `styleProcessId`가 947개에서 0개로 줄었다. L16-4/AJ1972는 26개 required process 모두 WorkRecord 합계가 170/170으로 확인됐다.
+- **processKey 정리 방향**: `processKey`는 아직 즉시 제거하지 않는다. 레거시 스냅샷/프론트 draft/진단 호환에 남아 있을 수 있으므로, 운영 DB 백필 검증과 신규 저장 경로 검증이 끝난 뒤 "읽기 경로가 더 이상 processKey에 의존하지 않음"을 확인하고 단계적으로 제거한다.

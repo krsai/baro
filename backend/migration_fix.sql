@@ -2809,6 +2809,62 @@ WHERE "assignments" IS NOT NULL
       )
   );
 
+-- 6-4e. Backfill legacy assignmentCtSnapshot process references.
+--      Some historical snapshots kept the StyleProcess id only inside legacy
+--      processKey values such as TA01-1216-0. Exact completion/progress checks
+--      use StyleProcess FK identity, so restore processes[].styleProcessId only
+--      when the parsed id points to a real StyleProcess on the same Style.
+WITH rebuilt_assignment_ct_snapshots AS (
+  SELECT
+    plan.id,
+    (
+      plan."assignmentCtSnapshot"::jsonb
+      || jsonb_build_object(
+        'processes',
+        COALESCE(
+          jsonb_agg(
+            CASE
+              WHEN NULLIF(proc.value ->> 'styleProcessId', '') IS NULL
+                AND matched."styleProcessId" IS NOT NULL
+                THEN proc.value || jsonb_build_object('styleProcessId', matched."styleProcessId")
+              ELSE proc.value
+            END
+            ORDER BY proc.ordinality
+          ),
+          '[]'::jsonb
+        )
+      )
+    ) AS next_snapshot
+  FROM "AssignmentPlan" plan
+  CROSS JOIN LATERAL jsonb_array_elements(plan."assignmentCtSnapshot"::jsonb -> 'processes')
+    WITH ORDINALITY AS proc(value, ordinality)
+  LEFT JOIN LATERAL (
+    SELECT sp.id AS "styleProcessId"
+    FROM (
+      SELECT CASE
+        WHEN proc.value ->> 'processKey' ~ '^[0-9]+$'
+          THEN (proc.value ->> 'processKey')::integer
+        WHEN proc.value ->> 'processKey' ~ '-[0-9]+-[0-9]+$'
+          THEN regexp_replace(proc.value ->> 'processKey', '^.*-([0-9]+)-[0-9]+$', '\1')::integer
+        ELSE NULL
+      END AS "styleProcessId"
+    ) candidate
+    JOIN "StyleProcess" sp
+      ON sp.id = candidate."styleProcessId"
+     AND sp."styleId" = plan."styleId"
+    WHERE NULLIF(proc.value ->> 'styleProcessId', '') IS NULL
+  ) matched ON TRUE
+  WHERE plan."assignmentCtSnapshot" IS NOT NULL
+    AND jsonb_typeof(plan."assignmentCtSnapshot"::jsonb) = 'object'
+    AND jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
+  GROUP BY plan.id, plan."assignmentCtSnapshot"
+)
+UPDATE "AssignmentPlan" plan
+SET "assignmentCtSnapshot" = rebuilt.next_snapshot
+FROM rebuilt_assignment_ct_snapshots rebuilt
+WHERE plan.id = rebuilt.id
+  AND plan."assignmentCtSnapshot"::jsonb IS DISTINCT FROM rebuilt.next_snapshot;
+
 -- 6-5. AssignmentCard.payload ctAgreedSnapshot cleanup
 UPDATE "AssignmentCard"
 SET "payload" = "payload"::jsonb - 'ctAgreedSnapshot'

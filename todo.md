@@ -1,5 +1,14 @@
 # TODO
 
+## 2026-07-13 assignment CT snapshot styleProcessId legacy backfill
+
+- Done: `normalizeAssignmentCtSnapshotProcess` now restores `styleProcessId` from legacy `processKey` values like `TA01-1216-0` only when the explicit field is missing. This is a legacy snapshot normalization bridge, not a new operational matching key.
+- Done: Added `migration_fix.sql` step 6-4e to backfill `AssignmentPlan.assignmentCtSnapshot.processes[].styleProcessId` idempotently. The parsed id must exist as `StyleProcess.id` and belong to the same `AssignmentPlan.styleId`; otherwise the snapshot is left untouched.
+- Done: Documented the policy in AGENTS.md §52: exact completion/progress remains FK-based, `processKey` is kept only as a legacy/draft/diagnostic bridge until all reads no longer need it.
+- Done: Ran the production backfill. It updated 41 AssignmentPlan rows; missing `assignmentCtSnapshot.processes[].styleProcessId` dropped from 947/998 process rows to 0/998.
+- Done: Verified L16-4/AJ1972 now has 26 required snapshot processes and all 26 WorkRecord totals equal the plan quantity (170/170 each, total 4,420). The persisted `scheduleStatus` column still contains the old `REVIEW_REQUIRED` value until the normal progress-refresh/snapshot persistence path rewrites it, but the exact-completion inputs are now valid.
+- Remaining: browser-verify `/assignment` after reload with authenticated progress API data. No order unlock/relock or assignment cancel/recreate should be needed.
+
 ## 2026-07-13 line-month capacity forecast ignored actual progress (assignmentCtSnapshot.styleProcessId gap)
 
 - Done: `buildLineMonthCapacityRows`/`buildAssignmentPlanProgressRows` (backend/src/index.ts) no longer let `producedRatio` collapse to 0 when `assignmentCtSnapshot.processes[].styleProcessId` is null (processCode present, id missing) - it now falls through to `operationalProgressRatio` instead of poisoning `Math.min(producedRatio, operationalProgressRatio)` to zero. See AGENTS.md §51.
@@ -11,7 +20,7 @@
 - Verified against production data: Line #1's 43 not-completed AssignmentPlans now total 546.9h remaining ST (68.4 worker-days / 8 workers ≈ 8.5 calendar days), matching the expected magnitude instead of the ~3.5-month (738.3 worker-day) figure the bug produced.
 - Remaining: browser-verify LINE #1 at 2026-10 no longer shows a 10월 backlog, and that the ST-unknown/progress-unknown badges aren't over-firing on other lines.
 - Remaining: query `capacityOverlapCount` against production data directly (this session only added the diagnostic, did not check whether it is currently nonzero).
-- Remaining: root-cause why `assignmentCtSnapshot.processes[].styleProcessId` ended up null for existing snapshots (save-path issue, separate from this fix, not investigated here).
+- Superseded: the existing null `assignmentCtSnapshot.processes[].styleProcessId` data gap is now handled by the legacy snapshot backfill section above. Separate save-path monitoring is still useful if future new snapshots ever save with missing explicit ids again.
 
 ## 2026-07-13 work-log duplicate check false positive (assignmentPlanId scoping)
 
