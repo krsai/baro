@@ -8,6 +8,11 @@ import {
   Checkbox,
   Chip,
   Collapse,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   IconButton,
   Paper,
   Stack,
@@ -35,6 +40,7 @@ import { fetchProcessMasterOptions } from '../../../../utils/attributeApi';
 import {
   AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
+  ST_STANDARD_BUCKETS,
   formatStBucketQuantityLabel,
   formatSeconds,
   hasAnyProcessTime,
@@ -42,7 +48,6 @@ import {
   normalizeProcesses,
   parseOptionalSecondsInput,
   resolveProcessAtPerPieceSeconds,
-  resolveProcessExactStPerPieceSeconds,
   resolveStBucketQuantity,
   resolveStyleAtReliability,
   resolveProcessStPerPieceSeconds,
@@ -76,7 +81,6 @@ const createEmptyDraft = () => ({
   processCode: '',
   repeatCount: '1',
   pt: '',
-  st: '',
   needsReview: false,
   reviewComment: '',
 });
@@ -156,6 +160,13 @@ const STYLE_PROCESS_MESSAGES = {
     ptTooltip: 'PT({quantity}): 항상 1,000장 주문 기준의 개당 예상 시간(초)입니다.',
     atTooltip: 'AT({quantity}): {quantity}장 주문 기준의 개당 실측 시간(초)입니다.',
     stTooltip: 'ST({quantity}): {quantity}장 주문은 해당 구간 기준의 개당 표준 시간(초)입니다.',
+    ptChangeDialogTitle: 'PT 변경 확인',
+    ptChangeNoRecordsMessage:
+      '이 공정은 아직 작업기록이 없습니다. PT를 수정하면 모든 ST(q) 기준값이 새 PT(1,000) 값으로 일괄 변경됩니다.',
+    ptChangeHasRecordsMessage:
+      '이 공정에는 이미 작업기록이 있습니다. PT를 수정해도 기존 ST(q) 기준값은 변경되지 않습니다. ST 수정은 매입 단가 탭에서 진행해주세요.',
+    ptChangeSummary: '{processName}: {previousPt} -> {nextPt}',
+    confirmPtChange: '확인 후 저장',
     validatePart: '대상을 선택해주세요.',
     validateTarget: '대상을 선택해주세요.',
     validateAction: '동작을 선택해주세요.',
@@ -231,6 +242,13 @@ const STYLE_PROCESS_MESSAGES = {
     ptTooltip: 'PT({quantity}): per-piece expected seconds at 1,000 pcs.',
     atTooltip: 'AT({quantity}): per-piece actual seconds at order qty {quantity}.',
     stTooltip: 'ST({quantity}): per-piece standard seconds for the matched quantity bucket.',
+    ptChangeDialogTitle: 'Confirm PT Change',
+    ptChangeNoRecordsMessage:
+      'This process has no work records yet. Changing PT will reset every ST(q) bucket to the new PT(1,000) value.',
+    ptChangeHasRecordsMessage:
+      'This process already has work records. Changing PT will not change existing ST(q) values. Edit ST from the purchase price tab when needed.',
+    ptChangeSummary: '{processName}: {previousPt} -> {nextPt}',
+    confirmPtChange: 'Confirm and Save',
     validatePart: 'Select a target.',
     validateTarget: 'Select a target.',
     validateAction: 'Select an action.',
@@ -306,6 +324,13 @@ const STYLE_PROCESS_MESSAGES = {
     ptTooltip: 'PT({quantity}): giay du kien moi san pham tai 1.000 san pham.',
     atTooltip: 'AT({quantity}): giay thuc te moi san pham tai don hang {quantity}.',
     stTooltip: 'ST({quantity}): giay chuan moi san pham theo nhom so luong phu hop.',
+    ptChangeDialogTitle: 'Xac nhan doi PT',
+    ptChangeNoRecordsMessage:
+      'Cong doan nay chua co lich su lam viec. Khi doi PT, tat ca ST(q) se doi theo gia tri PT(1.000) moi.',
+    ptChangeHasRecordsMessage:
+      'Cong doan nay da co lich su lam viec. Khi doi PT, ST(q) hien co se khong thay doi. Neu can sua ST, hay sua o tab don gia mua.',
+    ptChangeSummary: '{processName}: {previousPt} -> {nextPt}',
+    confirmPtChange: 'Xac nhan va luu',
     validatePart: 'Hay chon doi tuong.',
     validateTarget: 'Hay chon doi tuong.',
     validateAction: 'Hay chon thao tac.',
@@ -342,11 +367,6 @@ const getStyleProcessMessage = (languageCode, key, params = {}) => {
 
 const REVIEW_DESCRIPTION_PREFIX = '[REVIEW]';
 const hasReviewCommentText = (value) => String(value ?? '').trim().length > 0;
-const formatAtSecondsOrBlank = (value) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return '';
-  return formatSeconds(parsed);
-};
 
 const parseProcessReviewMeta = (process) => {
   const explicitNeedsReview =
@@ -418,6 +438,42 @@ const toDraftNumberText = (value) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return '';
   return String(roundToScale(parsed, 4));
+};
+
+const normalizeOptionalSecondsForCompare = (value) => {
+  const parsed = toOptionalSeconds(value);
+  return parsed == null ? null : roundToScale(parsed, 4);
+};
+
+const areOptionalSecondsEqual = (left, right) =>
+  normalizeOptionalSecondsForCompare(left) === normalizeOptionalSecondsForCompare(right);
+
+const hasProcessWorkRecords = (process) => {
+  const count = Number(
+    process?.workRecordCount ??
+      process?.workRecordsCount ??
+      process?._count?.workRecords ??
+      0
+  );
+  return Number.isFinite(count) && count > 0;
+};
+
+const buildPtDerivedStBuckets = (ptSeconds) => {
+  const normalizedPt = toOptionalSeconds(ptSeconds);
+  if (normalizedPt == null || normalizedPt <= 0) return [];
+  return ST_STANDARD_BUCKETS.map((bucketQuantity) => ({
+    bucketQuantity,
+    bucketStSeconds: normalizedPt,
+    setBy: 'PT_DERIVED',
+    setAt: null,
+    updatedAt: null,
+  }));
+};
+
+const formatSecondsOrDash = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '-';
+  return formatSeconds(parsed);
 };
 
 // 생산계획 카드 상태 라벨과 동일한 커스텀 팔레트 사용 (공유 팔레트 — agent.md 참조)
@@ -997,61 +1053,7 @@ const normalizeStBuckets = (process) => {
   return Array.isArray(normalized?.stBuckets) ? normalized.stBuckets : [];
 };
 
-const resolveExactStPerPiece = (process, quantity) =>
-  resolveProcessExactStPerPieceSeconds(process, quantity);
-
-const upsertProcessStBuckets = (process, quantity, seconds, setBy = 'MANUAL') => {
-  const normalized = normalizeProcess(process);
-  const resolvedQuantity = resolveStBucketQuantity(quantity);
-  const nextSeconds = toOptionalSeconds(seconds);
-  const existingBuckets = normalizeStBuckets(normalized);
-  const existingBucket = existingBuckets.find(
-    (value) => toPositiveInt(value?.bucketQuantity ?? value?.quantity, 0) === resolvedQuantity
-  );
-  // If the resolved value matches what's already stored for this bucket, keep the
-  // existing entry (including its original setBy/setAt/updatedAt) untouched instead
-  // of replacing it with a fresh setAt:null entry. Otherwise editing a field and
-  // then reverting it back to the saved value would never clear the dirty state,
-  // since the bucket's metadata would still differ from the original snapshot.
-  const existingSeconds =
-    existingBucket != null ? toOptionalSeconds(existingBucket.bucketStSeconds) : null;
-  if (
-    existingBucket != null &&
-    nextSeconds != null &&
-    roundToScale(nextSeconds, 4) === roundToScale(existingSeconds, 4)
-  ) {
-    return normalizeProcess({
-      ...normalized,
-      stBuckets: existingBuckets,
-      timeRefQuantity: normalized?.timeRefQuantity ?? DEFAULT_TIME_REF_QUANTITY,
-      ct: null,
-      stManual: false,
-    });
-  }
-  const nextBuckets = existingBuckets.filter(
-    (value) => toPositiveInt(value?.bucketQuantity ?? value?.quantity, 0) !== resolvedQuantity
-  );
-  if (nextSeconds != null) {
-    nextBuckets.push({
-      bucketQuantity: resolvedQuantity,
-      bucketStSeconds: roundToScale(nextSeconds, 4),
-      setBy,
-      setAt: null,
-      updatedAt: null,
-    });
-  }
-  nextBuckets.sort((left, right) => left.bucketQuantity - right.bucketQuantity);
-  return normalizeProcess({
-    ...normalized,
-    stBuckets: nextBuckets,
-    timeRefQuantity: normalized?.timeRefQuantity ?? DEFAULT_TIME_REF_QUANTITY,
-    ct: null,
-    stManual: false,
-  });
-};
-
 const resolveDraftProcessText = (draft) => String(draft?.processText ?? '').trim();
-const resolveDraftStInputValue = (draft) => String(draft?.st ?? '').trim();
 const normalizeProcessCodeKey = (value) => String(value ?? '').trim().toUpperCase();
 
 const getDraftTargetPairs = (draft) =>
@@ -1112,7 +1114,6 @@ const buildProcessPayload = (
     timeRefQuantity,
     DEFAULT_TIME_REF_QUANTITY
   );
-  const resolvedStBucketQuantity = resolveStBucketQuantity(resolvedTimeRefQuantity);
   const timesPerPiece = hasStructuredProcessComposition(composition)
     ? toPositiveInt(
         draft?.repeatCount ?? existingProcess?.timesPerPiece ?? existingProcess?.quantity,
@@ -1120,36 +1121,21 @@ const buildProcessPayload = (
       )
     : 1;
   const ptTotalForDisplay = parseOptionalSecondsInput(draft.pt);
-  const stTotalForDisplay = parseOptionalSecondsInput(draft.st);
   const reviewComment = String(draft?.reviewComment ?? '').trim();
   const reviewNeedsCheck =
     Boolean(draft?.needsReview) || hasReviewCommentText(reviewComment);
   const reviewDescription = buildReviewDescription(reviewNeedsCheck, reviewComment);
   const ptPerPiece = ptTotalForDisplay == null ? null : toOptionalSeconds(ptTotalForDisplay);
-  const exactStPerPiece =
-    stTotalForDisplay == null ? null : toOptionalSeconds(stTotalForDisplay);
   const existingStBuckets = normalizeStBuckets(existingProcess);
-  const nextStBuckets = existingStBuckets.filter(
-    (value) => toPositiveInt(value?.bucketQuantity ?? value?.quantity, 0) !== resolvedStBucketQuantity
-  );
-  if (exactStPerPiece != null) {
-    nextStBuckets.push({
-      bucketQuantity: resolvedStBucketQuantity,
-      bucketStSeconds: exactStPerPiece,
-      setBy: 'MANUAL',
-      setAt: null,
-      updatedAt: null,
-    });
-  } else if (resolvedStBucketQuantity === PT_REFERENCE_QUANTITY && ptPerPiece != null) {
-    nextStBuckets.push({
-      bucketQuantity: PT_REFERENCE_QUANTITY,
-      bucketStSeconds: ptPerPiece,
-      setBy: 'PT_DERIVED',
-      setAt: null,
-      updatedAt: null,
-    });
-  }
-  nextStBuckets.sort((left, right) => left.bucketQuantity - right.bucketQuantity);
+  const ptChanged =
+    Boolean(existingProcess) && !areOptionalSecondsEqual(existingProcess?.pt, ptPerPiece);
+  const processHasWorkRecords = Boolean(existingProcess) && hasProcessWorkRecords(existingProcess);
+  const shouldResetStFromPt =
+    !existingProcess ||
+    (!processHasWorkRecords && (existingStBuckets.length === 0 || ptChanged));
+  const nextStBuckets = shouldResetStFromPt
+    ? buildPtDerivedStBuckets(ptPerPiece)
+    : existingStBuckets;
 
   return normalizeProcess({
     ...(existingProcess || {}),
@@ -1184,6 +1170,7 @@ const buildProcessPayload = (
     timeRefQuantity: resolvedTimeRefQuantity,
     pt: ptPerPiece,
     stBuckets: nextStBuckets,
+    ...(processHasWorkRecords && ptChanged ? { preserveStBuckets: true } : {}),
     ct: null,
     stManual: false,
     atParams: existingProcess?.atParams ?? null,
@@ -1207,7 +1194,6 @@ const buildDraftFromProcess = (
     ? toPositiveInt(safeProcess?.timesPerPiece ?? safeProcess?.quantity, 1)
     : 1;
   const ptPerPiece = toOptionalSeconds(safeProcess?.pt);
-  const exactStPerPiece = resolveExactStPerPiece(safeProcess, timeRefQuantity);
   const reviewMeta = parseProcessReviewMeta(safeProcess);
   const manualName = String(safeProcess?.manualName ?? '').trim();
   const fallbackProcessText =
@@ -1247,8 +1233,6 @@ const buildDraftFromProcess = (
     repeatCount: String(processQuantity),
     pt:
       ptPerPiece == null ? '' : toDraftNumberText(ptPerPiece),
-    st:
-      exactStPerPiece == null ? '' : toDraftNumberText(exactStPerPiece),
     needsReview: Boolean(reviewMeta.needsReview),
     reviewComment: reviewMeta.reviewComment || '',
   };
@@ -1616,6 +1600,7 @@ const StyleProcess = ({
   const [actionComposerOpen, setActionComposerOpen] = useState(false);
   const deferredAddDraft = useDeferredValue(addDraft);
   const [addError, setAddError] = useState('');
+  const [pendingPtChange, setPendingPtChange] = useState(null);
   const draftFormRef = React.useRef(null);
   const processRowRefs = React.useRef(new Map());
   const pendingReturnScrollInstanceIdRef = React.useRef(null);
@@ -2520,6 +2505,16 @@ const StyleProcess = ({
     targetSpecCandidate,
   ]);
 
+  const applyEditedProcess = (instanceId, nextProcess) => {
+    pendingReturnScrollInstanceIdRef.current = instanceId;
+    onProcessesChange(
+      safeProcesses.map((process) =>
+        process.instanceId === instanceId ? nextProcess : process
+      )
+    );
+    handleCancelAddRow();
+  };
+
   const handleSaveAddRow = () => {
     const draftForSave = resolveDraftWithPendingSelections(addDraft);
     const errorMessage = validateDraft(draftForSave, {
@@ -2531,48 +2526,39 @@ const StyleProcess = ({
     }
     const nextProcess = buildProcessPayload(draftForSave, editingProcess, timeRefQuantity);
     if (isEditingRow) {
-      pendingReturnScrollInstanceIdRef.current = editingInstanceId;
-      onProcessesChange(
-        safeProcesses.map((process) =>
-          process.instanceId === editingInstanceId ? nextProcess : process
-        )
-      );
+      if (!areOptionalSecondsEqual(editingProcess?.pt, nextProcess?.pt)) {
+        const processName = resolveLocalizedProcessDisplayLabel(
+          nextProcess,
+          languageCode,
+          getStyleProcessMessage(languageCode, 'processColumn'),
+          compositionMasterLookupByKind
+        );
+        setPendingPtChange({
+          instanceId: editingInstanceId,
+          nextProcess,
+          hasWorkRecords: hasProcessWorkRecords(editingProcess),
+          processName,
+          previousPt: formatSecondsOrDash(editingProcess?.pt),
+          nextPt: formatSecondsOrDash(nextProcess?.pt),
+        });
+        return;
+      }
+      applyEditedProcess(editingInstanceId, nextProcess);
     } else {
       onProcessesChange([...safeProcesses, nextProcess]);
+      handleCancelAddRow();
     }
-    handleCancelAddRow();
   };
 
-  const handleInlineChange = useCallback((process, field, rawValue) => {
-    let updatedProcess;
-    if (field === 'pt') {
-      const parsed = parseOptionalSecondsInput(rawValue);
-      updatedProcess = normalizeProcess({ ...process, pt: parsed });
-      if (
-        toPositiveInt(displayOrderQuantity, DEFAULT_TIME_REF_QUANTITY) === PT_REFERENCE_QUANTITY &&
-        resolveExactStPerPiece(process, PT_REFERENCE_QUANTITY) == null &&
-        parsed != null
-      ) {
-        updatedProcess = upsertProcessStBuckets(
-          updatedProcess,
-          PT_REFERENCE_QUANTITY,
-          parsed,
-          'PT_DERIVED'
-        );
-      }
-    } else if (field === 'st') {
-      const parsed = parseOptionalSecondsInput(rawValue);
-      updatedProcess = upsertProcessStBuckets(
-        process,
-        displayOrderQuantity,
-        parsed,
-        'MANUAL'
-      );
-    } else {
-      return;
-    }
-    onProcessesChange(safeProcesses.map((p) => p.instanceId === process.instanceId ? updatedProcess : p));
-  }, [displayOrderQuantity, onProcessesChange, safeProcesses]);
+  const handleConfirmPendingPtChange = () => {
+    if (!pendingPtChange) return;
+    applyEditedProcess(pendingPtChange.instanceId, pendingPtChange.nextProcess);
+    setPendingPtChange(null);
+  };
+
+  const handleCancelPendingPtChange = () => {
+    setPendingPtChange(null);
+  };
 
   const handleRemoveProcess = useCallback((instanceId) => {
     onProcessesChange(safeProcesses.filter((process) => process.instanceId !== instanceId));
@@ -2784,57 +2770,20 @@ const StyleProcess = ({
                 </TableCell>
 
                 <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
-                  <TextField
-                    key={process.instanceId + '_pt'}
-                    size="small"
-                    type="number"
-                    defaultValue={toDraftNumberText(process.pt)}
-                    onChange={(e) => handleInlineChange(process, 'pt', e.target.value)}
-                    onKeyDown={handleNumberInputEnterKeyDown}
-                    onWheel={(e) => e.target.blur()}
-                    inputProps={{ min: 0 }}
-                    placeholder="-"
-                    sx={{ width: 86 }}
-                  />
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {formatSecondsOrDash(process.pt)}
+                  </Typography>
                 </TableCell>
 
                 <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
-                  {formatAtSecondsOrBlank(previewAtTotalSeconds)}
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {formatSecondsOrDash(previewAtTotalSeconds)}
+                  </Typography>
                 </TableCell>
                 <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
-                  <TextField
-                    key={process.instanceId + '_st'}
-                    size="small"
-                    type="number"
-                    defaultValue={
-                      resolveExactStPerPiece(process, displayOrderQuantity) == null
-                        ? ''
-                        : toDraftNumberText(
-                            resolveExactStPerPiece(
-                              process,
-                              displayOrderQuantity
-                            )
-                          )
-                    }
-                    onChange={(e) => handleInlineChange(process, 'st', e.target.value)}
-                    onKeyDown={handleNumberInputEnterKeyDown}
-                    onWheel={(e) => e.target.blur()}
-                    inputProps={{ min: 0 }}
-                    placeholder={
-                      previewStTotalSeconds == null
-                        ? '-'
-                        : toDraftNumberText(previewStTotalSeconds)
-                    }
-                    sx={{
-                      width: 86,
-                      '& input': {
-                        fontWeight:
-                          resolveExactStPerPiece(process, displayOrderQuantity) != null
-                            ? 700
-                            : 400,
-                      },
-                    }}
-                  />
+                  <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                    {formatSecondsOrDash(previewStTotalSeconds)}
+                  </Typography>
                 </TableCell>
                 <TableCell align="center" sx={{ width: PROCESS_ACTION_COLUMN_WIDTH }}>
                   {renderRowActions(process)}
@@ -2846,7 +2795,6 @@ const StyleProcess = ({
       )),
     [
       displayOrderQuantity,
-      handleInlineChange,
       isDraftOpen,
       languageCode,
       compositionMasterLookupByKind,
@@ -3400,29 +3348,16 @@ const StyleProcess = ({
               />
               <TextField
                 size="small"
-                type="number"
                 label={`${getStyleProcessMessage(languageCode, 'stLabel')}(${stBucketQuantityLabel})`}
-                value={resolveDraftStInputValue(addDraft)}
-                onChange={(event) => {
-                  setAddDraft((prev) => ({
-                    ...prev,
-                    st: event.target.value,
-                  }));
-                }}
-                onKeyDown={handleNumberInputEnterKeyDown}
-                onWheel={(e) => e.target.blur()}
-                inputProps={{ min: 0 }}
-                placeholder={
-                  addPreviewStTotalSeconds == null
-                    ? '-'
-                    : toDraftNumberText(addPreviewStTotalSeconds)
-                }
+                value={formatSecondsOrDash(addPreviewStTotalSeconds)}
+                InputProps={{ readOnly: true }}
+                inputProps={{ tabIndex: -1 }}
                 sx={{ width: 132 }}
               />
               <TextField
                 size="small"
                 label={`${getStyleProcessMessage(languageCode, 'atLabel')}(${timeRefQuantityLabel})`}
-                value={formatAtSecondsOrBlank(addPreviewAtTotalSeconds)}
+                value={formatSecondsOrDash(addPreviewAtTotalSeconds)}
                 InputProps={{ readOnly: true }}
                 inputProps={{ tabIndex: -1 }}
                 sx={{ width: 132 }}
@@ -3470,7 +3405,7 @@ const StyleProcess = ({
                   {getStyleProcessMessage(languageCode, 'cancel')}
                 </Button>
                 <SaveButton onClick={handleSaveAddRow}>
-                  {getStyleProcessMessage(languageCode, 'add')}
+                  {getStyleProcessMessage(languageCode, isEditingRow ? 'save' : 'add')}
                 </SaveButton>
               </Stack>
             </Box>
@@ -3600,7 +3535,7 @@ const StyleProcess = ({
                     {hasPT ? formatSeconds(totalPT) : '-'}
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
-                    {hasAT ? formatAtSecondsOrBlank(totalAT) : ''}
+                    {hasAT ? formatSecondsOrDash(totalAT) : '-'}
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem', color: 'primary.main' }}>
                     {hasST ? formatSeconds(totalST) : '-'}
@@ -3612,6 +3547,40 @@ const StyleProcess = ({
           </DragDropContext>
         </TableContainer>
       </Paper>
+      <Dialog
+        open={Boolean(pendingPtChange)}
+        onClose={handleCancelPendingPtChange}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {getStyleProcessMessage(languageCode, 'ptChangeDialogTitle')}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 1.5 }}>
+            {pendingPtChange?.hasWorkRecords
+              ? getStyleProcessMessage(languageCode, 'ptChangeHasRecordsMessage')
+              : getStyleProcessMessage(languageCode, 'ptChangeNoRecordsMessage')}
+          </DialogContentText>
+          {pendingPtChange ? (
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+              {getStyleProcessMessage(languageCode, 'ptChangeSummary', {
+                processName: pendingPtChange.processName,
+                previousPt: pendingPtChange.previousPt,
+                nextPt: pendingPtChange.nextPt,
+              })}
+            </Typography>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelPendingPtChange}>
+            {getStyleProcessMessage(languageCode, 'cancel')}
+          </Button>
+          <Button variant="contained" onClick={handleConfirmPendingPtChange}>
+            {getStyleProcessMessage(languageCode, 'confirmPtChange')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

@@ -1,5 +1,13 @@
 # TODO
 
+## 2026-07-13 style process PT/ST/AT input semantics
+
+- Done: Changed the style process info tab so ST and AT are display-only there. ST remains editable through the purchase price/time matrix tab, and AT remains an output of the training pipeline rather than a manual input.
+- Done: PT edits now keep or reset ST buckets based on process work-record history. Existing processes with work records preserve their current ST(q) buckets when PT changes; processes without work records reset all standard ST buckets from the new PT(1,000) value after user confirmation.
+- Done: Added per-process `workRecordCount`/`hasWorkRecords` to style process responses so the frontend can make that decision from the relational `StyleProcess -> WorkRecord` link instead of guessing.
+- Done: Added a backend guard so an existing process with work records does not get PT-derived ST buckets created merely because the request omitted ST bucket data, and so PT-only edits can explicitly preserve existing ST rows without delete/recreate churn.
+- Validation: `npm --prefix frontend run build` and `npm --prefix backend run build` passed.
+
 ## 2026-07-13 assignment board layout polish
 
 - Done: Removed the visible "assignment cancel" text from the assignment board separator. The right-side unassigned panel remains the cancel drop target for assigned cards, but the UI now reads as a simple section divider with drag-over highlighting.

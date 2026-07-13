@@ -4477,6 +4477,7 @@ const STYLE_PROCESS_STANDARD_INCLUDE: Prisma.StyleProcessInclude = {
   standards: {
     orderBy: [{ bucketQuantity: "asc" }, { id: "asc" }],
   },
+  _count: { select: { workRecords: true } },
 };
 
 const resolveStyleProcessStorageCode = (process: any, index: number) => {
@@ -4550,6 +4551,9 @@ const buildStyleProcessStorageDrafts = (processes: any): any[] =>
       }
     );
     const manualName = resolveOptionalString((process as any)?.manualName, null);
+    const providedStBuckets = normalizeStyleProcessStBuckets(
+      (process as any)?.stBuckets ?? (process as any)?.stValues
+    );
     return {
       processCode: resolveStyleProcessStorageCode(process, index),
       processName:
@@ -4568,11 +4572,11 @@ const buildStyleProcessStorageDrafts = (processes: any): any[] =>
       sortOrder: index,
       ptSeconds,
       atParams: toStyleAtParams((process as any)?.atParams),
+      preserveStBuckets: (process as any)?.preserveStBuckets === true,
+      hasProvidedStBuckets: providedStBuckets.length > 0,
       stBuckets: buildCompleteStyleProcessStBuckets({
         ptSeconds,
-        stBuckets: normalizeStyleProcessStBuckets(
-          (process as any)?.stBuckets ?? (process as any)?.stValues
-        ),
+        stBuckets: providedStBuckets,
       }),
     };
   });
@@ -4681,7 +4685,10 @@ const buildStyleProcessMirrorFromRows = (
           }
         );
         const manualName = resolveOptionalString(row.processName, null);
+        const workRecordCount = Number(row?._count?.workRecords ?? 0);
         return normalizeStyleProcess({
+          id: row.id ?? null,
+          styleProcessId: row.id ?? null,
           code: resolveStyleProcessVisibleCode(row.processCode, displayProcess),
           storageCode: row.processCode,
           manualName,
@@ -4719,6 +4726,8 @@ const buildStyleProcessMirrorFromRows = (
           })),
           timeRefQuantity:
             ensureArray(row.standards)[0]?.bucketQuantity ?? DEFAULT_TIME_REF_QUANTITY,
+          workRecordCount,
+          hasWorkRecords: workRecordCount > 0,
           instanceId: `${row.processCode || "PROC"}-${row.id || index}-${index}`,
         });
       });
@@ -4866,10 +4875,23 @@ const syncStyleProcessStorageForStyle = async ({
   const drafts = buildStyleProcessStorageDrafts(processes);
   const existingRows = await db.styleProcess.findMany({
     where: { styleId, orgId: processOrgId },
-    select: { id: true, processCode: true },
+    select: {
+      id: true,
+      processCode: true,
+      standards: {
+        select: {
+          bucketQuantity: true,
+          bucketStSeconds: true,
+          setBy: true,
+          setAt: true,
+          updatedAt: true,
+        },
+      },
+      _count: { select: { workRecords: true } },
+    },
   });
   const existingByCode = new Map(
-    existingRows.map((row) => [normalizeProcessCodeKey(row.processCode), row.id])
+    existingRows.map((row) => [normalizeProcessCodeKey(row.processCode), row])
   );
   const nextCodes = new Set(drafts.map((draft) => normalizeProcessCodeKey(draft.processCode)));
 
@@ -4886,7 +4908,8 @@ const syncStyleProcessStorageForStyle = async ({
 
   for (const draft of drafts) {
     const normalizedProcessCode = normalizeProcessCodeKey(draft.processCode);
-    const existingId = existingByCode.get(normalizedProcessCode);
+    const existingRow = existingByCode.get(normalizedProcessCode);
+    const existingId = existingRow?.id;
     const row = existingId
       ? await db.styleProcess.update({
           where: { id: existingId },
@@ -4931,7 +4954,13 @@ const syncStyleProcessStorageForStyle = async ({
             atParams: draft.atParams,
           },
         });
-    existingByCode.set(normalizedProcessCode, row.id);
+    const shouldPreserveExistingStandards =
+      existingRow &&
+      Number(existingRow?._count?.workRecords ?? 0) > 0 &&
+      (draft.preserveStBuckets || !draft.hasProvidedStBuckets);
+    if (shouldPreserveExistingStandards) {
+      continue;
+    }
 
     await db.styleProcessStandard.deleteMany({
       where: { styleProcessId: row.id },
