@@ -1714,3 +1714,10 @@ runtime 조회값:
 - **DB 수정**: `migration_fix.sql` 6-4e가 기존 `AssignmentPlan.assignmentCtSnapshot` JSON을 idempotent하게 백필한다. `processKey`에서 파싱한 후보가 같은 style의 `StyleProcess`로 검증될 때만 JSON에 `styleProcessId`를 추가하고, 기존 값은 덮어쓰지 않는다.
 - **운영 DB 적용 결과**: 2026-07-13에 Railway 운영 DB에 같은 백필을 직접 적용했다. 41개 `AssignmentPlan`이 업데이트됐고, CT 스냅샷 공정 998개 중 missing `styleProcessId`가 947개에서 0개로 줄었다. L16-4/AJ1972는 26개 required process 모두 WorkRecord 합계가 170/170으로 확인됐다.
 - **processKey 정리 방향**: `processKey`는 아직 즉시 제거하지 않는다. 레거시 스냅샷/프론트 draft/진단 호환에 남아 있을 수 있으므로, 운영 DB 백필 검증과 신규 저장 경로 검증이 끝난 뒤 "읽기 경로가 더 이상 processKey에 의존하지 않음"을 확인하고 단계적으로 제거한다.
+
+### 53. 2026-07-13 남은 계획 부하를 producedQuantity min-ratio가 아니라 공정별 ST 잔량으로 계산 (Codex 구현)
+
+- **증상**: §52 백필 후에도 LINE #1의 2026-07 계획 부하가 100%로 과하게 보였다. 운영 DB를 다시 계산해보니 작업기록은 대부분 90~100%에 가까운데, `producedQuantity = min(공정별 완료 수량)`가 0인 플랜이 많았다. 공정 하나라도 0이면 `Math.min(producedRatio, operationalProgressRatio)`가 0이 되어 전체 `assignmentStTotalSeconds`가 남은 부하로 다시 들어갔다.
+- **정책 정리**: `producedQuantity`/exact process completion은 "옷 몇 벌이 완성됐는가"와 `READY_TO_COMPLETE`/`REVIEW_REQUIRED` 판정에 필요하다. 하지만 forecast의 남은 계획 부하는 완성 벌수가 아니라 **각 공정별 남은 수량 × 해당 공정 ST(q)**의 합이어야 한다. 예: 39개 공정 중 33개가 끝나고 6개만 남았으면 전체 39개 공정의 ST를 다시 넣으면 안 된다.
+- **수정**: `buildLineMonthCapacityRows`와 `buildAssignmentPlanProgressRows`가 같은 helper(`calculateRemainingStTotalSecondsFromProcessProgress`)를 사용해 CT 스냅샷의 `styleProcessId`별 WorkRecord 수량을 보고 공정별 잔량 ST를 먼저 계산한다. 이 exact remaining ST를 만들 수 있을 때는 기존 ratio fallback보다 우선한다. ST row가 없어 exact 계산이 불가능한 경우에만 기존 ratio 기반 계산으로 내려간다.
+- **운영 DB 재현 결과**: LINE #1 43개 not-completed assignment의 전체 계획 ST는 5,906.5h였고, 예전 min-ratio 방식 남은 ST는 3,549.6h까지 부풀었다. 공정별 ST 잔량 방식으로는 442.2h(8명 × 8h 기준 약 6.9 작업일)이며, 남은 공정의 ST bucket 누락은 0건이었다.

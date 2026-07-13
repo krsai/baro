@@ -18996,6 +18996,71 @@ const resolveProducedQtyFromProcessKeyTotals = ({
   });
 };
 
+const resolveStyleProcessIdFromAssignmentProcessKey = (value: any): number | null => {
+  const processKey = resolveOptionalString(value, null);
+  if (!processKey) return null;
+  const prefix = "style-process:";
+  if (!processKey.startsWith(prefix)) return null;
+  return toPositiveIntOrNull(processKey.slice(prefix.length));
+};
+
+const collectStyleProcessIdsFromProcessKeyGroups = (processKeyGroups: string[][] = []) =>
+  collectPositiveIntSet(
+    ...ensureArray(processKeyGroups).flatMap((group) =>
+      ensureArray(group).map((key) => resolveStyleProcessIdFromAssignmentProcessKey(key))
+    )
+  );
+
+const calculateRemainingStTotalSecondsFromProcessProgress = ({
+  processTotalsByKey,
+  processKeyGroups = [],
+  plannedQuantity,
+  bucketQuantity,
+  styleProcessRowsById,
+}: {
+  processTotalsByKey: Map<string, number>;
+  processKeyGroups?: string[][];
+  plannedQuantity: number;
+  bucketQuantity: number;
+  styleProcessRowsById: Map<number, any>;
+}): number | null => {
+  const normalizedPlannedQuantity = Math.max(
+    0,
+    Math.round(Number(plannedQuantity) || 0)
+  );
+  if (normalizedPlannedQuantity <= 0) return null;
+  const normalizedGroups = ensureArray(processKeyGroups).filter(
+    (group): group is string[] => Array.isArray(group) && group.length > 0
+  );
+  if (normalizedGroups.length === 0) return null;
+
+  let totalRemainingSeconds = 0;
+  for (const group of normalizedGroups) {
+    const completedQuantity = group.reduce(
+      (max, key) =>
+        Math.max(max, Math.max(0, Math.round(Number(processTotalsByKey.get(key) || 0)))),
+      0
+    );
+    const remainingQuantity = Math.max(0, normalizedPlannedQuantity - completedQuantity);
+    if (remainingQuantity <= 0) continue;
+    const styleProcessRow =
+      group
+        .map((key) => resolveStyleProcessIdFromAssignmentProcessKey(key))
+        .filter((value): value is number => value !== null)
+        .map((styleProcessId) => styleProcessRowsById.get(styleProcessId) ?? null)
+        .find((row) => Boolean(row)) ?? null;
+    if (!styleProcessRow) return null;
+    const bucketStSeconds = resolveStyleProcessBucketStSeconds(
+      styleProcessRow,
+      bucketQuantity
+    );
+    if (bucketStSeconds === null) return null;
+    totalRemainingSeconds += remainingQuantity * bucketStSeconds;
+  }
+
+  return Math.max(0, Math.round(totalRemainingSeconds));
+};
+
 const resolveWorklogRatioConfidence = ({
   producedQty,
   planQty,
@@ -19430,16 +19495,24 @@ const buildLineMonthCapacityRows = async ({
         .filter((value): value is number => value !== null)
     )
   );
-  const actualOutputStyleProcessIds = Array.from(
-    new Set(
-      canonicalWorkRows
-        .map((row) => toPositiveIntOrNull(row?.styleProcessId))
-        .filter((value): value is number => value !== null)
+  const assignmentRequiredStyleProcessIds = collectPositiveIntSet(
+    ...plans.flatMap((plan) =>
+      collectStyleProcessIdsFromProcessKeyGroups(
+        resolveAssignmentPlanRequiredProcessGroups(plan)
+      )
     )
+  );
+  const actualOutputStyleProcessIds = Array.from(
+    new Set([
+      ...canonicalWorkRows
+        .map((row) => toPositiveIntOrNull(row?.styleProcessId))
+        .filter((value): value is number => value !== null),
+      ...assignmentRequiredStyleProcessIds,
+    ])
   );
   const actualOutputStyleProcessRows =
     actualOutputStyleProcessIds.length > 0
-        ? await prisma.styleProcess.findMany({
+      ? await prisma.styleProcess.findMany({
           where: {
             id: { in: actualOutputStyleProcessIds },
           },
@@ -19782,18 +19855,30 @@ const buildLineMonthCapacityRows = async ({
       producedRatio != null && operationalProgressRatio != null
         ? Math.min(producedRatio, operationalProgressRatio)
         : producedRatio ?? operationalProgressRatio ?? null;
+    const exactRemainingStTotalSeconds = calculateRemainingStTotalSecondsFromProcessProgress({
+      processTotalsByKey: cumulativeProcessTotalsByKey,
+      processKeyGroups: requiredProcessGroups,
+      plannedQuantity,
+      bucketQuantity: resolveStBucketQuantity(plannedQuantity),
+      styleProcessRowsById: actualOutputStyleProcessById,
+    });
     // Neither ratio could be computed even though work has actually been recorded
     // (cumulativeTotalDone > 0) - do not silently fall back to the full planned ST
     // (that is indistinguishable from "0% done" and re-inflates the forecast). Exclude
     // it from the backlog sum and surface it as a diagnostic instead.
     const isProgressUnknown =
-      plan?.isCompleted !== true && progressRatio == null && cumulativeTotalDone > 0;
+      plan?.isCompleted !== true &&
+      progressRatio == null &&
+      exactRemainingStTotalSeconds == null &&
+      cumulativeTotalDone > 0;
     const remainingStTotalSeconds =
       plan?.isCompleted === true
         ? 0
         : isProgressUnknown
           ? null
-          : progressRatio == null
+          : exactRemainingStTotalSeconds != null
+            ? exactRemainingStTotalSeconds
+            : progressRatio == null
             ? plannedStTotalSeconds
             : Math.max(
                 0,
@@ -20796,6 +20881,34 @@ const buildAssignmentPlanProgressRows = async (
   if (plans.length === 0) return [];
 
   const stateAssignmentsByExternalId = new Map<string, any>();
+  const requiredStyleProcessIdsForProgress = collectPositiveIntSet(
+    ...plans.flatMap((plan) =>
+      collectStyleProcessIdsFromProcessKeyGroups(
+        resolveAssignmentPlanRequiredProcessGroups(plan)
+      )
+    )
+  );
+  const styleProcessRowsForProgress =
+    requiredStyleProcessIdsForProgress.length > 0
+      ? await prisma.styleProcess.findMany({
+          where: {
+            orgId,
+            id: { in: requiredStyleProcessIdsForProgress },
+          },
+          select: {
+            id: true,
+            standards: {
+              select: {
+                bucketQuantity: true,
+                bucketStSeconds: true,
+              },
+            },
+          },
+        })
+      : [];
+  const styleProcessRowsForProgressById = new Map(
+    styleProcessRowsForProgress.map((row) => [Number(row.id), row])
+  );
 
   const lineIds = Array.from(
     new Set(
@@ -21040,7 +21153,7 @@ const buildAssignmentPlanProgressRows = async (
       : totalExpected != null && totalExpected > 0
         ? Math.min(1, Math.max(0, totalDone / totalExpected))
         : null;
-    const progressForRemainingRatio = isMarkedCompleted
+    const ratioProgressForRemainingRatio = isMarkedCompleted
       ? 1
       : producedRatio != null && operationalProgressRatio != null
         ? Math.min(producedRatio, operationalProgressRatio)
@@ -21048,8 +21161,8 @@ const buildAssignmentPlanProgressRows = async (
     // Neither ratio could be computed even though totalDone > 0 - do not silently
     // treat this as "0% done" (full planned ST) or exclude it either; surface it so
     // the frontend can show a "확인 필요" state instead of guessing.
-    const isProgressUnknown =
-      !isMarkedCompleted && progressForRemainingRatio == null && totalDone > 0;
+    const ratioProgressUnknownCandidate =
+      !isMarkedCompleted && ratioProgressForRemainingRatio == null && totalDone > 0;
     const progressImbalanceGapRatio =
       producedRatio != null && operationalProgressRatio != null
         ? Math.max(0, operationalProgressRatio - producedRatio)
@@ -21071,19 +21184,46 @@ const buildAssignmentPlanProgressRows = async (
     );
     const progressPercent =
       operationalProgressRatio == null ? null : Math.min(100, Math.round(operationalProgressRatio * 100));
+    const plannedStTotalSeconds = resolvePersistedAssignmentPlanStTotalSeconds(plan);
+    const isStUnknown =
+      plannedStTotalSeconds == null || plannedStTotalSeconds <= 0;
+    const bucketQuantity =
+      baselineQuantityRaw != null ? resolveStBucketQuantity(baselineQuantityRaw) : null;
+    const exactRemainingStTotalSeconds =
+      bucketQuantity != null
+        ? calculateRemainingStTotalSecondsFromProcessProgress({
+            processTotalsByKey: stats.processTotalsByKey,
+            processKeyGroups: requiredProcessGroups,
+            plannedQuantity: baselineQuantityRaw ?? 0,
+            bucketQuantity,
+            styleProcessRowsById: styleProcessRowsForProgressById,
+          })
+        : null;
+    const progressForRemainingRatio =
+      isMarkedCompleted
+        ? 1
+        : exactRemainingStTotalSeconds != null &&
+            plannedStTotalSeconds != null &&
+            plannedStTotalSeconds > 0
+          ? Math.max(
+              0,
+              Math.min(1, 1 - exactRemainingStTotalSeconds / plannedStTotalSeconds)
+            )
+          : ratioProgressForRemainingRatio;
+    const isProgressUnknown =
+      ratioProgressUnknownCandidate && exactRemainingStTotalSeconds == null;
     const schedulerProgressPercent =
       progressForRemainingRatio == null
         ? null
         : Math.min(100, Math.round(progressForRemainingRatio * 100));
-    const plannedStTotalSeconds = resolvePersistedAssignmentPlanStTotalSeconds(plan);
-    const isStUnknown =
-      plannedStTotalSeconds == null || plannedStTotalSeconds <= 0;
     const remainingStTotalSeconds =
       plannedStTotalSeconds == null
         ? null
         : isProgressUnknown
           ? null
-          : progressForRemainingRatio == null
+          : exactRemainingStTotalSeconds != null
+            ? exactRemainingStTotalSeconds
+            : progressForRemainingRatio == null
             ? plannedStTotalSeconds
             : Math.max(
                 0,

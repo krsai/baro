@@ -1,5 +1,13 @@
 # TODO
 
+## 2026-07-13 line-month capacity exact process remaining ST
+
+- Done: Replaced the forecast backlog calculation for active AssignmentPlans with exact per-process remaining ST when snapshot process IDs and ST buckets are available: `sum(max(0, plannedQty - completedQtyForProcess) * process ST(q))`.
+- Done: Kept `producedQuantity = min(process quantities)` for garment-completion/status semantics, but stopped using that min-ratio as the primary source for forecast remaining load. A single untouched process should not cause already-completed processes to be counted again.
+- Done: `buildLineMonthCapacityRows` and `buildAssignmentPlanProgressRows` now share `calculateRemainingStTotalSecondsFromProcessProgress`; if exact process remaining ST cannot be computed, they fall back to the existing ratio/unknown path instead of guessing.
+- Verified against production data before coding: LINE #1's 43 not-completed plans had 5,906.5h total planned ST, the old min-ratio remaining calculation inflated this to 3,549.6h, while exact process remaining ST is 442.2h with 0 missing ST buckets.
+- Remaining: after deploy, browser-verify `/assignment` for 2026-07 LINE #1. Planned load should no longer stay pinned at 100%/September when most June work records are already near complete.
+
 ## 2026-07-13 assignment CT snapshot styleProcessId legacy backfill
 
 - Done: `normalizeAssignmentCtSnapshotProcess` now restores `styleProcessId` from legacy `processKey` values like `TA01-1216-0` only when the explicit field is missing. This is a legacy snapshot normalization bridge, not a new operational matching key.
