@@ -107,30 +107,32 @@ const ASSIGN_BOARD_SYNC_SOURCE = 'assignment-board';
 
 const assignBoardCollisionDetection = (args) => {
   const pointerCollisions = pointerWithin(args);
-  if (pointerCollisions.length > 0) return pointerCollisions;
+  if (pointerCollisions.length > 0) {
+    const activeId = String(args?.active?.id || '');
+    if (activeId.startsWith('assign-')) {
+      const cancelCollision = pointerCollisions.find(
+        (collision) => String(collision?.id || '') === 'assignment-cancel-drop'
+      );
+      if (cancelCollision) {
+        return [
+          cancelCollision,
+          ...pointerCollisions.filter((collision) => collision !== cancelCollision),
+        ];
+      }
+    }
+    return pointerCollisions;
+  }
   return closestCenter(args);
 };
 
 // The default (WhileDragging) strategy only remeasures droppable rects on
 // scroll/resize events it detects. On some Windows display-scaling setups
-// (e.g. a browser window not filling a monitor) that can leave a narrow
-// drop target - the "배정 취소" strip - slightly stale relative to the
-// pointer, so it needs a drag to start elsewhere before it registers.
-// Forcing continuous remeasurement removes that staleness at a small,
-// fixed perf cost given how few droppables this board has.
+// (e.g. a browser window not filling a monitor) droppable rects can get
+// slightly stale relative to the pointer. Forcing continuous remeasurement
+// keeps the right-side cancel section aligned while dragging.
 const ASSIGN_BOARD_DND_MEASURING = {
   droppable: { strategy: MeasuringStrategy.Always },
 };
-
-// Visual width of the narrow "배정 취소" column in the board grid
-// (frontend/src/pages/App/assign/AssignBoard.jsx grid template below) - kept
-// as a shared constant so the drop zone's actual (wider) hit area can be
-// centered on it without the two drifting out of sync.
-const ASSIGNMENT_CANCEL_ZONE_VISUAL_WIDTH_PX = 60;
-// Extra invisible hit-area padding on each side, extending into the grid
-// gap (which is otherwise empty space) so a small pointer/rect coordinate
-// mismatch doesn't miss this narrow target.
-const ASSIGNMENT_CANCEL_ZONE_HIT_PADDING_PX = 16;
 
 const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
 const toNonNegativeNumber = (value, fallback = 0) => {
@@ -322,6 +324,7 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
 
 const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
   activeDragType,
+  children,
   languageCode,
 }) {
   const acceptsAssignment = activeDragType === 'assignment';
@@ -335,56 +338,46 @@ const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
     <Box
       ref={setNodeRef}
       sx={{
-        height: '100%',
-        minHeight: 120,
-        display: 'flex',
-        alignItems: 'stretch',
-        justifyContent: 'center',
-        // Hit area is wider than the visible strip below - extends into the
-        // grid gap on each side so a small pointer/rect measurement offset
-        // still lands inside this narrow drop target. See
-        // ASSIGNMENT_CANCEL_ZONE_HIT_PADDING_PX above for why.
-        width: `calc(100% + ${ASSIGNMENT_CANCEL_ZONE_HIT_PADDING_PX * 2}px)`,
-        marginLeft: `-${ASSIGNMENT_CANCEL_ZONE_HIT_PADDING_PX}px`,
-        marginRight: `-${ASSIGNMENT_CANCEL_ZONE_HIT_PADDING_PX}px`,
+        minWidth: 0,
+        position: 'relative',
+        pl: { xs: 0, lg: 2 },
+        pt: { xs: 2, lg: 0 },
+        borderLeft: { xs: 0, lg: '2px dashed' },
+        borderTop: { xs: '2px dashed', lg: 0 },
+        borderColor: isOver ? 'error.main' : 'divider',
+        backgroundColor: isOver ? 'rgba(211, 47, 47, 0.05)' : 'transparent',
+        transition: 'border-color 0.12s ease, background-color 0.12s ease',
       }}
     >
-      <Paper
-        variant="outlined"
+      <Typography
+        variant="caption"
+        color={isOver ? 'error.main' : 'text.secondary'}
         sx={{
-          px: 0.75,
-          py: 2,
-          borderStyle: 'dashed',
-          borderWidth: 2,
-          borderColor: isOver ? 'error.main' : 'divider',
-          backgroundColor: isOver ? 'rgba(211, 47, 47, 0.08)' : '#FAFAFB',
-          textAlign: 'center',
-          transition: 'border-color 0.12s ease, background-color 0.12s ease',
-          // Visual width stays at the original column size - only the
-          // invisible parent hit-box above is wider.
-          width: ASSIGNMENT_CANCEL_ZONE_VISUAL_WIDTH_PX,
-          flexShrink: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 1,
+          position: { xs: 'static', lg: 'absolute' },
+          left: { lg: -10 },
+          top: { lg: '50%' },
+          transform: { lg: 'translate(-50%, -50%)' },
+          writingMode: { xs: 'horizontal-tb', lg: 'vertical-lr' },
+          textOrientation: 'mixed',
+          fontWeight: 700,
+          userSelect: 'none',
+          lineHeight: 1.1,
+          px: { xs: 0.5, lg: 0 },
+          py: { xs: 0, lg: 0.5 },
+          mb: { xs: 1, lg: 0 },
+          backgroundColor: 'background.paper',
         }}
       >
-        <Typography
-          variant="caption"
-          sx={{
-            fontWeight: 700,
-            writingMode: 'vertical-lr',
-            textOrientation: 'mixed',
-            userSelect: 'none',
-            letterSpacing: '0.04em',
-          }}
-          color={isOver ? 'error.main' : 'text.primary'}
-        >
-          {getUiMessage('assign.assignmentCancelLabel', '배정 취소', languageCode)}
-        </Typography>
-      </Paper>
+        {getUiMessage('assign.assignmentCancelLabel', '배정 취소', languageCode)}
+      </Typography>
+      <Box
+        sx={{
+          minWidth: 0,
+          pointerEvents: acceptsAssignment ? 'none' : 'auto',
+        }}
+      >
+        {children}
+      </Box>
     </Box>
   );
 });
@@ -6870,7 +6863,7 @@ const AssignBoard = () => {
             )}
           </Alert>
         ) : null}
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 60px 440px' }, gap: 2, alignItems: 'stretch', minWidth: 0, overflow: 'hidden' }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 440px' }, gap: 2, alignItems: 'stretch', minWidth: 0, overflow: 'hidden' }}>
           <Stack spacing={1.5} sx={{ minWidth: 0 }}>
             <Box
               sx={{
@@ -6935,21 +6928,22 @@ const AssignBoard = () => {
           <AssignmentCancelDropZone
             activeDragType={activeDrag?.type || null}
             languageCode={languageCode}
-          />
-          <Box sx={{ minWidth: 0 }}>
-            <UnassignedCardGroupsPanel
-              filteredCardCount={filteredCards.length}
-              groupedFilteredCards={groupedFilteredCards}
-              filteredUnassignedQuantity={filteredUnassignedQuantity}
-              filteredOrderTotalQuantity={filteredOrderTotalQuantity}
-              loading={loading}
-              selectedCardId={selectedCardId}
-              languageCode={languageCode}
-              onSelectCard={handleSelectCard}
-              onOpenContextMenu={handleContextMenuOpen}
-              onDisabledCardDragAttempt={handleDisabledCardDragAttempt}
-            />
-          </Box>
+          >
+            <Box sx={{ minWidth: 0 }}>
+              <UnassignedCardGroupsPanel
+                filteredCardCount={filteredCards.length}
+                groupedFilteredCards={groupedFilteredCards}
+                filteredUnassignedQuantity={filteredUnassignedQuantity}
+                filteredOrderTotalQuantity={filteredOrderTotalQuantity}
+                loading={loading}
+                selectedCardId={selectedCardId}
+                languageCode={languageCode}
+                onSelectCard={handleSelectCard}
+                onOpenContextMenu={handleContextMenuOpen}
+                onDisabledCardDragAttempt={handleDisabledCardDragAttempt}
+              />
+            </Box>
+          </AssignmentCancelDropZone>
         </Box>
 
         <DragOverlay style={{ zIndex: 50 }} modifiers={[snapCenterToCursor]}>

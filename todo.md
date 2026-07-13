@@ -1,5 +1,11 @@
 # TODO
 
+## 2026-07-13 assignment cancel drop zone UX
+
+- Done: Changed the assignment cancel target from a narrow dashed box into the vertical divider before the unassigned-work panel. While dragging an assigned card, the entire area to the right of that divider is now the cancel drop zone.
+- Done: Updated DnD collision priority so an assigned card dropped over the unassigned-work panel resolves as `assignment-cancel-drop` first, instead of accidentally falling through to a line-row/slot placement.
+- Validation: `npm --prefix frontend run build` passed.
+
 ## 2026-07-11 통합 리뷰 기준 미적용 항목
 
 ### 최우선
