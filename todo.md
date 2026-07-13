@@ -1,5 +1,11 @@
 # TODO
 
+## 2026-07-13 attendance menu production grouping
+
+- Done: Moved the Attendance menu item from Organization Management to Production Management while keeping the existing `/attendance` routes and `ATTENDANCE` feature key unchanged.
+- Done: Adjusted the first-accessible-path priority so attendance follows work history in the production flow.
+- Validation: `npm --prefix frontend run build` passed.
+
 ## 2026-07-13 style process PT/ST/AT input semantics
 
 - Done: Changed the style process info tab so ST and AT are display-only there. ST remains editable through the purchase price/time matrix tab, and AT remains an output of the training pipeline rather than a manual input.

@@ -584,6 +584,11 @@ const MainLayout = () => {
             icon: <HistoryIcon />,
             path: '/work-history',
           },
+          {
+            label: getUiMessage('menu.attendance', '\uCD9C\uD1F4\uADFC', languageCode),
+            icon: <ScheduleIcon />,
+            path: '/attendance',
+          },
         ],
       },
       {
@@ -633,11 +638,6 @@ const MainLayout = () => {
             icon: <GroupIcon />,
             path: '/employee',
             badgeCount: pendingEmployeeCount,
-          },
-          {
-            label: getUiMessage('menu.attendance', '\uCD9C\uD1F4\uADFC', languageCode),
-            icon: <ScheduleIcon />,
-            path: '/attendance',
           },
           {
             label: getUiMessage('menu.holiday', '\uD734\uC77C', languageCode),
