@@ -1,5 +1,10 @@
 # TODO
 
+## 2026-07-13 style search numeric id crash
+
+- Done: Fixed `StyleBoard` search filtering so every searchable field is normalized with `String(value ?? '')` before `toLowerCase()`. This prevents numeric `style.id` values from crashing the style list when a search term is typed.
+- Validation: `npm --prefix frontend run build` passed.
+
 ## 2026-07-13 assignment cancel drop zone UX
 
 - Done: Changed the assignment cancel target from a narrow dashed box into the vertical divider before the unassigned-work panel. While dragging an assigned card, the entire area to the right of that divider is now the cancel drop zone.

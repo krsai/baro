@@ -133,6 +133,8 @@ const toPositiveInt = (value, fallback = 1) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const normalizeStyleSearchText = (value) => String(value ?? '').trim().toLowerCase();
+
 const resolveSecondsUnitLabel = (languageCode) => {
   if (languageCode === 'en') return 'sec';
   if (languageCode === 'vi') return 'giay';
@@ -431,18 +433,19 @@ const StyleBoard = () => {
   };
 
   const filteredStyles = useMemo(() => {
-    if (!deferredSearchTerm) {
+    const lower = normalizeStyleSearchText(deferredSearchTerm);
+    if (!lower) {
       return styles;
     }
-    const lower = deferredSearchTerm.toLowerCase();
-    return styles.filter(
-      (style) =>
-        (style.name || '').toLowerCase().includes(lower) ||
-        (style.customer || '').toLowerCase().includes(lower) ||
-        (style.customerNameKo || '').toLowerCase().includes(lower) ||
-        (style.customerNameVi || '').toLowerCase().includes(lower) ||
-        (style.styleCode || '').toLowerCase().includes(lower) ||
-        (style.id || '').toLowerCase().includes(lower)
+    return styles.filter((style) =>
+      [
+        style.name,
+        style.customer,
+        style.customerNameKo,
+        style.customerNameVi,
+        style.styleCode,
+        style.id,
+      ].some((value) => normalizeStyleSearchText(value).includes(lower))
     );
   }, [deferredSearchTerm, styles]);
 
