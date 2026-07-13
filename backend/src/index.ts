@@ -8188,13 +8188,22 @@ const resolveWorkRecordStyleMetric = (record: any) => {
 const buildWorkRecordWorkerStyleProcessSignature = (record: any) => {
   const workerId = toPositiveIntOrNull(record?.workerId);
   if (!workerId) return null;
-  const styleMetric = resolveWorkRecordStyleMetric(record);
-  if (!styleMetric.styleMetricKey) return null;
+  // Scoped by assignmentPlanId (order x style), not styleId alone: the same
+  // style can legitimately be produced under two different orders in the
+  // same period, each with its own AssignmentPlan. Using styleId here used to
+  // flag "same worker did the same process for the same style under two
+  // different orders" as a false-positive duplicate. assignmentPlanId is
+  // mandatory on every WorkRecord by the time this runs (rows without it are
+  // already rejected earlier in the save/import pipeline), so this still
+  // reliably catches a true duplicate: the same worker entering the same
+  // order/style/process twice.
+  const assignmentPlanId = toPositiveIntOrNull(record?.assignmentPlanId);
+  if (!assignmentPlanId) return null;
   const processMetric = resolveWorkRecordProcessMetricFromRecord(record);
   if (!processMetric.processMetricKey || processMetric.processMetricKey === "unknown") {
     return null;
   }
-  return `${workerId}::${styleMetric.styleMetricKey}::${processMetric.processMetricKey}`;
+  return `${workerId}::assignmentPlan:${assignmentPlanId}::${processMetric.processMetricKey}`;
 };
 const formatWorkerStyleProcessIdentityLabel = (record: any) => {
   const workerId = toPositiveIntOrNull(record?.workerId);

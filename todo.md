@@ -1,5 +1,10 @@
 # TODO
 
+## 2026-07-13 work-log duplicate check false positive (assignmentPlanId scoping)
+
+- Done: `buildWorkRecordWorkerStyleProcessSignature`(backend/src/index.ts) now scopes duplicate detection by `assignmentPlanId` instead of `styleId`, so the same style used across two different orders no longer false-positives as a duplicate. See AGENTS.md §49.
+- Remaining: the "group anchor row hides the actual duplicate row(s) elsewhere in the group" display issue is still open (not touched by this fix).
+
 ## 2026-07-13 attendance menu production grouping
 
 - Done: Moved the Attendance menu item from Organization Management to Production Management while keeping the existing `/attendance` routes and `ATTENDANCE` feature key unchanged.
