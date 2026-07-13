@@ -1649,3 +1649,12 @@ runtime 조회값:
   - `refreshUnlinkedAssignmentPlanSnapshotsForOrg`가 정확히 언제/무엇을 트리거로 도는지, 이번 케이스가 그 경로로 이미 커버됐어야 했는지는 미확인 상태로 남아있다.
   - 크로스탭 이벤트 전파(다른 탭의 스타일 편집을 열려있는 배정 보드 탭에 알리는 것) 자체는 고치지 않았다.
   - **교훈**: 이 앱의 ST/CT 관련 검증은 "값이 있으면 정확해야 한다"와 "값이 없을 수 있다(경고만)"를 구분해서 다뤄야 하는데, 1차 수정에서 이 구분을 놓치고 "완전성 검증 = 하드 블록"으로 성급하게 설계했다. 비슷한 검증을 추가할 땐 §35 같은 기존 "미설정 허용, 경고만" 패턴이 이미 있는지부터 확인할 것.
+
+### 49. 2026-07-13 스타일 공정/PT/ST 편집 정책 (Codex 구현)
+
+- 공정 정보 탭에서 사용자가 직접 입력하는 기준 시간은 PT뿐이다. ST는 매입 단가/타임 매트릭스 탭에서만 명시적으로 수정하고, AT는 작업기록/출퇴근 학습 결과로만 채운다.
+- 새 공정을 처음 만들 때만 PT(1,000)를 기준으로 전체 ST(q) bucket을 초기 생성한다. 기존 공정의 PT를 수정하더라도 ST(q)는 자동으로 따라 바꾸지 않는다.
+- 스타일 저장 payload에 `stBuckets`가 포함돼 있다는 사실만으로 ST 수정 의도로 해석하지 않는다. ST를 쓰는 요청은 `stBucketWriteMode: "MANUAL_EDIT"`와 실제 수정 bucket 목록(`stBucketUpdateQuantities`)처럼 명시적인 쓰기 의도를 가져야 한다.
+- 기존 공정의 ST는 명시된 bucket만 부분 upsert/delete한다. 스타일 저장 과정에서 기존 `StyleProcessStandard` 전체를 delete/recreate하지 않는다.
+- 공정 구조가 바뀌는 경우(AB를 합치거나 A를 나누는 등)는 기존 공정을 덮어쓰거나 삭제하는 것이 아니라 새 공정 row를 추가하는 방향을 우선한다. 작업기록이 연결된 `StyleProcess`를 삭제해 `WorkRecord.styleProcessId`를 orphan으로 만들면 안 된다.
+- `Style.processes` JSON은 ST의 소스오브트루스가 아니다. 관계형 `StyleProcessStandard`와 차이가 난다는 이유만으로 JSON 값을 이용해 ST를 자가치유하거나 덮어쓰지 않는다.

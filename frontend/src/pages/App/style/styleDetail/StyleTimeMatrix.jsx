@@ -90,7 +90,18 @@ const upsertStBuckets = (process, quantity, seconds) => {
     next.push({ bucketQuantity: q, bucketStSeconds: seconds, setBy: 'MANUAL', setAt: null, updatedAt: null });
   }
   next.sort((a, b) => Number(a.bucketQuantity) - Number(b.bucketQuantity));
-  return normalizeProcess({ ...norm, stBuckets: next, ct: null, stManual: false });
+  const updateQuantities = Array.from(new Set([
+    ...(Array.isArray(norm?.stBucketUpdateQuantities) ? norm.stBucketUpdateQuantities : []),
+    q,
+  ])).filter((value) => Number.isFinite(Number(value)) && Number(value) > 0);
+  return normalizeProcess({
+    ...norm,
+    stBuckets: next,
+    stBucketWriteMode: 'MANUAL_EDIT',
+    stBucketUpdateQuantities: updateQuantities,
+    ct: null,
+    stManual: false,
+  });
 };
 
 const dk = (id, qty) => `${id}::${qty}`;

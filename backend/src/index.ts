@@ -4535,6 +4535,25 @@ const buildCompleteStyleProcessStBuckets = ({
   );
 };
 
+const STYLE_PROCESS_ST_WRITE_MODE_MANUAL_EDIT = "MANUAL_EDIT";
+
+const normalizeStyleProcessStBucketWriteMode = (value: any): string | null => {
+  const normalized = resolveOptionalString(value, "")?.trim().toUpperCase();
+  if (normalized === STYLE_PROCESS_ST_WRITE_MODE_MANUAL_EDIT) {
+    return STYLE_PROCESS_ST_WRITE_MODE_MANUAL_EDIT;
+  }
+  return null;
+};
+
+const normalizeStyleProcessStBucketUpdateQuantities = (value: any): number[] =>
+  Array.from(
+    new Set(
+      ensureArray(value)
+        .map((item) => toPositiveIntOrNull(item))
+        .filter((item): item is number => item !== null)
+    )
+  ).sort((left, right) => left - right);
+
 const buildStyleProcessStorageDrafts = (processes: any): any[] =>
   normalizeStyleProcesses(processes).map((process, index) => {
     const normalizedComposition = normalizeStyleProcessComposition(
@@ -4554,7 +4573,13 @@ const buildStyleProcessStorageDrafts = (processes: any): any[] =>
     const providedStBuckets = normalizeStyleProcessStBuckets(
       (process as any)?.stBuckets ?? (process as any)?.stValues
     );
+    const stBucketWriteMode = normalizeStyleProcessStBucketWriteMode(
+      (process as any)?.stBucketWriteMode
+    );
     return {
+      styleProcessId: toPositiveIntOrNull(
+        (process as any)?.styleProcessId ?? (process as any)?.id
+      ),
       processCode: resolveStyleProcessStorageCode(process, index),
       processName:
         manualName ??
@@ -4572,12 +4597,17 @@ const buildStyleProcessStorageDrafts = (processes: any): any[] =>
       sortOrder: index,
       ptSeconds,
       atParams: toStyleAtParams((process as any)?.atParams),
-      preserveStBuckets: (process as any)?.preserveStBuckets === true,
-      hasProvidedStBuckets: providedStBuckets.length > 0,
-      stBuckets: buildCompleteStyleProcessStBuckets({
-        ptSeconds,
-        stBuckets: providedStBuckets,
-      }),
+      stBucketWriteMode,
+      stBucketUpdateQuantities: normalizeStyleProcessStBucketUpdateQuantities(
+        (process as any)?.stBucketUpdateQuantities
+      ),
+      stBuckets:
+        stBucketWriteMode === STYLE_PROCESS_ST_WRITE_MODE_MANUAL_EDIT
+          ? providedStBuckets
+          : buildCompleteStyleProcessStBuckets({
+              ptSeconds,
+              stBuckets: providedStBuckets,
+            }),
     };
   });
 
@@ -4878,6 +4908,7 @@ const syncStyleProcessStorageForStyle = async ({
     select: {
       id: true,
       processCode: true,
+      processName: true,
       standards: {
         select: {
           bucketQuantity: true,
@@ -4890,15 +4921,66 @@ const syncStyleProcessStorageForStyle = async ({
       _count: { select: { workRecords: true } },
     },
   });
+  const existingById = new Map(existingRows.map((row) => [Number(row.id), row]));
   const existingByCode = new Map(
     existingRows.map((row) => [normalizeProcessCodeKey(row.processCode), row])
   );
-  const nextCodes = new Set(drafts.map((draft) => normalizeProcessCodeKey(draft.processCode)));
+  const invalidDraftIds = drafts
+    .map((draft) => toPositiveIntOrNull(draft?.styleProcessId))
+    .filter((id): id is number => id !== null && !existingById.has(id));
+  if (invalidDraftIds.length > 0) {
+    throw createHttpError(
+      409,
+      `스타일 공정 참조가 현재 스타일과 일치하지 않습니다. 페이지를 새로고침한 뒤 다시 시도해주세요. 대상: ${invalidDraftIds
+        .slice(0, 5)
+        .join(", ")}`
+    );
+  }
+  const draftTargets = drafts.map((draft) => {
+    const draftId = toPositiveIntOrNull(draft?.styleProcessId);
+    const existingByDraftId =
+      draftId !== null ? existingById.get(draftId) ?? null : null;
+    const existingByDraftCode =
+      existingByCode.get(normalizeProcessCodeKey(draft.processCode)) ?? null;
+    return {
+      draft,
+      existingRow: existingByDraftId ?? existingByDraftCode,
+    };
+  });
+  const nextExistingIds = new Set(
+    draftTargets
+      .map(({ existingRow }) => toPositiveIntOrNull(existingRow?.id))
+      .filter((id): id is number => id !== null)
+  );
+  const seenDraftExistingIds = new Set<number>();
+  for (const { existingRow } of draftTargets) {
+    const existingRowId = toPositiveIntOrNull(existingRow?.id);
+    if (existingRowId === null) continue;
+    if (seenDraftExistingIds.has(existingRowId)) {
+      throw createHttpError(
+        400,
+        "같은 스타일 공정이 저장 payload에 두 번 포함되어 있습니다. 페이지를 새로고침한 뒤 다시 시도해주세요."
+      );
+    }
+    seenDraftExistingIds.add(existingRowId);
+  }
 
   if (existingRows.length > 0) {
-    const deleteIds = existingRows
-      .filter((row) => !nextCodes.has(normalizeProcessCodeKey(row.processCode)))
-      .map((row) => row.id);
+    const rowsToDelete = existingRows.filter((row) => !nextExistingIds.has(row.id));
+    const blockedDeletes = rowsToDelete.filter(
+      (row) => Number(row?._count?.workRecords ?? 0) > 0
+    );
+    if (blockedDeletes.length > 0) {
+      const labels = blockedDeletes
+        .slice(0, 5)
+        .map((row) => row.processCode || row.processName || `#${row.id}`)
+        .join(", ");
+      throw createHttpError(
+        409,
+        `작업기록이 연결된 공정은 삭제할 수 없습니다. 공정 구조를 바꾸려면 기존 공정을 남기고 새 공정을 추가해주세요. 대상: ${labels}`
+      );
+    }
+    const deleteIds = rowsToDelete.map((row) => row.id);
     if (deleteIds.length > 0) {
       await db.styleProcess.deleteMany({
         where: { id: { in: deleteIds } },
@@ -4906,9 +4988,7 @@ const syncStyleProcessStorageForStyle = async ({
     }
   }
 
-  for (const draft of drafts) {
-    const normalizedProcessCode = normalizeProcessCodeKey(draft.processCode);
-    const existingRow = existingByCode.get(normalizedProcessCode);
+  for (const { draft, existingRow } of draftTargets) {
     const existingId = existingRow?.id;
     const row = existingId
       ? await db.styleProcess.update({
@@ -4954,30 +5034,91 @@ const syncStyleProcessStorageForStyle = async ({
             atParams: draft.atParams,
           },
         });
-    const shouldPreserveExistingStandards =
-      existingRow &&
-      Number(existingRow?._count?.workRecords ?? 0) > 0 &&
-      (draft.preserveStBuckets || !draft.hasProvidedStBuckets);
-    if (shouldPreserveExistingStandards) {
+    if (!existingRow) {
+      await db.styleProcessStandard.deleteMany({
+        where: { styleProcessId: row.id },
+      });
+      if (draft.stBuckets.length > 0) {
+        await db.styleProcessStandard.createMany({
+          data: draft.stBuckets.map((stValue: StyleStBucket) => ({
+            orgId: processOrgId,
+            styleProcessId: row.id,
+            bucketQuantity: stValue.bucketQuantity,
+            bucketStSeconds: stValue.bucketStSeconds,
+            setBy: stValue.setBy,
+            setAt: stValue.setAt ? new Date(stValue.setAt) : undefined,
+          })),
+          skipDuplicates: true,
+        });
+      }
       continue;
     }
 
-    await db.styleProcessStandard.deleteMany({
-      where: { styleProcessId: row.id },
-    });
-    if (draft.stBuckets.length > 0) {
-      await db.styleProcessStandard.createMany({
-        data: draft.stBuckets.map((stValue: StyleStBucket) => ({
-          orgId: processOrgId,
-          styleProcessId: row.id,
-          bucketQuantity: stValue.bucketQuantity,
-          bucketStSeconds: stValue.bucketStSeconds,
-          setBy: stValue.setBy,
-          setAt: stValue.setAt ? new Date(stValue.setAt) : undefined,
-        })),
-        skipDuplicates: true,
-      });
+    if (draft.stBucketWriteMode !== STYLE_PROCESS_ST_WRITE_MODE_MANUAL_EDIT) {
+      continue;
     }
+
+    const updateQuantities = ensureArray(draft.stBucketUpdateQuantities)
+      .map((quantity) => toPositiveIntOrNull(quantity))
+      .filter((quantity): quantity is number => quantity !== null);
+    if (updateQuantities.length === 0) {
+      continue;
+    }
+    const stBucketByQuantity = ensureArray(draft.stBuckets).reduce(
+      (map, stValue) => {
+        const bucketQuantity = toPositiveIntOrNull((stValue as any)?.bucketQuantity);
+        const bucketStSeconds = toOptionalProcessSeconds(
+          (stValue as any)?.bucketStSeconds
+        );
+        if (bucketQuantity === null || bucketStSeconds === null || bucketStSeconds <= 0) {
+          return map;
+        }
+        map.set(bucketQuantity, {
+          bucketQuantity,
+          bucketStSeconds,
+          setBy: resolveOptionalString((stValue as any)?.setBy, null) ?? "MANUAL",
+          setAt: resolveOptionalString((stValue as any)?.setAt, null),
+        });
+        return map;
+      },
+      new Map<number, StyleStBucket>()
+    );
+    const now = new Date();
+    await Promise.all(
+      updateQuantities.map(async (bucketQuantity) => {
+        const stValue = stBucketByQuantity.get(bucketQuantity) ?? null;
+        if (!stValue) {
+          await db.styleProcessStandard.deleteMany({
+            where: {
+              styleProcessId: row.id,
+              bucketQuantity,
+            },
+          });
+          return;
+        }
+        await db.styleProcessStandard.upsert({
+          where: {
+            styleProcessId_bucketQuantity: {
+              styleProcessId: row.id,
+              bucketQuantity,
+            },
+          },
+          create: {
+            orgId: processOrgId,
+            styleProcessId: row.id,
+            bucketQuantity,
+            bucketStSeconds: stValue.bucketStSeconds,
+            setBy: stValue.setBy,
+            setAt: stValue.setAt ? new Date(stValue.setAt) : now,
+          },
+          update: {
+            bucketStSeconds: stValue.bucketStSeconds,
+            setBy: stValue.setBy,
+            setAt: stValue.setAt ? new Date(stValue.setAt) : now,
+          },
+        });
+      })
+    );
   }
 
   const rowsByStyleId = await refreshStyleProcessMirrorForStyleIds([styleId], {
@@ -4992,20 +5133,6 @@ const syncStyleProcessStorageForStyle = async ({
   });
   return buildStyleProcessMirrorFromRows(rows, processNameLookup, processes);
 };
-
-const buildStyleProcessBucketSignature = (values: any): string =>
-  ensureArray(values)
-    .map((value) => {
-      const bucketQuantity = toPositiveIntOrNull((value as any)?.bucketQuantity);
-      const bucketStSeconds = toOptionalProcessSeconds(
-        (value as any)?.bucketStSeconds
-      );
-      if (bucketQuantity === null || bucketStSeconds === null) return null;
-      return `${bucketQuantity}:${bucketStSeconds}`;
-    })
-    .filter((value): value is string => Boolean(value))
-    .sort((left, right) => left.localeCompare(right))
-    .join("|");
 
 const isStyleProcessStorageOutOfSync = ({
   style,
@@ -5038,10 +5165,6 @@ const isStyleProcessStorageOutOfSync = ({
     const draftTimesPerPiece = toPositiveInt(draft?.timesPerPiece, 1);
     const rowTimesPerPiece = toPositiveInt(row?.timesPerPiece, 1);
     if (draftTimesPerPiece !== rowTimesPerPiece) return true;
-
-    const draftBucketSignature = buildStyleProcessBucketSignature(draft?.stBuckets);
-    const rowBucketSignature = buildStyleProcessBucketSignature(row?.standards);
-    if (draftBucketSignature !== rowBucketSignature) return true;
   }
 
   return false;

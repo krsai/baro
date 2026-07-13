@@ -145,6 +145,7 @@ const STYLE_PROCESS_MESSAGES = {
     reviewCommentPlaceholder: '예: 주머니 입구 접기와 부착은 묶음 공정으로 재검토 필요',
     reviewBadge: '검토',
     delete: '삭제',
+    deleteBlocked: '작업기록이 연결된 공정은 삭제할 수 없습니다.',
     editingTitle: '공정 수정',
     orderColumn: '순서',
     codeColumn: '코드',
@@ -162,9 +163,9 @@ const STYLE_PROCESS_MESSAGES = {
     stTooltip: 'ST({quantity}): {quantity}장 주문은 해당 구간 기준의 개당 표준 시간(초)입니다.',
     ptChangeDialogTitle: 'PT 변경 확인',
     ptChangeNoRecordsMessage:
-      '이 공정은 아직 작업기록이 없습니다. PT를 수정하면 모든 ST(q) 기준값이 새 PT(1,000) 값으로 일괄 변경됩니다.',
+      'PT만 변경됩니다. 기존 ST(q) 기준값은 변경되지 않습니다. ST 수정은 매입 단가 탭에서 별도로 진행해주세요.',
     ptChangeHasRecordsMessage:
-      '이 공정에는 이미 작업기록이 있습니다. PT를 수정해도 기존 ST(q) 기준값은 변경되지 않습니다. ST 수정은 매입 단가 탭에서 진행해주세요.',
+      'PT만 변경됩니다. 기존 ST(q) 기준값은 변경되지 않습니다. 공정 구조가 바뀌는 경우 기존 공정을 덮어쓰기보다 새 공정을 추가해주세요.',
     ptChangeSummary: '{processName}: {previousPt} -> {nextPt}',
     confirmPtChange: '확인 후 저장',
     validatePart: '대상을 선택해주세요.',
@@ -227,6 +228,7 @@ const STYLE_PROCESS_MESSAGES = {
     reviewCommentPlaceholder: 'e.g. Folded pocket opening should be merged with pocket attach',
     reviewBadge: 'Review',
     delete: 'Delete',
+    deleteBlocked: 'Processes linked to work records cannot be deleted.',
     editingTitle: 'Edit Process',
     orderColumn: 'Order',
     codeColumn: 'Code',
@@ -244,9 +246,9 @@ const STYLE_PROCESS_MESSAGES = {
     stTooltip: 'ST({quantity}): per-piece standard seconds for the matched quantity bucket.',
     ptChangeDialogTitle: 'Confirm PT Change',
     ptChangeNoRecordsMessage:
-      'This process has no work records yet. Changing PT will reset every ST(q) bucket to the new PT(1,000) value.',
+      'Only PT will change. Existing ST(q) standards will stay unchanged. Edit ST from the purchase price tab when needed.',
     ptChangeHasRecordsMessage:
-      'This process already has work records. Changing PT will not change existing ST(q) values. Edit ST from the purchase price tab when needed.',
+      'Only PT will change. Existing ST(q) standards will stay unchanged. Add a new process instead of overwriting this one when the process structure changes.',
     ptChangeSummary: '{processName}: {previousPt} -> {nextPt}',
     confirmPtChange: 'Confirm and Save',
     validatePart: 'Select a target.',
@@ -309,6 +311,7 @@ const STYLE_PROCESS_MESSAGES = {
     reviewCommentPlaceholder: 'vi du: can gop cong doan gap mieng tui va rap tui',
     reviewBadge: 'Can xem',
     delete: 'Xoa',
+    deleteBlocked: 'Khong the xoa cong doan da lien ket voi ban ghi lam viec.',
     editingTitle: 'Sua cong doan',
     orderColumn: 'Thu tu',
     codeColumn: 'Ma',
@@ -326,9 +329,9 @@ const STYLE_PROCESS_MESSAGES = {
     stTooltip: 'ST({quantity}): giay chuan moi san pham theo nhom so luong phu hop.',
     ptChangeDialogTitle: 'Xac nhan doi PT',
     ptChangeNoRecordsMessage:
-      'Cong doan nay chua co lich su lam viec. Khi doi PT, tat ca ST(q) se doi theo gia tri PT(1.000) moi.',
+      'Chi PT thay doi. ST(q) hien co se giu nguyen. Neu can sua ST, hay sua o tab don gia mua.',
     ptChangeHasRecordsMessage:
-      'Cong doan nay da co lich su lam viec. Khi doi PT, ST(q) hien co se khong thay doi. Neu can sua ST, hay sua o tab don gia mua.',
+      'Chi PT thay doi. ST(q) hien co se giu nguyen. Neu cau truc cong doan thay doi, hay them cong doan moi thay vi ghi de cong doan nay.',
     ptChangeSummary: '{processName}: {previousPt} -> {nextPt}',
     confirmPtChange: 'Xac nhan va luu',
     validatePart: 'Hay chon doi tuong.',
@@ -1127,13 +1130,8 @@ const buildProcessPayload = (
   const reviewDescription = buildReviewDescription(reviewNeedsCheck, reviewComment);
   const ptPerPiece = ptTotalForDisplay == null ? null : toOptionalSeconds(ptTotalForDisplay);
   const existingStBuckets = normalizeStBuckets(existingProcess);
-  const ptChanged =
-    Boolean(existingProcess) && !areOptionalSecondsEqual(existingProcess?.pt, ptPerPiece);
-  const processHasWorkRecords = Boolean(existingProcess) && hasProcessWorkRecords(existingProcess);
-  const shouldResetStFromPt =
-    !existingProcess ||
-    (!processHasWorkRecords && (existingStBuckets.length === 0 || ptChanged));
-  const nextStBuckets = shouldResetStFromPt
+  const shouldInitializeStFromPt = !existingProcess;
+  const nextStBuckets = shouldInitializeStFromPt
     ? buildPtDerivedStBuckets(ptPerPiece)
     : existingStBuckets;
 
@@ -1170,7 +1168,6 @@ const buildProcessPayload = (
     timeRefQuantity: resolvedTimeRefQuantity,
     pt: ptPerPiece,
     stBuckets: nextStBuckets,
-    ...(processHasWorkRecords && ptChanged ? { preserveStBuckets: true } : {}),
     ct: null,
     stManual: false,
     atParams: existingProcess?.atParams ?? null,
@@ -2574,26 +2571,41 @@ const StyleProcess = ({
     onProcessesChange(nextProcesses);
   }, [isDraftOpen, onProcessesChange, safeProcesses]);
 
-  const renderRowActions = useCallback((process) => (
-    <Stack direction="row" spacing={0.25} justifyContent="center">
-      <Tooltip title={getStyleProcessMessage(languageCode, 'edit')}>
-        <span>
-          <IconButton
-            size="small"
-            onClick={() => handleStartEditRow(process)}
-            disabled={isAddingRow}
-          >
-            <EditIcon fontSize="small" />
-          </IconButton>
-        </span>
-      </Tooltip>
-      <Tooltip title={getStyleProcessMessage(languageCode, 'delete')}>
-        <IconButton size="small" onClick={() => handleRemoveProcess(process.instanceId)}>
-          <DeleteIcon fontSize="small" />
-        </IconButton>
-      </Tooltip>
-    </Stack>
-  ), [handleRemoveProcess, handleStartEditRow, isAddingRow, languageCode]);
+  const renderRowActions = useCallback((process) => {
+    const deleteDisabled = isAddingRow || hasProcessWorkRecords(process);
+    return (
+      <Stack direction="row" spacing={0.25} justifyContent="center">
+        <Tooltip title={getStyleProcessMessage(languageCode, 'edit')}>
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => handleStartEditRow(process)}
+              disabled={isAddingRow}
+            >
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip
+          title={
+            deleteDisabled && hasProcessWorkRecords(process)
+              ? getStyleProcessMessage(languageCode, 'deleteBlocked')
+              : getStyleProcessMessage(languageCode, 'delete')
+          }
+        >
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => handleRemoveProcess(process.instanceId)}
+              disabled={deleteDisabled}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+      </Stack>
+    );
+  }, [handleRemoveProcess, handleStartEditRow, isAddingRow, languageCode]);
 
   const addPreviewProcess = isDraftOpen
     ? buildProcessPayload(
