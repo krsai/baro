@@ -131,6 +131,21 @@ const translateLineResolutionIssue = (detail, languageCode) => {
 };
 
 const translateAssignmentMatchIssue = (detail, languageCode) => {
+  const orderUnassigned = parseDetail(
+    detail,
+    /^order (.+) has assignment cards but is not assigned to a line in the worker factory\.?$/i,
+    ['orderNo']
+  );
+  if (orderUnassigned) {
+    if (languageCode === 'en') {
+      return `Order ${orderUnassigned.orderNo} has cards, but they are not assigned to a line in the worker's factory.`;
+    }
+    if (languageCode === 'vi') {
+      return `Don ${orderUnassigned.orderNo} da co the nhung chua duoc phan vao chuyen trong nha may cua cong nhan.`;
+    }
+    return `주문 ${orderUnassigned.orderNo}은 미배정 상태입니다. 작업기록 업로드 전에 작업자 공장의 라인에 배정해 주세요.`;
+  }
+
   const orderMissing = parseDetail(
     detail,
     /^order (.+) has no assignment card in the worker factory\.?$/i,
@@ -150,6 +165,21 @@ const translateAssignmentMatchIssue = (detail, languageCode) => {
       return `주문 ${orderMissing.orderNo}에 연결된 배정 카드가 작업자 공장 안에 없습니다.`;
     }
     return `확인된 라인에서 주문 ${orderMissing.orderNo}를 찾을 수 없습니다.`;
+  }
+
+  const styleUnassigned = parseDetail(
+    detail,
+    /^style (.+) for order (.+) has an assignment card but is not assigned to a line in the worker factory\.?$/i,
+    ['styleId', 'orderNo']
+  );
+  if (styleUnassigned) {
+    if (languageCode === 'en') {
+      return `Order ${styleUnassigned.orderNo} / style ${styleUnassigned.styleId} has a card, but it is not assigned to a line in the worker's factory.`;
+    }
+    if (languageCode === 'vi') {
+      return `Don ${styleUnassigned.orderNo} / ma hang ${styleUnassigned.styleId} da co the nhung chua duoc phan vao chuyen trong nha may cua cong nhan.`;
+    }
+    return `주문 ${styleUnassigned.orderNo} / 스타일 ${styleUnassigned.styleId}은 미배정 상태입니다. 작업기록 업로드 전에 작업자 공장의 라인에 배정해 주세요.`;
   }
 
   const styleMismatch = parseDetail(

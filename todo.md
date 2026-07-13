@@ -1,5 +1,11 @@
 # TODO
 
+## 2026-07-13 work-log import unassigned assignment diagnostics
+
+- Done: Checked `5월 (1).xlsx` and `6월 (1).xlsx`. May has 239 rows for assigned orders `L16-1`/`L16-2`; June has 391 rows and starts with `L16-3`, while production DB currently has `AssignmentPlan` rows only for `L16-1`/`L16-2`. `L16-3`/`L16-4` have manufacturer `AssignmentCard` rows but no line assignment plans, so work-log import correctly blocks them because `WorkRecord.assignmentPlanId` is mandatory.
+- Done: Improved `/work-logs/import` diagnostics to distinguish "no assignment card" from "assignment card exists but is not assigned to a worker-factory line", and translated that case in the upload error modal.
+- Validation: `npm --prefix frontend run build` passed. `npm --prefix backend run build` initially failed because local `backend/node_modules/jose` was missing despite being declared in package files; after `npm --prefix backend install`, the backend build passed. No package file changes were kept.
+
 ## 2026-07-13 style search numeric id crash
 
 - Done: Fixed `StyleBoard` search filtering so every searchable field is normalized with `String(value ?? '')` before `toLowerCase()`. This prevents numeric `style.id` values from crashing the style list when a search term is typed.

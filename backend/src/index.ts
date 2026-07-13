@@ -9174,6 +9174,9 @@ const buildWorkLogImportProcessOptionIdentity = (process: any): string => {
   return "";
 };
 
+const buildWorkLogImportOrderStyleKey = (orderKey: string, styleKey: string) =>
+  `${orderKey}\u0000${styleKey}`;
+
 const buildWorkLogImportLiveStyleProcessOptions = (plan: any) => {
   const orderQuantity = toPositiveInt(
     resolveAssignmentQuantity(plan) ??
@@ -9291,11 +9294,15 @@ const resolveWorkLogImportAssignmentCandidate = ({
   lineId,
   factoryLineIds,
   plans,
+  assignmentCardsByOrderKey,
+  assignmentCardsByOrderStyleKey,
 }: {
   row: any;
   lineId: number;
   factoryLineIds: number[];
   plans: any[];
+  assignmentCardsByOrderKey?: Map<string, any[]>;
+  assignmentCardsByOrderStyleKey?: Map<string, any[]>;
 }) => {
   const orderKey = normalizeComparableText(row?.orderNo);
   const styleKey = normalizeComparableText(row?.styleId);
@@ -9320,6 +9327,13 @@ const resolveWorkLogImportAssignmentCandidate = ({
       normalizeComparableText(plan?.workOrder?.orderNumber) === orderKey
   );
   if (orderCandidates.length === 0) {
+    if (ensureArray(assignmentCardsByOrderKey?.get(orderKey)).length > 0) {
+      return {
+        plan: null,
+        process: null,
+        error: `order ${row.orderNo} has assignment cards but is not assigned to a line in the worker factory`,
+      };
+    }
     return {
       plan: null,
       process: null,
@@ -9333,6 +9347,19 @@ const resolveWorkLogImportAssignmentCandidate = ({
     })
   );
   if (styleCandidates.length === 0) {
+    if (
+      ensureArray(
+        assignmentCardsByOrderStyleKey?.get(
+          buildWorkLogImportOrderStyleKey(orderKey, styleKey)
+        )
+      ).length > 0
+    ) {
+      return {
+        plan: null,
+        process: null,
+        error: `style ${row.styleId} for order ${row.orderNo} has an assignment card but is not assigned to a line in the worker factory`,
+      };
+    }
     return {
       plan: null,
       process: null,
@@ -23024,9 +23051,9 @@ app.post("/work-logs/import", async (req, res) => {
         .filter((value): value is string => Boolean(value))
     )
   );
-  let assignmentPlans =
+  const [rawAssignmentPlans, assignmentCards] = await Promise.all([
     assignmentPlanLineIds.length > 0 && planOrderNos.length > 0
-      ? await findAssignmentPlansWithSelectFallback({
+      ? findAssignmentPlansWithSelectFallback({
           where: {
             orgId: organization.id,
             lineId: { in: assignmentPlanLineIds },
@@ -23044,11 +23071,54 @@ app.post("/work-logs/import", async (req, res) => {
           ],
           context: "work-logs:import",
         })
-      : [];
+      : Promise.resolve([]),
+    planOrderNos.length > 0
+      ? prisma.assignmentCard.findMany({
+          where: {
+            orgId: organization.id,
+            workOrder: { orderNumber: { in: planOrderNos } },
+          },
+          select: {
+            id: true,
+            styleId: true,
+            workOrder: { select: { orderNumber: true } },
+            style: { select: { id: true, code: true, name: true } },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+  let assignmentPlans = rawAssignmentPlans;
   assignmentPlans = await attachLiveStyleProcessMirrorsToAssignmentPlans({
     orgId: organization.id,
     plans: assignmentPlans,
   });
+  const assignmentCardsByOrderKey = ensureArray(assignmentCards).reduce(
+    (map, card) => {
+      const orderKey = normalizeComparableText(card?.workOrder?.orderNumber);
+      if (!orderKey) return map;
+      const bucket = map.get(orderKey) || [];
+      bucket.push(card);
+      map.set(orderKey, bucket);
+      return map;
+    },
+    new Map<string, any[]>()
+  );
+  const assignmentCardsByOrderStyleKey = ensureArray(assignmentCards).reduce(
+    (map, card) => {
+      const orderKey = normalizeComparableText(card?.workOrder?.orderNumber);
+      if (!orderKey) return map;
+      resolveAssignmentPlanStyleQueryValues(card).forEach((value) => {
+        const styleKey = normalizeComparableText(value);
+        if (!styleKey) return;
+        const key = buildWorkLogImportOrderStyleKey(orderKey, styleKey);
+        const bucket = map.get(key) || [];
+        bucket.push(card);
+        map.set(key, bucket);
+      });
+      return map;
+    },
+    new Map<string, any[]>()
+  );
 
   const matchedRows: Array<{
     row: (typeof importedRows)[number];
@@ -23067,6 +23137,8 @@ app.post("/work-logs/import", async (req, res) => {
         .filter((line) => line.factoryId === item.line.factoryId)
         .map((line) => line.id),
       plans: assignmentPlans,
+      assignmentCardsByOrderKey,
+      assignmentCardsByOrderStyleKey,
     });
     if (assignmentMatch.error || !assignmentMatch.plan || !assignmentMatch.process) {
       issues.push(
