@@ -584,6 +584,7 @@ const LineMonthCapacityBoard = ({
     () => (Array.isArray(monthKeys) ? monthKeys : []).filter(Boolean),
     [monthKeys]
   );
+  const tableMinWidth = Math.max(560, 250 + normalizedMonthKeys.length * 220);
 
   const toggleExpanded = (lineId) => {
     setExpandedLineIds((prev) => {
@@ -600,7 +601,7 @@ const LineMonthCapacityBoard = ({
   return (
     <Paper variant="outlined" sx={{ width: '100%', maxWidth: '100%', minWidth: 0 }}>
       <TableContainer sx={{ overflowX: 'auto' }}>
-        <Table size="small" sx={{ minWidth: 980 }}>
+        <Table size="small" sx={{ width: '100%', minWidth: tableMinWidth }}>
           <TableHead>
             <TableRow>
               <TableCell sx={{ width: 250, minWidth: 250 }}>

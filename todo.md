@@ -1,5 +1,12 @@
 # TODO
 
+## 2026-07-13 assignment board layout polish
+
+- Done: Removed the visible "assignment cancel" text from the assignment board separator. The right-side unassigned panel remains the cancel drop target for assigned cards, but the UI now reads as a simple section divider with drag-over highlighting.
+- Done: Moved the search/undo/redo/reset row into the sticky page toolbar so it stays fixed with the save controls while scrolling.
+- Done: Made the line-month capacity table use a month-count-based minimum width instead of a fixed 980px minimum, and narrowed the unassigned-work column responsively so the line capacity area can fill the available screen width.
+- Validation: `npm --prefix frontend run build` passed.
+
 ## 2026-07-13 work-log import unassigned assignment diagnostics
 
 - Done: Checked `5월 (1).xlsx` and `6월 (1).xlsx`. May has 239 rows for assigned orders `L16-1`/`L16-2`; June has 391 rows and starts with `L16-3`, while production DB currently has `AssignmentPlan` rows only for `L16-1`/`L16-2`. `L16-3`/`L16-4` have manufacturer `AssignmentCard` rows but no line assignment plans, so work-log import correctly blocks them because `WorkRecord.assignmentPlanId` is mandatory.

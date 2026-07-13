@@ -325,7 +325,6 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
 const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
   activeDragType,
   children,
-  languageCode,
 }) {
   const acceptsAssignment = activeDragType === 'assignment';
   const { setNodeRef, isOver } = useDroppable({
@@ -340,36 +339,21 @@ const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
       sx={{
         minWidth: 0,
         position: 'relative',
-        pl: { xs: 0, lg: 2 },
-        pt: { xs: 2, lg: 0 },
-        borderLeft: { xs: 0, lg: '2px dashed' },
-        borderTop: { xs: '2px dashed', lg: 0 },
+        pl: { xs: 0, lg: 1.5 },
+        pt: { xs: 1.5, lg: 0 },
+        borderLeft: { xs: 0, lg: '1px solid' },
+        borderTop: { xs: '1px solid', lg: 0 },
         borderColor: isOver ? 'error.main' : 'divider',
         backgroundColor: isOver ? 'rgba(211, 47, 47, 0.05)' : 'transparent',
-        transition: 'border-color 0.12s ease, background-color 0.12s ease',
+        boxShadow: isOver
+          ? {
+              xs: 'inset 0 3px 0 rgba(211, 47, 47, 0.55)',
+              lg: 'inset 3px 0 0 rgba(211, 47, 47, 0.55)',
+            }
+          : 'none',
+        transition: 'border-color 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease',
       }}
     >
-      <Typography
-        variant="caption"
-        color={isOver ? 'error.main' : 'text.secondary'}
-        sx={{
-          position: { xs: 'static', lg: 'absolute' },
-          left: { lg: -10 },
-          top: { lg: '50%' },
-          transform: { lg: 'translate(-50%, -50%)' },
-          writingMode: { xs: 'horizontal-tb', lg: 'vertical-lr' },
-          textOrientation: 'mixed',
-          fontWeight: 700,
-          userSelect: 'none',
-          lineHeight: 1.1,
-          px: { xs: 0.5, lg: 0 },
-          py: { xs: 0, lg: 0.5 },
-          mb: { xs: 1, lg: 0 },
-          backgroundColor: 'background.paper',
-        }}
-      >
-        {getUiMessage('assign.assignmentCancelLabel', '배정 취소', languageCode)}
-      </Typography>
       <Box
         sx={{
           minWidth: 0,
@@ -6793,24 +6777,15 @@ const AssignBoard = () => {
           </Stack>
         </Box>
       }
-    >
-      <DndContext
-        sensors={sensors}
-        collisionDetection={assignBoardCollisionDetection}
-        measuring={ASSIGN_BOARD_DND_MEASURING}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onDragCancel={handleDragCancel}
-        autoScroll={false}
-      >
+      toolbar={
         <Box
           sx={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 1,
-            flexWrap: 'wrap',
-            mb: 1.5,
+            flexWrap: { xs: 'wrap', md: 'nowrap' },
+            minWidth: 0,
           }}
         >
           <SearchInput
@@ -6823,7 +6798,16 @@ const AssignBoard = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
             sx={{ flex: 1, minWidth: { xs: '100%', sm: 320 } }}
           />
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', ml: 'auto' }}>
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{
+              alignItems: 'center',
+              ml: { xs: 0, md: 'auto' },
+              flexShrink: 0,
+              '& .MuiButton-root': { whiteSpace: 'nowrap' },
+            }}
+          >
             <Button
               variant="outlined"
               onMouseDown={preventToolbarButtonFocus}
@@ -6850,6 +6834,17 @@ const AssignBoard = () => {
             </Button>
           </Stack>
         </Box>
+      }
+    >
+      <DndContext
+        sensors={sensors}
+        collisionDetection={assignBoardCollisionDetection}
+        measuring={ASSIGN_BOARD_DND_MEASURING}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+        autoScroll={false}
+      >
         {unlockedUnassignedCardCount > 0 ? (
           <Alert severity="warning" sx={{ mb: 1.5 }}>
             {getUiMessage(
@@ -6863,7 +6858,18 @@ const AssignBoard = () => {
             )}
           </Alert>
         ) : null}
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 440px' }, gap: 2, alignItems: 'stretch', minWidth: 0, overflow: 'hidden' }}>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              lg: 'minmax(0, 1fr) minmax(320px, clamp(340px, 28vw, 400px))',
+            },
+            gap: { xs: 1.5, lg: 1.5 },
+            alignItems: 'stretch',
+            minWidth: 0,
+          }}
+        >
           <Stack spacing={1.5} sx={{ minWidth: 0 }}>
             <Box
               sx={{
@@ -6927,7 +6933,6 @@ const AssignBoard = () => {
           </Stack>
           <AssignmentCancelDropZone
             activeDragType={activeDrag?.type || null}
-            languageCode={languageCode}
           >
             <Box sx={{ minWidth: 0 }}>
               <UnassignedCardGroupsPanel
