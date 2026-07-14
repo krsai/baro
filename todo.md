@@ -1,5 +1,12 @@
 # TODO
 
+## 2026-07-14 order size-set support for URD numeric sizes
+
+- Done: Added frontend size-set definitions for the legacy apparel grid (`XS` through `FREE`, `M/W/U`) and the URD/우리들 numeric grid (`100` through `200`, internally `U` only).
+- Done: Updated the order detail form to choose a size set at order-entry time. Buyer selection now defaults URD/우리들 customers to the numeric size set; existing orders infer their size set from saved `sizeQuantities` keys.
+- Done: Reworked order detail vertical/horizontal quantity grids to render the selected size-set columns instead of the global `SIZE_CODES`. The URD numeric set hides the gender selector/header while still saving `gender: "U"` for backend enum compatibility.
+- Note: No DB schema migration was added. `WorkOrderItem.sizeQuantities` already stores free-form JSON keys, and assignment cards already use `order × style × total quantity`, so the change stays in the order-entry/display layer. Existing THE SAN orders remain on the legacy set.
+
 ## 2026-07-14 AT sync refresh and button gating
 
 - Done: Fixed the AT training source loader to select `WorkRecord.styleProcessId`. Without that field, the 2026-06 work-log rows all looked like `PROCESS_NOT_RESOLVED` even though the DB rows had valid `styleProcessId` values.

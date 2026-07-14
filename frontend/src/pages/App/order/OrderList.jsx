@@ -58,8 +58,17 @@ import { createColorAttribute, fetchAttributes } from '../../../utils/attributeA
 import {
   SIZE_CODES,
   GENDER_CODES,
+  DEFAULT_SIZE_SET_CODE,
+  getDefaultSizeSetCodeForCustomer,
   getGenderLabel,
+  getSizeSetDefaultGender,
+  getSizeSetGenderCodes,
+  getSizeSetOptions,
+  getSizeSetSizeCodes,
+  inferSizeSetCodeFromSizeQuantities,
   normalizeGenderCode,
+  normalizeSizeSetCode,
+  usesGenderForSizeSet,
 } from '../../../constants/productAttributes';
 import { collectAttributeTextCandidates, resolveLocalizedAttributeName, resolveCustomerDisplayName } from '../../../utils/appLanguage';
 import {
@@ -105,13 +114,12 @@ const ORDER_DETAIL_VIEW_MODES = {
   HORIZONTAL: 'horizontal',
 };
 const GENDER_OPTIONS = GENDER_CODES;
-const ORDER_DETAIL_HORIZONTAL_GENDERS = ['M', 'W', 'U'];
 const ORDER_DETAIL_HORIZONTAL_GROUP_DIVIDER = '1px solid #dbe3ec';
 const ORDER_DETAIL_HORIZONTAL_STYLE_COLUMN_WIDTH = 220;
 const ORDER_DETAIL_HORIZONTAL_COLOR_COLUMN_WIDTH = 160;
-const SIZE_COLUMNS = SIZE_CODES;
-const LAST_SIZE_COLUMN = SIZE_COLUMNS[SIZE_COLUMNS.length - 1] || '';
-const ORDER_DETAIL_SIZE_COLUMN_WIDTH = `${(38 / SIZE_COLUMNS.length).toFixed(3)}%`;
+const DEFAULT_SIZE_COLUMNS = SIZE_CODES;
+const getOrderDetailSizeColumnWidth = (sizeColumns = DEFAULT_SIZE_COLUMNS) =>
+  `${(38 / Math.max(1, sizeColumns.length)).toFixed(3)}%`;
 const getSizeColumnHeaderLabel = (sizeCode) =>
   String(sizeCode || '').toUpperCase() === 'FREE' ? 'F' : sizeCode;
 const ORDER_FILTER_DATE_PICKER_SLOT_PROPS = {
@@ -567,16 +575,26 @@ const formatOrderLockTimestamp = (value) => {
 };
 const getGenderOrder = (gender) =>
   Number.isFinite(GENDER_SORT_ORDER[gender]) ? GENDER_SORT_ORDER[gender] : 99;
-const normalizeSizeKey = (value) => {
+const resolveSizeColumns = (sizeSetCodeOrColumns = DEFAULT_SIZE_SET_CODE) =>
+  Array.isArray(sizeSetCodeOrColumns)
+    ? sizeSetCodeOrColumns
+    : getSizeSetSizeCodes(sizeSetCodeOrColumns);
+const normalizeSizeKey = (value, sizeSetCodeOrColumns = DEFAULT_SIZE_SET_CODE) => {
   const raw = String(value || '')
     .toUpperCase()
     .replace(/\s+/g, '');
   if (!raw) return '';
-  if (SIZE_COLUMNS.includes(raw)) return raw;
-  if (raw === 'XXL' || raw === '2X') return '2XL';
-  if (raw === 'XXXL' || raw === '3X') return '3XL';
-  if (raw === 'XXXXL' || raw === '4X') return '4XL';
-  if (raw === 'FREE' || raw === 'FREESIZE' || raw === 'ONESIZE' || raw === 'ONESZ' || raw === 'F') return 'FREE';
+  const sizeColumns = resolveSizeColumns(sizeSetCodeOrColumns).map((size) =>
+    String(size || '').toUpperCase()
+  );
+  if (sizeColumns.includes(raw)) return raw;
+  if ((raw === 'XXL' || raw === '2X') && sizeColumns.includes('2XL')) return '2XL';
+  if ((raw === 'XXXL' || raw === '3X') && sizeColumns.includes('3XL')) return '3XL';
+  if ((raw === 'XXXXL' || raw === '4X') && sizeColumns.includes('4XL')) return '4XL';
+  if (
+    (raw === 'FREE' || raw === 'FREESIZE' || raw === 'ONESIZE' || raw === 'ONESZ' || raw === 'F') &&
+    sizeColumns.includes('FREE')
+  ) return 'FREE';
   return '';
 };
 const toNumericInputString = (value) => String(value ?? '').replace(/[^\d]/g, '');
@@ -592,33 +610,42 @@ const formatQuantityDisplay = (value) => {
   if (!Number.isFinite(parsed) || parsed <= 0) return '-';
   return parsed.toLocaleString();
 };
-const createSizeQuantities = () =>
-  SIZE_COLUMNS.reduce((acc, size) => {
+const createSizeQuantities = (sizeSetCodeOrColumns = DEFAULT_SIZE_SET_CODE) =>
+  resolveSizeColumns(sizeSetCodeOrColumns).reduce((acc, size) => {
     acc[size] = '';
     return acc;
   }, {});
-const normalizeSizeQuantities = (value = {}) => {
-  const base = createSizeQuantities();
-  SIZE_COLUMNS.forEach((size) => {
+const normalizeSizeQuantities = (value = {}, sizeSetCodeOrColumns = DEFAULT_SIZE_SET_CODE) => {
+  const base = createSizeQuantities(sizeSetCodeOrColumns);
+  resolveSizeColumns(sizeSetCodeOrColumns).forEach((size) => {
     base[size] = toNumericInputString(value?.[size] ?? '');
   });
   return base;
 };
-const hasAnySizeQuantity = (sizeQuantities = {}) =>
-  SIZE_COLUMNS.some((size) => Number(sizeQuantities?.[size]) > 0);
+const hasAnySizeQuantity = (sizeQuantities = {}, sizeSetCodeOrColumns = DEFAULT_SIZE_SET_CODE) =>
+  resolveSizeColumns(sizeSetCodeOrColumns).some((size) => Number(sizeQuantities?.[size]) > 0);
+const hasQuantityOutsideSizeSet = (sizeQuantities = {}, sizeSetCodeOrColumns = DEFAULT_SIZE_SET_CODE) => {
+  if (!sizeQuantities || typeof sizeQuantities !== 'object') return false;
+  return Object.entries(sizeQuantities).some(
+    ([key, value]) => Number(value) > 0 && !normalizeSizeKey(key, sizeSetCodeOrColumns)
+  );
+};
 function shouldKeepDeferredRowSeparated(item) {
   const styleIdentity = getStyleIdentity(item);
   return !styleIdentity;
 }
-const sumSizeQuantities = (sizeQuantities = {}) =>
-  SIZE_COLUMNS.reduce((sum, size) => sum + (Number(sizeQuantities?.[size]) || 0), 0);
-const buildSizeQuantitiesFromLegacyRows = (rows = []) =>
+const sumSizeQuantities = (sizeQuantities = {}, sizeSetCodeOrColumns = DEFAULT_SIZE_SET_CODE) =>
+  resolveSizeColumns(sizeSetCodeOrColumns).reduce(
+    (sum, size) => sum + (Number(sizeQuantities?.[size]) || 0),
+    0
+  );
+const buildSizeQuantitiesFromLegacyRows = (rows = [], sizeSetCodeOrColumns = DEFAULT_SIZE_SET_CODE) =>
   rows.reduce((acc, row) => {
-    const sizeKey = normalizeSizeKey(row?.sizeId || row?.sizeName || row?.size);
+    const sizeKey = normalizeSizeKey(row?.sizeId || row?.sizeName || row?.size, sizeSetCodeOrColumns);
     if (!sizeKey) return acc;
     acc[sizeKey] = String((Number(acc[sizeKey]) || 0) + (Number(row?.quantity) || 0));
     return acc;
-  }, createSizeQuantities());
+  }, createSizeQuantities(sizeSetCodeOrColumns));
 
 const normalizeQuantityRow = (row) => ({
   id: row?.id || createId('qty'),
@@ -630,7 +657,25 @@ const normalizeQuantityRow = (row) => ({
   quantity: row?.quantity ?? '',
 });
 
-const createOrderItem = () => ({
+const resolveOrderSizeSetCodeFromItems = (items = [], fallback = DEFAULT_SIZE_SET_CODE) => {
+  const explicit = (Array.isArray(items) ? items : [])
+    .map((item) => normalizeSizeSetCode(item?.sizeSetCode, ''))
+    .find(Boolean);
+  if (explicit) return explicit;
+  const inferred = (Array.isArray(items) ? items : [])
+    .map((item) => inferSizeSetCodeFromSizeQuantities(item?.sizeQuantities, ''))
+    .find(Boolean);
+  return inferred || fallback;
+};
+
+const resolveItemSizeSetCode = (item = {}, fallback = DEFAULT_SIZE_SET_CODE) =>
+  normalizeSizeSetCode(
+    item?.sizeSetCode ||
+      inferSizeSetCodeFromSizeQuantities(item?.sizeQuantities, '') ||
+      fallback
+  );
+
+const createOrderItem = (sizeSetCode = DEFAULT_SIZE_SET_CODE) => ({
   id: createId('item'),
   styleId: '',
   styleName: '',
@@ -638,11 +683,13 @@ const createOrderItem = () => ({
   colorId: null,
   colorCode: '',
   colorName: '',
-  gender: '',
-  sizeQuantities: createSizeQuantities(),
+  gender: getSizeSetDefaultGender(sizeSetCode),
+  sizeSetCode: normalizeSizeSetCode(sizeSetCode),
+  sizeQuantities: createSizeQuantities(sizeSetCode),
 });
 
-const normalizeOrderItem = (item) => {
+const normalizeOrderItem = (item, fallbackSizeSetCode = DEFAULT_SIZE_SET_CODE) => {
+  const sizeSetCode = resolveItemSizeSetCode(item, fallbackSizeSetCode);
   const normalizedGender = normalizeGenderCode(item?.gender, '');
   const legacyRows =
     Array.isArray(item?.quantities) && item.quantities.length > 0
@@ -680,8 +727,11 @@ const normalizeOrderItem = (item) => {
 
   const sizeQuantities =
     item?.sizeQuantities && typeof item.sizeQuantities === 'object'
-      ? normalizeSizeQuantities(item.sizeQuantities)
-      : buildSizeQuantitiesFromLegacyRows(legacyRows);
+      ? normalizeSizeQuantities(item.sizeQuantities, sizeSetCode)
+      : buildSizeQuantitiesFromLegacyRows(legacyRows, sizeSetCode);
+  const resolvedGender = usesGenderForSizeSet(sizeSetCode)
+    ? gender || getSizeSetDefaultGender(sizeSetCode) || ''
+    : getSizeSetDefaultGender(sizeSetCode) || 'U';
 
   return {
     id: item?.id || createId('item'),
@@ -691,11 +741,12 @@ const normalizeOrderItem = (item) => {
     colorId,
     colorCode,
     colorName,
-    gender: gender || '',
+    gender: resolvedGender,
+    sizeSetCode,
     sizeQuantities,
     totalQuantity: Number(item?.totalQuantity) > 0
       ? Number(item.totalQuantity)
-      : sumSizeQuantities(sizeQuantities),
+      : sumSizeQuantities(sizeQuantities, sizeSetCode),
   };
 };
 
@@ -707,6 +758,7 @@ const buildInitialFormData = () => ({
   sellerOrgName: '',
   customerId: '',
   customerName: '',
+  sizeSetCode: DEFAULT_SIZE_SET_CODE,
   dueDate: '',
   status: ORDER_PROGRESS_STAGE_DEFAULT,
   items: [createOrderItem()],
@@ -716,6 +768,15 @@ const normalizeOrderForm = (order) => {
   const base = buildInitialFormData();
   if (!order) return base;
   const items = Array.isArray(order.items) && order.items.length > 0 ? order.items : base.items;
+  const fallbackSizeSetCode = getDefaultSizeSetCodeForCustomer(
+    {
+      name: order.buyerOrgName || order.customerName || order.customer,
+      nameKo: order.buyerOrgNameKo,
+      nameVi: order.buyerOrgNameVi,
+    },
+    DEFAULT_SIZE_SET_CODE
+  );
+  const sizeSetCode = resolveOrderSizeSetCodeFromItems(items, fallbackSizeSetCode);
   return {
     ...base,
     ...order,
@@ -727,7 +788,8 @@ const normalizeOrderForm = (order) => {
     customerId: order.customerId || order.buyerOrgId || base.customerId,
     customerName:
       order.customerName || order.buyerOrgName || order.customer || base.customerName,
-    items: items.map(normalizeOrderItem),
+    sizeSetCode,
+    items: items.map((item) => normalizeOrderItem(item, sizeSetCode)),
     status: normalizeOrderProgressStage(order.status) || base.status,
   };
 };
@@ -746,9 +808,12 @@ const toStableJsonText = (value) => {
 const toComparableOrderSnapshot = (source, fixedSellerOrg = null) => {
   const resolvedSellerOrgId = toOrgId(fixedSellerOrg?.id ?? source?.sellerOrgId);
   const resolvedSellerOrgName = String(fixedSellerOrg?.name || source?.sellerOrgName || '').trim();
+  const orderSizeSetCode = normalizeSizeSetCode(source?.sizeSetCode || DEFAULT_SIZE_SET_CODE);
   const normalizedItems = (Array.isArray(source?.items) ? source.items : []).map((item) => {
-    const normalizedSizeQuantities = normalizeSizeQuantities(item?.sizeQuantities);
-    const sizeQuantities = SIZE_COLUMNS.reduce((acc, size) => {
+    const itemSizeSetCode = resolveItemSizeSetCode(item, orderSizeSetCode);
+    const itemSizeColumns = resolveSizeColumns(itemSizeSetCode);
+    const normalizedSizeQuantities = normalizeSizeQuantities(item?.sizeQuantities, itemSizeSetCode);
+    const sizeQuantities = itemSizeColumns.reduce((acc, size) => {
       const quantity = Number(normalizedSizeQuantities?.[size]) || 0;
       if (quantity > 0) {
         acc[size] = quantity;
@@ -763,6 +828,7 @@ const toComparableOrderSnapshot = (source, fixedSellerOrg = null) => {
       colorCode: getItemColorCode(item),
       colorName: String(item?.colorName || '').trim(),
       gender: normalizeGenderCode(item?.gender, '') || '',
+      sizeSetCode: itemSizeSetCode,
       sizeQuantities,
     };
   });
@@ -775,6 +841,7 @@ const toComparableOrderSnapshot = (source, fixedSellerOrg = null) => {
     sellerOrgName: resolvedSellerOrgName,
     dueDate: String(source?.dueDate || '').trim(),
     status: normalizeOrderProgressStage(source?.status) || ORDER_PROGRESS_STAGE_DEFAULT,
+    sizeSetCode: orderSizeSetCode,
     items: normalizedItems,
   };
 };
@@ -913,6 +980,24 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Style Setup'
             : '스타일 구성',
+      sizeSet:
+        languageCode === 'vi'
+          ? 'Bo size'
+          : languageCode === 'en'
+            ? 'Size set'
+            : '사이즈 세트',
+      sizeSetSingleGroup:
+        languageCode === 'vi'
+          ? 'Size'
+          : languageCode === 'en'
+            ? 'Size'
+            : '사이즈',
+      sizeSetChangedDroppedWarning:
+        languageCode === 'vi'
+          ? 'Mot so so luong size khong thuoc bo size moi da bi loai bo.'
+          : languageCode === 'en'
+            ? 'Some quantities outside the selected size set were removed.'
+            : '선택한 사이즈 세트에 없는 기존 수량은 제외되었습니다.',
       detailViewModeVertical:
         languageCode === 'vi'
           ? 'Doc'
@@ -1565,6 +1650,10 @@ const OrderList = () => {
         selectedBuyer ||
         (!prev.buyerOrgId && buyerOptions.length === 1 ? buyerOptions[0] : null);
       if (fallbackBuyer) {
+        const fallbackSizeSetCode = getDefaultSizeSetCodeForCustomer(
+          fallbackBuyer,
+          DEFAULT_SIZE_SET_CODE
+        );
         if (Number(next.buyerOrgId) !== Number(fallbackBuyer.id)) {
           next.buyerOrgId = fallbackBuyer.id;
           changed = true;
@@ -1579,6 +1668,27 @@ const OrderList = () => {
         }
         if (next.customerName !== fallbackBuyer.name) {
           next.customerName = fallbackBuyer.name;
+          changed = true;
+        }
+        const hasEnteredQuantities = (Array.isArray(next.items) ? next.items : []).some((item) =>
+          hasAnySizeQuantity(
+            item?.sizeQuantities,
+            resolveItemSizeSetCode(item, next.sizeSetCode || DEFAULT_SIZE_SET_CODE)
+          )
+        );
+        const shouldApplyBuyerDefaultSizeSet =
+          !next.sizeSetCode ||
+          (next.sizeSetCode === DEFAULT_SIZE_SET_CODE &&
+            fallbackSizeSetCode !== DEFAULT_SIZE_SET_CODE &&
+            !hasEnteredQuantities);
+        if (shouldApplyBuyerDefaultSizeSet) {
+          next.sizeSetCode = fallbackSizeSetCode;
+          next.items = (Array.isArray(next.items) ? next.items : []).map((item) => ({
+            ...item,
+            sizeSetCode: fallbackSizeSetCode,
+            gender: item.gender || getSizeSetDefaultGender(fallbackSizeSetCode) || '',
+            sizeQuantities: normalizeSizeQuantities(item.sizeQuantities, fallbackSizeSetCode),
+          }));
           changed = true;
         }
       }
@@ -1768,6 +1878,19 @@ const OrderList = () => {
       })),
     [languageCode]
   );
+  const sizeSetOptions = useMemo(() => getSizeSetOptions(languageCode), [languageCode]);
+  const currentSizeSetCode = normalizeSizeSetCode(formData.sizeSetCode || DEFAULT_SIZE_SET_CODE);
+  const currentSizeColumns = useMemo(
+    () => getSizeSetSizeCodes(currentSizeSetCode),
+    [currentSizeSetCode]
+  );
+  const currentHorizontalGenderCodes = useMemo(
+    () => getSizeSetGenderCodes(currentSizeSetCode),
+    [currentSizeSetCode]
+  );
+  const currentSizeSetUsesGender = usesGenderForSizeSet(currentSizeSetCode);
+  const currentSizeColumnWidth = getOrderDetailSizeColumnWidth(currentSizeColumns);
+  const currentLastSizeColumn = currentSizeColumns[currentSizeColumns.length - 1] || '';
   const orderProgressFilterOptions = useMemo(
     () => [
       {
@@ -2017,15 +2140,15 @@ const OrderList = () => {
       });
 
       const normalizedColorGroupRows = colorGroupRows.map((colorGroup) => {
-        const itemByGender = ORDER_DETAIL_HORIZONTAL_GENDERS.reduce((acc, genderCode) => {
+        const itemByGender = currentHorizontalGenderCodes.reduce((acc, genderCode) => {
           acc[genderCode] = null;
           return acc;
         }, {});
         (Array.isArray(colorGroup.rows) ? colorGroup.rows : []).forEach((row) => {
           const normalizedGender = normalizeGenderCode(row?.item?.gender, '');
           const fallbackGender =
-            ORDER_DETAIL_HORIZONTAL_GENDERS[ORDER_DETAIL_HORIZONTAL_GENDERS.length - 1];
-          const genderCode = ORDER_DETAIL_HORIZONTAL_GENDERS.includes(normalizedGender)
+            currentHorizontalGenderCodes[currentHorizontalGenderCodes.length - 1] || 'U';
+          const genderCode = currentHorizontalGenderCodes.includes(normalizedGender)
             ? normalizedGender
             : fallbackGender;
           if (!itemByGender[genderCode]) {
@@ -2033,21 +2156,22 @@ const OrderList = () => {
           }
         });
 
-        const sizeByGender = ORDER_DETAIL_HORIZONTAL_GENDERS.reduce((acc, genderCode) => {
+        const sizeByGender = currentHorizontalGenderCodes.reduce((acc, genderCode) => {
           const normalizedSizeQuantities = normalizeSizeQuantities(
-            itemByGender[genderCode]?.sizeQuantities
+            itemByGender[genderCode]?.sizeQuantities,
+            currentSizeSetCode
           );
-          acc[genderCode] = SIZE_COLUMNS.reduce((sizeAcc, size) => {
+          acc[genderCode] = currentSizeColumns.reduce((sizeAcc, size) => {
             sizeAcc[size] = Number(normalizedSizeQuantities[size]) || 0;
             return sizeAcc;
           }, {});
           return acc;
         }, {});
 
-        const totalQuantity = ORDER_DETAIL_HORIZONTAL_GENDERS.reduce((sum, genderCode) => {
+        const totalQuantity = currentHorizontalGenderCodes.reduce((sum, genderCode) => {
           return (
             sum +
-            SIZE_COLUMNS.reduce(
+            currentSizeColumns.reduce(
               (sizeSum, size) => sizeSum + (Number(sizeByGender[genderCode]?.[size]) || 0),
               0
             )
@@ -2075,7 +2199,13 @@ const OrderList = () => {
         styleSubtotalQuantity,
       };
     });
-  }, [getResolvedColorLabel, groupedStyleItems]);
+  }, [
+    currentHorizontalGenderCodes,
+    currentSizeColumns,
+    currentSizeSetCode,
+    getResolvedColorLabel,
+    groupedStyleItems,
+  ]);
 
   useEffect(() => {
     const currentRowIdSet = new Set(
@@ -2479,6 +2609,7 @@ const OrderList = () => {
       ) {
         return prev;
       }
+      const nextSizeSetCode = getDefaultSizeSetCodeForCustomer(customer, DEFAULT_SIZE_SET_CODE);
       return {
         ...prev,
         buyerOrgId: nextBuyerOrgId,
@@ -2487,6 +2618,7 @@ const OrderList = () => {
         buyerOrgNameVi: customer?.nameVi || '',
         customerId: nextBuyerOrgId,
         customerName: nextBuyerOrgName,
+        sizeSetCode: nextSizeSetCode,
         items: prev.items.map((item) => ({
           ...item,
           styleId: '',
@@ -2495,8 +2627,9 @@ const OrderList = () => {
           colorId: null,
           colorCode: '',
           colorName: '',
-          gender: '',
-          sizeQuantities: createSizeQuantities(),
+          gender: getSizeSetDefaultGender(nextSizeSetCode),
+          sizeSetCode: nextSizeSetCode,
+          sizeQuantities: createSizeQuantities(nextSizeSetCode),
         })),
       };
     });
@@ -2515,6 +2648,32 @@ const OrderList = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleOrderSizeSetChange = (event) => {
+    const nextSizeSetCode = normalizeSizeSetCode(event.target.value, DEFAULT_SIZE_SET_CODE);
+    if (currentSizeSetCode === nextSizeSetCode) return;
+    const shouldWarnDroppedQuantities = (Array.isArray(formData.items) ? formData.items : []).some(
+      (item) => hasQuantityOutsideSizeSet(item?.sizeQuantities, nextSizeSetCode)
+    );
+    setFormData((prev) => {
+      const currentCode = normalizeSizeSetCode(prev.sizeSetCode || DEFAULT_SIZE_SET_CODE);
+      if (currentCode === nextSizeSetCode) return prev;
+      const defaultGender = getSizeSetDefaultGender(nextSizeSetCode);
+      return {
+        ...prev,
+        sizeSetCode: nextSizeSetCode,
+        items: (Array.isArray(prev.items) ? prev.items : []).map((item) => ({
+          ...item,
+          gender: defaultGender || normalizeGenderCode(item?.gender, '') || '',
+          sizeSetCode: nextSizeSetCode,
+          sizeQuantities: normalizeSizeQuantities(item?.sizeQuantities, nextSizeSetCode),
+        })),
+      };
+    });
+    if (shouldWarnDroppedQuantities) {
+      showNotification(orderPageText.sizeSetChangedDroppedWarning, 'warning');
+    }
+  };
+
   const handleDetailViewModeChange = (_event, nextMode) => {
     if (!nextMode) return;
     setDetailViewMode(nextMode);
@@ -2526,7 +2685,7 @@ const OrderList = () => {
       showNotification(orderPageText.modificationLockedNotice, 'warning');
       return;
     }
-    const nextItem = createOrderItem();
+    const nextItem = createOrderItem(currentSizeSetCode);
     setFormData((prev) => ({ ...prev, items: [...prev.items, nextItem] }));
     focusStyleInput(nextItem.id);
   };
@@ -2539,7 +2698,7 @@ const OrderList = () => {
       const nextItems = (Array.isArray(prev.items) ? prev.items : []).filter(
         (item) => !targetIdSet.has(String(item?.id || '').trim())
       );
-      return { ...prev, items: nextItems.length ? nextItems : [createOrderItem()] };
+      return { ...prev, items: nextItems.length ? nextItems : [createOrderItem(prev.sizeSetCode)] };
     });
   };
 
@@ -2553,7 +2712,7 @@ const OrderList = () => {
     focusInputElementInMap(genderInputRefs, itemId);
   };
   const focusFirstSizeInput = (itemId) => {
-    focusInputElementInMap(sizeInputRefs, `${itemId}::${SIZE_COLUMNS[0] || ''}`);
+    focusInputElementInMap(sizeInputRefs, `${itemId}::${currentSizeColumns[0] || ''}`);
   };
   const deferRowMergeUntilBlur = useCallback((itemIdOrIds) => {
     const targetIds = normalizeTargetItemIds(itemIdOrIds);
@@ -2627,10 +2786,13 @@ const OrderList = () => {
               colorId: styleChanged ? null : item.colorId,
               colorCode: styleChanged ? '' : getItemColorCode(item),
               colorName: styleChanged ? '' : String(item.colorName || '').trim(),
-              gender: styleChanged ? '' : normalizeGenderCode(item.gender, ''),
+              gender: styleChanged
+                ? getSizeSetDefaultGender(currentSizeSetCode)
+                : normalizeGenderCode(item.gender, ''),
+              sizeSetCode: currentSizeSetCode,
               sizeQuantities: styleChanged
-                ? createSizeQuantities()
-                : normalizeSizeQuantities(item.sizeQuantities),
+                ? createSizeQuantities(currentSizeSetCode)
+                : normalizeSizeQuantities(item.sizeQuantities, currentSizeSetCode),
             };
           })()
         : item
@@ -2685,7 +2847,7 @@ const OrderList = () => {
       const targetItem =
         previewItems.find((item) => String(item.id || '').trim() === focusItemId) || null;
       const targetGender = normalizeGenderCode(targetItem?.gender, '');
-      if (GENDER_OPTIONS.includes(targetGender)) {
+      if (!currentSizeSetUsesGender || GENDER_OPTIONS.includes(targetGender)) {
         focusFirstSizeInput(focusItemId);
       } else {
         focusGenderInput(focusItemId);
@@ -2802,7 +2964,7 @@ const OrderList = () => {
   };
 
   const handleSizeQuantityChange = (itemId, sizeKey, value) => {
-    const normalizedSize = normalizeSizeKey(sizeKey);
+    const normalizedSize = normalizeSizeKey(sizeKey, currentSizeSetCode);
     if (!normalizedSize) return;
     const normalizedValue = toNumericInputString(value);
     setFormData((prev) => ({
@@ -2811,8 +2973,10 @@ const OrderList = () => {
         item.id === itemId
           ? {
               ...item,
+              gender: getSizeSetDefaultGender(currentSizeSetCode) || item.gender,
+              sizeSetCode: currentSizeSetCode,
               sizeQuantities: {
-                ...normalizeSizeQuantities(item.sizeQuantities),
+                ...normalizeSizeQuantities(item.sizeQuantities, currentSizeSetCode),
                 [normalizedSize]: normalizedValue,
               },
             }
@@ -2822,7 +2986,7 @@ const OrderList = () => {
   };
   const handleHorizontalSizeQuantityChange = (group, colorRow, genderCode, sizeKey, value) => {
     const normalizedGender = normalizeGenderCode(genderCode, '');
-    const normalizedSize = normalizeSizeKey(sizeKey);
+    const normalizedSize = normalizeSizeKey(sizeKey, currentSizeSetCode);
     if (!normalizedGender || !normalizedSize) return;
     const normalizedValue = toNumericInputString(value);
 
@@ -2836,8 +3000,9 @@ const OrderList = () => {
           return {
             ...item,
             gender: currentGender || normalizedGender,
+            sizeSetCode: currentSizeSetCode,
             sizeQuantities: {
-              ...normalizeSizeQuantities(item?.sizeQuantities),
+              ...normalizeSizeQuantities(item?.sizeQuantities, currentSizeSetCode),
               [normalizedSize]: normalizedValue,
             },
           };
@@ -2856,7 +3021,11 @@ const OrderList = () => {
     if (!normalizedValue) return;
 
     const reusableZeroQuantityRow = (Array.isArray(colorRow?.rows) ? colorRow.rows : []).find(
-      (row) => !hasAnySizeQuantity(normalizeSizeQuantities(row?.item?.sizeQuantities))
+      (row) =>
+        !hasAnySizeQuantity(
+          normalizeSizeQuantities(row?.item?.sizeQuantities, currentSizeSetCode),
+          currentSizeSetCode
+        )
     );
     const reusableZeroQuantityRowId = String(reusableZeroQuantityRow?.item?.id || '').trim();
     if (reusableZeroQuantityRowId) {
@@ -2867,8 +3036,9 @@ const OrderList = () => {
           return {
             ...item,
             gender: normalizedGender,
+            sizeSetCode: currentSizeSetCode,
             sizeQuantities: {
-              ...normalizeSizeQuantities(item?.sizeQuantities),
+              ...normalizeSizeQuantities(item?.sizeQuantities, currentSizeSetCode),
               [normalizedSize]: normalizedValue,
             },
           };
@@ -2898,7 +3068,7 @@ const OrderList = () => {
     const colorName = rawColorName || (fallbackColorName === '-' ? '' : fallbackColorName);
     if (!colorId && !colorCode && !colorName) return;
 
-    const sizeQuantities = createSizeQuantities();
+    const sizeQuantities = createSizeQuantities(currentSizeSetCode);
     sizeQuantities[normalizedSize] = normalizedValue;
     const nextItem = {
       id: createId('item'),
@@ -2909,6 +3079,7 @@ const OrderList = () => {
       colorCode,
       colorName,
       gender: normalizedGender,
+      sizeSetCode: currentSizeSetCode,
       sizeQuantities,
     };
     const referenceItemId = String(referenceItem?.id || '').trim();
@@ -2952,9 +3123,12 @@ const OrderList = () => {
   };
   const getHorizontalSizeInputValue = (colorRow, genderCode, sizeKey) => {
     const targetItem = colorRow?.itemByGender?.[genderCode] || null;
-    const normalizedSize = normalizeSizeKey(sizeKey);
+    const normalizedSize = normalizeSizeKey(sizeKey, currentSizeSetCode);
     if (!targetItem || !normalizedSize) return '';
-    const normalizedSizeQuantities = normalizeSizeQuantities(targetItem.sizeQuantities);
+    const normalizedSizeQuantities = normalizeSizeQuantities(
+      targetItem.sizeQuantities,
+      currentSizeSetCode
+    );
     return getDisplayQuantityInputValue(normalizedSizeQuantities[normalizedSize]);
   };
   const handleLastSizeInputKeyDown = (event) => {
@@ -2964,19 +3138,25 @@ const OrderList = () => {
     styleAddButtonRef.current.focus();
   };
 
-  const getItemTotal = (item) => sumSizeQuantities(item?.sizeQuantities);
+  const getItemTotal = (item) =>
+    sumSizeQuantities(item?.sizeQuantities, resolveItemSizeSetCode(item, currentSizeSetCode));
 
   const getOrderTotal = () =>
     formData.items.reduce((sum, item) => sum + getItemTotal(item), 0);
   const buildSanitizedOrderItems = useCallback((items = []) => {
     return (Array.isArray(items) ? items : [])
       .map((item) => {
-        const normalizedSizeQuantities = normalizeSizeQuantities(item.sizeQuantities);
-        const numericSizeQuantities = SIZE_COLUMNS.reduce((acc, size) => {
+        const itemSizeSetCode = resolveItemSizeSetCode(item, currentSizeSetCode);
+        const itemSizeColumns = resolveSizeColumns(itemSizeSetCode);
+        const normalizedSizeQuantities = normalizeSizeQuantities(
+          item.sizeQuantities,
+          itemSizeSetCode
+        );
+        const numericSizeQuantities = itemSizeColumns.reduce((acc, size) => {
           acc[size] = Number(normalizedSizeQuantities[size]) || 0;
           return acc;
         }, {});
-        const totalQuantity = sumSizeQuantities(numericSizeQuantities);
+        const totalQuantity = sumSizeQuantities(numericSizeQuantities, itemSizeSetCode);
         const safeColorCode = getItemColorCode(item);
         const colorOption = colorOptionByCode.get(safeColorCode) || null;
         const safeColorName = String(item.colorName || colorOption?.name || safeColorCode).trim();
@@ -2991,13 +3171,18 @@ const OrderList = () => {
           colorId: safeColorId,
           colorCode: safeColorCode,
           colorName: safeColorName,
-          gender: GENDER_OPTIONS.includes(item.gender) ? item.gender : '',
+          gender: usesGenderForSizeSet(itemSizeSetCode)
+            ? GENDER_OPTIONS.includes(item.gender)
+              ? item.gender
+              : getSizeSetDefaultGender(itemSizeSetCode) || ''
+            : getSizeSetDefaultGender(itemSizeSetCode) || 'U',
+          sizeSetCode: itemSizeSetCode,
           sizeQuantities: numericSizeQuantities,
           totalQuantity,
         };
       })
       .filter((item) => item.totalQuantity > 0);
-  }, [colorOptionByCode]);
+  }, [colorOptionByCode, currentSizeSetCode]);
 
   const validateOrder = () => {
     const resolvedSellerOrgId = toOrgId(fixedSellerOrg?.id ?? formData.sellerOrgId);
@@ -3062,7 +3247,10 @@ const OrderList = () => {
       if (!GENDER_OPTIONS.includes(item.gender)) {
         return orderPageText.validationSelectAllGenderCodes;
       }
-      const totalQuantity = sumSizeQuantities(item.sizeQuantities);
+      const totalQuantity = sumSizeQuantities(
+        item.sizeQuantities,
+        resolveItemSizeSetCode(item, currentSizeSetCode)
+      );
       if (totalQuantity <= 0) {
         return orderPageText.validationEnterSizeQty;
       }
@@ -3573,7 +3761,7 @@ const OrderList = () => {
               gridTemplateColumns: {
                 xs: '1fr',
                 md: 'repeat(2, minmax(0, 1fr))',
-                lg: 'minmax(180px, 1fr) minmax(240px, 1.2fr) minmax(240px, 1.2fr) minmax(180px, 0.9fr) auto',
+                lg: 'minmax(160px, 0.85fr) minmax(220px, 1.15fr) minmax(220px, 1.15fr) minmax(150px, 0.75fr) minmax(180px, 0.9fr) auto',
               },
               alignItems: 'start',
             }}
@@ -3639,12 +3827,27 @@ const OrderList = () => {
               fullWidth
               InputLabelProps={{ shrink: true }}
             />
+            <FormControl fullWidth>
+              <InputLabel id="order-size-set-label">{orderPageText.sizeSet}</InputLabel>
+              <Select
+                labelId="order-size-set-label"
+                value={currentSizeSetCode}
+                label={orderPageText.sizeSet}
+                onChange={handleOrderSizeSetChange}
+              >
+                {sizeSetOptions.map((option) => (
+                  <MenuItem key={option.code} value={option.code}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
             <Box
               sx={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: { xs: 'flex-start', md: 'flex-end' },
-                gridColumn: { xs: '1', md: 'span 2', lg: '5' },
+                gridColumn: { xs: '1', md: 'span 2', lg: '6' },
               }}
             >
               <ToggleButtonGroup
@@ -3711,15 +3914,17 @@ const OrderList = () => {
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>No</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: '29%' }}>{orderPageText.detailStyleNameCode}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: currentSizeSetUsesGender ? '29%' : '34%' }}>{orderPageText.detailStyleNameCode}</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: '10%' }}>{orderPageText.color}</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: '7%' }}>{orderPageText.gender}</TableCell>
-                  {SIZE_COLUMNS.map((size) => (
+                  {currentSizeSetUsesGender && (
+                    <TableCell sx={{ fontWeight: 'bold', width: '7%' }}>{orderPageText.gender}</TableCell>
+                  )}
+                  {currentSizeColumns.map((size) => (
                     <TableCell
                       key={size}
                       sx={{
                         fontWeight: 'bold',
-                        width: ORDER_DETAIL_SIZE_COLUMN_WIDTH,
+                        width: currentSizeColumnWidth,
                         textAlign: 'center',
                         whiteSpace: 'nowrap',
                       }}
@@ -3751,7 +3956,11 @@ const OrderList = () => {
                             customer: selectedBuyerName,
                           }
                         : null);
-                    const normalizedSizeQuantities = normalizeSizeQuantities(item.sizeQuantities);
+                    const itemSizeSetCode = resolveItemSizeSetCode(item, currentSizeSetCode);
+                    const normalizedSizeQuantities = normalizeSizeQuantities(
+                      item.sizeQuantities,
+                      itemSizeSetCode
+                    );
                     const isFirstRow = rowIndex === 0;
                     const rowStyleIdentity = getStyleIdentity(item);
                     const rowColorGroupKey = getResolvedColorGroupKey(item);
@@ -3930,36 +4139,38 @@ const OrderList = () => {
                             </FormControl>
                           </TableCell>
                         )}
-                        <TableCell>
-                          <FormControl fullWidth size="small">
-                            <SearchableSelect
-                              options={genderSelectOptions}
-                              value={selectedGenderOption}
-                              onChange={(event, newValue, reason) =>
-                                handleGenderChange(item.id, newValue, {
-                                  focusNext: shouldAdvanceAfterAutocompleteSelection(event, reason),
-                                })
-                              }
-                              getOptionLabel={(option) => option?.label || option?.code || ''}
-                              isOptionEqualToValue={(option, value) => option?.code === value?.code}
-                              getOptionDisabled={(option) =>
-                                Boolean(rowStyleIdentity) &&
-                                Boolean(rowColorGroupKey) &&
-                                disabledGenderSet.has(option?.code)
-                              }
-                              autoHighlight
-                              disabled={!rowStyleIdentity}
-                              noOptionsText={orderPageText.noSelectableGender}
-                              textFieldProps={{
-                                size: 'small',
-                                placeholder: orderPageText.selectGender,
-                                inputRef: (node) =>
-                                  setInputElementInMap(genderInputRefs, item.id, node),
-                              }}
-                            />
-                          </FormControl>
-                        </TableCell>
-                        {SIZE_COLUMNS.map((size) => {
+                        {currentSizeSetUsesGender && (
+                          <TableCell>
+                            <FormControl fullWidth size="small">
+                              <SearchableSelect
+                                options={genderSelectOptions}
+                                value={selectedGenderOption}
+                                onChange={(event, newValue, reason) =>
+                                  handleGenderChange(item.id, newValue, {
+                                    focusNext: shouldAdvanceAfterAutocompleteSelection(event, reason),
+                                  })
+                                }
+                                getOptionLabel={(option) => option?.label || option?.code || ''}
+                                isOptionEqualToValue={(option, value) => option?.code === value?.code}
+                                getOptionDisabled={(option) =>
+                                  Boolean(rowStyleIdentity) &&
+                                  Boolean(rowColorGroupKey) &&
+                                  disabledGenderSet.has(option?.code)
+                                }
+                                autoHighlight
+                                disabled={!rowStyleIdentity}
+                                noOptionsText={orderPageText.noSelectableGender}
+                                textFieldProps={{
+                                  size: 'small',
+                                  placeholder: orderPageText.selectGender,
+                                  inputRef: (node) =>
+                                    setInputElementInMap(genderInputRefs, item.id, node),
+                                }}
+                              />
+                            </FormControl>
+                          </TableCell>
+                        )}
+                        {currentSizeColumns.map((size) => {
                           const sizeValue = getDisplayQuantityInputValue(
                             normalizedSizeQuantities[size]
                           );
@@ -3968,7 +4179,7 @@ const OrderList = () => {
                               <TextField
                                 value={sizeValue}
                                 onChange={(event) => handleSizeQuantityChange(item.id, size, event.target.value)}
-                                onKeyDown={size === LAST_SIZE_COLUMN ? handleLastSizeInputKeyDown : undefined}
+                                onKeyDown={size === currentLastSizeColumn ? handleLastSizeInputKeyDown : undefined}
                                 inputRef={(node) =>
                                   setInputElementInMap(sizeInputRefs, `${item.id}::${size}`, node)
                                 }
@@ -4031,7 +4242,9 @@ const OrderList = () => {
                 <Table
                   size="small"
                   sx={{
-                    minWidth: 2200,
+                    minWidth: currentSizeSetUsesGender
+                      ? Math.max(1600, 620 + currentHorizontalGenderCodes.length * currentSizeColumns.length * 72)
+                      : Math.max(1180, 620 + currentSizeColumns.length * 72),
                     tableLayout: 'fixed',
                     '& .MuiTableCell-root': {
                       px: 0.75,
@@ -4067,10 +4280,10 @@ const OrderList = () => {
                       >
                         {orderPageText.color}
                       </TableCell>
-                      {ORDER_DETAIL_HORIZONTAL_GENDERS.map((genderCode, genderIndex) => (
+                      {currentSizeSetUsesGender ? currentHorizontalGenderCodes.map((genderCode, genderIndex) => (
                         <TableCell
                           key={`horizontal-group-${genderCode}`}
-                          colSpan={SIZE_COLUMNS.length}
+                          colSpan={currentSizeColumns.length}
                           sx={{
                             fontWeight: 'bold',
                             textAlign: 'center',
@@ -4085,7 +4298,18 @@ const OrderList = () => {
                             languageCode
                           )}
                         </TableCell>
-                      ))}
+                      )) : (
+                        <TableCell
+                          colSpan={currentSizeColumns.length}
+                          sx={{
+                            fontWeight: 'bold',
+                            textAlign: 'center',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {orderPageText.sizeSetSingleGroup}
+                        </TableCell>
+                      )}
                       <TableCell
                         rowSpan={2}
                         sx={{ fontWeight: 'bold', width: 96, textAlign: 'right' }}
@@ -4106,8 +4330,8 @@ const OrderList = () => {
                       </TableCell>
                     </TableRow>
                     <TableRow>
-                      {ORDER_DETAIL_HORIZONTAL_GENDERS.map((genderCode, genderIndex) =>
-                        SIZE_COLUMNS.map((size, sizeIndex) => (
+                      {currentHorizontalGenderCodes.map((genderCode, genderIndex) =>
+                        currentSizeColumns.map((size, sizeIndex) => (
                           <TableCell
                             key={`horizontal-${genderCode}-${size}`}
                             sx={{
@@ -4116,7 +4340,7 @@ const OrderList = () => {
                               whiteSpace: 'nowrap',
                               minWidth: 72,
                               borderLeft:
-                                genderIndex > 0 && sizeIndex === 0
+                                currentSizeSetUsesGender && genderIndex > 0 && sizeIndex === 0
                                   ? ORDER_DETAIL_HORIZONTAL_GROUP_DIVIDER
                                   : undefined,
                             }}
@@ -4324,8 +4548,8 @@ const OrderList = () => {
                                 />
                               </FormControl>
                             </TableCell>
-                            {ORDER_DETAIL_HORIZONTAL_GENDERS.map((genderCode, genderIndex) =>
-                              SIZE_COLUMNS.map((size, sizeIndex) => {
+                            {currentHorizontalGenderCodes.map((genderCode, genderIndex) =>
+                              currentSizeColumns.map((size, sizeIndex) => {
                                 const horizontalSizeValue = getHorizontalSizeInputValue(
                                   colorRow,
                                   genderCode,
@@ -4340,7 +4564,7 @@ const OrderList = () => {
                                       fontVariantNumeric: 'tabular-nums',
                                       px: 0.35,
                                       borderLeft:
-                                        genderIndex > 0 && sizeIndex === 0
+                                        currentSizeSetUsesGender && genderIndex > 0 && sizeIndex === 0
                                           ? ORDER_DETAIL_HORIZONTAL_GROUP_DIVIDER
                                           : undefined,
                                     }}

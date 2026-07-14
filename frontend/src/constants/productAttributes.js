@@ -4,6 +4,44 @@ export const SIZE_CODES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', 'FREE
 
 export const GENDER_CODES = ['M', 'W', 'U'];
 
+export const SIZE_SET_CODES = {
+  LEGACY_APPAREL: 'LEGACY_APPAREL',
+  URD_NUMERIC: 'URD_NUMERIC',
+};
+
+export const DEFAULT_SIZE_SET_CODE = SIZE_SET_CODES.LEGACY_APPAREL;
+
+export const SIZE_SET_DEFINITIONS = [
+  {
+    code: SIZE_SET_CODES.LEGACY_APPAREL,
+    label: {
+      ko: '기본 의류',
+      en: 'Standard apparel',
+      vi: 'Standard apparel',
+    },
+    sizeCodes: SIZE_CODES,
+    genderCodes: GENDER_CODES,
+    usesGender: true,
+    defaultGender: '',
+    customerAliases: [],
+  },
+  {
+    code: SIZE_SET_CODES.URD_NUMERIC,
+    label: {
+      ko: '우리들 100-200',
+      en: 'URD 100-200',
+      vi: 'URD 100-200',
+    },
+    sizeCodes: ['100', '110', '120', '130', '140', '150', '160', '170', '180', '190', '200'],
+    genderCodes: ['U'],
+    usesGender: false,
+    defaultGender: 'U',
+    customerAliases: ['URD', 'WOORI', 'WOORIDEUL', '우리들'],
+  },
+];
+
+const SIZE_SET_BY_CODE = new Map(SIZE_SET_DEFINITIONS.map((item) => [item.code, item]));
+
 export const GENDER_DEFAULT_LABELS = {
   M: {
     ko: '\uB0A8\uC131',
@@ -46,6 +84,83 @@ const resolveLocalizedText = (localizedText, languageCode = getCurrentLanguageCo
     localizedText.vi ||
     ''
   );
+};
+
+export const normalizeSizeSetCode = (value, fallback = DEFAULT_SIZE_SET_CODE) => {
+  const code = String(value || '').trim().toUpperCase();
+  if (SIZE_SET_BY_CODE.has(code)) return code;
+  return fallback;
+};
+
+export const getSizeSetDefinition = (value) =>
+  SIZE_SET_BY_CODE.get(normalizeSizeSetCode(value)) ||
+  SIZE_SET_BY_CODE.get(DEFAULT_SIZE_SET_CODE);
+
+export const getSizeSetSizeCodes = (value) => [...(getSizeSetDefinition(value)?.sizeCodes || [])];
+
+export const getSizeSetGenderCodes = (value) =>
+  [...(getSizeSetDefinition(value)?.genderCodes || GENDER_CODES)];
+
+export const getSizeSetDefaultGender = (value) =>
+  String(getSizeSetDefinition(value)?.defaultGender || '').trim();
+
+export const usesGenderForSizeSet = (value) =>
+  getSizeSetDefinition(value)?.usesGender !== false;
+
+export const getSizeSetLabel = (
+  value,
+  fallback = '',
+  languageCode = getCurrentLanguageCode()
+) => {
+  const definition = getSizeSetDefinition(value);
+  return resolveLocalizedText(definition?.label, languageCode) || fallback || definition?.code || '';
+};
+
+export const getSizeSetOptions = (languageCode = getCurrentLanguageCode()) =>
+  SIZE_SET_DEFINITIONS.map((definition) => ({
+    code: definition.code,
+    label: getSizeSetLabel(definition.code, definition.code, languageCode),
+    usesGender: definition.usesGender !== false,
+  }));
+
+const normalizeSizeSetMatchText = (value) =>
+  String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+
+export const getDefaultSizeSetCodeForCustomer = (customer, fallback = DEFAULT_SIZE_SET_CODE) => {
+  const candidates =
+    customer && typeof customer === 'object'
+      ? [customer.name, customer.nameKo, customer.nameVi, customer.code]
+      : [customer];
+  const normalizedCandidates = candidates
+    .map(normalizeSizeSetMatchText)
+    .filter(Boolean);
+  const matched = SIZE_SET_DEFINITIONS.find((definition) =>
+    (definition.customerAliases || []).some((alias) => {
+      const normalizedAlias = normalizeSizeSetMatchText(alias);
+      return normalizedCandidates.some((candidate) => candidate.includes(normalizedAlias));
+    })
+  );
+  return matched?.code || fallback;
+};
+
+export const inferSizeSetCodeFromSizeQuantities = (
+  sizeQuantities,
+  fallback = DEFAULT_SIZE_SET_CODE
+) => {
+  if (!sizeQuantities || typeof sizeQuantities !== 'object') return fallback;
+  const keys = Object.keys(sizeQuantities)
+    .map((key) => String(key || '').trim().toUpperCase())
+    .filter(Boolean);
+  if (keys.length === 0) return fallback;
+  const matched = SIZE_SET_DEFINITIONS.find((definition) => {
+    if (definition.code === DEFAULT_SIZE_SET_CODE) return false;
+    const sizeSetKeys = new Set((definition.sizeCodes || []).map((size) => String(size).toUpperCase()));
+    return keys.some((key) => sizeSetKeys.has(key));
+  });
+  return matched?.code || fallback;
 };
 
 export const normalizeGenderCode = (value, fallback = 'M') => {
