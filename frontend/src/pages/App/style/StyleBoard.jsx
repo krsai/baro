@@ -622,21 +622,26 @@ const StyleBoard = () => {
             stickyHeader
             aria-label={getUiMessage('styleBoard.tableAriaLabel', 'Style list table', languageCode)}
             size="small"
+            sx={{ tableLayout: 'fixed' }}
           >
             <TableHead>
               <TableRow>
-                <TableCell>{getUiMessage('styleBoard.customer', '고객사', languageCode)}</TableCell>
-                <TableCell>{getUiMessage('styleBoard.styleName', '스타일명', languageCode)}</TableCell>
-                <TableCell>
+                <TableCell sx={{ width: '11%' }}>
+                  {getUiMessage('styleBoard.customer', '고객사', languageCode)}
+                </TableCell>
+                <TableCell sx={{ width: '15%' }}>
+                  {getUiMessage('styleBoard.styleName', '스타일명', languageCode)}
+                </TableCell>
+                <TableCell sx={{ width: '13%' }}>
                   {getUiMessage('styleBoard.styleCode', '스타일 코드', languageCode)}
                 </TableCell>
-                {canViewProcessSummary ? <TableCell sx={{ minWidth: 120, width: 120 }}>{'PT'}</TableCell> : null}
-                {canViewProcessSummary ? <TableCell sx={{ minWidth: 120, width: 120 }}>{'ST'}</TableCell> : null}
-                {canViewProcessSummary ? <TableCell sx={{ minWidth: 120, width: 120 }}>{'AT'}</TableCell> : null}
-                <TableCell>
+                {canViewProcessSummary ? <TableCell sx={{ width: '13%' }}>{'PT'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell sx={{ width: '16%' }}>{'ST'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell sx={{ width: '16%' }}>{'AT'}</TableCell> : null}
+                <TableCell sx={{ width: '10%' }}>
                   {getUiMessage('styleBoard.registrationDate', '등록일', languageCode)}
                 </TableCell>
-                <TableCell align="center">
+                <TableCell align="center" sx={{ width: '6%' }}>
                   {getUiMessage('styleBoard.action', '작업', languageCode)}
                 </TableCell>
               </TableRow>
@@ -674,9 +679,15 @@ const StyleBoard = () => {
                     onDoubleClick={() => handleRowDoubleClick(style)}
                     sx={{ cursor: 'pointer' }}
                   >
-                    <TableCell>{resolveCustomerDisplayName({ name: style.customer, nameKo: style.customerNameKo, nameVi: style.customerNameVi }, languageCode) || '-'}</TableCell>
-                    <TableCell>{style.name || '-'}</TableCell>
-                    <TableCell>{style.styleCode || style.id || '-'}</TableCell>
+                    <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={resolveCustomerDisplayName({ name: style.customer, nameKo: style.customerNameKo, nameVi: style.customerNameVi }, languageCode) || ''}>
+                      {resolveCustomerDisplayName({ name: style.customer, nameKo: style.customerNameKo, nameVi: style.customerNameVi }, languageCode) || '-'}
+                    </TableCell>
+                    <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={style.name || ''}>
+                      {style.name || '-'}
+                    </TableCell>
+                    <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={style.styleCode || ''}>
+                      {style.styleCode || style.id || '-'}
+                    </TableCell>
                     {canViewProcessSummary ? (
                       <TableCell>
                         {style.hasTotalPT ? formatLocalizedSeconds(style.totalPT, languageCode) : '-'}
