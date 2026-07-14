@@ -629,15 +629,15 @@ const StyleBoard = () => {
                 <TableCell sx={{ width: '12%' }}>
                   {getUiMessage('styleBoard.customer', '고객사', languageCode)}
                 </TableCell>
-                <TableCell sx={{ width: '20%' }}>
+                <TableCell sx={{ width: '18%' }}>
                   {getUiMessage('styleBoard.styleName', '스타일명', languageCode)}
                 </TableCell>
                 <TableCell sx={{ width: '14%' }}>
                   {getUiMessage('styleBoard.styleCode', '스타일 코드', languageCode)}
                 </TableCell>
-                {canViewProcessSummary ? <TableCell sx={{ width: '11%' }}>{'PT'}</TableCell> : null}
-                {canViewProcessSummary ? <TableCell sx={{ width: '13%' }}>{'ST'}</TableCell> : null}
-                {canViewProcessSummary ? <TableCell sx={{ width: '13%' }}>{'AT'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell sx={{ width: '15%' }}>{'PT'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell sx={{ width: '15%' }}>{'ST'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell sx={{ width: '15%' }}>{'AT'}</TableCell> : null}
                 <TableCell sx={{ width: '11%' }}>
                   {getUiMessage('styleBoard.registrationDate', '등록일', languageCode)}
                 </TableCell>
