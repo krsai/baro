@@ -8,7 +8,9 @@
 - Done: Updated assignment/production UI snapshot lookups to match saved CT rows by `styleProcessId` instead of `processKey`, so removing persisted `processKey` does not break displayed CT seconds.
 - Done: Added `migration_fix.sql` step 6-4f to remove `processKey` from `AssignmentPlan.assignmentCtSnapshot` and legacy `AssignmentBoardState.assignments[].assignmentCtSnapshot` process rows only when `styleProcessId` is already present.
 - Note: `processKey` still exists as a local UI/draft row key in several components and as an internal `style-process:{id}` grouping key for progress maps. That is not a relation fallback and is intentionally separate from persisted CT snapshot legacy cleanup.
-- Blocked/Note: The Railway URL available in this session connected to an empty/old-schema database (`AssignmentPlan` count 0, only legacy `ctSnapshot` column), so I did not run data cleanup SQL against it. Apply/verify 6-4f against the same populated DB where the previous 41-row CT snapshot backfill was applied.
+- Done: Corrected the manual DB check by setting both `DATABASE_URL` and `DIRECT_URL` to the Railway public URL. Verified the populated production DB has `AssignmentPlan=43`, `WorkRecord=978`, `StyleProcess=1177`.
+- Done: Applied targeted 6-4f cleanup to the populated production DB. Updated 43 `AssignmentPlan` rows; CT snapshot process rows remain 998/998 with `styleProcessId`, and persisted `processKey` dropped to 0/998.
+- Done: Verified `AssignmentPlan` physical columns are canonical in production; old columns such as `ctSnapshot`, `contractedSeconds`, `totalSeconds`, `orderNo`, `customer`, and `label` are not present.
 
 ## 2026-07-13 line-month capacity exact process remaining ST
 
