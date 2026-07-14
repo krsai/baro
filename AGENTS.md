@@ -186,6 +186,12 @@ AT(q) = a*q + b
 `COLLECTING → UNRELIABLE → INSUFFICIENT → USABLE → TRUSTED → VERIFIED`
 `attendanceFallbackShare`(출퇴근 미입력 비율)가 높을수록 신뢰도 하락.
 
+### 2026-07-14 AT sync 운영 메모
+- 수동 AT 갱신은 월 단위다. 스타일 화면 버튼은 `/at-sync/run-now`를 `mode: "previous"`로 호출하므로 2026-07-14 기준 대상월은 `2026-06`이다.
+- `loadAtTrainingSourceWorkLogs`는 반드시 `WorkRecord.styleProcessId`를 select해서 학습 파이프라인까지 보존해야 한다. 이 값이 빠지면 실제 DB에 공정 FK가 있어도 모든 행이 `PROCESS_NOT_RESOLVED`로 제외된다.
+- `AtTrainingBucket`은 수동 갱신의 freshness marker다. `GET /at-sync/status`는 대상월까지의 WorkLog/WorkRecord/Attendance `updatedAt`과 bucket `updatedAt`을 비교하고, 버킷이 최신이면 프론트 AT 갱신 버튼을 비활성화한다.
+- 2026-07-14 운영 DB(org 1)에서 2026-06 기준 AT 갱신을 완료했다. `AtTrainingBucket`은 2026-04/05/06에 존재하고, org 1 `StyleProcess.atParams` 451개가 `trainedPeriod = "2026-06"` 상태다.
+
 ---
 
 ## QC 완료 흐름

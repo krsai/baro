@@ -1,5 +1,14 @@
 # TODO
 
+## 2026-07-14 AT sync refresh and button gating
+
+- Done: Fixed the AT training source loader to select `WorkRecord.styleProcessId`. Without that field, the 2026-06 work-log rows all looked like `PROCESS_NOT_RESOLVED` even though the DB rows had valid `styleProcessId` values.
+- Done: Exported `syncStyleProcessActualTimesFromWorkRecords` and added `BARO_SKIP_API_START=1` so the existing backend AT sync logic can be reused by maintenance scripts without starting the API server.
+- Done: Ran production AT sync for org 1 with `trainingMonthKey=2026-06` against the Railway public DB URL. Result persisted 2026-04/05/06 `AtTrainingBucket` rows and updated 451 org 1 `StyleProcess.atParams` rows to `trainedPeriod=2026-06`.
+- Done: Added `GET /at-sync/status`, which compares WorkLog/WorkRecord/Attendance source `updatedAt` timestamps against `AtTrainingBucket.updatedAt` through the target month. The style board now disables the AT sync button when the training buckets are already current.
+- Verified: After the production refresh, 2026-04/05/06 source months all report `stale=false`; the button should be disabled after status load until work logs or attendance are edited again.
+- Validation: `npm --prefix backend run build` and `npm --prefix frontend run build` passed.
+
 ## 2026-07-13 assignment CT snapshot processKey legacy cleanup
 
 - Done: Removed the runtime bridge that restored `styleProcessId` from legacy snapshot `processKey`. New reads now trust only explicit `processes[].styleProcessId` / `processId` for FK identity.

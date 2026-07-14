@@ -180,6 +180,32 @@ const resolveAtSyncNonSuccessMessage = (languageCode, result) => {
   }
   return `AT update incomplete (${reason}, month ${monthKey})`;
 };
+const resolveAtSyncStatusTooltip = (languageCode, status, isLoading) => {
+  const monthKey = status?.trainingMonthKey || '-';
+  if (isLoading) {
+    if (languageCode === 'en') return 'Checking whether AT needs an update.';
+    if (languageCode === 'vi') return 'Dang kiem tra trang thai cap nhat AT.';
+    return 'AT 갱신 필요 여부를 확인하는 중입니다.';
+  }
+  if (!status) {
+    if (languageCode === 'en') return 'AT update status is not available.';
+    if (languageCode === 'vi') return 'Chua co trang thai cap nhat AT.';
+    return 'AT 갱신 상태를 확인하지 못했습니다.';
+  }
+  if (status.needsUpdate) {
+    if (languageCode === 'en') return `Refresh AT through ${monthKey}.`;
+    if (languageCode === 'vi') return `Cap nhat AT den thang ${monthKey}.`;
+    return `${monthKey} 기준 AT를 갱신합니다.`;
+  }
+  if (status.reason === 'no_source_work_logs') {
+    if (languageCode === 'en') return `No work logs exist through ${monthKey}.`;
+    if (languageCode === 'vi') return `Chua co nhat ky san xuat den thang ${monthKey}.`;
+    return `${monthKey}까지 갱신할 작업기록이 없습니다.`;
+  }
+  if (languageCode === 'en') return `AT is already up to date through ${monthKey}.`;
+  if (languageCode === 'vi') return `AT da moi nhat den thang ${monthKey}.`;
+  return `${monthKey} 기준 AT가 이미 최신입니다.`;
+};
 
 const StyleBoard = () => {
   const location = useLocation();
@@ -198,6 +224,8 @@ const StyleBoard = () => {
   const [styles, setStyles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isAtSyncRunning, setAtSyncRunning] = useState(false);
+  const [atSyncStatus, setAtSyncStatus] = useState(null);
+  const [isAtSyncStatusLoading, setAtSyncStatusLoading] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
   const [styleToDelete, setStyleToDelete] = useState(null);
   const refreshStyles = useCallback(async ({ forceRefresh = false } = {}) => {
@@ -223,6 +251,31 @@ const StyleBoard = () => {
     refreshStyles();
   }, [refreshStyles]);
 
+  const refreshAtSyncStatus = useCallback(async () => {
+    if (!activeOrgId || !canViewProcessSummary) {
+      setAtSyncStatus(null);
+      return null;
+    }
+    setAtSyncStatusLoading(true);
+    try {
+      const status = await requestJSON(
+        `/at-sync/status${buildQueryString({ orgId: activeOrgId, mode: 'previous' })}`
+      );
+      setAtSyncStatus(status);
+      return status;
+    } catch (error) {
+      console.warn('[at-sync] status failed', error);
+      setAtSyncStatus(null);
+      return null;
+    } finally {
+      setAtSyncStatusLoading(false);
+    }
+  }, [activeOrgId, canViewProcessSummary]);
+
+  useEffect(() => {
+    refreshAtSyncStatus();
+  }, [refreshAtSyncStatus]);
+
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
     topics: [WORKSPACE_DATA_TOPICS.STYLES],
@@ -246,7 +299,7 @@ const StyleBoard = () => {
   };
 
   const handleAtSyncClick = useCallback(async () => {
-    if (!activeOrgId || isAtSyncRunning) return;
+    if (!activeOrgId || isAtSyncRunning || atSyncStatus?.needsUpdate !== true) return;
     setAtSyncRunning(true);
     try {
       console.log('[at-sync] request', {
@@ -358,6 +411,7 @@ const StyleBoard = () => {
         console.groupEnd();
       }
       const refreshedStyles = await refreshStyles({ forceRefresh: true });
+      await refreshAtSyncStatus();
       console.log('[at-sync] styles refreshed', {
         styleCount: Array.isArray(refreshedStyles) ? refreshedStyles.length : 0,
       });
@@ -386,7 +440,15 @@ const StyleBoard = () => {
     } finally {
       setAtSyncRunning(false);
     }
-  }, [activeOrgId, isAtSyncRunning, languageCode, refreshStyles, showNotification]);
+  }, [
+    activeOrgId,
+    atSyncStatus?.needsUpdate,
+    isAtSyncRunning,
+    languageCode,
+    refreshAtSyncStatus,
+    refreshStyles,
+    showNotification,
+  ]);
 
   const handleDeleteClick = (style, event) => {
     event.stopPropagation();
@@ -501,22 +563,37 @@ const StyleBoard = () => {
     [canViewProcessSummary, filteredStyles]
   );
 
+  const atSyncNeedsUpdate = atSyncStatus?.needsUpdate === true;
+  const atSyncButtonDisabled =
+    isAtSyncRunning || isAtSyncStatusLoading || !activeOrgId || !atSyncNeedsUpdate;
+  const atSyncButtonTooltip = resolveAtSyncStatusTooltip(
+    languageCode,
+    atSyncStatus,
+    isAtSyncStatusLoading
+  );
+
   return (
     <AppPageContainer
       title={getUiMessage('menu.style', '스타일', languageCode)}
       titleActions={(
         <Box sx={{ display: 'flex', gap: 1 }}>
           {canViewProcessSummary ? (
-            <Button
-              onClick={handleAtSyncClick}
-              variant="outlined"
-              color="primary"
-              disabled={isAtSyncRunning || !activeOrgId}
-            >
-              {isAtSyncRunning
-                ? getUiMessage('styleBoard.atSyncRunning', 'AT 갱신 중...', languageCode)
-                : getUiMessage('styleBoard.atSync', 'AT 갱신', languageCode)}
-            </Button>
+            <Tooltip title={atSyncButtonTooltip}>
+              <span>
+                <Button
+                  onClick={handleAtSyncClick}
+                  variant="outlined"
+                  color="primary"
+                  disabled={atSyncButtonDisabled}
+                >
+                  {isAtSyncRunning
+                    ? getUiMessage('styleBoard.atSyncRunning', 'AT 갱신 중...', languageCode)
+                    : isAtSyncStatusLoading
+                      ? getUiMessage('styleBoard.atSyncChecking', 'AT 확인 중...', languageCode)
+                      : getUiMessage('styleBoard.atSync', 'AT 갱신', languageCode)}
+                </Button>
+              </span>
+            </Tooltip>
           ) : null}
           <Button onClick={handleAddNewClick} variant="contained" color="primary">
             {getUiMessage('styleBoard.addStyle', '스타일 추가', languageCode)}

@@ -2744,6 +2744,7 @@ const loadAtTrainingSourceWorkLogs = async ({
             workerId: true,
             assignmentPlanId: true,
             styleId: true,
+            styleProcessId: true,
             style: {
               select: {
                 id: true,
@@ -2791,6 +2792,7 @@ const loadAtTrainingSourceWorkLogs = async ({
             workerId: true,
             assignmentPlanId: true,
             styleId: true,
+            styleProcessId: true,
             style: {
               select: {
                 id: true,
@@ -4058,7 +4060,7 @@ const applyAtTrainingResultsToStyleProcesses = async ({
   };
 };
 
-const syncStyleProcessActualTimesFromWorkRecords = async (
+export const syncStyleProcessActualTimesFromWorkRecords = async (
   orgId: number,
   options: AtSyncRunOptions = {}
 ) => {
@@ -4230,6 +4232,141 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       nextDiagnosticsSummary
     );
   }
+};
+
+const buildAtSyncStatusForOrg = async (
+  orgId: number,
+  options: AtSyncRunOptions = {}
+) => {
+  const trainingMonthKey = resolveAtSyncTrainingMonthKey(options);
+  if (!trainingMonthKey) {
+    return {
+      trainingMonthKey: "",
+      needsUpdate: false,
+      reason: "invalid_training_month",
+      sourceMonthCount: 0,
+      staleMonthCount: 0,
+      sourceWorkLogCount: 0,
+      sourceWorkRecordCount: 0,
+      bucketCount: 0,
+      latestSourceUpdatedAt: null,
+      latestBucketUpdatedAt: null,
+    };
+  }
+
+  const rows = await prisma.$queryRaw<
+    Array<{
+      source_month_count: bigint | number | null;
+      stale_month_count: bigint | number | null;
+      source_work_log_count: bigint | number | null;
+      source_work_record_count: bigint | number | null;
+      bucket_count: bigint | number | null;
+      latest_source_updated_at: Date | null;
+      latest_bucket_updated_at: Date | null;
+    }>
+  >(Prisma.sql`
+    WITH work_log_months AS (
+      SELECT
+        LEFT(wl."workDate", 7) AS month_key,
+        COUNT(*)::int AS work_log_count,
+        MAX(wl."updatedAt") AS latest_work_log_updated_at
+      FROM "WorkLog" wl
+      WHERE wl."orgId" = ${orgId}
+        AND LEFT(wl."workDate", 7) <= ${trainingMonthKey}
+      GROUP BY LEFT(wl."workDate", 7)
+    ),
+    work_record_months AS (
+      SELECT
+        LEFT(wl."workDate", 7) AS month_key,
+        COUNT(wr.id)::int AS work_record_count,
+        MAX(wr."updatedAt") AS latest_work_record_updated_at
+      FROM "WorkLog" wl
+      JOIN "WorkRecord" wr ON wr."workLogId" = wl.id
+      WHERE wl."orgId" = ${orgId}
+        AND LEFT(wl."workDate", 7) <= ${trainingMonthKey}
+      GROUP BY LEFT(wl."workDate", 7)
+    ),
+    attendance_months AS (
+      SELECT
+        LEFT(a."workDate", 7) AS month_key,
+        MAX(a."updatedAt") AS latest_attendance_updated_at
+      FROM "AttendanceEntry" a
+      WHERE a."orgId" = ${orgId}
+        AND LEFT(a."workDate", 7) <= ${trainingMonthKey}
+      GROUP BY LEFT(a."workDate", 7)
+    ),
+    source_months AS (
+      SELECT
+        wlm.month_key,
+        COALESCE(wlm.work_log_count, 0) AS work_log_count,
+        COALESCE(wrm.work_record_count, 0) AS work_record_count,
+        GREATEST(
+          COALESCE(wlm.latest_work_log_updated_at, TIMESTAMPTZ 'epoch'),
+          COALESCE(wrm.latest_work_record_updated_at, TIMESTAMPTZ 'epoch'),
+          COALESCE(am.latest_attendance_updated_at, TIMESTAMPTZ 'epoch')
+        ) AS latest_source_updated_at
+      FROM work_log_months wlm
+      LEFT JOIN work_record_months wrm ON wrm.month_key = wlm.month_key
+      LEFT JOIN attendance_months am ON am.month_key = wlm.month_key
+    ),
+    bucket_months AS (
+      SELECT
+        b."monthKey" AS month_key,
+        COUNT(*)::int AS bucket_count,
+        MAX(b."updatedAt") AS latest_bucket_updated_at
+      FROM "AtTrainingBucket" b
+      WHERE b."orgId" = ${orgId}
+        AND b."monthKey" <= ${trainingMonthKey}
+      GROUP BY b."monthKey"
+    )
+    SELECT
+      COUNT(sm.month_key)::int AS source_month_count,
+      COUNT(*) FILTER (
+        WHERE COALESCE(bm.bucket_count, 0) = 0
+          OR bm.latest_bucket_updated_at IS NULL
+          OR sm.latest_source_updated_at > bm.latest_bucket_updated_at
+      )::int AS stale_month_count,
+      COALESCE(SUM(sm.work_log_count), 0)::int AS source_work_log_count,
+      COALESCE(SUM(sm.work_record_count), 0)::int AS source_work_record_count,
+      COALESCE(SUM(bm.bucket_count), 0)::int AS bucket_count,
+      MAX(sm.latest_source_updated_at) AS latest_source_updated_at,
+      MAX(bm.latest_bucket_updated_at) AS latest_bucket_updated_at
+    FROM source_months sm
+    LEFT JOIN bucket_months bm ON bm.month_key = sm.month_key
+  `);
+
+  const row = rows[0] ?? null;
+  const sourceMonthCount = Number(row?.source_month_count ?? 0);
+  const staleMonthCount = Number(row?.stale_month_count ?? 0);
+  const sourceWorkLogCount = Number(row?.source_work_log_count ?? 0);
+  const sourceWorkRecordCount = Number(row?.source_work_record_count ?? 0);
+  const bucketCount = Number(row?.bucket_count ?? 0);
+  const latestSourceUpdatedAt = row?.latest_source_updated_at
+    ? new Date(row.latest_source_updated_at).toISOString()
+    : null;
+  const latestBucketUpdatedAt = row?.latest_bucket_updated_at
+    ? new Date(row.latest_bucket_updated_at).toISOString()
+    : null;
+  const needsUpdate = sourceMonthCount > 0 && staleMonthCount > 0;
+  const reason =
+    sourceMonthCount <= 0
+      ? "no_source_work_logs"
+      : needsUpdate
+        ? "source_newer_than_training_bucket"
+        : "up_to_date";
+
+  return {
+    trainingMonthKey,
+    needsUpdate,
+    reason,
+    sourceMonthCount,
+    staleMonthCount,
+    sourceWorkLogCount,
+    sourceWorkRecordCount,
+    bucketCount,
+    latestSourceUpdatedAt,
+    latestBucketUpdatedAt,
+  };
 };
 
 const normalizeStylePayload = (
@@ -27511,6 +27648,58 @@ app.put("/attributes", async (req, res) => {
   res.json(response);
 });
 
+app.get("/at-sync/status", async (req, res) => {
+  const access = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!access) return;
+
+  const mode = String(req.query?.mode ?? "")
+    .trim()
+    .toLowerCase();
+  const explicitTrainingMonthKey = normalizeMonthKey(req.query?.trainingMonthKey);
+  const hasTrainingMonthField = req.query?.trainingMonthKey !== undefined;
+
+  if (hasTrainingMonthField && !explicitTrainingMonthKey) {
+    return res.status(400).json({
+      ok: false,
+      error: "trainingMonthKey must be YYYY-MM",
+    });
+  }
+
+  if (
+    mode &&
+    mode !== "auto" &&
+    mode !== "current" &&
+    mode !== "previous"
+  ) {
+    return res.status(400).json({
+      ok: false,
+      error: "mode must be one of: auto, current, previous",
+    });
+  }
+
+  const todayKey = toDateKeyInTimeZone(new Date(), BUSINESS_TIME_ZONE);
+  const currentMonthKey = normalizeMonthKey(todayKey.slice(0, 7));
+  const previousMonthKey = currentMonthKey ? shiftMonthKey(currentMonthKey, -1) : "";
+  const overrideTrainingMonthKey =
+    explicitTrainingMonthKey ||
+    (mode === "current" ? currentMonthKey : "") ||
+    (mode === "previous" ? previousMonthKey : "") ||
+    "";
+  const status = await buildAtSyncStatusForOrg(access.organization.id, {
+    trainingMonthKey: overrideTrainingMonthKey,
+  });
+
+  return res.json({
+    ok: true,
+    orgId: access.organization.id,
+    mode: mode || (overrideTrainingMonthKey ? "override" : "auto"),
+    runtimeMarker: AT_SYNC_RUNTIME_MARKER,
+    ...status,
+  });
+});
+
 app.post("/at-sync/run-now", async (req, res) => {
   const access = await requireOrgRole(req, res, {
     allowedRoles: ORG_MANAGEMENT_ROLES,
@@ -28520,7 +28709,9 @@ const startServer = async () => {
   void bootstrapApplicationServices();
 };
 
-startServer().catch((error) => {
-  console.error("failed to start API server", error);
-  process.exit(1);
-});
+if (process.env.BARO_SKIP_API_START !== "1") {
+  startServer().catch((error) => {
+    console.error("failed to start API server", error);
+    process.exit(1);
+  });
+}
