@@ -53,6 +53,12 @@ const fmtSec = (v) => {
   return formatNumberWithCommas(roundTo(n, 4), { fallback: '-', maximumFractionDigits: 4 });
 };
 
+const fmtRoundedSec = (v) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '-';
+  return formatNumberWithCommas(Math.round(n), { fallback: '-', maximumFractionDigits: 0 });
+};
+
 const toEditText = (v) => {
   const n = Number(v);
   if (!Number.isFinite(n)) return '';
@@ -344,7 +350,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                               color: atVal != null ? 'text.secondary' : 'rgba(156,163,175,0.6)',
                               fontStyle: atVal == null ? 'italic' : 'normal',
                             }}>
-                              {atVal != null ? fmtSec(atVal) : '-'}
+                              {atVal != null ? fmtRoundedSec(atVal) : '-'}
                             </Box>
                           </TableCell>
                         );
