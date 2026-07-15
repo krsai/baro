@@ -3973,8 +3973,10 @@ const AssignBoard = () => {
           activeProfile?.label ||
           ''
       ).trim() || 'OPERATOR';
+    const isImmutableAssignmentForSave = (assignment) =>
+      isAssignmentSchedulerCompleted(assignment);
     const applyCtSnapshotForPersistence = (assignment, baseDate = startDateRef.current) => {
-      if (assignment?.isCompleted) return assignment;
+      if (isImmutableAssignmentForSave(assignment)) return assignment;
       const assignmentId = String(assignment?.id || '').trim();
       const progressRow = assignmentId ? currentAssignmentProgressById[assignmentId] || null : null;
       if (hasLinkedWorkRecords(assignment, progressRow)) {
@@ -4008,29 +4010,41 @@ const AssignBoard = () => {
       useCompletedRenderRange: false,
     });
 
+    const mutablePredictiveAssignmentsForSave = predictiveAssignmentsForSave.filter(
+      (item) => !isImmutableAssignmentForSave(item)
+    );
     const { baseDate: persistBaseDate, days: persistDays } = buildAssignmentPersistenceWindow({
-      assignments: predictiveAssignmentsForSave,
+      assignments:
+        mutablePredictiveAssignmentsForSave.length > 0
+          ? mutablePredictiveAssignmentsForSave
+          : predictiveAssignmentsForSave,
       days: predictiveDaysForSave,
       baseDate: startDateRef.current,
       holidaySet,
     });
-    const assignmentsForPersistence = predictiveAssignmentsForSave.map((item) =>
-      remapAssignmentToDayWindow(
+    const assignmentsForPersistence = predictiveAssignmentsForSave.map((item) => {
+      if (isImmutableAssignmentForSave(item)) {
+        return normalizeAssignmentLayout(item);
+      }
+      return remapAssignmentToDayWindow(
         syncAssignmentDateKeys(item, startDateRef.current),
         persistDays,
         startDateRef.current
-      )
-    );
+      );
+    });
 
     // 저장 전 날짜 중첩 제거: 기존 배치를 기준으로 재배치
     const assignmentsToSave = assignmentsForPersistence;
 
-    const normalizedAssignments = assignmentsToSave.map((item) =>
-      applyCtSnapshotForPersistence(
+    const normalizedAssignments = assignmentsToSave.map((item) => {
+      if (isImmutableAssignmentForSave(item)) {
+        return normalizeAssignmentLayout(item);
+      }
+      return applyCtSnapshotForPersistence(
         syncAssignmentDateKeys(item, persistBaseDate),
         persistBaseDate
-      )
-    );
+      );
+    });
     try {
       const buildStDraftPayload = (assignmentPayload) => {
         const assignmentByIdForSave = new Map(
