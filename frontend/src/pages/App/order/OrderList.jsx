@@ -1686,7 +1686,7 @@ const OrderList = () => {
           next.items = (Array.isArray(next.items) ? next.items : []).map((item) => ({
             ...item,
             sizeSetCode: fallbackSizeSetCode,
-            gender: item.gender || getSizeSetDefaultGender(fallbackSizeSetCode) || '',
+            gender: getSizeSetDefaultGender(fallbackSizeSetCode) || item.gender || '',
             sizeQuantities: normalizeSizeQuantities(item.sizeQuantities, fallbackSizeSetCode),
           }));
           changed = true;
