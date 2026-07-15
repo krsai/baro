@@ -1,11 +1,13 @@
 export type AtMetricObservation = {
   quantity: number;
+  eventCount?: number | null;
   laborInputSeconds: number;
 };
 
 export type AtTrainingDayProcessRow = {
   metricKey: string;
   quantity: number;
+  eventCount?: number | null;
   attendanceCoverage?: number | null;
 };
 
@@ -31,11 +33,33 @@ export type AtMetricFitDiagnostic = {
   styleProcessId: number | null;
   weightedPointCount: number;
   distinctQuantityCount: number;
+  distinctEventCount: number;
   minQuantity: number | null;
   maxQuantity: number | null;
+  minEventCount: number | null;
+  maxEventCount: number | null;
   quantitySamples: number[];
+  eventCountSamples: number[];
   provisionalAvailable: boolean;
+  fallbackReason: AtMetricFitStatus | null;
   status: AtMetricFitStatus;
+};
+
+export type AtFittedParams = {
+  a: number;
+  b: number;
+  fitStatus: AtMetricFitStatus;
+  isProvisional: boolean;
+  fallbackReason: AtMetricFitStatus | null;
+  weightedPointCount: number;
+  distinctQuantityCount: number;
+  distinctEventCount: number;
+  minQuantity: number | null;
+  maxQuantity: number | null;
+  minEventCount: number | null;
+  maxEventCount: number | null;
+  quantitySamples: number[];
+  eventCountSamples: number[];
 };
 
 export type AtFittingDiagnostics = {
@@ -52,11 +76,13 @@ type AtAllocatedObservation = {
   order: number;
   metricKey: string;
   quantity: number;
+  eventCount: number;
   laborInputSeconds: number;
 };
 
 type WeightedRegressionPoint = {
-  x: number;
+  quantity: number;
+  eventCount: number;
   y: number;
   weight: number;
 };
@@ -66,9 +92,13 @@ type AtWeightedFitAttempt = {
   status: AtMetricFitStatus;
   weightedPointCount: number;
   distinctQuantityCount: number;
+  distinctEventCount: number;
   minQuantity: number | null;
   maxQuantity: number | null;
+  minEventCount: number | null;
+  maxEventCount: number | null;
   quantitySamples: number[];
+  eventCountSamples: number[];
 };
 
 const toPositiveInt = (value: unknown, fallback = 1): number => {
@@ -137,20 +167,24 @@ const toAtRegressionPoints = (
   observations
     .map((observation) => {
       const quantity = Number(observation?.quantity);
+      const eventCount = Number(observation?.eventCount ?? 1);
       const laborInputSeconds = Number(observation?.laborInputSeconds);
       if (
         !Number.isFinite(quantity) ||
+        !Number.isFinite(eventCount) ||
         !Number.isFinite(laborInputSeconds) ||
         quantity <= 0 ||
+        eventCount <= 0 ||
         laborInputSeconds <= 0
       ) {
         return null;
       }
       return {
-        x: quantity,
+        quantity,
+        eventCount,
         y: laborInputSeconds,
-        // Large quantity rows are usually less noisy, but use sqrt to avoid domination.
-        weight: Math.max(1, Math.sqrt(quantity)),
+        // Large samples are usually less noisy, but use sqrt to avoid domination.
+        weight: Math.max(1, Math.sqrt(quantity) * Math.sqrt(eventCount)),
       };
     })
     .filter((point): point is WeightedRegressionPoint => point !== null);
@@ -158,29 +192,36 @@ const toAtRegressionPoints = (
 const fitWeightedLinearRegression = (
   points: WeightedRegressionPoint[]
 ): { a: number; b: number } | null => {
-  let sw = 0;
-  let sx = 0;
-  let sy = 0;
-  let sxx = 0;
-  let sxy = 0;
+  let sqq = 0;
+  let sqe = 0;
+  let see = 0;
+  let sqy = 0;
+  let sey = 0;
 
   points.forEach((point) => {
-    const { x, y, weight } = point;
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(weight)) return;
-    if (x <= 0 || weight <= 0) return;
-    sw += weight;
-    sx += weight * x;
-    sy += weight * y;
-    sxx += weight * x * x;
-    sxy += weight * x * y;
+    const { quantity, eventCount, y, weight } = point;
+    if (
+      !Number.isFinite(quantity) ||
+      !Number.isFinite(eventCount) ||
+      !Number.isFinite(y) ||
+      !Number.isFinite(weight)
+    ) {
+      return;
+    }
+    if (quantity <= 0 || eventCount <= 0 || weight <= 0) return;
+    sqq += weight * quantity * quantity;
+    sqe += weight * quantity * eventCount;
+    see += weight * eventCount * eventCount;
+    sqy += weight * quantity * y;
+    sey += weight * eventCount * y;
   });
 
-  if (sw <= 0 || sxx <= 0) return null;
-  const determinant = sw * sxx - sx * sx;
+  if (sqq <= 0 || see <= 0) return null;
+  const determinant = sqq * see - sqe * sqe;
   if (Math.abs(determinant) <= AT_WLS_DETERMINANT_EPSILON) return null;
 
-  const a = (sw * sxy - sx * sy) / determinant;
-  const b = (sxx * sy - sx * sxy) / determinant;
+  const a = (sqy * see - sey * sqe) / determinant;
+  const b = (sqq * sey - sqe * sqy) / determinant;
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   return { a, b };
 };
@@ -190,7 +231,7 @@ const applyResidualMagnitudeWeights = (
   model: { a: number; b: number }
 ): WeightedRegressionPoint[] =>
   points.map((point) => {
-    const predicted = model.a * point.x + model.b;
+    const predicted = model.a * point.quantity + model.b * point.eventCount;
     const residualRatio = Math.abs(point.y - predicted) / Math.max(1, point.y);
     const scaled = residualRatio / AT_WLS_RESIDUAL_SCALE;
     const magnitudeWeight = 1 / (1 + scaled * scaled);
@@ -205,23 +246,19 @@ const fitAtParamsFromWeightedPoints = (
 ): { a: number; b: number } | null => {
   const points = ensureArray<WeightedRegressionPoint>(pointsInput).filter(
     (point) =>
-      Number.isFinite(point.x) &&
+      Number.isFinite(point.quantity) &&
+      Number.isFinite(point.eventCount) &&
       Number.isFinite(point.y) &&
       Number.isFinite(point.weight) &&
-      point.x > 0 &&
+      point.quantity > 0 &&
+      point.eventCount > 0 &&
       point.y > 0 &&
       point.weight > 0
   );
 
   const distinctQuantities = Array.from(
-    new Set(points.map((point) => roundToScale(point.x, 4)))
+    new Set(points.map((point) => roundToScale(point.quantity, 4)))
   ).sort((left, right) => left - right);
-  const quantitySamples = distinctQuantities.slice(0, 10);
-  const minQuantity = quantitySamples.length > 0 ? distinctQuantities[0] ?? null : null;
-  const maxQuantity =
-    quantitySamples.length > 0
-      ? distinctQuantities[distinctQuantities.length - 1] ?? null
-      : null;
   if (points.length < 2) {
     return null;
   }
@@ -248,34 +285,53 @@ const inspectAtFitFromWeightedPoints = (
 ): AtWeightedFitAttempt => {
   const points = ensureArray<WeightedRegressionPoint>(pointsInput).filter(
     (point) =>
-      Number.isFinite(point.x) &&
+      Number.isFinite(point.quantity) &&
+      Number.isFinite(point.eventCount) &&
       Number.isFinite(point.y) &&
       Number.isFinite(point.weight) &&
-      point.x > 0 &&
+      point.quantity > 0 &&
+      point.eventCount > 0 &&
       point.y > 0 &&
       point.weight > 0
   );
 
   const distinctQuantities = Array.from(
-    new Set(points.map((point) => roundToScale(point.x, 4)))
+    new Set(points.map((point) => roundToScale(point.quantity, 4)))
+  ).sort((left, right) => left - right);
+  const distinctEventCounts = Array.from(
+    new Set(points.map((point) => roundToScale(point.eventCount, 4)))
   ).sort((left, right) => left - right);
   const quantitySamples = distinctQuantities.slice(0, 10);
+  const eventCountSamples = distinctEventCounts.slice(0, 10);
   const minQuantity =
     distinctQuantities.length > 0 ? distinctQuantities[0] ?? null : null;
   const maxQuantity =
     distinctQuantities.length > 0
       ? distinctQuantities[distinctQuantities.length - 1] ?? null
       : null;
+  const minEventCount =
+    distinctEventCounts.length > 0 ? distinctEventCounts[0] ?? null : null;
+  const maxEventCount =
+    distinctEventCounts.length > 0
+      ? distinctEventCounts[distinctEventCounts.length - 1] ?? null
+      : null;
+  const baseDiagnostic = {
+    weightedPointCount: points.length,
+    distinctQuantityCount: distinctQuantities.length,
+    distinctEventCount: distinctEventCounts.length,
+    minQuantity,
+    maxQuantity,
+    minEventCount,
+    maxEventCount,
+    quantitySamples,
+    eventCountSamples,
+  };
 
   if (points.length < 2) {
     return {
       params: null,
       status: "INSUFFICIENT_POINTS",
-      weightedPointCount: points.length,
-      distinctQuantityCount: distinctQuantities.length,
-      minQuantity,
-      maxQuantity,
-      quantitySamples,
+      ...baseDiagnostic,
     };
   }
 
@@ -283,11 +339,7 @@ const inspectAtFitFromWeightedPoints = (
     return {
       params: null,
       status: "NO_QUANTITY_VARIATION",
-      weightedPointCount: points.length,
-      distinctQuantityCount: distinctQuantities.length,
-      minQuantity,
-      maxQuantity,
-      quantitySamples,
+      ...baseDiagnostic,
     };
   }
 
@@ -296,11 +348,7 @@ const inspectAtFitFromWeightedPoints = (
     return {
       params: null,
       status: "FIRST_REGRESSION_FAILED",
-      weightedPointCount: points.length,
-      distinctQuantityCount: distinctQuantities.length,
-      minQuantity,
-      maxQuantity,
-      quantitySamples,
+      ...baseDiagnostic,
     };
   }
 
@@ -310,11 +358,7 @@ const inspectAtFitFromWeightedPoints = (
     return {
       params: null,
       status: "SECOND_REGRESSION_FAILED",
-      weightedPointCount: points.length,
-      distinctQuantityCount: distinctQuantities.length,
-      minQuantity,
-      maxQuantity,
-      quantitySamples,
+      ...baseDiagnostic,
     };
   }
 
@@ -324,11 +368,7 @@ const inspectAtFitFromWeightedPoints = (
     return {
       params: null,
       status: "NEGATIVE_OR_INVALID_PARAMS",
-      weightedPointCount: points.length,
-      distinctQuantityCount: distinctQuantities.length,
-      minQuantity,
-      maxQuantity,
-      quantitySamples,
+      ...baseDiagnostic,
     };
   }
 
@@ -338,22 +378,14 @@ const inspectAtFitFromWeightedPoints = (
     return {
       params: null,
       status: "NORMALIZED_A_MISSING",
-      weightedPointCount: points.length,
-      distinctQuantityCount: distinctQuantities.length,
-      minQuantity,
-      maxQuantity,
-      quantitySamples,
+      ...baseDiagnostic,
     };
   }
 
   return {
     params: { a: normalizedA, b: normalizedB ?? 0 },
     status: "FITTED",
-    weightedPointCount: points.length,
-    distinctQuantityCount: distinctQuantities.length,
-    minQuantity,
-    maxQuantity,
-    quantitySamples,
+    ...baseDiagnostic,
   };
 };
 
@@ -371,12 +403,14 @@ const allocateDaySecondsAcrossProcesses = (
   const validRows = ensureArray<AtTrainingDayProcessRow>(day?.processRows)
     .map((row) => {
       const quantity = Number(row?.quantity);
+      const eventCount = Number(row?.eventCount ?? 1);
       if (!Number.isFinite(quantity) || quantity <= 0) return null;
+      if (!Number.isFinite(eventCount) || eventCount <= 0) return null;
       const metricKey = String(row?.metricKey || "").trim();
       if (!metricKey) return null;
-      return { metricKey, quantity };
+      return { metricKey, quantity, eventCount };
     })
-    .filter((row): row is { metricKey: string; quantity: number } => Boolean(row));
+    .filter((row): row is { metricKey: string; quantity: number; eventCount: number } => Boolean(row));
 
   if (validRows.length === 0) return [];
 
@@ -388,6 +422,7 @@ const allocateDaySecondsAcrossProcesses = (
         order: day.order,
         metricKey: row.metricKey,
         quantity: row.quantity,
+        eventCount: row.eventCount,
         laborInputSeconds: day.laborInputSeconds,
       },
     ];
@@ -400,7 +435,7 @@ const allocateDaySecondsAcrossProcesses = (
       ...row,
       work: row.quantity * perPiece,
     };
-  }).filter((row): row is { metricKey: string; quantity: number; work: number } => Boolean(row));
+  }).filter((row): row is { metricKey: string; quantity: number; eventCount: number; work: number } => Boolean(row));
 
   if (withWork.length !== validRows.length) return [];
 
@@ -414,6 +449,7 @@ const allocateDaySecondsAcrossProcesses = (
     order: day.order,
     metricKey: row.metricKey,
     quantity: row.quantity,
+    eventCount: row.eventCount,
     laborInputSeconds: day.laborInputSeconds * (row.work / totalWork),
   }));
 };
@@ -435,6 +471,7 @@ const buildAllocatedObservations = (
       const current = observationsByMetric.get(row.metricKey) || [];
       current.push({
         quantity: row.quantity,
+        eventCount: row.eventCount,
         laborInputSeconds: row.laborInputSeconds,
       });
       observationsByMetric.set(row.metricKey, current);
@@ -449,10 +486,12 @@ const buildProvisionalParamsFromWeightedPoints = (
 ): { a: number; b: number } | null => {
   const points = ensureArray<WeightedRegressionPoint>(pointsInput).filter(
     (point) =>
-      Number.isFinite(point.x) &&
+      Number.isFinite(point.quantity) &&
+      Number.isFinite(point.eventCount) &&
       Number.isFinite(point.y) &&
       Number.isFinite(point.weight) &&
-      point.x > 0 &&
+      point.quantity > 0 &&
+      point.eventCount > 0 &&
       point.y > 0 &&
       point.weight > 0
   );
@@ -462,7 +501,7 @@ const buildProvisionalParamsFromWeightedPoints = (
   let totalWeight = 0;
   let weightedPerPieceSum = 0;
   points.forEach((point) => {
-    const perPiece = point.y / point.x;
+    const perPiece = point.y / point.quantity;
     if (!Number.isFinite(perPiece) || perPiece <= 0) return;
     totalWeight += point.weight;
     weightedPerPieceSum += point.weight * perPiece;
@@ -495,12 +534,14 @@ const buildDayTrendWeights = (
     const predictedLaborInputSeconds = ensureArray<AtTrainingDayProcessRow>(day?.processRows).reduce(
       (sum, row) => {
         const quantity = Number(row?.quantity);
+        const eventCount = Number(row?.eventCount ?? 1);
         if (!Number.isFinite(quantity) || quantity <= 0) return sum;
+        if (!Number.isFinite(eventCount) || eventCount <= 0) return sum;
         const metricKey = String(row?.metricKey || "").trim();
         if (!metricKey) return sum;
         const fitted = provisionalParamsByMetric.get(metricKey);
         if (fitted) {
-          return sum + fitted.a * quantity + fitted.b;
+          return sum + fitted.a * quantity + fitted.b * eventCount;
         }
         hasCompletePrediction = false;
         return sum;
@@ -556,7 +597,7 @@ export const fitAtParamsWithProportionalAllocation = (
     initialPerPieceByMetricKey?: Map<string, number>;
   } = {}
 ): {
-  paramsByMetric: Map<string, { a: number; b: number }>;
+  paramsByMetric: Map<string, AtFittedParams>;
   iterationCount: number;
   converged: boolean;
   diagnostics: AtFittingDiagnostics;
@@ -645,30 +686,34 @@ export const fitAtParamsWithProportionalAllocation = (
   observations.forEach((observation) => {
     const dayWeight = dayWeightByKey.get(observation.dayKey) ?? 1;
     const quantity = Number(observation.quantity);
+    const eventCount = Number(observation.eventCount ?? 1);
     const laborInputSeconds = Number(observation.laborInputSeconds);
     if (
       !Number.isFinite(dayWeight) ||
       dayWeight <= 0 ||
       !Number.isFinite(quantity) ||
       quantity <= 0 ||
+      !Number.isFinite(eventCount) ||
+      eventCount <= 0 ||
       !Number.isFinite(laborInputSeconds) ||
       laborInputSeconds <= 0
     ) {
       return;
     }
 
-    const baseWeight = Math.max(1, Math.sqrt(quantity));
+    const baseWeight = Math.max(1, Math.sqrt(quantity) * Math.sqrt(eventCount));
     const weight = Math.max(AT_WLS_MIN_WEIGHT, baseWeight * dayWeight);
     const current = weightedPointsByMetric.get(observation.metricKey) || [];
     current.push({
-      x: quantity,
+      quantity,
+      eventCount,
       y: laborInputSeconds,
       weight,
     });
     weightedPointsByMetric.set(observation.metricKey, current);
   });
 
-  const finalParamsByMetric = new Map<string, { a: number; b: number }>();
+  const finalParamsByMetric = new Map<string, AtFittedParams>();
   const metricDiagnostics: AtMetricFitDiagnostic[] = [];
   const statusCounts = new Map<string, number>();
   let provisionalMetricCount = 0;
@@ -679,14 +724,14 @@ export const fitAtParamsWithProportionalAllocation = (
       provisionalParamsByMetric.get(metricKey) ||
       buildProvisionalParamsFromWeightedPoints(weightedPoints) ||
       null;
-    const fitted = inspected.params || provisional;
+    const fittedBase = inspected.params || provisional;
     const status: AtMetricFitStatus = inspected.params
       ? "FITTED"
       : provisional
         ? "USED_PROVISIONAL"
         : inspected.status;
     statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
-    if (provisional !== null) {
+    if (provisional !== null && !inspected.params) {
       provisionalMetricCount += 1;
     }
     const numericStyleProcessId = Number(metricKey.replace(/^sp:/, ""));
@@ -698,14 +743,33 @@ export const fitAtParamsWithProportionalAllocation = (
           : null,
       weightedPointCount: inspected.weightedPointCount,
       distinctQuantityCount: inspected.distinctQuantityCount,
+      distinctEventCount: inspected.distinctEventCount,
       minQuantity: inspected.minQuantity,
       maxQuantity: inspected.maxQuantity,
+      minEventCount: inspected.minEventCount,
+      maxEventCount: inspected.maxEventCount,
       quantitySamples: inspected.quantitySamples,
+      eventCountSamples: inspected.eventCountSamples,
       provisionalAvailable: provisional !== null,
+      fallbackReason: inspected.params ? null : inspected.status,
       status,
     });
-    if (!fitted) return;
-    finalParamsByMetric.set(metricKey, fitted);
+    if (!fittedBase) return;
+    finalParamsByMetric.set(metricKey, {
+      ...fittedBase,
+      fitStatus: status,
+      isProvisional: status !== "FITTED",
+      fallbackReason: status === "FITTED" ? null : inspected.status,
+      weightedPointCount: inspected.weightedPointCount,
+      distinctQuantityCount: inspected.distinctQuantityCount,
+      distinctEventCount: inspected.distinctEventCount,
+      minQuantity: inspected.minQuantity,
+      maxQuantity: inspected.maxQuantity,
+      minEventCount: inspected.minEventCount,
+      maxEventCount: inspected.maxEventCount,
+      quantitySamples: inspected.quantitySamples,
+      eventCountSamples: inspected.eventCountSamples,
+    });
   });
 
   return {

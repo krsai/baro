@@ -86,9 +86,14 @@
 ```
 AT(q) = a*q + b
   a = 장당 한계시간(초/장)
-  b = 셋업 고정시간(초, 수량 무관)
+  b = 작업 시작 1회당 셋업 고정시간(초, 수량 무관)
 ```
-수량이 많아질수록 장당 시간이 `a`에 수렴. AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
+수량이 많아질수록 장당 시간이 `a`에 수렴. 화면에서 보여주는 `AT(q)`는 "한 번 시작해서 q장을 만든 경우"의 총시간이며, 장당 참고값은 `(a*q + b) / q`다.
+
+- **2026-07-15 이벤트 카운트 반영:** AT 학습식은 이제 `laborInputSeconds ≈ a * quantity + b * eventCount`로 맞춘다. `eventCount`는 `AtTrainingBucketProcess.eventCount`에 저장하며, 현재 구현은 해당 WorkLog 기간 안에서 같은 공정에 참여한 `workerId + attendance workDate`의 unique count를 사용한다. 즉 월말 일괄 WorkLog 1건이어도 출퇴근 데이터가 여러 작업일로 있으면 셋업 시간이 1회가 아니라 여러 worker-day로 반영된다.
+- `b`는 "월 1회"가 아니라 "작업자가 해당 공정을 시작한 worker-day 1회"에 붙는 준비/셋업 성격의 시간으로 해석한다. 현장 데이터가 더 정교해지면 `eventCount` 산정 기준은 실제 시작 이벤트 단위로 바꿀 수 있지만, 임의 추정 없이 저장된 WorkRecord 기간과 AttendanceEntry만 사용해야 한다.
+- `StyleProcess.atParams`는 `{a,b}` 외에 `fitStatus`, `isProvisional`, `fallbackReason`, 관측 수량/이벤트 범위(`minQuantity/maxQuantity`, `minEventCount/maxEventCount`)와 sample count를 저장한다. `USED_PROVISIONAL` 또는 수량 변화가 부족한 값은 확정 AT처럼 취급하지 않고 낮은 신뢰도로 표시한다.
+AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 
 ---
 

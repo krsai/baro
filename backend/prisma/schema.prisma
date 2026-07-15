@@ -737,6 +737,7 @@ model AtTrainingBucketProcess {
   styleId             Int
   styleProcessId      Int
   quantity            Int
+  eventCount          Float    @default(1)
   createdAt           DateTime @default(now())
   createdBy           String   @default("system@baro.local")
   createdByEmployeeId Int?

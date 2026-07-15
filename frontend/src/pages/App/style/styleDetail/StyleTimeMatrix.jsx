@@ -87,6 +87,51 @@ const isManualSt = (entry) => {
   return !s || MANUAL_ST_SET_BY.has(s);
 };
 
+const resolveAtCellState = (process, quantity, languageCode) => {
+  const atParams = process?.atParams && typeof process.atParams === 'object'
+    ? process.atParams
+    : null;
+  if (!atParams) {
+    return { tone: 'empty', title: '' };
+  }
+  const isProvisional =
+    atParams.isProvisional === true || String(atParams.fitStatus || '') === 'USED_PROVISIONAL';
+  if (isProvisional) {
+    return {
+      tone: 'provisional',
+      title: languageCode === 'vi'
+        ? 'Gia tri tam tinh: chua du bien thien so luong de hoi quy.'
+        : languageCode === 'en'
+          ? 'Provisional value: not enough quantity variation for a fitted AT curve.'
+          : '임시 AT입니다. 아직 수량 변화 데이터가 부족해 평균값으로 표시됩니다.',
+    };
+  }
+  const minQuantity = Number(atParams.minQuantity);
+  const maxQuantity = Number(atParams.maxQuantity);
+  if (
+    Number.isFinite(minQuantity) &&
+    Number.isFinite(maxQuantity) &&
+    (quantity < minQuantity || quantity > maxQuantity)
+  ) {
+    return {
+      tone: 'extrapolated',
+      title: languageCode === 'vi'
+        ? 'Nam ngoai pham vi du lieu da hoc.'
+        : languageCode === 'en'
+          ? 'Outside the observed training quantity range.'
+          : '학습된 수량 범위 밖의 추정값입니다.',
+    };
+  }
+  return {
+    tone: 'fitted',
+    title: languageCode === 'vi'
+      ? 'Gia tri AT da hoc tu ban ghi.'
+      : languageCode === 'en'
+        ? 'Fitted AT from work records.'
+        : '작업기록으로 학습된 AT입니다.',
+  };
+};
+
 const upsertStBuckets = (process, quantity, seconds) => {
   const norm = normalizeProcess(process);
   const q = resolveStBucketQuantity(quantity);
@@ -338,20 +383,41 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                       </TableCell>
                       {VISIBLE_BUCKETS.map((qty) => {
                         const atVal = resolveProcessAtPerPieceSeconds(process, qty);
+                        const atCellState = resolveAtCellState(process, qty, languageCode);
+                        const atColor =
+                          atVal == null
+                            ? 'rgba(156,163,175,0.6)'
+                            : atCellState.tone === 'provisional'
+                              ? '#B45309'
+                              : atCellState.tone === 'extrapolated'
+                                ? '#6D28D9'
+                                : 'text.secondary';
+                        const atContent = (
+                          <Box sx={{
+                            height: 28,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-end',
+                            fontSize: 12,
+                            fontVariantNumeric: 'tabular-nums',
+                            color: atColor,
+                            fontStyle: atVal == null ? 'italic' : 'normal',
+                            fontWeight:
+                              atCellState.tone === 'provisional' ||
+                              atCellState.tone === 'extrapolated'
+                                ? 600
+                                : 400,
+                          }}>
+                            {atVal != null ? fmtRoundedSec(atVal) : '-'}
+                          </Box>
+                        );
                         return (
                           <TableCell key={qty} align="right" sx={{ py: '4px', pr: 1.5, backgroundColor: rowBg }}>
-                            <Box sx={{
-                              height: 28,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'flex-end',
-                              fontSize: 12,
-                              fontVariantNumeric: 'tabular-nums',
-                              color: atVal != null ? 'text.secondary' : 'rgba(156,163,175,0.6)',
-                              fontStyle: atVal == null ? 'italic' : 'normal',
-                            }}>
-                              {atVal != null ? fmtRoundedSec(atVal) : '-'}
-                            </Box>
+                            {atVal != null && atCellState.title ? (
+                              <Tooltip title={atCellState.title} placement="top">
+                                {atContent}
+                              </Tooltip>
+                            ) : atContent}
                           </TableCell>
                         );
                       })}

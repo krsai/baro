@@ -1752,6 +1752,7 @@ ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentQuantity" INTEG
 ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentStTotalSeconds" INTEGER;
 ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentCtTotalSeconds" INTEGER;
 ALTER TABLE "AtTrainingBucket" ADD COLUMN IF NOT EXISTS "laborInputSeconds" DOUBLE PRECISION;
+ALTER TABLE "AtTrainingBucketProcess" ADD COLUMN IF NOT EXISTS "eventCount" DOUBLE PRECISION NOT NULL DEFAULT 1;
 ALTER TABLE "WorkLog" ADD COLUMN IF NOT EXISTS "totalCtSeconds" DOUBLE PRECISION;
 
 -- Ensure correct column types (fix environments where columns were created as INTEGER)
@@ -1774,6 +1775,15 @@ BEGIN
   ) THEN
     ALTER TABLE "WorkLog" ALTER COLUMN "totalCtSeconds" TYPE DOUBLE PRECISION USING "totalCtSeconds"::DOUBLE PRECISION;
     RAISE NOTICE 'WorkLog.totalCtSeconds converted from INTEGER to DOUBLE PRECISION';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'AtTrainingBucketProcess'
+      AND column_name = 'eventCount'
+      AND data_type = 'integer'
+  ) THEN
+    ALTER TABLE "AtTrainingBucketProcess" ALTER COLUMN "eventCount" TYPE DOUBLE PRECISION USING "eventCount"::DOUBLE PRECISION;
+    RAISE NOTICE 'AtTrainingBucketProcess.eventCount converted from INTEGER to DOUBLE PRECISION';
   END IF;
 END $$;
 

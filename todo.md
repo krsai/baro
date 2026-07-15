@@ -1,5 +1,16 @@
 # TODO
 
+## 2026-07-15 AT event-count training and display reliability
+
+- Done: Changed AT fitting from a quantity-only setup term to `laborInputSeconds ~= a * quantity + b * eventCount`, where `eventCount` is persisted per `AtTrainingBucketProcess` row and currently counts unique `workerId + attendance workDate` days for the same style process inside the WorkLog coverage period.
+- Done: Added `AtTrainingBucketProcess.eventCount` to Prisma and `migration_fix.sql`, plus startup Prisma shape validation so a missing production column fails loudly.
+- Done: Persisted AT fit metadata in `StyleProcess.atParams` (`fitStatus`, `isProvisional`, fallback reason, observed quantity/event ranges, and samples) so provisional values are not treated as trusted fitted AT.
+- Done: Updated frontend AT reliability to cap provisional/no-quantity-variation fits below the meaningful threshold, and updated the ST/AT matrix to show AT as rounded whole seconds with provisional/extrapolated tooltips.
+- Done: Applied `migration_fix.sql` to the Railway public DB, cleared org 1 `AtTrainingBucket`/`StyleProcess.atParams`, ran the new AT sync once for `trainingMonthKey=2026-06`, and confirmed it rebuilt 3 buckets / 692 bucket-process rows with `eventCount > 1` on all rows. The sync produced 515 AT rows: 103 `FITTED`, 412 `USED_PROVISIONAL`; sample fitted rows had non-zero `b` and observed quantity/event metadata.
+- Done: Cleared org 1 AT training buckets and `StyleProcess.atParams` again after the validation run so the user can retest from an empty AT state after deploy.
+- Validation: `npm --prefix backend run prisma:prepare-client`, `npm --prefix backend run build`, `npm --prefix frontend run build`, and `npm run test:regression` passed.
+- Remaining: after deploy, use the style-board AT refresh button for the user-side retest and confirm the UI shows rounded AT seconds plus provisional/extrapolated hints where appropriate.
+
 ## 2026-07-14 order size-set support for URD numeric sizes
 
 - Done: Added frontend size-set definitions for the legacy apparel grid (`XS` through `FREE`, `M/W/U`) and the URD/우리들 numeric grid (`100` through `200`, internally `U` only).

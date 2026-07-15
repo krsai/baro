@@ -91,6 +91,7 @@ import {
 import {
   AT_MONTHLY_A_CLAMP_RATIO,
   fitAtParamsWithProportionalAllocation,
+  type AtFittedParams,
   type AtTrainingDayBucket,
   type AtTrainingDayProcessRow,
 } from "./services/atTraining";
@@ -290,6 +291,9 @@ function assertGeneratedPrismaClientShape() {
   }
   if (!modelByName.has("SystemSetting")) {
     staleSignals.push("SystemSetting model missing");
+  }
+  if (!hasField("AtTrainingBucketProcess", "eventCount")) {
+    staleSignals.push("AtTrainingBucketProcess.eventCount missing");
   }
   if (modelByName.has("OrgMembership")) {
     staleSignals.push("OrgMembership model still present");
@@ -1510,6 +1514,18 @@ type StyleAtParams = {
   attendanceCoverage: number | null;
   attendanceFallbackShare: number | null;
   observationCount: number | null;
+  fitStatus: string | null;
+  isProvisional: boolean;
+  fallbackReason: string | null;
+  weightedPointCount: number | null;
+  distinctQuantityCount: number | null;
+  distinctEventCount: number | null;
+  minQuantity: number | null;
+  maxQuantity: number | null;
+  minEventCount: number | null;
+  maxEventCount: number | null;
+  quantitySamples: number[];
+  eventCountSamples: number[];
 };
 
 type StyleStBucket = {
@@ -1519,6 +1535,19 @@ type StyleStBucket = {
   setAt: string | null;
   updatedAt: string | null;
 };
+
+const toNonNegativeIntOrNull = (value: any) => {
+  const parsed = toNumberOrNull(value);
+  if (parsed === null || parsed < 0) return null;
+  return Math.trunc(parsed);
+};
+
+const toPositiveNumberSamples = (value: any) =>
+  ensureArray(value)
+    .map((item) => toNumberOrNull(item))
+    .filter((item): item is number => item !== null && item > 0)
+    .map((item) => roundToScale(item, 4))
+    .slice(0, 10);
 
 const toStyleAtParams = (value: any): StyleAtParams | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -1564,6 +1593,14 @@ const toStyleAtParams = (value: any): StyleAtParams | null => {
     observationCountRaw === null
       ? null
       : Math.max(0, Math.trunc(observationCountRaw));
+  const fitStatus = resolveOptionalString((value as any).fitStatus, null);
+  const fallbackReason = resolveOptionalString((value as any).fallbackReason, null);
+  const isProvisional =
+    Boolean((value as any).isProvisional) || fitStatus === "USED_PROVISIONAL";
+  const minQuantity = toNumberOrNull((value as any).minQuantity);
+  const maxQuantity = toNumberOrNull((value as any).maxQuantity);
+  const minEventCount = toNumberOrNull((value as any).minEventCount);
+  const maxEventCount = toNumberOrNull((value as any).maxEventCount);
 
   return {
     a,
@@ -1574,6 +1611,18 @@ const toStyleAtParams = (value: any): StyleAtParams | null => {
     attendanceCoverage,
     attendanceFallbackShare,
     observationCount,
+    fitStatus,
+    isProvisional,
+    fallbackReason,
+    weightedPointCount: toNonNegativeIntOrNull((value as any).weightedPointCount),
+    distinctQuantityCount: toNonNegativeIntOrNull((value as any).distinctQuantityCount),
+    distinctEventCount: toNonNegativeIntOrNull((value as any).distinctEventCount),
+    minQuantity: minQuantity === null ? null : roundToScale(minQuantity, 4),
+    maxQuantity: maxQuantity === null ? null : roundToScale(maxQuantity, 4),
+    minEventCount: minEventCount === null ? null : roundToScale(minEventCount, 4),
+    maxEventCount: maxEventCount === null ? null : roundToScale(maxEventCount, 4),
+    quantitySamples: toPositiveNumberSamples((value as any).quantitySamples),
+    eventCountSamples: toPositiveNumberSamples((value as any).eventCountSamples),
   };
 };
 
@@ -1672,6 +1721,9 @@ const isSameStyleAtParams = (
 ) => {
   if (left === null && right === null) return true;
   if (left === null || right === null) return false;
+  const sameNumberArray = (leftValues: number[], rightValues: number[]) =>
+    leftValues.length === rightValues.length &&
+    leftValues.every((value, index) => value === rightValues[index]);
   return (
     left.a === right.a &&
     left.b === right.b &&
@@ -1680,7 +1732,19 @@ const isSameStyleAtParams = (
     left.trainedPeriod === right.trainedPeriod &&
     left.attendanceCoverage === right.attendanceCoverage &&
     left.attendanceFallbackShare === right.attendanceFallbackShare &&
-    left.observationCount === right.observationCount
+    left.observationCount === right.observationCount &&
+    left.fitStatus === right.fitStatus &&
+    left.isProvisional === right.isProvisional &&
+    left.fallbackReason === right.fallbackReason &&
+    left.weightedPointCount === right.weightedPointCount &&
+    left.distinctQuantityCount === right.distinctQuantityCount &&
+    left.distinctEventCount === right.distinctEventCount &&
+    left.minQuantity === right.minQuantity &&
+    left.maxQuantity === right.maxQuantity &&
+    left.minEventCount === right.minEventCount &&
+    left.maxEventCount === right.maxEventCount &&
+    sameNumberArray(left.quantitySamples, right.quantitySamples) &&
+    sameNumberArray(left.eventCountSamples, right.eventCountSamples)
   );
 };
 
@@ -2577,6 +2641,7 @@ type AtTrainingBucketProcessDraft = {
   styleId: number;
   styleProcessId: number;
   quantity: number;
+  eventCount: number;
 };
 type AtTrainingBucketDraft = {
   sourceWorkLogId: number;
@@ -3422,17 +3487,55 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       return draftRows;
     }
 
+    const eventDateKeysByProcessId = new Map<number, Set<string>>();
+    const addEventDateKeysForRow = (row: {
+      styleProcessId: number;
+      workerId: number;
+      effectiveCoverageStartDate: string;
+      effectiveCoverageEndDate: string;
+    }) => {
+      const dayCount = countDateRangeDaysInclusive(
+        row.effectiveCoverageStartDate,
+        row.effectiveCoverageEndDate
+      );
+      if (dayCount <= 0) return;
+      let cursorDateKey = row.effectiveCoverageStartDate;
+      const current =
+        eventDateKeysByProcessId.get(row.styleProcessId) ?? new Set<string>();
+      for (let offset = 0; offset < dayCount; offset += 1) {
+        const workedSeconds = resolveWorkerSecondsForDate(
+          cursorDateKey,
+          row.workerId,
+          resolvedFactoryId
+        );
+        if (workedSeconds > 0) {
+          current.add(`${row.workerId}:${cursorDateKey}`);
+        }
+        if (offset === dayCount - 1) break;
+        const nextDateKey = shiftDateKeyByDays(cursorDateKey, 1);
+        if (!nextDateKey) break;
+        cursorDateKey = nextDateKey;
+      }
+      eventDateKeysByProcessId.set(row.styleProcessId, current);
+    };
+
     const perProcessGroups = new Map<number, AtTrainingBucketProcessDraft>();
     const includedWorkerIds = new Set<number>();
     includedRows.forEach((row) => {
+      addEventDateKeysForRow(row);
       const current = perProcessGroups.get(row.styleProcessId) || {
         styleId: row.styleId,
         styleProcessId: row.styleProcessId,
         quantity: 0,
+        eventCount: 0,
       };
       current.quantity += row.quantity;
       perProcessGroups.set(row.styleProcessId, current);
       includedWorkerIds.add(row.workerId);
+    });
+    perProcessGroups.forEach((group, styleProcessId) => {
+      const eventCount = eventDateKeysByProcessId.get(styleProcessId)?.size ?? 0;
+      group.eventCount = Math.max(1, eventCount);
     });
 
     const laborInputSeconds =
@@ -3452,7 +3555,9 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         item.styleId > 0 &&
         item.styleProcessId > 0 &&
         Number.isFinite(item.quantity) &&
-        item.quantity > 0
+        item.quantity > 0 &&
+        Number.isFinite(item.eventCount) &&
+        item.eventCount > 0
     );
     if (processRows.length === 0) {
       diagnostics.skippedNoUsableRowsWorkLogCount += 1;
@@ -3540,6 +3645,7 @@ const replaceAtTrainingBucketsForMonth = async ({
           "styleId",
           "styleProcessId",
           "quantity",
+          "eventCount",
           "createdBy",
           "createdAt",
           "updatedAt"
@@ -3547,12 +3653,14 @@ const replaceAtTrainingBucketsForMonth = async ({
         VALUES ${Prisma.join(
           draft.processRows.map((processRow) => {
             const quantity = Math.max(1, Math.round(processRow.quantity));
+            const eventCount = Math.max(1, roundToScale(processRow.eventCount, 4));
             return Prisma.sql`(
               ${orgId},
               ${bucketId},
               ${processRow.styleId},
               ${processRow.styleProcessId},
               ${quantity},
+              ${eventCount},
               ${actor},
               NOW(),
               NOW()
@@ -3699,6 +3807,7 @@ const loadAtTrainingDataFromBuckets = async ({
     bucketId: number;
     styleProcessId: number;
     quantity: number;
+    eventCount: number | null;
   };
 
   const bucketRows = await prisma.$queryRaw<StoredAtTrainingBucketRow[]>(Prisma.sql`
@@ -3728,7 +3837,8 @@ const loadAtTrainingDataFromBuckets = async ({
           SELECT
             "bucketId",
             "styleProcessId",
-            "quantity"
+            "quantity",
+            "eventCount"
           FROM "AtTrainingBucketProcess"
           WHERE "orgId" = ${orgId} AND "bucketId" IN (${Prisma.join(bucketIds)})
           ORDER BY "bucketId" ASC, "styleProcessId" ASC
@@ -3793,6 +3903,7 @@ const loadAtTrainingDataFromBuckets = async ({
     ensureArray(bucketProcessRowsByBucketId.get(Number(bucketRow.id))).forEach((processRow) => {
       const styleProcessId = toPositiveIntOrNull(processRow?.styleProcessId);
       const quantity = Number(processRow?.quantity) || 0;
+      const eventCount = Number(processRow?.eventCount ?? 1) || 1;
       if (styleProcessId === null || quantity <= 0) return;
       const styleProcessRow = styleProcessRowsById.get(styleProcessId);
       if (!styleProcessRow) return;
@@ -3801,6 +3912,7 @@ const loadAtTrainingDataFromBuckets = async ({
       dayProcessRows.push({
         metricKey,
         quantity,
+        eventCount: Math.max(1, roundToScale(eventCount, 4)),
         attendanceCoverage,
       });
 
@@ -3949,7 +4061,7 @@ const applyAtTrainingResultsToStyleProcesses = async ({
 }: {
   orgId: number;
   trainingMonthKey: string;
-  fittedParamsByMetric: Map<string, { a: number; b: number }>;
+  fittedParamsByMetric: Map<string, AtFittedParams>;
   metricTrainingQualityByMetricKey: Map<string, AtTrainingMetricQuality>;
   styleProcessRowsById: Map<number, any>;
 }) => {
@@ -3995,7 +4107,7 @@ const applyAtTrainingResultsToStyleProcesses = async ({
       observationCount: nextObservationCount,
     });
     const fitted =
-      clampedA !== fittedRaw.a ? { a: clampedA, b: fittedRaw.b } : fittedRaw;
+      clampedA !== fittedRaw.a ? { ...fittedRaw, a: clampedA } : fittedRaw;
     if (clampedA !== fittedRaw.a) {
       clampAdjustedProcesses += 1;
     }
@@ -4013,11 +4125,33 @@ const applyAtTrainingResultsToStyleProcesses = async ({
         (nextObservationCount ?? null);
     const hasTrainingPeriodDelta =
       currentAtParams?.trainedPeriod !== trainingMonthKey;
+    const hasFitMetadataDelta =
+      (currentAtParams?.fitStatus ?? null) !== (fitted.fitStatus ?? null) ||
+      (currentAtParams?.isProvisional ?? false) !== fitted.isProvisional ||
+      (currentAtParams?.fallbackReason ?? null) !==
+        (fitted.fallbackReason ?? null) ||
+      (currentAtParams?.weightedPointCount ?? null) !==
+        (fitted.weightedPointCount ?? null) ||
+      (currentAtParams?.distinctQuantityCount ?? null) !==
+        (fitted.distinctQuantityCount ?? null) ||
+      (currentAtParams?.distinctEventCount ?? null) !==
+        (fitted.distinctEventCount ?? null) ||
+      (currentAtParams?.minQuantity ?? null) !== (fitted.minQuantity ?? null) ||
+      (currentAtParams?.maxQuantity ?? null) !== (fitted.maxQuantity ?? null) ||
+      (currentAtParams?.minEventCount ?? null) !==
+        (fitted.minEventCount ?? null) ||
+      (currentAtParams?.maxEventCount ?? null) !==
+        (fitted.maxEventCount ?? null) ||
+      JSON.stringify(currentAtParams?.quantitySamples ?? []) !==
+        JSON.stringify(fitted.quantitySamples ?? []) ||
+      JSON.stringify(currentAtParams?.eventCountSamples ?? []) !==
+        JSON.stringify(fitted.eventCountSamples ?? []);
     const shouldRefreshAtParams =
       currentAtParams === null ||
       hasAtParamDelta ||
       hasQualityDelta ||
-      hasTrainingPeriodDelta;
+      hasTrainingPeriodDelta ||
+      hasFitMetadataDelta;
     const nextAtParams = shouldRefreshAtParams
       ? {
           a: fitted.a,
@@ -4031,6 +4165,18 @@ const applyAtTrainingResultsToStyleProcesses = async ({
           attendanceCoverage: nextAttendanceCoverage,
           attendanceFallbackShare: nextAttendanceFallbackShare,
           observationCount: nextObservationCount,
+          fitStatus: fitted.fitStatus,
+          isProvisional: fitted.isProvisional,
+          fallbackReason: fitted.fallbackReason,
+          weightedPointCount: fitted.weightedPointCount,
+          distinctQuantityCount: fitted.distinctQuantityCount,
+          distinctEventCount: fitted.distinctEventCount,
+          minQuantity: fitted.minQuantity,
+          maxQuantity: fitted.maxQuantity,
+          minEventCount: fitted.minEventCount,
+          maxEventCount: fitted.maxEventCount,
+          quantitySamples: fitted.quantitySamples,
+          eventCountSamples: fitted.eventCountSamples,
         }
       : currentAtParams;
     const atParamsChanged = !isSameStyleAtParams(currentAtParams, nextAtParams);

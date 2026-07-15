@@ -78,6 +78,17 @@ const toNonNegativeInt = (value, fallback = 0) => {
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
   return parsed;
 };
+const toNonNegativeIntOrNull = (value) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
+};
+const toPositiveNumberSamples = (value) =>
+  (Array.isArray(value) ? value : [])
+    .map((item) => toOptionalNumber(item))
+    .filter((item) => item !== null && item > 0)
+    .map((item) => roundToScale(item, 4))
+    .slice(0, 10);
 const clampProcessSeconds = (value) => {
   const parsed = toOptionalNumber(value);
   if (parsed === null) return null;
@@ -224,6 +235,18 @@ const resolveAtParamsMeta = (process) => {
       attendanceCoverage: null,
       attendanceFallbackShare: null,
       observationCount: null,
+      fitStatus: null,
+      isProvisional: false,
+      fallbackReason: null,
+      weightedPointCount: null,
+      distinctQuantityCount: null,
+      distinctEventCount: null,
+      minQuantity: null,
+      maxQuantity: null,
+      minEventCount: null,
+      maxEventCount: null,
+      quantitySamples: [],
+      eventCountSamples: [],
     };
   }
   const params = resolveAtParams(process);
@@ -253,6 +276,16 @@ const resolveAtParamsMeta = (process) => {
     Number.isFinite(observationCountRaw) && observationCountRaw >= 0
       ? Math.trunc(observationCountRaw)
       : null;
+  const fitStatus = typeof raw.fitStatus === 'string' && raw.fitStatus.trim()
+    ? raw.fitStatus.trim()
+    : null;
+  const fallbackReason = typeof raw.fallbackReason === 'string' && raw.fallbackReason.trim()
+    ? raw.fallbackReason.trim()
+    : null;
+  const minQuantity = toOptionalNumber(raw.minQuantity);
+  const maxQuantity = toOptionalNumber(raw.maxQuantity);
+  const minEventCount = toOptionalNumber(raw.minEventCount);
+  const maxEventCount = toOptionalNumber(raw.maxEventCount);
   return {
     ...params,
     version,
@@ -260,6 +293,18 @@ const resolveAtParamsMeta = (process) => {
     attendanceCoverage,
     attendanceFallbackShare,
     observationCount,
+    fitStatus,
+    isProvisional: raw.isProvisional === true || fitStatus === 'USED_PROVISIONAL',
+    fallbackReason,
+    weightedPointCount: toNonNegativeIntOrNull(raw.weightedPointCount),
+    distinctQuantityCount: toNonNegativeIntOrNull(raw.distinctQuantityCount),
+    distinctEventCount: toNonNegativeIntOrNull(raw.distinctEventCount),
+    minQuantity: minQuantity === null ? null : roundToScale(minQuantity, 4),
+    maxQuantity: maxQuantity === null ? null : roundToScale(maxQuantity, 4),
+    minEventCount: minEventCount === null ? null : roundToScale(minEventCount, 4),
+    maxEventCount: maxEventCount === null ? null : roundToScale(maxEventCount, 4),
+    quantitySamples: toPositiveNumberSamples(raw.quantitySamples),
+    eventCountSamples: toPositiveNumberSamples(raw.eventCountSamples),
   };
 };
 
@@ -269,6 +314,9 @@ const resolveAtReliabilityPercent = ({
   hasTrainedPeriod,
   attendanceFallbackShare,
   observationCount,
+  fitStatus,
+  isProvisional,
+  distinctQuantityCount,
 }) => {
   const normalizedObservationCount = toNonNegativeInt(observationCount, 0);
   const normalizedFallbackShare = Number.isFinite(attendanceFallbackShare)
@@ -296,6 +344,9 @@ const resolveAtReliabilityPercent = ({
   let percent = Math.round(clamp((rawScore / AT_RELIABILITY_RAW_SCORE_MAX) * 100, 0, 100));
 
   if (
+    isProvisional ||
+    (fitStatus && fitStatus !== 'FITTED') ||
+    toNonNegativeInt(distinctQuantityCount, 0) < 2 ||
     !hasTrainedPeriod ||
     normalizedObservationCount < AT_RELIABILITY_MIN_OBSERVATION_COUNT_MEANINGFUL ||
     normalizedFallbackShare === null ||
@@ -583,6 +634,9 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
     hasTrainedPeriod: Boolean(atParams.trainedPeriod),
     attendanceFallbackShare: fallbackShare,
     observationCount: atParams.observationCount,
+    fitStatus: atParams.fitStatus,
+    isProvisional: atParams.isProvisional,
+    distinctQuantityCount: atParams.distinctQuantityCount,
   });
   const status = resolveAtReliabilityStatusFromPercent(percent);
 
