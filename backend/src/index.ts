@@ -4570,6 +4570,9 @@ const toOrganizationOption = (organization: any) => ({
   nameVi: (organization as any)?.nameVi ?? null,
   code: organization?.code ?? null,
   type: organization?.type ?? null,
+  defaultSizeSetCode: normalizeCustomerDefaultSizeSetCode(
+    organization?.defaultSizeSetCode
+  ),
 });
 const toUniqueOrganizationOptions = (organizations: any[] = []) => {
   const byId = new Map<number, any>();
@@ -26094,7 +26097,14 @@ app.get("/order-parties", async (req, res) => {
   }));
 
   const buyerOrgOptions = isManufacturerOrg(organization)
-    ? toUniqueOrganizationOptions(relationships.map((relationship) => relationship.brand))
+    ? toUniqueOrganizationOptions(
+        relationships.map((relationship) => ({
+          ...relationship.brand,
+          defaultSizeSetCode: normalizeCustomerDefaultSizeSetCode(
+            relationship.defaultSizeSetCode
+          ),
+        }))
+      )
     : [toOrganizationOption(organization)];
 
   const sellerOrgOptions = isManufacturerOrg(organization)
