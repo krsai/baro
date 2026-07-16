@@ -928,17 +928,6 @@ ALTER TABLE "OrgRelationship"
 UPDATE "OrgRelationship"
 SET "defaultSizeSetCode" = 'LEGACY_APPAREL'
 WHERE "defaultSizeSetCode" IS NULL;
-UPDATE "OrgRelationship" relationship
-SET "defaultSizeSetCode" = 'URD_NUMERIC'
-FROM "Organization" brand
-WHERE brand."id" = relationship."brandOrgId"
-  AND (
-    UPPER(COALESCE(brand."code", '')) = 'URD'
-    OR UPPER(COALESCE(brand."name", '')) LIKE '%WOORI%'
-    OR UPPER(COALESCE(brand."name", '')) LIKE '%WOORIDEUL%'
-    OR COALESCE(brand."nameKo", '') LIKE '%우리들%'
-  );
-
 ALTER TABLE "Organization"
   ADD COLUMN IF NOT EXISTS "defaultSizeSetCode" TEXT NOT NULL DEFAULT 'LEGACY_APPAREL';
 

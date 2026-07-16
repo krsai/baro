@@ -23,7 +23,6 @@ export const SIZE_SET_DEFINITIONS = [
     genderCodes: GENDER_CODES,
     usesGender: true,
     defaultGender: '',
-    customerAliases: [],
   },
   {
     code: SIZE_SET_CODES.URD_NUMERIC,
@@ -36,7 +35,6 @@ export const SIZE_SET_DEFINITIONS = [
     genderCodes: ['U'],
     usesGender: false,
     defaultGender: 'U',
-    customerAliases: ['URD', 'WOORI', 'WOORIDEUL', '우리들'],
   },
 ];
 
@@ -123,29 +121,10 @@ export const getSizeSetOptions = (languageCode = getCurrentLanguageCode()) =>
     usesGender: definition.usesGender !== false,
   }));
 
-const normalizeSizeSetMatchText = (value) =>
-  String(value || '')
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, '');
-
 export const getDefaultSizeSetCodeForCustomer = (customer, fallback = DEFAULT_SIZE_SET_CODE) => {
   const explicitCode = normalizeSizeSetCode(customer?.defaultSizeSetCode, '');
   if (explicitCode) return explicitCode;
-  const candidates =
-    customer && typeof customer === 'object'
-      ? [customer.name, customer.nameKo, customer.nameVi, customer.code]
-      : [customer];
-  const normalizedCandidates = candidates
-    .map(normalizeSizeSetMatchText)
-    .filter(Boolean);
-  const matched = SIZE_SET_DEFINITIONS.find((definition) =>
-    (definition.customerAliases || []).some((alias) => {
-      const normalizedAlias = normalizeSizeSetMatchText(alias);
-      return normalizedCandidates.some((candidate) => candidate.includes(normalizedAlias));
-    })
-  );
-  return matched?.code || fallback;
+  return normalizeSizeSetCode(fallback, DEFAULT_SIZE_SET_CODE);
 };
 
 export const inferSizeSetCodeFromSizeQuantities = (
