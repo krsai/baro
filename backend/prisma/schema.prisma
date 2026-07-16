@@ -533,6 +533,7 @@ model OrgRelationship {
   managerPhone            String?
   managerEmail            String?
   memo                    String?
+  defaultSizeSetCode      String?  @default("LEGACY_APPAREL")
   pricingDefaultTradeType String?
   pricingMatrix           Json?
   createdAt               DateTime @default(now())

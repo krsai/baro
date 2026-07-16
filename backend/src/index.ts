@@ -226,6 +226,9 @@ function assertGeneratedPrismaClientShape() {
   if (!hasField("Organization", "representativeEmployeeId")) {
     staleSignals.push("Organization.representativeEmployeeId missing");
   }
+  if (!hasField("OrgRelationship", "defaultSizeSetCode")) {
+    staleSignals.push("OrgRelationship.defaultSizeSetCode missing");
+  }
   if (!hasField("AssignmentCard", "payload")) {
     staleSignals.push("AssignmentCard.payload missing");
   }
@@ -1377,6 +1380,9 @@ const toCustomerResponse = (relationship: any, perspective: string = "MANUFACTUR
     phone,
     manager: targetOrg.representative ?? relationship.managerName ?? "",
     email: targetOrg.email ?? relationship.managerEmail ?? "",
+    defaultSizeSetCode: normalizeCustomerDefaultSizeSetCode(
+      relationship.defaultSizeSetCode
+    ),
     targetMonthlyWage: (targetOrg as any)?.targetMonthlyWage ?? null,
     wagePerSecond: (targetOrg as any)?.wagePerSecond ?? null,
     pricingDefaultTradeType:
@@ -1527,6 +1533,9 @@ type StyleAtParams = {
   quantitySamples: number[];
   eventCountSamples: number[];
 };
+
+const normalizeCustomerDefaultSizeSetCode = (value: unknown) =>
+  value === "URD_NUMERIC" ? "URD_NUMERIC" : "LEGACY_APPAREL";
 
 type StyleStBucket = {
   bucketQuantity: number;
@@ -26664,6 +26673,7 @@ app.post("/customers", async (req, res) => {
     },
     update: {
       customerCode: normalizedCode,
+      defaultSizeSetCode: normalizeCustomerDefaultSizeSetCode(req.body?.defaultSizeSetCode),
       managerName: resolveOptionalString(sharedOrganizationData.representative, null),
       managerPhone: resolveOptionalString(sharedOrganizationData.phone, null),
       managerEmail: resolveOptionalString(sharedOrganizationData.email, null),
@@ -26673,6 +26683,7 @@ app.post("/customers", async (req, res) => {
       manufacturerOrgId,
       brandOrgId: brandOrgIdForRelationship,
       customerCode: normalizedCode,
+      defaultSizeSetCode: normalizeCustomerDefaultSizeSetCode(req.body?.defaultSizeSetCode),
       managerName: resolveOptionalString(sharedOrganizationData.representative, null),
       managerPhone: resolveOptionalString(sharedOrganizationData.phone, null),
       managerEmail: resolveOptionalString(sharedOrganizationData.email, null),
@@ -26775,6 +26786,13 @@ app.put("/customers/:id", async (req, res) => {
     managerPhone: resolveOptionalString(nextTargetData.phone, existing.managerPhone),
     managerEmail: resolveOptionalString(nextTargetData.email, existing.managerEmail),
     memo: resolveOptionalString(memo, existing.memo),
+    ...(req.body?.defaultSizeSetCode !== undefined
+      ? {
+          defaultSizeSetCode: normalizeCustomerDefaultSizeSetCode(
+            req.body.defaultSizeSetCode
+          ),
+        }
+      : {}),
     ...(code !== undefined ? { customerCode: normalizedCode } : {}),
   };
   await prisma.orgRelationship.update({

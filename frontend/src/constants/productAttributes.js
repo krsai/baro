@@ -15,9 +15,9 @@ export const SIZE_SET_DEFINITIONS = [
   {
     code: SIZE_SET_CODES.LEGACY_APPAREL,
     label: {
-      ko: '기본 의류',
-      en: 'Standard apparel',
-      vi: 'Standard apparel',
+      ko: '문자형 사이즈',
+      en: 'Alpha sizes',
+      vi: 'Kích cỡ chữ',
     },
     sizeCodes: SIZE_CODES,
     genderCodes: GENDER_CODES,
@@ -28,9 +28,9 @@ export const SIZE_SET_DEFINITIONS = [
   {
     code: SIZE_SET_CODES.URD_NUMERIC,
     label: {
-      ko: '우리들 100-200',
-      en: 'URD 100-200',
-      vi: 'URD 100-200',
+      ko: '숫자형 사이즈 (100–200)',
+      en: 'Numeric sizes (100–200)',
+      vi: 'Kích cỡ số (100–200)',
     },
     sizeCodes: ['100', '110', '120', '130', '140', '150', '160', '170', '180', '190', '200'],
     genderCodes: ['U'],
@@ -130,6 +130,8 @@ const normalizeSizeSetMatchText = (value) =>
     .replace(/\s+/g, '');
 
 export const getDefaultSizeSetCodeForCustomer = (customer, fallback = DEFAULT_SIZE_SET_CODE) => {
+  const explicitCode = normalizeSizeSetCode(customer?.defaultSizeSetCode, '');
+  if (explicitCode) return explicitCode;
   const candidates =
     customer && typeof customer === 'object'
       ? [customer.name, customer.nameKo, customer.nameVi, customer.code]

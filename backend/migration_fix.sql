@@ -922,6 +922,23 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 ALTER TABLE "OrgRelationship" ADD COLUMN IF NOT EXISTS "pricingDefaultTradeType" TEXT;
 ALTER TABLE "OrgRelationship" ADD COLUMN IF NOT EXISTS "pricingMatrix" JSONB;
 
+-- Step 0e-2: per-customer default order size notation (20260716)
+ALTER TABLE "OrgRelationship"
+  ADD COLUMN IF NOT EXISTS "defaultSizeSetCode" TEXT DEFAULT 'LEGACY_APPAREL';
+UPDATE "OrgRelationship"
+SET "defaultSizeSetCode" = 'LEGACY_APPAREL'
+WHERE "defaultSizeSetCode" IS NULL;
+UPDATE "OrgRelationship" relationship
+SET "defaultSizeSetCode" = 'URD_NUMERIC'
+FROM "Organization" brand
+WHERE brand."id" = relationship."brandOrgId"
+  AND (
+    UPPER(COALESCE(brand."code", '')) = 'URD'
+    OR UPPER(COALESCE(brand."name", '')) LIKE '%WOORI%'
+    OR UPPER(COALESCE(brand."name", '')) LIKE '%WOORIDEUL%'
+    OR COALESCE(brand."nameKo", '') LIKE '%우리들%'
+  );
+
 -- Step 0f/0g legacy OrgMembership cleanup is now handled in Step 0o.
 
 -- Step 0h: org membership terminated status for employee offboarding (20260619)

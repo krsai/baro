@@ -1,3 +1,5 @@
+import { DEFAULT_SIZE_SET_CODE, normalizeSizeSetCode } from '../../../constants/productAttributes';
+
 const COUNTRY_CODE_BY_COUNTRY = Object.freeze({
   KR: '+82',
   VN: '+84',
@@ -64,6 +66,7 @@ export const buildCustomerFormData = (customer = {}) => {
     phoneNumber: customer?.phoneNumber ?? customer?.phone ?? '',
     manager: customer?.manager ?? '',
     email: customer?.email ?? '',
+    defaultSizeSetCode: normalizeSizeSetCode(customer?.defaultSizeSetCode),
     registeredAt: customer?.registeredAt ?? null,
   };
 };
@@ -81,6 +84,10 @@ export const buildCustomerPayload = (formData = {}) => ({
   phoneNumber: String(formData.phoneNumber || '').trim(),
   manager: String(formData.manager || '').trim(),
   email: String(formData.email || '').trim(),
+  defaultSizeSetCode: normalizeSizeSetCode(
+    formData.defaultSizeSetCode,
+    DEFAULT_SIZE_SET_CODE
+  ),
 });
 
 export const formatCustomerDate = (value, languageCode) => {
