@@ -43,7 +43,6 @@ import {
   buildCustomerFormData,
   buildCustomerPayload,
   createEmptyCustomerFormData,
-  formatCustomerDate,
   normalizeCountry,
   resolveCustomerStyleOwnerOrgId,
   resolveDefaultCountryCode,
@@ -62,7 +61,7 @@ const TEXT = {
     titleDetail: '고객 상세',
     tabBasic: '기본정보',
     tabPricing: '단가 관리',
-    saveCustomer: '고객 저장',
+    saveCustomer: '저장',
     saveCustomerSuccess: '고객 정보를 저장했습니다.',
     saveError: '고객 정보를 저장하지 못했습니다.',
     customerLoadError: '고객 정보를 불러오지 못했습니다.',
@@ -103,7 +102,7 @@ const TEXT = {
     titleDetail: 'Customer Detail',
     tabBasic: 'Basic Info',
     tabPricing: 'Pricing',
-    saveCustomer: 'Save Customer',
+    saveCustomer: 'Save',
     saveCustomerSuccess: 'Customer information has been saved.',
     saveError: 'Failed to save customer information.',
     customerLoadError: 'Failed to load customer information.',
@@ -144,7 +143,7 @@ const TEXT = {
     titleDetail: 'Chi tiet khach hang',
     tabBasic: 'Thong tin co ban',
     tabPricing: 'Don gia',
-    saveCustomer: 'Luu khach hang',
+    saveCustomer: 'Luu',
     saveCustomerSuccess: 'Da luu thong tin khach hang.',
     saveError: 'Khong the luu thong tin khach hang.',
     customerLoadError: 'Khong the tai thong tin khach hang.',
@@ -793,116 +792,6 @@ const CustomerDetail = () => {
               onCountryChange={handleCountryChange}
               t={t}
             />
-            {false ? (
-            <Paper variant="outlined" sx={{ borderRadius: 2, p: 3 }}>
-              <Stack spacing={1.8}>
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-                  <TextField
-                    fullWidth
-                    required
-                    label={t('customerCode')}
-                    name="code"
-                    value={customerFormData.code}
-                    onChange={handleBasicFieldChange}
-                    disabled={savingCustomer}
-                  />
-                  <TextField
-                    fullWidth
-                    required
-                    label={t('customerName')}
-                    name="name"
-                    value={customerFormData.name}
-                    onChange={handleBasicFieldChange}
-                    disabled={savingCustomer}
-                  />
-                </Stack>
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-                  <TextField
-                    fullWidth
-                    label="고객명 (한글)"
-                    name="nameKo"
-                    value={customerFormData.nameKo}
-                    onChange={handleBasicFieldChange}
-                    disabled={savingCustomer}
-                  />
-                  <TextField
-                    fullWidth
-                    label="고객명 (베트남어)"
-                    name="nameVi"
-                    value={customerFormData.nameVi}
-                    onChange={handleBasicFieldChange}
-                    disabled={savingCustomer}
-                  />
-                </Stack>
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-                  <TextField
-                    fullWidth
-                    select
-                    label={t('country')}
-                    name="country"
-                    value={normalizeCountry(customerFormData.country) || 'VN'}
-                    onChange={handleCountryChange}
-                    disabled={savingCustomer}
-                  >
-                    {countryOptions.map((option) => (
-                      <MenuItem key={option.value} value={option.value}>
-                        {option.label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <TextField
-                    fullWidth
-                    label={t('registeredAt')}
-                    value={formatCustomerDate(customerFormData.registeredAt, languageCode)}
-                    disabled
-                  />
-                </Stack>
-                <TextField
-                  fullWidth
-                  label={t('address')}
-                  name="address"
-                  value={customerFormData.address}
-                  onChange={handleBasicFieldChange}
-                  disabled={savingCustomer}
-                />
-                <TextField
-                  fullWidth
-                  label={t('manager')}
-                  name="manager"
-                  value={customerFormData.manager}
-                  onChange={handleBasicFieldChange}
-                  disabled={savingCustomer}
-                />
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-                  <TextField
-                    fullWidth
-                    label={t('countryCode')}
-                    name="countryCode"
-                    value={customerFormData.countryCode}
-                    onChange={handleBasicFieldChange}
-                    disabled={savingCustomer}
-                  />
-                  <TextField
-                    fullWidth
-                    label={t('phoneNumber')}
-                    name="phoneNumber"
-                    value={customerFormData.phoneNumber}
-                    onChange={handleBasicFieldChange}
-                    disabled={savingCustomer}
-                  />
-                </Stack>
-                <TextField
-                  fullWidth
-                  label={t('email')}
-                  name="email"
-                  type="email"
-                  value={customerFormData.email}
-                  onChange={handleBasicFieldChange}
-                  disabled={savingCustomer}
-                />
-              </Stack>
-            </Paper>
-            ) : null}
           </Box>
         )}
 
