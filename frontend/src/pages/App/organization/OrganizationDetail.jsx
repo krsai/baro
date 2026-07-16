@@ -19,6 +19,7 @@ import {
   normalizeOrganizationType,
 } from '../../../constants/organizationType';
 import { getUiMessage } from '../../../constants/uiMessages';
+import { getStaticOptionOptions } from '../../../constants/staticOptionRegistry';
 import { getSizeSetOptions, normalizeSizeSetCode } from '../../../constants/productAttributes';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -44,6 +45,7 @@ const buildCompanyInfo = (data = {}) => {
     representativeEmployeeId: normalizePositiveId(data.representativeEmployeeId),
     representative: representativeEmployee?.name ?? data.representative ?? '',
     industry: normalizeOrganizationType(data.industry) || normalizeOrganizationType(data.type),
+    country: data.country ?? 'VN',
     defaultSizeSetCode: normalizeSizeSetCode(data.defaultSizeSetCode),
     address: data.address ?? '',
     phone: representativeEmployee ? representativeEmployee.phone ?? '' : data.phone ?? '',
@@ -68,6 +70,7 @@ const getLocalText = (languageCode) => {
       identityTitle: 'Thong tin phap nhan', identityHelp: 'Quan ly loai hinh, thong tin dang ky va ten cong ty.',
       contactTitle: 'Nguoi dai dien va lien he', contactHelp: 'Thong tin lien he duoc lay tu nhan vien dai dien.',
       addressTitle: 'Dia chi doanh nghiep', addressHelp: 'Nhap dia chi day du cua doanh nghiep.',
+      country: 'Quoc gia',
       orderTitle: 'Thiet lap don hang mac dinh', orderHelp: 'Chi ap dung cho to chuc thuong hieu.', sizeSet: 'Cach ghi kich co mac dinh', businessNumber: 'Ma so doanh nghiep',
       industryOptions: {
         [ORGANIZATION_TYPE_KEYS.MANUFACTURER]: 'Nha may',
@@ -85,6 +88,7 @@ const getLocalText = (languageCode) => {
       identityTitle: 'Legal entity information', identityHelp: 'Manage company type, registration, and official names.',
       contactTitle: 'Representative and contact', contactHelp: 'Contact details come from the selected representative.',
       addressTitle: 'Business address', addressHelp: 'Enter the full registered business address.',
+      country: 'Country',
       orderTitle: 'Order defaults', orderHelp: 'Available only for brand organizations.', sizeSet: 'Default size notation', businessNumber: 'Business registration no.',
       industryOptions: {
         [ORGANIZATION_TYPE_KEYS.MANUFACTURER]: 'Manufacturer',
@@ -101,6 +105,7 @@ const getLocalText = (languageCode) => {
     identityTitle: '법인 기본 정보', identityHelp: '업종, 등록 정보와 언어별 공식 회사명을 관리합니다.',
     contactTitle: '대표자 및 연락처', contactHelp: '선택한 대표 직원의 연락처가 자동으로 표시됩니다.',
     addressTitle: '사업장 주소', addressHelp: '법인의 전체 사업장 주소를 입력하세요.',
+    country: '국가',
     orderTitle: '기본 주문 설정', orderHelp: '브랜드 법인에서만 사용하는 신규 주문 기본값입니다.', sizeSet: '기본 사이즈 표기 방식', businessNumber: '사업자등록번호',
     industryOptions: {
       [ORGANIZATION_TYPE_KEYS.MANUFACTURER]: '\uACF5\uC7A5',
@@ -143,6 +148,7 @@ const OrganizationDetail = () => {
 
   const localText = useMemo(() => getLocalText(languageCode), [languageCode]);
   const sizeSetOptions = useMemo(() => getSizeSetOptions(languageCode), [languageCode]);
+  const countryOptions = useMemo(() => getStaticOptionOptions('country', languageCode), [languageCode]);
   const text = useMemo(
     () => ({
       title: getUiMessage('organizationDetail.title', 'Company Info', languageCode),
@@ -285,6 +291,7 @@ const OrganizationDetail = () => {
         representativeEmployeeId: formData.representativeEmployeeId || null,
         representative: formData.representative?.trim() || null,
         industry: formData.industry || null,
+        country: formData.country || null,
         address: formData.address?.trim() || null,
         defaultSizeSetCode: formData.defaultSizeSetCode,
       };
@@ -443,7 +450,13 @@ const OrganizationDetail = () => {
       </FormGroup>
 
       <FormGroup icon={<LocationOnRoundedIcon />} title={localText.addressTitle} help={localText.addressHelp} accent="#059669">
-        <Grid container spacing={2}><Grid item xs={12}>
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={4} md={3}>
+            <TextField fullWidth select size="small" label={localText.country} name="country" value={formData.country} onChange={handleInputChange}>
+              {countryOptions.map((option) => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} sm={8} md={9}>
             <TextField
               fullWidth
               multiline
