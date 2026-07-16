@@ -148,6 +148,7 @@ export const createOrganizationRouter = ({
       address,
       phone,
       email,
+      defaultSizeSetCode,
       type,
     } = req.body ?? {};
     const normalizedCode = normalizeOrgCode(code);
@@ -195,6 +196,8 @@ export const createOrganizationRouter = ({
         address,
         phone,
         email,
+        defaultSizeSetCode:
+          defaultSizeSetCode === "URD_NUMERIC" ? "URD_NUMERIC" : "LEGACY_APPAREL",
         type,
       },
       include: ORGANIZATION_REPRESENTATIVE_INCLUDE,
@@ -246,6 +249,7 @@ export const createOrganizationRouter = ({
       address,
       phone,
       email,
+      defaultSizeSetCode,
       type,
     } = req.body ?? {};
 
@@ -308,6 +312,12 @@ export const createOrganizationRouter = ({
       address,
       phone: representativeEmployeeResolved.hasInput ? representativeEmployeePhone : phone,
       email: representativeEmployeeResolved.hasInput ? representativeEmployeeEmail : email,
+      ...(defaultSizeSetCode !== undefined
+        ? {
+            defaultSizeSetCode:
+              defaultSizeSetCode === "URD_NUMERIC" ? "URD_NUMERIC" : "LEGACY_APPAREL",
+          }
+        : {}),
       ...(representativeEmployeeResolved.hasInput
         ? {
             representativeEmployee: representativeEmployeeResolved.representativeEmployeeId

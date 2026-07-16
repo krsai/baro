@@ -57,6 +57,7 @@ export const buildCustomerFormData = (customer = {}) => {
     brandOrgId: toPositiveIntOrNull(customer?.brandOrgId),
     manufacturerOrgId: toPositiveIntOrNull(customer?.manufacturerOrgId),
     code: customer?.code ?? '',
+    industry: customer?.industry ?? customer?.type ?? 'BRAND',
     name: customer?.name ?? '',
     nameKo: customer?.nameKo ?? '',
     nameVi: customer?.nameVi ?? '',

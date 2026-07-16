@@ -226,6 +226,9 @@ function assertGeneratedPrismaClientShape() {
   if (!hasField("Organization", "representativeEmployeeId")) {
     staleSignals.push("Organization.representativeEmployeeId missing");
   }
+  if (!hasField("Organization", "defaultSizeSetCode")) {
+    staleSignals.push("Organization.defaultSizeSetCode missing");
+  }
   if (!hasField("OrgRelationship", "defaultSizeSetCode")) {
     staleSignals.push("OrgRelationship.defaultSizeSetCode missing");
   }
@@ -654,6 +657,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "Organization", columnName: "nameKo" },
   { tableName: "Organization", columnName: "nameVi" },
   { tableName: "Organization", columnName: "representativeEmployeeId" },
+  { tableName: "Organization", columnName: "defaultSizeSetCode" },
   { tableName: "OrgRelationship", columnName: "defaultSizeSetCode" },
   { tableName: "Factory", columnName: "nameKo" },
   { tableName: "Factory", columnName: "nameVi" },
@@ -1374,6 +1378,8 @@ const toCustomerResponse = (relationship: any, perspective: string = "MANUFACTUR
     name: targetOrg.name ?? "",
     nameKo: (targetOrg as any)?.nameKo ?? null,
     nameVi: (targetOrg as any)?.nameVi ?? null,
+    industry: targetOrg.type ?? null,
+    type: targetOrg.type ?? null,
     address: targetOrg.address ?? "",
     country: (targetOrg as any)?.country ?? null,
     countryCode: (targetOrg as any)?.countryCode ?? null,

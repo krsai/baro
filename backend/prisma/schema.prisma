@@ -169,6 +169,7 @@ model Organization {
   countryCode              String?
   phone                    String?
   email                    String?
+  defaultSizeSetCode       String           @default("LEGACY_APPAREL")
   targetMonthlyWage        Float?
   wagePerSecond            Float?
   type                     OrganizationType @default(MANUFACTURER)

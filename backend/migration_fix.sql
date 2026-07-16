@@ -939,6 +939,9 @@ WHERE brand."id" = relationship."brandOrgId"
     OR COALESCE(brand."nameKo", '') LIKE '%우리들%'
   );
 
+ALTER TABLE "Organization"
+  ADD COLUMN IF NOT EXISTS "defaultSizeSetCode" TEXT NOT NULL DEFAULT 'LEGACY_APPAREL';
+
 -- Step 0f/0g legacy OrgMembership cleanup is now handled in Step 0o.
 
 -- Step 0h: org membership terminated status for employee offboarding (20260619)
