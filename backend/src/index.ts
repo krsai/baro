@@ -654,6 +654,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "Organization", columnName: "nameKo" },
   { tableName: "Organization", columnName: "nameVi" },
   { tableName: "Organization", columnName: "representativeEmployeeId" },
+  { tableName: "OrgRelationship", columnName: "defaultSizeSetCode" },
   { tableName: "Factory", columnName: "nameKo" },
   { tableName: "Factory", columnName: "nameVi" },
   { tableName: "Factory", columnName: "managementStartDate" },
