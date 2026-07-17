@@ -308,6 +308,58 @@ const resolveAtParamsMeta = (process) => {
   };
 };
 
+const resolveAtObservedBucketRange = (atParams) => {
+  if (!atParams || typeof atParams !== 'object') return null;
+  const minQuantity = toOptionalNumber(atParams.minQuantity);
+  const maxQuantity = toOptionalNumber(atParams.maxQuantity);
+  if (minQuantity === null || maxQuantity === null) return null;
+  const lowerQuantity = Math.min(minQuantity, maxQuantity);
+  const upperQuantity = Math.max(minQuantity, maxQuantity);
+  return {
+    minQuantity: lowerQuantity,
+    maxQuantity: upperQuantity,
+    minBucket: resolveStBucketQuantity(lowerQuantity),
+    maxBucket: resolveStBucketQuantity(upperQuantity),
+  };
+};
+
+export const resolveProcessAtCellState = (process, quantity = 1) => {
+  const atParams = resolveAtParamsMeta(process);
+  if (!atParams) {
+    return {
+      tone: 'empty',
+      isProvisional: false,
+      isOutsideObservedBucketRange: false,
+      observedBucketRange: null,
+    };
+  }
+
+  const renderedBucket = resolveStBucketQuantity(quantity);
+  const observedBucketRange = resolveAtObservedBucketRange(atParams);
+  const isOutsideObservedBucketRange =
+    observedBucketRange !== null &&
+    (renderedBucket < observedBucketRange.minBucket ||
+      renderedBucket > observedBucketRange.maxBucket);
+  const isProvisional =
+    atParams.isProvisional === true || String(atParams.fitStatus || '') === 'USED_PROVISIONAL';
+
+  let tone = 'fitted';
+  if (isProvisional && isOutsideObservedBucketRange) {
+    tone = 'provisional-extrapolated';
+  } else if (isProvisional) {
+    tone = 'provisional';
+  } else if (isOutsideObservedBucketRange) {
+    tone = 'extrapolated';
+  }
+
+  return {
+    tone,
+    isProvisional,
+    isOutsideObservedBucketRange,
+    observedBucketRange,
+  };
+};
+
 const resolveAtReliabilityPercent = ({
   setupShare,
   version,

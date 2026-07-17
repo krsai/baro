@@ -20,6 +20,7 @@ import {
   ST_STANDARD_BUCKETS,
   normalizeProcess,
   normalizeProcesses,
+  resolveProcessAtCellState,
   resolveProcessAtPerPieceSeconds,
   resolveProcessStPerPieceSeconds,
   resolveStBucketQuantity,
@@ -130,6 +131,37 @@ const resolveAtCellState = (process, quantity, languageCode) => {
         ? 'Fitted AT from work records.'
         : '작업기록으로 학습된 AT입니다.',
   };
+};
+
+const resolveAtCellTitle = (cellState, languageCode) => {
+  switch (cellState?.tone) {
+    case 'provisional':
+      return languageCode === 'vi'
+        ? 'Gia tri tam tinh: chua du bien thien so luong de hoi quy.'
+        : languageCode === 'en'
+          ? 'Provisional value: not enough quantity variation for a fitted AT curve.'
+          : '임시 AT입니다. 아직 수량 변화 데이터가 부족해 관측 평균으로 표시합니다.';
+    case 'provisional-extrapolated':
+      return languageCode === 'vi'
+        ? 'Gia tri tam tinh ngoai vung so luong da quan sat.'
+        : languageCode === 'en'
+          ? 'Provisional estimate outside the observed quantity bucket range.'
+          : '관측 수량 구간 밖의 임시 AT입니다. 숫자는 표시하지만 신뢰도는 낮습니다.';
+    case 'extrapolated':
+      return languageCode === 'vi'
+        ? 'Nam ngoai pham vi du lieu da hoc.'
+        : languageCode === 'en'
+          ? 'Outside the observed training quantity range.'
+          : '학습된 수량 범위 밖의 추정값입니다.';
+    case 'fitted':
+      return languageCode === 'vi'
+        ? 'Gia tri AT da hoc tu ban ghi.'
+        : languageCode === 'en'
+          ? 'Fitted AT from work records.'
+          : '작업기록으로 학습된 AT입니다.';
+    default:
+      return '';
+  }
 };
 
 const upsertStBuckets = (process, quantity, seconds) => {
@@ -383,12 +415,15 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                       </TableCell>
                       {VISIBLE_BUCKETS.map((qty) => {
                         const atVal = resolveProcessAtPerPieceSeconds(process, qty);
-                        const atCellState = resolveAtCellState(process, qty, languageCode);
+                        const atCellState = resolveProcessAtCellState(process, qty);
+                        const atCellTitle = resolveAtCellTitle(atCellState, languageCode);
                         const atColor =
                           atVal == null
                             ? 'rgba(156,163,175,0.6)'
                             : atCellState.tone === 'provisional'
                               ? '#B45309'
+                              : atCellState.tone === 'provisional-extrapolated'
+                                ? 'rgba(180,83,9,0.62)'
                               : atCellState.tone === 'extrapolated'
                                 ? '#6D28D9'
                                 : 'text.secondary';
@@ -404,6 +439,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                             fontStyle: atVal == null ? 'italic' : 'normal',
                             fontWeight:
                               atCellState.tone === 'provisional' ||
+                              atCellState.tone === 'provisional-extrapolated' ||
                               atCellState.tone === 'extrapolated'
                                 ? 600
                                 : 400,
@@ -413,8 +449,8 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                         );
                         return (
                           <TableCell key={qty} align="right" sx={{ py: '4px', pr: 1.5, backgroundColor: rowBg }}>
-                            {atVal != null && atCellState.title ? (
-                              <Tooltip title={atCellState.title} placement="top">
+                            {atVal != null && atCellTitle ? (
+                              <Tooltip title={atCellTitle} placement="top">
                                 {atContent}
                               </Tooltip>
                             ) : atContent}
