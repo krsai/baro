@@ -13667,6 +13667,16 @@ const toAssignmentPlanResponse = (plan: any) => {
     lineId: String(plan.lineId),
     cardId: plan.cardId ?? "",
     workOrderId: toPositiveIntOrNull(plan?.workOrderId),
+    // styleId/buyerOrgId: read via the joined relation first (every current
+    // select variant includes `style`/`buyerOrg`), falling back to the raw
+    // scalar for any caller that selects the FK column directly instead.
+    // Without these, board-state comparisons (isSameAssignmentStateContent)
+    // saw an extra key on the incoming side only (hydrateAssignmentFkRefsFromCards
+    // always sets styleId/buyerOrgId from the card) and treated every
+    // untouched assignment as "changed" - fatal for completed assignments,
+    // whose write guard doesn't compare these fields either.
+    styleId: toPositiveIntOrNull(plan?.style?.id ?? plan?.styleId),
+    buyerOrgId: toPositiveIntOrNull(plan?.buyerOrg?.id ?? plan?.buyerOrgId),
     orderNo: joinedOrderNo ?? "",
     customer: joinedCustomer ?? "",
     // Organization.nameKo/nameVi via the buyerOrg FK - lets the frontend show
@@ -14104,6 +14114,14 @@ const COMPLETED_ASSIGNMENT_PLAN_WRITE_SELECT = {
   lineId: true,
   cardId: true,
   workOrderId: true,
+  // styleId/buyerOrgId: real scalar FK columns on AssignmentPlan (not a join-
+  // only value), so selecting them directly here is safe. Added alongside the
+  // toAssignmentPlanResponse fix so a genuine attempt to change a completed
+  // assignment's style/buyer FK is caught here with an explicit field name
+  // instead of silently passing this guard and failing opaquely later at the
+  // updateMany(isCompleted:false) fallback.
+  styleId: true,
+  buyerOrgId: true,
   // orderNo/customer/label/previewUrl dropped in Phase E - see the comment in
   // toAssignmentPlanResponse. They're no longer real write fields, so they're
   // no longer part of the completed-assignment structural-change comparison
@@ -14139,6 +14157,12 @@ const buildCompletedAssignmentWriteComparable = (item: any) => {
     lineId: normalizeAssignmentLineIdForWriteCompare(item?.lineId),
     cardId: resolveOptionalString(item?.cardId, null),
     workOrderId: toPositiveIntOrNull(item?.workOrderId),
+    // Accept either shape: a raw AssignmentPlan row (scalar styleId/buyerOrgId,
+    // e.g. COMPLETED_ASSIGNMENT_PLAN_WRITE_SELECT) or a normalized board-state
+    // item (flat styleId/buyerOrgId once present, or the style/buyerOrg join
+    // objects some callers still pass through).
+    styleId: toPositiveIntOrNull(item?.styleId ?? item?.style?.id),
+    buyerOrgId: toPositiveIntOrNull(item?.buyerOrgId ?? item?.buyerOrg?.id),
     assignmentQuantity: toOptionalNonNegativeInt(
       item?.assignmentQuantity ?? item?.quantity,
       null
@@ -25573,6 +25597,23 @@ app.put("/assignment-board-state", async (req, res) => {
         );
       }
     }
+    // Defense in depth: by this point every completed assignment has already
+    // passed the two guards above (no removal, no stDrafts, no write-relevant
+    // field diff) or the request would have already 409'd with an explicit
+    // reason. A completed AssignmentPlan must never reach updatePlanRows -
+    // isSameAssignmentStateContent() compares the full board-state shape
+    // (including fields the write-diff guards above intentionally ignore,
+    // e.g. read-only/derived ones), so it can still flag a completed
+    // assignment as "changed" even when nothing write-relevant moved. Rather
+    // than rely on every future field staying in sync between the two
+    // comparators, exclude known-completed externalIds from the update
+    // pipeline outright.
+    const completedExternalIdSet = new Set<string>(
+      Array.from(completedPlanByExternalId.keys())
+    );
+    currentAssignmentsByExternalId.forEach((item: any, externalId: string) => {
+      if (Boolean(item?.isCompleted)) completedExternalIdSet.add(externalId);
+    });
     stDraftsByExternalId.forEach((_drafts, externalId) => {
       if (nextAssignmentsByExternalId.has(externalId)) {
         changedIncomingExternalIds.add(externalId);
@@ -25785,6 +25826,7 @@ app.put("/assignment-board-state", async (req, res) => {
       nextAssignmentsNormalized.filter((item) => {
         const externalId = resolveAssignmentExternalId(item);
         if (!externalId) return false;
+        if (completedExternalIdSet.has(externalId)) return false;
         const currentItem = currentAssignmentsByExternalId.get(externalId);
         return (
           !currentItem ||
