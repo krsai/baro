@@ -22,7 +22,7 @@ import {
   Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { DndContext, DragOverlay, useDroppable, pointerWithin, closestCenter, MeasuringStrategy } from '@dnd-kit/core';
+import { DndContext, DragOverlay, useDroppable, pointerWithin, MeasuringStrategy } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -122,7 +122,7 @@ const assignBoardCollisionDetection = (args) => {
     }
     return pointerCollisions;
   }
-  return closestCenter(args);
+  return [];
 };
 
 // The default (WhileDragging) strategy only remeasures droppable rects on
@@ -6548,17 +6548,18 @@ const AssignBoard = () => {
 
   const mergeUnassignedCards = (targetId, sourceId) => {
     if (!targetId || !sourceId || targetId === sourceId) return false;
-    let merged = false;
+    const target = cardById.get(targetId);
+    const source = cardById.get(sourceId);
+    if (!target || !source) return false;
+    if (getCardOriginId(target) !== getCardOriginId(source)) return false;
+    const next = buildMergedCardData(target, source);
     setCards((prev) => {
-      const target = prev.find((item) => item.id === targetId);
-      const source = prev.find((item) => item.id === sourceId);
-      if (!target || !source) return prev;
-      if (getCardOriginId(target) !== getCardOriginId(source)) return prev;
-      merged = true;
-      const next = buildMergedCardData(target, source);
+      if (!prev.some((item) => item.id === targetId) || !prev.some((item) => item.id === sourceId)) {
+        return prev;
+      }
       return prev.filter((item) => item.id !== sourceId).map((item) => (item.id === targetId ? next : item));
     });
-    return merged;
+    return true;
   };
 
   const mergeCardIntoAssignment = (targetAssignmentId, sourceCardId) => {
