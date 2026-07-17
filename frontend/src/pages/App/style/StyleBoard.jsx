@@ -55,6 +55,10 @@ import {
 } from '../../../utils/timeDivergence';
 
 const { useDeferredValue } = React;
+const TIME_REFERENCE_QUANTITY_LABEL = formatNumberWithCommas(DEFAULT_TIME_REF_QUANTITY, {
+  maximumFractionDigits: 0,
+});
+const formatTimeReferenceColumnLabel = (label) => `${label}(${TIME_REFERENCE_QUANTITY_LABEL})`;
 
 // 생산계획 카드 상태 라벨과 동일한 커스텀 팔레트 사용 (공유 팔레트 — agent.md 참조)
 const AT_RELIABILITY_PALETTE = {
@@ -635,9 +639,15 @@ const StyleBoard = () => {
                 <TableCell sx={{ width: '14%' }}>
                   {getUiMessage('styleBoard.styleCode', '스타일 코드', languageCode)}
                 </TableCell>
-                {canViewProcessSummary ? <TableCell sx={{ width: '15%' }}>{'PT'}</TableCell> : null}
-                {canViewProcessSummary ? <TableCell sx={{ width: '15%' }}>{'ST'}</TableCell> : null}
-                {canViewProcessSummary ? <TableCell sx={{ width: '15%' }}>{'AT'}</TableCell> : null}
+                {canViewProcessSummary ? (
+                  <TableCell sx={{ width: '15%' }}>{formatTimeReferenceColumnLabel('PT')}</TableCell>
+                ) : null}
+                {canViewProcessSummary ? (
+                  <TableCell sx={{ width: '15%' }}>{formatTimeReferenceColumnLabel('ST')}</TableCell>
+                ) : null}
+                {canViewProcessSummary ? (
+                  <TableCell sx={{ width: '15%' }}>{formatTimeReferenceColumnLabel('AT')}</TableCell>
+                ) : null}
                 <TableCell sx={{ width: '11%' }}>
                   {getUiMessage('styleBoard.registrationDate', '등록일', languageCode)}
                 </TableCell>
