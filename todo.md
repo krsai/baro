@@ -47,20 +47,6 @@
 현재 판단:
 - [ ] 화면이 덜 매끈해져도 데이터 이상을 숨기지 않는 쪽이 맞음
 
-### [중간] assignment 표시값을 문자열 fallback에 기대는 문제
-
-문제:
-일부 화면 로직이 FK가 아니라 display string이나 옛 식별 규칙에 기대고 있다. 이 상태는 데이터 정합성보다 "그럴듯하게 보이기"를 우선하는 구조다.
-
-해야 할 일:
-- [ ] `resolveAssignmentDisplayFallback` 정리
-- [ ] `findOrderItemByAssignmentIdentity` 정리
-- [ ] FK 기반 조회로 대체하거나 완전히 제거하기
-
-현재 판단:
-- [ ] 레거시 호환보다 FK 기준 정합성을 우선
-- [ ] 데이터 문제는 화면에서 바로 드러나는 편이 낫다
-
 ### [중간] 작업기록 duplicate 검증과 수량 경고가 섞여 헷갈리는 문제
 
 문제:

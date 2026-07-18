@@ -11085,6 +11085,20 @@ const toComparableAssignmentStateItem = (item: any) => {
     isCompleted: _isCompleted,
     finalQuantity: _finalQuantity,
     completedAt: _completedAt,
+    // Read-only display copies now come only from FK joins. Ignore them here
+    // so malformed client strings never look like write-relevant changes.
+    orderNo: _orderNo,
+    customer: _customer,
+    customerNameKo: _customerNameKo,
+    customerNameVi: _customerNameVi,
+    label: _label,
+    previewUrl: _previewUrl,
+    colorId: _colorId,
+    colorName: _colorName,
+    imageUrl: _imageUrl,
+    thumbnailUrl: _thumbnailUrl,
+    color: _color,
+    stripeColor: _stripeColor,
     ...rest
   } = normalized;
   return rest;
@@ -11101,12 +11115,6 @@ const buildAssignmentByExternalId = (items: any[]) =>
     map.set(externalId, item);
     return map;
   }, new Map<string, any>());
-const ASSIGNMENT_TEXT_CORRUPTION_REGEX = /\?{2,}|\uFFFD/u;
-type AssignmentDisplayReferenceMaps = {
-  orderByOrderId: Map<string, any>;
-  orderByOrderNo: Map<string, any>;
-  styleByStyleId: Map<string, any>;
-};
 const normalizeAssignmentDisplayKey = (value: any) =>
   String(value ?? "")
     .trim()
@@ -11930,69 +11938,6 @@ const rebuildAssignmentCardsForOrgIds = async (orgIds: Array<number | null | und
   await Promise.all(
     uniqueOrgIds.map((orgId) => enqueueAssignmentCardRebuildForOrg(orgId))
   );
-};
-const hasCorruptedAssignmentDisplayText = (value: any): boolean => {
-  const text = resolveOptionalString(value, null);
-  if (!text) return false;
-  return ASSIGNMENT_TEXT_CORRUPTION_REGEX.test(text);
-};
-const shouldRepairAssignmentDisplayField = (current: any, fallback: any): boolean => {
-  const fallbackText = resolveOptionalString(fallback, null);
-  if (!fallbackText) return false;
-  const currentText = resolveOptionalString(current, null);
-  if (!currentText) return true;
-  return hasCorruptedAssignmentDisplayText(currentText);
-};
-// assignmentPlanNeedsDisplayRepair was retired along with
-// repairAssignmentPlanDisplayRows - see the comment above toAssignmentPlanResponse.
-const shouldRepairAssignmentBoardDisplayPayloadOnWrite = ({
-  cards,
-  assignments,
-}: {
-  cards: any;
-  assignments: any;
-}) => {
-  const hasCorruptedCardText = ensureArray(cards).some((card) => {
-    if (!card || typeof card !== "object") return false;
-    return (
-      hasCorruptedAssignmentDisplayText(card?.orderNo) ||
-      hasCorruptedAssignmentDisplayText(card?.customer) ||
-      hasCorruptedAssignmentDisplayText(card?.styleName) ||
-      hasCorruptedAssignmentDisplayText(card?.colorName)
-    );
-  });
-  if (hasCorruptedCardText) return true;
-
-  return ensureArray(assignments).some((assignment) => {
-    if (!assignment || typeof assignment !== "object") return false;
-    return (
-      hasCorruptedAssignmentDisplayText(assignment?.orderNo) ||
-      hasCorruptedAssignmentDisplayText(assignment?.customer) ||
-      hasCorruptedAssignmentDisplayText(assignment?.label) ||
-      hasCorruptedAssignmentDisplayText(assignment?.colorName)
-    );
-  });
-};
-const stripAssignmentLabelGenderSuffix = (value: any) =>
-  String(value ?? "")
-    .replace(/\s*\[(M|W|U)\]\s*$/i, "")
-    .trim();
-const parseAssignmentCardIdentity = (
-  value: any
-): { orderId: string; styleId: string; colorKey: string; gender: string } | null => {
-  const raw = resolveOptionalString(value, null);
-  if (!raw) return null;
-  const parts = raw.split("::");
-  if (parts.length < 2) return null;
-  const orderId = resolveOptionalString(parts[0], null);
-  const styleId = resolveOptionalString(parts[1], null);
-  if (!orderId || !styleId) return null;
-  return {
-    orderId,
-    styleId,
-    colorKey: normalizeAssignmentDisplayKey(parts[2]),
-    gender: normalizeAssignmentDisplayGender(parts[3]),
-  };
 };
 const getOrderRelatedOrgIds = (order: any): number[] =>
   Array.from(
@@ -13350,285 +13295,16 @@ const getOrderModificationLockState = async (order: any) =>
 const isOrderModificationLocked = async (order: any): Promise<boolean> => {
   return (await getOrderModificationLockState(order)).isLocked;
 };
-const loadAssignmentDisplayReferenceMaps = async (
-  orgId: number
-): Promise<AssignmentDisplayReferenceMaps> => {
-  const [orders, styles] = await Promise.all([
-    prisma.workOrder.findMany({
-      where: { OR: getOrderAccessWhere(orgId) },
-      select: {
-        orderId: true,
-        orderNumber: true,
-        buyerOrg: {
-          select: { id: true, name: true, nameKo: true, nameVi: true },
-        },
-        customerOrg: {
-          select: { id: true, name: true, nameKo: true, nameVi: true },
-        },
-        items: true,
-        workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE,
-      },
-    }),
-    prisma.style.findMany({
-      where: { orgId },
-      select: {
-        id: true,
-        orgId: true,
-        code: true,
-        name: true,
-        organization: {
-          select: { id: true, name: true, nameKo: true, nameVi: true },
-        },
-      },
-    }),
-  ]);
-  const orderByOrderId = orders.reduce((map, order) => {
-    const orderId = resolveOptionalString(order?.orderId, null);
-    if (orderId && !map.has(orderId)) {
-      map.set(orderId, order);
-    }
-    return map;
-  }, new Map<string, any>());
-  const orderByOrderNo = orders.reduce((map, order) => {
-    const orderNo = resolveOptionalString(order?.orderNumber, null);
-    if (orderNo && !map.has(orderNo)) {
-      map.set(orderNo, order);
-    }
-    return map;
-  }, new Map<string, any>());
-  const styleByStyleId = styles.reduce((map, style) => {
-    const styleId = resolveOptionalString(style?.code, null);
-    if (styleId && !map.has(styleId)) {
-      map.set(styleId, style);
-    }
-    return map;
-  }, new Map<string, any>());
-  return {
-    orderByOrderId,
-    orderByOrderNo,
-    styleByStyleId,
-  };
-};
-const findOrderItemByAssignmentIdentity = (order: any, identity: any): any | null => {
-  if (!order || !identity) return null;
-  const styleId = resolveOptionalString(identity?.styleId, null);
-  if (!styleId) return null;
-  const targetColorKey = normalizeAssignmentDisplayKey(identity?.colorKey);
-  const targetGender = normalizeAssignmentDisplayGender(identity?.gender);
-  const items: any[] = Array.isArray(order?.workOrderItems)
-    ? order.workOrderItems.map(workOrderItemToItemShape)
-    : [];
-  const exact = items.find((item) => {
-    if (resolveOptionalString(item?.styleId, null) !== styleId) return false;
-    const itemColorKey = normalizeAssignmentDisplayKey(
-      item?.colorCode ?? item?.colorId ?? item?.colorName
-    );
-    const itemGender = normalizeAssignmentDisplayGender(item?.gender);
-    if (targetColorKey && itemColorKey && targetColorKey !== itemColorKey) return false;
-    if (targetGender && itemGender && targetGender !== itemGender) return false;
-    return true;
-  });
-  if (exact) return exact;
-  return (
-    items.find((item) => resolveOptionalString(item?.styleId, null) === styleId) ?? null
-  );
-};
-const resolveAssignmentDisplayFallback = (
-  target: any,
-  refs: AssignmentDisplayReferenceMaps,
-  cardIdentityText: any = null
-) => {
-  const identity = parseAssignmentCardIdentity(cardIdentityText);
-  const targetOrderNo = resolveOptionalString(target?.orderNo, null);
-  const order =
-    (identity?.orderId ? refs.orderByOrderId.get(identity.orderId) : null) ??
-    (targetOrderNo ? refs.orderByOrderNo.get(targetOrderNo) : null) ??
-    null;
-  const orderItem = findOrderItemByAssignmentIdentity(order, identity);
-  const style = identity?.styleId ? refs.styleByStyleId.get(identity.styleId) ?? null : null;
-  const hasVariantIdentity = Boolean(
-    normalizeAssignmentDisplayKey(identity?.colorKey) ||
-      normalizeAssignmentDisplayGender(identity?.gender)
-  );
-  const gender =
-    normalizeAssignmentDisplayGender(identity?.gender) ||
-    normalizeAssignmentDisplayGender(target?.gender) ||
-    (hasVariantIdentity ? normalizeAssignmentDisplayGender(orderItem?.gender) : "");
-  const styleName =
-    resolveOptionalString(orderItem?.styleName, null) ??
-    resolveOptionalString(style?.name, null) ??
-    resolveOptionalString(stripAssignmentLabelGenderSuffix(target?.label), null) ??
-    null;
-  return {
-    orderNo: resolveOptionalString(order?.orderNumber, null) ?? targetOrderNo,
-    customer:
-      resolveOptionalString(order?.customerName, null) ??
-      resolveOptionalString(order?.buyerOrgName, null) ??
-      resolveOptionalString(style?.organization?.name, null) ??
-      resolveOptionalString(target?.customer, null),
-    styleName,
-    colorName:
-      (hasVariantIdentity ? resolveOptionalString(orderItem?.colorName, null) : null) ??
-      resolveOptionalString(target?.colorName, null),
-    label: styleName ? `${styleName}${gender ? ` [${gender}]` : ""}` : null,
-    gender: gender || null,
-  };
-};
-const repairAssignmentBoardCardsDisplayText = (
-  cards: any,
-  refs: AssignmentDisplayReferenceMaps
-): { cards: any[]; changed: boolean } => {
-  let changed = false;
-  const nextCards = ensureArray(cards).map((card) => {
-    if (!card || typeof card !== "object") return card;
-    const fallback = resolveAssignmentDisplayFallback(
-      card,
-      refs,
-      card?.id ?? card?.originOrderId ?? null
-    );
-    let itemChanged = false;
-    const next = { ...card };
-    const applyField = (field: string, value: any) => {
-      if (!shouldRepairAssignmentDisplayField((next as any)[field], value)) return;
-      (next as any)[field] = resolveOptionalString(value, (next as any)[field] ?? "");
-      itemChanged = true;
-    };
-    applyField("orderNo", fallback.orderNo);
-    applyField("customer", fallback.customer);
-    applyField("styleName", fallback.styleName);
-    applyField("colorName", fallback.colorName);
-    if (
-      !resolveOptionalString(next?.gender, null) &&
-      resolveOptionalString(fallback?.gender, null)
-    ) {
-      next.gender = fallback.gender;
-      itemChanged = true;
-    }
-    if (itemChanged) changed = true;
-    return next;
-  });
-  return { cards: nextCards, changed };
-};
-const repairAssignmentBoardAssignmentsDisplayText = (
-  assignments: any,
-  refs: AssignmentDisplayReferenceMaps
-): { assignments: any[]; changed: boolean } => {
-  let changed = false;
-  const nextAssignments = ensureArray(assignments).map((assignment) => {
-    if (!assignment || typeof assignment !== "object") return assignment;
-    const fallback = resolveAssignmentDisplayFallback(
-      assignment,
-      refs,
-      assignment?.cardId ?? assignment?.originOrderId ?? assignment?.id ?? null
-    );
-    let itemChanged = false;
-    const next = { ...assignment };
-    const applyField = (field: string, value: any) => {
-      if (!shouldRepairAssignmentDisplayField((next as any)[field], value)) return;
-      (next as any)[field] = resolveOptionalString(value, (next as any)[field] ?? "");
-      itemChanged = true;
-    };
-    applyField("orderNo", fallback.orderNo);
-    applyField("customer", fallback.customer);
-    applyField("label", fallback.label);
-    applyField("colorName", fallback.colorName);
-    if (
-      !resolveOptionalString(next?.gender, null) &&
-      resolveOptionalString(fallback?.gender, null)
-    ) {
-      next.gender = fallback.gender;
-      itemChanged = true;
-    }
-    if (itemChanged) changed = true;
-    return next;
-  });
-  return { assignments: nextAssignments, changed };
-};
-const repairAssignmentBoardDisplayState = async ({
-  orgId,
-  cards,
-  assignments,
-  refs = null,
-}: {
-  orgId: number;
-  cards: any;
-  assignments: any;
-  refs?: AssignmentDisplayReferenceMaps | null;
-}): Promise<{
-  cards: any[];
-  assignments: any[];
-  changed: boolean;
-  refs: AssignmentDisplayReferenceMaps;
-}> => {
-  const resolvedRefs = refs ?? (await loadAssignmentDisplayReferenceMaps(orgId));
-  const repairedCards = repairAssignmentBoardCardsDisplayText(cards, resolvedRefs);
-  const repairedAssignments = repairAssignmentBoardAssignmentsDisplayText(
-    assignments,
-    resolvedRefs
-  );
-  return {
-    cards: repairedCards.cards,
-    assignments: repairedAssignments.assignments,
-    changed: repairedCards.changed || repairedAssignments.changed,
-    refs: resolvedRefs,
-  };
-};
-const safelyRepairAssignmentBoardDisplayState = async ({
-  orgId,
-  cards,
-  assignments,
-  refs = null,
-  context,
-}: {
-  orgId: number;
-  cards: any;
-  assignments: any;
-  refs?: AssignmentDisplayReferenceMaps | null;
-  context: string;
-}): Promise<{
-  cards: any[];
-  assignments: any[];
-  changed: boolean;
-  refs: AssignmentDisplayReferenceMaps | null;
-}> => {
-  try {
-    return await repairAssignmentBoardDisplayState({
-      orgId,
-      cards,
-      assignments,
-      refs,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn(
-      `[assignment-board] display repair skipped (${context}, org=${orgId}): ${message}`
-    );
-    return {
-      cards: ensureArray(cards),
-      assignments: normalizeStateAssignments(assignments),
-      changed: false,
-      refs,
-    };
-  }
-};
-const toNullableAssignmentText = (value: any): string | null => {
-  const text = resolveOptionalString(value, null);
-  return text && text.length > 0 ? text : null;
-};
 // repairAssignmentPlanDisplayRows was retired here (Phase C of the
 // AssignmentCard/AssignmentPlan FK+join redesign): it re-derived
 // orderNo/customer/label/colorName by string-parsing AssignmentPlan.cardId
-// through loadAssignmentDisplayReferenceMaps/resolveAssignmentDisplayFallback,
-// which had a known-broken style match (Style.code string key vs the numeric
-// styleId embedded in cardId) - the same bug class as AGENTS.md 42. Now that
-// toAssignmentPlanResponse/GET /assignment-plans join through the real
-// workOrderId/styleId/buyerOrgId FKs directly, there's nothing left for this
-// self-heal to do for any row with a resolvable FK, and Phase A's SQL
-// backfill populated every existing row in one shot rather than needing a
-// "repaired gradually over time" mechanism. The write-time payload sanitizer
-// (shouldRepairAssignmentBoardDisplayPayloadOnWrite /
-// safelyRepairAssignmentBoardDisplayState, used by PUT /assignment-board-state)
-// is a separate mechanism and was intentionally left alone.
+// through string-derived identity matching, which had a known-broken style
+// match (Style.code string key vs the numeric styleId embedded in cardId) -
+// the same bug class as AGENTS.md 42. Now that toAssignmentPlanResponse/GET
+// /assignment-plans join through the real workOrderId/styleId/buyerOrgId FKs
+// directly, and PUT /assignment-board-state no longer tries to "repair"
+// display text from parsed strings, there is no remaining server-side display
+// fallback path for assignments.
 const toAssignmentPlanResponse = (plan: any) => {
   const assignmentCtSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
   const snapshotSchedule =
@@ -25431,23 +25107,8 @@ app.put("/assignment-board-state", async (req, res) => {
   const cards = ensureArray(req.body?.cards);
   const incomingAssignments = ensureArray(req.body?.assignments);
   const stDraftsByExternalId = normalizeAssignmentStDraftsPayload(req.body?.stDrafts);
-  let cardsForSave = cards;
-  let incomingAssignmentsForSave = incomingAssignments;
-  if (
-    shouldRepairAssignmentBoardDisplayPayloadOnWrite({
-      cards: cardsForSave,
-      assignments: incomingAssignmentsForSave,
-    })
-  ) {
-    const repairedIncomingPayload = await safelyRepairAssignmentBoardDisplayState({
-      orgId: organization.id,
-      cards: cardsForSave,
-      assignments: incomingAssignmentsForSave,
-      context: "PUT /assignment-board-state",
-    });
-    cardsForSave = repairedIncomingPayload.cards;
-    incomingAssignmentsForSave = repairedIncomingPayload.assignments;
-  }
+  const cardsForSave = cards;
+  const incomingAssignmentsForSave = incomingAssignments;
   assertFiniteAssignmentScheduleIndices(normalizeStateAssignments(incomingAssignmentsForSave));
   const currentPlanRowsForDetachGuard = await loadAssignmentPlansForBoardState(
     organization.id
