@@ -11119,11 +11119,6 @@ const normalizeAssignmentDisplayKey = (value: any) =>
   String(value ?? "")
     .trim()
     .toUpperCase();
-const normalizeAssignmentDisplayGender = (value: any): string => {
-  const key = normalizeAssignmentDisplayKey(value);
-  if (key === "M" || key === "W" || key === "U") return key;
-  return "";
-};
 const normalizeAssignmentCardColorKey = (value: any): string =>
   normalizeAssignmentDisplayKey(value);
 const normalizeAssignmentCardGender = (value: any): string => {
@@ -25107,9 +25102,7 @@ app.put("/assignment-board-state", async (req, res) => {
   const cards = ensureArray(req.body?.cards);
   const incomingAssignments = ensureArray(req.body?.assignments);
   const stDraftsByExternalId = normalizeAssignmentStDraftsPayload(req.body?.stDrafts);
-  const cardsForSave = cards;
-  const incomingAssignmentsForSave = incomingAssignments;
-  assertFiniteAssignmentScheduleIndices(normalizeStateAssignments(incomingAssignmentsForSave));
+  assertFiniteAssignmentScheduleIndices(normalizeStateAssignments(incomingAssignments));
   const currentPlanRowsForDetachGuard = await loadAssignmentPlansForBoardState(
     organization.id
   );
@@ -25119,7 +25112,7 @@ app.put("/assignment-board-state", async (req, res) => {
     )
   );
   const nextAssignmentsByExternalIdForDetachGuard = buildAssignmentByExternalId(
-    normalizeStateAssignments(incomingAssignmentsForSave)
+    normalizeStateAssignments(incomingAssignments)
   );
   const removedExternalIdsForDetachGuard = Array.from(
     currentAssignmentsByExternalIdForDetachGuard.keys()
@@ -25150,11 +25143,11 @@ app.put("/assignment-board-state", async (req, res) => {
     const currentAssignmentsByExternalId =
       buildAssignmentByExternalId(currentAssignmentsNormalized);
     let nextAssignmentsNormalized = normalizeStateAssignments(
-      incomingAssignmentsForSave
+      incomingAssignments
     );
     const savedCards = await syncAssignmentCardsForOrg({
       orgId: organization.id,
-      cards: cardsForSave,
+      cards,
       db: tx,
     });
     nextAssignmentsNormalized = hydrateAssignmentFkRefsFromCards(
@@ -25448,7 +25441,7 @@ app.put("/assignment-board-state", async (req, res) => {
     });
     const stTotalPreparation = await prepareAssignmentBoardStTotalsForSave({
       organization,
-      cards: cardsForSave,
+      cards,
       assignments: nextAssignmentsNormalized,
       existingPlanByExternalId: existingPlanByExternalIdForStTotals,
       stDraftsByExternalId,
