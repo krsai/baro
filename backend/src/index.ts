@@ -18762,39 +18762,6 @@ const ASSIGNMENT_STATUS_READY_TO_COMPLETE = "READY_TO_COMPLETE";
 const ASSIGNMENT_STATUS_PRODUCTION_COMPLETED = "PRODUCTION_COMPLETED";
 const AUTO_WORKLOG_COMPLETED_BY = "system:auto-worklog";
 
-const backfillLegacyManualProductionCompletedPlans = async () => {
-  const updatedCount = await prisma.$executeRaw`
-    WITH pending AS (
-      SELECT
-        "id",
-        COALESCE("productionCompletedAt", "closedAt", "completedAt") AS "completionAt"
-      FROM "AssignmentPlan"
-      WHERE (
-        COALESCE("isCompleted", FALSE) = FALSE
-        OR COALESCE("scheduleStatus", '') <> ${ASSIGNMENT_STATUS_PRODUCTION_COMPLETED}
-      )
-        AND COALESCE("closeBasis", '') IN ('MANUAL', 'QC_BASED')
-        AND COALESCE("closedBy", '') <> ${AUTO_WORKLOG_COMPLETED_BY}
-        AND COALESCE("productionCompletedAt", "closedAt", "completedAt") IS NOT NULL
-    )
-    UPDATE "AssignmentPlan" AS plan
-    SET
-      "isCompleted" = TRUE,
-      "scheduleStatus" = ${ASSIGNMENT_STATUS_PRODUCTION_COMPLETED},
-      "productionCompletedAt" = COALESCE(plan."productionCompletedAt", pending."completionAt"),
-      "completedAt" = COALESCE(plan."completedAt", pending."completionAt"),
-      "closedAt" = COALESCE(plan."closedAt", pending."completionAt"),
-      "updatedAt" = NOW()
-    FROM pending
-    WHERE plan."id" = pending."id"
-  `;
-  if (updatedCount > 0) {
-    console.log(
-      `[startup] Backfilled ${updatedCount} legacy manually confirmed assignment plans to PRODUCTION_COMPLETED.`
-    );
-  }
-};
-
 type AssignmentPlanWorkStats = {
   processTotalsByKey: Map<string, number>;
   dailyProcessTotalsByDate: Map<string, Map<string, number>>;
@@ -21191,10 +21158,9 @@ const buildAssignmentPlanProgressRows = async (
         baselineQuantityRaw > 0 &&
         processCount != null &&
         processCount > 0 &&
-        totalExpected != null &&
-        totalDone === totalExpected &&
         processGroupTotals.length === processCount &&
-        processGroupTotals.every((value) => value === baselineQuantityRaw)
+        producedQuantity >= baselineQuantityRaw &&
+        processGroupTotals.every((value) => value === producedQuantity)
     );
     const progressPercent =
       operationalProgressRatio == null ? null : Math.min(100, Math.round(operationalProgressRatio * 100));
@@ -22086,6 +22052,17 @@ const completeAssignmentPlanProduction = async ({
       error: "assignment plan already completed",
     };
   }
+  const currentProgressRows = await buildAssignmentPlanProgressRows(orgId, [externalId]);
+  const currentScheduleStatus =
+    resolveOptionalString(currentProgressRows[0]?.scheduleStatus, null) ??
+    ASSIGNMENT_STATUS_IN_PROGRESS;
+  if (currentScheduleStatus !== ASSIGNMENT_STATUS_REVIEW_REQUIRED) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "assignment plan must be review-required before manual work-done confirmation",
+    };
+  }
 
   const plannedQuantity = resolveAssignmentQuantity(plan);
   const baselineQuantity =
@@ -22133,11 +22110,14 @@ const completeAssignmentPlanProduction = async ({
         id: plan.id,
         orgId,
         isCompleted: false,
+        productionCompletedAt: null,
+        completedAt: null,
+        closedAt: null,
         updatedAt: plan.updatedAt,
       },
       data: {
         productionCompletedAt: completedAt,
-        isCompleted: true,
+        isCompleted: false,
         completedAt,
         finalQuantity: resolvedClosedQty,
         closedQty: resolvedClosedQty,
@@ -22147,7 +22127,7 @@ const completeAssignmentPlanProduction = async ({
         closeBasis,
         candidateEndDate: completionDate,
         renderEndDate: completionDate,
-        scheduleStatus: ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
+        scheduleStatus: ASSIGNMENT_STATUS_READY_TO_COMPLETE,
         forecastCompletedAt: null,
         forecastBasis: ASSIGNMENT_FORECAST_BASIS_UNAVAILABLE,
         updatedAt: new Date(),
@@ -22694,7 +22674,7 @@ app.patch("/assignment-plans/:externalId/production-complete", async (req, res) 
       productionCompletedAt: toIsoDateStringOrNull(
         completion.updatedPlan.productionCompletedAt
       ),
-      scheduleStatus: ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
+      scheduleStatus: ASSIGNMENT_STATUS_READY_TO_COMPLETE,
     },
     reorderedAssignments: 0,
   });
@@ -28606,7 +28586,6 @@ const bootstrapApplicationServices = async () => {
 const startServer = async () => {
   await ensureDatabaseReady();
   await ensureRuntimeSchemaReady();
-  await backfillLegacyManualProductionCompletedPlans();
   app.listen(port, host, () => {
     console.log(`API running on http://${host}:${port}`);
   });

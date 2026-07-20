@@ -2175,32 +2175,10 @@ END $$;
 -- 6-0b. Phase 6E preflight: completion-source cleanup and snapshot ST backfill.
 --     Snapshot ST fields must not be removed until this backfill has been applied
 --     and the notice counts below have been reviewed.
---     2026-07-20: legacy manual/QC confirmations used to write close metadata
---     but leave the row in READY_TO_COMPLETE. Backfill only rows we can identify
---     exactly as manual confirmations; auto worklog-ready rows must stay distinct.
-WITH legacy_manual_completion_rows AS (
-  SELECT
-    "id",
-    COALESCE("productionCompletedAt", "closedAt", "completedAt") AS "completionAt"
-  FROM "AssignmentPlan"
-  WHERE (
-    COALESCE("isCompleted", FALSE) = FALSE
-    OR COALESCE("scheduleStatus", '') <> 'PRODUCTION_COMPLETED'
-  )
-    AND COALESCE("closeBasis", '') IN ('MANUAL', 'QC_BASED')
-    AND COALESCE("closedBy", '') <> 'system:auto-worklog'
-    AND COALESCE("productionCompletedAt", "closedAt", "completedAt") IS NOT NULL
-)
-UPDATE "AssignmentPlan" AS plan
-SET
-  "isCompleted" = TRUE,
-  "scheduleStatus" = 'PRODUCTION_COMPLETED',
-  "productionCompletedAt" = COALESCE(plan."productionCompletedAt", legacy_manual_completion_rows."completionAt"),
-  "completedAt" = COALESCE(plan."completedAt", legacy_manual_completion_rows."completionAt"),
-  "closedAt" = COALESCE(plan."closedAt", legacy_manual_completion_rows."completionAt"),
-  "updatedAt" = NOW()
-FROM legacy_manual_completion_rows
-WHERE plan."id" = legacy_manual_completion_rows."id";
+--     2026-07-20 policy correction: do not infer `isCompleted`/`PRODUCTION_COMPLETED`
+--     from `completedAt`/`productionCompletedAt` metadata. Those fields can mean
+--     a manual `REVIEW_REQUIRED -> READY_TO_COMPLETE` override, and payroll-backed
+--     final completion is not derivable from current DB state alone.
 
 WITH snapshot_st_targets AS (
   SELECT

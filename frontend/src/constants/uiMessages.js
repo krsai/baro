@@ -1025,6 +1025,12 @@ const resolveLocalizedMessage = (value, languageCode = getCurrentLanguageCode())
   );
 };
 
+UI_MESSAGES.assign.workDoneConfirmBlocked = {
+  ko: '검토 필요 상태에서만 작업 완료 확인을 할 수 있습니다.',
+  en: 'Work-done confirmation is only available from Review Required status.',
+  vi: 'Chi co the xac nhan cong viec hoan thanh khi dang o trang thai Can xem xet.',
+};
+
 const formatMessage = (template, params = {}) =>
   String(template || '').replace(/\{(\w+)\}/g, (_match, token) => {
     if (!Object.prototype.hasOwnProperty.call(params, token)) return '';

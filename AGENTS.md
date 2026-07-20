@@ -154,7 +154,7 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 - `assignmentCtSnapshot`: assignment 저장 시점의 CT 스냅샷 JSON. `processes[].snapshotCtSeconds`와 `processes[].pieceCtSeconds`는 급여/계약 CT 기준이며, snapshot 안에 ST 복사본을 저장하지 않는다. `PUT /assignment-board-state`는 편집 가능한 배정에 대해 서버가 `AssignmentCard.styleId` FK가 가리키는 라이브 `StyleProcess`/`StyleProcessStandard` 기준으로 CT 스냅샷을 재생성하거나 기존 유효 스냅샷을 보존해야 하며, 그래도 유효한 CT를 만들 수 없으면 저장을 거부한다(조용히 `null` 저장 금지).
 - **2026-07-12 적용 완료:** `PUT /assignment-board-state` 저장 경로에서 `preserveExistingAssignmentCtSnapshotsForSave` 우회는 제거됐다. 편집 가능한 assignment는 저장 직전에 서버가 `AssignmentCard.styleId` FK의 라이브 `StyleProcess`/`StyleProcessStandard` 전체를 기준으로 CT snapshot을 다시 조립하고 검증한다. incoming/existing snapshot의 공정 CT를 재사용하는 경우도 `styleProcessId` 일치 또는 현재 `processKey` 일치일 때만 허용한다. 카드/style FK가 없거나, 라이브 공정 전체를 덮는 CT를 만들 수 없거나, 재조립 결과와 현재 payload snapshot이 다르면 409로 저장을 막는다. 프론트 snapshot payload도 `styleProcessId`를 보존하며 더 이상 "현재 snapshot을 못 만들면 기존 snapshot을 통째로 재사용"하지 않는다.
 - `isCompleted`: canonical `완료 확정` 플래그다. 운영 보드의 최종 완료 그룹, 읽기 전용 가드, 완료 assignment 판정의 기준으로 쓴다.
-- `productionCompletedAt` / `completedAt` / `finalQuantity` / `closedQty` / `closedAt` / `closedBy` / `closeMode` / `closeBasis`: 작업 완료 또는 완료 확정 시점의 수량/날짜 스냅샷이다. `PATCH /assignment-plans/:externalId/production-complete`는 이제 이 메타데이터를 기록하면서 동시에 `isCompleted=true`, `scheduleStatus=PRODUCTION_COMPLETED`까지 올린다.
+- `productionCompletedAt` / `completedAt` / `finalQuantity` / `closedQty` / `closedAt` / `closedBy` / `closeMode` / `closeBasis`: 작업 완료 또는 완료 확정 시점의 수량/날짜 스냅샷이다. 현재 `PATCH /assignment-plans/:externalId/production-complete`는 `REVIEW_REQUIRED`를 사람이 확인해 `READY_TO_COMPLETE`로 넘길 때 이 메타데이터를 기록한다. 이 호출만으로 `isCompleted=true`를 만들지는 않는다.
 - **카드/배정 생성 시점 (§40, 2026-07-05부터)**: `AssignmentCard`/`AssignmentPlan`은 주문을 **저장**할 때가 아니라 **잠글 때**(`POST /orders/:orderId/modification-lock`, `locked:true`) 만들어지거나 갱신된다. 잠기지 않은 주문은 카드가 아예 없다. 해제는 순수 권한 플래그라 카드/배정에 손대지 않는다.
 - **0-수량 오버플로우 (§40)**: 주문에서 스타일이 빠졌는데 그 스타일에 이미 `WorkRecord`가 있으면, 카드/배정을 지우지 않고 `assignmentQuantity=0`으로만 낮춘다. 이미 생산된 수량은 전부 `overflowQuantity`(진행률 응답 필드)로 잡힌다. 배정 보드에는 별도 "확인 필요" 경고 섹션에 표시되고, 연결된 모든 작업기록의 월이 급여 잠금되면 자동으로 그 섹션에서 빠진다.
 
@@ -163,10 +163,11 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 - `REVIEW_REQUIRED` = `검토 필요`
 - `READY_TO_COMPLETE` = `작업 완료`
 - `PRODUCTION_COMPLETED` (`isCompleted === true`) = `완료 확정`
-- `작업 완료`는 공정별 작업 종료가 시스템 기준으로 맞았거나 사용자가 완료 수량을 확인한 상태다. 이 상태는 아직 운영 보드에서 보일 수 있다.
-- `완료 확정`은 canonical 최종 완료 상태다. 급여 기능이 붙으면, 이 상태의 카드 중 연결된 모든 `WorkRecord` 월이 전부 급여 정산/잠금된 항목은 운영 보드에서 제외하고 이력/급여 화면에서만 조회 가능하게 가는 방향으로 고정한다.
-- `PATCH /assignment-plans/:externalId/production-complete`는 이제 이름 그대로 수동 `완료 확정` 경로다. 이 호출은 `productionCompletedAt`/`closedQty`를 기록하고, 동시에 `isCompleted=true`, `scheduleStatus=PRODUCTION_COMPLETED`로 저장한다.
-- 2026-07-20 백필: 예전 코드로 수동 확정됐지만 `READY_TO_COMPLETE`에 남아 있던 행은 서버 시작 시 `closeBasis IN ('MANUAL','QC_BASED')`, `closedBy != system:auto-worklog`, 완료 시각 존재 조건이 모두 맞을 때만 `PRODUCTION_COMPLETED`로 승격한다. 자동 작업완료(`system:auto-worklog`) 행은 그대로 `작업 완료`로 둔다.
+- `작업 완료`는 공정별 작업 종료가 시스템 기준으로 맞았거나, `검토 필요` 상태를 사람이 확인해서 급여 지급 대상으로 인정하며 수동으로 넘긴 상태다. 이 상태는 아직 운영 보드에서 보일 수 있다.
+- `검토 필요`는 "주문 수량을 넘겼다" 자체가 아니라 **공정별 완료 수량이 서로 안 맞는 짜투리 상태**일 때를 뜻한다. 예: A=101, B=100, C=100이면 `REVIEW_REQUIRED`가 맞다. 반대로 모든 required 공정이 같은 수량으로 끝났고 그 공통 수량이 주문 수량 이상이면(A=B=C=101) `작업 완료`로 본다.
+- `완료 확정`은 canonical 최종 완료 상태다. 이 상태는 급여/정산과 연결된 후속 설계 영역이며, 현재 `production-complete` 수동 버튼이 이 상태를 만들면 안 된다.
+- `PATCH /assignment-plans/:externalId/production-complete`는 이름과 달리 현재는 수동 `검토 필요 -> 작업 완료` override 경로다. 이 호출은 `productionCompletedAt`/`closedQty`를 기록하지만 `isCompleted=false`, `scheduleStatus=READY_TO_COMPLETE`를 유지한다.
+- 2026-07-20 정책: 급여 truth 없이 기존 데이터를 `PRODUCTION_COMPLETED`로 일괄 승격하지 않는다. `completedAt`/`productionCompletedAt` 메타데이터만으로 `완료 확정`을 추론하면 안 된다.
 
 ### ⚠️ DB 적용 메모
 - 모든 스키마/데이터 변경은 `backend/migration_fix.sql`로 관리. `backend/railway.json`의 `deploy.preDeployCommand`가 `npm run railway:predeploy`를 실행하도록 설정되어 있어야 하며, 배포 로그에서 migration 실행 여부를 확인한다.
@@ -221,8 +222,8 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 1. QcReview.jsx: 검수 이력 입력/취소 전용
 2. POST /qc-pass-events, PATCH /qc-pass-events/:id/cancel
 3. AssignBoard.jsx 상세 드로어(handleConfirmProductionComplete): PATCH /assignment-plans/:externalId/production-complete 호출
-4. 백엔드 completeAssignmentPlanProduction: 완료 확정 메타데이터(`productionCompletedAt`, `closedQty`, `close*`) 기록 + `isCompleted=true`/`scheduleStatus=PRODUCTION_COMPLETED` 반영 + 일정/진행도 스냅샷 동기화
-5. 따라서 이 경로를 타면 보드에서 `완료 확정` 목록으로 이동하는 것이 정상이다
+4. 백엔드 completeAssignmentPlanProduction: `REVIEW_REQUIRED` 상태에서만 수동 작업 완료 메타데이터(`productionCompletedAt`, `closedQty`, `close*`) 기록 + `isCompleted=false`/`scheduleStatus=READY_TO_COMPLETE` 유지 + 일정/진행도 스냅샷 동기화
+5. 따라서 이 경로를 타면 보드에서 `작업 완료` 쪽으로만 이동하는 것이 정상이고, `완료 확정`을 만들면 안 된다
 ```
 
 ### Task 1 관련 상태
@@ -1112,8 +1113,10 @@ runtime 조회값:
 - Scope:
   - This phase prepares for snapshot ST removal but does not remove snapshot ST fields.
 - Implemented:
-  - `backend/migration_fix.sql` updates legacy inconsistent completion rows:
-    `isCompleted=false AND completedAt IS NOT NULL` -> `isCompleted=true`.
+  - Historical note (superseded on 2026-07-20): an earlier phase treated
+    `isCompleted=false AND completedAt IS NOT NULL` as a row to auto-promote to
+    completed. That is no longer current policy because `completedAt` can mean a
+    manual `검토 필요 -> 작업 완료` override.
   - Backend completion checks now use `isCompleted === true` as the assignment completion source.
   - `backend/migration_fix.sql` backfills missing `StyleProcessStandard.bucketStSeconds`
     from active assignment snapshots:

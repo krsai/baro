@@ -2052,7 +2052,7 @@ const isAssignmentSchedulerCompleted = (assignment) => {
 
 const canAssignmentConfirmWorkDone = (assignment) => {
   const scheduleStatus = String(assignment?.scheduleStatus || '').trim();
-  return scheduleStatus === 'REVIEW_REQUIRED' || scheduleStatus === 'READY_TO_COMPLETE';
+  return scheduleStatus === 'REVIEW_REQUIRED';
 };
 
 const toOptionalUnitRatio = (value) => {
