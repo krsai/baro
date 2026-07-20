@@ -125,7 +125,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
   const statusMeta =
     statusType === 'completed'
       ? {
-          label: getUiMessage('assign.statusCompleted', '완료', languageCode),
+          label: getUiMessage('assign.statusCompleted', '완료 확정', languageCode),
           chipBg: 'rgba(255,255,255,0.92)',
           chipColor: '#334155',
           cardBg: '#E5E7EB',

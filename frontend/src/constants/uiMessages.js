@@ -348,7 +348,11 @@ export const UI_MESSAGES = {
       vi: 'Du bao tu {date}',
     },
     queueCountCompact: { ko: '대기 {count}건', en: '{count} queued', vi: '{count} dang cho' },
-    completedCountCompact: { ko: '완료 {count}건', en: '{count} completed', vi: '{count} hoan thanh' },
+    completedCountCompact: {
+      ko: '완료 확정 {count}건',
+      en: '{count} completion confirmed',
+      vi: '{count} xac nhan hoan thanh',
+    },
     readyCountCompact: {
       ko: '확정 대기 {count}건',
       en: '{count} awaiting completion',
@@ -361,11 +365,19 @@ export const UI_MESSAGES = {
     queuePositionCompact: { ko: '순서 {position}', en: 'Q{position}', vi: 'Thu tu {position}' },
     etaDaysCompact: { ko: '남은 {days}', en: 'ETA {days}', vi: 'Con {days}' },
     forecastEndCompact: { ko: '예상 종료 {date}', en: 'Finish {date}', vi: 'Xong {date}' },
-    completedAtCompact: { ko: '완료 {date}', en: 'Done {date}', vi: 'Xong {date}' },
-    completedEstimatedAtCompact: { ko: '완료 추정 {date}', en: 'Done est. {date}', vi: 'Uoc tinh xong {date}' },
-    workDoneAtCompact: { ko: '작업 종료 {date}', en: 'Work done {date}', vi: 'Da xong viec {date}' },
+    completedAtCompact: {
+      ko: '완료 확정 {date}',
+      en: 'Completion confirmed {date}',
+      vi: 'Xac nhan hoan thanh {date}',
+    },
+    completedEstimatedAtCompact: {
+      ko: '완료 확정 추정 {date}',
+      en: 'Completion confirm est. {date}',
+      vi: 'Uoc tinh xac nhan hoan thanh {date}',
+    },
+    workDoneAtCompact: { ko: '작업 완료 {date}', en: 'Work done {date}', vi: 'Da xong viec {date}' },
     workDoneEstimatedAtCompact: {
-      ko: '작업 종료 추정 {date}',
+      ko: '작업 완료 추정 {date}',
       en: 'Work done est. {date}',
       vi: 'Uoc tinh xong viec {date}',
     },
@@ -375,7 +387,11 @@ export const UI_MESSAGES = {
       vi: 'Cho xac nhan hoan thanh',
     },
     etaUnavailableCompact: { ko: 'ETA 계산 불가', en: 'ETA unavailable', vi: 'Khong tinh duoc ETA' },
-    completedStatusCompact: { ko: '완료', en: 'Completed', vi: 'Hoan thanh' },
+    completedStatusCompact: {
+      ko: '완료 확정',
+      en: 'Completion confirmed',
+      vi: 'Xac nhan hoan thanh',
+    },
     readyStatusCompact: { ko: '작업 완료', en: 'Work done', vi: 'Da xong viec' },
     reviewStatusCompact: { ko: '검토 필요', en: 'Review required', vi: 'Can xem xet' },
     progressUnknownStatusCompact: {
@@ -419,9 +435,9 @@ export const UI_MESSAGES = {
       vi: 'Cong viec dang cho tren chuyen',
     },
     finishedAssignmentsHeader: {
-      ko: '작업 종료 목록',
-      en: 'Finished on this line',
-      vi: 'Cong viec da xong tren chuyen',
+      ko: '완료 확정 목록',
+      en: 'Completion confirmed on this line',
+      vi: 'Da xac nhan hoan thanh tren chuyen',
     },
     zeroQuantityOverflowHeader: {
       ko: '확인 필요 (주문에서 빠졌지만 이미 작업한 배정)',
@@ -439,9 +455,9 @@ export const UI_MESSAGES = {
       vi: 'Khong co phan cong dang cho tren chuyen nay.',
     },
     noFinishedAssignmentsInLine: {
-      ko: '이 라인에 작업 종료 항목이 없습니다.',
-      en: 'No finished assignments in this line.',
-      vi: 'Khong co cong viec da xong tren chuyen nay.',
+      ko: '이 라인에 완료 확정 항목이 없습니다.',
+      en: 'No completion-confirmed assignments in this line.',
+      vi: 'Khong co muc da xac nhan hoan thanh tren chuyen nay.',
     },
     noAssignmentsInLine: {
       ko: '이 라인에는 배정이 없습니다.',
@@ -594,6 +610,11 @@ export const UI_MESSAGES = {
       ko: '작업 완료를 확인했습니다.',
       en: 'Work done has been confirmed.',
       vi: 'Da xac nhan cong viec hoan thanh.',
+    },
+    statusCompleted: {
+      ko: '완료 확정',
+      en: 'Completion confirmed',
+      vi: 'Xac nhan hoan thanh',
     },
     statusReady: { ko: '작업 완료', en: 'Work done', vi: 'Da xong viec' },
     statusReviewRequired: {

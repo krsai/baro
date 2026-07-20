@@ -153,10 +153,19 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 - `assignmentCtTotalSeconds`(물리 컬럼명): 급여/계약 계산에 쓰는 배정카드 전체 CT 총초. 스케줄러 길이 계산에 사용 금지.
 - `assignmentCtSnapshot`: assignment 저장 시점의 CT 스냅샷 JSON. `processes[].snapshotCtSeconds`와 `processes[].pieceCtSeconds`는 급여/계약 CT 기준이며, snapshot 안에 ST 복사본을 저장하지 않는다. `PUT /assignment-board-state`는 편집 가능한 배정에 대해 서버가 `AssignmentCard.styleId` FK가 가리키는 라이브 `StyleProcess`/`StyleProcessStandard` 기준으로 CT 스냅샷을 재생성하거나 기존 유효 스냅샷을 보존해야 하며, 그래도 유효한 CT를 만들 수 없으면 저장을 거부한다(조용히 `null` 저장 금지).
 - **2026-07-12 적용 완료:** `PUT /assignment-board-state` 저장 경로에서 `preserveExistingAssignmentCtSnapshotsForSave` 우회는 제거됐다. 편집 가능한 assignment는 저장 직전에 서버가 `AssignmentCard.styleId` FK의 라이브 `StyleProcess`/`StyleProcessStandard` 전체를 기준으로 CT snapshot을 다시 조립하고 검증한다. incoming/existing snapshot의 공정 CT를 재사용하는 경우도 `styleProcessId` 일치 또는 현재 `processKey` 일치일 때만 허용한다. 카드/style FK가 없거나, 라이브 공정 전체를 덮는 CT를 만들 수 없거나, 재조립 결과와 현재 payload snapshot이 다르면 409로 저장을 막는다. 프론트 snapshot payload도 `styleProcessId`를 보존하며 더 이상 "현재 snapshot을 못 만들면 기존 snapshot을 통째로 재사용"하지 않는다.
-- `isCompleted / finalQuantity / completedAt`: 생산 완료 확정 결과 (`PATCH /assignment-plans/:externalId/production-complete`)
-- `closedQty / closedAt / closedBy / closeMode / closeBasis`: 제작 완료 확정 상태 스냅샷 (구 `/close` 경로와 신규 `/production-complete` 공통 반영)
+- `isCompleted`: canonical `완료 확정` 플래그다. 운영 보드의 최종 완료 그룹, 읽기 전용 가드, 완료 assignment 판정의 기준으로 쓴다.
+- `productionCompletedAt` / `completedAt` / `finalQuantity` / `closedQty` / `closedAt` / `closedBy` / `closeMode` / `closeBasis`: 작업 완료 또는 완료 확정 시점의 수량/날짜 스냅샷이다. 현재 `PATCH /assignment-plans/:externalId/production-complete`는 이 메타데이터를 기록할 수 있지만, 그 자체로 항상 `isCompleted=true`를 의미하지는 않는다.
 - **카드/배정 생성 시점 (§40, 2026-07-05부터)**: `AssignmentCard`/`AssignmentPlan`은 주문을 **저장**할 때가 아니라 **잠글 때**(`POST /orders/:orderId/modification-lock`, `locked:true`) 만들어지거나 갱신된다. 잠기지 않은 주문은 카드가 아예 없다. 해제는 순수 권한 플래그라 카드/배정에 손대지 않는다.
 - **0-수량 오버플로우 (§40)**: 주문에서 스타일이 빠졌는데 그 스타일에 이미 `WorkRecord`가 있으면, 카드/배정을 지우지 않고 `assignmentQuantity=0`으로만 낮춘다. 이미 생산된 수량은 전부 `overflowQuantity`(진행률 응답 필드)로 잡힌다. 배정 보드에는 별도 "확인 필요" 경고 섹션에 표시되고, 연결된 모든 작업기록의 월이 급여 잠금되면 자동으로 그 섹션에서 빠진다.
+
+### 배정 상태 의미 (2026-07-20)
+- `IN_PROGRESS` = `진행중`
+- `REVIEW_REQUIRED` = `검토 필요`
+- `READY_TO_COMPLETE` = `작업 완료`
+- `PRODUCTION_COMPLETED` (`isCompleted === true`) = `완료 확정`
+- `작업 완료`는 공정별 작업 종료가 시스템 기준으로 맞았거나 사용자가 완료 수량을 확인한 상태다. 이 상태는 아직 운영 보드에서 보일 수 있다.
+- `완료 확정`은 canonical 최종 완료 상태다. 급여 기능이 붙으면, 이 상태의 카드 중 연결된 모든 `WorkRecord` 월이 전부 급여 정산/잠금된 항목은 운영 보드에서 제외하고 이력/급여 화면에서만 조회 가능하게 가는 방향으로 고정한다.
+- 현재 `PATCH /assignment-plans/:externalId/production-complete`는 이름과 달리 "작업 완료 메타데이터 기록 + 완료 수량 확정" 경로에 가깝다. 이 경로는 `productionCompletedAt`/`closedQty`를 기록하지만, 현재 코드상 보드 상태는 대개 `READY_TO_COMPLETE`로 남고 `PRODUCTION_COMPLETED`는 `isCompleted === true`일 때만 된다.
 
 ### ⚠️ DB 적용 메모
 - 모든 스키마/데이터 변경은 `backend/migration_fix.sql`로 관리. `backend/railway.json`의 `deploy.preDeployCommand`가 `npm run railway:predeploy`를 실행하도록 설정되어 있어야 하며, 배포 로그에서 migration 실행 여부를 확인한다.
@@ -211,8 +220,8 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 1. QcReview.jsx: 검수 이력 입력/취소 전용
 2. POST /qc-pass-events, PATCH /qc-pass-events/:id/cancel
 3. AssignBoard.jsx 상세 드로어(handleConfirmProductionComplete): PATCH /assignment-plans/:externalId/production-complete 호출
-4. 백엔드 completeAssignmentPlanProduction: production completed 상태 확정 + 일정/진행도 스냅샷 동기화
-5. 완료 시: isCompleted=true, completedAt/productionCompletedAt/closedQty 갱신
+4. 백엔드 completeAssignmentPlanProduction: 작업 완료 메타데이터(`productionCompletedAt`, `closedQty`, `close*`) 기록 + 일정/진행도 스냅샷 동기화
+5. 이 경로만으로는 보통 `isCompleted=true`가 되지 않으며, 현재 코드상 보드 상태는 대개 `READY_TO_COMPLETE`로 남는다
 ```
 
 ### Task 1 관련 상태
@@ -1306,8 +1315,11 @@ runtime 조회값:
 - Current UI lock:
   - `queued` = still actively in progress
   - `review_required` = progress reached 100% but process quantity exactness needs review
-  - `ready_to_complete` = system-validated or manually confirmed work done, but not payroll-finalized
-  - `completed` = payroll-finalized canonical completion
+  - `ready_to_complete` = `작업 완료` (`READY_TO_COMPLETE`)
+  - `completed` = `완료 확정` (`PRODUCTION_COMPLETED` / `isCompleted === true`)
+- 운영 보드 후속 정책:
+  - `완료 확정` 카드는 급여 기능 전까지는 완료 확정 목록에 계속 보일 수 있다.
+  - 급여 기능 이후에는 연결된 모든 `WorkRecord` 월이 급여 정산/잠금된 시점에 운영 보드에서 제외한다.
 - Hiding `PRODUCTION_COMPLETED` assignments from operational boards after payroll is intentionally deferred.
 - Reason for defer:
   - payroll detail UX and historical lookup/report requirements are not finalized yet
@@ -1494,7 +1506,7 @@ runtime 조회값:
 - 2026-07-05 확정 (구현 착수 전 미해결 질문이었던 것들 — 사용자 답변으로 확정됨):
   - **0-수량 보존 기준**: 그 배정에 연결된 `WorkRecord`가 **실제로 하나라도 존재할 때만** 카드/배정을 0-수량으로 보존한다. 라인에 드래그만 해놓고 `WorkRecord`가 하나도 없는 빈 배정은 스타일이 빠지면 그냥 평소처럼(현재 동작 그대로) 삭제한다. `buildAssignmentCardsFromOrders`는 현재 `order.workOrderItems`에 없는 스타일은 애초에 순회 대상에서 제외된다(`backend/src/index.ts:10544` 이하) — 잠금 처리 파이프라인에 "이 주문에 대해 이전에 존재했던 카드 중, 지금 item에는 없지만 `WorkRecord`가 연결된 것"을 찾아 0-수량 항목을 강제로 주입하는 로직을 새로 만들어야 한다(현재 코드에 없음).
   - **UI 노출 방식**: 배정 보드에 평소 카드 목록과 분리된 **별도 경고 섹션**(예: "확인 필요")을 신설한다. 이 섹션에 표시할 항목이 하나도 없으면 섹션 자체를 렌더링하지 않는다(빈 섹션 노출 금지).
-  - **경고 섹션에서 항목이 빠지는(필터되는) 기준**: 그 배정에 연결된 **모든** `WorkRecord`의 소속 월이 전부 급여 잠금(그 달 `PayrollSnapshot` 존재)되면 그 시점에 목록에서 제외한다. **주의**: 이건 "완료 카드가 급여 지급되면 작업 종료 목록에서 빠진다"는 기존 로직을 재사용하는 게 아니라 **신규 구현**이다 — 실제로 그런 필터는 아직 존재하지 않는다(`lineMonthCapacity.js`의 완료 목록 빌더는 `isPayrollLocked`/`payrollLockMonth`를 전혀 참조하지 않음, §28A에도 "post-payroll hiding은 의도적으로 미뤄짐"이라고 이미 명시돼 있었음). 또한 기존 `isPayrollLocked`는 "완료 월 1개"를 전제로 계산되는데(§28), 0-수량 배정은 `plannedQuantity=0`이라 진행률 계산이 분모 0으로 `null`이 되어 전통적인 "진행률 100%→자동완료" 경로를 못 탈 가능성이 높다 — 그래서 이 신규 필터는 완료 월 1개가 아니라 **연결된 모든 WorkRecord 각각의 월이 전부 급여 잠금됐는지**를 별도로 계산해야 한다.
+  - **경고 섹션에서 항목이 빠지는(필터되는) 기준**: 그 배정에 연결된 **모든** `WorkRecord`의 소속 월이 전부 급여 잠금(그 달 `PayrollSnapshot` 존재)되면 그 시점에 목록에서 제외한다. **주의**: 이건 "완료 확정 카드가 급여 지급되면 완료 확정 목록에서 빠진다"는 기존 로직을 재사용하는 게 아니라 **신규 구현**이다 — 실제로 그런 필터는 아직 존재하지 않는다(`lineMonthCapacity.js`의 완료 목록 빌더는 `isPayrollLocked`/`payrollLockMonth`를 전혀 참조하지 않음, §28A에도 "post-payroll hiding은 의도적으로 미뤄짐"이라고 이미 명시돼 있었음). 또한 기존 `isPayrollLocked`는 "완료 월 1개"를 전제로 계산되는데(§28), 0-수량 배정은 `plannedQuantity=0`이라 진행률 계산이 분모 0으로 `null`이 되어 전통적인 "진행률 100%→자동완료" 경로를 못 탈 가능성이 높다 — 그래서 이 신규 필터는 완료 월 1개가 아니라 **연결된 모든 WorkRecord 각각의 월이 전부 급여 잠금됐는지**를 별도로 계산해야 한다.
   - **비차단 안내**: 하드 블록을 없애는 대신, 저장/잠금은 그대로 통과시키되 "이 스타일은 이미 작업기록이 있어 완전히 삭제되지 않고 0개 배정으로 남았습니다" 같은 비차단 토스트를 보여준다.
 - **해소됨**: `AssignmentPlan.workOrderId`는 스키마 확인 결과 `onDelete: SetNull`이었다(Cascade 아님) — 다만 위 "DELETE는 스타일 제거와 다르게 취급" 결정으로 이 경로 자체를 애초에 타지 않기로 했으므로(작업기록 있으면 여전히 삭제 자체를 막음) 실질적 영향은 없다.
 
@@ -1519,7 +1531,7 @@ runtime 조회값:
   - `buildAssignmentPlanProgressRows`(`backend/src/index.ts:19468`)의 반환 객체에 `isZeroQuantityOverflow`(`(baselineQuantityRaw==null||<=0) && producedQuantity>0`)와 `isFullyPayrollSettled`(그 플랜에 연결된 **모든** WorkRecord의 월이 전부 급여 잠금됐는지, 새 `workRecordMonthsByPlanId`/`workRecordPayrollLockedMonthSet`로 계산 — 기존 `isPayrollLocked`는 완료 월 1개 전제라 재사용 불가) 두 필드를 추가.
   - `resolveAssignmentProgressState`(`AssignBoard.jsx:2150`)의 화이트리스트에 두 필드 추가.
   - `lineMonthCapacity.js`의 `buildLineQueueForecast`: `isZeroQuantityOverflow && !isFullyPayrollSettled`인 assignment를 큐/리뷰/완료 분류보다 먼저 가로채 별도 `zeroQuantityOverflowAssignments` 버킷(`queueStatus:'zero_quantity_overflow'`)에 담는다. 조건을 만족 안 하면(=급여 정산 완료) 자연히 이 버킷에서 빠진다 — 사용자가 요청한 "정산 다 되면 필터" 동작.
-  - `LineMonthCapacityBoard.jsx`: "작업 종료 목록" 섹션 바로 아래에 `row.zeroQuantityOverflowAssignments.length > 0`일 때만 렌더되는 "확인 필요" 섹션 추가(항목 없으면 섹션째로 안 보임 — 다른 섹션과 달리 "없음" 문구도 안 넣음). `AssignmentDetailCard`에 `zero_quantity_overflow` 상태 분기 추가: 드래그 불가(`isLocked`) 처리, 경고색 칩/배경, "주문에서 빠짐 - 이미 N개 생산됨" 푸터.
+  - `LineMonthCapacityBoard.jsx`: "완료 확정 목록" 섹션 바로 아래에 `row.zeroQuantityOverflowAssignments.length > 0`일 때만 렌더되는 "확인 필요" 섹션 추가(항목 없으면 섹션째로 안 보임 — 다른 섹션과 달리 "없음" 문구도 안 넣음). `AssignmentDetailCard`에 `zero_quantity_overflow` 상태 분기 추가: 드래그 불가(`isLocked`) 처리, 경고색 칩/배경, "주문에서 빠짐 - 이미 N개 생산됨" 푸터.
   - `uiMessages.js`에 `assign.zeroQuantityOverflowHeader`/`zeroQuantityOverflowStatusCompact`/`zeroQuantityOverflowCompact` ko/en/vi 전부 추가.
   - `npm --prefix backend run build`, `npm --prefix frontend run build` 둘 다 통과.
 - **아직 남은 것**:

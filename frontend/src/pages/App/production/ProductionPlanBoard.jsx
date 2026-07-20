@@ -1996,7 +1996,7 @@ const ProductionPlanBoard = () => {
               sx={resolveCtStatusChipSx('SAVED')}
             />
             <Chip label={`진행 ${workStatusSummary.inProgress}`} color="default" variant="outlined" />
-            <Chip label={`완료 ${workStatusSummary.completed}`} color="success" variant="outlined" />
+            <Chip label={`완료 확정 ${workStatusSummary.completed}`} color="success" variant="outlined" />
           </Stack>
         </Box>
       }
@@ -2056,13 +2056,13 @@ const ProductionPlanBoard = () => {
                       ).trim();
                       const workStatusChip =
                         workScheduleStatus === 'PRODUCTION_COMPLETED'
-                          ? { label: '최종 완료', color: 'success', variant: 'filled' }
+                          ? { label: '완료 확정', color: 'success', variant: 'filled' }
                           : workScheduleStatus === 'READY_TO_COMPLETE'
                             ? { label: '작업 완료', color: 'success', variant: 'outlined' }
                             : workScheduleStatus === 'REVIEW_REQUIRED'
                               ? { label: '검토 필요', color: 'error', variant: 'outlined' }
                               : {
-                                  label: isCompleted ? '완료' : '진행',
+                                  label: isCompleted ? '완료 확정' : '진행',
                                   color: isCompleted ? 'success' : 'default',
                                   variant: isCompleted ? 'filled' : 'outlined',
                                 };
