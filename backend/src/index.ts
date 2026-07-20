@@ -18762,6 +18762,39 @@ const ASSIGNMENT_STATUS_READY_TO_COMPLETE = "READY_TO_COMPLETE";
 const ASSIGNMENT_STATUS_PRODUCTION_COMPLETED = "PRODUCTION_COMPLETED";
 const AUTO_WORKLOG_COMPLETED_BY = "system:auto-worklog";
 
+const backfillLegacyManualProductionCompletedPlans = async () => {
+  const updatedCount = await prisma.$executeRaw`
+    WITH pending AS (
+      SELECT
+        "id",
+        COALESCE("productionCompletedAt", "closedAt", "completedAt") AS "completionAt"
+      FROM "AssignmentPlan"
+      WHERE (
+        COALESCE("isCompleted", FALSE) = FALSE
+        OR COALESCE("scheduleStatus", '') <> ${ASSIGNMENT_STATUS_PRODUCTION_COMPLETED}
+      )
+        AND COALESCE("closeBasis", '') IN ('MANUAL', 'QC_BASED')
+        AND COALESCE("closedBy", '') <> ${AUTO_WORKLOG_COMPLETED_BY}
+        AND COALESCE("productionCompletedAt", "closedAt", "completedAt") IS NOT NULL
+    )
+    UPDATE "AssignmentPlan" AS plan
+    SET
+      "isCompleted" = TRUE,
+      "scheduleStatus" = ${ASSIGNMENT_STATUS_PRODUCTION_COMPLETED},
+      "productionCompletedAt" = COALESCE(plan."productionCompletedAt", pending."completionAt"),
+      "completedAt" = COALESCE(plan."completedAt", pending."completionAt"),
+      "closedAt" = COALESCE(plan."closedAt", pending."completionAt"),
+      "updatedAt" = NOW()
+    FROM pending
+    WHERE plan."id" = pending."id"
+  `;
+  if (updatedCount > 0) {
+    console.log(
+      `[startup] Backfilled ${updatedCount} legacy manually confirmed assignment plans to PRODUCTION_COMPLETED.`
+    );
+  }
+};
+
 type AssignmentPlanWorkStats = {
   processTotalsByKey: Map<string, number>;
   dailyProcessTotalsByDate: Map<string, Map<string, number>>;
@@ -22046,11 +22079,7 @@ const completeAssignmentPlanProduction = async ({
       error: payrollLockValidation.error,
     };
   }
-  if (
-    plan.isCompleted === true ||
-    toOptionalDateValue(plan.productionCompletedAt, null) !== null ||
-    resolveAssignmentPlanClosedAtValue(plan) !== null
-  ) {
+  if (plan.isCompleted === true) {
     return {
       ok: false as const,
       status: 409,
@@ -22104,14 +22133,11 @@ const completeAssignmentPlanProduction = async ({
         id: plan.id,
         orgId,
         isCompleted: false,
-        productionCompletedAt: null,
-        completedAt: null,
-        closedAt: null,
         updatedAt: plan.updatedAt,
       },
       data: {
         productionCompletedAt: completedAt,
-        isCompleted: false,
+        isCompleted: true,
         completedAt,
         finalQuantity: resolvedClosedQty,
         closedQty: resolvedClosedQty,
@@ -22121,7 +22147,7 @@ const completeAssignmentPlanProduction = async ({
         closeBasis,
         candidateEndDate: completionDate,
         renderEndDate: completionDate,
-        scheduleStatus: ASSIGNMENT_STATUS_READY_TO_COMPLETE,
+        scheduleStatus: ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
         forecastCompletedAt: null,
         forecastBasis: ASSIGNMENT_FORECAST_BASIS_UNAVAILABLE,
         updatedAt: new Date(),
@@ -22668,7 +22694,7 @@ app.patch("/assignment-plans/:externalId/production-complete", async (req, res) 
       productionCompletedAt: toIsoDateStringOrNull(
         completion.updatedPlan.productionCompletedAt
       ),
-      scheduleStatus: ASSIGNMENT_STATUS_READY_TO_COMPLETE,
+      scheduleStatus: ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
     },
     reorderedAssignments: 0,
   });
@@ -28580,6 +28606,7 @@ const bootstrapApplicationServices = async () => {
 const startServer = async () => {
   await ensureDatabaseReady();
   await ensureRuntimeSchemaReady();
+  await backfillLegacyManualProductionCompletedPlans();
   app.listen(port, host, () => {
     console.log(`API running on http://${host}:${port}`);
   });
