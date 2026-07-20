@@ -602,9 +602,9 @@ export const UI_MESSAGES = {
       vi: 'Nhap so luong cong viec da xac nhan hoan thanh',
     },
     workDoneConfirmBlocked: {
-      ko: '검토 필요 또는 작업 완료 상태에서만 완료 확인을 할 수 있습니다.',
-      en: 'Completion can only be confirmed from Review Required or Work Done status.',
-      vi: 'Chi co the xac nhan hoan thanh khi o trang thai Can xem xet hoac Da xong viec.',
+      ko: '검토 필요 상태에서만 작업 완료 확인을 할 수 있습니다.',
+      en: 'Completion can only be confirmed from Review Required status.',
+      vi: 'Chi co the xac nhan hoan thanh khi o trang thai Can xem xet.',
     },
     workDoneConfirmSuccess: {
       ko: '작업 완료를 확인했습니다.',

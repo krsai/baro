@@ -367,16 +367,17 @@ const buildAssignmentProgressMap = (rows) =>
         },
       ])
   );
-const isAssignmentWorkCompleted = (assignment) => {
+const resolveAssignmentWorkStatus = (assignment) => {
   const scheduleStatus = String(assignment?.progress?.scheduleStatus || '').trim();
-  if (
-    scheduleStatus === 'READY_TO_COMPLETE' ||
-    scheduleStatus === 'PRODUCTION_COMPLETED' ||
-    assignment?.progress?.isCompleted
-  ) {
-    return true;
-  }
-  return false;
+  if (assignment?.progress?.isCompleted) return 'completed';
+  if (scheduleStatus === 'READY_TO_COMPLETE') return 'ready';
+  if (scheduleStatus === 'REVIEW_REQUIRED') return 'review';
+  return 'in_progress';
+};
+
+const isAssignmentWorkClosed = (assignment) => {
+  const workStatus = resolveAssignmentWorkStatus(assignment);
+  return workStatus === 'ready' || workStatus === 'completed';
 };
 
 const resolveLineDailyCapacitySeconds = (line, headcount) => {
@@ -1045,11 +1046,14 @@ const ProductionPlanBoard = () => {
             acc.notReady += 1;
             return acc;
           }
-          if (isAssignmentWorkCompleted(assignment)) acc.completed += 1;
+          const workStatus = resolveAssignmentWorkStatus(assignment);
+          if (workStatus === 'completed') acc.completed += 1;
+          else if (workStatus === 'ready') acc.ready += 1;
+          else if (workStatus === 'review') acc.review += 1;
           else acc.inProgress += 1;
           return acc;
         },
-        { notReady: 0, inProgress: 0, completed: 0 }
+        { notReady: 0, inProgress: 0, review: 0, ready: 0, completed: 0 }
       ),
     [assignmentsForView]
   );
@@ -1766,7 +1770,7 @@ const ProductionPlanBoard = () => {
   // ?? Delta card ?ы띁 ??????????????????????????????????????????????
   const findMatchingAssignmentsForDelta = (deltaCard) =>
     assignmentsForView.filter((a) => {
-      if (isAssignmentWorkCompleted(a)) return false;
+      if (isAssignmentWorkClosed(a)) return false;
       const card = cardById.get(String(a.cardId));
       return (
         card?.styleId === deltaCard.styleId &&
@@ -1996,7 +2000,15 @@ const ProductionPlanBoard = () => {
               sx={resolveCtStatusChipSx('SAVED')}
             />
             <Chip label={`진행 ${workStatusSummary.inProgress}`} color="default" variant="outlined" />
-            <Chip label={`완료 확정 ${workStatusSummary.completed}`} color="success" variant="outlined" />
+            <Chip label={`검토 필요 ${workStatusSummary.review}`} color="error" variant="outlined" />
+            <Chip label={`작업 완료 ${workStatusSummary.ready}`} color="warning" variant="outlined" />
+            {workStatusSummary.completed > 0 ? (
+              <Chip
+                label={`완료 확정 ${workStatusSummary.completed}`}
+                color="success"
+                variant="outlined"
+              />
+            ) : null}
           </Stack>
         </Box>
       }
@@ -2050,21 +2062,18 @@ const ProductionPlanBoard = () => {
                       const statusMeta = STATUS_META[snapshotState] || STATUS_META.UNSAVED;
                       const rowSelected = String(selectedAssignment?.id || '') === String(assignment.id);
                       const isSaved = snapshotState === 'SAVED';
-                      const isCompleted = isAssignmentWorkCompleted(assignment);
-                      const workScheduleStatus = String(
-                        assignment?.progress?.scheduleStatus || ''
-                      ).trim();
+                      const workStatus = resolveAssignmentWorkStatus(assignment);
                       const workStatusChip =
-                        workScheduleStatus === 'PRODUCTION_COMPLETED'
+                        workStatus === 'completed'
                           ? { label: '완료 확정', color: 'success', variant: 'filled' }
-                          : workScheduleStatus === 'READY_TO_COMPLETE'
+                          : workStatus === 'ready'
                             ? { label: '작업 완료', color: 'success', variant: 'outlined' }
-                            : workScheduleStatus === 'REVIEW_REQUIRED'
+                            : workStatus === 'review'
                               ? { label: '검토 필요', color: 'error', variant: 'outlined' }
                               : {
-                                  label: isCompleted ? '완료 확정' : '진행',
-                                  color: isCompleted ? 'success' : 'default',
-                                  variant: isCompleted ? 'filled' : 'outlined',
+                                  label: '진행',
+                                  color: 'default',
+                                  variant: 'outlined',
                                 };
 
                       return (
@@ -2144,10 +2153,9 @@ const ProductionPlanBoard = () => {
                                   color={
                                     Number(assignment.progress?.overflowQuantity) > 0
                                       ? 'error'
-                                      : workScheduleStatus === 'REVIEW_REQUIRED'
+                                      : workStatus === 'review'
                                         ? 'error'
-                                        : workScheduleStatus === 'READY_TO_COMPLETE' ||
-                                            workScheduleStatus === 'PRODUCTION_COMPLETED'
+                                        : workStatus === 'ready' || workStatus === 'completed'
                                         ? 'success'
                                         : 'primary'
                                   }

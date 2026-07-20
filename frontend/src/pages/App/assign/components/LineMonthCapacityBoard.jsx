@@ -812,38 +812,32 @@ const LineMonthCapacityBoard = ({
                               </Stack>
                             </>
                           ) : null}
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ display: 'block', mt: 1.5, mb: 1 }}
-                          >
-                            {getUiMessage(
-                              'assign.finishedAssignmentsHeader',
-                              'Finished on this line',
-                              languageCode
-                            )}
-                          </Typography>
-                          <Stack spacing={1}>
-                            {row.completedAssignments.length > 0 ? (
-                              row.completedAssignments.map((assignment) => (
-                                <AssignmentDetailCard
-                                  key={assignment.id || `${row.lineId}:${assignment.label}:completed`}
-                                  assignment={assignment}
-                                  languageCode={languageCode}
-                                  onOpenDetail={onOpenAssignmentDetail}
-                                  onOpenContextMenu={onOpenContextMenu}
-                                />
-                              ))
-                            ) : (
-                              <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                          {row.completedAssignments.length > 0 ? (
+                            <>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: 'block', mt: 1.5, mb: 1 }}
+                              >
                                 {getUiMessage(
-                                  'assign.noFinishedAssignmentsInLine',
-                                  'No finished assignments in this line.',
+                                  'assign.finishedAssignmentsHeader',
+                                  'Finished on this line',
                                   languageCode
                                 )}
                               </Typography>
-                            )}
-                          </Stack>
+                              <Stack spacing={1}>
+                                {row.completedAssignments.map((assignment) => (
+                                  <AssignmentDetailCard
+                                    key={assignment.id || `${row.lineId}:${assignment.label}:completed`}
+                                    assignment={assignment}
+                                    languageCode={languageCode}
+                                    onOpenDetail={onOpenAssignmentDetail}
+                                    onOpenContextMenu={onOpenContextMenu}
+                                  />
+                                ))}
+                              </Stack>
+                            </>
+                          ) : null}
                           {row.zeroQuantityOverflowAssignments.length > 0 ? (
                             <>
                               <Typography

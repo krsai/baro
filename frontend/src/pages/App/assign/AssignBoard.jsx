@@ -2047,7 +2047,7 @@ const isAssignmentSchedulerCompleted = (assignment) => {
   if (!assignment || typeof assignment !== 'object') return false;
   if (assignment?.isCompleted) return true;
   if (assignment?.isPayrollLocked || assignment?.payrollLockMonth) return true;
-  return String(assignment?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED';
+  return false;
 };
 
 const canAssignmentConfirmWorkDone = (assignment) => {
@@ -2178,12 +2178,7 @@ const resolveAssignmentProgressState = ({
   const scheduleStatus =
     String(progressRow?.scheduleStatus || assignment?.scheduleStatus || '').trim() || null;
   const isCompleted = Boolean(
-    progressRow?.isCompleted ??
-      assignment?.isCompleted ??
-      progressRow?.completedAt ??
-      progressRow?.productionCompletedAt ??
-      assignment?.completedAt ??
-      assignment?.productionCompletedAt
+    progressRow?.isCompleted ?? assignment?.isCompleted
   );
   const {
     plannedStTotalSeconds,
@@ -5857,8 +5852,7 @@ const AssignBoard = () => {
       const scheduleStatus = String(
         progressRow?.scheduleStatus || movingAssignment?.scheduleStatus || ''
       ).trim();
-      const isCompleted =
-        scheduleStatus === 'PRODUCTION_COMPLETED' || Boolean(movingAssignment?.isCompleted);
+      const isCompleted = Boolean(movingAssignment?.isCompleted);
       if (isCompleted) {
         showNotification(
           getUiMessage(

@@ -179,7 +179,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
           borderColor: 'rgba(59,130,246,0.28)',
         };
   const shiftedCompletedLabel =
-    String(assignment?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED' &&
+    Boolean(assignment?.isCompleted) &&
     assignment?.renderEndDate &&
     assignment?.candidateEndDate &&
     String(assignment.renderEndDate) !== String(assignment.candidateEndDate)
