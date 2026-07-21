@@ -13,7 +13,6 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { alpha } from '@mui/material/styles';
 import { useLanguage } from '../../../../context/LanguageContext';
 import { formatNumberWithCommas } from '../../../../utils/numberFormat';
 import {
@@ -30,14 +29,56 @@ import {
   resolveLocalizedProcessName,
 } from '../../../../utils/processDisplay';
 
-const MANUAL_ST_SET_BY = new Set(['MANUAL', 'LEGACY', 'ASSIGNMENT_DETAIL']);
-
 // Legacy 2~/20~ buckets stay hidden if old data still exists.
 const HIDDEN_BUCKETS = new Set([2, 20]);
 const VISIBLE_BUCKETS = ST_STANDARD_BUCKETS.filter((q) => !HIDDEN_BUCKETS.has(q));
 
 const BORDER = '1px solid rgba(17,24,39,0.1)';
 const ST_CELL_W = 76;
+const AT_TONE_COLORS = {
+  fitted: '#374151',
+  extrapolated: '#6D28D9',
+  provisional: '#B45309',
+  empty: 'rgba(156,163,175,0.7)',
+};
+
+const resolveAtToneColor = (tone, shouldDisplayValue = true) => {
+  if (!shouldDisplayValue) return AT_TONE_COLORS.empty;
+  return AT_TONE_COLORS[tone] || AT_TONE_COLORS.fitted;
+};
+
+const resolveAtAggregateTone = (states = []) => {
+  const displayStates = states.filter((state) => state?.shouldDisplayValue);
+  if (displayStates.length === 0) return 'empty';
+  if (displayStates.some((state) => state.tone === 'provisional')) return 'provisional';
+  if (displayStates.some((state) => state.tone === 'extrapolated')) return 'extrapolated';
+  return 'fitted';
+};
+
+const resolveAtLegendItems = (languageCode) => {
+  if (languageCode === 'en') {
+    return [
+      { tone: 'fitted', label: 'Fitted curve' },
+      { tone: 'extrapolated', label: 'Outside observed range' },
+      { tone: 'provisional', label: 'Observed provisional' },
+      { tone: 'empty', label: 'Collecting' },
+    ];
+  }
+  if (languageCode === 'vi') {
+    return [
+      { tone: 'fitted', label: 'Duong AT da hoc' },
+      { tone: 'extrapolated', label: 'Ngoai vung quan sat' },
+      { tone: 'provisional', label: 'Tam tinh da quan sat' },
+      { tone: 'empty', label: 'Dang thu thap' },
+    ];
+  }
+  return [
+    { tone: 'fitted', label: '학습 곡선' },
+    { tone: 'extrapolated', label: '관측 범위 밖' },
+    { tone: 'provisional', label: '임시 관측값' },
+    { tone: 'empty', label: '수집 중' },
+  ];
+};
 
 // ── utils ──────────────────────────────────────────────────────────────────
 
@@ -80,12 +121,6 @@ const resolveStEntry = (process, quantity) => {
     ? process.stBuckets
     : Array.isArray(process?.stValues) ? process.stValues : [];
   return buckets.find((e) => Number(e?.bucketQuantity ?? e?.quantity) === Number(q)) || null;
-};
-
-const isManualSt = (entry) => {
-  if (!entry) return false;
-  const s = String(entry?.setBy || '').trim().toUpperCase();
-  return !s || MANUAL_ST_SET_BY.has(s);
 };
 
 const resolveAtCellState = (process, quantity, languageCode) => {
@@ -234,24 +269,51 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
     ),
   [safeProcesses]);
 
+  const totalAtByBucket = useMemo(() =>
+    VISIBLE_BUCKETS.map((q) => {
+      const states = [];
+      let displayCount = 0;
+      const total = safeProcesses.reduce((sum, process) => {
+        const at = resolveProcessAtPerPieceSeconds(process, q);
+        const state = resolveProcessAtCellState(process, q);
+        states.push(state);
+        if (at == null || !state.shouldDisplayValue) return sum;
+        displayCount += 1;
+        return sum + at;
+      }, 0);
+      return {
+        total,
+        displayCount,
+        tone: resolveAtAggregateTone(states),
+      };
+    }),
+  [safeProcesses]);
+  const atLegendItems = useMemo(
+    () => resolveAtLegendItems(languageCode),
+    [languageCode]
+  );
+
   return (
     <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
       {/* 헤더 */}
       <Box sx={{ px: 2.5, py: 1.5, borderBottom: BORDER, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{msg.title}</Typography>
-        <Stack direction="row" spacing={2} alignItems="center">
-          <Tooltip title={msg.stHint} placement="top">
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <Box sx={{ width: 10, height: 10, borderRadius: 0.5, backgroundColor: '#DBEAFE', border: '1.5px solid #3B82F6' }} />
-              <Typography variant="caption" color="text.secondary">ST 수동 입력</Typography>
+        <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
+          {atLegendItems.map((item) => (
+            <Box key={item.tone} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Box
+                sx={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  backgroundColor: AT_TONE_COLORS[item.tone],
+                }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                {item.label}
+              </Typography>
             </Box>
-          </Tooltip>
-          <Tooltip title={msg.atHint} placement="top">
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <Box sx={{ width: 10, height: 10, borderRadius: 0.5, backgroundColor: '#DCFCE7', border: '1.5px solid #22C55E' }} />
-              <Typography variant="caption" color="text.secondary">AT 참고</Typography>
-            </Box>
-          </Tooltip>
+          ))}
           <Typography variant="caption" color="text.disabled">{msg.unit}</Typography>
         </Stack>
       </Box>
@@ -299,6 +361,35 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                   {total > 0 ? fmtSec(total) : '-'}
                 </TableCell>
               ))}
+            </TableRow>
+            <TableRow sx={{ backgroundColor: '#F8FAFC' }}>
+              <TableCell sx={{ pl: 2, py: 0.75, fontWeight: 700, fontSize: 11, color: '#374151' }}>
+                {languageCode === 'vi' ? 'Tong AT' : languageCode === 'en' ? 'Total AT' : '합계 AT'}
+              </TableCell>
+              <TableCell sx={{ py: 0.75, fontSize: 11, color: '#6B7280', fontWeight: 700 }}>
+                {languageCode === 'vi' ? '(giay)' : languageCode === 'en' ? '(sec)' : '(초)'}
+              </TableCell>
+              {totalAtByBucket.map((item, i) => {
+                const hasValue = item.displayCount > 0 && item.total > 0;
+                return (
+                  <TableCell
+                    key={VISIBLE_BUCKETS[i]}
+                    align="right"
+                    sx={{
+                      py: 0.75,
+                      fontSize: 12,
+                      fontWeight: hasValue ? 700 : 400,
+                      fontVariantNumeric: 'tabular-nums',
+                      color: hasValue
+                        ? resolveAtToneColor(item.tone)
+                        : AT_TONE_COLORS.empty,
+                      pr: 1.5,
+                    }}
+                  >
+                    {hasValue ? fmtRoundedSec(item.total) : '-'}
+                  </TableCell>
+                );
+              })}
             </TableRow>
           </TableHead>
 
@@ -368,9 +459,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                       {/* ST 값 셀 */}
                       {VISIBLE_BUCKETS.map((qty) => {
                         const draftK = dk(id, qty);
-                        const entry = resolveStEntry(process, qty);
                         const resolved = resolveProcessStPerPieceSeconds(process, qty);
-                        const manual = isManualSt(entry);
                         const value = Object.prototype.hasOwnProperty.call(stDrafts, draftK)
                           ? stDrafts[draftK]
                           : toEditText(resolved);
@@ -392,13 +481,13 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                                   py: 0.5,
                                   fontSize: 12,
                                   fontVariantNumeric: 'tabular-nums',
-                                  fontWeight: manual ? 600 : 400,
+                                  fontWeight: 500,
                                 },
                                 '& .MuiOutlinedInput-root': {
                                   borderRadius: 1,
-                                  backgroundColor: manual ? 'rgba(17,24,39,0.04)' : 'transparent',
-                                  '& fieldset': { borderColor: 'rgba(17,24,39,0.15)' },
-                                  '&:hover fieldset': { borderColor: 'rgba(17,24,39,0.35)' },
+                                  backgroundColor: 'transparent',
+                                  '& fieldset': { borderColor: 'transparent' },
+                                  '&:hover fieldset': { borderColor: 'rgba(17,24,39,0.28)' },
                                   '&.Mui-focused fieldset': { borderColor: 'primary.main' },
                                 },
                               }}
@@ -419,16 +508,10 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                         const shouldDisplayAtVal =
                           atVal != null && atCellState.shouldDisplayValue;
                         const atCellTitle = resolveAtCellTitle(atCellState, languageCode);
-                        const atColor =
-                          !shouldDisplayAtVal
-                            ? 'rgba(156,163,175,0.6)'
-                            : atCellState.tone === 'provisional'
-                              ? '#B45309'
-                              : atCellState.tone === 'provisional-extrapolated'
-                                ? 'rgba(180,83,9,0.62)'
-                              : atCellState.tone === 'extrapolated'
-                                ? '#6D28D9'
-                                : 'text.secondary';
+                        const atColor = resolveAtToneColor(
+                          atCellState.tone,
+                          shouldDisplayAtVal
+                        );
                         const atContent = (
                           <Box sx={{
                             height: 28,
