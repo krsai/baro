@@ -331,6 +331,7 @@ export const resolveProcessAtCellState = (process, quantity = 1) => {
       isProvisional: false,
       isOutsideObservedBucketRange: false,
       observedBucketRange: null,
+      shouldDisplayValue: false,
     };
   }
 
@@ -342,9 +343,12 @@ export const resolveProcessAtCellState = (process, quantity = 1) => {
       renderedBucket > observedBucketRange.maxBucket);
   const isProvisional =
     atParams.isProvisional === true || String(atParams.fitStatus || '') === 'USED_PROVISIONAL';
+  const shouldDisplayValue = isProvisional
+    ? observedBucketRange !== null && !isOutsideObservedBucketRange
+    : true;
 
   let tone = 'fitted';
-  if (isProvisional && isOutsideObservedBucketRange) {
+  if (isProvisional && !shouldDisplayValue) {
     tone = 'provisional-extrapolated';
   } else if (isProvisional) {
     tone = 'provisional';
@@ -357,6 +361,7 @@ export const resolveProcessAtCellState = (process, quantity = 1) => {
     isProvisional,
     isOutsideObservedBucketRange,
     observedBucketRange,
+    shouldDisplayValue,
   };
 };
 
@@ -650,6 +655,31 @@ export const resolveProcessAtPerPieceSeconds = (process, orderQuantity = 1) => {
   if (!Number.isFinite(totalAt) || totalAt <= 0) return null;
   return totalAt / resolvedOrderQuantity;
 };
+
+export const resolveProcessAtDisplayPerPieceSeconds = (process, orderQuantity = 1) => {
+  const cellState = resolveProcessAtCellState(process, orderQuantity);
+  if (!cellState.shouldDisplayValue) return null;
+  return resolveProcessAtPerPieceSeconds(process, orderQuantity);
+};
+
+export const calculateProcessDisplayAtTotalForOrderQuantity = (
+  processes,
+  orderQuantity = 1
+) => {
+  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+  return normalizeProcesses(processes).reduce((acc, process) => {
+    const atPerPiece = resolveProcessAtDisplayPerPieceSeconds(
+      process,
+      resolvedOrderQuantity
+    );
+    return atPerPiece == null ? acc : acc + atPerPiece * resolvedOrderQuantity;
+  }, 0);
+};
+
+export const hasAnyDisplayableProcessAtTime = (processes, orderQuantity = 1) =>
+  normalizeProcesses(processes).some(
+    (process) => resolveProcessAtDisplayPerPieceSeconds(process, orderQuantity) != null
+  );
 
 export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
   const normalized = normalizeProcess(process);

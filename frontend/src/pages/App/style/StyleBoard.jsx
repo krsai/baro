@@ -40,7 +40,9 @@ import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import {
   AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
+  calculateProcessDisplayAtTotalForOrderQuantity,
   calculateProcessTotalForOrderQuantity,
+  hasAnyDisplayableProcessAtTime,
   hasAnyProcessTime,
   normalizeProcesses,
   resolveProcessStTotalSecondsForOrderQuantity,
@@ -584,9 +586,8 @@ const StyleBoard = () => {
             DEFAULT_TIME_REF_QUANTITY
           ) / DEFAULT_TIME_REF_QUANTITY;
         const totalAT =
-          calculateProcessTotalForOrderQuantity(
+          calculateProcessDisplayAtTotalForOrderQuantity(
             processes,
-            'at',
             DEFAULT_TIME_REF_QUANTITY
           ) / DEFAULT_TIME_REF_QUANTITY;
         const totalST =
@@ -603,7 +604,10 @@ const StyleBoard = () => {
             resolveProcessStPerPieceSeconds(process, DEFAULT_TIME_REF_QUANTITY) != null
         );
         const hasTotalPT = hasAnyProcessTime(processes, 'pt');
-        const hasTotalAT = hasAnyProcessTime(processes, 'at');
+        const hasTotalAT = hasAnyDisplayableProcessAtTime(
+          processes,
+          DEFAULT_TIME_REF_QUANTITY
+        );
         const styleAtReliability = resolveStyleAtReliability(processes);
         const stGapPercent =
           hasTotalAT && hasTotalST

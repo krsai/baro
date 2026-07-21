@@ -416,9 +416,11 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                       {VISIBLE_BUCKETS.map((qty) => {
                         const atVal = resolveProcessAtPerPieceSeconds(process, qty);
                         const atCellState = resolveProcessAtCellState(process, qty);
+                        const shouldDisplayAtVal =
+                          atVal != null && atCellState.shouldDisplayValue;
                         const atCellTitle = resolveAtCellTitle(atCellState, languageCode);
                         const atColor =
-                          atVal == null
+                          !shouldDisplayAtVal
                             ? 'rgba(156,163,175,0.6)'
                             : atCellState.tone === 'provisional'
                               ? '#B45309'
@@ -436,15 +438,16 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                             fontSize: 12,
                             fontVariantNumeric: 'tabular-nums',
                             color: atColor,
-                            fontStyle: atVal == null ? 'italic' : 'normal',
+                            fontStyle: shouldDisplayAtVal ? 'normal' : 'italic',
                             fontWeight:
-                              atCellState.tone === 'provisional' ||
-                              atCellState.tone === 'provisional-extrapolated' ||
-                              atCellState.tone === 'extrapolated'
+                              shouldDisplayAtVal &&
+                              (atCellState.tone === 'provisional' ||
+                                atCellState.tone === 'provisional-extrapolated' ||
+                                atCellState.tone === 'extrapolated')
                                 ? 600
                                 : 400,
                           }}>
-                            {atVal != null ? fmtRoundedSec(atVal) : '-'}
+                            {shouldDisplayAtVal ? fmtRoundedSec(atVal) : '-'}
                           </Box>
                         );
                         return (

@@ -2,8 +2,10 @@ import React, { useMemo } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 import {
   DEFAULT_TIME_REF_QUANTITY,
+  calculateProcessDisplayAtTotalForOrderQuantity,
   calculateProcessTotalForOrderQuantity,
   formatSeconds,
+  hasAnyDisplayableProcessAtTime,
   hasAnyProcessTime,
   normalizeProcesses,
   resolveProcessStPerPieceSeconds,
@@ -30,9 +32,8 @@ const StyleAnalysis = ({ processes = [] }) => {
 
   const totalAT = useMemo(
     () =>
-      calculateProcessTotalForOrderQuantity(
+      calculateProcessDisplayAtTotalForOrderQuantity(
         normalizedProcesses,
-        'at',
         DEFAULT_TIME_REF_QUANTITY
       ) / DEFAULT_TIME_REF_QUANTITY,
     [normalizedProcesses]
@@ -44,7 +45,7 @@ const StyleAnalysis = ({ processes = [] }) => {
   );
 
   const hasTotalAT = useMemo(
-    () => hasAnyProcessTime(normalizedProcesses, 'at'),
+    () => hasAnyDisplayableProcessAtTime(normalizedProcesses, DEFAULT_TIME_REF_QUANTITY),
     [normalizedProcesses]
   );
 

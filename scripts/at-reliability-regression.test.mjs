@@ -11,7 +11,7 @@ const loadProcessTimeModule = () => {
   code = code.replace(/export const /g, 'const ');
   code = code.replace(/export \{[^}]+\};?/g, '');
   code +=
-    '\nmodule.exports = { AT_RELIABILITY_STATUS, resolveProcessAtReliability, resolveStyleAtReliability };';
+    '\nmodule.exports = { AT_RELIABILITY_STATUS, calculateProcessDisplayAtTotalForOrderQuantity, resolveProcessAtCellState, resolveProcessAtDisplayPerPieceSeconds, resolveProcessAtPerPieceSeconds, resolveProcessAtReliability, resolveStBucketQuantity, resolveStyleAtReliability };';
   const context = {
     module: { exports: {} },
     exports: {},
@@ -33,7 +33,12 @@ const loadProcessTimeModule = () => {
 
 const {
   AT_RELIABILITY_STATUS,
+  calculateProcessDisplayAtTotalForOrderQuantity,
+  resolveProcessAtCellState,
+  resolveProcessAtDisplayPerPieceSeconds,
+  resolveProcessAtPerPieceSeconds,
   resolveProcessAtReliability,
+  resolveStBucketQuantity,
   resolveStyleAtReliability,
 } = loadProcessTimeModule();
 
@@ -47,6 +52,11 @@ const createProcess = ({
   observationCount,
   quantity = 1,
   timeRefQuantity = 1000,
+  fitStatus = 'FITTED',
+  isProvisional = false,
+  distinctQuantityCount = 2,
+  minQuantity = 500,
+  maxQuantity = 1000,
 }) => ({
   quantity,
   timeRefQuantity,
@@ -59,6 +69,18 @@ const createProcess = ({
     attendanceCoverage: Math.max(0, 1 - attendanceFallbackShare),
     attendanceFallbackShare,
     observationCount,
+    fitStatus,
+    isProvisional,
+    fallbackReason: isProvisional ? 'INSUFFICIENT_POINTS' : null,
+    weightedPointCount: observationCount,
+    distinctQuantityCount,
+    distinctEventCount: 1,
+    minQuantity,
+    maxQuantity,
+    minEventCount: 1,
+    maxEventCount: 1,
+    quantitySamples: [minQuantity, maxQuantity],
+    eventCountSamples: [1],
   },
 });
 
@@ -142,4 +164,91 @@ test('style reliability is weighted upward when mature processes dominate', () =
 
   assert.ok(styleReliability.percent >= 60, `expected mature process weight to dominate, got ${styleReliability.percent}`);
   assert.equal(styleReliability.status, AT_RELIABILITY_STATUS.INSUFFICIENT);
+});
+
+test('provisional AT only displays in the observed quantity bucket', () => {
+  const provisional = createProcess({
+    a: 65,
+    b: 0,
+    observationCount: 1,
+    fitStatus: 'USED_PROVISIONAL',
+    isProvisional: true,
+    distinctQuantityCount: 1,
+    minQuantity: 675,
+    maxQuantity: 675,
+  });
+
+  const observedCell = resolveProcessAtCellState(provisional, 500);
+  const outsideCell = resolveProcessAtCellState(provisional, 1000);
+
+  assert.equal(resolveStBucketQuantity(675), 500);
+  assert.equal(observedCell.tone, 'provisional');
+  assert.equal(observedCell.shouldDisplayValue, true);
+  assert.equal(resolveProcessAtDisplayPerPieceSeconds(provisional, 500), 65);
+  assert.equal(outsideCell.tone, 'provisional-extrapolated');
+  assert.equal(outsideCell.shouldDisplayValue, false);
+  assert.equal(resolveProcessAtDisplayPerPieceSeconds(provisional, 1000), null);
+  assert.equal(resolveProcessAtPerPieceSeconds(provisional, 1000), 65);
+});
+
+test('fitted low-confidence AT remains displayable across buckets', () => {
+  const fitted = createProcess({
+    a: 21,
+    b: 67,
+    observationCount: 2,
+    fitStatus: 'FITTED',
+    isProvisional: false,
+    distinctQuantityCount: 2,
+    minQuantity: 510,
+    maxQuantity: 675,
+  });
+
+  const onePieceAt = resolveProcessAtDisplayPerPieceSeconds(fitted, 1);
+  const thousandPieceAt = resolveProcessAtDisplayPerPieceSeconds(fitted, 1000);
+
+  assert.equal(resolveProcessAtCellState(fitted, 1).shouldDisplayValue, true);
+  assert.equal(resolveProcessAtCellState(fitted, 1000).shouldDisplayValue, true);
+  assert.ok(onePieceAt > thousandPieceAt);
+});
+
+test('actual q stays unbucketed for AT math even inside the same display bucket', () => {
+  const fitted = createProcess({
+    a: 21,
+    b: 6700,
+    observationCount: 4,
+    minQuantity: 510,
+    maxQuantity: 675,
+  });
+
+  assert.equal(resolveStBucketQuantity(510), 500);
+  assert.equal(resolveStBucketQuantity(675), 500);
+  assert.notEqual(
+    resolveProcessAtPerPieceSeconds(fitted, 510),
+    resolveProcessAtPerPieceSeconds(fitted, 675)
+  );
+});
+
+test('display total excludes provisional values outside the rendered bucket', () => {
+  const provisional = createProcess({
+    a: 65,
+    b: 0,
+    observationCount: 1,
+    fitStatus: 'USED_PROVISIONAL',
+    isProvisional: true,
+    distinctQuantityCount: 1,
+    minQuantity: 675,
+    maxQuantity: 675,
+  });
+  const fitted = createProcess({
+    a: 21,
+    b: 6700,
+    observationCount: 4,
+    minQuantity: 510,
+    maxQuantity: 675,
+  });
+
+  assert.equal(
+    calculateProcessDisplayAtTotalForOrderQuantity([provisional, fitted], 1000),
+    resolveProcessAtPerPieceSeconds(fitted, 1000) * 1000
+  );
 });

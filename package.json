@@ -10,8 +10,9 @@
     "realign:time-model": "node backend/scripts/reset-to-baseline.js time-model",
     "check:encoding": "node scripts/check-encoding.mjs",
     "test:access-policy": "node --experimental-default-type=module --test scripts/access-policy-regression.test.mjs",
+    "test:at-reliability": "node --experimental-default-type=module --test scripts/at-reliability-regression.test.mjs",
     "test:time-date": "npm --prefix backend run build && node --test scripts/time-date-regression.test.mjs",
-    "test:regression": "npm run test:access-policy && npm run test:time-date",
+    "test:regression": "npm run test:access-policy && npm run test:time-date && npm run test:at-reliability",
     "reset:baseline": "npm --prefix backend run reset:baseline"
   },
   "devDependencies": {

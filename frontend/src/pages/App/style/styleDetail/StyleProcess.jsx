@@ -41,13 +41,15 @@ import {
   AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
   ST_STANDARD_BUCKETS,
+  calculateProcessDisplayAtTotalForOrderQuantity,
   formatStBucketQuantityLabel,
   formatSeconds,
+  hasAnyDisplayableProcessAtTime,
   hasAnyProcessTime,
   normalizeProcess,
   normalizeProcesses,
   parseOptionalSecondsInput,
-  resolveProcessAtPerPieceSeconds,
+  resolveProcessAtDisplayPerPieceSeconds,
   resolveStBucketQuantity,
   resolveStyleAtReliability,
   resolveProcessStPerPieceSeconds,
@@ -1883,11 +1885,10 @@ const StyleProcess = ({
   );
   const totalAT = useMemo(
     () => {
-      return safeProcesses.reduce((acc, process) => {
-        const atPerPiece = resolveProcessAtPerPieceSeconds(process, displayOrderQuantity);
-        if (atPerPiece == null) return acc;
-        return acc + atPerPiece;
-      }, 0);
+      return calculateProcessDisplayAtTotalForOrderQuantity(
+        safeProcesses,
+        displayOrderQuantity
+      ) / displayOrderQuantity;
     },
     [safeProcesses, displayOrderQuantity]
   );
@@ -1903,7 +1904,10 @@ const StyleProcess = ({
     [safeProcesses, displayOrderQuantity]
   );
   const hasPT = useMemo(() => hasAnyProcessTime(safeProcesses, 'pt'), [safeProcesses]);
-  const hasAT = useMemo(() => hasAnyProcessTime(safeProcesses, 'at'), [safeProcesses]);
+  const hasAT = useMemo(
+    () => hasAnyDisplayableProcessAtTime(safeProcesses, displayOrderQuantity),
+    [safeProcesses, displayOrderQuantity]
+  );
   const hasST = useMemo(
     () =>
       safeProcesses.some(
@@ -2659,7 +2663,7 @@ const StyleProcess = ({
   const addPreviewAtTotalSeconds =
     addPreviewProcess == null
       ? null
-      : resolveProcessAtPerPieceSeconds(
+      : resolveProcessAtDisplayPerPieceSeconds(
           addPreviewProcess,
           displayOrderQuantity
         );
@@ -2721,7 +2725,7 @@ const StyleProcess = ({
         >
           {(dragProvided) => {
             const previewAtTotalSeconds =
-              resolveProcessAtPerPieceSeconds(process, displayOrderQuantity);
+              resolveProcessAtDisplayPerPieceSeconds(process, displayOrderQuantity);
             const previewStTotalSeconds =
               resolveProcessStPerPieceSeconds(process, displayOrderQuantity);
             const reviewMeta = parseProcessReviewMeta(process);
