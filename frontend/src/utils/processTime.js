@@ -666,20 +666,27 @@ export const calculateProcessDisplayAtTotalForOrderQuantity = (
   processes,
   orderQuantity = 1
 ) => {
+  const normalizedProcesses = normalizeProcesses(processes);
+  if (normalizedProcesses.length === 0) return null;
   const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-  return normalizeProcesses(processes).reduce((acc, process) => {
+  let total = 0;
+  for (const process of normalizedProcesses) {
     const atPerPiece = resolveProcessAtDisplayPerPieceSeconds(
       process,
       resolvedOrderQuantity
     );
-    return atPerPiece == null ? acc : acc + atPerPiece * resolvedOrderQuantity;
-  }, 0);
+    if (atPerPiece == null) return null;
+    total += atPerPiece * resolvedOrderQuantity;
+  }
+  return total;
 };
 
-export const hasAnyDisplayableProcessAtTime = (processes, orderQuantity = 1) =>
-  normalizeProcesses(processes).some(
+export const hasCompleteDisplayableProcessAtTime = (processes, orderQuantity = 1) => {
+  const normalizedProcesses = normalizeProcesses(processes);
+  return normalizedProcesses.length > 0 && normalizedProcesses.every(
     (process) => resolveProcessAtDisplayPerPieceSeconds(process, orderQuantity) != null
   );
+};
 
 export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
   const normalized = normalizeProcess(process);

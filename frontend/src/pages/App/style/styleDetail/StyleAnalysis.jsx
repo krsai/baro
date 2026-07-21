@@ -5,7 +5,7 @@ import {
   calculateProcessDisplayAtTotalForOrderQuantity,
   calculateProcessTotalForOrderQuantity,
   formatSeconds,
-  hasAnyDisplayableProcessAtTime,
+  hasCompleteDisplayableProcessAtTime,
   hasAnyProcessTime,
   normalizeProcesses,
   resolveProcessStPerPieceSeconds,
@@ -31,11 +31,13 @@ const StyleAnalysis = ({ processes = [] }) => {
   );
 
   const totalAT = useMemo(
-    () =>
-      calculateProcessDisplayAtTotalForOrderQuantity(
+    () => {
+      const total = calculateProcessDisplayAtTotalForOrderQuantity(
         normalizedProcesses,
         DEFAULT_TIME_REF_QUANTITY
-      ) / DEFAULT_TIME_REF_QUANTITY,
+      );
+      return total == null ? null : total / DEFAULT_TIME_REF_QUANTITY;
+    },
     [normalizedProcesses]
   );
 
@@ -45,7 +47,7 @@ const StyleAnalysis = ({ processes = [] }) => {
   );
 
   const hasTotalAT = useMemo(
-    () => hasAnyDisplayableProcessAtTime(normalizedProcesses, DEFAULT_TIME_REF_QUANTITY),
+    () => hasCompleteDisplayableProcessAtTime(normalizedProcesses, DEFAULT_TIME_REF_QUANTITY),
     [normalizedProcesses]
   );
 

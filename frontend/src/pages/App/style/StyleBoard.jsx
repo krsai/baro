@@ -42,7 +42,7 @@ import {
   DEFAULT_TIME_REF_QUANTITY,
   calculateProcessDisplayAtTotalForOrderQuantity,
   calculateProcessTotalForOrderQuantity,
-  hasAnyDisplayableProcessAtTime,
+  hasCompleteDisplayableProcessAtTime,
   hasAnyProcessTime,
   normalizeProcesses,
   resolveProcessStTotalSecondsForOrderQuantity,
@@ -585,11 +585,12 @@ const StyleBoard = () => {
             'pt',
             DEFAULT_TIME_REF_QUANTITY
           ) / DEFAULT_TIME_REF_QUANTITY;
+        const totalAtSeconds = calculateProcessDisplayAtTotalForOrderQuantity(
+          processes,
+          DEFAULT_TIME_REF_QUANTITY
+        );
         const totalAT =
-          calculateProcessDisplayAtTotalForOrderQuantity(
-            processes,
-            DEFAULT_TIME_REF_QUANTITY
-          ) / DEFAULT_TIME_REF_QUANTITY;
+          totalAtSeconds == null ? null : totalAtSeconds / DEFAULT_TIME_REF_QUANTITY;
         const totalST =
           processes.reduce((sum, process) => {
             const stTotalSeconds = resolveProcessStTotalSecondsForOrderQuantity(
@@ -604,7 +605,7 @@ const StyleBoard = () => {
             resolveProcessStPerPieceSeconds(process, DEFAULT_TIME_REF_QUANTITY) != null
         );
         const hasTotalPT = hasAnyProcessTime(processes, 'pt');
-        const hasTotalAT = hasAnyDisplayableProcessAtTime(
+        const hasTotalAT = hasCompleteDisplayableProcessAtTime(
           processes,
           DEFAULT_TIME_REF_QUANTITY
         );

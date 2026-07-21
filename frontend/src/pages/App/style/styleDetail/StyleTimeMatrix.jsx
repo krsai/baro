@@ -282,8 +282,9 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
         return sum + at;
       }, 0);
       return {
-        total,
+        total: displayCount === safeProcesses.length ? total : null,
         displayCount,
+        isComplete: safeProcesses.length > 0 && displayCount === safeProcesses.length,
         tone: resolveAtAggregateTone(states),
       };
     }),
@@ -370,7 +371,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                 {languageCode === 'vi' ? '(giay)' : languageCode === 'en' ? '(sec)' : '(초)'}
               </TableCell>
               {totalAtByBucket.map((item, i) => {
-                const hasValue = item.displayCount > 0 && item.total > 0;
+                const hasValue = item.isComplete && item.total > 0;
                 return (
                   <TableCell
                     key={VISIBLE_BUCKETS[i]}

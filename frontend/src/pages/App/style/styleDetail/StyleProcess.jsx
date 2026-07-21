@@ -44,7 +44,7 @@ import {
   calculateProcessDisplayAtTotalForOrderQuantity,
   formatStBucketQuantityLabel,
   formatSeconds,
-  hasAnyDisplayableProcessAtTime,
+  hasCompleteDisplayableProcessAtTime,
   hasAnyProcessTime,
   normalizeProcess,
   normalizeProcesses,
@@ -1885,10 +1885,11 @@ const StyleProcess = ({
   );
   const totalAT = useMemo(
     () => {
-      return calculateProcessDisplayAtTotalForOrderQuantity(
+      const total = calculateProcessDisplayAtTotalForOrderQuantity(
         safeProcesses,
         displayOrderQuantity
-      ) / displayOrderQuantity;
+      );
+      return total == null ? null : total / displayOrderQuantity;
     },
     [safeProcesses, displayOrderQuantity]
   );
@@ -1905,7 +1906,7 @@ const StyleProcess = ({
   );
   const hasPT = useMemo(() => hasAnyProcessTime(safeProcesses, 'pt'), [safeProcesses]);
   const hasAT = useMemo(
-    () => hasAnyDisplayableProcessAtTime(safeProcesses, displayOrderQuantity),
+    () => hasCompleteDisplayableProcessAtTime(safeProcesses, displayOrderQuantity),
     [safeProcesses, displayOrderQuantity]
   );
   const hasST = useMemo(

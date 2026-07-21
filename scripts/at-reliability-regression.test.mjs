@@ -228,7 +228,7 @@ test('actual q stays unbucketed for AT math even inside the same display bucket'
   );
 });
 
-test('display total excludes provisional values outside the rendered bucket', () => {
+test('display total is unavailable when any process is missing at the rendered bucket', () => {
   const provisional = createProcess({
     a: 65,
     b: 0,
@@ -247,8 +247,10 @@ test('display total excludes provisional values outside the rendered bucket', ()
     maxQuantity: 675,
   });
 
+  assert.equal(calculateProcessDisplayAtTotalForOrderQuantity([provisional, fitted], 1000), null);
   assert.equal(
-    calculateProcessDisplayAtTotalForOrderQuantity([provisional, fitted], 1000),
-    resolveProcessAtPerPieceSeconds(fitted, 1000) * 1000
+    calculateProcessDisplayAtTotalForOrderQuantity([provisional, fitted], 500),
+    resolveProcessAtPerPieceSeconds(provisional, 500) * 500 +
+      resolveProcessAtPerPieceSeconds(fitted, 500) * 500
   );
 });
