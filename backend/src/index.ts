@@ -4531,6 +4531,35 @@ const buildAtSyncStatusForOrg = async (
   };
 };
 
+const resetAtTrainingStateForOrg = async (orgId: number) => {
+  const result = await prisma.$transaction(async (tx) => {
+    const styleProcessAtParamsReset = await tx.$executeRaw(Prisma.sql`
+      UPDATE "StyleProcess"
+      SET "atParams" = NULL,
+          "updatedAt" = NOW()
+      WHERE "orgId" = ${orgId}
+        AND "atParams" IS NOT NULL
+    `);
+    const trainingBucketProcessesDeleted = await tx.$executeRaw(Prisma.sql`
+      DELETE FROM "AtTrainingBucketProcess"
+      WHERE "orgId" = ${orgId}
+    `);
+    const trainingBucketsDeleted = await tx.$executeRaw(Prisma.sql`
+      DELETE FROM "AtTrainingBucket"
+      WHERE "orgId" = ${orgId}
+    `);
+
+    return {
+      styleProcessAtParamsReset: Number(styleProcessAtParamsReset || 0),
+      trainingBucketProcessesDeleted: Number(trainingBucketProcessesDeleted || 0),
+      trainingBucketsDeleted: Number(trainingBucketsDeleted || 0),
+    };
+  });
+
+  await rebuildAssignmentCardsForOrgIds(await resolveStyleSyncTargetOrgIds(orgId));
+  return result;
+};
+
 const normalizeStylePayload = (
   payload: any,
   fallbackCode: string | null = null,
@@ -27649,6 +27678,31 @@ app.post("/at-sync/run-now", async (req, res) => {
 });
 
 // ─── Payroll ───────────────────────────────────────────────────────────────
+
+app.post("/at-sync/reset", async (req, res) => {
+  const access = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!access) return;
+
+  const startedAt = Date.now();
+  const result = await resetAtTrainingStateForOrg(access.organization.id);
+  const todayKey = toDateKeyInTimeZone(new Date(), BUSINESS_TIME_ZONE);
+  const currentMonthKey = normalizeMonthKey(todayKey.slice(0, 7));
+  const previousMonthKey = currentMonthKey ? shiftMonthKey(currentMonthKey, -1) : "";
+  const status = await buildAtSyncStatusForOrg(access.organization.id, {
+    trainingMonthKey: previousMonthKey,
+  });
+
+  return res.json({
+    ok: true,
+    orgId: access.organization.id,
+    runtimeMarker: AT_SYNC_RUNTIME_MARKER,
+    durationMs: Date.now() - startedAt,
+    ...result,
+    status,
+  });
+});
 
 app.use(payrollRouter);
 app.use(quantitySettlementRouter);

@@ -228,8 +228,10 @@ const StyleBoard = () => {
   const [styles, setStyles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isAtSyncRunning, setAtSyncRunning] = useState(false);
+  const [isAtResetRunning, setAtResetRunning] = useState(false);
   const [atSyncStatus, setAtSyncStatus] = useState(null);
   const [isAtSyncStatusLoading, setAtSyncStatusLoading] = useState(false);
+  const [isAtResetConfirmOpen, setAtResetConfirmOpen] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
   const [styleToDelete, setStyleToDelete] = useState(null);
   const refreshStyles = useCallback(async ({ forceRefresh = false } = {}) => {
@@ -454,6 +456,62 @@ const StyleBoard = () => {
     showNotification,
   ]);
 
+  const handleAtResetClick = useCallback(() => {
+    if (!activeOrgId || isAtSyncRunning || isAtResetRunning) return;
+    setAtResetConfirmOpen(true);
+  }, [activeOrgId, isAtResetRunning, isAtSyncRunning]);
+
+  const handleAtResetConfirmClose = useCallback(() => {
+    if (isAtResetRunning) return;
+    setAtResetConfirmOpen(false);
+  }, [isAtResetRunning]);
+
+  const handleAtResetConfirm = useCallback(async () => {
+    if (!activeOrgId || isAtResetRunning) return;
+    setAtResetRunning(true);
+    try {
+      const result = await requestJSON(
+        `/at-sync/reset${buildQueryString({ orgId: activeOrgId })}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }
+      );
+      setAtSyncStatus(result?.status ?? null);
+      await refreshStyles({ forceRefresh: true });
+      await refreshAtSyncStatus();
+      showNotification(
+        getUiMessage(
+          'styleBoard.atResetSuccess',
+          `AT 추정 초기화 완료 (공정 ${result?.styleProcessAtParamsReset ?? 0}개, 학습 버킷 ${result?.trainingBucketsDeleted ?? 0}개)`,
+          languageCode
+        ),
+        'success'
+      );
+    } catch (error) {
+      showNotification(
+        error?.message ||
+          getUiMessage(
+            'styleBoard.atResetError',
+            'AT 추정 초기화에 실패했습니다.',
+            languageCode
+          ),
+        'error'
+      );
+    } finally {
+      setAtResetRunning(false);
+      setAtResetConfirmOpen(false);
+    }
+  }, [
+    activeOrgId,
+    isAtResetRunning,
+    languageCode,
+    refreshAtSyncStatus,
+    refreshStyles,
+    showNotification,
+  ]);
+
   const handleDeleteClick = (style, event) => {
     event.stopPropagation();
     if (style?.hasWorkRecords) {
@@ -575,6 +633,13 @@ const StyleBoard = () => {
     atSyncStatus,
     isAtSyncStatusLoading
   );
+  const atResetButtonDisabled = isAtSyncRunning || isAtResetRunning || !activeOrgId;
+  const atResetButtonTooltip =
+    languageCode === 'en'
+      ? 'Clear learned AT values and training buckets so AT can be recalculated.'
+      : languageCode === 'vi'
+        ? 'Xoa gia tri AT da hoc va bucket hoc de tinh lai AT.'
+        : '학습된 AT 값과 학습 버킷을 비워 AT를 다시 계산할 수 있게 합니다.';
 
   return (
     <AppPageContainer
@@ -595,6 +660,22 @@ const StyleBoard = () => {
                     : isAtSyncStatusLoading
                       ? getUiMessage('styleBoard.atSyncChecking', 'AT 확인 중...', languageCode)
                       : getUiMessage('styleBoard.atSync', 'AT 갱신', languageCode)}
+                </Button>
+              </span>
+            </Tooltip>
+          ) : null}
+          {canViewProcessSummary ? (
+            <Tooltip title={atResetButtonTooltip}>
+              <span>
+                <Button
+                  onClick={handleAtResetClick}
+                  variant="outlined"
+                  color="warning"
+                  disabled={atResetButtonDisabled}
+                >
+                  {isAtResetRunning
+                    ? getUiMessage('styleBoard.atResetRunning', 'AT 초기화 중...', languageCode)
+                    : getUiMessage('styleBoard.atReset', 'AT 초기화', languageCode)}
                 </Button>
               </span>
             </Tooltip>
@@ -780,6 +861,30 @@ const StyleBoard = () => {
           </Table>
         </TableContainer>
       </Paper>
+      <Dialog open={isAtResetConfirmOpen} onClose={handleAtResetConfirmClose}>
+        <DialogTitle>
+          {getUiMessage('styleBoard.atResetDialogTitle', 'AT 추정 초기화 확인', languageCode)}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {getUiMessage(
+              'styleBoard.atResetDialogDescription',
+              '학습된 AT 값과 AT 학습 버킷을 비웁니다. 작업기록과 출퇴근 원본 데이터는 삭제하지 않습니다. 초기화 후 AT 갱신을 다시 실행할 수 있습니다.',
+              languageCode
+            )}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleAtResetConfirmClose} disabled={isAtResetRunning}>
+            {getUiMessage('common.cancel', '취소', languageCode)}
+          </Button>
+          <Button onClick={handleAtResetConfirm} color="warning" disabled={isAtResetRunning}>
+            {isAtResetRunning
+              ? getUiMessage('styleBoard.atResetRunning', 'AT 초기화 중...', languageCode)
+              : getUiMessage('styleBoard.atReset', 'AT 초기화', languageCode)}
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={isConfirmOpen} onClose={handleConfirmClose}>
         <DialogTitle>
           {getUiMessage('styleBoard.deleteDialogTitle', '스타일 삭제 확인', languageCode)}
