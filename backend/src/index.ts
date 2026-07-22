@@ -2777,13 +2777,9 @@ const toAtTrainingStyleProcessMetricKey = (styleProcessId: number) =>
 
 const toAtTrainingSourceGroupKey = ({
   assignmentPlanId = null,
-  workLogId = null,
-  bucketId = null,
   styleProcessId = null,
 }: {
   assignmentPlanId?: unknown;
-  workLogId?: unknown;
-  bucketId?: unknown;
   styleProcessId?: unknown;
 }) => {
   const normalizedAssignmentPlanId = toPositiveIntOrNull(assignmentPlanId);
@@ -2791,15 +2787,10 @@ const toAtTrainingSourceGroupKey = ({
     return `assignmentPlan:${normalizedAssignmentPlanId}`;
   }
   const normalizedStyleProcessId = toPositiveIntOrNull(styleProcessId);
-  const normalizedWorkLogId = toPositiveIntOrNull(workLogId);
-  if (normalizedWorkLogId !== null && normalizedStyleProcessId !== null) {
-    return `workLog:${normalizedWorkLogId}:process:${normalizedStyleProcessId}`;
+  if (normalizedStyleProcessId !== null) {
+    return `missingAssignmentPlan:process:${normalizedStyleProcessId}`;
   }
-  const normalizedBucketId = toPositiveIntOrNull(bucketId);
-  if (normalizedBucketId !== null && normalizedStyleProcessId !== null) {
-    return `legacyBucket:${normalizedBucketId}:process:${normalizedStyleProcessId}`;
-  }
-  return "legacy";
+  return "missingAssignmentPlan";
 };
 
 const AT_SYNC_RUNTIME_MARKER = "at-sync-runtime-2026-06-27-3";
@@ -3581,7 +3572,6 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     includedRows.forEach((row) => {
       const sourceGroupKey = toAtTrainingSourceGroupKey({
         assignmentPlanId: row.assignmentPlanId,
-        workLogId,
         styleProcessId: row.styleProcessId,
       });
       const processGroupKey = `${row.styleProcessId}::${sourceGroupKey}`;
@@ -3989,7 +3979,6 @@ const loadAtTrainingDataFromBuckets = async ({
         resolveOptionalString(processRow?.sourceGroupKey, null) ||
         toAtTrainingSourceGroupKey({
           assignmentPlanId: processRow?.assignmentPlanId,
-          bucketId: bucketRow.id,
           styleProcessId,
         });
       dayProcessRows.push({

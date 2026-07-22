@@ -146,8 +146,8 @@ const resolveDistinctSourceGroupKeys = (
 ): string[] =>
   Array.from(
     new Set(
-      points.map((point, index) =>
-        normalizeSourceGroupKey(point.sourceGroupKey) ?? `legacy:${index}`
+      points.map((point) =>
+        normalizeSourceGroupKey(point.sourceGroupKey) ?? "missing-source"
       )
     )
   ).sort();

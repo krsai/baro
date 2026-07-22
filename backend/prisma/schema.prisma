@@ -739,7 +739,7 @@ model AtTrainingBucketProcess {
   styleId             Int
   styleProcessId      Int
   assignmentPlanId    Int?
-  sourceGroupKey      String   @default("legacy")
+  sourceGroupKey      String   @default("missingAssignmentPlan")
   quantity            Int
   eventCount          Float    @default(1)
   createdAt           DateTime @default(now())

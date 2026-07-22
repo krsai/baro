@@ -1763,12 +1763,19 @@ ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentCtTotalSeconds"
 ALTER TABLE "AtTrainingBucket" ADD COLUMN IF NOT EXISTS "laborInputSeconds" DOUBLE PRECISION;
 ALTER TABLE "AtTrainingBucketProcess" ADD COLUMN IF NOT EXISTS "eventCount" DOUBLE PRECISION NOT NULL DEFAULT 1;
 ALTER TABLE "AtTrainingBucketProcess" ADD COLUMN IF NOT EXISTS "assignmentPlanId" INTEGER;
-ALTER TABLE "AtTrainingBucketProcess" ADD COLUMN IF NOT EXISTS "sourceGroupKey" TEXT NOT NULL DEFAULT 'legacy';
+ALTER TABLE "AtTrainingBucketProcess" ADD COLUMN IF NOT EXISTS "sourceGroupKey" TEXT NOT NULL DEFAULT 'missingAssignmentPlan';
+ALTER TABLE "AtTrainingBucketProcess" ALTER COLUMN "sourceGroupKey" SET DEFAULT 'missingAssignmentPlan';
 ALTER TABLE "WorkLog" ADD COLUMN IF NOT EXISTS "totalCtSeconds" DOUBLE PRECISION;
 
 UPDATE "AtTrainingBucketProcess"
-SET "sourceGroupKey" = CONCAT('legacyBucket:', "bucketId", ':process:', "styleProcessId")
-WHERE "sourceGroupKey" IS NULL OR "sourceGroupKey" = 'legacy';
+SET "sourceGroupKey" = CASE
+  WHEN "assignmentPlanId" IS NOT NULL THEN CONCAT('assignmentPlan:', "assignmentPlanId")
+  ELSE CONCAT('missingAssignmentPlan:process:', "styleProcessId")
+END
+WHERE "sourceGroupKey" IS NULL
+  OR "sourceGroupKey" = 'legacy'
+  OR "sourceGroupKey" LIKE 'legacyBucket:%'
+  OR "sourceGroupKey" LIKE 'workLog:%';
 
 ALTER TABLE "AtTrainingBucketProcess"
   DROP CONSTRAINT IF EXISTS "AtTrainingBucketProcess_bucketId_styleProcessId_key";
