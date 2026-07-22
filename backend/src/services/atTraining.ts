@@ -1,6 +1,7 @@
 export type AtMetricObservation = {
   quantity: number;
   eventCount?: number | null;
+  sourceGroupKey?: string | null;
   laborInputSeconds: number;
 };
 
@@ -8,6 +9,7 @@ export type AtTrainingDayProcessRow = {
   metricKey: string;
   quantity: number;
   eventCount?: number | null;
+  sourceGroupKey?: string | null;
   attendanceCoverage?: number | null;
 };
 
@@ -22,6 +24,7 @@ export type AtMetricFitStatus =
   | "FITTED"
   | "USED_PROVISIONAL"
   | "INSUFFICIENT_POINTS"
+  | "INSUFFICIENT_INDEPENDENT_SOURCES"
   | "NO_QUANTITY_VARIATION"
   | "FIRST_REGRESSION_FAILED"
   | "SECOND_REGRESSION_FAILED"
@@ -34,12 +37,14 @@ export type AtMetricFitDiagnostic = {
   weightedPointCount: number;
   distinctQuantityCount: number;
   distinctEventCount: number;
+  distinctSourceGroupCount: number;
   minQuantity: number | null;
   maxQuantity: number | null;
   minEventCount: number | null;
   maxEventCount: number | null;
   quantitySamples: number[];
   eventCountSamples: number[];
+  sourceGroupSamples: string[];
   provisionalAvailable: boolean;
   fallbackReason: AtMetricFitStatus | null;
   status: AtMetricFitStatus;
@@ -54,6 +59,7 @@ export type AtFittedParams = {
   weightedPointCount: number;
   distinctQuantityCount: number;
   distinctEventCount: number;
+  distinctSourceGroupCount: number;
   minQuantity: number | null;
   maxQuantity: number | null;
   minEventCount: number | null;
@@ -77,12 +83,14 @@ type AtAllocatedObservation = {
   metricKey: string;
   quantity: number;
   eventCount: number;
+  sourceGroupKey: string | null;
   laborInputSeconds: number;
 };
 
 type WeightedRegressionPoint = {
   quantity: number;
   eventCount: number;
+  sourceGroupKey: string | null;
   y: number;
   weight: number;
 };
@@ -93,12 +101,14 @@ type AtWeightedFitAttempt = {
   weightedPointCount: number;
   distinctQuantityCount: number;
   distinctEventCount: number;
+  distinctSourceGroupCount: number;
   minQuantity: number | null;
   maxQuantity: number | null;
   minEventCount: number | null;
   maxEventCount: number | null;
   quantitySamples: number[];
   eventCountSamples: number[];
+  sourceGroupSamples: string[];
 };
 
 const toPositiveInt = (value: unknown, fallback = 1): number => {
@@ -123,6 +133,24 @@ const toOptionalSeconds = (value: unknown): number | null => {
   if (!Number.isFinite(parsed)) return null;
   return parsed < 0 ? 0 : roundToScale(parsed, 4);
 };
+
+const normalizeSourceGroupKey = (value: unknown): string | null => {
+  if (value === null || value === undefined) return null;
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+  return normalized.slice(0, 160);
+};
+
+const resolveDistinctSourceGroupKeys = (
+  points: WeightedRegressionPoint[]
+): string[] =>
+  Array.from(
+    new Set(
+      points.map((point, index) =>
+        normalizeSourceGroupKey(point.sourceGroupKey) ?? `legacy:${index}`
+      )
+    )
+  ).sort();
 
 const AT_WLS_DETERMINANT_EPSILON = 1e-9;
 const AT_WLS_RESIDUAL_SCALE = 0.35;
@@ -182,6 +210,7 @@ const toAtRegressionPoints = (
       return {
         quantity,
         eventCount,
+        sourceGroupKey: normalizeSourceGroupKey(observation?.sourceGroupKey),
         y: laborInputSeconds,
         // Large samples are usually less noisy, but use sqrt to avoid domination.
         weight: Math.max(1, Math.sqrt(quantity) * Math.sqrt(eventCount)),
@@ -259,7 +288,11 @@ const fitAtParamsFromWeightedPoints = (
   const distinctQuantities = Array.from(
     new Set(points.map((point) => roundToScale(point.quantity, 4)))
   ).sort((left, right) => left - right);
+  const distinctSourceGroupKeys = resolveDistinctSourceGroupKeys(points);
   if (points.length < 2) {
+    return null;
+  }
+  if (distinctSourceGroupKeys.length < 2) {
     return null;
   }
 
@@ -301,8 +334,10 @@ const inspectAtFitFromWeightedPoints = (
   const distinctEventCounts = Array.from(
     new Set(points.map((point) => roundToScale(point.eventCount, 4)))
   ).sort((left, right) => left - right);
+  const distinctSourceGroupKeys = resolveDistinctSourceGroupKeys(points);
   const quantitySamples = distinctQuantities.slice(0, 10);
   const eventCountSamples = distinctEventCounts.slice(0, 10);
+  const sourceGroupSamples = distinctSourceGroupKeys.slice(0, 10);
   const minQuantity =
     distinctQuantities.length > 0 ? distinctQuantities[0] ?? null : null;
   const maxQuantity =
@@ -319,18 +354,28 @@ const inspectAtFitFromWeightedPoints = (
     weightedPointCount: points.length,
     distinctQuantityCount: distinctQuantities.length,
     distinctEventCount: distinctEventCounts.length,
+    distinctSourceGroupCount: distinctSourceGroupKeys.length,
     minQuantity,
     maxQuantity,
     minEventCount,
     maxEventCount,
     quantitySamples,
     eventCountSamples,
+    sourceGroupSamples,
   };
 
   if (points.length < 2) {
     return {
       params: null,
       status: "INSUFFICIENT_POINTS",
+      ...baseDiagnostic,
+    };
+  }
+
+  if (distinctSourceGroupKeys.length < 2) {
+    return {
+      params: null,
+      status: "INSUFFICIENT_INDEPENDENT_SOURCES",
       ...baseDiagnostic,
     };
   }
@@ -404,13 +449,19 @@ const allocateDaySecondsAcrossProcesses = (
     .map((row) => {
       const quantity = Number(row?.quantity);
       const eventCount = Number(row?.eventCount ?? 1);
+      const sourceGroupKey = normalizeSourceGroupKey(row?.sourceGroupKey);
       if (!Number.isFinite(quantity) || quantity <= 0) return null;
       if (!Number.isFinite(eventCount) || eventCount <= 0) return null;
       const metricKey = String(row?.metricKey || "").trim();
       if (!metricKey) return null;
-      return { metricKey, quantity, eventCount };
+      return { metricKey, quantity, eventCount, sourceGroupKey };
     })
-    .filter((row): row is { metricKey: string; quantity: number; eventCount: number } => Boolean(row));
+    .filter((row): row is {
+      metricKey: string;
+      quantity: number;
+      eventCount: number;
+      sourceGroupKey: string | null;
+    } => Boolean(row));
 
   if (validRows.length === 0) return [];
 
@@ -423,6 +474,7 @@ const allocateDaySecondsAcrossProcesses = (
         metricKey: row.metricKey,
         quantity: row.quantity,
         eventCount: row.eventCount,
+        sourceGroupKey: row.sourceGroupKey,
         laborInputSeconds: day.laborInputSeconds,
       },
     ];
@@ -435,7 +487,13 @@ const allocateDaySecondsAcrossProcesses = (
       ...row,
       work: row.quantity * perPiece,
     };
-  }).filter((row): row is { metricKey: string; quantity: number; eventCount: number; work: number } => Boolean(row));
+  }).filter((row): row is {
+    metricKey: string;
+    quantity: number;
+    eventCount: number;
+    sourceGroupKey: string | null;
+    work: number;
+  } => Boolean(row));
 
   if (withWork.length !== validRows.length) return [];
 
@@ -450,6 +508,7 @@ const allocateDaySecondsAcrossProcesses = (
     metricKey: row.metricKey,
     quantity: row.quantity,
     eventCount: row.eventCount,
+    sourceGroupKey: row.sourceGroupKey,
     laborInputSeconds: day.laborInputSeconds * (row.work / totalWork),
   }));
 };
@@ -472,6 +531,7 @@ const buildAllocatedObservations = (
       current.push({
         quantity: row.quantity,
         eventCount: row.eventCount,
+        sourceGroupKey: row.sourceGroupKey,
         laborInputSeconds: row.laborInputSeconds,
       });
       observationsByMetric.set(row.metricKey, current);
@@ -707,6 +767,7 @@ export const fitAtParamsWithProportionalAllocation = (
     current.push({
       quantity,
       eventCount,
+      sourceGroupKey: normalizeSourceGroupKey(observation.sourceGroupKey),
       y: laborInputSeconds,
       weight,
     });
@@ -744,12 +805,14 @@ export const fitAtParamsWithProportionalAllocation = (
       weightedPointCount: inspected.weightedPointCount,
       distinctQuantityCount: inspected.distinctQuantityCount,
       distinctEventCount: inspected.distinctEventCount,
+      distinctSourceGroupCount: inspected.distinctSourceGroupCount,
       minQuantity: inspected.minQuantity,
       maxQuantity: inspected.maxQuantity,
       minEventCount: inspected.minEventCount,
       maxEventCount: inspected.maxEventCount,
       quantitySamples: inspected.quantitySamples,
       eventCountSamples: inspected.eventCountSamples,
+      sourceGroupSamples: inspected.sourceGroupSamples,
       provisionalAvailable: provisional !== null,
       fallbackReason: inspected.params ? null : inspected.status,
       status,
@@ -763,6 +826,7 @@ export const fitAtParamsWithProportionalAllocation = (
       weightedPointCount: inspected.weightedPointCount,
       distinctQuantityCount: inspected.distinctQuantityCount,
       distinctEventCount: inspected.distinctEventCount,
+      distinctSourceGroupCount: inspected.distinctSourceGroupCount,
       minQuantity: inspected.minQuantity,
       maxQuantity: inspected.maxQuantity,
       minEventCount: inspected.minEventCount,

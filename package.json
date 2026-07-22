@@ -11,8 +11,9 @@
     "check:encoding": "node scripts/check-encoding.mjs",
     "test:access-policy": "node --experimental-default-type=module --test scripts/access-policy-regression.test.mjs",
     "test:at-reliability": "node --experimental-default-type=module --test scripts/at-reliability-regression.test.mjs",
+    "test:at-training": "npm --prefix backend run build && node --test scripts/at-training-regression.test.mjs",
     "test:time-date": "npm --prefix backend run build && node --test scripts/time-date-regression.test.mjs",
-    "test:regression": "npm run test:access-policy && npm run test:time-date && npm run test:at-reliability",
+    "test:regression": "npm run test:access-policy && npm run test:time-date && npm run test:at-reliability && npm run test:at-training",
     "reset:baseline": "npm --prefix backend run reset:baseline"
   },
   "devDependencies": {

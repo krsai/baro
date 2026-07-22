@@ -301,6 +301,12 @@ function assertGeneratedPrismaClientShape() {
   if (!hasField("AtTrainingBucketProcess", "eventCount")) {
     staleSignals.push("AtTrainingBucketProcess.eventCount missing");
   }
+  if (!hasField("AtTrainingBucketProcess", "assignmentPlanId")) {
+    staleSignals.push("AtTrainingBucketProcess.assignmentPlanId missing");
+  }
+  if (!hasField("AtTrainingBucketProcess", "sourceGroupKey")) {
+    staleSignals.push("AtTrainingBucketProcess.sourceGroupKey missing");
+  }
   if (modelByName.has("OrgMembership")) {
     staleSignals.push("OrgMembership model still present");
   }
@@ -1533,6 +1539,7 @@ type StyleAtParams = {
   weightedPointCount: number | null;
   distinctQuantityCount: number | null;
   distinctEventCount: number | null;
+  distinctSourceGroupCount: number | null;
   minQuantity: number | null;
   maxQuantity: number | null;
   minEventCount: number | null;
@@ -1633,6 +1640,7 @@ const toStyleAtParams = (value: any): StyleAtParams | null => {
     weightedPointCount: toNonNegativeIntOrNull((value as any).weightedPointCount),
     distinctQuantityCount: toNonNegativeIntOrNull((value as any).distinctQuantityCount),
     distinctEventCount: toNonNegativeIntOrNull((value as any).distinctEventCount),
+    distinctSourceGroupCount: toNonNegativeIntOrNull((value as any).distinctSourceGroupCount),
     minQuantity: minQuantity === null ? null : roundToScale(minQuantity, 4),
     maxQuantity: maxQuantity === null ? null : roundToScale(maxQuantity, 4),
     minEventCount: minEventCount === null ? null : roundToScale(minEventCount, 4),
@@ -1755,6 +1763,7 @@ const isSameStyleAtParams = (
     left.weightedPointCount === right.weightedPointCount &&
     left.distinctQuantityCount === right.distinctQuantityCount &&
     left.distinctEventCount === right.distinctEventCount &&
+    left.distinctSourceGroupCount === right.distinctSourceGroupCount &&
     left.minQuantity === right.minQuantity &&
     left.maxQuantity === right.maxQuantity &&
     left.minEventCount === right.minEventCount &&
@@ -2656,6 +2665,8 @@ type AtTrainingMetricQuality = {
 type AtTrainingBucketProcessDraft = {
   styleId: number;
   styleProcessId: number;
+  assignmentPlanId: number | null;
+  sourceGroupKey: string;
   quantity: number;
   eventCount: number;
 };
@@ -2763,6 +2774,33 @@ const pushAtTrainingSourceDiagnosticSample = (
 
 const toAtTrainingStyleProcessMetricKey = (styleProcessId: number) =>
   `STYLE_PROCESS:${styleProcessId}`;
+
+const toAtTrainingSourceGroupKey = ({
+  assignmentPlanId = null,
+  workLogId = null,
+  bucketId = null,
+  styleProcessId = null,
+}: {
+  assignmentPlanId?: unknown;
+  workLogId?: unknown;
+  bucketId?: unknown;
+  styleProcessId?: unknown;
+}) => {
+  const normalizedAssignmentPlanId = toPositiveIntOrNull(assignmentPlanId);
+  if (normalizedAssignmentPlanId !== null) {
+    return `assignmentPlan:${normalizedAssignmentPlanId}`;
+  }
+  const normalizedStyleProcessId = toPositiveIntOrNull(styleProcessId);
+  const normalizedWorkLogId = toPositiveIntOrNull(workLogId);
+  if (normalizedWorkLogId !== null && normalizedStyleProcessId !== null) {
+    return `workLog:${normalizedWorkLogId}:process:${normalizedStyleProcessId}`;
+  }
+  const normalizedBucketId = toPositiveIntOrNull(bucketId);
+  if (normalizedBucketId !== null && normalizedStyleProcessId !== null) {
+    return `legacyBucket:${normalizedBucketId}:process:${normalizedStyleProcessId}`;
+  }
+  return "legacy";
+};
 
 const AT_SYNC_RUNTIME_MARKER = "at-sync-runtime-2026-06-27-3";
 
@@ -3330,6 +3368,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         const quantity = Number(record.quantity) || 0;
         if (quantity <= 0) return null;
         const workerId = toPositiveIntOrNull(record.workerId);
+        const assignmentPlanId = toPositiveIntOrNull((record as any).assignmentPlanId);
         const resolvedStyle = resolveCandidateStyle(record);
         const styleProcessId = toPositiveIntOrNull(record.styleProcessId);
         const matchedStyleProcess =
@@ -3412,6 +3451,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         return {
           styleId: Number(resolvedStyle.id),
           styleProcessId,
+          assignmentPlanId,
           quantity,
           workerId,
           styleCode: sampleBase.styleCode,
@@ -3424,6 +3464,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       .filter(Boolean) as Array<{
       styleId: number;
       styleProcessId: number;
+      assignmentPlanId: number | null;
       quantity: number;
       workerId: number;
       styleCode: string | null;
@@ -3503,9 +3544,9 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       return draftRows;
     }
 
-    const eventDateKeysByProcessId = new Map<number, Set<string>>();
+    const eventDateKeysByProcessGroupKey = new Map<string, Set<string>>();
     const addEventDateKeysForRow = (row: {
-      styleProcessId: number;
+      processGroupKey: string;
       workerId: number;
       effectiveCoverageStartDate: string;
       effectiveCoverageEndDate: string;
@@ -3517,7 +3558,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       if (dayCount <= 0) return;
       let cursorDateKey = row.effectiveCoverageStartDate;
       const current =
-        eventDateKeysByProcessId.get(row.styleProcessId) ?? new Set<string>();
+        eventDateKeysByProcessGroupKey.get(row.processGroupKey) ?? new Set<string>();
       for (let offset = 0; offset < dayCount; offset += 1) {
         const workedSeconds = resolveWorkerSecondsForDate(
           cursorDateKey,
@@ -3532,25 +3573,33 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         if (!nextDateKey) break;
         cursorDateKey = nextDateKey;
       }
-      eventDateKeysByProcessId.set(row.styleProcessId, current);
+      eventDateKeysByProcessGroupKey.set(row.processGroupKey, current);
     };
 
-    const perProcessGroups = new Map<number, AtTrainingBucketProcessDraft>();
+    const perProcessGroups = new Map<string, AtTrainingBucketProcessDraft>();
     const includedWorkerIds = new Set<number>();
     includedRows.forEach((row) => {
-      addEventDateKeysForRow(row);
-      const current = perProcessGroups.get(row.styleProcessId) || {
+      const sourceGroupKey = toAtTrainingSourceGroupKey({
+        assignmentPlanId: row.assignmentPlanId,
+        workLogId,
+        styleProcessId: row.styleProcessId,
+      });
+      const processGroupKey = `${row.styleProcessId}::${sourceGroupKey}`;
+      addEventDateKeysForRow({ ...row, processGroupKey });
+      const current = perProcessGroups.get(processGroupKey) || {
         styleId: row.styleId,
         styleProcessId: row.styleProcessId,
+        assignmentPlanId: row.assignmentPlanId,
+        sourceGroupKey,
         quantity: 0,
         eventCount: 0,
       };
       current.quantity += row.quantity;
-      perProcessGroups.set(row.styleProcessId, current);
+      perProcessGroups.set(processGroupKey, current);
       includedWorkerIds.add(row.workerId);
     });
-    perProcessGroups.forEach((group, styleProcessId) => {
-      const eventCount = eventDateKeysByProcessId.get(styleProcessId)?.size ?? 0;
+    perProcessGroups.forEach((group, processGroupKey) => {
+      const eventCount = eventDateKeysByProcessGroupKey.get(processGroupKey)?.size ?? 0;
       group.eventCount = Math.max(1, eventCount);
     });
 
@@ -3570,6 +3619,8 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       (item) =>
         item.styleId > 0 &&
         item.styleProcessId > 0 &&
+        typeof item.sourceGroupKey === "string" &&
+        item.sourceGroupKey.trim() !== "" &&
         Number.isFinite(item.quantity) &&
         item.quantity > 0 &&
         Number.isFinite(item.eventCount) &&
@@ -3660,6 +3711,8 @@ const replaceAtTrainingBucketsForMonth = async ({
           "bucketId",
           "styleId",
           "styleProcessId",
+          "assignmentPlanId",
+          "sourceGroupKey",
           "quantity",
           "eventCount",
           "createdBy",
@@ -3670,11 +3723,14 @@ const replaceAtTrainingBucketsForMonth = async ({
           draft.processRows.map((processRow) => {
             const quantity = Math.max(1, Math.round(processRow.quantity));
             const eventCount = Math.max(1, roundToScale(processRow.eventCount, 4));
+            const sourceGroupKey = String(processRow.sourceGroupKey || "").trim() || "legacy";
             return Prisma.sql`(
               ${orgId},
               ${bucketId},
               ${processRow.styleId},
               ${processRow.styleProcessId},
+              ${processRow.assignmentPlanId},
+              ${sourceGroupKey},
               ${quantity},
               ${eventCount},
               ${actor},
@@ -3822,6 +3878,8 @@ const loadAtTrainingDataFromBuckets = async ({
   type StoredAtTrainingBucketProcessRow = {
     bucketId: number;
     styleProcessId: number;
+    assignmentPlanId: number | null;
+    sourceGroupKey: string | null;
     quantity: number;
     eventCount: number | null;
   };
@@ -3853,11 +3911,13 @@ const loadAtTrainingDataFromBuckets = async ({
           SELECT
             "bucketId",
             "styleProcessId",
+            "assignmentPlanId",
+            "sourceGroupKey",
             "quantity",
             "eventCount"
           FROM "AtTrainingBucketProcess"
           WHERE "orgId" = ${orgId} AND "bucketId" IN (${Prisma.join(bucketIds)})
-          ORDER BY "bucketId" ASC, "styleProcessId" ASC
+          ORDER BY "bucketId" ASC, "styleProcessId" ASC, "sourceGroupKey" ASC
         `)
       : [];
   const bucketProcessRowsByBucketId = bucketProcessRows.reduce((map, row) => {
@@ -3925,10 +3985,18 @@ const loadAtTrainingDataFromBuckets = async ({
       if (!styleProcessRow) return;
 
       const metricKey = toAtTrainingStyleProcessMetricKey(styleProcessId);
+      const sourceGroupKey =
+        resolveOptionalString(processRow?.sourceGroupKey, null) ||
+        toAtTrainingSourceGroupKey({
+          assignmentPlanId: processRow?.assignmentPlanId,
+          bucketId: bucketRow.id,
+          styleProcessId,
+        });
       dayProcessRows.push({
         metricKey,
         quantity,
         eventCount: Math.max(1, roundToScale(eventCount, 4)),
+        sourceGroupKey,
         attendanceCoverage,
       });
 
@@ -4152,6 +4220,8 @@ const applyAtTrainingResultsToStyleProcesses = async ({
         (fitted.distinctQuantityCount ?? null) ||
       (currentAtParams?.distinctEventCount ?? null) !==
         (fitted.distinctEventCount ?? null) ||
+      (currentAtParams?.distinctSourceGroupCount ?? null) !==
+        (fitted.distinctSourceGroupCount ?? null) ||
       (currentAtParams?.minQuantity ?? null) !== (fitted.minQuantity ?? null) ||
       (currentAtParams?.maxQuantity ?? null) !== (fitted.maxQuantity ?? null) ||
       (currentAtParams?.minEventCount ?? null) !==
@@ -4187,6 +4257,7 @@ const applyAtTrainingResultsToStyleProcesses = async ({
           weightedPointCount: fitted.weightedPointCount,
           distinctQuantityCount: fitted.distinctQuantityCount,
           distinctEventCount: fitted.distinctEventCount,
+          distinctSourceGroupCount: fitted.distinctSourceGroupCount,
           minQuantity: fitted.minQuantity,
           maxQuantity: fitted.maxQuantity,
           minEventCount: fitted.minEventCount,

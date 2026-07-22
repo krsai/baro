@@ -93,6 +93,7 @@ AT(q) = a*q + b
 - **2026-07-15 이벤트 카운트 반영:** AT 학습식은 이제 `laborInputSeconds ≈ a * quantity + b * eventCount`로 맞춘다. `eventCount`는 `AtTrainingBucketProcess.eventCount`에 저장하며, 현재 구현은 해당 WorkLog 기간 안에서 같은 공정에 참여한 `workerId + attendance workDate`의 unique count를 사용한다. 즉 월말 일괄 WorkLog 1건이어도 출퇴근 데이터가 여러 작업일로 있으면 셋업 시간이 1회가 아니라 여러 worker-day로 반영된다.
 - `b`는 "월 1회"가 아니라 "작업자가 해당 공정을 시작한 worker-day 1회"에 붙는 준비/셋업 성격의 시간으로 해석한다. 현장 데이터가 더 정교해지면 `eventCount` 산정 기준은 실제 시작 이벤트 단위로 바꿀 수 있지만, 임의 추정 없이 저장된 WorkRecord 기간과 AttendanceEntry만 사용해야 한다.
 - `StyleProcess.atParams`는 `{a,b}` 외에 `fitStatus`, `isProvisional`, `fallbackReason`, 관측 수량/이벤트 범위(`minQuantity/maxQuantity`, `minEventCount/maxEventCount`)와 sample count를 저장한다. `USED_PROVISIONAL` 또는 수량 변화가 부족한 값은 확정 AT처럼 취급하지 않고 낮은 신뢰도로 표시한다.
+- **2026-07-22 독립 출처 가드:** AT 회귀가 `FITTED`로 승격되려면 서로 다른 실제 수량뿐 아니라 서로 다른 독립 배정 출처(`assignmentPlanId` 기반)가 2개 이상 필요하다. 같은 주문/배정이 60장+40장처럼 여러 달에 나뉘어 작업기록으로 들어온 경우는 수량이 달라도 하나의 출처에서 쪼개진 데이터이므로 곡선으로 학습하지 않고 `USED_PROVISIONAL`로 남긴다.
 AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 
 ---

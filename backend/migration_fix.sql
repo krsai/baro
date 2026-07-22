@@ -1762,7 +1762,36 @@ ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentStTotalSeconds"
 ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentCtTotalSeconds" INTEGER;
 ALTER TABLE "AtTrainingBucket" ADD COLUMN IF NOT EXISTS "laborInputSeconds" DOUBLE PRECISION;
 ALTER TABLE "AtTrainingBucketProcess" ADD COLUMN IF NOT EXISTS "eventCount" DOUBLE PRECISION NOT NULL DEFAULT 1;
+ALTER TABLE "AtTrainingBucketProcess" ADD COLUMN IF NOT EXISTS "assignmentPlanId" INTEGER;
+ALTER TABLE "AtTrainingBucketProcess" ADD COLUMN IF NOT EXISTS "sourceGroupKey" TEXT NOT NULL DEFAULT 'legacy';
 ALTER TABLE "WorkLog" ADD COLUMN IF NOT EXISTS "totalCtSeconds" DOUBLE PRECISION;
+
+UPDATE "AtTrainingBucketProcess"
+SET "sourceGroupKey" = CONCAT('legacyBucket:', "bucketId", ':process:', "styleProcessId")
+WHERE "sourceGroupKey" IS NULL OR "sourceGroupKey" = 'legacy';
+
+ALTER TABLE "AtTrainingBucketProcess"
+  DROP CONSTRAINT IF EXISTS "AtTrainingBucketProcess_bucketId_styleProcessId_key";
+DROP INDEX IF EXISTS "AtTrainingBucketProcess_bucketId_styleProcessId_key";
+CREATE UNIQUE INDEX IF NOT EXISTS "AtTrainingBucketProcess_bucket_styleProcess_source_key"
+  ON "AtTrainingBucketProcess"("bucketId", "styleProcessId", "sourceGroupKey");
+CREATE INDEX IF NOT EXISTS "AtTrainingBucketProcess_orgId_styleProcess_source_idx"
+  ON "AtTrainingBucketProcess"("orgId", "styleProcessId", "sourceGroupKey");
+CREATE INDEX IF NOT EXISTS "AtTrainingBucketProcess_assignmentPlanId_idx"
+  ON "AtTrainingBucketProcess"("assignmentPlanId");
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'AtTrainingBucketProcess_assignmentPlanId_fkey'
+  ) THEN
+    ALTER TABLE "AtTrainingBucketProcess"
+      ADD CONSTRAINT "AtTrainingBucketProcess_assignmentPlanId_fkey"
+      FOREIGN KEY ("assignmentPlanId") REFERENCES "AssignmentPlan"("id")
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- Ensure correct column types (fix environments where columns were created as INTEGER)
 DO $$

@@ -738,6 +738,8 @@ model AtTrainingBucketProcess {
   bucketId            Int
   styleId             Int
   styleProcessId      Int
+  assignmentPlanId    Int?
+  sourceGroupKey      String   @default("legacy")
   quantity            Int
   eventCount          Float    @default(1)
   createdAt           DateTime @default(now())
@@ -750,13 +752,16 @@ model AtTrainingBucketProcess {
   bucket       AtTrainingBucket @relation(fields: [bucketId], references: [id], onDelete: Cascade)
   style        Style            @relation(fields: [styleId], references: [id], onDelete: Cascade)
   styleProcess StyleProcess     @relation(fields: [styleProcessId], references: [id], onDelete: Cascade)
+  assignmentPlan AssignmentPlan? @relation(fields: [assignmentPlanId], references: [id], onDelete: SetNull)
 
   createdByEmployee Employee? @relation("AtTrainingBucketProcessCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("AtTrainingBucketProcessUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
-  @@unique([bucketId, styleProcessId])
+  @@unique([bucketId, styleProcessId, sourceGroupKey], map: "AtTrainingBucketProcess_bucket_styleProcess_source_key")
   @@index([orgId, styleProcessId])
+  @@index([orgId, styleProcessId, sourceGroupKey])
   @@index([orgId, styleId])
+  @@index([assignmentPlanId])
 }
 
 model WorkOrder {
@@ -894,6 +899,7 @@ model AssignmentPlan {
   assignmentCard AssignmentCard? @relation(fields: [assignmentCardId], references: [id], onDelete: SetNull)
   workRecords    WorkRecord[]
   qcPassEvents   QcPassEvent[]
+  trainingBucketProcesses AtTrainingBucketProcess[]
 
   createdByEmployee Employee? @relation("AssignmentPlanCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("AssignmentPlanUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
