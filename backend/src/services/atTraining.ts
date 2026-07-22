@@ -74,6 +74,8 @@ export type AtFittingDiagnostics = {
   weightedPointMetricCount: number;
   provisionalMetricCount: number;
   fittedMetricCount: number;
+  rejectedMetricCount: number;
+  resetMetricCount: number;
   statusCounts: Record<string, number>;
   metricSamples: AtMetricFitDiagnostic[];
 };
@@ -163,7 +165,7 @@ const AT_FIT_MIN_PER_PIECE_SECONDS = (() => {
 })();
 const AT_FIT_MIN_SEED_RATIO = (() => {
   const parsed = Number(process.env.AT_FIT_MIN_SEED_RATIO);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0.05;
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0.2;
   return Math.min(parsed, 1);
 })();
 const AT_PROPORTIONAL_MAX_ITERATIONS = toPositiveInt(
@@ -533,12 +535,12 @@ const inspectAtFitFromWeightedPoints = (
   };
 };
 
-const fitAtParamsFromObservations = (
+const inspectAtFitFromObservations = (
   observations: AtMetricObservation[],
   options: { initialPerPieceSeconds?: number | null } = {}
-): { a: number; b: number } | null => {
+): AtWeightedFitAttempt => {
   const points = toAtRegressionPoints(observations);
-  return fitAtParamsFromWeightedPoints(points, options);
+  return inspectAtFitFromWeightedPoints(points, options);
 };
 
 const allocateDaySecondsAcrossProcesses = (
@@ -790,6 +792,20 @@ export const fitAtParamsWithProportionalAllocation = (
   let iterationCount = 0;
   let converged = false;
   let provisionalParamsByMetric = new Map<string, { a: number; b: number }>();
+  const rejectedMetricKeys = new Set<string>();
+  const resetMetricKeys = new Set<string>();
+
+  const resetMetricPerPieceToSeed = (
+    metricKey: string,
+    targetMap: Map<string, number>
+  ): number | null => {
+    const resetPerPiece = toOptionalSeconds(
+      seededPerPieceByMetricKey.get(metricKey)
+    );
+    if (resetPerPiece === null || resetPerPiece <= 0) return null;
+    targetMap.set(metricKey, resetPerPiece);
+    return resetPerPiece;
+  };
 
   for (
     let iteration = 1;
@@ -810,10 +826,36 @@ export const fitAtParamsWithProportionalAllocation = (
       const observations = observationsByMetric.get(metricKey) || [];
       const initialPerPieceSeconds =
         seededPerPieceByMetricKey.get(metricKey) ?? null;
-      const fitted = fitAtParamsFromObservations(observations, {
+      const inspected = inspectAtFitFromObservations(observations, {
         initialPerPieceSeconds,
       });
-      if (!fitted) return;
+      const fitted = inspected.params;
+      if (!fitted) {
+        rejectedMetricKeys.add(metricKey);
+        const previousPerPiece = toOptionalSeconds(
+          perPieceByMetricKey.get(metricKey)
+        );
+        const resetPerPiece = resetMetricPerPieceToSeed(
+          metricKey,
+          nextPerPieceByMetricKey
+        );
+        if (resetPerPiece !== null) {
+          if (previousPerPiece === null || previousPerPiece !== resetPerPiece) {
+            resetMetricKeys.add(metricKey);
+          }
+          if (previousPerPiece === null) {
+            maxRelativeChange = Number.POSITIVE_INFINITY;
+          } else {
+            const relativeChange =
+              Math.abs(resetPerPiece - previousPerPiece) /
+              Math.max(AT_WLS_MIN_WEIGHT, Math.abs(previousPerPiece));
+            if (Number.isFinite(relativeChange)) {
+              maxRelativeChange = Math.max(maxRelativeChange, relativeChange);
+            }
+          }
+        }
+        return;
+      }
 
       nextParamsByMetric.set(metricKey, fitted);
       const previousPerPiece = toOptionalSeconds(perPieceByMetricKey.get(metricKey));
@@ -926,7 +968,9 @@ export const fitAtParamsWithProportionalAllocation = (
     if (provisional !== null && !inspected.params) {
       provisionalMetricCount += 1;
     }
-    const numericStyleProcessId = Number(metricKey.replace(/^sp:/, ""));
+    const numericStyleProcessId = Number(
+      metricKey.replace(/^STYLE_PROCESS:/, "")
+    );
     metricDiagnostics.push({
       metricKey,
       styleProcessId:
@@ -977,6 +1021,8 @@ export const fitAtParamsWithProportionalAllocation = (
       provisionalMetricCount,
       fittedMetricCount: finalParamsByMetric.size,
       statusCounts: Object.fromEntries(statusCounts.entries()),
+      rejectedMetricCount: rejectedMetricKeys.size,
+      resetMetricCount: resetMetricKeys.size,
       metricSamples: metricDiagnostics
         .slice()
         .sort((left, right) => {
