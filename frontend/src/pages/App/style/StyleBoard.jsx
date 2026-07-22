@@ -150,7 +150,9 @@ const resolveSecondsUnitLabel = (languageCode) => {
 const formatLocalizedSeconds = (value, languageCode) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return '-';
-  return `${formatNumberWithCommas(Math.round(parsed))}${resolveSecondsUnitLabel(languageCode)}`;
+  const rounded = Math.round(parsed);
+  if (parsed > 0 && rounded === 0) return `<1${resolveSecondsUnitLabel(languageCode)}`;
+  return `${formatNumberWithCommas(rounded)}${resolveSecondsUnitLabel(languageCode)}`;
 };
 
 const resolveStyleWorkspaceTabLabel = (languageCode, name) => {

@@ -98,7 +98,9 @@ const fmtSec = (v) => {
 const fmtRoundedSec = (v) => {
   const n = Number(v);
   if (!Number.isFinite(n)) return '-';
-  return formatNumberWithCommas(Math.round(n), { fallback: '-', maximumFractionDigits: 0 });
+  const rounded = Math.round(n);
+  if (n > 0 && rounded === 0) return '<1';
+  return formatNumberWithCommas(rounded, { fallback: '-', maximumFractionDigits: 0 });
 };
 
 const toEditText = (v) => {

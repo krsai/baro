@@ -820,5 +820,7 @@ export const parseOptionalSecondsInput = (value) => {
 export const formatSeconds = (value) => {
   const parsed = toOptionalNumber(value);
   if (parsed === null) return '-';
-  return `${formatNumberWithCommas(Math.round(parsed))}\uCD08`;
+  const rounded = Math.round(parsed);
+  if (parsed > 0 && rounded === 0) return `<1\uCD08`;
+  return `${formatNumberWithCommas(rounded)}\uCD08`;
 };

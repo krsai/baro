@@ -29,7 +29,8 @@ export type AtMetricFitStatus =
   | "FIRST_REGRESSION_FAILED"
   | "SECOND_REGRESSION_FAILED"
   | "NEGATIVE_OR_INVALID_PARAMS"
-  | "NORMALIZED_A_MISSING";
+  | "NORMALIZED_A_MISSING"
+  | "IMPLAUSIBLY_LOW_AT_PARAMS";
 
 export type AtMetricFitDiagnostic = {
   metricKey: string;
@@ -155,6 +156,16 @@ const resolveDistinctSourceGroupKeys = (
 const AT_WLS_DETERMINANT_EPSILON = 1e-9;
 const AT_WLS_RESIDUAL_SCALE = 0.35;
 const AT_WLS_MIN_WEIGHT = 1e-4;
+const AT_FIT_MIN_PER_PIECE_SECONDS = (() => {
+  const parsed = Number(process.env.AT_FIT_MIN_PER_PIECE_SECONDS);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 1;
+  return parsed;
+})();
+const AT_FIT_MIN_SEED_RATIO = (() => {
+  const parsed = Number(process.env.AT_FIT_MIN_SEED_RATIO);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0.05;
+  return Math.min(parsed, 1);
+})();
 const AT_PROPORTIONAL_MAX_ITERATIONS = toPositiveInt(
   process.env.AT_PROPORTIONAL_MAX_ITERATIONS,
   8
@@ -255,6 +266,76 @@ const fitWeightedLinearRegression = (
   return { a, b };
 };
 
+const resolveMinimumPlausiblePerPieceSeconds = (
+  initialPerPieceSeconds?: number | null
+): number => {
+  const seed = Number(initialPerPieceSeconds);
+  const seedFloor =
+    Number.isFinite(seed) && seed > 0 ? seed * AT_FIT_MIN_SEED_RATIO : 0;
+  return Math.max(AT_FIT_MIN_PER_PIECE_SECONDS, seedFloor);
+};
+
+const resolveAtParamsMagnitudeFailure = (
+  params: { a: number; b: number } | null,
+  points: WeightedRegressionPoint[],
+  options: { initialPerPieceSeconds?: number | null } = {}
+): AtMetricFitStatus | null => {
+  if (
+    !params ||
+    !Number.isFinite(params.a) ||
+    params.a <= 0 ||
+    !Number.isFinite(params.b) ||
+    params.b < 0
+  ) {
+    return "NEGATIVE_OR_INVALID_PARAMS";
+  }
+
+  if (params.a < AT_FIT_MIN_PER_PIECE_SECONDS) {
+    return "IMPLAUSIBLY_LOW_AT_PARAMS";
+  }
+
+  const minimumPerPieceSeconds = resolveMinimumPlausiblePerPieceSeconds(
+    options.initialPerPieceSeconds
+  );
+  const observedPredictions = ensureArray<WeightedRegressionPoint>(points)
+    .map((point) => {
+      const quantity = Number(point?.quantity);
+      const eventCount = Number(point?.eventCount);
+      if (!Number.isFinite(quantity) || quantity <= 0) return null;
+      if (!Number.isFinite(eventCount) || eventCount <= 0) return null;
+      const predictedTotalSeconds =
+        params.a * quantity + params.b * eventCount;
+      if (!Number.isFinite(predictedTotalSeconds) || predictedTotalSeconds <= 0) {
+        return null;
+      }
+      return predictedTotalSeconds / quantity;
+    })
+    .filter((value): value is number => value !== null);
+
+  const appliedPredictions = ensureArray<WeightedRegressionPoint>(points)
+    .map((point) => {
+      const quantity = Number(point?.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) return null;
+      const predictedTotalSeconds = params.a * quantity + params.b;
+      if (!Number.isFinite(predictedTotalSeconds) || predictedTotalSeconds <= 0) {
+        return null;
+      }
+      return predictedTotalSeconds / quantity;
+    })
+    .filter((value): value is number => value !== null);
+
+  if (
+    (observedPredictions.length > 0 &&
+      Math.min(...observedPredictions) < minimumPerPieceSeconds) ||
+    (appliedPredictions.length > 0 &&
+      Math.min(...appliedPredictions) < minimumPerPieceSeconds)
+  ) {
+    return "IMPLAUSIBLY_LOW_AT_PARAMS";
+  }
+
+  return null;
+};
+
 const applyResidualMagnitudeWeights = (
   points: WeightedRegressionPoint[],
   model: { a: number; b: number }
@@ -271,7 +352,8 @@ const applyResidualMagnitudeWeights = (
   });
 
 const fitAtParamsFromWeightedPoints = (
-  pointsInput: WeightedRegressionPoint[]
+  pointsInput: WeightedRegressionPoint[],
+  options: { initialPerPieceSeconds?: number | null } = {}
 ): { a: number; b: number } | null => {
   const points = ensureArray<WeightedRegressionPoint>(pointsInput).filter(
     (point) =>
@@ -305,16 +387,19 @@ const fitAtParamsFromWeightedPoints = (
 
   const a = secondFit.a;
   const b = secondFit.b;
-  if (!Number.isFinite(a) || a < 0 || !Number.isFinite(b) || b < 0) return null;
+  if (!Number.isFinite(a) || a <= 0 || !Number.isFinite(b) || b < 0) return null;
 
   const normalizedA = toOptionalSeconds(a);
   const normalizedB = toOptionalSeconds(b);
   if (normalizedA == null) return null;
-  return { a: normalizedA, b: normalizedB ?? 0 };
+  const params = { a: normalizedA, b: normalizedB ?? 0 };
+  if (resolveAtParamsMagnitudeFailure(params, points, options)) return null;
+  return params;
 };
 
 const inspectAtFitFromWeightedPoints = (
-  pointsInput: WeightedRegressionPoint[]
+  pointsInput: WeightedRegressionPoint[],
+  options: { initialPerPieceSeconds?: number | null } = {}
 ): AtWeightedFitAttempt => {
   const points = ensureArray<WeightedRegressionPoint>(pointsInput).filter(
     (point) =>
@@ -409,7 +494,7 @@ const inspectAtFitFromWeightedPoints = (
 
   const a = secondFit.a;
   const b = secondFit.b;
-  if (!Number.isFinite(a) || a < 0 || !Number.isFinite(b) || b < 0) {
+  if (!Number.isFinite(a) || a <= 0 || !Number.isFinite(b) || b < 0) {
     return {
       params: null,
       status: "NEGATIVE_OR_INVALID_PARAMS",
@@ -427,18 +512,33 @@ const inspectAtFitFromWeightedPoints = (
     };
   }
 
+  const params = { a: normalizedA, b: normalizedB ?? 0 };
+  const magnitudeFailure = resolveAtParamsMagnitudeFailure(
+    params,
+    points,
+    options
+  );
+  if (magnitudeFailure) {
+    return {
+      params: null,
+      status: magnitudeFailure,
+      ...baseDiagnostic,
+    };
+  }
+
   return {
-    params: { a: normalizedA, b: normalizedB ?? 0 },
+    params,
     status: "FITTED",
     ...baseDiagnostic,
   };
 };
 
 const fitAtParamsFromObservations = (
-  observations: AtMetricObservation[]
+  observations: AtMetricObservation[],
+  options: { initialPerPieceSeconds?: number | null } = {}
 ): { a: number; b: number } | null => {
   const points = toAtRegressionPoints(observations);
-  return fitAtParamsFromWeightedPoints(points);
+  return fitAtParamsFromWeightedPoints(points, options);
 };
 
 const allocateDaySecondsAcrossProcesses = (
@@ -542,7 +642,8 @@ const buildAllocatedObservations = (
 };
 
 const buildProvisionalParamsFromWeightedPoints = (
-  pointsInput: WeightedRegressionPoint[]
+  pointsInput: WeightedRegressionPoint[],
+  options: { initialPerPieceSeconds?: number | null } = {}
 ): { a: number; b: number } | null => {
   const points = ensureArray<WeightedRegressionPoint>(pointsInput).filter(
     (point) =>
@@ -570,10 +671,12 @@ const buildProvisionalParamsFromWeightedPoints = (
   if (!Number.isFinite(totalWeight) || totalWeight <= 0) return null;
   const provisionalA = toOptionalSeconds(weightedPerPieceSum / totalWeight);
   if (provisionalA == null || provisionalA <= 0) return null;
-  return {
+  const params = {
     a: provisionalA,
     b: 0,
   };
+  if (resolveAtParamsMagnitudeFailure(params, points, options)) return null;
+  return params;
 };
 
 const buildDayTrendWeights = (
@@ -705,12 +808,19 @@ export const fitAtParamsWithProportionalAllocation = (
 
     metricKeys.forEach((metricKey) => {
       const observations = observationsByMetric.get(metricKey) || [];
-      const fitted = fitAtParamsFromObservations(observations);
+      const initialPerPieceSeconds =
+        seededPerPieceByMetricKey.get(metricKey) ?? null;
+      const fitted = fitAtParamsFromObservations(observations, {
+        initialPerPieceSeconds,
+      });
       if (!fitted) return;
 
       nextParamsByMetric.set(metricKey, fitted);
       const previousPerPiece = toOptionalSeconds(perPieceByMetricKey.get(metricKey));
-      const nextPerPiece = Math.max(AT_WLS_MIN_WEIGHT, fitted.a);
+      const nextPerPiece = Math.max(
+        resolveMinimumPlausiblePerPieceSeconds(initialPerPieceSeconds),
+        fitted.a
+      );
       nextPerPieceByMetricKey.set(metricKey, nextPerPiece);
       if (previousPerPiece === null) {
         maxRelativeChange = Number.POSITIVE_INFINITY;
@@ -780,11 +890,32 @@ export const fitAtParamsWithProportionalAllocation = (
   let provisionalMetricCount = 0;
   metricKeys.forEach((metricKey) => {
     const weightedPoints = weightedPointsByMetric.get(metricKey) || [];
-    const inspected = inspectAtFitFromWeightedPoints(weightedPoints);
-    const provisional =
-      provisionalParamsByMetric.get(metricKey) ||
-      buildProvisionalParamsFromWeightedPoints(weightedPoints) ||
-      null;
+    const initialPerPieceSeconds =
+      seededPerPieceByMetricKey.get(metricKey) ?? null;
+    const inspected = inspectAtFitFromWeightedPoints(weightedPoints, {
+      initialPerPieceSeconds,
+    });
+    const shouldAttemptProvisional =
+      inspected.status !== "IMPLAUSIBLY_LOW_AT_PARAMS";
+    const provisionalFromIteration = shouldAttemptProvisional
+      ? provisionalParamsByMetric.get(metricKey) || null
+      : null;
+    const validProvisionalFromIteration =
+      provisionalFromIteration &&
+      !resolveAtParamsMagnitudeFailure(
+        provisionalFromIteration,
+        weightedPoints,
+        { initialPerPieceSeconds }
+      )
+        ? provisionalFromIteration
+        : null;
+    const provisional = shouldAttemptProvisional
+      ? validProvisionalFromIteration ||
+        buildProvisionalParamsFromWeightedPoints(weightedPoints, {
+          initialPerPieceSeconds,
+        }) ||
+        null
+      : null;
     const fittedBase = inspected.params || provisional;
     const status: AtMetricFitStatus = inspected.params
       ? "FITTED"

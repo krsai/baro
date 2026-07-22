@@ -6,7 +6,14 @@ const { fitAtParamsWithProportionalAllocation } = atTraining;
 
 const metricKey = 'STYLE_PROCESS:1';
 
-const createDay = ({ dayKey, order, quantity, laborInputSeconds, sourceGroupKey }) => ({
+const createDay = ({
+  dayKey,
+  order,
+  quantity,
+  laborInputSeconds,
+  sourceGroupKey,
+  eventCount = 1,
+}) => ({
   dayKey,
   order,
   laborInputSeconds,
@@ -14,7 +21,7 @@ const createDay = ({ dayKey, order, quantity, laborInputSeconds, sourceGroupKey 
     {
       metricKey,
       quantity,
-      eventCount: 1,
+      eventCount,
       sourceGroupKey,
     },
   ],
@@ -74,6 +81,32 @@ test('matching quantity variation from independent assignments can create an AT 
   assert.equal(fitted.distinctSourceGroupCount, 2);
   assert.equal(fitted.a, 100);
   assert.equal(fitted.b, 1000);
+});
+
+test('implausibly low fitted params are rejected instead of saved as curves', () => {
+  const result = fitAtParamsWithProportionalAllocation([
+    createDay({
+      dayKey: '2026-04-30#1',
+      order: 0,
+      quantity: 120,
+      eventCount: 26,
+      laborInputSeconds: 9,
+      sourceGroupKey: 'assignmentPlan:309',
+    }),
+    createDay({
+      dayKey: '2026-06-30#2',
+      order: 1,
+      quantity: 100,
+      eventCount: 27,
+      laborInputSeconds: 8,
+      sourceGroupKey: 'assignmentPlan:336',
+    }),
+  ], {
+    initialPerPieceByMetricKey: new Map([[metricKey, 70]]),
+  });
+
+  assert.equal(result.paramsByMetric.has(metricKey), false);
+  assert.equal(result.diagnostics.statusCounts.IMPLAUSIBLY_LOW_AT_PARAMS, 1);
 });
 
 test('missing source keys are not treated as independent observations', () => {
