@@ -357,8 +357,8 @@ const StyleBoard = () => {
                 result.diagnostics.source.skippedBeforeAttendanceCoverageWorkLogCount,
               skippedNoUsableRows:
                 result.diagnostics.source.skippedNoUsableRowsWorkLogCount,
-              skippedMissingAttendance:
-                result.diagnostics.source.skippedMissingAttendanceWorkLogCount,
+              partialMissingAttendance:
+                result.diagnostics.source.partialMissingAttendanceWorkLogCount,
               skippedNoLaborInput:
                 result.diagnostics.source.skippedNoLaborInputWorkLogCount,
               earlyExitStage: result.diagnostics.source.earlyExitStage ?? null,

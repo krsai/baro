@@ -2706,7 +2706,7 @@ type AtTrainingSourceDiagnostics = {
   attendanceRowCount: number;
   skippedBeforeAttendanceCoverageWorkLogCount: number;
   skippedInvalidWorkLogCount: number;
-  skippedMissingAttendanceWorkLogCount: number;
+  partialMissingAttendanceWorkLogCount: number;
   skippedNoUsableRowsWorkLogCount: number;
   skippedNoLaborInputWorkLogCount: number;
   excludedStyleNotResolvedRecordCount: number;
@@ -2749,7 +2749,7 @@ const createAtTrainingSourceDiagnostics = (
   attendanceRowCount: 0,
   skippedBeforeAttendanceCoverageWorkLogCount: 0,
   skippedInvalidWorkLogCount: 0,
-  skippedMissingAttendanceWorkLogCount: 0,
+  partialMissingAttendanceWorkLogCount: 0,
   skippedNoUsableRowsWorkLogCount: 0,
   skippedNoLaborInputWorkLogCount: 0,
   excludedStyleNotResolvedRecordCount: 0,
@@ -3514,9 +3514,11 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       );
     });
 
-    const missingAttendanceRows = preliminaryRows.filter((row) => {
+    let hasMissingAttendanceRows = false;
+    const includedRows = preliminaryRows.filter((row) => {
       const workerSeconds = workerSecondsById.get(row.workerId) || 0;
-      if (workerSeconds > 0) return false;
+      if (workerSeconds > 0) return true;
+      hasMissingAttendanceRows = true;
       diagnostics.excludedMissingAttendanceRecordCount += 1;
       pushAtTrainingSourceDiagnosticSample(diagnostics, {
         workLogId,
@@ -3530,13 +3532,15 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         coverageEndDate: row.effectiveCoverageEndDate,
         reason: "MISSING_ATTENDANCE",
       });
-      return true;
+      return false;
     });
-    if (missingAttendanceRows.length > 0) {
-      diagnostics.skippedMissingAttendanceWorkLogCount += 1;
+    if (hasMissingAttendanceRows && includedRows.length > 0) {
+      diagnostics.partialMissingAttendanceWorkLogCount += 1;
+    }
+    if (includedRows.length === 0) {
+      diagnostics.skippedNoUsableRowsWorkLogCount += 1;
       return draftRows;
     }
-    const includedRows = preliminaryRows;
 
     const eventDateKeysByProcessGroupKey = new Map<string, Set<string>>();
     const addEventDateKeysForRow = (row: {
