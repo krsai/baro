@@ -353,6 +353,16 @@ const StyleBoard = () => {
               includedWorkRecords: result.diagnostics.source.includedWorkRecordCount,
               eligibleWorkers: result.diagnostics.source.eligibleWorkerCount,
               attendanceRows: result.diagnostics.source.attendanceRowCount,
+              actualAttendanceWorkerDays:
+                result.diagnostics.source.actualAttendanceWorkerDayCount ?? 0,
+              fallbackAttendanceWorkerDays:
+                result.diagnostics.source.fallbackAttendanceWorkerDayCount ?? 0,
+              actualLaborInputSeconds:
+                result.diagnostics.source.actualLaborInputSeconds ?? 0,
+              fallbackLaborInputSeconds:
+                result.diagnostics.source.fallbackLaborInputSeconds ?? 0,
+              fallbackAppliedWorkLogs:
+                result.diagnostics.source.fallbackAppliedWorkLogCount ?? 0,
               skippedBeforeAttendanceCoverage:
                 result.diagnostics.source.skippedBeforeAttendanceCoverageWorkLogCount,
               skippedNoUsableRows:
@@ -368,6 +378,8 @@ const StyleBoard = () => {
                 result.diagnostics.source.excludedMissingWorkerRecordCount,
               excludedMissingAttendance:
                 result.diagnostics.source.excludedMissingAttendanceRecordCount,
+              noEligibleWorkingDayExcluded:
+                result.diagnostics.source.noEligibleWorkingDayExcludedRecordCount ?? 0,
               excludedStyleNotResolved:
                 result.diagnostics.source.excludedStyleNotResolvedRecordCount,
               excludedProcessNotResolved:

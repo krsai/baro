@@ -1,22 +1,23 @@
 # TODO
 
-## 최우선: AT 학습에서 출퇴근 누락 WorkLog 부분 학습 금지
+## 최우선: AT 출퇴근 누락일 8시간 대체 검증
 
 수정한 사항:
-- 출퇴근 시간이 없는 작업자 행이 하나라도 섞인 WorkLog는 AT 학습 버킷을 만들지 않도록 변경했다.
-- 기존에는 해당 작업자/공정 행만 제외하고 나머지 공정으로 학습해서, 일부 공정은 AT가 비고 일부 공정은 같은 총 시간을 과대 배분받을 수 있었다.
-- 새 진단값 `partialMissingAttendanceWorkLogCount`를 추가해, 출퇴근 누락자가 섞였지만 일부 행은 학습에 포함된 WorkLog 횟수를 확인할 수 있게 했다.
-- 임의 8시간 fallback이나 0초 보정은 넣지 않았다. 정확한 출퇴근 데이터가 없으면 학습하지 않는 쪽으로 드러낸다.
+- 출퇴근 행이 없는 유효 근무일은 작업자당 8시간으로 대체하며 해당 작업자/공정을 학습에서 제외하지 않는다.
+- 실측 행이 있는 날짜는 실측시간을 사용하고, 명시적인 0초 행은 결근으로 존중한다.
+- 일요일, 조직 휴일, 입사 전, 퇴사 후, 휴직 기간은 8시간 대체에서 제외한다.
+- `laborInputSeconds`와 `eventCount`가 같은 날짜별 실측/대체 판정을 사용하도록 맞췄다.
+- 실제 출퇴근과 대체 노동시간/worker-day 진단을 추가하고 `attendanceCoverage` 하드코딩을 제거했다.
 
 예상되는 문제와 부족한 점:
-- 2026-07-22 확인: 출퇴근 누락자가 섞인 WorkLog 전체를 보류하면 6월 학습 버킷이 0개가 되어 `/at-sync/run-now`가 `no_metric_observations`로 끝난다. 전체 스킵은 과도했으므로 누락 작업자 행만 제외하고, `partialMissingAttendanceWorkLogCount` 진단으로 남기는 방향으로 되돌렸다.
+- 배포 후 AJ1972를 초기화·재학습해 모든 유효 공정에 최소 provisional AT가 생성되는지 확인해야 한다.
+- WorkLog 전체 노동시간을 모든 공정에 ST 비율로 배분하는 현재 구조는 작업자별 공정 귀속을 보장하지 않는다. worker-scoped allocation은 별도 phase에서 검토한다.
 - AJ1979처럼 실제 WorkRecord가 없는 스타일에 AT가 보였다면, 새 학습이 아니라 기존 `StyleProcess.atParams`, `AtTrainingBucketProcess`, 또는 레거시 `Style.processes[].atParams`가 남아 있거나 다시 살아난 것인지 최우선으로 검증해야 한다.
 - AT 초기화 버튼을 누른 뒤에는 관계형 `StyleProcess.atParams`, `AtTrainingBucket/AtTrainingBucketProcess`, 레거시 `Style.processes` JSON 안의 `atParams`/`at`가 모두 비워졌는지 확인해야 한다.
-- AJ1972/AJ1979처럼 WorkLog 안에 출퇴근이 없는 작업자가 섞여 있으면, AT 초기화 후 재갱신 시 해당 WorkLog 전체가 빠져서 AT가 더 적게 보일 수 있다. 이는 데이터 유실이 아니라 "학습 보류" 상태다.
-- 운영자가 어떤 월/작업기록/작업자 때문에 보류됐는지 화면에서 바로 볼 수 있는 UI가 아직 없다. `/at-sync/run-now` diagnostics 또는 서버 로그를 사용자 친화적으로 노출하는 작업이 필요하다.
+- 출퇴근 대체 비율이 높은 공정을 운영자가 화면에서 바로 구분하는 UI는 아직 없다. `/at-sync/run-now` diagnostics 또는 신뢰도 정보를 사용자 친화적으로 노출하는 작업이 필요하다.
 - 작업 기록 상세 화면 검색에서 AJ1979가 DB에는 있는데 검색 결과에 안 보이는 증상이 있었다. AT 학습 문제와 별개로 WorkLog 상세 검색/표시 로직을 따로 점검해야 한다.
 - orgId=1의 WorkLog/AssignmentPlan이 orgId=2 스타일을 참조하는 구조가 운영 DB에서 보인다. 의도된 ownerOrg/buyerOrg 관계인지, 중복/미러 스타일 때문에 생긴 것인지 별도 감사가 필요하다.
-- 출퇴근 데이터가 실제로 누락된 작업자는 사후 입력 후 AT 초기화/갱신을 다시 돌려야 한다.
+- 누락 출퇴근을 사후 입력하면 8시간 대체 대신 실측값을 반영하도록 AT 초기화/갱신을 다시 돌려야 한다.
 
 이 문서는 "지금 남은 일"만 적는다.
 각 항목은 아래 3가지만 바로 보이게 쓴다.
