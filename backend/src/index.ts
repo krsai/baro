@@ -50,6 +50,10 @@ import {
   shiftMonthKey,
 } from "./utils/atTrainingMonthKey";
 import {
+  createAtTrainingOverlapState,
+  registerAtTrainingWorkerDayClaim,
+} from "./services/atTrainingOverlap";
+import {
   ensureArray,
   isNumericId,
   isValidOrgCode,
@@ -2687,6 +2691,11 @@ type AtTrainingBucketDraft = {
   laborInputSeconds: number;
   attendanceCoverage: number | null;
   processRows: AtTrainingBucketProcessDraft[];
+  diagnosticRecordCount?: number;
+  diagnosticActualSeconds?: number;
+  diagnosticFallbackSeconds?: number;
+  diagnosticActualWorkerDayCount?: number;
+  diagnosticFallbackWorkerDayCount?: number;
 };
 type AtTrainingSourceDiagnosticSample = {
   workLogId: number | null;
@@ -2721,6 +2730,9 @@ type AtTrainingSourceDiagnostics = {
   fullFallbackWorkerWorkLogCount: number;
   partialFallbackWorkerWorkLogCount: number;
   incompleteAttendanceWorkerDayCount: number;
+  ambiguousOverlappingWorkerDayCount: number;
+  ambiguousOverlapExcludedWorkerBucketCount: number;
+  ambiguousOverlapExcludedRecordCount: number;
   fallbackAppliedWorkLogCount: number;
   noEligibleWorkingDayExcludedRecordCount: number;
   skippedBeforeAttendanceCoverageWorkLogCount: number;
@@ -2750,6 +2762,11 @@ type AtTrainingSourceDiagnostics = {
     factoryId: number;
     workDate: string;
   }>;
+  ambiguousOverlappingWorkerDaySamples: Array<{
+    workerId: number;
+    workDate: string;
+    workLogIds: number[];
+  }>;
 };
 type AtTrainingBucketBuildResult = {
   drafts: AtTrainingBucketDraft[];
@@ -2778,6 +2795,9 @@ const createAtTrainingSourceDiagnostics = (
   fullFallbackWorkerWorkLogCount: 0,
   partialFallbackWorkerWorkLogCount: 0,
   incompleteAttendanceWorkerDayCount: 0,
+  ambiguousOverlappingWorkerDayCount: 0,
+  ambiguousOverlapExcludedWorkerBucketCount: 0,
+  ambiguousOverlapExcludedRecordCount: 0,
   fallbackAppliedWorkLogCount: 0,
   noEligibleWorkingDayExcludedRecordCount: 0,
   skippedBeforeAttendanceCoverageWorkLogCount: 0,
@@ -2798,6 +2818,7 @@ const createAtTrainingSourceDiagnostics = (
   styleCandidateSamples: [],
   sampleExcludedRecords: [],
   incompleteAttendanceSamples: [],
+  ambiguousOverlappingWorkerDaySamples: [],
 });
 
 const pushAtTrainingSourceDiagnosticSample = (
@@ -2829,7 +2850,7 @@ const toAtTrainingSourceGroupKey = ({
   return "missingAssignmentPlan";
 };
 
-const AT_SYNC_RUNTIME_MARKER = "at-sync-runtime-2026-07-22-4";
+const AT_SYNC_RUNTIME_MARKER = "at-sync-runtime-2026-07-22-5";
 
 const loadAtTrainingSourceWorkLogs = async ({
   orgId,
@@ -3447,6 +3468,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
   }
 
   const previousPeriodEndDateByFactory = new Map<string, string>();
+  const overlapState = createAtTrainingOverlapState();
 
   const drafts = filteredWorkLogs.reduce((draftRows, workLog) => {
     const normalizedWorkDate = normalizeDateKey(workLog.displayDate);
@@ -3679,6 +3701,26 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       const workerRows = includedRows.filter((row) => row.workerId === workerId);
       const workerLabor = workerLaborById.get(workerId);
       if (!workerLabor || workerLabor.seconds <= 0 || workerRows.length === 0) return;
+      const bucketKey = `${workLogId}:${workerId}`;
+      const effectiveCoverage = coverageByWorkerId.get(workerId);
+      if (effectiveCoverage) {
+        const dayCount = countDateRangeDaysInclusive(
+          effectiveCoverage.startDateKey,
+          effectiveCoverage.endDateKey
+        );
+        let cursorDateKey = effectiveCoverage.startDateKey;
+        for (let offset = 0; offset < dayCount; offset += 1) {
+          const workedDay = resolveWorkerSecondsForDate(cursorDateKey, workerId);
+          if (workedDay.seconds > 0) {
+            const workerDateKey = toAtAttendanceWorkerDateKey(cursorDateKey, workerId);
+            registerAtTrainingWorkerDayClaim({ state: overlapState, workerDateKey, bucketKey });
+          }
+          if (offset === dayCount - 1) break;
+          const nextDateKey = shiftDateKeyByDays(cursorDateKey, 1);
+          if (!nextDateKey) break;
+          cursorDateKey = nextDateKey;
+        }
+      }
 
       const perProcessGroups = new Map<string, AtTrainingBucketProcessDraft>();
       const eventDateKeysByProcessGroupKey = new Map<string, Set<string>>();
@@ -3745,6 +3787,11 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         laborInputSeconds: Math.max(1, Math.round(workerLabor.seconds)),
         attendanceCoverage,
         processRows,
+        diagnosticRecordCount: workerRows.length,
+        diagnosticActualSeconds: workerLabor.actualSeconds,
+        diagnosticFallbackSeconds: workerLabor.fallbackSeconds,
+        diagnosticActualWorkerDayCount: workerLabor.actualWorkerDayCount,
+        diagnosticFallbackWorkerDayCount: workerLabor.fallbackWorkerDayCount,
       });
       diagnostics.includedWorkRecordCount += workerRows.length;
       createdWorkerDraftCount += 1;
@@ -3762,7 +3809,61 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     previousPeriodEndDateByFactory.set(periodTrackerKey, normalizedCoverageEndDate);
     return draftRows;
   }, [] as AtTrainingBucketDraft[]);
-  diagnostics.draftCount = drafts.length;
+  const safeDrafts = drafts.filter(
+    (draft) => !overlapState.ambiguousBucketKeys.has(`${draft.sourceWorkLogId}:${draft.workerId}`)
+  );
+  diagnostics.ambiguousOverlappingWorkerDayCount = overlapState.ambiguousWorkerDateKeys.size;
+  diagnostics.ambiguousOverlapExcludedWorkerBucketCount = drafts.length - safeDrafts.length;
+  diagnostics.ambiguousOverlapExcludedRecordCount = drafts
+    .filter((draft) => overlapState.ambiguousBucketKeys.has(`${draft.sourceWorkLogId}:${draft.workerId}`))
+    .reduce((sum, draft) => sum + (draft.diagnosticRecordCount ?? 0), 0);
+  diagnostics.ambiguousOverlappingWorkerDaySamples = Array.from(overlapState.ambiguousWorkerDateKeys)
+    .slice(0, 30)
+    .map((workerDateKey) => {
+      const separatorIndex = workerDateKey.lastIndexOf(":");
+      const workDate = workerDateKey.slice(0, separatorIndex);
+      const workerId = Number(workerDateKey.slice(separatorIndex + 1));
+      const workLogIds = Array.from(overlapState.ownerBucketKeysByWorkerDate.get(workerDateKey) ?? [])
+        .map((bucketKey) => Number(bucketKey.split(":", 1)[0]))
+        .filter((value) => Number.isInteger(value) && value > 0)
+        .sort((left, right) => left - right);
+      return { workerId, workDate, workLogIds };
+    });
+
+  diagnostics.actualLaborInputSeconds = safeDrafts.reduce(
+    (sum, draft) => sum + (draft.diagnosticActualSeconds ?? 0), 0
+  );
+  diagnostics.fallbackLaborInputSeconds = safeDrafts.reduce(
+    (sum, draft) => sum + (draft.diagnosticFallbackSeconds ?? 0), 0
+  );
+  diagnostics.actualAttendanceWorkerDayCount = safeDrafts.reduce(
+    (sum, draft) => sum + (draft.diagnosticActualWorkerDayCount ?? 0), 0
+  );
+  diagnostics.fallbackAttendanceWorkerDayCount = safeDrafts.reduce(
+    (sum, draft) => sum + (draft.diagnosticFallbackWorkerDayCount ?? 0), 0
+  );
+  diagnostics.fullFallbackWorkerWorkLogCount = safeDrafts.filter(
+    (draft) =>
+      (draft.diagnosticFallbackWorkerDayCount ?? 0) > 0 &&
+      (draft.diagnosticActualWorkerDayCount ?? 0) === 0
+  ).length;
+  diagnostics.partialFallbackWorkerWorkLogCount = safeDrafts.filter(
+    (draft) =>
+      (draft.diagnosticFallbackWorkerDayCount ?? 0) > 0 &&
+      (draft.diagnosticActualWorkerDayCount ?? 0) > 0
+  ).length;
+  diagnostics.includedWorkRecordCount = safeDrafts.reduce(
+    (sum, draft) => sum + (draft.diagnosticRecordCount ?? 0), 0
+  );
+  diagnostics.includedWorkLogCount = new Set(
+    safeDrafts.map((draft) => draft.sourceWorkLogId)
+  ).size;
+  diagnostics.fallbackAppliedWorkLogCount = new Set(
+    safeDrafts
+      .filter((draft) => (draft.diagnosticFallbackWorkerDayCount ?? 0) > 0)
+      .map((draft) => draft.sourceWorkLogId)
+  ).size;
+  diagnostics.draftCount = safeDrafts.length;
   diagnostics.excludedWorkLogCount = Math.max(
     0,
     diagnostics.sourceWorkLogCount - diagnostics.includedWorkLogCount
@@ -3771,7 +3872,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     0,
     diagnostics.sourceWorkRecordCount - diagnostics.includedWorkRecordCount
   );
-  return { drafts, diagnostics };
+  return { drafts: safeDrafts, diagnostics };
 };
 
 const replaceAtTrainingBucketsForMonth = async ({

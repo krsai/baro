@@ -208,6 +208,7 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 - 출퇴근 조회 범위는 학습월 문자열로 자르지 않고, 대상 WorkLog/WorkRecord의 실제 coverage 최소일~최대일을 사용한다.
 - AT 출퇴근 매칭은 공장과 무관하게 조직 내 `workerId + workDate`를 사용한다. 같은 worker-day에 공장이 여러 개인 실측 행이 있으면 시간을 합산하며, WorkLog 공장과 다르다는 이유로 8시간 대체하지 않는다.
 - `AtTrainingBucket` 단위는 `WorkLog × worker`다. 해당 worker의 `laborInputSeconds`는 그 worker가 기록한 공정에만 배분하며, `attendanceCoverage`도 worker bucket별로 저장한다.
+- **2026-07-22 겹치는 worker-day 가드:** 같은 작업자의 같은 유효 근무일을 둘 이상의 WorkLog가 포함하면 어느 WorkLog/공정에 노동시간을 귀속할 정확한 근거가 없다. 처리 순서나 ST 비율로 임의 배분하지 않고 관련 `WorkLog × worker` bucket을 모두 학습에서 제외하며 `ambiguousOverlappingWorkerDayCount`, 제외 bucket/record 수와 샘플을 진단한다.
 
 ### 신뢰도 상태
 `COLLECTING → UNRELIABLE → INSUFFICIENT → USABLE → TRUSTED → VERIFIED`

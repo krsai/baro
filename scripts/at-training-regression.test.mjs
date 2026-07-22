@@ -1,8 +1,44 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import atTraining from '../backend/dist/services/atTraining.js';
+import atTrainingOverlap from '../backend/dist/services/atTrainingOverlap.js';
 
 const { fitAtParamsWithProportionalAllocation } = atTraining;
+const { createAtTrainingOverlapState, registerAtTrainingWorkerDayClaim } = atTrainingOverlap;
+
+test('overlapping worker-day excludes every claiming WorkLog worker bucket', () => {
+  const state = createAtTrainingOverlapState();
+  registerAtTrainingWorkerDayClaim({
+    state,
+    workerDateKey: '2026-06-05:7',
+    bucketKey: '101:7',
+  });
+  registerAtTrainingWorkerDayClaim({
+    state,
+    workerDateKey: '2026-06-05:7',
+    bucketKey: '202:7',
+  });
+
+  assert.deepEqual([...state.ambiguousWorkerDateKeys], ['2026-06-05:7']);
+  assert.deepEqual([...state.ambiguousBucketKeys].sort(), ['101:7', '202:7']);
+});
+
+test('different workers on the same date remain independent', () => {
+  const state = createAtTrainingOverlapState();
+  registerAtTrainingWorkerDayClaim({
+    state,
+    workerDateKey: '2026-06-05:7',
+    bucketKey: '101:7',
+  });
+  registerAtTrainingWorkerDayClaim({
+    state,
+    workerDateKey: '2026-06-05:8',
+    bucketKey: '202:8',
+  });
+
+  assert.equal(state.ambiguousWorkerDateKeys.size, 0);
+  assert.equal(state.ambiguousBucketKeys.size, 0);
+});
 
 const metricKey = 'STYLE_PROCESS:1';
 const siblingMetricKey = 'STYLE_PROCESS:2';

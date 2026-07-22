@@ -17,6 +17,7 @@
 - 출퇴근 매칭에서 factoryId를 제거하고 조직 내 `workerId + workDate` 실측을 합산한다. 공장 이동 때문에 실측이 8시간 대체로 바뀌지 않는다.
 - 작업자의 status/orgRole/현장 role 부적격을 각각 `WORKER_STATUS_NOT_ELIGIBLE`, `WORKER_ORG_ROLE_NOT_ELIGIBLE`, `WORKER_FIELD_ROLE_NOT_ELIGIBLE`로 진단한다.
 - 한 worker bucket의 공정 중 ST seed가 하나라도 없으면 그 worker의 총 노동시간을 정확히 나눌 수 없으므로 해당 bucket 전체를 fail-closed한다. `missingInitialSeedSamples`로 원인을 노출하며 임의로 나머지 공정에 시간을 몰아주지 않는다.
+- 같은 작업자의 같은 유효 근무일이 여러 WorkLog에 겹치면 노동시간을 어느 WorkLog에 귀속할 근거가 없으므로 관련 `WorkLog × worker` bucket을 모두 fail-closed한다. `ambiguousOverlappingWorkerDayCount`와 샘플로 원인을 노출하며 첫 WorkLog에 임의 귀속하지 않는다.
 - 배포 후 `AtTrainingBucket.workerId` migration 적용과 worker-scoped 재생성 결과를 운영 DB에서 확인해야 한다.
 - AJ1979처럼 실제 WorkRecord가 없는 스타일에 AT가 보였다면, 새 학습이 아니라 기존 `StyleProcess.atParams`, `AtTrainingBucketProcess`, 또는 레거시 `Style.processes[].atParams`가 남아 있거나 다시 살아난 것인지 최우선으로 검증해야 한다.
 - AT 초기화 버튼을 누른 뒤에는 관계형 `StyleProcess.atParams`, `AtTrainingBucket/AtTrainingBucketProcess`, 레거시 `Style.processes` JSON 안의 `atParams`/`at`가 모두 비워졌는지 확인해야 한다.
