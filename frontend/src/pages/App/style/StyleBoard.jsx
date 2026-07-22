@@ -357,6 +357,8 @@ const StyleBoard = () => {
                 result.diagnostics.source.skippedBeforeAttendanceCoverageWorkLogCount,
               skippedNoUsableRows:
                 result.diagnostics.source.skippedNoUsableRowsWorkLogCount,
+              skippedMissingAttendance:
+                result.diagnostics.source.skippedMissingAttendanceWorkLogCount,
               skippedNoLaborInput:
                 result.diagnostics.source.skippedNoLaborInputWorkLogCount,
               earlyExitStage: result.diagnostics.source.earlyExitStage ?? null,
@@ -488,7 +490,7 @@ const StyleBoard = () => {
       showNotification(
         getUiMessage(
           'styleBoard.atResetSuccess',
-          `AT 추정 초기화 완료 (공정 ${result?.styleProcessAtParamsReset ?? 0}개, 학습 버킷 ${result?.trainingBucketsDeleted ?? 0}개)`,
+          `AT 추정 초기화 완료 (공정 ${result?.styleProcessAtParamsReset ?? 0}개, 레거시 ${result?.styleProcessJsonAtParamsReset ?? 0}개, 학습 버킷 ${result?.trainingBucketsDeleted ?? 0}개)`,
           languageCode
         ),
         'success'

@@ -9,6 +9,8 @@
 - 임의 8시간 fallback이나 0초 보정은 넣지 않았다. 정확한 출퇴근 데이터가 없으면 학습하지 않는 쪽으로 드러낸다.
 
 예상되는 문제와 부족한 점:
+- AJ1979처럼 실제 WorkRecord가 없는 스타일에 AT가 보였다면, 새 학습이 아니라 기존 `StyleProcess.atParams`, `AtTrainingBucketProcess`, 또는 레거시 `Style.processes[].atParams`가 남아 있거나 다시 살아난 것인지 최우선으로 검증해야 한다.
+- AT 초기화 버튼을 누른 뒤에는 관계형 `StyleProcess.atParams`, `AtTrainingBucket/AtTrainingBucketProcess`, 레거시 `Style.processes` JSON 안의 `atParams`/`at`가 모두 비워졌는지 확인해야 한다.
 - AJ1972/AJ1979처럼 WorkLog 안에 출퇴근이 없는 작업자가 섞여 있으면, AT 초기화 후 재갱신 시 해당 WorkLog 전체가 빠져서 AT가 더 적게 보일 수 있다. 이는 데이터 유실이 아니라 "학습 보류" 상태다.
 - 운영자가 어떤 월/작업기록/작업자 때문에 보류됐는지 화면에서 바로 볼 수 있는 UI가 아직 없다. `/at-sync/run-now` diagnostics 또는 서버 로그를 사용자 친화적으로 노출하는 작업이 필요하다.
 - 작업 기록 상세 화면 검색에서 AJ1979가 DB에는 있는데 검색 결과에 안 보이는 증상이 있었다. AT 학습 문제와 별개로 WorkLog 상세 검색/표시 로직을 따로 점검해야 한다.

@@ -4603,6 +4603,33 @@ const resetAtTrainingStateForOrg = async (orgId: number) => {
       WHERE "orgId" = ${orgId}
         AND "atParams" IS NOT NULL
     `);
+    const styleProcessJsonAtParamsReset = await tx.$executeRaw(Prisma.sql`
+      UPDATE "Style" AS s
+      SET "processes" = (
+            SELECT COALESCE(
+              jsonb_agg(
+                CASE
+                  WHEN jsonb_typeof(proc.value) = 'object'
+                    THEN proc.value - 'atParams' - 'at'
+                  ELSE proc.value
+                END
+                ORDER BY proc.ordinality
+              ),
+              '[]'::jsonb
+            )
+            FROM jsonb_array_elements(s."processes"::jsonb) WITH ORDINALITY AS proc(value, ordinality)
+          ),
+          "updatedAt" = NOW()
+      WHERE s."orgId" = ${orgId}
+        AND s."processes" IS NOT NULL
+        AND jsonb_typeof(s."processes"::jsonb) = 'array'
+        AND EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(s."processes"::jsonb) AS elem(value)
+          WHERE jsonb_typeof(elem.value) = 'object'
+            AND (elem.value ? 'atParams' OR elem.value ? 'at')
+        )
+    `);
     const trainingBucketProcessesDeleted = await tx.$executeRaw(Prisma.sql`
       DELETE FROM "AtTrainingBucketProcess"
       WHERE "orgId" = ${orgId}
@@ -4614,6 +4641,7 @@ const resetAtTrainingStateForOrg = async (orgId: number) => {
 
     return {
       styleProcessAtParamsReset: Number(styleProcessAtParamsReset || 0),
+      styleProcessJsonAtParamsReset: Number(styleProcessJsonAtParamsReset || 0),
       trainingBucketProcessesDeleted: Number(trainingBucketProcessesDeleted || 0),
       trainingBucketsDeleted: Number(trainingBucketsDeleted || 0),
     };
