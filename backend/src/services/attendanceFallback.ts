@@ -5,6 +5,21 @@ export type AtAttendanceDayResolution = {
   source: AtAttendanceDaySource;
 };
 
+export const resolveAtAttendanceQueryDateRange = (
+  dateKeys: unknown[]
+): { gte: string; lte: string } | null => {
+  const normalized = dateKeys
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))
+    .sort();
+  if (normalized.length === 0) return null;
+  return {
+    gte: normalized[0]!,
+    lte: normalized[normalized.length - 1]!,
+  };
+};
+
 export const resolveAtAttendanceDay = ({
   actualEntryExists,
   actualWorkedSeconds,
@@ -20,7 +35,7 @@ export const resolveAtAttendanceDay = ({
   isWorkingDay: boolean;
   fallbackWorkSeconds: number;
 }): AtAttendanceDayResolution => {
-  if (actualEntryExists) {
+  if (actualEntryExists && actualWorkedSeconds !== null) {
     const seconds = Number(actualWorkedSeconds);
     return {
       seconds: Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : 0,

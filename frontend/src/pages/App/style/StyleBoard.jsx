@@ -363,6 +363,12 @@ const StyleBoard = () => {
                 result.diagnostics.source.fallbackLaborInputSeconds ?? 0,
               fallbackAppliedWorkLogs:
                 result.diagnostics.source.fallbackAppliedWorkLogCount ?? 0,
+              incompleteAttendanceWorkerDays:
+                result.diagnostics.source.incompleteAttendanceWorkerDayCount ?? 0,
+              fullFallbackWorkerWorkLogs:
+                result.diagnostics.source.fullFallbackWorkerWorkLogCount ?? 0,
+              partialFallbackWorkerWorkLogs:
+                result.diagnostics.source.partialFallbackWorkerWorkLogCount ?? 0,
               skippedBeforeAttendanceCoverage:
                 result.diagnostics.source.skippedBeforeAttendanceCoverageWorkLogCount,
               skippedNoUsableRows:
@@ -408,6 +414,12 @@ const StyleBoard = () => {
             console.log(
               '[at-sync] excluded record samples',
               result.diagnostics.source.sampleExcludedRecords
+            );
+          }
+          if (Array.isArray(result.diagnostics.source.incompleteAttendanceSamples)) {
+            console.log(
+              '[at-sync] incomplete attendance samples',
+              result.diagnostics.source.incompleteAttendanceSamples
             );
           }
           if (Array.isArray(result.diagnostics.source.rawStyleIdSamples)) {

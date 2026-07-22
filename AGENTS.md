@@ -202,9 +202,10 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 4. 회귀 분석: `laborInputSeconds ≈ Σ(a_i × q_i + b_i)` → 공정별 `a`, `b` 학습
 
 ### 출퇴근 필터 (중요)
-- 출퇴근 행이 있는 worker-day는 `workedSeconds` 실측값을 사용한다. 명시적인 0초 행은 결근으로 보고 8시간으로 덮어쓰지 않는다.
+- 출퇴근 행이 있고 `workedSeconds`가 확정된 worker-day는 실측값을 사용한다. 명시적인 0초 행은 결근으로 보고 8시간으로 덮어쓰지 않는다. `workedSeconds = null`인 불완전 행은 진단에 남기고 출퇴근 누락과 같은 8시간 대체 정책을 적용한다.
 - 출퇴근 행이 없는 유효 근무 worker-day는 기본 8시간을 `laborInputSeconds`에 대체 입력한다. 토요일은 근무일이며 일요일, 조직 휴일, 입사 전, 퇴사 후, 휴직 기간은 대체 대상에서 제외한다.
 - 실측 및 8시간 대체 worker-day는 같은 판정 결과로 `eventCount`를 계산한다. 대체 비율은 `attendanceCoverage`/`attendanceFallbackShare`에 반영해 신뢰도를 낮춘다.
+- 출퇴근 조회 범위는 학습월 문자열로 자르지 않고, 대상 WorkLog/WorkRecord의 실제 coverage 최소일~최대일을 사용한다.
 
 ### 신뢰도 상태
 `COLLECTING → UNRELIABLE → INSUFFICIENT → USABLE → TRUSTED → VERIFIED`

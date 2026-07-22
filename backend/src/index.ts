@@ -95,7 +95,10 @@ import {
   type AtTrainingDayBucket,
   type AtTrainingDayProcessRow,
 } from "./services/atTraining";
-import { resolveAtAttendanceDay } from "./services/attendanceFallback";
+import {
+  resolveAtAttendanceDay,
+  resolveAtAttendanceQueryDateRange,
+} from "./services/attendanceFallback";
 
 const app = express();
 app.use(cors());
@@ -2710,8 +2713,9 @@ type AtTrainingSourceDiagnostics = {
   fallbackAttendanceWorkerDayCount: number;
   actualLaborInputSeconds: number;
   fallbackLaborInputSeconds: number;
-  fullFallbackWorkerRecordCount: number;
-  partialFallbackWorkerRecordCount: number;
+  fullFallbackWorkerWorkLogCount: number;
+  partialFallbackWorkerWorkLogCount: number;
+  incompleteAttendanceWorkerDayCount: number;
   fallbackAppliedWorkLogCount: number;
   noEligibleWorkingDayExcludedRecordCount: number;
   skippedBeforeAttendanceCoverageWorkLogCount: number;
@@ -2736,6 +2740,11 @@ type AtTrainingSourceDiagnostics = {
     name: string | null;
   }>;
   sampleExcludedRecords: AtTrainingSourceDiagnosticSample[];
+  incompleteAttendanceSamples: Array<{
+    workerId: number;
+    factoryId: number;
+    workDate: string;
+  }>;
 };
 type AtTrainingBucketBuildResult = {
   drafts: AtTrainingBucketDraft[];
@@ -2761,8 +2770,9 @@ const createAtTrainingSourceDiagnostics = (
   fallbackAttendanceWorkerDayCount: 0,
   actualLaborInputSeconds: 0,
   fallbackLaborInputSeconds: 0,
-  fullFallbackWorkerRecordCount: 0,
-  partialFallbackWorkerRecordCount: 0,
+  fullFallbackWorkerWorkLogCount: 0,
+  partialFallbackWorkerWorkLogCount: 0,
+  incompleteAttendanceWorkerDayCount: 0,
   fallbackAppliedWorkLogCount: 0,
   noEligibleWorkingDayExcludedRecordCount: 0,
   skippedBeforeAttendanceCoverageWorkLogCount: 0,
@@ -2782,6 +2792,7 @@ const createAtTrainingSourceDiagnostics = (
   styleCandidateCount: 0,
   styleCandidateSamples: [],
   sampleExcludedRecords: [],
+  incompleteAttendanceSamples: [],
 });
 
 const pushAtTrainingSourceDiagnosticSample = (
@@ -3209,14 +3220,24 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       )
     );
     const eligibleWorkerIds = Array.from(eligibleWorkerDateWindowById.keys());
-    const attendanceWorkDateWhere =
-      normalizedTrainingMonthKey !== ""
-        ? { startsWith: normalizedTrainingMonthKey }
-        : normalizedRequestedWorkDate !== ""
-          ? { startsWith: normalizedRequestedWorkDate.slice(0, 7) }
-          : explicitWorkDates.length > 0
-            ? { in: explicitWorkDates }
-            : null;
+    const coverageDateRange = resolveAtAttendanceQueryDateRange(
+      normalizedWorkLogs.flatMap((workLog) => [
+        normalizeDateKey((workLog as any).coverageStartDate),
+        normalizeDateKey((workLog as any).coverageEndDate),
+        normalizeDateKey((workLog as any).displayDate),
+        ...ensureArray((workLog as any).workRecords).flatMap((record) => [
+          normalizeDateKey((record as any).effectiveCoverageStartDate),
+          normalizeDateKey((record as any).effectiveCoverageEndDate),
+        ]),
+      ])
+    );
+    const attendanceWorkDateWhere = coverageDateRange
+      ? coverageDateRange
+      : normalizedRequestedWorkDate !== ""
+        ? { in: [normalizedRequestedWorkDate] }
+        : explicitWorkDates.length > 0
+          ? { in: explicitWorkDates }
+          : null;
 
     if (attendanceWorkDateWhere && eligibleWorkerIds.length > 0) {
       try {
@@ -3254,7 +3275,18 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
             resolvedFactoryId
           );
           explicitAttendanceWorkerDateKeys.add(attendanceWorkerDateKey);
-          if (workedSeconds === null || workedSeconds <= 0) {
+          if (workedSeconds === null) {
+            diagnostics.incompleteAttendanceWorkerDayCount += 1;
+            if (diagnostics.incompleteAttendanceSamples.length < 30) {
+              diagnostics.incompleteAttendanceSamples.push({
+                workerId: resolvedWorkerId,
+                factoryId: resolvedFactoryId,
+                workDate: normalizedWorkDate,
+              });
+            }
+            return;
+          }
+          if (workedSeconds <= 0) {
             attendanceSecondsByWorkerDate.set(attendanceWorkerDateKey, 0);
             return;
           }
@@ -3738,9 +3770,9 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       fallbackAttendanceWorkerDayCount += workerLabor.fallbackWorkerDayCount;
       if (workerLabor.fallbackWorkerDayCount > 0) {
         if (workerLabor.actualWorkerDayCount > 0) {
-          diagnostics.partialFallbackWorkerRecordCount += 1;
+          diagnostics.partialFallbackWorkerWorkLogCount += 1;
         } else {
-          diagnostics.fullFallbackWorkerRecordCount += 1;
+          diagnostics.fullFallbackWorkerWorkLogCount += 1;
         }
       }
     });
