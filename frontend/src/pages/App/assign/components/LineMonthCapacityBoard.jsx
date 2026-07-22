@@ -22,6 +22,27 @@ import { getUiMessage } from '../../../../constants/uiMessages';
 import { resolveCardCustomerDisplay } from '../utils/assignmentCard';
 import CompactBoardCard from './CompactBoardCard';
 
+const buildAssignmentSearchText = (assignment) =>
+  [
+    assignment?.label,
+    assignment?.customer,
+    assignment?.customerNameKo,
+    assignment?.customerNameVi,
+    assignment?.colorName,
+    assignment?.gender,
+    assignment?.orderNo,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+const filterAssignmentsBySearchTerm = (assignments, lowerSearchTerm) => {
+  if (!lowerSearchTerm) return assignments;
+  return (Array.isArray(assignments) ? assignments : []).filter((assignment) =>
+    buildAssignmentSearchText(assignment).includes(lowerSearchTerm)
+  );
+};
+
 const formatMonthLabel = (monthKey = '') => {
   if (!/^\d{4}-\d{2}$/.test(monthKey)) return monthKey || '-';
   const [year, month] = monthKey.split('-');
@@ -600,12 +621,40 @@ const LineMonthCapacityBoard = ({
   monthKeys,
   loading = false,
   languageCode = 'en',
+  searchTerm = '',
   onOpenAssignmentDetail,
   onOpenContextMenu,
 }) => {
   const [expandedLineIds, setExpandedLineIds] = useState(() => new Set());
 
-  const normalizedRows = useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
+  const lowerSearchTerm = useMemo(
+    () => String(searchTerm || '').trim().toLowerCase(),
+    [searchTerm]
+  );
+  const normalizedRows = useMemo(() => {
+    const sourceRows = Array.isArray(rows) ? rows : [];
+    if (!lowerSearchTerm) return sourceRows;
+    return sourceRows.map((row) => ({
+      ...row,
+      queuedAssignments: filterAssignmentsBySearchTerm(row.queuedAssignments, lowerSearchTerm),
+      reviewRequiredAssignments: filterAssignmentsBySearchTerm(
+        row.reviewRequiredAssignments,
+        lowerSearchTerm
+      ),
+      readyToCompleteAssignments: filterAssignmentsBySearchTerm(
+        row.readyToCompleteAssignments,
+        lowerSearchTerm
+      ),
+      completedAssignments: filterAssignmentsBySearchTerm(
+        row.completedAssignments,
+        lowerSearchTerm
+      ),
+      zeroQuantityOverflowAssignments: filterAssignmentsBySearchTerm(
+        row.zeroQuantityOverflowAssignments,
+        lowerSearchTerm
+      ),
+    }));
+  }, [rows, lowerSearchTerm]);
   const normalizedMonthKeys = useMemo(
     () => (Array.isArray(monthKeys) ? monthKeys : []).filter(Boolean),
     [monthKeys]

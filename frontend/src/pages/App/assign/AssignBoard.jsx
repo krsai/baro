@@ -6953,6 +6953,7 @@ const AssignBoard = () => {
                 monthKeys={visibleMonthKeys}
                 loading={lineMonthCapacityLoading}
                 languageCode={languageCode}
+                searchTerm={deferredSearchTerm}
                 onOpenAssignmentDetail={handleOpenAssignmentDetail}
                 onOpenContextMenu={handleContextMenuOpen}
               />
