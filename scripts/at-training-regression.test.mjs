@@ -266,3 +266,33 @@ test('records without assignment plans stay grouped by process for fitting', () 
   assert.equal(fitted.fallbackReason, 'INSUFFICIENT_INDEPENDENT_SOURCES');
   assert.equal(fitted.distinctSourceGroupCount, 1);
 });
+
+test('worker-scoped buckets do not allocate one worker labor to another worker process', () => {
+  const result = fitAtParamsWithProportionalAllocation([
+    {
+      dayKey: '2026-06-30#worker:1',
+      order: 0,
+      laborInputSeconds: 10_000,
+      processRows: [{
+        metricKey,
+        quantity: 100,
+        eventCount: 1,
+        sourceGroupKey: 'assignmentPlan:501',
+      }],
+    },
+    {
+      dayKey: '2026-06-30#worker:2',
+      order: 1,
+      laborInputSeconds: 20_000,
+      processRows: [{
+        metricKey: siblingMetricKey,
+        quantity: 100,
+        eventCount: 1,
+        sourceGroupKey: 'assignmentPlan:502',
+      }],
+    },
+  ]);
+
+  assert.equal(result.paramsByMetric.get(metricKey)?.a, 100);
+  assert.equal(result.paramsByMetric.get(siblingMetricKey)?.a, 200);
+});

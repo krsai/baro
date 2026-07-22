@@ -206,6 +206,8 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 - 출퇴근 행이 없는 유효 근무 worker-day는 기본 8시간을 `laborInputSeconds`에 대체 입력한다. 토요일은 근무일이며 일요일, 조직 휴일, 입사 전, 퇴사 후, 휴직 기간은 대체 대상에서 제외한다.
 - 실측 및 8시간 대체 worker-day는 같은 판정 결과로 `eventCount`를 계산한다. 대체 비율은 `attendanceCoverage`/`attendanceFallbackShare`에 반영해 신뢰도를 낮춘다.
 - 출퇴근 조회 범위는 학습월 문자열로 자르지 않고, 대상 WorkLog/WorkRecord의 실제 coverage 최소일~최대일을 사용한다.
+- AT 출퇴근 매칭은 공장과 무관하게 조직 내 `workerId + workDate`를 사용한다. 같은 worker-day에 공장이 여러 개인 실측 행이 있으면 시간을 합산하며, WorkLog 공장과 다르다는 이유로 8시간 대체하지 않는다.
+- `AtTrainingBucket` 단위는 `WorkLog × worker`다. 해당 worker의 `laborInputSeconds`는 그 worker가 기록한 공정에만 배분하며, `attendanceCoverage`도 worker bucket별로 저장한다.
 
 ### 신뢰도 상태
 `COLLECTING → UNRELIABLE → INSUFFICIENT → USABLE → TRUSTED → VERIFIED`

@@ -1764,6 +1764,24 @@ ALTER TABLE "AtTrainingBucket" ADD COLUMN IF NOT EXISTS "laborInputSeconds" DOUB
 ALTER TABLE "AtTrainingBucketProcess" ADD COLUMN IF NOT EXISTS "eventCount" DOUBLE PRECISION NOT NULL DEFAULT 1;
 ALTER TABLE "AtTrainingBucketProcess" ADD COLUMN IF NOT EXISTS "assignmentPlanId" INTEGER;
 ALTER TABLE "AtTrainingBucketProcess" ADD COLUMN IF NOT EXISTS "sourceGroupKey" TEXT NOT NULL DEFAULT 'missingAssignmentPlan';
+ALTER TABLE "AtTrainingBucket" ADD COLUMN IF NOT EXISTS "workerId" INTEGER;
+DELETE FROM "AtTrainingBucket" WHERE "workerId" IS NULL;
+DROP INDEX IF EXISTS "AtTrainingBucket_orgId_sourceWorkLogId_key";
+CREATE UNIQUE INDEX IF NOT EXISTS "AtTrainingBucket_orgId_sourceWorkLogId_workerId_key"
+  ON "AtTrainingBucket"("orgId", "sourceWorkLogId", "workerId");
+CREATE INDEX IF NOT EXISTS "AtTrainingBucket_workerId_idx" ON "AtTrainingBucket"("workerId");
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'AtTrainingBucket_workerId_fkey'
+  ) THEN
+    ALTER TABLE "AtTrainingBucket"
+      ADD CONSTRAINT "AtTrainingBucket_workerId_fkey"
+      FOREIGN KEY ("workerId") REFERENCES "Employee"("id")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
+ALTER TABLE "AtTrainingBucket" ALTER COLUMN "workerId" SET NOT NULL;
 ALTER TABLE "AtTrainingBucketProcess" ALTER COLUMN "sourceGroupKey" SET DEFAULT 'missingAssignmentPlan';
 ALTER TABLE "WorkLog" ADD COLUMN IF NOT EXISTS "totalCtSeconds" DOUBLE PRECISION;
 

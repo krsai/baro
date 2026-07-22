@@ -13,11 +13,11 @@
 
 예상되는 문제와 부족한 점:
 - 배포 후 AJ1972를 초기화·재학습해 모든 유효 공정에 최소 provisional AT가 생성되는지 확인해야 한다.
-- WorkLog 전체 노동시간을 모든 공정에 ST 비율로 배분하는 현재 구조는 작업자별 공정 귀속을 보장하지 않는다. worker-scoped allocation은 별도 phase에서 검토한다.
-- `attendanceCoverage`도 현재 WorkLog 단위 값이 모든 공정에 공유된다. worker-scoped allocation을 설계할 때 공정별 실제/대체 출퇴근 비율도 함께 분리한다.
-- WorkLog의 `factoryId`와 AttendanceEntry의 `factoryId`가 다르면 실측 출퇴근을 찾지 못하고 8시간 대체로 처리된다. 공장 이동 이력과 잘못 저장된 factory 연결을 구분할 진단이 필요하다.
-- 작업자의 status/orgRole/현장 role이 AT 학습 대상 조건과 맞지 않으면 `NO_ELIGIBLE_WORKING_DAYS`로 합쳐져 원인이 가려진다. `MISSING_FACTORY`, `WORKER_NOT_ELIGIBLE`, `NO_ELIGIBLE_WORKING_DAYS`를 분리해야 한다.
-- 한 WorkLog의 공정 중 ST seed가 하나라도 없으면 `allocateDaySecondsAcrossProcesses`가 그 WorkLog 관측 전체를 버린다. 누락 공정만 실패시키거나 전체 실패 원인을 명시적으로 노출하는 방향을 검토한다.
+- `AtTrainingBucket`을 `WorkLog × worker` 단위로 바꿨다. 각 작업자의 노동시간은 그 작업자가 기록한 공정에만 배분되고 실제/대체 출퇴근 비율도 worker bucket별로 분리된다. 배포 migration은 기존 파생 bucket을 비운 뒤 재생성한다.
+- 출퇴근 매칭에서 factoryId를 제거하고 조직 내 `workerId + workDate` 실측을 합산한다. 공장 이동 때문에 실측이 8시간 대체로 바뀌지 않는다.
+- 작업자의 status/orgRole/현장 role 부적격을 각각 `WORKER_STATUS_NOT_ELIGIBLE`, `WORKER_ORG_ROLE_NOT_ELIGIBLE`, `WORKER_FIELD_ROLE_NOT_ELIGIBLE`로 진단한다.
+- 한 worker bucket의 공정 중 ST seed가 하나라도 없으면 그 worker의 총 노동시간을 정확히 나눌 수 없으므로 해당 bucket 전체를 fail-closed한다. `missingInitialSeedSamples`로 원인을 노출하며 임의로 나머지 공정에 시간을 몰아주지 않는다.
+- 배포 후 `AtTrainingBucket.workerId` migration 적용과 worker-scoped 재생성 결과를 운영 DB에서 확인해야 한다.
 - AJ1979처럼 실제 WorkRecord가 없는 스타일에 AT가 보였다면, 새 학습이 아니라 기존 `StyleProcess.atParams`, `AtTrainingBucketProcess`, 또는 레거시 `Style.processes[].atParams`가 남아 있거나 다시 살아난 것인지 최우선으로 검증해야 한다.
 - AT 초기화 버튼을 누른 뒤에는 관계형 `StyleProcess.atParams`, `AtTrainingBucket/AtTrainingBucketProcess`, 레거시 `Style.processes` JSON 안의 `atParams`/`at`가 모두 비워졌는지 확인해야 한다.
 - 출퇴근 대체 비율이 높은 공정을 운영자가 화면에서 바로 구분하는 UI는 아직 없다. `/at-sync/run-now` diagnostics 또는 신뢰도 정보를 사용자 친화적으로 노출하는 작업이 필요하다.

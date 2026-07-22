@@ -396,6 +396,7 @@ model Employee {
   managedLines             Line[]            @relation("LineManager")
   attendanceEntries        AttendanceEntry[]
   workRecords              WorkRecord[]
+  atTrainingBuckets        AtTrainingBucket[]
 
   createdByEmployee                  Employee?                    @relation("EmployeeCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee                  Employee?                    @relation("EmployeeUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -708,6 +709,7 @@ model AtTrainingBucket {
   orgId               Int
   monthKey            String
   sourceWorkLogId     Int
+  workerId            Int
   workDate            String
   factoryId           Int?
   laborInputSeconds   Float
@@ -720,16 +722,18 @@ model AtTrainingBucket {
 
   organization  Organization              @relation(fields: [orgId], references: [id])
   sourceWorkLog WorkLog                   @relation(fields: [sourceWorkLogId], references: [id], onDelete: Cascade)
+  worker        Employee                  @relation(fields: [workerId], references: [id], onDelete: Cascade)
   factory       Factory?                  @relation(fields: [factoryId], references: [id], onDelete: SetNull)
   processRows   AtTrainingBucketProcess[]
 
   createdByEmployee Employee? @relation("AtTrainingBucketCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("AtTrainingBucketUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
-  @@unique([orgId, sourceWorkLogId])
+  @@unique([orgId, sourceWorkLogId, workerId])
   @@index([orgId, monthKey, workDate])
   @@index([orgId, workDate])
   @@index([factoryId])
+  @@index([workerId])
 }
 
 model AtTrainingBucketProcess {

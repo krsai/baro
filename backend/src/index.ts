@@ -311,6 +311,9 @@ function assertGeneratedPrismaClientShape() {
   if (!hasField("AtTrainingBucketProcess", "sourceGroupKey")) {
     staleSignals.push("AtTrainingBucketProcess.sourceGroupKey missing");
   }
+  if (!hasField("AtTrainingBucket", "workerId")) {
+    staleSignals.push("AtTrainingBucket.workerId missing");
+  }
   if (modelByName.has("OrgMembership")) {
     staleSignals.push("OrgMembership model still present");
   }
@@ -694,6 +697,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "StyleProcess", columnName: "timesPerPiece" },
   { tableName: "StyleProcessStandard", columnName: "bucketQuantity" },
   { tableName: "StyleProcessStandard", columnName: "bucketStSeconds" },
+  { tableName: "AtTrainingBucket", columnName: "workerId" },
   { tableName: "AssignmentCard", columnName: "cardId" },
   { tableName: "AssignmentCard", columnName: "payload" },
   { tableName: "AssignmentCard", columnName: "sortOrder" },
@@ -2676,6 +2680,7 @@ type AtTrainingBucketProcessDraft = {
 };
 type AtTrainingBucketDraft = {
   sourceWorkLogId: number;
+  workerId: number;
   monthKey: string;
   workDate: string;
   factoryId: number | null;
@@ -2824,7 +2829,7 @@ const toAtTrainingSourceGroupKey = ({
   return "missingAssignmentPlan";
 };
 
-const AT_SYNC_RUNTIME_MARKER = "at-sync-runtime-2026-06-27-3";
+const AT_SYNC_RUNTIME_MARKER = "at-sync-runtime-2026-07-22-4";
 
 const loadAtTrainingSourceWorkLogs = async ({
   orgId,
@@ -3127,6 +3132,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       leaveEndDateKey: string;
     }
   >();
+  const workerEligibilityFailureReasonById = new Map<number, string>();
   if (workerIds.length > 0) {
     const workerRows = await db.employee.findMany({
       where: {
@@ -3151,12 +3157,19 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     workerRows.forEach((worker) => {
       const workerId = toPositiveIntOrNull(worker.id);
       if (workerId === null) return;
-      if (worker.orgRole !== "WORKER") return;
+      if (worker.orgRole !== "WORKER") {
+        workerEligibilityFailureReasonById.set(workerId, "WORKER_ORG_ROLE_NOT_ELIGIBLE");
+        return;
+      }
       if (!["ACTIVE", "TERMINATED"].includes(String(worker.status))) {
+        workerEligibilityFailureReasonById.set(workerId, "WORKER_STATUS_NOT_ELIGIBLE");
         return;
       }
       const workerRoleCode = String(worker.role?.code ?? "").trim().toUpperCase();
-      if (workerRoleCode !== DEFAULT_EMPLOYEE_ROLE_CODE_SEWING) return;
+      if (workerRoleCode !== DEFAULT_EMPLOYEE_ROLE_CODE_SEWING) {
+        workerEligibilityFailureReasonById.set(workerId, "WORKER_FIELD_ROLE_NOT_ELIGIBLE");
+        return;
+      }
       eligibleWorkerDateWindowById.set(workerId, {
         joinedDateKey: toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE),
         leftDateKey: toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE),
@@ -3204,19 +3217,14 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
 
   const attendanceSecondsByWorkerDate = new Map<string, number>();
   const explicitAttendanceWorkerDateKeys = new Set<string>();
+  const toAtAttendanceWorkerDateKey = (workDateKey: string, workerId: number) =>
+    `${workDateKey}::${workerId}`;
   if (USE_ATTENDANCE_INPUT_FOR_AT && normalizedWorkLogs.length > 0) {
     const explicitWorkDates = Array.from(
       new Set(
         normalizedWorkLogs
           .map((workLog) => normalizeDateKey(workLog.displayDate))
           .filter((value) => value !== "")
-      )
-    );
-    const factoryIds = Array.from(
-      new Set(
-        normalizedWorkLogs
-          .map((workLog) => toPositiveIntOrNull((workLog as any).factoryId))
-          .filter((resolvedFactoryId): resolvedFactoryId is number => resolvedFactoryId !== null)
       )
     );
     const eligibleWorkerIds = Array.from(eligibleWorkerDateWindowById.keys());
@@ -3246,7 +3254,6 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
             orgId,
             workDate: attendanceWorkDateWhere as any,
             workerId: { in: eligibleWorkerIds },
-            ...(factoryIds.length > 0 ? { factoryId: { in: factoryIds } } : {}),
           },
           select: {
             workDate: true,
@@ -3269,10 +3276,9 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
           ) {
             return;
           }
-          const attendanceWorkerDateKey = toAttendanceWorkerDateKey(
+          const attendanceWorkerDateKey = toAtAttendanceWorkerDateKey(
             normalizedWorkDate,
-            resolvedWorkerId,
-            resolvedFactoryId
+            resolvedWorkerId
           );
           explicitAttendanceWorkerDateKeys.add(attendanceWorkerDateKey);
           if (workedSeconds === null) {
@@ -3287,12 +3293,15 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
             return;
           }
           if (workedSeconds <= 0) {
-            attendanceSecondsByWorkerDate.set(attendanceWorkerDateKey, 0);
+            if (!attendanceSecondsByWorkerDate.has(attendanceWorkerDateKey)) {
+              attendanceSecondsByWorkerDate.set(attendanceWorkerDateKey, 0);
+            }
             return;
           }
           attendanceSecondsByWorkerDate.set(
             attendanceWorkerDateKey,
-            Math.max(0, Math.round(workedSeconds))
+            (attendanceSecondsByWorkerDate.get(attendanceWorkerDateKey) ?? 0) +
+              Math.max(0, Math.round(workedSeconds))
           );
         });
       } catch (error: unknown) {
@@ -3356,20 +3365,15 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
 
   const resolveWorkerSecondsForDate = (
     normalizedWorkDate: string,
-    workerId: number | null,
-    resolvedFactoryId: number | null
+    workerId: number | null
   ) => {
     if (!USE_ATTENDANCE_INPUT_FOR_AT) {
       return { seconds: ATTENDANCE_DEFAULT_WORK_SECONDS, source: "FALLBACK" as const };
     }
-    if (workerId === null || resolvedFactoryId === null) {
+    if (workerId === null) {
       return { seconds: 0, source: "NONE" as const };
     }
-    const workerDateKey = toAttendanceWorkerDateKey(
-      normalizedWorkDate,
-      workerId,
-      resolvedFactoryId
-    );
+    const workerDateKey = toAtAttendanceWorkerDateKey(normalizedWorkDate, workerId);
     const parsedDate = toUtcDateFromDateKey(normalizedWorkDate);
     return resolveAtAttendanceDay({
       actualEntryExists: explicitAttendanceWorkerDateKeys.has(workerDateKey),
@@ -3387,12 +3391,10 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     periodStartDateKey,
     periodEndDateKey,
     workerId,
-    resolvedFactoryId,
   }: {
     periodStartDateKey: string;
     periodEndDateKey: string;
     workerId: number | null;
-    resolvedFactoryId: number | null;
   }): {
     seconds: number;
     actualSeconds: number;
@@ -3408,14 +3410,13 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       actualWorkerDayCount: 0,
       fallbackWorkerDayCount: 0,
     };
-    if (dayCount <= 0 || workerId === null || resolvedFactoryId === null) return result;
+    if (dayCount <= 0 || workerId === null) return result;
 
     let cursorDateKey = periodStartDateKey;
     for (let offset = 0; offset < dayCount; offset += 1) {
       const resolvedDay = resolveWorkerSecondsForDate(
         cursorDateKey,
-        workerId,
-        resolvedFactoryId
+        workerId
       );
       result.seconds += resolvedDay.seconds;
       if (resolvedDay.source === "ACTUAL") {
@@ -3560,7 +3561,9 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
           diagnostics.excludedIneligibleWorkerRecordCount += 1;
           pushAtTrainingSourceDiagnosticSample(diagnostics, {
             ...sampleBase,
-            reason: "WORKER_OUTSIDE_EMPLOYMENT",
+            reason:
+              workerEligibilityFailureReasonById.get(workerId) ||
+              "WORKER_OUTSIDE_EMPLOYMENT",
           });
           return null;
         }
@@ -3641,7 +3644,6 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
           periodStartDateKey: effectiveCoverage.startDateKey,
           periodEndDateKey: effectiveCoverage.endDateKey,
           workerId,
-          resolvedFactoryId,
         })
       );
     });
@@ -3670,104 +3672,59 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       return draftRows;
     }
 
-    const eventDateKeysByProcessGroupKey = new Map<string, Set<string>>();
-    const addEventDateKeysForRow = (row: {
-      processGroupKey: string;
-      workerId: number;
-      effectiveCoverageStartDate: string;
-      effectiveCoverageEndDate: string;
-    }) => {
-      const dayCount = countDateRangeDaysInclusive(
-        row.effectiveCoverageStartDate,
-        row.effectiveCoverageEndDate
-      );
-      if (dayCount <= 0) return;
-      let cursorDateKey = row.effectiveCoverageStartDate;
-      const current =
-        eventDateKeysByProcessGroupKey.get(row.processGroupKey) ?? new Set<string>();
-      for (let offset = 0; offset < dayCount; offset += 1) {
-        const workedDay = resolveWorkerSecondsForDate(
-          cursorDateKey,
-          row.workerId,
-          resolvedFactoryId
-        );
-        if (workedDay.seconds > 0) {
-          current.add(`${row.workerId}:${cursorDateKey}`);
-        }
-        if (offset === dayCount - 1) break;
-        const nextDateKey = shiftDateKeyByDays(cursorDateKey, 1);
-        if (!nextDateKey) break;
-        cursorDateKey = nextDateKey;
-      }
-      eventDateKeysByProcessGroupKey.set(row.processGroupKey, current);
-    };
-
-    const perProcessGroups = new Map<string, AtTrainingBucketProcessDraft>();
     const includedWorkerIds = new Set<number>();
-    includedRows.forEach((row) => {
-      const sourceGroupKey = toAtTrainingSourceGroupKey({
-        assignmentPlanId: row.assignmentPlanId,
-        styleProcessId: row.styleProcessId,
-      });
-      const processGroupKey = `${row.styleProcessId}::${sourceGroupKey}`;
-      addEventDateKeysForRow({ ...row, processGroupKey });
-      const current = perProcessGroups.get(processGroupKey) || {
-        styleId: row.styleId,
-        styleProcessId: row.styleProcessId,
-        assignmentPlanId: row.assignmentPlanId,
-        sourceGroupKey,
-        quantity: 0,
-        eventCount: 0,
-      };
-      current.quantity += row.quantity;
-      perProcessGroups.set(processGroupKey, current);
-      includedWorkerIds.add(row.workerId);
-    });
-    perProcessGroups.forEach((group, processGroupKey) => {
-      const eventCount = eventDateKeysByProcessGroupKey.get(processGroupKey)?.size ?? 0;
-      group.eventCount = Math.max(1, eventCount);
-    });
-
-    const laborInputSeconds =
-      includedWorkerIds.size > 0
-        ? Array.from(includedWorkerIds.values()).reduce(
-            (sum, workerId) =>
-              sum + Math.max(0, workerLaborById.get(workerId)?.seconds ?? 0),
-            0
-          )
-        : 0;
-    if (!Number.isFinite(laborInputSeconds) || laborInputSeconds <= 0) {
-      diagnostics.skippedNoLaborInputWorkLogCount += 1;
-      return draftRows;
-    }
-
-    const processRows = Array.from(perProcessGroups.values()).filter(
-      (item) =>
-        item.styleId > 0 &&
-        item.styleProcessId > 0 &&
-        typeof item.sourceGroupKey === "string" &&
-        item.sourceGroupKey.trim() !== "" &&
-        Number.isFinite(item.quantity) &&
-        item.quantity > 0 &&
-        Number.isFinite(item.eventCount) &&
-        item.eventCount > 0
-    );
-    if (processRows.length === 0) {
-      diagnostics.skippedNoUsableRowsWorkLogCount += 1;
-      return draftRows;
-    }
-
-    let actualLaborInputSeconds = 0;
-    let fallbackLaborInputSeconds = 0;
-    let actualAttendanceWorkerDayCount = 0;
-    let fallbackAttendanceWorkerDayCount = 0;
+    includedRows.forEach((row) => includedWorkerIds.add(row.workerId));
+    let createdWorkerDraftCount = 0;
     includedWorkerIds.forEach((workerId) => {
+      const workerRows = includedRows.filter((row) => row.workerId === workerId);
       const workerLabor = workerLaborById.get(workerId);
-      if (!workerLabor) return;
-      actualLaborInputSeconds += workerLabor.actualSeconds;
-      fallbackLaborInputSeconds += workerLabor.fallbackSeconds;
-      actualAttendanceWorkerDayCount += workerLabor.actualWorkerDayCount;
-      fallbackAttendanceWorkerDayCount += workerLabor.fallbackWorkerDayCount;
+      if (!workerLabor || workerLabor.seconds <= 0 || workerRows.length === 0) return;
+
+      const perProcessGroups = new Map<string, AtTrainingBucketProcessDraft>();
+      const eventDateKeysByProcessGroupKey = new Map<string, Set<string>>();
+      workerRows.forEach((row) => {
+        const sourceGroupKey = toAtTrainingSourceGroupKey({
+          assignmentPlanId: row.assignmentPlanId,
+          styleProcessId: row.styleProcessId,
+        });
+        const processGroupKey = `${row.styleProcessId}::${sourceGroupKey}`;
+        const eventDateKeys =
+          eventDateKeysByProcessGroupKey.get(processGroupKey) ?? new Set<string>();
+        const dayCount = countDateRangeDaysInclusive(
+          row.effectiveCoverageStartDate,
+          row.effectiveCoverageEndDate
+        );
+        let cursorDateKey = row.effectiveCoverageStartDate;
+        for (let offset = 0; offset < dayCount; offset += 1) {
+          const workedDay = resolveWorkerSecondsForDate(cursorDateKey, workerId);
+          if (workedDay.seconds > 0) eventDateKeys.add(`${workerId}:${cursorDateKey}`);
+          if (offset === dayCount - 1) break;
+          const nextDateKey = shiftDateKeyByDays(cursorDateKey, 1);
+          if (!nextDateKey) break;
+          cursorDateKey = nextDateKey;
+        }
+        eventDateKeysByProcessGroupKey.set(processGroupKey, eventDateKeys);
+        const current = perProcessGroups.get(processGroupKey) || {
+          styleId: row.styleId,
+          styleProcessId: row.styleProcessId,
+          assignmentPlanId: row.assignmentPlanId,
+          sourceGroupKey,
+          quantity: 0,
+          eventCount: 0,
+        };
+        current.quantity += row.quantity;
+        current.eventCount = Math.max(eventDateKeys.size, 1);
+        perProcessGroups.set(processGroupKey, current);
+      });
+      const processRows = Array.from(perProcessGroups.values()).filter(
+        (item) => item.quantity > 0 && item.eventCount > 0
+      );
+      if (processRows.length === 0) return;
+
+      diagnostics.actualLaborInputSeconds += workerLabor.actualSeconds;
+      diagnostics.fallbackLaborInputSeconds += workerLabor.fallbackSeconds;
+      diagnostics.actualAttendanceWorkerDayCount += workerLabor.actualWorkerDayCount;
+      diagnostics.fallbackAttendanceWorkerDayCount += workerLabor.fallbackWorkerDayCount;
       if (workerLabor.fallbackWorkerDayCount > 0) {
         if (workerLabor.actualWorkerDayCount > 0) {
           diagnostics.partialFallbackWorkerWorkLogCount += 1;
@@ -3775,33 +3732,37 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
           diagnostics.fullFallbackWorkerWorkLogCount += 1;
         }
       }
+      const attendanceCoverage = Math.min(
+        1,
+        Math.max(0, workerLabor.actualSeconds / workerLabor.seconds)
+      );
+      draftRows.push({
+        sourceWorkLogId: workLogId,
+        workerId,
+        monthKey,
+        workDate: normalizedCoverageEndDate,
+        factoryId: resolvedFactoryId,
+        laborInputSeconds: Math.max(1, Math.round(workerLabor.seconds)),
+        attendanceCoverage,
+        processRows,
+      });
+      diagnostics.includedWorkRecordCount += workerRows.length;
+      createdWorkerDraftCount += 1;
     });
-    diagnostics.actualLaborInputSeconds += actualLaborInputSeconds;
-    diagnostics.fallbackLaborInputSeconds += fallbackLaborInputSeconds;
-    diagnostics.actualAttendanceWorkerDayCount += actualAttendanceWorkerDayCount;
-    diagnostics.fallbackAttendanceWorkerDayCount += fallbackAttendanceWorkerDayCount;
-    if (fallbackAttendanceWorkerDayCount > 0) {
+    if (createdWorkerDraftCount === 0) {
+      diagnostics.skippedNoLaborInputWorkLogCount += 1;
+      return draftRows;
+    }
+    if (Array.from(includedWorkerIds).some(
+      (workerId) => (workerLaborById.get(workerId)?.fallbackWorkerDayCount ?? 0) > 0
+    )) {
       diagnostics.fallbackAppliedWorkLogCount += 1;
     }
-    diagnostics.includedWorkRecordCount += includedRows.length;
-    const attendanceCoverage =
-      laborInputSeconds > 0
-        ? Math.min(1, Math.max(0, actualLaborInputSeconds / laborInputSeconds))
-        : null;
-    draftRows.push({
-      sourceWorkLogId: workLogId,
-      monthKey,
-      workDate: normalizedCoverageEndDate,
-      factoryId: resolvedFactoryId,
-      laborInputSeconds: Math.max(1, Math.round(laborInputSeconds)),
-      attendanceCoverage,
-      processRows,
-    });
+    diagnostics.includedWorkLogCount += 1;
     previousPeriodEndDateByFactory.set(periodTrackerKey, normalizedCoverageEndDate);
     return draftRows;
   }, [] as AtTrainingBucketDraft[]);
   diagnostics.draftCount = drafts.length;
-  diagnostics.includedWorkLogCount = drafts.length;
   diagnostics.excludedWorkLogCount = Math.max(
     0,
     diagnostics.sourceWorkLogCount - diagnostics.includedWorkLogCount
@@ -3835,6 +3796,7 @@ const replaceAtTrainingBucketsForMonth = async ({
         "orgId",
         "monthKey",
         "sourceWorkLogId",
+        "workerId",
         "workDate",
         "factoryId",
         "laborInputSeconds",
@@ -3847,6 +3809,7 @@ const replaceAtTrainingBucketsForMonth = async ({
         ${orgId},
         ${draft.monthKey},
         ${draft.sourceWorkLogId},
+        ${draft.workerId},
         ${draft.workDate},
         ${draft.factoryId},
         ${draft.laborInputSeconds},

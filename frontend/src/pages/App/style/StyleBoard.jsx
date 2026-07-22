@@ -75,7 +75,7 @@ const AT_RELIABILITY_CHIP_SX = {
   height: 18,
   '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem', lineHeight: 1.1, fontWeight: 400 },
 };
-const STYLE_BOARD_AT_SYNC_MARKER = 'style-board-at-sync-2026-06-27-3';
+const STYLE_BOARD_AT_SYNC_MARKER = 'style-board-at-sync-2026-07-22-4';
 const ST_AT_GAP_PALETTE = {
   [TIME_DIVERGENCE_SEVERITY.NORMAL]: { bg: '#DCEAF8', text: '#245A95' },
   [TIME_DIVERGENCE_SEVERITY.REVIEW]: { bg: '#F7DCC8', text: '#AC6424' },
