@@ -19,11 +19,9 @@
 - 과거 월의 WorkLog/출퇴근이 수정된 경우 전체 재생성 대신 변경된 월의 AT bucket만 다시 만드는 증분 갱신이 필요하다. 현재 일반 갱신은 대상월과 누락 bucket만 재생성하므로 과거 월 수정은 `AT 초기화` 후 재학습해야 정확히 반영된다.
 - 같은 작업자의 같은 유효 근무일이 여러 WorkLog에 겹치면 노동시간을 어느 WorkLog에 귀속할 근거가 없으므로 관련 `WorkLog × worker` bucket을 모두 fail-closed한다. `ambiguousOverlappingWorkerDayCount`와 샘플로 원인을 노출하며 첫 WorkLog에 임의 귀속하지 않는다.
 - 배포 후 `AtTrainingBucket.workerId` migration 적용과 worker-scoped 재생성 결과를 운영 DB에서 확인해야 한다.
-- AJ1979처럼 실제 WorkRecord가 없는 스타일에 남는 AT를 막기 위해, 재학습 결과에 포함되지 않은 `StyleProcess.atParams`를 동기화 때 자동 제거하고 배포 migration에서 기존 bucket/AT/레거시 JSON AT를 한 번 초기화한다. 배포 후 운영 DB와 화면에서 유령 AT가 사라지고 갱신 버튼이 활성화되는지 확인해야 한다.
 - AT 초기화 버튼을 누른 뒤에는 관계형 `StyleProcess.atParams`, `AtTrainingBucket/AtTrainingBucketProcess`, 레거시 `Style.processes` JSON 안의 `atParams`/`at`가 모두 비워졌는지 확인해야 한다.
 - 출퇴근 대체 비율이 높은 공정을 운영자가 화면에서 바로 구분하는 UI는 아직 없다. `/at-sync/run-now` diagnostics 또는 신뢰도 정보를 사용자 친화적으로 노출하는 작업이 필요하다.
-- 작업 기록 상세 화면 검색에서 AJ1979가 DB에는 있는데 검색 결과에 안 보이는 증상이 있었다. AT 학습 문제와 별개로 WorkLog 상세 검색/표시 로직을 따로 점검해야 한다.
-- orgId=1의 WorkLog/AssignmentPlan이 orgId=2 스타일을 참조하는 구조가 운영 DB에서 보인다. 의도된 ownerOrg/buyerOrg 관계인지, 중복/미러 스타일 때문에 생긴 것인지 별도 감사가 필요하다.
+- 운영 DB 확인 결과 AJ1979는 WorkLog 23에 정상 FK로 연결된 작업기록 22행이 있어 AT가 재생성되는 것이 맞다. 작업기록 응답의 평면 `styleName`이 재정규화 중 지워지던 문제를 수정했으므로, 배포 후 상세 검색에서 `1979`로 22행이 조회되는지 확인해야 한다.
 - 누락 출퇴근을 사후 입력하면 8시간 대체 대신 실측값을 반영하도록 AT 초기화/갱신을 다시 돌려야 한다.
 
 이 문서는 "지금 남은 일"만 적는다.

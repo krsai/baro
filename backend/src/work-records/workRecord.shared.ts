@@ -9,6 +9,10 @@ export const resolveWorkRecordStyleCode = (record: any) =>
 export const resolveWorkRecordStyleName = (record: any) =>
   resolveOptionalString(record?.style?.name, null);
 
+export const resolveWorkRecordResponseStyleName = (record: any) =>
+  resolveWorkRecordStyleName(record) ??
+  resolveOptionalString(record?.styleName, null);
+
 export const resolveWorkRecordProcessCode = (record: any) =>
   resolveOptionalString(
     record?.styleProcess?.processCode,

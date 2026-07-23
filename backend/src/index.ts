@@ -79,6 +79,7 @@ import {
 import {
   resolveWorkRecordProcessCode,
   resolveWorkRecordProcessName,
+  resolveWorkRecordResponseStyleName,
   resolveWorkRecordStyleCode,
   resolveWorkRecordStyleName,
   resolveWorkRecordStyleRefId,
@@ -9658,7 +9659,7 @@ const loadWorkRecordResponseDisplayContext = async ({
       customer: resolveOptionalString((plan as any)?.buyerOrg?.name, null),
       label: resolveOptionalString((plan as any)?.style?.name, null),
       styleId: toPositiveIntOrNull(styleMeta?.styleId),
-      styleCode: resolveOptionalString(styleMeta?.styleId, null),
+      styleCode: resolveOptionalString(styleMeta?.styleCode, null),
       styleName: resolveOptionalString(styleMeta?.styleName, null),
     });
   });
@@ -9738,7 +9739,7 @@ const toWorkRecordResponse = (record: any) => {
     styleRefId: resolveWorkRecordStyleRefId(hydrated),
     styleId: resolveWorkRecordStyleRefId(hydrated),
     styleCode: resolveWorkRecordStyleCode(hydrated) ?? "",
-    styleName: resolveWorkRecordStyleName(hydrated) ?? "",
+    styleName: resolveWorkRecordResponseStyleName(hydrated) ?? "",
     styleProcessId: toPositiveIntOrNull(
       hydrated?.styleProcess?.id ?? hydrated?.styleProcessId
     ),
