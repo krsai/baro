@@ -57,6 +57,7 @@ const AccessPolicyBoard = lazyImportWithRetry(() => import('./pages/App/system/A
 const OnboardingBoard = lazyImportWithRetry(() => import('./pages/App/system/OnboardingBoard'));
 const Customer = lazyImportWithRetry(() => import('./pages/App/Customer'));
 const CustomerDetail = lazyImportWithRetry(() => import('./pages/App/customer/CustomerDetail'));
+const CustomerPricingBoard = lazyImportWithRetry(() => import('./pages/App/customer/CustomerPricingBoard'));
 const Style = lazyImportWithRetry(() => import('./pages/App/Style'));
 const StyleBoard = lazyImportWithRetry(() => import('./pages/App/style/StyleBoard'));
 const StyleDetail = lazyImportWithRetry(() => import('./pages/App/style/StyleDetail'));
@@ -274,6 +275,10 @@ const router = createBrowserRouter([
           {
             path: 'customer/:customerId',
             element: <CustomerDetail />,
+          },
+          {
+            path: 'customer-pricing',
+            element: <CustomerPricingBoard />,
           },
           {
             path: 'order',

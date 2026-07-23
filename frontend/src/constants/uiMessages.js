@@ -356,6 +356,11 @@ export const UI_MESSAGES = {
       en: '{count} completion confirmed',
       vi: '{count} xac nhan hoan thanh',
     },
+    customerPricing: {
+      ko: '단가 관리',
+      en: 'Price Management',
+      vi: 'Quan ly don gia',
+    },
     readyCountCompact: {
       ko: '확정 대기 {count}건',
       en: '{count} awaiting completion',

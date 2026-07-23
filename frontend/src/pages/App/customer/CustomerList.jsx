@@ -108,13 +108,21 @@ const CustomerList = () => {
   }, [customers, languageCode, searchTerm]);
 
   const openCustomerDetail = useCallback(
-    (customer, options = {}) => {
-      const query = options.tab === 'pricing' ? '?tab=pricing' : '';
-      navigateToPath(`/customer/${customer.id}${query}`, {
+    (customer) => {
+      navigateToPath(`/customer/${customer.id}`, {
         label: resolveCustomerWorkspaceTabLabel(languageCode, customer),
       });
     },
     [languageCode, navigateToPath]
+  );
+
+  const openCustomerPricing = useCallback(
+    (customer) => {
+      navigateToPath(`/customer-pricing?customerId=${customer.id}`, {
+        label: customerText.openPricing,
+      });
+    },
+    [customerText.openPricing, navigateToPath]
   );
 
   const handleAdd = useCallback(() => {
@@ -205,7 +213,7 @@ const CustomerList = () => {
                         <Button
                           size="small"
                           variant="contained"
-                          onClick={() => openCustomerDetail(customer, { tab: 'pricing' })}
+                          onClick={() => openCustomerPricing(customer)}
                         >
                           {customerText.openPricing}
                         </Button>

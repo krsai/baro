@@ -46,6 +46,7 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CalculateIcon from '@mui/icons-material/Calculate';
+import PriceChangeIcon from '@mui/icons-material/PriceChange';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -356,7 +357,8 @@ const MainLayout = () => {
     }
     if (
       currentPath.startsWith('/production-analysis') ||
-      currentPath.startsWith('/revenue-analysis')
+      currentPath.startsWith('/revenue-analysis') ||
+      currentPath.startsWith('/customer-pricing')
     ) {
       setExpandedMenuGroup(MENU_GROUP_KEYS.OPERATIONS);
     }
@@ -530,6 +532,11 @@ const MainLayout = () => {
         menuGroupKey: MENU_GROUP_KEYS.OPERATIONS,
         isOpen: operationsOpen,
         children: [
+          {
+            label: getUiMessage('menu.customerPricing', '단가 관리', languageCode),
+            icon: <PriceChangeIcon />,
+            path: '/customer-pricing',
+          },
           {
             label: getUiMessage('menu.productionAnalysis', '생산 분석', languageCode),
             icon: <TrendingUpIcon />,
