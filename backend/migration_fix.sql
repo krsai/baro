@@ -87,6 +87,189 @@ BEGIN
   END IF;
 END $$;
 
+-- Step 0q: versioned quantity bucket sets and immutable assignment ST snapshots.
+CREATE TABLE IF NOT EXISTS "QuantityBucketSet" (
+  "id" SERIAL PRIMARY KEY,
+  "orgId" INTEGER NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+  "name" TEXT NOT NULL,
+  "currentVersionId" INTEGER,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdBy" TEXT NOT NULL DEFAULT 'system@baro.local',
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "QuantityBucketSet_orgId_name_key"
+  ON "QuantityBucketSet"("orgId", "name");
+CREATE UNIQUE INDEX IF NOT EXISTS "QuantityBucketSet_currentVersionId_key"
+  ON "QuantityBucketSet"("currentVersionId");
+CREATE INDEX IF NOT EXISTS "QuantityBucketSet_orgId_idx"
+  ON "QuantityBucketSet"("orgId");
+
+CREATE TABLE IF NOT EXISTS "QuantityBucketSetVersion" (
+  "id" SERIAL PRIMARY KEY,
+  "orgId" INTEGER NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+  "quantityBucketSetId" INTEGER NOT NULL REFERENCES "QuantityBucketSet"("id") ON DELETE CASCADE,
+  "versionNumber" INTEGER NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdBy" TEXT NOT NULL DEFAULT 'system@baro.local'
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "QuantityBucketSetVersion_set_version_key"
+  ON "QuantityBucketSetVersion"("quantityBucketSetId", "versionNumber");
+CREATE INDEX IF NOT EXISTS "QuantityBucketSetVersion_orgId_idx"
+  ON "QuantityBucketSetVersion"("orgId");
+CREATE INDEX IF NOT EXISTS "QuantityBucketSetVersion_setId_idx"
+  ON "QuantityBucketSetVersion"("quantityBucketSetId");
+
+CREATE TABLE IF NOT EXISTS "QuantityBucketEntry" (
+  "id" SERIAL PRIMARY KEY,
+  "orgId" INTEGER NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+  "quantityBucketSetVersionId" INTEGER NOT NULL REFERENCES "QuantityBucketSetVersion"("id") ON DELETE CASCADE,
+  "bucketQuantity" INTEGER NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "QuantityBucketEntry_bucketQuantity_positive" CHECK ("bucketQuantity" > 0)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "QuantityBucketEntry_version_quantity_key"
+  ON "QuantityBucketEntry"("quantityBucketSetVersionId", "bucketQuantity");
+CREATE INDEX IF NOT EXISTS "QuantityBucketEntry_orgId_idx"
+  ON "QuantityBucketEntry"("orgId");
+CREATE INDEX IF NOT EXISTS "QuantityBucketEntry_versionId_idx"
+  ON "QuantityBucketEntry"("quantityBucketSetVersionId");
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'QuantityBucketSet_currentVersionId_fkey'
+  ) THEN
+    ALTER TABLE "QuantityBucketSet"
+      ADD CONSTRAINT "QuantityBucketSet_currentVersionId_fkey"
+      FOREIGN KEY ("currentVersionId") REFERENCES "QuantityBucketSetVersion"("id")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+ALTER TABLE "OrgRelationship"
+  ADD COLUMN IF NOT EXISTS "salesBucketSetVersionId" INTEGER;
+ALTER TABLE "Style"
+  ADD COLUMN IF NOT EXISTS "timeBucketSetVersionId" INTEGER,
+  ADD COLUMN IF NOT EXISTS "timeBucketSource" TEXT NOT NULL DEFAULT 'CUSTOMER_DEFAULT';
+ALTER TABLE "AssignmentPlan"
+  ADD COLUMN IF NOT EXISTS "assignmentStSnapshot" JSONB,
+  ADD COLUMN IF NOT EXISTS "ctReviewRequired" BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS "ctReviewedAt" TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS "ctReviewedByEmployeeId" INTEGER;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'OrgRelationship_salesBucketSetVersionId_fkey'
+  ) THEN
+    ALTER TABLE "OrgRelationship"
+      ADD CONSTRAINT "OrgRelationship_salesBucketSetVersionId_fkey"
+      FOREIGN KEY ("salesBucketSetVersionId") REFERENCES "QuantityBucketSetVersion"("id")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'Style_timeBucketSetVersionId_fkey'
+  ) THEN
+    ALTER TABLE "Style"
+      ADD CONSTRAINT "Style_timeBucketSetVersionId_fkey"
+      FOREIGN KEY ("timeBucketSetVersionId") REFERENCES "QuantityBucketSetVersion"("id")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'AssignmentPlan_ctReviewedByEmployeeId_fkey'
+  ) THEN
+    ALTER TABLE "AssignmentPlan"
+      ADD CONSTRAINT "AssignmentPlan_ctReviewedByEmployeeId_fkey"
+      FOREIGN KEY ("ctReviewedByEmployeeId") REFERENCES "Employee"("id")
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS "OrgRelationship_salesBucketSetVersionId_idx"
+  ON "OrgRelationship"("salesBucketSetVersionId");
+CREATE INDEX IF NOT EXISTS "Style_timeBucketSetVersionId_idx"
+  ON "Style"("timeBucketSetVersionId");
+CREATE INDEX IF NOT EXISTS "AssignmentPlan_ctReviewedByEmployeeId_idx"
+  ON "AssignmentPlan"("ctReviewedByEmployeeId");
+
+-- Seed one immutable standard version per style-owning organization.
+INSERT INTO "QuantityBucketSet" ("orgId", "name", "createdBy", "updatedAt")
+SELECT DISTINCT s."orgId", 'DEFAULT_TIME_BUCKETS', 'MIGRATION', CURRENT_TIMESTAMP
+FROM "Style" s
+ON CONFLICT ("orgId", "name") DO NOTHING;
+
+INSERT INTO "QuantityBucketSetVersion"
+  ("orgId", "quantityBucketSetId", "versionNumber", "createdBy")
+SELECT qbs."orgId", qbs."id", 1, 'MIGRATION'
+FROM "QuantityBucketSet" qbs
+WHERE qbs."name" = 'DEFAULT_TIME_BUCKETS'
+ON CONFLICT ("quantityBucketSetId", "versionNumber") DO NOTHING;
+
+INSERT INTO "QuantityBucketEntry"
+  ("orgId", "quantityBucketSetVersionId", "bucketQuantity")
+SELECT qbsv."orgId", qbsv."id", bucket_quantity
+FROM "QuantityBucketSetVersion" qbsv
+JOIN "QuantityBucketSet" qbs ON qbs."id" = qbsv."quantityBucketSetId"
+CROSS JOIN unnest(ARRAY[1,3,5,10,30,50,100,300,500,1000,3000,5000,10000]) bucket_quantity
+WHERE qbs."name" = 'DEFAULT_TIME_BUCKETS' AND qbsv."versionNumber" = 1
+ON CONFLICT ("quantityBucketSetVersionId", "bucketQuantity") DO NOTHING;
+
+UPDATE "QuantityBucketSet" qbs
+SET "currentVersionId" = qbsv."id", "updatedAt" = CURRENT_TIMESTAMP
+FROM "QuantityBucketSetVersion" qbsv
+WHERE qbsv."quantityBucketSetId" = qbs."id"
+  AND qbsv."versionNumber" = 1
+  AND qbs."name" = 'DEFAULT_TIME_BUCKETS'
+  AND qbs."currentVersionId" IS NULL;
+
+UPDATE "Style" s
+SET "timeBucketSetVersionId" = qbs."currentVersionId"
+FROM "QuantityBucketSet" qbs
+WHERE qbs."orgId" = s."orgId"
+  AND qbs."name" = 'DEFAULT_TIME_BUCKETS'
+  AND s."timeBucketSetVersionId" IS NULL;
+
+-- Seed a separate customer sales set. It may later diverge without changing style time buckets.
+INSERT INTO "QuantityBucketSet" ("orgId", "name", "createdBy", "updatedAt")
+SELECT rel."manufacturerOrgId", 'CUSTOMER_PRICE_BUCKETS_' || rel."id", 'MIGRATION', CURRENT_TIMESTAMP
+FROM "OrgRelationship" rel
+ON CONFLICT ("orgId", "name") DO NOTHING;
+
+INSERT INTO "QuantityBucketSetVersion"
+  ("orgId", "quantityBucketSetId", "versionNumber", "createdBy")
+SELECT qbs."orgId", qbs."id", 1, 'MIGRATION'
+FROM "QuantityBucketSet" qbs
+WHERE qbs."name" LIKE 'CUSTOMER_PRICE_BUCKETS_%'
+ON CONFLICT ("quantityBucketSetId", "versionNumber") DO NOTHING;
+
+INSERT INTO "QuantityBucketEntry"
+  ("orgId", "quantityBucketSetVersionId", "bucketQuantity")
+SELECT qbsv."orgId", qbsv."id", bucket_quantity
+FROM "QuantityBucketSetVersion" qbsv
+JOIN "QuantityBucketSet" qbs ON qbs."id" = qbsv."quantityBucketSetId"
+CROSS JOIN unnest(ARRAY[1,3,5,10,30,50,100,300,500,1000,3000,5000,10000]) bucket_quantity
+WHERE qbs."name" LIKE 'CUSTOMER_PRICE_BUCKETS_%' AND qbsv."versionNumber" = 1
+ON CONFLICT ("quantityBucketSetVersionId", "bucketQuantity") DO NOTHING;
+
+UPDATE "QuantityBucketSet" qbs
+SET "currentVersionId" = qbsv."id", "updatedAt" = CURRENT_TIMESTAMP
+FROM "QuantityBucketSetVersion" qbsv
+WHERE qbsv."quantityBucketSetId" = qbs."id"
+  AND qbsv."versionNumber" = 1
+  AND qbs."name" LIKE 'CUSTOMER_PRICE_BUCKETS_%'
+  AND qbs."currentVersionId" IS NULL;
+
+UPDATE "OrgRelationship" rel
+SET "salesBucketSetVersionId" = qbs."currentVersionId"
+FROM "QuantityBucketSet" qbs
+WHERE qbs."orgId" = rel."manufacturerOrgId"
+  AND qbs."name" = 'CUSTOMER_PRICE_BUCKETS_' || rel."id"
+  AND rel."salesBucketSetVersionId" IS NULL;
+
 CREATE UNIQUE INDEX IF NOT EXISTS "Employee_orgId_email_key"
   ON "Employee"("orgId", "email");
 CREATE INDEX IF NOT EXISTS "Employee_email_idx" ON "Employee"("email");

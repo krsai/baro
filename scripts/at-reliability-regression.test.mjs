@@ -41,6 +41,7 @@ const {
   resolveStBucketQuantity,
   resolveStyleAtReliability,
 } = loadProcessTimeModule();
+const DEFAULT_BUCKETS = [1, 3, 5, 10, 30, 50, 100, 300, 500, 1000, 3000, 5000, 10000];
 
 const createProcess = ({
   at,
@@ -178,16 +179,16 @@ test('provisional AT only displays in the observed quantity bucket', () => {
     maxQuantity: 675,
   });
 
-  const observedCell = resolveProcessAtCellState(provisional, 500);
-  const outsideCell = resolveProcessAtCellState(provisional, 1000);
+  const observedCell = resolveProcessAtCellState(provisional, 500, DEFAULT_BUCKETS);
+  const outsideCell = resolveProcessAtCellState(provisional, 1000, DEFAULT_BUCKETS);
 
-  assert.equal(resolveStBucketQuantity(675), 500);
+  assert.equal(resolveStBucketQuantity(675, DEFAULT_BUCKETS), 500);
   assert.equal(observedCell.tone, 'provisional');
   assert.equal(observedCell.shouldDisplayValue, true);
-  assert.equal(resolveProcessAtDisplayPerPieceSeconds(provisional, 500), 65);
+  assert.equal(resolveProcessAtDisplayPerPieceSeconds(provisional, 500, DEFAULT_BUCKETS), 65);
   assert.equal(outsideCell.tone, 'provisional-extrapolated');
   assert.equal(outsideCell.shouldDisplayValue, false);
-  assert.equal(resolveProcessAtDisplayPerPieceSeconds(provisional, 1000), null);
+  assert.equal(resolveProcessAtDisplayPerPieceSeconds(provisional, 1000, DEFAULT_BUCKETS), null);
   assert.equal(resolveProcessAtPerPieceSeconds(provisional, 1000), 65);
 });
 
@@ -203,11 +204,11 @@ test('fitted low-confidence AT remains displayable across buckets', () => {
     maxQuantity: 675,
   });
 
-  const onePieceAt = resolveProcessAtDisplayPerPieceSeconds(fitted, 1);
-  const thousandPieceAt = resolveProcessAtDisplayPerPieceSeconds(fitted, 1000);
+  const onePieceAt = resolveProcessAtDisplayPerPieceSeconds(fitted, 1, DEFAULT_BUCKETS);
+  const thousandPieceAt = resolveProcessAtDisplayPerPieceSeconds(fitted, 1000, DEFAULT_BUCKETS);
 
-  assert.equal(resolveProcessAtCellState(fitted, 1).shouldDisplayValue, true);
-  assert.equal(resolveProcessAtCellState(fitted, 1000).shouldDisplayValue, true);
+  assert.equal(resolveProcessAtCellState(fitted, 1, DEFAULT_BUCKETS).shouldDisplayValue, true);
+  assert.equal(resolveProcessAtCellState(fitted, 1000, DEFAULT_BUCKETS).shouldDisplayValue, true);
   assert.ok(onePieceAt > thousandPieceAt);
 });
 
@@ -220,8 +221,8 @@ test('actual q stays unbucketed for AT math even inside the same display bucket'
     maxQuantity: 675,
   });
 
-  assert.equal(resolveStBucketQuantity(510), 500);
-  assert.equal(resolveStBucketQuantity(675), 500);
+  assert.equal(resolveStBucketQuantity(510, DEFAULT_BUCKETS), 500);
+  assert.equal(resolveStBucketQuantity(675, DEFAULT_BUCKETS), 500);
   assert.notEqual(
     resolveProcessAtPerPieceSeconds(fitted, 510),
     resolveProcessAtPerPieceSeconds(fitted, 675)
@@ -247,9 +248,20 @@ test('display total is unavailable when any process is missing at the rendered b
     maxQuantity: 675,
   });
 
-  assert.equal(calculateProcessDisplayAtTotalForOrderQuantity([provisional, fitted], 1000), null);
   assert.equal(
-    calculateProcessDisplayAtTotalForOrderQuantity([provisional, fitted], 500),
+    calculateProcessDisplayAtTotalForOrderQuantity(
+      [provisional, fitted],
+      1000,
+      DEFAULT_BUCKETS
+    ),
+    null
+  );
+  assert.equal(
+    calculateProcessDisplayAtTotalForOrderQuantity(
+      [provisional, fitted],
+      500,
+      DEFAULT_BUCKETS
+    ),
     resolveProcessAtPerPieceSeconds(provisional, 500) * 500 +
       resolveProcessAtPerPieceSeconds(fitted, 500) * 500
   );

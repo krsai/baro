@@ -27,7 +27,7 @@ import {
   updateStyle as updateStyleOnApi,
 } from '../../../utils/styleApi';
 import { todayDateKey } from '../../../utils/dateKey.mjs';
-import { normalizeProcesses } from '../../../utils/processTime';
+import { normalizeProcesses, ST_STANDARD_BUCKETS } from '../../../utils/processTime';
 
 const STYLE_DETAIL_MESSAGES = {
   ko: {
@@ -118,6 +118,7 @@ const createEmptyStyle = () => ({
   bom: [],
   bomNotes: '',
   revenueMemo: '',
+  timeBucketQuantities: [...ST_STANDARD_BUCKETS],
 });
 
 const createStyleId = () => `S-${Date.now().toString(36).slice(-6).toUpperCase()}`;
@@ -489,6 +490,7 @@ const StyleDetail = () => {
                   processes={styleFormData.processes}
                   onProcessesChange={handleProcessesChange}
                   optionsReloadKey={processMasterReloadKey}
+                  bucketQuantities={styleFormData.timeBucketQuantities}
                 />
               </Box>
             </RequestScopeBoundary>
@@ -500,6 +502,7 @@ const StyleDetail = () => {
                 <StyleTimeMatrix
                   processes={styleFormData.processes}
                   onProcessesChange={handleProcessesChange}
+                  bucketQuantities={styleFormData.timeBucketQuantities}
                 />
               </Box>
             </RequestScopeBoundary>

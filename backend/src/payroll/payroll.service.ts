@@ -574,6 +574,30 @@ export const savePayrollSnapshot = async ({
     throw createHttpError(409, "payroll month closed");
   }
   await assertQuantitySettlementReadyForPayroll(orgId, month);
+  const unreviewedCtPlans = await prisma.assignmentPlan.findMany({
+    where: {
+      orgId,
+      ctReviewRequired: true,
+      ctReviewedAt: null,
+      workRecords: {
+        some: {
+          workLog: {
+            displayDate: { startsWith: month },
+          },
+        },
+      },
+    },
+    select: { externalId: true },
+    take: 20,
+  });
+  if (unreviewedCtPlans.length > 0) {
+    throw createHttpError(
+      409,
+      `CT review required before payroll lock: ${unreviewedCtPlans
+        .map((plan) => plan.externalId)
+        .join(", ")}`
+    );
+  }
 
   const normalizedInputEmployees = ensureArray(employees).map(normalizePayrollSnapshotEmployee);
   const snapshotEmployees =

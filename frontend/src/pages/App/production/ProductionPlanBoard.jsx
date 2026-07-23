@@ -48,7 +48,6 @@ import {
   resolveProcessAtPerPieceSeconds,
   resolveProcessAtReliability,
   resolveProcessExactStPerPieceSeconds,
-  resolveStBucketQuantity,
 } from '../../../utils/processTime';
 import { ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT } from '../../../constants/timeThresholds';
 import {
@@ -1121,12 +1120,15 @@ const ProductionPlanBoard = () => {
     [selectedAssignment?.quantity]
   );
   const selectedStBucketQuantityLabel = useMemo(
-    () =>
-      formatStBucketQuantityLabel(
-        resolveStBucketQuantity(Math.max(1, toPositiveInt(selectedAssignment?.quantity ?? 1, 1))),
-        'ko-KR'
-      ),
-    [selectedAssignment?.quantity]
+    () => {
+      const bucketQuantity = Number(
+        selectedAssignment?.assignmentStSnapshot?.bucketQuantity
+      );
+      return Number.isInteger(bucketQuantity) && bucketQuantity > 0
+        ? formatStBucketQuantityLabel(bucketQuantity, 'ko-KR')
+        : '-';
+    },
+    [selectedAssignment?.assignmentStSnapshot?.bucketQuantity]
   );
   const selectedCtStatus = resolveAssignmentSnapshotState(selectedAssignment);
 

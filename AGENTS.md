@@ -105,6 +105,17 @@ AT(q) = a*q + b
 - **2026-07-22 독립 출처 가드:** AT 회귀가 `FITTED`로 승격되려면 서로 다른 실제 수량뿐 아니라 서로 다른 독립 배정 출처(`assignmentPlanId` 기반)가 2개 이상 필요하다. 같은 주문/배정이 60장+40장처럼 여러 달에 나뉘어 작업기록으로 들어온 경우는 수량이 달라도 하나의 출처에서 쪼개진 데이터이므로 곡선으로 학습하지 않고 `USED_PROVISIONAL`로 남긴다.
 AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 
+### 가변 수량 버킷 (2026-07-23)
+
+- 고객 판매단가용 기본 버킷은 `OrgRelationship.salesBucketSetVersionId`, 스타일 시간용 버킷은 `Style.timeBucketSetVersionId`로 각각 명시적으로 연결한다. 두 관계는 같은 버전을 가리킬 수 있지만 숨은 상속이나 조회 fallback으로 서로를 대신하지 않는다.
+- 버킷은 `QuantityBucketSet -> QuantityBucketSetVersion -> QuantityBucketEntry` 관계형 구조로 저장한다. 기존 버전의 entry를 수정하지 않고 변경마다 새 버전을 만든다.
+- `Style.timeBucketSource`는 `CUSTOMER_DEFAULT` 또는 `STYLE_OVERRIDE`다. 고객 기본 버킷을 바꿀 때는 `CUSTOMER_DEFAULT` 스타일만 새 버전으로 이동하며 예외 스타일은 그대로 둔다.
+- 새 버킷의 ST는 모든 공정에 `StyleProcessStandard` 실제 행을 만들고 `bucketStSeconds=ptSeconds`, `setBy=PT_DERIVED`로 기록한다. PT가 없거나 0이면 전체 변경을 거부한다. 조회 시 PT나 인접 버킷을 대신 쓰지 않는다.
+- AT는 버킷별 저장값이 아니라 기존 곡선 `AT(q)=a*q+b`를 선택된 수량에 직접 평가한다.
+- 배정 생성/수량 변경 시 `AssignmentPlan.assignmentStSnapshot`에 버킷 버전, 버킷 수량, 공정별 `styleProcessId/stSeconds/stSource`를 동결한다. 이후 과거 배정의 잔여 ST와 실제 생산 ST는 현재 `StyleProcessStandard`를 다시 읽지 않고 이 스냅샷만 사용한다. 스냅샷이 없는 레거시 배정은 현재 값으로 재구성하지 않고 미계산 진단으로 드러낸다.
+- `PT_DERIVED` ST가 CT 생성 근거가 된 배정은 `ctReviewRequired=true`다. 관리자가 CT를 검토해 `ctReviewedAt`을 기록하기 전에는 해당 작업월의 급여 잠금을 거부한다.
+- `ST_STANDARD_BUCKETS`는 새 조직/고객에 최초 기본 버전을 만드는 템플릿으로만 허용한다. 운영 계산에서 전역 버킷 목록으로 사용하지 않는다.
+
 ---
 
 ## 데이터 구조 핵심

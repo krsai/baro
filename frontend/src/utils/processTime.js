@@ -96,10 +96,18 @@ const clampProcessSeconds = (value) => {
   return Math.max(0, Math.round(parsed));
 };
 
-export const resolveStBucketQuantity = (orderQuantity = 1) => {
+export const resolveStBucketQuantity = (
+  orderQuantity = 1,
+  bucketQuantities
+) => {
   const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-  let resolvedBucket = ST_STANDARD_BUCKETS[0];
-  ST_STANDARD_BUCKETS.forEach((bucket) => {
+  const quantities = [...new Set((Array.isArray(bucketQuantities) ? bucketQuantities : [])
+    .map((bucket) => toBucketQuantity(bucket, 0))
+    .filter((bucket) => bucket > 0))]
+    .sort((left, right) => left - right);
+  if (quantities.length === 0) return null;
+  let resolvedBucket = quantities[0];
+  quantities.forEach((bucket) => {
     if (resolvedOrderQuantity >= bucket) {
       resolvedBucket = bucket;
     }
@@ -162,8 +170,15 @@ const hasStructuredProcessComposition = (process) => {
   return locations.length > 0 || targetPairs.length > 0 || actionPairs.length > 0;
 };
 
-const findExactProcessStBucket = (stBuckets = [], orderQuantity = 1) => {
-  const resolvedOrderQuantity = resolveStBucketQuantity(orderQuantity);
+const findExactProcessStBucket = (
+  stBuckets = [],
+  orderQuantity = 1,
+  bucketQuantities = ST_STANDARD_BUCKETS
+) => {
+  const resolvedOrderQuantity = resolveStBucketQuantity(
+    orderQuantity,
+    bucketQuantities
+  );
   return (Array.isArray(stBuckets) ? stBuckets : []).find(
     (value) => toBucketQuantity(value?.bucketQuantity ?? value?.quantity, 0) === resolvedOrderQuantity
   ) || null;
@@ -310,7 +325,7 @@ const resolveAtParamsMeta = (process) => {
   };
 };
 
-const resolveAtObservedBucketRange = (atParams) => {
+const resolveAtObservedBucketRange = (atParams, bucketQuantities) => {
   if (!atParams || typeof atParams !== 'object') return null;
   const minQuantity = toOptionalNumber(atParams.minQuantity);
   const maxQuantity = toOptionalNumber(atParams.maxQuantity);
@@ -320,12 +335,12 @@ const resolveAtObservedBucketRange = (atParams) => {
   return {
     minQuantity: lowerQuantity,
     maxQuantity: upperQuantity,
-    minBucket: resolveStBucketQuantity(lowerQuantity),
-    maxBucket: resolveStBucketQuantity(upperQuantity),
+    minBucket: resolveStBucketQuantity(lowerQuantity, bucketQuantities),
+    maxBucket: resolveStBucketQuantity(upperQuantity, bucketQuantities),
   };
 };
 
-export const resolveProcessAtCellState = (process, quantity = 1) => {
+export const resolveProcessAtCellState = (process, quantity = 1, bucketQuantities) => {
   const atParams = resolveAtParamsMeta(process);
   if (!atParams) {
     return {
@@ -337,8 +352,8 @@ export const resolveProcessAtCellState = (process, quantity = 1) => {
     };
   }
 
-  const renderedBucket = resolveStBucketQuantity(quantity);
-  const observedBucketRange = resolveAtObservedBucketRange(atParams);
+  const renderedBucket = resolveStBucketQuantity(quantity, bucketQuantities);
+  const observedBucketRange = resolveAtObservedBucketRange(atParams, bucketQuantities);
   const isOutsideObservedBucketRange =
     observedBucketRange !== null &&
     (renderedBucket < observedBucketRange.minBucket ||
@@ -619,7 +634,10 @@ export const applyMonotonicStBucketEdit = (
   seconds
 ) => {
   const normalizedBuckets = normalizeProcessStBuckets(stBuckets);
-  const bucketQuantity = resolveStBucketQuantity(quantity);
+  const bucketQuantity = resolveStBucketQuantity(
+    quantity,
+    normalizedBuckets.map((bucket) => bucket.bucketQuantity)
+  );
   const bucketByQuantity = new Map(
     normalizedBuckets.map((bucket) => [bucket.bucketQuantity, bucket])
   );
@@ -725,15 +743,20 @@ export const resolveProcessAtPerPieceSeconds = (process, orderQuantity = 1) => {
   return totalAt / resolvedOrderQuantity;
 };
 
-export const resolveProcessAtDisplayPerPieceSeconds = (process, orderQuantity = 1) => {
-  const cellState = resolveProcessAtCellState(process, orderQuantity);
+export const resolveProcessAtDisplayPerPieceSeconds = (
+  process,
+  orderQuantity = 1,
+  bucketQuantities
+) => {
+  const cellState = resolveProcessAtCellState(process, orderQuantity, bucketQuantities);
   if (!cellState.shouldDisplayValue) return null;
   return resolveProcessAtPerPieceSeconds(process, orderQuantity);
 };
 
 export const calculateProcessDisplayAtTotalForOrderQuantity = (
   processes,
-  orderQuantity = 1
+  orderQuantity = 1,
+  bucketQuantities
 ) => {
   const normalizedProcesses = normalizeProcesses(processes);
   if (normalizedProcesses.length === 0) return null;
@@ -742,7 +765,8 @@ export const calculateProcessDisplayAtTotalForOrderQuantity = (
   for (const process of normalizedProcesses) {
     const atPerPiece = resolveProcessAtDisplayPerPieceSeconds(
       process,
-      resolvedOrderQuantity
+      resolvedOrderQuantity,
+      bucketQuantities
     );
     if (atPerPiece == null) return null;
     total += atPerPiece * resolvedOrderQuantity;
@@ -750,10 +774,19 @@ export const calculateProcessDisplayAtTotalForOrderQuantity = (
   return total;
 };
 
-export const hasCompleteDisplayableProcessAtTime = (processes, orderQuantity = 1) => {
+export const hasCompleteDisplayableProcessAtTime = (
+  processes,
+  orderQuantity = 1,
+  bucketQuantities
+) => {
   const normalizedProcesses = normalizeProcesses(processes);
   return normalizedProcesses.length > 0 && normalizedProcesses.every(
-    (process) => resolveProcessAtDisplayPerPieceSeconds(process, orderQuantity) != null
+    (process) =>
+      resolveProcessAtDisplayPerPieceSeconds(
+        process,
+        orderQuantity,
+        bucketQuantities
+      ) != null
   );
 };
 
@@ -809,16 +842,32 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
   });
 };
 
-export const resolveProcessExactStPerPieceSeconds = (process, orderQuantity = 1) => {
+export const resolveProcessExactStPerPieceSeconds = (
+  process,
+  orderQuantity = 1,
+  bucketQuantities = ST_STANDARD_BUCKETS
+) => {
   const normalized = normalizeProcess(process);
-  const exactStValue = findExactProcessStBucket(normalized?.stBuckets, orderQuantity);
+  const exactStValue = findExactProcessStBucket(
+    normalized?.stBuckets,
+    orderQuantity,
+    bucketQuantities
+  );
   if (exactStValue) return exactStValue.bucketStSeconds;
   return null;
 };
 
-export const resolveProcessStPerPieceSeconds = (process, orderQuantity = 1) => {
+export const resolveProcessStPerPieceSeconds = (
+  process,
+  orderQuantity = 1,
+  bucketQuantities = ST_STANDARD_BUCKETS
+) => {
   const normalized = normalizeProcess(process);
-  const exactSt = resolveProcessExactStPerPieceSeconds(normalized, orderQuantity);
+  const exactSt = resolveProcessExactStPerPieceSeconds(
+    normalized,
+    orderQuantity,
+    bucketQuantities
+  );
   if (exactSt !== null) return exactSt;
   return null;
 };

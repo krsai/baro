@@ -24,16 +24,11 @@ import {
   resolveProcessAtCellState,
   resolveProcessAtPerPieceSeconds,
   resolveProcessStPerPieceSeconds,
-  resolveStBucketQuantity,
 } from '../../../../utils/processTime';
 import {
   formatProcessNameWithQuantity,
   resolveLocalizedProcessName,
 } from '../../../../utils/processDisplay';
-
-// Legacy 2~/20~ buckets stay hidden if old data still exists.
-const HIDDEN_BUCKETS = new Set([2, 20]);
-const VISIBLE_BUCKETS = ST_STANDARD_BUCKETS.filter((q) => !HIDDEN_BUCKETS.has(q));
 
 const BORDER = '1px solid rgba(17,24,39,0.1)';
 const PROCESS_CELL_W = 240;
@@ -126,7 +121,7 @@ const parseStInput = (v) => {
 };
 
 const resolveStEntry = (process, quantity) => {
-  const q = resolveStBucketQuantity(quantity);
+  const q = Number(quantity);
   const buckets = Array.isArray(process?.stBuckets)
     ? process.stBuckets
     : Array.isArray(process?.stValues) ? process.stValues : [];
@@ -211,7 +206,7 @@ const resolveAtCellTitle = (cellState, languageCode) => {
 
 const upsertStBuckets = (process, quantity, seconds) => {
   const norm = normalizeProcess(process);
-  const q = resolveStBucketQuantity(quantity);
+  const q = Number(quantity);
   const adjustment = applyMonotonicStBucketEdit(norm?.stBuckets, q, seconds);
   const updateQuantities = Array.from(new Set([
     ...(Array.isArray(norm?.stBucketUpdateQuantities) ? norm.stBucketUpdateQuantities : []),
@@ -256,8 +251,23 @@ const PROCESS_GROUP_TONES = [
 
 // ── StyleTimeMatrix ─────────────────────────────────────────────────────────
 
-const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
+const StyleTimeMatrix = ({
+  processes = [],
+  onProcessesChange = null,
+  bucketQuantities = ST_STANDARD_BUCKETS,
+}) => {
   const { languageCode } = useLanguage();
+  const visibleBuckets = useMemo(
+    () => {
+      const normalized =
+        [...new Set((Array.isArray(bucketQuantities) ? bucketQuantities : [])
+        .map(Number)
+        .filter((quantity) => Number.isInteger(quantity) && quantity > 0))]
+          .sort((left, right) => left - right);
+      return normalized;
+    },
+    [bucketQuantities]
+  );
   const safeProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
   const [stDrafts, setStDrafts] = useState({});
   const [stRestoreSnapshot, setStRestoreSnapshot] = useState(null);
@@ -296,13 +306,13 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
 
   const hasApplicableAtBucket = useMemo(() =>
     safeProcesses.some((process) =>
-      VISIBLE_BUCKETS.some((quantity) => {
-        const st = resolveProcessStPerPieceSeconds(process, quantity);
+      visibleBuckets.some((quantity) => {
+        const st = resolveProcessStPerPieceSeconds(process, quantity, visibleBuckets);
         const at = resolveProcessAtPerPieceSeconds(process, quantity);
         return (
           Number.isFinite(st) &&
           Number.isFinite(at) &&
-          resolveProcessAtCellState(process, quantity).shouldDisplayValue
+          resolveProcessAtCellState(process, quantity, visibleBuckets).shouldDisplayValue
         );
       })
     ),
@@ -315,10 +325,10 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
     }
     const nextProcesses = safeProcesses.map((process) => {
       let nextProcess = process;
-      VISIBLE_BUCKETS.forEach((quantity) => {
-        const st = resolveProcessStPerPieceSeconds(process, quantity);
+      visibleBuckets.forEach((quantity) => {
+        const st = resolveProcessStPerPieceSeconds(process, quantity, visibleBuckets);
         const at = resolveProcessAtPerPieceSeconds(process, quantity);
-        const atState = resolveProcessAtCellState(process, quantity);
+        const atState = resolveProcessAtCellState(process, quantity, visibleBuckets);
         if (!Number.isFinite(st) || !Number.isFinite(at) || !atState.shouldDisplayValue) return;
         nextProcess = upsertStBuckets(nextProcess, quantity, roundTo((st + at) / 2, 4));
       });
@@ -338,24 +348,24 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
     onProcessesChange(restoredProcesses);
   }, [onProcessesChange, safeProcesses, stRestoreSnapshot]);
 
-  const colCount = 2 + VISIBLE_BUCKETS.length; // 공정명 + ST/AT라벨 + 수량열
+  const colCount = 2 + visibleBuckets.length; // 공정명 + ST/AT라벨 + 수량열
 
   const totalStByBucket = useMemo(() =>
-    VISIBLE_BUCKETS.map((q) =>
+    visibleBuckets.map((q) =>
       safeProcesses.reduce((sum, process) => {
-        const st = resolveProcessStPerPieceSeconds(process, q);
+        const st = resolveProcessStPerPieceSeconds(process, q, visibleBuckets);
         return sum + (st != null ? st : 0);
       }, 0)
     ),
   [safeProcesses]);
 
   const totalAtByBucket = useMemo(() =>
-    VISIBLE_BUCKETS.map((q) => {
+    visibleBuckets.map((q) => {
       const states = [];
       let displayCount = 0;
       const total = safeProcesses.reduce((sum, process) => {
         const at = resolveProcessAtPerPieceSeconds(process, q);
-        const state = resolveProcessAtCellState(process, q);
+        const state = resolveProcessAtCellState(process, q, visibleBuckets);
         states.push(state);
         if (at == null || !state.shouldDisplayValue) return sum;
         displayCount += 1;
@@ -425,7 +435,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
         <Table
           size="small"
           sx={{
-            minWidth: PROCESS_CELL_W + METRIC_CELL_W + VISIBLE_BUCKETS.length * (ST_CELL_W + 8),
+            minWidth: PROCESS_CELL_W + METRIC_CELL_W + visibleBuckets.length * (ST_CELL_W + 8),
             tableLayout: 'fixed',
             borderCollapse: 'separate',
             borderSpacing: 0,
@@ -465,7 +475,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                   borderBottom: '2px solid #B8C2CF',
                 }}
               />
-              {VISIBLE_BUCKETS.map((q) => (
+              {visibleBuckets.map((q) => (
                 <TableCell
                   key={q}
                   align="right"
@@ -509,7 +519,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
               </TableCell>
               {totalStByBucket.map((total, i) => (
                 <TableCell
-                  key={VISIBLE_BUCKETS[i]}
+                  key={visibleBuckets[i]}
                   align="right"
                   sx={{ py: 0.75, fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: total > 0 ? '#92400E' : 'text.disabled', pr: 1.5 }}
                 >
@@ -555,7 +565,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                 const hasValue = item.isComplete && item.total > 0;
                 return (
                   <TableCell
-                    key={VISIBLE_BUCKETS[i]}
+                    key={visibleBuckets[i]}
                     align="right"
                     sx={{
                       py: 0.75,
@@ -593,7 +603,9 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                 ) || '-';
                 const pt = Number.isFinite(Number(process?.pt)) ? Number(process.pt) : null;
 
-                const stValues = VISIBLE_BUCKETS.map((q) => resolveProcessStPerPieceSeconds(process, q));
+                const stValues = visibleBuckets.map((q) =>
+                  resolveProcessStPerPieceSeconds(process, q, visibleBuckets)
+                );
                 const validSt = stValues.filter((v) => v != null);
                 const minSt = validSt.length ? Math.min(...validSt) : null;
                 const maxSt = validSt.length ? Math.max(...validSt) : null;
@@ -673,9 +685,13 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                       </TableCell>
 
                       {/* ST 값 셀 */}
-                      {VISIBLE_BUCKETS.map((qty) => {
+                      {visibleBuckets.map((qty) => {
                         const draftK = dk(id, qty);
-                        const resolved = resolveProcessStPerPieceSeconds(process, qty);
+                        const resolved = resolveProcessStPerPieceSeconds(
+                          process,
+                          qty,
+                          visibleBuckets
+                        );
                         const value = Object.prototype.hasOwnProperty.call(stDrafts, draftK)
                           ? stDrafts[draftK]
                           : toEditText(resolved);
@@ -740,9 +756,13 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                       >
                         AT
                       </TableCell>
-                      {VISIBLE_BUCKETS.map((qty) => {
+                      {visibleBuckets.map((qty) => {
                         const atVal = resolveProcessAtPerPieceSeconds(process, qty);
-                        const atCellState = resolveProcessAtCellState(process, qty);
+                        const atCellState = resolveProcessAtCellState(
+                          process,
+                          qty,
+                          visibleBuckets
+                        );
                         const shouldDisplayAtVal =
                           atVal != null && atCellState.shouldDisplayValue;
                         const atCellTitle = resolveAtCellTitle(atCellState, languageCode);

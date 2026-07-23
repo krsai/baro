@@ -86,6 +86,8 @@ const TEXT = {
     duplicateBucket: '이미 있는 수량입니다.',
     keepOneBucket: '버킷은 최소 하나가 필요합니다.',
     inheritedHint: '현재 고객 기본 버킷을 사용합니다. 별도 설정을 선택하면 이 스타일만 변경할 수 있습니다.',
+    saveBuckets: '버킷 저장',
+    bucketSaved: '수량 버킷을 저장했습니다.',
   },
   en: {
     title: 'Price Management',
@@ -119,6 +121,8 @@ const TEXT = {
     duplicateBucket: 'That quantity already exists.',
     keepOneBucket: 'At least one bucket is required.',
     inheritedHint: 'This style currently uses the customer default. Choose custom to edit only this style.',
+    saveBuckets: 'Save buckets',
+    bucketSaved: 'Quantity buckets saved.',
   },
   vi: {
     title: 'Quan ly don gia',
@@ -152,6 +156,8 @@ const TEXT = {
     duplicateBucket: 'So luong nay da ton tai.',
     keepOneBucket: 'Can it nhat mot moc.',
     inheritedHint: 'Style nay dang dung moc mac dinh cua khach hang. Chon dat rieng de sua.',
+    saveBuckets: 'Luu moc',
+    bucketSaved: 'Da luu moc so luong.',
   },
 };
 
@@ -191,6 +197,7 @@ const CustomerPricingBoard = () => {
   const [newSalesBucket, setNewSalesBucket] = useState('');
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [loadingStyles, setLoadingStyles] = useState(false);
+  const [savingBuckets, setSavingBuckets] = useState(false);
 
   const customerQuery = useMemo(() => buildQueryString({ orgId: activeOrgId }), [activeOrgId]);
   const selectedCustomer = useMemo(
@@ -277,6 +284,45 @@ const CustomerPricingBoard = () => {
     };
   }, [activeOrgId, selectedCustomer, showNotification, text.loadFailed]);
 
+  useEffect(() => {
+    let active = true;
+    const loadBuckets = async () => {
+      if (!selectedCustomerId) return;
+      try {
+        const payload = await requestJSON(
+          `/customers/${selectedCustomerId}/quantity-buckets${customerQuery}`,
+          { skipGlobalLoading: true }
+        );
+        if (!active) return;
+        const customerKey = String(selectedCustomerId);
+        const defaultQuantities = Array.isArray(payload?.defaultVersion?.quantities)
+          ? normalizeBuckets(payload.defaultVersion.quantities)
+          : DEFAULT_SALES_BUCKETS;
+        setCustomerBuckets((previous) => ({
+          ...previous,
+          [customerKey]: defaultQuantities,
+        }));
+        const nextModes = {};
+        const nextBuckets = {};
+        (Array.isArray(payload?.styles) ? payload.styles : []).forEach((style) => {
+          const key = `${customerKey}:${style.id}`;
+          nextModes[key] = style.source === 'STYLE_OVERRIDE' ? 'custom' : 'customer';
+          if (Array.isArray(style?.version?.quantities)) {
+            nextBuckets[key] = normalizeBuckets(style.version.quantities);
+          }
+        });
+        setStyleBucketModes((previous) => ({ ...previous, ...nextModes }));
+        setStyleBuckets((previous) => ({ ...previous, ...nextBuckets }));
+      } catch (error) {
+        if (active) showNotification(error?.message || text.loadFailed, 'error');
+      }
+    };
+    loadBuckets();
+    return () => {
+      active = false;
+    };
+  }, [customerQuery, selectedCustomerId, showNotification, text.loadFailed]);
+
   const filteredStyles = useMemo(() => {
     const needle = searchTerm.trim().toLowerCase();
     if (!needle) return styles;
@@ -340,6 +386,39 @@ const CustomerPricingBoard = () => {
       updateActiveSalesBuckets,
     ]
   );
+
+  const saveActiveBuckets = useCallback(async () => {
+    if (!selectedCustomerId) return;
+    setSavingBuckets(true);
+    try {
+      await requestJSON(
+        `/customers/${selectedCustomerId}/quantity-buckets${customerQuery}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            quantities: activeSalesBuckets,
+            ...(selectedStyleId ? { styleId: Number(selectedStyleId) } : {}),
+            useCustomerDefault: Boolean(selectedStyleId && !selectedStyleUsesCustomBuckets),
+          }),
+          skipGlobalLoading: true,
+        }
+      );
+      showNotification(text.bucketSaved, 'success');
+    } catch (error) {
+      showNotification(error?.message || text.loadFailed, 'error');
+    } finally {
+      setSavingBuckets(false);
+    }
+  }, [
+    activeSalesBuckets,
+    customerQuery,
+    selectedCustomerId,
+    selectedStyleId,
+    selectedStyleUsesCustomBuckets,
+    showNotification,
+    text.bucketSaved,
+    text.loadFailed,
+  ]);
 
   const handlePriceChange = useCallback(
     (styleId, bucketQuantity, value) => {
@@ -567,6 +646,14 @@ const CustomerPricingBoard = () => {
                             {text.inheritedHint}
                           </Typography>
                         )}
+                        <Button
+                          size="small"
+                          variant="contained"
+                          onClick={saveActiveBuckets}
+                          disabled={savingBuckets || !selectedCustomerId}
+                        >
+                          {text.saveBuckets}
+                        </Button>
                       </Stack>
                     </TableCell>
                   </TableRow>

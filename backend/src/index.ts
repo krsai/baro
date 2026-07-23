@@ -710,6 +710,14 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "StyleProcess", columnName: "timesPerPiece" },
   { tableName: "StyleProcessStandard", columnName: "bucketQuantity" },
   { tableName: "StyleProcessStandard", columnName: "bucketStSeconds" },
+  { tableName: "QuantityBucketSet", columnName: "currentVersionId" },
+  { tableName: "QuantityBucketSetVersion", columnName: "quantityBucketSetId" },
+  { tableName: "QuantityBucketEntry", columnName: "bucketQuantity" },
+  { tableName: "OrgRelationship", columnName: "salesBucketSetVersionId" },
+  { tableName: "Style", columnName: "timeBucketSetVersionId" },
+  { tableName: "Style", columnName: "timeBucketSource" },
+  { tableName: "AssignmentPlan", columnName: "assignmentStSnapshot" },
+  { tableName: "AssignmentPlan", columnName: "ctReviewRequired" },
   { tableName: "AtTrainingBucket", columnName: "workerId" },
   { tableName: "AssignmentCard", columnName: "cardId" },
   { tableName: "AssignmentCard", columnName: "payload" },
@@ -1447,18 +1455,135 @@ const toOptionalProcessSeconds = (value: any) => {
   return Math.max(0, Math.round(parsed));
 };
 
-const resolveStBucketQuantity = (
+const normalizeQuantityBucketValues = (value: any): number[] => {
+  const quantities = Array.from(
+    new Set(
+      ensureArray(value)
+        .map((item) => toPositiveIntOrNull(item))
+        .filter((item): item is number => item !== null)
+    )
+  ).sort((left, right) => left - right);
+  if (quantities.length === 0) {
+    throw createHttpError(400, "at least one positive bucket quantity is required");
+  }
+  if (quantities.length > 50) {
+    throw createHttpError(400, "quantity bucket count cannot exceed 50");
+  }
+  return quantities;
+};
+
+const resolveStBucketQuantityFromValues = (
   orderQuantity: any,
-  fallback = DEFAULT_ST_BUCKET_QUANTITY
-) => {
-  const resolvedOrderQuantity = toPositiveInt(orderQuantity, fallback);
-  let resolvedBucket = fallback;
-  ST_STANDARD_BUCKETS.forEach((bucket) => {
-    if (resolvedOrderQuantity >= bucket) {
-      resolvedBucket = bucket;
-    }
+  bucketQuantities: number[]
+): number => {
+  const quantities = normalizeQuantityBucketValues(bucketQuantities);
+  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+  let resolvedBucket = quantities[0]!;
+  quantities.forEach((bucket) => {
+    if (resolvedOrderQuantity >= bucket) resolvedBucket = bucket;
   });
   return resolvedBucket;
+};
+
+const createQuantityBucketSetVersion = async ({
+  db,
+  orgId,
+  setName,
+  existingSetId = null,
+  bucketQuantities,
+  actor,
+}: {
+  db: Prisma.TransactionClient;
+  orgId: number;
+  setName: string;
+  existingSetId?: number | null;
+  bucketQuantities: number[];
+  actor: string;
+}) => {
+  const quantities = normalizeQuantityBucketValues(bucketQuantities);
+  const set = existingSetId
+    ? await db.quantityBucketSet.findFirst({
+        where: { id: existingSetId, orgId },
+        select: { id: true },
+      })
+    : await db.quantityBucketSet.upsert({
+        where: { orgId_name: { orgId, name: setName } },
+        update: {},
+        create: { orgId, name: setName, createdBy: actor },
+        select: { id: true },
+      });
+  if (!set) throw createHttpError(409, "quantity bucket set scope mismatch");
+  const latest = await db.quantityBucketSetVersion.findFirst({
+    where: { quantityBucketSetId: set.id },
+    orderBy: { versionNumber: "desc" },
+    select: { versionNumber: true },
+  });
+  const version = await db.quantityBucketSetVersion.create({
+    data: {
+      orgId,
+      quantityBucketSetId: set.id,
+      versionNumber: (latest?.versionNumber ?? 0) + 1,
+      createdBy: actor,
+      entries: {
+        create: quantities.map((bucketQuantity) => ({ orgId, bucketQuantity })),
+      },
+    },
+    include: { entries: { orderBy: { bucketQuantity: "asc" } } },
+  });
+  await db.quantityBucketSet.update({
+    where: { id: set.id },
+    data: { currentVersionId: version.id },
+  });
+  return version;
+};
+
+const syncStyleStandardsForBucketVersion = async ({
+  db,
+  styleIds,
+  bucketQuantities,
+}: {
+  db: Prisma.TransactionClient;
+  styleIds: number[];
+  bucketQuantities: number[];
+}) => {
+  const normalizedStyleIds = Array.from(new Set(styleIds));
+  if (normalizedStyleIds.length === 0) return;
+  const processes = await db.styleProcess.findMany({
+    where: { styleId: { in: normalizedStyleIds } },
+    select: { id: true, orgId: true, styleId: true, ptSeconds: true },
+  });
+  const invalid = processes.filter(
+    (process) => process.ptSeconds === null || Number(process.ptSeconds) <= 0
+  );
+  if (invalid.length > 0) {
+    throw createHttpError(
+      409,
+      `PT is required before changing time buckets: ${invalid
+        .slice(0, 10)
+        .map((item) => `styleProcessId=${item.id}`)
+        .join(", ")}`
+    );
+  }
+  for (const process of processes) {
+    for (const bucketQuantity of normalizeQuantityBucketValues(bucketQuantities)) {
+      await db.styleProcessStandard.upsert({
+        where: {
+          styleProcessId_bucketQuantity: {
+            styleProcessId: process.id,
+            bucketQuantity,
+          },
+        },
+        update: {},
+        create: {
+          orgId: process.orgId,
+          styleProcessId: process.id,
+          bucketQuantity,
+          bucketStSeconds: Number(process.ptSeconds),
+          setBy: "PT_DERIVED",
+        },
+      });
+    }
+  }
 };
 
 type StyleAtParams = {
@@ -1632,7 +1757,10 @@ const findStyleProcessExactStBucket = (
   values: StyleStBucket[] = [],
   orderQuantity = 1
 ): StyleStBucket | null => {
-  const resolvedOrderQuantity = resolveStBucketQuantity(orderQuantity);
+  const resolvedOrderQuantity = resolveStBucketQuantityFromValues(
+    orderQuantity,
+    values.map((value) => value.bucketQuantity)
+  );
   return (
     values.find((value) => toPositiveInt(value.bucketQuantity, 0) === resolvedOrderQuantity) ??
     null
@@ -4078,6 +4206,18 @@ const loadAtTrainingDataFromBuckets = async ({
             timesPerPiece: true,
             ptSeconds: true,
             atParams: true,
+            style: {
+              select: {
+                timeBucketSetVersion: {
+                  select: {
+                    entries: {
+                      orderBy: { bucketQuantity: "asc" },
+                      select: { bucketQuantity: true },
+                    },
+                  },
+                },
+              },
+            },
             standards: {
               select: {
                 bucketQuantity: true,
@@ -4202,7 +4342,12 @@ const buildAtTrainingInitialSeedFromSt = ({
         return;
       }
 
-      const bucketQuantity = resolveStBucketQuantity(quantity);
+      const bucketQuantity = resolveStBucketQuantityFromValues(
+        quantity,
+        ensureArray(styleProcessRow?.style?.timeBucketSetVersion?.entries).map(
+          (entry) => entry.bucketQuantity
+        )
+      );
       if (bucketQuantity === null) {
         pushMissingSeedSample({
           reason: "ST_BUCKET_QUANTITY_NOT_RESOLVED",
@@ -4567,6 +4712,15 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
         id: true,
         orgId: true,
         processes: true,
+        timeBucketSetVersionId: true,
+        timeBucketSetVersion: {
+          select: {
+            entries: {
+              orderBy: { bucketQuantity: "asc" },
+              select: { bucketQuantity: true },
+            },
+          },
+        },
       },
     });
     if (stylesForStorageSync.length > 0) {
@@ -5078,6 +5232,11 @@ const resolveStyleByIdForAccess = async ({
       organization: {
         select: { id: true, name: true, nameKo: true, nameVi: true },
       },
+      timeBucketSetVersion: {
+        include: {
+          entries: { orderBy: { bucketQuantity: "asc" } },
+        },
+      },
     },
     orderBy: { id: "asc" },
     take: ownerOrgId === null ? 2 : 1,
@@ -5168,19 +5327,6 @@ const buildCompleteStyleProcessStBuckets = ({
       updatedAt: resolveOptionalString((bucket as any)?.updatedAt, null),
     });
   });
-
-  if (ptSeconds !== null && ptSeconds > 0) {
-    ST_STANDARD_BUCKETS.forEach((bucketQuantity) => {
-      if (byQuantity.has(bucketQuantity)) return;
-      byQuantity.set(bucketQuantity, {
-        bucketQuantity,
-        bucketStSeconds: ptSeconds,
-        setBy: "PT_DERIVED",
-        setAt: null,
-        updatedAt: null,
-      });
-    });
-  }
 
   return Array.from(byQuantity.values()).sort(
     (left, right) => left.bucketQuantity - right.bucketQuantity
@@ -5919,6 +6065,14 @@ const collectStyleQuantityRequirementsFromOrders = ({
   styles: any[];
 }) => {
   const quantityByStyleId = new Map<number, Set<number>>();
+  const bucketQuantitiesByStyleId = new Map(
+    ensureArray(styles).map((style) => [
+      Number(style.id),
+      ensureArray(style?.timeBucketSetVersion?.entries).map(
+        (entry) => entry.bucketQuantity
+      ),
+    ])
+  );
 
   ensureArray(orders).forEach((order) => {
     const quantityByStyleIdInOrder = new Map<number, number>();
@@ -5945,7 +6099,12 @@ const collectStyleQuantityRequirementsFromOrders = ({
 
     quantityByStyleIdInOrder.forEach((quantity, styleId) => {
       const current = quantityByStyleId.get(styleId) || new Set<number>();
-      current.add(resolveStBucketQuantity(quantity));
+      current.add(
+        resolveStBucketQuantityFromValues(
+          quantity,
+          bucketQuantitiesByStyleId.get(styleId) ?? []
+        )
+      );
       quantityByStyleId.set(styleId, current);
     });
   });
@@ -6048,6 +6207,11 @@ const toStyleResponse = (
     bom: ensureArray(style.bom),
     bomNotes: style.bomNotes ?? "",
     revenueMemo: style.revenueMemo ?? "",
+    timeBucketSource: style.timeBucketSource ?? null,
+    timeBucketSetVersionId: style.timeBucketSetVersionId ?? null,
+    timeBucketQuantities: ensureArray(style.timeBucketSetVersion?.entries).map(
+      (entry) => entry.bucketQuantity
+    ),
     createdAt: style.createdAt,
     updatedAt: style.updatedAt,
     workRecordCount: Number(style._count?.workRecords ?? 0),
@@ -10446,6 +10610,10 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     assignmentQuantity: resolveAssignmentQuantity(plan),
     assignmentCtTotalSeconds: resolveAssignmentCtTotalSeconds(plan),
     assignmentStTotalSeconds: resolvePersistedAssignmentPlanStTotalSeconds(plan),
+    assignmentStSnapshot: plan?.assignmentStSnapshot ?? null,
+    ctReviewRequired: plan?.ctReviewRequired === true,
+    ctReviewedAt: plan?.ctReviewedAt ?? null,
+    ctReviewedByEmployeeId: plan?.ctReviewedByEmployeeId ?? null,
     assignmentCtSnapshot: normalizedSnapshot,
     ctUpdatedBy: normalizedSnapshot?.updatedBy ?? "",
     ctUpdatedAt: normalizedSnapshot?.updatedAt ?? null,
@@ -11552,17 +11720,22 @@ const resolveAssignmentCardAtPerPieceSeconds = (process: any, orderQuantity = 1)
 const resolveAssignmentCardStSeedSeconds = ({
   process,
   orderQuantity = 1,
+  bucketQuantities,
 }: {
   process: any;
   orderQuantity?: number;
+  bucketQuantities: number[];
 }) => {
   const normalized = normalizeStyleProcess(process);
-  const manualSt = resolveStyleProcessExactStPerPieceSeconds(
-    normalized,
-    orderQuantity
+  const bucketQuantity = resolveStBucketQuantityFromValues(
+    orderQuantity,
+    bucketQuantities
   );
-  if (manualSt != null) return manualSt;
-  return null;
+  return (
+    normalizeStyleProcessStBuckets(normalized?.stBuckets).find(
+      (bucket) => bucket.bucketQuantity === bucketQuantity
+    )?.bucketStSeconds ?? null
+  );
 };
 const calculateAssignmentCardTotalForOrderQuantity = (
   processes: any,
@@ -11586,7 +11759,8 @@ const calculateAssignmentCardTotalForOrderQuantity = (
 };
 const calculateAssignmentCardStTotalForOrderQuantity = (
   processes: any,
-  orderQuantity = 1
+  orderQuantity = 1,
+  bucketQuantities: number[]
 ) => {
   const normalizedProcesses = normalizeStyleProcesses(processes);
   if (normalizedProcesses.length === 0) return null;
@@ -11595,6 +11769,7 @@ const calculateAssignmentCardStTotalForOrderQuantity = (
     const stPerPiece = resolveAssignmentCardStSeedSeconds({
       process,
       orderQuantity,
+      bucketQuantities,
     });
     if (stPerPiece == null) {
       hasMissingSt = true;
@@ -11708,7 +11883,8 @@ const buildAssignmentCardsFromOrders = ({
       );
       const totalSt = calculateAssignmentCardStTotalForOrderQuantity(
         processes,
-        group.quantity
+        group.quantity,
+        group.style?.timeBucketQuantities
       );
       const status = resolveAssignmentCardStatus({
         totalPt,
@@ -12119,6 +12295,15 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
         imageUrls: true,
         processes: true,
         updatedAt: true,
+        timeBucketSetVersionId: true,
+        timeBucketSetVersion: {
+          select: {
+            entries: {
+              orderBy: { bucketQuantity: "asc" },
+              select: { bucketQuantity: true },
+            },
+          },
+        },
         organization: {
           select: { id: true, name: true, nameKo: true, nameVi: true },
         },
@@ -12160,6 +12345,9 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
   const stylesWithProcesses = styles.map((style) => ({
     ...style,
     processes: initialProcessMirrorMap.get(Number(style.id)) ?? [],
+    timeBucketQuantities: ensureArray(style.timeBucketSetVersion?.entries).map(
+      (entry) => entry.bucketQuantity
+    ),
   }));
   const quantityByStyleId = collectStyleQuantityRequirementsFromOrders({
     orders,
@@ -12462,7 +12650,11 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
   );
   const fallbackAssignmentStTotalSeconds =
     resolveAssignmentCardStTotalSecondsForSnapshot(card) ??
-    calculateAssignmentCardStTotalForOrderQuantity(liveProcesses, orderQuantity);
+    calculateAssignmentCardStTotalForOrderQuantity(
+      liveProcesses,
+      orderQuantity,
+      style?.timeBucketQuantities
+    );
   const assignmentStTotalSeconds =
     incomingAssignmentStTotalSeconds != null
       ? incomingAssignmentStTotalSeconds
@@ -12485,6 +12677,7 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
       const stSeedSeconds = resolveAssignmentCardStSeedSeconds({
         process,
         orderQuantity,
+        bucketQuantities: style?.timeBucketQuantities,
       });
       const resolvedCtSeconds = manualCtSeconds ?? stSeedSeconds;
       if (resolvedCtSeconds === null || resolvedCtSeconds <= 0) {
@@ -12902,14 +13095,6 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
             cardById,
           });
           if (styleId === null) return null;
-          const assignmentQuantity = toPositiveInt(
-            resolveAssignmentQuantity(assignment),
-            1
-          );
-          const bucketQuantity = resolveStBucketQuantity(assignmentQuantity);
-          const current = quantityByStyleId.get(styleId) ?? new Set<number>();
-          current.add(bucketQuantity);
-          quantityByStyleId.set(styleId, current);
           return styleId;
         })
         .filter((styleId): styleId is number => styleId !== null)
@@ -12933,6 +13118,15 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
       orgId: true,
       updatedAt: true,
       processes: true,
+      timeBucketSetVersionId: true,
+      timeBucketSetVersion: {
+        select: {
+          entries: {
+            orderBy: { bucketQuantity: "asc" },
+            select: { bucketQuantity: true },
+          },
+        },
+      },
     },
   });
   if (styles.length === 0) {
@@ -12942,6 +13136,36 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
       styleByStyleId: emptyStyleByStyleId,
     };
   }
+
+  const rawStyleById = new Map<number, any>(
+    styles.map((style: any) => [Number(style.id), style])
+  );
+  normalizedAssignments.forEach((assignment: any) => {
+    const externalId = resolveAssignmentExternalId(assignment);
+    if (
+      !externalId ||
+      skippedExternalIds.has(externalId) ||
+      Boolean(assignment?.isCompleted)
+    ) {
+      return;
+    }
+    const styleId = resolveAssignmentStyleIdForStCalculation({
+      assignment,
+      cardById,
+    });
+    const style = styleId !== null ? rawStyleById.get(styleId) ?? null : null;
+    if (!style || styleId === null) return;
+    const assignmentQuantity = toPositiveInt(resolveAssignmentQuantity(assignment), 1);
+    const bucketQuantity = resolveStBucketQuantityFromValues(
+      assignmentQuantity,
+      ensureArray(style.timeBucketSetVersion?.entries).map(
+        (entry) => entry.bucketQuantity
+      )
+    );
+    const current = quantityByStyleId.get(styleId) ?? new Set<number>();
+    current.add(bucketQuantity);
+    quantityByStyleId.set(styleId, current);
+  });
 
   const processMirrorMap = await ensureStyleStandardsForQuantities({
     styles,
@@ -12954,6 +13178,9 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
     if (styleId === null || map.has(styleId)) return map;
     map.set(styleId, {
       ...style,
+      timeBucketQuantities: ensureArray(style?.timeBucketSetVersion?.entries).map(
+        (entry) => entry.bucketQuantity
+      ),
       processes:
         processMirrorMap.get(styleId) ?? normalizeStyleProcesses(style?.processes),
     });
@@ -13448,11 +13675,33 @@ const syncAssignmentPlansForOrderLock = async ({
     const styleIds = Array.from(new Set(pendingRecalc.map((item) => item.styleId)));
     const styles = await db.style.findMany({
       where: { id: { in: styleIds } },
-      select: { id: true, orgId: true, processes: true },
+      select: {
+        id: true,
+        orgId: true,
+        processes: true,
+        timeBucketSetVersionId: true,
+        timeBucketSetVersion: {
+          select: {
+            entries: {
+              orderBy: { bucketQuantity: "asc" },
+              select: { bucketQuantity: true },
+            },
+          },
+        },
+      },
     });
+    const styleById = new Map<number, any>(
+      styles.map((style: any) => [Number(style.id), style])
+    );
     const quantityByStyleId = new Map<number, Set<number>>();
     pendingRecalc.forEach((item) => {
-      const bucketQuantity = resolveStBucketQuantity(item.targetQuantity);
+      const style = styleById.get(item.styleId);
+      const bucketQuantity = resolveStBucketQuantityFromValues(
+        item.targetQuantity,
+        ensureArray(style?.timeBucketSetVersion?.entries).map(
+          (entry) => entry.bucketQuantity
+        )
+      );
       const current = quantityByStyleId.get(item.styleId) ?? new Set<number>();
       current.add(bucketQuantity);
       quantityByStyleId.set(item.styleId, current);
@@ -13469,7 +13718,13 @@ const syncAssignmentPlansForOrderLock = async ({
     });
 
     for (const item of pendingRecalc) {
-      const bucketQuantity = resolveStBucketQuantity(item.targetQuantity);
+      const style = styleById.get(item.styleId);
+      const bucketQuantity = resolveStBucketQuantityFromValues(
+        item.targetQuantity,
+        ensureArray(style?.timeBucketSetVersion?.entries).map(
+          (entry) => entry.bucketQuantity
+        )
+      );
       const styleProcessRows = styleProcessRowsByStyleId.get(item.styleId) ?? [];
       const assignmentStTotalSeconds = calculateAssignmentStTotalSecondsFromStyleRows({
         styleProcessRows,
@@ -13481,6 +13736,16 @@ const syncAssignmentPlansForOrderLock = async ({
         data: {
           assignmentQuantity: item.targetQuantity,
           ...(assignmentStTotalSeconds !== null ? { assignmentStTotalSeconds } : {}),
+          assignmentStSnapshot: buildAssignmentStSnapshot({
+            styleProcessRows,
+            assignmentQuantity: item.targetQuantity,
+            bucketQuantity,
+            quantityBucketSetVersionId: toPositiveInt(
+              style?.timeBucketSetVersionId,
+              0
+            ),
+            actor: getCurrentRequestActor(),
+          }),
         },
       });
     }
@@ -14022,6 +14287,19 @@ const toAssignmentPlanWriteData = (
   const buyerOrgId = matchedCard?.buyerOrgId ?? null;
   const workOrderId =
     toPositiveIntOrNull(matchedCard?.workOrderId) ?? toPositiveIntOrNull(item?.workOrderId);
+  const assignmentStSnapshot =
+    item?.assignmentStSnapshot &&
+    typeof item.assignmentStSnapshot === "object" &&
+    !Array.isArray(item.assignmentStSnapshot)
+      ? item.assignmentStSnapshot
+      : null;
+  const usesPtDerivedSt = ensureArray(assignmentStSnapshot?.processes).some(
+    (process) => process?.stSource === "PT_DERIVED"
+  );
+  const usesStSeedForCt = ensureArray(assignmentCtSnapshot?.processes).some(
+    (process) => process?.source === "ST"
+  );
+  const ctReviewRequired = usesPtDerivedSt && usesStSeedForCt;
   // Completion state is owned by dedicated completion endpoints.
   // Assignment board save must not overwrite completion-related fields.
   return {
@@ -14041,6 +14319,11 @@ const toAssignmentPlanWriteData = (
     assignmentCtTotalSeconds: ctTotalSeconds,
     assignmentCtSnapshot: (assignmentCtSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
     assignmentStTotalSeconds: resolveStateAssignmentStTotalSeconds(item),
+    assignmentStSnapshot: (assignmentStSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
+    ctReviewRequired,
+    ...(ctReviewRequired
+      ? { ctReviewedAt: null, ctReviewedByEmployeeId: null }
+      : {}),
     startIndex: item.startIndex,
     endIndex: item.endIndex,
     startDayOffsetPercent: item.startDayOffsetPercent ?? null,
@@ -14153,6 +14436,10 @@ const COMPLETED_ASSIGNMENT_PLAN_WRITE_SELECT = {
   assignmentCtTotalSeconds: true,
   assignmentCtSnapshot: true,
   assignmentStTotalSeconds: true,
+  assignmentStSnapshot: true,
+  ctReviewRequired: true,
+  ctReviewedAt: true,
+  ctReviewedByEmployeeId: true,
   startIndex: true,
   endIndex: true,
   startDayOffsetPercent: true,
@@ -14193,6 +14480,10 @@ const buildCompletedAssignmentWriteComparable = (item: any) => {
     assignmentCtTotalSeconds,
     assignmentCtSnapshot,
     assignmentStTotalSeconds: resolveComparableAssignmentStTotalSeconds(item),
+    assignmentStSnapshot: item?.assignmentStSnapshot ?? null,
+    ctReviewRequired: item?.ctReviewRequired === true,
+    ctReviewedAt: item?.ctReviewedAt ?? null,
+    ctReviewedByEmployeeId: toPositiveIntOrNull(item?.ctReviewedByEmployeeId),
     startIndex: toSignedInt(item?.startIndex, 0),
     endIndex: Math.max(
       toSignedInt(item?.startIndex, 0),
@@ -14436,6 +14727,9 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     const isExistingAssignmentStMissingOrInvalid =
       existingAssignmentStTotalSeconds == null ||
       existingAssignmentStTotalSeconds <= 0;
+    const isExistingAssignmentStSnapshotMissing =
+      !existingPlan?.assignmentStSnapshot ||
+      ensureArray(existingPlan?.assignmentStSnapshot?.processes).length === 0;
 
     const styleId = resolveAssignmentStyleIdForStCalculation({
       assignment,
@@ -14443,6 +14737,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     });
     const shouldRecalculate =
       hasStDrafts ||
+      isExistingAssignmentStSnapshotMissing ||
       (!hasUsableIncomingAssignmentSt &&
         (hasStructuralChange || isExistingAssignmentStMissingOrInvalid));
     if (shouldRecalculate && styleId !== null) assignmentStyleIds.add(styleId);
@@ -14499,6 +14794,16 @@ const prepareAssignmentBoardStTotalsForSave = async ({
             id: true,
             orgId: true,
             processes: true,
+            timeBucketSetVersionId: true,
+            timeBucketSetVersion: {
+              select: {
+                id: true,
+                entries: {
+                  orderBy: { bucketQuantity: "asc" },
+                  select: { bucketQuantity: true },
+                },
+              },
+            },
           },
         })
       : [];
@@ -14515,7 +14820,12 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     const styleId = toPositiveIntOrNull(style?.id);
     if (styleId === null) return;
     const assignmentQuantity = toPositiveInt(target.assignment?.quantity, 1);
-    const bucketQuantity = resolveStBucketQuantity(assignmentQuantity);
+    const bucketQuantity = resolveStBucketQuantityFromValues(
+      assignmentQuantity,
+      ensureArray(style?.timeBucketSetVersion?.entries).map(
+        (entry) => entry.bucketQuantity
+      )
+    );
     const current = quantityByStyleId.get(styleId) ?? new Set<number>();
     current.add(bucketQuantity);
     quantityByStyleId.set(styleId, current);
@@ -14561,7 +14871,12 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     const style = target.styleId ? styleByStyleId.get(target.styleId) ?? null : null;
     const styleId = toPositiveIntOrNull(style?.id);
     const assignmentQuantity = toPositiveInt(target.assignment?.quantity, 1);
-    const bucketQuantity = resolveStBucketQuantity(assignmentQuantity);
+    const bucketQuantity = resolveStBucketQuantityFromValues(
+      assignmentQuantity,
+      ensureArray(style?.timeBucketSetVersion?.entries).map(
+        (entry) => entry.bucketQuantity
+      )
+    );
     const ctSnapshot = resolveNormalizedAssignmentCtSnapshot(target.assignment);
     const snapshotProcessByKey = ensureArray(ctSnapshot?.processes).reduce(
       (map, process) => {
@@ -14662,6 +14977,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
   }
 
   const assignmentStTotalSecondsByExternalId = new Map<string, number>();
+  const assignmentStSnapshotByExternalId = new Map<string, any>();
   targetByExternalId.forEach((target, externalId) => {
     if (!target.shouldRecalculate) {
       const canonicalAssignmentStTotalSeconds =
@@ -14680,7 +14996,12 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     const style = target.styleId ? styleByStyleId.get(target.styleId) ?? null : null;
     const styleId = toPositiveIntOrNull(style?.id);
     const assignmentQuantity = toPositiveInt(target.assignment?.quantity, 1);
-    const bucketQuantity = resolveStBucketQuantity(assignmentQuantity);
+    const bucketQuantity = resolveStBucketQuantityFromValues(
+      assignmentQuantity,
+      ensureArray(style?.timeBucketSetVersion?.entries).map(
+        (entry) => entry.bucketQuantity
+      )
+    );
     let assignmentStTotalSeconds: number | null = null;
 
     if (target.hasStructuralChange) {
@@ -14709,6 +15030,21 @@ const prepareAssignmentBoardStTotalsForSave = async ({
       );
     }
     assignmentStTotalSecondsByExternalId.set(externalId, assignmentStTotalSeconds);
+    const styleProcessRows =
+      styleId === null ? [] : styleProcessRowsByStyleId.get(styleId) ?? [];
+    assignmentStSnapshotByExternalId.set(
+      externalId,
+      buildAssignmentStSnapshot({
+        styleProcessRows,
+        assignmentQuantity,
+        bucketQuantity,
+        quantityBucketSetVersionId: toPositiveInt(
+          style?.timeBucketSetVersionId,
+          0
+        ),
+        actor: getCurrentRequestActor(),
+      })
+    );
   });
 
   const nextAssignments = normalizedAssignments.map((assignment) => {
@@ -14728,6 +15064,10 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     return {
       ...assignment,
       stTotalSeconds: assignmentStTotalSeconds,
+      assignmentStSnapshot:
+        assignmentStSnapshotByExternalId.get(externalId) ??
+        assignment?.assignmentStSnapshot ??
+        null,
     };
   });
 
@@ -14774,6 +15114,10 @@ const ASSIGNMENT_PLAN_SELECT_CORE = {
   assignmentCtTotalSeconds: true,
   assignmentCtSnapshot: true,
   assignmentStTotalSeconds: true,
+  assignmentStSnapshot: true,
+  ctReviewRequired: true,
+  ctReviewedAt: true,
+  ctReviewedByEmployeeId: true,
   startIndex: true,
   endIndex: true,
   startDayOffsetPercent: true,
@@ -19346,14 +19690,12 @@ const calculateRemainingStTotalSecondsFromProcessProgress = ({
   processTotalsByKey,
   processKeyGroups = [],
   plannedQuantity,
-  bucketQuantity,
-  styleProcessRowsById,
+  assignmentStSnapshot,
 }: {
   processTotalsByKey: Map<string, number>;
   processKeyGroups?: string[][];
   plannedQuantity: number;
-  bucketQuantity: number;
-  styleProcessRowsById: Map<number, any>;
+  assignmentStSnapshot: any;
 }): number | null => {
   const normalizedPlannedQuantity = Math.max(
     0,
@@ -19364,6 +19706,16 @@ const calculateRemainingStTotalSecondsFromProcessProgress = ({
     (group): group is string[] => Array.isArray(group) && group.length > 0
   );
   if (normalizedGroups.length === 0) return null;
+  const snapshotProcesses = ensureArray(assignmentStSnapshot?.processes);
+  if (snapshotProcesses.length === 0) return null;
+  const snapshotByStyleProcessId = new Map<number, any>();
+  snapshotProcesses.forEach((process) => {
+    const styleProcessId = toPositiveIntOrNull(process?.styleProcessId);
+    const stSeconds = toOptionalProcessSeconds(process?.stSeconds);
+    if (styleProcessId !== null && stSeconds !== null && stSeconds > 0) {
+      snapshotByStyleProcessId.set(styleProcessId, process);
+    }
+  });
 
   let totalRemainingSeconds = 0;
   for (const group of normalizedGroups) {
@@ -19374,22 +19726,72 @@ const calculateRemainingStTotalSecondsFromProcessProgress = ({
     );
     const remainingQuantity = Math.max(0, normalizedPlannedQuantity - completedQuantity);
     if (remainingQuantity <= 0) continue;
-    const styleProcessRow =
+    const styleProcessId =
       group
         .map((key) => resolveStyleProcessIdFromAssignmentProcessKey(key))
         .filter((value): value is number => value !== null)
-        .map((styleProcessId) => styleProcessRowsById.get(styleProcessId) ?? null)
-        .find((row) => Boolean(row)) ?? null;
-    if (!styleProcessRow) return null;
-    const bucketStSeconds = resolveStyleProcessBucketStSeconds(
-      styleProcessRow,
-      bucketQuantity
+        .find((value) => snapshotByStyleProcessId.has(value)) ?? null;
+    if (styleProcessId === null) return null;
+    const bucketStSeconds = toOptionalProcessSeconds(
+      snapshotByStyleProcessId.get(styleProcessId)?.stSeconds
     );
     if (bucketStSeconds === null) return null;
     totalRemainingSeconds += remainingQuantity * bucketStSeconds;
   }
 
   return Math.max(0, Math.round(totalRemainingSeconds));
+};
+
+const buildAssignmentStSnapshot = ({
+  styleProcessRows,
+  assignmentQuantity,
+  bucketQuantity,
+  quantityBucketSetVersionId,
+  actor,
+}: {
+  styleProcessRows: any[];
+  assignmentQuantity: number;
+  bucketQuantity: number;
+  quantityBucketSetVersionId: number;
+  actor: string;
+}) => {
+  if (!Number.isInteger(quantityBucketSetVersionId) || quantityBucketSetVersionId <= 0) {
+    throw createHttpError(409, "style time bucket version is required");
+  }
+  const processes = ensureArray(styleProcessRows).map((row) => {
+    const styleProcessId = toPositiveIntOrNull(row?.id);
+    const stSeconds = resolveStyleProcessBucketStSeconds(row, bucketQuantity);
+    if (styleProcessId === null || stSeconds === null || stSeconds <= 0) {
+      throw createHttpError(
+        409,
+        `ST snapshot cannot be created: styleProcessId=${row?.id ?? "-"} bucket=${bucketQuantity}`
+      );
+    }
+    return {
+      styleProcessId,
+      processCode: resolveOptionalString(row?.processCode, null),
+      processName: resolveOptionalString(row?.processName, null),
+      bucketQuantity,
+      stSeconds,
+      stSource:
+        ensureArray(row?.standards).find(
+          (standard) =>
+            toPositiveIntOrNull(standard?.bucketQuantity) === bucketQuantity
+        )?.setBy ?? null,
+    };
+  });
+  if (processes.length === 0) {
+    throw createHttpError(409, "ST snapshot cannot be created without style processes");
+  }
+  return {
+    version: 1,
+    quantityBucketSetVersionId,
+    bucketQuantity,
+    assignmentQuantity: toPositiveInt(assignmentQuantity, 1),
+    snapshotAt: new Date().toISOString(),
+    snapshotBy: actor,
+    processes,
+  };
 };
 
 const resolveWorklogRatioConfidence = ({
@@ -19953,10 +20355,10 @@ const buildLineMonthCapacityRows = async ({
     : null;
   const resolveWorkRecordStSecondsForLineMonthCapacity = ({
     record,
-    bucketQuantity,
+    assignmentStSnapshot,
   }: {
     record: any;
-    bucketQuantity: number;
+    assignmentStSnapshot: any;
   }) => {
     const recordStyleId = toPositiveIntOrNull(record?.styleId);
     const styleId = recordStyleId ?? null;
@@ -20025,18 +20427,21 @@ const buildLineMonthCapacityRows = async ({
         processCodeSource,
       };
     }
-    const stSeconds = resolveStyleProcessBucketStSeconds(matchedRow, bucketQuantity);
     const matchedProcessId = toPositiveIntOrNull(matchedRow?.id);
     const matchedProcessCode = resolveOptionalString(matchedRow?.processCode, null);
     const matchedProcessName = resolveOptionalString(matchedRow?.processName, null);
-    const matchedBuckets = ensureArray(matchedRow?.standards)
-      .map((item) => toPositiveIntOrNull((item as any)?.bucketQuantity))
-      .filter((value): value is number => value !== null)
-      .sort((left, right) => left - right);
+    const snapshotProcess = ensureArray(assignmentStSnapshot?.processes).find(
+      (item) => toPositiveIntOrNull(item?.styleProcessId) === styleProcessId
+    );
+    const snapshotStSeconds = Number(snapshotProcess?.stSeconds);
+    const stSeconds =
+      Number.isFinite(snapshotStSeconds) && snapshotStSeconds >= 0
+        ? snapshotStSeconds
+        : null;
     if (stSeconds === null) {
       return {
         stSeconds: null,
-        reason: "ST_BUCKET_NOT_FOUND",
+        reason: "ASSIGNMENT_ST_SNAPSHOT_PROCESS_NOT_FOUND",
         styleId,
         styleIdSource,
         styleProcessId,
@@ -20047,7 +20452,6 @@ const buildLineMonthCapacityRows = async ({
         matchedProcessId,
         matchedProcessCode,
         matchedProcessName,
-        matchedBuckets,
       };
     }
     return {
@@ -20063,7 +20467,6 @@ const buildLineMonthCapacityRows = async ({
       matchedProcessId,
       matchedProcessCode,
       matchedProcessName,
-      matchedBuckets,
     };
   };
   const lineLatestActualCoverageEndDateKeyByLineId = new Map<number, string>();
@@ -20078,6 +20481,7 @@ const buildLineMonthCapacityRows = async ({
       requiredProcessGroups: ReturnType<typeof resolveAssignmentPlanRequiredProcessGroups>;
       processCount: number | null;
       totalExpected: number | null;
+      isStSnapshotMissing: boolean;
     }
   >();
 
@@ -20190,18 +20594,20 @@ const buildLineMonthCapacityRows = async ({
       processTotalsByKey: cumulativeProcessTotalsByKey,
       processKeyGroups: requiredProcessGroups,
       plannedQuantity,
-      bucketQuantity: resolveStBucketQuantity(plannedQuantity),
-      styleProcessRowsById: actualOutputStyleProcessById,
+      assignmentStSnapshot: plan?.assignmentStSnapshot,
     });
+    const isStSnapshotMissing =
+      ensureArray(plan?.assignmentStSnapshot?.processes).length === 0;
     // Neither ratio could be computed even though work has actually been recorded
     // (cumulativeTotalDone > 0) - do not silently fall back to the full planned ST
     // (that is indistinguishable from "0% done" and re-inflates the forecast). Exclude
     // it from the backlog sum and surface it as a diagnostic instead.
     const isProgressUnknown =
       plan?.isCompleted !== true &&
-      progressRatio == null &&
-      exactRemainingStTotalSeconds == null &&
-      cumulativeTotalDone > 0;
+      (isStSnapshotMissing ||
+        (progressRatio == null &&
+          exactRemainingStTotalSeconds == null &&
+          cumulativeTotalDone > 0));
     const remainingStTotalSeconds =
       plan?.isCompleted === true
         ? 0
@@ -20232,6 +20638,7 @@ const buildLineMonthCapacityRows = async ({
     planProgressMetaById.set(planId, {
       plannedQuantity,
       plannedStTotalSeconds,
+      isStSnapshotMissing,
       requiredProcessGroups,
       processCount,
       totalExpected,
@@ -20636,7 +21043,10 @@ const buildLineMonthCapacityRows = async ({
     const {
       plannedQuantity,
     } = progressMeta;
-    const bucketQuantity = resolveStBucketQuantity(plannedQuantity);
+    const bucketQuantity = toPositiveIntOrNull(plan?.assignmentStSnapshot?.bucketQuantity);
+    if (bucketQuantity === null) {
+      return;
+    }
     const monthlyDirectActualOutputStSecondsByMonthKey = new Map<string, number>();
     let hasDirectActualOutputStSeconds = false;
     const planActualOutputFailureReasons = new Map<string, number>();
@@ -20756,7 +21166,7 @@ const buildLineMonthCapacityRows = async ({
       });
       const processSt = resolveWorkRecordStSecondsForLineMonthCapacity({
         record,
-        bucketQuantity,
+        assignmentStSnapshot: plan?.assignmentStSnapshot,
       });
       if (processSt.stSeconds === null) {
         addPlanActualOutputFailureReason(processSt.reason);
@@ -20804,7 +21214,7 @@ const buildLineMonthCapacityRows = async ({
               matchedProcessId: processSt.matchedProcessId ?? null,
               matchedProcessCode: processSt.matchedProcessCode ?? null,
               matchedProcessName: processSt.matchedProcessName ?? null,
-              matchedBuckets: processSt.matchedBuckets ?? [],
+              matchedBuckets: (processSt as any).matchedBuckets ?? [],
             });
           });
         }
@@ -20849,7 +21259,7 @@ const buildLineMonthCapacityRows = async ({
               matchedProcessId: processSt.matchedProcessId ?? null,
               matchedProcessCode: processSt.matchedProcessCode ?? null,
               matchedProcessName: processSt.matchedProcessName ?? null,
-              matchedBuckets: processSt.matchedBuckets ?? [],
+              matchedBuckets: (processSt as any).matchedBuckets ?? [],
               bucketQuantity,
               allocatedQuantity: Math.max(0, Math.round(Number(allocatedTotal) || 0)),
               stSeconds: processSt.stSeconds,
@@ -21212,35 +21622,6 @@ const buildAssignmentPlanProgressRows = async (
   if (plans.length === 0) return [];
 
   const stateAssignmentsByExternalId = new Map<string, any>();
-  const requiredStyleProcessIdsForProgress = collectPositiveIntSet(
-    ...plans.flatMap((plan) =>
-      collectStyleProcessIdsFromProcessKeyGroups(
-        resolveAssignmentPlanRequiredProcessGroups(plan)
-      )
-    )
-  );
-  const styleProcessRowsForProgress =
-    requiredStyleProcessIdsForProgress.length > 0
-      ? await prisma.styleProcess.findMany({
-          where: {
-            orgId,
-            id: { in: requiredStyleProcessIdsForProgress },
-          },
-          select: {
-            id: true,
-            standards: {
-              select: {
-                bucketQuantity: true,
-                bucketStSeconds: true,
-              },
-            },
-          },
-        })
-      : [];
-  const styleProcessRowsForProgressById = new Map(
-    styleProcessRowsForProgress.map((row) => [Number(row.id), row])
-  );
-
   const lineIds = Array.from(
     new Set(
       plans
@@ -21517,18 +21898,18 @@ const buildAssignmentPlanProgressRows = async (
     const plannedStTotalSeconds = resolvePersistedAssignmentPlanStTotalSeconds(plan);
     const isStUnknown =
       plannedStTotalSeconds == null || plannedStTotalSeconds <= 0;
-    const bucketQuantity =
-      baselineQuantityRaw != null ? resolveStBucketQuantity(baselineQuantityRaw) : null;
+    const bucketQuantity = toPositiveIntOrNull(plan?.assignmentStSnapshot?.bucketQuantity);
     const exactRemainingStTotalSeconds =
       bucketQuantity != null
         ? calculateRemainingStTotalSecondsFromProcessProgress({
             processTotalsByKey: stats.processTotalsByKey,
             processKeyGroups: requiredProcessGroups,
             plannedQuantity: baselineQuantityRaw ?? 0,
-            bucketQuantity,
-            styleProcessRowsById: styleProcessRowsForProgressById,
+            assignmentStSnapshot: plan?.assignmentStSnapshot,
           })
         : null;
+    const isStSnapshotMissing =
+      ensureArray(plan?.assignmentStSnapshot?.processes).length === 0;
     const progressForRemainingRatio =
       isMarkedCompleted
         ? 1
@@ -21541,7 +21922,8 @@ const buildAssignmentPlanProgressRows = async (
             )
           : ratioProgressForRemainingRatio;
     const isProgressUnknown =
-      ratioProgressUnknownCandidate && exactRemainingStTotalSeconds == null;
+      isStSnapshotMissing ||
+      (ratioProgressUnknownCandidate && exactRemainingStTotalSeconds == null);
     const schedulerProgressPercent =
       progressForRemainingRatio == null
         ? null
@@ -21785,6 +22167,7 @@ const buildAssignmentPlanProgressRows = async (
       completionGapQuantity,
       plannedStTotalSeconds,
       remainingStTotalSeconds,
+      isStSnapshotMissing,
       completedStTotalSeconds,
       operationalProgressRatio,
       producedRatio,
@@ -22603,6 +22986,58 @@ app.get("/line-month-capacity", async (req, res) => {
     });
     throw error;
   }
+});
+
+app.patch("/assignment-plans/:externalId/ct-review", async (req, res) => {
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const externalId = resolveOptionalString(req.params.externalId, null);
+  if (!externalId) {
+    return res.status(400).json({ ok: false, error: "externalId is required" });
+  }
+  const plan = await prisma.assignmentPlan.findFirst({
+    where: {
+      orgId: accessContext.organization.id,
+      externalId,
+    },
+    select: {
+      id: true,
+      ctReviewRequired: true,
+      assignmentCtSnapshot: true,
+      assignmentStSnapshot: true,
+    },
+  });
+  if (!plan) {
+    return res.status(404).json({ ok: false, error: "assignment plan not found" });
+  }
+  if (!plan.ctReviewRequired) {
+    return res.status(409).json({ ok: false, error: "CT review is not required" });
+  }
+  if (
+    ensureArray((plan.assignmentCtSnapshot as any)?.processes).length === 0 ||
+    ensureArray((plan.assignmentStSnapshot as any)?.processes).length === 0
+  ) {
+    return res.status(409).json({
+      ok: false,
+      error: "CT/ST snapshots are required before review",
+    });
+  }
+  const updated = await prisma.assignmentPlan.update({
+    where: { id: plan.id },
+    data: {
+      ctReviewedAt: new Date(),
+      ctReviewedByEmployeeId: accessContext.employee?.id ?? null,
+    },
+    select: {
+      externalId: true,
+      ctReviewRequired: true,
+      ctReviewedAt: true,
+      ctReviewedByEmployeeId: true,
+    },
+  });
+  res.json(updated);
 });
 
 app.get("/assignment-plans/:externalId/qc-history", async (req, res) => {
@@ -26112,6 +26547,213 @@ app.get("/customers", async (req, res) => {
   res.json(relationships.map((item) => toCustomerResponse(item, perspective)));
 });
 
+app.get("/customers/:id/quantity-buckets", async (req, res) => {
+  const relationshipId = toPositiveIntOrNull(req.params.id);
+  if (relationshipId === null) {
+    return res.status(400).json({ ok: false, error: "invalid customer id" });
+  }
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
+  const relationship = await prisma.orgRelationship.findFirst({
+    where: {
+      id: relationshipId,
+      OR: [
+        { manufacturerOrgId: organization.id },
+        { brandOrgId: organization.id },
+      ],
+    },
+    include: {
+      salesBucketSetVersion: {
+        include: {
+          quantityBucketSet: { select: { id: true, name: true } },
+          entries: { orderBy: { bucketQuantity: "asc" } },
+        },
+      },
+    },
+  });
+  if (!relationship) {
+    return res.status(404).json({ ok: false, error: "customer not found" });
+  }
+  const styles = await prisma.style.findMany({
+    where: { orgId: relationship.brandOrgId },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      timeBucketSource: true,
+      timeBucketSetVersion: {
+        include: {
+          quantityBucketSet: { select: { id: true, name: true } },
+          entries: { orderBy: { bucketQuantity: "asc" } },
+        },
+      },
+    },
+  });
+  const toVersionResponse = (version: any) =>
+    version
+      ? {
+          id: version.id,
+          setId: version.quantityBucketSetId,
+          setName: version.quantityBucketSet?.name ?? "",
+          versionNumber: version.versionNumber,
+          quantities: ensureArray(version.entries).map((entry) => entry.bucketQuantity),
+        }
+      : null;
+  res.json({
+    customerId: relationship.id,
+    defaultVersion: toVersionResponse(relationship.salesBucketSetVersion),
+    styles: styles.map((style) => ({
+      id: style.id,
+      name: style.name,
+      code: style.code,
+      source: style.timeBucketSource,
+      version: toVersionResponse(style.timeBucketSetVersion),
+    })),
+  });
+});
+
+app.put("/customers/:id/quantity-buckets", async (req, res) => {
+  const relationshipId = toPositiveIntOrNull(req.params.id);
+  if (relationshipId === null) {
+    return res.status(400).json({ ok: false, error: "invalid customer id" });
+  }
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
+  const relationship = await prisma.orgRelationship.findFirst({
+    where: {
+      id: relationshipId,
+      manufacturerOrgId: organization.id,
+    },
+    include: {
+      salesBucketSetVersion: {
+        select: { quantityBucketSetId: true },
+      },
+    },
+  });
+  if (!relationship) {
+    return res.status(404).json({ ok: false, error: "customer not found" });
+  }
+  const quantities = normalizeQuantityBucketValues(req.body?.quantities);
+  const styleId = toPositiveIntOrNull(req.body?.styleId);
+  const useCustomerDefault = req.body?.useCustomerDefault === true;
+  const actor = getCurrentRequestActor();
+
+  const result = await prisma.$transaction(
+    async (tx) => {
+      if (styleId !== null) {
+        const style = await tx.style.findFirst({
+          where: { id: styleId, orgId: relationship.brandOrgId },
+          select: {
+            id: true,
+            timeBucketSource: true,
+            timeBucketSetVersion: {
+              select: { quantityBucketSetId: true },
+            },
+          },
+        });
+        if (!style) throw createHttpError(404, "style not found for customer");
+        if (useCustomerDefault) {
+          const defaultVersionId = relationship.salesBucketSetVersionId;
+          if (!defaultVersionId) {
+            throw createHttpError(409, "customer default bucket version is missing");
+          }
+          const defaultEntries = await tx.quantityBucketEntry.findMany({
+            where: { quantityBucketSetVersionId: defaultVersionId },
+            orderBy: { bucketQuantity: "asc" },
+            select: { bucketQuantity: true },
+          });
+          const defaultQuantities = normalizeQuantityBucketValues(
+            defaultEntries.map((entry) => entry.bucketQuantity)
+          );
+          await syncStyleStandardsForBucketVersion({
+            db: tx,
+            styleIds: [style.id],
+            bucketQuantities: defaultQuantities,
+          });
+          await tx.style.update({
+            where: { id: style.id },
+            data: {
+              timeBucketSetVersionId: defaultVersionId,
+              timeBucketSource: "CUSTOMER_DEFAULT",
+            },
+          });
+          return {
+            versionId: defaultVersionId,
+            styleId: style.id,
+            quantities: defaultQuantities,
+          };
+        }
+        const version = await createQuantityBucketSetVersion({
+          db: tx,
+          orgId: organization.id,
+          setName: `STYLE_TIME_BUCKETS_${style.id}`,
+          existingSetId: style.timeBucketSetVersion?.quantityBucketSetId ?? null,
+          bucketQuantities: quantities,
+          actor,
+        });
+        await syncStyleStandardsForBucketVersion({
+          db: tx,
+          styleIds: [style.id],
+          bucketQuantities: quantities,
+        });
+        await tx.style.update({
+          where: { id: style.id },
+          data: {
+            timeBucketSetVersionId: version.id,
+            timeBucketSource: "STYLE_OVERRIDE",
+          },
+        });
+        return { versionId: version.id, styleId: style.id };
+      }
+
+      const version = await createQuantityBucketSetVersion({
+        db: tx,
+        orgId: organization.id,
+        setName: `CUSTOMER_PRICE_BUCKETS_${relationship.id}`,
+        existingSetId:
+          relationship.salesBucketSetVersion?.quantityBucketSetId ?? null,
+        bucketQuantities: quantities,
+        actor,
+      });
+      const defaultStyles = await tx.style.findMany({
+        where: {
+          orgId: relationship.brandOrgId,
+          timeBucketSource: "CUSTOMER_DEFAULT",
+        },
+        select: { id: true },
+      });
+      await syncStyleStandardsForBucketVersion({
+        db: tx,
+        styleIds: defaultStyles.map((style) => style.id),
+        bucketQuantities: quantities,
+      });
+      await tx.orgRelationship.update({
+        where: { id: relationship.id },
+        data: { salesBucketSetVersionId: version.id },
+      });
+      if (defaultStyles.length > 0) {
+        await tx.style.updateMany({
+          where: { id: { in: defaultStyles.map((style) => style.id) } },
+          data: { timeBucketSetVersionId: version.id },
+        });
+      }
+      return {
+        versionId: version.id,
+        styleIds: defaultStyles.map((style) => style.id),
+      };
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+  );
+  res.json({ ok: true, quantities, ...result });
+});
+
 app.get("/order-parties", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {
@@ -26947,6 +27589,13 @@ app.get("/styles", async (req, res) => {
           season: true,
           imageUrls: true,
           processes: true,
+          timeBucketSource: true,
+          timeBucketSetVersionId: true,
+          timeBucketSetVersion: {
+            include: {
+              entries: { orderBy: { bucketQuantity: "asc" } },
+            },
+          },
           createdAt: true,
           updatedAt: true,
           _count: { select: { workRecords: true } },
@@ -26958,6 +27607,11 @@ app.get("/styles", async (req, res) => {
         include: {
           organization: {
             select: { id: true, name: true, nameKo: true, nameVi: true },
+          },
+          timeBucketSetVersion: {
+            include: {
+              entries: { orderBy: { bucketQuantity: "asc" } },
+            },
           },
           _count: { select: { workRecords: true } },
         },
@@ -27055,6 +27709,37 @@ app.post("/styles", async (req, res) => {
   }
 
   const created = await prisma.$transaction(async (tx) => {
+    const relationship = await tx.orgRelationship.findFirst({
+      where: {
+        manufacturerOrgId: organization.id,
+        brandOrgId: owner.ownerOrgId,
+      },
+      select: { salesBucketSetVersionId: true },
+    });
+    let timeBucketSetVersionId = relationship?.salesBucketSetVersionId ?? null;
+    if (timeBucketSetVersionId === null) {
+      const existingDefaultSet = await tx.quantityBucketSet.findUnique({
+        where: {
+          orgId_name: {
+            orgId: owner.ownerOrgId,
+            name: "DEFAULT_TIME_BUCKETS",
+          },
+        },
+        select: { currentVersionId: true },
+      });
+      if (existingDefaultSet?.currentVersionId) {
+        timeBucketSetVersionId = existingDefaultSet.currentVersionId;
+      } else {
+        const defaultVersion = await createQuantityBucketSetVersion({
+          db: tx,
+          orgId: owner.ownerOrgId,
+          setName: "DEFAULT_TIME_BUCKETS",
+          bucketQuantities: [...ST_STANDARD_BUCKETS],
+          actor: getCurrentRequestActor(),
+        });
+        timeBucketSetVersionId = defaultVersion.id;
+      }
+    }
     const syncedProcesses = includeProcesses
       ? await syncProcessMasterFromStyleProcesses({
           processes: payload.processes,
@@ -27087,6 +27772,8 @@ app.post("/styles", async (req, res) => {
         bom: payload.bom,
         bomNotes: payload.bomNotes,
         revenueMemo: payload.revenueMemo,
+        timeBucketSetVersionId,
+        timeBucketSource: "CUSTOMER_DEFAULT",
       },
     });
     if (includeProcesses) {
@@ -27102,6 +27789,11 @@ app.post("/styles", async (req, res) => {
       include: {
         organization: {
           select: { id: true, name: true, nameKo: true, nameVi: true },
+        },
+        timeBucketSetVersion: {
+          include: {
+            entries: { orderBy: { bucketQuantity: "asc" } },
+          },
         },
       },
     });

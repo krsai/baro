@@ -475,10 +475,10 @@ const hasProcessWorkRecords = (process) => {
   return Number.isFinite(count) && count > 0;
 };
 
-const buildPtDerivedStBuckets = (ptSeconds) => {
+const buildPtDerivedStBuckets = (ptSeconds, bucketQuantities) => {
   const normalizedPt = toOptionalSeconds(ptSeconds);
   if (normalizedPt == null || normalizedPt <= 0) return [];
-  return ST_STANDARD_BUCKETS.map((bucketQuantity) => ({
+  return bucketQuantities.map((bucketQuantity) => ({
     bucketQuantity,
     bucketStSeconds: normalizedPt,
     setBy: 'PT_DERIVED',
@@ -487,15 +487,15 @@ const buildPtDerivedStBuckets = (ptSeconds) => {
   }));
 };
 
-const buildProcessWithPtDerivedStUpdate = (process) => {
+const buildProcessWithPtDerivedStUpdate = (process, bucketQuantities) => {
   const normalized = normalizeProcess(process);
-  const nextStBuckets = buildPtDerivedStBuckets(normalized?.pt);
+  const nextStBuckets = buildPtDerivedStBuckets(normalized?.pt, bucketQuantities);
   if (nextStBuckets.length === 0) return normalized;
   return normalizeProcess({
     ...normalized,
     stBuckets: nextStBuckets,
     stBucketWriteMode: 'MANUAL_EDIT',
-    stBucketUpdateQuantities: ST_STANDARD_BUCKETS,
+    stBucketUpdateQuantities: bucketQuantities,
     ct: null,
     stManual: false,
   });
@@ -1126,7 +1126,8 @@ const applyDraftActionPairs = (draft, pairs = []) => {
 const buildProcessPayload = (
   draft,
   existingProcess = null,
-  timeRefQuantity = DEFAULT_TIME_REF_QUANTITY
+  timeRefQuantity = DEFAULT_TIME_REF_QUANTITY,
+  bucketQuantities = ST_STANDARD_BUCKETS
 ) => {
   const processText = resolveDraftProcessText(draft);
   const existingManualName = String(existingProcess?.manualName ?? '').trim();
@@ -1160,7 +1161,7 @@ const buildProcessPayload = (
   const existingStBuckets = normalizeStBuckets(existingProcess);
   const shouldInitializeStFromPt = !existingProcess;
   const nextStBuckets = shouldInitializeStFromPt
-    ? buildPtDerivedStBuckets(ptPerPiece)
+    ? buildPtDerivedStBuckets(ptPerPiece, bucketQuantities)
     : existingStBuckets;
 
   return normalizeProcess({
@@ -1302,6 +1303,7 @@ const StyleProcess = ({
   processes = [],
   onProcessesChange,
   optionsReloadKey = 0,
+  bucketQuantities = ST_STANDARD_BUCKETS,
 }) => {
   const { languageCode } = useLanguage();
   const safeProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
@@ -1925,8 +1927,8 @@ const StyleProcess = ({
     [displayOrderQuantity]
   );
   const stBucketQuantity = useMemo(
-    () => resolveStBucketQuantity(displayOrderQuantity),
-    [displayOrderQuantity]
+    () => resolveStBucketQuantity(displayOrderQuantity, bucketQuantities),
+    [bucketQuantities, displayOrderQuantity]
   );
   const stBucketQuantityLabel = useMemo(
     () => formatStBucketQuantityLabel(stBucketQuantity, 'ko-KR'),
@@ -2387,7 +2389,12 @@ const StyleProcess = ({
       return getStyleProcessMessage(languageCode, 'validateCodeRequired');
     }
 
-    const previewProcess = buildProcessPayload(draft, null, timeRefQuantity);
+    const previewProcess = buildProcessPayload(
+      draft,
+      null,
+      timeRefQuantity,
+      bucketQuantities
+    );
     const identity = getProcessIdentity(previewProcess);
     if (!identity) return getStyleProcessMessage(languageCode, 'validateInvalid');
 
@@ -2552,7 +2559,12 @@ const StyleProcess = ({
       setAddError(errorMessage);
       return;
     }
-    const nextProcess = buildProcessPayload(draftForSave, editingProcess, timeRefQuantity);
+    const nextProcess = buildProcessPayload(
+      draftForSave,
+      editingProcess,
+      timeRefQuantity,
+      bucketQuantities
+    );
     if (isEditingRow) {
       if (!areOptionalSecondsEqual(editingProcess?.pt, nextProcess?.pt)) {
         const processName = resolveLocalizedProcessDisplayLabel(
@@ -2586,7 +2598,10 @@ const StyleProcess = ({
 
   const handleUpdatePendingPtChangeSt = () => {
     if (!pendingPtChange) return;
-    const nextProcess = buildProcessWithPtDerivedStUpdate(pendingPtChange.nextProcess);
+    const nextProcess = buildProcessWithPtDerivedStUpdate(
+      pendingPtChange.nextProcess,
+      bucketQuantities
+    );
     applyEditedProcess(pendingPtChange.instanceId, nextProcess);
     setPendingPtChange(null);
   };
@@ -2598,7 +2613,10 @@ const StyleProcess = ({
   const pendingPtDerivedStBuckets = useMemo(
     () =>
       pendingPtChange
-        ? buildPtDerivedStBuckets(pendingPtChange.nextProcess?.pt)
+        ? buildPtDerivedStBuckets(
+            pendingPtChange.nextProcess?.pt,
+            bucketQuantities
+          )
         : [],
     [pendingPtChange]
   );
@@ -2658,7 +2676,8 @@ const StyleProcess = ({
     ? buildProcessPayload(
         resolveDraftWithPendingSelections(deferredAddDraft),
         editingProcess,
-        timeRefQuantity
+        timeRefQuantity,
+        bucketQuantities
       )
     : null;
   const isSelectingTargetSpec = Boolean(targetCandidate);

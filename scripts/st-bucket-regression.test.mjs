@@ -10,7 +10,7 @@ const loadProcessTimeModule = () => {
   code = code.replace(/import[^\n]+\n/g, '');
   code = code.replace(/export const /g, 'const ');
   code = code.replace(/export \{[^}]+\};?/g, '');
-  code += '\nmodule.exports = { applyMonotonicStBucketEdit };';
+  code += '\nmodule.exports = { applyMonotonicStBucketEdit, resolveStBucketQuantity };';
   const context = {
     module: { exports: {} },
     exports: {},
@@ -30,7 +30,7 @@ const loadProcessTimeModule = () => {
   return context.module.exports;
 };
 
-const { applyMonotonicStBucketEdit } = loadProcessTimeModule();
+const { applyMonotonicStBucketEdit, resolveStBucketQuantity } = loadProcessTimeModule();
 
 const buckets = (values) =>
   values.map(([bucketQuantity, bucketStSeconds]) => ({
@@ -93,4 +93,16 @@ test('editing a process repairs existing ST inversions on both sides of the edit
     [30, 70],
   ]);
   assert.deepEqual(result.changedQuantities, [3, 5, 30]);
+});
+
+test('customer-specific bucket boundaries are resolved from the supplied set', () => {
+  assert.equal(resolveStBucketQuantity(2, [1, 3, 5, 10]), 1);
+  assert.equal(resolveStBucketQuantity(2, [1, 2, 5, 7, 10]), 2);
+  assert.equal(resolveStBucketQuantity(2500, [1000, 2000, 3000]), 2000);
+});
+
+test('invalid or empty operational bucket sets stay unresolved instead of using global defaults', () => {
+  assert.equal(resolveStBucketQuantity(100, []), null);
+  assert.equal(resolveStBucketQuantity(100, [0, -1]), null);
+  assert.equal(resolveStBucketQuantity(100), null);
 });

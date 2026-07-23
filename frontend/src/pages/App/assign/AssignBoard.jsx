@@ -61,7 +61,6 @@ import {
   resolveProcessAtPerPieceSeconds,
   resolveProcessAtReliability,
   resolveProcessExactStPerPieceSeconds,
-  resolveStBucketQuantity,
 } from '../../../utils/processTime';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import {
@@ -5554,15 +5553,11 @@ const AssignBoard = () => {
     [detailSummary?.orderQuantity, detailAssignment?.quantity, detailCard?.quantity]
   );
   const detailStBucketQuantityLabel = useMemo(() => {
-    const orderQuantity = Math.max(
-      1,
-      toPositiveInt(
-        detailSummary?.orderQuantity ?? detailAssignment?.quantity ?? detailCard?.quantity ?? 1,
-        1
-      )
-    );
-    return formatStBucketQuantityLabel(resolveStBucketQuantity(orderQuantity), 'ko-KR');
-  }, [detailSummary?.orderQuantity, detailAssignment?.quantity, detailCard?.quantity]);
+    const bucketQuantity = Number(detailAssignment?.assignmentStSnapshot?.bucketQuantity);
+    return Number.isInteger(bucketQuantity) && bucketQuantity > 0
+      ? formatStBucketQuantityLabel(bucketQuantity, 'ko-KR')
+      : '-';
+  }, [detailAssignment?.assignmentStSnapshot?.bucketQuantity]);
   const detailHasSavedCtSnapshot = useMemo(
     () => hasSavedCtSnapshot(detailAssignment),
     [detailAssignment]
@@ -5707,6 +5702,30 @@ const AssignBoard = () => {
       requestExternalBoardReload,
       showNotification,
     ]
+  );
+  const handleReviewAssignmentCt = useCallback(
+    async (assignmentId) => {
+      if (!assignmentId) return;
+      try {
+        await requestJSON(
+          `/assignment-plans/${encodeURIComponent(String(assignmentId))}/ct-review` +
+            buildQueryString({ orgId: activeOrgId }),
+          { method: 'PATCH' }
+        );
+        showNotification('CT 검토를 완료했습니다.', 'success');
+        emitWorkspaceDataChanged({
+          topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+          orgId: activeOrgId,
+          assignmentIds: [assignmentId],
+          source: 'assignment-ct-review',
+        });
+        requestExternalBoardReload();
+        handleCloseDetail();
+      } catch (error) {
+        showNotification(error?.message || 'CT 검토 처리에 실패했습니다.', 'error');
+      }
+    },
+    [activeOrgId, handleCloseDetail, requestExternalBoardReload, showNotification]
   );
   const handleDetailDraftInput = useCallback((processKey, value) => {
     if (!detailTargetKey || !processKey) return;
@@ -7166,6 +7185,18 @@ const AssignBoard = () => {
                             languageCode
                           )}
                         </Typography>
+                        {detailAssignment.ctReviewRequired &&
+                        !detailAssignment.ctReviewedAt ? (
+                          <Button
+                            size="small"
+                            variant="contained"
+                            onClick={() =>
+                              handleReviewAssignmentCt(detailAssignment.id)
+                            }
+                          >
+                            CT 검토 완료
+                          </Button>
+                        ) : null}
                       </>
                     )}
                   </Stack>

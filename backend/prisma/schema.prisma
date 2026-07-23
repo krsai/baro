@@ -211,6 +211,9 @@ model Organization {
   buyerWorkOrders             WorkOrder[]                  @relation("WorkOrderBuyerOrg")
   sellerWorkOrders            WorkOrder[]                  @relation("WorkOrderSellerOrg")
   customerWorkOrders          WorkOrder[]                  @relation("WorkOrderCustomerOrg")
+  quantityBucketSets          QuantityBucketSet[]
+  quantityBucketSetVersions   QuantityBucketSetVersion[]
+  quantityBucketEntries       QuantityBucketEntry[]
 
   createdByEmployee Employee? @relation("OrganizationCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("OrganizationUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -386,14 +389,14 @@ model Employee {
   updatedByEmployeeId Int?
   updatedAt           DateTime       @updatedAt
 
-  organization             Organization      @relation(fields: [orgId], references: [id])
-  factory                  Factory?          @relation("FactoryEmployees", fields: [factoryId], references: [id])
-  line                     Line?             @relation("EmployeeCurrentLine", fields: [lineId], references: [id], onDelete: SetNull)
-  role                     AttrRole?         @relation(fields: [roleId], references: [id])
+  organization             Organization       @relation(fields: [orgId], references: [id])
+  factory                  Factory?           @relation("FactoryEmployees", fields: [factoryId], references: [id])
+  line                     Line?              @relation("EmployeeCurrentLine", fields: [lineId], references: [id], onDelete: SetNull)
+  role                     AttrRole?          @relation(fields: [roleId], references: [id])
   lineAssignments          LineAssignment[]
-  representedOrganizations Organization[]    @relation("OrganizationRepresentative")
-  managedFactories         Factory[]         @relation("FactoryManager")
-  managedLines             Line[]            @relation("LineManager")
+  representedOrganizations Organization[]     @relation("OrganizationRepresentative")
+  managedFactories         Factory[]          @relation("FactoryManager")
+  managedLines             Line[]             @relation("LineManager")
   attendanceEntries        AttendanceEntry[]
   workRecords              WorkRecord[]
   atTrainingBuckets        AtTrainingBucket[]
@@ -434,6 +437,7 @@ model Employee {
   updatedWorkOrderItems              WorkOrderItem[]              @relation("WorkOrderItemUpdatedByEmployee")
   createdAssignmentPlans             AssignmentPlan[]             @relation("AssignmentPlanCreatedByEmployee")
   updatedAssignmentPlans             AssignmentPlan[]             @relation("AssignmentPlanUpdatedByEmployee")
+  reviewedAssignmentPlanCts          AssignmentPlan[]             @relation("AssignmentPlanCtReviewedByEmployee")
   createdQcPassEvents                QcPassEvent[]                @relation("QcPassEventCreatedByEmployee")
   updatedQcPassEvents                QcPassEvent[]                @relation("QcPassEventUpdatedByEmployee")
   createdWorkLogs                    WorkLog[]                    @relation("WorkLogCreatedByEmployee")
@@ -540,14 +544,16 @@ model OrgRelationship {
   // Phase 0; drop only after the Railway DB is checked and any values are exported.
   pricingDefaultTradeType String?
   pricingMatrix           Json?
+  salesBucketSetVersionId Int?
   createdAt               DateTime @default(now())
   createdBy               String   @default("system@baro.local")
   createdByEmployeeId     Int?
   updatedByEmployeeId     Int?
   updatedAt               DateTime @updatedAt
 
-  manufacturer Organization @relation("ManufacturerOrgRelationships", fields: [manufacturerOrgId], references: [id])
-  brand        Organization @relation("BrandOrgRelationships", fields: [brandOrgId], references: [id])
+  manufacturer          Organization              @relation("ManufacturerOrgRelationships", fields: [manufacturerOrgId], references: [id])
+  brand                 Organization              @relation("BrandOrgRelationships", fields: [brandOrgId], references: [id])
+  salesBucketSetVersion QuantityBucketSetVersion? @relation("OrgRelationshipSalesBucketVersion", fields: [salesBucketSetVersionId], references: [id], onDelete: Restrict)
 
   createdByEmployee Employee? @relation("OrgRelationshipCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("OrgRelationshipUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -555,6 +561,59 @@ model OrgRelationship {
   @@unique([manufacturerOrgId, brandOrgId])
   @@index([manufacturerOrgId])
   @@index([brandOrgId])
+  @@index([salesBucketSetVersionId])
+}
+
+model QuantityBucketSet {
+  id               Int      @id @default(autoincrement())
+  orgId            Int
+  name             String
+  currentVersionId Int?     @unique
+  createdAt        DateTime @default(now())
+  createdBy        String   @default("system@baro.local")
+  updatedAt        DateTime @updatedAt
+
+  organization   Organization               @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  versions       QuantityBucketSetVersion[] @relation("QuantityBucketSetVersions")
+  currentVersion QuantityBucketSetVersion?  @relation("QuantityBucketSetCurrentVersion", fields: [currentVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([orgId, name])
+  @@index([orgId])
+}
+
+model QuantityBucketSetVersion {
+  id                  Int      @id @default(autoincrement())
+  orgId               Int
+  quantityBucketSetId Int
+  versionNumber       Int
+  createdAt           DateTime @default(now())
+  createdBy           String   @default("system@baro.local")
+
+  organization      Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  quantityBucketSet QuantityBucketSet     @relation("QuantityBucketSetVersions", fields: [quantityBucketSetId], references: [id], onDelete: Cascade)
+  currentForSet     QuantityBucketSet?    @relation("QuantityBucketSetCurrentVersion")
+  entries           QuantityBucketEntry[]
+  customerDefaults  OrgRelationship[]     @relation("OrgRelationshipSalesBucketVersion")
+  timeStyles        Style[]               @relation("StyleTimeBucketVersion")
+
+  @@unique([quantityBucketSetId, versionNumber])
+  @@index([orgId])
+  @@index([quantityBucketSetId])
+}
+
+model QuantityBucketEntry {
+  id                         Int      @id @default(autoincrement())
+  orgId                      Int
+  quantityBucketSetVersionId Int
+  bucketQuantity             Int
+  createdAt                  DateTime @default(now())
+
+  organization             Organization             @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([quantityBucketSetVersionId, bucketQuantity])
+  @@index([orgId])
+  @@index([quantityBucketSetVersionId])
 }
 
 model AttrColor {
@@ -616,37 +675,40 @@ model AttrProcess {
 }
 
 model Style {
-  id                  Int      @id @default(autoincrement())
-  orgId               Int
-  code                String
-  name                String
-  registrationDate    String?
-  designer            String?
-  collection          String?
-  season              String?
-  imageUrls           Json?
+  id                     Int      @id @default(autoincrement())
+  orgId                  Int
+  code                   String
+  name                   String
+  registrationDate       String?
+  designer               String?
+  collection             String?
+  season                 String?
+  imageUrls              Json?
   /// Deprecated 2026-07-02. No longer written by new/updated code paths ??
   /// StyleProcess/StyleProcessStandard (FK styleId) are the source of truth. Kept only
   /// as a one-time seed for `ensureStyleProcessStorageForStyles`' self-healing backfill
   /// of legacy styles; every response/calculation path reads the relational mirror, not
   /// this column. Run `npm run verify:style-process-backfill` (0 results) before dropping.
-  processes           Json?
-  bom                 Json?
-  bomNotes            String?
-  revenueMemo         String?
-  createdAt           DateTime @default(now())
-  createdBy           String   @default("system@baro.local")
-  createdByEmployeeId Int?
-  updatedByEmployeeId Int?
-  updatedAt           DateTime @updatedAt
+  processes              Json?
+  bom                    Json?
+  bomNotes               String?
+  revenueMemo            String?
+  timeBucketSetVersionId Int?
+  timeBucketSource       String   @default("CUSTOMER_DEFAULT")
+  createdAt              DateTime @default(now())
+  createdBy              String   @default("system@baro.local")
+  createdByEmployeeId    Int?
+  updatedByEmployeeId    Int?
+  updatedAt              DateTime @updatedAt
 
-  organization    Organization              @relation(fields: [orgId], references: [id])
-  styleProcesses  StyleProcess[]
-  workOrderItems  WorkOrderItem[]
-  trainingBuckets AtTrainingBucketProcess[]
-  assignmentPlans AssignmentPlan[]
-  assignmentCards AssignmentCard[]
-  workRecords     WorkRecord[]
+  organization         Organization              @relation(fields: [orgId], references: [id])
+  styleProcesses       StyleProcess[]
+  workOrderItems       WorkOrderItem[]
+  trainingBuckets      AtTrainingBucketProcess[]
+  assignmentPlans      AssignmentPlan[]
+  assignmentCards      AssignmentCard[]
+  workRecords          WorkRecord[]
+  timeBucketSetVersion QuantityBucketSetVersion? @relation("StyleTimeBucketVersion", fields: [timeBucketSetVersionId], references: [id], onDelete: Restrict)
 
   createdByEmployee Employee? @relation("StyleCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("StyleUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -654,6 +716,7 @@ model Style {
   @@unique([orgId, code])
   @@unique([orgId, name])
   @@index([orgId])
+  @@index([timeBucketSetVersionId])
 }
 
 model StyleProcess {
@@ -754,11 +817,11 @@ model AtTrainingBucketProcess {
   updatedByEmployeeId Int?
   updatedAt           DateTime @updatedAt
 
-  organization Organization     @relation(fields: [orgId], references: [id])
-  bucket       AtTrainingBucket @relation(fields: [bucketId], references: [id], onDelete: Cascade)
-  style        Style            @relation(fields: [styleId], references: [id], onDelete: Cascade)
-  styleProcess StyleProcess     @relation(fields: [styleProcessId], references: [id], onDelete: Cascade)
-  assignmentPlan AssignmentPlan? @relation(fields: [assignmentPlanId], references: [id], onDelete: SetNull)
+  organization   Organization     @relation(fields: [orgId], references: [id])
+  bucket         AtTrainingBucket @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+  style          Style            @relation(fields: [styleId], references: [id], onDelete: Cascade)
+  styleProcess   StyleProcess     @relation(fields: [styleProcessId], references: [id], onDelete: Cascade)
+  assignmentPlan AssignmentPlan?  @relation(fields: [assignmentPlanId], references: [id], onDelete: SetNull)
 
   createdByEmployee Employee? @relation("AtTrainingBucketProcessCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("AtTrainingBucketProcessUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -865,6 +928,10 @@ model AssignmentPlan {
   assignmentCtTotalSeconds  Int?
   assignmentCtSnapshot      Json?
   assignmentStTotalSeconds  Int?
+  assignmentStSnapshot      Json?
+  ctReviewRequired          Boolean               @default(false)
+  ctReviewedAt              DateTime?
+  ctReviewedByEmployeeId    Int?
   startIndex                Int
   endIndex                  Int
   startDayOffsetPercent     Float?
@@ -894,21 +961,22 @@ model AssignmentPlan {
   updatedByEmployeeId       Int?
   updatedAt                 DateTime
 
-  line           Line            @relation(fields: [lineId], references: [id], onDelete: Restrict)
-  organization   Organization    @relation(fields: [orgId], references: [id])
-  workOrder      WorkOrder?      @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
-  style          Style?          @relation(fields: [styleId], references: [id], onDelete: SetNull)
-  buyerOrg       Organization?   @relation("AssignmentPlanBuyerOrg", fields: [buyerOrgId], references: [id], onDelete: SetNull)
+  line                    Line                      @relation(fields: [lineId], references: [id], onDelete: Restrict)
+  organization            Organization              @relation(fields: [orgId], references: [id])
+  workOrder               WorkOrder?                @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  style                   Style?                    @relation(fields: [styleId], references: [id], onDelete: SetNull)
+  buyerOrg                Organization?             @relation("AssignmentPlanBuyerOrg", fields: [buyerOrgId], references: [id], onDelete: SetNull)
   // Real FK replacing the old "cardId string happens to match" convention
   // (AGENTS.md structural-problems list). cardId itself is kept as the stable
   // external board identifier; joins must use assignmentCardId/workOrderId/styleId.
-  assignmentCard AssignmentCard? @relation(fields: [assignmentCardId], references: [id], onDelete: SetNull)
-  workRecords    WorkRecord[]
-  qcPassEvents   QcPassEvent[]
+  assignmentCard          AssignmentCard?           @relation(fields: [assignmentCardId], references: [id], onDelete: SetNull)
+  workRecords             WorkRecord[]
+  qcPassEvents            QcPassEvent[]
   trainingBucketProcesses AtTrainingBucketProcess[]
 
-  createdByEmployee Employee? @relation("AssignmentPlanCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
-  updatedByEmployee Employee? @relation("AssignmentPlanUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+  createdByEmployee    Employee? @relation("AssignmentPlanCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee    Employee? @relation("AssignmentPlanUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+  ctReviewedByEmployee Employee? @relation("AssignmentPlanCtReviewedByEmployee", fields: [ctReviewedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([orgId, externalId])
   @@index([orgId, lineId])
@@ -916,6 +984,7 @@ model AssignmentPlan {
   @@index([styleId])
   @@index([assignmentCardId])
   @@index([buyerOrgId])
+  @@index([ctReviewedByEmployeeId])
 }
 
 model QcPassEvent {
