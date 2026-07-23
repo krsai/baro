@@ -613,6 +613,73 @@ export const normalizeProcesses = (processes) => {
   return processes.map((process, index) => normalizeProcess(process, index));
 };
 
+export const applyMonotonicStBucketEdit = (
+  stBuckets,
+  quantity,
+  seconds
+) => {
+  const normalizedBuckets = normalizeProcessStBuckets(stBuckets);
+  const bucketQuantity = resolveStBucketQuantity(quantity);
+  const bucketByQuantity = new Map(
+    normalizedBuckets.map((bucket) => [bucket.bucketQuantity, bucket])
+  );
+  const changedQuantities = new Set([bucketQuantity]);
+
+  if (seconds === null || seconds === undefined || seconds === '') {
+    bucketByQuantity.delete(bucketQuantity);
+  } else {
+    const bucketStSeconds = clampProcessSeconds(seconds);
+    if (bucketStSeconds === null) {
+      return { stBuckets: normalizedBuckets, changedQuantities: [] };
+    }
+    const writeBucket = (targetQuantity, targetSeconds) => {
+      const current = bucketByQuantity.get(targetQuantity);
+      bucketByQuantity.set(targetQuantity, {
+        ...(current || {}),
+        bucketQuantity: targetQuantity,
+        bucketStSeconds: targetSeconds,
+        setBy: 'MANUAL',
+        setAt: null,
+        updatedAt: null,
+      });
+      changedQuantities.add(targetQuantity);
+    };
+
+    writeBucket(bucketQuantity, bucketStSeconds);
+    const orderedQuantities = Array.from(bucketByQuantity.keys()).sort((left, right) => left - right);
+    const editedIndex = orderedQuantities.indexOf(bucketQuantity);
+
+    let boundarySeconds = bucketStSeconds;
+    for (let index = editedIndex - 1; index >= 0; index -= 1) {
+      const currentQuantity = orderedQuantities[index];
+      const currentSeconds = bucketByQuantity.get(currentQuantity)?.bucketStSeconds;
+      if (currentSeconds < boundarySeconds) {
+        writeBucket(currentQuantity, boundarySeconds);
+      } else {
+        boundarySeconds = currentSeconds;
+      }
+    }
+
+    boundarySeconds = bucketStSeconds;
+    for (let index = editedIndex + 1; index < orderedQuantities.length; index += 1) {
+      const currentQuantity = orderedQuantities[index];
+      const currentSeconds = bucketByQuantity.get(currentQuantity)?.bucketStSeconds;
+      if (currentSeconds > boundarySeconds) {
+        writeBucket(currentQuantity, boundarySeconds);
+      } else {
+        boundarySeconds = currentSeconds;
+      }
+    }
+  }
+
+  return {
+    stBuckets: Array.from(bucketByQuantity.values()).sort(
+      (left, right) => left.bucketQuantity - right.bucketQuantity
+    ),
+    changedQuantities: Array.from(changedQuantities).sort((left, right) => left - right),
+  };
+};
+
 // AT is now calculated via work records. If there is an override payload from
 // analytics, prefer it; otherwise keep the existing AT value.
 export const resolveProcessActualTime = ({ existingAt = null, workStats = null }) => {

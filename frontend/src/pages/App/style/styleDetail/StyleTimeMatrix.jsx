@@ -17,6 +17,7 @@ import { useLanguage } from '../../../../context/LanguageContext';
 import { formatNumberWithCommas } from '../../../../utils/numberFormat';
 import {
   ST_STANDARD_BUCKETS,
+  applyMonotonicStBucketEdit,
   normalizeProcess,
   normalizeProcesses,
   resolveProcessAtCellState,
@@ -34,7 +35,13 @@ const HIDDEN_BUCKETS = new Set([2, 20]);
 const VISIBLE_BUCKETS = ST_STANDARD_BUCKETS.filter((q) => !HIDDEN_BUCKETS.has(q));
 
 const BORDER = '1px solid rgba(17,24,39,0.1)';
+const PROCESS_CELL_W = 240;
+const METRIC_CELL_W = 40;
 const ST_CELL_W = 76;
+const GROUP_BORDER = '2px solid #CBD5E1';
+const GROUP_BOTTOM_BORDER = '1px solid #CBD5E1';
+const PAIR_DIVIDER = '1px dashed rgba(100,116,139,0.2)';
+const STICKY_COLUMN_DIVIDER = '1px solid rgba(100,116,139,0.22)';
 const AT_TONE_COLORS = {
   fitted: '#374151',
   extrapolated: '#6D28D9',
@@ -204,19 +211,14 @@ const resolveAtCellTitle = (cellState, languageCode) => {
 const upsertStBuckets = (process, quantity, seconds) => {
   const norm = normalizeProcess(process);
   const q = resolveStBucketQuantity(quantity);
-  const next = (Array.isArray(norm?.stBuckets) ? norm.stBuckets : [])
-    .filter((e) => Number(e?.bucketQuantity ?? e?.quantity) !== q);
-  if (seconds != null) {
-    next.push({ bucketQuantity: q, bucketStSeconds: seconds, setBy: 'MANUAL', setAt: null, updatedAt: null });
-  }
-  next.sort((a, b) => Number(a.bucketQuantity) - Number(b.bucketQuantity));
+  const adjustment = applyMonotonicStBucketEdit(norm?.stBuckets, q, seconds);
   const updateQuantities = Array.from(new Set([
     ...(Array.isArray(norm?.stBucketUpdateQuantities) ? norm.stBucketUpdateQuantities : []),
-    q,
+    ...adjustment.changedQuantities,
   ])).filter((value) => Number.isFinite(Number(value)) && Number(value) > 0);
   return normalizeProcess({
     ...norm,
-    stBuckets: next,
+    stBuckets: adjustment.stBuckets,
     stBucketWriteMode: 'MANUAL_EDIT',
     stBucketUpdateQuantities: updateQuantities,
     ct: null,
@@ -225,7 +227,10 @@ const upsertStBuckets = (process, quantity, seconds) => {
 };
 
 const dk = (id, qty) => `${id}::${qty}`;
-const ROW_BG = ['#FFFFFF', '#F9FAFB'];
+const PROCESS_GROUP_TONES = [
+  { name: '#F8FAFC', st: '#FFFFFF', at: '#F8FAFC' },
+  { name: '#F1F5F9', st: '#F8FAFC', at: '#F1F5F9' },
+];
 
 // ── StyleTimeMatrix ─────────────────────────────────────────────────────────
 
@@ -235,10 +240,10 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
   const [stDrafts, setStDrafts] = useState({});
 
   const msg = languageCode === 'vi'
-    ? { title: 'ST/AT theo so luong (giay)', process: 'Cong doan', ptHint: 'PT: thoi gian co ban (khong sua)', stHint: 'ST: co the chinh sua', atHint: 'AT: tu dong hoc tu ban ghi', unit: 'Don vi: giay / 1 san pham', empty: 'Chua co cong doan.' }
+    ? { title: 'ST/AT theo so luong (giay)', process: 'Cong doan', ptHint: 'PT: thoi gian co ban (khong sua)', stHint: 'ST cua so luong nho phai bang hoac lon hon so luong lon. Cac bucket lien quan se tu dong dieu chinh.', atHint: 'AT: tu dong hoc tu ban ghi', unit: 'Don vi: giay / 1 san pham', empty: 'Chua co cong doan.' }
     : languageCode === 'en'
-    ? { title: 'ST / AT by Quantity (sec)', process: 'Process', ptHint: 'PT: base physical time (read-only)', stHint: 'ST: editable standard time per quantity bucket', atHint: 'AT: auto-learned from work records', unit: 'Unit: seconds / per piece', empty: 'No processes registered.' }
-    : { title: '수량별 ST / AT (초)', process: '공정', ptHint: 'PT: 공정 정보에서 입력한 기본 물리 시간 (수정 불가)', stHint: 'ST: 수량 구간별 표준 시간 (이 페이지에서 수동 입력 가능)', atHint: 'AT: 작업기록으로 자동 학습한 실제 시간 (참고용)', unit: '단위: 초 / 1장 기준', empty: '등록된 공정이 없습니다.' };
+    ? { title: 'ST / AT by Quantity (sec)', process: 'Process', ptHint: 'PT: base physical time (read-only)', stHint: 'ST for a smaller quantity must be equal to or greater than larger quantities. Related buckets adjust automatically.', atHint: 'AT: auto-learned from work records', unit: 'Unit: seconds / per piece', empty: 'No processes registered.' }
+    : { title: '수량별 ST / AT (초)', process: '공정', ptHint: 'PT: 공정 정보에서 입력한 기본 물리 시간 (수정 불가)', stHint: '작은 수량의 ST는 큰 수량과 같거나 커야 합니다. 필요한 버킷은 자동으로 함께 조정됩니다.', atHint: 'AT: 작업기록으로 자동 학습한 실제 시간 (참고용)', unit: '단위: 초 / 1장 기준', empty: '등록된 공정이 없습니다.' };
 
   const handleStChange = useCallback((id, qty, val) => {
     setStDrafts((prev) => ({ ...prev, [dk(id, qty)]: val }));
@@ -297,9 +302,12 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
   );
 
   return (
-    <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
+    <Paper
+      variant="outlined"
+      sx={{ borderRadius: 1, overflow: 'hidden', borderColor: '#D7DEE8' }}
+    >
       {/* 헤더 */}
-      <Box sx={{ px: 2.5, py: 1.5, borderBottom: BORDER, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+      <Box sx={{ px: 2.5, py: 1.5, borderBottom: BORDER, backgroundColor: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{msg.title}</Typography>
         <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
           {atLegendItems.map((item) => (
@@ -326,33 +334,86 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
         <Table
           size="small"
           sx={{
-            minWidth: 240 + 56 + VISIBLE_BUCKETS.length * (ST_CELL_W + 8),
+            minWidth: PROCESS_CELL_W + METRIC_CELL_W + VISIBLE_BUCKETS.length * (ST_CELL_W + 8),
             tableLayout: 'fixed',
-            borderCollapse: 'collapse',
+            borderCollapse: 'separate',
+            borderSpacing: 0,
             '& .MuiTableCell-root': { borderBottom: BORDER, borderRight: 'none' },
           }}
         >
           <TableHead>
-            <TableRow sx={{ backgroundColor: '#F8FAFC' }}>
-              <TableCell sx={{ width: 240, fontWeight: 700, fontSize: 12, pl: 2 }}>
+            <TableRow sx={{ backgroundColor: '#EEF2F6' }}>
+              <TableCell
+                sx={{
+                  width: PROCESS_CELL_W,
+                  minWidth: PROCESS_CELL_W,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  pl: 2,
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 4,
+                  backgroundColor: '#EEF2F6',
+                  borderRight: STICKY_COLUMN_DIVIDER,
+                  borderBottom: '2px solid #B8C2CF',
+                }}
+              >
                 {msg.process}
               </TableCell>
-              <TableCell sx={{ width: 40, fontWeight: 700, fontSize: 12 }} />
+              <TableCell
+                sx={{
+                  width: METRIC_CELL_W,
+                  minWidth: METRIC_CELL_W,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  position: 'sticky',
+                  left: PROCESS_CELL_W,
+                  zIndex: 4,
+                  backgroundColor: '#EEF2F6',
+                  borderRight: STICKY_COLUMN_DIVIDER,
+                  borderBottom: '2px solid #B8C2CF',
+                }}
+              />
               {VISIBLE_BUCKETS.map((q) => (
                 <TableCell
                   key={q}
                   align="right"
-                  sx={{ width: ST_CELL_W + 8, fontWeight: 700, fontSize: 12, fontVariantNumeric: 'tabular-nums', pr: 1.5 }}
+                  sx={{ width: ST_CELL_W + 8, fontWeight: 700, fontSize: 12, fontVariantNumeric: 'tabular-nums', pr: 1.5, borderBottom: '2px solid #B8C2CF' }}
                 >
                   {`${formatNumberWithCommas(q, { maximumFractionDigits: 0 })}~`}
                 </TableCell>
               ))}
             </TableRow>
             <TableRow sx={{ backgroundColor: '#FFFBEB' }}>
-              <TableCell sx={{ pl: 2, py: 0.75, fontWeight: 700, fontSize: 11, color: '#92400E' }}>
+              <TableCell
+                sx={{
+                  pl: 2,
+                  py: 0.75,
+                  fontWeight: 700,
+                  fontSize: 11,
+                  color: '#92400E',
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 3,
+                  backgroundColor: '#FFFBEB',
+                  borderRight: STICKY_COLUMN_DIVIDER,
+                }}
+              >
                 {languageCode === 'vi' ? 'Tong ST' : languageCode === 'en' ? 'Total ST' : '합계 ST'}
               </TableCell>
-              <TableCell sx={{ py: 0.75, fontSize: 11, color: '#92400E', fontWeight: 700 }}>
+              <TableCell
+                sx={{
+                  py: 0.75,
+                  fontSize: 11,
+                  color: '#92400E',
+                  fontWeight: 700,
+                  position: 'sticky',
+                  left: PROCESS_CELL_W,
+                  zIndex: 3,
+                  backgroundColor: '#FFFBEB',
+                  borderRight: STICKY_COLUMN_DIVIDER,
+                }}
+              >
                 {languageCode === 'vi' ? '(giay)' : languageCode === 'en' ? '(sec)' : '(초)'}
               </TableCell>
               {totalStByBucket.map((total, i) => (
@@ -365,11 +426,38 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                 </TableCell>
               ))}
             </TableRow>
-            <TableRow sx={{ backgroundColor: '#F8FAFC' }}>
-              <TableCell sx={{ pl: 2, py: 0.75, fontWeight: 700, fontSize: 11, color: '#374151' }}>
+            <TableRow sx={{ backgroundColor: '#F5F3FF' }}>
+              <TableCell
+                sx={{
+                  pl: 2,
+                  py: 0.75,
+                  fontWeight: 700,
+                  fontSize: 11,
+                  color: '#374151',
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 3,
+                  backgroundColor: '#F5F3FF',
+                  borderRight: STICKY_COLUMN_DIVIDER,
+                  borderBottom: '3px solid #94A3B8',
+                }}
+              >
                 {languageCode === 'vi' ? 'Tong AT' : languageCode === 'en' ? 'Total AT' : '합계 AT'}
               </TableCell>
-              <TableCell sx={{ py: 0.75, fontSize: 11, color: '#6B7280', fontWeight: 700 }}>
+              <TableCell
+                sx={{
+                  py: 0.75,
+                  fontSize: 11,
+                  color: '#6B7280',
+                  fontWeight: 700,
+                  position: 'sticky',
+                  left: PROCESS_CELL_W,
+                  zIndex: 3,
+                  backgroundColor: '#F5F3FF',
+                  borderRight: STICKY_COLUMN_DIVIDER,
+                  borderBottom: '3px solid #94A3B8',
+                }}
+              >
                 {languageCode === 'vi' ? '(giay)' : languageCode === 'en' ? '(sec)' : '(초)'}
               </TableCell>
               {totalAtByBucket.map((item, i) => {
@@ -387,6 +475,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                         ? resolveAtToneColor(item.tone)
                         : AT_TONE_COLORS.empty,
                       pr: 1.5,
+                      borderBottom: '3px solid #94A3B8',
                     }}
                   >
                     {hasValue ? fmtRoundedSec(item.total) : '-'}
@@ -405,7 +494,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
               </TableRow>
             ) : (
               safeProcesses.map((process, pIdx) => {
-                const rowBg = ROW_BG[pIdx % 2];
+                const groupTone = PROCESS_GROUP_TONES[pIdx % PROCESS_GROUP_TONES.length];
                 const id = process?.instanceId || process?.id || process?.code || `P${pIdx + 1}`;
                 const label = formatProcessNameWithQuantity(
                   resolveLocalizedProcessName(process, languageCode) || process?.name || process?.code || '-',
@@ -418,12 +507,34 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                 const minSt = validSt.length ? Math.min(...validSt) : null;
                 const maxSt = validSt.length ? Math.max(...validSt) : null;
                 const isUniform = validSt.length === 0 || Math.abs((maxSt ?? 0) - (minSt ?? 0)) < 1e-9;
+                const groupTopBorder = pIdx === 0 ? 'none' : GROUP_BORDER;
 
                 const nameColSx = {
                   verticalAlign: 'middle',
-                  pl: 1.5,
-                  backgroundColor: rowBg,
-                  borderTop: pIdx > 0 ? '2px solid rgba(17,24,39,0.07)' : undefined,
+                  width: PROCESS_CELL_W,
+                  minWidth: PROCESS_CELL_W,
+                  pl: 2,
+                  py: 1,
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 2,
+                  backgroundColor: groupTone.name,
+                  borderTop: groupTopBorder,
+                  borderBottom: GROUP_BOTTOM_BORDER,
+                  borderRight: STICKY_COLUMN_DIVIDER,
+                  boxShadow: 'inset 3px 0 0 #94A3B8',
+                };
+                const metricBaseSx = {
+                  width: METRIC_CELL_W,
+                  minWidth: METRIC_CELL_W,
+                  position: 'sticky',
+                  left: PROCESS_CELL_W,
+                  zIndex: 2,
+                  borderRight: STICKY_COLUMN_DIVIDER,
+                  fontWeight: 700,
+                  fontSize: 10.5,
+                  letterSpacing: 0,
+                  textAlign: 'center',
                 };
 
                 return (
@@ -432,7 +543,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                     <TableRow>
                       {/* 공정명 — ST+AT 2행 rowSpan */}
                       <TableCell rowSpan={2} sx={nameColSx}>
-                        <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.4 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.4, color: '#111827' }}>
                           {label}
                         </Typography>
                         {pt != null && (
@@ -455,8 +566,19 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                       </TableCell>
 
                       {/* ST 라벨 */}
-                      <TableCell sx={{ fontWeight: 600, fontSize: 11, color: 'text.secondary', backgroundColor: rowBg, py: 0.5 }}>
-                        ST
+                      <TableCell
+                        sx={{
+                          ...metricBaseSx,
+                          color: '#475569',
+                          backgroundColor: groupTone.st,
+                          py: 0.5,
+                          borderTop: groupTopBorder,
+                          borderBottom: PAIR_DIVIDER,
+                        }}
+                      >
+                        <Tooltip title={msg.stHint} placement="right">
+                          <Box component="span">ST</Box>
+                        </Tooltip>
                       </TableCell>
 
                       {/* ST 값 셀 */}
@@ -468,14 +590,28 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                           : toEditText(resolved);
 
                         return (
-                          <TableCell key={qty} align="right" sx={{ py: '4px', px: '4px', backgroundColor: rowBg }}>
+                          <TableCell
+                            key={qty}
+                            align="right"
+                            sx={{
+                              py: '4px',
+                              px: '4px',
+                              backgroundColor: groupTone.st,
+                              borderTop: groupTopBorder,
+                              borderBottom: PAIR_DIVIDER,
+                            }}
+                          >
                             <TextField
                               value={value}
                               onChange={(e) => handleStChange(id, qty, e.target.value)}
                               onBlur={(e) => handleStBlur(pIdx, id, qty, e.target.value)}
                               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
                               size="small"
-                              inputProps={{ inputMode: 'decimal' }}
+                              inputProps={{
+                                inputMode: 'decimal',
+                                title: msg.stHint,
+                                'aria-label': `${label} ST ${qty}`,
+                              }}
                               sx={{
                                 width: ST_CELL_W,
                                 '& .MuiInputBase-input': {
@@ -502,7 +638,15 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
 
                     {/* AT 행 */}
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600, fontSize: 11, color: 'text.disabled', backgroundColor: rowBg, py: 0.5 }}>
+                      <TableCell
+                        sx={{
+                          ...metricBaseSx,
+                          color: '#64748B',
+                          backgroundColor: groupTone.at,
+                          py: 0.5,
+                          borderBottom: GROUP_BOTTOM_BORDER,
+                        }}
+                      >
                         AT
                       </TableCell>
                       {VISIBLE_BUCKETS.map((qty) => {
@@ -537,7 +681,16 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                           </Box>
                         );
                         return (
-                          <TableCell key={qty} align="right" sx={{ py: '4px', pr: 1.5, backgroundColor: rowBg }}>
+                          <TableCell
+                            key={qty}
+                            align="right"
+                            sx={{
+                              py: '4px',
+                              pr: 1.5,
+                              backgroundColor: groupTone.at,
+                              borderBottom: GROUP_BOTTOM_BORDER,
+                            }}
+                          >
                             {atVal != null && atCellTitle ? (
                               <Tooltip title={atCellTitle} placement="top">
                                 {atContent}
