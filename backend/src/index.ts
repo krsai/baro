@@ -95,6 +95,10 @@ import {
   type WorkLogCrossLineAssignmentWarning,
 } from "./work-records/workRecordCrossLine";
 import {
+  validateWorkLogSingleMonthRange,
+  WORK_LOG_CROSS_MONTH_ERROR,
+} from "./work-records/workLogCoverage";
+import {
   AT_MONTHLY_A_CLAMP_RATIO,
   fitAtParamsWithProportionalAllocation,
   type AtFittedParams,
@@ -102,6 +106,7 @@ import {
   type AtTrainingDayProcessRow,
 } from "./services/atTraining";
 import {
+  isAtAttendanceFallbackWorkday,
   resolveAtAttendanceDay,
   resolveAtAttendanceQueryDateRange,
 } from "./services/attendanceFallback";
@@ -668,6 +673,9 @@ const STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT =
   String(process.env.STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT ?? "true")
     .trim()
     .toLowerCase() !== "false";
+const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
+  "20260723_clear_stale_at_params_v1",
+] as const;
 const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "WorkLog", columnName: "coverageStartDate" },
   { tableName: "WorkLog", columnName: "coverageEndDate" },
@@ -2852,7 +2860,7 @@ const toAtTrainingSourceGroupKey = ({
   return "missingAssignmentPlan";
 };
 
-const AT_SYNC_RUNTIME_MARKER = "at-sync-runtime-2026-07-22-6";
+const AT_SYNC_RUNTIME_MARKER = "at-sync-runtime-2026-07-23-1";
 
 const loadAtTrainingSourceWorkLogs = async ({
   orgId,
@@ -3395,16 +3403,16 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       return { seconds: 0, source: "NONE" as const };
     }
     const workerDateKey = toAtTrainingWorkerDateKey(normalizedWorkDate, workerId);
-    const parsedDate = toUtcDateFromDateKey(normalizedWorkDate);
     return resolveAtAttendanceDay({
       actualEntryExists: explicitAttendanceWorkerDateKeys.has(workerDateKey),
       actualWorkedSeconds: attendanceSecondsByWorkerDate.get(workerDateKey) ?? null,
       isEligibleWorker: isEligibleWorkerOnDate(workerId, normalizedWorkDate),
       isOnLeave: isWorkerOnLeaveDate(workerId, normalizedWorkDate),
-      isWorkingDay:
-        parsedDate !== null &&
-        parsedDate.getUTCDay() !== 0 &&
-        !organizationHolidayDateKeys.has(normalizedWorkDate),
+      isWorkingDay: isAtAttendanceFallbackWorkday({
+        workDate: normalizedWorkDate,
+        isOrganizationHoliday:
+          organizationHolidayDateKeys.has(normalizedWorkDate),
+      }),
       fallbackWorkSeconds: ATTENDANCE_DEFAULT_WORK_SECONDS,
     });
   };
@@ -4339,6 +4347,52 @@ const buildAtTrainingInitialSeedFromSt = ({
   };
 };
 
+const clearUnfittedStyleProcessAtParams = async ({
+  orgId,
+  retainedStyleProcessIds = [],
+}: {
+  orgId: number;
+  retainedStyleProcessIds?: number[];
+}) => {
+  const normalizedRetainedIds = Array.from(
+    new Set(
+      retainedStyleProcessIds
+        .map((value) => toPositiveIntOrNull(value))
+        .filter((value): value is number => value !== null)
+    )
+  );
+  const clearedRows =
+    normalizedRetainedIds.length > 0
+      ? await prisma.$queryRaw<Array<{ styleId: number }>>(Prisma.sql`
+          UPDATE "StyleProcess"
+          SET "atParams" = NULL,
+              "updatedAt" = NOW()
+          WHERE "orgId" = ${orgId}
+            AND "atParams" IS NOT NULL
+            AND "id" NOT IN (${Prisma.join(normalizedRetainedIds)})
+          RETURNING "styleId"
+        `)
+      : await prisma.$queryRaw<Array<{ styleId: number }>>(Prisma.sql`
+          UPDATE "StyleProcess"
+          SET "atParams" = NULL,
+              "updatedAt" = NOW()
+          WHERE "orgId" = ${orgId}
+            AND "atParams" IS NOT NULL
+          RETURNING "styleId"
+        `);
+  const clearedStyleIds = Array.from(
+    new Set(
+      clearedRows
+        .map((row) => toPositiveIntOrNull(row.styleId))
+        .filter((value): value is number => value !== null)
+    )
+  );
+  return {
+    clearedProcesses: clearedRows.length,
+    clearedStyleIds,
+  };
+};
+
 const applyAtTrainingResultsToStyleProcesses = async ({
   orgId,
   trainingMonthKey,
@@ -4352,10 +4406,25 @@ const applyAtTrainingResultsToStyleProcesses = async ({
   metricTrainingQualityByMetricKey: Map<string, AtTrainingMetricQuality>;
   styleProcessRowsById: Map<number, any>;
 }) => {
-  let updatedProcesses = 0;
+  const retainedStyleProcessIds = Array.from(styleProcessRowsById.values())
+    .filter((processRow) => {
+      const styleProcessId = toPositiveIntOrNull(processRow?.id);
+      return (
+        styleProcessId !== null &&
+        fittedParamsByMetric.has(
+          toAtTrainingStyleProcessMetricKey(styleProcessId)
+        )
+      );
+    })
+    .map((processRow) => Number(processRow.id));
+  const staleCleanup = await clearUnfittedStyleProcessAtParams({
+    orgId,
+    retainedStyleProcessIds,
+  });
+  let updatedProcesses = staleCleanup.clearedProcesses;
   let clampAdjustedProcesses = 0;
-  const changedStyleIds = new Set<number>();
-  const refreshedStyleIds = new Set<number>();
+  const changedStyleIds = new Set<number>(staleCleanup.clearedStyleIds);
+  const refreshedStyleIds = new Set<number>(staleCleanup.clearedStyleIds);
 
   for (const processRow of styleProcessRowsById.values()) {
     const styleProcessId = toPositiveIntOrNull(processRow?.id);
@@ -4492,6 +4561,7 @@ const applyAtTrainingResultsToStyleProcesses = async ({
   return {
     updatedStyles: changedStyleIds.size,
     updatedProcesses,
+    clearedProcesses: staleCleanup.clearedProcesses,
     clampAdjustedProcesses,
   };
 };
@@ -4536,6 +4606,30 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
     return diagnostics
       ? { updatedStyles, updatedProcesses, reason, diagnostics }
       : { updatedStyles, updatedProcesses, reason };
+  };
+  const finishWithoutFittedMetrics = async (
+    reason: string,
+    diagnostics: Record<string, any> | null
+  ) => {
+    const staleCleanup = await clearUnfittedStyleProcessAtParams({ orgId });
+    if (staleCleanup.clearedStyleIds.length > 0) {
+      await rebuildAssignmentCardsForOrgIds(
+        await resolveStyleSyncTargetOrgIds(orgId)
+      );
+    }
+    const nextDiagnostics =
+      diagnostics === null
+        ? null
+        : {
+            ...diagnostics,
+            clearedUnfittedProcesses: staleCleanup.clearedProcesses,
+          };
+    return finish(
+      staleCleanup.clearedStyleIds.length,
+      staleCleanup.clearedProcesses,
+      reason,
+      nextDiagnostics
+    );
   };
   console.log(
     `[AT sync] marker=${AT_SYNC_RUNTIME_MARKER} start orgId=${orgId} month=${trainingMonthKey}`
@@ -4595,7 +4689,10 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
         }
       : null;
     if (bucketTrainingData.trainingDayBuckets.length === 0) {
-      return finish(0, 0, "no_metric_observations", diagnosticsSummary);
+      return finishWithoutFittedMetrics(
+        "no_metric_observations",
+        diagnosticsSummary
+      );
     }
 
     const initialSeedResult = buildAtTrainingInitialSeedFromSt({
@@ -4613,7 +4710,10 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
             missingInitialSeedSamples: initialSeedResult.missingSeedSamples,
           };
     if (initialSeedResult.initialPerPieceByMetricKey.size === 0) {
-      return finish(0, 0, "no_initial_st_seeds", seededDiagnosticsSummary);
+      return finishWithoutFittedMetrics(
+        "no_initial_st_seeds",
+        seededDiagnosticsSummary
+      );
     }
 
     const fittingResult = fitAtParamsWithProportionalAllocation(
@@ -4629,7 +4729,10 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
             fitting: fittingResult.diagnostics,
           };
     if (fittedParamsByMetric.size === 0) {
-      return finish(0, 0, "no_fitted_metrics", fittedDiagnosticsSummary);
+      return finishWithoutFittedMetrics(
+        "no_fitted_metrics",
+        fittedDiagnosticsSummary
+      );
     }
     console.log(
       `[AT sync] orgId=${orgId} month=${trainingMonthKey} metrics=${fittedParamsByMetric.size} dayBuckets=${bucketTrainingData.trainingDayBuckets.length} iterations=${fittingResult.iterationCount} converged=${fittingResult.converged}`
@@ -4656,6 +4759,7 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
             fittedMetricCount: fittedParamsByMetric.size,
             fittingIterationCount: fittingResult.iterationCount,
             fittingConverged: fittingResult.converged,
+            clearedUnfittedProcesses: applyResult.clearedProcesses,
             clampAdjustedProcesses: applyResult.clampAdjustedProcesses,
           };
 
@@ -23590,6 +23694,20 @@ app.post("/work-logs/import", async (req, res) => {
         })
       );
     }
+    if (
+      validateWorkLogSingleMonthRange({
+        coverageStartDate: row.coverageStartDate,
+        coverageEndDate: row.coverageEndDate,
+      })
+    ) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row,
+          code: "CROSS_MONTH_DATE_RANGE",
+          message: WORK_LOG_CROSS_MONTH_ERROR,
+        })
+      );
+    }
     if (!row.employeeNo) {
       issues.push(
         buildWorkLogImportIssue({
@@ -24439,6 +24557,16 @@ app.post("/work-logs", async (req, res) => {
   });
   const normalized = normalizeWorkLogPayload(req.body ?? {});
   updateWorkLogMutationTrace(trace, "normalized", summarizeWorkLogPayloadForDebug(normalized));
+  const crossMonthRangeError = validateWorkLogSingleMonthRange({
+    coverageStartDate: normalized.coverageStartDate,
+    coverageEndDate: normalized.coverageEndDate,
+  });
+  if (crossMonthRangeError) {
+    return res.status(400).json({
+      ok: false,
+      error: crossMonthRangeError,
+    });
+  }
   if (normalized.invalidWorkerRecordIndex >= 0) {
     return res.status(400).json({
       ok: false,
@@ -24771,6 +24899,16 @@ app.put("/work-logs/:id", async (req, res) => {
   }
   const normalized = normalizeWorkLogPayload(req.body ?? {}, existing);
   updateWorkLogMutationTrace(trace, "normalized", summarizeWorkLogPayloadForDebug(normalized));
+  const crossMonthRangeError = validateWorkLogSingleMonthRange({
+    coverageStartDate: normalized.coverageStartDate,
+    coverageEndDate: normalized.coverageEndDate,
+  });
+  if (crossMonthRangeError) {
+    return res.status(400).json({
+      ok: false,
+      error: crossMonthRangeError,
+    });
+  }
   if (normalized.invalidWorkerRecordIndex >= 0) {
     return res.status(400).json({
       ok: false,
@@ -28653,6 +28791,34 @@ const findRuntimeSchemaDriftReasons = async (): Promise<string[]> => {
   forbiddenTables.forEach((table) => {
     driftReasons.push(`${table} table still present`);
   });
+
+  const migrationStateTableRows = await prisma.$queryRaw<
+    Array<{ table_exists: boolean }>
+  >`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name = '_BaroMigrationState'
+    ) AS table_exists
+  `;
+  if (migrationStateTableRows[0]?.table_exists !== true) {
+    driftReasons.push("_BaroMigrationState table missing");
+  } else {
+    const migrationStateRows = await prisma.$queryRaw<Array<{ key: string }>>`
+      SELECT "key"
+      FROM "_BaroMigrationState"
+      WHERE "key" = ANY(${[...STARTUP_REQUIRED_MIGRATION_STATE_KEYS]}::text[])
+    `;
+    const appliedMigrationStateKeys = new Set(
+      migrationStateRows.map((row) => row.key)
+    );
+    STARTUP_REQUIRED_MIGRATION_STATE_KEYS.forEach((key) => {
+      if (!appliedMigrationStateKeys.has(key)) {
+        driftReasons.push(`migration state ${key} missing`);
+      }
+    });
+  }
 
   const enumNames = Array.from(
     new Set(STARTUP_REQUIRED_RUNTIME_ENUM_VALUES.map((item) => item.enumName))

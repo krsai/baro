@@ -1782,6 +1782,52 @@ BEGIN
   END IF;
 END $$;
 ALTER TABLE "AtTrainingBucket" ALTER COLUMN "workerId" SET NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM "_BaroMigrationState"
+    WHERE "key" = '20260723_clear_stale_at_params_v1'
+  ) THEN
+    DELETE FROM "AtTrainingBucket";
+
+    UPDATE "StyleProcess"
+    SET "atParams" = NULL,
+        "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "atParams" IS NOT NULL;
+
+    UPDATE "Style" AS s
+    SET "processes" = (
+          SELECT COALESCE(
+            jsonb_agg(
+              CASE
+                WHEN jsonb_typeof(proc.value) = 'object'
+                  THEN proc.value - 'atParams' - 'at'
+                ELSE proc.value
+              END
+              ORDER BY proc.ordinality
+            ),
+            '[]'::jsonb
+          )
+          FROM jsonb_array_elements(s."processes"::jsonb)
+            WITH ORDINALITY AS proc(value, ordinality)
+        ),
+        "updatedAt" = CURRENT_TIMESTAMP
+    WHERE s."processes" IS NOT NULL
+      AND jsonb_typeof(s."processes"::jsonb) = 'array'
+      AND EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(s."processes"::jsonb) AS elem(value)
+        WHERE jsonb_typeof(elem.value) = 'object'
+          AND (elem.value ? 'atParams' OR elem.value ? 'at')
+      );
+
+    INSERT INTO "_BaroMigrationState" ("key")
+    VALUES ('20260723_clear_stale_at_params_v1');
+  END IF;
+END $$;
+
 ALTER TABLE "AtTrainingBucketProcess" ALTER COLUMN "sourceGroupKey" SET DEFAULT 'missingAssignmentPlan';
 ALTER TABLE "WorkLog" ADD COLUMN IF NOT EXISTS "totalCtSeconds" DOUBLE PRECISION;
 

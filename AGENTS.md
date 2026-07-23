@@ -67,6 +67,7 @@
 ### 정확 계산 원칙 (강제)
 - 핵심 지표(생산률, 실제 생산 ST, 진행률, 급여, AT 학습 입력)는 정확한 소스오브트루스가 연결될 때만 계산한다.
 - 계산에 필요한 FK/마스터/ST bucket/작업기록 연결이 없으면 임의 추정, 우회 공식, 보완 fallback으로 그럴듯한 값을 만들지 않는다.
+- 예외: AT 학습의 출퇴근 휴먼에러 보정은 승인된 정책으로, 출퇴근 행이 없는 유효 근무일에 작업자당 8시간을 사용한다. 월~토요일 중 조직 휴일이 아닌 날만 대상이며, 일요일·조직 휴일·입사 전·퇴사 후·휴직 기간은 제외한다. 이 대체 비율은 AT 신뢰도에 반영해야 한다.
 - 계산 실패는 0/null/미계산 상태와 진단 로그로 드러내며, 조용히 다른 공식으로 대체하지 않는다.
 - 호환성 dual-read나 schema migration fallback은 명시된 migration 단계에서만 허용한다. 운영 지표 계산 로직에 섞지 않는다.
 - 운영 지표 조회 중에 정규 참조를 다시 붙이는 helper를 호출하지 않는다. 예를 들어 실제 생산 계산은 저장된 `WorkRecord.styleProcessId`로 `StyleProcess/StyleProcessStandard`를 조회하며, `styleId/styleCode/name`, `processCode`, `AttrProcess.code`, 공정명으로 재탐색하지 않는다.
@@ -143,6 +144,7 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 - `displayDate`는 UI 목록 표시/정렬 용도로만 사용한다. 계산 로직의 기준 날짜로 절대 사용하지 않는다.
 - `coverageEndDate || displayDate` 형태의 fallback 브릿지 로직은 신규 코드에 추가하지 않는다.
 - 기간 입력(`coverageStartDate !== coverageEndDate`)은 절대 하루치로 뭉개지면 안 된다.
+- 하나의 WorkLog 기간은 같은 달 안에 있어야 한다. 월 경계를 넘는 작업기록은 저장/수정/import를 거부하고 월별 WorkLog로 나눠 등록한다.
 - WorkRecord가 AssignmentPlan과 연결되지 않으면(`assignmentPlanId` 없음) 기간이 정확해도 스케줄러/진행도 반영이 불가능하다.
 - 작업기록이 이미 연결된 AssignmentPlan은 배정 해제/삭제로 orphan WorkRecord를 만들 수 없다. 연결된 작업기록이 있으면 해당 assignment 제거를 거부한다.
 - **2026-07-11 리뷰 확인:** 현재 `lines`/`factories` 삭제 경로 중 일부가 이 원칙을 어기고 `WorkRecord.assignmentPlanId = null` 후 `AssignmentPlan`을 삭제한다. 의도된 예외가 아니라 미해결 버그로 취급한다.

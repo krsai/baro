@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formatDateKeyInTimeZone, todayDateKey } from '../frontend/src/utils/dateKey.mjs';
 import { resolveAtTrainingMonthKey } from '../backend/dist/utils/atTrainingMonthKey.js';
+import workLogCoverage from '../backend/dist/work-records/workLogCoverage.js';
+
+const { validateWorkLogSingleMonthRange } = workLogCoverage;
 
 test('Asia/Seoul date key does not shift at UTC boundary', () => {
   const source = new Date('2026-02-23T00:30:00+09:00');
@@ -49,4 +52,15 @@ test('AT training month key handles year boundary in January', () => {
   });
   assert.equal(onCutoff, '2025-12');
   assert.equal(beforeCutoff, '2025-11');
+});
+
+test('work log coverage accepts one month and rejects a cross-month range', () => {
+  assert.equal(validateWorkLogSingleMonthRange({
+    coverageStartDate: '2026-06-01',
+    coverageEndDate: '2026-06-30',
+  }), null);
+  assert.match(validateWorkLogSingleMonthRange({
+    coverageStartDate: '2026-05-29',
+    coverageEndDate: '2026-06-05',
+  }), /cannot cross calendar months/i);
 });

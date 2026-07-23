@@ -5,6 +5,25 @@ export type AtAttendanceDayResolution = {
   source: AtAttendanceDaySource;
 };
 
+export const isAtAttendanceFallbackWorkday = ({
+  workDate,
+  isOrganizationHoliday,
+}: {
+  workDate: unknown;
+  isOrganizationHoliday: boolean;
+}) => {
+  const normalizedWorkDate =
+    typeof workDate === "string" ? workDate.trim() : "";
+  if (
+    isOrganizationHoliday ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(normalizedWorkDate)
+  ) {
+    return false;
+  }
+  const parsedDate = new Date(`${normalizedWorkDate}T00:00:00.000Z`);
+  return !Number.isNaN(parsedDate.getTime()) && parsedDate.getUTCDay() !== 0;
+};
+
 export const resolveAtAttendanceQueryDateRange = (
   dateKeys: unknown[]
 ): { gte: string; lte: string } | null => {

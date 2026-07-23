@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import attendanceFallback from '../backend/dist/services/attendanceFallback.js';
 
-const { resolveAtAttendanceDay, resolveAtAttendanceQueryDateRange } = attendanceFallback;
+const {
+  isAtAttendanceFallbackWorkday,
+  resolveAtAttendanceDay,
+  resolveAtAttendanceQueryDateRange,
+} = attendanceFallback;
 const base = {
   actualEntryExists: false,
   actualWorkedSeconds: null,
@@ -54,6 +58,25 @@ test('does not create fallback labor outside employment, on leave, or off workda
       source: 'NONE',
     });
   }
+});
+
+test('allows Monday through Saturday but excludes Sunday and organization holidays', () => {
+  assert.equal(isAtAttendanceFallbackWorkday({
+    workDate: '2026-07-20',
+    isOrganizationHoliday: false,
+  }), true);
+  assert.equal(isAtAttendanceFallbackWorkday({
+    workDate: '2026-07-25',
+    isOrganizationHoliday: false,
+  }), true);
+  assert.equal(isAtAttendanceFallbackWorkday({
+    workDate: '2026-07-26',
+    isOrganizationHoliday: false,
+  }), false);
+  assert.equal(isAtAttendanceFallbackWorkday({
+    workDate: '2026-07-25',
+    isOrganizationHoliday: true,
+  }), false);
 });
 
 test('expands attendance queries to the full cross-month coverage range', () => {

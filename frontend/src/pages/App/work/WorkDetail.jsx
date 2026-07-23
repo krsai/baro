@@ -2497,6 +2497,10 @@ const WorkDetail = ({
       setFormError(LABELS.coverageValidation);
       return;
     }
+    if (coverageStartDateKey.slice(0, 7) !== workDateKey.slice(0, 7)) {
+      setFormError('작업 시작일과 종료일은 같은 달이어야 합니다. 월별로 나누어 등록해주세요.');
+      return;
+    }
     if (
       isWorkLogDateBeforeOperationStart(
         coverageStartDateKey,
