@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Box,
+  Button,
   Paper,
   Stack,
   Table,
@@ -226,6 +227,27 @@ const upsertStBuckets = (process, quantity, seconds) => {
   });
 };
 
+const snapshotProcessStState = (process) => ({
+  stBuckets: Array.isArray(process?.stBuckets)
+    ? process.stBuckets.map((bucket) => ({ ...bucket }))
+    : [],
+  stBucketWriteMode: process?.stBucketWriteMode,
+  stBucketUpdateQuantities: Array.isArray(process?.stBucketUpdateQuantities)
+    ? [...process.stBucketUpdateQuantities]
+    : [],
+  ct: process?.ct,
+  stManual: process?.stManual,
+});
+
+const restoreProcessStState = (process, snapshot) => normalizeProcess({
+  ...process,
+  stBuckets: snapshot?.stBuckets ?? [],
+  stBucketWriteMode: snapshot?.stBucketWriteMode,
+  stBucketUpdateQuantities: snapshot?.stBucketUpdateQuantities ?? [],
+  ct: snapshot?.ct,
+  stManual: snapshot?.stManual,
+});
+
 const dk = (id, qty) => `${id}::${qty}`;
 const PROCESS_GROUP_TONES = [
   { name: '#F8FAFC', st: '#FFFFFF', at: '#F8FAFC' },
@@ -238,6 +260,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
   const { languageCode } = useLanguage();
   const safeProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
   const [stDrafts, setStDrafts] = useState({});
+  const [stRestoreSnapshot, setStRestoreSnapshot] = useState(null);
 
   const msg = languageCode === 'vi'
     ? { title: 'ST/AT theo so luong (giay)', process: 'Cong doan', ptHint: 'PT: thoi gian co ban (khong sua)', stHint: 'ST cua so luong nho phai bang hoac lon hon so luong lon. Cac bucket lien quan se tu dong dieu chinh.', atHint: 'AT: tu dong hoc tu ban ghi', unit: 'Don vi: giay / 1 san pham', empty: 'Chua co cong doan.' }
@@ -264,6 +287,56 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
     if (curSec != null && nxt != null && Math.abs(curSec - nxt) < 1e-9) return;
     onProcessesChange(safeProcesses.map((p, i) => i === pIdx ? upsertStBuckets(p, qty, nxt) : p));
   }, [onProcessesChange, safeProcesses, stDrafts]);
+
+  const automationLabels = languageCode === 'vi'
+    ? { apply: 'Ap dung 50% chenh lech AT', restore: 'Khoi phuc ST' }
+    : languageCode === 'en'
+      ? { apply: 'Apply 50% of AT gap', restore: 'Restore ST' }
+      : { apply: 'AT 차이 50% 반영', restore: 'ST 원상복귀' };
+
+  const hasApplicableAtBucket = useMemo(() =>
+    safeProcesses.some((process) =>
+      VISIBLE_BUCKETS.some((quantity) => {
+        const st = resolveProcessStPerPieceSeconds(process, quantity);
+        const at = resolveProcessAtPerPieceSeconds(process, quantity);
+        return (
+          Number.isFinite(st) &&
+          Number.isFinite(at) &&
+          resolveProcessAtCellState(process, quantity).shouldDisplayValue
+        );
+      })
+    ),
+  [safeProcesses]);
+
+  const handleApplyAtGap = useCallback(() => {
+    if (typeof onProcessesChange !== 'function') return;
+    if (stRestoreSnapshot === null) {
+      setStRestoreSnapshot(safeProcesses.map(snapshotProcessStState));
+    }
+    const nextProcesses = safeProcesses.map((process) => {
+      let nextProcess = process;
+      VISIBLE_BUCKETS.forEach((quantity) => {
+        const st = resolveProcessStPerPieceSeconds(process, quantity);
+        const at = resolveProcessAtPerPieceSeconds(process, quantity);
+        const atState = resolveProcessAtCellState(process, quantity);
+        if (!Number.isFinite(st) || !Number.isFinite(at) || !atState.shouldDisplayValue) return;
+        nextProcess = upsertStBuckets(nextProcess, quantity, roundTo((st + at) / 2, 4));
+      });
+      return nextProcess;
+    });
+    setStDrafts({});
+    onProcessesChange(nextProcesses);
+  }, [onProcessesChange, safeProcesses, stRestoreSnapshot]);
+
+  const handleRestoreSt = useCallback(() => {
+    if (typeof onProcessesChange !== 'function' || stRestoreSnapshot === null) return;
+    const restoredProcesses = safeProcesses.map((process, index) =>
+      restoreProcessStState(process, stRestoreSnapshot[index])
+    );
+    setStDrafts({});
+    setStRestoreSnapshot(null);
+    onProcessesChange(restoredProcesses);
+  }, [onProcessesChange, safeProcesses, stRestoreSnapshot]);
 
   const colCount = 2 + VISIBLE_BUCKETS.length; // 공정명 + ST/AT라벨 + 수량열
 
@@ -310,6 +383,24 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
       <Box sx={{ px: 2.5, py: 1.5, borderBottom: BORDER, backgroundColor: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{msg.title}</Typography>
         <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Button
+            size="small"
+            variant="contained"
+            disabled={!hasApplicableAtBucket || typeof onProcessesChange !== 'function'}
+            onClick={handleApplyAtGap}
+            sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
+          >
+            {automationLabels.apply}
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            disabled={stRestoreSnapshot === null || typeof onProcessesChange !== 'function'}
+            onClick={handleRestoreSt}
+            sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
+          >
+            {automationLabels.restore}
+          </Button>
           {atLegendItems.map((item) => (
             <Box key={item.tone} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
               <Box
