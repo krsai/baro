@@ -1,7 +1,10 @@
 const { spawnSync } = require("child_process");
 const dotenv = require("dotenv");
+const {
+  assertSafeApplicationDatabaseEnv,
+} = require("../src/config/databaseTargetGuard");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 const prismaCli = require.resolve("prisma/build/index.js");
 
 const effectiveDbUrl =
@@ -20,6 +23,13 @@ const commandEnv = {
   DIRECT_URL: effectiveDbUrl,
   DATABASE_URL: String(process.env.DATABASE_URL || "").trim() || effectiveDbUrl,
 };
+
+try {
+  assertSafeApplicationDatabaseEnv(commandEnv);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
 
 const runPrisma = (args, label) => {
   console.log(`[prisma-safe-deploy] ${label}`);

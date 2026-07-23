@@ -11,9 +11,10 @@
 
 - **운영 데이터(주문/스타일/작업기록/배정 등)는 전부 Railway Postgres에 있다. Supabase에는 없다.**
 - Supabase는 **소셜 로그인(Auth, Google OAuth)만** 담당한다. Supabase 안에 Postgres가 딸려 있어서 헷갈리기 쉽지만, 그 Postgres는 앱 데이터 저장용으로 쓰이지 않는다(테이블은 존재해도 전부 빈 상태).
-- **`backend/.env`의 `DATABASE_URL`/`DIRECT_URL`은 현재 Supabase Postgres를 가리키고 있다.** 이 파일을 그대로 믿고 접속하면 "테이블은 다 있는데 전부 0건"인 빈 DB에 연결된다 — 실제로 반복 발생한 혼동의 원인이다.
+- **`backend/.env`의 `DATABASE_URL`/`DIRECT_URL`은 현재 Supabase Postgres를 가리키고 있다.** 이 파일을 운영 DB로 믿고 사용하면 안 된다. 2026-07-23 Supabase `public`의 빈 BARO 테이블 31개는 삭제했으며, 데이터가 1건씩 있던 `SystemUser`/`SchedulerRunHistory`만 임의 삭제하지 않고 남겼다.
 - 실제 운영 데이터를 조회/조사해야 하면 `.env`를 쓰지 말고, Railway 콘솔 → **Postgres 서비스 → Variables 탭 → `DATABASE_PUBLIC_URL`** 값을 받아서 그걸로 접속한다. (`DATABASE_URL`이라는 이름의 변수가 Railway Variables에도 있지만 그건 `*.railway.internal` 내부 전용 호스트라 Railway 네트워크 밖에서는 연결 자체가 안 된다. 반드시 `DATABASE_PUBLIC_URL`을 써야 한다.)
 - 이 값은 비밀번호가 포함된 민감정보이므로 세션에서만 임시로 쓰고 `.env`에 영구 저장하지 않는다.
+- **2026-07-23 안전장치:** 백엔드 시작과 DB 변경 Prisma 명령은 `DATABASE_URL`/`DIRECT_URL`이 Supabase Postgres 호스트를 가리키면 즉시 실패한다. `SUPABASE_URL` 등 인증 변수는 검사하지 않는다. Supabase는 Auth 전용이고 BARO 애플리케이션 DB는 Railway Postgres만 허용한다.
 
 ---
 

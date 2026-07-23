@@ -1,5 +1,8 @@
 const { spawnSync } = require("child_process");
 const dotenv = require("dotenv");
+const {
+  assertSafeApplicationDatabaseEnv,
+} = require("../src/config/databaseTargetGuard");
 
 dotenv.config({ override: false });
 const prismaCli = require.resolve("prisma/build/index.js");
@@ -24,6 +27,18 @@ if (effectiveDbUrl) {
 }
 
 const prismaArgs = [...args];
+const isDatabaseCommand = !["generate", "format", "validate", "version"].includes(
+  prismaArgs[0]
+);
+if (isDatabaseCommand) {
+  try {
+    assertSafeApplicationDatabaseEnv(env);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
 if (prismaArgs[0] === "db" && prismaArgs[1] === "execute") {
   const schemaIndex = prismaArgs.indexOf("--schema");
   const hasUrl = prismaArgs.includes("--url");
