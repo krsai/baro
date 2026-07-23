@@ -1,5 +1,12 @@
 # TODO
 
+## 재고·수익성 0단계 후속 확인
+
+- [ ] Railway 운영 DB에서 `OrgRelationship.pricingDefaultTradeType/pricingMatrix` 값 존재 여부를 확인한다.
+- [ ] 값이 있으면 신규 계산에 사용하지 않는 참고용 JSON/CSV로 내보낸다.
+- [ ] 운영 확인 후 레거시 두 컬럼을 `migration_fix.sql`과 Prisma schema에서 제거한다.
+- [ ] 다음 단계에서 운영 관리 아래 관계형 `고객 단가 관리` 메뉴를 만든다.
+
 ## 최우선: AT 출퇴근 누락일 8시간 대체 검증
 
 수정한 사항:

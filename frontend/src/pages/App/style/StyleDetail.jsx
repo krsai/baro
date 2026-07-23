@@ -15,7 +15,6 @@ import StyleInfo from './styleDetail/StyleInfo';
 import StyleBom from './styleDetail/StyleBom';
 import StyleProcess from './styleDetail/StyleProcess';
 import StyleTimeMatrix from './styleDetail/StyleTimeMatrix';
-import StyleRevenue from './styleDetail/StyleRevenue';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -37,7 +36,6 @@ const STYLE_DETAIL_MESSAGES = {
     tabProcessInfo: '공정 정보',
     tabTimeMatrix: '매입 단가',
     tabBom: 'BOM',
-    tabRevenue: '매출 단가',
     save: '저장',
     loading: '스타일 정보를 불러오는 중입니다.',
     newTab: '스타일 추가',
@@ -54,7 +52,6 @@ const STYLE_DETAIL_MESSAGES = {
     tabProcessInfo: 'Process Info',
     tabTimeMatrix: 'Purchase Price',
     tabBom: 'BOM',
-    tabRevenue: 'Revenue',
     save: 'Save',
     loading: 'Loading style details...',
     newTab: 'Add Style',
@@ -71,7 +68,6 @@ const STYLE_DETAIL_MESSAGES = {
     tabProcessInfo: 'Thong tin cong doan',
     tabTimeMatrix: 'Don gia mua vao',
     tabBom: 'BOM',
-    tabRevenue: 'Doanh thu',
     save: 'Luu',
     loading: 'Dang tai thong tin style...',
     newTab: 'Them style',
@@ -121,7 +117,6 @@ const createEmptyStyle = () => ({
   processes: [],
   bom: [],
   bomNotes: '',
-  revenuePriceBuckets: [],
   revenueMemo: '',
 });
 
@@ -193,7 +188,6 @@ const StyleDetail = () => {
     processInfo: false,
     timeMatrix: false,
     bom: false,
-    revenue: false,
   });
   const [originalData, setOriginalData] = useState(createEmptyStyle);
   const [styleFormData, setStyleFormData] = useState(createEmptyStyle);
@@ -452,9 +446,6 @@ const StyleDetail = () => {
               <ToggleButton value="basicInfo">
                 {getStyleDetailMessage(languageCode, 'tabBasicInfo')}
               </ToggleButton>
-              <ToggleButton value="revenue">
-                {getStyleDetailMessage(languageCode, 'tabRevenue')}
-              </ToggleButton>
               {canViewProcessInfo ? (
                 <ToggleButton value="timeMatrix">
                   {getStyleDetailMessage(languageCode, 'tabTimeMatrix')}
@@ -522,11 +513,6 @@ const StyleDetail = () => {
             </RequestScopeBoundary>
           )}
 
-          {loadedTabs.revenue && (
-            <Box sx={{ display: currentTab === 'revenue' ? 'block' : 'none' }}>
-              <StyleRevenue formData={styleFormData} handleInputChange={handleStyleInputChange} />
-            </Box>
-          )}
         </>
       )}
     </AppPageContainer>

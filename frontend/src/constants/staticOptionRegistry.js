@@ -147,6 +147,22 @@ const RAW_STATIC_OPTION_GROUPS = [
     ],
   },
   {
+    key: 'commercialPricingBasis',
+    title: '판매 방식',
+    items: [
+      createItem(
+        'MANUFACTURING_SERVICE_PRICE',
+        { ko: 'CMT · 임가공', en: 'CMT · Processing', vi: 'CMT · Gia công' },
+        ['CMT', '임가공', 'Gia công']
+      ),
+      createItem(
+        'FINISHED_GOODS_PRICE',
+        { ko: 'FP · 완제품', en: 'FP · Full Package', vi: 'FP · Trọn gói' },
+        ['FP', '완제품', 'Full Package', 'Trọn gói']
+      ),
+    ],
+  },
+  {
     key: 'country',
     title: '국가',
     items: [

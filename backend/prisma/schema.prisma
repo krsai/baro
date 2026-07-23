@@ -536,6 +536,8 @@ model OrgRelationship {
   managerEmail            String?
   memo                    String?
   defaultSizeSetCode      String?  @default("LEGACY_APPAREL")
+  // Legacy unused customer-pricing fields. Runtime reads/writes were removed in
+  // Phase 0; drop only after the Railway DB is checked and any values are exported.
   pricingDefaultTradeType String?
   pricingMatrix           Json?
   createdAt               DateTime @default(now())
