@@ -136,6 +136,11 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
   - 신규 WorkLog 저장/수정에서는 모든 WorkRecord가 `assignmentPlanId`, `styleId`, `styleProcessId`를 가져야 한다. 연결 없는 작업행은 백엔드에서도 거부한다.
   - 업로드/입력의 `orderNo`, 스타일 코드, 공정 코드는 배정 카드와 `StyleProcess`를 찾기 위한 입력값일 뿐 WorkRecord 저장 컬럼이 아니다.
   - `workerName`, `customerName`, `orderNo`, `styleUid`, `styleName`, `processId`, `processCode`, `colorId`, `colorCode`는 WorkRecord에 재도입하지 않는다. 화면 표시값은 `worker`, `assignmentPlan`, `style`, `styleProcess` relation에서 읽는다.
+- **스타일 → 배정 → 작업기록 ST 불변식**:
+  - 작업기록은 스타일/공정을 임의로 직접 선택해 만드는 독립 데이터가 아니다. `StyleProcess/StyleProcessStandard` → `AssignmentCard/AssignmentPlan` → `WorkLog/WorkRecord` 순서로만 연결된다.
+  - 배정 저장 시 해당 스타일의 모든 공정과 배정 수량 버킷에 유효한 `StyleProcessStandard.bucketStSeconds`가 있어야 `assignmentStTotalSeconds`를 계산할 수 있다. 하나라도 없으면 백엔드가 409로 배정 저장을 거부한다.
+  - 작업기록 저장 시에도 실제 `AssignmentPlan`과 그 스타일 공정의 `assignmentPlanId`, `styleId`, `styleProcessId`가 모두 필요하며 누락되면 저장을 거부한다.
+  - 따라서 정상 앱 흐름으로 생성된 AT 학습 대상 WorkRecord에는 ST seed가 항상 존재한다. `missingInitialSeedMetricCount`/`ST_BUCKET_SECONDS_NOT_FOUND`는 정상 업무 시나리오가 아니라 레거시 데이터, DB 무결성 훼손, 스키마 드리프트 또는 앱 우회 쓰기를 알리는 불변식 위반 진단이다. 이를 위한 별도 추정 fallback을 만들지 말고 fail-closed로 원인을 드러낸다.
 - **급여 계산용**: 공정별로 몇 개 만들었는지 집계. 주문 100장이어도 실제로는 95장 또는 105장 만들 수 있음.
 
 ### WorkLog 날짜 규칙 (강제)
@@ -202,6 +207,8 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
    - 예) coverageEndDate: 4/1, 4/15, 4/30 → 각각 1일, 14일, 15일 기간으로 처리
 3. `laborInputSeconds` = 해당 기간 작업자 출퇴근 실측 합 (없으면 `workerCount × 기본8h × 일수`)
 4. 회귀 분석: `laborInputSeconds ≈ Σ(a_i × q_i + b_i)` → 공정별 `a`, `b` 학습
+
+AT 학습의 ST seed는 위 `스타일 → 배정 → 작업기록 ST 불변식`에 의해 보장된다. 학습 로직의 단일 공정 직접 관측이나 다중 공정 fail-closed 처리는 무결성 방어 장치일 뿐, ST 없는 작업기록을 정상 입력으로 허용하거나 보완하기 위한 제품 동작으로 해석하지 않는다.
 
 ### 출퇴근 필터 (중요)
 - 출퇴근 행이 있고 `workedSeconds`가 확정된 worker-day는 실측값을 사용한다. 명시적인 0초 행은 결근으로 보고 8시간으로 덮어쓰지 않는다. `workedSeconds = null`인 불완전 행은 진단에 남기고 출퇴근 누락과 같은 8시간 대체 정책을 적용한다.
