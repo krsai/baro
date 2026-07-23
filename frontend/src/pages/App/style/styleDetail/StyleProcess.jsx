@@ -3405,22 +3405,28 @@ const StyleProcess = ({
                 placeholder="-"
                 sx={{ width: 120 }}
               />
-              <TextField
-                size="small"
-                label={`${getStyleProcessMessage(languageCode, 'stLabel')}(${stBucketQuantityLabel})`}
-                value={formatSecondsOrDash(addPreviewStTotalSeconds)}
-                InputProps={{ readOnly: true }}
-                inputProps={{ tabIndex: -1 }}
-                sx={{ width: 132 }}
-              />
-              <TextField
-                size="small"
-                label={`${getStyleProcessMessage(languageCode, 'atLabel')}(${timeRefQuantityLabel})`}
-                value={formatSecondsOrDash(addPreviewAtTotalSeconds)}
-                InputProps={{ readOnly: true }}
-                inputProps={{ tabIndex: -1 }}
-                sx={{ width: 132 }}
-              />
+              <Box sx={{ width: 132 }}>
+                <Typography
+                  variant="caption"
+                  sx={{ display: 'block', color: 'text.secondary', mb: 0.5 }}
+                >
+                  {`${getStyleProcessMessage(languageCode, 'stLabel')}(${stBucketQuantityLabel})`}
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                  {formatSecondsOrDash(addPreviewStTotalSeconds)}
+                </Typography>
+              </Box>
+              <Box sx={{ width: 132 }}>
+                <Typography
+                  variant="caption"
+                  sx={{ display: 'block', color: 'text.secondary', mb: 0.5 }}
+                >
+                  {`${getStyleProcessMessage(languageCode, 'atLabel')}(${timeRefQuantityLabel})`}
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {formatSecondsOrDash(addPreviewAtTotalSeconds)}
+                </Typography>
+              </Box>
               <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 280 }}>
                 <Checkbox
                   size="small"
