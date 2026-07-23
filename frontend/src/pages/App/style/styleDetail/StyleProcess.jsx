@@ -2661,20 +2661,6 @@ const StyleProcess = ({
         timeRefQuantity
       )
     : null;
-  const addPreviewAtTotalSeconds =
-    addPreviewProcess == null
-      ? null
-      : resolveProcessAtDisplayPerPieceSeconds(
-          addPreviewProcess,
-          displayOrderQuantity
-        );
-  const addPreviewStTotalSeconds =
-    addPreviewProcess == null
-      ? null
-      : resolveProcessStPerPieceSeconds(
-          addPreviewProcess,
-          displayOrderQuantity
-        );
   const isSelectingTargetSpec = Boolean(targetCandidate);
   const targetComposerOptions = isSelectingTargetSpec
     ? filteredTargetSpecOptionsWithNone
@@ -3363,7 +3349,7 @@ const StyleProcess = ({
                 display: 'grid',
                 gridTemplateColumns: {
                   xs: '1fr',
-                  xl: 'minmax(300px, 2.4fr) 120px 132px 132px minmax(280px, 1.9fr) auto',
+                  xl: 'minmax(300px, 2.4fr) 120px minmax(280px, 1.9fr) auto',
                 },
                 gap: 1,
                 alignItems: 'start',
@@ -3405,28 +3391,6 @@ const StyleProcess = ({
                 placeholder="-"
                 sx={{ width: 120 }}
               />
-              <Box sx={{ width: 132 }}>
-                <Typography
-                  variant="caption"
-                  sx={{ display: 'block', color: 'text.secondary', mb: 0.5 }}
-                >
-                  {`${getStyleProcessMessage(languageCode, 'stLabel')}(${stBucketQuantityLabel})`}
-                </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
-                  {formatSecondsOrDash(addPreviewStTotalSeconds)}
-                </Typography>
-              </Box>
-              <Box sx={{ width: 132 }}>
-                <Typography
-                  variant="caption"
-                  sx={{ display: 'block', color: 'text.secondary', mb: 0.5 }}
-                >
-                  {`${getStyleProcessMessage(languageCode, 'atLabel')}(${timeRefQuantityLabel})`}
-                </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {formatSecondsOrDash(addPreviewAtTotalSeconds)}
-                </Typography>
-              </Box>
               <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 280 }}>
                 <Checkbox
                   size="small"
