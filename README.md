@@ -8,8 +8,13 @@ Detailed domain rules, operations notes, and current source-of-truth guidance li
 ## Docs Policy
 
 - `AGENTS.md`: single source of truth for domain and operations rules
+- `todo.md`: only active implementation and production-verification work
 - `CLAUDE.md`: minimal pointer file for AI tooling
-- Legacy planning notes and boilerplate READMEs are not kept
+- `INVENTORY_PROFITABILITY_PLAN.md`: paused future roadmap; do not implement until the user explicitly starts the BOM/inventory phase
+- `LOGIC_FIX_PLAN.md`: archived June review; never use it as the active task list
+
+For normal work, read only `AGENTS.md` and `todo.md`. The two plan files are
+reference material and must not override either current document.
 
 ## Setup
 

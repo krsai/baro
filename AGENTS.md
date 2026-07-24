@@ -3,6 +3,14 @@
 > 이 파일은 Claude Code, Codex 등 모든 AI 도구의 단일 진입점이다.  
 > 내용을 수정할 때는 이 파일 하나만 수정한다.
 
+## 문서 읽기 순서
+
+1. 현재 업무 규칙과 구현 판단은 이 `AGENTS.md`를 따른다.
+2. 앞으로 할 일과 운영 검증은 `todo.md`만 본다.
+3. `INVENTORY_PROFITABILITY_PLAN.md`는 **보류된 미래 로드맵**이다. 사용자가 BOM·재고·매입·수익성 단계를 명시적으로 시작하기 전에는 구현하지 않는다.
+4. `LOGIC_FIX_PLAN.md`는 **2026-06-16 시점의 보관용 리뷰**다. 현재 작업 지시나 현재 코드 상태로 사용하지 않는다.
+5. 이 파일 뒤쪽의 날짜별 phase 기록은 변경 이력이다. 앞쪽 강제 원칙 또는 `todo.md`와 충돌하면 현재 강제 원칙과 `todo.md`가 우선한다.
+
 봉제 공장 생산 관리 SaaS. 핵심 기능: **AT 추정** + **스케줄러**.
 
 ---
@@ -48,7 +56,7 @@
 - 사용자 신원, 조직 소속, 시스템 관리자 판정은 **백엔드가 검증한 인증 토큰(JWT 등)** 에서만 유도한다.
 - 헤더의 이메일/조직 값은 디버그/보조 정보로만 취급할 수 있으며, 검증된 actor context와 불일치하면 401/403으로 거부한다.
 - `createdBy` / `updatedBy` / `requireSystemAdmin` / 조직 범위 접근 체크는 모두 같은 검증된 actor context를 사용해야 한다.
-- **2026-07-11 리뷰 확인:** 현재 코드(`backend/src/middleware/access.ts`, `frontend/src/utils/apiClient.js`)는 이 원칙을 아직 만족하지 못한다. 이 항목은 최우선 미해결 위험이다.
+- **2026-07-12 적용 완료:** `backend/src/auth/requestAuth.ts`가 Bearer token을 검증하고 `backend/src/middleware/access.ts`는 그 검증 결과만 신원으로 사용한다. 프론트는 Supabase access token을 자동 부착한다. `x-org-id`는 조직 선택 힌트일 뿐이며 멤버십을 서버에서 다시 검증한다.
 
 ### DB 설계 원칙 (강제)
 - 엔티티 간 관계는 JSON blob 안에 값을 복사해서 표현하지 않고 FK 컬럼 + Prisma relation으로 표현한다. "A가 B를 참조한다"는 항상 `aId Int` FK 컬럼과 `@relation`으로 만들고, 조회는 JOIN(Prisma `include`/`select`)으로 한다.
@@ -366,7 +374,8 @@ AT 학습의 ST seed는 위 `스타일 → 배정 → 작업기록 ST 불변식`
   - 현재 완료 경로에는 `producedQuantity < finalQuantity` 하드 블록이 없음
 
 ### Task 2: 진행도 계산 공식 변경
-- 상태: **완료**
+- 상태: **과거 구현 기록 — 현재 정확 계산/ST 스냅샷 정책으로 대체됨**
+- 아래 `ctSnapshot`/작업기록 공정 수 fallback 설명은 현재 구현 지침이 아니다. 현재 코드는 정확한 `styleProcessId`와 동결된 ST 근거가 없으면 미계산 진단으로 드러내며, 이 fallback을 재도입하지 않는다.
 - 반영 내용:
   - 함수: `backend/src/index.ts`의 `buildAssignmentPlanProgressRows`
   - `progressPercent`를 `sum(WorkRecord.quantity) / (planQuantity × processCount) × 100`으로 계산
@@ -456,7 +465,7 @@ AT 학습의 ST seed는 위 `스타일 → 배정 → 작업기록 ST 불변식`
 - 구독 조회/변경 API(`GET/PATCH /organizations/:id/subscription`)도 `requireSystemAdmin` 검사를 유지한다.
 
 ### API 클라이언트 (`frontend/src/utils/apiClient.js`)
-- `x-user-email`, `x-org-id` 헤더 자동 부착
+- Supabase access token을 `Authorization: Bearer`로 자동 부착한다. `x-org-id`는 대상 조직 선택 힌트로만 붙이며 권한 근거가 아니다. `x-user-email`은 보내지 않는다.
 - GET 응답 캐시(TTL 기본 45초) + 중복 요청 합치기
 - mutation 후 경로 단위 캐시 무효화
 - `createHttpError` 구조: 서버 응답 전체가 `error.details`에 담김
@@ -553,7 +562,7 @@ AT 학습의 ST seed는 위 `스타일 → 배정 → 작업기록 ST 불변식`
 | ST Review / Shipment Review | 플레이스홀더 |
 | 생산계획 보드 | 코드 구현됨, 메뉴 비활성화 |
 | 대시보드 | 플레이스홀더 |
-| 휴일 관리 | localStorage 기반 (서버 미저장) |
+| 휴일 관리 | `/holidays` API와 `OrganizationHoliday` 관계형 행이 소스오브트루스. localStorage는 1회 이전 후 삭제하는 레거시 입력만 읽음 |
 
 ---
 
@@ -613,7 +622,7 @@ npm run test:regression
 
 1. `backend/src/index.ts` 단일 파일 비대화 — 도메인 경계 흐림
 2. 실시간 동기화 부재 — 다중 사용자 동시 편집 시 서버 push 없음
-3. 휴일 관리 localStorage 의존 — 계정/기기 간 일관성 없음
+3. 휴일 관리의 레거시 localStorage 이전 경로는 운영 브라우저 데이터가 모두 이전된 뒤 제거 가능
 4. 플레이스홀더 다수 — 권한, 검토 화면 미완성
 
 ---
