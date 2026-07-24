@@ -1586,6 +1586,53 @@ const syncStyleStandardsForBucketVersion = async ({
   }
 };
 
+// Shared by POST /styles and POST /styles/import: a brand-new style always
+// needs a time bucket set attached (never left null), so both create paths
+// resolve the same way -- the customer's configured default if one exists,
+// otherwise the org's standard 1-3-5-... seed (creating it on first use).
+const resolveDefaultTimeBucketSetVersionIdForNewStyle = async ({
+  db,
+  manufacturerOrgId,
+  ownerOrgId,
+  actor,
+}: {
+  db: Prisma.TransactionClient;
+  manufacturerOrgId: number;
+  ownerOrgId: number;
+  actor: string;
+}): Promise<number> => {
+  const relationship = await db.orgRelationship.findFirst({
+    where: {
+      manufacturerOrgId,
+      brandOrgId: ownerOrgId,
+    },
+    select: { salesBucketSetVersionId: true },
+  });
+  if (relationship?.salesBucketSetVersionId) {
+    return relationship.salesBucketSetVersionId;
+  }
+  const existingDefaultSet = await db.quantityBucketSet.findUnique({
+    where: {
+      orgId_name: {
+        orgId: ownerOrgId,
+        name: "DEFAULT_TIME_BUCKETS",
+      },
+    },
+    select: { currentVersionId: true },
+  });
+  if (existingDefaultSet?.currentVersionId) {
+    return existingDefaultSet.currentVersionId;
+  }
+  const defaultVersion = await createQuantityBucketSetVersion({
+    db,
+    orgId: ownerOrgId,
+    setName: "DEFAULT_TIME_BUCKETS",
+    bucketQuantities: [...ST_STANDARD_BUCKETS],
+    actor,
+  });
+  return defaultVersion.id;
+};
+
 type StyleAtParams = {
   a: number;
   b: number;
@@ -27709,37 +27756,12 @@ app.post("/styles", async (req, res) => {
   }
 
   const created = await prisma.$transaction(async (tx) => {
-    const relationship = await tx.orgRelationship.findFirst({
-      where: {
-        manufacturerOrgId: organization.id,
-        brandOrgId: owner.ownerOrgId,
-      },
-      select: { salesBucketSetVersionId: true },
+    const timeBucketSetVersionId = await resolveDefaultTimeBucketSetVersionIdForNewStyle({
+      db: tx,
+      manufacturerOrgId: organization.id,
+      ownerOrgId: owner.ownerOrgId,
+      actor: getCurrentRequestActor(),
     });
-    let timeBucketSetVersionId = relationship?.salesBucketSetVersionId ?? null;
-    if (timeBucketSetVersionId === null) {
-      const existingDefaultSet = await tx.quantityBucketSet.findUnique({
-        where: {
-          orgId_name: {
-            orgId: owner.ownerOrgId,
-            name: "DEFAULT_TIME_BUCKETS",
-          },
-        },
-        select: { currentVersionId: true },
-      });
-      if (existingDefaultSet?.currentVersionId) {
-        timeBucketSetVersionId = existingDefaultSet.currentVersionId;
-      } else {
-        const defaultVersion = await createQuantityBucketSetVersion({
-          db: tx,
-          orgId: owner.ownerOrgId,
-          setName: "DEFAULT_TIME_BUCKETS",
-          bucketQuantities: [...ST_STANDARD_BUCKETS],
-          actor: getCurrentRequestActor(),
-        });
-        timeBucketSetVersionId = defaultVersion.id;
-      }
-    }
     const syncedProcesses = includeProcesses
       ? await syncProcessMasterFromStyleProcesses({
           processes: payload.processes,
@@ -27945,6 +27967,11 @@ app.put("/styles/:styleId", async (req, res) => {
       include: {
         organization: {
           select: { id: true, name: true, nameKo: true, nameVi: true },
+        },
+        timeBucketSetVersion: {
+          include: {
+            entries: { orderBy: { bucketQuantity: "asc" } },
+          },
         },
       },
     });
@@ -28177,6 +28204,20 @@ app.post("/styles/import", async (req, res) => {
         );
       }
 
+      // Only a genuinely new style needs a time bucket set resolved here --
+      // an existing style being re-imported keeps whatever bucket it already
+      // has (same "update never touches timeBucketSetVersionId" rule as
+      // PUT /styles/:styleId).
+      const isNewStyle = !existingStyleIdByOwnerCode.has(`${ownerOrgId}:${stylePayload.code}`);
+      const timeBucketSetVersionId = isNewStyle
+        ? await resolveDefaultTimeBucketSetVersionIdForNewStyle({
+            db: tx,
+            manufacturerOrgId: organization.id,
+            ownerOrgId,
+            actor: getCurrentRequestActor(),
+          })
+        : null;
+
       const upserted = await tx.style.upsert({
         where: {
           orgId_code: {
@@ -28202,6 +28243,8 @@ app.post("/styles/import", async (req, res) => {
           orgId: ownerOrgId,
           ...stylePayload,
           processes: Prisma.JsonNull,
+          timeBucketSetVersionId,
+          timeBucketSource: "CUSTOMER_DEFAULT",
         },
       });
       if (includeProcesses) {
@@ -28220,6 +28263,11 @@ app.post("/styles/import", async (req, res) => {
     include: {
       organization: {
         select: { id: true, name: true, nameKo: true, nameVi: true },
+      },
+      timeBucketSetVersion: {
+        include: {
+          entries: { orderBy: { bucketQuantity: "asc" } },
+        },
       },
     },
     orderBy: { id: "asc" },
