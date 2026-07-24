@@ -357,10 +357,17 @@ const MainLayout = () => {
     }
     if (
       currentPath.startsWith('/production-analysis') ||
-      currentPath.startsWith('/revenue-analysis') ||
-      currentPath.startsWith('/customer-pricing')
+      currentPath.startsWith('/revenue-analysis')
     ) {
       setExpandedMenuGroup(MENU_GROUP_KEYS.OPERATIONS);
+      return;
+    }
+    if (
+      currentPath.startsWith('/order') ||
+      currentPath.startsWith('/style') ||
+      currentPath.startsWith('/customer-pricing')
+    ) {
+      setExpandedMenuGroup(MENU_GROUP_KEYS.ORDER);
     }
   }, [currentPath, setExpandedMenuGroup]);
 
