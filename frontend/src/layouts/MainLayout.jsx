@@ -533,11 +533,6 @@ const MainLayout = () => {
         isOpen: operationsOpen,
         children: [
           {
-            label: getUiMessage('menu.customerPricing', '단가 관리', languageCode),
-            icon: <PriceChangeIcon />,
-            path: '/customer-pricing',
-          },
-          {
             label: getUiMessage('menu.productionAnalysis', '생산 분석', languageCode),
             icon: <TrendingUpIcon />,
             path: '/production-analysis',
@@ -565,6 +560,11 @@ const MainLayout = () => {
             label: getUiMessage('menu.style', '\uC2A4\uD0C0\uC77C', languageCode),
             icon: <StyleIcon />,
             path: '/style',
+          },
+          {
+            label: getUiMessage('menu.customerPricing', '\uB2E8\uAC00 \uAD00\uB9AC', languageCode),
+            icon: <PriceChangeIcon />,
+            path: '/customer-pricing',
           },
         ],
       },
@@ -803,7 +803,7 @@ const MainLayout = () => {
       const childPaths = new Set(orderedChildren.map((child) => child.path));
 
       if (childPaths.has('/order') && childPaths.has('/style')) {
-        const preferredSalesPaths = ['/style', '/order'];
+        const preferredSalesPaths = ['/style', '/customer-pricing', '/order'];
         orderedChildren = [
           customerMenuItem,
           ...preferredSalesPaths.map(
