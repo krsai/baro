@@ -4,12 +4,16 @@ import fs from 'node:fs';
 
 const schema = fs.readFileSync('backend/prisma/schema.prisma', 'utf8');
 const backend = fs.readFileSync('backend/src/index.ts', 'utf8');
+const frontend = fs.readFileSync(
+  'frontend/src/pages/App/customer/CustomerPricingBoard.jsx',
+  'utf8'
+);
 
 test('sales bucket overrides are relational and separate from style time buckets', () => {
   assert.match(schema, /model OrgRelationshipStyleSalesBucket \{/);
   assert.match(
     schema,
-    /@@unique\(\[orgRelationshipId, styleId\]\)/
+    /@@unique\(\[orgRelationshipId, styleId\](?:,[^)]+)?\)/
   );
   const quantityBucketRoute = backend.slice(
     backend.indexOf('app.put("/customers/:id/quantity-buckets"'),
@@ -26,6 +30,25 @@ test('sales prices use Decimal rows tied to a bucket entry and version', () => {
   assert.match(schema, /unitPrice\s+Decimal\s+@db\.Decimal\(18, 4\)/);
   assert.match(schema, /quantityBucketEntryId\s+Int/);
   assert.match(schema, /quantityBucketSetVersionId\s+Int/);
+  assert.match(schema, /CustomerSalesPriceList_id_version_key/);
+  assert.match(schema, /QuantityBucketEntry_id_version_key/);
+  assert.match(schema, /CustomerSalesPrice_list_version_fkey/);
+  assert.match(schema, /CustomerSalesPrice_entry_version_fkey/);
+  assert.match(backend, /STARTUP_REQUIRED_RUNTIME_CONSTRAINTS/);
+});
+
+test('sales price saves send changes only and persist them in a batched transaction', () => {
+  const saveRoute = backend.slice(
+    backend.indexOf('app.put("/customers/:id/sales-prices"'),
+    backend.indexOf('const freezeOrderSalesPriceSnapshots')
+  );
+  assert.match(saveRoute, /createMany/);
+  assert.match(saveRoute, /INSERT INTO "CustomerSalesPrice"/);
+  assert.match(saveRoute, /ON CONFLICT/);
+  assert.doesNotMatch(saveRoute, /for \(const entry of requestedPrices\)[\s\S]*findUnique/);
+  assert.match(frontend, /const dirtyPriceChanges = useMemo/);
+  assert.match(frontend, /prices: dirtyPriceChanges\.map/);
+  assert.match(frontend, /useUnsavedChanges\(dirtyPriceChanges\.length > 0\)/);
 });
 
 test('order locking freezes sales price snapshots and fails closed when price is missing', () => {
@@ -39,4 +62,6 @@ test('order locking freezes sales price snapshots and fails closed when price is
     backend.indexOf('app.delete("/orders/:orderId"')
   );
   assert.match(lockRoute, /await freezeOrderSalesPriceSnapshots\(\{ db: tx, order: existing \}\)/);
+  assert.match(backend, /app\.get\("\/orders\/sales-price-diagnostics"/);
+  assert.match(backend, /salesPriceSnapshotStatus/);
 });

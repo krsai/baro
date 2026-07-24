@@ -42,6 +42,7 @@ import { payrollRouter } from "./payroll/payroll.routes";
 import { quantitySettlementRouter } from "./quantity-settlement/quantitySettlement.routes";
 import {
   getCurrentRequestActor,
+  getCurrentRequestActorEmployeeId,
   runWithRequestActor,
 } from "./requestActor";
 import {
@@ -794,6 +795,18 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
   { tableName: "WorkRecord", columnName: "orderNo" },
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
+const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  "OrgRelationshipStyleSalesBucket_relationship_style_key",
+  "CustomerSalesPriceList_scope_version_key",
+  "CustomerSalesPriceList_id_version_key",
+  "QuantityBucketEntry_id_version_key",
+  "CustomerSalesPrice_list_entry_key",
+  "CustomerSalesPrice_list_version_fkey",
+  "CustomerSalesPrice_entry_version_fkey",
+  "CustomerSalesPriceList_pricingBasis_check",
+  "CustomerSalesPriceList_currencyCode_check",
+  "CustomerSalesPrice_unitPrice_check",
+] as const;
 const STARTUP_REQUIRED_RUNTIME_ENUM_VALUES = [
   { enumName: "OrgMembershipStatus", value: "TERMINATED" },
   { enumName: "WorkOrderStatus", value: "EDITING" },
@@ -6807,6 +6820,11 @@ const toOrderResponse = (
     status: order.status,
     isManualLocked: isManualModificationLocked,
   });
+  const missingSalesPriceSnapshotItemIds = isManualModificationLocked
+    ? items
+        .filter((item: any) => item.salesPriceSnapshot === null)
+        .map((item: any) => item.id)
+    : [];
   return {
     id: order.orderId,
     ownerOrgId,
@@ -6830,6 +6848,10 @@ const toOrderResponse = (
     totalQuantity: toNonNegativeInt(order.totalQuantity, 0),
     pricingBasis: order.pricingBasis ?? "MANUFACTURING_SERVICE_PRICE",
     currencyCode: order.currencyCode ?? "USD",
+    salesPriceSnapshotStatus: isManualModificationLocked
+      ? (missingSalesPriceSnapshotItemIds.length > 0 ? "MISSING" : "COMPLETE")
+      : "NOT_LOCKED",
+    missingSalesPriceSnapshotItemIds,
     isModificationLocked,
     isManualModificationLocked,
     isAssignmentModificationLocked,
@@ -26818,8 +26840,11 @@ const normalizeSalesCurrencyCode = (value: unknown) => {
 const normalizePositiveSalesPrice = (value: unknown): string | null => {
   const normalized = String(value ?? "").replace(/,/g, "").trim();
   if (!normalized) return null;
-  if (!/^\d+(?:\.\d{1,4})?$/.test(normalized)) {
-    throw createHttpError(400, "unitPrice must be a positive decimal with up to 4 decimals");
+  if (!/^\d{1,14}(?:\.\d{1,4})?$/.test(normalized)) {
+    throw createHttpError(
+      400,
+      "unitPrice must be a positive decimal with at most 14 integer digits and 4 decimals"
+    );
   }
   const decimal = new Prisma.Decimal(normalized);
   if (!decimal.isPositive()) {
@@ -26932,6 +26957,9 @@ app.put("/customers/:id/sales-prices", async (req, res) => {
   });
   if (!accessContext) return;
   const { organization } = accessContext;
+  if (requestedPrices.length > 5000) {
+    return res.status(400).json({ ok: false, error: "too many sales price changes" });
+  }
   const result = await prisma.$transaction(async (tx) => {
     const relationship = await tx.orgRelationship.findFirst({
       where: { id: relationshipId, manufacturerOrgId: organization.id },
@@ -26963,6 +26991,13 @@ app.put("/customers/:id/sales-prices", async (req, res) => {
       throw createHttpError(409, "sales price contains a style outside the customer relationship");
     }
     const styleById = new Map(styles.map((style) => [style.id, style]));
+    const normalizedChanges: Array<{
+      styleId: number;
+      versionId: number;
+      bucketEntryId: number;
+      unitPrice: string | null;
+    }> = [];
+    const seenCells = new Set<string>();
     for (const entry of requestedPrices) {
       const styleId = toPositiveIntOrNull(entry?.styleId);
       const bucketQuantity = toPositiveIntOrNull(entry?.bucketQuantity);
@@ -26978,56 +27013,127 @@ app.put("/customers/:id/sales-prices", async (req, res) => {
       if (!bucketEntry) {
         throw createHttpError(409, "sales price bucket does not belong to the active version");
       }
-      const unitPrice = normalizePositiveSalesPrice(entry?.unitPrice);
-      const existingList = await tx.customerSalesPriceList.findUnique({
-        where: {
-          orgRelationshipId_styleId_pricingBasis_currencyCode_quantityBucketSetVersionId: {
-            orgRelationshipId: relationship.id,
-            styleId: style.id,
-            pricingBasis,
-            currencyCode,
-            quantityBucketSetVersionId: version.id,
-          },
-        },
-      });
-      if (unitPrice === null) {
-        if (existingList) {
-          await tx.customerSalesPrice.deleteMany({
-            where: {
-              salesPriceListId: existingList.id,
-              quantityBucketEntryId: bucketEntry.id,
-            },
-          });
-        }
-        continue;
+      const cellKey = `${style.id}:${bucketEntry.id}`;
+      if (seenCells.has(cellKey)) {
+        throw createHttpError(400, "duplicate sales price cell");
       }
-      const priceList = existingList ?? await tx.customerSalesPriceList.create({
-        data: {
-          orgRelationshipId: relationship.id,
-          styleId: style.id,
-          pricingBasis,
-          currencyCode,
-          quantityBucketSetVersionId: version.id,
-        },
-      });
-      await tx.customerSalesPrice.upsert({
-        where: {
-          salesPriceListId_quantityBucketEntryId: {
-            salesPriceListId: priceList.id,
-            quantityBucketEntryId: bucketEntry.id,
-          },
-        },
-        create: {
-          salesPriceListId: priceList.id,
-          quantityBucketEntryId: bucketEntry.id,
-          quantityBucketSetVersionId: version.id,
-          unitPrice,
-        },
-        update: { unitPrice },
+      seenCells.add(cellKey);
+      normalizedChanges.push({
+        styleId: style.id,
+        versionId: version.id,
+        bucketEntryId: bucketEntry.id,
+        unitPrice: normalizePositiveSalesPrice(entry?.unitPrice),
       });
     }
+
+    const positiveChanges = normalizedChanges.filter((change) => change.unitPrice !== null);
+    const requiredListScopes = Array.from(
+      new Map(
+        positiveChanges.map((change) => [
+          `${change.styleId}:${change.versionId}`,
+          { styleId: change.styleId, versionId: change.versionId },
+        ])
+      ).values()
+    );
+    if (requiredListScopes.length > 0) {
+      await tx.customerSalesPriceList.createMany({
+        data: requiredListScopes.map((scope) => ({
+          orgRelationshipId: relationship.id,
+          styleId: scope.styleId,
+          pricingBasis,
+          currencyCode,
+          quantityBucketSetVersionId: scope.versionId,
+        })),
+        skipDuplicates: true,
+      });
+    }
+    const priceLists = await tx.customerSalesPriceList.findMany({
+      where: {
+        orgRelationshipId: relationship.id,
+        pricingBasis,
+        currencyCode,
+        OR: Array.from(
+          new Map(
+            normalizedChanges.map((change) => [
+              `${change.styleId}:${change.versionId}`,
+              {
+                styleId: change.styleId,
+                quantityBucketSetVersionId: change.versionId,
+              },
+            ])
+          ).values()
+        ),
+      },
+      select: { id: true, styleId: true, quantityBucketSetVersionId: true },
+    });
+    const listByScope = new Map(
+      priceLists.map((list) => [
+        `${list.styleId}:${list.quantityBucketSetVersionId}`,
+        list,
+      ])
+    );
+    const resolvedChanges = normalizedChanges.map((change) => ({
+      ...change,
+      listId: listByScope.get(`${change.styleId}:${change.versionId}`)?.id ?? null,
+    }));
+    const deletions = resolvedChanges.filter(
+      (change) => change.unitPrice === null && change.listId !== null
+    );
+    if (deletions.length > 0) {
+      await tx.customerSalesPrice.deleteMany({
+        where: {
+          OR: deletions.map((change) => ({
+            salesPriceListId: change.listId as number,
+            quantityBucketEntryId: change.bucketEntryId,
+          })),
+        },
+      });
+    }
+    const upserts = resolvedChanges.filter(
+      (change): change is typeof change & { listId: number; unitPrice: string } =>
+        change.unitPrice !== null && change.listId !== null
+    );
+    if (upserts.length > 0) {
+      const actor = getCurrentRequestActor();
+      const actorEmployeeId = getCurrentRequestActorEmployeeId();
+      const values = Prisma.join(
+        upserts.map((change) => Prisma.sql`(
+          ${change.listId},
+          ${change.bucketEntryId},
+          ${change.versionId},
+          ${change.unitPrice}::decimal(18,4),
+          ${actor},
+          ${actorEmployeeId},
+          ${actorEmployeeId},
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP
+        )`)
+      );
+      await tx.$executeRaw(Prisma.sql`
+        INSERT INTO "CustomerSalesPrice" (
+          "salesPriceListId",
+          "quantityBucketEntryId",
+          "quantityBucketSetVersionId",
+          "unitPrice",
+          "createdBy",
+          "createdByEmployeeId",
+          "updatedByEmployeeId",
+          "createdAt",
+          "updatedAt"
+        )
+        VALUES ${values}
+        ON CONFLICT ("salesPriceListId", "quantityBucketEntryId")
+        DO UPDATE SET
+          "unitPrice" = EXCLUDED."unitPrice",
+          "updatedByEmployeeId" = EXCLUDED."updatedByEmployeeId",
+          "updatedAt" = CURRENT_TIMESTAMP
+      `);
+    }
     return { savedCount: requestedPrices.length };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }, {
+    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    timeout: 30000,
+  });
   res.json({ ok: true, ...result });
 });
 
@@ -27093,8 +27199,32 @@ const freezeOrderSalesPriceSnapshots = async ({
       (quantityByStyleId.get(styleId) ?? 0) + toNonNegativeInt(item.totalQuantity, 0)
     );
   });
+  const activeScopes = styles.map((style) => {
+    const version = resolveSalesBucketVersionForStyle(relationship, style);
+    if (!version) throw createHttpError(409, "sales bucket version is missing");
+    return { styleId: style.id, versionId: version.id };
+  });
+  const priceLists = await db.customerSalesPriceList.findMany({
+    where: {
+      orgRelationshipId: relationship.id,
+      pricingBasis,
+      currencyCode,
+      OR: activeScopes.map((scope) => ({
+        styleId: scope.styleId,
+        quantityBucketSetVersionId: scope.versionId,
+      })),
+    },
+    include: { prices: true },
+  });
+  const priceListByScope = new Map(
+    priceLists.map((list) => [
+      `${list.styleId}:${list.quantityBucketSetVersionId}`,
+      list,
+    ])
+  );
   const actor = getCurrentRequestActor();
-  for (const item of items) {
+  const snapshotAt = new Date().toISOString();
+  const snapshots = items.map((item) => {
     const styleId = toPositiveIntOrNull(item.styleId);
     const style = styleId ? styleById.get(styleId) : null;
     if (!styleId || !style) throw createHttpError(409, "order item style is missing");
@@ -27109,53 +27239,86 @@ const freezeOrderSalesPriceSnapshots = async ({
       (entry: any) => entry.bucketQuantity === bucketQuantity
     );
     if (!bucketEntry) throw createHttpError(409, "sales price bucket is unresolved");
-    const priceList = await db.customerSalesPriceList.findUnique({
-      where: {
-        orgRelationshipId_styleId_pricingBasis_currencyCode_quantityBucketSetVersionId: {
-          orgRelationshipId: relationship.id,
-          styleId,
-          pricingBasis,
-          currencyCode,
-          quantityBucketSetVersionId: version.id,
-        },
-      },
-      include: {
-        prices: {
-          where: { quantityBucketEntryId: bucketEntry.id },
-        },
-      },
-    });
-    const price = priceList?.prices[0] ?? null;
+    const priceList = priceListByScope.get(`${styleId}:${version.id}`) ?? null;
+    const price = priceList?.prices.find(
+      (candidate: any) => candidate.quantityBucketEntryId === bucketEntry.id
+    ) ?? null;
     if (!priceList || !price) {
       throw createHttpError(
         409,
         `sales price is missing for style ${styleId}, bucket ${bucketQuantity}`
       );
     }
-    await db.workOrderItem.update({
-      where: { id: item.id },
-      data: {
-        salesPriceSnapshot: {
-          version: 1,
-          customerSalesPriceListId: priceList.id,
-          customerSalesPriceId: price.id,
-          orgRelationshipId: relationship.id,
-          styleId,
-          pricingBasis,
-          currencyCode,
-          quantityBucketSetVersionId: version.id,
-          quantityBucketEntryId: bucketEntry.id,
-          bucketQuantity,
-          pricingQuantity: orderQuantity,
-          itemQuantity: toNonNegativeInt(item.totalQuantity, 0),
-          unitPrice: new Prisma.Decimal(price.unitPrice).toFixed(4),
-          snapshotAt: new Date().toISOString(),
-          snapshotBy: actor,
-        },
+    return {
+      itemId: item.id,
+      snapshot: {
+        version: 1,
+        customerSalesPriceListId: priceList.id,
+        customerSalesPriceId: price.id,
+        orgRelationshipId: relationship.id,
+        styleId,
+        pricingBasis,
+        currencyCode,
+        quantityBucketSetVersionId: version.id,
+        quantityBucketEntryId: bucketEntry.id,
+        bucketQuantity,
+        pricingQuantity: orderQuantity,
+        itemQuantity: toNonNegativeInt(item.totalQuantity, 0),
+        unitPrice: new Prisma.Decimal(price.unitPrice).toFixed(4),
+        snapshotAt,
+        snapshotBy: actor,
       },
+    };
+  });
+  for (const itemSnapshot of snapshots) {
+    await db.workOrderItem.update({
+      where: { id: itemSnapshot.itemId },
+      data: { salesPriceSnapshot: itemSnapshot.snapshot },
     });
   }
 };
+
+app.get("/orders/sales-price-diagnostics", async (req, res) => {
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
+  const orders = await prisma.workOrder.findMany({
+    where: {
+      OR: getOrderAccessWhere(organization.id),
+      modificationLockedAt: { not: null },
+      workOrderItems: {
+        some: { salesPriceSnapshot: { equals: Prisma.DbNull } },
+      },
+    },
+    select: {
+      id: true,
+      orderId: true,
+      orderNumber: true,
+      modificationLockedAt: true,
+      workOrderItems: {
+        where: { salesPriceSnapshot: { equals: Prisma.DbNull } },
+        select: { id: true, itemId: true, styleId: true },
+        orderBy: { sortOrder: "asc" },
+      },
+    },
+    orderBy: { modificationLockedAt: "desc" },
+  });
+  res.json({
+    missingOrderCount: orders.length,
+    missingItemCount: orders.reduce(
+      (sum, order) => sum + order.workOrderItems.length,
+      0
+    ),
+    orders: orders.map((order) => ({
+      orderId: order.orderId,
+      orderNumber: order.orderNumber,
+      modificationLockedAt: order.modificationLockedAt,
+      items: order.workOrderItems,
+    })),
+  });
+});
 
 app.get("/order-parties", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
@@ -29715,8 +29878,26 @@ const findForbiddenRuntimeSchemaTables = async (): Promise<string[]> => {
   return targetTableNames.filter((tableName) => available.has(tableName));
 };
 
+const findMissingRuntimeSchemaConstraints = async (): Promise<string[]> => {
+  const rows = await prisma.$queryRaw<Array<{ constraint_name: string }>>`
+    SELECT conname AS constraint_name
+    FROM pg_constraint
+    WHERE conname = ANY(${[...STARTUP_REQUIRED_RUNTIME_CONSTRAINTS]}::text[])
+    UNION
+    SELECT indexname AS constraint_name
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname = ANY(${[...STARTUP_REQUIRED_RUNTIME_CONSTRAINTS]}::text[])
+  `;
+  const available = new Set(rows.map((row) => row.constraint_name));
+  return STARTUP_REQUIRED_RUNTIME_CONSTRAINTS
+    .filter((name) => !available.has(name))
+    .map((name) => `constraint ${name} missing`);
+};
+
 const findRuntimeSchemaDriftReasons = async (): Promise<string[]> => {
   const driftReasons = await findMissingRuntimeSchemaColumns();
+  driftReasons.push(...await findMissingRuntimeSchemaConstraints());
   const forbiddenColumns = await findForbiddenRuntimeSchemaColumns();
   forbiddenColumns.forEach((column) => {
     driftReasons.push(`${column} still present`);

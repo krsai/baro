@@ -605,7 +605,6 @@ model QuantityBucketSetVersion {
   timeStyles        Style[]                           @relation("StyleTimeBucketVersion")
   salesOverrides    OrgRelationshipStyleSalesBucket[]
   salesPriceLists   CustomerSalesPriceList[]
-  salesPrices       CustomerSalesPrice[]
 
   @@unique([quantityBucketSetId, versionNumber])
   @@index([orgId])
@@ -624,6 +623,7 @@ model QuantityBucketEntry {
   salesPrices              CustomerSalesPrice[]
 
   @@unique([quantityBucketSetVersionId, bucketQuantity])
+  @@unique([id, quantityBucketSetVersionId], map: "QuantityBucketEntry_id_version_key")
   @@index([orgId])
   @@index([quantityBucketSetVersionId])
 }
@@ -938,9 +938,9 @@ model OrgRelationshipStyleSalesBucket {
   createdByEmployee Employee? @relation("SalesBucketOverrideCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("SalesBucketOverrideUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
-  @@unique([orgRelationshipId, styleId])
-  @@index([styleId])
-  @@index([quantityBucketSetVersionId])
+  @@unique([orgRelationshipId, styleId], map: "OrgRelationshipStyleSalesBucket_relationship_style_key")
+  @@index([styleId], map: "OrgRelationshipStyleSalesBucket_styleId_idx")
+  @@index([quantityBucketSetVersionId], map: "OrgRelationshipStyleSalesBucket_versionId_idx")
 }
 
 model CustomerSalesPriceList {
@@ -964,10 +964,11 @@ model CustomerSalesPriceList {
   createdByEmployee Employee? @relation("SalesPriceListCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("SalesPriceListUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
-  @@unique([orgRelationshipId, styleId, pricingBasis, currencyCode, quantityBucketSetVersionId])
-  @@index([orgRelationshipId])
-  @@index([styleId])
-  @@index([quantityBucketSetVersionId])
+  @@unique([orgRelationshipId, styleId, pricingBasis, currencyCode, quantityBucketSetVersionId], map: "CustomerSalesPriceList_scope_version_key")
+  @@unique([id, quantityBucketSetVersionId], map: "CustomerSalesPriceList_id_version_key")
+  @@index([orgRelationshipId], map: "CustomerSalesPriceList_relationshipId_idx")
+  @@index([styleId], map: "CustomerSalesPriceList_styleId_idx")
+  @@index([quantityBucketSetVersionId], map: "CustomerSalesPriceList_versionId_idx")
 }
 
 model CustomerSalesPrice {
@@ -982,16 +983,15 @@ model CustomerSalesPrice {
   updatedByEmployeeId        Int?
   updatedAt                  DateTime @updatedAt
 
-  salesPriceList           CustomerSalesPriceList   @relation(fields: [salesPriceListId], references: [id], onDelete: Cascade)
-  quantityBucketEntry      QuantityBucketEntry      @relation(fields: [quantityBucketEntryId], references: [id], onDelete: Restrict)
-  quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId], references: [id], onDelete: Restrict)
+  salesPriceList      CustomerSalesPriceList @relation(fields: [salesPriceListId, quantityBucketSetVersionId], references: [id, quantityBucketSetVersionId], onDelete: Cascade, map: "CustomerSalesPrice_list_version_fkey")
+  quantityBucketEntry QuantityBucketEntry    @relation(fields: [quantityBucketEntryId, quantityBucketSetVersionId], references: [id, quantityBucketSetVersionId], onDelete: Restrict, map: "CustomerSalesPrice_entry_version_fkey")
 
   createdByEmployee Employee? @relation("SalesPriceCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("SalesPriceUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
-  @@unique([salesPriceListId, quantityBucketEntryId])
-  @@index([quantityBucketEntryId])
-  @@index([quantityBucketSetVersionId])
+  @@unique([salesPriceListId, quantityBucketEntryId], map: "CustomerSalesPrice_list_entry_key")
+  @@index([quantityBucketEntryId], map: "CustomerSalesPrice_entryId_idx")
+  @@index([quantityBucketSetVersionId], map: "CustomerSalesPrice_versionId_idx")
 }
 
 model AssignmentPlan {

@@ -85,6 +85,12 @@
 - `OrgRelationship.pricingDefaultTradeType/pricingMatrix`의 `CMPT/FOB` 가격 기능은 실제 계산에 연결된 적 없는 레거시다. 2026-07-23에 프론트 화면과 `/customers/:id/pricing` 읽기·쓰기를 제거했다. 운영 Railway DB의 값 존재 여부를 확인하고 필요하면 파일로 백업한 뒤에만 컬럼을 DROP한다. 신규 관계형 가격표에서 이 JSON을 dual-read/fallback으로 사용하지 않는다.
 - 고객 판매단가는 스타일 상세에서 관리하지 않는다. 다음 phase에서 운영 관리의 고객 단가 관리 메뉴가 관계형 `고객 관계 × 스타일 × 판매방식 × 수량구간` 가격표의 단일 편집 위치가 된다.
 
+### 매출 단가 저장 및 레거시 진단 (2026-07-25)
+- 단가 화면은 표시된 전체 표를 다시 쓰지 않고 저장 기준값과 비교한 변경 셀만 전송한다. 백엔드는 요청 전체를 먼저 검증한 뒤 단가표 헤더와 단가 행을 배치로 저장한다. 셀마다 조회/생성/upsert하는 경로를 다시 만들지 않는다.
+- `CustomerSalesPrice`의 단가표 버전과 버킷 entry 버전 일치는 복합 FK로 강제하며, Prisma schema와 런타임 schema drift 검사 모두 같은 제약 이름을 요구한다.
+- `DECIMAL(18,4)` 입력은 양수, 정수부 최대 14자리, 소수부 최대 4자리만 허용한다. 잘못된 셀 하나를 조용히 버리거나 반올림해 저장하지 않는다.
+- 단가 스냅샷 없이 이미 잠긴 레거시 주문은 현재 가격표로 자동 재구성하지 않는다. 주문 응답의 `salesPriceSnapshotStatus=MISSING` 및 `GET /orders/sales-price-diagnostics`로 명시적으로 진단하고 운영자가 원자료에 따라 별도 처리한다.
+
 ### 주문 사이즈 세트 (2026-07-14)
 - `WorkOrderItem.sizeQuantities`는 자유 JSON 키를 유지한다. 주문 입력 UI는 전역 `SIZE_CODES` 하나만 렌더링하지 말고 선택된 size set의 `sizeCodes`를 렌더링한다.
 - 기본 size set은 기존 의류 세트(`XS/S/M/L/XL/2XL/3XL/4XL/FREE`, `M/W/U`)이며, URD/우리들 주문은 숫자 세트(`100/110/120/130/140/150/160/170/180/190/200`)를 사용한다.

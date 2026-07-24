@@ -137,6 +137,26 @@ CREATE INDEX IF NOT EXISTS "QuantityBucketEntry_versionId_idx"
 DO $$
 BEGIN
   IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'CustomerSalesPriceList_pricingBasis_check'
+  ) THEN
+    ALTER TABLE "CustomerSalesPriceList"
+      ADD CONSTRAINT "CustomerSalesPriceList_pricingBasis_check"
+      CHECK ("pricingBasis" IN ('MANUFACTURING_SERVICE_PRICE', 'FINISHED_GOODS_PRICE'));
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'CustomerSalesPriceList_currencyCode_check'
+  ) THEN
+    ALTER TABLE "CustomerSalesPriceList"
+      ADD CONSTRAINT "CustomerSalesPriceList_currencyCode_check"
+      CHECK ("currencyCode" IN ('USD', 'VND', 'KRW'));
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'CustomerSalesPrice_unitPrice_check'
+  ) THEN
+    ALTER TABLE "CustomerSalesPrice"
+      ADD CONSTRAINT "CustomerSalesPrice_unitPrice_check" CHECK ("unitPrice" > 0);
+  END IF;
+  IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conname = 'QuantityBucketSet_currentVersionId_fkey'
   ) THEN
@@ -509,7 +529,7 @@ CREATE TABLE IF NOT EXISTS "CustomerSalesPrice" (
   "id" SERIAL PRIMARY KEY,
   "salesPriceListId" INTEGER NOT NULL REFERENCES "CustomerSalesPriceList"("id") ON DELETE CASCADE,
   "quantityBucketEntryId" INTEGER NOT NULL REFERENCES "QuantityBucketEntry"("id") ON DELETE RESTRICT,
-  "quantityBucketSetVersionId" INTEGER NOT NULL REFERENCES "QuantityBucketSetVersion"("id") ON DELETE RESTRICT,
+  "quantityBucketSetVersionId" INTEGER NOT NULL,
   "unitPrice" DECIMAL(18,4) NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "createdBy" TEXT NOT NULL DEFAULT 'system@baro.local',
@@ -524,6 +544,8 @@ CREATE INDEX IF NOT EXISTS "CustomerSalesPrice_entryId_idx"
   ON "CustomerSalesPrice"("quantityBucketEntryId");
 CREATE INDEX IF NOT EXISTS "CustomerSalesPrice_versionId_idx"
   ON "CustomerSalesPrice"("quantityBucketSetVersionId");
+ALTER TABLE "CustomerSalesPrice"
+  DROP CONSTRAINT IF EXISTS "CustomerSalesPrice_quantityBucketSetVersionId_fkey";
 DO $$
 BEGIN
   IF NOT EXISTS (

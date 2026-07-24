@@ -36,6 +36,7 @@ import { resolveCustomerDisplayName } from '../../../utils/appLanguage';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { fetchStyles } from '../../../utils/styleApi';
 import { resolveCustomerStyleOwnerOrgId } from './customerFormShared';
+import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 
 const SALES_BUCKET_PRESETS = Object.freeze([
   { id: '135', label: '1 · 3 · 5 방식', values: [1, 3, 5, 10, 30, 50, 100, 300, 500, 1000, 3000, 5000, 10000] },
@@ -171,6 +172,19 @@ const normalizePriceInput = (value) =>
   String(value ?? '')
     .replace(/[^\d.]/g, '')
     .replace(/(\..*)\./g, '$1');
+const canonicalPrice = (value) => {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return '';
+  const [integerPart, decimalPart = ''] = normalized.split('.');
+  const integer = integerPart.replace(/^0+(?=\d)/, '') || '0';
+  const decimal = decimalPart.replace(/0+$/, '');
+  return decimal ? `${integer}.${decimal}` : integer;
+};
+const isValidPositivePrice = (value) => {
+  const normalized = String(value ?? '').trim();
+  return /^\d{1,14}(?:\.\d{1,4})?$/.test(normalized) &&
+    canonicalPrice(normalized) !== '0';
+};
 
 const CustomerPricingBoard = () => {
   const { activeOrgId } = useAuth();
@@ -189,6 +203,7 @@ const CustomerPricingBoard = () => {
   const [currencyCode, setCurrencyCode] = useState('USD');
   const [searchTerm, setSearchTerm] = useState('');
   const [draftPrices, setDraftPrices] = useState({});
+  const [savedPrices, setSavedPrices] = useState({});
   const [bucketTarget, setBucketTarget] = useState('customer');
   const [customerBuckets, setCustomerBuckets] = useState({});
   const [styleBucketModes, setStyleBucketModes] = useState({});
@@ -342,17 +357,25 @@ const CustomerPricingBoard = () => {
         );
         if (!active) return;
         const scopePrefix = `${selectedCustomerId}:${pricingBasis}:${currencyCode}:`;
+        const loadedPrices = {};
+        (Array.isArray(payload?.styles) ? payload.styles : []).forEach((style) => {
+          (Array.isArray(style?.prices) ? style.prices : []).forEach((price) => {
+            loadedPrices[
+              `${selectedCustomerId}:${pricingBasis}:${currencyCode}:${style.styleId}:${price.bucketQuantity}`
+            ] = String(price.unitPrice ?? '');
+          });
+        });
         setDraftPrices((previous) => {
           const next = Object.fromEntries(
             Object.entries(previous).filter(([key]) => !key.startsWith(scopePrefix))
           );
-          (Array.isArray(payload?.styles) ? payload.styles : []).forEach((style) => {
-            (Array.isArray(style?.prices) ? style.prices : []).forEach((price) => {
-              next[`${selectedCustomerId}:${pricingBasis}:${currencyCode}:${style.styleId}:${price.bucketQuantity}`] =
-                String(price.unitPrice ?? '');
-            });
-          });
-          return next;
+          return { ...next, ...loadedPrices };
+        });
+        setSavedPrices((previous) => {
+          const next = Object.fromEntries(
+            Object.entries(previous).filter(([key]) => !key.startsWith(scopePrefix))
+          );
+          return { ...next, ...loadedPrices };
         });
       } catch (error) {
         if (active) showNotification(error?.message || text.loadFailed, 'error');
@@ -403,6 +426,9 @@ const CustomerPricingBoard = () => {
         (style) => styleBucketModes[`${customerBucketKey}:${style.id}`] !== 'custom'
       );
   const canEditSalesBuckets = !selectedStyleId || selectedStyleUsesCustomBuckets;
+  const hiddenCustomStyleCount = selectedStyleId
+    ? 0
+    : filteredStyles.length - displayedStyles.length;
 
   const updateActiveSalesBuckets = useCallback(
     (nextBuckets) => {
@@ -487,9 +513,52 @@ const CustomerPricingBoard = () => {
       draftPrices[`${selectedCustomerId}:${pricingBasis}:${currencyCode}:${styleId}:${bucketQuantity}`] || '',
     [currencyCode, draftPrices, pricingBasis, selectedCustomerId]
   );
+  const dirtyPriceChanges = useMemo(
+    () => displayedStyles.flatMap((style) =>
+      activeSalesBuckets.flatMap((bucketQuantity) => {
+        const key =
+          `${selectedCustomerId}:${pricingBasis}:${currencyCode}:${style.id}:${bucketQuantity}`;
+        const draft = draftPrices[key] || '';
+        const saved = savedPrices[key] || '';
+        if (canonicalPrice(draft) === canonicalPrice(saved)) return [];
+        return [{
+          key,
+          styleId: Number(style.id),
+          styleName: style.name || style.styleCode || String(style.id),
+          bucketQuantity,
+          unitPrice: draft || null,
+        }];
+      })
+    ),
+    [
+      activeSalesBuckets,
+      currencyCode,
+      displayedStyles,
+      draftPrices,
+      pricingBasis,
+      savedPrices,
+      selectedCustomerId,
+    ]
+  );
+  const invalidPriceChanges = useMemo(
+    () => dirtyPriceChanges.filter(
+      (change) => change.unitPrice !== null && !isValidPositivePrice(change.unitPrice)
+    ),
+    [dirtyPriceChanges]
+  );
+  useUnsavedChanges(dirtyPriceChanges.length > 0);
 
   const savePrices = useCallback(async () => {
-    if (!selectedCustomerId || displayedStyles.length === 0) return;
+    if (!selectedCustomerId || dirtyPriceChanges.length === 0) return;
+    if (invalidPriceChanges.length > 0) {
+      const invalid = invalidPriceChanges[0];
+      showNotification(
+        `${invalid.styleName} / ${invalid.bucketQuantity}: ` +
+          'price must be greater than 0 with at most 14 integer digits and 4 decimals.',
+        'error'
+      );
+      return;
+    }
     setSavingPrices(true);
     try {
       await requestJSON(
@@ -499,13 +568,11 @@ const CustomerPricingBoard = () => {
           body: JSON.stringify({
             pricingBasis,
             currencyCode,
-            prices: displayedStyles.flatMap((style) =>
-              activeSalesBuckets.map((bucketQuantity) => ({
-                styleId: Number(style.id),
-                bucketQuantity,
-                unitPrice: resolveDraftPrice(style.id, bucketQuantity) || null,
-              }))
-            ),
+            prices: dirtyPriceChanges.map(({ styleId, bucketQuantity, unitPrice }) => ({
+              styleId,
+              bucketQuantity,
+              unitPrice,
+            })),
           }),
           skipGlobalLoading: true,
         }
@@ -525,13 +592,12 @@ const CustomerPricingBoard = () => {
       setSavingPrices(false);
     }
   }, [
-    activeSalesBuckets,
     currencyCode,
     customerQuery,
-    displayedStyles,
+    dirtyPriceChanges,
+    invalidPriceChanges,
     languageCode,
     pricingBasis,
-    resolveDraftPrice,
     selectedCustomerId,
     showNotification,
     text.loadFailed,
@@ -553,7 +619,9 @@ const CustomerPricingBoard = () => {
               loadingPrices ||
               savingPrices ||
               !selectedCustomerId ||
-              displayedStyles.length === 0
+              displayedStyles.length === 0 ||
+              dirtyPriceChanges.length === 0 ||
+              invalidPriceChanges.length > 0
             }
           >
             {text.save}
@@ -650,6 +718,12 @@ const CustomerPricingBoard = () => {
           />
           <Chip label={`${text.currency}: ${currencyCode}`} variant="outlined" />
         </Stack>
+        {hiddenCustomStyleCount > 0 && (
+          <Alert severity="warning">
+            {hiddenCustomStyleCount} style(s) use custom buckets and are not shown in the
+            customer-default table. Select each style in the bucket target to edit its prices.
+          </Alert>
+        )}
 
         <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
           {loadingCustomers || loadingStyles ? (
@@ -867,6 +941,11 @@ const CustomerPricingBoard = () => {
                               handlePriceChange(style.id, quantity, event.target.value)
                             }
                             size="small"
+                            disabled={loadingPrices || savingPrices}
+                            error={
+                              Boolean(resolveDraftPrice(style.id, quantity)) &&
+                              !isValidPositivePrice(resolveDraftPrice(style.id, quantity))
+                            }
                             placeholder="-"
                             inputProps={{
                               inputMode: 'decimal',
