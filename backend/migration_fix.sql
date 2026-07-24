@@ -568,6 +568,47 @@ BEGIN
   END IF;
 END $$;
 
+-- Step 0s: fail closed for canonical WorkRecord references (20260725).
+-- Never manufacture these links from names/codes during migration.
+DO $$
+DECLARE
+  invalid_count BIGINT;
+BEGIN
+  SELECT COUNT(*) INTO invalid_count
+  FROM "WorkRecord"
+  WHERE "assignmentPlanId" IS NULL OR "styleId" IS NULL OR "styleProcessId" IS NULL;
+  IF invalid_count > 0 THEN
+    RAISE EXCEPTION
+      'WorkRecord canonical FK migration blocked: % rows need explicit repair',
+      invalid_count;
+  END IF;
+END $$;
+ALTER TABLE "WorkRecord"
+  DROP CONSTRAINT IF EXISTS "WorkRecord_assignmentPlanId_fkey",
+  DROP CONSTRAINT IF EXISTS "WorkRecord_styleId_fkey",
+  DROP CONSTRAINT IF EXISTS "WorkRecord_styleProcessId_fkey",
+  DROP CONSTRAINT IF EXISTS "WorkRecord_assignmentPlan_org_fkey",
+  DROP CONSTRAINT IF EXISTS "WorkRecord_style_org_fkey",
+  DROP CONSTRAINT IF EXISTS "WorkRecord_styleProcess_style_org_fkey";
+CREATE UNIQUE INDEX IF NOT EXISTS "AssignmentPlan_id_org_key"
+  ON "AssignmentPlan"("id", "orgId");
+CREATE UNIQUE INDEX IF NOT EXISTS "Style_id_org_key"
+  ON "Style"("id", "orgId");
+CREATE UNIQUE INDEX IF NOT EXISTS "StyleProcess_id_style_org_key"
+  ON "StyleProcess"("id", "styleId", "orgId");
+ALTER TABLE "WorkRecord"
+  ALTER COLUMN "assignmentPlanId" SET NOT NULL,
+  ALTER COLUMN "styleId" SET NOT NULL,
+  ALTER COLUMN "styleProcessId" SET NOT NULL;
+ALTER TABLE "WorkRecord"
+  ADD CONSTRAINT "WorkRecord_assignmentPlan_org_fkey"
+    FOREIGN KEY ("assignmentPlanId", "orgId") REFERENCES "AssignmentPlan"("id", "orgId") ON DELETE RESTRICT,
+  ADD CONSTRAINT "WorkRecord_style_org_fkey"
+    FOREIGN KEY ("styleId", "orgId") REFERENCES "Style"("id", "orgId") ON DELETE RESTRICT,
+  ADD CONSTRAINT "WorkRecord_styleProcess_style_org_fkey"
+    FOREIGN KEY ("styleProcessId", "styleId", "orgId")
+    REFERENCES "StyleProcess"("id", "styleId", "orgId") ON DELETE RESTRICT;
+
 -- Step 0n: drop AssignmentPlan.orderNo/customer/label/previewUrl (20260706)
 -- Phase E of the AssignmentCard/AssignmentPlan FK+join redesign. Unlike
 -- Phase D's color columns, these four WERE actively written by every board

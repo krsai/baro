@@ -8,6 +8,7 @@ import {
 } from "./factoryManagementStart";
 import { getOrganizationByQuery } from "../middleware/access";
 import { toNumberOrNull, toPositiveIntOrNull } from "../utils/common";
+import { createHttpError } from "../utils/http";
 
 type FactoryRoutesDeps = {
   isManufacturerOrg: (org: { type?: string | null } | null | undefined) => boolean;
@@ -628,10 +629,12 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
           });
           const planIds = planRows.map((plan) => plan.id);
           if (planIds.length > 0) {
-            await tx.workRecord.updateMany({
+            const linkedWorkRecordCount = await tx.workRecord.count({
               where: { assignmentPlanId: { in: planIds } },
-              data: { assignmentPlanId: null },
             });
+            if (linkedWorkRecordCount > 0) {
+              throw createHttpError(409, "factory has assignment plans with work records");
+            }
           }
           const result =
             planIds.length > 0

@@ -3,6 +3,7 @@ import { Router } from "express";
 import { prisma } from "../db";
 import { getOrganizationByQuery, getRequesterEmail } from "../middleware/access";
 import { resolveOptionalString } from "../utils/common";
+import { createHttpError } from "../utils/http";
 
 type LineRoutesDeps = {
   closeActiveLineAssignments: (employeeId: number, endedAt?: Date) => Promise<number[]>;
@@ -490,10 +491,12 @@ export const createLineRouter = ({
         });
         const planIds = planRows.map((plan) => plan.id);
         if (planIds.length > 0) {
-          await tx.workRecord.updateMany({
+          const linkedWorkRecordCount = await tx.workRecord.count({
             where: { assignmentPlanId: { in: planIds } },
-            data: { assignmentPlanId: null },
           });
+          if (linkedWorkRecordCount > 0) {
+            throw createHttpError(409, "line has assignment plans with work records");
+          }
           await tx.assignmentPlan.deleteMany({
             where: { id: { in: planIds } },
           });
@@ -788,10 +791,12 @@ export const createLineRouter = ({
       });
       const planIds = planRows.map((plan) => plan.id);
       if (planIds.length > 0) {
-        await tx.workRecord.updateMany({
+        const linkedWorkRecordCount = await tx.workRecord.count({
           where: { assignmentPlanId: { in: planIds } },
-          data: { assignmentPlanId: null },
         });
+        if (linkedWorkRecordCount > 0) {
+          throw createHttpError(409, "line has assignment plans with work records");
+        }
         await tx.assignmentPlan.deleteMany({
           where: { id: { in: planIds } },
         });

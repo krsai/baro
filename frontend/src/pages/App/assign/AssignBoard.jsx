@@ -1027,10 +1027,6 @@ const getTotalStForOrderQuantity = (processes, orderQuantity) => {
 
 const createCardId = (orderId, styleId) =>
   `${normalizeKey(orderId)}::${normalizeKey(styleId)}`;
-const resolveStyleIdFromCardIdentity = (value) => {
-  const parts = normalizeKey(value).split('::');
-  return normalizeKey(parts[1] || '');
-};
 const isCardManualOrderLocked = (card) => card?.isManualOrderLocked !== false;
 
 const buildCardsFromOrders = ({ orders, styles }) => {
@@ -4258,11 +4254,7 @@ const AssignBoard = () => {
   );
   const resolveCardStyle = useCallback((card) => {
     if (!card) return null;
-    const styleId = normalizeKey(
-      card.styleId ||
-        resolveStyleIdFromCardIdentity(card.originOrderId) ||
-        resolveStyleIdFromCardIdentity(card.id)
-    );
+    const styleId = normalizeKey(card.styleId);
     if (!styleId) return null;
     return styleById.get(styleId) || null;
   }, [styleById]);
@@ -6523,35 +6515,14 @@ const AssignBoard = () => {
 
   const getAssignmentOriginId = (assignment) => {
     if (!assignment) return null;
-    if (assignment.originOrderId) return assignment.originOrderId;
     const card = cardById.get(assignment.cardId);
-    return getCardOriginId(card) ?? assignment.cardId ?? assignment.id;
+    return card ? getCardOriginId(card) : null;
   };
 
   const buildCardFromAssignment = (assignment) => {
     const card = cardById.get(assignment.cardId);
     if (card) return card;
-    const basis = assignment.basis || 'PT';
-    const styleId = resolveStyleIdFromCardIdentity(
-      assignment.originOrderId || assignment.cardId || assignment.id
-    );
-    return {
-      id: assignment.cardId ?? assignment.id,
-      originOrderId: assignment.originOrderId ?? assignment.cardId ?? assignment.id,
-      workOrderId: assignment.workOrderId ?? null,
-      styleId,
-      styleName: assignment.label || getUiMessage('assign.styleLabel', 'Style', languageCode),
-      colorName: assignment.colorName || '',
-      gender: normalizeGenderKey(assignment.gender),
-      quantity: assignment.quantity ?? 0,
-      cardQuantity: assignment.quantity ?? 0,
-      stTotalSeconds: assignment.stTotalSeconds ?? 0,
-      totalPt: basis === 'PT' ? assignment.stTotalSeconds ?? 0 : 0,
-      totalAt: basis === 'AT' ? assignment.stTotalSeconds ?? 0 : 0,
-      cardStTotalSeconds: basis === 'ST' ? assignment.stTotalSeconds ?? 0 : 0,
-      status: basis === 'ST' ? 'ST' : basis === 'PT' || basis === 'CT' ? 'PT' : 'NONE',
-      isManualOrderLocked: true,
-    };
+    return null;
   };
 
   const buildMergedCardData = (target, source) => {
@@ -6582,6 +6553,7 @@ const AssignBoard = () => {
     if (getAssignmentOriginId(target) !== getCardOriginId(sourceCard)) return false;
 
     const targetCard = cardById.get(target.cardId) ?? buildCardFromAssignment(target);
+    if (!targetCard) return false;
     const mergedCard = buildMergedCardData(targetCard, sourceCard);
     const mergedSeconds = resolveCardStTotalSeconds(mergedCard);
     const mergedQuantity = mergedCard.quantity ?? ((target.quantity ?? 0) + (sourceCard.quantity ?? 0));
@@ -6624,6 +6596,7 @@ const AssignBoard = () => {
 
     const sourceCard = buildCardFromAssignment(source);
     const targetCard = cardById.get(target.cardId) ?? buildCardFromAssignment(target);
+    if (!sourceCard || !targetCard) return false;
     const mergedCard = buildMergedCardData(targetCard, sourceCard);
     const mergedSeconds = resolveCardStTotalSeconds(mergedCard);
     const mergedQuantity = mergedCard.quantity ?? ((target.quantity ?? 0) + (sourceCard.quantity ?? 0));

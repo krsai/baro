@@ -806,6 +806,12 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "CustomerSalesPriceList_pricingBasis_check",
   "CustomerSalesPriceList_currencyCode_check",
   "CustomerSalesPrice_unitPrice_check",
+  "AssignmentPlan_id_org_key",
+  "Style_id_org_key",
+  "StyleProcess_id_style_org_key",
+  "WorkRecord_assignmentPlan_org_fkey",
+  "WorkRecord_style_org_fkey",
+  "WorkRecord_styleProcess_style_org_fkey",
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_ENUM_VALUES = [
   { enumName: "OrgMembershipStatus", value: "TERMINATED" },
@@ -3015,7 +3021,6 @@ const loadAtTrainingSourceWorkLogs = async ({
         workRecords: {
           where: {
             quantity: { gt: 0 },
-            styleId: { not: null },
           },
           select: {
             workerId: true,
@@ -3063,7 +3068,6 @@ const loadAtTrainingSourceWorkLogs = async ({
         workRecords: {
           where: {
             quantity: { gt: 0 },
-            styleId: { not: null },
           },
           select: {
             workerId: true,
@@ -13499,15 +13503,11 @@ const detachWorkRecordsAndDeleteAssignmentPlans = async ({
     planIds: normalizedPlanIds,
     db,
   });
-  const detachedResult = await db.workRecord.updateMany({
-    where: { assignmentPlanId: { in: normalizedPlanIds } },
-    data: { assignmentPlanId: null },
-  });
   const deletedResult = await db.assignmentPlan.deleteMany({
     where: { id: { in: normalizedPlanIds } },
   });
   return {
-    detachedCount: toNonNegativeInt(detachedResult?.count, 0),
+    detachedCount: 0,
     deletedCount: toNonNegativeInt(deletedResult?.count, 0),
   };
 };
@@ -21381,53 +21381,6 @@ const buildLineMonthCapacityRows = async ({
     }
   });
 
-  let orphanRows: any[] = [];
-  try {
-    orphanRows = await prisma.workRecord.findMany({
-      where: {
-        orgId,
-        assignmentPlanId: null,
-        lineId: { in: requestedLineIds },
-      },
-      select: {
-        lineId: true,
-        effectiveCoverageStartDate: true,
-        effectiveCoverageEndDate: true,
-        workLog: {
-          select: {
-            coverageStartDate: true,
-            coverageEndDate: true,
-          },
-        },
-      },
-    });
-  } catch (error) {
-    if (!isWorkLogCoverageMissingColumnError(error)) throw error;
-    orphanRows = [];
-  }
-
-  orphanRows.forEach((record) => {
-    const lineId = toPositiveIntOrNull(record?.lineId);
-    if (!lineId || !requestedLineIdSet.has(lineId)) return;
-    const coverageStartDate =
-      resolveWorkRecordEffectiveCoverageStartDate(record);
-    const coverageEndDate =
-      resolveWorkRecordEffectiveCoverageEndDate(record);
-    if (!coverageStartDate || !coverageEndDate || coverageStartDate > coverageEndDate) {
-      return;
-    }
-    buildLineMonthCapacityWeightRows({
-      coverageStartDate,
-      coverageEndDate,
-      monthKeys: internalMonthKeys,
-      holidaySet,
-    }).forEach(({ monthKey }) => {
-      const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
-      if (!target) return;
-      target.orphanWorkRecordCount += 1;
-    });
-  });
-
   const resolveLineCapacitySecondsForDateRange = ({
     lineId,
     startDateKey,
@@ -21738,31 +21691,6 @@ const buildAssignmentPlanProgressRows = async (
     context: "buildAssignmentPlanProgressRows",
   });
   const orphanWorkRecordCountByLine = new Map<number, number>();
-  if (lineIds.length > 0) {
-    const orphanRows = await prisma.workRecord.findMany({
-      where: {
-        orgId,
-        assignmentPlanId: null,
-        OR: [{ lineId: { in: lineIds } }, { lineId: null }],
-      },
-      select: {
-        lineId: true,
-        workLog: {
-          select: {
-            records: true,
-          },
-        },
-      },
-    });
-    orphanRows.forEach((record) => {
-      const lineId = resolveOrphanWorkRecordLineId(record);
-      if (!lineId || !lineIds.includes(lineId)) return;
-      orphanWorkRecordCountByLine.set(
-        lineId,
-        (orphanWorkRecordCountByLine.get(lineId) || 0) + 1
-      );
-    });
-  }
   const payrollLockMonthByPlanId = new Map<number, string>();
   plans.forEach((plan) => {
     const monthKey = resolveAssignmentPlanPayrollLockMonth(plan);
@@ -25226,7 +25154,7 @@ app.post("/work-logs", async (req, res) => {
               defaultCoverageStartDate: normalized.coverageStartDate,
               defaultCoverageEndDate: normalized.coverageEndDate,
             })
-          ),
+          ) as Prisma.WorkRecordCreateManyInput[],
         });
       }
 
@@ -25579,7 +25507,7 @@ app.put("/work-logs/:id", async (req, res) => {
               defaultCoverageStartDate: normalized.coverageStartDate,
               defaultCoverageEndDate: normalized.coverageEndDate,
             })
-          ),
+          ) as Prisma.WorkRecordCreateManyInput[],
         });
       }
 

@@ -730,6 +730,7 @@ model Style {
   @@unique([orgId, code])
   @@unique([orgId, name])
   @@index([orgId])
+  @@unique([id, orgId], map: "Style_id_org_key")
   @@index([timeBucketSetVersionId])
 }
 
@@ -761,6 +762,7 @@ model StyleProcess {
   updatedByEmployee Employee? @relation("StyleProcessUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([styleId, orgId, processCode])
+  @@unique([id, styleId, orgId], map: "StyleProcess_id_style_org_key")
   @@index([orgId])
   @@index([styleId])
 }
@@ -1070,6 +1072,7 @@ model AssignmentPlan {
   ctReviewedByEmployee Employee? @relation("AssignmentPlanCtReviewedByEmployee", fields: [ctReviewedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([orgId, externalId])
+  @@unique([id, orgId], map: "AssignmentPlan_id_org_key")
   @@index([orgId, lineId])
   @@index([workOrderId])
   @@index([styleId])
@@ -1153,9 +1156,9 @@ model WorkRecord {
   workLogId                  Int
   workerId                   Int?
   lineId                     Int?
-  styleId                    Int?
-  styleProcessId             Int?
-  assignmentPlanId           Int?
+  styleId                    Int
+  styleProcessId             Int
+  assignmentPlanId           Int
   effectiveCoverageStartDate String?
   effectiveCoverageEndDate   String?
   ctSeconds                  Int      @default(0)
@@ -1169,9 +1172,9 @@ model WorkRecord {
   organization   Organization    @relation(fields: [orgId], references: [id])
   workLog        WorkLog         @relation(fields: [workLogId], references: [id], onDelete: Cascade)
   worker         Employee?       @relation(fields: [workerId], references: [id], onDelete: SetNull)
-  assignmentPlan AssignmentPlan? @relation(fields: [assignmentPlanId], references: [id], onDelete: SetNull)
-  style          Style?          @relation(fields: [styleId], references: [id], onDelete: SetNull)
-  styleProcess   StyleProcess?   @relation(fields: [styleProcessId], references: [id], onDelete: SetNull)
+  assignmentPlan AssignmentPlan  @relation(fields: [assignmentPlanId, orgId], references: [id, orgId], onDelete: Restrict, map: "WorkRecord_assignmentPlan_org_fkey")
+  style          Style           @relation(fields: [styleId, orgId], references: [id, orgId], onDelete: Restrict, map: "WorkRecord_style_org_fkey")
+  styleProcess   StyleProcess    @relation(fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, map: "WorkRecord_styleProcess_style_org_fkey")
   line           Line?           @relation("WorkRecordLine", fields: [lineId], references: [id], onDelete: SetNull)
 
   createdByEmployee Employee? @relation("WorkRecordCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)

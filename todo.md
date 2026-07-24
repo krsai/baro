@@ -1,5 +1,15 @@
 # TODO
 
+## 2026-07-25 FK·우회 경로 강화
+
+- [x] 라인·공장 삭제가 연결된 `WorkRecord.assignmentPlanId`를 null로 만드는 경로를 제거하고 409로 차단했다.
+- [x] `WorkRecord.assignmentPlanId/styleId/styleProcessId`를 필수 FK + `RESTRICT`로 변경했다.
+- [x] WorkRecord의 assignment/style/process 연결에 `orgId`와 style 일치를 포함한 복합 FK를 추가했다.
+- [x] 배정 카드가 없을 때 `cardId/originOrderId` 문자열을 파싱해 synthetic card를 만드는 병합 경로를 제거했다.
+- [x] 서버 응답에 없는 월별 라인 생산능력을 프론트가 임의 계산하는 fallback을 제거했다.
+- [x] `npm run verify:relational-integrity` 진단 명령을 추가했다.
+- [ ] Railway 배포 전에 진단 명령으로 기존 누락·교차 조직 row가 0건인지 확인한다. 0건이 아니면 migration은 의도적으로 중단된다.
+
 ## 2026-07-25 매출 단가 정밀 리뷰 후속
 
 - [x] 단가 저장을 변경 셀만 전송하고 서버에서 일괄 검증·일괄 upsert하도록 변경했다.

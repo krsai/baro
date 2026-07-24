@@ -484,22 +484,6 @@ export const resolvePlanningMonthKeys = ({
   return normalizedVisibleMonthKeys;
 };
 
-const buildFallbackLineMonthlyCapacitySeconds = (line, monthKey, holidaySet) => {
-  const monthStartDateKey = getMonthStartDateKey(monthKey);
-  const monthEndDateKey = getMonthEndDateKey(monthKey);
-  if (!monthStartDateKey || !monthEndDateKey) return 0;
-  const workingDayCount = countWorkingDaysInRange(
-    monthStartDateKey,
-    monthEndDateKey,
-    holidaySet
-  );
-  const dailyCapacitySeconds = Number(line?.dailyCapacitySeconds);
-  if (!Number.isFinite(dailyCapacitySeconds) || dailyCapacitySeconds <= 0) {
-    return 0;
-  }
-  return Math.max(0, Math.round(dailyCapacitySeconds * workingDayCount));
-};
-
 const resolveAssignmentForecastStTotalSeconds = (assignment) => {
   if (Boolean(assignment?.isCompleted)) {
     return assignment?.remainingStTotalSeconds != null
@@ -720,13 +704,14 @@ export const buildLineMonthCapacityBoardRows = ({
       });
 
     const lineBackendRows = backendRowsByLineId.get(lineId) || [];
+    // Forecast rows are server-owned calculations. Do not invent months that
+    // the backend did not return; a missing response must remain unavailable.
     const internalMonthKeys = Array.from(
-      new Set([
-        ...lineBackendRows
+      new Set(
+        lineBackendRows
           .map((row) => normalizeMonthKey(row?.monthKey))
-          .filter(Boolean),
-        ...normalizedPlanningMonthKeys,
-      ])
+          .filter(Boolean)
+      )
     ).sort((left, right) => left.localeCompare(right));
     const forecastAnchorDateKey = lineMeta?.forecastAnchorDateKey || null;
     const forecastAnchorMonthKey = normalizeMonthKey(
@@ -787,7 +772,7 @@ export const buildLineMonthCapacityBoardRows = ({
       const lineMonthlyCapacitySeconds =
         Number(backendRow?.lineMonthlyCapacitySeconds) > 0
           ? Math.round(Number(backendRow.lineMonthlyCapacitySeconds))
-          : buildFallbackLineMonthlyCapacitySeconds(line, monthKey, holidaySet);
+          : 0;
       const lineMonthlyActualOutputStSeconds = Math.max(
         0,
         Math.round(Number(backendRow?.lineMonthlyActualOutputStSeconds) || 0)
@@ -967,7 +952,7 @@ export const buildLineMonthCapacityBoardRows = ({
       const lineMonthlyCapacitySeconds =
         Number(backendRow?.lineMonthlyCapacitySeconds) > 0
           ? Math.round(Number(backendRow.lineMonthlyCapacitySeconds))
-          : buildFallbackLineMonthlyCapacitySeconds(line, monthKey, holidaySet);
+          : 0;
       const lineMonthlyActualOutputStSeconds = Math.max(
         0,
         Math.round(Number(backendRow?.lineMonthlyActualOutputStSeconds) || 0)

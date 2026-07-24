@@ -30,6 +30,7 @@
     "verify:workorder-item-backfill": "node scripts/verify-workorder-item-backfill.js",
     "verify:style-process-backfill": "node scripts/verify-style-process-backfill.js",
     "verify:assignment-board-state-backfill": "node scripts/verify-assignment-board-state-backfill.js",
+    "verify:relational-integrity": "npm run build && node scripts/verify-relational-integrity.js",
     "test:work-record-employment": "npm run build && node scripts/test-work-record-employment.js",
     "realign:time-model": "node scripts/reset-to-baseline.js time-model",
     "backfill:missing-attendance": "node scripts/backfill-missing-attendance.js",
