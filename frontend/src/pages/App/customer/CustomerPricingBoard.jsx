@@ -56,9 +56,9 @@ const resolvePresetId = (presets, buckets) => {
 const TEXT = {
   ko: {
     title: '단가 관리',
-    preview: 'UI 검토용',
-    noticeTitle: '현재는 화면 시안입니다.',
-    noticeBody: '입력한 값은 저장되지 않습니다. 화면 구성을 확정한 뒤 DB와 저장 기능을 연결합니다.',
+    preview: '가격 입력 준비중',
+    noticeTitle: '매출 단가 버킷 설정은 저장됩니다.',
+    noticeBody: '아래 표의 단가(가격) 입력은 아직 화면 시안이며 저장되지 않습니다. 위쪽의 매출 단가 버킷은 저장 버튼을 누르면 실제로 저장됩니다.',
     customer: '고객사',
     selectCustomer: '고객사를 선택하세요',
     searchStyle: '스타일명 또는 코드 검색...',
@@ -91,9 +91,9 @@ const TEXT = {
   },
   en: {
     title: 'Price Management',
-    preview: 'UI Preview',
-    noticeTitle: 'This is a UI preview.',
-    noticeBody: 'Values are not saved. Data storage will be connected after the layout is approved.',
+    preview: 'Price entry pending',
+    noticeTitle: 'Sales price bucket settings are saved.',
+    noticeBody: 'Unit prices entered in the table below are still a preview and are not saved. The sales price buckets above are saved for real when you press the save button.',
     customer: 'Customer',
     selectCustomer: 'Select a customer',
     searchStyle: 'Search style name or code...',
@@ -126,9 +126,9 @@ const TEXT = {
   },
   vi: {
     title: 'Quan ly don gia',
-    preview: 'Ban xem truoc UI',
-    noticeTitle: 'Day la ban xem truoc giao dien.',
-    noticeBody: 'Gia tri nhap chua duoc luu. Chuc nang luu se duoc ket noi sau khi duyet giao dien.',
+    preview: 'Nhap gia dang cho',
+    noticeTitle: 'Cai dat moc don gia ban hang da duoc luu.',
+    noticeBody: 'Don gia nhap trong bang ben duoi van la ban xem truoc va chua duoc luu. Moc don gia ban hang o tren se duoc luu that khi ban nhan nut luu.',
     customer: 'Khach hang',
     selectCustomer: 'Chon khach hang',
     searchStyle: 'Tim ten hoac ma style...',

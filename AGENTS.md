@@ -116,6 +116,17 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 - `PT_DERIVED` ST가 CT 생성 근거가 된 배정은 `ctReviewRequired=true`다. 관리자가 CT를 검토해 `ctReviewedAt`을 기록하기 전에는 해당 작업월의 급여 잠금을 거부한다.
 - `ST_STANDARD_BUCKETS`는 새 조직/고객에 최초 기본 버전을 만드는 템플릿으로만 허용한다. 운영 계산에서 전역 버킷 목록으로 사용하지 않는다.
 
+#### 2026-07-25 구현 검증 및 발견된 버그 (커밋 `629635d`, 수정 완료)
+
+- 2026-07-24 커밋 `f8a290b`("Implement versioned customer quantity buckets")로 위 가변 수량 버킷 뼈대(스키마, 마이그레이션, 리졸버, CT 검토 게이트, 급여 잠금 차단, 단가 관리 화면의 버킷 저장, `StyleTimeMatrix`의 동적 버킷 렌더링)는 코드 리뷰로 정확성까지 확인됐다. `syncStyleStandardsForBucketVersion`이 `upsert(update:{})`라 기존 ST 값은 절대 안 건드리고 신규 버킷만 `PT_DERIVED`로 채우는 것, PT 없으면 트랜잭션 전체 409 롤백되는 것, `ctReviewRequired`가 `savePayrollSnapshot`에서 실제로 급여 잠금을 막는 것까지 코드 레벨로 검증됨.
+- 같은 리뷰에서 실제 버그 2건을 발견해 커밋 `629635d`로 수정했다:
+  1. `PUT /styles/:styleId`의 저장 트랜잭션 마지막 `findUniqueOrThrow`가 `timeBucketSetVersion` relation을 `include`하지 않아, **기존 스타일을 저장할 때마다 응답의 `timeBucketQuantities`가 항상 빈 배열로 돌아왔다.** 프론트가 이 응답을 그대로 폼 상태에 반영하므로 저장 직후 ST/AT 매트릭스의 수량 컬럼이 전부 사라져 보였다(새로고침하면 복구 — DB의 FK 자체는 건드리지 않아 데이터 유실은 아니었음). `include`를 추가해 해소.
+  2. `POST /styles/import`(대량 등록)는 신규 스타일에 `timeBucketSetVersionId`를 전혀 설정하지 않았고 응답도 같은 `include` 누락이 있었다. `POST /styles`가 쓰던 "고객 기본 버킷 있으면 그것, 없으면 조직 표준 1-3-5 세트를 그 자리에서 생성" 로직을 `resolveDefaultTimeBucketSetVersionIdForNewStyle` 공용 함수로 추출해 재사용하도록 고쳤다. 기존 스타일을 재-import하는 경우는(PUT과 동일 원칙으로) 버킷을 건드리지 않는다. 이 엔드포인트를 호출하는 프론트 코드가 현재 없어(grep 0건) 실사용 영향은 없었다.
+- `단가 관리`(`CustomerPricingBoard.jsx`) 화면은 **두 기능이 섞여 있다는 점을 반드시 구분해서 읽어야 한다**:
+  - **매출 단가 버킷(수량 구간) 설정/저장은 실제로 동작한다** — `GET/PUT /customers/:id/quantity-buckets`에 연결되어 있고 위 뼈대 검증에 포함됨.
+  - **실제 단가(가격) 입력·저장은 여전히 미구현이다** — 가격 입력 그리드는 `draftPrices` 로컬 state일 뿐이고 "단가 저장" 버튼은 여전히 `disabled`(잠금 아이콘). 이전에는 화면 상단 배너와 칩이 "전체가 UI 시안"이라고 표시해 버킷 저장까지 미구현인 것처럼 오해를 유발했다 — 2026-07-25에 안내 문구(`preview`/`noticeTitle`/`noticeBody`, ko/en/vi)를 "버킷 설정은 저장됨 / 가격 입력만 아직 시안"으로 범위를 분리해 정정했다.
+  - 다음에 실제 가격표 저장 기능을 구현할 때는 `todo.md`의 "재고·수익성 0단계 후속 확인" 항목(관계형 고객 단가 테이블·API·주문 가격 스냅샷)을 참고한다.
+
 ---
 
 ## 데이터 구조 핵심
