@@ -11,10 +11,9 @@ Detailed domain rules, operations notes, and current source-of-truth guidance li
 - `todo.md`: only active implementation and production-verification work
 - `CLAUDE.md`: minimal pointer file for AI tooling
 - `INVENTORY_PROFITABILITY_PLAN.md`: paused future roadmap; do not implement until the user explicitly starts the BOM/inventory phase
-- `LOGIC_FIX_PLAN.md`: archived June review; never use it as the active task list
 
-For normal work, read only `AGENTS.md` and `todo.md`. The two plan files are
-reference material and must not override either current document.
+For normal work, read only `AGENTS.md` and `todo.md`.
+`INVENTORY_PROFITABILITY_PLAN.md` is reference material and must not override either current document.
 
 ## Setup
 
