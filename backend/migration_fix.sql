@@ -448,6 +448,104 @@ BEGIN
   END LOOP;
 END $$;
 
+-- Step 0r: independent sales buckets, relational sales prices, and order price snapshots (20260725)
+ALTER TABLE "WorkOrder"
+  ADD COLUMN IF NOT EXISTS "pricingBasis" TEXT NOT NULL DEFAULT 'MANUFACTURING_SERVICE_PRICE',
+  ADD COLUMN IF NOT EXISTS "currencyCode" TEXT NOT NULL DEFAULT 'USD';
+ALTER TABLE "WorkOrderItem"
+  ADD COLUMN IF NOT EXISTS "salesPriceSnapshot" JSONB;
+
+CREATE TABLE IF NOT EXISTS "OrgRelationshipStyleSalesBucket" (
+  "id" SERIAL PRIMARY KEY,
+  "orgRelationshipId" INTEGER NOT NULL REFERENCES "OrgRelationship"("id") ON DELETE CASCADE,
+  "styleId" INTEGER NOT NULL REFERENCES "Style"("id") ON DELETE CASCADE,
+  "quantityBucketSetVersionId" INTEGER NOT NULL REFERENCES "QuantityBucketSetVersion"("id") ON DELETE RESTRICT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdBy" TEXT NOT NULL DEFAULT 'system@baro.local',
+  "createdByEmployeeId" INTEGER REFERENCES "Employee"("id") ON DELETE SET NULL,
+  "updatedByEmployeeId" INTEGER REFERENCES "Employee"("id") ON DELETE SET NULL,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "OrgRelationshipStyleSalesBucket_relationship_style_key"
+  ON "OrgRelationshipStyleSalesBucket"("orgRelationshipId", "styleId");
+CREATE INDEX IF NOT EXISTS "OrgRelationshipStyleSalesBucket_styleId_idx"
+  ON "OrgRelationshipStyleSalesBucket"("styleId");
+CREATE INDEX IF NOT EXISTS "OrgRelationshipStyleSalesBucket_versionId_idx"
+  ON "OrgRelationshipStyleSalesBucket"("quantityBucketSetVersionId");
+
+CREATE TABLE IF NOT EXISTS "CustomerSalesPriceList" (
+  "id" SERIAL PRIMARY KEY,
+  "orgRelationshipId" INTEGER NOT NULL REFERENCES "OrgRelationship"("id") ON DELETE RESTRICT,
+  "styleId" INTEGER NOT NULL REFERENCES "Style"("id") ON DELETE RESTRICT,
+  "pricingBasis" TEXT NOT NULL,
+  "currencyCode" TEXT NOT NULL,
+  "quantityBucketSetVersionId" INTEGER NOT NULL REFERENCES "QuantityBucketSetVersion"("id") ON DELETE RESTRICT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdBy" TEXT NOT NULL DEFAULT 'system@baro.local',
+  "createdByEmployeeId" INTEGER REFERENCES "Employee"("id") ON DELETE SET NULL,
+  "updatedByEmployeeId" INTEGER REFERENCES "Employee"("id") ON DELETE SET NULL,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "CustomerSalesPriceList_pricingBasis_check"
+    CHECK ("pricingBasis" IN ('MANUFACTURING_SERVICE_PRICE', 'FINISHED_GOODS_PRICE')),
+  CONSTRAINT "CustomerSalesPriceList_currencyCode_check"
+    CHECK ("currencyCode" IN ('USD', 'VND', 'KRW'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "CustomerSalesPriceList_scope_version_key"
+  ON "CustomerSalesPriceList"(
+    "orgRelationshipId", "styleId", "pricingBasis", "currencyCode", "quantityBucketSetVersionId"
+  );
+CREATE UNIQUE INDEX IF NOT EXISTS "CustomerSalesPriceList_id_version_key"
+  ON "CustomerSalesPriceList"("id", "quantityBucketSetVersionId");
+CREATE INDEX IF NOT EXISTS "CustomerSalesPriceList_relationshipId_idx"
+  ON "CustomerSalesPriceList"("orgRelationshipId");
+CREATE INDEX IF NOT EXISTS "CustomerSalesPriceList_styleId_idx"
+  ON "CustomerSalesPriceList"("styleId");
+CREATE INDEX IF NOT EXISTS "CustomerSalesPriceList_versionId_idx"
+  ON "CustomerSalesPriceList"("quantityBucketSetVersionId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "QuantityBucketEntry_id_version_key"
+  ON "QuantityBucketEntry"("id", "quantityBucketSetVersionId");
+CREATE TABLE IF NOT EXISTS "CustomerSalesPrice" (
+  "id" SERIAL PRIMARY KEY,
+  "salesPriceListId" INTEGER NOT NULL REFERENCES "CustomerSalesPriceList"("id") ON DELETE CASCADE,
+  "quantityBucketEntryId" INTEGER NOT NULL REFERENCES "QuantityBucketEntry"("id") ON DELETE RESTRICT,
+  "quantityBucketSetVersionId" INTEGER NOT NULL REFERENCES "QuantityBucketSetVersion"("id") ON DELETE RESTRICT,
+  "unitPrice" DECIMAL(18,4) NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdBy" TEXT NOT NULL DEFAULT 'system@baro.local',
+  "createdByEmployeeId" INTEGER REFERENCES "Employee"("id") ON DELETE SET NULL,
+  "updatedByEmployeeId" INTEGER REFERENCES "Employee"("id") ON DELETE SET NULL,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "CustomerSalesPrice_unitPrice_check" CHECK ("unitPrice" > 0)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "CustomerSalesPrice_list_entry_key"
+  ON "CustomerSalesPrice"("salesPriceListId", "quantityBucketEntryId");
+CREATE INDEX IF NOT EXISTS "CustomerSalesPrice_entryId_idx"
+  ON "CustomerSalesPrice"("quantityBucketEntryId");
+CREATE INDEX IF NOT EXISTS "CustomerSalesPrice_versionId_idx"
+  ON "CustomerSalesPrice"("quantityBucketSetVersionId");
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'CustomerSalesPrice_list_version_fkey'
+  ) THEN
+    ALTER TABLE "CustomerSalesPrice"
+      ADD CONSTRAINT "CustomerSalesPrice_list_version_fkey"
+      FOREIGN KEY ("salesPriceListId", "quantityBucketSetVersionId")
+      REFERENCES "CustomerSalesPriceList"("id", "quantityBucketSetVersionId")
+      ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'CustomerSalesPrice_entry_version_fkey'
+  ) THEN
+    ALTER TABLE "CustomerSalesPrice"
+      ADD CONSTRAINT "CustomerSalesPrice_entry_version_fkey"
+      FOREIGN KEY ("quantityBucketEntryId", "quantityBucketSetVersionId")
+      REFERENCES "QuantityBucketEntry"("id", "quantityBucketSetVersionId")
+      ON DELETE RESTRICT;
+  END IF;
+END $$;
+
 -- Step 0n: drop AssignmentPlan.orderNo/customer/label/previewUrl (20260706)
 -- Phase E of the AssignmentCard/AssignmentPlan FK+join redesign. Unlike
 -- Phase D's color columns, these four WERE actively written by every board

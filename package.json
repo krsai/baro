@@ -9,15 +9,16 @@
     "sample:orders": "node backend/scripts/reset-to-baseline.js orders",
     "realign:time-model": "node backend/scripts/reset-to-baseline.js time-model",
     "check:encoding": "node scripts/check-encoding.mjs",
-    "test:access-policy": "node --experimental-default-type=module --test scripts/access-policy-regression.test.mjs",
+    "test:access-policy": "node --test scripts/access-policy-regression.test.mjs",
     "test:at-reliability": "node --test scripts/at-reliability-regression.test.mjs",
     "test:st-buckets": "node --test scripts/st-bucket-regression.test.mjs",
+    "test:sales-prices": "node --test scripts/sales-price-regression.test.mjs",
     "test:attendance-fallback": "npm --prefix backend run build && node --test scripts/attendance-fallback-regression.test.mjs",
     "test:at-training": "npm --prefix backend run build && node --test scripts/at-training-regression.test.mjs",
     "test:database-target-guard": "node --test scripts/database-target-guard-regression.test.mjs",
     "test:work-record-response": "npm --prefix backend run build && node --test scripts/work-record-response-regression.test.mjs",
     "test:time-date": "npm --prefix backend run build && node --test scripts/time-date-regression.test.mjs",
-    "test:regression": "npm run test:access-policy && npm run test:database-target-guard && npm run test:time-date && npm run test:at-reliability && npm run test:st-buckets && npm run test:attendance-fallback && npm run test:at-training && npm run test:work-record-response",
+    "test:regression": "npm run test:access-policy && npm run test:database-target-guard && npm run test:time-date && npm run test:at-reliability && npm run test:st-buckets && npm run test:sales-prices && npm run test:attendance-fallback && npm run test:at-training && npm run test:work-record-response",
     "reset:baseline": "npm --prefix backend run reset:baseline"
   },
   "devDependencies": {

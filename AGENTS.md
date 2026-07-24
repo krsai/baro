@@ -122,10 +122,19 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 - 같은 리뷰에서 실제 버그 2건을 발견해 커밋 `629635d`로 수정했다:
   1. `PUT /styles/:styleId`의 저장 트랜잭션 마지막 `findUniqueOrThrow`가 `timeBucketSetVersion` relation을 `include`하지 않아, **기존 스타일을 저장할 때마다 응답의 `timeBucketQuantities`가 항상 빈 배열로 돌아왔다.** 프론트가 이 응답을 그대로 폼 상태에 반영하므로 저장 직후 ST/AT 매트릭스의 수량 컬럼이 전부 사라져 보였다(새로고침하면 복구 — DB의 FK 자체는 건드리지 않아 데이터 유실은 아니었음). `include`를 추가해 해소.
   2. `POST /styles/import`(대량 등록)는 신규 스타일에 `timeBucketSetVersionId`를 전혀 설정하지 않았고 응답도 같은 `include` 누락이 있었다. `POST /styles`가 쓰던 "고객 기본 버킷 있으면 그것, 없으면 조직 표준 1-3-5 세트를 그 자리에서 생성" 로직을 `resolveDefaultTimeBucketSetVersionIdForNewStyle` 공용 함수로 추출해 재사용하도록 고쳤다. 기존 스타일을 재-import하는 경우는(PUT과 동일 원칙으로) 버킷을 건드리지 않는다. 이 엔드포인트를 호출하는 프론트 코드가 현재 없어(grep 0건) 실사용 영향은 없었다.
-- `단가 관리`(`CustomerPricingBoard.jsx`) 화면은 **두 기능이 섞여 있다는 점을 반드시 구분해서 읽어야 한다**:
+- 아래 `단가 관리` 상태는 커밋 `f143845` 당시 기록이며, 바로 다음 "매출 단가 실사용 구현"에서 대체됐다:
   - **매출 단가 버킷(수량 구간) 설정/저장은 실제로 동작한다** — `GET/PUT /customers/:id/quantity-buckets`에 연결되어 있고 위 뼈대 검증에 포함됨.
   - **실제 단가(가격) 입력·저장은 여전히 미구현이다** — 가격 입력 그리드는 `draftPrices` 로컬 state일 뿐이고 "단가 저장" 버튼은 여전히 `disabled`(잠금 아이콘). 이전에는 화면 상단 배너와 칩이 "전체가 UI 시안"이라고 표시해 버킷 저장까지 미구현인 것처럼 오해를 유발했다 — 2026-07-25에 안내 문구(`preview`/`noticeTitle`/`noticeBody`, ko/en/vi)를 "버킷 설정은 저장됨 / 가격 입력만 아직 시안"으로 범위를 분리해 정정했다.
   - 다음에 실제 가격표 저장 기능을 구현할 때는 `todo.md`의 "재고·수익성 0단계 후속 확인" 항목(관계형 고객 단가 테이블·API·주문 가격 스냅샷)을 참고한다.
+
+#### 2026-07-25 매출 단가 실사용 구현
+
+- 매출 단가 버킷과 스타일 ST/AT 시간 버킷의 연결은 완전히 분리한다. 고객 기본 매출 버킷은 `OrgRelationship.salesBucketSetVersionId`, 고객×스타일 매출 예외는 `OrgRelationshipStyleSalesBucket.quantityBucketSetVersionId`, 시간 버킷은 `Style.timeBucketSetVersionId`만 사용한다. 단가 화면에서 매출 버킷을 바꿀 때 `Style.timeBucketSetVersionId`, `StyleProcessStandard`, ST/AT 값은 절대 변경하지 않는다.
+- 매출 단가는 `CustomerSalesPriceList`(고객 관계×스타일×CMT/FP×통화×버킷 버전 헤더)와 `CustomerSalesPrice`(버킷 entry별 Decimal 단가) 관계형 행으로 저장한다. 가격이 없는 버킷은 인접 버킷·다른 통화·다른 판매방식·레거시 JSON으로 추정하지 않는다.
+- `CustomerSalesPrice.quantityBucketEntryId`와 가격표 헤더가 같은 `quantityBucketSetVersionId`를 가리키는지는 DB 복합 FK와 저장 트랜잭션 양쪽에서 fail-closed로 검증한다. `bucketQuantity`는 일반 가격 행에 중복 저장하지 않고 `QuantityBucketEntry` relation에서 읽는다.
+- 판매방식과 통화는 주문 헤더의 `WorkOrder.pricingBasis`/`currencyCode`에서 선택하며 각각 CMT/FP, USD/VND/KRW만 허용한다. MIX는 저장 판매방식이 아니다.
+- 주문 잠금 시 스타일 전체 주문수량으로 매출 버킷을 판정하고 각 `WorkOrderItem.salesPriceSnapshot`에 가격표/가격행 FK, 버킷 버전/entry/수량, 판매방식, 통화, 단가를 동결한다. 정확한 고객 관계·스타일·버킷·단가가 없으면 잠금 전체를 409로 거부한다. 이후 가격표 변경은 잠긴 주문 스냅샷에 영향을 주지 않는다.
+- 단가는 `Decimal(18,4)`로 저장하고 API에서는 정확한 문자열로 전달한다. 0 또는 음수 단가는 허용하지 않으며 빈 칸은 미설정으로 저장할 수 있다.
 
 ---
 

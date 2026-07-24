@@ -23,7 +23,6 @@ import {
   Typography,
 } from '@mui/material';
 import AddOutlinedIcon from '@mui/icons-material/AddOutlined';
-import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
@@ -57,8 +56,8 @@ const TEXT = {
   ko: {
     title: '단가 관리',
     preview: '가격 입력 준비중',
-    noticeTitle: '매출 단가 버킷 설정은 저장됩니다.',
-    noticeBody: '아래 표의 단가(가격) 입력은 아직 화면 시안이며 저장되지 않습니다. 위쪽의 매출 단가 버킷은 저장 버튼을 누르면 실제로 저장됩니다.',
+    noticeTitle: '매출 단가와 수량 버킷을 관리합니다.',
+    noticeBody: '고객 기본 버킷 또는 스타일 예외 버킷을 정한 뒤, 판매 방식과 통화별 단가를 입력하고 저장하세요.',
     customer: '고객사',
     selectCustomer: '고객사를 선택하세요',
     searchStyle: '스타일명 또는 코드 검색...',
@@ -92,8 +91,8 @@ const TEXT = {
   en: {
     title: 'Price Management',
     preview: 'Price entry pending',
-    noticeTitle: 'Sales price bucket settings are saved.',
-    noticeBody: 'Unit prices entered in the table below are still a preview and are not saved. The sales price buckets above are saved for real when you press the save button.',
+    noticeTitle: 'Manage sales prices and quantity buckets.',
+    noticeBody: 'Choose customer-default or style-specific buckets, then enter and save prices by pricing basis and currency.',
     customer: 'Customer',
     selectCustomer: 'Select a customer',
     searchStyle: 'Search style name or code...',
@@ -127,8 +126,8 @@ const TEXT = {
   vi: {
     title: 'Quan ly don gia',
     preview: 'Nhap gia dang cho',
-    noticeTitle: 'Cai dat moc don gia ban hang da duoc luu.',
-    noticeBody: 'Don gia nhap trong bang ben duoi van la ban xem truoc va chua duoc luu. Moc don gia ban hang o tren se duoc luu that khi ban nhan nut luu.',
+    noticeTitle: 'Quan ly don gia ban va moc so luong.',
+    noticeBody: 'Chon moc mac dinh cua khach hang hoac moc rieng cua style, sau do nhap va luu don gia theo hinh thuc gia va tien te.',
     customer: 'Khach hang',
     selectCustomer: 'Chon khach hang',
     searchStyle: 'Tim ten hoac ma style...',
@@ -198,6 +197,9 @@ const CustomerPricingBoard = () => {
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [loadingStyles, setLoadingStyles] = useState(false);
   const [savingBuckets, setSavingBuckets] = useState(false);
+  const [loadingPrices, setLoadingPrices] = useState(false);
+  const [savingPrices, setSavingPrices] = useState(false);
+  const [priceReloadKey, setPriceReloadKey] = useState(0);
 
   const customerQuery = useMemo(() => buildQueryString({ orgId: activeOrgId }), [activeOrgId]);
   const selectedCustomer = useMemo(
@@ -323,6 +325,55 @@ const CustomerPricingBoard = () => {
     };
   }, [customerQuery, selectedCustomerId, showNotification, text.loadFailed]);
 
+  useEffect(() => {
+    let active = true;
+    const loadPrices = async () => {
+      if (!selectedCustomerId) return;
+      setLoadingPrices(true);
+      try {
+        const priceQuery = buildQueryString({
+          orgId: activeOrgId,
+          pricingBasis,
+          currencyCode,
+        });
+        const payload = await requestJSON(
+          `/customers/${selectedCustomerId}/sales-prices${priceQuery}`,
+          { skipGlobalLoading: true }
+        );
+        if (!active) return;
+        const scopePrefix = `${selectedCustomerId}:${pricingBasis}:${currencyCode}:`;
+        setDraftPrices((previous) => {
+          const next = Object.fromEntries(
+            Object.entries(previous).filter(([key]) => !key.startsWith(scopePrefix))
+          );
+          (Array.isArray(payload?.styles) ? payload.styles : []).forEach((style) => {
+            (Array.isArray(style?.prices) ? style.prices : []).forEach((price) => {
+              next[`${selectedCustomerId}:${pricingBasis}:${currencyCode}:${style.styleId}:${price.bucketQuantity}`] =
+                String(price.unitPrice ?? '');
+            });
+          });
+          return next;
+        });
+      } catch (error) {
+        if (active) showNotification(error?.message || text.loadFailed, 'error');
+      } finally {
+        if (active) setLoadingPrices(false);
+      }
+    };
+    loadPrices();
+    return () => {
+      active = false;
+    };
+  }, [
+    activeOrgId,
+    currencyCode,
+    pricingBasis,
+    priceReloadKey,
+    selectedCustomerId,
+    showNotification,
+    text.loadFailed,
+  ]);
+
   const filteredStyles = useMemo(() => {
     const needle = searchTerm.trim().toLowerCase();
     if (!needle) return styles;
@@ -348,7 +399,9 @@ const CustomerPricingBoard = () => {
     : resolvedCustomerBuckets;
   const displayedStyles = selectedStyleId
     ? filteredStyles.filter((style) => String(style.id) === selectedStyleId)
-    : filteredStyles;
+    : filteredStyles.filter(
+        (style) => styleBucketModes[`${customerBucketKey}:${style.id}`] !== 'custom'
+      );
   const canEditSalesBuckets = !selectedStyleId || selectedStyleUsesCustomBuckets;
 
   const updateActiveSalesBuckets = useCallback(
@@ -403,6 +456,7 @@ const CustomerPricingBoard = () => {
           skipGlobalLoading: true,
         }
       );
+      setPriceReloadKey((value) => value + 1);
       showNotification(text.bucketSaved, 'success');
     } catch (error) {
       showNotification(error?.message || text.loadFailed, 'error');
@@ -422,17 +476,66 @@ const CustomerPricingBoard = () => {
 
   const handlePriceChange = useCallback(
     (styleId, bucketQuantity, value) => {
-      const key = `${selectedCustomerId}:${pricingBasis}:${styleId}:${bucketQuantity}`;
+      const key = `${selectedCustomerId}:${pricingBasis}:${currencyCode}:${styleId}:${bucketQuantity}`;
       setDraftPrices((previous) => ({ ...previous, [key]: normalizePriceInput(value) }));
     },
-    [pricingBasis, selectedCustomerId]
+    [currencyCode, pricingBasis, selectedCustomerId]
   );
 
   const resolveDraftPrice = useCallback(
     (styleId, bucketQuantity) =>
-      draftPrices[`${selectedCustomerId}:${pricingBasis}:${styleId}:${bucketQuantity}`] || '',
-    [draftPrices, pricingBasis, selectedCustomerId]
+      draftPrices[`${selectedCustomerId}:${pricingBasis}:${currencyCode}:${styleId}:${bucketQuantity}`] || '',
+    [currencyCode, draftPrices, pricingBasis, selectedCustomerId]
   );
+
+  const savePrices = useCallback(async () => {
+    if (!selectedCustomerId || displayedStyles.length === 0) return;
+    setSavingPrices(true);
+    try {
+      await requestJSON(
+        `/customers/${selectedCustomerId}/sales-prices${customerQuery}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            pricingBasis,
+            currencyCode,
+            prices: displayedStyles.flatMap((style) =>
+              activeSalesBuckets.map((bucketQuantity) => ({
+                styleId: Number(style.id),
+                bucketQuantity,
+                unitPrice: resolveDraftPrice(style.id, bucketQuantity) || null,
+              }))
+            ),
+          }),
+          skipGlobalLoading: true,
+        }
+      );
+      setPriceReloadKey((value) => value + 1);
+      showNotification(
+        languageCode === 'ko'
+          ? '매출 단가를 저장했습니다.'
+          : languageCode === 'vi'
+            ? 'Da luu don gia ban.'
+            : 'Sales prices saved.',
+        'success'
+      );
+    } catch (error) {
+      showNotification(error?.message || text.loadFailed, 'error');
+    } finally {
+      setSavingPrices(false);
+    }
+  }, [
+    activeSalesBuckets,
+    currencyCode,
+    customerQuery,
+    displayedStyles,
+    languageCode,
+    pricingBasis,
+    resolveDraftPrice,
+    selectedCustomerId,
+    showNotification,
+    text.loadFailed,
+  ]);
 
   const customerLabel = selectedCustomer
     ? resolveCustomerDisplayName(selectedCustomer, languageCode) || selectedCustomer.code || '-'
@@ -443,8 +546,16 @@ const CustomerPricingBoard = () => {
       title={text.title}
       titleActions={
         <Stack direction="row" spacing={1} alignItems="center">
-          <Chip size="small" color="warning" variant="outlined" label={text.preview} />
-          <Button variant="contained" startIcon={<LockOutlinedIcon />} disabled>
+          <Button
+            variant="contained"
+            onClick={savePrices}
+            disabled={
+              loadingPrices ||
+              savingPrices ||
+              !selectedCustomerId ||
+              displayedStyles.length === 0
+            }
+          >
             {text.save}
           </Button>
         </Stack>

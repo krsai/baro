@@ -401,60 +401,66 @@ model Employee {
   workRecords              WorkRecord[]
   atTrainingBuckets        AtTrainingBucket[]
 
-  createdByEmployee                  Employee?                    @relation("EmployeeCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
-  updatedByEmployee                  Employee?                    @relation("EmployeeUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
-  createdSystemUsers                 SystemUser[]                 @relation("SystemUserCreatedByEmployee")
-  updatedSystemUsers                 SystemUser[]                 @relation("SystemUserUpdatedByEmployee")
-  createdProcessMasterOptions        ProcessMasterOption[]        @relation("ProcessMasterOptionCreatedByEmployee")
-  updatedProcessMasterOptions        ProcessMasterOption[]        @relation("ProcessMasterOptionUpdatedByEmployee")
-  createdOrganizations               Organization[]               @relation("OrganizationCreatedByEmployee")
-  updatedOrganizations               Organization[]               @relation("OrganizationUpdatedByEmployee")
-  createdOnboardingRequests          OnboardingRequest[]          @relation("OnboardingRequestCreatedByEmployee")
-  updatedOnboardingRequests          OnboardingRequest[]          @relation("OnboardingRequestUpdatedByEmployee")
-  createdOrganizationSubscriptions   OrganizationSubscription[]   @relation("OrganizationSubscriptionCreatedByEmployee")
-  updatedOrganizationSubscriptions   OrganizationSubscription[]   @relation("OrganizationSubscriptionUpdatedByEmployee")
-  createdFactories                   Factory[]                    @relation("FactoryCreatedByEmployee")
-  updatedFactories                   Factory[]                    @relation("FactoryUpdatedByEmployee")
-  createdLines                       Line[]                       @relation("LineCreatedByEmployee")
-  updatedLines                       Line[]                       @relation("LineUpdatedByEmployee")
-  createdAttendanceEntries           AttendanceEntry[]            @relation("AttendanceEntryCreatedByEmployee")
-  updatedAttendanceEntries           AttendanceEntry[]            @relation("AttendanceEntryUpdatedByEmployee")
-  createdOrganizationHolidays        OrganizationHoliday[]        @relation("OrganizationHolidayCreatedByEmployee")
-  updatedOrganizationHolidays        OrganizationHoliday[]        @relation("OrganizationHolidayUpdatedByEmployee")
-  createdOrgRelationships            OrgRelationship[]            @relation("OrgRelationshipCreatedByEmployee")
-  updatedOrgRelationships            OrgRelationship[]            @relation("OrgRelationshipUpdatedByEmployee")
-  createdStyles                      Style[]                      @relation("StyleCreatedByEmployee")
-  updatedStyles                      Style[]                      @relation("StyleUpdatedByEmployee")
-  createdStyleProcesses              StyleProcess[]               @relation("StyleProcessCreatedByEmployee")
-  updatedStyleProcesses              StyleProcess[]               @relation("StyleProcessUpdatedByEmployee")
-  createdAtTrainingBuckets           AtTrainingBucket[]           @relation("AtTrainingBucketCreatedByEmployee")
-  updatedAtTrainingBuckets           AtTrainingBucket[]           @relation("AtTrainingBucketUpdatedByEmployee")
-  createdAtTrainingBucketProcesses   AtTrainingBucketProcess[]    @relation("AtTrainingBucketProcessCreatedByEmployee")
-  updatedAtTrainingBucketProcesses   AtTrainingBucketProcess[]    @relation("AtTrainingBucketProcessUpdatedByEmployee")
-  createdWorkOrders                  WorkOrder[]                  @relation("WorkOrderCreatedByEmployee")
-  updatedWorkOrders                  WorkOrder[]                  @relation("WorkOrderUpdatedByEmployee")
-  createdWorkOrderItems              WorkOrderItem[]              @relation("WorkOrderItemCreatedByEmployee")
-  updatedWorkOrderItems              WorkOrderItem[]              @relation("WorkOrderItemUpdatedByEmployee")
-  createdAssignmentPlans             AssignmentPlan[]             @relation("AssignmentPlanCreatedByEmployee")
-  updatedAssignmentPlans             AssignmentPlan[]             @relation("AssignmentPlanUpdatedByEmployee")
-  reviewedAssignmentPlanCts          AssignmentPlan[]             @relation("AssignmentPlanCtReviewedByEmployee")
-  createdQcPassEvents                QcPassEvent[]                @relation("QcPassEventCreatedByEmployee")
-  updatedQcPassEvents                QcPassEvent[]                @relation("QcPassEventUpdatedByEmployee")
-  createdWorkLogs                    WorkLog[]                    @relation("WorkLogCreatedByEmployee")
-  updatedWorkLogs                    WorkLog[]                    @relation("WorkLogUpdatedByEmployee")
-  createdWorkRecords                 WorkRecord[]                 @relation("WorkRecordCreatedByEmployee")
-  updatedWorkRecords                 WorkRecord[]                 @relation("WorkRecordUpdatedByEmployee")
-  createdPayrollSnapshots            PayrollSnapshot[]            @relation("PayrollSnapshotCreatedByEmployee")
-  updatedPayrollSnapshots            PayrollSnapshot[]            @relation("PayrollSnapshotUpdatedByEmployee")
-  createdQuantitySettlementSnapshots QuantitySettlementSnapshot[] @relation("QuantitySettlementSnapshotCreatedByEmployee")
-  updatedQuantitySettlementSnapshots QuantitySettlementSnapshot[] @relation("QuantitySettlementSnapshotUpdatedByEmployee")
-  createdAssignmentBoardStates       AssignmentBoardState[]       @relation("AssignmentBoardStateCreatedByEmployee")
-  updatedAssignmentBoardStates       AssignmentBoardState[]       @relation("AssignmentBoardStateUpdatedByEmployee")
-  createdAssignmentCards             AssignmentCard[]             @relation("AssignmentCardCreatedByEmployee")
-  updatedAssignmentCards             AssignmentCard[]             @relation("AssignmentCardUpdatedByEmployee")
-  updatedSystemSettings              SystemSetting[]              @relation("SystemSettingUpdatedByEmployee")
-  createdEmployees                   Employee[]                   @relation("EmployeeCreatedByEmployee")
-  updatedEmployees                   Employee[]                   @relation("EmployeeUpdatedByEmployee")
+  createdByEmployee                  Employee?                         @relation("EmployeeCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee                  Employee?                         @relation("EmployeeUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+  createdSystemUsers                 SystemUser[]                      @relation("SystemUserCreatedByEmployee")
+  updatedSystemUsers                 SystemUser[]                      @relation("SystemUserUpdatedByEmployee")
+  createdProcessMasterOptions        ProcessMasterOption[]             @relation("ProcessMasterOptionCreatedByEmployee")
+  updatedProcessMasterOptions        ProcessMasterOption[]             @relation("ProcessMasterOptionUpdatedByEmployee")
+  createdOrganizations               Organization[]                    @relation("OrganizationCreatedByEmployee")
+  updatedOrganizations               Organization[]                    @relation("OrganizationUpdatedByEmployee")
+  createdOnboardingRequests          OnboardingRequest[]               @relation("OnboardingRequestCreatedByEmployee")
+  updatedOnboardingRequests          OnboardingRequest[]               @relation("OnboardingRequestUpdatedByEmployee")
+  createdOrganizationSubscriptions   OrganizationSubscription[]        @relation("OrganizationSubscriptionCreatedByEmployee")
+  updatedOrganizationSubscriptions   OrganizationSubscription[]        @relation("OrganizationSubscriptionUpdatedByEmployee")
+  createdFactories                   Factory[]                         @relation("FactoryCreatedByEmployee")
+  updatedFactories                   Factory[]                         @relation("FactoryUpdatedByEmployee")
+  createdLines                       Line[]                            @relation("LineCreatedByEmployee")
+  updatedLines                       Line[]                            @relation("LineUpdatedByEmployee")
+  createdAttendanceEntries           AttendanceEntry[]                 @relation("AttendanceEntryCreatedByEmployee")
+  updatedAttendanceEntries           AttendanceEntry[]                 @relation("AttendanceEntryUpdatedByEmployee")
+  createdOrganizationHolidays        OrganizationHoliday[]             @relation("OrganizationHolidayCreatedByEmployee")
+  updatedOrganizationHolidays        OrganizationHoliday[]             @relation("OrganizationHolidayUpdatedByEmployee")
+  createdOrgRelationships            OrgRelationship[]                 @relation("OrgRelationshipCreatedByEmployee")
+  updatedOrgRelationships            OrgRelationship[]                 @relation("OrgRelationshipUpdatedByEmployee")
+  createdStyles                      Style[]                           @relation("StyleCreatedByEmployee")
+  updatedStyles                      Style[]                           @relation("StyleUpdatedByEmployee")
+  createdStyleProcesses              StyleProcess[]                    @relation("StyleProcessCreatedByEmployee")
+  updatedStyleProcesses              StyleProcess[]                    @relation("StyleProcessUpdatedByEmployee")
+  createdAtTrainingBuckets           AtTrainingBucket[]                @relation("AtTrainingBucketCreatedByEmployee")
+  updatedAtTrainingBuckets           AtTrainingBucket[]                @relation("AtTrainingBucketUpdatedByEmployee")
+  createdAtTrainingBucketProcesses   AtTrainingBucketProcess[]         @relation("AtTrainingBucketProcessCreatedByEmployee")
+  updatedAtTrainingBucketProcesses   AtTrainingBucketProcess[]         @relation("AtTrainingBucketProcessUpdatedByEmployee")
+  createdWorkOrders                  WorkOrder[]                       @relation("WorkOrderCreatedByEmployee")
+  updatedWorkOrders                  WorkOrder[]                       @relation("WorkOrderUpdatedByEmployee")
+  createdWorkOrderItems              WorkOrderItem[]                   @relation("WorkOrderItemCreatedByEmployee")
+  updatedWorkOrderItems              WorkOrderItem[]                   @relation("WorkOrderItemUpdatedByEmployee")
+  createdAssignmentPlans             AssignmentPlan[]                  @relation("AssignmentPlanCreatedByEmployee")
+  updatedAssignmentPlans             AssignmentPlan[]                  @relation("AssignmentPlanUpdatedByEmployee")
+  reviewedAssignmentPlanCts          AssignmentPlan[]                  @relation("AssignmentPlanCtReviewedByEmployee")
+  createdQcPassEvents                QcPassEvent[]                     @relation("QcPassEventCreatedByEmployee")
+  updatedQcPassEvents                QcPassEvent[]                     @relation("QcPassEventUpdatedByEmployee")
+  createdWorkLogs                    WorkLog[]                         @relation("WorkLogCreatedByEmployee")
+  updatedWorkLogs                    WorkLog[]                         @relation("WorkLogUpdatedByEmployee")
+  createdWorkRecords                 WorkRecord[]                      @relation("WorkRecordCreatedByEmployee")
+  updatedWorkRecords                 WorkRecord[]                      @relation("WorkRecordUpdatedByEmployee")
+  createdPayrollSnapshots            PayrollSnapshot[]                 @relation("PayrollSnapshotCreatedByEmployee")
+  updatedPayrollSnapshots            PayrollSnapshot[]                 @relation("PayrollSnapshotUpdatedByEmployee")
+  createdQuantitySettlementSnapshots QuantitySettlementSnapshot[]      @relation("QuantitySettlementSnapshotCreatedByEmployee")
+  updatedQuantitySettlementSnapshots QuantitySettlementSnapshot[]      @relation("QuantitySettlementSnapshotUpdatedByEmployee")
+  createdAssignmentBoardStates       AssignmentBoardState[]            @relation("AssignmentBoardStateCreatedByEmployee")
+  updatedAssignmentBoardStates       AssignmentBoardState[]            @relation("AssignmentBoardStateUpdatedByEmployee")
+  createdAssignmentCards             AssignmentCard[]                  @relation("AssignmentCardCreatedByEmployee")
+  updatedAssignmentCards             AssignmentCard[]                  @relation("AssignmentCardUpdatedByEmployee")
+  createdSalesBucketOverrides        OrgRelationshipStyleSalesBucket[] @relation("SalesBucketOverrideCreatedByEmployee")
+  updatedSalesBucketOverrides        OrgRelationshipStyleSalesBucket[] @relation("SalesBucketOverrideUpdatedByEmployee")
+  createdSalesPriceLists             CustomerSalesPriceList[]          @relation("SalesPriceListCreatedByEmployee")
+  updatedSalesPriceLists             CustomerSalesPriceList[]          @relation("SalesPriceListUpdatedByEmployee")
+  createdSalesPrices                 CustomerSalesPrice[]              @relation("SalesPriceCreatedByEmployee")
+  updatedSalesPrices                 CustomerSalesPrice[]              @relation("SalesPriceUpdatedByEmployee")
+  updatedSystemSettings              SystemSetting[]                   @relation("SystemSettingUpdatedByEmployee")
+  createdEmployees                   Employee[]                        @relation("EmployeeCreatedByEmployee")
+  updatedEmployees                   Employee[]                        @relation("EmployeeUpdatedByEmployee")
 
   @@unique([orgId, email])
   @@unique([orgId, employeeNo])
@@ -551,9 +557,11 @@ model OrgRelationship {
   updatedByEmployeeId     Int?
   updatedAt               DateTime @updatedAt
 
-  manufacturer          Organization              @relation("ManufacturerOrgRelationships", fields: [manufacturerOrgId], references: [id])
-  brand                 Organization              @relation("BrandOrgRelationships", fields: [brandOrgId], references: [id])
-  salesBucketSetVersion QuantityBucketSetVersion? @relation("OrgRelationshipSalesBucketVersion", fields: [salesBucketSetVersionId], references: [id], onDelete: Restrict)
+  manufacturer          Organization                      @relation("ManufacturerOrgRelationships", fields: [manufacturerOrgId], references: [id])
+  brand                 Organization                      @relation("BrandOrgRelationships", fields: [brandOrgId], references: [id])
+  salesBucketSetVersion QuantityBucketSetVersion?         @relation("OrgRelationshipSalesBucketVersion", fields: [salesBucketSetVersionId], references: [id], onDelete: Restrict)
+  salesBucketOverrides  OrgRelationshipStyleSalesBucket[]
+  salesPriceLists       CustomerSalesPriceList[]
 
   createdByEmployee Employee? @relation("OrgRelationshipCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("OrgRelationshipUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -589,12 +597,15 @@ model QuantityBucketSetVersion {
   createdAt           DateTime @default(now())
   createdBy           String   @default("system@baro.local")
 
-  organization      Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  quantityBucketSet QuantityBucketSet     @relation("QuantityBucketSetVersions", fields: [quantityBucketSetId], references: [id], onDelete: Cascade)
-  currentForSet     QuantityBucketSet?    @relation("QuantityBucketSetCurrentVersion")
+  organization      Organization                      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  quantityBucketSet QuantityBucketSet                 @relation("QuantityBucketSetVersions", fields: [quantityBucketSetId], references: [id], onDelete: Cascade)
+  currentForSet     QuantityBucketSet?                @relation("QuantityBucketSetCurrentVersion")
   entries           QuantityBucketEntry[]
-  customerDefaults  OrgRelationship[]     @relation("OrgRelationshipSalesBucketVersion")
-  timeStyles        Style[]               @relation("StyleTimeBucketVersion")
+  customerDefaults  OrgRelationship[]                 @relation("OrgRelationshipSalesBucketVersion")
+  timeStyles        Style[]                           @relation("StyleTimeBucketVersion")
+  salesOverrides    OrgRelationshipStyleSalesBucket[]
+  salesPriceLists   CustomerSalesPriceList[]
+  salesPrices       CustomerSalesPrice[]
 
   @@unique([quantityBucketSetId, versionNumber])
   @@index([orgId])
@@ -610,6 +621,7 @@ model QuantityBucketEntry {
 
   organization             Organization             @relation(fields: [orgId], references: [id], onDelete: Cascade)
   quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId], references: [id], onDelete: Cascade)
+  salesPrices              CustomerSalesPrice[]
 
   @@unique([quantityBucketSetVersionId, bucketQuantity])
   @@index([orgId])
@@ -701,14 +713,16 @@ model Style {
   updatedByEmployeeId    Int?
   updatedAt              DateTime @updatedAt
 
-  organization         Organization              @relation(fields: [orgId], references: [id])
+  organization         Organization                      @relation(fields: [orgId], references: [id])
   styleProcesses       StyleProcess[]
   workOrderItems       WorkOrderItem[]
   trainingBuckets      AtTrainingBucketProcess[]
   assignmentPlans      AssignmentPlan[]
   assignmentCards      AssignmentCard[]
   workRecords          WorkRecord[]
-  timeBucketSetVersion QuantityBucketSetVersion? @relation("StyleTimeBucketVersion", fields: [timeBucketSetVersionId], references: [id], onDelete: Restrict)
+  timeBucketSetVersion QuantityBucketSetVersion?         @relation("StyleTimeBucketVersion", fields: [timeBucketSetVersionId], references: [id], onDelete: Restrict)
+  salesBucketOverrides OrgRelationshipStyleSalesBucket[]
+  salesPriceLists      CustomerSalesPriceList[]
 
   createdByEmployee Employee? @relation("StyleCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("StyleUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -851,6 +865,8 @@ model WorkOrder {
   /// rows; run `npm run verify:workorder-item-backfill` before dropping this column.
   items                Json?
   totalQuantity        Int                         @default(0)
+  pricingBasis         String                      @default("MANUFACTURING_SERVICE_PRICE")
+  currencyCode         String                      @default("USD")
   createdAt            DateTime                    @default(now())
   createdBy            String                      @default("system@baro.local")
   createdByEmployeeId  Int?
@@ -885,6 +901,7 @@ model WorkOrderItem {
   sizeQuantities      Json?
   totalQuantity       Int                  @default(0)
   sortOrder           Int                  @default(0)
+  salesPriceSnapshot  Json?
   createdAt           DateTime             @default(now())
   createdBy           String               @default("system@baro.local")
   createdByEmployeeId Int?
@@ -901,6 +918,80 @@ model WorkOrderItem {
   @@index([workOrderId])
   @@index([styleId])
   @@index([colorId])
+}
+
+model OrgRelationshipStyleSalesBucket {
+  id                         Int      @id @default(autoincrement())
+  orgRelationshipId          Int
+  styleId                    Int
+  quantityBucketSetVersionId Int
+  createdAt                  DateTime @default(now())
+  createdBy                  String   @default("system@baro.local")
+  createdByEmployeeId        Int?
+  updatedByEmployeeId        Int?
+  updatedAt                  DateTime @updatedAt
+
+  orgRelationship          OrgRelationship          @relation(fields: [orgRelationshipId], references: [id], onDelete: Cascade)
+  style                    Style                    @relation(fields: [styleId], references: [id], onDelete: Cascade)
+  quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId], references: [id], onDelete: Restrict)
+
+  createdByEmployee Employee? @relation("SalesBucketOverrideCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("SalesBucketOverrideUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
+  @@unique([orgRelationshipId, styleId])
+  @@index([styleId])
+  @@index([quantityBucketSetVersionId])
+}
+
+model CustomerSalesPriceList {
+  id                         Int      @id @default(autoincrement())
+  orgRelationshipId          Int
+  styleId                    Int
+  pricingBasis               String
+  currencyCode               String
+  quantityBucketSetVersionId Int
+  createdAt                  DateTime @default(now())
+  createdBy                  String   @default("system@baro.local")
+  createdByEmployeeId        Int?
+  updatedByEmployeeId        Int?
+  updatedAt                  DateTime @updatedAt
+
+  orgRelationship          OrgRelationship          @relation(fields: [orgRelationshipId], references: [id], onDelete: Restrict)
+  style                    Style                    @relation(fields: [styleId], references: [id], onDelete: Restrict)
+  quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId], references: [id], onDelete: Restrict)
+  prices                   CustomerSalesPrice[]
+
+  createdByEmployee Employee? @relation("SalesPriceListCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("SalesPriceListUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
+  @@unique([orgRelationshipId, styleId, pricingBasis, currencyCode, quantityBucketSetVersionId])
+  @@index([orgRelationshipId])
+  @@index([styleId])
+  @@index([quantityBucketSetVersionId])
+}
+
+model CustomerSalesPrice {
+  id                         Int      @id @default(autoincrement())
+  salesPriceListId           Int
+  quantityBucketEntryId      Int
+  quantityBucketSetVersionId Int
+  unitPrice                  Decimal  @db.Decimal(18, 4)
+  createdAt                  DateTime @default(now())
+  createdBy                  String   @default("system@baro.local")
+  createdByEmployeeId        Int?
+  updatedByEmployeeId        Int?
+  updatedAt                  DateTime @updatedAt
+
+  salesPriceList           CustomerSalesPriceList   @relation(fields: [salesPriceListId], references: [id], onDelete: Cascade)
+  quantityBucketEntry      QuantityBucketEntry      @relation(fields: [quantityBucketEntryId], references: [id], onDelete: Restrict)
+  quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId], references: [id], onDelete: Restrict)
+
+  createdByEmployee Employee? @relation("SalesPriceCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("SalesPriceUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
+  @@unique([salesPriceListId, quantityBucketEntryId])
+  @@index([quantityBucketEntryId])
+  @@index([quantityBucketSetVersionId])
 }
 
 model AssignmentPlan {

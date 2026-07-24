@@ -705,8 +705,11 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "WorkOrder", columnName: "buyerOrgId" },
   { tableName: "WorkOrder", columnName: "sellerOrgId" },
   { tableName: "WorkOrder", columnName: "customerId" },
+  { tableName: "WorkOrder", columnName: "pricingBasis" },
+  { tableName: "WorkOrder", columnName: "currencyCode" },
   { tableName: "WorkOrderItem", columnName: "styleId" },
   { tableName: "WorkOrderItem", columnName: "colorId" },
+  { tableName: "WorkOrderItem", columnName: "salesPriceSnapshot" },
   { tableName: "StyleProcess", columnName: "timesPerPiece" },
   { tableName: "StyleProcessStandard", columnName: "bucketQuantity" },
   { tableName: "StyleProcessStandard", columnName: "bucketStSeconds" },
@@ -716,6 +719,9 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "OrgRelationship", columnName: "salesBucketSetVersionId" },
   { tableName: "Style", columnName: "timeBucketSetVersionId" },
   { tableName: "Style", columnName: "timeBucketSource" },
+  { tableName: "OrgRelationshipStyleSalesBucket", columnName: "quantityBucketSetVersionId" },
+  { tableName: "CustomerSalesPriceList", columnName: "quantityBucketSetVersionId" },
+  { tableName: "CustomerSalesPrice", columnName: "unitPrice" },
   { tableName: "AssignmentPlan", columnName: "assignmentStSnapshot" },
   { tableName: "AssignmentPlan", columnName: "ctReviewRequired" },
   { tableName: "AtTrainingBucket", columnName: "workerId" },
@@ -1587,9 +1593,9 @@ const syncStyleStandardsForBucketVersion = async ({
 };
 
 // Shared by POST /styles and POST /styles/import: a brand-new style always
-// needs a time bucket set attached (never left null), so both create paths
-// resolve the same way -- the customer's configured default if one exists,
-// otherwise the org's standard 1-3-5-... seed (creating it on first use).
+// needs a time bucket set attached (never left null). Time buckets are
+// independent from customer sales-price buckets, so both create paths use the
+// owner org's time-only default set (creating it on first use).
 const resolveDefaultTimeBucketSetVersionIdForNewStyle = async ({
   db,
   manufacturerOrgId,
@@ -1601,16 +1607,7 @@ const resolveDefaultTimeBucketSetVersionIdForNewStyle = async ({
   ownerOrgId: number;
   actor: string;
 }): Promise<number> => {
-  const relationship = await db.orgRelationship.findFirst({
-    where: {
-      manufacturerOrgId,
-      brandOrgId: ownerOrgId,
-    },
-    select: { salesBucketSetVersionId: true },
-  });
-  if (relationship?.salesBucketSetVersionId) {
-    return relationship.salesBucketSetVersionId;
-  }
+  void manufacturerOrgId;
   const existingDefaultSet = await db.quantityBucketSet.findUnique({
     where: {
       orgId_name: {
@@ -6565,6 +6562,12 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
         : fallback?.sellerOrgId
     ),
     customerId: resolvedCustomerId,
+    pricingBasis:
+      normalizeSalesPricingBasis(payload?.pricingBasis ?? fallback?.pricingBasis) ??
+      "MANUFACTURING_SERVICE_PRICE",
+    currencyCode:
+      normalizeSalesCurrencyCode(payload?.currencyCode ?? fallback?.currencyCode) ??
+      "USD",
     dueDate: resolveOptionalString(payload?.dueDate, fallback?.dueDate ?? null),
     status,
     confirmationStatus,
@@ -6776,6 +6779,7 @@ const workOrderItemToItemShape = (row: any) => ({
   gender: normalizeWorkOrderItemGender(row?.gender, "M") ?? "M",
   sizeQuantities: row.sizeQuantities ?? {},
   totalQuantity: row.totalQuantity ?? 0,
+  salesPriceSnapshot: row.salesPriceSnapshot ?? null,
 });
 
 const toOrderResponse = (
@@ -6824,6 +6828,8 @@ const toOrderResponse = (
     ),
     items,
     totalQuantity: toNonNegativeInt(order.totalQuantity, 0),
+    pricingBasis: order.pricingBasis ?? "MANUFACTURING_SERVICE_PRICE",
+    currencyCode: order.currencyCode ?? "USD",
     isModificationLocked,
     isManualModificationLocked,
     isAssignmentModificationLocked,
@@ -26631,11 +26637,15 @@ app.get("/customers/:id/quantity-buckets", async (req, res) => {
       id: true,
       name: true,
       code: true,
-      timeBucketSource: true,
-      timeBucketSetVersion: {
+      salesBucketOverrides: {
+        where: { orgRelationshipId: relationship.id },
         include: {
-          quantityBucketSet: { select: { id: true, name: true } },
-          entries: { orderBy: { bucketQuantity: "asc" } },
+          quantityBucketSetVersion: {
+            include: {
+              quantityBucketSet: { select: { id: true, name: true } },
+              entries: { orderBy: { bucketQuantity: "asc" } },
+            },
+          },
         },
       },
     },
@@ -26653,13 +26663,18 @@ app.get("/customers/:id/quantity-buckets", async (req, res) => {
   res.json({
     customerId: relationship.id,
     defaultVersion: toVersionResponse(relationship.salesBucketSetVersion),
-    styles: styles.map((style) => ({
-      id: style.id,
-      name: style.name,
-      code: style.code,
-      source: style.timeBucketSource,
-      version: toVersionResponse(style.timeBucketSetVersion),
-    })),
+    styles: styles.map((style) => {
+      const override = style.salesBucketOverrides[0] ?? null;
+      return {
+        id: style.id,
+        name: style.name,
+        code: style.code,
+        source: override ? "STYLE_OVERRIDE" : "CUSTOMER_DEFAULT",
+        version: toVersionResponse(
+          override?.quantityBucketSetVersion ?? relationship.salesBucketSetVersion
+        ),
+      };
+    }),
   });
 });
 
@@ -26699,9 +26714,13 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           where: { id: styleId, orgId: relationship.brandOrgId },
           select: {
             id: true,
-            timeBucketSource: true,
-            timeBucketSetVersion: {
-              select: { quantityBucketSetId: true },
+            salesBucketOverrides: {
+              where: { orgRelationshipId: relationship.id },
+              select: {
+                quantityBucketSetVersion: {
+                  select: { quantityBucketSetId: true },
+                },
+              },
             },
           },
         });
@@ -26719,16 +26738,10 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           const defaultQuantities = normalizeQuantityBucketValues(
             defaultEntries.map((entry) => entry.bucketQuantity)
           );
-          await syncStyleStandardsForBucketVersion({
-            db: tx,
-            styleIds: [style.id],
-            bucketQuantities: defaultQuantities,
-          });
-          await tx.style.update({
-            where: { id: style.id },
-            data: {
-              timeBucketSetVersionId: defaultVersionId,
-              timeBucketSource: "CUSTOMER_DEFAULT",
+          await tx.orgRelationshipStyleSalesBucket.deleteMany({
+            where: {
+              orgRelationshipId: relationship.id,
+              styleId: style.id,
             },
           });
           return {
@@ -26740,22 +26753,26 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
         const version = await createQuantityBucketSetVersion({
           db: tx,
           orgId: organization.id,
-          setName: `STYLE_TIME_BUCKETS_${style.id}`,
-          existingSetId: style.timeBucketSetVersion?.quantityBucketSetId ?? null,
+          setName: `CUSTOMER_SALES_BUCKETS_${relationship.id}_STYLE_${style.id}`,
+          existingSetId:
+            style.salesBucketOverrides[0]?.quantityBucketSetVersion
+              ?.quantityBucketSetId ?? null,
           bucketQuantities: quantities,
           actor,
         });
-        await syncStyleStandardsForBucketVersion({
-          db: tx,
-          styleIds: [style.id],
-          bucketQuantities: quantities,
-        });
-        await tx.style.update({
-          where: { id: style.id },
-          data: {
-            timeBucketSetVersionId: version.id,
-            timeBucketSource: "STYLE_OVERRIDE",
+        await tx.orgRelationshipStyleSalesBucket.upsert({
+          where: {
+            orgRelationshipId_styleId: {
+              orgRelationshipId: relationship.id,
+              styleId: style.id,
+            },
           },
+          create: {
+            orgRelationshipId: relationship.id,
+            styleId: style.id,
+            quantityBucketSetVersionId: version.id,
+          },
+          update: { quantityBucketSetVersionId: version.id },
         });
         return { versionId: version.id, styleId: style.id };
       }
@@ -26769,37 +26786,376 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
         bucketQuantities: quantities,
         actor,
       });
-      const defaultStyles = await tx.style.findMany({
-        where: {
-          orgId: relationship.brandOrgId,
-          timeBucketSource: "CUSTOMER_DEFAULT",
-        },
-        select: { id: true },
-      });
-      await syncStyleStandardsForBucketVersion({
-        db: tx,
-        styleIds: defaultStyles.map((style) => style.id),
-        bucketQuantities: quantities,
-      });
       await tx.orgRelationship.update({
         where: { id: relationship.id },
         data: { salesBucketSetVersionId: version.id },
       });
-      if (defaultStyles.length > 0) {
-        await tx.style.updateMany({
-          where: { id: { in: defaultStyles.map((style) => style.id) } },
-          data: { timeBucketSetVersionId: version.id },
-        });
-      }
       return {
         versionId: version.id,
-        styleIds: defaultStyles.map((style) => style.id),
       };
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
   );
   res.json({ ok: true, quantities, ...result });
 });
+
+const SALES_PRICING_BASES = new Set([
+  "MANUFACTURING_SERVICE_PRICE",
+  "FINISHED_GOODS_PRICE",
+]);
+const SALES_CURRENCY_CODES = new Set(["USD", "VND", "KRW"]);
+
+const normalizeSalesPricingBasis = (value: unknown) => {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return SALES_PRICING_BASES.has(normalized) ? normalized : null;
+};
+
+const normalizeSalesCurrencyCode = (value: unknown) => {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return SALES_CURRENCY_CODES.has(normalized) ? normalized : null;
+};
+
+const normalizePositiveSalesPrice = (value: unknown): string | null => {
+  const normalized = String(value ?? "").replace(/,/g, "").trim();
+  if (!normalized) return null;
+  if (!/^\d+(?:\.\d{1,4})?$/.test(normalized)) {
+    throw createHttpError(400, "unitPrice must be a positive decimal with up to 4 decimals");
+  }
+  const decimal = new Prisma.Decimal(normalized);
+  if (!decimal.isPositive()) {
+    throw createHttpError(400, "unitPrice must be greater than zero");
+  }
+  return decimal.toFixed(4);
+};
+
+const resolveSalesBucketVersionForStyle = (
+  relationship: any,
+  style: any
+) =>
+  style?.salesBucketOverrides?.[0]?.quantityBucketSetVersion ??
+  relationship?.salesBucketSetVersion ??
+  null;
+
+const toSalesPriceResponse = (price: any) => ({
+  id: price.id,
+  quantityBucketEntryId: price.quantityBucketEntryId,
+  bucketQuantity: price.quantityBucketEntry?.bucketQuantity ?? null,
+  unitPrice: new Prisma.Decimal(price.unitPrice).toFixed(4),
+});
+
+app.get("/customers/:id/sales-prices", async (req, res) => {
+  const relationshipId = toPositiveIntOrNull(req.params.id);
+  if (relationshipId === null) {
+    return res.status(400).json({ ok: false, error: "invalid customer id" });
+  }
+  const pricingBasis = normalizeSalesPricingBasis(req.query.pricingBasis);
+  const currencyCode = normalizeSalesCurrencyCode(req.query.currencyCode);
+  if (!pricingBasis || !currencyCode) {
+    return res.status(400).json({ ok: false, error: "invalid pricing basis or currency" });
+  }
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
+  const relationship = await prisma.orgRelationship.findFirst({
+    where: { id: relationshipId, manufacturerOrgId: organization.id },
+    include: {
+      salesBucketSetVersion: {
+        include: { entries: { orderBy: { bucketQuantity: "asc" } } },
+      },
+    },
+  });
+  if (!relationship) {
+    return res.status(404).json({ ok: false, error: "customer not found" });
+  }
+  const styles = await prisma.style.findMany({
+    where: { orgId: relationship.brandOrgId },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    include: {
+      salesBucketOverrides: {
+        where: { orgRelationshipId: relationship.id },
+        include: {
+          quantityBucketSetVersion: {
+            include: { entries: { orderBy: { bucketQuantity: "asc" } } },
+          },
+        },
+      },
+      salesPriceLists: {
+        where: {
+          orgRelationshipId: relationship.id,
+          pricingBasis,
+          currencyCode,
+        },
+        include: {
+          prices: {
+            include: { quantityBucketEntry: true },
+            orderBy: { quantityBucketEntry: { bucketQuantity: "asc" } },
+          },
+        },
+      },
+    },
+  });
+  res.json({
+    relationshipId: relationship.id,
+    pricingBasis,
+    currencyCode,
+    styles: styles.map((style) => {
+      const version = resolveSalesBucketVersionForStyle(relationship, style);
+      const priceList = style.salesPriceLists.find(
+        (candidate) => candidate.quantityBucketSetVersionId === version?.id
+      ) ?? null;
+      return {
+        styleId: style.id,
+        quantityBucketSetVersionId: version?.id ?? null,
+        quantities: ensureArray(version?.entries).map((entry) => entry.bucketQuantity),
+        priceListId: priceList?.id ?? null,
+        prices: ensureArray(priceList?.prices).map(toSalesPriceResponse),
+      };
+    }),
+  });
+});
+
+app.put("/customers/:id/sales-prices", async (req, res) => {
+  const relationshipId = toPositiveIntOrNull(req.params.id);
+  if (relationshipId === null) {
+    return res.status(400).json({ ok: false, error: "invalid customer id" });
+  }
+  const pricingBasis = normalizeSalesPricingBasis(req.body?.pricingBasis);
+  const currencyCode = normalizeSalesCurrencyCode(req.body?.currencyCode);
+  if (!pricingBasis || !currencyCode) {
+    return res.status(400).json({ ok: false, error: "invalid pricing basis or currency" });
+  }
+  const requestedPrices = ensureArray(req.body?.prices);
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
+  const result = await prisma.$transaction(async (tx) => {
+    const relationship = await tx.orgRelationship.findFirst({
+      where: { id: relationshipId, manufacturerOrgId: organization.id },
+      include: {
+        salesBucketSetVersion: {
+          include: { entries: { orderBy: { bucketQuantity: "asc" } } },
+        },
+      },
+    });
+    if (!relationship) throw createHttpError(404, "customer not found");
+    const styleIds = Array.from(new Set(
+      requestedPrices.map((entry) => toPositiveIntOrNull(entry?.styleId))
+        .filter((value): value is number => value !== null)
+    ));
+    const styles = await tx.style.findMany({
+      where: { id: { in: styleIds }, orgId: relationship.brandOrgId },
+      include: {
+        salesBucketOverrides: {
+          where: { orgRelationshipId: relationship.id },
+          include: {
+            quantityBucketSetVersion: {
+              include: { entries: { orderBy: { bucketQuantity: "asc" } } },
+            },
+          },
+        },
+      },
+    });
+    if (styles.length !== styleIds.length) {
+      throw createHttpError(409, "sales price contains a style outside the customer relationship");
+    }
+    const styleById = new Map(styles.map((style) => [style.id, style]));
+    for (const entry of requestedPrices) {
+      const styleId = toPositiveIntOrNull(entry?.styleId);
+      const bucketQuantity = toPositiveIntOrNull(entry?.bucketQuantity);
+      const style = styleId === null ? null : styleById.get(styleId);
+      if (!style || bucketQuantity === null) {
+        throw createHttpError(400, "styleId and bucketQuantity are required");
+      }
+      const version = resolveSalesBucketVersionForStyle(relationship, style);
+      if (!version) throw createHttpError(409, "sales bucket version is missing");
+      const bucketEntry = version.entries.find(
+        (candidate: any) => candidate.bucketQuantity === bucketQuantity
+      );
+      if (!bucketEntry) {
+        throw createHttpError(409, "sales price bucket does not belong to the active version");
+      }
+      const unitPrice = normalizePositiveSalesPrice(entry?.unitPrice);
+      const existingList = await tx.customerSalesPriceList.findUnique({
+        where: {
+          orgRelationshipId_styleId_pricingBasis_currencyCode_quantityBucketSetVersionId: {
+            orgRelationshipId: relationship.id,
+            styleId: style.id,
+            pricingBasis,
+            currencyCode,
+            quantityBucketSetVersionId: version.id,
+          },
+        },
+      });
+      if (unitPrice === null) {
+        if (existingList) {
+          await tx.customerSalesPrice.deleteMany({
+            where: {
+              salesPriceListId: existingList.id,
+              quantityBucketEntryId: bucketEntry.id,
+            },
+          });
+        }
+        continue;
+      }
+      const priceList = existingList ?? await tx.customerSalesPriceList.create({
+        data: {
+          orgRelationshipId: relationship.id,
+          styleId: style.id,
+          pricingBasis,
+          currencyCode,
+          quantityBucketSetVersionId: version.id,
+        },
+      });
+      await tx.customerSalesPrice.upsert({
+        where: {
+          salesPriceListId_quantityBucketEntryId: {
+            salesPriceListId: priceList.id,
+            quantityBucketEntryId: bucketEntry.id,
+          },
+        },
+        create: {
+          salesPriceListId: priceList.id,
+          quantityBucketEntryId: bucketEntry.id,
+          quantityBucketSetVersionId: version.id,
+          unitPrice,
+        },
+        update: { unitPrice },
+      });
+    }
+    return { savedCount: requestedPrices.length };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  res.json({ ok: true, ...result });
+});
+
+const freezeOrderSalesPriceSnapshots = async ({
+  db,
+  order,
+}: {
+  db: Prisma.TransactionClient;
+  order: any;
+}) => {
+  const buyerOrgId = toPositiveIntOrNull(order?.buyerOrgId);
+  const sellerOrgId = toPositiveIntOrNull(order?.sellerOrgId);
+  const pricingBasis = normalizeSalesPricingBasis(order?.pricingBasis);
+  const currencyCode = normalizeSalesCurrencyCode(order?.currencyCode);
+  if (!buyerOrgId || !sellerOrgId || !pricingBasis || !currencyCode) {
+    throw createHttpError(409, "order sales pricing basis or currency is missing");
+  }
+  const relationship = await db.orgRelationship.findFirst({
+    where: { manufacturerOrgId: sellerOrgId, brandOrgId: buyerOrgId },
+    include: {
+      salesBucketSetVersion: {
+        include: { entries: { orderBy: { bucketQuantity: "asc" } } },
+      },
+    },
+  });
+  if (!relationship) {
+    throw createHttpError(409, "order customer relationship is missing");
+  }
+  const items = await db.workOrderItem.findMany({
+    where: { workOrderId: order.id },
+    orderBy: { sortOrder: "asc" },
+  });
+  const styleIds = Array.from(new Set(
+    items.map((item) => toPositiveIntOrNull(item.styleId))
+      .filter((value): value is number => value !== null)
+  ));
+  if (styleIds.length === 0 || styleIds.length !== new Set(items.map((item) => item.styleId)).size) {
+    throw createHttpError(409, "every order item must have a style before locking");
+  }
+  const styles = await db.style.findMany({
+    where: { id: { in: styleIds }, orgId: buyerOrgId },
+    include: {
+      salesBucketOverrides: {
+        where: { orgRelationshipId: relationship.id },
+        include: {
+          quantityBucketSetVersion: {
+            include: { entries: { orderBy: { bucketQuantity: "asc" } } },
+          },
+        },
+      },
+    },
+  });
+  if (styles.length !== styleIds.length) {
+    throw createHttpError(409, "order contains a style outside the customer relationship");
+  }
+  const styleById = new Map(styles.map((style) => [style.id, style]));
+  const quantityByStyleId = new Map<number, number>();
+  items.forEach((item) => {
+    const styleId = toPositiveIntOrNull(item.styleId);
+    if (!styleId) return;
+    quantityByStyleId.set(
+      styleId,
+      (quantityByStyleId.get(styleId) ?? 0) + toNonNegativeInt(item.totalQuantity, 0)
+    );
+  });
+  const actor = getCurrentRequestActor();
+  for (const item of items) {
+    const styleId = toPositiveIntOrNull(item.styleId);
+    const style = styleId ? styleById.get(styleId) : null;
+    if (!styleId || !style) throw createHttpError(409, "order item style is missing");
+    const version = resolveSalesBucketVersionForStyle(relationship, style);
+    if (!version) throw createHttpError(409, "sales bucket version is missing");
+    const orderQuantity = quantityByStyleId.get(styleId) ?? 0;
+    const bucketQuantity = resolveStBucketQuantityFromValues(
+      orderQuantity,
+      version.entries.map((entry: any) => entry.bucketQuantity)
+    );
+    const bucketEntry = version.entries.find(
+      (entry: any) => entry.bucketQuantity === bucketQuantity
+    );
+    if (!bucketEntry) throw createHttpError(409, "sales price bucket is unresolved");
+    const priceList = await db.customerSalesPriceList.findUnique({
+      where: {
+        orgRelationshipId_styleId_pricingBasis_currencyCode_quantityBucketSetVersionId: {
+          orgRelationshipId: relationship.id,
+          styleId,
+          pricingBasis,
+          currencyCode,
+          quantityBucketSetVersionId: version.id,
+        },
+      },
+      include: {
+        prices: {
+          where: { quantityBucketEntryId: bucketEntry.id },
+        },
+      },
+    });
+    const price = priceList?.prices[0] ?? null;
+    if (!priceList || !price) {
+      throw createHttpError(
+        409,
+        `sales price is missing for style ${styleId}, bucket ${bucketQuantity}`
+      );
+    }
+    await db.workOrderItem.update({
+      where: { id: item.id },
+      data: {
+        salesPriceSnapshot: {
+          version: 1,
+          customerSalesPriceListId: priceList.id,
+          customerSalesPriceId: price.id,
+          orgRelationshipId: relationship.id,
+          styleId,
+          pricingBasis,
+          currencyCode,
+          quantityBucketSetVersionId: version.id,
+          quantityBucketEntryId: bucketEntry.id,
+          bucketQuantity,
+          pricingQuantity: orderQuantity,
+          itemQuantity: toNonNegativeInt(item.totalQuantity, 0),
+          unitPrice: new Prisma.Decimal(price.unitPrice).toFixed(4),
+          snapshotAt: new Date().toISOString(),
+          snapshotBy: actor,
+        },
+      },
+    });
+  }
+};
 
 app.get("/order-parties", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
@@ -27098,6 +27454,11 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
     .map((value) => toPositiveIntOrNull(value))
     .filter((value): value is number => value !== null);
   let zeroedStyles: OrderStyleRemovalIssue[] = [];
+  const lockedBy =
+    resolveOptionalString(req.body?.lockedBy, null) ??
+    getRequesterEmail(req) ??
+    "unknown";
+  let updated: any = null;
   if (requestedLocked) {
     // Assignment scheduling is exclusively a manufacturer-side concept, but
     // either party can register/lock the shared order (buyer or seller) - so
@@ -27120,29 +27481,29 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
             zeroedStylesByStyleId.set(issue.styleId, issue);
           });
         }
+        await freezeOrderSalesPriceSnapshots({ db: tx, order: existing });
+        updated = await tx.workOrder.update({
+          where: { id: existing.id },
+          data: {
+            modificationLockedAt: new Date(),
+            modificationLockedBy: lockedBy,
+          },
+          include: WORK_ORDER_RESPONSE_INCLUDE,
+        });
       },
       { timeout: 30000 }
     );
     zeroedStyles = Array.from(zeroedStylesByStyleId.values());
+  } else {
+    updated = await prisma.workOrder.update({
+      where: { id: existing.id },
+      data: {
+        modificationLockedAt: null,
+        modificationLockedBy: null,
+      },
+      include: WORK_ORDER_RESPONSE_INCLUDE,
+    });
   }
-
-  const lockedBy =
-    resolveOptionalString(req.body?.lockedBy, null) ??
-    getRequesterEmail(req) ??
-    "unknown";
-  const updated = await prisma.workOrder.update({
-    where: { id: existing.id },
-    data: requestedLocked
-      ? {
-          modificationLockedAt: new Date(),
-          modificationLockedBy: lockedBy,
-        }
-      : {
-          modificationLockedAt: null,
-          modificationLockedBy: null,
-        },
-    include: WORK_ORDER_RESPONSE_INCLUDE,
-  });
   if (requestedLocked) {
     const rebuildOrgIds = affectedOrgIds.length > 0 ? affectedOrgIds : [organization.id];
     try {
@@ -27417,7 +27778,7 @@ app.post("/customers", async (req, res) => {
     ? targetOrganization.id
     : organization.id;
 
-  const relationship = await prisma.orgRelationship.upsert({
+  let relationship = await prisma.orgRelationship.upsert({
     where: {
       manufacturerOrgId_brandOrgId: {
         manufacturerOrgId,
@@ -27444,6 +27805,22 @@ app.post("/customers", async (req, res) => {
     },
     include: { brand: true, manufacturer: true },
   });
+  if (!relationship.salesBucketSetVersionId) {
+    relationship = await prisma.$transaction(async (tx) => {
+      const version = await createQuantityBucketSetVersion({
+        db: tx,
+        orgId: manufacturerOrgId,
+        setName: `CUSTOMER_PRICE_BUCKETS_${relationship.id}`,
+        bucketQuantities: [...ST_STANDARD_BUCKETS],
+        actor: getCurrentRequestActor(),
+      });
+      return tx.orgRelationship.update({
+        where: { id: relationship.id },
+        data: { salesBucketSetVersionId: version.id },
+        include: { brand: true, manufacturer: true },
+      });
+    });
+  }
 
   res.status(201).json(toCustomerResponse(relationship, perspective));
 });
