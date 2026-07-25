@@ -72,6 +72,44 @@ const resolveStBucketQuantity = (value) => {
   return resolvedBucket;
 };
 
+const createSeedTimeBucketVersion = async ({ db, orgId, name, quantities }) => {
+  const normalizedQuantities = [...new Set(quantities.map(Number))]
+    .filter((value) => Number.isInteger(value) && value > 0)
+    .sort((left, right) => left - right);
+  if (normalizedQuantities.length === 0) {
+    throw new Error(`seed time bucket quantities are empty: ${name}`);
+  }
+  const set = await db.quantityBucketSet.upsert({
+    where: { orgId_name: { orgId, name } },
+    create: { orgId, name },
+    update: {},
+    select: {
+      id: true,
+      versions: {
+        orderBy: { versionNumber: 'desc' },
+        take: 1,
+        select: { versionNumber: true },
+      },
+    },
+  });
+  const version = await db.quantityBucketSetVersion.create({
+    data: {
+      orgId,
+      quantityBucketSetId: set.id,
+      versionNumber: (set.versions[0]?.versionNumber || 0) + 1,
+      entries: {
+        create: normalizedQuantities.map((bucketQuantity) => ({ orgId, bucketQuantity })),
+      },
+    },
+    include: { entries: true },
+  });
+  await db.quantityBucketSet.update({
+    where: { id: set.id },
+    data: { currentVersionId: version.id },
+  });
+  return version;
+};
+
 const resolveStandardPreference = (row) => {
   const setBy = String(row?.setBy || '').trim().toUpperCase();
   const rank =
@@ -347,7 +385,8 @@ async function runTimeModelRealignment(prisma, options = {}) {
         },
       },
       standards: {
-        orderBy: [{ bucketQuantity: 'asc' }, { id: 'asc' }],
+        orderBy: [{ quantityBucketEntry: { bucketQuantity: 'asc' } }, { id: 'asc' }],
+        include: { quantityBucketEntry: true },
       },
     },
     orderBy: [{ styleId: 'asc' }, { sortOrder: 'asc' }, { id: 'asc' }],
@@ -364,7 +403,9 @@ async function runTimeModelRealignment(prisma, options = {}) {
     for (const standard of Array.isArray(row?.standards) ? row.standards : []) {
       const stSeconds = clampProcessSeconds(standard?.bucketStSeconds ?? standard?.stSeconds);
       if (stSeconds === null) continue;
-      const quantity = resolveStBucketQuantity(standard?.bucketQuantity ?? standard?.quantity);
+      const quantity = resolveStBucketQuantity(
+        standard?.quantityBucketEntry?.bucketQuantity
+      );
       const candidate = {
         id: standard.id,
         quantity,
@@ -394,7 +435,9 @@ async function runTimeModelRealignment(prisma, options = {}) {
           );
           if (stSeconds === null) return null;
           return {
-            quantity: resolveStBucketQuantity(standard?.bucketQuantity ?? standard?.quantity),
+            quantity: resolveStBucketQuantity(
+              standard?.quantityBucketEntry?.bucketQuantity
+            ),
             stSeconds,
             setBy:
               typeof standard?.setBy === 'string' && standard.setBy.trim()
@@ -1894,6 +1937,29 @@ const runReplaceStyleProcessMaster = (() => {
             createdProcesses.map((item) => [item.code, item.id])
           );
           const masterByCode = new Map(MASTER_PROCESSES.map((item) => [item.code, item]));
+          const seedBucketQuantities = styleDrafts.flatMap((style) =>
+            style.aggregatedRows.flatMap((item, index) => {
+              const payload = buildStyleProcessPayload({
+                styleId: style.styleId,
+                processIdByCode,
+                row: item,
+                master: masterByCode.get(item.code),
+                sortOrder: index,
+              });
+              return (payload.stBuckets || payload.stValues || []).map(
+                (standard) => standard.bucketQuantity ?? standard.quantity
+              );
+            })
+          );
+          const seedTimeVersion = await createSeedTimeBucketVersion({
+            db: tx,
+            orgId: resolvedOrgId,
+            name: 'RESET_BASELINE_TIME_BUCKETS',
+            quantities: seedBucketQuantities,
+          });
+          const seedEntryByQuantity = new Map(
+            seedTimeVersion.entries.map((entry) => [entry.bucketQuantity, entry])
+          );
   
           for (const style of styleDrafts) {
             const processes = style.aggregatedRows.map((item, index) =>
@@ -1919,6 +1985,7 @@ const runReplaceStyleProcessMaster = (() => {
                 processes,
                 bom: [],
                 bomNotes: "Unified common process master seed",
+                timeBucketSetVersionId: seedTimeVersion.id,
               },
             });
   
@@ -1939,13 +2006,19 @@ const runReplaceStyleProcessMaster = (() => {
               });
   
               await tx.styleProcessStandard.createMany({
-                data: (Array.isArray(process.stBuckets) ? process.stBuckets : process.stValues || []).map((standard) => ({
-                  orgId: resolvedOrgId,
-                  styleProcessId: createdStyleProcess.id,
-                  bucketQuantity: standard.bucketQuantity ?? standard.quantity,
-                  bucketStSeconds: standard.bucketStSeconds ?? standard.seconds,
-                  setBy: standard.setBy ?? "SEED",
-                })),
+                data: (Array.isArray(process.stBuckets) ? process.stBuckets : process.stValues || []).map((standard) => {
+                  const quantity = standard.bucketQuantity ?? standard.quantity;
+                  const entry = seedEntryByQuantity.get(quantity);
+                  if (!entry) throw new Error(`missing seed bucket entry ${quantity}`);
+                  return {
+                    orgId: resolvedOrgId,
+                    styleProcessId: createdStyleProcess.id,
+                    quantityBucketEntryId: entry.id,
+                    quantityBucketSetVersionId: seedTimeVersion.id,
+                    bucketStSeconds: standard.bucketStSeconds ?? standard.seconds,
+                    setBy: standard.setBy ?? "SEED",
+                  };
+                }),
               });
             }
           }
@@ -2216,6 +2289,17 @@ async function runComposedStyleProcessReplacement({
     const processIdByCode = new Map(processRows.map((item) => [item.code, item.id]));
     const masterByCode = new Map(COMPOSED_PROCESS_MASTER.map((item) => [item.code, item]));
 
+    const composedTimeVersion = await createSeedTimeBucketVersion({
+      db: prisma,
+      orgId: resolvedOrgId,
+      name: 'RESET_COMPOSED_TIME_BUCKETS',
+      quantities: [COMPOSED_TIME_REF_QUANTITY],
+    });
+    const composedTimeEntry = composedTimeVersion.entries.find(
+      (entry) => entry.bucketQuantity === COMPOSED_TIME_REF_QUANTITY
+    );
+    if (!composedTimeEntry) throw new Error('missing composed time bucket entry');
+
     for (const style of COMPOSED_STYLE_SEEDS) {
       const processPayloads = style.processes.map((item, index) => {
         const master = masterByCode.get(item.code);
@@ -2265,6 +2349,7 @@ async function runComposedStyleProcessReplacement({
           processes: processPayloads,
           bom: [],
           bomNotes: 'Composed process seed',
+          timeBucketSetVersionId: composedTimeVersion.id,
         },
       });
 
@@ -2288,7 +2373,8 @@ async function runComposedStyleProcessReplacement({
           data: {
             orgId: resolvedOrgId,
             styleProcessId: createdStyleProcess.id,
-            bucketQuantity: COMPOSED_TIME_REF_QUANTITY,
+            quantityBucketEntryId: composedTimeEntry.id,
+            quantityBucketSetVersionId: composedTimeVersion.id,
             bucketStSeconds: process.pt,
             setBy: 'SEED',
           },
