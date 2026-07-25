@@ -9,7 +9,7 @@ const frontend = fs.readFileSync(
   'utf8'
 );
 
-test('sales bucket overrides are relational and separate from style time buckets', () => {
+test('sales buckets stay relational while their quantity boundaries synchronize with time buckets', () => {
   assert.match(schema, /model OrgRelationshipStyleSalesBucket \{/);
   assert.match(
     schema,
@@ -20,8 +20,21 @@ test('sales bucket overrides are relational and separate from style time buckets
     backend.indexOf('const SALES_PRICING_BASES')
   );
   assert.match(quantityBucketRoute, /orgRelationshipStyleSalesBucket/);
-  assert.doesNotMatch(quantityBucketRoute, /timeBucketSetVersionId/);
-  assert.doesNotMatch(quantityBucketRoute, /syncStyleStandardsForBucketVersion/);
+  assert.match(quantityBucketRoute, /timeBucketSetVersionId/);
+  assert.match(quantityBucketRoute, /syncStyleStandardsForBucketVersion/);
+  assert.match(quantityBucketRoute, /copyRetainedSalesPricesToVersion/);
+  assert.match(quantityBucketRoute, /addedQuantities/);
+  assert.match(quantityBucketRoute, /removedQuantities/);
+  assert.match(backend, /setBy: "BUCKET_INHERITED_REVIEW"/);
+  assert.doesNotMatch(
+    backend.slice(
+      backend.indexOf('const syncStyleStandardsForBucketVersion'),
+      backend.indexOf('const copyRetainedSalesPricesToVersion')
+    ),
+    /ptSeconds|PT_DERIVED/
+  );
+  assert.match(frontend, /기존 단가와 과거 급여 자료는 유지됩니다/);
+  assert.match(frontend, /savedCustomerBuckets/);
 });
 
 test('sales prices use Decimal rows tied to a bucket entry and version', () => {

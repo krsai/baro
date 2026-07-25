@@ -692,6 +692,9 @@ const StyleTimeMatrix = ({
                           qty,
                           visibleBuckets
                         );
+                        const stEntry = resolveStEntry(process, qty);
+                        const requiresReview =
+                          stEntry?.setBy === 'BUCKET_INHERITED_REVIEW';
                         const value = Object.prototype.hasOwnProperty.call(stDrafts, draftK)
                           ? stDrafts[draftK]
                           : toEditText(resolved);
@@ -727,7 +730,8 @@ const StyleTimeMatrix = ({
                                   py: 0.5,
                                   fontSize: 12,
                                   fontVariantNumeric: 'tabular-nums',
-                                  fontWeight: 500,
+                                  fontWeight: requiresReview ? 800 : 500,
+                                  color: requiresReview ? 'error.main' : 'text.primary',
                                 },
                                 '& .MuiOutlinedInput-root': {
                                   borderRadius: 1,

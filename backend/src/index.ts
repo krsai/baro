@@ -1564,32 +1564,52 @@ const createQuantityBucketSetVersion = async ({
 const syncStyleStandardsForBucketVersion = async ({
   db,
   styleIds,
-  bucketQuantities,
+  addedBucketQuantities,
+  sourceBucketQuantities,
 }: {
   db: Prisma.TransactionClient;
   styleIds: number[];
-  bucketQuantities: number[];
+  addedBucketQuantities: number[];
+  sourceBucketQuantities: number[];
 }) => {
   const normalizedStyleIds = Array.from(new Set(styleIds));
-  if (normalizedStyleIds.length === 0) return;
+  const addedQuantities = normalizeQuantityBucketValues(addedBucketQuantities);
+  const sourceQuantities = new Set(normalizeQuantityBucketValues(sourceBucketQuantities));
+  if (normalizedStyleIds.length === 0 || addedQuantities.length === 0) return 0;
   const processes = await db.styleProcess.findMany({
     where: { styleId: { in: normalizedStyleIds } },
-    select: { id: true, orgId: true, styleId: true, ptSeconds: true },
+    select: {
+      id: true,
+      orgId: true,
+      styleId: true,
+      standards: {
+        orderBy: { bucketQuantity: "asc" },
+        select: {
+          id: true,
+          bucketQuantity: true,
+          bucketStSeconds: true,
+        },
+      },
+    },
   });
-  const invalid = processes.filter(
-    (process) => process.ptSeconds === null || Number(process.ptSeconds) <= 0
-  );
-  if (invalid.length > 0) {
-    throw createHttpError(
-      409,
-      `PT is required before changing time buckets: ${invalid
-        .slice(0, 10)
-        .map((item) => `styleProcessId=${item.id}`)
-        .join(", ")}`
-    );
-  }
+  let createdOrUpdatedCount = 0;
   for (const process of processes) {
-    for (const bucketQuantity of normalizeQuantityBucketValues(bucketQuantities)) {
+    for (const bucketQuantity of addedQuantities) {
+      const source = [...ensureArray(process.standards)]
+        .filter(
+          (standard: any) =>
+            toPositiveIntOrNull(standard?.bucketQuantity) !== null &&
+            sourceQuantities.has(Number(standard.bucketQuantity)) &&
+            Number(standard.bucketQuantity) < bucketQuantity &&
+            Number(standard.bucketStSeconds) > 0
+        )
+        .sort((left: any, right: any) => right.bucketQuantity - left.bucketQuantity)[0];
+      if (!source) {
+        throw createHttpError(
+          409,
+          `ST(${bucketQuantity}) cannot be initialized because styleProcessId=${process.id} has no lower bucket ST`
+        );
+      }
       await db.styleProcessStandard.upsert({
         where: {
           styleProcessId_bucketQuantity: {
@@ -1597,17 +1617,107 @@ const syncStyleStandardsForBucketVersion = async ({
             bucketQuantity,
           },
         },
-        update: {},
+        update: {
+          bucketStSeconds: Number(source.bucketStSeconds),
+          setBy: "BUCKET_INHERITED_REVIEW",
+          setAt: new Date(),
+        },
         create: {
           orgId: process.orgId,
           styleProcessId: process.id,
           bucketQuantity,
-          bucketStSeconds: Number(process.ptSeconds),
-          setBy: "PT_DERIVED",
+          bucketStSeconds: Number(source.bucketStSeconds),
+          setBy: "BUCKET_INHERITED_REVIEW",
         },
       });
+      createdOrUpdatedCount += 1;
     }
   }
+  return createdOrUpdatedCount;
+};
+
+const copyRetainedSalesPricesToVersion = async ({
+  db,
+  relationshipId,
+  styleIds,
+  previousVersionId,
+  nextVersion,
+  retainedQuantities,
+  actor,
+}: {
+  db: Prisma.TransactionClient;
+  relationshipId: number;
+  styleIds: number[];
+  previousVersionId: number | null;
+  nextVersion: any;
+  retainedQuantities: number[];
+  actor: string;
+}) => {
+  if (!previousVersionId || styleIds.length === 0 || retainedQuantities.length === 0) return 0;
+  const oldLists = await db.customerSalesPriceList.findMany({
+    where: {
+      orgRelationshipId: relationshipId,
+      styleId: { in: styleIds },
+      quantityBucketSetVersionId: previousVersionId,
+    },
+    include: {
+      prices: {
+        include: {
+          quantityBucketEntry: { select: { bucketQuantity: true } },
+        },
+      },
+    },
+  });
+  const nextEntryByQuantity = new Map(
+    ensureArray(nextVersion?.entries).map((entry: any) => [entry.bucketQuantity, entry])
+  );
+  let copiedCount = 0;
+  for (const oldList of oldLists) {
+    const nextList = await db.customerSalesPriceList.upsert({
+      where: {
+        orgRelationshipId_styleId_pricingBasis_currencyCode_quantityBucketSetVersionId: {
+          orgRelationshipId: relationshipId,
+          styleId: oldList.styleId,
+          pricingBasis: oldList.pricingBasis,
+          currencyCode: oldList.currencyCode,
+          quantityBucketSetVersionId: nextVersion.id,
+        },
+      },
+      update: {},
+      create: {
+        orgRelationshipId: relationshipId,
+        styleId: oldList.styleId,
+        pricingBasis: oldList.pricingBasis,
+        currencyCode: oldList.currencyCode,
+        quantityBucketSetVersionId: nextVersion.id,
+        createdBy: actor,
+      },
+    });
+    for (const oldPrice of oldList.prices) {
+      const quantity = oldPrice.quantityBucketEntry?.bucketQuantity;
+      if (!retainedQuantities.includes(quantity)) continue;
+      const nextEntry: any = nextEntryByQuantity.get(quantity);
+      if (!nextEntry) continue;
+      await db.customerSalesPrice.upsert({
+        where: {
+          salesPriceListId_quantityBucketEntryId: {
+            salesPriceListId: nextList.id,
+            quantityBucketEntryId: nextEntry.id,
+          },
+        },
+        update: { unitPrice: oldPrice.unitPrice },
+        create: {
+          salesPriceListId: nextList.id,
+          quantityBucketEntryId: nextEntry.id,
+          quantityBucketSetVersionId: nextVersion.id,
+          unitPrice: oldPrice.unitPrice,
+          createdBy: actor,
+        },
+      });
+      copiedCount += 1;
+    }
+  }
+  return copiedCount;
 };
 
 // Shared by POST /styles and POST /styles/import: a brand-new style always
@@ -6204,23 +6314,14 @@ const ensureStyleStandardsForQuantities = async ({
           toPositiveIntOrNull((standard as any)?.bucketQuantity)
         )
       );
-      const ptSeconds = toOptionalProcessSeconds(processRow.ptSeconds);
-      if (ptSeconds === null) continue;
       const missingQuantities = requiredQuantities.filter(
         (quantity) => !existingQuantities.has(quantity)
       );
       if (missingQuantities.length === 0) continue;
-      await db.styleProcessStandard.createMany({
-        data: missingQuantities.map((quantity) => ({
-          orgId: processRow.orgId,
-          styleProcessId: processRow.id,
-          bucketQuantity: quantity,
-          bucketStSeconds: ptSeconds,
-          setBy: "PT_DERIVED",
-        })),
-        skipDuplicates: true,
-      });
-      touchedStyleIds.add(styleId);
+      throw createHttpError(
+        409,
+        `ST bucket rows are missing for styleProcessId=${processRow.id}: ${missingQuantities.join(", ")}`
+      );
     }
   }
 
@@ -14417,7 +14518,9 @@ const toAssignmentPlanWriteData = (
       ? item.assignmentStSnapshot
       : null;
   const usesPtDerivedSt = ensureArray(assignmentStSnapshot?.processes).some(
-    (process) => process?.stSource === "PT_DERIVED"
+    (process) =>
+      process?.stSource === "PT_DERIVED" ||
+      process?.stSource === "BUCKET_INHERITED_REVIEW"
   );
   const usesStSeedForCt = ensureArray(assignmentCtSnapshot?.processes).some(
     (process) => process?.source === "ST"
@@ -26702,16 +26805,34 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
 
   const result = await prisma.$transaction(
     async (tx) => {
+      const currentRelationship = await tx.orgRelationship.findFirst({
+        where: { id: relationship.id, manufacturerOrgId: organization.id },
+        include: {
+          salesBucketSetVersion: {
+            include: {
+              quantityBucketSet: { select: { id: true } },
+              entries: { orderBy: { bucketQuantity: "asc" } },
+            },
+          },
+        },
+      });
+      if (!currentRelationship) throw createHttpError(404, "customer not found");
       if (styleId !== null) {
         const style = await tx.style.findFirst({
           where: { id: styleId, orgId: relationship.brandOrgId },
           select: {
             id: true,
+            timeBucketSetVersionId: true,
+            timeBucketSetVersion: {
+              select: { quantityBucketSetId: true },
+            },
             salesBucketOverrides: {
               where: { orgRelationshipId: relationship.id },
               select: {
                 quantityBucketSetVersion: {
-                  select: { quantityBucketSetId: true },
+                  include: {
+                    entries: { orderBy: { bucketQuantity: "asc" } },
+                  },
                 },
               },
             },
@@ -26719,7 +26840,7 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
         });
         if (!style) throw createHttpError(404, "style not found for customer");
         if (useCustomerDefault) {
-          const defaultVersionId = relationship.salesBucketSetVersionId;
+          const defaultVersionId = currentRelationship.salesBucketSetVersionId;
           if (!defaultVersionId) {
             throw createHttpError(409, "customer default bucket version is missing");
           }
@@ -26731,6 +26852,58 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           const defaultQuantities = normalizeQuantityBucketValues(
             defaultEntries.map((entry) => entry.bucketQuantity)
           );
+          const previousOverrideVersion =
+            style.salesBucketOverrides[0]?.quantityBucketSetVersion ?? null;
+          const previousQuantities = previousOverrideVersion
+            ? normalizeQuantityBucketValues(
+                previousOverrideVersion.entries.map((entry) => entry.bucketQuantity)
+              )
+            : defaultQuantities;
+          const addedQuantities = defaultQuantities.filter(
+            (quantity) => !previousQuantities.includes(quantity)
+          );
+          const removedQuantities = previousQuantities.filter(
+            (quantity) => !defaultQuantities.includes(quantity)
+          );
+          const retainedQuantities = defaultQuantities.filter(
+            (quantity) => previousQuantities.includes(quantity)
+          );
+          const copiedPriceCount = await copyRetainedSalesPricesToVersion({
+            db: tx,
+            relationshipId: relationship.id,
+            styleIds: [style.id],
+            previousVersionId: previousOverrideVersion?.id ?? null,
+            nextVersion: currentRelationship.salesBucketSetVersion,
+            retainedQuantities,
+            actor,
+          });
+          if (!style.timeBucketSetVersion?.quantityBucketSetId) {
+            throw createHttpError(409, `style ${style.id} is missing a time bucket set`);
+          }
+          const timeVersion = await createQuantityBucketSetVersion({
+            db: tx,
+            orgId: organization.id,
+            setName: `CUSTOMER_TIME_BUCKETS_${relationship.id}_STYLE_${style.id}`,
+            existingSetId: style.timeBucketSetVersion.quantityBucketSetId,
+            bucketQuantities: defaultQuantities,
+            actor,
+          });
+          const unreviewedStandardCount =
+            addedQuantities.length > 0
+              ? await syncStyleStandardsForBucketVersion({
+                  db: tx,
+                  styleIds: [style.id],
+                  addedBucketQuantities: addedQuantities,
+                  sourceBucketQuantities: previousQuantities,
+                })
+              : 0;
+          await tx.style.update({
+            where: { id: style.id },
+            data: {
+              timeBucketSetVersionId: timeVersion.id,
+              timeBucketSource: "CUSTOMER_DEFAULT",
+            },
+          });
           await tx.orgRelationshipStyleSalesBucket.deleteMany({
             where: {
               orgRelationshipId: relationship.id,
@@ -26741,6 +26914,32 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
             versionId: defaultVersionId,
             styleId: style.id,
             quantities: defaultQuantities,
+            addedQuantities,
+            removedQuantities,
+            affectedStyleCount: 1,
+            copiedPriceCount,
+            unreviewedStandardCount,
+          };
+        }
+        const previousVersion =
+          style.salesBucketOverrides[0]?.quantityBucketSetVersion ??
+          currentRelationship.salesBucketSetVersion;
+        if (!previousVersion) throw createHttpError(409, "sales bucket version is missing");
+        const previousQuantities = normalizeQuantityBucketValues(
+          ensureArray(previousVersion?.entries).map((entry) => entry.bucketQuantity)
+        );
+        const addedQuantities = quantities.filter((quantity) => !previousQuantities.includes(quantity));
+        const removedQuantities = previousQuantities.filter((quantity) => !quantities.includes(quantity));
+        const retainedQuantities = quantities.filter((quantity) => previousQuantities.includes(quantity));
+        if (addedQuantities.length === 0 && removedQuantities.length === 0) {
+          return {
+            versionId: previousVersion.id,
+            styleId: style.id,
+            addedQuantities,
+            removedQuantities,
+            affectedStyleCount: 0,
+            copiedPriceCount: 0,
+            unreviewedStandardCount: 0,
           };
         }
         const version = await createQuantityBucketSetVersion({
@@ -26752,6 +26951,42 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
               ?.quantityBucketSetId ?? null,
           bucketQuantities: quantities,
           actor,
+        });
+        const copiedPriceCount = await copyRetainedSalesPricesToVersion({
+          db: tx,
+          relationshipId: relationship.id,
+          styleIds: [style.id],
+          previousVersionId: previousVersion?.id ?? null,
+          nextVersion: version,
+          retainedQuantities,
+          actor,
+        });
+        if (!style.timeBucketSetVersion?.quantityBucketSetId) {
+          throw createHttpError(409, `style ${style.id} is missing a time bucket set`);
+        }
+        const timeVersion = await createQuantityBucketSetVersion({
+          db: tx,
+          orgId: organization.id,
+          setName: `CUSTOMER_TIME_BUCKETS_${relationship.id}_STYLE_${style.id}`,
+          existingSetId: style.timeBucketSetVersion.quantityBucketSetId,
+          bucketQuantities: quantities,
+          actor,
+        });
+        const unreviewedStandardCount =
+          addedQuantities.length > 0
+            ? await syncStyleStandardsForBucketVersion({
+                db: tx,
+                styleIds: [style.id],
+                addedBucketQuantities: addedQuantities,
+                sourceBucketQuantities: previousQuantities,
+              })
+            : 0;
+        await tx.style.update({
+          where: { id: style.id },
+          data: {
+            timeBucketSetVersionId: timeVersion.id,
+            timeBucketSource: "STYLE_OVERRIDE",
+          },
         });
         await tx.orgRelationshipStyleSalesBucket.upsert({
           where: {
@@ -26767,9 +27002,51 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           },
           update: { quantityBucketSetVersionId: version.id },
         });
-        return { versionId: version.id, styleId: style.id };
+        return {
+          versionId: version.id,
+          styleId: style.id,
+          addedQuantities,
+          removedQuantities,
+          affectedStyleCount: 1,
+          copiedPriceCount,
+          unreviewedStandardCount,
+        };
       }
 
+      const previousVersion = currentRelationship.salesBucketSetVersion;
+      if (!previousVersion) throw createHttpError(409, "customer default bucket version is missing");
+      const previousQuantities = normalizeQuantityBucketValues(
+        previousVersion.entries.map((entry) => entry.bucketQuantity)
+      );
+      const addedQuantities = quantities.filter((quantity) => !previousQuantities.includes(quantity));
+      const removedQuantities = previousQuantities.filter((quantity) => !quantities.includes(quantity));
+      const retainedQuantities = quantities.filter((quantity) => previousQuantities.includes(quantity));
+      if (addedQuantities.length === 0 && removedQuantities.length === 0) {
+        return {
+          versionId: previousVersion.id,
+          addedQuantities,
+          removedQuantities,
+          affectedStyleCount: 0,
+          copiedPriceCount: 0,
+          unreviewedStandardCount: 0,
+        };
+      }
+      const salesDefaultStyles = await tx.style.findMany({
+        where: {
+          orgId: relationship.brandOrgId,
+          salesBucketOverrides: {
+            none: { orgRelationshipId: relationship.id },
+          },
+        },
+        select: {
+          id: true,
+          timeBucketSource: true,
+          timeBucketSetVersion: { select: { quantityBucketSetId: true } },
+        },
+      });
+      const affectedStyles = salesDefaultStyles.filter(
+        (style) => style.timeBucketSource === "CUSTOMER_DEFAULT"
+      );
       const version = await createQuantityBucketSetVersion({
         db: tx,
         orgId: organization.id,
@@ -26779,12 +27056,67 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
         bucketQuantities: quantities,
         actor,
       });
+      const salesDefaultStyleIds = salesDefaultStyles.map((style) => style.id);
+      const affectedStyleIds = affectedStyles.map((style) => style.id);
+      const copiedPriceCount = await copyRetainedSalesPricesToVersion({
+        db: tx,
+        relationshipId: relationship.id,
+        styleIds: salesDefaultStyleIds,
+        previousVersionId: previousVersion.id,
+        nextVersion: version,
+        retainedQuantities,
+        actor,
+      });
+      const stylesByTimeSetId = new Map<number, number[]>();
+      affectedStyles.forEach((style) => {
+        const setId = style.timeBucketSetVersion?.quantityBucketSetId;
+        if (!setId) {
+          throw createHttpError(409, `style ${style.id} is missing a time bucket set`);
+        }
+        stylesByTimeSetId.set(setId, [...(stylesByTimeSetId.get(setId) ?? []), style.id]);
+      });
+      const nextTimeVersionIdByStyleId = new Map<number, number>();
+      for (const [setId, groupedStyleIds] of stylesByTimeSetId) {
+        const timeVersion = await createQuantityBucketSetVersion({
+          db: tx,
+          orgId: organization.id,
+          setName: `CUSTOMER_TIME_BUCKETS_${relationship.id}_${setId}`,
+          existingSetId: setId,
+          bucketQuantities: quantities,
+          actor,
+        });
+        groupedStyleIds.forEach((id) => nextTimeVersionIdByStyleId.set(id, timeVersion.id));
+      }
+      const unreviewedStandardCount =
+        addedQuantities.length > 0
+          ? await syncStyleStandardsForBucketVersion({
+              db: tx,
+              styleIds: affectedStyleIds,
+              addedBucketQuantities: addedQuantities,
+              sourceBucketQuantities: previousQuantities,
+            })
+          : 0;
+      for (const style of affectedStyles) {
+        const nextTimeVersionId = nextTimeVersionIdByStyleId.get(style.id);
+        if (!nextTimeVersionId) {
+          throw createHttpError(409, `style ${style.id} time bucket version was not created`);
+        }
+        await tx.style.update({
+          where: { id: style.id },
+          data: { timeBucketSetVersionId: nextTimeVersionId },
+        });
+      }
       await tx.orgRelationship.update({
         where: { id: relationship.id },
         data: { salesBucketSetVersionId: version.id },
       });
       return {
         versionId: version.id,
+        addedQuantities,
+        removedQuantities,
+        affectedStyleCount: affectedStyleIds.length,
+        copiedPriceCount,
+        unreviewedStandardCount,
       };
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }

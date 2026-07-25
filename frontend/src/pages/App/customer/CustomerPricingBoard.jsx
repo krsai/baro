@@ -206,8 +206,10 @@ const CustomerPricingBoard = () => {
   const [savedPrices, setSavedPrices] = useState({});
   const [bucketTarget, setBucketTarget] = useState('customer');
   const [customerBuckets, setCustomerBuckets] = useState({});
+  const [savedCustomerBuckets, setSavedCustomerBuckets] = useState({});
   const [styleBucketModes, setStyleBucketModes] = useState({});
   const [styleBuckets, setStyleBuckets] = useState({});
+  const [savedStyleBuckets, setSavedStyleBuckets] = useState({});
   const [newSalesBucket, setNewSalesBucket] = useState('');
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [loadingStyles, setLoadingStyles] = useState(false);
@@ -319,6 +321,10 @@ const CustomerPricingBoard = () => {
           ...previous,
           [customerKey]: defaultQuantities,
         }));
+        setSavedCustomerBuckets((previous) => ({
+          ...previous,
+          [customerKey]: defaultQuantities,
+        }));
         const nextModes = {};
         const nextBuckets = {};
         (Array.isArray(payload?.styles) ? payload.styles : []).forEach((style) => {
@@ -330,6 +336,7 @@ const CustomerPricingBoard = () => {
         });
         setStyleBucketModes((previous) => ({ ...previous, ...nextModes }));
         setStyleBuckets((previous) => ({ ...previous, ...nextBuckets }));
+        setSavedStyleBuckets((previous) => ({ ...previous, ...nextBuckets }));
       } catch (error) {
         if (active) showNotification(error?.message || text.loadFailed, 'error');
       }
@@ -468,9 +475,25 @@ const CustomerPricingBoard = () => {
 
   const saveActiveBuckets = useCallback(async () => {
     if (!selectedCustomerId) return;
+    const previousBuckets = selectedStyleId
+      ? savedStyleBuckets[styleBucketKey] || resolvedCustomerBuckets
+      : savedCustomerBuckets[customerBucketKey] || DEFAULT_SALES_BUCKETS;
+    const added = activeSalesBuckets.filter((quantity) => !previousBuckets.includes(quantity));
+    const removed = previousBuckets.filter((quantity) => !activeSalesBuckets.includes(quantity));
+    if (added.length === 0 && removed.length === 0) {
+      showNotification(text.bucketSaved, 'info');
+      return;
+    }
+    const targetLabel = selectedStyleId
+      ? styles.find((style) => String(style.id) === selectedStyleId)?.name || selectedStyleId
+      : selectedCustomer?.name || selectedCustomer?.companyName || selectedCustomerId;
+    const confirmation = languageCode === 'ko'
+      ? `${targetLabel} 버킷을 변경합니다.\n\n추가: ${added.join(', ') || '없음'}\n삭제: ${removed.join(', ') || '없음'}\n\n기존 단가와 과거 급여 자료는 유지됩니다. 새 버킷의 단가는 비어 있고, ST는 바로 아래 구간 값으로 복사되어 빨간색 검토 대상으로 표시됩니다. 계속할까요?`
+      : `Change buckets for ${targetLabel}?\n\nAdded: ${added.join(', ') || 'none'}\nRemoved: ${removed.join(', ') || 'none'}\n\nExisting prices and historical payroll remain unchanged. New prices stay empty and new ST values require review.`;
+    if (!window.confirm(confirmation)) return;
     setSavingBuckets(true);
     try {
-      await requestJSON(
+      const result = await requestJSON(
         `/customers/${selectedCustomerId}/quantity-buckets${customerQuery}`,
         {
           method: 'PUT',
@@ -482,8 +505,22 @@ const CustomerPricingBoard = () => {
           skipGlobalLoading: true,
         }
       );
+      if (selectedStyleId) {
+        setSavedStyleBuckets((previous) => ({
+          ...previous,
+          [styleBucketKey]: [...activeSalesBuckets],
+        }));
+      } else {
+        setSavedCustomerBuckets((previous) => ({
+          ...previous,
+          [customerBucketKey]: [...activeSalesBuckets],
+        }));
+      }
       setPriceReloadKey((value) => value + 1);
-      showNotification(text.bucketSaved, 'success');
+      const summary = languageCode === 'ko'
+        ? `영향 스타일 ${result?.affectedStyleCount || 0}개 · 유지 단가 ${result?.copiedPriceCount || 0}개 · 검토할 신규 ST ${result?.unreviewedStandardCount || 0}개`
+        : `${result?.affectedStyleCount || 0} affected styles · ${result?.copiedPriceCount || 0} retained prices · ${result?.unreviewedStandardCount || 0} ST values to review`;
+      showNotification(`${text.bucketSaved} ${summary}`, 'success');
     } catch (error) {
       showNotification(error?.message || text.loadFailed, 'error');
     } finally {
@@ -491,11 +528,19 @@ const CustomerPricingBoard = () => {
     }
   }, [
     activeSalesBuckets,
+    customerBucketKey,
     customerQuery,
+    languageCode,
+    resolvedCustomerBuckets,
+    savedCustomerBuckets,
+    savedStyleBuckets,
     selectedCustomerId,
+    selectedCustomer,
     selectedStyleId,
     selectedStyleUsesCustomBuckets,
     showNotification,
+    styleBucketKey,
+    styles,
     text.bucketSaved,
     text.loadFailed,
   ]);
