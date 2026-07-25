@@ -184,14 +184,8 @@ const isOverlappingDateRange = (range, monthRange) => {
 };
 
 const resolveAssignmentOrderKey = (assignment) => {
-  const originOrderId = String(
-    assignment?.originOrderId || assignment?.cardId || assignment?.id || ''
-  ).trim();
-  if (originOrderId) {
-    const [orderKey] = originOrderId.split('::');
-    if (orderKey) return orderKey;
-  }
-  return String(assignment?.orderNo || '').trim();
+  const workOrderId = Number(assignment?.workOrderId);
+  return Number.isInteger(workOrderId) && workOrderId > 0 ? String(workOrderId) : '';
 };
 
 const formatInteger = (value) =>

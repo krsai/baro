@@ -6831,6 +6831,7 @@ const toOrderResponse = (
     : [];
   return {
     id: order.orderId,
+    dbId: toPositiveIntOrNull(order.id),
     ownerOrgId,
     orderNumber: order.orderNumber ?? "",
     buyerOrgId: order.buyerOrgId ?? null,
@@ -7191,23 +7192,31 @@ const buildCanonicalWorkRecordWriteData = ({
   defaultLineId?: number | null;
   defaultCoverageStartDate?: string | null;
   defaultCoverageEndDate?: string | null;
-}) => ({
-  orgId,
-  workLogId,
-  workerId: toPositiveIntOrNull(record?.workerId),
-  lineId: toPositiveIntOrNull(record?.lineId) ?? toPositiveIntOrNull(defaultLineId),
-  styleId: toPositiveIntOrNull(record?.styleId),
-  styleProcessId: toPositiveIntOrNull(record?.styleProcessId),
-  effectiveCoverageStartDate:
-    resolveOptionalString(record?.effectiveCoverageStartDate, null) ??
-    resolveOptionalString(defaultCoverageStartDate, null),
-  effectiveCoverageEndDate:
-    resolveOptionalString(record?.effectiveCoverageEndDate, null) ??
-    resolveOptionalString(defaultCoverageEndDate, null),
-  ctSeconds: toNonNegativeInt(record?.ctSeconds, 0),
-  quantity: toNonNegativeInt(record?.quantity, 0),
-  assignmentPlanId: toPositiveIntOrNull(record?.assignmentPlanId),
-});
+}): Prisma.WorkRecordCreateManyInput => {
+  const styleId = toPositiveIntOrNull(record?.styleId);
+  const styleProcessId = toPositiveIntOrNull(record?.styleProcessId);
+  const assignmentPlanId = toPositiveIntOrNull(record?.assignmentPlanId);
+  if (styleId === null || styleProcessId === null || assignmentPlanId === null) {
+    throw createHttpError(409, "work record canonical references are required");
+  }
+  return {
+    orgId,
+    workLogId,
+    workerId: toPositiveIntOrNull(record?.workerId),
+    lineId: toPositiveIntOrNull(record?.lineId) ?? toPositiveIntOrNull(defaultLineId),
+    styleId,
+    styleProcessId,
+    effectiveCoverageStartDate:
+      resolveOptionalString(record?.effectiveCoverageStartDate, null) ??
+      resolveOptionalString(defaultCoverageStartDate, null),
+    effectiveCoverageEndDate:
+      resolveOptionalString(record?.effectiveCoverageEndDate, null) ??
+      resolveOptionalString(defaultCoverageEndDate, null),
+    ctSeconds: toNonNegativeInt(record?.ctSeconds, 0),
+    quantity: toNonNegativeInt(record?.quantity, 0),
+    assignmentPlanId,
+  };
+};
 const syncWorkRecordRefs = async ({
   orgId,
   records,
@@ -19581,10 +19590,6 @@ const resolveAssignmentPlanStyleQueryValues = (plan: any): string[] => {
   );
 };
 
-const resolveOrphanWorkRecordLineId = (record: any): number | null =>
-  toPositiveIntOrNull(record?.lineId) ??
-  resolveWorkLogLineMeta(record?.workLog?.records).lineId;
-
 const loadAssignmentPlanProgressWorkRows = async ({
   orgId,
   plans,
@@ -25154,7 +25159,7 @@ app.post("/work-logs", async (req, res) => {
               defaultCoverageStartDate: normalized.coverageStartDate,
               defaultCoverageEndDate: normalized.coverageEndDate,
             })
-          ) as Prisma.WorkRecordCreateManyInput[],
+          ),
         });
       }
 
@@ -25507,7 +25512,7 @@ app.put("/work-logs/:id", async (req, res) => {
               defaultCoverageStartDate: normalized.coverageStartDate,
               defaultCoverageEndDate: normalized.coverageEndDate,
             })
-          ) as Prisma.WorkRecordCreateManyInput[],
+          ),
         });
       }
 

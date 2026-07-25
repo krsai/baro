@@ -51,17 +51,6 @@ const formatInt = (value) =>
 
 const normalizeComparableText = (value) => String(value || '').trim().toLowerCase();
 
-const parseAssignmentCardIdentity = (value) => {
-  const raw = String(value || '').trim();
-  if (!raw) return null;
-  const parts = raw.split('::');
-  if (parts.length < 2) return null;
-  const orderId = String(parts[0] || '').trim();
-  const styleId = String(parts[1] || '').trim();
-  if (!orderId || !styleId) return null;
-  return { orderId, styleId };
-};
-
 const normalizeSizeKey = (value) => {
   const raw = String(value || '')
     .toUpperCase()
@@ -122,37 +111,21 @@ const resolveDetailPassTotal = (detail) => {
 };
 
 const buildQcDetailFromOrders = ({ row, orders }) => {
-  const identity =
-    parseAssignmentCardIdentity(row?.cardId) || parseAssignmentCardIdentity(row?.originOrderId);
-  const targetOrderId = String(identity?.orderId || '').trim();
-  const targetStyleId = String(identity?.styleId || row?.styleId || '').trim();
-  const targetStyleCode = String(row?.styleCode || '').trim();
+  const targetWorkOrderId = toPositiveIntOrNull(row?.workOrderId);
+  const targetStyleId = toPositiveIntOrNull(row?.styleId);
   const targetOrderNo = String(row?.orderNo || '').trim();
 
   const matchesStyle = (item) => {
-    const itemStyleId = String(item?.styleId || '').trim();
-    const itemStyleCode = String(item?.styleCode || '').trim();
-    if (targetStyleId && itemStyleId === targetStyleId) return true;
-    if (targetStyleCode && itemStyleCode === targetStyleCode) return true;
-    return false;
+    const itemStyleId = toPositiveIntOrNull(item?.styleId);
+    return targetStyleId !== null && itemStyleId === targetStyleId;
   };
 
-  let matchedOrder = null;
-  if (targetOrderId) {
-    matchedOrder =
-      (Array.isArray(orders) ? orders : []).find(
-        (order) => String(order?.id || '').trim() === targetOrderId
-      ) || null;
-  }
-  if (!matchedOrder && targetOrderNo) {
-    matchedOrder =
-      (Array.isArray(orders) ? orders : []).find(
-        (order) =>
-          normalizeComparableText(order?.orderNumber) === normalizeComparableText(targetOrderNo) &&
-          Array.isArray(order?.items) &&
-          order.items.some((item) => matchesStyle(item))
-      ) || null;
-  }
+  const matchedOrder =
+    targetWorkOrderId === null
+      ? null
+      : (Array.isArray(orders) ? orders : []).find(
+          (order) => toPositiveIntOrNull(order?.dbId) === targetWorkOrderId
+        ) || null;
 
   if (!matchedOrder) {
     return {
@@ -534,6 +507,7 @@ const QcReview = () => {
             return {
               id,
               dbId: toPositiveIntOrNull(plan?.dbId),
+              workOrderId: toPositiveIntOrNull(plan?.workOrderId),
               lineId: toPositiveIntOrNull(plan?.lineId),
               lineName:
                 String(progress?.lineName || '').trim() ||

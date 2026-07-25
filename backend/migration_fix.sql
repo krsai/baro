@@ -570,6 +570,7 @@ END $$;
 
 -- Step 0s: fail closed for canonical WorkRecord references (20260725).
 -- Never manufacture these links from names/codes during migration.
+BEGIN;
 DO $$
 DECLARE
   invalid_count BIGINT;
@@ -602,12 +603,13 @@ ALTER TABLE "WorkRecord"
   ALTER COLUMN "styleProcessId" SET NOT NULL;
 ALTER TABLE "WorkRecord"
   ADD CONSTRAINT "WorkRecord_assignmentPlan_org_fkey"
-    FOREIGN KEY ("assignmentPlanId", "orgId") REFERENCES "AssignmentPlan"("id", "orgId") ON DELETE RESTRICT,
+    FOREIGN KEY ("assignmentPlanId", "orgId") REFERENCES "AssignmentPlan"("id", "orgId") ON DELETE RESTRICT NOT VALID,
   ADD CONSTRAINT "WorkRecord_style_org_fkey"
-    FOREIGN KEY ("styleId", "orgId") REFERENCES "Style"("id", "orgId") ON DELETE RESTRICT,
+    FOREIGN KEY ("styleId", "orgId") REFERENCES "Style"("id", "orgId") ON DELETE RESTRICT NOT VALID,
   ADD CONSTRAINT "WorkRecord_styleProcess_style_org_fkey"
     FOREIGN KEY ("styleProcessId", "styleId", "orgId")
-    REFERENCES "StyleProcess"("id", "styleId", "orgId") ON DELETE RESTRICT;
+    REFERENCES "StyleProcess"("id", "styleId", "orgId") ON DELETE RESTRICT NOT VALID;
+COMMIT;
 
 -- Step 0n: drop AssignmentPlan.orderNo/customer/label/previewUrl (20260706)
 -- Phase E of the AssignmentCard/AssignmentPlan FK+join redesign. Unlike
