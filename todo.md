@@ -4,11 +4,11 @@
 
 - [x] 라인·공장 삭제가 연결된 `WorkRecord.assignmentPlanId`를 null로 만드는 경로를 제거하고 409로 차단했다.
 - [x] `WorkRecord.assignmentPlanId/styleId/styleProcessId`를 필수 FK + `RESTRICT`로 변경했다.
-- [x] WorkRecord의 assignment/style/process 연결에 `orgId`와 style 일치를 포함한 복합 FK를 `NOT VALID` 단계로 추가해 신규·수정 쓰기를 차단했다.
+- [x] WorkRecord의 assignment/styleProcess 연결에는 제조사 `orgId` 복합 FK를, 고객 소유일 수 있는 Style에는 단일 `styleId` FK를 적용했다.
 - [x] 배정 카드가 없을 때 `cardId/originOrderId` 문자열을 파싱해 synthetic card를 만드는 병합 경로를 제거했다.
 - [x] 서버 응답에 없는 월별 라인 생산능력을 프론트가 임의 계산하는 fallback을 제거했다.
 - [x] `npm run verify:relational-integrity` 진단 명령을 추가했다.
-- [ ] Railway의 기존 `WorkRecord.orgId ↔ Style.orgId` 불일치 행을 `verify:relational-integrity`로 확인하고 PK 기준으로 명시 수리한다. 0건 확인 후 세 복합 FK를 `VALIDATE CONSTRAINT`로 확정한다.
+- [x] Railway 운영 DB를 직접 진단해 `WorkRecord.orgId ↔ Style.orgId` 차이가 고객 Style을 제조사가 사용하는 정상 관계임을 확인했다. Style 조직을 덮어쓰지 않고 잘못 설계된 복합 FK를 단일 Style FK로 바로잡았다.
 
 ## 2026-07-25 매출 단가 정밀 리뷰 후속
 

@@ -11,13 +11,15 @@ test('WorkRecord canonical relations are required and cross-org constrained', as
   assert.match(schema, /styleProcessId\s+Int\b/);
   assert.match(schema, /fields: \[assignmentPlanId, orgId\]/);
   assert.match(schema, /fields: \[styleProcessId, styleId, orgId\]/);
+  assert.match(schema, /style\s+Style\s+@relation\(fields: \[styleId\], references: \[id\]/);
 });
 
-test('runtime migration stages legacy FK validation without weakening new writes', async () => {
+test('runtime migration validates the canonical FK set atomically', async () => {
   const migration = await read('backend/migration_fix.sql');
   assert.match(migration, /BEGIN;[\s\S]*WorkRecord_assignmentPlan_org_fkey[\s\S]*COMMIT;/);
-  assert.match(migration, /WorkRecord_style_org_fkey[\s\S]*ON DELETE RESTRICT NOT VALID/);
-  assert.match(migration, /WorkRecord_styleProcess_style_org_fkey[\s\S]*ON DELETE RESTRICT NOT VALID/);
+  assert.match(migration, /WorkRecord_styleId_fkey[\s\S]*ON DELETE RESTRICT/);
+  assert.match(migration, /WorkRecord_styleProcess_style_org_fkey[\s\S]*ON DELETE RESTRICT/);
+  assert.doesNotMatch(migration, /WorkRecord_(?:assignmentPlan_org|styleProcess_style_org)_fkey[\s\S]{0,200}NOT VALID/);
 });
 
 test('line and factory deletion never detach WorkRecords', async () => {

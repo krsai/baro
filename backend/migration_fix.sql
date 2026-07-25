@@ -583,6 +583,18 @@ BEGIN
       'WorkRecord canonical FK migration blocked: % rows need explicit repair',
       invalid_count;
   END IF;
+  SELECT COUNT(*) INTO invalid_count
+  FROM "WorkRecord" wr
+  JOIN "AssignmentPlan" ap ON ap.id = wr."assignmentPlanId"
+  JOIN "StyleProcess" sp ON sp.id = wr."styleProcessId"
+  WHERE wr."orgId" <> ap."orgId"
+     OR wr."orgId" <> sp."orgId"
+     OR wr."styleId" <> sp."styleId";
+  IF invalid_count > 0 THEN
+    RAISE EXCEPTION
+      'WorkRecord canonical relation migration blocked: % rows need explicit repair',
+      invalid_count;
+  END IF;
 END $$;
 ALTER TABLE "WorkRecord"
   DROP CONSTRAINT IF EXISTS "WorkRecord_assignmentPlanId_fkey",
@@ -593,8 +605,6 @@ ALTER TABLE "WorkRecord"
   DROP CONSTRAINT IF EXISTS "WorkRecord_styleProcess_style_org_fkey";
 CREATE UNIQUE INDEX IF NOT EXISTS "AssignmentPlan_id_org_key"
   ON "AssignmentPlan"("id", "orgId");
-CREATE UNIQUE INDEX IF NOT EXISTS "Style_id_org_key"
-  ON "Style"("id", "orgId");
 CREATE UNIQUE INDEX IF NOT EXISTS "StyleProcess_id_style_org_key"
   ON "StyleProcess"("id", "styleId", "orgId");
 ALTER TABLE "WorkRecord"
@@ -603,12 +613,12 @@ ALTER TABLE "WorkRecord"
   ALTER COLUMN "styleProcessId" SET NOT NULL;
 ALTER TABLE "WorkRecord"
   ADD CONSTRAINT "WorkRecord_assignmentPlan_org_fkey"
-    FOREIGN KEY ("assignmentPlanId", "orgId") REFERENCES "AssignmentPlan"("id", "orgId") ON DELETE RESTRICT NOT VALID,
-  ADD CONSTRAINT "WorkRecord_style_org_fkey"
-    FOREIGN KEY ("styleId", "orgId") REFERENCES "Style"("id", "orgId") ON DELETE RESTRICT NOT VALID,
+    FOREIGN KEY ("assignmentPlanId", "orgId") REFERENCES "AssignmentPlan"("id", "orgId") ON DELETE RESTRICT,
+  ADD CONSTRAINT "WorkRecord_styleId_fkey"
+    FOREIGN KEY ("styleId") REFERENCES "Style"("id") ON DELETE RESTRICT,
   ADD CONSTRAINT "WorkRecord_styleProcess_style_org_fkey"
     FOREIGN KEY ("styleProcessId", "styleId", "orgId")
-    REFERENCES "StyleProcess"("id", "styleId", "orgId") ON DELETE RESTRICT NOT VALID;
+    REFERENCES "StyleProcess"("id", "styleId", "orgId") ON DELETE RESTRICT;
 COMMIT;
 
 -- Step 0n: drop AssignmentPlan.orderNo/customer/label/previewUrl (20260706)

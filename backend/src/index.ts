@@ -807,10 +807,9 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "CustomerSalesPriceList_currencyCode_check",
   "CustomerSalesPrice_unitPrice_check",
   "AssignmentPlan_id_org_key",
-  "Style_id_org_key",
   "StyleProcess_id_style_org_key",
   "WorkRecord_assignmentPlan_org_fkey",
-  "WorkRecord_style_org_fkey",
+  "WorkRecord_styleId_fkey",
   "WorkRecord_styleProcess_style_org_fkey",
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_ENUM_VALUES = [

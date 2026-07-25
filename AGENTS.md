@@ -73,7 +73,7 @@
 - 위 이중 저장을 정리할 때는 "JSON을 read source of truth에서 제외 → 코드 전체가 relation만 읽는지 검증 → JSON 컬럼 제거"의 단계적 순서를 따른다 (레거시 컬럼 제거 원칙과 동일). raw SQL 백필이 원본 정규화 로직(다단계 fallback, 파생 필드 등)을 완전히 재현하기 어려우면 SQL로 새로 만들지 말고 앱이 이미 쓰는 검증된 로직(자가치유 함수, 재저장 트리거 등)을 백필 메커니즘으로 재사용한다.
 
 ### 정확 계산 원칙 (강제)
-- **2026-07-25 FK 강화:** 정상 `WorkRecord`의 `assignmentPlanId/styleId/styleProcessId`는 필수이며 삭제 시 `SET NULL`로 고아화하지 않는다. 세 관계는 `orgId`를 포함한 복합 FK로 같은 조직을 강제하고, styleProcess FK는 `styleId`까지 함께 묶어 다른 스타일 공정 연결을 DB에서 거부한다. 라인·공장 삭제도 연결 작업기록이 있으면 409로 거부한다. 운영 DB에는 이 규칙 이전의 `WorkRecord.orgId ↔ Style.orgId` 불일치 행이 존재하므로 2026-07-25 배포에서는 복합 FK를 `NOT VALID`로 추가해 신규·수정 쓰기부터 차단한다. 기존 행은 `verify:relational-integrity`로 식별해 PK 기준으로 명시 수리한 뒤 `VALIDATE CONSTRAINT` 해야 하며 이름/코드로 자동 복원하지 않는다.
+- **2026-07-25 FK 강화:** 정상 `WorkRecord`의 `assignmentPlanId/styleId/styleProcessId`는 필수이며 삭제 시 `SET NULL`로 고아화하지 않는다. `assignmentPlan`은 `(assignmentPlanId, orgId)`, `styleProcess`는 `(styleProcessId, styleId, orgId)` 복합 FK로 제조사 조직과 스타일 공정 일치를 강제한다. `Style`은 고객 조직 소유일 수 있으므로 `styleId -> Style.id` 단일 FK가 맞으며 `WorkRecord.orgId = Style.orgId`를 강제하면 안 된다. 운영 DB에서 확인된 978개 WorkRecord와 648개 StyleProcess는 제조사 org 1이 고객 org 2의 Style을 사용하는 정상 교차 조직 관계였다. 라인·공장 삭제도 연결 작업기록이 있으면 409로 거부한다.
 - 배정 화면은 `AssignmentCard` FK row가 없을 때 `cardId/originOrderId` 문자열을 분해해 synthetic card를 만들지 않는다. 연결 이상은 기능을 비활성화해 드러낸다.
 - 월별 라인 생산능력은 백엔드 계산 응답만 사용한다. 응답에 없는 월이나 capacity 값을 프론트가 근무일수×일일 생산능력으로 다시 만들지 않으며 0/미계산으로 드러낸다.
 - 핵심 지표(생산률, 실제 생산 ST, 진행률, 급여, AT 학습 입력)는 정확한 소스오브트루스가 연결될 때만 계산한다.

@@ -730,7 +730,6 @@ model Style {
   @@unique([orgId, code])
   @@unique([orgId, name])
   @@index([orgId])
-  @@unique([id, orgId], map: "Style_id_org_key")
   @@index([timeBucketSetVersionId])
 }
 
@@ -1173,7 +1172,7 @@ model WorkRecord {
   workLog        WorkLog         @relation(fields: [workLogId], references: [id], onDelete: Cascade)
   worker         Employee?       @relation(fields: [workerId], references: [id], onDelete: SetNull)
   assignmentPlan AssignmentPlan  @relation(fields: [assignmentPlanId, orgId], references: [id, orgId], onDelete: Restrict, map: "WorkRecord_assignmentPlan_org_fkey")
-  style          Style           @relation(fields: [styleId, orgId], references: [id, orgId], onDelete: Restrict, map: "WorkRecord_style_org_fkey")
+  style          Style           @relation(fields: [styleId], references: [id], onDelete: Restrict)
   styleProcess   StyleProcess    @relation(fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, map: "WorkRecord_styleProcess_style_org_fkey")
   line           Line?           @relation("WorkRecordLine", fields: [lineId], references: [id], onDelete: SetNull)
 
