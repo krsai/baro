@@ -569,7 +569,7 @@ const MainLayout = () => {
             path: '/style',
           },
           {
-            label: getUiMessage('menu.customerPricing', '\uB2E8\uAC00 \uAD00\uB9AC', languageCode),
+            label: getUiMessage('menu.customerPricing', '\uB2E8\uAC00', languageCode),
             icon: <PriceChangeIcon />,
             path: '/customer-pricing',
           },
@@ -810,7 +810,7 @@ const MainLayout = () => {
       const childPaths = new Set(orderedChildren.map((child) => child.path));
 
       if (childPaths.has('/order') && childPaths.has('/style')) {
-        const preferredSalesPaths = ['/style', '/customer-pricing', '/order'];
+        const preferredSalesPaths = ['/customer-pricing', '/style', '/order'];
         orderedChildren = [
           customerMenuItem,
           ...preferredSalesPaths.map(

@@ -55,7 +55,7 @@ const CustomerList = () => {
       fetchError: getUiMessage('customerBoard.fetchError', 'Failed to load customer list.', languageCode),
       openDetail: languageCode === 'ko' ? '상세' : languageCode === 'vi' ? 'Chi tiet' : 'Detail',
       openPricing:
-        languageCode === 'ko' ? '단가 관리' : languageCode === 'vi' ? 'Don gia' : 'Pricing',
+        languageCode === 'ko' ? '단가' : languageCode === 'vi' ? 'Don gia' : 'Pricing',
       actions: languageCode === 'ko' ? '작업' : languageCode === 'vi' ? 'Tac vu' : 'Actions',
     }),
     [languageCode]

@@ -55,7 +55,7 @@ const resolvePresetId = (presets, buckets) => {
 
 const TEXT = {
   ko: {
-    title: '단가 관리',
+    title: '단가',
     preview: '가격 입력 준비중',
     noticeTitle: '매출 단가와 수량 버킷을 관리합니다.',
     noticeBody: '고객 기본 버킷 또는 스타일 예외 버킷을 정한 뒤, 판매 방식과 통화별 단가를 입력하고 저장하세요.',
@@ -90,7 +90,7 @@ const TEXT = {
     bucketSaved: '수량 버킷을 저장했습니다.',
   },
   en: {
-    title: 'Price Management',
+    title: 'Pricing',
     preview: 'Price entry pending',
     noticeTitle: 'Manage sales prices and quantity buckets.',
     noticeBody: 'Choose customer-default or style-specific buckets, then enter and save prices by pricing basis and currency.',
@@ -125,7 +125,7 @@ const TEXT = {
     bucketSaved: 'Quantity buckets saved.',
   },
   vi: {
-    title: 'Quan ly don gia',
+    title: 'Don gia',
     preview: 'Nhap gia dang cho',
     noticeTitle: 'Quan ly don gia ban va moc so luong.',
     noticeBody: 'Chon moc mac dinh cua khach hang hoac moc rieng cua style, sau do nhap va luu don gia theo hinh thuc gia va tien te.',
