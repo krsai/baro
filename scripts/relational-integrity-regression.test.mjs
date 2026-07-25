@@ -53,4 +53,26 @@ test('WorkRecord normalization loads customer-owned Styles by canonical PK', asy
   assert.match(helper, /prisma\.style\.findMany\(\{\s*where: \{ id: \{ in: styleIds \} \}/);
   assert.doesNotMatch(helper, /prisma\.style\.findMany\(\{[\s\S]{0,160}orgId/);
   assert.doesNotMatch(helper, /linkedStyle\?\.(?:code|name) \?\? record\?\.style/);
+  assert.doesNotMatch(helper, /planStyleMeta\?\.styleId \?\? recordStyleId/);
+});
+
+test('AssignmentPlan timestamps are automatic and split quantity drift is rejected', async () => {
+  const [schema, backend] = await Promise.all([
+    read('backend/prisma/schema.prisma'),
+    read('backend/src/index.ts'),
+  ]);
+  const model = schema.match(/model AssignmentPlan \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(model);
+  assert.match(model, /updatedAt\s+DateTime\s+@updatedAt/);
+  assert.doesNotMatch(backend, /if \(group\.length > 1\) return/);
+  assert.match(backend, /split across multiple assignment plans/);
+});
+
+test('scheduler never treats the first visible day as today', async () => {
+  const board = await read('frontend/src/pages/App/assign/AssignBoard.jsx');
+  const helper = board.match(
+    /const getTodayDayIndex = \(days, targetDate = new Date\(\)\) => \{[\s\S]*?\n\};/
+  )?.[0];
+  assert.ok(helper);
+  assert.match(helper, /index >= 0 \? index : null/);
 });

@@ -1873,7 +1873,7 @@ const buildDays = (baseDate, count, holidaySet = new Set(), languageCode = 'en')
 const getTodayDayIndex = (days, targetDate = new Date()) => {
   const key = buildDateKey(targetDate);
   const index = (Array.isArray(days) ? days : []).findIndex((day) => day?.key === key);
-  return index >= 0 ? index : 0;
+  return index >= 0 ? index : null;
 };
 
 const getUsageSeconds = (assignment, days, lineCapacityById = null) => {
@@ -3598,32 +3598,34 @@ const AssignBoard = () => {
       );
       if (!hasAbsoluteScheduleKeys && normalizedRestoredAssignments.length > 1) {
         const reflowStartIndex = getTodayDayIndex(normalizedRestoreDays);
-        let candidateDays = normalizedRestoreDays;
-        let reflowResult = null;
+        if (reflowStartIndex != null) {
+          let candidateDays = normalizedRestoreDays;
+          let reflowResult = null;
 
-        for (let attempt = 0; attempt < 6; attempt += 1) {
-          reflowResult = reflowAssignmentsByLineCapacity({
-            assignments: normalizedRestoredAssignments,
-            totalDays: candidateDays.length,
-            days: candidateDays,
-            lineCapacityById: nextLineCapacityById,
-            sourceLineCapacityById: nextLineCapacityById,
-            reflowStartIndex,
-          });
-          if (!reflowResult?.needsMoreDays) break;
-          candidateDays = buildDays(
-            startDateRef.current,
-            candidateDays.length + 20,
-            holidaySet,
-            languageCode
-          );
-        }
+          for (let attempt = 0; attempt < 6; attempt += 1) {
+            reflowResult = reflowAssignmentsByLineCapacity({
+              assignments: normalizedRestoredAssignments,
+              totalDays: candidateDays.length,
+              days: candidateDays,
+              lineCapacityById: nextLineCapacityById,
+              sourceLineCapacityById: nextLineCapacityById,
+              reflowStartIndex,
+            });
+            if (!reflowResult?.needsMoreDays) break;
+            candidateDays = buildDays(
+              startDateRef.current,
+              candidateDays.length + 20,
+              holidaySet,
+              languageCode
+            );
+          }
 
-        if (Array.isArray(reflowResult?.assignments)) {
-          normalizedRestoredAssignments = reflowResult.assignments.map((item) =>
-            normalizeAssignmentLayout(item)
-          );
-          normalizedRestoreDays = candidateDays;
+          if (Array.isArray(reflowResult?.assignments)) {
+            normalizedRestoredAssignments = reflowResult.assignments.map((item) =>
+              normalizeAssignmentLayout(item)
+            );
+            normalizedRestoreDays = candidateDays;
+          }
         }
       }
 
@@ -4466,6 +4468,12 @@ const AssignBoard = () => {
       }
 
       const safeReflowStartIndex = getTodayDayIndex(sourceDays);
+      if (safeReflowStartIndex == null) {
+        return {
+          assignments: seededAssignments,
+          days: sourceDays,
+        };
+      }
       let candidateDays = sourceDays;
       let reflowResult = null;
 
@@ -5821,7 +5829,9 @@ const AssignBoard = () => {
     }
 
     if (lineItems.length === 0) {
-      const insertIndex = getNextWorkingDropIndex(getTodayDayIndex(days));
+      const todayIndex = getTodayDayIndex(days);
+      if (todayIndex == null) return null;
+      const insertIndex = getNextWorkingDropIndex(todayIndex);
       if (insertIndex == null) return null;
       return {
         lineId: normalizedLineId,

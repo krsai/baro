@@ -7238,11 +7238,21 @@ const syncWorkRecordRefs = async ({
     const planStyleMeta =
       assignmentPlanId !== null ? styleMetaByPlanId.get(assignmentPlanId) ?? null : null;
     const recordStyleId = toPositiveIntOrNull(record?.styleId);
+    if (
+      planStyleMeta?.styleId != null &&
+      recordStyleId !== null &&
+      recordStyleId !== planStyleMeta.styleId
+    ) {
+      throw createHttpError(
+        409,
+        `work record styleId ${recordStyleId} does not match assignment plan styleId ${planStyleMeta.styleId}`
+      );
+    }
     return {
       ...record,
-      styleId: planStyleMeta?.styleId ?? recordStyleId,
-      styleCode: resolveOptionalString(planStyleMeta?.styleCode ?? record?.styleCode, null),
-      styleName: resolveOptionalString(planStyleMeta?.styleName ?? record?.styleName, null),
+      styleId: planStyleMeta?.styleId ?? null,
+      styleCode: resolveOptionalString(planStyleMeta?.styleCode, null),
+      styleName: resolveOptionalString(planStyleMeta?.styleName, null),
     };
   });
 
@@ -7406,13 +7416,21 @@ const attachCanonicalFieldsToWorkRecords = async ({
     const planStyleMeta =
       assignmentPlanId != null ? styleMetaByPlanId.get(assignmentPlanId) ?? null : null;
     const recordStyleId = toPositiveIntOrNull(record?.styleId);
-    const nextStyleId = planStyleMeta?.styleId ?? recordStyleId;
+    if (
+      planStyleMeta?.styleId != null &&
+      recordStyleId !== null &&
+      recordStyleId !== planStyleMeta.styleId
+    ) {
+      throw createHttpError(
+        409,
+        `work record styleId ${recordStyleId} does not match assignment plan styleId ${planStyleMeta.styleId}`
+      );
+    }
+    const nextStyleId = planStyleMeta?.styleId ?? null;
     const canonicalStyleIdSource =
       planStyleMeta?.styleId != null
         ? "AssignmentPlan.workOrderItem.styleId"
-        : recordStyleId !== null
-          ? "WorkRecord.styleId"
-          : null;
+        : null;
     return {
       ...record,
       lineId: normalizedLineId ?? toPositiveIntOrNull(record?.lineId),
@@ -13651,7 +13669,20 @@ const syncAssignmentPlansForOrderLock = async ({
   const pendingRecalc: { plan: any; styleId: number; targetQuantity: number }[] = [];
 
   plansByStyleId.forEach((group, styleId) => {
-    if (group.length > 1) return; // split across lines - left untouched, see comment above
+    if (group.length > 1) {
+      const targetQuantity = styleQuantityMap.get(styleId) ?? 0;
+      const currentQuantity = group.reduce(
+        (sum, row) => sum + (resolveAssignmentQuantity(row) ?? 0),
+        0
+      );
+      if (targetQuantity !== currentQuantity) {
+        throw createHttpError(
+          409,
+          `style ${styleId} is split across multiple assignment plans; adjust line quantities explicitly before changing the order quantity`
+        );
+      }
+      return;
+    }
     const plan = planById.get(Number(group[0].id));
     if (!plan) return;
     if (plan.isCompleted === true || plan.isPayrollLocked) return;

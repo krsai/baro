@@ -73,6 +73,7 @@
 - 위 이중 저장을 정리할 때는 "JSON을 read source of truth에서 제외 → 코드 전체가 relation만 읽는지 검증 → JSON 컬럼 제거"의 단계적 순서를 따른다 (레거시 컬럼 제거 원칙과 동일). raw SQL 백필이 원본 정규화 로직(다단계 fallback, 파생 필드 등)을 완전히 재현하기 어려우면 SQL로 새로 만들지 말고 앱이 이미 쓰는 검증된 로직(자가치유 함수, 재저장 트리거 등)을 백필 메커니즘으로 재사용한다.
 
 ### 정확 계산 원칙 (강제)
+- **2026-07-25 후속:** 스케줄 표시 범위에 오늘이 없으면 첫 표시일을 오늘로 대체하지 않는다. AssignmentPlan에서 WorkRecord의 Style FK를 확정하지 못하면 요청 styleId로 보완하지 않는다. 동일 스타일이 여러 라인에 split된 상태에서 주문 수량과 배정 합계가 달라지면 자동 분배하거나 조용히 건너뛰지 않고 409로 명시 조정을 요구한다. `AssignmentPlan.updatedAt`은 `@updatedAt`으로 모든 쓰기에서 자동 갱신한다.
 - **2026-07-25 FK 강화:** 정상 `WorkRecord`의 `assignmentPlanId/styleId/styleProcessId`는 필수이며 삭제 시 `SET NULL`로 고아화하지 않는다. `assignmentPlan`은 `(assignmentPlanId, orgId)`, `styleProcess`는 `(styleProcessId, styleId, orgId)` 복합 FK로 제조사 조직과 스타일 공정 일치를 강제한다. `Style`은 고객 조직 소유일 수 있으므로 `styleId -> Style.id` 단일 FK가 맞으며 `WorkRecord.orgId = Style.orgId`를 강제하면 안 된다. 운영 DB에서 확인된 978개 WorkRecord와 648개 StyleProcess는 제조사 org 1이 고객 org 2의 Style을 사용하는 정상 교차 조직 관계였다. 라인·공장 삭제도 연결 작업기록이 있으면 409로 거부한다.
 - WorkRecord 저장 정규화에서 Style은 AssignmentPlan이 확정한 `styleId` PK로 조회한다. 제조사 `orgId`로 Style을 필터링하거나 조회 실패를 요청 payload의 `styleCode/styleName`으로 보완하지 않는다. 교차 조직 Style은 `OrgRelationship(manufacturerOrgId, brandOrgId)`가 존재해야 하며 무결성 진단에서 이를 확인한다.
 - 배정 화면은 `AssignmentCard` FK row가 없을 때 `cardId/originOrderId` 문자열을 분해해 synthetic card를 만들지 않는다. 연결 이상은 기능을 비활성화해 드러낸다.
@@ -1633,7 +1634,7 @@ runtime 조회값:
 - 같은 버그가 있던 `refreshUnlinkedAssignmentPlanSnapshotsForOrg`(스타일 변경 시 미연결 배정 CT/ST 스냅샷 갱신)의 `styleByStyleId`도 같은 방식으로 고쳤다. 이 함수는 `AssignmentPlan`이 0건이라 지금 당장 영향은 없었지만, 카드가 다시 생기고 라인 배정이 시작되면 바로 문제가 될 뻔했다.
 - 운영 DB 실데이터로 재현·검증: E14-4 주문의 워크오더아이템을 수정된 로직으로 그룹핑하면 스타일 3개(S-ZIR04V/S-ZIQPQO/S-ZIQDTZ) 카드가 정상적으로 나옴을 확인.
 - `npm --prefix backend run build` 통과.
-- **남은 것 (같은 버그 패턴, 이번엔 손 안 댐)**: `loadAssignmentDisplayReferenceMaps`(`styleByStyleId`, `Style.code`로 키 생성)와 `findOrderItemByAssignmentIdentity`(`resolveOptionalString(item?.styleId, null)`으로 숫자 비교) — 둘 다 `resolveAssignmentDisplayFallback`이 쓰는 표시용 폴백 헬퍼라 카드 생성 경로에는 영향 없다. 다만 언젠가 이 폴백이 실제로 호출되는 상황(예: 손상된 assignment 표시 복구)에서는 지금도 항상 조용히 실패할 것이다. 다음에 이 영역을 건드릴 때 같이 고칠 것.
+- **후속 정정 (2026-07-25):** 이 문단이 언급하던 `loadAssignmentDisplayReferenceMaps`, `findOrderItemByAssignmentIdentity`, `resolveAssignmentDisplayFallback` 표시 복구 폴백은 후속 FK+join 정리에서 모두 삭제됐다. 현행 코드에 남은 미해결 헬퍼로 취급하지 않는다.
 - 브라우저 실제 확인 아직 안 함 — 사용자가 재배포 후 잠금 테스트로 확인 예정.
 - **2026-07-05 후속 발견 (같은 버그 패턴, 카드 생성은 됐지만 필드가 비어있던 문제)**: 카드는 실제로 생성됐지만 "고객사"가 전부 `-`로 비어있었다. 원인은 §42와 완전히 같은 클래스: `buildAssignmentCardsFromOrders`의 `customer` 필드가 `order?.customerName ?? order?.customer`를 읽고 있었는데, 이 쿼리의 `select`는 애초에 그런 flat 필드를 조회하지 않는다(`buyerOrg`/`customerOrg` relation만 조회함) — FK+join 자체는 이미 정상인데 그 join 결과를 읽는 코드가 안 붙어있던 것. `order?.customerOrg?.name ?? order?.buyerOrg?.name`로 수정. 운영 데이터로 "THE SAN"(더산) 정상 노출 확인.
 - 같은 조사 중 `workOrderId: toPositiveIntOrNull(order?.id)`도 발견 — 이 쿼리의 `select`에 `id`가 아예 없어서 `order?.id`가 항상 `undefined`였다. `select`에 `id: true` 추가로 수정.
@@ -1657,7 +1658,7 @@ runtime 조회값:
   - 운영 DB에 직접 DDL 실행은 안 함(세션 중 시도했으나 자동 분류기가 정상적으로 차단 — 정해진 `migration_fix.sql`+predeploy 파이프라인 밖에서 운영 스키마를 직접 바꾸려던 것이라 막힌 게 맞음). 다음 백엔드 배포 때 predeploy가 자동 적용한다.
   - **2026-07-06 정정**: 위 가정이 틀렸다. 사용자가 `railway.json`의 `preDeployCommand`를 의도적으로 꺼둔 상태라 배포해도 `migration_fix.sql`이 자동 적용되지 않았고, 그 결과 이 컬럼이 운영 DB에 계속 없는 채로 남아 `PUT /assignment-board-state`가 503(`missing column: assignmentCardId`)으로 전부 실패하는 장애가 실제로 발생했다. 사용자 명시적 확인 하에 이번엔 운영 DB에 Step 0k SQL을 직접 실행해서 복구했다(컬럼/인덱스/FK 추가, 백필은 현재 `AssignmentPlan`이 0건이라 영향 없음). 시작 시 필수 컬럼 체크 목록(`hasField` 목록, 파일 상단)에도 `assignmentCardId`가 빠져있어 이 드리프트를 못 걸렀던 것도 같이 추가함. **pre-deploy가 꺼져 있는 한 앞으로 `migration_fix.sql`에 추가되는 모든 신규 단계는 자동 적용되지 않는다** — 새 마이그레이션을 추가할 때마다 운영 DB에 수동으로 같은 SQL을 직접 실행해야 한다는 뜻이다. pre-deploy를 왜 껐는지(원래 뭐가 안 됐는지)는 아직 확인 안 됨 — todo.md 참고.
   - `onDelete`는 `Restrict`가 아니라 `SetNull`을 선택함 — 이번이 첫 롤아웃이라 혹시 놓친 예외 케이스가 있어도 카드 재계산 전체가 하드 실패하기보다는 조용히 링크만 끊어지는 쪽을 우선함. 안정성이 확인되면 나중에 `Restrict`로 강화하는 걸 검토할 수 있음.
-  - 기존 조회 코드(`loadAssignmentDisplayReferenceMaps`, `findOrderItemByAssignmentIdentity` 등 §42에서 이미 발견한 문자열 기반 스타일 조회 헬퍼들)를 새 FK로 갈아타게 하는 건 이번 범위에 안 넣음 — 이번 phase는 "쓰기 경로가 새 FK를 항상 채우게 하는 것"까지만이고, "읽기 경로가 새 FK를 쓰도록 전환"은 다음 phase.
+  - **후속 정정 (2026-07-25):** 당시 범위 밖이던 문자열 기반 조회·표시 복구 헬퍼는 이후 삭제됐고 현재 읽기 경로는 FK join으로 전환됐다.
   - `cardId` 문자열 컬럼 제거는 안 함 — 읽기 경로 전환 검증 끝난 뒤 별도 phase에서.
 - **다음 단계 (미착수)**: 운영 배포 후 `assignmentCardId` 백필이 실제로 몇 건 채워졌는지 확인(`npm run` 검증 스크립트 신설 여지 있음, 기존 `verify:workorder-item-backfill` 패턴 재사용 가능) → 읽기 경로를 하나씩 FK 기반으로 전환 → `cardId` dual-read 제거 → 컬럼 DROP.
 
@@ -1688,7 +1689,7 @@ runtime 조회값:
   - `toAssignmentCardFromStoreRow`/`loadAssignmentCardsForOrg`: `select`에 `style`/`workOrder`/`buyerOrg` relation을 포함시키고, `styleName`/`styleCode`/`previewUrl`/`orderNo`/`customer`/`customerNameKo`/`customerNameVi` 등을 "join 값 우선, 없으면 기존 문자열 폴백" 방식으로 전환. 응답 JSON 필드명은 그대로 유지(프론트 수정 불필요).
   - `toAssignmentPlanResponse`, `ASSIGNMENT_PLAN_SELECT_CORE`/`_LEGACY`, `GET /assignment-plans`, `buildAssignmentPlanProgressRows`, `buildAssignmentPlanCloseResponse`, `toWorkLogContextAssignmentResponse`에 동일한 join-우선 처리(`orderNo`/`customer`/`label`/`previewUrl`) 적용.
   - `resolveAssignmentPlanStyleMetaById`의 `styleUid` 오타는 Phase A에서 이미 수정됨(§44 참고).
-  - **깨진 자가치유 로직 완전 제거**: `repairAssignmentPlanDisplayRows`, `assignmentPlanNeedsDisplayRepair`, `ASSIGNMENT_PLAN_DISPLAY_FIELDS`와 `GET /assignment-plans`/`GET /assignment-board-state`의 호출부 2곳을 삭제. Phase A 백필이 기존 행을 한 번에 다 채우므로 "서서히 고쳐지는" read-time 폴백 시나리오 자체가 없어졌고, 원래도 스타일 매칭 버그가 있던 로직이라 계속 남겨둘 이유가 없었음. **주의**: 이름이 비슷한 write-time 로직(`shouldRepairAssignmentBoardDisplayPayloadOnWrite`/`safelyRepairAssignmentBoardDisplayState`/`repairAssignmentBoardDisplayState`)은 저장 payload 정제용으로 별개 메커니즘이라 그대로 유지함 — 이번 삭제 대상이 아님. 이들이 공유하는 `hasCorruptedAssignmentDisplayText`/`loadAssignmentDisplayReferenceMaps`/`resolveAssignmentDisplayFallback`/`shouldRepairAssignmentDisplayField`/`findOrderItemByAssignmentIdentity`도 그대로 유지.
+  - **깨진 자가치유 로직 완전 제거**: `repairAssignmentPlanDisplayRows`, `assignmentPlanNeedsDisplayRepair`, `ASSIGNMENT_PLAN_DISPLAY_FIELDS`와 `GET /assignment-plans`/`GET /assignment-board-state`의 호출부 2곳을 삭제. **후속 정정 (2026-07-25):** 당시 유지한다고 적은 write-time 표시 복구 함수와 공유 헬퍼도 이후 전부 삭제됐다. 현행 코드에는 존재하지 않는다.
 - **Phase D (죽은 컬럼 삭제)**:
   - 삭제 대상: `AssignmentPlan.colorId`(+FK), `colorName`, `color`, `stripeColor`, `imageUrl`, `thumbnailUrl`. (`AssignmentCard.colorId/colorName/gender`는 애초에 실제 DB 컬럼이 존재한 적이 없어 — payload JSON 안의 죽은 키였을 뿐 — 스키마/migration 변경 대상이 아니었고, Phase A에서 이미 `buildAssignmentCardsFromOrders`의 `colorId: null, colorName: null, gender: null` 세 줄만 제거함.)
   - `schema.prisma`: 위 6개 필드와 `AssignmentPlan.attrColor` relation, `AttrColor.assignmentPlans` 역관계, `@@index([colorId])` 제거.

@@ -1051,7 +1051,7 @@ model AssignmentPlan {
   createdBy                 String                @default("system@baro.local")
   createdByEmployeeId       Int?
   updatedByEmployeeId       Int?
-  updatedAt                 DateTime
+  updatedAt                 DateTime              @updatedAt
 
   line                    Line                      @relation(fields: [lineId], references: [id], onDelete: Restrict)
   organization            Organization              @relation(fields: [orgId], references: [id])

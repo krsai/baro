@@ -1,5 +1,15 @@
 # TODO
 
+## 2026-07-25 폴백·동시성 후속
+
+- [x] 스케줄 화면에 오늘이 없을 때 첫 표시일을 오늘로 취급하던 `getTodayDayIndex → 0` fallback을 제거했다.
+- [x] WorkRecord 저장 시 AssignmentPlan에서 Style FK를 확정하지 못하면 요청 `styleId`를 대신 쓰지 않고 저장을 거부한다.
+- [x] split 배정의 합계와 변경 주문 수량이 다르면 조용히 건너뛰지 않고 409로 명시 조정을 요구한다.
+- [x] `AssignmentPlan.updatedAt`을 Prisma `@updatedAt`으로 자동 관리한다.
+- [ ] WorkLog 저장 후 진행률 snapshot 동기화 실패를 영속 기록하고 재시도하는 구조를 추가한다. 원본 WorkLog 저장 성공을 되돌리는 방식은 사용하지 않는다.
+- [ ] `AssignmentPlan.cardId` 사용처를 외부 식별자/UI key와 관계 매칭 용도로 분류하고 후자만 `assignmentCardId` FK로 전환한다.
+- [ ] `WorkRecord.lineId -> Line.id` FK는 이미 존재한다. 후속 검토에서는 제조사 `orgId` 복합 FK와 `onDelete: SetNull` 정책만 판단한다.
+
 ## 2026-07-25 FK·우회 경로 강화
 
 - [x] 라인·공장 삭제가 연결된 `WorkRecord.assignmentPlanId`를 null로 만드는 경로를 제거하고 409로 차단했다.
