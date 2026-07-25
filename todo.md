@@ -7,7 +7,7 @@
 - [x] ST 조회·저장·배정 상세 수정·버킷 변경을 entry FK 기준으로 전환했다.
 - [x] 버킷 변경 시 유지 ST도 새 entry에 복제하고 신규 ST만 직전 활성 하위 entry에서 승계하도록 변경했다.
 - [x] 과거 snapshot을 현재 숫자 ST로 복구하던 레거시 migration/검증 스크립트를 제거했다.
-- [ ] 배포 후 `npm run verify:st-bucket-fk`로 null/orphan FK와 레거시 컬럼 0건을 최종 확인한다.
+- [x] 배포 후 `npm run verify:st-bucket-fk`로 15,301행 전부 exact FK, null/orphan 0건, 레거시 컬럼 0건을 확인했다.
 
 ## 2026-07-25 버킷 동기화 리뷰 후속 수정 완료
 

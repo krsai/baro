@@ -160,6 +160,7 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 - **2026-07-25 ST 버킷 FK 전환:** `StyleProcessStandard.bucketQuantity` 물리 컬럼과 `(styleProcessId,bucketQuantity)` 숫자 매칭을 제거했다. ST는 필수 `quantityBucketEntryId + quantityBucketSetVersionId` 복합 FK로 정확한 `QuantityBucketEntry`를 참조한다. 수량 표시는 relation의 `QuantityBucketEntry.bucketQuantity`를 JOIN해 얻는다.
 - 버킷 버전 변경 시 유지 수량도 새 버전 entry에 연결된 새 ST 행으로 복제한다. 신규 수량만 직전 버전의 정확한 하위 entry ST에서 복사하고 `BUCKET_INHERITED_REVIEW`로 기록한다. 같은 숫자의 과거 entry, PT, 상위 버킷은 후보가 아니다.
 - 운영 Railway DB의 기존 ST 15,301행을 진단한 결과 시간 버전·entry 누락은 0건이었고 모두 정확한 현재 entry PK로 백필 가능했다. 제조사 ST와 브랜드 소유 버킷이 연결된 8,424행은 정상 교차 조직 관계이므로 `StyleProcessStandard.orgId == QuantityBucketEntry.orgId`를 강제하지 않는다.
+- 운영 반영 결과(커밋 `4dbb75a`): 15,301행 모두 entry+version FK가 채워졌고 null/orphan/process-org 불일치가 0건이다. `StyleProcessStandard.bucketQuantity/quantity/stSeconds` 레거시 물리 컬럼도 0건이며 Railway 백엔드 배포와 startup schema 검증이 성공했다.
 
 #### 2026-07-25 구현 검증 및 발견된 버그 (커밋 `629635d`, 수정 완료)
 
