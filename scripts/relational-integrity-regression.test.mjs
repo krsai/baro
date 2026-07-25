@@ -66,6 +66,27 @@ test('AssignmentPlan timestamps are automatic and split quantity drift is reject
   assert.match(model, /updatedAt\s+DateTime\s+@updatedAt/);
   assert.doesNotMatch(backend, /if \(group\.length > 1\) return/);
   assert.match(backend, /split across multiple assignment plans/);
+  const start = backend.indexOf('const syncAssignmentPlansForOrderLock = async (');
+  const end = backend.indexOf('const buildOrderModificationLockState', start);
+  assert.ok(start >= 0 && end > start);
+  const helper = backend.slice(start, end);
+  assert.doesNotMatch(
+    helper,
+    /if \(annotatedPlan\.isCompleted === true \|\| annotatedPlan\.isPayrollLocked\) return;/
+  );
+  assert.doesNotMatch(helper, /resolveAssignmentQuantity\(row\) \?\? 0/);
+  assert.match(helper, /missing assignmentQuantity/);
+  assert.match(helper, /completed or payroll-locked assignment/);
+});
+
+test('WorkRecord canonical style display never falls back to request text', async () => {
+  const backend = await read('backend/src/index.ts');
+  const start = backend.indexOf('const attachCanonicalFieldsToWorkRecords = async (');
+  const end = backend.indexOf('const collectWorkLogCrossLineAssignmentWarnings', start);
+  assert.ok(start >= 0 && end > start);
+  const helper = backend.slice(start, end);
+  assert.doesNotMatch(helper, /planStyleMeta\?\.styleCode \?\? record\?\.styleCode/);
+  assert.doesNotMatch(helper, /planStyleMeta\?\.styleName \?\? record\?\.styleName/);
 });
 
 test('scheduler never treats the first visible day as today', async () => {

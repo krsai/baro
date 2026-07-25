@@ -1,5 +1,13 @@
 # BARO 프로젝트 컨텍스트
 
+### 2026-07-25 관계형 정합성 마이너 정리
+
+- `syncAssignmentPlansForOrderLock`의 스타일별 수량/FK 검증은 완료·급여잠금 여부와 무관하게 해당 주문의 모든 `AssignmentPlan`을 대상으로 한다. 잠금 상태는 수정 가능 여부에만 사용하며 합계에서 제외하지 않는다.
+- split 배정의 합계가 주문 수량과 다르면 자동 재분배하지 않고 409로 거부한다. 단일 배정이라도 완료·급여잠금 상태에서 수량이 다르면 명시적 해제·정정을 요구한다.
+- `AssignmentPlan.assignmentQuantity = null`은 0장이 아니라 데이터 정합성 훼손이다. 주문 잠금 동기화에서 409로 드러내며 계산용 0 fallback을 사용하지 않는다.
+- WorkRecord 정규화의 `styleCode`/`styleName`은 검증된 `AssignmentPlan -> Style` 관계에서만 가져온다. 관계를 확정하지 못했을 때 요청 payload의 문자열을 진단·표시값으로 유지하지 않는다.
+- `AssignmentPlan.cardId`는 현재 외부 보드 식별자/API 호환 용도가 남아 있으므로 이번 정리에서 컬럼을 제거하지 않았다. 관계 조인은 `assignmentCardId` FK를 사용하며, 진단 payload에서 문자열 값은 `assignmentCardExternalId`로 명시한다.
+
 > 이 파일은 Claude Code, Codex 등 모든 AI 도구의 단일 진입점이다.  
 > 내용을 수정할 때는 이 파일 하나만 수정한다.
 

@@ -7435,8 +7435,8 @@ const attachCanonicalFieldsToWorkRecords = async ({
       ...record,
       lineId: normalizedLineId ?? toPositiveIntOrNull(record?.lineId),
       styleId: nextStyleId,
-      styleCode: resolveOptionalString(planStyleMeta?.styleCode ?? record?.styleCode, null),
-      styleName: resolveOptionalString(planStyleMeta?.styleName ?? record?.styleName, null),
+      styleCode: resolveOptionalString(planStyleMeta?.styleCode, null),
+      styleName: resolveOptionalString(planStyleMeta?.styleName, null),
       _canonicalStyleIdSource: canonicalStyleIdSource,
     };
   });
@@ -13624,7 +13624,6 @@ const syncAssignmentPlansForOrderLock = async ({
   const missingStyleFkPlanIds: string[] = [];
   plans.forEach((plan: any) => {
     const annotatedPlan = planById.get(Number(plan.id)) ?? plan;
-    if (annotatedPlan.isCompleted === true || annotatedPlan.isPayrollLocked) return;
     const planWorkOrderId = toPositiveIntOrNull(annotatedPlan?.workOrderId ?? plan?.workOrderId);
     if (planWorkOrderId === null || !workOrderIdSet.has(planWorkOrderId)) {
       missingWorkOrderFkPlanIds.push(
@@ -13642,7 +13641,7 @@ const syncAssignmentPlansForOrderLock = async ({
       return;
     }
     const bucket = plansByStyleId.get(styleId) ?? [];
-    bucket.push(plan);
+    bucket.push(annotatedPlan);
     plansByStyleId.set(styleId, bucket);
   });
   if (missingWorkOrderFkPlanIds.length > 0) {
@@ -13669,12 +13668,27 @@ const syncAssignmentPlansForOrderLock = async ({
   const pendingRecalc: { plan: any; styleId: number; targetQuantity: number }[] = [];
 
   plansByStyleId.forEach((group, styleId) => {
-    if (group.length > 1) {
-      const targetQuantity = styleQuantityMap.get(styleId) ?? 0;
-      const currentQuantity = group.reduce(
-        (sum, row) => sum + (resolveAssignmentQuantity(row) ?? 0),
-        0
+    const invalidQuantityPlans = group.filter(
+      (row) => resolveAssignmentQuantity(row) === null
+    );
+    if (invalidQuantityPlans.length > 0) {
+      const planIds = invalidQuantityPlans.map(
+        (row) =>
+          resolveOptionalString(row?.externalId, null) ??
+          String(row?.id ?? "")
       );
+      throw createHttpError(
+        409,
+        `style ${styleId} has assignment plans with missing assignmentQuantity (${planIds.join(", ")})`
+      );
+    }
+
+    const targetQuantity = styleQuantityMap.get(styleId) ?? 0;
+    const currentQuantity = group.reduce(
+      (sum, row) => sum + Number(resolveAssignmentQuantity(row)),
+      0
+    );
+    if (group.length > 1) {
       if (targetQuantity !== currentQuantity) {
         throw createHttpError(
           409,
@@ -13683,13 +13697,14 @@ const syncAssignmentPlansForOrderLock = async ({
       }
       return;
     }
-    const plan = planById.get(Number(group[0].id));
-    if (!plan) return;
-    if (plan.isCompleted === true || plan.isPayrollLocked) return;
-
-    const targetQuantity = styleQuantityMap.get(styleId) ?? 0;
-    const currentQuantity = resolveAssignmentQuantity(plan) ?? 0;
+    const plan = group[0];
     if (targetQuantity === currentQuantity) return;
+    if (plan.isCompleted === true || plan.isPayrollLocked) {
+      throw createHttpError(
+        409,
+        `style ${styleId} quantity differs from its completed or payroll-locked assignment; unlock or correct the assignment explicitly`
+      );
+    }
 
     if (targetQuantity === 0) {
       pendingZero.push({ plan, styleId, linked: linkedPlanIdSet.has(Number(plan.id)) });
@@ -14437,7 +14452,6 @@ const toAssignmentPlanWriteData = (
     startDayOffsetPercent: item.startDayOffsetPercent ?? null,
     startDayPercent: item.startDayPercent ?? null,
     endDayPercent: item.endDayPercent ?? null,
-    updatedAt: new Date(),
   };
 };
 // Diagnostic-only coverage check for newly created AssignmentPlan rows. The
@@ -21198,7 +21212,7 @@ const buildLineMonthCapacityRows = async ({
               workLogId: toPositiveIntOrNull(record?.workLogId),
               planId,
               assignmentExternalId: resolveOptionalString(plan?.externalId, null),
-              assignmentCardId: resolveOptionalString(plan?.cardId, null),
+              assignmentCardExternalId: resolveOptionalString(plan?.cardId, null),
               assignmentOriginOrderId: resolveOptionalString(plan?.originOrderId, null),
               assignmentQuantity: plannedQuantity,
               workerId: toPositiveIntOrNull(record?.workerId),
@@ -21251,7 +21265,7 @@ const buildLineMonthCapacityRows = async ({
               workLogId: toPositiveIntOrNull(record?.workLogId),
               planId,
               assignmentExternalId: resolveOptionalString(plan?.externalId, null),
-              assignmentCardId: resolveOptionalString(plan?.cardId, null),
+              assignmentCardExternalId: resolveOptionalString(plan?.cardId, null),
               assignmentOriginOrderId: resolveOptionalString(plan?.originOrderId, null),
               assignmentQuantity: plannedQuantity,
               workerId: toPositiveIntOrNull(record?.workerId),
@@ -21289,7 +21303,7 @@ const buildLineMonthCapacityRows = async ({
               workLogId: toPositiveIntOrNull(record?.workLogId),
               planId,
               assignmentExternalId: resolveOptionalString(plan?.externalId, null),
-              assignmentCardId: resolveOptionalString(plan?.cardId, null),
+              assignmentCardExternalId: resolveOptionalString(plan?.cardId, null),
               assignmentOriginOrderId: resolveOptionalString(plan?.originOrderId, null),
               assignmentOrderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null),
               assignmentLabel: resolveOptionalString(plan?.style?.name, null),
@@ -21349,7 +21363,7 @@ const buildLineMonthCapacityRows = async ({
               workLogId: toPositiveIntOrNull(record?.workLogId),
               planId,
               assignmentExternalId: resolveOptionalString(plan?.externalId, null),
-              assignmentCardId: resolveOptionalString(plan?.cardId, null),
+              assignmentCardExternalId: resolveOptionalString(plan?.cardId, null),
               assignmentOriginOrderId: resolveOptionalString(plan?.originOrderId, null),
               assignmentQuantity: plannedQuantity,
               workerName: resolveOptionalString(record?.worker?.name, null),

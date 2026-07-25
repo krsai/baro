@@ -1,5 +1,13 @@
 # TODO
 
+## 2026-07-25 관계형 정합성 마이너 정리
+
+- [x] 주문 잠금 동기화에서 완료·급여잠금 배정도 스타일별 총수량과 FK 검증에 포함했다. 잠긴 배정을 제외한 나머지 한 건에 주문 전체 수량을 덮어쓰는 경로를 제거했다.
+- [x] `AssignmentPlan.assignmentQuantity = null`을 0으로 해석하지 않고 409 정합성 오류로 드러내도록 했다.
+- [x] WorkRecord 정규화 중 스타일 FK를 확정하지 못했을 때 요청의 `styleCode`/`styleName`을 표시·진단값으로 되살리던 우회를 제거했다.
+- [x] `AssignmentPlan.updatedAt @updatedAt`과 중복되던 수동 갱신 및 문자열 `cardId`를 FK처럼 보이게 하던 진단 필드명을 정리했다.
+- [ ] `AssignmentPlan.cardId` 전체 제거, WorkLog line 메타데이터 정규화, WorkRecord-Line 복합 FK는 별도 구조 변경으로 남긴다. 현재 변경에 섞어 임의 DROP하지 않는다.
+
 ## 2026-07-25 폴백·동시성 후속
 
 - [x] 스케줄 화면에 오늘이 없을 때 첫 표시일을 오늘로 취급하던 `getTodayDayIndex → 0` fallback을 제거했다.
