@@ -1,5 +1,17 @@
 # BARO 프로젝트 컨텍스트
 
+### 2026-07-25 매출 버킷과 지급 시간 버킷 동기화 정책
+
+- 고객 매출 버킷은 고객에게 받을 판매단가 구간이고, 스타일 시간 버킷은 직원 지급액 산정의 근거가 되는 ST/AT/CT 수량 구간이다. 데이터와 계산 목적은 분리하지만 운영 수량 경계는 함께 맞춘다.
+- 고객 매출 버킷을 추가하거나 삭제하는 저장 작업은 해당 고객에게 연결된 스타일의 지급 시간 버킷 변경과 하나의 명시적인 트랜잭션으로 처리한다. 한쪽을 다른 쪽의 조회 fallback으로 대신하거나 같은 FK를 암묵적으로 공유하지 않는다.
+- 버킷 숫자는 해당 구간의 시작 수량이다. 예를 들어 `100, 300, 500`에서 `300`을 삭제하면 이후 생성되는 수량 300~499의 배정은 `100` 버킷을 사용한다. `100, 500`에 `300`을 추가하면 이후 생성되는 수량 300~499의 배정은 `300` 버킷을 사용한다.
+- 버킷 변경은 변경 이후 생성·수정되는 운영 데이터에만 적용한다. 기존 배정의 ST/CT 스냅샷, 기존 WorkRecord의 CT, 확정·잠금된 급여 및 기존 주문의 판매단가 스냅샷을 현재 버킷으로 재계산하거나 변경하지 않는다.
+- 버킷 삭제 시 삭제한 구간의 현재 편집 대상 값만 활성 버전에서 제외한다. 그대로 남는 수량 구간의 판매단가와 ST는 새 활성 버전으로 정확히 승계한다.
+- 버킷 추가 시 그대로 남는 구간의 판매단가와 ST는 승계하고, 새 판매단가 셀만 미입력 상태로 둔다. 신규 ST는 새 수량보다 작은 기존 버킷 중 가장 가까운 버킷의 ST를 실제 `StyleProcessStandard` 행으로 복사한다. 예를 들어 `100, 500`에 `300`을 추가하면 공정별 `ST(100) -> ST(300)`으로 복사한다. 이 값은 `setBy=BUCKET_INHERITED_REVIEW`로 기록하고 UI에서 검토가 필요한 빨간색 값으로 표시한다. AT는 저장 복사본을 만들지 않고 기존 `AT(q)=a*q+b`를 새 수량에 평가해 추정 가능할 때 표시한다.
+- 신규 버킷보다 작은 기존 버킷이 없거나, 해당 하위 버킷의 유효한 ST가 없는 공정이 하나라도 있으면 전체 버킷 변경을 거부한다. PT, 상위 버킷, 전역 기본값 또는 임의 값으로 보완하지 않는다.
+- 버킷 변경은 향후 대시보드 검토 알림의 원천 이벤트다. 최소한 변경 고객 관계, 추가·삭제된 수량 경계, 영향받은 스타일과 공정, PT에서 초기화된 ST, 단가 미입력 셀, 변경자와 변경 시각을 관계형 변경 이력으로 남길 수 있어야 한다. JSON 로그나 화면 문자열만으로 관계를 표현하지 않는다.
+- 향후 알림은 예를 들어 “고객 A에 300 버킷이 추가되어 스타일 X/Y의 ST(300)가 ST(100) 값으로 초기화되었습니다. 판매단가와 신규 ST를 검토하세요”처럼 영향 범위를 정확한 FK로 조회해 표시한다.
+
 ### 2026-07-25 관계형 정합성 마이너 정리
 
 - `syncAssignmentPlansForOrderLock`의 스타일별 수량/FK 검증은 완료·급여잠금 여부와 무관하게 해당 주문의 모든 `AssignmentPlan`을 대상으로 한다. 잠금 상태는 수정 가능 여부에만 사용하며 합계에서 제외하지 않는다.
@@ -136,15 +148,15 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 - 고객 판매단가용 기본 버킷은 `OrgRelationship.salesBucketSetVersionId`, 스타일 시간용 버킷은 `Style.timeBucketSetVersionId`로 각각 명시적으로 연결한다. 두 관계는 같은 버전을 가리킬 수 있지만 숨은 상속이나 조회 fallback으로 서로를 대신하지 않는다.
 - 버킷은 `QuantityBucketSet -> QuantityBucketSetVersion -> QuantityBucketEntry` 관계형 구조로 저장한다. 기존 버전의 entry를 수정하지 않고 변경마다 새 버전을 만든다.
 - `Style.timeBucketSource`는 `CUSTOMER_DEFAULT` 또는 `STYLE_OVERRIDE`다. 고객 기본 버킷을 바꿀 때는 `CUSTOMER_DEFAULT` 스타일만 새 버전으로 이동하며 예외 스타일은 그대로 둔다.
-- 새 버킷의 ST는 모든 공정에 `StyleProcessStandard` 실제 행을 만들고 `bucketStSeconds=ptSeconds`, `setBy=PT_DERIVED`로 기록한다. PT가 없거나 0이면 전체 변경을 거부한다. 조회 시 PT나 인접 버킷을 대신 쓰지 않는다.
+- 새 버킷의 ST는 모든 공정에 `StyleProcessStandard` 실제 행을 만들고, 새 수량보다 작은 기존 버킷 중 가장 가까운 버킷의 `bucketStSeconds`를 복사해 `setBy=BUCKET_INHERITED_REVIEW`로 기록한다. 유효한 하위 버킷 ST가 없으면 전체 변경을 거부한다. 조회 시 PT나 다른 버킷을 대신 쓰지 않는다.
 - AT는 버킷별 저장값이 아니라 기존 곡선 `AT(q)=a*q+b`를 선택된 수량에 직접 평가한다.
 - 배정 생성/수량 변경 시 `AssignmentPlan.assignmentStSnapshot`에 버킷 버전, 버킷 수량, 공정별 `styleProcessId/stSeconds/stSource`를 동결한다. 이후 과거 배정의 잔여 ST와 실제 생산 ST는 현재 `StyleProcessStandard`를 다시 읽지 않고 이 스냅샷만 사용한다. 스냅샷이 없는 레거시 배정은 현재 값으로 재구성하지 않고 미계산 진단으로 드러낸다.
-- `PT_DERIVED` ST가 CT 생성 근거가 된 배정은 `ctReviewRequired=true`다. 관리자가 CT를 검토해 `ctReviewedAt`을 기록하기 전에는 해당 작업월의 급여 잠금을 거부한다.
+- `BUCKET_INHERITED_REVIEW` ST가 CT 생성 근거가 된 배정은 `ctReviewRequired=true`다. 관리자가 신규 ST와 CT를 검토해 `ctReviewedAt`을 기록하기 전에는 해당 작업월의 급여 잠금을 거부한다.
 - `ST_STANDARD_BUCKETS`는 새 조직/고객에 최초 기본 버전을 만드는 템플릿으로만 허용한다. 운영 계산에서 전역 버킷 목록으로 사용하지 않는다.
 
 #### 2026-07-25 구현 검증 및 발견된 버그 (커밋 `629635d`, 수정 완료)
 
-- 2026-07-24 커밋 `f8a290b`("Implement versioned customer quantity buckets")로 위 가변 수량 버킷 뼈대(스키마, 마이그레이션, 리졸버, CT 검토 게이트, 급여 잠금 차단, 단가 관리 화면의 버킷 저장, `StyleTimeMatrix`의 동적 버킷 렌더링)는 코드 리뷰로 정확성까지 확인됐다. `syncStyleStandardsForBucketVersion`이 `upsert(update:{})`라 기존 ST 값은 절대 안 건드리고 신규 버킷만 `PT_DERIVED`로 채우는 것, PT 없으면 트랜잭션 전체 409 롤백되는 것, `ctReviewRequired`가 `savePayrollSnapshot`에서 실제로 급여 잠금을 막는 것까지 코드 레벨로 검증됨.
+- 2026-07-24 커밋 `f8a290b`("Implement versioned customer quantity buckets")로 가변 수량 버킷 뼈대가 구현됐다. 당시 신규 버킷을 `PT_DERIVED`로 채우던 동작은 2026-07-25 정책에서 **가장 가까운 하위 버킷 ST 승계 + `BUCKET_INHERITED_REVIEW`**로 변경하기로 확정했으므로 현재 요구사항으로 간주하지 않는다. 기존 ST 불변, 트랜잭션 롤백, CT 검토 게이트 구조는 유지한다.
 - 같은 리뷰에서 실제 버그 2건을 발견해 커밋 `629635d`로 수정했다:
   1. `PUT /styles/:styleId`의 저장 트랜잭션 마지막 `findUniqueOrThrow`가 `timeBucketSetVersion` relation을 `include`하지 않아, **기존 스타일을 저장할 때마다 응답의 `timeBucketQuantities`가 항상 빈 배열로 돌아왔다.** 프론트가 이 응답을 그대로 폼 상태에 반영하므로 저장 직후 ST/AT 매트릭스의 수량 컬럼이 전부 사라져 보였다(새로고침하면 복구 — DB의 FK 자체는 건드리지 않아 데이터 유실은 아니었음). `include`를 추가해 해소.
   2. `POST /styles/import`(대량 등록)는 신규 스타일에 `timeBucketSetVersionId`를 전혀 설정하지 않았고 응답도 같은 `include` 누락이 있었다. `POST /styles`가 쓰던 "고객 기본 버킷 있으면 그것, 없으면 조직 표준 1-3-5 세트를 그 자리에서 생성" 로직을 `resolveDefaultTimeBucketSetVersionIdForNewStyle` 공용 함수로 추출해 재사용하도록 고쳤다. 기존 스타일을 재-import하는 경우는(PUT과 동일 원칙으로) 버킷을 건드리지 않는다. 이 엔드포인트를 호출하는 프론트 코드가 현재 없어(grep 0건) 실사용 영향은 없었다.
