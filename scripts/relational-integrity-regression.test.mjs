@@ -43,3 +43,14 @@ test('dashboard order KPI uses the WorkOrder FK only', async () => {
   assert.match(resolver, /assignment\?\.workOrderId/);
   assert.doesNotMatch(resolver, /originOrderId|cardId|orderNo|split/);
 });
+
+test('WorkRecord normalization loads customer-owned Styles by canonical PK', async () => {
+  const backend = await read('backend/src/index.ts');
+  const start = backend.indexOf('const syncWorkRecordRefs = async (');
+  const end = backend.indexOf('const resolveAssignmentPlanStyleMetaById', start);
+  assert.ok(start >= 0 && end > start);
+  const helper = backend.slice(start, end);
+  assert.match(helper, /prisma\.style\.findMany\(\{\s*where: \{ id: \{ in: styleIds \} \}/);
+  assert.doesNotMatch(helper, /prisma\.style\.findMany\(\{[\s\S]{0,160}orgId/);
+  assert.doesNotMatch(helper, /linkedStyle\?\.(?:code|name) \?\? record\?\.style/);
+});

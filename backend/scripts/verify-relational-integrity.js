@@ -10,6 +10,7 @@ const prisma = new PrismaClient();
 const checks = [
   ["WorkRecord canonical FK missing", `SELECT COUNT(*)::int AS count FROM "WorkRecord" WHERE "assignmentPlanId" IS NULL OR "styleId" IS NULL OR "styleProcessId" IS NULL`],
   ["WorkRecord canonical relation mismatch", `SELECT COUNT(*)::int AS count FROM "WorkRecord" wr JOIN "AssignmentPlan" ap ON ap.id=wr."assignmentPlanId" JOIN "Style" s ON s.id=wr."styleId" JOIN "StyleProcess" sp ON sp.id=wr."styleProcessId" WHERE wr."orgId"<>ap."orgId" OR wr."orgId"<>sp."orgId" OR sp."styleId"<>wr."styleId" OR s.id<>sp."styleId"`],
+  ["Cross-org Style without OrgRelationship", `SELECT COUNT(*)::int AS count FROM "WorkRecord" wr JOIN "Style" s ON s.id=wr."styleId" LEFT JOIN "OrgRelationship" rel ON rel."manufacturerOrgId"=wr."orgId" AND rel."brandOrgId"=s."orgId" WHERE wr."orgId"<>s."orgId" AND rel.id IS NULL`],
   ["AssignmentPlan without AssignmentCard", `SELECT COUNT(*)::int AS count FROM "AssignmentPlan" WHERE "assignmentCardId" IS NULL`],
   ["AssignmentPlan identity mismatch", `SELECT COUNT(*)::int AS count FROM "AssignmentPlan" ap JOIN "AssignmentCard" ac ON ac.id=ap."assignmentCardId" WHERE ap."orgId"<>ac."orgId" OR ap."styleId" IS DISTINCT FROM ac."styleId" OR ap."workOrderId" IS DISTINCT FROM ac."workOrderId" OR ap."buyerOrgId" IS DISTINCT FROM ac."buyerOrgId"`],
   ["Employee factory/line org mismatch", `SELECT COUNT(*)::int AS count FROM "Employee" e LEFT JOIN "Factory" f ON f.id=e."factoryId" LEFT JOIN "Line" l ON l.id=e."lineId" WHERE (f.id IS NOT NULL AND f."orgId"<>e."orgId") OR (l.id IS NOT NULL AND l."orgId"<>e."orgId")`],
@@ -24,4 +25,9 @@ const checks = [
     console.log(`${name}: ${count}`);
   }
   if (total > 0) process.exitCode = 1;
-})().finally(() => prisma.$disconnect());
+})()
+  .catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  })
+  .finally(() => prisma.$disconnect());

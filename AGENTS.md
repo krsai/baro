@@ -74,6 +74,7 @@
 
 ### 정확 계산 원칙 (강제)
 - **2026-07-25 FK 강화:** 정상 `WorkRecord`의 `assignmentPlanId/styleId/styleProcessId`는 필수이며 삭제 시 `SET NULL`로 고아화하지 않는다. `assignmentPlan`은 `(assignmentPlanId, orgId)`, `styleProcess`는 `(styleProcessId, styleId, orgId)` 복합 FK로 제조사 조직과 스타일 공정 일치를 강제한다. `Style`은 고객 조직 소유일 수 있으므로 `styleId -> Style.id` 단일 FK가 맞으며 `WorkRecord.orgId = Style.orgId`를 강제하면 안 된다. 운영 DB에서 확인된 978개 WorkRecord와 648개 StyleProcess는 제조사 org 1이 고객 org 2의 Style을 사용하는 정상 교차 조직 관계였다. 라인·공장 삭제도 연결 작업기록이 있으면 409로 거부한다.
+- WorkRecord 저장 정규화에서 Style은 AssignmentPlan이 확정한 `styleId` PK로 조회한다. 제조사 `orgId`로 Style을 필터링하거나 조회 실패를 요청 payload의 `styleCode/styleName`으로 보완하지 않는다. 교차 조직 Style은 `OrgRelationship(manufacturerOrgId, brandOrgId)`가 존재해야 하며 무결성 진단에서 이를 확인한다.
 - 배정 화면은 `AssignmentCard` FK row가 없을 때 `cardId/originOrderId` 문자열을 분해해 synthetic card를 만들지 않는다. 연결 이상은 기능을 비활성화해 드러낸다.
 - 월별 라인 생산능력은 백엔드 계산 응답만 사용한다. 응답에 없는 월이나 capacity 값을 프론트가 근무일수×일일 생산능력으로 다시 만들지 않으며 0/미계산으로 드러낸다.
 - 핵심 지표(생산률, 실제 생산 ST, 진행률, 급여, AT 학습 입력)는 정확한 소스오브트루스가 연결될 때만 계산한다.

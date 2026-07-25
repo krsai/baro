@@ -7257,10 +7257,7 @@ const syncWorkRecordRefs = async ({
     await Promise.all([
     styleIds.length > 0
       ? prisma.style.findMany({
-          where: {
-            orgId,
-            id: { in: styleIds },
-          },
+          where: { id: { in: styleIds } },
           select: {
             id: true,
             code: true,
@@ -7307,11 +7304,8 @@ const syncWorkRecordRefs = async ({
       ...record,
       lineId: toPositiveIntOrNull(record?.lineId),
       styleId: recordStyleId,
-      styleCode: resolveOptionalString(
-        linkedStyle?.code ?? record?.styleCode,
-        null
-      ),
-      styleName: resolveOptionalString(linkedStyle?.name ?? record?.styleName, null),
+      styleCode: resolveOptionalString(linkedStyle?.code, null),
+      styleName: resolveOptionalString(linkedStyle?.name, null),
       styleProcessId:
         toPositiveIntOrNull(linkedStyleProcess?.id),
       processCode: resolveOptionalString(

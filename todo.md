@@ -9,6 +9,7 @@
 - [x] 서버 응답에 없는 월별 라인 생산능력을 프론트가 임의 계산하는 fallback을 제거했다.
 - [x] `npm run verify:relational-integrity` 진단 명령을 추가했다.
 - [x] Railway 운영 DB를 직접 진단해 `WorkRecord.orgId ↔ Style.orgId` 차이가 고객 Style을 제조사가 사용하는 정상 관계임을 확인했다. Style 조직을 덮어쓰지 않고 잘못 설계된 복합 FK를 단일 Style FK로 바로잡았다.
+- [x] WorkRecord 저장 정규화의 Style 조회에서 제조사 `orgId` 필터와 요청 문자열 fallback을 제거하고, 교차 조직 Style의 `OrgRelationship` 진단을 추가했다.
 
 ## 2026-07-25 매출 단가 정밀 리뷰 후속
 
