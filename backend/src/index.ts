@@ -26800,7 +26800,11 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
   }
   const quantities = normalizeQuantityBucketValues(req.body?.quantities);
   const styleId = toPositiveIntOrNull(req.body?.styleId);
+  const expectedVersionId = toPositiveIntOrNull(req.body?.expectedVersionId);
   const useCustomerDefault = req.body?.useCustomerDefault === true;
+  if (expectedVersionId === null) {
+    return res.status(400).json({ ok: false, error: "expectedVersionId is required" });
+  }
   const actor = getCurrentRequestActor();
 
   const result = await prisma.$transaction(
@@ -26817,11 +26821,21 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
         },
       });
       if (!currentRelationship) throw createHttpError(404, "customer not found");
+      const relationshipCountForBrand = await tx.orgRelationship.count({
+        where: { brandOrgId: currentRelationship.brandOrgId },
+      });
+      if (relationshipCountForBrand > 1) {
+        throw createHttpError(
+          409,
+          "this brand is connected to multiple manufacturers; relationship-specific payroll buckets must be configured before changing buckets"
+        );
+      }
       if (styleId !== null) {
         const style = await tx.style.findFirst({
           where: { id: styleId, orgId: relationship.brandOrgId },
           select: {
             id: true,
+            timeBucketSource: true,
             timeBucketSetVersionId: true,
             timeBucketSetVersion: {
               select: { quantityBucketSetId: true },
@@ -26840,6 +26854,13 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
         });
         if (!style) throw createHttpError(404, "style not found for customer");
         if (useCustomerDefault) {
+          const previousOverrideVersion =
+            style.salesBucketOverrides[0]?.quantityBucketSetVersion ?? null;
+          const currentlyActiveVersion =
+            previousOverrideVersion ?? currentRelationship.salesBucketSetVersion;
+          if (!currentlyActiveVersion || currentlyActiveVersion.id !== expectedVersionId) {
+            throw createHttpError(409, "quantity buckets changed since this screen was loaded; refresh and try again");
+          }
           const defaultVersionId = currentRelationship.salesBucketSetVersionId;
           if (!defaultVersionId) {
             throw createHttpError(409, "customer default bucket version is missing");
@@ -26852,8 +26873,18 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           const defaultQuantities = normalizeQuantityBucketValues(
             defaultEntries.map((entry) => entry.bucketQuantity)
           );
-          const previousOverrideVersion =
-            style.salesBucketOverrides[0]?.quantityBucketSetVersion ?? null;
+          if (!previousOverrideVersion && style.timeBucketSource === "CUSTOMER_DEFAULT") {
+            return {
+              versionId: defaultVersionId,
+              styleId: style.id,
+              quantities: defaultQuantities,
+              addedQuantities: [],
+              removedQuantities: [],
+              affectedStyleCount: 0,
+              copiedPriceCount: 0,
+              unreviewedStandardCount: 0,
+            };
+          }
           const previousQuantities = previousOverrideVersion
             ? normalizeQuantityBucketValues(
                 previousOverrideVersion.entries.map((entry) => entry.bucketQuantity)
@@ -26865,18 +26896,9 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           const removedQuantities = previousQuantities.filter(
             (quantity) => !defaultQuantities.includes(quantity)
           );
-          const retainedQuantities = defaultQuantities.filter(
-            (quantity) => previousQuantities.includes(quantity)
-          );
-          const copiedPriceCount = await copyRetainedSalesPricesToVersion({
-            db: tx,
-            relationshipId: relationship.id,
-            styleIds: [style.id],
-            previousVersionId: previousOverrideVersion?.id ?? null,
-            nextVersion: currentRelationship.salesBucketSetVersion,
-            retainedQuantities,
-            actor,
-          });
+          // A style override is not the customer's canonical default price list.
+          // Returning to the default must therefore only switch the version link.
+          const copiedPriceCount = 0;
           if (!style.timeBucketSetVersion?.quantityBucketSetId) {
             throw createHttpError(409, `style ${style.id} is missing a time bucket set`);
           }
@@ -26925,6 +26947,9 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           style.salesBucketOverrides[0]?.quantityBucketSetVersion ??
           currentRelationship.salesBucketSetVersion;
         if (!previousVersion) throw createHttpError(409, "sales bucket version is missing");
+        if (previousVersion.id !== expectedVersionId) {
+          throw createHttpError(409, "quantity buckets changed since this screen was loaded; refresh and try again");
+        }
         const previousQuantities = normalizeQuantityBucketValues(
           ensureArray(previousVersion?.entries).map((entry) => entry.bucketQuantity)
         );
@@ -27015,6 +27040,9 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
 
       const previousVersion = currentRelationship.salesBucketSetVersion;
       if (!previousVersion) throw createHttpError(409, "customer default bucket version is missing");
+      if (previousVersion.id !== expectedVersionId) {
+        throw createHttpError(409, "quantity buckets changed since this screen was loaded; refresh and try again");
+      }
       const previousQuantities = normalizeQuantityBucketValues(
         previousVersion.entries.map((entry) => entry.bucketQuantity)
       );

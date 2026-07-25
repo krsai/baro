@@ -25,6 +25,13 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
   assert.match(quantityBucketRoute, /copyRetainedSalesPricesToVersion/);
   assert.match(quantityBucketRoute, /addedQuantities/);
   assert.match(quantityBucketRoute, /removedQuantities/);
+  assert.match(quantityBucketRoute, /expectedVersionId is required/);
+  assert.match(quantityBucketRoute, /quantity buckets changed since this screen was loaded/);
+  assert.match(quantityBucketRoute, /connected to multiple manufacturers/);
+  assert.match(
+    quantityBucketRoute,
+    /Returning to the default must therefore only switch the version link/
+  );
   assert.match(backend, /setBy: "BUCKET_INHERITED_REVIEW"/);
   assert.doesNotMatch(
     backend.slice(
@@ -35,6 +42,9 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
   );
   assert.match(frontend, /기존 단가와 과거 급여 자료는 유지됩니다/);
   assert.match(frontend, /savedCustomerBuckets/);
+  assert.match(frontend, /expectedVersionId/);
+  assert.match(frontend, /requestBucketConfirmation/);
+  assert.doesNotMatch(frontend, /window\.confirm\(confirmation\)/);
 });
 
 test('sales prices use Decimal rows tied to a bucket entry and version', () => {

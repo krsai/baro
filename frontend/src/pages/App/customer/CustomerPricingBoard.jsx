@@ -1,9 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
   Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   FormControl,
   InputLabel,
   MenuItem,
@@ -88,6 +93,14 @@ const TEXT = {
     inheritedHint: '현재 고객 기본 버킷을 사용합니다. 별도 설정을 선택하면 이 스타일만 변경할 수 있습니다.',
     saveBuckets: '버킷 저장',
     bucketSaved: '수량 버킷을 저장했습니다.',
+    noBucketChanges: '변경된 버킷이 없습니다.',
+    savePricesFirst: '버킷을 변경하기 전에 편집 중인 단가를 저장하거나 취소하세요.',
+    cancel: '취소',
+    confirmBucketChange: '버킷 변경',
+    addedBuckets: '추가',
+    removedBuckets: '삭제',
+    none: '없음',
+    bucketChangeImpact: '기존 단가와 과거 급여는 유지됩니다. 신규 단가는 빈값이며, 신규 ST는 가장 가까운 하위 버킷 값이 복사되어 검토가 필요합니다.',
   },
   en: {
     title: 'Pricing',
@@ -123,6 +136,14 @@ const TEXT = {
     inheritedHint: 'This style currently uses the customer default. Choose custom to edit only this style.',
     saveBuckets: 'Save buckets',
     bucketSaved: 'Quantity buckets saved.',
+    noBucketChanges: 'There are no bucket changes.',
+    savePricesFirst: 'Save or discard the edited prices before changing buckets.',
+    cancel: 'Cancel',
+    confirmBucketChange: 'Change buckets',
+    addedBuckets: 'Added',
+    removedBuckets: 'Removed',
+    none: 'none',
+    bucketChangeImpact: 'Existing prices and historical payroll remain unchanged. New prices stay empty, and newly created ST values are copied from the nearest lower bucket and require review.',
   },
   vi: {
     title: 'Don gia',
@@ -158,6 +179,14 @@ const TEXT = {
     inheritedHint: 'Style nay dang dung moc mac dinh cua khach hang. Chon dat rieng de sua.',
     saveBuckets: 'Luu moc',
     bucketSaved: 'Da luu moc so luong.',
+    noBucketChanges: 'Khong co thay doi moc so luong.',
+    savePricesFirst: 'Hay luu hoac huy gia dang sua truoc khi doi moc.',
+    cancel: 'Huy',
+    confirmBucketChange: 'Doi moc',
+    addedBuckets: 'Them',
+    removedBuckets: 'Xoa',
+    none: 'khong co',
+    bucketChangeImpact: 'Don gia hien tai va bang luong cu duoc giu nguyen. Don gia moi de trong; ST moi duoc sao chep tu moc thap hon gan nhat va can kiem tra.',
   },
 };
 
@@ -207,9 +236,11 @@ const CustomerPricingBoard = () => {
   const [bucketTarget, setBucketTarget] = useState('customer');
   const [customerBuckets, setCustomerBuckets] = useState({});
   const [savedCustomerBuckets, setSavedCustomerBuckets] = useState({});
+  const [savedCustomerBucketVersionIds, setSavedCustomerBucketVersionIds] = useState({});
   const [styleBucketModes, setStyleBucketModes] = useState({});
   const [styleBuckets, setStyleBuckets] = useState({});
   const [savedStyleBuckets, setSavedStyleBuckets] = useState({});
+  const [savedStyleBucketVersionIds, setSavedStyleBucketVersionIds] = useState({});
   const [newSalesBucket, setNewSalesBucket] = useState('');
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [loadingStyles, setLoadingStyles] = useState(false);
@@ -217,6 +248,21 @@ const CustomerPricingBoard = () => {
   const [loadingPrices, setLoadingPrices] = useState(false);
   const [savingPrices, setSavingPrices] = useState(false);
   const [priceReloadKey, setPriceReloadKey] = useState(0);
+  const [bucketConfirmation, setBucketConfirmation] = useState(null);
+  const bucketConfirmationResolver = useRef(null);
+
+  const requestBucketConfirmation = useCallback((details) => {
+    setBucketConfirmation(details);
+    return new Promise((resolve) => {
+      bucketConfirmationResolver.current = resolve;
+    });
+  }, []);
+
+  const closeBucketConfirmation = useCallback((confirmed) => {
+    bucketConfirmationResolver.current?.(confirmed);
+    bucketConfirmationResolver.current = null;
+    setBucketConfirmation(null);
+  }, []);
 
   const customerQuery = useMemo(() => buildQueryString({ orgId: activeOrgId }), [activeOrgId]);
   const selectedCustomer = useMemo(
@@ -325,18 +371,25 @@ const CustomerPricingBoard = () => {
           ...previous,
           [customerKey]: defaultQuantities,
         }));
+        setSavedCustomerBucketVersionIds((previous) => ({
+          ...previous,
+          [customerKey]: Number(payload?.defaultVersion?.id) || null,
+        }));
         const nextModes = {};
         const nextBuckets = {};
+        const nextVersionIds = {};
         (Array.isArray(payload?.styles) ? payload.styles : []).forEach((style) => {
           const key = `${customerKey}:${style.id}`;
           nextModes[key] = style.source === 'STYLE_OVERRIDE' ? 'custom' : 'customer';
           if (Array.isArray(style?.version?.quantities)) {
             nextBuckets[key] = normalizeBuckets(style.version.quantities);
           }
+          nextVersionIds[key] = Number(style?.version?.id) || null;
         });
         setStyleBucketModes((previous) => ({ ...previous, ...nextModes }));
         setStyleBuckets((previous) => ({ ...previous, ...nextBuckets }));
         setSavedStyleBuckets((previous) => ({ ...previous, ...nextBuckets }));
+        setSavedStyleBucketVersionIds((previous) => ({ ...previous, ...nextVersionIds }));
       } catch (error) {
         if (active) showNotification(error?.message || text.loadFailed, 'error');
       }
@@ -475,13 +528,33 @@ const CustomerPricingBoard = () => {
 
   const saveActiveBuckets = useCallback(async () => {
     if (!selectedCustomerId) return;
+    const priceScopePrefix = `${selectedCustomerId}:${pricingBasis}:${currencyCode}:`;
+    const hasUnsavedPriceInScope = Object.entries(draftPrices).some(
+      ([key, value]) =>
+        key.startsWith(priceScopePrefix) &&
+        canonicalPrice(value) !== canonicalPrice(savedPrices[key])
+    );
+    if (hasUnsavedPriceInScope) {
+      showNotification(
+        text.savePricesFirst || 'Save or discard the edited prices before changing buckets.',
+        'warning'
+      );
+      return;
+    }
     const previousBuckets = selectedStyleId
       ? savedStyleBuckets[styleBucketKey] || resolvedCustomerBuckets
       : savedCustomerBuckets[customerBucketKey] || DEFAULT_SALES_BUCKETS;
+    const expectedVersionId = selectedStyleId
+      ? savedStyleBucketVersionIds[styleBucketKey]
+      : savedCustomerBucketVersionIds[customerBucketKey];
+    if (!expectedVersionId) {
+      showNotification(text.loadFailed, 'error');
+      return;
+    }
     const added = activeSalesBuckets.filter((quantity) => !previousBuckets.includes(quantity));
     const removed = previousBuckets.filter((quantity) => !activeSalesBuckets.includes(quantity));
     if (added.length === 0 && removed.length === 0) {
-      showNotification(text.bucketSaved, 'info');
+      showNotification(text.noBucketChanges, 'info');
       return;
     }
     const targetLabel = selectedStyleId
@@ -490,7 +563,8 @@ const CustomerPricingBoard = () => {
     const confirmation = languageCode === 'ko'
       ? `${targetLabel} 버킷을 변경합니다.\n\n추가: ${added.join(', ') || '없음'}\n삭제: ${removed.join(', ') || '없음'}\n\n기존 단가와 과거 급여 자료는 유지됩니다. 새 버킷의 단가는 비어 있고, ST는 바로 아래 구간 값으로 복사되어 빨간색 검토 대상으로 표시됩니다. 계속할까요?`
       : `Change buckets for ${targetLabel}?\n\nAdded: ${added.join(', ') || 'none'}\nRemoved: ${removed.join(', ') || 'none'}\n\nExisting prices and historical payroll remain unchanged. New prices stay empty and new ST values require review.`;
-    if (!window.confirm(confirmation)) return;
+    const confirmed = await requestBucketConfirmation({ targetLabel, added, removed, confirmation });
+    if (!confirmed) return;
     setSavingBuckets(true);
     try {
       const result = await requestJSON(
@@ -499,6 +573,7 @@ const CustomerPricingBoard = () => {
           method: 'PUT',
           body: JSON.stringify({
             quantities: activeSalesBuckets,
+            expectedVersionId,
             ...(selectedStyleId ? { styleId: Number(selectedStyleId) } : {}),
             useCustomerDefault: Boolean(selectedStyleId && !selectedStyleUsesCustomBuckets),
           }),
@@ -510,10 +585,18 @@ const CustomerPricingBoard = () => {
           ...previous,
           [styleBucketKey]: [...activeSalesBuckets],
         }));
+        setSavedStyleBucketVersionIds((previous) => ({
+          ...previous,
+          [styleBucketKey]: Number(result?.versionId) || expectedVersionId,
+        }));
       } else {
         setSavedCustomerBuckets((previous) => ({
           ...previous,
           [customerBucketKey]: [...activeSalesBuckets],
+        }));
+        setSavedCustomerBucketVersionIds((previous) => ({
+          ...previous,
+          [customerBucketKey]: Number(result?.versionId) || expectedVersionId,
         }));
       }
       setPriceReloadKey((value) => value + 1);
@@ -530,10 +613,17 @@ const CustomerPricingBoard = () => {
     activeSalesBuckets,
     customerBucketKey,
     customerQuery,
+    currencyCode,
+    draftPrices,
     languageCode,
+    pricingBasis,
     resolvedCustomerBuckets,
+    requestBucketConfirmation,
     savedCustomerBuckets,
+    savedCustomerBucketVersionIds,
+    savedPrices,
     savedStyleBuckets,
+    savedStyleBucketVersionIds,
     selectedCustomerId,
     selectedCustomer,
     selectedStyleId,
@@ -542,6 +632,7 @@ const CustomerPricingBoard = () => {
     styleBucketKey,
     styles,
     text.bucketSaved,
+    text.noBucketChanges,
     text.loadFailed,
   ]);
 
@@ -1010,6 +1101,37 @@ const CustomerPricingBoard = () => {
           )}
         </Paper>
       </Stack>
+      <Dialog
+        open={Boolean(bucketConfirmation)}
+        onClose={() => closeBucketConfirmation(false)}
+        aria-labelledby="bucket-change-dialog-title"
+      >
+        <DialogTitle id="bucket-change-dialog-title">
+          {text.confirmBucketChange || 'Change buckets'}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText component="div">
+            <Stack spacing={1}>
+              <Typography>{bucketConfirmation?.targetLabel}</Typography>
+              <Typography>
+                {text.addedBuckets}: {bucketConfirmation?.added?.join(', ') || text.none}
+              </Typography>
+              <Typography>
+                {text.removedBuckets}: {bucketConfirmation?.removed?.join(', ') || text.none}
+              </Typography>
+              <Typography>{text.bucketChangeImpact}</Typography>
+            </Stack>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => closeBucketConfirmation(false)}>
+            {text.cancel || 'Cancel'}
+          </Button>
+          <Button variant="contained" onClick={() => closeBucketConfirmation(true)} autoFocus>
+            {text.confirmBucketChange || 'Change buckets'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </AppPageContainer>
   );
 };
