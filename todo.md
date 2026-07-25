@@ -1,5 +1,14 @@
 # TODO
 
+## 2026-07-25 ST 수량 버킷 FK 전환
+
+- [x] 운영 Railway DB의 ST 15,301행을 진단해 시간 버전 누락·entry 누락·해석 불가 교차 조직 행이 모두 0건임을 확인했다.
+- [x] `StyleProcessStandard`를 `QuantityBucketEntry`의 entry+version 복합 FK로 전환하고 레거시 `bucketQuantity` 컬럼을 제거했다.
+- [x] ST 조회·저장·배정 상세 수정·버킷 변경을 entry FK 기준으로 전환했다.
+- [x] 버킷 변경 시 유지 ST도 새 entry에 복제하고 신규 ST만 직전 활성 하위 entry에서 승계하도록 변경했다.
+- [x] 과거 snapshot을 현재 숫자 ST로 복구하던 레거시 migration/검증 스크립트를 제거했다.
+- [ ] 배포 후 `npm run verify:st-bucket-fk`로 null/orphan FK와 레거시 컬럼 0건을 최종 확인한다.
+
 ## 2026-07-25 버킷 동기화 리뷰 후속 수정 완료
 
 - [x] 화면이 읽은 `expectedVersionId`와 서버 활성 버전을 비교해 오래 열린 화면의 전체 교체 저장은 409로 거부한다.

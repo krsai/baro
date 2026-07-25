@@ -157,6 +157,9 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 - **2026-07-25 동시성·관계 안전장치:** 버킷 전체 교체 PUT은 클라이언트가 마지막으로 읽은 `expectedVersionId`를 필수로 보내며, 서버 활성 버전과 다르면 409로 거부한다. 스타일 예외에서 고객 기본으로 복귀할 때는 예외 가격을 고객 기본 가격표에 복사하지 않고 버전 연결만 전환한다.
 - 현재 지급 시간 버킷 연결은 `Style.timeBucketSetVersionId` 하나뿐이므로 같은 브랜드가 여러 제조사와 관계를 맺은 경우 관계별 시간을 안전하게 표현할 수 없다. 이 상태에서 저장 범위를 추정하거나 특정 주문만 골라 갱신하는 우회 처리는 금지하며, 버킷 변경 API는 해당 브랜드의 제조사 관계가 2개 이상이면 409로 차단한다.
 - 버킷 변경 전에 같은 고객·판매방식·통화 범위의 미저장 단가가 있으면 먼저 단가를 저장하거나 취소하도록 요구한다. 버킷 저장 후 가격 재조회로 사용자 초안을 조용히 잃으면 안 된다.
+- **2026-07-25 ST 버킷 FK 전환:** `StyleProcessStandard.bucketQuantity` 물리 컬럼과 `(styleProcessId,bucketQuantity)` 숫자 매칭을 제거했다. ST는 필수 `quantityBucketEntryId + quantityBucketSetVersionId` 복합 FK로 정확한 `QuantityBucketEntry`를 참조한다. 수량 표시는 relation의 `QuantityBucketEntry.bucketQuantity`를 JOIN해 얻는다.
+- 버킷 버전 변경 시 유지 수량도 새 버전 entry에 연결된 새 ST 행으로 복제한다. 신규 수량만 직전 버전의 정확한 하위 entry ST에서 복사하고 `BUCKET_INHERITED_REVIEW`로 기록한다. 같은 숫자의 과거 entry, PT, 상위 버킷은 후보가 아니다.
+- 운영 Railway DB의 기존 ST 15,301행을 진단한 결과 시간 버전·entry 누락은 0건이었고 모두 정확한 현재 entry PK로 백필 가능했다. 제조사 ST와 브랜드 소유 버킷이 연결된 8,424행은 정상 교차 조직 관계이므로 `StyleProcessStandard.orgId == QuantityBucketEntry.orgId`를 강제하지 않는다.
 
 #### 2026-07-25 구현 검증 및 발견된 버그 (커밋 `629635d`, 수정 완료)
 

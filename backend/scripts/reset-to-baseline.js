@@ -418,6 +418,17 @@ async function runTimeModelRealignment(prisma, options = {}) {
       continue;
     }
 
+    const styleBucketEntries = await prisma.quantityBucketEntry.findMany({
+      where: {
+        quantityBucketSetVersion: {
+          timeStyles: { some: { id: row.styleId } },
+        },
+      },
+      select: { id: true, quantityBucketSetVersionId: true, bucketQuantity: true },
+    });
+    const bucketEntryByQuantity = new Map(
+      styleBucketEntries.map((entry) => [entry.bucketQuantity, entry])
+    );
     await prisma.$transaction(async (tx) => {
       await tx.styleProcess.update({
         where: { id: row.id },
@@ -432,14 +443,19 @@ async function runTimeModelRealignment(prisma, options = {}) {
 
       if (nextStandards.length > 0) {
         await tx.styleProcessStandard.createMany({
-          data: nextStandards.map((standard) => ({
-            orgId: row.orgId,
-            styleProcessId: row.id,
-            bucketQuantity: standard.quantity,
-            bucketStSeconds: standard.stSeconds,
-            setBy: standard.setBy,
-            setAt: standard.setAt ? new Date(standard.setAt) : undefined,
-          })),
+          data: nextStandards.map((standard) => {
+            const entry = bucketEntryByQuantity.get(standard.quantity);
+            if (!entry) throw new Error(`missing bucket entry ${standard.quantity}`);
+            return {
+              orgId: row.orgId,
+              styleProcessId: row.id,
+              quantityBucketEntryId: entry.id,
+              quantityBucketSetVersionId: entry.quantityBucketSetVersionId,
+              bucketStSeconds: standard.stSeconds,
+              setBy: standard.setBy,
+              setAt: standard.setAt ? new Date(standard.setAt) : undefined,
+            };
+          }),
         });
       }
     });
@@ -463,7 +479,8 @@ async function runTimeModelRealignment(prisma, options = {}) {
       : undefined,
     include: {
       standards: {
-        orderBy: [{ bucketQuantity: 'asc' }, { id: 'asc' }],
+        orderBy: [{ quantityBucketEntry: { bucketQuantity: 'asc' } }, { id: 'asc' }],
+        include: { quantityBucketEntry: true },
       },
     },
     orderBy: [{ styleId: 'asc' }, { sortOrder: 'asc' }, { id: 'asc' }],

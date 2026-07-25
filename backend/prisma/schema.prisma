@@ -621,6 +621,7 @@ model QuantityBucketEntry {
   organization             Organization             @relation(fields: [orgId], references: [id], onDelete: Cascade)
   quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId], references: [id], onDelete: Cascade)
   salesPrices              CustomerSalesPrice[]
+  styleProcessStandards    StyleProcessStandard[]
 
   @@unique([quantityBucketSetVersionId, bucketQuantity])
   @@unique([id, quantityBucketSetVersionId], map: "QuantityBucketEntry_id_version_key")
@@ -767,21 +768,25 @@ model StyleProcess {
 }
 
 model StyleProcessStandard {
-  id              Int      @id @default(autoincrement())
-  orgId           Int
-  styleProcessId  Int
-  bucketQuantity  Int
-  bucketStSeconds Float
-  setBy           String?
-  setAt           DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                         Int      @id @default(autoincrement())
+  orgId                      Int
+  styleProcessId             Int
+  quantityBucketEntryId      Int
+  quantityBucketSetVersionId Int
+  bucketStSeconds            Float
+  setBy                      String?
+  setAt                      DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
 
-  organization Organization @relation(fields: [orgId], references: [id])
-  styleProcess StyleProcess @relation(fields: [styleProcessId], references: [id], onDelete: Cascade)
+  organization       Organization             @relation(fields: [orgId], references: [id])
+  styleProcess       StyleProcess             @relation(fields: [styleProcessId], references: [id], onDelete: Cascade)
+  quantityBucketEntry QuantityBucketEntry     @relation(fields: [quantityBucketEntryId, quantityBucketSetVersionId], references: [id, quantityBucketSetVersionId], onDelete: Restrict, map: "StyleProcessStandard_entry_version_fkey")
 
-  @@unique([styleProcessId, bucketQuantity])
+  @@unique([styleProcessId, quantityBucketEntryId], map: "StyleProcessStandard_process_entry_key")
   @@index([orgId])
   @@index([styleProcessId])
+  @@index([quantityBucketEntryId])
+  @@index([quantityBucketSetVersionId])
 }
 
 model AtTrainingBucket {

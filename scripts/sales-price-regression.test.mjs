@@ -32,7 +32,16 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
     quantityBucketRoute,
     /Returning to the default must therefore only switch the version link/
   );
-  assert.match(backend, /setBy: "BUCKET_INHERITED_REVIEW"/);
+  assert.match(backend, /"BUCKET_INHERITED_REVIEW"/);
+  assert.match(schema, /quantityBucketEntryId\s+Int/);
+  assert.match(schema, /StyleProcessStandard_entry_version_fkey/);
+  assert.doesNotMatch(
+    schema.slice(
+      schema.indexOf('model StyleProcessStandard'),
+      schema.indexOf('model AtTrainingBucket')
+    ),
+    /bucketQuantity\s+Int/
+  );
   assert.doesNotMatch(
     backend.slice(
       backend.indexOf('const syncStyleStandardsForBucketVersion'),
