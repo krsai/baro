@@ -78,6 +78,11 @@ import {
   toErrorRecord,
 } from "./utils/http";
 import {
+  createQuantityBucketSetVersion as createRelationshipBucketSetVersion,
+  normalizeQuantityBucketValues,
+  syncStyleStandardsForBucketVersion as syncRelationshipStyleStandards,
+} from "./services/relationshipTimeBuckets";
+import {
   resolveWorkRecordProcessCode,
   resolveWorkRecordProcessName,
   resolveWorkRecordResponseStyleName,
@@ -1501,23 +1506,6 @@ const toOptionalProcessSeconds = (value: any) => {
   return Math.max(0, Math.round(parsed));
 };
 
-const normalizeQuantityBucketValues = (value: any): number[] => {
-  const quantities = Array.from(
-    new Set(
-      ensureArray(value)
-        .map((item) => toPositiveIntOrNull(item))
-        .filter((item): item is number => item !== null)
-    )
-  ).sort((left, right) => left - right);
-  if (quantities.length === 0) {
-    throw createHttpError(400, "at least one positive bucket quantity is required");
-  }
-  if (quantities.length > 50) {
-    throw createHttpError(400, "quantity bucket count cannot exceed 50");
-  }
-  return quantities;
-};
-
 const resolveStBucketQuantityFromValues = (
   orderQuantity: any,
   bucketQuantities: number[]
@@ -1531,190 +1519,6 @@ const resolveStBucketQuantityFromValues = (
   return resolvedBucket;
 };
 
-const createQuantityBucketSetVersion = async ({
-  db,
-  orgId,
-  setName,
-  existingSetId = null,
-  bucketQuantities,
-  actor,
-}: {
-  db: Prisma.TransactionClient;
-  orgId: number;
-  setName: string;
-  existingSetId?: number | null;
-  bucketQuantities: number[];
-  actor: string;
-}) => {
-  const quantities = normalizeQuantityBucketValues(bucketQuantities);
-  const set = existingSetId
-    ? await db.quantityBucketSet.findFirst({
-        where: { id: existingSetId, orgId },
-        select: { id: true },
-      })
-    : await db.quantityBucketSet.upsert({
-        where: { orgId_name: { orgId, name: setName } },
-        update: {},
-        create: { orgId, name: setName, createdBy: actor },
-        select: { id: true },
-      });
-  if (!set) throw createHttpError(409, "quantity bucket set scope mismatch");
-  const latest = await db.quantityBucketSetVersion.findFirst({
-    where: { quantityBucketSetId: set.id },
-    orderBy: { versionNumber: "desc" },
-    select: { versionNumber: true },
-  });
-  const version = await db.quantityBucketSetVersion.create({
-    data: {
-      orgId,
-      quantityBucketSetId: set.id,
-      versionNumber: (latest?.versionNumber ?? 0) + 1,
-      createdBy: actor,
-      entries: {
-        create: quantities.map((bucketQuantity) => ({ orgId, bucketQuantity })),
-      },
-    },
-    include: { entries: { orderBy: { bucketQuantity: "asc" } } },
-  });
-  await db.quantityBucketSet.update({
-    where: { id: set.id },
-    data: { currentVersionId: version.id },
-  });
-  return version;
-};
-
-const syncStyleStandardsForBucketVersion = async ({
-  db,
-  transitions,
-  addedBucketQuantities,
-}: {
-  db: Prisma.TransactionClient;
-  transitions: Array<{
-    styleId: number;
-    previousVersionId: number;
-    nextVersionId: number;
-  }>;
-  addedBucketQuantities: number[];
-}) => {
-  const normalizedTransitions = transitions.filter(
-    (item) =>
-      toPositiveIntOrNull(item.styleId) !== null &&
-      toPositiveIntOrNull(item.previousVersionId) !== null &&
-      toPositiveIntOrNull(item.nextVersionId) !== null
-  );
-  // A delete-only bucket change legitimately has no added quantities. The
-  // target version itself must remain non-empty, but this classification list
-  // may be empty and must not use the fail-closed bucket-set validator.
-  const addedQuantities = Array.from(
-    new Set(
-      ensureArray(addedBucketQuantities)
-        .map((quantity) => toPositiveIntOrNull(quantity))
-        .filter((quantity): quantity is number => quantity !== null)
-    )
-  ).sort((left, right) => left - right);
-  if (normalizedTransitions.length === 0) return 0;
-  const processes = await db.styleProcess.findMany({
-    where: { styleId: { in: normalizedTransitions.map((item) => item.styleId) } },
-    select: {
-      id: true,
-      orgId: true,
-      styleId: true,
-      standards: {
-        select: {
-          id: true,
-          bucketStSeconds: true,
-          setBy: true,
-          setAt: true,
-          quantityBucketSetVersionId: true,
-          quantityBucketEntry: {
-            select: { id: true, bucketQuantity: true },
-          },
-        },
-      },
-    },
-  });
-  const versionIds = Array.from(
-    new Set(normalizedTransitions.flatMap((item) => [item.previousVersionId, item.nextVersionId]))
-  );
-  const entries = await db.quantityBucketEntry.findMany({
-    where: { quantityBucketSetVersionId: { in: versionIds } },
-    select: { id: true, quantityBucketSetVersionId: true, bucketQuantity: true },
-  });
-  const entriesByVersion = new Map<number, any[]>();
-  entries.forEach((entry) => {
-    entriesByVersion.set(entry.quantityBucketSetVersionId, [
-      ...(entriesByVersion.get(entry.quantityBucketSetVersionId) ?? []),
-      entry,
-    ]);
-  });
-  let createdOrUpdatedCount = 0;
-  for (const transition of normalizedTransitions) {
-    const previousEntries = entriesByVersion.get(transition.previousVersionId) ?? [];
-    const nextEntries = entriesByVersion.get(transition.nextVersionId) ?? [];
-    const previousEntryByQuantity = new Map(
-      previousEntries.map((entry) => [entry.bucketQuantity, entry])
-    );
-    for (const process of processes.filter((row) => row.styleId === transition.styleId)) {
-      const previousStandards = ensureArray(process.standards).filter(
-        (standard: any) =>
-          standard.quantityBucketSetVersionId === transition.previousVersionId
-      );
-      for (const nextEntry of nextEntries) {
-        const bucketQuantity = nextEntry.bucketQuantity;
-        const retainedEntry = previousEntryByQuantity.get(bucketQuantity);
-        const retainedStandard = retainedEntry
-          ? previousStandards.find(
-              (standard: any) => standard.quantityBucketEntry?.id === retainedEntry.id
-            )
-          : null;
-        const source = retainedStandard ?? [...previousStandards]
-          .filter(
-            (standard: any) =>
-              Number(standard.quantityBucketEntry?.bucketQuantity) < bucketQuantity &&
-              Number(standard.bucketStSeconds) > 0
-          )
-          .sort(
-            (left: any, right: any) =>
-              Number(right.quantityBucketEntry?.bucketQuantity) -
-              Number(left.quantityBucketEntry?.bucketQuantity)
-          )[0];
-      if (!source) {
-        throw createHttpError(
-          409,
-          `ST(${bucketQuantity}) cannot be initialized because styleProcessId=${process.id} has no lower bucket ST`
-        );
-      }
-      await db.styleProcessStandard.upsert({
-        where: {
-          styleProcessId_quantityBucketEntryId: {
-            styleProcessId: process.id,
-            quantityBucketEntryId: nextEntry.id,
-          },
-        },
-        update: {
-          bucketStSeconds: Number(source.bucketStSeconds),
-          setBy: retainedStandard ? source.setBy : "BUCKET_INHERITED_REVIEW",
-          setAt: retainedStandard ? source.setAt : new Date(),
-          quantityBucketSetVersionId: transition.nextVersionId,
-        },
-        create: {
-          orgId: process.orgId,
-          styleProcessId: process.id,
-          quantityBucketEntryId: nextEntry.id,
-          quantityBucketSetVersionId: transition.nextVersionId,
-          bucketStSeconds: Number(source.bucketStSeconds),
-          setBy: retainedStandard ? source.setBy : "BUCKET_INHERITED_REVIEW",
-          setAt: retainedStandard ? source.setAt : undefined,
-        },
-      });
-        if (!retainedStandard && addedQuantities.includes(bucketQuantity)) {
-          createdOrUpdatedCount += 1;
-        }
-      }
-    }
-  }
-  return createdOrUpdatedCount;
-};
 
 const copyRetainedSalesPricesToVersion = async ({
   db,
@@ -27364,10 +27168,11 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           // Returning to the default must therefore only switch the version link.
           const copiedPriceCount = 0;
           const unreviewedStandardCount =
-            await syncStyleStandardsForBucketVersion({
+            await syncRelationshipStyleStandards({
                   db: tx,
                   transitions: [{
                     styleId: style.id,
+                    processOrgId: organization.id,
                     previousVersionId: previousTimeVersion.id,
                     nextVersionId: currentRelationship.timeBucketSetVersion.id,
                   }],
@@ -27431,7 +27236,7 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
             unreviewedStandardCount: 0,
           };
         }
-        const version = await createQuantityBucketSetVersion({
+        const version = await createRelationshipBucketSetVersion({
           db: tx,
           orgId: organization.id,
           setName: `CUSTOMER_SALES_BUCKETS_${relationship.id}_STYLE_${style.id}`,
@@ -27450,7 +27255,7 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           retainedQuantities,
           actor,
         });
-        const timeVersion = await createQuantityBucketSetVersion({
+        const timeVersion = await createRelationshipBucketSetVersion({
           db: tx,
           orgId: organization.id,
           setName: `RELATIONSHIP_TIME_BUCKETS_${relationship.id}_STYLE_${style.id}`,
@@ -27459,10 +27264,11 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           actor,
         });
         const unreviewedStandardCount =
-          await syncStyleStandardsForBucketVersion({
+          await syncRelationshipStyleStandards({
                 db: tx,
                 transitions: [{
                   styleId: style.id,
+                  processOrgId: organization.id,
                   previousVersionId: previousTimeVersion.id,
                   nextVersionId: timeVersion.id,
                 }],
@@ -27570,7 +27376,7 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
         (style) => style.timeBucketOverrides.length === 0
       );
       const version = salesBucketsChanged
-        ? await createQuantityBucketSetVersion({
+        ? await createRelationshipBucketSetVersion({
             db: tx,
             orgId: organization.id,
             setName: `CUSTOMER_PRICE_BUCKETS_${relationship.id}`,
@@ -27594,7 +27400,7 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           })
         : 0;
       const timeVersion = timeBucketsChanged
-        ? await createQuantityBucketSetVersion({
+        ? await createRelationshipBucketSetVersion({
             db: tx,
             orgId: organization.id,
             setName: `RELATIONSHIP_TIME_BUCKETS_${relationship.id}`,
@@ -27604,10 +27410,11 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           })
         : currentRelationship.timeBucketSetVersion;
       const unreviewedStandardCount = timeBucketsChanged
-        ? await syncStyleStandardsForBucketVersion({
+        ? await syncRelationshipStyleStandards({
               db: tx,
               transitions: affectedStyles.map((style) => ({
                 styleId: style.id,
+                processOrgId: organization.id,
                 previousVersionId: currentRelationship.timeBucketSetVersion!.id,
                 nextVersionId: timeVersion.id,
               })),
@@ -28787,7 +28594,7 @@ app.post("/customers", async (req, res) => {
       const actor = getCurrentRequestActor();
       const salesVersion = relationship.salesBucketSetVersionId
         ? null
-        : await createQuantityBucketSetVersion({
+        : await createRelationshipBucketSetVersion({
             db: tx,
             orgId: manufacturerOrgId,
             setName: `CUSTOMER_PRICE_BUCKETS_${relationship.id}`,
@@ -28796,7 +28603,7 @@ app.post("/customers", async (req, res) => {
           });
       const timeVersion = relationship.timeBucketSetVersionId
         ? null
-        : await createQuantityBucketSetVersion({
+        : await createRelationshipBucketSetVersion({
             db: tx,
             orgId: manufacturerOrgId,
             setName: `RELATIONSHIP_TIME_BUCKETS_${relationship.id}`,

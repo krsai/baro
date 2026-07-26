@@ -4,6 +4,12 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "../backend/node_modules/@prisma/client/default.js";
+import relationshipTimeBucketService from "../backend/dist/services/relationshipTimeBuckets.js";
+
+const {
+  createQuantityBucketSetVersion,
+  syncStyleStandardsForBucketVersion,
+} = relationshipTimeBucketService;
 
 const baseUrl = process.env.RELATIONSHIP_BUCKET_TEST_DATABASE_URL;
 if (!baseUrl) {
@@ -20,23 +26,13 @@ const admin = new PrismaClient({ datasources: { db: { url: baseUrl } } });
 let db;
 
 const createBucketVersion = async ({ orgId, name, quantities }) => {
-  const set = await db.quantityBucketSet.create({ data: { orgId, name } });
-  const version = await db.quantityBucketSetVersion.create({
-    data: {
-      orgId,
-      quantityBucketSetId: set.id,
-      versionNumber: 1,
-      entries: {
-        create: quantities.map((bucketQuantity) => ({ orgId, bucketQuantity })),
-      },
-    },
-    include: { entries: { orderBy: { bucketQuantity: "asc" } } },
+  return createQuantityBucketSetVersion({
+    db,
+    orgId,
+    setName: name,
+    bucketQuantities: quantities,
+    actor: "TEST:RELATIONSHIP_BUCKET_ISOLATION",
   });
-  await db.quantityBucketSet.update({
-    where: { id: set.id },
-    data: { currentVersionId: version.id },
-  });
-  return version;
 };
 
 const transitionRelationship = async ({ relationshipId, styleId, quantities }) =>
@@ -54,63 +50,29 @@ const transitionRelationship = async ({ relationshipId, styleId, quantities }) =
     });
     const previousVersion = relationship.timeBucketSetVersion;
     assert(previousVersion);
-    const latest = await tx.quantityBucketSetVersion.findFirst({
-      where: { quantityBucketSetId: previousVersion.quantityBucketSetId },
-      orderBy: { versionNumber: "desc" },
+    const nextVersion = await createQuantityBucketSetVersion({
+      db: tx,
+      orgId: relationship.manufacturerOrgId,
+      setName: relationship.timeBucketSetVersion.quantityBucketSet.name,
+      existingSetId: previousVersion.quantityBucketSetId,
+      bucketQuantities: quantities,
+      actor: "TEST:RELATIONSHIP_BUCKET_ISOLATION",
     });
-    const nextVersion = await tx.quantityBucketSetVersion.create({
-      data: {
-        orgId: relationship.manufacturerOrgId,
-        quantityBucketSetId: previousVersion.quantityBucketSetId,
-        versionNumber: (latest?.versionNumber ?? 0) + 1,
-        entries: {
-          create: quantities.map((bucketQuantity) => ({
-            orgId: relationship.manufacturerOrgId,
-            bucketQuantity,
-          })),
-        },
-      },
-      include: { entries: { orderBy: { bucketQuantity: "asc" } } },
-    });
-    const processes = await tx.styleProcess.findMany({
-      where: { styleId, orgId: relationship.manufacturerOrgId },
-      include: {
-        standards: {
-          where: { quantityBucketSetVersionId: previousVersion.id },
-          include: { quantityBucketEntry: true },
-        },
-      },
-    });
-    for (const process of processes) {
-      const oldByQuantity = new Map(
-        process.standards.map((standard) => [
-          standard.quantityBucketEntry.bucketQuantity,
-          standard,
-        ])
-      );
-      for (const entry of nextVersion.entries) {
-        const exact = oldByQuantity.get(entry.bucketQuantity);
-        const lowerQuantity = previousVersion.entries
-          .map((candidate) => candidate.bucketQuantity)
-          .filter((quantity) => quantity < entry.bucketQuantity && oldByQuantity.has(quantity))
-          .at(-1);
-        const source = exact ?? (lowerQuantity == null ? null : oldByQuantity.get(lowerQuantity));
-        assert(source, `missing lower ST for process ${process.id}, bucket ${entry.bucketQuantity}`);
-        await tx.styleProcessStandard.create({
-          data: {
-            orgId: relationship.manufacturerOrgId,
-            styleProcessId: process.id,
-            quantityBucketEntryId: entry.id,
-            quantityBucketSetVersionId: nextVersion.id,
-            bucketStSeconds: source.bucketStSeconds,
-            setBy: exact ? source.setBy : "BUCKET_INHERITED_REVIEW",
-          },
-        });
-      }
-    }
-    await tx.quantityBucketSet.update({
-      where: { id: previousVersion.quantityBucketSetId },
-      data: { currentVersionId: nextVersion.id },
+    const previousQuantities = previousVersion.entries.map(
+      (entry) => entry.bucketQuantity
+    );
+    const addedQuantities = quantities.filter(
+      (quantity) => !previousQuantities.includes(quantity)
+    );
+    await syncStyleStandardsForBucketVersion({
+      db: tx,
+      transitions: [{
+        styleId,
+        processOrgId: relationship.manufacturerOrgId,
+        previousVersionId: previousVersion.id,
+        nextVersionId: nextVersion.id,
+      }],
+      addedBucketQuantities: addedQuantities,
     });
     await tx.orgRelationship.update({
       where: { id: relationship.id },
@@ -282,6 +244,14 @@ try {
   const afterB = await relationshipState(relationshipB.id, style.id);
   assert.notEqual(afterA.versionId, beforeA.versionId);
   assert.deepEqual(afterA.entries.map((entry) => entry.quantity), [1, 3, 5]);
+  assert.deepEqual(
+    afterA.standards.map(({ quantity, seconds, setBy }) => ({ quantity, seconds, setBy })),
+    [
+      { quantity: 1, seconds: 100, setBy: "MANUAL" },
+      { quantity: 3, seconds: 100, setBy: "BUCKET_INHERITED_REVIEW" },
+      { quantity: 5, seconds: 100, setBy: "BUCKET_INHERITED_REVIEW" },
+    ]
+  );
   assert.deepEqual(afterA.plans, beforeA.plans);
   assert.deepEqual(afterB, beforeB);
 
@@ -295,10 +265,85 @@ try {
   const finalB = await relationshipState(relationshipB.id, style.id);
   assert.deepEqual(finalA, stableA);
   assert.deepEqual(finalB.entries.map((entry) => entry.quantity), [1, 10, 30]);
+  assert.deepEqual(
+    finalB.standards.map(({ quantity, seconds, setBy }) => ({ quantity, seconds, setBy })),
+    [
+      { quantity: 1, seconds: 200, setBy: "MANUAL" },
+      { quantity: 10, seconds: 202, setBy: "MANUAL" },
+      { quantity: 30, seconds: 202, setBy: "BUCKET_INHERITED_REVIEW" },
+    ]
+  );
   assert.deepEqual(finalB.plans, beforeB.plans);
+
+  const failingProcess = await db.styleProcess.create({
+    data: {
+      orgId: manufacturerA.id,
+      styleId: style.id,
+      processCode: "FAIL_NO_LOWER_ST",
+      processName: "Missing lower ST",
+      ptSeconds: 300,
+    },
+  });
+  for (const entry of finalA.entries.filter((item) => item.quantity > 1)) {
+    await db.styleProcessStandard.create({
+      data: {
+        orgId: manufacturerA.id,
+        styleProcessId: failingProcess.id,
+        quantityBucketEntryId: entry.id,
+        quantityBucketSetVersionId: finalA.versionId,
+        bucketStSeconds: 300,
+        setBy: "MANUAL",
+      },
+    });
+  }
+  const activeVersionBeforeFailure = await db.quantityBucketSetVersion.findUniqueOrThrow({
+    where: { id: finalA.versionId },
+    select: { quantityBucketSetId: true },
+  });
+  const setBeforeFailure = await db.quantityBucketSet.findUniqueOrThrow({
+    where: { id: activeVersionBeforeFailure.quantityBucketSetId },
+    select: { currentVersionId: true },
+  });
+  const versionCountBeforeFailure = await db.quantityBucketSetVersion.count({
+    where: { quantityBucketSetId: activeVersionBeforeFailure.quantityBucketSetId },
+  });
+  const standardCountBeforeFailure = await db.styleProcessStandard.count({
+    where: { styleProcessId: failingProcess.id },
+  });
+  await assert.rejects(
+    transitionRelationship({
+      relationshipId: relationshipA.id,
+      styleId: style.id,
+      quantities: [2, 3, 5],
+    }),
+    /has no lower bucket ST/
+  );
+  const relationshipAfterFailure = await db.orgRelationship.findUniqueOrThrow({
+    where: { id: relationshipA.id },
+    select: { timeBucketSetVersionId: true },
+  });
+  const setAfterFailure = await db.quantityBucketSet.findUniqueOrThrow({
+    where: { id: activeVersionBeforeFailure.quantityBucketSetId },
+    select: { currentVersionId: true },
+  });
+  assert.equal(relationshipAfterFailure.timeBucketSetVersionId, finalA.versionId);
+  assert.equal(setAfterFailure.currentVersionId, setBeforeFailure.currentVersionId);
+  assert.equal(
+    await db.quantityBucketSetVersion.count({
+      where: { quantityBucketSetId: activeVersionBeforeFailure.quantityBucketSetId },
+    }),
+    versionCountBeforeFailure
+  );
+  assert.equal(
+    await db.styleProcessStandard.count({ where: { styleProcessId: failingProcess.id } }),
+    standardCountBeforeFailure
+  );
   console.log("relationship time bucket integration: PASS");
 } finally {
-  if (db) await db.$disconnect();
-  await admin.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
-  await admin.$disconnect();
+  try {
+    if (db) await db.$disconnect();
+    await admin.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+  } finally {
+    await admin.$disconnect();
+  }
 }

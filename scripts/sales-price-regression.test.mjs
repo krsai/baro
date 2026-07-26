@@ -10,6 +10,10 @@ const {
 
 const schema = fs.readFileSync('backend/prisma/schema.prisma', 'utf8');
 const backend = fs.readFileSync('backend/src/index.ts', 'utf8');
+const relationshipTimeBucketService = fs.readFileSync(
+  'backend/src/services/relationshipTimeBuckets.ts',
+  'utf8'
+);
 const frontend = fs.readFileSync(
   'frontend/src/pages/App/customer/CustomerPricingBoard.jsx',
   'utf8'
@@ -31,7 +35,7 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
   );
   assert.match(quantityBucketRoute, /orgRelationshipStyleSalesBucket/);
   assert.match(quantityBucketRoute, /timeBucketSetVersionId/);
-  assert.match(quantityBucketRoute, /syncStyleStandardsForBucketVersion/);
+  assert.match(quantityBucketRoute, /syncRelationshipStyleStandards/);
   assert.match(quantityBucketRoute, /copyRetainedSalesPricesToVersion/);
   assert.match(quantityBucketRoute, /addedQuantities/);
   assert.match(quantityBucketRoute, /removedQuantities/);
@@ -66,17 +70,11 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
     /bucketQuantity\s+Int/
   );
   assert.doesNotMatch(
-    backend.slice(
-      backend.indexOf('const syncStyleStandardsForBucketVersion'),
-      backend.indexOf('const copyRetainedSalesPricesToVersion')
-    ),
+    relationshipTimeBucketService,
     /ptSeconds|PT_DERIVED/
   );
   assert.doesNotMatch(
-    backend.slice(
-      backend.indexOf('const syncStyleStandardsForBucketVersion'),
-      backend.indexOf('const copyRetainedSalesPricesToVersion')
-    ),
+    relationshipTimeBucketService,
     /normalizeQuantityBucketValues\(addedBucketQuantities\)/
   );
   assert.match(backend, /resolveStyleProcessBucketStandardByEntryId/);
