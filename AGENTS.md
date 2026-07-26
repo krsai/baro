@@ -5,9 +5,11 @@
 - 시간/ST 버킷의 운영 범위는 `OrgRelationship(제조사 × 브랜드) × Style`이다. 같은 브랜드의 같은 스타일이라도 제조사가 다르면 서로 다른 버킷 경계와 ST를 사용할 수 있다.
 - 관계 기본 시간 버전은 `OrgRelationship.timeBucketSetVersionId`, 스타일 예외는 `OrgRelationshipStyleTimeBucket.quantityBucketSetVersionId`로 연결한다. 두 버전과 entry는 제조사 조직 소유이며, 스타일은 브랜드 조직 소유를 유지한다.
 - `Style.timeBucketSetVersionId/timeBucketSource`는 마이그레이션 호환 필드일 뿐 제조사 운영 조회·계산의 소스오브트루스가 아니다. 운영 코드는 반드시 현재 제조사-브랜드 관계를 먼저 확정하고 관계 기본 또는 관계×스타일 예외 버전을 사용한다.
+- 브랜드가 제조사 공정 없이 스타일만 생성하거나 가져올 때 `Style.timeBucketSetVersionId` 또는 브랜드 소유 `DEFAULT_TIME_BUCKETS`를 새로 만들지 않는다. 제조사가 스타일을 사용할 때 관계 시간 버전을 해석한다.
 - `AssignmentPlan.orgRelationshipId`는 배정의 제조사 `orgId`와 고객 `buyerOrgId`에 맞는 관계를 고정한다. 신규 ST 스냅샷은 이 관계 범위의 entry/version과 해당 제조사 `StyleProcessStandard`에서만 생성한다.
 - 매출 버킷과 시간 버킷은 별도 세트·버전·FK를 유지하되, 단가 화면에서 버킷 경계를 저장할 때 같은 관계 범위 안에서 한 트랜잭션으로 함께 전환한다. 다중 제조사 브랜드라는 이유만으로 저장을 막지 않으며 다른 관계의 시간 버킷은 변경하지 않는다.
 - 기존 버전, 기존 ST 행, 기존 배정 ST/CT 스냅샷은 삭제·재계산하지 않는다. 관계 전환 마이그레이션은 기존 정확한 entry/version의 ST만 새 관계 entry로 복제하고 누락이 있으면 실패한다.
+- `npm run test:relationship-bucket-integration`은 공개 운영 테이블과 분리된 임시 PostgreSQL schema에서 제조사 2곳×브랜드 1곳×스타일 1곳을 구성해 관계 A/B의 버전·entry·ST·기존 배정 snapshot 상호 불변을 검증하고 schema를 삭제한다. 실행에는 `RELATIONSHIP_BUCKET_TEST_DATABASE_URL`이 필요하다.
 
 ## 2026-07-26 ST 버킷 FK 조회 불변식
 

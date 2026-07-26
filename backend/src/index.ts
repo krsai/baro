@@ -1800,44 +1800,6 @@ const copyRetainedSalesPricesToVersion = async ({
   return copiedCount;
 };
 
-// Shared by POST /styles and POST /styles/import: a brand-new style always
-// needs a time bucket set attached (never left null). Time buckets are
-// independent from customer sales-price buckets, so both create paths use the
-// owner org's time-only default set (creating it on first use).
-const resolveDefaultTimeBucketSetVersionIdForNewStyle = async ({
-  db,
-  manufacturerOrgId,
-  ownerOrgId,
-  actor,
-}: {
-  db: Prisma.TransactionClient;
-  manufacturerOrgId: number;
-  ownerOrgId: number;
-  actor: string;
-}): Promise<number> => {
-  void manufacturerOrgId;
-  const existingDefaultSet = await db.quantityBucketSet.findUnique({
-    where: {
-      orgId_name: {
-        orgId: ownerOrgId,
-        name: "DEFAULT_TIME_BUCKETS",
-      },
-    },
-    select: { currentVersionId: true },
-  });
-  if (existingDefaultSet?.currentVersionId) {
-    return existingDefaultSet.currentVersionId;
-  }
-  const defaultVersion = await createQuantityBucketSetVersion({
-    db,
-    orgId: ownerOrgId,
-    setName: "DEFAULT_TIME_BUCKETS",
-    bucketQuantities: [...ST_STANDARD_BUCKETS],
-    actor,
-  });
-  return defaultVersion.id;
-};
-
 type StyleAtParams = {
   a: number;
   b: number;
@@ -29193,13 +29155,8 @@ app.post("/styles", async (req, res) => {
       : null;
     const timeBucketSetVersionId = includeProcesses
       ? toPositiveIntOrNull(relationshipTimeVersion?.timeBucketSetVersionId)
-      : await resolveDefaultTimeBucketSetVersionIdForNewStyle({
-          db: tx,
-          manufacturerOrgId: organization.id,
-          ownerOrgId: owner.ownerOrgId,
-          actor: getCurrentRequestActor(),
-        });
-    if (timeBucketSetVersionId === null) {
+      : null;
+    if (includeProcesses && timeBucketSetVersionId === null) {
       throw createHttpError(409, "relationship time bucket version is missing");
     }
     const syncedProcesses = includeProcesses
@@ -29682,14 +29639,9 @@ app.post("/styles/import", async (req, res) => {
       const timeBucketSetVersionId = isNewStyle
         ? includeProcesses
           ? toPositiveIntOrNull(relationshipTimeVersion?.timeBucketSetVersionId)
-          : await resolveDefaultTimeBucketSetVersionIdForNewStyle({
-              db: tx,
-              manufacturerOrgId: organization.id,
-              ownerOrgId,
-              actor: getCurrentRequestActor(),
-            })
+          : null
         : null;
-      if (isNewStyle && timeBucketSetVersionId === null) {
+      if (isNewStyle && includeProcesses && timeBucketSetVersionId === null) {
         throw createHttpError(409, "relationship time bucket version is missing");
       }
 

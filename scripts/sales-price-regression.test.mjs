@@ -98,6 +98,11 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
   assert.doesNotMatch(frontend, /window\.confirm\(confirmation\)/);
 });
 
+test('brand style creation does not create a legacy owner-level time bucket', () => {
+  assert.doesNotMatch(backend, /resolveDefaultTimeBucketSetVersionIdForNewStyle/);
+  assert.doesNotMatch(backend, /name:\s*["']DEFAULT_TIME_BUCKETS["']/);
+});
+
 test('sales prices use Decimal rows tied to a bucket entry and version', () => {
   assert.match(schema, /model CustomerSalesPriceList \{/);
   assert.match(schema, /model CustomerSalesPrice \{/);

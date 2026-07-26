@@ -13,6 +13,7 @@
     "test:at-reliability": "node --test scripts/at-reliability-regression.test.mjs",
     "test:st-buckets": "node --test scripts/st-bucket-regression.test.mjs",
     "test:sales-prices": "node --test scripts/sales-price-regression.test.mjs",
+    "test:relationship-bucket-integration": "node scripts/relationship-time-bucket-integration.test.mjs",
     "test:attendance-fallback": "npm --prefix backend run build && node --test scripts/attendance-fallback-regression.test.mjs",
     "test:at-training": "npm --prefix backend run build && node --test scripts/at-training-regression.test.mjs",
     "test:database-target-guard": "node --test scripts/database-target-guard-regression.test.mjs",

@@ -7,7 +7,7 @@
 - [x] `AssignmentPlan.orgRelationshipId`를 추가해 제조사·고객 관계 범위를 DB 복합 FK로 고정한다.
 - [x] 다중 제조사 브랜드 저장 차단을 제거하고 현재 관계의 매출·시간 버킷만 같은 트랜잭션에서 변경한다.
 - [x] Railway 운영 DB에 `migration_fix.sql`을 원자적으로 적용하고 `npm run verify:st-bucket-fk`로 관계 버킷 오류 0건, 활성 ST 누락 0/8,424건, 배정 관계 오류 0/49건을 확인했다.
-- [ ] 같은 브랜드·같은 스타일을 제조사 2곳에 연결한 실제 데이터로 서로 다른 버킷 저장과 상대 관계 불변을 운영 검증한다.
+- [x] Railway의 격리된 임시 PostgreSQL schema에서 같은 브랜드·스타일을 제조사 2곳에 연결하고, 양쪽 버킷을 차례로 변경해 상대 관계의 version/entry/ST/기존 배정 snapshot이 완전히 불변임을 통합 테스트로 확인했다. 테스트 종료 후 임시 schema는 삭제한다.
 
 ## 2026-07-26 ST 버킷 FK 조회 강화
 
