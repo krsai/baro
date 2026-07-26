@@ -8,6 +8,10 @@ const frontend = fs.readFileSync(
   'frontend/src/pages/App/customer/CustomerPricingBoard.jsx',
   'utf8'
 );
+const stFkVerifier = fs.readFileSync(
+  'backend/scripts/inspect-st-bucket-fk-readiness.js',
+  'utf8'
+);
 
 test('sales buckets stay relational while their quantity boundaries synchronize with time buckets', () => {
   assert.match(schema, /model OrgRelationshipStyleSalesBucket \{/);
@@ -35,6 +39,8 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
   assert.match(backend, /"BUCKET_INHERITED_REVIEW"/);
   assert.match(schema, /quantityBucketEntryId\s+Int/);
   assert.match(schema, /StyleProcessStandard_entry_version_fkey/);
+  assert.match(schema, /StyleProcessStandard_process_org_fkey/);
+  assert.match(schema, /StyleProcess_id_org_key/);
   assert.doesNotMatch(
     schema.slice(
       schema.indexOf('model StyleProcessStandard'),
@@ -48,6 +54,13 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
       backend.indexOf('const copyRetainedSalesPricesToVersion')
     ),
     /ptSeconds|PT_DERIVED/
+  );
+  assert.match(backend, /resolveStyleProcessBucketStandardByEntryId/);
+  assert.match(backend, /resolveStyleProcessBucketStSecondsByEntryId/);
+  assert.doesNotMatch(backend, /resolveStyleProcessBucketStSeconds\s*=/);
+  assert.match(
+    backend,
+    /standard\.quantityBucketSetVersionId === activeVersionId/
   );
   assert.match(frontend, /기존 단가와 과거 급여 자료는 유지됩니다/);
   assert.match(frontend, /savedCustomerBuckets/);
@@ -67,6 +80,14 @@ test('sales prices use Decimal rows tied to a bucket entry and version', () => {
   assert.match(schema, /CustomerSalesPrice_list_version_fkey/);
   assert.match(schema, /CustomerSalesPrice_entry_version_fkey/);
   assert.match(backend, /STARTUP_REQUIRED_RUNTIME_CONSTRAINTS/);
+});
+
+test('ST bucket FK verifier fails closed on relational violations', () => {
+  assert.match(stFkVerifier, /missing_bucket_fk/);
+  assert.match(stFkVerifier, /process_org_mismatch/);
+  assert.match(stFkVerifier, /unresolved_cross_org/);
+  assert.match(stFkVerifier, /legacy_columns/);
+  assert.match(stFkVerifier, /throw new Error/);
 });
 
 test('sales price saves send changes only and persist them in a batched transaction', () => {

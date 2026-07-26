@@ -762,6 +762,7 @@ model StyleProcess {
   updatedByEmployee Employee? @relation("StyleProcessUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([styleId, orgId, processCode])
+  @@unique([id, orgId], map: "StyleProcess_id_org_key")
   @@unique([id, styleId, orgId], map: "StyleProcess_id_style_org_key")
   @@index([orgId])
   @@index([styleId])
@@ -779,7 +780,7 @@ model StyleProcessStandard {
   updatedAt                  DateTime @updatedAt
 
   organization       Organization             @relation(fields: [orgId], references: [id])
-  styleProcess       StyleProcess             @relation(fields: [styleProcessId], references: [id], onDelete: Cascade)
+  styleProcess       StyleProcess             @relation(fields: [styleProcessId, orgId], references: [id, orgId], onDelete: Cascade, map: "StyleProcessStandard_process_org_fkey")
   quantityBucketEntry QuantityBucketEntry     @relation(fields: [quantityBucketEntryId, quantityBucketSetVersionId], references: [id, quantityBucketSetVersionId], onDelete: Restrict, map: "StyleProcessStandard_entry_version_fkey")
 
   @@unique([styleProcessId, quantityBucketEntryId], map: "StyleProcessStandard_process_entry_key")

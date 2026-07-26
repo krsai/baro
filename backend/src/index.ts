@@ -806,6 +806,8 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "CustomerSalesPrice_entry_version_fkey",
   "StyleProcessStandard_entry_version_fkey",
   "StyleProcessStandard_process_entry_key",
+  "StyleProcess_id_org_key",
+  "StyleProcessStandard_process_org_fkey",
   "CustomerSalesPriceList_pricingBasis_check",
   "CustomerSalesPriceList_currencyCode_check",
   "CustomerSalesPrice_unitPrice_check",
@@ -4430,6 +4432,7 @@ const loadAtTrainingDataFromBuckets = async ({
             atParams: true,
             style: {
               select: {
+                timeBucketSetVersionId: true,
                 timeBucketSetVersion: {
                   select: {
                     entries: {
@@ -4443,6 +4446,8 @@ const loadAtTrainingDataFromBuckets = async ({
             standards: {
               select: {
                 bucketStSeconds: true,
+                quantityBucketEntryId: true,
+                quantityBucketSetVersionId: true,
                 quantityBucketEntry: { select: { id: true, bucketQuantity: true } },
               },
             },
@@ -4581,7 +4586,14 @@ const buildAtTrainingInitialSeedFromSt = ({
         return;
       }
 
-      const bucketStSeconds = resolveStyleProcessBucketStSeconds(styleProcessRow, bucketQuantity);
+      const bucketEntry = ensureArray(
+        styleProcessRow?.style?.timeBucketSetVersion?.entries
+      ).find((entry) => entry.bucketQuantity === bucketQuantity);
+      const bucketStSeconds = resolveStyleProcessBucketStSecondsByEntryId(
+        styleProcessRow,
+        toPositiveInt(bucketEntry?.id, 0),
+        toPositiveInt(styleProcessRow?.style?.timeBucketSetVersionId, 0)
+      );
       if (bucketStSeconds === null || bucketStSeconds <= 0) {
         pushMissingSeedSample({
           reason: "ST_BUCKET_SECONDS_NOT_FOUND",
@@ -4591,7 +4603,14 @@ const buildAtTrainingInitialSeedFromSt = ({
           quantity,
           bucketQuantity,
           availableBucketQuantities: ensureArray(styleProcessRow?.standards)
-            .map((standard) => toPositiveIntOrNull((standard as any)?.bucketQuantity))
+            .filter(
+              (standard) =>
+                standard?.quantityBucketSetVersionId ===
+                styleProcessRow?.style?.timeBucketSetVersionId
+            )
+            .map((standard) =>
+              toPositiveIntOrNull(standard?.quantityBucketEntry?.bucketQuantity)
+            )
             .filter((value): value is number => value !== null),
         });
         return;
@@ -5807,6 +5826,13 @@ const loadStyleProcessRowsByStyleId = async (
     )
   );
   if (normalizedStyleIds.length === 0) return new Map<number, any[]>();
+  const activeVersions = await db.style.findMany({
+    where: { id: { in: normalizedStyleIds } },
+    select: { id: true, timeBucketSetVersionId: true },
+  });
+  const activeVersionByStyleId = new Map(
+    activeVersions.map((style) => [style.id, style.timeBucketSetVersionId])
+  );
   const rows = await db.styleProcess.findMany({
     where: {
       styleId: { in: normalizedStyleIds },
@@ -5816,8 +5842,17 @@ const loadStyleProcessRowsByStyleId = async (
     orderBy: [{ styleId: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
   });
   return rows.reduce((map, row) => {
+    const activeVersionId = activeVersionByStyleId.get(row.styleId) ?? null;
+    const activeRow = {
+      ...row,
+      standards: ensureArray(row.standards).filter(
+        (standard: any) =>
+          activeVersionId !== null &&
+          standard.quantityBucketSetVersionId === activeVersionId
+      ),
+    };
     const current = map.get(row.styleId) || [];
-    current.push(row);
+    current.push(activeRow);
     map.set(row.styleId, current);
     return map;
   }, new Map<number, any[]>());
@@ -6406,7 +6441,9 @@ const ensureStyleStandardsForQuantities = async ({
     for (const processRow of processRows) {
       const existingQuantities = new Set(
         ensureArray(processRow.standards).map((standard) =>
-          toPositiveIntOrNull((standard as any)?.bucketQuantity)
+          toPositiveIntOrNull(
+            (standard as any)?.quantityBucketEntry?.bucketQuantity
+          )
         )
       );
       const missingQuantities = requiredQuantities.filter(
@@ -14045,10 +14082,21 @@ const syncAssignmentPlansForOrderLock = async ({
         )
       );
       const styleProcessRows = styleProcessRowsByStyleId.get(item.styleId) ?? [];
+      const quantityBucketEntryId = toPositiveInt(
+        ensureArray(style?.timeBucketSetVersion?.entries).find(
+          (entry) => entry.bucketQuantity === bucketQuantity
+        )?.id,
+        0
+      );
+      const quantityBucketSetVersionId = toPositiveInt(
+        style?.timeBucketSetVersionId,
+        0
+      );
       const assignmentStTotalSeconds = calculateAssignmentStTotalSecondsFromStyleRows({
         styleProcessRows,
         assignmentQuantity: item.targetQuantity,
-        bucketQuantity,
+        quantityBucketEntryId,
+        quantityBucketSetVersionId,
       });
       await db.assignmentPlan.update({
         where: { id: item.plan.id },
@@ -14059,16 +14107,8 @@ const syncAssignmentPlansForOrderLock = async ({
             styleProcessRows,
             assignmentQuantity: item.targetQuantity,
             bucketQuantity,
-            quantityBucketEntryId: toPositiveInt(
-              ensureArray(style?.timeBucketSetVersion?.entries).find(
-                (entry) => entry.bucketQuantity === bucketQuantity
-              )?.id,
-              0
-            ),
-            quantityBucketSetVersionId: toPositiveInt(
-              style?.timeBucketSetVersionId,
-              0
-            ),
+            quantityBucketEntryId,
+            quantityBucketSetVersionId,
             actor: getCurrentRequestActor(),
           }),
         },
@@ -14919,31 +14959,56 @@ const buildStyleProcessLookupForStCalculation = (styleProcessRows: any[]) => {
   };
 };
 
-const resolveStyleProcessBucketStSeconds = (row: any, bucketQuantity: number) => {
-  const standard = ensureArray(row?.standards).find(
-    (item) =>
-      toPositiveIntOrNull((item as any)?.quantityBucketEntry?.bucketQuantity) ===
-      bucketQuantity
-  );
-  const bucketStSeconds = toOptionalProcessSeconds((standard as any)?.bucketStSeconds);
-  if (bucketStSeconds !== null) return bucketStSeconds;
-  return null;
+const resolveStyleProcessBucketStandardByEntryId = (
+  row: any,
+  quantityBucketEntryId: number,
+  quantityBucketSetVersionId?: number | null
+) => {
+  const entryId = toPositiveIntOrNull(quantityBucketEntryId);
+  const versionId = toPositiveIntOrNull(quantityBucketSetVersionId);
+  if (entryId === null) return null;
+  return ensureArray(row?.standards).find(
+    (item: any) =>
+      toPositiveIntOrNull(item?.quantityBucketEntryId ?? item?.quantityBucketEntry?.id) ===
+        entryId &&
+      (versionId === null ||
+        toPositiveIntOrNull(item?.quantityBucketSetVersionId) === versionId)
+  ) ?? null;
 };
+
+const resolveStyleProcessBucketStSecondsByEntryId = (
+  row: any,
+  quantityBucketEntryId: number,
+  quantityBucketSetVersionId?: number | null
+) =>
+  toOptionalProcessSeconds(
+    resolveStyleProcessBucketStandardByEntryId(
+      row,
+      quantityBucketEntryId,
+      quantityBucketSetVersionId
+    )?.bucketStSeconds
+  );
 
 const calculateAssignmentStTotalSecondsFromStyleRows = ({
   styleProcessRows,
   assignmentQuantity,
-  bucketQuantity,
+  quantityBucketEntryId,
+  quantityBucketSetVersionId,
 }: {
   styleProcessRows: any[];
   assignmentQuantity: number;
-  bucketQuantity: number;
+  quantityBucketEntryId: number;
+  quantityBucketSetVersionId: number;
 }) => {
   let pieceStTotalSeconds = 0;
   const rows = ensureArray(styleProcessRows);
   if (rows.length === 0) return null;
   for (const row of rows) {
-    const bucketStSeconds = resolveStyleProcessBucketStSeconds(row, bucketQuantity);
+    const bucketStSeconds = resolveStyleProcessBucketStSecondsByEntryId(
+      row,
+      quantityBucketEntryId,
+      quantityBucketSetVersionId
+    );
     if (bucketStSeconds === null) return null;
     pieceStTotalSeconds += bucketStSeconds;
   }
@@ -14953,13 +15018,15 @@ const calculateAssignmentStTotalSecondsFromStyleRows = ({
 const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
   snapshotProcesses,
   assignmentQuantity,
-  bucketQuantity,
+  quantityBucketEntryId,
+  quantityBucketSetVersionId,
   styleId,
   styleProcessLookup,
 }: {
   snapshotProcesses: any[];
   assignmentQuantity: number;
-  bucketQuantity: number;
+  quantityBucketEntryId: number;
+  quantityBucketSetVersionId: number;
   styleId: number | null;
   styleProcessLookup: ReturnType<typeof buildStyleProcessLookupForStCalculation>;
 }) => {
@@ -14973,7 +15040,11 @@ const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
         : styleProcessLookup.resolveRowForSnapshotProcess(styleId, process);
     const bucketStSeconds =
       matchedRow !== null
-        ? resolveStyleProcessBucketStSeconds(matchedRow, bucketQuantity)
+        ? resolveStyleProcessBucketStSecondsByEntryId(
+            matchedRow,
+            quantityBucketEntryId,
+            quantityBucketSetVersionId
+          )
         : null;
     if (bucketStSeconds === null) return null;
     pieceStTotalSeconds += bucketStSeconds;
@@ -15311,7 +15382,6 @@ const prepareAssignmentBoardStTotalsForSave = async ({
             styleProcessId: item.styleProcessId,
             quantityBucketEntryId: item.quantityBucketEntryId,
             quantityBucketSetVersionId: item.quantityBucketSetVersionId,
-            bucketQuantity: item.bucketQuantity,
             bucketStSeconds: item.bucketStSeconds,
             setBy: "ASSIGNMENT_DETAIL",
             setAt: now,
@@ -15360,6 +15430,13 @@ const prepareAssignmentBoardStTotalsForSave = async ({
         (entry) => entry.bucketQuantity
       )
     );
+    const quantityBucketEntryId = toPositiveInt(
+      ensureArray(style?.timeBucketSetVersion?.entries).find(
+        (entry) => entry.bucketQuantity === bucketQuantity
+      )?.id,
+      0
+    );
+    const quantityBucketSetVersionId = toPositiveInt(style?.timeBucketSetVersionId, 0);
     let assignmentStTotalSeconds: number | null = null;
 
     if (target.hasStructuralChange) {
@@ -15368,14 +15445,16 @@ const prepareAssignmentBoardStTotalsForSave = async ({
       assignmentStTotalSeconds = calculateAssignmentStTotalSecondsFromStyleRows({
         styleProcessRows,
         assignmentQuantity,
-        bucketQuantity,
+        quantityBucketEntryId,
+        quantityBucketSetVersionId,
       });
     } else {
       const ctSnapshot = resolveNormalizedAssignmentCtSnapshot(target.assignment);
       assignmentStTotalSeconds = calculateAssignmentStTotalSecondsFromSnapshotProcesses({
         snapshotProcesses: ensureArray(ctSnapshot?.processes),
         assignmentQuantity,
-        bucketQuantity,
+        quantityBucketEntryId,
+        quantityBucketSetVersionId,
         styleId,
         styleProcessLookup,
       });
@@ -15396,16 +15475,8 @@ const prepareAssignmentBoardStTotalsForSave = async ({
         styleProcessRows,
         assignmentQuantity,
         bucketQuantity,
-        quantityBucketEntryId: toPositiveInt(
-          ensureArray(style?.timeBucketSetVersion?.entries).find(
-            (entry) => entry.bucketQuantity === bucketQuantity
-          )?.id,
-          0
-        ),
-        quantityBucketSetVersionId: toPositiveInt(
-          style?.timeBucketSetVersionId,
-          0
-        ),
+        quantityBucketEntryId,
+        quantityBucketSetVersionId,
         actor: getCurrentRequestActor(),
       })
     );
@@ -20125,7 +20196,12 @@ const buildAssignmentStSnapshot = ({
   }
   const processes = ensureArray(styleProcessRows).map((row) => {
     const styleProcessId = toPositiveIntOrNull(row?.id);
-    const stSeconds = resolveStyleProcessBucketStSeconds(row, bucketQuantity);
+    const standard = resolveStyleProcessBucketStandardByEntryId(
+      row,
+      quantityBucketEntryId,
+      quantityBucketSetVersionId
+    );
+    const stSeconds = toOptionalProcessSeconds(standard?.bucketStSeconds);
     if (styleProcessId === null || stSeconds === null || stSeconds <= 0) {
       throw createHttpError(
         409,
@@ -20138,13 +20214,7 @@ const buildAssignmentStSnapshot = ({
       processName: resolveOptionalString(row?.processName, null),
       bucketQuantity,
       stSeconds,
-      stSource:
-        ensureArray(row?.standards).find(
-          (standard) =>
-            toPositiveIntOrNull(
-              standard?.quantityBucketEntry?.bucketQuantity
-            ) === bucketQuantity
-        )?.setBy ?? null,
+      stSource: standard?.setBy ?? null,
     };
   });
   if (processes.length === 0) {

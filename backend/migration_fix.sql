@@ -3728,3 +3728,30 @@ END $$;
 
 DROP INDEX IF EXISTS "StyleProcessStandard_styleProcessId_bucketQuantity_key";
 ALTER TABLE "StyleProcessStandard" DROP COLUMN IF EXISTS "bucketQuantity";
+
+-- 2026-07-26: a standard must belong to the same organization as its process.
+-- Code-side org filters are not sufficient protection against cross-org writes.
+CREATE UNIQUE INDEX IF NOT EXISTS "StyleProcess_id_org_key"
+  ON "StyleProcess"("id", "orgId");
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM "StyleProcessStandard" standard
+    JOIN "StyleProcess" process ON process.id = standard."styleProcessId"
+    WHERE process."orgId" <> standard."orgId"
+  ) THEN
+    RAISE EXCEPTION 'StyleProcessStandard process organization mismatch exists';
+  END IF;
+END $$;
+
+ALTER TABLE "StyleProcessStandard"
+  DROP CONSTRAINT IF EXISTS "StyleProcessStandard_styleProcessId_fkey";
+ALTER TABLE "StyleProcessStandard"
+  DROP CONSTRAINT IF EXISTS "StyleProcessStandard_process_org_fkey";
+ALTER TABLE "StyleProcessStandard"
+  ADD CONSTRAINT "StyleProcessStandard_process_org_fkey"
+  FOREIGN KEY ("styleProcessId", "orgId")
+  REFERENCES "StyleProcess"("id", "orgId")
+  ON DELETE CASCADE ON UPDATE CASCADE;

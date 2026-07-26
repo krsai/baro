@@ -1,5 +1,13 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-07-26 ST 버킷 FK 조회 불변식
+
+- `StyleProcessStandard` 조회와 계산은 `bucketQuantity` 숫자로 행을 검색하지 않는다. 반드시 현재 `Style.timeBucketSetVersionId`에서 결정한 `QuantityBucketEntry.id`와 version ID를 함께 사용한다.
+- 같은 공정과 같은 수량 숫자가 과거·현재 버전에 동시에 존재하는 것은 정상적인 버전 이력이다. 과거 행을 삭제하지 않으며, 활성 화면과 신규 배정 계산에는 현재 버전 행만 사용한다.
+- `assignmentStSnapshot.quantityBucketEntryId`와 snapshot 공정의 `stSeconds/stSource`는 반드시 같은 entry/version의 `StyleProcessStandard`에서 생성한다.
+- `StyleProcessStandard(styleProcessId, orgId)`는 `StyleProcess(id, orgId)` 복합 FK로 보호한다. 코드의 조직 필터를 DB 무결성 대신 사용하지 않는다.
+- `npm run verify:st-bucket-fk`는 FK 누락, entry 불일치, 공정 조직 불일치, 해결되지 않은 교차 조직 연결 또는 레거시 ST 컬럼을 발견하면 실패 종료한다.
+
 ### 2026-07-25 매출 버킷과 지급 시간 버킷 동기화 정책
 
 - 고객 매출 버킷은 고객에게 받을 판매단가 구간이고, 스타일 시간 버킷은 직원 지급액 산정의 근거가 되는 ST/AT/CT 수량 구간이다. 데이터와 계산 목적은 분리하지만 운영 수량 경계는 함께 맞춘다.
