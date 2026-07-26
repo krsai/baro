@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const {
+  collectStBucketFkViolations,
+} = require('../backend/scripts/inspect-st-bucket-fk-readiness.js');
 
 const schema = fs.readFileSync('backend/prisma/schema.prisma', 'utf8');
 const backend = fs.readFileSync('backend/src/index.ts', 'utf8');
@@ -88,6 +94,33 @@ test('ST bucket FK verifier fails closed on relational violations', () => {
   assert.match(stFkVerifier, /unresolved_cross_org/);
   assert.match(stFkVerifier, /legacy_columns/);
   assert.match(stFkVerifier, /throw new Error/);
+  const cleanResult = {
+    standards: [{ missing_bucket_fk: 0 }],
+    entryMatches: [{ missing_entry: 0, process_org_mismatch: 0 }],
+    standardRelationshipMatches: [{ unresolved_cross_org: 0 }],
+    legacyColumns: [{ count: 0 }],
+  };
+  assert.deepEqual(collectStBucketFkViolations(cleanResult), []);
+  assert.deepEqual(
+    collectStBucketFkViolations({
+      ...cleanResult,
+      entryMatches: [{ missing_entry: 2, process_org_mismatch: 1 }],
+    }),
+    [
+      ['missing_entry', 2],
+      ['process_org_mismatch', 1],
+    ]
+  );
+});
+
+test('assignment ST snapshots reject a bucket label that disagrees with its entry FK', () => {
+  const snapshotBuilder = backend.slice(
+    backend.indexOf('const buildAssignmentStSnapshot ='),
+    backend.indexOf('const resolveWorklogRatioConfidence')
+  );
+  assert.match(snapshotBuilder, /canonicalBucketQuantity/);
+  assert.match(snapshotBuilder, /canonicalBucketQuantity !== bucketQuantity/);
+  assert.match(snapshotBuilder, /ST snapshot bucket identity mismatch/);
 });
 
 test('sales price saves send changes only and persist them in a batched transaction', () => {

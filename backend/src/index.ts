@@ -20201,6 +20201,15 @@ const buildAssignmentStSnapshot = ({
       quantityBucketEntryId,
       quantityBucketSetVersionId
     );
+    const canonicalBucketQuantity = toPositiveIntOrNull(
+      standard?.quantityBucketEntry?.bucketQuantity
+    );
+    if (canonicalBucketQuantity !== bucketQuantity) {
+      throw createHttpError(
+        409,
+        `ST snapshot bucket identity mismatch: entry=${quantityBucketEntryId} expected=${bucketQuantity} actual=${canonicalBucketQuantity ?? "-"}`
+      );
+    }
     const stSeconds = toOptionalProcessSeconds(standard?.bucketStSeconds);
     if (styleProcessId === null || stSeconds === null || stSeconds <= 0) {
       throw createHttpError(

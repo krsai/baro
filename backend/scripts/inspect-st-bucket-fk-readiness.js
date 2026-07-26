@@ -2,6 +2,20 @@ const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
+const collectStBucketFkViolations = (result) => {
+  const first = (rows) => (Array.isArray(rows) ? rows[0] || {} : {});
+  return [
+    ['missing_bucket_fk', first(result.standards).missing_bucket_fk],
+    ['missing_entry', first(result.entryMatches).missing_entry],
+    ['process_org_mismatch', first(result.entryMatches).process_org_mismatch],
+    [
+      'unresolved_cross_org',
+      first(result.standardRelationshipMatches).unresolved_cross_org,
+    ],
+    ['legacy_columns', first(result.legacyColumns).count],
+  ].filter(([, count]) => Number(count) > 0);
+};
+
 const main = async () => {
   const query = (sql) => prisma.$queryRawUnsafe(sql);
   const result = {
@@ -104,17 +118,7 @@ const main = async () => {
     `),
   };
   console.log(JSON.stringify(result, null, 2));
-  const first = (rows) => (Array.isArray(rows) ? rows[0] || {} : {});
-  const violations = [
-    ['missing_bucket_fk', first(result.standards).missing_bucket_fk],
-    ['missing_entry', first(result.entryMatches).missing_entry],
-    ['process_org_mismatch', first(result.entryMatches).process_org_mismatch],
-    [
-      'unresolved_cross_org',
-      first(result.standardRelationshipMatches).unresolved_cross_org,
-    ],
-    ['legacy_columns', first(result.legacyColumns).count],
-  ].filter(([, count]) => Number(count) > 0);
+  const violations = collectStBucketFkViolations(result);
   if (violations.length > 0) {
     throw new Error(
       `ST bucket FK verification failed: ${violations
@@ -124,9 +128,13 @@ const main = async () => {
   }
 };
 
-main()
-  .catch((error) => {
-    console.error(error?.message || error);
-    process.exitCode = 1;
-  })
-  .finally(() => prisma.$disconnect());
+if (require.main === module) {
+  main()
+    .catch((error) => {
+      console.error(error?.message || error);
+      process.exitCode = 1;
+    })
+    .finally(() => prisma.$disconnect());
+}
+
+module.exports = { collectStBucketFkViolations };

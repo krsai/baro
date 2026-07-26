@@ -6,6 +6,7 @@
 - [x] 스타일 공정 응답은 `Style.timeBucketSetVersionId`에 속한 활성 ST만 반환하며 과거 버전 ST는 보존하되 운영 조회에서 제외한다.
 - [x] `StyleProcessStandard(styleProcessId, orgId) -> StyleProcess(id, orgId)` 복합 FK로 교차 조직 오염을 DB에서 차단했다.
 - [x] ST FK 진단 스크립트가 위반 건수를 발견하면 exit code 1로 실패하도록 변경했다.
+- [x] 배정 ST snapshot의 표시 수량과 entry FK의 실제 수량이 다르면 409로 거부하고, 진단 위반 판정 함수를 실제 입력값으로 테스트한다.
 - [ ] 대시보드 버킷 변경 알림과 검토 완료 이력은 별도 제품 기능으로 구현한다.
 
 ## 2026-07-25 ST 수량 버킷 FK 전환
