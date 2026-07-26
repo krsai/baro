@@ -37,7 +37,11 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
   assert.match(quantityBucketRoute, /removedQuantities/);
   assert.match(quantityBucketRoute, /expectedVersionId is required/);
   assert.match(quantityBucketRoute, /quantity buckets changed since this screen was loaded/);
-  assert.match(quantityBucketRoute, /connected to multiple manufacturers/);
+  assert.doesNotMatch(quantityBucketRoute, /relationshipCountForBrand/);
+  assert.match(quantityBucketRoute, /orgRelationshipStyleTimeBucket/);
+  assert.match(quantityBucketRoute, /timeBucketSetVersionId: timeVersion\.id/);
+  assert.match(quantityBucketRoute, /RELATIONSHIP_TIME_BUCKETS_/);
+  assert.doesNotMatch(quantityBucketRoute, /data: \{ timeBucketSetVersionId: nextTimeVersionId \}/);
   assert.match(
     quantityBucketRoute,
     /Returning to the default must therefore only switch the version link/
@@ -47,6 +51,13 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
   assert.match(schema, /StyleProcessStandard_entry_version_fkey/);
   assert.match(schema, /StyleProcessStandard_process_org_fkey/);
   assert.match(schema, /StyleProcess_id_org_key/);
+  assert.match(schema, /model OrgRelationshipStyleTimeBucket \{/);
+  assert.match(schema, /OrgRelationship_time_bucket_version_org_fkey/);
+  assert.match(schema, /OrgRelationshipStyleTimeBucket_relationship_scope_fkey/);
+  assert.match(schema, /OrgRelationshipStyleTimeBucket_style_brand_fkey/);
+  assert.match(schema, /OrgRelationshipStyleTimeBucket_version_manufacturer_fkey/);
+  assert.match(schema, /AssignmentPlan_relationship_scope_fkey/);
+  assert.match(backend, /loadRelationshipTimeBucketContextByStyleId/);
   assert.doesNotMatch(
     schema.slice(
       schema.indexOf('model StyleProcessStandard'),
@@ -104,6 +115,10 @@ test('ST bucket FK verifier fails closed on relational violations', () => {
   assert.match(stFkVerifier, /missing_bucket_fk/);
   assert.match(stFkVerifier, /process_org_mismatch/);
   assert.match(stFkVerifier, /unresolved_cross_org/);
+  assert.match(stFkVerifier, /missing_relationship_time_bucket/);
+  assert.match(stFkVerifier, /invalid_time_bucket_override/);
+  assert.match(stFkVerifier, /invalid_assignment_relationship/);
+  assert.match(stFkVerifier, /missing_active_relationship_standard/);
   assert.match(stFkVerifier, /legacy_columns/);
   assert.match(stFkVerifier, /throw new Error/);
   const cleanResult = {
@@ -111,6 +126,10 @@ test('ST bucket FK verifier fails closed on relational violations', () => {
     entryMatches: [{ missing_entry: 0, process_org_mismatch: 0 }],
     standardRelationshipMatches: [{ unresolved_cross_org: 0 }],
     legacyColumns: [{ count: 0 }],
+    relationshipTimeBuckets: [{ missing_or_mismatched: 0 }],
+    timeBucketOverrides: [{ invalid_scope: 0 }],
+    assignmentRelationships: [{ invalid_scope: 0 }],
+    activeRelationshipStandards: [{ missing_standard: 0 }],
   };
   assert.deepEqual(collectStBucketFkViolations(cleanResult), []);
   assert.deepEqual(

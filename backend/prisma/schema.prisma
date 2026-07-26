@@ -551,6 +551,7 @@ model OrgRelationship {
   pricingDefaultTradeType String?
   pricingMatrix           Json?
   salesBucketSetVersionId Int?
+  timeBucketSetVersionId  Int?
   createdAt               DateTime @default(now())
   createdBy               String   @default("system@baro.local")
   createdByEmployeeId     Int?
@@ -560,16 +561,21 @@ model OrgRelationship {
   manufacturer          Organization                      @relation("ManufacturerOrgRelationships", fields: [manufacturerOrgId], references: [id])
   brand                 Organization                      @relation("BrandOrgRelationships", fields: [brandOrgId], references: [id])
   salesBucketSetVersion QuantityBucketSetVersion?         @relation("OrgRelationshipSalesBucketVersion", fields: [salesBucketSetVersionId], references: [id], onDelete: Restrict)
+  timeBucketSetVersion  QuantityBucketSetVersion?         @relation("OrgRelationshipTimeBucketVersion", fields: [timeBucketSetVersionId, manufacturerOrgId], references: [id, orgId], onDelete: Restrict, map: "OrgRelationship_time_bucket_version_org_fkey")
   salesBucketOverrides  OrgRelationshipStyleSalesBucket[]
+  timeBucketOverrides   OrgRelationshipStyleTimeBucket[]
   salesPriceLists       CustomerSalesPriceList[]
+  assignmentPlans       AssignmentPlan[]
 
   createdByEmployee Employee? @relation("OrgRelationshipCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("OrgRelationshipUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([manufacturerOrgId, brandOrgId])
+  @@unique([id, manufacturerOrgId, brandOrgId], map: "OrgRelationship_id_manufacturer_brand_key")
   @@index([manufacturerOrgId])
   @@index([brandOrgId])
   @@index([salesBucketSetVersionId])
+  @@index([timeBucketSetVersionId])
 }
 
 model QuantityBucketSet {
@@ -597,16 +603,19 @@ model QuantityBucketSetVersion {
   createdAt           DateTime @default(now())
   createdBy           String   @default("system@baro.local")
 
-  organization      Organization                      @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  quantityBucketSet QuantityBucketSet                 @relation("QuantityBucketSetVersions", fields: [quantityBucketSetId], references: [id], onDelete: Cascade)
-  currentForSet     QuantityBucketSet?                @relation("QuantityBucketSetCurrentVersion")
-  entries           QuantityBucketEntry[]
-  customerDefaults  OrgRelationship[]                 @relation("OrgRelationshipSalesBucketVersion")
-  timeStyles        Style[]                           @relation("StyleTimeBucketVersion")
-  salesOverrides    OrgRelationshipStyleSalesBucket[]
-  salesPriceLists   CustomerSalesPriceList[]
+  organization             Organization                      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  quantityBucketSet        QuantityBucketSet                 @relation("QuantityBucketSetVersions", fields: [quantityBucketSetId], references: [id], onDelete: Cascade)
+  currentForSet            QuantityBucketSet?                @relation("QuantityBucketSetCurrentVersion")
+  entries                  QuantityBucketEntry[]
+  customerDefaults         OrgRelationship[]                 @relation("OrgRelationshipSalesBucketVersion")
+  timeRelationshipDefaults OrgRelationship[]                 @relation("OrgRelationshipTimeBucketVersion")
+  timeStyles               Style[]                           @relation("StyleTimeBucketVersion")
+  salesOverrides           OrgRelationshipStyleSalesBucket[]
+  timeOverrides            OrgRelationshipStyleTimeBucket[]
+  salesPriceLists          CustomerSalesPriceList[]
 
   @@unique([quantityBucketSetId, versionNumber])
+  @@unique([id, orgId], map: "QuantityBucketSetVersion_id_org_key")
   @@index([orgId])
   @@index([quantityBucketSetId])
 }
@@ -723,6 +732,7 @@ model Style {
   workRecords          WorkRecord[]
   timeBucketSetVersion QuantityBucketSetVersion?         @relation("StyleTimeBucketVersion", fields: [timeBucketSetVersionId], references: [id], onDelete: Restrict)
   salesBucketOverrides OrgRelationshipStyleSalesBucket[]
+  timeBucketOverrides  OrgRelationshipStyleTimeBucket[]
   salesPriceLists      CustomerSalesPriceList[]
 
   createdByEmployee Employee? @relation("StyleCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
@@ -730,6 +740,7 @@ model Style {
 
   @@unique([orgId, code])
   @@unique([orgId, name])
+  @@unique([id, orgId], map: "Style_id_org_key")
   @@index([orgId])
   @@index([timeBucketSetVersionId])
 }
@@ -779,9 +790,9 @@ model StyleProcessStandard {
   setAt                      DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 
-  organization       Organization             @relation(fields: [orgId], references: [id])
-  styleProcess       StyleProcess             @relation(fields: [styleProcessId, orgId], references: [id, orgId], onDelete: Cascade, map: "StyleProcessStandard_process_org_fkey")
-  quantityBucketEntry QuantityBucketEntry     @relation(fields: [quantityBucketEntryId, quantityBucketSetVersionId], references: [id, quantityBucketSetVersionId], onDelete: Restrict, map: "StyleProcessStandard_entry_version_fkey")
+  organization        Organization        @relation(fields: [orgId], references: [id])
+  styleProcess        StyleProcess        @relation(fields: [styleProcessId, orgId], references: [id, orgId], onDelete: Cascade, map: "StyleProcessStandard_process_org_fkey")
+  quantityBucketEntry QuantityBucketEntry @relation(fields: [quantityBucketEntryId, quantityBucketSetVersionId], references: [id, quantityBucketSetVersionId], onDelete: Restrict, map: "StyleProcessStandard_entry_version_fkey")
 
   @@unique([styleProcessId, quantityBucketEntryId], map: "StyleProcessStandard_process_entry_key")
   @@index([orgId])
@@ -950,6 +961,27 @@ model OrgRelationshipStyleSalesBucket {
   @@index([quantityBucketSetVersionId], map: "OrgRelationshipStyleSalesBucket_versionId_idx")
 }
 
+model OrgRelationshipStyleTimeBucket {
+  id                         Int      @id @default(autoincrement())
+  orgRelationshipId          Int
+  manufacturerOrgId          Int
+  brandOrgId                 Int
+  styleId                    Int
+  quantityBucketSetVersionId Int
+  createdAt                  DateTime @default(now())
+  createdBy                  String   @default("system@baro.local")
+  updatedAt                  DateTime @updatedAt
+
+  orgRelationship          OrgRelationship          @relation(fields: [orgRelationshipId, manufacturerOrgId, brandOrgId], references: [id, manufacturerOrgId, brandOrgId], onDelete: Cascade, map: "OrgRelationshipStyleTimeBucket_relationship_scope_fkey")
+  style                    Style                    @relation(fields: [styleId, brandOrgId], references: [id, orgId], onDelete: Cascade, map: "OrgRelationshipStyleTimeBucket_style_brand_fkey")
+  quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId, manufacturerOrgId], references: [id, orgId], onDelete: Restrict, map: "OrgRelationshipStyleTimeBucket_version_manufacturer_fkey")
+
+  @@unique([orgRelationshipId, styleId], map: "OrgRelationshipStyleTimeBucket_relationship_style_key")
+  @@index([styleId], map: "OrgRelationshipStyleTimeBucket_styleId_idx")
+  @@index([quantityBucketSetVersionId], map: "OrgRelationshipStyleTimeBucket_versionId_idx")
+  @@index([manufacturerOrgId, brandOrgId], map: "OrgRelationshipStyleTimeBucket_org_scope_idx")
+}
+
 model CustomerSalesPriceList {
   id                         Int      @id @default(autoincrement())
   orgRelationshipId          Int
@@ -1015,6 +1047,7 @@ model AssignmentPlan {
   // WorkOrder's own naming - the ordering party (buyer org), same as
   // WorkOrder.buyerOrgId. Backfilled via assignmentCardId -> AssignmentCard.buyerOrgId.
   buyerOrgId                Int?
+  orgRelationshipId         Int?
   // orderNo/customer/label/previewUrl were dropped in Phase E (AssignmentCard/
   // AssignmentPlan FK+join redesign) - all four are fully derivable through
   // workOrderId/styleId/buyerOrgId (workOrder.orderNumber, style.name,
@@ -1064,6 +1097,7 @@ model AssignmentPlan {
   workOrder               WorkOrder?                @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   style                   Style?                    @relation(fields: [styleId], references: [id], onDelete: SetNull)
   buyerOrg                Organization?             @relation("AssignmentPlanBuyerOrg", fields: [buyerOrgId], references: [id], onDelete: SetNull)
+  orgRelationship         OrgRelationship?          @relation(fields: [orgRelationshipId, orgId, buyerOrgId], references: [id, manufacturerOrgId, brandOrgId], onDelete: Restrict, map: "AssignmentPlan_relationship_scope_fkey")
   // Real FK replacing the old "cardId string happens to match" convention
   // (AGENTS.md structural-problems list). cardId itself is kept as the stable
   // external board identifier; joins must use assignmentCardId/workOrderId/styleId.
@@ -1083,6 +1117,7 @@ model AssignmentPlan {
   @@index([styleId])
   @@index([assignmentCardId])
   @@index([buyerOrgId])
+  @@index([orgRelationshipId])
   @@index([ctReviewedByEmployeeId])
 }
 
@@ -1174,13 +1209,13 @@ model WorkRecord {
   updatedByEmployeeId        Int?
   updatedAt                  DateTime @updatedAt
 
-  organization   Organization    @relation(fields: [orgId], references: [id])
-  workLog        WorkLog         @relation(fields: [workLogId], references: [id], onDelete: Cascade)
-  worker         Employee?       @relation(fields: [workerId], references: [id], onDelete: SetNull)
-  assignmentPlan AssignmentPlan  @relation(fields: [assignmentPlanId, orgId], references: [id, orgId], onDelete: Restrict, map: "WorkRecord_assignmentPlan_org_fkey")
-  style          Style           @relation(fields: [styleId], references: [id], onDelete: Restrict)
-  styleProcess   StyleProcess    @relation(fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, map: "WorkRecord_styleProcess_style_org_fkey")
-  line           Line?           @relation("WorkRecordLine", fields: [lineId], references: [id], onDelete: SetNull)
+  organization   Organization   @relation(fields: [orgId], references: [id])
+  workLog        WorkLog        @relation(fields: [workLogId], references: [id], onDelete: Cascade)
+  worker         Employee?      @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  assignmentPlan AssignmentPlan @relation(fields: [assignmentPlanId, orgId], references: [id, orgId], onDelete: Restrict, map: "WorkRecord_assignmentPlan_org_fkey")
+  style          Style          @relation(fields: [styleId], references: [id], onDelete: Restrict)
+  styleProcess   StyleProcess   @relation(fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, map: "WorkRecord_styleProcess_style_org_fkey")
+  line           Line?          @relation("WorkRecordLine", fields: [lineId], references: [id], onDelete: SetNull)
 
   createdByEmployee Employee? @relation("WorkRecordCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("WorkRecordUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)

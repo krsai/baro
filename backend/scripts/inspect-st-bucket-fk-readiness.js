@@ -8,6 +8,10 @@ const collectStBucketFkViolations = (result) => {
     ['missing_bucket_fk', first(result.standards).missing_bucket_fk],
     ['missing_entry', first(result.entryMatches).missing_entry],
     ['process_org_mismatch', first(result.entryMatches).process_org_mismatch],
+    ['missing_relationship_time_bucket', first(result.relationshipTimeBuckets).missing_or_mismatched],
+    ['invalid_time_bucket_override', first(result.timeBucketOverrides).invalid_scope],
+    ['invalid_assignment_relationship', first(result.assignmentRelationships).invalid_scope],
+    ['missing_active_relationship_standard', first(result.activeRelationshipStandards).missing_standard],
     [
       'unresolved_cross_org',
       first(result.standardRelationshipMatches).unresolved_cross_org,
@@ -27,6 +31,61 @@ const main = async () => {
       select: { id: true, manufacturerOrgId: true, brandOrgId: true },
       orderBy: { id: 'asc' },
     }),
+    relationshipTimeBuckets: await query(`
+      SELECT COUNT(*)::int total,
+        COUNT(*) FILTER (
+          WHERE v.id IS NULL OR v."orgId" <> r."manufacturerOrgId"
+        )::int missing_or_mismatched
+      FROM "OrgRelationship" r
+      LEFT JOIN "QuantityBucketSetVersion" v
+        ON v.id = r."timeBucketSetVersionId"
+    `),
+    timeBucketOverrides: await query(`
+      SELECT COUNT(*)::int total,
+        COUNT(*) FILTER (
+          WHERE r.id IS NULL OR s.id IS NULL OR v.id IS NULL
+             OR t."manufacturerOrgId" <> r."manufacturerOrgId"
+             OR t."brandOrgId" <> r."brandOrgId"
+             OR s."orgId" <> r."brandOrgId"
+             OR v."orgId" <> r."manufacturerOrgId"
+        )::int invalid_scope
+      FROM "OrgRelationshipStyleTimeBucket" t
+      LEFT JOIN "OrgRelationship" r ON r.id = t."orgRelationshipId"
+      LEFT JOIN "Style" s ON s.id = t."styleId"
+      LEFT JOIN "QuantityBucketSetVersion" v
+        ON v.id = t."quantityBucketSetVersionId"
+    `),
+    assignmentRelationships: await query(`
+      SELECT COUNT(*)::int total,
+        COUNT(*) FILTER (
+          WHERE p."orgRelationshipId" IS NULL OR r.id IS NULL
+             OR r."manufacturerOrgId" <> p."orgId"
+             OR r."brandOrgId" <> p."buyerOrgId"
+        )::int invalid_scope
+      FROM "AssignmentPlan" p
+      LEFT JOIN "OrgRelationship" r ON r.id = p."orgRelationshipId"
+      WHERE p."styleId" IS NOT NULL AND p."buyerOrgId" IS NOT NULL
+    `),
+    activeRelationshipStandards: await query(`
+      SELECT COUNT(*)::int expected,
+        COUNT(*) FILTER (WHERE x.id IS NULL)::int missing_standard
+      FROM "OrgRelationship" r
+      JOIN "Style" s ON s."orgId" = r."brandOrgId"
+      JOIN "StyleProcess" sp
+        ON sp."styleId" = s.id AND sp."orgId" = r."manufacturerOrgId"
+      LEFT JOIN "OrgRelationshipStyleTimeBucket" override
+        ON override."orgRelationshipId" = r.id AND override."styleId" = s.id
+      JOIN "QuantityBucketEntry" e
+        ON e."quantityBucketSetVersionId" = COALESCE(
+          override."quantityBucketSetVersionId",
+          r."timeBucketSetVersionId"
+        )
+      LEFT JOIN "StyleProcessStandard" x
+        ON x."styleProcessId" = sp.id
+       AND x."orgId" = r."manufacturerOrgId"
+       AND x."quantityBucketEntryId" = e.id
+       AND x."quantityBucketSetVersionId" = e."quantityBucketSetVersionId"
+    `),
     standards: await query(`
       SELECT COUNT(*)::int total,
         COUNT(*) FILTER (

@@ -279,6 +279,15 @@ function assertGeneratedPrismaClientShape() {
   if (!hasField("AssignmentPlan", "buyerOrgId")) {
     staleSignals.push("AssignmentPlan.buyerOrgId missing");
   }
+  if (!hasField("AssignmentPlan", "orgRelationshipId")) {
+    staleSignals.push("AssignmentPlan.orgRelationshipId missing");
+  }
+  if (!hasField("OrgRelationship", "timeBucketSetVersionId")) {
+    staleSignals.push("OrgRelationship.timeBucketSetVersionId missing");
+  }
+  if (!hasField("OrgRelationshipStyleTimeBucket", "quantityBucketSetVersionId")) {
+    staleSignals.push("OrgRelationshipStyleTimeBucket.quantityBucketSetVersionId missing");
+  }
   if (hasField("AssignmentPlan", "colorId")) {
     staleSignals.push("AssignmentPlan.colorId still present");
   }
@@ -719,12 +728,15 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "QuantityBucketSetVersion", columnName: "quantityBucketSetId" },
   { tableName: "QuantityBucketEntry", columnName: "bucketQuantity" },
   { tableName: "OrgRelationship", columnName: "salesBucketSetVersionId" },
+  { tableName: "OrgRelationship", columnName: "timeBucketSetVersionId" },
+  { tableName: "OrgRelationshipStyleTimeBucket", columnName: "quantityBucketSetVersionId" },
   { tableName: "Style", columnName: "timeBucketSetVersionId" },
   { tableName: "Style", columnName: "timeBucketSource" },
   { tableName: "OrgRelationshipStyleSalesBucket", columnName: "quantityBucketSetVersionId" },
   { tableName: "CustomerSalesPriceList", columnName: "quantityBucketSetVersionId" },
   { tableName: "CustomerSalesPrice", columnName: "unitPrice" },
   { tableName: "AssignmentPlan", columnName: "assignmentStSnapshot" },
+  { tableName: "AssignmentPlan", columnName: "orgRelationshipId" },
   { tableName: "AssignmentPlan", columnName: "ctReviewRequired" },
   { tableName: "AtTrainingBucket", columnName: "workerId" },
   { tableName: "AssignmentCard", columnName: "cardId" },
@@ -808,6 +820,11 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "StyleProcessStandard_process_entry_key",
   "StyleProcess_id_org_key",
   "StyleProcessStandard_process_org_fkey",
+  "OrgRelationship_time_bucket_version_org_fkey",
+  "OrgRelationshipStyleTimeBucket_relationship_scope_fkey",
+  "OrgRelationshipStyleTimeBucket_style_brand_fkey",
+  "OrgRelationshipStyleTimeBucket_version_manufacturer_fkey",
+  "AssignmentPlan_relationship_scope_fkey",
   "CustomerSalesPriceList_pricingBasis_check",
   "CustomerSalesPriceList_currencyCode_check",
   "CustomerSalesPrice_unitPrice_check",
@@ -4441,6 +4458,8 @@ const loadAtTrainingDataFromBuckets = async ({
             atParams: true,
             style: {
               select: {
+                id: true,
+                orgId: true,
                 timeBucketSetVersionId: true,
                 timeBucketSetVersion: {
                   select: {
@@ -4463,6 +4482,23 @@ const loadAtTrainingDataFromBuckets = async ({
           },
         })
       : [];
+  if (styleProcessRows.length > 0) {
+    const styleRows = Array.from(
+      new Map(
+        styleProcessRows.map((row: any) => [Number(row.style.id), row.style])
+      ).values()
+    );
+    const contextByStyleId = await loadRelationshipTimeBucketContextByStyleId({
+      manufacturerOrgId: orgId,
+      styles: styleRows,
+    });
+    styleProcessRows.forEach((row: any) => {
+      row.style = applyRelationshipTimeBucketContexts({
+        styles: [row.style],
+        contextByStyleId,
+      })[0];
+    });
+  }
   const styleProcessRowsById = new Map(
     styleProcessRows.map((row) => [Number(row.id), row])
   );
@@ -4956,8 +4992,14 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
       );
     }
 
-    const stylesForStorageSync = await prisma.style.findMany({
-      where: { orgId },
+    const trainingRelationships = await prisma.orgRelationship.findMany({
+      where: { manufacturerOrgId: orgId },
+      select: { brandOrgId: true },
+    });
+    let stylesForStorageSync = await prisma.style.findMany({
+      where: {
+        orgId: { in: trainingRelationships.map((item) => item.brandOrgId) },
+      },
       select: {
         id: true,
         orgId: true,
@@ -4974,6 +5016,13 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
       },
     });
     if (stylesForStorageSync.length > 0) {
+      stylesForStorageSync = applyRelationshipTimeBucketContexts({
+        styles: stylesForStorageSync,
+        contextByStyleId: await loadRelationshipTimeBucketContextByStyleId({
+          manufacturerOrgId: orgId,
+          styles: stylesForStorageSync,
+        }),
+      });
       await ensureStyleProcessStorageForStyles(stylesForStorageSync, {
         processOrgId: orgId,
       });
@@ -5835,13 +5884,10 @@ const loadStyleProcessRowsByStyleId = async (
     )
   );
   if (normalizedStyleIds.length === 0) return new Map<number, any[]>();
-  const activeVersions = await db.style.findMany({
+  const activeStyles = await db.style.findMany({
     where: { id: { in: normalizedStyleIds } },
-    select: { id: true, timeBucketSetVersionId: true },
+    select: { id: true, orgId: true },
   });
-  const activeVersionByStyleId = new Map(
-    activeVersions.map((style) => [style.id, style.timeBucketSetVersionId])
-  );
   const rows = await db.styleProcess.findMany({
     where: {
       styleId: { in: normalizedStyleIds },
@@ -5850,8 +5896,32 @@ const loadStyleProcessRowsByStyleId = async (
     include: STYLE_PROCESS_STANDARD_INCLUDE,
     orderBy: [{ styleId: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
   });
+  const activeVersionByProcessScope = new Map<string, number>();
+  const processOrgIds = Array.from(new Set(rows.map((row: any) => Number(row.orgId))));
+  for (const manufacturerOrgId of processOrgIds) {
+    const scopedStyleIds = new Set(
+      rows
+        .filter((row: any) => Number(row.orgId) === manufacturerOrgId)
+        .map((row: any) => Number(row.styleId))
+    );
+    const scopedStyles = activeStyles.filter((style) => scopedStyleIds.has(style.id));
+    const contextByStyleId = await loadRelationshipTimeBucketContextByStyleId({
+      db,
+      manufacturerOrgId,
+      styles: scopedStyles,
+    });
+    scopedStyles.forEach((style) => {
+      const versionId = toPositiveIntOrNull(
+        contextByStyleId.get(style.id)?.version?.id
+      );
+      if (versionId !== null) {
+        activeVersionByProcessScope.set(`${manufacturerOrgId}:${style.id}`, versionId);
+      }
+    });
+  }
   return rows.reduce((map, row) => {
-    const activeVersionId = activeVersionByStyleId.get(row.styleId) ?? null;
+    const activeVersionId =
+      activeVersionByProcessScope.get(`${row.orgId}:${row.styleId}`) ?? null;
     const activeRow = {
       ...row,
       standards: ensureArray(row.standards).filter(
@@ -5976,6 +6046,8 @@ const syncStyleProcessStorageForStyle = async ({
   const styleBucketVersion = await db.style.findUnique({
     where: { id: styleId },
     select: {
+      id: true,
+      orgId: true,
       timeBucketSetVersionId: true,
       timeBucketSetVersion: {
         select: {
@@ -5984,14 +6056,25 @@ const syncStyleProcessStorageForStyle = async ({
       },
     },
   });
+  if (!styleBucketVersion) {
+    throw createHttpError(404, `style ${styleId} not found`);
+  }
+  const [relationshipStyleBucketVersion] = applyRelationshipTimeBucketContexts({
+    styles: [styleBucketVersion],
+    contextByStyleId: await loadRelationshipTimeBucketContextByStyleId({
+      db,
+      manufacturerOrgId: processOrgId,
+      styles: [styleBucketVersion],
+    }),
+  });
   const timeBucketSetVersionId = toPositiveIntOrNull(
-    styleBucketVersion?.timeBucketSetVersionId
+    relationshipStyleBucketVersion?.timeBucketSetVersionId
   );
   if (timeBucketSetVersionId === null) {
     throw createHttpError(409, `style ${styleId} is missing a time bucket version`);
   }
   const bucketEntryByQuantity = new Map(
-    ensureArray(styleBucketVersion?.timeBucketSetVersion?.entries).map((entry: any) => [
+    ensureArray(relationshipStyleBucketVersion?.timeBucketSetVersion?.entries).map((entry: any) => [
       entry.bucketQuantity,
       entry,
     ])
@@ -6365,6 +6448,103 @@ const ensureStyleProcessStorageForStyles = async (
     return map;
   }, new Map<number, any[]>());
 };
+
+const loadRelationshipTimeBucketContextByStyleId = async ({
+  db = prisma,
+  manufacturerOrgId,
+  styles,
+}: {
+  db?: any;
+  manufacturerOrgId: number;
+  styles: any[];
+}) => {
+  const normalizedManufacturerOrgId = toPositiveIntOrNull(manufacturerOrgId);
+  const styleRows = ensureArray(styles).filter(
+    (style) =>
+      toPositiveIntOrNull(style?.id) !== null &&
+      toPositiveIntOrNull(style?.orgId) !== null
+  );
+  if (normalizedManufacturerOrgId === null || styleRows.length === 0) {
+    return new Map<number, any>();
+  }
+  const brandOrgIds = Array.from(
+    new Set(styleRows.map((style) => toPositiveIntOrNull(style.orgId)!))
+  );
+  const styleIds = styleRows.map((style) => toPositiveIntOrNull(style.id)!);
+  const relationships = await db.orgRelationship.findMany({
+    where: {
+      manufacturerOrgId: normalizedManufacturerOrgId,
+      brandOrgId: { in: brandOrgIds },
+    },
+    select: {
+      id: true,
+      manufacturerOrgId: true,
+      brandOrgId: true,
+      timeBucketSetVersion: {
+        include: {
+          quantityBucketSet: { select: { id: true } },
+          entries: { orderBy: { bucketQuantity: "asc" } },
+        },
+      },
+      timeBucketOverrides: {
+        where: { styleId: { in: styleIds } },
+        select: {
+          styleId: true,
+          quantityBucketSetVersion: {
+            include: {
+              quantityBucketSet: { select: { id: true } },
+              entries: { orderBy: { bucketQuantity: "asc" } },
+            },
+          },
+        },
+      },
+    },
+  });
+  const relationshipByBrandOrgId = new Map<number, any>(
+    relationships.map((relationship: any) => [relationship.brandOrgId, relationship])
+  );
+  const contextByStyleId = new Map<number, any>();
+  styleRows.forEach((style) => {
+    const styleId = toPositiveInt(style.id, 0);
+    const relationship = relationshipByBrandOrgId.get(toPositiveInt(style.orgId, 0));
+    if (!relationship) return;
+    const override = ensureArray(relationship.timeBucketOverrides).find(
+      (item) => item.styleId === styleId
+    );
+    const version = override?.quantityBucketSetVersion ?? relationship.timeBucketSetVersion;
+    if (!version) return;
+    contextByStyleId.set(styleId, {
+      orgRelationshipId: relationship.id,
+      source: override ? "STYLE_OVERRIDE" : "CUSTOMER_DEFAULT",
+      version,
+    });
+  });
+  return contextByStyleId;
+};
+
+const applyRelationshipTimeBucketContexts = ({
+  styles,
+  contextByStyleId,
+}: {
+  styles: any[];
+  contextByStyleId: Map<number, any>;
+}) =>
+  ensureArray(styles).map((style) => {
+    const context = contextByStyleId.get(toPositiveInt(style?.id, 0));
+    if (!context) {
+      throw createHttpError(
+        409,
+        `relationship time bucket version is missing for style ${style?.id ?? "-"}`
+      );
+    }
+    return {
+      ...style,
+      orgRelationshipId: context.orgRelationshipId,
+      timeBucketSource: context.source,
+      timeBucketSetVersionId: context.version.id,
+      timeBucketSetVersion: context.version,
+    };
+  });
 
 const collectStyleQuantityRequirementsFromOrders = ({
   orders,
@@ -12674,16 +12854,25 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
     }),
     loadAssignmentCardsForOrg({ orgId }),
   ]);
+  const relationshipStyles = isManufacturerOrg(organization)
+    ? applyRelationshipTimeBucketContexts({
+        styles,
+        contextByStyleId: await loadRelationshipTimeBucketContextByStyleId({
+          manufacturerOrgId: orgId,
+          styles,
+        }),
+      })
+    : styles;
   let initialProcessMirrorMap: Map<number, any[]>;
   try {
-    initialProcessMirrorMap = await ensureStyleProcessStorageForStyles(styles, {
+    initialProcessMirrorMap = await ensureStyleProcessStorageForStyles(relationshipStyles, {
       processOrgId: orgId,
     });
   } catch (error) {
     console.error(`${diagPrefix} ensureStyleProcessStorageForStyles threw`, error);
     throw error;
   }
-  const stylesWithProcesses = styles.map((style) => ({
+  const stylesWithProcesses = relationshipStyles.map((style) => ({
     ...style,
     processes: initialProcessMirrorMap.get(Number(style.id)) ?? [],
     timeBucketQuantities: ensureArray(style.timeBucketSetVersion?.entries).map(
@@ -12697,7 +12886,7 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
   let processMirrorMap: Map<number, any[]>;
   try {
     processMirrorMap = await ensureStyleStandardsForQuantities({
-      styles,
+      styles: relationshipStyles,
       quantityByStyleId,
       processOrgId: orgId,
     });
@@ -12705,7 +12894,7 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
     console.error(`${diagPrefix} ensureStyleStandardsForQuantities threw`, error);
     throw error;
   }
-  const hydratedStyles = styles.map((style) => ({
+  const hydratedStyles = relationshipStyles.map((style) => ({
     ...style,
     processes:
       processMirrorMap.get(Number(style.id)) ??
@@ -13449,7 +13638,7 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
     };
   }
 
-  const styles = await db.style.findMany({
+  let styles = await db.style.findMany({
     where: {
       id: { in: targetStyleIds },
     },
@@ -13478,6 +13667,14 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
     };
   }
 
+  styles = applyRelationshipTimeBucketContexts({
+    styles,
+    contextByStyleId: await loadRelationshipTimeBucketContextByStyleId({
+      db,
+      manufacturerOrgId: organization.id,
+      styles,
+    }),
+  });
   const rawStyleById = new Map<number, any>(
     styles.map((style: any) => [Number(style.id), style])
   );
@@ -14038,7 +14235,7 @@ const syncAssignmentPlansForOrderLock = async ({
 
   if (pendingRecalc.length > 0) {
     const styleIds = Array.from(new Set(pendingRecalc.map((item) => item.styleId)));
-    const styles = await db.style.findMany({
+    let styles = await db.style.findMany({
       where: { id: { in: styleIds } },
       select: {
         id: true,
@@ -14054,6 +14251,14 @@ const syncAssignmentPlansForOrderLock = async ({
           },
         },
       },
+    });
+    styles = applyRelationshipTimeBucketContexts({
+      styles,
+      contextByStyleId: await loadRelationshipTimeBucketContextByStyleId({
+        db,
+        manufacturerOrgId: orgId,
+        styles,
+      }),
     });
     const styleById = new Map<number, any>(
       styles.map((style: any) => [Number(style.id), style])
@@ -14636,7 +14841,7 @@ const toAssignmentPlanWriteData = (
   item: any,
   cardIdToAssignmentCardId?: Map<
     string,
-    { id: number; styleId: number | null; workOrderId: number | null; buyerOrgId: number | null }
+    { id: number; styleId: number | null; workOrderId: number | null; buyerOrgId: number | null; orgRelationshipId: number | null }
   >
 ) => {
   const assignmentCtSnapshot = resolveNormalizedAssignmentCtSnapshot(item);
@@ -14659,6 +14864,7 @@ const toAssignmentPlanWriteData = (
   // scheduled from.
   const styleId = matchedCard?.styleId ?? null;
   const buyerOrgId = matchedCard?.buyerOrgId ?? null;
+  const orgRelationshipId = matchedCard?.orgRelationshipId ?? null;
   const workOrderId =
     toPositiveIntOrNull(matchedCard?.workOrderId) ?? toPositiveIntOrNull(item?.workOrderId);
   const assignmentStSnapshot =
@@ -14684,6 +14890,7 @@ const toAssignmentPlanWriteData = (
     assignmentCardId,
     styleId,
     buyerOrgId,
+    orgRelationshipId,
     workOrderId,
     // orderNo/customer/label/previewUrl dropped in Phase E, and
     // colorId/colorName/color/stripeColor/imageUrl/thumbnailUrl dropped in
@@ -14720,7 +14927,7 @@ const validateNewAssignmentPlanCtSnapshotProcesses = async ({
   createPlanRows: any[];
   cardIdToAssignmentCardId: Map<
     string,
-    { id: number; styleId: number | null; workOrderId: number | null; buyerOrgId: number | null }
+    { id: number; styleId: number | null; workOrderId: number | null; buyerOrgId: number | null; orgRelationshipId: number | null }
   >;
   db: any;
 }) => {
@@ -15189,7 +15396,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     return { assignments: assignmentsWithExistingTotals, warnings, changedExternalIds };
   }
 
-  const styles =
+  let styles =
     assignmentStyleIds.size > 0
       ? await db.style.findMany({
           where: {
@@ -15213,6 +15420,16 @@ const prepareAssignmentBoardStTotalsForSave = async ({
           },
         })
       : [];
+  if (styles.length > 0) {
+    styles = applyRelationshipTimeBucketContexts({
+      styles,
+      contextByStyleId: await loadRelationshipTimeBucketContextByStyleId({
+        db,
+        manufacturerOrgId: organization.id,
+        styles,
+      }),
+    });
+  }
   const styleByStyleId = ensureArray(styles).reduce((map, style) => {
     const styleId = toPositiveIntOrNull(style?.id);
     if (!styleId || styleId === null || map.has(styleId)) return map;
@@ -26763,19 +26980,42 @@ app.put("/assignment-board-state", async (req, res) => {
     // was scheduled from instead of re-deriving those independently.
     const cardIdToAssignmentCardId = new Map<
       string,
-      { id: number; styleId: number | null; workOrderId: number | null; buyerOrgId: number | null }
+      { id: number; styleId: number | null; workOrderId: number | null; buyerOrgId: number | null; orgRelationshipId: number | null }
     >();
     if (cardIdStringsInThisSave.length > 0) {
       const matchedAssignmentCards = await tx.assignmentCard.findMany({
         where: { orgId: organization.id, cardId: { in: cardIdStringsInThisSave } },
         select: { id: true, cardId: true, styleId: true, workOrderId: true, buyerOrgId: true },
       });
+      const relationshipByBuyerOrgId = new Map(
+        (
+          await tx.orgRelationship.findMany({
+            where: {
+              manufacturerOrgId: organization.id,
+              brandOrgId: {
+                in: Array.from(
+                  new Set(
+                    matchedAssignmentCards
+                      .map((card) => toPositiveIntOrNull(card.buyerOrgId))
+                      .filter((id): id is number => id !== null)
+                  )
+                ),
+              },
+            },
+            select: { id: true, brandOrgId: true },
+          })
+        ).map((relationship) => [relationship.brandOrgId, relationship.id])
+      );
       matchedAssignmentCards.forEach((card) => {
         cardIdToAssignmentCardId.set(card.cardId, {
           id: card.id,
           styleId: card.styleId,
           workOrderId: card.workOrderId,
           buyerOrgId: card.buyerOrgId,
+          orgRelationshipId:
+            card.buyerOrgId === null
+              ? null
+              : relationshipByBuyerOrgId.get(card.buyerOrgId) ?? null,
         });
       });
       const missingCardIds = cardIdStringsInThisSave.filter(
@@ -26790,7 +27030,12 @@ app.put("/assignment-board-state", async (req, res) => {
       const cardsMissingRequiredFk = matchedAssignmentCards.filter(
         (card) =>
           toPositiveIntOrNull(card.styleId) === null ||
-          toPositiveIntOrNull(card.workOrderId) === null
+          toPositiveIntOrNull(card.workOrderId) === null ||
+          toPositiveIntOrNull(
+            card.buyerOrgId === null
+              ? null
+              : relationshipByBuyerOrgId.get(card.buyerOrgId)
+          ) === null
       );
       if (cardsMissingRequiredFk.length > 0) {
         throw createHttpError(
@@ -27053,17 +27298,17 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
               entries: { orderBy: { bucketQuantity: "asc" } },
             },
           },
+          timeBucketSetVersion: {
+            include: {
+              quantityBucketSet: { select: { id: true } },
+              entries: { orderBy: { bucketQuantity: "asc" } },
+            },
+          },
         },
       });
       if (!currentRelationship) throw createHttpError(404, "customer not found");
-      const relationshipCountForBrand = await tx.orgRelationship.count({
-        where: { brandOrgId: currentRelationship.brandOrgId },
-      });
-      if (relationshipCountForBrand > 1) {
-        throw createHttpError(
-          409,
-          "this brand is connected to multiple manufacturers; relationship-specific payroll buckets must be configured before changing buckets"
-        );
+      if (!currentRelationship.timeBucketSetVersion) {
+        throw createHttpError(409, "relationship time bucket version is missing");
       }
       if (styleId !== null) {
         const style = await tx.style.findFirst({
@@ -27074,6 +27319,17 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
             timeBucketSetVersionId: true,
             timeBucketSetVersion: {
               select: { id: true, quantityBucketSetId: true },
+            },
+            timeBucketOverrides: {
+              where: { orgRelationshipId: relationship.id },
+              select: {
+                quantityBucketSetVersion: {
+                  include: {
+                    quantityBucketSet: { select: { id: true } },
+                    entries: { orderBy: { bucketQuantity: "asc" } },
+                  },
+                },
+              },
             },
             salesBucketOverrides: {
               where: { orgRelationshipId: relationship.id },
@@ -27088,6 +27344,10 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           },
         });
         if (!style) throw createHttpError(404, "style not found for customer");
+        const previousTimeOverrideVersion =
+          style.timeBucketOverrides[0]?.quantityBucketSetVersion ?? null;
+        const previousTimeVersion =
+          previousTimeOverrideVersion ?? currentRelationship.timeBucketSetVersion;
         if (useCustomerDefault) {
           const previousOverrideVersion =
             style.salesBucketOverrides[0]?.quantityBucketSetVersion ?? null;
@@ -27108,7 +27368,7 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           const defaultQuantities = normalizeQuantityBucketValues(
             defaultEntries.map((entry) => entry.bucketQuantity)
           );
-          if (!previousOverrideVersion && style.timeBucketSource === "CUSTOMER_DEFAULT") {
+          if (!previousOverrideVersion && !previousTimeOverrideVersion) {
             return {
               versionId: defaultVersionId,
               styleId: style.id,
@@ -27131,36 +27391,27 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           const removedQuantities = previousQuantities.filter(
             (quantity) => !defaultQuantities.includes(quantity)
           );
+          const previousTimeQuantities = normalizeQuantityBucketValues(
+            previousTimeVersion.entries.map((entry: any) => entry.bucketQuantity)
+          );
+          const addedTimeQuantities = defaultQuantities.filter(
+            (quantity) => !previousTimeQuantities.includes(quantity)
+          );
           // A style override is not the customer's canonical default price list.
           // Returning to the default must therefore only switch the version link.
           const copiedPriceCount = 0;
-          if (!style.timeBucketSetVersion?.quantityBucketSetId) {
-            throw createHttpError(409, `style ${style.id} is missing a time bucket set`);
-          }
-          const timeVersion = await createQuantityBucketSetVersion({
-            db: tx,
-            orgId: organization.id,
-            setName: `CUSTOMER_TIME_BUCKETS_${relationship.id}_STYLE_${style.id}`,
-            existingSetId: style.timeBucketSetVersion.quantityBucketSetId,
-            bucketQuantities: defaultQuantities,
-            actor,
-          });
           const unreviewedStandardCount =
             await syncStyleStandardsForBucketVersion({
                   db: tx,
                   transitions: [{
                     styleId: style.id,
-                    previousVersionId: style.timeBucketSetVersion.id,
-                    nextVersionId: timeVersion.id,
+                    previousVersionId: previousTimeVersion.id,
+                    nextVersionId: currentRelationship.timeBucketSetVersion.id,
                   }],
-                  addedBucketQuantities: addedQuantities,
+                  addedBucketQuantities: addedTimeQuantities,
                 });
-          await tx.style.update({
-            where: { id: style.id },
-            data: {
-              timeBucketSetVersionId: timeVersion.id,
-              timeBucketSource: "CUSTOMER_DEFAULT",
-            },
+          await tx.orgRelationshipStyleTimeBucket.deleteMany({
+            where: { orgRelationshipId: relationship.id, styleId: style.id },
           });
           await tx.orgRelationshipStyleSalesBucket.deleteMany({
             where: {
@@ -27192,7 +27443,21 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
         const addedQuantities = quantities.filter((quantity) => !previousQuantities.includes(quantity));
         const removedQuantities = previousQuantities.filter((quantity) => !quantities.includes(quantity));
         const retainedQuantities = quantities.filter((quantity) => previousQuantities.includes(quantity));
-        if (addedQuantities.length === 0 && removedQuantities.length === 0) {
+        const previousTimeQuantities = normalizeQuantityBucketValues(
+          previousTimeVersion.entries.map((entry: any) => entry.bucketQuantity)
+        );
+        const addedTimeQuantities = quantities.filter(
+          (quantity) => !previousTimeQuantities.includes(quantity)
+        );
+        const removedTimeQuantities = previousTimeQuantities.filter(
+          (quantity) => !quantities.includes(quantity)
+        );
+        if (
+          addedQuantities.length === 0 &&
+          removedQuantities.length === 0 &&
+          addedTimeQuantities.length === 0 &&
+          removedTimeQuantities.length === 0
+        ) {
           return {
             versionId: previousVersion.id,
             styleId: style.id,
@@ -27222,14 +27487,11 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           retainedQuantities,
           actor,
         });
-        if (!style.timeBucketSetVersion?.quantityBucketSetId) {
-          throw createHttpError(409, `style ${style.id} is missing a time bucket set`);
-        }
         const timeVersion = await createQuantityBucketSetVersion({
           db: tx,
           orgId: organization.id,
-          setName: `CUSTOMER_TIME_BUCKETS_${relationship.id}_STYLE_${style.id}`,
-          existingSetId: style.timeBucketSetVersion.quantityBucketSetId,
+          setName: `RELATIONSHIP_TIME_BUCKETS_${relationship.id}_STYLE_${style.id}`,
+          existingSetId: previousTimeOverrideVersion?.quantityBucketSetId ?? null,
           bucketQuantities: quantities,
           actor,
         });
@@ -27238,17 +27500,27 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
                 db: tx,
                 transitions: [{
                   styleId: style.id,
-                  previousVersionId: style.timeBucketSetVersion.id,
+                  previousVersionId: previousTimeVersion.id,
                   nextVersionId: timeVersion.id,
                 }],
-                addedBucketQuantities: addedQuantities,
+                addedBucketQuantities: addedTimeQuantities,
               });
-        await tx.style.update({
-          where: { id: style.id },
-          data: {
-            timeBucketSetVersionId: timeVersion.id,
-            timeBucketSource: "STYLE_OVERRIDE",
+        await tx.orgRelationshipStyleTimeBucket.upsert({
+          where: {
+            orgRelationshipId_styleId: {
+              orgRelationshipId: relationship.id,
+              styleId: style.id,
+            },
           },
+          create: {
+            orgRelationshipId: relationship.id,
+            manufacturerOrgId: currentRelationship.manufacturerOrgId,
+            brandOrgId: currentRelationship.brandOrgId,
+            styleId: style.id,
+            quantityBucketSetVersionId: timeVersion.id,
+            createdBy: actor,
+          },
+          update: { quantityBucketSetVersionId: timeVersion.id },
         });
         await tx.orgRelationshipStyleSalesBucket.upsert({
           where: {
@@ -27305,12 +27577,14 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
         },
         select: {
           id: true,
-          timeBucketSource: true,
-          timeBucketSetVersion: { select: { id: true, quantityBucketSetId: true } },
+          timeBucketOverrides: {
+            where: { orgRelationshipId: relationship.id },
+            select: { id: true },
+          },
         },
       });
       const affectedStyles = salesDefaultStyles.filter(
-        (style) => style.timeBucketSource === "CUSTOMER_DEFAULT"
+        (style) => style.timeBucketOverrides.length === 0
       );
       const version = await createQuantityBucketSetVersion({
         db: tx,
@@ -27332,49 +27606,30 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
         retainedQuantities,
         actor,
       });
-      const stylesByTimeSetId = new Map<number, number[]>();
-      affectedStyles.forEach((style) => {
-        const setId = style.timeBucketSetVersion?.quantityBucketSetId;
-        if (!setId) {
-          throw createHttpError(409, `style ${style.id} is missing a time bucket set`);
-        }
-        stylesByTimeSetId.set(setId, [...(stylesByTimeSetId.get(setId) ?? []), style.id]);
+      const timeVersion = await createQuantityBucketSetVersion({
+        db: tx,
+        orgId: organization.id,
+        setName: `RELATIONSHIP_TIME_BUCKETS_${relationship.id}`,
+        existingSetId: currentRelationship.timeBucketSetVersion.quantityBucketSetId,
+        bucketQuantities: quantities,
+        actor,
       });
-      const nextTimeVersionIdByStyleId = new Map<number, number>();
-      for (const [setId, groupedStyleIds] of stylesByTimeSetId) {
-        const timeVersion = await createQuantityBucketSetVersion({
-          db: tx,
-          orgId: organization.id,
-          setName: `CUSTOMER_TIME_BUCKETS_${relationship.id}_${setId}`,
-          existingSetId: setId,
-          bucketQuantities: quantities,
-          actor,
-        });
-        groupedStyleIds.forEach((id) => nextTimeVersionIdByStyleId.set(id, timeVersion.id));
-      }
       const unreviewedStandardCount =
         await syncStyleStandardsForBucketVersion({
               db: tx,
               transitions: affectedStyles.map((style) => ({
                 styleId: style.id,
-                previousVersionId: style.timeBucketSetVersion!.id,
-                nextVersionId: nextTimeVersionIdByStyleId.get(style.id)!,
+                previousVersionId: currentRelationship.timeBucketSetVersion!.id,
+                nextVersionId: timeVersion.id,
               })),
               addedBucketQuantities: addedQuantities,
             });
-      for (const style of affectedStyles) {
-        const nextTimeVersionId = nextTimeVersionIdByStyleId.get(style.id);
-        if (!nextTimeVersionId) {
-          throw createHttpError(409, `style ${style.id} time bucket version was not created`);
-        }
-        await tx.style.update({
-          where: { id: style.id },
-          data: { timeBucketSetVersionId: nextTimeVersionId },
-        });
-      }
       await tx.orgRelationship.update({
         where: { id: relationship.id },
-        data: { salesBucketSetVersionId: version.id },
+        data: {
+          salesBucketSetVersionId: version.id,
+          timeBucketSetVersionId: timeVersion.id,
+        },
       });
       return {
         versionId: version.id,
@@ -28537,18 +28792,33 @@ app.post("/customers", async (req, res) => {
     },
     include: { brand: true, manufacturer: true },
   });
-  if (!relationship.salesBucketSetVersionId) {
+  if (!relationship.salesBucketSetVersionId || !relationship.timeBucketSetVersionId) {
     relationship = await prisma.$transaction(async (tx) => {
-      const version = await createQuantityBucketSetVersion({
-        db: tx,
-        orgId: manufacturerOrgId,
-        setName: `CUSTOMER_PRICE_BUCKETS_${relationship.id}`,
-        bucketQuantities: [...ST_STANDARD_BUCKETS],
-        actor: getCurrentRequestActor(),
-      });
+      const actor = getCurrentRequestActor();
+      const salesVersion = relationship.salesBucketSetVersionId
+        ? null
+        : await createQuantityBucketSetVersion({
+            db: tx,
+            orgId: manufacturerOrgId,
+            setName: `CUSTOMER_PRICE_BUCKETS_${relationship.id}`,
+            bucketQuantities: [...ST_STANDARD_BUCKETS],
+            actor,
+          });
+      const timeVersion = relationship.timeBucketSetVersionId
+        ? null
+        : await createQuantityBucketSetVersion({
+            db: tx,
+            orgId: manufacturerOrgId,
+            setName: `RELATIONSHIP_TIME_BUCKETS_${relationship.id}`,
+            bucketQuantities: [...ST_STANDARD_BUCKETS],
+            actor,
+          });
       return tx.orgRelationship.update({
         where: { id: relationship.id },
-        data: { salesBucketSetVersionId: version.id },
+        data: {
+          ...(salesVersion ? { salesBucketSetVersionId: salesVersion.id } : {}),
+          ...(timeVersion ? { timeBucketSetVersionId: timeVersion.id } : {}),
+        },
         include: { brand: true, manufacturer: true },
       });
     });
@@ -28726,7 +28996,7 @@ app.get("/styles", async (req, res) => {
     return res.status(403).json({ ok: false, error: "style access denied" });
   }
 
-  const styles: any[] = compact
+  let styles: any[] = compact
     ? await prisma.style.findMany({
         where: { orgId: { in: ownerScope } },
         orderBy: { id: "asc" },
@@ -28772,6 +29042,13 @@ app.get("/styles", async (req, res) => {
           _count: { select: { workRecords: true } },
         },
       });
+  if (includeProcesses && styles.length > 0) {
+    const contextByStyleId = await loadRelationshipTimeBucketContextByStyleId({
+      manufacturerOrgId: organization.id,
+      styles,
+    });
+    styles = applyRelationshipTimeBucketContexts({ styles, contextByStyleId });
+  }
   const processMirrorMap = includeProcesses
     ? await ensureStyleProcessStorageForStyles(styles, {
         processOrgId: organization.id,
@@ -28797,13 +29074,23 @@ app.get("/styles/:styleId", async (req, res) => {
   }
   const ownerOrgId = parseStyleOwnerOrgIdQuery(req.query.ownerOrgId);
 
-  const style = await resolveStyleByIdForAccess({
+  let style = await resolveStyleByIdForAccess({
     organization,
     styleId,
     ownerOrgId,
   });
   if (!style) {
     return res.status(404).json({ ok: false, error: "style not found" });
+  }
+  if (includeProcesses) {
+    const contextByStyleId = await loadRelationshipTimeBucketContextByStyleId({
+      manufacturerOrgId: organization.id,
+      styles: [style],
+    });
+    style = applyRelationshipTimeBucketContexts({
+      styles: [style],
+      contextByStyleId,
+    })[0];
   }
 
   const processMirrorMap = includeProcesses
@@ -28865,12 +29152,28 @@ app.post("/styles", async (req, res) => {
   }
 
   const created = await prisma.$transaction(async (tx) => {
-    const timeBucketSetVersionId = await resolveDefaultTimeBucketSetVersionIdForNewStyle({
-      db: tx,
-      manufacturerOrgId: organization.id,
-      ownerOrgId: owner.ownerOrgId,
-      actor: getCurrentRequestActor(),
-    });
+    const relationshipTimeVersion = includeProcesses
+      ? await tx.orgRelationship.findUnique({
+          where: {
+            manufacturerOrgId_brandOrgId: {
+              manufacturerOrgId: organization.id,
+              brandOrgId: owner.ownerOrgId,
+            },
+          },
+          select: { timeBucketSetVersionId: true },
+        })
+      : null;
+    const timeBucketSetVersionId = includeProcesses
+      ? toPositiveIntOrNull(relationshipTimeVersion?.timeBucketSetVersionId)
+      : await resolveDefaultTimeBucketSetVersionIdForNewStyle({
+          db: tx,
+          manufacturerOrgId: organization.id,
+          ownerOrgId: owner.ownerOrgId,
+          actor: getCurrentRequestActor(),
+        });
+    if (timeBucketSetVersionId === null) {
+      throw createHttpError(409, "relationship time bucket version is missing");
+    }
     const syncedProcesses = includeProcesses
       ? await syncProcessMasterFromStyleProcesses({
           processes: payload.processes,
@@ -28934,13 +29237,22 @@ app.post("/styles", async (req, res) => {
         processOrgId: organization.id,
       })
     : new Map<number, any[]>();
+  const responseCreated = includeProcesses
+    ? applyRelationshipTimeBucketContexts({
+        styles: [created],
+        contextByStyleId: await loadRelationshipTimeBucketContextByStyleId({
+          manufacturerOrgId: organization.id,
+          styles: [created],
+        }),
+      })[0]
+    : created;
 
   await rebuildAssignmentCardsForOrgIds(
     await resolveStyleSyncTargetOrgIds(owner.ownerOrgId)
   );
   res
     .status(201)
-    .json(toStyleResponse(created, { includeProcesses, processMirrorMap }));
+    .json(toStyleResponse(responseCreated, { includeProcesses, processMirrorMap }));
 });
 
 app.put("/styles/:styleId", async (req, res) => {
@@ -29094,7 +29406,16 @@ app.put("/styles/:styleId", async (req, res) => {
   await rebuildAssignmentCardsForOrgIds(
     await resolveStyleSyncTargetOrgIds(existing.orgId)
   );
-  res.json(toStyleResponse(updated, { includeProcesses, processMirrorMap }));
+  const responseUpdated = includeProcesses
+    ? applyRelationshipTimeBucketContexts({
+        styles: [updated],
+        contextByStyleId: await loadRelationshipTimeBucketContextByStyleId({
+          manufacturerOrgId: organization.id,
+          styles: [updated],
+        }),
+      })[0]
+    : updated;
+  res.json(toStyleResponse(responseUpdated, { includeProcesses, processMirrorMap }));
 });
 
 app.delete("/styles/:styleId", async (req, res) => {
@@ -29318,14 +29639,31 @@ app.post("/styles/import", async (req, res) => {
       // has (same "update never touches timeBucketSetVersionId" rule as
       // PUT /styles/:styleId).
       const isNewStyle = !existingStyleIdByOwnerCode.has(`${ownerOrgId}:${stylePayload.code}`);
+      const relationshipTimeVersion =
+        isNewStyle && includeProcesses
+          ? await tx.orgRelationship.findUnique({
+              where: {
+                manufacturerOrgId_brandOrgId: {
+                  manufacturerOrgId: organization.id,
+                  brandOrgId: ownerOrgId,
+                },
+              },
+              select: { timeBucketSetVersionId: true },
+            })
+          : null;
       const timeBucketSetVersionId = isNewStyle
-        ? await resolveDefaultTimeBucketSetVersionIdForNewStyle({
-            db: tx,
-            manufacturerOrgId: organization.id,
-            ownerOrgId,
-            actor: getCurrentRequestActor(),
-          })
+        ? includeProcesses
+          ? toPositiveIntOrNull(relationshipTimeVersion?.timeBucketSetVersionId)
+          : await resolveDefaultTimeBucketSetVersionIdForNewStyle({
+              db: tx,
+              manufacturerOrgId: organization.id,
+              ownerOrgId,
+              actor: getCurrentRequestActor(),
+            })
         : null;
+      if (isNewStyle && timeBucketSetVersionId === null) {
+        throw createHttpError(409, "relationship time bucket version is missing");
+      }
 
       const upserted = await tx.style.upsert({
         where: {
@@ -29367,7 +29705,7 @@ app.post("/styles/import", async (req, res) => {
     }
   });
 
-  const imported = await prisma.style.findMany({
+  let imported = await prisma.style.findMany({
     where: { orgId: { in: uniqueOwnerOrgIds } },
     include: {
       organization: {
@@ -29381,6 +29719,15 @@ app.post("/styles/import", async (req, res) => {
     },
     orderBy: { id: "asc" },
   });
+  if (includeProcesses && imported.length > 0) {
+    imported = applyRelationshipTimeBucketContexts({
+      styles: imported,
+      contextByStyleId: await loadRelationshipTimeBucketContextByStyleId({
+        manufacturerOrgId: organization.id,
+        styles: imported,
+      }),
+    });
+  }
   const processMirrorMap = includeProcesses
     ? await ensureStyleProcessStorageForStyles(imported, {
         processOrgId: organization.id,

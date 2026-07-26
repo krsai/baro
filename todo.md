@@ -1,5 +1,14 @@
 # TODO
 
+## 2026-07-26 관계별 시간/ST 버킷 전환
+
+- [x] 관계 기본 시간 버킷을 `OrgRelationship.timeBucketSetVersionId`, 스타일 예외를 `OrgRelationshipStyleTimeBucket`으로 분리하고 제조사 소유 복합 FK로 보호한다.
+- [x] 스타일/ST 화면, AT 초기값, 배정 ST 계산·스냅샷, 고객 버킷 저장이 로그인 제조사와 브랜드의 정확한 관계 버전을 사용하도록 전환한다.
+- [x] `AssignmentPlan.orgRelationshipId`를 추가해 제조사·고객 관계 범위를 DB 복합 FK로 고정한다.
+- [x] 다중 제조사 브랜드 저장 차단을 제거하고 현재 관계의 매출·시간 버킷만 같은 트랜잭션에서 변경한다.
+- [ ] Railway 운영 DB에서 `migration_fix.sql` 적용 후 `npm run verify:st-bucket-fk`로 관계 기본/예외 버킷, 활성 ST 전수, 배정 관계 FK 누락이 0건인지 확인한다.
+- [ ] 같은 브랜드·같은 스타일을 제조사 2곳에 연결한 실제 데이터로 서로 다른 버킷 저장과 상대 관계 불변을 운영 검증한다.
+
 ## 2026-07-26 ST 버킷 FK 조회 강화
 
 - [x] ST 계산과 배정 snapshot 생성을 `bucketQuantity` 숫자 검색이 아니라 `quantityBucketEntryId + quantityBucketSetVersionId`로 조회하도록 전환했다.
@@ -25,7 +34,7 @@
 - [x] 스타일 예외에서 고객 기본으로 복귀할 때 예외 단가가 고객 기본 단가를 덮어쓰지 않게 했다.
 - [x] 미저장 단가가 있으면 버킷 변경을 막아 가격 초안이 재조회로 사라지지 않게 했다.
 - [x] 버킷 변경 확인을 브라우저 `window.confirm` 대신 MUI Dialog로 바꿨고, 변경 없음은 별도 안내한다.
-- [x] 동일 브랜드가 여러 제조사 관계에 연결된 경우 현재의 전역 `Style.timeBucketSetVersionId`를 갱신하면 관계가 섞이므로 fail-closed 409로 차단한다. 조용히 다른 제조사의 지급 시간 버킷을 바꾸는 우회 처리는 허용하지 않는다.
+- [x] 과거 전역 `Style.timeBucketSetVersionId` 구조에서는 다중 제조사를 409로 차단했으며, 2026-07-26 관계별 시간 버킷 전환 후 이 임시 차단을 제거했다.
 - [x] 버킷 회귀 테스트, 백엔드·프론트 빌드, 인코딩 검사를 통과했다.
 
 대시보드 알림과 변경 이력 화면은 현재 버킷 저장의 미완성 코드가 아니라 향후 별도 제품 기능이다. 현재 버킷 변경은 버전 행의 생성자·생성시각과 `BUCKET_INHERITED_REVIEW` 상태로 추적 가능하며, 알림 기능 구현 시 이를 기반으로 별도 관계형 이벤트를 추가한다.

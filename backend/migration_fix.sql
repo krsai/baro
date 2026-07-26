@@ -3755,3 +3755,216 @@ ALTER TABLE "StyleProcessStandard"
   FOREIGN KEY ("styleProcessId", "orgId")
   REFERENCES "StyleProcess"("id", "orgId")
   ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- 2026-07-26: payroll/time buckets are scoped by manufacturer-brand
+-- relationship, with optional style overrides. Historical Style bucket links
+-- remain in place only as migration sources; operational reads use the new
+-- relationship rows after this backfill.
+ALTER TABLE "OrgRelationship"
+  ADD COLUMN IF NOT EXISTS "timeBucketSetVersionId" INTEGER;
+ALTER TABLE "AssignmentPlan"
+  ADD COLUMN IF NOT EXISTS "orgRelationshipId" INTEGER;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "OrgRelationship_id_manufacturer_brand_key"
+  ON "OrgRelationship"("id", "manufacturerOrgId", "brandOrgId");
+CREATE UNIQUE INDEX IF NOT EXISTS "QuantityBucketSetVersion_id_org_key"
+  ON "QuantityBucketSetVersion"("id", "orgId");
+CREATE UNIQUE INDEX IF NOT EXISTS "Style_id_org_key"
+  ON "Style"("id", "orgId");
+
+CREATE TABLE IF NOT EXISTS "OrgRelationshipStyleTimeBucket" (
+  "id" SERIAL PRIMARY KEY,
+  "orgRelationshipId" INTEGER NOT NULL,
+  "manufacturerOrgId" INTEGER NOT NULL,
+  "brandOrgId" INTEGER NOT NULL,
+  "styleId" INTEGER NOT NULL,
+  "quantityBucketSetVersionId" INTEGER NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdBy" TEXT NOT NULL DEFAULT 'SYSTEM:RELATIONSHIP_TIME_BUCKET_BACKFILL',
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "OrgRelationshipStyleTimeBucket_relationship_style_key"
+  ON "OrgRelationshipStyleTimeBucket"("orgRelationshipId", "styleId");
+CREATE INDEX IF NOT EXISTS "OrgRelationshipStyleTimeBucket_styleId_idx"
+  ON "OrgRelationshipStyleTimeBucket"("styleId");
+CREATE INDEX IF NOT EXISTS "OrgRelationshipStyleTimeBucket_versionId_idx"
+  ON "OrgRelationshipStyleTimeBucket"("quantityBucketSetVersionId");
+CREATE INDEX IF NOT EXISTS "OrgRelationshipStyleTimeBucket_org_scope_idx"
+  ON "OrgRelationshipStyleTimeBucket"("manufacturerOrgId", "brandOrgId");
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OrgRelationship_time_bucket_version_org_fkey') THEN
+    ALTER TABLE "OrgRelationship"
+      ADD CONSTRAINT "OrgRelationship_time_bucket_version_org_fkey"
+      FOREIGN KEY ("timeBucketSetVersionId", "manufacturerOrgId")
+      REFERENCES "QuantityBucketSetVersion"("id", "orgId")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OrgRelationshipStyleTimeBucket_relationship_scope_fkey') THEN
+    ALTER TABLE "OrgRelationshipStyleTimeBucket"
+      ADD CONSTRAINT "OrgRelationshipStyleTimeBucket_relationship_scope_fkey"
+      FOREIGN KEY ("orgRelationshipId", "manufacturerOrgId", "brandOrgId")
+      REFERENCES "OrgRelationship"("id", "manufacturerOrgId", "brandOrgId")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OrgRelationshipStyleTimeBucket_style_brand_fkey') THEN
+    ALTER TABLE "OrgRelationshipStyleTimeBucket"
+      ADD CONSTRAINT "OrgRelationshipStyleTimeBucket_style_brand_fkey"
+      FOREIGN KEY ("styleId", "brandOrgId")
+      REFERENCES "Style"("id", "orgId")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OrgRelationshipStyleTimeBucket_version_manufacturer_fkey') THEN
+    ALTER TABLE "OrgRelationshipStyleTimeBucket"
+      ADD CONSTRAINT "OrgRelationshipStyleTimeBucket_version_manufacturer_fkey"
+      FOREIGN KEY ("quantityBucketSetVersionId", "manufacturerOrgId")
+      REFERENCES "QuantityBucketSetVersion"("id", "orgId")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  ALTER TABLE "AssignmentPlan" DROP CONSTRAINT IF EXISTS "AssignmentPlan_orgRelationshipId_fkey";
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'AssignmentPlan_relationship_scope_fkey') THEN
+    ALTER TABLE "AssignmentPlan"
+      ADD CONSTRAINT "AssignmentPlan_relationship_scope_fkey"
+      FOREIGN KEY ("orgRelationshipId", "orgId", "buyerOrgId")
+      REFERENCES "OrgRelationship"("id", "manufacturerOrgId", "brandOrgId")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+DO $$
+DECLARE
+  rel RECORD;
+  style_row RECORD;
+  set_id INTEGER;
+  version_id INTEGER;
+  next_version INTEGER;
+  source_version_id INTEGER;
+BEGIN
+  FOR rel IN SELECT * FROM "OrgRelationship" ORDER BY id LOOP
+    IF rel."timeBucketSetVersionId" IS NULL THEN
+      INSERT INTO "QuantityBucketSet" ("orgId", name, "createdBy", "updatedAt")
+      VALUES (rel."manufacturerOrgId", 'RELATIONSHIP_TIME_BUCKETS_' || rel.id, 'SYSTEM:RELATIONSHIP_TIME_BUCKET_BACKFILL', CURRENT_TIMESTAMP)
+      ON CONFLICT ("orgId", name) DO UPDATE SET "updatedAt" = "QuantityBucketSet"."updatedAt"
+      RETURNING id INTO set_id;
+
+      SELECT COALESCE(MAX("versionNumber"), 0) + 1 INTO next_version
+      FROM "QuantityBucketSetVersion" WHERE "quantityBucketSetId" = set_id;
+      INSERT INTO "QuantityBucketSetVersion" ("orgId", "quantityBucketSetId", "versionNumber", "createdBy")
+      VALUES (rel."manufacturerOrgId", set_id, next_version, 'SYSTEM:RELATIONSHIP_TIME_BUCKET_BACKFILL')
+      RETURNING id INTO version_id;
+
+      source_version_id := rel."salesBucketSetVersionId";
+      IF source_version_id IS NULL THEN
+        SELECT s."timeBucketSetVersionId" INTO source_version_id
+        FROM "Style" s
+        WHERE s."orgId" = rel."brandOrgId" AND s."timeBucketSetVersionId" IS NOT NULL
+        ORDER BY s.id LIMIT 1;
+      END IF;
+      IF source_version_id IS NULL THEN
+        RAISE EXCEPTION 'relationship % has no source quantity bucket version', rel.id;
+      END IF;
+
+      INSERT INTO "QuantityBucketEntry" ("orgId", "quantityBucketSetVersionId", "bucketQuantity")
+      SELECT rel."manufacturerOrgId", version_id, e."bucketQuantity"
+      FROM "QuantityBucketEntry" e
+      WHERE e."quantityBucketSetVersionId" = source_version_id
+      ORDER BY e."bucketQuantity";
+      UPDATE "QuantityBucketSet" SET "currentVersionId" = version_id WHERE id = set_id;
+      UPDATE "OrgRelationship" SET "timeBucketSetVersionId" = version_id WHERE id = rel.id;
+    ELSE
+      version_id := rel."timeBucketSetVersionId";
+    END IF;
+
+    FOR style_row IN
+      SELECT DISTINCT s.id, s."timeBucketSetVersionId", s."timeBucketSource"
+      FROM "Style" s
+      JOIN "StyleProcess" sp ON sp."styleId" = s.id AND sp."orgId" = rel."manufacturerOrgId"
+      WHERE s."orgId" = rel."brandOrgId" AND s."timeBucketSetVersionId" IS NOT NULL
+      ORDER BY s.id
+    LOOP
+      IF style_row."timeBucketSource" = 'STYLE_OVERRIDE' THEN
+        SELECT "quantityBucketSetVersionId" INTO source_version_id
+        FROM "OrgRelationshipStyleTimeBucket"
+        WHERE "orgRelationshipId" = rel.id AND "styleId" = style_row.id;
+        IF source_version_id IS NULL THEN
+          INSERT INTO "QuantityBucketSet" ("orgId", name, "createdBy", "updatedAt")
+          VALUES (rel."manufacturerOrgId", 'RELATIONSHIP_TIME_BUCKETS_' || rel.id || '_STYLE_' || style_row.id, 'SYSTEM:RELATIONSHIP_TIME_BUCKET_BACKFILL', CURRENT_TIMESTAMP)
+          ON CONFLICT ("orgId", name) DO UPDATE SET "updatedAt" = "QuantityBucketSet"."updatedAt"
+          RETURNING id INTO set_id;
+          SELECT COALESCE(MAX("versionNumber"), 0) + 1 INTO next_version
+          FROM "QuantityBucketSetVersion" WHERE "quantityBucketSetId" = set_id;
+          INSERT INTO "QuantityBucketSetVersion" ("orgId", "quantityBucketSetId", "versionNumber", "createdBy")
+          VALUES (rel."manufacturerOrgId", set_id, next_version, 'SYSTEM:RELATIONSHIP_TIME_BUCKET_BACKFILL')
+          RETURNING id INTO source_version_id;
+          INSERT INTO "QuantityBucketEntry" ("orgId", "quantityBucketSetVersionId", "bucketQuantity")
+          SELECT rel."manufacturerOrgId", source_version_id, e."bucketQuantity"
+          FROM "QuantityBucketEntry" e
+          WHERE e."quantityBucketSetVersionId" = style_row."timeBucketSetVersionId"
+          ORDER BY e."bucketQuantity";
+          UPDATE "QuantityBucketSet" SET "currentVersionId" = source_version_id WHERE id = set_id;
+          INSERT INTO "OrgRelationshipStyleTimeBucket" (
+            "orgRelationshipId", "manufacturerOrgId", "brandOrgId", "styleId", "quantityBucketSetVersionId"
+          ) VALUES (rel.id, rel."manufacturerOrgId", rel."brandOrgId", style_row.id, source_version_id);
+        END IF;
+      ELSE
+        source_version_id := version_id;
+      END IF;
+
+      INSERT INTO "StyleProcessStandard" (
+        "orgId", "styleProcessId", "quantityBucketEntryId", "quantityBucketSetVersionId",
+        "bucketStSeconds", "setBy", "setAt", "updatedAt"
+      )
+      SELECT
+        sp."orgId", sp.id, new_entry.id, source_version_id,
+        old_standard."bucketStSeconds", old_standard."setBy", old_standard."setAt", CURRENT_TIMESTAMP
+      FROM "StyleProcess" sp
+      JOIN "StyleProcessStandard" old_standard ON old_standard."styleProcessId" = sp.id
+      JOIN "QuantityBucketEntry" old_entry
+        ON old_entry.id = old_standard."quantityBucketEntryId"
+       AND old_entry."quantityBucketSetVersionId" = style_row."timeBucketSetVersionId"
+      JOIN "QuantityBucketEntry" new_entry
+        ON new_entry."quantityBucketSetVersionId" = source_version_id
+       AND new_entry."bucketQuantity" = old_entry."bucketQuantity"
+      WHERE sp."styleId" = style_row.id AND sp."orgId" = rel."manufacturerOrgId"
+      ON CONFLICT ("styleProcessId", "quantityBucketEntryId") DO NOTHING;
+    END LOOP;
+  END LOOP;
+
+  UPDATE "AssignmentPlan" plan
+  SET "orgRelationshipId" = rel.id
+  FROM "OrgRelationship" rel
+  WHERE plan."orgRelationshipId" IS NULL
+    AND plan."orgId" = rel."manufacturerOrgId"
+    AND plan."buyerOrgId" = rel."brandOrgId";
+END $$;
+
+DO $$
+DECLARE
+  missing_standard_count INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO missing_standard_count
+  FROM "OrgRelationship" r
+  JOIN "Style" s ON s."orgId" = r."brandOrgId"
+  JOIN "StyleProcess" sp
+    ON sp."styleId" = s.id AND sp."orgId" = r."manufacturerOrgId"
+  LEFT JOIN "OrgRelationshipStyleTimeBucket" override
+    ON override."orgRelationshipId" = r.id AND override."styleId" = s.id
+  JOIN "QuantityBucketEntry" e
+    ON e."quantityBucketSetVersionId" = COALESCE(
+      override."quantityBucketSetVersionId",
+      r."timeBucketSetVersionId"
+    )
+  LEFT JOIN "StyleProcessStandard" x
+    ON x."styleProcessId" = sp.id
+   AND x."orgId" = r."manufacturerOrgId"
+   AND x."quantityBucketEntryId" = e.id
+   AND x."quantityBucketSetVersionId" = e."quantityBucketSetVersionId"
+  WHERE x.id IS NULL;
+
+  IF missing_standard_count > 0 THEN
+    RAISE EXCEPTION
+      'relationship time bucket backfill left % active StyleProcessStandard rows missing',
+      missing_standard_count;
+  END IF;
+END $$;
