@@ -118,6 +118,7 @@ test('ST bucket FK verifier fails closed on relational violations', () => {
   assert.match(stFkVerifier, /missing_relationship_time_bucket/);
   assert.match(stFkVerifier, /invalid_time_bucket_override/);
   assert.match(stFkVerifier, /invalid_assignment_relationship/);
+  assert.match(stFkVerifier, /assignment_style_buyer_missing/);
   assert.match(stFkVerifier, /missing_active_relationship_standard/);
   assert.match(stFkVerifier, /legacy_columns/);
   assert.match(stFkVerifier, /throw new Error/);
@@ -128,7 +129,7 @@ test('ST bucket FK verifier fails closed on relational violations', () => {
     legacyColumns: [{ count: 0 }],
     relationshipTimeBuckets: [{ missing_or_mismatched: 0 }],
     timeBucketOverrides: [{ invalid_scope: 0 }],
-    assignmentRelationships: [{ invalid_scope: 0 }],
+    assignmentRelationships: [{ invalid_scope: 0, style_buyer_missing: 0 }],
     activeRelationshipStandards: [{ missing_standard: 0 }],
   };
   assert.deepEqual(collectStBucketFkViolations(cleanResult), []);

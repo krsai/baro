@@ -27286,6 +27286,7 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
     return res.status(400).json({ ok: false, error: "expectedVersionId is required" });
   }
   const actor = getCurrentRequestActor();
+  const actorEmployeeId = getCurrentRequestActorEmployeeId();
 
   const result = await prisma.$transaction(
     async (tx) => {
@@ -27519,8 +27520,13 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
             styleId: style.id,
             quantityBucketSetVersionId: timeVersion.id,
             createdBy: actor,
+            createdByEmployeeId: actorEmployeeId,
+            updatedByEmployeeId: actorEmployeeId,
           },
-          update: { quantityBucketSetVersionId: timeVersion.id },
+          update: {
+            quantityBucketSetVersionId: timeVersion.id,
+            updatedByEmployeeId: actorEmployeeId,
+          },
         });
         await tx.orgRelationshipStyleSalesBucket.upsert({
           where: {
@@ -27558,7 +27564,22 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
       const addedQuantities = quantities.filter((quantity) => !previousQuantities.includes(quantity));
       const removedQuantities = previousQuantities.filter((quantity) => !quantities.includes(quantity));
       const retainedQuantities = quantities.filter((quantity) => previousQuantities.includes(quantity));
-      if (addedQuantities.length === 0 && removedQuantities.length === 0) {
+      const previousTimeQuantities = normalizeQuantityBucketValues(
+        currentRelationship.timeBucketSetVersion.entries.map(
+          (entry) => entry.bucketQuantity
+        )
+      );
+      const addedTimeQuantities = quantities.filter(
+        (quantity) => !previousTimeQuantities.includes(quantity)
+      );
+      const removedTimeQuantities = previousTimeQuantities.filter(
+        (quantity) => !quantities.includes(quantity)
+      );
+      const salesBucketsChanged =
+        addedQuantities.length > 0 || removedQuantities.length > 0;
+      const timeBucketsChanged =
+        addedTimeQuantities.length > 0 || removedTimeQuantities.length > 0;
+      if (!salesBucketsChanged && !timeBucketsChanged) {
         return {
           versionId: previousVersion.id,
           addedQuantities,
@@ -27586,44 +27607,51 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
       const affectedStyles = salesDefaultStyles.filter(
         (style) => style.timeBucketOverrides.length === 0
       );
-      const version = await createQuantityBucketSetVersion({
-        db: tx,
-        orgId: organization.id,
-        setName: `CUSTOMER_PRICE_BUCKETS_${relationship.id}`,
-        existingSetId:
-          relationship.salesBucketSetVersion?.quantityBucketSetId ?? null,
-        bucketQuantities: quantities,
-        actor,
-      });
+      const version = salesBucketsChanged
+        ? await createQuantityBucketSetVersion({
+            db: tx,
+            orgId: organization.id,
+            setName: `CUSTOMER_PRICE_BUCKETS_${relationship.id}`,
+            existingSetId:
+              relationship.salesBucketSetVersion?.quantityBucketSetId ?? null,
+            bucketQuantities: quantities,
+            actor,
+          })
+        : previousVersion;
       const salesDefaultStyleIds = salesDefaultStyles.map((style) => style.id);
       const affectedStyleIds = affectedStyles.map((style) => style.id);
-      const copiedPriceCount = await copyRetainedSalesPricesToVersion({
-        db: tx,
-        relationshipId: relationship.id,
-        styleIds: salesDefaultStyleIds,
-        previousVersionId: previousVersion.id,
-        nextVersion: version,
-        retainedQuantities,
-        actor,
-      });
-      const timeVersion = await createQuantityBucketSetVersion({
-        db: tx,
-        orgId: organization.id,
-        setName: `RELATIONSHIP_TIME_BUCKETS_${relationship.id}`,
-        existingSetId: currentRelationship.timeBucketSetVersion.quantityBucketSetId,
-        bucketQuantities: quantities,
-        actor,
-      });
-      const unreviewedStandardCount =
-        await syncStyleStandardsForBucketVersion({
+      const copiedPriceCount = salesBucketsChanged
+        ? await copyRetainedSalesPricesToVersion({
+            db: tx,
+            relationshipId: relationship.id,
+            styleIds: salesDefaultStyleIds,
+            previousVersionId: previousVersion.id,
+            nextVersion: version,
+            retainedQuantities,
+            actor,
+          })
+        : 0;
+      const timeVersion = timeBucketsChanged
+        ? await createQuantityBucketSetVersion({
+            db: tx,
+            orgId: organization.id,
+            setName: `RELATIONSHIP_TIME_BUCKETS_${relationship.id}`,
+            existingSetId: currentRelationship.timeBucketSetVersion.quantityBucketSetId,
+            bucketQuantities: quantities,
+            actor,
+          })
+        : currentRelationship.timeBucketSetVersion;
+      const unreviewedStandardCount = timeBucketsChanged
+        ? await syncStyleStandardsForBucketVersion({
               db: tx,
               transitions: affectedStyles.map((style) => ({
                 styleId: style.id,
                 previousVersionId: currentRelationship.timeBucketSetVersion!.id,
                 nextVersionId: timeVersion.id,
               })),
-              addedBucketQuantities: addedQuantities,
-            });
+              addedBucketQuantities: addedTimeQuantities,
+            })
+        : 0;
       await tx.orgRelationship.update({
         where: { id: relationship.id },
         data: {

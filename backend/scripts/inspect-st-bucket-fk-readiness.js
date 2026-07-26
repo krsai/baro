@@ -11,6 +11,7 @@ const collectStBucketFkViolations = (result) => {
     ['missing_relationship_time_bucket', first(result.relationshipTimeBuckets).missing_or_mismatched],
     ['invalid_time_bucket_override', first(result.timeBucketOverrides).invalid_scope],
     ['invalid_assignment_relationship', first(result.assignmentRelationships).invalid_scope],
+    ['assignment_style_buyer_missing', first(result.assignmentRelationships).style_buyer_missing],
     ['missing_active_relationship_standard', first(result.activeRelationshipStandards).missing_standard],
     [
       'unresolved_cross_org',
@@ -58,13 +59,16 @@ const main = async () => {
     assignmentRelationships: await query(`
       SELECT COUNT(*)::int total,
         COUNT(*) FILTER (
+          WHERE p."styleId" IS NOT NULL AND p."buyerOrgId" IS NULL
+        )::int style_buyer_missing,
+        COUNT(*) FILTER (
           WHERE p."orgRelationshipId" IS NULL OR r.id IS NULL
              OR r."manufacturerOrgId" <> p."orgId"
              OR r."brandOrgId" <> p."buyerOrgId"
         )::int invalid_scope
       FROM "AssignmentPlan" p
       LEFT JOIN "OrgRelationship" r ON r.id = p."orgRelationshipId"
-      WHERE p."styleId" IS NOT NULL AND p."buyerOrgId" IS NOT NULL
+      WHERE p."styleId" IS NOT NULL
     `),
     activeRelationshipStandards: await query(`
       SELECT COUNT(*)::int expected,

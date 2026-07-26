@@ -3760,6 +3760,8 @@ ALTER TABLE "StyleProcessStandard"
 -- relationship, with optional style overrides. Historical Style bucket links
 -- remain in place only as migration sources; operational reads use the new
 -- relationship rows after this backfill.
+BEGIN;
+
 ALTER TABLE "OrgRelationship"
   ADD COLUMN IF NOT EXISTS "timeBucketSetVersionId" INTEGER;
 ALTER TABLE "AssignmentPlan"
@@ -3781,8 +3783,13 @@ CREATE TABLE IF NOT EXISTS "OrgRelationshipStyleTimeBucket" (
   "quantityBucketSetVersionId" INTEGER NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "createdBy" TEXT NOT NULL DEFAULT 'SYSTEM:RELATIONSHIP_TIME_BUCKET_BACKFILL',
+  "createdByEmployeeId" INTEGER,
+  "updatedByEmployeeId" INTEGER,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE "OrgRelationshipStyleTimeBucket"
+  ADD COLUMN IF NOT EXISTS "createdByEmployeeId" INTEGER,
+  ADD COLUMN IF NOT EXISTS "updatedByEmployeeId" INTEGER;
 CREATE UNIQUE INDEX IF NOT EXISTS "OrgRelationshipStyleTimeBucket_relationship_style_key"
   ON "OrgRelationshipStyleTimeBucket"("orgRelationshipId", "styleId");
 CREATE INDEX IF NOT EXISTS "OrgRelationshipStyleTimeBucket_styleId_idx"
@@ -3822,6 +3829,18 @@ BEGIN
       REFERENCES "QuantityBucketSetVersion"("id", "orgId")
       ON DELETE RESTRICT ON UPDATE CASCADE;
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OrgRelationshipStyleTimeBucket_createdByEmployeeId_fkey') THEN
+    ALTER TABLE "OrgRelationshipStyleTimeBucket"
+      ADD CONSTRAINT "OrgRelationshipStyleTimeBucket_createdByEmployeeId_fkey"
+      FOREIGN KEY ("createdByEmployeeId") REFERENCES "Employee"(id)
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OrgRelationshipStyleTimeBucket_updatedByEmployeeId_fkey') THEN
+    ALTER TABLE "OrgRelationshipStyleTimeBucket"
+      ADD CONSTRAINT "OrgRelationshipStyleTimeBucket_updatedByEmployeeId_fkey"
+      FOREIGN KEY ("updatedByEmployeeId") REFERENCES "Employee"(id)
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
   ALTER TABLE "AssignmentPlan" DROP CONSTRAINT IF EXISTS "AssignmentPlan_orgRelationshipId_fkey";
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'AssignmentPlan_relationship_scope_fkey') THEN
     ALTER TABLE "AssignmentPlan"
@@ -3854,12 +3873,16 @@ BEGIN
       VALUES (rel."manufacturerOrgId", set_id, next_version, 'SYSTEM:RELATIONSHIP_TIME_BUCKET_BACKFILL')
       RETURNING id INTO version_id;
 
-      source_version_id := rel."salesBucketSetVersionId";
-      IF source_version_id IS NULL THEN
-        SELECT s."timeBucketSetVersionId" INTO source_version_id
-        FROM "Style" s
-        WHERE s."orgId" = rel."brandOrgId" AND s."timeBucketSetVersionId" IS NOT NULL
-        ORDER BY s.id LIMIT 1;
+      SELECT MIN(s."timeBucketSetVersionId"), COUNT(DISTINCT s."timeBucketSetVersionId")
+      INTO source_version_id, next_version
+      FROM "Style" s
+      WHERE s."orgId" = rel."brandOrgId"
+        AND s."timeBucketSetVersionId" IS NOT NULL
+        AND s."timeBucketSource" = 'CUSTOMER_DEFAULT';
+      IF next_version > 1 THEN
+        RAISE EXCEPTION
+          'relationship % has multiple legacy CUSTOMER_DEFAULT time bucket versions',
+          rel.id;
       END IF;
       IF source_version_id IS NULL THEN
         RAISE EXCEPTION 'relationship % has no source quantity bucket version', rel.id;
@@ -3932,11 +3955,11 @@ BEGIN
   END LOOP;
 
   UPDATE "AssignmentPlan" plan
-  SET "orgRelationshipId" = rel.id
-  FROM "OrgRelationship" rel
+  SET "orgRelationshipId" = relationship_row.id
+  FROM "OrgRelationship" relationship_row
   WHERE plan."orgRelationshipId" IS NULL
-    AND plan."orgId" = rel."manufacturerOrgId"
-    AND plan."buyerOrgId" = rel."brandOrgId";
+    AND plan."orgId" = relationship_row."manufacturerOrgId"
+    AND plan."buyerOrgId" = relationship_row."brandOrgId";
 END $$;
 
 DO $$
@@ -3968,3 +3991,5 @@ BEGIN
       missing_standard_count;
   END IF;
 END $$;
+
+COMMIT;

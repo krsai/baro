@@ -454,6 +454,8 @@ model Employee {
   updatedAssignmentCards             AssignmentCard[]                  @relation("AssignmentCardUpdatedByEmployee")
   createdSalesBucketOverrides        OrgRelationshipStyleSalesBucket[] @relation("SalesBucketOverrideCreatedByEmployee")
   updatedSalesBucketOverrides        OrgRelationshipStyleSalesBucket[] @relation("SalesBucketOverrideUpdatedByEmployee")
+  createdTimeBucketOverrides         OrgRelationshipStyleTimeBucket[]  @relation("TimeBucketOverrideCreatedByEmployee")
+  updatedTimeBucketOverrides         OrgRelationshipStyleTimeBucket[]  @relation("TimeBucketOverrideUpdatedByEmployee")
   createdSalesPriceLists             CustomerSalesPriceList[]          @relation("SalesPriceListCreatedByEmployee")
   updatedSalesPriceLists             CustomerSalesPriceList[]          @relation("SalesPriceListUpdatedByEmployee")
   createdSalesPrices                 CustomerSalesPrice[]              @relation("SalesPriceCreatedByEmployee")
@@ -970,11 +972,16 @@ model OrgRelationshipStyleTimeBucket {
   quantityBucketSetVersionId Int
   createdAt                  DateTime @default(now())
   createdBy                  String   @default("system@baro.local")
+  createdByEmployeeId        Int?
+  updatedByEmployeeId        Int?
   updatedAt                  DateTime @updatedAt
 
   orgRelationship          OrgRelationship          @relation(fields: [orgRelationshipId, manufacturerOrgId, brandOrgId], references: [id, manufacturerOrgId, brandOrgId], onDelete: Cascade, map: "OrgRelationshipStyleTimeBucket_relationship_scope_fkey")
   style                    Style                    @relation(fields: [styleId, brandOrgId], references: [id, orgId], onDelete: Cascade, map: "OrgRelationshipStyleTimeBucket_style_brand_fkey")
   quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId, manufacturerOrgId], references: [id, orgId], onDelete: Restrict, map: "OrgRelationshipStyleTimeBucket_version_manufacturer_fkey")
+
+  createdByEmployee Employee? @relation("TimeBucketOverrideCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("TimeBucketOverrideUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([orgRelationshipId, styleId], map: "OrgRelationshipStyleTimeBucket_relationship_style_key")
   @@index([styleId], map: "OrgRelationshipStyleTimeBucket_styleId_idx")
