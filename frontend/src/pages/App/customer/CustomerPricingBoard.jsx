@@ -571,6 +571,7 @@ const CustomerPricingBoard = () => {
         `/customers/${selectedCustomerId}/quantity-buckets${customerQuery}`,
         {
           method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             quantities: activeSalesBuckets,
             expectedVersionId,
@@ -701,6 +702,7 @@ const CustomerPricingBoard = () => {
         `/customers/${selectedCustomerId}/sales-prices${customerQuery}`,
         {
           method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             pricingBasis,
             currencyCode,

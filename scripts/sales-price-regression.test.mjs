@@ -61,6 +61,13 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
     ),
     /ptSeconds|PT_DERIVED/
   );
+  assert.doesNotMatch(
+    backend.slice(
+      backend.indexOf('const syncStyleStandardsForBucketVersion'),
+      backend.indexOf('const copyRetainedSalesPricesToVersion')
+    ),
+    /normalizeQuantityBucketValues\(addedBucketQuantities\)/
+  );
   assert.match(backend, /resolveStyleProcessBucketStandardByEntryId/);
   assert.match(backend, /resolveStyleProcessBucketStSecondsByEntryId/);
   assert.doesNotMatch(backend, /resolveStyleProcessBucketStSeconds\s*=/);
@@ -72,6 +79,11 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
   assert.match(frontend, /savedCustomerBuckets/);
   assert.match(frontend, /expectedVersionId/);
   assert.match(frontend, /requestBucketConfirmation/);
+  const bucketSaveRequest = frontend.slice(
+    frontend.indexOf('const saveActiveBuckets = useCallback'),
+    frontend.indexOf('const dirtyPriceChanges = useMemo')
+  );
+  assert.match(bucketSaveRequest, /headers: \{ 'Content-Type': 'application\/json' \}/);
   assert.doesNotMatch(frontend, /window\.confirm\(confirmation\)/);
 });
 
@@ -134,6 +146,11 @@ test('sales price saves send changes only and persist them in a batched transact
   assert.doesNotMatch(saveRoute, /for \(const entry of requestedPrices\)[\s\S]*findUnique/);
   assert.match(frontend, /const dirtyPriceChanges = useMemo/);
   assert.match(frontend, /prices: dirtyPriceChanges\.map/);
+  const priceSaveRequest = frontend.slice(
+    frontend.indexOf('const savePrices = useCallback'),
+    frontend.indexOf('const customerLabel =')
+  );
+  assert.match(priceSaveRequest, /headers: \{ 'Content-Type': 'application\/json' \}/);
   assert.match(frontend, /useUnsavedChanges\(dirtyPriceChanges\.length > 0\)/);
 });
 

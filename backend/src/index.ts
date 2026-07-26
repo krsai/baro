@@ -1585,7 +1585,16 @@ const syncStyleStandardsForBucketVersion = async ({
       toPositiveIntOrNull(item.previousVersionId) !== null &&
       toPositiveIntOrNull(item.nextVersionId) !== null
   );
-  const addedQuantities = normalizeQuantityBucketValues(addedBucketQuantities);
+  // A delete-only bucket change legitimately has no added quantities. The
+  // target version itself must remain non-empty, but this classification list
+  // may be empty and must not use the fail-closed bucket-set validator.
+  const addedQuantities = Array.from(
+    new Set(
+      ensureArray(addedBucketQuantities)
+        .map((quantity) => toPositiveIntOrNull(quantity))
+        .filter((quantity): quantity is number => quantity !== null)
+    )
+  ).sort((left, right) => left - right);
   if (normalizedTransitions.length === 0) return 0;
   const processes = await db.styleProcess.findMany({
     where: { styleId: { in: normalizedTransitions.map((item) => item.styleId) } },
