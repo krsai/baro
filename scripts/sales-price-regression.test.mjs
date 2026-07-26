@@ -77,6 +77,8 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
     relationshipTimeBucketService,
     /normalizeQuantityBucketValues\(addedBucketQuantities\)/
   );
+  assert.match(relationshipTimeBucketService, /styleProcessStandard\.createMany/);
+  assert.doesNotMatch(relationshipTimeBucketService, /styleProcessStandard\.upsert/);
   assert.match(backend, /resolveStyleProcessBucketStandardByEntryId/);
   assert.match(backend, /resolveStyleProcessBucketStSecondsByEntryId/);
   assert.doesNotMatch(backend, /resolveStyleProcessBucketStSeconds\s*=/);

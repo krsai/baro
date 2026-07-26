@@ -143,6 +143,7 @@ export const syncStyleStandardsForBucketVersion = async ({
     ]);
   });
   let createdOrUpdatedCount = 0;
+  const standardsToCreate: Prisma.StyleProcessStandardCreateManyInput[] = [];
   for (const transition of normalizedTransitions) {
     const previousEntries = entriesByVersion.get(transition.previousVersionId) ?? [];
     const nextEntries = entriesByVersion.get(transition.nextVersionId) ?? [];
@@ -154,11 +155,24 @@ export const syncStyleStandardsForBucketVersion = async ({
         row.styleId === transition.styleId &&
         row.orgId === transition.processOrgId
     )) {
+      const existingNextEntryIds = new Set(
+        ensureArray(process.standards)
+          .filter(
+            (standard: any) =>
+              standard.quantityBucketSetVersionId === transition.nextVersionId
+          )
+          .map((standard: any) => standard.quantityBucketEntry?.id)
+          .filter((entryId: any) => toPositiveIntOrNull(entryId) !== null)
+      );
       const previousStandards = ensureArray(process.standards).filter(
         (standard: any) =>
           standard.quantityBucketSetVersionId === transition.previousVersionId
       );
       for (const nextEntry of nextEntries) {
+        // Returning from a style override to an existing relationship-default
+        // version only switches the version link. Existing default standards
+        // belong to that target version and must not be overwritten.
+        if (existingNextEntryIds.has(nextEntry.id)) continue;
         const bucketQuantity = nextEntry.bucketQuantity;
         const retainedEntry = previousEntryByQuantity.get(bucketQuantity);
         const retainedStandard = retainedEntry
@@ -186,34 +200,26 @@ export const syncStyleStandardsForBucketVersion = async ({
             `ST(${bucketQuantity}) cannot be initialized because styleProcessId=${process.id} has no lower bucket ST`
           );
         }
-        await db.styleProcessStandard.upsert({
-          where: {
-            styleProcessId_quantityBucketEntryId: {
-              styleProcessId: process.id,
-              quantityBucketEntryId: nextEntry.id,
-            },
-          },
-          update: {
-            bucketStSeconds: Number(source.bucketStSeconds),
-            setBy: retainedStandard ? source.setBy : "BUCKET_INHERITED_REVIEW",
-            setAt: retainedStandard ? source.setAt : new Date(),
-            quantityBucketSetVersionId: transition.nextVersionId,
-          },
-          create: {
-            orgId: process.orgId,
-            styleProcessId: process.id,
-            quantityBucketEntryId: nextEntry.id,
-            quantityBucketSetVersionId: transition.nextVersionId,
-            bucketStSeconds: Number(source.bucketStSeconds),
-            setBy: retainedStandard ? source.setBy : "BUCKET_INHERITED_REVIEW",
-            setAt: retainedStandard ? source.setAt : undefined,
-          },
+        standardsToCreate.push({
+          orgId: process.orgId,
+          styleProcessId: process.id,
+          quantityBucketEntryId: nextEntry.id,
+          quantityBucketSetVersionId: transition.nextVersionId,
+          bucketStSeconds: Number(source.bucketStSeconds),
+          setBy: retainedStandard ? source.setBy : "BUCKET_INHERITED_REVIEW",
+          setAt: retainedStandard ? source.setAt : new Date(),
         });
         if (!retainedStandard && addedQuantities.includes(bucketQuantity)) {
           createdOrUpdatedCount += 1;
         }
       }
     }
+  }
+  if (standardsToCreate.length > 0) {
+    await db.styleProcessStandard.createMany({
+      data: standardsToCreate,
+      skipDuplicates: true,
+    });
   }
   return createdOrUpdatedCount;
 };
