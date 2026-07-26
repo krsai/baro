@@ -18,6 +18,7 @@ const frontend = fs.readFileSync(
   'frontend/src/pages/App/customer/CustomerPricingBoard.jsx',
   'utf8'
 );
+const styleApi = fs.readFileSync('frontend/src/utils/styleApi.js', 'utf8');
 const stFkVerifier = fs.readFileSync(
   'backend/scripts/inspect-st-bucket-fk-readiness.js',
   'utf8'
@@ -90,6 +91,8 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
   assert.match(frontend, /savedCustomerBuckets/);
   assert.match(frontend, /expectedVersionId/);
   assert.match(frontend, /requestBucketConfirmation/);
+  assert.match(styleApi, /timeBucketQuantities: normalizeBucketQuantities\(value\.timeBucketQuantities\)/);
+  assert.match(styleApi, /timeBucketSetVersionId: toPositiveOrgId\(value\.timeBucketSetVersionId\)/);
   const bucketSaveRequest = frontend.slice(
     frontend.indexOf('const saveActiveBuckets = useCallback'),
     frontend.indexOf('const dirtyPriceChanges = useMemo')

@@ -11,6 +11,13 @@ const styleByIdCache = new Map();
 const styleByIdInFlight = new Map();
 
 const normalizeArray = (value) => (Array.isArray(value) ? value : []);
+const normalizeBucketQuantities = (value) => Array.from(
+  new Set(
+    normalizeArray(value)
+      .map((item) => Number(item))
+      .filter((item) => Number.isInteger(item) && item > 0)
+  )
+).sort((left, right) => left - right);
 const toPositiveOrgId = (value) => {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -41,6 +48,9 @@ const normalizeStyle = (value = {}) => ({
   processes: normalizeProcesses(value.processes),
   bom: normalizeArray(value.bom),
   bomNotes: value.bomNotes || '',
+  timeBucketSource: value.timeBucketSource || null,
+  timeBucketSetVersionId: toPositiveOrgId(value.timeBucketSetVersionId),
+  timeBucketQuantities: normalizeBucketQuantities(value.timeBucketQuantities),
   workRecordCount: Math.max(0, Number(value.workRecordCount) || 0),
   hasWorkRecords: Boolean(value.hasWorkRecords) || (Number(value.workRecordCount) || 0) > 0,
   createdAt: value.createdAt || null,
