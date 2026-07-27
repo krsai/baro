@@ -2840,13 +2840,13 @@ const StyleProcess = ({
                 </TableCell>
 
                 <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {formatSecondsOrDash(previewAtTotalSeconds)}
+                  <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                    {formatSecondsOrDash(previewStTotalSeconds)}
                   </Typography>
                 </TableCell>
                 <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
-                    {formatSecondsOrDash(previewStTotalSeconds)}
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {formatSecondsOrDash(previewAtTotalSeconds)}
                   </Typography>
                 </TableCell>
                 <TableCell align="center" sx={{ width: PROCESS_ACTION_COLUMN_WIDTH }}>
@@ -3514,6 +3514,21 @@ const StyleProcess = ({
                   <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
                     <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75}>
                       <Tooltip
+                        title={getStyleProcessMessage(languageCode, 'stTooltip', {
+                          quantity: stBucketQuantityLabel,
+                        })}
+                        placement="top"
+                      >
+                        <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
+                          {`ST(${stBucketQuantityLabel})`}
+                        </Box>
+                      </Tooltip>
+                      {hasAT && hasST && totalStGapPercent != null ? renderStGapChip(totalStGapPercent) : null}
+                    </Stack>
+                  </TableCell>
+                  <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
+                    <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75}>
+                      <Tooltip
                         title={getStyleProcessMessage(languageCode, 'atTooltip', {
                           quantity: timeRefQuantityLabel,
                         })}
@@ -3534,21 +3549,6 @@ const StyleProcess = ({
                           }}
                         />
                       )}
-                    </Stack>
-                  </TableCell>
-                  <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
-                    <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75}>
-                      <Tooltip
-                        title={getStyleProcessMessage(languageCode, 'stTooltip', {
-                          quantity: stBucketQuantityLabel,
-                        })}
-                        placement="top"
-                      >
-                        <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
-                          {`ST(${stBucketQuantityLabel})`}
-                        </Box>
-                      </Tooltip>
-                      {hasAT && hasST && totalStGapPercent != null ? renderStGapChip(totalStGapPercent) : null}
                     </Stack>
                   </TableCell>
                   <TableCell align="center" sx={{ width: PROCESS_ACTION_COLUMN_WIDTH }}>
@@ -3582,11 +3582,11 @@ const StyleProcess = ({
                   <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
                     {hasPT ? formatSeconds(totalPT) : '-'}
                   </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
-                    {hasAT ? formatSecondsOrDash(totalAT) : '-'}
-                  </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem', color: 'primary.main' }}>
                     {hasST ? formatSeconds(totalST) : '-'}
+                  </TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
+                    {hasAT ? formatSecondsOrDash(totalAT) : '-'}
                   </TableCell>
                   <TableCell sx={{ width: PROCESS_ACTION_COLUMN_WIDTH }} />
                 </TableRow>
