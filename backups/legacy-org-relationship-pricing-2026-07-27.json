@@ -1,0 +1,27 @@
+[
+  {
+    "id": 1,
+    "manufacturerOrgId": 1,
+    "brandOrgId": 2,
+    "pricingDefaultTradeType": "CMPT",
+    "pricingMatrix": {
+      "S-943D7F": { "mode": "DEFAULT", "prices": { "FOB": {}, "CMPT": { "1": 4, "5": 4, "10": 2.5, "50": 2, "100": 1.8, "200": 1.8 } } },
+      "S-EWW7V6": { "mode": "DEFAULT", "prices": { "FOB": {}, "CMPT": { "1": 4, "5": 4, "10": 2.5, "50": 2, "100": 1.8, "200": 1.8 } } },
+      "S-EWWHJ6": { "mode": "DEFAULT", "prices": { "FOB": {}, "CMPT": { "1": 4, "5": 4, "10": 2.5, "50": 2, "100": 1.8, "200": 1.8 } } },
+      "S-EWX9TU": { "mode": "DEFAULT", "prices": { "FOB": {}, "CMPT": { "1": 4, "5": 4, "10": 2.5, "50": 2, "100": 1.8, "200": 1.8 } } },
+      "S-EWXME9": { "mode": "DEFAULT", "prices": { "FOB": {}, "CMPT": { "1": 4.1, "5": 4.1, "10": 2.6, "50": 2.1, "100": 1.9, "200": 1.9, "500": 1.6 } } },
+      "S-UX25AL": { "mode": "DEFAULT", "prices": { "FOB": {}, "CMPT": { "1": 4.1, "5": 4.1, "10": 2.6, "50": 2.1, "100": 1.9, "200": 1.9, "500": 1.6 } } },
+      "S-UXFOPM": { "mode": "DEFAULT", "prices": { "FOB": {}, "CMPT": { "1": 7.5, "5": 7.5, "10": 6.5, "50": 5.9, "100": 5.5, "200": 4.9, "500": 4.4, "1000": 4.2, "2000": 4.2 } } },
+      "S-ZIQDTZ": { "mode": "DEFAULT", "prices": { "FOB": {}, "CMPT": { "1": 4.1, "5": 4.1, "10": 2.6, "50": 2.1, "100": 1.9, "200": 1.9, "500": 1.6 } } },
+      "S-ZIQPQO": { "mode": "DEFAULT", "prices": { "FOB": {}, "CMPT": { "1": 4, "5": 4, "10": 2.5, "50": 2, "100": 1.8, "200": 1.8, "500": 1.6 } } },
+      "S-ZIR04V": { "mode": "DEFAULT", "prices": { "FOB": {}, "CMPT": { "1": 4, "5": 4, "10": 2.5, "50": 2, "100": 1.8, "200": 1.8, "500": 1.6 } } }
+    }
+  },
+  {
+    "id": 2,
+    "manufacturerOrgId": 1,
+    "brandOrgId": 3,
+    "pricingDefaultTradeType": "FOB",
+    "pricingMatrix": {}
+  }
+]

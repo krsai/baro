@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import { spawnSync } from "node:child_process";
 import "./config/env";
-import { Prisma, type OrgUserRole } from "@prisma/client";
+import { Prisma, type OrgUserRole, type SalesPricingBasis } from "@prisma/client";
 import {
   populateVerifiedRequestAuth,
   resolveRequestAuthErrorMessage,
@@ -722,10 +722,10 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "WorkOrder", columnName: "sellerOrgId" },
   { tableName: "WorkOrder", columnName: "customerId" },
   { tableName: "WorkOrder", columnName: "pricingBasis" },
-  { tableName: "WorkOrder", columnName: "currencyCode" },
+  { tableName: "WorkOrder", columnName: "currencyId" },
   { tableName: "WorkOrderItem", columnName: "styleId" },
   { tableName: "WorkOrderItem", columnName: "colorId" },
-  { tableName: "WorkOrderItem", columnName: "salesPriceSnapshot" },
+  { tableName: "Currency", columnName: "code" },
   { tableName: "StyleProcess", columnName: "timesPerPiece" },
   { tableName: "StyleProcessStandard", columnName: "quantityBucketEntryId" },
   { tableName: "StyleProcessStandard", columnName: "quantityBucketSetVersionId" },
@@ -744,6 +744,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "CustomerSalesPriceList", columnName: "quantityBucketSetVersionId" },
   { tableName: "CustomerSalesPriceList", columnName: "manufacturerOrgId" },
   { tableName: "CustomerSalesPriceList", columnName: "brandOrgId" },
+  { tableName: "CustomerSalesPriceList", columnName: "currencyId" },
   { tableName: "CustomerSalesPrice", columnName: "unitPrice" },
   { tableName: "AssignmentPlan", columnName: "assignmentStSnapshot" },
   { tableName: "AssignmentPlan", columnName: "orgRelationshipId" },
@@ -794,6 +795,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
   { tableName: "Style", columnName: "customerNameKo" },
   { tableName: "Style", columnName: "customerNameVi" },
   { tableName: "StyleProcess", columnName: "styleUid" },
+  { tableName: "WorkOrder", columnName: "currencyCode" },
   { tableName: "WorkOrder", columnName: "buyerOrgName" },
   { tableName: "WorkOrder", columnName: "buyerOrgNameKo" },
   { tableName: "WorkOrder", columnName: "buyerOrgNameVi" },
@@ -803,6 +805,10 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
   { tableName: "WorkOrderItem", columnName: "styleName" },
   { tableName: "WorkOrderItem", columnName: "styleCode" },
   { tableName: "WorkOrderItem", columnName: "colorCode" },
+  { tableName: "WorkOrderItem", columnName: "salesPriceSnapshot" },
+  { tableName: "CustomerSalesPriceList", columnName: "currencyCode" },
+  { tableName: "OrgRelationship", columnName: "pricingDefaultTradeType" },
+  { tableName: "OrgRelationship", columnName: "pricingMatrix" },
   { tableName: "WorkLog", columnName: "factoryName" },
   { tableName: "WorkRecord", columnName: "workerName" },
   { tableName: "WorkRecord", columnName: "customerName" },
@@ -819,6 +825,8 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  "Currency_code_key",
+  "WorkOrder_currencyId_fkey",
   "OrgRelationshipStyleSalesBucket_relationship_style_key",
   "CustomerSalesPriceList_scope_version_key",
   "CustomerSalesPriceList_id_version_key",
@@ -842,8 +850,7 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "OrgRelationshipStyleTimeBucket_style_brand_fkey",
   "OrgRelationshipStyleTimeBucket_version_manufacturer_fkey",
   "AssignmentPlan_relationship_scope_fkey",
-  "CustomerSalesPriceList_pricingBasis_check",
-  "CustomerSalesPriceList_currencyCode_check",
+  "CustomerSalesPriceList_currency_fkey",
   "CustomerSalesPrice_unitPrice_check",
   "AssignmentPlan_id_org_key",
   "StyleProcess_id_style_org_key",
@@ -854,6 +861,8 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
 const STARTUP_REQUIRED_RUNTIME_ENUM_VALUES = [
   { enumName: "OrgMembershipStatus", value: "TERMINATED" },
   { enumName: "WorkOrderStatus", value: "EDITING" },
+  { enumName: "SalesPricingBasis", value: "MANUFACTURING_SERVICE_PRICE" },
+  { enumName: "SalesPricingBasis", value: "FINISHED_GOODS_PRICE" },
 ] as const;
 const ROLE_OPTIONS = new Set(["ADMIN", "OPERATOR", "ACCOUNTANT", "WORKER"]);
 const ORG_ACCESS_ROLES: OrgUserRole[] = [
@@ -1571,11 +1580,11 @@ const copyRetainedSalesPricesToVersion = async ({
   for (const oldList of oldLists) {
     const nextList = await db.customerSalesPriceList.upsert({
       where: {
-        orgRelationshipId_styleId_pricingBasis_currencyCode_quantityBucketSetVersionId: {
+        orgRelationshipId_styleId_pricingBasis_currencyId_quantityBucketSetVersionId: {
           orgRelationshipId: relationshipId,
           styleId: oldList.styleId,
           pricingBasis: oldList.pricingBasis,
-          currencyCode: oldList.currencyCode,
+          currencyId: oldList.currencyId,
           quantityBucketSetVersionId: nextVersion.id,
         },
       },
@@ -1586,7 +1595,7 @@ const copyRetainedSalesPricesToVersion = async ({
         brandOrgId: oldList.brandOrgId,
         styleId: oldList.styleId,
         pricingBasis: oldList.pricingBasis,
-        currencyCode: oldList.currencyCode,
+        currencyId: oldList.currencyId,
         quantityBucketSetVersionId: nextVersion.id,
         createdBy: actor,
       },
@@ -6705,13 +6714,28 @@ const WORK_ORDER_PARTY_INCLUDE = {
   customerOrg: {
     select: { id: true, name: true, nameKo: true, nameVi: true },
   },
+  currency: {
+    select: { id: true, code: true, name: true },
+  },
 };
 const WORK_ORDER_RESPONSE_INCLUDE = {
   ...WORK_ORDER_PARTY_INCLUDE,
   workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE,
 };
 
-const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
+const resolveCurrencyIdOrThrow = async (
+  currencyCode: string,
+  db: Prisma.TransactionClient | typeof prisma = prisma
+) => {
+  const currency = await db.currency.findUnique({
+    where: { code: currencyCode },
+    select: { id: true },
+  });
+  if (!currency) throw createHttpError(409, `currency ${currencyCode} is not configured`);
+  return currency.id;
+};
+
+const normalizeOrderPayload = (payload: any = {}, fallback: any = null): any => {
   const fallbackOrderId =
     typeof fallback?.orderId === "string" ? fallback.orderId.trim() : "";
   const payloadOrderId =
@@ -6765,12 +6789,18 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
         : fallback?.sellerOrgId
     ),
     customerId: resolvedCustomerId,
-    pricingBasis:
-      normalizeSalesPricingBasis(payload?.pricingBasis ?? fallback?.pricingBasis) ??
-      "MANUFACTURING_SERVICE_PRICE",
-    currencyCode:
-      normalizeSalesCurrencyCode(payload?.currencyCode ?? fallback?.currencyCode) ??
-      "USD",
+    pricingBasis: (() => {
+      const supplied = payload?.pricingBasis ?? fallback?.pricingBasis ?? "MANUFACTURING_SERVICE_PRICE";
+      const normalized = normalizeSalesPricingBasis(supplied);
+      if (!normalized) throw createHttpError(400, "invalid pricing basis");
+      return normalized;
+    })(),
+    currencyCode: (() => {
+      const supplied = payload?.currencyCode ?? fallback?.currency?.code ?? "USD";
+      const normalized = normalizeSalesCurrencyCode(supplied);
+      if (!normalized) throw createHttpError(400, "invalid currency");
+      return normalized;
+    })(),
     dueDate: resolveOptionalString(payload?.dueDate, fallback?.dueDate ?? null),
     status,
     confirmationStatus,
@@ -6982,7 +7012,6 @@ const workOrderItemToItemShape = (row: any) => ({
   gender: normalizeWorkOrderItemGender(row?.gender, "M") ?? "M",
   sizeQuantities: row.sizeQuantities ?? {},
   totalQuantity: row.totalQuantity ?? 0,
-  salesPriceSnapshot: row.salesPriceSnapshot ?? null,
 });
 
 const toOrderResponse = (
@@ -7010,11 +7039,6 @@ const toOrderResponse = (
     status: order.status,
     isManualLocked: isManualModificationLocked,
   });
-  const missingSalesPriceSnapshotItemIds = isManualModificationLocked
-    ? items
-        .filter((item: any) => item.salesPriceSnapshot === null)
-        .map((item: any) => item.id)
-    : [];
   return {
     id: order.orderId,
     dbId: toPositiveIntOrNull(order.id),
@@ -7038,11 +7062,7 @@ const toOrderResponse = (
     items,
     totalQuantity: toNonNegativeInt(order.totalQuantity, 0),
     pricingBasis: order.pricingBasis ?? "MANUFACTURING_SERVICE_PRICE",
-    currencyCode: order.currencyCode ?? "USD",
-    salesPriceSnapshotStatus: isManualModificationLocked
-      ? (missingSalesPriceSnapshotItemIds.length > 0 ? "MISSING" : "COMPLETE")
-      : "NOT_LOCKED",
-    missingSalesPriceSnapshotItemIds,
+    currencyCode: order.currency?.code ?? "",
     isModificationLocked,
     isManualModificationLocked,
     isAssignmentModificationLocked,
@@ -14096,6 +14116,22 @@ const syncAssignmentPlansForOrderLock = async ({
   }
 
   return { zeroedStyles };
+};
+
+const assertOrderItemsReadyForLock = async ({
+  orderId,
+  db,
+}: {
+  orderId: number;
+  db: Prisma.TransactionClient;
+}) => {
+  const items = await db.workOrderItem.findMany({
+    where: { workOrderId: orderId },
+    select: { id: true, styleId: true },
+  });
+  if (items.length === 0 || items.some((item) => toPositiveIntOrNull(item.styleId) === null)) {
+    throw createHttpError(409, "every order item must have a style before locking");
+  }
 };
 const buildOrderModificationLockState = ({
   order,
@@ -27453,7 +27489,7 @@ const SALES_CURRENCY_CODES = new Set(["USD", "VND", "KRW"]);
 
 const normalizeSalesPricingBasis = (value: unknown) => {
   const normalized = String(value ?? "").trim().toUpperCase();
-  return SALES_PRICING_BASES.has(normalized) ? normalized : null;
+  return SALES_PRICING_BASES.has(normalized) ? normalized as SalesPricingBasis : null;
 };
 
 const normalizeSalesCurrencyCode = (value: unknown) => {
@@ -27506,6 +27542,7 @@ app.get("/customers/:id/sales-prices", async (req, res) => {
     allowedRoles: ORG_MANAGEMENT_ROLES,
   });
   if (!accessContext) return;
+  const currencyId = await resolveCurrencyIdOrThrow(currencyCode);
   const { organization } = accessContext;
   const relationship = await prisma.orgRelationship.findFirst({
     where: { id: relationshipId, manufacturerOrgId: organization.id },
@@ -27534,7 +27571,7 @@ app.get("/customers/:id/sales-prices", async (req, res) => {
         where: {
           orgRelationshipId: relationship.id,
           pricingBasis,
-          currencyCode,
+          currencyId,
         },
         include: {
           prices: {
@@ -27585,6 +27622,7 @@ app.put("/customers/:id/sales-prices", async (req, res) => {
     return res.status(400).json({ ok: false, error: "too many sales price changes" });
   }
   const result = await prisma.$transaction(async (tx) => {
+    const currencyId = await resolveCurrencyIdOrThrow(currencyCode, tx);
     const relationship = await tx.orgRelationship.findFirst({
       where: { id: relationshipId, manufacturerOrgId: organization.id },
       include: {
@@ -27667,7 +27705,7 @@ app.put("/customers/:id/sales-prices", async (req, res) => {
           brandOrgId: relationship.brandOrgId,
           styleId: scope.styleId,
           pricingBasis,
-          currencyCode,
+          currencyId,
           quantityBucketSetVersionId: scope.versionId,
         })),
         skipDuplicates: true,
@@ -27677,7 +27715,7 @@ app.put("/customers/:id/sales-prices", async (req, res) => {
       where: {
         orgRelationshipId: relationship.id,
         pricingBasis,
-        currencyCode,
+        currencyId,
         OR: Array.from(
           new Map(
             normalizedChanges.map((change) => [
@@ -27761,189 +27799,6 @@ app.put("/customers/:id/sales-prices", async (req, res) => {
     timeout: 30000,
   });
   res.json({ ok: true, ...result });
-});
-
-const freezeOrderSalesPriceSnapshots = async ({
-  db,
-  order,
-}: {
-  db: Prisma.TransactionClient;
-  order: any;
-}) => {
-  const buyerOrgId = toPositiveIntOrNull(order?.buyerOrgId);
-  const sellerOrgId = toPositiveIntOrNull(order?.sellerOrgId);
-  const pricingBasis = normalizeSalesPricingBasis(order?.pricingBasis);
-  const currencyCode = normalizeSalesCurrencyCode(order?.currencyCode);
-  if (!buyerOrgId || !sellerOrgId || !pricingBasis || !currencyCode) {
-    throw createHttpError(409, "order sales pricing basis or currency is missing");
-  }
-  const relationship = await db.orgRelationship.findFirst({
-    where: { manufacturerOrgId: sellerOrgId, brandOrgId: buyerOrgId },
-    include: {
-      salesBucketSetVersion: {
-        include: { entries: { orderBy: { bucketQuantity: "asc" } } },
-      },
-    },
-  });
-  if (!relationship) {
-    throw createHttpError(409, "order customer relationship is missing");
-  }
-  const items = await db.workOrderItem.findMany({
-    where: { workOrderId: order.id },
-    orderBy: { sortOrder: "asc" },
-  });
-  const styleIds = Array.from(new Set(
-    items.map((item) => toPositiveIntOrNull(item.styleId))
-      .filter((value): value is number => value !== null)
-  ));
-  if (styleIds.length === 0 || styleIds.length !== new Set(items.map((item) => item.styleId)).size) {
-    throw createHttpError(409, "every order item must have a style before locking");
-  }
-  const styles = await db.style.findMany({
-    where: { id: { in: styleIds }, orgId: buyerOrgId },
-    include: {
-      salesBucketOverrides: {
-        where: { orgRelationshipId: relationship.id },
-        include: {
-          quantityBucketSetVersion: {
-            include: { entries: { orderBy: { bucketQuantity: "asc" } } },
-          },
-        },
-      },
-    },
-  });
-  if (styles.length !== styleIds.length) {
-    throw createHttpError(409, "order contains a style outside the customer relationship");
-  }
-  const styleById = new Map(styles.map((style) => [style.id, style]));
-  const quantityByStyleId = new Map<number, number>();
-  items.forEach((item) => {
-    const styleId = toPositiveIntOrNull(item.styleId);
-    if (!styleId) return;
-    quantityByStyleId.set(
-      styleId,
-      (quantityByStyleId.get(styleId) ?? 0) + toNonNegativeInt(item.totalQuantity, 0)
-    );
-  });
-  const activeScopes = styles.map((style) => {
-    const version = resolveSalesBucketVersionForStyle(relationship, style);
-    if (!version) throw createHttpError(409, "sales bucket version is missing");
-    return { styleId: style.id, versionId: version.id };
-  });
-  const priceLists = await db.customerSalesPriceList.findMany({
-    where: {
-      orgRelationshipId: relationship.id,
-      pricingBasis,
-      currencyCode,
-      OR: activeScopes.map((scope) => ({
-        styleId: scope.styleId,
-        quantityBucketSetVersionId: scope.versionId,
-      })),
-    },
-    include: { prices: true },
-  });
-  const priceListByScope = new Map(
-    priceLists.map((list) => [
-      `${list.styleId}:${list.quantityBucketSetVersionId}`,
-      list,
-    ])
-  );
-  const actor = getCurrentRequestActor();
-  const snapshotAt = new Date().toISOString();
-  const snapshots = items.map((item) => {
-    const styleId = toPositiveIntOrNull(item.styleId);
-    const style = styleId ? styleById.get(styleId) : null;
-    if (!styleId || !style) throw createHttpError(409, "order item style is missing");
-    const version = resolveSalesBucketVersionForStyle(relationship, style);
-    if (!version) throw createHttpError(409, "sales bucket version is missing");
-    const orderQuantity = quantityByStyleId.get(styleId) ?? 0;
-    const bucketQuantity = resolveStBucketQuantityFromValues(
-      orderQuantity,
-      version.entries.map((entry: any) => entry.bucketQuantity)
-    );
-    const bucketEntry = version.entries.find(
-      (entry: any) => entry.bucketQuantity === bucketQuantity
-    );
-    if (!bucketEntry) throw createHttpError(409, "sales price bucket is unresolved");
-    const priceList = priceListByScope.get(`${styleId}:${version.id}`) ?? null;
-    const price = priceList?.prices.find(
-      (candidate: any) => candidate.quantityBucketEntryId === bucketEntry.id
-    ) ?? null;
-    if (!priceList || !price) {
-      throw createHttpError(
-        409,
-        `sales price is missing for style ${styleId}, bucket ${bucketQuantity}`
-      );
-    }
-    return {
-      itemId: item.id,
-      snapshot: {
-        version: 1,
-        customerSalesPriceListId: priceList.id,
-        customerSalesPriceId: price.id,
-        orgRelationshipId: relationship.id,
-        styleId,
-        pricingBasis,
-        currencyCode,
-        quantityBucketSetVersionId: version.id,
-        quantityBucketEntryId: bucketEntry.id,
-        bucketQuantity,
-        pricingQuantity: orderQuantity,
-        itemQuantity: toNonNegativeInt(item.totalQuantity, 0),
-        unitPrice: new Prisma.Decimal(price.unitPrice).toFixed(4),
-        snapshotAt,
-        snapshotBy: actor,
-      },
-    };
-  });
-  for (const itemSnapshot of snapshots) {
-    await db.workOrderItem.update({
-      where: { id: itemSnapshot.itemId },
-      data: { salesPriceSnapshot: itemSnapshot.snapshot },
-    });
-  }
-};
-
-app.get("/orders/sales-price-diagnostics", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res, {
-    allowedRoles: ORG_MANAGEMENT_ROLES,
-  });
-  if (!accessContext) return;
-  const { organization } = accessContext;
-  const orders = await prisma.workOrder.findMany({
-    where: {
-      OR: getOrderAccessWhere(organization.id),
-      modificationLockedAt: { not: null },
-      workOrderItems: {
-        some: { salesPriceSnapshot: { equals: Prisma.DbNull } },
-      },
-    },
-    select: {
-      id: true,
-      orderId: true,
-      orderNumber: true,
-      modificationLockedAt: true,
-      workOrderItems: {
-        where: { salesPriceSnapshot: { equals: Prisma.DbNull } },
-        select: { id: true, itemId: true, styleId: true },
-        orderBy: { sortOrder: "asc" },
-      },
-    },
-    orderBy: { modificationLockedAt: "desc" },
-  });
-  res.json({
-    missingOrderCount: orders.length,
-    missingItemCount: orders.reduce(
-      (sum, order) => sum + order.workOrderItems.length,
-      0
-    ),
-    orders: orders.map((order) => ({
-      orderId: order.orderId,
-      orderNumber: order.orderNumber,
-      modificationLockedAt: order.modificationLockedAt,
-      items: order.workOrderItems,
-    })),
-  });
 });
 
 app.get("/order-parties", async (req, res) => {
@@ -28058,6 +27913,8 @@ app.post("/orders", async (req, res) => {
     (sum: number, item: any) => sum + (Number(item?.totalQuantity) || 0),
     0
   );
+  normalized.currencyId = await resolveCurrencyIdOrThrow(normalized.currencyCode);
+  delete normalized.currencyCode;
   const { order, created } = await createOrReuseSharedOrder({
     normalized,
   });
@@ -28088,7 +27945,7 @@ app.put("/orders/:orderId", async (req, res) => {
       orderId,
       OR: getOrderAccessWhere(organization.id),
     },
-    include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+    include: WORK_ORDER_RESPONSE_INCLUDE,
   });
   if (!existing) {
     return res.status(404).json({ ok: false, error: "order not found" });
@@ -28123,6 +27980,8 @@ app.put("/orders/:orderId", async (req, res) => {
     (sum: number, item: any) => sum + (Number(item?.totalQuantity) || 0),
     0
   );
+  normalized.currencyId = await resolveCurrencyIdOrThrow(normalized.currencyCode);
+  delete normalized.currencyCode;
 
   const orderNumberConflict = await findSharedOrderConflict({
     buyerOrgId: buyer.id,
@@ -28260,6 +28119,7 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
     const zeroedStylesByStyleId = new Map<number, OrderStyleRemovalIssue>();
     await prisma.$transaction(
       async (tx) => {
+        await assertOrderItemsReadyForLock({ orderId: existing.id, db: tx });
         for (const orgId of orgIdsToSync) {
           const syncResult = await syncAssignmentPlansForOrderLock({
             orgId,
@@ -28270,7 +28130,6 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
             zeroedStylesByStyleId.set(issue.styleId, issue);
           });
         }
-        await freezeOrderSalesPriceSnapshots({ db: tx, order: existing });
         updated = await tx.workOrder.update({
           where: { id: existing.id },
           data: {

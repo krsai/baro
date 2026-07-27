@@ -38,7 +38,7 @@
 - 고객 매출 버킷은 고객에게 받을 판매단가 구간이고, 스타일 시간 버킷은 직원 지급액 산정의 근거가 되는 ST/AT/CT 수량 구간이다. 데이터와 계산 목적은 분리하지만 운영 수량 경계는 함께 맞춘다.
 - 고객 매출 버킷을 추가하거나 삭제하는 저장 작업은 해당 고객에게 연결된 스타일의 지급 시간 버킷 변경과 하나의 명시적인 트랜잭션으로 처리한다. 한쪽을 다른 쪽의 조회 fallback으로 대신하거나 같은 FK를 암묵적으로 공유하지 않는다.
 - 버킷 숫자는 해당 구간의 시작 수량이다. 예를 들어 `100, 300, 500`에서 `300`을 삭제하면 이후 생성되는 수량 300~499의 배정은 `100` 버킷을 사용한다. `100, 500`에 `300`을 추가하면 이후 생성되는 수량 300~499의 배정은 `300` 버킷을 사용한다.
-- 버킷 변경은 변경 이후 생성·수정되는 운영 데이터에만 적용한다. 기존 배정의 ST/CT 스냅샷, 기존 WorkRecord의 CT, 확정·잠금된 급여 및 기존 주문의 판매단가 스냅샷을 현재 버킷으로 재계산하거나 변경하지 않는다.
+- 버킷 변경은 변경 이후 생성·수정되는 운영 데이터에만 적용한다. 기존 배정의 ST/CT 스냅샷, 기존 WorkRecord의 CT 및 확정·잠금된 급여를 현재 버킷으로 재계산하거나 변경하지 않는다. 판매단가는 주문 잠금과 무관하며 향후 청구서 생성 시점에 확정한다.
 - 버킷 삭제 시 삭제한 구간의 현재 편집 대상 값만 활성 버전에서 제외한다. 그대로 남는 수량 구간의 판매단가와 ST는 새 활성 버전으로 정확히 승계한다.
 - 버킷 추가 시 그대로 남는 구간의 판매단가와 ST는 승계하고, 새 판매단가 셀만 미입력 상태로 둔다. 신규 ST는 새 수량보다 작은 기존 버킷 중 가장 가까운 버킷의 ST를 실제 `StyleProcessStandard` 행으로 복사한다. 예를 들어 `100, 500`에 `300`을 추가하면 공정별 `ST(100) -> ST(300)`으로 복사한다. 이 값은 `setBy=BUCKET_INHERITED_REVIEW`로 기록하고 UI에서 검토가 필요한 빨간색 값으로 표시한다. AT는 저장 복사본을 만들지 않고 기존 `AT(q)=a*q+b`를 새 수량에 평가해 추정 가능할 때 표시한다.
 - 신규 버킷보다 작은 기존 버킷이 없거나, 해당 하위 버킷의 유효한 ST가 없는 공정이 하나라도 있으면 전체 버킷 변경을 거부한다. PT, 상위 버킷, 전역 기본값 또는 임의 값으로 보완하지 않는다.
@@ -148,14 +148,17 @@
 - 화면 표시는 `CMT · 임가공` / `FP · 완제품`을 사용한다. 고객 제공 자재와 제조사 구매 자재가 함께 있는 경우는 저장 enum이 아니라 자재 line의 조달주체 조합에서 계산해 `MIX · 혼합`으로 표시한다.
 - 신규 DB 값은 업계 약어를 직접 저장하지 않고 `MANUFACTURING_SERVICE_PRICE` / `FINISHED_GOODS_PRICE`처럼 의미가 분명한 설명형 이름을 사용한다. 자재 조달주체와 소유주체는 판매방식과 별도 축으로 관리한다.
 - `FOB`는 생산·조달 방식으로 사용하지 않는다. 향후 필요하면 Incoterm/배송조건으로 별도 관리한다.
-- `OrgRelationship.pricingDefaultTradeType/pricingMatrix`의 `CMPT/FOB` 가격 기능은 실제 계산에 연결된 적 없는 레거시다. 2026-07-23에 프론트 화면과 `/customers/:id/pricing` 읽기·쓰기를 제거했다. 운영 Railway DB의 값 존재 여부를 확인하고 필요하면 파일로 백업한 뒤에만 컬럼을 DROP한다. 신규 관계형 가격표에서 이 JSON을 dual-read/fallback으로 사용하지 않는다.
+- `OrgRelationship.pricingDefaultTradeType/pricingMatrix`의 `CMPT/FOB` 가격 기능은 실제 계산에 연결된 적 없는 레거시다. 2026-07-27 Railway 운영값을 `backups/legacy-org-relationship-pricing-2026-07-27.json`에 원문 백업했고 런타임 참조가 없음을 확인한 뒤 컬럼 제거 마이그레이션을 추가했다. 스타일 코드 문자열을 FK로 자동 매핑하거나 신규 관계형 가격표의 fallback으로 사용하지 않는다.
 - 고객 판매단가는 스타일 상세에서 관리하지 않는다. 다음 phase에서 운영 관리의 고객 단가 관리 메뉴가 관계형 `고객 관계 × 스타일 × 판매방식 × 수량구간` 가격표의 단일 편집 위치가 된다.
 
-### 매출 단가 저장 및 레거시 진단 (2026-07-25)
+### 매출 단가·청구 시점 정책 (2026-07-27)
 - 단가 화면은 표시된 전체 표를 다시 쓰지 않고 저장 기준값과 비교한 변경 셀만 전송한다. 백엔드는 요청 전체를 먼저 검증한 뒤 단가표 헤더와 단가 행을 배치로 저장한다. 셀마다 조회/생성/upsert하는 경로를 다시 만들지 않는다.
 - `CustomerSalesPrice`의 단가표 버전과 버킷 entry 버전 일치는 복합 FK로 강제하며, Prisma schema와 런타임 schema drift 검사 모두 같은 제약 이름을 요구한다.
 - `DECIMAL(18,4)` 입력은 양수, 정수부 최대 14자리, 소수부 최대 4자리만 허용한다. 잘못된 셀 하나를 조용히 버리거나 반올림해 저장하지 않는다.
-- 단가 스냅샷 없이 이미 잠긴 레거시 주문은 현재 가격표로 자동 재구성하지 않는다. 주문 응답의 `salesPriceSnapshotStatus=MISSING` 및 `GET /orders/sales-price-diagnostics`로 명시적으로 진단하고 운영자가 원자료에 따라 별도 처리한다.
+- 판매단가는 주문 생성·수정·잠금·배정·생산·작업기록·급여 계산과 무관하다. 가격 누락으로 주문 잠금을 409 거부하지 않으며 주문 잠금은 가격표를 생성·수정하지 않는다.
+- `WorkOrderItem.salesPriceSnapshot`, `freezeOrderSalesPriceSnapshots`, `/orders/sales-price-diagnostics`, `salesPriceSnapshotStatus`는 잘못된 주문 잠금 시점 정책이므로 제거했다. 가격 확정은 향후 청구서 생성 시점에 관계형 `InvoiceLine`으로 구현하며 가격표·가격행·버킷 entry를 FK로 연결한다.
+- 청구 전 예상 수익률은 현재 활성 판매단가를 사용하고, 청구 후에는 가장 최근 적용 가능한 청구 라인의 동결 단가를 사용한다. 둘 다 없으면 0원으로 보완하지 않고 미계산으로 표시한다. 수익률과 청구 기능은 아직 미구현이다.
+- 판매방식은 `SalesPricingBasis` DB enum, 통화는 `Currency` 마스터와 `currencyId` FK로 저장한다. API는 호환을 위해 `currencyCode`를 주고받지만 임의 판매방식·통화를 기본값으로 조용히 치환하지 않는다. 환율은 Currency 마스터에 포함하지 않으며 별도 정책 확정 후 구현한다.
 
 ### 주문 사이즈 세트 (2026-07-14)
 - `WorkOrderItem.sizeQuantities`는 자유 JSON 키를 유지한다. 주문 입력 UI는 전역 `SIZE_CODES` 하나만 렌더링하지 말고 선택된 size set의 `sizeCodes`를 렌더링한다.
@@ -211,8 +214,8 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 - 매출 단가 버킷과 스타일 ST/AT 시간 버킷의 연결은 완전히 분리한다. 고객 기본 매출 버킷은 `OrgRelationship.salesBucketSetVersionId`, 고객×스타일 매출 예외는 `OrgRelationshipStyleSalesBucket.quantityBucketSetVersionId`, 시간 버킷은 `Style.timeBucketSetVersionId`만 사용한다. 단가 화면에서 매출 버킷을 바꿀 때 `Style.timeBucketSetVersionId`, `StyleProcessStandard`, ST/AT 값은 절대 변경하지 않는다.
 - 매출 단가는 `CustomerSalesPriceList`(고객 관계×스타일×CMT/FP×통화×버킷 버전 헤더)와 `CustomerSalesPrice`(버킷 entry별 Decimal 단가) 관계형 행으로 저장한다. 가격이 없는 버킷은 인접 버킷·다른 통화·다른 판매방식·레거시 JSON으로 추정하지 않는다.
 - `CustomerSalesPrice.quantityBucketEntryId`와 가격표 헤더가 같은 `quantityBucketSetVersionId`를 가리키는지는 DB 복합 FK와 저장 트랜잭션 양쪽에서 fail-closed로 검증한다. `bucketQuantity`는 일반 가격 행에 중복 저장하지 않고 `QuantityBucketEntry` relation에서 읽는다.
-- 판매방식과 통화는 주문 헤더의 `WorkOrder.pricingBasis`/`currencyCode`에서 선택하며 각각 CMT/FP, USD/VND/KRW만 허용한다. MIX는 저장 판매방식이 아니다.
-- 주문 잠금 시 스타일 전체 주문수량으로 매출 버킷을 판정하고 각 `WorkOrderItem.salesPriceSnapshot`에 가격표/가격행 FK, 버킷 버전/entry/수량, 판매방식, 통화, 단가를 동결한다. 정확한 고객 관계·스타일·버킷·단가가 없으면 잠금 전체를 409로 거부한다. 이후 가격표 변경은 잠긴 주문 스냅샷에 영향을 주지 않는다.
+- 판매방식과 통화는 주문 헤더의 `WorkOrder.pricingBasis`/`currencyId`에서 향후 청구 기본값으로 선택한다. 각각 CMT/FP와 Currency 마스터의 USD/VND/KRW만 허용하며 MIX는 저장 판매방식이 아니다. 이 값은 주문 잠금 가격 확정값이 아니며 향후 청구서 생성 화면의 기본 선택값이다.
+- 주문 잠금은 판매단가를 조회·확정하지 않는다. 향후 청구서 생성 시 스타일 전체 청구수량으로 매출 버킷을 판정하고 그 시점의 활성 가격을 관계형 청구 라인에 동결한다. 가격이 없으면 청구서 생성만 거부하며 주문·생산 기능은 차단하지 않는다.
 - 단가는 `Decimal(18,4)`로 저장하고 API에서는 정확한 문자열로 전달한다. 0 또는 음수 단가는 허용하지 않으며 빈 칸은 미설정으로 저장할 수 있다.
 
 ---

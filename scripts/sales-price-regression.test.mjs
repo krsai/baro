@@ -190,7 +190,7 @@ test('assignment ST snapshots reject a bucket label that disagrees with its entr
 test('sales price saves send changes only and persist them in a batched transaction', () => {
   const saveRoute = backend.slice(
     backend.indexOf('app.put("/customers/:id/sales-prices"'),
-    backend.indexOf('const freezeOrderSalesPriceSnapshots')
+    backend.indexOf('app.get("/order-parties"')
   );
   assert.match(saveRoute, /createMany/);
   assert.match(saveRoute, /INSERT INTO "CustomerSalesPrice"/);
@@ -206,17 +206,22 @@ test('sales price saves send changes only and persist them in a batched transact
   assert.match(frontend, /useUnsavedChanges\(dirtyPriceChanges\.length > 0\)/);
 });
 
-test('order locking freezes sales price snapshots and fails closed when price is missing', () => {
-  assert.match(schema, /pricingBasis\s+String\s+@default\("MANUFACTURING_SERVICE_PRICE"\)/);
-  assert.match(schema, /currencyCode\s+String\s+@default\("USD"\)/);
-  assert.match(schema, /salesPriceSnapshot\s+Json\?/);
-  assert.match(backend, /const freezeOrderSalesPriceSnapshots = async/);
-  assert.match(backend, /sales price is missing for style/);
+test('order locking is independent from sales prices and preserves item FK validation', () => {
+  assert.match(schema, /enum SalesPricingBasis \{/);
+  assert.match(schema, /model Currency \{/);
+  assert.match(schema, /pricingBasis\s+SalesPricingBasis\s+@default\(MANUFACTURING_SERVICE_PRICE\)/);
+  assert.match(schema, /currencyId\s+Int/);
+  assert.doesNotMatch(schema, /salesPriceSnapshot\s+Json\?/);
+  assert.doesNotMatch(backend, /const freezeOrderSalesPriceSnapshots = async/);
+  assert.doesNotMatch(backend, /sales price is missing for style/);
   const lockRoute = backend.slice(
     backend.indexOf('app.post("/orders/:orderId/modification-lock"'),
     backend.indexOf('app.delete("/orders/:orderId"')
   );
-  assert.match(lockRoute, /await freezeOrderSalesPriceSnapshots\(\{ db: tx, order: existing \}\)/);
-  assert.match(backend, /app\.get\("\/orders\/sales-price-diagnostics"/);
-  assert.match(backend, /salesPriceSnapshotStatus/);
+  assert.match(lockRoute, /await assertOrderItemsReadyForLock\(\{ orderId: existing\.id, db: tx \}\)/);
+  assert.doesNotMatch(lockRoute, /customerSalesPrice|sales price|freezeOrderSalesPriceSnapshots/);
+  assert.doesNotMatch(backend, /app\.get\("\/orders\/sales-price-diagnostics"/);
+  assert.doesNotMatch(backend, /salesPriceSnapshotStatus/);
+  assert.match(backend, /throw createHttpError\(400, "invalid pricing basis"\)/);
+  assert.match(backend, /throw createHttpError\(400, "invalid currency"\)/);
 });

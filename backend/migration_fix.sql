@@ -138,20 +138,6 @@ CREATE INDEX IF NOT EXISTS "QuantityBucketEntry_versionId_idx"
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'CustomerSalesPriceList_pricingBasis_check'
-  ) THEN
-    ALTER TABLE "CustomerSalesPriceList"
-      ADD CONSTRAINT "CustomerSalesPriceList_pricingBasis_check"
-      CHECK ("pricingBasis" IN ('MANUFACTURING_SERVICE_PRICE', 'FINISHED_GOODS_PRICE'));
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'CustomerSalesPriceList_currencyCode_check'
-  ) THEN
-    ALTER TABLE "CustomerSalesPriceList"
-      ADD CONSTRAINT "CustomerSalesPriceList_currencyCode_check"
-      CHECK ("currencyCode" IN ('USD', 'VND', 'KRW'));
-  END IF;
-  IF NOT EXISTS (
     SELECT 1 FROM pg_constraint WHERE conname = 'CustomerSalesPrice_unitPrice_check'
   ) THEN
     ALTER TABLE "CustomerSalesPrice"
@@ -511,10 +497,6 @@ CREATE TABLE IF NOT EXISTS "CustomerSalesPriceList" (
   CONSTRAINT "CustomerSalesPriceList_currencyCode_check"
     CHECK ("currencyCode" IN ('USD', 'VND', 'KRW'))
 );
-CREATE UNIQUE INDEX IF NOT EXISTS "CustomerSalesPriceList_scope_version_key"
-  ON "CustomerSalesPriceList"(
-    "orgRelationshipId", "styleId", "pricingBasis", "currencyCode", "quantityBucketSetVersionId"
-  );
 CREATE UNIQUE INDEX IF NOT EXISTS "CustomerSalesPriceList_id_version_key"
   ON "CustomerSalesPriceList"("id", "quantityBucketSetVersionId");
 CREATE INDEX IF NOT EXISTS "CustomerSalesPriceList_relationshipId_idx"
@@ -4158,5 +4140,116 @@ BEGIN
       missing_standard_count;
   END IF;
 END $$;
+
+-- Step 0v: decouple order locking from sales prices and normalize price axes (20260727)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'SalesPricingBasis') THEN
+    CREATE TYPE "SalesPricingBasis" AS ENUM (
+      'MANUFACTURING_SERVICE_PRICE',
+      'FINISHED_GOODS_PRICE'
+    );
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS "Currency" (
+  "id" SERIAL PRIMARY KEY,
+  "code" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "Currency_code_key" ON "Currency"("code");
+INSERT INTO "Currency" ("code", "name") VALUES
+  ('USD', 'US Dollar'),
+  ('VND', 'Vietnamese Dong'),
+  ('KRW', 'South Korean Won')
+ON CONFLICT ("code") DO NOTHING;
+
+ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "currencyId" INTEGER;
+ALTER TABLE "CustomerSalesPriceList"
+  ADD COLUMN IF NOT EXISTS "currencyCode" TEXT NOT NULL DEFAULT 'USD',
+  ADD COLUMN IF NOT EXISTS "currencyId" INTEGER;
+
+UPDATE "WorkOrder" order_row
+SET "currencyId" = currency.id
+FROM "Currency" currency
+WHERE order_row."currencyId" IS NULL
+  AND currency.code = order_row."currencyCode";
+
+UPDATE "CustomerSalesPriceList" price_list
+SET "currencyId" = currency.id
+FROM "Currency" currency
+WHERE price_list."currencyId" IS NULL
+  AND currency.code = price_list."currencyCode";
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM "WorkOrder"
+    WHERE "currencyId" IS NULL
+       OR "pricingBasis"::text NOT IN ('MANUFACTURING_SERVICE_PRICE', 'FINISHED_GOODS_PRICE')
+  ) THEN
+    RAISE EXCEPTION 'WorkOrder has an unsupported pricing basis or currency';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM "CustomerSalesPriceList"
+    WHERE "currencyId" IS NULL
+       OR "pricingBasis"::text NOT IN ('MANUFACTURING_SERVICE_PRICE', 'FINISHED_GOODS_PRICE')
+  ) THEN
+    RAISE EXCEPTION 'CustomerSalesPriceList has an unsupported pricing basis or currency';
+  END IF;
+END $$;
+
+DROP INDEX IF EXISTS "CustomerSalesPriceList_scope_version_key";
+ALTER TABLE "CustomerSalesPriceList"
+  DROP CONSTRAINT IF EXISTS "CustomerSalesPriceList_pricingBasis_check",
+  DROP CONSTRAINT IF EXISTS "CustomerSalesPriceList_currencyCode_check";
+
+ALTER TABLE "WorkOrder"
+  ALTER COLUMN "pricingBasis" DROP DEFAULT,
+  ALTER COLUMN "pricingBasis" TYPE "SalesPricingBasis"
+    USING ("pricingBasis"::text::"SalesPricingBasis"),
+  ALTER COLUMN "pricingBasis" SET DEFAULT 'MANUFACTURING_SERVICE_PRICE'::"SalesPricingBasis",
+  ALTER COLUMN "currencyId" SET NOT NULL;
+ALTER TABLE "CustomerSalesPriceList"
+  ALTER COLUMN "pricingBasis" TYPE "SalesPricingBasis"
+    USING ("pricingBasis"::text::"SalesPricingBasis"),
+  ALTER COLUMN "currencyId" SET NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'WorkOrder_currencyId_fkey'
+  ) THEN
+    ALTER TABLE "WorkOrder"
+      ADD CONSTRAINT "WorkOrder_currencyId_fkey"
+      FOREIGN KEY ("currencyId") REFERENCES "Currency"("id")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'CustomerSalesPriceList_currency_fkey'
+  ) THEN
+    ALTER TABLE "CustomerSalesPriceList"
+      ADD CONSTRAINT "CustomerSalesPriceList_currency_fkey"
+      FOREIGN KEY ("currencyId") REFERENCES "Currency"("id")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS "WorkOrder_currencyId_idx" ON "WorkOrder"("currencyId");
+CREATE INDEX IF NOT EXISTS "CustomerSalesPriceList_currencyId_idx"
+  ON "CustomerSalesPriceList"("currencyId");
+CREATE UNIQUE INDEX IF NOT EXISTS "CustomerSalesPriceList_scope_version_key"
+  ON "CustomerSalesPriceList"(
+    "orgRelationshipId", "styleId", "pricingBasis", "currencyId", "quantityBucketSetVersionId"
+  );
+
+ALTER TABLE "WorkOrder" DROP COLUMN IF EXISTS "currencyCode";
+ALTER TABLE "CustomerSalesPriceList" DROP COLUMN IF EXISTS "currencyCode";
+ALTER TABLE "WorkOrderItem" DROP COLUMN IF EXISTS "salesPriceSnapshot";
+ALTER TABLE "OrgRelationship"
+  DROP COLUMN IF EXISTS "pricingDefaultTradeType",
+  DROP COLUMN IF EXISTS "pricingMatrix";
 
 COMMIT;

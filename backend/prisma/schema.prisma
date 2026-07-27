@@ -71,6 +71,11 @@ enum WorkOrderItemGender {
   U
 }
 
+enum SalesPricingBasis {
+  MANUFACTURING_SERVICE_PRICE
+  FINISHED_GOODS_PRICE
+}
+
 enum SystemRole {
   SYSTEM_ADMIN
   USER
@@ -219,6 +224,17 @@ model Organization {
   updatedByEmployee Employee? @relation("OrganizationUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@index([representativeEmployeeId])
+}
+
+model Currency {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workOrders      WorkOrder[]
+  salesPriceLists CustomerSalesPriceList[]
 }
 
 model SystemSetting {
@@ -550,8 +566,6 @@ model OrgRelationship {
   defaultSizeSetCode      String?  @default("LEGACY_APPAREL")
   // Legacy unused customer-pricing fields. Runtime reads/writes were removed in
   // Phase 0; drop only after the Railway DB is checked and any values are exported.
-  pricingDefaultTradeType String?
-  pricingMatrix           Json?
   salesBucketSetVersionId Int?
   timeBucketSetVersionId  Int?
   createdAt               DateTime @default(now())
@@ -885,8 +899,8 @@ model WorkOrder {
   /// rows; run `npm run verify:workorder-item-backfill` before dropping this column.
   items                Json?
   totalQuantity        Int                         @default(0)
-  pricingBasis         String                      @default("MANUFACTURING_SERVICE_PRICE")
-  currencyCode         String                      @default("USD")
+  pricingBasis         SalesPricingBasis           @default(MANUFACTURING_SERVICE_PRICE)
+  currencyId           Int
   createdAt            DateTime                    @default(now())
   createdBy            String                      @default("system@baro.local")
   createdByEmployeeId  Int?
@@ -897,6 +911,7 @@ model WorkOrder {
   buyerOrg        Organization?    @relation("WorkOrderBuyerOrg", fields: [buyerOrgId], references: [id], onDelete: SetNull)
   sellerOrg       Organization?    @relation("WorkOrderSellerOrg", fields: [sellerOrgId], references: [id], onDelete: SetNull)
   customerOrg     Organization?    @relation("WorkOrderCustomerOrg", fields: [customerId], references: [id], onDelete: SetNull)
+  currency        Currency         @relation(fields: [currencyId], references: [id], onDelete: Restrict)
   workOrderItems  WorkOrderItem[]
   assignmentPlans AssignmentPlan[]
   assignmentCards AssignmentCard[]
@@ -909,6 +924,7 @@ model WorkOrder {
   @@unique([buyerOrgId, sellerOrgId, orderNumber])
   @@index([orgId])
   @@index([orgId, orderNumber])
+  @@index([currencyId])
 }
 
 model WorkOrderItem {
@@ -921,7 +937,6 @@ model WorkOrderItem {
   sizeQuantities      Json?
   totalQuantity       Int                  @default(0)
   sortOrder           Int                  @default(0)
-  salesPriceSnapshot  Json?
   createdAt           DateTime             @default(now())
   createdBy           String               @default("system@baro.local")
   createdByEmployeeId Int?
@@ -993,34 +1008,36 @@ model OrgRelationshipStyleTimeBucket {
 }
 
 model CustomerSalesPriceList {
-  id                         Int      @id @default(autoincrement())
+  id                         Int               @id @default(autoincrement())
   orgRelationshipId          Int
   manufacturerOrgId          Int
   brandOrgId                 Int
   styleId                    Int
-  pricingBasis               String
-  currencyCode               String
+  pricingBasis               SalesPricingBasis
+  currencyId                 Int
   quantityBucketSetVersionId Int
-  createdAt                  DateTime @default(now())
-  createdBy                  String   @default("system@baro.local")
+  createdAt                  DateTime          @default(now())
+  createdBy                  String            @default("system@baro.local")
   createdByEmployeeId        Int?
   updatedByEmployeeId        Int?
-  updatedAt                  DateTime @updatedAt
+  updatedAt                  DateTime          @updatedAt
 
   orgRelationship          OrgRelationship          @relation(fields: [orgRelationshipId, manufacturerOrgId, brandOrgId], references: [id, manufacturerOrgId, brandOrgId], onDelete: Restrict, map: "CustomerSalesPriceList_relationship_scope_fkey")
   style                    Style                    @relation(fields: [styleId, brandOrgId], references: [id, orgId], onDelete: Restrict, map: "CustomerSalesPriceList_style_brand_fkey")
   quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId, manufacturerOrgId], references: [id, orgId], onDelete: Restrict, map: "CustomerSalesPriceList_version_manufacturer_fkey")
+  currency                 Currency                 @relation(fields: [currencyId], references: [id], onDelete: Restrict, map: "CustomerSalesPriceList_currency_fkey")
   prices                   CustomerSalesPrice[]
 
   createdByEmployee Employee? @relation("SalesPriceListCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("SalesPriceListUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
-  @@unique([orgRelationshipId, styleId, pricingBasis, currencyCode, quantityBucketSetVersionId], map: "CustomerSalesPriceList_scope_version_key")
+  @@unique([orgRelationshipId, styleId, pricingBasis, currencyId, quantityBucketSetVersionId], map: "CustomerSalesPriceList_scope_version_key")
   @@unique([id, quantityBucketSetVersionId], map: "CustomerSalesPriceList_id_version_key")
   @@index([orgRelationshipId], map: "CustomerSalesPriceList_relationshipId_idx")
   @@index([styleId], map: "CustomerSalesPriceList_styleId_idx")
   @@index([quantityBucketSetVersionId], map: "CustomerSalesPriceList_versionId_idx")
   @@index([manufacturerOrgId, brandOrgId], map: "CustomerSalesPriceList_org_scope_idx")
+  @@index([currencyId], map: "CustomerSalesPriceList_currencyId_idx")
 }
 
 model CustomerSalesPrice {
