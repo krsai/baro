@@ -14,24 +14,19 @@ const {
 
 const backendSource = fs.readFileSync('backend/src/index.ts', 'utf8');
 
-test('AT mutations are not reported as failed when derived assignment-card refresh fails', () => {
-  const helperStart = backendSource.indexOf(
-    'const refreshAssignmentCardsAfterAtChange = async'
+test('AT mutations do not rebuild ST-based assignment cards', () => {
+  const applyStart = backendSource.indexOf(
+    'const applyAtTrainingResultsToStyleProcesses'
   );
-  const helperEnd = backendSource.indexOf('type AtSyncRunOptions', helperStart);
-  const helperSource = backendSource.slice(helperStart, helperEnd);
-  assert.ok(helperStart >= 0);
-  assert.match(helperSource, /try \{/);
-  assert.match(helperSource, /rebuildAssignmentCardsForOrgIds/);
-  assert.match(helperSource, /catch \(error\)/);
-  assert.match(helperSource, /assignmentCardsRefreshed: false/);
-
   const resetStart = backendSource.indexOf('const resetAtTrainingStateForOrg');
   const resetEnd = backendSource.indexOf('const normalizeStylePayload', resetStart);
+  const atMutationSource = backendSource.slice(applyStart, resetEnd);
   const resetSource = backendSource.slice(resetStart, resetEnd);
+  assert.ok(applyStart >= 0);
   assert.match(resetSource, /await prisma\.\$transaction/);
-  assert.match(resetSource, /refreshAssignmentCardsAfterAtChange/);
-  assert.match(resetSource, /return \{ \.\.\.result, \.\.\.assignmentCardRefresh \}/);
+  assert.doesNotMatch(atMutationSource, /rebuildAssignmentCardsForOrgIds/);
+  assert.doesNotMatch(atMutationSource, /refreshAssignmentCardsAfterAtChange/);
+  assert.match(resetSource, /return result/);
 });
 
 test('overlapping worker-day excludes every claiming WorkLog worker bucket', () => {

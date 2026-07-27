@@ -2738,23 +2738,6 @@ const resolveStyleSyncTargetOrgIds = async (orgId: number) => {
   return Array.from(targetOrgIds.values());
 };
 
-const refreshAssignmentCardsAfterAtChange = async (orgId: number) => {
-  try {
-    await rebuildAssignmentCardsForOrgIds(await resolveStyleSyncTargetOrgIds(orgId));
-    return { assignmentCardsRefreshed: true };
-  } catch (error) {
-    // AT parameters and training buckets are canonical data. Assignment cards are
-    // derived projections, and rebuilding them can be rejected independently when
-    // an existing assignment still points at a removed quantity bucket. Do not
-    // report a completed AT mutation as failed after its transaction has committed.
-    console.error(
-      `[AT sync] assignment card refresh failed after AT change orgId=${orgId}`,
-      error
-    );
-    return { assignmentCardsRefreshed: false };
-  }
-};
-
 type AtSyncRunOptions = {
   trainingMonthKey?: string | null;
   debug?: boolean;
@@ -4567,7 +4550,6 @@ const applyAtTrainingResultsToStyleProcesses = async ({
   let updatedProcesses = staleCleanup.clearedProcesses;
   let clampAdjustedProcesses = 0;
   const changedStyleIds = new Set<number>(staleCleanup.clearedStyleIds);
-  const refreshedStyleIds = new Set<number>(staleCleanup.clearedStyleIds);
 
   for (const processRow of styleProcessRowsById.values()) {
     const styleProcessId = toPositiveIntOrNull(processRow?.id);
@@ -4577,7 +4559,6 @@ const applyAtTrainingResultsToStyleProcesses = async ({
     const metricKey = toAtTrainingStyleProcessMetricKey(styleProcessId);
     const fittedRaw = fittedParamsByMetric.get(metricKey);
     if (!fittedRaw) continue;
-    refreshedStyleIds.add(styleId);
 
     const currentAtParams = toStyleAtParams((processRow as any).atParams);
     const qualityStats = metricTrainingQualityByMetricKey.get(metricKey) || null;
@@ -4694,13 +4675,6 @@ const applyAtTrainingResultsToStyleProcesses = async ({
     });
   }
 
-  if (refreshedStyleIds.size > 0) {
-    // StyleProcess.atParams (updated above) is canonical; Style.processes JSON is no
-    // longer written back here — StyleProcess/StyleProcessStandard are the only
-    // source of truth for process data going forward.
-    await refreshAssignmentCardsAfterAtChange(orgId);
-  }
-
   return {
     updatedStyles: changedStyleIds.size,
     updatedProcesses,
@@ -4755,9 +4729,6 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
     diagnostics: Record<string, any> | null
   ) => {
     const staleCleanup = await clearUnfittedStyleProcessAtParams({ orgId });
-    if (staleCleanup.clearedStyleIds.length > 0) {
-      await refreshAssignmentCardsAfterAtChange(orgId);
-    }
     const nextDiagnostics =
       diagnostics === null
         ? null
@@ -5125,8 +5096,7 @@ const resetAtTrainingStateForOrg = async (orgId: number) => {
     };
   });
 
-  const assignmentCardRefresh = await refreshAssignmentCardsAfterAtChange(orgId);
-  return { ...result, ...assignmentCardRefresh };
+  return result;
 };
 
 const normalizeStylePayload = (
