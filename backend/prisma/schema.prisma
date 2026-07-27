@@ -562,7 +562,7 @@ model OrgRelationship {
 
   manufacturer          Organization                      @relation("ManufacturerOrgRelationships", fields: [manufacturerOrgId], references: [id])
   brand                 Organization                      @relation("BrandOrgRelationships", fields: [brandOrgId], references: [id])
-  salesBucketSetVersion QuantityBucketSetVersion?         @relation("OrgRelationshipSalesBucketVersion", fields: [salesBucketSetVersionId], references: [id], onDelete: Restrict)
+  salesBucketSetVersion QuantityBucketSetVersion?         @relation("OrgRelationshipSalesBucketVersion", fields: [salesBucketSetVersionId, manufacturerOrgId], references: [id, orgId], onDelete: Restrict, map: "OrgRelationship_sales_bucket_version_org_fkey")
   timeBucketSetVersion  QuantityBucketSetVersion?         @relation("OrgRelationshipTimeBucketVersion", fields: [timeBucketSetVersionId, manufacturerOrgId], references: [id, orgId], onDelete: Restrict, map: "OrgRelationship_time_bucket_version_org_fkey")
   salesBucketOverrides  OrgRelationshipStyleSalesBucket[]
   timeBucketOverrides   OrgRelationshipStyleTimeBucket[]
@@ -943,6 +943,8 @@ model WorkOrderItem {
 model OrgRelationshipStyleSalesBucket {
   id                         Int      @id @default(autoincrement())
   orgRelationshipId          Int
+  manufacturerOrgId          Int
+  brandOrgId                 Int
   styleId                    Int
   quantityBucketSetVersionId Int
   createdAt                  DateTime @default(now())
@@ -951,9 +953,9 @@ model OrgRelationshipStyleSalesBucket {
   updatedByEmployeeId        Int?
   updatedAt                  DateTime @updatedAt
 
-  orgRelationship          OrgRelationship          @relation(fields: [orgRelationshipId], references: [id], onDelete: Cascade)
-  style                    Style                    @relation(fields: [styleId], references: [id], onDelete: Cascade)
-  quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId], references: [id], onDelete: Restrict)
+  orgRelationship          OrgRelationship          @relation(fields: [orgRelationshipId, manufacturerOrgId, brandOrgId], references: [id, manufacturerOrgId, brandOrgId], onDelete: Cascade, map: "OrgRelationshipStyleSalesBucket_relationship_scope_fkey")
+  style                    Style                    @relation(fields: [styleId, brandOrgId], references: [id, orgId], onDelete: Cascade, map: "OrgRelationshipStyleSalesBucket_style_brand_fkey")
+  quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId, manufacturerOrgId], references: [id, orgId], onDelete: Restrict, map: "OrgRelationshipStyleSalesBucket_version_manufacturer_fkey")
 
   createdByEmployee Employee? @relation("SalesBucketOverrideCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("SalesBucketOverrideUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -961,6 +963,7 @@ model OrgRelationshipStyleSalesBucket {
   @@unique([orgRelationshipId, styleId], map: "OrgRelationshipStyleSalesBucket_relationship_style_key")
   @@index([styleId], map: "OrgRelationshipStyleSalesBucket_styleId_idx")
   @@index([quantityBucketSetVersionId], map: "OrgRelationshipStyleSalesBucket_versionId_idx")
+  @@index([manufacturerOrgId, brandOrgId], map: "OrgRelationshipStyleSalesBucket_org_scope_idx")
 }
 
 model OrgRelationshipStyleTimeBucket {
@@ -992,6 +995,8 @@ model OrgRelationshipStyleTimeBucket {
 model CustomerSalesPriceList {
   id                         Int      @id @default(autoincrement())
   orgRelationshipId          Int
+  manufacturerOrgId          Int
+  brandOrgId                 Int
   styleId                    Int
   pricingBasis               String
   currencyCode               String
@@ -1002,9 +1007,9 @@ model CustomerSalesPriceList {
   updatedByEmployeeId        Int?
   updatedAt                  DateTime @updatedAt
 
-  orgRelationship          OrgRelationship          @relation(fields: [orgRelationshipId], references: [id], onDelete: Restrict)
-  style                    Style                    @relation(fields: [styleId], references: [id], onDelete: Restrict)
-  quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId], references: [id], onDelete: Restrict)
+  orgRelationship          OrgRelationship          @relation(fields: [orgRelationshipId, manufacturerOrgId, brandOrgId], references: [id, manufacturerOrgId, brandOrgId], onDelete: Restrict, map: "CustomerSalesPriceList_relationship_scope_fkey")
+  style                    Style                    @relation(fields: [styleId, brandOrgId], references: [id, orgId], onDelete: Restrict, map: "CustomerSalesPriceList_style_brand_fkey")
+  quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId, manufacturerOrgId], references: [id, orgId], onDelete: Restrict, map: "CustomerSalesPriceList_version_manufacturer_fkey")
   prices                   CustomerSalesPrice[]
 
   createdByEmployee Employee? @relation("SalesPriceListCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
@@ -1015,6 +1020,7 @@ model CustomerSalesPriceList {
   @@index([orgRelationshipId], map: "CustomerSalesPriceList_relationshipId_idx")
   @@index([styleId], map: "CustomerSalesPriceList_styleId_idx")
   @@index([quantityBucketSetVersionId], map: "CustomerSalesPriceList_versionId_idx")
+  @@index([manufacturerOrgId, brandOrgId], map: "CustomerSalesPriceList_org_scope_idx")
 }
 
 model CustomerSalesPrice {

@@ -622,6 +622,132 @@ ALTER TABLE "WorkRecord"
     REFERENCES "StyleProcess"("id", "styleId", "orgId") ON DELETE RESTRICT;
 COMMIT;
 
+-- Step 0u: enforce manufacturer ownership for every sales-bucket relation (20260727).
+BEGIN;
+
+ALTER TABLE "OrgRelationshipStyleSalesBucket"
+  ADD COLUMN IF NOT EXISTS "manufacturerOrgId" INTEGER,
+  ADD COLUMN IF NOT EXISTS "brandOrgId" INTEGER;
+ALTER TABLE "CustomerSalesPriceList"
+  ADD COLUMN IF NOT EXISTS "manufacturerOrgId" INTEGER,
+  ADD COLUMN IF NOT EXISTS "brandOrgId" INTEGER;
+
+UPDATE "OrgRelationshipStyleSalesBucket" target
+SET "manufacturerOrgId" = relationship_row."manufacturerOrgId",
+    "brandOrgId" = relationship_row."brandOrgId"
+FROM "OrgRelationship" relationship_row
+WHERE target."orgRelationshipId" = relationship_row.id
+  AND (target."manufacturerOrgId" IS NULL OR target."brandOrgId" IS NULL);
+
+UPDATE "CustomerSalesPriceList" target
+SET "manufacturerOrgId" = relationship_row."manufacturerOrgId",
+    "brandOrgId" = relationship_row."brandOrgId"
+FROM "OrgRelationship" relationship_row
+WHERE target."orgRelationshipId" = relationship_row.id
+  AND (target."manufacturerOrgId" IS NULL OR target."brandOrgId" IS NULL);
+
+DO $$
+DECLARE
+  invalid_count INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO invalid_count
+  FROM "OrgRelationship" relationship_row
+  JOIN "QuantityBucketSetVersion" version_row
+    ON version_row.id = relationship_row."salesBucketSetVersionId"
+  WHERE version_row."orgId" <> relationship_row."manufacturerOrgId";
+  IF invalid_count > 0 THEN
+    RAISE EXCEPTION 'found % relationship sales bucket versions outside the manufacturer organization', invalid_count;
+  END IF;
+
+  SELECT COUNT(*) INTO invalid_count
+  FROM "OrgRelationshipStyleSalesBucket" override_row
+  JOIN "OrgRelationship" relationship_row ON relationship_row.id = override_row."orgRelationshipId"
+  JOIN "Style" style_row ON style_row.id = override_row."styleId"
+  JOIN "QuantityBucketSetVersion" version_row ON version_row.id = override_row."quantityBucketSetVersionId"
+  WHERE override_row."manufacturerOrgId" <> relationship_row."manufacturerOrgId"
+     OR override_row."brandOrgId" <> relationship_row."brandOrgId"
+     OR style_row."orgId" <> override_row."brandOrgId"
+     OR version_row."orgId" <> override_row."manufacturerOrgId";
+  IF invalid_count > 0 THEN
+    RAISE EXCEPTION 'found % sales bucket overrides with invalid relationship ownership', invalid_count;
+  END IF;
+
+  SELECT COUNT(*) INTO invalid_count
+  FROM "CustomerSalesPriceList" price_list
+  JOIN "OrgRelationship" relationship_row ON relationship_row.id = price_list."orgRelationshipId"
+  JOIN "Style" style_row ON style_row.id = price_list."styleId"
+  JOIN "QuantityBucketSetVersion" version_row ON version_row.id = price_list."quantityBucketSetVersionId"
+  WHERE price_list."manufacturerOrgId" <> relationship_row."manufacturerOrgId"
+     OR price_list."brandOrgId" <> relationship_row."brandOrgId"
+     OR style_row."orgId" <> price_list."brandOrgId"
+     OR version_row."orgId" <> price_list."manufacturerOrgId";
+  IF invalid_count > 0 THEN
+    RAISE EXCEPTION 'found % sales price lists with invalid relationship ownership', invalid_count;
+  END IF;
+END $$;
+
+ALTER TABLE "OrgRelationshipStyleSalesBucket"
+  ALTER COLUMN "manufacturerOrgId" SET NOT NULL,
+  ALTER COLUMN "brandOrgId" SET NOT NULL;
+ALTER TABLE "CustomerSalesPriceList"
+  ALTER COLUMN "manufacturerOrgId" SET NOT NULL,
+  ALTER COLUMN "brandOrgId" SET NOT NULL;
+
+ALTER TABLE "OrgRelationship"
+  DROP CONSTRAINT IF EXISTS "OrgRelationship_salesBucketSetVersionId_fkey";
+ALTER TABLE "OrgRelationshipStyleSalesBucket"
+  DROP CONSTRAINT IF EXISTS "OrgRelationshipStyleSalesBucket_orgRelationshipId_fkey",
+  DROP CONSTRAINT IF EXISTS "OrgRelationshipStyleSalesBucket_styleId_fkey",
+  DROP CONSTRAINT IF EXISTS "OrgRelationshipStyleSalesBucket_quantityBucketSetVersionId_fkey";
+ALTER TABLE "CustomerSalesPriceList"
+  DROP CONSTRAINT IF EXISTS "CustomerSalesPriceList_orgRelationshipId_fkey",
+  DROP CONSTRAINT IF EXISTS "CustomerSalesPriceList_styleId_fkey",
+  DROP CONSTRAINT IF EXISTS "CustomerSalesPriceList_quantityBucketSetVersionId_fkey";
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OrgRelationship_sales_bucket_version_org_fkey') THEN
+    ALTER TABLE "OrgRelationship" ADD CONSTRAINT "OrgRelationship_sales_bucket_version_org_fkey"
+      FOREIGN KEY ("salesBucketSetVersionId", "manufacturerOrgId")
+      REFERENCES "QuantityBucketSetVersion"("id", "orgId") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OrgRelationshipStyleSalesBucket_relationship_scope_fkey') THEN
+    ALTER TABLE "OrgRelationshipStyleSalesBucket" ADD CONSTRAINT "OrgRelationshipStyleSalesBucket_relationship_scope_fkey"
+      FOREIGN KEY ("orgRelationshipId", "manufacturerOrgId", "brandOrgId")
+      REFERENCES "OrgRelationship"("id", "manufacturerOrgId", "brandOrgId") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OrgRelationshipStyleSalesBucket_style_brand_fkey') THEN
+    ALTER TABLE "OrgRelationshipStyleSalesBucket" ADD CONSTRAINT "OrgRelationshipStyleSalesBucket_style_brand_fkey"
+      FOREIGN KEY ("styleId", "brandOrgId") REFERENCES "Style"("id", "orgId") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OrgRelationshipStyleSalesBucket_version_manufacturer_fkey') THEN
+    ALTER TABLE "OrgRelationshipStyleSalesBucket" ADD CONSTRAINT "OrgRelationshipStyleSalesBucket_version_manufacturer_fkey"
+      FOREIGN KEY ("quantityBucketSetVersionId", "manufacturerOrgId")
+      REFERENCES "QuantityBucketSetVersion"("id", "orgId") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CustomerSalesPriceList_relationship_scope_fkey') THEN
+    ALTER TABLE "CustomerSalesPriceList" ADD CONSTRAINT "CustomerSalesPriceList_relationship_scope_fkey"
+      FOREIGN KEY ("orgRelationshipId", "manufacturerOrgId", "brandOrgId")
+      REFERENCES "OrgRelationship"("id", "manufacturerOrgId", "brandOrgId") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CustomerSalesPriceList_style_brand_fkey') THEN
+    ALTER TABLE "CustomerSalesPriceList" ADD CONSTRAINT "CustomerSalesPriceList_style_brand_fkey"
+      FOREIGN KEY ("styleId", "brandOrgId") REFERENCES "Style"("id", "orgId") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CustomerSalesPriceList_version_manufacturer_fkey') THEN
+    ALTER TABLE "CustomerSalesPriceList" ADD CONSTRAINT "CustomerSalesPriceList_version_manufacturer_fkey"
+      FOREIGN KEY ("quantityBucketSetVersionId", "manufacturerOrgId")
+      REFERENCES "QuantityBucketSetVersion"("id", "orgId") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS "OrgRelationshipStyleSalesBucket_org_scope_idx"
+  ON "OrgRelationshipStyleSalesBucket"("manufacturerOrgId", "brandOrgId");
+CREATE INDEX IF NOT EXISTS "CustomerSalesPriceList_org_scope_idx"
+  ON "CustomerSalesPriceList"("manufacturerOrgId", "brandOrgId");
+
+COMMIT;
+
 -- Step 0n: drop AssignmentPlan.orderNo/customer/label/previewUrl (20260706)
 -- Phase E of the AssignmentCard/AssignmentPlan FK+join redesign. Unlike
 -- Phase D's color columns, these four WERE actively written by every board

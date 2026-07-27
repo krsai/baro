@@ -7,6 +7,9 @@ const require = createRequire(import.meta.url);
 const {
   collectStBucketFkViolations,
 } = require('../backend/scripts/inspect-st-bucket-fk-readiness.js');
+const {
+  partitionRelationshipBucketStyles,
+} = require('../backend/dist/services/relationshipBucketStyles.js');
 
 const schema = fs.readFileSync('backend/prisma/schema.prisma', 'utf8');
 const backend = fs.readFileSync('backend/src/index.ts', 'utf8');
@@ -44,6 +47,7 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
   assert.match(quantityBucketRoute, /quantity buckets changed since this screen was loaded/);
   assert.doesNotMatch(quantityBucketRoute, /relationshipCountForBrand/);
   assert.match(quantityBucketRoute, /orgRelationshipStyleTimeBucket/);
+  assert.match(quantityBucketRoute, /partitionRelationshipBucketStyles\(relationshipStyles\)/);
   assert.match(quantityBucketRoute, /timeBucketSetVersionId: timeVersion\.id/);
   assert.match(quantityBucketRoute, /RELATIONSHIP_TIME_BUCKETS_/);
   assert.doesNotMatch(quantityBucketRoute, /data: \{ timeBucketSetVersionId: nextTimeVersionId \}/);
@@ -58,6 +62,13 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
   assert.match(schema, /StyleProcess_id_org_key/);
   assert.match(schema, /model OrgRelationshipStyleTimeBucket \{/);
   assert.match(schema, /OrgRelationship_time_bucket_version_org_fkey/);
+  assert.match(schema, /OrgRelationship_sales_bucket_version_org_fkey/);
+  assert.match(schema, /OrgRelationshipStyleSalesBucket_relationship_scope_fkey/);
+  assert.match(schema, /OrgRelationshipStyleSalesBucket_style_brand_fkey/);
+  assert.match(schema, /OrgRelationshipStyleSalesBucket_version_manufacturer_fkey/);
+  assert.match(schema, /CustomerSalesPriceList_relationship_scope_fkey/);
+  assert.match(schema, /CustomerSalesPriceList_style_brand_fkey/);
+  assert.match(schema, /CustomerSalesPriceList_version_manufacturer_fkey/);
   assert.match(schema, /OrgRelationshipStyleTimeBucket_relationship_scope_fkey/);
   assert.match(schema, /OrgRelationshipStyleTimeBucket_style_brand_fkey/);
   assert.match(schema, /OrgRelationshipStyleTimeBucket_version_manufacturer_fkey/);
@@ -99,6 +110,19 @@ test('sales buckets stay relational while their quantity boundaries synchronize 
   );
   assert.match(bucketSaveRequest, /headers: \{ 'Content-Type': 'application\/json' \}/);
   assert.doesNotMatch(frontend, /window\.confirm\(confirmation\)/);
+});
+
+test('sales and time default style sets remain independent', () => {
+  const states = [
+    { id: 1, salesBucketOverrides: [], timeBucketOverrides: [] },
+    { id: 2, salesBucketOverrides: [{ id: 20 }], timeBucketOverrides: [] },
+    { id: 3, salesBucketOverrides: [], timeBucketOverrides: [{ id: 30 }] },
+    { id: 4, salesBucketOverrides: [{ id: 40 }], timeBucketOverrides: [{ id: 41 }] },
+  ];
+  const { salesDefaultStyles, timeDefaultStyles } =
+    partitionRelationshipBucketStyles(states);
+  assert.deepEqual(salesDefaultStyles.map((style) => style.id), [1, 3]);
+  assert.deepEqual(timeDefaultStyles.map((style) => style.id), [1, 2]);
 });
 
 test('brand style creation does not create a legacy owner-level time bucket', () => {

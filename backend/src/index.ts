@@ -82,6 +82,7 @@ import {
   normalizeQuantityBucketValues,
   syncStyleStandardsForBucketVersion as syncRelationshipStyleStandards,
 } from "./services/relationshipTimeBuckets";
+import { partitionRelationshipBucketStyles } from "./services/relationshipBucketStyles";
 import {
   resolveWorkRecordProcessCode,
   resolveWorkRecordProcessName,
@@ -738,7 +739,11 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "Style", columnName: "timeBucketSetVersionId" },
   { tableName: "Style", columnName: "timeBucketSource" },
   { tableName: "OrgRelationshipStyleSalesBucket", columnName: "quantityBucketSetVersionId" },
+  { tableName: "OrgRelationshipStyleSalesBucket", columnName: "manufacturerOrgId" },
+  { tableName: "OrgRelationshipStyleSalesBucket", columnName: "brandOrgId" },
   { tableName: "CustomerSalesPriceList", columnName: "quantityBucketSetVersionId" },
+  { tableName: "CustomerSalesPriceList", columnName: "manufacturerOrgId" },
+  { tableName: "CustomerSalesPriceList", columnName: "brandOrgId" },
   { tableName: "CustomerSalesPrice", columnName: "unitPrice" },
   { tableName: "AssignmentPlan", columnName: "assignmentStSnapshot" },
   { tableName: "AssignmentPlan", columnName: "orgRelationshipId" },
@@ -826,6 +831,13 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "StyleProcess_id_org_key",
   "StyleProcessStandard_process_org_fkey",
   "OrgRelationship_time_bucket_version_org_fkey",
+  "OrgRelationship_sales_bucket_version_org_fkey",
+  "OrgRelationshipStyleSalesBucket_relationship_scope_fkey",
+  "OrgRelationshipStyleSalesBucket_style_brand_fkey",
+  "OrgRelationshipStyleSalesBucket_version_manufacturer_fkey",
+  "CustomerSalesPriceList_relationship_scope_fkey",
+  "CustomerSalesPriceList_style_brand_fkey",
+  "CustomerSalesPriceList_version_manufacturer_fkey",
   "OrgRelationshipStyleTimeBucket_relationship_scope_fkey",
   "OrgRelationshipStyleTimeBucket_style_brand_fkey",
   "OrgRelationshipStyleTimeBucket_version_manufacturer_fkey",
@@ -1570,6 +1582,8 @@ const copyRetainedSalesPricesToVersion = async ({
       update: {},
       create: {
         orgRelationshipId: relationshipId,
+        manufacturerOrgId: oldList.manufacturerOrgId,
+        brandOrgId: oldList.brandOrgId,
         styleId: oldList.styleId,
         pricingBasis: oldList.pricingBasis,
         currencyCode: oldList.currencyCode,
@@ -27305,6 +27319,8 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           },
           create: {
             orgRelationshipId: relationship.id,
+            manufacturerOrgId: currentRelationship.manufacturerOrgId,
+            brandOrgId: currentRelationship.brandOrgId,
             styleId: style.id,
             quantityBucketSetVersionId: version.id,
           },
@@ -27357,24 +27373,26 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
           unreviewedStandardCount: 0,
         };
       }
-      const salesDefaultStyles = await tx.style.findMany({
+      const relationshipStyles = await tx.style.findMany({
         where: {
           orgId: relationship.brandOrgId,
-          salesBucketOverrides: {
-            none: { orgRelationshipId: relationship.id },
-          },
         },
         select: {
           id: true,
+          salesBucketOverrides: {
+            where: { orgRelationshipId: relationship.id },
+            select: { id: true },
+          },
           timeBucketOverrides: {
             where: { orgRelationshipId: relationship.id },
             select: { id: true },
           },
         },
       });
-      const affectedStyles = salesDefaultStyles.filter(
-        (style) => style.timeBucketOverrides.length === 0
-      );
+      const {
+        salesDefaultStyles,
+        timeDefaultStyles: affectedStyles,
+      } = partitionRelationshipBucketStyles(relationshipStyles);
       const version = salesBucketsChanged
         ? await createRelationshipBucketSetVersion({
             db: tx,
@@ -27660,6 +27678,8 @@ app.put("/customers/:id/sales-prices", async (req, res) => {
       await tx.customerSalesPriceList.createMany({
         data: requiredListScopes.map((scope) => ({
           orgRelationshipId: relationship.id,
+          manufacturerOrgId: relationship.manufacturerOrgId,
+          brandOrgId: relationship.brandOrgId,
           styleId: scope.styleId,
           pricingBasis,
           currencyCode,
