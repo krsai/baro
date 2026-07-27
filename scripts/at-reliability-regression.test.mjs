@@ -190,6 +190,11 @@ test('provisional AT only displays in the observed quantity bucket', () => {
   assert.equal(outsideCell.shouldDisplayValue, false);
   assert.equal(resolveProcessAtDisplayPerPieceSeconds(provisional, 1000, DEFAULT_BUCKETS), null);
   assert.equal(resolveProcessAtPerPieceSeconds(provisional, 1000), 65);
+  assert.equal(
+    resolveProcessAtDisplayPerPieceSeconds(provisional, 1000),
+    null,
+    'provisional AT must not be extrapolated when the active bucket set is missing'
+  );
 });
 
 test('fitted low-confidence AT remains displayable across buckets', () => {

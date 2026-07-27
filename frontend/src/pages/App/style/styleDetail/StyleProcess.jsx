@@ -1889,11 +1889,12 @@ const StyleProcess = ({
     () => {
       const total = calculateProcessDisplayAtTotalForOrderQuantity(
         safeProcesses,
-        displayOrderQuantity
+        displayOrderQuantity,
+        bucketQuantities
       );
       return total == null ? null : total / displayOrderQuantity;
     },
-    [safeProcesses, displayOrderQuantity]
+    [safeProcesses, displayOrderQuantity, bucketQuantities]
   );
   const totalST = useMemo(
     () =>
@@ -1908,8 +1909,12 @@ const StyleProcess = ({
   );
   const hasPT = useMemo(() => hasAnyProcessTime(safeProcesses, 'pt'), [safeProcesses]);
   const hasAT = useMemo(
-    () => hasCompleteDisplayableProcessAtTime(safeProcesses, displayOrderQuantity),
-    [safeProcesses, displayOrderQuantity]
+    () => hasCompleteDisplayableProcessAtTime(
+      safeProcesses,
+      displayOrderQuantity,
+      bucketQuantities
+    ),
+    [safeProcesses, displayOrderQuantity, bucketQuantities]
   );
   const hasST = useMemo(
     () =>
@@ -2731,7 +2736,11 @@ const StyleProcess = ({
         >
           {(dragProvided) => {
             const previewAtTotalSeconds =
-              resolveProcessAtDisplayPerPieceSeconds(process, displayOrderQuantity);
+              resolveProcessAtDisplayPerPieceSeconds(
+                process,
+                displayOrderQuantity,
+                bucketQuantities
+              );
             const previewStTotalSeconds =
               resolveProcessStPerPieceSeconds(process, displayOrderQuantity);
             const reviewMeta = parseProcessReviewMeta(process);
@@ -2859,6 +2868,7 @@ const StyleProcess = ({
       )),
     [
       displayOrderQuantity,
+      bucketQuantities,
       isDraftOpen,
       languageCode,
       compositionMasterLookupByKind,

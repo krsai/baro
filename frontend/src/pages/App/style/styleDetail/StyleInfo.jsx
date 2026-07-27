@@ -828,7 +828,10 @@ const StyleInfo = ({
           {showStyleAnalysis ? (
             <>
               <Divider sx={{ my: 4 }} />
-              <StyleAnalysis processes={processes} />
+              <StyleAnalysis
+                processes={processes}
+                bucketQuantities={formData.timeBucketQuantities}
+              />
             </>
           ) : null}
         </Paper>

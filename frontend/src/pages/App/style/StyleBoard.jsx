@@ -615,7 +615,8 @@ const StyleBoard = () => {
           ) / DEFAULT_TIME_REF_QUANTITY;
         const totalAtSeconds = calculateProcessDisplayAtTotalForOrderQuantity(
           processes,
-          DEFAULT_TIME_REF_QUANTITY
+          DEFAULT_TIME_REF_QUANTITY,
+          style.timeBucketQuantities
         );
         const totalAT =
           totalAtSeconds == null ? null : totalAtSeconds / DEFAULT_TIME_REF_QUANTITY;
@@ -635,7 +636,8 @@ const StyleBoard = () => {
         const hasTotalPT = hasAnyProcessTime(processes, 'pt');
         const hasTotalAT = hasCompleteDisplayableProcessAtTime(
           processes,
-          DEFAULT_TIME_REF_QUANTITY
+          DEFAULT_TIME_REF_QUANTITY,
+          style.timeBucketQuantities
         );
         const styleAtReliability = resolveStyleAtReliability(processes);
         const stGapPercent =

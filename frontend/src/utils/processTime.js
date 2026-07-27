@@ -332,11 +332,14 @@ const resolveAtObservedBucketRange = (atParams, bucketQuantities) => {
   if (minQuantity === null || maxQuantity === null) return null;
   const lowerQuantity = Math.min(minQuantity, maxQuantity);
   const upperQuantity = Math.max(minQuantity, maxQuantity);
+  const minBucket = resolveStBucketQuantity(lowerQuantity, bucketQuantities);
+  const maxBucket = resolveStBucketQuantity(upperQuantity, bucketQuantities);
+  if (minBucket === null || maxBucket === null) return null;
   return {
     minQuantity: lowerQuantity,
     maxQuantity: upperQuantity,
-    minBucket: resolveStBucketQuantity(lowerQuantity, bucketQuantities),
-    maxBucket: resolveStBucketQuantity(upperQuantity, bucketQuantities),
+    minBucket,
+    maxBucket,
   };
 };
 

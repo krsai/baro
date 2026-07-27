@@ -15,7 +15,7 @@ import { formatNumberWithCommas } from '../../../../utils/numberFormat';
 const SUMMARY_LABEL_WIDTH = '30%';
 const SUMMARY_VALUE_WIDTH = '70%';
 
-const StyleAnalysis = ({ processes = [] }) => {
+const StyleAnalysis = ({ processes = [], bucketQuantities = [] }) => {
   const normalizedProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
 
   // PT/AT are entered/reviewed as per-piece seconds at the 1,000 reference quantity.
@@ -34,11 +34,12 @@ const StyleAnalysis = ({ processes = [] }) => {
     () => {
       const total = calculateProcessDisplayAtTotalForOrderQuantity(
         normalizedProcesses,
-        DEFAULT_TIME_REF_QUANTITY
+        DEFAULT_TIME_REF_QUANTITY,
+        bucketQuantities
       );
       return total == null ? null : total / DEFAULT_TIME_REF_QUANTITY;
     },
-    [normalizedProcesses]
+    [normalizedProcesses, bucketQuantities]
   );
 
   const hasTotalPT = useMemo(
@@ -47,8 +48,12 @@ const StyleAnalysis = ({ processes = [] }) => {
   );
 
   const hasTotalAT = useMemo(
-    () => hasCompleteDisplayableProcessAtTime(normalizedProcesses, DEFAULT_TIME_REF_QUANTITY),
-    [normalizedProcesses]
+    () => hasCompleteDisplayableProcessAtTime(
+      normalizedProcesses,
+      DEFAULT_TIME_REF_QUANTITY,
+      bucketQuantities
+    ),
+    [normalizedProcesses, bucketQuantities]
   );
 
   const totalST = useMemo(
