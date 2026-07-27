@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import atTraining from '../backend/dist/services/atTraining.js';
 import atTrainingOverlap from '../backend/dist/services/atTrainingOverlap.js';
 
@@ -10,6 +11,28 @@ const {
   registerAtTrainingWorkerDayClaim,
   toAtTrainingWorkerDateKey,
 } = atTrainingOverlap;
+
+const backendSource = fs.readFileSync('backend/src/index.ts', 'utf8');
+
+test('AT mutations are not reported as failed when derived assignment-card refresh fails', () => {
+  const helperStart = backendSource.indexOf(
+    'const refreshAssignmentCardsAfterAtChange = async'
+  );
+  const helperEnd = backendSource.indexOf('type AtSyncRunOptions', helperStart);
+  const helperSource = backendSource.slice(helperStart, helperEnd);
+  assert.ok(helperStart >= 0);
+  assert.match(helperSource, /try \{/);
+  assert.match(helperSource, /rebuildAssignmentCardsForOrgIds/);
+  assert.match(helperSource, /catch \(error\)/);
+  assert.match(helperSource, /assignmentCardsRefreshed: false/);
+
+  const resetStart = backendSource.indexOf('const resetAtTrainingStateForOrg');
+  const resetEnd = backendSource.indexOf('const normalizeStylePayload', resetStart);
+  const resetSource = backendSource.slice(resetStart, resetEnd);
+  assert.match(resetSource, /await prisma\.\$transaction/);
+  assert.match(resetSource, /refreshAssignmentCardsAfterAtChange/);
+  assert.match(resetSource, /return \{ \.\.\.result, \.\.\.assignmentCardRefresh \}/);
+});
 
 test('overlapping worker-day excludes every claiming WorkLog worker bucket', () => {
   const state = createAtTrainingOverlapState();
