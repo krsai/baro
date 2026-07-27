@@ -448,13 +448,13 @@ const StyleDetail = () => {
                 {getStyleDetailMessage(languageCode, 'tabBasicInfo')}
               </ToggleButton>
               {canViewProcessInfo ? (
-                <ToggleButton value="timeMatrix">
-                  {getStyleDetailMessage(languageCode, 'tabTimeMatrix')}
+                <ToggleButton value="processInfo">
+                  {getStyleDetailMessage(languageCode, 'tabProcessInfo')}
                 </ToggleButton>
               ) : null}
               {canViewProcessInfo ? (
-                <ToggleButton value="processInfo">
-                  {getStyleDetailMessage(languageCode, 'tabProcessInfo')}
+                <ToggleButton value="timeMatrix">
+                  {getStyleDetailMessage(languageCode, 'tabTimeMatrix')}
                 </ToggleButton>
               ) : null}
               <ToggleButton value="bom">{getStyleDetailMessage(languageCode, 'tabBom')}</ToggleButton>
