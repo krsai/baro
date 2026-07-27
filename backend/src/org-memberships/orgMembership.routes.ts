@@ -544,14 +544,9 @@ export const createOrgMembershipRouter = ({
         if (
           isManufacturerOrg(organization) &&
           transactionData.employeeNo === undefined &&
-          accountPatch.value.factoryId &&
           !normalizeEmployeeNo(existingEmployee?.employeeNo)
         ) {
-          transactionData.employeeNo = await generateNextEmployeeNo(
-            tx,
-            orgIdNum,
-            accountPatch.value.factoryId
-          );
+          transactionData.employeeNo = await generateNextEmployeeNo(tx, orgIdNum);
         }
 
         if (existingEmployee) {
@@ -752,8 +747,8 @@ export const createOrgMembershipRouter = ({
     const updated = await prisma.$transaction(async (tx) => {
       const employeeNo =
         normalizeEmployeeNo(employee.employeeNo) ||
-        (accountPatch.value.factoryId
-          ? await generateNextEmployeeNo(tx, employee.orgId, accountPatch.value.factoryId)
+        (isManufacturerOrg(employee.organization)
+          ? await generateNextEmployeeNo(tx, employee.orgId)
           : null);
       return tx.employee.update({
         where: { id: employee.id },

@@ -119,9 +119,9 @@ const EMPLOYEE_BOARD_TEXT = {
   employeeNoColumn: { ko: '사번', en: 'Employee No.', vi: 'Ma NV' },
   employeeNoLabel: { ko: '사번', en: 'Employee No.', vi: 'Ma NV' },
   employeeNoAutoHint: {
-    ko: '공장 코드 + 4자리 순번으로 자동 생성됩니다. 예: HN-0001',
-    en: 'Auto-generated as factory code + 4 digits, e.g. HN-0001.',
-    vi: 'Tu dong tao theo ma nha may + 4 chu so, vi du HN-0001.',
+    ko: '조직 전체 4자리 순번으로 자동 생성됩니다. 예: 0001',
+    en: 'Auto-generated as an organization-wide 4-digit number, e.g. 0001.',
+    vi: 'Tu dong tao theo so thu tu 4 chu so trong toan cong ty, vi du 0001.',
   },
   employeeNoAutoPlaceholder: {
     ko: '저장 시 자동 생성',
@@ -399,6 +399,11 @@ const isValidDateInput = (value) => {
 };
 const normalizeSearchText = (value) => String(value || '').trim().toLowerCase();
 const isNoFactoryFilterValue = (value) => String(value || '') === NO_FACTORY_FILTER_VALUE;
+const resolveFactoryIdForSave = (value) => {
+  if (!value || isNoFactoryFilterValue(value)) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
 const hasAssignedFactory = (employee) => {
   const factoryId = Number(employee?.factoryId);
   return Number.isFinite(factoryId) && factoryId > 0;
@@ -424,7 +429,11 @@ const buildEmployeeDraft = (member, employee, options = {}) => {
     jobRoleId: employee?.roleId ? String(employee.roleId) : '',
     payType: String(employee?.payType || employee?.effectivePayType || defaultPayType).toUpperCase(),
     fixedSalary: formatMoneyInput(employee?.fixedSalary),
-    factoryId: employee?.factoryId ? String(employee.factoryId) : '',
+    factoryId: employee?.factoryId
+      ? String(employee.factoryId)
+      : options.useOperationsSupportTeam
+        ? NO_FACTORY_FILTER_VALUE
+        : '',
     employeeNo: employee?.employeeNo || '',
     joinedAt: formatDateInput(employee?.joinedAt || member?.approvedAt),
     leftAt: formatDateInput(employee?.leftAt),
@@ -747,7 +756,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const canFilterByFactory = activeOrgType !== 'BRAND' && factories.length > 0;
   const defaultPendingFactoryId =
     operatorFactoryId ||
-    (isNoFactoryFilterValue(selectedFactoryFilterId) ? '' : selectedFactoryFilterId) ||
+    selectedFactoryFilterId ||
     '';
   const currentUserName = String(activeProfile?.employeeName || '').trim();
   const payTypeOptions = useMemo(() => getPayTypeOptions(languageCode), [languageCode]);
@@ -893,7 +902,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         pendingRoleOverrides[member.id] || member.role || ''
       ).toUpperCase();
 
-      if (activeOrgType !== 'BRAND' && selectedRole === 'WORKER' && !factoryId) {
+      if (
+        activeOrgType !== 'BRAND' &&
+        selectedRole === 'WORKER' &&
+        (!factoryId || isNoFactoryFilterValue(factoryId))
+      ) {
         setStatusMessage({ type: 'error', text: text('errNeedFactoryBeforeApprove', languageCode) });
         setApprovingId(null);
         return;
@@ -912,7 +925,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           body: JSON.stringify({
             role: selectedRole,
             approvedBy: myEmail,
-            factoryId: factoryId ? Number(factoryId) : null,
+            factoryId: resolveFactoryIdForSave(factoryId),
           }),
         });
 
@@ -1081,7 +1094,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         };
 
         if (Object.prototype.hasOwnProperty.call(draft, 'factoryId')) {
-          employeePayload.factoryId = draft.factoryId ? Number(draft.factoryId) : null;
+          employeePayload.factoryId = resolveFactoryIdForSave(draft.factoryId);
         }
         if (draft.joinedAt) employeePayload.joinedAt = draft.joinedAt;
         if (Object.prototype.hasOwnProperty.call(draft, 'leftAt')) {
@@ -1140,9 +1153,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     const defaultFactoryId =
       activeOrgType === 'BRAND'
         ? ''
-        : isNoFactoryFilterValue(selectedFactoryFilterId)
-          ? ''
-          : selectedFactoryFilterId || '';
+        : selectedFactoryFilterId || '';
     setDrawerMode('create');
     setSelectedMemberId(null);
     setDrawerEmail('');
@@ -1178,10 +1189,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       buildEmployeeDraft(member, employee, {
         useEmailFallback: normalizedMemberEmail === myEmail,
         currentUserName: normalizedMemberEmail === myEmail ? currentUserName : '',
+        useOperationsSupportTeam: activeOrgType !== 'BRAND',
       })
     );
     setIsAddDrawerOpen(true);
-  }, [currentUserName, employeeByMembership, myEmail]);
+  }, [activeOrgType, currentUserName, employeeByMembership, myEmail]);
 
   const handleDrawerDraftChange = useCallback((patch) => {
     setDrawerDraft((prev) => {
@@ -1200,6 +1212,10 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         }
       } else if (!normalizedPayType) {
         next.payType = 'CT';
+      }
+
+      if (isWorkerOrgRole(normalizedRole) && isNoFactoryFilterValue(next.factoryId)) {
+        next.factoryId = '';
       }
 
       if (!isSalaryAmountPayType(next.payType)) {
@@ -1259,11 +1275,15 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     }
 
     if (activeOrgType !== 'BRAND') {
-      if (isWorker && !selectedFactoryId) {
+      if (isWorker && (!selectedFactoryId || isNoFactoryFilterValue(selectedFactoryId))) {
         setStatusMessage({ type: 'error', text: text('errNeedFactory', languageCode) });
         return;
       }
-      if (selectedFactoryId && !Number.isFinite(Number(selectedFactoryId))) {
+      if (
+        selectedFactoryId &&
+        !isNoFactoryFilterValue(selectedFactoryId) &&
+        !Number.isFinite(Number(selectedFactoryId))
+      ) {
         setStatusMessage({ type: 'error', text: text('errInvalidFactory', languageCode) });
         return;
       }
@@ -1306,8 +1326,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             ...(normalizedJoinedAt ? { joinedAt: normalizedJoinedAt } : {}),
             ...(normalizedLeftAt ? { leftAt: normalizedLeftAt } : {}),
             ...(normalizedDrawerEmail ? { email: normalizedDrawerEmail } : {}),
-            ...(activeOrgType !== 'BRAND' && selectedFactoryId
-              ? { factoryId: Number(selectedFactoryId) }
+            ...(activeOrgType !== 'BRAND'
+              ? { factoryId: resolveFactoryIdForSave(selectedFactoryId) }
               : {}),
           }),
         });
@@ -1670,6 +1690,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   helperText={drawerIsWorker ? text('requiredInput', languageCode) : ''}
                 >
                   <MenuItem value="">{text('factorySelect', languageCode)}</MenuItem>
+                  <MenuItem value={NO_FACTORY_FILTER_VALUE} disabled={drawerIsWorker}>
+                    {text('operationsSupportTeam', languageCode)}
+                  </MenuItem>
                   {factories.map((factory) => (
                     <MenuItem key={factory.id} value={String(factory.id)}>
                       {factory.name}
@@ -1803,6 +1826,14 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                             sx={{ minWidth: 150 }}
                           >
                             <MenuItem value="">{text('factorySelect', languageCode)}</MenuItem>
+                            <MenuItem
+                              value={NO_FACTORY_FILTER_VALUE}
+                              disabled={isWorkerOrgRole(
+                                pendingRoleOverrides[member.id] || member.role || ''
+                              )}
+                            >
+                              {text('operationsSupportTeam', languageCode)}
+                            </MenuItem>
                             {factories.map((factory) => (
                               <MenuItem key={factory.id} value={String(factory.id)}>
                                 {factory.name}

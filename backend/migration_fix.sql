@@ -1453,67 +1453,108 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "employeeNo" TEXT;
 
--- Step 0aa: four-digit employee numbers and missing-number backfill (20260615)
-UPDATE "Employee"
-SET "employeeNo" = regexp_replace(
-  "employeeNo",
-  '[0-9]+$',
-  lpad(substring("employeeNo" from '([0-9]+)$'), 4, '0')
-)
-WHERE "employeeNo" ~ '^.+-[0-9]{1,3}$';
+-- Step 0aa: organization-wide employee numbers without factory prefixes (20260727)
+DO $$
+BEGIN
+  CREATE TEMP TABLE "_EmployeeNoRewrite" (
+    "employeeId" INTEGER PRIMARY KEY,
+    "nextSequence" BIGINT NOT NULL
+  ) ON COMMIT DROP;
 
-WITH factory_sequences AS (
+  INSERT INTO "_EmployeeNoRewrite" ("employeeId", "nextSequence")
+  WITH base AS (
+    SELECT
+      e.id AS "employeeId",
+      e."orgId",
+      CASE
+        WHEN NULLIF(trim(e."employeeNo"), '') IS NULL THEN NULL
+        WHEN trim(e."employeeNo") ~ '^([A-Za-z]{2,3}-)?[0-9]{1,18}$'
+          THEN NULLIF(substring(trim(e."employeeNo") from '([0-9]+)$')::bigint, 0)
+        ELSE NULL
+      END AS "candidateSequence"
+    FROM "Employee" e
+    JOIN "Organization" o ON o.id = e."orgId"
+    WHERE o.type = 'MANUFACTURER'
+      AND (
+        NULLIF(trim(e."employeeNo"), '') IS NULL
+        OR trim(e."employeeNo") ~ '^([A-Za-z]{2,3}-)?[0-9]{1,18}$'
+      )
+  ),
+  ranked AS (
+    SELECT
+      base.*,
+      CASE
+        WHEN "candidateSequence" IS NULL THEN NULL
+        ELSE ROW_NUMBER() OVER (
+          PARTITION BY "orgId", "candidateSequence"
+          ORDER BY "employeeId"
+        )
+      END AS "candidateRank"
+    FROM base
+  ),
+  maxima AS (
+    SELECT
+      "orgId",
+      COALESCE(MAX("candidateSequence"), 0) AS "maxSequence"
+    FROM ranked
+    GROUP BY "orgId"
+  ),
+  duplicate_rows AS (
+    SELECT
+      "employeeId",
+      "orgId",
+      ROW_NUMBER() OVER (
+        PARTITION BY "orgId"
+        ORDER BY "candidateSequence", "employeeId"
+      ) AS "duplicateOffset"
+    FROM ranked
+    WHERE "candidateRank" > 1
+  ),
+  duplicate_counts AS (
+    SELECT "orgId", COUNT(*) AS "duplicateCount"
+    FROM duplicate_rows
+    GROUP BY "orgId"
+  ),
+  missing_rows AS (
+    SELECT
+      "employeeId",
+      "orgId",
+      ROW_NUMBER() OVER (
+        PARTITION BY "orgId"
+        ORDER BY "employeeId"
+      ) AS "missingOffset"
+    FROM ranked
+    WHERE "candidateSequence" IS NULL
+  )
   SELECT
-    f.id AS "factoryId",
-    f."orgId",
-    trim(f."factoryCode") AS "factoryCode",
-    COALESCE(
-      MAX(
-        CASE
-          WHEN left(
-            e."employeeNo",
-            char_length(trim(f."factoryCode")) + 1
-          ) = trim(f."factoryCode") || '-'
-            AND substring(
-              e."employeeNo"
-              from char_length(trim(f."factoryCode")) + 2
-            ) ~ '^[0-9]+$'
-          THEN substring(
-            e."employeeNo"
-            from char_length(trim(f."factoryCode")) + 2
-          )::bigint
-          ELSE 0
-        END
-      ),
-      0
-    ) AS "maxSequence"
-  FROM "Factory" f
-  LEFT JOIN "Employee" e
-    ON e."orgId" = f."orgId"
-    AND e."factoryId" = f.id
-  WHERE NULLIF(trim(f."factoryCode"), '') IS NOT NULL
-  GROUP BY f.id, f."orgId", trim(f."factoryCode")
-),
-missing_employee_numbers AS (
-  SELECT
-    e.id,
-    fs."factoryCode",
-    fs."maxSequence"
-      + ROW_NUMBER() OVER (
-          PARTITION BY fs."factoryId"
-          ORDER BY e.id
-        ) AS "nextSequence"
-  FROM "Employee" e
-  JOIN factory_sequences fs
-    ON fs."orgId" = e."orgId"
-    AND fs."factoryId" = e."factoryId"
-  WHERE NULLIF(trim(e."employeeNo"), '') IS NULL
-)
-UPDATE "Employee" e
-SET "employeeNo" = men."factoryCode" || '-'
-  || lpad(men."nextSequence"::text, 4, '0')
-FROM missing_employee_numbers men
-WHERE e.id = men.id;
+    ranked."employeeId",
+    CASE
+      WHEN ranked."candidateSequence" IS NOT NULL AND ranked."candidateRank" = 1
+        THEN ranked."candidateSequence"
+      WHEN duplicate_rows."employeeId" IS NOT NULL
+        THEN maxima."maxSequence" + duplicate_rows."duplicateOffset"
+      ELSE maxima."maxSequence"
+        + COALESCE(duplicate_counts."duplicateCount", 0)
+        + missing_rows."missingOffset"
+    END AS "nextSequence"
+  FROM ranked
+  JOIN maxima ON maxima."orgId" = ranked."orgId"
+  LEFT JOIN duplicate_rows ON duplicate_rows."employeeId" = ranked."employeeId"
+  LEFT JOIN duplicate_counts ON duplicate_counts."orgId" = ranked."orgId"
+  LEFT JOIN missing_rows ON missing_rows."employeeId" = ranked."employeeId";
+
+  -- Nulling inside this transaction avoids transient collisions with the existing
+  -- organization-level unique index while prefixes are removed.
+  UPDATE "Employee" e
+  SET "employeeNo" = NULL
+  FROM "_EmployeeNoRewrite" rewrite
+  WHERE e.id = rewrite."employeeId";
+
+  UPDATE "Employee" e
+  SET "employeeNo" = lpad(rewrite."nextSequence"::text, 4, '0')
+  FROM "_EmployeeNoRewrite" rewrite
+  WHERE e.id = rewrite."employeeId";
+END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS "Employee_orgId_employeeNo_key"
   ON "Employee"("orgId", "employeeNo");

@@ -466,7 +466,7 @@ export const createEmployeeRouter = ({
     }
     const shouldGenerateEmployeeNo =
       resolvedEmployeeNo === undefined &&
-      Boolean(resolvedFactoryId) &&
+      isManufacturerOrg(existingEmployee.organization) &&
       !normalizeEmployeeNo(existingEmployee?.employeeNo);
 
     const data: any = {
@@ -491,11 +491,10 @@ export const createEmployeeRouter = ({
     try {
       employee = await prisma.$transaction(async (tx) => {
         const transactionData = { ...data };
-        if (shouldGenerateEmployeeNo && resolvedFactoryId) {
+        if (shouldGenerateEmployeeNo) {
           transactionData.employeeNo = await generateNextEmployeeNo(
             tx,
-            existingEmployee.orgId,
-            resolvedFactoryId
+            existingEmployee.orgId
           );
         }
 
