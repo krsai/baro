@@ -1195,6 +1195,14 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     setIsAddDrawerOpen(true);
   }, [activeOrgType, currentUserName, employeeByMembership, myEmail]);
 
+  const closeEmployeeDrawer = useCallback(() => {
+    const focusedElement = document.activeElement;
+    if (focusedElement instanceof HTMLElement) {
+      focusedElement.blur();
+    }
+    setIsAddDrawerOpen(false);
+  }, []);
+
   const handleDrawerDraftChange = useCallback((patch) => {
     setDrawerDraft((prev) => {
       const next = { ...prev, ...patch };
@@ -1338,7 +1346,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         ]);
         upsertActiveMember(targetMember);
         setStatusMessage({ type: 'success', text: text('employeeSaved', languageCode) });
-        setIsAddDrawerOpen(false);
+        closeEmployeeDrawer();
         return;
       } else {
         targetMember = activeMembers.find((member) => member.id === selectedMemberId) || null;
@@ -1385,7 +1393,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       });
 
       if (didSave) {
-        setIsAddDrawerOpen(false);
+        closeEmployeeDrawer();
       }
     } catch (error) {
       const isConflict = error?.details?.error === 'employeeNo already in use' || error?.status === 409;
@@ -1403,6 +1411,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     activeOrgId,
     activeOrgType,
     canManageMembers,
+    closeEmployeeDrawer,
     defaultWorkerJobRoleId,
     drawerDraft,
     drawerEmail,
@@ -1569,7 +1578,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             open={isAddDrawerOpen}
             onClose={() => {
               if (isDrawerSaving) return;
-              setIsAddDrawerOpen(false);
+              closeEmployeeDrawer();
             }}
             PaperProps={{
               sx: {
@@ -1769,7 +1778,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1 }}>
                 <Button
                   variant="outlined"
-                  onClick={() => setIsAddDrawerOpen(false)}
+                  onClick={closeEmployeeDrawer}
                   disabled={isDrawerSaving}
                 >
                   {text('cancelButton', languageCode)}

@@ -2,9 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formatDateKeyInTimeZone, todayDateKey } from '../frontend/src/utils/dateKey.mjs';
 import { resolveAtTrainingMonthKey } from '../backend/dist/utils/atTrainingMonthKey.js';
+import payrollMonth from '../backend/dist/utils/payrollMonth.js';
 import workLogCoverage from '../backend/dist/work-records/workLogCoverage.js';
 
 const { validateWorkLogSingleMonthRange } = workLogCoverage;
+const {
+  isPayrollMonthReady,
+  resolveLatestCompletedPayrollMonthKey,
+} = payrollMonth;
 
 test('Asia/Seoul date key does not shift at UTC boundary', () => {
   const source = new Date('2026-02-23T00:30:00+09:00');
@@ -63,4 +68,26 @@ test('work log coverage accepts one month and rejects a cross-month range', () =
     coverageStartDate: '2026-05-29',
     coverageEndDate: '2026-06-05',
   }), /cannot cross calendar months/i);
+});
+
+test('payroll becomes available only after the selected month ends', () => {
+  const now = new Date('2026-06-30T17:05:00.000Z');
+  const options = { now, timeZone: 'Asia/Ho_Chi_Minh' };
+
+  assert.equal(resolveLatestCompletedPayrollMonthKey(options), '2026-06');
+  assert.equal(isPayrollMonthReady('2026-06', options), true);
+  assert.equal(isPayrollMonthReady('2026-07', options), false);
+  assert.equal(isPayrollMonthReady('2026-08', options), false);
+  assert.equal(isPayrollMonthReady('2026-13', options), false);
+});
+
+test('payroll stays unavailable while the selected month is still in progress', () => {
+  const options = {
+    now: new Date('2026-06-30T16:59:00.000Z'),
+    timeZone: 'Asia/Ho_Chi_Minh',
+  };
+
+  assert.equal(resolveLatestCompletedPayrollMonthKey(options), '2026-05');
+  assert.equal(isPayrollMonthReady('2026-06', options), false);
+  assert.equal(isPayrollMonthReady('2026-05', options), true);
 });

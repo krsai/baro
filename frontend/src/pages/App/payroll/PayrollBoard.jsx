@@ -39,11 +39,6 @@ const PAYROLL_BOARD_TEXT = {
     en: 'Deleted the {month} payroll snapshot.',
     vi: 'Da xoa ban luu bang luong thang {month}.',
   },
-  deleteLocked: {
-    ko: '\uD574\uB2F9 \uC6D4\uC740 \uC774\uBBF8 \uC7A0\uACA8\uC11C \uC0AD\uC81C\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.',
-    en: 'This payroll month is locked and cannot be deleted.',
-    vi: 'Thang luong nay da khoa va khong the xoa.',
-  },
   deleteError: {
     ko: '\uAE09\uC5EC \uC2A4\uB0C5\uC0F7 \uC0AD\uC81C\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.',
     en: 'Failed to delete the payroll snapshot.',
@@ -159,10 +154,8 @@ const PayrollBoard = () => {
       );
     } catch (error) {
       showNotification(
-        error?.message?.includes('payroll month closed')
-          ? resolveText(PAYROLL_BOARD_TEXT.deleteLocked, languageCode)
-          : error?.message || resolveText(PAYROLL_BOARD_TEXT.deleteError, languageCode),
-        error?.message?.includes('payroll month closed') ? 'warning' : 'error'
+        error?.message || resolveText(PAYROLL_BOARD_TEXT.deleteError, languageCode),
+        'error'
       );
     } finally {
       setDeletingMonth('');

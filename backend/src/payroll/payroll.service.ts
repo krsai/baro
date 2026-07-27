@@ -11,6 +11,7 @@ import {
   toPositiveIntOrNull,
 } from "../utils/common";
 import { createHttpError } from "../utils/http";
+import { isPayrollMonthReady } from "../utils/payrollMonth";
 import {
   resolveWorkRecordProcessCode,
   resolveWorkRecordProcessName,
@@ -37,7 +38,7 @@ const buildPayrollEmployeeKey = (workerId: unknown, fallbackName: unknown): stri
 };
 
 const assertPayrollMonth = (month: string) => {
-  if (!/^\d{4}-\d{2}$/.test(String(month || ""))) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(month || ""))) {
     throw createHttpError(400, "month is required (format: YYYY-MM)");
   }
 };
@@ -89,16 +90,6 @@ const getPayrollMonthRange = (month: string) => {
   const start = new Date(Date.UTC(year, monthNumber - 1, 1));
   const endExclusive = new Date(Date.UTC(year, monthNumber, 1));
   return { start, endExclusive };
-};
-
-const isPayrollMonthClosed = (month: string, now = new Date()) => {
-  const [yearText, monthText] = String(month || "").split("-");
-  const year = Number(yearText);
-  const monthNumber = Number(monthText);
-  if (!Number.isFinite(year) || !Number.isFinite(monthNumber)) return false;
-  if (monthNumber < 1 || monthNumber > 12) return false;
-  const nextMonthStartUtc = new Date(Date.UTC(year, monthNumber, 1));
-  return now.getTime() >= nextMonthStartUtc.getTime();
 };
 
 const resolvePayrollEmployeeName = (employee: any, fallback: unknown = null): string =>
@@ -296,7 +287,9 @@ const resolveFixedSalaryWithFallback = ({
 export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
-  const monthClosed = isPayrollMonthClosed(month);
+  const monthReady = isPayrollMonthReady(month, {
+    timeZone: process.env.BUSINESS_TIME_ZONE || "Asia/Seoul",
+  });
 
   const snapshot = await prisma.payrollSnapshot.findUnique({
     where: { orgId_month: { orgId, month } },
@@ -305,7 +298,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
     return {
       locked: false,
       snapshotExists: true,
-      monthClosed,
+      monthReady,
       lockedAt: snapshot.lockedAt,
       lockedBy: snapshot.lockedBy,
       month,
@@ -551,7 +544,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
   return {
     locked: false,
     snapshotExists: false,
-    monthClosed,
+    monthReady,
     month,
     employees,
   };
@@ -570,8 +563,12 @@ export const savePayrollSnapshot = async ({
 }) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
-  if (isPayrollMonthClosed(month)) {
-    throw createHttpError(409, "payroll month closed");
+  if (
+    !isPayrollMonthReady(month, {
+      timeZone: process.env.BUSINESS_TIME_ZONE || "Asia/Seoul",
+    })
+  ) {
+    throw createHttpError(409, "payroll month not ended");
   }
   await assertQuantitySettlementReadyForPayroll(orgId, month);
   const unreviewedCtPlans = await prisma.assignmentPlan.findMany({
@@ -629,9 +626,6 @@ export const savePayrollSnapshot = async ({
 export const deletePayrollSnapshot = async (orgId: number, monthInput: string) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
-  if (isPayrollMonthClosed(month)) {
-    throw createHttpError(409, "payroll month closed");
-  }
 
   const existing = await prisma.payrollSnapshot.findUnique({
     where: { orgId_month: { orgId, month } },

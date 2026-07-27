@@ -249,6 +249,12 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
   - 따라서 정상 앱 흐름으로 생성된 AT 학습 대상 WorkRecord에는 ST seed가 항상 존재한다. `missingInitialSeedMetricCount`/`ST_BUCKET_SECONDS_NOT_FOUND`는 정상 업무 시나리오가 아니라 레거시 데이터, DB 무결성 훼손, 스키마 드리프트 또는 앱 우회 쓰기를 알리는 불변식 위반 진단이다. 이를 위한 별도 추정 fallback을 만들지 말고 fail-closed로 원인을 드러낸다.
 - **급여 계산용**: 공정별로 몇 개 만들었는지 집계. 주문 100장이어도 실제로는 95장 또는 105장 만들 수 있음.
 
+### 급여 정산 월 규칙 (강제)
+- 급여는 해당 정산 월이 완전히 끝난 뒤에만 계산·저장한다. 현재 월과 미래 월은 `payroll month not ended`로 거부한다.
+- 급여 계산 추가 화면의 기본 정산 월은 직전 월이다.
+- 종료된 과거 월은 날짜가 지났다는 이유로 생성·수정·삭제를 막지 않는다. `PayrollSnapshot` 저장 여부와 달력상 월 종료 여부를 같은 `closed` 개념으로 섞지 않는다.
+- 급여 스냅샷 저장이 배정의 급여 잠금 기준이므로, 삭제 시 해당 월의 잠금 동기화도 함께 되돌린다.
+
 ### WorkLog 날짜 규칙 (강제)
 - 계산/판정 로직(스케줄러, 진행도, 완료일 추정)에서는 항상 기간 `[coverageStartDate, coverageEndDate]`를 기준으로 해석한다.
 - 작업자별 계산에서는 WorkRecord의 `effectiveCoverageStartDate/effectiveCoverageEndDate`가 있으면 그 범위를 우선 사용한다. 이 값은 WorkLog 기간을 벗어날 수 없다.

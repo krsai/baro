@@ -73,6 +73,15 @@ const shiftPayrollMonthKey = (value, amount) => {
   return getLocalMonthKey(new Date(year, month - 1 + amount, 1));
 };
 
+const getLatestCompletedPayrollMonthKey = () =>
+  shiftPayrollMonthKey(getLocalMonthKey(), -1);
+
+const isPayrollMonthReadyForSave = (value) => {
+  const month = String(value || '').trim();
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(month)
+    && month <= getLatestCompletedPayrollMonthKey();
+};
+
 const formatMoneyInput = (value) => {
   const sanitized = sanitizeMoneyInput(value);
   if (!sanitized) return '';
@@ -149,15 +158,10 @@ const PAYROLL_FLOW_TEXT = {
     en: 'Saved payroll snapshot for {month}.',
     vi: 'Da luu ban chup bang luong cho {month}.',
   },
-  createClosed: {
-    ko: '해당 월은 이미 지나서 생성할 수 없습니다.',
-    en: 'That month is already closed and cannot be created.',
-    vi: 'Thang do da dong va khong the tao moi.',
-  },
-  editClosed: {
-    ko: '해당 월은 이미 지나서 수정할 수 없습니다.',
-    en: 'That month is already closed and cannot be edited.',
-    vi: 'Thang do da dong va khong the chinh sua.',
+  monthNotEnded: {
+    ko: '해당 월이 끝난 뒤 급여를 계산할 수 있습니다.',
+    en: 'Payroll can be calculated after the selected month has ended.',
+    vi: 'Chi co the tinh luong sau khi thang da chon ket thuc.',
   },
   settlementIncomplete: {
     ko: '급여 정산 전에 수량 정산에서 검토 필요 또는 차단 항목을 먼저 정리하세요.',
@@ -195,7 +199,7 @@ const PayrollEntry = () => {
   const monthFromParam = isNew ? null : payrollId;
 
   const [payMonth, setPayMonth] = useState(
-    () => monthFromParam ?? getLocalMonthKey()
+    () => monthFromParam ?? getLatestCompletedPayrollMonthKey()
   );
   const [loading, setLoading] = useState(false);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
@@ -280,6 +284,10 @@ const PayrollEntry = () => {
       showNotification(payrollText('monthRequired'), 'error');
       return;
     }
+    if (!isPayrollMonthReadyForSave(payMonth)) {
+      showNotification(payrollText('monthNotEnded'), 'warning');
+      return;
+    }
 
     setSavingSnapshot(true);
     try {
@@ -295,8 +303,8 @@ const PayrollEntry = () => {
       await fetchPayroll(payMonth, { showWorkflowToast: false });
       showNotification(payrollText('snapshotCreated', { month: payMonth }), 'success');
     } catch (error) {
-      if (error?.message?.includes('payroll month closed')) {
-        showNotification(payrollText('createClosed'), 'warning');
+      if (error?.message?.includes('payroll month not ended')) {
+        showNotification(payrollText('monthNotEnded'), 'warning');
       } else if (error?.message?.includes('quantity settlement incomplete')) {
         showNotification(payrollText('settlementIncomplete'), 'warning');
       } else {
@@ -335,7 +343,7 @@ const PayrollEntry = () => {
 
   const employees = payrollData?.employees ?? [];
   const currentMonth = payrollData?.month || payMonth;
-  const isMonthClosed = payrollData?.monthClosed === true;
+  const isMonthReady = payrollData?.monthReady === true;
 
   const computedEmployees = useMemo(
     () =>
@@ -362,19 +370,19 @@ const PayrollEntry = () => {
 
         const baseEarnings =
           payType === 'FIXED'
-            ? isMonthClosed
+            ? !isMonthReady
               ? toMoneyNumber(employee?.fixedSalary)
               : resolvedFixedSalary
-            : isMonthClosed
+            : !isMonthReady
               ? toMoneyNumber(employee?.baseEarnings ?? employee?.totalEarnings)
               : productionEarnings + resolvedCtAmount;
 
-        const bonus = isMonthClosed ? toMoneyNumber(employee?.bonus) : parseMoneyInput(override.bonus);
-        const deduction = isMonthClosed
+        const bonus = !isMonthReady ? toMoneyNumber(employee?.bonus) : parseMoneyInput(override.bonus);
+        const deduction = !isMonthReady
           ? toMoneyNumber(employee?.deduction)
           : parseMoneyInput(override.deduction);
 
-        const finalEarnings = isMonthClosed
+        const finalEarnings = !isMonthReady
           ? toMoneyNumber(employee?.finalEarnings ?? employee?.totalEarnings)
           : baseEarnings + bonus - deduction;
 
@@ -392,7 +400,7 @@ const PayrollEntry = () => {
           finalEarnings,
         };
       }),
-    [employees, isMonthClosed, manualOverrides]
+    [employees, isMonthReady, manualOverrides]
   );
 
   const totalBaseEarnings = computedEmployees.reduce(
@@ -409,7 +417,7 @@ const PayrollEntry = () => {
     0
   );
 
-  const canEditCurrentPayroll = Boolean(payrollData) && !isMonthClosed;
+  const canEditCurrentPayroll = Boolean(payrollData) && isMonthReady;
 
   const buildSnapshotEmployeesPayload = useCallback(
     () =>
@@ -446,8 +454,8 @@ const PayrollEntry = () => {
 
   const handleSaveSnapshot = useCallback(async () => {
     if (!payrollData || !currentMonth) return false;
-    if (isMonthClosed) {
-      showNotification(payrollText('editClosed'), 'warning');
+    if (!isMonthReady) {
+      showNotification(payrollText('monthNotEnded'), 'warning');
       return false;
     }
 
@@ -478,8 +486,8 @@ const PayrollEntry = () => {
       await fetchPayroll(currentMonth, { showWorkflowToast: false });
       return true;
     } catch (error) {
-      if (error?.message?.includes('payroll month closed')) {
-        showNotification(payrollText('editClosed'), 'warning');
+      if (error?.message?.includes('payroll month not ended')) {
+        showNotification(payrollText('monthNotEnded'), 'warning');
         await fetchPayroll(currentMonth, { showWorkflowToast: false });
       } else if (error?.message?.includes('quantity settlement incomplete')) {
         showNotification(payrollText('settlementIncomplete'), 'warning');
@@ -495,7 +503,7 @@ const PayrollEntry = () => {
   }, [
     payrollData,
     currentMonth,
-    isMonthClosed,
+    isMonthReady,
     computedEmployees,
     showNotification,
     activeOrgId,
@@ -508,14 +516,14 @@ const PayrollEntry = () => {
 
   return (
     <AppPageContainer
-      title={isNew ? '湲됱뿬 怨꾩궛' : `湲됱뿬 ${monthFromParam}`}
+      title={isNew ? '급여 계산' : `급여 ${monthFromParam}`}
       titleActions={payrollData ? (
         <SaveButton
           onClick={handleSaveSnapshot}
           disabled={!canEditCurrentPayroll || savingSnapshot || computedEmployees.length === 0}
           loading={savingSnapshot}
         >
-          ???
+          저장
         </SaveButton>
       ) : null}
     >
@@ -564,6 +572,7 @@ const PayrollEntry = () => {
                   value={payMonth}
                   onChange={(event) => handlePayMonthChange(event.target.value)}
                   InputLabelProps={{ shrink: true }}
+                  inputProps={{ max: getLatestCompletedPayrollMonthKey() }}
                   size="small"
                   sx={{ width: { xs: '100%', sm: 220 } }}
                 />
@@ -572,7 +581,11 @@ const PayrollEntry = () => {
                     size="small"
                     variant="outlined"
                     onClick={() => handlePayMonthChange(shiftPayrollMonthKey(payMonth, 1))}
-                    disabled={loading || savingSnapshot}
+                    disabled={
+                      loading ||
+                      savingSnapshot ||
+                      payMonth >= getLatestCompletedPayrollMonthKey()
+                    }
                     sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
                   >
                     M+
@@ -591,19 +604,28 @@ const PayrollEntry = () => {
               <Button
                 variant="contained"
                 onClick={handleCalculate}
-                disabled={loading || savingSnapshot || !payMonth}
+                disabled={
+                  loading ||
+                  savingSnapshot ||
+                  !isPayrollMonthReadyForSave(payMonth)
+                }
               >
                 {loading || savingSnapshot ? '계산 중...' : '계산하기'}
               </Button>
             </Stack>
+            {!isPayrollMonthReadyForSave(payMonth) && (
+              <Alert severity="info" sx={{ mt: 1.5 }}>
+                {payrollText('monthNotEnded')}
+              </Alert>
+            )}
           </Paper>
         )}
 
         {payrollData && (
           <>
-            {isMonthClosed && (
+            {!isMonthReady && (
               <Alert severity="info" sx={{ mb: 1.5 }}>
-                해당 월은 이미 지나서 수정/삭제가 불가능합니다.
+                {payrollText('monthNotEnded')}
               </Alert>
             )}
             {settlementSummary &&
