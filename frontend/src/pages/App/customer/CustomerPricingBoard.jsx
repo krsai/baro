@@ -11,6 +11,7 @@ import {
   DialogTitle,
   FormControl,
   InputLabel,
+  InputAdornment,
   MenuItem,
   Paper,
   Select,
@@ -215,6 +216,19 @@ const isValidPositivePrice = (value) => {
     canonicalPrice(normalized) !== '0';
 };
 
+const CURRENCY_SYMBOLS = Object.freeze({ USD: '$', VND: '₫', KRW: '₩' });
+const resolveNumberLocale = (languageCode) => languageCode === 'vi' ? 'vi-VN' : languageCode === 'ko' ? 'ko-KR' : 'en-US';
+const formatPriceForDisplay = (value, currencyCode, languageCode) => {
+  if (value === null || value === undefined || value === '') return '';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return value;
+  const usd = currencyCode === 'USD';
+  return new Intl.NumberFormat(resolveNumberLocale(languageCode), {
+    minimumFractionDigits: usd ? 2 : 0,
+    maximumFractionDigits: usd ? 2 : 4,
+  }).format(parsed);
+};
+
 const CustomerPricingBoard = () => {
   const { activeOrgId } = useAuth();
   const { languageCode } = useLanguage();
@@ -233,6 +247,7 @@ const CustomerPricingBoard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [draftPrices, setDraftPrices] = useState({});
   const [savedPrices, setSavedPrices] = useState({});
+  const [focusedPriceKey, setFocusedPriceKey] = useState('');
   const [bucketTarget, setBucketTarget] = useState('customer');
   const [customerBuckets, setCustomerBuckets] = useState({});
   const [savedCustomerBuckets, setSavedCustomerBuckets] = useState({});
@@ -645,6 +660,12 @@ const CustomerPricingBoard = () => {
     [currencyCode, pricingBasis, selectedCustomerId]
   );
 
+  const priceKey = useCallback(
+    (styleId, bucketQuantity) =>
+      `${selectedCustomerId}:${pricingBasis}:${currencyCode}:${styleId}:${bucketQuantity}`,
+    [currencyCode, pricingBasis, selectedCustomerId]
+  );
+
   const resolveDraftPrice = useCallback(
     (styleId, bucketQuantity) =>
       draftPrices[`${selectedCustomerId}:${pricingBasis}:${currencyCode}:${styleId}:${bucketQuantity}`] || '',
@@ -991,7 +1012,7 @@ const CustomerPricingBoard = () => {
                       <TableCell key={quantity} align="center" sx={{ minWidth: 92, fontWeight: 800 }}>
                         <Chip
                           size="small"
-                          label={`${formatNumberWithCommas(quantity)}~`}
+                          label={`${formatNumberWithCommas(quantity, { locale: resolveNumberLocale(languageCode) })}~`}
                           color={selectedStyleUsesCustomBuckets ? 'primary' : 'default'}
                           onDelete={
                             canEditSalesBuckets
@@ -1074,10 +1095,20 @@ const CustomerPricingBoard = () => {
                       {activeSalesBuckets.map((quantity) => (
                         <TableCell key={`${style.id}:${quantity}`} align="center" sx={{ px: 0.75 }}>
                           <TextField
-                            value={resolveDraftPrice(style.id, quantity)}
+                            value={
+                              focusedPriceKey === priceKey(style.id, quantity)
+                                ? resolveDraftPrice(style.id, quantity)
+                                : formatPriceForDisplay(
+                                    resolveDraftPrice(style.id, quantity),
+                                    currencyCode,
+                                    languageCode
+                                  )
+                            }
                             onChange={(event) =>
                               handlePriceChange(style.id, quantity, event.target.value)
                             }
+                            onFocus={() => setFocusedPriceKey(priceKey(style.id, quantity))}
+                            onBlur={() => setFocusedPriceKey('')}
                             size="small"
                             disabled={loadingPrices || savingPrices}
                             error={
@@ -1090,7 +1121,14 @@ const CustomerPricingBoard = () => {
                               'aria-label': `${style.name || style.id} ${quantity} ${text.unitPrice}`,
                               style: { textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
                             }}
-                            sx={{ width: 80 }}
+                            InputProps={{
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  {CURRENCY_SYMBOLS[currencyCode] || currencyCode}
+                                </InputAdornment>
+                              ),
+                            }}
+                            sx={{ width: 112 }}
                           />
                         </TableCell>
                       ))}

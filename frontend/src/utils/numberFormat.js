@@ -1,13 +1,13 @@
 const INTEGER_FORMATTER = new Intl.NumberFormat('ko-KR');
 const DECIMAL_FORMATTER_CACHE = new Map();
 
-const getDecimalFormatter = (minimumFractionDigits, maximumFractionDigits) => {
-  const key = `${minimumFractionDigits}:${maximumFractionDigits}`;
+const getDecimalFormatter = (locale, minimumFractionDigits, maximumFractionDigits) => {
+  const key = `${locale}:${minimumFractionDigits}:${maximumFractionDigits}`;
   if (DECIMAL_FORMATTER_CACHE.has(key)) {
     return DECIMAL_FORMATTER_CACHE.get(key);
   }
 
-  const formatter = new Intl.NumberFormat('ko-KR', {
+  const formatter = new Intl.NumberFormat(locale, {
     minimumFractionDigits,
     maximumFractionDigits,
   });
@@ -29,6 +29,7 @@ export const formatNumberWithCommas = (
     fallback = '-',
     minimumFractionDigits = 0,
     maximumFractionDigits = 2,
+    locale = 'ko-KR',
   } = {}
 ) => {
   const parsed = toFiniteNumber(value);
@@ -38,12 +39,14 @@ export const formatNumberWithCommas = (
     minimumFractionDigits === 0 &&
     maximumFractionDigits === 0
   ) {
-    return INTEGER_FORMATTER.format(Math.round(parsed));
+    return locale === 'ko-KR'
+      ? INTEGER_FORMATTER.format(Math.round(parsed))
+      : new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(Math.round(parsed));
   }
 
   const formatter = Number.isInteger(parsed)
-    ? INTEGER_FORMATTER
-    : getDecimalFormatter(minimumFractionDigits, maximumFractionDigits);
+    ? (locale === 'ko-KR' ? INTEGER_FORMATTER : new Intl.NumberFormat(locale))
+    : getDecimalFormatter(locale, minimumFractionDigits, maximumFractionDigits);
   return formatter.format(parsed);
 };
 
