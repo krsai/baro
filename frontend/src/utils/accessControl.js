@@ -176,6 +176,7 @@ export const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/work-history')) return FEATURE_KEYS.WORK_HISTORY;
   if (path.startsWith('/payroll')) return FEATURE_KEYS.PAYROLL;
   if (path.startsWith('/revenue-analysis')) return FEATURE_KEYS.REVENUE_ANALYSIS;
+  if (path.startsWith('/revenue-forecast')) return FEATURE_KEYS.REVENUE_ANALYSIS;
   if (path.startsWith('/business')) return FEATURE_KEYS.BUSINESS;
   if (path.startsWith('/line')) return FEATURE_KEYS.LINE;
   if (path.startsWith('/employee')) return FEATURE_KEYS.EMPLOYEE;

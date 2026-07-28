@@ -383,6 +383,7 @@ const MainLayout = () => {
     }
     if (
       currentPath.startsWith('/production-analysis') ||
+      currentPath.startsWith('/revenue-forecast') ||
       currentPath.startsWith('/revenue-analysis')
     ) {
       setExpandedMenuGroup(MENU_GROUP_KEYS.OPERATIONS);
@@ -569,6 +570,11 @@ const MainLayout = () => {
             label: getUiMessage('menu.productionAnalysis', '생산 분석', languageCode),
             icon: <TrendingUpIcon />,
             path: '/production-analysis',
+          },
+          {
+            label: getUiMessage('menu.revenueForecast', '수익 예측', languageCode),
+            icon: <TrendingUpIcon />,
+            path: '/revenue-forecast',
           },
           {
             label: getUiMessage('menu.revenueAnalysis', '\uC218\uC775 \uBD84\uC11D', languageCode),

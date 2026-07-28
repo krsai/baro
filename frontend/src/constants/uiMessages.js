@@ -34,8 +34,13 @@ export const UI_MESSAGES = {
     operations: { ko: '운영 관리', en: 'Operations', vi: 'Quan ly van hanh' },
     revenueAnalysis: {
       ko: '수익 분석',
-      en: 'Revenue Analysis',
-      vi: 'Phan tich doanh thu',
+      en: 'Profit Analysis',
+      vi: 'Phân tích lợi nhuận',
+    },
+    revenueForecast: {
+      ko: '수익 예측',
+      en: 'Profit Forecast',
+      vi: 'Dự báo lợi nhuận',
     },
     productionAnalysis: {
       ko: '생산 분석',

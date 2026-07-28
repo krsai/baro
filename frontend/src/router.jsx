@@ -76,6 +76,7 @@ const WorkEntry = lazyImportWithRetry(() => import('./pages/App/work/WorkEntry')
 const Payroll = lazyImportWithRetry(() => import('./pages/App/Payroll'));
 const PayrollEntry = lazyImportWithRetry(() => import('./pages/App/payroll/PayrollEntry'));
 const RevenueAnalysis = lazyImportWithRetry(() => import('./pages/App/RevenueAnalysis'));
+const RevenueForecast = lazyImportWithRetry(() => import('./pages/App/RevenueForecast'));
 const Onboarding = lazyImportWithRetry(() => import('./pages/Auth/Onboarding'));
 const Attribute = lazyImportWithRetry(() => import('./pages/App/Attribute'));
 const Order = lazyImportWithRetry(() => import('./pages/App/Order.jsx'));
@@ -383,6 +384,10 @@ const router = createBrowserRouter([
           {
             path: 'payroll/:payrollId',
             element: <PayrollEntry />,
+          },
+          {
+            path: 'revenue-forecast',
+            element: <RevenueForecast />,
           },
           {
             path: 'revenue-analysis',
