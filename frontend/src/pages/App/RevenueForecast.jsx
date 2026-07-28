@@ -1,77 +1,89 @@
-import React from 'react';
-import { Alert, Box, Chip, Paper, Stack, Typography } from '@mui/material';
+import React, { useMemo, useState } from 'react';
+import {
+  Alert, Box, Chip, Divider, FormControl, InputAdornment, InputLabel, MenuItem,
+  Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
+  TableRow, TextField, ToggleButton, ToggleButtonGroup, Typography,
+} from '@mui/material';
 import AppPageContainer from '../../components/AppPageContainer';
 import { useLanguage } from '../../context/LanguageContext';
 
+const SIMILAR_STYLES = [
+  { id: 'AJ1972', name: 'AJ1972', category: 'Jacket', seconds: 2163 },
+  { id: 'SAN-049', name: 'SAN-049', category: 'Jacket', seconds: 3121 },
+  { id: 'CJ-009', name: 'CJ-009', category: 'Pants', seconds: 1480 },
+];
 const TEXT = {
   ko: {
-    title: '수익 예측', status: '기능 설계 안내',
-    intro: '새로운 스타일의 생산을 시작하기 전에 예상 작업기간, 원가, 권장 판매가와 예상 수익을 검토하는 화면입니다.',
-    note: '아래 내용은 이 페이지에 추가될 기능의 범위입니다. 현재는 안내만 제공하며 실제 계산이나 데이터 저장은 하지 않습니다.',
-    sections: [
-      ['1. 예측할 스타일과 수량', ['스타일 종류, 이름 또는 임시 코드를 입력합니다.', '예측할 생산 수량을 입력하고 여러 수량을 비교할 수 있습니다.']],
-      ['2. 예상 작업시간', ['한 벌을 만드는 데 걸릴 것으로 예상되는 초를 직접 입력할 수 있습니다.', 'AJ2000을 예측할 때 AJ1972처럼 비슷한 기존 스타일을 선택하면 해당 스타일의 수량별 ST(q)를 참고할 수 있습니다.', '수량을 변경하면 그 수량에 맞는 ST 버킷과 예상시간을 다시 보여줍니다.']],
-      ['3. 인원과 생산기간', ['기본 방식은 투입 인원을 선택하고 예상 생산기간을 계산하는 것입니다.', '필요하면 목표 기간을 먼저 입력하고 필요한 인원을 역산하는 방식도 함께 제공합니다.', '근무시간과 근무일을 반영해 예상 완료일을 확인합니다.']],
-      ['4. 생산 원가', ['임대료, 월평균 전기요금, 관리비 등 회사의 월 고정비를 반영합니다.', '투입 인원과 예상기간을 기준으로 인건비와 해당 생산에 배부할 고정비를 계산합니다.', '재료비나 외주비처럼 스타일에 직접 발생하는 비용은 별도 항목으로 입력합니다.']],
-      ['5. 권장 판매가와 예상 수익', ['목표 이익률을 입력하면 총원가를 기준으로 권장 판매가를 계산합니다.', '개당 원가, 개당 판매가, 예상 총매출, 예상 이익과 이익률을 함께 보여줍니다.']],
-      ['6. 수량별 비교', ['수량을 바꾸면 필요한 기간, 원가, 권장 판매가와 수익성이 어떻게 달라지는지 비교합니다.', '여러 수량 시나리오를 표로 나란히 확인할 수 있습니다.']],
-      ['7. 1개월 환산', ['같은 스타일을 한 달 동안 계속 생산한다고 가정한 생산 가능 수량을 보여줍니다.', '월간 예상 매출, 비용, 이익과 필요한 평균 인원을 함께 확인합니다.']],
-    ],
+    title: '수익 예측', prototype: 'UI 시뮬레이션', notice: '입력값으로 화면에서만 즉시 계산하는 시안입니다. 저장하거나 실제 ST·비용 데이터를 변경하지 않습니다.',
+    target: '1. 예측 대상', category: '스타일 종류', styleName: '예측 스타일명', quantity: '생산 수량',
+    time: '2. 예상 작업시간', direct: '직접 입력', similar: '유사 스타일 참조', seconds: '한 벌 예상시간', similarStyle: '비슷한 스타일', bucketNote: '향후 실제 개발에서는 입력 수량에 맞는 관계 범위 ST(q) 버킷과 버전을 조회합니다.',
+    production: '3. 생산 조건', workers: '투입 인원', hoursDay: '1일 근무시간', workdays: '월 근무일', wage: '1인 월 인건비',
+    cost: '4. 비용과 목표', fixed: '월 고정비', directCost: '한 벌 직접비', margin: '목표 이익률', fixedHint: '임대료·전기료·관리비 등 월 고정비 합계', directHint: '재료비·외주비 등 한 벌당 직접 발생 비용',
+    estimate: '예상 계산서', assumption: '인원 기준 · 생산효율 100% · 월 고정비는 예상 생산일 비율로 배부', laborTime: '총 필요 노동시간', duration: '예상 생산기간', completion: '예상 완료', materialCost: '직접비', laborCost: '배부 인건비', fixedCost: '배부 고정비', totalCost: '예상 총원가', unitCost: '한 벌 원가', recommended: '권장 한 벌 판매가', revenue: '예상 총매출', profit: '예상 이익',
+    monthly: '1개월 환산', monthlyQty: '월 생산 가능 수량', monthlyRevenue: '월 예상 매출', monthlyProfit: '월 예상 이익',
+    compare: '수량별 비교', q: '수량', days: '기간', costPer: '개당 원가', pricePer: '권장 판매가', totalProfit: '예상 이익', disclaimer: '현재 계산식은 화면 구성을 검토하기 위한 가정입니다. CT 기반 생산수당, 실제 근무일, 생산효율과 고정비 배부 정책은 구현 전에 확정해야 합니다.',
   },
   en: {
-    title: 'Profit Forecast', status: 'Feature design overview',
-    intro: 'Before producing a new style, review its estimated duration, cost, recommended selling price, and expected profit.',
-    note: 'The items below describe the planned scope of this page. It currently provides guidance only and does not calculate or save data.',
-    sections: [
-      ['1. Style and Quantity', ['Enter the style type, name, or a temporary code.', 'Enter a production quantity and compare multiple quantity scenarios.']],
-      ['2. Estimated Work Time', ['Directly enter the estimated seconds required to make one piece.', 'For a new AJ2000 style, select a similar style such as AJ1972 to reference its quantity-based ST(q).', 'Changing quantity refreshes the applicable ST bucket and estimated time.']],
-      ['3. Staffing and Duration', ['The default method selects the production headcount and calculates the estimated duration.', 'An optional target-duration mode calculates the required headcount.', 'Working hours and working days are used to estimate the completion date.']],
-      ['4. Production Cost', ['Include monthly fixed costs such as rent, average electricity, and management expenses.', 'Allocate labor and fixed costs to the production based on staffing and estimated duration.', 'Enter direct style costs such as materials and outsourcing separately.']],
-      ['5. Recommended Price and Profit', ['Enter a target profit margin to calculate a recommended selling price from total cost.', 'Review unit cost, unit price, expected revenue, profit, and margin together.']],
-      ['6. Quantity Comparison', ['See how duration, cost, recommended price, and profitability change with quantity.', 'Compare multiple quantity scenarios side by side in a table.']],
-      ['7. Monthly Conversion', ['Estimate how many pieces could be produced if the same style ran for one month.', 'Review projected monthly revenue, cost, profit, and average staffing.']],
-    ],
+    title: 'Profit Forecast', prototype: 'UI Simulation', notice: 'This draft calculates instantly in the browser. It does not save or change actual ST or cost data.',
+    target: '1. Forecast Target', category: 'Style Type', styleName: 'Forecast Style Name', quantity: 'Production Quantity',
+    time: '2. Estimated Work Time', direct: 'Direct Input', similar: 'Reference Similar Style', seconds: 'Seconds per Piece', similarStyle: 'Similar Style', bucketNote: 'The final version will resolve the relationship-scoped ST(q) bucket and version for the entered quantity.',
+    production: '3. Production Conditions', workers: 'Workers', hoursDay: 'Hours per Day', workdays: 'Workdays per Month', wage: 'Monthly Labor Cost per Worker',
+    cost: '4. Costs and Target', fixed: 'Monthly Fixed Cost', directCost: 'Direct Cost per Piece', margin: 'Target Profit Margin', fixedHint: 'Total monthly rent, electricity, management, and other fixed costs', directHint: 'Materials, outsourcing, and other direct cost per piece',
+    estimate: 'Forecast Statement', assumption: 'Headcount basis · 100% efficiency · fixed costs allocated by estimated production days', laborTime: 'Total Labor Time', duration: 'Estimated Duration', completion: 'Estimated Completion', materialCost: 'Direct Cost', laborCost: 'Allocated Labor', fixedCost: 'Allocated Fixed Cost', totalCost: 'Estimated Total Cost', unitCost: 'Unit Cost', recommended: 'Recommended Unit Price', revenue: 'Expected Revenue', profit: 'Expected Profit',
+    monthly: 'Monthly Conversion', monthlyQty: 'Monthly Capacity', monthlyRevenue: 'Expected Monthly Revenue', monthlyProfit: 'Expected Monthly Profit',
+    compare: 'Quantity Comparison', q: 'Quantity', days: 'Duration', costPer: 'Unit Cost', pricePer: 'Recommended Price', totalProfit: 'Expected Profit', disclaimer: 'These formulas are assumptions for reviewing the UI. CT-based production allowance, actual workdays, efficiency, and fixed-cost allocation must be finalized before implementation.',
   },
   vi: {
-    title: 'Dự báo lợi nhuận', status: 'Hướng dẫn thiết kế chức năng',
-    intro: 'Trước khi sản xuất kiểu dáng mới, xem xét thời gian, chi phí, giá bán đề xuất và lợi nhuận dự kiến.',
-    note: 'Các mục dưới đây mô tả phạm vi chức năng dự kiến. Hiện tại trang chỉ cung cấp hướng dẫn, chưa tính toán hoặc lưu dữ liệu.',
-    sections: [
-      ['1. Kiểu dáng và số lượng', ['Nhập loại, tên hoặc mã tạm thời của kiểu dáng.', 'Nhập số lượng sản xuất và so sánh nhiều kịch bản số lượng.']],
-      ['2. Thời gian công việc dự kiến', ['Nhập trực tiếp số giây dự kiến để làm một sản phẩm.', 'Khi dự báo AJ2000, có thể chọn kiểu dáng tương tự như AJ1972 để tham khảo ST(q) theo số lượng.', 'Khi đổi số lượng, hệ thống hiển thị lại bucket ST và thời gian phù hợp.']],
-      ['3. Nhân lực và thời gian', ['Mặc định là chọn số người sản xuất rồi tính thời gian dự kiến.', 'Chế độ thời gian mục tiêu có thể tính ngược số người cần thiết.', 'Giờ làm việc và ngày làm việc được dùng để dự kiến ngày hoàn thành.']],
-      ['4. Chi phí sản xuất', ['Bao gồm chi phí cố định hàng tháng như tiền thuê, điện trung bình và phí quản lý.', 'Phân bổ chi phí nhân công và chi phí cố định theo nhân lực và thời gian dự kiến.', 'Nhập riêng chi phí trực tiếp như nguyên vật liệu và gia công ngoài.']],
-      ['5. Giá bán và lợi nhuận dự kiến', ['Nhập tỷ suất lợi nhuận mục tiêu để tính giá bán đề xuất từ tổng chi phí.', 'Xem đồng thời giá thành đơn vị, giá bán, doanh thu, lợi nhuận và tỷ suất.']],
-      ['6. So sánh số lượng', ['Xem thời gian, chi phí, giá đề xuất và lợi nhuận thay đổi theo số lượng.', 'So sánh nhiều kịch bản số lượng cạnh nhau trong bảng.']],
-      ['7. Quy đổi một tháng', ['Ước tính số lượng có thể sản xuất nếu chạy cùng kiểu dáng trong một tháng.', 'Xem doanh thu, chi phí, lợi nhuận tháng và nhân lực trung bình dự kiến.']],
-    ],
+    title: 'Dự báo lợi nhuận', prototype: 'Mô phỏng UI', notice: 'Bản mẫu tính ngay trên trình duyệt. Không lưu hoặc thay đổi dữ liệu ST và chi phí thực tế.',
+    target: '1. Đối tượng dự báo', category: 'Loại kiểu dáng', styleName: 'Tên kiểu dáng dự báo', quantity: 'Số lượng sản xuất',
+    time: '2. Thời gian dự kiến', direct: 'Nhập trực tiếp', similar: 'Tham khảo kiểu tương tự', seconds: 'Giây mỗi sản phẩm', similarStyle: 'Kiểu dáng tương tự', bucketNote: 'Bản chính thức sẽ tìm bucket và phiên bản ST(q) theo quan hệ phù hợp với số lượng đã nhập.',
+    production: '3. Điều kiện sản xuất', workers: 'Số người', hoursDay: 'Giờ làm mỗi ngày', workdays: 'Ngày làm mỗi tháng', wage: 'Chi phí lao động tháng mỗi người',
+    cost: '4. Chi phí và mục tiêu', fixed: 'Chi phí cố định tháng', directCost: 'Chi phí trực tiếp mỗi sản phẩm', margin: 'Tỷ suất lợi nhuận mục tiêu', fixedHint: 'Tổng tiền thuê, điện, quản lý và chi phí cố định hàng tháng', directHint: 'Nguyên liệu, gia công ngoài và chi phí trực tiếp mỗi sản phẩm',
+    estimate: 'Bảng tính dự báo', assumption: 'Theo nhân lực · hiệu suất 100% · phân bổ chi phí cố định theo số ngày sản xuất', laborTime: 'Tổng thời gian lao động', duration: 'Thời gian dự kiến', completion: 'Hoàn thành dự kiến', materialCost: 'Chi phí trực tiếp', laborCost: 'Chi phí lao động phân bổ', fixedCost: 'Chi phí cố định phân bổ', totalCost: 'Tổng giá thành dự kiến', unitCost: 'Giá thành đơn vị', recommended: 'Giá bán đơn vị đề xuất', revenue: 'Doanh thu dự kiến', profit: 'Lợi nhuận dự kiến',
+    monthly: 'Quy đổi một tháng', monthlyQty: 'Sản lượng tháng', monthlyRevenue: 'Doanh thu tháng dự kiến', monthlyProfit: 'Lợi nhuận tháng dự kiến',
+    compare: 'So sánh số lượng', q: 'Số lượng', days: 'Thời gian', costPer: 'Giá thành đơn vị', pricePer: 'Giá đề xuất', totalProfit: 'Lợi nhuận dự kiến', disclaimer: 'Công thức hiện tại chỉ là giả định để xem xét UI. Phụ cấp sản lượng theo CT, ngày làm thực tế, hiệu suất và chính sách phân bổ chi phí cố định phải được xác định trước khi phát triển.',
   },
 };
+
+const number = (value, fallback = 0) => Math.max(0, Number(value) || fallback);
+const money = (value, languageCode) => `${new Intl.NumberFormat(languageCode === 'vi' ? 'vi-VN' : languageCode === 'ko' ? 'ko-KR' : 'en-US', { maximumFractionDigits: 0 }).format(Math.round(number(value)))} ₫`;
+const FieldCard = ({ title, children }) => <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}><Typography variant="subtitle1" fontWeight={700} gutterBottom>{title}</Typography><Stack spacing={2}>{children}</Stack></Paper>;
+const Metric = ({ label, value, strong }) => <Stack direction="row" justifyContent="space-between" spacing={2}><Typography variant="body2" color="text.secondary">{label}</Typography><Typography variant={strong ? 'subtitle1' : 'body2'} fontWeight={strong ? 800 : 600} textAlign="right">{value}</Typography></Stack>;
 
 const RevenueForecast = () => {
   const { languageCode } = useLanguage();
   const text = TEXT[languageCode] || TEXT.en;
-  return (
-    <AppPageContainer title={text.title}>
-      <Stack spacing={2.5}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
-          <Chip label={text.status} color="warning" variant="outlined" />
-          <Typography variant="body1" color="text.secondary">{text.intro}</Typography>
-        </Stack>
-        <Alert severity="info">{text.note}</Alert>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, 1fr)' }, gap: 2 }}>
-          {text.sections.map(([title, items]) => (
-            <Paper key={title} variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
-              <Typography variant="subtitle1" fontWeight={700} gutterBottom>{title}</Typography>
-              <Box component="ul" sx={{ m: 0, pl: 2.5, color: 'text.secondary' }}>
-                {items.map((item) => <Typography component="li" variant="body2" key={item} sx={{ mb: 0.75 }}>{item}</Typography>)}
-              </Box>
-            </Paper>
-          ))}
-        </Box>
-      </Stack>
-    </AppPageContainer>
-  );
+  const [draft, setDraft] = useState({ category: 'Jacket', styleName: 'AJ2000', quantity: 300, timeMode: 'similar', similarStyleId: 'AJ1972', seconds: 2163, workers: 8, hoursDay: 8, workdays: 26, wage: 9000000, fixed: 80000000, directCost: 120000, margin: 20 });
+  const set = (key) => (event, value) => setDraft((current) => ({ ...current, [key]: value ?? event.target.value }));
+  const selectSimilar = (event) => { const found = SIMILAR_STYLES.find((item) => item.id === event.target.value); setDraft((current) => ({ ...current, similarStyleId: event.target.value, seconds: found?.seconds || current.seconds })); };
+  const calculate = (quantity) => {
+    const qty = Math.max(1, Math.round(number(quantity, 1))); const seconds = Math.max(1, number(draft.seconds, 1));
+    const workers = Math.max(1, number(draft.workers, 1)); const hoursDay = Math.max(1, number(draft.hoursDay, 1)); const workdays = Math.max(1, number(draft.workdays, 1));
+    const laborSeconds = qty * seconds; const durationDays = laborSeconds / (workers * hoursDay * 3600);
+    const direct = qty * number(draft.directCost); const labor = number(draft.wage) * workers * durationDays / workdays; const fixed = number(draft.fixed) * durationDays / workdays;
+    const total = direct + labor + fixed; const margin = Math.min(95, number(draft.margin)) / 100; const revenue = total / (1 - margin); const profit = revenue - total;
+    return { qty, laborSeconds, durationDays, direct, labor, fixed, total, unitCost: total / qty, unitPrice: revenue / qty, revenue, profit };
+  };
+  const result = useMemo(() => calculate(draft.quantity), [draft]);
+  const comparisons = useMemo(() => [0.5, 1, 1.5, 2].map((ratio) => calculate(Math.max(1, Math.round(number(draft.quantity, 1) * ratio)))), [draft]);
+  const monthlyQty = Math.floor(number(draft.workers, 1) * number(draft.hoursDay, 1) * 3600 * number(draft.workdays, 1) / Math.max(1, number(draft.seconds, 1)));
+  const monthly = calculate(monthlyQty);
+
+  return <AppPageContainer title={text.title}><Stack spacing={2.5}>
+    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}><Chip label={text.prototype} color="warning" variant="outlined" /><Alert severity="info" sx={{ flex: 1 }}>{text.notice}</Alert></Stack>
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1.35fr) minmax(380px, 0.65fr)' }, gap: 2.5, alignItems: 'start' }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>
+        <FieldCard title={text.target}><TextField label={text.category} value={draft.category} onChange={set('category')} /><TextField label={text.styleName} value={draft.styleName} onChange={set('styleName')} /><TextField label={text.quantity} type="number" value={draft.quantity} onChange={set('quantity')} inputProps={{ min: 1 }} /></FieldCard>
+        <FieldCard title={text.time}><ToggleButtonGroup exclusive fullWidth value={draft.timeMode} onChange={set('timeMode')} size="small"><ToggleButton value="direct">{text.direct}</ToggleButton><ToggleButton value="similar">{text.similar}</ToggleButton></ToggleButtonGroup>{draft.timeMode === 'similar' && <FormControl><InputLabel>{text.similarStyle}</InputLabel><Select label={text.similarStyle} value={draft.similarStyleId} onChange={selectSimilar}>{SIMILAR_STYLES.map((style) => <MenuItem key={style.id} value={style.id}>{style.name} · {style.category} · {style.seconds.toLocaleString()} sec</MenuItem>)}</Select></FormControl>}<TextField label={text.seconds} type="number" value={draft.seconds} onChange={set('seconds')} InputProps={{ endAdornment: <InputAdornment position="end">sec</InputAdornment> }} helperText={draft.timeMode === 'similar' ? text.bucketNote : undefined} /></FieldCard>
+        <FieldCard title={text.production}><TextField label={text.workers} type="number" value={draft.workers} onChange={set('workers')} /><TextField label={text.hoursDay} type="number" value={draft.hoursDay} onChange={set('hoursDay')} /><TextField label={text.workdays} type="number" value={draft.workdays} onChange={set('workdays')} /><TextField label={text.wage} type="number" value={draft.wage} onChange={set('wage')} InputProps={{ endAdornment: <InputAdornment position="end">₫</InputAdornment> }} /></FieldCard>
+        <FieldCard title={text.cost}><TextField label={text.fixed} type="number" value={draft.fixed} onChange={set('fixed')} helperText={text.fixedHint} InputProps={{ endAdornment: <InputAdornment position="end">₫</InputAdornment> }} /><TextField label={text.directCost} type="number" value={draft.directCost} onChange={set('directCost')} helperText={text.directHint} InputProps={{ endAdornment: <InputAdornment position="end">₫</InputAdornment> }} /><TextField label={text.margin} type="number" value={draft.margin} onChange={set('margin')} InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }} /></FieldCard>
+      </Box>
+      <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, position: { xl: 'sticky' }, top: { xl: 16 } }}><Typography variant="h6" fontWeight={800}>{text.estimate}</Typography><Typography variant="caption" color="text.secondary">{draft.styleName || '-'} · {result.qty.toLocaleString()} pcs</Typography><Divider sx={{ my: 2 }} /><Stack spacing={1.25}><Metric label={text.laborTime} value={`${(result.laborSeconds / 3600).toFixed(1)} h`} /><Metric label={text.duration} value={`${result.durationDays.toFixed(1)} ${text.days}`} /><Metric label={text.completion} value={`D+${Math.ceil(result.durationDays)}`} /><Divider /><Metric label={text.materialCost} value={money(result.direct, languageCode)} /><Metric label={text.laborCost} value={money(result.labor, languageCode)} /><Metric label={text.fixedCost} value={money(result.fixed, languageCode)} /><Metric label={text.totalCost} value={money(result.total, languageCode)} strong /><Metric label={text.unitCost} value={money(result.unitCost, languageCode)} /><Divider /><Metric label={text.recommended} value={money(result.unitPrice, languageCode)} strong /><Metric label={text.revenue} value={money(result.revenue, languageCode)} /><Metric label={text.profit} value={money(result.profit, languageCode)} strong /></Stack><Alert severity="warning" sx={{ mt: 2 }}>{text.assumption}</Alert></Paper>
+    </Box>
+    <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}><Box sx={{ p: 2.5 }}><Typography variant="h6" fontWeight={800}>{text.compare}</Typography></Box><TableContainer><Table size="small"><TableHead><TableRow><TableCell>{text.q}</TableCell><TableCell align="right">{text.days}</TableCell><TableCell align="right">{text.costPer}</TableCell><TableCell align="right">{text.pricePer}</TableCell><TableCell align="right">{text.totalProfit}</TableCell></TableRow></TableHead><TableBody>{comparisons.map((row) => <TableRow key={row.qty}><TableCell>{row.qty.toLocaleString()}</TableCell><TableCell align="right">{row.durationDays.toFixed(1)}</TableCell><TableCell align="right">{money(row.unitCost, languageCode)}</TableCell><TableCell align="right">{money(row.unitPrice, languageCode)}</TableCell><TableCell align="right">{money(row.profit, languageCode)}</TableCell></TableRow>)}</TableBody></Table></TableContainer></Paper>
+    <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}><Typography variant="h6" fontWeight={800} gutterBottom>{text.monthly}</Typography><Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2 }}><Metric label={text.monthlyQty} value={`${monthlyQty.toLocaleString()} pcs`} strong /><Metric label={text.monthlyRevenue} value={money(monthly.revenue, languageCode)} strong /><Metric label={text.monthlyProfit} value={money(monthly.profit, languageCode)} strong /></Box></Paper>
+    <Alert severity="warning">{text.disclaimer}</Alert>
+  </Stack></AppPageContainer>;
 };
 
 export default RevenueForecast;
