@@ -220,6 +220,14 @@ test('order locking is independent from sales prices and preserves item FK valid
   );
   assert.match(lockRoute, /await assertOrderItemsReadyForLock\(\{ orderId: existing\.id, db: tx \}\)/);
   assert.doesNotMatch(lockRoute, /customerSalesPrice|sales price|freezeOrderSalesPriceSnapshots/);
+  assert.match(
+    stFkVerifier,
+    /r\."manufacturerOrgId" = w\."sellerOrgId"[\s\S]*r\."brandOrgId" = w\."buyerOrgId"/
+  );
+  assert.doesNotMatch(
+    stFkVerifier,
+    /r\."manufacturerOrgId" = w\."orgId"/
+  );
   assert.doesNotMatch(backend, /app\.get\("\/orders\/sales-price-diagnostics"/);
   assert.doesNotMatch(backend, /salesPriceSnapshotStatus/);
   assert.match(backend, /throw createHttpError\(400, "invalid pricing basis"\)/);

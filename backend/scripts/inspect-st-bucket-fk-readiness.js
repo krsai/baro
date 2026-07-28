@@ -113,7 +113,8 @@ const main = async () => {
     `),
     orders: await query(`
       SELECT COUNT(*)::int total,
-        COUNT(*) FILTER (WHERE "buyerOrgId" IS NULL)::int buyer_null
+        COUNT(*) FILTER (WHERE "buyerOrgId" IS NULL)::int buyer_null,
+        COUNT(*) FILTER (WHERE "sellerOrgId" IS NULL)::int seller_null
       FROM "WorkOrder"
     `),
     orderRelationships: await query(`
@@ -122,7 +123,7 @@ const main = async () => {
         COUNT(*) FILTER (WHERE r.id IS NULL)::int missing_relationship
       FROM "WorkOrder" w
       LEFT JOIN "OrgRelationship" r
-        ON r."manufacturerOrgId" = w."orgId"
+        ON r."manufacturerOrgId" = w."sellerOrgId"
        AND r."brandOrgId" = w."buyerOrgId"
     `),
     multiManufacturerBrands: await query(`
@@ -135,17 +136,17 @@ const main = async () => {
       ) grouped
     `),
     orderRelationshipCandidates: await query(`
-      SELECT w."orgId", w."buyerOrgId", COUNT(*)::int orders,
+      SELECT w."orgId", w."buyerOrgId", w."sellerOrgId", COUNT(*)::int orders,
         direct.id AS direct_id, reverse.id AS reverse_id
       FROM "WorkOrder" w
       LEFT JOIN "OrgRelationship" direct
-        ON direct."manufacturerOrgId" = w."orgId"
+        ON direct."manufacturerOrgId" = w."sellerOrgId"
        AND direct."brandOrgId" = w."buyerOrgId"
       LEFT JOIN "OrgRelationship" reverse
         ON reverse."manufacturerOrgId" = w."buyerOrgId"
-       AND reverse."brandOrgId" = w."orgId"
-      GROUP BY w."orgId", w."buyerOrgId", direct.id, reverse.id
-      ORDER BY w."orgId", w."buyerOrgId"
+       AND reverse."brandOrgId" = w."sellerOrgId"
+      GROUP BY w."orgId", w."buyerOrgId", w."sellerOrgId", direct.id, reverse.id
+      ORDER BY w."orgId", w."buyerOrgId", w."sellerOrgId"
     `),
     standardOrgShapes: await query(`
       SELECT x."orgId" standard_org, sp."orgId" process_org, e."orgId" entry_org,
