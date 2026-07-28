@@ -760,6 +760,36 @@ export const UI_MESSAGES = {
     fallbackOrderNumber: { ko: '주문번호 없음', en: 'No Order No.', vi: 'Khong co ma don' },
   },
   styleBoard: {
+    atSync: { ko: 'AT 갱신', en: 'Refresh AT', vi: 'Cập nhật AT' },
+    atSyncRunning: { ko: 'AT 갱신 중...', en: 'Refreshing AT...', vi: 'Đang cập nhật AT...' },
+    atSyncChecking: { ko: 'AT 확인 중...', en: 'Checking AT...', vi: 'Đang kiểm tra AT...' },
+    atSyncSuccess: {
+      ko: 'AT 갱신 완료',
+      en: 'AT refresh completed',
+      vi: 'Đã cập nhật AT',
+    },
+    atSyncError: {
+      ko: 'AT 갱신에 실패했습니다.',
+      en: 'Failed to refresh AT.',
+      vi: 'Không thể cập nhật AT.',
+    },
+    atReset: { ko: 'AT 초기화', en: 'Reset AT', vi: 'Đặt lại AT' },
+    atResetRunning: { ko: 'AT 초기화 중...', en: 'Resetting AT...', vi: 'Đang đặt lại AT...' },
+    atResetDialogTitle: {
+      ko: 'AT 추정 초기화 확인',
+      en: 'Confirm AT Estimate Reset',
+      vi: 'Xác nhận đặt lại ước tính AT',
+    },
+    atResetDialogDescription: {
+      ko: '학습된 AT 값과 AT 학습 버킷을 비웁니다. 작업기록과 출퇴근 원본 데이터는 삭제하지 않습니다. 초기화 후 AT 갱신을 다시 실행할 수 있습니다.',
+      en: 'Clears learned AT values and AT training buckets. Work logs and attendance source data are not deleted. You can refresh AT again after the reset.',
+      vi: 'Xóa các giá trị AT đã học và bucket huấn luyện AT. Dữ liệu gốc về nhật ký công việc và chấm công không bị xóa. Bạn có thể cập nhật lại AT sau khi đặt lại.',
+    },
+    atResetError: {
+      ko: 'AT 추정 초기화에 실패했습니다.',
+      en: 'Failed to reset AT estimates.',
+      vi: 'Không thể đặt lại ước tính AT.',
+    },
     searchPlaceholder: {
       ko: '스타일명 또는 고객사 검색...',
       en: 'Search style name or customer...',
