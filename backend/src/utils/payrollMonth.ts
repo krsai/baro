@@ -6,6 +6,16 @@ import {
 
 const DEFAULT_BUSINESS_TIME_ZONE = "Asia/Seoul";
 
+export const assertValidBusinessTimeZone = (input: unknown): string => {
+  const timeZone = String(input || "").trim() || DEFAULT_BUSINESS_TIME_ZONE;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(0));
+  } catch (_error) {
+    throw new Error(`Invalid BUSINESS_TIME_ZONE: ${timeZone}`);
+  }
+  return timeZone;
+};
+
 export const resolveCurrentPayrollMonthKey = ({
   now = new Date(),
   timeZone = DEFAULT_BUSINESS_TIME_ZONE,

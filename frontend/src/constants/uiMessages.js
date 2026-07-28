@@ -452,6 +452,11 @@ export const UI_MESSAGES = {
       en: 'Needs review (removed from order, already worked)',
       vi: 'Can xem xet (da bi xoa khoi don nhung da lam viec)',
     },
+    progressRefreshStale: {
+      ko: '최신 진행률을 갱신하지 못해 마지막 성공 데이터를 표시 중입니다. 새로고침해 다시 확인하세요.',
+      en: 'The latest progress could not be refreshed. The last successful data is still displayed. Try refreshing.',
+      vi: 'Khong the cap nhat tien do moi nhat. Du lieu thanh cong gan nhat dang duoc hien thi. Hay thu tai lai.',
+    },
     lineAssignments: {
       ko: '이 라인 배정 목록',
       en: 'Assignments on this line',
@@ -772,6 +777,16 @@ export const UI_MESSAGES = {
       ko: '스타일 목록을 불러오지 못했습니다.',
       en: 'Failed to load styles.',
       vi: 'Khong the tai danh sach style.',
+    },
+    atResetSuccess: {
+      ko: 'AT 추정 초기화 완료 (공정 {processCount}개, 레거시 {legacyCount}개, 학습 버킷 {bucketCount}개)',
+      en: 'AT estimates reset (processes: {processCount}, legacy: {legacyCount}, training buckets: {bucketCount})',
+      vi: 'Da dat lai uoc tinh AT (cong doan: {processCount}, du lieu cu: {legacyCount}, bucket huan luyen: {bucketCount})',
+    },
+    atResetSuccessStatusRefreshFailed: {
+      ko: 'AT 추정은 초기화됐지만 최신 상태를 다시 불러오지 못했습니다. 새로고침해 확인하세요. (공정 {processCount}개, 학습 버킷 {bucketCount}개)',
+      en: 'AT estimates were reset, but the latest status could not be refreshed. Refresh the page to verify. (processes: {processCount}, training buckets: {bucketCount})',
+      vi: 'Uoc tinh AT da duoc dat lai, nhung khong the tai lai trang thai moi nhat. Hay tai lai trang de kiem tra. (cong doan: {processCount}, bucket huan luyen: {bucketCount})',
     },
     emptyMessage: {
       ko: '등록된 스타일이 없습니다.',

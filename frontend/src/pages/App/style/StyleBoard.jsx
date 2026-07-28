@@ -37,6 +37,7 @@ import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { resolveCustomerDisplayName } from '../../../utils/appLanguage';
 import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
+import { runRefreshTasks } from '../../../utils/refreshTasks.mjs';
 import {
   AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
@@ -238,7 +239,11 @@ const StyleBoard = () => {
   const [isAtResetConfirmOpen, setAtResetConfirmOpen] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
   const [styleToDelete, setStyleToDelete] = useState(null);
-  const refreshStyles = useCallback(async ({ forceRefresh = false } = {}) => {
+  const refreshStyles = useCallback(async ({
+    forceRefresh = false,
+    throwOnError = false,
+    notifyOnError = true,
+  } = {}) => {
     setLoading(true);
     try {
       const items = await fetchStylesFromApi({ orgId: activeOrgId, forceRefresh });
@@ -246,11 +251,14 @@ const StyleBoard = () => {
       return items;
     } catch (error) {
       setStyles([]);
-      showNotification(
-        error?.message ||
-          getUiMessage('styleBoard.fetchError', '스타일 목록을 불러오지 못했습니다.', languageCode),
-        'error'
-      );
+      if (notifyOnError) {
+        showNotification(
+          error?.message ||
+            getUiMessage('styleBoard.fetchError', '스타일 목록을 불러오지 못했습니다.', languageCode),
+          'error'
+        );
+      }
+      if (throwOnError) throw error;
       return [];
     } finally {
       setLoading(false);
@@ -261,7 +269,7 @@ const StyleBoard = () => {
     refreshStyles();
   }, [refreshStyles]);
 
-  const refreshAtSyncStatus = useCallback(async () => {
+  const refreshAtSyncStatus = useCallback(async ({ throwOnError = false } = {}) => {
     if (!activeOrgId || !canViewProcessSummary) {
       setAtSyncStatus(null);
       return null;
@@ -276,6 +284,7 @@ const StyleBoard = () => {
     } catch (error) {
       console.warn('[at-sync] status failed', error);
       setAtSyncStatus(null);
+      if (throwOnError) throw error;
       return null;
     } finally {
       setAtSyncStatusLoading(false);
@@ -509,22 +518,24 @@ const StyleBoard = () => {
         }
       );
       setAtSyncStatus(result?.status ?? null);
-      const refreshResults = await Promise.allSettled([
-        refreshStyles({ forceRefresh: true }),
-        refreshAtSyncStatus(),
+      const followUpRefresh = await runRefreshTasks([
+        () => refreshStyles({ forceRefresh: true, throwOnError: true, notifyOnError: false }),
+        () => refreshAtSyncStatus({ throwOnError: true }),
       ]);
       const followUpRefreshFailed =
-        result?.statusRefreshFailed === true ||
-        refreshResults.some((refreshResult) => refreshResult.status === 'rejected');
+        result?.statusRefreshFailed === true || followUpRefresh.failed;
       showNotification(
         getUiMessage(
           followUpRefreshFailed
             ? 'styleBoard.atResetSuccessStatusRefreshFailed'
             : 'styleBoard.atResetSuccess',
-          followUpRefreshFailed
-            ? `AT 추정은 초기화됐지만 최신 상태를 다시 불러오지 못했습니다. 새로고침해 확인하세요. (공정 ${result?.styleProcessAtParamsReset ?? 0}개, 학습 버킷 ${result?.trainingBucketsDeleted ?? 0}개)`
-            : `AT 추정 초기화 완료 (공정 ${result?.styleProcessAtParamsReset ?? 0}개, 레거시 ${result?.styleProcessJsonAtParamsReset ?? 0}개, 학습 버킷 ${result?.trainingBucketsDeleted ?? 0}개)`,
-          languageCode
+          '',
+          languageCode,
+          {
+            processCount: result?.styleProcessAtParamsReset ?? 0,
+            legacyCount: result?.styleProcessJsonAtParamsReset ?? 0,
+            bucketCount: result?.trainingBucketsDeleted ?? 0,
+          }
         ),
         followUpRefreshFailed ? 'warning' : 'success'
       );

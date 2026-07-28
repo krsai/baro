@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import atTraining from '../backend/dist/services/atTraining.js';
 import atTrainingOverlap from '../backend/dist/services/atTrainingOverlap.js';
+import { runRefreshTasks } from '../frontend/src/utils/refreshTasks.mjs';
 
 const { fitAtParamsWithProportionalAllocation } = atTraining;
 const {
@@ -50,6 +51,25 @@ test('AT reset success is returned even when the follow-up status refresh fails'
   assert.match(routeSource, /try \{[\s\S]*buildAtSyncStatusForOrg/);
   assert.match(routeSource, /catch \(error\) \{[\s\S]*statusRefreshFailed = true/);
   assert.match(routeSource, /statusRefreshFailed,/);
+});
+
+test('AT reset follow-up reports a swallowed helper failure when rethrow mode rejects', async () => {
+  const calls = [];
+  const result = await runRefreshTasks([
+    async () => {
+      calls.push('styles');
+      throw new Error('style refresh failed');
+    },
+    async () => {
+      calls.push('status');
+      return { needsUpdate: true };
+    },
+  ]);
+
+  assert.deepEqual(calls, ['styles', 'status']);
+  assert.equal(result.failed, true);
+  assert.equal(result.results[0].status, 'rejected');
+  assert.equal(result.results[1].status, 'fulfilled');
 });
 
 test('overlapping worker-day excludes every claiming WorkLog worker bucket', () => {

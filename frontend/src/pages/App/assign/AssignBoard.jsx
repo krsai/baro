@@ -3158,6 +3158,10 @@ const AssignBoard = () => {
   }, [assignmentProgressById]);
 
   useEffect(() => {
+    setAssignmentProgressStale(false);
+  }, [activeOrgId]);
+
+  useEffect(() => {
     daysRef.current = days;
   }, [days]);
 
@@ -6895,11 +6899,7 @@ const AssignBoard = () => {
           <Alert severity="warning" sx={{ mb: 1.5 }}>
             {getUiMessage(
               'assign.progressRefreshStale',
-              languageCode === 'vi'
-                ? 'Khong the cap nhat tien do moi nhat. Du lieu thanh cong gan nhat dang duoc hien thi. Hay thu tai lai.'
-                : languageCode === 'en'
-                  ? 'The latest progress could not be refreshed. The last successful data is still displayed. Try refreshing.'
-                  : '최신 진행률을 갱신하지 못해 마지막 성공 데이터를 표시 중입니다. 새로고침해 다시 확인하세요.',
+              '',
               languageCode
             )}
           </Alert>

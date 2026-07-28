@@ -8,6 +8,7 @@ import workLogCoverage from '../backend/dist/work-records/workLogCoverage.js';
 
 const { validateWorkLogSingleMonthRange } = workLogCoverage;
 const {
+  assertValidBusinessTimeZone,
   isPayrollMonthReady,
   resolveLatestCompletedPayrollMonthKey,
 } = payrollMonth;
@@ -107,4 +108,13 @@ test('payroll entry uses the server business calendar instead of browser local m
   assert.match(payrollEntrySource, /requestJSON\('\/payroll\/calendar'/);
   assert.match(payrollEntrySource, /calendar\?\.latestCompletedMonthKey/);
   assert.doesNotMatch(payrollEntrySource, /const getLatestCompletedPayrollMonthKey/);
+});
+
+test('invalid business time zones fail during server configuration', () => {
+  assert.equal(assertValidBusinessTimeZone('Asia/Seoul'), 'Asia/Seoul');
+  assert.equal(assertValidBusinessTimeZone(''), 'Asia/Seoul');
+  assert.throws(
+    () => assertValidBusinessTimeZone('Invalid/Business_Time_Zone'),
+    /Invalid BUSINESS_TIME_ZONE/
+  );
 });

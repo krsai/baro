@@ -630,7 +630,12 @@ const PayrollEntry = () => {
                     size="small"
                     variant="outlined"
                     onClick={() => handlePayMonthChange(shiftPayrollMonthKey(payMonth, -1))}
-                    disabled={loading || payrollCalendarLoading || savingSnapshot}
+                    disabled={
+                      loading ||
+                      payrollCalendarLoading ||
+                      savingSnapshot ||
+                      !latestCompletedPayrollMonthKey
+                    }
                     sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
                   >
                     M-
