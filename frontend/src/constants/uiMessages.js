@@ -47,6 +47,7 @@ export const UI_MESSAGES = {
     processActions: { ko: '\uB3D9\uC791 \uAD00\uB9AC', en: 'Action Management', vi: 'Quan ly thao tac' },
     processSpecs: { ko: '\uADDC\uACA9 \uAD00\uB9AC', en: 'Specification Management', vi: 'Quan ly quy cach' },
     sales: { ko: '영업 관리', en: 'Sales', vi: 'Kinh doanh' },
+    customerPricing: { ko: '단가', en: 'Pricing', vi: 'Đơn giá' },
     order: { ko: '주문', en: 'Orders', vi: 'Don hang' },
     style: { ko: '스타일', en: 'Styles', vi: 'Style' },
     production: { ko: '생산 관리', en: 'Production', vi: 'San xuat' },
