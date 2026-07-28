@@ -249,7 +249,8 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
           ? getUiMessage(
               'assign.actualCompletionTooltip',
               `실제 완료: ${shiftedCompletedLabel}`,
-              languageCode
+              languageCode,
+              { value: shiftedCompletedLabel }
             )
           : null,
         completionWarningMessage || null,

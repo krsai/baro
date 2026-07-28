@@ -9,6 +9,7 @@
     "sample:orders": "node backend/scripts/reset-to-baseline.js orders",
     "realign:time-model": "node backend/scripts/reset-to-baseline.js time-model",
     "check:encoding": "node scripts/check-encoding.mjs",
+    "check:i18n": "node scripts/check-ui-message-keys.mjs",
     "test:access-policy": "node --test scripts/access-policy-regression.test.mjs",
     "test:at-reliability": "node --test scripts/at-reliability-regression.test.mjs",
     "test:st-buckets": "node --test scripts/st-bucket-regression.test.mjs",

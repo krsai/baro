@@ -2,6 +2,7 @@ import { getCurrentLanguageCode, normalizeLanguageCode } from '../utils/appLangu
 
 export const UI_MESSAGES = {
   common: {
+    loading: { ko: '불러오는 중...', en: 'Loading...', vi: 'Đang tải...' },
     search: { ko: '\uac80\uc0c9...', en: 'Search...', vi: 'Tim kiem...' },
     save: { ko: '저장', en: 'Save', vi: 'Luu' },
     cancel: { ko: '취소', en: 'Cancel', vi: 'Huy' },
@@ -154,7 +155,7 @@ export const UI_MESSAGES = {
       en: "No saved payroll snapshots. Start with 'Add Payroll'.",
       vi: "Chua co ban luu bang luong. Hay bat dau bang 'Them bang luong'.",
     },
-    peopleSuffix: { ko: '\uBA85', en: '', vi: '' },
+    peopleSuffix: { ko: '\uBA85', en: ' people', vi: ' người' },
   },
   workHistoryView: {
     daily: { ko: '일간', en: 'Daily', vi: 'Ngay' },
@@ -256,6 +257,29 @@ export const UI_MESSAGES = {
     groupKey: { ko: 'key: {key}', en: 'key: {key}', vi: 'key: {key}' },
   },
   assign: {
+    dragRequiresOrderManualLock: { ko: '주문을 수동 잠금한 뒤에만 일정에 배정할 수 있습니다.', en: 'Scheduling is allowed only when the order is manually locked.', vi: 'Chỉ có thể phân công khi đơn hàng đã được khóa thủ công.' },
+    dragRequiresPtOrSt: { ko: 'PT/ST를 등록한 뒤에만 배정할 수 있습니다.', en: 'You can assign only after registering PT/ST.', vi: 'Chỉ có thể phân công sau khi đăng ký PT/ST.' },
+    externalDataPending: { ko: '관련 데이터가 변경되었습니다. 현재 미저장 배정이 있어 저장 또는 초기화 후 최신 상태를 반영합니다.', en: 'Related data changed. Save or reset the current unsaved assignments to apply the latest state.', vi: 'Dữ liệu liên quan đã thay đổi. Hãy lưu hoặc đặt lại các phân công chưa lưu để áp dụng trạng thái mới nhất.' },
+    ctSnapshotRequiredBeforeSave: { ko: '일부 카드의 CT를 생성하지 못해 배정을 저장하지 않았습니다. 스타일·공정 데이터를 다시 불러온 뒤 시도하세요.', en: 'Assignment was not saved because CT could not be built for some cards. Reload the style and process data, then try again.', vi: 'Không lưu phân công vì không thể tạo CT cho một số thẻ. Hãy tải lại dữ liệu kiểu dáng và công đoạn rồi thử lại.' },
+    orderManualLockRequiredSaveError: { ko: '주문이 수동 잠금된 경우에만 배정 변경을 저장할 수 있습니다.', en: 'You can save scheduling changes only when the order is manually locked.', vi: 'Chỉ có thể lưu thay đổi phân công khi đơn hàng đã được khóa thủ công.' },
+    assignmentSourceLoadError: { ko: '배정 카드와 공정 데이터를 불러오지 못했습니다. 다시 불러오기에 성공할 때까지 저장할 수 없습니다.', en: 'Assignment cards and process data could not be loaded. Saving is disabled until the board reloads successfully.', vi: 'Không tải được thẻ phân công và dữ liệu công đoạn. Không thể lưu cho đến khi tải lại thành công.' },
+    boardLoadError: { ko: '배정 보드를 불러오지 못했습니다. 다시 불러오기에 성공할 때까지 저장할 수 없습니다.', en: 'The assignment board could not be loaded. Saving is disabled until the board reloads successfully.', vi: 'Không tải được bảng phân công. Không thể lưu cho đến khi tải lại thành công.' },
+    stDraftProcessIgnoredWithKeys: { ko: '다음 공정 키를 연결하지 못해 일부 ST 변경을 반영하지 않았습니다: {keys}', en: 'Some ST changes were ignored because these process keys could not be matched: {keys}', vi: 'Một số thay đổi ST bị bỏ qua vì không thể khớp các khóa công đoạn sau: {keys}' },
+    stDraftProcessIgnored: { ko: '공정을 연결하지 못해 일부 ST 변경을 반영하지 않았습니다. 영향받은 배정 공정을 확인하세요.', en: 'Some ST changes were ignored because the process could not be matched. Review the affected assignment processes.', vi: 'Một số thay đổi ST bị bỏ qua vì không thể khớp công đoạn. Hãy kiểm tra các công đoạn phân công bị ảnh hưởng.' },
+    cannotMoveCompletedCard: { ko: '완료된 카드는 이동할 수 없습니다.', en: 'Completed cards cannot be moved.', vi: 'Không thể di chuyển thẻ đã hoàn thành.' },
+    startedCardStartLocked: { ko: '작업기록이 있는 카드의 시작일은 변경할 수 없습니다.', en: 'The start date of a card with work records cannot be changed.', vi: 'Không thể đổi ngày bắt đầu của thẻ đã có nhật ký công việc.' },
+    manualLockRequiredForSchedulingBanner: { ko: '수동 잠금되지 않은 주문 카드가 있습니다. 주문을 잠근 뒤 일정에 배정하세요.', en: 'Some cards are from unlocked orders. Lock the orders manually before scheduling.', vi: 'Có thẻ thuộc đơn hàng chưa khóa. Hãy khóa đơn hàng thủ công trước khi phân công.' },
+    completedReadOnlyDetail: { ko: '완료된 배정은 조회만 할 수 있습니다.', en: 'This assignment is completed and can only be viewed.', vi: 'Phân công này đã hoàn thành và chỉ có thể xem.' },
+    completedReadOnlySnapshotNote: { ko: '완료된 배정은 읽기 전용이며 ST/CT 입력값을 저장하지 않습니다.', en: 'Completed assignments are read-only; ST/CT inputs are not saved.', vi: 'Phân công đã hoàn thành chỉ có thể đọc; giá trị ST/CT nhập vào sẽ không được lưu.' },
+    completionWarning: { ko: '완료 확인 수량과 현재 작업기록 수량이 맞지 않습니다.', en: 'The confirmed completion quantity does not match the current work-record quantity.', vi: 'Số lượng xác nhận hoàn thành không khớp với số lượng trong nhật ký công việc.' },
+    statusOverdue: { ko: '지연', en: 'Overdue', vi: 'Trễ hạn' },
+    statusPending: { ko: '대기', en: 'Pending', vi: 'Đang chờ' },
+    statusActive: { ko: '진행 중', en: 'In Progress', vi: 'Đang thực hiện' },
+    actualCompletionTooltip: { ko: '실제 완료: {value}', en: 'Actual completion: {value}', vi: 'Hoàn thành thực tế: {value}' },
+    capacityUnavailable: { ko: '현재 생산능력과 계획 부하를 계산할 수 없습니다. 데이터를 확인한 뒤 다시 시도하세요.', en: 'Current capacity and planned load cannot be calculated. Check the data and try again.', vi: 'Không thể tính năng lực hiện tại và tải kế hoạch. Hãy kiểm tra dữ liệu rồi thử lại.' },
+    lineRemainingWork: { ko: '남은 일감 {value}', en: 'Remaining work {value}', vi: 'Công việc còn lại {value}' },
+    lineFreeDate: { ko: '비는 예상일 {value}', en: 'Expected free date {value}', vi: 'Ngày dự kiến rảnh {value}' },
+    lineAvailableWork: { ko: '추가 배정 여유 {value}', en: 'Additional capacity {value}', vi: 'Khả năng nhận thêm {value}' },
     pageTitle: { ko: '작업 배정', en: 'Assignment', vi: 'Phan cong' },
     searchPlaceholder: {
       ko: '스타일/고객사/색상 검색',
@@ -937,6 +961,7 @@ Object.assign(UI_MESSAGES, {
     },
   },
   factoryBoard: {
+    columnStartDate: { ko: '관리 시작일', en: 'Management Start Date', vi: 'Ngày bắt đầu quản lý' },
     title: { ko: '\uACF5\uC7A5', en: 'Factory', vi: 'Nha may' },
     addFactory: { ko: '\uACF5\uC7A5 \uCD94\uAC00', en: 'Add Factory', vi: 'Them nha may' },
     deleteFactory: { ko: '\uACF5\uC7A5 \uC0AD\uC81C', en: 'Delete Factory', vi: 'Xoa nha may' },
@@ -965,6 +990,8 @@ Object.assign(UI_MESSAGES, {
     deleteError: { ko: '\uACF5\uC7A5 \uC0AD\uC81C\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.', en: 'Failed to delete factory.', vi: 'Khong the xoa nha may.' },
   },
   factoryDetail: {
+    factoryCode: { ko: '공장 코드', en: 'Factory Code', vi: 'Mã nhà máy' },
+    factoryCodeHelper: { ko: '영문 2~3자리 (예: HN, SEO)', en: '2–3 uppercase letters (e.g. HN, SEO)', vi: '2–3 chữ cái viết hoa (ví dụ: HN, SEO)' },
     createTitle: { ko: '\uACF5\uC7A5 \uCD94\uAC00', en: 'Add Factory', vi: 'Them nha may' },
     editTitle: { ko: '\uACF5\uC7A5 \uC218\uC815', en: 'Edit Factory', vi: 'Sua nha may' },
     name: { ko: '\uACF5\uC7A5\uBA85', en: 'Factory Name', vi: 'Ten nha may' },
@@ -1011,6 +1038,8 @@ Object.assign(UI_MESSAGES, {
     },
   },
   holidayBoard: {
+    loading: { ko: '휴일을 불러오는 중...', en: 'Loading holidays...', vi: 'Đang tải ngày nghỉ...' },
+    fetchError: { ko: '휴일 데이터를 불러오지 못했습니다.', en: 'Failed to load holiday data.', vi: 'Không thể tải dữ liệu ngày nghỉ.' },
     title: { ko: '\uD734\uC77C \uAD00\uB9AC', en: 'Holiday Management', vi: 'Quan ly ngay nghi' },
     saveInProgress: { ko: '\uC800\uC7A5 \uC911...', en: 'Saving...', vi: 'Dang luu...' },
     manualHolidayCount: {
