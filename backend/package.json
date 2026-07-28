@@ -25,6 +25,7 @@
     "repair:assignment-text": "node scripts/repair-assignment-text.js",
     "repair:assignment-schedule": "node scripts/repair-assignment-schedule.js",
     "repair:assignment-statuses": "node scripts/repair-assignment-statuses.js",
+    "repair:assignment-st-snapshots": "node scripts/repair-assignment-st-snapshots.js",
     "workrecord:inspect": "node scripts/inspect-workrecord-state.js",
     "verify:workorder-item-backfill": "node scripts/verify-workorder-item-backfill.js",
     "verify:style-process-backfill": "node scripts/verify-style-process-backfill.js",

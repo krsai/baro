@@ -43,7 +43,7 @@
 
 ### 배정·생산 계산
 
-- [ ] `/assignment` LINE #1에서 planned load와 backlog가 과대 표시되지 않는지 확인한다. **운영 데이터 수리 전 차단**: 운영 `AssignmentPlan.assignmentStSnapshot` 49행이 모두 비어 backlog가 미계산으로 숨겨진다. 저장 경로의 서버 생성 snapshot이 정규화 단계에서 유실되던 결함은 수정했으며, 신규 배정은 서버가 관계·버전·entry·`StyleProcessStandard` FK로 snapshot을 생성한다. 기존 snapshot 누락 행은 현재 버전으로 추정 백필하지 않고, 정확한 과거 버전·entry를 확정할 수 있는 별도 수리 전까지 수정 시 409로 거부한다.
+- [ ] `/assignment` LINE #1에서 planned load와 backlog가 과대 표시되지 않는지 확인한다. 저장 경로의 서버 생성 snapshot 유실 결함을 수정했고, 운영 관계 전환 최초 버전 142와 저장 총 ST가 정확히 일치한 48건은 2026-07-28 복구했다(사후 FK·entry·버전·공정 ST·총합 위반 0건). plan 331은 보존 표준행 계산값 314,600초와 저장 총 ST 318,600초가 불일치해 추정 복구하지 않고 유일한 NULL로 유지한다. 배포 후 인증 화면에서 LINE #1 표시와 이 1건의 명시적 미계산 상태를 확인해야 완료한다.
 - [ ] 인증된 progress API 결과가 새로고침 후에도 배정 진행 상태에 정확히 반영되는지 확인한다. `/assignment-plan-progress`는 서버측 캐시 없이 매 호출 DB를 다시 읽는 순수 계산이고 프론트도 `forceRefresh:true`로 호출함을 코드로 확인했으나, 인증된 브라우저에서 실제 새로고침 클릭까지는 수행하지 못해 완료 처리하지 않는다.
 - [x] 운영 DB(org 1 및 전체 조직) 전수로 `capacityOverlapCount`와 동일한 정의(같은 employee-date에 활성 라인 2개 이상, 일요일·조직휴일 제외)를 SQL로 재현한 결과 0건 — 실제 API가 계산에 사용하는 것과 동일한 `LineAssignment` 데이터, 동일 정의로 대조 완료.
 - [x] 운영 DB의 미완료 배정에 CT snapshot 불일치·FK 누락으로 409가 예상되는 카드가 0건임을 확인했다.
