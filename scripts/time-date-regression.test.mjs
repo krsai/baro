@@ -20,6 +20,10 @@ const payrollEntrySource = fs.readFileSync(
   'frontend/src/pages/App/payroll/PayrollEntry.jsx',
   'utf8'
 );
+const payrollServiceSource = fs.readFileSync(
+  'backend/src/payroll/payroll.service.ts',
+  'utf8'
+);
 
 test('Asia/Seoul date key does not shift at UTC boundary', () => {
   const source = new Date('2026-02-23T00:30:00+09:00');
@@ -108,6 +112,16 @@ test('payroll entry uses the server business calendar instead of browser local m
   assert.match(payrollEntrySource, /requestJSON\('\/payroll\/calendar'/);
   assert.match(payrollEntrySource, /calendar\?\.latestCompletedMonthKey/);
   assert.doesNotMatch(payrollEntrySource, /const getLatestCompletedPayrollMonthKey/);
+  assert.match(payrollEntrySource, /setPayMonth\(String\(calendar\?\.latestCompletedMonthKey/);
+  assert.match(payrollEntrySource, /title=\{isNew \? '급여 계산'/);
+});
+
+test('payroll persistence rejects unfinished months and supports exact save and delete paths', () => {
+  assert.match(payrollServiceSource, /!isPayrollMonthReady\(month,/);
+  assert.match(payrollServiceSource, /createHttpError\(409, "payroll month not ended"\)/);
+  assert.match(payrollServiceSource, /prisma\.payrollSnapshot\.upsert\(/);
+  assert.match(payrollServiceSource, /prisma\.payrollSnapshot\.delete\(/);
+  assert.match(payrollServiceSource, /syncAssignmentPlanPayrollFinalization\(\{ orgId, month, finalized: false \}\)/);
 });
 
 test('invalid business time zones fail during server configuration', () => {

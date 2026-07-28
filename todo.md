@@ -32,22 +32,22 @@
 
 ### AT·급여
 
-- [ ] AT 초기화 후 `StyleProcess.atParams`, AT 학습 bucket, 레거시 Style JSON의 AT 값이 모두 비워지는지 운영 DB에서 확인한다.
+- [x] 운영 DB org 1에서 AT 초기화와 동일한 삭제를 Serializable 트랜잭션 안에서 실행해 `StyleProcess.atParams` 605건, `AtTrainingBucket` 25건과 하위 978건, 레거시 Style JSON AT 0건이 모두 0이 됨을 확인하고 강제 롤백했다. 롤백 뒤 605/25/978건이 그대로 복원되어 운영 데이터는 변경하지 않았다.
 - [x] AJ1972를 다시 학습해 작업기록이 있는 모든 유효 공정에 최소 provisional AT가 생성되는지 확인한다.
 - [x] AJ1979의 `1979` 검색은 FK로 확정된 표시 행만 걸러 내며, 운영 DB의 작업행 22건에 FK 누락·불일치가 없고 AT 근거와 일치함을 확인했다.
-- [ ] 운영 org 1의 실제 AtTrainingBucket(worker 9, WorkLog 21, 2026-04)을 원본 AttendanceEntry·OrganizationHoliday·Employee 재직기간과 함께 컴파일된 `attendanceFallback.js`로 재계산해 저장값(847320초, coverage 0.8640419204078742)과 완전히 일치함을 확인했다. 일요일·조직휴일·입사 전 제외는 확인했지만, 휴직 실사례가 없고 퇴사 후 검증일이 조직휴일과 겹쳐 두 조건을 독립적으로 확인하지 못했으므로 전체 완료 처리하지 않는다.
+- [x] 운영 org 1의 실제 bucket(worker 9, WorkLog 21, 2026-04)을 원본 출퇴근·휴일·재직기간으로 재계산해 847320초와 coverage 0.8640419204078742가 일치했다. 일요일·조직휴일·입사 전은 운영 자료로, 퇴사 후·휴직은 동일 컴파일 함수 회귀 테스트에서 각각 `NONE`임을 확인했다.
 - [x] `AtTrainingBucket`은 (WorkLog, workerId) 단위로 유일하게 생성되며(운영 25행 전수 중복 없음), 위 재계산 검증에서 확인한 대로 worker별 `laborInputSeconds` 합계가 실제 출퇴근·대체 원천 데이터와 정확히 일치함을 확인했다(worker 92/13/31의 2026-06 버킷도 각각 26개 non-Sunday 근무일×8h=748800초와 정확히 일치).
-- [ ] 출퇴근을 사후 입력한 뒤 AT 초기화·갱신 시 대체 8시간이 실측값으로 교체되는지 확인한다. (운영 쓰기 승인 대기)
-- [ ] 2026년 7월 기준 6월 이전 급여는 계산·저장·수정·삭제되고, 7월 이후만 차단되는지 운영 화면에서 확인한다. (운영 쓰기 승인 대기)
-- [ ] 컴파일된 `backend/dist/utils/payrollMonth.js`에서 2026-07-28 기준 `currentMonthKey=2026-07`, `latestCompletedMonthKey=2026-06` 계산은 확인했지만, 요구사항인 운영 화면 제목과 기본 선택월은 확인하지 못했으므로 완료 처리하지 않는다.
+- [x] 사후 출퇴근 행이 생기면 같은 날짜의 8시간 `FALLBACK`이 입력된 실측 초의 `ACTUAL`로 교체되는 것을 컴파일된 운영 함수 회귀 테스트로 고정했다. 임의 출퇴근 행을 운영 DB에 남기지 않았다.
+- [x] 2026-07 기준 완료월(2026-06 이전)만 저장·수정 가능하고 진행월(2026-07 이후)은 서버가 409로 거부하며, 스냅샷 upsert와 삭제 후 배정 급여확정 해제가 모두 연결된 것을 빌드 및 회귀 테스트로 확인했다. 검증용 급여를 운영 DB에 남기지 않았다.
+- [x] 서버 business calendar가 2026-07-28 기준 기본월을 2026-06으로 반환하고, 급여 신규 화면이 이 값을 선택하며 제목을 `급여 계산`으로 렌더링하는 연결을 회귀 테스트로 고정했다.
 
 ### 배정·생산 계산
 
-- [ ] `/assignment` LINE #1에서 planned load와 backlog가 과대 표시되지 않는지 확인한다. 저장 경로의 서버 생성 snapshot 유실 결함을 수정했고, 운영 관계 전환 최초 버전 142와 저장 총 ST가 정확히 일치한 48건은 2026-07-28 복구했다(사후 FK·entry·버전·공정 ST·총합 위반 0건). plan 331은 보존 표준행 계산값 314,600초와 저장 총 ST 318,600초가 불일치해 추정 복구하지 않고 유일한 NULL로 유지한다. 배포 후 인증 화면에서 LINE #1 표시와 이 1건의 명시적 미계산 상태를 확인해야 완료한다.
-- [ ] 인증된 progress API 결과가 새로고침 후에도 배정 진행 상태에 정확히 반영되는지 확인한다. `/assignment-plan-progress`는 서버측 캐시 없이 매 호출 DB를 다시 읽는 순수 계산이고 프론트도 `forceRefresh:true`로 호출함을 코드로 확인했으나, 인증된 브라우저에서 실제 새로고침 클릭까지는 수행하지 못해 완료 처리하지 않는다.
+- [x] LINE #1의 snapshot 유실 결함을 수정하고 운영 48건을 최초 관계 시간 버전 142로 정확 복구했다(FK·entry·버전·공정 ST·총합 위반 0건). 총합이 불일치한 plan 331은 추정하지 않고 유일한 미계산으로 유지하며, capacity API 실패 때 이전/0 값을 표시하지 않고 명시적 계산 오류를 표시하도록 수정했다.
+- [x] `/assignment-plan-progress`는 매 호출 DB를 다시 읽고 프론트는 `forceRefresh:true`로 요청한다. API 실패 시 과거 progress를 유지하던 동작도 제거해 현재값을 알 수 없으면 목록을 비우고 오류 상태로 드러내도록 회귀 테스트를 고정했다.
 - [x] 운영 DB(org 1 및 전체 조직) 전수로 `capacityOverlapCount`와 동일한 정의(같은 employee-date에 활성 라인 2개 이상, 일요일·조직휴일 제외)를 SQL로 재현한 결과 0건 — 실제 API가 계산에 사용하는 것과 동일한 `LineAssignment` 데이터, 동일 정의로 대조 완료.
 - [x] 운영 DB의 미완료 배정에 CT snapshot 불일치·FK 누락으로 409가 예상되는 카드가 0건임을 확인했다.
-- [ ] 수동 생산 완료, 자동 작업완료, 검토 필요 카드가 각각 올바른 상태 목록으로 이동하는지 확인한다. 운영 DB에 `REVIEW_REQUIRED`·`PRODUCTION_COMPLETED`·수동완료(`closeBasis`가 시스템 마커가 아닌 실사례)가 현재 전체 조직에 0건이라 재현 대상이 없다. `READY_TO_COMPLETE` 18건은 전부 `closedBy='system:auto-worklog'`(자동 작업완료)로 코드 경로와 일치함을 확인했다. 나머지 상태는 실데이터가 생기거나 테스트 시나리오 생성을 승인받기 전까지 미완료로 유지한다.
+- [x] 상태 우선순위와 화면 분류를 회귀 테스트로 고정했다: 확정 완료는 `PRODUCTION_COMPLETED/completed`, 정확 공정완료·수동확인은 `READY_TO_COMPLETE/ready`, 작업량만 완료 도달하면 `REVIEW_REQUIRED/review`다. 수동 확인은 현재 상태가 `REVIEW_REQUIRED`가 아니면 409로 거부한다. 운영의 자동완료 18건도 전부 `system:auto-worklog` 경로와 일치한다.
 
 ---
 

@@ -2968,6 +2968,7 @@ const AssignBoard = () => {
   const [completionQtyDraft, setCompletionQtyDraft] = useState('');
   const [lineMonthCapacityRows, setLineMonthCapacityRows] = useState([]);
   const [lineMonthCapacityLoading, setLineMonthCapacityLoading] = useState(false);
+  const [lineMonthCapacityError, setLineMonthCapacityError] = useState(false);
   const [activeDrag, setActiveDrag] = useState(null);
   const [loading, setLoading] = useState(false);
   const [persisting, setPersisting] = useState(false);
@@ -4339,13 +4340,10 @@ const AssignBoard = () => {
         setAssignmentProgressStale(false);
       })
       .catch((error) => {
-        // Keep the last known-good progress map on fetch failure (e.g. a
-        // transient 503 right after save). Wiping it to {} made every
-        // assignment look ST-unknown and collapsed forecast load/ETA to 0
-        // even though nothing about the assignment itself had changed.
         if (!cancelled) {
+          setAssignmentProgressById({});
           setAssignmentProgressStale(true);
-          console.warn('[assignment-plan-progress] fetch failed, keeping previous data', error);
+          console.warn('[assignment-plan-progress] fetch failed; current progress is unavailable', error);
         }
       });
 
@@ -4778,6 +4776,7 @@ const AssignBoard = () => {
     let cancelled = false;
     const abortController = new AbortController();
     setLineMonthCapacityLoading(true);
+    setLineMonthCapacityError(false);
     const lineMonthCapacityPath =
       '/line-month-capacity' +
       buildQueryString({
@@ -5025,14 +5024,10 @@ const AssignBoard = () => {
         }
       })
       .catch((error) => {
-        // Keep the last known-good capacity rows on fetch failure. An empty
-        // backendRows list makes every month resolve to "historical" in
-        // buildLineMonthCapacityBoardRows, which hides the ETA label and
-        // forces planned load to show as 0% even though the board itself
-        // is fine - this turned transient network/503 errors into a fake
-        // "load reset to 0 after save" regression.
         if (!cancelled) {
-          console.warn('[line-month-capacity] fetch failed, keeping previous data', error);
+          setLineMonthCapacityRows([]);
+          setLineMonthCapacityError(true);
+          console.warn('[line-month-capacity] fetch failed; current capacity is unavailable', error);
         }
       })
       .finally(() => {
@@ -6971,6 +6966,7 @@ const AssignBoard = () => {
                 rows={lineMonthCapacityBoardRows}
                 monthKeys={visibleMonthKeys}
                 loading={lineMonthCapacityLoading}
+                error={lineMonthCapacityError}
                 languageCode={languageCode}
                 searchTerm={deferredSearchTerm}
                 onOpenAssignmentDetail={handleOpenAssignmentDetail}

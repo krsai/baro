@@ -6,6 +6,10 @@ const backend = await readFile(
   new URL('../backend/src/index.ts', import.meta.url),
   'utf8'
 );
+const assignBoard = await readFile(
+  new URL('../frontend/src/pages/App/assign/AssignBoard.jsx', import.meta.url),
+  'utf8'
+);
 
 test('board save carries the server-prepared ST snapshot through normalization', () => {
   const normalizeStart = backend.indexOf('const normalizeAssignmentPlanPayload =');
@@ -52,4 +56,35 @@ test('line and schedule movement never replace an existing historical ST snapsho
   assert.match(basisChange, /assignmentQuantity !== existingQuantity/);
   assert.match(basisChange, /existingPlan\?\.styleId/);
   assert.doesNotMatch(basisChange, /lineId|startIndex|endIndex/);
+});
+
+test('progress reads all required coverage columns and has no missing-column fallback', () => {
+  const start = backend.indexOf('const loadAssignmentPlanProgressWorkRows =');
+  const end = backend.indexOf('const resolveAssignmentProcessGroupTotals =', start);
+  const loader = backend.slice(start, end);
+  assert.match(loader, /effectiveCoverageStartDate: true/);
+  assert.match(loader, /coverageStartDate: true/);
+  assert.doesNotMatch(loader, /fallbackModes|fallback work-record projection|isWorkLogCoverageMissingColumnError/);
+});
+
+test('progress endpoint always rebuilds rows and the board bypasses request cache', () => {
+  const routeStart = backend.indexOf('app.get("/assignment-plan-progress"');
+  const routeEnd = backend.indexOf('app.get("/line-month-capacity"', routeStart);
+  assert.match(backend.slice(routeStart, routeEnd), /await buildAssignmentPlanProgressRows\(organization\.id, externalIds\)/);
+  assert.match(assignBoard, /requestJSON\([\s\S]{0,200}'\/assignment-plan-progress'[\s\S]{0,300}forceRefresh: true/);
+  assert.match(assignBoard, /catch\(\(error\) => \{[\s\S]{0,160}setAssignmentProgressById\(\{\}\)/);
+  const progressStart = assignBoard.indexOf("'/assignment-plan-progress'");
+  const progressEnd = assignBoard.indexOf('const applySchedulerProgressToAssignments', progressStart);
+  assert.doesNotMatch(assignBoard.slice(progressStart, progressEnd), /keeping previous data/);
+  assert.match(assignBoard, /setLineMonthCapacityRows\(\[\]\)[\s\S]{0,100}setLineMonthCapacityError\(true\)/);
+});
+
+test('assignment workflow exposes exact review, ready, and completed states', () => {
+  assert.match(backend, /isMarkedCompleted[\s\S]{0,100}ASSIGNMENT_STATUS_PRODUCTION_COMPLETED/);
+  assert.match(backend, /isManualReadyConfirmed \|\| hasExactProcessCompletion[\s\S]{0,100}ASSIGNMENT_STATUS_READY_TO_COMPLETE/);
+  assert.match(backend, /hasWorkProgressReachedCompletion[\s\S]{0,100}ASSIGNMENT_STATUS_REVIEW_REQUIRED/);
+  assert.match(backend, /currentScheduleStatus !== ASSIGNMENT_STATUS_REVIEW_REQUIRED/);
+  assert.match(assignBoard, /scheduleStatus \|\| ''\)\.trim\(\) === 'REVIEW_REQUIRED'\) return 'review'/);
+  assert.match(assignBoard, /scheduleStatus \|\| ''\)\.trim\(\) === 'READY_TO_COMPLETE'\) return 'ready'/);
+  assert.match(assignBoard, /if \(isCompleted\) return 'completed'/);
 });

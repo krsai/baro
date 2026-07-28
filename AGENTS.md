@@ -135,6 +135,7 @@
 - 위 이중 저장을 정리할 때는 "JSON을 read source of truth에서 제외 → 코드 전체가 relation만 읽는지 검증 → JSON 컬럼 제거"의 단계적 순서를 따른다 (레거시 컬럼 제거 원칙과 동일). raw SQL 백필이 원본 정규화 로직(다단계 fallback, 파생 필드 등)을 완전히 재현하기 어려우면 SQL로 새로 만들지 말고 앱이 이미 쓰는 검증된 로직(자가치유 함수, 재저장 트리거 등)을 백필 메커니즘으로 재사용한다.
 
 ### 정확 계산 원칙 (강제)
+- **2026-07-28 배정 조회 fail-closed:** progress 조회는 WorkLog/WorkRecord coverage 컬럼이 없을 때 축소 projection으로 재시도하지 않는다. 프론트도 progress·capacity 요청 실패 시 과거 성공값을 현재값처럼 유지하거나 빈 응답을 0% load로 해석하지 않으며, 값을 비우고 명시적 미계산 오류를 표시한다.
 - **2026-07-25 후속:** 스케줄 표시 범위에 오늘이 없으면 첫 표시일을 오늘로 대체하지 않는다. AssignmentPlan에서 WorkRecord의 Style FK를 확정하지 못하면 요청 styleId로 보완하지 않는다. 동일 스타일이 여러 라인에 split된 상태에서 주문 수량과 배정 합계가 달라지면 자동 분배하거나 조용히 건너뛰지 않고 409로 명시 조정을 요구한다. `AssignmentPlan.updatedAt`은 `@updatedAt`으로 모든 쓰기에서 자동 갱신한다.
 - **2026-07-25 FK 강화:** 정상 `WorkRecord`의 `assignmentPlanId/styleId/styleProcessId`는 필수이며 삭제 시 `SET NULL`로 고아화하지 않는다. `assignmentPlan`은 `(assignmentPlanId, orgId)`, `styleProcess`는 `(styleProcessId, styleId, orgId)` 복합 FK로 제조사 조직과 스타일 공정 일치를 강제한다. `Style`은 고객 조직 소유일 수 있으므로 `styleId -> Style.id` 단일 FK가 맞으며 `WorkRecord.orgId = Style.orgId`를 강제하면 안 된다. 운영 DB에서 확인된 978개 WorkRecord와 648개 StyleProcess는 제조사 org 1이 고객 org 2의 Style을 사용하는 정상 교차 조직 관계였다. 라인·공장 삭제도 연결 작업기록이 있으면 409로 거부한다.
 - WorkRecord 저장 정규화에서 Style은 AssignmentPlan이 확정한 `styleId` PK로 조회한다. 제조사 `orgId`로 Style을 필터링하거나 조회 실패를 요청 payload의 `styleCode/styleName`으로 보완하지 않는다. 교차 조직 Style은 `OrgRelationship(manufacturerOrgId, brandOrgId)`가 존재해야 하며 무결성 진단에서 이를 확인한다.

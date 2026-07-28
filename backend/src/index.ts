@@ -20005,17 +20005,11 @@ const loadAssignmentPlanProgressWorkRows = async ({
     .filter((planId): planId is number => planId !== null);
   if (planIds.length === 0) return [];
 
-  const selectWorkRows = async ({
-    where,
-    includeCoverage,
-    includeEffectiveCoverage,
-  }: {
-    where: Prisma.WorkRecordWhereInput;
-    includeCoverage: boolean;
-    includeEffectiveCoverage: boolean;
-  }): Promise<any[]> =>
-    prisma.workRecord.findMany({
-      where,
+  const directRows: any[] = await prisma.workRecord.findMany({
+      where: {
+        orgId,
+        assignmentPlanId: { in: planIds },
+      },
       select: {
         id: true,
         workLogId: true,
@@ -20040,70 +20034,21 @@ const loadAssignmentPlanProgressWorkRows = async ({
         },
         ctSeconds: true,
         quantity: true,
-        ...(includeEffectiveCoverage
-          ? {
-              effectiveCoverageStartDate: true,
-              effectiveCoverageEndDate: true,
-            }
-          : {}),
+        effectiveCoverageStartDate: true,
+        effectiveCoverageEndDate: true,
         workLog: {
           select: {
             displayDate: true,
             records: true,
-            ...(includeCoverage
-              ? {
-                  coverageStartDate: true,
-                  coverageEndDate: true,
-                  entryMode: true,
-                }
-              : {}),
+            coverageStartDate: true,
+            coverageEndDate: true,
+            entryMode: true,
           },
         },
       } as any,
     });
 
-  let directRows: any[] = [];
-  try {
-    directRows = await selectWorkRows({
-      where: {
-        orgId,
-        assignmentPlanId: { in: planIds },
-      },
-      includeCoverage: true,
-      includeEffectiveCoverage: true,
-    });
-  } catch (error) {
-    if (!isWorkLogCoverageMissingColumnError(error)) throw error;
-    const fallbackModes = [
-      { includeCoverage: true, includeEffectiveCoverage: false },
-      { includeCoverage: false, includeEffectiveCoverage: true },
-      { includeCoverage: false, includeEffectiveCoverage: false },
-    ];
-    let recovered = false;
-    for (const mode of fallbackModes) {
-      try {
-        directRows = await selectWorkRows({
-          where: {
-            orgId,
-            assignmentPlanId: { in: planIds },
-          },
-          includeCoverage: mode.includeCoverage,
-          includeEffectiveCoverage: mode.includeEffectiveCoverage,
-        });
-        recovered = true;
-        break;
-      } catch (fallbackError) {
-        if (!isWorkLogCoverageMissingColumnError(fallbackError)) {
-          throw fallbackError;
-        }
-      }
-    }
-    if (!recovered) throw error;
-    console.warn(
-      `[assignment-plan-progress] orgId=${orgId} ${context}: missing work-log/work-record coverage columns; fallback work-record projection activated`
-    );
-  }
-
+  void context;
   void stateAssignmentsByExternalId;
   return directRows;
 };

@@ -1,6 +1,7 @@
 import React, { memo, useMemo, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import {
+  Alert,
   Box,
   Chip,
   Collapse,
@@ -620,6 +621,7 @@ const LineMonthCapacityBoard = ({
   rows,
   monthKeys,
   loading = false,
+  error = false,
   languageCode = 'en',
   searchTerm = '',
   onOpenAssignmentDetail,
@@ -660,6 +662,18 @@ const LineMonthCapacityBoard = ({
     [monthKeys]
   );
   const tableMinWidth = Math.max(560, 250 + normalizedMonthKeys.length * 220);
+
+  if (error) {
+    return (
+      <Alert severity="error">
+        {getUiMessage(
+          'assign.capacityUnavailable',
+          '현재 생산능력과 계획 부하를 계산할 수 없습니다. 데이터를 확인한 뒤 다시 시도하세요.',
+          languageCode
+        )}
+      </Alert>
+    );
+  }
 
   const toggleExpanded = (lineId) => {
     setExpandedLineIds((prev) => {
