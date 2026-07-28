@@ -73,13 +73,11 @@ const shiftPayrollMonthKey = (value, amount) => {
   return getLocalMonthKey(new Date(year, month - 1 + amount, 1));
 };
 
-const getLatestCompletedPayrollMonthKey = () =>
-  shiftPayrollMonthKey(getLocalMonthKey(), -1);
-
-const isPayrollMonthReadyForSave = (value) => {
+const isPayrollMonthReadyForSave = (value, latestCompletedMonthKey) => {
   const month = String(value || '').trim();
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(month)
-    && month <= getLatestCompletedPayrollMonthKey();
+    && /^\d{4}-(0[1-9]|1[0-2])$/.test(String(latestCompletedMonthKey || '').trim())
+    && month <= latestCompletedMonthKey;
 };
 
 const formatMoneyInput = (value) => {
@@ -199,8 +197,10 @@ const PayrollEntry = () => {
   const monthFromParam = isNew ? null : payrollId;
 
   const [payMonth, setPayMonth] = useState(
-    () => monthFromParam ?? getLatestCompletedPayrollMonthKey()
+    () => monthFromParam ?? ''
   );
+  const [payrollCalendar, setPayrollCalendar] = useState(null);
+  const [payrollCalendarLoading, setPayrollCalendarLoading] = useState(isNew);
   const [loading, setLoading] = useState(false);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [payrollData, setPayrollData] = useState(null);
@@ -218,6 +218,36 @@ const PayrollEntry = () => {
     setPayrollData(null);
     setExpandedWorkerId(null);
   }, []);
+
+  useEffect(() => {
+    if (!isNew || !activeOrgId) return undefined;
+    let cancelled = false;
+    const abortController = new AbortController();
+    setPayrollCalendarLoading(true);
+    requestJSON('/payroll/calendar' + buildQueryString({ orgId: activeOrgId }), {
+      forceRefresh: true,
+      skipGlobalLoading: true,
+      signal: abortController.signal,
+    })
+      .then((calendar) => {
+        if (cancelled) return;
+        setPayrollCalendar(calendar);
+        setPayMonth(String(calendar?.latestCompletedMonthKey || '').trim());
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setPayrollCalendar(null);
+        setPayMonth('');
+        showNotification(error?.message || payrollText('loadError'), 'error');
+      })
+      .finally(() => {
+        if (!cancelled) setPayrollCalendarLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      abortController.abort();
+    };
+  }, [activeOrgId, isNew, payrollText, showNotification]);
 
   const fetchPayroll = useCallback(
     async (month, options = {}) => {
@@ -284,7 +314,7 @@ const PayrollEntry = () => {
       showNotification(payrollText('monthRequired'), 'error');
       return;
     }
-    if (!isPayrollMonthReadyForSave(payMonth)) {
+    if (!isPayrollMonthReadyForSave(payMonth, payrollCalendar?.latestCompletedMonthKey)) {
       showNotification(payrollText('monthNotEnded'), 'warning');
       return;
     }
@@ -320,6 +350,7 @@ const PayrollEntry = () => {
     fetchPayroll,
     payMonth,
     payrollText,
+    payrollCalendar?.latestCompletedMonthKey,
     showNotification,
   ]);
 
@@ -344,6 +375,9 @@ const PayrollEntry = () => {
   const employees = payrollData?.employees ?? [];
   const currentMonth = payrollData?.month || payMonth;
   const isMonthReady = payrollData?.monthReady === true;
+  const latestCompletedPayrollMonthKey = String(
+    payrollCalendar?.latestCompletedMonthKey || ''
+  ).trim();
 
   const computedEmployees = useMemo(
     () =>
@@ -572,7 +606,7 @@ const PayrollEntry = () => {
                   value={payMonth}
                   onChange={(event) => handlePayMonthChange(event.target.value)}
                   InputLabelProps={{ shrink: true }}
-                  inputProps={{ max: getLatestCompletedPayrollMonthKey() }}
+                  inputProps={{ max: latestCompletedPayrollMonthKey || undefined }}
                   size="small"
                   sx={{ width: { xs: '100%', sm: 220 } }}
                 />
@@ -583,8 +617,10 @@ const PayrollEntry = () => {
                     onClick={() => handlePayMonthChange(shiftPayrollMonthKey(payMonth, 1))}
                     disabled={
                       loading ||
+                      payrollCalendarLoading ||
                       savingSnapshot ||
-                      payMonth >= getLatestCompletedPayrollMonthKey()
+                      !latestCompletedPayrollMonthKey ||
+                      payMonth >= latestCompletedPayrollMonthKey
                     }
                     sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
                   >
@@ -594,7 +630,7 @@ const PayrollEntry = () => {
                     size="small"
                     variant="outlined"
                     onClick={() => handlePayMonthChange(shiftPayrollMonthKey(payMonth, -1))}
-                    disabled={loading || savingSnapshot}
+                    disabled={loading || payrollCalendarLoading || savingSnapshot}
                     sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
                   >
                     M-
@@ -606,14 +642,16 @@ const PayrollEntry = () => {
                 onClick={handleCalculate}
                 disabled={
                   loading ||
+                  payrollCalendarLoading ||
                   savingSnapshot ||
-                  !isPayrollMonthReadyForSave(payMonth)
+                  !isPayrollMonthReadyForSave(payMonth, latestCompletedPayrollMonthKey)
                 }
               >
                 {loading || savingSnapshot ? '계산 중...' : '계산하기'}
               </Button>
             </Stack>
-            {!isPayrollMonthReadyForSave(payMonth) && (
+            {!payrollCalendarLoading &&
+              !isPayrollMonthReadyForSave(payMonth, latestCompletedPayrollMonthKey) && (
               <Alert severity="info" sx={{ mt: 1.5 }}>
                 {payrollText('monthNotEnded')}
               </Alert>

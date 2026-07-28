@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { formatDateKeyInTimeZone, todayDateKey } from '../frontend/src/utils/dateKey.mjs';
 import { resolveAtTrainingMonthKey } from '../backend/dist/utils/atTrainingMonthKey.js';
 import payrollMonth from '../backend/dist/utils/payrollMonth.js';
@@ -10,6 +11,14 @@ const {
   isPayrollMonthReady,
   resolveLatestCompletedPayrollMonthKey,
 } = payrollMonth;
+const payrollControllerSource = fs.readFileSync(
+  'backend/src/payroll/payroll.controller.ts',
+  'utf8'
+);
+const payrollEntrySource = fs.readFileSync(
+  'frontend/src/pages/App/payroll/PayrollEntry.jsx',
+  'utf8'
+);
 
 test('Asia/Seoul date key does not shift at UTC boundary', () => {
   const source = new Date('2026-02-23T00:30:00+09:00');
@@ -90,4 +99,12 @@ test('payroll stays unavailable while the selected month is still in progress', 
   assert.equal(resolveLatestCompletedPayrollMonthKey(options), '2026-05');
   assert.equal(isPayrollMonthReady('2026-06', options), false);
   assert.equal(isPayrollMonthReady('2026-05', options), true);
+});
+
+test('payroll entry uses the server business calendar instead of browser local month', () => {
+  assert.match(payrollControllerSource, /resolveLatestCompletedPayrollMonthKey\(\{ timeZone \}\)/);
+  assert.match(payrollControllerSource, /process\.env\.BUSINESS_TIME_ZONE \|\| "Asia\/Seoul"/);
+  assert.match(payrollEntrySource, /requestJSON\('\/payroll\/calendar'/);
+  assert.match(payrollEntrySource, /calendar\?\.latestCompletedMonthKey/);
+  assert.doesNotMatch(payrollEntrySource, /const getLatestCompletedPayrollMonthKey/);
 });

@@ -29,6 +29,29 @@ test('AT mutations do not rebuild ST-based assignment cards', () => {
   assert.match(resetSource, /return result/);
 });
 
+test('AT reset clears legacy JSON for manufacturer-owned and related brand styles', () => {
+  const resetStart = backendSource.indexOf('const resetAtTrainingStateForOrg');
+  const resetEnd = backendSource.indexOf('const normalizeStylePayload', resetStart);
+  const resetSource = backendSource.slice(resetStart, resetEnd);
+
+  assert.match(resetSource, /FROM "OrgRelationship" AS relationship/);
+  assert.match(resetSource, /relationship\."manufacturerOrgId" = \$\{orgId\}/);
+  assert.match(resetSource, /relationship\."brandOrgId" = s\."orgId"/);
+  assert.match(resetSource, /proc\.value - 'atParams' - 'at'/);
+});
+
+test('AT reset success is returned even when the follow-up status refresh fails', () => {
+  const routeStart = backendSource.indexOf('app.post("/at-sync/reset"');
+  const routeEnd = backendSource.indexOf('app.use(payrollRouter)', routeStart);
+  const routeSource = backendSource.slice(routeStart, routeEnd);
+
+  assert.ok(routeStart >= 0);
+  assert.match(routeSource, /const result = await resetAtTrainingStateForOrg/);
+  assert.match(routeSource, /try \{[\s\S]*buildAtSyncStatusForOrg/);
+  assert.match(routeSource, /catch \(error\) \{[\s\S]*statusRefreshFailed = true/);
+  assert.match(routeSource, /statusRefreshFailed,/);
+});
+
 test('overlapping worker-day excludes every claiming WorkLog worker bucket', () => {
   const state = createAtTrainingOverlapState();
   registerAtTrainingWorkerDayClaim({

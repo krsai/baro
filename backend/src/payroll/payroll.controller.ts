@@ -7,6 +7,24 @@ import {
   listPayrollSnapshots,
   savePayrollSnapshot,
 } from "./payroll.service";
+import {
+  resolveCurrentPayrollMonthKey,
+  resolveLatestCompletedPayrollMonthKey,
+} from "../utils/payrollMonth";
+
+export const getPayrollCalendarController = async (req: Request, res: Response) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const timeZone = process.env.BUSINESS_TIME_ZONE || "Asia/Seoul";
+  return res.json({
+    currentMonthKey: resolveCurrentPayrollMonthKey({ timeZone }),
+    latestCompletedMonthKey: resolveLatestCompletedPayrollMonthKey({ timeZone }),
+    timeZone,
+  });
+};
 
 export const listPayrollSnapshotsController = async (req: Request, res: Response) => {
   const organization = await getOrganizationByQuery(req);

@@ -5078,7 +5078,15 @@ const resetAtTrainingStateForOrg = async (orgId: number) => {
             FROM jsonb_array_elements(s."processes"::jsonb) WITH ORDINALITY AS proc(value, ordinality)
           ),
           "updatedAt" = NOW()
-      WHERE s."orgId" = ${orgId}
+      WHERE (
+          s."orgId" = ${orgId}
+          OR EXISTS (
+            SELECT 1
+            FROM "OrgRelationship" AS relationship
+            WHERE relationship."manufacturerOrgId" = ${orgId}
+              AND relationship."brandOrgId" = s."orgId"
+          )
+        )
         AND s."processes" IS NOT NULL
         AND jsonb_typeof(s."processes"::jsonb) = 'array'
         AND EXISTS (
@@ -29794,9 +29802,19 @@ app.post("/at-sync/reset", async (req, res) => {
   const todayKey = toDateKeyInTimeZone(new Date(), BUSINESS_TIME_ZONE);
   const currentMonthKey = normalizeMonthKey(todayKey.slice(0, 7));
   const previousMonthKey = currentMonthKey ? shiftMonthKey(currentMonthKey, -1) : "";
-  const status = await buildAtSyncStatusForOrg(access.organization.id, {
-    trainingMonthKey: previousMonthKey,
-  });
+  let status = null;
+  let statusRefreshFailed = false;
+  try {
+    status = await buildAtSyncStatusForOrg(access.organization.id, {
+      trainingMonthKey: previousMonthKey,
+    });
+  } catch (error) {
+    statusRefreshFailed = true;
+    console.error("[at-sync] reset committed but status refresh failed", {
+      orgId: access.organization.id,
+      message: getErrorMessage(error, "unknown AT status refresh error"),
+    });
+  }
 
   return res.json({
     ok: true,
@@ -29805,6 +29823,7 @@ app.post("/at-sync/reset", async (req, res) => {
     durationMs: Date.now() - startedAt,
     ...result,
     status,
+    statusRefreshFailed,
   });
 });
 

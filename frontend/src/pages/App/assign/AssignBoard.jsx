@@ -2963,6 +2963,7 @@ const AssignBoard = () => {
   const [lines, setLines] = useState(() => initialLines);
   const [assignments, setAssignments] = useState(initialAssignments);
   const [assignmentProgressById, setAssignmentProgressById] = useState({});
+  const [assignmentProgressStale, setAssignmentProgressStale] = useState(false);
   const [completingAssignmentId, setCompletingAssignmentId] = useState(null);
   const [completionQtyDraft, setCompletionQtyDraft] = useState('');
   const [lineMonthCapacityRows, setLineMonthCapacityRows] = useState([]);
@@ -4307,6 +4308,7 @@ const AssignBoard = () => {
     const normalizedOrgId = Number(activeOrgId);
     if (!Number.isFinite(normalizedOrgId) || normalizedOrgId <= 0 || !assignmentProgressIdsKey) {
       setAssignmentProgressById({});
+      setAssignmentProgressStale(false);
       return undefined;
     }
 
@@ -4330,6 +4332,7 @@ const AssignBoard = () => {
           nextMap[rowId] = row;
         });
         setAssignmentProgressById(nextMap);
+        setAssignmentProgressStale(false);
       })
       .catch((error) => {
         // Keep the last known-good progress map on fetch failure (e.g. a
@@ -4337,6 +4340,7 @@ const AssignBoard = () => {
         // assignment look ST-unknown and collapsed forecast load/ETA to 0
         // even though nothing about the assignment itself had changed.
         if (!cancelled) {
+          setAssignmentProgressStale(true);
           console.warn('[assignment-plan-progress] fetch failed, keeping previous data', error);
         }
       });
@@ -6883,6 +6887,19 @@ const AssignBoard = () => {
                 : languageCode === 'en'
                   ? `${unlockedUnassignedCardCount} cards are from unlocked orders. Lock the order manually before scheduling.`
                   : `수동 잠금되지 않은 주문 카드가 ${unlockedUnassignedCardCount}건 있습니다. 주문을 수동 잠금한 뒤 스케줄 배정을 진행해 주세요.`,
+              languageCode
+            )}
+          </Alert>
+        ) : null}
+        {assignmentProgressStale ? (
+          <Alert severity="warning" sx={{ mb: 1.5 }}>
+            {getUiMessage(
+              'assign.progressRefreshStale',
+              languageCode === 'vi'
+                ? 'Khong the cap nhat tien do moi nhat. Du lieu thanh cong gan nhat dang duoc hien thi. Hay thu tai lai.'
+                : languageCode === 'en'
+                  ? 'The latest progress could not be refreshed. The last successful data is still displayed. Try refreshing.'
+                  : '최신 진행률을 갱신하지 못해 마지막 성공 데이터를 표시 중입니다. 새로고침해 다시 확인하세요.',
               languageCode
             )}
           </Alert>

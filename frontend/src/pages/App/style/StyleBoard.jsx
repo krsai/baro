@@ -509,15 +509,24 @@ const StyleBoard = () => {
         }
       );
       setAtSyncStatus(result?.status ?? null);
-      await refreshStyles({ forceRefresh: true });
-      await refreshAtSyncStatus();
+      const refreshResults = await Promise.allSettled([
+        refreshStyles({ forceRefresh: true }),
+        refreshAtSyncStatus(),
+      ]);
+      const followUpRefreshFailed =
+        result?.statusRefreshFailed === true ||
+        refreshResults.some((refreshResult) => refreshResult.status === 'rejected');
       showNotification(
         getUiMessage(
-          'styleBoard.atResetSuccess',
-          `AT 추정 초기화 완료 (공정 ${result?.styleProcessAtParamsReset ?? 0}개, 레거시 ${result?.styleProcessJsonAtParamsReset ?? 0}개, 학습 버킷 ${result?.trainingBucketsDeleted ?? 0}개)`,
+          followUpRefreshFailed
+            ? 'styleBoard.atResetSuccessStatusRefreshFailed'
+            : 'styleBoard.atResetSuccess',
+          followUpRefreshFailed
+            ? `AT 추정은 초기화됐지만 최신 상태를 다시 불러오지 못했습니다. 새로고침해 확인하세요. (공정 ${result?.styleProcessAtParamsReset ?? 0}개, 학습 버킷 ${result?.trainingBucketsDeleted ?? 0}개)`
+            : `AT 추정 초기화 완료 (공정 ${result?.styleProcessAtParamsReset ?? 0}개, 레거시 ${result?.styleProcessJsonAtParamsReset ?? 0}개, 학습 버킷 ${result?.trainingBucketsDeleted ?? 0}개)`,
           languageCode
         ),
-        'success'
+        followUpRefreshFailed ? 'warning' : 'success'
       );
     } catch (error) {
       showNotification(

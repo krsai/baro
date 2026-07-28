@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   deletePayrollSnapshotController,
+  getPayrollCalendarController,
   getPayrollController,
   listPayrollSnapshotsController,
   savePayrollSnapshotController,
@@ -9,6 +10,7 @@ import {
 export const payrollRouter = Router();
 
 payrollRouter.get("/payroll/snapshots", listPayrollSnapshotsController);
+payrollRouter.get("/payroll/calendar", getPayrollCalendarController);
 payrollRouter.get("/payroll", getPayrollController);
 payrollRouter.post("/payroll/snapshots", savePayrollSnapshotController);
 payrollRouter.post("/payroll/lock", savePayrollSnapshotController);
