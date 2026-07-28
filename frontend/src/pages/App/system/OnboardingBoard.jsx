@@ -24,6 +24,7 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
 import { useAppActions } from '../../../context/AppContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import { requestJSON } from '../../../utils/apiClient';
 import { getOrganizationTypeLabel } from '../../../constants/organizationType';
 import {
@@ -32,21 +33,28 @@ import {
   getOrganizationSubscriptionStatusDescription,
 } from '../../../constants/organizationAccess';
 
-const toDateOnlyText = (value) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleDateString('ko-KR');
+const LOCALES = { ko: 'ko-KR', en: 'en-US', vi: 'vi-VN' };
+const TEXT = {
+  ko: { title:'가입 승인', refresh:'새로고침', list:'가입 요청 목록', requestDate:'요청일', industry:'업종', company:'회사명', name:'이름', phone:'대표 연락처', subscription:'구독 상태', action:'처리', activeEnd:'활성 종료일, 비우면 무기한', processing:'처리 중...', approve:'승인', reject:'거절', empty:'대기 중인 가입 요청이 없습니다.', detailView:'상세보기', detail:'가입 요청 상세', close:'닫기', loadError:'요청 목록 조회 중 오류가 발생했습니다.', approved:'가입 요청을 승인했습니다.', approveError:'승인 처리 중 오류가 발생했습니다.', rejected:'가입 요청을 거절했습니다.', rejectError:'거절 처리 중 오류가 발생했습니다.', vietnam:'베트남', korea:'한국' },
+  en: { title:'Onboarding Approval', refresh:'Refresh', list:'Registration Requests', requestDate:'Requested', industry:'Industry', company:'Company', name:'Name', phone:'Main Contact', subscription:'Subscription Status', action:'Action', activeEnd:'Active end date; leave blank for unlimited', processing:'Processing...', approve:'Approve', reject:'Reject', empty:'There are no pending registration requests.', detailView:'View details', detail:'Registration Request Details', close:'Close', loadError:'Failed to load registration requests.', approved:'Registration request approved.', approveError:'Failed to approve the request.', rejected:'Registration request rejected.', rejectError:'Failed to reject the request.', vietnam:'Vietnam', korea:'South Korea' },
+  vi: { title:'Duyệt đăng ký', refresh:'Làm mới', list:'Danh sách yêu cầu đăng ký', requestDate:'Ngày yêu cầu', industry:'Ngành nghề', company:'Công ty', name:'Tên', phone:'Liên hệ chính', subscription:'Trạng thái đăng ký', action:'Xử lý', activeEnd:'Ngày kết thúc hoạt động; để trống nếu không giới hạn', processing:'Đang xử lý...', approve:'Phê duyệt', reject:'Từ chối', empty:'Không có yêu cầu đăng ký đang chờ.', detailView:'Xem chi tiết', detail:'Chi tiết yêu cầu đăng ký', close:'Đóng', loadError:'Không thể tải danh sách yêu cầu.', approved:'Đã phê duyệt yêu cầu đăng ký.', approveError:'Không thể phê duyệt yêu cầu.', rejected:'Đã từ chối yêu cầu đăng ký.', rejectError:'Không thể từ chối yêu cầu.', vietnam:'Việt Nam', korea:'Hàn Quốc' },
 };
 
-const toDateTimeText = (value) => {
+const toDateOnlyText = (value, locale) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleString('ko-KR');
+  return date.toLocaleDateString(locale);
 };
 
-const toCountryLabel = (countryCode) => {
-  if (countryCode === 'VN') return '베트남';
-  if (countryCode === 'KR') return '한국';
+const toDateTimeText = (value, locale) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString(locale);
+};
+
+const toCountryLabel = (countryCode, text) => {
+  if (countryCode === 'VN') return text.vietnam;
+  if (countryCode === 'KR') return text.korea;
   return '-';
 };
 
@@ -57,6 +65,9 @@ const toDisplayText = (value) => {
 
 const OnboardingBoard = () => {
   const { showNotification } = useAppActions();
+  const { languageCode } = useLanguage();
+  const text = TEXT[languageCode] || TEXT.ko;
+  const locale = LOCALES[languageCode] || LOCALES.ko;
 
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -95,7 +106,7 @@ const OnboardingBoard = () => {
         return next;
       });
     } catch (error) {
-      showNotification(error?.message || '요청 목록 조회 중 오류가 발생했습니다.', 'error');
+      showNotification(error?.message || text.loadError, 'error');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -145,10 +156,10 @@ const OnboardingBoard = () => {
               : null,
         }),
       });
-      showNotification('가입 요청을 승인했습니다.', 'success');
+      showNotification(text.approved, 'success');
       await fetchRequests({ isRefresh: true });
     } catch (error) {
-      showNotification(error?.message || '승인 처리 중 오류가 발생했습니다.', 'error');
+      showNotification(error?.message || text.approveError, 'error');
     } finally {
       setProcessingKey('');
     }
@@ -163,10 +174,10 @@ const OnboardingBoard = () => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
       });
-      showNotification('가입 요청을 거절했습니다.', 'success');
+      showNotification(text.rejected, 'success');
       await fetchRequests({ isRefresh: true });
     } catch (error) {
-      showNotification(error?.message || '거절 처리 중 오류가 발생했습니다.', 'error');
+      showNotification(error?.message || text.rejectError, 'error');
     } finally {
       setProcessingKey('');
     }
@@ -221,7 +232,7 @@ const OnboardingBoard = () => {
 
   return (
     <AppPageContainer
-      title="가입 승인"
+      title={text.title}
       toolbar={(
         <PageToolbar
           right={(
@@ -232,7 +243,7 @@ const OnboardingBoard = () => {
               disabled={loading || refreshing}
               startIcon={refreshing ? <CircularProgress size={14} color="inherit" /> : null}
             >
-              새로고침
+              {text.refresh}
             </Button>
           )}
         />
@@ -248,7 +259,7 @@ const OnboardingBoard = () => {
                 mb: 2,
               }}
             >
-              <Typography variant="h6">가입 요청 목록</Typography>
+              <Typography variant="h6">{text.list}</Typography>
             </Box>
 
             {loading ? (
@@ -260,19 +271,13 @@ const OnboardingBoard = () => {
                 <Table size="small" sx={{ width: '100%' }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell>요청일</TableCell>
-                    <TableCell>업종</TableCell>
-                    <TableCell>회사명</TableCell>
-                    <TableCell>이름</TableCell>
-                    <TableCell>대표 연락처</TableCell>
-                    <TableCell>구독 상태</TableCell>
-                    <TableCell align="right">처리</TableCell>
+                    <TableCell>{text.requestDate}</TableCell><TableCell>{text.industry}</TableCell><TableCell>{text.company}</TableCell><TableCell>{text.name}</TableCell><TableCell>{text.phone}</TableCell><TableCell>{text.subscription}</TableCell><TableCell align="right">{text.action}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {pendingCompanyRequests.map((row) => (
                     <TableRow key={row.id} onContextMenu={(event) => handleRowContextMenu(event, row)}>
-                      <TableCell>{toDateOnlyText(row.createdAt)}</TableCell>
+                      <TableCell>{toDateOnlyText(row.createdAt, locale)}</TableCell>
                       <TableCell>{getOrganizationTypeLabel(row.organizationType)}</TableCell>
                       <TableCell>{toDisplayText(row.organizationNameEn)}</TableCell>
                       <TableCell>{toDisplayText(row.contactName)}</TableCell>
@@ -311,7 +316,7 @@ const OnboardingBoard = () => {
                             }
                             disabled={processingKey !== ''}
                             sx={{ mt: 1 }}
-                            helperText="활성 종료일, 비우면 무기한"
+                            helperText={text.activeEnd}
                             InputLabelProps={{ shrink: true }}
                           />
                         ) : null}
@@ -330,7 +335,7 @@ const OnboardingBoard = () => {
                             onClick={() => handleApproveCompany(row)}
                             disabled={processingKey !== ''}
                           >
-                            {processingKey === `company-approve-${row.id}` ? '처리 중...' : '승인'}
+                            {processingKey === `company-approve-${row.id}` ? text.processing : text.approve}
                           </Button>
                           <Button
                             size="small"
@@ -339,7 +344,7 @@ const OnboardingBoard = () => {
                             onClick={() => handleRejectCompany(row)}
                             disabled={processingKey !== ''}
                           >
-                            {processingKey === `company-reject-${row.id}` ? '처리 중...' : '거절'}
+                            {processingKey === `company-reject-${row.id}` ? text.processing : text.reject}
                           </Button>
                         </Box>
                       </TableCell>
@@ -348,7 +353,7 @@ const OnboardingBoard = () => {
                   {pendingCompanyRequests.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                        대기 중인 가입 요청이 없습니다.
+                        {text.empty}
                       </TableCell>
                     </TableRow>
                   )}
@@ -369,7 +374,7 @@ const OnboardingBoard = () => {
             : undefined
         }
       >
-        <MenuItem onClick={handleOpenDetailFromContextMenu}>상세보기</MenuItem>
+        <MenuItem onClick={handleOpenDetailFromContextMenu}>{text.detailView}</MenuItem>
       </Menu>
 
       <Drawer
@@ -387,8 +392,8 @@ const OnboardingBoard = () => {
       >
         <Stack spacing={1.5}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="h6">가입 요청 상세</Typography>
-            <IconButton onClick={handleCloseDetailDrawer} aria-label="닫기">
+            <Typography variant="h6">{text.detail}</Typography>
+            <IconButton onClick={handleCloseDetailDrawer} aria-label={text.close}>
               <CloseRoundedIcon />
             </IconButton>
           </Box>
