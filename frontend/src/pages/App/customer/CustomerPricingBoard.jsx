@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -40,8 +40,6 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { resolveCustomerDisplayName } from '../../../utils/appLanguage';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
-import { fetchStyles } from '../../../utils/styleApi';
-import { resolveCustomerStyleOwnerOrgId } from './customerFormShared';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 
 const SALES_BUCKET_PRESETS = Object.freeze([
@@ -229,6 +227,105 @@ const formatPriceForDisplay = (value, currencyCode, languageCode) => {
   }).format(parsed);
 };
 
+const PricingRow = memo(function PricingRow({
+  style,
+  quantities,
+  scopePrefix,
+  draftPrices,
+  focusedPriceKey,
+  currencyCode,
+  languageCode,
+  unitPriceLabel,
+  disabled,
+  onPriceChange,
+  onPriceFocus,
+  onPriceBlur,
+}) {
+  return (
+    <TableRow hover>
+      <TableCell
+        sx={{
+          position: 'sticky',
+          left: 0,
+          zIndex: 1,
+          backgroundColor: 'background.paper',
+          fontWeight: 700,
+        }}
+      >
+        {style.name || '-'}
+      </TableCell>
+      <TableCell
+        sx={{
+          position: 'sticky',
+          left: 190,
+          zIndex: 1,
+          backgroundColor: 'background.paper',
+          color: 'text.secondary',
+        }}
+      >
+        {style.styleCode || style.code || '-'}
+      </TableCell>
+      {quantities.map((quantity) => {
+        const key = `${scopePrefix}${style.id}:${quantity}`;
+        const price = draftPrices[key] || '';
+        return (
+          <TableCell key={key} align="center" sx={{ px: 0.75 }}>
+            <TextField
+              value={
+                focusedPriceKey === key
+                  ? price
+                  : formatPriceForDisplay(price, currencyCode, languageCode)
+              }
+              onChange={(event) => onPriceChange(key, event.target.value)}
+              onFocus={() => onPriceFocus(key)}
+              onBlur={onPriceBlur}
+              size="small"
+              disabled={disabled}
+              error={Boolean(price) && !isValidPositivePrice(price)}
+              placeholder="-"
+              inputProps={{
+                inputMode: 'decimal',
+                'aria-label': `${style.name || style.id} ${quantity} ${unitPriceLabel}`,
+                style: { textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
+              }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    {CURRENCY_SYMBOLS[currencyCode] || currencyCode}
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ width: 112 }}
+            />
+          </TableCell>
+        );
+      })}
+      <TableCell />
+    </TableRow>
+  );
+}, (previous, next) => {
+  if (
+    previous.style !== next.style ||
+    previous.quantities !== next.quantities ||
+    previous.scopePrefix !== next.scopePrefix ||
+    previous.currencyCode !== next.currencyCode ||
+    previous.languageCode !== next.languageCode ||
+    previous.unitPriceLabel !== next.unitPriceLabel ||
+    previous.disabled !== next.disabled
+  ) return false;
+
+  const rowPrefix = `${next.scopePrefix}${next.style.id}:`;
+  if (
+    previous.focusedPriceKey !== next.focusedPriceKey &&
+    (previous.focusedPriceKey.startsWith(rowPrefix) || next.focusedPriceKey.startsWith(rowPrefix))
+  ) return false;
+
+  return next.quantities.every((quantity) => {
+    const key = `${rowPrefix}${quantity}`;
+    return previous.draftPrices[key] === next.draftPrices[key];
+  });
+});
+
 const CustomerPricingBoard = () => {
   const { activeOrgId } = useAuth();
   const { languageCode } = useLanguage();
@@ -323,51 +420,12 @@ const CustomerPricingBoard = () => {
 
   useEffect(() => {
     let active = true;
-    const loadStyles = async () => {
-      if (!selectedCustomer) {
-        setStyles([]);
-        return;
-      }
-      const ownerOrgId = resolveCustomerStyleOwnerOrgId(selectedCustomer, activeOrgId);
-      if (!ownerOrgId) {
-        setStyles([]);
-        return;
-      }
-
-      setLoadingStyles(true);
-      try {
-        const rows = await fetchStyles({
-          orgId: activeOrgId,
-          ownerOrgId,
-          compact: true,
-          forceRefresh: true,
-          skipGlobalLoading: true,
-        });
-        if (!active) return;
-        setStyles(
-          [...rows].sort((left, right) =>
-            String(left?.name || '').localeCompare(String(right?.name || ''), undefined, {
-              numeric: true,
-              sensitivity: 'base',
-            })
-          )
-        );
-      } catch (error) {
-        if (active) showNotification(error?.message || text.loadFailed, 'error');
-      } finally {
-        if (active) setLoadingStyles(false);
-      }
-    };
-    loadStyles();
-    return () => {
-      active = false;
-    };
-  }, [activeOrgId, selectedCustomer, showNotification, text.loadFailed]);
-
-  useEffect(() => {
-    let active = true;
     const loadBuckets = async () => {
-      if (!selectedCustomerId) return;
+      if (!selectedCustomerId) {
+        setStyles([]);
+        return;
+      }
+      setLoadingStyles(true);
       try {
         const payload = await requestJSON(
           `/customers/${selectedCustomerId}/quantity-buckets${customerQuery}`,
@@ -393,7 +451,14 @@ const CustomerPricingBoard = () => {
         const nextModes = {};
         const nextBuckets = {};
         const nextVersionIds = {};
-        (Array.isArray(payload?.styles) ? payload.styles : []).forEach((style) => {
+        const payloadStyles = Array.isArray(payload?.styles) ? payload.styles : [];
+        setStyles(payloadStyles.map((style) => ({
+          id: style.id,
+          name: style.name || '',
+          styleCode: style.code || '',
+          code: style.code || '',
+        })));
+        payloadStyles.forEach((style) => {
           const key = `${customerKey}:${style.id}`;
           nextModes[key] = style.source === 'STYLE_OVERRIDE' ? 'custom' : 'customer';
           if (Array.isArray(style?.version?.quantities)) {
@@ -407,6 +472,8 @@ const CustomerPricingBoard = () => {
         setSavedStyleBucketVersionIds((previous) => ({ ...previous, ...nextVersionIds }));
       } catch (error) {
         if (active) showNotification(error?.message || text.loadFailed, 'error');
+      } finally {
+        if (active) setLoadingStyles(false);
       }
     };
     loadBuckets();
@@ -653,24 +720,14 @@ const CustomerPricingBoard = () => {
   ]);
 
   const handlePriceChange = useCallback(
-    (styleId, bucketQuantity, value) => {
-      const key = `${selectedCustomerId}:${pricingBasis}:${currencyCode}:${styleId}:${bucketQuantity}`;
+    (key, value) => {
       setDraftPrices((previous) => ({ ...previous, [key]: normalizePriceInput(value) }));
     },
-    [currencyCode, pricingBasis, selectedCustomerId]
+    []
   );
-
-  const priceKey = useCallback(
-    (styleId, bucketQuantity) =>
-      `${selectedCustomerId}:${pricingBasis}:${currencyCode}:${styleId}:${bucketQuantity}`,
-    [currencyCode, pricingBasis, selectedCustomerId]
-  );
-
-  const resolveDraftPrice = useCallback(
-    (styleId, bucketQuantity) =>
-      draftPrices[`${selectedCustomerId}:${pricingBasis}:${currencyCode}:${styleId}:${bucketQuantity}`] || '',
-    [currencyCode, draftPrices, pricingBasis, selectedCustomerId]
-  );
+  const handlePriceFocus = useCallback((key) => setFocusedPriceKey(key), []);
+  const handlePriceBlur = useCallback(() => setFocusedPriceKey(''), []);
+  const priceScopePrefix = `${selectedCustomerId}:${pricingBasis}:${currencyCode}:`;
   const dirtyPriceChanges = useMemo(
     () => displayedStyles.flatMap((style) =>
       activeSalesBuckets.flatMap((bucketQuantity) => {
@@ -1069,71 +1126,21 @@ const CustomerPricingBoard = () => {
                     <TableStatusRow colSpan={activeSalesBuckets.length + 3} message={text.noStyles} />
                   )}
                   {displayedStyles.map((style) => (
-                    <TableRow key={style.id} hover>
-                      <TableCell
-                        sx={{
-                          position: 'sticky',
-                          left: 0,
-                          zIndex: 1,
-                          backgroundColor: 'background.paper',
-                          fontWeight: 700,
-                        }}
-                      >
-                        {style.name || '-'}
-                      </TableCell>
-                      <TableCell
-                        sx={{
-                          position: 'sticky',
-                          left: 190,
-                          zIndex: 1,
-                          backgroundColor: 'background.paper',
-                          color: 'text.secondary',
-                        }}
-                      >
-                        {style.styleCode || style.code || '-'}
-                      </TableCell>
-                      {activeSalesBuckets.map((quantity) => (
-                        <TableCell key={`${style.id}:${quantity}`} align="center" sx={{ px: 0.75 }}>
-                          <TextField
-                            value={
-                              focusedPriceKey === priceKey(style.id, quantity)
-                                ? resolveDraftPrice(style.id, quantity)
-                                : formatPriceForDisplay(
-                                    resolveDraftPrice(style.id, quantity),
-                                    currencyCode,
-                                    languageCode
-                                  )
-                            }
-                            onChange={(event) =>
-                              handlePriceChange(style.id, quantity, event.target.value)
-                            }
-                            onFocus={() => setFocusedPriceKey(priceKey(style.id, quantity))}
-                            onBlur={() => setFocusedPriceKey('')}
-                            size="small"
-                            disabled={loadingPrices || savingPrices}
-                            error={
-                              Boolean(resolveDraftPrice(style.id, quantity)) &&
-                              !isValidPositivePrice(resolveDraftPrice(style.id, quantity))
-                            }
-                            placeholder="-"
-                            inputProps={{
-                              inputMode: 'decimal',
-                              'aria-label': `${style.name || style.id} ${quantity} ${text.unitPrice}`,
-                              style: { textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
-                            }}
-                            InputProps={{
-                              startAdornment: (
-                                <InputAdornment position="start">
-                                  {CURRENCY_SYMBOLS[currencyCode] || currencyCode}
-                                </InputAdornment>
-                              ),
-                            }}
-                            sx={{ width: 112 }}
-                          />
-                        </TableCell>
-                      ))}
-                      <TableCell />
-                    </TableRow>
+                    <PricingRow
+                      key={style.id}
+                      style={style}
+                      quantities={activeSalesBuckets}
+                      scopePrefix={priceScopePrefix}
+                      draftPrices={draftPrices}
+                      focusedPriceKey={focusedPriceKey}
+                      currencyCode={currencyCode}
+                      languageCode={languageCode}
+                      unitPriceLabel={text.unitPrice}
+                      disabled={loadingPrices || savingPrices}
+                      onPriceChange={handlePriceChange}
+                      onPriceFocus={handlePriceFocus}
+                      onPriceBlur={handlePriceBlur}
+                    />
                   ))}
                 </TableBody>
               </Table>

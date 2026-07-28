@@ -206,6 +206,14 @@ test('sales price saves send changes only and persist them in a batched transact
   assert.match(frontend, /useUnsavedChanges\(dirtyPriceChanges\.length > 0\)/);
 });
 
+test('pricing grid reuses bucket style data and isolates price-cell rerenders by row', () => {
+  assert.match(frontend, /const PricingRow = memo\(/);
+  assert.match(frontend, /previous\.draftPrices\[key\] === next\.draftPrices\[key\]/);
+  assert.match(frontend, /setStyles\(payloadStyles\.map/);
+  assert.doesNotMatch(frontend, /fetchStyles\(/);
+  assert.doesNotMatch(frontend, /forceRefresh:\s*true/);
+});
+
 test('order locking is independent from sales prices and preserves item FK validation', () => {
   assert.match(schema, /enum SalesPricingBasis \{/);
   assert.match(schema, /model Currency \{/);
