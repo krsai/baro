@@ -34,6 +34,7 @@ import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getStaticOptionOptions } from '../../../constants/staticOptionRegistry';
+import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -330,7 +331,11 @@ const CustomerPricingBoard = () => {
   const { activeOrgId } = useAuth();
   const { languageCode } = useLanguage();
   const { showNotification } = useAppActions();
-  const text = useMemo(() => getText(languageCode), [languageCode]);
+  const text = useMemo(() => ({
+    ...getText(languageCode),
+    title: getUiMessage('customerPricingBoard.title', 'Pricing', languageCode),
+    save: getUiMessage('customerPricingBoard.save', 'Save Prices', languageCode),
+  }), [languageCode]);
   const pricingBasisOptions = useMemo(
     () => getStaticOptionOptions('commercialPricingBasis', languageCode),
     [languageCode]

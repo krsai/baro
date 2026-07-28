@@ -84,6 +84,10 @@ export const UI_MESSAGES = {
     onboardingApproval: { ko: '가입 승인', en: 'Onboarding Approval', vi: 'Duyet dang ky' },
     logout: { ko: '로그아웃', en: 'Logout', vi: 'Dang xuat' },
   },
+  customerPricingBoard: {
+    title: { ko: '단가', en: 'Pricing', vi: 'Đơn giá' },
+    save: { ko: '단가 저장', en: 'Save Prices', vi: 'Lưu đơn giá' },
+  },
   accessPolicy: {
     save: { ko: '\uC800\uC7A5', en: 'Save', vi: 'Luu' },
     resetButton: { ko: '\uCD08\uAE30\uD654', en: 'Reset', vi: 'Dat lai' },
