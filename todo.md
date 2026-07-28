@@ -35,15 +35,15 @@
 - [ ] AT 초기화 후 `StyleProcess.atParams`, AT 학습 bucket, 레거시 Style JSON의 AT 값이 모두 비워지는지 운영 DB에서 확인한다.
 - [x] AJ1972를 다시 학습해 작업기록이 있는 모든 유효 공정에 최소 provisional AT가 생성되는지 확인한다.
 - [x] AJ1979의 `1979` 검색은 FK로 확정된 표시 행만 걸러 내며, 운영 DB의 작업행 22건에 FK 누락·불일치가 없고 AT 근거와 일치함을 확인했다.
-- [x] 운영 org 1의 실제 AtTrainingBucket(worker 9, WorkLog 21, 2026-04)을 원본 AttendanceEntry·OrganizationHoliday·Employee 재직기간과 함께 컴파일된 `attendanceFallback.js`로 재계산해 저장값(847320초, coverage 0.8640419204078742)과 완전히 일치함을 확인했다. 일요일(04-05/12/19/26)과 조직 휴일(04-30)은 실제 출퇴근 기록이 없어도 대체 미적용으로, 결측 근무일은 8시간 대체로, 불완전 행(workedSeconds=null)은 대체로 정확히 분기됐다. 신규 입사자(worker 92, 입사 2026-05-26 KST)의 5월 버킷(144000초)도 입사일 포함 이후 non-Sunday 근무일수(5일)×8h와 정확히 일치해 입사 전 제외를 확인했다. 휴직 기간 제외는 org 1에 현재 leaveStartAt/leaveEndAt이 설정된 작업자가 없어 실사례로는 확인 불가 — 동일 함수의 기존 유닛테스트(`attendance-fallback-regression.test.mjs`)로만 커버됨.
+- [ ] 운영 org 1의 실제 AtTrainingBucket(worker 9, WorkLog 21, 2026-04)을 원본 AttendanceEntry·OrganizationHoliday·Employee 재직기간과 함께 컴파일된 `attendanceFallback.js`로 재계산해 저장값(847320초, coverage 0.8640419204078742)과 완전히 일치함을 확인했다. 일요일·조직휴일·입사 전 제외는 확인했지만, 휴직 실사례가 없고 퇴사 후 검증일이 조직휴일과 겹쳐 두 조건을 독립적으로 확인하지 못했으므로 전체 완료 처리하지 않는다.
 - [x] `AtTrainingBucket`은 (WorkLog, workerId) 단위로 유일하게 생성되며(운영 25행 전수 중복 없음), 위 재계산 검증에서 확인한 대로 worker별 `laborInputSeconds` 합계가 실제 출퇴근·대체 원천 데이터와 정확히 일치함을 확인했다(worker 92/13/31의 2026-06 버킷도 각각 26개 non-Sunday 근무일×8h=748800초와 정확히 일치).
 - [ ] 출퇴근을 사후 입력한 뒤 AT 초기화·갱신 시 대체 8시간이 실측값으로 교체되는지 확인한다. (운영 쓰기 승인 대기)
 - [ ] 2026년 7월 기준 6월 이전 급여는 계산·저장·수정·삭제되고, 7월 이후만 차단되는지 운영 화면에서 확인한다. (운영 쓰기 승인 대기)
-- [x] 컴파일된 `backend/dist/utils/payrollMonth.js`를 실제 서버 시계·`Asia/Seoul` 기준으로 실행해 2026-07-28 현재 `currentMonthKey=2026-07`, `latestCompletedMonthKey=2026-06`, `isPayrollMonthReady('2026-06')=true`, `isPayrollMonthReady('2026-07')=false`를 확인했다. `GET /payroll/calendar`는 이 두 함수를 그대로 호출해 반환하므로 서버가 응답할 값과 동일하다. 로그인한 브라우저 화면 캡처는 수행하지 못했다.
+- [ ] 컴파일된 `backend/dist/utils/payrollMonth.js`에서 2026-07-28 기준 `currentMonthKey=2026-07`, `latestCompletedMonthKey=2026-06` 계산은 확인했지만, 요구사항인 운영 화면 제목과 기본 선택월은 확인하지 못했으므로 완료 처리하지 않는다.
 
 ### 배정·생산 계산
 
-- [ ] `/assignment` LINE #1에서 planned load와 backlog가 과대 표시되지 않는지 확인한다. **차단 — 검증 중 결함 발견**: `AssignmentPlan.assignmentStSnapshot`이 운영 DB 전체(49행) 0건 populate. `PUT /assignment-board-state`(카드 드래그 생성/수정의 주 경로)가 `item.assignmentStSnapshot`을 그대로 저장하는데 프론트 `AssignBoard.jsx`가 이 필드를 저장 payload에 전혀 채워 보내지 않아(읽기만 함, `buildAssignmentStSnapshotForSave` 류 함수 없음) 항상 `Prisma.JsonNull`로 저장됨. 그 결과 `isStSnapshotMissing`이 LINE #1의 미완료 배정 49건 전부에서 true가 되어 `isProgressUnknown=true`로 분류되고 `remainingStTotalSeconds=null`로 backlog 합산에서 전부 제외된다. 546.9시간/8.5근무일이라는 이전 수치는 재현되지 않았고(§2 상세), planned ST 합계(6759.8h) 대비 과대 표시가 아니라 정반대로 **모든 배정이 미계산으로 숨겨져 사실상 표시가 0에 가깝게 축소**되는 별도의 실결함이다. 수정 여부는 사용자 판단 필요 — 코드는 아직 수정하지 않음.
+- [ ] `/assignment` LINE #1에서 planned load와 backlog가 과대 표시되지 않는지 확인한다. **운영 데이터 수리 전 차단**: 운영 `AssignmentPlan.assignmentStSnapshot` 49행이 모두 비어 backlog가 미계산으로 숨겨진다. 저장 경로의 서버 생성 snapshot이 정규화 단계에서 유실되던 결함은 수정했으며, 신규 배정은 서버가 관계·버전·entry·`StyleProcessStandard` FK로 snapshot을 생성한다. 기존 snapshot 누락 행은 현재 버전으로 추정 백필하지 않고, 정확한 과거 버전·entry를 확정할 수 있는 별도 수리 전까지 수정 시 409로 거부한다.
 - [ ] 인증된 progress API 결과가 새로고침 후에도 배정 진행 상태에 정확히 반영되는지 확인한다. `/assignment-plan-progress`는 서버측 캐시 없이 매 호출 DB를 다시 읽는 순수 계산이고 프론트도 `forceRefresh:true`로 호출함을 코드로 확인했으나, 인증된 브라우저에서 실제 새로고침 클릭까지는 수행하지 못해 완료 처리하지 않는다.
 - [x] 운영 DB(org 1 및 전체 조직) 전수로 `capacityOverlapCount`와 동일한 정의(같은 employee-date에 활성 라인 2개 이상, 일요일·조직휴일 제외)를 SQL로 재현한 결과 0건 — 실제 API가 계산에 사용하는 것과 동일한 `LineAssignment` 데이터, 동일 정의로 대조 완료.
 - [x] 운영 DB의 미완료 배정에 CT snapshot 불일치·FK 누락으로 409가 예상되는 카드가 0건임을 확인했다.

@@ -14573,6 +14573,12 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
       const startIndex = toSignedInt(item.startIndex, 0);
       const endIndex = Math.max(startIndex, toSignedInt(item.endIndex, startIndex));
       const assignmentCtSnapshot = resolveNormalizedAssignmentCtSnapshot(item);
+      const assignmentStSnapshot =
+        item?.assignmentStSnapshot &&
+        typeof item.assignmentStSnapshot === "object" &&
+        !Array.isArray(item.assignmentStSnapshot)
+          ? item.assignmentStSnapshot
+          : null;
       const ctTotalSeconds = resolveAssignmentCtTotalSeconds({
         ...item,
         assignmentCtSnapshot,
@@ -14593,6 +14599,7 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
         basis: resolveOptionalString(item.basis, null),
         ctTotalSeconds,
         assignmentCtSnapshot,
+        assignmentStSnapshot,
         stTotalSeconds,
         startIndex,
         endIndex,
@@ -15077,26 +15084,20 @@ const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
   return Math.max(0, Math.round(pieceStTotalSeconds * assignmentQuantity));
 };
 
-const hasAssignmentStructuralStChange = (assignment: any, existingPlan: any) => {
+const hasAssignmentStBasisChange = ({
+  assignment,
+  existingPlan,
+  styleId,
+}: {
+  assignment: any;
+  existingPlan: any;
+  styleId: number | null;
+}) => {
   if (!existingPlan) return true;
   const assignmentQuantity = toOptionalNonNegativeInt(assignment?.quantity, null);
   const existingQuantity = resolveAssignmentQuantity(existingPlan);
   if (assignmentQuantity !== existingQuantity) return true;
-
-  const lineId = normalizeAssignmentLineIdForWriteCompare(assignment?.lineId);
-  const existingLineId = normalizeAssignmentLineIdForWriteCompare(existingPlan?.lineId);
-  if (lineId !== existingLineId) return true;
-
-  const startIndex = toSignedInt(assignment?.startIndex, 0);
-  const existingStartIndex = toSignedInt(existingPlan?.startIndex, 0);
-  if (startIndex !== existingStartIndex) return true;
-
-  const endIndex = Math.max(startIndex, toSignedInt(assignment?.endIndex, startIndex));
-  const existingEndIndex = Math.max(
-    existingStartIndex,
-    toSignedInt(existingPlan?.endIndex, existingStartIndex)
-  );
-  return endIndex !== existingEndIndex;
+  return styleId !== toPositiveIntOrNull(existingPlan?.styleId);
 };
 const prepareAssignmentBoardStTotalsForSave = async ({
   organization,
@@ -15140,7 +15141,15 @@ const prepareAssignmentBoardStTotalsForSave = async ({
       resolveStateAssignmentStTotalSeconds(assignment);
     const stDrafts = stDraftsByExternalId.get(externalId) ?? new Map<string, number>();
     const hasStDrafts = stDrafts.size > 0;
-    const hasStructuralChange = hasAssignmentStructuralStChange(assignment, existingPlan);
+    const styleId = resolveAssignmentStyleIdForStCalculation({
+      assignment,
+      cardById,
+    });
+    const hasStructuralChange = hasAssignmentStBasisChange({
+      assignment,
+      existingPlan,
+      styleId,
+    });
     const existingAssignmentStTotalSeconds =
       resolvePersistedAssignmentPlanStTotalSeconds(existingPlan);
     const hasUsableIncomingAssignmentSt =
@@ -15152,16 +15161,19 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     const isExistingAssignmentStSnapshotMissing =
       !existingPlan?.assignmentStSnapshot ||
       ensureArray(existingPlan?.assignmentStSnapshot?.processes).length === 0;
+    const isNewAssignment = !existingPlan;
 
-    const styleId = resolveAssignmentStyleIdForStCalculation({
-      assignment,
-      cardById,
-    });
     const shouldRecalculate =
       hasStDrafts ||
-      isExistingAssignmentStSnapshotMissing ||
+      isNewAssignment ||
       (!hasUsableIncomingAssignmentSt &&
         (hasStructuralChange || isExistingAssignmentStMissingOrInvalid));
+    if (isExistingAssignmentStSnapshotMissing && !isNewAssignment && shouldRecalculate) {
+      throw createHttpError(
+        409,
+        `assignment ${externalId} has no persisted ST snapshot; repair it from its exact historical bucket version before modifying it`
+      );
+    }
     if (shouldRecalculate && styleId !== null) assignmentStyleIds.add(styleId);
 
     targetByExternalId.set(externalId, {
@@ -15444,9 +15456,9 @@ const prepareAssignmentBoardStTotalsForSave = async ({
   targetByExternalId.forEach((target, externalId) => {
     if (!target.shouldRecalculate) {
       const canonicalAssignmentStTotalSeconds =
-        target.hasUsableIncomingAssignmentSt
-          ? target.incomingAssignmentStTotalSeconds
-          : target.existingAssignmentStTotalSeconds;
+        target.existingPlan
+          ? target.existingAssignmentStTotalSeconds
+          : target.incomingAssignmentStTotalSeconds;
       if (canonicalAssignmentStTotalSeconds !== null) {
         assignmentStTotalSecondsByExternalId.set(
           externalId,
@@ -15536,7 +15548,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
       stTotalSeconds: assignmentStTotalSeconds,
       assignmentStSnapshot:
         assignmentStSnapshotByExternalId.get(externalId) ??
-        assignment?.assignmentStSnapshot ??
+        targetByExternalId.get(externalId)?.existingPlan?.assignmentStSnapshot ??
         null,
     };
   });

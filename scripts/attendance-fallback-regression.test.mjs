@@ -60,6 +60,17 @@ test('does not create fallback labor outside employment, on leave, or off workda
   }
 });
 
+test('a later attendance entry replaces fallback labor with the exact measured seconds', () => {
+  const beforeEntry = resolveAtAttendanceDay(base);
+  const afterEntry = resolveAtAttendanceDay({
+    ...base,
+    actualEntryExists: true,
+    actualWorkedSeconds: 25_200,
+  });
+  assert.deepEqual(beforeEntry, { seconds: 28_800, source: 'FALLBACK' });
+  assert.deepEqual(afterEntry, { seconds: 25_200, source: 'ACTUAL' });
+});
+
 test('allows Monday through Saturday but excludes Sunday and organization holidays', () => {
   assert.equal(isAtAttendanceFallbackWorkday({
     workDate: '2026-07-20',
