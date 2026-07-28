@@ -8,13 +8,31 @@ export const PAY_TYPE_KEYS = {
 export const PAY_TYPE_DEFAULT_LABELS = {
   [PAY_TYPE_KEYS.CT]: {
     ko: '\uC131\uACFC\uAE09',
-    en: 'Piece Rate',
-    vi: 'Luong san pham',
+    en: 'Performance Pay',
+    vi: 'L\u01B0\u01A1ng theo s\u1EA3n l\u01B0\u1EE3ng',
   },
   [PAY_TYPE_KEYS.FIXED]: {
+    ko: '\uACE0\uC815\uAE09',
+    en: 'Fixed Pay',
+    vi: 'L\u01B0\u01A1ng c\u1ED1 \u0111\u1ECBnh',
+  },
+};
+
+export const PAY_COMPONENT_DEFAULT_LABELS = {
+  BASE_SALARY: {
     ko: '\uAE30\uBCF8\uAE09',
     en: 'Base Salary',
-    vi: 'Luong co ban',
+    vi: 'L\u01B0\u01A1ng c\u01A1 b\u1EA3n',
+  },
+  FIXED_ALLOWANCE: {
+    ko: '\uACE0\uC815\uC218\uB2F9',
+    en: 'Fixed Allowance',
+    vi: 'Ph\u1EE5 c\u1EA5p c\u1ED1 \u0111\u1ECBnh',
+  },
+  PRODUCTION_ALLOWANCE: {
+    ko: '\uC0DD\uC0B0\uC218\uB2F9',
+    en: 'Production Allowance',
+    vi: 'Ph\u1EE5 c\u1EA5p s\u1EA3n l\u01B0\u1EE3ng',
   },
 };
 

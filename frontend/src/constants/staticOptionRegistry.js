@@ -111,10 +111,10 @@ const RAW_STATIC_OPTION_GROUPS = [
     key: 'payType',
     title: '급여 타입',
     items: [
-      createItem('CT', { ko: '성과급', en: 'Piece Rate', vi: 'Luong san pham' }, [
+      createItem('CT', { ko: '성과급', en: 'Performance Pay', vi: 'Lương theo sản lượng' }, [
         '성과급',
       ]),
-      createItem('FIXED', { ko: '기본급', en: 'Base Salary', vi: 'Luong co ban' }, [
+      createItem('FIXED', { ko: '고정급', en: 'Fixed Pay', vi: 'Lương cố định' }, [
         '기본급',
         '고정급',
       ]),
