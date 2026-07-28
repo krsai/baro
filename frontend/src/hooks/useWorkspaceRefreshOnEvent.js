@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
+import { useAppActions } from '../context/AppContext';
 import {
   hasWorkspaceDataTopic,
   subscribeWorkspaceDataChanged,
@@ -35,6 +37,9 @@ const useWorkspaceRefreshOnEvent = ({
   shouldHandle = null,
   onBlocked = null,
 }) => {
+  const location = useLocation();
+  const { markTabChanged, clearTabChanged } = useAppActions();
+  const tabPathRef = useRef(location.pathname);
   const normalizedOrgId = useMemo(() => toPositiveIntOrNull(orgId), [orgId]);
   const normalizedTopics = useMemo(() => normalizeTopics(topics), [topics]);
   const topicsKey = normalizedTopics.join('|');
@@ -46,6 +51,7 @@ const useWorkspaceRefreshOnEvent = ({
   const onBlockedRef = useRef(onBlocked);
   const isActiveRef = useRef(isActive);
   const isBlockedRef = useRef(isBlocked);
+  const isTabVisibleRef = useRef(location.pathname === tabPathRef.current);
 
   useEffect(() => {
     onRefreshRef.current = onRefresh;
@@ -68,6 +74,10 @@ const useWorkspaceRefreshOnEvent = ({
   }, [isBlocked]);
 
   useEffect(() => {
+    isTabVisibleRef.current = location.pathname === tabPathRef.current;
+  }, [location.pathname]);
+
+  useEffect(() => {
     if (normalizedOrgId == null || normalizedTopics.length === 0) {
       return undefined;
     }
@@ -87,6 +97,7 @@ const useWorkspaceRefreshOnEvent = ({
 
       try {
         await onRefreshRef.current();
+        clearTabChanged(tabPathRef.current);
       } catch (_error) {
         pendingRefreshRef.current = true;
       } finally {
@@ -104,6 +115,10 @@ const useWorkspaceRefreshOnEvent = ({
       if (typeof shouldHandleRef.current === 'function' && !shouldHandleRef.current(detail)) return;
 
       pendingRefreshRef.current = true;
+
+      if (!isTabVisibleRef.current) {
+        markTabChanged(tabPathRef.current);
+      }
 
       if (isBlockedRef.current) {
         if (!blockedNoticeShownRef.current && typeof onBlockedRef.current === 'function') {
@@ -125,7 +140,7 @@ const useWorkspaceRefreshOnEvent = ({
       cancelled = true;
       unsubscribe();
     };
-  }, [normalizedOrgId, normalizedTopics.length, topicsKey]);
+  }, [clearTabChanged, markTabChanged, normalizedOrgId, normalizedTopics.length, topicsKey]);
 
   useEffect(() => {
     if (!pendingRefreshRef.current) return;
@@ -149,6 +164,7 @@ const useWorkspaceRefreshOnEvent = ({
 
       try {
         await onRefreshRef.current();
+        clearTabChanged(tabPathRef.current);
       } catch (_error) {
         pendingRefreshRef.current = true;
       } finally {
@@ -169,7 +185,7 @@ const useWorkspaceRefreshOnEvent = ({
     return () => {
       cancelled = true;
     };
-  }, [isActive, isBlocked]);
+  }, [clearTabChanged, isActive, isBlocked]);
 };
 
 export default useWorkspaceRefreshOnEvent;

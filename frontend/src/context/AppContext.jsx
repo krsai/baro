@@ -34,10 +34,12 @@ export const AppProvider = ({ children }) => {
       let tabs = prev;
       let changed = false;
       const pattern = options?.replacePrefix;
+      let replacementIndex = -1;
 
       // If a replacement pattern is given, first remove old tabs matching it.
       if (pattern) {
         const removedTabs = tabs.filter((t) => t.id.startsWith(pattern));
+        replacementIndex = tabs.findIndex((t) => t.id.startsWith(pattern));
         removedTabs.forEach((removedTab) => {
           const removedPath = String(removedTab?.id || '').trim();
           if (!removedPath) return;
@@ -74,10 +76,47 @@ export const AppProvider = ({ children }) => {
         }
       } else {
         changed = true;
-        tabs = [...tabs, tab];
+        if (replacementIndex >= 0) {
+          tabs = [
+            ...tabs.slice(0, replacementIndex),
+            tab,
+            ...tabs.slice(replacementIndex),
+          ];
+        } else {
+          tabs = [...tabs, tab];
+        }
       }
 
       return changed ? tabs : prev;
+    });
+  }, []);
+
+  const markTabChanged = useCallback((tabId) => {
+    const normalizedTabId = String(tabId || '').trim();
+    if (!normalizedTabId) return;
+    setOpenTabs((prev) => {
+      let changed = false;
+      const next = prev.map((tab) => {
+        if (tab.id !== normalizedTabId || tab.hasExternalChanges) return tab;
+        changed = true;
+        return { ...tab, hasExternalChanges: true };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const clearTabChanged = useCallback((tabId) => {
+    const normalizedTabId = String(tabId || '').trim();
+    if (!normalizedTabId) return;
+    setOpenTabs((prev) => {
+      let changed = false;
+      const next = prev.map((tab) => {
+        if (tab.id !== normalizedTabId || !tab.hasExternalChanges) return tab;
+        changed = true;
+        const { hasExternalChanges: _hasExternalChanges, ...rest } = tab;
+        return rest;
+      });
+      return changed ? next : prev;
     });
   }, []);
 
@@ -230,6 +269,8 @@ export const AppProvider = ({ children }) => {
       toggleSidebar,
       openTab,
       closeTab,
+      markTabChanged,
+      clearTabChanged,
       resetWorkspace,
       setFactories,
       setRoles,
@@ -242,11 +283,13 @@ export const AppProvider = ({ children }) => {
     }),
     [
       clearUnsavedChangesGuard,
+      clearTabChanged,
       closeTab,
       confirmDiscardUnsavedChanges,
       dismissNotification,
       hasUnsavedChanges,
       navigateToPath,
+      markTabChanged,
       openTab,
       resetWorkspace,
       setUnsavedChangesGuard,

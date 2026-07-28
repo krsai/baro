@@ -212,6 +212,17 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
                   bgcolor: 'white',
                   fontWeight: 'bold',
                 },
+                ...(tab.hasExternalChanges
+                  ? {
+                      color: '#d97706',
+                      fontWeight: 700,
+                      '&.Mui-selected': {
+                        bgcolor: 'white',
+                        color: 'primary.main',
+                        fontWeight: 'bold',
+                      },
+                    }
+                  : {}),
                 '&:not(.Mui-selected)': {
                   bgcolor: '#f4f6f8',
                 },
@@ -223,7 +234,22 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
               }}
               label={
                 <Box component="span" sx={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem' }}>
-                  {resolveRenderedTabLabel(tab)}
+                  <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                    {tab.hasExternalChanges && (
+                      <Box
+                        component="span"
+                        aria-label="updated"
+                        sx={{
+                          width: 6,
+                          height: 6,
+                          mr: 0.75,
+                          borderRadius: '50%',
+                          bgcolor: 'currentColor',
+                        }}
+                      />
+                    )}
+                    {resolveRenderedTabLabel(tab)}
+                  </Box>
                   {isTabLoading && (
                     <Box component="span" sx={{ display: 'inline-flex', ml: 0.75, color: 'text.secondary' }}>
                       <CircularProgress size={13} thickness={5} color="inherit" />
