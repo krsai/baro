@@ -96,21 +96,31 @@
 | **라인** | 작업자들의 팀. "라인 1 = A팀(작업자 1, 2, 3)" |
 | **PT** | Physical Time. 기본 물리 시간 (`process.pt`) |
 | **ST** | Standard Time. 수량 구간별 수동 설정 기준 시간 (`stValues[bucket].seconds`). 구간: 1,3,5,10,30,50,100,300,500,1000,3000,5000,10000 |
-| **CT** | Contract Time. ST 기반 계약 시간(초/공정). **급여 기준**: `CT × 수량 × 초당공임 = 급여` |
+| **CT** | Contract Time. ST 기반 계약 시간(초/공정). 성과급 직원의 작업 실적을 금액으로 환산하는 시간 기준이다. |
 | **AT** | Actual Time. 작업기록으로 학습한 실제 시간. 모델: `AT(q) = a*q + b` |
 
 ### 시간 필드 규칙 (강제)
 - **PT (`ptSeconds`)**: 공정 row 1개를 1장 수행하는 전체 물리 시간이다. `timesPerPiece`를 다시 곱하지 않는다.
 - **ST (`stSeconds`)**: 공정 row 1개를 1장 수행하는 전체 표준 시간이다. 스케줄러 예상 기간, 배정 카드 길이, 계획 소요 시간 계산의 기준이며 `timesPerPiece`를 다시 곱하지 않는다.
-- **CT (`ctSeconds`)**: 공정 row 1개를 1장 수행하는 전체 계약/급여 기준 시간이다. 배정 카드에서 수정할 수 있지만, 스케줄러 길이 계산에 사용하면 안 되며 `timesPerPiece`를 다시 곱하지 않는다.
+- **CT (`ctSeconds`)**: 공정 row 1개를 1장 수행하는 전체 계약 시간이며, 성과급 계산에서 작업 실적을 금액으로 환산하는 시간 기준이다. 배정 카드에서 수정할 수 있지만, 스케줄러 길이 계산에 사용하면 안 되며 `timesPerPiece`를 다시 곱하지 않는다.
 - **AT**: WorkLog/WorkRecord와 출퇴근 데이터로 학습한 실제 시간 추정값이다. 스케줄 보정/예측 참고값이지 CT가 아니다.
 - `AssignmentPlan.assignmentStTotalSeconds`(물리 컬럼명, §24에서 `stTotalSeconds`에서 리네임됨): 배정 카드 전체의 계획 ST 총초. 스케줄러 길이 계산 전용이다. API/board payload 호환 키로 `stTotalSeconds`가 여전히 노출될 수 있다.
-- `AssignmentPlan.assignmentCtTotalSeconds`(물리 컬럼명, §24에서 `ctTotalSeconds`에서 리네임됨): 배정 카드 전체의 계약 CT 총초. 급여/계약 기준 전용이며 스케줄러 길이 계산에 사용 금지. API/board payload 호환 키로 `ctTotalSeconds`가 여전히 노출될 수 있다.
-- `WorkRecord.ctSeconds`: 작업기록 상세 행의 급여 계산용 CT. 진행률/스케줄 실제 기간 계산에서 ST처럼 쓰면 안 된다.
+- `AssignmentPlan.assignmentCtTotalSeconds`(물리 컬럼명, §24에서 `ctTotalSeconds`에서 리네임됨): 배정 카드 전체의 계약 CT 총초. 성과급 산정 근거와 계약 기준 전용이며 스케줄러 길이 계산에 사용 금지. API/board payload 호환 키로 `ctTotalSeconds`가 여전히 노출될 수 있다.
+- `WorkRecord.ctSeconds`: 작업기록 상세 행의 성과급 계산용 CT. 진행률/스케줄 실제 기간 계산에서 ST처럼 쓰면 안 된다.
 - `WorkLog.totalCtSeconds`: 작업기록 헤더의 CT 합계. 작업기록 목록/요약과 급여 참고용이며 스케줄러 길이 계산에 사용 금지.
 - `AtTrainingBucket.laborInputSeconds`: AT 학습용 실제/대체 투입 노동 시간 합이다. 스케줄러 계획 시간이나 계약 시간과 섞으면 안 된다.
 - 같은 의미는 같은 단어를 쓴다. 공정 단위는 `stSeconds`/`ctSeconds`, 배정카드 총합은 `stTotalSeconds`/`ctTotalSeconds`, AT 투입 노동 시간은 `laborInputSeconds`.
 - 신규 코드에서 `contractedSeconds`나 도메인 필드명 `totalSeconds`를 추가하지 않는다. `totalSeconds`는 화면 포맷팅 같은 일반 지역 변수에만 허용한다.
+
+### 2026-07-28 생산직 성과급 급여 구조
+
+- 생산직 근로자 중 성과급 적용 직원의 월 총급여는 `공통 고정급(기본급 + 수당) + 개인별 성과급`으로 구성한다. 성과급 직원이라는 이유로 기본급이나 수당을 0원으로 간주하지 않는다.
+- 기본급과 수당은 작업 실적과 무관한 공통 고정 금액이다. 개인별 성과급과 분리해 저장·계산·표시하며, CT나 초당 단가로 기본급·수당을 역산하지 않는다.
+- 개인별 성과급은 해당 직원의 작업기록을 근거로 `Σ(WorkRecord.quantity × WorkRecord.ctSeconds × 작업 당시 적용되는 해당 공장의 성과급 초당 단가)`로 계산한다. CT는 전체 급여가 아니라 성과급 부분만 계산하는 시간 기준이다.
+- 공장의 초당 금액은 전체 급여나 월 목표 급여가 아니라 `공장 공통 성과급 초당 단가`다. 같은 공장에서 같은 적용기간에 일한 성과급 직원은 공통 단가를 사용하되, 개인별 작업기록 수량과 CT에 따라 성과급이 달라진다.
+- 공장 설정 화면의 `급여 기준`, `월 목표 급여`, `초당 급여`라는 표현으로 기본급·수당·성과급을 하나의 급여 기준처럼 보이게 하지 않는다. 성과급 설정 영역과 고정급 설정 영역을 명확히 분리한다.
+- 직원의 `급여 타입: 성과급`은 총급여 전체가 성과급이라는 뜻이 아니라, 고정급에 작업기록 기반 성과급을 추가하는 계산 방식임을 뜻한다. UI와 API 명칭도 이 의미를 오해 없이 드러내야 한다.
+- 과거 작업기록과 확정 급여를 현재 공장 단가로 다시 계산하지 않는다. 구현 시 공장별 성과급 단가의 적용기간 또는 급여 스냅샷 보존 방식을 관계형 데이터로 확정해야 한다.
 
 ### 인증/권한 가드레일 (강제)
 - 백엔드는 `x-user-email`, `x-org-id`, 쿼리 `orgId`를 **신원/권한의 소스오브트루스**로 사용하면 안 된다.
@@ -167,7 +177,7 @@
 - 판매단가는 주문 생성·수정·잠금·배정·생산·작업기록·급여 계산과 무관하다. 가격 누락으로 주문 잠금을 409 거부하지 않으며 주문 잠금은 가격표를 생성·수정하지 않는다.
 - `WorkOrderItem.salesPriceSnapshot`, `freezeOrderSalesPriceSnapshots`, `/orders/sales-price-diagnostics`, `salesPriceSnapshotStatus`는 잘못된 주문 잠금 시점 정책이므로 제거했다. 가격 확정은 향후 청구서 생성 시점에 관계형 `InvoiceLine`으로 구현하며 가격표·가격행·버킷 entry를 FK로 연결한다.
 - 청구 전 예상 수익률은 현재 활성 판매단가를 사용하고, 청구 후에는 가장 최근 적용 가능한 청구 라인의 동결 단가를 사용한다. 둘 다 없으면 0원으로 보완하지 않고 미계산으로 표시한다. 수익률과 청구 기능은 아직 미구현이다.
-- 판매방식은 `SalesPricingBasis` DB enum, 통화는 `Currency` 마스터와 `currencyId` FK로 저장한다. API는 호환을 위해 `currencyCode`를 주고받지만 임의 판매방식·통화를 기본값으로 조용히 치환하지 않는다. 환율은 Currency 마스터에 포함하지 않으며 별도 정책 확정 후 구현한다.
+- 고객 판매단가표의 판매방식은 `SalesPricingBasis` DB enum, 통화는 `Currency` 마스터와 `currencyId` FK로 저장한다. 단가 API는 `currencyCode`를 주고받지만 임의 판매방식·통화를 기본값으로 조용히 치환하지 않는다. 환율은 Currency 마스터에 포함하지 않으며 별도 정책 확정 후 구현한다.
 
 ### 주문 사이즈 세트 (2026-07-14)
 - `WorkOrderItem.sizeQuantities`는 자유 JSON 키를 유지한다. 주문 입력 UI는 전역 `SIZE_CODES` 하나만 렌더링하지 말고 선택된 size set의 `sizeCodes`를 렌더링한다.
@@ -223,7 +233,7 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 - 매출 단가 버킷과 스타일 ST/AT 시간 버킷의 연결은 완전히 분리한다. 고객 기본 매출 버킷은 `OrgRelationship.salesBucketSetVersionId`, 고객×스타일 매출 예외는 `OrgRelationshipStyleSalesBucket.quantityBucketSetVersionId`, 시간 버킷은 `Style.timeBucketSetVersionId`만 사용한다. 단가 화면에서 매출 버킷을 바꿀 때 `Style.timeBucketSetVersionId`, `StyleProcessStandard`, ST/AT 값은 절대 변경하지 않는다.
 - 매출 단가는 `CustomerSalesPriceList`(고객 관계×스타일×CMT/FP×통화×버킷 버전 헤더)와 `CustomerSalesPrice`(버킷 entry별 Decimal 단가) 관계형 행으로 저장한다. 가격이 없는 버킷은 인접 버킷·다른 통화·다른 판매방식·레거시 JSON으로 추정하지 않는다.
 - `CustomerSalesPrice.quantityBucketEntryId`와 가격표 헤더가 같은 `quantityBucketSetVersionId`를 가리키는지는 DB 복합 FK와 저장 트랜잭션 양쪽에서 fail-closed로 검증한다. `bucketQuantity`는 일반 가격 행에 중복 저장하지 않고 `QuantityBucketEntry` relation에서 읽는다.
-- 판매방식과 통화는 주문 헤더의 `WorkOrder.pricingBasis`/`currencyId`에서 향후 청구 기본값으로 선택한다. 각각 CMT/FP와 Currency 마스터의 USD/VND/KRW만 허용하며 MIX는 저장 판매방식이 아니다. 이 값은 주문 잠금 가격 확정값이 아니며 향후 청구서 생성 화면의 기본 선택값이다.
+- 주문은 스타일·수량·납기 같은 생산 주문 정보만 저장한다. `WorkOrder`에 판매방식이나 통화를 저장하거나 주문 화면에서 입력받지 않는다. 향후 청구 기능의 판매방식·통화는 고객 관계 기본값 또는 청구서에서 별도로 선택하며 주문의 임의 CMT/USD 기본값을 사용하지 않는다.
 - 주문 잠금은 판매단가를 조회·확정하지 않는다. 향후 청구서 생성 시 스타일 전체 청구수량으로 매출 버킷을 판정하고 그 시점의 활성 가격을 관계형 청구 라인에 동결한다. 가격이 없으면 청구서 생성만 거부하며 주문·생산 기능은 차단하지 않는다.
 - 단가는 `Decimal(18,4)`로 저장하고 API에서는 정확한 문자열로 전달한다. 0 또는 음수 단가는 허용하지 않으며 빈 칸은 미설정으로 저장할 수 있다.
 
@@ -258,7 +268,7 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
   - `lineId`가 스키마 FK 없이 `records` JSON 안에 비정규화 저장됨 (DB 조인 불가 — 구조적 한계).
 - **WorkRecord**: WorkLog 하위 상세 행. 한 행 = `(workerId, styleId, styleProcessId, quantity, ctSeconds)`.
   - 작업기록은 색상/사이즈/성별을 구분하지 않는다. AJ2102 흰색 S 100장과 검은색 M 100장처럼 주문 상세가 나뉘어도 작업기록은 해당 스타일/공정에서 만든 총 수량만 기록한다.
-  - `ctSeconds`는 해당 작업 상세의 급여/계약 기준 시간이다. 스케줄러 계획 길이의 기준은 아니다.
+  - `ctSeconds`는 해당 작업 상세의 계약 시간이며 성과급 산정 시간 기준이다. 전체 급여나 스케줄러 계획 길이의 기준은 아니다.
   - `effectiveCoverageStartDate/effectiveCoverageEndDate`는 WorkLog 기간과 작업자의 입사일/퇴사일을 교차해 저장한 작업자별 유효 작업기간 스냅샷이다. 월간 입력 중 중도 입사/퇴사자가 있으면 이 범위로 자동 절단하고 WorkLog 비고에 조정 내역을 남긴다.
   - `lineId Int?` 컬럼은 실제로 존재하지만 FK는 없다. `Line` 테이블과 조인 가능한 정규화 관계가 아니라 비정규화 보조 필드다.
   - 같은 작업자가 같은 기간(또는 같은 날) 여러 공정 입력 가능.
@@ -1536,7 +1546,7 @@ runtime 조회값:
 - 카드 길이 계산의 기준 작업량은 `assignmentStTotalSeconds`다.
 - WorkLog/WorkRecord는 실제 시간값이 아니라 progress 계산의 근거다.
 - 따라서 스케줄러는 `remainingStSeconds = assignmentStTotalSeconds × (1 - progress)`를 중심으로 남은 일감과 라인 비는 시점을 계산한다.
-- CT는 급여 기준이므로 스케줄러 길이 계산에 쓰지 않는다.
+- CT는 성과급 산정과 계약을 위한 시간 기준이므로 스케줄러 길이 계산에 쓰지 않는다.
 - AT는 ST 보정 참고값이지 스케줄러 길이의 직접 기준이 아니다.
 
 ### 33. 2026-06-05 Scheduler Remaining Work Summary Lock

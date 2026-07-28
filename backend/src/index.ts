@@ -721,8 +721,6 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "WorkOrder", columnName: "buyerOrgId" },
   { tableName: "WorkOrder", columnName: "sellerOrgId" },
   { tableName: "WorkOrder", columnName: "customerId" },
-  { tableName: "WorkOrder", columnName: "pricingBasis" },
-  { tableName: "WorkOrder", columnName: "currencyId" },
   { tableName: "WorkOrderItem", columnName: "styleId" },
   { tableName: "WorkOrderItem", columnName: "colorId" },
   { tableName: "Currency", columnName: "code" },
@@ -796,6 +794,8 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
   { tableName: "Style", columnName: "customerNameVi" },
   { tableName: "StyleProcess", columnName: "styleUid" },
   { tableName: "WorkOrder", columnName: "currencyCode" },
+  { tableName: "WorkOrder", columnName: "currencyId" },
+  { tableName: "WorkOrder", columnName: "pricingBasis" },
   { tableName: "WorkOrder", columnName: "buyerOrgName" },
   { tableName: "WorkOrder", columnName: "buyerOrgNameKo" },
   { tableName: "WorkOrder", columnName: "buyerOrgNameVi" },
@@ -826,7 +826,6 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "Currency_code_key",
-  "WorkOrder_currencyId_fkey",
   "OrgRelationshipStyleSalesBucket_relationship_style_key",
   "CustomerSalesPriceList_scope_version_key",
   "CustomerSalesPriceList_id_version_key",
@@ -6722,9 +6721,6 @@ const WORK_ORDER_PARTY_INCLUDE = {
   customerOrg: {
     select: { id: true, name: true, nameKo: true, nameVi: true },
   },
-  currency: {
-    select: { id: true, code: true, name: true },
-  },
 };
 const WORK_ORDER_RESPONSE_INCLUDE = {
   ...WORK_ORDER_PARTY_INCLUDE,
@@ -6797,18 +6793,6 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null): any => 
         : fallback?.sellerOrgId
     ),
     customerId: resolvedCustomerId,
-    pricingBasis: (() => {
-      const supplied = payload?.pricingBasis ?? fallback?.pricingBasis ?? "MANUFACTURING_SERVICE_PRICE";
-      const normalized = normalizeSalesPricingBasis(supplied);
-      if (!normalized) throw createHttpError(400, "invalid pricing basis");
-      return normalized;
-    })(),
-    currencyCode: (() => {
-      const supplied = payload?.currencyCode ?? fallback?.currency?.code ?? "USD";
-      const normalized = normalizeSalesCurrencyCode(supplied);
-      if (!normalized) throw createHttpError(400, "invalid currency");
-      return normalized;
-    })(),
     dueDate: resolveOptionalString(payload?.dueDate, fallback?.dueDate ?? null),
     status,
     confirmationStatus,
@@ -7069,8 +7053,6 @@ const toOrderResponse = (
     ),
     items,
     totalQuantity: toNonNegativeInt(order.totalQuantity, 0),
-    pricingBasis: order.pricingBasis ?? "MANUFACTURING_SERVICE_PRICE",
-    currencyCode: order.currency?.code ?? "",
     isModificationLocked,
     isManualModificationLocked,
     isAssignmentModificationLocked,
@@ -27878,8 +27860,6 @@ app.post("/orders", async (req, res) => {
     (sum: number, item: any) => sum + (Number(item?.totalQuantity) || 0),
     0
   );
-  normalized.currencyId = await resolveCurrencyIdOrThrow(normalized.currencyCode);
-  delete normalized.currencyCode;
   const { order, created } = await createOrReuseSharedOrder({
     normalized,
   });
@@ -27945,8 +27925,6 @@ app.put("/orders/:orderId", async (req, res) => {
     (sum: number, item: any) => sum + (Number(item?.totalQuantity) || 0),
     0
   );
-  normalized.currencyId = await resolveCurrencyIdOrThrow(normalized.currencyCode);
-  delete normalized.currencyCode;
 
   const orderNumberConflict = await findSharedOrderConflict({
     buyerOrgId: buyer.id,

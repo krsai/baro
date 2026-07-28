@@ -455,10 +455,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- Step 0r: independent sales buckets, relational sales prices, and order price snapshots (20260725)
-ALTER TABLE "WorkOrder"
-  ADD COLUMN IF NOT EXISTS "pricingBasis" TEXT NOT NULL DEFAULT 'MANUFACTURING_SERVICE_PRICE',
-  ADD COLUMN IF NOT EXISTS "currencyCode" TEXT NOT NULL DEFAULT 'USD';
+-- Step 0r: independent sales buckets and relational sales prices (20260725)
 ALTER TABLE "WorkOrderItem"
   ADD COLUMN IF NOT EXISTS "salesPriceSnapshot" JSONB;
 
@@ -4166,16 +4163,9 @@ INSERT INTO "Currency" ("code", "name") VALUES
   ('KRW', 'South Korean Won')
 ON CONFLICT ("code") DO NOTHING;
 
-ALTER TABLE "WorkOrder" ADD COLUMN IF NOT EXISTS "currencyId" INTEGER;
 ALTER TABLE "CustomerSalesPriceList"
   ADD COLUMN IF NOT EXISTS "currencyCode" TEXT NOT NULL DEFAULT 'USD',
   ADD COLUMN IF NOT EXISTS "currencyId" INTEGER;
-
-UPDATE "WorkOrder" order_row
-SET "currencyId" = currency.id
-FROM "Currency" currency
-WHERE order_row."currencyId" IS NULL
-  AND currency.code = order_row."currencyCode";
 
 UPDATE "CustomerSalesPriceList" price_list
 SET "currencyId" = currency.id
@@ -4185,13 +4175,6 @@ WHERE price_list."currencyId" IS NULL
 
 DO $$
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM "WorkOrder"
-    WHERE "currencyId" IS NULL
-       OR "pricingBasis"::text NOT IN ('MANUFACTURING_SERVICE_PRICE', 'FINISHED_GOODS_PRICE')
-  ) THEN
-    RAISE EXCEPTION 'WorkOrder has an unsupported pricing basis or currency';
-  END IF;
   IF EXISTS (
     SELECT 1 FROM "CustomerSalesPriceList"
     WHERE "currencyId" IS NULL
@@ -4206,12 +4189,6 @@ ALTER TABLE "CustomerSalesPriceList"
   DROP CONSTRAINT IF EXISTS "CustomerSalesPriceList_pricingBasis_check",
   DROP CONSTRAINT IF EXISTS "CustomerSalesPriceList_currencyCode_check";
 
-ALTER TABLE "WorkOrder"
-  ALTER COLUMN "pricingBasis" DROP DEFAULT,
-  ALTER COLUMN "pricingBasis" TYPE "SalesPricingBasis"
-    USING ("pricingBasis"::text::"SalesPricingBasis"),
-  ALTER COLUMN "pricingBasis" SET DEFAULT 'MANUFACTURING_SERVICE_PRICE'::"SalesPricingBasis",
-  ALTER COLUMN "currencyId" SET NOT NULL;
 ALTER TABLE "CustomerSalesPriceList"
   ALTER COLUMN "pricingBasis" TYPE "SalesPricingBasis"
     USING ("pricingBasis"::text::"SalesPricingBasis"),
@@ -4219,14 +4196,6 @@ ALTER TABLE "CustomerSalesPriceList"
 
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'WorkOrder_currencyId_fkey'
-  ) THEN
-    ALTER TABLE "WorkOrder"
-      ADD CONSTRAINT "WorkOrder_currencyId_fkey"
-      FOREIGN KEY ("currencyId") REFERENCES "Currency"("id")
-      ON DELETE RESTRICT ON UPDATE CASCADE;
-  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint WHERE conname = 'CustomerSalesPriceList_currency_fkey'
   ) THEN
@@ -4237,7 +4206,6 @@ BEGIN
   END IF;
 END $$;
 
-CREATE INDEX IF NOT EXISTS "WorkOrder_currencyId_idx" ON "WorkOrder"("currencyId");
 CREATE INDEX IF NOT EXISTS "CustomerSalesPriceList_currencyId_idx"
   ON "CustomerSalesPriceList"("currencyId");
 CREATE UNIQUE INDEX IF NOT EXISTS "CustomerSalesPriceList_scope_version_key"
@@ -4245,7 +4213,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS "CustomerSalesPriceList_scope_version_key"
     "orgRelationshipId", "styleId", "pricingBasis", "currencyId", "quantityBucketSetVersionId"
   );
 
-ALTER TABLE "WorkOrder" DROP COLUMN IF EXISTS "currencyCode";
+ALTER TABLE "WorkOrder"
+  DROP COLUMN IF EXISTS "currencyCode",
+  DROP COLUMN IF EXISTS "pricingBasis",
+  DROP COLUMN IF EXISTS "currencyId";
 ALTER TABLE "CustomerSalesPriceList" DROP COLUMN IF EXISTS "currencyCode";
 ALTER TABLE "WorkOrderItem" DROP COLUMN IF EXISTS "salesPriceSnapshot";
 ALTER TABLE "OrgRelationship"

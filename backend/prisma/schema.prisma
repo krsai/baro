@@ -233,7 +233,6 @@ model Currency {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workOrders      WorkOrder[]
   salesPriceLists CustomerSalesPriceList[]
 }
 
@@ -899,8 +898,6 @@ model WorkOrder {
   /// rows; run `npm run verify:workorder-item-backfill` before dropping this column.
   items                Json?
   totalQuantity        Int                         @default(0)
-  pricingBasis         SalesPricingBasis           @default(MANUFACTURING_SERVICE_PRICE)
-  currencyId           Int
   createdAt            DateTime                    @default(now())
   createdBy            String                      @default("system@baro.local")
   createdByEmployeeId  Int?
@@ -911,7 +908,6 @@ model WorkOrder {
   buyerOrg        Organization?    @relation("WorkOrderBuyerOrg", fields: [buyerOrgId], references: [id], onDelete: SetNull)
   sellerOrg       Organization?    @relation("WorkOrderSellerOrg", fields: [sellerOrgId], references: [id], onDelete: SetNull)
   customerOrg     Organization?    @relation("WorkOrderCustomerOrg", fields: [customerId], references: [id], onDelete: SetNull)
-  currency        Currency         @relation(fields: [currencyId], references: [id], onDelete: Restrict)
   workOrderItems  WorkOrderItem[]
   assignmentPlans AssignmentPlan[]
   assignmentCards AssignmentCard[]
@@ -924,7 +920,6 @@ model WorkOrder {
   @@unique([buyerOrgId, sellerOrgId, orderNumber])
   @@index([orgId])
   @@index([orgId, orderNumber])
-  @@index([currencyId])
 }
 
 model WorkOrderItem {

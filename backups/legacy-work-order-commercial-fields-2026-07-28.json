@@ -1,0 +1,18 @@
+{
+  "capturedAt": "2026-07-28T15:04:40.653Z",
+  "reason": "Remove unused commercial defaults from production orders",
+  "rows": [
+    { "id": 1, "orderId": "order-1776226898799-wlrze5", "orderNumber": "E14-4", "pricingBasis": "MANUFACTURING_SERVICE_PRICE", "currencyId": 1, "currencyCode": "USD" },
+    { "id": 2, "orderId": "order-1776234493310-pr3qme", "orderNumber": "L15-1", "pricingBasis": "MANUFACTURING_SERVICE_PRICE", "currencyId": 1, "currencyCode": "USD" },
+    { "id": 3, "orderId": "order-1778506753395-ef400m", "orderNumber": "L15-2", "pricingBasis": "MANUFACTURING_SERVICE_PRICE", "currencyId": 1, "currencyCode": "USD" },
+    { "id": 4, "orderId": "order-1778729040976-cci4hr", "orderNumber": "L16-1", "pricingBasis": "MANUFACTURING_SERVICE_PRICE", "currencyId": 1, "currencyCode": "USD" },
+    { "id": 5, "orderId": "order-1778730751703-sdw26u", "orderNumber": "D46", "pricingBasis": "MANUFACTURING_SERVICE_PRICE", "currencyId": 1, "currencyCode": "USD" },
+    { "id": 7, "orderId": "order-1781158904388-mfr7bf", "orderNumber": "L16-2", "pricingBasis": "MANUFACTURING_SERVICE_PRICE", "currencyId": 1, "currencyCode": "USD" },
+    { "id": 8, "orderId": "order-1781595553585-mobdwt", "orderNumber": "L16-3", "pricingBasis": "MANUFACTURING_SERVICE_PRICE", "currencyId": 1, "currencyCode": "USD" },
+    { "id": 9, "orderId": "order-1783061505954-01q4up", "orderNumber": "L16-4", "pricingBasis": "MANUFACTURING_SERVICE_PRICE", "currencyId": 1, "currencyCode": "USD" },
+    { "id": 10, "orderId": "order-1783926210921-tpo7uc", "orderNumber": "D50", "pricingBasis": "MANUFACTURING_SERVICE_PRICE", "currencyId": 1, "currencyCode": "USD" },
+    { "id": 11, "orderId": "order-1783926435591-gb0re5", "orderNumber": "L17-1", "pricingBasis": "MANUFACTURING_SERVICE_PRICE", "currencyId": 1, "currencyCode": "USD" },
+    { "id": 13, "orderId": "order-1784260110424-2zx0ve", "orderNumber": "TKD260503", "pricingBasis": "MANUFACTURING_SERVICE_PRICE", "currencyId": 1, "currencyCode": "USD" },
+    { "id": 14, "orderId": "order-1784260254655-40nsj7", "orderNumber": "TKD260602", "pricingBasis": "MANUFACTURING_SERVICE_PRICE", "currencyId": 1, "currencyCode": "USD" }
+  ]
+}

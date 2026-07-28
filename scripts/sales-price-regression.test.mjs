@@ -21,6 +21,10 @@ const frontend = fs.readFileSync(
   'frontend/src/pages/App/customer/CustomerPricingBoard.jsx',
   'utf8'
 );
+const orderFrontend = fs.readFileSync(
+  'frontend/src/pages/App/order/OrderList.jsx',
+  'utf8'
+);
 const styleApi = fs.readFileSync('frontend/src/utils/styleApi.js', 'utf8');
 const stFkVerifier = fs.readFileSync(
   'backend/scripts/inspect-st-bucket-fk-readiness.js',
@@ -217,8 +221,19 @@ test('pricing grid reuses bucket style data and isolates price-cell rerenders by
 test('order locking is independent from sales prices and preserves item FK validation', () => {
   assert.match(schema, /enum SalesPricingBasis \{/);
   assert.match(schema, /model Currency \{/);
-  assert.match(schema, /pricingBasis\s+SalesPricingBasis\s+@default\(MANUFACTURING_SERVICE_PRICE\)/);
-  assert.match(schema, /currencyId\s+Int/);
+  const workOrderSchema = schema.slice(
+    schema.indexOf('model WorkOrder {'),
+    schema.indexOf('model WorkOrderItem {')
+  );
+  const salesPriceListSchema = schema.slice(
+    schema.indexOf('model CustomerSalesPriceList {'),
+    schema.indexOf('model CustomerSalesPrice {')
+  );
+  assert.doesNotMatch(workOrderSchema, /pricingBasis|currencyId|currency\s+Currency/);
+  assert.match(salesPriceListSchema, /pricingBasis\s+SalesPricingBasis/);
+  assert.match(salesPriceListSchema, /currencyId\s+Int/);
+  assert.doesNotMatch(orderFrontend, /order-pricing-basis-label|order-currency-code-label/);
+  assert.doesNotMatch(orderFrontend, /pricingBasis|currencyCode/);
   assert.doesNotMatch(schema, /salesPriceSnapshot\s+Json\?/);
   assert.doesNotMatch(backend, /const freezeOrderSalesPriceSnapshots = async/);
   assert.doesNotMatch(backend, /sales price is missing for style/);
@@ -238,6 +253,4 @@ test('order locking is independent from sales prices and preserves item FK valid
   );
   assert.doesNotMatch(backend, /app\.get\("\/orders\/sales-price-diagnostics"/);
   assert.doesNotMatch(backend, /salesPriceSnapshotStatus/);
-  assert.match(backend, /throw createHttpError\(400, "invalid pricing basis"\)/);
-  assert.match(backend, /throw createHttpError\(400, "invalid currency"\)/);
 });

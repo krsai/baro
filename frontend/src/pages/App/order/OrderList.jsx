@@ -760,8 +760,6 @@ const buildInitialFormData = () => ({
   customerName: '',
   sizeSetCode: DEFAULT_SIZE_SET_CODE,
   dueDate: '',
-  pricingBasis: 'MANUFACTURING_SERVICE_PRICE',
-  currencyCode: 'USD',
   status: ORDER_PROGRESS_STAGE_DEFAULT,
   items: [createOrderItem()],
 });
@@ -793,8 +791,6 @@ const normalizeOrderForm = (order) => {
     sizeSetCode,
     items: items.map((item) => normalizeOrderItem(item, sizeSetCode)),
     status: normalizeOrderProgressStage(order.status) || base.status,
-    pricingBasis: order.pricingBasis || base.pricingBasis,
-    currencyCode: order.currencyCode || base.currencyCode,
   };
 };
 const toStableJsonText = (value) => {
@@ -844,8 +840,6 @@ const toComparableOrderSnapshot = (source, fixedSellerOrg = null) => {
     sellerOrgId: resolvedSellerOrgId,
     sellerOrgName: resolvedSellerOrgName,
     dueDate: String(source?.dueDate || '').trim(),
-    pricingBasis: source?.pricingBasis || 'MANUFACTURING_SERVICE_PRICE',
-    currencyCode: source?.currencyCode || 'USD',
     status: normalizeOrderProgressStage(source?.status) || ORDER_PROGRESS_STAGE_DEFAULT,
     sizeSetCode: orderSizeSetCode,
     items: normalizedItems,
@@ -3833,37 +3827,6 @@ const OrderList = () => {
               fullWidth
               InputLabelProps={{ shrink: true }}
             />
-            <FormControl fullWidth>
-              <InputLabel id="order-pricing-basis-label">
-                {languageCode === 'ko' ? '판매 방식' : languageCode === 'vi' ? 'Hinh thuc gia' : 'Pricing basis'}
-              </InputLabel>
-              <Select
-                labelId="order-pricing-basis-label"
-                name="pricingBasis"
-                value={formData.pricingBasis}
-                label={languageCode === 'ko' ? '판매 방식' : languageCode === 'vi' ? 'Hinh thuc gia' : 'Pricing basis'}
-                onChange={handleInputChange}
-              >
-                <MenuItem value="MANUFACTURING_SERVICE_PRICE">CMT · {languageCode === 'ko' ? '임가공' : 'Processing'}</MenuItem>
-                <MenuItem value="FINISHED_GOODS_PRICE">FP · {languageCode === 'ko' ? '완제품' : 'Finished goods'}</MenuItem>
-              </Select>
-            </FormControl>
-            <FormControl fullWidth>
-              <InputLabel id="order-currency-code-label">
-                {languageCode === 'ko' ? '통화' : languageCode === 'vi' ? 'Tien te' : 'Currency'}
-              </InputLabel>
-              <Select
-                labelId="order-currency-code-label"
-                name="currencyCode"
-                value={formData.currencyCode}
-                label={languageCode === 'ko' ? '통화' : languageCode === 'vi' ? 'Tien te' : 'Currency'}
-                onChange={handleInputChange}
-              >
-                <MenuItem value="USD">USD</MenuItem>
-                <MenuItem value="VND">VND</MenuItem>
-                <MenuItem value="KRW">KRW</MenuItem>
-              </Select>
-            </FormControl>
             <FormControl fullWidth>
               <InputLabel id="order-size-set-label">{orderPageText.sizeSet}</InputLabel>
               <Select
