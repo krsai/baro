@@ -16,9 +16,10 @@ const SIMILAR_STYLES = [
   { id: 'CJ-009', category: 'Pants', seconds: 1480 },
 ];
 const PURCHASE_HISTORY = [
-  { id: 'snap-10', name: '가시 스냅 10mm', detail: '최근 구매가 · 2026-06-18', unitPrice: 850, unit: '개' },
-  { id: 'zipper-60', name: '나일론 지퍼 60cm', detail: '최근 구매가 · 2026-05-27', unitPrice: 6200, unit: '개' },
-  { id: 'polybag', name: '포장용 폴리백', detail: '최근 구매가 · 2026-07-03', unitPrice: 430, unit: '장' },
+  { id: 'snap-10', name: '가시 스냅 10mm', detail: '최근 구매가 · 2026-06-18', unitPrice: 850, unit: '개', usageType: 'perPiece', usageValue: 10 },
+  { id: 'zipper-60', name: '나일론 지퍼 60cm', detail: '최근 구매가 · 2026-05-27', unitPrice: 6200, unit: '개', usageType: 'perPiece', usageValue: 1 },
+  { id: 'polybag', name: '포장용 폴리백', detail: '최근 구매가 · 2026-07-03', unitPrice: 430, unit: '장', usageType: 'perPiece', usageValue: 1 },
+  { id: 'carton-60', name: '수출용 포장 박스', detail: '최근 구매가 · 2026-06-11', unitPrice: 25000, unit: '박스', usageType: 'capacity', usageValue: 60 },
 ];
 const FACTORIES = [
   { id: 'baro-1', name: 'BARO 1공장', monthlyFixed: 80000000, monthlyLaborPerWorker: 9000000, hoursDay: 8, workdays: 26 },
@@ -29,7 +30,7 @@ const TEXT = {
   ko: {
     title: '수익 예측',
     target: '1. 예측 대상', category: '스타일 카테고리', styleName: '예측 스타일명', quantity: '생산 수량',
-    trade: '2. 거래 비용', productionType: '거래 형태 (참고)', costMethod: '부자재비 입력 방법', lumpSum: '총액 직접 입력', items: '구매이력에서 항목 추가', totalAccessory: '예상 부자재비 총액', purchaseItem: '구매 이력', itemQuantity: '사용 수량', addItem: '항목 추가', itemSubtotal: '예상 금액', noItems: '추가한 부자재 항목이 없습니다.', packaging: '포장재비 총액', logistics: '물류비 총액', tradeHint: 'CMT/FP와 관계없이 우리 회사에 발생하는 부자재·포장재·물류비를 입력하세요.',
+    trade: '2. 거래 비용', productionType: '거래 형태 (참고)', costMethod: '부자재비 입력 방법', lumpSum: '총액 직접 입력', items: '구매이력에서 항목 추가', totalAccessory: '예상 부자재비 총액', purchaseItem: '구매 이력', perPieceUsage: '한 벌당 사용량', capacityUsage: '1개당 포장 수량', addItem: '항목 추가', itemSubtotal: '예상 금액', noItems: '추가한 부자재 항목이 없습니다.', packaging: '기타 포장재비 총액', logistics: '물류비 총액', tradeHint: 'CMT/FP와 관계없이 우리 회사에 발생하는 부자재·포장재·물류비를 입력하세요.', pieces: '벌', required: '필요',
     time: '3. 예상 작업시간', direct: '직접 입력', similar: '유사 스타일 참조', seconds: '한 벌 예상시간', similarStyle: '유사 스타일', timeHint: '같은 카테고리의 스타일만 표시합니다. 선택한 스타일의 ST를 시작값으로 가져옵니다.',
     production: '4. 생산 계획', factory: '생산 공장', workers: '투입 인원', factoryHint: '공장을 선택하면 해당 공장의 근무일·근무시간·고정비·인건비 기준으로 계산합니다.',
     cost: '5. 목표 이익', directCost: '기타 직접비 (한 벌)', margin: '목표 이익률',
@@ -38,7 +39,7 @@ const TEXT = {
   en: {
     title: 'Profit Forecast',
     target: '1. Forecast Target', category: 'Style Category', styleName: 'Forecast Style Name', quantity: 'Production Quantity',
-    trade: '2. Commercial Costs', productionType: 'Deal Type (Reference)', costMethod: 'Trims Cost Input', lumpSum: 'Enter Total', items: 'Add Purchase History Items', totalAccessory: 'Estimated Total Trims Cost', purchaseItem: 'Purchase History', itemQuantity: 'Usage Quantity', addItem: 'Add Item', itemSubtotal: 'Estimated Amount', noItems: 'No trim items added.', packaging: 'Total Packaging Cost', logistics: 'Total Logistics Cost', tradeHint: 'Enter costs paid by us regardless of whether the deal is CMT or FP.',
+    trade: '2. Commercial Costs', productionType: 'Deal Type (Reference)', costMethod: 'Trims Cost Input', lumpSum: 'Enter Total', items: 'Add Purchase History Items', totalAccessory: 'Estimated Total Trims Cost', purchaseItem: 'Purchase History', perPieceUsage: 'Usage per Garment', capacityUsage: 'Garments per Unit', addItem: 'Add Item', itemSubtotal: 'Estimated Amount', noItems: 'No trim items added.', packaging: 'Other Packaging Cost', logistics: 'Total Logistics Cost', tradeHint: 'Enter costs paid by us regardless of whether the deal is CMT or FP.', pieces: 'garments', required: 'Required',
     time: '3. Estimated Work Time', direct: 'Direct Input', similar: 'Reference Similar Style', seconds: 'Seconds per Piece', similarStyle: 'Similar Style', timeHint: 'Only styles in the same category are shown. Its ST is used as a starting value.',
     production: '4. Production Plan', factory: 'Factory', workers: 'Workers', factoryHint: 'Factory workdays, hours, fixed costs, and labor rates are used automatically.',
     cost: '5. Profit Target', directCost: 'Other Direct Cost per Piece', margin: 'Target Profit Margin',
@@ -47,6 +48,9 @@ const TEXT = {
 };
 
 const n = (value, fallback = 0) => Math.max(0, Number(value) || fallback);
+const requiredQuantity = (item, orderQuantity) => item.usageType === 'capacity'
+  ? Math.ceil(Math.max(1, n(orderQuantity, 1)) / Math.max(1, n(item.usageValue, 1)))
+  : Math.ceil(Math.max(1, n(orderQuantity, 1)) * Math.max(0, n(item.usageValue)));
 const money = (value, languageCode) => `${new Intl.NumberFormat(languageCode === 'ko' ? 'ko-KR' : 'en-US', { maximumFractionDigits: 0 }).format(Math.round(n(value)))} ₫`;
 const FieldCard = ({ title, children }) => <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}><Typography variant="subtitle1" fontWeight={700} gutterBottom>{title}</Typography><Stack spacing={2}>{children}</Stack></Paper>;
 const Metric = ({ label, value, strong }) => <Stack direction="row" justifyContent="space-between" spacing={2}><Typography variant="body2" color="text.secondary">{label}</Typography><Typography variant={strong ? 'subtitle1' : 'body2'} fontWeight={strong ? 800 : 600} textAlign="right" sx={{ fontFamily: strong ? 'inherit' : 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{value}</Typography></Stack>;
@@ -56,7 +60,7 @@ const ReceiptDivider = () => <Divider sx={{ borderStyle: 'dashed', borderColor: 
 const RevenueForecast = () => {
   const { languageCode } = useLanguage();
   const text = TEXT[languageCode] || TEXT.en;
-  const [draft, setDraft] = useState({ category: 'Jacket', styleName: 'AJ2000', quantity: 300, productionType: 'CMT', accessoryMode: 'lump', accessoryLumpSum: 50000000, packagingCost: 1500000, logisticsCost: 3000000, selectedPurchaseId: 'snap-10', purchaseQuantity: 600, accessoryItems: [], timeMode: 'similar', similarStyleId: 'AJ1972', seconds: 2163, factoryId: 'baro-1', workers: 8, directCost: 120000, margin: 20 });
+  const [draft, setDraft] = useState({ category: 'Jacket', styleName: 'AJ2000', quantity: 300, productionType: 'CMT', accessoryMode: 'lump', accessoryLumpSum: 50000000, packagingCost: 1500000, logisticsCost: 3000000, selectedPurchaseId: 'snap-10', usageValue: 10, accessoryItems: [], timeMode: 'similar', similarStyleId: 'AJ1972', seconds: 2163, factoryId: 'baro-1', workers: 8, directCost: 120000, margin: 20 });
   const set = (key) => (event, value) => setDraft((current) => ({ ...current, [key]: value ?? event.target.value }));
   const factory = FACTORIES.find((item) => item.id === draft.factoryId) || FACTORIES[0];
   const similarStyles = SIMILAR_STYLES.filter((style) => style.category === draft.category);
@@ -69,13 +73,18 @@ const RevenueForecast = () => {
     const found = SIMILAR_STYLES.find((item) => item.id === event.target.value);
     setDraft((current) => ({ ...current, similarStyleId: event.target.value, seconds: found?.seconds || current.seconds }));
   };
+  const selectPurchase = (event) => {
+    const purchase = PURCHASE_HISTORY.find((item) => item.id === event.target.value);
+    setDraft((current) => ({ ...current, selectedPurchaseId: event.target.value, usageValue: purchase?.usageValue || 1 }));
+  };
   const addAccessory = () => {
     const purchase = PURCHASE_HISTORY.find((item) => item.id === draft.selectedPurchaseId);
     if (!purchase) return;
-    setDraft((current) => ({ ...current, accessoryItems: [...current.accessoryItems, { ...purchase, rowId: `${purchase.id}-${Date.now()}`, quantity: Math.max(1, n(current.purchaseQuantity, 1)) }] }));
+    setDraft((current) => ({ ...current, accessoryItems: [...current.accessoryItems, { ...purchase, rowId: `${purchase.id}-${Date.now()}`, usageValue: Math.max(0.01, n(current.usageValue, 1)) }] }));
   };
   const removeAccessory = (rowId) => setDraft((current) => ({ ...current, accessoryItems: current.accessoryItems.filter((item) => item.rowId !== rowId) }));
-  const itemAccessoryTotal = draft.accessoryItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+  const selectedPurchase = PURCHASE_HISTORY.find((item) => item.id === draft.selectedPurchaseId) || PURCHASE_HISTORY[0];
+  const itemAccessoryTotal = draft.accessoryItems.reduce((sum, item) => sum + item.unitPrice * requiredQuantity(item, draft.quantity), 0);
   const accessoryTotal = draft.accessoryMode === 'lump' ? n(draft.accessoryLumpSum) : itemAccessoryTotal;
   const result = useMemo(() => {
     const qty = Math.max(1, Math.round(n(draft.quantity, 1)));
@@ -106,11 +115,11 @@ const RevenueForecast = () => {
           <ToggleButtonGroup exclusive fullWidth value={draft.accessoryMode} onChange={set('accessoryMode')} size="small"><ToggleButton value="lump">{text.lumpSum}</ToggleButton><ToggleButton value="items">{text.items}</ToggleButton></ToggleButtonGroup>
           {draft.accessoryMode === 'lump' ? <CostField label={text.totalAccessory} value={draft.accessoryLumpSum} onChange={set('accessoryLumpSum')} /> : <>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-              <FormControl sx={{ flex: 1 }}><InputLabel>{text.purchaseItem}</InputLabel><Select label={text.purchaseItem} value={draft.selectedPurchaseId} onChange={set('selectedPurchaseId')}>{PURCHASE_HISTORY.map((item) => <MenuItem key={item.id} value={item.id}><Box><Typography variant="body2">{item.name} · {money(item.unitPrice, languageCode)}/{item.unit}</Typography><Typography variant="caption" color="text.secondary">{item.detail}</Typography></Box></MenuItem>)}</Select></FormControl>
-              <TextField sx={{ width: { sm: 130 } }} label={text.itemQuantity} type="number" value={draft.purchaseQuantity} onChange={set('purchaseQuantity')} inputProps={{ min: 1 }} />
+              <FormControl sx={{ flex: 1 }}><InputLabel>{text.purchaseItem}</InputLabel><Select label={text.purchaseItem} value={draft.selectedPurchaseId} onChange={selectPurchase}>{PURCHASE_HISTORY.map((item) => <MenuItem key={item.id} value={item.id}><Box><Typography variant="body2">{item.name} · {money(item.unitPrice, languageCode)}/{item.unit}</Typography><Typography variant="caption" color="text.secondary">{item.detail}</Typography></Box></MenuItem>)}</Select></FormControl>
+              <TextField sx={{ width: { sm: 155 } }} label={selectedPurchase.usageType === 'capacity' ? text.capacityUsage : text.perPieceUsage} type="number" value={draft.usageValue} onChange={set('usageValue')} inputProps={{ min: 0.01, step: 0.01 }} InputProps={{ endAdornment: <InputAdornment position="end">{selectedPurchase.usageType === 'capacity' ? text.pieces : selectedPurchase.unit}</InputAdornment> }} />
               <Button variant="outlined" startIcon={<AddIcon />} onClick={addAccessory}>{text.addItem}</Button>
             </Stack>
-            {draft.accessoryItems.length === 0 ? <Typography variant="body2" color="text.secondary">{text.noItems}</Typography> : draft.accessoryItems.map((item) => <Stack key={item.rowId} direction="row" alignItems="center" spacing={1} sx={{ bgcolor: 'action.hover', px: 1.5, py: 1, borderRadius: 1 }}><Box sx={{ flex: 1 }}><Typography variant="body2" fontWeight={600}>{item.name} · {item.quantity.toLocaleString()}{item.unit}</Typography><Typography variant="caption" color="text.secondary">{money(item.unitPrice, languageCode)}/{item.unit}</Typography></Box><Typography variant="body2" fontWeight={700}>{money(item.unitPrice * item.quantity, languageCode)}</Typography><IconButton size="small" onClick={() => removeAccessory(item.rowId)}><DeleteOutlineIcon fontSize="small" /></IconButton></Stack>)}
+            {draft.accessoryItems.length === 0 ? <Typography variant="body2" color="text.secondary">{text.noItems}</Typography> : draft.accessoryItems.map((item) => { const requiredQty = requiredQuantity(item, draft.quantity); return <Stack key={item.rowId} direction="row" alignItems="center" spacing={1} sx={{ bgcolor: 'action.hover', px: 1.5, py: 1, borderRadius: 1 }}><Box sx={{ flex: 1 }}><Typography variant="body2" fontWeight={600}>{item.name}</Typography><Typography variant="caption" color="text.secondary">{item.usageType === 'capacity' ? `${item.unit}당 ${item.usageValue}${text.pieces}` : `한 벌당 ${item.usageValue}${item.unit}`} · {text.required} {requiredQty.toLocaleString()}{item.unit} · {money(item.unitPrice, languageCode)}/{item.unit}</Typography></Box><Typography variant="body2" fontWeight={700}>{money(item.unitPrice * requiredQty, languageCode)}</Typography><IconButton size="small" onClick={() => removeAccessory(item.rowId)}><DeleteOutlineIcon fontSize="small" /></IconButton></Stack>; })}
             <Metric label={text.itemSubtotal} value={money(itemAccessoryTotal, languageCode)} strong />
           </>}
           <CostField label={text.packaging} value={draft.packagingCost} onChange={set('packagingCost')} />
