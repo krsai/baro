@@ -6,6 +6,8 @@ import {
 } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AddIcon from '@mui/icons-material/Add';
+import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
+import NoteAddOutlinedIcon from '@mui/icons-material/NoteAddOutlined';
 import AppPageContainer from '../../components/AppPageContainer';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -25,11 +27,12 @@ const FACTORIES = [
   { id: 'baro-1', name: 'BARO 1공장', monthlyFixed: 80000000, monthlyLaborPerWorker: 9000000, hoursDay: 8, workdays: 26 },
   { id: 'baro-2', name: 'BARO 2공장', monthlyFixed: 62000000, monthlyLaborPerWorker: 8200000, hoursDay: 8, workdays: 26 },
 ];
+const FORECAST_STORAGE_KEY = 'baro.revenueForecast.records.v1';
 
 const TEXT = {
   ko: {
     title: '수익 예측',
-    target: '1. 예측 대상', category: '스타일 카테고리', styleName: '예측 스타일명', quantity: '생산 수량',
+    target: '1. 예측 대상', savedForecast: '저장된 예측 기록', selectForecast: '기록을 선택하세요', newForecast: '새 예측', saveForecast: '예측 저장', deleteForecast: '기록 삭제', category: '스타일 카테고리', styleName: '예측 스타일명', quantity: '생산 수량', unnamed: '이름 없는 예측',
     trade: '2. 거래 비용', productionType: '거래 형태 (참고)', costMethod: '부자재비 입력 방법', lumpSum: '총액 직접 입력', items: '구매이력에서 항목 추가', totalAccessory: '예상 부자재비 총액', purchaseItem: '구매 이력', perPieceUsage: '한 벌당 사용량', capacityUsage: '1개당 포장 수량', addItem: '항목 추가', itemSubtotal: '예상 금액', noItems: '추가한 부자재 항목이 없습니다.', packaging: '기타 포장재비 총액', logistics: '물류비 총액', tradeHint: 'CMT/FP와 관계없이 우리 회사에 발생하는 부자재·포장재·물류비를 입력하세요.', pieces: '벌', required: '필요',
     time: '3. 예상 작업시간', direct: '직접 입력', similar: '유사 스타일 참조', seconds: '한 벌 예상시간', similarStyle: '유사 스타일', timeHint: '같은 카테고리의 스타일만 표시합니다. 선택한 스타일의 ST를 시작값으로 가져옵니다.',
     production: '4. 생산 계획', factory: '생산 공장', workers: '투입 인원', factoryHint: '공장을 선택하면 해당 공장의 근무일·근무시간·고정비·인건비 기준으로 계산합니다.',
@@ -38,7 +41,7 @@ const TEXT = {
   },
   en: {
     title: 'Profit Forecast',
-    target: '1. Forecast Target', category: 'Style Category', styleName: 'Forecast Style Name', quantity: 'Production Quantity',
+    target: '1. Forecast Target', savedForecast: 'Saved Forecasts', selectForecast: 'Select a forecast', newForecast: 'New Forecast', saveForecast: 'Save Forecast', deleteForecast: 'Delete', category: 'Style Category', styleName: 'Forecast Style Name', quantity: 'Production Quantity', unnamed: 'Untitled Forecast',
     trade: '2. Commercial Costs', productionType: 'Deal Type (Reference)', costMethod: 'Trims Cost Input', lumpSum: 'Enter Total', items: 'Add Purchase History Items', totalAccessory: 'Estimated Total Trims Cost', purchaseItem: 'Purchase History', perPieceUsage: 'Usage per Garment', capacityUsage: 'Garments per Unit', addItem: 'Add Item', itemSubtotal: 'Estimated Amount', noItems: 'No trim items added.', packaging: 'Other Packaging Cost', logistics: 'Total Logistics Cost', tradeHint: 'Enter costs paid by us regardless of whether the deal is CMT or FP.', pieces: 'garments', required: 'Required',
     time: '3. Estimated Work Time', direct: 'Direct Input', similar: 'Reference Similar Style', seconds: 'Seconds per Piece', similarStyle: 'Similar Style', timeHint: 'Only styles in the same category are shown. Its ST is used as a starting value.',
     production: '4. Production Plan', factory: 'Factory', workers: 'Workers', factoryHint: 'Factory workdays, hours, fixed costs, and labor rates are used automatically.',
@@ -57,10 +60,22 @@ const Metric = ({ label, value, strong }) => <Stack direction="row" justifyConte
 const CostField = ({ label, value, onChange, helperText }) => <TextField label={label} type="number" value={value} onChange={onChange} helperText={helperText} inputProps={{ min: 0 }} InputProps={{ endAdornment: <InputAdornment position="end">₫</InputAdornment> }} />;
 const ReceiptDivider = () => <Divider sx={{ borderStyle: 'dashed', borderColor: 'rgba(80, 70, 50, .35)' }} />;
 
+const createInitialDraft = () => ({ category: 'Jacket', styleName: 'AJ2000', quantity: 300, productionType: 'CMT', accessoryMode: 'lump', accessoryLumpSum: 50000000, packagingCost: 1500000, logisticsCost: 3000000, selectedPurchaseId: 'snap-10', usageValue: 10, accessoryItems: [], timeMode: 'similar', similarStyleId: 'AJ1972', seconds: 2163, factoryId: 'baro-1', workers: 8, directCost: 120000, margin: 20 });
+const loadForecastRecords = () => {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(FORECAST_STORAGE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 const RevenueForecast = () => {
   const { languageCode } = useLanguage();
   const text = TEXT[languageCode] || TEXT.en;
-  const [draft, setDraft] = useState({ category: 'Jacket', styleName: 'AJ2000', quantity: 300, productionType: 'CMT', accessoryMode: 'lump', accessoryLumpSum: 50000000, packagingCost: 1500000, logisticsCost: 3000000, selectedPurchaseId: 'snap-10', usageValue: 10, accessoryItems: [], timeMode: 'similar', similarStyleId: 'AJ1972', seconds: 2163, factoryId: 'baro-1', workers: 8, directCost: 120000, margin: 20 });
+  const [draft, setDraft] = useState(createInitialDraft);
+  const [forecastRecords, setForecastRecords] = useState(loadForecastRecords);
+  const [selectedForecastId, setSelectedForecastId] = useState('');
   const set = (key) => (event, value) => setDraft((current) => ({ ...current, [key]: value ?? event.target.value }));
   const factory = FACTORIES.find((item) => item.id === draft.factoryId) || FACTORIES[0];
   const similarStyles = SIMILAR_STYLES.filter((style) => style.category === draft.category);
@@ -83,6 +98,35 @@ const RevenueForecast = () => {
     setDraft((current) => ({ ...current, accessoryItems: [...current.accessoryItems, { ...purchase, rowId: `${purchase.id}-${Date.now()}`, usageValue: Math.max(0.01, n(current.usageValue, 1)) }] }));
   };
   const removeAccessory = (rowId) => setDraft((current) => ({ ...current, accessoryItems: current.accessoryItems.filter((item) => item.rowId !== rowId) }));
+  const persistForecastRecords = (records) => {
+    setForecastRecords(records);
+    window.localStorage.setItem(FORECAST_STORAGE_KEY, JSON.stringify(records));
+  };
+  const saveForecast = () => {
+    const now = new Date().toISOString();
+    const id = selectedForecastId || `forecast-${Date.now()}`;
+    const record = { id, name: draft.styleName.trim() || text.unnamed, savedAt: now, draft };
+    const records = selectedForecastId
+      ? forecastRecords.map((item) => item.id === selectedForecastId ? record : item)
+      : [record, ...forecastRecords];
+    persistForecastRecords(records);
+    setSelectedForecastId(id);
+  };
+  const selectForecast = (event) => {
+    const id = event.target.value;
+    const record = forecastRecords.find((item) => item.id === id);
+    setSelectedForecastId(id);
+    if (record?.draft) setDraft({ ...createInitialDraft(), ...record.draft });
+  };
+  const newForecast = () => {
+    setSelectedForecastId('');
+    setDraft(createInitialDraft());
+  };
+  const deleteForecast = () => {
+    if (!selectedForecastId) return;
+    persistForecastRecords(forecastRecords.filter((item) => item.id !== selectedForecastId));
+    newForecast();
+  };
   const selectedPurchase = PURCHASE_HISTORY.find((item) => item.id === draft.selectedPurchaseId) || PURCHASE_HISTORY[0];
   const itemAccessoryTotal = draft.accessoryItems.reduce((sum, item) => sum + item.unitPrice * requiredQuantity(item, draft.quantity), 0);
   const accessoryTotal = draft.accessoryMode === 'lump' ? n(draft.accessoryLumpSum) : itemAccessoryTotal;
@@ -105,9 +149,14 @@ const RevenueForecast = () => {
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(380px, .95fr) minmax(420px, 1.05fr)' }, gap: 2.5, alignItems: 'start' }}>
       <Stack spacing={2}>
         <FieldCard title={text.target}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+            <FormControl sx={{ flex: 1 }}><InputLabel>{text.savedForecast}</InputLabel><Select label={text.savedForecast} value={selectedForecastId} onChange={selectForecast} displayEmpty><MenuItem value="" disabled>{text.selectForecast}</MenuItem>{forecastRecords.map((record) => <MenuItem key={record.id} value={record.id}>{record.name} · {Number(record.draft?.quantity || 0).toLocaleString()} pcs · {new Date(record.savedAt).toLocaleDateString()}</MenuItem>)}</Select></FormControl>
+            <Button variant="outlined" startIcon={<NoteAddOutlinedIcon />} onClick={newForecast}>{text.newForecast}</Button>
+          </Stack>
           <FormControl><InputLabel>{text.category}</InputLabel><Select label={text.category} value={draft.category} onChange={selectCategory}>{STYLE_CATEGORIES.map((category) => <MenuItem key={category} value={category}>{category}</MenuItem>)}</Select></FormControl>
           <TextField label={text.styleName} value={draft.styleName} onChange={set('styleName')} />
           <TextField label={text.quantity} type="number" value={draft.quantity} onChange={set('quantity')} inputProps={{ min: 1 }} />
+          <Stack direction="row" spacing={1} justifyContent="flex-end"><Button color="error" variant="text" startIcon={<DeleteOutlineIcon />} onClick={deleteForecast} disabled={!selectedForecastId}>{text.deleteForecast}</Button><Button variant="contained" startIcon={<SaveOutlinedIcon />} onClick={saveForecast}>{text.saveForecast}</Button></Stack>
         </FieldCard>
         <FieldCard title={text.trade}>
           <Typography variant="caption" color="text.secondary">{text.tradeHint}</Typography>
