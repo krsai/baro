@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert, Box, Button, Chip, Divider, FormControl, IconButton, InputAdornment,
+  Alert, Box, Button, Divider, FormControl, IconButton, InputAdornment,
   InputLabel, MenuItem, Paper, Select, Stack, TextField, ToggleButton,
   ToggleButtonGroup, Typography,
 } from '@mui/material';
@@ -27,7 +27,7 @@ const FACTORIES = [
 
 const TEXT = {
   ko: {
-    title: '수익 예측', prototype: 'UI 시뮬레이션', notice: '입력값으로 화면에서만 계산하는 시안입니다. 구매이력 예시는 실제 재고·매입 데이터를 저장하거나 변경하지 않습니다.',
+    title: '수익 예측',
     target: '1. 예측 대상', category: '스타일 카테고리', styleName: '예측 스타일명', quantity: '생산 수량',
     trade: '2. 거래 비용', productionType: '거래 형태 (참고)', costMethod: '부자재비 입력 방법', lumpSum: '총액 직접 입력', items: '구매이력에서 항목 추가', totalAccessory: '예상 부자재비 총액', purchaseItem: '구매 이력', itemQuantity: '사용 수량', addItem: '항목 추가', itemSubtotal: '예상 금액', noItems: '추가한 부자재 항목이 없습니다.', packaging: '포장재비 총액', logistics: '물류비 총액', tradeHint: 'CMT/FP와 관계없이 우리 회사에 발생하는 부자재·포장재·물류비를 입력하세요.',
     time: '3. 예상 작업시간', direct: '직접 입력', similar: '유사 스타일 참조', seconds: '한 벌 예상시간', similarStyle: '유사 스타일', timeHint: '같은 카테고리의 스타일만 표시합니다. 선택한 스타일의 ST를 시작값으로 가져옵니다.',
@@ -36,7 +36,7 @@ const TEXT = {
     estimate: '예상 계산서', laborTime: '총 필요 작업시간', workerDays: '총 필요 인일', duration: '투입 인원 기준 예상 기간', completion: '예상 완료', accessoryCost: '부자재·포장·물류비', otherDirect: '기타 직접비', laborCost: '예상 변동 인건비', fixedCost: '기간 배부 고정비', totalCost: '예상 총원가', unitCost: '한 벌 원가', recommended: '필요한 한 벌 판매가', revenue: '필요한 총매출', profit: '목표 이익', assumption: '생산효율 100% 기준입니다. 실제 휴무·잔업·라인 효율은 추후 정책 확정 시 반영해야 합니다.',
   },
   en: {
-    title: 'Profit Forecast', prototype: 'UI Simulation', notice: 'This draft calculates only in the browser and does not change purchasing or inventory data.',
+    title: 'Profit Forecast',
     target: '1. Forecast Target', category: 'Style Category', styleName: 'Forecast Style Name', quantity: 'Production Quantity',
     trade: '2. Commercial Costs', productionType: 'Deal Type (Reference)', costMethod: 'Trims Cost Input', lumpSum: 'Enter Total', items: 'Add Purchase History Items', totalAccessory: 'Estimated Total Trims Cost', purchaseItem: 'Purchase History', itemQuantity: 'Usage Quantity', addItem: 'Add Item', itemSubtotal: 'Estimated Amount', noItems: 'No trim items added.', packaging: 'Total Packaging Cost', logistics: 'Total Logistics Cost', tradeHint: 'Enter costs paid by us regardless of whether the deal is CMT or FP.',
     time: '3. Estimated Work Time', direct: 'Direct Input', similar: 'Reference Similar Style', seconds: 'Seconds per Piece', similarStyle: 'Similar Style', timeHint: 'Only styles in the same category are shown. Its ST is used as a starting value.',
@@ -92,7 +92,6 @@ const RevenueForecast = () => {
   }, [draft, factory, accessoryTotal]);
 
   return <AppPageContainer title={text.title}><Stack spacing={2.5}>
-    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}><Chip label={text.prototype} color="warning" variant="outlined" /><Alert severity="info" sx={{ flex: 1 }}>{text.notice}</Alert></Stack>
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(380px, .95fr) minmax(420px, 1.05fr)' }, gap: 2.5, alignItems: 'start' }}>
       <Stack spacing={2}>
         <FieldCard title={text.target}>
