@@ -495,8 +495,9 @@ const StyleBoard = () => {
     showNotification,
   ]);
 
-  const handleAtResetClick = useCallback(() => {
+  const handleAtResetClick = useCallback((event) => {
     if (!activeOrgId || isAtSyncRunning || isAtResetRunning) return;
+    event?.currentTarget?.blur();
     setAtResetConfirmOpen(true);
   }, [activeOrgId, isAtResetRunning, isAtSyncRunning]);
 
