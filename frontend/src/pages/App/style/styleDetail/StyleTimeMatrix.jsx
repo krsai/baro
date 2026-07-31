@@ -244,9 +244,11 @@ const restoreProcessStState = (process, snapshot) => normalizeProcess({
 });
 
 const dk = (id, qty) => `${id}::${qty}`;
+// 공정 하나(ST행+AT행)를 한 블록으로 인식하도록 같은 배경을 쓰고,
+// 홀수/짝수 공정끼리는 뚜렷이 구분되도록 대비를 준다.
 const PROCESS_GROUP_TONES = [
-  { name: '#F8FAFC', st: '#FFFFFF', at: '#F8FAFC' },
-  { name: '#F1F5F9', st: '#F8FAFC', at: '#F1F5F9' },
+  { bg: '#FFFFFF' },
+  { bg: '#EAF0F6' },
 ];
 
 // ── StyleTimeMatrix ─────────────────────────────────────────────────────────
@@ -621,7 +623,7 @@ const StyleTimeMatrix = ({
                   position: 'sticky',
                   left: 0,
                   zIndex: 2,
-                  backgroundColor: groupTone.name,
+                  backgroundColor: groupTone.bg,
                   borderTop: groupTopBorder,
                   borderBottom: GROUP_BOTTOM_BORDER,
                   borderRight: STICKY_COLUMN_DIVIDER,
@@ -673,7 +675,7 @@ const StyleTimeMatrix = ({
                         sx={{
                           ...metricBaseSx,
                           color: '#475569',
-                          backgroundColor: groupTone.st,
+                          backgroundColor: groupTone.bg,
                           py: 0.5,
                           borderTop: groupTopBorder,
                           borderBottom: PAIR_DIVIDER,
@@ -706,7 +708,7 @@ const StyleTimeMatrix = ({
                             sx={{
                               py: '4px',
                               px: '4px',
-                              backgroundColor: groupTone.st,
+                              backgroundColor: groupTone.bg,
                               borderTop: groupTopBorder,
                               borderBottom: PAIR_DIVIDER,
                             }}
@@ -730,7 +732,7 @@ const StyleTimeMatrix = ({
                                   py: 0.5,
                                   fontSize: 12,
                                   fontVariantNumeric: 'tabular-nums',
-                                  fontWeight: requiresReview ? 800 : 500,
+                                  fontWeight: 400,
                                   color: requiresReview ? 'error.main' : 'text.primary',
                                 },
                                 '& .MuiOutlinedInput-root': {
@@ -753,7 +755,7 @@ const StyleTimeMatrix = ({
                         sx={{
                           ...metricBaseSx,
                           color: '#64748B',
-                          backgroundColor: groupTone.at,
+                          backgroundColor: groupTone.bg,
                           py: 0.5,
                           borderBottom: GROUP_BOTTOM_BORDER,
                         }}
@@ -784,13 +786,7 @@ const StyleTimeMatrix = ({
                             fontVariantNumeric: 'tabular-nums',
                             color: atColor,
                             fontStyle: shouldDisplayAtVal ? 'normal' : 'italic',
-                            fontWeight:
-                              shouldDisplayAtVal &&
-                              (atCellState.tone === 'provisional' ||
-                                atCellState.tone === 'provisional-extrapolated' ||
-                                atCellState.tone === 'extrapolated')
-                                ? 600
-                                : 400,
+                            fontWeight: 400,
                           }}>
                             {shouldDisplayAtVal ? fmtRoundedSec(atVal) : '-'}
                           </Box>
@@ -802,7 +798,7 @@ const StyleTimeMatrix = ({
                             sx={{
                               py: '4px',
                               pr: 1.5,
-                              backgroundColor: groupTone.at,
+                              backgroundColor: groupTone.bg,
                               borderBottom: GROUP_BOTTOM_BORDER,
                             }}
                           >
