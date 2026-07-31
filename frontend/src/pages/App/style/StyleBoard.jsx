@@ -76,7 +76,6 @@ const AT_RELIABILITY_CHIP_SX = {
   height: 18,
   '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem', lineHeight: 1.1, fontWeight: 400 },
 };
-const STYLE_BOARD_AT_SYNC_MARKER = 'style-board-at-sync-2026-07-22-4';
 const ST_AT_GAP_PALETTE = {
   [TIME_DIVERGENCE_SEVERITY.NORMAL]: { bg: '#DCEAF8', text: '#245A95' },
   [TIME_DIVERGENCE_SEVERITY.REVIEW]: { bg: '#F7DCC8', text: '#AC6424' },
@@ -282,7 +281,6 @@ const StyleBoard = () => {
       setAtSyncStatus(status);
       return status;
     } catch (error) {
-      console.warn('[at-sync] status failed', error);
       setAtSyncStatus(null);
       if (throwOnError) throw error;
       return null;
@@ -321,145 +319,16 @@ const StyleBoard = () => {
     if (!activeOrgId || isAtSyncRunning || atSyncStatus?.needsUpdate !== true) return;
     setAtSyncRunning(true);
     try {
-      console.log('[at-sync] request', {
-        clientMarker: STYLE_BOARD_AT_SYNC_MARKER,
-        orgId: activeOrgId,
-        mode: 'previous',
-        debug: true,
-      });
       const result = await requestJSON(
         `/at-sync/run-now${buildQueryString({ orgId: activeOrgId })}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'previous', debug: true }),
+          body: JSON.stringify({ mode: 'previous' }),
         }
       );
-      console.log('[at-sync] response', result);
-      if (!isAtSyncSuccessReason(result?.reason)) {
-        console.warn('[at-sync] non-success reason', {
-          clientMarker: STYLE_BOARD_AT_SYNC_MARKER,
-          runtimeMarker: result?.runtimeMarker ?? null,
-          reason: result.reason,
-          earlyExitStage: result?.diagnostics?.source?.earlyExitStage ?? null,
-          rawStyleIdCount: result?.diagnostics?.source?.rawStyleIdCount ?? 0,
-          styleCandidateCount: result?.diagnostics?.source?.styleCandidateCount ?? 0,
-          fittingStatusCounts: result?.diagnostics?.fitting?.statusCounts ?? {},
-        });
-      }
-      if (result?.diagnostics) {
-        console.groupCollapsed('[at-sync] diagnostics');
-        console.log('summary', result.diagnostics);
-        if (result?.diagnostics?.source) {
-          console.table([
-            {
-              trainingMonthKey: result.diagnostics.trainingMonthKey,
-              sourceWorkLogs: result.diagnostics.source.sourceWorkLogCount,
-              filteredWorkLogs: result.diagnostics.source.filteredWorkLogCount,
-              includedWorkLogs: result.diagnostics.source.includedWorkLogCount,
-              sourceWorkRecords: result.diagnostics.source.sourceWorkRecordCount,
-              filteredWorkRecords: result.diagnostics.source.filteredWorkRecordCount,
-              includedWorkRecords: result.diagnostics.source.includedWorkRecordCount,
-              eligibleWorkers: result.diagnostics.source.eligibleWorkerCount,
-              attendanceRows: result.diagnostics.source.attendanceRowCount,
-              actualAttendanceWorkerDays:
-                result.diagnostics.source.actualAttendanceWorkerDayCount ?? 0,
-              fallbackAttendanceWorkerDays:
-                result.diagnostics.source.fallbackAttendanceWorkerDayCount ?? 0,
-              actualLaborInputSeconds:
-                result.diagnostics.source.actualLaborInputSeconds ?? 0,
-              fallbackLaborInputSeconds:
-                result.diagnostics.source.fallbackLaborInputSeconds ?? 0,
-              fallbackAppliedWorkLogs:
-                result.diagnostics.source.fallbackAppliedWorkLogCount ?? 0,
-              incompleteAttendanceWorkerDays:
-                result.diagnostics.source.incompleteAttendanceWorkerDayCount ?? 0,
-              fullFallbackWorkerWorkLogs:
-                result.diagnostics.source.fullFallbackWorkerWorkLogCount ?? 0,
-              partialFallbackWorkerWorkLogs:
-                result.diagnostics.source.partialFallbackWorkerWorkLogCount ?? 0,
-              skippedBeforeAttendanceCoverage:
-                result.diagnostics.source.skippedBeforeAttendanceCoverageWorkLogCount,
-              skippedNoUsableRows:
-                result.diagnostics.source.skippedNoUsableRowsWorkLogCount,
-              partialMissingAttendance:
-                result.diagnostics.source.partialMissingAttendanceWorkLogCount,
-              skippedNoLaborInput:
-                result.diagnostics.source.skippedNoLaborInputWorkLogCount,
-              earlyExitStage: result.diagnostics.source.earlyExitStage ?? null,
-              rawStyleIdCount: result.diagnostics.source.rawStyleIdCount ?? 0,
-              styleCandidateCount: result.diagnostics.source.styleCandidateCount ?? 0,
-              excludedMissingWorker:
-                result.diagnostics.source.excludedMissingWorkerRecordCount,
-              excludedMissingAttendance:
-                result.diagnostics.source.excludedMissingAttendanceRecordCount,
-              noEligibleWorkingDayExcluded:
-                result.diagnostics.source.noEligibleWorkingDayExcludedRecordCount ?? 0,
-              excludedStyleNotResolved:
-                result.diagnostics.source.excludedStyleNotResolvedRecordCount,
-              excludedProcessNotResolved:
-                result.diagnostics.source.excludedProcessNotResolvedRecordCount,
-              excludedCoverageInvalid:
-                result.diagnostics.source.excludedCoverageInvalidRecordCount,
-              excludedIneligibleWorker:
-                result.diagnostics.source.excludedIneligibleWorkerRecordCount,
-              bucketDraftCount: result.diagnostics.bucketDraftCount,
-              trainingDayBucketCount: result.diagnostics.trainingDayBucketCount,
-              reason: result.reason ?? 'done',
-              initialSeedMetricCount: result.diagnostics.initialSeedMetricCount ?? 0,
-              initialSeedMetricCountFromSt:
-                result.diagnostics.initialSeedMetricCountFromSt ?? 0,
-              missingInitialSeedMetricCount:
-                result.diagnostics.missingInitialSeedMetricCount ?? 0,
-              fittedMetricCount: result.diagnostics.fittedMetricCount ?? 0,
-              fittingMetricCount: result.diagnostics.fitting?.metricCount ?? 0,
-              fittingWeightedPointMetricCount:
-                result.diagnostics.fitting?.weightedPointMetricCount ?? 0,
-              fittingProvisionalMetricCount:
-                result.diagnostics.fitting?.provisionalMetricCount ?? 0,
-            },
-          ]);
-          if (Array.isArray(result.diagnostics.source.sampleExcludedRecords)) {
-            console.log(
-              '[at-sync] excluded record samples',
-              result.diagnostics.source.sampleExcludedRecords
-            );
-          }
-          if (Array.isArray(result.diagnostics.source.incompleteAttendanceSamples)) {
-            console.log(
-              '[at-sync] incomplete attendance samples',
-              result.diagnostics.source.incompleteAttendanceSamples
-            );
-          }
-          if (Array.isArray(result.diagnostics.source.rawStyleIdSamples)) {
-            console.log(
-              '[at-sync] raw style id samples',
-              result.diagnostics.source.rawStyleIdSamples
-            );
-          }
-          if (Array.isArray(result.diagnostics.source.styleCandidateSamples)) {
-            console.log(
-              '[at-sync] style candidate samples',
-              result.diagnostics.source.styleCandidateSamples
-            );
-          }
-          if (Array.isArray(result.diagnostics.missingInitialSeedSamples)) {
-            console.log(
-              '[at-sync] missing initial ST seed samples',
-              result.diagnostics.missingInitialSeedSamples
-            );
-          }
-          if (Array.isArray(result.diagnostics?.fitting?.metricSamples)) {
-            console.table(result.diagnostics.fitting.metricSamples);
-          }
-        }
-        console.groupEnd();
-      }
-      const refreshedStyles = await refreshStyles({ forceRefresh: true });
+      await refreshStyles({ forceRefresh: true });
       await refreshAtSyncStatus();
-      console.log('[at-sync] styles refreshed', {
-        styleCount: Array.isArray(refreshedStyles) ? refreshedStyles.length : 0,
-      });
       if (isAtSyncSuccessReason(result?.reason)) {
         showNotification(
           getUiMessage(
