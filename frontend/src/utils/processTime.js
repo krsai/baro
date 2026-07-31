@@ -390,29 +390,47 @@ const resolveAtV2Points = (process) => {
     .sort((left, right) => left.quantity - right.quantity);
 };
 
-const fitAtV2TotalSeconds = (points) => {
-  if (!Array.isArray(points) || points.length < 2) return null;
-  let sw = 0;
-  let swq = 0;
-  let swy = 0;
-  let swqq = 0;
-  let swqy = 0;
-  points.forEach((point) => {
-    const weight = Math.max(1, Number(point.quantity));
-    const quantity = Number(point.quantity);
-    const totalSeconds = Number(point.representativeTotalSeconds);
-    sw += weight;
-    swq += weight * quantity;
-    swy += weight * totalSeconds;
-    swqq += weight * quantity * quantity;
-    swqy += weight * quantity * totalSeconds;
+const resolveAtV2RepeatVariation = (observations) => {
+  const grouped = new Map();
+  (Array.isArray(observations) ? observations : []).forEach((observation) => {
+    const quantity = toOptionalNumber(observation?.quantity);
+    const laborInputSeconds = toOptionalNumber(
+      observation?.allocatedLaborInputSeconds
+    );
+    if (
+      quantity === null ||
+      quantity <= 0 ||
+      laborInputSeconds === null ||
+      laborInputSeconds <= 0
+    ) {
+      return;
+    }
+    const values = grouped.get(quantity) || [];
+    values.push(laborInputSeconds / quantity);
+    grouped.set(quantity, values);
   });
-  const determinant = sw * swqq - swq * swq;
-  if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-9) return null;
-  const a = (sw * swqy - swq * swy) / determinant;
-  const b = (swy - a * swq) / sw;
-  if (!Number.isFinite(a) || a <= 0 || !Number.isFinite(b) || b < 0) return null;
-  return { a, b };
+
+  let relativeSquaredDeviationSum = 0;
+  let repeatedObservationCount = 0;
+  grouped.forEach((values) => {
+    if (values.length < 2) return;
+    const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+    if (!Number.isFinite(mean) || mean <= 0) return;
+    values.forEach((value) => {
+      relativeSquaredDeviationSum += ((value - mean) / mean) ** 2;
+      repeatedObservationCount += 1;
+    });
+  });
+  if (repeatedObservationCount === 0) {
+    return { coefficient: null, penalty: 0 };
+  }
+  const coefficient = Math.sqrt(
+    relativeSquaredDeviationSum / repeatedObservationCount
+  );
+  return {
+    coefficient,
+    penalty: Math.min(20, Math.round(coefficient * 40)),
+  };
 };
 
 const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
@@ -465,15 +483,10 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
     const a =
       (upper.representativeTotalSeconds - lower.representativeTotalSeconds) /
       (upper.quantity - lower.quantity);
-    const b = lower.representativeTotalSeconds - a * lower.quantity;
-    if (
-      !Number.isFinite(a) ||
-      a <= 0 ||
-      !Number.isFinite(b) ||
-      b < 0
-    ) {
+    if (!Number.isFinite(a) || a <= 0) {
       return { value: null, tone: 'fitted', observedRange };
     }
+    const b = lower.representativeTotalSeconds - a * lower.quantity;
     const totalSeconds = a * resolvedQuantity + b;
     const value = totalSeconds / resolvedQuantity;
     const stSeconds = resolveProcessStPerPieceSeconds(
@@ -497,12 +510,9 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
   if (outsideLimit) {
     return { value: null, tone: 'extrapolated', observedRange };
   }
-  const params = fitAtV2TotalSeconds(points);
-  if (!params) {
-    return { value: null, tone: 'extrapolated', observedRange };
-  }
-  const value =
-    (params.a * resolvedQuantity + params.b) / resolvedQuantity;
+  const nearestPoint =
+    resolvedQuantity < minQuantity ? points[0] : points[points.length - 1];
+  const value = nearestPoint.perPieceSeconds;
   const stSeconds = resolveProcessStPerPieceSeconds(process, resolvedQuantity);
   const minimumSeconds =
     Number.isFinite(stSeconds) && stSeconds > 0
@@ -630,6 +640,16 @@ const toAtReliabilityResult = (status, options = {}) => {
     Number.isFinite(Number(options.observationCount)) && Number(options.observationCount) >= 0
       ? Math.trunc(Number(options.observationCount))
       : null;
+  const repeatVariationCoefficient =
+    Number.isFinite(options.repeatVariationCoefficient) &&
+    options.repeatVariationCoefficient >= 0
+      ? Number(options.repeatVariationCoefficient)
+      : null;
+  const repeatVariationPenalty =
+    Number.isFinite(options.repeatVariationPenalty) &&
+    options.repeatVariationPenalty >= 0
+      ? Math.round(Number(options.repeatVariationPenalty))
+      : 0;
   const overridePercent = Number(options.percent);
   const percent = Number.isFinite(overridePercent)
     ? Math.round(clamp(overridePercent, 0, 100))
@@ -648,6 +668,8 @@ const toAtReliabilityResult = (status, options = {}) => {
     attendanceCoverage,
     attendanceFallbackShare,
     observationCount,
+    repeatVariationCoefficient,
+    repeatVariationPenalty,
     percent,
   };
 };
@@ -980,6 +1002,7 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
       ? independentAssignmentCount
       : observationCount;
   const distinctQuantityCount = points.length;
+  const repeatVariation = resolveAtV2RepeatVariation(observations);
   const quantityDiversityScore =
     distinctQuantityCount >= 5
       ? 40
@@ -1023,7 +1046,8 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
     10 +
       Math.min(35, effectiveObservationCount * 5) +
       quantityDiversityScore +
-      spanScore
+      spanScore -
+      repeatVariation.penalty
   );
   const status = resolveAtReliabilityStatusFromPercent(percent);
 
@@ -1036,6 +1060,8 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
     attendanceCoverage: null,
     attendanceFallbackShare: null,
     observationCount: effectiveObservationCount,
+    repeatVariationCoefficient: repeatVariation.coefficient,
+    repeatVariationPenalty: repeatVariation.penalty,
     percent,
   });
 };

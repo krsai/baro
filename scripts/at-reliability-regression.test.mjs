@@ -317,6 +317,65 @@ test('v2 rejects a decreasing total-time interpolation segment', () => {
   );
 });
 
+test('AJ2102-like increasing per-piece observations interpolate safely', () => {
+  const process = {
+    atV2Observations: [
+      {
+        assignmentPlanId: 334,
+        quantity: 200,
+        allocatedLaborInputSeconds: 6930.2,
+      },
+      {
+        assignmentPlanId: 328,
+        quantity: 300,
+        allocatedLaborInputSeconds: 11517.54,
+      },
+    ],
+    stBuckets: DEFAULT_BUCKETS.map((bucketQuantity) => ({
+      bucketQuantity,
+      bucketStSeconds: 100,
+    })),
+  };
+
+  assert.ok(
+    Math.abs(resolveProcessAtPerPieceSeconds(process, 250) - 36.89548) < 0.0001
+  );
+  assert.equal(
+    resolveProcessAtCellState(process, 250, DEFAULT_BUCKETS).tone,
+    'fitted'
+  );
+});
+
+test('near extrapolation clamps to the nearest observed per-piece AT', () => {
+  const process = {
+    atV2Observations: [
+      {
+        assignmentPlanId: 334,
+        quantity: 200,
+        allocatedLaborInputSeconds: 6930.2,
+      },
+      {
+        assignmentPlanId: 328,
+        quantity: 300,
+        allocatedLaborInputSeconds: 11517.54,
+      },
+    ],
+    stBuckets: DEFAULT_BUCKETS.map((bucketQuantity) => ({
+      bucketQuantity,
+      bucketStSeconds: 100,
+    })),
+  };
+
+  assert.ok(
+    Math.abs(resolveProcessAtPerPieceSeconds(process, 100) - 34.651) < 0.0001
+  );
+  assert.ok(
+    Math.abs(resolveProcessAtPerPieceSeconds(process, 500) - 38.3918) < 0.0001
+  );
+  assert.equal(resolveProcessAtPerPieceSeconds(process, 601), null);
+  assert.equal(resolveProcessAtCellState(process, 500, DEFAULT_BUCKETS).tone, 'extrapolated');
+});
+
 test('v2 extrapolation includes the exact factor boundary and blocks beyond it', () => {
   const process = createProcess({
     a: 30,
@@ -329,6 +388,33 @@ test('v2 extrapolation includes the exact factor boundary and blocks beyond it',
 
   assert.ok(resolveProcessAtPerPieceSeconds(process, 600) > 0);
   assert.equal(resolveProcessAtPerPieceSeconds(process, 601), null);
+});
+
+test('repeat variation lowers data maturity without discarding observations', () => {
+  const buildProcess = (repeatedValues) => ({
+    atV2Observations: [
+      ...repeatedValues.map((perPieceSeconds, index) => ({
+        assignmentPlanId: index + 1,
+        quantity: 100,
+        allocatedLaborInputSeconds: perPieceSeconds * 100,
+      })),
+      ...[200, 300, 400, 500].map((quantity, index) => ({
+        assignmentPlanId: repeatedValues.length + index + 1,
+        quantity,
+        allocatedLaborInputSeconds: 40 * quantity,
+      })),
+    ],
+    stBuckets: DEFAULT_BUCKETS.map((bucketQuantity) => ({
+      bucketQuantity,
+      bucketStSeconds: 100,
+    })),
+  });
+  const stable = resolveProcessAtReliability(buildProcess([39, 40, 41]), 300);
+  const variable = resolveProcessAtReliability(buildProcess([20, 40, 60]), 300);
+
+  assert.ok(variable.percent < stable.percent);
+  assert.ok(variable.repeatVariationPenalty > stable.repeatVariationPenalty);
+  assert.ok(variable.repeatVariationCoefficient > stable.repeatVariationCoefficient);
 });
 
 test('legacy v1 atParams are never used as an operational AT fallback', () => {

@@ -71,6 +71,26 @@ test('assignment card AT uses hydrated v2 mirrors and fails closed on a missing 
   assert.match(totalSource, /if \(atTotal == null\) return null/);
 });
 
+test('backend AT mirrors safe interpolation and nearest-point extrapolation policy', () => {
+  const resolveStart = backendSource.indexOf(
+    'const resolveStyleProcessAtTotalSecondsForOrderQuantity'
+  );
+  const resolveEnd = backendSource.indexOf(
+    'const resolveStyleProcessAtPerPieceSecondsForOrderQuantity',
+    resolveStart
+  );
+  const resolveSource = backendSource.slice(resolveStart, resolveEnd);
+
+  assert.ok(resolveStart >= 0);
+  assert.doesNotMatch(resolveSource, /intercept < 0/);
+  assert.match(resolveSource, /if \(!Number\.isFinite\(slope\) \|\| slope <= 0\)/);
+  assert.match(resolveSource, /const nearestPoint =/);
+  assert.match(
+    resolveSource,
+    /nearestPoint\.totalSeconds \/ nearestPoint\.quantity/
+  );
+});
+
 test('AT reset clears legacy JSON for manufacturer-owned and related brand styles', () => {
   const resetStart = backendSource.indexOf('const resetAtTrainingStateForOrg');
   const resetEnd = backendSource.indexOf('const normalizeStylePayload', resetStart);

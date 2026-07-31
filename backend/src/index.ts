@@ -1895,15 +1895,10 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
     const slope =
       (upper.totalSeconds - lower.totalSeconds) /
       (upper.quantity - lower.quantity);
-    const intercept = lower.totalSeconds - slope * lower.quantity;
-    if (
-      !Number.isFinite(slope) ||
-      slope <= 0 ||
-      !Number.isFinite(intercept) ||
-      intercept < 0
-    ) {
+    if (!Number.isFinite(slope) || slope <= 0) {
       return null;
     }
+    const intercept = lower.totalSeconds - slope * lower.quantity;
     totalSeconds = slope * resolvedOrderQuantity + intercept;
   } else {
     const minQuantity = points[0]!.quantity;
@@ -1914,34 +1909,13 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
     ) {
       return null;
     }
-    let sw = 0;
-    let swq = 0;
-    let swy = 0;
-    let swqq = 0;
-    let swqy = 0;
-    points.forEach((point) => {
-      const weight = Math.max(1, point.quantity);
-      sw += weight;
-      swq += weight * point.quantity;
-      swy += weight * point.totalSeconds;
-      swqq += weight * point.quantity * point.quantity;
-      swqy += weight * point.quantity * point.totalSeconds;
-    });
-    const determinant = sw * swqq - swq * swq;
-    if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-9) {
-      return null;
-    }
-    const slope = (sw * swqy - swq * swy) / determinant;
-    const intercept = (swy - slope * swq) / sw;
-    if (
-      !Number.isFinite(slope) ||
-      slope <= 0 ||
-      !Number.isFinite(intercept) ||
-      intercept < 0
-    ) {
-      return null;
-    }
-    totalSeconds = slope * resolvedOrderQuantity + intercept;
+    const nearestPoint =
+      resolvedOrderQuantity < minQuantity
+        ? points[0]!
+        : points[points.length - 1]!;
+    totalSeconds =
+      (nearestPoint.totalSeconds / nearestPoint.quantity) *
+      resolvedOrderQuantity;
   }
   if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return null;
   const stBucket = findStyleProcessExactStBucket(
