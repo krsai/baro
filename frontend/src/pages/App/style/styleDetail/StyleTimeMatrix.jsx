@@ -58,28 +58,99 @@ const resolveAtAggregateTone = (states = []) => {
   return 'fitted';
 };
 
-const resolveAtLegendItems = (languageCode) => {
+const resolveLegendItems = (languageCode) => {
   if (languageCode === 'en') {
     return [
-      { tone: 'fitted', label: 'Fitted curve' },
-      { tone: 'extrapolated', label: 'Outside observed range' },
-      { tone: 'provisional', label: 'Observed provisional' },
-      { tone: 'empty', label: 'Collecting' },
+      {
+        key: 'stReview',
+        color: '#D32F2F',
+        label: 'ST copied — needs review',
+        tooltip:
+          'This ST was copied from a smaller quantity bucket when the new bucket was added. Please confirm or edit the actual value.',
+      },
+      {
+        key: 'fitted',
+        color: AT_TONE_COLORS.fitted,
+        label: 'AT fitted curve',
+        tooltip:
+          'Calculated from a regression curve learned across quantities using real work records.',
+      },
+      {
+        key: 'extrapolated',
+        color: AT_TONE_COLORS.extrapolated,
+        label: 'AT extrapolated',
+        tooltip:
+          'This quantity is outside the range actually observed in work records — the value is extrapolated from the fitted formula, not a directly observed quantity.',
+      },
+      {
+        key: 'provisional',
+        color: AT_TONE_COLORS.provisional,
+        label: 'AT provisional',
+        tooltip:
+          'Not enough quantity variation yet to fit a per-quantity curve, so this shows the plain average of observed times (same value regardless of quantity). It comes from real work records, unlike PT.',
+      },
     ];
   }
   if (languageCode === 'vi') {
     return [
-      { tone: 'fitted', label: 'Duong AT da hoc' },
-      { tone: 'extrapolated', label: 'Ngoai vung quan sat' },
-      { tone: 'provisional', label: 'Tam tinh da quan sat' },
-      { tone: 'empty', label: 'Dang thu thap' },
+      {
+        key: 'stReview',
+        color: '#D32F2F',
+        label: 'ST sao chep - can duyet',
+        tooltip:
+          'ST nay duoc sao chep tu bucket so luong nho hon khi them bucket moi. Vui long xac nhan hoac sua lai gia tri thuc te.',
+      },
+      {
+        key: 'fitted',
+        color: AT_TONE_COLORS.fitted,
+        label: 'AT duong hoc',
+        tooltip:
+          'Gia tri tinh tu duong hoi quy da hoc theo so luong tu ban ghi thuc te.',
+      },
+      {
+        key: 'extrapolated',
+        color: AT_TONE_COLORS.extrapolated,
+        label: 'AT ngoai vung',
+        tooltip:
+          'So luong nay nam ngoai vung du lieu da quan sat - gia tri duoc suy dien tu cong thuc da hoc, khong phai so luong da tung lam thuc te.',
+      },
+      {
+        key: 'provisional',
+        color: AT_TONE_COLORS.provisional,
+        label: 'AT tam tinh',
+        tooltip:
+          'Chua du bien thien so luong de hoc duong rieng, nen hien thi gia tri trung binh quan sat duoc (giong nhau moi so luong). Day la du lieu thuc te, khac voi PT.',
+      },
     ];
   }
   return [
-    { tone: 'fitted', label: '학습 곡선' },
-    { tone: 'extrapolated', label: '관측 범위 밖' },
-    { tone: 'provisional', label: '임시 관측값' },
-    { tone: 'empty', label: '수집 중' },
+    {
+      key: 'stReview',
+      color: '#D32F2F',
+      label: 'ST 자동복사·검토 필요',
+      tooltip:
+        '새 수량 구간을 추가할 때 더 작은 구간의 ST를 그대로 복사해 채운 값입니다. 실제 시간을 확인해 값을 확정해 주세요.',
+    },
+    {
+      key: 'fitted',
+      color: AT_TONE_COLORS.fitted,
+      label: 'AT 학습 곡선',
+      tooltip: '실제 작업기록으로 수량별 시간 변화를 학습해 계산한 값입니다.',
+    },
+    {
+      key: 'extrapolated',
+      color: AT_TONE_COLORS.extrapolated,
+      label: 'AT 범위 밖 추정',
+      tooltip:
+        '이 수량은 학습에 쓰인 작업기록 범위 밖입니다. 실제로 이 수량을 작업한 기록은 없고, 학습된 공식으로 계산만 한 값입니다.',
+    },
+    {
+      key: 'provisional',
+      color: AT_TONE_COLORS.provisional,
+      label: 'AT 임시값',
+      tooltip:
+        '작업기록의 수량이 다양하지 않아 수량별 곡선을 아직 학습하지 못했습니다. 그래서 관측된 실제 시간의 평균을 수량과 무관하게 동일하게 보여주는 임시값입니다. PT처럼 사람이 입력한 값이 아니라 실제 작업기록에서 나온 값입니다.',
+    },
   ];
 };
 
@@ -381,8 +452,8 @@ const StyleTimeMatrix = ({
       };
     }),
   [safeProcesses]);
-  const atLegendItems = useMemo(
-    () => resolveAtLegendItems(languageCode),
+  const legendItems = useMemo(
+    () => resolveLegendItems(languageCode),
     [languageCode]
   );
 
@@ -413,20 +484,22 @@ const StyleTimeMatrix = ({
           >
             {automationLabels.restore}
           </Button>
-          {atLegendItems.map((item) => (
-            <Box key={item.tone} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <Box
-                sx={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  backgroundColor: AT_TONE_COLORS[item.tone],
-                }}
-              />
-              <Typography variant="caption" color="text.secondary">
-                {item.label}
-              </Typography>
-            </Box>
+          {legendItems.map((item) => (
+            <Tooltip key={item.key} title={item.tooltip}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Box
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    backgroundColor: item.color,
+                  }}
+                />
+                <Typography variant="caption" color="text.secondary">
+                  {item.label}
+                </Typography>
+              </Box>
+            </Tooltip>
           ))}
           <Typography variant="caption" color="text.disabled">{msg.unit}</Typography>
         </Stack>
