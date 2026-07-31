@@ -1,6 +1,10 @@
 const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
+const targetStyleCode = String(process.env.AT_VERIFY_STYLE_CODE || "").trim();
+const targetProcessCode = String(
+  process.env.AT_VERIFY_PROCESS_CODE || ""
+).trim();
 
 const round = (value, digits = 4) => {
   const factor = 10 ** digits;
@@ -15,6 +19,8 @@ const main = async () => {
         o."orgId",
         o."styleProcessId",
         sp."styleId",
+        s."code" AS "styleCode",
+        s."name" AS "styleName",
         sp."processCode",
         sp."processName",
         o."assignmentPlanId",
@@ -25,6 +31,7 @@ const main = async () => {
         sp."atParams"->>'fitStatus' AS "v1FitStatus"
       FROM "StyleProcessAtObservation" o
       JOIN "StyleProcess" sp ON sp.id = o."styleProcessId"
+      JOIN "Style" s ON s.id = sp."styleId"
       WHERE o."modelVersion" = 'v2'
       ORDER BY o."orgId", o."styleProcessId", o."quantity", o."assignmentPlanId"
     `);
@@ -65,8 +72,16 @@ const main = async () => {
     comparable.length > 0
       ? Math.max(...comparable.map((row) => row.absoluteDifference))
       : null;
-  const aj2102Ta04 = comparisons.filter(
-    (row) => Number(row.styleProcessId) === 997
+  const selectedProcess = comparisons.filter(
+    (row) =>
+      (!targetStyleCode ||
+        String(row.styleCode || "").toLowerCase() ===
+          targetStyleCode.toLowerCase() ||
+        String(row.styleName || "").toLowerCase() ===
+          targetStyleCode.toLowerCase()) &&
+      (!targetProcessCode ||
+        String(row.processCode || "").toLowerCase() ===
+          targetProcessCode.toLowerCase())
   );
 
   console.log(
@@ -78,7 +93,11 @@ const main = async () => {
         meanAbsoluteDifference,
         maxAbsoluteDifference:
           maxDifference === null ? null : round(maxDifference),
-        aj2102Ta04,
+        selectedFilter: {
+          styleCodeOrName: targetStyleCode || null,
+          processCode: targetProcessCode || null,
+        },
+        selectedProcess,
         largestDifferences: comparable
           .slice()
           .sort(

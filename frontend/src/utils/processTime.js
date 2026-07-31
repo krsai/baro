@@ -466,10 +466,27 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
       (upper.representativeTotalSeconds - lower.representativeTotalSeconds) /
       (upper.quantity - lower.quantity);
     const b = lower.representativeTotalSeconds - a * lower.quantity;
+    if (
+      !Number.isFinite(a) ||
+      a <= 0 ||
+      !Number.isFinite(b) ||
+      b < 0
+    ) {
+      return { value: null, tone: 'fitted', observedRange };
+    }
     const totalSeconds = a * resolvedQuantity + b;
     const value = totalSeconds / resolvedQuantity;
+    const stSeconds = resolveProcessStPerPieceSeconds(
+      process,
+      resolvedQuantity
+    );
+    const minimumSeconds =
+      Number.isFinite(stSeconds) && stSeconds > 0
+        ? Math.max(1, stSeconds * AT_V2_MIN_ST_RATIO)
+        : 1;
     return {
-      value: Number.isFinite(value) && value > 0 ? value : null,
+      value:
+        Number.isFinite(value) && value >= minimumSeconds ? value : null,
       tone: 'fitted',
       observedRange,
     };
@@ -953,18 +970,60 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
   }
 
   const observationCount = observations.length;
-  const workerCount = observations.reduce(
-    (sum, observation) =>
-      sum + toNonNegativeInt(observation?.workerCount, 0),
-    0
+  const independentAssignmentCount = new Set(
+    observations
+      .map((observation) => toPositiveInt(observation?.assignmentPlanId, 0))
+      .filter((assignmentPlanId) => assignmentPlanId > 0)
+  ).size;
+  const effectiveObservationCount =
+    independentAssignmentCount > 0
+      ? independentAssignmentCount
+      : observationCount;
+  const distinctQuantityCount = points.length;
+  const quantityDiversityScore =
+    distinctQuantityCount >= 5
+      ? 40
+      : Math.max(0, distinctQuantityCount - 1) * 10;
+  const observedSpanRatio =
+    distinctQuantityCount >= 2 && points[0]?.quantity > 0
+      ? points[points.length - 1].quantity / points[0].quantity
+      : 1;
+  const spanScore =
+    observedSpanRatio >= 5
+      ? 10
+      : observedSpanRatio >= 2
+        ? 6
+        : observedSpanRatio > 1
+          ? 3
+          : 0;
+  const diversityCap =
+    distinctQuantityCount <= 1
+      ? 25
+      : distinctQuantityCount === 2
+        ? 55
+        : distinctQuantityCount === 3
+          ? 75
+          : distinctQuantityCount === 4
+            ? 85
+            : 95;
+  const currentCellState = resolveProcessAtCellState(
+    normalized,
+    orderQuantity,
+    normalized?.stBuckets?.map((bucket) => bucket?.bucketQuantity)
   );
-  const percent = clamp(
+  const rangeCap =
+    currentCellState.tone === 'extrapolated'
+      ? 50
+      : currentCellState.tone === 'provisional'
+        ? 25
+        : 95;
+  const percent = Math.min(
+    diversityCap,
+    rangeCap,
     10 +
-      Math.min(40, observationCount * 4) +
-      Math.min(30, Math.max(0, points.length - 1) * 30) +
-      Math.min(15, workerCount),
-    0,
-    95
+      Math.min(35, effectiveObservationCount * 5) +
+      quantityDiversityScore +
+      spanScore
   );
   const status = resolveAtReliabilityStatusFromPercent(percent);
 
@@ -976,7 +1035,7 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
     ),
     attendanceCoverage: null,
     attendanceFallbackShare: null,
-    observationCount,
+    observationCount: effectiveObservationCount,
     percent,
   });
 };
@@ -1055,7 +1114,7 @@ export const calculateProcessTotal = (processes, key) =>
 
 export const hasAnyProcessTime = (processes, key) =>
   normalizeProcesses(processes).some((process) => {
-    if (key === 'at') return resolveAtParams(process) !== null;
+    if (key === 'at') return resolveAtV2Points(process).length > 0;
     return hasTime(process?.[key]);
   });
 

@@ -886,7 +886,7 @@ model StyleProcessAtObservation {
   id                         Int      @id @default(autoincrement())
   orgId                      Int
   styleProcessId             Int
-  assignmentPlanId           Int?
+  assignmentPlanId           Int
   quantity                   Int
   allocatedLaborInputSeconds Float
   perPieceObservedSeconds    Float
@@ -902,9 +902,9 @@ model StyleProcessAtObservation {
   createdBy                  String   @default("system@baro.local")
   updatedAt                  DateTime @updatedAt
 
-  organization   Organization    @relation(fields: [orgId], references: [id])
-  styleProcess   StyleProcess    @relation(fields: [styleProcessId, orgId], references: [id, orgId], onDelete: Cascade, map: "StyleProcessAtObservation_process_org_fkey")
-  assignmentPlan AssignmentPlan? @relation(fields: [assignmentPlanId], references: [id], onDelete: SetNull)
+  organization   Organization   @relation(fields: [orgId], references: [id])
+  styleProcess   StyleProcess   @relation(fields: [styleProcessId, orgId], references: [id, orgId], onDelete: Cascade, map: "StyleProcessAtObservation_process_org_fkey")
+  assignmentPlan AssignmentPlan @relation(fields: [assignmentPlanId, orgId], references: [id, orgId], onDelete: Restrict, map: "StyleProcessAtObservation_assignmentPlan_org_fkey")
 
   @@unique([orgId, styleProcessId, assignmentPlanId, modelVersion], map: "StyleProcessAtObservation_scope_key")
   @@index([orgId, modelVersion])

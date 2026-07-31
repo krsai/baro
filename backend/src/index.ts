@@ -1867,7 +1867,24 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
     (point) => point.quantity === resolvedOrderQuantity
   );
   if (exact) return exact.totalSeconds;
-  if (points.length === 1) return null;
+  if (points.length === 1) {
+    const bucketQuantities = normalizeStyleProcessStBuckets(
+      ensureArray((process as any).stBuckets)
+    ).map((bucket) => bucket.bucketQuantity);
+    if (bucketQuantities.length === 0) return null;
+    const requestedBucket = resolveStBucketQuantityFromValues(
+      resolvedOrderQuantity,
+      bucketQuantities
+    );
+    const observedBucket = resolveStBucketQuantityFromValues(
+      points[0]!.quantity,
+      bucketQuantities
+    );
+    return requestedBucket === observedBucket
+      ? (points[0]!.totalSeconds / points[0]!.quantity) *
+          resolvedOrderQuantity
+      : null;
+  }
   const upperIndex = points.findIndex(
     (point) => point.quantity > resolvedOrderQuantity
   );
@@ -1878,9 +1895,16 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
     const slope =
       (upper.totalSeconds - lower.totalSeconds) /
       (upper.quantity - lower.quantity);
-    totalSeconds =
-      lower.totalSeconds +
-      slope * (resolvedOrderQuantity - lower.quantity);
+    const intercept = lower.totalSeconds - slope * lower.quantity;
+    if (
+      !Number.isFinite(slope) ||
+      slope <= 0 ||
+      !Number.isFinite(intercept) ||
+      intercept < 0
+    ) {
+      return null;
+    }
+    totalSeconds = slope * resolvedOrderQuantity + intercept;
   } else {
     const minQuantity = points[0]!.quantity;
     const maxQuantity = points[points.length - 1]!.quantity;
@@ -1919,7 +1943,16 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
     }
     totalSeconds = slope * resolvedOrderQuantity + intercept;
   }
-  return Number.isFinite(totalSeconds) && totalSeconds > 0
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return null;
+  const stBucket = findStyleProcessExactStBucket(
+    normalizeStyleProcessStBuckets(ensureArray((process as any).stBuckets)),
+    resolvedOrderQuantity
+  );
+  const minimumPerPieceSeconds =
+    stBucket && stBucket.bucketStSeconds > 0
+      ? Math.max(1, stBucket.bucketStSeconds * 0.2)
+      : 1;
+  return totalSeconds / resolvedOrderQuantity >= minimumPerPieceSeconds
     ? totalSeconds
     : null;
 };
@@ -4591,6 +4624,14 @@ const buildAtTrainingInitialSeedFromSt = ({
 
 const AT_V2_MODEL_VERSION = "v2";
 
+const clearStyleProcessAtObservations = async (orgId: number) => {
+  const deleted = await prisma.$executeRaw(Prisma.sql`
+    DELETE FROM "StyleProcessAtObservation"
+    WHERE "orgId" = ${orgId} AND "modelVersion" = ${AT_V2_MODEL_VERSION}
+  `);
+  return Number(deleted || 0);
+};
+
 const replaceStyleProcessAtObservations = async ({
   orgId,
   trainingMonthKey,
@@ -4992,13 +5033,17 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
     reason: string,
     diagnostics: Record<string, any> | null
   ) => {
-    const staleCleanup = await clearUnfittedStyleProcessAtParams({ orgId });
+    const [staleCleanup, clearedAtV2Observations] = await Promise.all([
+      clearUnfittedStyleProcessAtParams({ orgId }),
+      clearStyleProcessAtObservations(orgId),
+    ]);
     const nextDiagnostics =
       diagnostics === null
         ? null
         : {
             ...diagnostics,
             clearedUnfittedProcesses: staleCleanup.clearedProcesses,
+            clearedAtV2Observations,
           };
     return finish(
       staleCleanup.clearedStyleIds.length,
@@ -12333,15 +12378,22 @@ const calculateAssignmentCardTotalForOrderQuantity = (
   key: "pt" | "at",
   orderQuantity = 1
 ) => {
-  const total = normalizeStyleProcesses(processes).reduce((acc, process) => {
-    const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-    if (key === "at") {
+  const normalizedProcesses = normalizeStyleProcesses(processes);
+  if (key === "at") {
+    if (normalizedProcesses.length === 0) return null;
+    let totalAt = 0;
+    for (const process of normalizedProcesses) {
       const atTotal = resolveAssignmentCardAtTotalSecondsForOrderQuantity(
         process,
-        resolvedOrderQuantity
+        orderQuantity
       );
-      return atTotal == null ? acc : acc + atTotal;
+      if (atTotal == null) return null;
+      totalAt += atTotal;
     }
+    return Math.round(totalAt);
+  }
+  const total = normalizedProcesses.reduce((acc, process) => {
+    const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
     const time = toOptionalSeconds((process as any)?.pt);
     if (time == null) return acc;
     return acc + time * resolvedOrderQuantity;
@@ -12466,7 +12518,7 @@ const buildAssignmentCardsFromOrders = ({
         processes,
         "pt",
         group.quantity
-      );
+      ) ?? 0;
       const totalAt = calculateAssignmentCardTotalForOrderQuantity(
         processes,
         "at",

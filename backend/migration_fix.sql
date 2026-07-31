@@ -4279,9 +4279,33 @@ BEGIN
     SELECT 1 FROM pg_constraint
     WHERE conname = 'StyleProcessAtObservation_assignmentPlanId_fkey'
   ) THEN
+ALTER TABLE "StyleProcessAtObservation"
+  ADD CONSTRAINT "StyleProcessAtObservation_assignmentPlanId_fkey"
+  FOREIGN KEY ("assignmentPlanId") REFERENCES "AssignmentPlan"("id")
+  ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AT v2 observations are valid only inside the same organization as their
+-- assignment. Runtime creation already rejects missing assignments; enforce
+-- the same invariant at the database boundary.
+ALTER TABLE "StyleProcessAtObservation"
+  DROP CONSTRAINT IF EXISTS "StyleProcessAtObservation_assignmentPlanId_fkey";
+
+ALTER TABLE "StyleProcessAtObservation"
+  ALTER COLUMN "assignmentPlanId" SET NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'StyleProcessAtObservation_assignmentPlan_org_fkey'
+  ) THEN
     ALTER TABLE "StyleProcessAtObservation"
-      ADD CONSTRAINT "StyleProcessAtObservation_assignmentPlanId_fkey"
-      FOREIGN KEY ("assignmentPlanId") REFERENCES "AssignmentPlan"("id")
-      ON DELETE SET NULL ON UPDATE CASCADE;
+      ADD CONSTRAINT "StyleProcessAtObservation_assignmentPlan_org_fkey"
+      FOREIGN KEY ("assignmentPlanId", "orgId")
+      REFERENCES "AssignmentPlan"("id", "orgId")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
   END IF;
 END $$;

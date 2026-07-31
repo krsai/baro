@@ -61,7 +61,13 @@ const createProcess = ({
 }) => {
   const resolvedObservationCount = Math.max(1, Number(observationCount) || 1);
   const quantities = distinctQuantityCount > 1
-    ? [minQuantity, maxQuantity]
+    ? Array.from({ length: distinctQuantityCount }, (_, index) =>
+        Math.round(
+          minQuantity +
+            ((maxQuantity - minQuantity) * index) /
+              (distinctQuantityCount - 1)
+        )
+      )
     : [minQuantity];
   return {
     quantity,
@@ -128,15 +134,15 @@ test('more observations increase reliability even when attendance fallback remai
     attendanceFallbackShare: 1,
   });
 
-  const februaryReliability = resolveProcessAtReliability(februaryLike);
-  const marchReliability = resolveProcessAtReliability(marchLike);
+  const februaryReliability = resolveProcessAtReliability(februaryLike, 500);
+  const marchReliability = resolveProcessAtReliability(marchLike, 500);
 
   assert.ok(
     marchReliability.percent > februaryReliability.percent,
     `expected March reliability to exceed February (${marchReliability.percent} <= ${februaryReliability.percent})`
   );
   assert.notEqual(februaryReliability.status, AT_RELIABILITY_STATUS.COLLECTING);
-  assert.equal(marchReliability.status, AT_RELIABILITY_STATUS.VERIFIED);
+  assert.notEqual(marchReliability.status, AT_RELIABILITY_STATUS.VERIFIED);
 });
 
 test('small samples stay low-confidence', () => {
@@ -148,11 +154,11 @@ test('small samples stay low-confidence', () => {
     observationCount: 1,
     attendanceFallbackShare: 0.5,
   });
-  const reliability = resolveProcessAtReliability(samplePoor);
+  const reliability = resolveProcessAtReliability(samplePoor, 500);
   assert.ok(reliability.percent < 30, `expected low sample confidence, got ${reliability.percent}`);
 });
 
-test('mature fully-covered samples can become stable', () => {
+test('mature observations across five quantities can become trusted', () => {
   const stableCandidate = createProcess({
     at: 88,
     a: 80,
@@ -160,10 +166,11 @@ test('mature fully-covered samples can become stable', () => {
     version: 4,
     observationCount: 24,
     attendanceFallbackShare: 0,
+    distinctQuantityCount: 5,
   });
-  const reliability = resolveProcessAtReliability(stableCandidate);
-  assert.equal(reliability.status, AT_RELIABILITY_STATUS.VERIFIED);
-  assert.ok(reliability.percent >= 95, `expected verified score, got ${reliability.percent}`);
+  const reliability = resolveProcessAtReliability(stableCandidate, 500);
+  assert.equal(reliability.status, AT_RELIABILITY_STATUS.TRUSTED);
+  assert.ok(reliability.percent >= 85, `expected trusted score, got ${reliability.percent}`);
 });
 
 test('style reliability is weighted upward when mature processes dominate', () => {
@@ -175,6 +182,7 @@ test('style reliability is weighted upward when mature processes dominate', () =
       version: 4,
       observationCount: 24,
       attendanceFallbackShare: 0,
+      distinctQuantityCount: 5,
       quantity: 2,
     }),
     createProcess({
@@ -190,6 +198,27 @@ test('style reliability is weighted upward when mature processes dominate', () =
 
   assert.ok(styleReliability.percent >= 60, `expected mature process weight to dominate, got ${styleReliability.percent}`);
   assert.equal(styleReliability.status, AT_RELIABILITY_STATUS.TRUSTED);
+});
+
+test('quantity diversity increases confidence without letting two quantities verify', () => {
+  const twoQuantities = createProcess({
+    a: 40,
+    b: 4000,
+    observationCount: 24,
+    distinctQuantityCount: 2,
+  });
+  const fiveQuantities = createProcess({
+    a: 40,
+    b: 4000,
+    observationCount: 24,
+    distinctQuantityCount: 5,
+  });
+
+  const twoQuantityReliability = resolveProcessAtReliability(twoQuantities, 500);
+  const fiveQuantityReliability = resolveProcessAtReliability(fiveQuantities, 500);
+  assert.ok(fiveQuantityReliability.percent > twoQuantityReliability.percent);
+  assert.ok(twoQuantityReliability.percent <= 55);
+  assert.equal(fiveQuantityReliability.status, AT_RELIABILITY_STATUS.TRUSTED);
 });
 
 test('provisional AT only displays in the observed quantity bucket', () => {
@@ -259,6 +288,47 @@ test('AT v2 preserves exact observations and blocks distant extrapolation', () =
     resolveProcessAtCellState(process, 10000, DEFAULT_BUCKETS).shouldDisplayValue,
     false
   );
+});
+
+test('v2 rejects a decreasing total-time interpolation segment', () => {
+  const process = {
+    atV2Observations: [
+      {
+        assignmentPlanId: 1,
+        quantity: 200,
+        allocatedLaborInputSeconds: 9000,
+      },
+      {
+        assignmentPlanId: 2,
+        quantity: 300,
+        allocatedLaborInputSeconds: 8000,
+      },
+    ],
+    stBuckets: DEFAULT_BUCKETS.map((bucketQuantity) => ({
+      bucketQuantity,
+      bucketStSeconds: 100,
+    })),
+  };
+
+  assert.equal(resolveProcessAtPerPieceSeconds(process, 250), null);
+  assert.equal(
+    resolveProcessAtCellState(process, 250, DEFAULT_BUCKETS).shouldDisplayValue,
+    false
+  );
+});
+
+test('v2 extrapolation includes the exact factor boundary and blocks beyond it', () => {
+  const process = createProcess({
+    a: 30,
+    b: 3000,
+    observationCount: 4,
+    distinctQuantityCount: 2,
+    minQuantity: 200,
+    maxQuantity: 300,
+  });
+
+  assert.ok(resolveProcessAtPerPieceSeconds(process, 600) > 0);
+  assert.equal(resolveProcessAtPerPieceSeconds(process, 601), null);
 });
 
 test('legacy v1 atParams are never used as an operational AT fallback', () => {

@@ -30,6 +30,47 @@ test('AT mutations do not rebuild ST-based assignment cards', () => {
   assert.match(resetSource, /return result/);
 });
 
+test('AT sync fail-closed paths clear stale v2 observations', () => {
+  const syncStart = backendSource.indexOf(
+    'export const syncStyleProcessActualTimesFromWorkRecords'
+  );
+  const syncEnd = backendSource.indexOf(
+    'const resetAtTrainingStateForOrg',
+    syncStart
+  );
+  const syncSource = backendSource.slice(syncStart, syncEnd);
+  assert.match(
+    syncSource,
+    /finishWithoutFittedMetrics[\s\S]*clearStyleProcessAtObservations/
+  );
+  assert.match(syncSource, /"no_metric_observations"/);
+  assert.match(syncSource, /"no_initial_st_seeds"/);
+});
+
+test('assignment card AT uses hydrated v2 mirrors and fails closed on a missing process', () => {
+  const rebuildStart = backendSource.indexOf(
+    'const rebuildAssignmentCardsForOrg ='
+  );
+  const rebuildEnd = backendSource.indexOf(
+    'const resolveAssignmentPlanPayrollLockMonth',
+    rebuildStart
+  );
+  const rebuildSource = backendSource.slice(rebuildStart, rebuildEnd);
+  const totalStart = backendSource.indexOf(
+    'const calculateAssignmentCardTotalForOrderQuantity'
+  );
+  const totalEnd = backendSource.indexOf(
+    'const calculateAssignmentCardStTotalForOrderQuantity',
+    totalStart
+  );
+  const totalSource = backendSource.slice(totalStart, totalEnd);
+
+  assert.match(rebuildSource, /initialProcessMirrorMap/);
+  assert.match(rebuildSource, /processMirrorMap/);
+  assert.match(rebuildSource, /styles:\s*hydratedStyles/);
+  assert.match(totalSource, /if \(atTotal == null\) return null/);
+});
+
 test('AT reset clears legacy JSON for manufacturer-owned and related brand styles', () => {
   const resetStart = backendSource.indexOf('const resetAtTrainingStateForOrg');
   const resetEnd = backendSource.indexOf('const normalizeStylePayload', resetStart);
