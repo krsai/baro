@@ -197,6 +197,45 @@ test('provisional AT only displays in the observed quantity bucket', () => {
   );
 });
 
+test('AT v2 preserves exact observations and blocks distant extrapolation', () => {
+  const process = {
+    atModelVersion: 'v2',
+    atV2Observations: [
+      {
+        assignmentPlanId: 328,
+        quantity: 300,
+        allocatedLaborInputSeconds: 8589.03306109015,
+      },
+      {
+        assignmentPlanId: 334,
+        quantity: 200,
+        allocatedLaborInputSeconds: 7111.376615904082,
+      },
+    ],
+    stBuckets: DEFAULT_BUCKETS.map((bucketQuantity) => ({
+      bucketQuantity,
+      bucketStSeconds: 105,
+    })),
+  };
+
+  assert.ok(
+    Math.abs(resolveProcessAtPerPieceSeconds(process, 200) - 35.5568830795) <
+      0.0001
+  );
+  assert.ok(
+    Math.abs(resolveProcessAtPerPieceSeconds(process, 300) - 28.6301102036) <
+      0.0001
+  );
+  assert.equal(
+    resolveProcessAtCellState(process, 200, DEFAULT_BUCKETS).tone,
+    'fitted'
+  );
+  assert.equal(
+    resolveProcessAtCellState(process, 10000, DEFAULT_BUCKETS).shouldDisplayValue,
+    false
+  );
+});
+
 test('fitted low-confidence AT remains displayable across buckets', () => {
   const fitted = createProcess({
     a: 21,

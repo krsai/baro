@@ -217,6 +217,36 @@ test('implausibly low fitted params are rejected instead of saved as curves', ()
   assert.equal(result.diagnostics.statusCounts.IMPLAUSIBLY_LOW_AT_PARAMS, 1);
 });
 
+test('implausibly low fitted curve falls back to safe observed provisional AT', () => {
+  const result = fitAtParamsWithProportionalAllocation([
+    createDay({
+      dayKey: '2026-05-31#286',
+      order: 0,
+      quantity: 300,
+      eventCount: 28,
+      laborInputSeconds: 8589.03306109015,
+      sourceGroupKey: 'assignmentPlan:328',
+    }),
+    createDay({
+      dayKey: '2026-06-30#297',
+      order: 1,
+      quantity: 200,
+      eventCount: 29,
+      laborInputSeconds: 7111.376615904082,
+      sourceGroupKey: 'assignmentPlan:334',
+    }),
+  ], {
+    initialPerPieceByMetricKey: new Map([[metricKey, 105]]),
+  });
+
+  const fitted = result.paramsByMetric.get(metricKey);
+  assert.ok(fitted);
+  assert.equal(fitted.fitStatus, 'USED_PROVISIONAL');
+  assert.equal(fitted.fallbackReason, 'IMPLAUSIBLY_LOW_AT_PARAMS');
+  assert.equal(fitted.b, 0);
+  assert.ok(fitted.a >= 31 && fitted.a <= 32, `unexpected provisional a=${fitted.a}`);
+});
+
 test('rejected process fits reset their allocation seed instead of leaking time to siblings', () => {
   const initialSeeds = new Map([
     [metricKey, 135.08326770064136],
@@ -378,27 +408,42 @@ test('worker-scoped buckets do not allocate one worker labor to another worker p
     {
       dayKey: '2026-06-30#worker:1',
       order: 0,
+      workerId: 11,
       laborInputSeconds: 10_000,
       processRows: [{
         metricKey,
         quantity: 100,
         eventCount: 1,
         sourceGroupKey: 'assignmentPlan:501',
+        assignmentPlanId: 501,
       }],
     },
     {
       dayKey: '2026-06-30#worker:2',
       order: 1,
+      workerId: 12,
       laborInputSeconds: 20_000,
       processRows: [{
         metricKey: siblingMetricKey,
         quantity: 100,
         eventCount: 1,
         sourceGroupKey: 'assignmentPlan:502',
+        assignmentPlanId: 502,
       }],
     },
   ]);
 
   assert.equal(result.paramsByMetric.get(metricKey)?.a, 100);
   assert.equal(result.paramsByMetric.get(siblingMetricKey)?.a, 200);
+  assert.deepEqual(
+    result.allocatedObservations.map((row) => ({
+      workerId: row.workerId,
+      assignmentPlanId: row.assignmentPlanId,
+      laborInputSeconds: row.laborInputSeconds,
+    })),
+    [
+      { workerId: 11, assignmentPlanId: 501, laborInputSeconds: 10_000 },
+      { workerId: 12, assignmentPlanId: 502, laborInputSeconds: 20_000 },
+    ]
+  );
 });

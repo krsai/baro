@@ -330,6 +330,21 @@ function assertGeneratedPrismaClientShape() {
   if (!modelByName.has("SystemSetting")) {
     staleSignals.push("SystemSetting model missing");
   }
+  if (!modelByName.has("StyleProcessAtObservation")) {
+    staleSignals.push("StyleProcessAtObservation model missing");
+  }
+  [
+    "styleProcessId",
+    "assignmentPlanId",
+    "allocatedLaborInputSeconds",
+    "perPieceObservedSeconds",
+    "modelVersion",
+    "trainedPeriod",
+  ].forEach((fieldName) => {
+    if (!hasField("StyleProcessAtObservation", fieldName)) {
+      staleSignals.push(`StyleProcessAtObservation.${fieldName} missing`);
+    }
+  });
   if (!hasField("AtTrainingBucketProcess", "eventCount")) {
     staleSignals.push("AtTrainingBucketProcess.eventCount missing");
   }
@@ -4165,6 +4180,7 @@ const loadAtTrainingDataFromBuckets = async ({
   type StoredAtTrainingBucketRow = {
     id: number;
     workDate: string;
+    workerId: number;
     laborInputSeconds: number;
     attendanceCoverage: number | null;
   };
@@ -4181,6 +4197,7 @@ const loadAtTrainingDataFromBuckets = async ({
     SELECT
       "id",
       "workDate",
+      "workerId",
       "laborInputSeconds",
       "attendanceCoverage"
     FROM "AtTrainingBucket"
@@ -4323,6 +4340,7 @@ const loadAtTrainingDataFromBuckets = async ({
         quantity,
         eventCount: Math.max(1, roundToScale(eventCount, 4)),
         sourceGroupKey,
+        assignmentPlanId: toPositiveIntOrNull(processRow?.assignmentPlanId),
         attendanceCoverage,
       });
 
@@ -4344,6 +4362,7 @@ const loadAtTrainingDataFromBuckets = async ({
     trainingDayBuckets.push({
       dayKey: `${bucketRow.workDate}#${bucketRow.id}`,
       order: bucketOrder,
+      workerId: toPositiveIntOrNull((bucketRow as any).workerId),
       laborInputSeconds: Math.max(1, Math.round(laborInputSeconds)),
       processRows: dayProcessRows,
     });
@@ -4479,6 +4498,160 @@ const buildAtTrainingInitialSeedFromSt = ({
     missingSeedMetricCount: missingSeedMetricKeys.length,
     missingSeedSamples,
   };
+};
+
+const AT_V2_MODEL_VERSION = "v2";
+const resolveAtDisplayModelVersion = () =>
+  String(process.env.AT_DISPLAY_MODEL_VERSION || "v1")
+    .trim()
+    .toLowerCase() === AT_V2_MODEL_VERSION
+    ? AT_V2_MODEL_VERSION
+    : "v1";
+
+const replaceStyleProcessAtObservations = async ({
+  orgId,
+  trainingMonthKey,
+  observations,
+}: {
+  orgId: number;
+  trainingMonthKey: string;
+  observations: Array<{
+    dayKey: string;
+    workerId: number | null;
+    metricKey: string;
+    assignmentPlanId: number | null;
+    quantity: number;
+    eventCount: number;
+    laborInputSeconds: number;
+  }>;
+}) => {
+  type ObservationAggregate = {
+    styleProcessId: number;
+    assignmentPlanId: number;
+    quantity: number;
+    laborInputSeconds: number;
+    workerIds: Set<number>;
+    eventCountMax: number;
+    eventCountWeightedTotal: number;
+    eventCountWeight: number;
+    periodStartDate: string;
+    periodEndDate: string;
+  };
+  const aggregates = new Map<string, ObservationAggregate>();
+  observations.forEach((observation) => {
+    const styleProcessId = toPositiveIntOrNull(
+      String(observation.metricKey || "").replace(/^STYLE_PROCESS:/, "")
+    );
+    const assignmentPlanId = toPositiveIntOrNull(observation.assignmentPlanId);
+    const quantity = Number(observation.quantity);
+    const laborInputSeconds = Number(observation.laborInputSeconds);
+    const eventCount = Number(observation.eventCount);
+    const workDate = normalizeDateKey(String(observation.dayKey || "").split("#")[0]);
+    if (
+      styleProcessId === null ||
+      assignmentPlanId === null ||
+      !Number.isFinite(quantity) ||
+      quantity <= 0 ||
+      !Number.isFinite(laborInputSeconds) ||
+      laborInputSeconds <= 0 ||
+      !workDate
+    ) {
+      return;
+    }
+    const key = `${styleProcessId}:${assignmentPlanId}`;
+    const current = aggregates.get(key) || {
+      styleProcessId,
+      assignmentPlanId,
+      quantity: 0,
+      laborInputSeconds: 0,
+      workerIds: new Set<number>(),
+      eventCountMax: 0,
+      eventCountWeightedTotal: 0,
+      eventCountWeight: 0,
+      periodStartDate: workDate,
+      periodEndDate: workDate,
+    };
+    current.quantity += quantity;
+    current.laborInputSeconds += laborInputSeconds;
+    const workerId = toPositiveIntOrNull(observation.workerId);
+    if (workerId !== null) current.workerIds.add(workerId);
+    if (Number.isFinite(eventCount) && eventCount > 0) {
+      current.eventCountMax = Math.max(current.eventCountMax, eventCount);
+      current.eventCountWeightedTotal += eventCount * quantity;
+      current.eventCountWeight += quantity;
+    }
+    current.periodStartDate =
+      workDate < current.periodStartDate ? workDate : current.periodStartDate;
+    current.periodEndDate =
+      workDate > current.periodEndDate ? workDate : current.periodEndDate;
+    aggregates.set(key, current);
+  });
+
+  const rows = Array.from(aggregates.values()).filter(
+    (row) => row.quantity > 0 && row.laborInputSeconds > 0
+  );
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw(Prisma.sql`
+      DELETE FROM "StyleProcessAtObservation"
+      WHERE "orgId" = ${orgId} AND "modelVersion" = ${AT_V2_MODEL_VERSION}
+      `);
+      for (const row of rows) {
+        const perPieceObservedSeconds = roundToScale(
+          row.laborInputSeconds / row.quantity,
+          4
+        );
+        const eventCountWeighted =
+          row.eventCountWeight > 0
+            ? roundToScale(
+                row.eventCountWeightedTotal / row.eventCountWeight,
+                4
+              )
+            : 0;
+        await tx.$executeRaw(Prisma.sql`
+        INSERT INTO "StyleProcessAtObservation" (
+          "orgId",
+          "styleProcessId",
+          "assignmentPlanId",
+          "quantity",
+          "allocatedLaborInputSeconds",
+          "perPieceObservedSeconds",
+          "workerCount",
+          "eventCountMax",
+          "eventCountWeighted",
+          "observationPeriodStartDate",
+          "observationPeriodEndDate",
+          "modelVersion",
+          "trainedPeriod",
+          "computedAt",
+          "createdAt",
+          "createdBy",
+          "updatedAt"
+        ) VALUES (
+          ${orgId},
+          ${row.styleProcessId},
+          ${row.assignmentPlanId},
+          ${Math.round(row.quantity)},
+          ${row.laborInputSeconds},
+          ${perPieceObservedSeconds},
+          ${row.workerIds.size},
+          ${row.eventCountMax},
+          ${eventCountWeighted},
+          ${row.periodStartDate},
+          ${row.periodEndDate},
+          ${AT_V2_MODEL_VERSION},
+          ${trainingMonthKey},
+          NOW(),
+          NOW(),
+          'SYSTEM:AT_V2_SHADOW',
+          NOW()
+        )
+        `);
+      }
+    },
+    { timeout: 30000 }
+  );
+  return { observationCount: rows.length };
 };
 
 const clearUnfittedStyleProcessAtParams = async ({
@@ -4863,12 +5036,18 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
       { initialPerPieceByMetricKey: initialSeedResult.initialPerPieceByMetricKey }
     );
     const fittedParamsByMetric = fittingResult.paramsByMetric;
+    const atV2Result = await replaceStyleProcessAtObservations({
+      orgId,
+      trainingMonthKey,
+      observations: fittingResult.allocatedObservations,
+    });
     const fittedDiagnosticsSummary =
       seededDiagnosticsSummary === null
         ? null
         : {
             ...seededDiagnosticsSummary,
             fitting: fittingResult.diagnostics,
+            atV2ObservationCount: atV2Result.observationCount,
           };
     if (fittedParamsByMetric.size === 0) {
       return finishWithoutFittedMetrics(
@@ -4901,6 +5080,7 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
             fittedMetricCount: fittedParamsByMetric.size,
             fittingIterationCount: fittingResult.iterationCount,
             fittingConverged: fittingResult.converged,
+            atV2ObservationCount: atV2Result.observationCount,
             clearedUnfittedProcesses: applyResult.clearedProcesses,
             clampAdjustedProcesses: applyResult.clampAdjustedProcesses,
           };
@@ -5095,6 +5275,10 @@ const resetAtTrainingStateForOrg = async (orgId: number) => {
             AND (elem.value ? 'atParams' OR elem.value ? 'at')
         )
     `);
+    const atV2ObservationsDeleted = await tx.$executeRaw(Prisma.sql`
+      DELETE FROM "StyleProcessAtObservation"
+      WHERE "orgId" = ${orgId}
+    `);
     const trainingBucketProcessesDeleted = await tx.$executeRaw(Prisma.sql`
       DELETE FROM "AtTrainingBucketProcess"
       WHERE "orgId" = ${orgId}
@@ -5107,6 +5291,7 @@ const resetAtTrainingStateForOrg = async (orgId: number) => {
     return {
       styleProcessAtParamsReset: Number(styleProcessAtParamsReset || 0),
       styleProcessJsonAtParamsReset: Number(styleProcessJsonAtParamsReset || 0),
+      atV2ObservationsDeleted: Number(atV2ObservationsDeleted || 0),
       trainingBucketProcessesDeleted: Number(trainingBucketProcessesDeleted || 0),
       trainingBucketsDeleted: Number(trainingBucketsDeleted || 0),
     };
@@ -5372,6 +5557,10 @@ const STYLE_PROCESS_STANDARD_INCLUDE: Prisma.StyleProcessInclude = {
     ],
     include: { quantityBucketEntry: true },
   },
+  atObservations: {
+    where: { modelVersion: AT_V2_MODEL_VERSION },
+    orderBy: [{ quantity: "asc" }, { assignmentPlanId: "asc" }],
+  },
   _count: { select: { workRecords: true } },
 };
 
@@ -5623,6 +5812,30 @@ const buildStyleProcessMirrorFromRows = (
           timesPerPiece: row.timesPerPiece ?? 1,
           pt: toOptionalProcessSeconds(row.ptSeconds),
           atParams: toStyleAtParams(row.atParams),
+          atModelVersion:
+            resolveAtDisplayModelVersion(),
+          atV2Observations: ensureArray(row.atObservations).map((observation) => ({
+            assignmentPlanId: toPositiveIntOrNull(observation.assignmentPlanId),
+            quantity: toPositiveIntOrNull(observation.quantity),
+            allocatedLaborInputSeconds: toNumberOrNull(
+              observation.allocatedLaborInputSeconds
+            ),
+            perPieceObservedSeconds: toNumberOrNull(
+              observation.perPieceObservedSeconds
+            ),
+            workerCount: toNonNegativeInt(observation.workerCount, 0),
+            eventCountMax: toNumberOrNull(observation.eventCountMax),
+            eventCountWeighted: toNumberOrNull(observation.eventCountWeighted),
+            observationPeriodStartDate: resolveOptionalString(
+              observation.observationPeriodStartDate,
+              null
+            ),
+            observationPeriodEndDate: resolveOptionalString(
+              observation.observationPeriodEndDate,
+              null
+            ),
+            trainedPeriod: resolveOptionalString(observation.trainedPeriod, null),
+          })),
           stBuckets: ensureArray(row.standards).map((standard) => ({
             bucketQuantity: toPositiveIntOrNull(
               (standard as any)?.quantityBucketEntry?.bucketQuantity
@@ -29655,6 +29868,7 @@ app.get("/at-sync/status", async (req, res) => {
     orgId: access.organization.id,
     mode: mode || (overrideTrainingMonthKey ? "override" : "auto"),
     runtimeMarker: AT_SYNC_RUNTIME_MARKER,
+    displayModelVersion: resolveAtDisplayModelVersion(),
     ...status,
   });
 });
@@ -29715,6 +29929,7 @@ app.post("/at-sync/run-now", async (req, res) => {
     orgId: access.organization.id,
     mode: mode || (overrideTrainingMonthKey ? "override" : "auto"),
     runtimeMarker: AT_SYNC_RUNTIME_MARKER,
+    displayModelVersion: resolveAtDisplayModelVersion(),
     trainingMonthKey: resolvedTrainingMonthKey,
     updatedStyles: Number(result?.updatedStyles || 0),
     updatedProcesses: Number(result?.updatedProcesses || 0),

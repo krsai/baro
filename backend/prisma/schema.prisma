@@ -209,6 +209,7 @@ model Organization {
   holidays                    OrganizationHoliday[]
   atTrainingBuckets           AtTrainingBucket[]
   atTrainingBucketProcesses   AtTrainingBucketProcess[]
+  styleProcessAtObservations  StyleProcessAtObservation[]
   representativeEmployee      Employee?                    @relation("OrganizationRepresentative", fields: [representativeEmployeeId], references: [id], onDelete: SetNull)
   manufacturerRelationships   OrgRelationship[]            @relation("ManufacturerOrgRelationships")
   brandRelationships          OrgRelationship[]            @relation("BrandOrgRelationships")
@@ -778,10 +779,11 @@ model StyleProcess {
   updatedByEmployeeId Int?
   updatedAt           DateTime @updatedAt
 
-  organization    Organization              @relation(fields: [orgId], references: [id])
-  style           Style                     @relation(fields: [styleId], references: [id], onDelete: Cascade)
+  organization    Organization                @relation(fields: [orgId], references: [id])
+  style           Style                       @relation(fields: [styleId], references: [id], onDelete: Cascade)
   standards       StyleProcessStandard[]
   trainingBuckets AtTrainingBucketProcess[]
+  atObservations  StyleProcessAtObservation[]
   workRecords     WorkRecord[]
 
   createdByEmployee Employee? @relation("StyleProcessCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
@@ -877,6 +879,36 @@ model AtTrainingBucketProcess {
   @@index([orgId, styleProcessId])
   @@index([orgId, styleProcessId, sourceGroupKey])
   @@index([orgId, styleId])
+  @@index([assignmentPlanId])
+}
+
+model StyleProcessAtObservation {
+  id                         Int      @id @default(autoincrement())
+  orgId                      Int
+  styleProcessId             Int
+  assignmentPlanId           Int?
+  quantity                   Int
+  allocatedLaborInputSeconds Float
+  perPieceObservedSeconds    Float
+  workerCount                Int
+  eventCountMax              Float
+  eventCountWeighted         Float
+  observationPeriodStartDate String
+  observationPeriodEndDate   String
+  modelVersion               String   @default("v2")
+  trainedPeriod              String
+  computedAt                 DateTime @default(now())
+  createdAt                  DateTime @default(now())
+  createdBy                  String   @default("system@baro.local")
+  updatedAt                  DateTime @updatedAt
+
+  organization   Organization    @relation(fields: [orgId], references: [id])
+  styleProcess   StyleProcess    @relation(fields: [styleProcessId, orgId], references: [id, orgId], onDelete: Cascade, map: "StyleProcessAtObservation_process_org_fkey")
+  assignmentPlan AssignmentPlan? @relation(fields: [assignmentPlanId], references: [id], onDelete: SetNull)
+
+  @@unique([orgId, styleProcessId, assignmentPlanId, modelVersion], map: "StyleProcessAtObservation_scope_key")
+  @@index([orgId, modelVersion])
+  @@index([styleProcessId])
   @@index([assignmentPlanId])
 }
 
@@ -1117,19 +1149,20 @@ model AssignmentPlan {
   updatedByEmployeeId       Int?
   updatedAt                 DateTime              @updatedAt
 
-  line                    Line                      @relation(fields: [lineId], references: [id], onDelete: Restrict)
-  organization            Organization              @relation(fields: [orgId], references: [id])
-  workOrder               WorkOrder?                @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
-  style                   Style?                    @relation(fields: [styleId], references: [id], onDelete: SetNull)
-  buyerOrg                Organization?             @relation("AssignmentPlanBuyerOrg", fields: [buyerOrgId], references: [id], onDelete: SetNull)
-  orgRelationship         OrgRelationship?          @relation(fields: [orgRelationshipId, orgId, buyerOrgId], references: [id, manufacturerOrgId, brandOrgId], onDelete: Restrict, map: "AssignmentPlan_relationship_scope_fkey")
+  line                    Line                        @relation(fields: [lineId], references: [id], onDelete: Restrict)
+  organization            Organization                @relation(fields: [orgId], references: [id])
+  workOrder               WorkOrder?                  @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  style                   Style?                      @relation(fields: [styleId], references: [id], onDelete: SetNull)
+  buyerOrg                Organization?               @relation("AssignmentPlanBuyerOrg", fields: [buyerOrgId], references: [id], onDelete: SetNull)
+  orgRelationship         OrgRelationship?            @relation(fields: [orgRelationshipId, orgId, buyerOrgId], references: [id, manufacturerOrgId, brandOrgId], onDelete: Restrict, map: "AssignmentPlan_relationship_scope_fkey")
   // Real FK replacing the old "cardId string happens to match" convention
   // (AGENTS.md structural-problems list). cardId itself is kept as the stable
   // external board identifier; joins must use assignmentCardId/workOrderId/styleId.
-  assignmentCard          AssignmentCard?           @relation(fields: [assignmentCardId], references: [id], onDelete: SetNull)
+  assignmentCard          AssignmentCard?             @relation(fields: [assignmentCardId], references: [id], onDelete: SetNull)
   workRecords             WorkRecord[]
   qcPassEvents            QcPassEvent[]
   trainingBucketProcesses AtTrainingBucketProcess[]
+  atObservations          StyleProcessAtObservation[]
 
   createdByEmployee    Employee? @relation("AssignmentPlanCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee    Employee? @relation("AssignmentPlanUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)

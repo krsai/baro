@@ -10,12 +10,14 @@ export type AtTrainingDayProcessRow = {
   quantity: number;
   eventCount?: number | null;
   sourceGroupKey?: string | null;
+  assignmentPlanId?: number | null;
   attendanceCoverage?: number | null;
 };
 
 export type AtTrainingDayBucket = {
   dayKey: string;
   order: number;
+  workerId?: number | null;
   laborInputSeconds: number;
   processRows: AtTrainingDayProcessRow[];
 };
@@ -80,10 +82,12 @@ export type AtFittingDiagnostics = {
   metricSamples: AtMetricFitDiagnostic[];
 };
 
-type AtAllocatedObservation = {
+export type AtAllocatedObservation = {
   dayKey: string;
   order: number;
+  workerId: number | null;
   metricKey: string;
+  assignmentPlanId: number | null;
   quantity: number;
   eventCount: number;
   sourceGroupKey: string | null;
@@ -552,17 +556,19 @@ const allocateDaySecondsAcrossProcesses = (
       const quantity = Number(row?.quantity);
       const eventCount = Number(row?.eventCount ?? 1);
       const sourceGroupKey = normalizeSourceGroupKey(row?.sourceGroupKey);
+      const assignmentPlanId = toPositiveInt(row?.assignmentPlanId, 0) || null;
       if (!Number.isFinite(quantity) || quantity <= 0) return null;
       if (!Number.isFinite(eventCount) || eventCount <= 0) return null;
       const metricKey = String(row?.metricKey || "").trim();
       if (!metricKey) return null;
-      return { metricKey, quantity, eventCount, sourceGroupKey };
+      return { metricKey, quantity, eventCount, sourceGroupKey, assignmentPlanId };
     })
     .filter((row): row is {
       metricKey: string;
       quantity: number;
       eventCount: number;
       sourceGroupKey: string | null;
+      assignmentPlanId: number | null;
     } => Boolean(row));
 
   if (validRows.length === 0) return [];
@@ -573,7 +579,9 @@ const allocateDaySecondsAcrossProcesses = (
       {
         dayKey: day.dayKey,
         order: day.order,
+        workerId: toPositiveInt(day.workerId, 0) || null,
         metricKey: row.metricKey,
+        assignmentPlanId: row.assignmentPlanId,
         quantity: row.quantity,
         eventCount: row.eventCount,
         sourceGroupKey: row.sourceGroupKey,
@@ -594,6 +602,7 @@ const allocateDaySecondsAcrossProcesses = (
     quantity: number;
     eventCount: number;
     sourceGroupKey: string | null;
+    assignmentPlanId: number | null;
     work: number;
   } => Boolean(row));
 
@@ -607,7 +616,9 @@ const allocateDaySecondsAcrossProcesses = (
   return withWork.map((row) => ({
     dayKey: day.dayKey,
     order: day.order,
+    workerId: toPositiveInt(day.workerId, 0) || null,
     metricKey: row.metricKey,
+    assignmentPlanId: row.assignmentPlanId,
     quantity: row.quantity,
     eventCount: row.eventCount,
     sourceGroupKey: row.sourceGroupKey,
@@ -763,6 +774,7 @@ export const fitAtParamsWithProportionalAllocation = (
   } = {}
 ): {
   paramsByMetric: Map<string, AtFittedParams>;
+  allocatedObservations: AtAllocatedObservation[];
   iterationCount: number;
   converged: boolean;
   diagnostics: AtFittingDiagnostics;
@@ -937,8 +949,7 @@ export const fitAtParamsWithProportionalAllocation = (
     const inspected = inspectAtFitFromWeightedPoints(weightedPoints, {
       initialPerPieceSeconds,
     });
-    const shouldAttemptProvisional =
-      inspected.status !== "IMPLAUSIBLY_LOW_AT_PARAMS";
+    const shouldAttemptProvisional = true;
     const provisionalFromIteration = shouldAttemptProvisional
       ? provisionalParamsByMetric.get(metricKey) || null
       : null;
@@ -1013,6 +1024,7 @@ export const fitAtParamsWithProportionalAllocation = (
 
   return {
     paramsByMetric: finalParamsByMetric,
+    allocatedObservations: observations,
     iterationCount,
     converged,
     diagnostics: {

@@ -343,7 +343,176 @@ const resolveAtObservedBucketRange = (atParams, bucketQuantities) => {
   };
 };
 
+const AT_V2_MAX_EXTRAPOLATION_FACTOR = 2;
+const AT_V2_MIN_ST_RATIO = 0.2;
+
+const resolveAtV2Points = (process) => {
+  const grouped = new Map();
+  (Array.isArray(process?.atV2Observations) ? process.atV2Observations : [])
+    .forEach((observation) => {
+      const quantity = toOptionalNumber(observation?.quantity);
+      const laborInputSeconds = toOptionalNumber(
+        observation?.allocatedLaborInputSeconds
+      );
+      if (
+        quantity === null ||
+        quantity <= 0 ||
+        laborInputSeconds === null ||
+        laborInputSeconds <= 0
+      ) {
+        return;
+      }
+      const current = grouped.get(quantity) || {
+        quantity,
+        producedQuantity: 0,
+        laborInputSeconds: 0,
+        sourceCount: 0,
+      };
+      current.producedQuantity += quantity;
+      current.laborInputSeconds += laborInputSeconds;
+      current.sourceCount += 1;
+      grouped.set(quantity, current);
+    });
+  return Array.from(grouped.values())
+    .map((point) => {
+      const perPieceSeconds =
+        point.laborInputSeconds / point.producedQuantity;
+      return {
+        ...point,
+        perPieceSeconds,
+        representativeTotalSeconds: perPieceSeconds * point.quantity,
+      };
+    })
+    .filter(
+      (point) =>
+        Number.isFinite(point.perPieceSeconds) && point.perPieceSeconds > 0
+    )
+    .sort((left, right) => left.quantity - right.quantity);
+};
+
+const fitAtV2TotalSeconds = (points) => {
+  if (!Array.isArray(points) || points.length < 2) return null;
+  let sw = 0;
+  let swq = 0;
+  let swy = 0;
+  let swqq = 0;
+  let swqy = 0;
+  points.forEach((point) => {
+    const weight = Math.max(1, Number(point.quantity));
+    const quantity = Number(point.quantity);
+    const totalSeconds = Number(point.representativeTotalSeconds);
+    sw += weight;
+    swq += weight * quantity;
+    swy += weight * totalSeconds;
+    swqq += weight * quantity * quantity;
+    swqy += weight * quantity * totalSeconds;
+  });
+  const determinant = sw * swqq - swq * swq;
+  if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-9) return null;
+  const a = (sw * swqy - swq * swy) / determinant;
+  const b = (swy - a * swq) / sw;
+  if (!Number.isFinite(a) || a <= 0 || !Number.isFinite(b) || b < 0) return null;
+  return { a, b };
+};
+
+const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
+  const points = resolveAtV2Points(process);
+  const resolvedQuantity = toPositiveInt(quantity, 1);
+  if (points.length === 0) {
+    return { value: null, tone: 'empty', observedRange: null };
+  }
+  const minQuantity = points[0].quantity;
+  const maxQuantity = points[points.length - 1].quantity;
+  const observedRange = { minQuantity, maxQuantity };
+  const exact = points.find((point) => point.quantity === resolvedQuantity);
+  if (exact) {
+    return {
+      value: exact.perPieceSeconds,
+      tone: points.length === 1 ? 'provisional' : 'fitted',
+      observedRange,
+    };
+  }
+  if (points.length === 1) {
+    const bucketQuantities = (Array.isArray(process?.stBuckets)
+      ? process.stBuckets
+      : []
+    )
+      .map((bucket) => toOptionalNumber(bucket?.bucketQuantity))
+      .filter((bucketQuantity) => bucketQuantity !== null);
+    const renderedBucket = resolveStBucketQuantity(
+      resolvedQuantity,
+      bucketQuantities
+    );
+    const observedBucket = resolveStBucketQuantity(
+      points[0].quantity,
+      bucketQuantities
+    );
+    return {
+      value:
+        renderedBucket !== null && renderedBucket === observedBucket
+          ? points[0].perPieceSeconds
+          : null,
+      tone: 'provisional',
+      observedRange,
+    };
+  }
+  const upperIndex = points.findIndex(
+    (point) => point.quantity > resolvedQuantity
+  );
+  if (upperIndex > 0) {
+    const lower = points[upperIndex - 1];
+    const upper = points[upperIndex];
+    const a =
+      (upper.representativeTotalSeconds - lower.representativeTotalSeconds) /
+      (upper.quantity - lower.quantity);
+    const b = lower.representativeTotalSeconds - a * lower.quantity;
+    const totalSeconds = a * resolvedQuantity + b;
+    const value = totalSeconds / resolvedQuantity;
+    return {
+      value: Number.isFinite(value) && value > 0 ? value : null,
+      tone: 'fitted',
+      observedRange,
+    };
+  }
+  const outsideLimit =
+    resolvedQuantity < minQuantity / AT_V2_MAX_EXTRAPOLATION_FACTOR ||
+    resolvedQuantity > maxQuantity * AT_V2_MAX_EXTRAPOLATION_FACTOR;
+  if (outsideLimit) {
+    return { value: null, tone: 'extrapolated', observedRange };
+  }
+  const params = fitAtV2TotalSeconds(points);
+  if (!params) {
+    return { value: null, tone: 'extrapolated', observedRange };
+  }
+  const value =
+    (params.a * resolvedQuantity + params.b) / resolvedQuantity;
+  const stSeconds = resolveProcessStPerPieceSeconds(process, resolvedQuantity);
+  const minimumSeconds =
+    Number.isFinite(stSeconds) && stSeconds > 0
+      ? Math.max(1, stSeconds * AT_V2_MIN_ST_RATIO)
+      : 1;
+  return {
+    value:
+      Number.isFinite(value) && value >= minimumSeconds ? value : null,
+    tone: 'extrapolated',
+    observedRange,
+  };
+};
+
 export const resolveProcessAtCellState = (process, quantity = 1, bucketQuantities) => {
+  if (
+    String(process?.atModelVersion || '').toLowerCase() === 'v2' &&
+    Array.isArray(process?.atV2Observations)
+  ) {
+    const v2 = resolveProcessAtV2PerPieceSeconds(process, quantity);
+    return {
+      tone: v2.tone,
+      isProvisional: v2.tone === 'provisional',
+      isOutsideObservedBucketRange: v2.tone === 'extrapolated',
+      observedBucketRange: v2.observedRange,
+      shouldDisplayValue: v2.value !== null,
+    };
+  }
   const atParams = resolveAtParamsMeta(process);
   if (!atParams) {
     return {
@@ -733,6 +902,16 @@ export const calculateProcessLineTotal = (process, key) => {
 export const resolveProcessAtTotalSecondsForOrderQuantity = (process, orderQuantity = 1) => {
   const normalized = normalizeProcess(process);
   const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+  if (
+    String(normalized?.atModelVersion || '').toLowerCase() === 'v2' &&
+    Array.isArray(normalized?.atV2Observations)
+  ) {
+    const v2 = resolveProcessAtV2PerPieceSeconds(
+      normalized,
+      resolvedOrderQuantity
+    );
+    return v2.value === null ? null : v2.value * resolvedOrderQuantity;
+  }
   const atParams = resolveAtParams(normalized);
   if (!atParams) return null;
   return atParams.a * resolvedOrderQuantity + atParams.b;

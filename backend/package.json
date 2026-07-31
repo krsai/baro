@@ -32,6 +32,7 @@
     "verify:assignment-board-state-backfill": "node scripts/verify-assignment-board-state-backfill.js",
     "verify:relational-integrity": "npm run build && node scripts/verify-relational-integrity.js",
     "verify:st-bucket-fk": "node scripts/inspect-st-bucket-fk-readiness.js",
+    "verify:at-v2-shadow": "node scripts/verify-at-v2-shadow.js",
     "test:work-record-employment": "npm run build && node scripts/test-work-record-employment.js",
     "realign:time-model": "node scripts/reset-to-baseline.js time-model",
     "backfill:missing-attendance": "node scripts/backfill-missing-attendance.js",
