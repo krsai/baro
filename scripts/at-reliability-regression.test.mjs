@@ -372,11 +372,14 @@ test('near extrapolation clamps to the nearest observed per-piece AT', () => {
   assert.ok(
     Math.abs(resolveProcessAtPerPieceSeconds(process, 500) - 38.3918) < 0.0001
   );
-  assert.equal(resolveProcessAtPerPieceSeconds(process, 601), null);
+  assert.ok(
+    Math.abs(resolveProcessAtPerPieceSeconds(process, 1000) - 38.3918) < 0.0001
+  );
+  assert.equal(resolveProcessAtPerPieceSeconds(process, 1201), null);
   assert.equal(resolveProcessAtCellState(process, 500, DEFAULT_BUCKETS).tone, 'extrapolated');
 });
 
-test('v2 extrapolation includes the exact factor boundary and blocks beyond it', () => {
+test('v2 extrapolation keeps the lower half boundary and upper fourfold boundary', () => {
   const process = createProcess({
     a: 30,
     b: 3000,
@@ -386,8 +389,10 @@ test('v2 extrapolation includes the exact factor boundary and blocks beyond it',
     maxQuantity: 300,
   });
 
-  assert.ok(resolveProcessAtPerPieceSeconds(process, 600) > 0);
-  assert.equal(resolveProcessAtPerPieceSeconds(process, 601), null);
+  assert.ok(resolveProcessAtPerPieceSeconds(process, 100) > 0);
+  assert.equal(resolveProcessAtPerPieceSeconds(process, 99), null);
+  assert.ok(resolveProcessAtPerPieceSeconds(process, 1200) > 0);
+  assert.equal(resolveProcessAtPerPieceSeconds(process, 1201), null);
 });
 
 test('repeat variation lowers data maturity without discarding observations', () => {

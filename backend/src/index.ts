@@ -1905,7 +1905,7 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
     const maxQuantity = points[points.length - 1]!.quantity;
     if (
       resolvedOrderQuantity < minQuantity / 2 ||
-      resolvedOrderQuantity > maxQuantity * 2
+      resolvedOrderQuantity > maxQuantity * 4
     ) {
       return null;
     }

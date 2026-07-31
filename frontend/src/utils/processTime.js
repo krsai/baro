@@ -343,7 +343,8 @@ const resolveAtObservedBucketRange = (atParams, bucketQuantities) => {
   };
 };
 
-const AT_V2_MAX_EXTRAPOLATION_FACTOR = 2;
+const AT_V2_MIN_EXTRAPOLATION_FACTOR = 2;
+const AT_V2_MAX_EXTRAPOLATION_FACTOR = 4;
 const AT_V2_MIN_ST_RATIO = 0.2;
 
 const resolveAtV2Points = (process) => {
@@ -505,7 +506,7 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
     };
   }
   const outsideLimit =
-    resolvedQuantity < minQuantity / AT_V2_MAX_EXTRAPOLATION_FACTOR ||
+    resolvedQuantity < minQuantity / AT_V2_MIN_EXTRAPOLATION_FACTOR ||
     resolvedQuantity > maxQuantity * AT_V2_MAX_EXTRAPOLATION_FACTOR;
   if (outsideLimit) {
     return { value: null, tone: 'extrapolated', observedRange };

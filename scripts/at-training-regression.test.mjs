@@ -85,6 +85,7 @@ test('backend AT mirrors safe interpolation and nearest-point extrapolation poli
   assert.doesNotMatch(resolveSource, /intercept < 0/);
   assert.match(resolveSource, /if \(!Number\.isFinite\(slope\) \|\| slope <= 0\)/);
   assert.match(resolveSource, /const nearestPoint =/);
+  assert.match(resolveSource, /resolvedOrderQuantity > maxQuantity \* 4/);
   assert.match(
     resolveSource,
     /nearestPoint\.totalSeconds \/ nearestPoint\.quantity/
