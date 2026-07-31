@@ -500,10 +500,7 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
 };
 
 export const resolveProcessAtCellState = (process, quantity = 1, bucketQuantities) => {
-  if (
-    String(process?.atModelVersion || '').toLowerCase() === 'v2' &&
-    Array.isArray(process?.atV2Observations)
-  ) {
+  if (Array.isArray(process?.atV2Observations)) {
     const v2 = resolveProcessAtV2PerPieceSeconds(process, quantity);
     return {
       tone: v2.tone,
@@ -513,44 +510,12 @@ export const resolveProcessAtCellState = (process, quantity = 1, bucketQuantitie
       shouldDisplayValue: v2.value !== null,
     };
   }
-  const atParams = resolveAtParamsMeta(process);
-  if (!atParams) {
-    return {
-      tone: 'empty',
-      isProvisional: false,
-      isOutsideObservedBucketRange: false,
-      observedBucketRange: null,
-      shouldDisplayValue: false,
-    };
-  }
-
-  const renderedBucket = resolveStBucketQuantity(quantity, bucketQuantities);
-  const observedBucketRange = resolveAtObservedBucketRange(atParams, bucketQuantities);
-  const isOutsideObservedBucketRange =
-    observedBucketRange !== null &&
-    (renderedBucket < observedBucketRange.minBucket ||
-      renderedBucket > observedBucketRange.maxBucket);
-  const isProvisional =
-    atParams.isProvisional === true || String(atParams.fitStatus || '') === 'USED_PROVISIONAL';
-  const shouldDisplayValue = isProvisional
-    ? observedBucketRange !== null && !isOutsideObservedBucketRange
-    : true;
-
-  let tone = 'fitted';
-  if (isProvisional && !shouldDisplayValue) {
-    tone = 'provisional-extrapolated';
-  } else if (isProvisional) {
-    tone = 'provisional';
-  } else if (isOutsideObservedBucketRange) {
-    tone = 'extrapolated';
-  }
-
   return {
-    tone,
-    isProvisional,
-    isOutsideObservedBucketRange,
-    observedBucketRange,
-    shouldDisplayValue,
+    tone: 'empty',
+    isProvisional: false,
+    isOutsideObservedBucketRange: false,
+    observedBucketRange: null,
+    shouldDisplayValue: false,
   };
 };
 
@@ -898,23 +863,18 @@ export const calculateProcessLineTotal = (process, key) => {
 
 // Calculate total seconds for an order quantity.
 // - pt/ct/st: linear (processRowTime * orderQuantity)
-// - at: always use atParams({a,b}) with a*q + b
+// - at: always use v2 observations; legacy atParams are never an operational fallback
 export const resolveProcessAtTotalSecondsForOrderQuantity = (process, orderQuantity = 1) => {
   const normalized = normalizeProcess(process);
   const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-  if (
-    String(normalized?.atModelVersion || '').toLowerCase() === 'v2' &&
-    Array.isArray(normalized?.atV2Observations)
-  ) {
+  if (Array.isArray(normalized?.atV2Observations)) {
     const v2 = resolveProcessAtV2PerPieceSeconds(
       normalized,
       resolvedOrderQuantity
     );
     return v2.value === null ? null : v2.value * resolvedOrderQuantity;
   }
-  const atParams = resolveAtParams(normalized);
-  if (!atParams) return null;
-  return atParams.a * resolvedOrderQuantity + atParams.b;
+  return null;
 };
 
 export const resolveProcessAtPerPieceSeconds = (process, orderQuantity = 1) => {
@@ -974,9 +934,13 @@ export const hasCompleteDisplayableProcessAtTime = (
 
 export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
   const normalized = normalizeProcess(process);
+  const observations = Array.isArray(normalized?.atV2Observations)
+    ? normalized.atV2Observations
+    : [];
+  const points = resolveAtV2Points(normalized);
   const reliabilityReferenceQuantity = toPositiveInt(
-    normalized?.timeRefQuantity,
-    DEFAULT_TIME_REF_QUANTITY
+    points[0]?.quantity ?? orderQuantity,
+    1
   );
   const atPerPieceSeconds = resolveProcessAtPerPieceSeconds(
     normalized,
@@ -988,38 +952,31 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
     });
   }
 
-  const atParams = resolveAtParamsMeta(normalized);
-  if (!atParams) {
-    const percent = 18;
-    return toAtReliabilityResult(resolveAtReliabilityStatusFromPercent(percent), {
-      percent,
-    });
-  }
-
-  const setupShare =
-    atPerPieceSeconds > 0
-      ? (atParams.b / reliabilityReferenceQuantity) / atPerPieceSeconds
-      : null;
-  const fallbackShare = atParams.attendanceFallbackShare;
-  const percent = resolveAtReliabilityPercent({
-    setupShare,
-    version: atParams.version,
-    hasTrainedPeriod: Boolean(atParams.trainedPeriod),
-    attendanceFallbackShare: fallbackShare,
-    observationCount: atParams.observationCount,
-    fitStatus: atParams.fitStatus,
-    isProvisional: atParams.isProvisional,
-    distinctQuantityCount: atParams.distinctQuantityCount,
-  });
+  const observationCount = observations.length;
+  const workerCount = observations.reduce(
+    (sum, observation) =>
+      sum + toNonNegativeInt(observation?.workerCount, 0),
+    0
+  );
+  const percent = clamp(
+    10 +
+      Math.min(40, observationCount * 4) +
+      Math.min(30, Math.max(0, points.length - 1) * 30) +
+      Math.min(15, workerCount),
+    0,
+    95
+  );
   const status = resolveAtReliabilityStatusFromPercent(percent);
 
   return toAtReliabilityResult(status, {
-    setupShare,
-    version: atParams.version,
-    hasTrainedPeriod: Boolean(atParams.trainedPeriod),
-    attendanceCoverage: atParams.attendanceCoverage,
-    attendanceFallbackShare: fallbackShare,
-    observationCount: atParams.observationCount,
+    setupShare: null,
+    version: 2,
+    hasTrainedPeriod: observations.some(
+      (observation) => Boolean(observation?.trainedPeriod)
+    ),
+    attendanceCoverage: null,
+    attendanceFallbackShare: null,
+    observationCount,
     percent,
   });
 };

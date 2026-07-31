@@ -1830,9 +1830,98 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
     return null;
   }
   const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-  const atParams = toStyleAtParams((process as any).atParams);
-  if (!atParams) return null;
-  return atParams.a * resolvedOrderQuantity + atParams.b;
+  const grouped = new Map<
+    number,
+    { quantity: number; producedQuantity: number; laborInputSeconds: number }
+  >();
+  ensureArray((process as any).atV2Observations).forEach((observation) => {
+    const quantity = toPositiveIntOrNull(observation?.quantity);
+    const laborInputSeconds = toNumberOrNull(
+      observation?.allocatedLaborInputSeconds
+    );
+    if (
+      quantity === null ||
+      laborInputSeconds === null ||
+      laborInputSeconds <= 0
+    ) {
+      return;
+    }
+    const current = grouped.get(quantity) ?? {
+      quantity,
+      producedQuantity: 0,
+      laborInputSeconds: 0,
+    };
+    current.producedQuantity += quantity;
+    current.laborInputSeconds += laborInputSeconds;
+    grouped.set(quantity, current);
+  });
+  const points = Array.from(grouped.values())
+    .map((point) => ({
+      quantity: point.quantity,
+      totalSeconds:
+        (point.laborInputSeconds / point.producedQuantity) * point.quantity,
+    }))
+    .sort((left, right) => left.quantity - right.quantity);
+  if (points.length === 0) return null;
+  const exact = points.find(
+    (point) => point.quantity === resolvedOrderQuantity
+  );
+  if (exact) return exact.totalSeconds;
+  if (points.length === 1) return null;
+  const upperIndex = points.findIndex(
+    (point) => point.quantity > resolvedOrderQuantity
+  );
+  let totalSeconds: number;
+  if (upperIndex > 0) {
+    const lower = points[upperIndex - 1]!;
+    const upper = points[upperIndex]!;
+    const slope =
+      (upper.totalSeconds - lower.totalSeconds) /
+      (upper.quantity - lower.quantity);
+    totalSeconds =
+      lower.totalSeconds +
+      slope * (resolvedOrderQuantity - lower.quantity);
+  } else {
+    const minQuantity = points[0]!.quantity;
+    const maxQuantity = points[points.length - 1]!.quantity;
+    if (
+      resolvedOrderQuantity < minQuantity / 2 ||
+      resolvedOrderQuantity > maxQuantity * 2
+    ) {
+      return null;
+    }
+    let sw = 0;
+    let swq = 0;
+    let swy = 0;
+    let swqq = 0;
+    let swqy = 0;
+    points.forEach((point) => {
+      const weight = Math.max(1, point.quantity);
+      sw += weight;
+      swq += weight * point.quantity;
+      swy += weight * point.totalSeconds;
+      swqq += weight * point.quantity * point.quantity;
+      swqy += weight * point.quantity * point.totalSeconds;
+    });
+    const determinant = sw * swqq - swq * swq;
+    if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-9) {
+      return null;
+    }
+    const slope = (sw * swqy - swq * swy) / determinant;
+    const intercept = (swy - slope * swq) / sw;
+    if (
+      !Number.isFinite(slope) ||
+      slope <= 0 ||
+      !Number.isFinite(intercept) ||
+      intercept < 0
+    ) {
+      return null;
+    }
+    totalSeconds = slope * resolvedOrderQuantity + intercept;
+  }
+  return Number.isFinite(totalSeconds) && totalSeconds > 0
+    ? totalSeconds
+    : null;
 };
 
 const resolveStyleProcessAtPerPieceSecondsForOrderQuantity = (
@@ -4501,12 +4590,6 @@ const buildAtTrainingInitialSeedFromSt = ({
 };
 
 const AT_V2_MODEL_VERSION = "v2";
-const resolveAtDisplayModelVersion = () =>
-  String(process.env.AT_DISPLAY_MODEL_VERSION || "v1")
-    .trim()
-    .toLowerCase() === AT_V2_MODEL_VERSION
-    ? AT_V2_MODEL_VERSION
-    : "v1";
 
 const replaceStyleProcessAtObservations = async ({
   orgId,
@@ -5812,8 +5895,7 @@ const buildStyleProcessMirrorFromRows = (
           timesPerPiece: row.timesPerPiece ?? 1,
           pt: toOptionalProcessSeconds(row.ptSeconds),
           atParams: toStyleAtParams(row.atParams),
-          atModelVersion:
-            resolveAtDisplayModelVersion(),
+          atModelVersion: AT_V2_MODEL_VERSION,
           atV2Observations: ensureArray(row.atObservations).map((observation) => ({
             assignmentPlanId: toPositiveIntOrNull(observation.assignmentPlanId),
             quantity: toPositiveIntOrNull(observation.quantity),
@@ -29868,7 +29950,7 @@ app.get("/at-sync/status", async (req, res) => {
     orgId: access.organization.id,
     mode: mode || (overrideTrainingMonthKey ? "override" : "auto"),
     runtimeMarker: AT_SYNC_RUNTIME_MARKER,
-    displayModelVersion: resolveAtDisplayModelVersion(),
+    displayModelVersion: AT_V2_MODEL_VERSION,
     ...status,
   });
 });
@@ -29929,7 +30011,7 @@ app.post("/at-sync/run-now", async (req, res) => {
     orgId: access.organization.id,
     mode: mode || (overrideTrainingMonthKey ? "override" : "auto"),
     runtimeMarker: AT_SYNC_RUNTIME_MARKER,
-    displayModelVersion: resolveAtDisplayModelVersion(),
+    displayModelVersion: AT_V2_MODEL_VERSION,
     trainingMonthKey: resolvedTrainingMonthKey,
     updatedStyles: Number(result?.updatedStyles || 0),
     updatedProcesses: Number(result?.updatedProcesses || 0),

@@ -6,7 +6,7 @@
 - v2 관측의 운영 단위는 `Organization × StyleProcess × AssignmentPlan`이며 `StyleProcessAtObservation` 관계형 행으로 저장한다. 수량은 `WorkRecord.quantity` 기반 실제 생산량 합, 노동시간은 v1의 검증된 비례배분 결과를 그대로 재사용하며 v2용으로 다시 배분하지 않는다.
 - v2의 핵심 시간식은 학습과 예측 모두 `total labor seconds = a × quantity + b`로 단위를 통일한다. `eventCount`는 진단 메타데이터일 뿐 핵심 회귀 변수로 사용하지 않는다.
 - 정확한 관측 수량은 관측 장당 시간을 그대로 사용하고, 관측점 사이는 인접 관측 총시간으로 보간한다. 관측 범위 밖은 최대 관측 수량의 제한 배수 안에서 유효한 모델과 ST 최소 기준을 통과할 때만 외삽하며, 외삽 실패가 관측 행을 삭제하면 안 된다.
-- v1 `StyleProcess.atParams`와 v2 관측은 병행 보존한다. `AT_DISPLAY_MODEL_VERSION=v2`에서만 화면 계산 소스를 v2로 전환하며, 기본값은 v1이다. 전환과 롤백은 데이터 재작성 없이 설정 변경으로 수행한다.
+- v1 `StyleProcess.atParams`는 과거 데이터 감사·비교 목적으로만 보존한다. v1 회귀식은 학습식과 표시식의 단위가 달라 운영 AT 계산·표시·신뢰도 판정에 사용하지 않는다. 운영 AT는 별도 설정이나 fallback 없이 항상 v2 관측 모델만 사용한다.
 
 ## 2026-07-28 배정 ST snapshot 저장 불변식
 

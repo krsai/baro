@@ -58,11 +58,35 @@ const createProcess = ({
   distinctQuantityCount = 2,
   minQuantity = 500,
   maxQuantity = 1000,
-}) => ({
-  quantity,
-  timeRefQuantity,
-  at,
-  atParams: {
+}) => {
+  const resolvedObservationCount = Math.max(1, Number(observationCount) || 1);
+  const quantities = distinctQuantityCount > 1
+    ? [minQuantity, maxQuantity]
+    : [minQuantity];
+  return {
+    quantity,
+    timeRefQuantity,
+    at,
+    atModelVersion: 'v2',
+    stBuckets: DEFAULT_BUCKETS.map((bucketQuantity) => ({
+      bucketQuantity,
+      bucketStSeconds: 100,
+    })),
+    atV2Observations: Array.from(
+      { length: resolvedObservationCount },
+      (_, index) => {
+        const observedQuantity = quantities[index % quantities.length];
+        return {
+          assignmentPlanId: index + 1,
+          quantity: observedQuantity,
+          allocatedLaborInputSeconds:
+            Number(a) * observedQuantity + Number(b),
+          workerCount: 1,
+          trainedPeriod,
+        };
+      }
+    ),
+    atParams: {
     a,
     b,
     version,
@@ -81,9 +105,10 @@ const createProcess = ({
     minEventCount: 1,
     maxEventCount: 1,
     quantitySamples: [minQuantity, maxQuantity],
-    eventCountSamples: [1],
-  },
-});
+      eventCountSamples: [1],
+    },
+  };
+};
 
 test('more observations increase reliability even when attendance fallback remains high', () => {
   const februaryLike = createProcess({
@@ -110,8 +135,8 @@ test('more observations increase reliability even when attendance fallback remai
     marchReliability.percent > februaryReliability.percent,
     `expected March reliability to exceed February (${marchReliability.percent} <= ${februaryReliability.percent})`
   );
-  assert.equal(februaryReliability.status, AT_RELIABILITY_STATUS.UNRELIABLE);
-  assert.equal(marchReliability.status, AT_RELIABILITY_STATUS.UNRELIABLE);
+  assert.notEqual(februaryReliability.status, AT_RELIABILITY_STATUS.COLLECTING);
+  assert.equal(marchReliability.status, AT_RELIABILITY_STATUS.VERIFIED);
 });
 
 test('small samples stay low-confidence', () => {
@@ -164,7 +189,7 @@ test('style reliability is weighted upward when mature processes dominate', () =
   ]);
 
   assert.ok(styleReliability.percent >= 60, `expected mature process weight to dominate, got ${styleReliability.percent}`);
-  assert.equal(styleReliability.status, AT_RELIABILITY_STATUS.INSUFFICIENT);
+  assert.equal(styleReliability.status, AT_RELIABILITY_STATUS.TRUSTED);
 });
 
 test('provisional AT only displays in the observed quantity bucket', () => {
@@ -186,10 +211,10 @@ test('provisional AT only displays in the observed quantity bucket', () => {
   assert.equal(observedCell.tone, 'provisional');
   assert.equal(observedCell.shouldDisplayValue, true);
   assert.equal(resolveProcessAtDisplayPerPieceSeconds(provisional, 500, DEFAULT_BUCKETS), 65);
-  assert.equal(outsideCell.tone, 'provisional-extrapolated');
+  assert.equal(outsideCell.tone, 'provisional');
   assert.equal(outsideCell.shouldDisplayValue, false);
   assert.equal(resolveProcessAtDisplayPerPieceSeconds(provisional, 1000, DEFAULT_BUCKETS), null);
-  assert.equal(resolveProcessAtPerPieceSeconds(provisional, 1000), 65);
+  assert.equal(resolveProcessAtPerPieceSeconds(provisional, 1000), null);
   assert.equal(
     resolveProcessAtDisplayPerPieceSeconds(provisional, 1000),
     null,
@@ -236,7 +261,26 @@ test('AT v2 preserves exact observations and blocks distant extrapolation', () =
   );
 });
 
-test('fitted low-confidence AT remains displayable across buckets', () => {
+test('legacy v1 atParams are never used as an operational AT fallback', () => {
+  const legacyOnly = createProcess({
+    a: 21,
+    b: 6700,
+    observationCount: 4,
+  });
+  delete legacyOnly.atV2Observations;
+
+  assert.equal(resolveProcessAtPerPieceSeconds(legacyOnly, 500), null);
+  assert.equal(
+    resolveProcessAtCellState(legacyOnly, 500, DEFAULT_BUCKETS).tone,
+    'empty'
+  );
+  assert.equal(
+    resolveProcessAtReliability(legacyOnly, 500).status,
+    AT_RELIABILITY_STATUS.COLLECTING
+  );
+});
+
+test('v2 only extrapolates within the guarded observed range', () => {
   const fitted = createProcess({
     a: 21,
     b: 67,
@@ -251,9 +295,10 @@ test('fitted low-confidence AT remains displayable across buckets', () => {
   const onePieceAt = resolveProcessAtDisplayPerPieceSeconds(fitted, 1, DEFAULT_BUCKETS);
   const thousandPieceAt = resolveProcessAtDisplayPerPieceSeconds(fitted, 1000, DEFAULT_BUCKETS);
 
-  assert.equal(resolveProcessAtCellState(fitted, 1, DEFAULT_BUCKETS).shouldDisplayValue, true);
+  assert.equal(resolveProcessAtCellState(fitted, 1, DEFAULT_BUCKETS).shouldDisplayValue, false);
   assert.equal(resolveProcessAtCellState(fitted, 1000, DEFAULT_BUCKETS).shouldDisplayValue, true);
-  assert.ok(onePieceAt > thousandPieceAt);
+  assert.equal(onePieceAt, null);
+  assert.ok(thousandPieceAt > 0);
 });
 
 test('actual q stays unbucketed for AT math even inside the same display bucket', () => {
