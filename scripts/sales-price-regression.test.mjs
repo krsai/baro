@@ -26,6 +26,7 @@ const orderFrontend = fs.readFileSync(
   'utf8'
 );
 const styleApi = fs.readFileSync('frontend/src/utils/styleApi.js', 'utf8');
+const uiMessages = fs.readFileSync('frontend/src/constants/uiMessages.js', 'utf8');
 const stFkVerifier = fs.readFileSync(
   'backend/scripts/inspect-st-bucket-fk-readiness.js',
   'utf8'
@@ -253,4 +254,15 @@ test('order locking is independent from sales prices and preserves item FK valid
   );
   assert.doesNotMatch(backend, /app\.get\("\/orders\/sales-price-diagnostics"/);
   assert.doesNotMatch(backend, /salesPriceSnapshotStatus/);
+});
+
+test('sales pricing supports only CMT and FP without a MIX label', () => {
+  const salesPricingBasisSchema = schema.slice(
+    schema.indexOf('enum SalesPricingBasis {'),
+    schema.indexOf('enum SystemRole {')
+  );
+  assert.match(salesPricingBasisSchema, /MANUFACTURING_SERVICE_PRICE/);
+  assert.match(salesPricingBasisSchema, /FINISHED_GOODS_PRICE/);
+  assert.doesNotMatch(salesPricingBasisSchema, /\bMIX\b|MIXED/);
+  assert.doesNotMatch(uiMessages, /MIX ·|MIXED|혼합/);
 });

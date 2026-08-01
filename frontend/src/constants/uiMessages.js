@@ -26,9 +26,6 @@ export const UI_MESSAGES = {
       vi: 'Ngay cuoi thang sau',
     },
   },
-  commercialTerms: {
-    mixed: { ko: 'MIX · 혼합', en: 'MIX · Mixed', vi: 'MIX · Hỗn hợp' },
-  },
   menu: {
     dashboard: { ko: '\uB300\uC2DC\uBCF4\uB4DC', en: 'Dashboard', vi: 'Bang dieu khien' },
     operations: { ko: '운영 관리', en: 'Operations', vi: 'Quan ly van hanh' },
