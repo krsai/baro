@@ -142,8 +142,8 @@ test('payroll persistence supports current drafts, rejects future months, and pr
 });
 
 test('production startup applies safe database schema synchronization before serving requests', () => {
-  assert.match(backendPackage.scripts.start, /railway:startup/);
-  assert.match(backendPackage.scripts['railway:startup'], /prisma:deploy:safe/);
+  assert.match(backendPackage.scripts.start, /prisma:deploy:safe/);
+  assert.doesNotMatch(backendPackage.scripts.start, /prisma:apply:migration-fix/);
 });
 
 test('production allowance finalization does not depend on shipment quantity settlement', () => {

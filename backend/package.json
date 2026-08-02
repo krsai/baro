@@ -20,7 +20,7 @@
     "predev": "npm run prisma:prepare-client && npm run prisma:deploy:safe && npm run prisma:fix-entry",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
-    "start": "npm run railway:startup && node dist/index.js",
+    "start": "npm run prisma:deploy:safe && node dist/index.js",
     "start:api": "node dist/index.js",
     "repair:assignment-text": "node scripts/repair-assignment-text.js",
     "repair:assignment-schedule": "node scripts/repair-assignment-schedule.js",
