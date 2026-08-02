@@ -1,2 +1,2 @@
 ALTER TABLE "PayrollSnapshot"
-ADD COLUMN "isProvisional" BOOLEAN NOT NULL DEFAULT false;
+ADD COLUMN IF NOT EXISTS "isProvisional" BOOLEAN NOT NULL DEFAULT false;
