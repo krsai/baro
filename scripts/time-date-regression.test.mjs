@@ -24,6 +24,7 @@ const payrollServiceSource = fs.readFileSync(
   'backend/src/payroll/payroll.service.ts',
   'utf8'
 );
+const backendPackage = JSON.parse(fs.readFileSync('backend/package.json', 'utf8'));
 const payrollBoardSource = fs.readFileSync(
   'frontend/src/pages/App/payroll/PayrollBoard.jsx',
   'utf8'
@@ -138,6 +139,11 @@ test('payroll persistence supports current drafts, rejects future months, and pr
   assert.match(payrollServiceSource, /prisma\.payrollSnapshot\.upsert\(/);
   assert.match(payrollServiceSource, /prisma\.payrollSnapshot\.delete\(/);
   assert.match(payrollServiceSource, /syncAssignmentPlanPayrollFinalization\(\{ orgId, month, finalized: false \}\)/);
+});
+
+test('production startup applies safe database schema synchronization before serving requests', () => {
+  assert.match(backendPackage.scripts.start, /railway:startup/);
+  assert.match(backendPackage.scripts['railway:startup'], /prisma:deploy:safe/);
 });
 
 test('production allowance finalization does not depend on shipment quantity settlement', () => {
