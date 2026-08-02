@@ -14,6 +14,8 @@ import {
   TextField,
 } from '@mui/material';
 import CalculateIcon from '@mui/icons-material/Calculate';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import LockOpenIcon from '@mui/icons-material/LockOpen';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -36,6 +38,8 @@ const TEXT = {
     factory: '공장', line: '라인', workCoverage: '작업기록', attendanceCoverage: '출퇴근 기록(참고)',
     ready: '계산 가능', incomplete: '자료 미완료', noLines: '생산수당 대상 공장·라인이 없습니다.',
     needsRecalculation: '재계산 필요', recalculateConfirmed: '재계산',
+    unlock: '확정 해제', unlocking: '해제 중...', unlockConfirm: '{month} 생산수당 확정을 해제하시겠습니까?',
+    unlockSuccess: '{month} 생산수당 확정을 해제했습니다.', unlockError: '생산수당 확정 해제에 실패했습니다.', deleting: '삭제 중...',
   },
   en: {
     calculateMonth: 'Calculation Month', calculate: 'Calculate', recalculate: 'Recalculate to Date', calculating: 'Calculating...',
@@ -48,6 +52,8 @@ const TEXT = {
     factory: 'Factory', line: 'Line', workCoverage: 'Work Records', attendanceCoverage: 'Attendance (Reference)',
     ready: 'Ready', incomplete: 'Incomplete', noLines: 'No factory or line has production allowance employees.',
     needsRecalculation: 'Recalculation Required', recalculateConfirmed: 'Recalculate',
+    unlock: 'Unlock', unlocking: 'Unlocking...', unlockConfirm: 'Unlock the {month} production allowance result?',
+    unlockSuccess: 'Unlocked the {month} production allowance result.', unlockError: 'Failed to unlock the production allowance result.', deleting: 'Deleting...',
   },
   vi: {
     calculateMonth: 'Thang tinh', calculate: 'Tinh', recalculate: 'Tinh lai den hien tai', calculating: 'Dang tinh...',
@@ -60,6 +66,8 @@ const TEXT = {
     factory: 'Nha may', line: 'Chuyen', workCoverage: 'Du lieu san xuat', attendanceCoverage: 'Cham cong (tham khao)',
     ready: 'Co the tinh', incomplete: 'Chua du du lieu', noLines: 'Khong co nha may hoac chuyen co nhan vien tinh phu cap san luong.',
     needsRecalculation: 'Can tinh lai', recalculateConfirmed: 'Tinh lai',
+    unlock: 'Mo khoa', unlocking: 'Dang mo khoa...', unlockConfirm: 'Mo khoa ket qua phu cap san luong thang {month}?',
+    unlockSuccess: 'Da mo khoa ket qua phu cap san luong thang {month}.', unlockError: 'Khong the mo khoa ket qua phu cap san luong.', deleting: 'Dang xoa...',
   },
 };
 
@@ -87,6 +95,7 @@ const PayrollBoard = () => {
   const [selectedMonth, setSelectedMonth] = useState('');
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
+  const [mutating, setMutating] = useState('');
 
   const text = useMemo(() => ({
     title: getUiMessage('menu.payroll', 'Production Allowance', languageCode),
@@ -206,6 +215,40 @@ const PayrollBoard = () => {
     }
   };
 
+  const handleUnlock = async () => {
+    if (!selectedSnapshot || selectedSnapshot.isProvisional) return;
+    if (!window.confirm(resolveText(languageCode, 'unlockConfirm', { month: selectedMonth }))) return;
+    setMutating('unlock');
+    try {
+      await requestJSON(`/payroll/snapshots/${selectedMonth}/unlock` + buildQueryString({ orgId: activeOrgId }), {
+        method: 'POST',
+      });
+      await load();
+      showNotification(resolveText(languageCode, 'unlockSuccess', { month: selectedMonth }), 'success');
+    } catch (error) {
+      showNotification(error?.message || resolveText(languageCode, 'unlockError'), 'error');
+    } finally {
+      setMutating('');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedSnapshot) return;
+    if (!window.confirm(resolveText(languageCode, 'deleteConfirm', { month: selectedMonth }))) return;
+    setMutating('delete');
+    try {
+      await requestJSON(`/payroll/snapshots/${selectedMonth}` + buildQueryString({ orgId: activeOrgId }), {
+        method: 'DELETE',
+      });
+      await load();
+      showNotification(resolveText(languageCode, 'deleteSuccess', { month: selectedMonth }), 'success');
+    } catch (error) {
+      showNotification(error?.message || resolveText(languageCode, 'deleteError'), 'error');
+    } finally {
+      setMutating('');
+    }
+  };
+
   return (
     <AppPageContainer
       title={text.title}
@@ -226,6 +269,22 @@ const PayrollBoard = () => {
               ? resolveText(languageCode, 'calculating')
               : resolveText(languageCode, needsRecalculation ? 'recalculateConfirmed' : 'calculate')}
           </Button>
+          {selectedSnapshot && !selectedSnapshot.isProvisional && (
+            <Button
+              variant="outlined" startIcon={<LockOpenIcon />}
+              disabled={Boolean(mutating)} onClick={handleUnlock}
+            >
+              {mutating === 'unlock' ? resolveText(languageCode, 'unlocking') : resolveText(languageCode, 'unlock')}
+            </Button>
+          )}
+          {selectedSnapshot && (
+            <Button
+              color="error" variant="outlined" startIcon={<DeleteOutlineIcon />}
+              disabled={Boolean(mutating)} onClick={handleDelete}
+            >
+              {mutating === 'delete' ? resolveText(languageCode, 'deleting') : text.delete}
+            </Button>
+          )}
         </Stack>
       )} />}
     >

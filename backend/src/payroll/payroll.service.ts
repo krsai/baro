@@ -735,3 +735,22 @@ export const deletePayrollSnapshot = async (orgId: number, monthInput: string) =
 
   return { ok: true, month };
 };
+
+export const unlockPayrollSnapshot = async (orgId: number, monthInput: string) => {
+  const month = String(monthInput || "");
+  assertPayrollMonth(month);
+
+  const existing = await prisma.payrollSnapshot.findUnique({
+    where: { orgId_month: { orgId, month } },
+    select: { id: true },
+  });
+  if (!existing) {
+    throw createHttpError(404, "snapshot not found");
+  }
+
+  await prisma.payrollSnapshot.update({
+    where: { id: existing.id },
+    data: { isProvisional: true },
+  });
+  return { ok: true, month };
+};

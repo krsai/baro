@@ -170,6 +170,9 @@ test('production allowance is calculated from the board and rows open read-only 
   assert.match(payrollBoardSource, /factoryId=\$\{group\.factoryId\}&lineId=\$\{group\.lineId\}/);
   assert.match(payrollBoardSource, /snapshot\.isProvisional/);
   assert.doesNotMatch(payrollBoardSource, /\/payroll\/new/);
+  assert.match(payrollBoardSource, /\/payroll\/snapshots\/\$\{selectedMonth\}\/unlock/);
+  assert.match(payrollBoardSource, /method: 'DELETE'/);
+  assert.match(payrollServiceSource, /export const unlockPayrollSnapshot/);
 });
 
 test('production allowance calculation excludes unfinished salary components', () => {

@@ -7,6 +7,7 @@ import {
   getPayrollMonthReadiness,
   listPayrollSnapshots,
   savePayrollSnapshot,
+  unlockPayrollSnapshot,
 } from "./payroll.service";
 import {
   resolveCurrentPayrollMonthKey,
@@ -122,6 +123,17 @@ export const deletePayrollSnapshotController = async (req: Request, res: Respons
   if (!accessContext) return;
 
   const result = await deletePayrollSnapshot(
+    accessContext.organization.id,
+    String(req.params.month || "")
+  );
+  return res.json(result);
+};
+
+export const unlockPayrollSnapshotController = async (req: Request, res: Response) => {
+  const accessContext = await requireOrgRole(req, res);
+  if (!accessContext) return;
+
+  const result = await unlockPayrollSnapshot(
     accessContext.organization.id,
     String(req.params.month || "")
   );
