@@ -172,31 +172,12 @@ export const normalizePayrollSnapshotEmployee = (employee: any) => {
     resolveOrgRoleLabel(employee?.orgRole) ??
     "";
   const processes = ensureArray(employee?.processes).map(normalizePayrollProcessSnapshot);
-  const storedTotalEarnings = toPayrollAmountOrNull(employee?.totalEarnings);
-  const bonus = toPayrollAmount(employee?.bonus, 0);
-  const deduction = toPayrollAmount(employee?.deduction, 0);
-  const fixedSalary =
-    payType === "FIXED"
-      ? toPayrollAmountOrNull(employee?.fixedSalary) ??
-        (toPayrollAmountOrNull(employee?.finalEarnings) ?? storedTotalEarnings ?? 0) -
-          bonus +
-          deduction
-      : 0;
   const productionEarnings =
     payType === "CT"
       ? toPayrollAmountOrNull(employee?.productionEarnings) ??
-        toPayrollAmountOrNull(employee?.baseEarnings) ??
+        toPayrollAmountOrNull(employee?.productionAllowance) ??
         0
       : 0;
-  const ctAmount = payType === "CT" ? toPayrollAmount(employee?.ctAmount, 0) : 0;
-  const baseEarnings =
-    payType === "FIXED"
-      ? fixedSalary
-      : productionEarnings + ctAmount;
-  const finalEarnings =
-    toPayrollAmountOrNull(employee?.finalEarnings) ??
-    storedTotalEarnings ??
-    (baseEarnings + bonus - deduction);
 
   return {
     employeeKey:
@@ -209,79 +190,25 @@ export const normalizePayrollSnapshotEmployee = (employee: any) => {
     payType,
     bankName: resolveOptionalString(employee?.bankName, null),
     bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
+    productionAllowance: productionEarnings,
     productionEarnings,
-    ctAmount,
-    baseEarnings,
-    fixedSalary,
-    bonus,
-    deduction,
-    finalEarnings,
-    totalEarnings: finalEarnings,
+    totalEarnings: productionEarnings,
     processes,
   };
 };
 
-export const listPayrollSnapshots = async (orgId: number) =>
-  prisma.payrollSnapshot.findMany({
+export const listPayrollSnapshots = async (orgId: number) => {
+  const snapshots = await prisma.payrollSnapshot.findMany({
     where: { orgId },
     orderBy: { month: "desc" },
     select: { id: true, month: true, data: true, lockedAt: true, lockedBy: true, createdAt: true },
   });
-
-const buildFixedSalaryFallbackIndex = (snapshotData: unknown) => {
-  const byWorkerId = new Map<number, number>();
-  const byEmployeeKey = new Map<string, number>();
-
-  ensureArray(snapshotData)
-    .map(normalizePayrollSnapshotEmployee)
-    .forEach((employee) => {
-      if (employee.payType !== "FIXED") return;
-      const fixedSalary = toPayrollAmount(employee.fixedSalary, 0);
-      if (fixedSalary <= 0) return;
-
-      const workerId = toPositiveIntOrNull(employee.workerId);
-      if (workerId !== null && !byWorkerId.has(workerId)) {
-        byWorkerId.set(workerId, fixedSalary);
-      }
-
-      const employeeKey = String(employee.employeeKey || "").trim();
-      if (employeeKey && !byEmployeeKey.has(employeeKey)) {
-        byEmployeeKey.set(employeeKey, fixedSalary);
-      }
-    });
-
-  return { byWorkerId, byEmployeeKey };
-};
-
-const resolveFixedSalaryWithFallback = ({
-  fixedSalary,
-  workerId,
-  employeeKey,
-  fallbackByWorkerId,
-  fallbackByEmployeeKey,
-}: {
-  fixedSalary: unknown;
-  workerId: unknown;
-  employeeKey: string;
-  fallbackByWorkerId: Map<number, number>;
-  fallbackByEmployeeKey: Map<string, number>;
-}) => {
-  const direct = toPayrollAmount(fixedSalary, 0);
-  if (direct > 0) return direct;
-
-  const normalizedWorkerId = toPositiveIntOrNull(workerId);
-  if (normalizedWorkerId !== null) {
-    const workerFallback = toPayrollAmount(
-      fallbackByWorkerId.get(normalizedWorkerId),
-      0
-    );
-    if (workerFallback > 0) return workerFallback;
-  }
-
-  const keyFallback = toPayrollAmount(fallbackByEmployeeKey.get(employeeKey), 0);
-  if (keyFallback > 0) return keyFallback;
-
-  return 0;
+  return snapshots.map((snapshot) => ({
+    ...snapshot,
+    data: ensureArray(snapshot.data)
+      .map(normalizePayrollSnapshotEmployee)
+      .filter((employee) => employee.payType === "CT"),
+  }));
 };
 
 export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
@@ -302,19 +229,11 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       lockedAt: snapshot.lockedAt,
       lockedBy: snapshot.lockedBy,
       month,
-      employees: ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee),
+      employees: ensureArray(snapshot.data)
+        .map(normalizePayrollSnapshotEmployee)
+        .filter((employee) => employee.payType === "CT"),
     };
   }
-
-  const previousSnapshot = await prisma.payrollSnapshot.findFirst({
-    where: {
-      orgId,
-      month: { lt: month },
-    },
-    orderBy: { month: "desc" },
-    select: { data: true },
-  });
-  const fixedSalaryFallback = buildFixedSalaryFallbackIndex(previousSnapshot?.data);
 
   const workLogs = await prisma.workLog.findMany({
     where: {
@@ -351,8 +270,10 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
     },
   });
   const employeesById = new Map(employeeRows.map((employee) => [employee.id, employee]));
-  const payrollEmployees = employeeRows.filter((employee) =>
-    isPayrollEmployeeRelevantForMonth(employee, payrollMonthRange)
+  const payrollEmployees = employeeRows.filter(
+    (employee) =>
+      isPayrollEmployeeRelevantForMonth(employee, payrollMonthRange) &&
+      resolveEmployeeEffectivePayType(employee) === "CT"
   );
 
   const employeeMap = new Map<
@@ -363,12 +284,10 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       workerName: string;
       orgRole: string;
       roleName: string;
-      payType: "CT" | "FIXED";
+      payType: "CT";
       bankName: string | null;
       bankAccountNumber: string | null;
       productionEarnings: number;
-      ctAmount: number;
-      fixedSalary: number;
       processes: Map<
         string,
         {
@@ -387,27 +306,16 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
   payrollEmployees.forEach((employee) => {
     const workerName = resolvePayrollEmployeeName(employee);
     const employeeKey = buildPayrollEmployeeKey(employee?.id, workerName);
-    const payType = resolveEmployeeEffectivePayType(employee);
-    const resolvedFixedSalary = resolveFixedSalaryWithFallback({
-      fixedSalary: employee?.fixedSalary,
-      workerId: employee?.id,
-      employeeKey,
-      fallbackByWorkerId: fixedSalaryFallback.byWorkerId,
-      fallbackByEmployeeKey: fixedSalaryFallback.byEmployeeKey,
-    });
-    const resolvedCtAmount = payType === "CT" ? resolvedFixedSalary : 0;
     employeeMap.set(employeeKey, {
       employeeKey,
       workerId: employee?.id ?? null,
       workerName,
       orgRole: String(employee?.orgRole || "").trim().toUpperCase(),
       roleName: resolvePayrollRoleName(employee),
-      payType,
+      payType: "CT",
       bankName: resolveOptionalString(employee?.bankName, null),
       bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
       productionEarnings: 0,
-      ctAmount: resolvedCtAmount,
-      fixedSalary: payType === "FIXED" ? resolvedFixedSalary : 0,
       processes: new Map(),
     });
   });
@@ -428,6 +336,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       const effectivePayType = employee
         ? resolveEmployeeEffectivePayType(employee)
         : "CT";
+      if (effectivePayType !== "CT") continue;
       const ctSeconds = Number(record.ctSeconds);
       const quantity = Number(record.quantity);
       const totalCtSeconds = ctSeconds > 0 && quantity > 0 ? ctSeconds * quantity : 0;
@@ -437,26 +346,16 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
           : 0;
 
       if (!employeeMap.has(key)) {
-        const employeeFixedSalary = resolveFixedSalaryWithFallback({
-          fixedSalary: employee?.fixedSalary,
-          workerId: record.workerId ?? employee?.id,
-          employeeKey: key,
-          fallbackByWorkerId: fixedSalaryFallback.byWorkerId,
-          fallbackByEmployeeKey: fixedSalaryFallback.byEmployeeKey,
-        });
-        const employeeCtAmount = effectivePayType === "CT" ? employeeFixedSalary : 0;
         employeeMap.set(key, {
           employeeKey: key,
           workerId: record.workerId ?? null,
           workerName,
           orgRole: String(employee?.orgRole || "").trim().toUpperCase(),
           roleName: resolvePayrollRoleName(employee),
-          payType: effectivePayType,
+          payType: "CT",
           bankName: resolveOptionalString(employee?.bankName, null),
           bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
           productionEarnings: 0,
-          ctAmount: employeeCtAmount,
-          fixedSalary: effectivePayType === "FIXED" ? employeeFixedSalary : 0,
           processes: new Map(),
         });
       }
@@ -503,10 +402,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
 
   const employees = Array.from(employeeMap.values())
     .map((emp) => {
-      const resolvedBaseEarnings =
-        emp.payType === "FIXED"
-          ? toPayrollAmount(emp.fixedSalary, 0)
-          : toPayrollAmount(emp.productionEarnings, 0) + toPayrollAmount(emp.ctAmount, 0);
+      const productionAllowance = toPayrollAmount(emp.productionEarnings, 0);
       return {
         employeeKey: emp.employeeKey,
         workerId: emp.workerId,
@@ -516,14 +412,9 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
         payType: emp.payType,
         bankName: emp.bankName,
         bankAccountNumber: emp.bankAccountNumber,
-        productionEarnings: emp.payType === "CT" ? toPayrollAmount(emp.productionEarnings, 0) : 0,
-        ctAmount: emp.payType === "CT" ? toPayrollAmount(emp.ctAmount, 0) : 0,
-        baseEarnings: resolvedBaseEarnings,
-        fixedSalary: emp.payType === "FIXED" ? toPayrollAmount(emp.fixedSalary, 0) : 0,
-        bonus: 0,
-        deduction: 0,
-        finalEarnings: resolvedBaseEarnings,
-        totalEarnings: resolvedBaseEarnings,
+        productionAllowance,
+        productionEarnings: productionAllowance,
+        totalEarnings: productionAllowance,
         processes: Array.from(emp.processes.values()).map((process) => ({
           styleProcessId: process.styleProcessId,
           processCode: process.processCode,
@@ -539,7 +430,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
         })),
       };
     })
-    .sort((a, b) => b.finalEarnings - a.finalEarnings);
+    .sort((a, b) => b.productionAllowance - a.productionAllowance);
 
   return {
     locked: false,
@@ -554,7 +445,7 @@ export const savePayrollSnapshot = async ({
   orgId,
   month: monthInput,
   savedBy,
-  employees,
+  employees: _employees,
 }: {
   orgId: number;
   month: string;
@@ -596,11 +487,11 @@ export const savePayrollSnapshot = async ({
     );
   }
 
-  const normalizedInputEmployees = ensureArray(employees).map(normalizePayrollSnapshotEmployee);
-  const snapshotEmployees =
-    normalizedInputEmployees.length > 0
-      ? normalizedInputEmployees
-      : (await getPayrollByMonth(orgId, month)).employees.map(normalizePayrollSnapshotEmployee);
+  void _employees;
+  const calculated = await getPayrollByMonth(orgId, month);
+  const snapshotEmployees = calculated.employees
+    .map(normalizePayrollSnapshotEmployee)
+    .filter((employee) => employee.payType === "CT");
   const savedAt = new Date();
   const savedByText = String(savedBy || "unknown");
 

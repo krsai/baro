@@ -21,14 +21,7 @@ import {
   DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
   normalizeFactoryManagementStartDateKey,
 } from '../../../../utils/factoryManagementStart';
-import {
-  formatDigitsWithCommas,
-  parseNumberLike,
-} from '../../../../utils/numberFormat';
-
-const WORK_DAYS_PER_MONTH = 26;
-const HOURS_PER_DAY = 8;
-const SECONDS_PER_MONTH = WORK_DAYS_PER_MONTH * HOURS_PER_DAY * 60 * 60;
+import { parseNumberLike } from '../../../../utils/numberFormat';
 const COUNTRY_CODE_BY_COUNTRY = {
   KR: '+82',
   VN: '+84',
@@ -105,8 +98,8 @@ const getExtraText = (languageCode) => {
       localizedDescription: '한글/베트남어 이름을 함께 저장해 화면과 문서에서 일관되게 사용합니다.',
       contactSection: '위치 및 연락처',
       contactDescription: '주소, 관리자, 국가 정보를 같은 묶음으로 정리했습니다.',
-      payrollSection: '급여 기준',
-      payrollDescription: '월 목표 급여를 입력하면 초당 급여가 자동 계산됩니다.',
+      payrollSection: '생산수당 설정',
+      payrollDescription: '공장 공통 생산수당 초당 단가를 관리합니다.',
       nameKo: '공장명 (한글)',
       nameVi: '공장명 (베트남어)',
       managementStartDate: '관리 시작일',
@@ -123,8 +116,8 @@ const getExtraText = (languageCode) => {
       localizedDescription: 'Luu ten tieng Han va tieng Viet de dung nhat quan tren man hinh va tai lieu.',
       contactSection: 'Vi tri va lien he',
       contactDescription: 'Gom dia chi, quan ly va thong tin quoc gia vao cung mot nhom.',
-      payrollSection: 'Moc luong',
-      payrollDescription: 'Nhap muc luong thang muc tieu de he thong tu dong tinh luong theo giay.',
+      payrollSection: 'Cai dat phu cap san luong',
+      payrollDescription: 'Quan ly don gia phu cap san luong theo giay cua nha may.',
       nameKo: 'Ten nha may (tieng Han)',
       nameVi: 'Ten nha may (tieng Viet)',
       managementStartDate: 'Ngay bat dau quan ly',
@@ -140,8 +133,8 @@ const getExtraText = (languageCode) => {
     localizedDescription: 'Store Korean and Vietnamese names for consistent UI and document labels.',
     contactSection: 'Location & Contact',
     contactDescription: 'Group address, manager, and country details together.',
-    payrollSection: 'Wage Baseline',
-    payrollDescription: 'Enter the target monthly wage to calculate wage-per-second automatically.',
+    payrollSection: 'Production Allowance Settings',
+    payrollDescription: 'Manage the factory-wide production allowance rate per second.',
     nameKo: 'Factory Name (Korean)',
     nameVi: 'Factory Name (Vietnamese)',
     managementStartDate: 'Management Start Date',
@@ -231,19 +224,9 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
       country: getUiMessage('factoryDetail.country', 'Country', languageCode),
       countryCode: getUiMessage('factoryDetail.countryCode', 'Country Code', languageCode),
       phoneNumber: getUiMessage('factoryDetail.phoneNumber', 'Phone Number', languageCode),
-      targetMonthlyWage: getUiMessage(
-        'factoryDetail.targetMonthlyWage',
-        'Target Monthly Wage',
-        languageCode
-      ),
       wagePerSecond: getUiMessage(
         'factoryDetail.wagePerSecond',
         'Wage / sec (auto)',
-        languageCode
-      ),
-      targetMonthlyWageHelper: getUiMessage(
-        'factoryDetail.targetMonthlyWageHelper',
-        'Based on 26 days/month, 8 hours/day (08:00-17:00 with 1 hour lunch break).',
         languageCode
       ),
       wagePerSecondHelper: getUiMessage(
@@ -324,10 +307,10 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
       }));
       return;
     }
-    if (name === 'targetMonthlyWage') {
+    if (name === 'wagePerSecond') {
       setFormData((prev) => ({
         ...prev,
-        targetMonthlyWage: value.replace(/[^\d]/g, ''),
+        wagePerSecond: value.replace(/[^\d.]/g, ''),
       }));
       return;
     }
@@ -349,19 +332,6 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const computedWagePerSecond = useMemo(() => {
-    const target = parseNumber(formData.targetMonthlyWage);
-    if (Number.isFinite(target)) {
-      const value = target / SECONDS_PER_MONTH;
-      return Math.round(value * 100) / 100;
-    }
-    const fallback = parseNumber(formData.wagePerSecond);
-    return Number.isFinite(fallback) ? fallback : Number.NaN;
-  }, [formData.targetMonthlyWage, formData.wagePerSecond]);
-
-  const computedWageDisplay = Number.isFinite(computedWagePerSecond)
-    ? computedWagePerSecond.toFixed(2)
-    : '';
   const managerHelperText = !factory?.id
     ? managerMessages.saveFirst
     : managerEmployeesLoading
@@ -371,10 +341,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
         : managerMessages.helper;
 
   const handleSave = () => {
-    const targetMonthlyWage = parseNumber(formData.targetMonthlyWage);
-    const wagePerSecond = Number.isFinite(computedWagePerSecond)
-      ? computedWagePerSecond
-      : formData.wagePerSecond ?? '';
+    const wagePerSecond = parseNumber(formData.wagePerSecond);
 
     onSave?.({
       ...factory,
@@ -384,8 +351,8 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
       managementStartDate:
         normalizeFactoryManagementStartDateKey(formData.managementStartDate) ||
         DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
-      targetMonthlyWage: Number.isFinite(targetMonthlyWage) ? targetMonthlyWage : '',
-      wagePerSecond,
+      targetMonthlyWage: '',
+      wagePerSecond: Number.isFinite(wagePerSecond) ? wagePerSecond : '',
     });
   };
 
@@ -581,24 +548,12 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                 <TextField
                   fullWidth
                   size="small"
-                  label={text.targetMonthlyWage}
-                  name="targetMonthlyWage"
-                  value={formatDigitsWithCommas(formData.targetMonthlyWage)}
-                  onChange={handleInputChange}
-                  inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
-                  helperText={text.targetMonthlyWageHelper}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  size="small"
                   label={text.wagePerSecond}
                   name="wagePerSecond"
-                  value={computedWageDisplay}
-                  InputProps={{ readOnly: true }}
+                  value={formData.wagePerSecond}
+                  onChange={handleInputChange}
+                  inputProps={{ inputMode: 'decimal' }}
                   helperText={text.wagePerSecondHelper}
-                  sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
                 />
               </Grid>
             </Grid>

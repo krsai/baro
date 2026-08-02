@@ -52,9 +52,9 @@ const PAGE_TEXT = {
     vi: 'Doi chieu so luong',
   },
   subtitle: {
-    ko: '작업기록 기반 추정 수량, QC 확정 수량, 청구 대상 수량, 급여 대상 수량을 한 화면에서 맞춥니다.',
-    en: 'Review estimated production, QC-confirmed quantity, billable quantity, and payroll quantity in one place.',
-    vi: 'Doi chieu san luong uoc tinh, so luong QC xac nhan, so luong tinh hoa don va so luong tinh luong tren mot man hinh.',
+    ko: '작업기록 기반 추정 수량, QC 확정 수량, 청구 대상 수량, 생산수당 대상 수량을 한 화면에서 맞춥니다.',
+    en: 'Review estimated production, QC-confirmed quantity, billable quantity, and production-allowance quantity in one place.',
+    vi: 'Doi chieu san luong uoc tinh, so luong QC xac nhan, so luong tinh hoa don va so luong phu cap san luong tren mot man hinh.',
   },
   month: {
     ko: '정산 월',
@@ -92,14 +92,14 @@ const PAGE_TEXT = {
     vi: 'Thang nay chua co ghi chep cong viec. Hay nhap ghi chep cong viec truoc, sau do tiep tuc doi chieu so luong.',
   },
   workflowPendingPayroll: {
-    ko: '수량 정산을 저장했습니다. 아직 검토 필요 또는 차단 항목이 있어 급여 정산으로 넘어갈 수 없습니다.',
-    en: 'Quantity settlement was saved, but payroll cannot continue yet because review or blocked rows still remain.',
-    vi: 'Da luu doi chieu so luong, nhung chua the chuyen sang bang luong vi van con dong can xem xet hoac bi chan.',
+    ko: '수량 정산을 저장했습니다. 아직 검토 필요 또는 차단 항목이 있어 생산수당 확정으로 넘어갈 수 없습니다.',
+    en: 'Quantity settlement was saved, but production allowance cannot be finalized while review or blocked rows remain.',
+    vi: 'Da luu doi chieu so luong, nhung chua the chot phu cap san luong vi van con dong can xem xet hoac bi chan.',
   },
   workflowReadyForPayroll: {
-    ko: '수량 정산을 저장했습니다. 다음 단계에서 급여 정산을 진행하세요.',
-    en: 'Quantity settlement saved. Next, continue in Payroll.',
-    vi: 'Da luu doi chieu so luong. Tiep theo, hay thuc hien bang luong.',
+    ko: '수량 정산을 저장했습니다. 다음 단계에서 생산수당 계산을 진행하세요.',
+    en: 'Quantity settlement saved. Next, continue in Production Allowance.',
+    vi: 'Da luu doi chieu so luong. Tiep theo, hay tinh phu cap san luong.',
   },
   storageNotReady: {
     ko: '정산 저장소 테이블이 서버에 아직 반영되지 않았습니다. 관리자에게 DB 업데이트 적용을 요청하세요.',
@@ -107,14 +107,14 @@ const PAGE_TEXT = {
     vi: 'Bang luu doi chieu chua duoc cap nhat tren may chu. Hay yeu cau quan tri vien cap nhat co so du lieu.',
   },
   locked: {
-    ko: '이 월은 급여가 이미 저장되어 있어 정산을 수정할 수 없습니다.',
-    en: 'This month is locked because payroll has already been saved.',
-    vi: 'Thang nay da bi khoa vi bang luong da duoc luu.',
+    ko: '이 월은 생산수당이 이미 확정되어 있어 정산을 수정할 수 없습니다.',
+    en: 'This month is locked because production allowance has already been finalized.',
+    vi: 'Thang nay da bi khoa vi phu cap san luong da duoc chot.',
   },
   payrollBlock: {
-    ko: '작업기록 > 수량 정산 > 급여 정산 순서로 진행합니다. 청구서 생성 여부와 별개로, 검토 필요 또는 차단 상태가 남아 있으면 급여 저장이 차단됩니다.',
-    en: 'Follow Work Logs > Quantity Settlement > Payroll. Payroll saving is blocked while any rows remain in review or blocked status, regardless of invoice creation.',
-    vi: 'Thuc hien theo thu tu Ghi chep cong viec > Doi chieu so luong > Bang luong. Viec luu bang luong bi chan neu van con dong can xem xet hoac bi chan, khong phu thuoc vao viec tao hoa don.',
+    ko: '작업기록 > 수량 정산 > 생산수당 계산 순서로 진행합니다. 검토 필요 또는 차단 상태가 남아 있으면 생산수당 확정이 차단됩니다.',
+    en: 'Follow Work Logs > Quantity Settlement > Production Allowance. Finalization is blocked while any rows remain in review or blocked status.',
+    vi: 'Thuc hien theo thu tu Ghi chep cong viec > Doi chieu so luong > Phu cap san luong. Khong the chot khi van con dong can xem xet hoac bi chan.',
   },
   noRows: {
     ko: '표시할 주문 항목이 없습니다.',
@@ -152,9 +152,9 @@ const PAGE_TEXT = {
     vi: '1. Chon thang. San luong uoc tinh chi duoc tinh tu ghi chep cong viec trong thang do.',
   },
   usage2: {
-    ko: '2. QC 확정, 청구 대상, 급여 대상을 입력합니다. 청구서 문서 생성은 나중에 해도 됩니다.',
-    en: '2. Fill in QC Confirmed, Billable, and Payroll quantities. Creating the invoice document can happen later.',
-    vi: '2. Nhap so luong QC xac nhan, tinh hoa don va tinh luong. Viec tao chung tu hoa don co the lam sau.',
+    ko: '2. QC 확정, 청구 대상, 생산수당 대상을 입력합니다. 청구서 문서 생성은 나중에 해도 됩니다.',
+    en: '2. Fill in QC Confirmed, Billable, and Production Allowance quantities. Creating the invoice document can happen later.',
+    vi: '2. Nhap so luong QC xac nhan, tinh hoa don va tinh phu cap san luong. Viec tao chung tu hoa don co the lam sau.',
   },
   usage3: {
     ko: '3. 공정 체크가 50~51처럼 어긋나면 검토 필요로 표시됩니다. 사유를 고르고 메모를 남기세요.',
@@ -162,14 +162,14 @@ const PAGE_TEXT = {
     vi: '3. Neu so lan cong doan lech nhau, vi du 50 den 51, dong se duoc danh dau can xem xet. Chon ly do va ghi chu.',
   },
   usage4: {
-    ko: '4. 검토 필요/차단 상태가 모두 정리되어야 급여 저장이 가능합니다.',
-    en: '4. Payroll can be saved only after all review and blocked rows are cleared.',
-    vi: '4. Chi co the luu bang luong sau khi da xu ly het cac dong can xem xet va bi chan.',
+    ko: '4. 검토 필요/차단 상태가 모두 정리되어야 생산수당 확정이 가능합니다.',
+    en: '4. Production allowance can be finalized only after all review and blocked rows are cleared.',
+    vi: '4. Chi co the chot phu cap san luong sau khi da xu ly het cac dong can xem xet va bi chan.',
   },
   usage5: {
-    ko: '5. 청구서 기능이 아직 없어도 수량 정산과 급여 정산은 먼저 진행할 수 있습니다.',
-    en: '5. Even if invoice creation is not built yet, quantity settlement and payroll can still proceed first.',
-    vi: '5. Ngay ca khi chuc nang tao hoa don chua co, doi chieu so luong va bang luong van co the thuc hien truoc.',
+    ko: '5. 청구서 기능이 아직 없어도 수량 정산과 생산수당 확정은 먼저 진행할 수 있습니다.',
+    en: '5. Quantity settlement and production allowance can proceed before invoice creation is available.',
+    vi: '5. Doi chieu so luong va phu cap san luong van co the thuc hien truoc khi co chuc nang hoa don.',
   },
   filters: {
     all: { ko: '전체', en: 'All', vi: 'Tat ca' },
@@ -193,7 +193,7 @@ const PAGE_TEXT = {
     estimatedQty: { ko: '추정 생산량', en: 'Estimated Qty', vi: 'SL uoc tinh' },
     confirmedQty: { ko: 'QC 확정', en: 'QC Confirmed', vi: 'QC xac nhan' },
     billableQty: { ko: '청구 대상', en: 'Billable', vi: 'Tinh hoa don' },
-    payrollQty: { ko: '급여 대상', en: 'Payroll', vi: 'Tinh luong' },
+    payrollQty: { ko: '생산수당 대상', en: 'Production Allowance', vi: 'Phu cap san luong' },
     process: { ko: '공정 체크', en: 'Process Check', vi: 'Kiem tra cong doan' },
     reason: { ko: '사유', en: 'Reason', vi: 'Ly do' },
     memo: { ko: '메모', en: 'Memo', vi: 'Ghi chu' },

@@ -25,24 +25,24 @@ import { formatNumberWithCommas } from '../../../utils/numberFormat';
 
 const PAYROLL_BOARD_TEXT = {
   fetchError: {
-    ko: '\uAE09\uC5EC \uC2A4\uB0C5\uC0F7 \uB0B4\uC5ED\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.',
-    en: 'Failed to load payroll snapshots.',
-    vi: 'Khong the tai danh sach bang luong.',
+    ko: '생산수당 스냅샷 내역을 불러오지 못했습니다.',
+    en: 'Failed to load production allowance snapshots.',
+    vi: 'Khong the tai danh sach phu cap san luong.',
   },
   deleteConfirm: {
-    ko: '{month} \uAE09\uC5EC \uC2A4\uB0C5\uC0F7\uC744 \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?',
-    en: 'Delete the {month} payroll snapshot?',
-    vi: 'Xoa ban luu bang luong thang {month}?',
+    ko: '{month} 생산수당 스냅샷을 삭제하시겠습니까?',
+    en: 'Delete the {month} production allowance snapshot?',
+    vi: 'Xoa ban luu phu cap san luong thang {month}?',
   },
   deleteSuccess: {
-    ko: '{month} \uAE09\uC5EC \uC2A4\uB0C5\uC0F7\uC744 \uC0AD\uC81C\uD588\uC2B5\uB2C8\uB2E4.',
-    en: 'Deleted the {month} payroll snapshot.',
-    vi: 'Da xoa ban luu bang luong thang {month}.',
+    ko: '{month} 생산수당 스냅샷을 삭제했습니다.',
+    en: 'Deleted the {month} production allowance snapshot.',
+    vi: 'Da xoa ban luu phu cap san luong thang {month}.',
   },
   deleteError: {
-    ko: '\uAE09\uC5EC \uC2A4\uB0C5\uC0F7 \uC0AD\uC81C\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.',
-    en: 'Failed to delete the payroll snapshot.',
-    vi: 'Khong the xoa ban luu bang luong.',
+    ko: '생산수당 스냅샷 삭제에 실패했습니다.',
+    en: 'Failed to delete the production allowance snapshot.',
+    vi: 'Khong the xoa ban luu phu cap san luong.',
   },
   deleting: {
     ko: '\uC0AD\uC81C \uC911...',
@@ -75,11 +75,11 @@ const PayrollBoard = () => {
   const [deletingMonth, setDeletingMonth] = useState('');
   const text = useMemo(
     () => ({
-      title: getUiMessage('menu.payroll', 'Payroll', languageCode),
-      add: getUiMessage('payrollBoard.add', 'Add Payroll', languageCode),
-      month: getUiMessage('payrollBoard.month', 'Payroll Month', languageCode),
+      title: getUiMessage('menu.payroll', 'Production Allowance', languageCode),
+      add: getUiMessage('payrollBoard.add', 'Add Production Allowance', languageCode),
+      month: getUiMessage('payrollBoard.month', 'Settlement Month', languageCode),
       employees: getUiMessage('payrollBoard.employees', 'Employees', languageCode),
-      total: getUiMessage('payrollBoard.total', 'Total Payroll', languageCode),
+      total: getUiMessage('payrollBoard.total', 'Total Production Allowance', languageCode),
       savedBy: getUiMessage('payrollBoard.savedBy', 'Saved By', languageCode),
       savedAt: getUiMessage('payrollBoard.savedAt', 'Saved At', languageCode),
       status: getUiMessage('payrollBoard.status', 'Status', languageCode),
@@ -202,7 +202,7 @@ const PayrollBoard = () => {
                     const employees = Array.isArray(snapshot.data) ? snapshot.data : [];
                     const totalEarnings = employees.reduce(
                       (sum, employee) =>
-                        sum + Number(employee.finalEarnings ?? employee.totalEarnings ?? 0),
+                        sum + Number(employee.productionAllowance ?? employee.productionEarnings ?? 0),
                       0
                     );
 

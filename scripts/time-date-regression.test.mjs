@@ -24,6 +24,14 @@ const payrollServiceSource = fs.readFileSync(
   'backend/src/payroll/payroll.service.ts',
   'utf8'
 );
+const factoryRoutesSource = fs.readFileSync(
+  'backend/src/factories/factory.routes.ts',
+  'utf8'
+);
+const factoryDetailSource = fs.readFileSync(
+  'frontend/src/pages/App/organization/factoryDetail/FactoryDetail.jsx',
+  'utf8'
+);
 
 test('Asia/Seoul date key does not shift at UTC boundary', () => {
   const source = new Date('2026-02-23T00:30:00+09:00');
@@ -112,8 +120,8 @@ test('payroll entry uses the server business calendar instead of browser local m
   assert.match(payrollEntrySource, /requestJSON\('\/payroll\/calendar'/);
   assert.match(payrollEntrySource, /calendar\?\.latestCompletedMonthKey/);
   assert.doesNotMatch(payrollEntrySource, /const getLatestCompletedPayrollMonthKey/);
-  assert.match(payrollEntrySource, /setPayMonth\(String\(calendar\?\.latestCompletedMonthKey/);
-  assert.match(payrollEntrySource, /title=\{isNew \? '급여 계산'/);
+  assert.match(payrollEntrySource, /setPayMonth\(String\(payload\?\.latestCompletedMonthKey/);
+  assert.match(payrollEntrySource, /title=\{isNew \? '생산수당 계산'/);
 });
 
 test('payroll persistence rejects unfinished months and supports exact save and delete paths', () => {
@@ -122,6 +130,24 @@ test('payroll persistence rejects unfinished months and supports exact save and 
   assert.match(payrollServiceSource, /prisma\.payrollSnapshot\.upsert\(/);
   assert.match(payrollServiceSource, /prisma\.payrollSnapshot\.delete\(/);
   assert.match(payrollServiceSource, /syncAssignmentPlanPayrollFinalization\(\{ orgId, month, finalized: false \}\)/);
+});
+
+test('production allowance calculation excludes unfinished salary components', () => {
+  assert.match(payrollEntrySource, /생산수당 = 작업수량 × CT초 × 작업 당시 공장 생산수당 초당 단가/);
+  assert.match(payrollServiceSource, /resolveEmployeeEffectivePayType\(employee\) === "CT"/);
+  assert.match(payrollServiceSource, /productionAllowance/);
+  assert.match(payrollServiceSource, /ctSeconds \* quantity \* wagePerSecond/);
+  assert.match(payrollServiceSource, /void _employees/);
+  assert.doesNotMatch(payrollEntrySource, /fixedSalary|ctAmount|bonus|deduction|finalEarnings/);
+  assert.doesNotMatch(payrollEntrySource, /기본급|고정수당|변동수당|보너스|공제/);
+});
+
+test('factory production allowance rate is entered directly instead of derived from salary', () => {
+  assert.match(factoryRoutesSource, /normalizeProductionAllowanceRate/);
+  assert.doesNotMatch(factoryRoutesSource, /FACTORY_WORK_SECONDS_PER_MONTH/);
+  assert.match(factoryDetailSource, /name="wagePerSecond"/);
+  assert.doesNotMatch(factoryDetailSource, /name="targetMonthlyWage"/);
+  assert.doesNotMatch(factoryDetailSource, /computedWagePerSecond/);
 });
 
 test('invalid business time zones fail during server configuration', () => {

@@ -14,7 +14,6 @@ type FactoryRoutesDeps = {
   isManufacturerOrg: (org: { type?: string | null } | null | undefined) => boolean;
 };
 
-const FACTORY_WORK_SECONDS_PER_MONTH = 26 * 8 * 60 * 60;
 const FACTORY_DIAL_CODE_BY_COUNTRY: Record<string, string> = {
   KR: "+82",
   VN: "+84",
@@ -27,25 +26,22 @@ const FACTORY_MANAGER_EMPLOYEE_SELECT = {
   orgId: true,
 } as const;
 
-const roundToScale = (value: number, digits = 2): number => {
-  const factor = 10 ** digits;
-  return Math.round(value * factor) / factor;
+const normalizeProductionAllowanceRate = (value: unknown): number | null => {
+  if (value === undefined || value === null || String(value).trim() === "") return null;
+  const parsed = toNumberOrNull(value);
+  if (parsed === null || parsed <= 0) {
+    throw createHttpError(400, "wagePerSecond must be a positive production allowance rate");
+  }
+  return parsed;
 };
 
 const resolveFactoryWageFields = (
-  targetMonthlyWageInput: unknown,
+  _targetMonthlyWageInput: unknown,
   wagePerSecondInput: unknown
 ): { targetMonthlyWage: number | null; wagePerSecond: number | null } => {
-  const targetMonthlyWage = toNumberOrNull(targetMonthlyWageInput);
-  if (targetMonthlyWage === null) {
-    return {
-      targetMonthlyWage: null,
-      wagePerSecond: toNumberOrNull(wagePerSecondInput),
-    };
-  }
   return {
-    targetMonthlyWage,
-    wagePerSecond: roundToScale(targetMonthlyWage / FACTORY_WORK_SECONDS_PER_MONTH, 2),
+    targetMonthlyWage: null,
+    wagePerSecond: normalizeProductionAllowanceRate(wagePerSecondInput),
   };
 };
 
@@ -69,13 +65,12 @@ const resolveFactoryWageUpdateFields = (params: {
     };
   }
 
-  if (targetMonthlyWageInput !== undefined) {
-    return resolveFactoryWageFields(targetMonthlyWageInput, wagePerSecondInput);
-  }
-
   return {
-    targetMonthlyWage: toNumberOrNull(fallbackTargetMonthlyWage),
-    wagePerSecond: toNumberOrNull(wagePerSecondInput),
+    targetMonthlyWage: null,
+    wagePerSecond:
+      wagePerSecondInput === undefined
+        ? toNumberOrNull(fallbackWagePerSecond)
+        : normalizeProductionAllowanceRate(wagePerSecondInput),
   };
 };
 
