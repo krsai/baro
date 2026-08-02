@@ -21,7 +21,13 @@ import {
   DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
   normalizeFactoryManagementStartDateKey,
 } from '../../../../utils/factoryManagementStart';
-import { parseNumberLike } from '../../../../utils/numberFormat';
+import {
+  formatDigitsWithCommas,
+  parseNumberLike,
+} from '../../../../utils/numberFormat';
+const WORK_DAYS_PER_MONTH = 26;
+const HOURS_PER_DAY = 8;
+const SECONDS_PER_MONTH = WORK_DAYS_PER_MONTH * HOURS_PER_DAY * 60 * 60;
 const COUNTRY_CODE_BY_COUNTRY = {
   KR: '+82',
   VN: '+84',
@@ -224,6 +230,11 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
       country: getUiMessage('factoryDetail.country', 'Country', languageCode),
       countryCode: getUiMessage('factoryDetail.countryCode', 'Country Code', languageCode),
       phoneNumber: getUiMessage('factoryDetail.phoneNumber', 'Phone Number', languageCode),
+      targetMonthlyWage: getUiMessage(
+        'factoryDetail.targetMonthlyWage',
+        'Target Monthly Production Allowance',
+        languageCode
+      ),
       wagePerSecond: getUiMessage(
         'factoryDetail.wagePerSecond',
         'Wage / sec (auto)',
@@ -232,6 +243,11 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
       wagePerSecondHelper: getUiMessage(
         'factoryDetail.wagePerSecondHelper',
         'Automatically calculated from monthly target wage.',
+        languageCode
+      ),
+      targetMonthlyWageHelper: getUiMessage(
+        'factoryDetail.targetMonthlyWageHelper',
+        'Converted using 26 days/month and 8 hours/day.',
         languageCode
       ),
     }),
@@ -307,10 +323,10 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
       }));
       return;
     }
-    if (name === 'wagePerSecond') {
+    if (name === 'targetMonthlyWage') {
       setFormData((prev) => ({
         ...prev,
-        wagePerSecond: value.replace(/[^\d.]/g, ''),
+        targetMonthlyWage: value.replace(/[^\d]/g, ''),
       }));
       return;
     }
@@ -332,6 +348,20 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const computedWagePerSecond = useMemo(() => {
+    const target = parseNumber(formData.targetMonthlyWage);
+    if (Number.isFinite(target)) {
+      const value = target / SECONDS_PER_MONTH;
+      return Math.round(value * 100) / 100;
+    }
+    const fallback = parseNumber(formData.wagePerSecond);
+    return Number.isFinite(fallback) ? fallback : Number.NaN;
+  }, [formData.targetMonthlyWage, formData.wagePerSecond]);
+
+  const computedWageDisplay = Number.isFinite(computedWagePerSecond)
+    ? computedWagePerSecond.toFixed(2)
+    : '';
+
   const managerHelperText = !factory?.id
     ? managerMessages.saveFirst
     : managerEmployeesLoading
@@ -341,7 +371,10 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
         : managerMessages.helper;
 
   const handleSave = () => {
-    const wagePerSecond = parseNumber(formData.wagePerSecond);
+    const targetMonthlyWage = parseNumber(formData.targetMonthlyWage);
+    const wagePerSecond = Number.isFinite(computedWagePerSecond)
+      ? computedWagePerSecond
+      : formData.wagePerSecond ?? '';
 
     onSave?.({
       ...factory,
@@ -351,8 +384,8 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
       managementStartDate:
         normalizeFactoryManagementStartDateKey(formData.managementStartDate) ||
         DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
-      targetMonthlyWage: '',
-      wagePerSecond: Number.isFinite(wagePerSecond) ? wagePerSecond : '',
+      targetMonthlyWage: Number.isFinite(targetMonthlyWage) ? targetMonthlyWage : '',
+      wagePerSecond,
     });
   };
 
@@ -439,6 +472,18 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
             description={extraText.localizedDescription}
           >
             <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label={text.targetMonthlyWage}
+                  name="targetMonthlyWage"
+                  value={formatDigitsWithCommas(formData.targetMonthlyWage)}
+                  onChange={handleInputChange}
+                  inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
+                  helperText={text.targetMonthlyWageHelper}
+                />
+              </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -550,10 +595,10 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                   size="small"
                   label={text.wagePerSecond}
                   name="wagePerSecond"
-                  value={formData.wagePerSecond}
-                  onChange={handleInputChange}
-                  inputProps={{ inputMode: 'decimal' }}
+                  value={computedWageDisplay}
+                  InputProps={{ readOnly: true }}
                   helperText={text.wagePerSecondHelper}
+                  sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
                 />
               </Grid>
             </Grid>

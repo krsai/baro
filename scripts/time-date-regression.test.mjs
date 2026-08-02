@@ -32,6 +32,10 @@ const factoryDetailSource = fs.readFileSync(
   'frontend/src/pages/App/organization/factoryDetail/FactoryDetail.jsx',
   'utf8'
 );
+const uiMessagesSource = fs.readFileSync(
+  'frontend/src/constants/uiMessages.js',
+  'utf8'
+);
 
 test('Asia/Seoul date key does not shift at UTC boundary', () => {
   const source = new Date('2026-02-23T00:30:00+09:00');
@@ -142,12 +146,13 @@ test('production allowance calculation excludes unfinished salary components', (
   assert.doesNotMatch(payrollEntrySource, /기본급|고정수당|변동수당|보너스|공제/);
 });
 
-test('factory production allowance rate is entered directly instead of derived from salary', () => {
-  assert.match(factoryRoutesSource, /normalizeProductionAllowanceRate/);
-  assert.doesNotMatch(factoryRoutesSource, /FACTORY_WORK_SECONDS_PER_MONTH/);
+test('factory production allowance rate is derived from the monthly production allowance target', () => {
+  assert.match(factoryRoutesSource, /FACTORY_WORK_SECONDS_PER_MONTH = 26 \* 8 \* 60 \* 60/);
+  assert.match(factoryRoutesSource, /targetMonthlyWage \/ FACTORY_WORK_SECONDS_PER_MONTH/);
   assert.match(factoryDetailSource, /name="wagePerSecond"/);
-  assert.doesNotMatch(factoryDetailSource, /name="targetMonthlyWage"/);
-  assert.doesNotMatch(factoryDetailSource, /computedWagePerSecond/);
+  assert.match(factoryDetailSource, /name="targetMonthlyWage"/);
+  assert.match(factoryDetailSource, /computedWagePerSecond/);
+  assert.match(uiMessagesSource, /월 목표 생산수당/);
 });
 
 test('invalid business time zones fail during server configuration', () => {
