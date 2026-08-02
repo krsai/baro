@@ -100,9 +100,24 @@ const PayrollBoard = () => {
         requestJSON('/payroll/snapshots' + query),
         requestJSON('/payroll/calendar' + query, { forceRefresh: true, skipGlobalLoading: true }),
       ]);
-      setSnapshots(Array.isArray(snapshotRows) ? snapshotRows : []);
+      const nextSnapshots = Array.isArray(snapshotRows) ? snapshotRows : [];
+      const nextAvailableMonths = Array.isArray(calendarPayload?.availableMonthKeys)
+        ? calendarPayload.availableMonthKeys
+        : [];
+      const nextCurrentMonth = String(calendarPayload?.currentMonthKey || '');
+      const nextSnapshotsByMonth = new Map(
+        nextSnapshots.map((snapshot) => [String(snapshot?.month || ''), snapshot])
+      );
+      const latestCalculableMonth = nextAvailableMonths.find((month) => {
+        const snapshot = nextSnapshotsByMonth.get(month);
+        return month === nextCurrentMonth || !snapshot || snapshot.isProvisional;
+      });
+
+      setSnapshots(nextSnapshots);
       setCalendar(calendarPayload || null);
-      setSelectedMonth((previous) => previous || String(calendarPayload?.currentMonthKey || ''));
+      setSelectedMonth(
+        (previous) => previous || latestCalculableMonth || nextAvailableMonths[0] || nextCurrentMonth
+      );
     } catch (error) {
       setSnapshots([]);
       showNotification(error?.message || resolveText(languageCode, 'fetchError'), 'error');

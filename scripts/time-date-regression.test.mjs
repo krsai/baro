@@ -128,6 +128,9 @@ test('production allowance board uses the server business calendar instead of br
   assert.match(payrollControllerSource, /process\.env\.BUSINESS_TIME_ZONE \|\| "Asia\/Seoul"/);
   assert.match(payrollBoardSource, /requestJSON\('\/payroll\/calendar'/);
   assert.match(payrollBoardSource, /calendarPayload\?\.currentMonthKey/);
+  assert.match(payrollBoardSource, /latestCalculableMonth/);
+  assert.match(payrollBoardSource, /!snapshot \|\| snapshot\.isProvisional/);
+  assert.match(payrollBoardSource, /latestCalculableMonth \|\| nextAvailableMonths\[0\] \|\| nextCurrentMonth/);
   assert.match(payrollBoardSource, /max: currentMonthKey/);
 });
 
