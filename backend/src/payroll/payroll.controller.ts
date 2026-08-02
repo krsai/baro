@@ -6,6 +6,7 @@ import {
   getPayrollByMonth,
   getPayrollMonthReadiness,
   listPayrollSnapshots,
+  lockPayrollSnapshot,
   savePayrollSnapshot,
   unlockPayrollSnapshot,
 } from "./payroll.service";
@@ -137,6 +138,20 @@ export const unlockPayrollSnapshotController = async (req: Request, res: Respons
     accessContext.organization.id,
     String(req.params.month || "")
   );
+  return res.json(result);
+};
+
+export const lockPayrollSnapshotController = async (req: Request, res: Response) => {
+  const accessContext = await requireOrgRole(req, res);
+  if (!accessContext) return;
+  const result = await lockPayrollSnapshot({
+    orgId: accessContext.organization.id,
+    month: String(req.params.month || ""),
+    lockedBy:
+      resolveOptionalString(req.body?.lockedBy, null) ??
+      accessContext.requesterEmail ??
+      "unknown",
+  });
   return res.json(result);
 };
 

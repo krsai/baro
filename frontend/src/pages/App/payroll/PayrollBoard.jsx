@@ -34,6 +34,7 @@ const TEXT = {
     calculateError: '생산수당 계산에 실패했습니다.', deleteConfirm: '{month} 생산수당 계산 내역을 삭제하시겠습니까?',
     deleteSuccess: '{month} 생산수당 계산 내역을 삭제했습니다.', deleteError: '생산수당 계산 내역 삭제에 실패했습니다.',
     current: '진행 중', confirmed: '확정', empty: '계산된 생산수당 내역이 없습니다.', loading: '불러오는 중...',
+    notCalculated: '미계산',
     rowHint: '월별 계산본을 선택하면 공장·라인·직원·공정별 상세 내역을 확인할 수 있습니다.',
     monthReady: '선택 월 계산 가능', monthIncomplete: '선택 월 자료 미완료', actions: '관리', lock: '잠금', unlockBeforeDelete: '잠금을 해제한 뒤 삭제할 수 있습니다.',
     factory: '공장', line: '라인', workCoverage: '작업기록', attendanceCoverage: '출퇴근 기록(참고)',
@@ -50,6 +51,7 @@ const TEXT = {
     calculateError: 'Failed to calculate production allowance.', deleteConfirm: 'Delete the {month} production allowance result?',
     deleteSuccess: 'Deleted the {month} production allowance result.', deleteError: 'Failed to delete the production allowance result.',
     current: 'In Progress', confirmed: 'Confirmed', empty: 'No production allowance results have been calculated.', loading: 'Loading...',
+    notCalculated: 'Not Calculated',
     rowHint: 'Select a monthly result to view factory, line, employee, and process details.',
     monthReady: 'Selected month is ready', monthIncomplete: 'Selected month data is incomplete', actions: 'Actions', lock: 'Lock', unlockBeforeDelete: 'Unlock this month before deleting it.',
     factory: 'Factory', line: 'Line', workCoverage: 'Work Records', attendanceCoverage: 'Attendance (Reference)',
@@ -66,6 +68,7 @@ const TEXT = {
     calculateError: 'Khong the tinh phu cap san luong.', deleteConfirm: 'Xoa ket qua phu cap san luong thang {month}?',
     deleteSuccess: 'Da xoa ket qua phu cap san luong thang {month}.', deleteError: 'Khong the xoa ket qua phu cap san luong.',
     current: 'Dang tien hanh', confirmed: 'Da xac nhan', empty: 'Chua co ket qua phu cap san luong.', loading: 'Dang tai...',
+    notCalculated: 'Chua tinh',
     rowHint: 'Chon ket qua theo thang de xem chi tiet nha may, chuyen, nhan vien va cong doan.',
     monthReady: 'Thang da chon san sang', monthIncomplete: 'Du lieu thang chua day du', actions: 'Quan ly', lock: 'Khoa', unlockBeforeDelete: 'Mo khoa thang nay truoc khi xoa.',
     factory: 'Nha may', line: 'Chuyen', workCoverage: 'Du lieu san xuat', attendanceCoverage: 'Cham cong (tham khao)',
@@ -178,6 +181,16 @@ const PayrollBoard = () => {
     () => new Map(snapshots.map((snapshot) => [String(snapshot?.month || ''), snapshot])),
     [snapshots]
   );
+  const monthRows = useMemo(() => {
+    const months = new Set([
+      ...(Array.isArray(calendar?.availableMonthKeys) ? calendar.availableMonthKeys : []),
+      ...snapshots.map((snapshot) => String(snapshot?.month || '')).filter(Boolean),
+    ]);
+    return Array.from(months)
+      .filter((month) => !latestCompletedMonthKey || month <= latestCompletedMonthKey)
+      .sort((left, right) => right.localeCompare(left))
+      .map((month) => ({ month, snapshot: snapshotsByMonth.get(month) || null }));
+  }, [calendar?.availableMonthKeys, latestCompletedMonthKey, snapshots, snapshotsByMonth]);
   const selectedSnapshot = snapshotsByMonth.get(selectedMonth) || null;
   const needsRecalculation = Boolean(readiness?.needsRecalculation);
   const alreadyCalculated = Boolean(
@@ -237,7 +250,11 @@ const PayrollBoard = () => {
     if (!month) return;
     try {
       if (checked) {
-        await handleCalculate(month);
+        await requestJSON(`/payroll/snapshots/${month}/lock` + buildQueryString({ orgId: activeOrgId }), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lockedBy: activeProfile?.email || activeProfile?.name || 'administrator' }),
+        });
+        await load();
       } else {
         await handleUnlock(month);
       }
@@ -330,29 +347,28 @@ const PayrollBoard = () => {
               </TableRow></TableHead>
               <TableBody>
                 {loading ? <TableStatusRow colSpan={8} message={resolveText(languageCode, 'loading')} />
-                  : snapshots.length === 0 ? <TableStatusRow colSpan={8} message={resolveText(languageCode, 'empty')} />
-                    : snapshots.map((snapshot) => {
-                      const month = String(snapshot.month || '');
-                      const employees = Array.isArray(snapshot.data) ? snapshot.data : [];
+                  : monthRows.length === 0 ? <TableStatusRow colSpan={8} message={resolveText(languageCode, 'empty')} />
+                    : monthRows.map(({ month, snapshot }) => {
+                      const employees = Array.isArray(snapshot?.data) ? snapshot.data : [];
                       const total = employees.reduce(
                         (sum, employee) => sum + Number(employee.productionAllowance || employee.productionEarnings || 0), 0
                       );
-                      const rowNeedsRecalculation = month === selectedMonth && needsRecalculation;
+                      const rowNeedsRecalculation = Boolean(snapshot && month === selectedMonth && needsRecalculation);
                       return (
                         <TableRow
-                          key={month} hover sx={{ cursor: 'pointer' }}
-                          onClick={() => navigateToPath(`/payroll/${month}`, { label: `${text.title} ${month}` })}
+                          key={month} hover={Boolean(snapshot)} sx={{ cursor: snapshot ? 'pointer' : 'default' }}
+                          onClick={() => snapshot && navigateToPath(`/payroll/${month}`, { label: `${text.title} ${month}` })}
                         >
                           <TableCell sx={{ fontWeight: 700 }}>{month}</TableCell>
                           <TableCell align="right">{employees.length}{text.peopleSuffix}</TableCell>
                           <TableCell align="right">{formatDong(total)}</TableCell>
-                          <TableCell>{snapshot.lockedBy || '-'}</TableCell>
-                          <TableCell>{snapshot.lockedAt ? new Date(snapshot.lockedAt).toLocaleString() : '-'}</TableCell>
-                          <TableCell align="center"><Chip size="small" color={rowNeedsRecalculation ? 'warning' : snapshot.isProvisional ? 'default' : 'success'} label={rowNeedsRecalculation ? resolveText(languageCode, 'needsRecalculation') : resolveText(languageCode, snapshot.isProvisional ? 'current' : 'confirmed')} variant="outlined" /></TableCell>
+                          <TableCell>{snapshot?.lockedBy || '-'}</TableCell>
+                          <TableCell>{snapshot?.lockedAt ? new Date(snapshot.lockedAt).toLocaleString() : '-'}</TableCell>
+                          <TableCell align="center"><Chip size="small" color={rowNeedsRecalculation ? 'warning' : !snapshot ? 'default' : snapshot.isProvisional ? 'info' : 'success'} label={rowNeedsRecalculation ? resolveText(languageCode, 'needsRecalculation') : resolveText(languageCode, !snapshot ? 'notCalculated' : snapshot.isProvisional ? 'current' : 'confirmed')} variant="outlined" /></TableCell>
                           <TableCell align="center">
                             <LockToggleSwitch
-                              checked={!snapshot.isProvisional}
-                              disabled={Boolean(mutating) || calculating}
+                              checked={Boolean(snapshot && !snapshot.isProvisional)}
+                              disabled={!snapshot || Boolean(mutating) || calculating}
                               stopPropagation
                               onChange={(_event, checked) => handleLockToggle(snapshot, checked)}
                               ariaLabel={`${resolveText(languageCode, 'lock')} ${month}`}
@@ -360,8 +376,8 @@ const PayrollBoard = () => {
                           </TableCell>
                           <TableCell align="center">
                             <DeleteActionButton
-                              disabled={!snapshot.isProvisional || Boolean(mutating)}
-                              title={snapshot.isProvisional ? text.delete : resolveText(languageCode, 'unlockBeforeDelete')}
+                              disabled={!snapshot || !snapshot.isProvisional || Boolean(mutating)}
+                              title={snapshot?.isProvisional ? text.delete : resolveText(languageCode, 'unlockBeforeDelete')}
                               stopPropagation
                               onClick={() => handleDelete(month)}
                             />

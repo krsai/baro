@@ -714,13 +714,13 @@ export const savePayrollSnapshot = async ({
       data: snapshotEmployees,
       lockedAt: savedAt,
       lockedBy: savedByText,
-      isProvisional: !monthReady,
+      isProvisional: true,
     },
     update: {
       data: snapshotEmployees,
       lockedAt: savedAt,
       lockedBy: savedByText,
-      isProvisional: !monthReady,
+      isProvisional: true,
     },
   });
   return snapshot;
@@ -763,6 +763,37 @@ export const unlockPayrollSnapshot = async (orgId: number, monthInput: string) =
   await prisma.payrollSnapshot.update({
     where: { id: existing.id },
     data: { isProvisional: true },
+  });
+  return { ok: true, month };
+};
+
+export const lockPayrollSnapshot = async ({
+  orgId,
+  month: monthInput,
+  lockedBy,
+}: {
+  orgId: number;
+  month: string;
+  lockedBy: string;
+}) => {
+  const month = String(monthInput || "");
+  assertPayrollMonth(month);
+  const existing = await prisma.payrollSnapshot.findUnique({
+    where: { orgId_month: { orgId, month } },
+    select: { id: true },
+  });
+  if (!existing) throw createHttpError(404, "calculate production allowance before locking");
+
+  const readiness = await getPayrollMonthReadiness(orgId, month);
+  if (!readiness.ready) throw createHttpError(409, "monthly work records are incomplete");
+
+  await prisma.payrollSnapshot.update({
+    where: { id: existing.id },
+    data: {
+      isProvisional: false,
+      lockedAt: new Date(),
+      lockedBy: String(lockedBy || "unknown"),
+    },
   });
   return { ok: true, month };
 };

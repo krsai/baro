@@ -182,6 +182,9 @@ test('production allowance is calculated from the board and rows open read-only 
   assert.match(payrollBoardSource, /<LockToggleSwitch/);
   assert.match(payrollBoardSource, /<DeleteActionButton/);
   assert.match(payrollServiceSource, /unlock production allowance before deletion/);
+  assert.match(payrollServiceSource, /isProvisional: true/);
+  assert.match(payrollServiceSource, /export const lockPayrollSnapshot/);
+  assert.match(payrollBoardSource, /monthRows\.map/);
   assert.match(payrollServiceSource, /export const unlockPayrollSnapshot/);
 });
 
