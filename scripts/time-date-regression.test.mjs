@@ -124,7 +124,7 @@ test('payroll entry uses the server business calendar instead of browser local m
   assert.match(payrollEntrySource, /requestJSON\('\/payroll\/calendar'/);
   assert.match(payrollEntrySource, /calendar\?\.latestCompletedMonthKey/);
   assert.doesNotMatch(payrollEntrySource, /const getLatestCompletedPayrollMonthKey/);
-  assert.match(payrollEntrySource, /setPayMonth\(String\(payload\?\.latestCompletedMonthKey/);
+  assert.match(payrollEntrySource, /setPayMonth\(String\(payload\?\.currentMonthKey/);
   assert.match(payrollEntrySource, /title=\{isNew \? '생산수당 계산'/);
 });
 
@@ -139,6 +139,14 @@ test('payroll persistence rejects unfinished months and supports exact save and 
 test('production allowance finalization does not depend on shipment quantity settlement', () => {
   assert.doesNotMatch(payrollServiceSource, /assertQuantitySettlementReadyForPayroll/);
   assert.doesNotMatch(payrollEntrySource, /fetchQuantitySettlement|settlementSummary|quantity settlement incomplete/);
+});
+
+test('production allowance can preview the current month without freezing a snapshot', () => {
+  assert.match(payrollEntrySource, /max: currentMonthKey/);
+  assert.match(payrollEntrySource, /payMonth === currentMonthKey/);
+  assert.match(payrollEntrySource, /await fetchProductionAllowance\(payMonth\)/);
+  assert.match(payrollEntrySource, /현재까지 계산/);
+  assert.match(payrollEntrySource, /확정 저장하지 않습니다/);
 });
 
 test('production allowance calculation excludes unfinished salary components', () => {

@@ -67,6 +67,14 @@ const isCompletedMonth = (value, latestCompletedMonthKey) => {
     && month <= latest;
 };
 
+const isMonthThroughCurrent = (value, currentMonthKey) => {
+  const month = String(value || '').trim();
+  const current = String(currentMonthKey || '').trim();
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(month)
+    && /^\d{4}-(0[1-9]|1[0-2])$/.test(current)
+    && month <= current;
+};
+
 const productionAllowanceOf = (employee) =>
   Number(employee?.productionAllowance ?? employee?.productionEarnings ?? 0) || 0;
 
@@ -115,7 +123,7 @@ const PayrollEntry = () => {
       .then((payload) => {
         if (cancelled) return;
         setCalendar(payload);
-        setPayMonth(String(payload?.latestCompletedMonthKey || '').trim());
+        setPayMonth(String(payload?.currentMonthKey || '').trim());
       })
       .catch((error) => {
         if (cancelled) return;
@@ -145,6 +153,7 @@ const PayrollEntry = () => {
     [employees]
   );
   const latestCompletedMonthKey = String(calendar?.latestCompletedMonthKey || '').trim();
+  const currentMonthKey = String(calendar?.currentMonthKey || '').trim();
   const managementStartMonthKey = String(calendar?.managementStartMonthKey || '').trim();
   const monthReady = data?.monthReady === true;
 
@@ -159,8 +168,8 @@ const PayrollEntry = () => {
       showNotification('정산 월을 선택하세요.', 'error');
       return;
     }
-    if (!isCompletedMonth(payMonth, latestCompletedMonthKey)) {
-      showNotification('해당 월이 끝난 뒤 생산수당을 계산할 수 있습니다.', 'warning');
+    if (!isMonthThroughCurrent(payMonth, currentMonthKey)) {
+      showNotification('현재 월까지 생산수당을 계산할 수 있습니다.', 'warning');
       return;
     }
     if (managementStartMonthKey && payMonth < managementStartMonthKey) {
@@ -170,6 +179,11 @@ const PayrollEntry = () => {
 
     setSaving(true);
     try {
+      if (payMonth === currentMonthKey) {
+        await fetchProductionAllowance(payMonth);
+        showNotification(`${payMonth} 현재까지의 생산수당을 계산했습니다.`, 'success');
+        return;
+      }
       const query = buildQueryString({ orgId: activeOrgId });
       await requestJSON('/payroll/snapshots' + query, {
         method: 'POST',
@@ -217,7 +231,7 @@ const PayrollEntry = () => {
   return (
     <AppPageContainer
       title={isNew ? '생산수당 계산' : `생산수당 ${monthFromParam}`}
-      titleActions={data ? (
+      titleActions={data && payMonth !== currentMonthKey ? (
         <SaveButton
           onClick={handleSave}
           disabled={!monthReady || saving || employees.length === 0}
@@ -240,7 +254,7 @@ const PayrollEntry = () => {
                   InputLabelProps={{ shrink: true }}
                   inputProps={{
                     min: managementStartMonthKey || undefined,
-                    max: latestCompletedMonthKey || undefined,
+                    max: currentMonthKey || undefined,
                   }}
                   size="small"
                   sx={{ width: 220 }}
@@ -250,7 +264,7 @@ const PayrollEntry = () => {
                     size="small"
                     variant="outlined"
                     onClick={() => handleMonthChange(shiftMonthKey(payMonth, 1))}
-                    disabled={loading || calendarLoading || saving || !latestCompletedMonthKey || payMonth >= latestCompletedMonthKey}
+                    disabled={loading || calendarLoading || saving || !currentMonthKey || payMonth >= currentMonthKey}
                     sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11 }}
                   >
                     M+
@@ -263,7 +277,7 @@ const PayrollEntry = () => {
                       loading ||
                       calendarLoading ||
                       saving ||
-                      !latestCompletedMonthKey ||
+                      !currentMonthKey ||
                       Boolean(managementStartMonthKey && payMonth <= managementStartMonthKey)
                     }
                     sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11 }}
@@ -279,16 +293,25 @@ const PayrollEntry = () => {
                   loading ||
                   calendarLoading ||
                   saving ||
-                  !isCompletedMonth(payMonth, latestCompletedMonthKey) ||
+                  !isMonthThroughCurrent(payMonth, currentMonthKey) ||
                   Boolean(managementStartMonthKey && payMonth < managementStartMonthKey)
                 }
               >
-                {loading || saving ? '계산 중...' : '계산 및 확정'}
+                {loading || saving
+                  ? '계산 중...'
+                  : payMonth === currentMonthKey
+                    ? '현재까지 계산'
+                    : '계산 및 확정'}
               </Button>
             </Stack>
-            {!calendarLoading && !isCompletedMonth(payMonth, latestCompletedMonthKey) && (
+            {!calendarLoading && !isMonthThroughCurrent(payMonth, currentMonthKey) && (
               <Alert severity="info" sx={{ mt: 1.5 }}>
-                해당 월이 끝난 뒤 생산수당을 계산할 수 있습니다.
+                현재 월까지 생산수당을 계산할 수 있습니다.
+              </Alert>
+            )}
+            {!calendarLoading && payMonth === currentMonthKey && (
+              <Alert severity="info" sx={{ mt: 1.5 }}>
+                현재 월은 모든 공장의 지금까지 등록된 작업기록으로 계산하며 확정 저장하지 않습니다.
               </Alert>
             )}
             {!calendarLoading && managementStartMonthKey && payMonth < managementStartMonthKey && (
