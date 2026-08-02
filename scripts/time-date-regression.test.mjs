@@ -143,7 +143,8 @@ test('payroll persistence only accepts complete months with work and attendance 
   assert.match(payrollServiceSource, /isProvisional: !monthReady/);
   assert.match(payrollServiceSource, /prisma\.payrollSnapshot\.upsert\(/);
   assert.match(payrollServiceSource, /prisma\.payrollSnapshot\.delete\(/);
-  assert.match(payrollServiceSource, /syncAssignmentPlanPayrollFinalization\(\{ orgId, month, finalized: false \}\)/);
+  assert.match(payrollServiceSource, /needsRecalculation/);
+  assert.match(payrollServiceSource, /sourceChangedAfterCalculation/);
 });
 
 test('production startup applies safe database schema synchronization before serving requests', () => {
@@ -152,8 +153,10 @@ test('production startup applies safe database schema synchronization before ser
   assert.doesNotMatch(backendPackage.scripts.start, /prisma:deploy:safe/);
 });
 
-test('production allowance finalization does not depend on shipment quantity settlement', () => {
+test('production allowance confirmation neither depends on shipment settlement nor locks production', () => {
   assert.doesNotMatch(payrollServiceSource, /assertQuantitySettlementReadyForPayroll/);
+  assert.doesNotMatch(payrollServiceSource, /syncAssignmentPlanPayrollFinalization/);
+  assert.doesNotMatch(payrollServiceSource, /ASSIGNMENT_STATUS_PRODUCTION_COMPLETED/);
   assert.doesNotMatch(payrollEntrySource, /fetchQuantitySettlement|settlementSummary|quantity settlement incomplete/);
 });
 

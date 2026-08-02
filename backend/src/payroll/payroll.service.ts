@@ -22,9 +22,6 @@ import {
 } from "../work-records/workRecord.shared";
 import { resolveFactoryManagementStartDateKey } from "../factories/factoryManagementStart";
 
-const ASSIGNMENT_STATUS_READY_TO_COMPLETE = "READY_TO_COMPLETE";
-const ASSIGNMENT_STATUS_PRODUCTION_COMPLETED = "PRODUCTION_COMPLETED";
-
 const toPayrollAmountOrNull = (value: unknown): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -44,46 +41,6 @@ const assertPayrollMonth = (month: string) => {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(month || ""))) {
     throw createHttpError(400, "month is required (format: YYYY-MM)");
   }
-};
-
-const resolvePayrollMonthDateRange = (month: string) => {
-  const [yearText, monthText] = String(month || "").split("-");
-  const year = Number(yearText);
-  const monthIndex = Number(monthText) - 1;
-  const start = new Date(Date.UTC(year, monthIndex, 1));
-  const end = new Date(Date.UTC(year, monthIndex + 1, 1));
-  return { start, end };
-};
-
-const syncAssignmentPlanPayrollFinalization = async ({
-  orgId,
-  month,
-  finalized,
-}: {
-  orgId: number;
-  month: string;
-  finalized: boolean;
-}) => {
-  const { start, end } = resolvePayrollMonthDateRange(month);
-  await prisma.assignmentPlan.updateMany({
-    where: {
-      orgId,
-      productionCompletedAt: {
-        gte: start,
-        lt: end,
-      },
-      scheduleStatus: finalized
-        ? ASSIGNMENT_STATUS_READY_TO_COMPLETE
-        : ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
-    },
-    data: {
-      isCompleted: finalized,
-      scheduleStatus: finalized
-        ? ASSIGNMENT_STATUS_PRODUCTION_COMPLETED
-        : ASSIGNMENT_STATUS_READY_TO_COMPLETE,
-      updatedAt: new Date(),
-    },
-  });
 };
 
 const getPayrollMonthRange = (month: string) => {
@@ -256,12 +213,14 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     }),
     prisma.attendanceEntry.findMany({
       where: { orgId, workDate: { gte: monthStart, lte: monthEnd } },
-      select: { workerId: true, factoryId: true, workDate: true },
+      select: { workerId: true, factoryId: true, workDate: true, createdAt: true, updatedAt: true },
     }),
     prisma.workLog.findMany({
       where: { orgId, displayDate: { startsWith: month } },
       select: {
         displayDate: true,
+        createdAt: true,
+        updatedAt: true,
         coverageStartDate: true,
         coverageEndDate: true,
         factoryId: true,
@@ -269,6 +228,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         workRecords: {
           select: {
             lineId: true, workerId: true, quantity: true, ctSeconds: true,
+            createdAt: true, updatedAt: true,
             effectiveCoverageStartDate: true, effectiveCoverageEndDate: true,
             worker: { include: { role: true } },
           },
@@ -277,7 +237,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     }),
     prisma.payrollSnapshot.findUnique({
       where: { orgId_month: { orgId, month } },
-      select: { id: true, isProvisional: true },
+      select: { id: true, isProvisional: true, lockedAt: true, data: true },
     }),
   ]);
 
@@ -364,11 +324,38 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     })
     .filter((group): group is NonNullable<typeof group> => group !== null);
 
+  const sourceChangedAfterCalculation = Boolean(snapshot && [
+    ...attendanceEntries.flatMap((row) => [row.createdAt, row.updatedAt]),
+    ...workLogs.flatMap((workLog) => [
+      workLog.createdAt,
+      workLog.updatedAt,
+      ...workLog.workRecords.flatMap((record) => [record.createdAt, record.updatedAt]),
+    ]),
+  ].some((changedAt) => new Date(changedAt).getTime() > snapshot.lockedAt.getTime()));
+  const groupsComplete = groups.length > 0 && groups.every((group) => group.ready);
+  const currentProductionAllowance = groups.reduce(
+    (sum, group) => sum + Number(group.productionAllowance || 0), 0
+  );
+  const snapshotProductionAllowance = snapshot
+    ? ensureArray(snapshot.data)
+        .map(normalizePayrollSnapshotEmployee)
+        .reduce((sum, employee) => sum + Number(employee.productionAllowance || 0), 0)
+    : 0;
+  const calculatedBasisChanged = Boolean(
+    snapshot && Math.abs(currentProductionAllowance - snapshotProductionAllowance) > 0.000001
+  );
+  const needsRecalculation = Boolean(
+    snapshot &&
+    !snapshot.isProvisional &&
+    (sourceChangedAfterCalculation || calculatedBasisChanged || !groupsComplete)
+  );
+
   return {
     month,
     completedMonth,
     snapshotExists: Boolean(snapshot && !snapshot.isProvisional),
-    ready: completedMonth && groups.length > 0 && groups.every((group) => group.ready),
+    needsRecalculation,
+    ready: completedMonth && groupsComplete,
     groups,
   };
 };
@@ -727,9 +714,6 @@ export const savePayrollSnapshot = async ({
       isProvisional: !monthReady,
     },
   });
-  if (monthReady) {
-    await syncAssignmentPlanPayrollFinalization({ orgId, month, finalized: true });
-  }
   return snapshot;
 };
 
@@ -748,15 +732,6 @@ export const deletePayrollSnapshot = async (orgId: number, monthInput: string) =
   await prisma.payrollSnapshot.delete({
     where: { id: existing.id },
   });
-
-  if (
-    !existing.isProvisional &&
-    isPayrollMonthReady(month, {
-      timeZone: process.env.BUSINESS_TIME_ZONE || "Asia/Seoul",
-    })
-  ) {
-    await syncAssignmentPlanPayrollFinalization({ orgId, month, finalized: false });
-  }
 
   return { ok: true, month };
 };

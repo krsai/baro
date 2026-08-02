@@ -35,6 +35,7 @@ const TEXT = {
     rowHint: '행을 선택하면 직원별·공정별 상세 내역을 확인할 수 있습니다.',
     factory: '공장', line: '라인', workCoverage: '작업기록', attendanceCoverage: '출퇴근 기록',
     ready: '계산 가능', incomplete: '자료 미완료', noLines: '생산수당 대상 공장·라인이 없습니다.',
+    needsRecalculation: '재계산 필요', recalculateConfirmed: '재계산',
   },
   en: {
     calculateMonth: 'Calculation Month', calculate: 'Calculate', recalculate: 'Recalculate to Date', calculating: 'Calculating...',
@@ -46,6 +47,7 @@ const TEXT = {
     rowHint: 'Select a row to view employee and process details.',
     factory: 'Factory', line: 'Line', workCoverage: 'Work Records', attendanceCoverage: 'Attendance',
     ready: 'Ready', incomplete: 'Incomplete', noLines: 'No factory or line has production allowance employees.',
+    needsRecalculation: 'Recalculation Required', recalculateConfirmed: 'Recalculate',
   },
   vi: {
     calculateMonth: 'Thang tinh', calculate: 'Tinh', recalculate: 'Tinh lai den hien tai', calculating: 'Dang tinh...',
@@ -57,6 +59,7 @@ const TEXT = {
     rowHint: 'Chon mot dong de xem chi tiet theo nhan vien va cong doan.',
     factory: 'Nha may', line: 'Chuyen', workCoverage: 'Du lieu san xuat', attendanceCoverage: 'Cham cong',
     ready: 'Co the tinh', incomplete: 'Chua du du lieu', noLines: 'Khong co nha may hoac chuyen co nhan vien tinh phu cap san luong.',
+    needsRecalculation: 'Can tinh lai', recalculateConfirmed: 'Tinh lai',
   },
 };
 
@@ -161,7 +164,10 @@ const PayrollBoard = () => {
     [snapshots]
   );
   const selectedSnapshot = snapshotsByMonth.get(selectedMonth) || null;
-  const alreadyCalculated = Boolean(selectedSnapshot && !selectedSnapshot.isProvisional);
+  const needsRecalculation = Boolean(readiness?.needsRecalculation);
+  const alreadyCalculated = Boolean(
+    selectedSnapshot && !selectedSnapshot.isProvisional && !needsRecalculation
+  );
   const canCalculate = Boolean(
     selectedMonth && readiness?.ready && !alreadyCalculated && !loading && !readinessLoading && !calculating
   );
@@ -187,6 +193,11 @@ const PayrollBoard = () => {
         }),
       });
       await load();
+      const refreshedReadiness = await requestJSON(
+        '/payroll/readiness' + buildQueryString({ orgId: activeOrgId, month: selectedMonth }),
+        { forceRefresh: true, skipGlobalLoading: true }
+      );
+      setReadiness(refreshedReadiness || null);
       showNotification(resolveText(languageCode, 'calculateSuccess', { month: selectedMonth }), 'success');
     } catch (error) {
       showNotification(error?.message || resolveText(languageCode, 'calculateError'), 'error');
@@ -213,7 +224,7 @@ const PayrollBoard = () => {
           >
             {calculating
               ? resolveText(languageCode, 'calculating')
-              : resolveText(languageCode, 'calculate')}
+              : resolveText(languageCode, needsRecalculation ? 'recalculateConfirmed' : 'calculate')}
           </Button>
         </Stack>
       )} />}
@@ -253,7 +264,7 @@ const PayrollBoard = () => {
                           <TableCell align="right">{group.attendanceRecordedCount}/{group.attendanceRequiredCount}</TableCell>
                           <TableCell align="right">{group.employeeCount}{text.peopleSuffix}</TableCell>
                           <TableCell align="right">{alreadyCalculated ? formatDong(group.productionAllowance) : '-'}</TableCell>
-                          <TableCell align="center"><Chip size="small" color={alreadyCalculated ? 'success' : groupReady ? 'info' : 'warning'} label={alreadyCalculated ? resolveText(languageCode, 'confirmed') : resolveText(languageCode, groupReady ? 'ready' : 'incomplete')} variant="outlined" /></TableCell>
+                          <TableCell align="center"><Chip size="small" color={alreadyCalculated ? 'success' : needsRecalculation ? 'warning' : groupReady ? 'info' : 'warning'} label={alreadyCalculated ? resolveText(languageCode, 'confirmed') : needsRecalculation ? resolveText(languageCode, 'needsRecalculation') : resolveText(languageCode, groupReady ? 'ready' : 'incomplete')} variant="outlined" /></TableCell>
                         </TableRow>
                       );
                     })}
