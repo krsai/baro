@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   Alert, Box, Button, Chip, Collapse, Paper, Stack, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Typography,
@@ -56,11 +56,14 @@ const productionAllowanceOf = (employee) =>
 
 const PayrollEntry = () => {
   const { payrollId } = useParams();
+  const [searchParams] = useSearchParams();
   const { showNotification } = useAppActions();
   const { activeOrgId } = useAuth();
   const { languageCode } = useLanguage();
   const text = TEXT[languageCode] || TEXT.en;
   const month = String(payrollId || '').trim();
+  const factoryId = Number(searchParams.get('factoryId')) || null;
+  const lineId = Number(searchParams.get('lineId')) || null;
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
   const [expandedEmployeeKey, setExpandedEmployeeKey] = useState(null);
@@ -81,10 +84,20 @@ const PayrollEntry = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  const employees = useMemo(
-    () => (Array.isArray(data?.employees) ? data.employees : []),
-    [data?.employees]
-  );
+  const employees = useMemo(() => {
+    const rows = Array.isArray(data?.employees) ? data.employees : [];
+    if (!factoryId && !lineId) return rows;
+    return rows.map((employee) => {
+      const processes = (Array.isArray(employee?.processes) ? employee.processes : []).filter(
+        (process) => (!factoryId || Number(process.factoryId) === factoryId) &&
+          (!lineId || Number(process.lineId) === lineId)
+      );
+      const productionAllowance = processes.reduce(
+        (sum, process) => sum + Number(process.totalEarnings || 0), 0
+      );
+      return { ...employee, processes, productionAllowance, productionEarnings: productionAllowance };
+    }).filter((employee) => employee.processes.length > 0);
+  }, [data?.employees, factoryId, lineId]);
   const total = useMemo(
     () => employees.reduce((sum, employee) => sum + productionAllowanceOf(employee), 0),
     [employees]

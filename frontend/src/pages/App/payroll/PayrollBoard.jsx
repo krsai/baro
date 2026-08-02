@@ -15,7 +15,6 @@ import {
 } from '@mui/material';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import AppPageContainer from '../../../components/AppPageContainer';
-import DeleteActionButton from '../../../components/DeleteActionButton';
 import PageToolbar from '../../../components/PageToolbar';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
@@ -34,6 +33,8 @@ const TEXT = {
     deleteSuccess: '{month} 생산수당 계산 내역을 삭제했습니다.', deleteError: '생산수당 계산 내역 삭제에 실패했습니다.',
     current: '진행 중', confirmed: '확정', empty: '계산된 생산수당 내역이 없습니다.', loading: '불러오는 중...',
     rowHint: '행을 선택하면 직원별·공정별 상세 내역을 확인할 수 있습니다.',
+    factory: '공장', line: '라인', workCoverage: '작업기록', attendanceCoverage: '출퇴근 기록',
+    ready: '계산 가능', incomplete: '자료 미완료', noLines: '생산수당 대상 공장·라인이 없습니다.',
   },
   en: {
     calculateMonth: 'Calculation Month', calculate: 'Calculate', recalculate: 'Recalculate to Date', calculating: 'Calculating...',
@@ -43,6 +44,8 @@ const TEXT = {
     deleteSuccess: 'Deleted the {month} production allowance result.', deleteError: 'Failed to delete the production allowance result.',
     current: 'In Progress', confirmed: 'Confirmed', empty: 'No production allowance results have been calculated.', loading: 'Loading...',
     rowHint: 'Select a row to view employee and process details.',
+    factory: 'Factory', line: 'Line', workCoverage: 'Work Records', attendanceCoverage: 'Attendance',
+    ready: 'Ready', incomplete: 'Incomplete', noLines: 'No factory or line has production allowance employees.',
   },
   vi: {
     calculateMonth: 'Thang tinh', calculate: 'Tinh', recalculate: 'Tinh lai den hien tai', calculating: 'Dang tinh...',
@@ -52,6 +55,8 @@ const TEXT = {
     deleteSuccess: 'Da xoa ket qua phu cap san luong thang {month}.', deleteError: 'Khong the xoa ket qua phu cap san luong.',
     current: 'Dang tien hanh', confirmed: 'Da xac nhan', empty: 'Chua co ket qua phu cap san luong.', loading: 'Dang tai...',
     rowHint: 'Chon mot dong de xem chi tiet theo nhan vien va cong doan.',
+    factory: 'Nha may', line: 'Chuyen', workCoverage: 'Du lieu san xuat', attendanceCoverage: 'Cham cong',
+    ready: 'Co the tinh', incomplete: 'Chua du du lieu', noLines: 'Khong co nha may hoac chuyen co nhan vien tinh phu cap san luong.',
   },
 };
 
@@ -74,10 +79,11 @@ const PayrollBoard = () => {
   const { languageCode } = useLanguage();
   const [snapshots, setSnapshots] = useState([]);
   const [calendar, setCalendar] = useState(null);
+  const [readiness, setReadiness] = useState(null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState('');
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
-  const [deletingMonth, setDeletingMonth] = useState('');
 
   const text = useMemo(() => ({
     title: getUiMessage('menu.payroll', 'Production Allowance', languageCode),
@@ -105,18 +111,20 @@ const PayrollBoard = () => {
         ? calendarPayload.availableMonthKeys
         : [];
       const nextCurrentMonth = String(calendarPayload?.currentMonthKey || '');
+      const latestCompletedMonth = String(calendarPayload?.latestCompletedMonthKey || '');
       const nextSnapshotsByMonth = new Map(
         nextSnapshots.map((snapshot) => [String(snapshot?.month || ''), snapshot])
       );
       const latestCalculableMonth = nextAvailableMonths.find((month) => {
+        if (latestCompletedMonth && month > latestCompletedMonth) return false;
         const snapshot = nextSnapshotsByMonth.get(month);
-        return month === nextCurrentMonth || !snapshot || snapshot.isProvisional;
+        return !snapshot || snapshot.isProvisional;
       });
 
       setSnapshots(nextSnapshots);
       setCalendar(calendarPayload || null);
       setSelectedMonth(
-        (previous) => previous || latestCalculableMonth || nextAvailableMonths[0] || nextCurrentMonth
+        (previous) => previous || latestCalculableMonth || latestCompletedMonth || nextCurrentMonth
       );
     } catch (error) {
       setSnapshots([]);
@@ -128,25 +136,40 @@ const PayrollBoard = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  const currentMonthKey = String(calendar?.currentMonthKey || '');
+  useEffect(() => {
+    if (!activeOrgId || !selectedMonth) return;
+    let cancelled = false;
+    setReadinessLoading(true);
+    requestJSON('/payroll/readiness' + buildQueryString({ orgId: activeOrgId, month: selectedMonth }), {
+      forceRefresh: true, skipGlobalLoading: true,
+    })
+      .then((payload) => { if (!cancelled) setReadiness(payload || null); })
+      .catch((error) => {
+        if (!cancelled) {
+          setReadiness(null);
+          showNotification(error?.message || resolveText(languageCode, 'fetchError'), 'error');
+        }
+      })
+      .finally(() => { if (!cancelled) setReadinessLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeOrgId, selectedMonth, languageCode, showNotification]);
+
+  const latestCompletedMonthKey = String(calendar?.latestCompletedMonthKey || '');
   const managementStartMonthKey = String(calendar?.managementStartMonthKey || '');
-  const availableMonthKeys = Array.isArray(calendar?.availableMonthKeys) ? calendar.availableMonthKeys : [];
   const snapshotsByMonth = useMemo(
     () => new Map(snapshots.map((snapshot) => [String(snapshot?.month || ''), snapshot])),
     [snapshots]
   );
-  const hasSourceData = availableMonthKeys.includes(selectedMonth);
-  const isCurrentMonth = Boolean(currentMonthKey && selectedMonth === currentMonthKey);
   const selectedSnapshot = snapshotsByMonth.get(selectedMonth) || null;
   const alreadyCalculated = Boolean(selectedSnapshot && !selectedSnapshot.isProvisional);
   const canCalculate = Boolean(
-    selectedMonth && hasSourceData && (isCurrentMonth || !alreadyCalculated) && !loading && !calculating
+    selectedMonth && readiness?.ready && !alreadyCalculated && !loading && !readinessLoading && !calculating
   );
 
   const handleCalculate = async () => {
     if (!canCalculate) {
       showNotification(
-        alreadyCalculated && !isCurrentMonth
+        alreadyCalculated
           ? resolveText(languageCode, 'alreadyCalculated')
           : resolveText(languageCode, 'noData'),
         'warning'
@@ -172,24 +195,6 @@ const PayrollBoard = () => {
     }
   };
 
-  const handleDeleteSnapshot = async (snapshot) => {
-    const month = String(snapshot?.month || '');
-    if (!month || !window.confirm(resolveText(languageCode, 'deleteConfirm', { month }))) return;
-    setDeletingMonth(month);
-    try {
-      const query = buildQueryString({ orgId: activeOrgId });
-      await requestJSON(`/payroll/snapshots/${month}` + query, { method: 'DELETE' });
-      await load();
-      showNotification(resolveText(languageCode, 'deleteSuccess', { month }), 'success');
-    } catch (error) {
-      showNotification(error?.message || resolveText(languageCode, 'deleteError'), 'error');
-    } finally {
-      setDeletingMonth('');
-    }
-  };
-
-  const locale = languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US';
-
   return (
     <AppPageContainer
       title={text.title}
@@ -200,7 +205,7 @@ const PayrollBoard = () => {
             type="month" size="small" value={selectedMonth}
             onChange={(event) => setSelectedMonth(event.target.value)}
             InputLabelProps={{ shrink: true }}
-            inputProps={{ min: managementStartMonthKey || undefined, max: currentMonthKey || undefined }}
+            inputProps={{ min: managementStartMonthKey || undefined, max: latestCompletedMonthKey || undefined }}
           />
           <Button
             variant="contained" startIcon={<CalculateIcon />}
@@ -208,7 +213,7 @@ const PayrollBoard = () => {
           >
             {calculating
               ? resolveText(languageCode, 'calculating')
-              : resolveText(languageCode, isCurrentMonth && selectedSnapshot ? 'recalculate' : 'calculate')}
+              : resolveText(languageCode, 'calculate')}
           </Button>
         </Stack>
       )} />}
@@ -221,40 +226,34 @@ const PayrollBoard = () => {
           <TableContainer>
             <Table stickyHeader size="small">
               <TableHead><TableRow>
-                <TableCell sx={{ fontWeight: 700 }}>{text.month}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{resolveText(languageCode, 'factory')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{resolveText(languageCode, 'line')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="right">{resolveText(languageCode, 'workCoverage')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="right">{resolveText(languageCode, 'attendanceCoverage')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{text.employees}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{text.total}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{text.savedBy}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{text.savedAt}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{text.status}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }} align="center">{text.delete}</TableCell>
               </TableRow></TableHead>
               <TableBody>
-                {loading ? <TableStatusRow colSpan={7} message={resolveText(languageCode, 'loading')} />
-                  : snapshots.length === 0 ? <TableStatusRow colSpan={7} message={resolveText(languageCode, 'empty')} />
-                    : snapshots.map((snapshot) => {
-                      const employees = Array.isArray(snapshot.data) ? snapshot.data : [];
-                      const total = employees.reduce(
-                        (sum, employee) => sum + Number(employee.productionAllowance ?? employee.productionEarnings ?? 0), 0
-                      );
-                      const provisional = Boolean(snapshot.isProvisional);
+                {loading || readinessLoading ? <TableStatusRow colSpan={7} message={resolveText(languageCode, 'loading')} />
+                  : !readiness?.groups?.length ? <TableStatusRow colSpan={7} message={resolveText(languageCode, 'noLines')} />
+                    : readiness.groups.map((group) => {
+                      const groupReady = Boolean(group.ready);
                       return (
                         <TableRow
-                          key={snapshot.id} hover sx={{ cursor: 'pointer' }}
-                          onClick={() => navigateToPath(`/payroll/${snapshot.month}`, { label: `${text.title} ${snapshot.month}` })}
+                          key={`${group.factoryId}:${group.lineId}`} hover sx={{ cursor: alreadyCalculated ? 'pointer' : 'default' }}
+                          onClick={() => alreadyCalculated && navigateToPath(
+                            `/payroll/${selectedMonth}?factoryId=${group.factoryId}&lineId=${group.lineId}`,
+                            { label: `${text.title} ${selectedMonth} · ${group.lineName}` }
+                          )}
                         >
-                          <TableCell sx={{ fontWeight: 600 }}>{snapshot.month}</TableCell>
-                          <TableCell align="right">{employees.length}{text.peopleSuffix}</TableCell>
-                          <TableCell align="right">{formatDong(total)}</TableCell>
-                          <TableCell>{snapshot.lockedBy || '-'}</TableCell>
-                          <TableCell>{snapshot.lockedAt ? new Date(snapshot.lockedAt).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' }) : '-'}</TableCell>
-                          <TableCell align="center"><Chip size="small" color={provisional ? 'warning' : 'success'} label={resolveText(languageCode, provisional ? 'current' : 'confirmed')} variant="outlined" /></TableCell>
-                          <TableCell align="center">
-                            <DeleteActionButton
-                              stopPropagation disabled={Boolean(deletingMonth)} title={text.delete}
-                              onClick={() => handleDeleteSnapshot(snapshot)}
-                            />
-                          </TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>{languageCode === 'ko' ? group.factoryNameKo || group.factoryName : languageCode === 'vi' ? group.factoryNameVi || group.factoryName : group.factoryName}</TableCell>
+                          <TableCell>{group.lineName}</TableCell>
+                          <TableCell align="right">{group.workRecordedDayCount}/{group.expectedWorkingDayCount}</TableCell>
+                          <TableCell align="right">{group.attendanceRecordedCount}/{group.attendanceRequiredCount}</TableCell>
+                          <TableCell align="right">{group.employeeCount}{text.peopleSuffix}</TableCell>
+                          <TableCell align="right">{alreadyCalculated ? formatDong(group.productionAllowance) : '-'}</TableCell>
+                          <TableCell align="center"><Chip size="small" color={alreadyCalculated ? 'success' : groupReady ? 'info' : 'warning'} label={alreadyCalculated ? resolveText(languageCode, 'confirmed') : resolveText(languageCode, groupReady ? 'ready' : 'incomplete')} variant="outlined" /></TableCell>
                         </TableRow>
                       );
                     })}

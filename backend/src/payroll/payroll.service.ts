@@ -145,6 +145,10 @@ const normalizePayrollProcessSnapshot = (process: any) => {
   const styleProcessId = toPositiveIntOrNull(process?.styleProcessId);
 
   return {
+    factoryId: toPositiveIntOrNull(process?.factoryId),
+    factoryName: resolveOptionalString(process?.factoryName, null),
+    lineId: toPositiveIntOrNull(process?.lineId),
+    lineName: resolveOptionalString(process?.lineName, null),
     styleProcessId,
     processCode: resolveOptionalString(process?.processCode, "") || "",
     processName:
@@ -197,6 +201,175 @@ export const normalizePayrollSnapshotEmployee = (employee: any) => {
     productionEarnings,
     totalEarnings: productionEarnings,
     processes,
+  };
+};
+
+const toDateKey = (value: unknown): string => {
+  if (!value) return "";
+  const date = new Date(value as any);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+};
+
+const enumerateMonthWorkingDateKeys = (month: string, holidayDateKeys: Set<string>) => {
+  const { start, endExclusive } = getPayrollMonthRange(month);
+  const result: string[] = [];
+  for (let cursor = new Date(start); cursor < endExclusive; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    const key = cursor.toISOString().slice(0, 10);
+    if (cursor.getUTCDay() !== 0 && !holidayDateKeys.has(key)) result.push(key);
+  }
+  return result;
+};
+
+const employeeExpectedOnDate = (employee: any, dateKey: string) => {
+  const joined = toDateKey(employee?.joinedAt ?? employee?.approvedAt ?? employee?.createdAt);
+  const left = toDateKey(employee?.leftAt);
+  const leaveStart = toDateKey(employee?.leaveStartAt);
+  const leaveEnd = toDateKey(employee?.leaveEndAt);
+  if (joined && dateKey < joined) return false;
+  if (left && dateKey > left) return false;
+  if (leaveStart && dateKey >= leaveStart && (!leaveEnd || dateKey <= leaveEnd)) return false;
+  return true;
+};
+
+export const getPayrollMonthReadiness = async (orgId: number, monthInput: string) => {
+  const month = String(monthInput || "");
+  assertPayrollMonth(month);
+  const timeZone = process.env.BUSINESS_TIME_ZONE || "Asia/Seoul";
+  const currentMonth = resolveCurrentPayrollMonthKey({ timeZone });
+  const completedMonth = month < currentMonth;
+  const monthStart = `${month}-01`;
+  const monthEnd = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0))
+    .toISOString().slice(0, 10);
+
+  const [lines, holidays, attendanceEntries, workLogs, snapshot] = await Promise.all([
+    prisma.line.findMany({
+      where: { orgId, isActive: true },
+      include: {
+        factory: { select: { id: true, name: true, nameKo: true, nameVi: true, managementStartDate: true } },
+        employees: { include: { role: true } },
+      },
+      orderBy: [{ factoryId: "asc" }, { name: "asc" }],
+    }),
+    prisma.organizationHoliday.findMany({
+      where: { orgId, holidayDate: { gte: monthStart, lte: monthEnd } },
+      select: { holidayDate: true },
+    }),
+    prisma.attendanceEntry.findMany({
+      where: { orgId, workDate: { gte: monthStart, lte: monthEnd } },
+      select: { workerId: true, factoryId: true, workDate: true },
+    }),
+    prisma.workLog.findMany({
+      where: { orgId, displayDate: { startsWith: month } },
+      select: {
+        displayDate: true,
+        coverageStartDate: true,
+        coverageEndDate: true,
+        factoryId: true,
+        factoryWagePerSecond: true,
+        workRecords: {
+          select: {
+            lineId: true, workerId: true, quantity: true, ctSeconds: true,
+            effectiveCoverageStartDate: true, effectiveCoverageEndDate: true,
+            worker: { include: { role: true } },
+          },
+        },
+      },
+    }),
+    prisma.payrollSnapshot.findUnique({
+      where: { orgId_month: { orgId, month } },
+      select: { id: true, isProvisional: true },
+    }),
+  ]);
+
+  const holidayDateKeys = new Set(holidays.map((row) => String(row.holidayDate)));
+  const monthWorkingDates = enumerateMonthWorkingDateKeys(month, holidayDateKeys);
+  const attendanceKeys = new Set(
+    attendanceEntries.map((row) => `${row.factoryId}:${row.workerId}:${row.workDate}`)
+  );
+  const employeeById = new Map<number, any>();
+  for (const line of lines) for (const employee of line.employees) employeeById.set(employee.id, employee);
+  for (const workLog of workLogs) {
+    for (const record of workLog.workRecords) {
+      if (record.worker) employeeById.set(record.worker.id, record.worker);
+    }
+  }
+
+  const groups = lines
+    .map((line) => {
+      const employeesForLine = new Map(line.employees.map((employee) => [employee.id, employee]));
+      for (const workLog of workLogs) {
+        for (const record of workLog.workRecords) {
+          if (record.lineId === line.id && record.worker) {
+            employeesForLine.set(record.worker.id, record.worker);
+          }
+        }
+      }
+      const employees = Array.from(employeesForLine.values()).filter(
+        (employee) =>
+          isPayrollEmployeeRelevantForMonth(employee, getPayrollMonthRange(month)) &&
+          resolveEmployeeEffectivePayType(employee) === "CT"
+      );
+      if (employees.length === 0) return null;
+      const factoryStart = resolveFactoryManagementStartDateKey(line.factory);
+      const expectedDates = monthWorkingDates.filter((dateKey) => dateKey >= factoryStart);
+      const workDateKeys = new Set<string>();
+      let productionAllowance = 0;
+      for (const workLog of workLogs) {
+        for (const record of workLog.workRecords) {
+          if (record.lineId !== line.id) continue;
+          const coverageStart = String(record.effectiveCoverageStartDate || workLog.coverageStartDate || workLog.displayDate || "");
+          const coverageEnd = String(record.effectiveCoverageEndDate || workLog.coverageEndDate || workLog.displayDate || coverageStart);
+          expectedDates.forEach((dateKey) => {
+            if (dateKey >= coverageStart && dateKey <= coverageEnd) workDateKeys.add(dateKey);
+          });
+          const employee = record.workerId ? employeeById.get(record.workerId) : null;
+          if (employee && resolveEmployeeEffectivePayType(employee) === "CT") {
+            const quantity = Number(record.quantity);
+            const ctSeconds = Number(record.ctSeconds);
+            const rate = Number(workLog.factoryWagePerSecond);
+            if (quantity > 0 && ctSeconds > 0 && rate > 0) productionAllowance += quantity * ctSeconds * rate;
+          }
+        }
+      }
+      const missingWorkDates = expectedDates.filter((dateKey) => !workDateKeys.has(dateKey));
+      const missingAttendance = employees.flatMap((employee) =>
+        expectedDates
+          .filter((dateKey) => employeeExpectedOnDate(employee, dateKey))
+          .filter((dateKey) => !attendanceKeys.has(`${line.factoryId}:${employee.id}:${dateKey}`))
+          .map((dateKey) => ({ workerId: employee.id, workerName: resolvePayrollEmployeeName(employee), date: dateKey }))
+      );
+      return {
+        factoryId: line.factoryId,
+        factoryName: line.factory.name,
+        factoryNameKo: line.factory.nameKo,
+        factoryNameVi: line.factory.nameVi,
+        lineId: line.id,
+        lineName: line.name,
+        employeeCount: employees.length,
+        expectedWorkingDayCount: expectedDates.length,
+        workRecordedDayCount: workDateKeys.size,
+        attendanceRequiredCount: employees.reduce(
+          (sum, employee) => sum + expectedDates.filter((dateKey) => employeeExpectedOnDate(employee, dateKey)).length, 0
+        ),
+        attendanceRecordedCount: employees.reduce(
+          (sum, employee) => sum + expectedDates.filter(
+            (dateKey) => employeeExpectedOnDate(employee, dateKey) && attendanceKeys.has(`${line.factoryId}:${employee.id}:${dateKey}`)
+          ).length, 0
+        ),
+        missingWorkDates,
+        missingAttendance,
+        productionAllowance: toPayrollAmount(productionAllowance, 0),
+        ready: expectedDates.length > 0 && missingWorkDates.length === 0 && missingAttendance.length === 0,
+      };
+    })
+    .filter((group): group is NonNullable<typeof group> => group !== null);
+
+  return {
+    month,
+    completedMonth,
+    snapshotExists: Boolean(snapshot && !snapshot.isProvisional),
+    ready: completedMonth && groups.length > 0 && groups.every((group) => group.ready),
+    groups,
   };
 };
 
@@ -253,16 +426,17 @@ export const getPayrollByMonth = async (
     };
   }
 
-  const workLogRows = await prisma.workLog.findMany({
-    where: {
-      orgId,
-      displayDate: { startsWith: month },
-    },
-    include: {
-      factory: { select: { managementStartDate: true } },
-      workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
-    },
-  });
+  const [workLogRows, payrollLines] = await Promise.all([
+    prisma.workLog.findMany({
+      where: { orgId, displayDate: { startsWith: month } },
+      include: {
+        factory: { select: { id: true, name: true, managementStartDate: true } },
+        workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
+      },
+    }),
+    prisma.line.findMany({ where: { orgId }, select: { id: true, name: true } }),
+  ]);
+  const payrollLinesById = new Map(payrollLines.map((line) => [line.id, line]));
   const workLogs = workLogRows.filter(
     (workLog) =>
       String(workLog.displayDate || "") >= resolveFactoryManagementStartDateKey(workLog.factory)
@@ -314,6 +488,10 @@ export const getPayrollByMonth = async (
       processes: Map<
         string,
         {
+          factoryId: number | null;
+          factoryName: string | null;
+          lineId: number | null;
+          lineName: string | null;
           styleProcessId: number | null;
           processCode: string;
           processName: string;
@@ -393,13 +571,20 @@ export const getPayrollByMonth = async (
       const processName = hasStyleProcess ? resolveWorkRecordProcessName(record) ?? "" : "";
       const processCode = hasStyleProcess ? resolveWorkRecordProcessCode(record) ?? "" : "";
       const processKey = hasStyleProcess
-        ? `style-process:${styleProcessId}`
-        : "missing-style-process";
+        ? `factory:${workLog.factoryId ?? "none"}:line:${record.lineId ?? "none"}:style-process:${styleProcessId}`
+        : `factory:${workLog.factoryId ?? "none"}:line:${record.lineId ?? "none"}:missing-style-process`;
       if (!hasStyleProcess) {
         payrollBreakdownMissingStyleProcessCount += 1;
       }
       if (!emp.processes.has(processKey)) {
         emp.processes.set(processKey, {
+          factoryId: workLog.factoryId ?? null,
+          factoryName: resolveOptionalString(workLog.factory?.name, null),
+          lineId: record.lineId ?? null,
+          lineName: resolveOptionalString(
+            record.lineId ? payrollLinesById.get(record.lineId)?.name : null,
+            null
+          ),
           styleProcessId,
           processCode,
           processName: hasStyleProcess
@@ -439,6 +624,10 @@ export const getPayrollByMonth = async (
         productionEarnings: productionAllowance,
         totalEarnings: productionAllowance,
         processes: Array.from(emp.processes.values()).map((process) => ({
+          factoryId: process.factoryId,
+          factoryName: process.factoryName,
+          lineId: process.lineId,
+          lineName: process.lineName,
           styleProcessId: process.styleProcessId,
           processCode: process.processCode,
           processName: process.processName,
@@ -480,10 +669,14 @@ export const savePayrollSnapshot = async ({
   assertPayrollMonth(month);
   const timeZone = process.env.BUSINESS_TIME_ZONE || "Asia/Seoul";
   const currentMonth = resolveCurrentPayrollMonthKey({ timeZone });
-  if (month > currentMonth) {
-    throw createHttpError(409, "payroll month is in the future");
+  if (month >= currentMonth) {
+    throw createHttpError(409, "production allowance can only be calculated through the previous month");
   }
   const monthReady = isPayrollMonthReady(month, { timeZone });
+  const readiness = await getPayrollMonthReadiness(orgId, month);
+  if (!readiness.ready) {
+    throw createHttpError(409, "monthly work records and attendance records are incomplete");
+  }
   const unreviewedCtPlans = monthReady ? await prisma.assignmentPlan.findMany({
     where: {
       orgId,

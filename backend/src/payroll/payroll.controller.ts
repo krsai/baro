@@ -4,6 +4,7 @@ import { resolveOptionalString } from "../utils/common";
 import {
   deletePayrollSnapshot,
   getPayrollByMonth,
+  getPayrollMonthReadiness,
   listPayrollSnapshots,
   savePayrollSnapshot,
 } from "./payroll.service";
@@ -84,6 +85,18 @@ export const getPayrollController = async (req: Request, res: Response) => {
 
   const payroll = await getPayrollByMonth(organization.id, String(req.query.month || ""));
   return res.json(payroll);
+};
+
+export const getPayrollReadinessController = async (req: Request, res: Response) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+  const readiness = await getPayrollMonthReadiness(
+    organization.id,
+    String(req.query.month || "")
+  );
+  return res.json(readiness);
 };
 
 export const savePayrollSnapshotController = async (req: Request, res: Response) => {
