@@ -17,7 +17,6 @@ import {
   resolveWorkRecordProcessName,
   WORK_RECORD_WITH_REFS_INCLUDE,
 } from "../work-records/workRecord.shared";
-import { assertQuantitySettlementReadyForPayroll } from "../quantity-settlement/quantitySettlement.service";
 import { resolveFactoryManagementStartDateKey } from "../factories/factoryManagementStart";
 
 const ASSIGNMENT_STATUS_READY_TO_COMPLETE = "READY_TO_COMPLETE";
@@ -467,7 +466,6 @@ export const savePayrollSnapshot = async ({
   ) {
     throw createHttpError(409, "payroll month not ended");
   }
-  await assertQuantitySettlementReadyForPayroll(orgId, month);
   const unreviewedCtPlans = await prisma.assignmentPlan.findMany({
     where: {
       orgId,

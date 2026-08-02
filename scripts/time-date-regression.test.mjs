@@ -136,6 +136,11 @@ test('payroll persistence rejects unfinished months and supports exact save and 
   assert.match(payrollServiceSource, /syncAssignmentPlanPayrollFinalization\(\{ orgId, month, finalized: false \}\)/);
 });
 
+test('production allowance finalization does not depend on shipment quantity settlement', () => {
+  assert.doesNotMatch(payrollServiceSource, /assertQuantitySettlementReadyForPayroll/);
+  assert.doesNotMatch(payrollEntrySource, /fetchQuantitySettlement|settlementSummary|quantity settlement incomplete/);
+});
+
 test('production allowance calculation excludes unfinished salary components', () => {
   assert.match(payrollEntrySource, /생산수당 = 작업수량 × CT초 × 작업 당시 공장 생산수당 초당 단가/);
   assert.match(payrollServiceSource, /resolveEmployeeEffectivePayType\(employee\) === "CT"/);

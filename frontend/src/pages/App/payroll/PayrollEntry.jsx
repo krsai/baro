@@ -24,7 +24,6 @@ import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
-import { fetchQuantitySettlement } from '../../../utils/quantitySettlementApi';
 
 const formatDong = (value) =>
   `${formatNumberWithCommas(Math.round(Number(value) || 0), {
@@ -85,9 +84,8 @@ const PayrollEntry = () => {
   const [saving, setSaving] = useState(false);
   const [data, setData] = useState(null);
   const [expandedEmployeeKey, setExpandedEmployeeKey] = useState(null);
-  const [settlementSummary, setSettlementSummary] = useState(null);
 
-  const fetchProductionAllowance = useCallback(async (month, { notifyWorkflow = true } = {}) => {
+  const fetchProductionAllowance = useCallback(async (month) => {
     setLoading(true);
     setData(null);
     setExpandedEmployeeKey(null);
@@ -97,23 +95,6 @@ const PayrollEntry = () => {
       setData(payload);
       setPayMonth(payload?.month || month);
 
-      try {
-        const settlement = await fetchQuantitySettlement({ orgId: activeOrgId, month });
-        const summary = settlement?.summary ?? null;
-        setSettlementSummary(summary);
-        if (notifyWorkflow) {
-          const reviewRows = Number(summary?.reviewRows) || 0;
-          const blockedRows = Number(summary?.blockedRows) || 0;
-          if (reviewRows > 0 || blockedRows > 0) {
-            showNotification(
-              `생산수당 확정 전에 수량 정산을 완료하세요. 검토 필요 ${reviewRows}건, 차단 ${blockedRows}건이 남아 있습니다.`,
-              'warning'
-            );
-          }
-        }
-      } catch {
-        setSettlementSummary(null);
-      }
     } catch (error) {
       showNotification(error?.message || '생산수당 데이터를 불러오지 못했습니다.', 'error');
     } finally {
@@ -198,13 +179,11 @@ const PayrollEntry = () => {
           savedBy: activeProfile?.email || activeProfile?.name || '관리자',
         }),
       });
-      await fetchProductionAllowance(payMonth, { notifyWorkflow: false });
+      await fetchProductionAllowance(payMonth);
       showNotification(`${payMonth} 생산수당을 계산하고 확정했습니다.`, 'success');
     } catch (error) {
       if (error?.message?.includes('payroll month not ended')) {
         showNotification('해당 월이 끝난 뒤 생산수당을 계산할 수 있습니다.', 'warning');
-      } else if (error?.message?.includes('quantity settlement incomplete')) {
-        showNotification('생산수당 확정 전에 수량 정산의 검토·차단 항목을 정리하세요.', 'warning');
       } else {
         showNotification(error?.message || '생산수당 계산에 실패했습니다.', 'error');
       }
@@ -226,7 +205,7 @@ const PayrollEntry = () => {
           savedBy: activeProfile?.email || activeProfile?.name || '관리자',
         }),
       });
-      await fetchProductionAllowance(payMonth, { notifyWorkflow: false });
+      await fetchProductionAllowance(payMonth);
       showNotification(`${payMonth} 생산수당 스냅샷을 저장했습니다.`, 'success');
     } catch (error) {
       showNotification(error?.message || '생산수당 저장에 실패했습니다.', 'error');
@@ -322,14 +301,6 @@ const PayrollEntry = () => {
 
         {data && (
           <>
-            {settlementSummary && (
-              Number(settlementSummary.reviewRows) > 0 || Number(settlementSummary.blockedRows) > 0
-            ) && (
-              <Alert severity="warning" sx={{ mb: 1.5 }}>
-                생산수당 확정 전에 수량 정산을 완료하세요. 검토 필요 {settlementSummary.reviewRows || 0}건,
-                차단 {settlementSummary.blockedRows || 0}건이 남아 있습니다.
-              </Alert>
-            )}
             {employees.length === 0 ? (
               <Alert severity="info">{payMonth} 기간에 생산수당 대상 성과급 직원이 없습니다.</Alert>
             ) : (
