@@ -179,6 +179,9 @@ test('production allowance is calculated from the board and rows open read-only 
   assert.doesNotMatch(payrollBoardSource, /\/payroll\/new/);
   assert.match(payrollBoardSource, /\/payroll\/snapshots\/\$\{month\}\/unlock/);
   assert.match(payrollBoardSource, /method: 'DELETE'/);
+  assert.match(payrollBoardSource, /<LockToggleSwitch/);
+  assert.match(payrollBoardSource, /<DeleteActionButton/);
+  assert.match(payrollServiceSource, /unlock production allowance before deletion/);
   assert.match(payrollServiceSource, /export const unlockPayrollSnapshot/);
 });
 

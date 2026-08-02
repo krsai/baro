@@ -737,6 +737,9 @@ export const deletePayrollSnapshot = async (orgId: number, monthInput: string) =
   if (!existing) {
     throw createHttpError(404, "snapshot not found");
   }
+  if (!existing.isProvisional) {
+    throw createHttpError(409, "unlock production allowance before deletion");
+  }
 
   await prisma.payrollSnapshot.delete({
     where: { id: existing.id },
