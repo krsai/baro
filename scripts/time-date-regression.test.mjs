@@ -172,12 +172,12 @@ test('production allowance is calculated from the board and rows open read-only 
   assert.match(payrollBoardSource, /canCalculate/);
   assert.match(payrollBoardSource, /readiness\?\.ready/);
   assert.match(payrollBoardSource, /\/payroll\/readiness/);
-  assert.match(payrollBoardSource, /readiness\.groups\.map/);
   assert.match(payrollBoardSource, /requestJSON\('\/payroll\/snapshots'/);
-  assert.match(payrollBoardSource, /factoryId=\$\{group\.factoryId\}&lineId=\$\{group\.lineId\}/);
+  assert.match(payrollBoardSource, /snapshots\.map\(\(snapshot\)/);
+  assert.match(payrollBoardSource, /navigateToPath\(`\/payroll\/\$\{month\}`/);
   assert.match(payrollBoardSource, /snapshot\.isProvisional/);
   assert.doesNotMatch(payrollBoardSource, /\/payroll\/new/);
-  assert.match(payrollBoardSource, /\/payroll\/snapshots\/\$\{selectedMonth\}\/unlock/);
+  assert.match(payrollBoardSource, /\/payroll\/snapshots\/\$\{month\}\/unlock/);
   assert.match(payrollBoardSource, /method: 'DELETE'/);
   assert.match(payrollServiceSource, /export const unlockPayrollSnapshot/);
 });
