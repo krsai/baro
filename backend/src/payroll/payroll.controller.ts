@@ -11,6 +11,11 @@ import {
   resolveCurrentPayrollMonthKey,
   resolveLatestCompletedPayrollMonthKey,
 } from "../utils/payrollMonth";
+import { prisma } from "../db";
+import {
+  DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
+  resolveFactoryManagementStartDateKey,
+} from "../factories/factoryManagementStart";
 
 export const getPayrollCalendarController = async (req: Request, res: Response) => {
   const organization = await getOrganizationByQuery(req);
@@ -19,9 +24,20 @@ export const getPayrollCalendarController = async (req: Request, res: Response) 
   }
 
   const timeZone = process.env.BUSINESS_TIME_ZONE || "Asia/Seoul";
+  const factories = await prisma.factory.findMany({
+    where: { orgId: organization.id },
+    select: { managementStartDate: true },
+  });
+  const managementStartDateKey = factories.length > 0
+    ? factories
+        .map(resolveFactoryManagementStartDateKey)
+        .sort((a, b) => a.localeCompare(b))[0] ?? DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY
+    : DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY;
   return res.json({
     currentMonthKey: resolveCurrentPayrollMonthKey({ timeZone }),
     latestCompletedMonthKey: resolveLatestCompletedPayrollMonthKey({ timeZone }),
+    managementStartDateKey,
+    managementStartMonthKey: managementStartDateKey.slice(0, 7),
     timeZone,
   });
 };

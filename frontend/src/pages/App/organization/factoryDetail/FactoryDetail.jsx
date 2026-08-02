@@ -110,7 +110,7 @@ const getExtraText = (languageCode) => {
       nameVi: '공장명 (베트남어)',
       managementStartDate: '관리 시작일',
       managementStartDateHelper:
-        '작업기록, 생산분석, 배정 보드의 최소 시작 기준일입니다.',
+        '작업기록, 생산분석, 배정 보드와 생산수당 계산의 최소 시작 기준일입니다.',
     };
   }
 
@@ -128,7 +128,7 @@ const getExtraText = (languageCode) => {
       nameVi: 'Ten nha may (tieng Viet)',
       managementStartDate: 'Ngay bat dau quan ly',
       managementStartDateHelper:
-        'La moc ngay toi thieu cho ghi chep, phan tich san xuat va bang phan cong.',
+        'La moc ngay toi thieu cho ghi chep, phan tich san xuat, bang phan cong va tinh phu cap san luong.',
     };
   }
 
@@ -145,7 +145,7 @@ const getExtraText = (languageCode) => {
     nameVi: 'Factory Name (Vietnamese)',
     managementStartDate: 'Management Start Date',
     managementStartDateHelper:
-      'Used as the minimum start date for work logs, production analysis, and assignment views.',
+      'Used as the minimum start date for work logs, production analysis, assignments, and production allowance calculation.',
   };
 };
 

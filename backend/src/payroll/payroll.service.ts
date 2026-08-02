@@ -18,6 +18,7 @@ import {
   WORK_RECORD_WITH_REFS_INCLUDE,
 } from "../work-records/workRecord.shared";
 import { assertQuantitySettlementReadyForPayroll } from "../quantity-settlement/quantitySettlement.service";
+import { resolveFactoryManagementStartDateKey } from "../factories/factoryManagementStart";
 
 const ASSIGNMENT_STATUS_READY_TO_COMPLETE = "READY_TO_COMPLETE";
 const ASSIGNMENT_STATUS_PRODUCTION_COMPLETED = "PRODUCTION_COMPLETED";
@@ -235,15 +236,20 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
     };
   }
 
-  const workLogs = await prisma.workLog.findMany({
+  const workLogRows = await prisma.workLog.findMany({
     where: {
       orgId,
       displayDate: { startsWith: month },
     },
     include: {
+      factory: { select: { managementStartDate: true } },
       workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
     },
   });
+  const workLogs = workLogRows.filter(
+    (workLog) =>
+      String(workLog.displayDate || "") >= resolveFactoryManagementStartDateKey(workLog.factory)
+  );
   const payrollMonthRange = getPayrollMonthRange(month);
   const workerIds = Array.from(
     new Set(

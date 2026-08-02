@@ -155,6 +155,14 @@ test('factory production allowance rate is derived from the monthly production a
   assert.match(uiMessagesSource, /월 목표 생산수당/);
 });
 
+test('production allowance respects each factory management start date', () => {
+  assert.match(payrollServiceSource, /resolveFactoryManagementStartDateKey\(workLog\.factory\)/);
+  assert.match(payrollServiceSource, /factory: \{ select: \{ managementStartDate: true \} \}/);
+  assert.match(payrollControllerSource, /managementStartMonthKey/);
+  assert.match(payrollEntrySource, /min: managementStartMonthKey/);
+  assert.match(factoryDetailSource, /생산수당 계산의 최소 시작 기준일/);
+});
+
 test('invalid business time zones fail during server configuration', () => {
   assert.equal(assertValidBusinessTimeZone('Asia/Seoul'), 'Asia/Seoul');
   assert.equal(assertValidBusinessTimeZone(''), 'Asia/Seoul');

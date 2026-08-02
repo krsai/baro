@@ -164,6 +164,7 @@ const PayrollEntry = () => {
     [employees]
   );
   const latestCompletedMonthKey = String(calendar?.latestCompletedMonthKey || '').trim();
+  const managementStartMonthKey = String(calendar?.managementStartMonthKey || '').trim();
   const monthReady = data?.monthReady === true;
 
   const handleMonthChange = (nextMonth) => {
@@ -179,6 +180,10 @@ const PayrollEntry = () => {
     }
     if (!isCompletedMonth(payMonth, latestCompletedMonthKey)) {
       showNotification('해당 월이 끝난 뒤 생산수당을 계산할 수 있습니다.', 'warning');
+      return;
+    }
+    if (managementStartMonthKey && payMonth < managementStartMonthKey) {
+      showNotification(`생산수당은 관리 시작 월(${managementStartMonthKey})부터 계산할 수 있습니다.`, 'warning');
       return;
     }
 
@@ -254,7 +259,10 @@ const PayrollEntry = () => {
                   value={payMonth}
                   onChange={(event) => handleMonthChange(event.target.value)}
                   InputLabelProps={{ shrink: true }}
-                  inputProps={{ max: latestCompletedMonthKey || undefined }}
+                  inputProps={{
+                    min: managementStartMonthKey || undefined,
+                    max: latestCompletedMonthKey || undefined,
+                  }}
                   size="small"
                   sx={{ width: 220 }}
                 />
@@ -272,7 +280,13 @@ const PayrollEntry = () => {
                     size="small"
                     variant="outlined"
                     onClick={() => handleMonthChange(shiftMonthKey(payMonth, -1))}
-                    disabled={loading || calendarLoading || saving || !latestCompletedMonthKey}
+                    disabled={
+                      loading ||
+                      calendarLoading ||
+                      saving ||
+                      !latestCompletedMonthKey ||
+                      Boolean(managementStartMonthKey && payMonth <= managementStartMonthKey)
+                    }
                     sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11 }}
                   >
                     M-
@@ -282,7 +296,13 @@ const PayrollEntry = () => {
               <Button
                 variant="contained"
                 onClick={handleCalculate}
-                disabled={loading || calendarLoading || saving || !isCompletedMonth(payMonth, latestCompletedMonthKey)}
+                disabled={
+                  loading ||
+                  calendarLoading ||
+                  saving ||
+                  !isCompletedMonth(payMonth, latestCompletedMonthKey) ||
+                  Boolean(managementStartMonthKey && payMonth < managementStartMonthKey)
+                }
               >
                 {loading || saving ? '계산 중...' : '계산 및 확정'}
               </Button>
@@ -290,6 +310,11 @@ const PayrollEntry = () => {
             {!calendarLoading && !isCompletedMonth(payMonth, latestCompletedMonthKey) && (
               <Alert severity="info" sx={{ mt: 1.5 }}>
                 해당 월이 끝난 뒤 생산수당을 계산할 수 있습니다.
+              </Alert>
+            )}
+            {!calendarLoading && managementStartMonthKey && payMonth < managementStartMonthKey && (
+              <Alert severity="info" sx={{ mt: 1.5 }}>
+                생산수당은 사업체 메뉴의 공장 관리 시작일이 포함된 월({managementStartMonthKey})부터 계산할 수 있습니다.
               </Alert>
             )}
           </Paper>
