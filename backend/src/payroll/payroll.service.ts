@@ -319,7 +319,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         missingWorkDates,
         missingAttendance,
         productionAllowance: toPayrollAmount(productionAllowance, 0),
-        ready: expectedDates.length > 0 && missingWorkDates.length === 0 && missingAttendance.length === 0,
+        ready: expectedDates.length > 0 && missingWorkDates.length === 0,
       };
     })
     .filter((group): group is NonNullable<typeof group> => group !== null);
@@ -662,7 +662,7 @@ export const savePayrollSnapshot = async ({
   const monthReady = isPayrollMonthReady(month, { timeZone });
   const readiness = await getPayrollMonthReadiness(orgId, month);
   if (!readiness.ready) {
-    throw createHttpError(409, "monthly work records and attendance records are incomplete");
+    throw createHttpError(409, "monthly work records are incomplete");
   }
   const unreviewedCtPlans = monthReady ? await prisma.assignmentPlan.findMany({
     where: {

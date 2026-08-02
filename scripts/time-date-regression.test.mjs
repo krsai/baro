@@ -134,11 +134,12 @@ test('production allowance board uses the server business calendar instead of br
   assert.match(payrollBoardSource, /max: latestCompletedMonthKey/);
 });
 
-test('payroll persistence only accepts complete months with work and attendance coverage', () => {
+test('payroll persistence requires complete work records but keeps attendance informational', () => {
   assert.match(payrollServiceSource, /month >= currentMonth/);
   assert.match(payrollServiceSource, /production allowance can only be calculated through the previous month/);
   assert.match(payrollServiceSource, /getPayrollMonthReadiness\(orgId, month\)/);
-  assert.match(payrollServiceSource, /monthly work records and attendance records are incomplete/);
+  assert.match(payrollServiceSource, /monthly work records are incomplete/);
+  assert.match(payrollServiceSource, /ready: expectedDates\.length > 0 && missingWorkDates\.length === 0/);
   assert.match(payrollServiceSource, /getPayrollByMonth\(orgId, month, \{ ignoreSnapshot: true \}\)/);
   assert.match(payrollServiceSource, /isProvisional: !monthReady/);
   assert.match(payrollServiceSource, /prisma\.payrollSnapshot\.upsert\(/);
