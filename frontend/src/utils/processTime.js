@@ -619,6 +619,39 @@ const resolveAtReliabilityPercent = ({
   return percent;
 };
 
+const applyAttendanceFallbackReliability = (percentValue, attendanceFallbackShare) => {
+  const percent = Math.round(clamp(Number(percentValue) || 0, 0, 100));
+  if (!Number.isFinite(attendanceFallbackShare)) return percent;
+
+  const fallbackShare = clamp(Number(attendanceFallbackShare), 0, 1);
+  let adjustedPercent = Math.max(
+    0,
+    percent - Math.round(fallbackShare * AT_RELIABILITY_ATTENDANCE_FALLBACK_PENALTY_MAX)
+  );
+  if (fallbackShare > AT_RELIABILITY_MAX_FALLBACK_SHARE_MEANINGFUL) {
+    adjustedPercent = Math.min(
+      adjustedPercent,
+      AT_RELIABILITY_MEANINGFUL_PERCENT_THRESHOLD - 1
+    );
+  } else if (fallbackShare > AT_RELIABILITY_MAX_FALLBACK_SHARE_USABLE) {
+    adjustedPercent = Math.min(
+      adjustedPercent,
+      AT_RELIABILITY_USABLE_PERCENT_THRESHOLD - 1
+    );
+  } else if (fallbackShare > AT_RELIABILITY_MAX_FALLBACK_SHARE_TRUSTED) {
+    adjustedPercent = Math.min(
+      adjustedPercent,
+      AT_RELIABILITY_TRUSTED_PERCENT_THRESHOLD - 1
+    );
+  } else if (fallbackShare > AT_RELIABILITY_MAX_FALLBACK_SHARE_VERIFIED) {
+    adjustedPercent = Math.min(
+      adjustedPercent,
+      AT_RELIABILITY_VERIFIED_PERCENT_THRESHOLD - 1
+    );
+  }
+  return adjustedPercent;
+};
+
 const toAtReliabilityResult = (status, options = {}) => {
   const setupShare =
     Number.isFinite(options.setupShare) && options.setupShare >= 0
@@ -1041,7 +1074,7 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
       : currentCellState.tone === 'provisional'
         ? 25
         : 95;
-  const percent = Math.min(
+  const basePercent = Math.min(
     diversityCap,
     rangeCap,
     10 +
@@ -1049,6 +1082,16 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
       quantityDiversityScore +
       spanScore -
       repeatVariation.penalty
+  );
+  const attendanceCoverage = normalized?.atParams?.attendanceCoverage ?? null;
+  const attendanceFallbackShare =
+    normalized?.atParams?.attendanceFallbackShare ??
+    (Number.isFinite(attendanceCoverage)
+      ? clamp(1 - Number(attendanceCoverage), 0, 1)
+      : null);
+  const percent = applyAttendanceFallbackReliability(
+    basePercent,
+    attendanceFallbackShare
   );
   const status = resolveAtReliabilityStatusFromPercent(percent);
 
@@ -1058,8 +1101,8 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
     hasTrainedPeriod: observations.some(
       (observation) => Boolean(observation?.trainedPeriod)
     ),
-    attendanceCoverage: null,
-    attendanceFallbackShare: null,
+    attendanceCoverage,
+    attendanceFallbackShare,
     observationCount: effectiveObservationCount,
     repeatVariationCoefficient: repeatVariation.coefficient,
     repeatVariationPenalty: repeatVariation.penalty,

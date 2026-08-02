@@ -173,6 +173,44 @@ test('mature observations across five quantities can become trusted', () => {
   assert.ok(reliability.percent >= 85, `expected trusted score, got ${reliability.percent}`);
 });
 
+test('attendance fallback lowers v2 reliability without discarding observations', () => {
+  const actualAttendance = createProcess({
+    a: 80,
+    b: 8000,
+    version: 4,
+    observationCount: 24,
+    attendanceFallbackShare: 0,
+    distinctQuantityCount: 5,
+  });
+  const halfFallback = createProcess({
+    a: 80,
+    b: 8000,
+    version: 4,
+    observationCount: 24,
+    attendanceFallbackShare: 0.5,
+    distinctQuantityCount: 5,
+  });
+  const allFallback = createProcess({
+    a: 80,
+    b: 8000,
+    version: 4,
+    observationCount: 24,
+    attendanceFallbackShare: 1,
+    distinctQuantityCount: 5,
+  });
+
+  const actualReliability = resolveProcessAtReliability(actualAttendance, 500);
+  const halfFallbackReliability = resolveProcessAtReliability(halfFallback, 500);
+  const allFallbackReliability = resolveProcessAtReliability(allFallback, 500);
+
+  assert.ok(actualReliability.percent > halfFallbackReliability.percent);
+  assert.ok(halfFallbackReliability.percent > allFallbackReliability.percent);
+  assert.equal(actualReliability.attendanceFallbackShare, 0);
+  assert.equal(halfFallbackReliability.attendanceFallbackShare, 0.5);
+  assert.equal(allFallbackReliability.attendanceFallbackShare, 1);
+  assert.ok(allFallbackReliability.percent < 65);
+});
+
 test('style reliability is weighted upward when mature processes dominate', () => {
   const styleReliability = resolveStyleAtReliability([
     createProcess({
@@ -206,12 +244,14 @@ test('quantity diversity increases confidence without letting two quantities ver
     b: 4000,
     observationCount: 24,
     distinctQuantityCount: 2,
+    attendanceFallbackShare: 0,
   });
   const fiveQuantities = createProcess({
     a: 40,
     b: 4000,
     observationCount: 24,
     distinctQuantityCount: 5,
+    attendanceFallbackShare: 0,
   });
 
   const twoQuantityReliability = resolveProcessAtReliability(twoQuantities, 500);
