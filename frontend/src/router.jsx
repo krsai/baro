@@ -379,7 +379,7 @@ const router = createBrowserRouter([
           },
           {
             path: 'payroll/new',
-            element: <PayrollEntry />,
+            element: <Navigate to="/payroll" replace />,
           },
           {
             path: 'payroll/:payrollId',

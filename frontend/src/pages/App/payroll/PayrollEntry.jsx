@@ -1,420 +1,159 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  Collapse,
-  Paper,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
-  Typography,
+  Alert, Box, Button, Chip, Collapse, Paper, Stack, Table, TableBody,
+  TableCell, TableContainer, TableHead, TableRow, Typography,
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
-import SaveButton from '../../../components/SaveButton';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 
-const formatDong = (value) =>
-  `${formatNumberWithCommas(Math.round(Number(value) || 0), {
-    fallback: '0',
-    maximumFractionDigits: 0,
-  })} VND`;
-
-const formatSeconds = (value) =>
-  `${formatNumberWithCommas(Math.round(Number(value) || 0), {
-    fallback: '0',
-    maximumFractionDigits: 0,
-  })}초`;
-
-const formatWagePerSecond = (value) =>
-  `${formatNumberWithCommas(Number(value) || 0, {
-    fallback: '0',
-    maximumFractionDigits: 2,
-  })} VND/초`;
-
-const getLocalMonthKey = (value = new Date()) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return getLocalMonthKey();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+const TEXT = {
+  ko: {
+    title: '생산수당 상세', loading: '생산수당 상세 내역을 불러오는 중입니다.',
+    fetchError: '생산수당 상세 내역을 불러오지 못했습니다.', empty: '생산수당 대상 성과급 직원이 없습니다.',
+    employeeAllowance: '직원별 생산수당', people: '명', total: '총 생산수당', employee: '직원',
+    allowance: '생산수당', basis: '산출 근거', details: '상세', collapse: '접기',
+    formula: '생산수당 = 작업수량 × CT초 × 작업 당시 공장 생산수당 초당 단가',
+    process: '공정', quantity: '수량', ctSeconds: '총 CT초', averageRate: '적용 평균단가',
+    noRecords: '작업 기록이 없습니다.', current: '진행 중', confirmed: '확정',
+  },
+  en: {
+    title: 'Production Allowance Details', loading: 'Loading production allowance details.',
+    fetchError: 'Failed to load production allowance details.', empty: 'No performance-pay employees are eligible for production allowance.',
+    employeeAllowance: 'Production Allowance by Employee', people: ' employees', total: 'Total Production Allowance', employee: 'Employee',
+    allowance: 'Production Allowance', basis: 'Calculation Basis', details: 'Details', collapse: 'Collapse',
+    formula: 'Production allowance = quantity × CT seconds × factory production allowance rate at the time of work',
+    process: 'Process', quantity: 'Quantity', ctSeconds: 'Total CT Seconds', averageRate: 'Average Applied Rate',
+    noRecords: 'No work records.', current: 'In Progress', confirmed: 'Confirmed',
+  },
+  vi: {
+    title: 'Chi tiet phu cap san luong', loading: 'Dang tai chi tiet phu cap san luong.',
+    fetchError: 'Khong the tai chi tiet phu cap san luong.', empty: 'Khong co nhan vien luong san pham thuoc doi tuong tinh phu cap.',
+    employeeAllowance: 'Phu cap san luong theo nhan vien', people: ' nhan vien', total: 'Tong phu cap san luong', employee: 'Nhan vien',
+    allowance: 'Phu cap san luong', basis: 'Co so tinh', details: 'Chi tiet', collapse: 'Thu gon',
+    formula: 'Phu cap san luong = so luong × giay CT × don gia phu cap san luong cua nha may tai thoi diem lam viec',
+    process: 'Cong doan', quantity: 'So luong', ctSeconds: 'Tong giay CT', averageRate: 'Don gia binh quan ap dung',
+    noRecords: 'Khong co ghi chep cong viec.', current: 'Dang tien hanh', confirmed: 'Da xac nhan',
+  },
 };
 
-const normalizeMonthKey = (value) =>
-  /^\d{4}-\d{2}$/.test(String(value || '').trim())
-    ? String(value).trim()
-    : getLocalMonthKey();
-
-const shiftMonthKey = (value, amount) => {
-  const [year, month] = normalizeMonthKey(value).split('-').map(Number);
-  return getLocalMonthKey(new Date(year, month - 1 + amount, 1));
-};
-
-const isCompletedMonth = (value, latestCompletedMonthKey) => {
-  const month = String(value || '').trim();
-  const latest = String(latestCompletedMonthKey || '').trim();
-  return /^\d{4}-(0[1-9]|1[0-2])$/.test(month)
-    && /^\d{4}-(0[1-9]|1[0-2])$/.test(latest)
-    && month <= latest;
-};
-
-const isMonthThroughCurrent = (value, currentMonthKey) => {
-  const month = String(value || '').trim();
-  const current = String(currentMonthKey || '').trim();
-  return /^\d{4}-(0[1-9]|1[0-2])$/.test(month)
-    && /^\d{4}-(0[1-9]|1[0-2])$/.test(current)
-    && month <= current;
-};
-
+const formatDong = (value) => `${formatNumberWithCommas(Math.round(Number(value) || 0), {
+  fallback: '0', maximumFractionDigits: 0,
+})} VND`;
+const formatSeconds = (value) => `${formatNumberWithCommas(Math.round(Number(value) || 0), {
+  fallback: '0', maximumFractionDigits: 0,
+})} s`;
+const formatRate = (value) => `${formatNumberWithCommas(Number(value) || 0, {
+  fallback: '0', maximumFractionDigits: 2,
+})} VND/s`;
 const productionAllowanceOf = (employee) =>
   Number(employee?.productionAllowance ?? employee?.productionEarnings ?? 0) || 0;
 
 const PayrollEntry = () => {
   const { payrollId } = useParams();
   const { showNotification } = useAppActions();
-  const { activeOrgId, activeProfile } = useAuth();
-  const isNew = !payrollId || payrollId === 'new';
-  const monthFromParam = isNew ? '' : payrollId;
-
-  const [payMonth, setPayMonth] = useState(monthFromParam);
-  const [calendar, setCalendar] = useState(null);
-  const [calendarLoading, setCalendarLoading] = useState(isNew);
+  const { activeOrgId } = useAuth();
+  const { languageCode } = useLanguage();
+  const text = TEXT[languageCode] || TEXT.en;
+  const month = String(payrollId || '').trim();
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [data, setData] = useState(null);
   const [expandedEmployeeKey, setExpandedEmployeeKey] = useState(null);
 
-  const fetchProductionAllowance = useCallback(async (month) => {
+  const load = useCallback(async () => {
+    if (!activeOrgId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return;
     setLoading(true);
-    setData(null);
-    setExpandedEmployeeKey(null);
     try {
-      const query = buildQueryString({ orgId: activeOrgId, month });
-      const payload = await requestJSON('/payroll' + query);
+      const payload = await requestJSON('/payroll' + buildQueryString({ orgId: activeOrgId, month }));
       setData(payload);
-      setPayMonth(payload?.month || month);
-
     } catch (error) {
-      showNotification(error?.message || '생산수당 데이터를 불러오지 못했습니다.', 'error');
+      setData(null);
+      showNotification(error?.message || text.fetchError, 'error');
     } finally {
       setLoading(false);
     }
-  }, [activeOrgId, showNotification]);
+  }, [activeOrgId, month, showNotification, text.fetchError]);
 
-  useEffect(() => {
-    if (!isNew || !activeOrgId) return undefined;
-    let cancelled = false;
-    const abortController = new AbortController();
-    setCalendarLoading(true);
-    requestJSON('/payroll/calendar' + buildQueryString({ orgId: activeOrgId }), {
-      forceRefresh: true,
-      skipGlobalLoading: true,
-      signal: abortController.signal,
-    })
-      .then((payload) => {
-        if (cancelled) return;
-        setCalendar(payload);
-        setPayMonth(String(payload?.currentMonthKey || '').trim());
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setCalendar(null);
-        setPayMonth('');
-        showNotification(error?.message || '정산 가능 월을 불러오지 못했습니다.', 'error');
-      })
-      .finally(() => {
-        if (!cancelled) setCalendarLoading(false);
-      });
-    return () => {
-      cancelled = true;
-      abortController.abort();
-    };
-  }, [activeOrgId, isNew, showNotification]);
-
-  useEffect(() => {
-    if (!isNew && monthFromParam) fetchProductionAllowance(monthFromParam);
-  }, [fetchProductionAllowance, isNew, monthFromParam]);
+  useEffect(() => { load(); }, [load]);
 
   const employees = useMemo(
     () => (Array.isArray(data?.employees) ? data.employees : []),
     [data?.employees]
   );
-  const totalProductionAllowance = useMemo(
+  const total = useMemo(
     () => employees.reduce((sum, employee) => sum + productionAllowanceOf(employee), 0),
     [employees]
   );
-  const latestCompletedMonthKey = String(calendar?.latestCompletedMonthKey || '').trim();
-  const currentMonthKey = String(calendar?.currentMonthKey || '').trim();
-  const managementStartMonthKey = String(calendar?.managementStartMonthKey || '').trim();
-  const monthReady = data?.monthReady === true;
-
-  const handleMonthChange = (nextMonth) => {
-    setPayMonth(nextMonth);
-    setData(null);
-    setExpandedEmployeeKey(null);
-  };
-
-  const handleCalculate = async () => {
-    if (!payMonth) {
-      showNotification('정산 월을 선택하세요.', 'error');
-      return;
-    }
-    if (!isMonthThroughCurrent(payMonth, currentMonthKey)) {
-      showNotification('현재 월까지 생산수당을 계산할 수 있습니다.', 'warning');
-      return;
-    }
-    if (managementStartMonthKey && payMonth < managementStartMonthKey) {
-      showNotification(`생산수당은 관리 시작 월(${managementStartMonthKey})부터 계산할 수 있습니다.`, 'warning');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      if (payMonth === currentMonthKey) {
-        await fetchProductionAllowance(payMonth);
-        showNotification(`${payMonth} 현재까지의 생산수당을 계산했습니다.`, 'success');
-        return;
-      }
-      const query = buildQueryString({ orgId: activeOrgId });
-      await requestJSON('/payroll/snapshots' + query, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          month: payMonth,
-          savedBy: activeProfile?.email || activeProfile?.name || '관리자',
-        }),
-      });
-      await fetchProductionAllowance(payMonth);
-      showNotification(`${payMonth} 생산수당을 계산하고 확정했습니다.`, 'success');
-    } catch (error) {
-      if (error?.message?.includes('payroll month not ended')) {
-        showNotification('해당 월이 끝난 뒤 생산수당을 계산할 수 있습니다.', 'warning');
-      } else {
-        showNotification(error?.message || '생산수당 계산에 실패했습니다.', 'error');
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!data || !payMonth || !monthReady) return;
-    setSaving(true);
-    try {
-      const query = buildQueryString({ orgId: activeOrgId });
-      await requestJSON('/payroll/snapshots' + query, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          month: payMonth,
-          savedBy: activeProfile?.email || activeProfile?.name || '관리자',
-        }),
-      });
-      await fetchProductionAllowance(payMonth);
-      showNotification(`${payMonth} 생산수당 스냅샷을 저장했습니다.`, 'success');
-    } catch (error) {
-      showNotification(error?.message || '생산수당 저장에 실패했습니다.', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
+  const provisional = data?.isProvisional === true;
 
   return (
-    <AppPageContainer
-      title={isNew ? '생산수당 계산' : `생산수당 ${monthFromParam}`}
-      titleActions={data && payMonth !== currentMonthKey ? (
-        <SaveButton
-          onClick={handleSave}
-          disabled={!monthReady || saving || employees.length === 0}
-          loading={saving}
-        >
-          저장
-        </SaveButton>
-      ) : null}
-    >
+    <AppPageContainer title={`${text.title} · ${month}`}>
       <Box sx={{ width: '100%', maxWidth: 1280 }}>
-        {isNew && (
-          <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
-              <Stack direction="row" spacing={0.5} alignItems="center">
-                <TextField
-                  label="정산 월"
-                  type="month"
-                  value={payMonth}
-                  onChange={(event) => handleMonthChange(event.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  inputProps={{
-                    min: managementStartMonthKey || undefined,
-                    max: currentMonthKey || undefined,
-                  }}
-                  size="small"
-                  sx={{ width: 220 }}
-                />
-                <Stack sx={{ gap: '2px' }}>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => handleMonthChange(shiftMonthKey(payMonth, 1))}
-                    disabled={loading || calendarLoading || saving || !currentMonthKey || payMonth >= currentMonthKey}
-                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11 }}
-                  >
-                    M+
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => handleMonthChange(shiftMonthKey(payMonth, -1))}
-                    disabled={
-                      loading ||
-                      calendarLoading ||
-                      saving ||
-                      !currentMonthKey ||
-                      Boolean(managementStartMonthKey && payMonth <= managementStartMonthKey)
-                    }
-                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11 }}
-                  >
-                    M-
-                  </Button>
-                </Stack>
+        {loading ? <Paper variant="outlined" sx={{ p: 3 }}>{text.loading}</Paper> : null}
+        {!loading && !data ? <Alert severity="error">{text.fetchError}</Alert> : null}
+        {!loading && data && employees.length === 0 ? <Alert severity="info">{text.empty}</Alert> : null}
+        {!loading && data && employees.length > 0 ? (
+          <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+            <Box sx={{ px: 2, py: 1.25, bgcolor: 'grey.50', display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{text.employeeAllowance}</Typography>
+                <Chip size="small" label={`${employees.length}${text.people}`} variant="outlined" />
+                <Chip size="small" color={provisional ? 'warning' : 'success'} label={provisional ? text.current : text.confirmed} variant="outlined" />
               </Stack>
-              <Button
-                variant="contained"
-                onClick={handleCalculate}
-                disabled={
-                  loading ||
-                  calendarLoading ||
-                  saving ||
-                  !isMonthThroughCurrent(payMonth, currentMonthKey) ||
-                  Boolean(managementStartMonthKey && payMonth < managementStartMonthKey)
-                }
-              >
-                {loading || saving
-                  ? '계산 중...'
-                  : payMonth === currentMonthKey
-                    ? '현재까지 계산'
-                    : '계산 및 확정'}
-              </Button>
-            </Stack>
-            {!calendarLoading && !isMonthThroughCurrent(payMonth, currentMonthKey) && (
-              <Alert severity="info" sx={{ mt: 1.5 }}>
-                현재 월까지 생산수당을 계산할 수 있습니다.
-              </Alert>
-            )}
-            {!calendarLoading && payMonth === currentMonthKey && (
-              <Alert severity="info" sx={{ mt: 1.5 }}>
-                현재 월은 모든 공장의 지금까지 등록된 작업기록으로 계산하며 확정 저장하지 않습니다.
-              </Alert>
-            )}
-            {!calendarLoading && managementStartMonthKey && payMonth < managementStartMonthKey && (
-              <Alert severity="info" sx={{ mt: 1.5 }}>
-                생산수당은 사업체 메뉴의 공장 관리 시작일이 포함된 월({managementStartMonthKey})부터 계산할 수 있습니다.
-              </Alert>
-            )}
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>{text.total} {formatDong(total)}</Typography>
+            </Box>
+            <TableContainer><Table size="small">
+              <TableHead><TableRow>
+                <TableCell>{text.employee}</TableCell>
+                <TableCell align="right">{text.allowance}</TableCell>
+                <TableCell align="center">{text.basis}</TableCell>
+              </TableRow></TableHead>
+              <TableBody>{employees.map((employee, index) => {
+                const key = employee.employeeKey || `employee-${index}`;
+                const expanded = expandedEmployeeKey === key;
+                const processes = Array.isArray(employee.processes) ? employee.processes : [];
+                return <React.Fragment key={key}>
+                  <TableRow hover>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>{employee.workerName || '-'}</Typography>
+                      <Typography variant="caption" color="text.secondary">{employee.roleName || '-'}</Typography>
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>{formatDong(productionAllowanceOf(employee))}</TableCell>
+                    <TableCell align="center"><Button size="small" onClick={() => setExpandedEmployeeKey(expanded ? null : key)}>{expanded ? text.collapse : text.details}</Button></TableCell>
+                  </TableRow>
+                  <TableRow><TableCell colSpan={3} sx={{ p: 0, borderBottom: expanded ? undefined : 0 }}>
+                    <Collapse in={expanded} timeout="auto" unmountOnExit>
+                      <Box sx={{ p: 2, bgcolor: 'grey.50' }}>
+                        <Typography variant="caption" color="text.secondary">{text.formula}</Typography>
+                        <TableContainer component={Paper} variant="outlined" sx={{ mt: 1 }}><Table size="small">
+                          <TableHead><TableRow>
+                            <TableCell>{text.process}</TableCell><TableCell align="right">{text.quantity}</TableCell>
+                            <TableCell align="right">{text.ctSeconds}</TableCell><TableCell align="right">{text.averageRate}</TableCell>
+                            <TableCell align="right">{text.allowance}</TableCell>
+                          </TableRow></TableHead>
+                          <TableBody>{processes.length === 0
+                            ? <TableStatusRow colSpan={5} message={text.noRecords} />
+                            : processes.map((process, processIndex) => <TableRow key={process.styleProcessId || `${key}-${processIndex}`}>
+                              <TableCell>{process.processName || process.processCode || '-'}</TableCell>
+                              <TableCell align="right">{formatNumberWithCommas(process.totalQuantity || 0)}</TableCell>
+                              <TableCell align="right">{formatSeconds(process.totalCtSeconds)}</TableCell>
+                              <TableCell align="right">{formatRate(process.wagePerSecond)}</TableCell>
+                              <TableCell align="right">{formatDong(process.totalEarnings)}</TableCell>
+                            </TableRow>)}</TableBody>
+                        </Table></TableContainer>
+                      </Box>
+                    </Collapse>
+                  </TableCell></TableRow>
+                </React.Fragment>;
+              })}</TableBody>
+            </Table></TableContainer>
           </Paper>
-        )}
-
-        {data && (
-          <>
-            {employees.length === 0 ? (
-              <Alert severity="info">{payMonth} 기간에 생산수당 대상 성과급 직원이 없습니다.</Alert>
-            ) : (
-              <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-                <Box sx={{ px: 2, py: 1.25, bgcolor: 'grey.50', display: 'flex', justifyContent: 'space-between' }}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>직원별 생산수당</Typography>
-                    <Chip size="small" label={`${employees.length}명`} variant="outlined" />
-                  </Stack>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                    총 생산수당 {formatDong(totalProductionAllowance)}
-                  </Typography>
-                </Box>
-                <TableContainer>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>직원</TableCell>
-                        <TableCell align="right">생산수당</TableCell>
-                        <TableCell align="center">산출 근거</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {employees.map((employee, index) => {
-                        const employeeKey = employee.employeeKey || `employee-${index}`;
-                        const expanded = expandedEmployeeKey === employeeKey;
-                        return (
-                          <React.Fragment key={employeeKey}>
-                            <TableRow hover>
-                              <TableCell>
-                                <Typography variant="body2" sx={{ fontWeight: 700 }}>{employee.workerName || '-'}</Typography>
-                                <Typography variant="caption" color="text.secondary">{employee.roleName || '-'}</Typography>
-                              </TableCell>
-                              <TableCell align="right" sx={{ fontWeight: 700 }}>
-                                {formatDong(productionAllowanceOf(employee))}
-                              </TableCell>
-                              <TableCell align="center">
-                                <Button size="small" onClick={() => setExpandedEmployeeKey(expanded ? null : employeeKey)}>
-                                  {expanded ? '접기' : '상세'}
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell colSpan={3} sx={{ p: 0, border: 0 }}>
-                                <Collapse in={expanded} unmountOnExit>
-                                  <Box sx={{ px: 3, py: 1.5, bgcolor: 'grey.50' }}>
-                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                                      생산수당 = 작업수량 × CT초 × 작업 당시 공장 생산수당 초당 단가
-                                    </Typography>
-                                    <Table size="small">
-                                      <TableHead>
-                                        <TableRow>
-                                          <TableCell>공정</TableCell>
-                                          <TableCell align="right">수량</TableCell>
-                                          <TableCell align="right">총 CT초</TableCell>
-                                          <TableCell align="right">적용 평균단가</TableCell>
-                                          <TableCell align="right">생산수당</TableCell>
-                                        </TableRow>
-                                      </TableHead>
-                                      <TableBody>
-                                        {(employee.processes || []).length === 0 ? (
-                                          <TableStatusRow colSpan={5} message="작업 기록이 없습니다." />
-                                        ) : employee.processes.map((process, processIndex) => (
-                                          <TableRow key={`${employeeKey}-${process.styleProcessId || processIndex}`}>
-                                            <TableCell>{process.processName || process.processCode || '-'}</TableCell>
-                                            <TableCell align="right">{formatNumberWithCommas(process.totalQuantity || 0)}</TableCell>
-                                            <TableCell align="right">{formatSeconds(process.totalCtSeconds)}</TableCell>
-                                            <TableCell align="right">{formatWagePerSecond(process.wagePerSecond)}</TableCell>
-                                            <TableCell align="right">{formatDong(process.totalEarnings)}</TableCell>
-                                          </TableRow>
-                                        ))}
-                                      </TableBody>
-                                    </Table>
-                                  </Box>
-                                </Collapse>
-                              </TableCell>
-                            </TableRow>
-                          </React.Fragment>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Paper>
-            )}
-          </>
-        )}
-
-        {!data && !loading && !isNew && (
-          <Alert severity="info">생산수당 데이터를 불러오지 못했습니다.</Alert>
-        )}
+        ) : null}
       </Box>
     </AppPageContainer>
   );

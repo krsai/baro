@@ -11,7 +11,10 @@ import {
   toPositiveIntOrNull,
 } from "../utils/common";
 import { createHttpError } from "../utils/http";
-import { isPayrollMonthReady } from "../utils/payrollMonth";
+import {
+  isPayrollMonthReady,
+  resolveCurrentPayrollMonthKey,
+} from "../utils/payrollMonth";
 import {
   resolveWorkRecordProcessCode,
   resolveWorkRecordProcessName,
@@ -201,7 +204,15 @@ export const listPayrollSnapshots = async (orgId: number) => {
   const snapshots = await prisma.payrollSnapshot.findMany({
     where: { orgId },
     orderBy: { month: "desc" },
-    select: { id: true, month: true, data: true, lockedAt: true, lockedBy: true, createdAt: true },
+    select: {
+      id: true,
+      month: true,
+      data: true,
+      lockedAt: true,
+      lockedBy: true,
+      isProvisional: true,
+      createdAt: true,
+    },
   });
   return snapshots.map((snapshot) => ({
     ...snapshot,
@@ -211,16 +222,22 @@ export const listPayrollSnapshots = async (orgId: number) => {
   }));
 };
 
-export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
+export const getPayrollByMonth = async (
+  orgId: number,
+  monthInput: string,
+  { ignoreSnapshot = false }: { ignoreSnapshot?: boolean } = {}
+) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
   const monthReady = isPayrollMonthReady(month, {
     timeZone: process.env.BUSINESS_TIME_ZONE || "Asia/Seoul",
   });
 
-  const snapshot = await prisma.payrollSnapshot.findUnique({
-    where: { orgId_month: { orgId, month } },
-  });
+  const snapshot = ignoreSnapshot
+    ? null
+    : await prisma.payrollSnapshot.findUnique({
+        where: { orgId_month: { orgId, month } },
+      });
   if (snapshot) {
     return {
       locked: false,
@@ -228,6 +245,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       monthReady,
       lockedAt: snapshot.lockedAt,
       lockedBy: snapshot.lockedBy,
+      isProvisional: snapshot.isProvisional,
       month,
       employees: ensureArray(snapshot.data)
         .map(normalizePayrollSnapshotEmployee)
@@ -440,6 +458,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
   return {
     locked: false,
     snapshotExists: false,
+    isProvisional: !monthReady,
     monthReady,
     month,
     employees,
@@ -459,14 +478,13 @@ export const savePayrollSnapshot = async ({
 }) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
-  if (
-    !isPayrollMonthReady(month, {
-      timeZone: process.env.BUSINESS_TIME_ZONE || "Asia/Seoul",
-    })
-  ) {
-    throw createHttpError(409, "payroll month not ended");
+  const timeZone = process.env.BUSINESS_TIME_ZONE || "Asia/Seoul";
+  const currentMonth = resolveCurrentPayrollMonthKey({ timeZone });
+  if (month > currentMonth) {
+    throw createHttpError(409, "payroll month is in the future");
   }
-  const unreviewedCtPlans = await prisma.assignmentPlan.findMany({
+  const monthReady = isPayrollMonthReady(month, { timeZone });
+  const unreviewedCtPlans = monthReady ? await prisma.assignmentPlan.findMany({
     where: {
       orgId,
       ctReviewRequired: true,
@@ -481,7 +499,7 @@ export const savePayrollSnapshot = async ({
     },
     select: { externalId: true },
     take: 20,
-  });
+  }) : [];
   if (unreviewedCtPlans.length > 0) {
     throw createHttpError(
       409,
@@ -492,7 +510,7 @@ export const savePayrollSnapshot = async ({
   }
 
   void _employees;
-  const calculated = await getPayrollByMonth(orgId, month);
+  const calculated = await getPayrollByMonth(orgId, month, { ignoreSnapshot: true });
   const snapshotEmployees = calculated.employees
     .map(normalizePayrollSnapshotEmployee)
     .filter((employee) => employee.payType === "CT");
@@ -507,14 +525,18 @@ export const savePayrollSnapshot = async ({
       data: snapshotEmployees,
       lockedAt: savedAt,
       lockedBy: savedByText,
+      isProvisional: !monthReady,
     },
     update: {
       data: snapshotEmployees,
       lockedAt: savedAt,
       lockedBy: savedByText,
+      isProvisional: !monthReady,
     },
   });
-  await syncAssignmentPlanPayrollFinalization({ orgId, month, finalized: true });
+  if (monthReady) {
+    await syncAssignmentPlanPayrollFinalization({ orgId, month, finalized: true });
+  }
   return snapshot;
 };
 
@@ -524,7 +546,7 @@ export const deletePayrollSnapshot = async (orgId: number, monthInput: string) =
 
   const existing = await prisma.payrollSnapshot.findUnique({
     where: { orgId_month: { orgId, month } },
-    select: { id: true },
+    select: { id: true, isProvisional: true },
   });
   if (!existing) {
     throw createHttpError(404, "snapshot not found");
@@ -534,7 +556,14 @@ export const deletePayrollSnapshot = async (orgId: number, monthInput: string) =
     where: { id: existing.id },
   });
 
-  await syncAssignmentPlanPayrollFinalization({ orgId, month, finalized: false });
+  if (
+    !existing.isProvisional &&
+    isPayrollMonthReady(month, {
+      timeZone: process.env.BUSINESS_TIME_ZONE || "Asia/Seoul",
+    })
+  ) {
+    await syncAssignmentPlanPayrollFinalization({ orgId, month, finalized: false });
+  }
 
   return { ok: true, month };
 };

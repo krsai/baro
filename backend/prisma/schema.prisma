@@ -1294,6 +1294,7 @@ model PayrollSnapshot {
   data                Json
   lockedAt            DateTime
   lockedBy            String
+  isProvisional       Boolean  @default(false)
   createdAt           DateTime @default(now())
   createdBy           String   @default("system@baro.local")
   createdByEmployeeId Int?
