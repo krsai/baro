@@ -9655,26 +9655,12 @@ const loadLockedPayrollMonthSet = async (
   monthKeys: string[],
   db: any = prisma
 ): Promise<Set<string>> => {
-  const normalizedMonths = Array.from(
-    new Set(
-      ensureArray(monthKeys).filter(
-        (month): month is string => typeof month === "string" && /^\d{4}-\d{2}$/.test(month)
-      )
-    )
-  );
-  if (normalizedMonths.length === 0) return new Set<string>();
-  const snapshots = await db.payrollSnapshot.findMany({
-    where: {
-      orgId,
-      month: { in: normalizedMonths },
-    },
-    select: { month: true },
-  });
-  return new Set(
-    snapshots
-      .map((snapshot: any) => resolveOptionalString(snapshot?.month, null))
-      .filter((month: string | null): month is string => Boolean(month))
-  );
+  // PayrollSnapshot is currently a production-allowance-only snapshot. It must
+  // not lock assignments or work records until final payroll is implemented.
+  void orgId;
+  void monthKeys;
+  void db;
+  return new Set<string>();
 };
 const validateAssignmentPlanPayrollLock = async ({
   orgId,

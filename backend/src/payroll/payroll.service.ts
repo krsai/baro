@@ -274,6 +274,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       const expectedDates = monthWorkingDates.filter((dateKey) => dateKey >= factoryStart);
       const workDateKeys = new Set<string>();
       let productionAllowance = 0;
+      let invalidCalculationBasisCount = 0;
       for (const workLog of workLogs) {
         for (const record of workLog.workRecords) {
           if (record.lineId !== line.id) continue;
@@ -287,7 +288,11 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
             const quantity = Number(record.quantity);
             const ctSeconds = Number(record.ctSeconds);
             const rate = Number(workLog.factoryWagePerSecond);
-            if (quantity > 0 && ctSeconds > 0 && rate > 0) productionAllowance += quantity * ctSeconds * rate;
+            if (quantity > 0 && ctSeconds > 0 && rate > 0) {
+              productionAllowance += quantity * ctSeconds * rate;
+            } else {
+              invalidCalculationBasisCount += 1;
+            }
           }
         }
       }
@@ -318,8 +323,12 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         ),
         missingWorkDates,
         missingAttendance,
+        invalidCalculationBasisCount,
         productionAllowance: toPayrollAmount(productionAllowance, 0),
-        ready: expectedDates.length > 0 && missingWorkDates.length === 0,
+        ready:
+          expectedDates.length > 0 &&
+          missingWorkDates.length === 0 &&
+          invalidCalculationBasisCount === 0,
       };
     })
     .filter((group): group is NonNullable<typeof group> => group !== null);

@@ -497,12 +497,8 @@ export const getQuantitySettlementByMonth = async (orgId: number, monthInput: st
   const month = String(monthInput || "");
   assertMonth(month);
 
-  const [snapshotState, payrollSnapshot, orders, workLogs] = await Promise.all([
+  const [snapshotState, orders, workLogs] = await Promise.all([
     loadQuantitySettlementSnapshotSafe(orgId, month),
-    prisma.payrollSnapshot.findUnique({
-      where: { orgId_month: { orgId, month } },
-      select: { id: true, lockedAt: true, lockedBy: true },
-    }),
     prisma.workOrder.findMany({
       where: {
         OR: getOrderAccessWhere(orgId),
@@ -553,9 +549,9 @@ export const getQuantitySettlementByMonth = async (orgId: number, monthInput: st
 
   return {
     month,
-    locked: Boolean(payrollSnapshot),
-    lockedAt: payrollSnapshot?.lockedAt ?? null,
-    lockedBy: payrollSnapshot?.lockedBy ?? null,
+    locked: false,
+    lockedAt: null,
+    lockedBy: null,
     snapshotExists: Boolean(snapshotState.snapshot),
     storageReady: snapshotState.storageReady,
     storageMessage: snapshotState.storageMessage,
@@ -591,14 +587,6 @@ export const saveQuantitySettlementByMonth = async ({
       503,
       "quantity settlement storage is not ready on server. Apply the backend database update first"
     );
-  }
-
-  const payrollSnapshot = await prisma.payrollSnapshot.findUnique({
-    where: { orgId_month: { orgId, month } },
-    select: { id: true },
-  });
-  if (payrollSnapshot) {
-    throw createHttpError(409, "quantity settlement locked by payroll");
   }
 
   const payloadRows = ensureArray(rows)

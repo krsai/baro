@@ -36,6 +36,7 @@ const TEXT = {
     current: '진행 중', confirmed: '확정', empty: '계산된 생산수당 내역이 없습니다.', loading: '불러오는 중...',
     rowHint: '행을 선택하면 직원별·공정별 상세 내역을 확인할 수 있습니다.',
     factory: '공장', line: '라인', workCoverage: '작업기록', attendanceCoverage: '출퇴근 기록(참고)',
+    basisErrors: '계산근거 오류',
     ready: '계산 가능', incomplete: '자료 미완료', noLines: '생산수당 대상 공장·라인이 없습니다.',
     needsRecalculation: '재계산 필요', recalculateConfirmed: '재계산',
     unlock: '확정 해제', unlocking: '해제 중...', unlockConfirm: '{month} 생산수당 확정을 해제하시겠습니까?',
@@ -50,6 +51,7 @@ const TEXT = {
     current: 'In Progress', confirmed: 'Confirmed', empty: 'No production allowance results have been calculated.', loading: 'Loading...',
     rowHint: 'Select a row to view employee and process details.',
     factory: 'Factory', line: 'Line', workCoverage: 'Work Records', attendanceCoverage: 'Attendance (Reference)',
+    basisErrors: 'Basis Errors',
     ready: 'Ready', incomplete: 'Incomplete', noLines: 'No factory or line has production allowance employees.',
     needsRecalculation: 'Recalculation Required', recalculateConfirmed: 'Recalculate',
     unlock: 'Unlock', unlocking: 'Unlocking...', unlockConfirm: 'Unlock the {month} production allowance result?',
@@ -64,6 +66,7 @@ const TEXT = {
     current: 'Dang tien hanh', confirmed: 'Da xac nhan', empty: 'Chua co ket qua phu cap san luong.', loading: 'Dang tai...',
     rowHint: 'Chon mot dong de xem chi tiet theo nhan vien va cong doan.',
     factory: 'Nha may', line: 'Chuyen', workCoverage: 'Du lieu san xuat', attendanceCoverage: 'Cham cong (tham khao)',
+    basisErrors: 'Loi du lieu tinh',
     ready: 'Co the tinh', incomplete: 'Chua du du lieu', noLines: 'Khong co nha may hoac chuyen co nhan vien tinh phu cap san luong.',
     needsRecalculation: 'Can tinh lai', recalculateConfirmed: 'Tinh lai',
     unlock: 'Mo khoa', unlocking: 'Dang mo khoa...', unlockConfirm: 'Mo khoa ket qua phu cap san luong thang {month}?',
@@ -300,13 +303,14 @@ const PayrollBoard = () => {
                 <TableCell sx={{ fontWeight: 700 }}>{resolveText(languageCode, 'line')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{resolveText(languageCode, 'workCoverage')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{resolveText(languageCode, 'attendanceCoverage')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="right">{resolveText(languageCode, 'basisErrors')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{text.employees}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{text.total}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{text.status}</TableCell>
               </TableRow></TableHead>
               <TableBody>
-                {loading || readinessLoading ? <TableStatusRow colSpan={7} message={resolveText(languageCode, 'loading')} />
-                  : !readiness?.groups?.length ? <TableStatusRow colSpan={7} message={resolveText(languageCode, 'noLines')} />
+                {loading || readinessLoading ? <TableStatusRow colSpan={8} message={resolveText(languageCode, 'loading')} />
+                  : !readiness?.groups?.length ? <TableStatusRow colSpan={8} message={resolveText(languageCode, 'noLines')} />
                     : readiness.groups.map((group) => {
                       const groupReady = Boolean(group.ready);
                       return (
@@ -321,6 +325,7 @@ const PayrollBoard = () => {
                           <TableCell>{group.lineName}</TableCell>
                           <TableCell align="right">{group.workRecordedDayCount}/{group.expectedWorkingDayCount}</TableCell>
                           <TableCell align="right">{group.attendanceRecordedCount}/{group.attendanceRequiredCount}</TableCell>
+                          <TableCell align="right">{group.invalidCalculationBasisCount || 0}</TableCell>
                           <TableCell align="right">{group.employeeCount}{text.peopleSuffix}</TableCell>
                           <TableCell align="right">{alreadyCalculated ? formatDong(group.productionAllowance) : '-'}</TableCell>
                           <TableCell align="center"><Chip size="small" color={alreadyCalculated ? 'success' : needsRecalculation ? 'warning' : groupReady ? 'info' : 'warning'} label={alreadyCalculated ? resolveText(languageCode, 'confirmed') : needsRecalculation ? resolveText(languageCode, 'needsRecalculation') : resolveText(languageCode, groupReady ? 'ready' : 'incomplete')} variant="outlined" /></TableCell>

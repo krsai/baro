@@ -24,6 +24,11 @@ const payrollServiceSource = fs.readFileSync(
   'backend/src/payroll/payroll.service.ts',
   'utf8'
 );
+const backendSource = fs.readFileSync('backend/src/index.ts', 'utf8');
+const quantitySettlementServiceSource = fs.readFileSync(
+  'backend/src/quantity-settlement/quantitySettlement.service.ts',
+  'utf8'
+);
 const backendPackage = JSON.parse(fs.readFileSync('backend/package.json', 'utf8'));
 const payrollBoardSource = fs.readFileSync(
   'frontend/src/pages/App/payroll/PayrollBoard.jsx',
@@ -139,7 +144,7 @@ test('payroll persistence requires complete work records but keeps attendance in
   assert.match(payrollServiceSource, /production allowance can only be calculated through the previous month/);
   assert.match(payrollServiceSource, /getPayrollMonthReadiness\(orgId, month\)/);
   assert.match(payrollServiceSource, /monthly work records are incomplete/);
-  assert.match(payrollServiceSource, /ready: expectedDates\.length > 0 && missingWorkDates\.length === 0/);
+  assert.match(payrollServiceSource, /missingWorkDates\.length === 0 &&\s+invalidCalculationBasisCount === 0/);
   assert.match(payrollServiceSource, /getPayrollByMonth\(orgId, month, \{ ignoreSnapshot: true \}\)/);
   assert.match(payrollServiceSource, /isProvisional: !monthReady/);
   assert.match(payrollServiceSource, /prisma\.payrollSnapshot\.upsert\(/);
@@ -159,6 +164,8 @@ test('production allowance confirmation neither depends on shipment settlement n
   assert.doesNotMatch(payrollServiceSource, /syncAssignmentPlanPayrollFinalization/);
   assert.doesNotMatch(payrollServiceSource, /ASSIGNMENT_STATUS_PRODUCTION_COMPLETED/);
   assert.doesNotMatch(payrollEntrySource, /fetchQuantitySettlement|settlementSummary|quantity settlement incomplete/);
+  assert.match(backendSource, /PayrollSnapshot is currently a production-allowance-only snapshot/);
+  assert.doesNotMatch(quantitySettlementServiceSource, /quantity settlement locked by payroll/);
 });
 
 test('production allowance is calculated from the board and rows open read-only details', () => {
