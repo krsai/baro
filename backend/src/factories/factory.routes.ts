@@ -503,10 +503,29 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     if (factoryId === null) return res.status(400).json({ ok: false, error: "invalid factory id" });
     const factory = await prisma.factory.findFirst({ where: { id: factoryId, orgId: organization.id }, select: { id: true } });
     if (!factory) return res.status(404).json({ ok: false, error: "factory not found" });
-    const warehouses = await prisma.warehouse.findMany({
+    let warehouses = await prisma.warehouse.findMany({
       where: { orgId: organization.id, factoryId },
       orderBy: [{ isDefault: "desc" }, { isActive: "desc" }, { id: "asc" }],
     });
+    if (warehouses.length === 0) {
+      try {
+        const defaultWarehouse = await prisma.warehouse.create({
+          data: {
+            orgId: organization.id,
+            factoryId,
+            name: "창고 1",
+            isDefault: true,
+          },
+        });
+        warehouses = [defaultWarehouse];
+      } catch (error) {
+        if ((error as { code?: string })?.code !== "P2002") throw error;
+        warehouses = await prisma.warehouse.findMany({
+          where: { orgId: organization.id, factoryId },
+          orderBy: [{ isDefault: "desc" }, { isActive: "desc" }, { id: "asc" }],
+        });
+      }
+    }
     return res.json(warehouses);
   });
 
