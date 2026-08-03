@@ -225,6 +225,11 @@ const PayrollBoard = () => {
     [monthRows, readinessByMonth]
   );
   const canCalculate = calculableMonths.length > 0 && !loading && !calculating;
+  const allMonthsLabel = languageCode === 'ko'
+    ? '전체'
+    : languageCode === 'vi'
+      ? 'Tat ca'
+      : 'All';
 
   const handleCalculate = async () => {
     if (calculableMonths.length === 0) return;
@@ -317,9 +322,10 @@ const PayrollBoard = () => {
             size="small"
             value={selectedMonth}
             onChange={(event) => setSelectedMonth(event.target.value)}
+            SelectProps={{ renderValue: (value) => value || allMonthsLabel }}
             sx={{ minWidth: 150 }}
           >
-            <MenuItem value="">{languageCode === 'ko' ? '전체 월' : languageCode === 'vi' ? 'Tat ca cac thang' : 'All months'}</MenuItem>
+            <MenuItem value="">{allMonthsLabel}</MenuItem>
             {monthRows.map(({ month }) => (
               <MenuItem key={month} value={month}>{month}</MenuItem>
             ))}

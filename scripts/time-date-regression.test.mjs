@@ -136,6 +136,7 @@ test('production allowance board uses the server business calendar instead of br
   assert.match(payrollBoardSource, /const \[selectedMonth, setSelectedMonth\] = useState\(''\)/);
   assert.match(payrollBoardSource, /month <= latestCompletedMonth/);
   assert.match(payrollBoardSource, /<MenuItem value="">/);
+  assert.match(payrollBoardSource, /renderValue: \(value\) => value \|\| allMonthsLabel/);
 });
 
 test('payroll persistence requires complete work records but keeps attendance informational', () => {
