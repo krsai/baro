@@ -157,6 +157,7 @@ export const normalizePayrollSnapshotEmployee = (employee: any) => {
     productionAllowance: productionEarnings,
     productionEarnings,
     totalEarnings: productionEarnings,
+    rateOverridden: Boolean(employee?.rateOverridden),
     processes,
   };
 };
@@ -202,7 +203,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     prisma.line.findMany({
       where: { orgId, isActive: true },
       include: {
-        factory: { select: { id: true, name: true, nameKo: true, nameVi: true, managementStartDate: true } },
+        factory: { select: { id: true, name: true, nameKo: true, nameVi: true, managementStartDate: true, wagePerSecond: true } },
         employees: { include: { role: true } },
       },
       orderBy: [{ factoryId: "asc" }, { name: "asc" }],
@@ -225,6 +226,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         coverageEndDate: true,
         factoryId: true,
         factoryWagePerSecond: true,
+        factory: { select: { wagePerSecond: true } },
         workRecords: {
           select: {
             lineId: true, workerId: true, quantity: true, ctSeconds: true,
@@ -287,7 +289,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
           if (employee && resolveEmployeeEffectivePayType(employee) === "CT") {
             const quantity = Number(record.quantity);
             const ctSeconds = Number(record.ctSeconds);
-            const rate = Number(workLog.factoryWagePerSecond);
+            const rate = Number(workLog.factory?.wagePerSecond);
             if (quantity > 0 && ctSeconds > 0 && rate > 0) {
               productionAllowance += quantity * ctSeconds * rate;
             } else {
@@ -342,16 +344,27 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     ]),
   ].some((changedAt) => new Date(changedAt).getTime() > snapshot.lockedAt.getTime()));
   const groupsComplete = groups.length > 0 && groups.every((group) => group.ready);
-  const currentProductionAllowance = groups.reduce(
-    (sum, group) => sum + Number(group.productionAllowance || 0), 0
+  const snapshotEmployees = snapshot
+    ? ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee)
+    : [];
+  const currentCalculatedEmployees = snapshot
+    ? (await getPayrollByMonth(orgId, month, { ignoreSnapshot: true })).employees
+    : [];
+  const currentCalculatedByWorkerId = new Map(
+    currentCalculatedEmployees.map((employee) => [employee.workerId, employee])
   );
-  const snapshotProductionAllowance = snapshot
-    ? ensureArray(snapshot.data)
-        .map(normalizePayrollSnapshotEmployee)
-        .reduce((sum, employee) => sum + Number(employee.productionAllowance || 0), 0)
-    : 0;
+  const snapshotProductionAllowance = snapshotEmployees.reduce(
+    (sum, employee) => sum + Number(employee.productionAllowance || 0),
+    0
+  );
+  const expectedProductionAllowance = snapshotEmployees.reduce((sum, employee) => {
+    if (employee.rateOverridden) return sum + Number(employee.productionAllowance || 0);
+    const currentEmployee = currentCalculatedByWorkerId.get(employee.workerId);
+    return sum + Number(currentEmployee?.productionAllowance || 0);
+  }, 0);
   const calculatedBasisChanged = Boolean(
-    snapshot && Math.abs(currentProductionAllowance - snapshotProductionAllowance) > 0.000001
+    snapshot &&
+    Math.abs(expectedProductionAllowance - snapshotProductionAllowance) > 0.000001
   );
   const needsRecalculation = Boolean(
     snapshot &&
@@ -425,7 +438,7 @@ export const getPayrollByMonth = async (
     prisma.workLog.findMany({
       where: { orgId, displayDate: { startsWith: month } },
       include: {
-        factory: { select: { id: true, name: true, managementStartDate: true } },
+        factory: { select: { id: true, name: true, managementStartDate: true, wagePerSecond: true } },
         workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
       },
     }),
@@ -518,7 +531,7 @@ export const getPayrollByMonth = async (
 
   let payrollBreakdownMissingStyleProcessCount = 0;
   for (const workLog of workLogs) {
-    const wagePerSecond = Number(workLog.factoryWagePerSecond);
+    const wagePerSecond = Number(workLog.factory?.wagePerSecond);
     const validWage = Number.isFinite(wagePerSecond) && wagePerSecond > 0;
 
     for (const record of workLog.workRecords) {
@@ -723,6 +736,86 @@ export const savePayrollSnapshot = async ({
     },
   });
   return snapshot;
+};
+
+export const updatePayrollEmployeeRates = async ({
+  orgId,
+  month: monthInput,
+  overrides,
+  updatedBy,
+}: {
+  orgId: number;
+  month: string;
+  overrides: unknown;
+  updatedBy: string;
+}) => {
+  const month = String(monthInput || "");
+  assertPayrollMonth(month);
+  const snapshot = await prisma.payrollSnapshot.findUnique({
+    where: { orgId_month: { orgId, month } },
+  });
+  if (!snapshot) throw createHttpError(404, "snapshot not found");
+  if (!snapshot.isProvisional) {
+    throw createHttpError(409, "unlock production allowance before editing rates");
+  }
+
+  const rateByWorkerId = new Map<number, number>();
+  for (const row of ensureArray(overrides)) {
+    const workerId = toPositiveIntOrNull(row?.workerId);
+    const rate = Number(row?.wagePerSecond);
+    if (workerId === null || !Number.isFinite(rate) || rate < 0) {
+      throw createHttpError(400, "valid workerId and non-negative wagePerSecond are required");
+    }
+    rateByWorkerId.set(workerId, rate);
+  }
+  if (rateByWorkerId.size === 0) {
+    throw createHttpError(400, "employee rate overrides are required");
+  }
+
+  const employees = ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee);
+  const knownWorkerIds = new Set(
+    employees
+      .map((employee) => employee.workerId)
+      .filter((workerId): workerId is number => workerId !== null)
+  );
+  for (const workerId of rateByWorkerId.keys()) {
+    if (!knownWorkerIds.has(workerId)) {
+      throw createHttpError(400, `worker ${workerId} is not in the payroll snapshot`);
+    }
+  }
+
+  const updatedEmployees = employees.map((employee) => {
+    const overrideRate = employee.workerId === null
+      ? undefined
+      : rateByWorkerId.get(employee.workerId);
+    if (overrideRate === undefined) return employee;
+    const processes = employee.processes.map((process) => ({
+      ...process,
+      wagePerSecond: overrideRate,
+      totalEarnings: toPayrollAmount(process.totalCtSeconds, 0) * overrideRate,
+    }));
+    const productionAllowance = processes.reduce(
+      (sum, process) => sum + toPayrollAmount(process.totalEarnings, 0),
+      0
+    );
+    return {
+      ...employee,
+      productionAllowance,
+      productionEarnings: productionAllowance,
+      totalEarnings: productionAllowance,
+      rateOverridden: true,
+      processes,
+    };
+  });
+
+  return prisma.payrollSnapshot.update({
+    where: { id: snapshot.id },
+    data: {
+      data: updatedEmployees,
+      lockedAt: new Date(),
+      lockedBy: String(updatedBy || "unknown"),
+    },
+  });
 };
 
 export const deletePayrollSnapshot = async (orgId: number, monthInput: string) => {

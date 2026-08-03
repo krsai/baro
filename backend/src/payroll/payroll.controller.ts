@@ -9,6 +9,7 @@ import {
   lockPayrollSnapshot,
   savePayrollSnapshot,
   unlockPayrollSnapshot,
+  updatePayrollEmployeeRates,
 } from "./payroll.service";
 import {
   resolveCurrentPayrollMonthKey,
@@ -127,6 +128,18 @@ export const deletePayrollSnapshotController = async (req: Request, res: Respons
     accessContext.organization.id,
     String(req.params.month || "")
   );
+  return res.json(result);
+};
+
+export const updatePayrollEmployeeRatesController = async (req: Request, res: Response) => {
+  const accessContext = await requireOrgRole(req, res);
+  if (!accessContext) return;
+  const result = await updatePayrollEmployeeRates({
+    orgId: accessContext.organization.id,
+    month: String(req.params.month || ""),
+    overrides: req.body?.overrides,
+    updatedBy: accessContext.requesterEmail ?? "unknown",
+  });
   return res.json(result);
 };
 
