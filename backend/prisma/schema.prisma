@@ -344,7 +344,6 @@ model Factory {
   updatedByEmployee Employee? @relation("FactoryUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([orgId, factoryCode])
-  @@unique([id, orgId])
   @@index([orgId])
   @@index([managerEmployeeId])
 }
@@ -363,7 +362,7 @@ model Warehouse {
   updatedAt           DateTime @updatedAt
 
   organization      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  factory           Factory      @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Cascade)
+  factory           Factory      @relation(fields: [factoryId], references: [id], onDelete: Cascade)
   createdByEmployee Employee?    @relation("WarehouseCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee?    @relation("WarehouseUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 

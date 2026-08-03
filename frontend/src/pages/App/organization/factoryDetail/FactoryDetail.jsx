@@ -538,18 +538,6 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
             description={extraText.contactDescription}
           >
             <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label={text.address}
-                  name="address"
-                  value={formData.address}
-                  onChange={handleInputChange}
-                  multiline
-                  minRows={2}
-                />
-              </Grid>
               <Grid item xs={12} sm={4}>
                 <TextField
                   fullWidth
@@ -586,6 +574,18 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                   name="phoneNumber"
                   value={formData.phoneNumber}
                   onChange={handleInputChange}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label={text.address}
+                  name="address"
+                  value={formData.address}
+                  onChange={handleInputChange}
+                  multiline
+                  minRows={2}
                 />
               </Grid>
             </Grid>

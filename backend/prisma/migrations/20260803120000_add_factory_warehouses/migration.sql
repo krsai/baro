@@ -1,6 +1,3 @@
-ALTER TABLE "Factory"
-ADD CONSTRAINT "Factory_id_orgId_key" UNIQUE ("id", "orgId");
-
 CREATE TABLE "Warehouse" (
   "id" SERIAL NOT NULL,
   "orgId" INTEGER NOT NULL,
@@ -25,7 +22,7 @@ CREATE INDEX "Warehouse_factoryId_isActive_idx" ON "Warehouse"("factoryId", "isA
 ALTER TABLE "Warehouse"
 ADD CONSTRAINT "Warehouse_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "Warehouse"
-ADD CONSTRAINT "Warehouse_factoryId_orgId_fkey" FOREIGN KEY ("factoryId", "orgId") REFERENCES "Factory"("id", "orgId") ON DELETE CASCADE ON UPDATE CASCADE;
+ADD CONSTRAINT "Warehouse_factoryId_fkey" FOREIGN KEY ("factoryId") REFERENCES "Factory"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "Warehouse"
 ADD CONSTRAINT "Warehouse_createdByEmployeeId_fkey" FOREIGN KEY ("createdByEmployeeId") REFERENCES "Employee"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "Warehouse"
