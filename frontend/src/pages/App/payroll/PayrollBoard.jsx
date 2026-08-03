@@ -39,6 +39,7 @@ const TEXT = {
     rowHint: '월별 계산본을 선택하면 공장·라인·직원·공정별 상세 내역을 확인할 수 있습니다.',
     monthReady: '선택 월 계산 가능', monthIncomplete: '선택 월 자료 미완료', actions: '관리', lock: '잠금', unlockBeforeDelete: '잠금을 해제한 뒤 삭제할 수 있습니다.',
     factory: '공장', line: '라인', workCoverage: '작업기록', attendanceCoverage: '출퇴근 기록(참고)',
+    averageProductionAllowance: '평균 생산수당',
     basisErrors: '계산근거 오류',
     ready: '계산 가능', incomplete: '자료 미완료', noLines: '생산수당 대상 공장·라인이 없습니다.',
     needsRecalculation: '재계산 필요', recalculateConfirmed: '재계산',
@@ -56,6 +57,7 @@ const TEXT = {
     rowHint: 'Select a monthly result to view factory, line, employee, and process details.',
     monthReady: 'Selected month is ready', monthIncomplete: 'Selected month data is incomplete', actions: 'Actions', lock: 'Lock', unlockBeforeDelete: 'Unlock this month before deleting it.',
     factory: 'Factory', line: 'Line', workCoverage: 'Work Records', attendanceCoverage: 'Attendance (Reference)',
+    averageProductionAllowance: 'Average Production Allowance',
     basisErrors: 'Basis Errors',
     ready: 'Ready', incomplete: 'Incomplete', noLines: 'No factory or line has production allowance employees.',
     needsRecalculation: 'Recalculation Required', recalculateConfirmed: 'Recalculate',
@@ -73,6 +75,7 @@ const TEXT = {
     rowHint: 'Chon ket qua theo thang de xem chi tiet nha may, chuyen, nhan vien va cong doan.',
     monthReady: 'Thang da chon san sang', monthIncomplete: 'Du lieu thang chua day du', actions: 'Quan ly', lock: 'Khoa', unlockBeforeDelete: 'Mo khoa thang nay truoc khi xoa.',
     factory: 'Nha may', line: 'Chuyen', workCoverage: 'Du lieu san xuat', attendanceCoverage: 'Cham cong (tham khao)',
+    averageProductionAllowance: 'Phu cap san luong trung binh',
     basisErrors: 'Loi du lieu tinh',
     ready: 'Co the tinh', incomplete: 'Chua du du lieu', noLines: 'Khong co nha may hoac chuyen co nhan vien tinh phu cap san luong.',
     needsRecalculation: 'Can tinh lai', recalculateConfirmed: 'Tinh lai',
@@ -111,8 +114,6 @@ const PayrollBoard = () => {
     month: getUiMessage('payrollBoard.month', 'Settlement Month', languageCode),
     employees: getUiMessage('payrollBoard.employees', 'Employees', languageCode),
     total: getUiMessage('payrollBoard.total', 'Total Production Allowance', languageCode),
-    savedBy: getUiMessage('payrollBoard.savedBy', 'Saved By', languageCode),
-    savedAt: getUiMessage('payrollBoard.savedAt', 'Saved At', languageCode),
     status: getUiMessage('payrollBoard.status', 'Status', languageCode),
     delete: getUiMessage('payrollBoard.delete', 'Delete', languageCode),
     peopleSuffix: getUiMessage('payrollBoard.peopleSuffix', '', languageCode),
@@ -347,15 +348,14 @@ const PayrollBoard = () => {
                 <TableCell sx={{ fontWeight: 700 }}>{resolveText(languageCode, 'line')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{text.employees}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{text.total}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{text.savedBy}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{text.savedAt}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="right">{resolveText(languageCode, 'averageProductionAllowance')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{text.status}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{resolveText(languageCode, 'lock')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{text.delete}</TableCell>
               </TableRow></TableHead>
               <TableBody>
-                {loading ? <TableStatusRow colSpan={10} message={resolveText(languageCode, 'loading')} />
-                  : lineRows.length === 0 ? <TableStatusRow colSpan={10} message={resolveText(languageCode, 'empty')} />
+                {loading ? <TableStatusRow colSpan={9} message={resolveText(languageCode, 'loading')} />
+                  : lineRows.length === 0 ? <TableStatusRow colSpan={9} message={resolveText(languageCode, 'empty')} />
                     : lineRows.map(({ month, snapshot, readiness: monthReadiness, group, snapshotEmployeeCount, snapshotLineTotal }) => {
                       const rowNeedsRecalculation = Boolean(snapshot && monthReadiness?.needsRecalculation);
                       const factoryName = languageCode === 'ko'
@@ -373,8 +373,7 @@ const PayrollBoard = () => {
                           <TableCell>{group.lineName || '-'}</TableCell>
                           <TableCell align="right">{snapshot ? snapshotEmployeeCount : group.employeeCount || 0}{text.peopleSuffix}</TableCell>
                           <TableCell align="right">{snapshot ? formatDong(snapshotLineTotal) : '-'}</TableCell>
-                          <TableCell>{snapshot?.lockedBy || '-'}</TableCell>
-                          <TableCell>{snapshot?.lockedAt ? new Date(snapshot.lockedAt).toLocaleString() : '-'}</TableCell>
+                          <TableCell align="right">{snapshot && snapshotEmployeeCount > 0 ? formatDong(snapshotLineTotal / snapshotEmployeeCount) : '-'}</TableCell>
                           <TableCell align="center"><Chip size="small" color={rowNeedsRecalculation ? 'warning' : !snapshot ? 'default' : snapshot.isProvisional ? 'info' : 'success'} label={rowNeedsRecalculation ? resolveText(languageCode, 'needsRecalculation') : resolveText(languageCode, !snapshot ? 'notCalculated' : snapshot.isProvisional ? 'current' : 'confirmed')} variant="outlined" /></TableCell>
                           <TableCell align="center">
                             <LockToggleSwitch
