@@ -52,6 +52,9 @@ const getPayrollMonthRange = (month: string) => {
   return { start, endExclusive };
 };
 
+const resolveFactoryProductionAllowanceRate = (factory: any): number =>
+  Number(ensureArray(factory?.productionAllowanceRates)[0]?.wagePerSecond ?? factory?.wagePerSecond);
+
 const resolvePayrollEmployeeName = (employee: any, fallback: unknown = null): string =>
   resolveOptionalString(
     employee?.name ?? fallback ?? employee?.email ?? null,
@@ -203,7 +206,15 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     prisma.line.findMany({
       where: { orgId, isActive: true },
       include: {
-        factory: { select: { id: true, name: true, nameKo: true, nameVi: true, managementStartDate: true, wagePerSecond: true } },
+        factory: {
+          select: {
+            id: true, name: true, nameKo: true, nameVi: true, managementStartDate: true, wagePerSecond: true,
+            productionAllowanceRates: {
+              where: { effectiveMonth: { lte: month } }, orderBy: { effectiveMonth: "desc" }, take: 1,
+              select: { wagePerSecond: true },
+            },
+          },
+        },
         employees: { include: { role: true } },
       },
       orderBy: [{ factoryId: "asc" }, { name: "asc" }],
@@ -226,7 +237,15 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         coverageEndDate: true,
         factoryId: true,
         factoryWagePerSecond: true,
-        factory: { select: { wagePerSecond: true } },
+        factory: {
+          select: {
+            wagePerSecond: true,
+            productionAllowanceRates: {
+              where: { effectiveMonth: { lte: month } }, orderBy: { effectiveMonth: "desc" }, take: 1,
+              select: { wagePerSecond: true },
+            },
+          },
+        },
         workRecords: {
           select: {
             lineId: true, workerId: true, quantity: true, ctSeconds: true,
@@ -289,7 +308,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
           if (employee && resolveEmployeeEffectivePayType(employee) === "CT") {
             const quantity = Number(record.quantity);
             const ctSeconds = Number(record.ctSeconds);
-            const rate = Number(workLog.factory?.wagePerSecond);
+            const rate = resolveFactoryProductionAllowanceRate(workLog.factory);
             if (quantity > 0 && ctSeconds > 0 && rate > 0) {
               productionAllowance += quantity * ctSeconds * rate;
             } else {
@@ -460,7 +479,15 @@ export const getPayrollByMonth = async (
     prisma.workLog.findMany({
       where: { orgId, displayDate: { startsWith: month } },
       include: {
-        factory: { select: { id: true, name: true, managementStartDate: true, wagePerSecond: true } },
+        factory: {
+          select: {
+            id: true, name: true, managementStartDate: true, wagePerSecond: true,
+            productionAllowanceRates: {
+              where: { effectiveMonth: { lte: month } }, orderBy: { effectiveMonth: "desc" }, take: 1,
+              select: { wagePerSecond: true },
+            },
+          },
+        },
         workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
       },
     }),
@@ -553,7 +580,7 @@ export const getPayrollByMonth = async (
 
   let payrollBreakdownMissingStyleProcessCount = 0;
   for (const workLog of workLogs) {
-    const wagePerSecond = Number(workLog.factory?.wagePerSecond);
+    const wagePerSecond = resolveFactoryProductionAllowanceRate(workLog.factory);
     const validWage = Number.isFinite(wagePerSecond) && wagePerSecond > 0;
 
     for (const record of workLog.workRecords) {

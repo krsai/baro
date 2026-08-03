@@ -148,6 +148,7 @@ const FactoryList = () => {
       managerEmployeeId: savedData.managerEmployeeId,
       targetMonthlyWage: savedData.targetMonthlyWage,
       wagePerSecond: savedData.wagePerSecond,
+      productionAllowanceEffectiveMonth: savedData.productionAllowanceEffectiveMonth,
     };
 
     try {

@@ -189,6 +189,7 @@ model Organization {
   processes                   AttrProcess[]
   subscription                OrganizationSubscription?
   factories                   Factory[]
+  factoryProductionAllowanceRates FactoryProductionAllowanceRate[]
   warehouses                  Warehouse[]
   employees                   Employee[]
   lines                       Line[]
@@ -339,6 +340,7 @@ model Factory {
   workLogs          WorkLog[]
   atTrainingBuckets AtTrainingBucket[]
   warehouses        Warehouse[]
+  productionAllowanceRates FactoryProductionAllowanceRate[]
 
   createdByEmployee Employee? @relation("FactoryCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("FactoryUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -346,6 +348,25 @@ model Factory {
   @@unique([orgId, factoryCode])
   @@index([orgId])
   @@index([managerEmployeeId])
+}
+
+model FactoryProductionAllowanceRate {
+  id                Int      @id @default(autoincrement())
+  orgId             Int
+  factoryId         Int
+  effectiveMonth    String
+  targetMonthlyWage Float?
+  wagePerSecond     Float
+  createdAt         DateTime @default(now())
+  createdBy          String   @default("system@baro.local")
+  updatedAt         DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  factory      Factory      @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+
+  @@unique([factoryId, effectiveMonth])
+  @@index([orgId, effectiveMonth])
+  @@index([factoryId, effectiveMonth])
 }
 
 model Warehouse {

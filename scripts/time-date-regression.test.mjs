@@ -205,7 +205,7 @@ test('production allowance calculation excludes unfinished salary components', (
   assert.match(payrollServiceSource, /resolveEmployeeEffectivePayType\(employee\) === "CT"/);
   assert.match(payrollServiceSource, /productionAllowance/);
   assert.match(payrollServiceSource, /ctSeconds \* quantity \* wagePerSecond/);
-  assert.match(payrollServiceSource, /Number\(workLog\.factory\?\.wagePerSecond\)/);
+  assert.match(payrollServiceSource, /resolveFactoryProductionAllowanceRate\(workLog\.factory\)/);
   assert.doesNotMatch(payrollServiceSource, /Number\(workLog\.factoryWagePerSecond\)/);
   assert.match(payrollServiceSource, /void _employees/);
   assert.match(payrollServiceSource, /export const updatePayrollEmployeeRates/);
@@ -227,7 +227,12 @@ test('factory production allowance rate is derived from the monthly production a
   assert.match(factoryRoutesSource, /targetMonthlyWage \/ FACTORY_WORK_SECONDS_PER_MONTH/);
   assert.match(factoryDetailSource, /name="wagePerSecond"/);
   assert.match(factoryDetailSource, /name="targetMonthlyWage"/);
+  assert.match(factoryDetailSource, /name="productionAllowanceEffectiveMonth"/);
   assert.match(factoryDetailSource, /computedWagePerSecond/);
+  assert.match(factoryRoutesSource, /factoryProductionAllowanceRate\.upsert/);
+  assert.match(factoryRoutesSource, /existingRateCount === 0/);
+  assert.match(payrollServiceSource, /effectiveMonth: \{ lte: month \}/);
+  assert.match(backendPackage.scripts.start, /prisma:apply:factory-production-allowance-rate/);
   assert.match(uiMessagesSource, /월 목표 생산수당/);
 });
 
@@ -238,7 +243,7 @@ test('production allowance respects each factory management start date', () => {
   assert.match(payrollServiceSource, /organizationHoliday\.findMany/);
   assert.match(payrollServiceSource, /missingWorkDates/);
   assert.match(payrollServiceSource, /missingAttendance/);
-  assert.match(payrollServiceSource, /factory: \{ select: \{ id: true, name: true, managementStartDate: true, wagePerSecond: true \} \}/);
+  assert.match(payrollServiceSource, /id: true, name: true, managementStartDate: true, wagePerSecond: true/);
   assert.match(payrollControllerSource, /managementStartMonthKey/);
   assert.match(payrollBoardSource, /calendar\?\.availableMonthKeys/);
   assert.match(factoryDetailSource, /생산수당 계산의 최소 시작 기준일/);

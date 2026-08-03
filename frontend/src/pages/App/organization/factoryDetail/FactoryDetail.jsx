@@ -36,6 +36,10 @@ const COUNTRY_CODE_BY_COUNTRY = {
 const DEFAULT_COUNTRY = 'VN';
 const DEFAULT_COUNTRY_CODE = COUNTRY_CODE_BY_COUNTRY[DEFAULT_COUNTRY];
 const EMPLOYEE_COLLATOR = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
+const currentMonthKey = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
 
 const parseNumber = (value) => parseNumberLike(value);
 
@@ -93,6 +97,7 @@ const buildFactoryFormData = (factory) => {
     managerEmployeeId: normalizeManagerEmployeeId(factory?.managerEmployeeId),
     targetMonthlyWage: factory?.targetMonthlyWage ?? '',
     wagePerSecond: factory?.wagePerSecond ?? '',
+    productionAllowanceEffectiveMonth: currentMonthKey(),
   };
 };
 
@@ -410,6 +415,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
         DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
       targetMonthlyWage: Number.isFinite(targetMonthlyWage) ? targetMonthlyWage : '',
       wagePerSecond,
+      productionAllowanceEffectiveMonth: formData.productionAllowanceEffectiveMonth || currentMonthKey(),
     });
   };
 
@@ -626,14 +632,25 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                   sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
                 />
               </Grid>
-              <Grid item xs={12}>
-                <Typography variant="caption" color="text.secondary">
-                  {extraText.payrollUpdatedAt}:{' '}
-                  {formatProductionAllowanceUpdatedAt(
-                    factory?.productionAllowanceUpdatedAt,
-                    languageCode
-                  )}
-                </Typography>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="month"
+                  label={languageCode === 'ko' ? '적용 시작 월' : languageCode === 'vi' ? 'Thang bat dau ap dung' : 'Effective From'}
+                  name="productionAllowanceEffectiveMonth"
+                  value={formData.productionAllowanceEffectiveMonth}
+                  onChange={handleInputChange}
+                  inputProps={{
+                    min: String(formData.managementStartDate || DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY).slice(0, 7),
+                  }}
+                  helperText={languageCode === 'ko'
+                    ? '변경된 초당 단가를 어느 월의 작업기록부터 적용할지 선택합니다.'
+                    : languageCode === 'vi'
+                      ? 'Chon thang bat dau ap dung don gia moi cho du lieu san xuat.'
+                      : 'Select the first work-record month that uses the new rate.'}
+                  InputLabelProps={{ shrink: true }}
+                />
               </Grid>
             </Grid>
           </SectionBlock>

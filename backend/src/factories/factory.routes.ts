@@ -7,8 +7,9 @@ import {
   parseFactoryManagementStartDateInput,
 } from "./factoryManagementStart";
 import { getOrganizationByQuery } from "../middleware/access";
-import { toNumberOrNull, toPositiveIntOrNull } from "../utils/common";
+import { ensureArray, toNumberOrNull, toPositiveIntOrNull } from "../utils/common";
 import { createHttpError } from "../utils/http";
+import { resolveCurrentPayrollMonthKey } from "../utils/payrollMonth";
 
 type FactoryRoutesDeps = {
   isManufacturerOrg: (org: { type?: string | null } | null | undefined) => boolean;
@@ -27,6 +28,16 @@ const FACTORY_MANAGER_EMPLOYEE_SELECT = {
 } as const;
 
 const FACTORY_WORK_SECONDS_PER_MONTH = 26 * 8 * 60 * 60;
+const FACTORY_RATE_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+const resolveFactoryRateEffectiveMonth = (value: unknown): string | null => {
+  const fallback = resolveCurrentPayrollMonthKey({
+    timeZone: process.env.BUSINESS_TIME_ZONE || "Asia/Seoul",
+  });
+  if (value === undefined || value === null || value === "") return fallback;
+  const normalized = String(value).trim();
+  return FACTORY_RATE_MONTH_PATTERN.test(normalized) ? normalized : null;
+};
 
 const roundToScale = (value: number, digits = 2): number => {
   const factor = 10 ** digits;
@@ -197,6 +208,7 @@ const resolveFactoryManagerEmployeeInput = async (params: {
 };
 
 const toFactoryResponse = (factory: any) => {
+  const { productionAllowanceRates, ...factoryFields } = factory ?? {};
   const factoryId = toPositiveIntOrNull(factory?.id);
   const managerEmployee =
     factory?.managerEmployee &&
@@ -212,7 +224,9 @@ const toFactoryResponse = (factory: any) => {
   const managerName = managerEmployee?.name ?? legacyManagerName ?? null;
 
   return {
-    ...factory,
+    ...factoryFields,
+    productionAllowanceEffectiveMonth:
+      ensureArray(productionAllowanceRates)[0]?.effectiveMonth ?? null,
     managerEmployee,
     managerEmployeeId: managerEmployee?.id ?? null,
     managerEmployeeName: managerName,
@@ -237,6 +251,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
         managerEmployee: {
           select: FACTORY_MANAGER_EMPLOYEE_SELECT,
         },
+        productionAllowanceRates: { orderBy: { effectiveMonth: "desc" }, take: 1 },
       },
       orderBy: { id: "asc" },
     });
@@ -265,6 +280,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       managerEmployeeId,
       targetMonthlyWage,
       wagePerSecond,
+      productionAllowanceEffectiveMonth,
     } = req.body ?? {};
 
     if (!name || typeof name !== "string") {
@@ -281,6 +297,10 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       return res.status(409).json({ ok: false, error: "factoryCode already in use" });
     }
     const wageFields = resolveFactoryWageFields(targetMonthlyWage, wagePerSecond);
+    const effectiveMonth = resolveFactoryRateEffectiveMonth(productionAllowanceEffectiveMonth);
+    if (effectiveMonth === null) {
+      return res.status(400).json({ ok: false, error: "productionAllowanceEffectiveMonth must be YYYY-MM" });
+    }
     const phoneFields = resolveFactoryPhoneFields({
       countryInput: country,
       countryCodeInput: countryCode,
@@ -342,6 +362,17 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
           isDefault: true,
         },
       });
+      if (wageFields.wagePerSecond !== null) {
+        await tx.factoryProductionAllowanceRate.create({
+          data: {
+            orgId: organization.id,
+            factoryId: createdFactory.id,
+            effectiveMonth,
+            targetMonthlyWage: wageFields.targetMonthlyWage,
+            wagePerSecond: wageFields.wagePerSecond,
+          },
+        });
+      }
       return createdFactory;
     });
 
@@ -383,6 +414,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       managerEmployeeId,
       targetMonthlyWage,
       wagePerSecond,
+      productionAllowanceEffectiveMonth,
     } = req.body ?? {};
 
     let resolvedCode = (existing as any).factoryCode ?? null;
@@ -416,6 +448,10 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       (existing.productionAllowanceUpdatedAt === null &&
         productionAllowanceInputProvided &&
         hasProductionAllowance);
+    const effectiveMonth = resolveFactoryRateEffectiveMonth(productionAllowanceEffectiveMonth);
+    if (productionAllowanceChanged && effectiveMonth === null) {
+      return res.status(400).json({ ok: false, error: "productionAllowanceEffectiveMonth must be YYYY-MM" });
+    }
     const phoneFields = resolveFactoryPhoneFields({
       countryInput: country,
       countryCodeInput: countryCode,
@@ -443,11 +479,48 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     let factory;
     try {
       factory = await prisma.$transaction(async (tx) => {
+        if (productionAllowanceChanged && wageFields.wagePerSecond !== null && effectiveMonth) {
+          const existingRateCount = await tx.factoryProductionAllowanceRate.count({
+            where: { factoryId: id },
+          });
+          if (existingRateCount === 0 && existing.wagePerSecond !== null) {
+            const baselineMonth = (
+              normalizeFactoryManagementStartDateKey(existing.managementStartDate) ??
+              DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY
+            ).slice(0, 7);
+            await tx.factoryProductionAllowanceRate.create({
+              data: {
+                orgId: organization.id,
+                factoryId: id,
+                effectiveMonth: baselineMonth,
+                targetMonthlyWage: existing.targetMonthlyWage,
+                wagePerSecond: existing.wagePerSecond,
+              },
+            });
+          }
+          await tx.factoryProductionAllowanceRate.upsert({
+            where: {
+              factoryId_effectiveMonth: { factoryId: id, effectiveMonth },
+            },
+            create: {
+              orgId: organization.id,
+              factoryId: id,
+              effectiveMonth,
+              targetMonthlyWage: wageFields.targetMonthlyWage,
+              wagePerSecond: wageFields.wagePerSecond,
+            },
+            update: {
+              targetMonthlyWage: wageFields.targetMonthlyWage,
+              wagePerSecond: wageFields.wagePerSecond,
+            },
+          });
+        }
         const updatedFactory = await tx.factory.update({
           include: {
             managerEmployee: {
               select: FACTORY_MANAGER_EMPLOYEE_SELECT,
             },
+            productionAllowanceRates: { orderBy: { effectiveMonth: "desc" }, take: 1 },
           },
           where: { id },
           data: {
