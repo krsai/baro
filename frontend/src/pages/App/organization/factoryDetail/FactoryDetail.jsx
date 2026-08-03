@@ -475,20 +475,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                   error={Boolean(factoryCodeError)}
                 />
               </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label={extraText.managementStartDate}
-                  name="managementStartDate"
-                  type="date"
-                  value={formData.managementStartDate}
-                  onChange={handleInputChange}
-                  helperText={extraText.managementStartDateHelper}
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={12}>
                 <TextField
                   fullWidth
                   select
@@ -507,6 +494,19 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                     </MenuItem>
                   ))}
                 </TextField>
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label={extraText.managementStartDate}
+                  name="managementStartDate"
+                  type="date"
+                  value={formData.managementStartDate}
+                  onChange={handleInputChange}
+                  helperText={extraText.managementStartDateHelper}
+                  InputLabelProps={{ shrink: true }}
+                />
               </Grid>
             </Grid>
           </SectionBlock>
@@ -544,7 +544,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
             description={extraText.contactDescription}
           >
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={3}>
                 <TextField
                   fullWidth
                   select
@@ -561,7 +561,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                   ))}
                 </TextField>
               </Grid>
-              <Grid item xs={12} sm={2}>
+              <Grid item xs={2}>
                 <TextField
                   fullWidth
                   size="small"
@@ -572,7 +572,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                   inputProps={{ maxLength: 4 }}
                 />
               </Grid>
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={7}>
                 <TextField
                   fullWidth
                   size="small"
