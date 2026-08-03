@@ -6,9 +6,9 @@ import { useLanguage } from '../../../../context/LanguageContext';
 import { requestJSON } from '../../../../utils/apiClient';
 
 const TEXT = {
-  ko: { title: '창고', description: '공장별 재고 보관 위치를 관리합니다.', saveFactory: '공장을 먼저 저장하면 기본 창고 1이 생성됩니다.', name: '창고명', add: '추가', default: '기본', setDefault: '기본 지정', error: '창고 정보를 저장하지 못했습니다.' },
-  en: { title: 'Warehouses', description: 'Manage inventory storage locations for this factory.', saveFactory: 'Save the factory first to create the default Warehouse 1.', name: 'Warehouse name', add: 'Add', default: 'Default', setDefault: 'Set default', error: 'Failed to save warehouse information.' },
-  vi: { title: 'Kho', description: 'Quan ly vi tri luu kho cua nha may.', saveFactory: 'Luu nha may truoc de tao Kho 1 mac dinh.', name: 'Ten kho', add: 'Them', default: 'Mac dinh', setDefault: 'Dat mac dinh', error: 'Khong the luu thong tin kho.' },
+  ko: { title: '창고', description: '공장별 재고 보관 위치를 관리합니다.', saveFactory: '공장을 먼저 저장하면 기본 창고가 생성됩니다.', name: '창고명', add: '추가', default: '기본', setDefault: '기본 지정', error: '창고 정보를 저장하지 못했습니다.' },
+  en: { title: 'Warehouses', description: 'Manage inventory storage locations for this factory.', saveFactory: 'Save the factory first to create the default warehouse.', name: 'Warehouse name', add: 'Add', default: 'Default', setDefault: 'Set default', error: 'Failed to save warehouse information.' },
+  vi: { title: 'Kho', description: 'Quan ly vi tri luu kho cua nha may.', saveFactory: 'Luu nha may truoc de tao kho mac dinh.', name: 'Ten kho', add: 'Them', default: 'Mac dinh', setDefault: 'Dat mac dinh', error: 'Khong the luu thong tin kho.' },
 };
 
 const FactoryWarehouseSection = forwardRef(({ factoryId }, ref) => {

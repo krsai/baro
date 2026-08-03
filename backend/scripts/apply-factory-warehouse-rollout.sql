@@ -52,7 +52,7 @@ INSERT INTO "Warehouse" (
   "orgId", "factoryId", "name", "isDefault", "isActive", "createdBy", "updatedAt"
 )
 SELECT
-  factory."orgId", factory."id", '창고 1', true, true,
+  factory."orgId", factory."id", '기본 창고', true, true,
   'SYSTEM:WAREHOUSE_BACKFILL', CURRENT_TIMESTAMP
 FROM "Factory" factory
 WHERE NOT EXISTS (

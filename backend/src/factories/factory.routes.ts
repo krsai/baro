@@ -338,7 +338,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
         data: {
           orgId: organization.id,
           factoryId: createdFactory.id,
-          name: "창고 1",
+          name: "기본 창고",
           isDefault: true,
         },
       });
@@ -520,7 +520,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
           data: {
             orgId: organization.id,
             factoryId,
-            name: "창고 1",
+            name: "기본 창고",
             isDefault: true,
           },
         });
