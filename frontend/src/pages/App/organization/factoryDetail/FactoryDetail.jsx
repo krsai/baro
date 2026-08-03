@@ -25,6 +25,7 @@ import {
   formatDigitsWithCommas,
   parseNumberLike,
 } from '../../../../utils/numberFormat';
+import FactoryWarehouseSection from './FactoryWarehouseSection';
 const WORK_DAYS_PER_MONTH = 26;
 const HOURS_PER_DAY = 8;
 const SECONDS_PER_MONTH = WORK_DAYS_PER_MONTH * HOURS_PER_DAY * 60 * 60;
@@ -603,6 +604,8 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
               </Grid>
             </Grid>
           </SectionBlock>
+
+          <FactoryWarehouseSection factoryId={factory?.id || null} />
         </Stack>
 
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end' }}>

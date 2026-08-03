@@ -303,31 +303,42 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
         .json({ ok: false, error: managerEmployeeResolved.error });
     }
 
-    const factory = await prisma.factory.create({
-      include: {
-        managerEmployee: {
-          select: FACTORY_MANAGER_EMPLOYEE_SELECT,
+    const factory = await prisma.$transaction(async (tx) => {
+      const createdFactory = await tx.factory.create({
+        include: {
+          managerEmployee: {
+            select: FACTORY_MANAGER_EMPLOYEE_SELECT,
+          },
         },
-      },
-      data: {
-        orgId: organization.id,
-        name: name.trim(),
-        nameKo: normalizeOptionalFactoryText(nameKo),
-        nameVi: normalizeOptionalFactoryText(nameVi),
-        factoryCode: normalizedCode,
-        managementStartDate: managementStartDateResolved.value,
-        address: normalizeOptionalFactoryText(address),
-        country: phoneFields.country,
-        countryCode: phoneFields.countryCode,
-        phoneNumber: normalizeOptionalFactoryText(phoneNumber),
-        managerEmployeeId: managerEmployeeResolved.managerEmployeeId,
-        manager:
-          managerEmployeeResolved.hasInput
-            ? null
-            : normalizeOptionalFactoryText(manager),
-        targetMonthlyWage: wageFields.targetMonthlyWage,
-        wagePerSecond: wageFields.wagePerSecond,
-      },
+        data: {
+          orgId: organization.id,
+          name: name.trim(),
+          nameKo: normalizeOptionalFactoryText(nameKo),
+          nameVi: normalizeOptionalFactoryText(nameVi),
+          factoryCode: normalizedCode,
+          managementStartDate: managementStartDateResolved.value,
+          address: normalizeOptionalFactoryText(address),
+          country: phoneFields.country,
+          countryCode: phoneFields.countryCode,
+          phoneNumber: normalizeOptionalFactoryText(phoneNumber),
+          managerEmployeeId: managerEmployeeResolved.managerEmployeeId,
+          manager:
+            managerEmployeeResolved.hasInput
+              ? null
+              : normalizeOptionalFactoryText(manager),
+          targetMonthlyWage: wageFields.targetMonthlyWage,
+          wagePerSecond: wageFields.wagePerSecond,
+        },
+      });
+      await tx.warehouse.create({
+        data: {
+          orgId: organization.id,
+          factoryId: createdFactory.id,
+          name: "창고 1",
+          isDefault: true,
+        },
+      });
+      return createdFactory;
     });
 
     return res.status(201).json(toFactoryResponse(factory));
@@ -473,6 +484,83 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     }
 
     return res.json(toFactoryResponse(factory));
+  });
+
+  factoryRouter.get("/factories/:id/warehouses", async (req, res) => {
+    const factoryId = toPositiveIntOrNull(req.params.id);
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+    if (factoryId === null) return res.status(400).json({ ok: false, error: "invalid factory id" });
+    const factory = await prisma.factory.findFirst({ where: { id: factoryId, orgId: organization.id }, select: { id: true } });
+    if (!factory) return res.status(404).json({ ok: false, error: "factory not found" });
+    const warehouses = await prisma.warehouse.findMany({
+      where: { orgId: organization.id, factoryId },
+      orderBy: [{ isDefault: "desc" }, { isActive: "desc" }, { id: "asc" }],
+    });
+    return res.json(warehouses);
+  });
+
+  factoryRouter.post("/factories/:id/warehouses", async (req, res) => {
+    const factoryId = toPositiveIntOrNull(req.params.id);
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+    if (factoryId === null) return res.status(400).json({ ok: false, error: "invalid factory id" });
+    const factory = await prisma.factory.findFirst({ where: { id: factoryId, orgId: organization.id }, select: { id: true } });
+    if (!factory) return res.status(404).json({ ok: false, error: "factory not found" });
+    const name = normalizeOptionalFactoryText(req.body?.name);
+    if (!name) return res.status(400).json({ ok: false, error: "warehouse name is required" });
+    try {
+      const warehouse = await prisma.warehouse.create({
+        data: { orgId: organization.id, factoryId, name, isDefault: false, isActive: true },
+      });
+      return res.status(201).json(warehouse);
+    } catch (error) {
+      if ((error as { code?: string })?.code === "P2002") {
+        return res.status(409).json({ ok: false, error: "warehouse name already in use" });
+      }
+      throw error;
+    }
+  });
+
+  factoryRouter.put("/factories/:factoryId/warehouses/:warehouseId", async (req, res) => {
+    const factoryId = toPositiveIntOrNull(req.params.factoryId);
+    const warehouseId = toPositiveIntOrNull(req.params.warehouseId);
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+    if (factoryId === null || warehouseId === null) return res.status(400).json({ ok: false, error: "invalid warehouse id" });
+    const existing = await prisma.warehouse.findFirst({
+      where: { id: warehouseId, orgId: organization.id, factoryId },
+    });
+    if (!existing) return res.status(404).json({ ok: false, error: "warehouse not found" });
+    const name = req.body?.name === undefined
+      ? existing.name
+      : normalizeOptionalFactoryText(req.body.name);
+    if (!name) return res.status(400).json({ ok: false, error: "warehouse name is required" });
+    const nextIsActive = req.body?.isActive === undefined ? existing.isActive : Boolean(req.body.isActive);
+    const makeDefault = req.body?.isDefault === true;
+    if (existing.isDefault && !nextIsActive) {
+      return res.status(409).json({ ok: false, error: "select another default warehouse before deactivating this warehouse" });
+    }
+    try {
+      const warehouse = await prisma.$transaction(async (tx) => {
+        if (makeDefault) {
+          await tx.warehouse.updateMany({
+            where: { orgId: organization.id, factoryId, isDefault: true },
+            data: { isDefault: false },
+          });
+        }
+        return tx.warehouse.update({
+          where: { id: warehouseId },
+          data: { name, isActive: makeDefault ? true : nextIsActive, isDefault: makeDefault ? true : existing.isDefault },
+        });
+      });
+      return res.json(warehouse);
+    } catch (error) {
+      if ((error as { code?: string })?.code === "P2002") {
+        return res.status(409).json({ ok: false, error: "warehouse name already in use" });
+      }
+      throw error;
+    }
   });
 
   factoryRouter.delete("/factories/:id", async (req, res) => {

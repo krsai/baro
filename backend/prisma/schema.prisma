@@ -189,6 +189,7 @@ model Organization {
   processes                   AttrProcess[]
   subscription                OrganizationSubscription?
   factories                   Factory[]
+  warehouses                  Warehouse[]
   employees                   Employee[]
   lines                       Line[]
   styles                      Style[]
@@ -336,13 +337,38 @@ model Factory {
   attendanceEntries AttendanceEntry[]
   workLogs          WorkLog[]
   atTrainingBuckets AtTrainingBucket[]
+  warehouses        Warehouse[]
 
   createdByEmployee Employee? @relation("FactoryCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("FactoryUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([orgId, factoryCode])
+  @@unique([id, orgId])
   @@index([orgId])
   @@index([managerEmployeeId])
+}
+
+model Warehouse {
+  id                  Int      @id @default(autoincrement())
+  orgId               Int
+  factoryId           Int
+  name                String
+  isDefault           Boolean  @default(false)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  createdBy           String   @default("system@baro.local")
+  createdByEmployeeId Int?
+  updatedByEmployeeId Int?
+  updatedAt           DateTime @updatedAt
+
+  organization      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  factory           Factory      @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Cascade)
+  createdByEmployee Employee?    @relation("WarehouseCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee?    @relation("WarehouseUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
+  @@unique([factoryId, name])
+  @@index([orgId])
+  @@index([factoryId, isActive])
 }
 
 model Line {
@@ -431,6 +457,8 @@ model Employee {
   updatedOrganizationSubscriptions   OrganizationSubscription[]        @relation("OrganizationSubscriptionUpdatedByEmployee")
   createdFactories                   Factory[]                         @relation("FactoryCreatedByEmployee")
   updatedFactories                   Factory[]                         @relation("FactoryUpdatedByEmployee")
+  createdWarehouses                  Warehouse[]                       @relation("WarehouseCreatedByEmployee")
+  updatedWarehouses                  Warehouse[]                       @relation("WarehouseUpdatedByEmployee")
   createdLines                       Line[]                            @relation("LineCreatedByEmployee")
   updatedLines                       Line[]                            @relation("LineUpdatedByEmployee")
   createdAttendanceEntries           AttendanceEntry[]                 @relation("AttendanceEntryCreatedByEmployee")
