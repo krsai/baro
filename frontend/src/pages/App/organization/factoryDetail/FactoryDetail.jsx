@@ -526,7 +526,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                 <Typography variant="caption" color="text.secondary">
                   {extraText.payrollUpdatedAt}:{' '}
                   {formatProductionAllowanceUpdatedAt(
-                    factory?.productionAllowanceUpdatedAt,
+                    factory?.productionAllowanceUpdatedAt || factory?.updatedAt,
                     languageCode
                   )}
                 </Typography>
