@@ -1,10 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
-  Alert, Box, Button, Chip, Collapse, Paper, Stack, Table, TableBody,
+  Alert, Box, Button, Chip, CircularProgress, Collapse, Paper, Stack, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, TextField, Typography,
+  Tooltip, alpha,
 } from '@mui/material';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import LockOpenOutlinedIcon from '@mui/icons-material/LockOpenOutlined';
 import AppPageContainer from '../../../components/AppPageContainer';
+import PageToolbar from '../../../components/PageToolbar';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -67,12 +71,37 @@ const formatRateDraft = (value) => {
   if (!Number.isFinite(rate)) return '';
   return String(Math.round((rate + Number.EPSILON) * 100) / 100);
 };
+const LOCK_TEXT = {
+  ko: {
+    locked: '잠금', unlocked: '잠금 해제', unlockConfirm: '이 생산수당 계산의 잠금을 해제하시겠습니까?',
+    lockedHelp: '잠금 상태입니다. 누르면 잠금을 해제합니다.', unlockedHelp: '잠금 해제 상태입니다. 누르면 잠급니다.',
+    saveFirst: '수정한 초당 단가를 먼저 저장해야 잠글 수 있습니다.', error: '잠금 상태 변경에 실패했습니다.',
+  },
+  en: {
+    locked: 'Locked', unlocked: 'Unlocked', unlockConfirm: 'Unlock this production allowance calculation?',
+    lockedHelp: 'Locked. Click to unlock.', unlockedHelp: 'Unlocked. Click to lock.',
+    saveFirst: 'Save the changed rates before locking.', error: 'Failed to change the lock status.',
+  },
+  vi: {
+    locked: 'Da khoa', unlocked: 'Da mo khoa', unlockConfirm: 'Mo khoa ket qua phu cap san luong nay?',
+    lockedHelp: 'Dang khoa. Bam de mo khoa.', unlockedHelp: 'Dang mo khoa. Bam de khoa.',
+    saveFirst: 'Hay luu don gia da sua truoc khi khoa.', error: 'Khong the thay doi trang thai khoa.',
+  },
+};
+const getPayrollLockButtonSx = (locked) => (theme) => ({
+  minWidth: 108, height: 36, px: 1.75, borderRadius: 1.5,
+  border: `1px solid ${locked ? alpha(theme.palette.text.primary, 0.9) : alpha(theme.palette.primary.main, 0.38)}`,
+  backgroundColor: locked ? alpha(theme.palette.text.primary, 0.9) : alpha(theme.palette.primary.main, 0.08),
+  color: locked ? theme.palette.common.white : theme.palette.primary.main,
+  fontWeight: 700,
+  '&:hover': { backgroundColor: locked ? theme.palette.text.primary : alpha(theme.palette.primary.main, 0.16) },
+});
 
 const PayrollEntry = () => {
   const { payrollId } = useParams();
   const [searchParams] = useSearchParams();
   const { showNotification } = useAppActions();
-  const { activeOrgId } = useAuth();
+  const { activeOrgId, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
   const text = TEXT[languageCode] || TEXT.en;
   const month = String(payrollId || '').trim();
@@ -84,6 +113,7 @@ const PayrollEntry = () => {
   const [rateDrafts, setRateDrafts] = useState({});
   const [initialRates, setInitialRates] = useState({});
   const [savingRates, setSavingRates] = useState(false);
+  const [togglingLock, setTogglingLock] = useState(false);
 
   const load = useCallback(async () => {
     if (!activeOrgId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return;
@@ -127,6 +157,7 @@ const PayrollEntry = () => {
     [employees]
   );
   const provisional = data?.isProvisional === true;
+  const locked = Boolean(data && !provisional);
   const changedRateWorkerIds = useMemo(
     () => Object.keys(rateDrafts).filter((workerId) => {
       const current = Number(rateDrafts[workerId]);
@@ -160,8 +191,57 @@ const PayrollEntry = () => {
     }
   };
 
+  const handleLockToggle = async () => {
+    if (!data || togglingLock) return;
+    const lockText = LOCK_TEXT[languageCode] || LOCK_TEXT.en;
+    if (!locked && changedRateWorkerIds.length > 0) {
+      showNotification(lockText.saveFirst, 'warning');
+      return;
+    }
+    if (locked && !window.confirm(lockText.unlockConfirm)) return;
+    setTogglingLock(true);
+    try {
+      const updated = await requestJSON(
+        `/payroll/snapshots/${month}/${locked ? 'unlock' : 'lock'}` + buildQueryString({ orgId: activeOrgId }),
+        locked
+          ? { method: 'POST' }
+          : {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ lockedBy: activeProfile?.email || activeProfile?.name || 'administrator' }),
+            }
+      );
+      setData((previous) => ({ ...previous, ...updated }));
+    } catch (error) {
+      showNotification(error?.message || lockText.error, 'error');
+    } finally {
+      setTogglingLock(false);
+    }
+  };
+
   return (
-    <AppPageContainer title={`${text.title} · ${month}`}>
+    <AppPageContainer
+      title={`${text.title} · ${month}`}
+      toolbar={<PageToolbar showLastUpdater={false} right={data ? (
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Tooltip title={(LOCK_TEXT[languageCode] || LOCK_TEXT.en)[locked ? 'lockedHelp' : 'unlockedHelp']}>
+            <span>
+              <Button
+                size="small"
+                variant="contained"
+                color="inherit"
+                startIcon={locked ? <LockOutlinedIcon /> : <LockOpenOutlinedIcon />}
+                disabled={togglingLock}
+                onClick={handleLockToggle}
+                sx={getPayrollLockButtonSx(locked)}
+              >
+                {(LOCK_TEXT[languageCode] || LOCK_TEXT.en)[locked ? 'locked' : 'unlocked']}
+              </Button>
+            </span>
+          </Tooltip>
+          {togglingLock ? <CircularProgress size={16} /> : null}
+        </Stack>
+      ) : null} />}
+    >
       <Box sx={{ width: '100%', maxWidth: 1280 }}>
         {loading ? <Paper variant="outlined" sx={{ p: 3 }}>{text.loading}</Paper> : null}
         {!loading && !data ? <Alert severity="error">{text.fetchError}</Alert> : null}

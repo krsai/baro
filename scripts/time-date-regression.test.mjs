@@ -212,6 +212,10 @@ test('production allowance calculation excludes unfinished salary components', (
   assert.match(payrollServiceSource, /totalCtSeconds, 0\) \* overrideRate/);
   assert.match(payrollServiceSource, /rateOverridden: true/);
   assert.match(payrollEntrySource, /\/employee-rates/);
+  assert.match(payrollEntrySource, /<LockOutlinedIcon/);
+  assert.match(payrollEntrySource, /<LockOpenOutlinedIcon/);
+  assert.match(payrollEntrySource, /\/snapshots\/\$\{month\}\/\$\{locked \? 'unlock' : 'lock'\}/);
+  assert.match(payrollEntrySource, /setData\(\(previous\) => \(\{ \.\.\.previous, \.\.\.updated \}\)\)/);
   assert.match(payrollEntrySource, /snapshotLineTotal|appliedRateOf|rateDrafts/);
   assert.match(payrollEntrySource, /formatRateDraft/);
   assert.match(payrollServiceSource, /export const recalculatePayrollSnapshotLine/);
