@@ -406,9 +406,16 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       fallbackTargetMonthlyWage: existing.targetMonthlyWage,
       fallbackWagePerSecond: existing.wagePerSecond,
     });
+    const productionAllowanceInputProvided =
+      targetMonthlyWage !== undefined || wagePerSecond !== undefined;
+    const hasProductionAllowance =
+      wageFields.targetMonthlyWage !== null || wageFields.wagePerSecond !== null;
     const productionAllowanceChanged =
       wageFields.targetMonthlyWage !== existing.targetMonthlyWage ||
-      wageFields.wagePerSecond !== existing.wagePerSecond;
+      wageFields.wagePerSecond !== existing.wagePerSecond ||
+      (existing.productionAllowanceUpdatedAt === null &&
+        productionAllowanceInputProvided &&
+        hasProductionAllowance);
     const phoneFields = resolveFactoryPhoneFields({
       countryInput: country,
       countryCodeInput: countryCode,
