@@ -9,6 +9,7 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import LockOpenOutlinedIcon from '@mui/icons-material/LockOpenOutlined';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
+import SaveButton from '../../../components/SaveButton';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -71,6 +72,11 @@ const formatRateDraft = (value) => {
   if (!Number.isFinite(rate)) return '';
   return String(Math.round((rate + Number.EPSILON) * 100) / 100);
 };
+const buildEmployeeRateDrafts = (employees) => Object.fromEntries(
+  (Array.isArray(employees) ? employees : [])
+    .filter((employee) => Number(employee?.workerId) > 0)
+    .map((employee) => [String(employee.workerId), formatRateDraft(appliedRateOf(employee))])
+);
 const LOCK_TEXT = {
   ko: {
     locked: '잠금', unlocked: '잠금 해제', unlockConfirm: '이 생산수당 계산의 잠금을 해제하시겠습니까?',
@@ -121,11 +127,7 @@ const PayrollEntry = () => {
     try {
       const payload = await requestJSON('/payroll' + buildQueryString({ orgId: activeOrgId, month }));
       setData(payload);
-      const loadedRates = Object.fromEntries(
-        (Array.isArray(payload?.employees) ? payload.employees : [])
-          .filter((employee) => Number(employee?.workerId) > 0)
-          .map((employee) => [String(employee.workerId), formatRateDraft(appliedRateOf(employee))])
-      );
+      const loadedRates = buildEmployeeRateDrafts(payload?.employees);
       setRateDrafts(loadedRates);
       setInitialRates(loadedRates);
     } catch (error) {
@@ -179,10 +181,14 @@ const PayrollEntry = () => {
     }
     setSavingRates(true);
     try {
-      await requestJSON(`/payroll/snapshots/${month}/employee-rates` + buildQueryString({ orgId: activeOrgId }), {
+      const updated = await requestJSON(`/payroll/snapshots/${month}/employee-rates` + buildQueryString({ orgId: activeOrgId }), {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides }),
       });
-      await load();
+      const updatedEmployees = Array.isArray(updated?.data) ? updated.data : [];
+      const loadedRates = buildEmployeeRateDrafts(updatedEmployees);
+      setData((previous) => ({ ...previous, ...updated, employees: updatedEmployees }));
+      setRateDrafts(loadedRates);
+      setInitialRates(loadedRates);
       showNotification(text.saveSuccess, 'success');
     } catch (error) {
       showNotification(error?.message || text.saveError, 'error');
@@ -239,6 +245,13 @@ const PayrollEntry = () => {
             </span>
           </Tooltip>
           {togglingLock ? <CircularProgress size={16} /> : null}
+          <SaveButton
+            onClick={handleSaveRates}
+            disabled={!provisional || togglingLock || changedRateWorkerIds.length === 0}
+            loading={savingRates}
+          >
+            {text.saveRates}
+          </SaveButton>
         </Stack>
       ) : null} />}
     >
@@ -256,7 +269,6 @@ const PayrollEntry = () => {
               </Stack>
               <Stack direction="row" spacing={1} alignItems="center">
                 <Typography variant="body2" sx={{ fontWeight: 700 }}>{text.total} {formatDong(total)}</Typography>
-                {provisional && <Button size="small" variant="contained" disabled={savingRates || changedRateWorkerIds.length === 0} onClick={handleSaveRates}>{savingRates ? text.saving : text.saveRates}</Button>}
               </Stack>
             </Box>
             <TableContainer><Table size="small">

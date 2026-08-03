@@ -216,6 +216,9 @@ test('production allowance calculation excludes unfinished salary components', (
   assert.match(payrollEntrySource, /<LockOpenOutlinedIcon/);
   assert.match(payrollEntrySource, /\/snapshots\/\$\{month\}\/\$\{locked \? 'unlock' : 'lock'\}/);
   assert.match(payrollEntrySource, /setData\(\(previous\) => \(\{ \.\.\.previous, \.\.\.updated \}\)\)/);
+  assert.match(payrollEntrySource, /<SaveButton/);
+  assert.match(payrollEntrySource, /changedRateWorkerIds\.length === 0/);
+  assert.match(payrollEntrySource, /employees: updatedEmployees/);
   assert.match(payrollEntrySource, /snapshotLineTotal|appliedRateOf|rateDrafts/);
   assert.match(payrollEntrySource, /formatRateDraft/);
   assert.match(payrollServiceSource, /export const recalculatePayrollSnapshotLine/);
