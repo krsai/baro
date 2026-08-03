@@ -355,7 +355,6 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   );
   const needsRecalculation = Boolean(
     snapshot &&
-    !snapshot.isProvisional &&
     (sourceChangedAfterCalculation || calculatedBasisChanged || !groupsComplete)
   );
 

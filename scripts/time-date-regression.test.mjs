@@ -171,6 +171,8 @@ test('production allowance is calculated from the board and rows open read-only 
   assert.match(payrollBoardSource, /canCalculate/);
   assert.match(payrollBoardSource, /readinessByMonth\[month\]/);
   assert.match(payrollBoardSource, /calculableMonths/);
+  assert.match(payrollBoardSource, /const calculationNeeded = !snapshot \|\| monthReadiness\?\.needsRecalculation === true/);
+  assert.match(payrollBoardSource, /calculableMonths\.length > 0/);
   assert.match(payrollBoardSource, /for \(const month of calculableMonths\)/);
   assert.match(payrollBoardSource, /\/payroll\/readiness/);
   assert.match(payrollBoardSource, /requestJSON\('\/payroll\/snapshots'/);

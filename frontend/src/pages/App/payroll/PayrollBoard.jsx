@@ -216,10 +216,8 @@ const PayrollBoard = () => {
     () => monthRows
       .filter(({ month, snapshot }) => {
         const monthReadiness = readinessByMonth[month];
-        const alreadyCalculated = Boolean(
-          snapshot && !snapshot.isProvisional && !monthReadiness?.needsRecalculation
-        );
-        return Boolean(monthReadiness?.ready && !alreadyCalculated);
+        const calculationNeeded = !snapshot || monthReadiness?.needsRecalculation === true;
+        return Boolean(monthReadiness?.ready && calculationNeeded);
       })
       .map(({ month }) => month)
       .sort((left, right) => left.localeCompare(right)),
