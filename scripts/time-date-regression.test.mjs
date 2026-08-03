@@ -132,11 +132,10 @@ test('production allowance board uses the server business calendar instead of br
   assert.match(payrollControllerSource, /resolveLatestCompletedPayrollMonthKey\(\{ timeZone \}\)/);
   assert.match(payrollControllerSource, /process\.env\.BUSINESS_TIME_ZONE \|\| "Asia\/Seoul"/);
   assert.match(payrollBoardSource, /requestJSON\('\/payroll\/calendar'/);
-  assert.match(payrollBoardSource, /calendarPayload\?\.currentMonthKey/);
-  assert.match(payrollBoardSource, /latestCalculableMonth/);
-  assert.match(payrollBoardSource, /!snapshot \|\| snapshot\.isProvisional/);
-  assert.match(payrollBoardSource, /latestCalculableMonth \|\| latestCompletedMonth \|\| nextCurrentMonth/);
-  assert.match(payrollBoardSource, /max: latestCompletedMonthKey/);
+  assert.match(payrollBoardSource, /calendarPayload\?\.latestCompletedMonthKey/);
+  assert.match(payrollBoardSource, /const \[selectedMonth, setSelectedMonth\] = useState\(''\)/);
+  assert.match(payrollBoardSource, /month <= latestCompletedMonth/);
+  assert.match(payrollBoardSource, /<MenuItem value="">/);
 });
 
 test('payroll persistence requires complete work records but keeps attendance informational', () => {
@@ -170,7 +169,9 @@ test('production allowance confirmation neither depends on shipment settlement n
 
 test('production allowance is calculated from the board and rows open read-only details', () => {
   assert.match(payrollBoardSource, /canCalculate/);
-  assert.match(payrollBoardSource, /readiness\?\.ready/);
+  assert.match(payrollBoardSource, /readinessByMonth\[month\]/);
+  assert.match(payrollBoardSource, /calculableMonths/);
+  assert.match(payrollBoardSource, /for \(const month of calculableMonths\)/);
   assert.match(payrollBoardSource, /\/payroll\/readiness/);
   assert.match(payrollBoardSource, /requestJSON\('\/payroll\/snapshots'/);
   assert.match(payrollBoardSource, /snapshots\.map\(\(snapshot\)/);
@@ -185,6 +186,9 @@ test('production allowance is calculated from the board and rows open read-only 
   assert.match(payrollServiceSource, /isProvisional: true/);
   assert.match(payrollServiceSource, /export const lockPayrollSnapshot/);
   assert.match(payrollBoardSource, /monthRows\.map/);
+  assert.match(payrollBoardSource, /filteredMonthRows\.flatMap/);
+  assert.match(payrollBoardSource, /group\.factoryId/);
+  assert.match(payrollBoardSource, /group\.lineId/);
   assert.match(payrollServiceSource, /export const unlockPayrollSnapshot/);
 });
 
@@ -216,7 +220,7 @@ test('production allowance respects each factory management start date', () => {
   assert.match(payrollServiceSource, /missingAttendance/);
   assert.match(payrollServiceSource, /factory: \{ select: \{ id: true, name: true, managementStartDate: true \} \}/);
   assert.match(payrollControllerSource, /managementStartMonthKey/);
-  assert.match(payrollBoardSource, /min: managementStartMonthKey/);
+  assert.match(payrollBoardSource, /calendar\?\.availableMonthKeys/);
   assert.match(factoryDetailSource, /생산수당 계산의 최소 시작 기준일/);
 });
 
