@@ -62,6 +62,11 @@ const appliedRateOf = (employee) => {
   const totalEarnings = processes.reduce((sum, process) => sum + Number(process?.totalEarnings || 0), 0);
   return totalCtSeconds > 0 ? totalEarnings / totalCtSeconds : 0;
 };
+const formatRateDraft = (value) => {
+  const rate = Number(value);
+  if (!Number.isFinite(rate)) return '';
+  return String(Math.round((rate + Number.EPSILON) * 100) / 100);
+};
 
 const PayrollEntry = () => {
   const { payrollId } = useParams();
@@ -89,7 +94,7 @@ const PayrollEntry = () => {
       const loadedRates = Object.fromEntries(
         (Array.isArray(payload?.employees) ? payload.employees : [])
           .filter((employee) => Number(employee?.workerId) > 0)
-          .map((employee) => [String(employee.workerId), String(appliedRateOf(employee))])
+          .map((employee) => [String(employee.workerId), formatRateDraft(appliedRateOf(employee))])
       );
       setRateDrafts(loadedRates);
       setInitialRates(loadedRates);

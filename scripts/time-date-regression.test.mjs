@@ -150,7 +150,7 @@ test('payroll persistence requires complete work records but keeps attendance in
   assert.match(payrollServiceSource, /prisma\.payrollSnapshot\.upsert\(/);
   assert.match(payrollServiceSource, /prisma\.payrollSnapshot\.delete\(/);
   assert.match(payrollServiceSource, /needsRecalculation/);
-  assert.match(payrollServiceSource, /sourceChangedAfterCalculation/);
+  assert.match(payrollServiceSource, /groupsWithRecalculation/);
 });
 
 test('production startup applies safe database schema synchronization before serving requests', () => {
@@ -172,7 +172,7 @@ test('production allowance is calculated from the board and rows open read-only 
   assert.match(payrollBoardSource, /canCalculate/);
   assert.match(payrollBoardSource, /readinessByMonth\[month\]/);
   assert.match(payrollBoardSource, /calculableMonths/);
-  assert.match(payrollBoardSource, /const calculationNeeded = !snapshot \|\| monthReadiness\?\.needsRecalculation === true/);
+  assert.match(payrollBoardSource, /monthReadiness\?\.ready && !snapshot/);
   assert.match(payrollBoardSource, /calculableMonths\.length > 0/);
   assert.match(payrollBoardSource, /for \(const month of calculableMonths\)/);
   assert.match(payrollBoardSource, /\/payroll\/readiness/);
@@ -211,6 +211,11 @@ test('production allowance calculation excludes unfinished salary components', (
   assert.match(payrollServiceSource, /rateOverridden: true/);
   assert.match(payrollEntrySource, /\/employee-rates/);
   assert.match(payrollEntrySource, /snapshotLineTotal|appliedRateOf|rateDrafts/);
+  assert.match(payrollEntrySource, /formatRateDraft/);
+  assert.match(payrollServiceSource, /export const recalculatePayrollSnapshotLine/);
+  assert.match(payrollServiceSource, /stored\?\.rateOverridden/);
+  assert.match(payrollBoardSource, /\/recalculate-line/);
+  assert.match(payrollBoardSource, /group\.needsRecalculation/);
   assert.doesNotMatch(payrollEntrySource, /fixedSalary|ctAmount|bonus|deduction|finalEarnings/);
   assert.doesNotMatch(payrollEntrySource, /fixedSalary|fixedAllowance|variableAllowance|bonus|deduction/);
 });

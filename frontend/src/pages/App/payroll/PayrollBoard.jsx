@@ -217,8 +217,7 @@ const PayrollBoard = () => {
     () => monthRows
       .filter(({ month, snapshot }) => {
         const monthReadiness = readinessByMonth[month];
-        const calculationNeeded = !snapshot || monthReadiness?.needsRecalculation === true;
-        return Boolean(monthReadiness?.ready && calculationNeeded);
+        return Boolean(monthReadiness?.ready && !snapshot);
       })
       .map(({ month }) => month)
       .sort((left, right) => left.localeCompare(right)),
@@ -255,6 +254,26 @@ const PayrollBoard = () => {
       showNotification(error?.message || resolveText(languageCode, 'calculateError'), 'error');
     } finally {
       setCalculating(false);
+    }
+  };
+
+  const handleRecalculateLine = async (month, group) => {
+    const mutationKey = `recalculate:${month}:${group.factoryId}:${group.lineId}`;
+    setMutating(mutationKey);
+    try {
+      await requestJSON(
+        `/payroll/snapshots/${month}/recalculate-line` + buildQueryString({ orgId: activeOrgId }),
+        {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ factoryId: group.factoryId, lineId: group.lineId }),
+        }
+      );
+      await load();
+      showNotification(resolveText(languageCode, 'calculateSuccess', { month }), 'success');
+    } catch (error) {
+      showNotification(error?.message || resolveText(languageCode, 'calculateError'), 'error');
+    } finally {
+      setMutating('');
     }
   };
 
@@ -362,8 +381,9 @@ const PayrollBoard = () => {
               <TableBody>
                 {loading ? <TableStatusRow colSpan={9} message={resolveText(languageCode, 'loading')} />
                   : lineRows.length === 0 ? <TableStatusRow colSpan={9} message={resolveText(languageCode, 'empty')} />
-                    : lineRows.map(({ month, snapshot, readiness: monthReadiness, group, snapshotEmployeeCount, snapshotLineTotal }) => {
-                      const rowNeedsRecalculation = Boolean(snapshot && monthReadiness?.needsRecalculation);
+                    : lineRows.map(({ month, snapshot, group, snapshotEmployeeCount, snapshotLineTotal }) => {
+                      const rowNeedsRecalculation = Boolean(snapshot && group.needsRecalculation);
+                      const recalculationKey = `recalculate:${month}:${group.factoryId}:${group.lineId}`;
                       const factoryName = languageCode === 'ko'
                         ? group.factoryNameKo || group.factoryName
                         : languageCode === 'vi'
@@ -380,7 +400,24 @@ const PayrollBoard = () => {
                           <TableCell align="right">{snapshot ? snapshotEmployeeCount : group.employeeCount || 0}{text.peopleSuffix}</TableCell>
                           <TableCell align="right">{snapshot ? formatDong(snapshotLineTotal) : '-'}</TableCell>
                           <TableCell align="right">{snapshot && snapshotEmployeeCount > 0 ? formatDong(snapshotLineTotal / snapshotEmployeeCount) : '-'}</TableCell>
-                          <TableCell align="center"><Chip size="small" color={rowNeedsRecalculation ? 'warning' : !snapshot ? 'default' : snapshot.isProvisional ? 'info' : 'success'} label={rowNeedsRecalculation ? resolveText(languageCode, 'needsRecalculation') : resolveText(languageCode, !snapshot ? 'notCalculated' : snapshot.isProvisional ? 'current' : 'confirmed')} variant="outlined" /></TableCell>
+                          <TableCell align="center">
+                            {rowNeedsRecalculation && snapshot?.isProvisional ? (
+                              <Button
+                                size="small" variant="outlined" color="warning"
+                                disabled={Boolean(mutating) || calculating || !group.ready}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleRecalculateLine(month, group);
+                                }}
+                              >
+                                {mutating === recalculationKey
+                                  ? resolveText(languageCode, 'calculating')
+                                  : resolveText(languageCode, 'recalculateConfirmed')}
+                              </Button>
+                            ) : (
+                              <Chip size="small" color={!snapshot ? 'default' : snapshot.isProvisional ? 'info' : 'success'} label={resolveText(languageCode, !snapshot ? 'notCalculated' : snapshot.isProvisional ? 'current' : 'confirmed')} variant="outlined" />
+                            )}
+                          </TableCell>
                           <TableCell align="center">
                             <LockToggleSwitch
                               checked={Boolean(snapshot && !snapshot.isProvisional)}

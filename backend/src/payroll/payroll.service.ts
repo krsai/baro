@@ -335,14 +335,6 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     })
     .filter((group): group is NonNullable<typeof group> => group !== null);
 
-  const sourceChangedAfterCalculation = Boolean(snapshot && [
-    ...attendanceEntries.flatMap((row) => [row.createdAt, row.updatedAt]),
-    ...workLogs.flatMap((workLog) => [
-      workLog.createdAt,
-      workLog.updatedAt,
-      ...workLog.workRecords.flatMap((record) => [record.createdAt, record.updatedAt]),
-    ]),
-  ].some((changedAt) => new Date(changedAt).getTime() > snapshot.lockedAt.getTime()));
   const groupsComplete = groups.length > 0 && groups.every((group) => group.ready);
   const snapshotEmployees = snapshot
     ? ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee)
@@ -353,22 +345,52 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   const currentCalculatedByWorkerId = new Map(
     currentCalculatedEmployees.map((employee) => [employee.workerId, employee])
   );
-  const snapshotProductionAllowance = snapshotEmployees.reduce(
-    (sum, employee) => sum + Number(employee.productionAllowance || 0),
-    0
+  const groupTotal = (employee: any, factoryId: number, lineId: number) =>
+    ensureArray(employee?.processes)
+      .filter((process) =>
+        Number(process?.factoryId) === factoryId && Number(process?.lineId) === lineId
+      )
+      .reduce((sum, process) => sum + toPayrollAmount(process?.totalEarnings, 0), 0);
+  const snapshotByWorkerId = new Map(
+    snapshotEmployees.map((employee) => [employee.workerId, employee])
   );
-  const expectedProductionAllowance = snapshotEmployees.reduce((sum, employee) => {
-    if (employee.rateOverridden) return sum + Number(employee.productionAllowance || 0);
-    const currentEmployee = currentCalculatedByWorkerId.get(employee.workerId);
-    return sum + Number(currentEmployee?.productionAllowance || 0);
-  }, 0);
-  const calculatedBasisChanged = Boolean(
-    snapshot &&
-    Math.abs(expectedProductionAllowance - snapshotProductionAllowance) > 0.000001
-  );
-  const needsRecalculation = Boolean(
-    snapshot &&
-    (sourceChangedAfterCalculation || calculatedBasisChanged || !groupsComplete)
+  const groupsWithRecalculation = groups.map((group) => {
+    const sourceChangedAfterCalculation = Boolean(snapshot && workLogs.some((workLog) => {
+      const records = workLog.workRecords.filter((record) => record.lineId === group.lineId);
+      if (records.length === 0) return false;
+      return [
+        workLog.createdAt,
+        workLog.updatedAt,
+        ...records.flatMap((record) => [record.createdAt, record.updatedAt]),
+      ].some((changedAt) => new Date(changedAt).getTime() > snapshot.lockedAt.getTime());
+    }));
+    const snapshotTotal = snapshotEmployees.reduce(
+      (sum, employee) => sum + groupTotal(employee, group.factoryId, group.lineId),
+      0
+    );
+    const workerIds = new Set([
+      ...snapshotEmployees.map((employee) => employee.workerId),
+      ...currentCalculatedEmployees.map((employee) => employee.workerId),
+    ]);
+    const expectedTotal = Array.from(workerIds).reduce<number>((sum, workerId) => {
+      const stored = snapshotByWorkerId.get(workerId);
+      const current = currentCalculatedByWorkerId.get(workerId);
+      const source = stored?.rateOverridden ? stored : current;
+      return sum + groupTotal(source, group.factoryId, group.lineId);
+    }, 0);
+    const calculatedBasisChanged = Boolean(
+      snapshot && Math.abs(expectedTotal - snapshotTotal) > 0.000001
+    );
+    return {
+      ...group,
+      needsRecalculation: Boolean(
+        snapshot && snapshot.isProvisional &&
+        (sourceChangedAfterCalculation || calculatedBasisChanged || !group.ready)
+      ),
+    };
+  });
+  const needsRecalculation = groupsWithRecalculation.some(
+    (group) => group.needsRecalculation
   );
 
   return {
@@ -377,7 +399,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     snapshotExists: Boolean(snapshot && !snapshot.isProvisional),
     needsRecalculation,
     ready: completedMonth && groupsComplete,
-    groups,
+    groups: groupsWithRecalculation,
   };
 };
 
@@ -736,6 +758,110 @@ export const savePayrollSnapshot = async ({
     },
   });
   return snapshot;
+};
+
+const recalculatePayrollEmployeeTotals = (employee: any) => {
+  const processes = ensureArray(employee?.processes).map(normalizePayrollProcessSnapshot);
+  const productionAllowance = processes.reduce(
+    (sum, process) => sum + toPayrollAmount(process.totalEarnings, 0),
+    0
+  );
+  return {
+    ...normalizePayrollSnapshotEmployee(employee),
+    processes,
+    productionAllowance,
+    productionEarnings: productionAllowance,
+    totalEarnings: productionAllowance,
+  };
+};
+
+export const recalculatePayrollSnapshotLine = async ({
+  orgId,
+  month: monthInput,
+  factoryId,
+  lineId,
+  updatedBy,
+}: {
+  orgId: number;
+  month: string;
+  factoryId: number;
+  lineId: number;
+  updatedBy: string;
+}) => {
+  const month = String(monthInput || "");
+  assertPayrollMonth(month);
+  const normalizedFactoryId = toPositiveIntOrNull(factoryId);
+  const normalizedLineId = toPositiveIntOrNull(lineId);
+  if (normalizedFactoryId === null || normalizedLineId === null) {
+    throw createHttpError(400, "valid factoryId and lineId are required");
+  }
+
+  const snapshot = await prisma.payrollSnapshot.findUnique({
+    where: { orgId_month: { orgId, month } },
+  });
+  if (!snapshot) throw createHttpError(404, "snapshot not found");
+  if (!snapshot.isProvisional) {
+    throw createHttpError(409, "unlock production allowance before recalculation");
+  }
+
+  const readiness = await getPayrollMonthReadiness(orgId, month);
+  const targetGroup = readiness.groups.find(
+    (group) => group.factoryId === normalizedFactoryId && group.lineId === normalizedLineId
+  );
+  if (!targetGroup) throw createHttpError(404, "payroll line not found");
+  if (!targetGroup.ready) throw createHttpError(409, "line work records are incomplete");
+
+  const calculated = await getPayrollByMonth(orgId, month, { ignoreSnapshot: true });
+  const storedEmployees = ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee);
+  const freshEmployees = calculated.employees.map(normalizePayrollSnapshotEmployee);
+  const storedByKey = new Map(storedEmployees.map((employee) => [employee.employeeKey, employee]));
+  const freshByKey = new Map(freshEmployees.map((employee) => [employee.employeeKey, employee]));
+  const employeeKeys = new Set([...storedByKey.keys(), ...freshByKey.keys()]);
+  const isTargetProcess = (process: any) =>
+    Number(process?.factoryId) === normalizedFactoryId &&
+    Number(process?.lineId) === normalizedLineId;
+
+  const mergedEmployees = Array.from(employeeKeys).map((employeeKey) => {
+    const stored = storedByKey.get(employeeKey);
+    const fresh = freshByKey.get(employeeKey);
+    const retainedProcesses = ensureArray(stored?.processes).filter(
+      (process) => !isTargetProcess(process)
+    );
+    let refreshedProcesses = ensureArray(fresh?.processes).filter(isTargetProcess);
+
+    if (stored?.rateOverridden) {
+      const storedCtSeconds = ensureArray(stored.processes).reduce(
+        (sum, process) => sum + toPayrollAmount(process?.totalCtSeconds, 0),
+        0
+      );
+      const manualRate = storedCtSeconds > 0
+        ? ensureArray(stored.processes).reduce(
+            (sum, process) => sum + toPayrollAmount(process?.totalEarnings, 0),
+            0
+          ) / storedCtSeconds
+        : 0;
+      refreshedProcesses = refreshedProcesses.map((process) => ({
+        ...process,
+        wagePerSecond: manualRate,
+        totalEarnings: toPayrollAmount(process?.totalCtSeconds, 0) * manualRate,
+      }));
+    }
+
+    return recalculatePayrollEmployeeTotals({
+      ...(fresh ?? stored),
+      rateOverridden: Boolean(stored?.rateOverridden),
+      processes: [...retainedProcesses, ...refreshedProcesses],
+    });
+  }).filter((employee) => employee.payType === "CT");
+
+  return prisma.payrollSnapshot.update({
+    where: { id: snapshot.id },
+    data: {
+      data: mergedEmployees,
+      lockedAt: new Date(),
+      lockedBy: String(updatedBy || "unknown"),
+    },
+  });
 };
 
 export const updatePayrollEmployeeRates = async ({
