@@ -100,14 +100,14 @@ const getExtraText = (languageCode) => {
   if (languageCode === 'ko') {
     return {
       identitySection: '공장 기본 정보',
-      identityDescription: '기본 공장명과 운영 시작 기준일을 먼저 설정합니다.',
+      identityDescription: '기본 공장명, 운영 시작 기준일과 관리자를 설정합니다.',
       localizedSection: '다국어 공장명',
       localizedDescription: '한글/베트남어 이름을 함께 저장해 화면과 문서에서 일관되게 사용합니다.',
       contactSection: '위치 및 연락처',
-      contactDescription: '주소, 관리자, 국가 정보를 같은 묶음으로 정리했습니다.',
+      contactDescription: '주소와 전화 연락 정보를 관리합니다.',
       payrollSection: '생산수당 설정',
       payrollDescription: '공장 공통 생산수당 초당 단가를 관리합니다.',
-      payrollUpdatedAt: '최근 업데이트 날짜',
+      payrollUpdatedAt: '생산수당 초당 단가 업데이트 날짜',
       nameKo: '공장명 (한글)',
       nameVi: '공장명 (베트남어)',
       managementStartDate: '관리 시작일',
@@ -119,14 +119,14 @@ const getExtraText = (languageCode) => {
   if (languageCode === 'vi') {
     return {
       identitySection: 'Thong tin nha may',
-      identityDescription: 'Dat ten nha may chinh va ngay bat dau quan ly.',
+      identityDescription: 'Dat ten nha may, ngay bat dau quan ly va nguoi quan ly.',
       localizedSection: 'Ten da ngon ngu',
       localizedDescription: 'Luu ten tieng Han va tieng Viet de dung nhat quan tren man hinh va tai lieu.',
       contactSection: 'Vi tri va lien he',
-      contactDescription: 'Gom dia chi, quan ly va thong tin quoc gia vao cung mot nhom.',
+      contactDescription: 'Quan ly dia chi va thong tin dien thoai.',
       payrollSection: 'Cai dat phu cap san luong',
       payrollDescription: 'Quan ly don gia phu cap san luong theo giay cua nha may.',
-      payrollUpdatedAt: 'Cap nhat gan nhat',
+      payrollUpdatedAt: 'Ngay cap nhat don gia phu cap san luong',
       nameKo: 'Ten nha may (tieng Han)',
       nameVi: 'Ten nha may (tieng Viet)',
       managementStartDate: 'Ngay bat dau quan ly',
@@ -137,14 +137,14 @@ const getExtraText = (languageCode) => {
 
   return {
     identitySection: 'Factory Identity',
-    identityDescription: 'Set the main factory name and the management start date first.',
+    identityDescription: 'Set the factory name, management start date, and manager.',
     localizedSection: 'Localized Names',
     localizedDescription: 'Store Korean and Vietnamese names for consistent UI and document labels.',
     contactSection: 'Location & Contact',
-    contactDescription: 'Group address, manager, and country details together.',
+    contactDescription: 'Manage the address and telephone contact details.',
     payrollSection: 'Production Allowance Settings',
     payrollDescription: 'Manage the factory-wide production allowance rate per second.',
-    payrollUpdatedAt: 'Last updated',
+    payrollUpdatedAt: 'Production allowance rate updated',
     nameKo: 'Factory Name (Korean)',
     nameVi: 'Factory Name (Vietnamese)',
     managementStartDate: 'Management Start Date',
@@ -482,6 +482,26 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                   InputLabelProps={{ shrink: true }}
                 />
               </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  select
+                  size="small"
+                  label={text.manager}
+                  name="managerEmployeeId"
+                  value={formData.managerEmployeeId}
+                  onChange={handleInputChange}
+                  disabled={managerEmployeesLoading || !factory?.id}
+                  helperText={managerHelperText}
+                >
+                  <MenuItem value="">{managerMessages.none}</MenuItem>
+                  {managerEmployees.map((employee) => (
+                    <MenuItem key={employee.id} value={employee.id}>
+                      {buildEmployeeOptionLabel(employee)}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
             </Grid>
           </SectionBlock>
 
@@ -490,18 +510,6 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
             description={extraText.localizedDescription}
           >
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label={text.targetMonthlyWage}
-                  name="targetMonthlyWage"
-                  value={formatDigitsWithCommas(formData.targetMonthlyWage)}
-                  onChange={handleInputChange}
-                  inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
-                  helperText={text.targetMonthlyWageHelper}
-                />
-              </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -521,15 +529,6 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                   value={formData.nameVi}
                   onChange={handleInputChange}
                 />
-              </Grid>
-              <Grid item xs={12}>
-                <Typography variant="caption" color="text.secondary">
-                  {extraText.payrollUpdatedAt}:{' '}
-                  {formatProductionAllowanceUpdatedAt(
-                    factory?.productionAllowanceUpdatedAt || factory?.updatedAt,
-                    languageCode
-                  )}
-                </Typography>
               </Grid>
             </Grid>
           </SectionBlock>
@@ -551,27 +550,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                   minRows={2}
                 />
               </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  select
-                  size="small"
-                  label={text.manager}
-                  name="managerEmployeeId"
-                  value={formData.managerEmployeeId}
-                  onChange={handleInputChange}
-                  disabled={managerEmployeesLoading || !factory?.id}
-                  helperText={managerHelperText}
-                >
-                  <MenuItem value="">{managerMessages.none}</MenuItem>
-                  {managerEmployees.map((employee) => (
-                    <MenuItem key={employee.id} value={employee.id}>
-                      {buildEmployeeOptionLabel(employee)}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Grid>
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={12} sm={4}>
                 <TextField
                   fullWidth
                   select
@@ -588,7 +567,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                   ))}
                 </TextField>
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={12} sm={2}>
                 <TextField
                   fullWidth
                   size="small"
@@ -596,9 +575,10 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                   name="countryCode"
                   value={formData.countryCode}
                   onChange={handleInputChange}
+                  inputProps={{ maxLength: 4 }}
                 />
               </Grid>
-              <Grid item xs={12} sm={8}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   size="small"
@@ -620,6 +600,18 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                 <TextField
                   fullWidth
                   size="small"
+                  label={text.targetMonthlyWage}
+                  name="targetMonthlyWage"
+                  value={formatDigitsWithCommas(formData.targetMonthlyWage)}
+                  onChange={handleInputChange}
+                  inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
+                  helperText={text.targetMonthlyWageHelper}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  size="small"
                   label={text.wagePerSecond}
                   name="wagePerSecond"
                   value={computedWageDisplay}
@@ -627,6 +619,15 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                   helperText={text.wagePerSecondHelper}
                   sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
                 />
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="caption" color="text.secondary">
+                  {extraText.payrollUpdatedAt}:{' '}
+                  {formatProductionAllowanceUpdatedAt(
+                    factory?.productionAllowanceUpdatedAt,
+                    languageCode
+                  )}
+                </Typography>
               </Grid>
             </Grid>
           </SectionBlock>

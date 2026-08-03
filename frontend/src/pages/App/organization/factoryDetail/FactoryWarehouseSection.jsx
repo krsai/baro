@@ -6,9 +6,9 @@ import { useLanguage } from '../../../../context/LanguageContext';
 import { requestJSON } from '../../../../utils/apiClient';
 
 const TEXT = {
-  ko: { title: '창고', description: '공장별 재고 보관 위치를 관리합니다.', saveFactory: '공장을 먼저 저장하면 기본 창고 1이 생성됩니다.', unavailable: '창고 기능을 서버에 반영하는 중입니다.', name: '창고명', add: '창고 추가', save: '이름 저장', default: '기본', setDefault: '기본 지정', active: '사용', error: '창고 정보를 저장하지 못했습니다.' },
-  en: { title: 'Warehouses', description: 'Manage inventory storage locations for this factory.', saveFactory: 'Save the factory first to create the default Warehouse 1.', unavailable: 'Warehouse support is being deployed to the server.', name: 'Warehouse name', add: 'Add warehouse', save: 'Save name', default: 'Default', setDefault: 'Set default', active: 'Active', error: 'Failed to save warehouse information.' },
-  vi: { title: 'Kho', description: 'Quan ly vi tri luu kho cua nha may.', saveFactory: 'Luu nha may truoc de tao Kho 1 mac dinh.', unavailable: 'Chuc nang kho dang duoc cap nhat tren may chu.', name: 'Ten kho', add: 'Them kho', save: 'Luu ten', default: 'Mac dinh', setDefault: 'Dat mac dinh', active: 'Su dung', error: 'Khong the luu thong tin kho.' },
+  ko: { title: '창고', description: '공장별 재고 보관 위치를 관리합니다.', saveFactory: '공장을 먼저 저장하면 기본 창고 1이 생성됩니다.', name: '창고명', add: '창고 추가', save: '이름 저장', default: '기본', setDefault: '기본 지정', active: '사용', error: '창고 정보를 저장하지 못했습니다.' },
+  en: { title: 'Warehouses', description: 'Manage inventory storage locations for this factory.', saveFactory: 'Save the factory first to create the default Warehouse 1.', name: 'Warehouse name', add: 'Add warehouse', save: 'Save name', default: 'Default', setDefault: 'Set default', active: 'Active', error: 'Failed to save warehouse information.' },
+  vi: { title: 'Kho', description: 'Quan ly vi tri luu kho cua nha may.', saveFactory: 'Luu nha may truoc de tao Kho 1 mac dinh.', name: 'Ten kho', add: 'Them kho', save: 'Luu ten', default: 'Mac dinh', setDefault: 'Dat mac dinh', active: 'Su dung', error: 'Khong the luu thong tin kho.' },
 };
 
 const FactoryWarehouseSection = ({ factoryId }) => {
@@ -19,7 +19,6 @@ const FactoryWarehouseSection = ({ factoryId }) => {
   const [draftNames, setDraftNames] = useState({});
   const [newName, setNewName] = useState('');
   const [loading, setLoading] = useState(false);
-  const [apiUnavailable, setApiUnavailable] = useState(false);
   const [savingId, setSavingId] = useState(null);
 
   const load = useCallback(async () => {
@@ -28,15 +27,9 @@ const FactoryWarehouseSection = ({ factoryId }) => {
     try {
       const rows = await requestJSON(`/factories/${factoryId}/warehouses`);
       const safeRows = Array.isArray(rows) ? rows : [];
-      setApiUnavailable(false);
       setWarehouses(safeRows);
       setDraftNames(Object.fromEntries(safeRows.map((row) => [String(row.id), row.name || ''])));
     } catch (error) {
-      if (error?.status === 404) {
-        setApiUnavailable(true);
-        setWarehouses([]);
-        return;
-      }
       showNotification(error?.message || text.error, 'error');
     } finally {
       setLoading(false);
@@ -87,8 +80,6 @@ const FactoryWarehouseSection = ({ factoryId }) => {
       <Typography variant="caption" color="text.secondary">{text.description}</Typography>
       {!factoryId ? (
         <Typography variant="body2" sx={{ mt: 2 }} color="text.secondary">{text.saveFactory}</Typography>
-      ) : apiUnavailable ? (
-        <Typography variant="body2" sx={{ mt: 2 }} color="text.secondary">{text.unavailable}</Typography>
       ) : loading ? (
         <Box sx={{ py: 2, textAlign: 'center' }}><CircularProgress size={22} /></Box>
       ) : (
