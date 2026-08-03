@@ -9,7 +9,7 @@
     "prisma:deploy:safe": "node scripts/prisma-safe-deploy.js",
     "prisma:apply:payroll-provisional": "node scripts/run-prisma.js db execute --schema ./prisma/schema.prisma --file ./prisma/migrations/20260802193000_add_payroll_snapshot_provisional/migration.sql",
     "prisma:apply:migration-fix": "node scripts/run-prisma.js db execute --schema ./prisma/schema.prisma --file ./migration_fix.sql",
-    "railway:predeploy": "npm run prisma:prepare-client && npm run prisma:apply:migration-fix",
+    "railway:predeploy": "npm run prisma:prepare-client && npm run prisma:apply:migration-fix && npm run prisma:deploy:safe",
     "railway:startup": "npm run prisma:apply:migration-fix && npm run prisma:deploy:safe",
     "prisma:fix-entry": "node scripts/fix-prisma-client-entry.js",
     "postinstall": "npm run prisma:prepare-client",
