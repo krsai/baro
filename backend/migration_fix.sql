@@ -4307,6 +4307,8 @@ BEGIN
       ON DELETE RESTRICT ON UPDATE CASCADE;
   END IF;
 END $$;
+  END IF;
+END $$;
 
 -- Step 0r: factory warehouses and production-allowance update timestamp (20260803)
 ALTER TABLE "Factory"
@@ -4365,5 +4367,3 @@ FROM "Factory" factory
 WHERE NOT EXISTS (
   SELECT 1 FROM "Warehouse" warehouse WHERE warehouse."factoryId" = factory."id"
 );
-  END IF;
-END $$;
