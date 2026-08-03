@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Divider,
@@ -273,6 +273,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
   );
 
   const [formData, setFormData] = useState(buildFactoryFormData(null));
+  const warehouseSectionRef = useRef(null);
   const [managerEmployees, setManagerEmployees] = useState([]);
   const [managerEmployeesLoading, setManagerEmployeesLoading] = useState(false);
 
@@ -388,13 +389,18 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
         ? managerMessages.empty
         : managerMessages.helper;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const targetMonthlyWage = parseNumber(formData.targetMonthlyWage);
     const wagePerSecond = Number.isFinite(computedWagePerSecond)
       ? computedWagePerSecond
       : formData.wagePerSecond ?? '';
 
-    onSave?.({
+    try {
+      await warehouseSectionRef.current?.saveChanges?.();
+    } catch {
+      return;
+    }
+    await onSave?.({
       ...factory,
       ...formData,
       country: normalizeCountry(formData.country) || DEFAULT_COUNTRY,
@@ -632,7 +638,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
             </Grid>
           </SectionBlock>
 
-          <FactoryWarehouseSection factoryId={factory?.id || null} />
+          <FactoryWarehouseSection ref={warehouseSectionRef} factoryId={factory?.id || null} />
         </Stack>
 
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end' }}>
