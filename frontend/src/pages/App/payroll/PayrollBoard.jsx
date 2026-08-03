@@ -119,13 +119,13 @@ const PayrollBoard = () => {
     peopleSuffix: getUiMessage('payrollBoard.peopleSuffix', '', languageCode),
   }), [languageCode]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ silent = false } = {}) => {
     if (!activeOrgId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const query = buildQueryString({ orgId: activeOrgId });
       const [snapshotRows, calendarPayload] = await Promise.all([
-        requestJSON('/payroll/snapshots' + query),
+        requestJSON('/payroll/snapshots' + query, { skipGlobalLoading: silent }),
         requestJSON('/payroll/calendar' + query, { forceRefresh: true, skipGlobalLoading: true }),
       ]);
       const nextSnapshots = Array.isArray(snapshotRows) ? snapshotRows : [];
@@ -150,10 +150,10 @@ const PayrollBoard = () => {
       setCalendar(calendarPayload || null);
       setReadinessByMonth(Object.fromEntries(readinessRows));
     } catch (error) {
-      setSnapshots([]);
+      if (!silent) setSnapshots([]);
       showNotification(error?.message || resolveText(languageCode, 'fetchError'), 'error');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [activeOrgId, languageCode, showNotification]);
 
@@ -280,18 +280,25 @@ const PayrollBoard = () => {
   const handleLockToggle = async (snapshot, checked) => {
     const month = String(snapshot?.month || '');
     if (!month) return;
+    const mutationKey = `lock:${month}`;
+    setMutating(mutationKey);
     try {
       if (checked) {
-        await requestJSON(`/payroll/snapshots/${month}/lock` + buildQueryString({ orgId: activeOrgId }), {
+        const updatedSnapshot = await requestJSON(`/payroll/snapshots/${month}/lock` + buildQueryString({ orgId: activeOrgId }), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lockedBy: activeProfile?.email || activeProfile?.name || 'administrator' }),
         });
-        await load();
+        setSnapshots((previous) => previous.map((row) =>
+          String(row?.month || '') === month ? { ...row, ...updatedSnapshot } : row
+        ));
+        await load({ silent: true });
       } else {
         await handleUnlock(month);
       }
     } catch (error) {
       showNotification(error?.message || resolveText(languageCode, 'calculateError'), 'error');
+    } finally {
+      setMutating('');
     }
   };
 
@@ -299,12 +306,15 @@ const PayrollBoard = () => {
     const snapshot = snapshotsByMonth.get(month);
     if (!snapshot || snapshot.isProvisional) return;
     if (!window.confirm(resolveText(languageCode, 'unlockConfirm', { month }))) return;
-    setMutating('unlock');
+    setMutating(`lock:${month}`);
     try {
-      await requestJSON(`/payroll/snapshots/${month}/unlock` + buildQueryString({ orgId: activeOrgId }), {
+      const updatedSnapshot = await requestJSON(`/payroll/snapshots/${month}/unlock` + buildQueryString({ orgId: activeOrgId }), {
         method: 'POST',
       });
-      await load();
+      setSnapshots((previous) => previous.map((row) =>
+        String(row?.month || '') === month ? { ...row, ...updatedSnapshot } : row
+      ));
+      await load({ silent: true });
       showNotification(resolveText(languageCode, 'unlockSuccess', { month }), 'success');
     } catch (error) {
       showNotification(error?.message || resolveText(languageCode, 'unlockError'), 'error');
