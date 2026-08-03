@@ -19425,6 +19425,7 @@ app.get("/health", (_req, res) => {
     ok: true,
     ready: startupLifecycleState === "ready",
     startupState: startupLifecycleState,
+    capabilities: { warehouseManagement: true },
   });
 });
 

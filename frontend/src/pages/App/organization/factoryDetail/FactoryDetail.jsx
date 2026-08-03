@@ -482,15 +482,6 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                   InputLabelProps={{ shrink: true }}
                 />
               </Grid>
-              <Grid item xs={12}>
-                <Typography variant="caption" color="text.secondary">
-                  {extraText.payrollUpdatedAt}:{' '}
-                  {formatProductionAllowanceUpdatedAt(
-                    factory?.productionAllowanceUpdatedAt,
-                    languageCode
-                  )}
-                </Typography>
-              </Grid>
             </Grid>
           </SectionBlock>
 
@@ -530,6 +521,15 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                   value={formData.nameVi}
                   onChange={handleInputChange}
                 />
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="caption" color="text.secondary">
+                  {extraText.payrollUpdatedAt}:{' '}
+                  {formatProductionAllowanceUpdatedAt(
+                    factory?.productionAllowanceUpdatedAt,
+                    languageCode
+                  )}
+                </Typography>
               </Grid>
             </Grid>
           </SectionBlock>
