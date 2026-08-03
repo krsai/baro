@@ -328,6 +328,10 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
               : normalizeOptionalFactoryText(manager),
           targetMonthlyWage: wageFields.targetMonthlyWage,
           wagePerSecond: wageFields.wagePerSecond,
+          productionAllowanceUpdatedAt:
+            wageFields.targetMonthlyWage !== null || wageFields.wagePerSecond !== null
+              ? new Date()
+              : null,
         },
       });
       await tx.warehouse.create({
@@ -402,6 +406,9 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       fallbackTargetMonthlyWage: existing.targetMonthlyWage,
       fallbackWagePerSecond: existing.wagePerSecond,
     });
+    const productionAllowanceChanged =
+      wageFields.targetMonthlyWage !== existing.targetMonthlyWage ||
+      wageFields.wagePerSecond !== existing.wagePerSecond;
     const phoneFields = resolveFactoryPhoneFields({
       countryInput: country,
       countryCodeInput: countryCode,
@@ -468,6 +475,9 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
                 : resolveOptionalFactoryTextUpdate(manager, existing.manager),
             targetMonthlyWage: wageFields.targetMonthlyWage,
             wagePerSecond: wageFields.wagePerSecond,
+            productionAllowanceUpdatedAt: productionAllowanceChanged
+              ? new Date()
+              : existing.productionAllowanceUpdatedAt,
           },
         });
 

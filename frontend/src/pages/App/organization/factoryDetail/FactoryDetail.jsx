@@ -107,6 +107,7 @@ const getExtraText = (languageCode) => {
       contactDescription: '주소, 관리자, 국가 정보를 같은 묶음으로 정리했습니다.',
       payrollSection: '생산수당 설정',
       payrollDescription: '공장 공통 생산수당 초당 단가를 관리합니다.',
+      payrollUpdatedAt: '최근 업데이트 날짜',
       nameKo: '공장명 (한글)',
       nameVi: '공장명 (베트남어)',
       managementStartDate: '관리 시작일',
@@ -125,6 +126,7 @@ const getExtraText = (languageCode) => {
       contactDescription: 'Gom dia chi, quan ly va thong tin quoc gia vao cung mot nhom.',
       payrollSection: 'Cai dat phu cap san luong',
       payrollDescription: 'Quan ly don gia phu cap san luong theo giay cua nha may.',
+      payrollUpdatedAt: 'Cap nhat gan nhat',
       nameKo: 'Ten nha may (tieng Han)',
       nameVi: 'Ten nha may (tieng Viet)',
       managementStartDate: 'Ngay bat dau quan ly',
@@ -142,6 +144,7 @@ const getExtraText = (languageCode) => {
     contactDescription: 'Group address, manager, and country details together.',
     payrollSection: 'Production Allowance Settings',
     payrollDescription: 'Manage the factory-wide production allowance rate per second.',
+    payrollUpdatedAt: 'Last updated',
     nameKo: 'Factory Name (Korean)',
     nameVi: 'Factory Name (Vietnamese)',
     managementStartDate: 'Management Start Date',
@@ -175,6 +178,20 @@ const SectionBlock = ({ title, description, children }) => (
     {children}
   </Stack>
 );
+
+const formatProductionAllowanceUpdatedAt = (value, languageCode) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  const locale = languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US';
+  return new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+};
 
 const FactoryDetail = ({ open, onClose, onSave, factory }) => {
   const { languageCode } = useLanguage();
@@ -464,6 +481,15 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                   helperText={extraText.managementStartDateHelper}
                   InputLabelProps={{ shrink: true }}
                 />
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="caption" color="text.secondary">
+                  {extraText.payrollUpdatedAt}:{' '}
+                  {formatProductionAllowanceUpdatedAt(
+                    factory?.productionAllowanceUpdatedAt,
+                    languageCode
+                  )}
+                </Typography>
               </Grid>
             </Grid>
           </SectionBlock>

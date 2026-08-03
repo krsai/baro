@@ -309,26 +309,27 @@ model OrganizationSubscription {
 }
 
 model Factory {
-  id                  Int      @id @default(autoincrement())
-  orgId               Int
-  name                String
-  nameKo              String?
-  nameVi              String?
-  factoryCode         String?
-  managementStartDate String?
-  address             String?
-  country             String?
-  countryCode         String?
-  phoneNumber         String?
-  manager             String?
-  managerEmployeeId   Int?
-  targetMonthlyWage   Float?
-  wagePerSecond       Float?
-  createdAt           DateTime @default(now())
-  createdBy           String   @default("system@baro.local")
-  createdByEmployeeId Int?
-  updatedByEmployeeId Int?
-  updatedAt           DateTime @updatedAt
+  id                           Int       @id @default(autoincrement())
+  orgId                        Int
+  name                         String
+  nameKo                       String?
+  nameVi                       String?
+  factoryCode                  String?
+  managementStartDate          String?
+  address                      String?
+  country                      String?
+  countryCode                  String?
+  phoneNumber                  String?
+  manager                      String?
+  managerEmployeeId            Int?
+  targetMonthlyWage            Float?
+  wagePerSecond                Float?
+  productionAllowanceUpdatedAt DateTime?
+  createdAt                    DateTime  @default(now())
+  createdBy                    String    @default("system@baro.local")
+  createdByEmployeeId          Int?
+  updatedByEmployeeId          Int?
+  updatedAt                    DateTime  @updatedAt
 
   organization      Organization       @relation(fields: [orgId], references: [id])
   managerEmployee   Employee?          @relation("FactoryManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
