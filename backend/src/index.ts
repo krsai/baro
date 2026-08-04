@@ -5659,31 +5659,11 @@ const STYLE_PROCESS_STANDARD_INCLUDE: Prisma.StyleProcessInclude = {
       { quantityBucketEntry: { bucketQuantity: "asc" } },
       { id: "asc" },
     ],
-    select: {
-      bucketStSeconds: true,
-      setBy: true,
-      setAt: true,
-      updatedAt: true,
-      quantityBucketEntry: {
-        select: { id: true, bucketQuantity: true },
-      },
-    },
+    include: { quantityBucketEntry: true },
   },
   atObservations: {
     where: { modelVersion: AT_V2_MODEL_VERSION },
     orderBy: [{ quantity: "asc" }, { assignmentPlanId: "asc" }],
-    select: {
-      assignmentPlanId: true,
-      quantity: true,
-      allocatedLaborInputSeconds: true,
-      perPieceObservedSeconds: true,
-      workerCount: true,
-      eventCountMax: true,
-      eventCountWeighted: true,
-      observationPeriodStartDate: true,
-      observationPeriodEndDate: true,
-      trainedPeriod: true,
-    },
   },
   _count: { select: { workRecords: true } },
 };
@@ -6053,15 +6033,7 @@ const loadStyleProcessRowsByStyleId = async (
           { quantityBucketEntry: { bucketQuantity: "asc" as const } },
           { id: "asc" as const },
         ],
-        select: {
-          bucketStSeconds: true,
-          setBy: true,
-          setAt: true,
-          updatedAt: true,
-          quantityBucketEntry: {
-            select: { id: true, bucketQuantity: true },
-          },
-        },
+        include: { quantityBucketEntry: true },
         where: {
           quantityBucketSetVersionId: { in: activeVersionIds },
         },
@@ -21055,11 +21027,7 @@ const buildLineMonthCapacityRows = async ({
           processCode: resolveOptionalString(row?.processCode, null),
           processName: resolveOptionalString(row?.processName, null),
           stBuckets: ensureArray(row?.standards)
-            .map((item) =>
-              toPositiveIntOrNull(
-                (item as any)?.quantityBucketEntry?.bucketQuantity
-              )
-            )
+            .map((item) => toPositiveIntOrNull((item as any)?.bucketQuantity))
             .filter((value): value is number => value !== null)
             .sort((left, right) => left - right),
         })),
@@ -26361,7 +26329,13 @@ app.get("/assignment-cards", async (req, res) => {
   const includeProcesses = isManufacturerOrg(organization) && !(
     req.query.includeProcesses === "0" || req.query.includeProcesses === "false"
   );
-  const cards = await loadAssignmentCardsForOrg({ orgId: organization.id });
+  const [state, cards] = await Promise.all([
+    prisma.assignmentBoardState.findUnique({
+      where: { orgId: organization.id },
+      select: { updatedAt: true },
+    }),
+    loadAssignmentCardsForOrg({ orgId: organization.id }),
+  ]);
   const cardStyleIds = collectPositiveIntSet(...cards.map((card) => card?.styleId));
   const cardWorkOrderIds = collectPositiveIntSet(
     ...cards.map((card) => card?.workOrderId)
@@ -26375,6 +26349,7 @@ app.get("/assignment-cards", async (req, res) => {
     organization: {
       select: { id: true, name: true, nameKo: true, nameVi: true },
     },
+    ...(includeProcesses ? { processes: true } : {}),
   };
   const [orderManualLockRows, styles] = await Promise.all([
     cardWorkOrderIds.length > 0
@@ -26415,33 +26390,10 @@ app.get("/assignment-cards", async (req, res) => {
     };
   });
   const processMirrorMap = includeProcesses
-    ? await loadStyleProcessMirrorMapForStyleIds(cardStyleIds, {
+    ? await ensureStyleProcessStorageForStyles(styles, {
         processOrgId: organization.id,
       })
     : new Map<number, any[]>();
-  if (includeProcesses) {
-    const missingStyleIds = cardStyleIds.filter(
-      (styleId) => ensureArray(processMirrorMap.get(styleId)).length === 0
-    );
-    if (missingStyleIds.length > 0) {
-      const legacyStyles = await prisma.style.findMany({
-        where: { id: { in: missingStyleIds } },
-        select: { id: true, orgId: true, processes: true },
-      });
-      const recoverableLegacyStyles = legacyStyles.filter(
-        (style) => normalizeStyleProcesses(style?.processes).length > 0
-      );
-      if (recoverableLegacyStyles.length > 0) {
-        const recoveredMirrorMap = await ensureStyleProcessStorageForStyles(
-          recoverableLegacyStyles,
-          { processOrgId: organization.id }
-        );
-        recoveredMirrorMap.forEach((processes: any[], styleId: number) => {
-          processMirrorMap.set(styleId, processes);
-        });
-      }
-    }
-  }
 
   res.json({
     cards: cardsWithOrderLock,
@@ -26451,6 +26403,7 @@ app.get("/assignment-cards", async (req, res) => {
         processMirrorMap,
       })
     ),
+    updatedAt: state?.updatedAt ?? null,
     serverNow: new Date().toISOString(),
   });
 });
