@@ -118,6 +118,11 @@ test('style process mirrors fetch only standards from active relationship versio
   const end = backend.indexOf('const refreshStyleProcessMirrorForStyleIds =', start);
   const loader = backend.slice(start, end);
   assert.match(loader, /const activeVersionIds = Array\.from/);
+  assert.match(loader, /const processScopes = await db\.styleProcess\.findMany/);
+  assert.doesNotMatch(
+    loader,
+    /activeStyles\.map\(\(style\) => \(\{ orgId: processOrgId, styleId: style\.id \}\)\)/
+  );
   assert.match(
     loader,
     /quantityBucketSetVersionId: \{ in: activeVersionIds \}/

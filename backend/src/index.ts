@@ -6006,14 +6006,18 @@ const loadStyleProcessRowsByStyleId = async (
     select: { id: true, orgId: true },
   });
   const activeVersionByProcessScope = new Map<string, number>();
-  const processScopes =
-    processOrgId !== null
-      ? activeStyles.map((style) => ({ orgId: processOrgId, styleId: style.id }))
-      : await db.styleProcess.findMany({
-          where: { styleId: { in: normalizedStyleIds } },
-          select: { orgId: true, styleId: true },
-          distinct: ["orgId", "styleId"],
-        });
+  // Resolve active bucket versions only for scopes that actually have relational
+  // StyleProcess rows. Card pools may legitimately contain styles with no processes;
+  // asking relationship-time resolution for those empty styles turns a valid empty
+  // process list into a 400 response.
+  const processScopes = await db.styleProcess.findMany({
+    where: {
+      styleId: { in: normalizedStyleIds },
+      ...(processOrgId !== null ? { orgId: processOrgId } : {}),
+    },
+    select: { orgId: true, styleId: true },
+    distinct: ["orgId", "styleId"],
+  });
   const processOrgIds = Array.from(
     new Set(processScopes.map((row: any) => Number(row.orgId)))
   );
