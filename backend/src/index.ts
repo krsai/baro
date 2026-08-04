@@ -1,5 +1,6 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
+import compression from "compression";
 import { existsSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -120,6 +121,7 @@ import {
 } from "./services/attendanceFallback";
 
 const app = express();
+app.use(compression());
 app.use(cors());
 const JSON_BODY_LIMIT =
   String(process.env.JSON_BODY_LIMIT || "10mb").trim() || "10mb";
@@ -16006,68 +16008,6 @@ const findAssignmentPlansWithSelectFallback = async ({
   }
   throw lastError;
 };
-const repairAssignmentPlanFkRefsFromAssignmentCards = async (
-  orgId: number,
-  db: any = prisma
-): Promise<{ updatedCount: number; skippedCount: number }> => {
-  const plans = await db.assignmentPlan.findMany({
-    where: {
-      orgId,
-      assignmentCardId: { not: null },
-      OR: [{ workOrderId: null }, { styleId: null }, { buyerOrgId: null }],
-    },
-    select: {
-      id: true,
-      externalId: true,
-      workOrderId: true,
-      styleId: true,
-      buyerOrgId: true,
-      assignmentCard: {
-        select: {
-          workOrderId: true,
-          styleId: true,
-          buyerOrgId: true,
-        },
-      },
-    },
-  });
-
-  let updatedCount = 0;
-  let skippedCount = 0;
-  for (const plan of plans) {
-    const card = plan?.assignmentCard ?? null;
-    const data: Record<string, number> = {};
-    const cardWorkOrderId = toPositiveIntOrNull(card?.workOrderId);
-    const cardStyleId = toPositiveIntOrNull(card?.styleId);
-    const cardBuyerOrgId = toPositiveIntOrNull(card?.buyerOrgId);
-    if (toPositiveIntOrNull(plan?.workOrderId) === null && cardWorkOrderId !== null) {
-      data.workOrderId = cardWorkOrderId;
-    }
-    if (toPositiveIntOrNull(plan?.styleId) === null && cardStyleId !== null) {
-      data.styleId = cardStyleId;
-    }
-    if (toPositiveIntOrNull(plan?.buyerOrgId) === null && cardBuyerOrgId !== null) {
-      data.buyerOrgId = cardBuyerOrgId;
-    }
-    if (Object.keys(data).length === 0) {
-      skippedCount += 1;
-      continue;
-    }
-    await db.assignmentPlan.update({
-      where: { id: plan.id },
-      data,
-    });
-    updatedCount += 1;
-  }
-
-  if (updatedCount > 0 || skippedCount > 0) {
-    console.warn(
-      `[assignment-board-state] orgId=${orgId} repaired missing AssignmentPlan FK refs from AssignmentCard: updated=${updatedCount} skipped=${skippedCount}`
-    );
-  }
-
-  return { updatedCount, skippedCount };
-};
 const loadAssignmentPlansForBoardState = async (orgId: number) => {
   return findAssignmentPlansWithSelectFallback({
     where: { orgId },
@@ -16093,16 +16033,14 @@ const buildReadOnlyAssignmentBoardStateResponse = async (
   const includeCards = options.includeCards !== false;
   const includePlans = options.includePlans !== false;
   const nextState = state ?? null;
-  if (includePlans) {
-    await repairAssignmentPlanFkRefsFromAssignmentCards(orgId);
-  }
-  const assignmentPlans = includePlans
-    ? await annotateAssignmentPlanRowsWithPayrollLocks(
-        orgId,
-        await loadAssignmentPlansForBoardState(orgId)
-      )
-    : null;
-  const cards = includeCards ? await loadAssignmentCardsForOrg({ orgId }) : [];
+  const [assignmentPlans, cards] = await Promise.all([
+    includePlans
+      ? loadAssignmentPlansForBoardState(orgId).then((plans) =>
+          annotateAssignmentPlanRowsWithPayrollLocks(orgId, plans)
+        )
+      : Promise.resolve(null),
+    includeCards ? loadAssignmentCardsForOrg({ orgId }) : Promise.resolve([]),
+  ]);
   return toAssignmentBoardStateResponse(nextState, assignmentPlans, cards);
 };
 
@@ -26313,14 +26251,19 @@ app.get("/assignment-board-view", async (req, res) => {
   const includeCards = !(
     req.query.includeCards === "0" || req.query.includeCards === "false"
   );
-  const state = await prisma.assignmentBoardState.findUnique({
-    where: { orgId: organization.id },
-  });
-  const response = await buildReadOnlyAssignmentBoardStateResponse(
-    organization.id,
-    state,
-    { includeCards }
-  );
+  const [state, boardResponse] = await Promise.all([
+    prisma.assignmentBoardState.findUnique({
+      where: { orgId: organization.id },
+    }),
+    buildReadOnlyAssignmentBoardStateResponse(organization.id, null, {
+      includeCards,
+    }),
+  ]);
+  const response = {
+    ...boardResponse,
+    createdAt: state?.createdAt ?? null,
+    updatedAt: state?.updatedAt ?? null,
+  };
   res.json(response);
 });
 
@@ -26369,13 +26312,43 @@ app.get("/assignment-cards", async (req, res) => {
     loadAssignmentCardsForOrg({ orgId: organization.id }),
   ]);
   const cardStyleIds = collectPositiveIntSet(...cards.map((card) => card?.styleId));
-  const orderManualLockRows = await prisma.workOrder.findMany({
-    where: { OR: getOrderAccessWhere(organization.id) },
-    select: {
-      id: true,
-      modificationLockedAt: true,
+  const cardWorkOrderIds = collectPositiveIntSet(
+    ...cards.map((card) => card?.workOrderId)
+  );
+  const styleSelect = {
+    id: true,
+    orgId: true,
+    code: true,
+    name: true,
+    updatedAt: true,
+    organization: {
+      select: { id: true, name: true, nameKo: true, nameVi: true },
     },
-  });
+    ...(includeProcesses ? { processes: true } : {}),
+  };
+  const [orderManualLockRows, styles] = await Promise.all([
+    cardWorkOrderIds.length > 0
+      ? prisma.workOrder.findMany({
+          where: {
+            id: { in: cardWorkOrderIds },
+            OR: getOrderAccessWhere(organization.id),
+          },
+          select: {
+            id: true,
+            modificationLockedAt: true,
+          },
+        })
+      : Promise.resolve([]),
+    cardStyleIds.length > 0
+      ? prisma.style.findMany({
+          where: {
+            id: { in: cardStyleIds },
+          },
+          orderBy: { id: "asc" },
+          select: styleSelect,
+        })
+      : Promise.resolve([]),
+  ]);
   const manualLockByWorkOrderId = orderManualLockRows.reduce((map, row) => {
     const workOrderId = toPositiveIntOrNull(row?.id);
     if (workOrderId === null) return map;
@@ -26391,27 +26364,6 @@ app.get("/assignment-cards", async (req, res) => {
       isManualOrderLocked,
     };
   });
-  const styleSelect = {
-    id: true,
-    orgId: true,
-    code: true,
-    name: true,
-    updatedAt: true,
-    organization: {
-      select: { id: true, name: true, nameKo: true, nameVi: true },
-    },
-    ...(includeProcesses ? { processes: true } : {}),
-  };
-  const styles =
-    cardStyleIds.length > 0
-      ? await prisma.style.findMany({
-          where: {
-            id: { in: cardStyleIds },
-          },
-          orderBy: { id: "asc" },
-          select: styleSelect,
-        })
-      : [];
   const processMirrorMap = includeProcesses
     ? await ensureStyleProcessStorageForStyles(styles, {
         processOrgId: organization.id,
@@ -26436,7 +26388,6 @@ app.get("/assignment-board-state", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
-  await repairAssignmentPlanFkRefsFromAssignmentCards(organization.id);
   const [state, cards] = await Promise.all([
     prisma.assignmentBoardState.findUnique({
       where: { orgId: organization.id },

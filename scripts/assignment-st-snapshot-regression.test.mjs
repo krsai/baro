@@ -84,6 +84,35 @@ test('line month capacity only loads display relations and ST bucket diagnostics
   assert.match(capacity, /includeActualOutputDebug\s*\?\s*\{[\s\S]*standards:/);
 });
 
+test('assignment board reads do not mutate plans and parallelize independent queries', () => {
+  assert.doesNotMatch(backend, /repairAssignmentPlanFkRefsFromAssignmentCards/);
+
+  const helperStart = backend.indexOf('const buildReadOnlyAssignmentBoardStateResponse =');
+  const helperEnd = backend.indexOf('const closeActiveLineAssignments =', helperStart);
+  const helper = backend.slice(helperStart, helperEnd);
+  assert.match(helper, /await Promise\.all\(\[/);
+  assert.match(helper, /loadAssignmentPlansForBoardState\(orgId\)\.then/);
+
+  const routeStart = backend.indexOf('app.get("/assignment-board-view"');
+  const routeEnd = backend.indexOf('app.get("/assignment-board-versions"', routeStart);
+  const route = backend.slice(routeStart, routeEnd);
+  assert.match(route, /const \[state, boardResponse\] = await Promise\.all\(\[/);
+});
+
+test('assignment card locks only inspect linked orders while styles load in parallel', () => {
+  const routeStart = backend.indexOf('app.get("/assignment-cards"');
+  const routeEnd = backend.indexOf('app.get("/assignment-board-state"', routeStart);
+  const route = backend.slice(routeStart, routeEnd);
+  assert.match(route, /const cardWorkOrderIds = collectPositiveIntSet/);
+  assert.match(route, /const \[orderManualLockRows, styles\] = await Promise\.all\(\[/);
+  assert.match(route, /id: \{ in: cardWorkOrderIds \}/);
+});
+
+test('large assignment bootstrap responses use HTTP compression', () => {
+  assert.match(backend, /import compression from "compression"/);
+  assert.match(backend, /const app = express\(\);\s*app\.use\(compression\(\)\);/);
+});
+
 test('progress endpoint always rebuilds rows and the board bypasses request cache', () => {
   const routeStart = backend.indexOf('app.get("/assignment-plan-progress"');
   const routeEnd = backend.indexOf('app.get("/line-month-capacity"', routeStart);
