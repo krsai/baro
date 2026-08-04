@@ -108,14 +108,16 @@ const assignBoardCollisionDetection = (args) => {
   const pointerCollisions = pointerWithin(args);
   if (pointerCollisions.length > 0) {
     const activeId = String(args?.active?.id || '');
-    if (activeId.startsWith('assign-')) {
-      const cancelCollision = pointerCollisions.find(
+    if (activeId.startsWith('assign-') || activeId.startsWith('card-')) {
+      const unassignedPanelCollision = pointerCollisions.find(
         (collision) => String(collision?.id || '') === 'assignment-cancel-drop'
       );
-      if (cancelCollision) {
+      if (unassignedPanelCollision) {
         return [
-          cancelCollision,
-          ...pointerCollisions.filter((collision) => collision !== cancelCollision),
+          unassignedPanelCollision,
+          ...pointerCollisions.filter(
+            (collision) => collision !== unassignedPanelCollision
+          ),
         ];
       }
     }
@@ -326,10 +328,13 @@ const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
   children,
 }) {
   const acceptsAssignment = activeDragType === 'assignment';
+  const acceptsCard = activeDragType === 'card';
   const { setNodeRef, isOver } = useDroppable({
     id: 'assignment-cancel-drop',
-    disabled: !acceptsAssignment,
-    data: { dropMode: 'assignment-cancel' },
+    disabled: !acceptsAssignment && !acceptsCard,
+    data: {
+      dropMode: acceptsAssignment ? 'assignment-cancel' : 'card-return',
+    },
   });
 
   return (
@@ -5938,6 +5943,13 @@ const AssignBoard = () => {
     }
 
     const overDropMode = String(over?.data?.current?.dropMode || '').trim();
+    if (overDropMode === 'card-return') {
+      // Dropping an unassigned card anywhere in the unassigned panel is a
+      // no-op. This prevents an overlapping/stale line droppable from
+      // accidentally consuming the card and making it disappear from here.
+      setActiveDrag(null);
+      return;
+    }
     if (overDropMode === 'assignment-cancel') {
       if (!activeId.startsWith('assign-')) {
         setActiveDrag(null);
