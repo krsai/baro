@@ -64,7 +64,24 @@ test('progress reads all required coverage columns and has no missing-column fal
   const loader = backend.slice(start, end);
   assert.match(loader, /effectiveCoverageStartDate: true/);
   assert.match(loader, /coverageStartDate: true/);
+  assert.match(loader, /includeDiagnostics = false/);
+  assert.match(loader, /includeDiagnostics \? \{ displayDate: true \} : \{\}/);
+  assert.doesNotMatch(loader, /records: true/);
   assert.doesNotMatch(loader, /fallbackModes|fallback work-record projection|isWorkLogCoverageMissingColumnError/);
+});
+
+test('line month capacity only loads display relations and ST bucket diagnostics on demand', () => {
+  const loaderStart = backend.indexOf('const loadAssignmentPlanProgressWorkRows =');
+  const loaderEnd = backend.indexOf('const resolveAssignmentProcessGroupTotals =', loaderStart);
+  const loader = backend.slice(loaderStart, loaderEnd);
+  assert.match(loader, /includeDiagnostics\s*\?\s*\{[\s\S]*worker:/);
+  assert.match(loader, /includeDiagnostics\s*\?\s*\{[\s\S]*styleProcess:/);
+
+  const capacityStart = backend.indexOf('const buildLineMonthCapacityRows =');
+  const capacityEnd = backend.indexOf('app.get("/assignment-plan-progress"', capacityStart);
+  const capacity = backend.slice(capacityStart, capacityEnd);
+  assert.match(capacity, /includeDiagnostics: includeActualOutputDebug/);
+  assert.match(capacity, /includeActualOutputDebug\s*\?\s*\{[\s\S]*standards:/);
 });
 
 test('progress endpoint always rebuilds rows and the board bypasses request cache', () => {

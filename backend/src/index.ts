@@ -20283,11 +20283,13 @@ const loadAssignmentPlanProgressWorkRows = async ({
   plans,
   stateAssignmentsByExternalId,
   context,
+  includeDiagnostics = false,
 }: {
   orgId: number;
   plans: any[];
   stateAssignmentsByExternalId: Map<string, any>;
   context: string;
+  includeDiagnostics?: boolean;
 }) => {
   const normalizedPlans = ensureArray(plans).filter(Boolean);
   const planIds = normalizedPlans
@@ -20308,31 +20310,34 @@ const loadAssignmentPlanProgressWorkRows = async ({
         lineId: true,
         styleId: true,
         styleProcessId: true,
-        worker: {
-          select: { name: true },
-        },
-        style: {
-          select: { id: true, code: true, name: true },
-        },
-        styleProcess: {
-          select: {
-            id: true,
-            styleId: true,
-            processCode: true,
-            processName: true,
-          },
-        },
-        ctSeconds: true,
+        ...(includeDiagnostics
+          ? {
+              worker: {
+                select: { name: true },
+              },
+              style: {
+                select: { id: true, code: true, name: true },
+              },
+              styleProcess: {
+                select: {
+                  id: true,
+                  styleId: true,
+                  processCode: true,
+                  processName: true,
+                },
+              },
+              ctSeconds: true,
+            }
+          : {}),
         quantity: true,
         effectiveCoverageStartDate: true,
         effectiveCoverageEndDate: true,
         workLog: {
           select: {
-            displayDate: true,
-            records: true,
             coverageStartDate: true,
             coverageEndDate: true,
             entryMode: true,
+            ...(includeDiagnostics ? { displayDate: true } : {}),
           },
         },
       } as any,
@@ -20933,6 +20938,7 @@ const buildLineMonthCapacityRows = async ({
     plans,
     stateAssignmentsByExternalId,
     context: "buildLineMonthCapacityRows",
+    includeDiagnostics: includeActualOutputDebug,
   });
   // Actual output must use the canonical references already stored on WorkRecord.
   // Read-time backfill hides legacy/null data problems and makes production math untraceable.
@@ -20981,15 +20987,19 @@ const buildLineMonthCapacityRows = async ({
           select: {
             id: true,
             styleId: true,
-            processCode: true,
-            processName: true,
-            ptSeconds: true,
-            standards: {
-              select: {
-                bucketStSeconds: true,
-                quantityBucketEntry: { select: { id: true, bucketQuantity: true } },
-              },
-            },
+            ...(includeActualOutputDebug
+              ? {
+                  processCode: true,
+                  processName: true,
+                  standards: {
+                    select: {
+                      quantityBucketEntry: {
+                        select: { id: true, bucketQuantity: true },
+                      },
+                    },
+                  },
+                }
+              : {}),
           },
         })
       : [];
