@@ -3743,7 +3743,11 @@ const AssignBoard = () => {
       let loadedSuccessfully = false;
       try {
         const orgQuery = buildQueryString({ orgId: activeOrgId });
-        const assignmentCardsQuery = buildQueryString({
+        const assignmentCardsSummaryQuery = buildQueryString({
+          orgId: activeOrgId,
+          includeProcesses: 0,
+        });
+        const assignmentCardsWithProcessesQuery = buildQueryString({
           orgId: activeOrgId,
           includeProcesses: 1,
         });
@@ -3755,11 +3759,16 @@ const AssignBoard = () => {
           orgId: activeOrgId,
           summary: 1,
         });
-        const assignmentCardsPromise = requestJSON('/assignment-cards' + assignmentCardsQuery, {
+        const assignmentCardsSummaryPromise = requestJSON('/assignment-cards' + assignmentCardsSummaryQuery, {
           forceRefresh: true,
         }).catch(() => null);
 
-        const applyAssignmentCardsResponse = (assignmentCardsResponse, nextLines, boardState) => {
+        const applyAssignmentCardsResponse = (
+          assignmentCardsResponse,
+          nextLines,
+          boardState,
+          markPersistReady = true
+        ) => {
           const nextStyles = Array.isArray(assignmentCardsResponse?.styles)
             ? assignmentCardsResponse.styles
             : [];
@@ -3777,7 +3786,7 @@ const AssignBoard = () => {
             nextLines,
             baseCards: nextCards,
             boardState,
-            markPersistReady: true,
+            markPersistReady,
           });
         };
 
@@ -3803,7 +3812,7 @@ const AssignBoard = () => {
           lineHeadcounts,
         });
 
-        const assignmentCardsResponse = await assignmentCardsPromise;
+        const assignmentCardsResponse = await assignmentCardsSummaryPromise;
         if (cancelled) return;
         if (!assignmentCardsResponse) {
           showNotification(
@@ -3833,8 +3842,45 @@ const AssignBoard = () => {
           return;
         }
 
-        applyAssignmentCardsResponse(assignmentCardsResponse, nextLines, boardState);
+        // Render the board from persisted card aggregates first. Loading every process/ST row
+        // is substantially heavier and is only required before edits can be persisted.
+        applyAssignmentCardsResponse(assignmentCardsResponse, nextLines, boardState, false);
         appliedSavedBoardState = true;
+
+        // The lightweight response is already sufficient to display cards and saved plans.
+        // Keep saving disabled until the compatible full style/process payload arrives.
+        setLoading(false);
+
+        const assignmentCardsWithProcessesResponse = await requestJSON(
+          '/assignment-cards' + assignmentCardsWithProcessesQuery,
+          {
+            forceRefresh: true,
+            skipGlobalLoading: true,
+          }
+        ).catch(() => null);
+        if (cancelled) return;
+        if (!assignmentCardsWithProcessesResponse) {
+          showNotification(
+            getUiMessage(
+              'assign.assignmentSourceLoadError',
+              languageCode === 'vi'
+                ? 'Khong tai duoc du lieu the phan cong va cong doan. Trang nay se khong cho luu cho den khi tai lai thanh cong.'
+                : languageCode === 'en'
+                  ? 'Assignment process data could not be loaded. Saving is disabled until the board reloads successfully.'
+                  : '배정 공정 정보를 불러오지 못했습니다. 정상적으로 다시 불러오기 전까지 저장할 수 없습니다.',
+              languageCode
+            ),
+            'error'
+          );
+          return;
+        }
+
+        setStyles(
+          Array.isArray(assignmentCardsWithProcessesResponse.styles)
+            ? assignmentCardsWithProcessesResponse.styles
+            : []
+        );
+        setPersistReady(true);
         loadedSuccessfully = true;
       } catch (_error) {
         if (!cancelled) {
