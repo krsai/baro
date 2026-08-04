@@ -113,6 +113,22 @@ test('large assignment bootstrap responses use HTTP compression', () => {
   assert.match(backend, /const app = express\(\);\s*app\.use\(compression\(\)\);/);
 });
 
+test('style process mirrors fetch only standards from active relationship versions', () => {
+  const start = backend.indexOf('const loadStyleProcessRowsByStyleId =');
+  const end = backend.indexOf('const refreshStyleProcessMirrorForStyleIds =', start);
+  const loader = backend.slice(start, end);
+  assert.match(loader, /const activeVersionIds = Array\.from/);
+  assert.match(
+    loader,
+    /quantityBucketSetVersionId: \{ in: activeVersionIds \}/
+  );
+  assert.ok(
+    loader.indexOf('loadRelationshipTimeBucketContextByStyleId') <
+      loader.indexOf('include: {\n      ...STYLE_PROCESS_STANDARD_INCLUDE'),
+    'active versions must be resolved before loading standards'
+  );
+});
+
 test('progress endpoint always rebuilds rows and the board bypasses request cache', () => {
   const routeStart = backend.indexOf('app.get("/assignment-plan-progress"');
   const routeEnd = backend.indexOf('app.get("/line-month-capacity"', routeStart);

@@ -5985,19 +5985,21 @@ const loadStyleProcessRowsByStyleId = async (
     where: { id: { in: normalizedStyleIds } },
     select: { id: true, orgId: true },
   });
-  const rows = await db.styleProcess.findMany({
-    where: {
-      styleId: { in: normalizedStyleIds },
-      ...(processOrgId !== null ? { orgId: processOrgId } : {}),
-    },
-    include: STYLE_PROCESS_STANDARD_INCLUDE,
-    orderBy: [{ styleId: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
-  });
   const activeVersionByProcessScope = new Map<string, number>();
-  const processOrgIds = Array.from(new Set(rows.map((row: any) => Number(row.orgId))));
+  const processScopes =
+    processOrgId !== null
+      ? activeStyles.map((style) => ({ orgId: processOrgId, styleId: style.id }))
+      : await db.styleProcess.findMany({
+          where: { styleId: { in: normalizedStyleIds } },
+          select: { orgId: true, styleId: true },
+          distinct: ["orgId", "styleId"],
+        });
+  const processOrgIds = Array.from(
+    new Set(processScopes.map((row: any) => Number(row.orgId)))
+  );
   for (const manufacturerOrgId of processOrgIds) {
     const scopedStyleIds = new Set(
-      rows
+      processScopes
         .filter((row: any) => Number(row.orgId) === manufacturerOrgId)
         .map((row: any) => Number(row.styleId))
     );
@@ -6016,6 +6018,29 @@ const loadStyleProcessRowsByStyleId = async (
       }
     });
   }
+  const activeVersionIds = Array.from(
+    new Set(activeVersionByProcessScope.values())
+  );
+  const rows = await db.styleProcess.findMany({
+    where: {
+      styleId: { in: normalizedStyleIds },
+      ...(processOrgId !== null ? { orgId: processOrgId } : {}),
+    },
+    include: {
+      ...STYLE_PROCESS_STANDARD_INCLUDE,
+      standards: {
+        orderBy: [
+          { quantityBucketEntry: { bucketQuantity: "asc" as const } },
+          { id: "asc" as const },
+        ],
+        include: { quantityBucketEntry: true },
+        where: {
+          quantityBucketSetVersionId: { in: activeVersionIds },
+        },
+      },
+    },
+    orderBy: [{ styleId: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
+  });
   return rows.reduce((map, row) => {
     const activeVersionId =
       activeVersionByProcessScope.get(`${row.orgId}:${row.styleId}`) ?? null;
