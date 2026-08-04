@@ -129,6 +129,26 @@ test('style process mirrors fetch only standards from active relationship versio
   );
 });
 
+test('assignment cards use relational process mirrors and only read legacy JSON for missing styles', () => {
+  const routeStart = backend.indexOf('app.get("/assignment-cards"');
+  const routeEnd = backend.indexOf('app.get("/assignment-board-state"', routeStart);
+  const route = backend.slice(routeStart, routeEnd);
+  assert.match(route, /loadStyleProcessMirrorMapForStyleIds\(cardStyleIds/);
+  assert.match(route, /const missingStyleIds = cardStyleIds\.filter/);
+  assert.match(route, /where: \{ id: \{ in: missingStyleIds \} \}/);
+  assert.match(route, /const recoverableLegacyStyles = legacyStyles\.filter/);
+  const styleSelectStart = route.indexOf('const styleSelect =');
+  const parallelQueryStart = route.indexOf(
+    'const [orderManualLockRows, styles]',
+    styleSelectStart
+  );
+  assert.doesNotMatch(
+    route.slice(styleSelectStart, parallelQueryStart),
+    /processes: true/
+  );
+  assert.doesNotMatch(route, /assignmentBoardState\.findUnique/);
+});
+
 test('progress endpoint always rebuilds rows and the board bypasses request cache', () => {
   const routeStart = backend.indexOf('app.get("/assignment-plan-progress"');
   const routeEnd = backend.indexOf('app.get("/line-month-capacity"', routeStart);
