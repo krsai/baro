@@ -10982,6 +10982,57 @@ const resolveWorkLogImportLineForEmployee = ({
     };
   }
 
+  // A worker can be registered after historical work was recorded and then be
+  // assigned to the correct line today. The normal work-log validator already
+  // accepts that single current assignment for historical recovery; Excel
+  // import must resolve the line by the same rule instead of depending on the
+  // denormalized Employee.lineId mirror.
+  const currentAssignments = assignments.filter(
+    (assignment) => !assignment?.endAt
+  );
+  const currentLineMatches = Array.from(
+    new Map(
+      currentAssignments
+        .map((assignment) => {
+          const currentLineId = toPositiveIntOrNull(
+            assignment?.line?.id ?? assignment?.lineId
+          );
+          const currentFactoryId = toPositiveIntOrNull(
+            assignment?.line?.factoryId
+          );
+          const currentLineName = resolveOptionalString(
+            assignment?.line?.name,
+            null
+          );
+          if (!currentLineId || !currentFactoryId || !currentLineName) return null;
+          return [
+            currentLineId,
+            {
+              id: currentLineId,
+              factoryId: currentFactoryId,
+              name: currentLineName,
+              source: "current_line_assignment_fallback",
+            },
+          ] as const;
+        })
+        .filter(Boolean) as Array<
+        readonly [
+          number,
+          { id: number; factoryId: number; name: string; source: string }
+        ]
+      >
+    ).values()
+  );
+  if (currentLineMatches.length === 1) {
+    return { line: currentLineMatches[0], error: null as string | null };
+  }
+  if (currentLineMatches.length > 1) {
+    return {
+      line: null,
+      error: "multiple active line assignments found for employee",
+    };
+  }
+
   const lineId = toPositiveIntOrNull(employee?.line?.id ?? employee?.lineId);
   const lineFactoryId = toPositiveIntOrNull(employee?.line?.factoryId);
   const lineName = resolveOptionalString(employee?.line?.name, null);
