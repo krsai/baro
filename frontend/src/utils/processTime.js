@@ -1146,8 +1146,23 @@ export const resolveProcessAtDisplayPerPieceSeconds = (
   bucketQuantities
 ) => {
   const cellState = resolveProcessAtCellState(process, orderQuantity, bucketQuantities);
-  if (!cellState.shouldDisplayValue) return null;
-  return resolveProcessAtPerPieceSeconds(process, orderQuantity);
+  if (cellState.shouldDisplayValue) {
+    return resolveProcessAtPerPieceSeconds(process, orderQuantity);
+  }
+  const hasValidObservation = (
+    Array.isArray(process?.atV2Observations) ? process.atV2Observations : []
+  ).some(
+    (row) => Number(row?.quantity) > 0 && Number(row?.allocatedLaborInputSeconds) > 0
+  );
+  if (hasValidObservation) return null;
+  const stPerPieceSeconds = resolveProcessStPerPieceSeconds(
+    process,
+    orderQuantity,
+    bucketQuantities
+  );
+  return Number.isFinite(stPerPieceSeconds) && stPerPieceSeconds > 0
+    ? stPerPieceSeconds
+    : null;
 };
 
 export const calculateProcessDisplayAtTotalForOrderQuantity = (
