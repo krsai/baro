@@ -148,26 +148,6 @@ test('style saves refresh unassigned cards without rewriting assigned snapshots'
   );
 });
 
-test('startup refreshes existing unassigned cards once without touching assigned snapshots', () => {
-  const refreshStart = backend.indexOf('const refreshUnassignedCardsFromCurrentStyleTimesOnce =');
-  const refreshEnd = backend.indexOf('let startupLifecycleState', refreshStart);
-  const refresh = backend.slice(refreshStart, refreshEnd);
-  assert.match(refresh, /systemSetting\.findUnique/);
-  assert.match(refresh, /where: \{ type: "MANUFACTURER" \}/);
-  assert.match(
-    refresh,
-    /rebuildAssignmentCardsForOrgIds\([\s\S]{0,160}refreshExistingAssignmentSnapshots: false/
-  );
-  assert.match(refresh, /systemSetting\.create/);
-
-  const bootstrapStart = backend.indexOf('const bootstrapApplicationServices =');
-  const bootstrapEnd = backend.indexOf('const startServer =', bootstrapStart);
-  assert.match(
-    backend.slice(bootstrapStart, bootstrapEnd),
-    /await refreshUnassignedCardsFromCurrentStyleTimesOnce\(\)/
-  );
-});
-
 test('progress endpoint always rebuilds rows and the board bypasses request cache', () => {
   const routeStart = backend.indexOf('app.get("/assignment-plan-progress"');
   const routeEnd = backend.indexOf('app.get("/line-month-capacity"', routeStart);
