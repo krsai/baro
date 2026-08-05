@@ -825,6 +825,9 @@ model StyleProcess {
   sortOrder           Int      @default(0)
   ptSeconds           Float?
   atParams            Json?
+  atStFallbackApproved Boolean  @default(false)
+  atStFallbackSourceAssignmentPlanId Int?
+  atStFallbackApprovedAt DateTime?
   createdAt           DateTime @default(now())
   createdBy           String   @default("system@baro.local")
   createdByEmployeeId Int?

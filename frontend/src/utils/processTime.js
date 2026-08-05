@@ -1155,6 +1155,7 @@ export const resolveProcessAtDisplayPerPieceSeconds = (
     (row) => Number(row?.quantity) > 0 && Number(row?.allocatedLaborInputSeconds) > 0
   );
   if (hasValidObservation) return null;
+  if (process?.atStFallbackApproved !== true) return null;
   const stPerPieceSeconds = resolveProcessStPerPieceSeconds(
     process,
     orderQuantity,

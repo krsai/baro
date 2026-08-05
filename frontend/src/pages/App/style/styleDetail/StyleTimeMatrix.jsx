@@ -312,7 +312,9 @@ const resolveAtDisplayValue = (process, quantity, bucketQuantities) => {
   const at = resolveProcessAtPerPieceSeconds(process, quantity);
   const state = resolveProcessAtCellState(process, quantity, bucketQuantities);
   if (at != null && state.shouldDisplayValue) return { value: at, state };
-  if (hasValidAtObservation(process)) return { value: null, state };
+  if (hasValidAtObservation(process) || process?.atStFallbackApproved !== true) {
+    return { value: null, state };
+  }
   const st = resolveProcessStPerPieceSeconds(process, quantity, bucketQuantities);
   if (!Number.isFinite(st) || st <= 0) return { value: null, state };
   return {

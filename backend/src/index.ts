@@ -6098,6 +6098,14 @@ const buildStyleProcessMirrorFromRows = (
           timesPerPiece: row.timesPerPiece ?? 1,
           pt: toOptionalProcessSeconds(row.ptSeconds),
           atParams: toStyleAtParams(row.atParams),
+          atStFallbackApproved: row.atStFallbackApproved === true,
+          atStFallbackSourceAssignmentPlanId: toPositiveIntOrNull(
+            row.atStFallbackSourceAssignmentPlanId
+          ),
+          atStFallbackApprovedAt:
+            row.atStFallbackApprovedAt instanceof Date
+              ? row.atStFallbackApprovedAt.toISOString()
+              : resolveOptionalString(row.atStFallbackApprovedAt, null),
           atModelVersion: AT_V2_MODEL_VERSION,
           atV2Observations: ensureArray(row.atObservations).map((observation) => ({
             assignmentPlanId: toPositiveIntOrNull(observation.assignmentPlanId),
@@ -24333,6 +24341,36 @@ app.patch([
   }
   const completedAt =
     toDateValueFromDateKeyForAssignmentSchedule(latestWorkDateKey) ?? new Date();
+  const requiredProcessIds = Array.from(new Set(
+    resolveAssignmentPlanRequiredProcessGroups(plan)
+      .flat()
+      .map((key) => /^style-process:(\d+)$/.exec(key)?.[1] ?? null)
+      .map((value) => toPositiveIntOrNull(value))
+      .filter((value): value is number => value !== null)
+  ));
+  const recordedQuantityRows = requiredProcessIds.length > 0
+    ? await prisma.workRecord.groupBy({
+        by: ["styleProcessId"],
+        where: {
+          orgId: organization.id,
+          assignmentPlanId: plan.id,
+          styleProcessId: { in: requiredProcessIds },
+        },
+        _sum: { quantity: true },
+      })
+    : [];
+  const recordedQuantityByProcessId = new Map(
+    recordedQuantityRows.map((row) => [
+      toPositiveIntOrNull(row.styleProcessId),
+      Math.max(0, Number(row._sum.quantity || 0)),
+    ])
+  );
+  const incompleteProcessIds = requiredProcessIds.filter(
+    (styleProcessId) =>
+      (recordedQuantityByProcessId.get(styleProcessId) || 0) < plannedQuantity
+  );
+  const atStFallbackStyleProcessId =
+    incompleteProcessIds.length === 1 ? incompleteProcessIds[0]! : null;
   const actor = getCurrentRequestActor();
   const updatedPlan = await prisma.$transaction(async (tx) => {
     const changed = await tx.assignmentPlan.updateMany({
@@ -24363,6 +24401,20 @@ app.patch([
       },
     });
     if (changed.count !== 1) return null;
+    if (atStFallbackStyleProcessId !== null) {
+      await tx.styleProcess.updateMany({
+        where: {
+          id: atStFallbackStyleProcessId,
+          orgId: organization.id,
+          ...(plan.styleId != null ? { styleId: plan.styleId } : {}),
+        },
+        data: {
+          atStFallbackApproved: true,
+          atStFallbackSourceAssignmentPlanId: plan.id,
+          atStFallbackApprovedAt: new Date(),
+        },
+      });
+    }
     return tx.assignmentPlan.findUnique({
       where: { id: plan.id },
       include: ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
@@ -24384,6 +24436,7 @@ app.patch([
     ok: true,
     plan: buildAssignmentPlanCloseResponse(updatedPlan),
     latestLinkedWorkDate: latestWorkDateKey,
+    atStFallbackStyleProcessId,
   });
 });
 
