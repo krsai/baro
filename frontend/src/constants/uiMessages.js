@@ -65,6 +65,7 @@ export const UI_MESSAGES = {
     inventoryStock: { ko: '재고 현황', en: 'Stock Overview', vi: 'Ton kho hien tai' },
     inventoryEntry: { ko: '입출고', en: 'Stock Movement', vi: 'Nhap xuat kho' },
     inventoryHistory: { ko: '거래 내역', en: 'Movement History', vi: 'Lich su giao dich' },
+    inventoryTransactions: { ko: '재고 거래', en: 'Stock Transactions', vi: 'Giao dich kho' },
     materials: { ko: '자재 관리', en: 'Materials', vi: 'Quan ly vat tu' },
     materialSettings: { ko: '자재 설정', en: 'Material Settings', vi: 'Cai dat vat tu' },
     accounting: { ko: '회계 관리', en: 'Accounting', vi: 'Ke toan' },

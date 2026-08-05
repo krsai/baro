@@ -650,13 +650,8 @@ const MainLayout = () => {
             path: '/inventory/stock',
           },
           {
-            label: getUiMessage('menu.inventoryEntry', '입출고', languageCode),
+            label: getUiMessage('menu.inventoryTransactions', '재고 거래', languageCode),
             icon: <LocalShippingIcon />,
-            path: '/inventory/movements/new',
-          },
-          {
-            label: getUiMessage('menu.inventoryHistory', '거래 내역', languageCode),
-            icon: <HistoryIcon />,
             path: '/inventory/movements',
           },
           {
