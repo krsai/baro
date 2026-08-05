@@ -340,6 +340,8 @@ function assertGeneratedPrismaClientShape() {
     "assignmentPlanId",
     "allocatedLaborInputSeconds",
     "perPieceObservedSeconds",
+    "attendanceCoverage",
+    "singleProcessLaborShare",
     "modelVersion",
     "trainedPeriod",
   ].forEach((fieldName) => {
@@ -1836,6 +1838,12 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
     number,
     { quantity: number; producedQuantity: number; laborInputSeconds: number }
   >();
+  const atModelObservations: Array<{
+    quantity: number;
+    perPieceSeconds: number;
+    attendanceCoverage: number | null;
+    singleProcessLaborShare: number | null;
+  }> = [];
   ensureArray((process as any).atV2Observations).forEach((observation) => {
     const quantity = toPositiveIntOrNull(observation?.quantity);
     const laborInputSeconds = toNumberOrNull(
@@ -1848,6 +1856,14 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
     ) {
       return;
     }
+    atModelObservations.push({
+      quantity,
+      perPieceSeconds: laborInputSeconds / quantity,
+      attendanceCoverage: toNumberOrNull(observation?.attendanceCoverage),
+      singleProcessLaborShare: toNumberOrNull(
+        observation?.singleProcessLaborShare
+      ),
+    });
     const current = grouped.get(quantity) ?? {
       quantity,
       producedQuantity: 0,
@@ -1866,26 +1882,56 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
         (point.laborInputSeconds / point.producedQuantity) * point.quantity,
     }))
     .sort((left, right) => left.quantity - right.quantity);
-  if (points.length >= 2) {
-    const samples = points.map((point) => ({
-      x: 1 / point.quantity,
-      y: point.perPieceSeconds,
-      weight: point.producedQuantity,
-    }));
-    const sumWeight = samples.reduce((sum, sample) => sum + sample.weight, 0);
-    const sumWeightX = samples.reduce(
+  if (atModelObservations.length >= 2) {
+    const sortedQuantities = atModelObservations
+      .map((row) => row.quantity)
+      .sort((left, right) => left - right);
+    const middle = Math.floor(sortedQuantities.length / 2);
+    const medianQuantity =
+      sortedQuantities.length % 2 === 0
+        ? (sortedQuantities[middle - 1]! + sortedQuantities[middle]!) / 2
+        : sortedQuantities[middle]!;
+    const samples = atModelObservations.map((row) => {
+      const attendanceWeight =
+        row.attendanceCoverage === null
+          ? 1
+          : 0.4 + 0.6 * Math.min(1, Math.max(0, row.attendanceCoverage));
+      const allocationWeight =
+        row.singleProcessLaborShare === null
+          ? 1
+          : 1 - 0.5 * Math.min(1, Math.max(0, row.singleProcessLaborShare));
+      const quantityWeight = Math.min(
+        2,
+        Math.sqrt(row.quantity / medianQuantity)
+      );
+      return {
+        x: 1 / row.quantity,
+        y: row.perPieceSeconds,
+        baseWeight: Math.min(
+          2,
+          Math.max(0.25, quantityWeight * attendanceWeight * allocationWeight)
+        ),
+      };
+    });
+    const solveConstrainedAtFit = (robustWeights = samples.map(() => 1)) => {
+      const weightedSamples = samples.map((sample, index) => ({
+        ...sample,
+        weight: sample.baseWeight * robustWeights[index]!,
+      }));
+    const sumWeight = weightedSamples.reduce((sum, sample) => sum + sample.weight, 0);
+    const sumWeightX = weightedSamples.reduce(
       (sum, sample) => sum + sample.weight * sample.x,
       0
     );
-    const sumWeightY = samples.reduce(
+    const sumWeightY = weightedSamples.reduce(
       (sum, sample) => sum + sample.weight * sample.y,
       0
     );
-    const sumWeightXX = samples.reduce(
+    const sumWeightXX = weightedSamples.reduce(
       (sum, sample) => sum + sample.weight * sample.x * sample.x,
       0
     );
-    const sumWeightXY = samples.reduce(
+    const sumWeightXY = weightedSamples.reduce(
       (sum, sample) => sum + sample.weight * sample.x * sample.y,
       0
     );
@@ -1911,7 +1957,7 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
       .filter(({ a, b }) => Number.isFinite(a) && a > 0 && Number.isFinite(b) && b >= 0)
       .map((candidate) => ({
         ...candidate,
-        error: samples.reduce(
+        error: weightedSamples.reduce(
           (sum, sample) =>
             sum +
             sample.weight *
@@ -1920,6 +1966,45 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
         ),
       }))
       .sort((left, right) => left.error - right.error)[0];
+    return constrainedAtFit;
+    };
+    const resolveMedian = (values: number[]) => {
+      const sorted = values.slice().sort((left, right) => left - right);
+      const medianIndex = Math.floor(sorted.length / 2);
+      return sorted.length % 2 === 0
+        ? (sorted[medianIndex - 1]! + sorted[medianIndex]!) / 2
+        : sorted[medianIndex]!;
+    };
+    let constrainedAtFit = solveConstrainedAtFit();
+    for (
+      let iteration = 0;
+      constrainedAtFit && iteration < 8;
+      iteration += 1
+    ) {
+      const residuals = samples.map(
+        (sample) =>
+          sample.y - constrainedAtFit!.a - constrainedAtFit!.b * sample.x
+      );
+      const center = resolveMedian(residuals);
+      const scale =
+        resolveMedian(residuals.map((value) => Math.abs(value - center))) *
+        1.4826;
+      if (!Number.isFinite(scale) || scale <= 1e-6) break;
+      const threshold = 1.345 * scale;
+      const nextFit = solveConstrainedAtFit(
+        residuals.map((residual) =>
+          Math.abs(residual) <= threshold
+            ? 1
+            : threshold / Math.abs(residual)
+        )
+      );
+      if (!nextFit) break;
+      const converged =
+        Math.abs(nextFit.a - constrainedAtFit.a) <= 1e-6 &&
+        Math.abs(nextFit.b - constrainedAtFit.b) <= 1e-6;
+      constrainedAtFit = nextFit;
+      if (converged) break;
+    }
     if (constrainedAtFit) {
       points.forEach((point) => {
         point.perPieceSeconds =
@@ -4687,6 +4772,8 @@ const replaceStyleProcessAtObservations = async ({
     quantity: number;
     eventCount: number;
     laborInputSeconds: number;
+    attendanceCoverage: number | null;
+    singleProcessDay: boolean;
   }>;
 }) => {
   type ObservationAggregate = {
@@ -4698,6 +4785,9 @@ const replaceStyleProcessAtObservations = async ({
     eventCountMax: number;
     eventCountWeightedTotal: number;
     eventCountWeight: number;
+    attendanceWeightedSeconds: number;
+    attendanceWeightSeconds: number;
+    singleProcessLaborSeconds: number;
     periodStartDate: string;
     periodEndDate: string;
   };
@@ -4732,11 +4822,23 @@ const replaceStyleProcessAtObservations = async ({
       eventCountMax: 0,
       eventCountWeightedTotal: 0,
       eventCountWeight: 0,
+      attendanceWeightedSeconds: 0,
+      attendanceWeightSeconds: 0,
+      singleProcessLaborSeconds: 0,
       periodStartDate: workDate,
       periodEndDate: workDate,
     };
     current.quantity += quantity;
     current.laborInputSeconds += laborInputSeconds;
+    const attendanceCoverage = toNumberOrNull(observation.attendanceCoverage);
+    if (attendanceCoverage !== null) {
+      current.attendanceWeightedSeconds +=
+        Math.min(1, Math.max(0, attendanceCoverage)) * laborInputSeconds;
+      current.attendanceWeightSeconds += laborInputSeconds;
+    }
+    if (observation.singleProcessDay === true) {
+      current.singleProcessLaborSeconds += laborInputSeconds;
+    }
     const workerId = toPositiveIntOrNull(observation.workerId);
     if (workerId !== null) current.workerIds.add(workerId);
     if (Number.isFinite(eventCount) && eventCount > 0) {
@@ -4772,6 +4874,17 @@ const replaceStyleProcessAtObservations = async ({
                 4
               )
             : 0;
+        const attendanceCoverage =
+          row.attendanceWeightSeconds > 0
+            ? roundToScale(
+                row.attendanceWeightedSeconds / row.attendanceWeightSeconds,
+                4
+              )
+            : null;
+        const singleProcessLaborShare = roundToScale(
+          Math.min(1, row.singleProcessLaborSeconds / row.laborInputSeconds),
+          4
+        );
         await tx.$executeRaw(Prisma.sql`
         INSERT INTO "StyleProcessAtObservation" (
           "orgId",
@@ -4783,6 +4896,8 @@ const replaceStyleProcessAtObservations = async ({
           "workerCount",
           "eventCountMax",
           "eventCountWeighted",
+          "attendanceCoverage",
+          "singleProcessLaborShare",
           "observationPeriodStartDate",
           "observationPeriodEndDate",
           "modelVersion",
@@ -4801,6 +4916,8 @@ const replaceStyleProcessAtObservations = async ({
           ${row.workerIds.size},
           ${row.eventCountMax},
           ${eventCountWeighted},
+          ${attendanceCoverage},
+          ${singleProcessLaborShare},
           ${row.periodStartDate},
           ${row.periodEndDate},
           ${AT_V2_MODEL_VERSION},
@@ -5993,6 +6110,10 @@ const buildStyleProcessMirrorFromRows = (
             workerCount: toNonNegativeInt(observation.workerCount, 0),
             eventCountMax: toNumberOrNull(observation.eventCountMax),
             eventCountWeighted: toNumberOrNull(observation.eventCountWeighted),
+            attendanceCoverage: toNumberOrNull(observation.attendanceCoverage),
+            singleProcessLaborShare: toNumberOrNull(
+              observation.singleProcessLaborShare
+            ),
             observationPeriodStartDate: resolveOptionalString(
               observation.observationPeriodStartDate,
               null

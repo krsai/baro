@@ -92,6 +92,8 @@ export type AtAllocatedObservation = {
   eventCount: number;
   sourceGroupKey: string | null;
   laborInputSeconds: number;
+  attendanceCoverage: number | null;
+  singleProcessDay: boolean;
 };
 
 type WeightedRegressionPoint = {
@@ -561,7 +563,18 @@ const allocateDaySecondsAcrossProcesses = (
       if (!Number.isFinite(eventCount) || eventCount <= 0) return null;
       const metricKey = String(row?.metricKey || "").trim();
       if (!metricKey) return null;
-      return { metricKey, quantity, eventCount, sourceGroupKey, assignmentPlanId };
+      return {
+        metricKey,
+        quantity,
+        eventCount,
+        sourceGroupKey,
+        assignmentPlanId,
+        attendanceCoverage:
+          row?.attendanceCoverage != null &&
+          Number.isFinite(Number(row.attendanceCoverage))
+            ? Math.min(1, Math.max(0, Number(row.attendanceCoverage)))
+            : null,
+      };
     })
     .filter((row): row is {
       metricKey: string;
@@ -569,6 +582,7 @@ const allocateDaySecondsAcrossProcesses = (
       eventCount: number;
       sourceGroupKey: string | null;
       assignmentPlanId: number | null;
+      attendanceCoverage: number | null;
     } => Boolean(row));
 
   if (validRows.length === 0) return [];
@@ -586,6 +600,8 @@ const allocateDaySecondsAcrossProcesses = (
         eventCount: row.eventCount,
         sourceGroupKey: row.sourceGroupKey,
         laborInputSeconds: day.laborInputSeconds,
+        attendanceCoverage: row.attendanceCoverage,
+        singleProcessDay: true,
       },
     ];
   }
@@ -603,6 +619,7 @@ const allocateDaySecondsAcrossProcesses = (
     eventCount: number;
     sourceGroupKey: string | null;
     assignmentPlanId: number | null;
+    attendanceCoverage: number | null;
     work: number;
   } => Boolean(row));
 
@@ -623,6 +640,8 @@ const allocateDaySecondsAcrossProcesses = (
     eventCount: row.eventCount,
     sourceGroupKey: row.sourceGroupKey,
     laborInputSeconds: day.laborInputSeconds * (row.work / totalWork),
+    attendanceCoverage: row.attendanceCoverage,
+    singleProcessDay: false,
   }));
 };
 

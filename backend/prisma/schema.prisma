@@ -945,6 +945,8 @@ model StyleProcessAtObservation {
   workerCount                Int
   eventCountMax              Float
   eventCountWeighted         Float
+  attendanceCoverage        Float?
+  singleProcessLaborShare   Float?
   observationPeriodStartDate String
   observationPeriodEndDate   String
   modelVersion               String   @default("v2")

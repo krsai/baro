@@ -131,6 +131,7 @@ test('more observations increase reliability even when attendance fallback remai
     b: 16.2857,
     version: 36,
     observationCount: 16,
+    distinctQuantityCount: 3,
     attendanceFallbackShare: 1,
   });
 
@@ -322,7 +323,7 @@ test('AT v2 preserves exact observations and blocks distant extrapolation', () =
   );
   assert.equal(
     resolveProcessAtCellState(process, 200, DEFAULT_BUCKETS).tone,
-    'fitted'
+    'provisional'
   );
   assert.equal(
     resolveProcessAtCellState(process, 10000, DEFAULT_BUCKETS).shouldDisplayValue,
@@ -377,13 +378,16 @@ test('AJ2102-like increasing observations fall back to the constrained flat boun
     })),
   };
 
-  const pooledAt = (6930.2 + 11517.54) / 500;
+  const pooledAt =
+    (Math.sqrt(200 / 250) * (6930.2 / 200) +
+      Math.sqrt(300 / 250) * (11517.54 / 300)) /
+    (Math.sqrt(200 / 250) + Math.sqrt(300 / 250));
   assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 200) - pooledAt) < 0.0001);
   assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 250) - pooledAt) < 0.0001);
   assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 300) - pooledAt) < 0.0001);
   assert.equal(
     resolveProcessAtCellState(process, 250, DEFAULT_BUCKETS).tone,
-    'fitted'
+    'provisional'
   );
 });
 
@@ -409,6 +413,55 @@ test('constrained AT curve decreases smoothly when observations support quantity
   assert.ok(at300 > at500);
 });
 
+test('Plan-level attendance and allocation quality reduce a noisy observation influence', () => {
+  const baseObservations = [
+    { assignmentPlanId: 1, quantity: 100, allocatedLaborInputSeconds: 5000 },
+    { assignmentPlanId: 2, quantity: 200, allocatedLaborInputSeconds: 8000 },
+    { assignmentPlanId: 3, quantity: 500, allocatedLaborInputSeconds: 15000 },
+  ];
+  const noisyObservation = {
+    assignmentPlanId: 4,
+    quantity: 200,
+    allocatedLaborInputSeconds: 16000,
+  };
+  const buildProcess = (quality) => ({
+    atV2Observations: [
+      ...baseObservations,
+      { ...noisyObservation, ...quality },
+    ],
+    stBuckets: DEFAULT_BUCKETS.map((bucketQuantity) => ({
+      bucketQuantity,
+      bucketStSeconds: 100,
+    })),
+  });
+
+  const unqualifiedAt = resolveProcessAtPerPieceSeconds(buildProcess({}), 200);
+  const qualityWeightedAt = resolveProcessAtPerPieceSeconds(
+    buildProcess({ attendanceCoverage: 0, singleProcessLaborShare: 1 }),
+    200
+  );
+  assert.ok(qualityWeightedAt < unqualifiedAt);
+});
+
+test('v2 model status distinguishes supported curves from provisional curves', () => {
+  const process = {
+    atV2Observations: [100, 100, 200, 500, 500].map((quantity, index) => ({
+      assignmentPlanId: index + 1,
+      quantity,
+      allocatedLaborInputSeconds: quantity * (30 + 2000 / quantity),
+      attendanceCoverage: 1,
+      singleProcessLaborShare: 0,
+    })),
+    stBuckets: DEFAULT_BUCKETS.map((bucketQuantity) => ({
+      bucketQuantity,
+      bucketStSeconds: 100,
+    })),
+  };
+  const state = resolveProcessAtCellState(process, 200, DEFAULT_BUCKETS);
+  assert.equal(state.tone, 'fitted');
+  assert.equal(state.modelStatus, 'SUPPORTED_CURVE');
+});
+
 test('near extrapolation uses the nearest constrained fitted AT', () => {
   const process = {
     atV2Observations: [
@@ -429,12 +482,18 @@ test('near extrapolation uses the nearest constrained fitted AT', () => {
     })),
   };
 
-  const pooledAt = (6930.2 + 11517.54) / 500;
+  const pooledAt =
+    (Math.sqrt(200 / 250) * (6930.2 / 200) +
+      Math.sqrt(300 / 250) * (11517.54 / 300)) /
+    (Math.sqrt(200 / 250) + Math.sqrt(300 / 250));
   assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 100) - pooledAt) < 0.0001);
   assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 500) - pooledAt) < 0.0001);
   assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 1000) - pooledAt) < 0.0001);
   assert.equal(resolveProcessAtPerPieceSeconds(process, 1201), null);
-  assert.equal(resolveProcessAtCellState(process, 500, DEFAULT_BUCKETS).tone, 'extrapolated');
+  assert.equal(
+    resolveProcessAtCellState(process, 500, DEFAULT_BUCKETS).tone,
+    'provisional-extrapolated'
+  );
 });
 
 test('v2 extrapolation keeps the lower half boundary and upper fourfold boundary', () => {

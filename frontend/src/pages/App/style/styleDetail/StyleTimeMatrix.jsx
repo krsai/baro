@@ -42,6 +42,7 @@ const AT_TONE_COLORS = {
   fitted: '#374151',
   extrapolated: '#6D28D9',
   provisional: '#B45309',
+  'provisional-extrapolated': '#B45309',
   empty: 'rgba(156,163,175,0.7)',
 };
 
@@ -53,7 +54,9 @@ const resolveAtToneColor = (tone, shouldDisplayValue = true) => {
 const resolveAtAggregateTone = (states = []) => {
   const displayStates = states.filter((state) => state?.shouldDisplayValue);
   if (displayStates.length === 0) return 'empty';
-  if (displayStates.some((state) => state.tone === 'provisional')) return 'provisional';
+  if (displayStates.some((state) =>
+    state.tone === 'provisional' || state.tone === 'provisional-extrapolated'
+  )) return 'provisional';
   if (displayStates.some((state) => state.tone === 'extrapolated')) return 'extrapolated';
   return 'fitted';
 };

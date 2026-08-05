@@ -84,6 +84,9 @@ test('backend AT mirrors constrained fitting, safe interpolation, and nearest-po
   assert.ok(resolveStart >= 0);
   assert.match(resolveSource, /constrainedAtCandidates/);
   assert.match(resolveSource, /constrainedAtFit\.a \+ constrainedAtFit\.b \/ point\.quantity/);
+  assert.match(resolveSource, /singleProcessLaborShare/);
+  assert.match(resolveSource, /attendanceWeight/);
+  assert.match(resolveSource, /threshold \/ Math\.abs\(residual\)/);
   assert.doesNotMatch(resolveSource, /intercept < 0/);
   assert.match(resolveSource, /if \(!Number\.isFinite\(slope\) \|\| slope <= 0\)/);
   assert.match(resolveSource, /const nearestPoint =/);

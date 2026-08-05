@@ -347,27 +347,64 @@ const AT_V2_MIN_EXTRAPOLATION_FACTOR = 2;
 const AT_V2_MAX_EXTRAPOLATION_FACTOR = 4;
 const AT_V2_MIN_ST_RATIO = 0.2;
 
-const fitConstrainedAtCurve = (points) => {
-  if (!Array.isArray(points) || points.length < 2) return null;
-  const samples = points.map((point) => ({
-    x: 1 / point.quantity,
-    y: point.perPieceSeconds,
-    weight: point.producedQuantity,
-  }));
-  const sumWeight = samples.reduce((sum, sample) => sum + sample.weight, 0);
-  const sumWeightX = samples.reduce(
+const median = (values) => {
+  const sorted = values.filter(Number.isFinite).slice().sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+};
+
+const fitConstrainedAtCurve = (observations) => {
+  if (!Array.isArray(observations) || observations.length < 2) return null;
+  const medianQuantity = median(observations.map((row) => row.quantity));
+  if (!Number.isFinite(medianQuantity) || medianQuantity <= 0) return null;
+  const samples = observations.map((row) => {
+    const hasAttendanceCoverage = row.attendanceCoverage != null;
+    const attendanceCoverage = Number(row.attendanceCoverage);
+    const attendanceWeight = hasAttendanceCoverage && Number.isFinite(attendanceCoverage)
+      ? 0.4 + 0.6 * clamp(attendanceCoverage, 0, 1)
+      : 1;
+    const hasSingleProcessLaborShare = row.singleProcessLaborShare != null;
+    const singleProcessLaborShare = Number(row.singleProcessLaborShare);
+    const allocationWeight = hasSingleProcessLaborShare && Number.isFinite(singleProcessLaborShare)
+      ? 1 - 0.5 * clamp(singleProcessLaborShare, 0, 1)
+      : 1;
+    const quantityWeight = Math.min(
+      2,
+      Math.sqrt(row.quantity / medianQuantity)
+    );
+    return {
+      x: 1 / row.quantity,
+      y: row.perPieceSeconds,
+      baseWeight: clamp(
+        quantityWeight * attendanceWeight * allocationWeight,
+        0.25,
+        2
+      ),
+    };
+  });
+
+  const solve = (robustWeights = samples.map(() => 1)) => {
+    const weightedSamples = samples.map((sample, index) => ({
+      ...sample,
+      weight: sample.baseWeight * robustWeights[index],
+    }));
+  const sumWeight = weightedSamples.reduce((sum, sample) => sum + sample.weight, 0);
+  const sumWeightX = weightedSamples.reduce(
     (sum, sample) => sum + sample.weight * sample.x,
     0
   );
-  const sumWeightY = samples.reduce(
+  const sumWeightY = weightedSamples.reduce(
     (sum, sample) => sum + sample.weight * sample.y,
     0
   );
-  const sumWeightXX = samples.reduce(
+  const sumWeightXX = weightedSamples.reduce(
     (sum, sample) => sum + sample.weight * sample.x * sample.x,
     0
   );
-  const sumWeightXY = samples.reduce(
+  const sumWeightXY = weightedSamples.reduce(
     (sum, sample) => sum + sample.weight * sample.x * sample.y,
     0
   );
@@ -396,7 +433,7 @@ const fitConstrainedAtCurve = (points) => {
     .filter(({ a, b }) => Number.isFinite(a) && a > 0 && Number.isFinite(b) && b >= 0)
     .map((candidate) => ({
       ...candidate,
-      error: samples.reduce(
+      error: weightedSamples.reduce(
         (sum, sample) =>
           sum +
           sample.weight *
@@ -405,9 +442,34 @@ const fitConstrainedAtCurve = (points) => {
       ),
     }))
     .sort((left, right) => left.error - right.error)[0] || null;
+  };
+
+  let fitted = solve();
+  for (let iteration = 0; fitted && iteration < 8; iteration += 1) {
+    const residuals = samples.map(
+      (sample) => sample.y - fitted.a - fitted.b * sample.x
+    );
+    const center = median(residuals) ?? 0;
+    const scale = (median(residuals.map((value) => Math.abs(value - center))) ?? 0) * 1.4826;
+    if (!Number.isFinite(scale) || scale <= 1e-6) break;
+    const threshold = 1.345 * scale;
+    const next = solve(
+      residuals.map((residual) =>
+        Math.abs(residual) <= threshold ? 1 : threshold / Math.abs(residual)
+      )
+    );
+    if (!next) break;
+    const converged =
+      Math.abs(next.a - fitted.a) <= 1e-6 &&
+      Math.abs(next.b - fitted.b) <= 1e-6;
+    fitted = next;
+    if (converged) break;
+  }
+  return fitted;
 };
 
 const resolveAtV2Points = (process) => {
+  const observations = [];
   const grouped = new Map();
   (Array.isArray(process?.atV2Observations) ? process.atV2Observations : [])
     .forEach((observation) => {
@@ -423,6 +485,12 @@ const resolveAtV2Points = (process) => {
       ) {
         return;
       }
+      observations.push({
+        quantity,
+        perPieceSeconds: laborInputSeconds / quantity,
+        attendanceCoverage: observation?.attendanceCoverage,
+        singleProcessLaborShare: observation?.singleProcessLaborShare,
+      });
       const current = grouped.get(quantity) || {
         quantity,
         producedQuantity: 0,
@@ -449,7 +517,7 @@ const resolveAtV2Points = (process) => {
         Number.isFinite(point.perPieceSeconds) && point.perPieceSeconds > 0
     )
     .sort((left, right) => left.quantity - right.quantity);
-  const fitted = fitConstrainedAtCurve(points);
+  const fitted = fitConstrainedAtCurve(observations);
   if (!fitted) return points;
   return points.map((point) => {
     const perPieceSeconds = fitted.a + fitted.b / point.quantity;
@@ -504,6 +572,41 @@ const resolveAtV2RepeatVariation = (observations) => {
   };
 };
 
+const resolveAtV2ModelStatus = (process, points) => {
+  const observations = (Array.isArray(process?.atV2Observations)
+    ? process.atV2Observations
+    : []
+  ).filter((observation) => {
+    const quantity = Number(observation?.quantity);
+    const laborInputSeconds = Number(observation?.allocatedLaborInputSeconds);
+    return quantity > 0 && laborInputSeconds > 0;
+  });
+  if (observations.length === 0 || points.length === 0) return 'INSUFFICIENT';
+  const quantities = observations.map((row) => Number(row.quantity));
+  const distinctQuantityCount = new Set(quantities).size;
+  const minQuantity = Math.min(...quantities);
+  const maxQuantity = Math.max(...quantities);
+  const knownCoverage = observations
+    .filter((row) => row.attendanceCoverage != null)
+    .map((row) => Number(row.attendanceCoverage))
+    .filter(Number.isFinite);
+  const averageCoverage = knownCoverage.length > 0
+    ? knownCoverage.reduce((sum, value) => sum + value, 0) / knownCoverage.length
+    : null;
+  const provisional =
+    observations.length < 5 ||
+    distinctQuantityCount < 3 ||
+    maxQuantity / minQuantity < 2 ||
+    (averageCoverage !== null && averageCoverage < 0.7);
+  const constant =
+    points.length > 1 &&
+    Math.abs(points[0].perPieceSeconds - points[points.length - 1].perPieceSeconds) <=
+      1e-6;
+  return `${provisional ? 'PROVISIONAL' : 'SUPPORTED'}_${
+    constant ? 'CONSTANT' : 'CURVE'
+  }`;
+};
+
 const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
   const points = resolveAtV2Points(process);
   const resolvedQuantity = toPositiveInt(quantity, 1);
@@ -513,12 +616,15 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
   const minQuantity = points[0].quantity;
   const maxQuantity = points[points.length - 1].quantity;
   const observedRange = { minQuantity, maxQuantity };
+  const modelStatus = resolveAtV2ModelStatus(process, points);
+  const isProvisional = modelStatus.startsWith('PROVISIONAL') || modelStatus === 'INSUFFICIENT';
   const exact = points.find((point) => point.quantity === resolvedQuantity);
   if (exact) {
     return {
       value: exact.perPieceSeconds,
-      tone: points.length === 1 ? 'provisional' : 'fitted',
+      tone: isProvisional ? 'provisional' : 'fitted',
       observedRange,
+      modelStatus,
     };
   }
   if (points.length === 1) {
@@ -543,6 +649,7 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
           : null,
       tone: 'provisional',
       observedRange,
+      modelStatus,
     };
   }
   const upperIndex = points.findIndex(
@@ -555,7 +662,7 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
       (upper.representativeTotalSeconds - lower.representativeTotalSeconds) /
       (upper.quantity - lower.quantity);
     if (!Number.isFinite(a) || a <= 0) {
-      return { value: null, tone: 'fitted', observedRange };
+      return { value: null, tone: isProvisional ? 'provisional' : 'fitted', observedRange, modelStatus };
     }
     const b = lower.representativeTotalSeconds - a * lower.quantity;
     const totalSeconds = a * resolvedQuantity + b;
@@ -571,15 +678,16 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
     return {
       value:
         Number.isFinite(value) && value >= minimumSeconds ? value : null,
-      tone: 'fitted',
+      tone: isProvisional ? 'provisional' : 'fitted',
       observedRange,
+      modelStatus,
     };
   }
   const outsideLimit =
     resolvedQuantity < minQuantity / AT_V2_MIN_EXTRAPOLATION_FACTOR ||
     resolvedQuantity > maxQuantity * AT_V2_MAX_EXTRAPOLATION_FACTOR;
   if (outsideLimit) {
-    return { value: null, tone: 'extrapolated', observedRange };
+    return { value: null, tone: 'extrapolated', observedRange, modelStatus };
   }
   const nearestPoint =
     resolvedQuantity < minQuantity ? points[0] : points[points.length - 1];
@@ -592,8 +700,9 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
   return {
     value:
       Number.isFinite(value) && value >= minimumSeconds ? value : null,
-    tone: 'extrapolated',
+    tone: isProvisional ? 'provisional-extrapolated' : 'extrapolated',
     observedRange,
+    modelStatus,
   };
 };
 
@@ -602,10 +711,13 @@ export const resolveProcessAtCellState = (process, quantity = 1, bucketQuantitie
     const v2 = resolveProcessAtV2PerPieceSeconds(process, quantity);
     return {
       tone: v2.tone,
-      isProvisional: v2.tone === 'provisional',
-      isOutsideObservedBucketRange: v2.tone === 'extrapolated',
+      isProvisional:
+        v2.tone === 'provisional' || v2.tone === 'provisional-extrapolated',
+      isOutsideObservedBucketRange:
+        v2.tone === 'extrapolated' || v2.tone === 'provisional-extrapolated',
       observedBucketRange: v2.observedRange,
       shouldDisplayValue: v2.value !== null,
+      modelStatus: v2.modelStatus ?? null,
     };
   }
   return {
@@ -1139,7 +1251,8 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
     normalized?.stBuckets?.map((bucket) => bucket?.bucketQuantity)
   );
   const rangeCap =
-    currentCellState.tone === 'extrapolated'
+    currentCellState.tone === 'extrapolated' ||
+    currentCellState.tone === 'provisional-extrapolated'
       ? 50
       : currentCellState.tone === 'provisional'
         ? 25

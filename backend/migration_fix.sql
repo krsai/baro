@@ -4236,6 +4236,8 @@ CREATE TABLE IF NOT EXISTS "StyleProcessAtObservation" (
   "workerCount" INTEGER NOT NULL,
   "eventCountMax" DOUBLE PRECISION NOT NULL,
   "eventCountWeighted" DOUBLE PRECISION NOT NULL,
+  "attendanceCoverage" DOUBLE PRECISION,
+  "singleProcessLaborShare" DOUBLE PRECISION,
   "observationPeriodStartDate" TEXT NOT NULL,
   "observationPeriodEndDate" TEXT NOT NULL,
   "modelVersion" TEXT NOT NULL DEFAULT 'v2',
@@ -4248,6 +4250,9 @@ CREATE TABLE IF NOT EXISTS "StyleProcessAtObservation" (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "StyleProcessAtObservation_scope_key"
   ON "StyleProcessAtObservation"("orgId", "styleProcessId", "assignmentPlanId", "modelVersion");
+ALTER TABLE "StyleProcessAtObservation"
+  ADD COLUMN IF NOT EXISTS "attendanceCoverage" DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS "singleProcessLaborShare" DOUBLE PRECISION;
 CREATE INDEX IF NOT EXISTS "StyleProcessAtObservation_org_model_idx"
   ON "StyleProcessAtObservation"("orgId", "modelVersion");
 CREATE INDEX IF NOT EXISTS "StyleProcessAtObservation_styleProcessId_idx"
