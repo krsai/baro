@@ -6596,27 +6596,25 @@ const AssignBoard = () => {
     if (!assignment?.id || assignment.isCompleted) return;
     const confirmed = window.confirm(
       languageCode === 'ko'
-        ? `외주 공정 등으로 실제 생산은 끝났지만 내부 작업기록만으로 진행률이 100%가 되지 않는 경우에 사용하세요.\n\n배정수량 ${Number(assignment.quantity || 0).toLocaleString()}장을 100% 완료로 조정하고, 불완전한 내부 기록이 AT를 왜곡하지 않도록 이 배정을 AT 학습에서 제외합니다. 작업기록이나 생산수당 기록은 새로 만들지 않습니다. 계속할까요?`
+        ? `외주 공정 등으로 실제 생산은 끝났지만 내부 작업기록만으로 진행률이 100%가 되지 않는 경우에 사용하세요.\n\n배정수량 ${Number(assignment.quantity || 0).toLocaleString()}장을 100% 완료로 조정합니다. 기존 작업기록과 AT 학습 데이터는 그대로 유지하며, 작업기록이나 생산수당 기록을 새로 만들지는 않습니다. 계속할까요?`
         : languageCode === 'vi'
-          ? 'Chỉ sử dụng khi sản xuất thực tế đã hoàn tất, ví dụ có công đoạn gia công ngoài, nhưng hồ sơ nội bộ chưa đạt 100%. Phân công sẽ được điều chỉnh hoàn tất và loại khỏi dữ liệu học AT. Tiếp tục?'
-          : 'Use this when production is actually complete, such as with an outsourced process, but internal records do not reach 100%. The assignment will be adjusted to complete and excluded from AT training. Continue?'
+          ? 'Chỉ sử dụng khi sản xuất thực tế đã hoàn tất, ví dụ có công đoạn gia công ngoài, nhưng hồ sơ nội bộ chưa đạt 100%. Phân công sẽ được điều chỉnh hoàn tất; các bản ghi hiện có và dữ liệu học AT vẫn được giữ nguyên. Tiếp tục?'
+          : 'Use this when production is actually complete, such as with an outsourced process, but internal records do not reach 100%. Existing work records and AT training data will be preserved. Continue?'
     );
     if (!confirmed) return;
     setCompletingAssignmentId(assignment.id);
     try {
-      const result = await requestJSON(
+      await requestJSON(
         `/assignment-plans/${encodeURIComponent(String(assignment.id))}/manual-production-complete` + buildQueryString({ orgId: activeOrgId }),
         { method: 'PATCH' }
       );
       showNotification(
-        result?.atRefreshWarning
-          ? (languageCode === 'ko' ? '수동 완료했습니다. AT 재학습은 실패하여 서버 확인이 필요합니다.' : 'Saved, but AT refresh needs review.')
-          : (languageCode === 'ko'
-              ? '완료 상태로 조정하고 AT 학습에서 제외했습니다.'
-              : languageCode === 'vi'
-                ? 'Đã điều chỉnh hoàn tất và loại khỏi dữ liệu học AT.'
-                : 'Adjusted to complete and excluded from AT training.'),
-        result?.atRefreshWarning ? 'warning' : 'success'
+        languageCode === 'ko'
+          ? '완료 상태로 조정했습니다. 기존 작업기록은 유지됩니다.'
+          : languageCode === 'vi'
+            ? 'Đã điều chỉnh hoàn tất. Các bản ghi công việc hiện có được giữ nguyên.'
+            : 'Adjusted to complete. Existing work records were preserved.',
+        'success'
       );
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD], orgId: activeOrgId, assignmentIds: [assignment.id], source: 'assign-manual-production-complete' });
       requestExternalBoardReload();
@@ -7566,12 +7564,12 @@ const AssignBoard = () => {
                 </Paper>
 
                 {['MANUAL_PROGRESS_ADJUSTMENT', 'RECORD_OMISSION'].includes(detailAssignment?.completionReason) && (
-                  <Alert severity="warning">
+                  <Alert severity="info">
                     {languageCode === 'ko'
-                      ? `외주 공정 등 내부 작업기록만으로 완료율을 산정할 수 없어 실제 생산 완료로 조정된 배정입니다. AT 학습에서는 제외되었습니다.${detailAssignment.closedBy ? ` 처리자: ${detailAssignment.closedBy}` : ''}`
+                      ? `외주 공정 등 내부 작업기록만으로 완료율을 산정할 수 없어 완료 상태로 조정된 배정입니다. 기존 작업기록과 AT 학습 데이터는 유지됩니다.${detailAssignment.closedBy ? ` 처리자: ${detailAssignment.closedBy}` : ''}`
                       : languageCode === 'vi'
-                        ? 'Phân công này đã được điều chỉnh hoàn tất do hồ sơ nội bộ không đầy đủ, chẳng hạn có công đoạn gia công ngoài, và đã bị loại khỏi dữ liệu học AT.'
-                        : 'This assignment was adjusted to complete because internal records were incomplete and is excluded from AT training.'}
+                        ? 'Phân công này đã được điều chỉnh hoàn tất do hồ sơ nội bộ chưa đầy đủ, chẳng hạn có công đoạn gia công ngoài. Các bản ghi và dữ liệu học AT hiện có được giữ nguyên.'
+                        : 'This assignment was adjusted to complete because internal records were incomplete. Existing records and AT training data are preserved.'}
                   </Alert>
                 )}
 

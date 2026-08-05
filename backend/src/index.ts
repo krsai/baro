@@ -3275,7 +3275,6 @@ const loadAtTrainingSourceWorkLogs = async ({
             },
             assignmentPlan: {
               select: {
-                atTrainingExcluded: true,
                 // orderNo/customer dropped in Phase E - workOrder.orderNumber
                 // is the only source now (customer itself was already unused
                 // here).
@@ -3323,7 +3322,6 @@ const loadAtTrainingSourceWorkLogs = async ({
             },
             assignmentPlan: {
               select: {
-                atTrainingExcluded: true,
                 // orderNo/customer dropped in Phase E - workOrder.orderNumber
                 // is the only source now (customer itself was already unused
                 // here).
@@ -3394,9 +3392,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
   });
   const normalizedWorkLogs = workLogs.map((workLog) => ({
     ...workLog,
-    workRecords: ensureArray((workLog as any)?.workRecords)
-      .filter((record) => (record as any)?.assignmentPlan?.atTrainingExcluded !== true)
-      .map((record) => {
+    workRecords: ensureArray((workLog as any)?.workRecords).map((record) => {
       const assignmentPlanId = toPositiveIntOrNull((record as any)?.assignmentPlanId);
       const planStyleMeta =
         assignmentPlanId !== null ? styleMetaByPlanId.get(assignmentPlanId) ?? null : null;
@@ -4477,12 +4473,8 @@ const loadAtTrainingDataFromBuckets = async ({
             "quantity",
             "eventCount"
           FROM "AtTrainingBucketProcess" process
-          LEFT JOIN "AssignmentPlan" plan
-            ON plan."id" = process."assignmentPlanId"
-           AND plan."orgId" = process."orgId"
           WHERE process."orgId" = ${orgId}
             AND process."bucketId" IN (${Prisma.join(bucketIds)})
-            AND COALESCE(plan."atTrainingExcluded", false) = false
           ORDER BY process."bucketId" ASC, process."styleProcessId" ASC, process."sourceGroupKey" ASC
         `)
       : [];
@@ -24361,8 +24353,8 @@ app.patch([
         closeMode: "FULL",
         closeBasis: "MANUAL",
         completionReason: "MANUAL_PROGRESS_ADJUSTMENT",
-        atTrainingExcluded: true,
-        atTrainingExclusionReason: "INCOMPLETE_INTERNAL_PRODUCTION_RECORDS",
+        atTrainingExcluded: false,
+        atTrainingExclusionReason: null,
         candidateEndDate: completedAt,
         renderEndDate: completedAt,
         forecastCompletedAt: null,
@@ -24388,19 +24380,10 @@ app.patch([
     assignmentPlanIds: [plan.id],
   });
   await syncOrderProgressStatusesForOrg({ orgId: organization.id });
-  let atRefreshWarning: string | null = null;
-  try {
-    await syncStyleProcessActualTimesFromWorkRecords(organization.id);
-  } catch (error) {
-    atRefreshWarning = getErrorMessage(error, "AT refresh failed");
-    console.error("[manual-production-complete] AT refresh failed", error);
-  }
-
   return res.json({
     ok: true,
     plan: buildAssignmentPlanCloseResponse(updatedPlan),
     latestLinkedWorkDate: latestWorkDateKey,
-    atRefreshWarning,
   });
 });
 
