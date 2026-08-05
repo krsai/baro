@@ -184,44 +184,44 @@ model Organization {
   updatedByEmployeeId      Int?
   updatedAt                DateTime         @updatedAt
 
-  categories                  AttrCategory[]
-  roles                       AttrRole[]
-  processes                   AttrProcess[]
-  subscription                OrganizationSubscription?
-  factories                   Factory[]
+  categories                      AttrCategory[]
+  roles                           AttrRole[]
+  processes                       AttrProcess[]
+  subscription                    OrganizationSubscription?
+  factories                       Factory[]
   factoryProductionAllowanceRates FactoryProductionAllowanceRate[]
-  warehouses                  Warehouse[]
-  employees                   Employee[]
-  lines                       Line[]
-  styles                      Style[]
-  styleProcesses              StyleProcess[]
-  styleProcessStandards       StyleProcessStandard[]
-  orders                      WorkOrder[]
-  workLogs                    WorkLog[]
-  workRecords                 WorkRecord[]
-  assignmentBoardState        AssignmentBoardState?
-  assignmentCards             AssignmentCard[]
-  assignmentPlans             AssignmentPlan[]
-  buyerAssignmentCards        AssignmentCard[]             @relation("AssignmentCardBuyerOrg")
-  buyerAssignmentPlans        AssignmentPlan[]             @relation("AssignmentPlanBuyerOrg")
-  qcPassEvents                QcPassEvent[]
-  payrollSnapshots            PayrollSnapshot[]
-  quantitySettlementSnapshots QuantitySettlementSnapshot[]
-  attendanceEntries           AttendanceEntry[]
-  holidays                    OrganizationHoliday[]
-  atTrainingBuckets           AtTrainingBucket[]
-  atTrainingBucketProcesses   AtTrainingBucketProcess[]
-  styleProcessAtObservations  StyleProcessAtObservation[]
-  representativeEmployee      Employee?                    @relation("OrganizationRepresentative", fields: [representativeEmployeeId], references: [id], onDelete: SetNull)
-  manufacturerRelationships   OrgRelationship[]            @relation("ManufacturerOrgRelationships")
-  brandRelationships          OrgRelationship[]            @relation("BrandOrgRelationships")
-  onboardingRequests          OnboardingRequest[]
-  buyerWorkOrders             WorkOrder[]                  @relation("WorkOrderBuyerOrg")
-  sellerWorkOrders            WorkOrder[]                  @relation("WorkOrderSellerOrg")
-  customerWorkOrders          WorkOrder[]                  @relation("WorkOrderCustomerOrg")
-  quantityBucketSets          QuantityBucketSet[]
-  quantityBucketSetVersions   QuantityBucketSetVersion[]
-  quantityBucketEntries       QuantityBucketEntry[]
+  warehouses                      Warehouse[]
+  employees                       Employee[]
+  lines                           Line[]
+  styles                          Style[]
+  styleProcesses                  StyleProcess[]
+  styleProcessStandards           StyleProcessStandard[]
+  orders                          WorkOrder[]
+  workLogs                        WorkLog[]
+  workRecords                     WorkRecord[]
+  assignmentBoardState            AssignmentBoardState?
+  assignmentCards                 AssignmentCard[]
+  assignmentPlans                 AssignmentPlan[]
+  buyerAssignmentCards            AssignmentCard[]                 @relation("AssignmentCardBuyerOrg")
+  buyerAssignmentPlans            AssignmentPlan[]                 @relation("AssignmentPlanBuyerOrg")
+  qcPassEvents                    QcPassEvent[]
+  payrollSnapshots                PayrollSnapshot[]
+  quantitySettlementSnapshots     QuantitySettlementSnapshot[]
+  attendanceEntries               AttendanceEntry[]
+  holidays                        OrganizationHoliday[]
+  atTrainingBuckets               AtTrainingBucket[]
+  atTrainingBucketProcesses       AtTrainingBucketProcess[]
+  styleProcessAtObservations      StyleProcessAtObservation[]
+  representativeEmployee          Employee?                        @relation("OrganizationRepresentative", fields: [representativeEmployeeId], references: [id], onDelete: SetNull)
+  manufacturerRelationships       OrgRelationship[]                @relation("ManufacturerOrgRelationships")
+  brandRelationships              OrgRelationship[]                @relation("BrandOrgRelationships")
+  onboardingRequests              OnboardingRequest[]
+  buyerWorkOrders                 WorkOrder[]                      @relation("WorkOrderBuyerOrg")
+  sellerWorkOrders                WorkOrder[]                      @relation("WorkOrderSellerOrg")
+  customerWorkOrders              WorkOrder[]                      @relation("WorkOrderCustomerOrg")
+  quantityBucketSets              QuantityBucketSet[]
+  quantityBucketSetVersions       QuantityBucketSetVersion[]
+  quantityBucketEntries           QuantityBucketEntry[]
 
   createdByEmployee Employee? @relation("OrganizationCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("OrganizationUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -332,20 +332,21 @@ model Factory {
   updatedByEmployeeId          Int?
   updatedAt                    DateTime  @updatedAt
 
-  organization      Organization       @relation(fields: [orgId], references: [id])
-  managerEmployee   Employee?          @relation("FactoryManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
-  employees         Employee[]         @relation("FactoryEmployees")
-  lines             Line[]
-  attendanceEntries AttendanceEntry[]
-  workLogs          WorkLog[]
-  atTrainingBuckets AtTrainingBucket[]
-  warehouses        Warehouse[]
+  organization             Organization                     @relation(fields: [orgId], references: [id])
+  managerEmployee          Employee?                        @relation("FactoryManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
+  employees                Employee[]                       @relation("FactoryEmployees")
+  lines                    Line[]
+  attendanceEntries        AttendanceEntry[]
+  workLogs                 WorkLog[]
+  atTrainingBuckets        AtTrainingBucket[]
+  warehouses               Warehouse[]
   productionAllowanceRates FactoryProductionAllowanceRate[]
 
   createdByEmployee Employee? @relation("FactoryCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("FactoryUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([orgId, factoryCode])
+  @@unique([id, orgId], map: "Factory_id_org_key")
   @@index([orgId])
   @@index([managerEmployeeId])
 }
@@ -358,11 +359,11 @@ model FactoryProductionAllowanceRate {
   targetMonthlyWage Float?
   wagePerSecond     Float
   createdAt         DateTime @default(now())
-  createdBy          String   @default("system@baro.local")
+  createdBy         String   @default("system@baro.local")
   updatedAt         DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  factory      Factory      @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  factory      Factory      @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Cascade, map: "FactoryProductionAllowanceRate_factory_org_fkey")
 
   @@unique([factoryId, effectiveMonth])
   @@index([orgId, effectiveMonth])
@@ -383,7 +384,7 @@ model Warehouse {
   updatedAt           DateTime @updatedAt
 
   organization      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  factory           Factory      @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  factory           Factory      @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Cascade, map: "Warehouse_factory_org_fkey")
   createdByEmployee Employee?    @relation("WarehouseCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee?    @relation("WarehouseUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 

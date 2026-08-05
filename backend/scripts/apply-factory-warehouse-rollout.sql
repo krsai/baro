@@ -27,6 +27,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Warehouse_one_active_default_per_factory_key"
 CREATE INDEX IF NOT EXISTS "Warehouse_orgId_idx" ON "Warehouse"("orgId");
 CREATE INDEX IF NOT EXISTS "Warehouse_factoryId_isActive_idx"
   ON "Warehouse"("factoryId", "isActive");
+CREATE UNIQUE INDEX IF NOT EXISTS "Factory_id_org_key"
+  ON "Factory"("id", "orgId");
+
+UPDATE "Warehouse" warehouse
+SET "orgId" = factory."orgId"
+FROM "Factory" factory
+WHERE factory."id" = warehouse."factoryId"
+  AND warehouse."orgId" IS DISTINCT FROM factory."orgId";
 
 DO $$
 BEGIN
@@ -34,9 +42,14 @@ BEGIN
     ALTER TABLE "Warehouse" ADD CONSTRAINT "Warehouse_orgId_fkey"
       FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Warehouse_factoryId_fkey') THEN
-    ALTER TABLE "Warehouse" ADD CONSTRAINT "Warehouse_factoryId_fkey"
-      FOREIGN KEY ("factoryId") REFERENCES "Factory"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  ALTER TABLE "Warehouse" DROP CONSTRAINT IF EXISTS "Warehouse_factoryId_fkey";
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = '"Warehouse"'::regclass
+      AND conname = 'Warehouse_factory_org_fkey'
+  ) THEN
+    ALTER TABLE "Warehouse" ADD CONSTRAINT "Warehouse_factory_org_fkey"
+      FOREIGN KEY ("factoryId", "orgId") REFERENCES "Factory"("id", "orgId") ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Warehouse_createdByEmployeeId_fkey') THEN
     ALTER TABLE "Warehouse" ADD CONSTRAINT "Warehouse_createdByEmployeeId_fkey"

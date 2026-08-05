@@ -17,6 +17,14 @@ CREATE INDEX IF NOT EXISTS "FactoryProductionAllowanceRate_orgId_effectiveMonth_
   ON "FactoryProductionAllowanceRate"("orgId", "effectiveMonth");
 CREATE INDEX IF NOT EXISTS "FactoryProductionAllowanceRate_factoryId_effectiveMonth_idx"
   ON "FactoryProductionAllowanceRate"("factoryId", "effectiveMonth");
+CREATE UNIQUE INDEX IF NOT EXISTS "Factory_id_org_key"
+  ON "Factory"("id", "orgId");
+
+UPDATE "FactoryProductionAllowanceRate" rate
+SET "orgId" = factory."orgId"
+FROM "Factory" factory
+WHERE factory."id" = rate."factoryId"
+  AND rate."orgId" IS DISTINCT FROM factory."orgId";
 
 DO $$
 BEGIN
@@ -24,8 +32,15 @@ BEGIN
     ALTER TABLE "FactoryProductionAllowanceRate" ADD CONSTRAINT "FactoryProductionAllowanceRate_orgId_fkey"
       FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FactoryProductionAllowanceRate_factoryId_fkey') THEN
-    ALTER TABLE "FactoryProductionAllowanceRate" ADD CONSTRAINT "FactoryProductionAllowanceRate_factoryId_fkey"
-      FOREIGN KEY ("factoryId") REFERENCES "Factory"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  ALTER TABLE "FactoryProductionAllowanceRate"
+    DROP CONSTRAINT IF EXISTS "FactoryProductionAllowanceRate_factoryId_fkey";
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = '"FactoryProductionAllowanceRate"'::regclass
+      AND conname = 'FactoryProductionAllowanceRate_factory_org_fkey'
+  ) THEN
+    ALTER TABLE "FactoryProductionAllowanceRate"
+      ADD CONSTRAINT "FactoryProductionAllowanceRate_factory_org_fkey"
+      FOREIGN KEY ("factoryId", "orgId") REFERENCES "Factory"("id", "orgId") ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
 END $$;
