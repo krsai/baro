@@ -5411,6 +5411,7 @@ const buildAtSyncStatusForOrg = async (
       bucket_count: bigint | number | null;
       latest_source_updated_at: Date | null;
       latest_bucket_updated_at: Date | null;
+      resettable_item_count: bigint | number | null;
     }>
   >(Prisma.sql`
     WITH work_log_months AS (
@@ -5478,7 +5479,12 @@ const buildAtSyncStatusForOrg = async (
       COALESCE(SUM(sm.work_record_count), 0)::int AS source_work_record_count,
       COALESCE(SUM(bm.bucket_count), 0)::int AS bucket_count,
       MAX(sm.latest_source_updated_at) AS latest_source_updated_at,
-      MAX(bm.latest_bucket_updated_at) AS latest_bucket_updated_at
+      MAX(bm.latest_bucket_updated_at) AS latest_bucket_updated_at,
+      (
+        (SELECT COUNT(*) FROM "AtTrainingBucket" b WHERE b."orgId" = ${orgId}) +
+        (SELECT COUNT(*) FROM "StyleProcessAtObservation" o WHERE o."orgId" = ${orgId}) +
+        (SELECT COUNT(*) FROM "StyleProcess" p WHERE p."orgId" = ${orgId} AND p."atParams" IS NOT NULL)
+      )::int AS resettable_item_count
     FROM source_months sm
     LEFT JOIN bucket_months bm ON bm.month_key = sm.month_key
   `);
@@ -5495,6 +5501,7 @@ const buildAtSyncStatusForOrg = async (
   const latestBucketUpdatedAt = row?.latest_bucket_updated_at
     ? new Date(row.latest_bucket_updated_at).toISOString()
     : null;
+  const resettableItemCount = Number(row?.resettable_item_count ?? 0);
   const needsUpdate = sourceMonthCount > 0 && staleMonthCount > 0;
   const reason =
     sourceMonthCount <= 0
@@ -5512,6 +5519,7 @@ const buildAtSyncStatusForOrg = async (
     sourceWorkLogCount,
     sourceWorkRecordCount,
     bucketCount,
+    resettableItemCount,
     latestSourceUpdatedAt,
     latestBucketUpdatedAt,
   };
@@ -24367,7 +24375,7 @@ app.patch([
   );
   const incompleteProcessIds = requiredProcessIds.filter(
     (styleProcessId) =>
-      (recordedQuantityByProcessId.get(styleProcessId) || 0) < plannedQuantity
+      (recordedQuantityByProcessId.get(styleProcessId) || 0) === 0
   );
   const atStFallbackStyleProcessId =
     incompleteProcessIds.length === 1 ? incompleteProcessIds[0]! : null;

@@ -558,9 +558,16 @@ const StyleBoard = () => {
     atSyncStatus,
     isAtSyncStatusLoading
   );
-  const atResetButtonDisabled = isAtSyncRunning || isAtResetRunning || !activeOrgId;
-  const atResetButtonTooltip =
-    languageCode === 'en'
+  const hasResettableAtData = Number(atSyncStatus?.resettableItemCount || 0) > 0;
+  const atResetButtonDisabled =
+    isAtSyncRunning || isAtResetRunning || isAtSyncStatusLoading || !activeOrgId || !hasResettableAtData;
+  const atResetButtonTooltip = !hasResettableAtData
+    ? (languageCode === 'en'
+        ? 'There is no learned AT data to clear.'
+        : languageCode === 'vi'
+          ? 'Không có dữ liệu AT đã học để xóa.'
+          : '초기화할 AT 학습 데이터가 없습니다.')
+    : languageCode === 'en'
       ? 'Clear learned AT values and training buckets so AT can be recalculated.'
       : languageCode === 'vi'
         ? 'Xoa gia tri AT da hoc va bucket hoc de tinh lai AT.'
