@@ -13245,7 +13245,8 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
     }),
     loadAssignmentCardsForOrg({ orgId }),
   ]);
-  const relationshipStyles = isManufacturerOrg(organization)
+  const manufacturerScope = isManufacturerOrg(organization);
+  const relationshipStyles = manufacturerScope
     ? applyRelationshipTimeBucketContexts({
         styles,
         contextByStyleId: await loadRelationshipTimeBucketContextByStyleId({
@@ -13254,14 +13255,19 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
         }),
       })
     : styles;
-  let initialProcessMirrorMap: Map<number, any[]>;
-  try {
-    initialProcessMirrorMap = await ensureStyleProcessStorageForStyles(relationshipStyles, {
-      processOrgId: orgId,
-    });
-  } catch (error) {
-    console.error(`${diagPrefix} ensureStyleProcessStorageForStyles threw`, error);
-    throw error;
+  let initialProcessMirrorMap = new Map<number, any[]>();
+  if (manufacturerScope) {
+    try {
+      initialProcessMirrorMap = await ensureStyleProcessStorageForStyles(
+        relationshipStyles,
+        {
+          processOrgId: orgId,
+        }
+      );
+    } catch (error) {
+      console.error(`${diagPrefix} ensureStyleProcessStorageForStyles threw`, error);
+      throw error;
+    }
   }
   const stylesWithProcesses = relationshipStyles.map((style) => ({
     ...style,
@@ -13270,20 +13276,22 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
       (entry) => entry.bucketQuantity
     ),
   }));
-  const quantityByStyleId = collectStyleQuantityRequirementsFromOrders({
-    orders,
-    styles: stylesWithProcesses,
-  });
-  let processMirrorMap: Map<number, any[]>;
-  try {
-    processMirrorMap = await ensureStyleStandardsForQuantities({
-      styles: relationshipStyles,
-      quantityByStyleId,
-      processOrgId: orgId,
+  let processMirrorMap = new Map<number, any[]>();
+  if (manufacturerScope) {
+    const quantityByStyleId = collectStyleQuantityRequirementsFromOrders({
+      orders,
+      styles: stylesWithProcesses,
     });
-  } catch (error) {
-    console.error(`${diagPrefix} ensureStyleStandardsForQuantities threw`, error);
-    throw error;
+    try {
+      processMirrorMap = await ensureStyleStandardsForQuantities({
+        styles: relationshipStyles,
+        quantityByStyleId,
+        processOrgId: orgId,
+      });
+    } catch (error) {
+      console.error(`${diagPrefix} ensureStyleStandardsForQuantities threw`, error);
+      throw error;
+    }
   }
   const hydratedStyles = relationshipStyles.map((style) => ({
     ...style,
@@ -13318,11 +13326,13 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
       orgId,
       cards: syncedCards,
     });
-    await refreshUnlinkedAssignmentPlanSnapshotsForOrg({
-      orgId,
-      cards: syncedCards,
-      styles: hydratedStyles,
-    });
+    if (manufacturerScope) {
+      await refreshUnlinkedAssignmentPlanSnapshotsForOrg({
+        orgId,
+        cards: syncedCards,
+        styles: hydratedStyles,
+      });
+    }
   } catch (error) {
     console.error(
       `${diagPrefix} post-sync step (syncOrderProgressStatusesForOrg/refreshUnlinkedAssignmentPlanSnapshotsForOrg) threw`,
