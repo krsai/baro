@@ -347,54 +347,64 @@ const AT_V2_MIN_EXTRAPOLATION_FACTOR = 2;
 const AT_V2_MAX_EXTRAPOLATION_FACTOR = 4;
 const AT_V2_MIN_ST_RATIO = 0.2;
 
-const applyNonIncreasingAtPerPieceFit = (points) => {
-  const blocks = [];
-  points.forEach((point) => {
-    const weight = Number(point.producedQuantity);
-    const perPieceSeconds = Number(point.perPieceSeconds);
-    if (
-      !Number.isFinite(weight) ||
-      weight <= 0 ||
-      !Number.isFinite(perPieceSeconds) ||
-      perPieceSeconds <= 0
-    ) {
-      return;
-    }
-    blocks.push({
-      startIndex: blocks.reduce((count, block) => count + block.count, 0),
-      count: 1,
-      weight,
-      weightedSeconds: perPieceSeconds * weight,
-    });
-    while (blocks.length >= 2) {
-      const right = blocks[blocks.length - 1];
-      const left = blocks[blocks.length - 2];
-      const leftMean = left.weightedSeconds / left.weight;
-      const rightMean = right.weightedSeconds / right.weight;
-      if (leftMean >= rightMean) break;
-      blocks.splice(blocks.length - 2, 2, {
-        startIndex: left.startIndex,
-        count: left.count + right.count,
-        weight: left.weight + right.weight,
-        weightedSeconds: left.weightedSeconds + right.weightedSeconds,
-      });
-    }
-  });
+const fitConstrainedAtCurve = (points) => {
+  if (!Array.isArray(points) || points.length < 2) return null;
+  const samples = points.map((point) => ({
+    x: 1 / point.quantity,
+    y: point.perPieceSeconds,
+    weight: point.producedQuantity,
+  }));
+  const sumWeight = samples.reduce((sum, sample) => sum + sample.weight, 0);
+  const sumWeightX = samples.reduce(
+    (sum, sample) => sum + sample.weight * sample.x,
+    0
+  );
+  const sumWeightY = samples.reduce(
+    (sum, sample) => sum + sample.weight * sample.y,
+    0
+  );
+  const sumWeightXX = samples.reduce(
+    (sum, sample) => sum + sample.weight * sample.x * sample.x,
+    0
+  );
+  const sumWeightXY = samples.reduce(
+    (sum, sample) => sum + sample.weight * sample.x * sample.y,
+    0
+  );
+  if (!Number.isFinite(sumWeight) || sumWeight <= 0) return null;
 
-  const fitted = points.map((point) => ({ ...point }));
-  blocks.forEach((block) => {
-    const perPieceSeconds = block.weightedSeconds / block.weight;
-    for (
-      let index = block.startIndex;
-      index < block.startIndex + block.count;
-      index += 1
-    ) {
-      fitted[index].perPieceSeconds = perPieceSeconds;
-      fitted[index].representativeTotalSeconds =
-        perPieceSeconds * fitted[index].quantity;
+  const candidates = [];
+  const denominator = sumWeight * sumWeightXX - sumWeightX ** 2;
+  if (Number.isFinite(denominator) && denominator > Number.EPSILON) {
+    const b =
+      (sumWeight * sumWeightXY - sumWeightX * sumWeightY) / denominator;
+    const a = (sumWeightY - b * sumWeightX) / sumWeight;
+    if (Number.isFinite(a) && a > 0 && Number.isFinite(b) && b >= 0) {
+      candidates.push({ a, b });
     }
-  });
-  return fitted;
+  }
+  candidates.push({ a: sumWeightY / sumWeight, b: 0 });
+
+  const minimumA = Number.EPSILON;
+  if (sumWeightXX > 0) {
+    candidates.push({
+      a: minimumA,
+      b: Math.max(0, (sumWeightXY - minimumA * sumWeightX) / sumWeightXX),
+    });
+  }
+  return candidates
+    .filter(({ a, b }) => Number.isFinite(a) && a > 0 && Number.isFinite(b) && b >= 0)
+    .map((candidate) => ({
+      ...candidate,
+      error: samples.reduce(
+        (sum, sample) =>
+          sum +
+          sample.weight *
+            (sample.y - candidate.a - candidate.b * sample.x) ** 2,
+        0
+      ),
+    }))
+    .sort((left, right) => left.error - right.error)[0] || null;
 };
 
 const resolveAtV2Points = (process) => {
@@ -439,7 +449,16 @@ const resolveAtV2Points = (process) => {
         Number.isFinite(point.perPieceSeconds) && point.perPieceSeconds > 0
     )
     .sort((left, right) => left.quantity - right.quantity);
-  return applyNonIncreasingAtPerPieceFit(points);
+  const fitted = fitConstrainedAtCurve(points);
+  if (!fitted) return points;
+  return points.map((point) => {
+    const perPieceSeconds = fitted.a + fitted.b / point.quantity;
+    return {
+      ...point,
+      perPieceSeconds,
+      representativeTotalSeconds: perPieceSeconds * point.quantity,
+    };
+  });
 };
 
 const resolveAtV2RepeatVariation = (observations) => {

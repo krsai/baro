@@ -1866,44 +1866,68 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
         (point.laborInputSeconds / point.producedQuantity) * point.quantity,
     }))
     .sort((left, right) => left.quantity - right.quantity);
-  const monotonicBlocks: Array<{
-    startIndex: number;
-    count: number;
-    weight: number;
-    weightedSeconds: number;
-  }> = [];
-  points.forEach((point, pointIndex) => {
-    monotonicBlocks.push({
-      startIndex: pointIndex,
-      count: 1,
+  if (points.length >= 2) {
+    const samples = points.map((point) => ({
+      x: 1 / point.quantity,
+      y: point.perPieceSeconds,
       weight: point.producedQuantity,
-      weightedSeconds: point.perPieceSeconds * point.producedQuantity,
-    });
-    while (monotonicBlocks.length >= 2) {
-      const right = monotonicBlocks[monotonicBlocks.length - 1]!;
-      const left = monotonicBlocks[monotonicBlocks.length - 2]!;
-      const leftMean = left.weightedSeconds / left.weight;
-      const rightMean = right.weightedSeconds / right.weight;
-      if (leftMean >= rightMean) break;
-      monotonicBlocks.splice(monotonicBlocks.length - 2, 2, {
-        startIndex: left.startIndex,
-        count: left.count + right.count,
-        weight: left.weight + right.weight,
-        weightedSeconds: left.weightedSeconds + right.weightedSeconds,
+    }));
+    const sumWeight = samples.reduce((sum, sample) => sum + sample.weight, 0);
+    const sumWeightX = samples.reduce(
+      (sum, sample) => sum + sample.weight * sample.x,
+      0
+    );
+    const sumWeightY = samples.reduce(
+      (sum, sample) => sum + sample.weight * sample.y,
+      0
+    );
+    const sumWeightXX = samples.reduce(
+      (sum, sample) => sum + sample.weight * sample.x * sample.x,
+      0
+    );
+    const sumWeightXY = samples.reduce(
+      (sum, sample) => sum + sample.weight * sample.x * sample.y,
+      0
+    );
+    const constrainedAtCandidates: Array<{ a: number; b: number }> = [];
+    const denominator = sumWeight * sumWeightXX - sumWeightX ** 2;
+    if (Number.isFinite(denominator) && denominator > Number.EPSILON) {
+      const b =
+        (sumWeight * sumWeightXY - sumWeightX * sumWeightY) / denominator;
+      const a = (sumWeightY - b * sumWeightX) / sumWeight;
+      if (Number.isFinite(a) && a > 0 && Number.isFinite(b) && b >= 0) {
+        constrainedAtCandidates.push({ a, b });
+      }
+    }
+    constrainedAtCandidates.push({ a: sumWeightY / sumWeight, b: 0 });
+    if (sumWeightXX > 0) {
+      const minimumA = Number.EPSILON;
+      constrainedAtCandidates.push({
+        a: minimumA,
+        b: Math.max(0, (sumWeightXY - minimumA * sumWeightX) / sumWeightXX),
       });
     }
-  });
-  monotonicBlocks.forEach((block) => {
-    const perPieceSeconds = block.weightedSeconds / block.weight;
-    for (
-      let index = block.startIndex;
-      index < block.startIndex + block.count;
-      index += 1
-    ) {
-      points[index]!.perPieceSeconds = perPieceSeconds;
-      points[index]!.totalSeconds = perPieceSeconds * points[index]!.quantity;
+    const constrainedAtFit = constrainedAtCandidates
+      .filter(({ a, b }) => Number.isFinite(a) && a > 0 && Number.isFinite(b) && b >= 0)
+      .map((candidate) => ({
+        ...candidate,
+        error: samples.reduce(
+          (sum, sample) =>
+            sum +
+            sample.weight *
+              (sample.y - candidate.a - candidate.b * sample.x) ** 2,
+          0
+        ),
+      }))
+      .sort((left, right) => left.error - right.error)[0];
+    if (constrainedAtFit) {
+      points.forEach((point) => {
+        point.perPieceSeconds =
+          constrainedAtFit.a + constrainedAtFit.b / point.quantity;
+        point.totalSeconds = point.perPieceSeconds * point.quantity;
+      });
     }
-  });
+  }
   if (points.length === 0) return null;
   const exact = points.find(
     (point) => point.quantity === resolvedOrderQuantity

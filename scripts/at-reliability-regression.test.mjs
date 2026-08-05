@@ -357,7 +357,7 @@ test('v2 rejects a decreasing total-time interpolation segment', () => {
   );
 });
 
-test('AJ2102-like increasing per-piece observations are pooled into a non-increasing fit', () => {
+test('AJ2102-like increasing observations fall back to the constrained flat boundary', () => {
   const process = {
     atV2Observations: [
       {
@@ -387,7 +387,29 @@ test('AJ2102-like increasing per-piece observations are pooled into a non-increa
   );
 });
 
-test('near extrapolation uses the nearest monotonic fitted AT', () => {
+test('constrained AT curve decreases smoothly when observations support quantity efficiency', () => {
+  const process = {
+    atV2Observations: [
+      { assignmentPlanId: 1, quantity: 100, allocatedLaborInputSeconds: 5000 },
+      { assignmentPlanId: 2, quantity: 200, allocatedLaborInputSeconds: 7000 },
+      { assignmentPlanId: 3, quantity: 500, allocatedLaborInputSeconds: 15000 },
+    ],
+    stBuckets: DEFAULT_BUCKETS.map((bucketQuantity) => ({
+      bucketQuantity,
+      bucketStSeconds: 100,
+    })),
+  };
+
+  const at100 = resolveProcessAtPerPieceSeconds(process, 100);
+  const at200 = resolveProcessAtPerPieceSeconds(process, 200);
+  const at300 = resolveProcessAtPerPieceSeconds(process, 300);
+  const at500 = resolveProcessAtPerPieceSeconds(process, 500);
+  assert.ok(at100 > at200);
+  assert.ok(at200 > at300);
+  assert.ok(at300 > at500);
+});
+
+test('near extrapolation uses the nearest constrained fitted AT', () => {
   const process = {
     atV2Observations: [
       {
