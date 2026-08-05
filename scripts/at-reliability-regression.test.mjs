@@ -357,7 +357,7 @@ test('v2 rejects a decreasing total-time interpolation segment', () => {
   );
 });
 
-test('AJ2102-like increasing per-piece observations interpolate safely', () => {
+test('AJ2102-like increasing per-piece observations are pooled into a non-increasing fit', () => {
   const process = {
     atV2Observations: [
       {
@@ -377,16 +377,17 @@ test('AJ2102-like increasing per-piece observations interpolate safely', () => {
     })),
   };
 
-  assert.ok(
-    Math.abs(resolveProcessAtPerPieceSeconds(process, 250) - 36.89548) < 0.0001
-  );
+  const pooledAt = (6930.2 + 11517.54) / 500;
+  assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 200) - pooledAt) < 0.0001);
+  assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 250) - pooledAt) < 0.0001);
+  assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 300) - pooledAt) < 0.0001);
   assert.equal(
     resolveProcessAtCellState(process, 250, DEFAULT_BUCKETS).tone,
     'fitted'
   );
 });
 
-test('near extrapolation clamps to the nearest observed per-piece AT', () => {
+test('near extrapolation uses the nearest monotonic fitted AT', () => {
   const process = {
     atV2Observations: [
       {
@@ -406,15 +407,10 @@ test('near extrapolation clamps to the nearest observed per-piece AT', () => {
     })),
   };
 
-  assert.ok(
-    Math.abs(resolveProcessAtPerPieceSeconds(process, 100) - 34.651) < 0.0001
-  );
-  assert.ok(
-    Math.abs(resolveProcessAtPerPieceSeconds(process, 500) - 38.3918) < 0.0001
-  );
-  assert.ok(
-    Math.abs(resolveProcessAtPerPieceSeconds(process, 1000) - 38.3918) < 0.0001
-  );
+  const pooledAt = (6930.2 + 11517.54) / 500;
+  assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 100) - pooledAt) < 0.0001);
+  assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 500) - pooledAt) < 0.0001);
+  assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 1000) - pooledAt) < 0.0001);
   assert.equal(resolveProcessAtPerPieceSeconds(process, 1201), null);
   assert.equal(resolveProcessAtCellState(process, 500, DEFAULT_BUCKETS).tone, 'extrapolated');
 });

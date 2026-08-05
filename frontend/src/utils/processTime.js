@@ -347,6 +347,56 @@ const AT_V2_MIN_EXTRAPOLATION_FACTOR = 2;
 const AT_V2_MAX_EXTRAPOLATION_FACTOR = 4;
 const AT_V2_MIN_ST_RATIO = 0.2;
 
+const applyNonIncreasingAtPerPieceFit = (points) => {
+  const blocks = [];
+  points.forEach((point) => {
+    const weight = Number(point.producedQuantity);
+    const perPieceSeconds = Number(point.perPieceSeconds);
+    if (
+      !Number.isFinite(weight) ||
+      weight <= 0 ||
+      !Number.isFinite(perPieceSeconds) ||
+      perPieceSeconds <= 0
+    ) {
+      return;
+    }
+    blocks.push({
+      startIndex: blocks.reduce((count, block) => count + block.count, 0),
+      count: 1,
+      weight,
+      weightedSeconds: perPieceSeconds * weight,
+    });
+    while (blocks.length >= 2) {
+      const right = blocks[blocks.length - 1];
+      const left = blocks[blocks.length - 2];
+      const leftMean = left.weightedSeconds / left.weight;
+      const rightMean = right.weightedSeconds / right.weight;
+      if (leftMean >= rightMean) break;
+      blocks.splice(blocks.length - 2, 2, {
+        startIndex: left.startIndex,
+        count: left.count + right.count,
+        weight: left.weight + right.weight,
+        weightedSeconds: left.weightedSeconds + right.weightedSeconds,
+      });
+    }
+  });
+
+  const fitted = points.map((point) => ({ ...point }));
+  blocks.forEach((block) => {
+    const perPieceSeconds = block.weightedSeconds / block.weight;
+    for (
+      let index = block.startIndex;
+      index < block.startIndex + block.count;
+      index += 1
+    ) {
+      fitted[index].perPieceSeconds = perPieceSeconds;
+      fitted[index].representativeTotalSeconds =
+        perPieceSeconds * fitted[index].quantity;
+    }
+  });
+  return fitted;
+};
+
 const resolveAtV2Points = (process) => {
   const grouped = new Map();
   (Array.isArray(process?.atV2Observations) ? process.atV2Observations : [])
@@ -374,7 +424,7 @@ const resolveAtV2Points = (process) => {
       current.sourceCount += 1;
       grouped.set(quantity, current);
     });
-  return Array.from(grouped.values())
+  const points = Array.from(grouped.values())
     .map((point) => {
       const perPieceSeconds =
         point.laborInputSeconds / point.producedQuantity;
@@ -389,6 +439,7 @@ const resolveAtV2Points = (process) => {
         Number.isFinite(point.perPieceSeconds) && point.perPieceSeconds > 0
     )
     .sort((left, right) => left.quantity - right.quantity);
+  return applyNonIncreasingAtPerPieceFit(points);
 };
 
 const resolveAtV2RepeatVariation = (observations) => {

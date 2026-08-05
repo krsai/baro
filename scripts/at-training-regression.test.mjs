@@ -71,7 +71,7 @@ test('assignment card AT uses hydrated v2 mirrors and fails closed on a missing 
   assert.match(totalSource, /if \(atTotal == null\) return null/);
 });
 
-test('backend AT mirrors safe interpolation and nearest-point extrapolation policy', () => {
+test('backend AT mirrors monotonic fitting, safe interpolation, and nearest-point extrapolation', () => {
   const resolveStart = backendSource.indexOf(
     'const resolveStyleProcessAtTotalSecondsForOrderQuantity'
   );
@@ -82,6 +82,8 @@ test('backend AT mirrors safe interpolation and nearest-point extrapolation poli
   const resolveSource = backendSource.slice(resolveStart, resolveEnd);
 
   assert.ok(resolveStart >= 0);
+  assert.match(resolveSource, /monotonicBlocks/);
+  assert.match(resolveSource, /if \(leftMean >= rightMean\) break/);
   assert.doesNotMatch(resolveSource, /intercept < 0/);
   assert.match(resolveSource, /if \(!Number\.isFinite\(slope\) \|\| slope <= 0\)/);
   assert.match(resolveSource, /const nearestPoint =/);

@@ -1860,10 +1860,50 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
   const points = Array.from(grouped.values())
     .map((point) => ({
       quantity: point.quantity,
+      producedQuantity: point.producedQuantity,
+      perPieceSeconds: point.laborInputSeconds / point.producedQuantity,
       totalSeconds:
         (point.laborInputSeconds / point.producedQuantity) * point.quantity,
     }))
     .sort((left, right) => left.quantity - right.quantity);
+  const monotonicBlocks: Array<{
+    startIndex: number;
+    count: number;
+    weight: number;
+    weightedSeconds: number;
+  }> = [];
+  points.forEach((point, pointIndex) => {
+    monotonicBlocks.push({
+      startIndex: pointIndex,
+      count: 1,
+      weight: point.producedQuantity,
+      weightedSeconds: point.perPieceSeconds * point.producedQuantity,
+    });
+    while (monotonicBlocks.length >= 2) {
+      const right = monotonicBlocks[monotonicBlocks.length - 1]!;
+      const left = monotonicBlocks[monotonicBlocks.length - 2]!;
+      const leftMean = left.weightedSeconds / left.weight;
+      const rightMean = right.weightedSeconds / right.weight;
+      if (leftMean >= rightMean) break;
+      monotonicBlocks.splice(monotonicBlocks.length - 2, 2, {
+        startIndex: left.startIndex,
+        count: left.count + right.count,
+        weight: left.weight + right.weight,
+        weightedSeconds: left.weightedSeconds + right.weightedSeconds,
+      });
+    }
+  });
+  monotonicBlocks.forEach((block) => {
+    const perPieceSeconds = block.weightedSeconds / block.weight;
+    for (
+      let index = block.startIndex;
+      index < block.startIndex + block.count;
+      index += 1
+    ) {
+      points[index]!.perPieceSeconds = perPieceSeconds;
+      points[index]!.totalSeconds = perPieceSeconds * points[index]!.quantity;
+    }
+  });
   if (points.length === 0) return null;
   const exact = points.find(
     (point) => point.quantity === resolvedOrderQuantity
