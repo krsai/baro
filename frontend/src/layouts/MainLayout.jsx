@@ -519,7 +519,10 @@ const MainLayout = () => {
     }
     try {
       const data = await requestJSON(
-        `/line-workers${buildQueryString({ orgId: activeOrgId })}`,
+        `/line-workers${buildQueryString({
+          orgId: activeOrgId,
+          assignableOnly: 1,
+        })}`,
         { forceRefresh: true, skipGlobalLoading: true }
       );
       const unassignedCount = Array.isArray(data)

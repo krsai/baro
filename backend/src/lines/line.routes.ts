@@ -825,6 +825,8 @@ export const createLineRouter = ({
     const lineId = Number(req.query.lineId);
     const hasLineFilter = Number.isFinite(lineId) && lineId > 0;
     const summaryOnly = req.query.summary === "1" || req.query.summary === "true";
+    const assignableOnly =
+      req.query.assignableOnly === "1" || req.query.assignableOnly === "true";
     const workDateInput = resolveOptionalString(req.query.workDate, null);
     const hasWorkDateFilter = Boolean(workDateInput);
     const normalizedWorkDate = hasWorkDateFilter ? normalizeDateKey(workDateInput) : null;
@@ -1003,6 +1005,9 @@ export const createLineRouter = ({
         where: {
           orgId: organization.id,
           ...(hasFactoryFilter ? { factoryId } : {}),
+          ...(!hasFactoryFilter && assignableOnly
+            ? { factoryId: { not: null } }
+            : {}),
           ...buildLineEligibleWorkerWhere(effectiveDateRange),
         },
         orderBy: [{ factoryId: "asc" }, { id: "asc" }],
