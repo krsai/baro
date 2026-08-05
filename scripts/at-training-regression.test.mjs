@@ -97,6 +97,20 @@ test('backend AT mirrors constrained fitting, safe interpolation, and nearest-po
   );
 });
 
+test('production start applies AT observation quality columns before launching the API', () => {
+  const packageJson = JSON.parse(
+    fs.readFileSync('backend/package.json', 'utf8')
+  );
+  assert.match(
+    packageJson.scripts['prisma:apply:at-observation-quality'],
+    /20260805153000_add_at_observation_quality\/migration\.sql/
+  );
+  assert.match(
+    packageJson.scripts.start,
+    /prisma:apply:at-observation-quality[\s\S]*node dist\/index\.js/
+  );
+});
+
 test('AT reset clears legacy JSON for manufacturer-owned and related brand styles', () => {
   const resetStart = backendSource.indexOf('const resetAtTrainingStateForOrg');
   const resetEnd = backendSource.indexOf('const normalizeStylePayload', resetStart);
