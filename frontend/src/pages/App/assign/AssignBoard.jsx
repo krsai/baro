@@ -6596,25 +6596,25 @@ const AssignBoard = () => {
     if (!assignment?.id || assignment.isCompleted) return;
     const confirmed = window.confirm(
       languageCode === 'ko'
-        ? `작업기록 누락이 확인된 과거 배정만 수동 완료하세요.\n\n배정수량 ${Number(assignment.quantity || 0).toLocaleString()}장을 100% 완료 처리하고, 이 배정의 기록 전체를 AT 학습에서 제외합니다. 작업기록이나 생산수당 기록은 새로 만들지 않습니다. 계속할까요?`
+        ? `외주 공정 등으로 실제 생산은 끝났지만 내부 작업기록만으로 진행률이 100%가 되지 않는 경우에 사용하세요.\n\n배정수량 ${Number(assignment.quantity || 0).toLocaleString()}장을 100% 완료로 조정하고, 불완전한 내부 기록이 AT를 왜곡하지 않도록 이 배정을 AT 학습에서 제외합니다. 작업기록이나 생산수당 기록은 새로 만들지 않습니다. 계속할까요?`
         : languageCode === 'vi'
-          ? 'Chi hoan tat thu cong khi da xac nhan thieu nhat ky. Ke hoach se hoan tat 100% va bi loai khoi hoc AT. He thong khong tao nhat ky hay phu cap moi. Tiep tuc?'
-          : 'Use this only when a historical work record is confirmed missing. The assignment will be 100% complete and excluded from AT training. No work or payroll record is created. Continue?'
+          ? 'Su dung khi san xuat thuc te da hoan tat, vi du cong doan gia cong ngoai, nhung nhat ky noi bo khong dat 100%. Ke hoach se duoc dieu chinh hoan tat va loai khoi hoc AT. Tiep tuc?'
+          : 'Use this when production is actually complete, such as with an outsourced process, but internal records do not reach 100%. The assignment will be adjusted to complete and excluded from AT training. Continue?'
     );
     if (!confirmed) return;
     setCompletingAssignmentId(assignment.id);
     try {
       const result = await requestJSON(
-        `/assignment-plans/${encodeURIComponent(String(assignment.id))}/record-omission-complete` + buildQueryString({ orgId: activeOrgId }),
+        `/assignment-plans/${encodeURIComponent(String(assignment.id))}/manual-production-complete` + buildQueryString({ orgId: activeOrgId }),
         { method: 'PATCH' }
       );
       showNotification(
         result?.atRefreshWarning
           ? (languageCode === 'ko' ? '수동 완료했습니다. AT 재학습은 실패하여 서버 확인이 필요합니다.' : 'Saved, but AT refresh needs review.')
-          : (languageCode === 'ko' ? '기록 누락 사유로 수동 완료하고 AT 학습에서 제외했습니다.' : 'Manually completed and excluded from AT training.'),
+          : (languageCode === 'ko' ? '실제 생산 완료로 조정하고 AT 학습에서 제외했습니다.' : 'Adjusted to production complete and excluded from AT training.'),
         result?.atRefreshWarning ? 'warning' : 'success'
       );
-      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD], orgId: activeOrgId, assignmentIds: [assignment.id], source: 'assign-record-omission-complete' });
+      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD], orgId: activeOrgId, assignmentIds: [assignment.id], source: 'assign-manual-production-complete' });
       requestExternalBoardReload();
       handleCloseDetail();
     } catch (error) {
@@ -7156,10 +7156,10 @@ const AssignBoard = () => {
             disabled={controlsDisabled || contextRecordOmissionCompleteDisabled}
           >
             {languageCode === 'ko'
-              ? '기록 누락으로 수동 완료'
+              ? '실제 생산 완료로 조정'
               : languageCode === 'vi'
-                ? 'Hoan tat thu cong do thieu nhat ky'
-                : 'Manual complete: missing record'}
+                ? 'Dieu chinh hoan tat san xuat'
+                : 'Adjust to production complete'}
           </MenuItem>
         </Menu>
 
@@ -7561,11 +7561,11 @@ const AssignBoard = () => {
                   </Typography>
                 </Paper>
 
-                {detailAssignment?.completionReason === 'RECORD_OMISSION' && (
+                {['MANUAL_PROGRESS_ADJUSTMENT', 'RECORD_OMISSION'].includes(detailAssignment?.completionReason) && (
                   <Alert severity="warning">
                     {languageCode === 'ko'
-                      ? `작업기록 누락으로 수동 완료된 배정이며 AT 학습에서 제외되었습니다.${detailAssignment.closedBy ? ` 처리자: ${detailAssignment.closedBy}` : ''}`
-                      : 'This assignment was manually completed because a work record was missing and is excluded from AT training.'}
+                      ? `외주 공정 등 내부 작업기록만으로 완료율을 산정할 수 없어 실제 생산 완료로 조정된 배정입니다. AT 학습에서는 제외되었습니다.${detailAssignment.closedBy ? ` 처리자: ${detailAssignment.closedBy}` : ''}`
+                      : 'This assignment was adjusted to production complete because internal records were incomplete and is excluded from AT training.'}
                   </Alert>
                 )}
 

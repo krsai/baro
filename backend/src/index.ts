@@ -24298,7 +24298,10 @@ app.patch("/assignment-plans/:externalId/production-complete", async (req, res) 
   });
 });
 
-app.patch("/assignment-plans/:externalId/record-omission-complete", async (req, res) => {
+app.patch([
+  "/assignment-plans/:externalId/manual-production-complete",
+  "/assignment-plans/:externalId/record-omission-complete",
+], async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
@@ -24357,9 +24360,9 @@ app.patch("/assignment-plans/:externalId/record-omission-complete", async (req, 
         closedBy: actor,
         closeMode: "FULL",
         closeBasis: "MANUAL",
-        completionReason: "RECORD_OMISSION",
+        completionReason: "MANUAL_PROGRESS_ADJUSTMENT",
         atTrainingExcluded: true,
-        atTrainingExclusionReason: "RECORD_OMISSION",
+        atTrainingExclusionReason: "INCOMPLETE_INTERNAL_PRODUCTION_RECORDS",
         candidateEndDate: completedAt,
         renderEndDate: completedAt,
         forecastCompletedAt: null,
@@ -24390,7 +24393,7 @@ app.patch("/assignment-plans/:externalId/record-omission-complete", async (req, 
     await syncStyleProcessActualTimesFromWorkRecords(organization.id);
   } catch (error) {
     atRefreshWarning = getErrorMessage(error, "AT refresh failed");
-    console.error("[record-omission-complete] AT refresh failed", error);
+    console.error("[manual-production-complete] AT refresh failed", error);
   }
 
   return res.json({
