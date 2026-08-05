@@ -39,6 +39,7 @@ const GROUP_BOTTOM_BORDER = '1px solid #CBD5E1';
 const PAIR_DIVIDER = '1px dashed rgba(100,116,139,0.2)';
 const STICKY_COLUMN_DIVIDER = '1px solid rgba(100,116,139,0.22)';
 const AT_TONE_COLORS = {
+  'st-fallback': '#D32F2F',
   fitted: '#374151',
   extrapolated: '#6D28D9',
   provisional: '#B45309',
@@ -54,6 +55,7 @@ const resolveAtToneColor = (tone, shouldDisplayValue = true) => {
 const resolveAtAggregateTone = (states = []) => {
   const displayStates = states.filter((state) => state?.shouldDisplayValue);
   if (displayStates.length === 0) return 'empty';
+  if (displayStates.some((state) => state.tone === 'st-fallback')) return 'st-fallback';
   if (displayStates.some((state) =>
     state.tone === 'provisional' || state.tone === 'provisional-extrapolated'
   )) return 'provisional';
@@ -64,6 +66,12 @@ const resolveAtAggregateTone = (states = []) => {
 const resolveLegendItems = (languageCode) => {
   if (languageCode === 'en') {
     return [
+      {
+        key: 'atStFallback',
+        color: AT_TONE_COLORS['st-fallback'],
+        label: 'AT from ST · review',
+        tooltip: 'No valid AT observation exists for this process, so its ST is shown only as a provisional AT placeholder for the total. It is not AT training data.',
+      },
       {
         key: 'stReview',
         color: '#D32F2F',
@@ -97,6 +105,12 @@ const resolveLegendItems = (languageCode) => {
   if (languageCode === 'vi') {
     return [
       {
+        key: 'atStFallback',
+        color: AT_TONE_COLORS['st-fallback'],
+        label: 'AT tạm từ ST · cần duyệt',
+        tooltip: 'Công đoạn này chưa có quan sát AT hợp lệ, nên ST chỉ được hiển thị tạm làm AT để tính tổng. Giá trị này không được dùng làm dữ liệu học AT.',
+      },
+      {
         key: 'stReview',
         color: '#D32F2F',
         label: 'ST sao chep - can duyet',
@@ -127,6 +141,12 @@ const resolveLegendItems = (languageCode) => {
     ];
   }
   return [
+    {
+      key: 'atStFallback',
+      color: AT_TONE_COLORS['st-fallback'],
+      label: 'AT ST 대체값·검토 필요',
+      tooltip: '이 공정은 유효한 AT 관측이 없어 합계 계산을 위해 ST를 임시 AT로 표시합니다. 이 값은 AT 학습 데이터로 사용되지 않습니다.',
+    },
     {
       key: 'stReview',
       color: '#D32F2F',
@@ -249,6 +269,12 @@ const resolveAtCellState = (process, quantity, languageCode) => {
 
 const resolveAtCellTitle = (cellState, languageCode) => {
   switch (cellState?.tone) {
+    case 'st-fallback':
+      return languageCode === 'vi'
+        ? 'Chưa có quan sát AT hợp lệ. ST đang được hiển thị tạm làm AT để tính tổng và không được dùng để học AT.'
+        : languageCode === 'en'
+          ? 'No valid AT observation exists. ST is shown as a provisional AT placeholder for totals and is not used for AT training.'
+          : '유효한 AT 관측이 없어 합계 계산용으로 ST를 임시 AT로 표시합니다. AT 학습에는 사용되지 않습니다.';
     case 'provisional':
       return languageCode === 'vi'
         ? 'Gia tri tam tinh: chua du bien thien so luong de hoi quy.'
@@ -276,6 +302,28 @@ const resolveAtCellTitle = (cellState, languageCode) => {
     default:
       return '';
   }
+};
+
+const hasValidAtObservation = (process) =>
+  (Array.isArray(process?.atV2Observations) ? process.atV2Observations : [])
+    .some((row) => Number(row?.quantity) > 0 && Number(row?.allocatedLaborInputSeconds) > 0);
+
+const resolveAtDisplayValue = (process, quantity, bucketQuantities) => {
+  const at = resolveProcessAtPerPieceSeconds(process, quantity);
+  const state = resolveProcessAtCellState(process, quantity, bucketQuantities);
+  if (at != null && state.shouldDisplayValue) return { value: at, state };
+  if (hasValidAtObservation(process)) return { value: null, state };
+  const st = resolveProcessStPerPieceSeconds(process, quantity, bucketQuantities);
+  if (!Number.isFinite(st) || st <= 0) return { value: null, state };
+  return {
+    value: st,
+    state: {
+      ...state,
+      tone: 'st-fallback',
+      shouldDisplayValue: true,
+      isProvisional: true,
+    },
+  };
 };
 
 const upsertStBuckets = (process, quantity, seconds) => {
@@ -440,8 +488,7 @@ const StyleTimeMatrix = ({
       const states = [];
       let displayCount = 0;
       const total = safeProcesses.reduce((sum, process) => {
-        const at = resolveProcessAtPerPieceSeconds(process, q);
-        const state = resolveProcessAtCellState(process, q, visibleBuckets);
+        const { value: at, state } = resolveAtDisplayValue(process, q, visibleBuckets);
         states.push(state);
         if (at == null || !state.shouldDisplayValue) return sum;
         displayCount += 1;
@@ -839,11 +886,8 @@ const StyleTimeMatrix = ({
                         AT
                       </TableCell>
                       {visibleBuckets.map((qty) => {
-                        const atVal = resolveProcessAtPerPieceSeconds(process, qty);
-                        const atCellState = resolveProcessAtCellState(
-                          process,
-                          qty,
-                          visibleBuckets
+                        const { value: atVal, state: atCellState } = resolveAtDisplayValue(
+                          process, qty, visibleBuckets
                         );
                         const shouldDisplayAtVal =
                           atVal != null && atCellState.shouldDisplayValue;
