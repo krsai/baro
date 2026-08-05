@@ -339,6 +339,8 @@ function assertGeneratedPrismaClientShape() {
     "styleProcessId",
     "assignmentPlanId",
     "allocatedLaborInputSeconds",
+    "sourceLaborInputSeconds",
+    "unexplainedLaborInputSeconds",
     "perPieceObservedSeconds",
     "attendanceCoverage",
     "singleProcessLaborShare",
@@ -4748,7 +4750,9 @@ const buildAtTrainingInitialSeedFromSt = ({
   };
 };
 
-const AT_V2_MODEL_VERSION = "v2";
+// v2 rows remain immutable audit evidence. v3 is the first operational model
+// that uses one-pass ST allocation and preserves unexplained worker-period time.
+const AT_V2_MODEL_VERSION = "v3-st-stable";
 
 const clearStyleProcessAtObservations = async (orgId: number) => {
   const deleted = await prisma.$executeRaw(Prisma.sql`
@@ -4773,6 +4777,9 @@ const replaceStyleProcessAtObservations = async ({
     quantity: number;
     eventCount: number;
     laborInputSeconds: number;
+    sourceLaborInputSeconds: number;
+    allocatableLaborInputSeconds: number;
+    unexplainedLaborInputSeconds: number;
     attendanceCoverage: number | null;
     singleProcessDay: boolean;
   }>;
@@ -4782,6 +4789,8 @@ const replaceStyleProcessAtObservations = async ({
     assignmentPlanId: number;
     quantity: number;
     laborInputSeconds: number;
+    sourceLaborInputSeconds: number;
+    unexplainedLaborInputSeconds: number;
     workerIds: Set<number>;
     eventCountMax: number;
     eventCountWeightedTotal: number;
@@ -4819,6 +4828,8 @@ const replaceStyleProcessAtObservations = async ({
       assignmentPlanId,
       quantity: 0,
       laborInputSeconds: 0,
+      sourceLaborInputSeconds: 0,
+      unexplainedLaborInputSeconds: 0,
       workerIds: new Set<number>(),
       eventCountMax: 0,
       eventCountWeightedTotal: 0,
@@ -4831,6 +4842,14 @@ const replaceStyleProcessAtObservations = async ({
     };
     current.quantity += quantity;
     current.laborInputSeconds += laborInputSeconds;
+    current.sourceLaborInputSeconds += Math.max(
+      0,
+      Number(observation.sourceLaborInputSeconds) || 0
+    );
+    current.unexplainedLaborInputSeconds += Math.max(
+      0,
+      Number(observation.unexplainedLaborInputSeconds) || 0
+    );
     const attendanceCoverage = toNumberOrNull(observation.attendanceCoverage);
     if (attendanceCoverage !== null) {
       current.attendanceWeightedSeconds +=
@@ -4893,6 +4912,8 @@ const replaceStyleProcessAtObservations = async ({
           "assignmentPlanId",
           "quantity",
           "allocatedLaborInputSeconds",
+          "sourceLaborInputSeconds",
+          "unexplainedLaborInputSeconds",
           "perPieceObservedSeconds",
           "workerCount",
           "eventCountMax",
@@ -4913,6 +4934,8 @@ const replaceStyleProcessAtObservations = async ({
           ${row.assignmentPlanId},
           ${Math.round(row.quantity)},
           ${row.laborInputSeconds},
+          ${row.sourceLaborInputSeconds},
+          ${row.unexplainedLaborInputSeconds},
           ${perPieceObservedSeconds},
           ${row.workerIds.size},
           ${row.eventCountMax},
@@ -4925,7 +4948,7 @@ const replaceStyleProcessAtObservations = async ({
           ${trainingMonthKey},
           NOW(),
           NOW(),
-          'SYSTEM:AT_V2_SHADOW',
+          'SYSTEM:AT_V3_ST_STABLE',
           NOW()
         )
         `);
@@ -5482,7 +5505,7 @@ const buildAtSyncStatusForOrg = async (
       MAX(bm.latest_bucket_updated_at) AS latest_bucket_updated_at,
       (
         (SELECT COUNT(*) FROM "AtTrainingBucket" b WHERE b."orgId" = ${orgId}) +
-        (SELECT COUNT(*) FROM "StyleProcessAtObservation" o WHERE o."orgId" = ${orgId}) +
+        (SELECT COUNT(*) FROM "StyleProcessAtObservation" o WHERE o."orgId" = ${orgId} AND o."modelVersion" = ${AT_V2_MODEL_VERSION}) +
         (SELECT COUNT(*) FROM "StyleProcess" p WHERE p."orgId" = ${orgId} AND p."atParams" IS NOT NULL)
       )::int AS resettable_item_count
     FROM source_months sm
@@ -5571,7 +5594,7 @@ const resetAtTrainingStateForOrg = async (orgId: number) => {
     `);
     const atV2ObservationsDeleted = await tx.$executeRaw(Prisma.sql`
       DELETE FROM "StyleProcessAtObservation"
-      WHERE "orgId" = ${orgId}
+      WHERE "orgId" = ${orgId} AND "modelVersion" = ${AT_V2_MODEL_VERSION}
     `);
     const trainingBucketProcessesDeleted = await tx.$executeRaw(Prisma.sql`
       DELETE FROM "AtTrainingBucketProcess"
@@ -6120,6 +6143,12 @@ const buildStyleProcessMirrorFromRows = (
             quantity: toPositiveIntOrNull(observation.quantity),
             allocatedLaborInputSeconds: toNumberOrNull(
               observation.allocatedLaborInputSeconds
+            ),
+            sourceLaborInputSeconds: toNumberOrNull(
+              observation.sourceLaborInputSeconds
+            ),
+            unexplainedLaborInputSeconds: toNumberOrNull(
+              observation.unexplainedLaborInputSeconds
             ),
             perPieceObservedSeconds: toNumberOrNull(
               observation.perPieceObservedSeconds

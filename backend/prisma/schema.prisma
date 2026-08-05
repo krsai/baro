@@ -944,6 +944,8 @@ model StyleProcessAtObservation {
   assignmentPlanId           Int
   quantity                   Int
   allocatedLaborInputSeconds Float
+  sourceLaborInputSeconds    Float?
+  unexplainedLaborInputSeconds Float?
   perPieceObservedSeconds    Float
   workerCount                Int
   eventCountMax              Float
@@ -952,7 +954,7 @@ model StyleProcessAtObservation {
   singleProcessLaborShare   Float?
   observationPeriodStartDate String
   observationPeriodEndDate   String
-  modelVersion               String   @default("v2")
+  modelVersion               String   @default("v3-st-stable")
   trainedPeriod              String
   computedAt                 DateTime @default(now())
   createdAt                  DateTime @default(now())

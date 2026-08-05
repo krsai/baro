@@ -92,6 +92,9 @@ export type AtAllocatedObservation = {
   eventCount: number;
   sourceGroupKey: string | null;
   laborInputSeconds: number;
+  sourceLaborInputSeconds: number;
+  allocatableLaborInputSeconds: number;
+  unexplainedLaborInputSeconds: number;
   attendanceCoverage: number | null;
   singleProcessDay: boolean;
 };
@@ -174,18 +177,10 @@ const AT_FIT_MIN_SEED_RATIO = (() => {
   if (!Number.isFinite(parsed) || parsed <= 0) return 0.2;
   return Math.min(parsed, 1);
 })();
-const AT_PROPORTIONAL_MAX_ITERATIONS = toPositiveInt(
-  process.env.AT_PROPORTIONAL_MAX_ITERATIONS,
-  8
-);
-const AT_PROPORTIONAL_MIN_ITERATIONS = toPositiveInt(
-  process.env.AT_PROPORTIONAL_MIN_ITERATIONS,
-  2
-);
-const AT_PROPORTIONAL_CONVERGENCE_EPSILON = (() => {
-  const parsed = Number(process.env.AT_PROPORTIONAL_CONVERGENCE_EPSILON);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0.01;
-  return parsed;
+const AT_MAX_ALLOCATABLE_ST_RATIO = (() => {
+  const parsed = Number(process.env.AT_MAX_ALLOCATABLE_ST_RATIO);
+  if (!Number.isFinite(parsed) || parsed < 1) return 2;
+  return Math.min(parsed, 4);
 })();
 const AT_TREND_BASE_WEIGHT = (() => {
   const parsed = Number(process.env.AT_TREND_BASE_WEIGHT);
@@ -232,7 +227,7 @@ const toAtRegressionPoints = (
         sourceGroupKey: normalizeSourceGroupKey(observation?.sourceGroupKey),
         y: laborInputSeconds,
         // Large samples are usually less noisy, but use sqrt to avoid domination.
-        weight: Math.max(1, Math.sqrt(quantity) * Math.sqrt(eventCount)),
+        weight: Math.max(1, Math.sqrt(quantity)),
       };
     })
     .filter((point): point is WeightedRegressionPoint => point !== null);
@@ -240,36 +235,39 @@ const toAtRegressionPoints = (
 const fitWeightedLinearRegression = (
   points: WeightedRegressionPoint[]
 ): { a: number; b: number } | null => {
-  let sqq = 0;
-  let sqe = 0;
-  let see = 0;
-  let sqy = 0;
-  let sey = 0;
+  let sw = 0;
+  let swq = 0;
+  let swy = 0;
+  let swqq = 0;
+  let swqy = 0;
 
   points.forEach((point) => {
-    const { quantity, eventCount, y, weight } = point;
+    const { quantity, y, weight } = point;
     if (
       !Number.isFinite(quantity) ||
-      !Number.isFinite(eventCount) ||
       !Number.isFinite(y) ||
       !Number.isFinite(weight)
     ) {
       return;
     }
-    if (quantity <= 0 || eventCount <= 0 || weight <= 0) return;
-    sqq += weight * quantity * quantity;
-    sqe += weight * quantity * eventCount;
-    see += weight * eventCount * eventCount;
-    sqy += weight * quantity * y;
-    sey += weight * eventCount * y;
+    if (quantity <= 0 || weight <= 0) return;
+    sw += weight;
+    swq += weight * quantity;
+    swy += weight * y;
+    swqq += weight * quantity * quantity;
+    swqy += weight * quantity * y;
   });
 
-  if (sqq <= 0 || see <= 0) return null;
-  const determinant = sqq * see - sqe * sqe;
+  if (sw <= 0 || swqq <= 0) return null;
+  const determinant = sw * swqq - swq * swq;
   if (Math.abs(determinant) <= AT_WLS_DETERMINANT_EPSILON) return null;
 
-  const a = (sqy * see - sey * sqe) / determinant;
-  const b = (sqq * sey - sqe * sqy) / determinant;
+  const unconstrainedA = (sw * swqy - swq * swy) / determinant;
+  const unconstrainedB = (swy - unconstrainedA * swq) / sw;
+  const b = Math.max(0, unconstrainedB);
+  const a = b === 0
+    ? swqy / swqq
+    : unconstrainedA;
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   return { a, b };
 };
@@ -311,8 +309,7 @@ const resolveAtParamsMagnitudeFailure = (
       const eventCount = Number(point?.eventCount);
       if (!Number.isFinite(quantity) || quantity <= 0) return null;
       if (!Number.isFinite(eventCount) || eventCount <= 0) return null;
-      const predictedTotalSeconds =
-        params.a * quantity + params.b * eventCount;
+      const predictedTotalSeconds = params.a * quantity + params.b;
       if (!Number.isFinite(predictedTotalSeconds) || predictedTotalSeconds <= 0) {
         return null;
       }
@@ -349,7 +346,7 @@ const applyResidualMagnitudeWeights = (
   model: { a: number; b: number }
 ): WeightedRegressionPoint[] =>
   points.map((point) => {
-    const predicted = model.a * point.quantity + model.b * point.eventCount;
+    const predicted = model.a * point.quantity + model.b;
     const residualRatio = Math.abs(point.y - predicted) / Math.max(1, point.y);
     const scaled = residualRatio / AT_WLS_RESIDUAL_SCALE;
     const magnitudeWeight = 1 / (1 + scaled * scaled);
@@ -587,25 +584,6 @@ const allocateDaySecondsAcrossProcesses = (
 
   if (validRows.length === 0) return [];
 
-  if (validRows.length === 1) {
-    const row = validRows[0]!;
-    return [
-      {
-        dayKey: day.dayKey,
-        order: day.order,
-        workerId: toPositiveInt(day.workerId, 0) || null,
-        metricKey: row.metricKey,
-        assignmentPlanId: row.assignmentPlanId,
-        quantity: row.quantity,
-        eventCount: row.eventCount,
-        sourceGroupKey: row.sourceGroupKey,
-        laborInputSeconds: day.laborInputSeconds,
-        attendanceCoverage: row.attendanceCoverage,
-        singleProcessDay: true,
-      },
-    ];
-  }
-
   const withWork = validRows.map((row) => {
     const perPiece = toOptionalSeconds(perPieceByMetricKey.get(row.metricKey));
     if (perPiece === null || perPiece <= 0) return null;
@@ -630,6 +608,19 @@ const allocateDaySecondsAcrossProcesses = (
     return [];
   }
 
+  const sourceLaborInputSeconds = Math.max(0, Number(day.laborInputSeconds) || 0);
+  // The recorded ST workload can only explain a bounded amount of the worker's
+  // period labor. Keep the remainder explicit instead of forcing 100% into the
+  // processes and turning missing/nonproductive time into pseudo AT.
+  const allocatableLaborInputSeconds = Math.min(
+    sourceLaborInputSeconds,
+    totalWork * AT_MAX_ALLOCATABLE_ST_RATIO
+  );
+  const unexplainedLaborInputSeconds = Math.max(
+    0,
+    sourceLaborInputSeconds - allocatableLaborInputSeconds
+  );
+
   return withWork.map((row) => ({
     dayKey: day.dayKey,
     order: day.order,
@@ -639,9 +630,12 @@ const allocateDaySecondsAcrossProcesses = (
     quantity: row.quantity,
     eventCount: row.eventCount,
     sourceGroupKey: row.sourceGroupKey,
-    laborInputSeconds: day.laborInputSeconds * (row.work / totalWork),
+    laborInputSeconds: allocatableLaborInputSeconds * (row.work / totalWork),
+    sourceLaborInputSeconds,
+    allocatableLaborInputSeconds,
+    unexplainedLaborInputSeconds,
     attendanceCoverage: row.attendanceCoverage,
-    singleProcessDay: false,
+    singleProcessDay: validRows.length === 1,
   }));
 };
 
@@ -736,7 +730,7 @@ const buildDayTrendWeights = (
         if (!metricKey) return sum;
         const fitted = provisionalParamsByMetric.get(metricKey);
         if (fitted) {
-          return sum + fitted.a * quantity + fitted.b * eventCount;
+          return sum + fitted.a * quantity + fitted.b;
         }
         hasCompletePrediction = false;
         return sum;
@@ -818,116 +812,22 @@ export const fitAtParamsWithProportionalAllocation = (
         ).map(([metricKey, value]) => [String(metricKey).trim(), Number(value)])
       )
     : new Map<string, number>();
-  let perPieceByMetricKey = seededPerPieceByMetricKey;
+  const perPieceByMetricKey = seededPerPieceByMetricKey;
 
-  let iterationCount = 0;
-  let converged = false;
-  let provisionalParamsByMetric = new Map<string, { a: number; b: number }>();
+  // Allocation is deliberately one-pass and ST-seeded. Feeding fitted AT back
+  // into the next allocation makes allocated pseudo-observations dependent on
+  // previous model output and is not identifiable from worker-period totals.
+  const iterationCount = perPieceByMetricKey.size > 0 ? 1 : 0;
+  const converged = iterationCount === 1;
+  const provisionalParamsByMetric = new Map<string, { a: number; b: number }>();
   const rejectedMetricKeys = new Set<string>();
   const resetMetricKeys = new Set<string>();
 
-  const resetMetricPerPieceToSeed = (
-    metricKey: string,
-    targetMap: Map<string, number>
-  ): number | null => {
-    const resetPerPiece = toOptionalSeconds(
-      seededPerPieceByMetricKey.get(metricKey)
-    );
-    if (resetPerPiece === null || resetPerPiece <= 0) return null;
-    targetMap.set(metricKey, resetPerPiece);
-    return resetPerPiece;
-  };
-
-  for (
-    let iteration = 1;
-    iteration <= AT_PROPORTIONAL_MAX_ITERATIONS;
-    iteration += 1
-  ) {
-    const { observationsByMetric } = buildAllocatedObservations(
-      days,
-      perPieceByMetricKey
-    );
-    if (observationsByMetric.size === 0) break;
-
-    const nextPerPieceByMetricKey = new Map(perPieceByMetricKey);
-    const nextParamsByMetric = new Map<string, { a: number; b: number }>();
-    let maxRelativeChange = 0;
-
-    metricKeys.forEach((metricKey) => {
-      const observations = observationsByMetric.get(metricKey) || [];
-      const initialPerPieceSeconds =
-        seededPerPieceByMetricKey.get(metricKey) ?? null;
-      const inspected = inspectAtFitFromObservations(observations, {
-        initialPerPieceSeconds,
-      });
-      const fitted = inspected.params;
-      if (!fitted) {
-        rejectedMetricKeys.add(metricKey);
-        const previousPerPiece = toOptionalSeconds(
-          perPieceByMetricKey.get(metricKey)
-        );
-        const resetPerPiece = resetMetricPerPieceToSeed(
-          metricKey,
-          nextPerPieceByMetricKey
-        );
-        if (resetPerPiece !== null) {
-          if (previousPerPiece === null || previousPerPiece !== resetPerPiece) {
-            resetMetricKeys.add(metricKey);
-          }
-          if (previousPerPiece === null) {
-            maxRelativeChange = Number.POSITIVE_INFINITY;
-          } else {
-            const relativeChange =
-              Math.abs(resetPerPiece - previousPerPiece) /
-              Math.max(AT_WLS_MIN_WEIGHT, Math.abs(previousPerPiece));
-            if (Number.isFinite(relativeChange)) {
-              maxRelativeChange = Math.max(maxRelativeChange, relativeChange);
-            }
-          }
-        }
-        return;
-      }
-
-      nextParamsByMetric.set(metricKey, fitted);
-      const previousPerPiece = toOptionalSeconds(perPieceByMetricKey.get(metricKey));
-      const nextPerPiece = Math.max(
-        resolveMinimumPlausiblePerPieceSeconds(initialPerPieceSeconds),
-        fitted.a
-      );
-      nextPerPieceByMetricKey.set(metricKey, nextPerPiece);
-      if (previousPerPiece === null) {
-        maxRelativeChange = Number.POSITIVE_INFINITY;
-      } else {
-        const relativeChange =
-          Math.abs(nextPerPiece - previousPerPiece) /
-          Math.max(AT_WLS_MIN_WEIGHT, Math.abs(previousPerPiece));
-        if (Number.isFinite(relativeChange)) {
-          maxRelativeChange = Math.max(maxRelativeChange, relativeChange);
-        }
-      }
-    });
-
-    iterationCount = iteration;
-    if (nextParamsByMetric.size > 0) {
-      provisionalParamsByMetric = nextParamsByMetric;
-    }
-    perPieceByMetricKey = nextPerPieceByMetricKey;
-
-    if (
-      iteration >= AT_PROPORTIONAL_MIN_ITERATIONS &&
-      maxRelativeChange <= AT_PROPORTIONAL_CONVERGENCE_EPSILON
-    ) {
-      converged = true;
-      break;
-    }
-  }
-
   const { observations } = buildAllocatedObservations(days, perPieceByMetricKey);
-  const dayWeightByKey = buildDayTrendWeights(days, provisionalParamsByMetric);
 
   const weightedPointsByMetric = new Map<string, WeightedRegressionPoint[]>();
   observations.forEach((observation) => {
-    const dayWeight = dayWeightByKey.get(observation.dayKey) ?? 1;
+    const dayWeight = 1;
     const quantity = Number(observation.quantity);
     const eventCount = Number(observation.eventCount ?? 1);
     const laborInputSeconds = Number(observation.laborInputSeconds);
@@ -944,7 +844,7 @@ export const fitAtParamsWithProportionalAllocation = (
       return;
     }
 
-    const baseWeight = Math.max(1, Math.sqrt(quantity) * Math.sqrt(eventCount));
+    const baseWeight = Math.max(1, Math.sqrt(quantity));
     const weight = Math.max(AT_WLS_MIN_WEIGHT, baseWeight * dayWeight);
     const current = weightedPointsByMetric.get(observation.metricKey) || [];
     current.push({
