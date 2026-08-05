@@ -57,6 +57,8 @@
 
 ## 2026-07-31 AT v2 관측 모델
 
+- 과거 배정에서 작업기록 누락이 실제 확인된 경우에만 배정 우클릭의 `기록 누락으로 수동 완료`를 사용한다. 서버는 저장된 배정수량을 100% 완료수량으로 사용하고 연결된 작업기록의 마지막 작업일을 완료일로 저장하며, `RECORD_OMISSION` 사유·처리자·처리시각을 보존한다. 가짜 WorkRecord나 생산수당 기록은 생성하지 않는다. 해당 배정에 남아 있는 작업기록도 노동시간 재배분 왜곡 가능성이 있으므로 v2 AT 학습 전체에서 제외하고 즉시 AT를 재동기화한다.
+
 - v1 회귀가 `IMPLAUSIBLY_LOW_AT_PARAMS`로 실패해도 유효한 관측 평균이 ST 기반 최소 기준을 통과하면 `USED_PROVISIONAL`로 보존한다. 회귀 실패를 데이터 없음으로 바꿔 `StyleProcess.atParams`를 NULL 처리하지 않는다.
 - v2 관측의 운영 단위는 `Organization × StyleProcess × AssignmentPlan`이며 `StyleProcessAtObservation` 관계형 행으로 저장한다. 수량은 `WorkRecord.quantity` 기반 실제 생산량 합, 노동시간은 v1의 검증된 비례배분 결과를 그대로 재사용하며 v2용으로 다시 배분하지 않는다.
 - v2의 핵심 시간식은 학습과 예측 모두 `total labor seconds = a × quantity + b`로 단위를 통일한다. `eventCount`는 진단 메타데이터일 뿐 핵심 회귀 변수로 사용하지 않는다.

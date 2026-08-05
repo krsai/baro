@@ -1197,6 +1197,9 @@ model AssignmentPlan {
   closedBy                  String?
   closeMode                 AssignmentCloseMode?
   closeBasis                AssignmentCloseBasis?
+  completionReason          String?
+  atTrainingExcluded        Boolean               @default(false)
+  atTrainingExclusionReason String?
   createdAt                 DateTime              @default(now())
   createdBy                 String                @default("system@baro.local")
   createdByEmployeeId       Int?

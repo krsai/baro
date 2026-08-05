@@ -3275,6 +3275,7 @@ const loadAtTrainingSourceWorkLogs = async ({
             },
             assignmentPlan: {
               select: {
+                atTrainingExcluded: true,
                 // orderNo/customer dropped in Phase E - workOrder.orderNumber
                 // is the only source now (customer itself was already unused
                 // here).
@@ -3322,6 +3323,7 @@ const loadAtTrainingSourceWorkLogs = async ({
             },
             assignmentPlan: {
               select: {
+                atTrainingExcluded: true,
                 // orderNo/customer dropped in Phase E - workOrder.orderNumber
                 // is the only source now (customer itself was already unused
                 // here).
@@ -3392,7 +3394,9 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
   });
   const normalizedWorkLogs = workLogs.map((workLog) => ({
     ...workLog,
-    workRecords: ensureArray((workLog as any)?.workRecords).map((record) => {
+    workRecords: ensureArray((workLog as any)?.workRecords)
+      .filter((record) => (record as any)?.assignmentPlan?.atTrainingExcluded !== true)
+      .map((record) => {
       const assignmentPlanId = toPositiveIntOrNull((record as any)?.assignmentPlanId);
       const planStyleMeta =
         assignmentPlanId !== null ? styleMetaByPlanId.get(assignmentPlanId) ?? null : null;
@@ -4472,9 +4476,14 @@ const loadAtTrainingDataFromBuckets = async ({
             "sourceGroupKey",
             "quantity",
             "eventCount"
-          FROM "AtTrainingBucketProcess"
-          WHERE "orgId" = ${orgId} AND "bucketId" IN (${Prisma.join(bucketIds)})
-          ORDER BY "bucketId" ASC, "styleProcessId" ASC, "sourceGroupKey" ASC
+          FROM "AtTrainingBucketProcess" process
+          LEFT JOIN "AssignmentPlan" plan
+            ON plan."id" = process."assignmentPlanId"
+           AND plan."orgId" = process."orgId"
+          WHERE process."orgId" = ${orgId}
+            AND process."bucketId" IN (${Prisma.join(bucketIds)})
+            AND COALESCE(plan."atTrainingExcluded", false) = false
+          ORDER BY process."bucketId" ASC, process."styleProcessId" ASC, process."sourceGroupKey" ASC
         `)
       : [];
   const bucketProcessRowsByBucketId = bucketProcessRows.reduce((map, row) => {
@@ -14899,6 +14908,9 @@ const toAssignmentPlanResponse = (plan: any) => {
     closedBy: resolveOptionalString(plan?.closedBy, null),
     closeMode,
     closeBasis,
+    completionReason: resolveOptionalString(plan?.completionReason, null),
+    atTrainingExcluded: plan?.atTrainingExcluded === true,
+    atTrainingExclusionReason: resolveOptionalString(plan?.atTrainingExclusionReason, null),
     isPayrollLocked: Boolean(plan?.isPayrollLocked),
     payrollLockMonth: resolveOptionalString(plan?.payrollLockMonth, null),
     createdAt: plan.createdAt,
@@ -16127,6 +16139,9 @@ const ASSIGNMENT_PLAN_SELECT_WITH_CLOSE = {
   closedBy: true,
   closeMode: true,
   closeBasis: true,
+  completionReason: true,
+  atTrainingExcluded: true,
+  atTrainingExclusionReason: true,
 } as const;
 const ASSIGNMENT_PLAN_SELECT_FOR_BOARD_SAVE = {
   ...ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
@@ -23513,6 +23528,9 @@ const buildAssignmentPlanCloseResponse = (plan: any) => {
     quantity,
     isCompleted,
     finalQuantity,
+    completionReason: resolveOptionalString(plan?.completionReason, null),
+    atTrainingExcluded: plan?.atTrainingExcluded === true,
+    atTrainingExclusionReason: resolveOptionalString(plan?.atTrainingExclusionReason, null),
     qcPassedTotal,
     latestQcDate,
     completedAt,
@@ -24277,6 +24295,109 @@ app.patch("/assignment-plans/:externalId/production-complete", async (req, res) 
       scheduleStatus: ASSIGNMENT_STATUS_READY_TO_COMPLETE,
     },
     reorderedAssignments: 0,
+  });
+});
+
+app.patch("/assignment-plans/:externalId/record-omission-complete", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+  const externalId = resolveOptionalString(req.params.externalId, null);
+  if (!externalId) {
+    return res.status(400).json({ ok: false, error: "invalid externalId" });
+  }
+
+  const plan = await prisma.assignmentPlan.findFirst({
+    where: { orgId: organization.id, externalId },
+    include: ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
+  });
+  if (!plan) return res.status(404).json({ ok: false, error: "assignment plan not found" });
+  if (plan.isCompleted) {
+    return res.status(409).json({ ok: false, error: "assignment plan already completed" });
+  }
+  const plannedQuantity = resolveAssignmentQuantity(plan);
+  if (!plannedQuantity || plannedQuantity <= 0) {
+    return res.status(409).json({ ok: false, error: "assignment quantity is missing" });
+  }
+
+  const sourceRecords = await prisma.workRecord.findMany({
+    where: { orgId: organization.id, assignmentPlanId: plan.id },
+    select: { workLog: { select: { displayDate: true } } },
+  });
+  const latestWorkDateKey = sourceRecords
+    .map((row) => normalizeDateKey((row as any)?.workLog?.displayDate))
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1) ?? null;
+  if (!latestWorkDateKey) {
+    return res.status(409).json({
+      ok: false,
+      error: "manual completion requires at least one linked work record",
+    });
+  }
+  const completedAt =
+    toDateValueFromDateKeyForAssignmentSchedule(latestWorkDateKey) ?? new Date();
+  const actor = getCurrentRequestActor();
+  const updatedPlan = await prisma.$transaction(async (tx) => {
+    const changed = await tx.assignmentPlan.updateMany({
+      where: {
+        id: plan.id,
+        orgId: organization.id,
+        isCompleted: false,
+        updatedAt: plan.updatedAt,
+      },
+      data: {
+        isCompleted: true,
+        finalQuantity: plannedQuantity,
+        productionCompletedAt: completedAt,
+        completedAt,
+        closedQty: plannedQuantity,
+        closedAt: completedAt,
+        closedBy: actor,
+        closeMode: "FULL",
+        closeBasis: "MANUAL",
+        completionReason: "RECORD_OMISSION",
+        atTrainingExcluded: true,
+        atTrainingExclusionReason: "RECORD_OMISSION",
+        candidateEndDate: completedAt,
+        renderEndDate: completedAt,
+        forecastCompletedAt: null,
+        forecastBasis: ASSIGNMENT_FORECAST_BASIS_UNAVAILABLE,
+        scheduleStatus: ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
+      },
+    });
+    if (changed.count !== 1) return null;
+    return tx.assignmentPlan.findUnique({
+      where: { id: plan.id },
+      include: ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
+    });
+  });
+  if (!updatedPlan) {
+    return res.status(409).json({
+      ok: false,
+      error: "assignment plan was modified; reload and retry",
+    });
+  }
+
+  await persistAssignmentPlanProgressSnapshot({
+    orgId: organization.id,
+    assignmentPlanIds: [plan.id],
+  });
+  await syncOrderProgressStatusesForOrg({ orgId: organization.id });
+  let atRefreshWarning: string | null = null;
+  try {
+    await syncStyleProcessActualTimesFromWorkRecords(organization.id);
+  } catch (error) {
+    atRefreshWarning = getErrorMessage(error, "AT refresh failed");
+    console.error("[record-omission-complete] AT refresh failed", error);
+  }
+
+  return res.json({
+    ok: true,
+    plan: buildAssignmentPlanCloseResponse(updatedPlan),
+    latestLinkedWorkDate: latestWorkDateKey,
+    atRefreshWarning,
   });
 });
 

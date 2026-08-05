@@ -5651,6 +5651,11 @@ const AssignBoard = () => {
       !canAssignmentConfirmWorkDone(contextMenuTargetAssignment)
     );
   }, [contextMenuState, contextMenuTargetAssignment]);
+  const contextRecordOmissionCompleteDisabled = useMemo(() => {
+    if (!contextMenuState || contextMenuState.targetType !== 'assignment') return true;
+    if (!contextMenuTargetAssignment) return true;
+    return Boolean(contextMenuTargetAssignment.isCompleted) || Number(contextMenuTargetAssignment.quantity ?? 0) <= 0;
+  }, [contextMenuState, contextMenuTargetAssignment]);
 
   const handleContextMenuOpen = useCallback((payload) => {
     if (!persistReady || loading) return;
@@ -6584,6 +6589,41 @@ const AssignBoard = () => {
     handleConfirmProductionComplete(assignment.id, confirmedQty);
   }, [contextMenuState, assignmentById, promptConfirmedQuantity, handleConfirmProductionComplete]);
 
+  const handleContextRecordOmissionComplete = useCallback(async () => {
+    if (!contextMenuState || contextMenuState.targetType !== 'assignment') return;
+    const assignment = assignmentById.get(contextMenuState.id);
+    setContextMenuState(null);
+    if (!assignment?.id || assignment.isCompleted) return;
+    const confirmed = window.confirm(
+      languageCode === 'ko'
+        ? `작업기록 누락이 확인된 과거 배정만 수동 완료하세요.\n\n배정수량 ${Number(assignment.quantity || 0).toLocaleString()}장을 100% 완료 처리하고, 이 배정의 기록 전체를 AT 학습에서 제외합니다. 작업기록이나 생산수당 기록은 새로 만들지 않습니다. 계속할까요?`
+        : languageCode === 'vi'
+          ? 'Chi hoan tat thu cong khi da xac nhan thieu nhat ky. Ke hoach se hoan tat 100% va bi loai khoi hoc AT. He thong khong tao nhat ky hay phu cap moi. Tiep tuc?'
+          : 'Use this only when a historical work record is confirmed missing. The assignment will be 100% complete and excluded from AT training. No work or payroll record is created. Continue?'
+    );
+    if (!confirmed) return;
+    setCompletingAssignmentId(assignment.id);
+    try {
+      const result = await requestJSON(
+        `/assignment-plans/${encodeURIComponent(String(assignment.id))}/record-omission-complete` + buildQueryString({ orgId: activeOrgId }),
+        { method: 'PATCH' }
+      );
+      showNotification(
+        result?.atRefreshWarning
+          ? (languageCode === 'ko' ? '수동 완료했습니다. AT 재학습은 실패하여 서버 확인이 필요합니다.' : 'Saved, but AT refresh needs review.')
+          : (languageCode === 'ko' ? '기록 누락 사유로 수동 완료하고 AT 학습에서 제외했습니다.' : 'Manually completed and excluded from AT training.'),
+        result?.atRefreshWarning ? 'warning' : 'success'
+      );
+      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD], orgId: activeOrgId, assignmentIds: [assignment.id], source: 'assign-record-omission-complete' });
+      requestExternalBoardReload();
+      handleCloseDetail();
+    } catch (error) {
+      showNotification(String(error?.message || 'Manual completion failed'), 'error');
+    } finally {
+      setCompletingAssignmentId(null);
+    }
+  }, [activeOrgId, assignmentById, contextMenuState, handleCloseDetail, languageCode, requestExternalBoardReload, showNotification]);
+
   const getAssignmentOriginId = (assignment) => {
     if (!assignment) return null;
     const card = cardById.get(assignment.cardId);
@@ -7111,6 +7151,16 @@ const AssignBoard = () => {
           >
             {getUiMessage('assign.confirmWorkDone', '작업 완료 확인', languageCode)}
           </MenuItem>
+          <MenuItem
+            onClick={handleContextRecordOmissionComplete}
+            disabled={controlsDisabled || contextRecordOmissionCompleteDisabled}
+          >
+            {languageCode === 'ko'
+              ? '기록 누락으로 수동 완료'
+              : languageCode === 'vi'
+                ? 'Hoan tat thu cong do thieu nhat ky'
+                : 'Manual complete: missing record'}
+          </MenuItem>
         </Menu>
 
         <Drawer
@@ -7510,6 +7560,14 @@ const AssignBoard = () => {
                           : 'When you save the assignment, the current ST/CT inputs are stored in the snapshot.'}
                   </Typography>
                 </Paper>
+
+                {detailAssignment?.completionReason === 'RECORD_OMISSION' && (
+                  <Alert severity="warning">
+                    {languageCode === 'ko'
+                      ? `작업기록 누락으로 수동 완료된 배정이며 AT 학습에서 제외되었습니다.${detailAssignment.closedBy ? ` 처리자: ${detailAssignment.closedBy}` : ''}`
+                      : 'This assignment was manually completed because a work record was missing and is excluded from AT training.'}
+                  </Alert>
+                )}
 
                 {detailAssignment &&
                 !detailAssignmentIsCompleted &&
