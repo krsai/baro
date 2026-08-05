@@ -27100,6 +27100,7 @@ app.put("/assignment-board-state", async (req, res) => {
         .map((plan: any) => [resolveOptionalString(plan?.externalId, null), plan])
         .filter((entry): entry is [string, any] => Boolean(entry[0]))
     );
+    const completedExternalIdsToCanonicalize = new Set<string>();
     for (const plan of completedPlanRows) {
       const externalId = resolveOptionalString(plan?.externalId, null);
       if (!externalId) continue;
@@ -27118,9 +27119,9 @@ app.put("/assignment-board-state", async (req, res) => {
       }
       const changedFields = listCompletedAssignmentWriteDiffFields(plan, nextItem);
       if (changedFields.length > 0) {
-        throw createHttpError(
-          409,
-          `completed assignment cannot be modified: ${externalId} (${changedFields
+        completedExternalIdsToCanonicalize.add(externalId);
+        console.warn(
+          `[assignment-board-state] ignored completed assignment payload drift: ${externalId} (${changedFields
             .slice(0, 6)
             .join(", ")})`
         );
@@ -27144,13 +27145,28 @@ app.put("/assignment-board-state", async (req, res) => {
       }
       const changedFields = listCompletedAssignmentWriteDiffFields(currentItem, nextItem);
       if (changedFields.length > 0) {
-        throw createHttpError(
-          409,
-          `completed assignment cannot be modified: ${externalId} (${changedFields
+        completedExternalIdsToCanonicalize.add(externalId);
+        console.warn(
+          `[assignment-board-state] ignored completed assignment state drift: ${externalId} (${changedFields
             .slice(0, 6)
             .join(", ")})`
         );
       }
+    }
+    if (completedExternalIdsToCanonicalize.size > 0) {
+      nextAssignmentsNormalized = nextAssignmentsNormalized.map((item: any) => {
+        const externalId = resolveAssignmentExternalId(item);
+        if (!externalId || !completedExternalIdsToCanonicalize.has(externalId)) {
+          return item;
+        }
+        return currentAssignmentsByExternalId.get(externalId) ?? item;
+      });
+      nextAssignmentsByExternalId = buildAssignmentByExternalId(
+        nextAssignmentsNormalized
+      );
+      completedExternalIdsToCanonicalize.forEach((externalId) => {
+        changedIncomingExternalIds.delete(externalId);
+      });
     }
     // Defense in depth: by this point every completed assignment has already
     // passed the two guards above (no removal, no stDrafts, no write-relevant
