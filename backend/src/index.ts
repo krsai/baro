@@ -10931,10 +10931,12 @@ const resolveWorkLogImportLineForEmployee = ({
   employee,
   coverageEndDate,
   lineAssignmentsByEmployeeId,
+  linesByFactoryId,
 }: {
   employee: any;
   coverageEndDate: string;
   lineAssignmentsByEmployeeId: Map<number, any[]>;
+  linesByFactoryId: Map<number, Array<{ id: number; factoryId: number; name: string }>>;
 }) => {
   const employeeId = toPositiveIntOrNull(employee?.id);
   const assignments = employeeId
@@ -11043,6 +11045,23 @@ const resolveWorkLogImportLineForEmployee = ({
         factoryId: lineFactoryId,
         name: lineName,
         source: "employee_line_id",
+      },
+      error: null as string | null,
+    };
+  }
+
+  // Final recovery for a retroactively registered worker: if the employee has
+  // a factory and that factory has exactly one line, the line is unambiguous
+  // even when legacy mirrors/assignment history were not written correctly.
+  const employeeFactoryId = toPositiveIntOrNull(employee?.factoryId);
+  const factoryLines = employeeFactoryId
+    ? ensureArray(linesByFactoryId.get(employeeFactoryId))
+    : [];
+  if (factoryLines.length === 1) {
+    return {
+      line: {
+        ...factoryLines[0],
+        source: "single_factory_line_fallback",
       },
       error: null as string | null,
     };
@@ -25288,6 +25307,20 @@ app.post("/work-logs/import", async (req, res) => {
     map.set(lineId, line);
     return map;
   }, new Map<number, any>());
+  const linesByFactoryId = ensureArray(lines).reduce((map, line) => {
+    const resolvedLineId = toPositiveIntOrNull(line?.id);
+    const resolvedFactoryId = toPositiveIntOrNull(line?.factoryId);
+    const resolvedLineName = resolveOptionalString(line?.name, null);
+    if (!resolvedLineId || !resolvedFactoryId || !resolvedLineName) return map;
+    const bucket = map.get(resolvedFactoryId) ?? [];
+    bucket.push({
+      id: resolvedLineId,
+      factoryId: resolvedFactoryId,
+      name: resolvedLineName,
+    });
+    map.set(resolvedFactoryId, bucket);
+    return map;
+  }, new Map<number, Array<{ id: number; factoryId: number; name: string }>>());
 
   const preparedRows: Array<{
     row: (typeof importedRows)[number];
@@ -25302,6 +25335,7 @@ app.post("/work-logs/import", async (req, res) => {
       employee,
       coverageEndDate: row.coverageEndDate,
       lineAssignmentsByEmployeeId,
+      linesByFactoryId,
     });
     if (resolvedLine.error || !resolvedLine.line?.id || !resolvedLine.line?.factoryId) {
       issues.push(
