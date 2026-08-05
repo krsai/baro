@@ -31468,6 +31468,44 @@ const ensureProcessMasterOptionRelationSchemaReady = async () => {
 
 type StartupLifecycleState = "booting" | "ready" | "error";
 
+const UNASSIGNED_CARD_STYLE_TIME_REFRESH_SETTING_KEY =
+  "maintenance.unassigned-card-style-time-refresh.2026-08-05-v1";
+
+const refreshUnassignedCardsFromCurrentStyleTimesOnce = async () => {
+  await ensureSystemSettingStorageReady();
+  const completed = await prisma.systemSetting.findUnique({
+    where: { key: UNASSIGNED_CARD_STYLE_TIME_REFRESH_SETTING_KEY },
+    select: { key: true },
+  });
+  if (completed) return;
+
+  const manufacturerOrgIds = (
+    await prisma.organization.findMany({
+      where: { type: "MANUFACTURER" },
+      select: { id: true },
+      orderBy: { id: "asc" },
+    })
+  ).map((organization) => organization.id);
+
+  await rebuildAssignmentCardsForOrgIds(manufacturerOrgIds, {
+    refreshExistingAssignmentSnapshots: false,
+  });
+
+  await prisma.systemSetting.create({
+    data: {
+      key: UNASSIGNED_CARD_STYLE_TIME_REFRESH_SETTING_KEY,
+      value: {
+        manufacturerOrgIds,
+        refreshedAt: new Date().toISOString(),
+      },
+      updatedBy: "SYSTEM:UNASSIGNED_CARD_STYLE_TIME_REFRESH",
+    },
+  });
+  console.log(
+    `[startup] Refreshed unassigned assignment cards from current style PT/ST for manufacturer orgs: ${manufacturerOrgIds.join(",") || "none"}.`
+  );
+};
+
 let startupLifecycleState: StartupLifecycleState = "booting";
 let startupBootstrapAttempt = 0;
 let startupBootstrapRetryTimer: NodeJS.Timeout | null = null;
@@ -31497,6 +31535,7 @@ const bootstrapApplicationServices = async () => {
     await ensureProcessMasterOptionTypeSchemaReady();
     await ensureProcessMasterOptionRelationSchemaReady();
     await ensureHardcodedSystemAdmin();
+    await refreshUnassignedCardsFromCurrentStyleTimesOnce();
     startupLifecycleState = "ready";
     console.log(
       `[startup] Background bootstrap completed on attempt ${startupBootstrapAttempt}.`
