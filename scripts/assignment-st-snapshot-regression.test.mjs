@@ -136,6 +136,10 @@ test('style saves refresh unassigned cards without rewriting assigned snapshots'
   assert.match(rebuild, /const baseCards = buildAssignmentCardsFromOrders/);
   assert.match(
     rebuild,
+    /const hydratedStyles[\s\S]{0,220}timeBucketQuantities: ensureArray\(style\.timeBucketSetVersion\?\.entries\)/
+  );
+  assert.match(
+    rebuild,
     /options\.refreshExistingAssignmentSnapshots !== false[\s\S]{0,180}refreshUnlinkedAssignmentPlanSnapshotsForOrg/
   );
 

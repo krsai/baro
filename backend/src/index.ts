@@ -13302,6 +13302,9 @@ const rebuildAssignmentCardsForOrg = async (
   }
   const hydratedStyles = relationshipStyles.map((style) => ({
     ...style,
+    timeBucketQuantities: ensureArray(style.timeBucketSetVersion?.entries).map(
+      (entry) => entry.bucketQuantity
+    ),
     processes:
       processMirrorMap.get(Number(style.id)) ??
       initialProcessMirrorMap.get(Number(style.id)) ??
