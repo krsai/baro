@@ -124,8 +124,27 @@ test('style process mirrors fetch only standards from active relationship versio
   );
   assert.ok(
     loader.indexOf('loadRelationshipTimeBucketContextByStyleId') <
-      loader.indexOf('include: {\n      ...STYLE_PROCESS_STANDARD_INCLUDE'),
+      loader.indexOf('standards: {'),
     'active versions must be resolved before loading standards'
+  );
+});
+
+test('style saves refresh unassigned cards without rewriting assigned snapshots', () => {
+  const rebuildStart = backend.indexOf('const rebuildAssignmentCardsForOrg = async');
+  const rebuildEnd = backend.indexOf('const ASSIGNMENT_CARD_REBUILD_RETRYABLE_PRISMA_CODES', rebuildStart);
+  const rebuild = backend.slice(rebuildStart, rebuildEnd);
+  assert.match(rebuild, /const baseCards = buildAssignmentCardsFromOrders/);
+  assert.match(
+    rebuild,
+    /options\.refreshExistingAssignmentSnapshots !== false[\s\S]{0,180}refreshUnlinkedAssignmentPlanSnapshotsForOrg/
+  );
+
+  const updateStart = backend.indexOf('app.put("/styles/:styleId"');
+  const updateEnd = backend.indexOf('app.delete("/styles/:styleId"', updateStart);
+  const updateRoute = backend.slice(updateStart, updateEnd);
+  assert.match(
+    updateRoute,
+    /rebuildAssignmentCardsForOrgIds\([\s\S]{0,180}refreshExistingAssignmentSnapshots: false/
   );
 });
 

@@ -13183,7 +13183,14 @@ const loadAssignmentCardsForOrg = async ({
     .filter((row): row is Record<string, unknown> => Boolean(row));
   return cards;
 };
-const rebuildAssignmentCardsForOrg = async (orgId: number) => {
+type AssignmentCardRebuildOptions = {
+  refreshExistingAssignmentSnapshots?: boolean;
+};
+
+const rebuildAssignmentCardsForOrg = async (
+  orgId: number,
+  options: AssignmentCardRebuildOptions = {}
+) => {
   const diagPrefix = `[rebuildAssignmentCardsForOrg] orgId=${orgId}`;
   const organization = await prisma.organization.findUnique({
     where: { id: orgId },
@@ -13326,7 +13333,10 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
       orgId,
       cards: syncedCards,
     });
-    if (manufacturerScope) {
+    if (
+      manufacturerScope &&
+      options.refreshExistingAssignmentSnapshots !== false
+    ) {
       await refreshUnlinkedAssignmentPlanSnapshotsForOrg({
         orgId,
         cards: syncedCards,
@@ -13359,11 +13369,14 @@ const isRetryableAssignmentCardRebuildError = (error: unknown) => {
   if (!code) return false;
   return ASSIGNMENT_CARD_REBUILD_RETRYABLE_PRISMA_CODES.has(code);
 };
-const rebuildAssignmentCardsForOrgWithRetry = async (orgId: number) => {
+const rebuildAssignmentCardsForOrgWithRetry = async (
+  orgId: number,
+  options: AssignmentCardRebuildOptions = {}
+) => {
   let lastError: unknown = null;
   for (let attempt = 1; attempt <= ASSIGNMENT_CARD_REBUILD_MAX_ATTEMPTS; attempt += 1) {
     try {
-      return await rebuildAssignmentCardsForOrg(orgId);
+      return await rebuildAssignmentCardsForOrg(orgId, options);
     } catch (error) {
       lastError = error;
       if (
@@ -13377,11 +13390,14 @@ const rebuildAssignmentCardsForOrgWithRetry = async (orgId: number) => {
   }
   throw lastError;
 };
-const enqueueAssignmentCardRebuildForOrg = async (orgId: number) => {
+const enqueueAssignmentCardRebuildForOrg = async (
+  orgId: number,
+  options: AssignmentCardRebuildOptions = {}
+) => {
   const previous = assignmentCardRebuildChainByOrgId.get(orgId) ?? Promise.resolve();
   const current = previous
     .catch(() => null)
-    .then(() => rebuildAssignmentCardsForOrgWithRetry(orgId));
+    .then(() => rebuildAssignmentCardsForOrgWithRetry(orgId, options));
   assignmentCardRebuildChainByOrgId.set(orgId, current);
   try {
     return await current;
@@ -13391,7 +13407,10 @@ const enqueueAssignmentCardRebuildForOrg = async (orgId: number) => {
     }
   }
 };
-const rebuildAssignmentCardsForOrgIds = async (orgIds: Array<number | null | undefined>) => {
+const rebuildAssignmentCardsForOrgIds = async (
+  orgIds: Array<number | null | undefined>,
+  options: AssignmentCardRebuildOptions = {}
+) => {
   const uniqueOrgIds = Array.from(
     new Set(
       orgIds
@@ -13400,7 +13419,7 @@ const rebuildAssignmentCardsForOrgIds = async (orgIds: Array<number | null | und
     )
   );
   await Promise.all(
-    uniqueOrgIds.map((orgId) => enqueueAssignmentCardRebuildForOrg(orgId))
+    uniqueOrgIds.map((orgId) => enqueueAssignmentCardRebuildForOrg(orgId, options))
   );
 };
 const getOrderRelatedOrgIds = (order: any): number[] =>
@@ -29600,7 +29619,8 @@ app.post("/styles", async (req, res) => {
     : created;
 
   await rebuildAssignmentCardsForOrgIds(
-    await resolveStyleSyncTargetOrgIds(owner.ownerOrgId)
+    await resolveStyleSyncTargetOrgIds(owner.ownerOrgId),
+    { refreshExistingAssignmentSnapshots: false }
   );
   res
     .status(201)
@@ -29756,7 +29776,8 @@ app.put("/styles/:styleId", async (req, res) => {
     : new Map<number, any[]>();
 
   await rebuildAssignmentCardsForOrgIds(
-    await resolveStyleSyncTargetOrgIds(existing.orgId)
+    await resolveStyleSyncTargetOrgIds(existing.orgId),
+    { refreshExistingAssignmentSnapshots: false }
   );
   const responseUpdated = includeProcesses
     ? applyRelationshipTimeBucketContexts({
@@ -30084,7 +30105,9 @@ app.post("/styles/import", async (req, res) => {
   const syncTargetOrgIds = (
     await Promise.all(uniqueOwnerOrgIds.map((orgId) => resolveStyleSyncTargetOrgIds(orgId)))
   ).flat();
-  await rebuildAssignmentCardsForOrgIds(syncTargetOrgIds);
+  await rebuildAssignmentCardsForOrgIds(syncTargetOrgIds, {
+    refreshExistingAssignmentSnapshots: false,
+  });
   res.status(201).json(
     imported.map((style) =>
       toStyleResponse(style, { includeProcesses, processMirrorMap })
