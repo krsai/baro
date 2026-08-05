@@ -31468,6 +31468,48 @@ const ensureProcessMasterOptionRelationSchemaReady = async () => {
 
 type StartupLifecycleState = "booting" | "ready" | "error";
 
+const AJ1867_UNASSIGNED_CARD_REFRESH_KEY =
+  "maintenance.unassigned-card-refresh.AJ1867.2026-08-05-v1";
+
+const refreshAj1867UnassignedCardOnce = async () => {
+  await ensureSystemSettingStorageReady();
+  const completed = await prisma.systemSetting.findUnique({
+    where: { key: AJ1867_UNASSIGNED_CARD_REFRESH_KEY },
+    select: { key: true },
+  });
+  if (completed) return;
+
+  const styles = await prisma.style.findMany({
+    where: { OR: [{ code: "AJ1867" }, { name: "AJ1867" }] },
+    select: { id: true, orgId: true },
+  });
+  const brandOrgIds = Array.from(new Set(styles.map((style) => style.orgId)));
+  const manufacturerOrgIds = brandOrgIds.length
+    ? (
+        await prisma.orgRelationship.findMany({
+          where: { brandOrgId: { in: brandOrgIds } },
+          select: { manufacturerOrgId: true },
+        })
+      ).map((relationship) => relationship.manufacturerOrgId)
+    : [];
+
+  await rebuildAssignmentCardsForOrgIds(manufacturerOrgIds, {
+    refreshExistingAssignmentSnapshots: false,
+  });
+  await prisma.systemSetting.create({
+    data: {
+      key: AJ1867_UNASSIGNED_CARD_REFRESH_KEY,
+      value: {
+        styleIds: styles.map((style) => style.id),
+        manufacturerOrgIds,
+        refreshedAt: new Date().toISOString(),
+      },
+      updatedBy: "SYSTEM:AJ1867_UNASSIGNED_CARD_REFRESH",
+    },
+  });
+  console.log("[startup] AJ1867 unassigned card PT/ST refresh completed.");
+};
+
 let startupLifecycleState: StartupLifecycleState = "booting";
 let startupBootstrapAttempt = 0;
 let startupBootstrapRetryTimer: NodeJS.Timeout | null = null;
@@ -31497,6 +31539,7 @@ const bootstrapApplicationServices = async () => {
     await ensureProcessMasterOptionTypeSchemaReady();
     await ensureProcessMasterOptionRelationSchemaReady();
     await ensureHardcodedSystemAdmin();
+    await refreshAj1867UnassignedCardOnce();
     startupLifecycleState = "ready";
     console.log(
       `[startup] Background bootstrap completed on attempt ${startupBootstrapAttempt}.`
