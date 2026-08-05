@@ -358,7 +358,9 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
         data: {
           orgId: organization.id,
           factoryId: createdFactory.id,
-          name: "기본 창고",
+          name: "Default Warehouse",
+          nameKo: "기본 창고",
+          nameVi: "Kho mặc định",
           isDefault: true,
         },
       });
@@ -593,7 +595,9 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
           data: {
             orgId: organization.id,
             factoryId,
-            name: "기본 창고",
+            name: "Default Warehouse",
+            nameKo: "기본 창고",
+            nameVi: "Kho mặc định",
             isDefault: true,
           },
         });
@@ -617,10 +621,12 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     const factory = await prisma.factory.findFirst({ where: { id: factoryId, orgId: organization.id }, select: { id: true } });
     if (!factory) return res.status(404).json({ ok: false, error: "factory not found" });
     const name = normalizeOptionalFactoryText(req.body?.name);
+    const nameKo = normalizeOptionalFactoryText(req.body?.nameKo);
+    const nameVi = normalizeOptionalFactoryText(req.body?.nameVi);
     if (!name) return res.status(400).json({ ok: false, error: "warehouse name is required" });
     try {
       const warehouse = await prisma.warehouse.create({
-        data: { orgId: organization.id, factoryId, name, isDefault: false, isActive: true },
+        data: { orgId: organization.id, factoryId, name, nameKo, nameVi, isDefault: false, isActive: true },
       });
       return res.status(201).json(warehouse);
     } catch (error) {
@@ -644,6 +650,12 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     const name = req.body?.name === undefined
       ? existing.name
       : normalizeOptionalFactoryText(req.body.name);
+    const nameKo = req.body?.nameKo === undefined
+      ? existing.nameKo
+      : normalizeOptionalFactoryText(req.body.nameKo);
+    const nameVi = req.body?.nameVi === undefined
+      ? existing.nameVi
+      : normalizeOptionalFactoryText(req.body.nameVi);
     if (!name) return res.status(400).json({ ok: false, error: "warehouse name is required" });
     const nextIsActive = req.body?.isActive === undefined ? existing.isActive : Boolean(req.body.isActive);
     const makeDefault = req.body?.isDefault === true;
@@ -660,7 +672,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
         }
         return tx.warehouse.update({
           where: { id: warehouseId },
-          data: { name, isActive: makeDefault ? true : nextIsActive, isDefault: makeDefault ? true : existing.isDefault },
+          data: { name, nameKo, nameVi, isActive: makeDefault ? true : nextIsActive, isDefault: makeDefault ? true : existing.isDefault },
         });
       });
       return res.json(warehouse);

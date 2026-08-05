@@ -375,6 +375,8 @@ model Warehouse {
   orgId               Int
   factoryId           Int
   name                String
+  nameKo              String?
+  nameVi              String?
   isDefault           Boolean  @default(false)
   isActive            Boolean  @default(true)
   createdAt           DateTime @default(now())
