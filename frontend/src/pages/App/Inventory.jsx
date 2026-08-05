@@ -1,8 +1,8 @@
 import React from 'react';
-import InventoryBoard from './inventory/InventoryBoard';
+import InventoryWorkspace from './inventory/InventoryWorkspace';
 
-const Inventory = () => {
-  return <InventoryBoard />;
+const Inventory = ({ view }) => {
+  return <InventoryWorkspace view={view} />;
 };
 
 export default Inventory;

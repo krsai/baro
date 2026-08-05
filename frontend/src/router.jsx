@@ -363,7 +363,27 @@ const router = createBrowserRouter([
           },
           {
             path: 'inventory',
-            element: <Inventory />,
+            element: <Navigate to="/inventory/stock" replace />,
+          },
+          {
+            path: 'inventory/stock',
+            element: <Inventory view="stock" />,
+          },
+          {
+            path: 'inventory/movements/new',
+            element: <Inventory view="entry" />,
+          },
+          {
+            path: 'inventory/movements',
+            element: <Inventory view="history" />,
+          },
+          {
+            path: 'inventory/materials',
+            element: <Inventory view="materials" />,
+          },
+          {
+            path: 'inventory/settings',
+            element: <Inventory view="settings" />,
           },
           {
             path: 'work-history/new',

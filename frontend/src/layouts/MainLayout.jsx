@@ -645,16 +645,29 @@ const MainLayout = () => {
         isOpen: inventoryOpen,
         children: [
           {
-            label: getUiMessage('menu.qcReview', '검수', languageCode),
-            icon: <LocalShippingIcon />,
-            path: '/qc-review',
-            disabled: true,
+            label: getUiMessage('menu.inventoryStock', '재고 현황', languageCode),
+            icon: <Inventory2Icon />,
+            path: '/inventory/stock',
           },
           {
-            label: getUiMessage('menu.inventoryIssue', '\uC7AC\uACE0 \uBD88\uCD9C', languageCode),
-            icon: <Inventory2Icon />,
-            path: '/inventory',
-            disabled: true,
+            label: getUiMessage('menu.inventoryEntry', '입출고', languageCode),
+            icon: <LocalShippingIcon />,
+            path: '/inventory/movements/new',
+          },
+          {
+            label: getUiMessage('menu.inventoryHistory', '거래 내역', languageCode),
+            icon: <HistoryIcon />,
+            path: '/inventory/movements',
+          },
+          {
+            label: getUiMessage('menu.materials', '자재 관리', languageCode),
+            icon: <ListAltIcon />,
+            path: '/inventory/materials',
+          },
+          {
+            label: getUiMessage('menu.materialSettings', '자재 설정', languageCode),
+            icon: <TuneIcon />,
+            path: '/inventory/settings',
           },
         ],
       },
