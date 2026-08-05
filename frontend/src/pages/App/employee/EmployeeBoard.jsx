@@ -798,7 +798,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       setActiveMembers(
         list.filter((item) => {
           const status = String(item?.status || '').toUpperCase();
-          return status !== 'PENDING' && status !== 'REJECTED';
+          return status !== 'PENDING';
         })
       );
       emitMembershipUpdated({ orgId, pendingCount: pendingList.length });

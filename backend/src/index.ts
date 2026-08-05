@@ -25185,6 +25185,7 @@ app.post("/work-logs/import", async (req, res) => {
           where: {
             orgId: organization.id,
             employeeNo: { in: employeeNos },
+            status: { in: ["ACTIVE", "TERMINATED"] },
           },
           select: {
             id: true,
