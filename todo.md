@@ -31,6 +31,13 @@
 - [x] 동일 작업자·동일 WorkLog에 여러 작업 종류가 있으면 실측 근거 없이 출퇴근 총시간을 임의 분할하지 않고 진단과 함께 학습에서 제외한다.
 - [ ] 별도 `v4-stage-aware` 관측 저장과 단위 회귀 테스트는 완료했다. 운영 배포 후 봉제-only v3 대조와 다림질 실측 표본 대조를 수행한다.
 
+#### 2026-08-07 운영 DB 과거 데이터 점검
+
+- [x] `StyleProcess` 1,255건은 `productionStage` NULL 0건이며 전부 `SEWING`이다. org 1은 726건 중 AT 보유 693건, org 2는 529건 중 AT 보유 0건이다.
+- [x] 기존 `AtTrainingBucketProcess` 978건은 고아 `StyleProcess` FK 0건이고 연결된 공정은 전부 봉제다.
+- [x] 기존 `StyleProcessAtObservation`은 v2 919건과 `v3-st-stable` 919건이며 고아 공정 0건, 비봉제 연결 0건이다. 기존 `StyleProcess.atParams` 693건도 보존되어 있다.
+- [ ] 운영 DB에는 아직 `AtTrainingBucket.productionStage`, `StyleProcessAtObservation.productionStage` 컬럼과 `v4-stage-aware` 관측이 없다. `20260806123000_add_stage_aware_at_training` 배포 적용 후 NULL·단계 불일치·v4 생성 건수를 다시 검증한다.
+
 ---
 
 ## 1. 후순위: 직원 협의 후 진행할 급여
