@@ -14,6 +14,7 @@ import {
   DialogContentText,
   DialogTitle,
   IconButton,
+  MenuItem,
   Paper,
   Stack,
   Table,
@@ -67,6 +68,7 @@ import {
 
 const createEmptyDraft = () => ({
   processText: '',
+  productionStage: 'SEWING',
   part: null,
   target: null,
   targetSpec: null,
@@ -90,6 +92,7 @@ const PT_REFERENCE_QUANTITY = DEFAULT_TIME_REF_QUANTITY;
 const PROCESS_CODE_COLUMN_WIDTH = '16ch';
 const PROCESS_TIME_COLUMN_WIDTH = 140;
 const PROCESS_ACTION_COLUMN_WIDTH = 120;
+const PRODUCTION_STAGE_OPTIONS = ['SEWING', 'IRONING', 'INSPECTION', 'PACKING'];
 const DRAFT_TARGET_SLOT_FIELDS = [
   ['target', 'targetSpec'],
   ['target2', 'targetSpec2'],
@@ -110,6 +113,11 @@ const STYLE_PROCESS_MESSAGES = {
     addingTitle: '새 공정 추가',
     textProcessLabel: '공정(텍스트)',
     textProcessPlaceholder: '예: 앞판 어깨 봉제',
+    productionStageLabel: '작업 종류',
+    productionStageSEWING: '봉제',
+    productionStageIRONING: '다림질',
+    productionStageINSPECTION: '검품',
+    productionStagePACKING: '포장',
     selectionComposerTitle: '선택 방식(대상/동작)',
     selectionComposerExpand: '선택 방식 펼치기',
     selectionComposerCollapse: '선택 방식 접기',
@@ -197,6 +205,11 @@ const STYLE_PROCESS_MESSAGES = {
     addingTitle: 'New Process',
     textProcessLabel: 'Process Text',
     textProcessPlaceholder: 'e.g. Front panel shoulder join',
+    productionStageLabel: 'Work Type',
+    productionStageSEWING: 'Sewing',
+    productionStageIRONING: 'Ironing',
+    productionStageINSPECTION: 'Inspection',
+    productionStagePACKING: 'Packing',
     selectionComposerTitle: 'Selection mode (target/action)',
     selectionComposerExpand: 'Expand selection mode',
     selectionComposerCollapse: 'Collapse selection mode',
@@ -284,6 +297,11 @@ const STYLE_PROCESS_MESSAGES = {
     addingTitle: 'Cong doan moi',
     textProcessLabel: 'Cong doan (van ban)',
     textProcessPlaceholder: 'vi du: may noi vai than truoc',
+    productionStageLabel: 'Loai cong viec',
+    productionStageSEWING: 'May',
+    productionStageIRONING: 'Ui',
+    productionStageINSPECTION: 'Kiem hang',
+    productionStagePACKING: 'Dong goi',
     selectionComposerTitle: 'Che do chon (doi tuong/thao tac)',
     selectionComposerExpand: 'Mo rong che do chon',
     selectionComposerCollapse: 'Thu gon che do chon',
@@ -1166,6 +1184,9 @@ const buildProcessPayload = (
 
   return normalizeProcess({
     ...(existingProcess || {}),
+    productionStage: PRODUCTION_STAGE_OPTIONS.includes(draft?.productionStage)
+      ? draft.productionStage
+      : 'SEWING',
     id: existingProcess?.id ?? null,
     code: resolvedProcessCode || null,
     manualName: manualName || null,
@@ -1242,6 +1263,9 @@ const buildDraftFromProcess = (
 
   return {
     processText: fallbackProcessText,
+    productionStage: PRODUCTION_STAGE_OPTIONS.includes(safeProcess?.productionStage)
+      ? safeProcess.productionStage
+      : 'SEWING',
     part: normalizeProcessCompositionEntry(existingLocations[0], 'part'),
     target: normalizedTargetPairs[0]?.target ?? null,
     targetSpec: normalizedTargetPairs[0]?.targetSpec ?? null,
@@ -2818,6 +2842,14 @@ const StyleProcess = ({
                   <Stack spacing={0.25}>
                     <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
                       <span>{mainProcessLabel}</span>
+                      <Chip
+                        size="small"
+                        label={getStyleProcessMessage(
+                          languageCode,
+                          `productionStage${process?.productionStage ?? 'SEWING'}`
+                        )}
+                        variant="outlined"
+                      />
                       {reviewMeta.needsReview ? (
                         <Tooltip
                           title={
@@ -2993,6 +3025,27 @@ const StyleProcess = ({
                   placeholder={getStyleProcessMessage(languageCode, 'textProcessPlaceholder')}
                   sx={{ flex: 2, minWidth: 320 }}
                 />
+                <TextField
+                  select
+                  required
+                  size="small"
+                  label={getStyleProcessMessage(languageCode, 'productionStageLabel')}
+                  value={addDraft.productionStage ?? 'SEWING'}
+                  onChange={(event) => {
+                    setAddDraft((prev) => ({
+                      ...prev,
+                      productionStage: event.target.value,
+                    }));
+                    setAddError('');
+                  }}
+                  sx={{ minWidth: 140 }}
+                >
+                  {PRODUCTION_STAGE_OPTIONS.map((stage) => (
+                    <MenuItem key={stage} value={stage}>
+                      {getStyleProcessMessage(languageCode, `productionStage${stage}`)}
+                    </MenuItem>
+                  ))}
+                </TextField>
                 <TextField
                   required
                   size="small"

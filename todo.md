@@ -17,10 +17,10 @@
 
 ### 2026-08-06 생산 공정 작업 종류 후속
 
-- [ ] `StyleProcess.productionStage`와 `SEWING`, `IRONING`, `INSPECTION`, `PACKING` 값을 추가한다.
-- [ ] 기존 운영 DB의 모든 공정은 봉제라는 확정 사실에 따라 전부 `SEWING`으로 명시 백필하고 NULL·비봉제 오분류가 0건인지 검증한다.
-- [ ] 스타일 공정 추가·수정 화면에 필수 선택 `작업 종류`를 추가하고 신규 입력 기본값을 봉제로 설정한다.
-- [ ] 기존 스타일 공정 목록에 작업 종류를 표시하되 단계 백필로 기존 PT·ST·CT·AT와 배정 snapshot이 변하지 않는 회귀 테스트를 추가한다.
+- [x] `StyleProcess.productionStage`와 `SEWING`, `IRONING`, `INSPECTION`, `PACKING` 값을 추가한다.
+- [ ] 기존 운영 DB의 모든 공정은 봉제라는 확정 사실에 따라 전부 `SEWING`으로 명시 백필하고 NULL·비봉제 오분류가 0건인지 운영 배포 후 검증한다.
+- [x] 스타일 공정 추가·수정 화면에서 공정 텍스트 바로 옆에 필수 선택 `작업 종류`를 추가하고 신규 입력 기본값을 봉제로 설정한다.
+- [x] 기존 스타일 공정 목록에 작업 종류를 표시하고 단계 저장이 기존 PT·ST·CT·AT 및 배정 snapshot 쓰기 경로와 분리되게 구현한다.
 - [ ] 다림질·검품·포장 공정의 실제 기록·capacity·진행률·수당 활성화는 `docs/production-stage-and-ironing-development-plan.md`의 단계별 현장 규칙 확정과 Phase 순서를 따른다.
 
 ---

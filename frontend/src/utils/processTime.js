@@ -999,6 +999,11 @@ export const normalizeProcess = (process = {}, index = 0) => {
 
   return {
     ...safeProcess,
+    productionStage: ['SEWING', 'IRONING', 'INSPECTION', 'PACKING'].includes(
+      String(safeProcess.productionStage ?? '').trim().toUpperCase()
+    )
+      ? String(safeProcess.productionStage).trim().toUpperCase()
+      : 'SEWING',
     instanceId:
       typeof safeProcess.instanceId === 'string' && safeProcess.instanceId.trim()
         ? safeProcess.instanceId

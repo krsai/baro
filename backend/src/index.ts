@@ -748,6 +748,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "WorkOrderItem", columnName: "colorId" },
   { tableName: "Currency", columnName: "code" },
   { tableName: "StyleProcess", columnName: "timesPerPiece" },
+  { tableName: "StyleProcess", columnName: "productionStage" },
   { tableName: "StyleProcessStandard", columnName: "quantityBucketEntryId" },
   { tableName: "StyleProcessStandard", columnName: "quantityBucketSetVersionId" },
   { tableName: "StyleProcessStandard", columnName: "bucketStSeconds" },
@@ -5883,6 +5884,15 @@ const STYLE_PROCESS_STANDARD_INCLUDE: Prisma.StyleProcessInclude = {
   _count: { select: { workRecords: true } },
 };
 
+const PRODUCTION_STAGES = ["SEWING", "IRONING", "INSPECTION", "PACKING"] as const;
+type ProductionStageValue = (typeof PRODUCTION_STAGES)[number];
+const normalizeProductionStage = (value: any): ProductionStageValue => {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return PRODUCTION_STAGES.includes(normalized as ProductionStageValue)
+    ? (normalized as ProductionStageValue)
+    : "SEWING";
+};
+
 const resolveStyleProcessStorageCode = (process: any, index: number) => {
   const explicitCode = normalizeProcessCodeKey(process?.code);
   if (explicitCode) return explicitCode;
@@ -5978,6 +5988,7 @@ const buildStyleProcessStorageDrafts = (processes: any): any[] =>
         resolveOptionalString(localizedNames.nameEn, null) ??
         resolveOptionalString((process as any)?.code, null) ??
         resolveStyleProcessStorageCode(process, index),
+      productionStage: normalizeProductionStage((process as any)?.productionStage),
       processComposition: normalizedComposition,
       processDescription: resolveOptionalString((process as any)?.description, null),
       timesPerPiece: toPositiveInt(
@@ -6112,6 +6123,7 @@ const buildStyleProcessMirrorFromRows = (
           code: resolveStyleProcessVisibleCode(row.processCode, displayProcess),
           storageCode: row.processCode,
           manualName,
+          productionStage: normalizeProductionStage(row.productionStage),
           name:
             manualName ||
             localizedNames.nameEn ||
@@ -6451,6 +6463,7 @@ const syncStyleProcessStorageForStyle = async ({
       id: true,
       processCode: true,
       processName: true,
+      productionStage: true,
       standards: {
         select: {
           bucketStSeconds: true,
@@ -6538,6 +6551,7 @@ const syncStyleProcessStorageForStyle = async ({
           data: {
             processCode: draft.processCode,
             processName: draft.processName,
+            productionStage: draft.productionStage,
             processComposition: draft.processComposition ?? Prisma.JsonNull,
             processDescription: draft.processDescription,
             timesPerPiece: draft.timesPerPiece,
@@ -6556,6 +6570,7 @@ const syncStyleProcessStorageForStyle = async ({
           },
           update: {
             processName: draft.processName,
+            productionStage: draft.productionStage,
             processComposition: draft.processComposition ?? Prisma.JsonNull,
             processDescription: draft.processDescription,
             timesPerPiece: draft.timesPerPiece,
@@ -6568,6 +6583,7 @@ const syncStyleProcessStorageForStyle = async ({
             styleId,
             processCode: draft.processCode,
             processName: draft.processName,
+            productionStage: draft.productionStage,
             processComposition: draft.processComposition ?? Prisma.JsonNull,
             processDescription: draft.processDescription,
             timesPerPiece: draft.timesPerPiece,

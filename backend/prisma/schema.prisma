@@ -819,6 +819,7 @@ model StyleProcess {
   styleId             Int
   processCode         String
   processName         String
+  productionStage     ProductionStage @default(SEWING)
   processComposition  Json?
   processDescription  String?
   timesPerPiece       Int      @default(1)
@@ -849,6 +850,13 @@ model StyleProcess {
   @@unique([id, styleId, orgId], map: "StyleProcess_id_style_org_key")
   @@index([orgId])
   @@index([styleId])
+}
+
+enum ProductionStage {
+  SEWING
+  IRONING
+  INSPECTION
+  PACKING
 }
 
 model StyleProcessStandard {
