@@ -151,6 +151,8 @@ test('payroll persistence requires complete work records but keeps attendance in
   assert.match(payrollServiceSource, /prisma\.payrollSnapshot\.delete\(/);
   assert.match(payrollServiceSource, /needsRecalculation/);
   assert.match(payrollServiceSource, /groupsWithRecalculation/);
+  assert.match(payrollServiceSource, /configuredRateChanged/);
+  assert.match(payrollServiceSource, /configuredWagePerSecond/);
 });
 
 test('production startup applies safe database schema synchronization before serving requests', () => {
@@ -195,6 +197,8 @@ test('production allowance is calculated from the board and rows open read-only 
   assert.match(payrollBoardSource, /group\.factoryId/);
   assert.match(payrollBoardSource, /group\.lineId/);
   assert.match(payrollBoardSource, /snapshotLineTotal \/ snapshotEmployeeCount/);
+  assert.match(payrollBoardSource, /snapshotAppliedRate/);
+  assert.match(payrollBoardSource, /forceRefresh: true/);
   assert.doesNotMatch(payrollBoardSource, /snapshot\?\.lockedBy/);
   assert.doesNotMatch(payrollBoardSource, /snapshot\?\.lockedAt \?/);
   assert.match(payrollServiceSource, /export const unlockPayrollSnapshot/);
@@ -234,7 +238,7 @@ test('factory production allowance rate is derived from the monthly production a
   assert.match(factoryRoutesSource, /targetMonthlyWage \/ FACTORY_WORK_SECONDS_PER_MONTH/);
   assert.match(factoryDetailSource, /name="wagePerSecond"/);
   assert.match(factoryDetailSource, /name="targetMonthlyWage"/);
-  assert.match(factoryDetailSource, /name="productionAllowanceEffectiveMonth"/);
+  assert.match(factoryDetailSource, /productionAllowanceEffectiveMonth: value\.format\('YYYY-MM'\)/);
   assert.match(factoryDetailSource, /computedWagePerSecond/);
   assert.match(factoryRoutesSource, /factoryProductionAllowanceRate\.upsert/);
   assert.match(factoryRoutesSource, /existingRateCount === 0/);

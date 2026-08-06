@@ -331,6 +331,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         factoryNameVi: line.factory.nameVi,
         lineId: line.id,
         lineName: line.name,
+        configuredWagePerSecond: resolveFactoryProductionAllowanceRate(line.factory),
         employeeCount: employees.length,
         expectedWorkingDayCount: expectedDates.length,
         workRecordedDayCount: workDateKeys.size,
@@ -400,11 +401,21 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     const calculatedBasisChanged = Boolean(
       snapshot && Math.abs(expectedTotal - snapshotTotal) > 0.000001
     );
+    const configuredRateChanged = Boolean(snapshot && snapshotEmployees.some((employee) =>
+      !employee.rateOverridden && ensureArray(employee.processes).some((process) =>
+        Number(process?.factoryId) === group.factoryId &&
+        Number(process?.lineId) === group.lineId &&
+        Math.abs(
+          toPayrollAmount(process?.wagePerSecond, 0) -
+          toPayrollAmount(group.configuredWagePerSecond, 0)
+        ) > 0.000001
+      )
+    ));
     return {
       ...group,
       needsRecalculation: Boolean(
         snapshot && snapshot.isProvisional &&
-        (sourceChangedAfterCalculation || calculatedBasisChanged || !group.ready)
+        (sourceChangedAfterCalculation || configuredRateChanged || calculatedBasisChanged || !group.ready)
       ),
     };
   });

@@ -125,7 +125,10 @@ const PayrollEntry = () => {
     if (!activeOrgId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return;
     setLoading(true);
     try {
-      const payload = await requestJSON('/payroll' + buildQueryString({ orgId: activeOrgId, month }));
+      const payload = await requestJSON(
+        '/payroll' + buildQueryString({ orgId: activeOrgId, month }),
+        { forceRefresh: true }
+      );
       setData(payload);
       const loadedRates = buildEmployeeRateDrafts(payload?.employees);
       setRateDrafts(loadedRates);

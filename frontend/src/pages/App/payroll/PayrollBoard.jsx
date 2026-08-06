@@ -40,6 +40,7 @@ const TEXT = {
     monthReady: '선택 월 계산 가능', monthIncomplete: '선택 월 자료 미완료', actions: '관리', lock: '잠금', unlockBeforeDelete: '잠금을 해제한 뒤 삭제할 수 있습니다.',
     factory: '공장', line: '라인', workCoverage: '작업기록', attendanceCoverage: '출퇴근 기록(참고)',
     averageProductionAllowance: '평균 생산수당',
+    appliedRate: '적용 초당 단가',
     basisErrors: '계산근거 오류',
     ready: '계산 가능', incomplete: '자료 미완료', noLines: '생산수당 대상 공장·라인이 없습니다.',
     needsRecalculation: '재계산 필요', recalculateConfirmed: '재계산',
@@ -58,6 +59,7 @@ const TEXT = {
     monthReady: 'Selected month is ready', monthIncomplete: 'Selected month data is incomplete', actions: 'Actions', lock: 'Lock', unlockBeforeDelete: 'Unlock this month before deleting it.',
     factory: 'Factory', line: 'Line', workCoverage: 'Work Records', attendanceCoverage: 'Attendance (Reference)',
     averageProductionAllowance: 'Average Production Allowance',
+    appliedRate: 'Applied Rate / sec',
     basisErrors: 'Basis Errors',
     ready: 'Ready', incomplete: 'Incomplete', noLines: 'No factory or line has production allowance employees.',
     needsRecalculation: 'Recalculation Required', recalculateConfirmed: 'Recalculate',
@@ -76,6 +78,7 @@ const TEXT = {
     monthReady: 'Thang da chon san sang', monthIncomplete: 'Du lieu thang chua day du', actions: 'Quan ly', lock: 'Khoa', unlockBeforeDelete: 'Mo khoa thang nay truoc khi xoa.',
     factory: 'Nha may', line: 'Chuyen', workCoverage: 'Du lieu san xuat', attendanceCoverage: 'Cham cong (tham khao)',
     averageProductionAllowance: 'Phu cap san luong trung binh',
+    appliedRate: 'Don gia ap dung/giay',
     basisErrors: 'Loi du lieu tinh',
     ready: 'Co the tinh', incomplete: 'Chua du du lieu', noLines: 'Khong co nha may hoac chuyen co nhan vien tinh phu cap san luong.',
     needsRecalculation: 'Can tinh lai', recalculateConfirmed: 'Tinh lai',
@@ -96,6 +99,9 @@ const formatDong = (value) =>
   `${formatNumberWithCommas(Math.round(Number(value)), {
     fallback: '0', maximumFractionDigits: 0,
   })} VND`;
+const formatRate = (value) => `${formatNumberWithCommas(Number(value), {
+  fallback: '0', maximumFractionDigits: 2,
+})} VND/s`;
 
 const PayrollBoard = () => {
   const { navigateToPath, showNotification } = useAppActions();
@@ -125,7 +131,7 @@ const PayrollBoard = () => {
     try {
       const query = buildQueryString({ orgId: activeOrgId });
       const [snapshotRows, calendarPayload] = await Promise.all([
-        requestJSON('/payroll/snapshots' + query, { skipGlobalLoading: silent }),
+        requestJSON('/payroll/snapshots' + query, { forceRefresh: true, skipGlobalLoading: silent }),
         requestJSON('/payroll/calendar' + query, { forceRefresh: true, skipGlobalLoading: true }),
       ]);
       const nextSnapshots = Array.isArray(snapshotRows) ? snapshotRows : [];
@@ -201,6 +207,13 @@ const PayrollBoard = () => {
           ),
           0
         );
+        const snapshotLineCtSeconds = matchingEmployees.reduce(
+          (sum, { processes }) => sum + processes.reduce(
+            (processSum, process) => processSum + Number(process?.totalCtSeconds || 0),
+            0
+          ),
+          0
+        );
         return {
           month,
           snapshot,
@@ -208,6 +221,9 @@ const PayrollBoard = () => {
           group,
           snapshotEmployeeCount: matchingEmployees.length,
           snapshotLineTotal,
+          snapshotAppliedRate: snapshotLineCtSeconds > 0
+            ? snapshotLineTotal / snapshotLineCtSeconds
+            : null,
         };
       });
     }),
@@ -261,13 +277,16 @@ const PayrollBoard = () => {
     const mutationKey = `recalculate:${month}:${group.factoryId}:${group.lineId}`;
     setMutating(mutationKey);
     try {
-      await requestJSON(
+      const updatedSnapshot = await requestJSON(
         `/payroll/snapshots/${month}/recalculate-line` + buildQueryString({ orgId: activeOrgId }),
         {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ factoryId: group.factoryId, lineId: group.lineId }),
         }
       );
+      setSnapshots((previous) => previous.map((row) =>
+        String(row?.month || '') === month ? updatedSnapshot : row
+      ));
       await load();
       showNotification(resolveText(languageCode, 'calculateSuccess', { month }), 'success');
     } catch (error) {
@@ -384,14 +403,15 @@ const PayrollBoard = () => {
                 <TableCell sx={{ fontWeight: 700 }} align="right">{text.employees}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{text.total}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{resolveText(languageCode, 'averageProductionAllowance')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="right">{resolveText(languageCode, 'appliedRate')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{text.status}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{resolveText(languageCode, 'lock')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{text.delete}</TableCell>
               </TableRow></TableHead>
               <TableBody>
-                {loading ? <TableStatusRow colSpan={9} message={resolveText(languageCode, 'loading')} />
-                  : lineRows.length === 0 ? <TableStatusRow colSpan={9} message={resolveText(languageCode, 'empty')} />
-                    : lineRows.map(({ month, snapshot, group, snapshotEmployeeCount, snapshotLineTotal }) => {
+                {loading ? <TableStatusRow colSpan={10} message={resolveText(languageCode, 'loading')} />
+                  : lineRows.length === 0 ? <TableStatusRow colSpan={10} message={resolveText(languageCode, 'empty')} />
+                    : lineRows.map(({ month, snapshot, group, snapshotEmployeeCount, snapshotLineTotal, snapshotAppliedRate }) => {
                       const rowNeedsRecalculation = Boolean(snapshot && group.needsRecalculation);
                       const recalculationKey = `recalculate:${month}:${group.factoryId}:${group.lineId}`;
                       const factoryName = languageCode === 'ko'
@@ -410,6 +430,7 @@ const PayrollBoard = () => {
                           <TableCell align="right">{snapshot ? snapshotEmployeeCount : group.employeeCount || 0}{text.peopleSuffix}</TableCell>
                           <TableCell align="right">{snapshot ? formatDong(snapshotLineTotal) : '-'}</TableCell>
                           <TableCell align="right">{snapshot && snapshotEmployeeCount > 0 ? formatDong(snapshotLineTotal / snapshotEmployeeCount) : '-'}</TableCell>
+                          <TableCell align="right">{snapshotAppliedRate === null ? '-' : formatRate(snapshotAppliedRate)}</TableCell>
                           <TableCell align="center">
                             {rowNeedsRecalculation && snapshot?.isProvisional ? (
                               <Button
