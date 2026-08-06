@@ -1198,6 +1198,119 @@ export const createLineRouter = ({
     );
   });
 
+  lineRouter.get("/line-assignment-history-candidates", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) {
+      return res.status(404).json({ ok: false, error: "organization not found" });
+    }
+    const factoryId = Number(req.query.factoryId);
+    if (!Number.isSafeInteger(factoryId) || factoryId <= 0) {
+      return res.status(400).json({ ok: false, error: "factoryId is required" });
+    }
+    const factory = await prisma.factory.findFirst({
+      where: { id: factoryId, orgId: organization.id },
+      select: { id: true },
+    });
+    if (!factory) {
+      return res.status(404).json({ ok: false, error: "factory not found" });
+    }
+    const workers = await prisma.employee.findMany({
+      where: {
+        orgId: organization.id,
+        factoryId,
+        orgRole: "WORKER",
+        status: { in: ["ACTIVE", "TERMINATED"] },
+        lineAssignments: { none: {} },
+        joinedAt: { not: null },
+        leftAt: { lte: dateKeyToStableDate(todayDateKey())! },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        factoryId: true,
+        joinedAt: true,
+        leftAt: true,
+        status: true,
+      },
+      orderBy: [{ leftAt: "desc" }, { name: "asc" }, { id: "asc" }],
+    });
+    return res.json(
+      workers.map((worker) => ({
+        ...worker,
+        joinedDate: toDateKeyInTimeZone(worker.joinedAt),
+        leftDate: toDateKeyInTimeZone(worker.leftAt),
+        isHistoricalCandidate: true,
+      }))
+    );
+  });
+
+  lineRouter.post("/line-assignments/history", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) {
+      return res.status(404).json({ ok: false, error: "organization not found" });
+    }
+    const employeeId = Number(req.body?.employeeId);
+    const lineId = Number(req.body?.lineId);
+    const startDate = normalizeDateKey(req.body?.startDate);
+    const endDate = normalizeDateKey(req.body?.endDate);
+    if (
+      !Number.isSafeInteger(employeeId) ||
+      employeeId <= 0 ||
+      !Number.isSafeInteger(lineId) ||
+      lineId <= 0 ||
+      !startDate ||
+      !endDate ||
+      startDate > endDate
+    ) {
+      return res.status(400).json({ ok: false, error: "invalid historical assignment" });
+    }
+    const [employee, line] = await Promise.all([
+      prisma.employee.findFirst({
+        where: { id: employeeId, orgId: organization.id, orgRole: "WORKER" },
+        select: { id: true, factoryId: true, joinedAt: true, leftAt: true },
+      }),
+      prisma.line.findFirst({
+        where: { id: lineId, orgId: organization.id },
+        select: { id: true, factoryId: true },
+      }),
+    ]);
+    if (!employee || !line || employee.factoryId !== line.factoryId) {
+      return res.status(404).json({ ok: false, error: "worker or line not found" });
+    }
+    const joinedDate = toDateKeyInTimeZone(employee.joinedAt);
+    const leftDate = toDateKeyInTimeZone(employee.leftAt);
+    if (
+      (joinedDate && startDate < joinedDate) ||
+      (leftDate && endDate > leftDate)
+    ) {
+      return res.status(400).json({ ok: false, error: "assignment outside employment period" });
+    }
+    const startAt = dateKeyToStableDate(startDate)!;
+    const endAt = dateKeyToStableDate(endDate)!;
+    const overlap = await prisma.lineAssignment.findFirst({
+      where: {
+        employeeId,
+        startAt: { lte: endAt },
+        OR: [{ endAt: null }, { endAt: { gte: startAt } }],
+      },
+      select: { id: true },
+    });
+    if (overlap) {
+      return res.status(409).json({ ok: false, error: "line assignment periods overlap" });
+    }
+    const created = await prisma.lineAssignment.create({
+      data: { employeeId, lineId, startAt, endAt },
+    });
+    return res.status(201).json({
+      id: created.id,
+      employeeId,
+      lineId,
+      startDate,
+      endDate,
+    });
+  });
+
   lineRouter.patch("/line-assignments/:id", async (req, res) => {
     const organization = await getOrganizationByQuery(req);
     if (!organization) {

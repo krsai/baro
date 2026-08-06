@@ -8,6 +8,7 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
   Grid,
   IconButton,
   InputLabel,
@@ -15,6 +16,7 @@ import {
   Paper,
   Select,
   Stack,
+  Switch,
   TextField,
   Tooltip,
   Typography,
@@ -149,6 +151,8 @@ const LineBoard = () => {
   const [historyRows, setHistoryRows] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [savingHistoryId, setSavingHistoryId] = useState(null);
+  const [includeTerminated, setIncludeTerminated] = useState(false);
+  const [historicalCandidates, setHistoricalCandidates] = useState([]);
 
   const buildOrgQuery = useCallback(
     (params = {}) => buildQueryString({ ...params, orgId: activeOrgId }),
@@ -218,19 +222,24 @@ const LineBoard = () => {
         setOriginalSnapshot(EMPTY_SNAPSHOT);
         clearInlineEdit();
         setNewLineName('');
+        setHistoricalCandidates([]);
         return;
       }
 
       setLoading(true);
       try {
-        const [lineRows, workerRows] = await Promise.all([
+        const [lineRows, workerRows, historicalRows] = await Promise.all([
           requestJSON('/lines' + buildOrgQuery({ factoryId })),
           requestJSON('/line-workers' + buildOrgQuery({ factoryId })),
+          requestJSON(
+            '/line-assignment-history-candidates' + buildOrgQuery({ factoryId })
+          ),
         ]);
         const normalized = normalizeDraftData(lineRows, workerRows);
         setLines(normalized.lines);
         setWorkers(normalized.workers);
         setOriginalSnapshot(buildDraftSnapshot(normalized.lines, normalized.workers));
+        setHistoricalCandidates(Array.isArray(historicalRows) ? historicalRows : []);
         clearInlineEdit();
         setNewLineName('');
       } catch (error) {
@@ -393,7 +402,10 @@ const LineBoard = () => {
       if (!destination) return;
       if (destination.droppableId === source.droppableId) return;
 
-      const employeeId = Number(draggableId);
+      const isHistoricalCandidate = String(draggableId).startsWith('historical-');
+      const employeeId = Number(
+        isHistoricalCandidate ? String(draggableId).slice('historical-'.length) : draggableId
+      );
       if (!Number.isFinite(employeeId)) return;
 
       const destinationId = String(destination.droppableId || '');
@@ -404,6 +416,20 @@ const LineBoard = () => {
             ? destinationId.slice(5)
             : null;
       if (destinationId !== 'unassigned' && !destinationLineKey) return;
+      if (isHistoricalCandidate) {
+        if (!destinationLineKey) return;
+        const worker = historicalCandidates.find((item) => Number(item.id) === employeeId);
+        setPendingAssignmentChange({
+          changeType: 'historical',
+          employeeId,
+          workerName: buildWorkerLabel(worker),
+          sourceLineKey: null,
+          destinationLineKey,
+          effectiveDate: worker?.joinedDate || toDateKey(worker?.joinedAt),
+          endDate: worker?.leftDate || toDateKey(worker?.leftAt),
+        });
+        return;
+      }
 
       const sourceLineKey =
         workers.find((worker) => worker.id === employeeId)?.currentLineKey ?? null;
@@ -415,6 +441,7 @@ const LineBoard = () => {
           ? toDateKey(worker?.joinedAt) || todayDateKey()
           : todayDateKey();
       setPendingAssignmentChange({
+        changeType: 'current',
         employeeId,
         workerName: buildWorkerLabel(worker),
         sourceLineKey,
@@ -422,12 +449,44 @@ const LineBoard = () => {
         effectiveDate: worker?.assignmentEffectiveDate || defaultEffectiveDate,
       });
     },
-    [saving, workers]
+    [historicalCandidates, saving, workers]
   );
 
-  const handleConfirmAssignmentChange = useCallback(() => {
+  const handleConfirmAssignmentChange = useCallback(async () => {
     const change = pendingAssignmentChange;
     if (!change || !/^\d{4}-\d{2}-\d{2}$/.test(change.effectiveDate || '')) return;
+    if (change.changeType === 'historical') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(change.endDate || '')) return;
+      const targetLine = lines.find((line) => line.localKey === change.destinationLineKey);
+      if (!targetLine?.id) {
+        showNotification('\uBA3C\uC800 \uC2E0\uADDC \uB77C\uC778\uC744 \uC800\uC7A5\uD55C \uD6C4 \uACFC\uAC70 \uC774\uB825\uC744 \uCD94\uAC00\uD574 \uC8FC\uC138\uC694.', 'warning');
+        return;
+      }
+      setSaving(true);
+      try {
+        await requestJSON('/line-assignments/history' + buildOrgQuery(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            employeeId: change.employeeId,
+            lineId: targetLine.id,
+            startDate: change.effectiveDate,
+            endDate: change.endDate,
+          }),
+        });
+        setHistoricalCandidates((previous) =>
+          previous.filter((worker) => Number(worker.id) !== change.employeeId)
+        );
+        emitLineAssignmentsUpdated({ orgId: activeOrgId });
+        showNotification('\uACFC\uAC70 \uB77C\uC778 \uBC30\uCE58 \uC774\uB825\uC744 \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.', 'success');
+        setPendingAssignmentChange(null);
+      } catch (error) {
+        showNotification(error?.message || '\uACFC\uAC70 \uB77C\uC778 \uC774\uB825 \uC800\uC7A5\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.', 'error');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     setWorkers((prev) =>
       prev.map((worker) =>
         worker.id === change.employeeId
@@ -450,7 +509,7 @@ const LineBoard = () => {
       );
     }
     setPendingAssignmentChange(null);
-  }, [pendingAssignmentChange]);
+  }, [activeOrgId, buildOrgQuery, lines, pendingAssignmentChange, showNotification]);
 
   const handleOpenHistory = useCallback(
     async (event, worker) => {
@@ -577,10 +636,10 @@ const LineBoard = () => {
   ]);
 
   const renderWorkerCard = useCallback(
-    (worker, index, isManager = false) => (
+    (worker, index, isManager = false, isHistorical = false) => (
       <Draggable
         key={worker.id}
-        draggableId={String(worker.id)}
+        draggableId={isHistorical ? `historical-${worker.id}` : String(worker.id)}
         index={index}
         isDragDisabled={saving}
       >
@@ -615,6 +674,14 @@ const LineBoard = () => {
             <Typography variant="body2" fontWeight={isManager ? 700 : 500} noWrap sx={{ flex: 1 }}>
               {buildWorkerLabel(worker)}
             </Typography>
+            {isHistorical ? (
+              <Chip
+                size="small"
+                color="default"
+                variant="outlined"
+                label={`${worker.joinedDate || '-'} ~ ${worker.leftDate || '-'}`}
+              />
+            ) : null}
             {worker.assignmentEffectiveDate ? (
               <Chip
                 size="small"
@@ -623,7 +690,7 @@ const LineBoard = () => {
                 title="\uB77C\uC778 \uC801\uC6A9\uC77C"
               />
             ) : null}
-            <Tooltip title="\uB77C\uC778 \uBC30\uCE58 \uC774\uB825">
+            {!isHistorical ? <Tooltip title="\uB77C\uC778 \uBC30\uCE58 \uC774\uB825">
               <IconButton
                 size="small"
                 onMouseDown={(event) => event.stopPropagation()}
@@ -631,7 +698,7 @@ const LineBoard = () => {
               >
                 <HistoryIcon fontSize="small" />
               </IconButton>
-            </Tooltip>
+            </Tooltip> : null}
             {isManager ? (
               <Chip size="small" label="라인장" color="primary" variant="filled" />
             ) : null}
@@ -808,6 +875,17 @@ const LineBoard = () => {
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                   라인 카드로 드래그해 배정하세요.
                 </Typography>
+                <FormControlLabel
+                  control={(
+                    <Switch
+                      size="small"
+                      checked={includeTerminated}
+                      onChange={(event) => setIncludeTerminated(event.target.checked)}
+                    />
+                  )}
+                  label={'\uD1F4\uC0AC\uC790 \uD3EC\uD568'}
+                  sx={{ mb: 1 }}
+                />
                 <Droppable droppableId="unassigned" isDropDisabled={saving}>
                   {(provided, snapshot) => (
                     <Box
@@ -842,6 +920,47 @@ const LineBoard = () => {
                     </Box>
                   )}
                 </Droppable>
+                {includeTerminated ? (
+                  <Box sx={{ mt: 2 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.75 }}>
+                      <Typography variant="subtitle2" fontWeight={700}>
+                        {'\uACFC\uAC70 \uC774\uB825 \uBBF8\uB4F1\uB85D \uD1F4\uC0AC\uC790'}
+                      </Typography>
+                      <Chip size="small" label={`${historicalCandidates.length}\uBA85`} />
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                      {'\uB77C\uC778\uC73C\uB85C \uB4DC\uB798\uADF8\uD558\uBA74 \uC785\uC0AC\uC77C~\uD1F4\uC0AC\uC77C \uC774\uB825\uC744 \uB4F1\uB85D\uD569\uB2C8\uB2E4.'}
+                    </Typography>
+                    <Droppable droppableId="historical-unassigned" isDropDisabled={saving}>
+                      {(provided, snapshot) => (
+                        <Box
+                          ref={provided.innerRef}
+                          {...provided.droppableProps}
+                          sx={{
+                            minHeight: 120,
+                            maxHeight: 320,
+                            overflowY: 'auto',
+                            borderRadius: 1.75,
+                            border: '1px dashed',
+                            borderColor: snapshot.isDraggingOver ? 'text.secondary' : 'divider',
+                            backgroundColor: (theme) => alpha(theme.palette.grey[500], 0.05),
+                            p: 0.75,
+                          }}
+                        >
+                          {historicalCandidates.length === 0 ? (
+                            <Typography variant="caption" color="text.disabled">
+                              {'\uACFC\uAC70 \uB77C\uC778 \uC774\uB825\uC774 \uD544\uC694\uD55C \uD1F4\uC0AC\uC790\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.'}
+                            </Typography>
+                          ) : null}
+                          {historicalCandidates.map((worker, index) =>
+                            renderWorkerCard(worker, index, false, true)
+                          )}
+                          {provided.placeholder}
+                        </Box>
+                      )}
+                    </Droppable>
+                  </Box>
+                ) : null}
               </Paper>
             </Box>
 
@@ -1035,7 +1154,11 @@ const LineBoard = () => {
       maxWidth="xs"
       fullWidth
     >
-      <DialogTitle>{'\uB77C\uC778 \uC801\uC6A9\uC77C \uD655\uC778'}</DialogTitle>
+      <DialogTitle>
+        {pendingAssignmentChange?.changeType === 'historical'
+          ? '\uACFC\uAC70 \uB77C\uC778 \uC774\uB825 \uCD94\uAC00'
+          : '\uB77C\uC778 \uC801\uC6A9\uC77C \uD655\uC778'}
+      </DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {pendingAssignmentChange?.workerName || ''}
@@ -1052,8 +1175,25 @@ const LineBoard = () => {
           }
           InputLabelProps={{ shrink: true }}
         />
+        {pendingAssignmentChange?.changeType === 'historical' ? (
+          <TextField
+            fullWidth
+            type="date"
+            label="\uC885\uB8CC\uC77C"
+            value={pendingAssignmentChange?.endDate || ''}
+            onChange={(event) =>
+              setPendingAssignmentChange((previous) =>
+                previous ? { ...previous, endDate: event.target.value } : previous
+              )
+            }
+            InputLabelProps={{ shrink: true }}
+            sx={{ mt: 2 }}
+          />
+        ) : null}
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-          {pendingAssignmentChange?.destinationLineKey
+          {pendingAssignmentChange?.changeType === 'historical'
+            ? '\uC785\uC0AC\uC77C\uACFC \uD1F4\uC0AC\uC77C\uC774 \uAE30\uBCF8\uAC12\uC774\uBA70, \uC800\uC7A5 \uD6C4 \uD604\uC7AC \uB77C\uC778 \uC778\uC6D0\uC5D0\uB294 \uD3EC\uD568\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.'
+            : pendingAssignmentChange?.destinationLineKey
             ? '\uCD5C\uCD08 \uBC30\uCE58\uB294 \uC785\uC0AC\uC77C, \uB77C\uC778 \uC774\uB3D9\uC740 \uC624\uB298\uC774 \uAE30\uBCF8\uAC12\uC785\uB2C8\uB2E4.'
             : '\uC120\uD0DD\uD55C \uB0A0\uBD80\uD130 \uBBF8\uBC30\uC815\uC73C\uB85C \uCC98\uB9AC\uB429\uB2C8\uB2E4.'}
         </Typography>
@@ -1063,7 +1203,11 @@ const LineBoard = () => {
         <Button
           variant="contained"
           onClick={handleConfirmAssignmentChange}
-          disabled={!/^\d{4}-\d{2}-\d{2}$/.test(pendingAssignmentChange?.effectiveDate || '')}
+          disabled={
+            !/^\d{4}-\d{2}-\d{2}$/.test(pendingAssignmentChange?.effectiveDate || '') ||
+            (pendingAssignmentChange?.changeType === 'historical' &&
+              !/^\d{4}-\d{2}-\d{2}$/.test(pendingAssignmentChange?.endDate || ''))
+          }
         >
           {'\uD655\uC778'}
         </Button>
