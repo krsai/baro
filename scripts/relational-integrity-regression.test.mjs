@@ -22,6 +22,19 @@ test('runtime migration validates the canonical FK set atomically', async () => 
   assert.doesNotMatch(migration, /WorkRecord_(?:assignmentPlan_org|styleProcess_style_org)_fkey[\s\S]{0,200}NOT VALID/);
 });
 
+test('warehouse localized names are covered by runtime drift recovery', async () => {
+  const [migration, backend] = await Promise.all([
+    read('backend/migration_fix.sql'),
+    read('backend/src/index.ts'),
+  ]);
+  assert.match(
+    migration,
+    /ALTER TABLE "Warehouse"[\s\S]*ADD COLUMN IF NOT EXISTS "nameKo" TEXT[\s\S]*ADD COLUMN IF NOT EXISTS "nameVi" TEXT/
+  );
+  assert.match(backend, /tableName: "Warehouse", columnName: "nameKo"/);
+  assert.match(backend, /tableName: "Warehouse", columnName: "nameVi"/);
+});
+
 test('line and factory deletion never detach WorkRecords', async () => {
   const [lines, factories] = await Promise.all([
     read('backend/src/lines/line.routes.ts'),

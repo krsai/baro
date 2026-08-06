@@ -4334,6 +4334,20 @@ CREATE TABLE IF NOT EXISTS "Warehouse" (
   CONSTRAINT "Warehouse_pkey" PRIMARY KEY ("id")
 );
 
+-- Warehouse predates its localized display names in some deployed databases.
+-- Keep these additive columns in the runtime repair path as well as the dated
+-- Prisma migration so a restored or drifted database can recover idempotently.
+ALTER TABLE "Warehouse"
+  ADD COLUMN IF NOT EXISTS "nameKo" TEXT,
+  ADD COLUMN IF NOT EXISTS "nameVi" TEXT;
+
+UPDATE "Warehouse"
+SET
+  "name" = 'Default Warehouse',
+  "nameKo" = COALESCE(NULLIF("nameKo", ''), '기본 창고'),
+  "nameVi" = COALESCE(NULLIF("nameVi", ''), 'Kho mặc định')
+WHERE "name" = '기본 창고';
+
 CREATE UNIQUE INDEX IF NOT EXISTS "Warehouse_factoryId_name_key"
   ON "Warehouse"("factoryId", "name");
 CREATE UNIQUE INDEX IF NOT EXISTS "Warehouse_one_active_default_per_factory_key"
