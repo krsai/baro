@@ -1916,9 +1916,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             sx={{
               mb: 2,
               display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: { xs: 'flex-start', md: 'center' },
-              flexDirection: { xs: 'column', md: 'row' },
+              alignItems: 'stretch',
+              flexDirection: 'column',
               gap: 1,
             }}
           >
@@ -1930,7 +1929,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 1,
-                width: { xs: '100%', md: 'auto' },
+                width: '100%',
                 flexDirection: { xs: 'column', md: 'row' },
               }}
             >
@@ -1946,7 +1945,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 size="small"
                 value={selectedStatusFilter}
                 onChange={(e) => setSelectedStatusFilter(e.target.value)}
-                sx={{ minWidth: 160, width: { xs: '100%', md: 'auto' } }}
+                sx={{ minWidth: 160, width: { xs: '100%', md: 'auto' }, ml: { md: 'auto' } }}
               >
                 {employeeStatusFilterOptions.map((option) => (
                   <MenuItem key={option.value} value={option.value}>

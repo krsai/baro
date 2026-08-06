@@ -28,7 +28,10 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import SaveIcon from '@mui/icons-material/Save';
 import AppPageContainer from '../../../components/AppPageContainer';
+import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
+import MonthRangeSelector from '../../../components/MonthRangeSelector';
+import dayjs from 'dayjs';
 
 const MATERIALS = [
   { code: 'MAT-000001', type: '일반 스냅', name: 'HS-SCW-90003', maker: 'YKK', spec: '13mm / B', color: 'BLACK', unit: 'EA', stock: 2800, reserved: 600 },
@@ -79,21 +82,11 @@ const EmptyAction = ({ children }) => (
   <Button variant="contained" startIcon={<SaveIcon />} onClick={() => {}}>{children}</Button>
 );
 
-const StockView = () => {
-  const [keyword, setKeyword] = useState('');
+const StockView = ({ keyword }) => {
   const rows = useMemo(() => MATERIALS.filter((item) => Object.values(item).join(' ').toLowerCase().includes(keyword.toLowerCase())), [keyword]);
   return (
     <Stack spacing={2}>
       <UiNotice />
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Grid container spacing={1.5}>
-          <Grid item xs={12} md={4}><SearchInput fullWidth value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="자재코드, 종류, 품명, 규격 검색" /></Grid>
-          <Grid item xs={6} md={2}><TextField fullWidth select size="small" label="공장" defaultValue="HN"><MenuItem value="HN">하노이</MenuItem></TextField></Grid>
-          <Grid item xs={6} md={2}><TextField fullWidth select size="small" label="창고" defaultValue="all"><MenuItem value="all">전체</MenuItem><MenuItem value="default">기본 창고</MenuItem></TextField></Grid>
-          <Grid item xs={6} md={2}><TextField fullWidth select size="small" label="소유자" defaultValue="all"><MenuItem value="all">전체</MenuItem><MenuItem value="baro">BARO</MenuItem><MenuItem value="customer">고객 소유</MenuItem></TextField></Grid>
-          <Grid item xs={6} md={2}><TextField fullWidth select size="small" label="재고 상태" defaultValue="all"><MenuItem value="all">전체</MenuItem><MenuItem value="short">부족</MenuItem><MenuItem value="negative">음수</MenuItem></TextField></Grid>
-        </Grid>
-      </Paper>
       <Grid container spacing={2}>
         {[['등록 자재', '3개'], ['총 재고 위치', '3곳'], ['예약 품목', '3개'], ['부족·음수', '0개']].map(([label, value]) => (
           <Grid item xs={6} lg={3} key={label}><Card variant="outlined"><CardContent><Typography color="text.secondary" variant="body2">{label}</Typography><Typography variant="h5" fontWeight={800}>{value}</Typography></CardContent></Card></Grid>
@@ -138,30 +131,66 @@ const EntryView = () => {
   );
 };
 
-const HistoryView = () => {
-  const navigate = useNavigate();
-  return <Stack spacing={2}><UiNotice /><Box sx={{ display: 'flex', justifyContent: 'flex-end' }}><Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/inventory/movements/new')}>거래 등록</Button></Box><Paper variant="outlined" sx={{ p: 2 }}><Grid container spacing={1.5}><Grid item xs={12} md={4}><SearchInput fullWidth placeholder="문서번호, 자재, 처리자 검색" /></Grid><Grid item xs={6} md={2}><TextField fullWidth select size="small" label="거래 유형" defaultValue="all"><MenuItem value="all">전체</MenuItem></TextField></Grid><Grid item xs={6} md={2}><TextField fullWidth select size="small" label="창고" defaultValue="all"><MenuItem value="all">전체</MenuItem></TextField></Grid><Grid item xs={12} md={4}><TextField fullWidth size="small" label="조회 기간" defaultValue="2026-08-01 ~ 2026-08-05" /></Grid></Grid></Paper><Paper variant="outlined" sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>{['일자','거래 유형','문서번호','자재','수량','출발','도착','소유자','상태'].map((label) => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{MOVEMENTS.map((row) => <TableRow hover key={row.doc}><TableCell>{row.date}</TableCell><TableCell><Chip size="small" label={row.type} variant="outlined" /></TableCell><TableCell sx={{ fontWeight: 700 }}>{row.doc}</TableCell><TableCell>{row.material}</TableCell><TableCell sx={{ fontWeight: 700 }}>{row.quantity}</TableCell><TableCell>{row.from}</TableCell><TableCell>{row.to}</TableCell><TableCell>{row.owner}</TableCell><TableCell><Chip size="small" color="success" label={row.status} /></TableCell></TableRow>)}</TableBody></Table></Paper></Stack>;
-};
+const HistoryView = () => <Stack spacing={2}><UiNotice /><Paper variant="outlined" sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>{['일자','거래 유형','문서번호','자재','수량','출발','도착','소유자','상태'].map((label) => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{MOVEMENTS.map((row) => <TableRow hover key={row.doc}><TableCell>{row.date}</TableCell><TableCell><Chip size="small" label={row.type} variant="outlined" /></TableCell><TableCell sx={{ fontWeight: 700 }}>{row.doc}</TableCell><TableCell>{row.material}</TableCell><TableCell sx={{ fontWeight: 700 }}>{row.quantity}</TableCell><TableCell>{row.from}</TableCell><TableCell>{row.to}</TableCell><TableCell>{row.owner}</TableCell><TableCell><Chip size="small" color="success" label={row.status} /></TableCell></TableRow>)}</TableBody></Table></Paper></Stack>;
 
 const MaterialDialog = ({ open, onClose }) => (
   <Dialog open={open} onClose={onClose} fullWidth maxWidth="md"><DialogTitle>자재 품목 등록</DialogTitle><DialogContent dividers><Stack spacing={2}><Alert severity="info">자재 종류를 먼저 선택하면 연결된 규격과 세부 구분만 제안됩니다.</Alert><Grid container spacing={2}><Grid item xs={12} md={4}><TextField fullWidth select size="small" label="자재 종류 *" defaultValue="SNAP"><MenuItem value="SNAP">일반 스냅</MenuItem><MenuItem value="FABRIC">겉감</MenuItem><MenuItem value="POLYBAG">폴리백</MenuItem></TextField></Grid><Grid item xs={12} md={4}><TextField fullWidth size="small" label="품명" placeholder="HS-SCW-90003" /></Grid><Grid item xs={12} md={4}><TextField fullWidth size="small" label="제조사" /></Grid><Grid item xs={12} md={4}><TextField fullWidth size="small" label="외부 고유번호" /></Grid><Grid item xs={6} md={2}><TextField fullWidth select size="small" label="색상" defaultValue="BLACK"><MenuItem value="BLACK">BLACK</MenuItem></TextField></Grid><Grid item xs={6} md={2}><TextField fullWidth select size="small" label="규격" defaultValue="13"><MenuItem value="13">13mm</MenuItem></TextField></Grid><Grid item xs={6} md={2}><TextField fullWidth select size="small" label="세부 구분" defaultValue="B"><MenuItem value="B">B</MenuItem></TextField></Grid><Grid item xs={6} md={2}><TextField fullWidth select size="small" label="단위 *" defaultValue="EA"><MenuItem value="EA">EA</MenuItem></TextField></Grid><Grid item xs={6} md={3}><TextField fullWidth select size="small" label="lot 관리" defaultValue="yes"><MenuItem value="yes">사용</MenuItem><MenuItem value="no">미사용</MenuItem></TextField></Grid><Grid item xs={6} md={3}><TextField fullWidth select size="small" label="기본 소비 유형" defaultValue="per"><MenuItem value="per">생산수량당 사용량</MenuItem><MenuItem value="pack">1단위당 포장 수량</MenuItem><MenuItem value="fixed">주문당 고정 사용량</MenuItem></TextField></Grid></Grid></Stack></DialogContent><DialogActions><Button onClick={onClose}>취소</Button><Button variant="contained" onClick={onClose}>등록</Button></DialogActions></Dialog>
 );
 
-const MaterialsView = () => {
-  const [open, setOpen] = useState(false);
-  return <Stack spacing={2}><UiNotice /><Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}><SearchInput placeholder="코드, 종류, 품명, 제조사, 규격 검색" sx={{ width: { xs: '100%', md: 460 } }} /><Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpen(true)}>자재 등록</Button></Box><Paper variant="outlined" sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>{['자재코드','자재 종류','품명','제조사','규격','색상','단위','lot 관리'].map((label) => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{MATERIALS.map((item) => <TableRow hover key={item.code}><TableCell sx={{ fontWeight: 700 }}>{item.code}</TableCell><TableCell>{item.type}</TableCell><TableCell>{item.name}</TableCell><TableCell>{item.maker}</TableCell><TableCell>{item.spec}</TableCell><TableCell>{item.color}</TableCell><TableCell>{item.unit}</TableCell><TableCell>사용</TableCell></TableRow>)}</TableBody></Table></Paper><MaterialDialog open={open} onClose={() => setOpen(false)} /></Stack>;
-};
+const MaterialsView = () => <Stack spacing={2}><UiNotice /><Paper variant="outlined" sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>{['자재코드','자재 종류','품명','제조사','규격','색상','단위','lot 관리'].map((label) => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{MATERIALS.map((item) => <TableRow hover key={item.code}><TableCell sx={{ fontWeight: 700 }}>{item.code}</TableCell><TableCell>{item.type}</TableCell><TableCell>{item.name}</TableCell><TableCell>{item.maker}</TableCell><TableCell>{item.spec}</TableCell><TableCell>{item.color}</TableCell><TableCell>{item.unit}</TableCell><TableCell>사용</TableCell></TableRow>)}</TableBody></Table></Paper></Stack>;
 
 const SettingsView = () => {
   const [tab, setTab] = useState('types');
   const labels = { types: ['코드','자재 종류','기본 단위','사용 속성'], units: ['코드','표시명','소수 자릿수','수량 방식'], specs: ['코드','표시값','자재 종류','구분'] };
-  return <Stack spacing={2}><UiNotice /><Paper variant="outlined"><Tabs value={tab} onChange={(_event, value) => setTab(value)} variant="scrollable"><Tab value="types" label="자재 종류" /><Tab value="units" label="단위" /><Tab value="specs" label="규격·세부 구분" /><Tab value="colors" label="색상 연결" /></Tabs></Paper><Box sx={{ display: 'flex', justifyContent: 'flex-end' }}><Button variant="contained" startIcon={<AddIcon />}>새 항목</Button></Box>{tab === 'colors' ? <Alert severity="info">색상은 기존 공용 색상 마스터를 사용합니다. 이 화면에서는 자재 등록에 사용할 색상을 연결합니다.</Alert> : <Paper variant="outlined"><Table size="small"><TableHead><TableRow>{labels[tab].map((label) => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{SETTINGS[tab].map((row) => <TableRow hover key={row.join('-')}>{row.map((value) => <TableCell key={value}>{value}</TableCell>)}</TableRow>)}</TableBody></Table></Paper>}</Stack>;
+  return <Stack spacing={2}><UiNotice /><Paper variant="outlined"><Tabs value={tab} onChange={(_event, value) => setTab(value)} variant="scrollable"><Tab value="types" label="자재 종류" /><Tab value="units" label="단위" /><Tab value="specs" label="규격·세부 구분" /><Tab value="colors" label="색상 연결" /></Tabs></Paper>{tab === 'colors' ? <Alert severity="info">색상은 기존 공용 색상 마스터를 사용합니다. 이 화면에서는 자재 등록에 사용할 색상을 연결합니다.</Alert> : <Paper variant="outlined"><Table size="small"><TableHead><TableRow>{labels[tab].map((label) => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{SETTINGS[tab].map((row) => <TableRow hover key={row.join('-')}>{row.map((value) => <TableCell key={value}>{value}</TableCell>)}</TableRow>)}</TableBody></Table></Paper>}</Stack>;
 };
 
 const InventoryWorkspace = ({ view = 'stock' }) => {
+  const navigate = useNavigate();
   const [title, description] = PAGE_META[view] || PAGE_META.stock;
-  const content = { stock: <StockView />, entry: <EntryView />, history: <HistoryView />, materials: <MaterialsView />, settings: <SettingsView /> }[view] || <StockView />;
-  return <AppPageContainer header={<Stack spacing={0.5}><Typography variant="h6" fontWeight={800}>{title}</Typography><Typography variant="body2" color="text.secondary">{description}</Typography></Stack>}>{content}</AppPageContainer>;
+  const [keyword, setKeyword] = useState('');
+  const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
+  const [historyStartMonth, setHistoryStartMonth] = useState(() => dayjs('2026-08-01'));
+  const [historyEndMonth, setHistoryEndMonth] = useState(() => dayjs('2026-08-01'));
+  const shiftHistoryRange = (amount) => {
+    setHistoryStartMonth((previous) => previous.add(amount, 'month'));
+    setHistoryEndMonth((previous) => previous.add(amount, 'month'));
+  };
+  const titleActions = view === 'history' ? (
+    <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/inventory/movements/new')}>거래 등록</Button>
+  ) : view === 'materials' ? (
+    <Button variant="contained" startIcon={<AddIcon />} onClick={() => setMaterialDialogOpen(true)}>자재 등록</Button>
+  ) : view === 'settings' ? (
+    <Button variant="contained" startIcon={<AddIcon />}>새 항목</Button>
+  ) : null;
+  const toolbar = view === 'stock' ? (
+    <PageToolbar
+      showLastUpdater={false}
+      left={<SearchInput value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="자재코드, 종류, 품명, 규격 검색" />}
+      right={<Stack direction="row" spacing={1} useFlexGap flexWrap="wrap"><TextField select label="공장" defaultValue="HN" sx={{ minWidth: 150 }}><MenuItem value="HN">하노이</MenuItem></TextField><TextField select label="창고" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem><MenuItem value="default">기본 창고</MenuItem></TextField><TextField select label="소유자" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem><MenuItem value="baro">BARO</MenuItem><MenuItem value="customer">고객 소유</MenuItem></TextField><TextField select label="재고 상태" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem><MenuItem value="short">부족</MenuItem><MenuItem value="negative">음수</MenuItem></TextField></Stack>}
+    />
+  ) : view === 'history' ? (
+    <PageToolbar
+      showLastUpdater={false}
+      left={<SearchInput placeholder="문서번호, 자재, 처리자 검색" />}
+      right={<Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap"><TextField select label="거래 유형" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField><TextField select label="창고" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField><MonthRangeSelector startValue={historyStartMonth} endValue={historyEndMonth} onStartChange={setHistoryStartMonth} onEndChange={setHistoryEndMonth} onShift={shiftHistoryRange} /></Stack>}
+    />
+  ) : view === 'materials' ? (
+    <PageToolbar showLastUpdater={false} left={<SearchInput value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="코드, 종류, 품명, 제조사, 규격 검색" />} />
+  ) : null;
+  const content = { stock: <StockView keyword={keyword} />, entry: <EntryView />, history: <HistoryView />, materials: <MaterialsView />, settings: <SettingsView /> }[view] || <StockView keyword={keyword} />;
+  return (
+    <>
+      <AppPageContainer
+        title={title}
+        titleActions={titleActions}
+        header={description ? <Stack spacing={1.5}><Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}><Box><Typography variant="h5" fontWeight={700}>{title}</Typography><Typography variant="body2" color="text.secondary">{description}</Typography></Box>{titleActions}</Box>{toolbar}</Stack> : null}
+      >
+        {content}
+      </AppPageContainer>
+      <MaterialDialog open={materialDialogOpen} onClose={() => setMaterialDialogOpen(false)} />
+    </>
+  );
 };
 
 export default InventoryWorkspace;
