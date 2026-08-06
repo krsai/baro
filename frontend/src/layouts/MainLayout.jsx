@@ -674,6 +674,12 @@ const MainLayout = () => {
         isOpen: accountingOpen,
         children: [
           {
+            label: getUiMessage('menu.employee', '\uC9C1\uC6D0', languageCode),
+            icon: <GroupIcon />,
+            path: '/employee',
+            badgeCount: pendingEmployeeCount,
+          },
+          {
             label: getUiMessage('menu.payroll', '\uAE09\uC5EC \uACC4\uC0B0', languageCode),
             icon: <CalculateIcon />,
             path: '/payroll',
@@ -687,12 +693,6 @@ const MainLayout = () => {
         menuGroupKey: MENU_GROUP_KEYS.ADMIN,
         isOpen: adminOpen,
         children: [
-          {
-            label: getUiMessage('menu.employee', '\uC9C1\uC6D0', languageCode),
-            icon: <GroupIcon />,
-            path: '/employee',
-            badgeCount: pendingEmployeeCount,
-          },
           {
             label: getUiMessage('menu.holiday', '\uD734\uC77C', languageCode),
             icon: <CalendarMonthIcon />,
@@ -862,7 +862,7 @@ const MainLayout = () => {
         ].filter(Boolean);
       }
 
-      if (childPaths.has('/employee')) {
+      if (item.menuGroupKey === MENU_GROUP_KEYS.ADMIN) {
         orderedChildren = orderedChildren.filter((child) => child.path !== '/customer');
       }
 
