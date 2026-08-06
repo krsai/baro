@@ -20,6 +20,10 @@ const CustomDatePicker = ({
   const parsedValue = value ? dayjs(value) : dayjs();
   const safeValue = parsedValue.isValid() ? parsedValue : dayjs();
   const dateValue = monthOnly ? safeValue.startOf('month') : safeValue;
+  const parsedMinDate = minDate ? dayjs(minDate) : null;
+  const parsedMaxDate = maxDate ? dayjs(maxDate) : null;
+  const safeMinDate = parsedMinDate?.isValid() ? parsedMinDate : undefined;
+  const safeMaxDate = parsedMaxDate?.isValid() ? parsedMaxDate : undefined;
 
   const mergedSlotProps = {
     ...slotProps,
@@ -59,8 +63,8 @@ const CustomDatePicker = ({
       <DatePicker
         {...pickerProps}
         {...monthPickerProps}
-        minDate={minDate}
-        maxDate={maxDate}
+        minDate={safeMinDate}
+        maxDate={safeMaxDate}
         value={dateValue}
         onChange={handleChange}
         format={format || (monthOnly ? 'YYYY-MM' : 'YYYY-MM-DD')}
