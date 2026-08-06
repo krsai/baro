@@ -503,6 +503,19 @@ export const createEmployeeRouter = ({
           data: transactionData,
         });
 
+        if (leftAtParseResult.hasInput && leftAtParseResult.value !== null) {
+          await tx.lineAssignment.updateMany({
+            where: {
+              employeeId: upsertedEmployee.id,
+              OR: [
+                { endAt: null },
+                { endAt: { gt: leftAtParseResult.value } },
+              ],
+            },
+            data: { endAt: leftAtParseResult.value },
+          });
+        }
+
         await tx.factory.updateMany({
           where: {
             orgId: existingEmployee.orgId,

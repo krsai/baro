@@ -3,6 +3,10 @@ import {
   Box,
   Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   Grid,
   IconButton,
@@ -26,6 +30,7 @@ import FactoryOutlinedIcon from '@mui/icons-material/FactoryOutlined';
 import GroupWorkOutlinedIcon from '@mui/icons-material/GroupWorkOutlined';
 import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
 import PersonOffOutlinedIcon from '@mui/icons-material/PersonOffOutlined';
+import HistoryIcon from '@mui/icons-material/History';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
@@ -56,6 +61,19 @@ const buildWorkerLabel = (worker) => {
 
 const buildExistingLineKey = (lineId) => `line-${lineId}`;
 const buildNewLineKey = () => `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const toDateKey = (value) => {
+  if (!value) return '';
+  const text = String(value);
+  const match = text.match(/^\d{4}-\d{2}-\d{2}/);
+  if (match) return match[0];
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0, 10);
+};
+const todayDateKey = () => {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+};
 
 const normalizeDraftData = (lineRows = [], workerRows = []) => {
   const draftLines = (Array.isArray(lineRows) ? lineRows : []).map((line) => ({
@@ -82,6 +100,7 @@ const normalizeDraftData = (lineRows = [], workerRows = []) => {
       lineKeyById.has(String(worker.currentLineId))
         ? lineKeyById.get(String(worker.currentLineId))
         : null,
+    assignmentEffectiveDate: '',
   }));
   return { lines: draftLines, workers: draftWorkers };
 };
@@ -105,6 +124,7 @@ const buildDraftSnapshot = (lineRows = [], workerRows = []) =>
       .map((worker) => ({
         id: Number(worker?.id || 0),
         currentLineKey: worker?.currentLineKey || null,
+        assignmentEffectiveDate: worker?.assignmentEffectiveDate || '',
       }))
       .sort((a, b) => a.id - b.id),
   });
@@ -124,6 +144,11 @@ const LineBoard = () => {
   const [saving, setSaving] = useState(false);
   const [editingLineKey, setEditingLineKey] = useState(null);
   const [editingLineName, setEditingLineName] = useState('');
+  const [pendingAssignmentChange, setPendingAssignmentChange] = useState(null);
+  const [historyWorker, setHistoryWorker] = useState(null);
+  const [historyRows, setHistoryRows] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [savingHistoryId, setSavingHistoryId] = useState(null);
 
   const buildOrgQuery = useCallback(
     (params = {}) => buildQueryString({ ...params, orgId: activeOrgId }),
@@ -384,25 +409,101 @@ const LineBoard = () => {
         workers.find((worker) => worker.id === employeeId)?.currentLineKey ?? null;
       if (String(sourceLineKey ?? '') === String(destinationLineKey ?? '')) return;
 
-      setWorkers((prev) =>
-        prev.map((worker) =>
-          worker.id === employeeId
-            ? { ...worker, currentLineKey: destinationLineKey }
-            : worker
-        )
-      );
-
-      if (sourceLineKey) {
-        setLines((prev) =>
-          prev.map((line) =>
-            line.localKey === sourceLineKey && line.managerEmployeeId === employeeId
-              ? { ...line, managerEmployeeId: null }
-              : line
-          )
-        );
-      }
+      const worker = workers.find((item) => item.id === employeeId);
+      const defaultEffectiveDate =
+        destinationLineKey && !worker?.hasLineAssignmentHistory
+          ? toDateKey(worker?.joinedAt) || todayDateKey()
+          : todayDateKey();
+      setPendingAssignmentChange({
+        employeeId,
+        workerName: buildWorkerLabel(worker),
+        sourceLineKey,
+        destinationLineKey,
+        effectiveDate: worker?.assignmentEffectiveDate || defaultEffectiveDate,
+      });
     },
     [saving, workers]
+  );
+
+  const handleConfirmAssignmentChange = useCallback(() => {
+    const change = pendingAssignmentChange;
+    if (!change || !/^\d{4}-\d{2}-\d{2}$/.test(change.effectiveDate || '')) return;
+    setWorkers((prev) =>
+      prev.map((worker) =>
+        worker.id === change.employeeId
+          ? {
+              ...worker,
+              currentLineKey: change.destinationLineKey,
+              assignmentEffectiveDate: change.effectiveDate,
+            }
+          : worker
+      )
+    );
+    if (change.sourceLineKey) {
+      setLines((prev) =>
+        prev.map((line) =>
+          line.localKey === change.sourceLineKey &&
+          line.managerEmployeeId === change.employeeId
+            ? { ...line, managerEmployeeId: null }
+            : line
+        )
+      );
+    }
+    setPendingAssignmentChange(null);
+  }, [pendingAssignmentChange]);
+
+  const handleOpenHistory = useCallback(
+    async (event, worker) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setHistoryWorker(worker);
+      setHistoryRows([]);
+      setLoadingHistory(true);
+      try {
+        const rows = await requestJSON(
+          '/line-assignments/history' + buildOrgQuery({ employeeId: worker.id })
+        );
+        setHistoryRows(Array.isArray(rows) ? rows : []);
+      } catch (error) {
+        showNotification(error?.message || '\uB77C\uC778 \uC774\uB825\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.', 'error');
+      } finally {
+        setLoadingHistory(false);
+      }
+    },
+    [buildOrgQuery, showNotification]
+  );
+
+  const handleSaveHistoryRow = useCallback(
+    async (row) => {
+      setSavingHistoryId(row.id);
+      try {
+        const updated = await requestJSON(
+          `/line-assignments/${row.id}` + buildOrgQuery(),
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              startDate: row.startDate,
+              endDate: row.endDate || null,
+            }),
+          }
+        );
+        setHistoryRows((previous) =>
+          previous.map((item) =>
+            item.id === row.id
+              ? { ...item, startDate: updated.startDate, endDate: updated.endDate }
+              : item
+          )
+        );
+        emitLineAssignmentsUpdated({ orgId: activeOrgId });
+        showNotification('\uB77C\uC778 \uBC30\uCE58 \uC774\uB825\uC744 \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.', 'success');
+      } catch (error) {
+        showNotification(error?.message || '\uB77C\uC778 \uC774\uB825 \uC800\uC7A5\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.', 'error');
+      } finally {
+        setSavingHistoryId(null);
+      }
+    },
+    [activeOrgId, buildOrgQuery, showNotification]
   );
 
   const handleResetDraft = useCallback(async () => {
@@ -442,6 +543,7 @@ const LineBoard = () => {
           workerAssignments: workers.map((worker) => ({
             employeeId: worker.id,
             lineKey: worker.currentLineKey ?? null,
+            effectiveDate: worker.assignmentEffectiveDate || null,
           })),
         }),
       });
@@ -513,6 +615,23 @@ const LineBoard = () => {
             <Typography variant="body2" fontWeight={isManager ? 700 : 500} noWrap sx={{ flex: 1 }}>
               {buildWorkerLabel(worker)}
             </Typography>
+            {worker.assignmentEffectiveDate ? (
+              <Chip
+                size="small"
+                variant="outlined"
+                label={worker.assignmentEffectiveDate}
+                title="\uB77C\uC778 \uC801\uC6A9\uC77C"
+              />
+            ) : null}
+            <Tooltip title="\uB77C\uC778 \uBC30\uCE58 \uC774\uB825">
+              <IconButton
+                size="small"
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={(event) => handleOpenHistory(event, worker)}
+              >
+                <HistoryIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
             {isManager ? (
               <Chip size="small" label="라인장" color="primary" variant="filled" />
             ) : null}
@@ -520,10 +639,11 @@ const LineBoard = () => {
         )}
       </Draggable>
     ),
-    [saving]
+    [handleOpenHistory, saving]
   );
 
   return (
+    <>
     <AppPageContainer
       title="라인 관리"
       titleActions={(
@@ -909,6 +1029,111 @@ const LineBoard = () => {
         ) : null}
       </Stack>
     </AppPageContainer>
+    <Dialog
+      open={Boolean(pendingAssignmentChange)}
+      onClose={() => setPendingAssignmentChange(null)}
+      maxWidth="xs"
+      fullWidth
+    >
+      <DialogTitle>{'\uB77C\uC778 \uC801\uC6A9\uC77C \uD655\uC778'}</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {pendingAssignmentChange?.workerName || ''}
+        </Typography>
+        <TextField
+          fullWidth
+          type="date"
+          label="\uC801\uC6A9 \uC2DC\uC791\uC77C"
+          value={pendingAssignmentChange?.effectiveDate || ''}
+          onChange={(event) =>
+            setPendingAssignmentChange((previous) =>
+              previous ? { ...previous, effectiveDate: event.target.value } : previous
+            )
+          }
+          InputLabelProps={{ shrink: true }}
+        />
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+          {pendingAssignmentChange?.destinationLineKey
+            ? '\uCD5C\uCD08 \uBC30\uCE58\uB294 \uC785\uC0AC\uC77C, \uB77C\uC778 \uC774\uB3D9\uC740 \uC624\uB298\uC774 \uAE30\uBCF8\uAC12\uC785\uB2C8\uB2E4.'
+            : '\uC120\uD0DD\uD55C \uB0A0\uBD80\uD130 \uBBF8\uBC30\uC815\uC73C\uB85C \uCC98\uB9AC\uB429\uB2C8\uB2E4.'}
+        </Typography>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setPendingAssignmentChange(null)}>{'\uCDE8\uC18C'}</Button>
+        <Button
+          variant="contained"
+          onClick={handleConfirmAssignmentChange}
+          disabled={!/^\d{4}-\d{2}-\d{2}$/.test(pendingAssignmentChange?.effectiveDate || '')}
+        >
+          {'\uD655\uC778'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+    <Dialog open={Boolean(historyWorker)} onClose={() => setHistoryWorker(null)} maxWidth="sm" fullWidth>
+      <DialogTitle>
+        {buildWorkerLabel(historyWorker)} · {'\uB77C\uC778 \uBC30\uCE58 \uC774\uB825'}
+      </DialogTitle>
+      <DialogContent>
+        {loadingHistory ? (
+          <Typography color="text.secondary">{'\uBD88\uB7EC\uC624\uB294 \uC911...'}</Typography>
+        ) : historyRows.length === 0 ? (
+          <Typography color="text.secondary">{'\uC800\uC7A5\uB41C \uB77C\uC778 \uC774\uB825\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.'}</Typography>
+        ) : (
+          <Stack spacing={1}>
+            {historyRows.map((row) => (
+              <Paper key={row.id} variant="outlined" sx={{ p: 1.5 }}>
+                <Typography fontWeight={700}>{row.lineName}</Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
+                  <TextField
+                    size="small"
+                    type="date"
+                    label="\uC2DC\uC791\uC77C"
+                    value={row.startDate || ''}
+                    onChange={(event) =>
+                      setHistoryRows((previous) =>
+                        previous.map((item) =>
+                          item.id === row.id ? { ...item, startDate: event.target.value } : item
+                        )
+                      )
+                    }
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <TextField
+                    size="small"
+                    type="date"
+                    label="\uC885\uB8CC\uC77C"
+                    value={row.endDate || ''}
+                    onChange={(event) =>
+                      setHistoryRows((previous) =>
+                        previous.map((item) =>
+                          item.id === row.id
+                            ? { ...item, endDate: event.target.value || null }
+                            : item
+                        )
+                      )
+                    }
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <Button
+                    variant="outlined"
+                    onClick={() => handleSaveHistoryRow(row)}
+                    disabled={savingHistoryId === row.id || !row.startDate}
+                  >
+                    {'\uC800\uC7A5'}
+                  </Button>
+                </Stack>
+              </Paper>
+            ))}
+          </Stack>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setHistoryWorker(null)} disabled={savingHistoryId !== null}>
+          {'\uB2EB\uAE30'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 };
 

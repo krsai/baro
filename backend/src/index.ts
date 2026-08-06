@@ -10341,16 +10341,20 @@ const validateWorkLogLineWorkers = async ({
     status: 200,
     error: null as string | null,
     line,
-    missingWorkerIds,
+    // LineAssignment is capacity-planning history, not permission to record actual
+    // production. Employment and factory validation are enforced separately.
+    missingWorkerIds: [] as number[],
   };
 };
 const validateWorkLogWorkerEmploymentWindow = async ({
   orgId,
+  factoryId,
   coverageStartDate,
   coverageEndDate,
   workerIds,
 }: {
   orgId: number;
+  factoryId?: number | null;
   coverageStartDate: string;
   coverageEndDate: string;
   workerIds: number[];
@@ -10391,6 +10395,8 @@ const validateWorkLogWorkerEmploymentWindow = async ({
     where: {
       orgId,
       id: { in: workerIds },
+      orgRole: "WORKER",
+      ...(factoryId ? { factoryId } : {}),
     },
     select: {
       id: true,
@@ -12092,6 +12098,52 @@ const buildWorkLogContextResponse = async ({
       });
     });
   }
+
+  // A worker's permanent LineAssignment drives capacity, but workers may support a
+  // different line. Offer every employed WORKER in the selected factory and retain
+  // the date-effective home line only as display context.
+  const [factoryWorkers, factoryAssignmentsOnWorkDate] = await Promise.all([
+    prisma.employee.findMany({
+      where: {
+        orgId,
+        factoryId: line.factoryId,
+        orgRole: "WORKER",
+        status: { in: ["ACTIVE", "TERMINATED", "SUSPENDED"] },
+      },
+      select: lineAssignmentSelect.employee.select,
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+    }),
+    prisma.lineAssignment.findMany({
+      where: {
+        lineId: { in: factoryLineIds },
+        startAt: { lte: dateRange.endAt },
+        OR: [{ endAt: null }, { endAt: { gte: dateRange.startAt } }],
+        employee: { is: { orgId, factoryId: line.factoryId, orgRole: "WORKER" } },
+      },
+      select: { employeeId: true, lineId: true, startAt: true, endAt: true },
+      orderBy: [{ startAt: "desc" }, { id: "desc" }],
+    }),
+  ]);
+  const homeAssignmentByEmployeeId = new Map<number, any>();
+  factoryAssignmentsOnWorkDate.forEach((assignment) => {
+    if (!homeAssignmentByEmployeeId.has(assignment.employeeId)) {
+      homeAssignmentByEmployeeId.set(assignment.employeeId, assignment);
+    }
+  });
+  workersForDate = factoryWorkers
+    .filter((employee) =>
+      evaluateWorkerEmploymentOnDateKey({
+        joinedAt: employee.joinedAt,
+        leftAt: employee.leftAt,
+        targetDateKey: employmentFilterDateKey,
+      }).passed
+    )
+    .map((employee) => ({
+      ...(homeAssignmentByEmployeeId.get(employee.id) || {}),
+      employeeId: employee.id,
+      lineId: homeAssignmentByEmployeeId.get(employee.id)?.lineId ?? null,
+      employee,
+    }));
 
   const response = buildBaseResponse({
     line: { id: line.id, name: line.name ?? "" },
@@ -25666,6 +25718,7 @@ app.post("/work-logs/import", async (req, res) => {
       normalizeDateKey(normalized.coverageStartDate) || normalized.displayDate;
     const employmentValidation = await validateWorkLogWorkerEmploymentWindow({
       orgId: organization.id,
+      factoryId: normalized.factoryId,
       coverageStartDate: normalized.coverageStartDate,
       coverageEndDate: normalized.coverageEndDate,
       workerIds,
@@ -26076,6 +26129,7 @@ app.post("/work-logs", async (req, res) => {
   const workerFilterDateKey = normalizeDateKey(normalized.coverageStartDate) || normalized.displayDate;
   const employmentValidation = await validateWorkLogWorkerEmploymentWindow({
     orgId: organization.id,
+    factoryId: normalized.factoryId,
     coverageStartDate: normalized.coverageStartDate,
     coverageEndDate: normalized.coverageEndDate,
     workerIds,
@@ -26418,6 +26472,7 @@ app.put("/work-logs/:id", async (req, res) => {
   const workerFilterDateKey = normalizeDateKey(normalized.coverageStartDate) || normalized.displayDate;
   const employmentValidation = await validateWorkLogWorkerEmploymentWindow({
     orgId: organization.id,
+    factoryId: normalized.factoryId,
     coverageStartDate: normalized.coverageStartDate,
     coverageEndDate: normalized.coverageEndDate,
     workerIds,

@@ -55,6 +55,20 @@ const toDateKeyInTimeZone = (input: unknown, timeZone = BUSINESS_TIME_ZONE): str
 };
 const todayDateKey = () => toDateKeyInTimeZone(new Date()) || new Date().toISOString().slice(0, 10);
 
+const dateKeyToStableDate = (dateKey: string): Date | null => {
+  const normalized = normalizeDateKey(dateKey);
+  if (!normalized) return null;
+  const value = new Date(`${normalized}T12:00:00.000Z`);
+  return Number.isNaN(value.getTime()) ? null : value;
+};
+
+const previousDateKey = (dateKey: string): string => {
+  const value = new Date(`${dateKey}T12:00:00.000Z`);
+  if (Number.isNaN(value.getTime())) return "";
+  value.setUTCDate(value.getUTCDate() - 1);
+  return value.toISOString().slice(0, 10);
+};
+
 const buildEffectiveDateRange = (workDate: unknown) =>
   buildWorkDateRange(normalizeDateKey(workDate) || todayDateKey());
 
@@ -68,9 +82,7 @@ const buildLineEligibleWorkerWhere = (
     ? {
         AND: [
           { OR: [{ joinedAt: null }, { joinedAt: { lte: dateRange.endAt } }] },
-          // ACTIVE account status is treated as currently employed even if legacy
-          // leftAt data remains populated.
-          { status: "ACTIVE" },
+          { OR: [{ leftAt: null }, { leftAt: { gte: dateRange.startAt } }] },
         ],
       }
     : {}),
@@ -145,7 +157,7 @@ const syncEmployeeFactoryForLine = async ({
 
 const buildFactoryLineBoardSnapshot = async (orgId: number, factoryId: number) => {
   const todayRange = buildEffectiveDateRange(null);
-  const [lines, workers, assignments] = await Promise.all([
+  const [lines, workers, assignments, assignmentHistory] = await Promise.all([
     prisma.line.findMany({
       where: { orgId, factoryId },
       orderBy: [{ id: "asc" }],
@@ -164,14 +176,28 @@ const buildFactoryLineBoardSnapshot = async (orgId: number, factoryId: number) =
         endAt: null,
         employee: buildLineEligibleWorkerWhere(todayRange),
       },
-      select: { employeeId: true, lineId: true },
+      select: { employeeId: true, lineId: true, startAt: true },
+    }),
+    prisma.lineAssignment.findMany({
+      where: {
+        employee: { orgId, factoryId },
+        line: { orgId, factoryId },
+      },
+      select: { employeeId: true },
+      distinct: ["employeeId"],
     }),
   ]);
 
-  const assignmentByEmployee = new Map<number, number>();
+  const assignmentByEmployee = new Map<number, { lineId: number; startAt: Date }>();
   assignments.forEach((assignment) => {
-    assignmentByEmployee.set(assignment.employeeId, assignment.lineId);
+    assignmentByEmployee.set(assignment.employeeId, {
+      lineId: assignment.lineId,
+      startAt: assignment.startAt,
+    });
   });
+  const employeeIdsWithHistory = new Set(
+    assignmentHistory.map((assignment) => assignment.employeeId)
+  );
 
   return {
     lines,
@@ -181,7 +207,11 @@ const buildFactoryLineBoardSnapshot = async (orgId: number, factoryId: number) =
       name: worker.name,
       email: worker.email ?? "",
       factoryId: worker.factoryId,
-      currentLineId: assignmentByEmployee.get(worker.id) ?? null,
+      joinedAt: worker.joinedAt,
+      currentLineId: assignmentByEmployee.get(worker.id)?.lineId ?? null,
+      currentAssignmentStartDate:
+        toDateKeyInTimeZone(assignmentByEmployee.get(worker.id)?.startAt) || null,
+      hasLineAssignmentHistory: employeeIdsWithHistory.has(worker.id),
     })),
   };
 };
@@ -408,7 +438,7 @@ export const createLineRouter = ({
         factoryId: factoryIdNum,
         ...buildLineEligibleWorkerWhere(todayRange),
       },
-      select: { id: true },
+      select: { id: true, joinedAt: true, leftAt: true },
       orderBy: [{ id: "asc" }],
     });
     const eligibleWorkerIds = workerRows.map((worker) => worker.id);
@@ -424,6 +454,7 @@ export const createLineRouter = ({
     const desiredLineKeyByEmployee = new Map<number, string | null>(
       eligibleWorkerIds.map((workerId) => [workerId, null])
     );
+    const effectiveDateByEmployee = new Map<number, string>();
     const seenWorkerIds = new Set<number>();
 
     for (const item of submittedWorkerAssignmentsInput) {
@@ -444,6 +475,11 @@ export const createLineRouter = ({
         return res.status(400).json({ ok: false, error: "invalid worker lineKey" });
       }
       desiredLineKeyByEmployee.set(employeeId, lineKey || null);
+      const effectiveDate = normalizeDateKey(item?.effectiveDate);
+      if (item?.effectiveDate && !effectiveDate) {
+        return res.status(400).json({ ok: false, error: "invalid effectiveDate" });
+      }
+      if (effectiveDate) effectiveDateByEmployee.set(employeeId, effectiveDate);
     }
 
     for (const line of parsedLines) {
@@ -537,36 +573,78 @@ export const createLineRouter = ({
           employeeId: { in: eligibleWorkerIds },
           endAt: null,
         },
-        select: { employeeId: true, lineId: true },
+        select: { id: true, employeeId: true, lineId: true, startAt: true },
       });
-      const currentLineIdByEmployee = new Map<number, number>();
+      const assignmentHistory = await tx.lineAssignment.findMany({
+        where: { employeeId: { in: eligibleWorkerIds } },
+        select: { employeeId: true },
+        distinct: ["employeeId"],
+      });
+      const employeeIdsWithHistory = new Set(
+        assignmentHistory.map((assignment) => assignment.employeeId)
+      );
+      const workerById = new Map(workerRows.map((worker) => [worker.id, worker]));
+      const currentAssignmentByEmployee = new Map<
+        number,
+        { id: number; lineId: number; startAt: Date }
+      >();
       activeAssignments.forEach((assignment) => {
-        currentLineIdByEmployee.set(assignment.employeeId, assignment.lineId);
+        currentAssignmentByEmployee.set(assignment.employeeId, assignment);
       });
 
-      const employeesToClose: number[] = [];
       const assignmentsToCreate: Array<{
         employeeId: number;
         lineId: number;
         startAt: Date;
       }> = [];
+      const assignmentsToClose: Array<{ id: number; endAt: Date }> = [];
       const employeeIdsByLineId = new Map<number, number[]>();
-      const now = new Date();
+      const todayKey = todayDateKey();
 
       eligibleWorkerIds.forEach((employeeId) => {
         const desiredLineKey = desiredLineKeyByEmployee.get(employeeId) ?? null;
         const desiredLineId = desiredLineKey ? lineKeyToId.get(desiredLineKey) ?? null : null;
-        const currentLineId = currentLineIdByEmployee.get(employeeId) ?? null;
+        const currentAssignment = currentAssignmentByEmployee.get(employeeId) ?? null;
+        const currentLineId = currentAssignment?.lineId ?? null;
 
-        if (currentLineId !== desiredLineId && currentLineId !== null) {
-          employeesToClose.push(employeeId);
-        }
-        if (desiredLineId !== null && currentLineId !== desiredLineId) {
-          assignmentsToCreate.push({
-            employeeId,
-            lineId: desiredLineId,
-            startAt: now,
-          });
+        if (currentLineId !== desiredLineId) {
+          const worker = workerById.get(employeeId);
+          const joinedDateKey = toDateKeyInTimeZone(worker?.joinedAt);
+          const leftDateKey = toDateKeyInTimeZone(worker?.leftAt);
+          const defaultEffectiveDate =
+            desiredLineId !== null && !employeeIdsWithHistory.has(employeeId)
+              ? joinedDateKey || todayKey
+              : todayKey;
+          const effectiveDate =
+            effectiveDateByEmployee.get(employeeId) || defaultEffectiveDate;
+          if (joinedDateKey && effectiveDate < joinedDateKey) {
+            throw createHttpError(400, "line assignment cannot start before joinedAt");
+          }
+          if (leftDateKey && effectiveDate > leftDateKey) {
+            throw createHttpError(400, "line assignment cannot start after leftAt");
+          }
+          const effectiveStartAt = dateKeyToStableDate(effectiveDate);
+          const priorEndAt = dateKeyToStableDate(previousDateKey(effectiveDate));
+          if (!effectiveStartAt || !priorEndAt) {
+            throw createHttpError(400, "invalid line assignment effectiveDate");
+          }
+          if (currentAssignment) {
+            const currentStartDateKey = toDateKeyInTimeZone(currentAssignment.startAt);
+            if (currentStartDateKey && effectiveDate <= currentStartDateKey) {
+              throw createHttpError(
+                409,
+                "new line assignment must start after the current assignment start date"
+              );
+            }
+            assignmentsToClose.push({ id: currentAssignment.id, endAt: priorEndAt });
+          }
+          if (desiredLineId !== null) {
+            assignmentsToCreate.push({
+              employeeId,
+              lineId: desiredLineId,
+              startAt: effectiveStartAt,
+            });
+          }
         }
         if (desiredLineId !== null) {
           const currentEmployeeIds = employeeIdsByLineId.get(desiredLineId) ?? [];
@@ -575,13 +653,10 @@ export const createLineRouter = ({
         }
       });
 
-      if (employeesToClose.length > 0) {
-        await tx.lineAssignment.updateMany({
-          where: {
-            employeeId: { in: employeesToClose },
-            endAt: null,
-          },
-          data: { endAt: now },
+      for (const assignment of assignmentsToClose) {
+        await tx.lineAssignment.update({
+          where: { id: assignment.id },
+          data: { endAt: assignment.endAt },
         });
       }
 
@@ -1089,6 +1164,93 @@ export const createLineRouter = ({
     const lineHeadcounts = await updateLineHeadcounts(affectedLineIds);
 
     return res.status(201).json({ ...assignment, lineHeadcounts });
+  });
+
+  lineRouter.get("/line-assignments/history", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) {
+      return res.status(404).json({ ok: false, error: "organization not found" });
+    }
+    const employeeId = Number(req.query.employeeId);
+    if (!Number.isSafeInteger(employeeId) || employeeId <= 0) {
+      return res.status(400).json({ ok: false, error: "employeeId is required" });
+    }
+    const employee = await prisma.employee.findFirst({
+      where: { id: employeeId, orgId: organization.id },
+      select: { id: true },
+    });
+    if (!employee) {
+      return res.status(404).json({ ok: false, error: "worker not found" });
+    }
+    const rows = await prisma.lineAssignment.findMany({
+      where: { employeeId, line: { orgId: organization.id } },
+      include: { line: { select: { id: true, name: true } } },
+      orderBy: [{ startAt: "desc" }, { id: "desc" }],
+    });
+    return res.json(
+      rows.map((row) => ({
+        id: row.id,
+        lineId: row.lineId,
+        lineName: row.line.name,
+        startDate: toDateKeyInTimeZone(row.startAt),
+        endDate: toDateKeyInTimeZone(row.endAt) || null,
+      }))
+    );
+  });
+
+  lineRouter.patch("/line-assignments/:id", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) {
+      return res.status(404).json({ ok: false, error: "organization not found" });
+    }
+    const assignmentId = Number(req.params.id);
+    if (!Number.isSafeInteger(assignmentId) || assignmentId <= 0) {
+      return res.status(400).json({ ok: false, error: "invalid assignment id" });
+    }
+    const startDate = normalizeDateKey(req.body?.startDate);
+    const endDateInput = req.body?.endDate;
+    const endDate = endDateInput ? normalizeDateKey(endDateInput) : "";
+    if (!startDate || (endDateInput && !endDate) || (endDate && startDate > endDate)) {
+      return res.status(400).json({ ok: false, error: "invalid assignment date range" });
+    }
+    const assignment = await prisma.lineAssignment.findFirst({
+      where: { id: assignmentId, line: { orgId: organization.id } },
+      include: { employee: { select: { joinedAt: true, leftAt: true } } },
+    });
+    if (!assignment) {
+      return res.status(404).json({ ok: false, error: "line assignment not found" });
+    }
+    const joinedDate = toDateKeyInTimeZone(assignment.employee.joinedAt);
+    const leftDate = toDateKeyInTimeZone(assignment.employee.leftAt);
+    if (joinedDate && startDate < joinedDate) {
+      return res.status(400).json({ ok: false, error: "assignment starts before joinedAt" });
+    }
+    if (leftDate && (!endDate || endDate > leftDate)) {
+      return res.status(400).json({ ok: false, error: "assignment ends after leftAt" });
+    }
+    const startAt = dateKeyToStableDate(startDate)!;
+    const endAt = endDate ? dateKeyToStableDate(endDate) : null;
+    const overlap = await prisma.lineAssignment.findFirst({
+      where: {
+        employeeId: assignment.employeeId,
+        id: { not: assignment.id },
+        startAt: { lte: endAt ?? new Date("9999-12-31T12:00:00.000Z") },
+        OR: [{ endAt: null }, { endAt: { gte: startAt } }],
+      },
+      select: { id: true },
+    });
+    if (overlap) {
+      return res.status(409).json({ ok: false, error: "line assignment periods overlap" });
+    }
+    const updated = await prisma.lineAssignment.update({
+      where: { id: assignment.id },
+      data: { startAt, endAt },
+    });
+    return res.json({
+      id: updated.id,
+      startDate: toDateKeyInTimeZone(updated.startAt),
+      endDate: toDateKeyInTimeZone(updated.endAt) || null,
+    });
   });
 
   lineRouter.post("/line-assignments/unassign", async (req, res) => {

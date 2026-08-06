@@ -791,7 +791,7 @@ export const createOrgMembershipRouter = ({
     if (!requesterEmail) return;
 
     const now = new Date();
-    await closeActiveLineAssignments(employee.id, now);
+    await closeActiveLineAssignments(employee.id, employee.leftAt ?? now);
     const updated = await prisma.employee.update({
       where: { id: employee.id },
       data: {
@@ -938,7 +938,7 @@ export const createOrgMembershipRouter = ({
     });
 
     if (effectiveStatus !== "ACTIVE") {
-      await closeActiveLineAssignments(updated.id, now);
+      await closeActiveLineAssignments(updated.id, updated.leftAt ?? now);
     }
 
     return res.json(toMembershipResponseFromEmployee(updated));
