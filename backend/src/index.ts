@@ -24694,7 +24694,11 @@ app.get("/attendance-entries", async (req, res) => {
   }
   const workDate = normalizeDateKey(req.query.workDate);
   const month = normalizeMonthKey(req.query.month);
-  if (!workDate && !month) {
+  const monthsOnly =
+    String(req.query.monthsOnly ?? "")
+      .trim()
+      .toLowerCase() === "true";
+  if (!workDate && !month && !monthsOnly) {
     return res.status(400).json({
       ok: false,
       error: "workDate or month is required",
@@ -24707,6 +24711,27 @@ app.get("/attendance-entries", async (req, res) => {
   });
   if (!factory) {
     return res.status(404).json({ ok: false, error: "factory not found" });
+  }
+
+  if (monthsOnly) {
+    const rows = await prisma.attendanceEntry.findMany({
+      where: {
+        orgId: organization.id,
+        factoryId,
+        worker: { orgRole: "WORKER" },
+      },
+      select: { workDate: true },
+      distinct: ["workDate"],
+      orderBy: { workDate: "desc" },
+    });
+    const months = Array.from(
+      new Set(
+        rows
+          .map((row) => normalizeMonthKey(String(row.workDate || "").slice(0, 7)))
+          .filter((value): value is string => Boolean(value))
+      )
+    ).sort((left, right) => right.localeCompare(left));
+    return res.json(months);
   }
 
   const rows = await prisma.attendanceEntry.findMany({
@@ -24832,14 +24857,14 @@ app.put("/attendance-entries", async (req, res) => {
       );
     }
 
-    const adminWorkerIds = new Set<number>();
+    const nonWorkerIds = new Set<number>();
     workersById.forEach((worker, workerId) => {
-      if (worker.membershipRole === "ADMIN") {
-        adminWorkerIds.add(workerId);
+      if (worker.membershipRole !== "WORKER") {
+        nonWorkerIds.add(workerId);
       }
     });
-    if (adminWorkerIds.size > 0) {
-      writableRows = writableRows.filter((row) => !adminWorkerIds.has(row.workerId));
+    if (nonWorkerIds.size > 0) {
+      writableRows = writableRows.filter((row) => !nonWorkerIds.has(row.workerId));
     }
   }
 

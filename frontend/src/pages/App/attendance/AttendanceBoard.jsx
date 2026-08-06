@@ -55,6 +55,7 @@ const toOptionalDateKey = (value) => {
 
 const isAttendanceEmployeeVisibleOnDate = (employee, workDateKey) => {
   if (String(employee?.status || '').toUpperCase() !== 'ACTIVE') return false;
+  if (String(employee?.orgRole || '').toUpperCase() !== 'WORKER') return false;
 
   const joinedDateKey = toOptionalDateKey(employee?.joinedAt);
   if (joinedDateKey && workDateKey && workDateKey < joinedDateKey) return false;
@@ -395,7 +396,7 @@ const AttendanceBoard = ({
         const query = buildQueryString({
           orgId: activeOrgId,
           factoryId: selectedFactoryId,
-          excludeMembershipRole: 'ADMIN',
+          membershipRole: 'WORKER',
         });
         const rows = await requestJSON('/employees' + query).catch(() => []);
         if (cancelled) return;

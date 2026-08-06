@@ -8,7 +8,6 @@ import {
   MenuItem,
   Paper,
   Select,
-  Stack,
   Table,
   TableBody,
   TableCell,
@@ -24,13 +23,7 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
 import 'dayjs/locale/vi';
-import {
-  enUS as datePickerEnUS,
-  koKR as datePickerKoKR,
-  viVN as datePickerViVN,
-} from '@mui/x-date-pickers/locales';
 import AppPageContainer from '../../../components/AppPageContainer';
-import CustomDatePicker from '../../../components/CustomDatePicker';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -158,16 +151,6 @@ const buildAttendanceDetailTabLabel = (workDate, languageCode) => {
   return workDate ? `${title}: ${workDate}` : title;
 };
 
-const getDatePickerLocaleText = (languageCode) => {
-  if (languageCode === 'ko') {
-    return datePickerKoKR.components.MuiLocalizationProvider.defaultProps.localeText;
-  }
-  if (languageCode === 'vi') {
-    return datePickerViVN.components.MuiLocalizationProvider.defaultProps.localeText;
-  }
-  return datePickerEnUS.components.MuiLocalizationProvider.defaultProps.localeText;
-};
-
 const toHoursTextFromSeconds = (seconds, languageCode) => {
   const safeSeconds = Math.max(0, Math.round(Number(seconds) || 0));
   const hours = safeSeconds / 3600;
@@ -188,6 +171,7 @@ const toOptionalDateKey = (value) => {
 
 const isAttendanceEmployeeVisibleOnDate = (employee, workDateKey) => {
   if (String(employee?.status || '').toUpperCase() !== 'ACTIVE') return false;
+  if (String(employee?.orgRole || '').toUpperCase() !== 'WORKER') return false;
 
   const joinedDateKey = toOptionalDateKey(employee?.joinedAt);
   if (joinedDateKey && workDateKey && workDateKey < joinedDateKey) return false;
@@ -278,7 +262,8 @@ const AttendanceList = () => {
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
 
-  const [selectedMonth, setSelectedMonth] = useState(() => dayjs().startOf('month'));
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [availableMonths, setAvailableMonths] = useState([]);
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
   const [rows, setRows] = useState([]);
@@ -291,7 +276,7 @@ const AttendanceList = () => {
   const [reloadToken, setReloadToken] = useState(0);
   const fileInputRef = useRef(null);
 
-  const monthKey = useMemo(() => selectedMonth.format('YYYY-MM'), [selectedMonth]);
+  const monthKey = selectedMonth;
   const { holidaySet } = useHolidayCalendar(activeOrgId);
 
   useEffect(() => {
@@ -338,6 +323,42 @@ const AttendanceList = () => {
     const controller = new AbortController();
 
     if (!selectedFactoryId) {
+      setAvailableMonths([]);
+      setSelectedMonth('');
+      return () => controller.abort();
+    }
+
+    const loadAvailableMonths = async () => {
+      const query = buildQueryString({
+        orgId: activeOrgId,
+        factoryId: selectedFactoryId,
+        monthsOnly: true,
+      });
+      const fetched = await requestJSON('/attendance-entries' + query, {
+        signal: controller.signal,
+      }).catch(() => []);
+      if (cancelled || controller.signal.aborted) return;
+      const months = (Array.isArray(fetched) ? fetched : []).filter((value) =>
+        /^\d{4}-\d{2}$/.test(String(value || ''))
+      );
+      setAvailableMonths(months);
+      setSelectedMonth((previous) =>
+        months.includes(previous) ? previous : String(months[0] || '')
+      );
+    };
+
+    loadAvailableMonths();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [activeOrgId, reloadToken, selectedFactoryId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    if (!selectedFactoryId || !monthKey) {
       setRows([]);
       setEmployees([]);
       setLoadingRows(false);
@@ -358,7 +379,7 @@ const AttendanceList = () => {
         const employeeQuery = buildQueryString({
           orgId: activeOrgId,
           factoryId: selectedFactoryId,
-          excludeMembershipRole: 'ADMIN',
+          membershipRole: 'WORKER',
         });
         const [fetched, fetchedEmployees] = await Promise.all([
           requestJSON('/attendance-entries' + query, {
@@ -430,8 +451,10 @@ const AttendanceList = () => {
     });
 
     const nextRows = [];
-    let cursor = selectedMonth.startOf('month');
-    const monthEnd = selectedMonth.endOf('month');
+    const selectedMonthDate = dayjs(`${selectedMonth}-01`);
+    if (!selectedMonth || !selectedMonthDate.isValid()) return [];
+    let cursor = selectedMonthDate.startOf('month');
+    const monthEnd = selectedMonthDate.endOf('month');
 
     while (!cursor.isAfter(monthEnd, 'day')) {
       const workDate = cursor.format('YYYY-MM-DD');
@@ -478,7 +501,7 @@ const AttendanceList = () => {
     const query = buildQueryString({
       orgId: activeOrgId,
       factoryId: selectedFactoryId,
-      excludeMembershipRole: 'ADMIN',
+      membershipRole: 'WORKER',
     });
     const fetched = await requestJSON('/employees' + query, {
       skipGlobalLoading: true,
@@ -716,41 +739,24 @@ const AttendanceList = () => {
                 ))}
               </Select>
             </FormControl>,
-            <CustomDatePicker
-              key="month-picker"
-              adapterLocale={languageCode}
-              localeText={getDatePickerLocaleText(languageCode)}
-              monthOnly
-              label={resolveText(TEXT.monthLabel, languageCode, 'Month')}
-              value={selectedMonth}
-              onChange={(value) =>
-                setSelectedMonth((value?.isValid?.() ? value : dayjs()).startOf('month'))
-              }
-              slotProps={{
-                textField: {
-                  size: 'small',
-                  sx: { minWidth: 150 },
-                },
-              }}
-            />,
-            <Stack key="month-shift" sx={{ gap: '2px' }}>
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() => setSelectedMonth((prev) => prev.add(1, 'month'))}
-                sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+            <FormControl key="month-picker" size="small" sx={{ minWidth: 150 }}>
+              <InputLabel id="attendance-list-month-label">
+                {resolveText(TEXT.monthLabel, languageCode, 'Month')}
+              </InputLabel>
+              <Select
+                labelId="attendance-list-month-label"
+                value={selectedMonth}
+                label={resolveText(TEXT.monthLabel, languageCode, 'Month')}
+                onChange={(event) => setSelectedMonth(String(event.target.value || ''))}
+                disabled={availableMonths.length === 0}
               >
-                M+
-              </Button>
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() => setSelectedMonth((prev) => prev.subtract(1, 'month'))}
-                sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-              >
-                M-
-              </Button>
-            </Stack>,
+                {availableMonths.map((month) => (
+                  <MenuItem key={month} value={month}>
+                    {month}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>,
             <Button
               key="import"
               variant="outlined"
