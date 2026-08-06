@@ -683,17 +683,16 @@ const LineBoard = () => {
             }}
           >
             <DragIndicatorIcon sx={{ fontSize: 17, color: 'text.disabled' }} />
-            <Typography variant="body2" fontWeight={isManager ? 700 : 500} noWrap sx={{ flex: 1 }}>
-              {buildWorkerLabel(worker)}
-            </Typography>
-            {isHistorical ? (
-              <Chip
-                size="small"
-                color="default"
-                variant="outlined"
-                label={`${worker.joinedDate || '-'} ~ ${worker.leftDate || '-'}`}
-              />
-            ) : null}
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="body2" fontWeight={isManager ? 700 : 500} noWrap>
+                {buildWorkerLabel(worker)}
+              </Typography>
+              {isHistorical ? (
+                <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
+                  {`${worker.suggestedStartDate || '-'} ~ ${worker.suggestedEndDate || '-'}`}
+                </Typography>
+              ) : null}
+            </Box>
             {worker.assignmentEffectiveDate ? (
               <Chip
                 size="small"
@@ -702,14 +701,17 @@ const LineBoard = () => {
                 title="\uB77C\uC778 \uC801\uC6A9\uC77C"
               />
             ) : null}
-            {!isHistorical ? <Tooltip title="\uB77C\uC778 \uBC30\uCE58 \uC774\uB825">
-              <IconButton
+            {!isHistorical ? <Tooltip title="\uB77C\uC778 \uBC30\uCE58 \uC774\uB825 \uC870\uD68C\u00B7\uC218\uC815">
+              <Button
                 size="small"
+                variant="text"
+                startIcon={<HistoryIcon fontSize="small" />}
                 onMouseDown={(event) => event.stopPropagation()}
                 onClick={(event) => handleOpenHistory(event, worker)}
+                sx={{ minWidth: 'auto', px: 0.5, whiteSpace: 'nowrap' }}
               >
-                <HistoryIcon fontSize="small" />
-              </IconButton>
+                {'\uC774\uB825'}
+              </Button>
             </Tooltip> : null}
             {isManager ? (
               <Chip size="small" label="라인장" color="primary" variant="filled" />

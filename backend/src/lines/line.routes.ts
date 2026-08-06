@@ -54,6 +54,8 @@ const toDateKeyInTimeZone = (input: unknown, timeZone = BUSINESS_TIME_ZONE): str
   }
 };
 const todayDateKey = () => toDateKeyInTimeZone(new Date()) || new Date().toISOString().slice(0, 10);
+const DEFAULT_FACTORY_MANAGEMENT_START_DATE = "2026-04-01";
+const laterDateKey = (left: string, right: string) => (left >= right ? left : right);
 
 const dateKeyToStableDate = (dateKey: string): Date | null => {
   const normalized = normalizeDateKey(dateKey);
@@ -390,6 +392,8 @@ export const createLineRouter = ({
     if (!factory) {
       return res.status(404).json({ ok: false, error: "factory not found" });
     }
+    const managementStartDate =
+      toDateKeyInTimeZone(factory.managementStartDate) || DEFAULT_FACTORY_MANAGEMENT_START_DATE;
 
     const submittedLinesInput = Array.isArray(req.body?.lines) ? req.body.lines : null;
     const submittedWorkerAssignmentsInput = Array.isArray(req.body?.workerAssignments)
@@ -656,10 +660,16 @@ export const createLineRouter = ({
           const leftDateKey = toDateKeyInTimeZone(worker?.leftAt);
           const defaultEffectiveDate =
             desiredLineId !== null && !employeeIdsWithHistory.has(employeeId)
-              ? joinedDateKey || todayKey
+              ? laterDateKey(joinedDateKey || managementStartDate, managementStartDate)
               : todayKey;
           const effectiveDate =
             effectiveDateByEmployee.get(employeeId) || defaultEffectiveDate;
+          if (effectiveDate < managementStartDate) {
+            throw createHttpError(
+              400,
+              "line assignment cannot start before factory managementStartDate"
+            );
+          }
           if (joinedDateKey && effectiveDate < joinedDateKey) {
             throw createHttpError(400, "line assignment cannot start before joinedAt");
           }
@@ -1252,7 +1262,7 @@ export const createLineRouter = ({
     }
     const factory = await prisma.factory.findFirst({
       where: { id: factoryId, orgId: organization.id },
-      select: { id: true },
+      select: { id: true, managementStartDate: true },
     });
     if (!factory) {
       return res.status(404).json({ ok: false, error: "factory not found" });
@@ -1285,8 +1295,12 @@ export const createLineRouter = ({
       workers.flatMap((worker) => {
         const joinedDate = toDateKeyInTimeZone(worker.joinedAt);
         const leftDate = toDateKeyInTimeZone(worker.leftAt);
+        const managementStartDate =
+          toDateKeyInTimeZone(factory.managementStartDate) || DEFAULT_FACTORY_MANAGEMENT_START_DATE;
+        const managedStartDate = laterDateKey(joinedDate || managementStartDate, managementStartDate);
+        if (!leftDate || leftDate < managedStartDate) return [];
         const uncoveredRange = findFirstUncoveredLineAssignmentRange({
-          joinedDate,
+          joinedDate: managedStartDate,
           leftDate,
           assignments: worker.lineAssignments,
         });
@@ -1296,6 +1310,7 @@ export const createLineRouter = ({
           ...workerFields,
           joinedDate,
           leftDate,
+          managementStartDate,
           suggestedStartDate: uncoveredRange.startDate,
           suggestedEndDate: uncoveredRange.endDate,
           isHistoricalCandidate: true,
@@ -1331,7 +1346,11 @@ export const createLineRouter = ({
       }),
       prisma.line.findFirst({
         where: { id: lineId, orgId: organization.id },
-        select: { id: true, factoryId: true },
+        select: {
+          id: true,
+          factoryId: true,
+          factory: { select: { managementStartDate: true } },
+        },
       }),
     ]);
     if (!employee || !line || employee.factoryId !== line.factoryId) {
@@ -1339,8 +1358,11 @@ export const createLineRouter = ({
     }
     const joinedDate = toDateKeyInTimeZone(employee.joinedAt);
     const leftDate = toDateKeyInTimeZone(employee.leftAt);
+    const managementStartDate =
+      toDateKeyInTimeZone(line.factory.managementStartDate) || DEFAULT_FACTORY_MANAGEMENT_START_DATE;
+    const managedStartDate = laterDateKey(joinedDate || managementStartDate, managementStartDate);
     if (
-      (joinedDate && startDate < joinedDate) ||
+      startDate < managedStartDate ||
       (leftDate && endDate > leftDate)
     ) {
       return res.status(400).json({ ok: false, error: "assignment outside employment period" });
@@ -1367,7 +1389,7 @@ export const createLineRouter = ({
       orderBy: [{ startAt: "asc" }, { id: "asc" }],
     });
     const uncoveredRange = findFirstUncoveredLineAssignmentRange({
-      joinedDate,
+      joinedDate: managedStartDate,
       leftDate,
       assignments: allAssignments,
     });
@@ -1400,15 +1422,25 @@ export const createLineRouter = ({
     }
     const assignment = await prisma.lineAssignment.findFirst({
       where: { id: assignmentId, line: { orgId: organization.id } },
-      include: { employee: { select: { joinedAt: true, leftAt: true } } },
+      include: {
+        employee: { select: { joinedAt: true, leftAt: true } },
+        line: { include: { factory: { select: { managementStartDate: true } } } },
+      },
     });
     if (!assignment) {
       return res.status(404).json({ ok: false, error: "line assignment not found" });
     }
     const joinedDate = toDateKeyInTimeZone(assignment.employee.joinedAt);
     const leftDate = toDateKeyInTimeZone(assignment.employee.leftAt);
-    if (joinedDate && startDate < joinedDate) {
-      return res.status(400).json({ ok: false, error: "assignment starts before joinedAt" });
+    const managementStartDate =
+      toDateKeyInTimeZone(assignment.line.factory.managementStartDate) ||
+      DEFAULT_FACTORY_MANAGEMENT_START_DATE;
+    const managedStartDate = laterDateKey(joinedDate || managementStartDate, managementStartDate);
+    if (startDate < managedStartDate) {
+      return res.status(400).json({
+        ok: false,
+        error: "assignment starts before employment or factory management period",
+      });
     }
     if (leftDate && (!endDate || endDate > leftDate)) {
       return res.status(400).json({ ok: false, error: "assignment ends after leftAt" });
