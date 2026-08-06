@@ -337,6 +337,7 @@ function assertGeneratedPrismaClientShape() {
   }
   [
     "styleProcessId",
+    "productionStage",
     "assignmentPlanId",
     "allocatedLaborInputSeconds",
     "sourceLaborInputSeconds",
@@ -362,6 +363,9 @@ function assertGeneratedPrismaClientShape() {
   }
   if (!hasField("AtTrainingBucket", "workerId")) {
     staleSignals.push("AtTrainingBucket.workerId missing");
+  }
+  if (!hasField("AtTrainingBucket", "productionStage")) {
+    staleSignals.push("AtTrainingBucket.productionStage missing");
   }
   if (modelByName.has("OrgMembership")) {
     staleSignals.push("OrgMembership model still present");
@@ -772,6 +776,8 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "AssignmentPlan", columnName: "orgRelationshipId" },
   { tableName: "AssignmentPlan", columnName: "ctReviewRequired" },
   { tableName: "AtTrainingBucket", columnName: "workerId" },
+  { tableName: "AtTrainingBucket", columnName: "productionStage" },
+  { tableName: "StyleProcessAtObservation", columnName: "productionStage" },
   { tableName: "AssignmentCard", columnName: "cardId" },
   { tableName: "AssignmentCard", columnName: "payload" },
   { tableName: "AssignmentCard", columnName: "sortOrder" },
@@ -3045,6 +3051,7 @@ type AtTrainingBucketProcessDraft = {
 type AtTrainingBucketDraft = {
   sourceWorkLogId: number;
   workerId: number;
+  productionStage: ProductionStageValue;
   monthKey: string;
   workDate: string;
   factoryId: number | null;
@@ -3105,6 +3112,7 @@ type AtTrainingSourceDiagnostics = {
   excludedCoverageInvalidRecordCount: number;
   excludedMissingWorkerRecordCount: number;
   excludedIneligibleWorkerRecordCount: number;
+  excludedMixedProductionStageRecordCount: number;
   excludedMissingAttendanceRecordCount: number;
   earlyExitStage: string | null;
   rawStyleIdCount: number;
@@ -3170,6 +3178,7 @@ const createAtTrainingSourceDiagnostics = (
   excludedCoverageInvalidRecordCount: 0,
   excludedMissingWorkerRecordCount: 0,
   excludedIneligibleWorkerRecordCount: 0,
+  excludedMixedProductionStageRecordCount: 0,
   excludedMissingAttendanceRecordCount: 0,
   earlyExitStage: null,
   rawStyleIdCount: 0,
@@ -3290,6 +3299,7 @@ const loadAtTrainingSourceWorkLogs = async ({
               select: {
                 processCode: true,
                 processName: true,
+                productionStage: true,
               },
             },
             quantity: true,
@@ -3337,6 +3347,7 @@ const loadAtTrainingSourceWorkLogs = async ({
               select: {
                 processCode: true,
                 processName: true,
+                productionStage: true,
               },
             },
             quantity: true,
@@ -3542,11 +3553,6 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       }
       if (!["ACTIVE", "TERMINATED"].includes(String(worker.status))) {
         workerEligibilityFailureReasonById.set(workerId, "WORKER_STATUS_NOT_ELIGIBLE");
-        return;
-      }
-      const workerRoleCode = String(worker.role?.code ?? "").trim().toUpperCase();
-      if (workerRoleCode !== DEFAULT_EMPLOYEE_ROLE_CODE_SEWING) {
-        workerEligibilityFailureReasonById.set(workerId, "WORKER_FIELD_ROLE_NOT_ELIGIBLE");
         return;
       }
       eligibleWorkerDateWindowById.set(workerId, {
@@ -3880,6 +3886,9 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
           matchedStyleProcess?.processName ?? resolveWorkRecordProcessName(record),
           null
         );
+        const productionStage = normalizeProductionStage(
+          matchedStyleProcess?.productionStage
+        );
         const effectiveCoverageStartDate =
           resolveWorkRecordEffectiveCoverageStartDate(record, workLog) || periodStartDateKey;
         const effectiveCoverageEndDate =
@@ -3892,6 +3901,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
           styleCode: resolveOptionalString((record as any).styleCode, null),
           processCode,
           processName,
+          productionStage,
           quantity: Math.max(0, Math.round(quantity)),
           coverageStartDate: effectiveCoverageStartDate || null,
           coverageEndDate: effectiveCoverageEndDate || null,
@@ -3967,6 +3977,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       styleCode: string | null;
       processCode: string | null;
       processName: string | null;
+      productionStage: ProductionStageValue;
       effectiveCoverageStartDate: string;
       effectiveCoverageEndDate: string;
     }>;
@@ -4057,7 +4068,29 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       const workerRows = includedRows.filter((row) => row.workerId === workerId);
       const workerLabor = workerLaborById.get(workerId);
       if (!workerLabor || workerLabor.seconds <= 0 || workerRows.length === 0) return;
-      const bucketKey = `${workLogId}:${workerId}`;
+      const workerStages = Array.from(
+        new Set(workerRows.map((row) => row.productionStage))
+      );
+      if (workerStages.length !== 1) {
+        diagnostics.excludedMixedProductionStageRecordCount += workerRows.length;
+        workerRows.forEach((row) =>
+          pushAtTrainingSourceDiagnosticSample(diagnostics, {
+            workLogId,
+            workerId,
+            styleId: row.styleId,
+            styleCode: row.styleCode,
+            processCode: row.processCode,
+            processName: row.processName,
+            quantity: Math.max(0, Math.round(row.quantity)),
+            coverageStartDate: row.effectiveCoverageStartDate,
+            coverageEndDate: row.effectiveCoverageEndDate,
+            reason: "MIXED_PRODUCTION_STAGE_WITHOUT_MEASURED_STAGE_TIME",
+          })
+        );
+        return;
+      }
+      const productionStage = normalizeProductionStage(workerStages[0]);
+      const bucketKey = `${workLogId}:${workerId}:${productionStage}`;
       const effectiveCoverage = coverageByWorkerId.get(workerId);
       if (effectiveCoverage) {
         const dayCount = countDateRangeDaysInclusive(
@@ -4126,6 +4159,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       draftRows.push({
         sourceWorkLogId: workLogId,
         workerId,
+        productionStage,
         monthKey,
         workDate: normalizedCoverageEndDate,
         factoryId: resolvedFactoryId,
@@ -4148,12 +4182,19 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     return draftRows;
   }, [] as AtTrainingBucketDraft[]);
   const safeDrafts = drafts.filter(
-    (draft) => !overlapState.ambiguousBucketKeys.has(`${draft.sourceWorkLogId}:${draft.workerId}`)
+    (draft) =>
+      !overlapState.ambiguousBucketKeys.has(
+        `${draft.sourceWorkLogId}:${draft.workerId}:${draft.productionStage}`
+      )
   );
   diagnostics.ambiguousOverlappingWorkerDayCount = overlapState.ambiguousWorkerDateKeys.size;
   diagnostics.ambiguousOverlapExcludedWorkerBucketCount = drafts.length - safeDrafts.length;
   diagnostics.ambiguousOverlapExcludedRecordCount = drafts
-    .filter((draft) => overlapState.ambiguousBucketKeys.has(`${draft.sourceWorkLogId}:${draft.workerId}`))
+    .filter((draft) =>
+      overlapState.ambiguousBucketKeys.has(
+        `${draft.sourceWorkLogId}:${draft.workerId}:${draft.productionStage}`
+      )
+    )
     .reduce((sum, draft) => sum + (draft.diagnosticRecordCount ?? 0), 0);
   diagnostics.ambiguousOverlappingWorkerDaySamples = Array.from(overlapState.ambiguousWorkerDateKeys)
     .slice(0, 30)
@@ -4238,6 +4279,7 @@ const replaceAtTrainingBucketsForMonth = async ({
         "monthKey",
         "sourceWorkLogId",
         "workerId",
+        "productionStage",
         "workDate",
         "factoryId",
         "laborInputSeconds",
@@ -4251,6 +4293,7 @@ const replaceAtTrainingBucketsForMonth = async ({
         ${draft.monthKey},
         ${draft.sourceWorkLogId},
         ${draft.workerId},
+        ${draft.productionStage}::"ProductionStage",
         ${draft.workDate},
         ${draft.factoryId},
         ${draft.laborInputSeconds},
@@ -4433,6 +4476,7 @@ const loadAtTrainingDataFromBuckets = async ({
     id: number;
     workDate: string;
     workerId: number;
+    productionStage: ProductionStageValue;
     laborInputSeconds: number;
     attendanceCoverage: number | null;
   };
@@ -4450,6 +4494,7 @@ const loadAtTrainingDataFromBuckets = async ({
       "id",
       "workDate",
       "workerId",
+      "productionStage",
       "laborInputSeconds",
       "attendanceCoverage"
     FROM "AtTrainingBucket"
@@ -4511,6 +4556,7 @@ const loadAtTrainingDataFromBuckets = async ({
           select: {
             id: true,
             styleId: true,
+            productionStage: true,
             timesPerPiece: true,
             ptSeconds: true,
             atParams: true,
@@ -4580,6 +4626,12 @@ const loadAtTrainingDataFromBuckets = async ({
       if (styleProcessId === null || quantity <= 0) return;
       const styleProcessRow = styleProcessRowsById.get(styleProcessId);
       if (!styleProcessRow) return;
+      if (
+        normalizeProductionStage(styleProcessRow.productionStage) !==
+        normalizeProductionStage(bucketRow.productionStage)
+      ) {
+        return;
+      }
 
       const metricKey = toAtTrainingStyleProcessMetricKey(styleProcessId);
       const sourceGroupKey =
@@ -4616,6 +4668,7 @@ const loadAtTrainingDataFromBuckets = async ({
       dayKey: `${bucketRow.workDate}#${bucketRow.id}`,
       order: bucketOrder,
       workerId: toPositiveIntOrNull((bucketRow as any).workerId),
+      productionStage: normalizeProductionStage(bucketRow.productionStage),
       laborInputSeconds: Math.max(1, Math.round(laborInputSeconds)),
       processRows: dayProcessRows,
     });
@@ -4753,9 +4806,9 @@ const buildAtTrainingInitialSeedFromSt = ({
   };
 };
 
-// v2 rows remain immutable audit evidence. v3 is the first operational model
-// that uses one-pass ST allocation and preserves unexplained worker-period time.
-const AT_V2_MODEL_VERSION = "v3-st-stable";
+// Earlier observations remain immutable audit evidence. v4 keeps the v3
+// one-pass ST allocation but isolates every labor pool by production stage.
+const AT_V2_MODEL_VERSION = "v4-stage-aware";
 
 const clearStyleProcessAtObservations = async (orgId: number) => {
   const deleted = await prisma.$executeRaw(Prisma.sql`
@@ -4775,6 +4828,7 @@ const replaceStyleProcessAtObservations = async ({
   observations: Array<{
     dayKey: string;
     workerId: number | null;
+    productionStage: string;
     metricKey: string;
     assignmentPlanId: number | null;
     quantity: number;
@@ -4789,6 +4843,7 @@ const replaceStyleProcessAtObservations = async ({
 }) => {
   type ObservationAggregate = {
     styleProcessId: number;
+    productionStage: ProductionStageValue;
     assignmentPlanId: number;
     quantity: number;
     laborInputSeconds: number;
@@ -4812,6 +4867,7 @@ const replaceStyleProcessAtObservations = async ({
     const assignmentPlanId = toPositiveIntOrNull(observation.assignmentPlanId);
     const quantity = Number(observation.quantity);
     const laborInputSeconds = Number(observation.laborInputSeconds);
+    const productionStage = normalizeProductionStage(observation.productionStage);
     const eventCount = Number(observation.eventCount);
     const workDate = normalizeDateKey(String(observation.dayKey || "").split("#")[0]);
     if (
@@ -4828,6 +4884,7 @@ const replaceStyleProcessAtObservations = async ({
     const key = `${styleProcessId}:${assignmentPlanId}`;
     const current = aggregates.get(key) || {
       styleProcessId,
+      productionStage,
       assignmentPlanId,
       quantity: 0,
       laborInputSeconds: 0,
@@ -4912,6 +4969,7 @@ const replaceStyleProcessAtObservations = async ({
         INSERT INTO "StyleProcessAtObservation" (
           "orgId",
           "styleProcessId",
+          "productionStage",
           "assignmentPlanId",
           "quantity",
           "allocatedLaborInputSeconds",
@@ -4934,6 +4992,7 @@ const replaceStyleProcessAtObservations = async ({
         ) VALUES (
           ${orgId},
           ${row.styleProcessId},
+          ${row.productionStage}::"ProductionStage",
           ${row.assignmentPlanId},
           ${Math.round(row.quantity)},
           ${row.laborInputSeconds},
@@ -4951,7 +5010,7 @@ const replaceStyleProcessAtObservations = async ({
           ${trainingMonthKey},
           NOW(),
           NOW(),
-          'SYSTEM:AT_V3_ST_STABLE',
+          'SYSTEM:AT_V4_STAGE_AWARE',
           NOW()
         )
         `);
@@ -5021,22 +5080,11 @@ const applyAtTrainingResultsToStyleProcesses = async ({
   metricTrainingQualityByMetricKey: Map<string, AtTrainingMetricQuality>;
   styleProcessRowsById: Map<number, any>;
 }) => {
-  const retainedStyleProcessIds = Array.from(styleProcessRowsById.values())
-    .filter((processRow) => {
-      const styleProcessId = toPositiveIntOrNull(processRow?.id);
-      return (
-        styleProcessId !== null &&
-        fittedParamsByMetric.has(
-          toAtTrainingStyleProcessMetricKey(styleProcessId)
-        )
-      );
-    })
-    .map((processRow) => Number(processRow.id));
-  const staleCleanup = await clearUnfittedStyleProcessAtParams({
-    orgId,
-    retainedStyleProcessIds,
-  });
-  let updatedProcesses = staleCleanup.clearedProcesses;
+  // A stage-aware run may intentionally reject mixed-stage periods. Preserve
+  // the last usable AT for processes without a valid v4 observation instead of
+  // erasing it merely because the stricter run excluded contaminated input.
+  const staleCleanup = { clearedProcesses: 0, clearedStyleIds: [] as number[] };
+  let updatedProcesses = 0;
   let clampAdjustedProcesses = 0;
   const changedStyleIds = new Set<number>(staleCleanup.clearedStyleIds);
 
@@ -5217,10 +5265,8 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
     reason: string,
     diagnostics: Record<string, any> | null
   ) => {
-    const [staleCleanup, clearedAtV2Observations] = await Promise.all([
-      clearUnfittedStyleProcessAtParams({ orgId }),
-      clearStyleProcessAtObservations(orgId),
-    ]);
+    const clearedAtV2Observations = await clearStyleProcessAtObservations(orgId);
+    const staleCleanup = { clearedProcesses: 0, clearedStyleIds: [] as number[] };
     const nextDiagnostics =
       diagnostics === null
         ? null
@@ -6545,6 +6591,16 @@ const syncStyleProcessStorageForStyle = async ({
 
   for (const { draft, existingRow } of draftTargets) {
     const existingId = existingRow?.id;
+    if (
+      existingRow &&
+      Number(existingRow?._count?.workRecords ?? 0) > 0 &&
+      normalizeProductionStage(existingRow.productionStage) !== draft.productionStage
+    ) {
+      throw createHttpError(
+        409,
+        "작업기록이 연결된 공정의 작업 종류는 변경할 수 없습니다. 새 작업 종류의 공정을 추가해 주세요."
+      );
+    }
     const row = existingId
       ? await db.styleProcess.update({
           where: { id: existingId },

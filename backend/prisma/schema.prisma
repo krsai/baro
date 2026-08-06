@@ -887,6 +887,7 @@ model AtTrainingBucket {
   monthKey            String
   sourceWorkLogId     Int
   workerId            Int
+  productionStage     ProductionStage @default(SEWING)
   workDate            String
   factoryId           Int?
   laborInputSeconds   Float
@@ -906,7 +907,7 @@ model AtTrainingBucket {
   createdByEmployee Employee? @relation("AtTrainingBucketCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("AtTrainingBucketUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
-  @@unique([orgId, sourceWorkLogId, workerId])
+  @@unique([orgId, sourceWorkLogId, workerId, productionStage])
   @@index([orgId, monthKey, workDate])
   @@index([orgId, workDate])
   @@index([factoryId])
@@ -949,6 +950,7 @@ model StyleProcessAtObservation {
   id                         Int      @id @default(autoincrement())
   orgId                      Int
   styleProcessId             Int
+  productionStage            ProductionStage @default(SEWING)
   assignmentPlanId           Int
   quantity                   Int
   allocatedLaborInputSeconds Float

@@ -18,6 +18,7 @@ export type AtTrainingDayBucket = {
   dayKey: string;
   order: number;
   workerId?: number | null;
+  productionStage: string;
   laborInputSeconds: number;
   processRows: AtTrainingDayProcessRow[];
 };
@@ -86,6 +87,7 @@ export type AtAllocatedObservation = {
   dayKey: string;
   order: number;
   workerId: number | null;
+  productionStage: string;
   metricKey: string;
   assignmentPlanId: number | null;
   quantity: number;
@@ -625,6 +627,7 @@ const allocateDaySecondsAcrossProcesses = (
     dayKey: day.dayKey,
     order: day.order,
     workerId: toPositiveInt(day.workerId, 0) || null,
+    productionStage: String(day.productionStage || "SEWING"),
     metricKey: row.metricKey,
     assignmentPlanId: row.assignmentPlanId,
     quantity: row.quantity,

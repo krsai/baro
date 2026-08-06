@@ -3019,6 +3019,7 @@ const StyleProcess = ({
                 <TextField
                   select
                   required
+                  disabled={isEditingRow && hasProcessWorkRecords(editingProcess)}
                   size="small"
                   label={getStyleProcessMessage(languageCode, 'productionStageLabel')}
                   value={addDraft.productionStage ?? 'SEWING'}

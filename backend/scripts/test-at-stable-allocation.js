@@ -12,6 +12,7 @@ const run = () => {
         dayKey: "2026-04-30#1",
         order: 1,
         workerId: 1,
+        productionStage: "SEWING",
         laborInputSeconds: 120000,
         processRows: [
           { metricKey: metric(1), quantity: 100, eventCount: 25, sourceGroupKey: "p1", assignmentPlanId: 1 },
@@ -35,6 +36,7 @@ const run = () => {
         dayKey: "2026-05-31#2",
         order: 2,
         workerId: 2,
+        productionStage: "SEWING",
         laborInputSeconds: 200000,
         processRows: [
           { metricKey: metric(3), quantity: 100, eventCount: 24, sourceGroupKey: "p2", assignmentPlanId: 2 },
@@ -56,6 +58,7 @@ const run = () => {
       dayKey: `2026-06-${String(index + 1).padStart(2, "0")}#${index + 10}`,
       order: index,
       workerId: index + 10,
+      productionStage: "SEWING",
       laborInputSeconds: 100 * quantity + 500,
       processRows: [{
         metricKey: metric(6),
@@ -71,6 +74,44 @@ const run = () => {
   assert.equal(fitted.fitStatus, "FITTED");
   assert.ok(Math.abs(fitted.a - 100) < 0.001, `a=${fitted.a}`);
   assert.ok(Math.abs(fitted.b - 500) < 0.001, `b=${fitted.b}`);
+
+  const stageSeparated = fitAtParamsWithProportionalAllocation(
+    [
+      {
+        dayKey: "2026-07-01#100",
+        order: 1,
+        workerId: 20,
+        productionStage: "SEWING",
+        laborInputSeconds: 10000,
+        processRows: [{
+          metricKey: metric(7), quantity: 100, eventCount: 1,
+          sourceGroupKey: "sewing-plan", assignmentPlanId: 100,
+        }],
+      },
+      {
+        dayKey: "2026-07-01#101",
+        order: 2,
+        workerId: 21,
+        productionStage: "IRONING",
+        laborInputSeconds: 1000,
+        processRows: [{
+          metricKey: metric(8), quantity: 100, eventCount: 1,
+          sourceGroupKey: "ironing-plan", assignmentPlanId: 101,
+        }],
+      },
+    ],
+    { initialPerPieceByMetricKey: new Map([[metric(7), 100], [metric(8), 10]]) }
+  );
+  const sewingObservation = stageSeparated.allocatedObservations.find(
+    (row) => row.metricKey === metric(7)
+  );
+  const ironingObservation = stageSeparated.allocatedObservations.find(
+    (row) => row.metricKey === metric(8)
+  );
+  assert.equal(sewingObservation.productionStage, "SEWING");
+  assert.equal(ironingObservation.productionStage, "IRONING");
+  assert.equal(sewingObservation.laborInputSeconds, 10000);
+  assert.equal(ironingObservation.laborInputSeconds, 1000);
 
   console.log("[at-stable-allocation] all assertions passed");
 };
