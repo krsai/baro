@@ -35,6 +35,32 @@ test('warehouse localized names are covered by runtime drift recovery', async ()
   assert.match(backend, /tableName: "Warehouse", columnName: "nameVi"/);
 });
 
+test('runtime migration has balanced, non-nested anonymous PostgreSQL blocks', async () => {
+  const migration = await read('backend/migration_fix.sql');
+  let anonymousBlockOpen = false;
+
+  migration.split(/\r?\n/).forEach((line, index) => {
+    if (/\bDO \$\$/.test(line)) {
+      assert.equal(
+        anonymousBlockOpen,
+        false,
+        `nested DO $$ block starts at migration_fix.sql:${index + 1}`
+      );
+      anonymousBlockOpen = true;
+    }
+    if (/\bEND \$\$;/.test(line)) {
+      assert.equal(
+        anonymousBlockOpen,
+        true,
+        `unmatched END $$ at migration_fix.sql:${index + 1}`
+      );
+      anonymousBlockOpen = false;
+    }
+  });
+
+  assert.equal(anonymousBlockOpen, false, 'migration_fix.sql has an unclosed DO $$ block');
+});
+
 test('line and factory deletion never detach WorkRecords', async () => {
   const [lines, factories] = await Promise.all([
     read('backend/src/lines/line.routes.ts'),
