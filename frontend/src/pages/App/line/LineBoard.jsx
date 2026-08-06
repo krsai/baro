@@ -425,8 +425,10 @@ const LineBoard = () => {
           workerName: buildWorkerLabel(worker),
           sourceLineKey: null,
           destinationLineKey,
-          effectiveDate: worker?.joinedDate || toDateKey(worker?.joinedAt),
-          endDate: worker?.leftDate || toDateKey(worker?.leftAt),
+          effectiveDate:
+            worker?.suggestedStartDate || worker?.joinedDate || toDateKey(worker?.joinedAt),
+          endDate:
+            worker?.suggestedEndDate || worker?.leftDate || toDateKey(worker?.leftAt),
         });
         return;
       }
@@ -464,7 +466,7 @@ const LineBoard = () => {
       }
       setSaving(true);
       try {
-        await requestJSON('/line-assignments/history' + buildOrgQuery(), {
+        const saved = await requestJSON('/line-assignments/history' + buildOrgQuery(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -475,7 +477,17 @@ const LineBoard = () => {
           }),
         });
         setHistoricalCandidates((previous) =>
-          previous.filter((worker) => Number(worker.id) !== change.employeeId)
+          saved?.coverageComplete
+            ? previous.filter((worker) => Number(worker.id) !== change.employeeId)
+            : previous.map((worker) =>
+                Number(worker.id) === change.employeeId
+                  ? {
+                      ...worker,
+                      suggestedStartDate: saved?.nextSuggestedStartDate || worker.suggestedStartDate,
+                      suggestedEndDate: saved?.nextSuggestedEndDate || worker.suggestedEndDate,
+                    }
+                  : worker
+              )
         );
         emitLineAssignmentsUpdated({ orgId: activeOrgId });
         showNotification('\uACFC\uAC70 \uB77C\uC778 \uBC30\uCE58 \uC774\uB825\uC744 \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.', 'success');
@@ -924,7 +936,7 @@ const LineBoard = () => {
                   <Box sx={{ mt: 2 }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.75 }}>
                       <Typography variant="subtitle2" fontWeight={700}>
-                        {'\uACFC\uAC70 \uC774\uB825 \uBBF8\uB4F1\uB85D \uD1F4\uC0AC\uC790'}
+                        {'\uB77C\uC778 \uC774\uB825 \uBBF8\uC644\uC131 \uD1F4\uC0AC\uC790'}
                       </Typography>
                       <Chip size="small" label={`${historicalCandidates.length}\uBA85`} />
                     </Stack>
@@ -949,7 +961,7 @@ const LineBoard = () => {
                         >
                           {historicalCandidates.length === 0 ? (
                             <Typography variant="caption" color="text.disabled">
-                              {'\uACFC\uAC70 \uB77C\uC778 \uC774\uB825\uC774 \uD544\uC694\uD55C \uD1F4\uC0AC\uC790\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.'}
+                              {'\uC785\uC0AC~\uD1F4\uC0AC \uAE30\uAC04\uC774 \uBAA8\uB450 \uB77C\uC778 \uC774\uB825\uC73C\uB85C \uCC44\uC6CC\uC84C\uC2B5\uB2C8\uB2E4.'}
                             </Typography>
                           ) : null}
                           {historicalCandidates.map((worker, index) =>

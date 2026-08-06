@@ -69,6 +69,49 @@ const previousDateKey = (dateKey: string): string => {
   return value.toISOString().slice(0, 10);
 };
 
+const nextDateKey = (dateKey: string): string => {
+  const value = new Date(`${dateKey}T12:00:00.000Z`);
+  if (Number.isNaN(value.getTime())) return "";
+  value.setUTCDate(value.getUTCDate() + 1);
+  return value.toISOString().slice(0, 10);
+};
+
+const findFirstUncoveredLineAssignmentRange = ({
+  joinedDate,
+  leftDate,
+  assignments,
+}: {
+  joinedDate: string;
+  leftDate: string;
+  assignments: Array<{ startAt: Date; endAt: Date | null }>;
+}): { startDate: string; endDate: string } | null => {
+  if (!joinedDate || !leftDate || joinedDate > leftDate) return null;
+  const ranges = assignments
+    .map((assignment) => ({
+      startDate: toDateKeyInTimeZone(assignment.startAt),
+      endDate: toDateKeyInTimeZone(assignment.endAt) || leftDate,
+    }))
+    .filter((range) => range.startDate && range.endDate)
+    .map((range) => ({
+      startDate: range.startDate < joinedDate ? joinedDate : range.startDate,
+      endDate: range.endDate > leftDate ? leftDate : range.endDate,
+    }))
+    .filter((range) => range.startDate <= range.endDate)
+    .sort((left, right) => left.startDate.localeCompare(right.startDate));
+
+  let cursor = joinedDate;
+  for (const range of ranges) {
+    if (range.endDate < cursor) continue;
+    if (range.startDate > cursor) {
+      return { startDate: cursor, endDate: previousDateKey(range.startDate) };
+    }
+    const afterRange = nextDateKey(range.endDate);
+    if (afterRange > cursor) cursor = afterRange;
+    if (cursor > leftDate) return null;
+  }
+  return cursor <= leftDate ? { startDate: cursor, endDate: leftDate } : null;
+};
+
 const buildEffectiveDateRange = (workDate: unknown) =>
   buildWorkDateRange(normalizeDateKey(workDate) || todayDateKey());
 
@@ -1220,7 +1263,6 @@ export const createLineRouter = ({
         factoryId,
         orgRole: "WORKER",
         status: { in: ["ACTIVE", "TERMINATED"] },
-        lineAssignments: { none: {} },
         joinedAt: { not: null },
         leftAt: { lte: dateKeyToStableDate(todayDateKey())! },
       },
@@ -1232,16 +1274,33 @@ export const createLineRouter = ({
         joinedAt: true,
         leftAt: true,
         status: true,
+        lineAssignments: {
+          select: { startAt: true, endAt: true },
+          orderBy: [{ startAt: "asc" }, { id: "asc" }],
+        },
       },
       orderBy: [{ leftAt: "desc" }, { name: "asc" }, { id: "asc" }],
     });
     return res.json(
-      workers.map((worker) => ({
-        ...worker,
-        joinedDate: toDateKeyInTimeZone(worker.joinedAt),
-        leftDate: toDateKeyInTimeZone(worker.leftAt),
-        isHistoricalCandidate: true,
-      }))
+      workers.flatMap((worker) => {
+        const joinedDate = toDateKeyInTimeZone(worker.joinedAt);
+        const leftDate = toDateKeyInTimeZone(worker.leftAt);
+        const uncoveredRange = findFirstUncoveredLineAssignmentRange({
+          joinedDate,
+          leftDate,
+          assignments: worker.lineAssignments,
+        });
+        if (!uncoveredRange) return [];
+        const { lineAssignments: _lineAssignments, ...workerFields } = worker;
+        return [{
+          ...workerFields,
+          joinedDate,
+          leftDate,
+          suggestedStartDate: uncoveredRange.startDate,
+          suggestedEndDate: uncoveredRange.endDate,
+          isHistoricalCandidate: true,
+        }];
+      })
     );
   });
 
@@ -1302,12 +1361,25 @@ export const createLineRouter = ({
     const created = await prisma.lineAssignment.create({
       data: { employeeId, lineId, startAt, endAt },
     });
+    const allAssignments = await prisma.lineAssignment.findMany({
+      where: { employeeId },
+      select: { startAt: true, endAt: true },
+      orderBy: [{ startAt: "asc" }, { id: "asc" }],
+    });
+    const uncoveredRange = findFirstUncoveredLineAssignmentRange({
+      joinedDate,
+      leftDate,
+      assignments: allAssignments,
+    });
     return res.status(201).json({
       id: created.id,
       employeeId,
       lineId,
       startDate,
       endDate,
+      coverageComplete: uncoveredRange === null,
+      nextSuggestedStartDate: uncoveredRange?.startDate ?? null,
+      nextSuggestedEndDate: uncoveredRange?.endDate ?? null,
     });
   });
 
