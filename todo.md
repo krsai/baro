@@ -23,6 +23,14 @@
 - [x] 기존 스타일 공정 목록에 작업 종류를 표시하고 단계 저장이 기존 PT·ST·CT·AT 및 배정 snapshot 쓰기 경로와 분리되게 구현한다.
 - [ ] 다림질·검품·포장 공정의 실제 기록·capacity·진행률·수당 활성화는 `docs/production-stage-and-ironing-development-plan.md`의 단계별 현장 규칙 확정과 Phase 순서를 따른다.
 
+### 2026-08-06 작업 종류별 AT 학습 후속
+
+- [ ] 현재 `v3-st-stable` 원천 조회·직원 eligibility·노동시간 배분 키에 `ProductionStage`가 없는 상태를 진단 지표와 테스트로 고정한다.
+- [ ] WorkRecord에 저장 당시 작업 종류와 capacity group snapshot을 보존하고 AT 원천 조회가 공정의 현재값이 아닌 기록 snapshot을 사용하게 한다.
+- [ ] 노동시간 풀을 `Organization × Worker × coverage × ProductionStage × CapacityGroup`으로 분리하고 단계 간 교차 배분이 0건인지 검증한다.
+- [ ] 동일 작업자·동일 기간에 여러 작업 종류가 있으면 WorkSession 또는 명시적 단계 전환 근거 없이 출퇴근 총시간을 임의 분할하지 않고 검토 대상으로 분리한다.
+- [ ] 별도 `v4-stage-aware` shadow 관측을 만들고 봉제-only v3 대조, 다림질 직접 측정 표본 대조 후에만 운영 AT 표시를 전환한다.
+
 ---
 
 ## 1. 후순위: 직원 협의 후 진행할 급여
