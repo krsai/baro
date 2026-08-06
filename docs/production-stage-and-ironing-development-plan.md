@@ -465,8 +465,10 @@ allocated pool input
 
 ### 6.1 스타일 상세
 
-- 공정 입력에 생산 단계 선택을 필수로 추가한다.
-- 기존 스타일을 열면 기존 공정은 봉제로 표시한다.
+- 공정 추가·수정 입력에 사용자 화면 필드 `작업 종류`를 필수로 추가하고 봉제·다림질·검품·포장을 선택하게 한다. 저장값은 각각 `SEWING`, `IRONING`, `INSPECTION`, `PACKING`이다.
+- 신규 공정의 작업 종류 기본값은 현재 대부분의 공정 입력이 봉제인 운영 특성을 반영해 `봉제(SEWING)`로 한다. 저장 시에는 기본값에 의존하지 않고 명시적인 단계값으로 검증·저장한다.
+- 현재 운영 DB에 등록된 기존 공정은 전부 봉제 공정이다. 단계 컬럼 도입 시 모든 기존 `StyleProcess`를 `SEWING`으로 명시 백필하며 공정명 문자열로 다른 단계를 추정하지 않는다.
+- 기존 스타일을 열면 기존 공정은 모두 봉제로 표시하고 기존 PT·ST·CT·AT와 배정 snapshot은 단계 백필로 변경하지 않는다.
 - 단계별로 공정 행을 그룹화하되 전체 순서도 보존한다.
 - PT, CT, ST, AT의 용도 차이를 화면에서 명시한다.
 - `DIRECT_MEASURED`를 선택한 공정은 직접 측정 필요 상태를 표시한다.
@@ -537,7 +539,7 @@ allocated pool input
 
 - enum, `CapacityGroup`, `CapacityGroupAssignment`, 정책, 세션, 관계형 snapshot과 인계 테이블을 추가한다.
 - 신규 필드는 먼저 nullable 또는 비활성 기본값으로 배포한다.
-- 기존 공정을 `SEWING/ALLOCATED`로 백필한다.
+- 현재 등록된 모든 기존 공정을 `SEWING/ALLOCATED`로 백필하고 NULL 또는 비봉제 기존 행이 0건인지 검증한다.
 - 기존 라인별 `SEWING_LINE` capacity group을 생성한다.
 - 기존 `WorkRecord.lineId`로 capacity group을 정확히 연결한다.
 - 관계형 snapshot은 교차 검증 가능한 기존 배정만 백필한다.
