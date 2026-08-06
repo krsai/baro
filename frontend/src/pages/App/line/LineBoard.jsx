@@ -1180,7 +1180,7 @@ const LineBoard = () => {
         <TextField
           fullWidth
           type="date"
-          label="\uC801\uC6A9 \uC2DC\uC791\uC77C"
+          label={'\uC801\uC6A9 \uC2DC\uC791\uC77C'}
           value={pendingAssignmentChange?.effectiveDate || ''}
           onChange={(event) =>
             setPendingAssignmentChange((previous) =>
@@ -1193,7 +1193,7 @@ const LineBoard = () => {
           <TextField
             fullWidth
             type="date"
-            label="\uC885\uB8CC\uC77C"
+            label={'\uC885\uB8CC\uC77C'}
             value={pendingAssignmentChange?.endDate || ''}
             onChange={(event) =>
               setPendingAssignmentChange((previous) =>
@@ -1227,9 +1227,9 @@ const LineBoard = () => {
         </Button>
       </DialogActions>
     </Dialog>
-    <Dialog open={Boolean(historyWorker)} onClose={() => setHistoryWorker(null)} maxWidth="sm" fullWidth>
+    <Dialog open={Boolean(historyWorker)} onClose={() => setHistoryWorker(null)} maxWidth="md" fullWidth>
       <DialogTitle>
-        {buildWorkerLabel(historyWorker)} · {'\uB77C\uC778 \uBC30\uCE58 \uC774\uB825'}
+        {buildWorkerLabel(historyWorker)} {'\u00B7'} {'\uB77C\uC778 \uBC30\uCE58 \uC774\uB825'}
       </DialogTitle>
       <DialogContent>
         {loadingHistory ? (
@@ -1241,11 +1241,16 @@ const LineBoard = () => {
             {historyRows.map((row) => (
               <Paper key={row.id} variant="outlined" sx={{ p: 1.5 }}>
                 <Typography fontWeight={700}>{row.lineName}</Typography>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={1}
+                  alignItems={{ sm: 'center' }}
+                  sx={{ mt: 1, width: '100%' }}
+                >
                   <TextField
                     size="small"
                     type="date"
-                    label="\uC2DC\uC791\uC77C"
+                    label={'\uC2DC\uC791\uC77C'}
                     value={row.startDate || ''}
                     onChange={(event) =>
                       setHistoryRows((previous) =>
@@ -1255,11 +1260,12 @@ const LineBoard = () => {
                       )
                     }
                     InputLabelProps={{ shrink: true }}
+                    sx={{ flex: 1, minWidth: 210 }}
                   />
                   <TextField
                     size="small"
                     type="date"
-                    label="\uC885\uB8CC\uC77C"
+                    label={'\uC885\uB8CC\uC77C'}
                     value={row.endDate || ''}
                     onChange={(event) =>
                       setHistoryRows((previous) =>
@@ -1271,11 +1277,13 @@ const LineBoard = () => {
                       )
                     }
                     InputLabelProps={{ shrink: true }}
+                    sx={{ flex: 1, minWidth: 210 }}
                   />
                   <Button
                     variant="outlined"
                     onClick={() => handleSaveHistoryRow(row)}
                     disabled={savingHistoryId === row.id || !row.startDate}
+                    sx={{ ml: { sm: 'auto' }, minWidth: 88, alignSelf: { xs: 'stretch', sm: 'center' } }}
                   >
                     {'\uC800\uC7A5'}
                   </Button>
