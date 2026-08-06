@@ -69,7 +69,7 @@ export const UI_MESSAGES = {
     materials: { ko: '자재 관리', en: 'Materials', vi: 'Quan ly vat tu' },
     materialSettings: { ko: '자재 설정', en: 'Material Settings', vi: 'Cai dat vat tu' },
     accounting: { ko: '회계 관리', en: 'Accounting', vi: 'Ke toan' },
-    payroll: { ko: '생산수당 계산', en: 'Production Allowance', vi: 'Tinh phu cap san luong' },
+    payroll: { ko: '생산수당', en: 'Production Allowance', vi: 'Tinh phu cap san luong' },
     organization: { ko: '조직 관리', en: 'Organization', vi: 'To chuc' },
     business: { ko: '사업체', en: 'Business', vi: 'Doanh nghiep' },
     line: { ko: '라인', en: 'Line', vi: 'Chuyen' },
@@ -147,7 +147,7 @@ export const UI_MESSAGES = {
     },
   },
   payrollBoard: {
-    title: { ko: '생산수당 계산', en: 'Production Allowance', vi: 'Tinh phu cap san luong' },
+    title: { ko: '생산수당', en: 'Production Allowance', vi: 'Tinh phu cap san luong' },
     add: { ko: '생산수당 계산 추가', en: 'Add Production Allowance', vi: 'Them phu cap san luong' },
     month: { ko: '\uC815\uC0B0 \uC6D4', en: 'Settlement Month', vi: 'Thang doi chieu' },
     employees: { ko: '\uB300\uC0C1 \uC778\uC6D0', en: 'Employees', vi: 'So nhan vien' },

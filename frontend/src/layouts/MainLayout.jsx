@@ -680,7 +680,7 @@ const MainLayout = () => {
             badgeCount: pendingEmployeeCount,
           },
           {
-            label: getUiMessage('menu.payroll', '\uAE09\uC5EC \uACC4\uC0B0', languageCode),
+            label: getUiMessage('menu.payroll', '\uC0DD\uC0B0\uC218\uB2F9', languageCode),
             icon: <CalculateIcon />,
             path: '/payroll',
           },
