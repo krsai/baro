@@ -852,19 +852,20 @@ const CustomerPricingBoard = () => {
       toolbar={
         <PageToolbar
           showLastUpdater={false}
-          left={
+          left={(
+            <SearchInput
+              placeholder={text.searchStyle}
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+            />
+          )}
+          right={
             <Stack
               direction={{ xs: 'column', lg: 'row' }}
               spacing={1.25}
               alignItems={{ lg: 'center' }}
               sx={{ width: 'auto', flexWrap: { lg: 'wrap' } }}
             >
-              <SearchInput
-                placeholder={text.searchStyle}
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-              />
-
               <FormControl size="small" sx={{ minWidth: 240 }}>
                 <InputLabel>{text.customer}</InputLabel>
                 <Select

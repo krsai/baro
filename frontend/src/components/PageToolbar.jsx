@@ -16,7 +16,7 @@ const PageToolbar = ({
         display: 'flex',
         flexDirection: { xs: 'column', lg: 'row' },
         alignItems: { xs: 'stretch', lg: 'center' },
-        justifyContent: 'flex-start',
+        justifyContent: 'space-between',
         gap: 1.25,
         minWidth: 0,
         ...sx,
@@ -31,13 +31,13 @@ const PageToolbar = ({
           spacing={1}
           sx={{
             alignItems: 'center',
-            justifyContent: 'flex-start',
+            justifyContent: { xs: 'flex-start', lg: 'flex-end' },
             flexWrap: 'wrap',
             flexShrink: 0,
           }}
         >
-          {right}
           {showLastUpdater ? <LastUpdaterLabel /> : null}
+          {right}
         </Stack>
       ) : null}
     </Box>

@@ -8,6 +8,7 @@ import {
   MenuItem,
   Paper,
   Select,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -717,6 +718,29 @@ const AttendanceList = () => {
   return (
     <AppPageContainer
       title={getUiMessage('menu.attendance', 'Attendance', languageCode)}
+      titleActions={(
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="outlined"
+            startIcon={importingFile ? <CircularProgress size={16} /> : <UploadFileIcon />}
+            onClick={handleClickImport}
+            disabled={!selectedFactoryId || importingFile}
+            title={resolveText(TEXT.importHint, languageCode, '')}
+          >
+            {importingFile
+              ? resolveText(TEXT.importing, languageCode, 'Importing')
+              : resolveText(TEXT.import, languageCode, 'Import File')}
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleAdd}
+            disabled={!selectedFactoryId || importingFile}
+          >
+            {resolveText(TEXT.add, languageCode, 'Add Entry')}
+          </Button>
+        </Stack>
+      )}
       toolbar={(
         <PageToolbar
           showLastUpdater={false}
@@ -755,27 +779,6 @@ const AttendanceList = () => {
               onEndChange={setSelectedEndMonth}
               disabled={loadingRows}
             />,
-            <Button
-              key="import"
-              variant="outlined"
-              startIcon={importingFile ? <CircularProgress size={16} /> : <UploadFileIcon />}
-              onClick={handleClickImport}
-              disabled={!selectedFactoryId || importingFile}
-              title={resolveText(TEXT.importHint, languageCode, '')}
-            >
-              {importingFile
-                ? resolveText(TEXT.importing, languageCode, 'Importing')
-                : resolveText(TEXT.import, languageCode, 'Import File')}
-            </Button>,
-            <Button
-              key="add"
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={handleAdd}
-              disabled={!selectedFactoryId || importingFile}
-            >
-              {resolveText(TEXT.add, languageCode, 'Add Entry')}
-            </Button>,
           ]}
         />
       )}

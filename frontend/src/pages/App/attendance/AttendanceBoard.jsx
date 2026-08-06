@@ -717,6 +717,16 @@ const AttendanceBoard = ({
                 : resolveText(TEXT.list, languageCode, 'List')}
             </Button>
           ) : null}
+          <Button
+            variant="outlined"
+            startIcon={importingFile ? <CircularProgress size={16} /> : <UploadFileIcon />}
+            onClick={handleClickImport}
+            disabled={!selectedFactoryId || importingFile || loadingEmployees}
+          >
+            {importingFile
+              ? resolveText(TEXT.importing, languageCode, 'Uploading...')
+              : resolveText(TEXT.importFile, languageCode, 'Upload File')}
+          </Button>
           <SaveButton
             onClick={handleSaveEntries}
             disabled={!selectedFactoryId || savingEntries}
@@ -765,16 +775,6 @@ const AttendanceBoard = ({
                 }}
                 slotProps={{ textField: { sx: { minWidth: 160 } } }}
               />
-              <Button
-                variant="outlined"
-                startIcon={importingFile ? <CircularProgress size={16} /> : <UploadFileIcon />}
-                onClick={handleClickImport}
-                disabled={!selectedFactoryId || importingFile || loadingEmployees}
-              >
-                {importingFile
-                  ? resolveText(TEXT.importing, languageCode, 'Uploading...')
-                  : resolveText(TEXT.importFile, languageCode, 'Upload File')}
-              </Button>
             </>
           )}
         />

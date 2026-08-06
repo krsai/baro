@@ -762,6 +762,21 @@ const WorkList = () => {
               '\uC791\uC5C5 \uAE30\uB85D',
               languageCode
             )}
+            actions={(
+              <Stack direction="row" spacing={1}>
+                <Button
+                  variant="outlined"
+                  startIcon={<UploadFileIcon />}
+                  onClick={handleImportClick}
+                  disabled={importing}
+                >
+                  {resolveText(TEXT.import, languageCode, 'Import File')}
+                </Button>
+                <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
+                  {resolveText(TEXT.add, languageCode, '\uAE30\uB85D \uCD94\uAC00')}
+                </Button>
+              </Stack>
+            )}
           />
           <Box
             sx={{
@@ -784,7 +799,7 @@ const WorkList = () => {
                 flex: 1,
               }}
             />
-            <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0 }}>
+            <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0, ml: { lg: 'auto' } }}>
               <InputLabel id="work-list-factory-filter-label">
                 {resolveText(TEXT.factory, languageCode, '공장')}
               </InputLabel>
@@ -837,17 +852,6 @@ const WorkList = () => {
                   slotProps={FILTER_DATE_PICKER_SLOT_PROPS}
                   minDate={workHistoryOperationStartDay}
                 />
-                <Button
-                  variant="outlined"
-                  startIcon={<UploadFileIcon />}
-                  onClick={handleImportClick}
-                  disabled={importing}
-                >
-                  {resolveText(TEXT.import, languageCode, 'Import File')}
-                </Button>
-                <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
-                  {resolveText(TEXT.add, languageCode, '기록 추가')}
-                </Button>
               </Stack>
             </Box>
           </Box>

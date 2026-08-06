@@ -3376,23 +3376,14 @@ const OrderList = () => {
           <PageToolbar
             showLastUpdater={false}
             left={(
-              <Stack
-                direction={{ xs: 'column', sm: 'row' }}
-                spacing={1}
-                sx={{
-                  alignItems: { xs: 'stretch', sm: 'center' },
-                  minWidth: 0,
-                }}
-              >
-                <SearchInput
-                  value={searchTerm}
-                  placeholder={orderPartyText.searchPlaceholder}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  sx={{
-                    width: { xs: '100%', sm: 360, md: 420 },
-                    flexShrink: 0,
-                  }}
-                />
+              <SearchInput
+                value={searchTerm}
+                placeholder={orderPartyText.searchPlaceholder}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            )}
+            right={(
+              <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
                 <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0 }}>
                   <InputLabel id="order-progress-filter-label">{ORDER_STATUS_TEXT.fieldLabel}</InputLabel>
                   <Select
@@ -3408,17 +3399,15 @@ const OrderList = () => {
                     ))}
                   </Select>
                 </FormControl>
+                <MonthRangeSelector
+                  startValue={dueDateFilterStart}
+                  endValue={dueDateFilterEnd}
+                  onStartChange={handleDueDateFilterStartMonthChange}
+                  onEndChange={handleDueDateFilterEndMonthChange}
+                  onShift={shiftDueDateFilterMonth}
+                  slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
+                />
               </Stack>
-            )}
-            right={(
-              <MonthRangeSelector
-                startValue={dueDateFilterStart}
-                endValue={dueDateFilterEnd}
-                onStartChange={handleDueDateFilterStartMonthChange}
-                onEndChange={handleDueDateFilterEndMonthChange}
-                onShift={shiftDueDateFilterMonth}
-                slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
-              />
             )}
           />
         )}
