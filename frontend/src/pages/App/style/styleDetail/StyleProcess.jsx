@@ -1900,6 +1900,8 @@ const StyleProcess = ({
     [isNewCustomActionOption, isNewCustomActionSpecOption]
   );
 
+  // The footer is the whole-style process time. ProductionStage separates AT
+  // training/capacity pools, but it must never filter this overall sum.
   const totalPT = useMemo(
     () => {
       return safeProcesses.reduce((acc, process) => {
