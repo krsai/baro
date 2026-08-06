@@ -31,7 +31,7 @@ import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
 import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
-import CustomDatePicker from '../../../components/CustomDatePicker';
+import MonthRangeSelector from '../../../components/MonthRangeSelector';
 import PageSectionHeader from '../../../components/PageSectionHeader';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -427,13 +427,6 @@ const WorkList = () => {
     () => buildFilterDateKey(dateFilterEnd, workHistoryOperationStartDay),
     [dateFilterEnd, workHistoryOperationStartDay]
   );
-  const dateFilterAtOperationStartMonth = useMemo(
-    () =>
-      !dayjs(dateFilterStart)
-        .startOf('month')
-        .isAfter(workHistoryOperationStartMonth, 'month'),
-    [dateFilterStart, workHistoryOperationStartMonth]
-  );
   useEffect(() => {
     persistWorkListFilters(activeOrgId, {
       selectedFactoryId: activeFactoryId ? String(activeFactoryId) : selectedFactoryId,
@@ -739,19 +732,6 @@ const WorkList = () => {
     });
   }, [workHistoryOperationStartDay, workHistoryOperationStartMonth]);
 
-  const handleDateFilterMonthChange = useCallback((value) => {
-    if (!value?.isValid?.()) return;
-    const nextMonthStart = getMonthStart(
-      value.toDate(),
-      workHistoryOperationStartMonth,
-      workHistoryOperationStartDay
-    );
-    setDateFilterStart(nextMonthStart);
-    setDateFilterEnd(
-      getMonthEnd(nextMonthStart, workHistoryOperationStartMonth, workHistoryOperationStartDay)
-    );
-  }, [workHistoryOperationStartDay, workHistoryOperationStartMonth]);
-
   const shiftDateFilterMonth = useCallback(
     (amount) => {
       const nextMonthStart = addMonths(
@@ -761,8 +741,12 @@ const WorkList = () => {
         workHistoryOperationStartDay
       );
       setDateFilterStart(nextMonthStart);
-      setDateFilterEnd(
-        getMonthEnd(nextMonthStart, workHistoryOperationStartMonth, workHistoryOperationStartDay)
+      setDateFilterEnd((previous) =>
+        getMonthEnd(
+          addMonths(previous, amount, workHistoryOperationStartMonth, workHistoryOperationStartDay),
+          workHistoryOperationStartMonth,
+          workHistoryOperationStartDay
+        )
       );
     },
     [dateFilterStart, workHistoryOperationStartDay, workHistoryOperationStartMonth]
@@ -844,32 +828,15 @@ const WorkList = () => {
                   flexShrink: 0,
                 }}
               >
-                <CustomDatePicker
-                  value={dateFilterStart}
-                  onChange={handleDateFilterMonthChange}
-                  monthOnly
+                <MonthRangeSelector
+                  startValue={dateFilterStart}
+                  endValue={dateFilterEnd}
+                  onStartChange={handleDateFilterStartChange}
+                  onEndChange={handleDateFilterEndChange}
+                  onShift={shiftDateFilterMonth}
                   slotProps={FILTER_DATE_PICKER_SLOT_PROPS}
                   minDate={workHistoryOperationStartDay}
                 />
-                <Stack sx={{ gap: '2px' }}>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => shiftDateFilterMonth(1)}
-                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-                  >
-                    M+
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => shiftDateFilterMonth(-1)}
-                    disabled={dateFilterAtOperationStartMonth}
-                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-                  >
-                    M-
-                  </Button>
-                </Stack>
                 <Button
                   variant="outlined"
                   startIcon={<UploadFileIcon />}

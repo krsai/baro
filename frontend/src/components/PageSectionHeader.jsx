@@ -36,7 +36,7 @@ const PageSectionHeader = ({
         ...sx,
       }}
     >
-      <Typography variant={titleVariant} sx={{ fontWeight: 700 }}>
+      <Typography variant={titleVariant} sx={{ fontWeight: 700, lineHeight: 1.4 }}>
         {title}
       </Typography>
       <Box

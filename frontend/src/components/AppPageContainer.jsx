@@ -2,8 +2,8 @@ import React from 'react';
 import { Box, Stack, Divider } from '@mui/material';
 import PageSectionHeader from './PageSectionHeader';
 
-const PAGE_PADDING = { xs: 1.5, md: 2 };
-const NEGATIVE_PAGE_PADDING = { xs: -1.5, md: -2 };
+const PAGE_PADDING = 2;
+const NEGATIVE_PAGE_PADDING = -2;
 
 const AppPageContainer = ({
   title,
@@ -16,12 +16,12 @@ const AppPageContainer = ({
   contentSx = {},
 }) => {
   const resolvedHeader = header ? (
-    <Stack spacing={1.5} sx={{ minWidth: 0 }}>
+    <Stack spacing={2} sx={{ minWidth: 0 }}>
       {header}
       {toolbar}
     </Stack>
   ) : title || titleActions || toolbar ? (
-    <Stack spacing={1.5} sx={{ minWidth: 0 }}>
+    <Stack spacing={2} sx={{ minWidth: 0 }}>
       {(title || titleActions) ? (
         <PageSectionHeader
           title={title}
@@ -46,7 +46,7 @@ const AppPageContainer = ({
       }}
     >
       <Stack
-        spacing={2.5}
+        spacing={2}
         sx={{
           flexGrow: 1,
           minHeight: '100%',
@@ -66,8 +66,8 @@ const AppPageContainer = ({
               zIndex: 10,
               mx: NEGATIVE_PAGE_PADDING,
               px: PAGE_PADDING,
-              pt: { xs: 1, md: 1.25 },
-              pb: { xs: 1.5, md: 2 },
+              pt: 1.5,
+              pb: 2,
               minWidth: 0,
               bgcolor: 'background.paper',
               borderBottom: '1px solid',

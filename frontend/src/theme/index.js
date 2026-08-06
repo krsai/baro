@@ -30,7 +30,7 @@ const theme = createTheme({
     h2: { fontSize: '2rem', fontWeight: 600 },
     h3: { fontSize: '1.75rem', fontWeight: 600 },
     h4: { fontSize: '1.5rem', fontWeight: 600 },
-    h5: { fontSize: '1.25rem', fontWeight: 600 },
+    h5: { fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.4 },
     h6: { fontSize: '1.1rem', fontWeight: 600 },
     body1: { fontSize: '1rem' },
     body2: { fontSize: '0.875rem' },
@@ -180,6 +180,11 @@ const theme = createTheme({
     MuiTextField: {
       defaultProps: {
         variant: 'outlined',
+        size: 'small',
+      },
+    },
+    MuiFormControl: {
+      defaultProps: {
         size: 'small',
       },
     },

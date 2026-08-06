@@ -41,7 +41,7 @@ import DeleteActionButton from '../../../components/DeleteActionButton';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
 import LockToggleSwitch from '../../../components/LockToggleSwitch';
 import SaveButton from '../../../components/SaveButton';
-import CustomDatePicker from '../../../components/CustomDatePicker';
+import MonthRangeSelector from '../../../components/MonthRangeSelector';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import SearchableSelect from '../../../components/SearchableSelect';
@@ -2416,19 +2416,23 @@ const OrderList = () => {
     });
   };
 
-  const handleDueDateFilterMonthChange = (value) => {
+  const handleDueDateFilterStartMonthChange = (value) => {
     if (!value?.isValid?.()) return;
     const nextMonthStart = getMonthStart(value.toDate());
     hasTouchedDueDateFilterRef.current = true;
     setDueDateFilterStart(nextMonthStart);
-    setDueDateFilterEnd(getMonthEnd(nextMonthStart));
+  };
+
+  const handleDueDateFilterEndMonthChange = (value) => {
+    if (!value?.isValid?.()) return;
+    hasTouchedDueDateFilterRef.current = true;
+    setDueDateFilterEnd(getMonthEnd(value.toDate()));
   };
 
   const shiftDueDateFilterMonth = (amount) => {
     hasTouchedDueDateFilterRef.current = true;
-    const nextMonthStart = addMonths(dueDateFilterStart, amount);
-    setDueDateFilterStart(nextMonthStart);
-    setDueDateFilterEnd(getMonthEnd(nextMonthStart));
+    setDueDateFilterStart((previous) => addMonths(previous, amount));
+    setDueDateFilterEnd((previous) => getMonthEnd(addMonths(previous, amount)));
   };
 
   const handleEdit = (order) => {
@@ -3407,41 +3411,14 @@ const OrderList = () => {
               </Stack>
             )}
             right={(
-              <Stack
-                direction="row"
-                spacing={1}
-                sx={{
-                  alignItems: 'center',
-                  justifyContent: { xs: 'flex-start', lg: 'flex-end' },
-                  flexWrap: 'wrap',
-                  flexShrink: 0,
-                }}
-              >
-                <CustomDatePicker
-                  value={dueDateFilterStart}
-                  onChange={handleDueDateFilterMonthChange}
-                  monthOnly
-                  slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
-                />
-                <Stack sx={{ gap: '2px' }}>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => shiftDueDateFilterMonth(1)}
-                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-                  >
-                    M+
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => shiftDueDateFilterMonth(-1)}
-                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-                  >
-                    M-
-                  </Button>
-                </Stack>
-              </Stack>
+              <MonthRangeSelector
+                startValue={dueDateFilterStart}
+                endValue={dueDateFilterEnd}
+                onStartChange={handleDueDateFilterStartMonthChange}
+                onEndChange={handleDueDateFilterEndMonthChange}
+                onShift={shiftDueDateFilterMonth}
+                slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
+              />
             )}
           />
         )}
