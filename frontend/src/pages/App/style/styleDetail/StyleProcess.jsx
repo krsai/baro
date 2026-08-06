@@ -90,6 +90,7 @@ const createEmptyDraft = () => ({
 });
 const PT_REFERENCE_QUANTITY = DEFAULT_TIME_REF_QUANTITY;
 const PROCESS_CODE_COLUMN_WIDTH = '16ch';
+const PRODUCTION_STAGE_COLUMN_WIDTH = 110;
 const PROCESS_TIME_COLUMN_WIDTH = 140;
 const PROCESS_ACTION_COLUMN_WIDTH = 120;
 const PRODUCTION_STAGE_OPTIONS = ['SEWING', 'IRONING', 'INSPECTION', 'PACKING'];
@@ -2813,6 +2814,17 @@ const StyleProcess = ({
                   </Stack>
                 </TableCell>
 
+                <TableCell align="left" sx={{ width: PRODUCTION_STAGE_COLUMN_WIDTH }}>
+                  <Chip
+                    size="small"
+                    label={getStyleProcessMessage(
+                      languageCode,
+                      `productionStage${process?.productionStage ?? 'SEWING'}`
+                    )}
+                    variant="outlined"
+                  />
+                </TableCell>
+
                 <TableCell
                   align="left"
                   sx={{
@@ -2842,14 +2854,6 @@ const StyleProcess = ({
                   <Stack spacing={0.25}>
                     <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
                       <span>{mainProcessLabel}</span>
-                      <Chip
-                        size="small"
-                        label={getStyleProcessMessage(
-                          languageCode,
-                          `productionStage${process?.productionStage ?? 'SEWING'}`
-                        )}
-                        variant="outlined"
-                      />
                       {reviewMeta.needsReview ? (
                         <Tooltip
                           title={
@@ -3537,6 +3541,7 @@ const StyleProcess = ({
             <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', width: '100%' }}>
               <colgroup>
                 <col style={{ width: 70 }} />
+                <col style={{ width: `${PRODUCTION_STAGE_COLUMN_WIDTH}px` }} />
                 <col style={{ width: PROCESS_CODE_COLUMN_WIDTH }} />
                 <col />
                 <col style={{ width: `${PROCESS_TIME_COLUMN_WIDTH}px` }} />
@@ -3547,6 +3552,12 @@ const StyleProcess = ({
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ width: 70 }}>{getStyleProcessMessage(languageCode, 'orderColumn')}</TableCell>
+                  <TableCell
+                    align="left"
+                    sx={{ width: PRODUCTION_STAGE_COLUMN_WIDTH, whiteSpace: 'nowrap' }}
+                  >
+                    {getStyleProcessMessage(languageCode, 'productionStageLabel')}
+                  </TableCell>
                   <TableCell
                     align="left"
                     sx={{
@@ -3625,7 +3636,7 @@ const StyleProcess = ({
                   <TableBody {...provided.droppableProps} ref={provided.innerRef}>
                     {safeProcesses.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} align="center" sx={{ py: 5, color: 'text.secondary' }}>
+                        <TableCell colSpan={8} align="center" sx={{ py: 5, color: 'text.secondary' }}>
                           {getStyleProcessMessage(languageCode, 'empty')}
                         </TableCell>
                       </TableRow>
@@ -3639,7 +3650,7 @@ const StyleProcess = ({
 
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={3} align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
+                  <TableCell colSpan={4} align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
                     {getStyleProcessMessage(languageCode, 'total')}
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
