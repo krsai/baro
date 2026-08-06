@@ -36,7 +36,8 @@
 - [x] `StyleProcess` 1,255건은 `productionStage` NULL 0건이며 전부 `SEWING`이다. org 1은 726건 중 AT 보유 693건, org 2는 529건 중 AT 보유 0건이다.
 - [x] 기존 `AtTrainingBucketProcess` 978건은 고아 `StyleProcess` FK 0건이고 연결된 공정은 전부 봉제다.
 - [x] 기존 `StyleProcessAtObservation`은 v2 919건과 `v3-st-stable` 919건이며 고아 공정 0건, 비봉제 연결 0건이다. 기존 `StyleProcess.atParams` 693건도 보존되어 있다.
-- [ ] 운영 DB에는 아직 `AtTrainingBucket.productionStage`, `StyleProcessAtObservation.productionStage` 컬럼과 `v4-stage-aware` 관측이 없다. `20260806123000_add_stage_aware_at_training` 배포 적용 후 NULL·단계 불일치·v4 생성 건수를 다시 검증한다.
+- [x] 배포 재확인 결과 `AtTrainingBucket.productionStage`와 `StyleProcessAtObservation.productionStage`가 적용됐다. 기존 버킷 25건과 v2 919건·v3 919건은 모두 `SEWING`, NULL 0건, 현재 공정과 단계 불일치 0건이다.
+- [ ] 아직 `v4-stage-aware` 관측은 0건이다. 다음 AT 동기화 실행 후 v4 생성 건수와 봉제 v3 대비 결과를 검증한다.
 
 ---
 
