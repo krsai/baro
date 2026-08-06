@@ -3011,21 +3011,6 @@ const StyleProcess = ({
                 sx={{ alignItems: { xs: 'stretch', xl: 'flex-start' } }}
               >
                 <TextField
-                  required
-                  size="small"
-                  label={getStyleProcessMessage(languageCode, 'textProcessLabel')}
-                  value={addDraft.processText ?? ''}
-                  onChange={(event) => {
-                    setAddDraft((prev) => ({
-                      ...prev,
-                      processText: event.target.value,
-                    }));
-                    setAddError('');
-                  }}
-                  placeholder={getStyleProcessMessage(languageCode, 'textProcessPlaceholder')}
-                  sx={{ flex: 2, minWidth: 320 }}
-                />
-                <TextField
                   select
                   required
                   size="small"
@@ -3060,6 +3045,21 @@ const StyleProcess = ({
                   }}
                   placeholder={getStyleProcessMessage(languageCode, 'processCodePlaceholder')}
                   sx={{ minWidth: 170, flex: 1 }}
+                />
+                <TextField
+                  required
+                  size="small"
+                  label={getStyleProcessMessage(languageCode, 'textProcessLabel')}
+                  value={addDraft.processText ?? ''}
+                  onChange={(event) => {
+                    setAddDraft((prev) => ({
+                      ...prev,
+                      processText: event.target.value,
+                    }));
+                    setAddError('');
+                  }}
+                  placeholder={getStyleProcessMessage(languageCode, 'textProcessPlaceholder')}
+                  sx={{ flex: 2, minWidth: 320 }}
                 />
               </Stack>
 
