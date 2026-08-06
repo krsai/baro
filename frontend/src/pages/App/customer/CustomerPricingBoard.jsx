@@ -851,13 +851,20 @@ const CustomerPricingBoard = () => {
       }
       toolbar={
         <PageToolbar
+          showLastUpdater={false}
           left={
             <Stack
               direction={{ xs: 'column', lg: 'row' }}
               spacing={1.25}
               alignItems={{ lg: 'center' }}
-              sx={{ width: '100%' }}
+              sx={{ width: 'auto', flexWrap: { lg: 'wrap' } }}
             >
+              <SearchInput
+                placeholder={text.searchStyle}
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+              />
+
               <FormControl size="small" sx={{ minWidth: 240 }}>
                 <InputLabel>{text.customer}</InputLabel>
                 <Select
@@ -910,14 +917,6 @@ const CustomerPricingBoard = () => {
                   <MenuItem value="KRW">KRW</MenuItem>
                 </Select>
               </FormControl>
-
-              <Box sx={{ minWidth: 240, flex: '1 1 320px' }}>
-                <SearchInput
-                  placeholder={text.searchStyle}
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                />
-              </Box>
             </Stack>
           }
         />
