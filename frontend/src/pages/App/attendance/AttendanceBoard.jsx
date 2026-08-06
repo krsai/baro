@@ -325,15 +325,27 @@ const AttendanceBoard = ({
   );
   const filteredEmployees = useMemo(() => {
     const keyword = String(searchTerm || '').trim().toLowerCase();
-    if (!keyword) return attendanceEmployees;
-    return attendanceEmployees.filter((employee) => {
-      const text = [employee?.displayName, employee?.name, employee?.email]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return text.includes(keyword);
+    const visibleEmployees = keyword
+      ? attendanceEmployees.filter((employee) => {
+          const text = [employee?.displayName, employee?.name, employee?.email]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+          return text.includes(keyword);
+        })
+      : attendanceEmployees;
+
+    return [...visibleEmployees].sort((left, right) => {
+      const leftEntry = entriesByWorker[String(left?.id || '')];
+      const rightEntry = entriesByWorker[String(right?.id || '')];
+      const leftHasAttendance = Boolean(leftEntry?.clockIn || leftEntry?.clockOut);
+      const rightHasAttendance = Boolean(rightEntry?.clockIn || rightEntry?.clockOut);
+      if (leftHasAttendance !== rightHasAttendance) return leftHasAttendance ? -1 : 1;
+      return String(left?.displayName || left?.name || '').localeCompare(
+        String(right?.displayName || right?.name || '')
+      );
     });
-  }, [attendanceEmployees, searchTerm]);
+  }, [attendanceEmployees, entriesByWorker, searchTerm]);
 
   useEffect(() => {
     setSelectedDate(resolveInitialDate(initialWorkDate));
