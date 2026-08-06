@@ -33,6 +33,8 @@
 - AT 학습·생산능력 계산의 노동시간 풀은 작업 종류별로 분리하지만 스타일 공정 목록의 PT·ST·AT 하단 합계는 모든 작업 종류의 공정 시간을 단순 합산한 전체 스타일 시간이다. 예를 들어 봉제 공정 100초와 다림질 공정 10초이면 전체 합계는 110초로 표시한다. 작업 종류별 소계가 추가되더라도 이 전체 합계를 대체하지 않는다.
 - 2026-08-06 구현된 `v4-stage-aware`는 `AtTrainingBucket.productionStage`와 `StyleProcessAtObservation.productionStage`를 보존하고, 단일 작업자·WorkLog의 공정이 모두 같은 작업 종류일 때만 그 출퇴근 노동시간을 해당 종류 풀에 배분한다. 동일 작업자·WorkLog에 둘 이상의 작업 종류가 섞였지만 종류별 실측시간이 없으면 `MIXED_PRODUCTION_STAGE_WITHOUT_MEASURED_STAGE_TIME`으로 전부 학습 제외한다. 이 제외 때문에 신규 관측이 없는 공정의 마지막 유효 AT를 삭제하지 않는다.
 - 작업기록이 연결된 `StyleProcess.productionStage`는 변경할 수 없다. 과거 기록의 의미를 바꾸지 않고 다른 종류로 전환하려면 새 공정을 추가한다. 향후 `WorkRecord.productionStageSnapshot`을 도입하기 전까지 이 불변식으로 과거 AT 단계의 안정성을 보장한다.
+- 작업 종류 도입 이전에 운영 DB에 존재한 공정과 AT 학습 자료는 모두 봉제 자료다. 2026-08-07 운영 검증 기준 `StyleProcess` 1,255건, `AtTrainingBucket` 25건, `StyleProcessAtObservation` v2 919건과 v3 919건을 모두 `SEWING`으로 명시 백필했으며 단계 NULL, 현재 공정과의 단계 불일치, 고아 공정 FK는 각각 0건이다. 이 과거 행을 공정명으로 재분류하거나 신규 비봉제 종류로 추정 변경하지 않는다.
+- 기존 `StyleProcess.atParams` 693건은 단계 백필과 v4 도입으로 삭제하거나 일괄 재계산하지 않는다. 유효한 `v4-stage-aware` 관측이 생성된 개별 공정만 새 결과로 갱신하고, 아직 v4 관측이 없는 공정은 마지막 유효 AT를 유지한다.
 
 ## 2026-08-02 생산수당 월 마감 준비 기준
 
