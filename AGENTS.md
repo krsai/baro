@@ -1,5 +1,10 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-08-07 AT ST 임시 대체 승인 단순화
+
+- AT 관측이 없는 공정에 ST를 임시 표시값으로 허용하는 기능은 승인 여부만 관리하며 승인 발생 배정·승인 시각의 히스토리는 업무상 관리하지 않는다. 운영 판단의 소스오브트루스는 `StyleProcess.atStFallbackApproved` 하나로 단순화한다.
+- 기존 `atStFallbackSourceAssignmentPlanId`, `atStFallbackApprovedAt`은 현재 스키마·호환성 때문에 즉시 삭제하지 않지만 신규 업무 로직과 화면에서 필수값 또는 이력 근거로 사용하지 않는다. 향후 관계·API 사용처를 정리한 뒤 별도 스키마 정리에서 제거한다.
+
 ## 2026-08-07 StyleProcess 감사 필드 운영 확인
 
 - 운영 DB의 `StyleProcess`는 총 1,255건이며 조직 1은 726건, 조직 2는 529건이다. Railway Data 화면에서 몇 행만 보이는 것은 테이블 전체가 적은 것이 아니라 현재 페이지/표시 구간만 보이는 것이다.
