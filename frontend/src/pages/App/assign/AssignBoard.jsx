@@ -342,6 +342,9 @@ const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
       ref={setNodeRef}
       sx={{
         minWidth: 0,
+        height: { lg: '100%' },
+        minHeight: 0,
+        overflow: { lg: 'hidden' },
         position: 'relative',
         pl: { xs: 0, lg: 1.5 },
         pt: { xs: 1.5, lg: 0 },
@@ -361,6 +364,8 @@ const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
       <Box
         sx={{
           minWidth: 0,
+          height: { lg: '100%' },
+          minHeight: 0,
           pointerEvents: acceptsAssignment ? 'none' : 'auto',
         }}
       >
@@ -406,7 +411,7 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
   );
 
   return (
-    <Stack spacing={1.5} sx={{ minWidth: 0 }}>
+    <Stack spacing={1.5} sx={{ minWidth: 0, height: '100%', minHeight: 0 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="subtitle2">
           {getUiMessage('assign.unassignedCards', '미배정 작업', languageCode)}
@@ -418,7 +423,9 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
       <Stack
         spacing={1}
         sx={{
-          maxHeight: { xs: 360, lg: 'calc(100vh - 260px)' },
+          maxHeight: { xs: 360, lg: 'none' },
+          flex: { lg: 1 },
+          minHeight: 0,
           overflowY: 'auto',
           pr: 0.5,
         }}
@@ -6892,6 +6899,18 @@ const AssignBoard = () => {
 
   return (
     <AppPageContainer
+      sx={{
+        height: { lg: '100%' },
+        minHeight: 0,
+        overflow: { lg: 'hidden' },
+      }}
+      contentSx={{
+        display: 'flex',
+        flexDirection: 'column',
+        flex: 1,
+        minHeight: 0,
+        overflow: { lg: 'hidden' },
+      }}
       header={
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6">
@@ -7009,9 +7028,12 @@ const AssignBoard = () => {
             gap: { xs: 1.5, lg: 1.5 },
             alignItems: 'stretch',
             minWidth: 0,
+            flex: { lg: 1 },
+            minHeight: 0,
+            overflow: { lg: 'hidden' },
           }}
         >
-          <Stack spacing={1.5} sx={{ minWidth: 0 }}>
+          <Stack spacing={1.5} sx={{ minWidth: 0, minHeight: 0, overflowY: { lg: 'auto' } }}>
             <Box
               sx={{
                 display: 'flex',
@@ -7077,7 +7099,7 @@ const AssignBoard = () => {
           <AssignmentCancelDropZone
             activeDragType={activeDrag?.type || null}
           >
-            <Box sx={{ minWidth: 0 }}>
+            <Box sx={{ minWidth: 0, height: '100%', minHeight: 0 }}>
               <UnassignedCardGroupsPanel
                 filteredCardCount={filteredCards.length}
                 groupedFilteredCards={groupedFilteredCards}
