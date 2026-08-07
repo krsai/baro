@@ -532,7 +532,7 @@ const StyleBoard = () => {
         const styleAtReliability = resolveStyleAtReliability(processes);
         const stGapPercent =
           hasTotalAT && hasTotalST
-            ? calculateDivergencePercent(totalAT, totalST)
+            ? calculateDivergencePercent(totalST, totalAT)
             : null;
         return {
           ...style,
@@ -724,8 +724,8 @@ const StyleBoard = () => {
                             <Tooltip
                               title={
                                 style.stGapMeta?.needsReview
-                                  ? `AT와 ST 차이가 ${formatDivergencePercentLabel(style.stGapPercent)}로 커서 ST 조정 검토가 필요합니다.`
-                                  : `AT와 ST 차이율 ${formatDivergencePercentLabel(style.stGapPercent)}`
+                                  ? `ST가 AT보다 ${formatDivergencePercentLabel(style.stGapPercent)} 차이나 ST 조정 검토가 필요합니다.`
+                                  : `AT 대비 ST 차이율 ${formatDivergencePercentLabel(style.stGapPercent)}`
                               }
                             >
                               <Chip

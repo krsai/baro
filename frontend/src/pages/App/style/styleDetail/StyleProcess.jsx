@@ -197,8 +197,8 @@ const STYLE_PROCESS_MESSAGES = {
     validateInvalid: '유효한 공정 조합을 입력해주세요.',
     validateDuplicate: '이미 등록된 공정입니다.',
     validateDuplicateCode: '이미 사용 중인 공정코드입니다.',
-    stGapReview: 'AT와 ST 차이가 {label}로 커서 ST 조정 검토가 필요합니다.',
-    stGapNormal: 'AT와 ST 차이율 {label}',
+    stGapReview: 'ST가 AT보다 {label} 차이나 ST 조정 검토가 필요합니다.',
+    stGapNormal: 'AT 대비 ST 차이율 {label}',
   },
   en: {
     title: 'Style Process List',
@@ -289,8 +289,8 @@ const STYLE_PROCESS_MESSAGES = {
     validateInvalid: 'Enter a valid process composition.',
     validateDuplicate: 'This process is already registered.',
     validateDuplicateCode: 'This process code is already in use.',
-    stGapReview: 'AT and ST differ by {label}, so ST review is recommended.',
-    stGapNormal: 'AT/ST gap {label}',
+    stGapReview: 'ST differs from AT by {label}, so ST review is recommended.',
+    stGapNormal: 'ST difference relative to AT: {label}',
   },
   vi: {
     title: 'Danh sach cong doan style',
@@ -381,8 +381,8 @@ const STYLE_PROCESS_MESSAGES = {
     validateInvalid: 'Hay nhap mot to hop cong doan hop le.',
     validateDuplicate: 'Cong doan nay da duoc dang ky.',
     validateDuplicateCode: 'Ma cong doan nay da duoc su dung.',
-    stGapReview: 'AT va ST lech {label}, nen xem lai ST.',
-    stGapNormal: 'Do lech AT/ST {label}',
+    stGapReview: 'ST lech so voi AT {label}, nen xem lai ST.',
+    stGapNormal: 'Do lech ST so voi AT: {label}',
   },
 };
 
@@ -1974,7 +1974,7 @@ const StyleProcess = ({
     return resolveStyleAtReliability(safeProcesses);
   }, [safeProcesses]);
   const totalStGapPercent = useMemo(
-    () => (hasAT && hasST ? calculateDivergencePercent(totalAT, totalST) : null),
+    () => (hasAT && hasST ? calculateDivergencePercent(totalST, totalAT) : null),
     [hasAT, hasST, totalAT, totalST]
   );
 
