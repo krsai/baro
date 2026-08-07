@@ -1278,11 +1278,11 @@ const MainLayout = () => {
           : null;
       const skipUnsavedChangesCheck = options?.skipUnsavedChangesCheck === true;
       const isSamePathNavigation = nextPathname === currentPath;
-      if (!isSamePathNavigation && !skipUnsavedChangesCheck) {
-        const confirmed = confirmDiscardUnsavedChanges({ path: currentPath });
-        if (!confirmed) return;
-      }
       if (isEmptyWorkspaceNavigation) {
+        if (closeTabId && !skipUnsavedChangesCheck) {
+          const confirmed = confirmDiscardUnsavedChanges({ path: closeTabId });
+          if (!confirmed) return;
+        }
         skipAutoOpenPathRef.current = EMPTY_WORKSPACE_PATH;
         if (nextPath && currentRoutePath !== nextPath) {
           setPendingTabPath('');
@@ -1291,8 +1291,6 @@ const MainLayout = () => {
           navigate(nextPath);
           schedulePendingNavigationCleanup(currentPathRef.current, nextPathname);
         } else if (closeTabId && currentPath !== closeTabId) {
-          const confirmed = confirmDiscardUnsavedChanges({ path: closeTabId });
-          if (!confirmed) return;
           setPendingTabPath('');
           pendingCloseTabRef.current = null;
           closeTab(closeTabId);
@@ -1340,6 +1338,27 @@ const MainLayout = () => {
         }
       }
 
+      // Moving to another preserved tab (or opening an additional tab) must
+      // not discard the current form, so it must not be blocked by an unsaved
+      // changes prompt. Confirm only paths that this navigation will actually
+      // remove: an explicitly closed tab or the current detail tab replaced by
+      // the single-detail-tab policy.
+      if (!skipUnsavedChangesCheck) {
+        const destructivePaths = new Set();
+        if (closeTabId) destructivePaths.add(closeTabId);
+        if (
+          !isSamePathNavigation &&
+          openOptions.replacePrefix &&
+          currentPath.startsWith(openOptions.replacePrefix)
+        ) {
+          destructivePaths.add(currentPath);
+        }
+        for (const destructivePath of destructivePaths) {
+          const confirmed = confirmDiscardUnsavedChanges({ path: destructivePath });
+          if (!confirmed) return;
+        }
+      }
+
       // The `openTab` function from context already checks for duplicates,
       // so we can call it directly. This removes the dependency on `openTabs`.
       let label = options?.label;
@@ -1355,8 +1374,6 @@ const MainLayout = () => {
         navigate(nextPath);
         schedulePendingNavigationCleanup(currentPathRef.current, nextPathname);
       } else if (closeTabId && currentPath !== closeTabId) {
-        const confirmed = confirmDiscardUnsavedChanges({ path: closeTabId });
-        if (!confirmed) return;
         setPendingTabPath('');
         pendingCloseTabRef.current = null;
         closeTab(closeTabId);
