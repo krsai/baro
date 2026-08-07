@@ -586,8 +586,20 @@ export const parseWorkLogImportWorkbook = async (file) => {
 
   const parsedRows = [];
   const skippedSheets = [];
+  const hiddenSheetNames = new Set(
+    (Array.isArray(workbook?.Workbook?.Sheets)
+      ? workbook.Workbook.Sheets
+      : []
+    )
+      .filter((sheetInfo) => Number(sheetInfo?.Hidden) > 0)
+      .map((sheetInfo) => sheetInfo?.name)
+      .filter(Boolean)
+  );
 
   workbook.SheetNames.forEach((sheetName) => {
+    // Hidden sheets in operational workbooks are archived monthly data or
+    // reference tables, not sheets selected by the user for this import.
+    if (hiddenSheetNames.has(sheetName)) return;
     const sheet = workbook.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json(sheet, {
       header: 1,
