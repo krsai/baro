@@ -21,9 +21,10 @@
     "test:database-target-guard": "node --test scripts/database-target-guard-regression.test.mjs",
     "test:employee-number": "npm --prefix backend run build && node --test scripts/employee-number-regression.test.mjs",
     "test:work-record-response": "npm --prefix backend run build && node --test scripts/work-record-response-regression.test.mjs",
+    "test:workspace-navigation": "node --test scripts/workspace-navigation-regression.test.mjs",
     "test:relational-integrity": "node --test scripts/relational-integrity-regression.test.mjs",
     "test:time-date": "npm --prefix backend run build && node --test scripts/time-date-regression.test.mjs",
-    "test:regression": "npm run test:access-policy && npm run test:database-target-guard && npm run test:relational-integrity && npm run test:time-date && npm run test:at-reliability && npm run test:st-buckets && npm run test:assignment-st-snapshot && npm run test:sales-prices && npm run test:attendance-fallback && npm run test:at-training && npm run test:employee-number && npm run test:work-record-response",
+    "test:regression": "npm run test:access-policy && npm run test:database-target-guard && npm run test:relational-integrity && npm run test:time-date && npm run test:at-reliability && npm run test:st-buckets && npm run test:assignment-st-snapshot && npm run test:sales-prices && npm run test:attendance-fallback && npm run test:at-training && npm run test:employee-number && npm run test:work-record-response && npm run test:workspace-navigation",
     "reset:baseline": "npm --prefix backend run reset:baseline"
   },
   "devDependencies": {

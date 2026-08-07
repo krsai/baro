@@ -2181,3 +2181,8 @@ runtime 조회값:
 - **코드 정리**: `normalizeAssignmentCtSnapshotProcess`의 legacy `processKey` parser를 제거했고, assignment 저장 경로의 CT snapshot lookup도 `styleProcessId` 매칭만 허용한다. 백엔드 canonical snapshot rebuild는 새 persisted process row에 `processKey`를 쓰지 않는다. 프론트 assignment/production CT 조회도 saved snapshot row를 `styleProcessId`로 찾는다.
 - **DB 정리**: `migration_fix.sql` 6-4f는 `styleProcessId`가 이미 있는 CT snapshot process row에서만 `processKey`를 제거한다. 아직 `styleProcessId`가 없는 손상 row는 수리 단서를 보존하기 위해 `processKey`를 남긴다.
 - **운영 적용 결과**: 2026-07-14에 Railway public URL을 `DATABASE_URL`/`DIRECT_URL` 둘 다에 설정해 populated 운영 DB를 재확인했다(`AssignmentPlan=43`, `WorkRecord=978`, `StyleProcess=1177`). 6-4f targeted cleanup을 직접 적용해 43개 `AssignmentPlan`을 업데이트했고, CT snapshot process 998개 중 missing `styleProcessId=0`, persisted `processKey=0`을 확인했다. `AssignmentPlan` 물리 컬럼도 canonical 상태이며 구 `ctSnapshot`/`contractedSeconds`/`totalSeconds`/`orderNo`/`customer`/`label` 컬럼은 없다.
+## 2026-08-08 워크스페이스 탭 생성과 라우트 커밋
+
+- 업무 메뉴 이동은 React Router가 목적지 URL을 실제로 커밋한 뒤에만 해당 업무 탭을 확정 생성한다. 동적 import 실패·취소·지연 중에는 목적지 탭을 먼저 노출하지 않는다.
+- 목적지 이동 전에 필요한 탭 이름과 상세 탭 교체 옵션은 pending ref에만 보관한다. URL 커밋 시 적용하고, 브라우저 경로가 출발지에 그대로 남아 이동 실패로 판정되면 pending 탭과 로딩 상태를 함께 폐기한다.
+- `/workspace`에서 동적 모듈 로드가 실패해도 업무 탭만 생기고 LINEOS 홈이 남는 불일치 상태가 재발하지 않아야 한다. `test:workspace-navigation`에서 라우트 커밋 전 `openTab` 금지와 실패 cleanup을 회귀 검증한다.

@@ -341,6 +341,7 @@ const MainLayout = () => {
   const skipAutoOpenPathRef = useRef(null);
   const isLoggingOutRef = useRef(false);
   const pendingNavigationPathRef = useRef(null);
+  const pendingTabOpenRef = useRef(null);
   const pendingCloseTabRef = useRef(null);
   const pendingManualTabCloseRef = useRef(null);
   const currentPathRef = useRef(currentPath);
@@ -432,6 +433,12 @@ const MainLayout = () => {
       if (browserPath !== sourcePath) return;
       if (pendingCloseTabRef.current) return;
       pendingNavigationPathRef.current = null;
+      if (pendingTabOpenRef.current?.pathname === nextPathname) {
+        pendingTabOpenRef.current = null;
+      }
+      setPendingTabPath((previous) =>
+        previous === nextPathname ? '' : previous
+      );
       pendingCloseTabRef.current = null;
     }, 0);
   }, []);
@@ -1273,6 +1280,7 @@ const MainLayout = () => {
       const skipUnsavedChangesCheck = options?.skipUnsavedChangesCheck === true;
       const isSamePathNavigation = nextPathname === currentPath;
       if (isEmptyWorkspaceNavigation) {
+        pendingTabOpenRef.current = null;
         if (closeTabId && !skipUnsavedChangesCheck) {
           const confirmed = confirmDiscardUnsavedChanges({ path: closeTabId });
           if (!confirmed) return;
@@ -1353,24 +1361,35 @@ const MainLayout = () => {
         }
       }
 
-      // The `openTab` function from context already checks for duplicates,
-      // so we can call it directly. This removes the dependency on `openTabs`.
       let label = options?.label;
       if (!label) {
         label = resolveTabLabel(nextPathname);
       }
-      openTab({ id: nextPathname, label, path: nextPath }, openOptions);
+      const nextTab = { id: nextPathname, label, path: nextPath };
 
       if (nextPath && currentRoutePath !== nextPath) {
         setPendingTabPath(nextPathname);
+        // Do not expose a tab until React Router has actually committed the
+        // destination. Lazy chunk failures can abort navigation while the
+        // browser is still on /workspace; opening optimistically would leave
+        // a tab whose content can never be selected.
+        pendingTabOpenRef.current = {
+          pathname: nextPathname,
+          tab: nextTab,
+          openOptions,
+        };
         pendingCloseTabRef.current = closeTabId;
         pendingNavigationPathRef.current = nextPathname;
         navigate(nextPath);
         schedulePendingNavigationCleanup(currentPathRef.current, nextPathname);
-      } else if (closeTabId && currentPath !== closeTabId) {
-        setPendingTabPath('');
-        pendingCloseTabRef.current = null;
-        closeTab(closeTabId);
+      } else {
+        pendingTabOpenRef.current = null;
+        openTab(nextTab, openOptions);
+        if (closeTabId && currentPath !== closeTabId) {
+          setPendingTabPath('');
+          pendingCloseTabRef.current = null;
+          closeTab(closeTabId);
+        }
       }
     },
     [
@@ -1393,6 +1412,11 @@ const MainLayout = () => {
         return;
       }
       pendingNavigationPathRef.current = null;
+      const pendingTabOpen = pendingTabOpenRef.current;
+      if (pendingTabOpen?.pathname === currentPath) {
+        pendingTabOpenRef.current = null;
+        openTab(pendingTabOpen.tab, pendingTabOpen.openOptions);
+      }
       const pendingCloseTabId = pendingCloseTabRef.current;
       if (pendingCloseTabId && pendingCloseTabId !== currentPath) {
         pendingCloseTabRef.current = null;
@@ -1575,6 +1599,7 @@ const MainLayout = () => {
     setPendingTabPath('');
     skipAutoOpenPathRef.current = '/login';
     pendingNavigationPathRef.current = null;
+    pendingTabOpenRef.current = null;
     pendingCloseTabRef.current = null;
     pendingManualTabCloseRef.current = null;
     recentTabHistoryRef.current = [];
