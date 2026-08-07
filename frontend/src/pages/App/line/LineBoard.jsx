@@ -34,13 +34,16 @@ import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlin
 import PersonOffOutlinedIcon from '@mui/icons-material/PersonOffOutlined';
 import HistoryIcon from '@mui/icons-material/History';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import { useLocation } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import SaveButton from '../../../components/SaveButton';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
+import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 
 const LINE_ASSIGNMENTS_UPDATED_EVENT = 'baro:line-assignments-updated';
 
@@ -136,6 +139,11 @@ const EMPTY_SNAPSHOT = buildDraftSnapshot([], []);
 const LineBoard = () => {
   const { showNotification } = useAppActions();
   const { activeOrgId } = useAuth();
+  const location = useLocation();
+  const requestedFactoryId = useMemo(
+    () => String(new URLSearchParams(location.search).get('factoryId') || ''),
+    [location.search]
+  );
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
   const [lines, setLines] = useState([]);
@@ -257,13 +265,19 @@ const LineBoard = () => {
       const list = Array.isArray(data) ? data : [];
       setFactories(list);
       setSelectedFactoryId((prev) => {
+        if (
+          requestedFactoryId
+          && list.some((factory) => String(factory.id) === requestedFactoryId)
+        ) {
+          return requestedFactoryId;
+        }
         if (prev && list.some((factory) => String(factory.id) === String(prev))) return prev;
         return list.length > 0 ? String(list[0].id) : '';
       });
     } catch (error) {
       showNotification(error?.message || '공장 목록을 불러오는 데 실패했습니다.', 'error');
     }
-  }, [buildOrgQuery, showNotification]);
+  }, [buildOrgQuery, requestedFactoryId, showNotification]);
 
   useEffect(() => {
     fetchFactories();
@@ -272,6 +286,19 @@ const LineBoard = () => {
   useEffect(() => {
     loadFactoryBoardData(selectedFactoryId);
   }, [activeOrgId, selectedFactoryId, loadFactoryBoardData]);
+
+  useWorkspaceRefreshOnEvent({
+    orgId: activeOrgId,
+    topics: [WORKSPACE_DATA_TOPICS.EMPLOYEES],
+    isActive: location.pathname === '/line',
+    isBlocked: loading || saving || isDirty || Boolean(editingLineKey),
+    onRefresh: async () => {
+      await fetchFactories();
+      if (selectedFactoryId) {
+        await loadFactoryBoardData(selectedFactoryId);
+      }
+    },
+  });
 
   const validateLineName = useCallback(
     (lineKey, nextName, sourceLines = lines) => {

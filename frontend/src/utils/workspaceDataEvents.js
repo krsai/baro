@@ -4,6 +4,7 @@ export const WORKSPACE_DATA_TOPICS = Object.freeze({
   STYLES: 'styles',
   ORDERS: 'orders',
   ASSIGNMENT_BOARD: 'assignment-board',
+  EMPLOYEES: 'employees',
 });
 
 const toPositiveIntOrNull = (value) => {
@@ -35,6 +36,7 @@ export const emitWorkspaceDataChanged = ({
   orgId = null,
   styleIds = [],
   assignmentIds = [],
+  employeeIds = [],
   source = '',
 } = {}) => {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
@@ -51,6 +53,7 @@ export const emitWorkspaceDataChanged = ({
         orgId: toPositiveIntOrNull(orgId),
         styleIds: normalizeStringList(styleIds),
         assignmentIds: normalizeStringList(assignmentIds),
+        employeeIds: normalizeStringList(employeeIds),
         source: String(source || '').trim(),
         at: Date.now(),
       },
