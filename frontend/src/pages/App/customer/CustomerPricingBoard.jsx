@@ -954,7 +954,7 @@ const CustomerPricingBoard = () => {
               ))}
             </Stack>
           ) : (
-            <TableContainer sx={{ maxHeight: 'calc(100vh - 310px)' }}>
+            <TableContainer>
               <Table size="small" sx={{ minWidth: 1450 }}>
                 <TableHead>
                   <TableRow>
