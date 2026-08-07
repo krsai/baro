@@ -1,5 +1,11 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-08-07 작업 종류별 AT 검증 미완료 사항
+
+- 작업 종류별 AT의 관계형 구조와 `v4-stage-aware` 저장 경로는 존재하지만, 원천 작업기록을 학습 draft로 만드는 `buildAtTrainingBucketDraftsFromRawSource`에서 조회한 `StyleProcess.productionStage`를 `preliminaryRows` 반환 객체에 전달하지 않는 누락이 확인됐다. 현재 정규화 fallback은 누락값을 `SEWING`으로 처리하므로 비봉제 작업기록을 투입하기 전에 이 전달 누락을 수정하고 혼합 종류 제외 및 종류별 노동시간 분리 회귀 테스트를 추가해야 한다.
+- 2026-08-07 운영 DB에는 `StyleProcess` 1,255건, `AtTrainingBucket` 35건, `v4-stage-aware` 관측 1,174건이 모두 `SEWING`이며 비봉제 공정·작업기록·AT 관측이 0건이다. 따라서 운영 데이터만으로 다림질·검품·포장 분리를 실증할 수 없다. 비봉제 공정을 등록한 격리 검증 데이터로 `AtTrainingBucket.productionStage`, `StyleProcessAtObservation.productionStage`, 혼합 작업자 제외 진단을 확인해야 한다.
+- 현재 `npm run test:at-training`은 18개 중 7개가 실패하며 작업 종류 분리를 직접 검증하는 테스트가 없다. 작업 종류별 AT 완료 판정은 해당 테스트를 보정·추가해 전부 통과하고, 관측의 단계와 연결 공정의 단계 불일치가 0건임을 확인한 뒤에만 할 수 있다.
+
 ## 2026-08-07 작업기록 공정 표시 불변식
 
 - `WorkRecord.styleProcessId`가 작업기록 공정의 소스오브트루스다. 작업기록 상세 응답은 이 FK로 `StyleProcess`를 조인해 공정 코드와 공정명을 제공한다.
