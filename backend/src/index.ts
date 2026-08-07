@@ -10988,20 +10988,27 @@ const buildWorkLogImportLineLookup = (lines: any[]) =>
     return map;
   }, new Map<string, Array<{ id: number | null; factoryId: number; name: string }>>());
 
-const doesWorkLogImportLineAssignmentCoverDate = ({
+const doesWorkLogImportLineAssignmentOverlapCoverage = ({
   assignment,
+  coverageStartDate,
   coverageEndDate,
 }: {
   assignment: any;
+  coverageStartDate: string;
   coverageEndDate: string;
 }) => {
-  const dateRange = buildWorkDateRange(coverageEndDate);
-  if (!dateRange) return false;
+  const startDateRange = buildWorkDateRange(coverageStartDate);
+  const endDateRange = buildWorkDateRange(coverageEndDate);
+  if (!startDateRange || !endDateRange) return false;
   const startAt = assignment?.startAt ? new Date(assignment.startAt) : null;
   const endAt = assignment?.endAt ? new Date(assignment.endAt) : null;
   if (!startAt || Number.isNaN(startAt.getTime())) return false;
-  if (startAt > dateRange.endAt) return false;
-  if (endAt && !Number.isNaN(endAt.getTime()) && endAt < dateRange.startAt) {
+  if (startAt > endDateRange.endAt) return false;
+  if (
+    endAt &&
+    !Number.isNaN(endAt.getTime()) &&
+    endAt < startDateRange.startAt
+  ) {
     return false;
   }
   return true;
@@ -11009,10 +11016,12 @@ const doesWorkLogImportLineAssignmentCoverDate = ({
 
 const resolveWorkLogImportLineForEmployee = ({
   employee,
+  coverageStartDate,
   coverageEndDate,
   lineAssignmentsByEmployeeId,
 }: {
   employee: any;
+  coverageStartDate: string;
   coverageEndDate: string;
   lineAssignmentsByEmployeeId: Map<number, any[]>;
 }) => {
@@ -11021,8 +11030,9 @@ const resolveWorkLogImportLineForEmployee = ({
     ? ensureArray(lineAssignmentsByEmployeeId.get(employeeId))
     : [];
   const activeMatches = assignments.filter((assignment) =>
-    doesWorkLogImportLineAssignmentCoverDate({
+    doesWorkLogImportLineAssignmentOverlapCoverage({
       assignment,
+      coverageStartDate,
       coverageEndDate,
     })
   );
@@ -25483,6 +25493,7 @@ app.post("/work-logs/import", async (req, res) => {
     if (!employee || !row.coverageEndDate) return;
     const resolvedLine = resolveWorkLogImportLineForEmployee({
       employee,
+      coverageStartDate: row.coverageStartDate || row.coverageEndDate,
       coverageEndDate: row.coverageEndDate,
       lineAssignmentsByEmployeeId,
     });
