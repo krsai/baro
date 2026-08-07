@@ -1683,8 +1683,11 @@ const MainLayout = () => {
   const isCurrentPathKeepAlive = isKeepAliveCandidatePath(currentPath);
   const shouldRenderLiveOutlet =
     !isCurrentPathKeepAlive || !mountedTabOutlets.has(currentPath);
-  const isEmptyWorkspaceScreen =
-    currentPath === EMPTY_WORKSPACE_PATH && openTabs.length === 0;
+  // /workspace deliberately has no routed page component. It is the neutral
+  // workspace home even when other tabs remain open, so key the home screen
+  // only from the URL. Requiring zero tabs left a completely blank body when
+  // the header logo navigated home while keeping tabs available.
+  const isEmptyWorkspaceScreen = currentPath === EMPTY_WORKSPACE_PATH;
   const emptyWorkspaceHint = resolveLocalizedLabel(
     EMPTY_WORKSPACE_HINT,
     languageCode
@@ -1896,7 +1899,7 @@ const MainLayout = () => {
           <Box sx={{ flexGrow: 1 }}>
             <Button
               color="primary"
-              onClick={() => navigate('/workspace')}
+              onClick={() => handleNavigation(EMPTY_WORKSPACE_PATH)}
               sx={{
                 fontSize: { xs: '1.1rem', sm: '1.25rem' },
                 fontWeight: 'bold',
