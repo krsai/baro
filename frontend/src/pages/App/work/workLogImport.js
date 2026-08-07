@@ -133,38 +133,32 @@ const translateLineResolutionIssue = (detail, languageCode) => {
 const translateAssignmentMatchIssue = (detail, languageCode) => {
   const orderUnassigned = parseDetail(
     detail,
-    /^order (.+) has assignment cards but is not assigned to a line in the worker factory\.?$/i,
-    ['orderNo']
+    /^order (.+) \/ style (.+) has assignment cards but is not assigned to a line in the worker factory\.?$/i,
+    ['orderNo', 'styleId']
   );
   if (orderUnassigned) {
     if (languageCode === 'en') {
-      return `Order ${orderUnassigned.orderNo} has cards, but they are not assigned to a line in the worker's factory.`;
+      return `Order ${orderUnassigned.orderNo} - style ${orderUnassigned.styleId} has cards, but they are not assigned to a line in the worker's factory.`;
     }
     if (languageCode === 'vi') {
-      return `Don ${orderUnassigned.orderNo} da co the nhung chua duoc phan vao chuyen trong nha may cua cong nhan.`;
+      return `Don ${orderUnassigned.orderNo} - ma hang ${orderUnassigned.styleId} da co the nhung chua duoc phan vao chuyen trong nha may cua cong nhan.`;
     }
-    return `주문 ${orderUnassigned.orderNo}은 미배정 상태입니다. 작업기록 업로드 전에 작업자 공장의 라인에 배정해 주세요.`;
+    return `주문 ${orderUnassigned.orderNo} - 스타일 ${orderUnassigned.styleId}은 미배정 상태입니다. 작업기록 업로드 전에 작업자 공장의 라인에 배정해 주세요.`;
   }
 
   const orderMissing = parseDetail(
     detail,
-    /^order (.+) has no assignment card in the worker factory\.?$/i,
-    ['orderNo']
+    /^order (.+) \/ style (.+) has no assignment card in the worker factory\.?$/i,
+    ['orderNo', 'styleId']
   );
   if (orderMissing) {
     if (languageCode === 'en') {
-      return `Order ${orderMissing.orderNo} has no matching assignment card in the worker's factory.`;
+      return `Order ${orderMissing.orderNo} - style ${orderMissing.styleId} has no matching assignment card in the worker's factory.`;
     }
     if (languageCode === 'vi') {
-      return `Don ${orderMissing.orderNo} khong co the phan cong phu hop nao trong nha may cua cong nhan.`;
+      return `Don ${orderMissing.orderNo} - ma hang ${orderMissing.styleId} khong co the phan cong phu hop nao trong nha may cua cong nhan.`;
     }
-    if (languageCode === 'ko') {
-      return `\uC8FC\uBB38 ${orderMissing.orderNo}\uC5D0 \uC5F0\uACB0\uB41C \uBC30\uC815 \uCE74\uB4DC\uAC00 \uC791\uC5C5\uC790 \uAE30\uC900 \uACF5\uC7A5 \uC548\uC5D0 \uC5C6\uC2B5\uB2C8\uB2E4.`;
-    }
-    if (languageCode === 'ko') {
-      return `주문 ${orderMissing.orderNo}에 연결된 배정 카드가 작업자 공장 안에 없습니다.`;
-    }
-    return `확인된 라인에서 주문 ${orderMissing.orderNo}를 찾을 수 없습니다.`;
+    return `주문 ${orderMissing.orderNo} - 스타일 ${orderMissing.styleId}에 연결된 배정 카드가 작업자 기준 공장 안에 없습니다.`;
   }
 
   const styleUnassigned = parseDetail(
@@ -291,6 +285,22 @@ const translateImportIssueDetail = (issue, languageCode) => {
         : languageCode === 'vi'
           ? 'Can nhap ORDER#.'
           : 'ORDER#를 입력해야 합니다.';
+    case 'MULTIPLE_ORDER_NUMBERS': {
+      const parsed = parseDetail(
+        detail,
+        /^multiple order numbers were entered: (.+) \/ style (.+)\.?$/i,
+        ['orderNo', 'styleId']
+      );
+      const orderNo = parsed?.orderNo || '';
+      const styleId = parsed?.styleId || '';
+      if (languageCode === 'en') {
+        return `Enter only one order number per row: ${orderNo} - style ${styleId}.`;
+      }
+      if (languageCode === 'vi') {
+        return `Moi dong chi duoc nhap mot ma don hang: ${orderNo} - ma hang ${styleId}.`;
+      }
+      return `한 행에는 주문번호 하나만 입력해 주세요: ${orderNo} - 스타일 ${styleId}.`;
+    }
     case 'MISSING_STYLE_ID':
       return languageCode === 'en'
         ? 'STYLE is required.'

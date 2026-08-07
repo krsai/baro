@@ -11327,13 +11327,13 @@ const resolveWorkLogImportAssignmentCandidate = ({
       return {
         plan: null,
         process: null,
-        error: `order ${row.orderNo} has assignment cards but is not assigned to a line in the worker factory`,
+        error: `order ${row.orderNo} / style ${row.styleId} has assignment cards but is not assigned to a line in the worker factory`,
       };
     }
     return {
       plan: null,
       process: null,
-      error: `order ${row.orderNo} has no assignment card in the worker factory`,
+      error: `order ${row.orderNo} / style ${row.styleId} has no assignment card in the worker factory`,
     };
   }
 
@@ -25329,6 +25329,16 @@ app.post("/work-logs/import", async (req, res) => {
           row,
           code: "MISSING_ORDER_NO",
           message: "ORDER# is required.",
+        })
+      );
+    } else if (/\s+&\s+/.test(row.orderNo)) {
+      issues.push(
+        buildWorkLogImportIssue({
+          row,
+          code: "MULTIPLE_ORDER_NUMBERS",
+          message: `multiple order numbers were entered: ${row.orderNo} / style ${
+            row.styleId || "(blank)"
+          }`,
         })
       );
     }
