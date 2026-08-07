@@ -8685,7 +8685,10 @@ const resolveWorkLogRecordResponses = (workLog: any) => {
   // only ever stores header metadata ({ lineId, lineName }), never row data, so it
   // must not be read here as a fallback.
   if (Array.isArray(workLog?.workRecords)) {
-    return workLog.workRecords.map(toWorkRecordResponse);
+    // Keep the relational rows intact until buildWorkLogResponseRecordList.
+    // Converting here used to strip styleProcess/style relations, and the second
+    // conversion then lost their display code/name.
+    return workLog.workRecords;
   }
   return [];
 };

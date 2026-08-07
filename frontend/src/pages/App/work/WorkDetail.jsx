@@ -830,8 +830,11 @@ const buildDisplayProcessCode = (process) =>
     const canonicalCode = stripProcessInstanceCode(process?.processCode);
     if (canonicalCode) return canonicalCode;
 
-    const rawCode = toText(process?.code || process?.processKey || '');
+    const rawCode = toText(process?.code || '');
     if (!rawCode) return '';
+    // processKey is an internal identity (for example style-process:185), not a
+    // user-facing process code. Never expose it as a display fallback.
+    if (/^(style-process|id|code|name):/i.test(rawCode)) return '';
     return stripProcessInstanceCode(rawCode);
   };
 const buildProcessOptionDisplayLabel = (process, languageCode) => {
