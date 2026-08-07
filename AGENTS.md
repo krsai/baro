@@ -1,5 +1,11 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-08-07 StyleProcess 감사 필드 운영 확인
+
+- 운영 DB의 `StyleProcess`는 총 1,255건이며 조직 1은 726건, 조직 2는 529건이다. Railway Data 화면에서 몇 행만 보이는 것은 테이블 전체가 적은 것이 아니라 현재 페이지/표시 구간만 보이는 것이다.
+- 조직 2의 과거 `StyleProcess` 529건은 모두 `createdByEmployeeId`와 `updatedByEmployeeId`가 NULL이고 기존 문자열 `createdBy`는 보존되어 있다. 예를 들어 id 414는 2026-05-07 생성 당시 `createdBy=caohang9603@gmail.com`이며, 직원 FK 감사 필드가 적용되기 전 과거 일괄 복제·동기화 계열이다. 이를 현재 직원으로 추정 백필하지 않는다.
+- `processComposition`, `processDescription`, `atParams`, `atStFallbackSourceAssignmentPlanId`, `atStFallbackApprovedAt`은 조건부/선택 필드이므로 NULL 자체는 오류가 아니다. 특히 `atStFallbackApproved=false`이면 fallback 출처·승인시각 NULL이 정상이고, 유효 AT 관측이 없는 공정은 `atParams`가 NULL일 수 있다.
+
 ## 2026-08-07 작업 종류별 AT 검증 미완료 사항
 
 - 작업 종류별 AT의 관계형 구조와 `v4-stage-aware` 저장 경로는 존재하지만, 원천 작업기록을 학습 draft로 만드는 `buildAtTrainingBucketDraftsFromRawSource`에서 조회한 `StyleProcess.productionStage`를 `preliminaryRows` 반환 객체에 전달하지 않는 누락이 확인됐다. 현재 정규화 fallback은 누락값을 `SEWING`으로 처리하므로 비봉제 작업기록을 투입하기 전에 이 전달 누락을 수정하고 혼합 종류 제외 및 종류별 노동시간 분리 회귀 테스트를 추가해야 한다.
