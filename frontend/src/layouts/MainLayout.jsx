@@ -46,7 +46,6 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CalculateIcon from '@mui/icons-material/Calculate';
-import PriceChangeIcon from '@mui/icons-material/PriceChange';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -600,11 +599,6 @@ const MainLayout = () => {
             icon: <StyleIcon />,
             path: '/style',
           },
-          {
-            label: getUiMessage('menu.customerPricing', '\uB2E8\uAC00', languageCode),
-            icon: <PriceChangeIcon />,
-            path: '/customer-pricing',
-          },
         ],
       },
       {
@@ -850,7 +844,7 @@ const MainLayout = () => {
       const childPaths = new Set(orderedChildren.map((child) => child.path));
 
       if (childPaths.has('/order') && childPaths.has('/style')) {
-        const preferredSalesPaths = ['/customer-pricing', '/style', '/order'];
+        const preferredSalesPaths = ['/style', '/order'];
         orderedChildren = [
           customerMenuItem,
           ...preferredSalesPaths.map(
