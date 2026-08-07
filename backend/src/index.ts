@@ -929,7 +929,7 @@ const ONBOARDING_ORGANIZATION_TYPE_OPTIONS = new Set<OrganizationTypeKey>(
   Object.values(ORGANIZATION_TYPE_KEYS)
 );
 const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 4;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 5;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
   "DASHBOARD",
@@ -979,6 +979,7 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
       "PRODUCTION_ANALYSIS",
       "WORK_HISTORY",
       "LINE",
+      "EMPLOYEE",
       "CUSTOMER",
     ],
     ACCOUNTANT: [
@@ -986,6 +987,7 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
       "PAYROLL",
       "REVENUE_ANALYSIS",
       "BUSINESS",
+      "LINE",
       "EMPLOYEE",
       "HOLIDAY",
     ],
@@ -1060,6 +1062,19 @@ const applyLegacyRevenueAnalysisDefault = (policy: RoleAccessPolicy): void => {
     }
   );
 };
+const applyLegacyEmployeeLineAccessDefault = (policy: RoleAccessPolicy): void => {
+  const operatorFeatures = policy.MANUFACTURER.OPERATOR;
+  if (!operatorFeatures.includes("EMPLOYEE")) {
+    const lineIndex = operatorFeatures.indexOf("LINE");
+    operatorFeatures.splice(lineIndex >= 0 ? lineIndex + 1 : operatorFeatures.length, 0, "EMPLOYEE");
+  }
+
+  const accountantFeatures = policy.MANUFACTURER.ACCOUNTANT;
+  if (!accountantFeatures.includes("LINE")) {
+    const employeeIndex = accountantFeatures.indexOf("EMPLOYEE");
+    accountantFeatures.splice(employeeIndex >= 0 ? employeeIndex : accountantFeatures.length, 0, "LINE");
+  }
+};
 const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
   const policy = cloneRoleAccessPolicy(DEFAULT_ROLE_ACCESS_POLICY);
   if (!value || typeof value !== "object" || Array.isArray(value)) return policy;
@@ -1081,6 +1096,7 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
     applyLegacyDashboardDefault(policy);
     applyLegacyProductionAnalysisDefault(policy);
     applyLegacyRevenueAnalysisDefault(policy);
+    applyLegacyEmployeeLineAccessDefault(policy);
   }
   return policy;
 };

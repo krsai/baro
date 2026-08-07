@@ -33,7 +33,7 @@ export const ACCESS_FEATURE_KEYS = {
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
-export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 4;
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 5;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND];
 const POLICY_ORG_ROLES = [
@@ -62,6 +62,7 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
       ACCESS_FEATURE_KEYS.PRODUCTION_ANALYSIS,
       ACCESS_FEATURE_KEYS.WORK_HISTORY,
       ACCESS_FEATURE_KEYS.LINE,
+      ACCESS_FEATURE_KEYS.EMPLOYEE,
       ACCESS_FEATURE_KEYS.CUSTOMER,
     ]),
     [ORG_ROLE_KEYS.ACCOUNTANT]: Object.freeze([
@@ -69,6 +70,7 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
       ACCESS_FEATURE_KEYS.PAYROLL,
       ACCESS_FEATURE_KEYS.REVENUE_ANALYSIS,
       ACCESS_FEATURE_KEYS.BUSINESS,
+      ACCESS_FEATURE_KEYS.LINE,
       ACCESS_FEATURE_KEYS.EMPLOYEE,
       ACCESS_FEATURE_KEYS.HOLIDAY,
     ]),
@@ -169,6 +171,28 @@ const applyLegacyRevenueAnalysisDefault = (policy) => {
   });
 };
 
+const applyLegacyEmployeeLineAccessDefault = (policy) => {
+  const operatorFeatures = policy?.[ORG_TYPE_KEYS.MANUFACTURER]?.[ORG_ROLE_KEYS.OPERATOR];
+  if (Array.isArray(operatorFeatures) && !operatorFeatures.includes(ACCESS_FEATURE_KEYS.EMPLOYEE)) {
+    const lineIndex = operatorFeatures.indexOf(ACCESS_FEATURE_KEYS.LINE);
+    operatorFeatures.splice(
+      lineIndex >= 0 ? lineIndex + 1 : operatorFeatures.length,
+      0,
+      ACCESS_FEATURE_KEYS.EMPLOYEE
+    );
+  }
+
+  const accountantFeatures = policy?.[ORG_TYPE_KEYS.MANUFACTURER]?.[ORG_ROLE_KEYS.ACCOUNTANT];
+  if (Array.isArray(accountantFeatures) && !accountantFeatures.includes(ACCESS_FEATURE_KEYS.LINE)) {
+    const employeeIndex = accountantFeatures.indexOf(ACCESS_FEATURE_KEYS.EMPLOYEE);
+    accountantFeatures.splice(
+      employeeIndex >= 0 ? employeeIndex : accountantFeatures.length,
+      0,
+      ACCESS_FEATURE_KEYS.LINE
+    );
+  }
+};
+
 export const getDefaultRoleAccessPolicy = () =>
   cloneDeepJson(DEFAULT_ROLE_ACCESS_POLICY);
 
@@ -195,6 +219,7 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
     applyLegacyDashboardDefault(base);
     applyLegacyProductionAnalysisDefault(base);
     applyLegacyRevenueAnalysisDefault(base);
+    applyLegacyEmployeeLineAccessDefault(base);
   }
 
   return base;

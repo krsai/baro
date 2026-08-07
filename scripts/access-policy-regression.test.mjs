@@ -27,13 +27,14 @@ const buildOrgAuthState = ({ orgRole, policy }) => ({
   },
 });
 
-test('manufacturer accountant defaults include employee and holiday menus', () => {
+test('manufacturer accountant defaults include employee, line, and holiday menus', () => {
   const features = getAllowedFeaturesForRole({
     orgType: ORG_TYPE_KEYS.MANUFACTURER,
     orgRole: ORG_ROLE_KEYS.ACCOUNTANT,
   });
 
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.EMPLOYEE), true);
+  assert.equal(features.includes(ACCESS_FEATURE_KEYS.LINE), true);
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.HOLIDAY), true);
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.ATTENDANCE), false);
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.REVENUE_ANALYSIS), true);
@@ -51,7 +52,24 @@ test('manufacturer operator defaults retain operational menus', () => {
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.ATTENDANCE), true);
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.PRODUCTION_ANALYSIS), true);
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.WORK_HISTORY), true);
+  assert.equal(features.includes(ACCESS_FEATURE_KEYS.LINE), true);
+  assert.equal(features.includes(ACCESS_FEATURE_KEYS.EMPLOYEE), true);
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.PAYROLL), false);
+});
+
+test('legacy policies grant manufacturer operators and accountants both employee and line access', () => {
+  const sanitized = sanitizeRoleAccessPolicy({
+    __schemaVersion: 4,
+    MANUFACTURER: {
+      OPERATOR: [ACCESS_FEATURE_KEYS.LINE],
+      ACCOUNTANT: [ACCESS_FEATURE_KEYS.EMPLOYEE],
+    },
+  });
+
+  assert.equal(sanitized.MANUFACTURER.OPERATOR.includes(ACCESS_FEATURE_KEYS.LINE), true);
+  assert.equal(sanitized.MANUFACTURER.OPERATOR.includes(ACCESS_FEATURE_KEYS.EMPLOYEE), true);
+  assert.equal(sanitized.MANUFACTURER.ACCOUNTANT.includes(ACCESS_FEATURE_KEYS.LINE), true);
+  assert.equal(sanitized.MANUFACTURER.ACCOUNTANT.includes(ACCESS_FEATURE_KEYS.EMPLOYEE), true);
 });
 
 test('saved role policy replaces defaults for the supplied role', () => {
