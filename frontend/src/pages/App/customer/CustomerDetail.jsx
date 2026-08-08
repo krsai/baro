@@ -18,6 +18,10 @@ import {
   resolveDefaultCountryCode,
 } from './customerFormShared';
 import CustomerBasicInfoPanel from './CustomerBasicInfoPanel';
+import {
+  WORKSPACE_DATA_TOPICS,
+  emitWorkspaceDataChanged,
+} from '../../../utils/workspaceDataEvents';
 
 const TEXT = {
   ko: {
@@ -219,6 +223,11 @@ const CustomerDetail = () => {
       const nextData = buildCustomerFormData(response);
       setCustomerFormData(nextData);
       setOriginalCustomerData(nextData);
+      emitWorkspaceDataChanged({
+        topics: [WORKSPACE_DATA_TOPICS.CUSTOMERS],
+        orgId: activeOrgId,
+        source: 'customer-detail',
+      });
       showNotification(t('saveCustomerSuccess'), 'success');
 
       if (isNew) {
@@ -236,6 +245,7 @@ const CustomerDetail = () => {
       setSavingCustomer(false);
     }
   }, [
+    activeOrgId,
     customerFormData,
     customerId,
     customerQuery,

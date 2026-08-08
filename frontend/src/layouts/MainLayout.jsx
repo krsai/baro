@@ -54,8 +54,14 @@ import { subscribeOrderDeleted } from '../utils/orderSyncEvents';
 import { canAccessPath, resolveFirstAccessiblePath } from '../utils/accessControl';
 import { getUiMessage } from '../constants/uiMessages';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import NotificationIndicator from '../components/NotificationIndicator';
 import useNetworkLoading from '../hooks/useNetworkLoading';
 import { RequestScopeBoundary } from '../context/RequestScopeContext';
+import {
+  WORKSPACE_DATA_TOPICS,
+  hasWorkspaceDataTopic,
+  subscribeWorkspaceDataChanged,
+} from '../utils/workspaceDataEvents';
 
 const DRAWER_WIDTH = 260;
 const TAB_BAR_HEIGHT = 41;
@@ -129,21 +135,6 @@ const hasActiveMenuNotification = (item) => {
   if (!hasNestedMenuChildren(item)) return false;
   return item.children.some(hasActiveMenuNotification);
 };
-
-const NotificationIndicator = () => (
-  <Box
-    component="span"
-    aria-label="attention"
-    sx={{
-      display: 'inline-block',
-      flex: '0 0 auto',
-      width: 6,
-      height: 6,
-      borderRadius: '50%',
-      bgcolor: '#d97706',
-    }}
-  />
-);
 
 const resolveNameFromEmail = (email) => {
   const normalized = typeof email === 'string' ? email.trim().toLowerCase() : '';
@@ -346,6 +337,7 @@ const MainLayout = () => {
   const [pendingEmployeeCount, setPendingEmployeeCount] = useState(0);
   const [unassignedLineWorkerCount, setUnassignedLineWorkerCount] = useState(0);
   const [pendingOnboardingCount, setPendingOnboardingCount] = useState(0);
+  const [missingSalesPriceCustomerCount, setMissingSalesPriceCustomerCount] = useState(0);
   const [pendingTabPath, setPendingTabPath] = useState('');
   const [headerHeight, setHeaderHeight] = useState(64);
   const appBarRef = useRef(null);
@@ -472,6 +464,7 @@ const MainLayout = () => {
   );
   const canViewEmployeeMenu = hasPathAccess('/employee');
   const canViewLineMenu = hasPathAccess('/line');
+  const canViewCustomerMenu = hasPathAccess('/customer');
   const canViewSystemOnboardingMenu = hasPathAccess('/system-onboarding');
   const isSystemProfile = activeProfile?.entryType === 'SYSTEM';
   const isSystemAdminProfile =
@@ -568,6 +561,25 @@ const MainLayout = () => {
       // ignore fetch errors for badge
     }
   }, [canViewSystemOnboardingMenu]);
+
+  const fetchMissingSalesPriceCustomerCount = React.useCallback(async () => {
+    if (!canViewCustomerMenu || !activeOrgId) {
+      setMissingSalesPriceCustomerCount(0);
+      return;
+    }
+    try {
+      const data = await requestJSON(
+        `/customers${buildQueryString({ orgId: activeOrgId })}`,
+        { forceRefresh: true, skipGlobalLoading: true }
+      );
+      const missingCustomerCount = Array.isArray(data)
+        ? data.filter((customer) => Number(customer?.missingSalesPriceStyleCount) > 0).length
+        : 0;
+      setMissingSalesPriceCustomerCount(missingCustomerCount);
+    } catch (_error) {
+      setMissingSalesPriceCustomerCount(0);
+    }
+  }, [activeOrgId, canViewCustomerMenu]);
 
   const baseMenuBlueprint = useMemo(() => {
     return [
@@ -714,6 +726,7 @@ const MainLayout = () => {
             label: getUiMessage('menu.customer', '\uACE0\uAC1D \uAD00\uB9AC', languageCode),
             icon: <PeopleIcon />,
             path: '/customer',
+            notificationActive: missingSalesPriceCustomerCount > 0,
           },
           ...(isSystemAdminProfile
             ? [
@@ -840,6 +853,7 @@ const MainLayout = () => {
     pendingEmployeeCount,
     unassignedLineWorkerCount,
     pendingOnboardingCount,
+    missingSalesPriceCustomerCount,
     processMasterOpen,
     recordsOpen,
     isSystemAdminProfile,
@@ -1172,6 +1186,30 @@ const MainLayout = () => {
       },
     ];
   }, [currentPath, currentRoutePath, openTabs, resolveTabLabel]);
+  useEffect(() => {
+    if (!canViewCustomerMenu) {
+      setMissingSalesPriceCustomerCount(0);
+      return () => {};
+    }
+    fetchMissingSalesPriceCustomerCount();
+    const intervalId = setInterval(fetchMissingSalesPriceCustomerCount, 30000);
+    return () => clearInterval(intervalId);
+  }, [canViewCustomerMenu, fetchMissingSalesPriceCustomerCount]);
+  useEffect(() => subscribeWorkspaceDataChanged((detail) => {
+    if (![
+      WORKSPACE_DATA_TOPICS.SALES_PRICES,
+      WORKSPACE_DATA_TOPICS.STYLES,
+      WORKSPACE_DATA_TOPICS.CUSTOMERS,
+    ].some((topic) => hasWorkspaceDataTopic(detail, topic))) return;
+    const changedOrgId = Number(detail?.orgId);
+    const currentOrgId = Number(activeOrgId);
+    if (
+      Number.isFinite(changedOrgId) && changedOrgId > 0 &&
+      Number.isFinite(currentOrgId) && currentOrgId > 0 &&
+      changedOrgId !== currentOrgId
+    ) return;
+    fetchMissingSalesPriceCustomerCount();
+  }), [activeOrgId, fetchMissingSalesPriceCustomerCount]);
   useEffect(() => {
     if (!canViewEmployeeMenu) {
       setPendingEmployeeCount(0);

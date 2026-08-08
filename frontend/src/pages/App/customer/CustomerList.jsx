@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Button, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
+import NotificationIndicator from '../../../components/NotificationIndicator';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -11,6 +13,8 @@ import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { resolveCustomerDisplayName } from '../../../utils/appLanguage';
+import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
+import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import {
   combinePhone,
   formatCustomerDate,
@@ -28,6 +32,7 @@ const CustomerList = () => {
   const { showNotification, navigateToPath } = useAppActions();
   const { activeOrgId } = useAuth();
   const { languageCode } = useLanguage();
+  const location = useLocation();
 
   const [customers, setCustomers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -80,6 +85,17 @@ const CustomerList = () => {
   useEffect(() => {
     fetchCustomers();
   }, [fetchCustomers]);
+
+  useWorkspaceRefreshOnEvent({
+    orgId: activeOrgId,
+    topics: [
+      WORKSPACE_DATA_TOPICS.SALES_PRICES,
+      WORKSPACE_DATA_TOPICS.STYLES,
+      WORKSPACE_DATA_TOPICS.CUSTOMERS,
+    ],
+    isActive: location.pathname === '/customer',
+    onRefresh: fetchCustomers,
+  });
 
   const filteredCustomers = useMemo(() => {
     if (!searchTerm) return customers;
@@ -215,7 +231,12 @@ const CustomerList = () => {
                           variant="contained"
                           onClick={() => openCustomerPricing(customer)}
                         >
-                          {customerText.openPricing}
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <span>{customerText.openPricing}</span>
+                            {Number(customer?.missingSalesPriceStyleCount) > 0 && (
+                              <NotificationIndicator />
+                            )}
+                          </Stack>
                         </Button>
                       </Stack>
                     </TableCell>

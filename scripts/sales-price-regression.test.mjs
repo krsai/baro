@@ -266,3 +266,24 @@ test('sales pricing supports only CMT and FP without a MIX label', () => {
   assert.doesNotMatch(salesPricingBasisSchema, /\bMIX\b|MIXED/);
   assert.doesNotMatch(uiMessages, /MIX ·|MIXED|혼합/);
 });
+
+test('customer alerts require at least one current-version price per style', () => {
+  const alertLoader = backend.slice(
+    backend.indexOf('const loadMissingSalesPriceStyleCountByRelationship'),
+    backend.indexOf('const PRODUCTION_STAGES', backend.indexOf('const loadMissingSalesPriceStyleCountByRelationship'))
+  );
+  assert.match(alertLoader, /INNER JOIN "Style" s/);
+  assert.match(alertLoader, /NOT EXISTS/);
+  assert.match(alertLoader, /INNER JOIN "CustomerSalesPrice" p/);
+  assert.match(
+    alertLoader,
+    /l\."quantityBucketSetVersionId" = COALESCE\([\s\S]*o\."quantityBucketSetVersionId",[\s\S]*r\."salesBucketSetVersionId"/
+  );
+  assert.doesNotMatch(alertLoader, /pricingBasis|currencyId/);
+
+  const customerListRoute = backend.slice(
+    backend.indexOf('app.get("/customers"'),
+    backend.indexOf('app.get("/customers/:id/quantity-buckets"')
+  );
+  assert.match(customerListRoute, /missingSalesPriceStyleCount/);
+});

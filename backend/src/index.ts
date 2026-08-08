@@ -5946,6 +5946,57 @@ const STYLE_PROCESS_STANDARD_INCLUDE: Prisma.StyleProcessInclude = {
   _count: { select: { workRecords: true } },
 };
 
+const loadMissingSalesPriceStyleCountByRelationship = async ({
+  manufacturerOrgId,
+  relationshipIds,
+  db = prisma,
+}: {
+  manufacturerOrgId: number;
+  relationshipIds: number[];
+  db?: any;
+}) => {
+  const normalizedRelationshipIds = Array.from(
+    new Set(
+      ensureArray(relationshipIds)
+        .map(toPositiveIntOrNull)
+        .filter((value): value is number => value !== null)
+    )
+  );
+  if (normalizedRelationshipIds.length === 0) return new Map<number, number>();
+
+  const rows = await db.$queryRaw(Prisma.sql`
+    SELECT
+      r."id" AS "relationshipId",
+      COUNT(s."id")::integer AS "missingStyleCount"
+    FROM "OrgRelationship" r
+    INNER JOIN "Style" s
+      ON s."orgId" = r."brandOrgId"
+    LEFT JOIN "OrgRelationshipStyleSalesBucket" o
+      ON o."orgRelationshipId" = r."id"
+      AND o."styleId" = s."id"
+    WHERE r."manufacturerOrgId" = ${manufacturerOrgId}
+      AND r."id" IN (${Prisma.join(normalizedRelationshipIds)})
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "CustomerSalesPriceList" l
+        INNER JOIN "CustomerSalesPrice" p
+          ON p."salesPriceListId" = l."id"
+          AND p."quantityBucketSetVersionId" = l."quantityBucketSetVersionId"
+        WHERE l."orgRelationshipId" = r."id"
+          AND l."styleId" = s."id"
+          AND l."quantityBucketSetVersionId" = COALESCE(
+            o."quantityBucketSetVersionId",
+            r."salesBucketSetVersionId"
+          )
+      )
+    GROUP BY r."id"
+  `) as Array<{ relationshipId: number; missingStyleCount: number }>;
+
+  return new Map(
+    rows.map((row) => [Number(row.relationshipId), Number(row.missingStyleCount) || 0])
+  );
+};
+
 const PRODUCTION_STAGES = ["SEWING", "IRONING", "INSPECTION", "PACKING"] as const;
 type ProductionStageValue = (typeof PRODUCTION_STAGES)[number];
 const normalizeProductionStage = (value: any): ProductionStageValue => {
@@ -27890,7 +27941,16 @@ app.get("/customers", async (req, res) => {
   });
 
   const perspective = isManufacturerOrg(organization) ? "MANUFACTURER" : "BRAND";
-  res.json(relationships.map((item) => toCustomerResponse(item, perspective)));
+  const missingPriceCountByRelationship = isManufacturerOrg(organization)
+    ? await loadMissingSalesPriceStyleCountByRelationship({
+        manufacturerOrgId: organization.id,
+        relationshipIds: relationships.map((item) => item.id),
+      })
+    : new Map<number, number>();
+  res.json(relationships.map((item) => ({
+    ...toCustomerResponse(item, perspective),
+    missingSalesPriceStyleCount: missingPriceCountByRelationship.get(item.id) ?? 0,
+  })));
 });
 
 app.get("/customers/:id/quantity-buckets", async (req, res) => {

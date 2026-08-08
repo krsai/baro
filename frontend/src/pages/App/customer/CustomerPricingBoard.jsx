@@ -42,6 +42,10 @@ import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { resolveCustomerDisplayName } from '../../../utils/appLanguage';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
+import {
+  WORKSPACE_DATA_TOPICS,
+  emitWorkspaceDataChanged,
+} from '../../../utils/workspaceDataEvents';
 
 const SALES_BUCKET_PRESETS = Object.freeze([
   { id: '135', label: '1 · 3 · 5 방식', values: [1, 3, 5, 10, 30, 50, 100, 300, 500, 1000, 3000, 5000, 10000] },
@@ -688,6 +692,11 @@ const CustomerPricingBoard = () => {
         }));
       }
       setPriceReloadKey((value) => value + 1);
+      emitWorkspaceDataChanged({
+        topics: [WORKSPACE_DATA_TOPICS.SALES_PRICES],
+        orgId: activeOrgId,
+        source: 'customer-pricing-buckets',
+      });
       const summary = languageCode === 'ko'
         ? `영향 스타일 ${result?.affectedStyleCount || 0}개 · 유지 단가 ${result?.copiedPriceCount || 0}개 · 검토할 신규 ST ${result?.unreviewedStandardCount || 0}개`
         : `${result?.affectedStyleCount || 0} affected styles · ${result?.copiedPriceCount || 0} retained prices · ${result?.unreviewedStandardCount || 0} ST values to review`;
@@ -698,6 +707,7 @@ const CustomerPricingBoard = () => {
       setSavingBuckets(false);
     }
   }, [
+    activeOrgId,
     activeSalesBuckets,
     customerBucketKey,
     customerQuery,
@@ -799,6 +809,11 @@ const CustomerPricingBoard = () => {
         }
       );
       setPriceReloadKey((value) => value + 1);
+      emitWorkspaceDataChanged({
+        topics: [WORKSPACE_DATA_TOPICS.SALES_PRICES],
+        orgId: activeOrgId,
+        source: 'customer-sales-prices',
+      });
       showNotification(
         languageCode === 'ko'
           ? '매출 단가를 저장했습니다.'
@@ -814,6 +829,7 @@ const CustomerPricingBoard = () => {
     }
   }, [
     currencyCode,
+    activeOrgId,
     customerQuery,
     dirtyPriceChanges,
     invalidPriceChanges,

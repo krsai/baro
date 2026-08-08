@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const source = fs.readFileSync('frontend/src/layouts/MainLayout.jsx', 'utf8');
+const notificationIndicator = fs.readFileSync(
+  'frontend/src/components/NotificationIndicator.jsx',
+  'utf8'
+);
 
 test('workspace tabs are committed only after the destination route commits', () => {
   const navigationStart = source.indexOf('const handleNavigation = React.useCallback');
@@ -39,7 +43,8 @@ test('failed navigation cleanup removes the uncommitted tab request', () => {
 });
 
 test('menu and tab notifications share one persistent indicator design', () => {
-  assert.match(source, /const NotificationIndicator = \(\) =>/);
+  assert.match(notificationIndicator, /const NotificationIndicator =/);
+  assert.match(source, /import NotificationIndicator from/);
   assert.match(source, /const hasActiveMenuNotification = \(item\) =>/);
   assert.match(source, /item\.children\.some\(hasActiveMenuNotification\)/);
   assert.match(source, /tab\.hasExternalChanges[\s\S]*<NotificationIndicator \/>/);
