@@ -37,3 +37,15 @@ test('failed navigation cleanup removes the uncommitted tab request', () => {
   assert.match(cleanup, /pendingTabOpenRef\.current = null/);
   assert.match(cleanup, /previous === nextPathname \? '' : previous/);
 });
+
+test('menu and tab notifications share one persistent indicator design', () => {
+  assert.match(source, /const NotificationIndicator = \(\) =>/);
+  assert.match(source, /const hasActiveMenuNotification = \(item\) =>/);
+  assert.match(source, /item\.children\.some\(hasActiveMenuNotification\)/);
+  assert.match(source, /tab\.hasExternalChanges[\s\S]*<NotificationIndicator \/>/);
+  assert.match(source, /notificationActive: unassignedLineWorkerCount > 0/);
+  assert.match(source, /notificationActive: pendingEmployeeCount > 0/);
+  assert.match(source, /notificationActive: pendingOnboardingCount > 0/);
+  assert.match(source, /const hasNotification = hasActiveMenuNotification\(menu\)/);
+  assert.doesNotMatch(source, /badgeCount:|badgeLabel:|<Badge/);
+});

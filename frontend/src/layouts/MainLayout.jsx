@@ -19,7 +19,6 @@ import {
   Collapse,
   Tabs,
   Tab,
-  Badge,
   Fade,
   Stack,
   Typography,
@@ -125,6 +124,26 @@ const hasSelectedNestedMenuItem = (item, currentPath) => {
   if (!hasNestedMenuChildren(item)) return false;
   return item.children.some((child) => hasSelectedNestedMenuItem(child, currentPath));
 };
+const hasActiveMenuNotification = (item) => {
+  if (Boolean(item?.notificationActive)) return true;
+  if (!hasNestedMenuChildren(item)) return false;
+  return item.children.some(hasActiveMenuNotification);
+};
+
+const NotificationIndicator = () => (
+  <Box
+    component="span"
+    aria-label="attention"
+    sx={{
+      display: 'inline-block',
+      flex: '0 0 auto',
+      width: 6,
+      height: 6,
+      borderRadius: '50%',
+      bgcolor: '#d97706',
+    }}
+  />
+);
 
 const resolveNameFromEmail = (email) => {
   const normalized = typeof email === 'string' ? email.trim().toLowerCase() : '';
@@ -235,17 +254,9 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
                 <Box component="span" sx={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem' }}>
                   <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
                     {tab.hasExternalChanges && (
-                      <Box
-                        component="span"
-                        aria-label="updated"
-                        sx={{
-                          width: 6,
-                          height: 6,
-                          mr: 0.75,
-                          borderRadius: '50%',
-                          bgcolor: 'currentColor',
-                        }}
-                      />
+                      <Box component="span" sx={{ display: 'inline-flex', mr: 0.75 }}>
+                        <NotificationIndicator />
+                      </Box>
                     )}
                     {resolveRenderedTabLabel(tab)}
                   </Box>
@@ -619,7 +630,7 @@ const MainLayout = () => {
             label: getUiMessage('menu.line', '라인', languageCode),
             icon: <ContentCut />,
             path: '/line',
-            badgeCount: unassignedLineWorkerCount,
+            notificationActive: unassignedLineWorkerCount > 0,
           },
           {
             label: getUiMessage('menu.assignment', '\uBC30\uC815', languageCode),
@@ -678,7 +689,7 @@ const MainLayout = () => {
             label: getUiMessage('menu.employee', '\uC9C1\uC6D0', languageCode),
             icon: <GroupIcon />,
             path: '/employee',
-            badgeCount: pendingEmployeeCount,
+            notificationActive: pendingEmployeeCount > 0,
           },
           {
             label: getUiMessage('menu.payroll', '\uC0DD\uC0B0\uC218\uB2F9', languageCode),
@@ -812,10 +823,7 @@ const MainLayout = () => {
             label: getUiMessage('menu.onboardingApproval', '\uAC00\uC785 \uC2B9\uC778', languageCode),
             icon: <GroupIcon />,
             path: '/system-onboarding',
-            badgeLabel:
-              pendingOnboardingCount > 0
-                ? getUiMessage('common.new', '\uC2E0\uADDC', languageCode)
-                : '',
+            notificationActive: pendingOnboardingCount > 0,
           },
         ],
       },
@@ -1740,9 +1748,6 @@ const MainLayout = () => {
           '& .MuiListItemIcon-root': {
             color: 'text.disabled',
           },
-          '& .MuiBadge-badge': {
-            opacity: 0.55,
-          },
           '&.Mui-disabled': {
             opacity: 1,
             cursor: 'not-allowed',
@@ -1781,6 +1786,7 @@ const MainLayout = () => {
       (Array.isArray(items) ? items : []).map((item) => {
         if (hasNestedMenuChildren(item)) {
           const isGroupSelected = hasSelectedNestedMenuItem(item, currentPath);
+          const hasNotification = hasActiveMenuNotification(item);
           return (
             <React.Fragment key={item.path || `${item.label}-${nestedLevel}`}>
               <Box
@@ -1798,7 +1804,10 @@ const MainLayout = () => {
                     color: isGroupSelected ? 'primary.main' : 'text.secondary',
                   }}
                 >
-                  {item.label}
+                  <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+                    {item.label}
+                    {hasNotification && <NotificationIndicator />}
+                  </Box>
                 </Typography>
               </Box>
               <List component="div" disablePadding>
@@ -1832,18 +1841,7 @@ const MainLayout = () => {
               primary={(
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <span>{item.label}</span>
-                  {(Boolean(item.badgeLabel) || Number(item.badgeCount) > 0) && (
-                    <Badge
-                      color={item.badgeLabel ? 'warning' : 'error'}
-                      badgeContent={item.badgeLabel || item.badgeCount}
-                      sx={{
-                        '& .MuiBadge-badge': {
-                          position: 'static',
-                          transform: 'none',
-                        },
-                      }}
-                    />
-                  )}
+                  {item.notificationActive && <NotificationIndicator />}
                 </Box>
               )}
             />
@@ -1859,6 +1857,7 @@ const MainLayout = () => {
         {menuItems.map((menu) => {
           const isMenuSelected = !menu.isParent && matchesMenuPath(menu.path, currentPath);
           const isMenuDisabled = Boolean(menu.disabled);
+          const hasNotification = hasActiveMenuNotification(menu);
 
           return (
             <React.Fragment key={menu.label}>
@@ -1881,7 +1880,14 @@ const MainLayout = () => {
               sx={getMenuItemSx({ selected: isMenuSelected, disabled: isMenuDisabled })}
             >
               <ListItemIcon sx={{ minWidth: '40px' }}>{menu.icon}</ListItemIcon>
-              <ListItemText primary={menu.label} />
+              <ListItemText
+                primary={(
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <span>{menu.label}</span>
+                    {hasNotification && <NotificationIndicator />}
+                  </Box>
+                )}
+              />
               {menu.isParent && (menu.isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />)}
             </ListItem>
             {menu.isParent && (
