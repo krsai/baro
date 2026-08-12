@@ -1111,6 +1111,12 @@ const LineBoard = () => {
                   </Box>
                 ) : null}
               </Paper>
+              {selectedFactory ? (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.25 }}>
+                  {selectedFactory.name} 기준 · 라인 {lines.length}개 · 배정 {assignedWorkers}명 ·
+                  미배정 {lineWorkers.unassigned.length}명
+                </Typography>
+              ) : null}
             </Box>
 
             <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -1298,12 +1304,6 @@ const LineBoard = () => {
           </Box>
         </DragDropContext>
 
-        {selectedFactory ? (
-          <Typography variant="caption" color="text.secondary">
-            {selectedFactory.name} 기준 · 라인 {lines.length}개 · 배정 {assignedWorkers}명 ·
-            미배정 {lineWorkers.unassigned.length}명
-          </Typography>
-        ) : null}
       </Stack>
     </AppPageContainer>
     <Dialog
