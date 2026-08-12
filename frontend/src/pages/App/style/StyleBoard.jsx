@@ -39,7 +39,6 @@ import { resolveCustomerDisplayName } from '../../../utils/appLanguage';
 import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import { runRefreshTasks } from '../../../utils/refreshTasks.mjs';
 import {
-  AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
   calculateProcessDisplayAtTotalForOrderQuantity,
   calculateProcessTotalForOrderQuantity,
@@ -56,6 +55,7 @@ import {
   resolveDivergenceColor,
   resolveDivergenceMeta,
 } from '../../../utils/timeDivergence';
+import { resolveReliabilityRiskColor } from '../../../utils/reliabilityColor';
 
 const { useDeferredValue } = React;
 const TIME_REFERENCE_QUANTITY_LABEL = formatNumberWithCommas(DEFAULT_TIME_REF_QUANTITY, {
@@ -63,15 +63,6 @@ const TIME_REFERENCE_QUANTITY_LABEL = formatNumberWithCommas(DEFAULT_TIME_REF_QU
 });
 const formatTimeReferenceColumnLabel = (label) => `${label}(${TIME_REFERENCE_QUANTITY_LABEL})`;
 
-// 생산계획 카드 상태 라벨과 동일한 커스텀 팔레트 사용 (공유 팔레트 — agent.md 참조)
-const AT_RELIABILITY_PALETTE = {
-  [AT_RELIABILITY_STATUS.COLLECTING]:     { bg: '#EBEBF0', text: '#747484' },
-  [AT_RELIABILITY_STATUS.UNRELIABLE]:     { bg: '#F5D0D5', text: '#B42318' },
-  [AT_RELIABILITY_STATUS.INSUFFICIENT]:   { bg: '#F7DCC8', text: '#AC6424' },
-  [AT_RELIABILITY_STATUS.USABLE]:         { bg: '#F5E7B2', text: '#8A6100' },
-  [AT_RELIABILITY_STATUS.TRUSTED]:        { bg: '#BFEAD0', text: '#268444' },
-  [AT_RELIABILITY_STATUS.VERIFIED]:       { bg: '#C8DFF7', text: '#3674B4' },
-};
 const AT_RELIABILITY_CHIP_SX = {
   height: 18,
   '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem', lineHeight: 1.1, fontWeight: 400 },
@@ -746,8 +737,8 @@ const StyleBoard = () => {
                               label={formatAtReliabilityBadgeLabel(style.styleAtReliability)}
                               sx={{
                                 ...AT_RELIABILITY_CHIP_SX,
-                                backgroundColor: (AT_RELIABILITY_PALETTE[style.styleAtReliability.status] || AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING]).bg,
-                                color: (AT_RELIABILITY_PALETTE[style.styleAtReliability.status] || AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING]).text,
+                                backgroundColor: resolveReliabilityRiskColor(style.styleAtReliability.percent).bg,
+                                color: resolveReliabilityRiskColor(style.styleAtReliability.percent).text,
                               }}
                             />
                           )}
