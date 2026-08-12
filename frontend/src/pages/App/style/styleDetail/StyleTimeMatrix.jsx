@@ -117,7 +117,7 @@ const resolveLegendItems = (languageCode) => {
         color: '#D32F2F',
         label: 'ST sao chep - can duyet',
         tooltip:
-          'ST nay duoc sao chep tu bucket so luong nho hon khi them bucket moi. Vui long xac nhan hoac sua lai gia tri thuc te.',
+          'ST nay duoc sao chep tu bucket so luong nho hon khi them bucket moi. Vui lòng xac nhan hoac sua lai gia tri thuc te.',
       },
       {
         key: 'fitted',
@@ -131,14 +131,14 @@ const resolveLegendItems = (languageCode) => {
         color: AT_TONE_COLORS.extrapolated,
         label: 'AT ngoai vung',
         tooltip:
-          'So luong nay nam ngoai vung du lieu da quan sat - gia tri duoc suy dien tu cong thuc da hoc, khong phai so luong da tung lam thuc te.',
+          'Số lượng nay nam ngoai vung du lieu da quan sat - gia tri duoc suy dien tu cong thuc da hoc, khong phai so luong da tung lam thuc te.',
       },
       {
         key: 'provisional',
         color: AT_TONE_COLORS.provisional,
         label: 'AT tam tinh',
         tooltip:
-          'Chua du bien thien so luong de hoc duong rieng, nen hien thi gia tri trung binh quan sat duoc (giong nhau moi so luong). Day la du lieu thuc te, khac voi PT.',
+          'Chưa đủ bien thien so luong de hoc duong rieng, nen hien thi gia tri trung binh quan sat duoc (giong nhau moi so luong). Day la du lieu thuc te, khac voi PT.',
       },
     ];
   }
@@ -403,7 +403,7 @@ const StyleTimeMatrix = ({
   const [stRestoreSnapshot, setStRestoreSnapshot] = useState(null);
 
   const msg = languageCode === 'vi'
-    ? { title: 'ST/AT theo so luong (giay)', process: 'Cong doan', ptHint: 'PT: thoi gian co ban (khong sua)', stHint: 'ST cua so luong nho phai bang hoac lon hon so luong lon. Cac bucket lien quan se tu dong dieu chinh.', atHint: 'AT: tu dong hoc tu ban ghi', unit: 'Don vi: giay / 1 san pham', empty: 'Chua co cong doan.' }
+    ? { title: 'ST/AT theo so luong (giay)', process: 'Công đoạn', ptHint: 'PT: thoi gian co ban (khong sua)', stHint: 'ST cua so luong nho phai bang hoac lon hon so luong lon. Cac bucket lien quan se tu dong dieu chinh.', atHint: 'AT: tu dong hoc tu ban ghi', unit: 'Don vi: giay / 1 san pham', empty: 'Chưa có cong doan.' }
     : languageCode === 'en'
     ? { title: 'ST / AT by Quantity (sec)', process: 'Process', ptHint: 'PT: base physical time (read-only)', stHint: 'ST for a smaller quantity must be equal to or greater than larger quantities. Related buckets adjust automatically.', atHint: 'AT: auto-learned from work records', unit: 'Unit: seconds / per piece', empty: 'No processes registered.' }
     : { title: '수량별 ST / AT (초)', process: '공정', ptHint: 'PT: 공정 정보에서 입력한 기본 물리 시간 (수정 불가)', stHint: '작은 수량의 ST는 큰 수량과 같거나 커야 합니다. 필요한 버킷은 자동으로 함께 조정됩니다.', atHint: 'AT: 작업기록으로 자동 학습한 실제 시간 (참고용)', unit: '단위: 초 / 1장 기준', empty: '등록된 공정이 없습니다.' };
@@ -429,7 +429,7 @@ const StyleTimeMatrix = ({
   }, [onProcessesChange, safeProcesses, stDrafts]);
 
   const automationLabels = languageCode === 'vi'
-    ? { apply: 'Ap dung 50% chenh lech AT', restore: 'Khoi phuc ST' }
+    ? { apply: 'Áp dụng 50% chenh lech AT', restore: 'Khoi phuc ST' }
     : languageCode === 'en'
       ? { apply: 'Apply 50% of AT gap', restore: 'Restore ST' }
       : { apply: 'AT 차이 50% 반영', restore: 'ST 원상복귀' };

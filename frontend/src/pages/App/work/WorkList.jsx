@@ -65,12 +65,12 @@ const TEXT = {
   importError: {
     ko: '엑셀 작업기록 업로드에 실패했습니다.',
     en: 'Failed to import Excel work logs.',
-    vi: 'Khong the nhap ghi chep Excel.',
+    vi: 'Không thể nhap ghi chep Excel.',
   },
   importDataErrorToast: {
     ko: '데이터 오류로 저장하지 못했습니다. 상세 내용을 확인해 주세요.',
     en: 'Import failed due to data errors. Check the details.',
-    vi: 'Nhap that bai do loi du lieu. Vui long kiem tra chi tiet.',
+    vi: 'Nhap that bai do loi du lieu. Vui lòng kiem tra chi tiet.',
   },
   importIssueDialogTitle: {
     ko: '작업기록 파일 업로드 오류',
@@ -92,9 +92,9 @@ const TEXT = {
     vi: 'Tim ngay, nha may, chuyen',
   },
   workDate: { ko: '작업일자', en: 'Work Date', vi: 'Ngay lam viec' },
-  factory: { ko: '공장', en: 'Factory', vi: 'Nha may' },
+  factory: { ko: '공장', en: 'Factory', vi: 'Nhà máy' },
   selectFactory: { ko: '공장 선택', en: 'Select factory', vi: 'Chon nha may' },
-  line: { ko: '라인', en: 'Line', vi: 'Chuyen' },
+  line: { ko: '라인', en: 'Line', vi: 'Chuyền' },
   workers: { ko: '작업자', en: 'Workers', vi: 'Cong nhan' },
   items: { ko: '기록 건수', en: 'Entries', vi: 'So dong' },
   averageCtPerWorker: {
@@ -105,28 +105,28 @@ const TEXT = {
   loading: {
     ko: '기록을 불러오는 중입니다.',
     en: 'Loading logs...',
-    vi: 'Dang tai ghi chep...',
+    vi: 'Đang tải ghi chep...',
   },
   empty: {
     ko: '해당 기간에 기록이 없습니다.',
     en: 'No logs found for this period.',
-    vi: 'Khong co ghi chep trong giai doan nay.',
+    vi: 'Không có ghi chep trong giai doan nay.',
   },
   fetchError: {
     ko: '기록을 불러오지 못했습니다.',
     en: 'Failed to load logs.',
-    vi: 'Khong the tai ghi chep.',
+    vi: 'Không thể tai ghi chep.',
   },
   deleteConfirm: {
     ko: '이 기록을 삭제하시겠습니까?',
     en: 'Delete this log?',
     vi: 'Ban co muon xoa ghi chep nay khong?',
   },
-  deleteSuccess: { ko: '기록을 삭제했습니다.', en: 'Log deleted.', vi: 'Da xoa ghi chep.' },
+  deleteSuccess: { ko: '기록을 삭제했습니다.', en: 'Log deleted.', vi: 'Đã xóa ghi chep.' },
   deleteError: {
     ko: '기록 삭제에 실패했습니다.',
     en: 'Failed to delete the log.',
-    vi: 'Khong the xoa ghi chep.',
+    vi: 'Không thể xoa ghi chep.',
   },
   prevMonth: { ko: '이전 달', en: 'Previous month', vi: 'Thang truoc' },
   nextMonth: { ko: '다음 달', en: 'Next month', vi: 'Thang sau' },
@@ -217,7 +217,7 @@ const buildWorkCreateTabLabel = (languageCode) => {
 const buildWorkDetailTabLabel = (workDateKey, languageCode) => {
   const title =
     languageCode === 'vi'
-      ? 'Chi tiet nhat ky cong viec'
+      ? 'Chi tiết nhat ky cong viec'
       : languageCode === 'en'
         ? 'Work Log Detail'
         : '작업 기록 상세';

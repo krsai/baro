@@ -136,14 +136,14 @@ const getExtraText = (languageCode) => {
 
   if (languageCode === 'vi') {
     return {
-      identitySection: 'Thong tin nha may',
+      identitySection: 'Thông tin nha may',
       identityDescription: 'Dat ten nha may, ngay bat dau quan ly va nguoi quan ly.',
       localizedSection: 'Ten da ngon ngu',
       localizedDescription: 'Luu ten tieng Han va tieng Viet de dung nhat quan tren man hinh va tai lieu.',
       contactSection: 'Vi tri va lien he',
-      contactDescription: 'Quan ly dia chi va thong tin dien thoai.',
+      contactDescription: 'Quản lý dia chi va thong tin dien thoai.',
       payrollSection: 'Cai dat phu cap san luong',
-      payrollDescription: 'Quan ly don gia phu cap san luong theo giay cua nha may.',
+      payrollDescription: 'Quản lý don gia phu cap san luong theo giay cua nha may.',
       payrollUpdatedAt: 'Ngay cap nhat don gia phu cap san luong',
       nameKo: 'Ten nha may (tieng Han)',
       nameVi: 'Ten nha may (tieng Viet)',
@@ -230,10 +230,10 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
     if (languageCode === 'vi') {
       return {
         helper: 'Chi co the chon quan ly trong danh sach nhan vien cua nha may nay.',
-        empty: 'Nha may nay chua co nhan vien.',
+        empty: 'Nhà máy nay chua co nhan vien.',
         saveFirst: 'Hay luu nha may truoc, sau do moi chon quan ly.',
-        loading: 'Dang tai danh sach nhan vien cua nha may.',
-        none: 'Khong co',
+        loading: 'Đang tải danh sach nhan vien cua nha may.',
+        none: 'Không có',
       };
     }
     return {

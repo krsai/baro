@@ -62,13 +62,13 @@ const TEXT = {
     en: 'Search line',
     vi: 'Tim chuyen',
   },
-  lineView: { ko: '라인', en: 'Line', vi: 'Chuyen' },
+  lineView: { ko: '라인', en: 'Line', vi: 'Chuyền' },
   workerView: { ko: '개인', en: 'Individual', vi: 'Ca nhan' },
-  factory: { ko: '공장', en: 'Factory', vi: 'Nha may' },
+  factory: { ko: '공장', en: 'Factory', vi: 'Nhà máy' },
   worker: { ko: '작업자', en: 'Worker', vi: 'Cong nhan' },
   workerCount: { ko: '작업인원', en: 'Workers', vi: 'Cong nhan' },
   workMonth: { ko: '작업월', en: 'Month', vi: 'Thang lam viec' },
-  line: { ko: '라인', en: 'Line', vi: 'Chuyen' },
+  line: { ko: '라인', en: 'Line', vi: 'Chuyền' },
   attendance: { ko: '근태', en: 'Attendance', vi: 'Cham cong' },
   averageAttendance: { ko: '평균 근태', en: 'Avg Attendance', vi: 'Cham cong TB' },
   items: { ko: '기록건수', en: 'Entries', vi: 'So dong' },
@@ -76,17 +76,17 @@ const TEXT = {
   loading: {
     ko: '월간 기록을 불러오는 중입니다.',
     en: 'Loading monthly records...',
-    vi: 'Dang tai ghi chep thang...',
+    vi: 'Đang tải ghi chep thang...',
   },
   empty: {
     ko: '해당 월에 표시할 기록이 없습니다.',
     en: 'No monthly records found.',
-    vi: 'Khong co ghi chep thang.',
+    vi: 'Không có ghi chep thang.',
   },
   fetchError: {
     ko: '월간 기록을 불러오지 못했습니다.',
     en: 'Failed to load monthly records.',
-    vi: 'Khong the tai ghi chep thang.',
+    vi: 'Không thể tai ghi chep thang.',
   },
   prevMonth: { ko: '이전 달', en: 'Previous month', vi: 'Thang truoc' },
   nextMonth: { ko: '다음 달', en: 'Next month', vi: 'Thang sau' },
@@ -161,7 +161,7 @@ const buildMonthlyDetailTabLabel = (workerName, monthKey, languageCode) => {
     languageCode === 'en'
       ? 'Production Analysis Detail'
       : languageCode === 'vi'
-        ? 'Chi tiet phan tich san xuat'
+        ? 'Chi tiết phan tich san xuat'
         : '생산 분석 상세';
   const parts = [title, workerName, monthKey].filter(Boolean);
   return parts.join(': ');

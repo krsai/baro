@@ -11,7 +11,7 @@ import theme from './theme';
 const ROUTE_LOADING_TEXT = {
   ko: '페이지를 불러오는 중입니다...',
   en: 'Loading page...',
-  vi: 'Dang tai trang...',
+  vi: 'Đang tải trang...',
 };
 
 const RouteLoadingFallback = () => {

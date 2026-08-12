@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAppActions, useAppState } from '../context/AppContext';
@@ -992,7 +992,7 @@ const MainLayout = () => {
         languageCode === 'ko'
           ? { list: '\uBAA9\uB85D', new: '\uC2E0\uADDC', detail: '\uC0C1\uC138' }
           : languageCode === 'vi'
-            ? { list: 'Danh sach', new: 'Moi', detail: 'Chi tiet' }
+            ? { list: 'Danh sách', new: 'Moi', detail: 'Chi tiết' }
             : { list: 'List', new: 'New', detail: 'Detail' };
       if (kind === 'new') return `${baseLabel} - ${suffixByKind.new}`;
       if (kind === 'detail') return `${baseLabel} - ${suffixByKind.detail}`;
@@ -1011,7 +1011,7 @@ const MainLayout = () => {
         languageCode === 'ko'
           ? { list: '\uBAA9\uB85D', detail: '\uC0C1\uC138' }
           : languageCode === 'vi'
-            ? { list: 'Danh sach', detail: 'Chi tiet' }
+            ? { list: 'Danh sách', detail: 'Chi tiết' }
             : { list: 'List', detail: 'Detail' };
       if (kind === 'detail') return `${baseLabel} - ${suffixByKind.detail}`;
       return `${baseLabel} - ${suffixByKind.list}`;
@@ -1025,7 +1025,7 @@ const MainLayout = () => {
         languageCode === 'ko'
           ? { list: '\uBAA9\uB85D', new: '\uC2E0\uADDC', detail: '\uC0C1\uC138' }
           : languageCode === 'vi'
-            ? { list: 'Danh sach', new: 'Moi', detail: 'Chi tiet' }
+            ? { list: 'Danh sách', new: 'Moi', detail: 'Chi tiết' }
             : { list: 'List', new: 'New', detail: 'Detail' };
       if (kind === 'new') return `${baseLabel} - ${suffixByKind.new}`;
       if (kind === 'detail') return `${baseLabel} - ${suffixByKind.detail}`;

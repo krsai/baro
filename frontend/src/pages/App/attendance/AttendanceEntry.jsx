@@ -20,7 +20,7 @@ const normalizeWorkDate = (value) => {
 
 const buildAttendanceListTabLabel = (languageCode) => {
   if (languageCode === 'en') return 'Attendance List';
-  if (languageCode === 'vi') return 'Danh sach cham cong';
+  if (languageCode === 'vi') return 'Danh sách cham cong';
   return '출퇴근 목록';
 };
 

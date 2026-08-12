@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useCallback, useDeferredValue } from 'react';
 import {
   Avatar,
@@ -293,10 +293,10 @@ const STYLE_PROCESS_MESSAGES = {
     stGapNormal: 'ST difference relative to AT: {label}',
   },
   vi: {
-    title: 'Danh sach cong doan style',
+    title: 'Danh sách cong doan style',
     addRow: 'Them cong doan',
-    addingTitle: 'Cong doan moi',
-    textProcessLabel: 'Cong doan (van ban)',
+    addingTitle: 'Công đoạn moi',
+    textProcessLabel: 'Công đoạn (van ban)',
     textProcessPlaceholder: 'vi du: may noi vai than truoc',
     productionStageLabel: 'Loai cong viec',
     productionStageSEWING: 'May',
@@ -308,12 +308,12 @@ const STYLE_PROCESS_MESSAGES = {
     selectionComposerCollapse: 'Thu gon che do chon',
     selectionComposerHint:
       'He thong luu theo text o tren. Khuon duoi duoc giu de bao ton va chuyen doi dai han.',
-    loadingOptions: 'Dang tai tu dien to hop cong doan...',
+    loadingOptions: 'Đang tải tu dien to hop cong doan...',
     missingMasterOptions: 'Hay dang ky truoc doi tuong va thao tac.',
     partLabel: 'Vi tri',
     targetLabel: 'Doi tuong',
     targetSpecLabel: 'Quy cach doi tuong',
-    noSpecOption: 'Khong co',
+    noSpecOption: 'Không có',
     addTargetBadge: 'Them doi tuong',
     selectedTargetLabel: 'Doi tuong da chon',
     actionLabel: 'Thao tac',
@@ -327,7 +327,7 @@ const STYLE_PROCESS_MESSAGES = {
     processCodePlaceholder: 'vi du: PROC-001',
     repeatCountLabel: 'So lan lap',
     previewLabel: 'Xem truoc',
-    previewEmpty: 'Dang ky doi tuong va thao tac de tao ten cong doan.',
+    previewEmpty: 'Đăng ký doi tuong va thao tac de tao ten cong doan.',
     ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
@@ -335,38 +335,38 @@ const STYLE_PROCESS_MESSAGES = {
     save: 'Luu',
     cancel: 'Huy',
     edit: 'Sua',
-    reviewRequiredLabel: 'Can xem lai cong doan',
+    reviewRequiredLabel: 'Cần xem lại cong doan',
     reviewCommentLabel: 'Ghi chu xem lai',
     reviewCommentPlaceholder: 'vi du: can gop cong doan gap mieng tui va rap tui',
     reviewBadge: 'Can xem',
-    delete: 'Xoa',
-    deleteBlocked: 'Khong the xoa cong doan da lien ket voi ban ghi lam viec.',
+    delete: 'Xóa',
+    deleteBlocked: 'Không thể xoa cong doan da lien ket voi ban ghi lam viec.',
     editingTitle: 'Sua cong doan',
     orderColumn: 'Thu tu',
     codeColumn: 'Ma',
     processColumn: 'Ten cong doan',
     selectionSummaryLabel: 'Lua chon',
     actionColumn: 'Tac vu',
-    empty: 'Chua co cong doan nao. Hay them o khung ben tren.',
+    empty: 'Chưa có cong doan nao. Hay them o khung ben tren.',
     total: 'Tong thoi gian moi san pham',
     newRow: 'Moi',
-    timeRefLabel: 'So luong q',
+    timeRefLabel: 'Số lượng q',
     timeRefTooltip:
       'PT luon duoc nhap theo thoi gian du kien moi san pham o moc 1.000 san pham. q duoc dung de xem AT/ST.',
     ptTooltip: 'PT({quantity}): giay du kien moi san pham tai 1.000 san pham.',
     atTooltip: 'AT({quantity}): giay thuc te moi san pham tai don hang {quantity}.',
     stTooltip: 'ST({quantity}): giay chuan moi san pham theo nhom so luong phu hop.',
-    ptChangeDialogTitle: 'Xac nhan doi PT',
+    ptChangeDialogTitle: 'Xác nhận doi PT',
     ptChangeMessage:
       'PT da thay doi. ST(q) hien co khong tu dong thay doi. Ban co muon cap nhat tat ca ST(q) theo PT moi khong?',
     ptChangeNoRecordsMessage:
       'Chon Giu ST de chi thay doi PT.',
     ptChangeHasRecordsMessage:
-      'Cong doan nay da co ban ghi lam viec. Cap nhat tat ca ST co the anh huong den chi so ke hoach va san xuat hien co.',
+      'Công đoạn nay da co ban ghi lam viec. Cập nhật tat ca ST co the anh huong den chi so ke hoach va san xuat hien co.',
     ptChangeSummary: '{processName}: {previousPt} -> {nextPt}',
     keepStOnPtChange: 'Giu ST',
-    updateAllStOnPtChange: 'Cap nhat tat ca ST',
-    updateAllStDisabled: 'Khong the cap nhat hang loat ST(q) khi PT moi bi trong hoac bang 0.',
+    updateAllStOnPtChange: 'Cập nhật tat ca ST',
+    updateAllStDisabled: 'Không thể cap nhat hang loat ST(q) khi PT moi bi trong hoac bang 0.',
     validatePart: 'Hay chon doi tuong.',
     validateTarget: 'Hay chon doi tuong.',
     validateAction: 'Hay chon thao tac.',
@@ -379,7 +379,7 @@ const STYLE_PROCESS_MESSAGES = {
     validateTextRequired: 'Hay nhap text cong doan.',
     validateCodeRequired: 'Hay nhap ma cong doan.',
     validateInvalid: 'Hay nhap mot to hop cong doan hop le.',
-    validateDuplicate: 'Cong doan nay da duoc dang ky.',
+    validateDuplicate: 'Công đoạn nay da duoc dang ky.',
     validateDuplicateCode: 'Ma cong doan nay da duoc su dung.',
     stGapReview: 'ST lech so voi AT {label}, nen xem lai ST.',
     stGapNormal: 'Do lech ST so voi AT: {label}',
@@ -1395,7 +1395,7 @@ const StyleProcess = ({
           languageCode === 'ko'
             ? '공정 조합 사전을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'
             : languageCode === 'vi'
-              ? 'Khong the tai tu dien to hop cong doan. Hay thu lai sau.'
+              ? 'Không thể tai tu dien to hop cong doan. Hay thu lai sau.'
               : 'Failed to load process composition options. Please try again later.'
         );
       } finally {

@@ -27,7 +27,7 @@ const RAW_STATIC_OPTION_GROUPS = [
     key: 'organizationType',
     title: '조직 유형',
     items: [
-      createItem('MANUFACTURER', { ko: '공장', en: 'Manufacturer', vi: 'Nha may' }, [
+      createItem('MANUFACTURER', { ko: '공장', en: 'Manufacturer', vi: 'Nhà máy' }, [
         'manufacturer',
         'factory',
         '공장',
@@ -48,7 +48,7 @@ const RAW_STATIC_OPTION_GROUPS = [
     items: [
       createItem('ADMIN', { ko: '관리자', en: 'Admin', vi: 'Quan tri' }, ['관리자']),
       createItem('OPERATOR', { ko: '운영자', en: 'Operator', vi: 'Van hanh' }, ['운영자']),
-      createItem('ACCOUNTANT', { ko: '회계사', en: 'Accountant', vi: 'Ke toan' }, ['회계사']),
+      createItem('ACCOUNTANT', { ko: '회계사', en: 'Accountant', vi: 'Kế toán' }, ['회계사']),
       createItem('WORKER', { ko: '작업자', en: 'Worker', vi: 'Cong nhan' }, ['작업자']),
     ],
   },
@@ -228,7 +228,7 @@ const RAW_STATIC_OPTION_GROUPS = [
       createItem('UNRELIABLE', { ko: '불안정', en: 'Unreliable', vi: 'Khong on dinh' }, [
         '불안정',
       ]),
-      createItem('INSUFFICIENT', { ko: '부족', en: 'Insufficient', vi: 'Chua du' }, ['부족']),
+      createItem('INSUFFICIENT', { ko: '부족', en: 'Insufficient', vi: 'Chưa đủ' }, ['부족']),
       createItem('USABLE', { ko: '사용 가능', en: 'Usable', vi: 'Co the su dung' }, [
         '사용가능',
       ]),

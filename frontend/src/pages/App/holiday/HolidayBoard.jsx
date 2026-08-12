@@ -162,7 +162,7 @@ const HolidayBoard = () => {
       loading: getUiMessage(
         'holidayBoard.loading',
         languageCode === 'vi'
-          ? 'Dang tai ngay nghi...'
+          ? 'Đang tải ngay nghi...'
           : languageCode === 'en'
             ? 'Loading holidays...'
             : '휴일 정보를 불러오는 중입니다.',
@@ -171,7 +171,7 @@ const HolidayBoard = () => {
       fetchError: getUiMessage(
         'holidayBoard.fetchError',
         languageCode === 'vi'
-          ? 'Khong the tai du lieu ngay nghi.'
+          ? 'Không thể tai du lieu ngay nghi.'
           : languageCode === 'en'
             ? 'Failed to load holiday data.'
             : '휴일 정보를 불러오지 못했습니다.',

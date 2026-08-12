@@ -64,7 +64,7 @@ const PAGE_TEXT = {
   filter: {
     ko: '보기',
     en: 'View',
-    vi: 'Bo loc',
+    vi: 'Bộ lọc',
   },
   search: {
     ko: '주문번호, 스타일 검색',
@@ -74,17 +74,17 @@ const PAGE_TEXT = {
   saveSuccess: {
     ko: '수량 정산을 저장했습니다.',
     en: 'Quantity settlement saved.',
-    vi: 'Da luu doi chieu so luong.',
+    vi: 'Đã lưu doi chieu so luong.',
   },
   saveError: {
     ko: '수량 정산 저장에 실패했습니다.',
     en: 'Failed to save quantity settlement.',
-    vi: 'Khong the luu doi chieu so luong.',
+    vi: 'Không thể luu doi chieu so luong.',
   },
   loadError: {
     ko: '수량 정산 데이터를 불러오지 못했습니다.',
     en: 'Failed to load quantity settlement.',
-    vi: 'Khong the tai du lieu doi chieu so luong.',
+    vi: 'Không thể tai du lieu doi chieu so luong.',
   },
   workflowNeedWorkLogs: {
     ko: '이 달은 작업 기록이 없습니다. 먼저 작업 기록을 입력한 뒤 수량 정산을 진행하세요.',
@@ -94,12 +94,12 @@ const PAGE_TEXT = {
   workflowPendingPayroll: {
     ko: '수량 정산을 저장했습니다. 아직 검토 필요 또는 차단 항목이 있어 생산수당 확정으로 넘어갈 수 없습니다.',
     en: 'Quantity settlement was saved, but production allowance cannot be finalized while review or blocked rows remain.',
-    vi: 'Da luu doi chieu so luong, nhung chua the chot phu cap san luong vi van con dong can xem xet hoac bi chan.',
+    vi: 'Đã lưu doi chieu so luong, nhung chua the chot phu cap san luong vi van con dong can xem xet hoac bi chan.',
   },
   workflowReadyForPayroll: {
     ko: '수량 정산을 저장했습니다. 다음 단계에서 생산수당 계산을 진행하세요.',
     en: 'Quantity settlement saved. Next, continue in Production Allowance.',
-    vi: 'Da luu doi chieu so luong. Tiep theo, hay tinh phu cap san luong.',
+    vi: 'Đã lưu doi chieu so luong. Tiep theo, hay tinh phu cap san luong.',
   },
   storageNotReady: {
     ko: '정산 저장소 테이블이 서버에 아직 반영되지 않았습니다. 관리자에게 DB 업데이트 적용을 요청하세요.',
@@ -114,32 +114,32 @@ const PAGE_TEXT = {
   payrollBlock: {
     ko: '작업기록 > 수량 정산 > 생산수당 계산 순서로 진행합니다. 검토 필요 또는 차단 상태가 남아 있으면 생산수당 확정이 차단됩니다.',
     en: 'Follow Work Logs > Quantity Settlement > Production Allowance. Finalization is blocked while any rows remain in review or blocked status.',
-    vi: 'Thuc hien theo thu tu Ghi chep cong viec > Doi chieu so luong > Phu cap san luong. Khong the chot khi van con dong can xem xet hoac bi chan.',
+    vi: 'Thuc hien theo thu tu Ghi chep cong viec > Doi chieu so luong > Phụ cấp san luong. Không thể chot khi van con dong can xem xet hoac bi chan.',
   },
   noRows: {
     ko: '표시할 주문 항목이 없습니다.',
     en: 'No order items to display.',
-    vi: 'Khong co muc don hang de hien thi.',
+    vi: 'Không có muc don hang de hien thi.',
   },
   noRowsNoOrders: {
     ko: '현재 워크스페이스에 진행 중인 주문이 없습니다.',
     en: 'There are no active orders in this workspace.',
-    vi: 'Khong co don hang dang hoat dong trong workspace nay.',
+    vi: 'Không có don hang dang hoat dong trong workspace nay.',
   },
   noRowsNoWorkLogs: {
     ko: '선택한 월의 작업 기록이 없습니다. 이전 달 기록이 없어도 오류는 아니며, 이 달의 추정 생산량만 0으로 보입니다.',
     en: 'There are no work logs for the selected month. Missing records from previous months do not cause an error; only this month stays at 0.',
-    vi: 'Khong co ghi chep cong viec trong thang da chon. Thieu du lieu thang truoc khong gay loi; chi co san luong uoc tinh cua thang nay hien la 0.',
+    vi: 'Không có ghi chep cong viec trong thang da chon. Thieu du lieu thang truoc khong gay loi; chi co san luong uoc tinh cua thang nay hien la 0.',
   },
   noRowsFiltered: {
     ko: '현재 보기 필터에서는 표시할 항목이 없습니다. 보기 값을 전체로 바꿔 보세요.',
     en: 'Nothing matches the current view filter. Switch the view to All.',
-    vi: 'Khong co muc nao phu hop bo loc hien tai. Hay chuyen sang Tat ca.',
+    vi: 'Không có muc nao phu hop bo loc hien tai. Hay chuyen sang Tất cả.',
   },
   noRowsNoMatches: {
     ko: '검색 조건에 맞는 항목이 없습니다.',
     en: 'No rows match the current search.',
-    vi: 'Khong co dong nao khop voi tim kiem hien tai.',
+    vi: 'Không có dong nao khop voi tim kiem hien tai.',
   },
   usageTitle: {
     ko: '사용 방법',
@@ -149,12 +149,12 @@ const PAGE_TEXT = {
   usage1: {
     ko: '1. 정산 월을 선택하면 그 달의 작업 기록만으로 추정 생산량을 계산합니다.',
     en: '1. Select a month. Estimated production is calculated only from work logs in that month.',
-    vi: '1. Chon thang. San luong uoc tinh chi duoc tinh tu ghi chep cong viec trong thang do.',
+    vi: '1. Chon thang. Sản lượng uoc tinh chi duoc tinh tu ghi chep cong viec trong thang do.',
   },
   usage2: {
     ko: '2. QC 확정, 청구 대상, 생산수당 대상을 입력합니다. 청구서 문서 생성은 나중에 해도 됩니다.',
     en: '2. Fill in QC Confirmed, Billable, and Production Allowance quantities. Creating the invoice document can happen later.',
-    vi: '2. Nhap so luong QC xac nhan, tinh hoa don va tinh phu cap san luong. Viec tao chung tu hoa don co the lam sau.',
+    vi: '2. Nhập số lượng QC xac nhan, tinh hoa don va tinh phu cap san luong. Viec tao chung tu hoa don co the lam sau.',
   },
   usage3: {
     ko: '3. 공정 체크가 50~51처럼 어긋나면 검토 필요로 표시됩니다. 사유를 고르고 메모를 남기세요.',
@@ -172,45 +172,45 @@ const PAGE_TEXT = {
     vi: '5. Doi chieu so luong va phu cap san luong van co the thuc hien truoc khi co chuc nang hoa don.',
   },
   filters: {
-    all: { ko: '전체', en: 'All', vi: 'Tat ca' },
+    all: { ko: '전체', en: 'All', vi: 'Tất cả' },
     active: { ko: '활성', en: 'Active', vi: 'Dang su dung' },
     review: { ko: '검토 필요', en: 'Review', vi: 'Can xem xet' },
     blocked: { ko: '차단', en: 'Blocked', vi: 'Bi chan' },
-    confirmed: { ko: '확정', en: 'Confirmed', vi: 'Da xac nhan' },
+    confirmed: { ko: '확정', en: 'Confirmed', vi: 'Đã xác nhận' },
   },
   summary: {
     active: { ko: '활성', en: 'Active', vi: 'Dang su dung' },
     review: { ko: '검토 필요', en: 'Review', vi: 'Can xem xet' },
     blocked: { ko: '차단', en: 'Blocked', vi: 'Bi chan' },
-    confirmed: { ko: '확정', en: 'Confirmed', vi: 'Da xac nhan' },
+    confirmed: { ko: '확정', en: 'Confirmed', vi: 'Đã xác nhận' },
   },
   table: {
-    status: { ko: '상태', en: 'Status', vi: 'Trang thai' },
-    order: { ko: '주문', en: 'Order', vi: 'Don hang' },
+    status: { ko: '상태', en: 'Status', vi: 'Trạng thái' },
+    order: { ko: '주문', en: 'Order', vi: 'Đơn hàng' },
     style: { ko: '스타일 / 색상', en: 'Style / Color', vi: 'Style / Mau' },
     orderQty: { ko: '주문 수량', en: 'Order Qty', vi: 'SL don hang' },
     targetQty: { ko: '월 대상 수량', en: 'Month Target', vi: 'SL muc tieu thang' },
     estimatedQty: { ko: '추정 생산량', en: 'Estimated Qty', vi: 'SL uoc tinh' },
     confirmedQty: { ko: 'QC 확정', en: 'QC Confirmed', vi: 'QC xac nhan' },
     billableQty: { ko: '청구 대상', en: 'Billable', vi: 'Tinh hoa don' },
-    payrollQty: { ko: '생산수당 대상', en: 'Production Allowance', vi: 'Phu cap san luong' },
-    process: { ko: '공정 체크', en: 'Process Check', vi: 'Kiem tra cong doan' },
+    payrollQty: { ko: '생산수당 대상', en: 'Production Allowance', vi: 'Phụ cấp san luong' },
+    process: { ko: '공정 체크', en: 'Process Check', vi: 'Kiểm tra cong doan' },
     reason: { ko: '사유', en: 'Reason', vi: 'Ly do' },
     memo: { ko: '메모', en: 'Memo', vi: 'Ghi chu' },
   },
   reasons: {
-    none: { ko: '없음', en: 'None', vi: 'Khong co' },
+    none: { ko: '없음', en: 'None', vi: 'Không có' },
     input: { ko: '오입력', en: 'Input Error', vi: 'Nhap sai' },
     rework: { ko: '재작업', en: 'Rework', vi: 'Lam lai' },
     loss: { ko: '불량/로스', en: 'Loss', vi: 'Loi/Hao hut' },
     hold: { ko: '보류', en: 'On Hold', vi: 'Tam giu' },
-    carry: { ko: '이월', en: 'Carry Over', vi: 'Chuyen ky sau' },
+    carry: { ko: '이월', en: 'Carry Over', vi: 'Chuyền ky sau' },
   },
   statusMeta: {
     idle: { ko: '대기', en: 'Idle', vi: 'Cho' },
     review: { ko: '검토 필요', en: 'Review', vi: 'Can xem xet' },
     blocked: { ko: '차단', en: 'Blocked', vi: 'Bi chan' },
-    confirmed: { ko: '확정', en: 'Confirmed', vi: 'Da xac nhan' },
+    confirmed: { ko: '확정', en: 'Confirmed', vi: 'Đã xác nhận' },
   },
 };
 

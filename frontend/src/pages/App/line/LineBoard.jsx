@@ -42,11 +42,47 @@ import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 
 const LINE_ASSIGNMENTS_UPDATED_EVENT = 'baro:line-assignments-updated';
 const LINE_BOARD_COLUMN_WIDTH = 330;
+const LINE_BOARD_MESSAGES = {
+  ko: {
+    title: '라인 관리', selectedFactory: '선택 공장', line: '라인', managerAssigned: '라인장 지정',
+    unassignedTotal: '미배정 / 전체', includeTerminated: '퇴사자 포함', unassignedWorkers: '미배정 작업자',
+    dragHelp: '라인 카드로 드래그해 배정하세요.', noUnassigned: '미배정 인원이 없습니다.', manager: '라인장',
+    history: '이력', historyTooltip: '라인 배치 이력 및 근무 기간', terminated: '퇴사자',
+    terminatedSearch: '이름, 이메일, 입사일, 퇴사일 검색', noTerminated: '퇴사자가 없습니다.',
+    noTerminatedResult: '검색 조건에 맞는 퇴사자가 없습니다.', incompleteHistory: '라인 이력 미완성 퇴사자',
+    incompleteHistoryHelp: '라인으로 드래그하면 입사일~퇴사일 이력을 등록합니다.',
+    employmentPeriod: '근무 기간', working: '재직 중', assignmentHistory: '라인 배치 이력', factory: '공장',
+    noFactory: '공장 없음', newLineName: '새 라인 이름', addLine: '라인 추가', reset: '초기화', assigned: '배정', unassigned: '미배정',
+  },
+  en: {
+    title: 'Line Management', selectedFactory: 'Selected Factory', line: 'Lines', managerAssigned: 'Line Managers',
+    unassignedTotal: 'Unassigned / Total', includeTerminated: 'Include Terminated', unassignedWorkers: 'Unassigned Workers',
+    dragHelp: 'Drag workers to a line card.', noUnassigned: 'No unassigned workers.', manager: 'Line Manager',
+    history: 'History', historyTooltip: 'Line assignment history and employment period', terminated: 'Terminated Workers',
+    terminatedSearch: 'Search name, email, join date, or termination date', noTerminated: 'No terminated workers.',
+    noTerminatedResult: 'No terminated workers match the filter.', incompleteHistory: 'Terminated Workers with Incomplete Line History',
+    incompleteHistoryHelp: 'Drag to a line to register history from join date to termination date.',
+    employmentPeriod: 'Employment Period', working: 'Active', assignmentHistory: 'Line Assignment History', factory: 'Factory',
+    noFactory: 'No Factory', newLineName: 'New Line Name', addLine: 'Add Line', reset: 'Reset', assigned: 'Assigned', unassigned: 'Unassigned',
+  },
+  vi: {
+    title: 'Quản lý chuyền', selectedFactory: 'Nhà máy đã chọn', line: 'Chuyền', managerAssigned: 'Đã chỉ định trưởng chuyền',
+    unassignedTotal: 'Chưa phân công / Tổng', includeTerminated: 'Bao gồm nhân viên đã nghỉ việc', unassignedWorkers: 'Nhân viên chưa phân công',
+    dragHelp: 'Kéo thẻ nhân viên vào chuyền để phân công.', noUnassigned: 'Không có nhân viên chưa phân công.', manager: 'Trưởng chuyền',
+    history: 'Lịch sử', historyTooltip: 'Lịch sử phân công chuyền và thời gian làm việc', terminated: 'Nhân viên đã nghỉ việc',
+    terminatedSearch: 'Tìm theo tên, email, ngày vào làm hoặc ngày nghỉ việc', noTerminated: 'Không có nhân viên đã nghỉ việc.',
+    noTerminatedResult: 'Không có nhân viên đã nghỉ việc phù hợp với bộ lọc.', incompleteHistory: 'Nhân viên nghỉ việc có lịch sử chuyền chưa đầy đủ',
+    incompleteHistoryHelp: 'Kéo vào chuyền để đăng ký lịch sử từ ngày vào làm đến ngày nghỉ việc.',
+    employmentPeriod: 'Thời gian làm việc', working: 'Đang làm việc', assignmentHistory: 'Lịch sử phân công chuyền', factory: 'Nhà máy',
+    noFactory: 'Không có nhà máy', newLineName: 'Tên chuyền mới', addLine: 'Thêm chuyền', reset: 'Đặt lại', assigned: 'Đã phân công', unassigned: 'Chưa phân công',
+  },
+};
 
 const emitLineAssignmentsUpdated = ({ orgId }) => {
   if (typeof window === 'undefined') return;
@@ -140,6 +176,8 @@ const EMPTY_SNAPSHOT = buildDraftSnapshot([], []);
 const LineBoard = () => {
   const { showNotification } = useAppActions();
   const { activeOrgId } = useAuth();
+  const { languageCode } = useLanguage();
+  const msg = LINE_BOARD_MESSAGES[languageCode] || LINE_BOARD_MESSAGES.ko;
   const location = useLocation();
   const requestedFactoryId = useMemo(
     () => String(new URLSearchParams(location.search).get('factoryId') || ''),
@@ -755,23 +793,23 @@ const LineBoard = () => {
                 onClick={(event) => handleOpenHistory(event, worker)}
                 sx={{ minWidth: 'auto', px: 0.5, whiteSpace: 'nowrap' }}
               >
-                {'\uC774\uB825'}
+                {msg.history}
               </Button>
             </Tooltip> : null}
             {isManager ? (
-              <Chip size="small" label="라인장" color="primary" variant="filled" />
+              <Chip size="small" label={msg.manager} color="primary" variant="filled" />
             ) : null}
           </Box>
         )}
       </Draggable>
     ),
-    [handleOpenHistory, saving]
+    [handleOpenHistory, msg, saving]
   );
 
   return (
     <>
     <AppPageContainer
-      title="라인 관리"
+      title={msg.title}
       titleActions={(
         <Stack direction="row" spacing={1}>
           <Button
@@ -779,7 +817,7 @@ const LineBoard = () => {
             onClick={handleResetDraft}
             disabled={saving || (!isDirty && !editingLineKey)}
           >
-            초기화
+            {msg.reset}
           </Button>
           <SaveButton
             onClick={handleSaveChanges}
@@ -795,13 +833,13 @@ const LineBoard = () => {
               <TextField
                 select
                 size="small"
-                label="공장"
+                label={msg.factory}
                 value={selectedFactoryId}
                 onChange={handleFactoryChange}
                 sx={{ minWidth: { xs: '100%', md: 210 } }}
                 disabled={loading || saving}
               >
-                {factories.length === 0 && <MenuItem value="">공장 없음</MenuItem>}
+                {factories.length === 0 && <MenuItem value="">{msg.noFactory}</MenuItem>}
                 {factories.map((factory) => (
                   <MenuItem key={factory.id} value={String(factory.id)}>
                     {factory.name}
@@ -810,7 +848,7 @@ const LineBoard = () => {
               </TextField>
               <TextField
                 size="small"
-                label="새 라인 이름"
+                label={msg.newLineName}
                 value={newLineName}
                 onChange={(event) => setNewLineName(event.target.value)}
                 onKeyDown={(event) => {
@@ -828,7 +866,7 @@ const LineBoard = () => {
                 onClick={handleAddLine}
                 disabled={!selectedFactoryId || loading || saving || !newLineName.trim()}
               >
-                라인 추가
+                {msg.addLine}
               </Button>
             </>
           )}
@@ -854,7 +892,7 @@ const LineBoard = () => {
                 <Stack direction="row" spacing={1} alignItems="center">
                   <FactoryOutlinedIcon sx={{ color: 'text.secondary', fontSize: 19 }} />
                   <Typography variant="caption" color="text.secondary">
-                    선택 공장
+                    {msg.selectedFactory}
                   </Typography>
                 </Stack>
                 <Typography variant="subtitle2" fontWeight={700} sx={{ mt: 0.25 }} noWrap>
@@ -870,7 +908,7 @@ const LineBoard = () => {
                 <Stack direction="row" spacing={0.75} alignItems="center">
                   <GroupWorkOutlinedIcon sx={{ color: 'primary.main', fontSize: 18 }} />
                   <Typography variant="caption" color="text.secondary">
-                    라인
+                    {msg.line}
                   </Typography>
                 </Stack>
                 <Typography variant="h6" fontWeight={800} lineHeight={1.2}>
@@ -886,7 +924,7 @@ const LineBoard = () => {
                 <Stack direction="row" spacing={0.75} alignItems="center">
                   <ManageAccountsOutlinedIcon sx={{ color: 'success.main', fontSize: 18 }} />
                   <Typography variant="caption" color="text.secondary">
-                    라인장 지정
+                    {msg.managerAssigned}
                   </Typography>
                 </Stack>
                 <Typography variant="h6" fontWeight={800} lineHeight={1.2}>
@@ -902,7 +940,7 @@ const LineBoard = () => {
                 <Stack direction="row" spacing={0.75} alignItems="center">
                   <PersonOffOutlinedIcon sx={{ color: 'warning.main', fontSize: 18 }} />
                   <Typography variant="caption" color="text.secondary">
-                    미배정 / 전체
+                    {msg.unassignedTotal}
                   </Typography>
                 </Stack>
                 <Typography variant="h6" fontWeight={800} lineHeight={1.2}>
@@ -935,7 +973,7 @@ const LineBoard = () => {
                   label={(
                     <Box>
                       <Typography sx={{ fontSize: 12, fontWeight: 700, lineHeight: 1.25 }}>
-                        {'\uD1F4\uC0AC\uC790 \uD3EC\uD568'}
+                        {msg.includeTerminated}
                       </Typography>
                       <Typography sx={{ fontSize: 15, fontWeight: 800, lineHeight: 1.25 }}>
                         {terminatedWorkers.length}
@@ -963,12 +1001,12 @@ const LineBoard = () => {
               >
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                   <Typography variant="subtitle2" fontWeight={700}>
-                    미배정 작업자
+                    {msg.unassignedWorkers}
                   </Typography>
-                  <Chip size="small" color="warning" label={`${lineWorkers.unassigned.length}명`} />
+                  <Chip size="small" color="warning" label={lineWorkers.unassigned.length} />
                 </Stack>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                  라인 카드로 드래그해 배정하세요.
+                  {msg.dragHelp}
                 </Typography>
                 <Droppable droppableId="unassigned" isDropDisabled={saving}>
                   {(provided, snapshot) => (
@@ -994,7 +1032,7 @@ const LineBoard = () => {
                           color="text.disabled"
                           sx={{ display: 'block', textAlign: 'center', mt: 4 }}
                         >
-                          미배정 인원이 없습니다.
+                          {msg.noUnassigned}
                         </Typography>
                       )}
                       {lineWorkers.unassigned.map((worker, index) =>
@@ -1008,12 +1046,12 @@ const LineBoard = () => {
                   <Box sx={{ mt: 2 }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.75 }}>
                       <Typography variant="subtitle2" fontWeight={700}>
-                        {'\uB77C\uC778 \uC774\uB825 \uBBF8\uC644\uC131 \uD1F4\uC0AC\uC790'}
+                        {msg.incompleteHistory}
                       </Typography>
-                      <Chip size="small" label={`${historicalCandidates.length}\uBA85`} />
+                      <Chip size="small" label={historicalCandidates.length} />
                     </Stack>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                      {'\uB77C\uC778\uC73C\uB85C \uB4DC\uB798\uADF8\uD558\uBA74 \uC785\uC0AC\uC77C~\uD1F4\uC0AC\uC77C \uC774\uB825\uC744 \uB4F1\uB85D\uD569\uB2C8\uB2E4.'}
+                      {msg.incompleteHistoryHelp}
                     </Typography>
                     <Droppable droppableId="historical-unassigned" isDropDisabled={saving}>
                       {(provided, snapshot) => (
@@ -1044,7 +1082,7 @@ const LineBoard = () => {
                   <Box sx={{ mt: 2 }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.75 }}>
                       <Typography variant="subtitle2" fontWeight={700}>
-                        {'\uD1F4\uC0AC\uC790'}
+                        {msg.terminated}
                       </Typography>
                       <Chip size="small" label={`${filteredTerminatedWorkers.length}/${terminatedWorkers.length}\uBA85`} />
                     </Stack>
@@ -1053,7 +1091,7 @@ const LineBoard = () => {
                       fullWidth
                       value={terminatedWorkerFilter}
                       onChange={(event) => setTerminatedWorkerFilter(event.target.value)}
-                      placeholder={'\uC774\uB984, \uC774\uBA54\uC77C, \uC785\uC0AC\uC77C, \uD1F4\uC0AC\uC77C \uAC80\uC0C9'}
+                      placeholder={msg.terminatedSearch}
                       sx={{ mb: 1 }}
                       inputProps={{ 'aria-label': '\uD1F4\uC0AC\uC790 \uAC80\uC0C9' }}
                     />
@@ -1071,8 +1109,8 @@ const LineBoard = () => {
                       {filteredTerminatedWorkers.length === 0 ? (
                         <Typography variant="caption" color="text.disabled" sx={{ display: 'block', p: 1 }}>
                           {terminatedWorkers.length === 0
-                            ? '\uD1F4\uC0AC\uC790\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.'
-                            : '\uAC80\uC0C9 \uC870\uAC74\uC5D0 \uB9DE\uB294 \uD1F4\uC0AC\uC790\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.'}
+                            ? msg.noTerminated
+                            : msg.noTerminatedResult}
                         </Typography>
                       ) : null}
                       {filteredTerminatedWorkers.map((worker) => (
@@ -1094,7 +1132,7 @@ const LineBoard = () => {
                           <Typography variant="body2" fontWeight={500} noWrap sx={{ flex: 1, minWidth: 0 }}>
                             {buildWorkerLabel(worker)}
                           </Typography>
-                          <Tooltip title={'\uB77C\uC778 \uBC30\uCE58 \uC774\uB825 \uBC0F \uADFC\uBB34 \uAE30\uAC04'}>
+                          <Tooltip title={msg.historyTooltip}>
                             <Button
                               size="small"
                               variant="text"
@@ -1102,7 +1140,7 @@ const LineBoard = () => {
                               onClick={(event) => handleOpenHistory(event, worker)}
                               sx={{ minWidth: 'auto', px: 0.5, whiteSpace: 'nowrap' }}
                             >
-                              {'\uC774\uB825'}
+                              {msg.history}
                             </Button>
                           </Tooltip>
                         </Paper>
@@ -1113,8 +1151,8 @@ const LineBoard = () => {
               </Paper>
               {selectedFactory ? (
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.25 }}>
-                  {selectedFactory.name} 기준 · 라인 {lines.length}개 · 배정 {assignedWorkers}명 ·
-                  미배정 {lineWorkers.unassigned.length}명
+                  {selectedFactory.name} · {msg.line} {lines.length} · {msg.assigned} {assignedWorkers} ·
+                  {msg.unassigned} {lineWorkers.unassigned.length}
                 </Typography>
               ) : null}
             </Box>
@@ -1238,10 +1276,10 @@ const LineBoard = () => {
                           </Stack>
 
                           <FormControl size="small" fullWidth sx={{ mb: 1.15 }}>
-                            <InputLabel id={`mgr-${line.localKey}`}>라인장</InputLabel>
+                            <InputLabel id={`mgr-${line.localKey}`}>{msg.manager}</InputLabel>
                             <Select
                               labelId={`mgr-${line.localKey}`}
-                              label="라인장"
+                              label={msg.manager}
                               value={line.managerEmployeeId || ''}
                               onChange={(event) =>
                                 handleManagerChange(line.localKey, event.target.value || null)
@@ -1373,7 +1411,7 @@ const LineBoard = () => {
     </Dialog>
     <Dialog open={Boolean(historyWorker)} onClose={() => setHistoryWorker(null)} maxWidth="md" fullWidth>
       <DialogTitle>
-        {buildWorkerLabel(historyWorker)} {'\u00B7'} {'\uB77C\uC778 \uBC30\uCE58 \uC774\uB825'}
+        {buildWorkerLabel(historyWorker)} {'\u00B7'} {msg.assignmentHistory}
       </DialogTitle>
       <DialogContent>
         {(historyWorker?.joinedDate || historyWorker?.leftDate || historyWorker?.joinedAt || historyWorker?.leftAt) ? (
@@ -1382,10 +1420,10 @@ const LineBoard = () => {
             sx={{ p: 1.5, mb: 2, borderRadius: 1.5, backgroundColor: (theme) => alpha(theme.palette.info.main, 0.04) }}
           >
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>
-              {'\uADFC\uBB34 \uAE30\uAC04'}
+              {msg.employmentPeriod}
             </Typography>
             <Typography variant="body2" fontWeight={700}>
-              {`${historyWorker?.joinedDate || toDateKey(historyWorker?.joinedAt) || '-'} ~ ${historyWorker?.leftDate || toDateKey(historyWorker?.leftAt) || '\uC7AC\uC9C1 \uC911'}`}
+              {`${historyWorker?.joinedDate || toDateKey(historyWorker?.joinedAt) || '-'} ~ ${historyWorker?.leftDate || toDateKey(historyWorker?.leftAt) || msg.working}`}
             </Typography>
           </Paper>
         ) : null}

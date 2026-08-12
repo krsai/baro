@@ -57,7 +57,7 @@ export const ORG_ROLE_DEFAULT_LABELS = {
   [ORG_ROLE_KEYS.ACCOUNTANT]: {
     ko: '\uD68C\uACC4\uC0AC',
     en: 'Accountant',
-    vi: 'Ke toan',
+    vi: 'Kế toán',
   },
   [ORG_ROLE_KEYS.WORKER]: {
     ko: '\uC791\uC5C5\uC790',
@@ -206,7 +206,7 @@ export const ORGANIZATION_SUBSCRIPTION_STATUS_DEFAULT_DESCRIPTIONS = {
   [ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.GRACE]: {
     ko: '\uD65C\uC131 \uAE30\uAC04 \uC885\uB8CC \uD6C4 30\uC77C \uC720\uC608 \uC0C1\uD0DC\uC774\uBA70 \uAE30\uAC04 \uC5F0\uC7A5\uC774 \uC5C6\uC73C\uBA74 \uC911\uC9C0\uB429\uB2C8\uB2E4.',
     en: 'The active period has ended and the subscription is in a 30-day grace period before suspension.',
-    vi: 'Thoi gian hoat dong da het han va dang o giai doan gia han 30 ngay truoc khi tam dung.',
+    vi: 'Thời gian hoat dong da het han va dang o giai doan gia han 30 ngay truoc khi tam dung.',
   },
   [ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.SUSPENDED]: {
     ko: '\uBBF8\uB0A9 \uB610\uB294 \uAE30\uAC04 \uB9CC\uB8CC\uB85C \uC0AC\uC6A9\uC774 \uC911\uC9C0\uB41C \uC0C1\uD0DC\uC785\uB2C8\uB2E4.',

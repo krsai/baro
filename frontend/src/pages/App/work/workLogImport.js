@@ -13,12 +13,12 @@ const IMPORT_ERROR_TEXT = {
   noRowsProvided: {
     ko: '가져올 행이 없습니다.',
     en: 'No rows were provided.',
-    vi: 'Khong co dong nao de nhap.',
+    vi: 'Không có dong nao de nhap.',
   },
   noRowsFound: {
     ko: '파일에서 가져올 수 있는 작업기록 행을 찾지 못했습니다.',
     en: 'No importable work-log rows were found in the workbook.',
-    vi: 'Khong tim thay dong ghi chep co the nhap trong tep.',
+    vi: 'Không tìm thấy dong ghi chep co the nhap trong tep.',
   },
   skippedSheets: {
     ko: '건너뛴 시트',
@@ -48,7 +48,7 @@ const IMPORT_ERROR_TEXT = {
   fallbackIssue: {
     ko: '가져오기 검증에 실패했습니다.',
     en: 'Import validation failed.',
-    vi: 'Kiem tra du lieu nhap khong thanh cong.',
+    vi: 'Kiểm tra du lieu nhap khong thanh cong.',
   },
 };
 
@@ -325,7 +325,7 @@ const translateImportIssueDetail = (issue, languageCode) => {
       ]);
       const employeeNo = parsed?.employeeNo || '';
       if (languageCode === 'en') return `Employee code ${employeeNo} was not found.`;
-      if (languageCode === 'vi') return `Khong tim thay ma nhan vien ${employeeNo}.`;
+      if (languageCode === 'vi') return `Không tìm thấy ma nhan vien ${employeeNo}.`;
       return `직원 코드 ${employeeNo}를 찾을 수 없습니다.`;
     }
     case 'EMPLOYEE_NAME_MISMATCH': {
@@ -360,7 +360,7 @@ const translateImportIssueDetail = (issue, languageCode) => {
       return languageCode === 'en'
         ? 'The factory for the resolved line was not found.'
         : languageCode === 'vi'
-          ? 'Khong tim thay nha may cua chuyen da xac dinh.'
+          ? 'Không tìm thấy nha may cua chuyen da xac dinh.'
           : '확인된 라인의 공장을 찾을 수 없습니다.';
     case 'INVALID_WORKER':
       return languageCode === 'en'
@@ -416,7 +416,7 @@ const translateImportIssueDetail = (issue, languageCode) => {
         languageCode === 'en'
           ? 'Assignment card CT validation failed.'
           : languageCode === 'vi'
-            ? 'Kiem tra CT cua the phan cong khong thanh cong.'
+            ? 'Kiểm tra CT cua the phan cong khong thanh cong.'
             : '배정 카드 CT 검증에 실패했습니다.',
         detail
       );

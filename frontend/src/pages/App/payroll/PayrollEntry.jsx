@@ -39,14 +39,14 @@ const TEXT = {
     noRecords: 'No work records.', current: 'In Progress', confirmed: 'Confirmed',
   },
   vi: {
-    title: 'Chi tiet phu cap san luong', loading: 'Dang tai chi tiet phu cap san luong.',
-    fetchError: 'Khong the tai chi tiet phu cap san luong.', empty: 'Khong co nhan vien luong san pham thuoc doi tuong tinh phu cap.',
-    employeeAllowance: 'Phu cap san luong theo nhan vien', people: ' nhan vien', total: 'Tong phu cap san luong', employee: 'Nhan vien',
-    allowance: 'Phu cap san luong', basis: 'Co so tinh', details: 'Chi tiet', collapse: 'Thu gon',
-    formula: 'Phu cap san luong = so luong × giay CT × don gia hien tai cua nha may khi tinh thang. Don gia sua theo nhan vien ap dung cho toan bo giay CT cua nhan vien trong thang.',
-    process: 'Cong doan', quantity: 'So luong', ctSeconds: 'Tong giay CT', averageRate: 'Luong moi giay',
-    appliedRate: 'Don gia ap dung/giay', saveRates: 'Luu don gia', saving: 'Dang luu...', saveSuccess: 'Da luu don gia theo nhan vien.', saveError: 'Khong the luu don gia theo nhan vien.',
-    noRecords: 'Khong co ghi chep cong viec.', current: 'Dang tien hanh', confirmed: 'Da xac nhan',
+    title: 'Chi tiết phu cap san luong', loading: 'Đang tải chi tiet phu cap san luong.',
+    fetchError: 'Không thể tai chi tiet phu cap san luong.', empty: 'Không có nhan vien luong san pham thuoc doi tuong tinh phu cap.',
+    employeeAllowance: 'Phụ cấp san luong theo nhan vien', people: ' nhan vien', total: 'Tong phu cap san luong', employee: 'Nhân viên',
+    allowance: 'Phụ cấp san luong', basis: 'Co so tinh', details: 'Chi tiết', collapse: 'Thu gon',
+    formula: 'Phụ cấp san luong = so luong × giay CT × don gia hien tai cua nha may khi tinh thang. Đơn giá sua theo nhan vien ap dung cho toan bo giay CT cua nhan vien trong thang.',
+    process: 'Công đoạn', quantity: 'Số lượng', ctSeconds: 'Tong giay CT', averageRate: 'Luong moi giay',
+    appliedRate: 'Đơn giá ap dung/giay', saveRates: 'Luu don gia', saving: 'Đang lưu...', saveSuccess: 'Đã lưu don gia theo nhan vien.', saveError: 'Không thể luu don gia theo nhan vien.',
+    noRecords: 'Không có ghi chep cong viec.', current: 'Đang tiến hành', confirmed: 'Đã xác nhận',
   },
 };
 
@@ -89,9 +89,9 @@ const LOCK_TEXT = {
     saveFirst: 'Save the changed rates before locking.', error: 'Failed to change the lock status.',
   },
   vi: {
-    locked: 'Da khoa', unlocked: 'Da mo khoa', unlockConfirm: 'Mo khoa ket qua phu cap san luong nay?',
-    lockedHelp: 'Dang khoa. Bam de mo khoa.', unlockedHelp: 'Dang mo khoa. Bam de khoa.',
-    saveFirst: 'Hay luu don gia da sua truoc khi khoa.', error: 'Khong the thay doi trang thai khoa.',
+    locked: 'Da khoa', unlocked: 'Da mo khoa', unlockConfirm: 'Mở khóa ket qua phu cap san luong nay?',
+    lockedHelp: 'Đang khóa. Bam de mo khoa.', unlockedHelp: 'Dang mo khoa. Bam de khoa.',
+    saveFirst: 'Hay luu don gia da sua truoc khi khoa.', error: 'Không thể thay doi trang thai khoa.',
   },
 };
 const getPayrollLockButtonSx = (locked) => (theme) => ({

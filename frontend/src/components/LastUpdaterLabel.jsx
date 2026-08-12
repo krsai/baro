@@ -6,7 +6,7 @@ import { useLanguage } from '../context/LanguageContext';
 const LABEL_BY_LANGUAGE = {
   ko: '최종 업데이트',
   en: 'Last Updated By',
-  vi: 'Nguoi cap nhat gan nhat',
+  vi: 'Người cập nhật gần nhất',
 };
 
 const sanitizeUpdaterName = (value) => {

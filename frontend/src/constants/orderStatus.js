@@ -52,12 +52,12 @@ export const ORDER_STATUS_DEFAULT_LABELS = {
   [ORDER_STATUS_KEYS.IN_PROGRESS]: {
     ko: '\uC9C4\uD589',
     en: 'In Progress',
-    vi: 'Dang tien hanh',
+    vi: 'Đang tiến hành',
   },
   [ORDER_STATUS_KEYS.PRODUCTION_DONE]: {
     ko: '\uC644\uB8CC',
     en: 'Done',
-    vi: 'Hoan thanh',
+    vi: 'Hoàn thành',
   },
   [ORDER_STATUS_KEYS.SHIPPED]: {
     ko: '\uCD9C\uACE0',
@@ -75,17 +75,17 @@ const ORDER_STATUS_TEXT_DEFAULTS = {
   fieldLabel: {
     ko: '\uC8FC\uBB38 \uC0C1\uD0DC',
     en: 'Order Status',
-    vi: 'Trang thai don hang',
+    vi: 'Trạng thái don hang',
   },
   filterAllLabel: {
     ko: '\uC804\uCCB4',
     en: 'All',
-    vi: 'Tat ca',
+    vi: 'Tất cả',
   },
   filterExcludeDoneLabel: {
     ko: '\uC644\uB8CC \uC81C\uC678',
     en: 'All Except Done',
-    vi: 'Tat ca tru hoan thanh',
+    vi: 'Tất cả tru hoan thanh',
   },
   noneLabel: {
     ko: '---',
@@ -95,12 +95,12 @@ const ORDER_STATUS_TEXT_DEFAULTS = {
   confirmedOnlyHelper: {
     ko: '\uC8FC\uBB38 \uC0C1\uD0DC\uB294 \uC218\uC815, \uC811\uC218, \uC9C4\uD589\uC744 \uC790\uB3D9 \uC0AC\uC6A9\uD569\uB2C8\uB2E4.',
     en: 'Order status is currently managed automatically as Editing, Received, or In Progress.',
-    vi: 'Trang thai don hang hien duoc quan ly tu dong la Dang sua, Da nhan hoac Dang tien hanh.',
+    vi: 'Trạng thái don hang hien duoc quan ly tu dong la Dang sua, Da nhan hoac Đang tiến hành.',
   },
   autoUpdateHelper: {
     ko: '\uC8FC\uBB38 \uC0DD\uC131 \uD6C4 Lock \uC804\uC5D0\uB294 \uC218\uC815\uC774\uACE0, Lock \uD558\uBA74 \uC811\uC218\uB85C \uBC14\uB01D\uB2C8\uB2E4.',
     en: 'A newly created order stays in Editing until it is locked, then it becomes Received.',
-    vi: 'Don hang moi tao se o trang thai Dang sua cho den khi bi khoa, sau do chuyen thanh Da nhan.',
+    vi: 'Đơn hàng moi tao se o trang thai Dang sua cho den khi bi khoa, sau do chuyen thanh Da nhan.',
   },
   lockedEditHelper: {
     ko: '\uC7A0\uAE08 \uD6C4 \uBBF8\uBC30\uC815 \uCE74\uB4DC\uAC00 \uB0A8\uC544 \uC788\uC73C\uBA74 \uC0C1\uD0DC\uB294 \uACC4\uC18D \uC811\uC218\uC785\uB2C8\uB2E4.',

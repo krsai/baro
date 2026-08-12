@@ -39,7 +39,7 @@ export const ORDER_PARTY_ROLE_TYPED_LABELS = {
   [ORDER_PARTY_ROLE_KEYS.SELLER]: {
     ko: '수주자(제조사)',
     en: 'Seller (Manufacturer)',
-    vi: 'Ben nhan don (Nha may)',
+    vi: 'Ben nhan don (Nhà máy)',
   },
 };
 
@@ -52,7 +52,7 @@ export const ORDER_PARTY_TEXT = {
   loadingPlaceholder: {
     ko: '불러오는 중...',
     en: 'Loading...',
-    vi: 'Dang tai du lieu...',
+    vi: 'Đang tải du lieu...',
   },
   selectBuyer: {
     ko: '발주자를 선택해 주세요.',

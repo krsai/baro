@@ -45,7 +45,7 @@ import {
 const TEXT = {
   add: { ko: '기록 추가', en: 'Add Entry', vi: 'Them ban ghi' },
   import: { ko: '파일 등록', en: 'Import File', vi: 'Nhap tep' },
-  importing: { ko: '등록 중', en: 'Importing', vi: 'Dang nhap' },
+  importing: { ko: '등록 중', en: 'Importing', vi: 'Đăng nhập' },
   importHint: {
     ko: 'CSV/XLSX 파일을 올리면 자동으로 출퇴근을 등록합니다.',
     en: 'Upload CSV/XLSX and auto-register attendance.',
@@ -65,22 +65,22 @@ const TEXT = {
   loading: {
     ko: '출퇴근 기록을 불러오는 중입니다.',
     en: 'Loading attendance...',
-    vi: 'Dang tai cham cong...',
+    vi: 'Đang tải cham cong...',
   },
   empty: {
     ko: '해당 조건의 출퇴근 기록이 없습니다.',
     en: 'No attendance records found.',
-    vi: 'Khong co du lieu cham cong.',
+    vi: 'Không có du lieu cham cong.',
   },
   fetchError: {
     ko: '출퇴근 기록을 불러오지 못했습니다.',
     en: 'Failed to load attendance records.',
-    vi: 'Khong the tai du lieu cham cong.',
+    vi: 'Không thể tai du lieu cham cong.',
   },
   monthLabel: { ko: '조회 월', en: 'Month', vi: 'Thang' },
   prevMonth: { ko: '이전 달', en: 'Previous month', vi: 'Thang truoc' },
   nextMonth: { ko: '다음 달', en: 'Next month', vi: 'Thang sau' },
-  factory: { ko: '공장', en: 'Factory', vi: 'Nha may' },
+  factory: { ko: '공장', en: 'Factory', vi: 'Nhà máy' },
   selectFactoryFirst: {
     ko: '공장을 먼저 선택하세요.',
     en: 'Select a factory first.',
@@ -89,12 +89,12 @@ const TEXT = {
   importNoWorkers: {
     ko: '작업자 목록이 없어 파일을 등록할 수 없습니다.',
     en: 'No workers found. Cannot import this file.',
-    vi: 'Khong co cong nhan. Khong the nhap tep.',
+    vi: 'Không có cong nhan. Không thể nhap tep.',
   },
   importNoRows: {
     ko: '가져올 수 있는 출퇴근 데이터가 없습니다.',
     en: 'No importable attendance rows found.',
-    vi: 'Khong co du lieu cham cong de nhap.',
+    vi: 'Không có du lieu cham cong de nhap.',
   },
   importConfirm: {
     ko: '파일에서 {eventCount}건 이벤트, {dayCount}일 데이터를 찾았습니다. 등록할까요?',
@@ -118,12 +118,12 @@ const TEXT = {
   },
   deleteSuccess: {
     en: 'Attendance records deleted.',
-    vi: 'Da xoa du lieu cham cong.',
+    vi: 'Đã xóa du lieu cham cong.',
     ko: '출퇴근 기록을 삭제했습니다.',
   },
   deleteError: {
     en: 'Failed to delete attendance records.',
-    vi: 'Khong the xoa du lieu cham cong.',
+    vi: 'Không thể xoa du lieu cham cong.',
     ko: '출퇴근 기록 삭제에 실패했습니다.',
   },
 };
@@ -146,7 +146,7 @@ const buildAttendanceCreateTabLabel = (languageCode) => {
 const buildAttendanceDetailTabLabel = (workDate, languageCode) => {
   const title =
     languageCode === 'vi'
-      ? 'Chi tiet cham cong'
+      ? 'Chi tiết cham cong'
       : languageCode === 'en'
         ? 'Attendance Detail'
         : '출퇴근 상세';

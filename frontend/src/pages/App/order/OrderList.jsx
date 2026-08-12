@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import {
   Box,
@@ -904,7 +904,7 @@ const OrderList = () => {
       listTitle: getUiMessage('menu.order', 'Orders', languageCode),
       newOrderTab:
         languageCode === 'vi'
-          ? 'Don hang moi'
+          ? 'Đơn hàng moi'
           : languageCode === 'en'
             ? 'New Order'
             : '신규 주문',
@@ -916,7 +916,7 @@ const OrderList = () => {
             : '주문 추가',
       deleteOrder:
         languageCode === 'vi'
-          ? 'Xoa don hang'
+          ? 'Xóa don hang'
           : languageCode === 'en'
             ? 'Delete Order'
             : '주문 삭제',
@@ -958,19 +958,19 @@ const OrderList = () => {
             : '납기일',
       actions:
         languageCode === 'vi'
-          ? 'Quan ly'
+          ? 'Quản lý'
           : languageCode === 'en'
             ? 'Actions'
             : '관리',
       loadingOrders:
         languageCode === 'vi'
-          ? 'Dang tai danh sach don hang...'
+          ? 'Đang tải danh sach don hang...'
           : languageCode === 'en'
             ? 'Loading orders...'
             : '주문 목록을 불러오는 중입니다.',
       emptyOrders:
         languageCode === 'vi'
-          ? 'Khong co don hang phu hop bo loc hien tai.'
+          ? 'Không có don hang phu hop bo loc hien tai.'
           : languageCode === 'en'
             ? 'No orders match the current filters.'
             : '조건에 맞는 주문이 없습니다.',
@@ -1043,7 +1043,7 @@ const OrderList = () => {
             : '색상',
       gender:
         languageCode === 'vi'
-          ? 'Gioi tinh'
+          ? 'Giới tính'
           : languageCode === 'en'
             ? 'Gender'
             : '성별',
@@ -1067,7 +1067,7 @@ const OrderList = () => {
             : '스타일명 검색',
       noRegisteredStyles:
         languageCode === 'vi'
-          ? 'Chua co style nao.'
+          ? 'Chưa có style nao.'
           : languageCode === 'en'
             ? 'No registered styles.'
             : '등록된 스타일이 없습니다.',
@@ -1079,7 +1079,7 @@ const OrderList = () => {
             : '입력한 이름으로 새 색상을 추가할 수 있습니다.',
       noRegisteredColors:
         languageCode === 'vi'
-          ? 'Khong tim thay mau da dang ky.'
+          ? 'Không tìm thấy mau da dang ky.'
           : languageCode === 'en'
             ? 'No registered colors found.'
             : '등록된 색상을 찾을 수 없습니다.',
@@ -1097,7 +1097,7 @@ const OrderList = () => {
             : '색상 검색',
       noSelectableGender:
         languageCode === 'vi'
-          ? 'Khong co gioi tinh co the chon.'
+          ? 'Không có gioi tinh co the chon.'
           : languageCode === 'en'
             ? 'No selectable gender.'
             : '선택 가능한 성별이 없습니다.',
@@ -1121,31 +1121,31 @@ const OrderList = () => {
             : '새 색상 추가:',
       manager:
         languageCode === 'vi'
-          ? 'Quan ly'
+          ? 'Quản lý'
           : languageCode === 'en'
             ? 'Manager'
             : '관리자',
       stylesLoadError:
         languageCode === 'vi'
-          ? 'Khong the tai danh sach style.'
+          ? 'Không thể tai danh sach style.'
           : languageCode === 'en'
             ? 'Failed to load styles.'
             : '스타일 목록을 불러오지 못했습니다.',
       ordersLoadError:
         languageCode === 'vi'
-          ? 'Khong the tai danh sach don hang.'
+          ? 'Không thể tai danh sach don hang.'
           : languageCode === 'en'
             ? 'Failed to load orders.'
             : '주문 목록을 불러오지 못했습니다.',
       partiesLoadError:
         languageCode === 'vi'
-          ? 'Khong the tai thong tin doi tac don hang.'
+          ? 'Không thể tai thong tin doi tac don hang.'
           : languageCode === 'en'
             ? 'Failed to load order partner information.'
             : '주문 파트너 정보를 불러오지 못했습니다.',
       orderNotFound:
         languageCode === 'vi'
-          ? 'Khong tim thay thong tin don hang.'
+          ? 'Không tìm thấy thong tin don hang.'
           : languageCode === 'en'
             ? 'Order information was not found.'
             : '주문 정보를 찾을 수 없습니다.',
@@ -1157,7 +1157,7 @@ const OrderList = () => {
             : '변경사항을 먼저 저장한 뒤 잠가 주세요.',
       lockChangeNotAllowed:
         languageCode === 'vi'
-          ? 'Khong the doi trang thai khoa o day voi don da co hop dong phan cong.'
+          ? 'Không thể doi trang thai khoa o day voi don da co hop dong phan cong.'
           : languageCode === 'en'
             ? 'You cannot change lock status here for orders with assignment contracts.'
             : '배정 계약이 있는 주문은 여기서 잠금 상태를 바꿀 수 없습니다.',
@@ -1211,7 +1211,7 @@ const OrderList = () => {
             : '삭제하시겠습니까?',
       deleteSuccess:
         languageCode === 'vi'
-          ? 'Da xoa don hang.'
+          ? 'Đã xóa don hang.'
           : languageCode === 'en'
             ? 'Order deleted.'
             : '주문이 삭제되었습니다.',
@@ -1223,7 +1223,7 @@ const OrderList = () => {
             : '주문 삭제 중 오류가 발생했습니다.',
       duplicateStyleColorGender:
         languageCode === 'vi'
-          ? 'Khong the chon trung cung to hop style/mau/gioi tinh.'
+          ? 'Không thể chon trung cung to hop style/mau/gioi tinh.'
           : languageCode === 'en'
             ? 'You cannot select duplicate style/color/gender combinations.'
             : '같은 스타일/색상/성별 조합은 중복 선택할 수 없습니다.',
@@ -1247,7 +1247,7 @@ const OrderList = () => {
             : '주문번호를 입력해 주세요.',
       validationDuplicateOrderNumber:
         languageCode === 'vi'
-          ? 'Khong the dung trung so don hang cho cung khach hang.'
+          ? 'Không thể dung trung so don hang cho cung khach hang.'
           : languageCode === 'en'
             ? 'The same customer cannot use duplicate order numbers.'
             : '같은 고객사에는 동일한 주문번호를 사용할 수 없습니다.',
@@ -1295,19 +1295,19 @@ const OrderList = () => {
             : '같은 스타일/색상/성별 조합은 한 번만 입력할 수 있습니다.',
       noChanges:
         languageCode === 'vi'
-          ? 'Khong co thay doi.'
+          ? 'Không có thay doi.'
           : languageCode === 'en'
             ? 'No changes to save.'
             : '변경된 내용이 없습니다.',
       orderToEditNotFound:
         languageCode === 'vi'
-          ? 'Khong tim thay don hang de chinh sua.'
+          ? 'Không tìm thấy don hang de chinh sua.'
           : languageCode === 'en'
             ? 'Order to edit was not found.'
             : '수정할 주문 정보를 찾을 수 없습니다.',
       orderSaved:
         languageCode === 'vi'
-          ? 'Da luu thong tin don hang.'
+          ? 'Đã lưu thong tin don hang.'
           : languageCode === 'en'
             ? 'Order information saved.'
             : '주문 정보가 저장되었습니다.',
@@ -1319,7 +1319,7 @@ const OrderList = () => {
             : '주문 저장 중 오류가 발생했습니다.',
       saveIssueDialogToast:
         languageCode === 'vi'
-          ? 'Khong the luu vi co kieu dang da co lich su ghi nhan cong viec. Xem chi tiet.'
+          ? 'Không thể luu vi co kieu dang da co lich su ghi nhan cong viec. Xem chi tiet.'
           : languageCode === 'en'
             ? 'Save failed because some styles already have work records. Check the details.'
             : '작업기록이 있는 스타일이 있어 저장하지 못했습니다. 상세 내용을 확인해 주세요.',
@@ -1367,13 +1367,13 @@ const OrderList = () => {
             : '주문 저장 중 오류가 발생했습니다.',
       modificationLocked:
         languageCode === 'vi'
-          ? 'Don hang da khoa khong the sua hoac xoa.'
+          ? 'Đơn hàng da khoa khong the sua hoac xoa.'
           : languageCode === 'en'
             ? 'Locked orders cannot be edited or deleted.'
             : '잠긴 주문은 수정하거나 삭제할 수 없습니다.',
       modificationLockedNotice:
         languageCode === 'vi'
-          ? 'Don hang dang bi khoa.'
+          ? 'Đơn hàng dang bi khoa.'
           : languageCode === 'en'
             ? 'This order is locked.'
             : '주문이 잠겨 있습니다.',

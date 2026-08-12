@@ -55,12 +55,12 @@ const ACCESS_POLICY_TEXT = {
   pageTitle: {
     ko: '접근 권한',
     en: 'Access Policy',
-    vi: 'Chinh sach truy cap',
+    vi: 'Chính sách truy cap',
   },
   saved: {
     ko: '접근 권한을 저장했습니다.',
     en: 'Access policy saved.',
-    vi: 'Da luu chinh sach truy cap.',
+    vi: 'Đã lưu chinh sach truy cap.',
   },
   reset: {
     ko: '접근 권한을 기본값으로 되돌렸습니다.',

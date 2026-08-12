@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -48,10 +48,10 @@ const EMPLOYEE_STATUS_LABELS = {
   ACTIVE: { ko: '재직', en: 'Active', vi: 'Dang lam' },
   SUSPENDED: { ko: '휴직', en: 'Suspended', vi: 'Tam nghi' },
   TERMINATED: { ko: '퇴사', en: 'Terminated', vi: 'Nghi viec' },
-  ALL: { ko: '전체 상태', en: 'All statuses', vi: 'Tat ca trang thai' },
+  ALL: { ko: '전체 상태', en: 'All statuses', vi: 'Tất cả trang thai' },
 };
 const EMPLOYEE_BOARD_TEXT = {
-  pageTitle: { ko: '직원 관리', en: 'Employee Management', vi: 'Quan ly nhan vien' },
+  pageTitle: { ko: '직원 관리', en: 'Employee Management', vi: 'Quản lý nhan vien' },
   addEmployee: { ko: '직원 추가', en: 'Add Employee', vi: 'Them nhan vien' },
   lineAssignmentPromptTitle: {
     ko: '라인 배정이 필요합니다',
@@ -61,11 +61,11 @@ const EMPLOYEE_BOARD_TEXT = {
   lineAssignmentPromptBody: {
     ko: '{name} 직원이 봉제로 등록되었습니다. 지금 라인에 배정하시겠습니까?',
     en: '{name} was registered as a sewing worker. Assign this employee to a line now?',
-    vi: '{name} da duoc dang ky la cong nhan may. Phan cong vao chuyen ngay bay gio?',
+    vi: '{name} da duoc dang ky la cong nhan may. Phân công vao chuyen ngay bay gio?',
   },
   lineAssignmentLater: { ko: '나중에', en: 'Later', vi: 'De sau' },
-  lineAssignmentNow: { ko: '라인 배정', en: 'Assign line', vi: 'Phan cong chuyen' },
-  lineMenuLabel: { ko: '라인', en: 'Lines', vi: 'Chuyen' },
+  lineAssignmentNow: { ko: '라인 배정', en: 'Assign line', vi: 'Phân công chuyen' },
+  lineMenuLabel: { ko: '라인', en: 'Lines', vi: 'Chuyền' },
   drawerAddTitle: { ko: '직원 추가', en: 'Add Employee', vi: 'Them nhan vien' },
   drawerEditTitle: { ko: '직원 수정', en: 'Edit Employee', vi: 'Sua nhan vien' },
   requiredHint: {
@@ -77,7 +77,7 @@ const EMPLOYEE_BOARD_TEXT = {
   loginEmailHelperRequired: {
     ko: '관리자/운영자/회계사는 로그인 이메일이 필요합니다.',
     en: 'Admin/Operator/Accountant roles require a login email.',
-    vi: 'Vai tro Quan tri/Van hanh/Ke toan can email dang nhap.',
+    vi: 'Vai tro Quan tri/Van hanh/Kế toán can email dang nhap.',
   },
   loginEmailHelperOptional: {
     ko: '작업자는 이메일을 비워둘 수 있습니다.',
@@ -91,9 +91,9 @@ const EMPLOYEE_BOARD_TEXT = {
   accountLabel: { ko: '계좌번호', en: 'Account Number', vi: 'So tai khoan' },
   roleLabel: { ko: '권한', en: 'Role', vi: 'Quyen' },
   jobLabel: { ko: '직무', en: 'Job Role', vi: 'Vai tro cong viec' },
-  factoryLabel: { ko: '공장', en: 'Factory', vi: 'Nha may' },
+  factoryLabel: { ko: '공장', en: 'Factory', vi: 'Nhà máy' },
   factorySelect: { ko: '공장 선택', en: 'Select Factory', vi: 'Chon nha may' },
-  allFactory: { ko: '전체 공장', en: 'All Factories', vi: 'Tat ca nha may' },
+  allFactory: { ko: '전체 공장', en: 'All Factories', vi: 'Tất cả nha may' },
   operationsSupportTeam: {
     ko: '운영 지원팀',
     en: 'Operations Support Team',
@@ -110,15 +110,15 @@ const EMPLOYEE_BOARD_TEXT = {
   ctSalaryLabel: { ko: '기본급', en: 'Base Salary', vi: 'Lương cơ bản' },
   moneyPlaceholder: { ko: '예: 8,000,000', en: 'e.g. 8,000,000', vi: 'Vi du: 8,000,000' },
   joinedAtLabel: { ko: '입사일', en: 'Join Date', vi: 'Ngay vao lam' },
-  leftAtLabel: { ko: '퇴사일', en: 'Leave Date', vi: 'Ngay nghi viec' },
-  statusLabel: { ko: '상태', en: 'Status', vi: 'Trang thai' },
+  leftAtLabel: { ko: '퇴사일', en: 'Leave Date', vi: 'Ngày nghỉ viec' },
+  statusLabel: { ko: '상태', en: 'Status', vi: 'Trạng thái' },
   drawerHint: {
     ko: '직원 목록에서 선택한 항목을 여기서 수정하고 저장합니다.',
     en: 'Edit and save the selected employee here.',
     vi: 'Chinh sua va luu nhan vien da chon tai day.',
   },
   cancelButton: { ko: '취소', en: 'Cancel', vi: 'Huy' },
-  pendingTitle: { ko: '승인 대기 목록', en: 'Pending Approvals', vi: 'Danh sach cho duyet' },
+  pendingTitle: { ko: '승인 대기 목록', en: 'Pending Approvals', vi: 'Danh sách cho duyet' },
   emailColumn: { ko: '이메일', en: 'Email', vi: 'Email' },
   requestDateColumn: { ko: '요청일', en: 'Requested At', vi: 'Ngay yeu cau' },
   approve: { ko: '승인', en: 'Approve', vi: 'Duyet' },
@@ -128,7 +128,7 @@ const EMPLOYEE_BOARD_TEXT = {
   activeListTitle: {
     ko: '재직/퇴직 직원 목록',
     en: 'Active/Former Employees',
-    vi: 'Danh sach nhan vien dang lam/nghi viec',
+    vi: 'Danh sách nhan vien dang lam/nghi viec',
   },
   searchPlaceholder: {
     ko: '이름, 사번, 이메일, 직무 검색',
@@ -151,9 +151,9 @@ const EMPLOYEE_BOARD_TEXT = {
   },
   payTypeColumn: { ko: '급여 타입', en: 'Pay Type', vi: 'Loai luong' },
   joinedAtColumn: { ko: '입사일', en: 'Join Date', vi: 'Ngay vao lam' },
-  leftAtColumn: { ko: '퇴사일', en: 'Leave Date', vi: 'Ngay nghi viec' },
-  noSearchResult: { ko: '검색 결과가 없습니다.', en: 'No search results.', vi: 'Khong co ket qua tim kiem.' },
-  noEmployeeRows: { ko: '표시할 직원이 없습니다.', en: 'No employees to display.', vi: 'Khong co nhan vien de hien thi.' },
+  leftAtColumn: { ko: '퇴사일', en: 'Leave Date', vi: 'Ngày nghỉ viec' },
+  noSearchResult: { ko: '검색 결과가 없습니다.', en: 'No search results.', vi: 'Không có ket qua tim kiem.' },
+  noEmployeeRows: { ko: '표시할 직원이 없습니다.', en: 'No employees to display.', vi: 'Không có nhan vien de hien thi.' },
   terminatedPreserveNote: {
     ko: '퇴사 처리 시 기존 생산/급여 집계 데이터는 보존됩니다.',
     en: 'When terminated, existing production/payroll aggregate data is preserved.',
@@ -167,39 +167,39 @@ const EMPLOYEE_BOARD_TEXT = {
   errLoadMembership: {
     ko: '조직 멤버 정보를 불러오지 못했습니다.',
     en: 'Failed to load organization members.',
-    vi: 'Khong the tai thong tin thanh vien to chuc.',
+    vi: 'Không thể tai thong tin thanh vien to chuc.',
   },
   errLoadFactory: {
     ko: '공장 정보를 불러오지 못했습니다.',
     en: 'Failed to load factory information.',
-    vi: 'Khong the tai thong tin nha may.',
+    vi: 'Không thể tai thong tin nha may.',
   },
   errLoadEmployee: {
     ko: '직원 정보를 불러오지 못했습니다.',
     en: 'Failed to load employee information.',
-    vi: 'Khong the tai thong tin nhan vien.',
+    vi: 'Không thể tai thong tin nhan vien.',
   },
   errLoadJobRole: {
     ko: '직무 정보를 불러오지 못했습니다.',
     en: 'Failed to load job role information.',
-    vi: 'Khong the tai thong tin vai tro cong viec.',
+    vi: 'Không thể tai thong tin vai tro cong viec.',
   },
   errNeedFactoryBeforeApprove: {
     ko: '승인 전에 공장을 선택해 주세요.',
     en: 'Please select a factory before approval.',
-    vi: 'Vui long chon nha may truoc khi duyet.',
+    vi: 'Vui lòng chon nha may truoc khi duyet.',
   },
   errNeedRoleBeforeApprove: {
     ko: '승인 전에 역할을 선택해 주세요.',
     en: 'Please select a role before approval.',
-    vi: 'Vui long chon quyen truoc khi duyet.',
+    vi: 'Vui lòng chon quyen truoc khi duyet.',
   },
   approveSuccess: { ko: '승인을 완료했습니다.', en: 'Approval completed.', vi: 'Da duyet xong.' },
   approveError: { ko: '승인에 실패했습니다.', en: 'Approval failed.', vi: 'Duyet that bai.' },
   rejectSuccess: { ko: '반려 처리를 완료했습니다.', en: 'Rejection completed.', vi: 'Da tu choi xong.' },
   rejectError: { ko: '반려 처리에 실패했습니다.', en: 'Rejection failed.', vi: 'Tu choi that bai.' },
-  employeeSaved: { ko: '직원 정보가 저장되었습니다.', en: 'Employee information saved.', vi: 'Da luu thong tin nhan vien.' },
-  employeeSaveError: { ko: '직원 정보 저장에 실패했습니다.', en: 'Failed to save employee information.', vi: 'Khong the luu thong tin nhan vien.' },
+  employeeSaved: { ko: '직원 정보가 저장되었습니다.', en: 'Employee information saved.', vi: 'Đã lưu thong tin nhan vien.' },
+  employeeSaveError: { ko: '직원 정보 저장에 실패했습니다.', en: 'Failed to save employee information.', vi: 'Không thể luu thong tin nhan vien.' },
   errNoEditPermission: { ko: '직원 수정 권한이 없습니다.', en: 'No permission to edit employees.', vi: 'Ban khong co quyen sua nhan vien.' },
   errInvalidEmail: { ko: '유효한 이메일 형식이 아닙니다.', en: 'Invalid email format.', vi: 'Dinh dang email khong hop le.' },
   errNameRequired: { ko: '이름은 필수 입력입니다.', en: 'Name is required.', vi: 'Ten la bat buoc.' },
@@ -207,7 +207,7 @@ const EMPLOYEE_BOARD_TEXT = {
   errNeedLoginEmail: {
     ko: '관리자/운영자/회계사는 로그인 이메일이 필요합니다.',
     en: 'Admin/Operator/Accountant roles require a login email.',
-    vi: 'Vai tro Quan tri/Van hanh/Ke toan can email dang nhap.',
+    vi: 'Vai tro Quan tri/Van hanh/Kế toán can email dang nhap.',
   },
   errInvalidDateRange: {
     ko: '입사일/퇴사일 형식이 올바르지 않습니다.',
@@ -217,10 +217,10 @@ const EMPLOYEE_BOARD_TEXT = {
   errLeftBeforeJoin: {
     ko: '퇴사일은 입사일 이후여야 합니다.',
     en: 'Leave date must be after join date.',
-    vi: 'Ngay nghi viec phai sau ngay vao lam.',
+    vi: 'Ngày nghỉ viec phai sau ngay vao lam.',
   },
-  errNeedFactory: { ko: '공장을 선택해 주세요.', en: 'Please select a factory.', vi: 'Vui long chon nha may.' },
-  errInvalidFactory: { ko: '유효한 공장을 선택해 주세요.', en: 'Please select a valid factory.', vi: 'Vui long chon nha may hop le.' },
+  errNeedFactory: { ko: '공장을 선택해 주세요.', en: 'Please select a factory.', vi: 'Vui lòng chon nha may.' },
+  errInvalidFactory: { ko: '유효한 공장을 선택해 주세요.', en: 'Please select a valid factory.', vi: 'Vui lòng chon nha may hop le.' },
   errEmailAlreadyRegisteredDetail: {
     ko: '이미 등록된 이메일입니다. 기존 직원을 선택해 수정해 주세요.',
     en: 'This email is already registered. Select existing employee to edit.',
@@ -229,7 +229,7 @@ const EMPLOYEE_BOARD_TEXT = {
   errMemberNotFound: {
     ko: '선택한 직원 정보를 찾을 수 없습니다.',
     en: 'Could not find selected employee.',
-    vi: 'Khong tim thay nhan vien da chon.',
+    vi: 'Không tìm thấy nhan vien da chon.',
   },
   errEmailAlreadyRegistered: {
     ko: '이미 등록된 이메일입니다.',

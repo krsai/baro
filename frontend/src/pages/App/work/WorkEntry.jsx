@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { CircularProgress, Paper, Stack, Typography } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -12,37 +12,37 @@ const TEXT = {
   detailTitle: {
     ko: '작업 기록 상세',
     en: 'Work Log Detail',
-    vi: 'Chi tiet nhat ky cong viec',
+    vi: 'Chi tiết nhat ky cong viec',
   },
   notFound: {
     ko: '기록을 찾을 수 없습니다.',
     en: 'Log not found.',
-    vi: 'Khong tim thay ghi chep.',
+    vi: 'Không tìm thấy ghi chep.',
   },
   loadError: {
     ko: '기록을 불러오지 못했습니다.',
     en: 'Failed to load the log.',
-    vi: 'Khong the tai ghi chep.',
+    vi: 'Không thể tai ghi chep.',
   },
   saveSuccess: {
     ko: '작업 기록을 저장했습니다. 다음 단계에서 수량 정산을 진행하세요.',
     en: 'Work log saved. Next, continue in Quantity Settlement.',
-    vi: 'Da luu ghi chep cong viec. Tiep theo, hay thuc hien doi chieu so luong.',
+    vi: 'Đã lưu ghi chep cong viec. Tiep theo, hay thuc hien doi chieu so luong.',
   },
   updateSuccess: {
     ko: '작업 기록을 수정했습니다. 다음 단계에서 수량 정산을 다시 확인하세요.',
     en: 'Work log updated. Next, review Quantity Settlement again.',
-    vi: 'Da cap nhat ghi chep cong viec. Tiep theo, hay kiem tra lai doi chieu so luong.',
+    vi: 'Đã cập nhật ghi chep cong viec. Tiep theo, hay kiem tra lai doi chieu so luong.',
   },
   saveError: {
     ko: '기록 저장에 실패했습니다.',
     en: 'Failed to save the log.',
-    vi: 'Khong the luu ghi chep.',
+    vi: 'Không thể luu ghi chep.',
   },
   loading: {
     ko: '기록 상세를 불러오는 중입니다.',
     en: 'Loading log detail...',
-    vi: 'Dang tai chi tiet ghi chep.',
+    vi: 'Đang tải chi tiet ghi chep.',
   },
 };
 
@@ -62,8 +62,8 @@ const buildCrossLineAssignmentSaveMessage = ({
   }
   if (languageCode === 'vi') {
     return isUpdate
-      ? `Da cap nhat ghi chep cong viec. Da ghi chu ${rowCount} dong gan line khac vao ghi chu.`
-      : `Da luu ghi chep cong viec. Da ghi chu ${rowCount} dong gan line khac vao ghi chu.`;
+      ? `Đã cập nhật ghi chep cong viec. Da ghi chu ${rowCount} dong gan line khac vao ghi chu.`
+      : `Đã lưu ghi chep cong viec. Da ghi chu ${rowCount} dong gan line khac vao ghi chu.`;
   }
   return isUpdate
     ? `작업 기록을 수정했습니다. 다른 라인 배정 작업 ${rowCount}건을 비고에 남겼습니다.`
@@ -79,7 +79,7 @@ const buildWorkListTabLabel = (languageCode) => {
 const buildWorkDetailTabLabel = (workDateKey, languageCode) => {
   const title =
     languageCode === 'vi'
-      ? 'Chi tiet nhat ky cong viec'
+      ? 'Chi tiết nhat ky cong viec'
       : languageCode === 'en'
         ? 'Work Log Detail'
         : '작업 기록 상세';

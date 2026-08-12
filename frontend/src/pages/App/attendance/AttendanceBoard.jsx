@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Button,
@@ -113,7 +113,7 @@ const TEXT = {
   fetchEntriesError: {
     ko: '출퇴근 입력을 불러오지 못했습니다.',
     en: 'Failed to load attendance entries.',
-    vi: 'Khong the tai du lieu cham cong.',
+    vi: 'Không thể tai du lieu cham cong.',
   },
   selectFactoryFirst: {
     ko: '공장을 먼저 선택해 주세요.',
@@ -128,22 +128,22 @@ const TEXT = {
   noWorkersToMatch: {
     ko: '매칭할 작업자 목록이 없습니다.',
     en: 'No workers available for matching.',
-    vi: 'Khong co cong nhan de doi chieu.',
+    vi: 'Không có cong nhan de doi chieu.',
   },
   noImportEvents: {
     ko: '가져올 출퇴근 이벤트가 없습니다.',
     en: 'No attendance events to import.',
-    vi: 'Khong co su kien cham cong de nhap.',
+    vi: 'Không có su kien cham cong de nhap.',
   },
   noDataOnSelectedDate: {
     ko: '선택한 근무일({dateKey})에 반영할 데이터가 없습니다.',
     en: 'No data to apply on selected date ({dateKey}).',
-    vi: 'Khong co du lieu de ap dung vao ngay da chon ({dateKey}).',
+    vi: 'Không có du lieu de ap dung vao ngay da chon ({dateKey}).',
   },
   importApplied: {
     ko: '업로드 반영 완료 ({dateKey}) - 반영 {appliedCount}명, 매칭 {matchedCount}건, 미매칭 {unmatchedCount}건',
     en: 'Import applied ({dateKey}) - applied {appliedCount}, matched {matchedCount}, unmatched {unmatchedCount}',
-    vi: 'Da ap dung tep ({dateKey}) - ap dung {appliedCount}, khop {matchedCount}, khong khop {unmatchedCount}',
+    vi: 'Đã áp dụng tep ({dateKey}) - ap dung {appliedCount}, khop {matchedCount}, khong khop {unmatchedCount}',
   },
   importFailed: {
     ko: '파일 업로드에 실패했습니다.',
@@ -153,17 +153,17 @@ const TEXT = {
   saveSuccess: {
     ko: '출퇴근 입력을 저장했습니다.',
     en: 'Attendance entries saved.',
-    vi: 'Da luu du lieu cham cong.',
+    vi: 'Đã lưu du lieu cham cong.',
   },
   saveFailed: {
     ko: '출퇴근 입력 저장에 실패했습니다.',
     en: 'Failed to save attendance entries.',
-    vi: 'Khong the luu du lieu cham cong.',
+    vi: 'Không thể luu du lieu cham cong.',
   },
   title: {
     ko: '출퇴근 상세',
     en: 'Attendance Detail',
-    vi: 'Chi tiet cham cong',
+    vi: 'Chi tiết cham cong',
   },
   cancel: {
     ko: '취소',
@@ -173,7 +173,7 @@ const TEXT = {
   list: {
     ko: '목록',
     en: 'List',
-    vi: 'Danh sach',
+    vi: 'Danh sách',
   },
   searchWorker: {
     ko: '작업자 검색',
@@ -188,17 +188,17 @@ const TEXT = {
   factory: {
     ko: '공장',
     en: 'Factory',
-    vi: 'Nha may',
+    vi: 'Nhà máy',
   },
   factoryFallback: {
     ko: '공장 {id}',
     en: 'Factory {id}',
-    vi: 'Nha may {id}',
+    vi: 'Nhà máy {id}',
   },
   importing: {
     ko: '업로드 중...',
     en: 'Uploading...',
-    vi: 'Dang tai len...',
+    vi: 'Đang tải len...',
   },
   importFile: {
     ko: '파일 업로드',
@@ -238,12 +238,12 @@ const TEXT = {
   loadingWorkers: {
     ko: '작업자 목록을 불러오는 중입니다.',
     en: 'Loading workers...',
-    vi: 'Dang tai danh sach cong nhan...',
+    vi: 'Đang tải danh sach cong nhan...',
   },
   loadingEntries: {
     ko: '출퇴근 입력을 불러오는 중입니다.',
     en: 'Loading attendance entries...',
-    vi: 'Dang tai du lieu cham cong...',
+    vi: 'Đang tải du lieu cham cong...',
   },
   selectFactoryFirstForTable: {
     ko: '공장을 먼저 선택하세요.',
@@ -253,12 +253,12 @@ const TEXT = {
   emptySearch: {
     ko: '검색 결과가 없습니다.',
     en: 'No matching workers found.',
-    vi: 'Khong co ket qua tim kiem.',
+    vi: 'Không có ket qua tim kiem.',
   },
   emptyWorkers: {
     ko: '등록된 작업자가 없습니다.',
     en: 'No workers registered.',
-    vi: 'Khong co cong nhan duoc dang ky.',
+    vi: 'Không có cong nhan duoc dang ky.',
   },
   notePlaceholder: {
     ko: '특이사항',

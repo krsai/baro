@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import {
   Paper,
@@ -197,17 +197,17 @@ const resolveAtSyncStatusTooltip = (languageCode, status, isLoading) => {
   }
   if (!status) {
     if (languageCode === 'en') return 'AT update status is not available.';
-    if (languageCode === 'vi') return 'Chua co trang thai cap nhat AT.';
+    if (languageCode === 'vi') return 'Chưa có trang thai cap nhat AT.';
     return 'AT 갱신 상태를 확인하지 못했습니다.';
   }
   if (status.needsUpdate) {
     if (languageCode === 'en') return `Refresh AT through ${monthKey}.`;
-    if (languageCode === 'vi') return `Cap nhat AT den thang ${monthKey}.`;
+    if (languageCode === 'vi') return `Cập nhật AT den thang ${monthKey}.`;
     return `${monthKey} 기준 AT를 갱신합니다.`;
   }
   if (status.reason === 'no_source_work_logs') {
     if (languageCode === 'en') return `No work logs exist through ${monthKey}.`;
-    if (languageCode === 'vi') return `Chua co nhat ky san xuat den thang ${monthKey}.`;
+    if (languageCode === 'vi') return `Chưa có nhat ky san xuat den thang ${monthKey}.`;
     return `${monthKey}까지 갱신할 작업기록이 없습니다.`;
   }
   if (languageCode === 'en') return `AT is already up to date through ${monthKey}.`;
@@ -570,7 +570,7 @@ const StyleBoard = () => {
     : languageCode === 'en'
       ? 'Clear learned AT values and training buckets so AT can be recalculated.'
       : languageCode === 'vi'
-        ? 'Xoa gia tri AT da hoc va bucket hoc de tinh lai AT.'
+        ? 'Xóa gia tri AT da hoc va bucket hoc de tinh lai AT.'
         : '학습된 AT 값과 학습 버킷을 비워 AT를 다시 계산할 수 있게 합니다.';
 
   return (

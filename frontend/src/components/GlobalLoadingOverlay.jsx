@@ -13,12 +13,12 @@ const LOADING_TEXT = {
   title: {
     ko: '작업 화면을 불러오는 중',
     en: 'Loading workspace',
-    vi: 'Dang tai man hinh lam viec',
+    vi: 'Đang tải man hinh lam viec',
   },
   subtitle: {
     ko: '페이지 데이터를 안정적으로 준비하고 있습니다.',
     en: 'Preparing page data safely.',
-    vi: 'Dang chuan bi du lieu trang mot cach an toan.',
+    vi: 'Đang chuẩn bị du lieu trang mot cach an toan.',
   },
   requests: {
     ko: '{count}개 요청 처리 중',

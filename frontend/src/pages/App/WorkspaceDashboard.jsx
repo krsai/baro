@@ -42,7 +42,7 @@ const DASHBOARD_TEXT = {
   title: {
     ko: '대시보드',
     en: 'Dashboard',
-    vi: 'Bang dieu khien',
+    vi: 'Bảng điều khiển',
   },
   summaryTitle: {
     ko: '핵심 요약',
@@ -77,12 +77,12 @@ const DASHBOARD_TEXT = {
   syncing: {
     ko: '연동 중',
     en: 'Syncing',
-    vi: 'Dang dong bo',
+    vi: 'Đang đồng bộ',
   },
   pending: {
     ko: '준비중',
     en: 'Pending',
-    vi: 'Dang chuan bi',
+    vi: 'Đang chuẩn bị',
   },
   slotStatus: {
     ko: '준비됨',
@@ -92,7 +92,7 @@ const DASHBOARD_TEXT = {
   summaryLoadError: {
     ko: '대시보드 요약을 불러오지 못했습니다.',
     en: 'Failed to load dashboard summary.',
-    vi: 'Khong the tai tom tat bang dieu khien.',
+    vi: 'Không thể tai tom tat bang dieu khien.',
   },
   systemPolicyLinked: {
     ko: '메뉴 연동',
@@ -372,7 +372,7 @@ const buildSummaryCards = ({ languageCode, summaryData, summaryLoading }) => [
         label: {
           ko: '배정 수량',
           en: 'Assigned Quantity',
-          vi: 'So luong da phan cong',
+          vi: 'Số lượng da phan cong',
         },
         value: formatCountValue(
           summaryData?.monthlyAssignedQuantity,
@@ -410,12 +410,12 @@ const buildSystemSummaryCards = ({ languageCode, summaryLoading, systemSummaryDa
     title: {
       ko: '접근 권한',
       en: 'Access Policy',
-      vi: 'Chinh sach truy cap',
+      vi: 'Chính sách truy cap',
     },
     description: {
       ko: '현재 메뉴 구조에 연결된 역할별 접근 권한을 관리합니다.',
       en: 'Manage role-based access linked to the current menu structure.',
-      vi: 'Quan ly quyen truy cap theo vai tro duoc lien ket voi cau truc menu hien tai.',
+      vi: 'Quản lý quyen truy cap theo vai tro duoc lien ket voi cau truc menu hien tai.',
     },
     value: resolveText(DASHBOARD_TEXT.systemPolicyLinked, languageCode),
     badge: resolveText(DASHBOARD_TEXT.slotStatus, languageCode),
@@ -455,7 +455,7 @@ const buildSystemSummaryCards = ({ languageCode, summaryLoading, systemSummaryDa
     description: {
       ko: '앱 전반에서 쓰는 정적 코드와 별칭 사전을 확인합니다.',
       en: 'Review the static codes and aliases used across the app.',
-      vi: 'Kiem tra cac ma tinh va alias duoc su dung trong toan bo ung dung.',
+      vi: 'Kiểm tra cac ma tinh va alias duoc su dung trong toan bo ung dung.',
     },
     statusItems: [
       {

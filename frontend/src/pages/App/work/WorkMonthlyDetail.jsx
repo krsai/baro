@@ -21,7 +21,7 @@ const TEXT = {
   title: {
     ko: '생산 분석 상세',
     en: 'Production Analysis Detail',
-    vi: 'Chi tiet phan tich san xuat',
+    vi: 'Chi tiết phan tich san xuat',
   },
   backToList: {
     ko: '생산 분석',
@@ -34,7 +34,7 @@ const TEXT = {
     vi: 'Tim ngay, chuyen',
   },
   workDate: { ko: '작업일', en: 'Work Date', vi: 'Ngay lam viec' },
-  line: { ko: '라인', en: 'Line', vi: 'Chuyen' },
+  line: { ko: '라인', en: 'Line', vi: 'Chuyền' },
   attendance: { ko: '근태', en: 'Attendance', vi: 'Cham cong' },
   items: { ko: '기록건수', en: 'Entries', vi: 'So dong' },
   averageCt: { ko: '일평균 CT', en: 'Daily Avg CT', vi: 'CT TB/ngay' },
@@ -43,21 +43,21 @@ const TEXT = {
   attendanceMissing: { ko: '미입력', en: 'Missing', vi: 'Chua nhap' },
   worker: { ko: '작업자', en: 'Worker', vi: 'Cong nhan' },
   month: { ko: '작업월', en: 'Month', vi: 'Thang lam viec' },
-  factory: { ko: '공장', en: 'Factory', vi: 'Nha may' },
+  factory: { ko: '공장', en: 'Factory', vi: 'Nhà máy' },
   loading: {
     ko: '월간 기록 상세를 불러오는 중입니다.',
     en: 'Loading monthly detail...',
-    vi: 'Dang tai chi tiet thang...',
+    vi: 'Đang tải chi tiet thang...',
   },
   empty: {
     ko: '표시할 월간 상세 내역이 없습니다.',
     en: 'No monthly detail found.',
-    vi: 'Khong co chi tiet thang.',
+    vi: 'Không có chi tiet thang.',
   },
   fetchError: {
     ko: '월간 기록 상세를 불러오지 못했습니다.',
     en: 'Failed to load monthly detail.',
-    vi: 'Khong the tai chi tiet thang.',
+    vi: 'Không thể tai chi tiet thang.',
   },
 };
 

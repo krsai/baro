@@ -34,7 +34,7 @@ const LOGIN_COPY_BY_LANGUAGE = {
   vi: {
     loginLoading: 'Đang đăng nhập...',
     loginWithGoogle: 'Đăng nhập bằng Google',
-    authContextError: 'Khong the tai thong tin truy cap tai khoan sau khi dang nhap.',
+    authContextError: 'Không thể tai thong tin truy cap tai khoan sau khi dang nhap.',
     restartSession: 'Bat dau lai phien',
     supabaseRequired:
       'Cần cấu hình Supabase. Thêm `VITE_SUPABASE_URL` và `VITE_SUPABASE_ANON_KEY` vào `.env` rồi khởi động lại.',

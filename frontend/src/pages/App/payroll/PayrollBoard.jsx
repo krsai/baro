@@ -68,22 +68,22 @@ const TEXT = {
   },
   vi: {
     calculateMonth: 'Thang tinh', calculate: 'Tinh', recalculate: 'Tinh lai den hien tai', calculating: 'Dang tinh...',
-    noData: 'Khong co du lieu cong viec de tinh trong thang da chon.', alreadyCalculated: 'Thang nay da duoc tinh.',
-    calculateSuccess: 'Da tinh phu cap san luong thang {month}.', fetchError: 'Khong the tai ket qua phu cap san luong.',
-    calculateError: 'Khong the tinh phu cap san luong.', deleteConfirm: 'Xoa ket qua phu cap san luong thang {month}?',
-    deleteSuccess: 'Da xoa ket qua phu cap san luong thang {month}.', deleteError: 'Khong the xoa ket qua phu cap san luong.',
-    current: 'Dang tien hanh', confirmed: 'Da xac nhan', empty: 'Chua co ket qua phu cap san luong.', loading: 'Dang tai...',
+    noData: 'Không có du lieu cong viec de tinh trong thang da chon.', alreadyCalculated: 'Thang nay da duoc tinh.',
+    calculateSuccess: 'Da tinh phu cap san luong thang {month}.', fetchError: 'Không thể tai ket qua phu cap san luong.',
+    calculateError: 'Không thể tinh phu cap san luong.', deleteConfirm: 'Xóa ket qua phu cap san luong thang {month}?',
+    deleteSuccess: 'Đã xóa ket qua phu cap san luong thang {month}.', deleteError: 'Không thể xoa ket qua phu cap san luong.',
+    current: 'Đang tiến hành', confirmed: 'Đã xác nhận', empty: 'Chưa có ket qua phu cap san luong.', loading: 'Đang tải...',
     notCalculated: 'Chua tinh',
     rowHint: 'Chon ket qua theo thang de xem chi tiet nha may, chuyen, nhan vien va cong doan.',
-    monthReady: 'Thang da chon san sang', monthIncomplete: 'Du lieu thang chua day du', actions: 'Quan ly', lock: 'Khoa', unlockBeforeDelete: 'Mo khoa thang nay truoc khi xoa.',
-    factory: 'Nha may', line: 'Chuyen', workCoverage: 'Du lieu san xuat', attendanceCoverage: 'Cham cong (tham khao)',
-    averageProductionAllowance: 'Phu cap san luong trung binh',
-    appliedRate: 'Don gia ap dung/giay',
+    monthReady: 'Thang da chon san sang', monthIncomplete: 'Dữ liệu thang chua day du', actions: 'Quản lý', lock: 'Khoa', unlockBeforeDelete: 'Mở khóa thang nay truoc khi xoa.',
+    factory: 'Nhà máy', line: 'Chuyền', workCoverage: 'Dữ liệu san xuat', attendanceCoverage: 'Cham cong (tham khao)',
+    averageProductionAllowance: 'Phụ cấp san luong trung binh',
+    appliedRate: 'Đơn giá ap dung/giay',
     basisErrors: 'Loi du lieu tinh',
-    ready: 'Co the tinh', incomplete: 'Chua du du lieu', noLines: 'Khong co nha may hoac chuyen co nhan vien tinh phu cap san luong.',
+    ready: 'Co the tinh', incomplete: 'Chưa đủ du lieu', noLines: 'Không có nha may hoac chuyen co nhan vien tinh phu cap san luong.',
     needsRecalculation: 'Can tinh lai', recalculateConfirmed: 'Tinh lai',
-    unlock: 'Mo khoa', unlocking: 'Dang mo khoa...', unlockConfirm: 'Mo khoa ket qua phu cap san luong thang {month}?',
-    unlockSuccess: 'Da mo khoa ket qua phu cap san luong thang {month}.', unlockError: 'Khong the mo khoa ket qua phu cap san luong.', deleting: 'Dang xoa...',
+    unlock: 'Mở khóa', unlocking: 'Dang mo khoa...', unlockConfirm: 'Mở khóa ket qua phu cap san luong thang {month}?',
+    unlockSuccess: 'Da mo khoa ket qua phu cap san luong thang {month}.', unlockError: 'Không thể mo khoa ket qua phu cap san luong.', deleting: 'Dang xoa...',
   },
 };
 
@@ -243,7 +243,7 @@ const PayrollBoard = () => {
   const allMonthsLabel = languageCode === 'ko'
     ? '전체'
     : languageCode === 'vi'
-      ? 'Tat ca'
+      ? 'Tất cả'
       : 'All';
 
   const handleCalculate = async () => {

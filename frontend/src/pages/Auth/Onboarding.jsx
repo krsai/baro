@@ -63,12 +63,12 @@ const ONBOARDING_TEXT = {
   selectOrganizationFirst: {
     ko: '\uc18c\uc18d \ud68c\uc0ac\ub97c \uba3c\uc800 \uc120\ud0dd\ud574 \uc8fc\uc138\uc694.',
     en: 'Please choose your company first.',
-    vi: 'Vui long chon cong ty cua ban truoc.',
+    vi: 'Vui lòng chon cong ty cua ban truoc.',
   },
   loginEmailMissing: {
     ko: '\ub85c\uadf8\uc778 \uc774\uba54\uc77c\uc744 \ud655\uc778\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.',
     en: 'We could not confirm your login email.',
-    vi: 'Khong the xac nhan email dang nhap cua ban.',
+    vi: 'Không thể xac nhan email dang nhap cua ban.',
   },
   joinSuccess: {
     ko: '\uc18c\uc18d \ud68c\uc0ac \uc2b9\uc778 \uc694\uccad\uc774 \uc811\uc218\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \uc2b9\uc778 \ud6c4 \uc774\uba54\uc77c\ub85c \uc548\ub0b4\ub4dc\ub9bd\ub2c8\ub2e4.',
@@ -83,12 +83,12 @@ const ONBOARDING_TEXT = {
   joinNameRequired: {
     ko: '\uc774\ub984\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694.',
     en: 'Please enter your name.',
-    vi: 'Vui long nhap ten cua ban.',
+    vi: 'Vui lòng nhap ten cua ban.',
   },
   joinRoleRequired: {
     ko: '\uc2e0\uccad\ud560 \uad8c\ud55c\uc744 \uc120\ud0dd\ud574 \uc8fc\uc138\uc694.',
     en: 'Please choose the role you are requesting.',
-    vi: 'Vui long chon quyen muon dang ky.',
+    vi: 'Vui lòng chon quyen muon dang ky.',
   },
   registerNameError: {
     ko: '\ud68c\uc0ac\uba85\uc740 {min}~{max}\uc790\ub85c \uc785\ub825\ud574 \uc8fc\uc138\uc694.',
@@ -98,37 +98,37 @@ const ONBOARDING_TEXT = {
   registerOrganizationTypeError: {
     ko: '\uc5c5\uc885\uc744 \uc120\ud0dd\ud574 \uc8fc\uc138\uc694.',
     en: 'Please choose an organization type.',
-    vi: 'Vui long chon loai hinh to chuc.',
+    vi: 'Vui lòng chon loai hinh to chuc.',
   },
   registerCountryError: {
     ko: '\uad6d\uac00\ub97c \uc120\ud0dd\ud574 \uc8fc\uc138\uc694.',
     en: 'Please choose a country.',
-    vi: 'Vui long chon quoc gia.',
+    vi: 'Vui lòng chon quoc gia.',
   },
   registerAddressError: {
     ko: '\ud68c\uc0ac \uc8fc\uc18c\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.',
     en: 'Please enter the company address.',
-    vi: 'Vui long nhap dia chi cong ty.',
+    vi: 'Vui lòng nhap dia chi cong ty.',
   },
   registerBusinessNumberRequired: {
     ko: '\uc0ac\uc5c5\uc790\ub4f1\ub85d\ubc88\ud638\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.',
     en: 'Please enter the business registration number.',
-    vi: 'Vui long nhap so dang ky kinh doanh.',
+    vi: 'Vui lòng nhap so dang ky kinh doanh.',
   },
   registerRepresentativeNameError: {
     ko: '\ub2f4\ub2f9\uc790 \uc774\ub984\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694. (\ucd5c\ub300 {max}\uc790)',
     en: 'Please enter a contact name. (Max {max} characters)',
-    vi: 'Vui long nhap ten nguoi lien he. (Toi da {max} ky tu)',
+    vi: 'Vui lòng nhap ten nguoi lien he. (Toi da {max} ky tu)',
   },
   registerRepresentativeContactError: {
     ko: '\ub300\ud45c \uc5f0\ub77d\ucc98\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694. (\ucd5c\ub300 {max}\uc790)',
     en: 'Please enter the primary contact. (Max {max} characters)',
-    vi: 'Vui long nhap so lien he chinh. (Toi da {max} ky tu)',
+    vi: 'Vui lòng nhap so lien he chinh. (Toi da {max} ky tu)',
   },
   registerRepresentativeEmailError: {
     ko: '\ub300\ud45c \uc774\uba54\uc77c\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694.',
     en: 'Please enter the primary email.',
-    vi: 'Vui long nhap email chinh.',
+    vi: 'Vui lòng nhap email chinh.',
   },
   registerSuccess: {
     ko: '\uc2e0\uaddc \ud68c\uc0ac \ub4f1\ub85d \uc694\uccad\uc774 \uc811\uc218\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \uc2b9\uc778 \ud6c4 \uc774\uba54\uc77c\ub85c \uc548\ub0b4\ub4dc\ub9bd\ub2c8\ub2e4.',
@@ -153,7 +153,7 @@ const ONBOARDING_TEXT = {
   searchHintNoMatch: {
     ko: '\uc77c\uce58\ud558\ub294 \uc5c5\uccb4\uac00 \uc5c6\uc2b5\ub2c8\ub2e4. \uc2e0\uaddc \ud68c\uc0ac \ub4f1\ub85d\uc744 \uc9c4\ud589\ud574 \uc8fc\uc138\uc694.',
     en: 'No matching organization was found. Please proceed with new company registration.',
-    vi: 'Khong tim thay cong ty phu hop. Vui long tiep tuc dang ky cong ty moi.',
+    vi: 'Không tìm thấy cong ty phu hop. Vui lòng tiep tuc dang ky cong ty moi.',
   },
   pageTitle: {
     ko: '\uc2e0\uaddc \uacc4\uc815 \ud655\uc778\uc774 \ud544\uc694\ud569\ub2c8\ub2e4',
@@ -183,17 +183,17 @@ const ONBOARDING_TEXT = {
   registerCompany: {
     ko: '\uc2e0\uaddc \ud68c\uc0ac \ub4f1\ub85d',
     en: 'Register new company',
-    vi: 'Dang ky cong ty moi',
+    vi: 'Đăng ký cong ty moi',
   },
   noOptionsMatched: {
     ko: '\uc77c\uce58 \uc5c5\uccb4 \uc5c6\uc74c',
     en: 'No matching organizations',
-    vi: 'Khong co cong ty phu hop',
+    vi: 'Không có cong ty phu hop',
   },
   noOptionsEmpty: {
     ko: '\ud68c\uc0ac\uba85\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694',
     en: 'Please enter a company name',
-    vi: 'Vui long nhap ten cong ty',
+    vi: 'Vui lòng nhap ten cong ty',
   },
   searchLabel: {
     ko: '\ud68c\uc0ac\uba85 \ub610\ub294 \ucf54\ub4dc \uac80\uc0c9',
@@ -209,7 +209,7 @@ const ONBOARDING_TEXT = {
   organizationLoading: {
     ko: '\uc5c5\uccb4 \ubaa9\ub85d \ubd88\ub7ec\uc624\ub294 \uc911...',
     en: 'Loading organizations...',
-    vi: 'Dang tai danh sach cong ty...',
+    vi: 'Đang tải danh sach cong ty...',
   },
   joinSubmitting: { ko: '\uc694\uccad \uc911...', en: 'Submitting...', vi: 'Dang gui...' },
   joinRequest: {
@@ -225,26 +225,26 @@ const ONBOARDING_TEXT = {
   goLogin: {
     ko: '\ub2e4\ub978 \uacc4\uc815\uc73c\ub85c \ub2e4\uc2dc \ub85c\uadf8\uc778',
     en: 'Sign in with a different account',
-    vi: 'Dang nhap lai bang tai khoan khac',
+    vi: 'Đăng nhập lai bang tai khoan khac',
   },
   drawerTitle: {
     ko: '\uc2e0\uaddc \ud68c\uc0ac \ub4f1\ub85d',
     en: 'Register new company',
-    vi: 'Dang ky cong ty moi',
+    vi: 'Đăng ký cong ty moi',
   },
   drawerSubtitle: {
     ko: '\uc0ac\uc5c5\uc790\ub4f1\ub85d \uc815\ubcf4\ub97c \uc815\ud655\ud788 \uc785\ub825\ud574 \uc8fc\uc138\uc694.',
     en: 'Please enter accurate business registration information.',
-    vi: 'Vui long nhap chinh xac thong tin dang ky kinh doanh.',
+    vi: 'Vui lòng nhap chinh xac thong tin dang ky kinh doanh.',
   },
   close: { ko: '\ub2eb\uae30', en: 'Close', vi: 'Dong' },
   organizationType: { ko: '\uc5c5\uc885', en: 'Organization type', vi: 'Loai hinh to chuc' },
-  organizationTypeManufacturer: { ko: '\uacf5\uc7a5', en: 'Manufacturer', vi: 'Nha may' },
+  organizationTypeManufacturer: { ko: '\uacf5\uc7a5', en: 'Manufacturer', vi: 'Nhà máy' },
   organizationTypeBrand: { ko: '\ube0c\ub79c\ub4dc', en: 'Brand', vi: 'Thuong hieu' },
-  selectPrompt: { ko: '\uc120\ud0dd\ud574 \uc8fc\uc138\uc694', en: 'Please select', vi: 'Vui long chon' },
+  selectPrompt: { ko: '\uc120\ud0dd\ud574 \uc8fc\uc138\uc694', en: 'Please select', vi: 'Vui lòng chon' },
   companyName: { ko: '\ud68c\uc0ac\uba85', en: 'Company name', vi: 'Ten cong ty' },
   countryLabel: { ko: '\uad6d\uac00', en: 'Country', vi: 'Quoc gia' },
-  companyAddress: { ko: '\ud68c\uc0ac \uc8fc\uc18c', en: 'Company address', vi: 'Dia chi cong ty' },
+  companyAddress: { ko: '\ud68c\uc0ac \uc8fc\uc18c', en: 'Company address', vi: 'Địa chỉ cong ty' },
   businessNumber: { ko: '\uc0ac\uc5c5\uc790\ub4f1\ub85d\ubc88\ud638', en: 'Business registration no.', vi: 'So dang ky kinh doanh' },
   representativeName: { ko: '\ub2f4\ub2f9\uc790 \uc774\ub984', en: 'Contact name', vi: 'Ten nguoi lien he' },
   representativeContact: { ko: '\ub300\ud45c \uc5f0\ub77d\ucc98', en: 'Primary contact', vi: 'So lien he chinh' },

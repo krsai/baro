@@ -24,7 +24,7 @@ import {
 const resolveCustomerWorkspaceTabLabel = (languageCode, customer) => {
   const displayName = resolveCustomerDisplayName(customer, languageCode) || customer?.code || '-';
   if (languageCode === 'ko') return `고객: ${displayName}`;
-  if (languageCode === 'vi') return `Khach hang: ${displayName}`;
+  if (languageCode === 'vi') return `Khách hàng: ${displayName}`;
   return `Customer: ${displayName}`;
 };
 
@@ -58,9 +58,9 @@ const CustomerList = () => {
       loadingMessage: getUiMessage('customerBoard.loadingMessage', 'Loading customers...', languageCode),
       emptyMessage: getUiMessage('customerBoard.emptyMessage', 'No customers found.', languageCode),
       fetchError: getUiMessage('customerBoard.fetchError', 'Failed to load customer list.', languageCode),
-      openDetail: languageCode === 'ko' ? '상세' : languageCode === 'vi' ? 'Chi tiet' : 'Detail',
+      openDetail: languageCode === 'ko' ? '상세' : languageCode === 'vi' ? 'Chi tiết' : 'Detail',
       openPricing:
-        languageCode === 'ko' ? '단가' : languageCode === 'vi' ? 'Don gia' : 'Pricing',
+        languageCode === 'ko' ? '단가' : languageCode === 'vi' ? 'Đơn giá' : 'Pricing',
       actions: languageCode === 'ko' ? '작업' : languageCode === 'vi' ? 'Tac vu' : 'Actions',
     }),
     [languageCode]
