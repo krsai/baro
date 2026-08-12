@@ -161,6 +161,8 @@ const LineBoard = () => {
   const [savingHistoryId, setSavingHistoryId] = useState(null);
   const [includeTerminated, setIncludeTerminated] = useState(false);
   const [historicalCandidates, setHistoricalCandidates] = useState([]);
+  const [terminatedWorkers, setTerminatedWorkers] = useState([]);
+  const [terminatedWorkerFilter, setTerminatedWorkerFilter] = useState('');
 
   const buildOrgQuery = useCallback(
     (params = {}) => buildQueryString({ ...params, orgId: activeOrgId }),
@@ -171,6 +173,15 @@ const LineBoard = () => {
     () => factories.find((factory) => String(factory.id) === String(selectedFactoryId)) ?? null,
     [factories, selectedFactoryId]
   );
+
+  const filteredTerminatedWorkers = useMemo(() => {
+    const keyword = terminatedWorkerFilter.trim().toLocaleLowerCase();
+    if (!keyword) return terminatedWorkers;
+    return terminatedWorkers.filter((worker) =>
+      [worker?.name, worker?.email, worker?.joinedDate, worker?.leftDate]
+        .some((value) => String(value || '').toLocaleLowerCase().includes(keyword))
+    );
+  }, [terminatedWorkerFilter, terminatedWorkers]);
 
   const lineWorkers = useMemo(() => {
     const byLine = new Map();
@@ -231,23 +242,28 @@ const LineBoard = () => {
         clearInlineEdit();
         setNewLineName('');
         setHistoricalCandidates([]);
+        setTerminatedWorkers([]);
+        setTerminatedWorkerFilter('');
         return;
       }
 
       setLoading(true);
       try {
-        const [lineRows, workerRows, historicalRows] = await Promise.all([
+        const [lineRows, workerRows, historicalRows, terminatedRows] = await Promise.all([
           requestJSON('/lines' + buildOrgQuery({ factoryId })),
           requestJSON('/line-workers' + buildOrgQuery({ factoryId })),
           requestJSON(
             '/line-assignment-history-candidates' + buildOrgQuery({ factoryId })
           ),
+          requestJSON('/line-terminated-workers' + buildOrgQuery({ factoryId })),
         ]);
         const normalized = normalizeDraftData(lineRows, workerRows);
         setLines(normalized.lines);
         setWorkers(normalized.workers);
         setOriginalSnapshot(buildDraftSnapshot(normalized.lines, normalized.workers));
         setHistoricalCandidates(Array.isArray(historicalRows) ? historicalRows : []);
+        setTerminatedWorkers(Array.isArray(terminatedRows) ? terminatedRows : []);
+        setTerminatedWorkerFilter('');
         clearInlineEdit();
         setNewLineName('');
       } catch (error) {
@@ -892,6 +908,42 @@ const LineBoard = () => {
                 </Typography>
               </Paper>
             </Grid>
+            <Grid item xs={12} sm={4} md={3}>
+              <Paper
+                variant="outlined"
+                sx={{
+                  px: 1.25,
+                  py: 0.75,
+                  minHeight: 65,
+                  display: 'flex',
+                  alignItems: 'center',
+                  borderRadius: 2,
+                  borderColor: includeTerminated ? 'primary.main' : 'divider',
+                  backgroundColor: 'background.paper',
+                }}
+              >
+                <FormControlLabel
+                  control={(
+                    <Switch
+                      size="small"
+                      checked={includeTerminated}
+                      onChange={(event) => setIncludeTerminated(event.target.checked)}
+                    />
+                  )}
+                  label={(
+                    <Box>
+                      <Typography sx={{ fontSize: 12, fontWeight: 700, lineHeight: 1.25 }}>
+                        {'\uD1F4\uC0AC\uC790 \uD3EC\uD568'}
+                      </Typography>
+                      <Typography sx={{ fontSize: 15, fontWeight: 800, lineHeight: 1.25 }}>
+                        {terminatedWorkers.length}
+                      </Typography>
+                    </Box>
+                  )}
+                  sx={{ m: 0, width: '100%', gap: 0.5 }}
+                />
+              </Paper>
+            </Grid>
           </Grid>
         </Paper>
 
@@ -916,17 +968,6 @@ const LineBoard = () => {
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                   라인 카드로 드래그해 배정하세요.
                 </Typography>
-                <FormControlLabel
-                  control={(
-                    <Switch
-                      size="small"
-                      checked={includeTerminated}
-                      onChange={(event) => setIncludeTerminated(event.target.checked)}
-                    />
-                  )}
-                  label={'\uD1F4\uC0AC\uC790 \uD3EC\uD568'}
-                  sx={{ mb: 1 }}
-                />
                 <Droppable droppableId="unassigned" isDropDisabled={saving}>
                   {(provided, snapshot) => (
                     <Box
@@ -961,7 +1002,7 @@ const LineBoard = () => {
                     </Box>
                   )}
                 </Droppable>
-                {includeTerminated ? (
+                {historicalCandidates.length > 0 ? (
                   <Box sx={{ mt: 2 }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.75 }}>
                       <Typography variant="subtitle2" fontWeight={700}>
@@ -988,11 +1029,6 @@ const LineBoard = () => {
                             p: 0.75,
                           }}
                         >
-                          {historicalCandidates.length === 0 ? (
-                            <Typography variant="caption" color="text.disabled">
-                              {'\uC785\uC0AC~\uD1F4\uC0AC \uAE30\uAC04\uC774 \uBAA8\uB450 \uB77C\uC778 \uC774\uB825\uC73C\uB85C \uCC44\uC6CC\uC84C\uC2B5\uB2C8\uB2E4.'}
-                            </Typography>
-                          ) : null}
                           {historicalCandidates.map((worker, index) =>
                             renderWorkerCard(worker, index, false, true)
                           )}
@@ -1000,6 +1036,58 @@ const LineBoard = () => {
                         </Box>
                       )}
                     </Droppable>
+                  </Box>
+                ) : null}
+                {includeTerminated ? (
+                  <Box sx={{ mt: 2 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.75 }}>
+                      <Typography variant="subtitle2" fontWeight={700}>
+                        {'\uD1F4\uC0AC\uC790'}
+                      </Typography>
+                      <Chip size="small" label={`${filteredTerminatedWorkers.length}/${terminatedWorkers.length}\uBA85`} />
+                    </Stack>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={terminatedWorkerFilter}
+                      onChange={(event) => setTerminatedWorkerFilter(event.target.value)}
+                      placeholder={'\uC774\uB984, \uC774\uBA54\uC77C, \uC785\uC0AC\uC77C, \uD1F4\uC0AC\uC77C \uAC80\uC0C9'}
+                      sx={{ mb: 1 }}
+                      inputProps={{ 'aria-label': '\uD1F4\uC0AC\uC790 \uAC80\uC0C9' }}
+                    />
+                    <Box
+                      sx={{
+                        maxHeight: 360,
+                        overflowY: 'auto',
+                        borderRadius: 1.75,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        backgroundColor: (theme) => alpha(theme.palette.grey[500], 0.05),
+                        p: 0.75,
+                      }}
+                    >
+                      {filteredTerminatedWorkers.length === 0 ? (
+                        <Typography variant="caption" color="text.disabled" sx={{ display: 'block', p: 1 }}>
+                          {terminatedWorkers.length === 0
+                            ? '\uD1F4\uC0AC\uC790\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.'
+                            : '\uAC80\uC0C9 \uC870\uAC74\uC5D0 \uB9DE\uB294 \uD1F4\uC0AC\uC790\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.'}
+                        </Typography>
+                      ) : null}
+                      {filteredTerminatedWorkers.map((worker) => (
+                        <Paper
+                          key={worker.id}
+                          variant="outlined"
+                          sx={{ px: 1.25, py: 0.85, mb: 0.75, borderRadius: 1.5 }}
+                        >
+                          <Typography variant="body2" fontWeight={600} noWrap>
+                            {buildWorkerLabel(worker)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
+                            {`${worker.joinedDate || '-'} ~ ${worker.leftDate || '-'}`}
+                          </Typography>
+                        </Paper>
+                      ))}
+                    </Box>
                   </Box>
                 ) : null}
               </Paper>

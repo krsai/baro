@@ -1273,6 +1273,7 @@ export const createLineRouter = ({
         factoryId,
         orgRole: "WORKER",
         status: { in: ["ACTIVE", "TERMINATED"] },
+        role: { code: LINE_ELIGIBLE_WORKER_ROLE_CODE },
         joinedAt: { not: null },
         leftAt: { lte: dateKeyToStableDate(todayDateKey())! },
       },
@@ -1316,6 +1317,56 @@ export const createLineRouter = ({
           isHistoricalCandidate: true,
         }];
       })
+    );
+  });
+
+  lineRouter.get("/line-terminated-workers", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) {
+      return res.status(404).json({ ok: false, error: "organization not found" });
+    }
+    if (!isManufacturerOrg(organization)) {
+      return res.status(400).json({ ok: false, error: "brand organizations have no lines" });
+    }
+    const factoryId = Number(req.query.factoryId);
+    if (!Number.isSafeInteger(factoryId) || factoryId <= 0) {
+      return res.status(400).json({ ok: false, error: "factoryId is required" });
+    }
+    const factory = await prisma.factory.findFirst({
+      where: { id: factoryId, orgId: organization.id },
+      select: { id: true },
+    });
+    if (!factory) {
+      return res.status(404).json({ ok: false, error: "factory not found" });
+    }
+    const workers = await prisma.employee.findMany({
+      where: {
+        orgId: organization.id,
+        factoryId,
+        orgRole: "WORKER",
+        role: { code: LINE_ELIGIBLE_WORKER_ROLE_CODE },
+        OR: [
+          { status: "TERMINATED" },
+          { leftAt: { lte: dateKeyToStableDate(todayDateKey())! } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        factoryId: true,
+        joinedAt: true,
+        leftAt: true,
+        status: true,
+      },
+      orderBy: [{ leftAt: "desc" }, { name: "asc" }, { id: "asc" }],
+    });
+    return res.json(
+      workers.map((worker) => ({
+        ...worker,
+        joinedDate: toDateKeyInTimeZone(worker.joinedAt),
+        leftDate: toDateKeyInTimeZone(worker.leftAt),
+      }))
     );
   });
 
