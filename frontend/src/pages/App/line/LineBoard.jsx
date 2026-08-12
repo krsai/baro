@@ -46,6 +46,7 @@ import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 
 const LINE_ASSIGNMENTS_UPDATED_EVENT = 'baro:line-assignments-updated';
+const LINE_BOARD_COLUMN_WIDTH = 330;
 
 const emitLineAssignmentsUpdated = ({ orgId }) => {
   if (typeof window === 'undefined') return;
@@ -709,6 +710,7 @@ const LineBoard = () => {
               gap: 0.75,
               px: 1.25,
               py: 0.85,
+              minHeight: 48,
               mb: 0.75,
               borderRadius: 1.5,
               border: '1px solid',
@@ -949,11 +951,11 @@ const LineBoard = () => {
 
         <DragDropContext onDragEnd={handleDragEnd}>
           <Box sx={{ display: 'flex', gap: 2.25, alignItems: 'flex-start' }}>
-            <Box sx={{ flex: '0 0 20%', minWidth: 0 }}>
+            <Box sx={{ flex: `0 0 ${LINE_BOARD_COLUMN_WIDTH}px`, width: LINE_BOARD_COLUMN_WIDTH, minWidth: 0 }}>
               <Paper
                 variant="outlined"
                 sx={{
-                  p: 2.25,
+                  p: 2,
                   borderRadius: 2.5,
                   borderColor: 'divider',
                   backgroundColor: 'background.paper',
@@ -1077,14 +1079,32 @@ const LineBoard = () => {
                         <Paper
                           key={worker.id}
                           variant="outlined"
-                          sx={{ px: 1.25, py: 0.85, mb: 0.75, borderRadius: 1.5 }}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 0.75,
+                            px: 1.25,
+                            py: 0.85,
+                            mb: 0.75,
+                            minHeight: 48,
+                            borderRadius: 1.5,
+                          }}
                         >
-                          <Typography variant="body2" fontWeight={600} noWrap>
+                          <DragIndicatorIcon sx={{ fontSize: 17, color: 'text.disabled' }} />
+                          <Typography variant="body2" fontWeight={500} noWrap sx={{ flex: 1, minWidth: 0 }}>
                             {buildWorkerLabel(worker)}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
-                            {`${worker.joinedDate || '-'} ~ ${worker.leftDate || '-'}`}
-                          </Typography>
+                          <Tooltip title={'\uB77C\uC778 \uBC30\uCE58 \uC774\uB825 \uBC0F \uADFC\uBB34 \uAE30\uAC04'}>
+                            <Button
+                              size="small"
+                              variant="text"
+                              startIcon={<HistoryIcon fontSize="small" />}
+                              onClick={(event) => handleOpenHistory(event, worker)}
+                              sx={{ minWidth: 'auto', px: 0.5, whiteSpace: 'nowrap' }}
+                            >
+                              {'\uC774\uB825'}
+                            </Button>
+                          </Tooltip>
                         </Paper>
                       ))}
                     </Box>
@@ -1113,7 +1133,16 @@ const LineBoard = () => {
                     const isEditingName = editingLineKey === line.localKey;
 
                     return (
-                      <Grid item xs={6} key={line.localKey}>
+                      <Grid
+                        item
+                        xs={6}
+                        key={line.localKey}
+                        sx={{
+                          flex: `0 0 ${LINE_BOARD_COLUMN_WIDTH}px`,
+                          width: LINE_BOARD_COLUMN_WIDTH,
+                          maxWidth: `${LINE_BOARD_COLUMN_WIDTH}px !important`,
+                        }}
+                      >
                         <Paper
                           variant="outlined"
                           sx={{
@@ -1347,6 +1376,19 @@ const LineBoard = () => {
         {buildWorkerLabel(historyWorker)} {'\u00B7'} {'\uB77C\uC778 \uBC30\uCE58 \uC774\uB825'}
       </DialogTitle>
       <DialogContent>
+        {(historyWorker?.joinedDate || historyWorker?.leftDate || historyWorker?.joinedAt || historyWorker?.leftAt) ? (
+          <Paper
+            variant="outlined"
+            sx={{ p: 1.5, mb: 2, borderRadius: 1.5, backgroundColor: (theme) => alpha(theme.palette.info.main, 0.04) }}
+          >
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>
+              {'\uADFC\uBB34 \uAE30\uAC04'}
+            </Typography>
+            <Typography variant="body2" fontWeight={700}>
+              {`${historyWorker?.joinedDate || toDateKey(historyWorker?.joinedAt) || '-'} ~ ${historyWorker?.leftDate || toDateKey(historyWorker?.leftAt) || '\uC7AC\uC9C1 \uC911'}`}
+            </Typography>
+          </Paper>
+        ) : null}
         {loadingHistory ? (
           <Typography color="text.secondary">{'\uBD88\uB7EC\uC624\uB294 \uC911...'}</Typography>
         ) : historyRows.length === 0 ? (
