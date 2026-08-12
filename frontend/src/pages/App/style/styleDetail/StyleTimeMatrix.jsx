@@ -564,6 +564,8 @@ const StyleTimeMatrix = ({
           },
           '.style-time-matrix-print-actions': { display: 'none !important' },
           '.style-time-matrix-print-title': { display: 'block !important' },
+          '.style-time-matrix-screen-st-input': { display: 'none !important' },
+          '.style-time-matrix-print-st-value': { display: 'block !important' },
           '.style-time-matrix-print .MuiTableContainer-root': { overflow: 'visible !important' },
           '.style-time-matrix-print table': { minWidth: '0 !important', width: '100% !important' },
           '.style-time-matrix-print thead': { display: 'table-header-group' },
@@ -649,6 +651,13 @@ const StyleTimeMatrix = ({
             '& .MuiTableCell-root': { borderBottom: BORDER, borderRight: 'none' },
           }}
         >
+          <colgroup>
+            <col style={{ width: PROCESS_CELL_W }} />
+            <col style={{ width: METRIC_CELL_W }} />
+            {visibleBuckets.map((quantity) => (
+              <col key={quantity} style={{ width: ST_CELL_W + 8 }} />
+            ))}
+          </colgroup>
           <TableHead>
             <TableRow sx={{ backgroundColor: '#EEF2F6' }}>
               <TableCell
@@ -919,6 +928,7 @@ const StyleTimeMatrix = ({
                             }}
                           >
                             <TextField
+                              className="style-time-matrix-screen-st-input"
                               value={value}
                               onChange={(e) => handleStChange(id, qty, e.target.value)}
                               onBlur={(e) => handleStBlur(pIdx, id, qty, e.target.value)}
@@ -949,6 +959,18 @@ const StyleTimeMatrix = ({
                                 },
                               }}
                             />
+                            <Box
+                              className="style-time-matrix-print-st-value"
+                              sx={{
+                                display: 'none',
+                                color: requiresReview ? 'error.main' : 'text.primary',
+                                fontSize: 12,
+                                fontVariantNumeric: 'tabular-nums',
+                                textAlign: 'right',
+                              }}
+                            >
+                              {value === '' ? '-' : value}
+                            </Box>
                           </TableCell>
                         );
                       })}
