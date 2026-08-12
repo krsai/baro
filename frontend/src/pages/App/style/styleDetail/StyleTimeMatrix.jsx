@@ -480,6 +480,20 @@ const StyleTimeMatrix = ({
     onProcessesChange(restoredProcesses);
   }, [onProcessesChange, safeProcesses, stRestoreSnapshot]);
 
+  const handlePrint = useCallback(() => {
+    const originalTitle = document.title;
+    const printableStyleName = String(styleName || styleCode || 'Style')
+      .trim()
+      .replace(/[\\/:*?"<>|]/g, '-');
+    document.title = `${printableStyleName} 기준 시간표`;
+    const restoreTitle = () => {
+      document.title = originalTitle;
+      window.removeEventListener('afterprint', restoreTitle);
+    };
+    window.addEventListener('afterprint', restoreTitle);
+    window.print();
+  }, [styleCode, styleName]);
+
   const colCount = 2 + visibleBuckets.length; // 공정명 + ST/AT라벨 + 수량열
 
   const totalStByBucket = useMemo(() =>
@@ -520,12 +534,25 @@ const StyleTimeMatrix = ({
       <GlobalStyles styles={{
         '@media print': {
           '@page': { size: 'A4 landscape', margin: '8mm' },
+          'html, body, #root': {
+            height: 'auto !important',
+            maxHeight: 'none !important',
+            overflow: 'visible !important',
+          },
           'body *': { visibility: 'hidden' },
+          'body *:has(.style-time-matrix-print)': {
+            height: 'auto !important',
+            maxHeight: 'none !important',
+            overflow: 'visible !important',
+          },
           '.style-time-matrix-print, .style-time-matrix-print *': { visibility: 'visible' },
           '.style-time-matrix-print': {
             position: 'absolute',
             inset: 0,
             width: '100%',
+            height: 'auto !important',
+            maxHeight: 'none !important',
+            overflow: 'visible !important',
             border: 'none !important',
             boxShadow: 'none !important',
           },
@@ -560,7 +587,7 @@ const StyleTimeMatrix = ({
             size="small"
             variant="outlined"
             startIcon={<PrintOutlinedIcon />}
-            onClick={() => window.print()}
+            onClick={handlePrint}
             sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
           >
             {printLabel}
