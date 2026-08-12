@@ -485,12 +485,18 @@ const StyleTimeMatrix = ({
     const printableStyleName = String(styleName || styleCode || 'Style')
       .trim()
       .replace(/[\\/:*?"<>|]/g, '-');
-    document.title = `${printableStyleName} 기준 시간표`;
+    document.title = `${printableStyleName} Standard Time Table`;
+    let fallbackTimer = null;
     const restoreTitle = () => {
       document.title = originalTitle;
-      window.removeEventListener('afterprint', restoreTitle);
+      window.removeEventListener('focus', restoreAfterDialog);
+      if (fallbackTimer !== null) window.clearTimeout(fallbackTimer);
     };
-    window.addEventListener('afterprint', restoreTitle);
+    const restoreAfterDialog = () => {
+      window.setTimeout(restoreTitle, 1000);
+    };
+    window.addEventListener('focus', restoreAfterDialog, { once: true });
+    fallbackTimer = window.setTimeout(restoreTitle, 5 * 60 * 1000);
     window.print();
   }, [styleCode, styleName]);
 
