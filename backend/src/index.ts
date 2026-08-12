@@ -4197,20 +4197,91 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     previousPeriodEndDateByFactory.set(periodTrackerKey, normalizedCoverageEndDate);
     return draftRows;
   }, [] as AtTrainingBucketDraft[]);
-  const safeDrafts = drafts.filter(
-    (draft) =>
-      !overlapState.ambiguousBucketKeys.has(
-        `${draft.sourceWorkLogId}:${draft.workerId}:${draft.productionStage}`
-      )
+  const draftByBucketKey = new Map(
+    drafts.map((draft) => [
+      `${draft.sourceWorkLogId}:${draft.workerId}:${draft.productionStage}`,
+      draft,
+    ])
   );
+  const parentByBucketKey = new Map<string, string>();
+  draftByBucketKey.forEach((_draft, key) => parentByBucketKey.set(key, key));
+  const findRoot = (key: string): string => {
+    const parent = parentByBucketKey.get(key) || key;
+    if (parent === key) return key;
+    const root = findRoot(parent);
+    parentByBucketKey.set(key, root);
+    return root;
+  };
+  const unionBuckets = (left: string, right: string) => {
+    const leftRoot = findRoot(left);
+    const rightRoot = findRoot(right);
+    if (leftRoot !== rightRoot) parentByBucketKey.set(rightRoot, leftRoot);
+  };
+  const crossStageBucketKeys = new Set<string>();
+  overlapState.ownerBucketKeysByWorkerDate.forEach((ownerKeys) => {
+    const owners = Array.from(ownerKeys).filter((key) => draftByBucketKey.has(key));
+    if (owners.length <= 1) return;
+    const stages = new Set(owners.map((key) => draftByBucketKey.get(key)?.productionStage));
+    if (stages.size > 1) {
+      owners.forEach((key) => crossStageBucketKeys.add(key));
+      return;
+    }
+    owners.slice(1).forEach((key) => unionBuckets(owners[0]!, key));
+  });
+  const memberKeysByRoot = new Map<string, string[]>();
+  draftByBucketKey.forEach((_draft, key) => {
+    if (crossStageBucketKeys.has(key)) return;
+    const root = findRoot(key);
+    const members = memberKeysByRoot.get(root) || [];
+    members.push(key);
+    memberKeysByRoot.set(root, members);
+  });
+  const safeDrafts = Array.from(memberKeysByRoot.values()).map((memberKeys) => {
+    const memberDrafts = memberKeys.map((key) => draftByBucketKey.get(key)!).filter(Boolean);
+    if (memberDrafts.length === 1) return memberDrafts[0]!;
+    const first = memberDrafts[0]!;
+    const memberKeySet = new Set(memberKeys);
+    const claimedDateKeys = Array.from(overlapState.ownerBucketKeysByWorkerDate.entries())
+      .filter(([, owners]) => Array.from(owners).some((key) => memberKeySet.has(key)))
+      .map(([workerDateKey]) => parseAtTrainingWorkerDateKey(workerDateKey)?.workDate || '')
+      .filter(Boolean)
+      .sort();
+    const labor = claimedDateKeys.reduce(
+      (sum, dateKey) => {
+        const day = resolveWorkerSecondsForDate(dateKey, first.workerId);
+        sum.seconds += day.seconds;
+        if (day.source === "ACTUAL") sum.actualSeconds += day.seconds;
+        else if (day.source === "FALLBACK") sum.fallbackSeconds += day.seconds;
+        return sum;
+      },
+      { seconds: 0, actualSeconds: 0, fallbackSeconds: 0 }
+    );
+    const processByKey = new Map<string, AtTrainingBucketProcessDraft>();
+    memberDrafts.flatMap((draft) => draft.processRows).forEach((row) => {
+      const key = `${row.styleProcessId}:${row.sourceGroupKey}`;
+      const current = processByKey.get(key) || { ...row, quantity: 0, eventCount: 0 };
+      current.quantity += row.quantity;
+      current.eventCount = Math.max(current.eventCount, claimedDateKeys.length, 1);
+      processByKey.set(key, current);
+    });
+    return {
+      ...first,
+      sourceWorkLogId: Math.min(...memberDrafts.map((draft) => draft.sourceWorkLogId)),
+      workDate: claimedDateKeys.at(-1) || first.workDate,
+      laborInputSeconds: Math.max(1, Math.round(labor.seconds)),
+      attendanceCoverage: labor.seconds > 0 ? labor.actualSeconds / labor.seconds : 0,
+      processRows: Array.from(processByKey.values()),
+      diagnosticRecordCount: memberDrafts.reduce((sum, draft) => sum + (draft.diagnosticRecordCount ?? 0), 0),
+      diagnosticActualSeconds: labor.actualSeconds,
+      diagnosticFallbackSeconds: labor.fallbackSeconds,
+      diagnosticActualWorkerDayCount: claimedDateKeys.filter((dateKey) => resolveWorkerSecondsForDate(dateKey, first.workerId).source === "ACTUAL").length,
+      diagnosticFallbackWorkerDayCount: claimedDateKeys.filter((dateKey) => resolveWorkerSecondsForDate(dateKey, first.workerId).source === "FALLBACK").length,
+    };
+  });
   diagnostics.ambiguousOverlappingWorkerDayCount = overlapState.ambiguousWorkerDateKeys.size;
-  diagnostics.ambiguousOverlapExcludedWorkerBucketCount = drafts.length - safeDrafts.length;
+  diagnostics.ambiguousOverlapExcludedWorkerBucketCount = crossStageBucketKeys.size;
   diagnostics.ambiguousOverlapExcludedRecordCount = drafts
-    .filter((draft) =>
-      overlapState.ambiguousBucketKeys.has(
-        `${draft.sourceWorkLogId}:${draft.workerId}:${draft.productionStage}`
-      )
-    )
+    .filter((draft) => crossStageBucketKeys.has(`${draft.sourceWorkLogId}:${draft.workerId}:${draft.productionStage}`))
     .reduce((sum, draft) => sum + (draft.diagnosticRecordCount ?? 0), 0);
   diagnostics.ambiguousOverlappingWorkerDaySamples = Array.from(overlapState.ambiguousWorkerDateKeys)
     .slice(0, 30)
@@ -4824,7 +4895,7 @@ const buildAtTrainingInitialSeedFromSt = ({
 
 // Earlier observations remain immutable audit evidence. v4 keeps the v3
 // one-pass ST allocation but isolates every labor pool by production stage.
-const AT_V2_MODEL_VERSION = "v4-stage-aware";
+const AT_V2_MODEL_VERSION = "v5-worker-period";
 
 const clearStyleProcessAtObservations = async (orgId: number) => {
   const deleted = await prisma.$executeRaw(Prisma.sql`
@@ -5026,7 +5097,7 @@ const replaceStyleProcessAtObservations = async ({
           ${trainingMonthKey},
           NOW(),
           NOW(),
-          'SYSTEM:AT_V4_STAGE_AWARE',
+          'SYSTEM:AT_V5_WORKER_PERIOD',
           NOW()
         )
         `);
