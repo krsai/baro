@@ -503,6 +503,8 @@ const StyleDetail = () => {
                   processes={styleFormData.processes}
                   onProcessesChange={handleProcessesChange}
                   bucketQuantities={styleFormData.timeBucketQuantities}
+                  styleCode={styleFormData.code}
+                  styleName={styleFormData.name}
                 />
               </Box>
             </RequestScopeBoundary>

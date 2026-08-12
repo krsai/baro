@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   Box,
   Button,
+  GlobalStyles,
   Paper,
   Stack,
   Table,
@@ -14,6 +15,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
 import { useLanguage } from '../../../../context/LanguageContext';
 import { formatNumberWithCommas } from '../../../../utils/numberFormat';
 import {
@@ -381,6 +383,8 @@ const StyleTimeMatrix = ({
   processes = [],
   onProcessesChange = null,
   bucketQuantities = ST_STANDARD_BUCKETS,
+  styleCode = '',
+  styleName = '',
 }) => {
   const { languageCode } = useLanguage();
   const visibleBuckets = useMemo(
@@ -429,6 +433,8 @@ const StyleTimeMatrix = ({
     : languageCode === 'en'
       ? { apply: 'Apply 50% of AT gap', restore: 'Restore ST' }
       : { apply: 'AT 차이 50% 반영', restore: 'ST 원상복귀' };
+
+  const printLabel = languageCode === 'vi' ? 'In' : languageCode === 'en' ? 'Print' : '인쇄';
 
   const hasApplicableAtBucket = useMemo(() =>
     safeProcesses.some((process) =>
@@ -510,14 +516,55 @@ const StyleTimeMatrix = ({
   );
 
   return (
-    <Paper
-      variant="outlined"
-      sx={{ borderRadius: 1, overflow: 'hidden', borderColor: '#D7DEE8' }}
-    >
+    <>
+      <GlobalStyles styles={{
+        '@media print': {
+          '@page': { size: 'A4 landscape', margin: '8mm' },
+          'body *': { visibility: 'hidden' },
+          '.style-time-matrix-print, .style-time-matrix-print *': { visibility: 'visible' },
+          '.style-time-matrix-print': {
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            border: 'none !important',
+            boxShadow: 'none !important',
+          },
+          '.style-time-matrix-print-actions': { display: 'none !important' },
+          '.style-time-matrix-print-title': { display: 'block !important' },
+          '.style-time-matrix-print .MuiTableContainer-root': { overflow: 'visible !important' },
+          '.style-time-matrix-print table': { minWidth: '0 !important', width: '100% !important' },
+          '.style-time-matrix-print thead': { display: 'table-header-group' },
+          '.style-time-matrix-print tr': { breakInside: 'avoid', pageBreakInside: 'avoid' },
+          '.style-time-matrix-print .MuiTableCell-root': {
+            position: 'static !important',
+            fontSize: '8pt !important',
+            padding: '3px 5px !important',
+          },
+        },
+      }} />
+      <Paper
+        className="style-time-matrix-print"
+        variant="outlined"
+        sx={{ borderRadius: 1, overflow: 'hidden', borderColor: '#D7DEE8' }}
+      >
+      <Box className="style-time-matrix-print-title" sx={{ display: 'none', px: 1, pb: 1.5 }}>
+        <Typography variant="h6" sx={{ fontWeight: 800 }}>
+          {[styleCode, styleName].filter(Boolean).join(' · ') || msg.title}
+        </Typography>
+      </Box>
       {/* 헤더 */}
       <Box sx={{ px: 2.5, py: 1.5, borderBottom: BORDER, backgroundColor: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{msg.title}</Typography>
-        <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Stack className="style-time-matrix-print-actions" direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<PrintOutlinedIcon />}
+            onClick={() => window.print()}
+            sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
+          >
+            {printLabel}
+          </Button>
           <Button
             size="small"
             variant="contained"
@@ -940,7 +987,8 @@ const StyleTimeMatrix = ({
           </TableBody>
         </Table>
       </TableContainer>
-    </Paper>
+      </Paper>
+    </>
   );
 };
 
