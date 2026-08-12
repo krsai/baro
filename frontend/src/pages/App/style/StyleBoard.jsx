@@ -51,9 +51,9 @@ import {
   resolveProcessStPerPieceSeconds,
 } from '../../../utils/processTime';
 import {
-  TIME_DIVERGENCE_SEVERITY,
   calculateDivergencePercent,
   formatDivergencePercentLabel,
+  resolveDivergenceColor,
   resolveDivergenceMeta,
 } from '../../../utils/timeDivergence';
 
@@ -76,11 +76,6 @@ const AT_RELIABILITY_CHIP_SX = {
   height: 18,
   '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem', lineHeight: 1.1, fontWeight: 400 },
 };
-const ST_AT_GAP_PALETTE = {
-  [TIME_DIVERGENCE_SEVERITY.NORMAL]: { bg: '#DCEAF8', text: '#245A95' },
-  [TIME_DIVERGENCE_SEVERITY.REVIEW]: { bg: '#F7DCC8', text: '#AC6424' },
-  [TIME_DIVERGENCE_SEVERITY.CRITICAL]: { bg: '#F5D0D5', text: '#B42318' },
-};
 const ST_AT_GAP_CHIP_SX = {
   height: 18,
   '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem', lineHeight: 1.1, fontWeight: 400 },
@@ -100,8 +95,7 @@ const resolveStyleDeleteBlockedByWorkRecordsMessage = (languageCode) => {
   }
   return '작업기록이 존재해서 삭제할 수 없습니다.';
 };
-const resolveStAtGapPalette = (meta) =>
-  ST_AT_GAP_PALETTE[meta?.severity] || ST_AT_GAP_PALETTE[TIME_DIVERGENCE_SEVERITY.NORMAL];
+const resolveStAtGapPalette = resolveDivergenceColor;
 const toTimestamp = (value) => {
   const timestamp = Date.parse(String(value || '').trim());
   return Number.isFinite(timestamp) ? timestamp : 0;

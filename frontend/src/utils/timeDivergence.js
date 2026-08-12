@@ -69,3 +69,26 @@ export const resolveDivergenceMeta = (
     needsReview: absolutePercent >= safeReviewThreshold,
   };
 };
+
+const DIVERGENCE_COLOR_PALETTE = {
+  positive: {
+    [TIME_DIVERGENCE_SEVERITY.NORMAL]: { bg: '#FDECEC', text: '#C2413B' },
+    [TIME_DIVERGENCE_SEVERITY.REVIEW]: { bg: '#F8CCCC', text: '#B42318' },
+    [TIME_DIVERGENCE_SEVERITY.CRITICAL]: { bg: '#EFA5A5', text: '#861414' },
+  },
+  negative: {
+    [TIME_DIVERGENCE_SEVERITY.NORMAL]: { bg: '#E8F2FD', text: '#2F6FAE' },
+    [TIME_DIVERGENCE_SEVERITY.REVIEW]: { bg: '#C9E0F7', text: '#1F5F9D' },
+    [TIME_DIVERGENCE_SEVERITY.CRITICAL]: { bg: '#9FC7EE', text: '#174A7E' },
+  },
+  neutral: { bg: '#ECEFF3', text: '#5F6B7A' },
+};
+
+export const resolveDivergenceColor = (meta) => {
+  const percent = Number(meta?.percent);
+  if (!Number.isFinite(percent) || percent === 0) return DIVERGENCE_COLOR_PALETTE.neutral;
+  const directionPalette = percent > 0
+    ? DIVERGENCE_COLOR_PALETTE.positive
+    : DIVERGENCE_COLOR_PALETTE.negative;
+  return directionPalette[meta?.severity] || directionPalette[TIME_DIVERGENCE_SEVERITY.NORMAL];
+};

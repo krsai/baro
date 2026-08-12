@@ -56,9 +56,9 @@ import {
   resolveProcessStPerPieceSeconds,
 } from '../../../../utils/processTime';
 import {
-  TIME_DIVERGENCE_SEVERITY,
   calculateDivergencePercent,
   formatDivergencePercentLabel,
+  resolveDivergenceColor,
   resolveDivergenceMeta,
 } from '../../../../utils/timeDivergence';
 import {
@@ -549,11 +549,6 @@ const resolveAtReliabilityPalette = (reliability) =>
   AT_RELIABILITY_PALETTE[reliability?.status] ||
   AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING];
 
-const ST_AT_GAP_PALETTE = {
-  [TIME_DIVERGENCE_SEVERITY.NORMAL]: { bg: '#DCEAF8', text: '#245A95' },
-  [TIME_DIVERGENCE_SEVERITY.REVIEW]: { bg: '#F7DCC8', text: '#AC6424' },
-  [TIME_DIVERGENCE_SEVERITY.CRITICAL]: { bg: '#F5D0D5', text: '#B42318' },
-};
 
 const ST_AT_GAP_CHIP_SX = {
   height: 18,
@@ -571,8 +566,7 @@ const resolveAtReliabilityPercentLabel = (reliability) => {
   return `${Math.max(0, Math.min(100, Math.round(percent)))}%`;
 };
 
-const resolveStAtGapPalette = (meta) =>
-  ST_AT_GAP_PALETTE[meta?.severity] || ST_AT_GAP_PALETTE[TIME_DIVERGENCE_SEVERITY.NORMAL];
+const resolveStAtGapPalette = resolveDivergenceColor;
 
 const normalizeStyleProcessCodeSegment = (value) =>
   String(value ?? '')
