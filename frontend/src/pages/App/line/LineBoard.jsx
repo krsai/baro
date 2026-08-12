@@ -59,6 +59,14 @@ const LINE_BOARD_MESSAGES = {
     incompleteHistoryHelp: '라인으로 드래그하면 입사일~퇴사일 이력을 등록합니다.',
     employmentPeriod: '근무 기간', working: '재직 중', assignmentHistory: '라인 배치 이력', factory: '공장',
     noFactory: '공장 없음', newLineName: '새 라인 이름', addLine: '라인 추가', reset: '초기화', assigned: '배정', unassigned: '미배정',
+    notSelected: '미선택', loadingBoard: '라인 및 작업자 정보를 불러오는 중입니다.', noLines: '{factory}에 등록된 라인이 없습니다. 상단에서 라인을 추가해 주세요.',
+    applyName: '이름 적용', cancel: '취소', editName: '이름 편집', deleteLine: '라인 삭제', none: '없음',
+    dropWorker: '작업자를 여기로 드래그하세요.', peopleSuffix: '명',
+    workerFallback: '작업자', loadBoardFailed: '라인 정보를 불러오는 데 실패했습니다.', loadFactoriesFailed: '공장 목록을 불러오는 데 실패했습니다.',
+    lineNameRequired: '라인 이름은 필수입니다.', duplicateLineName: '같은 공장 안에 동일한 라인 이름이 이미 있습니다.',
+    confirmFactoryChange: '저장되지 않은 변경사항이 있습니다. 저장하지 않고 공장을 변경하시겠습니까?', selectFactoryFirst: '먼저 공장을 선택해 주세요.',
+    confirmDeleteLine: "'{line}'을(를) 삭제하시겠습니까?", confirmDeleteLineWithWorkers: "'{line}'을(를) 삭제하시겠습니까?\n배정된 작업자 {count}명은 미배정으로 이동됩니다.",
+    confirmReset: '저장되지 않은 변경사항을 모두 되돌릴까요?', noChanges: '변경사항이 없습니다.', saveSuccess: '라인 변경사항이 저장되었습니다.', saveFailed: '라인 저장에 실패했습니다.',
   },
   en: {
     title: 'Line Management', selectedFactory: 'Selected Factory', line: 'Lines', managerAssigned: 'Line Managers',
@@ -70,6 +78,14 @@ const LINE_BOARD_MESSAGES = {
     incompleteHistoryHelp: 'Drag to a line to register history from join date to termination date.',
     employmentPeriod: 'Employment Period', working: 'Active', assignmentHistory: 'Line Assignment History', factory: 'Factory',
     noFactory: 'No Factory', newLineName: 'New Line Name', addLine: 'Add Line', reset: 'Reset', assigned: 'Assigned', unassigned: 'Unassigned',
+    notSelected: 'Not Selected', loadingBoard: 'Loading line and worker information.', noLines: 'No lines are registered for {factory}. Add a line above.',
+    applyName: 'Apply Name', cancel: 'Cancel', editName: 'Edit Name', deleteLine: 'Delete Line', none: 'None',
+    dropWorker: 'Drag workers here.', peopleSuffix: '',
+    workerFallback: 'Worker', loadBoardFailed: 'Failed to load line information.', loadFactoriesFailed: 'Failed to load factories.',
+    lineNameRequired: 'Line name is required.', duplicateLineName: 'A line with the same name already exists in this factory.',
+    confirmFactoryChange: 'You have unsaved changes. Change the factory without saving?', selectFactoryFirst: 'Select a factory first.',
+    confirmDeleteLine: "Delete '{line}'?", confirmDeleteLineWithWorkers: "Delete '{line}'?\n{count} assigned workers will be moved to unassigned.",
+    confirmReset: 'Discard all unsaved changes?', noChanges: 'There are no changes.', saveSuccess: 'Line changes have been saved.', saveFailed: 'Failed to save line changes.',
   },
   vi: {
     title: 'Quản lý chuyền', selectedFactory: 'Nhà máy đã chọn', line: 'Chuyền', managerAssigned: 'Đã chỉ định trưởng chuyền',
@@ -81,6 +97,14 @@ const LINE_BOARD_MESSAGES = {
     incompleteHistoryHelp: 'Kéo vào chuyền để đăng ký lịch sử từ ngày vào làm đến ngày nghỉ việc.',
     employmentPeriod: 'Thời gian làm việc', working: 'Đang làm việc', assignmentHistory: 'Lịch sử phân công chuyền', factory: 'Nhà máy',
     noFactory: 'Không có nhà máy', newLineName: 'Tên chuyền mới', addLine: 'Thêm chuyền', reset: 'Đặt lại', assigned: 'Đã phân công', unassigned: 'Chưa phân công',
+    notSelected: 'Chưa chọn', loadingBoard: 'Đang tải thông tin chuyền và nhân viên.', noLines: 'Chưa có chuyền nào được đăng ký tại {factory}. Hãy thêm chuyền ở phía trên.',
+    applyName: 'Áp dụng tên', cancel: 'Hủy', editName: 'Sửa tên', deleteLine: 'Xóa chuyền', none: 'Không có',
+    dropWorker: 'Kéo nhân viên vào đây.', peopleSuffix: ' người',
+    workerFallback: 'Nhân viên', loadBoardFailed: 'Không thể tải thông tin chuyền.', loadFactoriesFailed: 'Không thể tải danh sách nhà máy.',
+    lineNameRequired: 'Tên chuyền là bắt buộc.', duplicateLineName: 'Tên chuyền này đã tồn tại trong cùng nhà máy.',
+    confirmFactoryChange: 'Có thay đổi chưa được lưu. Bạn có muốn đổi nhà máy mà không lưu không?', selectFactoryFirst: 'Vui lòng chọn nhà máy trước.',
+    confirmDeleteLine: "Bạn có muốn xóa '{line}' không?", confirmDeleteLineWithWorkers: "Bạn có muốn xóa '{line}' không?\n{count} nhân viên đã phân công sẽ được chuyển sang chưa phân công.",
+    confirmReset: 'Bạn có muốn hủy tất cả thay đổi chưa lưu không?', noChanges: 'Không có thay đổi.', saveSuccess: 'Đã lưu thay đổi chuyền.', saveFailed: 'Không thể lưu thay đổi chuyền.',
   },
 };
 
@@ -95,10 +119,10 @@ const emitLineAssignmentsUpdated = ({ orgId }) => {
   );
 };
 
-const buildWorkerLabel = (worker) => {
+const buildWorkerLabel = (worker, fallback = 'Worker') => {
   if (worker?.name && worker.name.trim()) return worker.name.trim();
   if (worker?.email && worker.email.trim()) return worker.email.trim();
-  return `작업자 ${worker?.id ?? ''}`.trim();
+  return `${fallback} ${worker?.id ?? ''}`.trim();
 };
 
 const buildExistingLineKey = (lineId) => `line-${lineId}`;
@@ -306,7 +330,7 @@ const LineBoard = () => {
         clearInlineEdit();
         setNewLineName('');
       } catch (error) {
-        showNotification(error?.message || '라인 정보를 불러오는 데 실패했습니다.', 'error');
+        showNotification(error?.message || msg.loadBoardFailed, 'error');
       } finally {
         setLoading(false);
       }
@@ -330,7 +354,7 @@ const LineBoard = () => {
         return list.length > 0 ? String(list[0].id) : '';
       });
     } catch (error) {
-      showNotification(error?.message || '공장 목록을 불러오는 데 실패했습니다.', 'error');
+      showNotification(error?.message || msg.loadFactoriesFailed, 'error');
     }
   }, [buildOrgQuery, requestedFactoryId, showNotification]);
 
@@ -359,7 +383,7 @@ const LineBoard = () => {
     (lineKey, nextName, sourceLines = lines) => {
       const trimmed = String(nextName || '').trim();
       if (!trimmed) {
-        showNotification('라인 이름은 필수입니다.', 'warning');
+        showNotification(msg.lineNameRequired, 'warning');
         return null;
       }
       const hasDuplicate = sourceLines.some(
@@ -367,7 +391,7 @@ const LineBoard = () => {
           line.localKey !== lineKey && String(line.name || '').trim() === trimmed
       );
       if (hasDuplicate) {
-        showNotification('같은 공장 안에 동일한 라인 이름이 이미 있습니다.', 'warning');
+        showNotification(msg.duplicateLineName, 'warning');
         return null;
       }
       return trimmed;
@@ -399,7 +423,7 @@ const LineBoard = () => {
       if (nextFactoryId === selectedFactoryId) return;
       if (
         (isDirty || editingLineKey) &&
-        !window.confirm('저장되지 않은 변경사항이 있습니다. 저장하지 않고 공장을 변경하시겠습니까?')
+        !window.confirm(msg.confirmFactoryChange)
       ) {
         return;
       }
@@ -411,7 +435,7 @@ const LineBoard = () => {
   const handleAddLine = useCallback(() => {
     if (saving) return;
     if (!selectedFactoryId) {
-      showNotification('먼저 공장을 선택해 주세요.', 'warning');
+      showNotification(msg.selectFactoryFirst, 'warning');
       return;
     }
     const trimmedName = validateLineName(null, newLineName, lines);
@@ -437,10 +461,11 @@ const LineBoard = () => {
   const handleDeleteLine = useCallback(
     (line) => {
       const workersInLine = lineWorkers.byLine.get(String(line.localKey)) || [];
-      const confirmMessage =
-        workersInLine.length > 0
-          ? `'${line.name}'을(를) 삭제하시겠습니까?\n배정된 작업자 ${workersInLine.length}명은 미배정으로 이동됩니다.`
-          : `'${line.name}'을(를) 삭제하시겠습니까?`;
+      const confirmMessage = (workersInLine.length > 0
+        ? msg.confirmDeleteLineWithWorkers
+        : msg.confirmDeleteLine)
+        .replace('{line}', line.name)
+        .replace('{count}', String(workersInLine.length));
       if (!window.confirm(confirmMessage)) return;
 
       setLines((prev) => prev.filter((item) => item.localKey !== line.localKey));
@@ -504,7 +529,7 @@ const LineBoard = () => {
         setPendingAssignmentChange({
           changeType: 'historical',
           employeeId,
-          workerName: buildWorkerLabel(worker),
+          workerName: buildWorkerLabel(worker, msg.workerFallback),
           sourceLineKey: null,
           destinationLineKey,
           effectiveDate:
@@ -527,7 +552,7 @@ const LineBoard = () => {
       setPendingAssignmentChange({
         changeType: 'current',
         employeeId,
-        workerName: buildWorkerLabel(worker),
+        workerName: buildWorkerLabel(worker, msg.workerFallback),
         sourceLineKey,
         destinationLineKey,
         effectiveDate: worker?.assignmentEffectiveDate || defaultEffectiveDate,
@@ -661,7 +686,7 @@ const LineBoard = () => {
 
   const handleResetDraft = useCallback(async () => {
     if (!isDirty && !editingLineKey) return;
-    if (!window.confirm('저장되지 않은 변경사항을 모두 되돌릴까요?')) return;
+    if (!window.confirm(msg.confirmReset)) return;
     await loadFactoryBoardData(selectedFactoryId);
   }, [editingLineKey, isDirty, loadFactoryBoardData, selectedFactoryId]);
 
@@ -676,7 +701,7 @@ const LineBoard = () => {
     }
 
     if (buildDraftSnapshot(nextLines, workers) === originalSnapshot) {
-      showNotification('변경사항이 없습니다.', 'info');
+      showNotification(msg.noChanges, 'info');
       return;
     }
 
@@ -708,9 +733,9 @@ const LineBoard = () => {
       clearInlineEdit();
       setNewLineName('');
       emitLineAssignmentsUpdated({ orgId: activeOrgId });
-      showNotification('라인 변경사항이 저장되었습니다.', 'success');
+      showNotification(msg.saveSuccess, 'success');
     } catch (error) {
-      showNotification(error?.message || '라인 저장에 실패했습니다.', 'error');
+      showNotification(error?.message || msg.saveFailed, 'error');
     } finally {
       setSaving(false);
     }
@@ -768,7 +793,7 @@ const LineBoard = () => {
             <DragIndicatorIcon sx={{ fontSize: 17, color: 'text.disabled' }} />
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography variant="body2" fontWeight={isManager ? 700 : 500} noWrap>
-                {buildWorkerLabel(worker)}
+                {buildWorkerLabel(worker, msg.workerFallback)}
               </Typography>
               {isHistorical ? (
                 <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
@@ -896,7 +921,7 @@ const LineBoard = () => {
                   </Typography>
                 </Stack>
                 <Typography variant="subtitle2" fontWeight={700} sx={{ mt: 0.25 }} noWrap>
-                  {selectedFactory?.name || '미선택'}
+                  {selectedFactory?.name || msg.notSelected}
                 </Typography>
               </Paper>
             </Grid>
@@ -1130,7 +1155,7 @@ const LineBoard = () => {
                         >
                           <DragIndicatorIcon sx={{ fontSize: 17, color: 'text.disabled' }} />
                           <Typography variant="body2" fontWeight={500} noWrap sx={{ flex: 1, minWidth: 0 }}>
-                            {buildWorkerLabel(worker)}
+                            {buildWorkerLabel(worker, msg.workerFallback)}
                           </Typography>
                           <Tooltip title={msg.historyTooltip}>
                             <Button
@@ -1161,13 +1186,13 @@ const LineBoard = () => {
               {loading ? (
                 <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2.5 }}>
                   <Typography variant="body2" color="text.secondary">
-                    라인 및 작업자 정보를 불러오는 중입니다.
+                    {msg.loadingBoard}
                   </Typography>
                 </Paper>
               ) : lines.length === 0 && selectedFactory ? (
                 <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2.5 }}>
                   <Typography variant="body2" color="text.secondary">
-                    {selectedFactory.name}에 등록된 라인이 없습니다. 상단에서 라인을 추가해 주세요.
+                    {msg.noLines.replace('{factory}', selectedFactory.name)}
                   </Typography>
                 </Paper>
               ) : (
@@ -1224,7 +1249,7 @@ const LineBoard = () => {
                                     },
                                   }}
                                 />
-                                <Tooltip title="이름 적용">
+                                <Tooltip title={msg.applyName}>
                                   <IconButton
                                     size="small"
                                     onClick={() =>
@@ -1234,7 +1259,7 @@ const LineBoard = () => {
                                     <CheckIcon fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
-                                <Tooltip title="취소">
+                                <Tooltip title={msg.cancel}>
                                   <IconButton size="small" onClick={clearInlineEdit}>
                                     <CloseIcon fontSize="small" />
                                   </IconButton>
@@ -1247,11 +1272,11 @@ const LineBoard = () => {
                                 </Typography>
                                 <Chip
                                   size="small"
-                                  label={`${workersInLine.length}명`}
+                                  label={`${workersInLine.length}${msg.peopleSuffix}`}
                                   color="primary"
                                   variant="outlined"
                                 />
-                                <Tooltip title="이름 편집">
+                                <Tooltip title={msg.editName}>
                                   <IconButton
                                     size="small"
                                     onClick={() => handleStartLineNameEdit(line)}
@@ -1261,7 +1286,7 @@ const LineBoard = () => {
                                     <EditIcon sx={{ fontSize: 15 }} />
                                   </IconButton>
                                 </Tooltip>
-                                <Tooltip title="라인 삭제">
+                                <Tooltip title={msg.deleteLine}>
                                   <IconButton
                                     size="small"
                                     onClick={() => handleDeleteLine(line)}
@@ -1286,10 +1311,10 @@ const LineBoard = () => {
                               }
                               disabled={saving}
                             >
-                              <MenuItem value="">없음</MenuItem>
+                              <MenuItem value="">{msg.none}</MenuItem>
                               {workersInLine.map((worker) => (
                                 <MenuItem key={worker.id} value={worker.id}>
-                                  {buildWorkerLabel(worker)}
+                                  {buildWorkerLabel(worker, msg.workerFallback)}
                                 </MenuItem>
                               ))}
                             </Select>
@@ -1318,7 +1343,7 @@ const LineBoard = () => {
                                     color="text.disabled"
                                     sx={{ display: 'block', textAlign: 'center', mt: 4 }}
                                   >
-                                    작업자를 여기로 드래그하세요.
+                                    {msg.dropWorker}
                                   </Typography>
                                 )}
                                 {workersInLine.map((worker, index) =>
@@ -1411,7 +1436,7 @@ const LineBoard = () => {
     </Dialog>
     <Dialog open={Boolean(historyWorker)} onClose={() => setHistoryWorker(null)} maxWidth="md" fullWidth>
       <DialogTitle>
-        {buildWorkerLabel(historyWorker)} {'\u00B7'} {msg.assignmentHistory}
+        {buildWorkerLabel(historyWorker, msg.workerFallback)} {'\u00B7'} {msg.assignmentHistory}
       </DialogTitle>
       <DialogContent>
         {(historyWorker?.joinedDate || historyWorker?.leftDate || historyWorker?.joinedAt || historyWorker?.leftAt) ? (
