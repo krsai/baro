@@ -460,6 +460,30 @@ const formatAssignmentLabel = (assignment) => {
   if (assignment?.dbId) return `배정카드 #${assignment.dbId}`;
   return '배정카드';
 };
+const buildStyleOptionSearchText = (assignment) =>
+  [
+    assignment?.label,
+    assignment?.styleName,
+    assignment?.styleId,
+    assignment?.styleCode,
+    assignment?.orderNo,
+    assignment?.customer,
+    assignment?.customerName,
+  ]
+    .map(toText)
+    .filter(Boolean)
+    .join(' ');
+const filterStyleOptions = (options, state) => {
+  const tokens = toText(state?.inputValue)
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length === 0) return options;
+  return (Array.isArray(options) ? options : []).filter((option) => {
+    const searchText = buildStyleOptionSearchText(option).toLowerCase();
+    return tokens.every((token) => searchText.includes(token));
+  });
+};
 const isOtherLineAssignmentOption = (assignment, currentLineId) => {
   const assignmentLineId = toPositiveIdOrNull(assignment?.lineId);
   const normalizedCurrentLineId = toPositiveIdOrNull(currentLineId);
@@ -1704,6 +1728,13 @@ const WorkDetail = ({
       const searchText = [
         row?.worker?.name,
         formatAssignmentAutocompleteLabel(assignment, selectedLineId),
+        assignment?.label,
+        assignment?.styleName,
+        assignment?.styleId,
+        assignment?.styleCode,
+        assignment?.orderNo,
+        assignment?.customer,
+        assignment?.customerName,
         process?.name,
         process?.nameKo,
         process?.nameEn,
@@ -3152,6 +3183,7 @@ const WorkDetail = ({
                               clearOnBlur={false}
                               handleHomeEndKeys
                               getOptionLabel={getStyleOptionLabel}
+                              filterOptions={filterStyleOptions}
                               isOptionEqualToValue={(option, value) =>
                                 toText(option?.id || option?.dbId) ===
                                 toText(value?.id || value?.dbId)
@@ -3510,6 +3542,7 @@ const WorkDetail = ({
                                   clearOnBlur={false}
                                   handleHomeEndKeys
                                   getOptionLabel={getStyleOptionLabel}
+                                  filterOptions={filterStyleOptions}
                                   isOptionEqualToValue={(option, value) =>
                                     toText(option?.id || option?.dbId) ===
                                     toText(value?.id || value?.dbId)
