@@ -12,37 +12,37 @@ const TEXT = {
   detailTitle: {
     ko: '작업 기록 상세',
     en: 'Work Log Detail',
-    vi: 'Chi tiết nhat ky cong viec',
+    vi: 'Chi tiết nhật ký công việc',
   },
   notFound: {
     ko: '기록을 찾을 수 없습니다.',
     en: 'Log not found.',
-    vi: 'Không tìm thấy ghi chep.',
+    vi: 'Không tìm thấy nhật ký.',
   },
   loadError: {
     ko: '기록을 불러오지 못했습니다.',
     en: 'Failed to load the log.',
-    vi: 'Không thể tai ghi chep.',
+    vi: 'Không thể tải nhật ký.',
   },
   saveSuccess: {
     ko: '작업 기록을 저장했습니다. 다음 단계에서 수량 정산을 진행하세요.',
     en: 'Work log saved. Next, continue in Quantity Settlement.',
-    vi: 'Đã lưu ghi chep cong viec. Tiep theo, hay thuc hien doi chieu so luong.',
+    vi: 'Đã lưu nhật ký công việc. Tiếp theo, hãy thực hiện đối chiếu số lượng.',
   },
   updateSuccess: {
     ko: '작업 기록을 수정했습니다. 다음 단계에서 수량 정산을 다시 확인하세요.',
     en: 'Work log updated. Next, review Quantity Settlement again.',
-    vi: 'Đã cập nhật ghi chep cong viec. Tiep theo, hay kiem tra lai doi chieu so luong.',
+    vi: 'Đã cập nhật nhật ký công việc. Tiếp theo, hãy kiểm tra lại đối chiếu số lượng.',
   },
   saveError: {
     ko: '기록 저장에 실패했습니다.',
     en: 'Failed to save the log.',
-    vi: 'Không thể luu ghi chep.',
+    vi: 'Không thể lưu nhật ký.',
   },
   loading: {
     ko: '기록 상세를 불러오는 중입니다.',
     en: 'Loading log detail...',
-    vi: 'Đang tải chi tiet ghi chep.',
+    vi: 'Đang tải chi tiết nhật ký.',
   },
 };
 
@@ -62,8 +62,8 @@ const buildCrossLineAssignmentSaveMessage = ({
   }
   if (languageCode === 'vi') {
     return isUpdate
-      ? `Đã cập nhật ghi chep cong viec. Da ghi chu ${rowCount} dong gan line khac vao ghi chu.`
-      : `Đã lưu ghi chep cong viec. Da ghi chu ${rowCount} dong gan line khac vao ghi chu.`;
+      ? `Đã cập nhật nhật ký công việc. Đã ghi chú ${rowCount} dòng được phân công ở chuyền khác.`
+      : `Đã lưu nhật ký công việc. Đã ghi chú ${rowCount} dòng được phân công ở chuyền khác.`;
   }
   return isUpdate
     ? `작업 기록을 수정했습니다. 다른 라인 배정 작업 ${rowCount}건을 비고에 남겼습니다.`
@@ -73,13 +73,13 @@ const buildCrossLineAssignmentSaveMessage = ({
 const normalizeWorkLogId = (value) => String(value || '').trim();
 const buildWorkListTabLabel = (languageCode) => {
   if (languageCode === 'en') return 'Work Logs';
-  if (languageCode === 'vi') return 'Nhat ky cong viec';
+  if (languageCode === 'vi') return 'Nhật ký công việc';
   return '작업 기록';
 };
 const buildWorkDetailTabLabel = (workDateKey, languageCode) => {
   const title =
     languageCode === 'vi'
-      ? 'Chi tiết nhat ky cong viec'
+      ? 'Chi tiết nhật ký công việc'
       : languageCode === 'en'
         ? 'Work Log Detail'
         : '작업 기록 상세';
