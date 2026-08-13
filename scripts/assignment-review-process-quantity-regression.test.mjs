@@ -15,8 +15,11 @@ test('review-required progress response carries process-level recorded quantitie
   assert.match(capacity, /reviewReason: assignment\?\.reviewReason/);
 });
 
-test('review card renders recorded versus assigned quantity for every process', () => {
-  assert.match(card, /reviewProcessTotals\.map/);
-  assert.match(card, /processLabel.*quantity\.toLocaleString\(\).*planned\.toLocaleString\(\)/s);
-  assert.match(card, /difference === 0 \? 'success' : 'error'/);
+test('review card stays compact and opens a dedicated quantity-review drawer', () => {
+  assert.doesNotMatch(card, /reviewProcessTotals\.map/);
+  assert.match(board, /'수량 확인'.*'Quantity review'.*'Kiểm tra số lượng'/s);
+  assert.match(board, /disabled=\{contextMenuTargetAssignment\?\.scheduleStatus !== 'REVIEW_REQUIRED'\}/);
+  assert.match(board, /reason\.processTotals/);
+  assert.match(board, /reason\.workRecords/);
+  assert.match(backend, /workRecords: stats\.records/);
 });

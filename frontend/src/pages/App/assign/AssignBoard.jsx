@@ -3027,6 +3027,7 @@ const AssignBoard = () => {
   );
   const [contextMenuState, setContextMenuState] = useState(null);
   const [detailState, setDetailState] = useState(null);
+  const [quantityReviewAssignmentId, setQuantityReviewAssignmentId] = useState(null);
   const [cursorWarningState, setCursorWarningState] = useState({
     open: false,
     x: 0,
@@ -5616,6 +5617,10 @@ const AssignBoard = () => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return null;
     return assignmentById.get(String(contextMenuState.id)) || null;
   }, [contextMenuState, assignmentById]);
+  const quantityReviewAssignment = useMemo(
+    () => quantityReviewAssignmentId ? assignmentById.get(String(quantityReviewAssignmentId)) || null : null,
+    [assignmentById, quantityReviewAssignmentId]
+  );
   const contextMenuTargetCard = useMemo(() => {
     if (!contextMenuState || contextMenuState.targetType !== 'card') return null;
     return cardById.get(String(contextMenuState.id)) || null;
@@ -5667,9 +5672,11 @@ const AssignBoard = () => {
   }, [contextMenuState]);
   const handleContextOpenReviewReason = useCallback(() => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return;
-    setDetailState({ targetType: 'assignment', assignmentId: contextMenuState.id });
+    const assignment = assignmentById.get(String(contextMenuState.id));
+    if (assignment?.scheduleStatus !== 'REVIEW_REQUIRED') return;
+    setQuantityReviewAssignmentId(contextMenuState.id);
     setContextMenuState(null);
-  }, [contextMenuState]);
+  }, [assignmentById, contextMenuState]);
   const handleCloseDetail = useCallback(() => {
     blurActiveElement();
     setDetailState(null);
@@ -7043,11 +7050,12 @@ const AssignBoard = () => {
           <MenuItem onClick={handleContextOpenDetail} disabled={controlsDisabled}>
             {getUiMessage('assign.contextOpenDetail', 'Open Detail', languageCode)}
           </MenuItem>
-          {contextMenuTargetAssignment?.scheduleStatus === 'REVIEW_REQUIRED' ? (
-            <MenuItem onClick={handleContextOpenReviewReason}>
-              {languageCode === 'ko' ? '검토 사유 보기' : 'View review reason'}
-            </MenuItem>
-          ) : null}
+          <MenuItem
+            onClick={handleContextOpenReviewReason}
+            disabled={contextMenuTargetAssignment?.scheduleStatus !== 'REVIEW_REQUIRED'}
+          >
+            {languageCode === 'ko' ? '수량 확인' : languageCode === 'vi' ? 'Kiểm tra số lượng' : 'Quantity review'}
+          </MenuItem>
           <Divider />
           <MenuItem onClick={handleContextSplit} disabled={controlsDisabled || contextSplitDisabled}>
             {getUiMessage('assign.contextSplitQuantity', 'Split Quantity', languageCode)}
@@ -7064,6 +7072,34 @@ const AssignBoard = () => {
                 : 'Adjust completion'}
           </MenuItem>
         </Menu>
+
+        <Drawer
+          anchor="right"
+          open={Boolean(quantityReviewAssignment)}
+          onClose={() => setQuantityReviewAssignmentId(null)}
+          PaperProps={{ sx: { ...TOP_OFFSET_DRAWER_PAPER_SX, width: { xs: '100%', md: 760 }, p: 2.5, overflowY: 'auto' } }}
+        >
+          {quantityReviewAssignment ? (() => {
+            const reason = quantityReviewAssignment.reviewReason || {};
+            const planned = Math.max(0, Number(reason.plannedQuantity ?? quantityReviewAssignment.quantity) || 0);
+            const processTotals = Array.isArray(reason.processTotals) ? reason.processTotals : [];
+            const workRecords = Array.isArray(reason.workRecords) ? reason.workRecords : [];
+            const label = (ko, en, vi) => languageCode === 'ko' ? ko : languageCode === 'vi' ? vi : en;
+            return <Stack spacing={2}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Box><Typography variant="h6" fontWeight={800}>{label('수량 확인', 'Quantity review', 'Kiểm tra số lượng')}</Typography><Typography variant="body2" color="text.secondary">{quantityReviewAssignment.orderNo} · {quantityReviewAssignment.label}</Typography></Box>
+                <IconButton onClick={() => setQuantityReviewAssignmentId(null)}><CloseIcon /></IconButton>
+              </Stack>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                <Paper variant="outlined" sx={{ p: 1.5, minWidth: 150 }}><Typography variant="caption" color="text.secondary">{label('주문·배정 수량', 'Order / assigned qty', 'SL đơn / phân công')}</Typography><Typography variant="h6" fontWeight={800}>{planned.toLocaleString()}</Typography></Paper>
+                <Paper variant="outlined" sx={{ p: 1.5, minWidth: 150 }}><Typography variant="caption" color="text.secondary">{label('확인 생산수량', 'Verified output', 'Sản lượng xác nhận')}</Typography><Typography variant="h6" fontWeight={800}>{Math.max(0, Number(reason.producedQuantity) || 0).toLocaleString()}</Typography></Paper>
+                <Paper variant="outlined" sx={{ p: 1.5, minWidth: 150 }}><Typography variant="caption" color="text.secondary">{label('작업기록 합계', 'Work-record total', 'Tổng nhật ký')}</Typography><Typography variant="h6" fontWeight={800}>{Math.max(0, Number(reason.recordedTotalQuantity) || 0).toLocaleString()}</Typography></Paper>
+              </Stack>
+              <Box><Typography variant="subtitle1" fontWeight={800} sx={{ mb: 1 }}>{label('공정별 수량', 'Quantity by process', 'Số lượng theo công đoạn')}</Typography><TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow><TableCell>{label('공정', 'Process', 'Công đoạn')}</TableCell><TableCell align="right">{label('기록 수량', 'Recorded', 'Đã ghi')}</TableCell><TableCell align="right">{label('배정 대비', 'vs assigned', 'So với phân công')}</TableCell></TableRow></TableHead><TableBody>{processTotals.map((process, index) => { const quantity = Math.max(0, Number(process?.quantity) || 0); const difference = quantity - planned; return <TableRow key={process?.styleProcessId || index}><TableCell>{[process?.processCode, process?.processName].filter(Boolean).join(' · ') || `${label('공정', 'Process', 'Công đoạn')} ${index + 1}`}</TableCell><TableCell align="right" sx={{ fontWeight: 700 }}>{quantity.toLocaleString()}</TableCell><TableCell align="right" sx={{ color: difference === 0 ? 'success.main' : 'error.main', fontWeight: 800 }}>{difference > 0 ? '+' : ''}{difference.toLocaleString()}</TableCell></TableRow>; })}</TableBody></Table></TableContainer></Box>
+              <Box><Typography variant="subtitle1" fontWeight={800} sx={{ mb: 1 }}>{label('생산 기록', 'Production records', 'Nhật ký sản xuất')}</Typography><TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow><TableCell>{label('작업일', 'Work date', 'Ngày làm')}</TableCell><TableCell>{label('작업자', 'Worker', 'Người làm')}</TableCell><TableCell>{label('공정', 'Process', 'Công đoạn')}</TableCell><TableCell align="right">{label('수량', 'Quantity', 'Số lượng')}</TableCell></TableRow></TableHead><TableBody>{workRecords.length ? workRecords.map((record, index) => <TableRow key={record?.id || index}><TableCell>{record?.coverageStartDate && record?.coverageStartDate !== record?.coverageEndDate ? `${record.coverageStartDate} ~ ${record.coverageEndDate}` : record?.workDate || record?.coverageEndDate || '-'}</TableCell><TableCell>{record?.isOutsourced ? `${label('외주', 'Outsourced', 'Gia công')} · ${record?.workerName || '-'}` : record?.workerName || '-'}</TableCell><TableCell>{[record?.processCode, record?.processName].filter(Boolean).join(' · ') || '-'}</TableCell><TableCell align="right" sx={{ fontWeight: 700 }}>{Math.max(0, Number(record?.quantity) || 0).toLocaleString()}</TableCell></TableRow>) : <TableRow><TableCell colSpan={4} align="center">{label('생산 기록이 없습니다.', 'No production records.', 'Không có nhật ký sản xuất.')}</TableCell></TableRow>}</TableBody></Table></TableContainer></Box>
+            </Stack>;
+          })() : null}
+        </Drawer>
 
         <Drawer
           anchor="right"

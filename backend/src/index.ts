@@ -20852,6 +20852,7 @@ type AssignmentPlanWorkStats = {
   firstWorkDate: string | null;
   lastWorkDate: string | null;
   hasRangeCoverage: boolean;
+  records: any[];
 };
 
 const SCHEDULER_PROGRESS_IMBALANCE_WARNING_THRESHOLD = 0.2;
@@ -20925,24 +20926,19 @@ const loadAssignmentPlanProgressWorkRows = async ({
         workLogId: true,
         assignmentPlanId: true,
         workerId: true,
+        isOutsourced: true,
+        outsourceVendorName: true,
         lineId: true,
         styleId: true,
         styleProcessId: true,
+        worker: { select: { name: true } },
+        styleProcess: {
+          select: { id: true, styleId: true, processCode: true, processName: true },
+        },
         ...(includeDiagnostics
           ? {
-              worker: {
-                select: { name: true },
-              },
               style: {
                 select: { id: true, code: true, name: true },
-              },
-              styleProcess: {
-                select: {
-                  id: true,
-                  styleId: true,
-                  processCode: true,
-                  processName: true,
-                },
               },
               ctSeconds: true,
             }
@@ -20955,7 +20951,7 @@ const loadAssignmentPlanProgressWorkRows = async ({
             coverageStartDate: true,
             coverageEndDate: true,
             entryMode: true,
-            ...(includeDiagnostics ? { displayDate: true } : {}),
+            displayDate: true,
           },
         },
       } as any,
@@ -23000,6 +22996,7 @@ const buildAssignmentPlanProgressRows = async (
       firstWorkDate: null,
       lastWorkDate: null,
       hasRangeCoverage: false,
+      records: [],
     };
     statsByPlanId.set(planId, next);
     return next;
@@ -23012,6 +23009,20 @@ const buildAssignmentPlanProgressRows = async (
     if (quantity <= 0) return;
 
     const stats = getStats(planId);
+    stats.records.push({
+      id: record?.id ?? null,
+      workDate: normalizeDateKey(record?.workLog?.displayDate) || null,
+      coverageStartDate: resolveWorkRecordEffectiveCoverageStartDate(record),
+      coverageEndDate: resolveWorkRecordEffectiveCoverageEndDate(record),
+      workerName: record?.isOutsourced === true
+        ? resolveOptionalString(record?.outsourceVendorName, "외주")
+        : resolveOptionalString(record?.worker?.name, null),
+      isOutsourced: record?.isOutsourced === true,
+      styleProcessId: toPositiveIntOrNull(record?.styleProcessId),
+      processCode: resolveOptionalString(record?.styleProcess?.processCode, null),
+      processName: resolveOptionalString(record?.styleProcess?.processName, null),
+      quantity,
+    });
     const processKey = resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record);
     if (!processKey) {
       console.warn(
@@ -23082,6 +23093,7 @@ const buildAssignmentPlanProgressRows = async (
       firstWorkDate: null,
       lastWorkDate: null,
       hasRangeCoverage: false,
+      records: [],
     };
     const requiredProcessGroups = resolveAssignmentPlanRequiredProcessGroups(plan);
     const plannedQuantity = resolveAssignmentQuantity(plan);
@@ -23458,6 +23470,9 @@ const buildAssignmentPlanProgressRows = async (
               recordedTotalQuantity: totalDone,
               producedQuantity,
               processTotals: reviewProcessTotals,
+              workRecords: stats.records.sort((left, right) =>
+                String(right?.workDate || "").localeCompare(String(left?.workDate || ""))
+              ),
             }
           : null,
       plannedStTotalSeconds,
