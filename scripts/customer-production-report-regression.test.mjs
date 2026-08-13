@@ -41,7 +41,10 @@ test('sales report is routed, permissioned, printable, and exportable', () => {
   assert.match(page, /includeCompleted: 'Include completed'/);
   assert.match(page, /includeCompleted: 'Bao gồm đã hoàn thành'/);
   assert.match(messages, /customerProductionReport:\s*\{ ko: '보고서', en: 'Report', vi: 'Báo cáo' \}/);
-  assert.match(page, /title: '고객 생산 진행 보고서'/);
-  assert.match(page, /title: 'Customer Production Progress Report'/);
-  assert.match(page, /title: 'Báo cáo tiến độ sản xuất khách hàng'/);
+  assert.match(page, /title: '보고서'/);
+  assert.match(page, /title: 'Report'/);
+  assert.match(page, /title: 'Báo cáo'/);
+  assert.match(page, /displayEmpty/);
+  assert.match(page, /renderValue=.*text\.allCustomers/);
+  assert.match(page, /selectedCustomer \? customerLabel\(selectedCustomer, languageCode\) : text\.allCustomers/);
 });

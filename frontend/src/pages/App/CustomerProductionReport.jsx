@@ -15,7 +15,7 @@ import { WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
 
 const TEXT = {
   ko: {
-    title: '고객 생산 진행 보고서', customer: '고객', allCustomers: '전체 고객', search: '주문번호·스타일 검색',
+    title: '보고서', customer: '고객', allCustomers: '전체 고객', search: '주문번호·스타일 검색',
     print: '인쇄 / PDF', csv: 'CSV 내보내기', generated: '기준 시각', order: '주문번호', style: '스타일', due: '납기',
     quantity: '주문수량', assigned: '배정수량', produced: '확인 생산수량', progress: '공정 진행률', lastWork: '최근 작업기록',
     estimate: '예상 완료일', status: '상태', basis: '예측 근거', empty: '조건에 맞는 보고서 항목이 없습니다.',
@@ -24,7 +24,7 @@ const TEXT = {
     includeCompleted: '완료 포함',
   },
   en: {
-    title: 'Customer Production Progress Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style',
+    title: 'Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style',
     print: 'Print / PDF', csv: 'Export CSV', generated: 'As of', order: 'Order', style: 'Style', due: 'Due', quantity: 'Order qty',
     assigned: 'Assigned', produced: 'Verified output', progress: 'Process progress', lastWork: 'Latest record', estimate: 'Estimated completion',
     status: 'Status', basis: 'Estimate basis', empty: 'No report rows match the filters.',
@@ -33,7 +33,7 @@ const TEXT = {
     includeCompleted: 'Include completed',
   },
   vi: {
-    title: 'Báo cáo tiến độ sản xuất khách hàng', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng',
+    title: 'Báo cáo', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng',
     print: 'In / PDF', csv: 'Xuất CSV', generated: 'Thời điểm', order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Số lượng đơn',
     assigned: 'Đã phân công', produced: 'Sản lượng xác nhận', progress: 'Tiến độ công đoạn', lastWork: 'Ghi nhận gần nhất', estimate: 'Dự kiến hoàn thành',
     status: 'Trạng thái', basis: 'Cơ sở dự báo', empty: 'Không có dữ liệu phù hợp.',
@@ -116,11 +116,11 @@ const CustomerProductionReport = () => {
   return <AppPageContainer
     title={text.title}
     titleActions={<Stack direction="row" spacing={1} className="report-screen-actions"><Button variant="outlined" startIcon={<DownloadIcon />} onClick={exportCsv} disabled={!rows.length}>{text.csv}</Button><Button variant="contained" startIcon={<PrintIcon />} onClick={() => window.print()} disabled={!rows.length}>{text.print}</Button></Stack>}
-    toolbar={<Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="flex-end" alignItems={{ xs: 'stretch', md: 'center' }} className="report-screen-actions"><TextField size="small" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} sx={{ mr: 'auto', width: { xs: '100%', md: 320 } }} /><FormControlLabel control={<Switch size="small" checked={includeCompleted} onChange={(event) => setIncludeCompleted(event.target.checked)} />} label={text.includeCompleted} sx={{ whiteSpace: 'nowrap' }} /><FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>{text.customer}</InputLabel><Select value={customerId} label={text.customer} onChange={(event) => setCustomerId(event.target.value)}><MenuItem value="">{text.allCustomers}</MenuItem>{data.customers.map((customer) => <MenuItem key={customer.id} value={String(customer.id)}>{customerLabel(customer, languageCode)}</MenuItem>)}</Select></FormControl></Stack>}
+    toolbar={<Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="flex-end" alignItems={{ xs: 'stretch', md: 'center' }} className="report-screen-actions"><TextField size="small" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} sx={{ mr: 'auto', width: { xs: '100%', md: 320 } }} /><FormControlLabel control={<Switch size="small" checked={includeCompleted} onChange={(event) => setIncludeCompleted(event.target.checked)} />} label={text.includeCompleted} sx={{ whiteSpace: 'nowrap' }} /><FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>{text.customer}</InputLabel><Select value={customerId} label={text.customer} displayEmpty onChange={(event) => setCustomerId(event.target.value)} renderValue={(value) => value ? customerLabel(data.customers.find((customer) => String(customer.id) === String(value)), languageCode) : text.allCustomers}><MenuItem value="">{text.allCustomers}</MenuItem>{data.customers.map((customer) => <MenuItem key={customer.id} value={String(customer.id)}>{customerLabel(customer, languageCode)}</MenuItem>)}</Select></FormControl></Stack>}
   >
     <style>{`@media print { .report-screen-actions, nav, header, aside { display:none!important; } body { background:#fff!important; } .customer-production-report { padding:0!important; } }`}</style>
     <Stack spacing={2} className="customer-production-report">
-      <Box><Typography variant="h5" fontWeight={800}>{selectedCustomer ? customerLabel(selectedCustomer, languageCode) : text.title}</Typography><Typography variant="caption" color="text.secondary">{text.generated}: {data.generatedAt ? new Date(data.generatedAt).toLocaleString() : '-'}</Typography></Box>
+      <Box><Typography variant="h5" fontWeight={800}>{selectedCustomer ? customerLabel(selectedCustomer, languageCode) : text.allCustomers}</Typography><Typography variant="caption" color="text.secondary">{text.generated}: {data.generatedAt ? new Date(data.generatedAt).toLocaleString() : '-'}</Typography></Box>
       {error ? <Alert severity="error">{error}</Alert> : null}
       {loading ? <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress size={30} /></Box> : rows.length === 0 ? <Paper variant="outlined" sx={{ p: 5, textAlign: 'center' }}><Typography color="text.secondary">{text.empty}</Typography></Paper> :
         <TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow><TableCell>{text.customer}</TableCell><TableCell>{text.order}</TableCell><TableCell>{text.style}</TableCell><TableCell>{text.due}</TableCell><TableCell align="right">{text.quantity}</TableCell><TableCell align="right">{text.assigned}</TableCell><TableCell align="right">{text.produced}</TableCell><TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell><TableCell>{text.lastWork}</TableCell><TableCell>{text.estimate}</TableCell><TableCell>{text.status}</TableCell><TableCell>{text.basis}</TableCell></TableRow></TableHead><TableBody>{rows.map((row) => { const status = STATUS[row.status] || STATUS.UNASSIGNED; return <TableRow key={`${row.orderId}:${row.styleId || row.styleCode}`}><TableCell>{rowCustomerLabel(row, languageCode)}</TableCell><TableCell sx={{ fontWeight: 700 }}>{row.orderNumber}</TableCell><TableCell>{[row.styleCode, row.styleName].filter(Boolean).join(' · ') || '-'}</TableCell><TableCell>{row.dueDate || '-'}</TableCell><TableCell align="right">{fmt(row.orderedQuantity)}</TableCell><TableCell align="right">{fmt(row.assignedQuantity)}{row.unassignedQuantity > 0 ? <Typography variant="caption" color="warning.main" display="block">-{fmt(row.unassignedQuantity)}</Typography> : null}</TableCell><TableCell align="right">{fmt(row.producedQuantity)}</TableCell><TableCell><Stack spacing={0.5}><LinearProgress variant="determinate" value={row.progressPercent} color={row.reviewRequired ? 'error' : 'primary'} /><Typography variant="caption">{row.progressPercent}%{row.reviewRequired ? ` · ${text.review}` : ''}</Typography></Stack></TableCell><TableCell>{row.lastWorkDate || '-'}</TableCell><TableCell sx={{ fontWeight: 700 }}>{row.estimatedCompletionDate || '-'}</TableCell><TableCell><Chip size="small" label={status[languageCode] || status.en} color={status.color} variant={row.status === 'COMPLETED' ? 'filled' : 'outlined'} /></TableCell><TableCell><Stack spacing={0.25}><Typography variant="body2">{BASIS[row.estimateBasis]?.[languageCode] || row.estimateBasis}</Typography>{row.hasMonthlySummaryRecords ? <Typography variant="caption" color="warning.main">{text.monthlySummary}</Typography> : null}</Stack></TableCell></TableRow>; })}</TableBody></Table></TableContainer>}
