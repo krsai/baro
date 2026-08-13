@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Button, Chip, CircularProgress, FormControl, FormControlLabel, InputLabel, LinearProgress,
   MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
-  TableRow, TextField, Typography, Switch,
+  TableRow, Typography, Switch,
 } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
 import DownloadIcon from '@mui/icons-material/Download';
 import AppPageContainer from '../../components/AppPageContainer';
+import PageToolbar from '../../components/PageToolbar';
+import SearchInput from '../../components/SearchInput';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
@@ -116,7 +118,7 @@ const CustomerProductionReport = () => {
   return <AppPageContainer
     title={text.title}
     titleActions={<Stack direction="row" spacing={1} className="report-screen-actions"><Button variant="outlined" startIcon={<DownloadIcon />} onClick={exportCsv} disabled={!rows.length}>{text.csv}</Button><Button variant="contained" startIcon={<PrintIcon />} onClick={() => window.print()} disabled={!rows.length}>{text.print}</Button></Stack>}
-    toolbar={<Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="flex-end" alignItems={{ xs: 'stretch', md: 'center' }} className="report-screen-actions"><TextField size="small" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} sx={{ mr: 'auto', width: { xs: '100%', md: 320 } }} /><FormControlLabel control={<Switch size="small" checked={includeCompleted} onChange={(event) => setIncludeCompleted(event.target.checked)} />} label={text.includeCompleted} sx={{ whiteSpace: 'nowrap' }} /><FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>{text.customer}</InputLabel><Select value={customerId} label={text.customer} displayEmpty onChange={(event) => setCustomerId(event.target.value)} renderValue={(value) => value ? customerLabel(data.customers.find((customer) => String(customer.id) === String(value)), languageCode) : text.allCustomers}><MenuItem value="">{text.allCustomers}</MenuItem>{data.customers.map((customer) => <MenuItem key={customer.id} value={String(customer.id)}>{customerLabel(customer, languageCode)}</MenuItem>)}</Select></FormControl></Stack>}
+    toolbar={<PageToolbar className="report-screen-actions" showLastUpdater={false} left={<SearchInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} sx={{ width: { xs: '100%', sm: 320 } }} />} right={<><FormControlLabel control={<Switch size="small" checked={includeCompleted} onChange={(event) => setIncludeCompleted(event.target.checked)} />} label={text.includeCompleted} sx={{ whiteSpace: 'nowrap', m: 0 }} /><FormControl size="small" sx={{ width: { xs: '100%', sm: 220 }, flexShrink: 0 }}><InputLabel>{text.customer}</InputLabel><Select value={customerId} label={text.customer} displayEmpty onChange={(event) => setCustomerId(event.target.value)} renderValue={(value) => value ? customerLabel(data.customers.find((customer) => String(customer.id) === String(value)), languageCode) : text.allCustomers}><MenuItem value="">{text.allCustomers}</MenuItem>{data.customers.map((customer) => <MenuItem key={customer.id} value={String(customer.id)}>{customerLabel(customer, languageCode)}</MenuItem>)}</Select></FormControl></>} />}
   >
     <style>{`@media print { .report-screen-actions, nav, header, aside { display:none!important; } body { background:#fff!important; } .customer-production-report { padding:0!important; } }`}</style>
     <Stack spacing={2} className="customer-production-report">

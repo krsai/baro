@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [server, page, router, layout, access] = await Promise.all([
+const [server, page, router, layout, access, pageToolbar] = await Promise.all([
   readFile(new URL('../backend/src/index.ts', import.meta.url), 'utf8'),
   readFile(new URL('../frontend/src/pages/App/CustomerProductionReport.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../frontend/src/router.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../frontend/src/layouts/MainLayout.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../frontend/src/utils/accessControl.js', import.meta.url), 'utf8'),
+  readFile(new URL('../frontend/src/components/PageToolbar.jsx', import.meta.url), 'utf8'),
 ]);
 const messages = await readFile(new URL('../frontend/src/constants/uiMessages.js', import.meta.url), 'utf8');
 
@@ -47,4 +48,9 @@ test('sales report is routed, permissioned, printable, and exportable', () => {
   assert.match(page, /displayEmpty/);
   assert.match(page, /renderValue=.*text\.allCustomers/);
   assert.match(page, /selectedCustomer \? customerLabel\(selectedCustomer, languageCode\) : text\.allCustomers/);
+  assert.match(page, /import PageToolbar from/);
+  assert.match(page, /import SearchInput from/);
+  assert.match(page, /toolbar=\{<PageToolbar/);
+  assert.doesNotMatch(page, /toolbar=\{<Stack/);
+  assert.match(pageToolbar, /className=\{className\}/);
 });

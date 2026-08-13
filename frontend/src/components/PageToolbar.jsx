@@ -7,11 +7,13 @@ const PageToolbar = ({
   right = null,
   sx = {},
   showLastUpdater = true,
+  className,
 }) => {
   if (!left && !right) return null;
 
   return (
     <Box
+      className={className}
       sx={{
         display: 'flex',
         flexDirection: { xs: 'column', lg: 'row' },
