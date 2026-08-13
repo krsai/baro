@@ -34,6 +34,12 @@ test('sales report is routed, permissioned, printable, and exportable', () => {
   assert.match(page, /window\.print\(\)/);
   assert.match(page, /text\/csv;charset=utf-8/);
   assert.match(page, /monthlySummary/);
+  assert.match(page, /useState\(false\).*includeCompleted|includeCompleted.*useState\(false\)/s);
+  assert.match(page, /!includeCompleted && row\.status === 'COMPLETED'/);
+  assert.doesNotMatch(page, /<Alert severity="info">\{text\.note\}<\/Alert>/);
+  assert.match(page, /includeCompleted: '완료 포함'/);
+  assert.match(page, /includeCompleted: 'Include completed'/);
+  assert.match(page, /includeCompleted: 'Bao gồm đã hoàn thành'/);
   assert.match(messages, /customerProductionReport:\s*\{ ko: '보고서', en: 'Report', vi: 'Báo cáo' \}/);
   assert.match(page, /title: '고객 생산 진행 보고서'/);
   assert.match(page, /title: 'Customer Production Progress Report'/);

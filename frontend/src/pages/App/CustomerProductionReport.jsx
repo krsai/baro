@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Box, Button, Chip, CircularProgress, FormControl, InputLabel, LinearProgress,
+  Alert, Box, Button, Chip, CircularProgress, FormControl, FormControlLabel, InputLabel, LinearProgress,
   MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
-  TableRow, TextField, Typography,
+  TableRow, TextField, Typography, Switch,
 } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -19,27 +19,27 @@ const TEXT = {
     print: '인쇄 / PDF', csv: 'CSV 내보내기', generated: '기준 시각', order: '주문번호', style: '스타일', due: '납기',
     quantity: '주문수량', assigned: '배정수량', produced: '확인 생산수량', progress: '공정 진행률', lastWork: '최근 작업기록',
     estimate: '예상 완료일', status: '상태', basis: '예측 근거', empty: '조건에 맞는 보고서 항목이 없습니다.',
-    note: '진행률은 작업기록의 공정별 실적을 기준으로 계산합니다. 확인 생산수량은 모든 필수 공정을 통과했다고 확인되는 수량이며, 예상 완료일은 실제 작업 시작일에 배정 당시 ST 기반 소요일수를 더해 계산합니다.',
     review: '일정 검토 필요', monthlySummary: '월 합계 기록 기반',
     loadError: '생산 진행 보고서를 불러오지 못했습니다.',
+    includeCompleted: '완료 포함',
   },
   en: {
     title: 'Customer Production Progress Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style',
     print: 'Print / PDF', csv: 'Export CSV', generated: 'As of', order: 'Order', style: 'Style', due: 'Due', quantity: 'Order qty',
     assigned: 'Assigned', produced: 'Verified output', progress: 'Process progress', lastWork: 'Latest record', estimate: 'Estimated completion',
     status: 'Status', basis: 'Estimate basis', empty: 'No report rows match the filters.',
-    note: 'Progress is calculated from work records by process. Verified output is confirmed through every required process; completion is estimated from the actual start date plus the ST-based planned duration.',
     review: 'schedule review required', monthlySummary: 'monthly summary data',
     loadError: 'Failed to load the production progress report.',
+    includeCompleted: 'Include completed',
   },
   vi: {
     title: 'Báo cáo tiến độ sản xuất khách hàng', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng',
     print: 'In / PDF', csv: 'Xuất CSV', generated: 'Thời điểm', order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Số lượng đơn',
     assigned: 'Đã phân công', produced: 'Sản lượng xác nhận', progress: 'Tiến độ công đoạn', lastWork: 'Ghi nhận gần nhất', estimate: 'Dự kiến hoàn thành',
     status: 'Trạng thái', basis: 'Cơ sở dự báo', empty: 'Không có dữ liệu phù hợp.',
-    note: 'Tiến độ được tính từ nhật ký theo từng công đoạn. Sản lượng xác nhận là số lượng đã đi qua tất cả công đoạn bắt buộc; ngày hoàn thành dự kiến được tính từ ngày bắt đầu thực tế cộng thời lượng kế hoạch theo ST.',
     review: 'cần xem lại lịch', monthlySummary: 'dữ liệu tổng hợp tháng',
     loadError: 'Không thể tải báo cáo tiến độ sản xuất.',
+    includeCompleted: 'Bao gồm đã hoàn thành',
   },
 };
 
@@ -72,6 +72,7 @@ const CustomerProductionReport = () => {
   const [error, setError] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [search, setSearch] = useState('');
+  const [includeCompleted, setIncludeCompleted] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -95,11 +96,12 @@ const CustomerProductionReport = () => {
   const rows = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return data.rows.filter((row) => {
+      if (!includeCompleted && row.status === 'COMPLETED') return false;
       if (customerId && String(row.customerId) !== customerId) return false;
       if (!keyword) return true;
       return [row.orderNumber, row.styleCode, row.styleName].filter(Boolean).join(' ').toLowerCase().includes(keyword);
     });
-  }, [customerId, data.rows, search]);
+  }, [customerId, data.rows, includeCompleted, search]);
   const selectedCustomer = data.customers.find((item) => String(item.id) === customerId) || null;
 
   const exportCsv = () => {
@@ -114,12 +116,11 @@ const CustomerProductionReport = () => {
   return <AppPageContainer
     title={text.title}
     titleActions={<Stack direction="row" spacing={1} className="report-screen-actions"><Button variant="outlined" startIcon={<DownloadIcon />} onClick={exportCsv} disabled={!rows.length}>{text.csv}</Button><Button variant="contained" startIcon={<PrintIcon />} onClick={() => window.print()} disabled={!rows.length}>{text.print}</Button></Stack>}
-    toolbar={<Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="flex-end" className="report-screen-actions"><TextField size="small" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} sx={{ mr: 'auto', width: { xs: '100%', md: 320 } }} /><FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>{text.customer}</InputLabel><Select value={customerId} label={text.customer} onChange={(event) => setCustomerId(event.target.value)}><MenuItem value="">{text.allCustomers}</MenuItem>{data.customers.map((customer) => <MenuItem key={customer.id} value={String(customer.id)}>{customerLabel(customer, languageCode)}</MenuItem>)}</Select></FormControl></Stack>}
+    toolbar={<Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="flex-end" alignItems={{ xs: 'stretch', md: 'center' }} className="report-screen-actions"><TextField size="small" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} sx={{ mr: 'auto', width: { xs: '100%', md: 320 } }} /><FormControlLabel control={<Switch size="small" checked={includeCompleted} onChange={(event) => setIncludeCompleted(event.target.checked)} />} label={text.includeCompleted} sx={{ whiteSpace: 'nowrap' }} /><FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>{text.customer}</InputLabel><Select value={customerId} label={text.customer} onChange={(event) => setCustomerId(event.target.value)}><MenuItem value="">{text.allCustomers}</MenuItem>{data.customers.map((customer) => <MenuItem key={customer.id} value={String(customer.id)}>{customerLabel(customer, languageCode)}</MenuItem>)}</Select></FormControl></Stack>}
   >
     <style>{`@media print { .report-screen-actions, nav, header, aside { display:none!important; } body { background:#fff!important; } .customer-production-report { padding:0!important; } }`}</style>
     <Stack spacing={2} className="customer-production-report">
       <Box><Typography variant="h5" fontWeight={800}>{selectedCustomer ? customerLabel(selectedCustomer, languageCode) : text.title}</Typography><Typography variant="caption" color="text.secondary">{text.generated}: {data.generatedAt ? new Date(data.generatedAt).toLocaleString() : '-'}</Typography></Box>
-      <Alert severity="info">{text.note}</Alert>
       {error ? <Alert severity="error">{error}</Alert> : null}
       {loading ? <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress size={30} /></Box> : rows.length === 0 ? <Paper variant="outlined" sx={{ p: 5, textAlign: 'center' }}><Typography color="text.secondary">{text.empty}</Typography></Paper> :
         <TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow><TableCell>{text.customer}</TableCell><TableCell>{text.order}</TableCell><TableCell>{text.style}</TableCell><TableCell>{text.due}</TableCell><TableCell align="right">{text.quantity}</TableCell><TableCell align="right">{text.assigned}</TableCell><TableCell align="right">{text.produced}</TableCell><TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell><TableCell>{text.lastWork}</TableCell><TableCell>{text.estimate}</TableCell><TableCell>{text.status}</TableCell><TableCell>{text.basis}</TableCell></TableRow></TableHead><TableBody>{rows.map((row) => { const status = STATUS[row.status] || STATUS.UNASSIGNED; return <TableRow key={`${row.orderId}:${row.styleId || row.styleCode}`}><TableCell>{rowCustomerLabel(row, languageCode)}</TableCell><TableCell sx={{ fontWeight: 700 }}>{row.orderNumber}</TableCell><TableCell>{[row.styleCode, row.styleName].filter(Boolean).join(' · ') || '-'}</TableCell><TableCell>{row.dueDate || '-'}</TableCell><TableCell align="right">{fmt(row.orderedQuantity)}</TableCell><TableCell align="right">{fmt(row.assignedQuantity)}{row.unassignedQuantity > 0 ? <Typography variant="caption" color="warning.main" display="block">-{fmt(row.unassignedQuantity)}</Typography> : null}</TableCell><TableCell align="right">{fmt(row.producedQuantity)}</TableCell><TableCell><Stack spacing={0.5}><LinearProgress variant="determinate" value={row.progressPercent} color={row.reviewRequired ? 'error' : 'primary'} /><Typography variant="caption">{row.progressPercent}%{row.reviewRequired ? ` · ${text.review}` : ''}</Typography></Stack></TableCell><TableCell>{row.lastWorkDate || '-'}</TableCell><TableCell sx={{ fontWeight: 700 }}>{row.estimatedCompletionDate || '-'}</TableCell><TableCell><Chip size="small" label={status[languageCode] || status.en} color={status.color} variant={row.status === 'COMPLETED' ? 'filled' : 'outlined'} /></TableCell><TableCell><Stack spacing={0.25}><Typography variant="body2">{BASIS[row.estimateBasis]?.[languageCode] || row.estimateBasis}</Typography>{row.hasMonthlySummaryRecords ? <Typography variant="caption" color="warning.main">{text.monthlySummary}</Typography> : null}</Stack></TableCell></TableRow>; })}</TableBody></Table></TableContainer>}
