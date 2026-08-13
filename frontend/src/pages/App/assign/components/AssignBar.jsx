@@ -125,7 +125,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
   const statusMeta =
     statusType === 'completed'
       ? {
-          label: getUiMessage('assign.statusCompleted', '완료 확정', languageCode),
+          label: getUiMessage('assign.statusCompleted', '생산 완료', languageCode),
           chipBg: 'rgba(255,255,255,0.92)',
           chipColor: '#334155',
           cardBg: '#E5E7EB',
@@ -134,15 +134,6 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
             ? 'rgba(245,158,11,0.72)'
             : 'rgba(100,116,139,0.38)',
         }
-      : statusType === 'ready'
-        ? {
-            label: getUiMessage('assign.statusReady', '작업 완료', languageCode),
-            chipBg: 'rgba(255,247,237,0.96)',
-            chipColor: '#B45309',
-            cardBg: '#FFF7ED',
-            progressBg: '#F6AD55',
-            borderColor: 'rgba(217,119,6,0.34)',
-          }
       : statusType === 'review'
         ? {
             label: getUiMessage('assign.statusReviewRequired', '검토 필요', languageCode),
@@ -196,6 +187,14 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
     quantityLabel,
     !isNarrow ? progressSummary : null,
   ]);
+  const reviewReason = statusType === 'review' ? assignment?.reviewReason : null;
+  const reviewFormula = reviewReason
+    ? `${Number(reviewReason.recordedTotalQuantity || 0).toLocaleString()} / ${Number(
+        reviewReason.requiredTotalQuantity || 0
+      ).toLocaleString()} (${Number(reviewReason.plannedQuantity || 0).toLocaleString()}×${Number(
+        reviewReason.processCount || 0
+      ).toLocaleString()})`
+    : '';
 
   const openContextMenu = (event) => {
     event.preventDefault();
@@ -254,6 +253,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
             )
           : null,
         completionWarningMessage || null,
+        reviewFormula ? `검토 기준 ${reviewFormula}` : null,
       ])}
       {...attributes}
       {...listeners}
@@ -386,6 +386,27 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
       >
         {statusMeta.label}
       </Box>
+
+      {reviewFormula && !isNarrow && (
+        <Box
+          sx={{
+            position: 'absolute',
+            left: 8,
+            top: 28,
+            zIndex: 2,
+            px: 0.8,
+            py: 0.2,
+            borderRadius: 1,
+            backgroundColor: 'rgba(255,255,255,0.86)',
+            color: '#991B1B',
+            fontSize: 10,
+            fontWeight: 700,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {languageCode === 'ko' ? `기록합계 / 완료기준 ${reviewFormula}` : reviewFormula}
+        </Box>
+      )}
 
       {!hideMetaBadges && progressPercent > 0 && (
         <Box

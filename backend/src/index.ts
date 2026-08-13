@@ -20784,7 +20784,6 @@ const ASSIGNMENT_CONFIDENCE_MEDIUM = "MEDIUM";
 const ASSIGNMENT_CONFIDENCE_HIGH = "HIGH";
 const ASSIGNMENT_STATUS_IN_PROGRESS = "IN_PROGRESS";
 const ASSIGNMENT_STATUS_REVIEW_REQUIRED = "REVIEW_REQUIRED";
-const ASSIGNMENT_STATUS_READY_TO_COMPLETE = "READY_TO_COMPLETE";
 const ASSIGNMENT_STATUS_PRODUCTION_COMPLETED = "PRODUCTION_COMPLETED";
 const AUTO_WORKLOG_COMPLETED_BY = "system:auto-worklog";
 
@@ -23120,6 +23119,12 @@ const buildAssignmentPlanProgressRows = async (
         producedQuantity >= baselineQuantityRaw &&
         processGroupTotals.every((value) => value === producedQuantity)
     );
+    const reviewProcessTotals = ensureArray(ctSnapshot?.processes).map((process, index) => ({
+      styleProcessId: toPositiveIntOrNull(process?.styleProcessId),
+      processCode: resolveOptionalString(process?.processCode ?? process?.code, null),
+      processName: resolveOptionalString(process?.processName ?? process?.name, null),
+      quantity: Math.max(0, Math.round(Number(processGroupTotals[index] ?? 0) || 0)),
+    }));
     const progressPercent =
       operationalProgressRatio == null ? null : Math.min(100, Math.round(operationalProgressRatio * 100));
     const plannedStTotalSeconds = resolvePersistedAssignmentPlanStTotalSeconds(plan);
@@ -23287,23 +23292,15 @@ const buildAssignmentPlanProgressRows = async (
     const lineOrphanWorkRecordCount =
       orphanWorkRecordCountByLine.get(Number(plan.lineId)) || 0;
 
-    const isAutoReadyConfirmed =
-      !isMarkedCompleted &&
-      Boolean(productionCompletedDateKey) &&
-      resolveOptionalString(plan?.closedBy, null) === AUTO_WORKLOG_COMPLETED_BY;
-    const isManualReadyConfirmed =
-      !isMarkedCompleted && Boolean(productionCompletedDateKey) && !isAutoReadyConfirmed;
     const scheduleStatus:
       | "IN_PROGRESS"
       | "REVIEW_REQUIRED"
-      | "READY_TO_COMPLETE"
-      | "PRODUCTION_COMPLETED" = isMarkedCompleted
+      | "PRODUCTION_COMPLETED" =
+      isMarkedCompleted || Boolean(productionCompletedDateKey) || hasExactProcessCompletion
       ? ASSIGNMENT_STATUS_PRODUCTION_COMPLETED
-      : isManualReadyConfirmed || hasExactProcessCompletion
-        ? ASSIGNMENT_STATUS_READY_TO_COMPLETE
-        : hasWorkProgressReachedCompletion
-          ? ASSIGNMENT_STATUS_REVIEW_REQUIRED
-          : ASSIGNMENT_STATUS_IN_PROGRESS;
+      : hasWorkProgressReachedCompletion
+        ? ASSIGNMENT_STATUS_REVIEW_REQUIRED
+        : ASSIGNMENT_STATUS_IN_PROGRESS;
 
     const stateAssignment = stateAssignmentsByExternalId.get(plan.externalId) || null;
     const snapshotSchedule = resolveNormalizedAssignmentCtSnapshot(plan)?.schedule || null;
@@ -23392,6 +23389,18 @@ const buildAssignmentPlanProgressRows = async (
         ? "COMPLETED_BELOW_BASELINE"
         : null,
       completionGapQuantity,
+      reviewReason:
+        scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED
+          ? {
+              code: "PROCESS_QUANTITY_MISMATCH",
+              plannedQuantity: baselineQuantityRaw,
+              processCount,
+              requiredTotalQuantity: totalExpected,
+              recordedTotalQuantity: totalDone,
+              producedQuantity,
+              processTotals: reviewProcessTotals,
+            }
+          : null,
       plannedStTotalSeconds,
       remainingStTotalSeconds,
       isStSnapshotMissing,
@@ -23646,35 +23655,6 @@ const persistAssignmentPlanProgressSnapshot = async ({
     map.set(externalId, row);
     return map;
   }, new Map<string, any>());
-  const payrollLockMonthByPlanId = new Map<number, string>();
-  targetPlans.forEach((plan) => {
-    const monthKey = resolveAssignmentPlanPayrollLockMonth(plan);
-    if (monthKey) payrollLockMonthByPlanId.set(Number(plan.id), monthKey);
-  });
-  const prospectivePayrollLockMonthByPlanId = new Map<number, string>();
-  targetPlans.forEach((plan) => {
-    const row = rowByExternalId.get(plan.externalId);
-    if (!row) return;
-    const nextStatus = resolveOptionalString(row?.scheduleStatus, null);
-    const autoReadyDate =
-      nextStatus === ASSIGNMENT_STATUS_READY_TO_COMPLETE
-        ? resolveAutoWorklogCompletionDate(row)
-        : null;
-    const prospectiveMonthKey = autoReadyDate
-      ? toDateKeyInTimeZone(autoReadyDate, BUSINESS_TIME_ZONE)?.slice(0, 7) || null
-      : null;
-    if (prospectiveMonthKey) {
-      prospectivePayrollLockMonthByPlanId.set(Number(plan.id), prospectiveMonthKey);
-    }
-  });
-  const payrollLockedMonthSet = await loadLockedPayrollMonthSet(
-    orgId,
-    [
-      ...Array.from(payrollLockMonthByPlanId.values()),
-      ...Array.from(prospectivePayrollLockMonthByPlanId.values()),
-    ]
-  );
-
   const updates = targetPlans
     .map((plan) => {
       const row = rowByExternalId.get(plan.externalId);
@@ -23685,60 +23665,26 @@ const persistAssignmentPlanProgressSnapshot = async ({
       );
       const nextStatus =
         resolveOptionalString(row?.scheduleStatus, null) ?? ASSIGNMENT_STATUS_IN_PROGRESS;
-      const currentReadyDate = toOptionalDateValue(
+      const currentCompletionDate = toOptionalDateValue(
         plan?.productionCompletedAt,
         resolveAssignmentPlanClosedAtValue(plan)
       );
-      const currentReadyBy = resolveOptionalString(plan?.closedBy, null);
-      const isAutoReadyConfirmed =
-        !Boolean(plan?.isCompleted) &&
-        currentReadyDate != null &&
-        currentReadyBy === AUTO_WORKLOG_COMPLETED_BY;
-      const isManualReadyConfirmed =
-        !Boolean(plan?.isCompleted) &&
-        currentReadyDate != null &&
-        !isAutoReadyConfirmed;
-      const autoReadyDate =
-        nextStatus === ASSIGNMENT_STATUS_READY_TO_COMPLETE
-          ? resolveAutoWorklogCompletionDate(row)
-          : null;
-      const prospectivePayrollLockMonth =
-        prospectivePayrollLockMonthByPlanId.get(Number(plan.id)) || null;
-      const isProspectivePayrollLocked = prospectivePayrollLockMonth
-        ? payrollLockedMonthSet.has(prospectivePayrollLockMonth)
-        : false;
-      const payrollLockMonth = payrollLockMonthByPlanId.get(Number(plan.id)) || null;
-      const isPayrollLocked = payrollLockMonth
-        ? payrollLockedMonthSet.has(payrollLockMonth)
-        : false;
-      const shouldAutoReady =
-        nextStatus === ASSIGNMENT_STATUS_READY_TO_COMPLETE &&
-        !Boolean(plan?.isCompleted) &&
-        !isManualReadyConfirmed &&
-        autoReadyDate != null &&
-        !isProspectivePayrollLocked;
-      const canAutoRollback = isAutoReadyConfirmed && !isPayrollLocked;
+      const shouldAutoComplete =
+        nextStatus === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED;
+      const completionDate =
+        currentCompletionDate || resolveAutoWorklogCompletionDate(row);
       const actualProducedCompletedAt = toDateValueFromDateKeyForAssignmentSchedule(
         row?.actualProducedCompletedAt
-      );
-      const originalEndDate = toDateValueFromDateKeyForAssignmentSchedule(
-        row?._originalEndDateKey
       );
       const forecastCompletedAt = toDateValueFromDateKeyForAssignmentSchedule(
         row?.forecastCompletedAt
       );
-      const candidateEndDate =
-        nextStatus !== ASSIGNMENT_STATUS_READY_TO_COMPLETE && canAutoRollback
-          ? forecastCompletedAt || originalEndDate
-          : toDateValueFromDateKeyForAssignmentSchedule(row?.candidateEndDate);
-      const renderEndDate =
-        nextStatus !== ASSIGNMENT_STATUS_READY_TO_COMPLETE && canAutoRollback
-          ? originalEndDate
-          : toDateValueFromDateKeyForAssignmentSchedule(row?.renderEndDate);
+      const candidateEndDate = toDateValueFromDateKeyForAssignmentSchedule(row?.candidateEndDate);
+      const renderEndDate = toDateValueFromDateKeyForAssignmentSchedule(row?.renderEndDate);
       const resolvedPlannedQuantity =
         toOptionalNonNegativeInt(plan?.assignmentQuantity, null) ??
         toOptionalNonNegativeInt(row?.plannedQuantity, null);
-      const nextCloseMode = shouldAutoReady
+      const nextCloseMode = shouldAutoComplete
         ? resolveAssignmentPlanCloseMode({
             closedQty: resolvedProducedQuantity,
             targetQty: resolvedPlannedQuantity,
@@ -23756,34 +23702,14 @@ const persistAssignmentPlanProgressSnapshot = async ({
         updatedAt: new Date(),
       };
 
-      if (nextStatus === ASSIGNMENT_STATUS_READY_TO_COMPLETE) {
-        data.isCompleted = false;
-        if (isManualReadyConfirmed) {
-          data.productionCompletedAt = currentReadyDate;
-          data.completedAt = currentReadyDate;
-        } else if (shouldAutoReady) {
-          data.productionCompletedAt = autoReadyDate;
-          data.completedAt = autoReadyDate;
-        }
-      } else if (canAutoRollback) {
-        data.isCompleted = false;
-        data.productionCompletedAt = null;
-        data.completedAt = null;
-        data.finalQuantity = null;
-        data.closedQty = null;
-        data.closedAt = null;
-        data.closedBy = null;
-        data.closeMode = null;
-        data.closeBasis = null;
-      } else {
-        data.isCompleted = false;
-      }
-
-      if (shouldAutoReady) {
+      data.isCompleted = shouldAutoComplete;
+      if (shouldAutoComplete && completionDate) {
+        data.productionCompletedAt = completionDate;
+        data.completedAt = completionDate;
         data.finalQuantity = resolvedProducedQuantity;
         data.closedQty = resolvedProducedQuantity;
-        data.closedAt = autoReadyDate;
-        data.closedBy = AUTO_WORKLOG_COMPLETED_BY;
+        data.closedAt = completionDate;
+        data.closedBy = resolveOptionalString(plan?.closedBy, null) || AUTO_WORKLOG_COMPLETED_BY;
         data.closeMode = nextCloseMode;
         if (plan?.closeBasis == null) {
           data.closeBasis = null;
@@ -23911,7 +23837,7 @@ const buildAssignmentPlanCloseResponse = (plan: any) => {
     (isCompleted
       ? ASSIGNMENT_STATUS_PRODUCTION_COMPLETED
       : productionCompletedAt
-        ? ASSIGNMENT_STATUS_READY_TO_COMPLETE
+        ? ASSIGNMENT_STATUS_PRODUCTION_COMPLETED
         : ASSIGNMENT_STATUS_IN_PROGRESS);
 
   return {
@@ -24080,7 +24006,7 @@ const completeAssignmentPlanProduction = async ({
       },
       data: {
         productionCompletedAt: completedAt,
-        isCompleted: false,
+        isCompleted: true,
         completedAt,
         finalQuantity: resolvedClosedQty,
         closedQty: resolvedClosedQty,
@@ -24090,7 +24016,7 @@ const completeAssignmentPlanProduction = async ({
         closeBasis,
         candidateEndDate: completionDate,
         renderEndDate: completionDate,
-        scheduleStatus: ASSIGNMENT_STATUS_READY_TO_COMPLETE,
+        scheduleStatus: ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
         forecastCompletedAt: null,
         forecastBasis: ASSIGNMENT_FORECAST_BASIS_UNAVAILABLE,
         updatedAt: new Date(),
@@ -24689,7 +24615,7 @@ app.patch("/assignment-plans/:externalId/production-complete", async (req, res) 
       productionCompletedAt: toIsoDateStringOrNull(
         completion.updatedPlan.productionCompletedAt
       ),
-      scheduleStatus: ASSIGNMENT_STATUS_READY_TO_COMPLETE,
+      scheduleStatus: ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
     },
     reorderedAssignments: 0,
   });

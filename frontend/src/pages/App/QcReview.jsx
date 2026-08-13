@@ -966,7 +966,7 @@ const QcReview = () => {
             검수
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            검수 이력을 날짜별로 추가하고 누적 상태를 확인합니다. 제작 완료 확정은 배정 화면 상세에서 처리합니다.
+            검수 이력을 날짜별로 추가하고 누적 상태를 확인합니다. 생산 완료는 작업기록의 공정별 수량으로 자동 판정됩니다.
           </Typography>
         </Stack>
       }
@@ -1042,7 +1042,7 @@ const QcReview = () => {
         </Paper>
 
         <Alert severity="info">
-          QC 화면은 검수 통과 이력을 쌓는 용도입니다. 제작 완료 확정은 배정 화면 상세에서만 처리합니다.
+          QC 화면은 검수 통과 이력을 쌓는 용도입니다. 생산 완료는 작업기록의 공정별 수량으로 자동 판정됩니다.
         </Alert>
         {!loading && loadError ? <Alert severity="error">{loadError}</Alert> : null}
         {!loading && !loadError && visibleRows.length === 0 ? (

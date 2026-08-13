@@ -41,6 +41,7 @@
     "verify:workorder-item-backfill": "node scripts/verify-workorder-item-backfill.js",
     "verify:style-process-backfill": "node scripts/verify-style-process-backfill.js",
     "verify:assignment-board-state-backfill": "node scripts/verify-assignment-board-state-backfill.js",
+    "verify:assignment-ready-status-removal": "node scripts/verify-assignment-ready-status-removal.js --require-clean",
     "verify:relational-integrity": "npm run build && node scripts/verify-relational-integrity.js",
     "verify:st-bucket-fk": "node scripts/inspect-st-bucket-fk-readiness.js",
     "verify:at-v2-shadow": "node scripts/verify-at-v2-shadow.js",

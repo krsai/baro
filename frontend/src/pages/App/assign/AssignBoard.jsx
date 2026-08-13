@@ -1766,7 +1766,6 @@ const resolveAssignmentVisualStatus = ({
 }) => {
   if (isCompleted) return 'completed';
   if (String(scheduleStatus || '').trim() === 'REVIEW_REQUIRED') return 'review';
-  if (String(scheduleStatus || '').trim() === 'READY_TO_COMPLETE') return 'ready';
   const normalizedProgressPercent = clampPercentValue(workProgressPercent);
   const normalizedTodayDateKey = typeof todayDateKey === 'string' ? todayDateKey : '';
   const normalizedStartDateKey =
@@ -2055,11 +2054,6 @@ const isAssignmentSchedulerCompleted = (assignment) => {
   if (assignment?.isCompleted) return true;
   if (assignment?.isPayrollLocked || assignment?.payrollLockMonth) return true;
   return false;
-};
-
-const canAssignmentConfirmWorkDone = (assignment) => {
-  const scheduleStatus = String(assignment?.scheduleStatus || '').trim();
-  return scheduleStatus === 'REVIEW_REQUIRED';
 };
 
 const toOptionalUnitRatio = (value) => {
@@ -2976,8 +2970,6 @@ const AssignBoard = () => {
   const [assignments, setAssignments] = useState(initialAssignments);
   const [assignmentProgressById, setAssignmentProgressById] = useState({});
   const [assignmentProgressStale, setAssignmentProgressStale] = useState(false);
-  const [completingAssignmentId, setCompletingAssignmentId] = useState(null);
-  const [completionQtyDraft, setCompletionQtyDraft] = useState('');
   const [lineMonthCapacityRows, setLineMonthCapacityRows] = useState([]);
   const [lineMonthCapacityLoading, setLineMonthCapacityLoading] = useState(false);
   const [lineMonthCapacityError, setLineMonthCapacityError] = useState(false);
@@ -5387,18 +5379,6 @@ const AssignBoard = () => {
     }
     return `card:${String(detailState.cardId || '')}`;
   }, [detailState]);
-  useEffect(() => {
-    if (detailState?.targetType !== 'assignment') {
-      setCompletionQtyDraft('');
-      return;
-    }
-    const assignmentId = String(detailState?.assignmentId || '');
-    const produced = assignmentProgressById[assignmentId]?.producedQuantity;
-    setCompletionQtyDraft(
-      produced != null ? String(Math.max(0, Math.round(Number(produced) || 0))) : '0'
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detailTargetKey]);
   const detailDraftByProcess = useMemo(
     () => detailDraftsByTarget[detailTargetKey] || {},
     [detailDraftsByTarget, detailTargetKey]
@@ -5650,14 +5630,6 @@ const AssignBoard = () => {
     contextMenuState,
     contextMenuTargetCard,
   ]);
-  const contextMarkCompleteDisabled = useMemo(() => {
-    if (!contextMenuState || contextMenuState.targetType !== 'assignment') return true;
-    if (!contextMenuTargetAssignment) return true;
-    return (
-      Boolean(contextMenuTargetAssignment?.isCompleted) ||
-      !canAssignmentConfirmWorkDone(contextMenuTargetAssignment)
-    );
-  }, [contextMenuState, contextMenuTargetAssignment]);
   const contextRecordOmissionCompleteDisabled = useMemo(() => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return true;
     if (!contextMenuTargetAssignment) return true;
@@ -5692,83 +5664,15 @@ const AssignBoard = () => {
     }
     setContextMenuState(null);
   }, [contextMenuState]);
+  const handleContextOpenReviewReason = useCallback(() => {
+    if (!contextMenuState || contextMenuState.targetType !== 'assignment') return;
+    setDetailState({ targetType: 'assignment', assignmentId: contextMenuState.id });
+    setContextMenuState(null);
+  }, [contextMenuState]);
   const handleCloseDetail = useCallback(() => {
     blurActiveElement();
     setDetailState(null);
   }, [blurActiveElement]);
-  const handleConfirmProductionComplete = useCallback(
-    async (assignmentId, confirmedQty) => {
-      if (!assignmentId) return;
-      const targetAssignment = assignmentById.get(String(assignmentId)) || null;
-      if (!canAssignmentConfirmWorkDone(targetAssignment)) {
-        showNotification(
-          getUiMessage(
-            'assign.workDoneConfirmBlocked',
-            '검토 필요 또는 작업 완료 상태에서만 완료 확인을 할 수 있습니다.',
-            languageCode
-          ),
-          'warning'
-        );
-        return;
-      }
-      setCompletingAssignmentId(assignmentId);
-      try {
-        await requestJSON(
-          `/assignment-plans/${encodeURIComponent(String(assignmentId))}/production-complete` +
-            buildQueryString({ orgId: activeOrgId }),
-          {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ confirmedQty }),
-          }
-        );
-        showNotification(
-          getUiMessage('assign.workDoneConfirmSuccess', '작업 완료를 확인했습니다.', languageCode),
-          'success'
-        );
-        emitWorkspaceDataChanged({
-          topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
-          orgId: activeOrgId,
-          assignmentIds: [assignmentId],
-          source: 'assign-detail-complete',
-        });
-        requestExternalBoardReload();
-        handleCloseDetail();
-      } catch (error) {
-        const message = String(error?.message || '').trim();
-        if (message.includes('assignment plan payroll locked')) {
-          showNotification(
-            getUiMessage(
-              'assign.productionCompletePayrollLocked',
-              'Payroll-locked assignments cannot have their completed quantity changed.',
-              languageCode
-            ),
-            'warning'
-          );
-        } else {
-          showNotification(
-            message ||
-              getUiMessage(
-                'assign.productionCompleteError',
-                'Failed to confirm production completion.',
-                languageCode
-              ),
-            'error'
-          );
-        }
-      } finally {
-        setCompletingAssignmentId(null);
-      }
-    },
-    [
-      activeOrgId,
-      assignmentById,
-      handleCloseDetail,
-      languageCode,
-      requestExternalBoardReload,
-      showNotification,
-    ]
-  );
   const handleReviewAssignmentCt = useCallback(
     async (assignmentId) => {
       if (!assignmentId) return;
@@ -6570,32 +6474,6 @@ const AssignBoard = () => {
     setContextMenuState(null);
   }, [contextMenuState, handleSplitAssignment, handleSplitCard]);
 
-  const promptConfirmedQuantity = useCallback((assignment) => {
-    const produced = assignmentProgressById[assignment?.id]?.producedQuantity;
-    const defaultQty = Math.max(
-      0,
-      Math.round(Number(produced != null ? produced : assignment?.quantity ?? 0) || 0)
-    );
-    const input = window.prompt(
-      getUiMessage('assign.confirmWorkDoneQtyPrompt', '확인할 작업 완료 수량을 입력하세요', languageCode),
-      String(defaultQty)
-    );
-    if (input == null) return null;
-    const value = Number(input);
-    if (!Number.isFinite(value) || value < 0) return null;
-    return Math.round(value);
-  }, [assignmentProgressById, languageCode]);
-
-  const handleContextMarkProductionComplete = useCallback(() => {
-    if (!contextMenuState || contextMenuState.targetType !== 'assignment') return;
-    const assignment = assignmentById.get(contextMenuState.id);
-    setContextMenuState(null);
-    if (!assignment?.id || assignment.isCompleted) return;
-    const confirmedQty = promptConfirmedQuantity(assignment);
-    if (confirmedQty == null) return;
-    handleConfirmProductionComplete(assignment.id, confirmedQty);
-  }, [contextMenuState, assignmentById, promptConfirmedQuantity, handleConfirmProductionComplete]);
-
   const handleContextRecordOmissionComplete = useCallback(async () => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return;
     const assignment = assignmentById.get(contextMenuState.id);
@@ -7164,17 +7042,16 @@ const AssignBoard = () => {
           <MenuItem onClick={handleContextOpenDetail} disabled={controlsDisabled}>
             {getUiMessage('assign.contextOpenDetail', 'Open Detail', languageCode)}
           </MenuItem>
+          {contextMenuTargetAssignment?.scheduleStatus === 'REVIEW_REQUIRED' ? (
+            <MenuItem onClick={handleContextOpenReviewReason}>
+              {languageCode === 'ko' ? '검토 사유 보기' : 'View review reason'}
+            </MenuItem>
+          ) : null}
           <Divider />
           <MenuItem onClick={handleContextSplit} disabled={controlsDisabled || contextSplitDisabled}>
             {getUiMessage('assign.contextSplitQuantity', 'Split Quantity', languageCode)}
           </MenuItem>
           <Divider />
-          <MenuItem
-            onClick={handleContextMarkProductionComplete}
-            disabled={controlsDisabled || contextMarkCompleteDisabled}
-          >
-            {getUiMessage('assign.confirmWorkDone', '작업 완료 확인', languageCode)}
-          </MenuItem>
           <MenuItem
             onClick={handleContextRecordOmissionComplete}
             disabled={controlsDisabled || contextRecordOmissionCompleteDisabled}
@@ -7595,88 +7472,52 @@ const AssignBoard = () => {
                   </Alert>
                 )}
 
-                {detailAssignment &&
-                !detailAssignmentIsCompleted &&
-                canAssignmentConfirmWorkDone(detailAssignment) ? (
-                  <Paper variant="outlined" sx={{ p: 1.5 }}>
-                    <Stack spacing={1.25}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                        {getUiMessage(
-                          'assign.confirmWorkDone',
-                          '작업 완료 확인',
-                          languageCode
-                        )}
+                {detailAssignment?.scheduleStatus === 'REVIEW_REQUIRED' &&
+                detailAssignment?.reviewReason ? (
+                  <Alert severity="warning" icon={false} sx={{ alignItems: 'stretch' }}>
+                    <Stack spacing={1.25} sx={{ width: '100%' }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                        {languageCode === 'ko'
+                          ? '검토 필요 · 공정별 수량 불일치'
+                          : 'Review required · process quantities differ'}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {getUiMessage(
-                          'assign.confirmWorkDoneHelper',
-                          '작업기록 수량을 검토한 뒤 작업 완료 수량을 확인하세요.',
-                          languageCode
-                        )}
+                      <Typography variant="body2">
+                        {languageCode === 'ko'
+                          ? `작업기록 합계 ${Number(detailAssignment.reviewReason.recordedTotalQuantity || 0).toLocaleString()}건이 완료 기준 ${Number(detailAssignment.reviewReason.requiredTotalQuantity || 0).toLocaleString()}건(배정 ${Number(detailAssignment.reviewReason.plannedQuantity || 0).toLocaleString()}장 × 공정 ${Number(detailAssignment.reviewReason.processCount || 0).toLocaleString()}개)에 도달했지만, 공정별 수량이 같지 않습니다.`
+                          : 'The work-record total reached the completion threshold, but quantities differ by process.'}
                       </Typography>
-                      <Stack
-                        direction={{ xs: 'column', sm: 'row' }}
-                        spacing={1.5}
-                        alignItems={{ xs: 'stretch', sm: 'center' }}
-                      >
-                        <TextField
-                          label={getUiMessage('assign.confirmedQtyLabel', 'Confirmed Quantity', languageCode)}
-                          size="small"
-                          type="number"
-                          value={completionQtyDraft}
-                          onChange={(event) => setCompletionQtyDraft(event.target.value)}
-                          disabled={Boolean(completingAssignmentId) || controlsDisabled}
-                          sx={{ width: { xs: '100%', sm: 160 } }}
-                        />
-                        <Typography variant="body2" color="text.secondary">
-                          {getUiMessage('assign.quantityLabel', 'Quantity', languageCode)}:{' '}
-                          {formatNumberWithCommas(detailAssignment?.quantity ?? 0, {
-                            fallback: '0',
-                            maximumFractionDigits: 0,
-                          })}
-                        </Typography>
-                        {(() => {
-                          const closeMode = resolveProductionCloseMode(
-                            completionQtyDraft,
-                            detailAssignment?.quantity
-                          );
-                          if (!closeMode) return null;
-                          return (
-                            <Chip
-                              size="small"
-                              color={
-                                closeMode === 'FULL'
-                                  ? 'success'
-                                  : closeMode === 'OVER'
-                                    ? 'info'
-                                    : 'warning'
-                              }
-                              label={getProductionCloseModeLabel(closeMode, languageCode)}
-                            />
-                          );
-                        })()}
-                      </Stack>
-                      <Stack direction="row" spacing={1}>
-                        <Button
-                          variant="contained"
-                          color="success"
-                          size="small"
-                          disabled={
-                            Boolean(completingAssignmentId) ||
-                            controlsDisabled ||
-                            !canAssignmentConfirmWorkDone(detailAssignment)
-                          }
-                          onClick={() => {
-                            const parsedQty = Math.max(0, Math.round(Number(completionQtyDraft) || 0));
-                            handleConfirmProductionComplete(detailAssignment?.id, parsedQty);
-                          }}
-                        >
-                          {getUiMessage('assign.confirmWorkDone', '작업 완료 확인', languageCode)}
-                        </Button>
-                      </Stack>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                        {languageCode === 'ko'
+                          ? `현재 확인 가능한 생산수량: ${Number(detailAssignment.reviewReason.producedQuantity || 0).toLocaleString()}장 (공정별 수량의 최솟값)`
+                          : `Currently verifiable production: ${Number(detailAssignment.reviewReason.producedQuantity || 0).toLocaleString()}`}
+                      </Typography>
+                      <TableContainer component={Paper} variant="outlined">
+                        <Table size="small">
+                          <TableHead><TableRow>
+                            <TableCell>{languageCode === 'ko' ? '공정' : 'Process'}</TableCell>
+                            <TableCell align="right">{languageCode === 'ko' ? '기록 수량' : 'Recorded'}</TableCell>
+                            <TableCell align="right">{languageCode === 'ko' ? '배정 대비' : 'vs plan'}</TableCell>
+                          </TableRow></TableHead>
+                          <TableBody>
+                            {(detailAssignment.reviewReason.processTotals || []).map((process, index) => {
+                              const quantity = Number(process?.quantity || 0);
+                              const planned = Number(detailAssignment.reviewReason.plannedQuantity || 0);
+                              const difference = quantity - planned;
+                              return <TableRow key={process?.styleProcessId || `${process?.processCode || 'process'}-${index}`}>
+                                <TableCell>{[process?.processCode, process?.processName].filter(Boolean).join(' · ') || `${languageCode === 'ko' ? '공정' : 'Process'} ${index + 1}`}</TableCell>
+                                <TableCell align="right">{quantity.toLocaleString()}</TableCell>
+                                <TableCell align="right" sx={{ color: difference === 0 ? 'success.main' : 'warning.dark', fontWeight: 700 }}>
+                                  {difference > 0 ? '+' : ''}{difference.toLocaleString()}
+                                </TableCell>
+                              </TableRow>;
+                            })}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
                     </Stack>
-                  </Paper>
+                  </Alert>
                 ) : null}
+
               </>
             )}
           </Stack>

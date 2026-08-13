@@ -369,14 +369,13 @@ const buildAssignmentProgressMap = (rows) =>
 const resolveAssignmentWorkStatus = (assignment) => {
   const scheduleStatus = String(assignment?.progress?.scheduleStatus || '').trim();
   if (assignment?.progress?.isCompleted) return 'completed';
-  if (scheduleStatus === 'READY_TO_COMPLETE') return 'ready';
   if (scheduleStatus === 'REVIEW_REQUIRED') return 'review';
   return 'in_progress';
 };
 
 const isAssignmentWorkClosed = (assignment) => {
   const workStatus = resolveAssignmentWorkStatus(assignment);
-  return workStatus === 'ready' || workStatus === 'completed';
+  return workStatus === 'completed';
 };
 
 const resolveLineDailyCapacitySeconds = (line, headcount) => {
@@ -1047,12 +1046,11 @@ const ProductionPlanBoard = () => {
           }
           const workStatus = resolveAssignmentWorkStatus(assignment);
           if (workStatus === 'completed') acc.completed += 1;
-          else if (workStatus === 'ready') acc.ready += 1;
           else if (workStatus === 'review') acc.review += 1;
           else acc.inProgress += 1;
           return acc;
         },
-        { notReady: 0, inProgress: 0, review: 0, ready: 0, completed: 0 }
+        { notReady: 0, inProgress: 0, review: 0, completed: 0 }
       ),
     [assignmentsForView]
   );
@@ -2003,10 +2001,9 @@ const ProductionPlanBoard = () => {
             />
             <Chip label={`진행 ${workStatusSummary.inProgress}`} color="default" variant="outlined" />
             <Chip label={`검토 필요 ${workStatusSummary.review}`} color="error" variant="outlined" />
-            <Chip label={`작업 완료 ${workStatusSummary.ready}`} color="warning" variant="outlined" />
             {workStatusSummary.completed > 0 ? (
               <Chip
-                label={`완료 확정 ${workStatusSummary.completed}`}
+                label={`생산 완료 ${workStatusSummary.completed}`}
                 color="success"
                 variant="outlined"
               />
@@ -2067,10 +2064,8 @@ const ProductionPlanBoard = () => {
                       const workStatus = resolveAssignmentWorkStatus(assignment);
                       const workStatusChip =
                         workStatus === 'completed'
-                          ? { label: '완료 확정', color: 'success', variant: 'filled' }
-                          : workStatus === 'ready'
-                            ? { label: '작업 완료', color: 'success', variant: 'outlined' }
-                            : workStatus === 'review'
+                          ? { label: '생산 완료', color: 'success', variant: 'filled' }
+                          : workStatus === 'review'
                               ? { label: '검토 필요', color: 'error', variant: 'outlined' }
                               : {
                                   label: '진행',
@@ -2157,7 +2152,7 @@ const ProductionPlanBoard = () => {
                                       ? 'error'
                                       : workStatus === 'review'
                                         ? 'error'
-                                        : workStatus === 'ready' || workStatus === 'completed'
+                                        : workStatus === 'completed'
                                         ? 'success'
                                         : 'primary'
                                   }

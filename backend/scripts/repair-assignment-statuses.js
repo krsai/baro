@@ -11,7 +11,7 @@ const prisma = new PrismaClient();
 const AUTO_WORKLOG_COMPLETED_BY = "system:auto-worklog";
 const STATUS_IN_PROGRESS = "IN_PROGRESS";
 const STATUS_REVIEW_REQUIRED = "REVIEW_REQUIRED";
-const STATUS_READY_TO_COMPLETE = "READY_TO_COMPLETE";
+const STATUS_PRODUCTION_COMPLETED = "PRODUCTION_COMPLETED";
 
 const normalizeDateKey = (value) => {
   if (typeof value !== "string") return null;
@@ -246,13 +246,8 @@ const buildDesiredPlanState = (plan) => {
     toOptionalDateValue(plan?.productionCompletedAt) ||
     toOptionalDateValue(plan?.closedAt) ||
     null;
-  const currentReadyBy = String(plan?.closedBy || "").trim() || null;
-  const isManualReadyConfirmed =
-    !Boolean(plan?.isCompleted) &&
-    currentReadyDate != null &&
-    currentReadyBy !== AUTO_WORKLOG_COMPLETED_BY;
-  const desiredStatus = isManualReadyConfirmed || hasExactProcessCompletion
-    ? STATUS_READY_TO_COMPLETE
+  const desiredStatus = Boolean(plan?.isCompleted) || currentReadyDate || hasExactProcessCompletion
+    ? STATUS_PRODUCTION_COMPLETED
     : hasWorkProgressReachedCompletion
       ? STATUS_REVIEW_REQUIRED
       : STATUS_IN_PROGRESS;
@@ -276,7 +271,6 @@ const buildDesiredPlanState = (plan) => {
     totalDone: stats.totalDone,
     processCount,
     currentReadyDate,
-    currentReadyBy,
     autoReadyDate,
   };
 };
@@ -331,11 +325,12 @@ const main = async () => {
     if (storedStatus !== desired.desiredStatus) {
       nextData.scheduleStatus = desired.desiredStatus;
     }
-    if (storedCompleted) {
-      nextData.isCompleted = false;
+    const shouldBeCompleted = desired.desiredStatus === STATUS_PRODUCTION_COMPLETED;
+    if (storedCompleted !== shouldBeCompleted) {
+      nextData.isCompleted = shouldBeCompleted;
     }
 
-    if (desired.desiredStatus === STATUS_READY_TO_COMPLETE) {
+    if (shouldBeCompleted) {
       const resolvedReadyDate =
         desired.currentReadyDate || desired.autoReadyDate || null;
       const resolvedClosedQty =
@@ -388,10 +383,12 @@ const main = async () => {
     (acc, change) => {
       const key = `${change.fromStatus || "NULL"} -> ${change.toStatus}`;
       acc.statusTransitions[key] = (acc.statusTransitions[key] || 0) + 1;
-      if (change.fromCompleted) acc.completedDowngrades += 1;
+      if (!change.fromCompleted && change.toStatus === STATUS_PRODUCTION_COMPLETED) {
+        acc.completedUpgrades += 1;
+      }
       return acc;
     },
-    { total: changes.length, completedDowngrades: 0, statusTransitions: {} }
+    { total: changes.length, completedUpgrades: 0, statusTransitions: {} }
   );
 
   console.log(

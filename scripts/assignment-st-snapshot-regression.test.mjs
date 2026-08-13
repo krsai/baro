@@ -164,12 +164,22 @@ test('progress endpoint always rebuilds rows and the board bypasses request cach
   assert.match(assignBoard, /setLineMonthCapacityRows\(\[\]\)[\s\S]{0,100}setLineMonthCapacityError\(true\)/);
 });
 
-test('assignment workflow exposes exact review, ready, and completed states', () => {
-  assert.match(backend, /isMarkedCompleted[\s\S]{0,100}ASSIGNMENT_STATUS_PRODUCTION_COMPLETED/);
-  assert.match(backend, /isManualReadyConfirmed \|\| hasExactProcessCompletion[\s\S]{0,100}ASSIGNMENT_STATUS_READY_TO_COMPLETE/);
+test('assignment workflow exposes review and production-completed states', () => {
+  assert.match(backend, /isMarkedCompleted \|\| Boolean\(productionCompletedDateKey\) \|\| hasExactProcessCompletion[\s\S]{0,100}ASSIGNMENT_STATUS_PRODUCTION_COMPLETED/);
   assert.match(backend, /hasWorkProgressReachedCompletion[\s\S]{0,100}ASSIGNMENT_STATUS_REVIEW_REQUIRED/);
   assert.match(backend, /currentScheduleStatus !== ASSIGNMENT_STATUS_REVIEW_REQUIRED/);
   assert.match(assignBoard, /scheduleStatus \|\| ''\)\.trim\(\) === 'REVIEW_REQUIRED'\) return 'review'/);
-  assert.match(assignBoard, /scheduleStatus \|\| ''\)\.trim\(\) === 'READY_TO_COMPLETE'\) return 'ready'/);
   assert.match(assignBoard, /if \(isCompleted\) return 'completed'/);
+  assert.doesNotMatch(backend, /READY_TO_COMPLETE/);
+  assert.doesNotMatch(assignBoard, /READY_TO_COMPLETE/);
+});
+
+test('review-required progress includes the visible calculation basis and completes directly', () => {
+  assert.match(backend, /reviewReason:[\s\S]{0,300}PROCESS_QUANTITY_MISMATCH/);
+  assert.match(backend, /requiredTotalQuantity: totalExpected/);
+  assert.match(backend, /recordedTotalQuantity: totalDone/);
+  assert.match(backend, /processTotals: reviewProcessTotals/);
+  assert.match(backend, /productionCompletedAt: completedAt,[\s\S]{0,80}isCompleted: true/);
+  assert.match(assignBoard, /작업기록 합계[\s\S]{0,300}완료 기준/);
+  assert.match(assignBoard, /공정별 수량의 최솟값/);
 });

@@ -217,7 +217,6 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
 }) {
   const queueStatus = assignment?.queueStatus || (assignment?.isCompleted ? 'completed' : 'queued');
   const isCompleted = queueStatus === 'completed';
-  const isReadyToComplete = queueStatus === 'ready_to_complete';
   const isReviewRequired = queueStatus === 'review_required';
   const isZeroQuantityOverflow = queueStatus === 'zero_quantity_overflow';
   // Kept only as a record of already-produced overflow (AGENTS.md 40번) -
@@ -254,16 +253,6 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
             variant: 'outlined',
             color: 'error',
           }
-      : isReadyToComplete
-        ? {
-            label: getUiMessage(
-              'assign.readyStatusCompact',
-              'Work done',
-              languageCode
-            ),
-          variant: 'outlined',
-          color: 'warning',
-        }
       : null,
     // Orthogonal to the queueStatus chip above - a queued/review/ready card can also
     // have actual recorded work whose progress ratio the backend could not compute
@@ -310,25 +299,6 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
           '수량 검토 필요',
           languageCode
         )
-      : isReadyToComplete
-      ? assignment.completedAt
-        ? getUiMessage(
-            assignment.completionDateIsEstimated
-              ? 'assign.workDoneEstimatedAtCompact'
-              : 'assign.workDoneAtCompact',
-            assignment.completionDateIsEstimated
-              ? 'Work done est. {date}'
-              : 'Work done {date}',
-            languageCode,
-            {
-              date: formatDateKeyLabel(assignment.completedAt, '-'),
-            }
-          )
-        : getUiMessage(
-            'assign.awaitingCompletionCompact',
-            'Awaiting completion',
-            languageCode
-          )
       : '';
   const accentColor = isCompleted
     ? '#15803D'
@@ -336,18 +306,14 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
       ? '#B45309'
     : isReviewRequired
       ? '#B91C1C'
-      : isReadyToComplete
-        ? '#D97706'
-        : '#2563EB';
+      : '#2563EB';
   const backgroundColor = isCompleted
     ? '#F3F4F6'
     : isZeroQuantityOverflow
       ? '#FFFBEB'
     : isReviewRequired
       ? '#FEF2F2'
-      : isReadyToComplete
-        ? '#FFF7ED'
-        : '#FFFFFF';
+      : '#FFFFFF';
 
   return (
     <CompactBoardCard
@@ -443,16 +409,6 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
                   '{count} in review',
                   languageCode,
                   { count: row.reviewRequiredAssignmentCount || 0 }
-                )}
-              </Typography>
-            ) : null}
-            {Number(row.readyToCompleteAssignmentCount) > 0 ? (
-              <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
-                {getUiMessage(
-                  'assign.workDoneCountCompact',
-                  '{count} work done',
-                  languageCode,
-                  { count: row.readyToCompleteAssignmentCount || 0 }
                 )}
               </Typography>
             ) : null}
@@ -641,10 +597,6 @@ const LineMonthCapacityBoard = ({
       queuedAssignments: filterAssignmentsBySearchTerm(row.queuedAssignments, lowerSearchTerm),
       reviewRequiredAssignments: filterAssignmentsBySearchTerm(
         row.reviewRequiredAssignments,
-        lowerSearchTerm
-      ),
-      readyToCompleteAssignments: filterAssignmentsBySearchTerm(
-        row.readyToCompleteAssignments,
         lowerSearchTerm
       ),
       completedAssignments: filterAssignmentsBySearchTerm(
@@ -840,32 +792,6 @@ const LineMonthCapacityBoard = ({
                                 {row.reviewRequiredAssignments.map((assignment) => (
                                   <AssignmentDetailCard
                                     key={assignment.id || `${row.lineId}:${assignment.label}:review`}
-                                    assignment={assignment}
-                                    languageCode={languageCode}
-                                    onOpenDetail={onOpenAssignmentDetail}
-                                    onOpenContextMenu={onOpenContextMenu}
-                                  />
-                                ))}
-                              </Stack>
-                            </>
-                          ) : null}
-                          {row.readyToCompleteAssignments.length > 0 ? (
-                            <>
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{ display: 'block', mt: 1.5, mb: 1 }}
-                              >
-                                {getUiMessage(
-                                  'assign.readyAssignmentsHeader',
-                                  'Work done',
-                                  languageCode
-                                )}
-                              </Typography>
-                              <Stack spacing={1}>
-                                {row.readyToCompleteAssignments.map((assignment) => (
-                                  <AssignmentDetailCard
-                                    key={assignment.id || `${row.lineId}:${assignment.label}:ready`}
                                     assignment={assignment}
                                     languageCode={languageCode}
                                     onOpenDetail={onOpenAssignmentDetail}

@@ -302,13 +302,11 @@ const buildLineQueueForecast = ({
   const dailyCapacitySeconds = resolveLineDailyCapacitySeconds(line);
   const queuedAssignments = [];
   const reviewRequiredAssignments = [];
-  const readyToCompleteAssignments = [];
   const completedAssignments = [];
   const zeroQuantityOverflowAssignments = [];
   let queuedCount = 0;
   let completedCount = 0;
   let reviewRequiredCount = 0;
-  let readyToCompleteCount = 0;
   let zeroQuantityOverflowCount = 0;
 
   (Array.isArray(assignments) ? assignments : []).forEach((assignment) => {
@@ -348,7 +346,6 @@ const buildLineQueueForecast = ({
     const persistedCompletedAt =
       productionCompletedAt || normalizeDateKey(assignment?.completedAt);
     const completedAt = persistedCompletedAt || actualProducedCompletedAt || null;
-    const isReadyToComplete = !isCompleted && scheduleStatus === 'READY_TO_COMPLETE';
     const isReviewRequired = !isCompleted && scheduleStatus === 'REVIEW_REQUIRED';
     const elapsedDays = Math.max(0, Number(assignment?.elapsedDays) || 0);
     const baseAssignment = {
@@ -378,18 +375,6 @@ const buildLineQueueForecast = ({
       });
       return;
     }
-    if (isReadyToComplete) {
-      readyToCompleteCount += 1;
-      readyToCompleteAssignments.push({
-        ...baseAssignment,
-        queuePosition: readyToCompleteCount,
-        queueStatus: 'ready_to_complete',
-        estimatedRemainingWorkDays: 0,
-        forecastStartDateKey: null,
-        forecastEndDateKey: completedAt || null,
-      });
-      return;
-    }
     if (isReviewRequired) {
       reviewRequiredCount += 1;
       reviewRequiredAssignments.push({
@@ -412,11 +397,7 @@ const buildLineQueueForecast = ({
     queuedAssignments.push({
       ...baseAssignment,
       queuePosition: queuedCount,
-      queueStatus: isReadyToComplete
-        ? 'ready_to_complete'
-        : isReviewRequired
-          ? 'review_required'
-          : 'queued',
+      queueStatus: isReviewRequired ? 'review_required' : 'queued',
       estimatedRemainingWorkDays,
       forecastStartDateKey: null,
       forecastEndDateKey: null,
@@ -455,11 +436,9 @@ const buildLineQueueForecast = ({
     dailyCapacitySeconds,
     queuedAssignments,
     reviewRequiredAssignments,
-    readyToCompleteAssignments,
     completedAssignments,
     completedCount,
     reviewRequiredCount,
-    readyToCompleteCount,
     totalRemainingStTotalSeconds,
     queueBacklogDays: roundDaysEstimate(totalRemainingStTotalSeconds, dailyCapacitySeconds),
     lineFreeDateKey,
@@ -1037,17 +1016,13 @@ export const buildLineMonthCapacityBoardRows = ({
       activeAssignmentCount: queueForecast.queuedAssignments.length,
       reviewRequiredAssignmentCount: queueForecast.reviewRequiredCount,
       completedAssignmentCount: queueForecast.completedCount,
-      readyToCompleteAssignmentCount: queueForecast.readyToCompleteCount,
-      completionPendingAssignmentCount:
-        queueForecast.reviewRequiredAssignments.length +
-        queueForecast.readyToCompleteAssignments.length,
+      completionPendingAssignmentCount: queueForecast.reviewRequiredAssignments.length,
       finishedAssignmentCount: queueForecast.completedAssignments.length,
       zeroQuantityOverflowAssignmentCount: queueForecast.zeroQuantityOverflowAssignments.length,
       months,
       assignments: assignmentsForLine,
       queuedAssignments: queueForecast.queuedAssignments,
       reviewRequiredAssignments: queueForecast.reviewRequiredAssignments,
-      readyToCompleteAssignments: queueForecast.readyToCompleteAssignments,
       completedAssignments: queueForecast.completedAssignments,
       zeroQuantityOverflowAssignments: queueForecast.zeroQuantityOverflowAssignments,
     };

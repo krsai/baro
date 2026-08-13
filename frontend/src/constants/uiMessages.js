@@ -389,19 +389,14 @@ export const UI_MESSAGES = {
     },
     queueCountCompact: { ko: '대기 {count}건', en: '{count} queued', vi: '{count} dang cho' },
     completedCountCompact: {
-      ko: '완료 확정 {count}건',
-      en: '{count} completion confirmed',
-      vi: '{count} xac nhan hoan thanh',
+      ko: '생산 완료 {count}건',
+      en: '{count} production complete',
+      vi: '{count} hoan tat san xuat',
     },
     customerPricing: {
       ko: '단가',
       en: 'Pricing',
       vi: 'Đơn giá',
-    },
-    readyCountCompact: {
-      ko: '확정 대기 {count}건',
-      en: '{count} awaiting completion',
-      vi: '{count} cho xac nhan',
     },
     remainingLoadCompact: { ko: '잔량 {hours}', en: 'Remain {hours}', vi: 'Con lai {hours}' },
     backlogDaysCompact: { ko: '예상 {days}', en: 'Backlog {days}', vi: 'Ton dong {days}' },
@@ -411,33 +406,21 @@ export const UI_MESSAGES = {
     etaDaysCompact: { ko: '남은 {days}', en: 'ETA {days}', vi: 'Con {days}' },
     forecastEndCompact: { ko: '예상 종료 {date}', en: 'Finish {date}', vi: 'Xong {date}' },
     completedAtCompact: {
-      ko: '완료 확정 {date}',
-      en: 'Completion confirmed {date}',
-      vi: 'Xác nhận hoan thanh {date}',
+      ko: '생산 완료 {date}',
+      en: 'Production complete {date}',
+      vi: 'Hoan tat san xuat {date}',
     },
     completedEstimatedAtCompact: {
-      ko: '완료 확정 추정 {date}',
-      en: 'Completion confirm est. {date}',
-      vi: 'Uoc tinh xac nhan hoan thanh {date}',
-    },
-    workDoneAtCompact: { ko: '작업 완료 {date}', en: 'Work done {date}', vi: 'Da xong viec {date}' },
-    workDoneEstimatedAtCompact: {
-      ko: '작업 완료 추정 {date}',
-      en: 'Work done est. {date}',
-      vi: 'Uoc tinh xong viec {date}',
-    },
-    awaitingCompletionCompact: {
-      ko: '완료 확정 대기',
-      en: 'Awaiting completion',
-      vi: 'Cho xac nhan hoan thanh',
+      ko: '생산 완료 추정 {date}',
+      en: 'Production completion est. {date}',
+      vi: 'Uoc tinh hoan tat san xuat {date}',
     },
     etaUnavailableCompact: { ko: 'ETA 계산 불가', en: 'ETA unavailable', vi: 'Khong tinh duoc ETA' },
     completedStatusCompact: {
-      ko: '완료 확정',
-      en: 'Completion confirmed',
-      vi: 'Xác nhận hoan thanh',
+      ko: '생산 완료',
+      en: 'Production complete',
+      vi: 'Hoan tat san xuat',
     },
-    readyStatusCompact: { ko: '작업 완료', en: 'Work done', vi: 'Da xong viec' },
     reviewStatusCompact: { ko: '검토 필요', en: 'Review required', vi: 'Can xem xet' },
     progressUnknownStatusCompact: {
       ko: '진행률 확인 필요',
@@ -480,9 +463,9 @@ export const UI_MESSAGES = {
       vi: 'Công việc dang cho tren chuyen',
     },
     finishedAssignmentsHeader: {
-      ko: '완료 확정 목록',
-      en: 'Completion confirmed on this line',
-      vi: 'Đã xác nhận hoan thanh tren chuyen',
+      ko: '생산 완료 목록',
+      en: 'Production complete on this line',
+      vi: 'Hoan tat san xuat tren chuyen',
     },
     zeroQuantityOverflowHeader: {
       ko: '확인 필요 (주문에서 빠졌지만 이미 작업한 배정)',
@@ -505,9 +488,9 @@ export const UI_MESSAGES = {
       vi: 'Không có phan cong dang cho tren chuyen nay.',
     },
     noFinishedAssignmentsInLine: {
-      ko: '이 라인에 완료 확정 항목이 없습니다.',
-      en: 'No completion-confirmed assignments in this line.',
-      vi: 'Không có muc da xac nhan hoan thanh tren chuyen nay.',
+      ko: '이 라인에 생산 완료 항목이 없습니다.',
+      en: 'No production-complete assignments in this line.',
+      vi: 'Khong co muc hoan tat san xuat tren chuyen nay.',
     },
     noAssignmentsInLine: {
       ko: '이 라인에는 배정이 없습니다.',
@@ -588,7 +571,7 @@ export const UI_MESSAGES = {
       vi: 'Không thể thay doi so luong hoan thanh cua the da chot phu cap san luong.',
     },
     productionCompleteError: {
-      ko: '제작 완료 확정에 실패했습니다.',
+      ko: '생산 완료 처리에 실패했습니다.',
       en: 'Failed to confirm production completion.',
       vi: 'Xác nhận hoan thanh san xuat khong thanh cong.',
     },
@@ -636,37 +619,11 @@ export const UI_MESSAGES = {
       en: 'Assigned work cannot be split. Split it while it is still unassigned.',
       vi: 'Không thể tach cong viec da duoc phan cong. Chi tach khi con o trang thai chua phan cong.',
     },
-    confirmWorkDone: {
-      ko: '작업 완료 확인',
-      en: 'Confirm work done',
-      vi: 'Xác nhận da xong viec',
-    },
-    confirmWorkDoneHelper: {
-      ko: '작업기록 수량을 검토한 뒤 작업 완료 수량을 확인하세요.',
-      en: 'Review work record quantities, then confirm the completed quantity.',
-      vi: 'Kiểm tra so luong trong nhat ky roi xac nhan so luong hoan thanh.',
-    },
-    confirmWorkDoneQtyPrompt: {
-      ko: '확인할 작업 완료 수량을 입력하세요',
-      en: 'Enter the confirmed work-done quantity',
-      vi: 'Nhập số lượng cong viec da xac nhan hoan thanh',
-    },
-    workDoneConfirmBlocked: {
-      ko: '검토 필요 상태에서만 작업 완료 확인을 할 수 있습니다.',
-      en: 'Completion can only be confirmed from Review Required status.',
-      vi: 'Chi co the xac nhan hoan thanh khi o trang thai Can xem xet.',
-    },
-    workDoneConfirmSuccess: {
-      ko: '작업 완료를 확인했습니다.',
-      en: 'Work done has been confirmed.',
-      vi: 'Đã xác nhận cong viec hoan thanh.',
-    },
     statusCompleted: {
-      ko: '완료 확정',
-      en: 'Completion confirmed',
-      vi: 'Xác nhận hoan thanh',
+      ko: '생산 완료',
+      en: 'Production complete',
+      vi: 'Hoan tat san xuat',
     },
-    statusReady: { ko: '작업 완료', en: 'Work done', vi: 'Da xong viec' },
     statusReviewRequired: {
       ko: '검토 필요',
       en: 'Review required',
@@ -677,20 +634,10 @@ export const UI_MESSAGES = {
       en: '{count} in review',
       vi: '{count} can xem xet',
     },
-    workDoneCountCompact: {
-      ko: '작업 완료 {count}건',
-      en: '{count} work done',
-      vi: '{count} da xong viec',
-    },
     reviewAssignmentsHeader: {
       ko: '검토 필요',
       en: 'Review required',
       vi: 'Can xem xet',
-    },
-    readyAssignmentsHeader: {
-      ko: '작업 완료',
-      en: 'Work done',
-      vi: 'Da xong viec',
     },
     saveSuccess: {
       ko: '작업 배정을 저장했습니다.',
@@ -1118,12 +1065,6 @@ const resolveLocalizedMessage = (value, languageCode = getCurrentLanguageCode())
     value.vi ||
     ''
   );
-};
-
-UI_MESSAGES.assign.workDoneConfirmBlocked = {
-  ko: '검토 필요 상태에서만 작업 완료 확인을 할 수 있습니다.',
-  en: 'Work-done confirmation is only available from Review Required status.',
-  vi: 'Chi co the xac nhan cong viec hoan thanh khi dang o trang thai Can xem xet.',
 };
 
 const formatMessage = (template, params = {}) =>
