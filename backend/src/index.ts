@@ -20916,18 +20916,14 @@ const loadAssignmentPlanProgressWorkRows = async ({
     .filter((planId): planId is number => planId !== null);
   if (planIds.length === 0) return [];
 
-  const directRows: any[] = await prisma.workRecord.findMany({
-      where: {
-        orgId,
-        assignmentPlanId: { in: planIds },
-      },
-      select: {
+  const buildSelect = (includeOutsourceFields: boolean) => ({
         id: true,
         workLogId: true,
         assignmentPlanId: true,
         workerId: true,
-        isOutsourced: true,
-        outsourceVendorName: true,
+        ...(includeOutsourceFields
+          ? { isOutsourced: true, outsourceVendorName: true }
+          : {}),
         lineId: true,
         styleId: true,
         styleProcessId: true,
@@ -20954,8 +20950,24 @@ const loadAssignmentPlanProgressWorkRows = async ({
             displayDate: true,
           },
         },
-      } as any,
+      });
+  const loadRows = (includeOutsourceFields: boolean) => prisma.workRecord.findMany({
+      where: {
+        orgId,
+        assignmentPlanId: { in: planIds },
+      },
+      select: buildSelect(includeOutsourceFields) as any,
     });
+  let directRows: any[];
+  try {
+    directRows = await loadRows(true);
+  } catch (error: any) {
+    if (String(error?.code || "") !== "P2022") throw error;
+    console.warn(
+      `[${context}] outsourced WorkRecord columns are unavailable; using legacy progress query`
+    );
+    directRows = await loadRows(false);
+  }
 
   void context;
   void stateAssignmentsByExternalId;
@@ -23512,7 +23524,6 @@ const buildAssignmentPlanProgressRows = async (
       forecastBasis,
       confidence,
       renderStartDate: factualStartDateKey,
-      plannedDurationDays: durationDays,
       candidateEndDate: candidateEndDateKey,
       renderEndDate: renderEndDateKey,
       scheduleStatus,
@@ -28952,7 +28963,14 @@ app.get("/customer-production-reports", async (req, res) => {
   const orderIds = orders.map((order) => order.id);
   const plans = await prisma.assignmentPlan.findMany({
     where: { orgId: organization.id, workOrderId: { in: orderIds } },
-    select: { id: true, externalId: true, workOrderId: true, styleId: true },
+    select: {
+      id: true,
+      externalId: true,
+      workOrderId: true,
+      styleId: true,
+      startIndex: true,
+      endIndex: true,
+    },
     orderBy: [{ workOrderId: "asc" }, { styleId: "asc" }, { id: "asc" }],
   });
   const progressRows = await buildAssignmentPlanProgressRows(
@@ -28966,7 +28984,16 @@ app.get("/customer-production-reports", async (req, res) => {
   plans.forEach((plan) => {
     const key = `${plan.workOrderId}:${plan.styleId ?? "none"}`;
     const bucket = plansByOrderStyle.get(key) || [];
-    bucket.push({ ...plan, progress: progressByExternalId.get(plan.externalId) || null });
+    bucket.push({
+      ...plan,
+      reportPlannedDurationDays: Math.max(
+        1,
+        toSignedInt(plan.endIndex, toSignedInt(plan.startIndex, 0)) -
+          toSignedInt(plan.startIndex, 0) +
+          1
+      ),
+      progress: progressByExternalId.get(plan.externalId) || null,
+    });
     plansByOrderStyle.set(key, bucket);
   });
 
@@ -29025,7 +29052,10 @@ app.get("/customer-production-reports", async (req, res) => {
       const forecastCandidates = progress
         .map((row) => {
           const actualStartDate = normalizeDateKey(row?.firstWorkDate);
-          const plannedDurationDays = Math.max(1, toSignedInt(row?.plannedDurationDays, 1));
+          const plannedDurationDays = Math.max(
+            1,
+            toSignedInt(row?.reportPlannedDurationDays, 1)
+          );
           if (actualStartDate) {
             return shiftDateKeyByDaysForAssignmentSchedule(
               actualStartDate,

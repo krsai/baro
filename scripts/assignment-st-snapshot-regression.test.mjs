@@ -58,14 +58,16 @@ test('line and schedule movement never replace an existing historical ST snapsho
   assert.doesNotMatch(basisChange, /lineId|startIndex|endIndex/);
 });
 
-test('progress reads all required coverage columns and has no missing-column fallback', () => {
+test('progress always reads coverage columns and only falls back for pending outsource columns', () => {
   const start = backend.indexOf('const loadAssignmentPlanProgressWorkRows =');
   const end = backend.indexOf('const resolveAssignmentProcessGroupTotals =', start);
   const loader = backend.slice(start, end);
   assert.match(loader, /effectiveCoverageStartDate: true/);
   assert.match(loader, /coverageStartDate: true/);
   assert.match(loader, /includeDiagnostics = false/);
-  assert.match(loader, /includeDiagnostics \? \{ displayDate: true \} : \{\}/);
+  assert.match(loader, /displayDate: true/);
+  assert.match(loader, /String\(error\?\.code \|\| ""\) !== "P2022"/);
+  assert.match(loader, /directRows = await loadRows\(false\)/);
   assert.doesNotMatch(loader, /records: true/);
   assert.doesNotMatch(loader, /fallbackModes|fallback work-record projection|isWorkLogCoverageMissingColumnError/);
 });
@@ -74,8 +76,10 @@ test('line month capacity only loads display relations and ST bucket diagnostics
   const loaderStart = backend.indexOf('const loadAssignmentPlanProgressWorkRows =');
   const loaderEnd = backend.indexOf('const resolveAssignmentProcessGroupTotals =', loaderStart);
   const loader = backend.slice(loaderStart, loaderEnd);
-  assert.match(loader, /includeDiagnostics\s*\?\s*\{[\s\S]*worker:/);
-  assert.match(loader, /includeDiagnostics\s*\?\s*\{[\s\S]*styleProcess:/);
+  assert.match(loader, /worker: \{ select: \{ name: true \} \}/);
+  assert.match(loader, /styleProcess:\s*\{[\s\S]*processCode: true/);
+  assert.match(loader, /includeDiagnostics[\s\S]*style:\s*\{/);
+  assert.match(loader, /includeDiagnostics[\s\S]*ctSeconds: true/);
 
   const capacityStart = backend.indexOf('const buildLineMonthCapacityRows =');
   const capacityEnd = backend.indexOf('app.get("/assignment-plan-progress"', capacityStart);

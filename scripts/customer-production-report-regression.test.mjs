@@ -25,7 +25,21 @@ test('forecast is withheld until the full order-style quantity is assigned', () 
   assert.match(server, /hasMonthlySummaryRecords: progress\.some/);
   assert.match(server, /actualStartDate[\s\S]*plannedDurationDays - 1/);
   assert.match(server, /ST_DURATION_FROM_ACTUAL_START/);
+  assert.match(server, /reportPlannedDurationDays/);
+  assert.doesNotMatch(
+    server.slice(server.indexOf('const buildAssignmentPlanProgressRows'), server.indexOf('const isAutoWorklogCompletedPlan')),
+    /plannedDurationDays:\s*durationDays/
+  );
   assert.doesNotMatch(server.slice(server.indexOf('app.get("/customer-production-reports"')), /forecastCompletedAt\) \|\| normalizeDateKey\(row\?\.renderEndDate/);
+});
+
+test('assignment progress remains available before outsource columns are migrated', () => {
+  const progressLoader = server.slice(
+    server.indexOf('const loadAssignmentPlanProgressWorkRows'),
+    server.indexOf('const resolveAssignmentProcessGroupTotals')
+  );
+  assert.match(progressLoader, /String\(error\?\.code \|\| ""\) !== "P2022"/);
+  assert.match(progressLoader, /directRows = await loadRows\(false\)/);
 });
 
 test('sales report is routed, permissioned, printable, and exportable', () => {
