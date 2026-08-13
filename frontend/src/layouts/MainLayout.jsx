@@ -632,7 +632,7 @@ const MainLayout = () => {
             path: '/style',
           },
           {
-            label: getUiMessage('menu.customerProductionReport', '생산 진행 보고서', languageCode),
+            label: getUiMessage('menu.customerProductionReport', '보고서', languageCode),
             icon: <AssessmentIcon />,
             path: '/customer-production-report',
           },

@@ -9,6 +9,7 @@ const [server, page, router, layout, access] = await Promise.all([
   readFile(new URL('../frontend/src/layouts/MainLayout.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../frontend/src/utils/accessControl.js', import.meta.url), 'utf8'),
 ]);
+const messages = await readFile(new URL('../frontend/src/constants/uiMessages.js', import.meta.url), 'utf8');
 
 test('report aggregates customer production by relational order and style', () => {
   assert.match(server, /app\.get\("\/customer-production-reports"/);
@@ -33,4 +34,8 @@ test('sales report is routed, permissioned, printable, and exportable', () => {
   assert.match(page, /window\.print\(\)/);
   assert.match(page, /text\/csv;charset=utf-8/);
   assert.match(page, /monthlySummary/);
+  assert.match(messages, /customerProductionReport:\s*\{ ko: '보고서', en: 'Report', vi: 'Báo cáo' \}/);
+  assert.match(page, /title: '고객 생산 진행 보고서'/);
+  assert.match(page, /title: 'Customer Production Progress Report'/);
+  assert.match(page, /title: 'Báo cáo tiến độ sản xuất khách hàng'/);
 });

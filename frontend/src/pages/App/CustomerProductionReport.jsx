@@ -21,6 +21,7 @@ const TEXT = {
     estimate: '예상 완료일', status: '상태', basis: '예측 근거', empty: '조건에 맞는 보고서 항목이 없습니다.',
     note: '진행률은 작업기록의 공정별 실적을 기준으로 계산합니다. 확인 생산수량은 모든 필수 공정을 통과했다고 확인되는 수량이며, 예상 완료일은 실제 작업 시작일에 배정 당시 ST 기반 소요일수를 더해 계산합니다.',
     review: '일정 검토 필요', monthlySummary: '월 합계 기록 기반',
+    loadError: '생산 진행 보고서를 불러오지 못했습니다.',
   },
   en: {
     title: 'Customer Production Progress Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style',
@@ -29,6 +30,7 @@ const TEXT = {
     status: 'Status', basis: 'Estimate basis', empty: 'No report rows match the filters.',
     note: 'Progress is calculated from work records by process. Verified output is confirmed through every required process; completion is estimated from the actual start date plus the ST-based planned duration.',
     review: 'schedule review required', monthlySummary: 'monthly summary data',
+    loadError: 'Failed to load the production progress report.',
   },
   vi: {
     title: 'Báo cáo tiến độ sản xuất khách hàng', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng',
@@ -37,6 +39,7 @@ const TEXT = {
     status: 'Trạng thái', basis: 'Cơ sở dự báo', empty: 'Không có dữ liệu phù hợp.',
     note: 'Tiến độ được tính từ nhật ký theo từng công đoạn. Sản lượng xác nhận là số lượng đã đi qua tất cả công đoạn bắt buộc; ngày hoàn thành dự kiến được tính từ ngày bắt đầu thực tế cộng thời lượng kế hoạch theo ST.',
     review: 'cần xem lại lịch', monthlySummary: 'dữ liệu tổng hợp tháng',
+    loadError: 'Không thể tải báo cáo tiến độ sản xuất.',
   },
 };
 
@@ -78,9 +81,9 @@ const CustomerProductionReport = () => {
       });
       setData({ customers: result?.customers || [], rows: result?.rows || [], generatedAt: result?.generatedAt || null });
     } catch (loadError) {
-      setError(loadError?.message || 'Failed to load report.');
+      setError(loadError?.message || text.loadError);
     } finally { setLoading(false); }
-  }, [activeOrgId]);
+  }, [activeOrgId, text.loadError]);
 
   useEffect(() => { void load(); }, [load]);
   useWorkspaceRefreshOnEvent({
