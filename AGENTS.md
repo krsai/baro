@@ -1,5 +1,23 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-08-14 보고서·배정 예측 계산 분리
+
+- 고객 보고서의 예상 완료일과 배정 화면의 계획 시간·라인 부하는 서로 다른 업무 계산이다. 보고서는 주문×스타일별 실제 최초 작업일과 해당 배정의 저장된 계획 기간을 사용하고, 배정은 공정별 잔여 수량×저장 ST와 라인 소속 인원의 근무 가능시간, 일요일·조직 휴일, 배정 순서를 사용한다.
+- 보고서 구현을 위해 `buildAssignmentPlanProgressRows`의 배정 계획 기간이나 배정 reflow 계산식을 변경하지 않는다. 보고서에 필요한 기간은 `/customer-production-reports` 내부에서 `AssignmentPlan.startIndex/endIndex`로 별도 계산한다.
+- 배정의 남은 부하는 `Σ max(0, 배정수량 - 공정별 작업기록수량) × assignmentStSnapshot.processes[].stSeconds`가 우선 근거다. 공정 하나의 최소 완성수량으로 전체 ST를 다시 넣거나 보고서용 완료일 공식을 사용하지 않는다.
+
+## 2026-08-14 외주 작업기록과 스키마 오류 처리
+
+- 외주 작업은 `WorkRecord.isOutsourced=true`, 작업자 NULL, 외주업체명과 개당 단가 스냅샷으로 저장한다. 생산 진행률과 배정·보고서 수량에는 포함하되 내부 노동시간, AT 학습, 생산수당 계산에서는 제외한다.
+- 외주 컬럼·인덱스·actor check 제약은 Prisma migration만이 아니라 Railway 운영 스키마의 소스오브트루스인 `backend/migration_fix.sql`에도 멱등하게 포함한다. 새 필수 컬럼·제약을 추가할 때는 시작 시 runtime schema drift 검사 목록도 함께 갱신한다.
+- 운영 DB 스키마가 코드보다 뒤처졌을 때 구 컬럼 projection이나 레거시 쿼리로 우회하지 않는다. 누락을 명확한 스키마 오류로 드러내고 정식 migration 경로로 고친다. 특히 P2022를 잡아 필드를 빼고 재조회하는 fallback은 금지한다.
+
+## 2026-08-14 배정 완료 상태 단순화
+
+- `READY_TO_COMPLETE`는 더 이상 사용하지 않는 레거시 상태다. 신규 저장·응답·화면 그룹에서 생성하거나 해석하지 않는다.
+- 현재 상태는 `IN_PROGRESS`, `REVIEW_REQUIRED`, `PRODUCTION_COMPLETED`이며 최종 완료의 소스오브트루스는 `AssignmentPlan.isCompleted=true`다. 과거 `READY_TO_COMPLETE` 행은 migration에서 `PRODUCTION_COMPLETED`와 완료 플래그로 정규화한다.
+- 수량 불일치로 `REVIEW_REQUIRED`인 카드는 수량 확인 drawer에서 공정별 수량과 원천 작업기록을 검토한 뒤 완료 조정을 수행한다. 별도의 중간 “작업 완료” 그룹을 다시 만들지 않는다.
+
 ## 2026-08-08 고객 판매단가 진입 경로
 
 - 좌측 영업 관리 메뉴에는 독립 `단가` 항목을 표시하지 않는다. 고객별 판매단가는 고객 메뉴의 기존 단가 동작을 통해 `/customer-pricing?customerId=...`로 진입한다.
@@ -564,25 +582,22 @@ AT 목적: 충분한 데이터 축적 후 CT/ST 조정 참고용.
 - `assignmentCtSnapshot`: assignment 저장 시점의 CT 스냅샷 JSON. `processes[].snapshotCtSeconds`와 `processes[].pieceCtSeconds`는 급여/계약 CT 기준이며, snapshot 안에 ST 복사본을 저장하지 않는다. `PUT /assignment-board-state`는 편집 가능한 배정에 대해 서버가 `AssignmentCard.styleId` FK가 가리키는 라이브 `StyleProcess`/`StyleProcessStandard` 기준으로 CT 스냅샷을 재생성하거나 기존 유효 스냅샷을 보존해야 하며, 그래도 유효한 CT를 만들 수 없으면 저장을 거부한다(조용히 `null` 저장 금지).
 - **2026-07-12 적용 완료:** `PUT /assignment-board-state` 저장 경로에서 `preserveExistingAssignmentCtSnapshotsForSave` 우회는 제거됐다. 편집 가능한 assignment는 저장 직전에 서버가 `AssignmentCard.styleId` FK의 라이브 `StyleProcess`/`StyleProcessStandard` 전체를 기준으로 CT snapshot을 다시 조립하고 검증한다. incoming/existing snapshot의 공정 CT를 재사용하는 경우도 `styleProcessId` 일치 또는 현재 `processKey` 일치일 때만 허용한다. 카드/style FK가 없거나, 라이브 공정 전체를 덮는 CT를 만들 수 없거나, 재조립 결과와 현재 payload snapshot이 다르면 409로 저장을 막는다. 프론트 snapshot payload도 `styleProcessId`를 보존하며 더 이상 "현재 snapshot을 못 만들면 기존 snapshot을 통째로 재사용"하지 않는다.
 - `isCompleted`: canonical `완료 확정` 플래그다. 운영 보드의 최종 완료 그룹, 읽기 전용 가드, 완료 assignment 판정의 기준으로 쓴다.
-- `productionCompletedAt` / `completedAt` / `finalQuantity` / `closedQty` / `closedAt` / `closedBy` / `closeMode` / `closeBasis`: 작업 완료 또는 완료 확정 시점의 수량/날짜 스냅샷이다. 현재 `PATCH /assignment-plans/:externalId/production-complete`는 `REVIEW_REQUIRED`를 사람이 확인해 `READY_TO_COMPLETE`로 넘길 때 이 메타데이터를 기록한다. 이 호출만으로 `isCompleted=true`를 만들지는 않는다.
+- `productionCompletedAt` / `completedAt` / `finalQuantity` / `closedQty` / `closedAt` / `closedBy` / `closeMode` / `closeBasis`: 완료 확정 시점의 수량/날짜 스냅샷이다. 현재 `PATCH /assignment-plans/:externalId/production-complete`는 `REVIEW_REQUIRED` 수량 검토를 마친 뒤 canonical 완료 상태와 이 메타데이터를 함께 기록한다.
 - **카드/배정 생성 시점 (§40, 2026-07-05부터)**: `AssignmentCard`/`AssignmentPlan`은 주문을 **저장**할 때가 아니라 **잠글 때**(`POST /orders/:orderId/modification-lock`, `locked:true`) 만들어지거나 갱신된다. 잠기지 않은 주문은 카드가 아예 없다. 해제는 순수 권한 플래그라 카드/배정에 손대지 않는다.
 - **0-수량 오버플로우 (§40)**: 주문에서 스타일이 빠졌는데 그 스타일에 이미 `WorkRecord`가 있으면, 카드/배정을 지우지 않고 `assignmentQuantity=0`으로만 낮춘다. 이미 생산된 수량은 전부 `overflowQuantity`(진행률 응답 필드)로 잡힌다. 배정 보드에는 별도 "확인 필요" 경고 섹션에 표시되고, 연결된 모든 작업기록의 월이 급여 잠금되면 자동으로 그 섹션에서 빠진다.
 
-### 배정 상태 의미 (2026-07-20)
+### 배정 상태 의미 (2026-08-14 갱신)
 - `IN_PROGRESS` = `진행중`
 - `REVIEW_REQUIRED` = `검토 필요`
-- `READY_TO_COMPLETE` = `작업 완료`
 - `PRODUCTION_COMPLETED` (`isCompleted === true`) = `완료 확정`
-- `작업 완료`는 공정별 작업 종료가 시스템 기준으로 맞았거나, `검토 필요` 상태를 사람이 확인해서 급여 지급 대상으로 인정하며 수동으로 넘긴 상태다. 이 상태는 아직 운영 보드에서 보일 수 있다.
 - `검토 필요`는 "주문 수량을 넘겼다" 자체가 아니라 **공정별 완료 수량이 서로 안 맞는 짜투리 상태**일 때를 뜻한다. 예: A=101, B=100, C=100이면 `REVIEW_REQUIRED`가 맞다. 반대로 모든 required 공정이 같은 수량으로 끝났고 그 공통 수량이 주문 수량 이상이면(A=B=C=101) `작업 완료`로 본다.
-- `완료 확정`은 canonical 최종 완료 상태다. 이 상태는 급여/정산과 연결된 후속 설계 영역이며, 현재 `production-complete` 수동 버튼이 이 상태를 만들면 안 된다.
-- `PATCH /assignment-plans/:externalId/production-complete`는 이름과 달리 현재는 수동 `검토 필요 -> 작업 완료` override 경로다. 이 호출은 `productionCompletedAt`/`closedQty`를 기록하지만 `isCompleted=false`, `scheduleStatus=READY_TO_COMPLETE`를 유지한다.
+- `완료 확정`은 canonical 최종 완료 상태다. `production-complete` 수동 동작도 검토 결과를 반영해 이 상태를 만든다.
 - 2026-07-20 정책: 급여 truth 없이 기존 데이터를 `PRODUCTION_COMPLETED`로 일괄 승격하지 않는다. `completedAt`/`productionCompletedAt` 메타데이터만으로 `완료 확정`을 추론하면 안 된다.
 
 ### ⚠️ DB 적용 메모
 - 모든 스키마/데이터 변경은 `backend/migration_fix.sql`로 관리. `backend/railway.json`의 `deploy.preDeployCommand`가 `npm run railway:predeploy`를 실행하도록 설정되어 있어야 하며, 배포 로그에서 migration 실행 여부를 확인한다.
 - rename 필수 컬럼(`StyleProcess.timesPerPiece`, `StyleProcessStandard.bucketQuantity/bucketStSeconds`, `AssignmentPlan.assignment*`)이 운영 DB에 없으면 백엔드 시작 시 `migration_fix.sql`을 먼저 적용하고 나서 traffic을 받는다. 비상 시 `STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT=false`로 자동 적용을 끌 수 있다.
-- **2026-07-06 확인됨: 현재 운영 환경은 `preDeployCommand`가 실제로는 꺼져 있다** (사용자가 의도적으로 비활성화). 즉 위 줄의 "배포마다 자동 적용"은 지금 이 환경에서는 실질적으로 동작하지 않는다. 남은 안전장치는 시작 시 필수 컬럼 체크(`hasField` 목록, `backend/src/index.ts` 상단)뿐인데, 이 목록에 새 컬럼을 추가하는 걸 깜빡하면(§43에서 실제로 그랬음) 드리프트가 감지되지 않고 조용히 운영 장애로 이어진다. **새 컬럼/제약을 `migration_fix.sql`에 추가할 때마다 반드시 이 `hasField` 필수 목록에도 같이 추가하고, 배포 후 실제로 컬럼이 생겼는지 운영 DB를 직접 조회해서 확인할 것** — 자동으로 적용됐을 거라고 가정하지 않는다.
+- **2026-08-14 현재:** `backend/railway.json`에 `preDeployCommand: npm run railway:predeploy`가 설정돼 있다. 그래도 자동 적용을 막연히 가정하지 않고, 새 컬럼·제약은 `migration_fix.sql`과 runtime schema drift 필수 목록을 함께 갱신하며 배포 후 운영 DB에서 직접 확인한다. 스키마 누락을 레거시 조회로 우회하지 않는다.
 - Prisma migration history drift로 `prisma migrate deploy`는 사용하지 않음. `prisma db push` 사용.
 - `AssignmentPlan`의 close 관련 컬럼(`closedQty`, `closedAt`, `closedBy`, `closeMode`, `closeBasis`)은 additive SQL로 실DB에 반영됨.
 - 시간 컬럼 리네임 (완료):
@@ -639,8 +654,8 @@ AT 학습의 ST seed는 위 `스타일 → 배정 → 작업기록 ST 불변식`
 1. QcReview.jsx: 검수 이력 입력/취소 전용
 2. POST /qc-pass-events, PATCH /qc-pass-events/:id/cancel
 3. AssignBoard.jsx 상세 드로어(handleConfirmProductionComplete): PATCH /assignment-plans/:externalId/production-complete 호출
-4. 백엔드 completeAssignmentPlanProduction: `REVIEW_REQUIRED` 상태에서만 수동 작업 완료 메타데이터(`productionCompletedAt`, `closedQty`, `close*`) 기록 + `isCompleted=false`/`scheduleStatus=READY_TO_COMPLETE` 유지 + 일정/진행도 스냅샷 동기화
-5. 따라서 이 경로를 타면 보드에서 `작업 완료` 쪽으로만 이동하는 것이 정상이고, `완료 확정`을 만들면 안 된다
+4. 백엔드 completeAssignmentPlanProduction: 완료 메타데이터(`productionCompletedAt`, `closedQty`, `close*`) 기록 + `isCompleted=true`/`scheduleStatus=PRODUCTION_COMPLETED` 확정 + 일정/진행도 스냅샷 동기화
+5. `READY_TO_COMPLETE` 중간 상태는 생성하지 않는다
 ```
 
 ### Task 1 관련 상태
@@ -1725,16 +1740,15 @@ runtime 조회값:
 - progress row는 `isPayrollLocked`, `payrollLockMonth`를 노출할 수 있고, UI는 이 값을 경고/버튼 차단에 사용한다.
 - 이 잠금 규칙은 이후 시스템 관리자용 비상 복구 기능과 별개다.
 
-### 28A. 2026-06-18 Board Visibility Follow-up
+### 28A. 2026-06-18 Board Visibility Follow-up (2026-08-14 상태 정책으로 대체됨)
 
-- Canonical completion statuses are now:
+- Historical completion statuses at that time were:
   - `IN_PROGRESS`
   - `REVIEW_REQUIRED`
   - `READY_TO_COMPLETE`
   - `PRODUCTION_COMPLETED`
-- line-month capacity UI must group cards by canonical status.
-- A card with work progress `100%` must not remain in the active queued group when its `scheduleStatus` is `REVIEW_REQUIRED` or `READY_TO_COMPLETE`.
-- Current UI lock:
+- This block is retained only as implementation history. Current code must follow the 2026-08-14 completion-state rules at the top of this file and must not restore `READY_TO_COMPLETE`.
+- Historical UI grouping was:
   - `queued` = still actively in progress
   - `review_required` = progress reached 100% but process quantity exactness needs review
   - `ready_to_complete` = `작업 완료` (`READY_TO_COMPLETE`)
@@ -2170,7 +2184,7 @@ runtime 조회값:
 ### 53. 2026-07-13 남은 계획 부하를 producedQuantity min-ratio가 아니라 공정별 ST 잔량으로 계산 (Codex 구현)
 
 - **증상**: §52 백필 후에도 LINE #1의 2026-07 계획 부하가 100%로 과하게 보였다. 운영 DB를 다시 계산해보니 작업기록은 대부분 90~100%에 가까운데, `producedQuantity = min(공정별 완료 수량)`가 0인 플랜이 많았다. 공정 하나라도 0이면 `Math.min(producedRatio, operationalProgressRatio)`가 0이 되어 전체 `assignmentStTotalSeconds`가 남은 부하로 다시 들어갔다.
-- **정책 정리**: `producedQuantity`/exact process completion은 "옷 몇 벌이 완성됐는가"와 `READY_TO_COMPLETE`/`REVIEW_REQUIRED` 판정에 필요하다. 하지만 forecast의 남은 계획 부하는 완성 벌수가 아니라 **각 공정별 남은 수량 × 해당 공정 ST(q)**의 합이어야 한다. 예: 39개 공정 중 33개가 끝나고 6개만 남았으면 전체 39개 공정의 ST를 다시 넣으면 안 된다.
+- **정책 정리**: `producedQuantity`/exact process completion은 "옷 몇 벌이 완성됐는가"와 `PRODUCTION_COMPLETED`/`REVIEW_REQUIRED` 판정에 필요하다. 하지만 forecast의 남은 계획 부하는 완성 벌수가 아니라 **각 공정별 남은 수량 × 해당 공정 ST(q)**의 합이어야 한다. 예: 39개 공정 중 33개가 끝나고 6개만 남았으면 전체 39개 공정의 ST를 다시 넣으면 안 된다.
 - **수정**: `buildLineMonthCapacityRows`와 `buildAssignmentPlanProgressRows`가 같은 helper(`calculateRemainingStTotalSecondsFromProcessProgress`)를 사용해 CT 스냅샷의 `styleProcessId`별 WorkRecord 수량을 보고 공정별 잔량 ST를 먼저 계산한다. 이 exact remaining ST를 만들 수 있을 때는 기존 ratio fallback보다 우선한다. ST row가 없어 exact 계산이 불가능한 경우에만 기존 ratio 기반 계산으로 내려간다.
 - **운영 DB 재현 결과**: LINE #1 43개 not-completed assignment의 전체 계획 ST는 5,906.5h였고, 예전 min-ratio 방식 남은 ST는 3,549.6h까지 부풀었다. 공정별 ST 잔량 방식으로는 442.2h(8명 × 8h 기준 약 6.9 작업일)이며, 남은 공정의 ST bucket 누락은 0건이었다.
 
