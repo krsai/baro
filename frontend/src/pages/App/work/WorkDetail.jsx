@@ -343,6 +343,7 @@ const createBlankRow = (patch = {}) => ({
   assignment: null,
   process: null,
   quantity: '',
+  outsourceUnitPrice: '',
   ...patch,
 });
 const DESKTOP_INLINE_FIELD_HEIGHT = 40;
@@ -750,7 +751,9 @@ const matchByIdOrName = (options = [], value, idKey = 'id', labelKey = 'name') =
 const buildHydratedRows = ({ records, workers, assignments }) => {
   const safeRecords = Array.isArray(records) ? records : [];
   return safeRecords.map((record, index) => {
-    const matchedWorker =
+    const matchedWorker = record?.isOutsourced === true
+      ? { id: `outsource:${toText(record?.outsourceVendorName)}`, name: `외주 · ${toText(record?.outsourceVendorName)}`, vendorName: toText(record?.outsourceVendorName), isOutsourced: true }
+      :
       matchByIdOrName(workers, { id: record?.workerId, name: record?.workerName }) ||
       (toText(record?.workerName)
         ? { id: record?.workerId || `legacy-worker-${index + 1}`, name: toText(record?.workerName), isLegacy: true }
@@ -811,6 +814,7 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
       assignment,
       process,
       quantity: Number(record?.quantity) > 0 ? Math.round(Number(record.quantity)) : '',
+      outsourceUnitPrice: record?.isOutsourced === true ? Number(record?.outsourceUnitPrice || 0) : '',
     });
   });
 };
@@ -1777,7 +1781,10 @@ const WorkDetail = ({
       .filter(({ process, row }) => process && Number(row?.quantity) > 0)
       .map(({ row, assignment, process }) => ({
         rowId: toText(row?.id),
-        workerId: toPositiveIdOrNull(row?.worker?.id),
+        workerId: row?.worker?.isOutsourced ? null : toPositiveIdOrNull(row?.worker?.id),
+        isOutsourced: row?.worker?.isOutsourced === true,
+        outsourceVendorName: row?.worker?.isOutsourced ? toText(row?.worker?.vendorName) : null,
+        outsourceUnitPrice: row?.worker?.isOutsourced ? Math.max(0, Number(row?.outsourceUnitPrice) || 0) : null,
         styleId: toPositiveIdOrNull(row?.styleRefId ?? row?.styleId),
         styleCode: toText(row?.styleCode || assignment?.styleId),
         styleProcessId: toPositiveIdOrNull(process?.styleProcessId),
@@ -2025,7 +2032,11 @@ const WorkDetail = ({
     return 'CT가 저장된 배정카드가 없습니다.';
   }, [ctAssignmentPool.length, hasRowsWithAssignmentPlanId, missingCtStyleLabels]);
   const resolveWorkerOptions = useCallback(
-    (row) => ensureOptionIncluded(lineWorkers, row?.worker, (item) => item?.id || item?.name),
+    (row) => ensureOptionIncluded(
+      [...lineWorkers, { id: '__add_outsource__', name: '＋ 외주 업체 입력', isOutsourceAction: true }],
+      row?.worker,
+      (item) => item?.id || item?.name
+    ),
     [lineWorkers]
   );
   const resolveStyleOptions = useCallback(
@@ -2415,14 +2426,20 @@ const WorkDetail = ({
     setFormError('');
   }, [workDate, workLogOperationStartDateKey]);
   const handleWorkerChange = useCallback((rowId, nextWorker) => {
+    let resolvedWorker = nextWorker;
+    if (nextWorker?.isOutsourceAction) {
+      const vendorName = window.prompt('외주 업체명을 입력하세요.')?.trim();
+      if (!vendorName) return;
+      resolvedWorker = { id: `outsource:${vendorName}`, name: `외주 · ${vendorName}`, vendorName, isOutsourced: true };
+    }
     setRows((currentRows) =>
       currentRows.map((row) =>
         row.id === rowId
           ? {
               ...row,
-              worker: nextWorker || null,
+              worker: resolvedWorker || null,
               ...(toText(row?.worker?.id || row?.worker?.name) !==
-              toText(nextWorker?.id || nextWorker?.name)
+              toText(resolvedWorker?.id || resolvedWorker?.name)
                 ? {
                     styleOptionId: '',
                     assignment: null,
@@ -2470,6 +2487,7 @@ const WorkDetail = ({
     handleStyleChange(rowId, null);
   }, [getStyleOptionLabel, handleStyleChange]);
   const handleQuantityChange = useCallback((rowId, nextQuantity) => updateRow(rowId, (row) => ({ ...row, quantity: nextQuantity })), [updateRow]);
+  const handleOutsourceUnitPriceChange = useCallback((rowId, value) => updateRow(rowId, (row) => ({ ...row, outsourceUnitPrice: value })), [updateRow]);
   const handleProcessInputChange = useCallback((rowId, selectedProcessOption, nextInputValue, reason) => {
     if (reason !== 'input') return;
     const selectedLabel = selectedProcessOption ? getProcessOptionLabel(selectedProcessOption) : '';
@@ -2577,6 +2595,7 @@ const WorkDetail = ({
     const shouldValidateWorkerLineMembership = availableWorkerIds.size > 0;
     const invalidWorkerRecord = summary.records.find((record) => {
       const workerId = toPositiveIdOrNull(record?.workerId);
+      if (record?.isOutsourced) return !record?.outsourceVendorName;
       if (!workerId) return true;
       if (!shouldValidateWorkerLineMembership) return false;
       return !availableWorkerIds.has(workerId);
@@ -2585,7 +2604,7 @@ const WorkDetail = ({
       setFormError(messages.invalidWorkerLine || '선택한 라인에 속하지 않은 작업자가 포함되어 있습니다.');
       return;
     }
-    if (!hasFactoryWage) {
+    if (!hasFactoryWage && summary.records.some((record) => !record?.isOutsourced)) {
       setFormError(messages.wageMissing || '공장 초당 공임이 설정되지 않았습니다.');
       return;
     }
@@ -3165,6 +3184,7 @@ const WorkDetail = ({
                               inputProps: buildEditableFieldInputProps(row.id, 'worker'),
                             }}
                           />
+                          {row?.worker?.isOutsourced ? <TextField size="small" type="number" label="외주 개당 단가" value={row?.outsourceUnitPrice ?? ''} onChange={(event) => handleOutsourceUnitPriceChange(row.id, event.target.value)} inputProps={{ min: 0 }} color="warning" /> : null}
                           <Stack spacing={0.35}>
                             <SearchableSelect
                               label={LABELS.style}
@@ -3480,6 +3500,7 @@ const WorkDetail = ({
                           </TableCell>
                           <TableCell sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             {isEditingRow ? (
+                              <Stack spacing={0.5}>
                               <SearchableSelect
                                 options={rowWorkerOptions}
                                 value={row?.worker || null}
@@ -3506,6 +3527,8 @@ const WorkDetail = ({
                                   inputProps: buildEditableFieldInputProps(row.id, 'worker'),
                                 }}
                               />
+                              {row?.worker?.isOutsourced ? <TextField size="small" type="number" label="외주 개당 단가" value={row?.outsourceUnitPrice ?? ''} onChange={(event) => handleOutsourceUnitPriceChange(row.id, event.target.value)} inputProps={{ min: 0 }} color="warning" sx={{ mt: 0.5 }} /> : null}
+                              </Stack>
                             ) : (
                               <Box
                                 data-work-edit-activator="true"
@@ -3519,7 +3542,7 @@ const WorkDetail = ({
                                   cursor: isAggregateLegacyLog ? 'default' : 'pointer',
                                 }}
                               >
-                                {toText(row?.worker?.name) || '-'}
+                                <Typography color={row?.worker?.isOutsourced ? 'warning.main' : 'inherit'} fontWeight={row?.worker?.isOutsourced ? 700 : 400}>{toText(row?.worker?.name) || '-'}</Typography>
                               </Box>
                             )}
                           </TableCell>

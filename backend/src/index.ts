@@ -3290,6 +3290,7 @@ const loadAtTrainingSourceWorkLogs = async ({
         workRecords: {
           where: {
             quantity: { gt: 0 },
+            isOutsourced: false,
           },
           select: {
             workerId: true,
@@ -3338,6 +3339,7 @@ const loadAtTrainingSourceWorkLogs = async ({
         workRecords: {
           where: {
             quantity: { gt: 0 },
+            isOutsourced: false,
           },
           select: {
             workerId: true,
@@ -3882,6 +3884,9 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
 
     const preliminaryRows = workLog.workRecords
       .map((record) => {
+        // Outsourced output advances production, but has no internal labor-time
+        // observation and must never enter AT training allocation.
+        if ((record as any)?.isOutsourced === true) return null;
         const quantity = Number(record.quantity) || 0;
         if (quantity <= 0) return null;
         const workerId = toPositiveIntOrNull(record.workerId);
@@ -8136,14 +8141,24 @@ const normalizeWorkRecordPayloadList = (records: any) => {
     const quantity = toNonNegativeInt(record.quantity, 0);
     if (quantity <= 0) return;
 
-    const workerId = toPositiveIntOrNull(record.workerId);
-    if (!workerId) {
+    const isOutsourced = record?.isOutsourced === true;
+    const workerId = isOutsourced ? null : toPositiveIntOrNull(record.workerId);
+    const outsourceVendorName = isOutsourced
+      ? resolveOptionalString(record?.outsourceVendorName, null)
+      : null;
+    const outsourceUnitPrice = isOutsourced
+      ? toOptionalFiniteNumber(record?.outsourceUnitPrice, null)
+      : null;
+    if ((!isOutsourced && !workerId) || (isOutsourced && (!outsourceVendorName || outsourceUnitPrice === null || outsourceUnitPrice < 0))) {
       if (invalidWorkerRecordIndex < 0) invalidWorkerRecordIndex = index;
       return;
     }
 
     rows.push({
       workerId,
+      isOutsourced,
+      outsourceVendorName,
+      outsourceUnitPrice,
       lineId: toPositiveIntOrNull(record.lineId),
       styleId: toPositiveIntOrNull(record.styleId),
       styleCode: resolveOptionalString(record.styleCode, null),
@@ -8183,6 +8198,13 @@ const buildCanonicalWorkRecordWriteData = ({
     orgId,
     workLogId,
     workerId: toPositiveIntOrNull(record?.workerId),
+    isOutsourced: record?.isOutsourced === true,
+    outsourceVendorName: record?.isOutsourced === true
+      ? resolveOptionalString(record?.outsourceVendorName, null)
+      : null,
+    outsourceUnitPrice: record?.isOutsourced === true
+      ? toOptionalFiniteNumber(record?.outsourceUnitPrice, null)
+      : null,
     lineId: toPositiveIntOrNull(record?.lineId) ?? toPositiveIntOrNull(defaultLineId),
     styleId,
     styleProcessId,
@@ -10086,7 +10108,11 @@ const resolveWorkRecordStyleMetric = (record: any) => {
 };
 const buildWorkRecordWorkerStyleProcessSignature = (record: any) => {
   const workerId = toPositiveIntOrNull(record?.workerId);
-  if (!workerId) return null;
+  const outsourceVendorName = record?.isOutsourced === true
+    ? resolveOptionalString(record?.outsourceVendorName, null)?.toLowerCase()
+    : null;
+  const actorKey = workerId ? `worker:${workerId}` : outsourceVendorName ? `outsource:${outsourceVendorName}` : null;
+  if (!actorKey) return null;
   // Scoped by assignmentPlanId (order x style), not styleId alone: the same
   // style can legitimately be produced under two different orders in the
   // same period, each with its own AssignmentPlan. Using styleId here used to
@@ -10102,7 +10128,7 @@ const buildWorkRecordWorkerStyleProcessSignature = (record: any) => {
   if (!processMetric.processMetricKey || processMetric.processMetricKey === "unknown") {
     return null;
   }
-  return `${workerId}::assignmentPlan:${assignmentPlanId}::${processMetric.processMetricKey}`;
+  return `${actorKey}::assignmentPlan:${assignmentPlanId}::${processMetric.processMetricKey}`;
 };
 const formatWorkerStyleProcessIdentityLabel = (record: any) => {
   const workerId = toPositiveIntOrNull(record?.workerId);
@@ -10359,7 +10385,11 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
   const workerIds = collectPositiveIntSet(
     ...incomingRecords.map((record) => record?.workerId)
   );
-  if (workerIds.length === 0 || firstIncomingRecordBySignature.size === 0) {
+  const outsourceVendorNames = Array.from(new Set(incomingRecords
+    .filter((row) => row?.isOutsourced === true)
+    .map((row) => resolveOptionalString(row?.outsourceVendorName, null))
+    .filter((value): value is string => Boolean(value))));
+  if ((workerIds.length === 0 && outsourceVendorNames.length === 0) || firstIncomingRecordBySignature.size === 0) {
     return {
       status: 200,
       error: null as string | null,
@@ -10371,7 +10401,10 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
   const existingRows: any[] = await prisma.workRecord.findMany({
     where: {
       orgId,
-      workerId: { in: workerIds },
+      OR: [
+        ...(workerIds.length > 0 ? [{ workerId: { in: workerIds } }] : []),
+        ...(outsourceVendorNames.length > 0 ? [{ isOutsourced: true, outsourceVendorName: { in: outsourceVendorNames } }] : []),
+      ],
       workLog: {
         orgId,
         displayDate: normalizedWorkDate,
@@ -10380,6 +10413,8 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
     },
     select: {
       workerId: true,
+      isOutsourced: true,
+      outsourceVendorName: true,
       styleId: true,
       styleProcessId: true,
       assignmentPlanId: true,
@@ -10399,6 +10434,8 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
   existingRows.forEach((row) => {
     const signature = buildWorkRecordWorkerStyleProcessSignature({
       workerId: row.workerId,
+      isOutsourced: row.isOutsourced,
+      outsourceVendorName: row.outsourceVendorName,
       styleId: row.styleId,
       style: row.style,
       styleProcessId: row.styleProcessId,
@@ -10885,7 +10922,15 @@ const toWorkRecordResponse = (record: any) => {
   const hydrated = hydrateWorkRecordResponseDisplayFields(record);
   return {
     workerId: hydrated?.workerId ?? null,
-    workerName: hydrated?.workerName ?? "",
+    workerName: hydrated?.isOutsourced === true
+      ? resolveOptionalString(hydrated?.outsourceVendorName, "") ?? ""
+      : hydrated?.workerName ?? "",
+    isOutsourced: hydrated?.isOutsourced === true,
+    outsourceVendorName: resolveOptionalString(hydrated?.outsourceVendorName, null),
+    outsourceUnitPrice: toOptionalFiniteNumber(hydrated?.outsourceUnitPrice, null),
+    outsourceAmount: hydrated?.isOutsourced === true
+      ? Number(hydrated?.outsourceUnitPrice || 0) * toNonNegativeInt(hydrated?.quantity, 0)
+      : null,
     customerName: hydrated?.customerName ?? "",
     orderNo: resolveOptionalString(hydrated?.orderNo, "") ?? "",
     lineId: toPositiveIntOrNull(hydrated?.lineId),
@@ -12368,9 +12413,23 @@ const buildWorkLogContextResponse = async ({
       employee,
     }));
 
+  const outsourcedVendorRows = await prisma.workRecord.findMany({
+    where: { orgId, isOutsourced: true, outsourceVendorName: { not: null } },
+    distinct: ["outsourceVendorName"],
+    select: { outsourceVendorName: true },
+    orderBy: { outsourceVendorName: "asc" },
+  });
   const response = buildBaseResponse({
     line: { id: line.id, name: line.name ?? "" },
-    workers: workersForDate.map(toWorkLogContextWorkerResponse),
+    workers: [
+      ...workersForDate.map(toWorkLogContextWorkerResponse),
+      ...outsourcedVendorRows.map((row) => ({
+        id: `outsource:${row.outsourceVendorName}`,
+        name: `외주 · ${row.outsourceVendorName}`,
+        vendorName: row.outsourceVendorName,
+        isOutsourced: true,
+      })),
+    ],
     assignments: assignmentPlans
       .map((plan) =>
         toWorkLogContextAssignmentResponse({

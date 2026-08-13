@@ -1325,6 +1325,9 @@ model WorkRecord {
   orgId                      Int
   workLogId                  Int
   workerId                   Int?
+  isOutsourced               Boolean  @default(false)
+  outsourceVendorName        String?
+  outsourceUnitPrice         Decimal? @db.Decimal(18, 4)
   lineId                     Int?
   styleId                    Int
   styleProcessId             Int
@@ -1352,6 +1355,7 @@ model WorkRecord {
 
   @@index([orgId, workLogId])
   @@index([orgId, workerId])
+  @@index([orgId, isOutsourced])
   @@index([orgId, styleId])
   @@index([orgId, lineId])
   @@index([styleProcessId])
