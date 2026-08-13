@@ -56,6 +56,7 @@ const CompactBoardCard = ({
   onClick,
   onContextMenu,
   onDisabledDragAttempt,
+  details = null,
 }) => {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } =
     useDraggable({
@@ -270,6 +271,7 @@ const CompactBoardCard = ({
             </Stack>
           </CardField>
         ) : null}
+        {details ? <Box sx={{ flexBasis: '100%', minWidth: 0 }}>{details}</Box> : null}
       </Stack>
     </Box>
   );

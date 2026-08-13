@@ -423,6 +423,7 @@ export const UI_MESSAGES = {
       vi: 'Hoan tat san xuat',
     },
     reviewStatusCompact: { ko: '검토 필요', en: 'Review required', vi: 'Can xem xet' },
+    cardProcessLabel: { ko: '공정', en: 'Process', vi: 'Công đoạn' },
     progressUnknownStatusCompact: {
       ko: '진행률 확인 필요',
       en: 'Progress unknown',

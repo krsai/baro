@@ -314,6 +314,9 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
     : isReviewRequired
       ? '#FEF2F2'
       : '#FFFFFF';
+  const reviewProcessTotals = isReviewRequired && Array.isArray(assignment?.reviewReason?.processTotals)
+    ? assignment.reviewReason.processTotals
+    : [];
 
   return (
     <CompactBoardCard
@@ -336,6 +339,26 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
       previewUrl={assignment.previewUrl || ''}
       accentColor={accentColor}
       backgroundColor={backgroundColor}
+      details={reviewProcessTotals.length > 0 ? (
+        <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ pt: 0.5, borderTop: '1px dashed', borderColor: 'error.light' }}>
+          {reviewProcessTotals.map((process, index) => {
+            const quantity = Math.max(0, Number(process?.quantity) || 0);
+            const planned = Math.max(0, Number(assignment?.reviewReason?.plannedQuantity ?? assignment?.quantity) || 0);
+            const difference = quantity - planned;
+            const processLabel = [process?.processCode, process?.processName].filter(Boolean).join(' · ') || `${getUiMessage('assign.cardProcessLabel', 'Process', languageCode)} ${index + 1}`;
+            return (
+              <Chip
+                key={process?.styleProcessId || `${processLabel}:${index}`}
+                size="small"
+                color={difference === 0 ? 'success' : 'error'}
+                variant={difference === 0 ? 'outlined' : 'filled'}
+                label={`${processLabel}: ${quantity.toLocaleString()} / ${planned.toLocaleString()}${difference === 0 ? '' : ` (${difference > 0 ? '+' : ''}${difference.toLocaleString()})`}`}
+                sx={{ fontWeight: 700 }}
+              />
+            );
+          })}
+        </Stack>
+      ) : null}
       onClick={() => onOpenDetail?.(assignment.id)}
       onContextMenu={(event) => {
         event.preventDefault();

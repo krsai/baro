@@ -639,6 +639,7 @@ export const buildLineMonthCapacityBoardRows = ({
               ? null
               : Math.max(0, Math.min(100, Number(assignment.progressPercent) || 0)),
           scheduleStatus: String(assignment?.scheduleStatus || '').trim() || null,
+          reviewReason: assignment?.reviewReason || null,
           visiblePlannedStTotalSeconds: 0,
           isCompleted: Boolean(assignment?.isCompleted),
           completedAt: normalizeDateKey(assignment?.completedAt),

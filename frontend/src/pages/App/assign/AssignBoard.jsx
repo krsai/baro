@@ -2282,6 +2282,7 @@ const resolveAssignmentProgressState = ({
       progressRow?.completionWarningCode ?? assignment?.completionWarningCode ?? null,
     completionGapQuantity:
       Number(progressRow?.completionGapQuantity ?? assignment?.completionGapQuantity) || 0,
+    reviewReason: progressRow?.reviewReason ?? assignment?.reviewReason ?? null,
     candidateEndDate: progressRow?.candidateEndDate ?? assignment?.candidateEndDate ?? null,
     renderStartDate:
       progressRow?.renderStartDate ??
