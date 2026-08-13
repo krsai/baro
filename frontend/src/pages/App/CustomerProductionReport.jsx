@@ -19,7 +19,7 @@ const TEXT = {
     print: '인쇄 / PDF', csv: 'CSV 내보내기', generated: '기준 시각', order: '주문번호', style: '스타일', due: '납기',
     quantity: '주문수량', assigned: '배정수량', produced: '확인 생산수량', progress: '공정 진행률', lastWork: '최근 작업기록',
     estimate: '예상 완료일', status: '상태', basis: '예측 근거', empty: '조건에 맞는 보고서 항목이 없습니다.',
-    note: '진행률은 작업기록의 공정별 실적을 기준으로 계산합니다. 확인 생산수량은 모든 필수 공정을 통과했다고 확인되는 수량이며, 예상 완료일은 현재 작업속도와 라인 일정을 반영합니다.',
+    note: '진행률은 작업기록의 공정별 실적을 기준으로 계산합니다. 확인 생산수량은 모든 필수 공정을 통과했다고 확인되는 수량이며, 예상 완료일은 실제 작업 시작일에 배정 당시 ST 기반 소요일수를 더해 계산합니다.',
     review: '일정 검토 필요', monthlySummary: '월 합계 기록 기반',
   },
   en: {
@@ -27,7 +27,7 @@ const TEXT = {
     print: 'Print / PDF', csv: 'Export CSV', generated: 'As of', order: 'Order', style: 'Style', due: 'Due', quantity: 'Order qty',
     assigned: 'Assigned', produced: 'Verified output', progress: 'Process progress', lastWork: 'Latest record', estimate: 'Estimated completion',
     status: 'Status', basis: 'Estimate basis', empty: 'No report rows match the filters.',
-    note: 'Progress is calculated from work records by process. Verified output is the quantity confirmed through every required process; estimates use current work velocity and line schedule.',
+    note: 'Progress is calculated from work records by process. Verified output is confirmed through every required process; completion is estimated from the actual start date plus the ST-based planned duration.',
     review: 'schedule review required', monthlySummary: 'monthly summary data',
   },
   vi: {
@@ -35,7 +35,7 @@ const TEXT = {
     print: 'In / PDF', csv: 'Xuất CSV', generated: 'Thời điểm', order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Số lượng đơn',
     assigned: 'Đã phân công', produced: 'Sản lượng xác nhận', progress: 'Tiến độ công đoạn', lastWork: 'Ghi nhận gần nhất', estimate: 'Dự kiến hoàn thành',
     status: 'Trạng thái', basis: 'Cơ sở dự báo', empty: 'Không có dữ liệu phù hợp.',
-    note: 'Tiến độ được tính từ nhật ký theo từng công đoạn. Sản lượng xác nhận là số lượng đã đi qua tất cả công đoạn bắt buộc; ngày dự kiến dùng tốc độ hiện tại và lịch chuyền.',
+    note: 'Tiến độ được tính từ nhật ký theo từng công đoạn. Sản lượng xác nhận là số lượng đã đi qua tất cả công đoạn bắt buộc; ngày hoàn thành dự kiến được tính từ ngày bắt đầu thực tế cộng thời lượng kế hoạch theo ST.',
     review: 'cần xem lại lịch', monthlySummary: 'dữ liệu tổng hợp tháng',
   },
 };
@@ -49,7 +49,7 @@ const STATUS = {
 };
 const BASIS = {
   ACTUAL_COMPLETION: { ko: '실제 완료', en: 'Actual completion', vi: 'Hoàn thành thực tế' },
-  WORK_RECORD_RATE_AND_LINE_SCHEDULE: { ko: '작업기록 속도 + 라인 일정', en: 'Work-record rate + line schedule', vi: 'Tốc độ ghi nhận + lịch chuyền' },
+  ST_DURATION_FROM_ACTUAL_START: { ko: '실제 시작일 + ST 소요일수', en: 'Actual start + ST duration', vi: 'Ngày bắt đầu thực tế + thời lượng ST' },
   LINE_SCHEDULE: { ko: '라인 배정 일정', en: 'Line schedule', vi: 'Lịch chuyền' },
   ASSIGNMENT_REQUIRED: { ko: '배정 후 예측 가능', en: 'Assignment required', vi: 'Cần phân công để dự báo' },
 };

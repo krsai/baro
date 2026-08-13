@@ -21,6 +21,9 @@ test('forecast is withheld until the full order-style quantity is assigned', () 
   assert.match(server, /const canForecast = assignedQuantity >= item\.orderedQuantity && progress\.length > 0/);
   assert.match(server, /ASSIGNMENT_REQUIRED/);
   assert.match(server, /hasMonthlySummaryRecords: progress\.some/);
+  assert.match(server, /actualStartDate[\s\S]*plannedDurationDays - 1/);
+  assert.match(server, /ST_DURATION_FROM_ACTUAL_START/);
+  assert.doesNotMatch(server.slice(server.indexOf('app.get("/customer-production-reports"')), /forecastCompletedAt\) \|\| normalizeDateKey\(row\?\.renderEndDate/);
 });
 
 test('sales report is routed, permissioned, printable, and exportable', () => {

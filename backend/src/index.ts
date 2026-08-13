@@ -23497,6 +23497,7 @@ const buildAssignmentPlanProgressRows = async (
       forecastBasis,
       confidence,
       renderStartDate: factualStartDateKey,
+      plannedDurationDays: durationDays,
       candidateEndDate: candidateEndDateKey,
       renderEndDate: renderEndDateKey,
       scheduleStatus,
@@ -29007,7 +29008,17 @@ app.get("/customer-production-reports", async (req, res) => {
         progress.length === relatedPlans.length &&
         progress.every((row) => row?.isCompleted === true);
       const forecastCandidates = progress
-        .map((row) => normalizeDateKey(row?.forecastCompletedAt) || normalizeDateKey(row?.renderEndDate))
+        .map((row) => {
+          const actualStartDate = normalizeDateKey(row?.firstWorkDate);
+          const plannedDurationDays = Math.max(1, toSignedInt(row?.plannedDurationDays, 1));
+          if (actualStartDate) {
+            return shiftDateKeyByDaysForAssignmentSchedule(
+              actualStartDate,
+              plannedDurationDays - 1
+            ) || actualStartDate;
+          }
+          return normalizeDateKey(row?.renderEndDate);
+        })
         .filter((value): value is string => Boolean(value));
       const completedCandidates = progress
         .map((row) => normalizeDateKey(row?.completedAt))
@@ -29062,7 +29073,7 @@ app.get("/customer-production-reports", async (req, res) => {
           : !canForecast
             ? "ASSIGNMENT_REQUIRED"
             : hasWorkRecords
-              ? "WORK_RECORD_RATE_AND_LINE_SCHEDULE"
+              ? "ST_DURATION_FROM_ACTUAL_START"
               : "LINE_SCHEDULE",
         hasMonthlySummaryRecords: progress.some((row) => row?.hasRangeCoverage === true),
         assignmentCount: relatedPlans.length,
