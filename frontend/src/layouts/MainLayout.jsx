@@ -49,6 +49,7 @@ import Inventory2Icon from '@mui/icons-material/Inventory2';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import DashboardIcon from '@mui/icons-material/Dashboard';
+import AssessmentIcon from '@mui/icons-material/Assessment';
 import { buildQueryString, cancelAllTrackedRequests, requestJSON } from '../utils/apiClient';
 import { subscribeOrderDeleted } from '../utils/orderSyncEvents';
 import { canAccessPath, resolveFirstAccessiblePath } from '../utils/accessControl';
@@ -395,7 +396,8 @@ const MainLayout = () => {
     if (
       currentPath.startsWith('/order') ||
       currentPath.startsWith('/style') ||
-      currentPath.startsWith('/customer-pricing')
+      currentPath.startsWith('/customer-pricing') ||
+      currentPath.startsWith('/customer-production-report')
     ) {
       setExpandedMenuGroup(MENU_GROUP_KEYS.ORDER);
     }
@@ -628,6 +630,11 @@ const MainLayout = () => {
             label: getUiMessage('menu.style', '\uC2A4\uD0C0\uC77C', languageCode),
             icon: <StyleIcon />,
             path: '/style',
+          },
+          {
+            label: getUiMessage('menu.customerProductionReport', '생산 진행 보고서', languageCode),
+            icon: <AssessmentIcon />,
+            path: '/customer-production-report',
           },
         ],
       },

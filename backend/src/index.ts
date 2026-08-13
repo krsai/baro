@@ -28855,6 +28855,175 @@ app.get("/orders", async (req, res) => {
   );
 });
 
+app.get("/customer-production-reports", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const requestedCustomerId = toPositiveIntOrNull(req.query.customerId);
+  const orders = await prisma.workOrder.findMany({
+    where: {
+      OR: getOrderAccessWhere(organization.id),
+      ...(requestedCustomerId ? { buyerOrgId: requestedCustomerId } : {}),
+    },
+    orderBy: [{ dueDate: "asc" }, { orderNumber: "asc" }, { id: "asc" }],
+    include: WORK_ORDER_RESPONSE_INCLUDE,
+  });
+  if (orders.length === 0) {
+    return res.json({ generatedAt: new Date().toISOString(), customers: [], rows: [] });
+  }
+
+  const orderIds = orders.map((order) => order.id);
+  const plans = await prisma.assignmentPlan.findMany({
+    where: { orgId: organization.id, workOrderId: { in: orderIds } },
+    select: { id: true, externalId: true, workOrderId: true, styleId: true },
+    orderBy: [{ workOrderId: "asc" }, { styleId: "asc" }, { id: "asc" }],
+  });
+  const progressRows = await buildAssignmentPlanProgressRows(
+    organization.id,
+    plans.map((plan) => plan.externalId)
+  );
+  const progressByExternalId = new Map(
+    progressRows.map((row) => [String(row?.id || ""), row])
+  );
+  const plansByOrderStyle = new Map<string, any[]>();
+  plans.forEach((plan) => {
+    const key = `${plan.workOrderId}:${plan.styleId ?? "none"}`;
+    const bucket = plansByOrderStyle.get(key) || [];
+    bucket.push({ ...plan, progress: progressByExternalId.get(plan.externalId) || null });
+    plansByOrderStyle.set(key, bucket);
+  });
+
+  const rows: any[] = [];
+  orders.forEach((order) => {
+    const itemsByStyle = new Map<string, any>();
+    ensureArray(order.workOrderItems).forEach((item) => {
+      const key = String(item?.styleId ?? `item:${item?.id}`);
+      const current = itemsByStyle.get(key) || {
+        styleId: toPositiveIntOrNull(item?.styleId),
+        styleCode: resolveOptionalString(item?.style?.code, null),
+        styleName: resolveOptionalString(item?.style?.name, null),
+        orderedQuantity: 0,
+      };
+      current.orderedQuantity += Math.max(0, Math.round(Number(item?.totalQuantity) || 0));
+      itemsByStyle.set(key, current);
+    });
+
+    itemsByStyle.forEach((item) => {
+      const relatedPlans = plansByOrderStyle.get(`${order.id}:${item.styleId ?? "none"}`) || [];
+      const progress = relatedPlans.map((plan) => plan.progress).filter(Boolean);
+      const assignedQuantity = progress.reduce(
+        (sum, row) => sum + Math.max(0, Math.round(Number(row?.plannedQuantity) || 0)),
+        0
+      );
+      const producedQuantity = progress.reduce(
+        (sum, row) => sum + Math.max(0, Math.round(Number(row?.producedQuantity) || 0)),
+        0
+      );
+      const weightedProgress = progress.reduce(
+        (acc, row) => {
+          const weight = Math.max(0, Number(row?.plannedStTotalSeconds) || 0) ||
+            Math.max(0, Number(row?.plannedQuantity) || 0);
+          const ratio = Number(row?.operationalProgressRatio);
+          if (weight <= 0 || !Number.isFinite(ratio)) return acc;
+          acc.weight += weight;
+          acc.value += Math.max(0, Math.min(1, ratio)) * weight;
+          return acc;
+        },
+        { weight: 0, value: 0 }
+      );
+      const progressPercent = weightedProgress.weight > 0
+        ? Math.round((weightedProgress.value / weightedProgress.weight) * 100)
+        : assignedQuantity > 0
+          ? Math.round(Math.min(1, producedQuantity / assignedQuantity) * 100)
+          : 0;
+      const hasWorkRecords = progress.some((row) =>
+        Boolean(row?.firstWorkDate || row?.lastWorkDate || Number(row?.producedQuantity) > 0)
+      );
+      const isCompleted =
+        item.orderedQuantity > 0 &&
+        assignedQuantity >= item.orderedQuantity &&
+        relatedPlans.length > 0 &&
+        progress.length === relatedPlans.length &&
+        progress.every((row) => row?.isCompleted === true);
+      const forecastCandidates = progress
+        .map((row) => normalizeDateKey(row?.forecastCompletedAt) || normalizeDateKey(row?.renderEndDate))
+        .filter((value): value is string => Boolean(value));
+      const completedCandidates = progress
+        .map((row) => normalizeDateKey(row?.completedAt))
+        .filter((value): value is string => Boolean(value));
+      const canForecast = assignedQuantity >= item.orderedQuantity && progress.length > 0;
+      const estimatedCompletionDate = isCompleted
+        ? completedCandidates.sort().at(-1) || null
+        : canForecast && forecastCandidates.length === progress.length
+          ? forecastCandidates.sort().at(-1) || null
+          : null;
+      const lastWorkDate = progress
+        .map((row) => normalizeDateKey(row?.lastWorkDate))
+        .filter((value): value is string => Boolean(value))
+        .sort()
+        .at(-1) || null;
+      const status = isCompleted
+        ? "COMPLETED"
+        : assignedQuantity <= 0
+          ? "UNASSIGNED"
+          : assignedQuantity < item.orderedQuantity
+            ? "PARTIALLY_ASSIGNED"
+            : hasWorkRecords
+              ? "IN_PROGRESS"
+              : "SCHEDULED";
+
+      rows.push({
+        customerId: order.buyerOrgId ?? order.customerId ?? null,
+        customerName: resolveOptionalString(
+          order?.buyerOrg?.name ?? order?.customerOrg?.name,
+          ""
+        ) || "",
+        customerNameKo: resolveOptionalString(order?.buyerOrg?.nameKo, null),
+        customerNameVi: resolveOptionalString(order?.buyerOrg?.nameVi, null),
+        orderId: order.orderId,
+        orderNumber: order.orderNumber,
+        orderStatus: order.status,
+        dueDate: normalizeDateKey(order.dueDate),
+        styleId: item.styleId,
+        styleCode: item.styleCode,
+        styleName: item.styleName,
+        orderedQuantity: item.orderedQuantity,
+        assignedQuantity,
+        unassignedQuantity: Math.max(0, item.orderedQuantity - assignedQuantity),
+        producedQuantity,
+        progressPercent: Math.max(0, Math.min(100, progressPercent)),
+        status,
+        firstWorkDate: progress.map((row) => normalizeDateKey(row?.firstWorkDate)).filter(Boolean).sort()[0] || null,
+        lastWorkDate,
+        estimatedCompletionDate,
+        estimateBasis: isCompleted
+          ? "ACTUAL_COMPLETION"
+          : !canForecast
+            ? "ASSIGNMENT_REQUIRED"
+            : hasWorkRecords
+              ? "WORK_RECORD_RATE_AND_LINE_SCHEDULE"
+              : "LINE_SCHEDULE",
+        hasMonthlySummaryRecords: progress.some((row) => row?.hasRangeCoverage === true),
+        assignmentCount: relatedPlans.length,
+        reviewRequired: progress.some((row) => row?.scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED),
+      });
+    });
+  });
+
+  const customers = Array.from(
+    new Map(rows.map((row) => [String(row.customerId), {
+      id: row.customerId,
+      name: row.customerName,
+      nameKo: row.customerNameKo,
+      nameVi: row.customerNameVi,
+    }])).values()
+  ).sort((left, right) => String(left.name).localeCompare(String(right.name)));
+
+  return res.json({ generatedAt: new Date().toISOString(), customers, rows });
+});
+
 app.post("/orders", async (req, res) => {
   const accessContext = await requireOrgRole(req, res);
   if (!accessContext) return;

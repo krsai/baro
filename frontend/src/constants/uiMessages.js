@@ -52,6 +52,7 @@ export const UI_MESSAGES = {
     sales: { ko: '영업 관리', en: 'Sales', vi: 'Kinh doanh' },
     customerPricing: { ko: '단가', en: 'Pricing', vi: 'Đơn giá' },
     order: { ko: '주문', en: 'Orders', vi: 'Đơn hàng' },
+    customerProductionReport: { ko: '생산 진행 보고서', en: 'Production Report', vi: 'Báo cáo sản xuất' },
     style: { ko: '스타일', en: 'Styles', vi: 'Style' },
     production: { ko: '생산 관리', en: 'Production', vi: 'Sản xuất' },
     assignment: { ko: '배정', en: 'Assign', vi: 'Phân công' },
