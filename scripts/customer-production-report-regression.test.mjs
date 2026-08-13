@@ -33,13 +33,14 @@ test('forecast is withheld until the full order-style quantity is assigned', () 
   assert.doesNotMatch(server.slice(server.indexOf('app.get("/customer-production-reports"')), /forecastCompletedAt\) \|\| normalizeDateKey\(row\?\.renderEndDate/);
 });
 
-test('assignment progress remains available before outsource columns are migrated', () => {
+test('assignment progress does not hide missing outsource columns with a legacy query', () => {
   const progressLoader = server.slice(
     server.indexOf('const loadAssignmentPlanProgressWorkRows'),
     server.indexOf('const resolveAssignmentProcessGroupTotals')
   );
-  assert.match(progressLoader, /String\(error\?\.code \|\| ""\) !== "P2022"/);
-  assert.match(progressLoader, /directRows = await loadRows\(false\)/);
+  assert.match(progressLoader, /isOutsourced: true/);
+  assert.match(progressLoader, /outsourceVendorName: true/);
+  assert.doesNotMatch(progressLoader, /loadRows\(false\)|P2022/);
 });
 
 test('sales report is routed, permissioned, printable, and exportable', () => {

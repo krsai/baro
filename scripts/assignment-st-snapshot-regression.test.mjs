@@ -58,7 +58,7 @@ test('line and schedule movement never replace an existing historical ST snapsho
   assert.doesNotMatch(basisChange, /lineId|startIndex|endIndex/);
 });
 
-test('progress always reads coverage columns and only falls back for pending outsource columns', () => {
+test('progress requires all canonical coverage and outsource columns without fallback', () => {
   const start = backend.indexOf('const loadAssignmentPlanProgressWorkRows =');
   const end = backend.indexOf('const resolveAssignmentProcessGroupTotals =', start);
   const loader = backend.slice(start, end);
@@ -66,10 +66,10 @@ test('progress always reads coverage columns and only falls back for pending out
   assert.match(loader, /coverageStartDate: true/);
   assert.match(loader, /includeDiagnostics = false/);
   assert.match(loader, /displayDate: true/);
-  assert.match(loader, /String\(error\?\.code \|\| ""\) !== "P2022"/);
-  assert.match(loader, /directRows = await loadRows\(false\)/);
+  assert.match(loader, /isOutsourced: true/);
+  assert.match(loader, /outsourceVendorName: true/);
   assert.doesNotMatch(loader, /records: true/);
-  assert.doesNotMatch(loader, /fallbackModes|fallback work-record projection|isWorkLogCoverageMissingColumnError/);
+  assert.doesNotMatch(loader, /fallbackModes|fallback work-record projection|isWorkLogCoverageMissingColumnError|loadRows\(false\)|P2022/);
 });
 
 test('line month capacity only loads display relations and ST bucket diagnostics on demand', () => {

@@ -20920,14 +20920,18 @@ const loadAssignmentPlanProgressWorkRows = async ({
     .filter((planId): planId is number => planId !== null);
   if (planIds.length === 0) return [];
 
-  const buildSelect = (includeOutsourceFields: boolean) => ({
+  const directRows: any[] = await prisma.workRecord.findMany({
+      where: {
+        orgId,
+        assignmentPlanId: { in: planIds },
+      },
+      select: {
         id: true,
         workLogId: true,
         assignmentPlanId: true,
         workerId: true,
-        ...(includeOutsourceFields
-          ? { isOutsourced: true, outsourceVendorName: true }
-          : {}),
+        isOutsourced: true,
+        outsourceVendorName: true,
         lineId: true,
         styleId: true,
         styleProcessId: true,
@@ -20954,24 +20958,8 @@ const loadAssignmentPlanProgressWorkRows = async ({
             displayDate: true,
           },
         },
-      });
-  const loadRows = (includeOutsourceFields: boolean) => prisma.workRecord.findMany({
-      where: {
-        orgId,
-        assignmentPlanId: { in: planIds },
-      },
-      select: buildSelect(includeOutsourceFields) as any,
+      } as any,
     });
-  let directRows: any[];
-  try {
-    directRows = await loadRows(true);
-  } catch (error: any) {
-    if (String(error?.code || "") !== "P2022") throw error;
-    console.warn(
-      `[${context}] outsourced WorkRecord columns are unavailable; using legacy progress query`
-    );
-    directRows = await loadRows(false);
-  }
 
   void context;
   void stateAssignmentsByExternalId;
