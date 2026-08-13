@@ -745,6 +745,9 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "WorkRecord", columnName: "lineId" },
   { tableName: "WorkRecord", columnName: "effectiveCoverageStartDate" },
   { tableName: "WorkRecord", columnName: "effectiveCoverageEndDate" },
+  { tableName: "WorkRecord", columnName: "isOutsourced" },
+  { tableName: "WorkRecord", columnName: "outsourceVendorName" },
+  { tableName: "WorkRecord", columnName: "outsourceUnitPrice" },
   { tableName: "WorkOrder", columnName: "buyerOrgId" },
   { tableName: "WorkOrder", columnName: "sellerOrgId" },
   { tableName: "WorkOrder", columnName: "customerId" },
@@ -855,6 +858,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  "WorkRecord_outsource_actor_check",
   "Currency_code_key",
   "OrgRelationshipStyleSalesBucket_relationship_style_key",
   "CustomerSalesPriceList_scope_version_key",

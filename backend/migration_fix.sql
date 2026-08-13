@@ -1,3 +1,29 @@
+-- Step 0r: outsourced production records (20260814)
+-- Railway runs this idempotent file as the production schema source of truth.
+ALTER TABLE "WorkRecord"
+  ADD COLUMN IF NOT EXISTS "isOutsourced" BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS "outsourceVendorName" TEXT,
+  ADD COLUMN IF NOT EXISTS "outsourceUnitPrice" DECIMAL(18, 4);
+
+CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_isOutsourced_idx"
+  ON "WorkRecord"("orgId", "isOutsourced");
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'WorkRecord_outsource_actor_check'
+  ) THEN
+    ALTER TABLE "WorkRecord"
+      ADD CONSTRAINT "WorkRecord_outsource_actor_check"
+      CHECK (
+        ("isOutsourced" = false AND "outsourceVendorName" IS NULL AND "outsourceUnitPrice" IS NULL)
+        OR
+        ("isOutsourced" = true AND "workerId" IS NULL AND length(trim("outsourceVendorName")) > 0 AND "outsourceUnitPrice" >= 0)
+      );
+  END IF;
+END $$;
+
 -- Step 0o: Employee becomes the canonical organization account table (20260707)
 -- Employee.id is the account id. OrgMembership was a temporary compatibility
 -- shadow and is dropped after any remaining rows are copied into Employee.

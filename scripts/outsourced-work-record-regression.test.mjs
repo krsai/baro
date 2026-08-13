@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [schema, migration, backend, payroll, page] = await Promise.all([
+const [schema, migration, migrationFix, backend, payroll, page] = await Promise.all([
   readFile(new URL('../backend/prisma/schema.prisma', import.meta.url), 'utf8'),
   readFile(new URL('../backend/prisma/migrations/20260814090000_add_outsourced_work_records/migration.sql', import.meta.url), 'utf8'),
+  readFile(new URL('../backend/migration_fix.sql', import.meta.url), 'utf8'),
   readFile(new URL('../backend/src/index.ts', import.meta.url), 'utf8'),
   readFile(new URL('../backend/src/payroll/payroll.service.ts', import.meta.url), 'utf8'),
   readFile(new URL('../frontend/src/pages/App/work/WorkDetail.jsx', import.meta.url), 'utf8'),
@@ -15,6 +16,10 @@ test('outsourced work records preserve vendor and unit-price snapshots', () => {
   assert.match(schema, /outsourceVendorName\s+String\?/);
   assert.match(schema, /outsourceUnitPrice\s+Decimal\?/);
   assert.match(migration, /WorkRecord_outsource_actor_check/);
+  assert.match(migrationFix, /ADD COLUMN IF NOT EXISTS "isOutsourced"/);
+  assert.match(migrationFix, /WorkRecord_outsource_actor_check/);
+  assert.match(backend, /\{ tableName: "WorkRecord", columnName: "isOutsourced" \}/);
+  assert.match(backend, /"WorkRecord_outsource_actor_check"/);
 });
 
 test('outsourced output remains in progress but is excluded at AT and payroll sources', () => {
