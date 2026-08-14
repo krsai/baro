@@ -47,6 +47,9 @@ test('process outsourcing partners are organization-scoped and linked by id with
   assert.match(schema, /outsourcingPartnerId\s+Int\?/);
   assert.match(partnerMigration, /CREATE TABLE "BusinessPartner"/);
   assert.match(partnerMigration, /WorkRecord_outsourcingPartnerId_fkey/);
+  assert.match(migrationFix, /ADD COLUMN IF NOT EXISTS "outsourcingPartnerId"/);
+  assert.match(migrationFix, /CREATE TABLE IF NOT EXISTS "BusinessPartner"/);
+  assert.match(backend, /\{ tableName: "WorkRecord", columnName: "outsourcingPartnerId" \}/);
   assert.match(backend, /app\.post\("\/business-partners"/);
   assert.match(backend, /app\.get\("\/business-partners\/:id\/history"/);
   assert.match(page, /outsourcingPartnerId: row\?\.worker\?\.isOutsourced/);

@@ -748,6 +748,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "WorkRecord", columnName: "isOutsourced" },
   { tableName: "WorkRecord", columnName: "outsourceVendorName" },
   { tableName: "WorkRecord", columnName: "outsourceUnitPrice" },
+  { tableName: "WorkRecord", columnName: "outsourcingPartnerId" },
   { tableName: "WorkOrder", columnName: "buyerOrgId" },
   { tableName: "WorkOrder", columnName: "sellerOrgId" },
   { tableName: "WorkOrder", columnName: "customerId" },

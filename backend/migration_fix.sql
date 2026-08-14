@@ -4443,3 +4443,48 @@ UPDATE "StyleProcessAtObservation" SET "productionStage" = 'SEWING'::"Production
 ALTER TABLE "StyleProcessAtObservation"
   ALTER COLUMN "productionStage" SET DEFAULT 'SEWING'::"ProductionStage",
   ALTER COLUMN "productionStage" SET NOT NULL;
+
+-- Organization-scoped business partners used by outsourced work records.
+-- This block is intentionally idempotent because Railway applies migration_fix
+-- before starting the API, including databases whose Prisma migration history
+-- has not yet caught up with the generated client.
+DO $$
+BEGIN
+  CREATE TYPE "BusinessPartnerType" AS ENUM ('PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS "BusinessPartner" (
+  "id" SERIAL NOT NULL,
+  "orgId" INTEGER NOT NULL,
+  "name" TEXT NOT NULL,
+  "type" "BusinessPartnerType" NOT NULL DEFAULT 'PROCESS_OUTSOURCING',
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdBy" TEXT NOT NULL DEFAULT 'system@baro.local',
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "BusinessPartner_pkey" PRIMARY KEY ("id")
+);
+
+ALTER TABLE "WorkRecord"
+  ADD COLUMN IF NOT EXISTS "outsourcingPartnerId" INTEGER;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "BusinessPartner_orgId_type_name_key"
+  ON "BusinessPartner"("orgId", "type", "name");
+CREATE INDEX IF NOT EXISTS "BusinessPartner_orgId_type_isActive_idx"
+  ON "BusinessPartner"("orgId", "type", "isActive");
+CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_outsourcingPartnerId_idx"
+  ON "WorkRecord"("orgId", "outsourcingPartnerId");
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'BusinessPartner_orgId_fkey') THEN
+    ALTER TABLE "BusinessPartner" ADD CONSTRAINT "BusinessPartner_orgId_fkey"
+      FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'WorkRecord_outsourcingPartnerId_fkey') THEN
+    ALTER TABLE "WorkRecord" ADD CONSTRAINT "WorkRecord_outsourcingPartnerId_fkey"
+      FOREIGN KEY ("outsourcingPartnerId") REFERENCES "BusinessPartner"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
