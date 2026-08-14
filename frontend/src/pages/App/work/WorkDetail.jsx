@@ -65,7 +65,6 @@ const AUTO_NOTE_PREFIX = '[자동 메모]';
 const AUTO_NOTE_MARKER = `\n\n${AUTO_NOTE_PREFIX}\n`;
 const EMPLOYMENT_AUTO_NOTE_PREFIX = '[재직기간 자동 조정]';
 const EMPLOYMENT_AUTO_NOTE_MARKER = `\n\n${EMPLOYMENT_AUTO_NOTE_PREFIX}\n`;
-const DESKTOP_PANEL_BOTTOM_GAP = 16;
 const LABELS = {
   title: '기록 상세',
   workDate: '작업 종료일',
@@ -1103,10 +1102,7 @@ const WorkDetail = ({
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [note, setNote] = useState('');
   const [formError, setFormError] = useState('');
-  const [recordsPanelHeight, setRecordsPanelHeight] = useState(null);
   const initialRowsHydratedRef = useRef(false);
-  const detailMetaPanelRef = useRef(null);
-  const recordsPanelRef = useRef(null);
   const hasInitialRecords = Array.isArray(initialLog?.records) && initialLog.records.length > 0;
   const initialFactoryOption = useMemo(() => buildFactorySelection(initialLog), [initialLog]);
   const initialLineOption = useMemo(() => buildLineSelection(initialLog), [initialLog]);
@@ -1211,55 +1207,6 @@ const WorkDetail = ({
       toText(error?.message).toLowerCase() === 'request cancelled',
     []
   );
-
-  useEffect(() => {
-    if (isMobile) {
-      setRecordsPanelHeight(null);
-      return undefined;
-    }
-
-    let frameId = 0;
-    let resizeObserver = null;
-    const updateRecordsPanelHeight = () => {
-      const panel = recordsPanelRef.current;
-      if (!(panel instanceof HTMLElement)) return;
-      const rect = panel.getBoundingClientRect();
-      const nextHeight = Math.max(
-        0,
-        Math.floor(window.innerHeight - rect.top - DESKTOP_PANEL_BOTTOM_GAP)
-      );
-      if (nextHeight <= 0) return;
-      setRecordsPanelHeight((current) =>
-        current === nextHeight ? current : nextHeight
-      );
-    };
-
-    const scheduleUpdate = () => {
-      window.cancelAnimationFrame(frameId);
-      frameId = window.requestAnimationFrame(updateRecordsPanelHeight);
-    };
-
-    scheduleUpdate();
-    window.addEventListener('resize', scheduleUpdate);
-
-    if (typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(() => {
-        scheduleUpdate();
-      });
-      if (detailMetaPanelRef.current instanceof HTMLElement) {
-        resizeObserver.observe(detailMetaPanelRef.current);
-      }
-      if (recordsPanelRef.current instanceof HTMLElement) {
-        resizeObserver.observe(recordsPanelRef.current);
-      }
-    }
-
-    return () => {
-      window.removeEventListener('resize', scheduleUpdate);
-      window.cancelAnimationFrame(frameId);
-      resizeObserver?.disconnect();
-    };
-  }, [isMobile]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -2810,44 +2757,6 @@ const WorkDetail = ({
   );
   const desktopVisibleRowViewModels = visibleRowViewModels;
   useEffect(() => {
-    const labelRows = desktopVisibleRowViewModels.map((rowViewModel) => {
-      const rowAssignment =
-        rowViewModel.selectedStyleOption ||
-        rowViewModel.rowAssignment ||
-        rowViewModel.row?.assignment ||
-        null;
-      const rowProcess =
-        rowViewModel.selectedProcessOption?.process ||
-        rowViewModel.rowProcess ||
-        rowViewModel.row?.process ||
-        null;
-      return {
-        rowId: toText(rowViewModel.row?.id),
-        styleLabel: rowViewModel.selectedStyleDisplayLabel,
-        styleMetaLabel: rowViewModel.selectedStyleOrderLabel,
-        assignmentOrderNo: toText(rowAssignment?.orderNo),
-        assignmentStyleId: toText(rowAssignment?.styleId),
-        assignmentLabel: toText(rowAssignment?.label),
-        assignmentQuantity: resolveBaselineQuantity(rowAssignment),
-        assignmentDbId: toPositiveIdOrNull(rowAssignment?.dbId),
-        assignmentIsLegacy: Boolean(rowAssignment?.isLegacy),
-        processLabel: rowViewModel.selectedProcessDisplayLabel,
-        processMetaLabel: rowViewModel.selectedProcessMetaLabel,
-        processCode: toText(
-          rowProcess?.processCode || rowProcess?.code || rowProcess?.processKey
-        ),
-        processName: toText(
-          rowProcess?.name ||
-            rowProcess?.processName ||
-            rowProcess?.nameKo ||
-            rowProcess?.nameEn ||
-            rowProcess?.nameVi
-        ),
-        styleProcessId: toPositiveIdOrNull(rowProcess?.styleProcessId),
-      };
-    });
-  }, [desktopVisibleRowViewModels]);
-  useEffect(() => {
     if (!editingField?.rowId || !editingField?.field) return;
 
     let cancelled = false;
@@ -3001,7 +2910,6 @@ const WorkDetail = ({
     <AppPageContainer header={detailHeader}>
       <Stack spacing={2}>
         <Paper
-          ref={detailMetaPanelRef}
           variant="outlined"
           sx={{ p: 2, borderRadius: 2.5, backgroundColor: '#fbfcff' }}
         >
@@ -3044,17 +2952,13 @@ const WorkDetail = ({
         </Paper>
 
         <Paper
-          ref={recordsPanelRef}
           variant="outlined"
           sx={{
             p: 2,
             borderRadius: 2.5,
-            minHeight: 0,
             display: 'flex',
             flexDirection: 'column',
-            ...(isMobile || !recordsPanelHeight
-              ? { minHeight: 420 }
-              : { height: `${recordsPanelHeight}px` }),
+            minHeight: 420,
           }}
         >
           <PageToolbar left={<SearchInput value={searchTerm} onChange={(event) => { setSearchTerm(event.target.value); }} placeholder={LABELS.searchPlaceholder} sx={{ width: { xs: '100%', sm: 320, md: 420 } }} />} sx={{ mb: 1.5 }} />
@@ -3184,7 +3088,6 @@ const WorkDetail = ({
                               inputProps: buildEditableFieldInputProps(row.id, 'worker'),
                             }}
                           />
-                          {row?.worker?.isOutsourced ? <TextField size="small" type="number" label="외주 개당 단가" value={row?.outsourceUnitPrice ?? ''} onChange={(event) => handleOutsourceUnitPriceChange(row.id, event.target.value)} inputProps={{ min: 0 }} color="warning" /> : null}
                           <Stack spacing={0.35}>
                             <SearchableSelect
                               label={LABELS.style}
@@ -3327,10 +3230,16 @@ const WorkDetail = ({
                           />
                           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                             <TextField
-                              label={LABELS.ctSeconds}
+                              label={row?.worker?.isOutsourced ? '외주 개당 단가' : LABELS.ctSeconds}
                               size="small"
-                              value={ctValue}
-                              InputProps={{ readOnly: true }}
+                              type={row?.worker?.isOutsourced ? 'number' : undefined}
+                              value={row?.worker?.isOutsourced ? (row?.outsourceUnitPrice ?? '') : ctValue}
+                              onChange={row?.worker?.isOutsourced
+                                ? (event) => handleOutsourceUnitPriceChange(row.id, event.target.value)
+                                : undefined}
+                              inputProps={row?.worker?.isOutsourced ? { min: 0 } : undefined}
+                              InputProps={row?.worker?.isOutsourced ? undefined : { readOnly: true }}
+                              color={row?.worker?.isOutsourced ? 'warning' : undefined}
                               fullWidth
                             />
                             <TextField
@@ -3418,9 +3327,7 @@ const WorkDetail = ({
                     sx={{
                       borderRadius: 2,
                       overflowX: 'auto',
-                      overflowY: 'auto',
-                      flex: 1,
-                      minHeight: 0,
+                      overflowY: 'visible',
                     }}
                   >
                   <Table stickyHeader size="small" sx={{ tableLayout: 'fixed' }}>
@@ -3479,6 +3386,8 @@ const WorkDetail = ({
                           data-work-desktop-row="true"
                           data-work-editing-row={isEditingRow ? row.id : undefined}
                           sx={{
+                            contentVisibility: 'auto',
+                            containIntrinsicSize: '56px',
                             '& > td': {
                               backgroundColor: isRowExceeded ? '#fff5f5' : groupBackgroundColor,
                             },
@@ -3527,7 +3436,6 @@ const WorkDetail = ({
                                   inputProps: buildEditableFieldInputProps(row.id, 'worker'),
                                 }}
                               />
-                              {row?.worker?.isOutsourced ? <TextField size="small" type="number" label="외주 개당 단가" value={row?.outsourceUnitPrice ?? ''} onChange={(event) => handleOutsourceUnitPriceChange(row.id, event.target.value)} inputProps={{ min: 0 }} color="warning" sx={{ mt: 0.5 }} /> : null}
                               </Stack>
                             ) : (
                               <Box
@@ -3706,9 +3614,30 @@ const WorkDetail = ({
                             )}
                           </TableCell>
                           <TableCell align="right" sx={{ py: 0.75, verticalAlign: 'middle' }}>
-                            <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>
-                              {ctValue}
-                            </Typography>
+                            {row?.worker?.isOutsourced && isEditingRow ? (
+                              <TextField
+                                type="number"
+                                size="small"
+                                value={row?.outsourceUnitPrice ?? ''}
+                                onChange={(event) => handleOutsourceUnitPriceChange(row.id, event.target.value)}
+                                inputProps={{ min: 0, 'aria-label': '외주 개당 단가' }}
+                                placeholder="개당 단가"
+                                color="warning"
+                                fullWidth
+                                hiddenLabel
+                                sx={DESKTOP_INLINE_FIELD_SX}
+                              />
+                            ) : (
+                              <Typography
+                                variant="body2"
+                                color={row?.worker?.isOutsourced ? 'warning.main' : 'inherit'}
+                                sx={{ fontVariantNumeric: 'tabular-nums', fontWeight: row?.worker?.isOutsourced ? 700 : 400 }}
+                              >
+                                {row?.worker?.isOutsourced
+                                  ? `${formatCount(row?.outsourceUnitPrice || 0)}동`
+                                  : ctValue}
+                              </Typography>
+                            )}
                           </TableCell>
                           <TableCell align="right" sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             {isEditingRow ? (

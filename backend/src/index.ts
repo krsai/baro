@@ -29041,12 +29041,12 @@ app.get("/customer-production-reports", async (req, res) => {
         relatedPlans.length > 0 &&
         progress.length === relatedPlans.length &&
         progress.every((row) => row?.isCompleted === true);
-      const forecastCandidates = progress
-        .map((row) => {
-          const actualStartDate = normalizeDateKey(row?.firstWorkDate);
+      const forecastCandidates = relatedPlans
+        .map((plan) => {
+          const actualStartDate = normalizeDateKey(plan?.progress?.firstWorkDate);
           const plannedDurationDays = Math.max(
             1,
-            toSignedInt(row?.reportPlannedDurationDays, 1)
+            toSignedInt(plan?.reportPlannedDurationDays, 1)
           );
           if (actualStartDate) {
             return shiftDateKeyByDaysForAssignmentSchedule(
@@ -29054,7 +29054,7 @@ app.get("/customer-production-reports", async (req, res) => {
               plannedDurationDays - 1
             ) || actualStartDate;
           }
-          return normalizeDateKey(row?.renderEndDate);
+          return normalizeDateKey(plan?.progress?.renderEndDate);
         })
         .filter((value): value is string => Boolean(value));
       const completedCandidates = progress
