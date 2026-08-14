@@ -3038,7 +3038,15 @@ const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label
                                     endIcon={<OpenInNewIcon fontSize="small" />}
                                     disabled={!record?.workLogId}
                                     onClick={() => onOpenWorkLog?.(record)}
-                                    sx={{ whiteSpace: 'nowrap' }}
+                                    sx={{
+                                      minWidth: 0,
+                                      height: 26,
+                                      px: 0.75,
+                                      fontSize: '0.72rem',
+                                      whiteSpace: 'nowrap',
+                                      '& .MuiButton-endIcon': { ml: 0.35, mr: 0 },
+                                      '& .MuiSvgIcon-root': { fontSize: 14 },
+                                    }}
                                   >
                                     {label('작업 기록', 'Work log', 'Nhật ký')}
                                   </Button>
@@ -3133,6 +3141,7 @@ const AssignBoard = () => {
   const [contextMenuState, setContextMenuState] = useState(null);
   const [detailState, setDetailState] = useState(null);
   const [quantityReviewAssignmentId, setQuantityReviewAssignmentId] = useState(null);
+  const closeQuantityReviewAfterNavigationRef = useRef(false);
   const [quantityReviewData, setQuantityReviewData] = useState(null);
   const [quantityReviewLoading, setQuantityReviewLoading] = useState(false);
   const [quantityReviewError, setQuantityReviewError] = useState('');
@@ -5842,10 +5851,15 @@ const AssignBoard = () => {
     setContextMenuState(null);
   }, [contextMenuState, contextMenuTargetAssignment]);
   const handleCloseQuantityReview = useCallback(() => {
+    closeQuantityReviewAfterNavigationRef.current = false;
     setQuantityReviewAssignmentId(null);
     setQuantityReviewData(null);
     setQuantityReviewError('');
   }, []);
+  useEffect(() => {
+    if (isAssignmentRouteActive || !closeQuantityReviewAfterNavigationRef.current) return;
+    handleCloseQuantityReview();
+  }, [handleCloseQuantityReview, isAssignmentRouteActive]);
   const handleOpenQuantityReviewWorkLog = useCallback((record) => {
     const workLogId = Number(record?.workLogId);
     if (!Number.isInteger(workLogId) || workLogId <= 0) return;
@@ -5855,11 +5869,11 @@ const AssignBoard = () => {
       : languageCode === 'vi'
         ? 'Chi tiết nhật ký công việc'
         : 'Work Log Detail';
-    handleCloseQuantityReview();
+    closeQuantityReviewAfterNavigationRef.current = true;
     navigateToPath(`/work-history/${workLogId}`, {
       label: workDate ? `${title}: ${workDate}` : title,
     });
-  }, [handleCloseQuantityReview, languageCode, navigateToPath]);
+  }, [languageCode, navigateToPath]);
   const handleCloseDetail = useCallback(() => {
     blurActiveElement();
     setDetailState(null);

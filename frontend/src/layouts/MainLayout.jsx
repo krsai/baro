@@ -342,6 +342,9 @@ const MainLayout = () => {
   const [pendingTabPath, setPendingTabPath] = useState('');
   const [headerHeight, setHeaderHeight] = useState(64);
   const appBarRef = useRef(null);
+  const workspaceScrollRef = useRef(null);
+  const workspaceScrollByPathRef = useRef(new Map());
+  const previousWorkspacePathRef = useRef(currentPath);
   const skipAutoOpenPathRef = useRef(null);
   const isLoggingOutRef = useRef(false);
   const pendingNavigationPathRef = useRef(null);
@@ -367,6 +370,18 @@ const MainLayout = () => {
 
   useEffect(() => {
     currentPathRef.current = currentPath;
+  }, [currentPath]);
+
+  React.useLayoutEffect(() => {
+    const scrollElement = workspaceScrollRef.current;
+    if (!scrollElement) return;
+    const previousPath = previousWorkspacePathRef.current;
+    if (previousPath && previousPath !== currentPath) {
+      workspaceScrollByPathRef.current.set(previousPath, scrollElement.scrollTop);
+    }
+    const savedScrollTop = workspaceScrollByPathRef.current.get(currentPath);
+    scrollElement.scrollTop = Number.isFinite(savedScrollTop) ? savedScrollTop : 0;
+    previousWorkspacePathRef.current = currentPath;
   }, [currentPath]);
 
   useEffect(() => {
@@ -1615,6 +1630,10 @@ const MainLayout = () => {
     recentTabHistoryRef.current = recentTabHistoryRef.current.filter(
       (tabId) => tabId === currentPath || openTabIds.has(tabId)
     );
+    workspaceScrollByPathRef.current.forEach((_scrollTop, tabId) => {
+      if (tabId === currentPath || openTabIds.has(tabId)) return;
+      workspaceScrollByPathRef.current.delete(tabId);
+    });
   }, [currentPath, openTabs]);
 
   useEffect(() => {
@@ -1680,6 +1699,7 @@ const MainLayout = () => {
     pendingCloseTabRef.current = null;
     pendingManualTabCloseRef.current = null;
     recentTabHistoryRef.current = [];
+    workspaceScrollByPathRef.current.clear();
     setMountedTabOutlets(new Map());
     cancelAllTrackedRequests('logout');
     resetWorkspace();
@@ -2157,6 +2177,7 @@ const MainLayout = () => {
         />
 
         <Box
+          ref={workspaceScrollRef}
           sx={{
             flexGrow: 1,
             minWidth: 0,

@@ -66,6 +66,9 @@ test('expanded quantity records can open their source work-log detail', () => {
   assert.match(board, /onOpenWorkLog=\{handleOpenQuantityReviewWorkLog\}/);
   assert.match(board, /navigateToPath\(`\/work-history\/\$\{workLogId\}`/);
   assert.match(board, /label\('작업 기록', 'Work log', 'Nhật ký'\)/);
+  assert.match(board, /closeQuantityReviewAfterNavigationRef\.current = true/);
+  assert.match(board, /if \(isAssignmentRouteActive \|\| !closeQuantityReviewAfterNavigationRef\.current\) return/);
+  assert.match(board, /height: 26/);
 });
 
 test('review cards show uncapped actual progress while scheduling remains capped', () => {

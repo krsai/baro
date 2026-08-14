@@ -20,3 +20,9 @@ test('only tabs no longer open are removed from the keep-alive cache', () => {
   assert.match(layout, /if \(keepAlivePaths\.has\(path\)\) return;[\s\S]*next\.delete\(path\)/);
   assert.match(layout, /display: currentPath === path \? 'flex' : 'none'/);
 });
+
+test('workspace restores the page scroll position independently for each open tab', () => {
+  assert.match(layout, /workspaceScrollByPathRef\.current\.set\(previousPath, scrollElement\.scrollTop\)/);
+  assert.match(layout, /workspaceScrollByPathRef\.current\.get\(currentPath\)/);
+  assert.match(layout, /ref=\{workspaceScrollRef\}/);
+});
