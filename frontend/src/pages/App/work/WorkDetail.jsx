@@ -14,7 +14,6 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Tooltip,
   Typography,
   useMediaQuery,
 } from '@mui/material';
@@ -61,6 +60,7 @@ import { loadWorkLogContext } from './workLogStorage';
 const { useDeferredValue } = React;
 
 const COLLATOR = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
+const ROW_RENDER_BATCH_SIZE = 80;
 const AUTO_NOTE_PREFIX = '[자동 메모]';
 const AUTO_NOTE_MARKER = `\n\n${AUTO_NOTE_PREFIX}\n`;
 const EMPLOYMENT_AUTO_NOTE_PREFIX = '[재직기간 자동 조정]';
@@ -1120,7 +1120,9 @@ const WorkDetail = ({
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [note, setNote] = useState('');
   const [formError, setFormError] = useState('');
+  const [rowRenderLimit, setRowRenderLimit] = useState(ROW_RENDER_BATCH_SIZE);
   const initialRowsHydratedRef = useRef(false);
+  const rowRenderSentinelRef = useRef(null);
   const hasInitialRecords = Array.isArray(initialLog?.records) && initialLog.records.length > 0;
   const initialFactoryOption = useMemo(() => buildFactorySelection(initialLog), [initialLog]);
   const initialLineOption = useMemo(() => buildLineSelection(initialLog), [initialLog]);
@@ -2781,7 +2783,34 @@ const WorkDetail = ({
       rows.length,
     ]
   );
-  const desktopVisibleRowViewModels = visibleRowViewModels;
+  const renderedRowViewModels = useMemo(
+    () => visibleRowViewModels.slice(0, rowRenderLimit),
+    [rowRenderLimit, visibleRowViewModels]
+  );
+  useEffect(() => {
+    setRowRenderLimit(ROW_RENDER_BATCH_SIZE);
+  }, [deferredSearchTerm, initialLog?.id]);
+  useEffect(() => {
+    const sentinel = rowRenderSentinelRef.current;
+    if (!(sentinel instanceof HTMLElement) || rowRenderLimit >= visibleRowViewModels.length) {
+      return undefined;
+    }
+    if (typeof IntersectionObserver === 'undefined') {
+      setRowRenderLimit(visibleRowViewModels.length);
+      return undefined;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setRowRenderLimit((current) =>
+          Math.min(visibleRowViewModels.length, current + ROW_RENDER_BATCH_SIZE)
+        );
+      },
+      { rootMargin: '600px 0px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [rowRenderLimit, visibleRowViewModels.length]);
   useEffect(() => {
     if (!editingField?.rowId || !editingField?.field) return;
 
@@ -3042,7 +3071,7 @@ const WorkDetail = ({
               </Stack>
               {isMobile ? (
                 <Stack spacing={1}>
-                  {visibleRowViewModels.map((rowViewModel) => {
+                  {renderedRowViewModels.map((rowViewModel) => {
                     const {
                       row,
                       rowNumber,
@@ -3306,8 +3335,7 @@ const WorkDetail = ({
                             />
                           </Stack>
                           <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
-                            <Tooltip title={LABELS.addBelow}>
-                              <span>
+                              <span title={LABELS.addBelow}>
                                 <IconButton
                                   size="small"
                                   color="primary"
@@ -3321,9 +3349,7 @@ const WorkDetail = ({
                                   <AddIcon fontSize="small" />
                                 </IconButton>
                               </span>
-                            </Tooltip>
-                            <Tooltip title={LABELS.moveUp}>
-                              <span>
+                              <span title={LABELS.moveUp}>
                                 <IconButton
                                   size="small"
                                   onClick={(event) => {
@@ -3336,9 +3362,7 @@ const WorkDetail = ({
                                   <KeyboardArrowUpIcon fontSize="small" />
                                 </IconButton>
                               </span>
-                            </Tooltip>
-                            <Tooltip title={LABELS.moveDown}>
-                              <span>
+                              <span title={LABELS.moveDown}>
                                 <IconButton
                                   size="small"
                                   onClick={(event) => {
@@ -3351,9 +3375,7 @@ const WorkDetail = ({
                                   <KeyboardArrowDownIcon fontSize="small" />
                                 </IconButton>
                               </span>
-                            </Tooltip>
-                            <Tooltip title={LABELS.remove}>
-                              <span>
+                              <span title={LABELS.remove}>
                                 <IconButton
                                   size="small"
                                   color="error"
@@ -3367,7 +3389,6 @@ const WorkDetail = ({
                                   <DeleteOutlineIcon fontSize="small" />
                                 </IconButton>
                               </span>
-                            </Tooltip>
                           </Stack>
                         </Stack>
                       </Paper>
@@ -3399,7 +3420,7 @@ const WorkDetail = ({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                    {desktopVisibleRowViewModels.map((rowViewModel) => {
+                    {renderedRowViewModels.map((rowViewModel) => {
                       const {
                         row,
                         rowNumber,
@@ -3781,8 +3802,7 @@ const WorkDetail = ({
                               alignItems="center"
                               sx={{ minHeight: 40 }}
                             >
-                              <Tooltip title={LABELS.addBelow}>
-                                <span>
+                                <span title={LABELS.addBelow}>
                                   <IconButton
                                     size="small"
                                     color="primary"
@@ -3796,9 +3816,7 @@ const WorkDetail = ({
                                     <AddIcon fontSize="small" />
                                   </IconButton>
                                 </span>
-                              </Tooltip>
-                              <Tooltip title={LABELS.moveUp}>
-                                <span>
+                                <span title={LABELS.moveUp}>
                                   <IconButton
                                     size="small"
                                     onClick={(event) => {
@@ -3811,9 +3829,7 @@ const WorkDetail = ({
                                     <KeyboardArrowUpIcon fontSize="small" />
                                   </IconButton>
                                 </span>
-                              </Tooltip>
-                              <Tooltip title={LABELS.moveDown}>
-                                <span>
+                                <span title={LABELS.moveDown}>
                                   <IconButton
                                     size="small"
                                     onClick={(event) => {
@@ -3826,9 +3842,7 @@ const WorkDetail = ({
                                     <KeyboardArrowDownIcon fontSize="small" />
                                   </IconButton>
                                 </span>
-                              </Tooltip>
-                              <Tooltip title={LABELS.remove}>
-                                <span>
+                                <span title={LABELS.remove}>
                                   <IconButton
                                     size="small"
                                     color="error"
@@ -3842,7 +3856,6 @@ const WorkDetail = ({
                                     <DeleteOutlineIcon fontSize="small" />
                                   </IconButton>
                                 </span>
-                              </Tooltip>
                             </Stack>
                           </TableCell>
                         </TableRow>
@@ -3853,6 +3866,9 @@ const WorkDetail = ({
                 </TableContainer>
               </Box>
               )}
+              {rowRenderLimit < visibleRowViewModels.length ? (
+                <Box ref={rowRenderSentinelRef} sx={{ height: 1 }} aria-hidden="true" />
+              ) : null}
               <Box
                 sx={{
                   display: 'flex',
