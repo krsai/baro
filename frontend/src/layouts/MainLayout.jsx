@@ -1564,7 +1564,12 @@ const MainLayout = () => {
     if (!isKeepAliveCandidatePath(currentPath)) return;
     if (!routeOutlet) return;
     setMountedTabOutlets((prev) => {
-      if (prev.get(currentPath) === routeOutlet) return prev;
+      // A route outlet is a new React element on every navigation, even when the
+      // pathname points back to an already-open workspace tab. Replacing the
+      // cached element here remounts the whole page and silently resets local
+      // form/query state. Keep the first instance until the tab is actually
+      // closed; the cleanup effect below removes closed tab instances.
+      if (prev.has(currentPath)) return prev;
       const next = new Map(prev);
       next.set(currentPath, routeOutlet);
       return next;
