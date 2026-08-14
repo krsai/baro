@@ -37,3 +37,12 @@ test('quantity review menu uses the same scheduler-enriched status as the review
     /assignmentById\.get/
   );
 });
+
+test('process quantity rows expand their linked work records inline', () => {
+  assert.match(board, /const QuantityReviewProcessTable =/);
+  assert.match(board, /setExpandedProcessKey/);
+  assert.match(board, /record\?\.styleProcessId[\s\S]*process\.styleProcessId/);
+  assert.match(board, /aria-label=\{label\('연결된 작업기록'/);
+  assert.match(board, /<QuantityReviewProcessTable/);
+  assert.doesNotMatch(board, /label\('생산 기록', 'Production records'/);
+});

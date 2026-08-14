@@ -22,6 +22,8 @@ import {
   Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import { DndContext, DragOverlay, useDroppable, pointerWithin, MeasuringStrategy } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
@@ -2955,6 +2957,93 @@ const rebuildLineWithReplace = ({
     ...assignments.filter((item) => item.lineId !== lineId),
     ...placed,
   ];
+};
+
+const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label }) => {
+  const [expandedProcessKey, setExpandedProcessKey] = useState('');
+
+  return (
+    <Box>
+      <Typography variant="subtitle1" fontWeight={800} sx={{ mb: 1 }}>
+        {label('공정별 수량', 'Quantity by process', 'Số lượng theo công đoạn')}
+      </Typography>
+      <TableContainer component={Paper} variant="outlined">
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>{label('공정', 'Process', 'Công đoạn')}</TableCell>
+              <TableCell align="right">{label('기록 수량', 'Recorded', 'Đã ghi')}</TableCell>
+              <TableCell align="right">{label('배정 대비', 'vs assigned', 'So với phân công')}</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {processTotals.map((process, index) => {
+              const processKey = String(process?.styleProcessId || `${process?.processCode || 'process'}:${index}`);
+              const expanded = expandedProcessKey === processKey;
+              const quantity = Math.max(0, Number(process?.quantity) || 0);
+              const difference = quantity - planned;
+              const linkedRecords = workRecords.filter((record) =>
+                process?.styleProcessId
+                  ? String(record?.styleProcessId || '') === String(process.styleProcessId)
+                  : String(record?.processCode || '') === String(process?.processCode || '')
+              );
+              return (
+                <React.Fragment key={processKey}>
+                  <TableRow
+                    hover
+                    onClick={() => setExpandedProcessKey((current) => current === processKey ? '' : processKey)}
+                    aria-expanded={expanded}
+                    sx={{ cursor: 'pointer', '& > td': { backgroundColor: expanded ? 'action.hover' : undefined } }}
+                  >
+                    <TableCell>
+                      <Stack direction="row" spacing={0.75} alignItems="center">
+                        <IconButton size="small" tabIndex={-1} aria-hidden="true">
+                          {expanded ? <KeyboardArrowUpIcon fontSize="small" /> : <KeyboardArrowDownIcon fontSize="small" />}
+                        </IconButton>
+                        <Typography variant="body2">
+                          {[process?.processCode, process?.processName].filter(Boolean).join(' · ') || `${label('공정', 'Process', 'Công đoạn')} ${index + 1}`}
+                        </Typography>
+                      </Stack>
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>{quantity.toLocaleString()}</TableCell>
+                    <TableCell align="right" sx={{ color: difference === 0 ? 'success.main' : 'error.main', fontWeight: 800 }}>
+                      {difference > 0 ? '+' : ''}{difference.toLocaleString()}
+                    </TableCell>
+                  </TableRow>
+                  {expanded ? (
+                    <TableRow>
+                      <TableCell colSpan={3} sx={{ p: 0, backgroundColor: '#fafcff' }}>
+                        <Table size="small" aria-label={label('연결된 작업기록', 'Linked work records', 'Nhật ký công việc liên kết')}>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ pl: 6 }}>{label('작업일', 'Work date', 'Ngày làm')}</TableCell>
+                              <TableCell>{label('작업자', 'Worker', 'Người làm')}</TableCell>
+                              <TableCell align="right">{label('수량', 'Quantity', 'Số lượng')}</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {linkedRecords.length ? linkedRecords.map((record, recordIndex) => (
+                              <TableRow key={record?.id || recordIndex}>
+                                <TableCell sx={{ pl: 6 }}>{record?.coverageStartDate && record?.coverageStartDate !== record?.coverageEndDate ? `${record.coverageStartDate} ~ ${record.coverageEndDate}` : record?.workDate || record?.coverageEndDate || '-'}</TableCell>
+                                <TableCell>{record?.isOutsourced ? `${label('외주', 'Outsourced', 'Gia công')} · ${record?.workerName || '-'}` : record?.workerName || '-'}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 700 }}>{Math.max(0, Number(record?.quantity) || 0).toLocaleString()}</TableCell>
+                              </TableRow>
+                            )) : (
+                              <TableRow><TableCell colSpan={3} align="center">{label('연결된 작업기록이 없습니다.', 'No linked work records.', 'Không có nhật ký công việc liên kết.')}</TableCell></TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </React.Fragment>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
 };
 
 const AssignBoard = () => {
@@ -7104,8 +7193,12 @@ const AssignBoard = () => {
                 <Paper variant="outlined" sx={{ p: 1.5, minWidth: 150 }}><Typography variant="caption" color="text.secondary">{label('확인 생산수량', 'Verified output', 'Sản lượng xác nhận')}</Typography><Typography variant="h6" fontWeight={800}>{Math.max(0, Number(reason.producedQuantity) || 0).toLocaleString()}</Typography></Paper>
                 <Paper variant="outlined" sx={{ p: 1.5, minWidth: 150 }}><Typography variant="caption" color="text.secondary">{label('작업기록 합계', 'Work-record total', 'Tổng nhật ký')}</Typography><Typography variant="h6" fontWeight={800}>{Math.max(0, Number(reason.recordedTotalQuantity) || 0).toLocaleString()}</Typography></Paper>
               </Stack>
-              <Box><Typography variant="subtitle1" fontWeight={800} sx={{ mb: 1 }}>{label('공정별 수량', 'Quantity by process', 'Số lượng theo công đoạn')}</Typography><TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow><TableCell>{label('공정', 'Process', 'Công đoạn')}</TableCell><TableCell align="right">{label('기록 수량', 'Recorded', 'Đã ghi')}</TableCell><TableCell align="right">{label('배정 대비', 'vs assigned', 'So với phân công')}</TableCell></TableRow></TableHead><TableBody>{processTotals.map((process, index) => { const quantity = Math.max(0, Number(process?.quantity) || 0); const difference = quantity - planned; return <TableRow key={process?.styleProcessId || index}><TableCell>{[process?.processCode, process?.processName].filter(Boolean).join(' · ') || `${label('공정', 'Process', 'Công đoạn')} ${index + 1}`}</TableCell><TableCell align="right" sx={{ fontWeight: 700 }}>{quantity.toLocaleString()}</TableCell><TableCell align="right" sx={{ color: difference === 0 ? 'success.main' : 'error.main', fontWeight: 800 }}>{difference > 0 ? '+' : ''}{difference.toLocaleString()}</TableCell></TableRow>; })}</TableBody></Table></TableContainer></Box>
-              <Box><Typography variant="subtitle1" fontWeight={800} sx={{ mb: 1 }}>{label('생산 기록', 'Production records', 'Nhật ký sản xuất')}</Typography><TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow><TableCell>{label('작업일', 'Work date', 'Ngày làm')}</TableCell><TableCell>{label('작업자', 'Worker', 'Người làm')}</TableCell><TableCell>{label('공정', 'Process', 'Công đoạn')}</TableCell><TableCell align="right">{label('수량', 'Quantity', 'Số lượng')}</TableCell></TableRow></TableHead><TableBody>{workRecords.length ? workRecords.map((record, index) => <TableRow key={record?.id || index}><TableCell>{record?.coverageStartDate && record?.coverageStartDate !== record?.coverageEndDate ? `${record.coverageStartDate} ~ ${record.coverageEndDate}` : record?.workDate || record?.coverageEndDate || '-'}</TableCell><TableCell>{record?.isOutsourced ? `${label('외주', 'Outsourced', 'Gia công')} · ${record?.workerName || '-'}` : record?.workerName || '-'}</TableCell><TableCell>{[record?.processCode, record?.processName].filter(Boolean).join(' · ') || '-'}</TableCell><TableCell align="right" sx={{ fontWeight: 700 }}>{Math.max(0, Number(record?.quantity) || 0).toLocaleString()}</TableCell></TableRow>) : <TableRow><TableCell colSpan={4} align="center">{label('생산 기록이 없습니다.', 'No production records.', 'Không có nhật ký sản xuất.')}</TableCell></TableRow>}</TableBody></Table></TableContainer></Box>
+              <QuantityReviewProcessTable
+                processTotals={processTotals}
+                workRecords={workRecords}
+                planned={planned}
+                label={label}
+              />
             </Stack>;
           })() : null}
         </Drawer>
