@@ -2215,7 +2215,9 @@ const resolveAssignmentProgressState = ({
       ? Math.max(0, Number(progressRow.progressImbalanceGapRatio) || 0)
       : Math.max(0, Number(assignment?.progressImbalanceGapRatio) || 0);
   const rawWorkProgressPercent = toRawPercentValue(
-    progressRow?.operationalProgressPercent ??
+    progressRow?.displayProgressPercent ??
+      progressRow?.operationalProgressPercent ??
+      assignment?.displayProgressPercent ??
       progressRow?.progressPercent ??
       assignment?.workProgressPercent ??
       assignment?.progressPercent ??

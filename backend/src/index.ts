@@ -23381,6 +23381,18 @@ const buildAssignmentPlanProgressRows = async (
       : hasWorkProgressReachedCompletion
         ? ASSIGNMENT_STATUS_REVIEW_REQUIRED
         : ASSIGNMENT_STATUS_IN_PROGRESS;
+    const displayProgressPercent =
+      scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED &&
+      baselineQuantityRaw != null &&
+      baselineQuantityRaw > 0 &&
+      reviewProcessTotals.length > 0
+        ? Math.max(
+            0,
+            ...reviewProcessTotals.map((process) =>
+              Math.round((Math.max(0, Number(process?.quantity) || 0) / baselineQuantityRaw) * 100)
+            )
+          )
+        : operationalProgressPercent;
 
     const stateAssignment = stateAssignmentsByExternalId.get(plan.externalId) || null;
     const snapshotSchedule = resolveNormalizedAssignmentCtSnapshot(plan)?.schedule || null;
@@ -23504,6 +23516,7 @@ const buildAssignmentPlanProgressRows = async (
       hasProgressImbalanceWarning,
       progressPercent,
       operationalProgressPercent,
+      displayProgressPercent,
       schedulerProgressPercent,
       isStUnknown,
       isProgressUnknown,

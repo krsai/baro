@@ -64,6 +64,13 @@ test('process quantity rows expand their linked work records inline', () => {
 test('review cards show uncapped actual progress while scheduling remains capped', () => {
   assert.match(backend, /const operationalProgressPercent =[\s\S]*Math\.round\(operationalProgressRatio \* 100\)/);
   assert.match(backend, /Math\.min\(100, operationalProgressPercent\)/);
-  assert.match(backend, /operationalProgressPercent,\s*\n\s*schedulerProgressPercent/);
+  assert.match(backend, /operationalProgressPercent,\s*\n\s*displayProgressPercent,\s*\n\s*schedulerProgressPercent/);
   assert.match(card, /progressPercent=\{assignment\.workProgressPercent \?\? assignment\.progressPercent\}/);
+});
+
+test('review-card progress exposes the highest process overproduction instead of an offsetting average', () => {
+  assert.match(backend, /const displayProgressPercent =/);
+  assert.match(backend, /reviewProcessTotals\.map\(\(process\) =>/);
+  assert.match(backend, /process\?\.quantity[\s\S]*baselineQuantityRaw/);
+  assert.match(board, /progressRow\?\.displayProgressPercent \?\?/);
 });
