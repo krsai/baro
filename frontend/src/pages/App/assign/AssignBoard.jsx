@@ -24,6 +24,7 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { DndContext, DragOverlay, useDroppable, pointerWithin, MeasuringStrategy } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
@@ -2961,7 +2962,7 @@ const rebuildLineWithReplace = ({
   ];
 };
 
-const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label }) => {
+const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label, onOpenWorkLog }) => {
   const [expandedProcessKey, setExpandedProcessKey] = useState('');
 
   return (
@@ -3021,6 +3022,7 @@ const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label
                               <TableCell sx={{ pl: 6 }}>{label('작업일', 'Work date', 'Ngày làm')}</TableCell>
                               <TableCell>{label('작업자', 'Worker', 'Người làm')}</TableCell>
                               <TableCell align="right">{label('수량', 'Quantity', 'Số lượng')}</TableCell>
+                              <TableCell align="right">{label('바로가기', 'Open', 'Mở')}</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
@@ -3029,9 +3031,21 @@ const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label
                                 <TableCell sx={{ pl: 6 }}>{record?.coverageStartDate && record?.coverageStartDate !== record?.coverageEndDate ? `${record.coverageStartDate} ~ ${record.coverageEndDate}` : record?.workDate || record?.coverageEndDate || '-'}</TableCell>
                                 <TableCell>{record?.isOutsourced ? `${label('외주', 'Outsourced', 'Gia công')} · ${record?.workerName || '-'}` : record?.workerName || '-'}</TableCell>
                                 <TableCell align="right" sx={{ fontWeight: 700 }}>{Math.max(0, Number(record?.quantity) || 0).toLocaleString()}</TableCell>
+                                <TableCell align="right">
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    endIcon={<OpenInNewIcon fontSize="small" />}
+                                    disabled={!record?.workLogId}
+                                    onClick={() => onOpenWorkLog?.(record)}
+                                    sx={{ whiteSpace: 'nowrap' }}
+                                  >
+                                    {label('작업 기록', 'Work log', 'Nhật ký')}
+                                  </Button>
+                                </TableCell>
                               </TableRow>
                             )) : (
-                              <TableRow><TableCell colSpan={3} align="center">{label('연결된 작업기록이 없습니다.', 'No linked work records.', 'Không có nhật ký công việc liên kết.')}</TableCell></TableRow>
+                              <TableRow><TableCell colSpan={4} align="center">{label('연결된 작업기록이 없습니다.', 'No linked work records.', 'Không có nhật ký công việc liên kết.')}</TableCell></TableRow>
                             )}
                           </TableBody>
                         </Table>
@@ -3049,7 +3063,7 @@ const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label
 };
 
 const AssignBoard = () => {
-  const { showNotification } = useAppActions();
+  const { showNotification, navigateToPath } = useAppActions();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
   const location = useLocation();
@@ -5832,6 +5846,20 @@ const AssignBoard = () => {
     setQuantityReviewData(null);
     setQuantityReviewError('');
   }, []);
+  const handleOpenQuantityReviewWorkLog = useCallback((record) => {
+    const workLogId = Number(record?.workLogId);
+    if (!Number.isInteger(workLogId) || workLogId <= 0) return;
+    const workDate = String(record?.workDate || record?.coverageEndDate || '').trim();
+    const title = languageCode === 'ko'
+      ? '작업 기록 상세'
+      : languageCode === 'vi'
+        ? 'Chi tiết nhật ký công việc'
+        : 'Work Log Detail';
+    handleCloseQuantityReview();
+    navigateToPath(`/work-history/${workLogId}`, {
+      label: workDate ? `${title}: ${workDate}` : title,
+    });
+  }, [handleCloseQuantityReview, languageCode, navigateToPath]);
   const handleCloseDetail = useCallback(() => {
     blurActiveElement();
     setDetailState(null);
@@ -7264,6 +7292,7 @@ const AssignBoard = () => {
                 workRecords={workRecords}
                 planned={planned}
                 label={label}
+                onOpenWorkLog={handleOpenQuantityReviewWorkLog}
               />
               </> : null}
             </Stack>;

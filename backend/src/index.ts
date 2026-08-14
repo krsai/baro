@@ -23054,6 +23054,7 @@ const buildAssignmentPlanProgressRows = async (
     const stats = getStats(planId);
     stats.records.push({
       id: record?.id ?? null,
+      workLogId: toPositiveIntOrNull(record?.workLogId),
       workDate: normalizeDateKey(record?.workLog?.displayDate) || null,
       coverageStartDate: resolveWorkRecordEffectiveCoverageStartDate(record),
       coverageEndDate: resolveWorkRecordEffectiveCoverageEndDate(record),

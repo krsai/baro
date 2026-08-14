@@ -61,6 +61,13 @@ test('process quantity rows expand their linked work records inline', () => {
   assert.doesNotMatch(board, /label\('생산 기록', 'Production records'/);
 });
 
+test('expanded quantity records can open their source work-log detail', () => {
+  assert.match(backend, /workLogId: toPositiveIntOrNull\(record\?\.workLogId\)/);
+  assert.match(board, /onOpenWorkLog=\{handleOpenQuantityReviewWorkLog\}/);
+  assert.match(board, /navigateToPath\(`\/work-history\/\$\{workLogId\}`/);
+  assert.match(board, /label\('작업 기록', 'Work log', 'Nhật ký'\)/);
+});
+
 test('review cards show uncapped actual progress while scheduling remains capped', () => {
   assert.match(backend, /const operationalProgressPercent =[\s\S]*Math\.round\(operationalProgressRatio \* 100\)/);
   assert.match(backend, /Math\.min\(100, operationalProgressPercent\)/);
