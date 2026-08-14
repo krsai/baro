@@ -14,6 +14,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
   useMediaQuery,
 } from '@mui/material';
@@ -1532,10 +1533,6 @@ const WorkDetail = ({
     if (initialLog?.id && hasInitialRecords) return;
     if (initialLog?.id && !initialRowsHydratedRef.current) return;
     if (!selectedFactoryId || !selectedLineId || lineDataLoading) return;
-    if (lineWorkers.length === 0) {
-      setRows([]);
-      return;
-    }
     setRows((currentRows) => {
       const safeRows = Array.isArray(currentRows) ? currentRows : [];
       if (!initialLog?.id && !initialRowsHydratedRef.current) {
@@ -2001,7 +1998,7 @@ const WorkDetail = ({
   }, [ctAssignmentPool.length, hasRowsWithAssignmentPlanId, missingCtStyleLabels]);
   const resolveWorkerOptions = useCallback(
     (row) => ensureOptionIncluded(
-      [...lineWorkers, { id: '__add_outsource__', name: '＋ 외주 업체 입력', isOutsourceAction: true }],
+      [...lineWorkers, { id: '__add_outsource__', name: '＋ 외주 업체', isOutsourceAction: true }],
       row?.worker,
       (item) => item?.id || item?.name
     ),
@@ -2499,7 +2496,7 @@ const WorkDetail = ({
     setRows((currentRows) => {
       const nextRows = currentRows.filter((row) => row.id !== rowId);
       if (nextRows.length > 0) return nextRows;
-      return lineWorkers.length > 0 && selectedLineId ? [createBlankRow()] : [];
+      return selectedLineId ? [createBlankRow()] : [];
     });
     setEditingField(null);
   }, [lineWorkers.length, selectedLineId]);
@@ -2969,7 +2966,7 @@ const WorkDetail = ({
           sx={{ p: 2, borderRadius: 2.5, backgroundColor: '#fbfcff' }}
         >
           <Stack spacing={1.5}>
-            <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', xl: 'minmax(180px, 0.9fr) minmax(180px, 0.9fr) minmax(220px, 1fr) minmax(220px, 1fr) minmax(180px, 0.8fr)' }, alignItems: 'start' }}>
+            <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', xl: 'minmax(180px, 0.9fr) minmax(180px, 0.9fr) minmax(220px, 1fr) minmax(220px, 1fr)' }, alignItems: 'start' }}>
               <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode} localeText={buildDatePickerLocaleText(languageCode)}>
                 <DatePicker label={LABELS.coverageStartDate} value={coverageStartDate} onChange={handleCoverageStartDateChange} minDate={workLogOperationStartDay} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
               </LocalizationProvider>
@@ -2978,7 +2975,6 @@ const WorkDetail = ({
               </LocalizationProvider>
               <SearchableSelect label={!loading && factories.length === 1 ? LABELS.autoFactory : LABELS.factory} options={factories} value={selectedFactory} onChange={(_event, value) => handleFactoryChange(value)} disabled={factories.length === 1} autoHighlight openOnFocus selectOnFocus clearOnBlur={false} handleHomeEndKeys getOptionLabel={(option) => option?.name || ''} isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')} textFieldProps={{ size: 'small' }} />
               <SearchableSelect label={LABELS.line} options={lines} value={selectedLine} onChange={(_event, value) => handleLineChange(value)} disabled={!selectedFactoryId || lines.length === 0} autoHighlight openOnFocus selectOnFocus clearOnBlur={false} handleHomeEndKeys getOptionLabel={(option) => option?.name || ''} isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')} textFieldProps={{ size: 'small' }} />
-              <TextField label={LABELS.wagePerSecond} size="small" value={selectedFactoryId ? hasFactoryWage ? `${formatNumberWithCommas(selectedFactoryWagePerSecond, { fallback: '0', maximumFractionDigits: 2 })} ${LABELS.wagePerSecondUnit}` : '-' : '-'} InputProps={{ readOnly: true }} sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }} />
             </Box>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'stretch', sm: 'center' } }}>
               <Chip size="small" color={entryMode === 'period_summary' ? 'secondary' : 'default'} label={`${LABELS.entryMode}: ${entryModeLabel}`} />
@@ -3036,8 +3032,6 @@ const WorkDetail = ({
               <Alert severity="info">{messages.selectLine}</Alert>
             ) : lineDataLoading && rows.length === 0 ? (
               <Alert severity="info">{messages.loadingLine}</Alert>
-            ) : lineWorkers.length === 0 && rows.length === 0 ? (
-              <Alert severity="warning">{messages.noWorkers}</Alert>
             ) : rows.length === 0 ? (
               <Stack spacing={1.5} alignItems="flex-start">
                 {ctWarningMessage ? <Alert severity="warning">{ctWarningMessage}</Alert> : null}
@@ -3047,6 +3041,7 @@ const WorkDetail = ({
               <Alert severity="info">{messages.noSearchResults}</Alert>
             ) : (
               <Stack spacing={1.25} sx={{ flex: 1, minHeight: 0 }}>
+              {lineWorkers.length === 0 ? <Alert severity="warning">{messages.noWorkers}</Alert> : null}
               {ctWarningMessage ? <Alert severity="warning">{ctWarningMessage}</Alert> : null}
               {missingAssignmentPlanLinkMessage ? (
                 <Alert severity="warning">{missingAssignmentPlanLinkMessage}</Alert>
@@ -3523,11 +3518,22 @@ const WorkDetail = ({
                                 }}
                                 sx={{
                                   ...DESKTOP_INLINE_TEXT_SX,
+                                  minWidth: 0,
+                                  overflow: 'hidden',
                                   whiteSpace: 'nowrap',
                                   cursor: isAggregateLegacyLog ? 'default' : 'pointer',
                                 }}
                               >
-                                <Typography color={row?.worker?.isOutsourced ? 'warning.main' : 'inherit'} fontWeight={row?.worker?.isOutsourced ? 700 : 400}>{toText(row?.worker?.name) || '-'}</Typography>
+                                <Tooltip title={toText(row?.worker?.name) || '-'} placement="bottom-start" arrow>
+                                  <Typography
+                                    noWrap
+                                    color={row?.worker?.isOutsourced ? 'warning.main' : 'inherit'}
+                                    fontWeight={row?.worker?.isOutsourced ? 700 : 400}
+                                    sx={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                                  >
+                                    {toText(row?.worker?.name) || '-'}
+                                  </Typography>
+                                </Tooltip>
                               </Box>
                             )}
                           </TableCell>

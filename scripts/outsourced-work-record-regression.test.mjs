@@ -29,7 +29,16 @@ test('outsourced output remains in progress but is excluded at AT and payroll so
 });
 
 test('worker picker exposes visually distinct outsourced entry and price', () => {
-  assert.match(page, /＋ 외주 업체 입력/);
+  assert.match(page, /name: '＋ 외주 업체'/);
+  assert.match(page, /\[\.\.\.lineWorkers, \{ id: '__add_outsource__'/);
+  assert.doesNotMatch(page, /if \(lineWorkers\.length === 0\) \{\s*setRows\(\[\]\)/);
+  assert.match(page, /return selectedLineId \? \[createBlankRow\(\)\] : \[\]/);
   assert.match(page, /외주 개당 단가/);
   assert.match(page, /warning\.main/);
+});
+
+test('work detail truncates worker names with a tooltip and hides the wage display', () => {
+  assert.match(page, /<Tooltip title=\{toText\(row\?\.worker\?\.name\) \|\| '-'\}/);
+  assert.match(page, /textOverflow: 'ellipsis'/);
+  assert.doesNotMatch(page, /<TextField label=\{LABELS\.wagePerSecond\}/);
 });

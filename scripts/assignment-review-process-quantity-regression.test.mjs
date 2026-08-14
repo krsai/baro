@@ -23,3 +23,17 @@ test('review card stays compact and opens a dedicated quantity-review drawer', (
   assert.match(board, /reason\.workRecords/);
   assert.match(backend, /workRecords: stats\.records/);
 });
+
+test('quantity review menu uses the same scheduler-enriched status as the review card', () => {
+  assert.match(board, /const resolveAssignmentWithSchedulerProgress = useCallback/);
+  assert.match(board, /applySchedulerProgressToAssignments\(\[assignment\]/);
+  assert.match(board, /return resolveAssignmentWithSchedulerProgress\(detailState\.assignmentId\)/);
+  assert.match(board, /contextMenuTargetAssignment\?\.scheduleStatus !== 'REVIEW_REQUIRED'/);
+  assert.doesNotMatch(
+    board.slice(
+      board.indexOf('const handleContextOpenReviewReason'),
+      board.indexOf('const handleCloseDetail')
+    ),
+    /assignmentById\.get/
+  );
+});

@@ -5289,10 +5289,18 @@ const AssignBoard = () => {
     () => new Map((Array.isArray(lines) ? lines : []).map((line) => [String(line.id), line])),
     [lines]
   );
+  const resolveAssignmentWithSchedulerProgress = useCallback((assignmentId) => {
+    const assignment = assignmentById.get(String(assignmentId || '')) || null;
+    if (!assignment) return null;
+    return applySchedulerProgressToAssignments([assignment], {
+      useCompletedRenderRange: false,
+      daysOverride: days,
+    })[0] || assignment;
+  }, [applySchedulerProgressToAssignments, assignmentById, days]);
   const detailAssignment = useMemo(() => {
     if (!detailState || detailState.targetType !== 'assignment') return null;
-    return assignmentById.get(String(detailState.assignmentId)) || null;
-  }, [detailState, assignmentById]);
+    return resolveAssignmentWithSchedulerProgress(detailState.assignmentId);
+  }, [detailState, resolveAssignmentWithSchedulerProgress]);
   const detailAssignmentIsCompleted = Boolean(detailAssignment?.isCompleted);
   const detailCard = useMemo(() => {
     if (!detailState) return null;
@@ -5615,11 +5623,13 @@ const AssignBoard = () => {
   const detailCtIsSaved = detailCtDisplayState === 'SAVED';
   const contextMenuTargetAssignment = useMemo(() => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return null;
-    return assignmentById.get(String(contextMenuState.id)) || null;
-  }, [contextMenuState, assignmentById]);
+    return resolveAssignmentWithSchedulerProgress(contextMenuState.id);
+  }, [contextMenuState, resolveAssignmentWithSchedulerProgress]);
   const quantityReviewAssignment = useMemo(
-    () => quantityReviewAssignmentId ? assignmentById.get(String(quantityReviewAssignmentId)) || null : null,
-    [assignmentById, quantityReviewAssignmentId]
+    () => quantityReviewAssignmentId
+      ? resolveAssignmentWithSchedulerProgress(quantityReviewAssignmentId)
+      : null,
+    [quantityReviewAssignmentId, resolveAssignmentWithSchedulerProgress]
   );
   const contextMenuTargetCard = useMemo(() => {
     if (!contextMenuState || contextMenuState.targetType !== 'card') return null;
@@ -5672,11 +5682,10 @@ const AssignBoard = () => {
   }, [contextMenuState]);
   const handleContextOpenReviewReason = useCallback(() => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return;
-    const assignment = assignmentById.get(String(contextMenuState.id));
-    if (assignment?.scheduleStatus !== 'REVIEW_REQUIRED') return;
+    if (contextMenuTargetAssignment?.scheduleStatus !== 'REVIEW_REQUIRED') return;
     setQuantityReviewAssignmentId(contextMenuState.id);
     setContextMenuState(null);
-  }, [assignmentById, contextMenuState]);
+  }, [contextMenuState, contextMenuTargetAssignment]);
   const handleCloseDetail = useCallback(() => {
     blurActiveElement();
     setDetailState(null);

@@ -43,6 +43,18 @@ test('assignment progress does not hide missing outsource columns with a legacy 
   assert.doesNotMatch(progressLoader, /loadRows\(false\)|P2022/);
 });
 
+test('empty customer filter keeps the label clear of the all-customers value', () => {
+  assert.match(page, /const \[customerId, setCustomerId\] = useState\(''\)/);
+  assert.match(page, /<InputLabel shrink>\{text\.customer\}<\/InputLabel>/);
+  assert.match(page, /renderValue=.*text\.allCustomers/);
+});
+
+test('report omits the unfinished verified-output quantity column', () => {
+  assert.doesNotMatch(page, /text\.produced/);
+  assert.doesNotMatch(page, /row\.producedQuantity/);
+  assert.doesNotMatch(page, /produced: 'Verified output'/);
+});
+
 test('sales report is routed, permissioned, printable, and exportable', () => {
   assert.match(router, /path:\s*'customer-production-report'/);
   assert.match(layout, /customer-production-report/);
