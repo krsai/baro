@@ -29063,17 +29063,16 @@ app.get("/customer-production-reports", async (req, res) => {
         lastWorkDate != null &&
         observedElapsedDays > 0 &&
         observedProgressRatio > 0;
+      // Report-only forecast: project the observed elapsed period to 100%, then
+      // count that total duration from the first actual work date inclusively.
       const workRateEstimatedCompletionDate = canForecastFromWorkRate
         ? shiftDateKeyByDaysForAssignmentSchedule(
-            lastWorkDate,
+            firstWorkDate,
             Math.max(
               0,
-              Math.ceil(
-                (observedElapsedDays * (1 - observedProgressRatio)) /
-                  observedProgressRatio
-              )
+              Math.ceil(observedElapsedDays / observedProgressRatio) - 1
             )
-          ) || lastWorkDate
+          ) || firstWorkDate
         : null;
       const estimatedCompletionDate = isCompleted
         ? completedCandidates.sort().at(-1) || null
