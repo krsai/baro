@@ -128,7 +128,7 @@ const normalizeStyleSearchText = (value) => String(value ?? '').trim().toLowerCa
 
 const resolveSecondsUnitLabel = (languageCode) => {
   if (languageCode === 'en') return 'sec';
-  if (languageCode === 'vi') return 'giay';
+  if (languageCode === 'vi') return 'giây';
   return '초';
 };
 

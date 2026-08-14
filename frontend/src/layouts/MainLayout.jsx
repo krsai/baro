@@ -1095,6 +1095,10 @@ const MainLayout = () => {
     (tab) => {
       const tabPath = toPathname(tab?.id || tab?.path || '');
       if (!tabPath) return tab?.label || '';
+      const storedContext = String(tab?.label || '').match(/:\s*(.+)$/)?.[1]?.trim() || '';
+      const withStoredContext = (baseLabel) =>
+        storedContext ? `${baseLabel}: ${storedContext}` : baseLabel;
+      const localizedNewSuffix = languageCode === 'ko' ? '신규' : languageCode === 'vi' ? 'Mới' : 'New';
 
       if (tabPath === '/profile') {
         return getUiMessage('menu.profile', 'Profile', languageCode);
@@ -1110,31 +1114,18 @@ const MainLayout = () => {
 
       if (
         tabPath.startsWith('/work-history/') &&
-        tabPath !== '/work-history' &&
-        typeof tab?.label === 'string' &&
-        tab.label.trim()
+        tabPath !== '/work-history'
       ) {
-        return tab.label;
-      }
-      if (tabPath.startsWith('/work-history/') && tabPath !== '/work-history') {
-        return resolveWorkHistoryTabLabel('detail');
+        return withStoredContext(resolveWorkHistoryTabLabel('detail'));
       }
       if (tabPath === '/production-analysis' || tabPath === '/work-history-monthly') {
         return resolveProductionAnalysisTabLabel('list');
       }
       if (
         ((tabPath.startsWith('/production-analysis/') && tabPath !== '/production-analysis') ||
-          (tabPath.startsWith('/work-history-monthly/') && tabPath !== '/work-history-monthly')) &&
-        typeof tab?.label === 'string' &&
-        tab.label.trim()
+          (tabPath.startsWith('/work-history-monthly/') && tabPath !== '/work-history-monthly'))
       ) {
-        return tab.label;
-      }
-      if (
-        (tabPath.startsWith('/production-analysis/') && tabPath !== '/production-analysis') ||
-        (tabPath.startsWith('/work-history-monthly/') && tabPath !== '/work-history-monthly')
-      ) {
-        return resolveProductionAnalysisTabLabel('detail');
+        return withStoredContext(resolveProductionAnalysisTabLabel('detail'));
       }
       if (tabPath === '/attendance') {
         return resolveAttendanceTabLabel('list');
@@ -1144,14 +1135,36 @@ const MainLayout = () => {
       }
       if (
         tabPath.startsWith('/attendance/') &&
-        tabPath !== '/attendance' &&
-        typeof tab?.label === 'string' &&
-        tab.label.trim()
+        tabPath !== '/attendance'
       ) {
-        return tab.label;
+        return withStoredContext(resolveAttendanceTabLabel('detail'));
       }
-      if (tabPath.startsWith('/attendance/') && tabPath !== '/attendance') {
-        return resolveAttendanceTabLabel('detail');
+      if (tabPath.startsWith('/style/') && tabPath !== '/style/new') {
+        const styleLabel = getUiMessage('menu.style', '스타일', languageCode);
+        return withStoredContext(styleLabel);
+      }
+      if (tabPath === '/style/new') {
+        return `${getUiMessage('menu.style', '스타일', languageCode)} - ${localizedNewSuffix}`;
+      }
+      if (tabPath === '/order/new') {
+        return `${getUiMessage('menu.order', '주문', languageCode)} - ${localizedNewSuffix}`;
+      }
+      if (tabPath.startsWith('/order/') && tabPath !== '/order') {
+        return withStoredContext(getUiMessage('menu.order', '주문', languageCode));
+      }
+      if (tabPath === '/customer/new') {
+        return `${getUiMessage('menu.customer', '고객', languageCode)} - ${localizedNewSuffix}`;
+      }
+      if (tabPath.startsWith('/customer/') && tabPath !== '/customer') {
+        return withStoredContext(getUiMessage('menu.customer', '고객', languageCode));
+      }
+      if (tabPath === '/customer-pricing') {
+        return getUiMessage('menu.customerPricing', '단가', languageCode);
+      }
+      if (tabPath.startsWith('/payroll/') && tabPath !== '/payroll') {
+        const monthContext = String(tab?.label || '').match(/\b\d{4}-\d{2}\b/)?.[0] || '';
+        const payrollLabel = getUiMessage('menu.payroll', '생산수당', languageCode);
+        return monthContext ? `${payrollLabel}: ${monthContext}` : payrollLabel;
       }
 
       const exactMenuItem = flattenedMenuItems.find((item) => item.path === tabPath);

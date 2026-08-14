@@ -353,9 +353,9 @@ const STYLE_PROCESS_MESSAGES = {
     timeRefLabel: 'Số lượng q',
     timeRefTooltip:
       'PT luon duoc nhap theo thoi gian du kien moi san pham o moc 1.000 san pham. q duoc dung de xem AT/ST.',
-    ptTooltip: 'PT({quantity}): giay du kien moi san pham tai 1.000 san pham.',
-    atTooltip: 'AT({quantity}): giay thuc te moi san pham tai don hang {quantity}.',
-    stTooltip: 'ST({quantity}): giay chuan moi san pham theo nhom so luong phu hop.',
+    ptTooltip: 'PT({quantity}): số giây dự kiến cho mỗi sản phẩm ở mức 1.000 sản phẩm.',
+    atTooltip: 'AT({quantity}): số giây thực tế cho mỗi sản phẩm ở đơn hàng {quantity}.',
+    stTooltip: 'ST({quantity}): số giây tiêu chuẩn cho mỗi sản phẩm theo nhóm số lượng phù hợp.',
     ptChangeDialogTitle: 'Xác nhận doi PT',
     ptChangeMessage:
       'PT da thay doi. ST(q) hien co khong tu dong thay doi. Ban co muon cap nhat tat ca ST(q) theo PT moi khong?',
@@ -520,10 +520,10 @@ const buildProcessWithPtDerivedStUpdate = (process, bucketQuantities) => {
   });
 };
 
-const formatSecondsOrDash = (value) => {
+const formatSecondsOrDash = (value, languageCode = 'ko') => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return '-';
-  return formatSeconds(parsed);
+  return formatSeconds(parsed, languageCode);
 };
 
 const AT_RELIABILITY_CHIP_SX = {
@@ -2593,8 +2593,8 @@ const StyleProcess = ({
           nextProcess,
           hasWorkRecords: hasProcessWorkRecords(editingProcess),
           processName,
-          previousPt: formatSecondsOrDash(editingProcess?.pt),
-          nextPt: formatSecondsOrDash(nextProcess?.pt),
+          previousPt: formatSecondsOrDash(editingProcess?.pt, languageCode),
+          nextPt: formatSecondsOrDash(nextProcess?.pt, languageCode),
         });
         return;
       }
@@ -2865,18 +2865,18 @@ const StyleProcess = ({
 
                 <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {formatSecondsOrDash(process.pt)}
+                    {formatSecondsOrDash(process.pt, languageCode)}
                   </Typography>
                 </TableCell>
 
                 <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
                   <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
-                    {formatSecondsOrDash(previewStTotalSeconds)}
+                    {formatSecondsOrDash(previewStTotalSeconds, languageCode)}
                   </Typography>
                 </TableCell>
                 <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {formatSecondsOrDash(previewAtTotalSeconds)}
+                    {formatSecondsOrDash(previewAtTotalSeconds, languageCode)}
                   </Typography>
                 </TableCell>
                 <TableCell align="center" sx={{ width: PROCESS_ACTION_COLUMN_WIDTH }}>
@@ -3640,13 +3640,13 @@ const StyleProcess = ({
                     {getStyleProcessMessage(languageCode, 'total')}
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
-                    {hasPT ? formatSeconds(totalPT) : '-'}
+                    {hasPT ? formatSeconds(totalPT, languageCode) : '-'}
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem', color: 'primary.main' }}>
-                    {hasST ? formatSeconds(totalST) : '-'}
+                    {hasST ? formatSeconds(totalST, languageCode) : '-'}
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
-                    {hasAT ? formatSecondsOrDash(totalAT) : '-'}
+                    {hasAT ? formatSecondsOrDash(totalAT, languageCode) : '-'}
                   </TableCell>
                   <TableCell sx={{ width: PROCESS_ACTION_COLUMN_WIDTH }} />
                 </TableRow>

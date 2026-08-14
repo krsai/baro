@@ -1405,10 +1405,17 @@ export const parseOptionalSecondsInput = (value) => {
   return Math.max(0, Math.round(parsed));
 };
 
-export const formatSeconds = (value) => {
+export const resolveSecondsUnit = (languageCode = 'ko') => {
+  if (languageCode === 'vi') return ' giây';
+  if (languageCode === 'en') return ' sec';
+  return '초';
+};
+
+export const formatSeconds = (value, languageCode = 'ko') => {
   const parsed = toOptionalNumber(value);
   if (parsed === null) return '-';
   const rounded = Math.round(parsed);
-  if (parsed > 0 && rounded === 0) return `<1\uCD08`;
-  return `${formatNumberWithCommas(rounded)}\uCD08`;
+  const unit = resolveSecondsUnit(languageCode);
+  if (parsed > 0 && rounded === 0) return `<1${unit}`;
+  return `${formatNumberWithCommas(rounded)}${unit}`;
 };

@@ -403,7 +403,7 @@ const StyleTimeMatrix = ({
   const [stRestoreSnapshot, setStRestoreSnapshot] = useState(null);
 
   const msg = languageCode === 'vi'
-    ? { title: 'ST/AT theo so luong (giay)', process: 'Công đoạn', ptHint: 'PT: thoi gian co ban (khong sua)', stHint: 'ST cua so luong nho phai bang hoac lon hon so luong lon. Cac bucket lien quan se tu dong dieu chinh.', atHint: 'AT: tu dong hoc tu ban ghi', unit: 'Don vi: giay / 1 san pham', empty: 'Chưa có cong doan.' }
+    ? { title: 'ST/AT theo số lượng (giây)', process: 'Công đoạn', ptHint: 'PT: thời gian cơ bản (không sửa)', stHint: 'ST của số lượng nhỏ phải bằng hoặc lớn hơn số lượng lớn. Các nhóm liên quan sẽ tự động điều chỉnh.', atHint: 'AT: tự động học từ nhật ký công việc', unit: 'Đơn vị: giây / 1 sản phẩm', empty: 'Chưa có công đoạn.' }
     : languageCode === 'en'
     ? { title: 'ST / AT by Quantity (sec)', process: 'Process', ptHint: 'PT: base physical time (read-only)', stHint: 'ST for a smaller quantity must be equal to or greater than larger quantities. Related buckets adjust automatically.', atHint: 'AT: auto-learned from work records', unit: 'Unit: seconds / per piece', empty: 'No processes registered.' }
     : { title: '수량별 ST / AT (초)', process: '공정', ptHint: 'PT: 공정 정보에서 입력한 기본 물리 시간 (수정 불가)', stHint: '작은 수량의 ST는 큰 수량과 같거나 커야 합니다. 필요한 버킷은 자동으로 함께 조정됩니다.', atHint: 'AT: 작업기록으로 자동 학습한 실제 시간 (참고용)', unit: '단위: 초 / 1장 기준', empty: '등록된 공정이 없습니다.' };
@@ -731,7 +731,7 @@ const StyleTimeMatrix = ({
                   borderRight: STICKY_COLUMN_DIVIDER,
                 }}
               >
-                {languageCode === 'vi' ? '(giay)' : languageCode === 'en' ? '(sec)' : '(초)'}
+                {languageCode === 'vi' ? '(giây)' : languageCode === 'en' ? '(sec)' : '(초)'}
               </TableCell>
               {totalStByBucket.map((total, i) => (
                 <TableCell
@@ -775,7 +775,7 @@ const StyleTimeMatrix = ({
                   borderBottom: '3px solid #94A3B8',
                 }}
               >
-                {languageCode === 'vi' ? '(giay)' : languageCode === 'en' ? '(sec)' : '(초)'}
+                {languageCode === 'vi' ? '(giây)' : languageCode === 'en' ? '(sec)' : '(초)'}
               </TableCell>
               {totalAtByBucket.map((item, i) => {
                 const hasValue = item.isComplete && item.total > 0;

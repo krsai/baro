@@ -251,7 +251,7 @@ const formatCount = (value) =>
     fallback: '0',
     maximumFractionDigits: 0,
   });
-const resolveRowCtDisplayMeta = ({ row, rowProcess, selectedProcessOption }) => {
+const resolveRowCtDisplayMeta = ({ row, rowProcess, selectedProcessOption, languageCode }) => {
   const process = selectedProcessOption?.process || rowProcess || row?.process || null;
   const hasProcess = Boolean(process);
   const isOutsourced = row?.worker?.isOutsourced === true;
@@ -274,12 +274,12 @@ const resolveRowCtDisplayMeta = ({ row, rowProcess, selectedProcessOption }) => 
     totalCtSeconds: isOutsourced ? 0 : totalCtSeconds,
     ctValue: isOutsourced
       ? outsourceUnitPrice == null ? '-' : `${formatCount(outsourceUnitPrice)}동`
-      : hasProcess ? formatSeconds(ctSeconds) : '-',
+      : hasProcess ? formatSeconds(ctSeconds, languageCode) : '-',
     totalCtValue: isOutsourced
       ? outsourceUnitPrice != null && quantity > 0
         ? `${formatCount(outsourceUnitPrice * quantity)}동`
         : '-'
-      : hasProcess && quantity > 0 ? formatSeconds(totalCtSeconds) : '-',
+      : hasProcess && quantity > 0 ? formatSeconds(totalCtSeconds, languageCode) : '-',
   };
 };
 const buildComparableWorkRecord = (record = {}) => {
@@ -2779,6 +2779,7 @@ const WorkDetail = ({
           row,
           rowProcess,
           selectedProcessOption,
+          languageCode,
         });
         return {
           row,
@@ -3124,7 +3125,7 @@ const WorkDetail = ({
                   color="primary"
                   variant="outlined"
                   size="small"
-                  label={`${LABELS.totalQuantityCt} ${formatSeconds(summary.workLogCtTotalSeconds)}`}
+                  label={`${LABELS.totalQuantityCt} ${formatSeconds(summary.workLogCtTotalSeconds, languageCode)}`}
                 />
               </Stack>
               {isMobile ? (

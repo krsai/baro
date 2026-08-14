@@ -11,11 +11,13 @@ import {
   resolveProcessStPerPieceSeconds,
 } from '../../../../utils/processTime';
 import { formatNumberWithCommas } from '../../../../utils/numberFormat';
+import { useLanguage } from '../../../../context/LanguageContext';
 
 const SUMMARY_LABEL_WIDTH = '30%';
 const SUMMARY_VALUE_WIDTH = '70%';
 
 const StyleAnalysis = ({ processes = [], bucketQuantities = [] }) => {
+  const { languageCode } = useLanguage();
   const normalizedProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
 
   // PT/AT are entered/reviewed as per-piece seconds at the 1,000 reference quantity.
@@ -106,7 +108,7 @@ const StyleAnalysis = ({ processes = [], bucketQuantities = [] }) => {
             variant="body2"
             sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right', fontWeight: 500 }}
           >
-            {hasTotalPT ? formatSeconds(totalPT) : '-'}
+            {hasTotalPT ? formatSeconds(totalPT, languageCode) : '-'}
           </Typography>
         </Box>
 
@@ -122,7 +124,7 @@ const StyleAnalysis = ({ processes = [], bucketQuantities = [] }) => {
             variant="body2"
             sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right', fontWeight: 500 }}
           >
-            {hasTotalST ? formatSeconds(totalST) : '-'}
+            {hasTotalST ? formatSeconds(totalST, languageCode) : '-'}
           </Typography>
         </Box>
 
@@ -138,7 +140,7 @@ const StyleAnalysis = ({ processes = [], bucketQuantities = [] }) => {
             variant="body2"
             sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right', fontWeight: 500 }}
           >
-            {hasTotalAT ? formatSeconds(totalAT) : '-'}
+            {hasTotalAT ? formatSeconds(totalAT, languageCode) : '-'}
           </Typography>
         </Box>
       </Stack>
