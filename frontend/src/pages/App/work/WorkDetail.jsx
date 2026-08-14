@@ -447,12 +447,17 @@ const extractEmploymentAutoNoteFromText = (value) => {
     .slice(prefixIndex + EMPLOYMENT_AUTO_NOTE_PREFIX.length + 1)
     .trim();
 };
-const buildCombinedNote = ({ manualNote, autoNote }) => {
+const buildCombinedNote = ({ manualNote, autoNote, employmentAutoNote = '' }) => {
   const trimmedManual = toText(manualNote);
   const trimmedAuto = toText(autoNote);
-  if (trimmedManual && trimmedAuto) return `${trimmedManual}${AUTO_NOTE_MARKER}${trimmedAuto}`;
-  if (trimmedAuto) return `${AUTO_NOTE_PREFIX}\n${trimmedAuto}`;
-  return trimmedManual;
+  const trimmedEmploymentAuto = toText(employmentAutoNote);
+  const sections = [];
+  if (trimmedManual) sections.push(trimmedManual);
+  if (trimmedAuto) sections.push(`${AUTO_NOTE_PREFIX}\n${trimmedAuto}`);
+  if (trimmedEmploymentAuto) {
+    sections.push(`${EMPLOYMENT_AUTO_NOTE_PREFIX}\n${trimmedEmploymentAuto}`);
+  }
+  return sections.join('\n\n');
 };
 const formatAssignmentLabel = (assignment) => {
   const styleLabel = toText(assignment?.label || assignment?.styleName || assignment?.styleId);
@@ -2578,9 +2583,13 @@ const WorkDetail = ({
       itemCount: summary.records.length,
       totalCtSeconds: summary.workLogCtTotalSeconds,
       records: summary.records,
-      note: buildCombinedNote({ manualNote: note, autoNote: autoExceededNote }),
+      note: buildCombinedNote({
+        manualNote: note,
+        autoNote: autoExceededNote,
+        employmentAutoNote: savedEmploymentAutoNote,
+      }),
     });
-  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, entryMode, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, missingAssignmentPlanLinkMessage, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey, workLogOperationStartDateKey, workLogOperationStartErrorMessage]);
+  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, entryMode, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, missingAssignmentPlanLinkMessage, note, onSave, savedEmploymentAutoNote, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey, workLogOperationStartDateKey, workLogOperationStartErrorMessage]);
   const rowOrderIndexById = useMemo(() => {
     const map = new Map();
     rows.forEach((row, index) => {
@@ -2931,8 +2940,20 @@ const WorkDetail = ({
                 {messages.entryModeHelp}
               </Typography>
             </Stack>
-            <TextField label={LABELS.note} value={note} onChange={(event) => setNote(event.target.value)} placeholder={LABELS.notePlaceholder} size="small" fullWidth multiline minRows={2} />
-            {savedEmploymentAutoNote ? <Alert severity="info"><Box><Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>{EMPLOYMENT_AUTO_NOTE_PREFIX}</Typography><Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>{savedEmploymentAutoNote}</Typography></Box></Alert> : null}
+            <TextField
+              label={LABELS.note}
+              value={buildCombinedNote({
+                manualNote: note,
+                autoNote: autoExceededNote,
+                employmentAutoNote: savedEmploymentAutoNote,
+              })}
+              onChange={(event) => setNote(stripAutoNoteFromText(event.target.value))}
+              placeholder={LABELS.notePlaceholder}
+              size="small"
+              fullWidth
+              multiline
+              minRows={2}
+            />
             {!initialLog?.id && selectedLineId && !lineDataLoading && coverageSuggestion.previousCoverageEndDate && coverageSuggestion.suggestedCoverageStartDate ? (
               <Alert severity="info">
                 {`${LABELS.coverageSuggestionPrefix} ${coverageSuggestion.previousCoverageEndDate}${messages.previousEndConnector}${messages.suggestedFromConnector}${coverageSuggestion.suggestedCoverageStartDate} ${LABELS.coverageSuggestionSuffix}`}
@@ -2944,7 +2965,6 @@ const WorkDetail = ({
             {!initialLog?.id && selectedLineId && !lineDataLoading && !coverageSuggestion.previousCoverageEndDate && !coverageSuggestion.isFirstLineWorkLog ? (
               <Alert severity="info">{LABELS.zeroCoverageHint}</Alert>
             ) : null}
-            {autoExceededNote ? <Alert severity="info"><Box><Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>{LABELS.autoNote}</Typography><Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>{autoExceededNote}</Typography></Box></Alert> : null}
             {isAggregateLegacyLog ? <Alert severity="warning">{messages.legacyReadOnly}</Alert> : null}
             {formError ? <Alert severity="error">{formError}</Alert> : null}
             {findDuplicateRow(summary.records) ? <Alert severity="warning">{messages.duplicateRows}</Alert> : null}
