@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Button, Chip, CircularProgress, FormControl, FormControlLabel, InputLabel, LinearProgress,
-  MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
+  IconButton, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Typography, Switch,
 } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
 import DownloadIcon from '@mui/icons-material/Download';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import AppPageContainer from '../../components/AppPageContainer';
 import PageToolbar from '../../components/PageToolbar';
 import SearchInput from '../../components/SearchInput';
@@ -64,6 +66,62 @@ const customerLabel = (customer, languageCode) =>
 const rowCustomerLabel = (row, languageCode) =>
   (languageCode === 'ko' ? row?.customerNameKo : languageCode === 'vi' ? row?.customerNameVi : null) || row?.customerName || '-';
 const csvCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+const latestDate = (rows, field) => rows.map((row) => row?.[field]).filter(Boolean).sort().at(-1) || null;
+const resolveOrderStatus = (styles) => {
+  if (styles.length > 0 && styles.every((row) => row.status === 'COMPLETED')) return 'COMPLETED';
+  if (styles.some((row) => row.status === 'IN_PROGRESS')) return 'IN_PROGRESS';
+  if (styles.some((row) => row.status === 'PARTIALLY_ASSIGNED')) return 'PARTIALLY_ASSIGNED';
+  if (styles.some((row) => row.status === 'SCHEDULED')) return 'SCHEDULED';
+  return 'UNASSIGNED';
+};
+const groupRowsByOrder = (styleRows) => {
+  const groups = new Map();
+  styleRows.forEach((row) => {
+    const key = `${row.customerId ?? 'none'}:${row.orderId || row.orderNumber}`;
+    const styles = groups.get(key) || [];
+    styles.push(row);
+    groups.set(key, styles);
+  });
+  return Array.from(groups.entries()).map(([key, styles]) => {
+    const first = styles[0];
+    const orderedQuantity = styles.reduce((sum, row) => sum + Math.max(0, Number(row.orderedQuantity) || 0), 0);
+    const progressWeight = styles.reduce((sum, row) => sum + Math.max(0, Number(row.orderedQuantity) || 0), 0);
+    const weightedProgress = styles.reduce(
+      (sum, row) => sum + Math.max(0, Number(row.orderedQuantity) || 0) * Math.max(0, Number(row.progressPercent) || 0),
+      0
+    );
+    const assignedQuantity = styles.reduce((sum, row) => sum + Math.max(0, Number(row.assignedQuantity) || 0), 0);
+    const status = assignedQuantity <= 0
+      ? 'UNASSIGNED'
+      : assignedQuantity < orderedQuantity
+        ? 'PARTIALLY_ASSIGNED'
+        : resolveOrderStatus(styles);
+    return {
+      ...first,
+      key,
+      styles,
+      status,
+      orderedQuantity,
+      assignedQuantity,
+      unassignedQuantity: styles.reduce((sum, row) => sum + Math.max(0, Number(row.unassignedQuantity) || 0), 0),
+      producedQuantity: styles.reduce((sum, row) => sum + Math.max(0, Number(row.producedQuantity) || 0), 0),
+      progressPercent: progressWeight > 0 ? Math.round(weightedProgress / progressWeight) : 0,
+      lastWorkDate: latestDate(styles, 'lastWorkDate'),
+      estimatedCompletionDate: styles.every((row) => row.estimatedCompletionDate)
+        ? latestDate(styles, 'estimatedCompletionDate')
+        : null,
+      reviewRequired: styles.some((row) => row.reviewRequired),
+      hasMonthlySummaryRecords: styles.some((row) => row.hasMonthlySummaryRecords),
+      estimateBasis: status === 'COMPLETED'
+        ? 'ACTUAL_COMPLETION'
+        : styles.some((row) => row.estimateBasis === 'WORKLOG_PROGRESS_RATE')
+          ? 'WORKLOG_PROGRESS_RATE'
+          : styles.some((row) => row.estimateBasis === 'ASSIGNMENT_REQUIRED')
+            ? 'ASSIGNMENT_REQUIRED'
+            : 'LINE_SCHEDULE',
+    };
+  });
+};
 
 const CustomerProductionReport = () => {
   const { activeOrgId } = useAuth();
@@ -75,6 +133,7 @@ const CustomerProductionReport = () => {
   const [customerId, setCustomerId] = useState('');
   const [search, setSearch] = useState('');
   const [includeCompleted, setIncludeCompleted] = useState(false);
+  const [expandedOrders, setExpandedOrders] = useState(() => new Set());
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -97,18 +156,55 @@ const CustomerProductionReport = () => {
 
   const rows = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    return data.rows.filter((row) => {
-      if (!includeCompleted && row.status === 'COMPLETED') return false;
-      if (customerId && String(row.customerId) !== customerId) return false;
+    const scopedStyleRows = data.rows.filter(
+      (row) => !customerId || String(row.customerId) === customerId
+    );
+    return groupRowsByOrder(scopedStyleRows).filter((order) => {
+      if (!includeCompleted && order.status === 'COMPLETED') return false;
       if (!keyword) return true;
-      return [row.orderNumber, row.styleCode, row.styleName].filter(Boolean).join(' ').toLowerCase().includes(keyword);
+      return order.styles.some((row) =>
+        [row.orderNumber, row.styleCode, row.styleName]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(keyword)
+      );
     });
   }, [customerId, data.rows, includeCompleted, search]);
   const selectedCustomer = data.customers.find((item) => String(item.id) === customerId) || null;
+  const toggleOrder = useCallback((key) => {
+    setExpandedOrders((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+  const renderDataCells = (row, { detail = false } = {}) => {
+    const status = STATUS[row.status] || STATUS.UNASSIGNED;
+    return <>
+      <TableCell>{detail ? '' : rowCustomerLabel(row, languageCode)}</TableCell>
+      <TableCell sx={{ fontWeight: detail ? 400 : 700 }}>{detail ? '' : row.orderNumber}</TableCell>
+      <TableCell sx={detail ? { pl: 3, backgroundColor: '#fafcff' } : undefined}>
+        {detail
+          ? [row.styleCode, row.styleName].filter(Boolean).join(' · ') || '-'
+          : `${row.styles.length.toLocaleString()} ${text.style}`}
+      </TableCell>
+      <TableCell>{row.dueDate || '-'}</TableCell>
+      <TableCell align="right">{fmt(row.orderedQuantity)}</TableCell>
+      <TableCell align="right">{fmt(row.assignedQuantity)}{row.unassignedQuantity > 0 ? <Typography variant="caption" color="warning.main" display="block">-{fmt(row.unassignedQuantity)}</Typography> : null}</TableCell>
+      <TableCell align="right">{fmt(row.producedQuantity)}</TableCell>
+      <TableCell><Stack spacing={0.5}><LinearProgress variant="determinate" value={row.progressPercent} color={row.reviewRequired ? 'error' : 'primary'} /><Typography variant="caption">{row.progressPercent}%{row.reviewRequired ? ` · ${text.review}` : ''}</Typography></Stack></TableCell>
+      <TableCell>{row.lastWorkDate || '-'}</TableCell>
+      <TableCell sx={{ fontWeight: 700 }}>{row.estimatedCompletionDate || '-'}</TableCell>
+      <TableCell><Chip size="small" label={status[languageCode] || status.en} color={status.color} variant={row.status === 'COMPLETED' ? 'filled' : 'outlined'} /></TableCell>
+      <TableCell><Stack spacing={0.25}><Typography variant="body2">{BASIS[row.estimateBasis]?.[languageCode] || row.estimateBasis}</Typography>{row.hasMonthlySummaryRecords ? <Typography variant="caption" color="warning.main">{text.monthlySummary}</Typography> : null}</Stack></TableCell>
+    </>;
+  };
 
   const exportCsv = () => {
     const headers = [text.customer, text.order, text.style, text.due, text.quantity, text.assigned, text.produced, text.progress, text.lastWork, text.estimate, text.status, text.basis];
-    const lines = [headers, ...rows.map((row) => [rowCustomerLabel(row, languageCode), row.orderNumber, [row.styleCode, row.styleName].filter(Boolean).join(' · '), row.dueDate, row.orderedQuantity, row.assignedQuantity, row.producedQuantity, `${row.progressPercent}%`, row.lastWorkDate, row.estimatedCompletionDate, (STATUS[row.status]?.[languageCode] || row.status), [BASIS[row.estimateBasis]?.[languageCode] || row.estimateBasis, row.hasMonthlySummaryRecords ? text.monthlySummary : null, row.reviewRequired ? text.review : null].filter(Boolean).join(' · ')])];
+    const lines = [headers, ...rows.map((row) => [rowCustomerLabel(row, languageCode), row.orderNumber, `${row.styles.length} ${text.style}`, row.dueDate, row.orderedQuantity, row.assignedQuantity, row.producedQuantity, `${row.progressPercent}%`, row.lastWorkDate, row.estimatedCompletionDate, (STATUS[row.status]?.[languageCode] || row.status), [BASIS[row.estimateBasis]?.[languageCode] || row.estimateBasis, row.hasMonthlySummaryRecords ? text.monthlySummary : null, row.reviewRequired ? text.review : null].filter(Boolean).join(' · ')])];
     const blob = new Blob([`\uFEFF${lines.map((line) => line.map(csvCell).join(',')).join('\n')}`], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob); const anchor = document.createElement('a');
     anchor.href = url; anchor.download = `production-report-${selectedCustomer?.name || 'all'}-${new Date().toISOString().slice(0, 10)}.csv`; anchor.click();
@@ -125,7 +221,28 @@ const CustomerProductionReport = () => {
       <Box><Typography variant="h5" fontWeight={800}>{selectedCustomer ? customerLabel(selectedCustomer, languageCode) : text.allCustomers}</Typography><Typography variant="caption" color="text.secondary">{text.generated}: {data.generatedAt ? new Date(data.generatedAt).toLocaleString() : '-'}</Typography></Box>
       {error ? <Alert severity="error">{error}</Alert> : null}
       {loading ? <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress size={30} /></Box> : rows.length === 0 ? <Paper variant="outlined" sx={{ p: 5, textAlign: 'center' }}><Typography color="text.secondary">{text.empty}</Typography></Paper> :
-        <TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow><TableCell>{text.customer}</TableCell><TableCell>{text.order}</TableCell><TableCell>{text.style}</TableCell><TableCell>{text.due}</TableCell><TableCell align="right">{text.quantity}</TableCell><TableCell align="right">{text.assigned}</TableCell><TableCell align="right">{text.produced}</TableCell><TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell><TableCell>{text.lastWork}</TableCell><TableCell>{text.estimate}</TableCell><TableCell>{text.status}</TableCell><TableCell>{text.basis}</TableCell></TableRow></TableHead><TableBody>{rows.map((row) => { const status = STATUS[row.status] || STATUS.UNASSIGNED; return <TableRow key={`${row.orderId}:${row.styleId || row.styleCode}`}><TableCell>{rowCustomerLabel(row, languageCode)}</TableCell><TableCell sx={{ fontWeight: 700 }}>{row.orderNumber}</TableCell><TableCell>{[row.styleCode, row.styleName].filter(Boolean).join(' · ') || '-'}</TableCell><TableCell>{row.dueDate || '-'}</TableCell><TableCell align="right">{fmt(row.orderedQuantity)}</TableCell><TableCell align="right">{fmt(row.assignedQuantity)}{row.unassignedQuantity > 0 ? <Typography variant="caption" color="warning.main" display="block">-{fmt(row.unassignedQuantity)}</Typography> : null}</TableCell><TableCell align="right">{fmt(row.producedQuantity)}</TableCell><TableCell><Stack spacing={0.5}><LinearProgress variant="determinate" value={row.progressPercent} color={row.reviewRequired ? 'error' : 'primary'} /><Typography variant="caption">{row.progressPercent}%{row.reviewRequired ? ` · ${text.review}` : ''}</Typography></Stack></TableCell><TableCell>{row.lastWorkDate || '-'}</TableCell><TableCell sx={{ fontWeight: 700 }}>{row.estimatedCompletionDate || '-'}</TableCell><TableCell><Chip size="small" label={status[languageCode] || status.en} color={status.color} variant={row.status === 'COMPLETED' ? 'filled' : 'outlined'} /></TableCell><TableCell><Stack spacing={0.25}><Typography variant="body2">{BASIS[row.estimateBasis]?.[languageCode] || row.estimateBasis}</Typography>{row.hasMonthlySummaryRecords ? <Typography variant="caption" color="warning.main">{text.monthlySummary}</Typography> : null}</Stack></TableCell></TableRow>; })}</TableBody></Table></TableContainer>}
+        <TableContainer component={Paper} variant="outlined">
+          <Table size="small">
+            <TableHead><TableRow><TableCell sx={{ width: 44 }} /><TableCell>{text.customer}</TableCell><TableCell>{text.order}</TableCell><TableCell>{text.style}</TableCell><TableCell>{text.due}</TableCell><TableCell align="right">{text.quantity}</TableCell><TableCell align="right">{text.assigned}</TableCell><TableCell align="right">{text.produced}</TableCell><TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell><TableCell>{text.lastWork}</TableCell><TableCell>{text.estimate}</TableCell><TableCell>{text.status}</TableCell><TableCell>{text.basis}</TableCell></TableRow></TableHead>
+            <TableBody>{rows.map((row) => {
+              const expanded = expandedOrders.has(row.key);
+              return <React.Fragment key={row.key}>
+                <TableRow hover sx={{ '& > td': { backgroundColor: expanded ? '#f4f8ff' : undefined } }}>
+                  <TableCell>
+                    <IconButton size="small" onClick={() => toggleOrder(row.key)} aria-label={expanded ? '상세 닫기' : '상세 보기'}>
+                      {expanded ? <KeyboardArrowUpIcon fontSize="small" /> : <KeyboardArrowDownIcon fontSize="small" />}
+                    </IconButton>
+                  </TableCell>
+                  {renderDataCells(row)}
+                </TableRow>
+                {expanded ? row.styles.map((styleRow) => <TableRow key={`${styleRow.orderId}:${styleRow.styleId || styleRow.styleCode}`}>
+                  <TableCell />
+                  {renderDataCells(styleRow, { detail: true })}
+                </TableRow>) : null}
+              </React.Fragment>;
+            })}</TableBody>
+          </Table>
+        </TableContainer>}
     </Stack>
   </AppPageContainer>;
 };
