@@ -184,7 +184,7 @@ const CustomerProductionReport = () => {
     return <>
       <TableCell>{detail ? '' : rowCustomerLabel(row, languageCode)}</TableCell>
       <TableCell sx={{ fontWeight: detail ? 400 : 700 }}>{detail ? '' : row.orderNumber}</TableCell>
-      <TableCell sx={detail ? { pl: 3, backgroundColor: '#fafcff' } : undefined}>
+      <TableCell sx={detail ? { pl: 3 } : undefined}>
         {detail
           ? [row.styleCode, row.styleName].filter(Boolean).join(' · ') || '-'
           : `${row.styles.length.toLocaleString()} ${text.style}`}
@@ -233,7 +233,10 @@ const CustomerProductionReport = () => {
                   </TableCell>
                   {renderDataCells(row)}
                 </TableRow>
-                {expanded ? row.styles.map((styleRow) => <TableRow key={`${styleRow.orderId}:${styleRow.styleId || styleRow.styleCode}`}>
+                {expanded ? row.styles.map((styleRow) => <TableRow
+                  key={`${styleRow.orderId}:${styleRow.styleId || styleRow.styleCode}`}
+                  sx={{ '& > td': { backgroundColor: '#fafafa' } }}
+                >
                   <TableCell />
                   {renderDataCells(styleRow, { detail: true })}
                 </TableRow>) : null}
