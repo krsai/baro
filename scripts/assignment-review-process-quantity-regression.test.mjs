@@ -9,8 +9,13 @@ const [backend, board, capacity, card] = await Promise.all([
   readFile(new URL('../frontend/src/pages/App/assign/components/LineMonthCapacityBoard.jsx', import.meta.url), 'utf8'),
 ]);
 
-test('review-required progress response carries process-level recorded quantities', () => {
-  assert.match(backend, /reviewReason:[\s\S]*processTotals: reviewProcessTotals/);
+test('review-required progress response carries only the compact review summary', () => {
+  const reviewSummary = backend.slice(
+    backend.indexOf('reviewReason:'),
+    backend.indexOf('quantityReview: includeQuantityReviewDetails')
+  );
+  assert.match(reviewSummary, /recordedTotalQuantity: totalDone/);
+  assert.doesNotMatch(reviewSummary, /processTotals|workRecords/);
   assert.match(board, /reviewReason: progressRow\?\.reviewReason/);
   assert.match(capacity, /reviewReason: assignment\?\.reviewReason/);
 });
@@ -18,17 +23,17 @@ test('review-required progress response carries process-level recorded quantitie
 test('review card stays compact and opens a dedicated quantity-review drawer', () => {
   assert.doesNotMatch(card, /reviewProcessTotals\.map/);
   assert.match(board, /'수량 확인'.*'Quantity review'.*'Kiểm tra số lượng'/s);
-  assert.match(board, /disabled=\{contextMenuTargetAssignment\?\.scheduleStatus !== 'REVIEW_REQUIRED'\}/);
+  assert.match(board, /disabled=\{!contextMenuTargetAssignment\}/);
   assert.match(board, /reason\.processTotals/);
   assert.match(board, /reason\.workRecords/);
-  assert.match(backend, /workRecords: stats\.records/);
+  assert.match(backend, /workRecords: \[\.\.\.stats\.records\]/);
 });
 
 test('quantity review menu uses the same scheduler-enriched status as the review card', () => {
   assert.match(board, /const resolveAssignmentWithSchedulerProgress = useCallback/);
   assert.match(board, /applySchedulerProgressToAssignments\(\[assignment\]/);
   assert.match(board, /return resolveAssignmentWithSchedulerProgress\(detailState\.assignmentId\)/);
-  assert.match(board, /contextMenuTargetAssignment\?\.scheduleStatus !== 'REVIEW_REQUIRED'/);
+  assert.doesNotMatch(board, /contextMenuTargetAssignment\?\.scheduleStatus !== 'REVIEW_REQUIRED'/);
   assert.doesNotMatch(
     board.slice(
       board.indexOf('const handleContextOpenReviewReason'),
@@ -36,6 +41,15 @@ test('quantity review menu uses the same scheduler-enriched status as the review
     ),
     /assignmentById\.get/
   );
+});
+
+test('all assignments load quantity-review details only when the menu is opened', () => {
+  assert.match(backend, /app\.get\("\/assignment-plans\/:id\/quantity-review"/);
+  assert.match(backend, /includeQuantityReviewDetails: true/);
+  assert.match(board, /setQuantityReviewAssignmentId\(contextMenuState\.id\)/);
+  assert.match(board, /\/quantity-review` \+/);
+  assert.match(board, /quantityReviewLoading/);
+  assert.match(board, /externalReloadTick[\s\S]*quantityReviewAssignmentId/);
 });
 
 test('process quantity rows expand their linked work records inline', () => {

@@ -22902,7 +22902,8 @@ const buildLineMonthCapacityRows = async ({
 
 const buildAssignmentPlanProgressRows = async (
   orgId: number,
-  externalIds: string[] = []
+  externalIds: string[] = [],
+  { includeQuantityReviewDetails = false } = {}
 ) => {
   const normalizedExternalIds = Array.from(
     new Set(
@@ -23477,12 +23478,21 @@ const buildAssignmentPlanProgressRows = async (
               requiredTotalQuantity: totalExpected,
               recordedTotalQuantity: totalDone,
               producedQuantity,
-              processTotals: reviewProcessTotals,
-              workRecords: stats.records.sort((left, right) =>
-                String(right?.workDate || "").localeCompare(String(left?.workDate || ""))
-              ),
             }
           : null,
+      quantityReview: includeQuantityReviewDetails
+        ? {
+            plannedQuantity: baselineQuantityRaw,
+            processCount,
+            requiredTotalQuantity: totalExpected,
+            recordedTotalQuantity: totalDone,
+            producedQuantity,
+            processTotals: reviewProcessTotals,
+            workRecords: [...stats.records].sort((left, right) =>
+              String(right?.workDate || "").localeCompare(String(left?.workDate || ""))
+            ),
+          }
+        : undefined,
       plannedStTotalSeconds,
       remainingStTotalSeconds,
       isStSnapshotMissing,
@@ -24169,6 +24179,34 @@ app.get("/assignment-plan-progress", async (req, res) => {
     });
     throw error;
   }
+});
+
+app.get("/assignment-plans/:id/quantity-review", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const assignmentId = resolveOptionalString(req.params.id, null);
+  if (!assignmentId) {
+    return res.status(400).json({ ok: false, error: "invalid assignment id" });
+  }
+
+  const rows = await buildAssignmentPlanProgressRows(
+    organization.id,
+    [assignmentId],
+    { includeQuantityReviewDetails: true }
+  );
+  const row = rows[0] || null;
+  if (!row) {
+    return res.status(404).json({ ok: false, error: "assignment plan not found" });
+  }
+
+  res.json({
+    id: row.id,
+    scheduleStatus: row.scheduleStatus,
+    ...(row.quantityReview || {}),
+  });
 });
 
 app.get("/line-month-capacity", async (req, res) => {

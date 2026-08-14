@@ -3117,6 +3117,9 @@ const AssignBoard = () => {
   const [contextMenuState, setContextMenuState] = useState(null);
   const [detailState, setDetailState] = useState(null);
   const [quantityReviewAssignmentId, setQuantityReviewAssignmentId] = useState(null);
+  const [quantityReviewData, setQuantityReviewData] = useState(null);
+  const [quantityReviewLoading, setQuantityReviewLoading] = useState(false);
+  const [quantityReviewError, setQuantityReviewError] = useState('');
   const [cursorWarningState, setCursorWarningState] = useState({
     open: false,
     x: 0,
@@ -4494,6 +4497,53 @@ const AssignBoard = () => {
     };
   }, [activeOrgId, assignmentProgressIdsKey, externalReloadTick]);
 
+  useEffect(() => {
+    const assignmentId = String(quantityReviewAssignmentId || '').trim();
+    const normalizedOrgId = Number(activeOrgId);
+    if (!assignmentId || !Number.isFinite(normalizedOrgId) || normalizedOrgId <= 0) {
+      setQuantityReviewData(null);
+      setQuantityReviewLoading(false);
+      setQuantityReviewError('');
+      return undefined;
+    }
+
+    let cancelled = false;
+    const abortController = new AbortController();
+    setQuantityReviewData(null);
+    setQuantityReviewLoading(true);
+    setQuantityReviewError('');
+    requestJSON(
+      `/assignment-plans/${encodeURIComponent(assignmentId)}/quantity-review` +
+        buildQueryString({ orgId: normalizedOrgId }),
+      {
+        forceRefresh: true,
+        skipGlobalLoading: true,
+        signal: abortController.signal,
+      }
+    )
+      .then((result) => {
+        if (!cancelled) setQuantityReviewData(result || null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setQuantityReviewError(
+            error?.message ||
+              (languageCode === 'ko'
+                ? '수량 정보를 불러오지 못했습니다.'
+                : 'Failed to load quantity details.')
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setQuantityReviewLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      abortController.abort();
+    };
+  }, [activeOrgId, externalReloadTick, languageCode, quantityReviewAssignmentId]);
+
   const applySchedulerProgressToAssignments = useCallback(
     (inputAssignments, { useCompletedRenderRange = false, daysOverride = null } = {}) => {
       const sourceDays = Array.isArray(daysOverride) && daysOverride.length > 0 ? daysOverride : days;
@@ -5771,10 +5821,15 @@ const AssignBoard = () => {
   }, [contextMenuState]);
   const handleContextOpenReviewReason = useCallback(() => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return;
-    if (contextMenuTargetAssignment?.scheduleStatus !== 'REVIEW_REQUIRED') return;
+    if (!contextMenuTargetAssignment) return;
     setQuantityReviewAssignmentId(contextMenuState.id);
     setContextMenuState(null);
   }, [contextMenuState, contextMenuTargetAssignment]);
+  const handleCloseQuantityReview = useCallback(() => {
+    setQuantityReviewAssignmentId(null);
+    setQuantityReviewData(null);
+    setQuantityReviewError('');
+  }, []);
   const handleCloseDetail = useCallback(() => {
     blurActiveElement();
     setDetailState(null);
@@ -7150,7 +7205,7 @@ const AssignBoard = () => {
           </MenuItem>
           <MenuItem
             onClick={handleContextOpenReviewReason}
-            disabled={contextMenuTargetAssignment?.scheduleStatus !== 'REVIEW_REQUIRED'}
+            disabled={!contextMenuTargetAssignment}
           >
             {languageCode === 'ko' ? '수량 확인' : languageCode === 'vi' ? 'Kiểm tra số lượng' : 'Quantity review'}
           </MenuItem>
@@ -7174,11 +7229,11 @@ const AssignBoard = () => {
         <Drawer
           anchor="right"
           open={Boolean(quantityReviewAssignment)}
-          onClose={() => setQuantityReviewAssignmentId(null)}
+          onClose={handleCloseQuantityReview}
           PaperProps={{ sx: { ...TOP_OFFSET_DRAWER_PAPER_SX, width: { xs: '100%', md: 760 }, p: 2.5, overflowY: 'auto' } }}
         >
           {quantityReviewAssignment ? (() => {
-            const reason = quantityReviewAssignment.reviewReason || {};
+            const reason = quantityReviewData || {};
             const planned = Math.max(0, Number(reason.plannedQuantity ?? quantityReviewAssignment.quantity) || 0);
             const processTotals = Array.isArray(reason.processTotals) ? reason.processTotals : [];
             const workRecords = Array.isArray(reason.workRecords) ? reason.workRecords : [];
@@ -7186,8 +7241,17 @@ const AssignBoard = () => {
             return <Stack spacing={2}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Box><Typography variant="h6" fontWeight={800}>{label('수량 확인', 'Quantity review', 'Kiểm tra số lượng')}</Typography><Typography variant="body2" color="text.secondary">{quantityReviewAssignment.orderNo} · {quantityReviewAssignment.label}</Typography></Box>
-                <IconButton onClick={() => setQuantityReviewAssignmentId(null)}><CloseIcon /></IconButton>
+                <IconButton onClick={handleCloseQuantityReview}><CloseIcon /></IconButton>
               </Stack>
+              {quantityReviewError ? <Alert severity="error">{quantityReviewError}</Alert> : null}
+              {quantityReviewLoading ? (
+                <Stack spacing={1.25} alignItems="center" sx={{ py: 8 }}>
+                  <CircularProgress size={30} />
+                  <Typography variant="body2" color="text.secondary">
+                    {label('수량 정보를 불러오는 중입니다.', 'Loading quantity details.', 'Đang tải chi tiết số lượng.')}
+                  </Typography>
+                </Stack>
+              ) : quantityReviewData ? <>
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                 <Paper variant="outlined" sx={{ p: 1.5, minWidth: 150 }}><Typography variant="caption" color="text.secondary">{label('주문·배정 수량', 'Order / assigned qty', 'SL đơn / phân công')}</Typography><Typography variant="h6" fontWeight={800}>{planned.toLocaleString()}</Typography></Paper>
                 <Paper variant="outlined" sx={{ p: 1.5, minWidth: 150 }}><Typography variant="caption" color="text.secondary">{label('확인 생산수량', 'Verified output', 'Sản lượng xác nhận')}</Typography><Typography variant="h6" fontWeight={800}>{Math.max(0, Number(reason.producedQuantity) || 0).toLocaleString()}</Typography></Paper>
@@ -7199,6 +7263,7 @@ const AssignBoard = () => {
                 planned={planned}
                 label={label}
               />
+              </> : null}
             </Stack>;
           })() : null}
         </Drawer>
