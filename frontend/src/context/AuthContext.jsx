@@ -325,7 +325,15 @@ export const AuthProvider = ({ children }) => {
         setAccessProfile(normalizeAccessProfile(data));
       } catch (_error) {
         if (cancelled) return;
-        setAccessProfile(null);
+        // Token refreshes commonly happen after the browser has been in the
+        // background. A transient context request failure must not discard an
+        // already-valid profile, because ProtectedRoute would then unmount the
+        // entire workspace and reset every keep-alive tab.
+        setAccessProfile((previous) => {
+          const previousEmail =
+            typeof previous?.email === 'string' ? previous.email.trim().toLowerCase() : '';
+          return previousEmail === normalizedCurrentUserEmail ? previous : null;
+        });
         setAccessError('Failed to load account access context.');
       } finally {
         if (abortTimeoutId !== null) {
@@ -378,7 +386,10 @@ export const AuthProvider = ({ children }) => {
   const loadingState =
     loading ||
     (!!user && isSupabaseConfigured) &&
-      (accessLoading || accessLookupEmail !== normalizedCurrentUserEmail);
+      (
+        accessLookupEmail !== normalizedCurrentUserEmail ||
+        (accessLoading && !effectiveProfile)
+      );
   const hasWorkspaceAccess =
     !!user &&
     !!effectiveProfile &&
