@@ -23200,8 +23200,12 @@ const buildAssignmentPlanProgressRows = async (
       processName: resolveOptionalString(process?.processName ?? process?.name, null),
       quantity: Math.max(0, Math.round(Number(processGroupTotals[index] ?? 0) || 0)),
     }));
+    const operationalProgressPercent =
+      operationalProgressRatio == null
+        ? null
+        : Math.max(0, Math.round(operationalProgressRatio * 100));
     const progressPercent =
-      operationalProgressRatio == null ? null : Math.min(100, Math.round(operationalProgressRatio * 100));
+      operationalProgressPercent == null ? null : Math.min(100, operationalProgressPercent);
     const plannedStTotalSeconds = resolvePersistedAssignmentPlanStTotalSeconds(plan);
     const isStUnknown =
       plannedStTotalSeconds == null || plannedStTotalSeconds <= 0;
@@ -23489,7 +23493,7 @@ const buildAssignmentPlanProgressRows = async (
       progressImbalanceGapRatio,
       hasProgressImbalanceWarning,
       progressPercent,
-      operationalProgressPercent: progressPercent,
+      operationalProgressPercent,
       schedulerProgressPercent,
       isStUnknown,
       isProgressUnknown,

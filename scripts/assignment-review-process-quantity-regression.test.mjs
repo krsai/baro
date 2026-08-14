@@ -46,3 +46,10 @@ test('process quantity rows expand their linked work records inline', () => {
   assert.match(board, /<QuantityReviewProcessTable/);
   assert.doesNotMatch(board, /label\('생산 기록', 'Production records'/);
 });
+
+test('review cards show uncapped actual progress while scheduling remains capped', () => {
+  assert.match(backend, /const operationalProgressPercent =[\s\S]*Math\.round\(operationalProgressRatio \* 100\)/);
+  assert.match(backend, /Math\.min\(100, operationalProgressPercent\)/);
+  assert.match(backend, /operationalProgressPercent,\s*\n\s*schedulerProgressPercent/);
+  assert.match(card, /progressPercent=\{assignment\.workProgressPercent \?\? assignment\.progressPercent\}/);
+});
