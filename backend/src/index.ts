@@ -28960,8 +28960,6 @@ app.get("/customer-production-reports", async (req, res) => {
       externalId: true,
       workOrderId: true,
       styleId: true,
-      startIndex: true,
-      endIndex: true,
     },
     orderBy: [{ workOrderId: "asc" }, { styleId: "asc" }, { id: "asc" }],
   });
@@ -28978,12 +28976,6 @@ app.get("/customer-production-reports", async (req, res) => {
     const bucket = plansByOrderStyle.get(key) || [];
     bucket.push({
       ...plan,
-      reportPlannedDurationDays: Math.max(
-        1,
-        toSignedInt(plan.endIndex, toSignedInt(plan.startIndex, 0)) -
-          toSignedInt(plan.startIndex, 0) +
-          1
-      ),
       progress: progressByExternalId.get(plan.externalId) || null,
     });
     plansByOrderStyle.set(key, bucket);
@@ -29041,36 +29033,54 @@ app.get("/customer-production-reports", async (req, res) => {
         relatedPlans.length > 0 &&
         progress.length === relatedPlans.length &&
         progress.every((row) => row?.isCompleted === true);
-      const forecastCandidates = relatedPlans
-        .map((plan) => {
-          const actualStartDate = normalizeDateKey(plan?.progress?.firstWorkDate);
-          const plannedDurationDays = Math.max(
-            1,
-            toSignedInt(plan?.reportPlannedDurationDays, 1)
-          );
-          if (actualStartDate) {
-            return shiftDateKeyByDaysForAssignmentSchedule(
-              actualStartDate,
-              plannedDurationDays - 1
-            ) || actualStartDate;
-          }
-          return normalizeDateKey(plan?.progress?.renderEndDate);
-        })
+      const scheduledCompletionCandidates = progress
+        .map((row) => normalizeDateKey(row?.renderEndDate))
         .filter((value): value is string => Boolean(value));
       const completedCandidates = progress
         .map((row) => normalizeDateKey(row?.completedAt))
         .filter((value): value is string => Boolean(value));
       const canForecast = assignedQuantity >= item.orderedQuantity && progress.length > 0;
-      const estimatedCompletionDate = isCompleted
-        ? completedCandidates.sort().at(-1) || null
-        : canForecast && forecastCandidates.length === progress.length
-          ? forecastCandidates.sort().at(-1) || null
-          : null;
+      const firstWorkDate = progress
+        .map((row) => normalizeDateKey(row?.firstWorkDate))
+        .filter((value): value is string => Boolean(value))
+        .sort()[0] || null;
       const lastWorkDate = progress
         .map((row) => normalizeDateKey(row?.lastWorkDate))
         .filter((value): value is string => Boolean(value))
         .sort()
         .at(-1) || null;
+      const observedProgressRatio = weightedProgress.weight > 0
+        ? Math.max(0, Math.min(1, weightedProgress.value / weightedProgress.weight))
+        : assignedQuantity > 0
+          ? Math.max(0, Math.min(1, producedQuantity / assignedQuantity))
+          : 0;
+      const observedElapsedDays = firstWorkDate && lastWorkDate
+        ? countDateRangeDaysInclusiveForAssignmentSchedule(firstWorkDate, lastWorkDate)
+        : 0;
+      const canForecastFromWorkRate =
+        canForecast &&
+        firstWorkDate != null &&
+        lastWorkDate != null &&
+        observedElapsedDays > 0 &&
+        observedProgressRatio > 0;
+      const workRateEstimatedCompletionDate = canForecastFromWorkRate
+        ? shiftDateKeyByDaysForAssignmentSchedule(
+            lastWorkDate,
+            Math.max(
+              0,
+              Math.ceil(
+                (observedElapsedDays * (1 - observedProgressRatio)) /
+                  observedProgressRatio
+              )
+            )
+          ) || lastWorkDate
+        : null;
+      const estimatedCompletionDate = isCompleted
+        ? completedCandidates.sort().at(-1) || null
+        : workRateEstimatedCompletionDate ||
+          (canForecast && scheduledCompletionCandidates.length === progress.length
+            ? scheduledCompletionCandidates.sort().at(-1) || null
+            : null);
       const status = isCompleted
         ? "COMPLETED"
         : assignedQuantity <= 0
@@ -29102,15 +29112,15 @@ app.get("/customer-production-reports", async (req, res) => {
         producedQuantity,
         progressPercent: Math.max(0, Math.min(100, progressPercent)),
         status,
-        firstWorkDate: progress.map((row) => normalizeDateKey(row?.firstWorkDate)).filter(Boolean).sort()[0] || null,
+        firstWorkDate,
         lastWorkDate,
         estimatedCompletionDate,
         estimateBasis: isCompleted
           ? "ACTUAL_COMPLETION"
           : !canForecast
             ? "ASSIGNMENT_REQUIRED"
-            : hasWorkRecords
-              ? "ST_DURATION_FROM_ACTUAL_START"
+            : canForecastFromWorkRate
+              ? "WORKLOG_PROGRESS_RATE"
               : "LINE_SCHEDULE",
         hasMonthlySummaryRecords: progress.some((row) => row?.hasRangeCoverage === true),
         assignmentCount: relatedPlans.length,

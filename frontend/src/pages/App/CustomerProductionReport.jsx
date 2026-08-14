@@ -54,7 +54,7 @@ const STATUS = {
 };
 const BASIS = {
   ACTUAL_COMPLETION: { ko: '실제 완료', en: 'Actual completion', vi: 'Hoàn thành thực tế' },
-  ST_DURATION_FROM_ACTUAL_START: { ko: '실제 시작일 + ST 소요일수', en: 'Actual start + ST duration', vi: 'Ngày bắt đầu thực tế + thời lượng ST' },
+  WORKLOG_PROGRESS_RATE: { ko: '실제 작업속도 기준', en: 'Observed production rate', vi: 'Theo tốc độ sản xuất thực tế' },
   LINE_SCHEDULE: { ko: '라인 배정 일정', en: 'Line schedule', vi: 'Lịch chuyền' },
   ASSIGNMENT_REQUIRED: { ko: '배정 후 예측 가능', en: 'Assignment required', vi: 'Cần phân công để dự báo' },
 };
