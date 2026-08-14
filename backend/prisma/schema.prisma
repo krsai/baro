@@ -199,6 +199,7 @@ model Organization {
   orders                          WorkOrder[]
   workLogs                        WorkLog[]
   workRecords                     WorkRecord[]
+  businessPartners                BusinessPartner[]
   assignmentBoardState            AssignmentBoardState?
   assignmentCards                 AssignmentCard[]
   assignmentPlans                 AssignmentPlan[]
@@ -227,6 +228,28 @@ model Organization {
   updatedByEmployee Employee? @relation("OrganizationUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@index([representativeEmployeeId])
+}
+
+enum BusinessPartnerType {
+  PROCESS_OUTSOURCING
+  MATERIAL_SUPPLIER
+}
+
+model BusinessPartner {
+  id                  Int                 @id @default(autoincrement())
+  orgId               Int
+  name                String
+  type                BusinessPartnerType @default(PROCESS_OUTSOURCING)
+  isActive            Boolean             @default(true)
+  createdAt           DateTime            @default(now())
+  createdBy           String              @default("system@baro.local")
+  updatedAt           DateTime            @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  workRecords  WorkRecord[]
+
+  @@unique([orgId, type, name])
+  @@index([orgId, type, isActive])
 }
 
 model Currency {
@@ -1327,6 +1350,7 @@ model WorkRecord {
   workerId                   Int?
   isOutsourced               Boolean  @default(false)
   outsourceVendorName        String?
+  outsourcingPartnerId       Int?
   outsourceUnitPrice         Decimal? @db.Decimal(18, 4)
   lineId                     Int?
   styleId                    Int
@@ -1349,6 +1373,7 @@ model WorkRecord {
   style          Style          @relation(fields: [styleId], references: [id], onDelete: Restrict)
   styleProcess   StyleProcess   @relation(fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, map: "WorkRecord_styleProcess_style_org_fkey")
   line           Line?          @relation("WorkRecordLine", fields: [lineId], references: [id], onDelete: SetNull)
+  outsourcingPartner BusinessPartner? @relation(fields: [outsourcingPartnerId], references: [id], onDelete: SetNull)
 
   createdByEmployee Employee? @relation("WorkRecordCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("WorkRecordUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -1356,6 +1381,7 @@ model WorkRecord {
   @@index([orgId, workLogId])
   @@index([orgId, workerId])
   @@index([orgId, isOutsourced])
+  @@index([orgId, outsourcingPartnerId])
   @@index([orgId, styleId])
   @@index([orgId, lineId])
   @@index([styleProcessId])

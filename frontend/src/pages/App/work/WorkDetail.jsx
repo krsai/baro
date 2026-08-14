@@ -770,7 +770,15 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
   const safeRecords = Array.isArray(records) ? records : [];
   return safeRecords.map((record, index) => {
     const matchedWorker = record?.isOutsourced === true
-      ? { id: `outsource:${toText(record?.outsourceVendorName)}`, name: `외주 · ${toText(record?.outsourceVendorName)}`, vendorName: toText(record?.outsourceVendorName), isOutsourced: true }
+      ? {
+          id: record?.outsourcingPartnerId
+            ? `partner:${record.outsourcingPartnerId}`
+            : `outsource:${toText(record?.outsourceVendorName)}`,
+          partnerId: toPositiveIdOrNull(record?.outsourcingPartnerId),
+          name: `외주 · ${toText(record?.outsourceVendorName)}`,
+          vendorName: toText(record?.outsourceVendorName),
+          isOutsourced: true,
+        }
       :
       matchByIdOrName(workers, { id: record?.workerId, name: record?.workerName }) ||
       (toText(record?.workerName)
@@ -1107,6 +1115,7 @@ const WorkDetail = ({
   const [lineWorkers, setLineWorkers] = useState(() =>
     normalizeWorkerOptions(initialContext?.workers)
   );
+  const [outsourcingPartners, setOutsourcingPartners] = useState([]);
   const [processAttributes, setProcessAttributes] = useState([]);
   const [allAssignmentPlans, setAllAssignmentPlans] = useState(() =>
     normalizeAssignmentPlans(initialContext?.assignments)
@@ -1257,6 +1266,25 @@ const WorkDetail = ({
       abortController.abort();
     };
   }, [activeFactoryId, activeOrgId, activeOrgRole, initialFactoryOption, initialLog?.id]);
+  useEffect(() => {
+    const abortController = new AbortController();
+    requestJSON(
+      `/business-partners${buildQueryString({
+        orgId: activeOrgId,
+        type: 'PROCESS_OUTSOURCING',
+      })}`,
+      { skipGlobalLoading: true, signal: abortController.signal }
+    )
+      .then((result) => {
+        setOutsourcingPartners(Array.isArray(result) ? result : []);
+      })
+      .catch((error) => {
+        if (error?.name !== 'AbortError' && Number(error?.status) !== 499) {
+          setFormError(error?.message || '외주 업체 목록을 불러오지 못했습니다.');
+        }
+      });
+    return () => abortController.abort();
+  }, [activeOrgId]);
   useEffect(() => {
     initialRowsHydratedRef.current = false;
     setSelectedFactory(initialFactoryOption);
@@ -1748,6 +1776,9 @@ const WorkDetail = ({
         workerId: row?.worker?.isOutsourced ? null : toPositiveIdOrNull(row?.worker?.id),
         isOutsourced: row?.worker?.isOutsourced === true,
         outsourceVendorName: row?.worker?.isOutsourced ? toText(row?.worker?.vendorName) : null,
+        outsourcingPartnerId: row?.worker?.isOutsourced
+          ? toPositiveIdOrNull(row?.worker?.partnerId)
+          : null,
         outsourceUnitPrice: row?.worker?.isOutsourced ? Math.max(0, Number(row?.outsourceUnitPrice) || 0) : null,
         styleId: toPositiveIdOrNull(row?.styleRefId ?? row?.styleId),
         styleCode: toText(row?.styleCode || assignment?.styleId),
@@ -1998,11 +2029,21 @@ const WorkDetail = ({
   }, [ctAssignmentPool.length, hasRowsWithAssignmentPlanId, missingCtStyleLabels]);
   const resolveWorkerOptions = useCallback(
     (row) => ensureOptionIncluded(
-      [...lineWorkers, { id: '__add_outsource__', name: '＋ 외주 업체', isOutsourceAction: true }],
+      [
+        ...lineWorkers.filter((worker) => !worker?.isOutsourced),
+        ...outsourcingPartners.map((partner) => ({
+          id: `partner:${partner.id}`,
+          partnerId: partner.id,
+          name: `외주 · ${partner.name}`,
+          vendorName: partner.name,
+          isOutsourced: true,
+        })),
+        { id: '__add_outsource__', name: '＋ 외주 업체', isOutsourceAction: true },
+      ],
       row?.worker,
       (item) => item?.id || item?.name
     ),
-    [lineWorkers]
+    [lineWorkers, outsourcingPartners]
   );
   const resolveStyleOptions = useCallback(
     (row) => {
@@ -2390,12 +2431,34 @@ const WorkDetail = ({
     );
     setFormError('');
   }, [workDate, workLogOperationStartDateKey]);
-  const handleWorkerChange = useCallback((rowId, nextWorker) => {
+  const handleWorkerChange = useCallback(async (rowId, nextWorker) => {
     let resolvedWorker = nextWorker;
     if (nextWorker?.isOutsourceAction) {
       const vendorName = window.prompt('외주 업체명을 입력하세요.')?.trim();
       if (!vendorName) return;
-      resolvedWorker = { id: `outsource:${vendorName}`, name: `외주 · ${vendorName}`, vendorName, isOutsourced: true };
+      try {
+        const partner = await requestJSON(
+          `/business-partners${buildQueryString({ orgId: activeOrgId })}`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ name: vendorName, type: 'PROCESS_OUTSOURCING' }),
+          }
+        );
+        setOutsourcingPartners((current) => {
+          const next = current.filter((item) => Number(item.id) !== Number(partner.id));
+          return [...next, partner].sort((a, b) => COLLATOR.compare(a.name, b.name));
+        });
+        resolvedWorker = {
+          id: `partner:${partner.id}`,
+          partnerId: partner.id,
+          name: `외주 · ${partner.name}`,
+          vendorName: partner.name,
+          isOutsourced: true,
+        };
+      } catch (error) {
+        setFormError(error?.message || '외주 업체를 등록하지 못했습니다.');
+        return;
+      }
     }
     setRows((currentRows) =>
       currentRows.map((row) =>
@@ -2416,7 +2479,7 @@ const WorkDetail = ({
           : row
       )
     );
-  }, []);
+  }, [activeOrgId]);
   const handleWorkerInputChange = useCallback((rowId, row, nextInputValue, reason) => {
     if (reason !== 'input') return;
     const selectedLabel = toText(row?.worker?.name);

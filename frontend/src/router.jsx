@@ -78,6 +78,7 @@ const PayrollEntry = lazyImportWithRetry(() => import('./pages/App/payroll/Payro
 const RevenueAnalysis = lazyImportWithRetry(() => import('./pages/App/RevenueAnalysis'));
 const RevenueForecast = lazyImportWithRetry(() => import('./pages/App/RevenueForecast'));
 const CustomerProductionReport = lazyImportWithRetry(() => import('./pages/App/CustomerProductionReport'));
+const BusinessPartners = lazyImportWithRetry(() => import('./pages/App/BusinessPartners'));
 const Onboarding = lazyImportWithRetry(() => import('./pages/Auth/Onboarding'));
 const Attribute = lazyImportWithRetry(() => import('./pages/App/Attribute'));
 const Order = lazyImportWithRetry(() => import('./pages/App/Order.jsx'));
@@ -293,6 +294,10 @@ const router = createBrowserRouter([
           {
             path: 'customer-production-report',
             element: <CustomerProductionReport />,
+          },
+          {
+            path: 'business-partner',
+            element: <BusinessPartners />,
           },
           {
             path: 'style',

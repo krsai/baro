@@ -8150,6 +8150,9 @@ const normalizeWorkRecordPayloadList = (records: any) => {
     const outsourceVendorName = isOutsourced
       ? resolveOptionalString(record?.outsourceVendorName, null)
       : null;
+    const outsourcingPartnerId = isOutsourced
+      ? toPositiveIntOrNull(record?.outsourcingPartnerId)
+      : null;
     const outsourceUnitPrice = isOutsourced
       ? toOptionalFiniteNumber(record?.outsourceUnitPrice, null)
       : null;
@@ -8162,6 +8165,7 @@ const normalizeWorkRecordPayloadList = (records: any) => {
       workerId,
       isOutsourced,
       outsourceVendorName,
+      outsourcingPartnerId,
       outsourceUnitPrice,
       lineId: toPositiveIntOrNull(record.lineId),
       styleId: toPositiveIntOrNull(record.styleId),
@@ -8206,6 +8210,9 @@ const buildCanonicalWorkRecordWriteData = ({
     outsourceVendorName: record?.isOutsourced === true
       ? resolveOptionalString(record?.outsourceVendorName, null)
       : null,
+    outsourcingPartnerId: record?.isOutsourced === true
+      ? toPositiveIntOrNull(record?.outsourcingPartnerId)
+      : null,
     outsourceUnitPrice: record?.isOutsourced === true
       ? toOptionalFiniteNumber(record?.outsourceUnitPrice, null)
       : null,
@@ -8235,6 +8242,29 @@ const syncWorkRecordRefs = async ({
   );
   if (normalizedRecords.length === 0) return [];
 
+  const outsourcingPartnerIds = collectPositiveIntSet(
+    ...normalizedRecords
+      .filter((record) => record?.isOutsourced === true)
+      .map((record) => record?.outsourcingPartnerId)
+  );
+  const outsourcingPartners = outsourcingPartnerIds.length > 0
+    ? await prisma.businessPartner.findMany({
+        where: {
+          orgId,
+          id: { in: outsourcingPartnerIds },
+          type: "PROCESS_OUTSOURCING",
+          isActive: true,
+        },
+        select: { id: true, name: true },
+      })
+    : [];
+  const outsourcingPartnerById = new Map(
+    outsourcingPartners.map((partner) => [partner.id, partner])
+  );
+  if (outsourcingPartnerById.size !== outsourcingPartnerIds.length) {
+    throw createHttpError(409, "invalid process outsourcing partner");
+  }
+
   const assignmentPlanIds = collectWorkRecordAssignmentPlanIds(normalizedRecords);
   const styleMetaByPlanId = await resolveAssignmentPlanStyleMetaById({
     orgId,
@@ -8257,6 +8287,13 @@ const syncWorkRecordRefs = async ({
     }
     return {
       ...record,
+      ...(record?.isOutsourced === true && toPositiveIntOrNull(record?.outsourcingPartnerId)
+        ? {
+            outsourceVendorName:
+              outsourcingPartnerById.get(toPositiveIntOrNull(record.outsourcingPartnerId)!)?.name ??
+              record?.outsourceVendorName,
+          }
+        : {}),
       styleId: planStyleMeta?.styleId ?? null,
       styleCode: resolveOptionalString(planStyleMeta?.styleCode, null),
       styleName: resolveOptionalString(planStyleMeta?.styleName, null),
@@ -10930,6 +10967,7 @@ const toWorkRecordResponse = (record: any) => {
       ? resolveOptionalString(hydrated?.outsourceVendorName, "") ?? ""
       : hydrated?.workerName ?? "",
     isOutsourced: hydrated?.isOutsourced === true,
+    outsourcingPartnerId: toPositiveIntOrNull(hydrated?.outsourcingPartnerId),
     outsourceVendorName: resolveOptionalString(hydrated?.outsourceVendorName, null),
     outsourceUnitPrice: toOptionalFiniteNumber(hydrated?.outsourceUnitPrice, null),
     outsourceAmount: hydrated?.isOutsourced === true
@@ -12417,20 +12455,20 @@ const buildWorkLogContextResponse = async ({
       employee,
     }));
 
-  const outsourcedVendorRows = await prisma.workRecord.findMany({
-    where: { orgId, isOutsourced: true, outsourceVendorName: { not: null } },
-    distinct: ["outsourceVendorName"],
-    select: { outsourceVendorName: true },
-    orderBy: { outsourceVendorName: "asc" },
+  const outsourcedVendorRows = await prisma.businessPartner.findMany({
+    where: { orgId, type: "PROCESS_OUTSOURCING", isActive: true },
+    select: { id: true, name: true },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
   });
   const response = buildBaseResponse({
     line: { id: line.id, name: line.name ?? "" },
     workers: [
       ...workersForDate.map(toWorkLogContextWorkerResponse),
       ...outsourcedVendorRows.map((row) => ({
-        id: `outsource:${row.outsourceVendorName}`,
-        name: `외주 · ${row.outsourceVendorName}`,
-        vendorName: row.outsourceVendorName,
+        id: `partner:${row.id}`,
+        partnerId: row.id,
+        name: `외주 · ${row.name}`,
+        vendorName: row.name,
         isOutsourced: true,
       })),
     ],
@@ -28045,6 +28083,76 @@ app.put("/assignment-board-state", async (req, res) => {
   res.json({
     ...toAssignmentBoardStateResponse(updatedState, updatedAssignmentPlans, updatedCards),
     warnings: stDraftWarnings,
+  });
+});
+
+app.get("/business-partners", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+  const type = resolveOptionalString(req.query.type, "PROCESS_OUTSOURCING");
+  if (!['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'].includes(type || '')) {
+    return res.status(400).json({ ok: false, error: "invalid partner type" });
+  }
+  const rows = await prisma.businessPartner.findMany({
+    where: {
+      orgId: organization.id,
+      ...(type ? { type: type as any } : {}),
+    },
+    orderBy: [{ isActive: "desc" }, { name: "asc" }],
+  });
+  res.json(rows);
+});
+
+app.post("/business-partners", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+  const name = resolveOptionalString(req.body?.name, null);
+  const type = resolveOptionalString(req.body?.type, "PROCESS_OUTSOURCING");
+  if (!name) return res.status(400).json({ ok: false, error: "partner name is required" });
+  if (!['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'].includes(type || '')) {
+    return res.status(400).json({ ok: false, error: "invalid partner type" });
+  }
+  const actor = resolveOptionalString(getRequesterEmail(req), "system@baro.local") || "system@baro.local";
+  const row = await prisma.businessPartner.upsert({
+    where: { orgId_type_name: { orgId: organization.id, type: type as any, name } },
+    create: { orgId: organization.id, name, type: type as any, createdBy: actor },
+    update: { isActive: true },
+  });
+  res.status(201).json(row);
+});
+
+app.get("/business-partners/:id/history", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+  const id = toPositiveIntOrNull(req.params.id);
+  if (!id) return res.status(400).json({ ok: false, error: "invalid partner id" });
+  const partner = await prisma.businessPartner.findFirst({ where: { id, orgId: organization.id } });
+  if (!partner) return res.status(404).json({ ok: false, error: "business partner not found" });
+  const records = await prisma.workRecord.findMany({
+    where: { orgId: organization.id, outsourcingPartnerId: id, isOutsourced: true },
+    orderBy: [{ workLog: { displayDate: "desc" } }, { id: "desc" }],
+    include: {
+      workLog: { select: { displayDate: true } },
+      style: { select: { code: true, name: true } },
+      styleProcess: { select: { processCode: true, processName: true } },
+    },
+  });
+  res.json({
+    partner,
+    records: records.map((record) => ({
+      id: record.id,
+      workDate: record.workLog?.displayDate || null,
+      coverageStartDate: record.effectiveCoverageStartDate,
+      coverageEndDate: record.effectiveCoverageEndDate,
+      styleCode: record.style?.code || "",
+      styleName: record.style?.name || "",
+      processCode: record.styleProcess?.processCode || "",
+      processName: record.styleProcess?.processName || "",
+      unitPrice: toOptionalFiniteNumber(record.outsourceUnitPrice, 0),
+      quantity: record.quantity,
+      amount: Number(record.outsourceUnitPrice || 0) * record.quantity,
+      vendorNameSnapshot: record.outsourceVendorName,
+    })),
   });
 });
 

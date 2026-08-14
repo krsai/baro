@@ -397,7 +397,8 @@ const MainLayout = () => {
       currentPath.startsWith('/order') ||
       currentPath.startsWith('/style') ||
       currentPath.startsWith('/customer-pricing') ||
-      currentPath.startsWith('/customer-production-report')
+      currentPath.startsWith('/customer-production-report') ||
+      currentPath.startsWith('/business-partner')
     ) {
       setExpandedMenuGroup(MENU_GROUP_KEYS.ORDER);
     }
@@ -630,6 +631,11 @@ const MainLayout = () => {
             label: getUiMessage('menu.style', '\uC2A4\uD0C0\uC77C', languageCode),
             icon: <StyleIcon />,
             path: '/style',
+          },
+          {
+            label: getUiMessage('menu.businessPartner', '거래처', languageCode),
+            icon: <BusinessIcon />,
+            path: '/business-partner',
           },
           {
             label: getUiMessage('menu.customerProductionReport', '보고서', languageCode),

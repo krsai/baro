@@ -165,6 +165,7 @@ export const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/dashboard')) return FEATURE_KEYS.DASHBOARD;
   if (path.startsWith('/order')) return FEATURE_KEYS.ORDER;
   if (path.startsWith('/customer-production-report')) return FEATURE_KEYS.ORDER;
+  if (path.startsWith('/business-partner')) return FEATURE_KEYS.ORDER;
   if (path.startsWith('/style')) return FEATURE_KEYS.STYLE;
   if (path.startsWith('/st-review')) return FEATURE_KEYS.ST_REVIEW;
   if (path.startsWith('/shipment-review')) return FEATURE_KEYS.SHIPMENT_REVIEW;
