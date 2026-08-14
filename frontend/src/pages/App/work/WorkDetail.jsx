@@ -253,19 +253,32 @@ const formatCount = (value) =>
 const resolveRowCtDisplayMeta = ({ row, rowProcess, selectedProcessOption }) => {
   const process = selectedProcessOption?.process || rowProcess || row?.process || null;
   const hasProcess = Boolean(process);
+  const isOutsourced = row?.worker?.isOutsourced === true;
   const ctSeconds = Math.max(
     0,
     Math.round(Number(process?.ctSeconds ?? row?.ctSeconds) || 0)
   );
   const quantity = Math.max(0, Math.round(Number(row?.quantity) || 0));
   const totalCtSeconds = ctSeconds * quantity;
+  const unitPriceText = String(row?.outsourceUnitPrice ?? '').trim();
+  const parsedUnitPrice = Number(unitPriceText);
+  const outsourceUnitPrice =
+    unitPriceText !== '' && Number.isFinite(parsedUnitPrice) && parsedUnitPrice >= 0
+      ? parsedUnitPrice
+      : null;
 
   return {
     ctSeconds,
     quantity,
-    totalCtSeconds,
-    ctValue: hasProcess ? formatSeconds(ctSeconds) : '-',
-    totalCtValue: hasProcess && quantity > 0 ? formatSeconds(totalCtSeconds) : '-',
+    totalCtSeconds: isOutsourced ? 0 : totalCtSeconds,
+    ctValue: isOutsourced
+      ? outsourceUnitPrice == null ? '-' : `${formatCount(outsourceUnitPrice)}동`
+      : hasProcess ? formatSeconds(ctSeconds) : '-',
+    totalCtValue: isOutsourced
+      ? outsourceUnitPrice != null && quantity > 0
+        ? `${formatCount(outsourceUnitPrice * quantity)}동`
+        : '-'
+      : hasProcess && quantity > 0 ? formatSeconds(totalCtSeconds) : '-',
   };
 };
 const buildComparableWorkRecord = (record = {}) => {
@@ -1746,7 +1759,8 @@ const WorkDetail = ({
       }));
     const workerCount = new Set(records.map((record) => record.workerId).filter((workerId) => workerId !== null)).size;
     const workLogCtTotalSeconds = records.reduce(
-      (sum, record) => sum + record.ctSeconds * record.quantity,
+      (sum, record) =>
+        sum + (record.isOutsourced ? 0 : record.ctSeconds * record.quantity),
       0
     );
     const workLogQuantityTotal = records.reduce(
@@ -2665,6 +2679,10 @@ const WorkDetail = ({
           editingField?.rowId === row.id &&
           editingField?.field === 'process'
         );
+        const shouldFocusOutsourceUnitPrice = Boolean(
+          editingField?.rowId === row.id &&
+          editingField?.field === 'outsourceUnitPrice'
+        );
         const shouldFocusQuantity = Boolean(
           editingField?.rowId === row.id &&
           editingField?.field === 'quantity'
@@ -2726,13 +2744,12 @@ const WorkDetail = ({
           shouldFocusWorker,
           shouldFocusStyle,
           shouldFocusProcess,
+          shouldFocusOutsourceUnitPrice,
           shouldFocusQuantity,
           stylePlaceholder,
           processPlaceholder,
           rowGroupMeta,
           groupBackgroundColor,
-          ctSecondsNumber: rowCtMeta.ctSeconds,
-          totalCtSecondsNumber: rowCtMeta.totalCtSeconds,
           ctValue: rowCtMeta.ctValue,
           totalCtValue: rowCtMeta.totalCtValue,
           quantityValue,
@@ -3047,6 +3064,7 @@ const WorkDetail = ({
                       shouldFocusWorker,
                       shouldFocusStyle,
                       shouldFocusProcess,
+                      shouldFocusOutsourceUnitPrice,
                       shouldFocusQuantity,
                       stylePlaceholder,
                       processPlaceholder,
@@ -3175,7 +3193,12 @@ const WorkDetail = ({
                             onInputChange={(_event, nextInputValue, reason) =>
                               handleProcessInputChange(row.id, selectedProcessOption, nextInputValue, reason)
                             }
-                            onKeyboardSelect={() => beginFieldEdit(row.id, 'quantity')}
+                            onKeyboardSelect={() =>
+                              beginFieldEdit(
+                                row.id,
+                                row?.worker?.isOutsourced ? 'outsourceUnitPrice' : 'quantity'
+                              )
+                            }
                             autoSelect={false}
                             disabled={processDisabled}
                             autoHighlight
@@ -3257,9 +3280,21 @@ const WorkDetail = ({
                               onChange={row?.worker?.isOutsourced
                                 ? (event) => handleOutsourceUnitPriceChange(row.id, event.target.value)
                                 : undefined}
-                              inputProps={row?.worker?.isOutsourced ? { min: 0 } : undefined}
+                              inputProps={row?.worker?.isOutsourced
+                                ? buildEditableFieldInputProps(row.id, 'outsourceUnitPrice', { min: 0 })
+                                : undefined}
                               InputProps={row?.worker?.isOutsourced ? undefined : { readOnly: true }}
                               color={row?.worker?.isOutsourced ? 'warning' : undefined}
+                              autoFocus={shouldFocusOutsourceUnitPrice}
+                              onKeyDown={row?.worker?.isOutsourced
+                                ? (event) => {
+                                    if (['-', '+', 'e', 'E'].includes(event.key)) event.preventDefault();
+                                    if (!event.nativeEvent.isComposing && (event.key === 'Enter' || event.key === 'Tab')) {
+                                      event.preventDefault();
+                                      beginFieldEdit(row.id, 'quantity');
+                                    }
+                                  }
+                                : undefined}
                               fullWidth
                             />
                             <TextField
@@ -3389,6 +3424,7 @@ const WorkDetail = ({
                         shouldFocusWorker,
                         shouldFocusStyle,
                         shouldFocusProcess,
+                        shouldFocusOutsourceUnitPrice,
                         shouldFocusQuantity,
                         stylePlaceholder,
                         processPlaceholder,
@@ -3570,7 +3606,12 @@ const WorkDetail = ({
                                 onInputChange={(_event, nextInputValue, reason) =>
                                   handleProcessInputChange(row.id, selectedProcessOption, nextInputValue, reason)
                                 }
-                                onKeyboardSelect={() => beginFieldEdit(row.id, 'quantity')}
+                                onKeyboardSelect={() =>
+                                  beginFieldEdit(
+                                    row.id,
+                                    row?.worker?.isOutsourced ? 'outsourceUnitPrice' : 'quantity'
+                                  )
+                                }
                                 autoSelect={false}
                                 disabled={processDisabled}
                                 autoHighlight
@@ -3640,12 +3681,24 @@ const WorkDetail = ({
                                 size="small"
                                 value={row?.outsourceUnitPrice ?? ''}
                                 onChange={(event) => handleOutsourceUnitPriceChange(row.id, event.target.value)}
-                                inputProps={{ min: 0, 'aria-label': '외주 개당 단가' }}
+                                inputProps={buildEditableFieldInputProps(
+                                  row.id,
+                                  'outsourceUnitPrice',
+                                  { min: 0, 'aria-label': '외주 개당 단가' }
+                                )}
                                 placeholder="개당 단가"
                                 color="warning"
                                 fullWidth
                                 hiddenLabel
                                 sx={DESKTOP_INLINE_FIELD_SX}
+                                autoFocus={shouldFocusOutsourceUnitPrice}
+                                onKeyDown={(event) => {
+                                  if (['-', '+', 'e', 'E'].includes(event.key)) event.preventDefault();
+                                  if (!event.nativeEvent.isComposing && (event.key === 'Enter' || event.key === 'Tab')) {
+                                    event.preventDefault();
+                                    beginFieldEdit(row.id, 'quantity');
+                                  }
+                                }}
                               />
                             ) : (
                               <Typography
@@ -3653,9 +3706,7 @@ const WorkDetail = ({
                                 color={row?.worker?.isOutsourced ? 'warning.main' : 'inherit'}
                                 sx={{ fontVariantNumeric: 'tabular-nums', fontWeight: row?.worker?.isOutsourced ? 700 : 400 }}
                               >
-                                {row?.worker?.isOutsourced
-                                  ? `${formatCount(row?.outsourceUnitPrice || 0)}동`
-                                  : ctValue}
+                                {ctValue}
                               </Typography>
                             )}
                           </TableCell>
