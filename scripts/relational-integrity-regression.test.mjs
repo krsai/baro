@@ -35,6 +35,17 @@ test('warehouse localized names are covered by runtime drift recovery', async ()
   assert.match(backend, /tableName: "Warehouse", columnName: "nameVi"/);
 });
 
+test('employee grade seeding supplies localized names before required constraints', async () => {
+  const migration = await read('backend/migration_fix.sql');
+  const addLocalizedColumnsAt = migration.indexOf('ADD COLUMN IF NOT EXISTS "nameKo" TEXT');
+  const seedAt = migration.indexOf('INSERT INTO "EmployeeGrade" ("orgId", "setId", "code", "name", "nameKo", "nameEn", "nameVi"');
+  assert.ok(addLocalizedColumnsAt >= 0 && seedAt > addLocalizedColumnsAt);
+  assert.match(
+    migration.slice(seedAt, seedAt + 1200),
+    /'CL1','일반','General','Nhân viên'/
+  );
+});
+
 test('runtime migration has balanced, non-nested anonymous PostgreSQL blocks', async () => {
   const migration = await read('backend/migration_fix.sql');
   let anonymousBlockOpen = false;

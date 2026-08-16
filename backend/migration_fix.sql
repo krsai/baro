@@ -4502,6 +4502,13 @@ CREATE TABLE IF NOT EXISTS "EmployeeGrade" (
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+-- These columns may already be NOT NULL when this idempotent script runs again.
+-- Add them before seeding so newly discovered organizations always receive a
+-- complete localized grade row.
+ALTER TABLE "EmployeeGrade"
+  ADD COLUMN IF NOT EXISTS "nameKo" TEXT,
+  ADD COLUMN IF NOT EXISTS "nameEn" TEXT,
+  ADD COLUMN IF NOT EXISTS "nameVi" TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS "EmployeeGradeSet_orgId_code_key" ON "EmployeeGradeSet"("orgId", "code");
 CREATE INDEX IF NOT EXISTS "EmployeeGradeSet_orgId_isActive_idx" ON "EmployeeGradeSet"("orgId", "isActive");
 CREATE UNIQUE INDEX IF NOT EXISTS "EmployeeGrade_orgId_code_key" ON "EmployeeGrade"("orgId", "code");
@@ -4518,9 +4525,9 @@ DO $$ BEGIN
   ALTER TABLE "EmployeeGrade" ADD CONSTRAINT "EmployeeGrade_setId_fkey" FOREIGN KEY ("setId") REFERENCES "EmployeeGradeSet"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 INSERT INTO "EmployeeGradeSet" ("orgId", "code", "name", "updatedAt") SELECT "id", 'CL', 'CL', CURRENT_TIMESTAMP FROM "Organization" ON CONFLICT ("orgId", "code") DO NOTHING;
-INSERT INTO "EmployeeGrade" ("orgId", "setId", "code", "name", "sortOrder", "isDefault", "updatedAt")
-SELECT s."orgId", s."id", v.code, v.name, v.sort_order, v.is_default, CURRENT_TIMESTAMP FROM "EmployeeGradeSet" s
-CROSS JOIN (VALUES ('CL1','일반',1,true), ('CL2','선임',2,false), ('CL3','책임',3,false), ('CL4','수석',4,false)) v(code,name,sort_order,is_default)
+INSERT INTO "EmployeeGrade" ("orgId", "setId", "code", "name", "nameKo", "nameEn", "nameVi", "sortOrder", "isDefault", "updatedAt")
+SELECT s."orgId", s."id", v.code, v.name_ko, v.name_ko, v.name_en, v.name_vi, v.sort_order, v.is_default, CURRENT_TIMESTAMP FROM "EmployeeGradeSet" s
+CROSS JOIN (VALUES ('CL1','일반','General','Nhân viên',1,true), ('CL2','선임','Senior','Chuyên viên cao cấp',2,false), ('CL3','책임','Principal','Chuyên viên chính',3,false), ('CL4','수석','Master','Chuyên gia',4,false)) v(code,name_ko,name_en,name_vi,sort_order,is_default)
 WHERE s."code"='CL' ON CONFLICT ("orgId", "code") DO NOTHING;
 ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "gradeId" INTEGER;
 UPDATE "Employee" e SET "gradeId"=g."id" FROM "EmployeeGrade" g WHERE e."gradeId" IS NULL AND g."orgId"=e."orgId" AND g."isDefault"=true;
@@ -4533,9 +4540,9 @@ CREATE OR REPLACE FUNCTION baro_assign_default_employee_grade() RETURNS trigger 
 BEGIN
   IF NEW."gradeId" IS NULL THEN
     INSERT INTO "EmployeeGradeSet" ("orgId","code","name","updatedAt") VALUES (NEW."orgId",'CL','CL',CURRENT_TIMESTAMP) ON CONFLICT ("orgId","code") DO NOTHING;
-    INSERT INTO "EmployeeGrade" ("orgId","setId","code","name","sortOrder","isDefault","updatedAt")
-    SELECT s."orgId",s."id",v.code,v.name,v.sort_order,v.is_default,CURRENT_TIMESTAMP FROM "EmployeeGradeSet" s
-    CROSS JOIN (VALUES ('CL1','일반',1,true),('CL2','선임',2,false),('CL3','책임',3,false),('CL4','수석',4,false)) v(code,name,sort_order,is_default)
+    INSERT INTO "EmployeeGrade" ("orgId","setId","code","name","nameKo","nameEn","nameVi","sortOrder","isDefault","updatedAt")
+    SELECT s."orgId",s."id",v.code,v.name_ko,v.name_ko,v.name_en,v.name_vi,v.sort_order,v.is_default,CURRENT_TIMESTAMP FROM "EmployeeGradeSet" s
+    CROSS JOIN (VALUES ('CL1','일반','General','Nhân viên',1,true),('CL2','선임','Senior','Chuyên viên cao cấp',2,false),('CL3','책임','Principal','Chuyên viên chính',3,false),('CL4','수석','Master','Chuyên gia',4,false)) v(code,name_ko,name_en,name_vi,sort_order,is_default)
     WHERE s."orgId"=NEW."orgId" AND s."code"='CL' ON CONFLICT ("orgId","code") DO NOTHING;
     SELECT "id" INTO NEW."gradeId" FROM "EmployeeGrade" WHERE "orgId"=NEW."orgId" AND "isDefault"=true LIMIT 1;
   END IF;
