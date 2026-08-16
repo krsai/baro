@@ -4559,6 +4559,16 @@ CREATE INDEX IF NOT EXISTS "EmployeeCompensationPolicy_orgId_gradeId_idx" ON "Em
 DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_gradeId_fkey" FOREIGN KEY ("gradeId") REFERENCES "EmployeeGrade"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_nonnegative_check" CHECK ("baseSalary" >= 0 AND "fixedAllowance" >= 0 AND "variableAllowance" >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- 2026-08-16: enforce organization-scoped employee role/grade relationships
+CREATE UNIQUE INDEX IF NOT EXISTS "EmployeeGrade_orgId_id_key" ON "EmployeeGrade"("orgId","id");
+CREATE UNIQUE INDEX IF NOT EXISTS "AttrRole_orgId_id_key" ON "AttrRole"("orgId","id");
+ALTER TABLE "Employee" DROP CONSTRAINT IF EXISTS "Employee_roleId_fkey";
+ALTER TABLE "Employee" DROP CONSTRAINT IF EXISTS "Employee_gradeId_fkey";
+ALTER TABLE "EmployeeCompensationPolicy" DROP CONSTRAINT IF EXISTS "EmployeeCompensationPolicy_gradeId_fkey";
+ALTER TABLE "Employee" ADD CONSTRAINT "Employee_roleId_fkey" FOREIGN KEY ("orgId","roleId") REFERENCES "AttrRole"("orgId","id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Employee" ADD CONSTRAINT "Employee_gradeId_fkey" FOREIGN KEY ("orgId","gradeId") REFERENCES "EmployeeGrade"("orgId","id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_gradeId_fkey" FOREIGN KEY ("orgId","gradeId") REFERENCES "EmployeeGrade"("orgId","id") ON DELETE CASCADE ON UPDATE CASCADE;
 DROP TRIGGER IF EXISTS "Employee_assign_default_grade" ON "Employee";
 CREATE TRIGGER "Employee_assign_default_grade" BEFORE INSERT ON "Employee" FOR EACH ROW EXECUTE FUNCTION baro_assign_default_employee_grade();
 

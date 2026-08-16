@@ -225,7 +225,7 @@ model Organization {
   quantityBucketEntries           QuantityBucketEntry[]
   employeeGradeSets               EmployeeGradeSet[]
   employeeGrades                  EmployeeGrade[]
-  employeeCompensationPolicies   EmployeeCompensationPolicy[]
+  employeeCompensationPolicies    EmployeeCompensationPolicy[]
 
   createdByEmployee Employee? @relation("OrganizationCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("OrganizationUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -239,14 +239,14 @@ enum BusinessPartnerType {
 }
 
 model BusinessPartner {
-  id                  Int                 @id @default(autoincrement())
-  orgId               Int
-  name                String
-  type                BusinessPartnerType @default(PROCESS_OUTSOURCING)
-  isActive            Boolean             @default(true)
-  createdAt           DateTime            @default(now())
-  createdBy           String              @default("system@baro.local")
-  updatedAt           DateTime            @updatedAt
+  id        Int                 @id @default(autoincrement())
+  orgId     Int
+  name      String
+  type      BusinessPartnerType @default(PROCESS_OUTSOURCING)
+  isActive  Boolean             @default(true)
+  createdAt DateTime            @default(now())
+  createdBy String              @default("system@baro.local")
+  updatedAt DateTime            @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   workRecords  WorkRecord[]
@@ -485,8 +485,8 @@ model Employee {
   organization             Organization       @relation(fields: [orgId], references: [id])
   factory                  Factory?           @relation("FactoryEmployees", fields: [factoryId], references: [id])
   line                     Line?              @relation("EmployeeCurrentLine", fields: [lineId], references: [id], onDelete: SetNull)
-  role                     AttrRole?          @relation(fields: [roleId], references: [id])
-  grade                    EmployeeGrade      @relation(fields: [gradeId], references: [id])
+  role                     AttrRole?          @relation(fields: [orgId, roleId], references: [orgId, id], onDelete: Restrict)
+  grade                    EmployeeGrade      @relation(fields: [orgId, gradeId], references: [orgId, id])
   lineAssignments          LineAssignment[]
   representedOrganizations Organization[]     @relation("OrganizationRepresentative")
   managedFactories         Factory[]          @relation("FactoryManager")
@@ -603,29 +603,30 @@ model EmployeeGrade {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  set          EmployeeGradeSet @relation(fields: [setId], references: [id], onDelete: Cascade)
-  employees    Employee[]
+  organization         Organization                 @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  set                  EmployeeGradeSet             @relation(fields: [setId], references: [id], onDelete: Cascade)
+  employees            Employee[]
   compensationPolicies EmployeeCompensationPolicy[]
 
   @@unique([orgId, code])
+  @@unique([orgId, id])
   @@unique([setId, sortOrder])
   @@index([orgId, isActive, sortOrder])
 }
 
 model EmployeeCompensationPolicy {
-  id                     Int         @id @default(autoincrement())
-  orgId                  Int
-  orgRole                OrgUserRole
-  gradeId                Int
-  baseSalary             Int         @default(0)
-  fixedAllowance         Int         @default(0)
-  variableAllowance      Int         @default(0)
-  createdAt              DateTime    @default(now())
-  updatedAt              DateTime    @updatedAt
+  id                Int         @id @default(autoincrement())
+  orgId             Int
+  orgRole           OrgUserRole
+  gradeId           Int
+  baseSalary        Int         @default(0)
+  fixedAllowance    Int         @default(0)
+  variableAllowance Int         @default(0)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
   organization Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  grade        EmployeeGrade @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  grade        EmployeeGrade @relation(fields: [orgId, gradeId], references: [orgId, id], onDelete: Cascade)
 
   @@unique([orgId, orgRole, gradeId])
   @@index([orgId, gradeId])
@@ -833,6 +834,7 @@ model AttrRole {
   employees    Employee[]
 
   @@unique([orgId, code])
+  @@unique([orgId, id])
   @@index([orgId])
   @@index([orgId, sortOrder])
 }
@@ -902,26 +904,26 @@ model Style {
 }
 
 model StyleProcess {
-  id                  Int      @id @default(autoincrement())
-  orgId               Int
-  styleId             Int
-  processCode         String
-  processName         String
-  productionStage     ProductionStage @default(SEWING)
-  processComposition  Json?
-  processDescription  String?
-  timesPerPiece       Int      @default(1)
-  sortOrder           Int      @default(0)
-  ptSeconds           Float?
-  atParams            Json?
-  atStFallbackApproved Boolean  @default(false)
+  id                                 Int             @id @default(autoincrement())
+  orgId                              Int
+  styleId                            Int
+  processCode                        String
+  processName                        String
+  productionStage                    ProductionStage @default(SEWING)
+  processComposition                 Json?
+  processDescription                 String?
+  timesPerPiece                      Int             @default(1)
+  sortOrder                          Int             @default(0)
+  ptSeconds                          Float?
+  atParams                           Json?
+  atStFallbackApproved               Boolean         @default(false)
   atStFallbackSourceAssignmentPlanId Int?
-  atStFallbackApprovedAt DateTime?
-  createdAt           DateTime @default(now())
-  createdBy           String   @default("system@baro.local")
-  createdByEmployeeId Int?
-  updatedByEmployeeId Int?
-  updatedAt           DateTime @updatedAt
+  atStFallbackApprovedAt             DateTime?
+  createdAt                          DateTime        @default(now())
+  createdBy                          String          @default("system@baro.local")
+  createdByEmployeeId                Int?
+  updatedByEmployeeId                Int?
+  updatedAt                          DateTime        @updatedAt
 
   organization    Organization                @relation(fields: [orgId], references: [id])
   style           Style                       @relation(fields: [styleId], references: [id], onDelete: Cascade)
@@ -970,7 +972,7 @@ model StyleProcessStandard {
 }
 
 model AtTrainingBucket {
-  id                  Int      @id @default(autoincrement())
+  id                  Int             @id @default(autoincrement())
   orgId               Int
   monthKey            String
   sourceWorkLogId     Int
@@ -980,11 +982,11 @@ model AtTrainingBucket {
   factoryId           Int?
   laborInputSeconds   Float
   attendanceCoverage  Float?
-  createdAt           DateTime @default(now())
-  createdBy           String   @default("system@baro.local")
+  createdAt           DateTime        @default(now())
+  createdBy           String          @default("system@baro.local")
   createdByEmployeeId Int?
   updatedByEmployeeId Int?
-  updatedAt           DateTime @updatedAt
+  updatedAt           DateTime        @updatedAt
 
   organization  Organization              @relation(fields: [orgId], references: [id])
   sourceWorkLog WorkLog                   @relation(fields: [sourceWorkLogId], references: [id], onDelete: Cascade)
@@ -1035,29 +1037,29 @@ model AtTrainingBucketProcess {
 }
 
 model StyleProcessAtObservation {
-  id                         Int      @id @default(autoincrement())
-  orgId                      Int
-  styleProcessId             Int
-  productionStage            ProductionStage @default(SEWING)
-  assignmentPlanId           Int
-  quantity                   Int
-  allocatedLaborInputSeconds Float
-  sourceLaborInputSeconds    Float?
+  id                           Int             @id @default(autoincrement())
+  orgId                        Int
+  styleProcessId               Int
+  productionStage              ProductionStage @default(SEWING)
+  assignmentPlanId             Int
+  quantity                     Int
+  allocatedLaborInputSeconds   Float
+  sourceLaborInputSeconds      Float?
   unexplainedLaborInputSeconds Float?
-  perPieceObservedSeconds    Float
-  workerCount                Int
-  eventCountMax              Float
-  eventCountWeighted         Float
-  attendanceCoverage        Float?
-  singleProcessLaborShare   Float?
-  observationPeriodStartDate String
-  observationPeriodEndDate   String
-  modelVersion               String   @default("v3-st-stable")
-  trainedPeriod              String
-  computedAt                 DateTime @default(now())
-  createdAt                  DateTime @default(now())
-  createdBy                  String   @default("system@baro.local")
-  updatedAt                  DateTime @updatedAt
+  perPieceObservedSeconds      Float
+  workerCount                  Int
+  eventCountMax                Float
+  eventCountWeighted           Float
+  attendanceCoverage           Float?
+  singleProcessLaborShare      Float?
+  observationPeriodStartDate   String
+  observationPeriodEndDate     String
+  modelVersion                 String          @default("v3-st-stable")
+  trainedPeriod                String
+  computedAt                   DateTime        @default(now())
+  createdAt                    DateTime        @default(now())
+  createdBy                    String          @default("system@baro.local")
+  updatedAt                    DateTime        @updatedAt
 
   organization   Organization   @relation(fields: [orgId], references: [id])
   styleProcess   StyleProcess   @relation(fields: [styleProcessId, orgId], references: [id, orgId], onDelete: Cascade, map: "StyleProcessAtObservation_process_org_fkey")
@@ -1431,13 +1433,13 @@ model WorkRecord {
   updatedByEmployeeId        Int?
   updatedAt                  DateTime @updatedAt
 
-  organization   Organization   @relation(fields: [orgId], references: [id])
-  workLog        WorkLog        @relation(fields: [workLogId], references: [id], onDelete: Cascade)
-  worker         Employee?      @relation(fields: [workerId], references: [id], onDelete: SetNull)
-  assignmentPlan AssignmentPlan @relation(fields: [assignmentPlanId, orgId], references: [id, orgId], onDelete: Restrict, map: "WorkRecord_assignmentPlan_org_fkey")
-  style          Style          @relation(fields: [styleId], references: [id], onDelete: Restrict)
-  styleProcess   StyleProcess   @relation(fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, map: "WorkRecord_styleProcess_style_org_fkey")
-  line           Line?          @relation("WorkRecordLine", fields: [lineId], references: [id], onDelete: SetNull)
+  organization       Organization     @relation(fields: [orgId], references: [id])
+  workLog            WorkLog          @relation(fields: [workLogId], references: [id], onDelete: Cascade)
+  worker             Employee?        @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  assignmentPlan     AssignmentPlan   @relation(fields: [assignmentPlanId, orgId], references: [id, orgId], onDelete: Restrict, map: "WorkRecord_assignmentPlan_org_fkey")
+  style              Style            @relation(fields: [styleId], references: [id], onDelete: Restrict)
+  styleProcess       StyleProcess     @relation(fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, map: "WorkRecord_styleProcess_style_org_fkey")
+  line               Line?            @relation("WorkRecordLine", fields: [lineId], references: [id], onDelete: SetNull)
   outsourcingPartner BusinessPartner? @relation(fields: [outsourcingPartnerId], references: [id], onDelete: SetNull)
 
   createdByEmployee Employee? @relation("WorkRecordCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)

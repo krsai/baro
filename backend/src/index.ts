@@ -905,6 +905,8 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "WorkRecord_styleProcess_style_org_fkey",
   "EmployeeGradeSet_orgId_code_key",
   "EmployeeGrade_orgId_code_key",
+  "EmployeeGrade_orgId_id_key",
+  "AttrRole_orgId_id_key",
   "EmployeeGrade_one_default_per_org_key",
   "Employee_gradeId_fkey",
   "EmployeeCompensationPolicy_orgId_orgRole_gradeId_key",
