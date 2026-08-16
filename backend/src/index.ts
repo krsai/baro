@@ -942,7 +942,7 @@ const ONBOARDING_ORGANIZATION_TYPE_OPTIONS = new Set<OrganizationTypeKey>(
   Object.values(ORGANIZATION_TYPE_KEYS)
 );
 const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 5;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 6;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
   "DASHBOARD",
@@ -961,6 +961,7 @@ const ROLE_ACCESS_POLICY_FEATURES = [
   "BUSINESS",
   "LINE",
   "EMPLOYEE",
+  "EMPLOYEE_SYSTEM",
   "CUSTOMER",
   "PERMISSION",
   "HOLIDAY",
@@ -1007,7 +1008,7 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
     WORKER: ["DASHBOARD"],
   },
   BRAND: {
-    ADMIN: ["DASHBOARD", "ORDER", "STYLE"],
+    ADMIN: ["DASHBOARD", "ORDER", "STYLE", "EMPLOYEE_SYSTEM"],
     OPERATOR: ["DASHBOARD", "ORDER", "STYLE"],
     ACCOUNTANT: ["DASHBOARD"],
     WORKER: ["DASHBOARD"],
@@ -1088,6 +1089,12 @@ const applyLegacyEmployeeLineAccessDefault = (policy: RoleAccessPolicy): void =>
     accountantFeatures.splice(employeeIndex >= 0 ? employeeIndex : accountantFeatures.length, 0, "LINE");
   }
 };
+const applyLegacyEmployeeSystemDefault = (policy: RoleAccessPolicy): void => {
+  (Object.values(ORGANIZATION_TYPE_KEYS) as OrganizationTypeKey[]).forEach((orgType) => {
+    const adminFeatures = policy[orgType].ADMIN;
+    if (!adminFeatures.includes("EMPLOYEE_SYSTEM")) adminFeatures.push("EMPLOYEE_SYSTEM");
+  });
+};
 const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
   const policy = cloneRoleAccessPolicy(DEFAULT_ROLE_ACCESS_POLICY);
   if (!value || typeof value !== "object" || Array.isArray(value)) return policy;
@@ -1110,6 +1117,7 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
     applyLegacyProductionAnalysisDefault(policy);
     applyLegacyRevenueAnalysisDefault(policy);
     applyLegacyEmployeeLineAccessDefault(policy);
+    applyLegacyEmployeeSystemDefault(policy);
   }
   return policy;
 };

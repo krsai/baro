@@ -27,13 +27,14 @@ export const ACCESS_FEATURE_KEYS = {
   BUSINESS: 'BUSINESS',
   LINE: 'LINE',
   EMPLOYEE: 'EMPLOYEE',
+  EMPLOYEE_SYSTEM: 'EMPLOYEE_SYSTEM',
   CUSTOMER: 'CUSTOMER',
   PERMISSION: 'PERMISSION',
   HOLIDAY: 'HOLIDAY',
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
-export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 5;
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 6;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND];
 const POLICY_ORG_ROLES = [
@@ -81,6 +82,7 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
       ACCESS_FEATURE_KEYS.DASHBOARD,
       ACCESS_FEATURE_KEYS.ORDER,
       ACCESS_FEATURE_KEYS.STYLE,
+      ACCESS_FEATURE_KEYS.EMPLOYEE_SYSTEM,
     ]),
     [ORG_ROLE_KEYS.OPERATOR]: Object.freeze([
       ACCESS_FEATURE_KEYS.DASHBOARD,
@@ -193,6 +195,16 @@ const applyLegacyEmployeeLineAccessDefault = (policy) => {
   }
 };
 
+const applyLegacyEmployeeSystemDefault = (policy) => {
+  POLICY_ORG_TYPES.forEach((orgType) => {
+    const adminFeatures = policy?.[orgType]?.[ORG_ROLE_KEYS.ADMIN];
+    if (!Array.isArray(adminFeatures)) return;
+    if (!adminFeatures.includes(ACCESS_FEATURE_KEYS.EMPLOYEE_SYSTEM)) {
+      adminFeatures.push(ACCESS_FEATURE_KEYS.EMPLOYEE_SYSTEM);
+    }
+  });
+};
+
 export const getDefaultRoleAccessPolicy = () =>
   cloneDeepJson(DEFAULT_ROLE_ACCESS_POLICY);
 
@@ -220,6 +232,7 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
     applyLegacyProductionAnalysisDefault(base);
     applyLegacyRevenueAnalysisDefault(base);
     applyLegacyEmployeeLineAccessDefault(base);
+    applyLegacyEmployeeSystemDefault(base);
   }
 
   return base;

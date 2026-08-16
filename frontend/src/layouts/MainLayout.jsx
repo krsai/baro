@@ -301,7 +301,6 @@ const MainLayout = () => {
     devProfile,
     accessProfile,
     activeOrgId,
-    activeOrgRole,
     isAuthenticated,
     user,
     activeProfile,
@@ -792,9 +791,7 @@ const MainLayout = () => {
         isParent: true,
         menuGroupKey: MENU_GROUP_KEYS.SETTINGS,
         isOpen: settingsOpen,
-        children: activeOrgRole === 'ADMIN' || isSystemAdminProfile
-          ? [{ label: getUiMessage('menu.employeeSystem', '직원 체계', languageCode), icon: <GroupIcon />, path: '/employee-system' }]
-          : [],
+        children: [{ label: getUiMessage('menu.employeeSystem', '직원 체계', languageCode), icon: <GroupIcon />, path: '/employee-system' }],
       },
       {
         label: getUiMessage('menu.misc', '\uAE30\uD0C0 \uAD00\uB9AC', languageCode),
@@ -891,7 +888,6 @@ const MainLayout = () => {
     ];
   }, [
     accountingOpen,
-    activeOrgRole,
     adminOpen,
     attributeOpen,
     inventoryOpen,

@@ -17,7 +17,7 @@ type EmployeeRoutesDeps = {
   hasOrgFeatureAccess: (args: {
     orgType: unknown;
     orgRole: OrgUserRole;
-    feature: "EMPLOYEE";
+    feature: "EMPLOYEE" | "EMPLOYEE_SYSTEM";
   }) => Promise<boolean>;
   isManufacturerOrg: (org: { type?: string | null } | null | undefined) => boolean;
   resolveDefaultEmployeeRoleId: (orgId: number) => Promise<number | null>;
@@ -131,8 +131,15 @@ export const createEmployeeRouter = ({
       }),
     ]);
     if (systemUser?.systemRole === "SYSTEM_ADMIN") return true;
-    if (employee?.status === "ACTIVE" && employee.orgRole === "ADMIN") return true;
-    res.status(403).json({ ok: false, error: "organization admin access required" });
+    if (
+      employee?.status === "ACTIVE" &&
+      await hasOrgFeatureAccess({
+        orgType: (await prisma.organization.findUnique({ where: { id: orgId }, select: { type: true } }))?.type,
+        orgRole: employee.orgRole,
+        feature: "EMPLOYEE_SYSTEM",
+      })
+    ) return true;
+    res.status(403).json({ ok: false, error: "employee system access required" });
     return false;
   };
 
