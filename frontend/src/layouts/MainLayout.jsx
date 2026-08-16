@@ -301,6 +301,7 @@ const MainLayout = () => {
     devProfile,
     accessProfile,
     activeOrgId,
+    activeOrgRole,
     isAuthenticated,
     user,
     activeProfile,
