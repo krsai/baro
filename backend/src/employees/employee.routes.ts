@@ -204,6 +204,43 @@ export const createEmployeeRouter = ({
     return res.json(updated);
   });
 
+  employeeRouter.put("/employee-grade-sets/:setId/grades", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+    if (!(await requireGradeManager(req, res, organization.id))) return;
+    const setId = Number(req.params.setId);
+    const inputRows = Array.isArray(req.body?.grades) ? req.body.grades : [];
+    const existingRows = await prisma.employeeGrade.findMany({ where: { setId, orgId: organization.id } });
+    if (existingRows.length === 0) return res.status(404).json({ ok: false, error: "grade set not found" });
+    const existingIds = new Set(existingRows.map((row) => row.id));
+    const normalizedRows = inputRows.map((row: any) => ({
+      id: Number(row?.id), nameKo: String(row?.nameKo || "").trim(),
+      nameEn: String(row?.nameEn || "").trim(), nameVi: String(row?.nameVi || "").trim(),
+      sortOrder: Number(row?.sortOrder),
+    }));
+    const ids = normalizedRows.map((row: any) => row.id);
+    const orders = normalizedRows.map((row: any) => row.sortOrder);
+    if (
+      normalizedRows.length !== existingRows.length || new Set(ids).size !== ids.length
+      || ids.some((id: number) => !existingIds.has(id)) || new Set(orders).size !== orders.length
+      || normalizedRows.some((row: any) => !row.nameKo || !row.nameEn || !row.nameVi || !Number.isSafeInteger(row.sortOrder) || row.sortOrder < 1)
+    ) return res.status(400).json({ ok: false, error: "all grades, localized names and unique positive sortOrder values are required" });
+
+    await prisma.$transaction(async (tx) => {
+      for (const row of normalizedRows) {
+        await tx.employeeGrade.update({ where: { id: row.id }, data: { sortOrder: -row.id } });
+      }
+      for (const row of normalizedRows) {
+        await tx.employeeGrade.update({
+          where: { id: row.id },
+          data: { name: row.nameKo, nameKo: row.nameKo, nameEn: row.nameEn, nameVi: row.nameVi, sortOrder: row.sortOrder },
+        });
+      }
+    });
+    const updated = await prisma.employeeGrade.findMany({ where: { setId, orgId: organization.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
+    return res.json(updated);
+  });
+
   employeeRouter.delete("/employee-grades/:gradeId", async (req, res) => {
     const organization = await getOrganizationByQuery(req);
     if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
@@ -212,10 +249,14 @@ export const createEmployeeRouter = ({
     const grade = await prisma.employeeGrade.findFirst({ where: { id: gradeId, orgId: organization.id } });
     if (!grade) return res.status(404).json({ ok: false, error: "grade not found" });
     if (grade.isDefault) return res.status(409).json({ ok: false, error: "default grade cannot be deleted" });
-    const assignedCount = await prisma.employee.count({ where: { gradeId } });
-    if (assignedCount > 0) return res.status(409).json({ ok: false, error: "assigned grade cannot be deleted" });
-    await prisma.employeeGrade.delete({ where: { id: gradeId } });
-    return res.json({ ok: true });
+    const defaultGrade = await prisma.employeeGrade.findFirst({ where: { orgId: organization.id, isDefault: true } });
+    if (!defaultGrade) return res.status(409).json({ ok: false, error: "default grade not found" });
+    const assignedCount = await prisma.$transaction(async (tx) => {
+      const result = await tx.employee.updateMany({ where: { orgId: organization.id, gradeId }, data: { gradeId: defaultGrade.id } });
+      await tx.employeeGrade.delete({ where: { id: gradeId } });
+      return result.count;
+    });
+    return res.json({ ok: true, reassignedEmployeeCount: assignedCount, defaultGradeId: defaultGrade.id });
   });
 
   employeeRouter.get("/employees/me", async (req, res) => {
