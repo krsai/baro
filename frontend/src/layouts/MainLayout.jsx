@@ -403,6 +403,15 @@ const MainLayout = () => {
       return;
     }
     if (
+      currentPath.startsWith('/employee') ||
+      currentPath.startsWith('/holiday') ||
+      currentPath === '/business' ||
+      currentPath.startsWith('/business/')
+    ) {
+      setExpandedMenuGroup(MENU_GROUP_KEYS.ADMIN);
+      return;
+    }
+    if (
       currentPath.startsWith('/system-setting') ||
       currentPath.startsWith('/system-onboarding')
     ) {
@@ -735,12 +744,6 @@ const MainLayout = () => {
         isOpen: accountingOpen,
         children: [
           {
-            label: getUiMessage('menu.employee', '\uC9C1\uC6D0', languageCode),
-            icon: <GroupIcon />,
-            path: '/employee',
-            notificationActive: pendingEmployeeCount > 0,
-          },
-          {
             label: getUiMessage('menu.payroll', '\uC0DD\uC0B0\uC218\uB2F9', languageCode),
             icon: <CalculateIcon />,
             path: '/payroll',
@@ -754,6 +757,12 @@ const MainLayout = () => {
         menuGroupKey: MENU_GROUP_KEYS.ADMIN,
         isOpen: adminOpen,
         children: [
+          {
+            label: getUiMessage('menu.employee', '\uC9C1\uC6D0', languageCode),
+            icon: <GroupIcon />,
+            path: '/employee',
+            notificationActive: pendingEmployeeCount > 0,
+          },
           {
             label: getUiMessage('menu.holiday', '\uD734\uC77C', languageCode),
             icon: <CalendarMonthIcon />,
