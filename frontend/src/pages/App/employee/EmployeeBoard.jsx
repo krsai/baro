@@ -344,6 +344,12 @@ const getEmployeeStatusLabel = (value, languageCode = 'ko') =>
     EMPLOYEE_STATUS_LABELS[String(value || '').toUpperCase()],
     languageCode
   ) || '-';
+const getEmployeeGradeLabel = (employee, languageCode = 'ko') => {
+  const nameKo = employee?.gradeNameKo || employee?.nameKo || employee?.gradeName || employee?.name;
+  if (languageCode === 'en') return employee?.gradeNameEn || employee?.nameEn || nameKo || '-';
+  if (languageCode === 'vi') return employee?.gradeNameVi || employee?.nameVi || nameKo || '-';
+  return nameKo || '-';
+};
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const emitMembershipUpdated = ({ orgId, pendingCount }) => {
   if (typeof window === 'undefined') return;
@@ -1806,7 +1812,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               >
                 {gradeOptions.map((grade) => (
                   <MenuItem key={grade.id} value={String(grade.id)}>
-                    {grade.name} ({grade.code})
+                    {getEmployeeGradeLabel(grade, languageCode)} ({grade.code})
                   </MenuItem>
                 ))}
               </TextField>
@@ -2184,7 +2190,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                         <TableCell>{getMemberIdentityLabel(member) || '-'}</TableCell>
                         <TableCell>{roleLabel}</TableCell>
                         <TableCell>{jobRoleLabel}</TableCell>
-                        <TableCell>{employee?.gradeName || '-'}</TableCell>
+                        <TableCell>{getEmployeeGradeLabel(employee, languageCode)}</TableCell>
                         <TableCell>{payTypeLabel}</TableCell>
                         <TableCell align="right">{fixedSalaryDisplay}</TableCell>
                         <TableCell>{getEmployeeStatusLabel(member.status, languageCode)}</TableCell>

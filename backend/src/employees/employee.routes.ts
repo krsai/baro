@@ -81,6 +81,9 @@ const toEmployeeResponse = (employee: any) => ({
   gradeId: employee?.gradeId ?? null,
   gradeCode: String(employee?.grade?.code ?? "").trim(),
   gradeName: String(employee?.grade?.name ?? "").trim(),
+  gradeNameKo: String(employee?.grade?.nameKo ?? employee?.grade?.name ?? "").trim(),
+  gradeNameEn: String(employee?.grade?.nameEn ?? employee?.grade?.name ?? "").trim(),
+  gradeNameVi: String(employee?.grade?.nameVi ?? employee?.grade?.name ?? "").trim(),
   employeeNo: normalizeEmployeeNo(employee?.employeeNo) ?? null,
   roleCode: String(employee?.role?.code ?? "").trim(),
   roleName: String(employee?.role?.name ?? "").trim(),
@@ -161,13 +164,16 @@ export const createEmployeeRouter = ({
     const setId = Number(req.body?.setId);
     const code = String(req.body?.code || "").trim().toUpperCase();
     const name = String(req.body?.name || "").trim();
+    const nameKo = String(req.body?.nameKo || name).trim();
+    const nameEn = String(req.body?.nameEn || "").trim();
+    const nameVi = String(req.body?.nameVi || "").trim();
     const sortOrder = Number(req.body?.sortOrder);
-    if (!Number.isSafeInteger(setId) || !code || !name || !Number.isSafeInteger(sortOrder) || sortOrder < 1) {
-      return res.status(400).json({ ok: false, error: "setId, code, name and positive sortOrder are required" });
+    if (!Number.isSafeInteger(setId) || !code || !nameKo || !nameEn || !nameVi || !Number.isSafeInteger(sortOrder) || sortOrder < 1) {
+      return res.status(400).json({ ok: false, error: "setId, code, localized names and positive sortOrder are required" });
     }
     const set = await prisma.employeeGradeSet.findFirst({ where: { id: setId, orgId: organization.id } });
     if (!set) return res.status(404).json({ ok: false, error: "grade set not found" });
-    const created = await prisma.employeeGrade.create({ data: { orgId: organization.id, setId, code, name, sortOrder } });
+    const created = await prisma.employeeGrade.create({ data: { orgId: organization.id, setId, code, name: nameKo, nameKo, nameEn, nameVi, sortOrder } });
     return res.status(201).json(created);
   });
 
@@ -179,13 +185,21 @@ export const createEmployeeRouter = ({
     const grade = await prisma.employeeGrade.findFirst({ where: { id: gradeId, orgId: organization.id } });
     if (!grade) return res.status(404).json({ ok: false, error: "grade not found" });
     const name = req.body?.name === undefined ? undefined : String(req.body.name || "").trim();
+    const nameKo = req.body?.nameKo === undefined ? name : String(req.body.nameKo || "").trim();
+    const nameEn = req.body?.nameEn === undefined ? undefined : String(req.body.nameEn || "").trim();
+    const nameVi = req.body?.nameVi === undefined ? undefined : String(req.body.nameVi || "").trim();
     const sortOrder = req.body?.sortOrder === undefined ? undefined : Number(req.body.sortOrder);
-    if (name === "" || (sortOrder !== undefined && (!Number.isSafeInteger(sortOrder) || sortOrder < 1))) {
+    if (name === "" || nameKo === "" || nameEn === "" || nameVi === "" || (sortOrder !== undefined && (!Number.isSafeInteger(sortOrder) || sortOrder < 1))) {
       return res.status(400).json({ ok: false, error: "invalid grade input" });
     }
     const updated = await prisma.employeeGrade.update({
       where: { id: gradeId },
-      data: { ...(name !== undefined ? { name } : {}), ...(sortOrder !== undefined ? { sortOrder } : {}) },
+      data: {
+        ...(nameKo !== undefined ? { name: nameKo, nameKo } : {}),
+        ...(nameEn !== undefined ? { nameEn } : {}),
+        ...(nameVi !== undefined ? { nameVi } : {}),
+        ...(sortOrder !== undefined ? { sortOrder } : {}),
+      },
     });
     return res.json(updated);
   });

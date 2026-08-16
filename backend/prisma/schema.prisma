@@ -593,6 +593,9 @@ model EmployeeGrade {
   setId     Int
   code      String
   name      String
+  nameKo    String
+  nameEn    String
+  nameVi    String
   sortOrder Int
   isDefault Boolean  @default(false)
   isActive  Boolean  @default(true)

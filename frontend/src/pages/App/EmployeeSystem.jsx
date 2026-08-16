@@ -9,7 +9,7 @@ const EmployeeSystem = () => {
   const { activeOrgId } = useAuth();
   const [sets, setSets] = useState([]);
   const [message, setMessage] = useState(null);
-  const [draft, setDraft] = useState({ setId: '', code: '', name: '', sortOrder: '' });
+  const [draft, setDraft] = useState({ setId: '', code: '', nameKo: '', nameEn: '', nameVi: '', sortOrder: '' });
 
   const load = useCallback(async () => {
     if (!activeOrgId) return;
@@ -41,7 +41,7 @@ const EmployeeSystem = () => {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...draft, setId: Number(draft.setId), sortOrder: Number(draft.sortOrder) }),
       });
-      setDraft({ setId: String(activeSet?.id || ''), code: '', name: '', sortOrder: '' });
+      setDraft({ setId: String(activeSet?.id || ''), code: '', nameKo: '', nameEn: '', nameVi: '', sortOrder: '' });
       await load();
       setMessage({ severity: 'success', text: '직급을 추가했습니다.' });
     } catch (error) { setMessage({ severity: 'error', text: error?.message || '직급 추가에 실패했습니다.' }); }
@@ -64,9 +64,11 @@ const EmployeeSystem = () => {
             <Typography color="text.secondary" variant="body2" sx={{ mb: 2 }}>코드 순서대로 직원 직급을 관리합니다. 기본 직급은 삭제할 수 없습니다.</Typography>
             <Stack spacing={1.25}>
               {set.grades.map((grade) => (
-                <Box key={grade.id} sx={{ display: 'grid', gridTemplateColumns: '100px minmax(180px, 1fr) 100px 44px', gap: 1, alignItems: 'center' }}>
+                <Box key={grade.id} sx={{ display: 'grid', gridTemplateColumns: '90px repeat(3, minmax(150px, 1fr)) 90px 44px', gap: 1, alignItems: 'center' }}>
                   <TextField size="small" label="코드" value={grade.code} disabled />
-                  <TextField size="small" label="직급명" defaultValue={grade.name} onBlur={(e) => e.target.value.trim() !== grade.name && updateGrade(grade, { name: e.target.value })} />
+                  <TextField size="small" label="직급명 (한국어)" defaultValue={grade.nameKo || grade.name} onBlur={(e) => e.target.value.trim() !== (grade.nameKo || grade.name) && updateGrade(grade, { nameKo: e.target.value })} />
+                  <TextField size="small" label="Grade name (English)" defaultValue={grade.nameEn || grade.name} onBlur={(e) => e.target.value.trim() !== (grade.nameEn || grade.name) && updateGrade(grade, { nameEn: e.target.value })} />
+                  <TextField size="small" label="Tên cấp bậc (Tiếng Việt)" defaultValue={grade.nameVi || grade.name} onBlur={(e) => e.target.value.trim() !== (grade.nameVi || grade.name) && updateGrade(grade, { nameVi: e.target.value })} />
                   <TextField size="small" label="순서" type="number" defaultValue={grade.sortOrder} onBlur={(e) => Number(e.target.value) !== grade.sortOrder && updateGrade(grade, { sortOrder: Number(e.target.value) })} />
                   <IconButton color="error" disabled={grade.isDefault} onClick={() => removeGrade(grade)} aria-label={`${grade.name} 삭제`}><DeleteOutlineIcon /></IconButton>
                 </Box>
@@ -80,9 +82,11 @@ const EmployeeSystem = () => {
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <TextField select size="small" label="직급 세트" value={draft.setId} onChange={(e) => setDraft({ ...draft, setId: e.target.value })} sx={{ minWidth: 150 }}>{sets.map((set) => <MenuItem key={set.id} value={String(set.id)}>{set.name}</MenuItem>)}</TextField>
               <TextField size="small" label="코드" value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value.toUpperCase() })} />
-              <TextField size="small" label="직급명" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+              <TextField size="small" label="직급명 (한국어)" value={draft.nameKo} onChange={(e) => setDraft({ ...draft, nameKo: e.target.value })} />
+              <TextField size="small" label="Grade name (English)" value={draft.nameEn} onChange={(e) => setDraft({ ...draft, nameEn: e.target.value })} />
+              <TextField size="small" label="Tên cấp bậc (Tiếng Việt)" value={draft.nameVi} onChange={(e) => setDraft({ ...draft, nameVi: e.target.value })} />
               <TextField size="small" label="순서" type="number" value={draft.sortOrder} onChange={(e) => setDraft({ ...draft, sortOrder: e.target.value })} sx={{ width: 110 }} />
-              <Button variant="contained" onClick={addGrade} disabled={!draft.code.trim() || !draft.name.trim() || !draft.sortOrder}>추가</Button>
+              <Button variant="contained" onClick={addGrade} disabled={!draft.code.trim() || !draft.nameKo.trim() || !draft.nameEn.trim() || !draft.nameVi.trim() || !draft.sortOrder}>추가</Button>
             </Stack>
           </Paper>
         )}

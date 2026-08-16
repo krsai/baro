@@ -800,6 +800,9 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "EmployeeGradeSet", columnName: "orgId" },
   { tableName: "EmployeeGrade", columnName: "setId" },
   { tableName: "EmployeeGrade", columnName: "isDefault" },
+  { tableName: "EmployeeGrade", columnName: "nameKo" },
+  { tableName: "EmployeeGrade", columnName: "nameEn" },
+  { tableName: "EmployeeGrade", columnName: "nameVi" },
 ] as const;
 // createdByEmployeeId/updatedByEmployeeId is an audit FK pattern applied to 24+
 // tables (migration_fix.sql's "audited_tables" DO block) plus SystemSetting
