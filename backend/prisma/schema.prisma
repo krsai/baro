@@ -223,6 +223,8 @@ model Organization {
   quantityBucketSets              QuantityBucketSet[]
   quantityBucketSetVersions       QuantityBucketSetVersion[]
   quantityBucketEntries           QuantityBucketEntry[]
+  employeeGradeSets               EmployeeGradeSet[]
+  employeeGrades                  EmployeeGrade[]
 
   createdByEmployee Employee? @relation("OrganizationCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("OrganizationUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -460,6 +462,7 @@ model Employee {
   factoryId           Int?
   lineId              Int?
   roleId              Int?
+  gradeId             Int            @default(dbgenerated())
   employeeNo          String?
   payType             String?
   fixedSalary         Int?
@@ -482,6 +485,7 @@ model Employee {
   factory                  Factory?           @relation("FactoryEmployees", fields: [factoryId], references: [id])
   line                     Line?              @relation("EmployeeCurrentLine", fields: [lineId], references: [id], onDelete: SetNull)
   role                     AttrRole?          @relation(fields: [roleId], references: [id])
+  grade                    EmployeeGrade      @relation(fields: [gradeId], references: [id])
   lineAssignments          LineAssignment[]
   representedOrganizations Organization[]     @relation("OrganizationRepresentative")
   managedFactories         Factory[]          @relation("FactoryManager")
@@ -561,9 +565,47 @@ model Employee {
   @@index([factoryId])
   @@index([lineId])
   @@index([roleId])
+  @@index([gradeId])
   @@index([email])
   @@index([status])
   @@index([orgId, status])
+}
+
+model EmployeeGradeSet {
+  id        Int      @id @default(autoincrement())
+  orgId     Int
+  code      String
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  grades       EmployeeGrade[]
+
+  @@unique([orgId, code])
+  @@index([orgId, isActive])
+}
+
+model EmployeeGrade {
+  id        Int      @id @default(autoincrement())
+  orgId     Int
+  setId     Int
+  code      String
+  name      String
+  sortOrder Int
+  isDefault Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  set          EmployeeGradeSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  employees    Employee[]
+
+  @@unique([orgId, code])
+  @@unique([setId, sortOrder])
+  @@index([orgId, isActive, sortOrder])
 }
 
 model AttendanceEntry {

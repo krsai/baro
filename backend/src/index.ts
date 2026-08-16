@@ -796,6 +796,10 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "AssignmentPlan", columnName: "assignmentStTotalSeconds" },
   { tableName: "AssignmentPlan", columnName: "assignmentCtTotalSeconds" },
   { tableName: "AssignmentPlan", columnName: "assignmentCtSnapshot" },
+  { tableName: "Employee", columnName: "gradeId" },
+  { tableName: "EmployeeGradeSet", columnName: "orgId" },
+  { tableName: "EmployeeGrade", columnName: "setId" },
+  { tableName: "EmployeeGrade", columnName: "isDefault" },
 ] as const;
 // createdByEmployeeId/updatedByEmployeeId is an audit FK pattern applied to 24+
 // tables (migration_fix.sql's "audited_tables" DO block) plus SystemSetting
@@ -891,6 +895,10 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "WorkRecord_assignmentPlan_org_fkey",
   "WorkRecord_styleId_fkey",
   "WorkRecord_styleProcess_style_org_fkey",
+  "EmployeeGradeSet_orgId_code_key",
+  "EmployeeGrade_orgId_code_key",
+  "EmployeeGrade_one_default_per_org_key",
+  "Employee_gradeId_fkey",
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_ENUM_VALUES = [
   { enumName: "OrgMembershipStatus", value: "TERMINATED" },

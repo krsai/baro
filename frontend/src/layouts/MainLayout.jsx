@@ -85,6 +85,7 @@ const MENU_GROUP_KEYS = {
   ATTRIBUTE: 'ATTRIBUTE',
   PROCESS_MASTER: 'PROCESS_MASTER',
   SYSTEM: 'SYSTEM',
+  SETTINGS: 'SETTINGS',
 };
 
 const toPathname = (path) => {
@@ -335,6 +336,7 @@ const MainLayout = () => {
   const [attributeOpen, setAttributeOpen] = useState(false);
   const [processMasterOpen, setProcessMasterOpen] = useState(false);
   const [systemOpen, setSystemOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [pendingEmployeeCount, setPendingEmployeeCount] = useState(0);
   const [unassignedLineWorkerCount, setUnassignedLineWorkerCount] = useState(0);
   const [pendingOnboardingCount, setPendingOnboardingCount] = useState(0);
@@ -366,6 +368,7 @@ const MainLayout = () => {
     setAttributeOpen(menuGroupKey === MENU_GROUP_KEYS.ATTRIBUTE);
     setProcessMasterOpen(menuGroupKey === MENU_GROUP_KEYS.PROCESS_MASTER);
     setSystemOpen(menuGroupKey === MENU_GROUP_KEYS.SYSTEM);
+    setSettingsOpen(menuGroupKey === MENU_GROUP_KEYS.SETTINGS);
   }, []);
 
   useEffect(() => {
@@ -391,6 +394,12 @@ const MainLayout = () => {
     }
     if (currentPath.startsWith('/attribute')) {
       setExpandedMenuGroup(MENU_GROUP_KEYS.ATTRIBUTE);
+      return;
+    }
+    if (
+      currentPath.startsWith('/employee-system')
+    ) {
+      setExpandedMenuGroup(MENU_GROUP_KEYS.SETTINGS);
       return;
     }
     if (
@@ -777,6 +786,16 @@ const MainLayout = () => {
         ],
       },
       {
+        label: getUiMessage('menu.settings', '설정', languageCode),
+        icon: <TuneIcon />,
+        isParent: true,
+        menuGroupKey: MENU_GROUP_KEYS.SETTINGS,
+        isOpen: settingsOpen,
+        children: activeOrgRole === 'ADMIN' || isSystemAdminProfile
+          ? [{ label: getUiMessage('menu.employeeSystem', '직원 체계', languageCode), icon: <GroupIcon />, path: '/employee-system' }]
+          : [],
+      },
+      {
         label: getUiMessage('menu.misc', '\uAE30\uD0C0 \uAD00\uB9AC', languageCode),
         icon: <MoreHorizIcon />,
         isParent: true,
@@ -871,6 +890,7 @@ const MainLayout = () => {
     ];
   }, [
     accountingOpen,
+    activeOrgRole,
     adminOpen,
     attributeOpen,
     inventoryOpen,
@@ -887,6 +907,7 @@ const MainLayout = () => {
     isSystemAdminProfile,
     isSystemProfile,
     systemOpen,
+    settingsOpen,
   ]);
 
   const menuStructureBlueprint = useMemo(() => {

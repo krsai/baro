@@ -78,6 +78,9 @@ const toEmployeeResponse = (employee: any) => ({
   factoryId: employee?.factoryId ?? null,
   lineId: employee?.lineId ?? null,
   roleId: employee?.roleId ?? null,
+  gradeId: employee?.gradeId ?? null,
+  gradeCode: String(employee?.grade?.code ?? "").trim(),
+  gradeName: String(employee?.grade?.name ?? "").trim(),
   employeeNo: normalizeEmployeeNo(employee?.employeeNo) ?? null,
   roleCode: String(employee?.role?.code ?? "").trim(),
   roleName: String(employee?.role?.name ?? "").trim(),
@@ -113,6 +116,86 @@ export const createEmployeeRouter = ({
   resolveEmployeeStoredPayType,
 }: EmployeeRoutesDeps) => {
   const employeeRouter = Router();
+
+  const requireGradeManager = async (req: any, res: any, orgId: number) => {
+    const requesterEmail = getRequesterEmail(req);
+    if (!requesterEmail) {
+      res.status(401).json({ ok: false, error: "request user email is required" });
+      return false;
+    }
+    const [systemUser, employee] = await Promise.all([
+      prisma.systemUser.findUnique({ where: { email: requesterEmail }, select: { systemRole: true } }),
+      prisma.employee.findUnique({
+        where: { orgId_email: { orgId, email: requesterEmail } },
+        select: { status: true, orgRole: true },
+      }),
+    ]);
+    if (systemUser?.systemRole === "SYSTEM_ADMIN") return true;
+    if (employee?.status === "ACTIVE" && employee.orgRole === "ADMIN") return true;
+    res.status(403).json({ ok: false, error: "organization admin access required" });
+    return false;
+  };
+
+  employeeRouter.get("/employee-grades", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+    const sets = await prisma.employeeGradeSet.findMany({
+      where: { orgId: organization.id },
+      include: { grades: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }] } },
+      orderBy: { id: "asc" },
+    });
+    return res.json(sets);
+  });
+
+  employeeRouter.post("/employee-grades", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+    if (!(await requireGradeManager(req, res, organization.id))) return;
+    const setId = Number(req.body?.setId);
+    const code = String(req.body?.code || "").trim().toUpperCase();
+    const name = String(req.body?.name || "").trim();
+    const sortOrder = Number(req.body?.sortOrder);
+    if (!Number.isSafeInteger(setId) || !code || !name || !Number.isSafeInteger(sortOrder) || sortOrder < 1) {
+      return res.status(400).json({ ok: false, error: "setId, code, name and positive sortOrder are required" });
+    }
+    const set = await prisma.employeeGradeSet.findFirst({ where: { id: setId, orgId: organization.id } });
+    if (!set) return res.status(404).json({ ok: false, error: "grade set not found" });
+    const created = await prisma.employeeGrade.create({ data: { orgId: organization.id, setId, code, name, sortOrder } });
+    return res.status(201).json(created);
+  });
+
+  employeeRouter.patch("/employee-grades/:gradeId", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+    if (!(await requireGradeManager(req, res, organization.id))) return;
+    const gradeId = Number(req.params.gradeId);
+    const grade = await prisma.employeeGrade.findFirst({ where: { id: gradeId, orgId: organization.id } });
+    if (!grade) return res.status(404).json({ ok: false, error: "grade not found" });
+    const name = req.body?.name === undefined ? undefined : String(req.body.name || "").trim();
+    const sortOrder = req.body?.sortOrder === undefined ? undefined : Number(req.body.sortOrder);
+    if (name === "" || (sortOrder !== undefined && (!Number.isSafeInteger(sortOrder) || sortOrder < 1))) {
+      return res.status(400).json({ ok: false, error: "invalid grade input" });
+    }
+    const updated = await prisma.employeeGrade.update({
+      where: { id: gradeId },
+      data: { ...(name !== undefined ? { name } : {}), ...(sortOrder !== undefined ? { sortOrder } : {}) },
+    });
+    return res.json(updated);
+  });
+
+  employeeRouter.delete("/employee-grades/:gradeId", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+    if (!(await requireGradeManager(req, res, organization.id))) return;
+    const gradeId = Number(req.params.gradeId);
+    const grade = await prisma.employeeGrade.findFirst({ where: { id: gradeId, orgId: organization.id } });
+    if (!grade) return res.status(404).json({ ok: false, error: "grade not found" });
+    if (grade.isDefault) return res.status(409).json({ ok: false, error: "default grade cannot be deleted" });
+    const assignedCount = await prisma.employee.count({ where: { gradeId } });
+    if (assignedCount > 0) return res.status(409).json({ ok: false, error: "assigned grade cannot be deleted" });
+    await prisma.employeeGrade.delete({ where: { id: gradeId } });
+    return res.json({ ok: true });
+  });
 
   employeeRouter.get("/employees/me", async (req, res) => {
     const requesterEmail = getRequesterEmail(req);
@@ -266,6 +349,7 @@ export const createEmployeeRouter = ({
       where,
       include: {
         role: true,
+        grade: true,
         line: true,
       },
       orderBy: { id: "asc" },
@@ -280,6 +364,7 @@ export const createEmployeeRouter = ({
       factoryId,
       position,
       roleId,
+      gradeId,
       payType,
       fixedSalary,
       name,
@@ -382,6 +467,19 @@ export const createEmployeeRouter = ({
       roleIdNum = parsedRoleId;
     }
 
+    let gradeIdNum: number | undefined;
+    if (gradeId !== undefined) {
+      const parsedGradeId = Number(gradeId);
+      if (!Number.isSafeInteger(parsedGradeId)) {
+        return res.status(400).json({ ok: false, error: "invalid gradeId" });
+      }
+      const grade = await prisma.employeeGrade.findFirst({
+        where: { id: parsedGradeId, orgId: existingEmployee.orgId, isActive: true },
+      });
+      if (!grade) return res.status(404).json({ ok: false, error: "grade not found" });
+      gradeIdNum = parsedGradeId;
+    }
+
     let payTypeValue = null;
     if (payType !== undefined) {
       if (payType === "" || payType === null) {
@@ -473,6 +571,7 @@ export const createEmployeeRouter = ({
       status: shouldMarkMembershipTerminated ? "TERMINATED" : existingEmployee.status,
       factoryId: resolvedFactoryId,
       roleId: resolvedRoleId,
+      ...(gradeIdNum !== undefined ? { gradeId: gradeIdNum } : {}),
       payType: resolvedPayType,
       fixedSalary: resolvedFixedSalary,
       name: resolveOptionalString(name, existingEmployee?.name ?? null),
@@ -556,6 +655,7 @@ export const createEmployeeRouter = ({
       data: { lineId: syncedLineId },
       include: {
         role: true,
+        grade: true,
         line: true,
       },
     });

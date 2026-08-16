@@ -51,6 +51,7 @@ const EMPLOYEE_STATUS_LABELS = {
   ALL: { ko: '전체 상태', en: 'All statuses', vi: 'Tất cả trang thai' },
 };
 const EMPLOYEE_BOARD_TEXT = {
+  gradeLabel: { ko: '직급', en: 'Grade', vi: 'Cấp bậc' },
   pageTitle: { ko: '직원 관리', en: 'Employee Management', vi: 'Quản lý nhan vien' },
   addEmployee: { ko: '직원 추가', en: 'Add Employee', vi: 'Them nhan vien' },
   lineAssignmentPromptTitle: {
@@ -448,6 +449,7 @@ const buildEmployeeDraft = (member, employee, options = {}) => {
     bankAccountNumber: employee?.bankAccountNumber || '',
     orgRole,
     jobRoleId: employee?.roleId ? String(employee.roleId) : '',
+    gradeId: employee?.gradeId ? String(employee.gradeId) : '',
     payType: String(employee?.payType || employee?.effectivePayType || defaultPayType).toUpperCase(),
     fixedSalary: formatMoneyInput(employee?.fixedSalary),
     factoryId: employee?.factoryId
@@ -719,6 +721,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const [activeMembers, setActiveMembers] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [jobRoleOptions, setJobRoleOptions] = useState([]);
+  const [gradeOptions, setGradeOptions] = useState([]);
   const [selectedFactoryFilterId, setSelectedFactoryFilterId] = useState('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('ACTIVE');
   const [searchTerm, setSearchTerm] = useState('');
@@ -737,6 +740,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     bankAccountNumber: '',
     orgRole: 'WORKER',
     jobRoleId: '',
+    gradeId: '',
     payType: 'CT',
     fixedSalary: '',
     factoryId: '',
@@ -893,12 +897,23 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     }
   }, [languageCode]);
 
+  const fetchGrades = useCallback(async (orgId) => {
+    if (!orgId) return;
+    try {
+      const data = await requestJSON(`/employee-grades${buildQueryString({ orgId })}`);
+      setGradeOptions((Array.isArray(data) ? data : []).flatMap((set) => set.grades || []).filter((grade) => grade.isActive));
+    } catch (_error) {
+      setGradeOptions([]);
+    }
+  }, []);
+
   useEffect(() => {
     if (!activeOrgId) return;
     fetchMemberships(activeOrgId);
     fetchFactories(activeOrgId, activeOrgType);
     fetchJobRoles(activeOrgId);
-  }, [activeOrgId, activeOrgType, fetchMemberships, fetchEmployees, fetchFactories, fetchJobRoles]);
+    fetchGrades(activeOrgId);
+  }, [activeOrgId, activeOrgType, fetchMemberships, fetchEmployees, fetchFactories, fetchJobRoles, fetchGrades]);
 
   useEffect(() => {
     if (activeOrgType === 'BRAND') {
@@ -1113,6 +1128,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           bankName: draft.bankName,
           bankAccountNumber: draft.bankAccountNumber,
           roleId: draft.orgRole === 'WORKER' && draft.jobRoleId ? Number(draft.jobRoleId) : null,
+          gradeId: draft.gradeId ? Number(draft.gradeId) : undefined,
           payType: normalizedPayType,
           fixedSalary: isSalaryPayType
             ? (
@@ -1199,6 +1215,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       bankAccountNumber: '',
       orgRole: defaultRole,
       jobRoleId: defaultRole === 'WORKER' ? defaultWorkerJobRoleId : '',
+      gradeId: String(gradeOptions.find((grade) => grade.isDefault)?.id || ''),
       payType: defaultRole === 'WORKER' ? 'CT' : 'FIXED',
       fixedSalary: '',
       factoryId: defaultFactoryId,
@@ -1211,6 +1228,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   }, [
     activeOrgType,
     defaultWorkerJobRoleId,
+    gradeOptions,
     roleOptions,
     selectedFactoryFilterId,
   ]);
@@ -1778,6 +1796,20 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   ))}
                 </TextField>
               )}
+              <TextField
+                select
+                size="small"
+                label={text('gradeLabel', languageCode)}
+                value={drawerDraft.gradeId || ''}
+                onChange={(e) => handleDrawerDraftChange({ gradeId: e.target.value })}
+                disabled={isDrawerSaving}
+              >
+                {gradeOptions.map((grade) => (
+                  <MenuItem key={grade.id} value={String(grade.id)}>
+                    {grade.name} ({grade.code})
+                  </MenuItem>
+                ))}
+              </TextField>
               {activeOrgType !== 'BRAND' && (
                 <TextField
                   select
@@ -2092,6 +2124,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   <TableCell>{text('emailOrCodeColumn', languageCode)}</TableCell>
                   <TableCell>{text('roleLabel', languageCode)}</TableCell>
                   <TableCell>{text('jobLabel', languageCode)}</TableCell>
+                  <TableCell>{text('gradeLabel', languageCode)}</TableCell>
                   <TableCell>{text('payTypeColumn', languageCode)}</TableCell>
                   <TableCell align="right">{text('fixedSalaryLabel', languageCode)}</TableCell>
                   <TableCell>{text('statusLabel', languageCode)}</TableCell>
@@ -2102,7 +2135,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TableBody>
                 {sortedActiveMembers.length === 0 ? (
                   <TableStatusRow
-                    colSpan={10}
+                    colSpan={11}
                     message={
                       searchTerm
                         ? text('noSearchResult', languageCode)
@@ -2151,6 +2184,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                         <TableCell>{getMemberIdentityLabel(member) || '-'}</TableCell>
                         <TableCell>{roleLabel}</TableCell>
                         <TableCell>{jobRoleLabel}</TableCell>
+                        <TableCell>{employee?.gradeName || '-'}</TableCell>
                         <TableCell>{payTypeLabel}</TableCell>
                         <TableCell align="right">{fixedSalaryDisplay}</TableCell>
                         <TableCell>{getEmployeeStatusLabel(member.status, languageCode)}</TableCell>
