@@ -4541,6 +4541,24 @@ BEGIN
   END IF;
   RETURN NEW;
 END; $$ LANGUAGE plpgsql;
+
+-- 2026-08-16: salary policy matrix by organization role and employee grade
+CREATE TABLE IF NOT EXISTS "EmployeeCompensationPolicy" (
+  "id" SERIAL PRIMARY KEY,
+  "orgId" INTEGER NOT NULL,
+  "orgRole" "OrgUserRole" NOT NULL,
+  "gradeId" INTEGER NOT NULL,
+  "baseSalary" INTEGER NOT NULL DEFAULT 0,
+  "fixedAllowance" INTEGER NOT NULL DEFAULT 0,
+  "variableAllowance" INTEGER NOT NULL DEFAULT 0,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "EmployeeCompensationPolicy_orgId_orgRole_gradeId_key" ON "EmployeeCompensationPolicy"("orgId","orgRole","gradeId");
+CREATE INDEX IF NOT EXISTS "EmployeeCompensationPolicy_orgId_gradeId_idx" ON "EmployeeCompensationPolicy"("orgId","gradeId");
+DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_gradeId_fkey" FOREIGN KEY ("gradeId") REFERENCES "EmployeeGrade"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_nonnegative_check" CHECK ("baseSalary" >= 0 AND "fixedAllowance" >= 0 AND "variableAllowance" >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DROP TRIGGER IF EXISTS "Employee_assign_default_grade" ON "Employee";
 CREATE TRIGGER "Employee_assign_default_grade" BEFORE INSERT ON "Employee" FOR EACH ROW EXECUTE FUNCTION baro_assign_default_employee_grade();
 

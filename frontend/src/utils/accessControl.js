@@ -33,6 +33,7 @@ const FEATURE_KEYS = {
   LINE: 'LINE',
   EMPLOYEE: 'EMPLOYEE',
   EMPLOYEE_SYSTEM: 'EMPLOYEE_SYSTEM',
+  SALARY_SYSTEM: 'SALARY_SYSTEM',
   CUSTOMER: 'CUSTOMER',
   ATTRIBUTE: 'ATTRIBUTE',
   PERMISSION: 'PERMISSION',
@@ -141,7 +142,8 @@ const canAccessFeatureByContext = (featureKey, context) => {
         featureKey === FEATURE_KEYS.SYSTEM_SETTING ||
         featureKey === FEATURE_KEYS.SYSTEM_ONBOARDING ||
         featureKey === FEATURE_KEYS.EMPLOYEE ||
-        featureKey === FEATURE_KEYS.EMPLOYEE_SYSTEM)
+        featureKey === FEATURE_KEYS.EMPLOYEE_SYSTEM ||
+        featureKey === FEATURE_KEYS.SALARY_SYSTEM)
     );
   }
 
@@ -184,6 +186,7 @@ export const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/business')) return FEATURE_KEYS.BUSINESS;
   if (path.startsWith('/line')) return FEATURE_KEYS.LINE;
   if (path.startsWith('/employee-system')) return FEATURE_KEYS.EMPLOYEE_SYSTEM;
+  if (path.startsWith('/salary-system')) return FEATURE_KEYS.SALARY_SYSTEM;
   if (path.startsWith('/employee')) return FEATURE_KEYS.EMPLOYEE;
   if (path.startsWith('/customer')) return FEATURE_KEYS.CUSTOMER;
   if (path.startsWith('/attribute')) return FEATURE_KEYS.ATTRIBUTE;

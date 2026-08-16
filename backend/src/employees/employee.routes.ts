@@ -17,7 +17,7 @@ type EmployeeRoutesDeps = {
   hasOrgFeatureAccess: (args: {
     orgType: unknown;
     orgRole: OrgUserRole;
-    feature: "EMPLOYEE" | "EMPLOYEE_SYSTEM";
+    feature: "EMPLOYEE" | "EMPLOYEE_SYSTEM" | "SALARY_SYSTEM";
   }) => Promise<boolean>;
   isManufacturerOrg: (org: { type?: string | null } | null | undefined) => boolean;
   resolveDefaultEmployeeRoleId: (orgId: number) => Promise<number | null>;
@@ -145,6 +145,50 @@ export const createEmployeeRouter = ({
     res.status(403).json({ ok: false, error: "employee system access required" });
     return false;
   };
+
+  const requireSalarySystemManager = async (req: any, res: any, orgId: number) => {
+    const requesterEmail = getRequesterEmail(req);
+    if (!requesterEmail) { res.status(401).json({ ok: false, error: "request user email is required" }); return false; }
+    const [systemUser, employee, organization] = await Promise.all([
+      prisma.systemUser.findUnique({ where: { email: requesterEmail }, select: { systemRole: true } }),
+      prisma.employee.findUnique({ where: { orgId_email: { orgId, email: requesterEmail } }, select: { status: true, orgRole: true } }),
+      prisma.organization.findUnique({ where: { id: orgId }, select: { type: true } }),
+    ]);
+    if (systemUser?.systemRole === "SYSTEM_ADMIN") return true;
+    if (employee?.status === "ACTIVE" && await hasOrgFeatureAccess({ orgType: organization?.type, orgRole: employee.orgRole, feature: "SALARY_SYSTEM" })) return true;
+    res.status(403).json({ ok: false, error: "salary system access required" }); return false;
+  };
+
+  employeeRouter.get("/employee-compensation-policies", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+    if (!(await requireSalarySystemManager(req, res, organization.id))) return;
+    const rows = await prisma.employeeCompensationPolicy.findMany({ where: { orgId: organization.id }, orderBy: [{ orgRole: "asc" }, { grade: { sortOrder: "asc" } }] });
+    return res.json(rows);
+  });
+
+  employeeRouter.put("/employee-compensation-policies", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+    if (!(await requireSalarySystemManager(req, res, organization.id))) return;
+    const rows = Array.isArray(req.body?.policies) ? req.body.policies : [];
+    const allowedRoles = new Set(["ADMIN", "OPERATOR", "ACCOUNTANT", "WORKER"]);
+    const gradeIds = new Set((await prisma.employeeGrade.findMany({ where: { orgId: organization.id, isActive: true }, select: { id: true } })).map((grade) => grade.id));
+    const normalized = rows.map((row: any) => ({
+      orgRole: String(row?.orgRole || "").trim().toUpperCase(), gradeId: Number(row?.gradeId),
+      baseSalary: Number(row?.baseSalary), fixedAllowance: Number(row?.fixedAllowance), variableAllowance: Number(row?.variableAllowance),
+    }));
+    const keys = normalized.map((row: any) => `${row.orgRole}:${row.gradeId}`);
+    if (new Set(keys).size !== keys.length || normalized.some((row: any) =>
+      !allowedRoles.has(row.orgRole) || !gradeIds.has(row.gradeId)
+      || ![row.baseSalary, row.fixedAllowance, row.variableAllowance].every((amount) => Number.isSafeInteger(amount) && amount >= 0)
+    )) return res.status(400).json({ ok: false, error: "valid unique role, grade and nonnegative amounts are required" });
+    await prisma.$transaction(normalized.map((row: any) => prisma.employeeCompensationPolicy.upsert({
+      where: { orgId_orgRole_gradeId: { orgId: organization.id, orgRole: row.orgRole, gradeId: row.gradeId } },
+      create: { orgId: organization.id, ...row }, update: { baseSalary: row.baseSalary, fixedAllowance: row.fixedAllowance, variableAllowance: row.variableAllowance },
+    })));
+    return res.json(await prisma.employeeCompensationPolicy.findMany({ where: { orgId: organization.id } }));
+  });
 
   employeeRouter.get("/employee-grades", async (req, res) => {
     const organization = await getOrganizationByQuery(req);

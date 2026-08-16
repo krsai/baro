@@ -803,6 +803,11 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "EmployeeGrade", columnName: "nameKo" },
   { tableName: "EmployeeGrade", columnName: "nameEn" },
   { tableName: "EmployeeGrade", columnName: "nameVi" },
+  { tableName: "EmployeeCompensationPolicy", columnName: "orgRole" },
+  { tableName: "EmployeeCompensationPolicy", columnName: "gradeId" },
+  { tableName: "EmployeeCompensationPolicy", columnName: "baseSalary" },
+  { tableName: "EmployeeCompensationPolicy", columnName: "fixedAllowance" },
+  { tableName: "EmployeeCompensationPolicy", columnName: "variableAllowance" },
 ] as const;
 // createdByEmployeeId/updatedByEmployeeId is an audit FK pattern applied to 24+
 // tables (migration_fix.sql's "audited_tables" DO block) plus SystemSetting
@@ -902,6 +907,8 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "EmployeeGrade_orgId_code_key",
   "EmployeeGrade_one_default_per_org_key",
   "Employee_gradeId_fkey",
+  "EmployeeCompensationPolicy_orgId_orgRole_gradeId_key",
+  "EmployeeCompensationPolicy_nonnegative_check",
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_ENUM_VALUES = [
   { enumName: "OrgMembershipStatus", value: "TERMINATED" },
@@ -945,7 +952,7 @@ const ONBOARDING_ORGANIZATION_TYPE_OPTIONS = new Set<OrganizationTypeKey>(
   Object.values(ORGANIZATION_TYPE_KEYS)
 );
 const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 6;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 7;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
   "DASHBOARD",
@@ -965,6 +972,7 @@ const ROLE_ACCESS_POLICY_FEATURES = [
   "LINE",
   "EMPLOYEE",
   "EMPLOYEE_SYSTEM",
+  "SALARY_SYSTEM",
   "CUSTOMER",
   "PERMISSION",
   "HOLIDAY",
@@ -1011,7 +1019,7 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
     WORKER: ["DASHBOARD"],
   },
   BRAND: {
-    ADMIN: ["DASHBOARD", "ORDER", "STYLE", "EMPLOYEE_SYSTEM"],
+    ADMIN: ["DASHBOARD", "ORDER", "STYLE", "EMPLOYEE_SYSTEM", "SALARY_SYSTEM"],
     OPERATOR: ["DASHBOARD", "ORDER", "STYLE"],
     ACCOUNTANT: ["DASHBOARD"],
     WORKER: ["DASHBOARD"],
@@ -1098,6 +1106,12 @@ const applyLegacyEmployeeSystemDefault = (policy: RoleAccessPolicy): void => {
     if (!adminFeatures.includes("EMPLOYEE_SYSTEM")) adminFeatures.push("EMPLOYEE_SYSTEM");
   });
 };
+const applyLegacySalarySystemDefault = (policy: RoleAccessPolicy): void => {
+  (Object.values(ORGANIZATION_TYPE_KEYS) as OrganizationTypeKey[]).forEach((orgType) => {
+    const features = policy[orgType].ADMIN;
+    if (!features.includes("SALARY_SYSTEM")) features.push("SALARY_SYSTEM");
+  });
+};
 const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
   const policy = cloneRoleAccessPolicy(DEFAULT_ROLE_ACCESS_POLICY);
   if (!value || typeof value !== "object" || Array.isArray(value)) return policy;
@@ -1121,6 +1135,7 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
     applyLegacyRevenueAnalysisDefault(policy);
     applyLegacyEmployeeLineAccessDefault(policy);
     applyLegacyEmployeeSystemDefault(policy);
+    applyLegacySalarySystemDefault(policy);
   }
   return policy;
 };

@@ -225,6 +225,7 @@ model Organization {
   quantityBucketEntries           QuantityBucketEntry[]
   employeeGradeSets               EmployeeGradeSet[]
   employeeGrades                  EmployeeGrade[]
+  employeeCompensationPolicies   EmployeeCompensationPolicy[]
 
   createdByEmployee Employee? @relation("OrganizationCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("OrganizationUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -605,10 +606,29 @@ model EmployeeGrade {
   organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
   set          EmployeeGradeSet @relation(fields: [setId], references: [id], onDelete: Cascade)
   employees    Employee[]
+  compensationPolicies EmployeeCompensationPolicy[]
 
   @@unique([orgId, code])
   @@unique([setId, sortOrder])
   @@index([orgId, isActive, sortOrder])
+}
+
+model EmployeeCompensationPolicy {
+  id                     Int         @id @default(autoincrement())
+  orgId                  Int
+  orgRole                OrgUserRole
+  gradeId                Int
+  baseSalary             Int         @default(0)
+  fixedAllowance         Int         @default(0)
+  variableAllowance      Int         @default(0)
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+
+  organization Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  grade        EmployeeGrade @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, orgRole, gradeId])
+  @@index([orgId, gradeId])
 }
 
 model AttendanceEntry {

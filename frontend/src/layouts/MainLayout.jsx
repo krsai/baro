@@ -404,6 +404,7 @@ const MainLayout = () => {
     }
     if (
       currentPath.startsWith('/employee') ||
+      currentPath.startsWith('/salary-system') ||
       currentPath.startsWith('/holiday') ||
       currentPath === '/business' ||
       currentPath.startsWith('/business/')
@@ -762,6 +763,11 @@ const MainLayout = () => {
             icon: <GroupIcon />,
             path: '/employee',
             notificationActive: pendingEmployeeCount > 0,
+          },
+          {
+            label: getUiMessage('menu.salarySystem', '급여 체계', languageCode),
+            icon: <AccountBalanceWalletIcon />,
+            path: '/salary-system',
           },
           {
             label: getUiMessage('menu.holiday', '\uD734\uC77C', languageCode),
