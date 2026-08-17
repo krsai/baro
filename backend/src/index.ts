@@ -29307,7 +29307,7 @@ app.get("/customer-production-reports", async (req, res) => {
         : assignedQuantity <= 0
           ? "UNASSIGNED"
           : assignedQuantity < item.orderedQuantity
-            ? "PARTIALLY_ASSIGNED"
+            ? "UNASSIGNED"
             : hasWorkRecords
               ? "IN_PROGRESS"
               : "SCHEDULED";
@@ -29336,14 +29336,6 @@ app.get("/customer-production-reports", async (req, res) => {
         firstWorkDate,
         lastWorkDate,
         estimatedCompletionDate,
-        estimateBasis: isCompleted
-          ? "ACTUAL_COMPLETION"
-          : !canForecast
-            ? "ASSIGNMENT_REQUIRED"
-            : canForecastFromWorkRate
-              ? "WORKLOG_PROGRESS_RATE"
-              : "LINE_SCHEDULE",
-        hasMonthlySummaryRecords: progress.some((row) => row?.hasRangeCoverage === true),
         assignmentCount: relatedPlans.length,
         reviewRequired: progress.some((row) => row?.scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED),
       });

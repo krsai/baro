@@ -22,8 +22,8 @@ const TEXT = {
     title: '보고서', customer: '고객', allCustomers: '전체 고객', search: '주문번호·스타일 검색',
     print: '인쇄 / PDF', csv: 'CSV 내보내기', generated: '기준 시각', order: '주문번호', style: '스타일', due: '납기',
     quantity: '주문수량', assigned: '배정수량', progress: '공정 진행률', lastWork: '최근 작업기록',
-    estimate: '예상 완료일', status: '상태', basis: '예측 근거', empty: '조건에 맞는 보고서 항목이 없습니다.',
-    review: '일정 검토 필요', monthlySummary: '월 합계 기록 기반',
+    estimate: '예상 완료일', status: '상태', empty: '조건에 맞는 보고서 항목이 없습니다.',
+    review: '일정 검토 필요',
     loadError: '생산 진행 보고서를 불러오지 못했습니다.',
     includeCompleted: '완료 포함',
   },
@@ -31,8 +31,8 @@ const TEXT = {
     title: 'Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style',
     print: 'Print / PDF', csv: 'Export CSV', generated: 'As of', order: 'Order', style: 'Style', due: 'Due', quantity: 'Order qty',
     assigned: 'Assigned', progress: 'Process progress', lastWork: 'Latest record', estimate: 'Estimated completion',
-    status: 'Status', basis: 'Estimate basis', empty: 'No report rows match the filters.',
-    review: 'schedule review required', monthlySummary: 'monthly summary data',
+    status: 'Status', empty: 'No report rows match the filters.',
+    review: 'schedule review required',
     loadError: 'Failed to load the production progress report.',
     includeCompleted: 'Include completed',
   },
@@ -40,8 +40,8 @@ const TEXT = {
     title: 'Báo cáo', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng',
     print: 'In / PDF', csv: 'Xuất CSV', generated: 'Thời điểm', order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Số lượng đơn',
     assigned: 'Đã phân công', progress: 'Tiến độ công đoạn', lastWork: 'Ghi nhận gần nhất', estimate: 'Dự kiến hoàn thành',
-    status: 'Trạng thái', basis: 'Cơ sở dự báo', empty: 'Không có dữ liệu phù hợp.',
-    review: 'cần xem lại lịch', monthlySummary: 'dữ liệu tổng hợp tháng',
+    status: 'Trạng thái', empty: 'Không có dữ liệu phù hợp.',
+    review: 'cần xem lại lịch',
     loadError: 'Không thể tải báo cáo tiến độ sản xuất.',
     includeCompleted: 'Bao gồm đã hoàn thành',
   },
@@ -50,15 +50,8 @@ const TEXT = {
 const STATUS = {
   COMPLETED: { ko: '생산 완료', en: 'Completed', vi: 'Hoàn thành', color: 'success' },
   IN_PROGRESS: { ko: '생산 중', en: 'In production', vi: 'Đang sản xuất', color: 'primary' },
-  SCHEDULED: { ko: '배정 완료·미착수', en: 'Scheduled', vi: 'Đã lên lịch', color: 'info' },
-  PARTIALLY_ASSIGNED: { ko: '일부 미배정', en: 'Partially assigned', vi: 'Phân công một phần', color: 'warning' },
+  SCHEDULED: { ko: '배정 완료', en: 'Assigned', vi: 'Đã phân công', color: 'info' },
   UNASSIGNED: { ko: '미배정', en: 'Unassigned', vi: 'Chưa phân công', color: 'default' },
-};
-const BASIS = {
-  ACTUAL_COMPLETION: { ko: '실제 완료', en: 'Actual completion', vi: 'Hoàn thành thực tế' },
-  WORKLOG_PROGRESS_RATE: { ko: '실제 작업속도 기준', en: 'Observed production rate', vi: 'Theo tốc độ sản xuất thực tế' },
-  LINE_SCHEDULE: { ko: '라인 배정 일정', en: 'Line schedule', vi: 'Lịch chuyền' },
-  ASSIGNMENT_REQUIRED: { ko: '배정 후 예측 가능', en: 'Assignment required', vi: 'Cần phân công để dự báo' },
 };
 const fmt = (value) => Math.max(0, Number(value) || 0).toLocaleString();
 const customerLabel = (customer, languageCode) =>
@@ -70,7 +63,6 @@ const latestDate = (rows, field) => rows.map((row) => row?.[field]).filter(Boole
 const resolveOrderStatus = (styles) => {
   if (styles.length > 0 && styles.every((row) => row.status === 'COMPLETED')) return 'COMPLETED';
   if (styles.some((row) => row.status === 'IN_PROGRESS')) return 'IN_PROGRESS';
-  if (styles.some((row) => row.status === 'PARTIALLY_ASSIGNED')) return 'PARTIALLY_ASSIGNED';
   if (styles.some((row) => row.status === 'SCHEDULED')) return 'SCHEDULED';
   return 'UNASSIGNED';
 };
@@ -94,7 +86,7 @@ const groupRowsByOrder = (styleRows) => {
     const status = assignedQuantity <= 0
       ? 'UNASSIGNED'
       : assignedQuantity < orderedQuantity
-        ? 'PARTIALLY_ASSIGNED'
+        ? 'UNASSIGNED'
         : resolveOrderStatus(styles);
     return {
       ...first,
@@ -110,14 +102,6 @@ const groupRowsByOrder = (styleRows) => {
         ? latestDate(styles, 'estimatedCompletionDate')
         : null,
       reviewRequired: styles.some((row) => row.reviewRequired),
-      hasMonthlySummaryRecords: styles.some((row) => row.hasMonthlySummaryRecords),
-      estimateBasis: status === 'COMPLETED'
-        ? 'ACTUAL_COMPLETION'
-        : styles.some((row) => row.estimateBasis === 'WORKLOG_PROGRESS_RATE')
-          ? 'WORKLOG_PROGRESS_RATE'
-          : styles.some((row) => row.estimateBasis === 'ASSIGNMENT_REQUIRED')
-            ? 'ASSIGNMENT_REQUIRED'
-            : 'LINE_SCHEDULE',
     };
   });
 };
@@ -196,13 +180,12 @@ const CustomerProductionReport = () => {
       <TableCell>{row.lastWorkDate || '-'}</TableCell>
       <TableCell sx={{ fontWeight: 700 }}>{row.estimatedCompletionDate || '-'}</TableCell>
       <TableCell><Chip size="small" label={status[languageCode] || status.en} color={status.color} variant={row.status === 'COMPLETED' ? 'filled' : 'outlined'} /></TableCell>
-      <TableCell><Stack spacing={0.25}><Typography variant="body2">{BASIS[row.estimateBasis]?.[languageCode] || row.estimateBasis}</Typography>{row.hasMonthlySummaryRecords ? <Typography variant="caption" color="warning.main">{text.monthlySummary}</Typography> : null}</Stack></TableCell>
     </>;
   };
 
   const exportCsv = () => {
-    const headers = [text.customer, text.order, text.style, text.due, text.quantity, text.assigned, text.progress, text.lastWork, text.estimate, text.status, text.basis];
-    const lines = [headers, ...rows.map((row) => [rowCustomerLabel(row, languageCode), row.orderNumber, `${row.styles.length} ${text.style}`, row.dueDate, row.orderedQuantity, row.assignedQuantity, `${row.progressPercent}%`, row.lastWorkDate, row.estimatedCompletionDate, (STATUS[row.status]?.[languageCode] || row.status), [BASIS[row.estimateBasis]?.[languageCode] || row.estimateBasis, row.hasMonthlySummaryRecords ? text.monthlySummary : null, row.reviewRequired ? text.review : null].filter(Boolean).join(' · ')])];
+    const headers = [text.customer, text.order, text.style, text.due, text.quantity, text.assigned, text.progress, text.lastWork, text.estimate, text.status];
+    const lines = [headers, ...rows.map((row) => [rowCustomerLabel(row, languageCode), row.orderNumber, `${row.styles.length} ${text.style}`, row.dueDate, row.orderedQuantity, row.assignedQuantity, `${row.progressPercent}%`, row.lastWorkDate, row.estimatedCompletionDate, (STATUS[row.status]?.[languageCode] || row.status)])];
     const blob = new Blob([`\uFEFF${lines.map((line) => line.map(csvCell).join(',')).join('\n')}`], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob); const anchor = document.createElement('a');
     anchor.href = url; anchor.download = `production-report-${selectedCustomer?.name || 'all'}-${new Date().toISOString().slice(0, 10)}.csv`; anchor.click();
@@ -221,7 +204,7 @@ const CustomerProductionReport = () => {
       {loading ? <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress size={30} /></Box> : rows.length === 0 ? <Paper variant="outlined" sx={{ p: 5, textAlign: 'center' }}><Typography color="text.secondary">{text.empty}</Typography></Paper> :
         <TableContainer component={Paper} variant="outlined">
           <Table size="small">
-            <TableHead><TableRow><TableCell sx={{ width: 44 }} /><TableCell>{text.customer}</TableCell><TableCell>{text.order}</TableCell><TableCell>{text.style}</TableCell><TableCell>{text.due}</TableCell><TableCell align="right">{text.quantity}</TableCell><TableCell align="right">{text.assigned}</TableCell><TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell><TableCell>{text.lastWork}</TableCell><TableCell>{text.estimate}</TableCell><TableCell>{text.status}</TableCell><TableCell>{text.basis}</TableCell></TableRow></TableHead>
+            <TableHead><TableRow><TableCell sx={{ width: 44 }} /><TableCell>{text.customer}</TableCell><TableCell>{text.order}</TableCell><TableCell>{text.style}</TableCell><TableCell>{text.due}</TableCell><TableCell align="right">{text.quantity}</TableCell><TableCell align="right">{text.assigned}</TableCell><TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell><TableCell>{text.lastWork}</TableCell><TableCell>{text.estimate}</TableCell><TableCell>{text.status}</TableCell></TableRow></TableHead>
             <TableBody>{rows.map((row) => {
               const expanded = expandedOrders.has(row.key);
               return <React.Fragment key={row.key}>

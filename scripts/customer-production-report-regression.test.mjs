@@ -22,7 +22,6 @@ test('report aggregates customer production by relational order and style', () =
 test('forecast is withheld until the full order-style quantity is assigned', () => {
   assert.match(server, /const canForecast = assignedQuantity >= item\.orderedQuantity && progress\.length > 0/);
   assert.match(server, /ASSIGNMENT_REQUIRED/);
-  assert.match(server, /hasMonthlySummaryRecords: progress\.some/);
   assert.match(server, /actualStartDate[\s\S]*plannedDurationDays - 1/);
   assert.match(server, /ST_DURATION_FROM_ACTUAL_START/);
   assert.match(server, /reportPlannedDurationDays/);
@@ -61,7 +60,9 @@ test('sales report is routed, permissioned, printable, and exportable', () => {
   assert.match(access, /\/customer-production-report.*FEATURE_KEYS\.ORDER/);
   assert.match(page, /window\.print\(\)/);
   assert.match(page, /text\/csv;charset=utf-8/);
-  assert.match(page, /monthlySummary/);
+  assert.doesNotMatch(page, /estimateBasis|text\.basis|const BASIS/);
+  assert.doesNotMatch(page, /PARTIALLY_ASSIGNED|Partially assigned|일부 미배정/);
+  assert.match(page, /SCHEDULED: \{ ko: '배정 완료'/);
   assert.match(page, /useState\(false\).*includeCompleted|includeCompleted.*useState\(false\)/s);
   assert.match(page, /!includeCompleted && row\.status === 'COMPLETED'/);
   assert.doesNotMatch(page, /<Alert severity="info">\{text\.note\}<\/Alert>/);
