@@ -49,6 +49,7 @@ const TEXT = {
 
 const STATUS = {
   COMPLETED: { ko: '생산 완료', en: 'Completed', vi: 'Hoàn thành', color: 'success' },
+  REVIEW_REQUIRED: { ko: '검토 필요', en: 'Review required', vi: 'Cần kiểm tra', color: 'error' },
   IN_PROGRESS: { ko: '생산 중', en: 'In production', vi: 'Đang sản xuất', color: 'primary' },
   SCHEDULED: { ko: '배정 완료', en: 'Assigned', vi: 'Đã phân công', color: 'info' },
   UNASSIGNED: { ko: '미배정', en: 'Unassigned', vi: 'Chưa phân công', color: 'default' },
@@ -62,6 +63,7 @@ const csvCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
 const latestDate = (rows, field) => rows.map((row) => row?.[field]).filter(Boolean).sort().at(-1) || null;
 const resolveOrderStatus = (styles) => {
   if (styles.length > 0 && styles.every((row) => row.status === 'COMPLETED')) return 'COMPLETED';
+  if (styles.some((row) => row.status === 'REVIEW_REQUIRED')) return 'REVIEW_REQUIRED';
   if (styles.some((row) => row.status === 'IN_PROGRESS')) return 'IN_PROGRESS';
   if (styles.some((row) => row.status === 'SCHEDULED')) return 'SCHEDULED';
   return 'UNASSIGNED';
@@ -176,7 +178,7 @@ const CustomerProductionReport = () => {
       <TableCell>{row.dueDate || '-'}</TableCell>
       <TableCell align="right">{fmt(row.orderedQuantity)}</TableCell>
       <TableCell align="right">{fmt(row.assignedQuantity)}{row.unassignedQuantity > 0 ? <Typography variant="caption" color="warning.main" display="block">-{fmt(row.unassignedQuantity)}</Typography> : null}</TableCell>
-      <TableCell><Stack spacing={0.5}><LinearProgress variant="determinate" value={row.progressPercent} color={row.reviewRequired ? 'error' : 'primary'} /><Typography variant="caption">{row.progressPercent}%{row.reviewRequired ? ` · ${text.review}` : ''}</Typography></Stack></TableCell>
+      <TableCell><Stack spacing={0.5}><LinearProgress variant="determinate" value={row.progressPercent} color={row.reviewRequired ? 'error' : 'primary'} /><Typography variant="caption">{row.progressPercent}%</Typography></Stack></TableCell>
       <TableCell>{row.lastWorkDate || '-'}</TableCell>
       <TableCell sx={{ fontWeight: 700 }}>{row.estimatedCompletionDate || '-'}</TableCell>
       <TableCell><Chip size="small" label={status[languageCode] || status.en} color={status.color} variant={row.status === 'COMPLETED' ? 'filled' : 'outlined'} /></TableCell>

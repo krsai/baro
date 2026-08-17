@@ -23466,8 +23466,11 @@ const buildAssignmentPlanProgressRows = async (
       reviewProcessTotals.length > 0
         ? Math.max(
             0,
-            ...reviewProcessTotals.map((process) =>
-              Math.round((Math.max(0, Number(process?.quantity) || 0) / baselineQuantityRaw) * 100)
+            Math.min(
+              99,
+              ...reviewProcessTotals.map((process) =>
+                Math.round((Math.max(0, Number(process?.quantity) || 0) / baselineQuantityRaw) * 100)
+              )
             )
           )
         : operationalProgressPercent;
@@ -29233,7 +29236,9 @@ app.get("/customer-production-reports", async (req, res) => {
         (acc, row) => {
           const weight = Math.max(0, Number(row?.plannedStTotalSeconds) || 0) ||
             Math.max(0, Number(row?.plannedQuantity) || 0);
-          const ratio = Number(row?.operationalProgressRatio);
+          const ratio = row?.scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED
+            ? Number(row?.displayProgressPercent) / 100
+            : Number(row?.operationalProgressRatio);
           if (weight <= 0 || !Number.isFinite(ratio)) return acc;
           acc.weight += weight;
           acc.value += Math.max(0, Math.min(1, ratio)) * weight;
@@ -29255,6 +29260,9 @@ app.get("/customer-production-reports", async (req, res) => {
         relatedPlans.length > 0 &&
         progress.length === relatedPlans.length &&
         progress.every((row) => row?.isCompleted === true);
+      const reviewRequired = progress.some(
+        (row) => row?.scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED
+      );
       // A customer-facing report must never display 100% while the canonical
       // assignment completion state is still open. Weighted progress can round
       // 99.5%+ to 100 even though one or more processes have not met their exact
@@ -29315,9 +29323,11 @@ app.get("/customer-production-reports", async (req, res) => {
           ? "UNASSIGNED"
           : assignedQuantity < item.orderedQuantity
             ? "UNASSIGNED"
-            : hasWorkRecords
-              ? "IN_PROGRESS"
-              : "SCHEDULED";
+            : reviewRequired
+              ? "REVIEW_REQUIRED"
+              : hasWorkRecords
+                ? "IN_PROGRESS"
+                : "SCHEDULED";
 
       rows.push({
         customerId: order.buyerOrgId ?? order.customerId ?? null,
@@ -29344,7 +29354,7 @@ app.get("/customer-production-reports", async (req, res) => {
         lastWorkDate,
         estimatedCompletionDate,
         assignmentCount: relatedPlans.length,
-        reviewRequired: progress.some((row) => row?.scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED),
+        reviewRequired,
       });
     });
   });

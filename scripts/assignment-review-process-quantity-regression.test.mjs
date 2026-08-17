@@ -78,8 +78,9 @@ test('review cards show uncapped actual progress while scheduling remains capped
   assert.match(card, /progressPercent=\{assignment\.workProgressPercent \?\? assignment\.progressPercent\}/);
 });
 
-test('review-card progress exposes the highest process overproduction instead of an offsetting average', () => {
+test('review-card progress uses the least-complete process and reserves 100% for completion', () => {
   assert.match(backend, /const displayProgressPercent =/);
+  assert.match(backend, /Math\.min\(\s*99,/);
   assert.match(backend, /reviewProcessTotals\.map\(\(process\) =>/);
   assert.match(backend, /process\?\.quantity[\s\S]*baselineQuantityRaw/);
   assert.match(board, /progressRow\?\.displayProgressPercent \?\?/);

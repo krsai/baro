@@ -19,7 +19,10 @@ test('report aggregates customer production by relational order and style', () =
   assert.match(server, /operationalProgressRatio/);
   assert.match(server, /const reportedProgressPercent = isCompleted/);
   assert.match(server, /Math\.min\(99, Math\.max\(0, progressPercent\)\)/);
+  assert.match(server, /row\?\.scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED[\s\S]*row\?\.displayProgressPercent/);
+  assert.match(server, /reviewRequired[\s\S]*\? "REVIEW_REQUIRED"/);
   assert.match(page, /\[row\.styleName, row\.styleCode\]/);
+  assert.match(page, /REVIEW_REQUIRED: \{ ko: '검토 필요'/);
 });
 
 test('forecast is withheld until the full order-style quantity is assigned', () => {
