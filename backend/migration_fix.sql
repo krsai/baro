@@ -4467,6 +4467,10 @@ CREATE TABLE IF NOT EXISTS "BusinessPartner" (
   CONSTRAINT "BusinessPartner_pkey" PRIMARY KEY ("id")
 );
 
+ALTER TABLE "BusinessPartner"
+  ADD COLUMN IF NOT EXISTS "contactName" TEXT,
+  ADD COLUMN IF NOT EXISTS "contactPhone" TEXT;
+
 ALTER TABLE "WorkRecord"
   ADD COLUMN IF NOT EXISTS "outsourcingPartnerId" INTEGER;
 

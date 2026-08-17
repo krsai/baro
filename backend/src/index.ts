@@ -749,6 +749,8 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "WorkRecord", columnName: "outsourceVendorName" },
   { tableName: "WorkRecord", columnName: "outsourceUnitPrice" },
   { tableName: "WorkRecord", columnName: "outsourcingPartnerId" },
+  { tableName: "BusinessPartner", columnName: "contactName" },
+  { tableName: "BusinessPartner", columnName: "contactPhone" },
   { tableName: "WorkOrder", columnName: "buyerOrgId" },
   { tableName: "WorkOrder", columnName: "sellerOrgId" },
   { tableName: "WorkOrder", columnName: "customerId" },
@@ -25367,10 +25369,27 @@ app.get("/work-logs", async (req, res) => {
     }
   }
 
+  const displayDateRange = {
+    ...(dateFrom ? { gte: dateFrom } : {}),
+    ...(dateTo ? { lte: dateTo } : {}),
+  };
   const workDateFilter = workDate
     ? { displayDate: workDate }
     : dateFrom || dateTo
-      ? { displayDate: { ...(dateFrom ? { gte: dateFrom } : {}), ...(dateTo ? { lte: dateTo } : {}) } }
+      ? {
+          OR: [
+            {
+              coverageStartDate: { not: null, ...(dateTo ? { lte: dateTo } : {}) },
+              coverageEndDate: { not: null, ...(dateFrom ? { gte: dateFrom } : {}) },
+            },
+            {
+              AND: [
+                { OR: [{ coverageStartDate: null }, { coverageEndDate: null }] },
+                { displayDate: displayDateRange },
+              ],
+            },
+          ],
+        }
       : {};
 
   let workLogs: any[] = [];
@@ -28127,8 +28146,8 @@ app.put("/assignment-board-state", async (req, res) => {
 app.get("/business-partners", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
-  const type = resolveOptionalString(req.query.type, "PROCESS_OUTSOURCING");
-  if (!['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'].includes(type || '')) {
+  const type = resolveOptionalString(req.query.type, null);
+  if (type && !['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'].includes(type)) {
     return res.status(400).json({ ok: false, error: "invalid partner type" });
   }
   const rows = await prisma.businessPartner.findMany({
@@ -28146,6 +28165,8 @@ app.post("/business-partners", async (req, res) => {
   if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
   const name = resolveOptionalString(req.body?.name, null);
   const type = resolveOptionalString(req.body?.type, "PROCESS_OUTSOURCING");
+  const contactName = resolveOptionalString(req.body?.contactName, null);
+  const contactPhone = resolveOptionalString(req.body?.contactPhone, null);
   if (!name) return res.status(400).json({ ok: false, error: "partner name is required" });
   if (!['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'].includes(type || '')) {
     return res.status(400).json({ ok: false, error: "invalid partner type" });
@@ -28153,8 +28174,8 @@ app.post("/business-partners", async (req, res) => {
   const actor = resolveOptionalString(getRequesterEmail(req), "system@baro.local") || "system@baro.local";
   const row = await prisma.businessPartner.upsert({
     where: { orgId_type_name: { orgId: organization.id, type: type as any, name } },
-    create: { orgId: organization.id, name, type: type as any, createdBy: actor },
-    update: { isActive: true },
+    create: { orgId: organization.id, name, type: type as any, contactName, contactPhone, createdBy: actor },
+    update: { isActive: true, contactName, contactPhone },
   });
   res.status(201).json(row);
 });

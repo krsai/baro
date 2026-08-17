@@ -8,6 +8,7 @@ const MonthRangeSelector = ({
   onStartChange,
   onEndChange,
   onShift,
+  monthOnly = true,
   startLabel = '시작 월',
   endLabel = '종료 월',
   minDate,
@@ -17,7 +18,7 @@ const MonthRangeSelector = ({
 }) => (
   <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap' }}>
     <CustomDatePicker
-      monthOnly
+      monthOnly={monthOnly}
       label={startLabel}
       value={startValue}
       onChange={onStartChange}
@@ -28,7 +29,7 @@ const MonthRangeSelector = ({
     />
     <Typography color="text.secondary" aria-hidden="true">–</Typography>
     <CustomDatePicker
-      monthOnly
+      monthOnly={monthOnly}
       label={endLabel}
       value={endValue}
       onChange={onEndChange}

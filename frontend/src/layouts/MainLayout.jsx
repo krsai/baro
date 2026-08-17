@@ -657,9 +657,15 @@ const MainLayout = () => {
         isOpen: orderOpen,
         children: [
           {
-            label: getUiMessage('menu.order', '\uC8FC\uBB38', languageCode),
-            icon: <ListAltIcon />,
-            path: '/order',
+            label: getUiMessage('menu.businessPartner', '\uAC70\uB798\uCC98', languageCode),
+            icon: <BusinessIcon />,
+            path: '/business-partner',
+          },
+          {
+            label: getUiMessage('menu.customer', '\uACE0\uAC1D', languageCode),
+            icon: <PeopleIcon />,
+            path: '/customer',
+            notificationActive: missingSalesPriceCustomerCount > 0,
           },
           {
             label: getUiMessage('menu.style', '\uC2A4\uD0C0\uC77C', languageCode),
@@ -667,9 +673,9 @@ const MainLayout = () => {
             path: '/style',
           },
           {
-            label: getUiMessage('menu.businessPartner', '거래처', languageCode),
-            icon: <BusinessIcon />,
-            path: '/business-partner',
+            label: getUiMessage('menu.order', '\uC8FC\uBB38', languageCode),
+            icon: <ListAltIcon />,
+            path: '/order',
           },
           {
             label: getUiMessage('menu.customerProductionReport', '보고서', languageCode),
@@ -773,12 +779,6 @@ const MainLayout = () => {
             label: getUiMessage('menu.holiday', '\uD734\uC77C', languageCode),
             icon: <CalendarMonthIcon />,
             path: '/holiday',
-          },
-          {
-            label: getUiMessage('menu.customer', '\uACE0\uAC1D \uAD00\uB9AC', languageCode),
-            icon: <PeopleIcon />,
-            path: '/customer',
-            notificationActive: missingSalesPriceCustomerCount > 0,
           },
           ...(isSystemAdminProfile
             ? [
@@ -923,10 +923,6 @@ const MainLayout = () => {
   ]);
 
   const menuStructureBlueprint = useMemo(() => {
-    const customerMenuItem = baseMenuBlueprint
-      .flatMap((item) => (Array.isArray(item?.children) ? item.children : []))
-      .find((item) => item?.path === '/customer');
-
     return baseMenuBlueprint.map((item) => {
       if (!item.isParent || !Array.isArray(item.children)) return item;
 
@@ -934,14 +930,19 @@ const MainLayout = () => {
       const childPaths = new Set(orderedChildren.map((child) => child.path));
 
       if (childPaths.has('/order') && childPaths.has('/style')) {
-        const preferredSalesPaths = ['/style', '/order'];
+        const preferredSalesPaths = [
+          '/business-partner',
+          '/customer',
+          '/style',
+          '/order',
+          '/customer-production-report',
+        ];
         orderedChildren = [
-          customerMenuItem,
           ...preferredSalesPaths.map(
             (path) => orderedChildren.find((child) => child.path === path) || null
           ),
           ...orderedChildren.filter(
-            (child) => !['/customer', ...preferredSalesPaths].includes(child.path)
+            (child) => !preferredSalesPaths.includes(child.path)
           ),
         ].filter(Boolean);
       }

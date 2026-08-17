@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [schema, migration, partnerMigration, migrationFix, backend, payroll, page, partnerPage, router, layout] = await Promise.all([
+const [schema, migration, partnerMigration, migrationFix, backend, payroll, page, partnerPage, router, layout, partnerDialog] = await Promise.all([
   readFile(new URL('../backend/prisma/schema.prisma', import.meta.url), 'utf8'),
   readFile(new URL('../backend/prisma/migrations/20260814090000_add_outsourced_work_records/migration.sql', import.meta.url), 'utf8'),
   readFile(new URL('../backend/prisma/migrations/20260814170000_add_business_partners/migration.sql', import.meta.url), 'utf8'),
@@ -13,6 +13,7 @@ const [schema, migration, partnerMigration, migrationFix, backend, payroll, page
   readFile(new URL('../frontend/src/pages/App/BusinessPartners.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../frontend/src/router.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../frontend/src/layouts/MainLayout.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../frontend/src/components/BusinessPartnerDialog.jsx', import.meta.url), 'utf8'),
 ]);
 
 test('outsourced work records preserve vendor and unit-price snapshots', () => {
@@ -39,6 +40,8 @@ test('worker picker exposes visually distinct outsourced entry and price', () =>
   assert.match(page, /return selectedLineId \? \[createBlankRow\(\)\] : \[\]/);
   assert.match(page, /외주 개당 단가/);
   assert.match(page, /warning\.main/);
+  assert.doesNotMatch(page, /window\.prompt/);
+  assert.match(page, /<BusinessPartnerDialog/);
 });
 
 test('process outsourcing partners are organization-scoped and linked by id with snapshots', () => {
@@ -53,16 +56,21 @@ test('process outsourcing partners are organization-scoped and linked by id with
   assert.match(backend, /app\.post\("\/business-partners"/);
   assert.match(backend, /app\.get\("\/business-partners\/:id\/history"/);
   assert.match(page, /outsourcingPartnerId: row\?\.worker\?\.isOutsourced/);
-  assert.match(page, /type: 'PROCESS_OUTSOURCING'/);
+  assert.match(page, /initialType="PROCESS_OUTSOURCING"/);
 });
 
-test('sales partner screen lists process outsourcing partners and exposes history', () => {
-  assert.match(partnerPage, /title="거래처"/);
-  assert.match(partnerPage, /외주 작업 이력/);
+test('sales partner screen lists both localized partner types and exposes history', () => {
+  assert.match(partnerPage, /title=\{labels\.title\}/);
+  assert.match(partnerPage, /getBusinessPartnerTypeLabel/);
   assert.match(partnerPage, /record\.unitPrice/);
   assert.match(partnerPage, /record\.quantity/);
+  assert.match(partnerDialog, /contactName/);
+  assert.match(partnerDialog, /contactPhone/);
+  assert.match(partnerDialog, /PROCESS_OUTSOURCING/);
+  assert.match(partnerDialog, /MATERIAL_SUPPLIER/);
   assert.match(router, /path: 'business-partner'/);
   assert.match(layout, /path: '\/business-partner'/);
+  assert.match(layout, /'\/business-partner',[\s\S]*'\/customer',[\s\S]*'\/style',[\s\S]*'\/order',[\s\S]*'\/customer-production-report'/);
 });
 
 test('work detail truncates worker names with a tooltip and hides the wage display', () => {

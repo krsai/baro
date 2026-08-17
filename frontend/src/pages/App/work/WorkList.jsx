@@ -45,7 +45,6 @@ import {
   isDateBeforeFactoryManagementStart,
   resolveScopedFactoryManagementStartDateKey,
   resolveScopedFactoryManagementStartDay,
-  resolveScopedFactoryManagementStartMonth,
 } from '../../../utils/factoryManagementStart';
 import { deleteWorkLog, loadWorkLogs } from './workLogStorage';
 import {
@@ -130,6 +129,8 @@ const TEXT = {
   },
   prevMonth: { ko: '이전 달', en: 'Previous month', vi: 'Thang truoc' },
   nextMonth: { ko: '다음 달', en: 'Next month', vi: 'Thang sau' },
+  startDate: { ko: '시작일', en: 'Start Date', vi: 'Ngày bắt đầu' },
+  endDate: { ko: '종료일', en: 'End Date', vi: 'Ngày kết thúc' },
 };
 
 const DAILY_LOG_LABELS = {
@@ -274,18 +275,6 @@ const getMonthEnd = (value, operationStartMonth, operationStartDay) => {
   return dayjs(getMonthStart(value, operationStartMonth, operationStartDay)).endOf('month').toDate();
 };
 
-const addMonths = (
-  value,
-  amount,
-  operationStartMonth = dayjs(DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY).startOf('month'),
-  operationStartDay = operationStartMonth.startOf('day')
-) => {
-  const normalized = clampWorkHistoryFilterDate(value || new Date(), operationStartDay);
-  const month = dayjs(normalized).add(amount, 'month').startOf('month');
-  return month.isBefore(operationStartMonth, 'month')
-    ? operationStartMonth.toDate()
-    : month.toDate();
-};
 const buildWorkListFilterStorageKey = (orgId) =>
   `${WORK_LIST_FILTER_STORAGE_PREFIX}:${String(orgId || 'global').trim() || 'global'}`;
 const readStoredWorkListFilters = (orgId) => {
@@ -302,8 +291,8 @@ const readStoredWorkListFilters = (orgId) => {
     );
     const selectedFactoryId = String(parsed?.selectedFactoryId || '').trim();
     if (!storedStart && !storedEnd && !selectedFactoryId) return null;
-    const dateFilterStart = getMonthStart(storedStart || storedEnd || new Date());
-    const endCandidate = getMonthEnd(storedEnd || storedStart || dateFilterStart);
+    const dateFilterStart = clampWorkHistoryFilterDate(storedStart || storedEnd || new Date());
+    const endCandidate = clampWorkHistoryFilterDate(storedEnd || storedStart || dateFilterStart);
     const dateFilterEnd = endCandidate >= dateFilterStart ? endCandidate : dateFilterStart;
     return {
       selectedFactoryId,
@@ -376,14 +365,6 @@ const WorkList = () => {
   const workHistoryOperationStartDay = useMemo(
     () =>
       resolveScopedFactoryManagementStartDay({
-        factory: selectedFactory,
-        factories,
-      }),
-    [factories, selectedFactory]
-  );
-  const workHistoryOperationStartMonth = useMemo(
-    () =>
-      resolveScopedFactoryManagementStartMonth({
         factory: selectedFactory,
         factories,
       }),
@@ -700,56 +681,42 @@ const WorkList = () => {
 
   const handleDateFilterStartChange = useCallback((value) => {
     if (!value?.isValid?.()) return;
-    const nextStart = getMonthStart(
-      value.toDate(),
-      workHistoryOperationStartMonth,
-      workHistoryOperationStartDay
-    );
+    const nextStart = clampWorkHistoryFilterDate(value.toDate(), workHistoryOperationStartDay);
     if (!nextStart) return;
     setDateFilterStart(nextStart);
     setDateFilterEnd((prev) => {
       const currentEnd = normalizeFilterDate(prev);
-      return currentEnd && currentEnd >= nextStart
-        ? currentEnd
-        : getMonthEnd(nextStart, workHistoryOperationStartMonth, workHistoryOperationStartDay);
+      return currentEnd && currentEnd >= nextStart ? currentEnd : nextStart;
     });
-  }, [workHistoryOperationStartDay, workHistoryOperationStartMonth]);
+  }, [workHistoryOperationStartDay]);
 
   const handleDateFilterEndChange = useCallback((value) => {
     if (!value?.isValid?.()) return;
-    const nextEnd = getMonthEnd(
-      value.toDate(),
-      workHistoryOperationStartMonth,
-      workHistoryOperationStartDay
-    );
+    const nextEnd = clampWorkHistoryFilterDate(value.toDate(), workHistoryOperationStartDay);
     if (!nextEnd) return;
     setDateFilterEnd(nextEnd);
     setDateFilterStart((prev) => {
       const currentStart = normalizeFilterDate(prev);
-      return currentStart && currentStart <= nextEnd
-        ? currentStart
-        : getMonthStart(nextEnd, workHistoryOperationStartMonth, workHistoryOperationStartDay);
+      return currentStart && currentStart <= nextEnd ? currentStart : nextEnd;
     });
-  }, [workHistoryOperationStartDay, workHistoryOperationStartMonth]);
+  }, [workHistoryOperationStartDay]);
 
   const shiftDateFilterMonth = useCallback(
     (amount) => {
-      const nextMonthStart = addMonths(
-        dateFilterStart,
-        amount,
-        workHistoryOperationStartMonth,
+      const nextMonthStart = clampWorkHistoryFilterDate(
+        dayjs(dateFilterStart).add(amount, 'month').toDate(),
         workHistoryOperationStartDay
       );
       setDateFilterStart(nextMonthStart);
-      setDateFilterEnd((previous) =>
-        getMonthEnd(
-          addMonths(previous, amount, workHistoryOperationStartMonth, workHistoryOperationStartDay),
-          workHistoryOperationStartMonth,
+      setDateFilterEnd((previous) => {
+        const shifted = clampWorkHistoryFilterDate(
+          dayjs(previous).add(amount, 'month').toDate(),
           workHistoryOperationStartDay
-        )
-      );
+        );
+        return shifted >= nextMonthStart ? shifted : nextMonthStart;
+      });
     },
-    [dateFilterStart, workHistoryOperationStartDay, workHistoryOperationStartMonth]
+    [dateFilterStart, workHistoryOperationStartDay]
   );
 
   return (
@@ -844,6 +811,7 @@ const WorkList = () => {
                 }}
               >
                 <MonthRangeSelector
+                  monthOnly={false}
                   startValue={dateFilterStart}
                   endValue={dateFilterEnd}
                   onStartChange={handleDateFilterStartChange}
@@ -851,6 +819,8 @@ const WorkList = () => {
                   onShift={shiftDateFilterMonth}
                   slotProps={FILTER_DATE_PICKER_SLOT_PROPS}
                   minDate={workHistoryOperationStartDay}
+                  startLabel={resolveText(TEXT.startDate, languageCode, 'Start Date')}
+                  endLabel={resolveText(TEXT.endDate, languageCode, 'End Date')}
                 />
               </Stack>
             </Box>

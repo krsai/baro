@@ -243,6 +243,8 @@ model BusinessPartner {
   orgId     Int
   name      String
   type      BusinessPartnerType @default(PROCESS_OUTSOURCING)
+  contactName  String?
+  contactPhone String?
   isActive  Boolean             @default(true)
   createdAt DateTime            @default(now())
   createdBy String              @default("system@baro.local")

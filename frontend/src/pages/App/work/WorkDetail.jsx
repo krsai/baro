@@ -36,6 +36,7 @@ import {
   viVN as datePickerViVN,
 } from '@mui/x-date-pickers/locales';
 import AppPageContainer from '../../../components/AppPageContainer';
+import BusinessPartnerDialog from '../../../components/BusinessPartnerDialog';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
 import PageToolbar from '../../../components/PageToolbar';
 import SaveButton from '../../../components/SaveButton';
@@ -1116,6 +1117,7 @@ const WorkDetail = ({
     normalizeWorkerOptions(initialContext?.workers)
   );
   const [outsourcingPartners, setOutsourcingPartners] = useState([]);
+  const [outsourcePartnerRowId, setOutsourcePartnerRowId] = useState(null);
   const [processAttributes, setProcessAttributes] = useState([]);
   const [allAssignmentPlans, setAllAssignmentPlans] = useState(() =>
     normalizeAssignmentPlans(initialContext?.assignments)
@@ -2434,31 +2436,8 @@ const WorkDetail = ({
   const handleWorkerChange = useCallback(async (rowId, nextWorker) => {
     let resolvedWorker = nextWorker;
     if (nextWorker?.isOutsourceAction) {
-      const vendorName = window.prompt('외주 업체명을 입력하세요.')?.trim();
-      if (!vendorName) return;
-      try {
-        const partner = await requestJSON(
-          `/business-partners${buildQueryString({ orgId: activeOrgId })}`,
-          {
-            method: 'POST',
-            body: JSON.stringify({ name: vendorName, type: 'PROCESS_OUTSOURCING' }),
-          }
-        );
-        setOutsourcingPartners((current) => {
-          const next = current.filter((item) => Number(item.id) !== Number(partner.id));
-          return [...next, partner].sort((a, b) => COLLATOR.compare(a.name, b.name));
-        });
-        resolvedWorker = {
-          id: `partner:${partner.id}`,
-          partnerId: partner.id,
-          name: `외주 · ${partner.name}`,
-          vendorName: partner.name,
-          isOutsourced: true,
-        };
-      } catch (error) {
-        setFormError(error?.message || '외주 업체를 등록하지 못했습니다.');
-        return;
-      }
+      setOutsourcePartnerRowId(rowId);
+      return;
     }
     setRows((currentRows) =>
       currentRows.map((row) =>
@@ -2479,7 +2458,23 @@ const WorkDetail = ({
           : row
       )
     );
-  }, [activeOrgId]);
+  }, []);
+  const handleOutsourcePartnerCreated = useCallback((partner) => {
+    setOutsourcingPartners((current) => {
+      const next = current.filter((item) => Number(item.id) !== Number(partner.id));
+      return [...next, partner].sort((a, b) => COLLATOR.compare(a.name, b.name));
+    });
+    const rowId = outsourcePartnerRowId;
+    setOutsourcePartnerRowId(null);
+    if (!rowId) return;
+    handleWorkerChange(rowId, {
+      id: `partner:${partner.id}`,
+      partnerId: partner.id,
+      name: `외주 · ${partner.name}`,
+      vendorName: partner.name,
+      isOutsourced: true,
+    });
+  }, [handleWorkerChange, outsourcePartnerRowId]);
   const handleWorkerInputChange = useCallback((rowId, row, nextInputValue, reason) => {
     if (reason !== 'input') return;
     const selectedLabel = toText(row?.worker?.name);
@@ -3957,6 +3952,15 @@ const WorkDetail = ({
           </Box>
         </Paper>
       </Stack>
+      <BusinessPartnerDialog
+        open={Boolean(outsourcePartnerRowId)}
+        onClose={() => setOutsourcePartnerRowId(null)}
+        onCreated={handleOutsourcePartnerCreated}
+        activeOrgId={activeOrgId}
+        languageCode={languageCode}
+        initialType="PROCESS_OUTSOURCING"
+        lockType
+      />
     </AppPageContainer>
   );
 };
