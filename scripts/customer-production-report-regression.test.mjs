@@ -17,6 +17,9 @@ test('report aggregates customer production by relational order and style', () =
   assert.match(server, /const key = `\$\{plan\.workOrderId\}:\$\{plan\.styleId/);
   assert.match(server, /ensureArray\(order\.workOrderItems\)/);
   assert.match(server, /operationalProgressRatio/);
+  assert.match(server, /const reportedProgressPercent = isCompleted/);
+  assert.match(server, /Math\.min\(99, Math\.max\(0, progressPercent\)\)/);
+  assert.match(page, /\[row\.styleName, row\.styleCode\]/);
 });
 
 test('forecast is withheld until the full order-style quantity is assigned', () => {

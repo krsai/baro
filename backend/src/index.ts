@@ -29255,6 +29255,13 @@ app.get("/customer-production-reports", async (req, res) => {
         relatedPlans.length > 0 &&
         progress.length === relatedPlans.length &&
         progress.every((row) => row?.isCompleted === true);
+      // A customer-facing report must never display 100% while the canonical
+      // assignment completion state is still open. Weighted progress can round
+      // 99.5%+ to 100 even though one or more processes have not met their exact
+      // quantity requirement, so reserve 100% for completed rows only.
+      const reportedProgressPercent = isCompleted
+        ? 100
+        : Math.min(99, Math.max(0, progressPercent));
       const scheduledCompletionCandidates = progress
         .map((row) => normalizeDateKey(row?.renderEndDate))
         .filter((value): value is string => Boolean(value));
@@ -29331,7 +29338,7 @@ app.get("/customer-production-reports", async (req, res) => {
         assignedQuantity,
         unassignedQuantity: Math.max(0, item.orderedQuantity - assignedQuantity),
         producedQuantity,
-        progressPercent: Math.max(0, Math.min(100, progressPercent)),
+        progressPercent: reportedProgressPercent,
         status,
         firstWorkDate,
         lastWorkDate,

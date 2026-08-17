@@ -170,7 +170,7 @@ const CustomerProductionReport = () => {
       <TableCell sx={{ fontWeight: detail ? 400 : 700 }}>{detail ? '' : row.orderNumber}</TableCell>
       <TableCell sx={detail ? { pl: 3 } : undefined}>
         {detail
-          ? [row.styleCode, row.styleName].filter(Boolean).join(' · ') || '-'
+          ? [row.styleName, row.styleCode].filter(Boolean).join(' · ') || '-'
           : `${row.styles.length.toLocaleString()} ${text.style}`}
       </TableCell>
       <TableCell>{row.dueDate || '-'}</TableCell>
