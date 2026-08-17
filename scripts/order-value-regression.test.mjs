@@ -22,4 +22,7 @@ test('order list labels the value and warns when a price is missing in all langu
   assert.match(page, /Giá trị đơn hàng/);
   assert.match(page, /단가 누락/);
   assert.match(page, /currentOrderValue\?\.status === 'AVAILABLE'/);
+  assert.match(page, /`\$\$\{amount\.toLocaleString\('en-US'/);
+  assert.match(page, /minimumFractionDigits: 2/);
+  assert.match(page, /maximumFractionDigits: 2/);
 });

@@ -143,19 +143,13 @@ const ORDER_LIST_TEXT_ELLIPSIS_SX = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
 };
-const formatOrderValue = (value, currencyCode, languageCode) => {
+const formatOrderValue = (value) => {
   const amount = Number(value);
-  if (!Number.isFinite(amount) || !currencyCode) return '-';
-  const locale = languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US';
-  try {
-    return new Intl.NumberFormat(locale, {
-      style: 'currency', currency: currencyCode,
-      minimumFractionDigits: currencyCode === 'VND' ? 0 : 2,
-      maximumFractionDigits: currencyCode === 'VND' ? 0 : 2,
-    }).format(amount);
-  } catch {
-    return `${amount.toLocaleString()} ${currencyCode}`;
-  }
+  if (!Number.isFinite(amount)) return '-';
+  return `$${amount.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 };
 const getOrderLockButtonSx = (isLocked) => (theme) => {
   const primaryMain = theme.palette.primary.main;
@@ -3402,7 +3396,7 @@ const OrderList = () => {
                         <TableCell sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                           {order.currentOrderValue?.status === 'AVAILABLE' ? (
                             <Typography variant="body2" fontWeight={700} noWrap>
-                              {formatOrderValue(order.currentOrderValue.amount, order.currentOrderValue.currencyCode, languageCode)}
+                              {formatOrderValue(order.currentOrderValue.amount)}
                             </Typography>
                           ) : (
                             <Chip size="small" color="warning" variant="outlined" label={orderPageText.missingSalesPrice} />
