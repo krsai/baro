@@ -31,22 +31,31 @@ const FORECAST_STORAGE_KEY = 'baro.revenueForecast.records.v1';
 
 const TEXT = {
   ko: {
-    title: '수익 예측',
-    target: '1. 예측 대상', savedForecast: '저장된 예측 기록', selectForecast: '기록을 선택하세요', newForecast: '새 예측', saveForecast: '예측 저장', deleteForecast: '기록 삭제', category: '스타일 카테고리', styleName: '예측 스타일명', quantity: '생산 수량', unnamed: '이름 없는 예측',
+    title: '예가 산출',
+    target: '1. 산출 대상', savedForecast: '저장된 예가 기록', selectForecast: '기록을 선택하세요', newForecast: '새 예가', saveForecast: '예가 저장', deleteForecast: '기록 삭제', category: '스타일 카테고리', styleName: '산출 스타일명', quantity: '생산 수량', unnamed: '이름 없는 예가',
     trade: '2. 거래 비용', productionType: '거래 형태 (참고)', costMethod: '부자재비 입력 방법', lumpSum: '총액 직접 입력', items: '구매이력에서 항목 추가', totalAccessory: '예상 부자재비 총액', purchaseItem: '구매 이력', perPieceUsage: '한 벌당 사용량', capacityUsage: '1개당 포장 수량', addItem: '항목 추가', itemSubtotal: '예상 금액', noItems: '추가한 부자재 항목이 없습니다.', packaging: '기타 포장재비 총액', logistics: '물류비 총액', tradeHint: 'CMT/FP와 관계없이 우리 회사에 발생하는 부자재·포장재·물류비를 입력하세요.', pieces: '벌', required: '필요',
     time: '3. 예상 작업시간', direct: '직접 입력', similar: '유사 스타일 참조', seconds: '한 벌 예상시간', similarStyle: '유사 스타일', timeHint: '같은 카테고리의 스타일만 표시합니다. 선택한 스타일의 ST를 시작값으로 가져옵니다.',
     production: '4. 생산 계획', factory: '생산 공장', workers: '투입 인원', factoryHint: '공장을 선택하면 해당 공장의 근무일·근무시간·고정비·인건비 기준으로 계산합니다.',
     cost: '5. 목표 이익', directCost: '기타 직접비 (한 벌)', margin: '목표 이익률',
-    estimate: '예상 계산서', laborTime: '총 필요 작업시간', workerDays: '총 필요 인일', duration: '투입 인원 기준 예상 기간', completion: '예상 완료', accessoryCost: '부자재·포장·물류비', otherDirect: '기타 직접비', laborCost: '예상 변동 인건비', fixedCost: '기간 배부 고정비', totalCost: '예상 총원가', unitCost: '한 벌 원가', recommended: '필요한 한 벌 판매가', revenue: '필요한 총매출', profit: '목표 이익', assumption: '생산효율 100% 기준입니다. 실제 휴무·잔업·라인 효율은 추후 정책 확정 시 반영해야 합니다.',
+    estimate: '예가 계산서', laborTime: '총 필요 작업시간', workerDays: '총 필요 인일', duration: '투입 인원 기준 예상 기간', completion: '예상 완료', accessoryCost: '부자재·포장·물류비', otherDirect: '기타 직접비', laborCost: '예상 변동 인건비', fixedCost: '기간 배부 고정비', totalCost: '예상 총원가', unitCost: '한 벌 원가', recommended: '필요한 한 벌 판매가', revenue: '필요한 총매출', profit: '목표 이익', assumption: '생산효율 100% 기준입니다. 실제 휴무·잔업·라인 효율은 추후 정책 확정 시 반영해야 합니다.',
   },
   en: {
-    title: 'Profit Forecast',
-    target: '1. Forecast Target', savedForecast: 'Saved Forecasts', selectForecast: 'Select a forecast', newForecast: 'New Forecast', saveForecast: 'Save Forecast', deleteForecast: 'Delete', category: 'Style Category', styleName: 'Forecast Style Name', quantity: 'Production Quantity', unnamed: 'Untitled Forecast',
+    title: 'Cost Estimation',
+    target: '1. Estimation Target', savedForecast: 'Saved Estimates', selectForecast: 'Select an estimate', newForecast: 'New Estimate', saveForecast: 'Save Estimate', deleteForecast: 'Delete', category: 'Style Category', styleName: 'Estimate Style Name', quantity: 'Production Quantity', unnamed: 'Untitled Estimate',
     trade: '2. Commercial Costs', productionType: 'Deal Type (Reference)', costMethod: 'Trims Cost Input', lumpSum: 'Enter Total', items: 'Add Purchase History Items', totalAccessory: 'Estimated Total Trims Cost', purchaseItem: 'Purchase History', perPieceUsage: 'Usage per Garment', capacityUsage: 'Garments per Unit', addItem: 'Add Item', itemSubtotal: 'Estimated Amount', noItems: 'No trim items added.', packaging: 'Other Packaging Cost', logistics: 'Total Logistics Cost', tradeHint: 'Enter costs paid by us regardless of whether the deal is CMT or FP.', pieces: 'garments', required: 'Required',
     time: '3. Estimated Work Time', direct: 'Direct Input', similar: 'Reference Similar Style', seconds: 'Seconds per Piece', similarStyle: 'Similar Style', timeHint: 'Only styles in the same category are shown. Its ST is used as a starting value.',
     production: '4. Production Plan', factory: 'Factory', workers: 'Workers', factoryHint: 'Factory workdays, hours, fixed costs, and labor rates are used automatically.',
     cost: '5. Profit Target', directCost: 'Other Direct Cost per Piece', margin: 'Target Profit Margin',
-    estimate: 'Forecast Statement', laborTime: 'Total Required Labor Time', workerDays: 'Required Worker-days', duration: 'Estimated Duration', completion: 'Estimated Completion', accessoryCost: 'Trims, Packaging & Logistics', otherDirect: 'Other Direct Cost', laborCost: 'Estimated Variable Labor', fixedCost: 'Allocated Fixed Cost', totalCost: 'Estimated Total Cost', unitCost: 'Unit Cost', recommended: 'Required Unit Price', revenue: 'Required Revenue', profit: 'Target Profit', assumption: 'Assumes 100% efficiency. Holidays, overtime, and line efficiency can be included after policies are finalized.',
+    estimate: 'Cost Estimate', laborTime: 'Total Required Labor Time', workerDays: 'Required Worker-days', duration: 'Estimated Duration', completion: 'Estimated Completion', accessoryCost: 'Trims, Packaging & Logistics', otherDirect: 'Other Direct Cost', laborCost: 'Estimated Variable Labor', fixedCost: 'Allocated Fixed Cost', totalCost: 'Estimated Total Cost', unitCost: 'Unit Cost', recommended: 'Required Unit Price', revenue: 'Required Revenue', profit: 'Target Profit', assumption: 'Assumes 100% efficiency. Holidays, overtime, and line efficiency can be included after policies are finalized.',
+  },
+  vi: {
+    title: 'Tính giá dự toán',
+    target: '1. Đối tượng tính giá', savedForecast: 'Dự toán đã lưu', selectForecast: 'Chọn một dự toán', newForecast: 'Dự toán mới', saveForecast: 'Lưu dự toán', deleteForecast: 'Xóa', category: 'Loại kiểu dáng', styleName: 'Tên kiểu dáng dự toán', quantity: 'Số lượng sản xuất', unnamed: 'Dự toán chưa đặt tên',
+    trade: '2. Chi phí giao dịch', productionType: 'Loại giao dịch (tham khảo)', costMethod: 'Cách nhập chi phí phụ liệu', lumpSum: 'Nhập tổng tiền', items: 'Thêm từ lịch sử mua hàng', totalAccessory: 'Tổng chi phí phụ liệu dự kiến', purchaseItem: 'Lịch sử mua hàng', perPieceUsage: 'Mức dùng mỗi sản phẩm', capacityUsage: 'Số sản phẩm mỗi đơn vị', addItem: 'Thêm mục', itemSubtotal: 'Số tiền dự kiến', noItems: 'Chưa thêm phụ liệu.', packaging: 'Chi phí đóng gói khác', logistics: 'Tổng chi phí logistics', tradeHint: 'Nhập các chi phí do công ty chi trả, không phụ thuộc hình thức CMT hay FP.', pieces: 'sản phẩm', required: 'Cần thiết',
+    time: '3. Thời gian làm việc dự kiến', direct: 'Nhập trực tiếp', similar: 'Tham khảo kiểu dáng tương tự', seconds: 'Số giây mỗi sản phẩm', similarStyle: 'Kiểu dáng tương tự', timeHint: 'Chỉ hiển thị kiểu dáng cùng loại. ST của kiểu được chọn được dùng làm giá trị ban đầu.',
+    production: '4. Kế hoạch sản xuất', factory: 'Nhà máy', workers: 'Nhân lực', factoryHint: 'Ngày làm việc, giờ làm, chi phí cố định và đơn giá nhân công của nhà máy được áp dụng tự động.',
+    cost: '5. Mục tiêu lợi nhuận', directCost: 'Chi phí trực tiếp khác mỗi sản phẩm', margin: 'Tỷ suất lợi nhuận mục tiêu',
+    estimate: 'Bảng tính giá dự toán', laborTime: 'Tổng thời gian lao động cần thiết', workerDays: 'Tổng ngày công cần thiết', duration: 'Thời gian dự kiến', completion: 'Hoàn thành dự kiến', accessoryCost: 'Phụ liệu, đóng gói và logistics', otherDirect: 'Chi phí trực tiếp khác', laborCost: 'Nhân công biến đổi dự kiến', fixedCost: 'Chi phí cố định phân bổ', totalCost: 'Tổng giá thành dự kiến', unitCost: 'Giá thành đơn vị', recommended: 'Đơn giá bán cần thiết', revenue: 'Doanh thu cần thiết', profit: 'Lợi nhuận mục tiêu', assumption: 'Giả định hiệu suất 100%. Ngày nghỉ, tăng ca và hiệu suất chuyền sẽ được phản ánh sau khi chính sách được xác định.',
   },
 };
 

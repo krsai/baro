@@ -35,9 +35,9 @@ export const UI_MESSAGES = {
       vi: 'Phân tích lợi nhuận',
     },
     revenueForecast: {
-      ko: '수익 예측',
-      en: 'Profit Forecast',
-      vi: 'Dự báo lợi nhuận',
+      ko: '예가 산출',
+      en: 'Cost Estimation',
+      vi: 'Tính giá dự toán',
     },
     productionAnalysis: {
       ko: '생산 분석',

@@ -638,7 +638,7 @@ const MainLayout = () => {
             path: '/production-analysis',
           },
           {
-            label: getUiMessage('menu.revenueForecast', '수익 예측', languageCode),
+            label: getUiMessage('menu.revenueForecast', '예가 산출', languageCode),
             icon: <TrendingUpIcon />,
             path: '/revenue-forecast',
           },
