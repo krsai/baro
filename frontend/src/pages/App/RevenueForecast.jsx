@@ -85,6 +85,7 @@ const RevenueForecast = () => {
   const [draft, setDraft] = useState(createInitialDraft);
   const [forecastRecords, setForecastRecords] = useState(loadForecastRecords);
   const [selectedForecastId, setSelectedForecastId] = useState('');
+  const forecastRecordLabel = (record) => `${record.name} · ${Number(record.draft?.quantity || 0).toLocaleString()} pcs · ${new Date(record.savedAt).toLocaleDateString(languageCode)}`;
   const set = (key) => (event, value) => setDraft((current) => ({ ...current, [key]: value ?? event.target.value }));
   const factory = FACTORIES.find((item) => item.id === draft.factoryId) || FACTORIES[0];
   const similarStyles = SIMILAR_STYLES.filter((style) => style.category === draft.category);
@@ -159,7 +160,24 @@ const RevenueForecast = () => {
       <Stack spacing={2}>
         <FieldCard title={text.target}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-            <FormControl sx={{ flex: 1 }}><InputLabel>{text.savedForecast}</InputLabel><Select label={text.savedForecast} value={selectedForecastId} onChange={selectForecast} displayEmpty><MenuItem value="" disabled>{text.selectForecast}</MenuItem>{forecastRecords.map((record) => <MenuItem key={record.id} value={record.id}>{record.name} · {Number(record.draft?.quantity || 0).toLocaleString()} pcs · {new Date(record.savedAt).toLocaleDateString()}</MenuItem>)}</Select></FormControl>
+            <FormControl sx={{ flex: 1 }}>
+              <InputLabel shrink>{text.savedForecast}</InputLabel>
+              <Select
+                label={text.savedForecast}
+                value={selectedForecastId}
+                onChange={selectForecast}
+                displayEmpty
+                renderValue={(value) => {
+                  const record = forecastRecords.find((item) => item.id === value);
+                  return record
+                    ? forecastRecordLabel(record)
+                    : <Typography component="span" color="text.secondary">{text.selectForecast}</Typography>;
+                }}
+              >
+                <MenuItem value="" disabled>{text.selectForecast}</MenuItem>
+                {forecastRecords.map((record) => <MenuItem key={record.id} value={record.id}>{forecastRecordLabel(record)}</MenuItem>)}
+              </Select>
+            </FormControl>
             <Button variant="outlined" startIcon={<NoteAddOutlinedIcon />} onClick={newForecast}>{text.newForecast}</Button>
           </Stack>
           <FormControl><InputLabel>{text.category}</InputLabel><Select label={text.category} value={draft.category} onChange={selectCategory}>{STYLE_CATEGORIES.map((category) => <MenuItem key={category} value={category}>{category}</MenuItem>)}</Select></FormControl>
