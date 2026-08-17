@@ -7842,6 +7842,7 @@ const toOrderResponse = (
   order: any,
   options: {
     isAssignmentModificationLocked?: boolean;
+    currentOrderValue?: any;
   } = {}
 ) => {
   const itemsFromRelation = Array.isArray(order?.workOrderItems) && order.workOrderItems.length > 0
@@ -7885,6 +7886,7 @@ const toOrderResponse = (
     ),
     items,
     totalQuantity: toNonNegativeInt(order.totalQuantity, 0),
+    currentOrderValue: options.currentOrderValue ?? { status: "MISSING_PRICE" },
     isModificationLocked,
     isManualModificationLocked,
     isAssignmentModificationLocked,
@@ -7894,6 +7896,75 @@ const toOrderResponse = (
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
   };
+};
+
+const loadCurrentOrderValueByOrderDbId = async (orders: any[]) => {
+  const result = new Map<number, any>();
+  const pairs = Array.from(new Map(ensureArray(orders).map((order) => [
+    `${order?.sellerOrgId}:${order?.buyerOrgId}`,
+    { manufacturerOrgId: toPositiveIntOrNull(order?.sellerOrgId), brandOrgId: toPositiveIntOrNull(order?.buyerOrgId) },
+  ] as const)).values()).filter((pair) => pair.manufacturerOrgId && pair.brandOrgId);
+  const styleIds = Array.from(new Set(ensureArray(orders).flatMap((order) =>
+    ensureArray(order?.workOrderItems).map((item) => toPositiveIntOrNull(item?.styleId)).filter(Boolean)
+  ))) as number[];
+  if (!pairs.length || !styleIds.length) return result;
+  const relationships = await prisma.orgRelationship.findMany({
+    where: { OR: pairs as any },
+    include: {
+      salesBucketSetVersion: { include: { entries: true } },
+      salesBucketOverrides: {
+        where: { styleId: { in: styleIds } },
+        include: { quantityBucketSetVersion: { include: { entries: true } } },
+      },
+      salesPriceLists: {
+        where: { styleId: { in: styleIds } },
+        include: { currency: true, prices: { include: { quantityBucketEntry: true } } },
+      },
+    },
+  });
+  const relationshipByPair = new Map(relationships.map((row) => [`${row.manufacturerOrgId}:${row.brandOrgId}`, row] as const));
+  ensureArray(orders).forEach((order) => {
+    const orderDbId = toPositiveIntOrNull(order?.id);
+    if (!orderDbId) return;
+    const relationship: any = relationshipByPair.get(`${order?.sellerOrgId}:${order?.buyerOrgId}`);
+    if (!relationship) return;
+    const quantityByStyleId = new Map<number, number>();
+    let hasUnpricedItemIdentity = false;
+    ensureArray(order?.workOrderItems).forEach((item) => {
+      const styleId = toPositiveIntOrNull(item?.styleId);
+      const quantity = toNonNegativeInt(item?.totalQuantity, 0);
+      if (quantity <= 0) return;
+      if (!styleId) { hasUnpricedItemIdentity = true; return; }
+      quantityByStyleId.set(styleId, (quantityByStyleId.get(styleId) || 0) + quantity);
+    });
+    const scopes = new Set(ensureArray(relationship.salesPriceLists).map((list: any) => `${list.pricingBasis}:${list.currency?.code || ''}`));
+    const completeValues: any[] = [];
+    scopes.forEach((scope) => {
+      const [pricingBasis, currencyCode] = String(scope).split(':');
+      let amount = 0;
+      let complete = quantityByStyleId.size > 0 && !hasUnpricedItemIdentity;
+      quantityByStyleId.forEach((quantity, styleId) => {
+        const override = ensureArray(relationship.salesBucketOverrides).find((row: any) => row.styleId === styleId);
+        const version = override?.quantityBucketSetVersion || relationship.salesBucketSetVersion;
+        const list = ensureArray(relationship.salesPriceLists).find((row: any) =>
+          row.styleId === styleId && row.pricingBasis === pricingBasis && row.currency?.code === currencyCode && row.quantityBucketSetVersionId === version?.id
+        );
+        const bucketQuantity = resolveStBucketQuantityFromValues(quantity, ensureArray(version?.entries).map((entry: any) => entry.bucketQuantity));
+        const price = ensureArray(list?.prices).find((row: any) => row.quantityBucketEntry?.bucketQuantity === bucketQuantity);
+        if (!price) { complete = false; return; }
+        amount += quantity * Number(price.unitPrice);
+      });
+      if (complete && Number.isFinite(amount)) completeValues.push({ pricingBasis, currencyCode, amount });
+    });
+    completeValues.sort((left, right) => {
+      const rank = (row: any) => (row.pricingBasis === "MANUFACTURING_SERVICE_PRICE" ? 0 : 10) + (row.currencyCode === "USD" ? 0 : 1);
+      return rank(left) - rank(right);
+    });
+    result.set(orderDbId, completeValues.length
+      ? { status: "AVAILABLE", ...completeValues[0], hasMultipleScopes: completeValues.length > 1 }
+      : { status: "MISSING_PRICE" });
+  });
+  return result;
 };
 
 const normalizeDateKey = (value: any) => {
@@ -29146,12 +29217,14 @@ app.get("/orders", async (req, res) => {
     include: WORK_ORDER_RESPONSE_INCLUDE,
   });
   const assignmentLockMap = await loadOrderAssignmentModificationLockMap(orders);
+  const currentOrderValueByOrderDbId = await loadCurrentOrderValueByOrderDbId(orders);
   res.json(
     orders.map((order) =>
       {
         const orderKey = resolveOptionalString(order?.orderId ?? order?.id, null) ?? "";
         return toOrderResponse(order, {
           isAssignmentModificationLocked: Boolean(assignmentLockMap.get(orderKey)),
+          currentOrderValue: currentOrderValueByOrderDbId.get(order.id),
         });
       }
     )

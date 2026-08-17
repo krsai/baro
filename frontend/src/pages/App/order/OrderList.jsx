@@ -131,8 +131,9 @@ const ORDER_LIST_COLUMN_WIDTHS = {
   orderNumber: '10%',
   buyer: '15%',
   seller: '15%',
-  style: '24%',
-  totalQuantity: '10%',
+  style: '18%',
+  totalQuantity: '8%',
+  orderValue: '12%',
   dueDate: '10%',
   lock: '5%',
   actions: '3%',
@@ -141,6 +142,20 @@ const ORDER_LIST_TEXT_ELLIPSIS_SX = {
   whiteSpace: 'nowrap',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
+};
+const formatOrderValue = (value, currencyCode, languageCode) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || !currencyCode) return '-';
+  const locale = languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US';
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency', currency: currencyCode,
+      minimumFractionDigits: currencyCode === 'VND' ? 0 : 2,
+      maximumFractionDigits: currencyCode === 'VND' ? 0 : 2,
+    }).format(amount);
+  } catch {
+    return `${amount.toLocaleString()} ${currencyCode}`;
+  }
 };
 const getOrderLockButtonSx = (isLocked) => (theme) => {
   const primaryMain = theme.palette.primary.main;
@@ -894,6 +909,18 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Total Qty'
             : '합계 수량',
+      orderValue:
+        languageCode === 'vi'
+          ? 'Giá trị đơn hàng'
+          : languageCode === 'en'
+            ? 'Order Value'
+            : '수주 금액',
+      missingSalesPrice:
+        languageCode === 'vi'
+          ? 'Thiếu đơn giá'
+          : languageCode === 'en'
+            ? 'Missing price'
+            : '단가 누락',
       dueDate:
         languageCode === 'vi'
           ? 'Han giao'
@@ -3298,6 +3325,9 @@ const OrderList = () => {
                   >
                     {orderPageText.totalQuantity}
                   </TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.orderValue, textAlign: 'right' }}>
+                    {orderPageText.orderValue}
+                  </TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.dueDate }}>
                     {orderPageText.dueDate}
                   </TableCell>
@@ -3323,9 +3353,9 @@ const OrderList = () => {
               </TableHead>
               <TableBody>
                 {!ordersLoaded ? (
-                  <TableStatusRow colSpan={9} message={orderPageText.loadingOrders} />
+                  <TableStatusRow colSpan={10} message={orderPageText.loadingOrders} />
                 ) : filteredOrders.length === 0 ? (
-                  <TableStatusRow colSpan={9} message={orderPageText.emptyOrders} />
+                  <TableStatusRow colSpan={10} message={orderPageText.emptyOrders} />
                 ) : (
                   filteredOrders.map((order) => {
                     const deletable = !order?.isModificationLocked;
@@ -3368,6 +3398,15 @@ const OrderList = () => {
                           sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                         >
                           {order.totalQuantity != null ? order.totalQuantity.toLocaleString() : '-'}
+                        </TableCell>
+                        <TableCell sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {order.currentOrderValue?.status === 'AVAILABLE' ? (
+                            <Typography variant="body2" fontWeight={700} noWrap>
+                              {formatOrderValue(order.currentOrderValue.amount, order.currentOrderValue.currencyCode, languageCode)}
+                            </Typography>
+                          ) : (
+                            <Chip size="small" color="warning" variant="outlined" label={orderPageText.missingSalesPrice} />
+                          )}
                         </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
                           {order.dueDate || '-'}
