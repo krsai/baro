@@ -87,6 +87,16 @@ const ORDER_STATUS_TEXT_DEFAULTS = {
     en: 'All Except Done',
     vi: 'Tất cả tru hoan thanh',
   },
+  filterInProgressLabel: {
+    ko: '진행',
+    en: 'In Progress',
+    vi: 'Đang tiến hành',
+  },
+  filterCompletedLabel: {
+    ko: '완료',
+    en: 'Completed',
+    vi: 'Hoàn thành',
+  },
   noneLabel: {
     ko: '---',
     en: '---',
@@ -118,6 +128,12 @@ export const ORDER_STATUS_TEXT = {
   },
   get filterExcludeDoneLabel() {
     return getOrderStatusText('filterExcludeDoneLabel');
+  },
+  get filterInProgressLabel() {
+    return getOrderStatusText('filterInProgressLabel');
+  },
+  get filterCompletedLabel() {
+    return getOrderStatusText('filterCompletedLabel');
   },
   get noneLabel() {
     return getOrderStatusText('noneLabel', '---');

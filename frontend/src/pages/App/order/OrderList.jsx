@@ -41,7 +41,6 @@ import DeleteActionButton from '../../../components/DeleteActionButton';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
 import LockToggleSwitch from '../../../components/LockToggleSwitch';
 import SaveButton from '../../../components/SaveButton';
-import MonthRangeSelector from '../../../components/MonthRangeSelector';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import SearchableSelect from '../../../components/SearchableSelect';
@@ -104,11 +103,11 @@ import {
 const { useDeferredValue } = React;
 
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const ORDER_PROGRESS_STAGE_NONE = '__NONE__';
 const ORDER_PROGRESS_STAGES = ORDER_STATUS_OPTIONS.map((option) => option.value);
 const ORDER_PROGRESS_STAGE_DEFAULT = ORDER_PROGRESS_STAGES[0] || '';
 const ORDER_FILTER_ALL = 'ALL';
-const ORDER_FILTER_EXCEPT_DONE = '__EXCEPT_DONE__';
+const ORDER_FILTER_IN_PROGRESS = 'IN_PROGRESS_GROUP';
+const ORDER_FILTER_COMPLETED = 'COMPLETED_GROUP';
 const ORDER_DETAIL_VIEW_MODES = {
   VERTICAL: 'vertical',
   HORIZONTAL: 'horizontal',
@@ -122,13 +121,6 @@ const getOrderDetailSizeColumnWidth = (sizeColumns = DEFAULT_SIZE_COLUMNS) =>
   `${(38 / Math.max(1, sizeColumns.length)).toFixed(3)}%`;
 const getSizeColumnHeaderLabel = (sizeCode) =>
   String(sizeCode || '').toUpperCase() === 'FREE' ? 'F' : sizeCode;
-const ORDER_FILTER_DATE_PICKER_SLOT_PROPS = {
-  textField: {
-    sx: {
-      width: { xs: 132, sm: 140 },
-    },
-  },
-};
 const GENDER_OPTION_LABELS = {
   M: '남성',
   W: '여성',
@@ -233,54 +225,6 @@ const getOrderProgressStageLabel = (
   fallback = String(status || '').trim() || '-',
   languageCode
 ) => getOrderStatusLabelFromConst(status, fallback, languageCode);
-const normalizeFilterDate = (value) => {
-  const date = value instanceof Date ? new Date(value) : new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  date.setHours(0, 0, 0, 0);
-  return date;
-};
-const buildDateKey = (value) => {
-  const date = normalizeFilterDate(value);
-  if (!date) return '';
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-const normalizeDateKey = (value) => {
-  const trimmed = String(value || '').trim().slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : '';
-};
-const getMonthStart = (value) => {
-  const date = normalizeFilterDate(value) || new Date();
-  date.setDate(1);
-  return date;
-};
-const getMonthEnd = (value) => {
-  const date = getMonthStart(value);
-  date.setMonth(date.getMonth() + 1);
-  date.setDate(0);
-  return date;
-};
-const getOrderDueDateBounds = (orders = []) => {
-  let minDate = null;
-  let maxDate = null;
-
-  (Array.isArray(orders) ? orders : []).forEach((order) => {
-    const dueDate = normalizeFilterDate(order?.dueDate);
-    if (!dueDate) return;
-    if (!minDate || dueDate < minDate) minDate = dueDate;
-    if (!maxDate || dueDate > maxDate) maxDate = dueDate;
-  });
-
-  if (!minDate || !maxDate) return null;
-  return { minDate, maxDate };
-};
-const addMonths = (value, amount) => {
-  const date = getMonthStart(value);
-  date.setMonth(date.getMonth() + amount);
-  return getMonthStart(date);
-};
 const buildOrderTabLabel = (order, baseLabel = 'Order') => {
   const orderNumber = String(order?.orderNumber || order?.id || '').trim();
   return orderNumber ? `${baseLabel}: ${orderNumber}` : baseLabel;
@@ -1431,28 +1375,17 @@ const OrderList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [progressFilter, setProgressFilter] = useState(ORDER_FILTER_ALL);
-  const [dueDateFilterStart, setDueDateFilterStart] = useState(() => getMonthStart(new Date()));
-  const [dueDateFilterEnd, setDueDateFilterEnd] = useState(() => getMonthEnd(new Date()));
   const [formData, setFormData] = useState(buildInitialFormData);
   const [detailViewMode, setDetailViewMode] = useState(ORDER_DETAIL_VIEW_MODES.HORIZONTAL);
   const [deferredMergeRowIds, setDeferredMergeRowIds] = useState(() => new Set());
   const pendingStyleAdvanceFocusItemIdRef = useRef('');
   const [ordersLoaded, setOrdersLoaded] = useState(false);
   const detailInitKeyRef = useRef(null);
-  const hasTouchedDueDateFilterRef = useRef(false);
   const styleAddButtonRef = useRef(null);
   const styleInputRefs = useRef(new Map());
   const colorInputRefs = useRef(new Map());
   const genderInputRefs = useRef(new Map());
   const sizeInputRefs = useRef(new Map());
-  const dueDateFilterStartKey = useMemo(
-    () => buildDateKey(dueDateFilterStart),
-    [dueDateFilterStart]
-  );
-  const dueDateFilterEndKey = useMemo(
-    () => buildDateKey(dueDateFilterEnd),
-    [dueDateFilterEnd]
-  );
   const fixedSellerOrg = useMemo(() => {
     if (partyRoleHint !== 'MANUFACTURER') return null;
     const currentOrgId = toOrgId(currentOrgOption?.id);
@@ -1570,33 +1503,6 @@ const OrderList = () => {
       loadOrdersFromDb({ forceRefresh: true });
     });
   }, [activeOrgId, isDetailMode, loadOrdersFromDb]);
-
-  useEffect(() => {
-    hasTouchedDueDateFilterRef.current = false;
-    setDueDateFilterStart(getMonthStart(new Date()));
-    setDueDateFilterEnd(getMonthEnd(new Date()));
-  }, [activeOrgId]);
-
-  useEffect(() => {
-    if (!ordersLoaded || hasTouchedDueDateFilterRef.current) return;
-    if (!Array.isArray(orders) || orders.length === 0) return;
-
-    const hasOrderInCurrentRange = orders.some((order) => {
-      const dueDateKey = normalizeDateKey(order?.dueDate);
-      return (
-        dueDateKey &&
-        dueDateKey >= dueDateFilterStartKey &&
-        dueDateKey <= dueDateFilterEndKey
-      );
-    });
-    if (hasOrderInCurrentRange) return;
-
-    const bounds = getOrderDueDateBounds(orders);
-    if (!bounds) return;
-
-    setDueDateFilterStart(bounds.minDate);
-    setDueDateFilterEnd(bounds.maxDate);
-  }, [orders, ordersLoaded, dueDateFilterStartKey, dueDateFilterEndKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1757,20 +1663,18 @@ const OrderList = () => {
     const lowerTerm = deferredSearchTerm.toLowerCase();
     return orders.filter((order) => {
       const normalizedProgressStage = normalizeOrderProgressStage(order.status);
+      const isCompleted = [
+        ORDER_STATUS_KEYS.PRODUCTION_DONE,
+        ORDER_STATUS_KEYS.SHIPPED,
+        ORDER_STATUS_KEYS.SETTLED,
+      ].includes(normalizedProgressStage);
       const matchesProgress =
         progressFilter === ORDER_FILTER_ALL
           ? true
-          : progressFilter === ORDER_FILTER_EXCEPT_DONE
-            ? normalizedProgressStage !== ORDER_STATUS_KEYS.PRODUCTION_DONE
-          : progressFilter === ORDER_PROGRESS_STAGE_NONE
-            ? !normalizedProgressStage
-            : normalizedProgressStage === normalizeOrderProgressStage(progressFilter);
+          : progressFilter === ORDER_FILTER_COMPLETED
+            ? isCompleted
+            : !isCompleted;
       if (!matchesProgress) return false;
-
-      const dueDateKey = normalizeDateKey(order.dueDate);
-      if (dueDateKey && (dueDateKey < dueDateFilterStartKey || dueDateKey > dueDateFilterEndKey)) {
-        return false;
-      }
 
       if (!deferredSearchTerm) return true;
 
@@ -1788,8 +1692,6 @@ const OrderList = () => {
       );
     });
   }, [
-    dueDateFilterEndKey,
-    dueDateFilterStartKey,
     languageCode,
     orders,
     progressFilter,
@@ -1898,13 +1800,13 @@ const OrderList = () => {
         label: ORDER_STATUS_TEXT.filterAllLabel,
       },
       {
-        value: ORDER_FILTER_EXCEPT_DONE,
-        label: ORDER_STATUS_TEXT.filterExcludeDoneLabel,
+        value: ORDER_FILTER_IN_PROGRESS,
+        label: ORDER_STATUS_TEXT.filterInProgressLabel,
       },
-      ...ORDER_STATUS_OPTIONS.map((option) => ({
-        value: option.value,
-        label: option.label,
-      })),
+      {
+        value: ORDER_FILTER_COMPLETED,
+        label: ORDER_STATUS_TEXT.filterCompletedLabel,
+      },
     ],
     [languageCode]
   );
@@ -2390,49 +2292,6 @@ const OrderList = () => {
     (!isCurrentOrderManualModificationLocked && hasFormChanges);
   const handleAdd = () => {
     navigateToPath('/order/new', { label: orderPageText.newOrderTab });
-  };
-
-  const handleDueDateFilterStartChange = (value) => {
-    if (!value?.isValid?.()) return;
-    const nextStart = getMonthStart(value.toDate());
-    if (!nextStart) return;
-    hasTouchedDueDateFilterRef.current = true;
-    setDueDateFilterStart(nextStart);
-    setDueDateFilterEnd((prev) => {
-      const currentEnd = normalizeFilterDate(prev);
-      return currentEnd && currentEnd >= nextStart ? currentEnd : getMonthEnd(nextStart);
-    });
-  };
-
-  const handleDueDateFilterEndChange = (value) => {
-    if (!value?.isValid?.()) return;
-    const nextEnd = getMonthEnd(value.toDate());
-    if (!nextEnd) return;
-    hasTouchedDueDateFilterRef.current = true;
-    setDueDateFilterEnd(nextEnd);
-    setDueDateFilterStart((prev) => {
-      const currentStart = normalizeFilterDate(prev);
-      return currentStart && currentStart <= nextEnd ? currentStart : getMonthStart(nextEnd);
-    });
-  };
-
-  const handleDueDateFilterStartMonthChange = (value) => {
-    if (!value?.isValid?.()) return;
-    const nextMonthStart = getMonthStart(value.toDate());
-    hasTouchedDueDateFilterRef.current = true;
-    setDueDateFilterStart(nextMonthStart);
-  };
-
-  const handleDueDateFilterEndMonthChange = (value) => {
-    if (!value?.isValid?.()) return;
-    hasTouchedDueDateFilterRef.current = true;
-    setDueDateFilterEnd(getMonthEnd(value.toDate()));
-  };
-
-  const shiftDueDateFilterMonth = (amount) => {
-    hasTouchedDueDateFilterRef.current = true;
-    setDueDateFilterStart((previous) => addMonths(previous, amount));
-    setDueDateFilterEnd((previous) => getMonthEnd(addMonths(previous, amount)));
   };
 
   const handleEdit = (order) => {
@@ -3399,14 +3258,6 @@ const OrderList = () => {
                     ))}
                   </Select>
                 </FormControl>
-                <MonthRangeSelector
-                  startValue={dueDateFilterStart}
-                  endValue={dueDateFilterEnd}
-                  onStartChange={handleDueDateFilterStartMonthChange}
-                  onEndChange={handleDueDateFilterEndMonthChange}
-                  onShift={shiftDueDateFilterMonth}
-                  slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
-                />
               </Stack>
             )}
           />
