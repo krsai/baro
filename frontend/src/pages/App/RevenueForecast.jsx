@@ -171,7 +171,7 @@ const RevenueForecast = () => {
                   const record = forecastRecords.find((item) => item.id === value);
                   return record
                     ? forecastRecordLabel(record)
-                    : <Typography component="span" color="text.secondary">{text.selectForecast}</Typography>;
+                    : <Box component="span" sx={{ color: 'text.secondary', fontSize: 'inherit', lineHeight: 'inherit' }}>{text.selectForecast}</Box>;
                 }}
               >
                 <MenuItem value="" disabled>{text.selectForecast}</MenuItem>
