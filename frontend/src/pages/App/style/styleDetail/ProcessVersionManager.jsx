@@ -45,8 +45,6 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
     [versions]
   );
   const hasBoundaryChanges = boundarySignature(boundaries) !== boundarySignature(savedBoundaries);
-  const needsSnapshotRefresh = assignments.some((assignment) => assignment.needsSnapshotRefresh);
-
   const save = async () => {
     setBusy(true);
     try {
@@ -101,7 +99,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
           </Box>
         </Stack>
       </DialogContent>
-      <DialogActions><Button variant="contained" onClick={save} disabled={busy || assignments.length === 0 || (!hasBoundaryChanges && !needsSnapshotRefresh)}>적용 구간 저장</Button></DialogActions>
+      <DialogActions><Button variant="contained" onClick={save} disabled={busy || assignments.length === 0 || !hasBoundaryChanges}>저장</Button></DialogActions>
     </Dialog>
   );
 };

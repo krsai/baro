@@ -14128,16 +14128,36 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
       1,
     1
   );
+  const versionBucketQuantities = Array.from(
+    new Set(
+      liveProcesses
+        .flatMap((process: any) =>
+          normalizeStyleProcessStBuckets(process?.stBuckets).map(
+            (bucket) => bucket.bucketQuantity
+          )
+        )
+        .filter((quantity): quantity is number => Number(quantity) > 0)
+    )
+  ).sort((left, right) => left - right);
+  const timeBucketQuantities = ensureArray(style?.timeBucketQuantities)
+    .map((quantity) => toPositiveIntOrNull(quantity))
+    .filter((quantity): quantity is number => quantity !== null);
+  const effectiveBucketQuantities =
+    timeBucketQuantities.length > 0
+      ? timeBucketQuantities
+      : versionBucketQuantities;
   const incomingAssignmentStTotalSeconds = resolveStateAssignmentStTotalSeconds(
     assignment
   );
   const fallbackAssignmentStTotalSeconds =
     resolveAssignmentCardStTotalSecondsForSnapshot(card) ??
-    calculateAssignmentCardStTotalForOrderQuantity(
-      liveProcesses,
-      orderQuantity,
-      style?.timeBucketQuantities
-    );
+    (effectiveBucketQuantities.length > 0
+      ? calculateAssignmentCardStTotalForOrderQuantity(
+          liveProcesses,
+          orderQuantity,
+          effectiveBucketQuantities
+        )
+      : null);
   const assignmentStTotalSeconds =
     incomingAssignmentStTotalSeconds != null
       ? incomingAssignmentStTotalSeconds
@@ -14157,11 +14177,14 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
       const manualCtSeconds =
         resolveAssignmentCtSnapshotProcessSeconds(incomingProcess) ??
         resolveAssignmentCtSnapshotProcessSeconds(existingProcess);
-      const stSeedSeconds = resolveAssignmentCardStSeedSeconds({
-        process,
-        orderQuantity,
-        bucketQuantities: style?.timeBucketQuantities,
-      });
+      const stSeedSeconds =
+        effectiveBucketQuantities.length > 0
+          ? resolveAssignmentCardStSeedSeconds({
+              process,
+              orderQuantity,
+              bucketQuantities: effectiveBucketQuantities,
+            })
+          : null;
       const resolvedCtSeconds = manualCtSeconds ?? stSeedSeconds;
       if (resolvedCtSeconds === null || resolvedCtSeconds <= 0) {
         unresolvedProcessKeys.push(processKey);
