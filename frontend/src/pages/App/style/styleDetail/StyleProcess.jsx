@@ -8,11 +8,6 @@ import {
   Checkbox,
   Chip,
   Collapse,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
   IconButton,
   MenuItem,
   Paper,
@@ -172,17 +167,6 @@ const STYLE_PROCESS_MESSAGES = {
     ptTooltip: 'PT({quantity}): 항상 1,000장 주문 기준의 개당 예상 시간(초)입니다.',
     atTooltip: 'AT({quantity}): {quantity}장 주문 기준의 개당 실측 시간(초)입니다.',
     stTooltip: 'ST({quantity}): {quantity}장 주문은 해당 구간 기준의 개당 표준 시간(초)입니다.',
-    ptChangeDialogTitle: 'PT 변경 확인',
-    ptChangeMessage:
-      'PT가 변경되었습니다. 기존 ST(q)는 자동으로 변경되지 않습니다. 새 PT 값으로 전체 ST(q)를 일괄 업데이트하시겠습니까?',
-    ptChangeNoRecordsMessage:
-      'ST 유지를 선택하면 PT만 변경됩니다.',
-    ptChangeHasRecordsMessage:
-      '이미 작업기록이 연결된 공정입니다. ST 전체 업데이트는 기존/현재 계획 및 생산 지표에 영향을 줄 수 있습니다.',
-    ptChangeSummary: '{processName}: {previousPt} -> {nextPt}',
-    keepStOnPtChange: 'ST 유지',
-    updateAllStOnPtChange: 'ST 전체 업데이트',
-    updateAllStDisabled: '새 PT 값이 비어 있거나 0이면 ST(q)를 일괄 업데이트할 수 없습니다.',
     validatePart: '대상을 선택해주세요.',
     validateTarget: '대상을 선택해주세요.',
     validateAction: '동작을 선택해주세요.',
@@ -264,17 +248,6 @@ const STYLE_PROCESS_MESSAGES = {
     ptTooltip: 'PT({quantity}): per-piece expected seconds at 1,000 pcs.',
     atTooltip: 'AT({quantity}): per-piece actual seconds at order qty {quantity}.',
     stTooltip: 'ST({quantity}): per-piece standard seconds for the matched quantity bucket.',
-    ptChangeDialogTitle: 'Confirm PT Change',
-    ptChangeMessage:
-      'PT has changed. Existing ST(q) standards are not changed automatically. Update every ST(q) bucket to the new PT value?',
-    ptChangeNoRecordsMessage:
-      'Choose Keep ST to update PT only.',
-    ptChangeHasRecordsMessage:
-      'This process is already linked to work records. Updating every ST bucket can affect existing/current planning and production metrics.',
-    ptChangeSummary: '{processName}: {previousPt} -> {nextPt}',
-    keepStOnPtChange: 'Keep ST',
-    updateAllStOnPtChange: 'Update All ST',
-    updateAllStDisabled: 'ST(q) cannot be updated in bulk when the new PT value is empty or 0.',
     validatePart: 'Select a target.',
     validateTarget: 'Select a target.',
     validateAction: 'Select an action.',
@@ -356,17 +329,6 @@ const STYLE_PROCESS_MESSAGES = {
     ptTooltip: 'PT({quantity}): số giây dự kiến cho mỗi sản phẩm ở mức 1.000 sản phẩm.',
     atTooltip: 'AT({quantity}): số giây thực tế cho mỗi sản phẩm ở đơn hàng {quantity}.',
     stTooltip: 'ST({quantity}): số giây tiêu chuẩn cho mỗi sản phẩm theo nhóm số lượng phù hợp.',
-    ptChangeDialogTitle: 'Xác nhận doi PT',
-    ptChangeMessage:
-      'PT da thay doi. ST(q) hien co khong tu dong thay doi. Ban co muon cap nhat tat ca ST(q) theo PT moi khong?',
-    ptChangeNoRecordsMessage:
-      'Chon Giu ST de chi thay doi PT.',
-    ptChangeHasRecordsMessage:
-      'Công đoạn nay da co ban ghi lam viec. Cập nhật tat ca ST co the anh huong den chi so ke hoach va san xuat hien co.',
-    ptChangeSummary: '{processName}: {previousPt} -> {nextPt}',
-    keepStOnPtChange: 'Giu ST',
-    updateAllStOnPtChange: 'Cập nhật tat ca ST',
-    updateAllStDisabled: 'Không thể cap nhat hang loat ST(q) khi PT moi bi trong hoac bang 0.',
     validatePart: 'Hay chon doi tuong.',
     validateTarget: 'Hay chon doi tuong.',
     validateAction: 'Hay chon thao tac.',
@@ -476,14 +438,6 @@ const toDraftNumberText = (value) => {
   return String(roundToScale(parsed, 4));
 };
 
-const normalizeOptionalSecondsForCompare = (value) => {
-  const parsed = toOptionalSeconds(value);
-  return parsed == null ? null : roundToScale(parsed, 4);
-};
-
-const areOptionalSecondsEqual = (left, right) =>
-  normalizeOptionalSecondsForCompare(left) === normalizeOptionalSecondsForCompare(right);
-
 const hasProcessWorkRecords = (process) => {
   const count = Number(
     process?.workRecordCount ??
@@ -504,20 +458,6 @@ const buildPtDerivedStBuckets = (ptSeconds, bucketQuantities) => {
     setAt: null,
     updatedAt: null,
   }));
-};
-
-const buildProcessWithPtDerivedStUpdate = (process, bucketQuantities) => {
-  const normalized = normalizeProcess(process);
-  const nextStBuckets = buildPtDerivedStBuckets(normalized?.pt, bucketQuantities);
-  if (nextStBuckets.length === 0) return normalized;
-  return normalizeProcess({
-    ...normalized,
-    stBuckets: nextStBuckets,
-    stBucketWriteMode: 'MANUAL_EDIT',
-    stBucketUpdateQuantities: bucketQuantities,
-    ct: null,
-    stManual: false,
-  });
 };
 
 const formatSecondsOrDash = (value, languageCode = 'ko') => {
@@ -1638,7 +1578,6 @@ const StyleProcess = ({
   const [actionComposerOpen, setActionComposerOpen] = useState(false);
   const deferredAddDraft = useDeferredValue(addDraft);
   const [addError, setAddError] = useState('');
-  const [pendingPtChange, setPendingPtChange] = useState(null);
   const draftFormRef = React.useRef(null);
   const processRowRefs = React.useRef(new Map());
   const pendingReturnScrollInstanceIdRef = React.useRef(null);
@@ -2584,61 +2523,12 @@ const StyleProcess = ({
       bucketQuantities
     );
     if (isEditingRow) {
-      if (!areOptionalSecondsEqual(editingProcess?.pt, nextProcess?.pt)) {
-        const processName = resolveLocalizedProcessDisplayLabel(
-          nextProcess,
-          languageCode,
-          getStyleProcessMessage(languageCode, 'processColumn'),
-          compositionMasterLookupByKind
-        );
-        setPendingPtChange({
-          instanceId: editingInstanceId,
-          nextProcess,
-          hasWorkRecords: hasProcessWorkRecords(editingProcess),
-          processName,
-          previousPt: formatSecondsOrDash(editingProcess?.pt, languageCode),
-          nextPt: formatSecondsOrDash(nextProcess?.pt, languageCode),
-        });
-        return;
-      }
       applyEditedProcess(editingInstanceId, nextProcess);
     } else {
       onProcessesChange([...safeProcesses, nextProcess]);
       handleCancelAddRow();
     }
   };
-
-  const handleKeepPendingPtChange = () => {
-    if (!pendingPtChange) return;
-    applyEditedProcess(pendingPtChange.instanceId, pendingPtChange.nextProcess);
-    setPendingPtChange(null);
-  };
-
-  const handleUpdatePendingPtChangeSt = () => {
-    if (!pendingPtChange) return;
-    const nextProcess = buildProcessWithPtDerivedStUpdate(
-      pendingPtChange.nextProcess,
-      bucketQuantities
-    );
-    applyEditedProcess(pendingPtChange.instanceId, nextProcess);
-    setPendingPtChange(null);
-  };
-
-  const handleCancelPendingPtChange = () => {
-    setPendingPtChange(null);
-  };
-
-  const pendingPtDerivedStBuckets = useMemo(
-    () =>
-      pendingPtChange
-        ? buildPtDerivedStBuckets(
-            pendingPtChange.nextProcess?.pt,
-            bucketQuantities
-          )
-        : [],
-    [pendingPtChange]
-  );
-  const canUpdatePendingPtChangeSt = pendingPtDerivedStBuckets.length > 0;
 
   const handleRemoveProcess = useCallback((instanceId) => {
     onProcessesChange(safeProcesses.filter((process) => process.instanceId !== instanceId));
@@ -2698,6 +2588,17 @@ const StyleProcess = ({
         bucketQuantities
       )
     : null;
+  const resolvedDraftForChangeDetection = isDraftOpen
+    ? resolveDraftWithPendingSelections(addDraft)
+    : null;
+  const originalDraftForChangeDetection = isEditingRow && editingProcess
+    ? buildDraftFromProcess(editingProcess, displayOrderQuantity, languageCode)
+    : createEmptyDraft();
+  const isDraftChanged = Boolean(
+    isDraftOpen &&
+    JSON.stringify(resolvedDraftForChangeDetection) !==
+      JSON.stringify(originalDraftForChangeDetection)
+  );
   const isSelectingTargetSpec = Boolean(targetCandidate);
   const targetComposerOptions = isSelectingTargetSpec
     ? filteredTargetSpecOptionsWithNone
@@ -3514,7 +3415,7 @@ const StyleProcess = ({
                 <Button variant="outlined" onClick={handleCancelAddRow}>
                   {getStyleProcessMessage(languageCode, 'cancel')}
                 </Button>
-                <SaveButton onClick={handleSaveAddRow}>
+                <SaveButton onClick={handleSaveAddRow} disabled={!isDraftChanged}>
                   {getStyleProcessMessage(languageCode, isEditingRow ? 'save' : 'add')}
                 </SaveButton>
               </Stack>
@@ -3664,58 +3565,6 @@ const StyleProcess = ({
           </DragDropContext>
         </TableContainer>
       </Paper>
-      <Dialog
-        open={Boolean(pendingPtChange)}
-        onClose={handleCancelPendingPtChange}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          {getStyleProcessMessage(languageCode, 'ptChangeDialogTitle')}
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText sx={{ mb: 1.5 }}>
-            {getStyleProcessMessage(languageCode, 'ptChangeMessage')}
-          </DialogContentText>
-          <DialogContentText sx={{ mb: 1.5 }}>
-            {pendingPtChange?.hasWorkRecords
-              ? getStyleProcessMessage(languageCode, 'ptChangeHasRecordsMessage')
-              : getStyleProcessMessage(languageCode, 'ptChangeNoRecordsMessage')}
-          </DialogContentText>
-          {pendingPtChange ? (
-            <Typography variant="body2" sx={{ fontWeight: 700 }}>
-              {getStyleProcessMessage(languageCode, 'ptChangeSummary', {
-                processName: pendingPtChange.processName,
-                previousPt: pendingPtChange.previousPt,
-                nextPt: pendingPtChange.nextPt,
-              })}
-            </Typography>
-          ) : null}
-        </DialogContent>
-        <DialogActions>
-          <Tooltip
-            title={
-              pendingPtChange && !canUpdatePendingPtChangeSt
-                ? getStyleProcessMessage(languageCode, 'updateAllStDisabled')
-                : ''
-            }
-          >
-            <span>
-              <Button
-                color="warning"
-                variant="outlined"
-                disabled={!pendingPtChange || !canUpdatePendingPtChangeSt}
-                onClick={handleUpdatePendingPtChangeSt}
-              >
-                {getStyleProcessMessage(languageCode, 'updateAllStOnPtChange')}
-              </Button>
-            </span>
-          </Tooltip>
-          <Button variant="contained" onClick={handleKeepPendingPtChange}>
-            {getStyleProcessMessage(languageCode, 'keepStOnPtChange')}
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 };
