@@ -117,14 +117,22 @@ const LABELS = {
   zeroCoverageHint: '직전 작업기록이 없으면 시작일을 직접 입력해 주세요.',
   coverageValidation: '작업 시작일은 종료일보다 늦을 수 없습니다.',
   assignmentLinkRequired: '배정카드 연결이 없는 작업은 저장할 수 없습니다.',
+  currencyUnit: '동',
+  outsourceNamePrefix: '외주',
+  outsourceUnitPriceLabel: '외주 개당 단가',
+  outsourceUnitPricePlaceholder: '개당 단가',
+  addOutsourcePartnerOption: '＋ 외주 업체',
+  outsourcePartnersLoadError: '외주 업체 목록을 불러오지 못했습니다.',
 };
 const WORK_DETAIL_LABELS = {
   ko: LABELS,
   en: {
     title: 'Work Log Detail', workDate: 'Work End Date', coverageStartDate: 'Work Start Date', factory: 'Factory', autoFactory: 'Factory (Auto-selected)', line: 'Line', wagePerSecond: 'Rate per Second', wagePerSecondUnit: 'VND/sec', note: 'Note', notePlaceholder: 'Enter a note.', autoNote: 'Automatic Note', searchPlaceholder: 'Search worker/style/process', rowNumber: 'Row', worker: 'Worker', workerPlaceholder: 'Select a worker.', style: 'Style', stylePlaceholder: 'Select a style.', noStylesAvailable: 'No styles available.', selectStyleFirst: 'Select a style first.', assignmentException: 'Exception', assignmentOtherLine: 'Assigned to Another Line', orderNo: 'Order No.', orderQuantity: 'Order Quantity', assignmentQuantityExceeded: 'Order quantity exceeded', selectWorkerFirst: 'Select a worker first.', process: 'Process', processPlaceholder: 'Select a process.', noProcessesAvailable: 'No processes available.', ctSeconds: 'CT', quantity: 'Produced Quantity', quantityCtTotal: 'Quantity × CT', recordCount: 'Work Rows', totalQuantity: 'Total Produced', totalQuantityCt: 'Total Quantity × CT', moveUp: 'Move Up', moveDown: 'Move Down', addBelow: 'Add Worker Below', remove: 'Remove Worker', entryMode: 'Entry Mode', entryModeDaily: 'Daily Entry', entryModePeriodSummary: 'Period Entry', coverageSuggestionPrefix: 'The previous work log ended on', coverageSuggestionSuffix: 'The start date was suggested automatically.', firstLineCoverage: 'This is the first work log for this line. Enter the start date.', zeroCoverageHint: 'If there is no previous work log, enter the start date.', coverageValidation: 'The work start date cannot be later than the end date.', assignmentLinkRequired: 'Work without an assignment card cannot be saved.',
+    currencyUnit: 'VND', outsourceNamePrefix: 'Outsourced', outsourceUnitPriceLabel: 'Outsource Unit Price', outsourceUnitPricePlaceholder: 'Unit price', addOutsourcePartnerOption: '＋ Add Partner', outsourcePartnersLoadError: 'Failed to load outsourcing partners.',
   },
   vi: {
     title: 'Chi tiết nhật ký công việc', workDate: 'Ngày kết thúc công việc', coverageStartDate: 'Ngày bắt đầu công việc', factory: 'Nhà máy', autoFactory: 'Nhà máy (tự động chọn)', line: 'Chuyền', wagePerSecond: 'Đơn giá mỗi giây', wagePerSecondUnit: 'đồng/giây', note: 'Ghi chú', notePlaceholder: 'Nhập ghi chú.', autoNote: 'Ghi chú tự động', searchPlaceholder: 'Tìm nhân viên/style/công đoạn', rowNumber: 'Dòng', worker: 'Nhân viên', workerPlaceholder: 'Chọn nhân viên.', style: 'Style', stylePlaceholder: 'Chọn style.', noStylesAvailable: 'Không có style để chọn.', selectStyleFirst: 'Vui lòng chọn style trước.', assignmentException: 'Ngoại lệ', assignmentOtherLine: 'Được phân công ở chuyền khác', orderNo: 'Số đơn hàng', orderQuantity: 'Số lượng đơn hàng', assignmentQuantityExceeded: 'Vượt số lượng đơn hàng', selectWorkerFirst: 'Vui lòng chọn nhân viên trước.', process: 'Công đoạn', processPlaceholder: 'Chọn công đoạn.', noProcessesAvailable: 'Không có công đoạn để chọn.', ctSeconds: 'CT', quantity: 'Sản lượng', quantityCtTotal: 'Số lượng × CT', recordCount: 'Dòng công việc', totalQuantity: 'Tổng sản lượng', totalQuantityCt: 'Tổng số lượng × CT', moveUp: 'Di chuyển lên', moveDown: 'Di chuyển xuống', addBelow: 'Thêm nhân viên bên dưới', remove: 'Xóa nhân viên', entryMode: 'Cách nhập', entryModeDaily: 'Nhập theo ngày', entryModePeriodSummary: 'Nhập theo khoảng thời gian', coverageSuggestionPrefix: 'Nhật ký công việc trước kết thúc ngày', coverageSuggestionSuffix: 'Ngày bắt đầu đã được đề xuất tự động.', firstLineCoverage: 'Đây là nhật ký công việc đầu tiên của chuyền này. Vui lòng nhập ngày bắt đầu.', zeroCoverageHint: 'Nếu không có nhật ký trước đó, vui lòng nhập ngày bắt đầu.', coverageValidation: 'Ngày bắt đầu không được muộn hơn ngày kết thúc.', assignmentLinkRequired: 'Không thể lưu công việc chưa liên kết với thẻ phân công.',
+    currencyUnit: 'đồng', outsourceNamePrefix: 'Gia công ngoài', outsourceUnitPriceLabel: 'Đơn giá gia công', outsourceUnitPricePlaceholder: 'Đơn giá mỗi cái', addOutsourcePartnerOption: '＋ Thêm đối tác', outsourcePartnersLoadError: 'Không thể tải danh sách đối tác gia công.',
   },
 };
 const WORK_DETAIL_MESSAGES = {
@@ -254,6 +262,11 @@ const formatCount = (value) =>
     fallback: '0',
     maximumFractionDigits: 0,
   });
+const formatCurrencyAmount = (value, languageCode) => {
+  const labels = WORK_DETAIL_LABELS[languageCode] || WORK_DETAIL_LABELS.en;
+  const separator = languageCode === 'ko' ? '' : ' ';
+  return `${formatCount(value)}${separator}${labels.currencyUnit}`;
+};
 const resolveRowCtDisplayMeta = ({ row, rowProcess, selectedProcessOption, languageCode }) => {
   const process = selectedProcessOption?.process || rowProcess || row?.process || null;
   const hasProcess = Boolean(process);
@@ -276,11 +289,11 @@ const resolveRowCtDisplayMeta = ({ row, rowProcess, selectedProcessOption, langu
     quantity,
     totalCtSeconds: isOutsourced ? 0 : totalCtSeconds,
     ctValue: isOutsourced
-      ? outsourceUnitPrice == null ? '-' : `${formatCount(outsourceUnitPrice)}동`
+      ? outsourceUnitPrice == null ? '-' : formatCurrencyAmount(outsourceUnitPrice, languageCode)
       : hasProcess ? formatSeconds(ctSeconds, languageCode) : '-',
     totalCtValue: isOutsourced
       ? outsourceUnitPrice != null && quantity > 0
-        ? `${formatCount(outsourceUnitPrice * quantity)}동`
+        ? formatCurrencyAmount(outsourceUnitPrice * quantity, languageCode)
         : '-'
       : hasProcess && quantity > 0 ? formatSeconds(totalCtSeconds, languageCode) : '-',
   };
@@ -786,7 +799,11 @@ const matchByIdOrName = (options = [], value, idKey = 'id', labelKey = 'name') =
   }
   return null;
 };
-const buildHydratedRows = ({ records, workers, assignments }) => {
+const buildOutsourceWorkerName = (vendorName, languageCode) => {
+  const labels = WORK_DETAIL_LABELS[languageCode] || WORK_DETAIL_LABELS.en;
+  return `${labels.outsourceNamePrefix} · ${toText(vendorName)}`;
+};
+const buildHydratedRows = ({ records, workers, assignments, languageCode }) => {
   const safeRecords = Array.isArray(records) ? records : [];
   return safeRecords.map((record, index) => {
     const matchedWorker = record?.isOutsourced === true
@@ -795,7 +812,7 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
             ? `partner:${record.outsourcingPartnerId}`
             : `outsource:${toText(record?.outsourceVendorName)}`,
           partnerId: toPositiveIdOrNull(record?.outsourcingPartnerId),
-          name: `외주 · ${toText(record?.outsourceVendorName)}`,
+          name: buildOutsourceWorkerName(record?.outsourceVendorName, languageCode),
           vendorName: toText(record?.outsourceVendorName),
           isOutsourced: true,
         }
@@ -1302,7 +1319,7 @@ const WorkDetail = ({
       })
       .catch((error) => {
         if (error?.name !== 'AbortError' && Number(error?.status) !== 499) {
-          setFormError(error?.message || '외주 업체 목록을 불러오지 못했습니다.');
+          setFormError(error?.message || LABELS.outsourcePartnersLoadError);
         }
       });
     return () => abortController.abort();
@@ -1330,6 +1347,7 @@ const WorkDetail = ({
             records: initialLog?.records,
             workers: prefetchedWorkers,
             assignments: prefetchedCtAssignments,
+            languageCode,
           })
         : []
     );
@@ -1347,6 +1365,7 @@ const WorkDetail = ({
     initialLog?.note,
     initialLog?.records,
     initialLog?.workDate,
+    languageCode,
     prefetchedAllAssignments,
     prefetchedAssignments,
     prefetchedCtAssignments,
@@ -1580,10 +1599,11 @@ const WorkDetail = ({
       records: initialLog?.records,
       workers: lineWorkers,
       assignments: ctAssignmentPool,
+      languageCode,
     });
     setRows(hydratedRows.length > 0 ? hydratedRows : []);
     initialRowsHydratedRef.current = true;
-  }, [ctAssignmentPool, hasInitialRecords, initialLog, lineWorkers, selectedFactoryId, selectedLineId]);
+  }, [ctAssignmentPool, hasInitialRecords, initialLog, languageCode, lineWorkers, selectedFactoryId, selectedLineId]);
 
   useEffect(() => {
     if (initialLog?.id && hasInitialRecords) return;
@@ -2068,16 +2088,16 @@ const WorkDetail = ({
         ...outsourcingPartners.map((partner) => ({
           id: `partner:${partner.id}`,
           partnerId: partner.id,
-          name: `외주 · ${partner.name}`,
+          name: buildOutsourceWorkerName(partner.name, languageCode),
           vendorName: partner.name,
           isOutsourced: true,
         })),
-        { id: '__add_outsource__', name: '＋ 외주 업체', isOutsourceAction: true },
+        { id: '__add_outsource__', name: LABELS.addOutsourcePartnerOption, isOutsourceAction: true },
       ],
       row?.worker,
       (item) => item?.id || item?.name
     ),
-    [lineWorkers, outsourcingPartners]
+    [LABELS.addOutsourcePartnerOption, languageCode, lineWorkers, outsourcingPartners]
   );
   const resolveStyleOptions = useCallback(
     (row) => {
@@ -2502,11 +2522,11 @@ const WorkDetail = ({
     handleWorkerChange(rowId, {
       id: `partner:${partner.id}`,
       partnerId: partner.id,
-      name: `외주 · ${partner.name}`,
+      name: buildOutsourceWorkerName(partner.name, languageCode),
       vendorName: partner.name,
       isOutsourced: true,
     });
-  }, [handleWorkerChange, outsourcePartnerRowId]);
+  }, [handleWorkerChange, languageCode, outsourcePartnerRowId]);
   const handleWorkerInputChange = useCallback((rowId, row, nextInputValue, reason) => {
     if (reason !== 'input') return;
     const selectedLabel = toText(row?.worker?.name);
@@ -3388,7 +3408,7 @@ const WorkDetail = ({
                           />
                           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                             <TextField
-                              label={row?.worker?.isOutsourced ? '외주 개당 단가' : LABELS.ctSeconds}
+                              label={row?.worker?.isOutsourced ? LABELS.outsourceUnitPriceLabel : LABELS.ctSeconds}
                               size="small"
                               type={row?.worker?.isOutsourced ? 'number' : undefined}
                               value={row?.worker?.isOutsourced ? (row?.outsourceUnitPrice ?? '') : ctValue}
@@ -3802,9 +3822,9 @@ const WorkDetail = ({
                                 inputProps={buildEditableFieldInputProps(
                                   row.id,
                                   'outsourceUnitPrice',
-                                  { min: 0, 'aria-label': '외주 개당 단가' }
+                                  { min: 0, 'aria-label': LABELS.outsourceUnitPriceLabel }
                                 )}
-                                placeholder="개당 단가"
+                                placeholder={LABELS.outsourceUnitPricePlaceholder}
                                 color="warning"
                                 fullWidth
                                 hiddenLabel
