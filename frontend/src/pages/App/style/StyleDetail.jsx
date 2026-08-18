@@ -2,6 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Stack,
   ToggleButton,
   ToggleButtonGroup,
@@ -25,6 +29,7 @@ import { RequestScopeBoundary } from '../../../context/RequestScopeContext';
 import { buildQueryString } from '../../../utils/apiClient';
 import {
   createStyle as createStyleOnApi,
+  confirmStyleProcessVersion,
   fetchStyleById,
   updateStyle as updateStyleOnApi,
 } from '../../../utils/styleApi';
@@ -197,6 +202,8 @@ const StyleDetail = () => {
   const [loadingStyle, setLoadingStyle] = useState(true);
   const [processMasterReloadKey, setProcessMasterReloadKey] = useState(0);
   const [versionManagerOpen, setVersionManagerOpen] = useState(false);
+  const [versionConfirmOpen, setVersionConfirmOpen] = useState(false);
+  const [confirmingVersion, setConfirmingVersion] = useState(false);
 
   const resolvedOwnerOrgId = useMemo(
     () =>
@@ -422,10 +429,27 @@ const StyleDetail = () => {
       setStyleFormData(normalizedSaved);
       setProcessMasterReloadKey((prev) => prev + 1);
       if (processesChanged) {
-        showNotification('공정 변경이 저장되었습니다. 공정 버전에서 새 버전을 확정해 주세요.', 'info');
+        setVersionConfirmOpen(true);
       }
     } catch (error) {
       showNotification(error?.message || getStyleDetailMessage(languageCode, 'saveError'), 'error');
+    }
+  };
+
+  const handleConfirmSavedProcesses = async () => {
+    setConfirmingVersion(true);
+    try {
+      await confirmStyleProcessVersion(styleId, {
+        orgId: activeOrgId,
+        ownerOrgId: resolvedOwnerOrgId,
+      });
+      setVersionConfirmOpen(false);
+      setVersionManagerOpen(true);
+      showNotification('저장한 공정을 새 버전으로 확정했습니다.', 'success');
+    } catch (error) {
+      showNotification(error?.message || '공정 버전을 확정하지 못했습니다.', 'error');
+    } finally {
+      setConfirmingVersion(false);
     }
   };
 
@@ -435,15 +459,6 @@ const StyleDetail = () => {
       titleActions={(
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <LastUpdaterLabel />
-          {!isNew && canViewProcessInfo ? (
-            <Button
-              variant="outlined"
-              onClick={() => setVersionManagerOpen(true)}
-              disabled={loadingStyle || isDirty}
-            >
-              공정 버전
-            </Button>
-          ) : null}
           <SaveButton
             onClick={handleSave}
             disabled={loadingStyle || (!isNew && !isDirty)}
@@ -506,6 +521,9 @@ const StyleDetail = () => {
                 <StyleProcess
                   processes={styleFormData.processes}
                   onProcessesChange={handleProcessesChange}
+                  onOpenProcessVersions={() => setVersionManagerOpen(true)}
+                  canManageVersions={!isNew}
+                  versionManagementDisabled={isDirty}
                   optionsReloadKey={processMasterReloadKey}
                   bucketQuantities={styleFormData.timeBucketQuantities}
                 />
@@ -543,6 +561,17 @@ const StyleDetail = () => {
             ownerOrgId={resolvedOwnerOrgId}
             notify={showNotification}
           />
+
+          <Dialog open={versionConfirmOpen} onClose={confirmingVersion ? undefined : () => setVersionConfirmOpen(false)} maxWidth="xs" fullWidth>
+            <DialogTitle>공정 버전 확정</DialogTitle>
+            <DialogContent>
+              <Typography>공정 입력이 완료되었나요? 저장한 공정을 새 버전으로 확정할 수 있습니다.</Typography>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setVersionConfirmOpen(false)} disabled={confirmingVersion}>나중에</Button>
+              <Button variant="contained" onClick={handleConfirmSavedProcesses} disabled={confirmingVersion}>버전으로 확정</Button>
+            </DialogActions>
+          </Dialog>
 
         </>
       )}

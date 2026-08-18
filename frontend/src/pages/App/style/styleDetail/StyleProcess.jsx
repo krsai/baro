@@ -1310,6 +1310,9 @@ const collectProcessCompositionOptionsFromProcesses = (
 const StyleProcess = ({
   processes = [],
   onProcessesChange,
+  onOpenProcessVersions,
+  canManageVersions = false,
+  versionManagementDisabled = false,
   optionsReloadKey = 0,
   bucketQuantities = ST_STANDARD_BUCKETS,
 }) => {
@@ -2947,21 +2950,27 @@ const StyleProcess = ({
             />
           </Tooltip>
         </Stack>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleStartAddRow}
-          disabled={isDraftOpen || !canStartAdd}
-          sx={{
-            minWidth: 108,
-            height: 36,
-            px: 1.5,
-            boxShadow: 'none',
-            borderRadius: 1.5,
-          }}
-        >
-          {getStyleProcessMessage(languageCode, 'addRow')}
-        </Button>
+        <Stack direction="row" spacing={1}>
+          {canManageVersions ? (
+            <Button
+              variant="outlined"
+              onClick={onOpenProcessVersions}
+              disabled={isDraftOpen || versionManagementDisabled}
+              sx={{ minWidth: 108, height: 36, px: 1.5, boxShadow: 'none', borderRadius: 1.5 }}
+            >
+              공정 버전
+            </Button>
+          ) : null}
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleStartAddRow}
+            disabled={isDraftOpen || !canStartAdd}
+            sx={{ minWidth: 108, height: 36, px: 1.5, boxShadow: 'none', borderRadius: 1.5 }}
+          >
+            {getStyleProcessMessage(languageCode, 'addRow')}
+          </Button>
+        </Stack>
       </Stack>
 
       {isLoadingOptions && (

@@ -61,9 +61,9 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
           <Box sx={{ width: { xs: '100%', md: 260 }, flexShrink: 0 }}>
             <Stack spacing={.75}>
               {versions.map((version) => (
-                <Box key={version.id} draggable={version.versionNumber !== 1} onDragStart={(event) => event.dataTransfer.setData('versionId', String(version.id))}
-                  sx={{ display: 'flex', alignItems: 'center', minHeight: 48, px: 1, border: 1, borderColor: 'divider', borderRadius: 1.25, cursor: version.versionNumber === 1 ? 'default' : 'grab', bgcolor: 'background.paper', '&:active': { cursor: version.versionNumber === 1 ? 'default' : 'grabbing' } }}>
-                  <DragIndicatorIcon fontSize="small" sx={{ mr: 1, color: version.versionNumber === 1 ? 'action.disabled' : 'text.secondary' }} />
+                <Box key={version.id} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(version.id)); }}
+                  sx={{ display: 'flex', alignItems: 'center', minHeight: 48, px: 1, border: 1, borderColor: 'divider', borderRadius: 1.25, cursor: 'grab', bgcolor: 'background.paper', '&:active': { cursor: 'grabbing' } }}>
+                  <DragIndicatorIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
                   <Typography fontWeight={700} sx={{ flex: 1 }}>{version.name}</Typography>
                   <Chip size="small" variant="outlined" label={`${version.processCount}개`} />
                 </Box>
@@ -74,9 +74,14 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Box sx={{ position: 'relative', '&::before': assignments.length > 1 ? { content: '""', position: 'absolute', left: 11, top: 18, bottom: 18, width: 2, bgcolor: 'divider' } : undefined }}>
               {assignmentsWithVersion.map((assignment) => (
-                <Box key={assignment.assignmentPlanId} onDragOver={(event) => { event.preventDefault(); event.currentTarget.dataset.dragover = 'true'; }} onDragLeave={(event) => { delete event.currentTarget.dataset.dragover; }} onDrop={(event) => {
+                <Box key={assignment.assignmentPlanId} onDragEnter={(event) => { event.preventDefault(); event.currentTarget.dataset.dragover = 'true'; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) delete event.currentTarget.dataset.dragover; }} onDrop={(event) => {
                   delete event.currentTarget.dataset.dragover;
-                  const versionId = Number(event.dataTransfer.getData('versionId'));
+                  const versionId = Number(event.dataTransfer.getData('text/plain'));
+                  const version = versions.find((item) => item.id === versionId);
+                  if (version?.versionNumber === 1 && assignment.assignmentPlanId !== assignments[0]?.assignmentPlanId) {
+                    notify('Ver.1은 가장 오래된 첫 배정부터 적용됩니다.', 'info');
+                    return;
+                  }
                   if (versionId) setBoundaries((current) => ({ ...current, [versionId]: assignment.assignmentPlanId }));
                 }} sx={{ position: 'relative', display: 'flex', alignItems: 'center', minHeight: 42, pl: 3.5, pr: .75, borderRadius: 1, transition: 'background-color .15s', '&[data-dragover="true"]': { bgcolor: 'action.hover' } }}>
                   <Box sx={{ position: 'absolute', zIndex: 1, left: Object.values(boundaries).includes(assignment.assignmentPlanId) ? 4 : 6, width: Object.values(boundaries).includes(assignment.assignmentPlanId) ? 16 : 12, height: Object.values(boundaries).includes(assignment.assignmentPlanId) ? 16 : 12, borderRadius: '50%', bgcolor: Object.values(boundaries).includes(assignment.assignmentPlanId) ? 'primary.main' : 'background.paper', border: 2, borderColor: Object.values(boundaries).includes(assignment.assignmentPlanId) ? 'primary.main' : 'text.disabled', boxShadow: Object.values(boundaries).includes(assignment.assignmentPlanId) ? '0 0 0 3px rgba(25, 118, 210, .14)' : 'none' }} />

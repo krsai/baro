@@ -30598,6 +30598,25 @@ app.post("/styles", async (req, res) => {
         processes: syncedProcesses,
         db: tx,
       });
+      if (syncedProcesses.length > 0) {
+        const initialProcessMirror = await loadStyleProcessMirrorMapForStyleIds(
+          [createdStyle.id],
+          { processOrgId: organization.id, db: tx }
+        );
+        await tx.styleProcessVersion.create({
+          data: {
+            orgId: organization.id,
+            styleId: createdStyle.id,
+            versionNumber: 1,
+            confirmedDate: todayDateKey(),
+            processSnapshot: normalizeStyleProcesses(
+              initialProcessMirror.get(createdStyle.id) ?? []
+            ) as Prisma.InputJsonValue,
+            confirmedBy:
+              resolveOptionalString(getRequesterEmail(req), "SYSTEM") ?? "SYSTEM",
+          },
+        });
+      }
     }
     return tx.style.findUniqueOrThrow({
       where: { id: createdStyle.id },
@@ -30870,7 +30889,20 @@ app.post("/styles/:styleId/process-versions/confirm", async (req, res) => {
     ownerOrgId: parseStyleOwnerOrgIdQuery(req.query.ownerOrgId),
   });
   if (!style) return res.status(404).json({ ok: false, error: "style not found" });
-  await ensureInitialStyleProcessVersion({ orgId: organization.id, styleId: style.id });
+  const existingInitial = await prisma.styleProcessVersion.findFirst({
+    where: { orgId: organization.id, styleId: style.id },
+    orderBy: { versionNumber: "asc" },
+  });
+  if (!existingInitial) {
+    const initial = await ensureInitialStyleProcessVersion({
+      orgId: organization.id,
+      styleId: style.id,
+    });
+    return res.json({
+      ...initial,
+      name: `Ver.${initial.versionNumber} · ${initial.confirmedDate}`,
+    });
+  }
   const latest = await prisma.styleProcessVersion.findFirst({ where: { orgId: organization.id, styleId: style.id }, orderBy: { versionNumber: "desc" } });
   const mirror = await loadStyleProcessMirrorMapForStyleIds([style.id], { processOrgId: organization.id });
   const snapshot = normalizeStyleProcesses(mirror.get(style.id) ?? []);
