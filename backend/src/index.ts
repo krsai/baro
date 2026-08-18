@@ -30902,7 +30902,13 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
   if (plans.length && starts.get(firstVersion.id) !== plans[0].id) throw createHttpError(400, "Ver.1 must start at the oldest assignment");
   const planIndex = new Map(plans.map((plan, index) => [plan.id, index]));
   const boundaries = versions.map((version) => ({ version, index: planIndex.get(starts.get(version.id) ?? -1) })).filter((row) => row.index !== undefined) as any[];
-  if (boundaries.some((row, index) => index > 0 && row.index <= boundaries[index - 1].index)) throw createHttpError(400, "version boundaries must follow version order");
+  const hasInvalidBoundaryOrder = boundaries.some((row, index) => {
+    const previous = boundaries[index - 1];
+    return previous !== undefined && row.index <= previous.index;
+  });
+  if (hasInvalidBoundaryOrder) {
+    throw createHttpError(400, "version boundaries must follow version order");
+  }
   const updatedAt = new Date().toISOString();
   const updatedBy = resolveOptionalString(employee?.email ?? getRequesterEmail(req), "SYSTEM") ?? "SYSTEM";
   const updates = plans.flatMap((plan, index) => {
