@@ -30598,25 +30598,6 @@ app.post("/styles", async (req, res) => {
         processes: syncedProcesses,
         db: tx,
       });
-      if (syncedProcesses.length > 0) {
-        const initialProcessMirror = await loadStyleProcessMirrorMapForStyleIds(
-          [createdStyle.id],
-          { processOrgId: organization.id, db: tx }
-        );
-        await tx.styleProcessVersion.create({
-          data: {
-            orgId: organization.id,
-            styleId: createdStyle.id,
-            versionNumber: 1,
-            confirmedDate: todayDateKey(),
-            processSnapshot: normalizeStyleProcesses(
-              initialProcessMirror.get(createdStyle.id) ?? []
-            ) as Prisma.InputJsonValue,
-            confirmedBy:
-              resolveOptionalString(getRequesterEmail(req), "SYSTEM") ?? "SYSTEM",
-          },
-        });
-      }
     }
     return tx.style.findUniqueOrThrow({
       where: { id: createdStyle.id },
@@ -30861,8 +30842,7 @@ app.get("/styles/:styleId/process-versions", async (req, res) => {
     ownerOrgId: parseStyleOwnerOrgIdQuery(req.query.ownerOrgId),
   });
   if (!style) return res.status(404).json({ ok: false, error: "style not found" });
-  await ensureInitialStyleProcessVersion({ orgId: accessContext.organization.id, styleId: style.id });
-  const [versions, assignments] = await Promise.all([
+  const [versions, assignments, processMirror] = await Promise.all([
     prisma.styleProcessVersion.findMany({ where: { orgId: accessContext.organization.id, styleId: style.id }, orderBy: { versionNumber: "asc" } }),
     prisma.assignmentPlan.findMany({
       where: { orgId: accessContext.organization.id, styleId: style.id },
@@ -30870,12 +30850,22 @@ app.get("/styles/:styleId/process-versions", async (req, res) => {
         workOrder: { select: { orderNumber: true } }, workRecords: { select: { id: true } } },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     }),
+    loadStyleProcessMirrorMapForStyleIds([style.id], {
+      processOrgId: accessContext.organization.id,
+    }),
   ]);
+  const liveProcesses = normalizeStyleProcesses(processMirror.get(style.id) ?? []);
+  const latestVersion = versions[versions.length - 1];
+  const hasUnconfirmedChanges = latestVersion
+    ? JSON.stringify(normalizeStyleProcesses(latestVersion.processSnapshot)) !==
+      JSON.stringify(liveProcesses)
+    : liveProcesses.length > 0;
   res.json({
     versions: versions.map((version) => ({ ...version, name: `Ver.${version.versionNumber} · ${version.confirmedDate}`, processCount: ensureArray(version.processSnapshot).length })),
     assignments: assignments.map((plan) => ({ assignmentPlanId: plan.id, externalId: plan.externalId,
       orderNo: plan.workOrder?.orderNumber ?? "", assignmentQuantity: plan.assignmentQuantity ?? 0,
       assignedAt: plan.createdAt, workRecordCount: plan.workRecords.length, versionId: plan.styleProcessVersionId })),
+    hasUnconfirmedChanges,
   });
 });
 

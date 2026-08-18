@@ -30,6 +30,7 @@ import { buildQueryString } from '../../../utils/apiClient';
 import {
   createStyle as createStyleOnApi,
   confirmStyleProcessVersion,
+  fetchStyleProcessVersions,
   fetchStyleById,
   updateStyle as updateStyleOnApi,
 } from '../../../utils/styleApi';
@@ -202,8 +203,8 @@ const StyleDetail = () => {
   const [loadingStyle, setLoadingStyle] = useState(true);
   const [processMasterReloadKey, setProcessMasterReloadKey] = useState(0);
   const [versionManagerOpen, setVersionManagerOpen] = useState(false);
-  const [versionConfirmOpen, setVersionConfirmOpen] = useState(false);
-  const [confirmingVersion, setConfirmingVersion] = useState(false);
+  const [saveChoiceOpen, setSaveChoiceOpen] = useState(false);
+  const [hasUnconfirmedProcessDraft, setHasUnconfirmedProcessDraft] = useState(false);
 
   const resolvedOwnerOrgId = useMemo(
     () =>
@@ -282,6 +283,15 @@ const StyleDetail = () => {
         if (!active) return;
         setOriginalData(normalized);
         setStyleFormData(normalized);
+        try {
+          const versionData = await fetchStyleProcessVersions(styleId, {
+            orgId: activeOrgId,
+            ownerOrgId: ownerOrgIdFromQuery,
+          });
+          if (active) setHasUnconfirmedProcessDraft(versionData.hasUnconfirmedChanges);
+        } catch {
+          if (active) setHasUnconfirmedProcessDraft(false);
+        }
       } catch (error) {
         if (!active) return;
         const fallback = {
@@ -368,7 +378,12 @@ const StyleDetail = () => {
     setStyleFormData((prev) => ({ ...prev, processes: newProcesses }));
   };
 
-  const handleSave = async () => {
+  const hasProcessDraftChanges = isNew
+    ? styleFormData.processes.length > 0
+    : JSON.stringify(buildDirtyCheckProcesses(originalData?.processes)) !==
+      JSON.stringify(buildDirtyCheckProcesses(styleFormData?.processes));
+
+  const handleSave = async ({ confirmVersion = false } = {}) => {
     if (!styleFormData.name?.trim()) {
       showNotification(getStyleDetailMessage(languageCode, 'nameRequired'), 'error');
       return;
@@ -398,6 +413,17 @@ const StyleDetail = () => {
         const savedOwnerOrgId = toOrgId(saved?.ownerOrgId ?? saved?.customerOrgId);
         const savedQuery = buildQueryString({ ownerOrgId: savedOwnerOrgId });
         const savedStyleId = saved?.id || newId;
+        if (confirmVersion) {
+          try {
+            await confirmStyleProcessVersion(savedStyleId, {
+              orgId: activeOrgId,
+              ownerOrgId: savedOwnerOrgId,
+            });
+            showNotification('스타일과 최초 공정 버전을 저장했습니다.', 'success');
+          } catch (versionError) {
+            showNotification(versionError?.message || '스타일은 저장했지만 공정 버전을 확정하지 못했습니다.', 'error');
+          }
+        }
         navigateToPath(`/style/${savedStyleId}${savedQuery}`, {
           closeTabId: '/style/new',
           skipUnsavedChangesCheck: true,
@@ -407,8 +433,7 @@ const StyleDetail = () => {
       }
       return;
     }
-    const processesChanged = JSON.stringify(buildDirtyCheckProcesses(originalData?.processes)) !==
-      JSON.stringify(buildDirtyCheckProcesses(styleFormData?.processes));
+    const processesChanged = hasProcessDraftChanges;
     const payload = buildPayload({
       ...styleFormData,
       id: originalData.id || styleId,
@@ -428,29 +453,34 @@ const StyleDetail = () => {
       setOriginalData(normalizedSaved);
       setStyleFormData(normalizedSaved);
       setProcessMasterReloadKey((prev) => prev + 1);
-      if (processesChanged) {
-        setVersionConfirmOpen(true);
+      if ((processesChanged || hasUnconfirmedProcessDraft) && confirmVersion) {
+        try {
+          await confirmStyleProcessVersion(styleId, {
+            orgId: activeOrgId,
+            ownerOrgId: resolvedOwnerOrgId,
+          });
+          setVersionManagerOpen(true);
+          setHasUnconfirmedProcessDraft(false);
+          showNotification('저장한 공정을 새 버전으로 확정했습니다.', 'success');
+        } catch (versionError) {
+          setHasUnconfirmedProcessDraft(true);
+          showNotification(versionError?.message || '공정은 저장했지만 버전을 확정하지 못했습니다.', 'error');
+        }
+      } else if (processesChanged || hasUnconfirmedProcessDraft) {
+        setHasUnconfirmedProcessDraft(true);
+        showNotification('공정을 중간 저장했습니다. 확정 버전은 생성하지 않았습니다.', 'info');
       }
     } catch (error) {
       showNotification(error?.message || getStyleDetailMessage(languageCode, 'saveError'), 'error');
     }
   };
 
-  const handleConfirmSavedProcesses = async () => {
-    setConfirmingVersion(true);
-    try {
-      await confirmStyleProcessVersion(styleId, {
-        orgId: activeOrgId,
-        ownerOrgId: resolvedOwnerOrgId,
-      });
-      setVersionConfirmOpen(false);
-      setVersionManagerOpen(true);
-      showNotification('저장한 공정을 새 버전으로 확정했습니다.', 'success');
-    } catch (error) {
-      showNotification(error?.message || '공정 버전을 확정하지 못했습니다.', 'error');
-    } finally {
-      setConfirmingVersion(false);
+  const handleSaveRequest = () => {
+    if (hasProcessDraftChanges || hasUnconfirmedProcessDraft) {
+      setSaveChoiceOpen(true);
+      return;
     }
+    handleSave();
   };
 
   return (
@@ -460,8 +490,8 @@ const StyleDetail = () => {
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <LastUpdaterLabel />
           <SaveButton
-            onClick={handleSave}
-            disabled={loadingStyle || (!isNew && !isDirty)}
+            onClick={handleSaveRequest}
+            disabled={loadingStyle || (!isNew && !isDirty && !hasUnconfirmedProcessDraft)}
           />
         </Stack>
       )}
@@ -562,14 +592,15 @@ const StyleDetail = () => {
             notify={showNotification}
           />
 
-          <Dialog open={versionConfirmOpen} onClose={confirmingVersion ? undefined : () => setVersionConfirmOpen(false)} maxWidth="xs" fullWidth>
-            <DialogTitle>공정 버전 확정</DialogTitle>
+          <Dialog open={saveChoiceOpen} onClose={() => setSaveChoiceOpen(false)} maxWidth="xs" fullWidth>
+            <DialogTitle>공정 저장 방식</DialogTitle>
             <DialogContent>
-              <Typography>공정 입력이 완료되었나요? 저장한 공정을 새 버전으로 확정할 수 있습니다.</Typography>
+              <Typography>작성 중인 공정을 중간 저장하거나, 입력을 완료하고 확정 버전으로 저장할 수 있습니다.</Typography>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setVersionConfirmOpen(false)} disabled={confirmingVersion}>나중에</Button>
-              <Button variant="contained" onClick={handleConfirmSavedProcesses} disabled={confirmingVersion}>버전으로 확정</Button>
+              <Button onClick={() => setSaveChoiceOpen(false)}>취소</Button>
+              <Button onClick={() => { setSaveChoiceOpen(false); handleSave(); }}>중간 저장</Button>
+              <Button variant="contained" onClick={() => { setSaveChoiceOpen(false); handleSave({ confirmVersion: true }); }}>저장 후 버전 확정</Button>
             </DialogActions>
           </Dialog>
 

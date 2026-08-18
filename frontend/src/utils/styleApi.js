@@ -234,7 +234,11 @@ export const fetchStyleProcessVersions = async (styleId, options = {}) => {
     `/styles/${encodeURIComponent(styleId)}/process-versions${query}`,
     { forceRefresh: true, skipCache: true }
   );
-  return { versions: normalizeArray(data?.versions), assignments: normalizeArray(data?.assignments) };
+  return {
+    versions: normalizeArray(data?.versions),
+    assignments: normalizeArray(data?.assignments),
+    hasUnconfirmedChanges: data?.hasUnconfirmedChanges === true,
+  };
 };
 
 export const confirmStyleProcessVersion = async (styleId, options = {}) => {
