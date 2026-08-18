@@ -13,7 +13,28 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      const data = await fetchStyleProcessVersions(styleId, { orgId, ownerOrgId });
+      let data = await fetchStyleProcessVersions(styleId, { orgId, ownerOrgId });
+      if (data.assignments.some((assignment) => assignment.needsSnapshotRefresh)) {
+        const repairBoundaries = {};
+        data.versions.forEach((version) => {
+          const first = data.assignments.find((assignment) => assignment.versionId === version.id);
+          if (first) repairBoundaries[version.id] = first.assignmentPlanId;
+        });
+        if (data.versions[0] && data.assignments[0]) {
+          repairBoundaries[data.versions[0].id] = data.assignments[0].assignmentPlanId;
+        }
+        await saveStyleProcessVersionBoundaries(
+          styleId,
+          data.versions
+            .map((version) => ({
+              versionId: version.id,
+              startAssignmentPlanId: repairBoundaries[version.id],
+            }))
+            .filter((row) => row.startAssignmentPlanId),
+          { orgId, ownerOrgId }
+        );
+        data = await fetchStyleProcessVersions(styleId, { orgId, ownerOrgId });
+      }
       setVersions(data.versions);
       setAssignments(data.assignments);
       const next = {};

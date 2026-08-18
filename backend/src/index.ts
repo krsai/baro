@@ -2975,6 +2975,25 @@ const resolveStyleProcessExactStPerPieceSeconds = (
   return null;
 };
 
+const resolveStyleProcessVersionStPerPieceSeconds = (
+  process: any,
+  orderQuantity = 1
+) => {
+  const normalized = normalizeStyleProcess(process);
+  const stBuckets = normalizeStyleProcessStBuckets(
+    ensureArray((normalized as any)?.stBuckets)
+  );
+  if (stBuckets.length === 0) return null;
+  const bucketQuantity = resolveStBucketQuantityFromValues(
+    orderQuantity,
+    stBuckets.map((bucket) => bucket.bucketQuantity)
+  );
+  return (
+    stBuckets.find((bucket) => bucket.bucketQuantity === bucketQuantity)
+      ?.bucketStSeconds ?? null
+  );
+};
+
 type StyleProcessDuplicateIdentity = {
   identityKey: string;
   firstIndex: number;
@@ -16776,7 +16795,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     if (target.hasStructuralChange && effectiveVersion) {
       const versionProcesses = normalizeStyleProcesses(effectiveVersion.processSnapshot);
       const perPieceSeconds = versionProcesses.reduce((sum, process) => {
-        const stSeconds = resolveStyleProcessExactStPerPieceSeconds(
+        const stSeconds = resolveStyleProcessVersionStPerPieceSeconds(
           process,
           assignmentQuantity
         );
@@ -16828,7 +16847,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
             processCode: process?.code ?? process?.processCode,
             processName: process?.name ?? process?.processName,
             productionStage: process?.productionStage ?? "SEWING",
-            stSeconds: resolveStyleProcessExactStPerPieceSeconds(
+            stSeconds: resolveStyleProcessVersionStPerPieceSeconds(
               process,
               assignmentQuantity
             ),
@@ -28405,7 +28424,7 @@ app.put("/assignment-board-state", async (req, res) => {
           processCode: process?.code ?? process?.processCode,
           processName: process?.name ?? process?.processName,
           productionStage: process?.productionStage ?? "SEWING",
-          stSeconds: resolveStyleProcessExactStPerPieceSeconds(
+          stSeconds: resolveStyleProcessVersionStPerPieceSeconds(
             process,
             Math.max(1, assignmentQuantity)
           ),
@@ -31230,7 +31249,7 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
     const refreshed = buildEditableAssignmentCtSnapshotFromLiveStyle({ assignment: plan, card: { quantity: plan.assignmentQuantity }, style: withVersionProcesses, existingSnapshot: plan.assignmentCtSnapshot, updatedAt, updatedBy });
     if (!refreshed.readiness.ready || !refreshed.assignment.assignmentCtSnapshot) throw createHttpError(409, `assignment ${plan.id}: ${refreshed.readiness.reason || "snapshot not ready"}`);
     const ct = normalizeAssignmentCtSnapshot({ ...refreshed.assignment.assignmentCtSnapshot, styleProcessVersionId: version.id, revision: version.versionNumber, effectiveFrom: version.confirmedDate });
-    const stProcesses = normalizeStyleProcesses(version.processSnapshot).map((process: any) => ({ styleProcessId: toPositiveIntOrNull(process?.styleProcessId ?? process?.id), processCode: process?.code ?? process?.processCode, processName: process?.name ?? process?.processName, productionStage: process?.productionStage ?? "SEWING", stSeconds: resolveStyleProcessExactStPerPieceSeconds(process, Math.max(1, Number(plan.assignmentQuantity) || 1)) }));
+    const stProcesses = normalizeStyleProcesses(version.processSnapshot).map((process: any) => ({ styleProcessId: toPositiveIntOrNull(process?.styleProcessId ?? process?.id), processCode: process?.code ?? process?.processCode, processName: process?.name ?? process?.processName, productionStage: process?.productionStage ?? "SEWING", stSeconds: resolveStyleProcessVersionStPerPieceSeconds(process, Math.max(1, Number(plan.assignmentQuantity) || 1)) }));
     if (stProcesses.some((process) => !process.styleProcessId || !process.stSeconds)) throw createHttpError(409, `assignment ${plan.id}: ST is missing for a process`);
     return [prisma.assignmentPlan.update({ where: { id: plan.id }, data: { styleProcessVersionId: version.id, assignmentCtSnapshot: ct as Prisma.InputJsonValue, assignmentCtTotalSeconds: ct?.assignmentCtTotalSeconds ?? null, assignmentStSnapshot: { styleProcessVersionId: version.id, revision: version.versionNumber, confirmedDate: version.confirmedDate, processes: stProcesses } as Prisma.InputJsonValue, assignmentStTotalSeconds: stProcesses.reduce((sum, process) => sum + Number(process.stSeconds) * Math.max(0, Number(plan.assignmentQuantity) || 0), 0), updatedByEmployeeId: employee?.id ?? null } })];
   });
