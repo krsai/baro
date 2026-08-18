@@ -225,33 +225,29 @@ export const updateStyle = async (styleId, style, options = {}) => {
   return normalized;
 };
 
-export const fetchStyleAssignmentProcessImpacts = async (styleId, options = {}) => {
+export const fetchStyleProcessVersions = async (styleId, options = {}) => {
   const query = buildQueryString({
     orgId: toPositiveOrgId(options?.orgId),
     ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
   });
   const data = await requestJSON(
-    `/styles/${encodeURIComponent(styleId)}/assignment-process-impacts${query}`,
+    `/styles/${encodeURIComponent(styleId)}/process-versions${query}`,
     { forceRefresh: true, skipCache: true }
   );
-  return normalizeArray(data?.impacts);
+  return { versions: normalizeArray(data?.versions), assignments: normalizeArray(data?.assignments) };
 };
 
-export const applyStyleAssignmentProcessRevisions = async (
-  styleId,
-  selections,
-  options = {}
-) => {
+export const confirmStyleProcessVersion = async (styleId, options = {}) => {
   const query = buildQueryString({
     orgId: toPositiveOrgId(options?.orgId),
     ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
   });
   const result = await requestJSON(
-    `/styles/${encodeURIComponent(styleId)}/assignment-process-revisions${query}`,
+    `/styles/${encodeURIComponent(styleId)}/process-versions/confirm${query}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ selections: normalizeArray(selections) }),
+      body: JSON.stringify({}),
     }
   );
   emitWorkspaceDataChanged({
@@ -259,6 +255,16 @@ export const applyStyleAssignmentProcessRevisions = async (
     orgId: toPositiveOrgId(options?.orgId),
     styleIds: [styleId],
   });
+  return result;
+};
+
+export const saveStyleProcessVersionBoundaries = async (styleId, boundaries, options = {}) => {
+  const query = buildQueryString({ orgId: toPositiveOrgId(options?.orgId), ownerOrgId: toPositiveOrgId(options?.ownerOrgId) });
+  const result = await requestJSON(`/styles/${encodeURIComponent(styleId)}/process-version-boundaries${query}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ boundaries: normalizeArray(boundaries) }),
+  });
+  emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD], orgId: toPositiveOrgId(options?.orgId), styleIds: [styleId] });
   return result;
 };
 

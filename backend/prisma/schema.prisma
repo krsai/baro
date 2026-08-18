@@ -195,6 +195,7 @@ model Organization {
   lines                           Line[]
   styles                          Style[]
   styleProcesses                  StyleProcess[]
+  styleProcessVersions            StyleProcessVersion[]
   styleProcessStandards           StyleProcessStandard[]
   orders                          WorkOrder[]
   workLogs                        WorkLog[]
@@ -915,6 +916,7 @@ model Style {
   workOrderItems       WorkOrderItem[]
   trainingBuckets      AtTrainingBucketProcess[]
   assignmentPlans      AssignmentPlan[]
+  processVersions      StyleProcessVersion[]
   assignmentCards      AssignmentCard[]
   workRecords          WorkRecord[]
   timeBucketSetVersion QuantityBucketSetVersion?         @relation("StyleTimeBucketVersion", fields: [timeBucketSetVersionId], references: [id], onDelete: Restrict)
@@ -970,6 +972,25 @@ model StyleProcess {
   @@unique([id, styleId, orgId], map: "StyleProcess_id_style_org_key")
   @@index([orgId])
   @@index([styleId])
+}
+
+model StyleProcessVersion {
+  id            Int      @id @default(autoincrement())
+  orgId         Int
+  styleId       Int
+  versionNumber Int
+  confirmedDate String
+  processSnapshot Json
+  confirmedBy   String   @default("system@baro.local")
+  createdAt     DateTime @default(now())
+
+  organization   Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  style          Style            @relation(fields: [styleId], references: [id], onDelete: Cascade)
+  assignmentPlans AssignmentPlan[]
+
+  @@unique([styleId, versionNumber])
+  @@unique([id, styleId, orgId], map: "StyleProcessVersion_id_style_org_key")
+  @@index([orgId, styleId])
 }
 
 enum ProductionStage {
@@ -1305,6 +1326,7 @@ model AssignmentPlan {
   assignmentCtTotalSeconds  Int?
   assignmentCtSnapshot      Json?
   assignmentProcessRevisionHistory Json?
+  styleProcessVersionId    Int?
   assignmentStTotalSeconds  Int?
   assignmentStSnapshot      Json?
   ctReviewRequired          Boolean               @default(false)
@@ -1346,6 +1368,7 @@ model AssignmentPlan {
   organization            Organization                @relation(fields: [orgId], references: [id])
   workOrder               WorkOrder?                  @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   style                   Style?                      @relation(fields: [styleId], references: [id], onDelete: SetNull)
+  styleProcessVersion     StyleProcessVersion?        @relation(fields: [styleProcessVersionId], references: [id], onDelete: SetNull)
   buyerOrg                Organization?               @relation("AssignmentPlanBuyerOrg", fields: [buyerOrgId], references: [id], onDelete: SetNull)
   orgRelationship         OrgRelationship?            @relation(fields: [orgRelationshipId, orgId, buyerOrgId], references: [id, manufacturerOrgId, brandOrgId], onDelete: Restrict, map: "AssignmentPlan_relationship_scope_fkey")
   // Real FK replacing the old "cardId string happens to match" convention
@@ -1366,6 +1389,7 @@ model AssignmentPlan {
   @@index([orgId, lineId])
   @@index([workOrderId])
   @@index([styleId])
+  @@index([styleProcessVersionId])
   @@index([assignmentCardId])
   @@index([buyerOrgId])
   @@index([orgRelationshipId])

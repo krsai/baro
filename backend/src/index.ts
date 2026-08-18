@@ -801,6 +801,8 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "AssignmentPlan", columnName: "assignmentCtTotalSeconds" },
   { tableName: "AssignmentPlan", columnName: "assignmentCtSnapshot" },
   { tableName: "AssignmentPlan", columnName: "assignmentProcessRevisionHistory" },
+  { tableName: "AssignmentPlan", columnName: "styleProcessVersionId" },
+  { tableName: "StyleProcessVersion", columnName: "processSnapshot" },
   { tableName: "Employee", columnName: "gradeId" },
   { tableName: "EmployeeGradeSet", columnName: "orgId" },
   { tableName: "EmployeeGrade", columnName: "setId" },
@@ -30777,82 +30779,37 @@ app.put("/styles/:styleId", async (req, res) => {
   res.json(toStyleResponse(responseUpdated, { includeProcesses, processMirrorMap }));
 });
 
-const buildStyleAssignmentProcessChangeRows = async ({
+const ensureInitialStyleProcessVersion = async ({
   orgId,
   styleId,
 }: {
   orgId: number;
   styleId: number;
 }) => {
-  let plans = await prisma.assignmentPlan.findMany({
-    where: { orgId, styleId, isCompleted: false },
-    select: {
-      id: true,
-      externalId: true,
-      lineId: true,
-      assignmentQuantity: true,
-      assignmentCtSnapshot: true,
-      assignmentStSnapshot: true,
-      assignmentProcessRevisionHistory: true,
-      startIndex: true,
-      endIndex: true,
-      isCompleted: true,
-      workOrder: { select: { orderNumber: true } },
-      style: { select: { id: true, code: true, name: true } },
-      line: { select: { id: true, name: true } },
-      workRecords: {
-        select: { styleProcessId: true, quantity: true },
-      },
-    },
-    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-  });
-  plans = await attachLiveStyleProcessMirrorsToAssignmentPlans({ orgId, plans });
-  return plans.flatMap((plan: any) => {
-    const liveProcesses = normalizeStyleProcesses(plan?.style?.processes);
-    const currentSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
-    const totalsByProcessId = new Map<number, number>();
-    ensureArray(plan?.workRecords).forEach((record) => {
-      const processId = toPositiveIntOrNull(record?.styleProcessId);
-      if (processId === null) return;
-      totalsByProcessId.set(
-        processId,
-        (totalsByProcessId.get(processId) ?? 0) +
-          Math.max(0, Math.round(Number(record?.quantity) || 0))
-      );
+  const existing = await prisma.styleProcessVersion.findFirst({ where: { orgId, styleId }, orderBy: { versionNumber: "asc" } });
+  if (existing) {
+    const latestAssigned = await prisma.assignmentPlan.findFirst({
+      where: { orgId, styleId, styleProcessVersionId: { not: null } },
+      select: { styleProcessVersionId: true },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
-    const producedQuantity =
-      totalsByProcessId.size > 0 ? Math.max(...Array.from(totalsByProcessId.values())) : 0;
-    const assignmentQuantity = Math.max(0, Math.round(Number(plan?.assignmentQuantity) || 0));
-    const currentIds = new Set(
-      ensureArray(currentSnapshot?.processes)
-        .map((process) => toPositiveIntOrNull(process?.styleProcessId))
-        .filter((id): id is number => id !== null)
-    );
-    const liveIds = new Set(
-      liveProcesses
-        .map((process) => toPositiveIntOrNull(process?.styleProcessId ?? process?.id))
-        .filter((id): id is number => id !== null)
-    );
-    return [{
-      assignmentPlanId: plan.id,
-      externalId: plan.externalId,
-      orderNo: plan?.workOrder?.orderNumber ?? "",
-      styleCode: plan?.style?.code ?? "",
-      styleName: plan?.style?.name ?? "",
-      lineId: plan?.line?.id ?? plan.lineId,
-      lineName: plan?.line?.name ?? "",
-      assignmentQuantity,
-      producedQuantity,
-      remainingQuantity: Math.max(0, assignmentQuantity - producedQuantity),
-      workRecordCount: ensureArray(plan?.workRecords).length,
-      addedProcessCount: Array.from(liveIds).filter((id) => !currentIds.has(id)).length,
-      removedProcessCount: Array.from(currentIds).filter((id) => !liveIds.has(id)).length,
-      currentRevision: Math.max(1, toOptionalNonNegativeInt(currentSnapshot?.revision, 1) ?? 1),
-    }];
-  });
+    await prisma.assignmentPlan.updateMany({
+      where: { orgId, styleId, styleProcessVersionId: null },
+      data: { styleProcessVersionId: latestAssigned?.styleProcessVersionId ?? existing.id },
+    });
+    return existing;
+  }
+  const mirror = await loadStyleProcessMirrorMapForStyleIds([styleId], { processOrgId: orgId });
+  const created = await prisma.styleProcessVersion.create({ data: {
+    orgId, styleId, versionNumber: 1, confirmedDate: todayDateKey(),
+    processSnapshot: normalizeStyleProcesses(mirror.get(styleId) ?? []) as Prisma.InputJsonValue,
+    confirmedBy: "SYSTEM_MIGRATION",
+  }});
+  await prisma.assignmentPlan.updateMany({ where: { orgId, styleId, styleProcessVersionId: null }, data: { styleProcessVersionId: created.id } });
+  return created;
 };
 
-app.get("/styles/:styleId/assignment-process-impacts", async (req, res) => {
+app.get("/styles/:styleId/process-versions", async (req, res) => {
   const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
   if (!accessContext) return;
   const style = await resolveStyleByIdForAccess({
@@ -30861,14 +30818,25 @@ app.get("/styles/:styleId/assignment-process-impacts", async (req, res) => {
     ownerOrgId: parseStyleOwnerOrgIdQuery(req.query.ownerOrgId),
   });
   if (!style) return res.status(404).json({ ok: false, error: "style not found" });
-  const impacts = await buildStyleAssignmentProcessChangeRows({
-    orgId: accessContext.organization.id,
-    styleId: style.id,
+  await ensureInitialStyleProcessVersion({ orgId: accessContext.organization.id, styleId: style.id });
+  const [versions, assignments] = await Promise.all([
+    prisma.styleProcessVersion.findMany({ where: { orgId: accessContext.organization.id, styleId: style.id }, orderBy: { versionNumber: "asc" } }),
+    prisma.assignmentPlan.findMany({
+      where: { orgId: accessContext.organization.id, styleId: style.id },
+      select: { id: true, externalId: true, assignmentQuantity: true, styleProcessVersionId: true, createdAt: true,
+        workOrder: { select: { orderNumber: true } }, workRecords: { select: { id: true } } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    }),
+  ]);
+  res.json({
+    versions: versions.map((version) => ({ ...version, name: `Ver.${version.versionNumber} · ${version.confirmedDate}`, processCount: ensureArray(version.processSnapshot).length })),
+    assignments: assignments.map((plan) => ({ assignmentPlanId: plan.id, externalId: plan.externalId,
+      orderNo: plan.workOrder?.orderNumber ?? "", assignmentQuantity: plan.assignmentQuantity ?? 0,
+      assignedAt: plan.createdAt, workRecordCount: plan.workRecords.length, versionId: plan.styleProcessVersionId })),
   });
-  res.json({ impacts });
 });
 
-app.post("/styles/:styleId/assignment-process-revisions", async (req, res) => {
+app.post("/styles/:styleId/process-versions/confirm", async (req, res) => {
   const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
   if (!accessContext) return;
   const { organization, employee } = accessContext;
@@ -30878,178 +30846,57 @@ app.post("/styles/:styleId/assignment-process-revisions", async (req, res) => {
     ownerOrgId: parseStyleOwnerOrgIdQuery(req.query.ownerOrgId),
   });
   if (!style) return res.status(404).json({ ok: false, error: "style not found" });
-  const selections = ensureArray(req.body?.selections);
-  if (selections.length === 0) {
-    return res.status(400).json({ ok: false, error: "at least one assignment selection is required" });
+  await ensureInitialStyleProcessVersion({ orgId: organization.id, styleId: style.id });
+  const latest = await prisma.styleProcessVersion.findFirst({ where: { orgId: organization.id, styleId: style.id }, orderBy: { versionNumber: "desc" } });
+  const mirror = await loadStyleProcessMirrorMapForStyleIds([style.id], { processOrgId: organization.id });
+  const snapshot = normalizeStyleProcesses(mirror.get(style.id) ?? []);
+  if (JSON.stringify(normalizeStyleProcesses(latest?.processSnapshot)) === JSON.stringify(snapshot)) {
+    return res.status(409).json({ ok: false, error: "현재 공정은 마지막 확정 버전과 같습니다." });
   }
-  const planIds = selections
-    .map((item) => toPositiveIntOrNull(item?.assignmentPlanId))
-    .filter((id): id is number => id !== null);
-  let plans = await prisma.assignmentPlan.findMany({
-    where: { id: { in: planIds }, orgId: organization.id, styleId: style.id, isCompleted: false },
-    select: {
-      id: true,
-      externalId: true,
-      assignmentQuantity: true,
-      assignmentCtSnapshot: true,
-      assignmentStSnapshot: true,
-      assignmentProcessRevisionHistory: true,
-      startIndex: true,
-      endIndex: true,
-      style: { select: { id: true, code: true, name: true } },
-      workRecords: {
-        select: {
-          id: true,
-          styleProcessId: true,
-          quantity: true,
-          effectiveCoverageStartDate: true,
-          effectiveCoverageEndDate: true,
-        },
-      },
-    },
-  });
-  plans = await attachLiveStyleProcessMirrorsToAssignmentPlans({
-    orgId: organization.id,
-    plans,
-  });
-  if (plans.length !== new Set(planIds).size) {
-    return res.status(404).json({ ok: false, error: "one or more assignment plans were not found" });
-  }
-  const selectionByPlanId = new Map(
-    selections.map((item) => [toPositiveIntOrNull(item?.assignmentPlanId), item])
-  );
+  const version = await prisma.styleProcessVersion.create({ data: {
+    orgId: organization.id, styleId: style.id, versionNumber: (latest?.versionNumber ?? 0) + 1,
+    confirmedDate: todayDateKey(), processSnapshot: snapshot as Prisma.InputJsonValue,
+    confirmedBy: resolveOptionalString(employee?.email ?? getRequesterEmail(req), "SYSTEM") ?? "SYSTEM",
+  }});
+  res.json({ ...version, name: `Ver.${version.versionNumber} · ${version.confirmedDate}` });
+});
+
+app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization, employee } = accessContext;
+  const style = await resolveStyleByIdForAccess({ organization, styleId: String(req.params.styleId || "").trim(), ownerOrgId: parseStyleOwnerOrgIdQuery(req.query.ownerOrgId) });
+  if (!style) return res.status(404).json({ ok: false, error: "style not found" });
+  await ensureInitialStyleProcessVersion({ orgId: organization.id, styleId: style.id });
+  const [versions, plans] = await Promise.all([
+    prisma.styleProcessVersion.findMany({ where: { orgId: organization.id, styleId: style.id }, orderBy: { versionNumber: "asc" } }),
+    prisma.assignmentPlan.findMany({ where: { orgId: organization.id, styleId: style.id }, select: { id: true, assignmentQuantity: true, styleProcessVersionId: true, assignmentCtSnapshot: true, assignmentStSnapshot: true, workRecords: { select: { id: true } } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
+  ]);
+  const starts = new Map<number | null, number | null>(ensureArray(req.body?.boundaries).map((row) => [toPositiveIntOrNull(row?.versionId), toPositiveIntOrNull(row?.startAssignmentPlanId)]));
+  const firstVersion = versions[0];
+  if (!firstVersion) throw createHttpError(409, "style has no confirmed process version");
+  if (plans.length && starts.get(firstVersion.id) !== plans[0].id) throw createHttpError(400, "Ver.1 must start at the oldest assignment");
+  const planIndex = new Map(plans.map((plan, index) => [plan.id, index]));
+  const boundaries = versions.map((version) => ({ version, index: planIndex.get(starts.get(version.id) ?? -1) })).filter((row) => row.index !== undefined) as any[];
+  if (boundaries.some((row, index) => index > 0 && row.index <= boundaries[index - 1].index)) throw createHttpError(400, "version boundaries must follow version order");
   const updatedAt = new Date().toISOString();
   const updatedBy = resolveOptionalString(employee?.email ?? getRequesterEmail(req), "SYSTEM") ?? "SYSTEM";
-  const updates = plans.map((plan: any) => {
-    const selection = selectionByPlanId.get(plan.id) ?? {};
-    const effectiveFrom = normalizeDateKey(selection?.effectiveFrom);
-    if (!effectiveFrom) throw createHttpError(400, `effectiveFrom is required for assignment ${plan.id}`);
-    const crossingRecord = ensureArray(plan?.workRecords).find((record) => {
-      const start = normalizeDateKey(record?.effectiveCoverageStartDate);
-      const end = normalizeDateKey(record?.effectiveCoverageEndDate);
-      return Boolean(start && end && start < effectiveFrom && effectiveFrom <= end);
-    });
-    if (crossingRecord) {
-      throw createHttpError(
-        409,
-        `assignment ${plan.id} has a work record period crossing ${effectiveFrom}; split the work log period first`
-      );
-    }
-    const refreshed = buildEditableAssignmentCtSnapshotFromLiveStyle({
-      assignment: plan,
-      card: { quantity: plan.assignmentQuantity },
-      style: plan.style,
-      existingSnapshot: plan.assignmentCtSnapshot,
-      updatedAt,
-      updatedBy,
-    });
-    if (!refreshed.readiness.ready || !refreshed.assignment.assignmentCtSnapshot) {
-      throw createHttpError(
-        409,
-        `assignment ${plan.id} cannot apply the style change: ${refreshed.readiness.reason || "snapshot not ready"}`
-      );
-    }
-    const previousSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
-    const history = ensureArray(plan?.assignmentProcessRevisionHistory);
-    const currentEffectiveFrom = normalizeDateKey(previousSnapshot?.effectiveFrom);
-    if (currentEffectiveFrom && effectiveFrom <= currentEffectiveFrom) {
-      throw createHttpError(
-        409,
-        `assignment ${plan.id} effectiveFrom must be after ${currentEffectiveFrom}`
-      );
-    }
-    const nextRevision = Math.max(
-      1,
-      ...history.map((item) => toOptionalNonNegativeInt(item?.revision, 0) ?? 0),
-      toOptionalNonNegativeInt(previousSnapshot?.revision, 1) ?? 1
-    ) + 1;
-    const applicableQuantity = Math.max(
-      0,
-      Math.min(
-        Math.round(Number(plan.assignmentQuantity) || 0),
-        Math.round(Number(selection?.applicableQuantity) || 0)
-      )
-    );
-    if (applicableQuantity <= 0) {
-      throw createHttpError(400, `applicableQuantity must be greater than zero for assignment ${plan.id}`);
-    }
-    const nextSnapshot = normalizeAssignmentCtSnapshot({
-      ...refreshed.assignment.assignmentCtSnapshot,
-      revision: nextRevision,
-      effectiveFrom,
-      changeReason: resolveOptionalString(selection?.changeReason, "STYLE_PROCESS_CHANGE"),
-      processes: ensureArray(refreshed.assignment.assignmentCtSnapshot.processes).map((process) => ({
-        ...process,
-        applicableQuantity,
-      })),
-    });
-    const stProcesses = normalizeStyleProcesses(plan?.style?.processes).map((process: any) => {
-      const styleProcessId = toPositiveIntOrNull(process?.styleProcessId ?? process?.id);
-      const stSeconds = resolveStyleProcessExactStPerPieceSeconds(
-        process,
-        Math.max(1, Math.round(Number(plan.assignmentQuantity) || 1))
-      );
-      if (styleProcessId === null || stSeconds === null || stSeconds <= 0) {
-        throw createHttpError(
-          409,
-          `assignment ${plan.id} cannot apply the style change: ST is missing for a process`
-        );
-      }
-      const baselineCompletedQuantity = ensureArray(plan?.workRecords)
-        .filter((record) => toPositiveIntOrNull(record?.styleProcessId) === styleProcessId)
-        .reduce(
-          (sum, record) => sum + Math.max(0, Math.round(Number(record?.quantity) || 0)),
-          0
-        );
-      return {
-        styleProcessId,
-        processCode: resolveOptionalString(process?.code ?? process?.processCode, null),
-        processName: resolveOptionalString(process?.name ?? process?.processName, null),
-        productionStage: resolveOptionalString(process?.productionStage, "SEWING"),
-        stSeconds,
-        applicableQuantity,
-        baselineCompletedQuantity,
-      };
-    });
-    const assignmentStTotalSeconds = stProcesses.reduce(
-      (sum, process) => sum + process.stSeconds * Math.max(0, Math.round(Number(plan.assignmentQuantity) || 0)),
-      0
-    );
-    const nextStSnapshot = {
-      ...(plan?.assignmentStSnapshot && typeof plan.assignmentStSnapshot === "object"
-        ? plan.assignmentStSnapshot
-        : {}),
-      revision: nextRevision,
-      effectiveFrom,
-      updatedAt,
-      updatedBy,
-      processes: stProcesses,
-    };
-    return {
-      id: plan.id,
-      data: {
-        assignmentCtSnapshot: nextSnapshot as Prisma.InputJsonValue,
-        assignmentCtTotalSeconds: nextSnapshot?.assignmentCtTotalSeconds ?? null,
-        assignmentStSnapshot: nextStSnapshot as Prisma.InputJsonValue,
-        assignmentStTotalSeconds,
-        assignmentProcessRevisionHistory: [
-          ...history,
-          ...(previousSnapshot
-            ? [{
-                ...previousSnapshot,
-                revision: toOptionalNonNegativeInt(previousSnapshot?.revision, 1) ?? 1,
-                effectiveTo: shiftDateKeyByDays(effectiveFrom, -1),
-              }]
-            : []),
-        ] as Prisma.InputJsonValue,
-        updatedByEmployeeId: employee?.id ?? null,
-      },
-    };
+  const updates = plans.flatMap((plan, index) => {
+    const boundary = [...boundaries].reverse().find((row) => row.index <= index);
+    if (!boundary) throw createHttpError(400, `assignment ${plan.id} has no process version`);
+    const version = boundary.version;
+    if (plan.styleProcessVersionId === version.id) return [];
+    if (plan.workRecords.length > 0) throw createHttpError(409, `assignment ${plan.id} already has work records and its process version cannot be changed`);
+    const withVersionProcesses = { id: style.id, code: style.code, name: style.name, processes: normalizeStyleProcesses(version.processSnapshot) };
+    const refreshed = buildEditableAssignmentCtSnapshotFromLiveStyle({ assignment: plan, card: { quantity: plan.assignmentQuantity }, style: withVersionProcesses, existingSnapshot: plan.assignmentCtSnapshot, updatedAt, updatedBy });
+    if (!refreshed.readiness.ready || !refreshed.assignment.assignmentCtSnapshot) throw createHttpError(409, `assignment ${plan.id}: ${refreshed.readiness.reason || "snapshot not ready"}`);
+    const ct = normalizeAssignmentCtSnapshot({ ...refreshed.assignment.assignmentCtSnapshot, revision: version.versionNumber, effectiveFrom: version.confirmedDate });
+    const stProcesses = normalizeStyleProcesses(version.processSnapshot).map((process: any) => ({ styleProcessId: toPositiveIntOrNull(process?.styleProcessId ?? process?.id), processCode: process?.code ?? process?.processCode, processName: process?.name ?? process?.processName, productionStage: process?.productionStage ?? "SEWING", stSeconds: resolveStyleProcessExactStPerPieceSeconds(process, Math.max(1, Number(plan.assignmentQuantity) || 1)) }));
+    if (stProcesses.some((process) => !process.styleProcessId || !process.stSeconds)) throw createHttpError(409, `assignment ${plan.id}: ST is missing for a process`);
+    return [prisma.assignmentPlan.update({ where: { id: plan.id }, data: { styleProcessVersionId: version.id, assignmentCtSnapshot: ct as Prisma.InputJsonValue, assignmentCtTotalSeconds: ct?.assignmentCtTotalSeconds ?? null, assignmentStSnapshot: { revision: version.versionNumber, confirmedDate: version.confirmedDate, processes: stProcesses } as Prisma.InputJsonValue, assignmentStTotalSeconds: stProcesses.reduce((sum, process) => sum + Number(process.stSeconds) * Math.max(0, Number(plan.assignmentQuantity) || 0), 0), updatedByEmployeeId: employee?.id ?? null } })];
   });
-  await prisma.$transaction(
-    updates.map((update) => prisma.assignmentPlan.update({ where: { id: update.id }, data: update.data }))
-  );
-  res.json({ ok: true, updatedAssignmentPlanIds: updates.map((update) => update.id) });
+  await prisma.$transaction(updates);
+  res.json({ ok: true });
 });
 
 app.delete("/styles/:styleId", async (req, res) => {

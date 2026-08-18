@@ -49,6 +49,33 @@ END $$;
 ALTER TABLE "AssignmentPlan"
   ADD COLUMN IF NOT EXISTS "assignmentProcessRevisionHistory" JSONB;
 
+CREATE TABLE IF NOT EXISTS "StyleProcessVersion" (
+  "id" SERIAL PRIMARY KEY,
+  "orgId" INTEGER NOT NULL,
+  "styleId" INTEGER NOT NULL,
+  "versionNumber" INTEGER NOT NULL,
+  "confirmedDate" TEXT NOT NULL,
+  "processSnapshot" JSONB NOT NULL,
+  "confirmedBy" TEXT NOT NULL DEFAULT 'system@baro.local',
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "StyleProcessVersion_styleId_versionNumber_key" ON "StyleProcessVersion"("styleId", "versionNumber");
+CREATE UNIQUE INDEX IF NOT EXISTS "StyleProcessVersion_id_style_org_key" ON "StyleProcessVersion"("id", "styleId", "orgId");
+CREATE INDEX IF NOT EXISTS "StyleProcessVersion_orgId_styleId_idx" ON "StyleProcessVersion"("orgId", "styleId");
+ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "styleProcessVersionId" INTEGER;
+CREATE INDEX IF NOT EXISTS "AssignmentPlan_styleProcessVersionId_idx" ON "AssignmentPlan"("styleProcessVersionId");
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'StyleProcessVersion_orgId_fkey') THEN
+    ALTER TABLE "StyleProcessVersion" ADD CONSTRAINT "StyleProcessVersion_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'StyleProcessVersion_styleId_fkey') THEN
+    ALTER TABLE "StyleProcessVersion" ADD CONSTRAINT "StyleProcessVersion_styleId_fkey" FOREIGN KEY ("styleId") REFERENCES "Style"("id") ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'AssignmentPlan_styleProcessVersionId_fkey') THEN
+    ALTER TABLE "AssignmentPlan" ADD CONSTRAINT "AssignmentPlan_styleProcessVersionId_fkey" FOREIGN KEY ("styleProcessVersionId") REFERENCES "StyleProcessVersion"("id") ON DELETE SET NULL;
+  END IF;
+END $$;
+
 ALTER TABLE "WorkRecord"
   ADD COLUMN IF NOT EXISTS "isOutsourced" BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS "outsourceVendorName" TEXT,
