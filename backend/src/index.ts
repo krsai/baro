@@ -14681,17 +14681,10 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
 
   const confirmedVersionByStyleId = new Map<number, any>();
   for (const styleId of targetStyleIds) {
-    const latestAssigned = await db.assignmentPlan.findFirst({
-      where: { orgId: organization.id, styleId, styleProcessVersionId: { not: null } },
-      select: { styleProcessVersion: true },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    const version = await db.styleProcessVersion.findFirst({
+      where: { orgId: organization.id, styleId },
+      orderBy: { versionNumber: "desc" },
     });
-    const version =
-      latestAssigned?.styleProcessVersion ??
-      (await db.styleProcessVersion.findFirst({
-        where: { orgId: organization.id, styleId },
-        orderBy: { versionNumber: "asc" },
-      }));
     if (version) confirmedVersionByStyleId.set(styleId, version);
   }
 
@@ -16682,17 +16675,10 @@ const prepareAssignmentBoardStTotalsForSave = async ({
 
   const effectiveVersionByStyleId = new Map<number, any>();
   for (const styleId of assignmentStyleIds) {
-    const latestAssigned = await db.assignmentPlan.findFirst({
-      where: { orgId: organization.id, styleId, styleProcessVersionId: { not: null } },
-      select: { styleProcessVersion: true },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    const version = await db.styleProcessVersion.findFirst({
+      where: { orgId: organization.id, styleId },
+      orderBy: { versionNumber: "desc" },
     });
-    const version =
-      latestAssigned?.styleProcessVersion ??
-      (await db.styleProcessVersion.findFirst({
-        where: { orgId: organization.id, styleId },
-        orderBy: { versionNumber: "asc" },
-      }));
     if (!version) {
       throw createHttpError(
         409,
@@ -31033,26 +31019,20 @@ const ensureInitialStyleProcessVersion = async ({
   styleId: number;
   db?: any;
 }) => {
-  const existing = await db.styleProcessVersion.findFirst({ where: { orgId, styleId }, orderBy: { versionNumber: "asc" } });
-  if (existing) {
-    const latestAssigned = await db.assignmentPlan.findFirst({
-      where: { orgId, styleId, styleProcessVersionId: { not: null } },
-      select: { styleProcessVersionId: true },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    });
+  const existingVersions = await db.styleProcessVersion.findMany({
+    where: { orgId, styleId },
+    orderBy: { versionNumber: "asc" },
+  });
+  const initialVersion = existingVersions[0] ?? null;
+  const latestVersion = existingVersions[existingVersions.length - 1] ?? null;
+  if (initialVersion && latestVersion) {
+    // Legacy/unversioned assignments belong to Ver.1. New assignments receive
+    // the latest confirmed version returned below.
     await db.assignmentPlan.updateMany({
       where: { orgId, styleId, styleProcessVersionId: null },
-      data: { styleProcessVersionId: latestAssigned?.styleProcessVersionId ?? existing.id },
+      data: { styleProcessVersionId: initialVersion.id },
     });
-    if (
-      latestAssigned?.styleProcessVersionId &&
-      latestAssigned.styleProcessVersionId !== existing.id
-    ) {
-      return db.styleProcessVersion.findUniqueOrThrow({
-        where: { id: latestAssigned.styleProcessVersionId },
-      });
-    }
-    return existing;
+    return latestVersion;
   }
   const mirror = await loadStyleProcessMirrorMapForStyleIds([styleId], { processOrgId: orgId, db });
   const created = await db.styleProcessVersion.create({ data: {
