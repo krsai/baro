@@ -30810,15 +30810,15 @@ const buildStyleAssignmentProcessChangeRows = async ({
   return plans.flatMap((plan: any) => {
     const liveProcesses = normalizeStyleProcesses(plan?.style?.processes);
     const currentSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
-    const totalsByProcessId = ensureArray(plan?.workRecords).reduce((map, record) => {
+    const totalsByProcessId = new Map<number, number>();
+    ensureArray(plan?.workRecords).forEach((record) => {
       const processId = toPositiveIntOrNull(record?.styleProcessId);
-      if (processId === null) return map;
+      if (processId === null) return;
       map.set(
         processId,
         (map.get(processId) ?? 0) + Math.max(0, Math.round(Number(record?.quantity) || 0))
       );
-      return map;
-    }, new Map<number, number>());
+    });
     const producedQuantity =
       totalsByProcessId.size > 0 ? Math.max(...Array.from(totalsByProcessId.values())) : 0;
     const assignmentQuantity = Math.max(0, Math.round(Number(plan?.assignmentQuantity) || 0));
@@ -30918,7 +30918,7 @@ app.post("/styles/:styleId/assignment-process-revisions", async (req, res) => {
     selections.map((item) => [toPositiveIntOrNull(item?.assignmentPlanId), item])
   );
   const updatedAt = new Date().toISOString();
-  const updatedBy = resolveOptionalString(employee?.name ?? getRequesterEmail(req), "SYSTEM") ?? "SYSTEM";
+  const updatedBy = resolveOptionalString(employee?.email ?? getRequesterEmail(req), "SYSTEM") ?? "SYSTEM";
   const updates = plans.map((plan: any) => {
     const selection = selectionByPlanId.get(plan.id) ?? {};
     const effectiveFrom = normalizeDateKey(selection?.effectiveFrom);
