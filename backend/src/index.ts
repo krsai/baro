@@ -30899,7 +30899,10 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
   const starts = new Map<number | null, number | null>(ensureArray(req.body?.boundaries).map((row) => [toPositiveIntOrNull(row?.versionId), toPositiveIntOrNull(row?.startAssignmentPlanId)]));
   const firstVersion = versions[0];
   if (!firstVersion) throw createHttpError(409, "style has no confirmed process version");
-  if (plans.length && starts.get(firstVersion.id) !== plans[0].id) throw createHttpError(400, "Ver.1 must start at the oldest assignment");
+  const firstPlan = plans[0];
+  if (firstPlan !== undefined && starts.get(firstVersion.id) !== firstPlan.id) {
+    throw createHttpError(400, "Ver.1 must start at the oldest assignment");
+  }
   const planIndex = new Map(plans.map((plan, index) => [plan.id, index]));
   const boundaries = versions.map((version) => ({ version, index: planIndex.get(starts.get(version.id) ?? -1) })).filter((row) => row.index !== undefined) as any[];
   const hasInvalidBoundaryOrder = boundaries.some((row, index) => {
