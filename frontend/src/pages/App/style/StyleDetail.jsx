@@ -476,6 +476,7 @@ const StyleDetail = () => {
   };
 
   const handleSaveRequest = () => {
+    if (loadingStyle || !isDirty) return;
     if (hasProcessDraftChanges || hasUnconfirmedProcessDraft) {
       setSaveChoiceOpen(true);
       return;
@@ -491,7 +492,7 @@ const StyleDetail = () => {
           <LastUpdaterLabel />
           <SaveButton
             onClick={handleSaveRequest}
-            disabled={loadingStyle || (!isNew && !isDirty && !hasUnconfirmedProcessDraft)}
+            disabled={loadingStyle || !isDirty}
           />
         </Stack>
       )}
