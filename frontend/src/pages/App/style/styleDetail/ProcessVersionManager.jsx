@@ -7,6 +7,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
   const [versions, setVersions] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [boundaries, setBoundaries] = useState({});
+  const [savedBoundaries, setSavedBoundaries] = useState({});
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -22,6 +23,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
       });
       if (data.versions[0] && data.assignments[0]) next[data.versions[0].id] = data.assignments[0].assignmentPlanId;
       setBoundaries(next);
+      setSavedBoundaries(next);
     } catch (error) { notify(error?.message || '공정 버전을 불러오지 못했습니다.', 'error'); }
     finally { setBusy(false); }
   }, [notify, orgId, ownerOrgId, styleId]);
@@ -38,10 +40,17 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
     return { ...assignment, activeVersion: active };
   }), [assignments, boundaries, versions]);
 
+  const boundarySignature = useCallback(
+    (source) => versions.map((version) => `${version.id}:${source[version.id] ?? ''}`).join('|'),
+    [versions]
+  );
+  const hasBoundaryChanges = boundarySignature(boundaries) !== boundarySignature(savedBoundaries);
+
   const save = async () => {
     setBusy(true);
     try {
       await saveStyleProcessVersionBoundaries(styleId, versions.map((version) => ({ versionId: version.id, startAssignmentPlanId: boundaries[version.id] })).filter((row) => row.startAssignmentPlanId), { orgId, ownerOrgId });
+      setSavedBoundaries(boundaries);
       notify('공정 버전 적용 구간을 저장했습니다.', 'success'); onClose();
     } catch (error) { notify(error?.message || '적용 구간을 저장하지 못했습니다.', 'error'); }
     finally { setBusy(false); }
@@ -56,10 +65,10 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
             <Stack spacing={.75}>
               {versions.map((version) => (
                 <Box key={version.id} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(version.id)); }}
-                  sx={{ display: 'flex', alignItems: 'center', minHeight: 48, px: 1, border: 1, borderColor: 'divider', borderRadius: 1.25, cursor: 'grab', bgcolor: 'background.paper', '&:active': { cursor: 'grabbing' } }}>
-                  <DragIndicatorIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
-                  <Typography fontWeight={700} sx={{ flex: 1 }}>{version.name}</Typography>
-                  <Chip size="small" variant="outlined" label={`${version.processCount}개`} />
+                  sx={{ display: 'flex', alignItems: 'center', minHeight: 38, px: .75, border: 1, borderColor: 'divider', borderRadius: 1, cursor: 'grab', bgcolor: 'background.paper', '&:active': { cursor: 'grabbing' } }}>
+                  <DragIndicatorIcon sx={{ mr: .5, color: 'text.secondary', fontSize: 18 }} />
+                  <Typography variant="body2" fontWeight={700} sx={{ flex: 1, fontSize: '.78rem' }}>{version.name}</Typography>
+                  <Chip size="small" variant="outlined" label={`${version.processCount}개`} sx={{ height: 22, fontSize: '.7rem' }} />
                 </Box>
               ))}
             </Stack>
@@ -76,13 +85,13 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
                     return;
                   }
                   if (versionId) setBoundaries((current) => ({ ...current, [versionId]: assignment.assignmentPlanId }));
-                }} sx={{ position: 'relative', display: 'flex', alignItems: 'center', minHeight: 42, pl: 3.5, pr: .75, borderRadius: 1, transition: 'background-color .15s', '&[data-dragover="true"]': { bgcolor: 'action.hover' } }}>
+                }} sx={{ position: 'relative', display: 'flex', alignItems: 'center', minHeight: 34, pl: 3.5, pr: .5, borderRadius: 1, transition: 'background-color .15s', '&[data-dragover="true"]': { bgcolor: 'action.hover' } }}>
                   <Box sx={{ position: 'absolute', zIndex: 1, left: Object.values(boundaries).includes(assignment.assignmentPlanId) ? 4 : 6, width: Object.values(boundaries).includes(assignment.assignmentPlanId) ? 16 : 12, height: Object.values(boundaries).includes(assignment.assignmentPlanId) ? 16 : 12, borderRadius: '50%', bgcolor: Object.values(boundaries).includes(assignment.assignmentPlanId) ? 'primary.main' : 'background.paper', border: 2, borderColor: Object.values(boundaries).includes(assignment.assignmentPlanId) ? 'primary.main' : 'text.disabled', boxShadow: Object.values(boundaries).includes(assignment.assignmentPlanId) ? '0 0 0 3px rgba(25, 118, 210, .14)' : 'none' }} />
                   <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%', minWidth: 0 }}>
-                    <Typography variant="body2" fontWeight={600} noWrap sx={{ minWidth: 80 }}>{assignment.orderNo || assignment.externalId}</Typography>
-                    <Typography variant="body2" color="text.secondary" noWrap sx={{ flex: 1 }}>배정 {assignment.assignmentQuantity} · {new Date(assignment.assignedAt).toLocaleDateString()}</Typography>
-                    {assignment.workRecordCount > 0 && <Typography variant="caption" color="text.secondary" noWrap>기록 {assignment.workRecordCount}</Typography>}
-                    <Chip size="small" color="primary" variant="outlined" label={assignment.activeVersion?.name || '미지정'} sx={{ maxWidth: 160 }} />
+                    <Typography variant="body2" fontWeight={600} noWrap sx={{ minWidth: 70, fontSize: '.78rem' }}>{assignment.orderNo || assignment.externalId}</Typography>
+                    <Typography variant="body2" color="text.secondary" noWrap sx={{ flex: 1, fontSize: '.75rem' }}>배정 {assignment.assignmentQuantity} · {new Date(assignment.assignedAt).toLocaleDateString()}</Typography>
+                    {assignment.workRecordCount > 0 && <Typography variant="caption" color="text.secondary" noWrap sx={{ fontSize: '.7rem' }}>기록 {assignment.workRecordCount}</Typography>}
+                    <Chip size="small" color="primary" variant="outlined" label={assignment.activeVersion?.confirmedDate || '미지정'} sx={{ height: 22, maxWidth: 110, fontSize: '.7rem' }} />
                   </Stack>
                 </Box>
               ))}
@@ -91,7 +100,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
           </Box>
         </Stack>
       </DialogContent>
-      <DialogActions><Button onClick={onClose} disabled={busy}>닫기</Button><Button variant="contained" onClick={save} disabled={busy || assignments.length === 0}>적용 구간 저장</Button></DialogActions>
+      <DialogActions><Button variant="contained" onClick={save} disabled={busy || assignments.length === 0 || !hasBoundaryChanges}>적용 구간 저장</Button></DialogActions>
     </Dialog>
   );
 };
