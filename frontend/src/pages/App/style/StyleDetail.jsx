@@ -206,6 +206,7 @@ const StyleDetail = () => {
   const [processMasterReloadKey, setProcessMasterReloadKey] = useState(0);
   const [assignmentImpacts, setAssignmentImpacts] = useState([]);
   const [applyingAssignmentChanges, setApplyingAssignmentChanges] = useState(false);
+  const [loadingAssignmentImpacts, setLoadingAssignmentImpacts] = useState(false);
 
   const resolvedOwnerOrgId = useMemo(
     () =>
@@ -370,6 +371,36 @@ const StyleDetail = () => {
     setStyleFormData((prev) => ({ ...prev, processes: newProcesses }));
   };
 
+  const loadAssignmentImpacts = async ({ notifyWhenEmpty = false } = {}) => {
+    if (isNew || !styleId) return [];
+    setLoadingAssignmentImpacts(true);
+    try {
+      const impacts = await fetchStyleAssignmentProcessImpacts(styleId, {
+        orgId: activeOrgId,
+        ownerOrgId: resolvedOwnerOrgId,
+      });
+      const prepared = impacts.map((impact) => ({
+        ...impact,
+        selected: true,
+        effectiveFrom: todayDateKey(),
+        applicableQuantity:
+          Number(impact?.workRecordCount) > 0
+            ? Number(impact?.remainingQuantity || 0)
+            : Number(impact?.assignmentQuantity || 0),
+      }));
+      setAssignmentImpacts(prepared);
+      if (notifyWhenEmpty && prepared.length === 0) {
+        showNotification('변경을 적용할 미완료 배정 카드가 없습니다.', 'info');
+      }
+      return prepared;
+    } catch (error) {
+      showNotification(error?.message || '영향받는 배정 카드를 불러오지 못했습니다.', 'error');
+      return [];
+    } finally {
+      setLoadingAssignmentImpacts(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!styleFormData.name?.trim()) {
       showNotification(getStyleDetailMessage(languageCode, 'nameRequired'), 'error');
@@ -430,23 +461,7 @@ const StyleDetail = () => {
       setOriginalData(normalizedSaved);
       setStyleFormData(normalizedSaved);
       setProcessMasterReloadKey((prev) => prev + 1);
-      const impacts = processesChanged
-        ? await fetchStyleAssignmentProcessImpacts(styleId, {
-            orgId: activeOrgId,
-            ownerOrgId: resolvedOwnerOrgId,
-          })
-        : [];
-      setAssignmentImpacts(
-        impacts.map((impact) => ({
-          ...impact,
-          selected: true,
-          effectiveFrom: todayDateKey(),
-          applicableQuantity:
-            Number(impact?.workRecordCount) > 0
-              ? Number(impact?.remainingQuantity || 0)
-              : Number(impact?.assignmentQuantity || 0),
-        }))
-      );
+      if (processesChanged) await loadAssignmentImpacts();
     } catch (error) {
       showNotification(error?.message || getStyleDetailMessage(languageCode, 'saveError'), 'error');
     }
@@ -485,6 +500,15 @@ const StyleDetail = () => {
       titleActions={(
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <LastUpdaterLabel />
+          {!isNew && canViewProcessInfo ? (
+            <Button
+              variant="outlined"
+              onClick={() => loadAssignmentImpacts({ notifyWhenEmpty: true })}
+              disabled={loadingStyle || loadingAssignmentImpacts || isDirty}
+            >
+              배정 적용
+            </Button>
+          ) : null}
           <SaveButton
             onClick={handleSave}
             disabled={loadingStyle || (!isNew && !isDirty)}
