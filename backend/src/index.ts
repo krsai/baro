@@ -11934,6 +11934,9 @@ const toWorkLogContextWorkerResponse = (row: any) => ({
 const toWorkLogContextAssignmentResponse = (plan: any) => {
   const contextDateKey = normalizeDateKey(plan?._workLogContextDateKey);
   const currentSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
+  const hasAssignedProcessVersion =
+    toPositiveIntOrNull(plan?.styleProcessVersionId) !== null ||
+    toPositiveIntOrNull(currentSnapshot?.styleProcessVersionId) !== null;
   const historicalSnapshot = ensureArray(plan?.assignmentProcessRevisionHistory)
     .map((snapshot) => normalizeAssignmentCtSnapshot(snapshot))
     .filter(Boolean)
@@ -11947,7 +11950,10 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
       return (!from || from <= contextDateKey) && (!to || contextDateKey <= to);
     });
   const normalizedSnapshot =
-    contextDateKey && currentSnapshot?.effectiveFrom && contextDateKey < currentSnapshot.effectiveFrom
+    !hasAssignedProcessVersion &&
+    contextDateKey &&
+    currentSnapshot?.effectiveFrom &&
+    contextDateKey < currentSnapshot.effectiveFrom
       ? historicalSnapshot ?? currentSnapshot
       : currentSnapshot;
   const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
