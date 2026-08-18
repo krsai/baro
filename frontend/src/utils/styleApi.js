@@ -225,6 +225,43 @@ export const updateStyle = async (styleId, style, options = {}) => {
   return normalized;
 };
 
+export const fetchStyleAssignmentProcessImpacts = async (styleId, options = {}) => {
+  const query = buildQueryString({
+    orgId: toPositiveOrgId(options?.orgId),
+    ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
+  });
+  const data = await requestJSON(
+    `/styles/${encodeURIComponent(styleId)}/assignment-process-impacts${query}`,
+    { forceRefresh: true, skipCache: true }
+  );
+  return normalizeArray(data?.impacts);
+};
+
+export const applyStyleAssignmentProcessRevisions = async (
+  styleId,
+  selections,
+  options = {}
+) => {
+  const query = buildQueryString({
+    orgId: toPositiveOrgId(options?.orgId),
+    ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
+  });
+  const result = await requestJSON(
+    `/styles/${encodeURIComponent(styleId)}/assignment-process-revisions${query}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selections: normalizeArray(selections) }),
+    }
+  );
+  emitWorkspaceDataChanged({
+    topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+    orgId: toPositiveOrgId(options?.orgId),
+    styleIds: [styleId],
+  });
+  return result;
+};
+
 export const deleteStyle = async (styleId, options = {}) => {
   const query = buildQueryString({
     orgId: toPositiveOrgId(options?.orgId),

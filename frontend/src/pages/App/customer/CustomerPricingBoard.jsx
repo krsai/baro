@@ -72,6 +72,9 @@ const TEXT = {
     selectCustomer: '고객사를 선택하세요',
     searchStyle: '스타일명 또는 코드 검색...',
     currency: '통화',
+    defaultCurrency: '기본 통화',
+    styleCurrency: '스타일 통화',
+    useDefaultCurrency: '고객 기본 통화 사용',
     style: '스타일',
     styleCode: '스타일 코드',
     unitPrice: '한 벌 단가',
@@ -115,6 +118,9 @@ const TEXT = {
     selectCustomer: 'Select a customer',
     searchStyle: 'Search style name or code...',
     currency: 'Currency',
+    defaultCurrency: 'Default currency',
+    styleCurrency: 'Style currency',
+    useDefaultCurrency: 'Use customer default currency',
     style: 'Style',
     styleCode: 'Style Code',
     unitPrice: 'Unit Price',
@@ -158,6 +164,9 @@ const TEXT = {
     selectCustomer: 'Chon khach hang',
     searchStyle: 'Tim ten hoac ma style...',
     currency: 'Tien te',
+    defaultCurrency: 'Tien te mac dinh',
+    styleCurrency: 'Tien te style',
+    useDefaultCurrency: 'Dung tien te mac dinh cua khach hang',
     style: 'Style',
     styleCode: 'Ma style',
     unitPrice: 'Đơn giá / chiec',
@@ -257,7 +266,10 @@ const PricingRow = memo(function PricingRow({
           fontWeight: 700,
         }}
       >
-        {style.name || '-'}
+        <Stack direction="row" spacing={0.75} alignItems="center">
+          <span>{style.name || '-'}</span>
+          <Chip size="small" label={currencyCode} variant="outlined" />
+        </Stack>
       </TableCell>
       <TableCell
         sx={{
@@ -350,6 +362,8 @@ const CustomerPricingBoard = () => {
   const [styles, setStyles] = useState([]);
   const [pricingBasis, setPricingBasis] = useState('MANUFACTURING_SERVICE_PRICE');
   const [currencyCode, setCurrencyCode] = useState('USD');
+  const [styleCurrencyOverrides, setStyleCurrencyOverrides] = useState({});
+  const [savingCurrency, setSavingCurrency] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [draftPrices, setDraftPrices] = useState({});
   const [savedPrices, setSavedPrices] = useState({});
@@ -436,10 +450,14 @@ const CustomerPricingBoard = () => {
       }
       setLoadingStyles(true);
       try {
-        const payload = await requestJSON(
-          `/customers/${selectedCustomerId}/quantity-buckets${customerQuery}`,
-          { skipGlobalLoading: true }
-        );
+        const [payload, currencyPayload] = await Promise.all([
+          requestJSON(`/customers/${selectedCustomerId}/quantity-buckets${customerQuery}`, {
+            skipGlobalLoading: true,
+          }),
+          requestJSON(`/customers/${selectedCustomerId}/sales-currencies${customerQuery}`, {
+            skipGlobalLoading: true,
+          }),
+        ]);
         if (!active) return;
         const customerKey = String(selectedCustomerId);
         const defaultQuantities = Array.isArray(payload?.defaultVersion?.quantities)
@@ -479,6 +497,13 @@ const CustomerPricingBoard = () => {
         setStyleBuckets((previous) => ({ ...previous, ...nextBuckets }));
         setSavedStyleBuckets((previous) => ({ ...previous, ...nextBuckets }));
         setSavedStyleBucketVersionIds((previous) => ({ ...previous, ...nextVersionIds }));
+        setCurrencyCode(currencyPayload?.defaultCurrencyCode || 'USD');
+        setStyleCurrencyOverrides(
+          Object.fromEntries(
+            (Array.isArray(currencyPayload?.styleOverrides) ? currencyPayload.styleOverrides : [])
+              .map((override) => [String(override.styleId), override.currencyCode])
+          )
+        );
       } catch (error) {
         if (active) showNotification(error?.message || text.loadFailed, 'error');
       } finally {
@@ -497,25 +522,29 @@ const CustomerPricingBoard = () => {
       if (!selectedCustomerId) return;
       setLoadingPrices(true);
       try {
-        const priceQuery = buildQueryString({
-          orgId: activeOrgId,
-          pricingBasis,
-          currencyCode,
-        });
-        const payload = await requestJSON(
-          `/customers/${selectedCustomerId}/sales-prices${priceQuery}`,
-          { skipGlobalLoading: true }
-        );
+        const payloads = await Promise.all(['USD', 'VND', 'KRW'].map(async (code) => ({
+          code,
+          payload: await requestJSON(
+            `/customers/${selectedCustomerId}/sales-prices${buildQueryString({
+              orgId: activeOrgId,
+              pricingBasis,
+              currencyCode: code,
+            })}`,
+            { skipGlobalLoading: true }
+          ),
+        })));
         if (!active) return;
-        const scopePrefix = `${selectedCustomerId}:${pricingBasis}:${currencyCode}:`;
         const loadedPrices = {};
-        (Array.isArray(payload?.styles) ? payload.styles : []).forEach((style) => {
-          (Array.isArray(style?.prices) ? style.prices : []).forEach((price) => {
-            loadedPrices[
-              `${selectedCustomerId}:${pricingBasis}:${currencyCode}:${style.styleId}:${price.bucketQuantity}`
-            ] = String(price.unitPrice ?? '');
+        payloads.forEach(({ code, payload }) => {
+          (Array.isArray(payload?.styles) ? payload.styles : []).forEach((style) => {
+            (Array.isArray(style?.prices) ? style.prices : []).forEach((price) => {
+              loadedPrices[
+                `${selectedCustomerId}:${pricingBasis}:${code}:${style.styleId}:${price.bucketQuantity}`
+              ] = String(price.unitPrice ?? '');
+            });
           });
         });
+        const scopePrefix = `${selectedCustomerId}:${pricingBasis}:`;
         setDraftPrices((previous) => {
           const next = Object.fromEntries(
             Object.entries(previous).filter(([key]) => !key.startsWith(scopePrefix))
@@ -540,7 +569,6 @@ const CustomerPricingBoard = () => {
     };
   }, [
     activeOrgId,
-    currencyCode,
     pricingBasis,
     priceReloadKey,
     selectedCustomerId,
@@ -580,6 +608,39 @@ const CustomerPricingBoard = () => {
   const hiddenCustomStyleCount = selectedStyleId
     ? 0
     : filteredStyles.length - displayedStyles.length;
+  const resolveStyleCurrencyCode = useCallback(
+    (styleId) => styleCurrencyOverrides[String(styleId)] || currencyCode,
+    [currencyCode, styleCurrencyOverrides]
+  );
+
+  const saveCurrencySetting = useCallback(async ({ styleId = null, nextCurrencyCode }) => {
+    if (!selectedCustomerId) return;
+    setSavingCurrency(true);
+    try {
+      await requestJSON(`/customers/${selectedCustomerId}/sales-currencies${customerQuery}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ styleId, currencyCode: nextCurrencyCode || null }),
+        skipGlobalLoading: true,
+      });
+      if (styleId == null) setCurrencyCode(nextCurrencyCode);
+      else setStyleCurrencyOverrides((previous) => {
+        const next = { ...previous };
+        if (nextCurrencyCode) next[String(styleId)] = nextCurrencyCode;
+        else delete next[String(styleId)];
+        return next;
+      });
+      emitWorkspaceDataChanged({
+        topics: [WORKSPACE_DATA_TOPICS.SALES_PRICES],
+        orgId: activeOrgId,
+        source: 'customer-sales-currency',
+      });
+    } catch (error) {
+      showNotification(error?.message || text.loadFailed, 'error');
+    } finally {
+      setSavingCurrency(false);
+    }
+  }, [activeOrgId, customerQuery, selectedCustomerId, showNotification, text.loadFailed]);
 
   const updateActiveSalesBuckets = useCallback(
     (nextBuckets) => {
@@ -619,7 +680,7 @@ const CustomerPricingBoard = () => {
 
   const saveActiveBuckets = useCallback(async () => {
     if (!selectedCustomerId) return;
-    const priceScopePrefix = `${selectedCustomerId}:${pricingBasis}:${currencyCode}:`;
+    const priceScopePrefix = `${selectedCustomerId}:${pricingBasis}:`;
     const hasUnsavedPriceInScope = Object.entries(draftPrices).some(
       ([key, value]) =>
         key.startsWith(priceScopePrefix) &&
@@ -711,7 +772,6 @@ const CustomerPricingBoard = () => {
     activeSalesBuckets,
     customerBucketKey,
     customerQuery,
-    currencyCode,
     draftPrices,
     languageCode,
     pricingBasis,
@@ -742,12 +802,12 @@ const CustomerPricingBoard = () => {
   );
   const handlePriceFocus = useCallback((key) => setFocusedPriceKey(key), []);
   const handlePriceBlur = useCallback(() => setFocusedPriceKey(''), []);
-  const priceScopePrefix = `${selectedCustomerId}:${pricingBasis}:${currencyCode}:`;
   const dirtyPriceChanges = useMemo(
     () => displayedStyles.flatMap((style) =>
       activeSalesBuckets.flatMap((bucketQuantity) => {
+        const effectiveCurrencyCode = resolveStyleCurrencyCode(style.id);
         const key =
-          `${selectedCustomerId}:${pricingBasis}:${currencyCode}:${style.id}:${bucketQuantity}`;
+          `${selectedCustomerId}:${pricingBasis}:${effectiveCurrencyCode}:${style.id}:${bucketQuantity}`;
         const draft = draftPrices[key] || '';
         const saved = savedPrices[key] || '';
         if (canonicalPrice(draft) === canonicalPrice(saved)) return [];
@@ -755,6 +815,7 @@ const CustomerPricingBoard = () => {
           key,
           styleId: Number(style.id),
           styleName: style.name || style.styleCode || String(style.id),
+          currencyCode: effectiveCurrencyCode,
           bucketQuantity,
           unitPrice: draft || null,
         }];
@@ -762,12 +823,12 @@ const CustomerPricingBoard = () => {
     ),
     [
       activeSalesBuckets,
-      currencyCode,
       displayedStyles,
       draftPrices,
       pricingBasis,
       savedPrices,
       selectedCustomerId,
+      resolveStyleCurrencyCode,
     ]
   );
   const invalidPriceChanges = useMemo(
@@ -791,23 +852,26 @@ const CustomerPricingBoard = () => {
     }
     setSavingPrices(true);
     try {
-      await requestJSON(
-        `/customers/${selectedCustomerId}/sales-prices${customerQuery}`,
-        {
+      const changesByCurrency = dirtyPriceChanges.reduce((map, change) => {
+        const bucket = map.get(change.currencyCode) || [];
+        bucket.push(change);
+        map.set(change.currencyCode, bucket);
+        return map;
+      }, new Map());
+      await Promise.all(Array.from(changesByCurrency.entries()).map(([code, changes]) =>
+        requestJSON(`/customers/${selectedCustomerId}/sales-prices${customerQuery}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             pricingBasis,
-            currencyCode,
-            prices: dirtyPriceChanges.map(({ styleId, bucketQuantity, unitPrice }) => ({
-              styleId,
-              bucketQuantity,
-              unitPrice,
+            currencyCode: code,
+            prices: changes.map(({ styleId, bucketQuantity, unitPrice }) => ({
+              styleId, bucketQuantity, unitPrice,
             })),
           }),
           skipGlobalLoading: true,
-        }
-      );
+        })
+      ));
       setPriceReloadKey((value) => value + 1);
       emitWorkspaceDataChanged({
         topics: [WORKSPACE_DATA_TOPICS.SALES_PRICES],
@@ -828,7 +892,6 @@ const CustomerPricingBoard = () => {
       setSavingPrices(false);
     }
   }, [
-    currencyCode,
     activeOrgId,
     customerQuery,
     dirtyPriceChanges,
@@ -923,11 +986,14 @@ const CustomerPricingBoard = () => {
               </ToggleButtonGroup>
 
               <FormControl size="small" sx={{ minWidth: 110 }}>
-                <InputLabel>{text.currency}</InputLabel>
+                <InputLabel>{text.defaultCurrency}</InputLabel>
                 <Select
                   value={currencyCode}
-                  label={text.currency}
-                  onChange={(event) => setCurrencyCode(event.target.value)}
+                  label={text.defaultCurrency}
+                  onChange={(event) => saveCurrencySetting({
+                    nextCurrencyCode: event.target.value,
+                  })}
+                  disabled={savingCurrency || dirtyPriceChanges.length > 0}
                 >
                   <MenuItem value="USD">USD</MenuItem>
                   <MenuItem value="VND">VND</MenuItem>
@@ -953,7 +1019,7 @@ const CustomerPricingBoard = () => {
             label={formatMessage(text.styleCount, { count: styles.length })}
             variant="outlined"
           />
-          <Chip label={`${text.currency}: ${currencyCode}`} variant="outlined" />
+          <Chip label={`${text.defaultCurrency}: ${currencyCode}`} variant="outlined" />
         </Stack>
         {hiddenCustomStyleCount > 0 && (
           <Alert severity="warning">
@@ -1036,6 +1102,26 @@ const CustomerPricingBoard = () => {
                               {text.useStyleBuckets}
                             </ToggleButton>
                           </ToggleButtonGroup>
+                        )}
+
+                        {selectedStyleId && (
+                          <FormControl size="small" sx={{ minWidth: 190 }}>
+                            <InputLabel>{text.styleCurrency}</InputLabel>
+                            <Select
+                              value={styleCurrencyOverrides[String(selectedStyleId)] || ''}
+                              label={text.styleCurrency}
+                              disabled={savingCurrency || dirtyPriceChanges.length > 0}
+                              onChange={(event) => saveCurrencySetting({
+                                styleId: Number(selectedStyleId),
+                                nextCurrencyCode: event.target.value,
+                              })}
+                            >
+                              <MenuItem value="">{text.useDefaultCurrency} ({currencyCode})</MenuItem>
+                              <MenuItem value="USD">USD</MenuItem>
+                              <MenuItem value="VND">VND</MenuItem>
+                              <MenuItem value="KRW">KRW</MenuItem>
+                            </Select>
+                          </FormControl>
                         )}
 
                         <FormControl
@@ -1151,10 +1237,10 @@ const CustomerPricingBoard = () => {
                       key={style.id}
                       style={style}
                       quantities={activeSalesBuckets}
-                      scopePrefix={priceScopePrefix}
+                      scopePrefix={`${selectedCustomerId}:${pricingBasis}:${resolveStyleCurrencyCode(style.id)}:`}
                       draftPrices={draftPrices}
                       focusedPriceKey={focusedPriceKey}
-                      currencyCode={currencyCode}
+                      currencyCode={resolveStyleCurrencyCode(style.id)}
                       languageCode={languageCode}
                       unitPriceLabel={text.unitPrice}
                       disabled={loadingPrices || savingPrices}

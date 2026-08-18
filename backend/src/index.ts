@@ -767,6 +767,8 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "QuantityBucketEntry", columnName: "bucketQuantity" },
   { tableName: "OrgRelationship", columnName: "salesBucketSetVersionId" },
   { tableName: "OrgRelationship", columnName: "timeBucketSetVersionId" },
+  { tableName: "OrgRelationship", columnName: "salesCurrencyId" },
+  { tableName: "OrgRelationshipStyleSalesCurrency", columnName: "currencyId" },
   { tableName: "OrgRelationshipStyleTimeBucket", columnName: "quantityBucketSetVersionId" },
   { tableName: "Style", columnName: "timeBucketSetVersionId" },
   { tableName: "Style", columnName: "timeBucketSource" },
@@ -798,6 +800,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "AssignmentPlan", columnName: "assignmentStTotalSeconds" },
   { tableName: "AssignmentPlan", columnName: "assignmentCtTotalSeconds" },
   { tableName: "AssignmentPlan", columnName: "assignmentCtSnapshot" },
+  { tableName: "AssignmentPlan", columnName: "assignmentProcessRevisionHistory" },
   { tableName: "Employee", columnName: "gradeId" },
   { tableName: "EmployeeGradeSet", columnName: "orgId" },
   { tableName: "EmployeeGrade", columnName: "setId" },
@@ -876,6 +879,11 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "WorkRecord_outsource_actor_check",
   "Currency_code_key",
   "OrgRelationshipStyleSalesBucket_relationship_style_key",
+  "OrgRelationshipStyleSalesCurrency_relationship_style_key",
+  "OrgRelationshipStyleSalesCurrency_relationship_scope_fkey",
+  "OrgRelationshipStyleSalesCurrency_style_brand_fkey",
+  "OrgRelationshipStyleSalesCurrency_currency_fkey",
+  "OrgRelationship_salesCurrency_fkey",
   "CustomerSalesPriceList_scope_version_key",
   "CustomerSalesPriceList_id_version_key",
   "QuantityBucketEntry_id_version_key",
@@ -11903,7 +11911,24 @@ const toWorkLogContextWorkerResponse = (row: any) => ({
   currentLineId: row?.lineId ?? null,
 });
 const toWorkLogContextAssignmentResponse = (plan: any) => {
-  const normalizedSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
+  const contextDateKey = normalizeDateKey(plan?._workLogContextDateKey);
+  const currentSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
+  const historicalSnapshot = ensureArray(plan?.assignmentProcessRevisionHistory)
+    .map((snapshot) => normalizeAssignmentCtSnapshot(snapshot))
+    .filter(Boolean)
+    .sort((left, right) =>
+      String(right?.effectiveFrom || "").localeCompare(String(left?.effectiveFrom || ""))
+    )
+    .find((snapshot) => {
+      if (!contextDateKey) return false;
+      const from = normalizeDateKey(snapshot?.effectiveFrom);
+      const to = normalizeDateKey((snapshot as any)?.effectiveTo);
+      return (!from || from <= contextDateKey) && (!to || contextDateKey <= to);
+    });
+  const normalizedSnapshot =
+    contextDateKey && currentSnapshot?.effectiveFrom && contextDateKey < currentSnapshot.effectiveFrom
+      ? historicalSnapshot ?? currentSnapshot
+      : currentSnapshot;
   const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
   const closedQty = resolveAssignmentPlanClosedQty(plan);
   const closedAt = resolveAssignmentPlanClosedAt(plan);
@@ -12226,6 +12251,7 @@ const buildWorkLogContextResponse = async ({
           assignmentStTotalSeconds: true,
           assignmentCtTotalSeconds: true,
           assignmentCtSnapshot: true,
+          assignmentProcessRevisionHistory: true,
           startIndex: true,
           endIndex: true,
           isCompleted: true,
@@ -12586,6 +12612,7 @@ const buildWorkLogContextResponse = async ({
       .map((plan) =>
         toWorkLogContextAssignmentResponse({
           ...plan,
+          _workLogContextDateKey: normalizedWorkDate,
           lineName: lineNameById.get(Number(plan?.lineId)) || "",
         })
       ),
@@ -12771,6 +12798,7 @@ const normalizeAssignmentCtSnapshotProcess = (value: any, index = 0) => {
     basis: resolveOptionalString(value?.basis, null),
     snapshotCtSeconds,
     pieceCtSeconds,
+    applicableQuantity: toOptionalNonNegativeInt(value?.applicableQuantity, null),
   };
 };
 
@@ -12802,6 +12830,10 @@ const normalizeAssignmentCtSnapshot = (value: any) => {
     pieceCtTotalSeconds,
     assignmentCtTotalSeconds,
     processes,
+    revision: toOptionalNonNegativeInt(value?.revision, null),
+    effectiveFrom: normalizeDateKey(value?.effectiveFrom),
+    effectiveTo: normalizeDateKey(value?.effectiveTo),
+    changeReason: resolveOptionalString(value?.changeReason, null),
   };
 };
 const resolveAssignmentCtSnapshotInput = (item: any) =>
@@ -21208,16 +21240,28 @@ const calculateRemainingStTotalSecondsFromProcessProgress = ({
         Math.max(max, Math.max(0, Math.round(Number(processTotalsByKey.get(key) || 0)))),
       0
     );
-    const remainingQuantity = Math.max(0, normalizedPlannedQuantity - completedQuantity);
-    if (remainingQuantity <= 0) continue;
     const styleProcessId =
       group
         .map((key) => resolveStyleProcessIdFromAssignmentProcessKey(key))
         .filter((value): value is number => value !== null)
         .find((value) => snapshotByStyleProcessId.has(value)) ?? null;
     if (styleProcessId === null) return null;
+    const snapshotProcess = snapshotByStyleProcessId.get(styleProcessId);
+    const applicableQuantity = toOptionalNonNegativeInt(
+      snapshotProcess?.applicableQuantity,
+      normalizedPlannedQuantity
+    ) ?? normalizedPlannedQuantity;
+    const baselineCompletedQuantity = toOptionalNonNegativeInt(
+      snapshotProcess?.baselineCompletedQuantity,
+      0
+    ) ?? 0;
+    const remainingQuantity = Math.max(
+      0,
+      baselineCompletedQuantity + applicableQuantity - completedQuantity
+    );
+    if (remainingQuantity <= 0) continue;
     const bucketStSeconds = toOptionalProcessSeconds(
-      snapshotByStyleProcessId.get(styleProcessId)?.stSeconds
+      snapshotProcess?.stSeconds
     );
     if (bucketStSeconds === null) return null;
     totalRemainingSeconds += remainingQuantity * bucketStSeconds;
@@ -28875,6 +28919,94 @@ const toSalesPriceResponse = (price: any) => ({
   unitPrice: new Prisma.Decimal(price.unitPrice).toFixed(4),
 });
 
+const resolveRelationshipSalesCurrencySettings = async (relationship: any, db: any = prisma) => {
+  const defaultCurrency = relationship?.salesCurrency?.code
+    ? relationship.salesCurrency
+    : await db.currency.findUnique({ where: { code: "USD" }, select: { id: true, code: true } });
+  if (!defaultCurrency) throw createHttpError(409, "currency USD is not configured");
+  const overrides = await db.orgRelationshipStyleSalesCurrency.findMany({
+    where: { orgRelationshipId: relationship.id },
+    include: { currency: { select: { id: true, code: true } } },
+  });
+  return {
+    defaultCurrency,
+    currencyCodeByStyleId: new Map(
+      overrides.map((override: any) => [override.styleId, override.currency.code])
+    ),
+    overrides,
+  };
+};
+
+app.get("/customers/:id/sales-currencies", async (req, res) => {
+  const relationshipId = toPositiveIntOrNull(req.params.id);
+  if (relationshipId === null) return res.status(400).json({ ok: false, error: "invalid customer id" });
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const relationship = await prisma.orgRelationship.findFirst({
+    where: { id: relationshipId, manufacturerOrgId: accessContext.organization.id },
+    include: { salesCurrency: { select: { id: true, code: true } } },
+  });
+  if (!relationship) return res.status(404).json({ ok: false, error: "customer not found" });
+  const settings = await resolveRelationshipSalesCurrencySettings(relationship);
+  res.json({
+    defaultCurrencyCode: settings.defaultCurrency.code,
+    styleOverrides: settings.overrides.map((override: any) => ({
+      styleId: override.styleId,
+      currencyCode: override.currency.code,
+    })),
+  });
+});
+
+app.put("/customers/:id/sales-currencies", async (req, res) => {
+  const relationshipId = toPositiveIntOrNull(req.params.id);
+  if (relationshipId === null) return res.status(400).json({ ok: false, error: "invalid customer id" });
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const result = await prisma.$transaction(async (tx) => {
+    const relationship = await tx.orgRelationship.findFirst({
+      where: { id: relationshipId, manufacturerOrgId: accessContext.organization.id },
+    });
+    if (!relationship) throw createHttpError(404, "customer not found");
+    const styleId = toPositiveIntOrNull(req.body?.styleId);
+    const currencyCode = req.body?.currencyCode == null
+      ? null
+      : normalizeSalesCurrencyCode(req.body.currencyCode);
+    if (req.body?.currencyCode != null && !currencyCode) throw createHttpError(400, "invalid currency");
+    if (styleId === null) {
+      if (!currencyCode) throw createHttpError(400, "default currency is required");
+      const currencyId = await resolveCurrencyIdOrThrow(currencyCode, tx);
+      await tx.orgRelationship.update({
+        where: { id: relationship.id },
+        data: { salesCurrencyId: currencyId, updatedByEmployeeId: getCurrentRequestActorEmployeeId() },
+      });
+      return { defaultCurrencyCode: currencyCode, styleId: null, currencyCode };
+    }
+    const style = await tx.style.findFirst({ where: { id: styleId, orgId: relationship.brandOrgId } });
+    if (!style) throw createHttpError(409, "style is outside the customer relationship");
+    if (!currencyCode) {
+      await tx.orgRelationshipStyleSalesCurrency.deleteMany({
+        where: { orgRelationshipId: relationship.id, styleId },
+      });
+      return { styleId, currencyCode: null };
+    }
+    const currencyId = await resolveCurrencyIdOrThrow(currencyCode, tx);
+    await tx.orgRelationshipStyleSalesCurrency.upsert({
+      where: { orgRelationshipId_styleId: { orgRelationshipId: relationship.id, styleId } },
+      create: {
+        orgRelationshipId: relationship.id,
+        manufacturerOrgId: relationship.manufacturerOrgId,
+        brandOrgId: relationship.brandOrgId,
+        styleId,
+        currencyId,
+        createdBy: getCurrentRequestActor(),
+      },
+      update: { currencyId },
+    });
+    return { styleId, currencyCode };
+  });
+  res.json({ ok: true, ...result });
+});
+
 app.get("/customers/:id/sales-prices", async (req, res) => {
   const relationshipId = toPositiveIntOrNull(req.params.id);
   if (relationshipId === null) {
@@ -28973,12 +29105,14 @@ app.put("/customers/:id/sales-prices", async (req, res) => {
     const relationship = await tx.orgRelationship.findFirst({
       where: { id: relationshipId, manufacturerOrgId: organization.id },
       include: {
+        salesCurrency: { select: { id: true, code: true } },
         salesBucketSetVersion: {
           include: { entries: { orderBy: { bucketQuantity: "asc" } } },
         },
       },
     });
     if (!relationship) throw createHttpError(404, "customer not found");
+    const currencySettings = await resolveRelationshipSalesCurrencySettings(relationship, tx);
     const styleIds = Array.from(new Set(
       requestedPrices.map((entry) => toPositiveIntOrNull(entry?.styleId))
         .filter((value): value is number => value !== null)
@@ -29013,6 +29147,15 @@ app.put("/customers/:id/sales-prices", async (req, res) => {
       const style = styleId === null ? null : styleById.get(styleId);
       if (!style || bucketQuantity === null) {
         throw createHttpError(400, "styleId and bucketQuantity are required");
+      }
+      const effectiveCurrencyCode =
+        currencySettings.currencyCodeByStyleId.get(style.id) ??
+        currencySettings.defaultCurrency.code;
+      if (effectiveCurrencyCode !== currencyCode) {
+        throw createHttpError(
+          409,
+          `style ${style.id} uses ${effectiveCurrencyCode}; reload the pricing table before saving`
+        );
       }
       const version = resolveSalesBucketVersionForStyle(relationship, style);
       if (!version) throw createHttpError(409, "sales bucket version is missing");
@@ -30632,6 +30775,280 @@ app.put("/styles/:styleId", async (req, res) => {
       })[0]
     : updated;
   res.json(toStyleResponse(responseUpdated, { includeProcesses, processMirrorMap }));
+});
+
+const buildStyleAssignmentProcessChangeRows = async ({
+  orgId,
+  styleId,
+}: {
+  orgId: number;
+  styleId: number;
+}) => {
+  let plans = await prisma.assignmentPlan.findMany({
+    where: { orgId, styleId, isCompleted: false },
+    select: {
+      id: true,
+      externalId: true,
+      lineId: true,
+      assignmentQuantity: true,
+      assignmentCtSnapshot: true,
+      assignmentStSnapshot: true,
+      assignmentProcessRevisionHistory: true,
+      startIndex: true,
+      endIndex: true,
+      isCompleted: true,
+      workOrder: { select: { orderNumber: true } },
+      style: { select: { id: true, code: true, name: true } },
+      line: { select: { id: true, name: true } },
+      workRecords: {
+        select: { styleProcessId: true, quantity: true },
+      },
+    },
+    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+  });
+  plans = await attachLiveStyleProcessMirrorsToAssignmentPlans({ orgId, plans });
+  return plans.flatMap((plan: any) => {
+    const liveProcesses = normalizeStyleProcesses(plan?.style?.processes);
+    const currentSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
+    const totalsByProcessId = ensureArray(plan?.workRecords).reduce((map, record) => {
+      const processId = toPositiveIntOrNull(record?.styleProcessId);
+      if (processId === null) return map;
+      map.set(
+        processId,
+        (map.get(processId) ?? 0) + Math.max(0, Math.round(Number(record?.quantity) || 0))
+      );
+      return map;
+    }, new Map<number, number>());
+    const producedQuantity =
+      totalsByProcessId.size > 0 ? Math.max(...Array.from(totalsByProcessId.values())) : 0;
+    const assignmentQuantity = Math.max(0, Math.round(Number(plan?.assignmentQuantity) || 0));
+    const currentIds = new Set(
+      ensureArray(currentSnapshot?.processes)
+        .map((process) => toPositiveIntOrNull(process?.styleProcessId))
+        .filter((id): id is number => id !== null)
+    );
+    const liveIds = new Set(
+      liveProcesses
+        .map((process) => toPositiveIntOrNull(process?.styleProcessId ?? process?.id))
+        .filter((id): id is number => id !== null)
+    );
+    return [{
+      assignmentPlanId: plan.id,
+      externalId: plan.externalId,
+      orderNo: plan?.workOrder?.orderNumber ?? "",
+      styleCode: plan?.style?.code ?? "",
+      styleName: plan?.style?.name ?? "",
+      lineId: plan?.line?.id ?? plan.lineId,
+      lineName: plan?.line?.name ?? "",
+      assignmentQuantity,
+      producedQuantity,
+      remainingQuantity: Math.max(0, assignmentQuantity - producedQuantity),
+      workRecordCount: ensureArray(plan?.workRecords).length,
+      addedProcessCount: Array.from(liveIds).filter((id) => !currentIds.has(id)).length,
+      removedProcessCount: Array.from(currentIds).filter((id) => !liveIds.has(id)).length,
+      currentRevision: Math.max(1, toOptionalNonNegativeInt(currentSnapshot?.revision, 1) ?? 1),
+    }];
+  });
+};
+
+app.get("/styles/:styleId/assignment-process-impacts", async (req, res) => {
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const style = await resolveStyleByIdForAccess({
+    organization: accessContext.organization,
+    styleId: String(req.params.styleId || "").trim(),
+    ownerOrgId: parseStyleOwnerOrgIdQuery(req.query.ownerOrgId),
+  });
+  if (!style) return res.status(404).json({ ok: false, error: "style not found" });
+  const impacts = await buildStyleAssignmentProcessChangeRows({
+    orgId: accessContext.organization.id,
+    styleId: style.id,
+  });
+  res.json({ impacts });
+});
+
+app.post("/styles/:styleId/assignment-process-revisions", async (req, res) => {
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization, employee } = accessContext;
+  const style = await resolveStyleByIdForAccess({
+    organization,
+    styleId: String(req.params.styleId || "").trim(),
+    ownerOrgId: parseStyleOwnerOrgIdQuery(req.query.ownerOrgId),
+  });
+  if (!style) return res.status(404).json({ ok: false, error: "style not found" });
+  const selections = ensureArray(req.body?.selections);
+  if (selections.length === 0) {
+    return res.status(400).json({ ok: false, error: "at least one assignment selection is required" });
+  }
+  const planIds = selections
+    .map((item) => toPositiveIntOrNull(item?.assignmentPlanId))
+    .filter((id): id is number => id !== null);
+  let plans = await prisma.assignmentPlan.findMany({
+    where: { id: { in: planIds }, orgId: organization.id, styleId: style.id, isCompleted: false },
+    select: {
+      id: true,
+      externalId: true,
+      assignmentQuantity: true,
+      assignmentCtSnapshot: true,
+      assignmentStSnapshot: true,
+      assignmentProcessRevisionHistory: true,
+      startIndex: true,
+      endIndex: true,
+      style: { select: { id: true, code: true, name: true } },
+      workRecords: {
+        select: {
+          id: true,
+          styleProcessId: true,
+          quantity: true,
+          effectiveCoverageStartDate: true,
+          effectiveCoverageEndDate: true,
+        },
+      },
+    },
+  });
+  plans = await attachLiveStyleProcessMirrorsToAssignmentPlans({
+    orgId: organization.id,
+    plans,
+  });
+  if (plans.length !== new Set(planIds).size) {
+    return res.status(404).json({ ok: false, error: "one or more assignment plans were not found" });
+  }
+  const selectionByPlanId = new Map(
+    selections.map((item) => [toPositiveIntOrNull(item?.assignmentPlanId), item])
+  );
+  const updatedAt = new Date().toISOString();
+  const updatedBy = resolveOptionalString(employee?.name ?? getRequesterEmail(req), "SYSTEM") ?? "SYSTEM";
+  const updates = plans.map((plan: any) => {
+    const selection = selectionByPlanId.get(plan.id) ?? {};
+    const effectiveFrom = normalizeDateKey(selection?.effectiveFrom);
+    if (!effectiveFrom) throw createHttpError(400, `effectiveFrom is required for assignment ${plan.id}`);
+    const crossingRecord = ensureArray(plan?.workRecords).find((record) => {
+      const start = normalizeDateKey(record?.effectiveCoverageStartDate);
+      const end = normalizeDateKey(record?.effectiveCoverageEndDate);
+      return Boolean(start && end && start < effectiveFrom && effectiveFrom <= end);
+    });
+    if (crossingRecord) {
+      throw createHttpError(
+        409,
+        `assignment ${plan.id} has a work record period crossing ${effectiveFrom}; split the work log period first`
+      );
+    }
+    const refreshed = buildEditableAssignmentCtSnapshotFromLiveStyle({
+      assignment: plan,
+      card: { quantity: plan.assignmentQuantity },
+      style: plan.style,
+      existingSnapshot: plan.assignmentCtSnapshot,
+      updatedAt,
+      updatedBy,
+    });
+    if (!refreshed.readiness.ready || !refreshed.assignment.assignmentCtSnapshot) {
+      throw createHttpError(
+        409,
+        `assignment ${plan.id} cannot apply the style change: ${refreshed.readiness.reason || "snapshot not ready"}`
+      );
+    }
+    const previousSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
+    const history = ensureArray(plan?.assignmentProcessRevisionHistory);
+    const currentEffectiveFrom = normalizeDateKey(previousSnapshot?.effectiveFrom);
+    if (currentEffectiveFrom && effectiveFrom <= currentEffectiveFrom) {
+      throw createHttpError(
+        409,
+        `assignment ${plan.id} effectiveFrom must be after ${currentEffectiveFrom}`
+      );
+    }
+    const nextRevision = Math.max(
+      1,
+      ...history.map((item) => toOptionalNonNegativeInt(item?.revision, 0) ?? 0),
+      toOptionalNonNegativeInt(previousSnapshot?.revision, 1) ?? 1
+    ) + 1;
+    const applicableQuantity = Math.max(
+      0,
+      Math.min(
+        Math.round(Number(plan.assignmentQuantity) || 0),
+        Math.round(Number(selection?.applicableQuantity) || 0)
+      )
+    );
+    if (applicableQuantity <= 0) {
+      throw createHttpError(400, `applicableQuantity must be greater than zero for assignment ${plan.id}`);
+    }
+    const nextSnapshot = normalizeAssignmentCtSnapshot({
+      ...refreshed.assignment.assignmentCtSnapshot,
+      revision: nextRevision,
+      effectiveFrom,
+      changeReason: resolveOptionalString(selection?.changeReason, "STYLE_PROCESS_CHANGE"),
+      processes: ensureArray(refreshed.assignment.assignmentCtSnapshot.processes).map((process) => ({
+        ...process,
+        applicableQuantity,
+      })),
+    });
+    const stProcesses = normalizeStyleProcesses(plan?.style?.processes).map((process: any) => {
+      const styleProcessId = toPositiveIntOrNull(process?.styleProcessId ?? process?.id);
+      const stSeconds = resolveStyleProcessExactStPerPieceSeconds(
+        process,
+        Math.max(1, Math.round(Number(plan.assignmentQuantity) || 1))
+      );
+      if (styleProcessId === null || stSeconds === null || stSeconds <= 0) {
+        throw createHttpError(
+          409,
+          `assignment ${plan.id} cannot apply the style change: ST is missing for a process`
+        );
+      }
+      const baselineCompletedQuantity = ensureArray(plan?.workRecords)
+        .filter((record) => toPositiveIntOrNull(record?.styleProcessId) === styleProcessId)
+        .reduce(
+          (sum, record) => sum + Math.max(0, Math.round(Number(record?.quantity) || 0)),
+          0
+        );
+      return {
+        styleProcessId,
+        processCode: resolveOptionalString(process?.code ?? process?.processCode, null),
+        processName: resolveOptionalString(process?.name ?? process?.processName, null),
+        productionStage: resolveOptionalString(process?.productionStage, "SEWING"),
+        stSeconds,
+        applicableQuantity,
+        baselineCompletedQuantity,
+      };
+    });
+    const assignmentStTotalSeconds = stProcesses.reduce(
+      (sum, process) => sum + process.stSeconds * Math.max(0, Math.round(Number(plan.assignmentQuantity) || 0)),
+      0
+    );
+    const nextStSnapshot = {
+      ...(plan?.assignmentStSnapshot && typeof plan.assignmentStSnapshot === "object"
+        ? plan.assignmentStSnapshot
+        : {}),
+      revision: nextRevision,
+      effectiveFrom,
+      updatedAt,
+      updatedBy,
+      processes: stProcesses,
+    };
+    return {
+      id: plan.id,
+      data: {
+        assignmentCtSnapshot: nextSnapshot as Prisma.InputJsonValue,
+        assignmentCtTotalSeconds: nextSnapshot?.assignmentCtTotalSeconds ?? null,
+        assignmentStSnapshot: nextStSnapshot as Prisma.InputJsonValue,
+        assignmentStTotalSeconds,
+        assignmentProcessRevisionHistory: [
+          ...history,
+          ...(previousSnapshot
+            ? [{
+                ...previousSnapshot,
+                revision: toOptionalNonNegativeInt(previousSnapshot?.revision, 1) ?? 1,
+                effectiveTo: shiftDateKeyByDays(effectiveFrom, -1),
+              }]
+            : []),
+        ] as Prisma.InputJsonValue,
+        updatedByEmployeeId: employee?.id ?? null,
+      },
+    };
+  });
+  await prisma.$transaction(
+    updates.map((update) => prisma.assignmentPlan.update({ where: { id: update.id }, data: update.data }))
+  );
+  res.json({ ok: true, updatedAssignmentPlanIds: updates.map((update) => update.id) });
 });
 
 app.delete("/styles/:styleId", async (req, res) => {

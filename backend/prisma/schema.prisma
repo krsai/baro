@@ -265,6 +265,8 @@ model Currency {
   updatedAt DateTime @updatedAt
 
   salesPriceLists CustomerSalesPriceList[]
+  defaultSalesRelationships OrgRelationship[] @relation("OrgRelationshipSalesCurrency")
+  styleSalesCurrencyOverrides OrgRelationshipStyleSalesCurrency[]
 }
 
 model SystemSetting {
@@ -711,6 +713,7 @@ model OrgRelationship {
   // Phase 0; drop only after the Railway DB is checked and any values are exported.
   salesBucketSetVersionId Int?
   timeBucketSetVersionId  Int?
+  salesCurrencyId         Int?
   createdAt               DateTime @default(now())
   createdBy               String   @default("system@baro.local")
   createdByEmployeeId     Int?
@@ -725,6 +728,8 @@ model OrgRelationship {
   timeBucketOverrides   OrgRelationshipStyleTimeBucket[]
   salesPriceLists       CustomerSalesPriceList[]
   assignmentPlans       AssignmentPlan[]
+  salesCurrency         Currency?                         @relation("OrgRelationshipSalesCurrency", fields: [salesCurrencyId], references: [id], onDelete: Restrict)
+  salesCurrencyOverrides OrgRelationshipStyleSalesCurrency[]
 
   createdByEmployee Employee? @relation("OrgRelationshipCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("OrgRelationshipUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -735,6 +740,28 @@ model OrgRelationship {
   @@index([brandOrgId])
   @@index([salesBucketSetVersionId])
   @@index([timeBucketSetVersionId])
+  @@index([salesCurrencyId])
+}
+
+model OrgRelationshipStyleSalesCurrency {
+  id                Int      @id @default(autoincrement())
+  orgRelationshipId Int
+  manufacturerOrgId Int
+  brandOrgId        Int
+  styleId           Int
+  currencyId        Int
+  createdAt         DateTime @default(now())
+  createdBy         String   @default("system@baro.local")
+  updatedAt         DateTime @updatedAt
+
+  orgRelationship OrgRelationship @relation(fields: [orgRelationshipId, manufacturerOrgId, brandOrgId], references: [id, manufacturerOrgId, brandOrgId], onDelete: Cascade, map: "OrgRelationshipStyleSalesCurrency_relationship_scope_fkey")
+  style           Style           @relation(fields: [styleId, brandOrgId], references: [id, orgId], onDelete: Cascade, map: "OrgRelationshipStyleSalesCurrency_style_brand_fkey")
+  currency        Currency        @relation(fields: [currencyId], references: [id], onDelete: Restrict, map: "OrgRelationshipStyleSalesCurrency_currency_fkey")
+
+  @@unique([orgRelationshipId, styleId], map: "OrgRelationshipStyleSalesCurrency_relationship_style_key")
+  @@index([manufacturerOrgId, brandOrgId], map: "OrgRelationshipStyleSalesCurrency_org_scope_idx")
+  @@index([styleId])
+  @@index([currencyId])
 }
 
 model QuantityBucketSet {
@@ -894,6 +921,7 @@ model Style {
   salesBucketOverrides OrgRelationshipStyleSalesBucket[]
   timeBucketOverrides  OrgRelationshipStyleTimeBucket[]
   salesPriceLists      CustomerSalesPriceList[]
+  salesCurrencyOverrides OrgRelationshipStyleSalesCurrency[]
 
   createdByEmployee Employee? @relation("StyleCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("StyleUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -1276,6 +1304,7 @@ model AssignmentPlan {
   basis                     String?
   assignmentCtTotalSeconds  Int?
   assignmentCtSnapshot      Json?
+  assignmentProcessRevisionHistory Json?
   assignmentStTotalSeconds  Int?
   assignmentStSnapshot      Json?
   ctReviewRequired          Boolean               @default(false)

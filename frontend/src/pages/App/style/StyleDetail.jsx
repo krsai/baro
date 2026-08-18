@@ -1,7 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
+  Button,
+  Checkbox,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
   Stack,
+  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
@@ -23,6 +31,8 @@ import { RequestScopeBoundary } from '../../../context/RequestScopeContext';
 import { buildQueryString } from '../../../utils/apiClient';
 import {
   createStyle as createStyleOnApi,
+  applyStyleAssignmentProcessRevisions,
+  fetchStyleAssignmentProcessImpacts,
   fetchStyleById,
   updateStyle as updateStyleOnApi,
 } from '../../../utils/styleApi';
@@ -194,6 +204,8 @@ const StyleDetail = () => {
   const [styleFormData, setStyleFormData] = useState(createEmptyStyle);
   const [loadingStyle, setLoadingStyle] = useState(true);
   const [processMasterReloadKey, setProcessMasterReloadKey] = useState(0);
+  const [assignmentImpacts, setAssignmentImpacts] = useState([]);
+  const [applyingAssignmentChanges, setApplyingAssignmentChanges] = useState(false);
 
   const resolvedOwnerOrgId = useMemo(
     () =>
@@ -397,6 +409,8 @@ const StyleDetail = () => {
       }
       return;
     }
+    const processesChanged = JSON.stringify(buildDirtyCheckProcesses(originalData?.processes)) !==
+      JSON.stringify(buildDirtyCheckProcesses(styleFormData?.processes));
     const payload = buildPayload({
       ...styleFormData,
       id: originalData.id || styleId,
@@ -416,8 +430,52 @@ const StyleDetail = () => {
       setOriginalData(normalizedSaved);
       setStyleFormData(normalizedSaved);
       setProcessMasterReloadKey((prev) => prev + 1);
+      const impacts = processesChanged
+        ? await fetchStyleAssignmentProcessImpacts(styleId, {
+            orgId: activeOrgId,
+            ownerOrgId: resolvedOwnerOrgId,
+          })
+        : [];
+      setAssignmentImpacts(
+        impacts.map((impact) => ({
+          ...impact,
+          selected: true,
+          effectiveFrom: todayDateKey(),
+          applicableQuantity:
+            Number(impact?.workRecordCount) > 0
+              ? Number(impact?.remainingQuantity || 0)
+              : Number(impact?.assignmentQuantity || 0),
+        }))
+      );
     } catch (error) {
       showNotification(error?.message || getStyleDetailMessage(languageCode, 'saveError'), 'error');
+    }
+  };
+
+  const handleApplyAssignmentChanges = async () => {
+    const selected = assignmentImpacts.filter((impact) => impact.selected);
+    if (selected.length === 0) {
+      setAssignmentImpacts([]);
+      return;
+    }
+    setApplyingAssignmentChanges(true);
+    try {
+      await applyStyleAssignmentProcessRevisions(
+        styleId,
+        selected.map((impact) => ({
+          assignmentPlanId: impact.assignmentPlanId,
+          effectiveFrom: impact.effectiveFrom,
+          applicableQuantity: Number(impact.applicableQuantity || 0),
+          changeReason: 'STYLE_PROCESS_CHANGE',
+        })),
+        { orgId: activeOrgId, ownerOrgId: resolvedOwnerOrgId }
+      );
+      showNotification('선택한 배정 카드에 공정 변경을 적용했습니다.', 'success');
+      setAssignmentImpacts([]);
+    } catch (error) {
+      showNotification(error?.message || '배정 카드 공정 변경을 적용하지 못했습니다.', 'error');
+    } finally {
+      setApplyingAssignmentChanges(false);
     }
   };
 
@@ -518,6 +576,80 @@ const StyleDetail = () => {
             </RequestScopeBoundary>
           )}
 
+          <Dialog
+            open={assignmentImpacts.length > 0}
+            onClose={() => setAssignmentImpacts([])}
+            fullWidth
+            maxWidth="md"
+          >
+            <DialogTitle>공정 변경 영향 배정 카드</DialogTitle>
+            <DialogContent dividers>
+              <Typography color="text.secondary" sx={{ mb: 2 }}>
+                기존 작업기록은 변경하지 않습니다. 선택한 적용일부터 새 작업기록과 배정 공정에 변경값을 사용합니다.
+              </Typography>
+              <Stack spacing={1.5}>
+                {assignmentImpacts.map((impact, index) => (
+                  <Box
+                    key={impact.assignmentPlanId}
+                    sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1.5 }}
+                  >
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}>
+                      <FormControlLabel
+                        control={(
+                          <Checkbox
+                            checked={impact.selected}
+                            onChange={(event) => setAssignmentImpacts((rows) => rows.map((row, rowIndex) => (
+                              rowIndex === index ? { ...row, selected: event.target.checked } : row
+                            )))}
+                          />
+                        )}
+                        label={`${impact.orderNo} · ${impact.styleName} · ${impact.lineName}`}
+                        sx={{ flex: 1 }}
+                      />
+                      <Typography variant="body2" color="text.secondary">
+                        배정 {impact.assignmentQuantity} / 기록 {impact.workRecordCount}건
+                      </Typography>
+                      <TextField
+                        type="date"
+                        size="small"
+                        label="적용 시작일"
+                        value={impact.effectiveFrom}
+                        disabled={!impact.selected}
+                        InputLabelProps={{ shrink: true }}
+                        onChange={(event) => setAssignmentImpacts((rows) => rows.map((row, rowIndex) => (
+                          rowIndex === index ? { ...row, effectiveFrom: event.target.value } : row
+                        )))}
+                      />
+                      <TextField
+                        type="number"
+                        size="small"
+                        label="적용 수량"
+                        value={impact.applicableQuantity}
+                        disabled={!impact.selected}
+                        inputProps={{ min: 0, max: impact.assignmentQuantity }}
+                        onChange={(event) => setAssignmentImpacts((rows) => rows.map((row, rowIndex) => (
+                          rowIndex === index ? { ...row, applicableQuantity: event.target.value } : row
+                        )))}
+                        sx={{ width: 120 }}
+                      />
+                    </Stack>
+                  </Box>
+                ))}
+              </Stack>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setAssignmentImpacts([])} disabled={applyingAssignmentChanges}>
+                이번에는 적용하지 않음
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleApplyAssignmentChanges}
+                disabled={applyingAssignmentChanges || !assignmentImpacts.some((impact) => impact.selected)}
+              >
+                선택 카드에 적용
+              </Button>
+            </DialogActions>
+          </Dialog>
         </>
       )}
     </AppPageContainer>
