@@ -11971,6 +11971,13 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     assignmentCtTotalSeconds: resolveAssignmentCtTotalSeconds(plan),
     assignmentStTotalSeconds: resolvePersistedAssignmentPlanStTotalSeconds(plan),
     assignmentStSnapshot: plan?.assignmentStSnapshot ?? null,
+    styleProcessVersionId: toPositiveIntOrNull(plan?.styleProcessVersionId),
+    styleProcessVersionNumber: toPositiveIntOrNull(
+      plan?.styleProcessVersion?.versionNumber
+    ),
+    styleProcessVersionConfirmedDate: normalizeDateKey(
+      plan?.styleProcessVersion?.confirmedDate
+    ),
     ctReviewRequired: plan?.ctReviewRequired === true,
     ctReviewedAt: plan?.ctReviewedAt ?? null,
     ctReviewedByEmployeeId: plan?.ctReviewedByEmployeeId ?? null,
@@ -14438,6 +14445,7 @@ const refreshUnlinkedAssignmentPlanSnapshotsForOrg = async ({
     const externalId = resolveAssignmentExternalId(assignment);
     const plan = externalId ? planByExternalId.get(externalId) ?? null : null;
     if (Boolean(assignment?.isCompleted) || Boolean(plan?.isCompleted)) return assignment;
+    if (toPositiveIntOrNull(plan?.styleProcessVersionId) !== null) return assignment;
     if (plan?.id && linkedPlanIdSet.has(Number(plan.id))) return assignment;
 
     const cardId =
@@ -14671,6 +14679,22 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
     return map;
   }, new Map<number, any>());
 
+  const confirmedVersionByStyleId = new Map<number, any>();
+  for (const styleId of targetStyleIds) {
+    const latestAssigned = await db.assignmentPlan.findFirst({
+      where: { orgId: organization.id, styleId, styleProcessVersionId: { not: null } },
+      select: { styleProcessVersion: true },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+    const version =
+      latestAssigned?.styleProcessVersion ??
+      (await db.styleProcessVersion.findFirst({
+        where: { orgId: organization.id, styleId },
+        orderBy: { versionNumber: "asc" },
+      }));
+    if (version) confirmedVersionByStyleId.set(styleId, version);
+  }
+
   const updatedAt = new Date().toISOString();
   const updatedBy = "SYSTEM:BOARD_SAVE_STYLE_SYNC";
   return {
@@ -14680,6 +14704,19 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
       const externalId = resolveAssignmentExternalId(assignment);
       if (!externalId || skippedExternalIds.has(externalId)) return assignment;
       if (Boolean(assignment?.isCompleted)) return assignment;
+      const existingPlan = existingPlanByExternalId.get(externalId) ?? null;
+      if (toPositiveIntOrNull(existingPlan?.styleProcessVersionId) !== null) {
+        return {
+          ...assignment,
+          styleProcessVersionId: existingPlan.styleProcessVersionId,
+          assignmentCtSnapshot: existingPlan.assignmentCtSnapshot,
+          assignmentCtTotalSeconds: existingPlan.assignmentCtTotalSeconds,
+          ctTotalSeconds: existingPlan.assignmentCtTotalSeconds,
+          assignmentStSnapshot: existingPlan.assignmentStSnapshot,
+          assignmentStTotalSeconds: existingPlan.assignmentStTotalSeconds,
+          stTotalSeconds: existingPlan.assignmentStTotalSeconds,
+        };
+      }
 
       const cardId = resolveOptionalString(assignment?.cardId, null);
       const card = cardId ? cardById.get(cardId) ?? null : null;
@@ -14688,18 +14725,43 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
       if (styleId === null) return assignment;
       const style = styleByStyleId.get(styleId) ?? null;
       if (!style) return assignment;
+      const version = confirmedVersionByStyleId.get(styleId) ?? null;
+      if (!version) {
+        throw createHttpError(
+          409,
+          `style ${styleId} has no confirmed process version; confirm Ver.1 before assignment`
+        );
+      }
 
       const refreshed = buildEditableAssignmentCtSnapshotFromLiveStyle({
         assignment,
         card,
-        style,
+        style: {
+          ...style,
+          processes: normalizeStyleProcesses(version.processSnapshot),
+        },
         existingSnapshot: resolveNormalizedAssignmentCtSnapshot(
           existingPlanByExternalId.get(externalId) ?? null
         ),
         updatedAt,
         updatedBy,
       });
-      return refreshed.assignment;
+      if (!refreshed.readiness.ready || !refreshed.assignment.assignmentCtSnapshot) {
+        return refreshed.assignment;
+      }
+      const assignmentCtSnapshot = normalizeAssignmentCtSnapshot({
+        ...refreshed.assignment.assignmentCtSnapshot,
+        styleProcessVersionId: version.id,
+        revision: version.versionNumber,
+        effectiveFrom: version.confirmedDate,
+      });
+      return {
+        ...refreshed.assignment,
+        styleProcessVersionId: version.id,
+        assignmentCtSnapshot,
+        assignmentCtTotalSeconds: assignmentCtSnapshot?.assignmentCtTotalSeconds ?? null,
+        ctTotalSeconds: assignmentCtSnapshot?.assignmentCtTotalSeconds ?? null,
+      };
     }),
   };
 };
@@ -14747,6 +14809,10 @@ const resolveAssignmentCtSnapshotSaveReadiness = ({
     reason = "snapshot piece CT total missing";
   } else if (ctTotalSeconds === null) {
     reason = "snapshot assignment CT total missing";
+  } else if (toPositiveIntOrNull(snapshot?.styleProcessVersionId) !== null) {
+    // A versioned assignment is validated against its immutable stored snapshot.
+    // The current StyleProcess rows may be a newer, still-unconfirmed draft.
+    reason = null;
   } else {
     canonicalSnapshotResult = buildEditableAssignmentCtSnapshotFromLiveStyle({
       assignment,
@@ -15503,6 +15569,13 @@ const toAssignmentPlanResponse = (plan: any) => {
     // untouched assignment as "changed" - fatal for completed assignments,
     // whose write guard doesn't compare these fields either.
     styleId: toPositiveIntOrNull(plan?.style?.id ?? plan?.styleId),
+    styleProcessVersionId: toPositiveIntOrNull(plan?.styleProcessVersionId),
+    styleProcessVersionNumber: toPositiveIntOrNull(
+      plan?.styleProcessVersion?.versionNumber
+    ),
+    styleProcessVersionConfirmedDate: normalizeDateKey(
+      plan?.styleProcessVersion?.confirmedDate
+    ),
     buyerOrgId: toPositiveIntOrNull(plan?.buyerOrg?.id ?? plan?.buyerOrgId),
     orderNo: joinedOrderNo ?? "",
     customer: joinedCustomer ?? "",
@@ -16607,6 +16680,47 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     );
   }
 
+  const effectiveVersionByStyleId = new Map<number, any>();
+  for (const styleId of assignmentStyleIds) {
+    const latestAssigned = await db.assignmentPlan.findFirst({
+      where: { orgId: organization.id, styleId, styleProcessVersionId: { not: null } },
+      select: { styleProcessVersion: true },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+    const version =
+      latestAssigned?.styleProcessVersion ??
+      (await db.styleProcessVersion.findFirst({
+        where: { orgId: organization.id, styleId },
+        orderBy: { versionNumber: "asc" },
+      }));
+    if (!version) {
+      throw createHttpError(
+        409,
+        `style ${styleId} has no confirmed process version; confirm Ver.1 before assignment`
+      );
+    }
+    effectiveVersionByStyleId.set(styleId, version);
+  }
+  const assignedVersionIds = Array.from(
+    new Set(
+      recalcTargets
+        .map((target) => toPositiveIntOrNull(target.existingPlan?.styleProcessVersionId))
+        .filter((versionId): versionId is number => versionId !== null)
+    )
+  );
+  const assignedVersionById = new Map<number, any>(
+    assignedVersionIds.length > 0
+      ? (
+          await db.styleProcessVersion.findMany({
+            where: {
+              orgId: organization.id,
+              id: { in: assignedVersionIds },
+            },
+          })
+        ).map((version: any) => [Number(version.id), version])
+      : []
+  );
+
   const assignmentStTotalSecondsByExternalId = new Map<string, number>();
   const assignmentStSnapshotByExternalId = new Map<string, any>();
   targetByExternalId.forEach((target, externalId) => {
@@ -16642,7 +16756,31 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     const quantityBucketSetVersionId = toPositiveInt(style?.timeBucketSetVersionId, 0);
     let assignmentStTotalSeconds: number | null = null;
 
-    if (target.hasStructuralChange) {
+    const assignedVersionId = toPositiveIntOrNull(
+      target.existingPlan?.styleProcessVersionId
+    );
+    const effectiveVersion =
+      (assignedVersionId === null
+        ? null
+        : assignedVersionById.get(assignedVersionId) ?? null) ??
+      (styleId === null ? null : effectiveVersionByStyleId.get(styleId) ?? null);
+    if (target.hasStructuralChange && effectiveVersion) {
+      const versionProcesses = normalizeStyleProcesses(effectiveVersion.processSnapshot);
+      const perPieceSeconds = versionProcesses.reduce((sum, process) => {
+        const stSeconds = resolveStyleProcessExactStPerPieceSeconds(
+          process,
+          assignmentQuantity
+        );
+        if (stSeconds === null || stSeconds <= 0) {
+          throw createHttpError(
+            409,
+            `assignment ${externalId} confirmed version ST is missing for a process`
+          );
+        }
+        return sum + stSeconds;
+      }, 0);
+      assignmentStTotalSeconds = perPieceSeconds * assignmentQuantity;
+    } else if (target.hasStructuralChange) {
       const styleProcessRows =
         styleId === null ? [] : styleProcessRowsByStyleId.get(styleId) ?? [];
       assignmentStTotalSeconds = calculateAssignmentStTotalSecondsFromStyleRows({
@@ -16670,19 +16808,39 @@ const prepareAssignmentBoardStTotalsForSave = async ({
       );
     }
     assignmentStTotalSecondsByExternalId.set(externalId, assignmentStTotalSeconds);
-    const styleProcessRows =
-      styleId === null ? [] : styleProcessRowsByStyleId.get(styleId) ?? [];
-    assignmentStSnapshotByExternalId.set(
-      externalId,
-      buildAssignmentStSnapshot({
-        styleProcessRows,
-        assignmentQuantity,
-        bucketQuantity,
-        quantityBucketEntryId,
-        quantityBucketSetVersionId,
-        actor: getCurrentRequestActor(),
-      })
-    );
+    if (effectiveVersion) {
+      assignmentStSnapshotByExternalId.set(externalId, {
+        styleProcessVersionId: effectiveVersion.id,
+        revision: effectiveVersion.versionNumber,
+        confirmedDate: effectiveVersion.confirmedDate,
+        processes: normalizeStyleProcesses(effectiveVersion.processSnapshot).map(
+          (process: any) => ({
+            styleProcessId: toPositiveIntOrNull(process?.styleProcessId ?? process?.id),
+            processCode: process?.code ?? process?.processCode,
+            processName: process?.name ?? process?.processName,
+            productionStage: process?.productionStage ?? "SEWING",
+            stSeconds: resolveStyleProcessExactStPerPieceSeconds(
+              process,
+              assignmentQuantity
+            ),
+          })
+        ),
+      });
+    } else {
+      const styleProcessRows =
+        styleId === null ? [] : styleProcessRowsByStyleId.get(styleId) ?? [];
+      assignmentStSnapshotByExternalId.set(
+        externalId,
+        buildAssignmentStSnapshot({
+          styleProcessRows,
+          assignmentQuantity,
+          bucketQuantity,
+          quantityBucketEntryId,
+          quantityBucketSetVersionId,
+          actor: getCurrentRequestActor(),
+        })
+      );
+    }
   });
 
   const nextAssignments = normalizedAssignments.map((assignment) => {
@@ -16736,10 +16894,14 @@ const ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE = {
   workOrder: { select: { id: true, orderNumber: true } },
   style: { select: { id: true, name: true, code: true, imageUrls: true } },
   buyerOrg: { select: { id: true, name: true, nameKo: true, nameVi: true } },
+  styleProcessVersion: {
+    select: { id: true, versionNumber: true, confirmedDate: true },
+  },
 } as const;
 const ASSIGNMENT_PLAN_SELECT_CORE = {
   id: true,
   externalId: true,
+  styleProcessVersionId: true,
   lineId: true,
   cardId: true,
   workOrderId: true,
@@ -16771,6 +16933,9 @@ const ASSIGNMENT_PLAN_SELECT_CORE = {
   workOrder: { select: { id: true, orderNumber: true } },
   style: { select: { id: true, name: true, code: true, imageUrls: true } },
   buyerOrg: { select: { id: true, name: true, nameKo: true, nameVi: true } },
+  styleProcessVersion: {
+    select: { id: true, versionNumber: true, confirmedDate: true },
+  },
 } as const;
 const ASSIGNMENT_PLAN_SELECT_WITH_CLOSE = {
   ...ASSIGNMENT_PLAN_SELECT_CORE,
@@ -28184,27 +28349,85 @@ app.put("/assignment-board-state", async (req, res) => {
       });
     }
     if (createPlanRows.length > 0) {
-      await validateNewAssignmentPlanCtSnapshotProcesses({
-        createPlanRows,
-        cardIdToAssignmentCardId,
-        db: tx,
-      });
-      const styleVersionIdByStyleId = new Map<number, number>();
+      const styleVersionByStyleId = new Map<number, any>();
       for (const item of createPlanRows) {
         const cardId = resolveOptionalString(item?.cardId, null);
         const styleId = toPositiveIntOrNull(
           cardId ? cardIdToAssignmentCardId.get(cardId)?.styleId : item?.styleId
         );
-        if (styleId === null || styleVersionIdByStyleId.has(styleId)) continue;
+        if (styleId === null || styleVersionByStyleId.has(styleId)) continue;
         const version = await ensureInitialStyleProcessVersion({
           orgId: organization.id,
           styleId,
           db: tx,
         });
-        styleVersionIdByStyleId.set(styleId, version.id);
+        styleVersionByStyleId.set(styleId, version);
       }
+      const versionedCreatePlanRows = createPlanRows.map((item: any) => {
+        const cardId = resolveOptionalString(item?.cardId, null);
+        const styleId = toPositiveIntOrNull(
+          cardId ? cardIdToAssignmentCardId.get(cardId)?.styleId : item?.styleId
+        );
+        const version = styleId === null ? null : styleVersionByStyleId.get(styleId) ?? null;
+        if (!version) {
+          throw createHttpError(409, `confirmed process version is missing for assignment ${item.externalId}`);
+        }
+        const assignmentQuantity = Math.max(0, Math.round(Number(item?.assignmentQuantity ?? item?.quantity) || 0));
+        const versionProcesses = normalizeStyleProcesses(version.processSnapshot);
+        const refreshed = buildEditableAssignmentCtSnapshotFromLiveStyle({
+          assignment: item,
+          card: { quantity: assignmentQuantity },
+          style: { id: styleId, processes: versionProcesses },
+          existingSnapshot: null,
+          updatedAt: new Date().toISOString(),
+          updatedBy: resolveOptionalString(getRequesterEmail(req), "SYSTEM") ?? "SYSTEM",
+        });
+        if (!refreshed.readiness.ready || !refreshed.assignment.assignmentCtSnapshot) {
+          throw createHttpError(409, `assignment ${item.externalId}: ${refreshed.readiness.reason || "version CT snapshot not ready"}`);
+        }
+        const assignmentCtSnapshot = normalizeAssignmentCtSnapshot({
+          ...refreshed.assignment.assignmentCtSnapshot,
+          styleProcessVersionId: version.id,
+          revision: version.versionNumber,
+          effectiveFrom: version.confirmedDate,
+        });
+        const stProcesses = versionProcesses.map((process: any) => ({
+          styleProcessId: toPositiveIntOrNull(process?.styleProcessId ?? process?.id),
+          processCode: process?.code ?? process?.processCode,
+          processName: process?.name ?? process?.processName,
+          productionStage: process?.productionStage ?? "SEWING",
+          stSeconds: resolveStyleProcessExactStPerPieceSeconds(
+            process,
+            Math.max(1, assignmentQuantity)
+          ),
+        }));
+        if (stProcesses.some((process) => !process.styleProcessId || !process.stSeconds)) {
+          throw createHttpError(409, `assignment ${item.externalId}: version ST is missing for a process`);
+        }
+        return {
+          ...item,
+          styleProcessVersionId: version.id,
+          assignmentCtSnapshot,
+          assignmentCtTotalSeconds: assignmentCtSnapshot?.assignmentCtTotalSeconds ?? null,
+          ctTotalSeconds: assignmentCtSnapshot?.assignmentCtTotalSeconds ?? null,
+          assignmentStSnapshot: {
+            styleProcessVersionId: version.id,
+            revision: version.versionNumber,
+            confirmedDate: version.confirmedDate,
+            processes: stProcesses,
+          },
+          assignmentStTotalSeconds: stProcesses.reduce(
+            (sum, process) => sum + Number(process.stSeconds) * assignmentQuantity,
+            0
+          ),
+          stTotalSeconds: stProcesses.reduce(
+            (sum, process) => sum + Number(process.stSeconds) * assignmentQuantity,
+            0
+          ),
+        };
+      });
       await tx.assignmentPlan.createMany({
-        data: createPlanRows.map((item: any) => {
+        data: versionedCreatePlanRows.map((item: any) => {
           const cardId = resolveOptionalString(item?.cardId, null);
           const styleId = toPositiveIntOrNull(
             cardId ? cardIdToAssignmentCardId.get(cardId)?.styleId : item?.styleId
@@ -28213,8 +28436,7 @@ app.put("/assignment-board-state", async (req, res) => {
             orgId: organization.id,
             externalId: item.externalId,
             ...toAssignmentPlanWriteData(item, cardIdToAssignmentCardId),
-            styleProcessVersionId:
-              styleId === null ? null : styleVersionIdByStyleId.get(styleId) ?? null,
+            styleProcessVersionId: item.styleProcessVersionId,
           };
         }) as Prisma.AssignmentPlanCreateManyInput[],
       });
@@ -30822,6 +31044,14 @@ const ensureInitialStyleProcessVersion = async ({
       where: { orgId, styleId, styleProcessVersionId: null },
       data: { styleProcessVersionId: latestAssigned?.styleProcessVersionId ?? existing.id },
     });
+    if (
+      latestAssigned?.styleProcessVersionId &&
+      latestAssigned.styleProcessVersionId !== existing.id
+    ) {
+      return db.styleProcessVersion.findUniqueOrThrow({
+        where: { id: latestAssigned.styleProcessVersionId },
+      });
+    }
     return existing;
   }
   const mirror = await loadStyleProcessMirrorMapForStyleIds([styleId], { processOrgId: orgId, db });
@@ -30832,6 +31062,45 @@ const ensureInitialStyleProcessVersion = async ({
   }});
   await db.assignmentPlan.updateMany({ where: { orgId, styleId, styleProcessVersionId: null }, data: { styleProcessVersionId: created.id } });
   return created;
+};
+
+const assignmentCtSnapshotMatchesProcessVersion = (plan: any, version: any) => {
+  if (!plan || !version) return false;
+  if (
+    toPositiveIntOrNull(plan?.styleProcessVersionId) !==
+      toPositiveIntOrNull(version?.id) ||
+    toPositiveIntOrNull((plan?.assignmentCtSnapshot as any)?.styleProcessVersionId) !==
+      toPositiveIntOrNull(version?.id) ||
+    toPositiveIntOrNull((plan?.assignmentStSnapshot as any)?.styleProcessVersionId) !==
+      toPositiveIntOrNull(version?.id)
+  ) {
+    return false;
+  }
+  const toProcessKeys = (processes: any[]) =>
+    ensureArray(processes)
+      .map((process: any) => {
+        const styleProcessId = toPositiveIntOrNull(
+          process?.styleProcessId ?? process?.processId ?? process?.id
+        );
+        if (styleProcessId !== null) return `id:${styleProcessId}`;
+        const processCode = normalizeProcessCodeKey(
+          process?.processCode ?? process?.code
+        );
+        return processCode ? `code:${processCode}` : null;
+      })
+      .filter((key): key is string => Boolean(key))
+      .sort();
+  const versionProcessKeys = toProcessKeys(version?.processSnapshot);
+  return (
+    isDeepEqualByStableJson(
+      toProcessKeys((plan?.assignmentCtSnapshot as any)?.processes),
+      versionProcessKeys
+    ) &&
+    isDeepEqualByStableJson(
+      toProcessKeys((plan?.assignmentStSnapshot as any)?.processes),
+      versionProcessKeys
+    )
+  );
 };
 
 app.get("/styles/:styleId/process-versions", async (req, res) => {
@@ -30847,7 +31116,7 @@ app.get("/styles/:styleId/process-versions", async (req, res) => {
     prisma.styleProcessVersion.findMany({ where: { orgId: accessContext.organization.id, styleId: style.id }, orderBy: { versionNumber: "asc" } }),
     prisma.assignmentPlan.findMany({
       where: { orgId: accessContext.organization.id, styleId: style.id },
-      select: { id: true, externalId: true, assignmentQuantity: true, styleProcessVersionId: true, assignmentCtSnapshot: true, createdAt: true,
+      select: { id: true, externalId: true, assignmentQuantity: true, styleProcessVersionId: true, assignmentCtSnapshot: true, assignmentStSnapshot: true, createdAt: true,
         workOrder: { select: { orderNumber: true } }, workRecords: { select: { id: true } } },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     }),
@@ -30857,6 +31126,7 @@ app.get("/styles/:styleId/process-versions", async (req, res) => {
   ]);
   const liveProcesses = normalizeStyleProcesses(processMirror.get(style.id) ?? []);
   const latestVersion = versions[versions.length - 1];
+  const versionById = new Map(versions.map((version) => [version.id, version]));
   const hasUnconfirmedChanges = latestVersion
     ? JSON.stringify(normalizeStyleProcesses(latestVersion.processSnapshot)) !==
       JSON.stringify(liveProcesses)
@@ -30866,9 +31136,10 @@ app.get("/styles/:styleId/process-versions", async (req, res) => {
     assignments: assignments.map((plan) => ({ assignmentPlanId: plan.id, externalId: plan.externalId,
       orderNo: plan.workOrder?.orderNumber ?? "", assignmentQuantity: plan.assignmentQuantity ?? 0,
       assignedAt: plan.createdAt, workRecordCount: plan.workRecords.length, versionId: plan.styleProcessVersionId,
-      needsSnapshotRefresh:
-        toPositiveIntOrNull((plan.assignmentCtSnapshot as any)?.styleProcessVersionId) !==
-        plan.styleProcessVersionId })),
+      needsSnapshotRefresh: !assignmentCtSnapshotMatchesProcessVersion(
+        plan,
+        versionById.get(plan.styleProcessVersionId ?? -1)
+      ) })),
     hasUnconfirmedChanges,
   });
 });
@@ -30947,8 +31218,11 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
     const snapshotVersionId = toPositiveIntOrNull(
       (plan.assignmentCtSnapshot as any)?.styleProcessVersionId
     );
-    if (plan.styleProcessVersionId === version.id && snapshotVersionId === version.id) return [];
-    if (plan.styleProcessVersionId !== version.id && plan.workRecords.length > 0) throw createHttpError(409, `assignment ${plan.id} already has work records and its process version cannot be changed`);
+    if (
+      plan.styleProcessVersionId === version.id &&
+      snapshotVersionId === version.id &&
+      assignmentCtSnapshotMatchesProcessVersion(plan, version)
+    ) return [];
     const withVersionProcesses = { id: style.id, code: style.code, name: style.name, processes: normalizeStyleProcesses(version.processSnapshot) };
     const refreshed = buildEditableAssignmentCtSnapshotFromLiveStyle({ assignment: plan, card: { quantity: plan.assignmentQuantity }, style: withVersionProcesses, existingSnapshot: plan.assignmentCtSnapshot, updatedAt, updatedBy });
     if (!refreshed.readiness.ready || !refreshed.assignment.assignmentCtSnapshot) throw createHttpError(409, `assignment ${plan.id}: ${refreshed.readiness.reason || "snapshot not ready"}`);

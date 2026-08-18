@@ -58,6 +58,8 @@ import { hasAssignmentCtSnapshot, resolveAssignmentCtSnapshot } from '../../../u
 import { resolveLocalizedProcessName } from '../../../utils/processDisplay';
 import { formatSeconds } from '../../../utils/processTime';
 import { loadWorkLogContext } from './workLogStorage';
+import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
+import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 
 const { useDeferredValue } = React;
 
@@ -1094,6 +1096,7 @@ const WorkDetail = ({
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [baseLoading, setBaseLoading] = useState(() => !initialLog?.id);
   const [lineDataLoading, setLineDataLoading] = useState(false);
+  const [assignmentContextRefreshKey, setAssignmentContextRefreshKey] = useState(0);
   const [factories, setFactories] = useState(() => {
     const initialFactory = buildFactorySelection(initialLog);
     return initialFactory ? [initialFactory] : [];
@@ -1427,7 +1430,12 @@ const WorkDetail = ({
       setLineDataLoading(false);
       return;
     }
-    if (initialLog?.id && initialContext && currentContextKey === initialContextKey) {
+    if (
+      assignmentContextRefreshKey === 0 &&
+      initialLog?.id &&
+      initialContext &&
+      currentContextKey === initialContextKey
+    ) {
       setLineWorkers(prefetchedWorkers);
       setAllAssignmentPlans(prefetchedAllAssignments);
       setAssignmentOptions(prefetchedAssignments);
@@ -1526,6 +1534,7 @@ const WorkDetail = ({
     };
   }, [
     activeOrgId,
+    assignmentContextRefreshKey,
     currentContextKey,
     initialContext,
     initialContextKey,
@@ -1970,6 +1979,12 @@ const WorkDetail = ({
       toStableSnapshotText(initialComparableSnapshot)
     );
   }, [currentComparableSnapshot, initialComparableSnapshot, initialLog?.id]);
+  useWorkspaceRefreshOnEvent({
+    orgId: activeOrgId,
+    topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+    isBlocked: isDirty,
+    onRefresh: () => setAssignmentContextRefreshKey((current) => current + 1),
+  });
   const missingCtStyleLabels = useMemo(() => {
     const labels = [];
     const seen = new Set();

@@ -182,6 +182,9 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
     : assignment.customer || '';
   const line2 = joinText([
     assignment.label,
+    assignment.styleProcessVersionNumber
+      ? `V${assignment.styleProcessVersionNumber}${assignment.styleProcessVersionConfirmedDate ? ` · ${assignment.styleProcessVersionConfirmedDate}` : ''}`
+      : null,
     assignment.colorName,
     genderDisplay,
     quantityLabel,
@@ -240,6 +243,9 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
       title={joinText([
         assignment.customer,
         assignment.label,
+        assignment.styleProcessVersionNumber
+          ? `V${assignment.styleProcessVersionNumber}${assignment.styleProcessVersionConfirmedDate ? ` · ${assignment.styleProcessVersionConfirmedDate}` : ''}`
+          : null,
         assignment.colorName,
         genderDisplay,
         assignment.quantity != null ? quantityLabel : null,
