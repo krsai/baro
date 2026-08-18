@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography } from '@mui/material';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
-import { confirmStyleProcessVersion, fetchStyleProcessVersions, saveStyleProcessVersionBoundaries } from '../../../../utils/styleApi';
+import { fetchStyleProcessVersions, saveStyleProcessVersionBoundaries } from '../../../../utils/styleApi';
 
 const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, notify }) => {
   const [versions, setVersions] = useState([]);
@@ -38,12 +38,6 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
     return { ...assignment, activeVersion: active };
   }), [assignments, boundaries, versions]);
 
-  const confirmVersion = async () => {
-    setBusy(true);
-    try { await confirmStyleProcessVersion(styleId, { orgId, ownerOrgId }); await load(); notify('현재 공정 목록을 새 날짜 버전으로 확정했습니다.', 'success'); }
-    catch (error) { notify(error?.message || '버전을 확정하지 못했습니다.', 'error'); setBusy(false); }
-  };
-
   const save = async () => {
     setBusy(true);
     try {
@@ -69,7 +63,6 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
                 </Box>
               ))}
             </Stack>
-            <Button fullWidth variant="outlined" sx={{ mt: 1 }} onClick={confirmVersion} disabled={busy}>새 버전 확정</Button>
           </Box>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Box sx={{ position: 'relative', '&::before': assignments.length > 1 ? { content: '""', position: 'absolute', left: 11, top: 18, bottom: 18, width: 2, bgcolor: 'divider' } : undefined }}>
