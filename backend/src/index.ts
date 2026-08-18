@@ -14138,6 +14138,17 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
   const existingLookup = buildAssignmentCtSnapshotProcessLookup(
     normalizedExistingSnapshot
   );
+  const assignmentStProcessByStyleProcessId = ensureArray(
+    assignment?.assignmentStSnapshot?.processes
+  ).reduce((map, process) => {
+    const styleProcessId = toPositiveIntOrNull(
+      process?.styleProcessId ?? process?.processId
+    );
+    if (styleProcessId !== null && !map.has(styleProcessId)) {
+      map.set(styleProcessId, process);
+    }
+    return map;
+  }, new Map<number, any>());
   const orderQuantity = toPositiveInt(
     resolveAssignmentQuantity(assignment) ??
       card?.cardQuantity ??
@@ -14185,6 +14196,9 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
   const processes = liveProcesses
     .map((process, index) => {
       const processKey = resolveStyleProcessSnapshotKeyForAssignment(process, index);
+      const styleProcessId = toPositiveIntOrNull(
+        process?.styleProcessId ?? process?.id
+      );
       const incomingProcess = resolveSnapshotProcessForLiveStyleProcess({
         styleProcess: process,
         lookup: incomingLookup,
@@ -14196,6 +14210,19 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
       const manualCtSeconds =
         resolveAssignmentCtSnapshotProcessSeconds(incomingProcess) ??
         resolveAssignmentCtSnapshotProcessSeconds(existingProcess);
+      const assignmentStProcess =
+        styleProcessId === null
+          ? null
+          : assignmentStProcessByStyleProcessId.get(styleProcessId) ?? null;
+      const assignmentStSeedCandidate = toOptionalProcessSeconds(
+        assignmentStProcess?.stSeconds ??
+          assignmentStProcess?.bucketStSeconds ??
+          assignmentStProcess?.snapshotStSeconds
+      );
+      const assignmentStSeedSeconds =
+        assignmentStSeedCandidate !== null && assignmentStSeedCandidate > 0
+          ? assignmentStSeedCandidate
+          : null;
       const stSeedSeconds =
         effectiveBucketQuantities.length > 0
           ? resolveAssignmentCardStSeedSeconds({
@@ -14204,15 +14231,13 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
               bucketQuantities: effectiveBucketQuantities,
             })
           : null;
-      const resolvedCtSeconds = manualCtSeconds ?? stSeedSeconds;
+      const resolvedCtSeconds =
+        manualCtSeconds ?? assignmentStSeedSeconds ?? stSeedSeconds;
       if (resolvedCtSeconds === null || resolvedCtSeconds <= 0) {
         unresolvedProcessKeys.push(processKey);
         return null;
       }
 
-      const styleProcessId = toPositiveIntOrNull(
-        process?.styleProcessId ?? process?.id
-      );
       return {
         styleProcessId,
         processCode:
@@ -14266,7 +14291,10 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
           resolveOptionalString(
             incomingProcess?.basis ?? existingProcess?.basis,
             null
-          ) ?? (stSeedSeconds !== null ? "ST" : "CT"),
+          ) ??
+          (assignmentStSeedSeconds !== null || stSeedSeconds !== null
+            ? "ST"
+            : "CT"),
         snapshotCtSeconds: resolvedCtSeconds,
         pieceCtSeconds: resolvedCtSeconds,
       };
