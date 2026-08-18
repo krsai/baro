@@ -286,7 +286,22 @@ const resolveRowCtDisplayMeta = ({ row, rowProcess, selectedProcessOption, langu
   };
 };
 const buildComparableWorkRecord = (record = {}) => {
+  const isOutsourced = record?.isOutsourced === true;
   const workerId = toPositiveIdOrNull(record?.workerId);
+  const outsourcingPartnerId = toPositiveIdOrNull(record?.outsourcingPartnerId);
+  const outsourceVendorKey = toKey(record?.outsourceVendorName);
+  const outsourceUnitPrice = isOutsourced
+    ? Math.max(0, Math.round(Number(record?.outsourceUnitPrice) || 0))
+    : null;
+  const workerKey = isOutsourced
+    ? outsourcingPartnerId
+      ? `partner:${outsourcingPartnerId}`
+      : outsourceVendorKey
+        ? `vendor:${outsourceVendorKey}`
+        : ''
+    : workerId
+      ? `worker:${workerId}`
+      : '';
   const assignmentPlanId = toPositiveIdOrNull(record?.assignmentPlanId);
   const styleRefId = toPositiveIdOrNull(record?.styleRefId ?? record?.styleId);
   const styleCodeKey = toKey(record?.styleCode);
@@ -317,10 +332,12 @@ const buildComparableWorkRecord = (record = {}) => {
         : '';
 
   return {
-    workerId: workerId || null,
+    workerKey,
     styleKey,
     processKey,
     quantity,
+    isOutsourced,
+    outsourceUnitPrice,
   };
 };
 const buildComparableWorkRecords = (records = []) =>
@@ -328,7 +345,7 @@ const buildComparableWorkRecords = (records = []) =>
     .map((record) => buildComparableWorkRecord(record))
     .filter(
       (record) =>
-        Boolean(record?.workerId) &&
+        Boolean(record?.workerKey) &&
         Boolean(record?.styleKey) &&
         Boolean(record?.processKey) &&
         Number(record?.quantity) > 0
