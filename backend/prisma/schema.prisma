@@ -200,6 +200,7 @@ model Organization {
   orders                          WorkOrder[]
   workLogs                        WorkLog[]
   workRecords                     WorkRecord[]
+  outsourcedWorkRecords           OutsourcedWorkRecord[]
   businessPartners                BusinessPartner[]
   assignmentBoardState            AssignmentBoardState?
   assignmentCards                 AssignmentCard[]
@@ -251,8 +252,8 @@ model BusinessPartner {
   createdBy String              @default("system@baro.local")
   updatedAt DateTime            @updatedAt
 
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  workRecords  WorkRecord[]
+  organization          Organization           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  outsourcedWorkRecords OutsourcedWorkRecord[]
 
   @@unique([orgId, type, name])
   @@index([orgId, type, isActive])
@@ -444,8 +445,9 @@ model Line {
   manager         Employee?        @relation("LineManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
   assignments     LineAssignment[]
   assignmentPlans AssignmentPlan[]
-  employees       Employee[]       @relation("EmployeeCurrentLine")
-  workRecords     WorkRecord[]     @relation("WorkRecordLine")
+  employees             Employee[]             @relation("EmployeeCurrentLine")
+  workRecords           WorkRecord[]           @relation("WorkRecordLine")
+  outsourcedWorkRecords OutsourcedWorkRecord[]  @relation("OutsourcedWorkRecordLine")
 
   createdByEmployee Employee? @relation("LineCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("LineUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -545,6 +547,8 @@ model Employee {
   updatedWorkLogs                    WorkLog[]                         @relation("WorkLogUpdatedByEmployee")
   createdWorkRecords                 WorkRecord[]                      @relation("WorkRecordCreatedByEmployee")
   updatedWorkRecords                 WorkRecord[]                      @relation("WorkRecordUpdatedByEmployee")
+  createdOutsourcedWorkRecords       OutsourcedWorkRecord[]            @relation("OutsourcedWorkRecordCreatedByEmployee")
+  updatedOutsourcedWorkRecords       OutsourcedWorkRecord[]            @relation("OutsourcedWorkRecordUpdatedByEmployee")
   createdPayrollSnapshots            PayrollSnapshot[]                 @relation("PayrollSnapshotCreatedByEmployee")
   updatedPayrollSnapshots            PayrollSnapshot[]                 @relation("PayrollSnapshotUpdatedByEmployee")
   createdQuantitySettlementSnapshots QuantitySettlementSnapshot[]      @relation("QuantitySettlementSnapshotCreatedByEmployee")
@@ -919,6 +923,7 @@ model Style {
   processVersions      StyleProcessVersion[]
   assignmentCards      AssignmentCard[]
   workRecords          WorkRecord[]
+  outsourcedWorkRecords OutsourcedWorkRecord[]
   timeBucketSetVersion QuantityBucketSetVersion?         @relation("StyleTimeBucketVersion", fields: [timeBucketSetVersionId], references: [id], onDelete: Restrict)
   salesBucketOverrides OrgRelationshipStyleSalesBucket[]
   timeBucketOverrides  OrgRelationshipStyleTimeBucket[]
@@ -963,6 +968,7 @@ model StyleProcess {
   trainingBuckets AtTrainingBucketProcess[]
   atObservations  StyleProcessAtObservation[]
   workRecords     WorkRecord[]
+  outsourcedWorkRecords OutsourcedWorkRecord[]
 
   createdByEmployee Employee? @relation("StyleProcessCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("StyleProcessUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -1376,6 +1382,7 @@ model AssignmentPlan {
   // external board identifier; joins must use assignmentCardId/workOrderId/styleId.
   assignmentCard          AssignmentCard?             @relation(fields: [assignmentCardId], references: [id], onDelete: SetNull)
   workRecords             WorkRecord[]
+  outsourcedWorkRecords   OutsourcedWorkRecord[]
   qcPassEvents            QcPassEvent[]
   trainingBucketProcesses AtTrainingBucketProcess[]
   atObservations          StyleProcessAtObservation[]
@@ -1427,53 +1434,60 @@ model QcPassEvent {
   @@index([colorId])
 }
 
+enum WorkLogRecordKind {
+  EMPLOYEE
+  OUTSOURCING
+}
+
 model WorkLog {
-  id                   Int      @id @default(autoincrement())
+  id                   Int               @id @default(autoincrement())
   orgId                Int
-  displayDate          String   @map("workDate")
+  displayDate          String            @map("workDate")
   coverageStartDate    String?
   coverageEndDate      String?
   entryMode            String?
+  recordKind           WorkLogRecordKind @default(EMPLOYEE)
   factoryId            Int?
   factoryWagePerSecond Float?
-  ctBasis              String   @default("CT")
-  workerCount          Int      @default(0)
-  itemCount            Int      @default(0)
-  totalCtSeconds       Float    @default(0)
+  ctBasis              String            @default("CT")
+  workerCount          Int               @default(0)
+  itemCount            Int               @default(0)
+  totalCtSeconds       Float             @default(0)
   note                 String?
   /// Header metadata only ({ lineId, lineName }) ??never a copy of row data. WorkRecord
   /// (FK workLogId) is and has always been the sole source of truth for record rows;
   /// do not read this field as a records-list fallback.
   records              Json?
   updatedBy            String?
-  createdAt            DateTime @default(now())
-  createdBy            String   @default("system@baro.local")
+  createdAt            DateTime          @default(now())
+  createdBy            String            @default("system@baro.local")
   createdByEmployeeId  Int?
   updatedByEmployeeId  Int?
-  updatedAt            DateTime @updatedAt
+  updatedAt            DateTime          @updatedAt
 
-  organization      Organization       @relation(fields: [orgId], references: [id])
-  factory           Factory?           @relation(fields: [factoryId], references: [id], onDelete: SetNull)
-  workRecords       WorkRecord[]
-  atTrainingBuckets AtTrainingBucket[]
+  organization          Organization           @relation(fields: [orgId], references: [id])
+  factory                Factory?               @relation(fields: [factoryId], references: [id], onDelete: SetNull)
+  workRecords            WorkRecord[]
+  outsourcedWorkRecords  OutsourcedWorkRecord[]
+  atTrainingBuckets      AtTrainingBucket[]
 
   createdByEmployee Employee? @relation("WorkLogCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("WorkLogUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@index([orgId, displayDate])
   @@index([orgId, createdAt])
+  @@index([orgId, recordKind])
   @@index([factoryId])
 }
 
+// Employee-only work records. Outsourced (vendor) production lives in
+// OutsourcedWorkRecord instead - see that model for rationale. Progress/
+// completion calculations must always sum both tables together.
 model WorkRecord {
   id                         Int      @id @default(autoincrement())
   orgId                      Int
   workLogId                  Int
   workerId                   Int?
-  isOutsourced               Boolean  @default(false)
-  outsourceVendorName        String?
-  outsourcingPartnerId       Int?
-  outsourceUnitPrice         Decimal? @db.Decimal(18, 4)
   lineId                     Int?
   styleId                    Int
   styleProcessId             Int
@@ -1488,21 +1502,61 @@ model WorkRecord {
   updatedByEmployeeId        Int?
   updatedAt                  DateTime @updatedAt
 
-  organization       Organization     @relation(fields: [orgId], references: [id])
-  workLog            WorkLog          @relation(fields: [workLogId], references: [id], onDelete: Cascade)
-  worker             Employee?        @relation(fields: [workerId], references: [id], onDelete: SetNull)
-  assignmentPlan     AssignmentPlan   @relation(fields: [assignmentPlanId, orgId], references: [id, orgId], onDelete: Restrict, map: "WorkRecord_assignmentPlan_org_fkey")
-  style              Style            @relation(fields: [styleId], references: [id], onDelete: Restrict)
-  styleProcess       StyleProcess     @relation(fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, map: "WorkRecord_styleProcess_style_org_fkey")
-  line               Line?            @relation("WorkRecordLine", fields: [lineId], references: [id], onDelete: SetNull)
-  outsourcingPartner BusinessPartner? @relation(fields: [outsourcingPartnerId], references: [id], onDelete: SetNull)
+  organization   Organization   @relation(fields: [orgId], references: [id])
+  workLog        WorkLog        @relation(fields: [workLogId], references: [id], onDelete: Cascade)
+  worker         Employee?      @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  assignmentPlan AssignmentPlan @relation(fields: [assignmentPlanId, orgId], references: [id, orgId], onDelete: Restrict, map: "WorkRecord_assignmentPlan_org_fkey")
+  style          Style          @relation(fields: [styleId], references: [id], onDelete: Restrict)
+  styleProcess   StyleProcess   @relation(fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, map: "WorkRecord_styleProcess_style_org_fkey")
+  line           Line?          @relation("WorkRecordLine", fields: [lineId], references: [id], onDelete: SetNull)
 
   createdByEmployee Employee? @relation("WorkRecordCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("WorkRecordUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@index([orgId, workLogId])
   @@index([orgId, workerId])
-  @@index([orgId, isOutsourced])
+  @@index([orgId, styleId])
+  @@index([orgId, lineId])
+  @@index([styleProcessId])
+  @@index([assignmentPlanId])
+  @@index([workLogId])
+}
+
+// Outsourced (vendor) production records. Paid unit-price x quantity, never
+// CT-based; excluded from payroll and AT training by construction (this
+// table has no workerId/ctSeconds at all). Assignment progress/completion
+// must sum this table together with WorkRecord - see
+// loadAssignmentPlanProgressWorkRows in src/index.ts.
+model OutsourcedWorkRecord {
+  id                    Int      @id @default(autoincrement())
+  orgId                 Int
+  workLogId             Int
+  outsourcingPartnerId  Int
+  outsourceVendorName   String
+  outsourceUnitPrice    Decimal  @db.Decimal(18, 4)
+  lineId                Int?
+  styleId               Int
+  styleProcessId        Int
+  assignmentPlanId      Int
+  quantity              Int      @default(0)
+  createdAt             DateTime @default(now())
+  createdBy             String   @default("system@baro.local")
+  createdByEmployeeId   Int?
+  updatedByEmployeeId   Int?
+  updatedAt             DateTime @updatedAt
+
+  organization       Organization    @relation(fields: [orgId], references: [id])
+  workLog            WorkLog         @relation(fields: [workLogId], references: [id], onDelete: Cascade)
+  outsourcingPartner BusinessPartner @relation(fields: [outsourcingPartnerId], references: [id], onDelete: Restrict)
+  assignmentPlan     AssignmentPlan  @relation(fields: [assignmentPlanId, orgId], references: [id, orgId], onDelete: Restrict, map: "OutsourcedWorkRecord_assignmentPlan_org_fkey")
+  style              Style           @relation(fields: [styleId], references: [id], onDelete: Restrict)
+  styleProcess       StyleProcess    @relation(fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, map: "OutsourcedWorkRecord_styleProcess_style_org_fkey")
+  line               Line?           @relation("OutsourcedWorkRecordLine", fields: [lineId], references: [id], onDelete: SetNull)
+
+  createdByEmployee Employee? @relation("OutsourcedWorkRecordCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  updatedByEmployee Employee? @relation("OutsourcedWorkRecordUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, workLogId])
   @@index([orgId, outsourcingPartnerId])
   @@index([orgId, styleId])
   @@index([orgId, lineId])

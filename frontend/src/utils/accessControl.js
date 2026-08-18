@@ -27,6 +27,7 @@ const FEATURE_KEYS = {
   ATTENDANCE: 'ATTENDANCE',
   PRODUCTION_ANALYSIS: 'PRODUCTION_ANALYSIS',
   WORK_HISTORY: 'WORK_HISTORY',
+  OUTSOURCING_RECORD: 'OUTSOURCING_RECORD',
   PAYROLL: 'PAYROLL',
   REVENUE_ANALYSIS: 'REVENUE_ANALYSIS',
   BUSINESS: 'BUSINESS',
@@ -180,6 +181,7 @@ export const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/attendance')) return FEATURE_KEYS.ATTENDANCE;
   if (path.startsWith('/production-analysis')) return FEATURE_KEYS.PRODUCTION_ANALYSIS;
   if (path.startsWith('/work-history')) return FEATURE_KEYS.WORK_HISTORY;
+  if (path.startsWith('/outsourcing-record')) return FEATURE_KEYS.OUTSOURCING_RECORD;
   if (path.startsWith('/payroll')) return FEATURE_KEYS.PAYROLL;
   if (path.startsWith('/revenue-analysis')) return FEATURE_KEYS.REVENUE_ANALYSIS;
   if (path.startsWith('/revenue-forecast')) return FEATURE_KEYS.REVENUE_ANALYSIS;

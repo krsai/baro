@@ -63,3 +63,41 @@ export const WORK_RECORD_WITH_REFS_INCLUDE = {
     },
   },
 };
+
+// Outsourcing (OutsourcedWorkRecord) equivalent of WORK_RECORD_WITH_REFS_INCLUDE.
+// No worker relation - outsourcingPartner replaces it.
+export const OUTSOURCED_WORK_RECORD_WITH_REFS_INCLUDE = {
+  orderBy: { id: "asc" as const },
+  include: {
+    outsourcingPartner: {
+      select: {
+        id: true,
+        name: true,
+      },
+    },
+    style: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    },
+    assignmentPlan: {
+      select: {
+        id: true,
+        lineId: true,
+        workOrderId: true,
+        workOrder: { select: { orderNumber: true } },
+        buyerOrg: { select: { name: true } },
+        style: { select: { name: true } },
+      },
+    },
+    styleProcess: {
+      select: {
+        id: true,
+        processCode: true,
+        processName: true,
+      },
+    },
+  },
+};

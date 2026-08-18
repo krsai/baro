@@ -332,7 +332,7 @@ const resolveAverageCtSecondsPerWorker = (log) => {
   return Math.round(totalCtSeconds / workerCount);
 };
 
-const WorkList = () => {
+const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
@@ -491,6 +491,7 @@ const WorkList = () => {
           dateFrom,
           dateTo,
           includeRecords: false,
+          recordKind,
           skipGlobalLoading: true,
           signal: abortController.signal,
         });
@@ -523,6 +524,7 @@ const WorkList = () => {
     dateFrom,
     dateTo,
     languageCode,
+    recordKind,
     reloadNonce,
     selectedFactoryIdNumber,
     showNotification,
@@ -553,23 +555,25 @@ const WorkList = () => {
     });
   }, [logs, searchTerm]);
 
+  const basePath = recordKind === 'OUTSOURCING' ? '/outsourcing-record' : '/work-history';
+
   const handleAdd = useCallback(() => {
-    navigateToPath('/work-history/new', {
+    navigateToPath(`${basePath}/new`, {
       label: buildWorkCreateTabLabel(languageCode),
     });
-  }, [languageCode, navigateToPath]);
+  }, [basePath, languageCode, navigateToPath]);
 
   const handleOpen = useCallback(
     (log) => {
       if (!log?.id) return;
-      navigateToPath(`/work-history/${log.id}`, {
+      navigateToPath(`${basePath}/${log.id}`, {
         label: buildWorkDetailTabLabel(
           buildWorkDateKey(log.workDate || log.updatedAt || log.createdAt),
           languageCode
         ),
       });
     },
-    [languageCode, navigateToPath]
+    [basePath, languageCode, navigateToPath]
   );
 
   const handleDelete = useCallback(

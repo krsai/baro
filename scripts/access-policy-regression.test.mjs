@@ -165,6 +165,52 @@ test('legacy work history policies keep production analysis access after schema 
   );
 });
 
+test('work history and outsourcing record route access are independent', () => {
+  const workHistoryOnlyPolicy = getDefaultRoleAccessPolicy();
+  workHistoryOnlyPolicy.MANUFACTURER.OPERATOR = [
+    ACCESS_FEATURE_KEYS.WORK_HISTORY,
+  ];
+  const workHistoryOnlyAuthState = buildOrgAuthState({
+    orgRole: ORG_ROLE_KEYS.OPERATOR,
+    policy: workHistoryOnlyPolicy,
+  });
+
+  assert.equal(canAccessPath('/work-history', workHistoryOnlyAuthState), true);
+  assert.equal(canAccessPath('/outsourcing-record', workHistoryOnlyAuthState), false);
+
+  const outsourcingOnlyPolicy = getDefaultRoleAccessPolicy();
+  outsourcingOnlyPolicy.MANUFACTURER.OPERATOR = [
+    ACCESS_FEATURE_KEYS.OUTSOURCING_RECORD,
+  ];
+  const outsourcingOnlyAuthState = buildOrgAuthState({
+    orgRole: ORG_ROLE_KEYS.OPERATOR,
+    policy: outsourcingOnlyPolicy,
+  });
+
+  assert.equal(canAccessPath('/work-history', outsourcingOnlyAuthState), false);
+  assert.equal(canAccessPath('/outsourcing-record', outsourcingOnlyAuthState), true);
+});
+
+test('legacy work history policies gain outsourcing record access after schema upgrade', () => {
+  const sanitized = sanitizeRoleAccessPolicy({
+    __schemaVersion: 2,
+    MANUFACTURER: {
+      OPERATOR: [ACCESS_FEATURE_KEYS.WORK_HISTORY],
+    },
+  });
+
+  assert.equal(
+    sanitized.MANUFACTURER.OPERATOR.includes(
+      ACCESS_FEATURE_KEYS.OUTSOURCING_RECORD
+    ),
+    true
+  );
+  assert.equal(
+    sanitized.MANUFACTURER.OPERATOR.includes(ACCESS_FEATURE_KEYS.WORK_HISTORY),
+    true
+  );
+});
+
 test('revenue analysis and business route access are independent', () => {
   const revenueOnlyPolicy = getDefaultRoleAccessPolicy();
   revenueOnlyPolicy.MANUFACTURER.ACCOUNTANT = [

@@ -1,10 +1,14 @@
 # BARO 프로젝트 컨텍스트
 
-## 2026-08-17 거래처 타입과 거래 이력
+## 2026-08-18 작업 기록과 외주 내역 메뉴·테이블 분리
 
+- 직원 작업기록과 외주 생산기록은 별도 메뉴와 별도 테이블로 완전히 분리한다. "작업 기록"(`/work-history`) 메뉴는 직원 전용이며 외주 입력 경로가 없다. "외주 내역"(`/outsourcing-record`) 메뉴는 신규이며 외주만 입력한다. 두 메뉴 모두 같은 `WorkDetail.jsx`/`WorkList.jsx`/`WorkEntry.jsx` 컴포넌트를 `recordKind`(`'EMPLOYEE'` | `'OUTSOURCING'`) prop으로 재사용하며, 화면 구성(기간 입력, 라인 선택, 공정/수량 입력)은 동일하다.
+- DB는 `WorkRecord`(직원 전용: `workerId`, `ctSeconds` 등, 성과급=CT×생산량)와 `OutsourcedWorkRecord`(외주 전용: `outsourcingPartnerId`(필수 FK)·`outsourceVendorName`·`outsourceUnitPrice`, 정산=단가×생산량) 두 테이블로 완전히 나뉜다. `WorkRecord`에는 더 이상 `isOutsourced`/`outsourceVendorName`/`outsourceUnitPrice`/`outsourcingPartnerId` 컬럼이 없다. 공유 헤더 `WorkLog`는 그대로 두되 `WorkLog.recordKind` enum으로 어느 자식 테이블에 행이 있는지 표시하며, 한 WorkLog의 자식 행은 항상 한쪽 테이블에만 존재한다.
 - 거래처 타입은 수가 적고 타입별 업무 동작이 고정되어 있으므로 별도 시스템 관리 마스터 테이블을 만들지 않고 `BusinessPartnerType` enum을 소스오브트루스로 사용한다. 기본 타입은 `PROCESS_OUTSOURCING`(제작 외주), `MATERIAL_SUPPLIER`(구매처)이며 표시명은 한국어·영어·베트남어 UI 번역으로 관리한다.
-- 외주 작업은 `WorkRecord.outsourcingPartnerId`로 거래처에 연결하면서 업체명과 개당 단가는 작업 당시 스냅샷을 보존한다. 거래처 화면은 이 외주 작업 이력을 보여주고, 향후 구매 기능은 구매 원장과 거래처 FK로 연결해 같은 거래 내역 화면에 유형별 섹션으로 확장한다.
+- 외주 작업은 `OutsourcedWorkRecord.outsourcingPartnerId`로 거래처에 필수 연결하면서(과거처럼 거래처 FK 없이 자유 텍스트 업체명만으로 저장하는 경로는 없다) 업체명과 개당 단가는 작업 당시 스냅샷을 보존한다. 거래처 화면은 이 외주 작업 이력을 `GET /business-partners/:id/history`로 보여주며, 이 API는 `OutsourcedWorkRecord`를 조회한다. 향후 구매 기능은 구매 원장과 거래처 FK로 연결해 같은 거래 내역 화면에 유형별 섹션으로 확장한다.
 - 작업기록에서 외주 업체를 새로 등록할 때 브라우저 `prompt`/`alert` 입력을 사용하지 않고 거래처 메뉴와 동일한 거래처 등록 다이얼로그를 재사용한다.
+- 배정 진행률·완료 판정(`buildAssignmentPlanProgressRows`, `buildLineMonthCapacityRows` 등)은 반드시 `WorkRecord`와 `OutsourcedWorkRecord` 두 테이블의 수량을 `assignmentPlanId`×`styleProcessId` 기준으로 합산한다. 이 합산은 `loadAssignmentPlanProgressWorkRows`(`backend/src/index.ts`) 한 곳에서 이루어지며, 이 함수가 반환하는 배열에는 `isOutsourced`/`outsourceVendorName`이 채워진 정규화된 행만 담긴다 — 다른 배정 관련 계산은 이 함수를 거치거나 동일한 합산 패턴을 따라야 하며 `WorkRecord` 한 테이블만 조회하면 안 된다.
+- 생산수당·AT 학습은 `WorkRecord` 테이블만 사용하며 별도 `isOutsourced` 필터가 필요 없다 — 외주는 애초에 그 테이블에 존재하지 않으므로 구조적으로 제외된다.
 
 ## 2026-08-14 보고서·배정 예측 계산 분리
 
@@ -12,11 +16,11 @@
 - 보고서 구현을 위해 `buildAssignmentPlanProgressRows`의 배정 계획 기간이나 배정 reflow 계산식을 변경하지 않는다. 보고서에 필요한 기간은 `/customer-production-reports` 내부에서 `AssignmentPlan.startIndex/endIndex`로 별도 계산한다.
 - 배정의 남은 부하는 `Σ max(0, 배정수량 - 공정별 작업기록수량) × assignmentStSnapshot.processes[].stSeconds`가 우선 근거다. 공정 하나의 최소 완성수량으로 전체 ST를 다시 넣거나 보고서용 완료일 공식을 사용하지 않는다.
 
-## 2026-08-14 외주 작업기록과 스키마 오류 처리
+## 2026-08-14 외주 작업기록 스키마 오류 처리 원칙 (여전히 유효)
 
-- 외주 작업은 `WorkRecord.isOutsourced=true`, 작업자 NULL, 외주업체명과 개당 단가 스냅샷으로 저장한다. 생산 진행률과 배정·보고서 수량에는 포함하되 내부 노동시간, AT 학습, 생산수당 계산에서는 제외한다.
-- 외주 컬럼·인덱스·actor check 제약은 Prisma migration만이 아니라 Railway 운영 스키마의 소스오브트루스인 `backend/migration_fix.sql`에도 멱등하게 포함한다. 새 필수 컬럼·제약을 추가할 때는 시작 시 runtime schema drift 검사 목록도 함께 갱신한다.
+- 외주 컬럼·인덱스·FK 제약은 Prisma migration만이 아니라 Railway 운영 스키마의 소스오브트루스인 `backend/migration_fix.sql`에도 멱등하게 포함한다. 새 필수 컬럼·제약을 추가할 때는 시작 시 runtime schema drift 검사 목록도 함께 갱신한다. `OutsourcedWorkRecord` 분리(2026-08-18) 이후에도 이 원칙은 그대로 적용된다 — 새 테이블의 필수 컬럼도 `STARTUP_REQUIRED_RUNTIME_COLUMNS`에, 삭제된 `WorkRecord` 외주 컬럼은 `STARTUP_FORBIDDEN_RUNTIME_COLUMNS`에 등록되어 있다.
 - 운영 DB 스키마가 코드보다 뒤처졌을 때 구 컬럼 projection이나 레거시 쿼리로 우회하지 않는다. 누락을 명확한 스키마 오류로 드러내고 정식 migration 경로로 고친다. 특히 P2022를 잡아 필드를 빼고 재조회하는 fallback은 금지한다.
+- `WorkRecord`의 레거시 외주 컬럼(`isOutsourced`/`outsourceVendorName`/`outsourceUnitPrice`/`outsourcingPartnerId`)을 실제로 DROP하기 전에는 `backend/scripts/migrate-outsourced-work-records.js --apply`로 기존 외주 행을 `OutsourcedWorkRecord`로 먼저 이관해야 한다. `migration_fix.sql`의 컬럼 DROP 블록은 이관되지 않은 행이 남아있으면 스스로 건너뛰므로, 이관 스크립트를 먼저 실행하지 않으면 컬럼이 계속 남아있는 것으로 드러난다(조용히 실패하지 않음).
 
 ## 2026-08-14 배정 완료 상태 단순화
 

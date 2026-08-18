@@ -22,6 +22,7 @@ export const ACCESS_FEATURE_KEYS = {
   ATTENDANCE: 'ATTENDANCE',
   PRODUCTION_ANALYSIS: 'PRODUCTION_ANALYSIS',
   WORK_HISTORY: 'WORK_HISTORY',
+  OUTSOURCING_RECORD: 'OUTSOURCING_RECORD',
   PAYROLL: 'PAYROLL',
   REVENUE_ANALYSIS: 'REVENUE_ANALYSIS',
   BUSINESS: 'BUSINESS',
@@ -35,7 +36,7 @@ export const ACCESS_FEATURE_KEYS = {
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
-export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 7;
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 8;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND];
 const POLICY_ORG_ROLES = [
@@ -63,6 +64,7 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
       ACCESS_FEATURE_KEYS.ATTENDANCE,
       ACCESS_FEATURE_KEYS.PRODUCTION_ANALYSIS,
       ACCESS_FEATURE_KEYS.WORK_HISTORY,
+      ACCESS_FEATURE_KEYS.OUTSOURCING_RECORD,
       ACCESS_FEATURE_KEYS.LINE,
       ACCESS_FEATURE_KEYS.EMPLOYEE,
       ACCESS_FEATURE_KEYS.CUSTOMER,
@@ -158,6 +160,23 @@ const applyLegacyProductionAnalysisDefault = (policy) => {
   });
 };
 
+const applyLegacyOutsourcingRecordDefault = (policy) => {
+  POLICY_ORG_TYPES.forEach((orgType) => {
+    POLICY_ORG_ROLES.forEach((role) => {
+      const features = policy?.[orgType]?.[role];
+      if (!Array.isArray(features)) return;
+      if (!features.includes(ACCESS_FEATURE_KEYS.WORK_HISTORY)) return;
+      if (features.includes(ACCESS_FEATURE_KEYS.OUTSOURCING_RECORD)) return;
+      const workHistoryIndex = features.indexOf(ACCESS_FEATURE_KEYS.WORK_HISTORY);
+      features.splice(
+        workHistoryIndex >= 0 ? workHistoryIndex + 1 : features.length,
+        0,
+        ACCESS_FEATURE_KEYS.OUTSOURCING_RECORD
+      );
+    });
+  });
+};
+
 const applyLegacyRevenueAnalysisDefault = (policy) => {
   POLICY_ORG_TYPES.forEach((orgType) => {
     POLICY_ORG_ROLES.forEach((role) => {
@@ -238,6 +257,7 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
   if (!hasPolicySchemaVersion(candidate)) {
     applyLegacyDashboardDefault(base);
     applyLegacyProductionAnalysisDefault(base);
+    applyLegacyOutsourcingRecordDefault(base);
     applyLegacyRevenueAnalysisDefault(base);
     applyLegacyEmployeeLineAccessDefault(base);
     applyLegacyEmployeeSystemDefault(base);

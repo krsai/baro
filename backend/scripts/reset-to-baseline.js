@@ -3338,6 +3338,7 @@ async function clearOrderAndAssignmentData(orgId = null) {
   });
   const deletedWorkLogs = await prisma.workLog.deleteMany({ where: scopedWhere });
   const deletedWorkRecords = await prisma.workRecord.deleteMany({ where: scopedWhere });
+  const deletedOutsourcedWorkRecords = await prisma.outsourcedWorkRecord.deleteMany({ where: scopedWhere });
   const deletedCards = await prisma.assignmentCard.deleteMany({ where: scopedWhere });
   const deletedPlans = await prisma.assignmentPlan.deleteMany({ where: scopedWhere });
   const deletedBoardStates = await prisma.assignmentBoardState.deleteMany({ where: scopedWhere });
@@ -3347,6 +3348,7 @@ async function clearOrderAndAssignmentData(orgId = null) {
     detachedWorkRecords: detachedRecords.count,
     workLogs: deletedWorkLogs.count,
     workRecords: deletedWorkRecords.count,
+    outsourcedWorkRecords: deletedOutsourcedWorkRecords.count,
     assignmentCards: deletedCards.count,
     assignmentPlans: deletedPlans.count,
     assignmentBoardStates: deletedBoardStates.count,

@@ -319,7 +319,7 @@ const buildWorkRecordAggregates = (workLogs: any[]) => {
   };
 
   workLogs.forEach((workLog) => {
-    ensureArray(workLog?.workRecords).forEach((record) => {
+    [...ensureArray(workLog?.workRecords), ...ensureArray(workLog?.outsourcedWorkRecords)].forEach((record) => {
       const quantity = toNonNegativeInt(record?.quantity, 0);
       if (quantity <= 0) return;
       const styleKey = buildAggregateStyleKey({
@@ -533,6 +533,25 @@ export const getQuantitySettlementByMonth = async (orgId: number, monthInput: st
             quantity: true,
           },
         },
+        outsourcedWorkRecords: {
+          select: {
+            styleId: true,
+            style: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+              },
+            },
+            styleProcessId: true,
+            styleProcess: {
+              select: {
+                processCode: true,
+              },
+            },
+            quantity: true,
+          },
+        },
       },
     }),
   ]);
@@ -543,7 +562,8 @@ export const getQuantitySettlementByMonth = async (orgId: number, monthInput: st
   const rows = mergeSavedRows(baseRows, savedRows);
   const summary = buildSummary(rows);
   const workRecordCount = workLogs.reduce(
-    (sum, workLog) => sum + ensureArray(workLog?.workRecords).length,
+    (sum, workLog) =>
+      sum + ensureArray(workLog?.workRecords).length + ensureArray(workLog?.outsourcedWorkRecords).length,
     0
   );
 

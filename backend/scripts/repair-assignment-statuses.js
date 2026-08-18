@@ -311,9 +311,32 @@ const main = async () => {
           },
         },
       },
+      outsourcedWorkRecords: {
+        select: {
+          quantity: true,
+          styleProcessId: true,
+          workLog: {
+            select: {
+              coverageStartDate: true,
+              coverageEndDate: true,
+              displayDate: true,
+              entryMode: true,
+            },
+          },
+        },
+      },
     },
     orderBy: [{ orgId: "asc" }, { id: "asc" }],
   });
+
+  // Union employee (WorkRecord) and outsourced (OutsourcedWorkRecord)
+  // production for status recomputation - both advance the same completion.
+  for (const plan of plans) {
+    plan.workRecords = [
+      ...(Array.isArray(plan.workRecords) ? plan.workRecords : []),
+      ...(Array.isArray(plan.outsourcedWorkRecords) ? plan.outsourcedWorkRecords : []),
+    ];
+  }
 
   const changes = [];
   for (const plan of plans) {

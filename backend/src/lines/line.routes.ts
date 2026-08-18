@@ -574,10 +574,15 @@ export const createLineRouter = ({
         });
         const planIds = planRows.map((plan) => plan.id);
         if (planIds.length > 0) {
-          const linkedWorkRecordCount = await tx.workRecord.count({
-            where: { assignmentPlanId: { in: planIds } },
-          });
-          if (linkedWorkRecordCount > 0) {
+          const [linkedWorkRecordCount, linkedOutsourcedWorkRecordCount] = await Promise.all([
+            tx.workRecord.count({
+              where: { assignmentPlanId: { in: planIds } },
+            }),
+            tx.outsourcedWorkRecord.count({
+              where: { assignmentPlanId: { in: planIds } },
+            }),
+          ]);
+          if (linkedWorkRecordCount + linkedOutsourcedWorkRecordCount > 0) {
             throw createHttpError(409, "line has assignment plans with work records");
           }
           await tx.assignmentPlan.deleteMany({
@@ -919,10 +924,15 @@ export const createLineRouter = ({
       });
       const planIds = planRows.map((plan) => plan.id);
       if (planIds.length > 0) {
-        const linkedWorkRecordCount = await tx.workRecord.count({
-          where: { assignmentPlanId: { in: planIds } },
-        });
-        if (linkedWorkRecordCount > 0) {
+        const [linkedWorkRecordCount, linkedOutsourcedWorkRecordCount] = await Promise.all([
+          tx.workRecord.count({
+            where: { assignmentPlanId: { in: planIds } },
+          }),
+          tx.outsourcedWorkRecord.count({
+            where: { assignmentPlanId: { in: planIds } },
+          }),
+        ]);
+        if (linkedWorkRecordCount + linkedOutsourcedWorkRecordCount > 0) {
           throw createHttpError(409, "line has assignment plans with work records");
         }
         await tx.assignmentPlan.deleteMany({

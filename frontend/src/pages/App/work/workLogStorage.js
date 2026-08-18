@@ -71,6 +71,7 @@ export const loadWorkLogs = async (options = {}) => {
     dateTo: options?.dateTo,
     includeRecords:
       options?.includeRecords === undefined ? undefined : options.includeRecords ? 1 : 0,
+    recordKind: options?.recordKind,
   });
   const data = await requestJSON('/work-logs' + query, buildReadRequestOptions(options));
   return Array.isArray(data) ? data : [];
@@ -129,6 +130,7 @@ export const loadWorkLogContext = async (options = {}) => {
     workDate: options?.workDate,
     coverageStartDate: options?.coverageStartDate,
     debug: options?.debug ? 1 : undefined,
+    recordKind: options?.recordKind,
   });
   const result = await requestJSON(
     `/work-log-context${query}`,

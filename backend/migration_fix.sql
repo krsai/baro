@@ -76,29 +76,8 @@ DO $$ BEGIN
   END IF;
 END $$;
 
-ALTER TABLE "WorkRecord"
-  ADD COLUMN IF NOT EXISTS "isOutsourced" BOOLEAN NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS "outsourceVendorName" TEXT,
-  ADD COLUMN IF NOT EXISTS "outsourceUnitPrice" DECIMAL(18, 4);
-
-CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_isOutsourced_idx"
-  ON "WorkRecord"("orgId", "isOutsourced");
-
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'WorkRecord_outsource_actor_check'
-  ) THEN
-    ALTER TABLE "WorkRecord"
-      ADD CONSTRAINT "WorkRecord_outsource_actor_check"
-      CHECK (
-        ("isOutsourced" = false AND "outsourceVendorName" IS NULL AND "outsourceUnitPrice" IS NULL)
-        OR
-        ("isOutsourced" = true AND "workerId" IS NULL AND length(trim("outsourceVendorName")) > 0 AND "outsourceUnitPrice" >= 0)
-      );
-  END IF;
-END $$;
+-- (2026-08-14 outsourced-in-WorkRecord columns superseded 2026-08-18 by the
+-- OutsourcedWorkRecord split - see Step 0s at the top of this file.)
 
 -- Step 0o: Employee becomes the canonical organization account table (20260707)
 -- Employee.id is the account id. OrgMembership was a temporary compatibility
@@ -4547,15 +4526,10 @@ ALTER TABLE "BusinessPartner"
   ADD COLUMN IF NOT EXISTS "contactName" TEXT,
   ADD COLUMN IF NOT EXISTS "contactPhone" TEXT;
 
-ALTER TABLE "WorkRecord"
-  ADD COLUMN IF NOT EXISTS "outsourcingPartnerId" INTEGER;
-
 CREATE UNIQUE INDEX IF NOT EXISTS "BusinessPartner_orgId_type_name_key"
   ON "BusinessPartner"("orgId", "type", "name");
 CREATE INDEX IF NOT EXISTS "BusinessPartner_orgId_type_isActive_idx"
   ON "BusinessPartner"("orgId", "type", "isActive");
-CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_outsourcingPartnerId_idx"
-  ON "WorkRecord"("orgId", "outsourcingPartnerId");
 
 DO $$
 BEGIN
@@ -4563,11 +4537,117 @@ BEGIN
     ALTER TABLE "BusinessPartner" ADD CONSTRAINT "BusinessPartner_orgId_fkey"
       FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'WorkRecord_outsourcingPartnerId_fkey') THEN
-    ALTER TABLE "WorkRecord" ADD CONSTRAINT "WorkRecord_outsourcingPartnerId_fkey"
-      FOREIGN KEY ("outsourcingPartnerId") REFERENCES "BusinessPartner"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+END $$;
+-- Step 0s: split outsourced production into its own table (20260818)
+-- WorkRecord is now employee-only (worker/ctSeconds). Outsourced (vendor)
+-- production moved out to OutsourcedWorkRecord: no workerId/ctSeconds at
+-- all, outsourcingPartnerId is a required FK (no more free-text-only rows),
+-- unit-price x quantity based. Must run after the BusinessPartner block
+-- above (OutsourcedWorkRecord.outsourcingPartnerId references it) and
+-- after any legacy WorkRecord.isOutsourced=true rows have been migrated
+-- out by scripts/migrate-outsourced-work-records.js --apply, or the
+-- DROP COLUMN statements below discard that data.
+DO $$
+BEGIN
+  CREATE TYPE "WorkLogRecordKind" AS ENUM ('EMPLOYEE', 'OUTSOURCING');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+ALTER TABLE "WorkLog"
+  ADD COLUMN IF NOT EXISTS "recordKind" "WorkLogRecordKind" NOT NULL DEFAULT 'EMPLOYEE';
+CREATE INDEX IF NOT EXISTS "WorkLog_orgId_recordKind_idx"
+  ON "WorkLog"("orgId", "recordKind");
+
+CREATE TABLE IF NOT EXISTS "OutsourcedWorkRecord" (
+  "id"                   SERIAL NOT NULL,
+  "orgId"                INTEGER NOT NULL,
+  "workLogId"            INTEGER NOT NULL,
+  "outsourcingPartnerId" INTEGER NOT NULL,
+  "outsourceVendorName"  TEXT NOT NULL,
+  "outsourceUnitPrice"   DECIMAL(18, 4) NOT NULL,
+  "lineId"               INTEGER,
+  "styleId"              INTEGER NOT NULL,
+  "styleProcessId"       INTEGER NOT NULL,
+  "assignmentPlanId"     INTEGER NOT NULL,
+  "quantity"             INTEGER NOT NULL DEFAULT 0,
+  "createdAt"            TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "createdBy"            TEXT NOT NULL DEFAULT 'system@baro.local',
+  "createdByEmployeeId"  INTEGER,
+  "updatedByEmployeeId"  INTEGER,
+  "updatedAt"            TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "OutsourcedWorkRecord_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX IF NOT EXISTS "OutsourcedWorkRecord_orgId_workLogId_idx" ON "OutsourcedWorkRecord"("orgId", "workLogId");
+CREATE INDEX IF NOT EXISTS "OutsourcedWorkRecord_orgId_outsourcingPartnerId_idx" ON "OutsourcedWorkRecord"("orgId", "outsourcingPartnerId");
+CREATE INDEX IF NOT EXISTS "OutsourcedWorkRecord_orgId_styleId_idx" ON "OutsourcedWorkRecord"("orgId", "styleId");
+CREATE INDEX IF NOT EXISTS "OutsourcedWorkRecord_orgId_lineId_idx" ON "OutsourcedWorkRecord"("orgId", "lineId");
+CREATE INDEX IF NOT EXISTS "OutsourcedWorkRecord_styleProcessId_idx" ON "OutsourcedWorkRecord"("styleProcessId");
+CREATE INDEX IF NOT EXISTS "OutsourcedWorkRecord_assignmentPlanId_idx" ON "OutsourcedWorkRecord"("assignmentPlanId");
+CREATE INDEX IF NOT EXISTS "OutsourcedWorkRecord_workLogId_idx" ON "OutsourcedWorkRecord"("workLogId");
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_orgId_fkey') THEN
+    ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_orgId_fkey"
+      FOREIGN KEY ("orgId") REFERENCES "Organization"("id");
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_workLogId_fkey') THEN
+    ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_workLogId_fkey"
+      FOREIGN KEY ("workLogId") REFERENCES "WorkLog"("id") ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_outsourcingPartnerId_fkey') THEN
+    ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_outsourcingPartnerId_fkey"
+      FOREIGN KEY ("outsourcingPartnerId") REFERENCES "BusinessPartner"("id");
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_assignmentPlan_org_fkey') THEN
+    ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_assignmentPlan_org_fkey"
+      FOREIGN KEY ("assignmentPlanId", "orgId") REFERENCES "AssignmentPlan"("id", "orgId");
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_styleId_fkey') THEN
+    ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_styleId_fkey"
+      FOREIGN KEY ("styleId") REFERENCES "Style"("id");
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_styleProcess_style_org_fkey') THEN
+    ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_styleProcess_style_org_fkey"
+      FOREIGN KEY ("styleProcessId", "styleId", "orgId") REFERENCES "StyleProcess"("id", "styleId", "orgId");
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_lineId_fkey') THEN
+    ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_lineId_fkey"
+      FOREIGN KEY ("lineId") REFERENCES "Line"("id") ON DELETE SET NULL;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_createdByEmployeeId_fkey') THEN
+    ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_createdByEmployeeId_fkey"
+      FOREIGN KEY ("createdByEmployeeId") REFERENCES "Employee"("id") ON DELETE SET NULL;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_updatedByEmployeeId_fkey') THEN
+    ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_updatedByEmployeeId_fkey"
+      FOREIGN KEY ("updatedByEmployeeId") REFERENCES "Employee"("id") ON DELETE SET NULL;
   END IF;
 END $$;
+
+-- Legacy outsourcing columns on WorkRecord are dropped only after no rows
+-- still use them, so a deploy that runs before the one-off migration script
+-- does not silently discard data.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM "WorkRecord" WHERE "isOutsourced" = true
+  ) THEN
+    ALTER TABLE "WorkRecord" DROP CONSTRAINT IF EXISTS "WorkRecord_outsource_actor_check";
+    ALTER TABLE "WorkRecord" DROP CONSTRAINT IF EXISTS "WorkRecord_outsourcingPartnerId_fkey";
+    DROP INDEX IF EXISTS "WorkRecord_orgId_isOutsourced_idx";
+    DROP INDEX IF EXISTS "WorkRecord_orgId_outsourcingPartnerId_idx";
+    ALTER TABLE "WorkRecord" DROP COLUMN IF EXISTS "isOutsourced";
+    ALTER TABLE "WorkRecord" DROP COLUMN IF EXISTS "outsourceVendorName";
+    ALTER TABLE "WorkRecord" DROP COLUMN IF EXISTS "outsourceUnitPrice";
+    ALTER TABLE "WorkRecord" DROP COLUMN IF EXISTS "outsourcingPartnerId";
+  END IF;
+EXCEPTION
+  WHEN undefined_column THEN NULL;
+END $$;
+
 -- 2026-08-16: organization-specific employee grade system (default CL set)
 CREATE TABLE IF NOT EXISTS "EmployeeGradeSet" (
   "id" SERIAL PRIMARY KEY, "orgId" INTEGER NOT NULL, "code" TEXT NOT NULL,

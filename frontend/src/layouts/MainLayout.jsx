@@ -708,6 +708,11 @@ const MainLayout = () => {
             path: '/work-history',
           },
           {
+            label: getUiMessage('menu.outsourcingRecord', '\uC678\uC8FC \uB0B4\uC5ED', languageCode),
+            icon: <HistoryIcon />,
+            path: '/outsourcing-record',
+          },
+          {
             label: getUiMessage('menu.attendance', '\uCD9C\uD1F4\uADFC', languageCode),
             icon: <ScheduleIcon />,
             path: '/attendance',
@@ -956,6 +961,7 @@ const MainLayout = () => {
           '/line',
           '/assignment',
           '/work-history',
+          '/outsourcing-record',
           '/qc-review',
         ];
         orderedChildren = [
@@ -1062,6 +1068,25 @@ const MainLayout = () => {
     },
     [languageCode]
   );
+  const resolveOutsourcingRecordTabLabel = React.useCallback(
+    (kind = 'list') => {
+      const baseLabel = getUiMessage(
+        'menu.outsourcingRecord',
+        '외주 내역',
+        languageCode
+      );
+      const suffixByKind =
+        languageCode === 'ko'
+          ? { list: '목록', new: '신규', detail: '상세' }
+          : languageCode === 'vi'
+            ? { list: 'Danh sách', new: 'Moi', detail: 'Chi tiết' }
+            : { list: 'List', new: 'New', detail: 'Detail' };
+      if (kind === 'new') return `${baseLabel} - ${suffixByKind.new}`;
+      if (kind === 'detail') return `${baseLabel} - ${suffixByKind.detail}`;
+      return `${baseLabel} - ${suffixByKind.list}`;
+    },
+    [languageCode]
+  );
   const resolveProductionAnalysisTabLabel = React.useCallback(
     (kind = 'list') => {
       const baseLabel = getUiMessage(
@@ -1108,6 +1133,15 @@ const MainLayout = () => {
       }
       if (path.startsWith('/work-history/') && path !== '/work-history') {
         return resolveWorkHistoryTabLabel('detail');
+      }
+      if (path === '/outsourcing-record') {
+        return resolveOutsourcingRecordTabLabel('list');
+      }
+      if (path === '/outsourcing-record/new') {
+        return resolveOutsourcingRecordTabLabel('new');
+      }
+      if (path.startsWith('/outsourcing-record/') && path !== '/outsourcing-record') {
+        return resolveOutsourcingRecordTabLabel('detail');
       }
       if (path === '/production-analysis' || path === '/work-history-monthly') {
         return resolveProductionAnalysisTabLabel('list');
@@ -1166,6 +1200,18 @@ const MainLayout = () => {
         tabPath !== '/work-history'
       ) {
         return withStoredContext(resolveWorkHistoryTabLabel('detail'));
+      }
+      if (tabPath === '/outsourcing-record') {
+        return resolveOutsourcingRecordTabLabel('list');
+      }
+      if (tabPath === '/outsourcing-record/new') {
+        return resolveOutsourcingRecordTabLabel('new');
+      }
+      if (
+        tabPath.startsWith('/outsourcing-record/') &&
+        tabPath !== '/outsourcing-record'
+      ) {
+        return withStoredContext(resolveOutsourcingRecordTabLabel('detail'));
       }
       if (tabPath === '/production-analysis' || tabPath === '/work-history-monthly') {
         return resolveProductionAnalysisTabLabel('list');
@@ -1432,6 +1478,10 @@ const MainLayout = () => {
         // For work history detail pages, ensure only one detail tab is open.
         if (nextPathname.startsWith('/work-history/') && nextPathname !== '/work-history') {
           openOptions.replacePrefix = '/work-history/';
+        }
+        // For outsourcing record detail pages, ensure only one detail tab is open.
+        if (nextPathname.startsWith('/outsourcing-record/') && nextPathname !== '/outsourcing-record') {
+          openOptions.replacePrefix = '/outsourcing-record/';
         }
         // For production analysis detail pages, ensure only one detail tab is open.
         if (

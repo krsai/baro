@@ -14,6 +14,11 @@ const TEXT = {
     en: 'Work Log Detail',
     vi: 'Chi tiết nhật ký công việc',
   },
+  outsourcingDetailTitle: {
+    ko: '외주 내역 상세',
+    en: 'Outsourcing Record Detail',
+    vi: 'Chi tiết hồ sơ gia công',
+  },
   notFound: {
     ko: '기록을 찾을 수 없습니다.',
     en: 'Log not found.',
@@ -71,14 +76,24 @@ const buildCrossLineAssignmentSaveMessage = ({
 };
 
 const normalizeWorkLogId = (value) => String(value || '').trim();
-const buildWorkListTabLabel = (languageCode) => {
+const buildWorkListTabLabel = (languageCode, isOutsourcing) => {
+  if (isOutsourcing) {
+    if (languageCode === 'en') return 'Outsourcing Records';
+    if (languageCode === 'vi') return 'Hồ sơ gia công';
+    return '외주 내역';
+  }
   if (languageCode === 'en') return 'Work Logs';
   if (languageCode === 'vi') return 'Nhật ký công việc';
   return '작업 기록';
 };
-const buildWorkDetailTabLabel = (workDateKey, languageCode) => {
-  const title =
-    languageCode === 'vi'
+const buildWorkDetailTabLabel = (workDateKey, languageCode, isOutsourcing) => {
+  const title = isOutsourcing
+    ? languageCode === 'vi'
+      ? 'Chi tiết hồ sơ gia công'
+      : languageCode === 'en'
+        ? 'Outsourcing Record Detail'
+        : '외주 내역 상세'
+    : languageCode === 'vi'
       ? 'Chi tiết nhật ký công việc'
       : languageCode === 'en'
         ? 'Work Log Detail'
@@ -86,7 +101,9 @@ const buildWorkDetailTabLabel = (workDateKey, languageCode) => {
   return workDateKey ? `${title}: ${workDateKey}` : title;
 };
 
-const WorkEntry = () => {
+const WorkEntry = ({ recordKind = 'EMPLOYEE' } = {}) => {
+  const isOutsourcingMode = recordKind === 'OUTSOURCING';
+  const basePath = isOutsourcingMode ? '/outsourcing-record' : '/work-history';
   const { workLogId } = useParams();
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId } = useAuth();
@@ -102,14 +119,14 @@ const WorkEntry = () => {
 
   const closeEntry = useCallback(() => {
     const closeTabId = isEditMode && routeWorkLogId
-      ? `/work-history/${routeWorkLogId}`
-      : '/work-history/new';
+      ? `${basePath}/${routeWorkLogId}`
+      : `${basePath}/new`;
 
-    navigateToPath('/work-history', {
-      label: buildWorkListTabLabel(languageCode),
+    navigateToPath(basePath, {
+      label: buildWorkListTabLabel(languageCode, isOutsourcingMode),
       closeTabId,
     });
-  }, [isEditMode, languageCode, navigateToPath, routeWorkLogId]);
+  }, [basePath, isEditMode, isOutsourcingMode, languageCode, navigateToPath, routeWorkLogId]);
 
   useEffect(() => {
     if (!isEditMode) {
@@ -198,8 +215,8 @@ const WorkEntry = () => {
             : resolveText(TEXT.saveSuccess, languageCode, '기록을 저장했습니다.'),
           crossLineWarning?.rowCount ? 'warning' : 'success'
         );
-        navigateToPath(`/work-history/${created.id}`, {
-          label: buildWorkDetailTabLabel(payload?.workDate, languageCode),
+        navigateToPath(`${basePath}/${created.id}`, {
+          label: buildWorkDetailTabLabel(payload?.workDate, languageCode, isOutsourcingMode),
         });
       } catch (error) {
         console.error('[WorkEntry.handleSave] error', {
@@ -218,12 +235,12 @@ const WorkEntry = () => {
         setSaving(false);
       }
     },
-    [activeOrgId, isEditMode, languageCode, navigateToPath, routeWorkLogId, showNotification]
+    [activeOrgId, basePath, isEditMode, isOutsourcingMode, languageCode, navigateToPath, routeWorkLogId, showNotification]
   );
 
   if (loading) {
     return (
-      <AppPageContainer title={resolveText(TEXT.detailTitle, languageCode, '기록 상세')}>
+      <AppPageContainer title={resolveText(isOutsourcingMode ? TEXT.outsourcingDetailTitle : TEXT.detailTitle, languageCode, '기록 상세')}>
         <Paper
           variant="outlined"
           sx={{
@@ -252,6 +269,7 @@ const WorkEntry = () => {
       loading={loading}
       saving={saving}
       onSave={handleSave}
+      recordKind={recordKind}
     />
   );
 };

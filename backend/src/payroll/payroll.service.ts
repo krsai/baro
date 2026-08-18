@@ -247,7 +247,6 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
           },
         },
         workRecords: {
-          where: { isOutsourced: false },
           select: {
             lineId: true, workerId: true, quantity: true, ctSeconds: true,
             createdAt: true, updatedAt: true,
@@ -753,7 +752,6 @@ export const savePayrollSnapshot = async ({
       ctReviewedAt: null,
       workRecords: {
         some: {
-          isOutsourced: false,
           workLog: {
             displayDate: { startsWith: month },
           },

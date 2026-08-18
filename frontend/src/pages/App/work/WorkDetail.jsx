@@ -1121,7 +1121,9 @@ const WorkDetail = ({
   loading = false,
   saving = false,
   onSave,
+  recordKind = 'EMPLOYEE',
 }) => {
+  const isOutsourcingMode = recordKind === 'OUTSOURCING';
   const { activeOrgId, activeFactoryId, activeOrgRole } = useAuth();
   const { languageCode } = useLanguage();
   const LABELS = WORK_DETAIL_LABELS[languageCode] || WORK_DETAIL_LABELS.en;
@@ -1306,6 +1308,7 @@ const WorkDetail = ({
     };
   }, [activeFactoryId, activeOrgId, activeOrgRole, initialFactoryOption, initialLog?.id]);
   useEffect(() => {
+    if (!isOutsourcingMode) return undefined;
     const abortController = new AbortController();
     requestJSON(
       `/business-partners${buildQueryString({
@@ -1323,7 +1326,7 @@ const WorkDetail = ({
         }
       });
     return () => abortController.abort();
-  }, [activeOrgId]);
+  }, [activeOrgId, isOutsourcingMode]);
   useEffect(() => {
     initialRowsHydratedRef.current = false;
     setSelectedFactory(initialFactoryOption);
@@ -1493,6 +1496,7 @@ const WorkDetail = ({
       workDate: workDateKey,
       coverageStartDate: coverageStartDateKey || workDateKey,
       debug: workerDebugEnabled,
+      recordKind,
       skipGlobalLoading: true,
       signal: abortController.signal,
     })
@@ -1578,6 +1582,7 @@ const WorkDetail = ({
     prefetchedAllAssignments,
     prefetchedAssignments,
     prefetchedWorkers,
+    recordKind,
     selectedFactoryId,
     selectedLineId,
     coverageStartDateKey,
@@ -2083,21 +2088,22 @@ const WorkDetail = ({
   }, [ctAssignmentPool.length, hasRowsWithAssignmentPlanId, missingCtStyleLabels]);
   const resolveWorkerOptions = useCallback(
     (row) => ensureOptionIncluded(
-      [
-        ...lineWorkers.filter((worker) => !worker?.isOutsourced),
-        ...outsourcingPartners.map((partner) => ({
-          id: `partner:${partner.id}`,
-          partnerId: partner.id,
-          name: buildOutsourceWorkerName(partner.name, languageCode),
-          vendorName: partner.name,
-          isOutsourced: true,
-        })),
-        { id: '__add_outsource__', name: LABELS.addOutsourcePartnerOption, isOutsourceAction: true },
-      ],
+      isOutsourcingMode
+        ? [
+            ...outsourcingPartners.map((partner) => ({
+              id: `partner:${partner.id}`,
+              partnerId: partner.id,
+              name: buildOutsourceWorkerName(partner.name, languageCode),
+              vendorName: partner.name,
+              isOutsourced: true,
+            })),
+            { id: '__add_outsource__', name: LABELS.addOutsourcePartnerOption, isOutsourceAction: true },
+          ]
+        : lineWorkers.filter((worker) => !worker?.isOutsourced),
       row?.worker,
       (item) => item?.id || item?.name
     ),
-    [LABELS.addOutsourcePartnerOption, languageCode, lineWorkers, outsourcingPartners]
+    [LABELS.addOutsourcePartnerOption, isOutsourcingMode, languageCode, lineWorkers, outsourcingPartners]
   );
   const resolveStyleOptions = useCallback(
     (row) => {
@@ -2679,7 +2685,7 @@ const WorkDetail = ({
       setFormError(messages.invalidWorkerLine || '선택한 라인에 속하지 않은 작업자가 포함되어 있습니다.');
       return;
     }
-    if (!hasFactoryWage && summary.records.some((record) => !record?.isOutsourced)) {
+    if (!isOutsourcingMode && !hasFactoryWage && summary.records.some((record) => !record?.isOutsourced)) {
       setFormError(messages.wageMissing || '공장 초당 공임이 설정되지 않았습니다.');
       return;
     }
@@ -2692,6 +2698,7 @@ const WorkDetail = ({
       return;
     }
     onSave?.({
+      recordKind,
       workDate: workDateKey,
       coverageStartDate: coverageStartDateKey,
       coverageEndDate: workDateKey,
@@ -2712,7 +2719,7 @@ const WorkDetail = ({
         employmentAutoNote: savedEmploymentAutoNote,
       }),
     });
-  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, entryMode, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, missingAssignmentPlanLinkMessage, note, onSave, savedEmploymentAutoNote, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey, workLogOperationStartDateKey, workLogOperationStartErrorMessage]);
+  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, entryMode, hasFactoryWage, initialLog?.id, isDirty, isOutsourcingMode, lineWorkers, missingAssignmentPlanLinkMessage, note, onSave, recordKind, savedEmploymentAutoNote, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey, workLogOperationStartDateKey, workLogOperationStartErrorMessage]);
   const rowOrderIndexById = useMemo(() => {
     const map = new Map();
     rows.forEach((row, index) => {
