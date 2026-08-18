@@ -30814,9 +30814,10 @@ const buildStyleAssignmentProcessChangeRows = async ({
     ensureArray(plan?.workRecords).forEach((record) => {
       const processId = toPositiveIntOrNull(record?.styleProcessId);
       if (processId === null) return;
-      map.set(
+      totalsByProcessId.set(
         processId,
-        (map.get(processId) ?? 0) + Math.max(0, Math.round(Number(record?.quantity) || 0))
+        (totalsByProcessId.get(processId) ?? 0) +
+          Math.max(0, Math.round(Number(record?.quantity) || 0))
       );
     });
     const producedQuantity =
