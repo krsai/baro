@@ -578,6 +578,9 @@ export const requestJSON = async (path, options = {}) => {
 
     try {
       const headers = new Headers(requestOptions.headers || {});
+      if (requestOptions.body && !headers.has('content-type')) {
+        headers.set('Content-Type', 'application/json');
+      }
       const hasExplicitAuthorization = headers.has('authorization');
       const initialAccessToken =
         requestContext.accessToken || (!hasExplicitAuthorization

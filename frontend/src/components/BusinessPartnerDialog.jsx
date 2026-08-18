@@ -47,6 +47,7 @@ export default function BusinessPartnerDialog({
     try {
       const partner = await requestJSON(`/business-partners${buildQueryString({ orgId: activeOrgId })}`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: form.name.trim(), type: form.type,
           contactName: form.contactName.trim() || null,
