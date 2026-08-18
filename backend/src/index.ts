@@ -28188,12 +28188,34 @@ app.put("/assignment-board-state", async (req, res) => {
         cardIdToAssignmentCardId,
         db: tx,
       });
-      await tx.assignmentPlan.createMany({
-        data: createPlanRows.map((item: any) => ({
+      const styleVersionIdByStyleId = new Map<number, number>();
+      for (const item of createPlanRows) {
+        const cardId = resolveOptionalString(item?.cardId, null);
+        const styleId = toPositiveIntOrNull(
+          cardId ? cardIdToAssignmentCardId.get(cardId)?.styleId : item?.styleId
+        );
+        if (styleId === null || styleVersionIdByStyleId.has(styleId)) continue;
+        const version = await ensureInitialStyleProcessVersion({
           orgId: organization.id,
-          externalId: item.externalId,
-          ...toAssignmentPlanWriteData(item, cardIdToAssignmentCardId),
-        })) as Prisma.AssignmentPlanCreateManyInput[],
+          styleId,
+          db: tx,
+        });
+        styleVersionIdByStyleId.set(styleId, version.id);
+      }
+      await tx.assignmentPlan.createMany({
+        data: createPlanRows.map((item: any) => {
+          const cardId = resolveOptionalString(item?.cardId, null);
+          const styleId = toPositiveIntOrNull(
+            cardId ? cardIdToAssignmentCardId.get(cardId)?.styleId : item?.styleId
+          );
+          return {
+            orgId: organization.id,
+            externalId: item.externalId,
+            ...toAssignmentPlanWriteData(item, cardIdToAssignmentCardId),
+            styleProcessVersionId:
+              styleId === null ? null : styleVersionIdByStyleId.get(styleId) ?? null,
+          };
+        }) as Prisma.AssignmentPlanCreateManyInput[],
       });
     }
     for (const row of updatePlanRows) {
@@ -30782,30 +30804,32 @@ app.put("/styles/:styleId", async (req, res) => {
 const ensureInitialStyleProcessVersion = async ({
   orgId,
   styleId,
+  db = prisma,
 }: {
   orgId: number;
   styleId: number;
+  db?: any;
 }) => {
-  const existing = await prisma.styleProcessVersion.findFirst({ where: { orgId, styleId }, orderBy: { versionNumber: "asc" } });
+  const existing = await db.styleProcessVersion.findFirst({ where: { orgId, styleId }, orderBy: { versionNumber: "asc" } });
   if (existing) {
-    const latestAssigned = await prisma.assignmentPlan.findFirst({
+    const latestAssigned = await db.assignmentPlan.findFirst({
       where: { orgId, styleId, styleProcessVersionId: { not: null } },
       select: { styleProcessVersionId: true },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
-    await prisma.assignmentPlan.updateMany({
+    await db.assignmentPlan.updateMany({
       where: { orgId, styleId, styleProcessVersionId: null },
       data: { styleProcessVersionId: latestAssigned?.styleProcessVersionId ?? existing.id },
     });
     return existing;
   }
-  const mirror = await loadStyleProcessMirrorMapForStyleIds([styleId], { processOrgId: orgId });
-  const created = await prisma.styleProcessVersion.create({ data: {
+  const mirror = await loadStyleProcessMirrorMapForStyleIds([styleId], { processOrgId: orgId, db });
+  const created = await db.styleProcessVersion.create({ data: {
     orgId, styleId, versionNumber: 1, confirmedDate: todayDateKey(),
     processSnapshot: normalizeStyleProcesses(mirror.get(styleId) ?? []) as Prisma.InputJsonValue,
     confirmedBy: "SYSTEM_MIGRATION",
   }});
-  await prisma.assignmentPlan.updateMany({ where: { orgId, styleId, styleProcessVersionId: null }, data: { styleProcessVersionId: created.id } });
+  await db.assignmentPlan.updateMany({ where: { orgId, styleId, styleProcessVersionId: null }, data: { styleProcessVersionId: created.id } });
   return created;
 };
 
