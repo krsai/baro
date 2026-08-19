@@ -21,8 +21,7 @@ test('report aggregates customer production by relational order and style', () =
   assert.match(server, /Math\.min\(99, Math\.max\(0, progressPercent\)\)/);
   assert.match(server, /row\?\.scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED[\s\S]*row\?\.displayProgressPercent/);
   assert.match(server, /reviewRequired[\s\S]*\? "REVIEW_REQUIRED"/);
-  assert.match(page, /\[row\.styleName, row\.styleCode\]/);
-  assert.match(page, /REVIEW_REQUIRED: \{ ko: '검토 필요'/);
+  assert.match(page, /\.styleName,\s*[\w?.]*styleCode/);
 });
 
 test('forecast is withheld until the full order-style quantity is assigned', () => {
@@ -58,6 +57,19 @@ test('report omits the unfinished verified-output quantity column', () => {
   assert.doesNotMatch(page, /text\.produced/);
   assert.doesNotMatch(page, /row\.producedQuantity/);
   assert.doesNotMatch(page, /produced: 'Verified output'/);
+});
+
+test('customer-facing report withholds internal schedule estimates and review flags', () => {
+  assert.doesNotMatch(page, /lastWork:|estimate:|basis:|reviewRequired|estimateBasis|estimatedCompletionDate|hasMonthlySummaryRecords/);
+  // The backend's internal REVIEW_REQUIRED bookkeeping state must never reach
+  // the customer as its own alarming status chip - it is folded into the
+  // ordinary in-production status before rendering/grouping/export.
+  assert.doesNotMatch(page, /REVIEW_REQUIRED: \{/);
+  assert.match(page, /normalizeCustomerFacingStatus/);
+  assert.match(page, /status === 'REVIEW_REQUIRED' \? 'IN_PROGRESS'/);
+  assert.match(page, /completedStyleCount/);
+  assert.match(page, /styleCount:\s*\(total\)/);
+  assert.match(page, /completedCount:\s*\(count, total\)/);
 });
 
 test('sales report is routed, permissioned, printable, and exportable', () => {
