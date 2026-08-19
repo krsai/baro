@@ -69,6 +69,14 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
     return { ...assignment, activeVersion: active };
   }), [assignments, boundaries, versions]);
 
+  // Newest-first for display (git-log style) - the underlying chronological
+  // `assignments`/`assignmentsWithVersion` order stays oldest-first since
+  // boundary logic (Ver.1 pinned to assignments[0]) depends on it.
+  const displayAssignments = useMemo(
+    () => [...assignmentsWithVersion].reverse(),
+    [assignmentsWithVersion]
+  );
+
   const colorByVersionId = useMemo(() => {
     const map = new Map();
     versions.forEach((version, index) => {
@@ -119,14 +127,26 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
           </Box>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Box sx={{ position: 'relative' }}>
-              {assignmentsWithVersion.map((assignment, index) => {
+              {/* Newest assignment first (top) - the chronological order used for
+                  boundary logic (assignments[0] = oldest) is untouched, only the
+                  render order is reversed here. */}
+              {displayAssignments.map((assignment, index) => {
                 const isBoundary = Object.values(boundaries).includes(assignment.assignmentPlanId);
+                const isNewest = index === 0;
                 const dotColor = resolveVersionColor(assignment.activeVersion);
-                // Git-graph style: the segment leading INTO a row is colored by the
-                // previous row's version, so the color visibly switches right at the
-                // row where a new version's boundary starts (matches the drag target).
-                const topColor = index === 0 ? null : resolveVersionColor(assignmentsWithVersion[index - 1]?.activeVersion);
-                const hasBottomSegment = index < assignmentsWithVersion.length - 1;
+                const dotSize = isNewest ? 20 : isBoundary ? 16 : 12;
+                // Git-graph style: every dot is filled with its version's color so a
+                // version's full range reads as one continuous colored branch, not
+                // just its boundary/start entry. The connecting segment above a row
+                // keeps this row's own color; the segment below switches to the
+                // color of the next (older) row, so the color visibly changes right
+                // at the row where a new version's boundary starts.
+                const topColor = dotColor;
+                const hasTopSegment = index > 0;
+                const hasBottomSegment = index < displayAssignments.length - 1;
+                const bottomColor = hasBottomSegment
+                  ? resolveVersionColor(displayAssignments[index + 1]?.activeVersion)
+                  : null;
                 return (
                   <Box key={assignment.assignmentPlanId} onDragEnter={(event) => { event.preventDefault(); event.currentTarget.dataset.dragover = 'true'; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) delete event.currentTarget.dataset.dragover; }} onDrop={(event) => {
                     delete event.currentTarget.dataset.dragover;
@@ -138,22 +158,22 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
                     }
                     if (versionId) setBoundaries((current) => ({ ...current, [versionId]: assignment.assignmentPlanId }));
                   }} sx={{ position: 'relative', display: 'flex', alignItems: 'center', minHeight: 34, pl: 3.5, pr: .5, borderRadius: 1, transition: 'background-color .15s', '&[data-dragover="true"]': { bgcolor: 'action.hover' } }}>
-                    {topColor && (
+                    {hasTopSegment && (
                       <Box sx={{ position: 'absolute', zIndex: 0, left: 11, top: 0, height: '50%', width: 2, bgcolor: topColor }} />
                     )}
                     {hasBottomSegment && (
-                      <Box sx={{ position: 'absolute', zIndex: 0, left: 11, top: '50%', height: '50%', width: 2, bgcolor: dotColor }} />
+                      <Box sx={{ position: 'absolute', zIndex: 0, left: 11, top: '50%', height: '50%', width: 2, bgcolor: bottomColor }} />
                     )}
                     <Box sx={{
                       position: 'absolute', zIndex: 1,
-                      left: isBoundary ? 4 : 6,
-                      width: isBoundary ? 16 : 12,
-                      height: isBoundary ? 16 : 12,
+                      left: 12 - dotSize / 2,
+                      width: dotSize,
+                      height: dotSize,
                       borderRadius: '50%',
-                      bgcolor: isBoundary ? dotColor : 'background.paper',
+                      bgcolor: dotColor,
                       border: 2,
                       borderColor: dotColor,
-                      boxShadow: isBoundary ? `0 0 0 3px ${dotColor}26` : 'none',
+                      boxShadow: isNewest || isBoundary ? `0 0 0 3px ${dotColor}26` : 'none',
                     }} />
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%', minWidth: 0 }}>
                       <Typography variant="body2" fontWeight={600} noWrap sx={{ minWidth: 70, fontSize: '.78rem' }}>{assignment.orderNo || assignment.externalId}</Typography>
