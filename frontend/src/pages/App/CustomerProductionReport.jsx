@@ -263,7 +263,7 @@ const CustomerProductionReport = () => {
                           <Typography variant="body2">{resolveStyleSummaryLabel(row.styles, languageCode)}</Typography>
                           <Typography variant="caption" color="text.secondary">{text.completedCount(row.completedStyleCount, row.styles.length)}</Typography>
                         </Stack>
-                      : [soleStyle?.styleName, soleStyle?.styleCode].filter(Boolean).join(' · ') || '-'}
+                      : soleStyle?.styleName || soleStyle?.styleCode || '-'}
                   </TableCell>
                   <TableCell>{row.dueDate || '-'}</TableCell>
                   <TableCell align="right">{fmt(row.orderedQuantity)}</TableCell>
@@ -288,7 +288,7 @@ const CustomerProductionReport = () => {
                           </TableHead>
                           <TableBody>{row.styles.map((styleRow) =>
                             <TableRow key={`${styleRow.orderId}:${styleRow.styleId || styleRow.styleCode}`} sx={{ '&:last-child td': { borderBottom: 0 } }}>
-                              <TableCell>{[styleRow.styleName, styleRow.styleCode].filter(Boolean).join(' · ') || '-'}</TableCell>
+                              <TableCell>{styleRow.styleName || styleRow.styleCode || '-'}</TableCell>
                               <TableCell>{styleRow.dueDate || '-'}</TableCell>
                               <TableCell align="right">{fmt(styleRow.orderedQuantity)}</TableCell>
                               <TableCell align="right">{fmt(styleRow.assignedQuantity)}{styleRow.unassignedQuantity > 0 ? <Typography variant="caption" color="warning.main" display="block">-{fmt(styleRow.unassignedQuantity)}</Typography> : null}</TableCell>

@@ -21,7 +21,16 @@ test('report aggregates customer production by relational order and style', () =
   assert.match(server, /Math\.min\(99, Math\.max\(0, progressPercent\)\)/);
   assert.match(server, /row\?\.scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED[\s\S]*row\?\.displayProgressPercent/);
   assert.match(server, /reviewRequired[\s\S]*\? "REVIEW_REQUIRED"/);
-  assert.match(page, /\.styleName,\s*[\w?.]*styleCode/);
+  assert.match(page, /styleName \|\| \w+\??\.?styleCode/);
+});
+
+test('report displays style name only, never the style code alongside it', () => {
+  // The report is customer-facing; the internal style code has no meaning to
+  // them, so a style cell shows the name (falling back to the code only when
+  // no name exists) instead of "name · code".
+  assert.doesNotMatch(page, /styleName, \w+\??\.?styleCode\]\.filter\(Boolean\)\.join/);
+  assert.doesNotMatch(page, /\[soleStyle\?\.styleName, soleStyle\?\.styleCode\]/);
+  assert.doesNotMatch(page, /\[styleRow\.styleName, styleRow\.styleCode\]/);
 });
 
 test('forecast is withheld until the full order-style quantity is assigned', () => {
