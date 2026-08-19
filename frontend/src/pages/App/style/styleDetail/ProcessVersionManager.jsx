@@ -3,6 +3,14 @@ import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, S
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { fetchStyleProcessVersions, saveStyleProcessVersionBoundaries } from '../../../../utils/styleApi';
 
+// One distinct color per version, git-log-graph style, so the branch line
+// segment and dot a version "owns" in the timeline visually match the chip
+// for that version on the left - cycles if there are more versions than colors.
+const VERSION_GRAPH_COLORS = [
+  '#1976d2', '#9c27b0', '#2e7d32', '#ed6c02',
+  '#d32f2f', '#0288d1', '#6d4c41', '#5e35b1',
+];
+
 const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, notify }) => {
   const [versions, setVersions] = useState([]);
   const [assignments, setAssignments] = useState([]);
@@ -61,6 +69,18 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
     return { ...assignment, activeVersion: active };
   }), [assignments, boundaries, versions]);
 
+  const colorByVersionId = useMemo(() => {
+    const map = new Map();
+    versions.forEach((version, index) => {
+      map.set(version.id, VERSION_GRAPH_COLORS[index % VERSION_GRAPH_COLORS.length]);
+    });
+    return map;
+  }, [versions]);
+  const resolveVersionColor = useCallback(
+    (version) => (version ? colorByVersionId.get(version.id) ?? '#9e9e9e' : '#9e9e9e'),
+    [colorByVersionId]
+  );
+
   const boundarySignature = useCallback(
     (source) => versions.map((version) => `${version.id}:${source[version.id] ?? ''}`).join('|'),
     [versions]
@@ -83,38 +103,67 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
           <Box sx={{ width: { xs: '100%', md: 260 }, flexShrink: 0 }}>
             <Stack spacing={.75}>
-              {versions.map((version) => (
-                <Box key={version.id} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(version.id)); }}
-                  sx={{ display: 'flex', alignItems: 'center', minHeight: 38, px: .75, border: 1, borderColor: 'divider', borderRadius: 1, cursor: 'grab', bgcolor: 'background.paper', '&:active': { cursor: 'grabbing' } }}>
-                  <DragIndicatorIcon sx={{ mr: .5, color: 'text.secondary', fontSize: 18 }} />
-                  <Typography variant="body2" fontWeight={700} sx={{ flex: 1, fontSize: '.78rem' }}>{version.name}</Typography>
-                  <Chip size="small" variant="outlined" label={`${version.processCount}개`} sx={{ height: 22, fontSize: '.7rem' }} />
-                </Box>
-              ))}
+              {versions.map((version) => {
+                const versionColor = resolveVersionColor(version);
+                return (
+                  <Box key={version.id} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(version.id)); }}
+                    sx={{ display: 'flex', alignItems: 'center', minHeight: 38, pl: .75, pr: .75, border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: versionColor, borderRadius: 1, cursor: 'grab', bgcolor: 'background.paper', '&:active': { cursor: 'grabbing' } }}>
+                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: versionColor, mr: .75, flexShrink: 0 }} />
+                    <DragIndicatorIcon sx={{ mr: .5, color: 'text.secondary', fontSize: 18 }} />
+                    <Typography variant="body2" fontWeight={700} sx={{ flex: 1, fontSize: '.78rem' }}>{version.name}</Typography>
+                    <Chip size="small" variant="outlined" label={`${version.processCount}개`} sx={{ height: 22, fontSize: '.7rem' }} />
+                  </Box>
+                );
+              })}
             </Stack>
           </Box>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Box sx={{ position: 'relative', '&::before': assignments.length > 1 ? { content: '""', position: 'absolute', left: 11, top: 18, bottom: 18, width: 2, bgcolor: 'divider' } : undefined }}>
-              {assignmentsWithVersion.map((assignment) => (
-                <Box key={assignment.assignmentPlanId} onDragEnter={(event) => { event.preventDefault(); event.currentTarget.dataset.dragover = 'true'; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) delete event.currentTarget.dataset.dragover; }} onDrop={(event) => {
-                  delete event.currentTarget.dataset.dragover;
-                  const versionId = Number(event.dataTransfer.getData('text/plain'));
-                  const version = versions.find((item) => item.id === versionId);
-                  if (version?.versionNumber === 1 && assignment.assignmentPlanId !== assignments[0]?.assignmentPlanId) {
-                    notify('Ver.1은 가장 오래된 첫 배정부터 적용됩니다.', 'info');
-                    return;
-                  }
-                  if (versionId) setBoundaries((current) => ({ ...current, [versionId]: assignment.assignmentPlanId }));
-                }} sx={{ position: 'relative', display: 'flex', alignItems: 'center', minHeight: 34, pl: 3.5, pr: .5, borderRadius: 1, transition: 'background-color .15s', '&[data-dragover="true"]': { bgcolor: 'action.hover' } }}>
-                  <Box sx={{ position: 'absolute', zIndex: 1, left: Object.values(boundaries).includes(assignment.assignmentPlanId) ? 4 : 6, width: Object.values(boundaries).includes(assignment.assignmentPlanId) ? 16 : 12, height: Object.values(boundaries).includes(assignment.assignmentPlanId) ? 16 : 12, borderRadius: '50%', bgcolor: Object.values(boundaries).includes(assignment.assignmentPlanId) ? 'primary.main' : 'background.paper', border: 2, borderColor: Object.values(boundaries).includes(assignment.assignmentPlanId) ? 'primary.main' : 'text.disabled', boxShadow: Object.values(boundaries).includes(assignment.assignmentPlanId) ? '0 0 0 3px rgba(25, 118, 210, .14)' : 'none' }} />
-                  <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%', minWidth: 0 }}>
-                    <Typography variant="body2" fontWeight={600} noWrap sx={{ minWidth: 70, fontSize: '.78rem' }}>{assignment.orderNo || assignment.externalId}</Typography>
-                    <Typography variant="body2" color="text.secondary" noWrap sx={{ flex: 1, fontSize: '.75rem' }}>배정 {assignment.assignmentQuantity} · {new Date(assignment.assignedAt).toLocaleDateString()}</Typography>
-                    {assignment.workRecordCount > 0 && <Typography variant="caption" color="text.secondary" noWrap sx={{ fontSize: '.7rem' }}>기록 {assignment.workRecordCount}</Typography>}
-                    <Chip size="small" color="primary" variant="outlined" label={assignment.activeVersion?.confirmedDate || '미지정'} sx={{ height: 22, maxWidth: 110, fontSize: '.7rem' }} />
-                  </Stack>
-                </Box>
-              ))}
+            <Box sx={{ position: 'relative' }}>
+              {assignmentsWithVersion.map((assignment, index) => {
+                const isBoundary = Object.values(boundaries).includes(assignment.assignmentPlanId);
+                const dotColor = resolveVersionColor(assignment.activeVersion);
+                // Git-graph style: the segment leading INTO a row is colored by the
+                // previous row's version, so the color visibly switches right at the
+                // row where a new version's boundary starts (matches the drag target).
+                const topColor = index === 0 ? null : resolveVersionColor(assignmentsWithVersion[index - 1]?.activeVersion);
+                const hasBottomSegment = index < assignmentsWithVersion.length - 1;
+                return (
+                  <Box key={assignment.assignmentPlanId} onDragEnter={(event) => { event.preventDefault(); event.currentTarget.dataset.dragover = 'true'; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) delete event.currentTarget.dataset.dragover; }} onDrop={(event) => {
+                    delete event.currentTarget.dataset.dragover;
+                    const versionId = Number(event.dataTransfer.getData('text/plain'));
+                    const version = versions.find((item) => item.id === versionId);
+                    if (version?.versionNumber === 1 && assignment.assignmentPlanId !== assignments[0]?.assignmentPlanId) {
+                      notify('Ver.1은 가장 오래된 첫 배정부터 적용됩니다.', 'info');
+                      return;
+                    }
+                    if (versionId) setBoundaries((current) => ({ ...current, [versionId]: assignment.assignmentPlanId }));
+                  }} sx={{ position: 'relative', display: 'flex', alignItems: 'center', minHeight: 34, pl: 3.5, pr: .5, borderRadius: 1, transition: 'background-color .15s', '&[data-dragover="true"]': { bgcolor: 'action.hover' } }}>
+                    {topColor && (
+                      <Box sx={{ position: 'absolute', zIndex: 0, left: 11, top: 0, height: '50%', width: 2, bgcolor: topColor }} />
+                    )}
+                    {hasBottomSegment && (
+                      <Box sx={{ position: 'absolute', zIndex: 0, left: 11, top: '50%', height: '50%', width: 2, bgcolor: dotColor }} />
+                    )}
+                    <Box sx={{
+                      position: 'absolute', zIndex: 1,
+                      left: isBoundary ? 4 : 6,
+                      width: isBoundary ? 16 : 12,
+                      height: isBoundary ? 16 : 12,
+                      borderRadius: '50%',
+                      bgcolor: isBoundary ? dotColor : 'background.paper',
+                      border: 2,
+                      borderColor: dotColor,
+                      boxShadow: isBoundary ? `0 0 0 3px ${dotColor}26` : 'none',
+                    }} />
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%', minWidth: 0 }}>
+                      <Typography variant="body2" fontWeight={600} noWrap sx={{ minWidth: 70, fontSize: '.78rem' }}>{assignment.orderNo || assignment.externalId}</Typography>
+                      <Typography variant="body2" color="text.secondary" noWrap sx={{ flex: 1, fontSize: '.75rem' }}>배정 {assignment.assignmentQuantity} · {new Date(assignment.assignedAt).toLocaleDateString()}</Typography>
+                      {assignment.workRecordCount > 0 && <Typography variant="caption" color="text.secondary" noWrap sx={{ fontSize: '.7rem' }}>기록 {assignment.workRecordCount}</Typography>}
+                      <Chip size="small" variant="outlined" label={assignment.activeVersion?.confirmedDate || '미지정'} sx={{ height: 22, maxWidth: 110, fontSize: '.7rem', color: dotColor, borderColor: dotColor }} />
+                    </Stack>
+                  </Box>
+                );
+              })}
               {!busy && assignments.length === 0 && <Typography color="text.secondary">배정된 작업이 없습니다.</Typography>}
             </Box>
           </Box>
