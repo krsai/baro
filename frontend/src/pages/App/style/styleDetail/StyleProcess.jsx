@@ -152,6 +152,7 @@ const STYLE_PROCESS_MESSAGES = {
     reviewBadge: '검토',
     delete: '삭제',
     deleteBlocked: '작업기록이 연결된 공정은 삭제할 수 없습니다.',
+    processVersionsButton: '공정 버전',
     editingTitle: '공정 수정',
     orderColumn: '순서',
     codeColumn: '코드',
@@ -233,6 +234,7 @@ const STYLE_PROCESS_MESSAGES = {
     reviewBadge: 'Review',
     delete: 'Delete',
     deleteBlocked: 'Processes linked to work records cannot be deleted.',
+    processVersionsButton: 'Process Versions',
     editingTitle: 'Edit Process',
     orderColumn: 'Order',
     codeColumn: 'Code',
@@ -314,6 +316,7 @@ const STYLE_PROCESS_MESSAGES = {
     reviewBadge: 'Can xem',
     delete: 'Xóa',
     deleteBlocked: 'Không thể xoa cong doan da lien ket voi ban ghi lam viec.',
+    processVersionsButton: 'Phien ban cong doan',
     editingTitle: 'Sua cong doan',
     orderColumn: 'Thu tu',
     codeColumn: 'Ma',
@@ -2859,7 +2862,7 @@ const StyleProcess = ({
               disabled={isDraftOpen || versionManagementDisabled}
               sx={{ minWidth: 108, height: 36, px: 1.5, boxShadow: 'none', borderRadius: 1.5 }}
             >
-              공정 버전
+              {getStyleProcessMessage(languageCode, 'processVersionsButton')}
             </Button>
           ) : null}
           <Button
