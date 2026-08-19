@@ -25629,6 +25629,114 @@ app.patch([
   });
 });
 
+// Reverses production-complete / manual-production-complete / record-omission-complete.
+// Existing WorkRecord/OutsourcedWorkRecord rows and AT training data are never touched -
+// this only flips the plan's own completion flag/metadata back off so the card leaves
+// the "생산 완료" list and becomes editable again (AGENTS.md §31: "완료 후 추가 생산이
+// 필요하면 먼저 assignment를 미완료로 되돌린 뒤 작업기록을 추가한다").
+app.patch("/assignment-plans/:externalId/reopen", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+  const externalId = resolveOptionalString(req.params.externalId, null);
+  if (!externalId) {
+    return res.status(400).json({ ok: false, error: "invalid externalId" });
+  }
+
+  const plan = await prisma.assignmentPlan.findFirst({
+    where: { orgId: organization.id, externalId },
+    include: ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
+  });
+  if (!plan) return res.status(404).json({ ok: false, error: "assignment plan not found" });
+  if (!plan.isCompleted) {
+    return res.status(409).json({ ok: false, error: "assignment plan is not completed" });
+  }
+
+  const payrollLockMonth = resolveAssignmentPlanPayrollLockMonth(plan);
+  if (payrollLockMonth) {
+    const lockedMonths = await loadLockedPayrollMonthSet(organization.id, [payrollLockMonth]);
+    if (lockedMonths.has(payrollLockMonth)) {
+      return res.status(409).json({
+        ok: false,
+        error: "assignment plan is payroll-locked and cannot be reopened",
+      });
+    }
+  }
+
+  const reopened = await prisma.assignmentPlan.updateMany({
+    where: {
+      id: plan.id,
+      orgId: organization.id,
+      isCompleted: true,
+      updatedAt: plan.updatedAt,
+    },
+    data: {
+      isCompleted: false,
+      productionCompletedAt: null,
+      completedAt: null,
+      finalQuantity: null,
+      closedQty: null,
+      closedAt: null,
+      closedBy: null,
+      closeMode: null,
+      closeBasis: null,
+      completionReason: null,
+      forecastCompletedAt: null,
+      forecastBasis: ASSIGNMENT_FORECAST_BASIS_UNAVAILABLE,
+      scheduleStatus: ASSIGNMENT_STATUS_IN_PROGRESS,
+    },
+  });
+  if (reopened.count !== 1) {
+    return res.status(409).json({
+      ok: false,
+      error: "assignment plan was modified; reload and retry",
+    });
+  }
+
+  // Recompute schedule status/geometry from the plan's actual recorded work,
+  // same as any other non-completed plan - but a reopen must never bounce
+  // straight back to completed even if the data still says 100% done, or the
+  // whole action would be a no-op from the user's point of view.
+  await persistAssignmentPlanProgressSnapshot({
+    orgId: organization.id,
+    externalIds: [externalId],
+  });
+  await prisma.assignmentPlan.updateMany({
+    where: { id: plan.id, orgId: organization.id, isCompleted: true },
+    data: {
+      isCompleted: false,
+      productionCompletedAt: null,
+      completedAt: null,
+      finalQuantity: null,
+      closedQty: null,
+      closedAt: null,
+      closedBy: null,
+      closeMode: null,
+      closeBasis: null,
+      completionReason: null,
+      scheduleStatus: ASSIGNMENT_STATUS_REVIEW_REQUIRED,
+    },
+  });
+
+  const updatedPlan = await prisma.assignmentPlan.findUnique({
+    where: { id: plan.id },
+    include: ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
+  });
+  if (!updatedPlan) {
+    return res.status(409).json({
+      ok: false,
+      error: "assignment plan was modified; reload and retry",
+    });
+  }
+
+  await syncOrderProgressStatusesForOrg({ orgId: organization.id });
+  return res.json({
+    ok: true,
+    plan: buildAssignmentPlanCloseResponse(updatedPlan),
+  });
+});
+
 app.get("/holidays", async (req, res) => {
   const accessContext = await requireOrgRole(req, res, {
     allowedRoles: ORG_ACCESS_ROLES,

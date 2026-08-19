@@ -5795,25 +5795,15 @@ const AssignBoard = () => {
       : null,
     [quantityReviewAssignmentId, resolveAssignmentWithSchedulerProgress]
   );
-  const contextMenuTargetCard = useMemo(() => {
-    if (!contextMenuState || contextMenuState.targetType !== 'card') return null;
-    return cardById.get(String(contextMenuState.id)) || null;
-  }, [contextMenuState, cardById]);
-  const contextSplitDisabled = useMemo(() => {
-    if (!contextMenuState) return true;
-    if (contextMenuState.targetType === 'assignment') {
-      return true;
-    }
-    if (!contextMenuTargetCard) return true;
-    return Number(contextMenuTargetCard.quantity ?? 0) <= 1;
-  }, [
-    contextMenuState,
-    contextMenuTargetCard,
-  ]);
   const contextRecordOmissionCompleteDisabled = useMemo(() => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return true;
     if (!contextMenuTargetAssignment) return true;
     return Boolean(contextMenuTargetAssignment.isCompleted) || Number(contextMenuTargetAssignment.quantity ?? 0) <= 0;
+  }, [contextMenuState, contextMenuTargetAssignment]);
+  const contextReopenCompletionDisabled = useMemo(() => {
+    if (!contextMenuState || contextMenuState.targetType !== 'assignment') return true;
+    if (!contextMenuTargetAssignment) return true;
+    return !Boolean(contextMenuTargetAssignment.isCompleted);
   }, [contextMenuState, contextMenuTargetAssignment]);
 
   const handleContextMenuOpen = useCallback((payload) => {
@@ -6669,16 +6659,6 @@ const AssignBoard = () => {
       'warning'
     );
   }, [assignmentById, showNotification, languageCode]);
-  const handleContextSplit = useCallback(() => {
-    if (!contextMenuState) return;
-    if (contextMenuState.targetType === 'assignment') {
-      handleSplitAssignment(contextMenuState.id);
-    } else {
-      handleSplitCard(contextMenuState.id);
-    }
-    setContextMenuState(null);
-  }, [contextMenuState, handleSplitAssignment, handleSplitCard]);
-
   const handleContextRecordOmissionComplete = useCallback(async () => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return;
     const assignment = assignmentById.get(contextMenuState.id);
@@ -6711,6 +6691,43 @@ const AssignBoard = () => {
       handleCloseDetail();
     } catch (error) {
       showNotification(String(error?.message || 'Manual completion failed'), 'error');
+    } finally {
+      setCompletingAssignmentId(null);
+    }
+  }, [activeOrgId, assignmentById, contextMenuState, handleCloseDetail, languageCode, requestExternalBoardReload, showNotification]);
+
+  const handleContextReopenCompletion = useCallback(async () => {
+    if (!contextMenuState || contextMenuState.targetType !== 'assignment') return;
+    const assignment = assignmentById.get(contextMenuState.id);
+    setContextMenuState(null);
+    if (!assignment?.id || !assignment.isCompleted) return;
+    const confirmed = window.confirm(
+      languageCode === 'ko'
+        ? '이 배정을 완료 상태에서 되돌립니다. 기존 작업기록과 AT 학습 데이터는 그대로 유지되며, 이후 다시 작업기록을 추가하거나 완료 처리를 할 수 있습니다. 계속할까요?'
+        : languageCode === 'vi'
+          ? 'Phân công này sẽ được chuyển về trạng thái chưa hoàn tất. Các bản ghi công việc và dữ liệu học AT hiện có vẫn được giữ nguyên. Sau đó bạn có thể thêm bản ghi hoặc hoàn tất lại. Tiếp tục?'
+          : 'This assignment will be reverted to not-completed. Existing work records and AT training data will be preserved, and you can add more records or complete it again afterward. Continue?'
+    );
+    if (!confirmed) return;
+    setCompletingAssignmentId(assignment.id);
+    try {
+      await requestJSON(
+        `/assignment-plans/${encodeURIComponent(String(assignment.id))}/reopen` + buildQueryString({ orgId: activeOrgId }),
+        { method: 'PATCH' }
+      );
+      showNotification(
+        languageCode === 'ko'
+          ? '완료 상태를 되돌렸습니다.'
+          : languageCode === 'vi'
+            ? 'Đã hoàn tác trạng thái hoàn tất.'
+            : 'Reverted the completion status.',
+        'success'
+      );
+      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD], orgId: activeOrgId, assignmentIds: [assignment.id], source: 'assign-reopen-completion' });
+      requestExternalBoardReload();
+      handleCloseDetail();
+    } catch (error) {
+      showNotification(String(error?.message || 'Reopen failed'), 'error');
     } finally {
       setCompletingAssignmentId(null);
     }
@@ -7254,20 +7271,29 @@ const AssignBoard = () => {
             {languageCode === 'ko' ? '수량 확인' : languageCode === 'vi' ? 'Kiểm tra số lượng' : 'Quantity review'}
           </MenuItem>
           <Divider />
-          <MenuItem onClick={handleContextSplit} disabled={controlsDisabled || contextSplitDisabled}>
-            {getUiMessage('assign.contextSplitQuantity', 'Split Quantity', languageCode)}
-          </MenuItem>
-          <Divider />
-          <MenuItem
-            onClick={handleContextRecordOmissionComplete}
-            disabled={controlsDisabled || contextRecordOmissionCompleteDisabled}
-          >
-            {languageCode === 'ko'
-              ? '완료 조정'
-              : languageCode === 'vi'
-                ? 'Điều chỉnh hoàn tất'
-                : 'Adjust completion'}
-          </MenuItem>
+          {contextMenuTargetAssignment?.isCompleted ? (
+            <MenuItem
+              onClick={handleContextReopenCompletion}
+              disabled={controlsDisabled || contextReopenCompletionDisabled}
+            >
+              {languageCode === 'ko'
+                ? '되돌리기'
+                : languageCode === 'vi'
+                  ? 'Mở lại'
+                  : 'Reopen'}
+            </MenuItem>
+          ) : (
+            <MenuItem
+              onClick={handleContextRecordOmissionComplete}
+              disabled={controlsDisabled || contextRecordOmissionCompleteDisabled}
+            >
+              {languageCode === 'ko'
+                ? '완료 조정'
+                : languageCode === 'vi'
+                  ? 'Điều chỉnh hoàn tất'
+                  : 'Adjust completion'}
+            </MenuItem>
+          )}
         </Menu>
 
         <Drawer
