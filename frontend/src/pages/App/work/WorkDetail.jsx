@@ -21,8 +21,8 @@ import {
 import { useTheme } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
-import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
@@ -2626,22 +2626,36 @@ const WorkDetail = ({
     });
     setEditingField(null);
   }, [lineWorkers.length, selectedLineId]);
-  const handleMoveRow = useCallback((rowId, direction) => {
+  // renderedRowViewModels can be a filtered (search) and/or virtualized
+  // (rowRenderLimit) subset of the full rows array, so drag source/destination
+  // indices are positions within that visible list, not the full array. Resolve
+  // both ends to row ids first, then splice the full `rows` state relative to
+  // the destination row's neighbor - this keeps reordering correct even when
+  // some rows are hidden by the search filter or not yet virtualized in.
+  const handleRowDragEnd = useCallback((result) => {
+    if (!result.destination) return;
+    const sourceIndex = result.source.index;
+    const destinationIndex = result.destination.index;
+    if (sourceIndex === destinationIndex) return;
+    const draggedRowId = renderedRowViewModels[sourceIndex]?.row?.id;
+    const destinationRowId = renderedRowViewModels[destinationIndex]?.row?.id;
+    if (!draggedRowId || !destinationRowId) return;
     setRows((currentRows) => {
       const safeRows = Array.isArray(currentRows) ? currentRows : [];
-      const currentIndex = safeRows.findIndex((row) => row.id === rowId);
-      if (currentIndex < 0) return safeRows;
-
-      const targetIndex =
-        direction === 'up' ? currentIndex - 1 : direction === 'down' ? currentIndex + 1 : -1;
-      if (targetIndex < 0 || targetIndex >= safeRows.length) return safeRows;
-
+      const fromIndex = safeRows.findIndex((row) => row.id === draggedRowId);
+      if (fromIndex < 0) return safeRows;
       const nextRows = [...safeRows];
-      const [movedRow] = nextRows.splice(currentIndex, 1);
-      nextRows.splice(targetIndex, 0, movedRow);
+      const [movedRow] = nextRows.splice(fromIndex, 1);
+      const anchorIndex = nextRows.findIndex((row) => row.id === destinationRowId);
+      if (anchorIndex < 0) {
+        nextRows.splice(fromIndex, 0, movedRow);
+        return nextRows;
+      }
+      const insertionIndex = sourceIndex < destinationIndex ? anchorIndex + 1 : anchorIndex;
+      nextRows.splice(insertionIndex, 0, movedRow);
       return nextRows;
     });
-  }, []);
+  }, [renderedRowViewModels]);
 
   const handleSave = useCallback(() => {
     setFormError('');
@@ -2850,8 +2864,6 @@ const WorkDetail = ({
           rowAssignment,
           rowProcess,
           rowNumber: rowOrderIndex >= 0 ? rowOrderIndex + 1 : null,
-          canMoveUp: rowOrderIndex > 0,
-          canMoveDown: rowOrderIndex >= 0 && rowOrderIndex < rows.length - 1,
           isEditingRow,
           rowExceededMeta,
           isRowExceeded,
@@ -3192,14 +3204,15 @@ const WorkDetail = ({
                   label={`${LABELS.totalQuantityCt} ${formatSeconds(summary.workLogCtTotalSeconds, languageCode)}`}
                 />
               </Stack>
+              <DragDropContext onDragEnd={handleRowDragEnd}>
               {isMobile ? (
-                <Stack spacing={1}>
-                  {renderedRowViewModels.map((rowViewModel) => {
+                <Droppable droppableId="work-detail-rows-mobile">
+                  {(droppableProvided) => (
+                <Stack ref={droppableProvided.innerRef} {...droppableProvided.droppableProps} spacing={1}>
+                  {renderedRowViewModels.map((rowViewModel, index) => {
                     const {
                       row,
                       rowNumber,
-                      canMoveUp,
-                      canMoveDown,
                       rowExceededMeta,
                       isRowExceeded,
                       rowWorkerOptions,
@@ -3227,8 +3240,16 @@ const WorkDetail = ({
                     } = rowViewModel;
 
                     return (
-                      <Paper
+                      <Draggable
                         key={row.id}
+                        draggableId={String(row.id)}
+                        index={index}
+                        isDragDisabled={isAggregateLegacyLog || Boolean(toText(deferredSearchTerm))}
+                      >
+                      {(dragProvided) => (
+                      <Paper
+                        ref={dragProvided.innerRef}
+                        {...dragProvided.draggableProps}
                         variant="outlined"
                         sx={{
                           p: 1.25,
@@ -3245,10 +3266,12 @@ const WorkDetail = ({
                         <Stack spacing={1}>
                           <Stack
                             direction="row"
-                            justifyContent="space-between"
                             alignItems="center"
-                            spacing={1}
+                            spacing={0.5}
+                            {...dragProvided.dragHandleProps}
+                            sx={{ cursor: isAggregateLegacyLog ? 'default' : 'grab' }}
                           >
+                            <DragIndicatorIcon fontSize="small" sx={{ color: 'text.secondary' }} />
                             <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
                               {`${LABELS.rowNumber} ${rowNumber ?? '-'}`}
                             </Typography>
@@ -3475,32 +3498,6 @@ const WorkDetail = ({
                                   <AddIcon fontSize="small" />
                                 </IconButton>
                               </span>
-                              <span title={LABELS.moveUp}>
-                                <IconButton
-                                  size="small"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    handleMoveRow(row.id, 'up');
-                                  }}
-                                  disabled={isAggregateLegacyLog || !canMoveUp}
-                                  aria-label={LABELS.moveUp}
-                                >
-                                  <KeyboardArrowUpIcon fontSize="small" />
-                                </IconButton>
-                              </span>
-                              <span title={LABELS.moveDown}>
-                                <IconButton
-                                  size="small"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    handleMoveRow(row.id, 'down');
-                                  }}
-                                  disabled={isAggregateLegacyLog || !canMoveDown}
-                                  aria-label={LABELS.moveDown}
-                                >
-                                  <KeyboardArrowDownIcon fontSize="small" />
-                                </IconButton>
-                              </span>
                               <span title={LABELS.remove}>
                                 <IconButton
                                   size="small"
@@ -3518,9 +3515,14 @@ const WorkDetail = ({
                           </Stack>
                         </Stack>
                       </Paper>
+                      )}
+                      </Draggable>
                     );
                   })}
+                  {droppableProvided.placeholder}
                 </Stack>
+                  )}
+                </Droppable>
               ) : (
                 <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                   <TableContainer
@@ -3545,13 +3547,13 @@ const WorkDetail = ({
                         <TableCell sx={{ width: 148 }} align="right">&nbsp;</TableCell>
                       </TableRow>
                     </TableHead>
-                    <TableBody>
-                    {renderedRowViewModels.map((rowViewModel) => {
+                    <Droppable droppableId="work-detail-rows-desktop">
+                      {(droppableProvided) => (
+                    <TableBody {...droppableProvided.droppableProps} ref={droppableProvided.innerRef}>
+                    {renderedRowViewModels.map((rowViewModel, index) => {
                       const {
                         row,
                         rowNumber,
-                        canMoveUp,
-                        canMoveDown,
                         rowExceededMeta,
                         isRowExceeded,
                         rowWorkerOptions,
@@ -3583,14 +3585,20 @@ const WorkDetail = ({
                       } = rowViewModel;
 
                       return (
-                        <TableRow
+                        <Draggable
                           key={row.id}
+                          draggableId={String(row.id)}
+                          index={index}
+                          isDragDisabled={isAggregateLegacyLog || Boolean(toText(deferredSearchTerm))}
+                        >
+                        {(dragProvided) => (
+                        <TableRow
+                          ref={dragProvided.innerRef}
+                          {...dragProvided.draggableProps}
                           hover
                           data-work-desktop-row="true"
                           data-work-editing-row={isEditingRow ? row.id : undefined}
                           sx={{
-                            contentVisibility: 'auto',
-                            containIntrinsicSize: '56px',
                             '& > td': {
                               backgroundColor: isRowExceeded ? '#fff5f5' : groupBackgroundColor,
                             },
@@ -3605,10 +3613,21 @@ const WorkDetail = ({
                               : {}),
                           }}
                         >
-                          <TableCell align="center" sx={{ py: 0.75, verticalAlign: 'middle' }}>
-                            <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
-                              {rowNumber ?? '-'}
-                            </Typography>
+                          <TableCell
+                            align="center"
+                            sx={{
+                              py: 0.75,
+                              verticalAlign: 'middle',
+                              cursor: isAggregateLegacyLog ? 'default' : 'grab',
+                            }}
+                            {...dragProvided.dragHandleProps}
+                          >
+                            <Stack direction="row" spacing={0.25} alignItems="center" justifyContent="center">
+                              <DragIndicatorIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                              <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                                {rowNumber ?? '-'}
+                              </Typography>
+                            </Stack>
                           </TableCell>
                           <TableCell sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             {isEditingRow ? (
@@ -3956,32 +3975,6 @@ const WorkDetail = ({
                                     <AddIcon fontSize="small" />
                                   </IconButton>
                                 </span>
-                                <span title={LABELS.moveUp}>
-                                  <IconButton
-                                    size="small"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      handleMoveRow(row.id, 'up');
-                                    }}
-                                    disabled={isAggregateLegacyLog || !canMoveUp}
-                                    aria-label={LABELS.moveUp}
-                                  >
-                                    <KeyboardArrowUpIcon fontSize="small" />
-                                  </IconButton>
-                                </span>
-                                <span title={LABELS.moveDown}>
-                                  <IconButton
-                                    size="small"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      handleMoveRow(row.id, 'down');
-                                    }}
-                                    disabled={isAggregateLegacyLog || !canMoveDown}
-                                    aria-label={LABELS.moveDown}
-                                  >
-                                    <KeyboardArrowDownIcon fontSize="small" />
-                                  </IconButton>
-                                </span>
                                 <span title={LABELS.remove}>
                                   <IconButton
                                     size="small"
@@ -3999,13 +3992,19 @@ const WorkDetail = ({
                             </Stack>
                           </TableCell>
                         </TableRow>
+                        )}
+                        </Draggable>
                       );
                     })}
+                    {droppableProvided.placeholder}
                     </TableBody>
+                      )}
+                    </Droppable>
                   </Table>
                 </TableContainer>
               </Box>
               )}
+              </DragDropContext>
               {rowRenderLimit < visibleRowViewModels.length ? (
                 <Box ref={rowRenderSentinelRef} sx={{ height: 1 }} aria-hidden="true" />
               ) : null}
