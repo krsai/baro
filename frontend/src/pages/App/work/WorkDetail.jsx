@@ -3644,6 +3644,7 @@ const WorkDetail = ({
                               >
                                 <Tooltip title={toText(row?.worker?.name) || '-'} placement="bottom-start" arrow>
                                   <Typography
+                                    variant="body2"
                                     noWrap
                                     color={row?.worker?.isOutsourced ? 'warning.main' : 'inherit'}
                                     fontWeight={row?.worker?.isOutsourced ? 700 : 400}
@@ -3914,7 +3915,7 @@ const WorkDetail = ({
                             )}
                           </TableCell>
                           <TableCell align="right" sx={{ py: 0.75, verticalAlign: 'middle' }}>
-                            <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                            <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>
                               {totalCtValue}
                             </Typography>
                           </TableCell>
