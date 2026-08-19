@@ -29399,6 +29399,39 @@ app.post("/business-partners", async (req, res) => {
   res.status(201).json(row);
 });
 
+app.put("/business-partners/:id", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+  const id = toPositiveIntOrNull(req.params.id);
+  if (!id) return res.status(400).json({ ok: false, error: "invalid partner id" });
+  const existing = await prisma.businessPartner.findFirst({ where: { id, orgId: organization.id } });
+  if (!existing) return res.status(404).json({ ok: false, error: "business partner not found" });
+
+  const name = resolveOptionalString(req.body?.name, null);
+  if (!name) return res.status(400).json({ ok: false, error: "partner name is required" });
+  const requestedType = resolveOptionalString(req.body?.type, null);
+  if (requestedType && !['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'].includes(requestedType)) {
+    return res.status(400).json({ ok: false, error: "invalid partner type" });
+  }
+  const type = requestedType || existing.type;
+  const contactName = resolveOptionalString(req.body?.contactName, null);
+  const contactPhone = resolveOptionalString(req.body?.contactPhone, null);
+  const isActive = typeof req.body?.isActive === "boolean" ? req.body.isActive : existing.isActive;
+
+  const conflict = await prisma.businessPartner.findFirst({
+    where: { orgId: organization.id, type: type as any, name, id: { not: id } },
+  });
+  if (conflict) {
+    return res.status(409).json({ ok: false, error: "a partner with this name and type already exists" });
+  }
+
+  const row = await prisma.businessPartner.update({
+    where: { id },
+    data: { name, type: type as any, contactName, contactPhone, isActive },
+  });
+  res.json(row);
+});
+
 app.get("/business-partners/:id/history", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
