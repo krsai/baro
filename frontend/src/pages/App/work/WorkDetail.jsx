@@ -418,8 +418,10 @@ const DESKTOP_INLINE_TEXT_PAIR_SX = {
   overflow: 'hidden',
 };
 const DESKTOP_INLINE_TEXT_PRIMARY_SX = {
-  flex: '0 1 auto',
-  minWidth: 0,
+  // The primary label is a short code (style code, process code) - never
+  // shrink/truncate it. The secondary description text (flex 1 1 auto,
+  // below) absorbs whatever space is left and truncates instead.
+  flex: '0 0 auto',
   whiteSpace: 'nowrap',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
@@ -432,6 +434,17 @@ const DESKTOP_INLINE_TEXT_SECONDARY_SX = {
   textOverflow: 'ellipsis',
   fontSize: '0.72rem',
   lineHeight: 1.2,
+};
+// The row's worker/style/process SearchableSelect dropdown options
+// otherwise render at MUI's default (larger) option font size, which
+// visibly mismatches the table's own body2 (0.875rem) text.
+const ROW_OPTION_LISTBOX_SLOT_PROPS = {
+  listbox: {
+    sx: {
+      fontSize: '0.875rem',
+      '& .MuiAutocomplete-option': { fontSize: '0.875rem' },
+    },
+  },
 };
 const buildEditableFieldInputProps = (rowId, field, extra = {}) => ({
   ...extra,
@@ -799,10 +812,7 @@ const matchByIdOrName = (options = [], value, idKey = 'id', labelKey = 'name') =
   }
   return null;
 };
-const buildOutsourceWorkerName = (vendorName, languageCode) => {
-  const labels = WORK_DETAIL_LABELS[languageCode] || WORK_DETAIL_LABELS.en;
-  return `${labels.outsourceNamePrefix} · ${toText(vendorName)}`;
-};
+const buildOutsourceWorkerName = (vendorName, _languageCode) => toText(vendorName);
 const buildHydratedRows = ({ records, workers, assignments, languageCode }) => {
   const safeRecords = Array.isArray(records) ? records : [];
   return safeRecords.map((record, index) => {
@@ -3261,6 +3271,7 @@ const WorkDetail = ({
                             handleHomeEndKeys
                             getOptionLabel={(option) => option?.name || ''}
                             isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
+                            slotProps={ROW_OPTION_LISTBOX_SLOT_PROPS}
                             textFieldProps={{
                               size: 'small',
                               placeholder: LABELS.workerPlaceholder,
@@ -3310,6 +3321,7 @@ const WorkDetail = ({
                                   </Typography>
                                 ) : null
                               }
+                              slotProps={ROW_OPTION_LISTBOX_SLOT_PROPS}
                               textFieldProps={{
                                 size: 'small',
                                 placeholder: stylePlaceholder,
@@ -3369,6 +3381,7 @@ const WorkDetail = ({
                                 </Typography>
                               ) : null
                             }
+                            slotProps={ROW_OPTION_LISTBOX_SLOT_PROPS}
                             textFieldProps={{
                               size: 'small',
                               placeholder: processPlaceholder,
@@ -3617,6 +3630,7 @@ const WorkDetail = ({
                                 handleHomeEndKeys
                                 getOptionLabel={(option) => option?.name || ''}
                                 isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
+                                slotProps={ROW_OPTION_LISTBOX_SLOT_PROPS}
                                 textFieldProps={{
                                   size: 'small',
                                   hiddenLabel: true,
@@ -3646,8 +3660,7 @@ const WorkDetail = ({
                                   <Typography
                                     variant="body2"
                                     noWrap
-                                    color={row?.worker?.isOutsourced ? 'warning.main' : 'inherit'}
-                                    fontWeight={row?.worker?.isOutsourced ? 700 : 400}
+                                    color={row?.worker?.isOutsourced ? 'primary.main' : 'inherit'}
                                     sx={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}
                                   >
                                     {toText(row?.worker?.name) || '-'}
@@ -3699,6 +3712,7 @@ const WorkDetail = ({
                                       </Typography>
                                     ) : null
                                   }
+                                  slotProps={ROW_OPTION_LISTBOX_SLOT_PROPS}
                                   textFieldProps={{
                                     size: 'small',
                                     hiddenLabel: true,
@@ -3786,6 +3800,7 @@ const WorkDetail = ({
                                     </Typography>
                                   ) : null
                                 }
+                                slotProps={ROW_OPTION_LISTBOX_SLOT_PROPS}
                                 textFieldProps={{
                                   size: 'small',
                                   hiddenLabel: true,
@@ -3849,8 +3864,8 @@ const WorkDetail = ({
                             ) : (
                               <Typography
                                 variant="body2"
-                                color={row?.worker?.isOutsourced ? 'warning.main' : 'inherit'}
-                                sx={{ fontVariantNumeric: 'tabular-nums', fontWeight: row?.worker?.isOutsourced ? 700 : 400 }}
+                                color={row?.worker?.isOutsourced ? 'primary.main' : 'inherit'}
+                                sx={{ fontVariantNumeric: 'tabular-nums' }}
                               >
                                 {ctValue}
                               </Typography>

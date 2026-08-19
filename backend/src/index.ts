@@ -12087,6 +12087,70 @@ const buildWorkLogResponseRecordList = async ({
     responseBuilder(hydrateWorkRecordResponseDisplayFields(record, displayContext))
   );
 };
+// Outsourcing WorkLogs have no workerId/ctSeconds (OutsourcedWorkRecord is
+// unit-price x quantity, not CT-based), so the employee-mode summary fields
+// workerCount/totalCtSeconds are structurally meaningless there (always 0).
+// The 외주 내역 list instead needs "how many vendors" and "average unit
+// price", computed live from OutsourcedWorkRecord rather than stored on
+// WorkLog, since there is no vendor-count/price-total column to snapshot.
+const buildOutsourcedWorkLogStatsByWorkLogId = async ({
+  orgId,
+  workLogIds,
+}: {
+  orgId: number;
+  workLogIds: number[];
+}): Promise<Map<number, { partnerCount: number; averageUnitPrice: number | null }>> => {
+  const statsByWorkLogId = new Map<
+    number,
+    { partnerCount: number; averageUnitPrice: number | null }
+  >();
+  const normalizedIds = Array.from(
+    new Set(
+      ensureArray(workLogIds)
+        .map((id) => toPositiveIntOrNull(id))
+        .filter((id): id is number => id !== null)
+    )
+  );
+  if (normalizedIds.length === 0) return statsByWorkLogId;
+
+  const rows = await prisma.outsourcedWorkRecord.findMany({
+    where: { orgId, workLogId: { in: normalizedIds } },
+    select: {
+      workLogId: true,
+      outsourcingPartnerId: true,
+      outsourceUnitPrice: true,
+      quantity: true,
+    },
+  });
+  const partnerIdsByWorkLogId = new Map<number, Set<number>>();
+  const totalAmountByWorkLogId = new Map<number, number>();
+  const totalQuantityByWorkLogId = new Map<number, number>();
+  rows.forEach((row) => {
+    const workLogId = row.workLogId;
+    const partnerIds = partnerIdsByWorkLogId.get(workLogId) ?? new Set<number>();
+    partnerIds.add(row.outsourcingPartnerId);
+    partnerIdsByWorkLogId.set(workLogId, partnerIds);
+    const quantity = Math.max(0, Math.round(Number(row.quantity) || 0));
+    const unitPrice = Math.max(0, toOptionalFiniteNumber(row.outsourceUnitPrice, 0) || 0);
+    totalAmountByWorkLogId.set(
+      workLogId,
+      (totalAmountByWorkLogId.get(workLogId) || 0) + unitPrice * quantity
+    );
+    totalQuantityByWorkLogId.set(
+      workLogId,
+      (totalQuantityByWorkLogId.get(workLogId) || 0) + quantity
+    );
+  });
+  normalizedIds.forEach((workLogId) => {
+    const totalQuantity = totalQuantityByWorkLogId.get(workLogId) || 0;
+    const totalAmount = totalAmountByWorkLogId.get(workLogId) || 0;
+    statsByWorkLogId.set(workLogId, {
+      partnerCount: partnerIdsByWorkLogId.get(workLogId)?.size || 0,
+      averageUnitPrice: totalQuantity > 0 ? totalAmount / totalQuantity : null,
+    });
+  });
+  return statsByWorkLogId;
+};
 const buildWorkLogResponseList = async ({
   orgId,
   workLogs,
@@ -12102,10 +12166,22 @@ const buildWorkLogResponseList = async ({
     orgId,
     records: normalizedWorkLogs.flatMap((workLog) => resolveWorkLogRecordResponses(workLog)),
   });
+  const outsourcedStatsByWorkLogId = await buildOutsourcedWorkLogStatsByWorkLogId({
+    orgId,
+    workLogIds: normalizedWorkLogs
+      .filter((workLog) => workLog.recordKind === "OUTSOURCING")
+      .map((workLog) => workLog.id),
+  });
   return Promise.all(
-    normalizedWorkLogs.map((workLog) =>
-      toWorkLogResponse(workLog, { orgId, recordDisplayContext })
-    )
+    normalizedWorkLogs.map(async (workLog) => {
+      const response = await toWorkLogResponse(workLog, { orgId, recordDisplayContext });
+      if (workLog.recordKind !== "OUTSOURCING") return response;
+      const stats = outsourcedStatsByWorkLogId.get(workLog.id) ?? {
+        partnerCount: 0,
+        averageUnitPrice: null,
+      };
+      return { ...response, partnerCount: stats.partnerCount, averageUnitPrice: stats.averageUnitPrice };
+    })
   );
 };
 const toWorkLogResponse = async (

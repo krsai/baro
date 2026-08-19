@@ -95,12 +95,19 @@ const TEXT = {
   selectFactory: { ko: '공장 선택', en: 'Select factory', vi: 'Chon nha may' },
   line: { ko: '라인', en: 'Line', vi: 'Chuyền' },
   workers: { ko: '작업자', en: 'Workers', vi: 'Cong nhan' },
+  partnerCount: { ko: '업체 수', en: 'Vendors', vi: 'So doi tac' },
   items: { ko: '기록 건수', en: 'Entries', vi: 'So dong' },
   averageCtPerWorker: {
     ko: '1인 일 평균 CT',
     en: 'Avg CT / Worker / Day',
     vi: 'CT trung binh / nguoi / ngay',
   },
+  averageUnitPrice: {
+    ko: '평균 단가',
+    en: 'Avg Unit Price',
+    vi: 'Don gia trung binh',
+  },
+  currencyUnit: { ko: '동', en: 'VND', vi: 'đồng' },
   loading: {
     ko: '기록을 불러오는 중입니다.',
     en: 'Loading logs...',
@@ -234,6 +241,14 @@ const formatDuration = (seconds, languageCode) => {
   return `${hours}시간 ${minutes}분`;
 };
 
+const formatCurrencyValue = (value, languageCode) => {
+  const rounded = Math.round(Number(value) || 0);
+  const formatted = rounded.toLocaleString('en-US');
+  const unit = resolveText(TEXT.currencyUnit, languageCode, '동');
+  const separator = languageCode === 'ko' ? '' : ' ';
+  return `${formatted}${separator}${unit}`;
+};
+
 const normalizeFilterDate = (value) => {
   const normalized = dayjs(value);
   if (!normalized.isValid()) return null;
@@ -346,6 +361,7 @@ const resolveAverageCtSecondsPerWorker = (log) => {
 };
 
 const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
+  const isOutsourcingMode = recordKind === 'OUTSOURCING';
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
@@ -912,9 +928,13 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                       }}
                     >
                       <Typography variant="caption" color="text.secondary">
-                        {`${resolveText(TEXT.workers, languageCode, '작업자')} ${
-                          log.workerCount || 0
-                        }`}
+                        {isOutsourcingMode
+                          ? `${resolveText(TEXT.partnerCount, languageCode, '업체 수')} ${
+                              log.partnerCount || 0
+                            }`
+                          : `${resolveText(TEXT.workers, languageCode, '작업자')} ${
+                              log.workerCount || 0
+                            }`}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
                         {`${resolveText(TEXT.items, languageCode, '기록 건수')} ${
@@ -922,14 +942,20 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                         }`}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {`${resolveText(TEXT.averageCtPerWorker, languageCode, '1인 일 평균 CT')} ${
-                          resolveAverageCtSecondsPerWorker(log) === null
-                            ? '-'
-                            : formatDuration(
-                                resolveAverageCtSecondsPerWorker(log),
-                                languageCode
-                              )
-                        }`}
+                        {isOutsourcingMode
+                          ? `${resolveText(TEXT.averageUnitPrice, languageCode, '평균 단가')} ${
+                              log.averageUnitPrice == null
+                                ? '-'
+                                : formatCurrencyValue(log.averageUnitPrice, languageCode)
+                            }`
+                          : `${resolveText(TEXT.averageCtPerWorker, languageCode, '1인 일 평균 CT')} ${
+                              resolveAverageCtSecondsPerWorker(log) === null
+                                ? '-'
+                                : formatDuration(
+                                    resolveAverageCtSecondsPerWorker(log),
+                                    languageCode
+                                  )
+                            }`}
                       </Typography>
                     </Box>
                   </Stack>
@@ -946,13 +972,17 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                 <TableCell>{resolveText(TEXT.factory, languageCode, '공장')}</TableCell>
                 <TableCell>{resolveText(TEXT.line, languageCode, '라인')}</TableCell>
                 <TableCell align="right">
-                  {resolveText(TEXT.workers, languageCode, '작업자')}
+                  {isOutsourcingMode
+                    ? resolveText(TEXT.partnerCount, languageCode, '업체 수')
+                    : resolveText(TEXT.workers, languageCode, '작업자')}
                 </TableCell>
                 <TableCell align="right">
                   {resolveText(TEXT.items, languageCode, '기록 건수')}
                 </TableCell>
                 <TableCell>
-                  {resolveText(TEXT.averageCtPerWorker, languageCode, '1인 일 평균 CT')}
+                  {isOutsourcingMode
+                    ? resolveText(TEXT.averageUnitPrice, languageCode, '평균 단가')
+                    : resolveText(TEXT.averageCtPerWorker, languageCode, '1인 일 평균 CT')}
                 </TableCell>
                 <TableCell align="right">&nbsp;</TableCell>
               </TableRow>
@@ -982,15 +1012,21 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{log.workDate || '-'}</TableCell>
                     <TableCell>{log.factoryName || '-'}</TableCell>
                     <TableCell>{log.lineName || '-'}</TableCell>
-                    <TableCell align="right">{log.workerCount || 0}</TableCell>
+                    <TableCell align="right">
+                      {isOutsourcingMode ? log.partnerCount || 0 : log.workerCount || 0}
+                    </TableCell>
                     <TableCell align="right">{log.itemCount || 0}</TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      {resolveAverageCtSecondsPerWorker(log) === null
-                        ? '-'
-                        : formatDuration(
-                            resolveAverageCtSecondsPerWorker(log),
-                            languageCode
-                          )}
+                      {isOutsourcingMode
+                        ? log.averageUnitPrice == null
+                          ? '-'
+                          : formatCurrencyValue(log.averageUnitPrice, languageCode)
+                        : resolveAverageCtSecondsPerWorker(log) === null
+                          ? '-'
+                          : formatDuration(
+                              resolveAverageCtSecondsPerWorker(log),
+                              languageCode
+                            )}
                     </TableCell>
                     <TableCell align="right">
                       <Tooltip title={getUiMessage('common.delete', '삭제', languageCode)}>
