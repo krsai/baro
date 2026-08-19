@@ -2975,8 +2975,9 @@ const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label
           <TableHead>
             <TableRow>
               <TableCell>{label('공정', 'Process', 'Công đoạn')}</TableCell>
+              <TableCell align="right">{label('목표 수량', 'Target', 'Muc tieu')}</TableCell>
               <TableCell align="right">{label('기록 수량', 'Recorded', 'Đã ghi')}</TableCell>
-              <TableCell align="right">{label('배정 대비', 'vs assigned', 'So với phân công')}</TableCell>
+              <TableCell align="right">{label('차이', 'Diff', 'Chenh lech')}</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -2984,7 +2985,10 @@ const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label
               const processKey = String(process?.styleProcessId || `${process?.processCode || 'process'}:${index}`);
               const expanded = expandedProcessKey === processKey;
               const quantity = Math.max(0, Number(process?.quantity) || 0);
-              const difference = quantity - planned;
+              // A MALE_ONLY/FEMALE_ONLY process's own target (applicableQuantity),
+              // not the assignment's full blended `planned` quantity.
+              const processTarget = Number(process?.applicableQuantity ?? planned) || 0;
+              const difference = quantity - processTarget;
               const linkedRecords = workRecords.filter((record) =>
                 process?.styleProcessId
                   ? String(record?.styleProcessId || '') === String(process.styleProcessId)
@@ -3008,6 +3012,7 @@ const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label
                         </Typography>
                       </Stack>
                     </TableCell>
+                    <TableCell align="right">{processTarget.toLocaleString()}</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 700 }}>{quantity.toLocaleString()}</TableCell>
                     <TableCell align="right" sx={{ color: difference === 0 ? 'success.main' : 'error.main', fontWeight: 800 }}>
                       {difference > 0 ? '+' : ''}{difference.toLocaleString()}
@@ -3015,7 +3020,7 @@ const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label
                   </TableRow>
                   {expanded ? (
                     <TableRow>
-                      <TableCell colSpan={3} sx={{ p: 0, backgroundColor: '#fafcff' }}>
+                      <TableCell colSpan={4} sx={{ p: 0, backgroundColor: '#fafcff' }}>
                         <Table size="small" aria-label={label('연결된 작업기록', 'Linked work records', 'Nhật ký công việc liên kết')}>
                           <TableHead>
                             <TableRow>
@@ -7843,16 +7848,26 @@ const AssignBoard = () => {
                         <Table size="small">
                           <TableHead><TableRow>
                             <TableCell>{languageCode === 'ko' ? '공정' : 'Process'}</TableCell>
+                            <TableCell align="right">{languageCode === 'ko' ? '목표 수량' : 'Target'}</TableCell>
                             <TableCell align="right">{languageCode === 'ko' ? '기록 수량' : 'Recorded'}</TableCell>
-                            <TableCell align="right">{languageCode === 'ko' ? '배정 대비' : 'vs plan'}</TableCell>
+                            <TableCell align="right">{languageCode === 'ko' ? '차이' : 'Diff'}</TableCell>
                           </TableRow></TableHead>
                           <TableBody>
                             {(detailAssignment.reviewReason.processTotals || []).map((process, index) => {
                               const quantity = Number(process?.quantity || 0);
-                              const planned = Number(detailAssignment.reviewReason.plannedQuantity || 0);
+                              // A MALE_ONLY/FEMALE_ONLY process's own target
+                              // (applicableQuantity) - not the assignment's full
+                              // blended quantity - so a review of a gender-scoped
+                              // process compares against what it actually needs.
+                              const planned = Number(
+                                process?.applicableQuantity ??
+                                  detailAssignment.reviewReason.plannedQuantity ??
+                                  0
+                              );
                               const difference = quantity - planned;
                               return <TableRow key={process?.styleProcessId || `${process?.processCode || 'process'}-${index}`}>
                                 <TableCell>{[process?.processCode, process?.processName].filter(Boolean).join(' · ') || `${languageCode === 'ko' ? '공정' : 'Process'} ${index + 1}`}</TableCell>
+                                <TableCell align="right">{planned.toLocaleString()}</TableCell>
                                 <TableCell align="right">{quantity.toLocaleString()}</TableCell>
                                 <TableCell align="right" sx={{ color: difference === 0 ? 'success.main' : 'warning.dark', fontWeight: 700 }}>
                                   {difference > 0 ? '+' : ''}{difference.toLocaleString()}

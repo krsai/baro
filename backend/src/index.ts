@@ -24384,12 +24384,31 @@ const buildAssignmentPlanProgressRows = async (
         producedQuantity >= baselineQuantityRaw &&
         processGroupTotals.every((value) => value === producedQuantity)
     );
-    const reviewProcessTotals = ensureArray(ctSnapshot?.processes).map((process, index) => ({
-      styleProcessId: toPositiveIntOrNull(process?.styleProcessId),
-      processCode: resolveOptionalString(process?.processCode ?? process?.code, null),
-      processName: resolveOptionalString(process?.processName ?? process?.name, null),
-      quantity: Math.max(0, Math.round(Number(processGroupTotals[index] ?? 0) || 0)),
-    }));
+    // Raw (un-normalized) recorded quantity per process for human review, paired
+    // with that process's OWN applicableQuantity (the male/female sub-quantity
+    // for a gender-restricted process, or the full plannedQuantity for UNISEX -
+    // see AGENTS.md 2026-08-19) as the target to compare against. Deliberately
+    // NOT processGroupTotals[index] (that's normalized into blended terms for
+    // the internal producedQuantity/ratio math) - a reviewer needs to see the
+    // real recorded number next to the real target, e.g. "225 target / 510
+    // recorded" for a MALE_ONLY process with legacy pre-gender-split records.
+    const reviewProcessTotals = ensureArray(ctSnapshot?.processes).map((process, index) => {
+      const group = requiredProcessGroups[index] ?? [];
+      const rawQuantity = group.reduce(
+        (max, key) =>
+          Math.max(max, Math.max(0, Math.round(Number(stats.processTotalsByKey.get(key) || 0)))),
+        0
+      );
+      return {
+        styleProcessId: toPositiveIntOrNull(process?.styleProcessId),
+        processCode: resolveOptionalString(process?.processCode ?? process?.code, null),
+        processName: resolveOptionalString(process?.processName ?? process?.name, null),
+        genderScope: normalizeProcessGenderScope(process?.genderScope),
+        applicableQuantity:
+          toOptionalNonNegativeInt(process?.applicableQuantity, null) ?? baselineQuantityRaw ?? 0,
+        quantity: rawQuantity,
+      };
+    });
     const operationalProgressPercent =
       operationalProgressRatio == null
         ? null
@@ -24684,6 +24703,7 @@ const buildAssignmentPlanProgressRows = async (
               requiredTotalQuantity: totalExpected,
               recordedTotalQuantity: totalDone,
               producedQuantity,
+              processTotals: reviewProcessTotals,
             }
           : null,
       quantityReview: includeQuantityReviewDetails
