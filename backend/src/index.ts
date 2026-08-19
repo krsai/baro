@@ -23624,10 +23624,16 @@ const buildLineMonthCapacityRows = async ({
     const {
       plannedQuantity,
     } = progressMeta;
+    // bucketQuantity is diagnostic-only metadata from the quantity-bucket ST
+    // snapshot shape (buildAssignmentStSnapshot). Plans whose snapshot was
+    // last rewritten by the process-version-boundaries path use a different
+    // shape (`revision`/`confirmedDate`/`styleProcessVersionId`, no top-level
+    // bucketQuantity) even though their `processes[].stSeconds` - the only
+    // thing resolveWorkRecordStSecondsForLineMonthCapacity actually reads -
+    // is still valid. Gating the whole plan on this field being present used
+    // to silently drop 100% of such a plan's real WorkRecord ST from the
+    // line's actual-output sum. Keep it nullable for diagnostics only.
     const bucketQuantity = toPositiveIntOrNull(plan?.assignmentStSnapshot?.bucketQuantity);
-    if (bucketQuantity === null) {
-      return;
-    }
     const monthlyDirectActualOutputStSecondsByMonthKey = new Map<string, number>();
     let hasDirectActualOutputStSeconds = false;
     const planActualOutputFailureReasons = new Map<string, number>();
@@ -24461,16 +24467,21 @@ const buildAssignmentPlanProgressRows = async (
     const plannedStTotalSeconds = resolvePersistedAssignmentPlanStTotalSeconds(plan);
     const isStUnknown =
       plannedStTotalSeconds == null || plannedStTotalSeconds <= 0;
-    const bucketQuantity = toPositiveIntOrNull(plan?.assignmentStSnapshot?.bucketQuantity);
-    const exactRemainingStTotalSeconds =
-      bucketQuantity != null
-        ? calculateRemainingStTotalSecondsFromProcessProgress({
-            processTotalsByKey: stats.processTotalsByKey,
-            processKeyGroups: requiredProcessGroups,
-            plannedQuantity: baselineQuantityRaw ?? 0,
-            assignmentStSnapshot: plan?.assignmentStSnapshot,
-          })
-        : null;
+    // calculateRemainingStTotalSecondsFromProcessProgress only reads
+    // assignmentStSnapshot.processes[] (styleProcessId/stSeconds/
+    // applicableQuantity) and already returns null on its own for an
+    // empty/invalid snapshot. It never reads bucketQuantity, so gating this
+    // call on that top-level field being present is wrong: plans whose
+    // snapshot was last rewritten by the process-version-boundaries path use
+    // a different top-level shape (no bucketQuantity) even though their
+    // processes[] is perfectly valid, and used to be forced into the coarser
+    // ratio-based fallback below for no real reason - see AGENTS.md.
+    const exactRemainingStTotalSeconds = calculateRemainingStTotalSecondsFromProcessProgress({
+      processTotalsByKey: stats.processTotalsByKey,
+      processKeyGroups: requiredProcessGroups,
+      plannedQuantity: baselineQuantityRaw ?? 0,
+      assignmentStSnapshot: plan?.assignmentStSnapshot,
+    });
     const isStSnapshotMissing =
       ensureArray(plan?.assignmentStSnapshot?.processes).length === 0;
     const progressForRemainingRatio =
