@@ -27237,7 +27237,7 @@ const handleCreateOutsourcedWorkLog = async ({
           ...buildWorkLogWriteDataWithOptionalCoverage(workLogData, { includeCoverage }),
           updatedBy,
           records: { lineId: normalized.lineId ?? null, lineName: null },
-        },
+        } as unknown as Prisma.WorkLogUncheckedCreateInput,
         select: { id: true },
       });
       if (records.length > 0) {
