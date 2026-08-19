@@ -152,6 +152,8 @@ const STYLE_PROCESS_MESSAGES = {
     reviewBadge: '검토',
     delete: '삭제',
     deleteBlocked: '작업기록이 연결된 공정은 삭제할 수 없습니다.',
+    deactivateConfirm: '이 공정에는 이미 작업기록이 있어 완전히 삭제하지 않고 비활성화합니다. 기존 작업기록·AT 학습 데이터는 그대로 유지되며, 같은 공정코드로 다시 추가하면 복원됩니다. 계속할까요?',
+    deactivateInstead: '작업기록이 연결된 공정입니다. 삭제하면 완전히 지워지지 않고 비활성화됩니다.',
     processVersionsButton: '공정 버전',
     editingTitle: '공정 수정',
     orderColumn: '순서',
@@ -234,6 +236,8 @@ const STYLE_PROCESS_MESSAGES = {
     reviewBadge: 'Review',
     delete: 'Delete',
     deleteBlocked: 'Processes linked to work records cannot be deleted.',
+    deactivateConfirm: 'This process already has work records, so it will be deactivated instead of deleted. Existing work records and AT training data are preserved, and re-adding it with the same process code restores it. Continue?',
+    deactivateInstead: 'This process is linked to work records. Deleting it will deactivate it instead of removing it completely.',
     processVersionsButton: 'Process Versions',
     editingTitle: 'Edit Process',
     orderColumn: 'Order',
@@ -316,6 +320,8 @@ const STYLE_PROCESS_MESSAGES = {
     reviewBadge: 'Can xem',
     delete: 'Xóa',
     deleteBlocked: 'Không thể xoa cong doan da lien ket voi ban ghi lam viec.',
+    deactivateConfirm: 'Cong doan nay da co ban ghi lam viec nen se duoc vo hieu hoa thay vi xoa. Ban ghi lam viec va du lieu hoc AT hien co van duoc giu nguyen, va them lai cung ma cong doan se khoi phuc no. Tiep tuc?',
+    deactivateInstead: 'Cong doan nay da lien ket voi ban ghi lam viec. Xoa se vo hieu hoa thay vi xoa hoan toan.',
     processVersionsButton: 'Phien ban cong doan',
     editingTitle: 'Sua cong doan',
     orderColumn: 'Thu tu',
@@ -2534,8 +2540,19 @@ const StyleProcess = ({
   };
 
   const handleRemoveProcess = useCallback((instanceId) => {
+    const target = safeProcesses.find((process) => process.instanceId === instanceId);
+    // A process with linked work records can never be hard-deleted (the
+    // history it feeds - AT training, payroll CT - would be orphaned), so
+    // removing it here deactivates it on save instead of erasing it. Confirm
+    // first since that is a less obvious outcome than a plain delete.
+    if (target && hasProcessWorkRecords(target)) {
+      const confirmed = window.confirm(
+        getStyleProcessMessage(languageCode, 'deactivateConfirm')
+      );
+      if (!confirmed) return;
+    }
     onProcessesChange(safeProcesses.filter((process) => process.instanceId !== instanceId));
-  }, [onProcessesChange, safeProcesses]);
+  }, [languageCode, onProcessesChange, safeProcesses]);
 
   const onDragEnd = useCallback((result) => {
     if (isDraftOpen) return;
@@ -2548,7 +2565,7 @@ const StyleProcess = ({
   }, [isDraftOpen, onProcessesChange, safeProcesses]);
 
   const renderRowActions = useCallback((process) => {
-    const deleteDisabled = isAddingRow || hasProcessWorkRecords(process);
+    const deleteDisabled = isAddingRow;
     return (
       <Stack direction="row" spacing={0.25} justifyContent="center">
         <Tooltip title={getStyleProcessMessage(languageCode, 'edit')}>
@@ -2564,8 +2581,8 @@ const StyleProcess = ({
         </Tooltip>
         <Tooltip
           title={
-            deleteDisabled && hasProcessWorkRecords(process)
-              ? getStyleProcessMessage(languageCode, 'deleteBlocked')
+            hasProcessWorkRecords(process)
+              ? getStyleProcessMessage(languageCode, 'deactivateInstead')
               : getStyleProcessMessage(languageCode, 'delete')
           }
         >

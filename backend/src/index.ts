@@ -798,6 +798,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "Currency", columnName: "code" },
   { tableName: "StyleProcess", columnName: "timesPerPiece" },
   { tableName: "StyleProcess", columnName: "productionStage" },
+  { tableName: "StyleProcess", columnName: "isActive" },
   { tableName: "StyleProcessStandard", columnName: "quantityBucketEntryId" },
   { tableName: "StyleProcessStandard", columnName: "quantityBucketSetVersionId" },
   { tableName: "StyleProcessStandard", columnName: "bucketStSeconds" },
@@ -4776,6 +4777,11 @@ const loadAtTrainingDataFromBuckets = async ({
           where: {
             orgId,
             id: { in: styleProcessIds },
+            // AT (re)training candidate selection - a deactivated process
+            // will never get new work records, so excluding it here stops
+            // it from being retrained while leaving its last valid atParams
+            // and all historical AtTrainingBucket/observation rows intact.
+            isActive: true,
           },
           select: {
             id: true,
@@ -6592,6 +6598,11 @@ const loadStyleProcessRowsByStyleId = async (
     where: {
       styleId: { in: normalizedStyleIds },
       ...(processOrgId !== null ? { orgId: processOrgId } : {}),
+      // Live process mirror for current/future assignment use - deactivated
+      // processes should not appear here (existing assignments already made
+      // before deactivation keep their own frozen assignmentCtSnapshot,
+      // which this does not touch).
+      isActive: true,
     },
     include: {
       ...STYLE_PROCESS_STANDARD_INCLUDE,
@@ -6786,6 +6797,7 @@ const syncStyleProcessStorageForStyle = async ({
       processCode: true,
       processName: true,
       productionStage: true,
+      isActive: true,
       standards: {
         select: {
           bucketStSeconds: true,
@@ -6843,25 +6855,37 @@ const syncStyleProcessStorageForStyle = async ({
   }
 
   if (existingRows.length > 0) {
-    const rowsToDelete = existingRows.filter((row) => !nextExistingIds.has(row.id));
-    const blockedDeletes = rowsToDelete.filter(
+    // Only currently-active rows missing from the draft represent removal
+    // intent - an already-inactive row is naturally absent from every normal
+    // save (the editable list only shows active rows) and must not be
+    // touched just because of that.
+    const rowsToRemove = existingRows.filter(
+      (row) => row.isActive && !nextExistingIds.has(row.id)
+    );
+    const rowsToDeactivate = rowsToRemove.filter(
       (row) =>
         Number(row?._count?.workRecords ?? 0) + Number(row?._count?.outsourcedWorkRecords ?? 0) > 0
     );
-    if (blockedDeletes.length > 0) {
-      const labels = blockedDeletes
-        .slice(0, 5)
-        .map((row) => row.processCode || row.processName || `#${row.id}`)
-        .join(", ");
-      throw createHttpError(
-        409,
-        `작업기록이 연결된 공정은 삭제할 수 없습니다. 공정 구조를 바꾸려면 기존 공정을 남기고 새 공정을 추가해주세요. 대상: ${labels}`
-      );
+    const rowsToHardDelete = rowsToRemove.filter(
+      (row) =>
+        Number(row?._count?.workRecords ?? 0) + Number(row?._count?.outsourcedWorkRecords ?? 0) === 0
+    );
+    // A process with linked WorkRecord/OutsourcedWorkRecord rows can never be
+    // hard-deleted (WorkRecord.styleProcessId is onDelete: Restrict, and
+    // deleting it would orphan the historical AT/payroll data those records
+    // feed) - deactivate it instead so it drops out of the active process
+    // list/ST/PT/AT totals and future AT training candidates, while its
+    // history stays intact and queryable. See AGENTS.md StyleProcess
+    // deactivation policy (2026-08-19).
+    if (rowsToDeactivate.length > 0) {
+      await db.styleProcess.updateMany({
+        where: { id: { in: rowsToDeactivate.map((row) => row.id) } },
+        data: { isActive: false },
+      });
     }
-    const deleteIds = rowsToDelete.map((row) => row.id);
-    if (deleteIds.length > 0) {
+    if (rowsToHardDelete.length > 0) {
       await db.styleProcess.deleteMany({
-        where: { id: { in: deleteIds } },
+        where: { id: { in: rowsToHardDelete.map((row) => row.id) } },
       });
     }
   }
@@ -6892,6 +6916,10 @@ const syncStyleProcessStorageForStyle = async ({
             sortOrder: draft.sortOrder,
             ptSeconds: draft.ptSeconds,
             atParams: draft.atParams,
+            // Being present in the submitted draft is reactivation intent -
+            // this also covers bringing a previously-deactivated process
+            // back by matching its processCode.
+            isActive: true,
           },
         })
       : await db.styleProcess.upsert({
@@ -6911,6 +6939,7 @@ const syncStyleProcessStorageForStyle = async ({
             sortOrder: draft.sortOrder,
             ptSeconds: draft.ptSeconds,
             atParams: draft.atParams,
+            isActive: true,
           },
           create: {
             orgId: processOrgId,
@@ -8784,7 +8813,7 @@ const attachCanonicalFieldsToWorkRecords = async ({
       new Set(Array.from(styleProcessLookupKeys).map((key) => Number(key.split(":")[0])))
     );
     const candidateProcesses = await db.styleProcess.findMany({
-      where: { orgId, styleId: { in: lookupStyleIds } },
+      where: { orgId, styleId: { in: lookupStyleIds }, isActive: true },
       select: { id: true, styleId: true, processCode: true },
     });
     ensureArray(candidateProcesses).forEach((process: any) => {

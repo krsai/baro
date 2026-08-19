@@ -951,6 +951,7 @@ model StyleProcess {
   processDescription                 String?
   timesPerPiece                      Int             @default(1)
   sortOrder                          Int             @default(0)
+  isActive                           Boolean         @default(true)
   ptSeconds                          Float?
   atParams                           Json?
   atStFallbackApproved               Boolean         @default(false)
@@ -978,6 +979,7 @@ model StyleProcess {
   @@unique([id, styleId, orgId], map: "StyleProcess_id_style_org_key")
   @@index([orgId])
   @@index([styleId])
+  @@index([styleId, isActive])
 }
 
 model StyleProcessVersion {

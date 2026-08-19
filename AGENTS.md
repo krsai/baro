@@ -1,5 +1,15 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-08-19 StyleProcess 비활성화(삭제 대체) 정책
+
+- 작업기록(`WorkRecord`/`OutsourcedWorkRecord`)이 하나라도 연결된 `StyleProcess`는 앱에서도 DB에서도 진짜로 삭제할 수 없다. `WorkRecord.styleProcessId`는 `onDelete: Restrict` FK라 삭제 자체가 DB에서 거부되며, 강제로 허용하면 과거 작업기록·AT 학습·급여 근거가 고아 데이터가 된다. 더 이상 쓰지 않는 공정은 삭제 대신 `StyleProcess.isActive=false`로 비활성화한다.
+- 스타일 공정 목록 저장(`syncStyleProcessStorageForStyle`)에서 화면 draft에 없어진 기존 공정을 처리할 때: 그 공정에 연결된 작업기록이 0건이면 기존처럼 진짜로 삭제하고, 1건이라도 있으면 `isActive=false`로만 바꾼다(더 이상 409로 저장 자체를 막지 않는다). draft에 다시 포함되면(같은 `processCode`로 재등록 포함) 저장 시 `isActive=true`로 복원된다.
+- `isActive=false`가 되어도 그 행 자체와 연결된 `StyleProcessStandard`/`StyleProcessAtObservation`/`AtTrainingBucketProcess`/`WorkRecord`/`OutsourcedWorkRecord`는 전혀 건드리지 않는다. 이미 확정된 배정의 `assignmentCtSnapshot`/`assignmentStSnapshot`도 저장 시점에 동결된 값이라 영향받지 않는다.
+- 비활성 공정은 다음에서 제외한다: (1) 스타일 상세의 편집 가능한 공정 목록(`loadStyleProcessRowsByStyleId`가 반환하는 "live" 미러 — `ensureStyleProcessStorageForStyles`/`GET /styles/:styleId`가 이를 사용), (2) AT (재)학습 후보 선정(`loadAtTrainingDataFromBuckets`) — 새 작업기록이 더 들어올 수 없는 공정을 계속 재학습하지 않되 마지막 유효 `atParams`와 과거 `AtTrainingBucket`/관측 데이터는 그대로 보존, (3) Excel 작업기록 업로드에서 `(styleId, processCode)`로 신규 행의 `styleProcessId`를 역추론하는 백필 조회 — 비활성 공정 코드로는 새 작업기록이 매칭되지 않고 명시적 오류로 드러난다(정확 계산 원칙에 따른 fail-closed).
+- ProcessMasterOption 이름 동기화, `processComposition` 참조 스캔, 이미 알려진 `styleProcessId`(작업기록·AT 관측·배정 스냅샷에서 확정된 값)로 개별 공정을 조회하는 경로들은 `isActive` 필터를 적용하지 않는다 — 과거 기록이 항상 정확히 표시되고 계산돼야 하기 때문이다.
+- 프론트(`StyleProcess.jsx`)는 작업기록이 있는 공정도 더 이상 삭제 버튼을 막지 않는다. 삭제를 누르면(저장 전 draft 단계) 실제로는 비활성화됨을 설명하는 확인창을 띄운다. 비활성 공정을 다시 보거나 복원하는 전용 UI(예: "비활성 공정 포함" 토글)는 아직 없다 — 지금은 같은 공정코드로 다시 추가한 뒤 저장하면 복원되는 방식만 지원한다.
+
+
 ## 2026-08-18 작업 기록과 외주 내역 메뉴·테이블 분리
 
 - 직원 작업기록과 외주 생산기록은 별도 메뉴와 별도 테이블로 완전히 분리한다. "작업 기록"(`/work-history`) 메뉴는 직원 전용이며 외주 입력 경로가 없다. "외주 내역"(`/outsourcing-record`) 메뉴는 신규이며 외주만 입력한다. 두 메뉴 모두 같은 `WorkDetail.jsx`/`WorkList.jsx`/`WorkEntry.jsx` 컴포넌트를 `recordKind`(`'EMPLOYEE'` | `'OUTSOURCING'`) prop으로 재사용하며, 화면 구성(기간 입력, 라인 선택, 공정/수량 입력)은 동일하다.
