@@ -3139,6 +3139,12 @@ const AssignBoard = () => {
     )
   );
   const [contextMenuState, setContextMenuState] = useState(null);
+  // Tracks which assignment's manual completion/reopen PATCH is in flight -
+  // referenced by handleContextRecordOmissionComplete/handleContextReopenCompletion
+  // but the useState declaration itself was missing, so calling either action
+  // threw "setCompletingAssignmentId is not defined" before the request ever
+  // went out.
+  const [completingAssignmentId, setCompletingAssignmentId] = useState(null);
   const [detailState, setDetailState] = useState(null);
   const [quantityReviewAssignmentId, setQuantityReviewAssignmentId] = useState(null);
   const closeQuantityReviewAfterNavigationRef = useRef(false);
