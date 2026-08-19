@@ -32610,17 +32610,31 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
   await ensureInitialStyleProcessVersion({ orgId: organization.id, styleId: style.id });
   const [versions, plans] = await Promise.all([
     prisma.styleProcessVersion.findMany({ where: { orgId: organization.id, styleId: style.id }, orderBy: { versionNumber: "asc" } }),
-    prisma.assignmentPlan.findMany({ where: { orgId: organization.id, styleId: style.id }, select: { id: true, assignmentQuantity: true, styleProcessVersionId: true, assignmentCtSnapshot: true, assignmentStSnapshot: true, workRecords: { select: { id: true } } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
+    prisma.assignmentPlan.findMany({ where: { orgId: organization.id, styleId: style.id }, select: { id: true, workOrderId: true, assignmentQuantity: true, styleProcessVersionId: true, assignmentCtSnapshot: true, assignmentStSnapshot: true, workRecords: { select: { id: true } } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
   ]);
   const starts = new Map<number | null, number | null>(ensureArray(req.body?.boundaries).map((row) => [toPositiveIntOrNull(row?.versionId), toPositiveIntOrNull(row?.startAssignmentPlanId)]));
   const firstVersion = versions[0];
   if (!firstVersion) throw createHttpError(409, "style has no confirmed process version");
   const firstPlan = plans[0];
-  if (firstPlan !== undefined && starts.get(firstVersion.id) !== firstPlan.id) {
-    throw createHttpError(400, "Ver.1 must start at the oldest assignment");
-  }
   const planIndex = new Map(plans.map((plan, index) => [plan.id, index]));
   const boundaries = versions.map((version) => ({ version, index: planIndex.get(starts.get(version.id) ?? -1) })).filter((row) => row.index !== undefined) as any[];
+  // Historically Ver.1 was hard-required to own the oldest assignment. That
+  // blocked the legitimate case of retroactively applying a LATER version
+  // (e.g. one that adds MALE_ONLY/FEMALE_ONLY process scoping) all the way
+  // back to the oldest assignment - the client can no longer include Ver.1 in
+  // the payload at all once it has been fully superseded, so the requirement
+  // is generalized to "whichever version boundary is earliest must be the
+  // oldest assignment" rather than requiring that version to specifically be
+  // Ver.1.
+  if (firstPlan !== undefined) {
+    if (boundaries.length === 0) {
+      throw createHttpError(409, "at least one process version boundary must be set");
+    }
+    const earliestIndex = Math.min(...boundaries.map((row) => row.index));
+    if (earliestIndex !== 0) {
+      throw createHttpError(400, "the earliest-applied version must start at the oldest assignment");
+    }
+  }
   const hasInvalidBoundaryOrder = boundaries.some((row, index) => {
     const previous = boundaries[index - 1];
     return previous !== undefined && row.index <= previous.index;
@@ -32628,10 +32642,35 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
   if (hasInvalidBoundaryOrder) {
     throw createHttpError(400, "version boundaries must follow version order");
   }
+  const resolveBoundaryForPlanIndex = (index: number) =>
+    [...boundaries].reverse().find((row) => row.index <= index) ?? null;
+  // Same "only fetch gender quantities for styles/versions that actually have a
+  // MALE_ONLY/FEMALE_ONLY process" fast path as the other ST/CT recalculation
+  // sites (AGENTS.md 2026-08-19) - resolved per plan since each plan can belong
+  // to a different order with its own male/female split for this style.
+  const workOrderIdsForGenderQuantities = Array.from(
+    new Set(
+      plans
+        .map((plan, index) => {
+          const boundary = resolveBoundaryForPlanIndex(index);
+          if (!boundary) return null;
+          const versionProcesses = normalizeStyleProcesses(boundary.version.processSnapshot);
+          const needsGenderQuantities = versionProcesses.some(
+            (process: any) => normalizeProcessGenderScope(process?.genderScope) !== "UNISEX"
+          );
+          return needsGenderQuantities ? toPositiveIntOrNull(plan.workOrderId) : null;
+        })
+        .filter((id): id is number => id !== null)
+    )
+  );
+  const styleGenderQuantityMap =
+    workOrderIdsForGenderQuantities.length > 0
+      ? await loadStyleGenderQuantityMapForWorkOrderIds(workOrderIdsForGenderQuantities, prisma)
+      : new Map<string, StyleProcessGenderQuantities>();
   const updatedAt = new Date().toISOString();
   const updatedBy = resolveOptionalString(employee?.email ?? getRequesterEmail(req), "SYSTEM") ?? "SYSTEM";
   const updates = plans.flatMap((plan, index) => {
-    const boundary = [...boundaries].reverse().find((row) => row.index <= index);
+    const boundary = resolveBoundaryForPlanIndex(index);
     if (!boundary) throw createHttpError(400, `assignment ${plan.id} has no process version`);
     const version = boundary.version;
     const snapshotVersionId = toPositiveIntOrNull(
@@ -32642,13 +32681,50 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
       snapshotVersionId === version.id &&
       assignmentCtSnapshotMatchesProcessVersion(plan, version)
     ) return [];
-    const withVersionProcesses = { id: style.id, code: style.code, name: style.name, processes: normalizeStyleProcesses(version.processSnapshot) };
-    const refreshed = buildEditableAssignmentCtSnapshotFromLiveStyle({ assignment: plan, card: { quantity: plan.assignmentQuantity }, style: withVersionProcesses, existingSnapshot: plan.assignmentCtSnapshot, updatedAt, updatedBy });
+    const versionProcesses = normalizeStyleProcesses(version.processSnapshot);
+    const needsGenderQuantities = versionProcesses.some(
+      (process: any) => normalizeProcessGenderScope(process?.genderScope) !== "UNISEX"
+    );
+    const workOrderId = toPositiveIntOrNull(plan.workOrderId);
+    const genderQuantities = needsGenderQuantities
+      ? styleGenderQuantityMap.get(`${workOrderId}:${style.id}`) ?? null
+      : null;
+    if (needsGenderQuantities && !genderQuantities) {
+      throw createHttpError(
+        409,
+        `assignment ${plan.id}: style ${style.id} has a male-only/female-only process but no order line quantity could be resolved for it`
+      );
+    }
+    if (findStyleProcessGenderScopeAmbiguity(versionProcesses, genderQuantities)) {
+      throw createHttpError(
+        409,
+        `assignment ${plan.id}: style ${style.id} has a male-only/female-only process but its order lines include ${genderQuantities?.unspecified} unit(s) without an explicit gender - specify M/W gender for every order line of this style`
+      );
+    }
+    const withVersionProcesses = { id: style.id, code: style.code, name: style.name, processes: versionProcesses };
+    const refreshed = buildEditableAssignmentCtSnapshotFromLiveStyle({ assignment: plan, card: { quantity: plan.assignmentQuantity }, style: withVersionProcesses, existingSnapshot: plan.assignmentCtSnapshot, updatedAt, updatedBy, genderQuantities });
     if (!refreshed.readiness.ready || !refreshed.assignment.assignmentCtSnapshot) throw createHttpError(409, `assignment ${plan.id}: ${refreshed.readiness.reason || "snapshot not ready"}`);
     const ct = normalizeAssignmentCtSnapshot({ ...refreshed.assignment.assignmentCtSnapshot, styleProcessVersionId: version.id, revision: version.versionNumber, effectiveFrom: version.confirmedDate });
-    const stProcesses = normalizeStyleProcesses(version.processSnapshot).map((process: any) => ({ styleProcessId: toPositiveIntOrNull(process?.styleProcessId ?? process?.id), processCode: process?.code ?? process?.processCode, processName: process?.name ?? process?.processName, productionStage: process?.productionStage ?? "SEWING", stSeconds: resolveStyleProcessVersionStPerPieceSeconds(process, Math.max(1, Number(plan.assignmentQuantity) || 1)) }));
+    const stProcesses = versionProcesses.map((process: any) => {
+      const applicableQuantity = genderQuantities
+        ? resolveStyleProcessRowApplicableQuantity(process, genderQuantities)
+        : Math.max(0, Number(plan.assignmentQuantity) || 0);
+      return {
+        styleProcessId: toPositiveIntOrNull(process?.styleProcessId ?? process?.id),
+        processCode: process?.code ?? process?.processCode,
+        processName: process?.name ?? process?.processName,
+        productionStage: process?.productionStage ?? "SEWING",
+        genderScope: normalizeProcessGenderScope(process?.genderScope),
+        applicableQuantity,
+        stSeconds: resolveStyleProcessVersionStPerPieceSeconds(process, Math.max(1, Number(plan.assignmentQuantity) || 1)),
+      };
+    });
     if (stProcesses.some((process) => !process.styleProcessId || !process.stSeconds)) throw createHttpError(409, `assignment ${plan.id}: ST is missing for a process`);
-    return [prisma.assignmentPlan.update({ where: { id: plan.id }, data: { styleProcessVersionId: version.id, assignmentCtSnapshot: ct as Prisma.InputJsonValue, assignmentCtTotalSeconds: ct?.assignmentCtTotalSeconds ?? null, assignmentStSnapshot: { styleProcessVersionId: version.id, revision: version.versionNumber, confirmedDate: version.confirmedDate, processes: stProcesses } as Prisma.InputJsonValue, assignmentStTotalSeconds: stProcesses.reduce((sum, process) => sum + Number(process.stSeconds) * Math.max(0, Number(plan.assignmentQuantity) || 0), 0), updatedByEmployeeId: employee?.id ?? null } })];
+    const assignmentStTotalSeconds = stProcesses.reduce(
+      (sum, process) => sum + Number(process.stSeconds) * Number(process.applicableQuantity),
+      0
+    );
+    return [prisma.assignmentPlan.update({ where: { id: plan.id }, data: { styleProcessVersionId: version.id, assignmentCtSnapshot: ct as Prisma.InputJsonValue, assignmentCtTotalSeconds: ct?.assignmentCtTotalSeconds ?? null, assignmentStSnapshot: { styleProcessVersionId: version.id, revision: version.versionNumber, confirmedDate: version.confirmedDate, processes: stProcesses } as Prisma.InputJsonValue, assignmentStTotalSeconds, updatedByEmployeeId: employee?.id ?? null } })];
   });
   await prisma.$transaction(updates);
   res.json({ ok: true });

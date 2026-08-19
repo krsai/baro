@@ -16,8 +16,11 @@ const VERSION_GRAPH_COLORS = [
 // trigger to a Korean explanation instead of showing raw English.
 const translateVersionBoundaryError = (message) => {
   if (!message) return null;
-  if (message.includes('Ver.1 must start at the oldest assignment')) {
-    return 'Ver.1은 가장 오래된 첫 배정부터 적용되어야 합니다.';
+  if (message.includes('earliest-applied version must start at the oldest assignment')) {
+    return '가장 오래된 배정에는 반드시 어떤 버전이든 하나가 적용되어야 합니다.';
+  }
+  if (message.includes('at least one process version boundary must be set')) {
+    return '최소 하나의 공정 버전은 적용 구간이 지정되어야 합니다.';
   }
   if (message.includes('version boundaries must follow version order')) {
     return '버전 적용 순서가 올바르지 않습니다. 이후 버전은 이전 버전보다 나중 배정부터 적용되어야 합니다.';
@@ -42,9 +45,6 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
           const first = data.assignments.find((assignment) => assignment.versionId === version.id);
           if (first) repairBoundaries[version.id] = first.assignmentPlanId;
         });
-        if (data.versions[0] && data.assignments[0]) {
-          repairBoundaries[data.versions[0].id] = data.assignments[0].assignmentPlanId;
-        }
         await saveStyleProcessVersionBoundaries(
           styleId,
           data.versions
@@ -64,7 +64,6 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
         const first = data.assignments.find((assignment) => assignment.versionId === version.id);
         if (first) next[version.id] = first.assignmentPlanId;
       });
-      if (data.versions[0] && data.assignments[0]) next[data.versions[0].id] = data.assignments[0].assignmentPlanId;
       setBoundaries(next);
       setSavedBoundaries(next);
     } catch (error) {
@@ -87,7 +86,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
 
   // Newest-first for display (git-log style) - the underlying chronological
   // `assignments`/`assignmentsWithVersion` order stays oldest-first since
-  // boundary logic (Ver.1 pinned to assignments[0]) depends on it.
+  // boundary logic (some version must cover assignments[0]) depends on it.
   const displayAssignments = useMemo(
     () => [...assignmentsWithVersion].reverse(),
     [assignmentsWithVersion]
@@ -171,40 +170,47 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
                     const versionId = Number(event.dataTransfer.getData('text/plain'));
                     const version = versions.find((item) => item.id === versionId);
                     if (!version) return;
-                    if (version.versionNumber === 1 && assignment.assignmentPlanId !== assignments[0]?.assignmentPlanId) {
-                      notify('Ver.1은 가장 오래된 첫 배정부터 적용됩니다.', 'info');
-                      return;
-                    }
-                    // Catch an invalid drop (this version's target would land at or
-                    // before an earlier version's boundary, or at/after a later
-                    // version's) before it ever reaches Save - matches the backend's
-                    // "version boundaries must follow version order" check, but gives
-                    // immediate feedback naming which version conflicts.
                     const targetIndex = assignments.findIndex(
                       (item) => item.assignmentPlanId === assignment.assignmentPlanId
                     );
-                    const conflictingVersion = versions.find((other) => {
-                      if (other.id === versionId) return false;
-                      const otherStartId = boundaries[other.id];
-                      if (!otherStartId) return false;
-                      const otherIndex = assignments.findIndex(
-                        (item) => item.assignmentPlanId === otherStartId
-                      );
-                      if (otherIndex < 0) return false;
-                      return other.versionNumber < version.versionNumber
-                        ? otherIndex >= targetIndex
-                        : otherIndex <= targetIndex;
+                    if (targetIndex < 0) return;
+                    setBoundaries((current) => {
+                      const next = { ...current, [versionId]: assignment.assignmentPlanId };
+                      // Any other version whose current boundary would now violate
+                      // ordering relative to this drop (an earlier-numbered version
+                      // starting at/after this position, or a later-numbered version
+                      // starting at/before it) is being superseded by this drop - it
+                      // loses its boundary rather than blocking the action, so
+                      // dragging a version all the way onto the oldest assignment
+                      // (e.g. retroactively applying a newly gender-scoped version)
+                      // works instead of being permanently blocked by an earlier
+                      // version's fixed position.
+                      const resolveIndex = (planId) =>
+                        assignments.findIndex((item) => item.assignmentPlanId === planId);
+                      versions.forEach((other) => {
+                        if (other.id === versionId) return;
+                        const otherStartId = next[other.id];
+                        if (!otherStartId) return;
+                        const otherIndex = resolveIndex(otherStartId);
+                        if (otherIndex < 0) return;
+                        const conflicts = other.versionNumber < version.versionNumber
+                          ? otherIndex >= targetIndex
+                          : otherIndex <= targetIndex;
+                        if (conflicts) delete next[other.id];
+                      });
+                      const remainingIndexes = Object.entries(next)
+                        .map(([, planId]) => resolveIndex(planId))
+                        .filter((value) => value >= 0);
+                      const earliestIndex = remainingIndexes.length > 0 ? Math.min(...remainingIndexes) : -1;
+                      if (earliestIndex !== 0) {
+                        notify(
+                          '가장 오래된 배정은 반드시 어떤 버전이든 하나가 적용되어야 합니다. 다른 버전을 먼저 오래된 배정 쪽으로 옮겨주세요.',
+                          'error'
+                        );
+                        return current;
+                      }
+                      return next;
                     });
-                    if (conflictingVersion) {
-                      notify(
-                        conflictingVersion.versionNumber < version.versionNumber
-                          ? `${version.name}은(는) ${conflictingVersion.name}보다 나중 배정부터 적용되어야 합니다.`
-                          : `${version.name}은(는) ${conflictingVersion.name}보다 이전 배정에는 적용할 수 없습니다.`,
-                        'error'
-                      );
-                      return;
-                    }
-                    setBoundaries((current) => ({ ...current, [versionId]: assignment.assignmentPlanId }));
                   }} sx={{ position: 'relative', display: 'flex', alignItems: 'center', minHeight: 34, pl: 3.5, pr: .5, borderRadius: 1, transition: 'background-color .15s', '&[data-dragover="true"]': { bgcolor: 'action.hover' } }}>
                     {hasTopSegment && (
                       <Box sx={{ position: 'absolute', zIndex: 0, left: 11, top: 0, height: '50%', width: 2, bgcolor: topColor }} />
