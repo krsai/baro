@@ -1004,6 +1004,11 @@ export const normalizeProcess = (process = {}, index = 0) => {
     )
       ? String(safeProcess.productionStage).trim().toUpperCase()
       : 'SEWING',
+    genderScope: ['UNISEX', 'MALE_ONLY', 'FEMALE_ONLY'].includes(
+      String(safeProcess.genderScope ?? '').trim().toUpperCase()
+    )
+      ? String(safeProcess.genderScope).trim().toUpperCase()
+      : 'UNISEX',
     instanceId:
       typeof safeProcess.instanceId === 'string' && safeProcess.instanceId.trim()
         ? safeProcess.instanceId

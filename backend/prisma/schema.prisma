@@ -947,6 +947,7 @@ model StyleProcess {
   processCode                        String
   processName                        String
   productionStage                    ProductionStage @default(SEWING)
+  genderScope                        ProcessGenderScope @default(UNISEX)
   processComposition                 Json?
   processDescription                 String?
   timesPerPiece                      Int             @default(1)
@@ -1006,6 +1007,12 @@ enum ProductionStage {
   IRONING
   INSPECTION
   PACKING
+}
+
+enum ProcessGenderScope {
+  UNISEX
+  MALE_ONLY
+  FEMALE_ONLY
 }
 
 model StyleProcessStandard {

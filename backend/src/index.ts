@@ -799,6 +799,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "StyleProcess", columnName: "timesPerPiece" },
   { tableName: "StyleProcess", columnName: "productionStage" },
   { tableName: "StyleProcess", columnName: "isActive" },
+  { tableName: "StyleProcess", columnName: "genderScope" },
   { tableName: "StyleProcessStandard", columnName: "quantityBucketEntryId" },
   { tableName: "StyleProcessStandard", columnName: "quantityBucketSetVersionId" },
   { tableName: "StyleProcessStandard", columnName: "bucketStSeconds" },
@@ -6220,6 +6221,15 @@ const normalizeProductionStage = (value: any): ProductionStageValue => {
     : "SEWING";
 };
 
+const PROCESS_GENDER_SCOPES = ["UNISEX", "MALE_ONLY", "FEMALE_ONLY"] as const;
+type ProcessGenderScopeValue = (typeof PROCESS_GENDER_SCOPES)[number];
+const normalizeProcessGenderScope = (value: any): ProcessGenderScopeValue => {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return PROCESS_GENDER_SCOPES.includes(normalized as ProcessGenderScopeValue)
+    ? (normalized as ProcessGenderScopeValue)
+    : "UNISEX";
+};
+
 const resolveStyleProcessStorageCode = (process: any, index: number) => {
   const explicitCode = normalizeProcessCodeKey(process?.code);
   if (explicitCode) return explicitCode;
@@ -6316,6 +6326,7 @@ const buildStyleProcessStorageDrafts = (processes: any): any[] =>
         resolveOptionalString((process as any)?.code, null) ??
         resolveStyleProcessStorageCode(process, index),
       productionStage: normalizeProductionStage((process as any)?.productionStage),
+      genderScope: normalizeProcessGenderScope((process as any)?.genderScope),
       processComposition: normalizedComposition,
       processDescription: resolveOptionalString((process as any)?.description, null),
       timesPerPiece: toPositiveInt(
@@ -6452,6 +6463,7 @@ const buildStyleProcessMirrorFromRows = (
           storageCode: row.processCode,
           manualName,
           productionStage: normalizeProductionStage(row.productionStage),
+          genderScope: normalizeProcessGenderScope(row.genderScope),
           name:
             manualName ||
             localizedNames.nameEn ||
@@ -6910,6 +6922,7 @@ const syncStyleProcessStorageForStyle = async ({
             processCode: draft.processCode,
             processName: draft.processName,
             productionStage: draft.productionStage,
+            genderScope: draft.genderScope,
             processComposition: draft.processComposition ?? Prisma.JsonNull,
             processDescription: draft.processDescription,
             timesPerPiece: draft.timesPerPiece,
@@ -6933,6 +6946,7 @@ const syncStyleProcessStorageForStyle = async ({
           update: {
             processName: draft.processName,
             productionStage: draft.productionStage,
+            genderScope: draft.genderScope,
             processComposition: draft.processComposition ?? Prisma.JsonNull,
             processDescription: draft.processDescription,
             timesPerPiece: draft.timesPerPiece,
@@ -6947,6 +6961,7 @@ const syncStyleProcessStorageForStyle = async ({
             processCode: draft.processCode,
             processName: draft.processName,
             productionStage: draft.productionStage,
+            genderScope: draft.genderScope,
             processComposition: draft.processComposition ?? Prisma.JsonNull,
             processDescription: draft.processDescription,
             timesPerPiece: draft.timesPerPiece,

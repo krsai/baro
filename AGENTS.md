@@ -1,5 +1,12 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-08-19 공정 성별 적용 대상 (genderScope)
+
+- 공정은 남성 전용/여성 전용/공용 세 가지 적용 대상 중 하나를 가진다. `StyleProcess.genderScope`(`ProcessGenderScope` enum: `UNISEX`/`MALE_ONLY`/`FEMALE_ONLY`, 기본값 `UNISEX`)가 소스오브트루스다. 기존 공정 1,276건은 전부 `UNISEX`로 백필됐다.
+- 공정 정보 등록/수정 화면(`StyleProcess.jsx`)은 "작업 종류" 선택 옆에 "남성"/"여성" 체크박스 두 개를 둔다. 둘 다 체크 = 공용, 하나만 체크 = 그 성별 전용이며, 마지막 남은 체크는 해제할 수 없게 막아 항상 최소 하나는 선택된 상태를 유지한다(공용이 기본값). 공정 목록에도 별도 "적용 대상" 열로 항상 표시한다.
+- 이번 구현은 등록/저장/조회(메타데이터)까지만이다. 배정(`AssignmentPlan`)은 "주문 × 스타일" 단위로 색상·사이즈·성별을 구분하지 않는다는 기존 원칙(`WorkRecord`/배정 실제 생산 계산은 성별을 구분하지 않는다, 이 문서의 "정확 계산 원칙" 참고)은 이번에 바꾸지 않았다 — ST/CT 총합·진행률·AT 학습 계산에 `genderScope`를 아직 반영하지 않는다. 특정 성별 전용 공정이 있는 스타일의 배정 총 ST/CT를 주문의 성별별 실제 수량과 교차해 계산하는 기능은 향후 별도로 설계·확정한 뒤 구현한다(예: `WorkOrderItem.gender`(M/W/U)와 연결).
+- `syncStyleProcessStorageForStyle`(공정 목록 저장), `buildStyleProcessMirrorFromRows`(응답 mirror)가 `genderScope`를 읽고 쓴다. `genderScope` 변경은 작업기록 연결 여부와 무관하게 항상 허용한다(작업 종류(`productionStage`)와 달리 과거 계산 근거를 바꾸지 않는 순수 표시/분류 메타데이터이기 때문).
+
 ## 2026-08-19 StyleProcess 비활성화(삭제 대체) 정책
 
 - 작업기록(`WorkRecord`/`OutsourcedWorkRecord`)이 하나라도 연결된 `StyleProcess`는 앱에서도 DB에서도 진짜로 삭제할 수 없다. `WorkRecord.styleProcessId`는 `onDelete: Restrict` FK라 삭제 자체가 DB에서 거부되며, 강제로 허용하면 과거 작업기록·AT 학습·급여 근거가 고아 데이터가 된다. 더 이상 쓰지 않는 공정은 삭제 대신 `StyleProcess.isActive=false`로 비활성화한다.

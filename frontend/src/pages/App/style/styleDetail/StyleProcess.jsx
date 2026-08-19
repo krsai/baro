@@ -8,6 +8,8 @@ import {
   Checkbox,
   Chip,
   Collapse,
+  FormControlLabel,
+  FormGroup,
   IconButton,
   MenuItem,
   Paper,
@@ -64,6 +66,7 @@ import {
 const createEmptyDraft = () => ({
   processText: '',
   productionStage: 'SEWING',
+  genderScope: 'UNISEX',
   part: null,
   target: null,
   targetSpec: null,
@@ -86,9 +89,26 @@ const createEmptyDraft = () => ({
 const PT_REFERENCE_QUANTITY = DEFAULT_TIME_REF_QUANTITY;
 const PROCESS_CODE_COLUMN_WIDTH = '16ch';
 const PRODUCTION_STAGE_COLUMN_WIDTH = 110;
+const GENDER_SCOPE_COLUMN_WIDTH = 92;
 const PROCESS_TIME_COLUMN_WIDTH = 140;
 const PROCESS_ACTION_COLUMN_WIDTH = 120;
 const PRODUCTION_STAGE_OPTIONS = ['SEWING', 'IRONING', 'INSPECTION', 'PACKING'];
+const GENDER_SCOPE_OPTIONS = ['UNISEX', 'MALE_ONLY', 'FEMALE_ONLY'];
+const isMaleAppliedForGenderScope = (scope) => scope !== 'FEMALE_ONLY';
+const isFemaleAppliedForGenderScope = (scope) => scope !== 'MALE_ONLY';
+// Two checkboxes (male/female) drive one tri-state value - both checked means
+// unisex. Unchecking both at once is disallowed by the UI (see the checkbox
+// `disabled` conditions below), so this fallback never surfaces in practice.
+const resolveGenderScopeFromApplicability = (appliesToMale, appliesToFemale) => {
+  if (appliesToMale && appliesToFemale) return 'UNISEX';
+  if (appliesToMale) return 'MALE_ONLY';
+  if (appliesToFemale) return 'FEMALE_ONLY';
+  return 'UNISEX';
+};
+const normalizeGenderScope = (value) =>
+  GENDER_SCOPE_OPTIONS.includes(String(value ?? '').trim().toUpperCase())
+    ? String(value).trim().toUpperCase()
+    : 'UNISEX';
 const DRAFT_TARGET_SLOT_FIELDS = [
   ['target', 'targetSpec'],
   ['target2', 'targetSpec2'],
@@ -114,6 +134,12 @@ const STYLE_PROCESS_MESSAGES = {
     productionStageIRONING: '다림질',
     productionStageINSPECTION: '검품',
     productionStagePACKING: '포장',
+    genderScopeLabel: '적용 대상',
+    genderScopeMaleLabel: '남성',
+    genderScopeFemaleLabel: '여성',
+    genderScopeUNISEX: '공용',
+    genderScopeMALE_ONLY: '남성 전용',
+    genderScopeFEMALE_ONLY: '여성 전용',
     selectionComposerTitle: '선택 방식(대상/동작)',
     selectionComposerExpand: '선택 방식 펼치기',
     selectionComposerCollapse: '선택 방식 접기',
@@ -198,6 +224,12 @@ const STYLE_PROCESS_MESSAGES = {
     productionStageIRONING: 'Ironing',
     productionStageINSPECTION: 'Inspection',
     productionStagePACKING: 'Packing',
+    genderScopeLabel: 'Applies To',
+    genderScopeMaleLabel: 'Male',
+    genderScopeFemaleLabel: 'Female',
+    genderScopeUNISEX: 'Unisex',
+    genderScopeMALE_ONLY: 'Male only',
+    genderScopeFEMALE_ONLY: 'Female only',
     selectionComposerTitle: 'Selection mode (target/action)',
     selectionComposerExpand: 'Expand selection mode',
     selectionComposerCollapse: 'Collapse selection mode',
@@ -282,6 +314,12 @@ const STYLE_PROCESS_MESSAGES = {
     productionStageIRONING: 'Ui',
     productionStageINSPECTION: 'Kiem hang',
     productionStagePACKING: 'Dong goi',
+    genderScopeLabel: 'Ap dung cho',
+    genderScopeMaleLabel: 'Nam',
+    genderScopeFemaleLabel: 'Nu',
+    genderScopeUNISEX: 'Dung chung',
+    genderScopeMALE_ONLY: 'Chi danh cho nam',
+    genderScopeFEMALE_ONLY: 'Chi danh cho nu',
     selectionComposerTitle: 'Che do chon (doi tuong/thao tac)',
     selectionComposerExpand: 'Mo rong che do chon',
     selectionComposerCollapse: 'Thu gon che do chon',
@@ -1120,6 +1158,7 @@ const buildProcessPayload = (
     productionStage: PRODUCTION_STAGE_OPTIONS.includes(draft?.productionStage)
       ? draft.productionStage
       : 'SEWING',
+    genderScope: normalizeGenderScope(draft?.genderScope),
     id: existingProcess?.id ?? null,
     code: resolvedProcessCode || null,
     manualName: manualName || null,
@@ -1199,6 +1238,7 @@ const buildDraftFromProcess = (
     productionStage: PRODUCTION_STAGE_OPTIONS.includes(safeProcess?.productionStage)
       ? safeProcess.productionStage
       : 'SEWING',
+    genderScope: normalizeGenderScope(safeProcess?.genderScope),
     part: normalizeProcessCompositionEntry(existingLocations[0], 'part'),
     target: normalizedTargetPairs[0]?.target ?? null,
     targetSpec: normalizedTargetPairs[0]?.targetSpec ?? null,
@@ -2734,6 +2774,24 @@ const StyleProcess = ({
                   />
                 </TableCell>
 
+                <TableCell align="left" sx={{ width: GENDER_SCOPE_COLUMN_WIDTH }}>
+                  <Chip
+                    size="small"
+                    label={getStyleProcessMessage(
+                      languageCode,
+                      `genderScope${normalizeGenderScope(process?.genderScope)}`
+                    )}
+                    variant="outlined"
+                    color={
+                      normalizeGenderScope(process?.genderScope) === 'MALE_ONLY'
+                        ? 'info'
+                        : normalizeGenderScope(process?.genderScope) === 'FEMALE_ONLY'
+                        ? 'secondary'
+                        : 'default'
+                    }
+                  />
+                </TableCell>
+
                 <TableCell
                   align="left"
                   sx={{
@@ -2951,6 +3009,79 @@ const StyleProcess = ({
                     </MenuItem>
                   ))}
                 </TextField>
+                <Box
+                  sx={{
+                    border: 1,
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    px: 1,
+                    py: 0.25,
+                    minWidth: 140,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ display: 'block', lineHeight: 1.4 }}
+                  >
+                    {getStyleProcessMessage(languageCode, 'genderScopeLabel')}
+                  </Typography>
+                  <FormGroup row>
+                    <FormControlLabel
+                      sx={{ mr: 1.5 }}
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={isMaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX')}
+                          disabled={
+                            isMaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX') &&
+                            !isFemaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX')
+                          }
+                          onChange={(event) => {
+                            const nextFemale = isFemaleAppliedForGenderScope(
+                              addDraft.genderScope ?? 'UNISEX'
+                            );
+                            setAddDraft((prev) => ({
+                              ...prev,
+                              genderScope: resolveGenderScopeFromApplicability(
+                                event.target.checked,
+                                nextFemale
+                              ),
+                            }));
+                            setAddError('');
+                          }}
+                        />
+                      }
+                      label={getStyleProcessMessage(languageCode, 'genderScopeMaleLabel')}
+                    />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={isFemaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX')}
+                          disabled={
+                            isFemaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX') &&
+                            !isMaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX')
+                          }
+                          onChange={(event) => {
+                            const nextMale = isMaleAppliedForGenderScope(
+                              addDraft.genderScope ?? 'UNISEX'
+                            );
+                            setAddDraft((prev) => ({
+                              ...prev,
+                              genderScope: resolveGenderScopeFromApplicability(
+                                nextMale,
+                                event.target.checked
+                              ),
+                            }));
+                            setAddError('');
+                          }}
+                        />
+                      }
+                      label={getStyleProcessMessage(languageCode, 'genderScopeFemaleLabel')}
+                    />
+                  </FormGroup>
+                </Box>
                 <TextField
                   required
                   size="small"
@@ -3458,6 +3589,7 @@ const StyleProcess = ({
               <colgroup>
                 <col style={{ width: 70 }} />
                 <col style={{ width: `${PRODUCTION_STAGE_COLUMN_WIDTH}px` }} />
+                <col style={{ width: `${GENDER_SCOPE_COLUMN_WIDTH}px` }} />
                 <col style={{ width: PROCESS_CODE_COLUMN_WIDTH }} />
                 <col />
                 <col style={{ width: `${PROCESS_TIME_COLUMN_WIDTH}px` }} />
@@ -3473,6 +3605,12 @@ const StyleProcess = ({
                     sx={{ width: PRODUCTION_STAGE_COLUMN_WIDTH, whiteSpace: 'nowrap' }}
                   >
                     {getStyleProcessMessage(languageCode, 'productionStageLabel')}
+                  </TableCell>
+                  <TableCell
+                    align="left"
+                    sx={{ width: GENDER_SCOPE_COLUMN_WIDTH, whiteSpace: 'nowrap' }}
+                  >
+                    {getStyleProcessMessage(languageCode, 'genderScopeLabel')}
                   </TableCell>
                   <TableCell
                     align="left"
@@ -3552,7 +3690,7 @@ const StyleProcess = ({
                   <TableBody {...provided.droppableProps} ref={provided.innerRef}>
                     {safeProcesses.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} align="center" sx={{ py: 5, color: 'text.secondary' }}>
+                        <TableCell colSpan={9} align="center" sx={{ py: 5, color: 'text.secondary' }}>
                           {getStyleProcessMessage(languageCode, 'empty')}
                         </TableCell>
                       </TableRow>
@@ -3566,7 +3704,7 @@ const StyleProcess = ({
 
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={4} align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
+                  <TableCell colSpan={5} align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
                     {getStyleProcessMessage(languageCode, 'total')}
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
