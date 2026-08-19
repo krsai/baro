@@ -357,11 +357,19 @@ const getSystemAdminDefaultOrganization = async (
   return getPrimaryOrganization(options);
 };
 
+// Returns { organization, employeeId } rather than setting the request actor's
+// employeeId as a side effect here - the caller (getOrganizationByQuery) also
+// serves cached results (module-level + in-flight dedup), and a side effect
+// buried in this function would only fire on the cache-miss path. Every
+// resolution path (cache hit or miss) must apply employeeId to the CURRENT
+// request's AsyncLocalStorage store, or createdByEmployeeId/updatedByEmployeeId
+// silently stay null on any request that lands within the 60s org-access cache
+// window - see AGENTS.md audit-field investigation.
 const resolveOrganizationByQuery = async (
   rawOrgId: string,
   requesterEmail: string,
   options: OrganizationAccessOptions = {}
-) => {
+): Promise<{ organization: any; employeeId: number | null }> => {
   if (rawOrgId !== "") {
     if (!requesterEmail) {
       throw createHttpError(401, "authentication is required");
@@ -374,7 +382,7 @@ const resolveOrganizationByQuery = async (
       throw createHttpError(400, "invalid orgId");
     }
     const organization = await prisma.organization.findUnique({ where: { id: orgId } });
-    if (!organization) return null;
+    if (!organization) return { organization: null, employeeId: null };
 
     const [systemUser, employee] = await Promise.all([
       prisma.systemUser.findUnique({
@@ -392,13 +400,16 @@ const resolveOrganizationByQuery = async (
     if (!isSystemAdmin && !isActiveMember) {
       throw createHttpError(403, "organization access denied");
     }
-    if (isActiveMember) setRequestActorEmployeeFromRow(employee);
+    const employeeId = isActiveMember && employee?.id ? Number(employee.id) : null;
 
     const withSubscription = await attachOrganizationSubscription(organization);
-    return ensureOrganizationAccessible(
-      withSubscription,
-      isSystemAdmin ? { ...options, allowSuspended: true } : options
-    );
+    return {
+      organization: ensureOrganizationAccessible(
+        withSubscription,
+        isSystemAdmin ? { ...options, allowSuspended: true } : options
+      ),
+      employeeId,
+    };
   }
 
   if (requesterEmail) {
@@ -418,19 +429,36 @@ const resolveOrganizationByQuery = async (
     ]);
 
     if (employee?.organization) {
-      setRequestActorEmployeeFromRow(employee);
       const withSubscription = await attachOrganizationSubscription(
         employee.organization
       );
-      return ensureOrganizationAccessible(withSubscription, options);
+      return {
+        organization: ensureOrganizationAccessible(withSubscription, options),
+        employeeId: employee?.id ? Number(employee.id) : null,
+      };
     }
 
     if (systemUser?.systemRole === "SYSTEM_ADMIN") {
-      return getSystemAdminDefaultOrganization(options);
+      return {
+        organization: await getSystemAdminDefaultOrganization(options),
+        employeeId: null,
+      };
     }
   }
 
   throw createHttpError(401, "authentication is required");
+};
+
+// Applies the resolved employeeId to the CURRENT request's actor context
+// before returning - this must run on every path (request cache hit, module
+// cache hit, or fresh resolution), not just the fresh-resolution path, or the
+// audit-field setter silently never fires for cached requests.
+const applyResolvedOrganizationAccess = (entry: {
+  organization: any;
+  employeeId: number | null;
+}) => {
+  setCurrentRequestActorEmployeeId(entry.employeeId);
+  return cloneOrganizationAccessValue(entry.organization);
 };
 
 export const getOrganizationByQuery = async (
@@ -443,14 +471,14 @@ export const getOrganizationByQuery = async (
   const requestCache = getRequestOrganizationAccessCache(req);
 
   if (requestCache.has(cacheKey)) {
-    return cloneOrganizationAccessValue(requestCache.get(cacheKey));
+    return applyResolvedOrganizationAccess(requestCache.get(cacheKey));
   }
 
   purgeExpiredOrganizationAccessCache();
   const cached = organizationAccessCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     requestCache.set(cacheKey, cached.value);
-    return cloneOrganizationAccessValue(cached.value);
+    return applyResolvedOrganizationAccess(cached.value);
   }
 
   let inFlight = organizationAccessInFlight.get(cacheKey);
@@ -469,7 +497,7 @@ export const getOrganizationByQuery = async (
   try {
     const value = await inFlight;
     requestCache.set(cacheKey, value);
-    return cloneOrganizationAccessValue(value);
+    return applyResolvedOrganizationAccess(value);
   } finally {
     if (organizationAccessInFlight.get(cacheKey) === inFlight) {
       organizationAccessInFlight.delete(cacheKey);

@@ -536,6 +536,26 @@ BEGIN
   END LOOP;
 END $$;
 
+-- Step 0q-2: WorkRecord/OutsourcedWorkRecord have no updatedBy string column
+-- (rows are write-once - see AGENTS.md "2026-08-19 request-actor employeeId
+-- caching bug"), so the generic updatedBy->Employee.email backfill above can
+-- never populate their updatedByEmployeeId. For rows that were never actually
+-- edited after creation (updatedAt == createdAt), "who created it" and "who
+-- last touched it" are the same person, so backfill directly from
+-- createdByEmployeeId instead. Rows that were genuinely edited later are left
+-- alone (updatedByEmployeeId stays NULL rather than guessed).
+UPDATE "WorkRecord"
+SET "updatedByEmployeeId" = "createdByEmployeeId"
+WHERE "updatedByEmployeeId" IS NULL
+  AND "createdByEmployeeId" IS NOT NULL
+  AND "updatedAt" = "createdAt";
+
+UPDATE "OutsourcedWorkRecord"
+SET "updatedByEmployeeId" = "createdByEmployeeId"
+WHERE "updatedByEmployeeId" IS NULL
+  AND "createdByEmployeeId" IS NOT NULL
+  AND "updatedAt" = "createdAt";
+
 -- Step 0r: independent sales buckets and relational sales prices (20260725)
 ALTER TABLE "WorkOrderItem"
   ADD COLUMN IF NOT EXISTS "salesPriceSnapshot" JSONB;
