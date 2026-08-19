@@ -11,6 +11,20 @@ const VERSION_GRAPH_COLORS = [
   '#d32f2f', '#0288d1', '#6d4c41', '#5e35b1',
 ];
 
+// Backend validation messages (createHttpError) are plain English and were
+// leaking straight to the user - map the ones this screen can actually
+// trigger to a Korean explanation instead of showing raw English.
+const translateVersionBoundaryError = (message) => {
+  if (!message) return null;
+  if (message.includes('Ver.1 must start at the oldest assignment')) {
+    return 'Ver.1은 가장 오래된 첫 배정부터 적용되어야 합니다.';
+  }
+  if (message.includes('version boundaries must follow version order')) {
+    return '버전 적용 순서가 올바르지 않습니다. 이후 버전은 이전 버전보다 나중 배정부터 적용되어야 합니다.';
+  }
+  return null;
+};
+
 const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, notify }) => {
   const [versions, setVersions] = useState([]);
   const [assignments, setAssignments] = useState([]);
@@ -53,7 +67,9 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
       if (data.versions[0] && data.assignments[0]) next[data.versions[0].id] = data.assignments[0].assignmentPlanId;
       setBoundaries(next);
       setSavedBoundaries(next);
-    } catch (error) { notify(error?.message || '공정 버전을 불러오지 못했습니다.', 'error'); }
+    } catch (error) {
+      notify(translateVersionBoundaryError(error?.message) || error?.message || '공정 버전을 불러오지 못했습니다.', 'error');
+    }
     finally { setBusy(false); }
   }, [notify, orgId, ownerOrgId, styleId]);
 
@@ -100,7 +116,9 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
       await saveStyleProcessVersionBoundaries(styleId, versions.map((version) => ({ versionId: version.id, startAssignmentPlanId: boundaries[version.id] })).filter((row) => row.startAssignmentPlanId), { orgId, ownerOrgId });
       setSavedBoundaries(boundaries);
       notify('공정 버전 적용 구간을 저장했습니다.', 'success'); onClose();
-    } catch (error) { notify(error?.message || '적용 구간을 저장하지 못했습니다.', 'error'); }
+    } catch (error) {
+      notify(translateVersionBoundaryError(error?.message) || error?.message || '적용 구간을 저장하지 못했습니다.', 'error');
+    }
     finally { setBusy(false); }
   };
 
@@ -152,11 +170,41 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
                     delete event.currentTarget.dataset.dragover;
                     const versionId = Number(event.dataTransfer.getData('text/plain'));
                     const version = versions.find((item) => item.id === versionId);
-                    if (version?.versionNumber === 1 && assignment.assignmentPlanId !== assignments[0]?.assignmentPlanId) {
+                    if (!version) return;
+                    if (version.versionNumber === 1 && assignment.assignmentPlanId !== assignments[0]?.assignmentPlanId) {
                       notify('Ver.1은 가장 오래된 첫 배정부터 적용됩니다.', 'info');
                       return;
                     }
-                    if (versionId) setBoundaries((current) => ({ ...current, [versionId]: assignment.assignmentPlanId }));
+                    // Catch an invalid drop (this version's target would land at or
+                    // before an earlier version's boundary, or at/after a later
+                    // version's) before it ever reaches Save - matches the backend's
+                    // "version boundaries must follow version order" check, but gives
+                    // immediate feedback naming which version conflicts.
+                    const targetIndex = assignments.findIndex(
+                      (item) => item.assignmentPlanId === assignment.assignmentPlanId
+                    );
+                    const conflictingVersion = versions.find((other) => {
+                      if (other.id === versionId) return false;
+                      const otherStartId = boundaries[other.id];
+                      if (!otherStartId) return false;
+                      const otherIndex = assignments.findIndex(
+                        (item) => item.assignmentPlanId === otherStartId
+                      );
+                      if (otherIndex < 0) return false;
+                      return other.versionNumber < version.versionNumber
+                        ? otherIndex >= targetIndex
+                        : otherIndex <= targetIndex;
+                    });
+                    if (conflictingVersion) {
+                      notify(
+                        conflictingVersion.versionNumber < version.versionNumber
+                          ? `${version.name}은(는) ${conflictingVersion.name}보다 나중 배정부터 적용되어야 합니다.`
+                          : `${version.name}은(는) ${conflictingVersion.name}보다 이전 배정에는 적용할 수 없습니다.`,
+                        'error'
+                      );
+                      return;
+                    }
+                    setBoundaries((current) => ({ ...current, [versionId]: assignment.assignmentPlanId }));
                   }} sx={{ position: 'relative', display: 'flex', alignItems: 'center', minHeight: 34, pl: 3.5, pr: .5, borderRadius: 1, transition: 'background-color .15s', '&[data-dragover="true"]': { bgcolor: 'action.hover' } }}>
                     {hasTopSegment && (
                       <Box sx={{ position: 'absolute', zIndex: 0, left: 11, top: 0, height: '50%', width: 2, bgcolor: topColor }} />

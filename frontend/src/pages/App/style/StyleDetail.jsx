@@ -53,6 +53,14 @@ const STYLE_DETAIL_MESSAGES = {
     saveError: '스타일을 저장하지 못했습니다.',
     nameRequired: '스타일명을 입력해주세요.',
     customerRequired: '고객사를 선택해주세요.',
+    saveChoiceDialogTitle: '공정 저장 방식',
+    saveChoiceDialogBody: '작성 중인 공정을 중간 저장하거나, 입력을 완료하고 확정 버전으로 저장할 수 있습니다.',
+    cancel: '취소',
+    saveDraft: '중간 저장',
+    saveAndConfirmVersion: '저장 후 버전 확정',
+    versionConfirmedSuccess: '저장한 공정을 새 버전으로 확정했습니다.',
+    versionConfirmError: '공정은 저장했지만 버전을 확정하지 못했습니다.',
+    draftSavedInfo: '공정을 중간 저장했습니다. 확정 버전은 생성하지 않았습니다.',
   },
   en: {
     tabStyleAnalysis: 'Style Analysis',
@@ -69,6 +77,15 @@ const STYLE_DETAIL_MESSAGES = {
     saveError: 'Failed to save the style.',
     nameRequired: 'Enter a style name.',
     customerRequired: 'Select a customer.',
+    saveChoiceDialogTitle: 'Process Save Method',
+    saveChoiceDialogBody:
+      'You can save the process in progress as a draft, or finish entering it and save it as a confirmed version.',
+    cancel: 'Cancel',
+    saveDraft: 'Save Draft',
+    saveAndConfirmVersion: 'Save & Confirm Version',
+    versionConfirmedSuccess: 'Saved the process and confirmed it as a new version.',
+    versionConfirmError: 'The process was saved, but the version could not be confirmed.',
+    draftSavedInfo: 'Saved the process as a draft. No confirmed version was created.',
   },
   vi: {
     tabStyleAnalysis: 'Phan tich style',
@@ -85,6 +102,15 @@ const STYLE_DETAIL_MESSAGES = {
     saveError: 'Không thể luu style.',
     nameRequired: 'Hay nhap ten style.',
     customerRequired: 'Hay chon khach hang.',
+    saveChoiceDialogTitle: 'Cach luu cong doan',
+    saveChoiceDialogBody:
+      'Ban co the luu tam cong doan dang nhap, hoac hoan tat nhap lieu va luu thanh phien ban xac nhan.',
+    cancel: 'Huy',
+    saveDraft: 'Luu tam',
+    saveAndConfirmVersion: 'Luu va xac nhan phien ban',
+    versionConfirmedSuccess: 'Da luu cong doan va xac nhan thanh phien ban moi.',
+    versionConfirmError: 'Da luu cong doan nhung khong the xac nhan phien ban.',
+    draftSavedInfo: 'Da luu tam cong doan. Chua tao phien ban xac nhan.',
   },
 };
 
@@ -461,14 +487,17 @@ const StyleDetail = () => {
           });
           setVersionManagerOpen(true);
           setHasUnconfirmedProcessDraft(false);
-          showNotification('저장한 공정을 새 버전으로 확정했습니다.', 'success');
+          showNotification(getStyleDetailMessage(languageCode, 'versionConfirmedSuccess'), 'success');
         } catch (versionError) {
           setHasUnconfirmedProcessDraft(true);
-          showNotification(versionError?.message || '공정은 저장했지만 버전을 확정하지 못했습니다.', 'error');
+          showNotification(
+            versionError?.message || getStyleDetailMessage(languageCode, 'versionConfirmError'),
+            'error'
+          );
         }
       } else if (processesChanged || hasUnconfirmedProcessDraft) {
         setHasUnconfirmedProcessDraft(true);
-        showNotification('공정을 중간 저장했습니다. 확정 버전은 생성하지 않았습니다.', 'info');
+        showNotification(getStyleDetailMessage(languageCode, 'draftSavedInfo'), 'info');
       }
     } catch (error) {
       showNotification(error?.message || getStyleDetailMessage(languageCode, 'saveError'), 'error');
@@ -594,14 +623,23 @@ const StyleDetail = () => {
           />
 
           <Dialog open={saveChoiceOpen} onClose={() => setSaveChoiceOpen(false)} maxWidth="xs" fullWidth>
-            <DialogTitle>공정 저장 방식</DialogTitle>
+            <DialogTitle>{getStyleDetailMessage(languageCode, 'saveChoiceDialogTitle')}</DialogTitle>
             <DialogContent>
-              <Typography>작성 중인 공정을 중간 저장하거나, 입력을 완료하고 확정 버전으로 저장할 수 있습니다.</Typography>
+              <Typography>{getStyleDetailMessage(languageCode, 'saveChoiceDialogBody')}</Typography>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setSaveChoiceOpen(false)}>취소</Button>
-              <Button onClick={() => { setSaveChoiceOpen(false); handleSave(); }}>중간 저장</Button>
-              <Button variant="contained" onClick={() => { setSaveChoiceOpen(false); handleSave({ confirmVersion: true }); }}>저장 후 버전 확정</Button>
+              <Button onClick={() => setSaveChoiceOpen(false)}>
+                {getStyleDetailMessage(languageCode, 'cancel')}
+              </Button>
+              <Button onClick={() => { setSaveChoiceOpen(false); handleSave(); }}>
+                {getStyleDetailMessage(languageCode, 'saveDraft')}
+              </Button>
+              <Button
+                variant="contained"
+                onClick={() => { setSaveChoiceOpen(false); handleSave({ confirmVersion: true }); }}
+              >
+                {getStyleDetailMessage(languageCode, 'saveAndConfirmVersion')}
+              </Button>
             </DialogActions>
           </Dialog>
 
