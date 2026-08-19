@@ -97,9 +97,9 @@ const TEXT = {
   workers: { ko: '작업자', en: 'Workers', vi: 'Cong nhan' },
   items: { ko: '기록 건수', en: 'Entries', vi: 'So dong' },
   averageCtPerWorker: {
-    ko: '1인 평균 CT',
-    en: 'Avg CT / Worker',
-    vi: 'CT trung binh / nguoi',
+    ko: '1인 일 평균 CT',
+    en: 'Avg CT / Worker / Day',
+    vi: 'CT trung binh / nguoi / ngay',
   },
   loading: {
     ko: '기록을 불러오는 중입니다.',
@@ -322,6 +322,14 @@ const persistWorkListFilters = (orgId, { selectedFactoryId, dateFilterStart, dat
   }
 };
 
+const resolveWorkLogCoverageDayCount = (log) => {
+  const start = dayjs(log?.coverageStartDate);
+  const end = dayjs(log?.coverageEndDate);
+  if (!start.isValid() || !end.isValid()) return 1;
+  const dayCount = end.diff(start, 'day') + 1;
+  return dayCount > 0 ? dayCount : 1;
+};
+
 const resolveAverageCtSecondsPerWorker = (log) => {
   const workerCount = Math.max(0, Math.round(Number(log?.workerCount) || 0));
   if (workerCount <= 0) return null;
@@ -329,7 +337,12 @@ const resolveAverageCtSecondsPerWorker = (log) => {
     0,
     Math.round(Number(log?.totalCtSeconds) || 0)
   );
-  return Math.round(totalCtSeconds / workerCount);
+  // A single WorkLog can cover a multi-day period (period_summary entries),
+  // so dividing by workerCount alone gives a multi-day sum, not a daily
+  // figure - divide by the covered day count too so this reads as "1인 일
+  // 평균 CT" (per person, per day) rather than an inflated period total.
+  const dayCount = resolveWorkLogCoverageDayCount(log);
+  return Math.round(totalCtSeconds / workerCount / dayCount);
 };
 
 const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
@@ -909,7 +922,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                         }`}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {`${resolveText(TEXT.averageCtPerWorker, languageCode, '1인 평균 CT')} ${
+                        {`${resolveText(TEXT.averageCtPerWorker, languageCode, '1인 일 평균 CT')} ${
                           resolveAverageCtSecondsPerWorker(log) === null
                             ? '-'
                             : formatDuration(
@@ -939,7 +952,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                   {resolveText(TEXT.items, languageCode, '기록 건수')}
                 </TableCell>
                 <TableCell>
-                  {resolveText(TEXT.averageCtPerWorker, languageCode, '1인 평균 CT')}
+                  {resolveText(TEXT.averageCtPerWorker, languageCode, '1인 일 평균 CT')}
                 </TableCell>
                 <TableCell align="right">&nbsp;</TableCell>
               </TableRow>
