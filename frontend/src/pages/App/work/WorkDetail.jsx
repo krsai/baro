@@ -3679,7 +3679,7 @@ const WorkDetail = ({
                                   <Typography
                                     variant="body2"
                                     noWrap
-                                    color={row?.worker?.isOutsourced ? 'primary.main' : 'inherit'}
+                                    color="inherit"
                                     sx={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}
                                   >
                                     {toText(row?.worker?.name) || '-'}
@@ -3883,7 +3883,7 @@ const WorkDetail = ({
                             ) : (
                               <Typography
                                 variant="body2"
-                                color={row?.worker?.isOutsourced ? 'primary.main' : 'inherit'}
+                                color="inherit"
                                 sx={{ fontVariantNumeric: 'tabular-nums' }}
                               >
                                 {ctValue}
