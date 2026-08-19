@@ -1439,7 +1439,11 @@ const MainLayout = () => {
         return;
       }
 
-      const openOptions = {};
+      // A brand-new tab is placed right after the tab the user is on right
+      // now, not appended past whatever other tabs already happen to be
+      // open. openTab() only uses this when the tab doesn't already exist
+      // and no single-detail-tab replacePrefix slot applies.
+      const openOptions = { insertAfterId: currentPath };
       const closeTabId =
         typeof options?.closeTabId === 'string' && options.closeTabId.trim()
           ? toPathname(options.closeTabId)

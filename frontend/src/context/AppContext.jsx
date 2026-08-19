@@ -83,7 +83,23 @@ export const AppProvider = ({ children }) => {
             ...tabs.slice(replacementIndex),
           ];
         } else {
-          tabs = [...tabs, tab];
+          // A tab opened from within another tab's screen (e.g. a "단가"
+          // button on the customer list opening the pricing tab) is a child
+          // of the tab the user was on, not an unrelated new tab. Place it
+          // immediately after that origin tab instead of at the far end of
+          // the tab strip, so it doesn't jump past unrelated tabs opened
+          // earlier (A, B open -> opening C from A gives A, C, B).
+          const insertAfterId = options?.insertAfterId;
+          const insertAfterIndex = insertAfterId
+            ? tabs.findIndex((t) => t.id === insertAfterId)
+            : -1;
+          tabs = insertAfterIndex >= 0
+            ? [
+                ...tabs.slice(0, insertAfterIndex + 1),
+                tab,
+                ...tabs.slice(insertAfterIndex + 1),
+              ]
+            : [...tabs, tab];
         }
       }
 
