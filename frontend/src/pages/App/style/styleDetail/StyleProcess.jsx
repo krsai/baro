@@ -8,8 +8,6 @@ import {
   Checkbox,
   Chip,
   Collapse,
-  FormControlLabel,
-  FormGroup,
   IconButton,
   MenuItem,
   Paper,
@@ -83,7 +81,6 @@ const createEmptyDraft = () => ({
   processCode: '',
   repeatCount: '1',
   pt: '',
-  needsReview: false,
   reviewComment: '',
 });
 const PT_REFERENCE_QUANTITY = DEFAULT_TIME_REF_QUANTITY;
@@ -1143,8 +1140,7 @@ const buildProcessPayload = (
     : 1;
   const ptTotalForDisplay = parseOptionalSecondsInput(draft.pt);
   const reviewComment = String(draft?.reviewComment ?? '').trim();
-  const reviewNeedsCheck =
-    Boolean(draft?.needsReview) || hasReviewCommentText(reviewComment);
+  const reviewNeedsCheck = hasReviewCommentText(reviewComment);
   const reviewDescription = buildReviewDescription(reviewNeedsCheck, reviewComment);
   const ptPerPiece = ptTotalForDisplay == null ? null : toOptionalSeconds(ptTotalForDisplay);
   const existingStBuckets = normalizeStBuckets(existingProcess);
@@ -1256,7 +1252,6 @@ const buildDraftFromProcess = (
     repeatCount: String(processQuantity),
     pt:
       ptPerPiece == null ? '' : toDraftNumberText(ptPerPiece),
-    needsReview: Boolean(reviewMeta.needsReview),
     reviewComment: reviewMeta.reviewComment || '',
   };
 };
@@ -3009,79 +3004,6 @@ const StyleProcess = ({
                     </MenuItem>
                   ))}
                 </TextField>
-                <Box
-                  sx={{
-                    border: 1,
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                    px: 1,
-                    py: 0.25,
-                    minWidth: 140,
-                  }}
-                >
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ display: 'block', lineHeight: 1.4 }}
-                  >
-                    {getStyleProcessMessage(languageCode, 'genderScopeLabel')}
-                  </Typography>
-                  <FormGroup row>
-                    <FormControlLabel
-                      sx={{ mr: 1.5 }}
-                      control={
-                        <Checkbox
-                          size="small"
-                          checked={isMaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX')}
-                          disabled={
-                            isMaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX') &&
-                            !isFemaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX')
-                          }
-                          onChange={(event) => {
-                            const nextFemale = isFemaleAppliedForGenderScope(
-                              addDraft.genderScope ?? 'UNISEX'
-                            );
-                            setAddDraft((prev) => ({
-                              ...prev,
-                              genderScope: resolveGenderScopeFromApplicability(
-                                event.target.checked,
-                                nextFemale
-                              ),
-                            }));
-                            setAddError('');
-                          }}
-                        />
-                      }
-                      label={getStyleProcessMessage(languageCode, 'genderScopeMaleLabel')}
-                    />
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          size="small"
-                          checked={isFemaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX')}
-                          disabled={
-                            isFemaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX') &&
-                            !isMaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX')
-                          }
-                          onChange={(event) => {
-                            const nextMale = isMaleAppliedForGenderScope(
-                              addDraft.genderScope ?? 'UNISEX'
-                            );
-                            setAddDraft((prev) => ({
-                              ...prev,
-                              genderScope: resolveGenderScopeFromApplicability(
-                                nextMale,
-                                event.target.checked
-                              ),
-                            }));
-                            setAddError('');
-                          }}
-                        />
-                      }
-                      label={getStyleProcessMessage(languageCode, 'genderScopeFemaleLabel')}
-                    />
-                  </FormGroup>
-                </Box>
                 <TextField
                   required
                   size="small"
@@ -3112,6 +3034,59 @@ const StyleProcess = ({
                   placeholder={getStyleProcessMessage(languageCode, 'textProcessPlaceholder')}
                   sx={{ flex: 2, minWidth: 320 }}
                 />
+                <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'nowrap' }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                    {getStyleProcessMessage(languageCode, 'genderScopeLabel')}
+                  </Typography>
+                  <Checkbox
+                    size="small"
+                    checked={isMaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX')}
+                    disabled={
+                      isMaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX') &&
+                      !isFemaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX')
+                    }
+                    onChange={(event) => {
+                      const nextFemale = isFemaleAppliedForGenderScope(
+                        addDraft.genderScope ?? 'UNISEX'
+                      );
+                      setAddDraft((prev) => ({
+                        ...prev,
+                        genderScope: resolveGenderScopeFromApplicability(
+                          event.target.checked,
+                          nextFemale
+                        ),
+                      }));
+                      setAddError('');
+                    }}
+                  />
+                  <Typography variant="caption" sx={{ whiteSpace: 'nowrap', mr: 1 }}>
+                    {getStyleProcessMessage(languageCode, 'genderScopeMaleLabel')}
+                  </Typography>
+                  <Checkbox
+                    size="small"
+                    checked={isFemaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX')}
+                    disabled={
+                      isFemaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX') &&
+                      !isMaleAppliedForGenderScope(addDraft.genderScope ?? 'UNISEX')
+                    }
+                    onChange={(event) => {
+                      const nextMale = isMaleAppliedForGenderScope(
+                        addDraft.genderScope ?? 'UNISEX'
+                      );
+                      setAddDraft((prev) => ({
+                        ...prev,
+                        genderScope: resolveGenderScopeFromApplicability(
+                          nextMale,
+                          event.target.checked
+                        ),
+                      }));
+                      setAddError('');
+                    }}
+                  />
+                  <Typography variant="caption" sx={{ whiteSpace: 'nowrap' }}>
+                    {getStyleProcessMessage(languageCode, 'genderScopeFemaleLabel')}
+                  </Typography>
+                </Stack>
               </Stack>
 
               <Box
@@ -3524,40 +3499,21 @@ const StyleProcess = ({
                 placeholder="-"
                 sx={{ width: 120 }}
               />
-              <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 280 }}>
-                <Checkbox
-                  size="small"
-                  checked={
-                    Boolean(addDraft.needsReview) || hasReviewCommentText(addDraft.reviewComment)
-                  }
-                  onChange={(event) => {
-                    const checked = Boolean(event.target.checked);
-                    setAddDraft((prev) => ({
-                      ...prev,
-                      needsReview: checked,
-                      reviewComment: checked ? prev.reviewComment : '',
-                    }));
-                  }}
-                />
-                <Typography variant="caption" sx={{ whiteSpace: 'nowrap' }}>
-                  {getStyleProcessMessage(languageCode, 'reviewRequiredLabel')}
-                </Typography>
-                <TextField
-                  size="small"
-                  value={addDraft.reviewComment || ''}
-                  onChange={(event) => {
-                    const nextComment = event.target.value;
-                    setAddDraft((prev) => ({
-                      ...prev,
-                      reviewComment: nextComment,
-                      needsReview: hasReviewCommentText(nextComment) ? true : prev.needsReview,
-                    }));
-                  }}
-                  onBlur={() => setAddError('')}
-                  placeholder={getStyleProcessMessage(languageCode, 'reviewCommentPlaceholder')}
-                  sx={{ flex: 1, minWidth: 0 }}
-                />
-              </Stack>
+              <TextField
+                size="small"
+                label={getStyleProcessMessage(languageCode, 'reviewCommentLabel')}
+                value={addDraft.reviewComment || ''}
+                onChange={(event) => {
+                  const nextComment = event.target.value;
+                  setAddDraft((prev) => ({
+                    ...prev,
+                    reviewComment: nextComment,
+                  }));
+                }}
+                onBlur={() => setAddError('')}
+                placeholder={getStyleProcessMessage(languageCode, 'reviewCommentPlaceholder')}
+                sx={{ flex: 1, minWidth: 280 }}
+              />
               <Stack
                 direction="row"
                 spacing={0.75}

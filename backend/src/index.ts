@@ -10057,6 +10057,7 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
     const baselineQuantity = baselineQuantityByPlanId.get(plan.id);
     if (baselineQuantity == null || baselineQuantity <= 0) return;
     const processKeyGroups = resolveAssignmentPlanRequiredProcessGroups(plan);
+    const applicableQuantityByKey = resolveAssignmentPlanRequiredProcessApplicableQuantities(plan);
 
     const byDate = processBucketsByPlanDate.get(plan.id);
     if (!byDate || byDate.size === 0) return;
@@ -10076,6 +10077,8 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
       const producedQuantity = resolveProducedQtyFromProcessKeyTotals({
         processTotalsByKey: cumulativeByProcess,
         processKeyGroups,
+        applicableQuantityByKey,
+        plannedQuantity: baselineQuantity,
       });
       if (producedQuantity >= baselineQuantity) {
         completionDateByPlanId.set(plan.id, dateKey);
@@ -16804,6 +16807,21 @@ const resolveAssignmentStyleIdForStCalculation = ({
   return toPositiveIntOrNull(assignment?.styleId ?? linkedCard?.styleId);
 };
 
+const resolveAssignmentWorkOrderIdForStCalculation = ({
+  assignment,
+  cardById,
+}: {
+  assignment: any;
+  cardById: Map<string, any>;
+}) => {
+  const cardId = resolveOptionalString(
+    assignment?.cardId ?? assignment?.originOrderId,
+    null
+  );
+  const linkedCard = cardId ? cardById.get(cardId) ?? null : null;
+  return toPositiveIntOrNull(assignment?.workOrderId ?? linkedCard?.workOrderId);
+};
+
 const buildStyleProcessLookupForStCalculation = (styleProcessRows: any[]) => {
   const byStyleIdAndProcessId = new Map<string, any>();
 
@@ -17342,6 +17360,57 @@ const prepareAssignmentBoardStTotalsForSave = async ({
       : []
   );
 
+  // Only styles with an actual MALE_ONLY/FEMALE_ONLY process need a gender
+  // quantity breakdown - resolved once here (whichever process source -
+  // confirmed version snapshot or live rows - a target will actually use
+  // below) so the recalculation loop can stay synchronous.
+  const styleIdsNeedingGenderQuantitiesForSave = new Set<number>();
+  recalcTargets.forEach((target) => {
+    const styleId = target.styleId;
+    if (styleId === null) return;
+    const assignedVersionId = toPositiveIntOrNull(
+      target.existingPlan?.styleProcessVersionId
+    );
+    const effectiveVersionForTarget =
+      (assignedVersionId === null
+        ? null
+        : assignedVersionById.get(assignedVersionId) ?? null) ??
+      effectiveVersionByStyleId.get(styleId) ??
+      null;
+    const candidateProcesses = effectiveVersionForTarget
+      ? normalizeStyleProcesses(effectiveVersionForTarget.processSnapshot)
+      : styleProcessRowsByStyleId.get(styleId) ?? [];
+    if (
+      candidateProcesses.some(
+        (process: any) => normalizeProcessGenderScope(process?.genderScope) !== "UNISEX"
+      )
+    ) {
+      styleIdsNeedingGenderQuantitiesForSave.add(styleId);
+    }
+  });
+  const workOrderIdsForGenderQuantitiesForSave = Array.from(
+    new Set(
+      recalcTargets
+        .map((target) =>
+          target.styleId !== null &&
+          styleIdsNeedingGenderQuantitiesForSave.has(target.styleId)
+            ? resolveAssignmentWorkOrderIdForStCalculation({
+                assignment: target.assignment,
+                cardById,
+              })
+            : null
+        )
+        .filter((id): id is number => id !== null)
+    )
+  );
+  const styleGenderQuantityMapForSave =
+    styleIdsNeedingGenderQuantitiesForSave.size > 0
+      ? await loadStyleGenderQuantityMapForWorkOrderIds(
+          workOrderIdsForGenderQuantitiesForSave,
+          db
+        )
+      : new Map<string, StyleProcessGenderQuantities>();
+
   const assignmentStTotalSecondsByExternalId = new Map<string, number>();
   const assignmentStSnapshotByExternalId = new Map<string, any>();
   targetByExternalId.forEach((target, externalId) => {
@@ -17377,6 +17446,24 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     const quantityBucketSetVersionId = toPositiveInt(style?.timeBucketSetVersionId, 0);
     let assignmentStTotalSeconds: number | null = null;
 
+    const needsGenderQuantities =
+      styleId !== null && styleIdsNeedingGenderQuantitiesForSave.has(styleId);
+    const genderQuantitiesWorkOrderId = needsGenderQuantities
+      ? resolveAssignmentWorkOrderIdForStCalculation({
+          assignment: target.assignment,
+          cardById,
+        })
+      : null;
+    const genderQuantities = needsGenderQuantities
+      ? styleGenderQuantityMapForSave.get(`${genderQuantitiesWorkOrderId}:${styleId}`) ?? null
+      : null;
+    if (needsGenderQuantities && !genderQuantities) {
+      throw createHttpError(
+        409,
+        `assignment ${externalId}: style ${styleId} has a male-only/female-only process but no order line quantity could be resolved for it`
+      );
+    }
+
     const assignedVersionId = toPositiveIntOrNull(
       target.existingPlan?.styleProcessVersionId
     );
@@ -17387,7 +17474,13 @@ const prepareAssignmentBoardStTotalsForSave = async ({
       (styleId === null ? null : effectiveVersionByStyleId.get(styleId) ?? null);
     if (target.hasStructuralChange && effectiveVersion) {
       const versionProcesses = normalizeStyleProcesses(effectiveVersion.processSnapshot);
-      const perPieceSeconds = versionProcesses.reduce((sum, process) => {
+      if (findStyleProcessGenderScopeAmbiguity(versionProcesses, genderQuantities)) {
+        throw createHttpError(
+          409,
+          `assignment ${externalId}: style ${styleId} has a male-only/female-only process but its order lines include ${genderQuantities?.unspecified} unit(s) without an explicit gender - specify M/W gender for every order line of this style`
+        );
+      }
+      const totalSeconds = versionProcesses.reduce((sum, process) => {
         const stSeconds = resolveStyleProcessVersionStPerPieceSeconds(
           process,
           assignmentQuantity
@@ -17398,9 +17491,12 @@ const prepareAssignmentBoardStTotalsForSave = async ({
             `assignment ${externalId} confirmed version ST is missing for a process`
           );
         }
-        return sum + stSeconds;
+        const rowQuantity = genderQuantities
+          ? resolveStyleProcessRowApplicableQuantity(process, genderQuantities)
+          : assignmentQuantity;
+        return sum + stSeconds * rowQuantity;
       }, 0);
-      assignmentStTotalSeconds = perPieceSeconds * assignmentQuantity;
+      assignmentStTotalSeconds = totalSeconds;
     } else if (target.hasStructuralChange) {
       const styleProcessRows =
         styleId === null ? [] : styleProcessRowsByStyleId.get(styleId) ?? [];
@@ -17409,6 +17505,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
         assignmentQuantity,
         quantityBucketEntryId,
         quantityBucketSetVersionId,
+        genderQuantities,
       });
     } else {
       const ctSnapshot = resolveNormalizedAssignmentCtSnapshot(target.assignment);
@@ -17419,6 +17516,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
         quantityBucketSetVersionId,
         styleId,
         styleProcessLookup,
+        genderQuantities,
       });
     }
 
@@ -21979,39 +22077,90 @@ const loadAssignmentPlanProgressWorkRows = async ({
   return [...employeeRows, ...outsourcedRows];
 };
 
+// A gender-restricted (MALE_ONLY/FEMALE_ONLY) process's own completion target is
+// its applicableQuantity, not the assignment's full blended quantity - e.g. a
+// 500-piece assignment (300 male / 200 female) with a MALE_ONLY process is
+// "done" for that process at 300, not 500. resolveAssignmentPlanRequiredProcessGroups
+// only returns process-key groups (no quantity); this pairs each key with the
+// quantity IT needs to reach, sourced from the same assignmentCtSnapshot
+// applicableQuantity written by buildEditableAssignmentCtSnapshotFromLiveStyle.
+const resolveAssignmentPlanRequiredProcessApplicableQuantities = (
+  plan: any
+): Map<string, number> => {
+  const map = new Map<string, number>();
+  const snapshot = resolveNormalizedAssignmentCtSnapshot(plan);
+  const plannedQuantity = toOptionalNonNegativeInt(resolveAssignmentQuantity(plan), null);
+  ensureArray(snapshot?.processes).forEach((process: any) => {
+    const styleProcessId = toPositiveIntOrNull(process?.styleProcessId);
+    if (styleProcessId === null) return;
+    const applicableQuantity =
+      toOptionalNonNegativeInt(process?.applicableQuantity, null) ?? plannedQuantity;
+    if (applicableQuantity === null) return;
+    map.set(`style-process:${styleProcessId}`, applicableQuantity);
+  });
+  return map;
+};
+
 const resolveAssignmentProcessGroupTotals = ({
   processTotalsByKey,
   processKeyGroups = [],
+  applicableQuantityByKey = null,
+  plannedQuantity = null,
 }: {
   processTotalsByKey: Map<string, number>;
   processKeyGroups?: string[][];
+  applicableQuantityByKey?: Map<string, number> | null;
+  plannedQuantity?: number | null;
 }): number[] => {
   const normalizedGroups = ensureArray(processKeyGroups).filter(
     (group): group is string[] => Array.isArray(group) && group.length > 0
   );
 
-  if (normalizedGroups.length > 0) {
-    return normalizedGroups.map((group) =>
-      group.reduce(
-        (max, key) => Math.max(max, Math.max(0, Math.round(Number(processTotalsByKey.get(key) || 0)))),
-        0
-      )
-    );
-  }
+  if (normalizedGroups.length === 0) return [];
 
-  return [];
+  return normalizedGroups.map((group) => {
+    const completedQuantity = group.reduce(
+      (max, key) => Math.max(max, Math.max(0, Math.round(Number(processTotalsByKey.get(key) || 0)))),
+      0
+    );
+    if (!applicableQuantityByKey || !plannedQuantity || plannedQuantity <= 0) {
+      return completedQuantity;
+    }
+    const applicableQuantity = group
+      .map((key) => applicableQuantityByKey.get(key))
+      .find((value): value is number => value != null && value > 0);
+    if (!applicableQuantity || applicableQuantity >= plannedQuantity) {
+      return completedQuantity;
+    }
+    // Normalize this process's own completed quantity into the full blended
+    // assignment quantity's terms (e.g. 300/300 on a MALE_ONLY process with a
+    // 500-piece blended total normalizes to 500, matching a fully-done UNISEX
+    // process) so it reads as "fully caught up" instead of capping every
+    // downstream min()/equality check at its smaller applicable ceiling
+    // forever. Deliberately NOT capped at plannedQuantity - overproduction
+    // must stay proportionally visible so mismatched-overage detection
+    // (e.g. 101 vs 100 across processes, see AGENTS.md REVIEW_REQUIRED
+    // semantics) still works once normalized.
+    return Math.round((completedQuantity / applicableQuantity) * plannedQuantity);
+  });
 };
 
 const resolveProducedQtyFromProcessKeyTotals = ({
   processTotalsByKey,
   processKeyGroups = [],
+  applicableQuantityByKey = null,
+  plannedQuantity = null,
 }: {
   processTotalsByKey: Map<string, number>;
   processKeyGroups?: string[][];
+  applicableQuantityByKey?: Map<string, number> | null;
+  plannedQuantity?: number | null;
 }): number => {
   const processTotals = resolveAssignmentProcessGroupTotals({
     processTotalsByKey,
     processKeyGroups,
+    applicableQuantityByKey,
+    plannedQuantity,
   });
 
   return resolveAssignmentProducedQuantityFromProcessTotals({
@@ -22909,6 +23058,7 @@ const buildLineMonthCapacityRows = async ({
     }
 
     const requiredProcessGroups = resolveAssignmentPlanRequiredProcessGroups(plan);
+    const applicableQuantityByKey = resolveAssignmentPlanRequiredProcessApplicableQuantities(plan);
     const snapshot = resolveNormalizedAssignmentCtSnapshot(plan);
     const processCountFromSnapshot =
       Array.isArray(snapshot?.processes) && snapshot.processes.length > 0
@@ -22964,6 +23114,8 @@ const buildLineMonthCapacityRows = async ({
       ? resolveProducedQtyFromProcessKeyTotals({
           processTotalsByKey: cumulativeProcessTotalsByKey,
           processKeyGroups: requiredProcessGroups,
+          applicableQuantityByKey,
+          plannedQuantity,
         })
       : null;
     const producedRatio =
@@ -24133,6 +24285,7 @@ const buildAssignmentPlanProgressRows = async (
       records: [],
     };
     const requiredProcessGroups = resolveAssignmentPlanRequiredProcessGroups(plan);
+    const applicableQuantityByKey = resolveAssignmentPlanRequiredProcessApplicableQuantities(plan);
     const plannedQuantity = resolveAssignmentQuantity(plan);
     const baselineQuantityRaw =
       plannedQuantity != null && plannedQuantity > 0 ? plannedQuantity : null;
@@ -24159,6 +24312,8 @@ const buildAssignmentPlanProgressRows = async (
     const processGroupTotals = resolveAssignmentProcessGroupTotals({
       processTotalsByKey: stats.processTotalsByKey,
       processKeyGroups: requiredProcessGroups,
+      applicableQuantityByKey,
+      plannedQuantity: baselineQuantityRaw,
     });
     const totalExpected =
       baselineQuantityRaw != null && processCount != null && processCount > 0
@@ -24169,6 +24324,8 @@ const buildAssignmentPlanProgressRows = async (
     const producedQuantity = resolveProducedQtyFromProcessKeyTotals({
       processTotalsByKey: stats.processTotalsByKey,
       processKeyGroups: requiredProcessGroups,
+      applicableQuantityByKey,
+      plannedQuantity: baselineQuantityRaw,
     });
     const remainingQty =
       baselineQuantityRaw == null
@@ -24352,6 +24509,8 @@ const buildAssignmentPlanProgressRows = async (
           const producedAtDate = resolveProducedQtyFromProcessKeyTotals({
             processTotalsByKey: cumulativeProcessTotalsByKey,
             processKeyGroups: requiredProcessGroups,
+            applicableQuantityByKey,
+            plannedQuantity: baselineQuantityRaw,
           });
           if (producedAtDate >= baselineQuantityRaw) {
             actualProducedCompletedDateKey = dateKey;
@@ -24947,6 +25106,8 @@ const resolveAssignmentPlanProducedQuantity = async ({
   return resolveProducedQtyFromProcessKeyTotals({
     processTotalsByKey,
     processKeyGroups,
+    applicableQuantityByKey: resolveAssignmentPlanRequiredProcessApplicableQuantities(plan),
+    plannedQuantity: resolveAssignmentQuantity(plan),
   });
 };
 
