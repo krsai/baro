@@ -27,6 +27,12 @@
 - 백엔드 `buildAssignmentPlanProgressRows`의 `reviewProcessTotals`(그리고 이걸 담는 `reviewReason.processTotals`/`quantityReview.processTotals`)를 공정별로 `genderScope`와 `applicableQuantity`를 포함하도록 확장했다. `quantity` 필드는 내부 진행률 계산에 쓰는 정규화된(블렌디드 환산) 값이 아니라, 사람이 검토할 수 있도록 **그 공정에 실제 기록된 raw 수량**(`stats.processTotalsByKey`에서 직접 계산)으로 바꿨다 — 정규화된 값을 보여주면 "225 목표에 510 기록됨(성별 구분 이전 과거 기록)" 같은 실제 상황이 감춰진다.
 - 프론트 두 표(`AssignBoard.jsx`의 인라인 `REVIEW_REQUIRED` 표, `QuantityReviewProcessTable`) 모두 "목표 수량" 열을 새로 추가해 공정별 `applicableQuantity`(없으면 기존처럼 배정 전체 수량)를 보여주고, "차이"는 그 공정 자신의 목표 대비로 계산한다.
 - 이 표는 의도적으로 "성별 구분 이전에 기록된 과거 작업기록"을 자동으로 고치거나 숨기지 않는다 — 예를 들어 남성 전용 공정이 과거에 (성별 구분 없이) 510개로 기록됐다면, 목표 225 대비 +285 초과로 정확히 드러난다. 이 초과분이 실제로 문제인지(과거 데이터가 원래 남녀 구분 없이 기록됐던 것인지)는 업무적으로 사람이 판단할 문제이며, 시스템이 임의로 재배분하거나 숨기지 않는다(정확 계산 원칙).
+- **주의**: 이 원칙을 세울 때 예로 든 "TS10이 510개로 기록되어 있다"는 실제로는 잘못된 관찰이었다(§ 아래 후속3에서 확인) — raw 수량 표로 고치기 전 화면에 보이던 "510"은 이미 성별 정규화(블렌디드 환산)를 거친 값이었는데 이를 raw 기록으로 착각한 것이었다. 실제 운영 DB를 직접 조회해 검증한 결과 TS10은 정확히 225건(목표와 일치)만 기록되어 있었다. 성별 관련 수치를 사용자에게 설명할 때는 화면에 보이는 숫자를 근거로 추측하지 말고, 의심스러우면 운영 DB에서 `WorkRecord`를 직접 조회해 확인한다.
+
+## 2026-08-19 후속3: `operationalProgressRatio`(진행률 %)의 분모도 gender-aware하게 반영
+
+- 후속2까지 고친 `producedQuantity`/`resolveProducedQtyFromProcessKeyTotals` 계열은 "완제품 수량"(공정별 최소값) 계산에는 적용됐지만, **화면에 보이는 진행률 퍼센트 자체**(`operationalProgressRatio` → `progressPercent`)는 별도의 분모 `totalExpected = plannedQuantity(블렌디드) × processCount`를 그대로 쓰고 있었다. 성별 전용 공정이 있으면 이 분모가 항상 과대평가된다 — 예: 67개 공정 중 5개가 성별 전용(225~285)인데 분모는 67개 전부 510으로 계산하므로, 모든 공정이 각자의 정확한 목표치에 도달해도(짜투리 0) `totalDone`(실제 합)이 `totalExpected`(부풀려진 합)에 못 미쳐 진행률이 100%에 도달하지 못하고 90%대에 멈춘다. 실제로 AM02062/L15-1에서 공정별 수량 확인 표는 전부 차이 0으로 정확히 일치하는데도 진행률 카드에는 94%로 표시되는 것으로 재현·확인했다.
+- `resolveTotalExpectedQuantityForRequiredProcesses` 헬퍼를 새로 만들어 `totalExpected = Σ(각 필수 공정의 applicableQuantity)`로 계산하도록 고쳤다(성별 전용 공정은 자기 목표치만, UNISEX는 기존처럼 전체 수량). 성별 구분 데이터가 없는 스타일(대부분의 기존 데이터)은 기존 `plannedQuantity × processCount` 공식으로 그대로 폴백한다 — 수학적으로 동일한 결과. `buildLineMonthCapacityRows`와 `buildAssignmentPlanProgressRows` 양쪽의 `totalExpected` 계산에 모두 적용했다.
 
 ## 2026-08-19 공정 성별 적용 대상 (genderScope)
 

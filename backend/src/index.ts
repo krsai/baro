@@ -22101,6 +22101,45 @@ const resolveAssignmentPlanRequiredProcessApplicableQuantities = (
   return map;
 };
 
+// "totalExpected" is the denominator for operationalProgressRatio (Σ recorded /
+// totalExpected) - it must be the sum of each REQUIRED process's own target
+// (applicableQuantity: the male/female sub-quantity for a gender-restricted
+// process, full plannedQuantity for UNISEX), not plannedQuantity * processCount
+// uniformly. Using the uniform formula overstates the denominator whenever any
+// process is gender-restricted (it credits every process with the full blended
+// quantity), which permanently caps progress below 100% even once every
+// process has reached its own correct target. Falls back to the old uniform
+// formula when there is no usable per-process breakdown (e.g. no gender-
+// restricted processes at all, or the snapshot has no styleProcessId per
+// process) - mathematically identical to before in that case.
+const resolveTotalExpectedQuantityForRequiredProcesses = ({
+  requiredProcessGroups,
+  applicableQuantityByKey,
+  plannedQuantity,
+  processCount,
+}: {
+  requiredProcessGroups: string[][];
+  applicableQuantityByKey: Map<string, number>;
+  plannedQuantity: number | null;
+  processCount: number | null;
+}): number | null => {
+  const normalizedGroups = ensureArray(requiredProcessGroups).filter(
+    (group): group is string[] => Array.isArray(group) && group.length > 0
+  );
+  if (normalizedGroups.length > 0 && applicableQuantityByKey.size > 0) {
+    const total = normalizedGroups.reduce((sum, group) => {
+      const applicable = group
+        .map((key) => applicableQuantityByKey.get(key))
+        .find((value): value is number => value != null && value > 0);
+      return sum + (applicable ?? plannedQuantity ?? 0);
+    }, 0);
+    if (total > 0) return total;
+  }
+  return plannedQuantity != null && processCount != null && processCount > 0
+    ? plannedQuantity * processCount
+    : null;
+};
+
 const resolveAssignmentProcessGroupTotals = ({
   processTotalsByKey,
   processKeyGroups = [],
@@ -23094,10 +23133,12 @@ const buildLineMonthCapacityRows = async ({
       processKeySet.size > 0 ? processKeySet.size : null;
     const processCount =
       processCountFromSnapshot ?? processCountFromRecords;
-    const totalExpected =
-      plannedQuantity != null && processCount != null && processCount > 0
-        ? plannedQuantity * processCount
-        : null;
+    const totalExpected = resolveTotalExpectedQuantityForRequiredProcesses({
+      requiredProcessGroups,
+      applicableQuantityByKey,
+      plannedQuantity,
+      processCount,
+    });
     // requiredProcessGroups comes from assignmentCtSnapshot.processes[].styleProcessId.
     // Some persisted snapshots have processCode/name but a null styleProcessId per
     // process (a known data gap - see AGENTS.md), which makes requiredProcessGroups
@@ -24315,10 +24356,12 @@ const buildAssignmentPlanProgressRows = async (
       applicableQuantityByKey,
       plannedQuantity: baselineQuantityRaw,
     });
-    const totalExpected =
-      baselineQuantityRaw != null && processCount != null && processCount > 0
-        ? baselineQuantityRaw * processCount
-        : null;
+    const totalExpected = resolveTotalExpectedQuantityForRequiredProcesses({
+      requiredProcessGroups,
+      applicableQuantityByKey,
+      plannedQuantity: baselineQuantityRaw,
+      processCount,
+    });
     const totalDone = sumByPlanId.get(planId) || 0;
     const isMarkedCompleted = plan?.isCompleted === true;
     const producedQuantity = resolveProducedQtyFromProcessKeyTotals({
