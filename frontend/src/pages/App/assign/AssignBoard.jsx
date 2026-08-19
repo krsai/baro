@@ -5779,6 +5779,39 @@ const AssignBoard = () => {
       ? formatStBucketQuantityLabel(bucketQuantity, 'ko-KR')
       : '-';
   }, [detailAssignment?.assignmentStSnapshot?.bucketQuantity]);
+  // Only meaningful (and only shown) when the style has a MALE_ONLY/FEMALE_ONLY
+  // process - split from the persisted ST snapshot (stSeconds * applicableQuantity
+  // per process, see AGENTS.md 2026-08-19), not recomputed client-side.
+  const detailStGenderBreakdown = useMemo(() => {
+    const processes = detailAssignment?.assignmentStSnapshot?.processes;
+    if (!Array.isArray(processes) || processes.length === 0) return null;
+    let maleOnlySeconds = 0;
+    let femaleOnlySeconds = 0;
+    let unisexSeconds = 0;
+    let hasGenderRestrictedProcess = false;
+    processes.forEach((process) => {
+      const stSeconds = toOptionalPositiveNumber(process?.stSeconds);
+      const applicableQuantity = toOptionalPositiveNumber(process?.applicableQuantity);
+      if (stSeconds == null || applicableQuantity == null) return;
+      const seconds = stSeconds * applicableQuantity;
+      if (process?.genderScope === 'MALE_ONLY') {
+        maleOnlySeconds += seconds;
+        hasGenderRestrictedProcess = true;
+      } else if (process?.genderScope === 'FEMALE_ONLY') {
+        femaleOnlySeconds += seconds;
+        hasGenderRestrictedProcess = true;
+      } else {
+        unisexSeconds += seconds;
+      }
+    });
+    if (!hasGenderRestrictedProcess) return null;
+    return {
+      maleOnlySeconds,
+      femaleOnlySeconds,
+      unisexSeconds,
+      totalSeconds: maleOnlySeconds + femaleOnlySeconds + unisexSeconds,
+    };
+  }, [detailAssignment?.assignmentStSnapshot]);
   const detailHasSavedCtSnapshot = useMemo(
     () => hasSavedCtSnapshot(detailAssignment),
     [detailAssignment]
@@ -7527,6 +7560,40 @@ const AssignBoard = () => {
                     </Typography>
                   </Stack>
                 </Paper>
+
+                {detailStGenderBreakdown && (
+                  <Paper variant="outlined" sx={{ p: 1.5 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                      {getUiMessage('assign.stGenderBreakdownLabel', 'ST by Gender', languageCode)}
+                    </Typography>
+                    <Stack spacing={0.5}>
+                      {detailStGenderBreakdown.maleOnlySeconds > 0 && (
+                        <Typography variant="body2">
+                          <strong>
+                            {getUiMessage('assign.stGenderBreakdownMaleOnly', 'Male only', languageCode)}:
+                          </strong>{' '}
+                          {formatSecondsLabel(detailStGenderBreakdown.maleOnlySeconds, '-', languageCode)}
+                        </Typography>
+                      )}
+                      {detailStGenderBreakdown.femaleOnlySeconds > 0 && (
+                        <Typography variant="body2">
+                          <strong>
+                            {getUiMessage('assign.stGenderBreakdownFemaleOnly', 'Female only', languageCode)}:
+                          </strong>{' '}
+                          {formatSecondsLabel(detailStGenderBreakdown.femaleOnlySeconds, '-', languageCode)}
+                        </Typography>
+                      )}
+                      {detailStGenderBreakdown.unisexSeconds > 0 && (
+                        <Typography variant="body2">
+                          <strong>
+                            {getUiMessage('assign.stGenderBreakdownUnisex', 'Unisex', languageCode)}:
+                          </strong>{' '}
+                          {formatSecondsLabel(detailStGenderBreakdown.unisexSeconds, '-', languageCode)}
+                        </Typography>
+                      )}
+                    </Stack>
+                  </Paper>
+                )}
 
                 <Paper variant="outlined" sx={{ p: 1.5 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>

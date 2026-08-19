@@ -712,6 +712,26 @@ export const UI_MESSAGES = {
       en: 'Entered CT Total (all qty)',
       vi: 'Tong CT nhap (toan bo)',
     },
+    stGenderBreakdownLabel: {
+      ko: '성별 ST 내역',
+      en: 'ST by Gender',
+      vi: 'ST theo gioi tinh',
+    },
+    stGenderBreakdownMaleOnly: {
+      ko: '남성 전용',
+      en: 'Male only',
+      vi: 'Chi danh cho nam',
+    },
+    stGenderBreakdownFemaleOnly: {
+      ko: '여성 전용',
+      en: 'Female only',
+      vi: 'Chi danh cho nu',
+    },
+    stGenderBreakdownUnisex: {
+      ko: '공용',
+      en: 'Unisex',
+      vi: 'Dung chung',
+    },
     divergenceLabel: { ko: '변동률', en: 'Variance', vi: 'Do lech' },
     expectedDurationLabel: { ko: '예상 기간', en: 'Expected Duration', vi: 'Thời gian du kien' },
     expectedCostLabel: { ko: '예상 비용', en: 'Expected Cost', vi: 'Chi phi du kien' },
