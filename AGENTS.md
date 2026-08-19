@@ -1,5 +1,12 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-08-19 후속5: 업체 엔티티 구조 — Organization(테넌트) vs BusinessPartner(비테넌트) 확정
+
+- 이 SaaS의 "업체"는 로그인 필요 여부에 따라 이미 두 갈래로 분리돼 있고, 이는 의도된 설계다. 제조사·브랜드처럼 자기 로그인·구독·직원을 가지는 테넌트는 `Organization` + `type`(`MANUFACTURER`/`BRAND`)이며, 타입별 확장 기능은 별도 테이블로 붙는다(`MANUFACTURER` → `Factory`/`Line`/`Employee`/`Payroll` 등, 제조사↔브랜드 관계 → `OrgRelationship`/`CustomerSalesPriceList` 등). 로그인이 필요 없는 외주업체·공급업체는 `BusinessPartner` + `type`(`PROCESS_OUTSOURCING`/`MATERIAL_SUPPLIER`)이며, 같은 "엔티티 + 타입 + 타입별 확장 기능" 패턴을 따른다.
+- `Factory`는 업체(외부 vendor)가 아니라 조직 자신이 소유한 물리적 생산 사업장이다(`Factory.orgId`). "고객사"는 내부 레코드가 아니라 `OrgRelationship`으로 연결된 완전히 별개의 `Organization`(테넌트)이다. 따라서 `Factory`/고객을 `BusinessPartner`에 억지로 통합하지 않는다 — 로그인·구독이 필요한 실체를 로그인 없는 경량 테이블에 넣거나 그 반대로 하면 멀티테넌시 자체가 깨진다.
+- `BusinessPartnerType.PROCESS_OUTSOURCING`은 이미 타입별 확장 기능(`OutsourcedWorkRecord`, "외주 내역" 메뉴)이 있고 배정 진행률 계산에 안전하게 연결돼 있다(`outsourcingPartnerId`는 `onDelete: Restrict`, 업체명은 작업 당시 스냅샷 보존). `BusinessPartnerType.MATERIAL_SUPPLIER`는 엔티티·타입·CRUD 화면(`BusinessPartners.jsx`/`BusinessPartnerDialog.jsx`)까지는 이미 있지만 타입별 확장 기능(자재/구매 연결)이 아직 없다 — 이는 `todo.md`의 재고 논의 재개·3-1 자재 마스터 단계에서 함께 만들 몫이며, 지금 임의로 앞서 만들지 않는다.
+- 향후 새 업체 타입이 필요하면 이 두 갈래(테넌트 필요 → `Organization.type` 확장, 비테넌트 → `BusinessPartner.type` 확장) 중 어디에 속하는지 먼저 판단하고, 그 타입 전용 확장 테이블을 별도로 만드는 같은 패턴을 따른다. `BusinessPartner`나 `Organization` 자체의 스키마를 매번 넓히지 않는다.
+
 ## 2026-08-19 후속4: bucketQuantity 존재 여부로 실제 생산률·남은 계획 부하 계산을 게이트하지 않는다
 
 - `assignmentStSnapshot`은 두 가지 서로 다른 최상위 shape로 저장될 수 있다. `buildAssignmentStSnapshot`(수량 버킷 경로)은 `bucketQuantity`/`quantityBucketEntryId`/`quantityBucketSetVersionId`를 최상위에 남기지만, `PUT /styles/:styleId/process-version-boundaries`(공정 버전 재확정 경로)가 마지막으로 다시 쓴 배정은 `revision`/`confirmedDate`/`styleProcessVersionId` shape를 쓰고 최상위 `bucketQuantity`가 없다. 두 shape 모두 `processes[].styleProcessId/stSeconds/applicableQuantity`는 정상적으로 채워져 있다.
