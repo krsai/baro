@@ -1,5 +1,21 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-08-19 공정 성별 적용 대상 → 배정 ST/CT 계산 반영
+
+- 성별 전용 공정이 있는 스타일의 배정 ST/CT 총합은 주문 항목(`WorkOrderItem.gender` M/W/U + 수량)에서 남성/여성 수량을 집계해 반영한다. `MALE_ONLY` 공정은 그 주문·스타일의 남성 수량만, `FEMALE_ONLY`는 여성 수량만 곱하고, `UNISEX`(기본값) 공정은 기존처럼 전체 수량을 곱한다. ST 버킷 조회 자체는 여전히 전체 수량 기준 버킷을 재사용한다(성별 하위 수량으로 별도 버킷을 다시 찾지 않음) — 정확도보다 구현 복잡도·위험을 낮추기 위한 의도적 단순화이며, "남성 전용 공정을 여성 100% 주문에서 완전히 0으로 배제"처럼 사용자가 요청한 핵심 효과는 그대로 달성한다.
+- 성별 수량 집계는 `resolveOrderStyleGenderQuantityMap`(order 객체 기반, `syncAssignmentPlansForOrderLock`용)과 `loadStyleGenderQuantityMapForWorkOrderIds`(workOrderId로 직접 `WorkOrderItem` 조회, board-save용) 두 헬퍼로 한다. 성별이 비어있는(blank) 또는 `U`인 행은 남성/여성 어느 쪽으로도 추정하지 않고 `unspecified`로 별도 집계한다 — `workOrderItemToItemShape`가 표시용으로 쓰는 "빈 값→M 기본" 규칙과 다르다(표시는 추정해도 되지만 계산은 추정하면 안 된다).
+- 스타일에 `MALE_ONLY`/`FEMALE_ONLY` 공정이 하나도 없으면(현재 운영 데이터 전부 해당) 이 계산 경로 자체를 타지 않는다 — 성별 수량 조회조차 하지 않고 기존 로직과 수학적으로 동일한 결과를 낸다. 성별 전용 공정이 있는데 그 스타일의 주문 항목에 `unspecified` 수량이 하나라도 섞여 있으면 배정 저장을 409로 거부한다(어느 쪽에 얼마나 배분해야 할지 알 수 없는 값을 임의로 나누지 않는다 — 정확 계산 원칙) — "이 스타일의 모든 주문 항목에 성별을 지정해 주세요" 취지의 에러다.
+- **실제로 gender-aware하게 고친 두 지점(둘 다 `AssignmentPlan`의 영구 저장값을 만드는 지점)**: (1) `syncAssignmentPlansForOrderLock`의 재계산 루프(주문 잠금 후 수량이 바뀐 기존 배정을 갱신) — `calculateAssignmentStTotalSecondsFromStyleRows`/`buildAssignmentStSnapshot`. (2) `PUT /assignment-board-state`의 `createPlanRows` 블록(카드를 라인에 처음 드래그해 신규 `AssignmentPlan`을 만드는, 실질적인 최초 생성 경로) — `buildEditableAssignmentCtSnapshotFromLiveStyle`(CT)과 그 옆의 `stProcesses`/`assignmentStTotalSeconds` 계산(ST) 둘 다.
+- `calculateAssignmentStTotalSecondsFromStyleRows`/`calculateAssignmentStTotalSecondsFromSnapshotProcesses`/`buildAssignmentStSnapshot`/`buildEditableAssignmentCtSnapshotFromLiveStyle`는 전부 `genderQuantities` 옵션 인자를 새로 받는다. 생략(`null`)하면 이전과 수학적으로 동일하게 동작한다(합을 낸 뒤 한 번 곱하던 것을 행마다 곱해서 합산하는 방식으로 바꿨을 뿐, `genderQuantities`가 없으면 모든 행이 같은 `assignmentQuantity`를 쓰므로 결과가 같다).
+- `assignmentStSnapshot.processes[]`와 `assignmentCtSnapshot.processes[]`에 각각 `genderScope`, `applicableQuantity`(그 공정에 실제 적용된 수량 — UNISEX면 전체 수량과 같음)를 새로 기록한다. 이 값은 감사용 스냅샷 필드이며, §51/53의 "남은 계획 부하" 계산(`calculateRemainingStTotalSecondsFromProcessProgress` 계열)은 아직 이 값을 읽지 않는다(아래 미해결 항목 참고) — 지금 당장은 정보만 저장해 두고 소비하지 않는 상태다.
+- `StyleProcessVersion.processSnapshot`(공정 버전 확정 시점 스냅샷)은 `loadStyleProcessMirrorMapForStyleIds`(→`buildStyleProcessMirrorFromRows`, 이미 `genderScope`를 포함하도록 되어 있음)로 만들어지므로 신규/재확정 버전 모두 `genderScope`를 그대로 보존한다. 과거(이 기능 이전) 확정 버전은 `genderScope`가 없을 수 있는데, 이 경우 `normalizeProcessGenderScope`가 안전하게 `UNISEX`로 기본 처리한다(과거 데이터에 영향 없음).
+- **이번에 의도적으로 손대지 않은 것 (알려진 미해결 범위)**:
+  1. **미배정 카드(pool card)의 ST/PT/AT 미리보기**(`buildAssignmentCardsFromOrders`, `calculateAssignmentCardStTotalForOrderQuantity` 계열) — 라인에 배치하기 전 화면에 보이는 예상 총합은 아직 전체 수량 기준 그대로다. 실제로 라인에 드래그해 배정이 생성되는 순간(`createPlanRows`)부터 정확한 값으로 바뀐다.
+  2. **프론트 board-save 미리보기**(`AssignBoard.jsx`의 `buildAssignmentCtSnapshotForSave`/`getTotalStForOrderQuantity`) — "assignmentStTotalSeconds의 최종 계산 책임은 백엔드 저장 시점에 둔다"는 기존 원칙에 따라 프론트 값은 참고용이며 저장 시 백엔드가 확정한다. 저장 직후 값이 프론트 미리보기와 달라질 수 있다.
+  3. **`PUT /assignment-board-state`의 기존 배정 구조 변경 재계산 경로**(`prepareAssignmentBoardStTotalsForSave`의 `hasStructuralChange` 두 분기 — 확정 버전 스냅샷 기반/라이브 공정 기반)는 아직 gender-aware하지 않다. 즉 이미 생성된 배정을 다른 라인으로 옮기거나 수량을 바꾸는 board-save는 여전히 예전(균일 수량) 계산을 쓴다. 이 경로를 gender-aware하게 만들려면 이 함수가 신뢰하는 `card`가 저장 시점엔 아직 DB 검증 전의 요청 payload라는 점(§44/45/46 FK 정리 이후에도 이 함수 하나는 그 상태로 남아있음)부터 먼저 정리해야 한다.
+  4. **§51/53의 "남은 계획 부하"(`calculateRemainingStTotalSecondsFromProcessProgress`) 등 진행률/캐파시티 계산**은 여전히 공정별 `assignmentQuantity`(전체 수량)를 상한으로 쓴다. 성별 전용 공정은 실제로는 `applicableQuantity`(더 작은 값)가 상한이어야 정확하다 — 지금은 스냅샷에 `applicableQuantity`만 저장해 두었을 뿐 이 계산이 아직 그 값을 읽지 않는다.
+  5. 위 1~4를 고치기 전까지는, 성별 전용 공정이 있는 스타일의 배정을 **만든 직후**의 ST/CT 총합만 정확하다고 보고, 그 이후 수량 변경·라인 이동·진행률·잔여 부하 표시는 다시 확인 후 다음 단계에서 정리한다.
+
 ## 2026-08-19 공정 성별 적용 대상 (genderScope)
 
 - 공정은 남성 전용/여성 전용/공용 세 가지 적용 대상 중 하나를 가진다. `StyleProcess.genderScope`(`ProcessGenderScope` enum: `UNISEX`/`MALE_ONLY`/`FEMALE_ONLY`, 기본값 `UNISEX`)가 소스오브트루스다. 기존 공정 1,276건은 전부 `UNISEX`로 백필됐다.

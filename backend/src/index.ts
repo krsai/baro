@@ -6230,6 +6230,41 @@ const normalizeProcessGenderScope = (value: any): ProcessGenderScopeValue => {
     : "UNISEX";
 };
 
+// Per (workOrder x style) breakdown of order-item quantities by gender, used
+// to scope MALE_ONLY/FEMALE_ONLY StyleProcess rows to only the units they
+// actually apply to instead of the assignment's full quantity. `unspecified`
+// tracks quantity from WorkOrderItem rows with no explicit M/W gender (blank
+// or "U") - unlike display-only gender normalization elsewhere, this is never
+// guessed into male or female, since doing so would silently misattribute
+// production. A style with any non-UNISEX process cannot be assigned while
+// `unspecified > 0` for its order lines (see findStyleProcessGenderScopeAmbiguity).
+type StyleProcessGenderQuantities = {
+  total: number;
+  male: number;
+  female: number;
+  unspecified: number;
+};
+
+const resolveStyleProcessRowApplicableQuantity = (
+  row: any,
+  quantities: StyleProcessGenderQuantities
+): number => {
+  const scope = normalizeProcessGenderScope(row?.genderScope);
+  if (scope === "MALE_ONLY") return quantities.male;
+  if (scope === "FEMALE_ONLY") return quantities.female;
+  return quantities.total;
+};
+
+const findStyleProcessGenderScopeAmbiguity = (
+  processRows: any[],
+  quantities: StyleProcessGenderQuantities | null | undefined
+): boolean =>
+  Boolean(quantities) &&
+  (quantities as StyleProcessGenderQuantities).unspecified > 0 &&
+  ensureArray(processRows).some(
+    (row) => normalizeProcessGenderScope(row?.genderScope) !== "UNISEX"
+  );
+
 const resolveStyleProcessStorageCode = (process: any, index: number) => {
   const explicitCode = normalizeProcessCodeKey(process?.code);
   if (explicitCode) return explicitCode;
@@ -14493,6 +14528,7 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
   existingSnapshot = null,
   updatedAt,
   updatedBy,
+  genderQuantities = null,
 }: {
   assignment: any;
   card: any;
@@ -14500,6 +14536,7 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
   existingSnapshot?: any;
   updatedAt: string;
   updatedBy: string;
+  genderQuantities?: StyleProcessGenderQuantities | null;
 }) => {
   const liveProcesses = normalizeStyleProcesses(style?.processes);
   const incomingSnapshot = resolveNormalizedAssignmentCtSnapshot(assignment);
@@ -14607,9 +14644,26 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
         unresolvedProcessKeys.push(processKey);
         return null;
       }
+      const genderScope = normalizeProcessGenderScope(process?.genderScope);
+      if (
+        genderQuantities &&
+        genderQuantities.unspecified > 0 &&
+        genderScope !== "UNISEX"
+      ) {
+        // Order lines for this style include quantity with no explicit M/W
+        // gender, so a male-only/female-only process can't be scoped safely -
+        // fail closed the same way an unresolved CT seed does.
+        unresolvedProcessKeys.push(processKey);
+        return null;
+      }
+      const applicableQuantity = genderQuantities
+        ? resolveStyleProcessRowApplicableQuantity(process, genderQuantities)
+        : orderQuantity;
 
       return {
         styleProcessId,
+        genderScope,
+        applicableQuantity,
         processCode:
           resolveOptionalString(
             process?.code ??
@@ -14678,9 +14732,25 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
           0
         )
       : null;
+  // Weighted by each process's own applicable quantity (full orderQuantity
+  // for UNISEX, the male/female sub-quantity for a gender-restricted
+  // process) rather than pieceCtTotalSeconds * orderQuantity, so a
+  // MALE_ONLY/FEMALE_ONLY process only contributes for the units it
+  // actually applies to.
   const assignmentCtTotalSeconds =
-    pieceCtTotalSeconds != null
-      ? Math.max(0, Math.round(pieceCtTotalSeconds * orderQuantity))
+    processes.length > 0
+      ? Math.max(
+          0,
+          Math.round(
+            processes.reduce(
+              (sum, process) =>
+                sum +
+                (Number(process?.pieceCtSeconds) || 0) *
+                  Number(process?.applicableQuantity ?? orderQuantity),
+              0
+            )
+          )
+        )
       : null;
   const snapshotCore =
     processes.length > 0
@@ -15439,6 +15509,92 @@ const resolveOrderStyleQuantityMap = (order: any): Map<number, number> => {
   return map;
 };
 
+const accumulateStyleProcessGenderQuantity = (
+  bucket: StyleProcessGenderQuantities,
+  rawGender: "M" | "W" | "U" | null,
+  quantity: number
+) => {
+  bucket.total += quantity;
+  if (rawGender === "M") bucket.male += quantity;
+  else if (rawGender === "W") bucket.female += quantity;
+  else bucket.unspecified += quantity;
+};
+
+// Same source rows as resolveOrderStyleQuantityMap, but split by gender - used
+// only when a style actually has a MALE_ONLY/FEMALE_ONLY StyleProcess (see
+// findStyleProcessGenderScopeAmbiguity). Deliberately does NOT default a
+// blank gender to "M" the way workOrderItemToItemShape's display shape does -
+// that default is fine for display, but silently attributing ungendered
+// quantity to a MALE_ONLY process here would misstate ST/CT.
+const resolveOrderStyleGenderQuantityMap = (
+  order: any
+): Map<number, StyleProcessGenderQuantities> => {
+  const map = new Map<number, StyleProcessGenderQuantities>();
+  ensureArray(order?.workOrderItems).forEach((row: any) => {
+    const item = workOrderItemToItemShape(row);
+    const styleId = toPositiveIntOrNull(item?.styleId);
+    if (styleId === null) return;
+    const quantity = Math.max(0, Math.round(Number(sumOrderItemQuantity(item)) || 0));
+    if (quantity <= 0) return;
+    const bucket =
+      map.get(styleId) ?? { total: 0, male: 0, female: 0, unspecified: 0 };
+    accumulateStyleProcessGenderQuantity(
+      bucket,
+      normalizeWorkOrderItemGender(row?.gender, null),
+      quantity
+    );
+    map.set(styleId, bucket);
+  });
+  return map;
+};
+
+// Same as resolveOrderStyleGenderQuantityMap but fetches WorkOrderItem rows
+// directly for a set of workOrderIds (board-save paths don't have a loaded
+// `order` object with workOrderItems attached). Keyed by "workOrderId:styleId"
+// since the same style can appear in multiple orders with different splits.
+const loadStyleGenderQuantityMapForWorkOrderIds = async (
+  workOrderIds: number[],
+  db: any
+): Promise<Map<string, StyleProcessGenderQuantities>> => {
+  const map = new Map<string, StyleProcessGenderQuantities>();
+  const ids = Array.from(
+    new Set(
+      ensureArray(workOrderIds)
+        .map((id) => toPositiveIntOrNull(id))
+        .filter((id): id is number => id !== null)
+    )
+  );
+  if (ids.length === 0) return map;
+  const rows = await db.workOrderItem.findMany({
+    where: { workOrderId: { in: ids } },
+    select: {
+      workOrderId: true,
+      styleId: true,
+      gender: true,
+      totalQuantity: true,
+      sizeQuantities: true,
+    },
+  });
+  rows.forEach((row: any) => {
+    const workOrderId = toPositiveIntOrNull(row?.workOrderId);
+    const styleId = toPositiveIntOrNull(row?.styleId);
+    if (workOrderId === null || styleId === null) return;
+    const item = workOrderItemToItemShape(row);
+    const quantity = Math.max(0, Math.round(Number(sumOrderItemQuantity(item)) || 0));
+    if (quantity <= 0) return;
+    const key = `${workOrderId}:${styleId}`;
+    const bucket =
+      map.get(key) ?? { total: 0, male: 0, female: 0, unspecified: 0 };
+    accumulateStyleProcessGenderQuantity(
+      bucket,
+      normalizeWorkOrderItemGender(row?.gender, null),
+      quantity
+    );
+    map.set(key, bucket);
+  });
+  return map;
+};
+
 // Runs once, when an order transitions to locked (AGENTS.md 40번). Reconciles
 // existing AssignmentPlan rows for this order against the current
 // WorkOrderItem quantities:
@@ -15469,6 +15625,7 @@ const syncAssignmentPlansForOrderLock = async ({
   if (!orderId) return { zeroedStyles: [] };
 
   const styleQuantityMap = resolveOrderStyleQuantityMap(order);
+  const styleGenderQuantityMap = resolveOrderStyleGenderQuantityMap(order);
   const workOrderIds = collectPositiveIntSet(order?.id);
   if (workOrderIds.length === 0) {
     throw createHttpError(409, "order is missing WorkOrder.id; cannot sync assignment plans accurately");
@@ -15751,11 +15908,30 @@ const syncAssignmentPlansForOrderLock = async ({
         style?.timeBucketSetVersionId,
         0
       );
+      const needsGenderQuantities = styleProcessRows.some(
+        (row: any) => normalizeProcessGenderScope(row?.genderScope) !== "UNISEX"
+      );
+      const genderQuantities = needsGenderQuantities
+        ? styleGenderQuantityMap.get(item.styleId) ?? null
+        : null;
+      if (needsGenderQuantities && !genderQuantities) {
+        throw createHttpError(
+          409,
+          `style ${item.styleId} has a male-only/female-only process but no order line quantity could be resolved for it`
+        );
+      }
+      if (findStyleProcessGenderScopeAmbiguity(styleProcessRows, genderQuantities)) {
+        throw createHttpError(
+          409,
+          `style ${item.styleId} has a male-only/female-only process but its order lines include ${genderQuantities?.unspecified} unit(s) without an explicit gender - specify M/W gender for every order line of this style`
+        );
+      }
       const assignmentStTotalSeconds = calculateAssignmentStTotalSecondsFromStyleRows({
         styleProcessRows,
         assignmentQuantity: item.targetQuantity,
         quantityBucketEntryId,
         quantityBucketSetVersionId,
+        genderQuantities,
       });
       await db.assignmentPlan.update({
         where: { id: item.plan.id },
@@ -15769,6 +15945,7 @@ const syncAssignmentPlansForOrderLock = async ({
             quantityBucketEntryId,
             quantityBucketSetVersionId,
             actor: getCurrentRequestActor(),
+            genderQuantities,
           }),
         },
       });
@@ -16688,15 +16865,18 @@ const calculateAssignmentStTotalSecondsFromStyleRows = ({
   assignmentQuantity,
   quantityBucketEntryId,
   quantityBucketSetVersionId,
+  genderQuantities = null,
 }: {
   styleProcessRows: any[];
   assignmentQuantity: number;
   quantityBucketEntryId: number;
   quantityBucketSetVersionId: number;
+  genderQuantities?: StyleProcessGenderQuantities | null;
 }) => {
-  let pieceStTotalSeconds = 0;
   const rows = ensureArray(styleProcessRows);
   if (rows.length === 0) return null;
+  if (findStyleProcessGenderScopeAmbiguity(rows, genderQuantities)) return null;
+  let totalSeconds = 0;
   for (const row of rows) {
     const bucketStSeconds = resolveStyleProcessBucketStSecondsByEntryId(
       row,
@@ -16704,9 +16884,12 @@ const calculateAssignmentStTotalSecondsFromStyleRows = ({
       quantityBucketSetVersionId
     );
     if (bucketStSeconds === null) return null;
-    pieceStTotalSeconds += bucketStSeconds;
+    const rowQuantity = genderQuantities
+      ? resolveStyleProcessRowApplicableQuantity(row, genderQuantities)
+      : assignmentQuantity;
+    totalSeconds += bucketStSeconds * rowQuantity;
   }
-  return Math.max(0, Math.round(pieceStTotalSeconds * assignmentQuantity));
+  return Math.max(0, Math.round(totalSeconds));
 };
 
 const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
@@ -16716,6 +16899,7 @@ const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
   quantityBucketSetVersionId,
   styleId,
   styleProcessLookup,
+  genderQuantities = null,
 }: {
   snapshotProcesses: any[];
   assignmentQuantity: number;
@@ -16723,8 +16907,9 @@ const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
   quantityBucketSetVersionId: number;
   styleId: number | null;
   styleProcessLookup: ReturnType<typeof buildStyleProcessLookupForStCalculation>;
+  genderQuantities?: StyleProcessGenderQuantities | null;
 }) => {
-  let pieceStTotalSeconds = 0;
+  let totalSeconds = 0;
   const processes = ensureArray(snapshotProcesses);
   if (processes.length === 0) return null;
   for (const process of processes) {
@@ -16741,9 +16926,19 @@ const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
           )
         : null;
     if (bucketStSeconds === null) return null;
-    pieceStTotalSeconds += bucketStSeconds;
+    if (
+      genderQuantities &&
+      genderQuantities.unspecified > 0 &&
+      normalizeProcessGenderScope(matchedRow?.genderScope) !== "UNISEX"
+    ) {
+      return null;
+    }
+    const rowQuantity = genderQuantities
+      ? resolveStyleProcessRowApplicableQuantity(matchedRow, genderQuantities)
+      : assignmentQuantity;
+    totalSeconds += bucketStSeconds * rowQuantity;
   }
-  return Math.max(0, Math.round(pieceStTotalSeconds * assignmentQuantity));
+  return Math.max(0, Math.round(totalSeconds));
 };
 
 const hasAssignmentStBasisChange = ({
@@ -21915,6 +22110,7 @@ const buildAssignmentStSnapshot = ({
   quantityBucketEntryId,
   quantityBucketSetVersionId,
   actor,
+  genderQuantities = null,
 }: {
   styleProcessRows: any[];
   assignmentQuantity: number;
@@ -21922,6 +22118,7 @@ const buildAssignmentStSnapshot = ({
   quantityBucketEntryId: number;
   quantityBucketSetVersionId: number;
   actor: string;
+  genderQuantities?: StyleProcessGenderQuantities | null;
 }) => {
   if (!Number.isInteger(quantityBucketSetVersionId) || quantityBucketSetVersionId <= 0) {
     throw createHttpError(409, "style time bucket version is required");
@@ -21959,6 +22156,10 @@ const buildAssignmentStSnapshot = ({
       bucketQuantity,
       stSeconds,
       stSource: standard?.setBy ?? null,
+      genderScope: normalizeProcessGenderScope(row?.genderScope),
+      applicableQuantity: genderQuantities
+        ? resolveStyleProcessRowApplicableQuantity(row, genderQuantities)
+        : assignmentQuantity,
     };
   });
   if (processes.length === 0) {
@@ -29337,17 +29538,69 @@ app.put("/assignment-board-state", async (req, res) => {
         });
         styleVersionByStyleId.set(styleId, version);
       }
+      // Only styles with an actual MALE_ONLY/FEMALE_ONLY process need a
+      // gender-quantity breakdown - the overwhelming majority (UNISEX-only)
+      // skip this entirely and behave exactly as before.
+      const styleIdsNeedingGenderQuantities = new Set<number>();
+      styleVersionByStyleId.forEach((version, styleId) => {
+        const versionProcesses = normalizeStyleProcesses(version.processSnapshot);
+        if (
+          versionProcesses.some(
+            (process: any) => normalizeProcessGenderScope(process?.genderScope) !== "UNISEX"
+          )
+        ) {
+          styleIdsNeedingGenderQuantities.add(styleId);
+        }
+      });
+      const workOrderIdsForGenderQuantities = Array.from(
+        new Set(
+          createPlanRows
+            .map((item: any) => {
+              const cardId = resolveOptionalString(item?.cardId, null);
+              return toPositiveIntOrNull(
+                cardId ? cardIdToAssignmentCardId.get(cardId)?.workOrderId : item?.workOrderId
+              );
+            })
+            .filter((id): id is number => id !== null)
+        )
+      );
+      const styleGenderQuantityMap =
+        styleIdsNeedingGenderQuantities.size > 0
+          ? await loadStyleGenderQuantityMapForWorkOrderIds(
+              workOrderIdsForGenderQuantities,
+              tx
+            )
+          : new Map<string, StyleProcessGenderQuantities>();
       const versionedCreatePlanRows = createPlanRows.map((item: any) => {
         const cardId = resolveOptionalString(item?.cardId, null);
-        const styleId = toPositiveIntOrNull(
-          cardId ? cardIdToAssignmentCardId.get(cardId)?.styleId : item?.styleId
-        );
+        const linkedCard = cardId ? cardIdToAssignmentCardId.get(cardId) : null;
+        const styleId = toPositiveIntOrNull(linkedCard?.styleId ?? item?.styleId);
         const version = styleId === null ? null : styleVersionByStyleId.get(styleId) ?? null;
         if (!version) {
           throw createHttpError(409, `confirmed process version is missing for assignment ${item.externalId}`);
         }
         const assignmentQuantity = Math.max(0, Math.round(Number(item?.assignmentQuantity ?? item?.quantity) || 0));
         const versionProcesses = normalizeStyleProcesses(version.processSnapshot);
+        const needsGenderQuantities =
+          styleId !== null && styleIdsNeedingGenderQuantities.has(styleId);
+        const workOrderId = toPositiveIntOrNull(
+          linkedCard?.workOrderId ?? item?.workOrderId
+        );
+        const genderQuantities = needsGenderQuantities
+          ? styleGenderQuantityMap.get(`${workOrderId}:${styleId}`) ?? null
+          : null;
+        if (needsGenderQuantities && !genderQuantities) {
+          throw createHttpError(
+            409,
+            `assignment ${item.externalId}: style ${styleId} has a male-only/female-only process but no order line quantity could be resolved for it`
+          );
+        }
+        if (findStyleProcessGenderScopeAmbiguity(versionProcesses, genderQuantities)) {
+          throw createHttpError(
+            409,
+            `assignment ${item.externalId}: style ${styleId} has a male-only/female-only process but its order lines include ${genderQuantities?.unspecified} unit(s) without an explicit gender - specify M/W gender for every order line of this style`
+          );
+        }
         const refreshed = buildEditableAssignmentCtSnapshotFromLiveStyle({
           assignment: item,
           card: { quantity: assignmentQuantity },
@@ -29355,6 +29608,7 @@ app.put("/assignment-board-state", async (req, res) => {
           existingSnapshot: null,
           updatedAt: new Date().toISOString(),
           updatedBy: resolveOptionalString(getRequesterEmail(req), "SYSTEM") ?? "SYSTEM",
+          genderQuantities,
         });
         if (!refreshed.readiness.ready || !refreshed.assignment.assignmentCtSnapshot) {
           throw createHttpError(409, `assignment ${item.externalId}: ${refreshed.readiness.reason || "version CT snapshot not ready"}`);
@@ -29370,6 +29624,10 @@ app.put("/assignment-board-state", async (req, res) => {
           processCode: process?.code ?? process?.processCode,
           processName: process?.name ?? process?.processName,
           productionStage: process?.productionStage ?? "SEWING",
+          genderScope: normalizeProcessGenderScope(process?.genderScope),
+          applicableQuantity: genderQuantities
+            ? resolveStyleProcessRowApplicableQuantity(process, genderQuantities)
+            : assignmentQuantity,
           stSeconds: resolveStyleProcessVersionStPerPieceSeconds(
             process,
             Math.max(1, assignmentQuantity)
@@ -29378,6 +29636,11 @@ app.put("/assignment-board-state", async (req, res) => {
         if (stProcesses.some((process) => !process.styleProcessId || !process.stSeconds)) {
           throw createHttpError(409, `assignment ${item.externalId}: version ST is missing for a process`);
         }
+        const assignmentStTotalSeconds = stProcesses.reduce(
+          (sum, process) =>
+            sum + Number(process.stSeconds) * Number(process.applicableQuantity),
+          0
+        );
         return {
           ...item,
           styleProcessVersionId: version.id,
@@ -29390,14 +29653,8 @@ app.put("/assignment-board-state", async (req, res) => {
             confirmedDate: version.confirmedDate,
             processes: stProcesses,
           },
-          assignmentStTotalSeconds: stProcesses.reduce(
-            (sum, process) => sum + Number(process.stSeconds) * assignmentQuantity,
-            0
-          ),
-          stTotalSeconds: stProcesses.reduce(
-            (sum, process) => sum + Number(process.stSeconds) * assignmentQuantity,
-            0
-          ),
+          assignmentStTotalSeconds,
+          stTotalSeconds: assignmentStTotalSeconds,
         };
       });
       await tx.assignmentPlan.createMany({
