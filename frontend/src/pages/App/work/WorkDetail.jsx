@@ -2626,36 +2626,6 @@ const WorkDetail = ({
     });
     setEditingField(null);
   }, [lineWorkers.length, selectedLineId]);
-  // renderedRowViewModels can be a filtered (search) and/or virtualized
-  // (rowRenderLimit) subset of the full rows array, so drag source/destination
-  // indices are positions within that visible list, not the full array. Resolve
-  // both ends to row ids first, then splice the full `rows` state relative to
-  // the destination row's neighbor - this keeps reordering correct even when
-  // some rows are hidden by the search filter or not yet virtualized in.
-  const handleRowDragEnd = useCallback((result) => {
-    if (!result.destination) return;
-    const sourceIndex = result.source.index;
-    const destinationIndex = result.destination.index;
-    if (sourceIndex === destinationIndex) return;
-    const draggedRowId = renderedRowViewModels[sourceIndex]?.row?.id;
-    const destinationRowId = renderedRowViewModels[destinationIndex]?.row?.id;
-    if (!draggedRowId || !destinationRowId) return;
-    setRows((currentRows) => {
-      const safeRows = Array.isArray(currentRows) ? currentRows : [];
-      const fromIndex = safeRows.findIndex((row) => row.id === draggedRowId);
-      if (fromIndex < 0) return safeRows;
-      const nextRows = [...safeRows];
-      const [movedRow] = nextRows.splice(fromIndex, 1);
-      const anchorIndex = nextRows.findIndex((row) => row.id === destinationRowId);
-      if (anchorIndex < 0) {
-        nextRows.splice(fromIndex, 0, movedRow);
-        return nextRows;
-      }
-      const insertionIndex = sourceIndex < destinationIndex ? anchorIndex + 1 : anchorIndex;
-      nextRows.splice(insertionIndex, 0, movedRow);
-      return nextRows;
-    });
-  }, [renderedRowViewModels]);
 
   const handleSave = useCallback(() => {
     setFormError('');
@@ -2924,6 +2894,36 @@ const WorkDetail = ({
     () => visibleRowViewModels.slice(0, rowRenderLimit),
     [rowRenderLimit, visibleRowViewModels]
   );
+  // renderedRowViewModels can be a filtered (search) and/or virtualized
+  // (rowRenderLimit) subset of the full rows array, so drag source/destination
+  // indices are positions within that visible list, not the full array. Resolve
+  // both ends to row ids first, then splice the full `rows` state relative to
+  // the destination row's neighbor - this keeps reordering correct even when
+  // some rows are hidden by the search filter or not yet virtualized in.
+  const handleRowDragEnd = useCallback((result) => {
+    if (!result.destination) return;
+    const sourceIndex = result.source.index;
+    const destinationIndex = result.destination.index;
+    if (sourceIndex === destinationIndex) return;
+    const draggedRowId = renderedRowViewModels[sourceIndex]?.row?.id;
+    const destinationRowId = renderedRowViewModels[destinationIndex]?.row?.id;
+    if (!draggedRowId || !destinationRowId) return;
+    setRows((currentRows) => {
+      const safeRows = Array.isArray(currentRows) ? currentRows : [];
+      const fromIndex = safeRows.findIndex((row) => row.id === draggedRowId);
+      if (fromIndex < 0) return safeRows;
+      const nextRows = [...safeRows];
+      const [movedRow] = nextRows.splice(fromIndex, 1);
+      const anchorIndex = nextRows.findIndex((row) => row.id === destinationRowId);
+      if (anchorIndex < 0) {
+        nextRows.splice(fromIndex, 0, movedRow);
+        return nextRows;
+      }
+      const insertionIndex = sourceIndex < destinationIndex ? anchorIndex + 1 : anchorIndex;
+      nextRows.splice(insertionIndex, 0, movedRow);
+      return nextRows;
+    });
+  }, [renderedRowViewModels]);
   useEffect(() => {
     setRowRenderLimit(ROW_RENDER_BATCH_SIZE);
   }, [deferredSearchTerm, initialLog?.id]);
