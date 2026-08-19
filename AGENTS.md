@@ -1,5 +1,15 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-08-19 후속4: bucketQuantity 존재 여부로 실제 생산률·남은 계획 부하 계산을 게이트하지 않는다
+
+- `assignmentStSnapshot`은 두 가지 서로 다른 최상위 shape로 저장될 수 있다. `buildAssignmentStSnapshot`(수량 버킷 경로)은 `bucketQuantity`/`quantityBucketEntryId`/`quantityBucketSetVersionId`를 최상위에 남기지만, `PUT /styles/:styleId/process-version-boundaries`(공정 버전 재확정 경로)가 마지막으로 다시 쓴 배정은 `revision`/`confirmedDate`/`styleProcessVersionId` shape를 쓰고 최상위 `bucketQuantity`가 없다. 두 shape 모두 `processes[].styleProcessId/stSeconds/applicableQuantity`는 정상적으로 채워져 있다.
+- `resolveWorkRecordStSecondsForLineMonthCapacity`(라인-월 실제 생산 ST)와 `calculateRemainingStTotalSecondsFromProcessProgress`(§51/53의 남은 계획 부하 핵심 함수) 둘 다 `processes[]`만 읽고 최상위 `bucketQuantity`는 전혀 읽지 않는다. 그런데도 두 호출부가 각각 `assignmentStSnapshot.bucketQuantity != null`을 게이트로 썼었다:
+  - `buildLineMonthCapacityRows`의 실제 생산 집계 루프(`plans.forEach`)는 `bucketQuantity === null`이면 그 plan을 통째로 `return`해서, 실제 존재하는 `WorkRecord`의 ST를 그 라인의 월별 실제 생산 ST 합계(`lineMonthlyActualOutputStSeconds`, "실제 생산률"의 분자)에서 전부 누락시켰다.
+  - `buildAssignmentPlanProgressRows`의 `exactRemainingStTotalSeconds` 계산은 `bucketQuantity != null`일 때만 호출되고, 아니면 `null`로 떨어져 더 거친 비율 기반 `ratioProgressForRemainingRatio`로 폴백했다 — 이 폴백은 §51/53이 "공정 하나의 최소 완성수량으로 전체 ST를 다시 넣는" 과대추정 문제를 고치려고 넣은 정확 계산 자체를 우회시킨다.
+- 두 게이트 모두 제거하고(`bucketQuantity`는 진단용으로만 nullable로 남김), snapshot shape와 무관하게 `processes[]`만으로 항상 계산하도록 고쳤다.
+- 2026-08-19 운영 DB로 재현: LINE #1(66개 배정 중 14개, TKD 바람막이 포함)과 조직 전체 미완료 배정(33개 중 12개, 36%)이 이 shape였다. TKD 바람막이 배정 하나만 해도 8월 `WorkRecord` 136건·약 805시간 ST가 "실제 생산률" 분자에서 통째로 빠지고 있었고, 같은 원인으로 "계획 부하"도 비율 폴백 탓에 100%로 과대추정되고 있었다.
+- `process-version-boundaries` 쓰기 경로 자체(왜 다른 shape를 쓰는지, 두 shape를 하나로 통일할지)는 이번 범위에서 건드리지 않았다 — 순수 소비자 쪽 게이트만 제거해 두 shape 모두 정상 계산되게 한 안전한 최소 수정이다.
+
 ## 2026-08-19 공정 성별 적용 대상 → 배정 ST/CT/진행률 계산 반영
 
 - 성별 전용 공정이 있는 스타일의 배정 ST/CT 총합은 주문 항목(`WorkOrderItem.gender` M/W/U + 수량)에서 남성/여성 수량을 집계해 반영한다. `MALE_ONLY` 공정은 그 주문·스타일의 남성 수량만, `FEMALE_ONLY`는 여성 수량만 곱하고, `UNISEX`(기본값) 공정은 기존처럼 전체 수량을 곱한다. ST 버킷 조회 자체는 여전히 전체 수량 기준 버킷을 재사용한다(성별 하위 수량으로 별도 버킷을 다시 찾지 않음) — 정확도보다 구현 복잡도·위험을 낮추기 위한 의도적 단순화이며, "남성 전용 공정을 여성 100% 주문에서 완전히 0으로 배제"처럼 사용자가 요청한 핵심 효과는 그대로 달성한다.
