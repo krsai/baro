@@ -24,7 +24,6 @@ const TEXT = {
     empty: '조건에 맞는 보고서 항목이 없습니다.',
     loadError: '생산 진행 보고서를 불러오지 못했습니다.',
     includeCompleted: '완료 포함',
-    styleCount: (total) => `${total}개 스타일`,
     completedCount: (count, total) => `완료 ${count}/${total}`,
     detailToggleOpen: '스타일별 상세 닫기',
     detailToggleClosed: '스타일별 상세 보기',
@@ -36,7 +35,6 @@ const TEXT = {
     empty: 'No report rows match the filters.',
     loadError: 'Failed to load the production progress report.',
     includeCompleted: 'Include completed',
-    styleCount: (total) => `${total} styles`,
     completedCount: (count, total) => `${count}/${total} completed`,
     detailToggleOpen: 'Hide style breakdown',
     detailToggleClosed: 'Show style breakdown',
@@ -48,7 +46,6 @@ const TEXT = {
     empty: 'Không có dữ liệu phù hợp.',
     loadError: 'Không thể tải báo cáo tiến độ sản xuất.',
     includeCompleted: 'Bao gồm đã hoàn thành',
-    styleCount: (total) => `${total} kiểu dáng`,
     completedCount: (count, total) => `Hoàn thành ${count}/${total}`,
     detailToggleOpen: 'Ẩn chi tiết theo kiểu dáng',
     detailToggleClosed: 'Xem chi tiết theo kiểu dáng',
@@ -68,6 +65,20 @@ const customerLabel = (customer, languageCode) =>
   (languageCode === 'ko' ? customer?.nameKo : languageCode === 'vi' ? customer?.nameVi : null) || customer?.name || '-';
 const rowCustomerLabel = (row, languageCode) =>
   (languageCode === 'ko' ? row?.customerNameKo : languageCode === 'vi' ? row?.customerNameVi : null) || row?.customerName || '-';
+// Matches OrderList.jsx's formatStyleSummary: "AJ1527 외 9개" instead of a bare
+// count, so a multi-style order reads the same way here as it does on the
+// order screen.
+const resolveStyleSummaryLabel = (styles, languageCode) => {
+  const names = (Array.isArray(styles) ? styles : [])
+    .map((row) => String(row?.styleName || row?.styleCode || '').trim())
+    .filter(Boolean);
+  if (names.length === 0) return '-';
+  if (names.length === 1) return names[0];
+  const remaining = names.length - 1;
+  if (languageCode === 'vi') return `${names[0]} + ${remaining} style`;
+  if (languageCode === 'en') return `${names[0]} + ${remaining} styles`;
+  return `${names[0]} 외 ${remaining}개`;
+};
 // The backend also reports an internal "REVIEW_REQUIRED" state when per-process
 // quantities have not exactly reconciled yet. That is an internal production
 // bookkeeping detail, not something a customer needs to see or worry about, so
@@ -249,7 +260,7 @@ const CustomerProductionReport = () => {
                   <TableCell>
                     {hasMultipleStyles
                       ? <Stack spacing={0.25}>
-                          <Typography variant="body2">{text.styleCount(row.styles.length)}</Typography>
+                          <Typography variant="body2">{resolveStyleSummaryLabel(row.styles, languageCode)}</Typography>
                           <Typography variant="caption" color="text.secondary">{text.completedCount(row.completedStyleCount, row.styles.length)}</Typography>
                         </Stack>
                       : [soleStyle?.styleName, soleStyle?.styleCode].filter(Boolean).join(' · ') || '-'}

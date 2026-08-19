@@ -68,8 +68,13 @@ test('customer-facing report withholds internal schedule estimates and review fl
   assert.match(page, /normalizeCustomerFacingStatus/);
   assert.match(page, /status === 'REVIEW_REQUIRED' \? 'IN_PROGRESS'/);
   assert.match(page, /completedStyleCount/);
-  assert.match(page, /styleCount:\s*\(total\)/);
   assert.match(page, /completedCount:\s*\(count, total\)/);
+});
+
+test('multi-style order rows summarize as "first style 외 N개" like the order screen, not a bare count', () => {
+  assert.match(page, /resolveStyleSummaryLabel/);
+  assert.doesNotMatch(page, /styleCount:\s*\(total\)/);
+  assert.match(page, /\$\{names\[0\]\} 외 \$\{remaining\}개/);
 });
 
 test('report has no CSV export, no bold text, and prints full-width using the proven visibility-isolation pattern', () => {
