@@ -10,6 +10,13 @@
 - 배정 진행률·완료 판정(`buildAssignmentPlanProgressRows`, `buildLineMonthCapacityRows` 등)은 반드시 `WorkRecord`와 `OutsourcedWorkRecord` 두 테이블의 수량을 `assignmentPlanId`×`styleProcessId` 기준으로 합산한다. 이 합산은 `loadAssignmentPlanProgressWorkRows`(`backend/src/index.ts`) 한 곳에서 이루어지며, 이 함수가 반환하는 배열에는 `isOutsourced`/`outsourceVendorName`이 채워진 정규화된 행만 담긴다 — 다른 배정 관련 계산은 이 함수를 거치거나 동일한 합산 패턴을 따라야 하며 `WorkRecord` 한 테이블만 조회하면 안 된다.
 - 생산수당·AT 학습은 `WorkRecord` 테이블만 사용하며 별도 `isOutsourced` 필터가 필요 없다 — 외주는 애초에 그 테이블에 존재하지 않으므로 구조적으로 제외된다.
 
+### 2026-08-19 후속: 이관된 외주 행이 "외주 내역" 목록에서 안 보이던 문제
+
+- `backend/scripts/migrate-outsourced-work-records.js`(과거 `isOutsourced=true` `WorkRecord`를 `OutsourcedWorkRecord`로 옮기는 1회성 스크립트)가 처음 배포 때 실행된 뒤, 옮겨진 행이 거래처 상세(`GET /business-partners/:id/history`, `OutsourcedWorkRecord`를 직접 조회)에는 정상적으로 보이는데 "외주 내역" 목록 화면(`WorkList.jsx` recordKind=OUTSOURCING, `WorkLog.recordKind=OUTSOURCING`으로 필터링)에는 안 보이는 문제가 있었다.
+- 원인: 스크립트가 `OutsourcedWorkRecord` 행을 만들 때 `workLogId`를 원본 `WorkRecord.workLogId` 그대로 복사했다. 외주 분리 이전에는 한 `WorkLog`(월간 배치 헤더) 안에 직원 작업기록과 `isOutsourced=true` 행이 섞여 있을 수 있었는데, 이런 "혼합 WorkLog"는 이관 후에도 여전히 `recordKind='EMPLOYEE'`로 남아 있었다(실제 직원 `WorkRecord`가 그대로 있으니 맞는 상태). 그 결과 `EMPLOYEE`인 WorkLog에 `OutsourcedWorkRecord` 자식이 붙어있는 상태가 되어, "한 WorkLog의 자식 행은 항상 한쪽 테이블에만 존재한다"는 불변식이 깨졌고 `recordKind` 필터링 목록에서 빠졌다.
+- 2026-08-19 운영 DB에서 실제로 WorkLog#21(2026-04, 직원 348건 포함 혼합 배치)에 이관된 외주 4건이 이 상태였다. 전용 `recordKind='OUTSOURCING'` WorkLog(#35)를 새로 만들어 이 4건의 `workLogId`만 옮기고, WorkLog#21의 직원 348건은 그대로 두는 방식으로 직접 수정했다.
+- `migrate-outsourced-work-records.js`를 이 상황을 자동으로 처리하도록 고쳤다: 이관 대상 행의 원본 `workLogId`마다 그 WorkLog에 (이관 대상이 아닌) 진짜 직원 `WorkRecord`가 남아있는지 확인해서, 없으면 원본 WorkLog를 `OUTSOURCING`으로 그 자리에서 전환하고, 남아있으면(혼합 배치) 같은 기간·공장 정보로 전용 `OUTSOURCING` WorkLog를 새로 만들어 이관 행만 그쪽으로 옮긴다. 이 스크립트를 다른 조직/환경에서 다시 실행해도 같은 문제가 재발하지 않는다.
+
 ## 2026-08-14 보고서·배정 예측 계산 분리
 
 - 고객 보고서의 예상 완료일과 배정 화면의 계획 시간·라인 부하는 서로 다른 업무 계산이다. 보고서는 주문×스타일별 실제 최초 작업일과 해당 배정의 저장된 계획 기간을 사용하고, 배정은 공정별 잔여 수량×저장 ST와 라인 소속 인원의 근무 가능시간, 일요일·조직 휴일, 배정 순서를 사용한다.

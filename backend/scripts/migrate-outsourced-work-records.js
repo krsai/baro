@@ -78,13 +78,83 @@ const main = async () => {
   fs.writeFileSync(backupPath, JSON.stringify(legacyRows, (_key, value) =>
     typeof value === "bigint" ? value.toString() : value, 2));
 
+  // A WorkLog's children must live in exactly one table (WorkRecord XOR
+  // OutsourcedWorkRecord - see AGENTS.md). The source WorkLog for a legacy
+  // isOutsourced=true row predates that rule and may still have real
+  // employee WorkRecord rows alongside it (a mixed monthly batch). Moving
+  // the row without also fixing up its WorkLog parent leaves an
+  // EMPLOYEE-kind WorkLog with OutsourcedWorkRecord children, which the
+  // 외주 내역 list (filtered by WorkLog.recordKind=OUTSOURCING) then can't
+  // find even though GET /business-partners/:id/history (reads
+  // OutsourcedWorkRecord directly) shows it fine - this bit us for real in
+  // production on 2026-08-19.
+  const sourceWorkLogIds = Array.from(new Set(migratable.map((row) => row.workLogId)));
+  const sourceWorkLogs = await prisma.workLog.findMany({
+    where: { id: { in: sourceWorkLogIds } },
+  });
+  const sourceWorkLogById = new Map(sourceWorkLogs.map((workLog) => [workLog.id, workLog]));
+  const remainingEmployeeCounts = await prisma.workRecord.groupBy({
+    by: ["workLogId"],
+    where: { workLogId: { in: sourceWorkLogIds }, isOutsourced: false },
+    _count: { _all: true },
+  });
+  const remainingEmployeeCountByWorkLogId = new Map(
+    remainingEmployeeCounts.map((row) => [row.workLogId, row._count._all])
+  );
+
+  const targetWorkLogIdBySourceId = new Map();
+  for (const workLogId of sourceWorkLogIds) {
+    const sourceWorkLog = sourceWorkLogById.get(workLogId);
+    if (!sourceWorkLog) {
+      // Source WorkLog missing entirely - leave the row pointed at its
+      // current (dangling) workLogId rather than guessing a replacement.
+      targetWorkLogIdBySourceId.set(workLogId, workLogId);
+      continue;
+    }
+    const hasRemainingEmployeeRows =
+      (remainingEmployeeCountByWorkLogId.get(workLogId) || 0) > 0;
+    if (!hasRemainingEmployeeRows) {
+      // Nothing employee-side left on this WorkLog - it was entirely
+      // outsourced, so just flip it to OUTSOURCING in place instead of
+      // creating a redundant sibling.
+      if (sourceWorkLog.recordKind !== "OUTSOURCING") {
+        await prisma.workLog.update({
+          where: { id: workLogId },
+          data: { recordKind: "OUTSOURCING" },
+        });
+      }
+      targetWorkLogIdBySourceId.set(workLogId, workLogId);
+    } else {
+      const rowCountForThisWorkLog = migratable.filter(
+        (row) => row.workLogId === workLogId
+      ).length;
+      const newWorkLog = await prisma.workLog.create({
+        data: {
+          orgId: sourceWorkLog.orgId,
+          displayDate: sourceWorkLog.displayDate,
+          factoryId: sourceWorkLog.factoryId,
+          ctBasis: sourceWorkLog.ctBasis,
+          note: `[외주 분리 마이그레이션] WorkLog#${workLogId}에서 이관된 외주 작업기록 전용 헤더 (${stamp.slice(0, 10)})`,
+          records: sourceWorkLog.records ?? undefined,
+          coverageStartDate: sourceWorkLog.coverageStartDate,
+          coverageEndDate: sourceWorkLog.coverageEndDate,
+          entryMode: sourceWorkLog.entryMode,
+          recordKind: "OUTSOURCING",
+          itemCount: rowCountForThisWorkLog,
+        },
+      });
+      targetWorkLogIdBySourceId.set(workLogId, newWorkLog.id);
+    }
+  }
+
   let migratedCount = 0;
   for (const row of migratable) {
+    const targetWorkLogId = targetWorkLogIdBySourceId.get(row.workLogId) ?? row.workLogId;
     await prisma.$transaction(async (tx) => {
       await tx.outsourcedWorkRecord.create({
         data: {
           orgId: row.orgId,
-          workLogId: row.workLogId,
+          workLogId: targetWorkLogId,
           outsourcingPartnerId: row.outsourcingPartnerId,
           outsourceVendorName: row.outsourceVendorName,
           outsourceUnitPrice: row.outsourceUnitPrice,
