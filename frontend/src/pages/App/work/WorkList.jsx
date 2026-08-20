@@ -736,20 +736,36 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
 
   const shiftDateFilterMonth = useCallback(
     (amount) => {
+      // Plain dayjs `.add(amount, 'month')` preserves the day-of-month number
+      // and clamps into the target month when that day doesn't exist there
+      // (e.g. Aug 31 + 1 month -> Sep 30, since September has no 31st). That
+      // clamped day then sticks on every later shift even once the range
+      // moves back into a 31-day month (Sep 30 + 1 month -> Oct 30, not
+      // Oct 31), so a range that started as a full calendar month silently
+      // drifts short by a day. Re-snap to the month boundary only when the
+      // current start/end date IS that boundary, so a deliberately partial
+      // range (e.g. the 5th-20th) still shifts by plain day-preserving month
+      // math as before.
+      const currentStart = dayjs(dateFilterStart);
+      const currentEnd = dayjs(dateFilterEnd);
+      const startIsMonthStart = currentStart.isSame(currentStart.startOf('month'), 'day');
+      const endIsMonthEnd = currentEnd.isSame(currentEnd.endOf('month'), 'day');
+      const shiftedStart = currentStart.add(amount, 'month');
+      const shiftedEnd = currentEnd.add(amount, 'month');
       const nextMonthStart = clampWorkHistoryFilterDate(
-        dayjs(dateFilterStart).add(amount, 'month').toDate(),
+        (startIsMonthStart ? shiftedStart.startOf('month') : shiftedStart).toDate(),
         workHistoryOperationStartDay
       );
       setDateFilterStart(nextMonthStart);
       setDateFilterEnd((previous) => {
         const shifted = clampWorkHistoryFilterDate(
-          dayjs(previous).add(amount, 'month').toDate(),
+          (endIsMonthEnd ? shiftedEnd.endOf('month') : shiftedEnd).toDate(),
           workHistoryOperationStartDay
         );
         return shifted >= nextMonthStart ? shifted : nextMonthStart;
       });
     },
-    [dateFilterStart, workHistoryOperationStartDay]
+    [dateFilterStart, dateFilterEnd, workHistoryOperationStartDay]
   );
 
   return (
