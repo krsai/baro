@@ -34503,6 +34503,12 @@ const ensureBusinessPartnerMergedIntoOrganization = async () => {
   if (!tableExistsRows[0]?.exists) return;
 
   await prisma.$transaction(async (tx) => {
+    // Drop the OLD FK (still pointing at BusinessPartner) BEFORE remapping
+    // outsourcingPartnerId to new Organization ids below - Organization and
+    // BusinessPartner ids come from different sequences, so leaving the old
+    // constraint in place makes every remapped UPDATE violate it (23503).
+    await tx.$executeRaw`ALTER TABLE "OutsourcedWorkRecord" DROP CONSTRAINT IF EXISTS "OutsourcedWorkRecord_outsourcingPartnerId_fkey"`;
+
     await tx.$executeRaw`
       INSERT INTO "Organization"
         ("name", "type", "representative", "phone", "isActive", "ownerOrgId",
@@ -34530,7 +34536,7 @@ const ensureBusinessPartnerMergedIntoOrganization = async () => {
       WHERE owr."outsourcingPartnerId" = bp."id"
     `;
 
-    await tx.$executeRaw`ALTER TABLE "OutsourcedWorkRecord" DROP CONSTRAINT IF EXISTS "OutsourcedWorkRecord_outsourcingPartnerId_fkey"`;
+    // Old FK already dropped above, before the UPDATE.
     await tx.$executeRawUnsafe(`
       DO $$
       BEGIN
