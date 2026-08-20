@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Button, Chip, CircularProgress, Collapse, FormControl, FormControlLabel, GlobalStyles, InputLabel,
-  LinearProgress, IconButton, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer,
+  LinearProgress, IconButton, Menu, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Typography, Switch,
 } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
@@ -10,6 +10,7 @@ import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import AppPageContainer from '../../components/AppPageContainer';
 import PageToolbar from '../../components/PageToolbar';
 import SearchInput from '../../components/SearchInput';
+import QuantityReviewDrawer from '../../components/QuantityReviewDrawer';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
@@ -150,6 +151,8 @@ const CustomerProductionReport = () => {
   const [search, setSearch] = useState('');
   const [includeCompleted, setIncludeCompleted] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState(() => new Set());
+  const [contextMenuState, setContextMenuState] = useState(null);
+  const [activeQuantityReviewRow, setActiveQuantityReviewRow] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -196,6 +199,25 @@ const CustomerProductionReport = () => {
       return next;
     });
   }, []);
+  const handleRowContextMenu = useCallback((event, styleRow) => {
+    event.preventDefault();
+    setContextMenuState({
+      mouseX: event.clientX - 2,
+      mouseY: event.clientY - 4,
+      styleRow,
+    });
+  }, []);
+  const handleContextMenuClose = useCallback(() => setContextMenuState(null), []);
+  const contextMenuExternalId = useMemo(() => {
+    const ids = contextMenuState?.styleRow?.assignmentPlanExternalIds;
+    return Array.isArray(ids) && ids.length === 1 ? ids[0] : null;
+  }, [contextMenuState]);
+  const handleContextOpenQuantityReview = useCallback(() => {
+    if (!contextMenuExternalId || !contextMenuState?.styleRow) return;
+    setActiveQuantityReviewRow(contextMenuState.styleRow);
+    setContextMenuState(null);
+  }, [contextMenuExternalId, contextMenuState]);
+  const handleCloseQuantityReview = useCallback(() => setActiveQuantityReviewRow(null), []);
 
   return <AppPageContainer
     title={text.title}
@@ -247,7 +269,11 @@ const CustomerProductionReport = () => {
               const expanded = hasMultipleStyles && expandedOrders.has(row.key);
               const soleStyle = hasMultipleStyles ? null : row.styles[0];
               return <React.Fragment key={row.key}>
-                <TableRow hover sx={{ '& > td': { backgroundColor: expanded ? '#f4f8ff' : undefined } }}>
+                <TableRow
+                  hover
+                  sx={{ '& > td': { backgroundColor: expanded ? '#f4f8ff' : undefined } }}
+                  onContextMenu={!hasMultipleStyles && soleStyle ? (event) => handleRowContextMenu(event, soleStyle) : undefined}
+                >
                   <TableCell sx={{ width: 44 }}>
                     {hasMultipleStyles
                       ? <IconButton size="small" onClick={() => toggleOrder(row.key)} aria-label={expanded ? text.detailToggleOpen : text.detailToggleClosed}>
@@ -287,7 +313,11 @@ const CustomerProductionReport = () => {
                             </TableRow>
                           </TableHead>
                           <TableBody>{row.styles.map((styleRow) =>
-                            <TableRow key={`${styleRow.orderId}:${styleRow.styleId || styleRow.styleCode}`} sx={{ '&:last-child td': { borderBottom: 0 } }}>
+                            <TableRow
+                              key={`${styleRow.orderId}:${styleRow.styleId || styleRow.styleCode}`}
+                              sx={{ '&:last-child td': { borderBottom: 0 } }}
+                              onContextMenu={(event) => handleRowContextMenu(event, styleRow)}
+                            >
                               <TableCell>{styleRow.styleName || styleRow.styleCode || '-'}</TableCell>
                               <TableCell>{styleRow.dueDate || '-'}</TableCell>
                               <TableCell align="right">{fmt(styleRow.orderedQuantity)}</TableCell>
@@ -306,6 +336,29 @@ const CustomerProductionReport = () => {
           </Table>
         </TableContainer>}
     </Stack>
+    <Menu
+      open={Boolean(contextMenuState)}
+      onClose={handleContextMenuClose}
+      anchorReference="anchorPosition"
+      anchorPosition={
+        contextMenuState
+          ? { top: contextMenuState.mouseY, left: contextMenuState.mouseX }
+          : undefined
+      }
+    >
+      <MenuItem onClick={handleContextOpenQuantityReview} disabled={!contextMenuExternalId}>
+        {languageCode === 'ko' ? '수량 확인' : languageCode === 'vi' ? 'Kiểm tra số lượng' : 'Quantity review'}
+      </MenuItem>
+    </Menu>
+    <QuantityReviewDrawer
+      externalId={activeQuantityReviewRow?.assignmentPlanExternalIds?.length === 1 ? activeQuantityReviewRow.assignmentPlanExternalIds[0] : null}
+      orgId={activeOrgId}
+      languageCode={languageCode}
+      headerOrderNo={activeQuantityReviewRow?.orderNumber}
+      headerStyleLabel={activeQuantityReviewRow?.styleName || activeQuantityReviewRow?.styleCode}
+      headerQuantity={activeQuantityReviewRow?.assignedQuantity ?? activeQuantityReviewRow?.orderedQuantity}
+      onClose={handleCloseQuantityReview}
+    />
   </AppPageContainer>;
 };
 

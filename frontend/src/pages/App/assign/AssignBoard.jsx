@@ -45,6 +45,7 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { getGenderLabel } from '../../../constants/productAttributes';
 import CompactBoardCard from './components/CompactBoardCard';
 import LineMonthCapacityBoard from './components/LineMonthCapacityBoard';
+import QuantityReviewDrawer from '../../../components/QuantityReviewDrawer';
 import {
   ASSIGN_RECOMPUTE_RANGE_BUFFER_DAYS,
   ASSIGN_TIMELINE_CELL_WIDTH,
@@ -2962,119 +2963,6 @@ const rebuildLineWithReplace = ({
   ];
 };
 
-const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label, onOpenWorkLog }) => {
-  const [expandedProcessKey, setExpandedProcessKey] = useState('');
-
-  return (
-    <Box>
-      <Typography variant="subtitle1" fontWeight={800} sx={{ mb: 1 }}>
-        {label('공정별 수량', 'Quantity by process', 'Số lượng theo công đoạn')}
-      </Typography>
-      <TableContainer component={Paper} variant="outlined">
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>{label('공정', 'Process', 'Công đoạn')}</TableCell>
-              <TableCell align="right">{label('목표 수량', 'Target', 'Muc tieu')}</TableCell>
-              <TableCell align="right">{label('기록 수량', 'Recorded', 'Đã ghi')}</TableCell>
-              <TableCell align="right">{label('차이', 'Diff', 'Chenh lech')}</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {processTotals.map((process, index) => {
-              const processKey = String(process?.styleProcessId || `${process?.processCode || 'process'}:${index}`);
-              const expanded = expandedProcessKey === processKey;
-              const quantity = Math.max(0, Number(process?.quantity) || 0);
-              // A MALE_ONLY/FEMALE_ONLY process's own target (applicableQuantity),
-              // not the assignment's full blended `planned` quantity.
-              const processTarget = Number(process?.applicableQuantity ?? planned) || 0;
-              const difference = quantity - processTarget;
-              const linkedRecords = workRecords.filter((record) =>
-                process?.styleProcessId
-                  ? String(record?.styleProcessId || '') === String(process.styleProcessId)
-                  : String(record?.processCode || '') === String(process?.processCode || '')
-              );
-              return (
-                <React.Fragment key={processKey}>
-                  <TableRow
-                    hover
-                    onClick={() => setExpandedProcessKey((current) => current === processKey ? '' : processKey)}
-                    aria-expanded={expanded}
-                    sx={{ cursor: 'pointer', '& > td': { backgroundColor: expanded ? 'action.hover' : undefined } }}
-                  >
-                    <TableCell>
-                      <Stack direction="row" spacing={0.75} alignItems="center">
-                        <IconButton size="small" tabIndex={-1} aria-hidden="true">
-                          {expanded ? <KeyboardArrowUpIcon fontSize="small" /> : <KeyboardArrowDownIcon fontSize="small" />}
-                        </IconButton>
-                        <Typography variant="body2">
-                          {[process?.processCode, process?.processName].filter(Boolean).join(' · ') || `${label('공정', 'Process', 'Công đoạn')} ${index + 1}`}
-                        </Typography>
-                      </Stack>
-                    </TableCell>
-                    <TableCell align="right">{processTarget.toLocaleString()}</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>{quantity.toLocaleString()}</TableCell>
-                    <TableCell align="right" sx={{ color: difference === 0 ? 'success.main' : 'error.main', fontWeight: 800 }}>
-                      {difference > 0 ? '+' : ''}{difference.toLocaleString()}
-                    </TableCell>
-                  </TableRow>
-                  {expanded ? (
-                    <TableRow>
-                      <TableCell colSpan={4} sx={{ p: 0, backgroundColor: '#fafcff' }}>
-                        <Table size="small" aria-label={label('연결된 작업기록', 'Linked work records', 'Nhật ký công việc liên kết')}>
-                          <TableHead>
-                            <TableRow>
-                              <TableCell sx={{ pl: 6 }}>{label('작업일', 'Work date', 'Ngày làm')}</TableCell>
-                              <TableCell>{label('작업자', 'Worker', 'Người làm')}</TableCell>
-                              <TableCell align="right">{label('수량', 'Quantity', 'Số lượng')}</TableCell>
-                              <TableCell align="right">{label('바로가기', 'Open', 'Mở')}</TableCell>
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {linkedRecords.length ? linkedRecords.map((record, recordIndex) => (
-                              <TableRow key={record?.id || recordIndex}>
-                                <TableCell sx={{ pl: 6 }}>{record?.coverageStartDate && record?.coverageStartDate !== record?.coverageEndDate ? `${record.coverageStartDate} ~ ${record.coverageEndDate}` : record?.workDate || record?.coverageEndDate || '-'}</TableCell>
-                                <TableCell>{record?.isOutsourced ? `${label('외주', 'Outsourced', 'Gia công')} · ${record?.workerName || '-'}` : record?.workerName || '-'}</TableCell>
-                                <TableCell align="right" sx={{ fontWeight: 700 }}>{Math.max(0, Number(record?.quantity) || 0).toLocaleString()}</TableCell>
-                                <TableCell align="right">
-                                  <Button
-                                    size="small"
-                                    variant="outlined"
-                                    endIcon={<OpenInNewIcon fontSize="small" />}
-                                    disabled={!record?.workLogId}
-                                    onClick={() => onOpenWorkLog?.(record)}
-                                    sx={{
-                                      minWidth: 0,
-                                      height: 26,
-                                      px: 0.75,
-                                      fontSize: '0.72rem',
-                                      whiteSpace: 'nowrap',
-                                      '& .MuiButton-endIcon': { ml: 0.35, mr: 0 },
-                                      '& .MuiSvgIcon-root': { fontSize: 14 },
-                                    }}
-                                  >
-                                    {label('작업 기록', 'Work log', 'Nhật ký')}
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            )) : (
-                              <TableRow><TableCell colSpan={4} align="center">{label('연결된 작업기록이 없습니다.', 'No linked work records.', 'Không có nhật ký công việc liên kết.')}</TableCell></TableRow>
-                            )}
-                          </TableBody>
-                        </Table>
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
-                </React.Fragment>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </Box>
-  );
-};
-
 const AssignBoard = () => {
   const { showNotification, navigateToPath } = useAppActions();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
@@ -3152,10 +3040,6 @@ const AssignBoard = () => {
   const [completingAssignmentId, setCompletingAssignmentId] = useState(null);
   const [detailState, setDetailState] = useState(null);
   const [quantityReviewAssignmentId, setQuantityReviewAssignmentId] = useState(null);
-  const closeQuantityReviewAfterNavigationRef = useRef(false);
-  const [quantityReviewData, setQuantityReviewData] = useState(null);
-  const [quantityReviewLoading, setQuantityReviewLoading] = useState(false);
-  const [quantityReviewError, setQuantityReviewError] = useState('');
   const [cursorWarningState, setCursorWarningState] = useState({
     open: false,
     x: 0,
@@ -4533,53 +4417,6 @@ const AssignBoard = () => {
     };
   }, [activeOrgId, assignmentProgressIdsKey, externalReloadTick]);
 
-  useEffect(() => {
-    const assignmentId = String(quantityReviewAssignmentId || '').trim();
-    const normalizedOrgId = Number(activeOrgId);
-    if (!assignmentId || !Number.isFinite(normalizedOrgId) || normalizedOrgId <= 0) {
-      setQuantityReviewData(null);
-      setQuantityReviewLoading(false);
-      setQuantityReviewError('');
-      return undefined;
-    }
-
-    let cancelled = false;
-    const abortController = new AbortController();
-    setQuantityReviewData(null);
-    setQuantityReviewLoading(true);
-    setQuantityReviewError('');
-    requestJSON(
-      `/assignment-plans/${encodeURIComponent(assignmentId)}/quantity-review` +
-        buildQueryString({ orgId: normalizedOrgId }),
-      {
-        forceRefresh: true,
-        skipGlobalLoading: true,
-        signal: abortController.signal,
-      }
-    )
-      .then((result) => {
-        if (!cancelled) setQuantityReviewData(result || null);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setQuantityReviewError(
-            error?.message ||
-              (languageCode === 'ko'
-                ? '수량 정보를 불러오지 못했습니다.'
-                : 'Failed to load quantity details.')
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setQuantityReviewLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-      abortController.abort();
-    };
-  }, [activeOrgId, externalReloadTick, languageCode, quantityReviewAssignmentId]);
-
   const applySchedulerProgressToAssignments = useCallback(
     (inputAssignments, { useCompletedRenderRange = false, daysOverride = null } = {}) => {
       const sourceDays = Array.isArray(daysOverride) && daysOverride.length > 0 ? daysOverride : days;
@@ -5885,29 +5722,8 @@ const AssignBoard = () => {
     setContextMenuState(null);
   }, [contextMenuState, contextMenuTargetAssignment]);
   const handleCloseQuantityReview = useCallback(() => {
-    closeQuantityReviewAfterNavigationRef.current = false;
     setQuantityReviewAssignmentId(null);
-    setQuantityReviewData(null);
-    setQuantityReviewError('');
   }, []);
-  useEffect(() => {
-    if (isAssignmentRouteActive || !closeQuantityReviewAfterNavigationRef.current) return;
-    handleCloseQuantityReview();
-  }, [handleCloseQuantityReview, isAssignmentRouteActive]);
-  const handleOpenQuantityReviewWorkLog = useCallback((record) => {
-    const workLogId = Number(record?.workLogId);
-    if (!Number.isInteger(workLogId) || workLogId <= 0) return;
-    const workDate = String(record?.workDate || record?.coverageEndDate || '').trim();
-    const title = languageCode === 'ko'
-      ? '작업 기록 상세'
-      : languageCode === 'vi'
-        ? 'Chi tiết nhật ký công việc'
-        : 'Work Log Detail';
-    closeQuantityReviewAfterNavigationRef.current = true;
-    navigateToPath(`/work-history/${workLogId}`, {
-      label: workDate ? `${title}: ${workDate}` : title,
-    });
-  }, [languageCode, navigateToPath]);
   const handleCloseDetail = useCallback(() => {
     blurActiveElement();
     setDetailState(null);
@@ -7340,48 +7156,15 @@ const AssignBoard = () => {
           )}
         </Menu>
 
-        <Drawer
-          anchor="right"
-          open={Boolean(quantityReviewAssignment)}
+        <QuantityReviewDrawer
+          externalId={quantityReviewAssignmentId}
+          orgId={activeOrgId}
+          languageCode={languageCode}
+          headerOrderNo={quantityReviewAssignment?.orderNo}
+          headerStyleLabel={quantityReviewAssignment?.label}
+          headerQuantity={quantityReviewAssignment?.quantity}
           onClose={handleCloseQuantityReview}
-          PaperProps={{ sx: { ...TOP_OFFSET_DRAWER_PAPER_SX, width: { xs: '100%', md: 760 }, p: 2.5, overflowY: 'auto' } }}
-        >
-          {quantityReviewAssignment ? (() => {
-            const reason = quantityReviewData || {};
-            const planned = Math.max(0, Number(reason.plannedQuantity ?? quantityReviewAssignment.quantity) || 0);
-            const processTotals = Array.isArray(reason.processTotals) ? reason.processTotals : [];
-            const workRecords = Array.isArray(reason.workRecords) ? reason.workRecords : [];
-            const label = (ko, en, vi) => languageCode === 'ko' ? ko : languageCode === 'vi' ? vi : en;
-            return <Stack spacing={2}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Box><Typography variant="h6" fontWeight={800}>{label('수량 확인', 'Quantity review', 'Kiểm tra số lượng')}</Typography><Typography variant="body2" color="text.secondary">{quantityReviewAssignment.orderNo} · {quantityReviewAssignment.label}</Typography></Box>
-                <IconButton onClick={handleCloseQuantityReview}><CloseIcon /></IconButton>
-              </Stack>
-              {quantityReviewError ? <Alert severity="error">{quantityReviewError}</Alert> : null}
-              {quantityReviewLoading ? (
-                <Stack spacing={1.25} alignItems="center" sx={{ py: 8 }}>
-                  <CircularProgress size={30} />
-                  <Typography variant="body2" color="text.secondary">
-                    {label('수량 정보를 불러오는 중입니다.', 'Loading quantity details.', 'Đang tải chi tiết số lượng.')}
-                  </Typography>
-                </Stack>
-              ) : quantityReviewData ? <>
-              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                <Paper variant="outlined" sx={{ p: 1.5, minWidth: 150 }}><Typography variant="caption" color="text.secondary">{label('주문·배정 수량', 'Order / assigned qty', 'SL đơn / phân công')}</Typography><Typography variant="h6" fontWeight={800}>{planned.toLocaleString()}</Typography></Paper>
-                <Paper variant="outlined" sx={{ p: 1.5, minWidth: 150 }}><Typography variant="caption" color="text.secondary">{label('확인 생산수량', 'Verified output', 'Sản lượng xác nhận')}</Typography><Typography variant="h6" fontWeight={800}>{Math.max(0, Number(reason.producedQuantity) || 0).toLocaleString()}</Typography></Paper>
-                <Paper variant="outlined" sx={{ p: 1.5, minWidth: 150 }}><Typography variant="caption" color="text.secondary">{label('작업기록 합계', 'Work-record total', 'Tổng nhật ký')}</Typography><Typography variant="h6" fontWeight={800}>{Math.max(0, Number(reason.recordedTotalQuantity) || 0).toLocaleString()}</Typography></Paper>
-              </Stack>
-              <QuantityReviewProcessTable
-                processTotals={processTotals}
-                workRecords={workRecords}
-                planned={planned}
-                label={label}
-                onOpenWorkLog={handleOpenQuantityReviewWorkLog}
-              />
-              </> : null}
-            </Stack>;
-          })() : null}
-        </Drawer>
+        />
 
         <Drawer
           anchor="right"

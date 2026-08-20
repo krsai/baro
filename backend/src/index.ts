@@ -31316,6 +31316,9 @@ app.get("/customer-production-reports", async (req, res) => {
         lastWorkDate,
         estimatedCompletionDate,
         assignmentCount: relatedPlans.length,
+        assignmentPlanExternalIds: relatedPlans
+          .map((plan) => resolveOptionalString(plan?.externalId, null))
+          .filter((value): value is string => Boolean(value)),
         reviewRequired,
       });
     });

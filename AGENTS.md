@@ -1,5 +1,12 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-08-20 "수량 확인" 드로어를 배정 보드/보고서 공용 컴포넌트로 분리
+
+- 배정 보드(`AssignBoard.jsx`)의 우클릭 → `수량 확인` 드로어는 `frontend/src/components/QuantityReviewDrawer.jsx`로 추출됐다. `externalId`(AssignmentPlan.externalId), `orgId`, `languageCode`와 드로어 헤더에 즉시 보여줄 표시용 fallback(`headerOrderNo`/`headerStyleLabel`/`headerQuantity`)만 props로 받고, 나머지는 컴포넌트 내부에서 `/assignment-plans/:externalId/quantity-review`를 직접 조회한다. `externalId`가 falsy면 드로어는 닫힌 상태를 유지한다.
+- 고객 보고서(`CustomerProductionReport.jsx`)도 같은 컴포넌트를 재사용해 우클릭 → `수량 확인` → 드로어 열림을 배정 보드와 동일하게 지원한다. 보고서 한 행(스타일)은 여러 `AssignmentPlan`(라인 분할 등)에 걸칠 수 있으므로, 백엔드 `GET /customer-production-reports` 응답에 스타일 행별 `assignmentPlanExternalIds` 배열을 추가했다. 프론트는 이 배열 길이가 정확히 1일 때만 우클릭 메뉴의 `수량 확인` 항목을 활성화한다 — 0건(미배정) 또는 2건 이상(어느 배정을 열지 모호)이면 비활성화하고 임의로 첫 번째 값을 열지 않는다.
+- 보고서에서는 다중 스타일 주문의 상위(주문 단위 합산) 행에는 우클릭 메뉴를 연결하지 않는다. 실제 `AssignmentPlan`과 1:1로 대응 가능한 개별 스타일 행(단일 스타일 주문의 대표 행, 또는 펼친 스타일별 하위 행)에만 연결한다.
+- 새 기능/페이지가 같은 드로어를 다시 열어야 하면 이 공용 컴포넌트를 재사용한다. AssignBoard 전용 상태(`quantityReviewData`/`Loading`/`Error`, 라우트 변화 감지로 드로어를 닫던 ref)는 이 추출 과정에서 전부 컴포넌트 내부로 흡수됐으므로 AssignBoard.jsx에는 더 이상 존재하지 않는다.
+
 ## 2026-08-19 후속5: 업체 엔티티 구조 — Organization(테넌트) vs BusinessPartner(비테넌트) 확정
 
 - 이 SaaS의 "업체"는 로그인 필요 여부에 따라 이미 두 갈래로 분리돼 있고, 이는 의도된 설계다. 제조사·브랜드처럼 자기 로그인·구독·직원을 가지는 테넌트는 `Organization` + `type`(`MANUFACTURER`/`BRAND`)이며, 타입별 확장 기능은 별도 테이블로 붙는다(`MANUFACTURER` → `Factory`/`Line`/`Employee`/`Payroll` 등, 제조사↔브랜드 관계 → `OrgRelationship`/`CustomerSalesPriceList` 등). 로그인이 필요 없는 외주업체·공급업체는 `BusinessPartner` + `type`(`PROCESS_OUTSOURCING`/`MATERIAL_SUPPLIER`)이며, 같은 "엔티티 + 타입 + 타입별 확장 기능" 패턴을 따른다.
