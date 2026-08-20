@@ -31,12 +31,14 @@ export const ACCESS_FEATURE_KEYS = {
   EMPLOYEE_SYSTEM: 'EMPLOYEE_SYSTEM',
   SALARY_SYSTEM: 'SALARY_SYSTEM',
   CUSTOMER: 'CUSTOMER',
+  OUTSOURCING_PARTNER: 'OUTSOURCING_PARTNER',
+  MATERIAL_SUPPLIER: 'MATERIAL_SUPPLIER',
   PERMISSION: 'PERMISSION',
   HOLIDAY: 'HOLIDAY',
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
-export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 8;
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 9;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND];
 const POLICY_ORG_ROLES = [
@@ -55,6 +57,8 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
     [ORG_ROLE_KEYS.OPERATOR]: Object.freeze([
       ACCESS_FEATURE_KEYS.DASHBOARD,
       ACCESS_FEATURE_KEYS.ORDER,
+      ACCESS_FEATURE_KEYS.OUTSOURCING_PARTNER,
+      ACCESS_FEATURE_KEYS.MATERIAL_SUPPLIER,
       ACCESS_FEATURE_KEYS.STYLE,
       ACCESS_FEATURE_KEYS.ST_REVIEW,
       ACCESS_FEATURE_KEYS.SHIPMENT_REVIEW,
@@ -84,6 +88,8 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
     [ORG_ROLE_KEYS.ADMIN]: Object.freeze([
       ACCESS_FEATURE_KEYS.DASHBOARD,
       ACCESS_FEATURE_KEYS.ORDER,
+      ACCESS_FEATURE_KEYS.OUTSOURCING_PARTNER,
+      ACCESS_FEATURE_KEYS.MATERIAL_SUPPLIER,
       ACCESS_FEATURE_KEYS.STYLE,
       ACCESS_FEATURE_KEYS.EMPLOYEE_SYSTEM,
       ACCESS_FEATURE_KEYS.SALARY_SYSTEM,
@@ -91,6 +97,8 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
     [ORG_ROLE_KEYS.OPERATOR]: Object.freeze([
       ACCESS_FEATURE_KEYS.DASHBOARD,
       ACCESS_FEATURE_KEYS.ORDER,
+      ACCESS_FEATURE_KEYS.OUTSOURCING_PARTNER,
+      ACCESS_FEATURE_KEYS.MATERIAL_SUPPLIER,
       ACCESS_FEATURE_KEYS.STYLE,
     ]),
     [ORG_ROLE_KEYS.ACCOUNTANT]: Object.freeze([ACCESS_FEATURE_KEYS.DASHBOARD]),
@@ -177,6 +185,29 @@ const applyLegacyOutsourcingRecordDefault = (policy) => {
   });
 };
 
+// 2026-08-20: /business-partner (reused FEATURE_KEYS.ORDER) was split into
+// /outsourcing-partner and /material-supplier with dedicated feature keys
+// (BusinessPartner merged into Organization - see AGENTS.md). Any role that
+// already had ORDER access previously reached the combined business-partner
+// screen, so backfill both new keys for those roles to preserve access.
+const applyLegacyBusinessPartnerSplitDefault = (policy) => {
+  POLICY_ORG_TYPES.forEach((orgType) => {
+    POLICY_ORG_ROLES.forEach((role) => {
+      const features = policy?.[orgType]?.[role];
+      if (!Array.isArray(features)) return;
+      if (!features.includes(ACCESS_FEATURE_KEYS.ORDER)) return;
+      const orderIndex = features.indexOf(ACCESS_FEATURE_KEYS.ORDER);
+      const insertAt = orderIndex >= 0 ? orderIndex + 1 : features.length;
+      if (!features.includes(ACCESS_FEATURE_KEYS.OUTSOURCING_PARTNER)) {
+        features.splice(insertAt, 0, ACCESS_FEATURE_KEYS.OUTSOURCING_PARTNER);
+      }
+      if (!features.includes(ACCESS_FEATURE_KEYS.MATERIAL_SUPPLIER)) {
+        features.splice(insertAt, 0, ACCESS_FEATURE_KEYS.MATERIAL_SUPPLIER);
+      }
+    });
+  });
+};
+
 const applyLegacyRevenueAnalysisDefault = (policy) => {
   POLICY_ORG_TYPES.forEach((orgType) => {
     POLICY_ORG_ROLES.forEach((role) => {
@@ -258,6 +289,7 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
     applyLegacyDashboardDefault(base);
     applyLegacyProductionAnalysisDefault(base);
     applyLegacyOutsourcingRecordDefault(base);
+    applyLegacyBusinessPartnerSplitDefault(base);
     applyLegacyRevenueAnalysisDefault(base);
     applyLegacyEmployeeLineAccessDefault(base);
     applyLegacyEmployeeSystemDefault(base);

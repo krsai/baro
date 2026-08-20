@@ -76,6 +76,7 @@ const ORG_MEMBERSHIPS_UPDATED_EVENT = 'baro:org-memberships-updated';
 const LINE_ASSIGNMENTS_UPDATED_EVENT = 'baro:line-assignments-updated';
 const MENU_GROUP_KEYS = {
   ORDER: 'ORDER',
+  PARTNERS: 'PARTNERS',
   RECORDS: 'RECORDS',
   INVENTORY: 'INVENTORY',
   ACCOUNTING: 'ACCOUNTING',
@@ -328,6 +329,7 @@ const MainLayout = () => {
 
   const [adminOpen, setAdminOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
+  const [partnersOpen, setPartnersOpen] = useState(false);
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [accountingOpen, setAccountingOpen] = useState(false);
@@ -359,6 +361,7 @@ const MainLayout = () => {
 
   const setExpandedMenuGroup = React.useCallback((menuGroupKey) => {
     setOrderOpen(menuGroupKey === MENU_GROUP_KEYS.ORDER);
+    setPartnersOpen(menuGroupKey === MENU_GROUP_KEYS.PARTNERS);
     setRecordsOpen(menuGroupKey === MENU_GROUP_KEYS.RECORDS);
     setInventoryOpen(menuGroupKey === MENU_GROUP_KEYS.INVENTORY);
     setAccountingOpen(menuGroupKey === MENU_GROUP_KEYS.ACCOUNTING);
@@ -431,10 +434,18 @@ const MainLayout = () => {
       currentPath.startsWith('/order') ||
       currentPath.startsWith('/style') ||
       currentPath.startsWith('/customer-pricing') ||
-      currentPath.startsWith('/customer-production-report') ||
-      currentPath.startsWith('/business-partner')
+      currentPath.startsWith('/customer-production-report')
     ) {
       setExpandedMenuGroup(MENU_GROUP_KEYS.ORDER);
+      return;
+    }
+    if (
+      currentPath.startsWith('/customer') ||
+      currentPath.startsWith('/outsourcing-partner') ||
+      currentPath.startsWith('/material-supplier') ||
+      currentPath.startsWith('/business-partner')
+    ) {
+      setExpandedMenuGroup(MENU_GROUP_KEYS.PARTNERS);
     }
   }, [currentPath, setExpandedMenuGroup]);
 
@@ -657,17 +668,6 @@ const MainLayout = () => {
         isOpen: orderOpen,
         children: [
           {
-            label: getUiMessage('menu.businessPartner', '\uAC70\uB798\uCC98', languageCode),
-            icon: <BusinessIcon />,
-            path: '/business-partner',
-          },
-          {
-            label: getUiMessage('menu.customer', '\uACE0\uAC1D', languageCode),
-            icon: <PeopleIcon />,
-            path: '/customer',
-            notificationActive: missingSalesPriceCustomerCount > 0,
-          },
-          {
             label: getUiMessage('menu.style', '\uC2A4\uD0C0\uC77C', languageCode),
             icon: <StyleIcon />,
             path: '/style',
@@ -681,6 +681,31 @@ const MainLayout = () => {
             label: getUiMessage('menu.customerProductionReport', '보고서', languageCode),
             icon: <AssessmentIcon />,
             path: '/customer-production-report',
+          },
+        ],
+      },
+      {
+        label: getUiMessage('menu.businessPartnerManagement', '거래처 관리', languageCode),
+        icon: <BusinessIcon />,
+        isParent: true,
+        menuGroupKey: MENU_GROUP_KEYS.PARTNERS,
+        isOpen: partnersOpen,
+        children: [
+          {
+            label: getUiMessage('menu.customer', '고객사', languageCode),
+            icon: <PeopleIcon />,
+            path: '/customer',
+            notificationActive: missingSalesPriceCustomerCount > 0,
+          },
+          {
+            label: getUiMessage('menu.outsourcingPartner', '외주 업체', languageCode),
+            icon: <LocalShippingIcon />,
+            path: '/outsourcing-partner',
+          },
+          {
+            label: getUiMessage('menu.materialSupplier', '공급 업체', languageCode),
+            icon: <Inventory2Icon />,
+            path: '/material-supplier',
           },
         ],
       },
@@ -936,8 +961,6 @@ const MainLayout = () => {
 
       if (childPaths.has('/order') && childPaths.has('/style')) {
         const preferredSalesPaths = [
-          '/business-partner',
-          '/customer',
           '/style',
           '/order',
           '/customer-production-report',
@@ -948,6 +971,22 @@ const MainLayout = () => {
           ),
           ...orderedChildren.filter(
             (child) => !preferredSalesPaths.includes(child.path)
+          ),
+        ].filter(Boolean);
+      }
+
+      if (childPaths.has('/customer') && childPaths.has('/outsourcing-partner')) {
+        const preferredPartnerPaths = [
+          '/customer',
+          '/outsourcing-partner',
+          '/material-supplier',
+        ];
+        orderedChildren = [
+          ...preferredPartnerPaths.map(
+            (path) => orderedChildren.find((child) => child.path === path) || null
+          ),
+          ...orderedChildren.filter(
+            (child) => !preferredPartnerPaths.includes(child.path)
           ),
         ].filter(Boolean);
       }

@@ -4647,6 +4647,34 @@ BEGIN
   END IF;
 END $$;
 
+-- Step 0t: merge BusinessPartner into Organization (2026-08-20).
+-- DDL only. ALTER TYPE ... ADD VALUE cannot be followed by use of the new
+-- value in the same transaction (PostgreSQL limitation) - this repo already
+-- hit this once for WorkOrderStatus.EDITING (see ensureWorkOrderStatusSchemaReady
+-- in src/index.ts). So the actual data move (BusinessPartner rows ->
+-- Organization rows, OutsourcedWorkRecord.outsourcingPartnerId remap,
+-- BusinessPartner table drop) happens in a separate backend startup function
+-- (ensureBusinessPartnerMergedIntoOrganization) that runs after this file
+-- commits, not here.
+ALTER TYPE "OrganizationType" ADD VALUE IF NOT EXISTS 'PROCESS_OUTSOURCING';
+ALTER TYPE "OrganizationType" ADD VALUE IF NOT EXISTS 'MATERIAL_SUPPLIER';
+
+ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "ownerOrgId" INTEGER;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Organization_ownerOrgId_fkey') THEN
+    ALTER TABLE "Organization" ADD CONSTRAINT "Organization_ownerOrgId_fkey"
+      FOREIGN KEY ("ownerOrgId") REFERENCES "Organization"("id") ON DELETE CASCADE;
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "Organization_ownerOrgId_type_name_key"
+  ON "Organization"("ownerOrgId", "type", "name");
+CREATE INDEX IF NOT EXISTS "Organization_ownerOrgId_type_isActive_idx"
+  ON "Organization"("ownerOrgId", "type", "isActive");
+
 -- Legacy outsourcing columns on WorkRecord are dropped only after no rows
 -- still use them, so a deploy that runs before the one-off migration script
 -- does not silently discard data.

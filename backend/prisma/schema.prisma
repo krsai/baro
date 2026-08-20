@@ -14,6 +14,12 @@ datasource db {
 enum OrganizationType {
   MANUFACTURER
   BRAND
+  // Vendor types (2026-08-20 merge): BusinessPartner was folded into
+  // Organization. Rows with these types always have ownerOrgId set, never
+  // get OrganizationSubscription/Employee/OrgRelationship rows, and are
+  // excluded from every "real tenant" org listing/lookup. See AGENTS.md.
+  PROCESS_OUTSOURCING
+  MATERIAL_SUPPLIER
 }
 
 enum OrgUserRole {
@@ -178,6 +184,13 @@ model Organization {
   targetMonthlyWage        Float?
   wagePerSecond            Float?
   type                     OrganizationType @default(MANUFACTURER)
+  // Vendor-only fields (2026-08-20 merge). Real tenants (MANUFACTURER/BRAND)
+  // always have isActive=true (ignored) and ownerOrgId=null. Vendor rows
+  // (PROCESS_OUTSOURCING/MATERIAL_SUPPLIER) always have ownerOrgId set to
+  // the manufacturer that registered them and never have a subscription,
+  // employees, or OrgRelationship membership.
+  isActive                 Boolean          @default(true)
+  ownerOrgId               Int?
   createdAt                DateTime         @default(now())
   createdBy                String           @default("system@baro.local")
   createdByEmployeeId      Int?
@@ -201,7 +214,7 @@ model Organization {
   workLogs                        WorkLog[]
   workRecords                     WorkRecord[]
   outsourcedWorkRecords           OutsourcedWorkRecord[]
-  businessPartners                BusinessPartner[]
+  vendorOutsourcedWorkRecords     OutsourcedWorkRecord[]            @relation("OutsourcedWorkRecordVendor")
   assignmentBoardState            AssignmentBoardState?
   assignmentCards                 AssignmentCard[]
   assignmentPlans                 AssignmentPlan[]
@@ -232,31 +245,13 @@ model Organization {
   createdByEmployee Employee? @relation("OrganizationCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("OrganizationUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
+  // Vendor ownership (2026-08-20 merge, replaces BusinessPartner.orgId).
+  owner   Organization?  @relation("OrganizationVendorOwner", fields: [ownerOrgId], references: [id], onDelete: Cascade)
+  vendors Organization[] @relation("OrganizationVendorOwner")
+
   @@index([representativeEmployeeId])
-}
-
-enum BusinessPartnerType {
-  PROCESS_OUTSOURCING
-  MATERIAL_SUPPLIER
-}
-
-model BusinessPartner {
-  id        Int                 @id @default(autoincrement())
-  orgId     Int
-  name      String
-  type      BusinessPartnerType @default(PROCESS_OUTSOURCING)
-  contactName  String?
-  contactPhone String?
-  isActive  Boolean             @default(true)
-  createdAt DateTime            @default(now())
-  createdBy String              @default("system@baro.local")
-  updatedAt DateTime            @updatedAt
-
-  organization          Organization           @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  outsourcedWorkRecords OutsourcedWorkRecord[]
-
-  @@unique([orgId, type, name])
-  @@index([orgId, type, isActive])
+  @@unique([ownerOrgId, type, name])
+  @@index([ownerOrgId, type, isActive])
 }
 
 model Currency {
@@ -1556,7 +1551,7 @@ model OutsourcedWorkRecord {
 
   organization       Organization    @relation(fields: [orgId], references: [id])
   workLog            WorkLog         @relation(fields: [workLogId], references: [id], onDelete: Cascade)
-  outsourcingPartner BusinessPartner @relation(fields: [outsourcingPartnerId], references: [id], onDelete: Restrict)
+  outsourcingPartner Organization    @relation("OutsourcedWorkRecordVendor", fields: [outsourcingPartnerId], references: [id], onDelete: Restrict)
   assignmentPlan     AssignmentPlan  @relation(fields: [assignmentPlanId, orgId], references: [id, orgId], onDelete: Restrict, map: "OutsourcedWorkRecord_assignmentPlan_org_fkey")
   style              Style           @relation(fields: [styleId], references: [id], onDelete: Restrict)
   styleProcess       StyleProcess    @relation(fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, map: "OutsourcedWorkRecord_styleProcess_style_org_fkey")

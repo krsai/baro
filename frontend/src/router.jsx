@@ -307,8 +307,16 @@ const router = createBrowserRouter([
             element: <CustomerProductionReport />,
           },
           {
+            path: 'outsourcing-partner',
+            element: <BusinessPartners type="PROCESS_OUTSOURCING" />,
+          },
+          {
+            path: 'material-supplier',
+            element: <BusinessPartners type="MATERIAL_SUPPLIER" />,
+          },
+          {
             path: 'business-partner',
-            element: <BusinessPartners />,
+            element: <Navigate to="/outsourcing-partner" replace />,
           },
           {
             path: 'style',

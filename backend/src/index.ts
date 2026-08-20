@@ -788,8 +788,8 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "OutsourcedWorkRecord", columnName: "assignmentPlanId" },
   { tableName: "OutsourcedWorkRecord", columnName: "workLogId" },
   { tableName: "OutsourcedWorkRecord", columnName: "quantity" },
-  { tableName: "BusinessPartner", columnName: "contactName" },
-  { tableName: "BusinessPartner", columnName: "contactPhone" },
+  { tableName: "Organization", columnName: "ownerOrgId" },
+  { tableName: "Organization", columnName: "isActive" },
   { tableName: "WorkOrder", columnName: "buyerOrgId" },
   { tableName: "WorkOrder", columnName: "sellerOrgId" },
   { tableName: "WorkOrder", columnName: "customerId" },
@@ -8719,9 +8719,9 @@ const syncOutsourcedRecordRefs = async ({
     ...normalizedRecords.map((record) => record?.outsourcingPartnerId)
   );
   const outsourcingPartners = outsourcingPartnerIds.length > 0
-    ? await prisma.businessPartner.findMany({
+    ? await prisma.organization.findMany({
         where: {
-          orgId,
+          ownerOrgId: orgId,
           id: { in: outsourcingPartnerIds },
           type: "PROCESS_OUTSOURCING",
           isActive: true,
@@ -13016,8 +13016,8 @@ const buildWorkLogContextResponse = async ({
 
   const outsourcedVendorRows =
     recordKind === "OUTSOURCING"
-      ? await prisma.businessPartner.findMany({
-          where: { orgId, type: "PROCESS_OUTSOURCING", isActive: true },
+      ? await prisma.organization.findMany({
+          where: { ownerOrgId: orgId, type: "PROCESS_OUTSOURCING", isActive: true },
           select: { id: true, name: true },
           orderBy: [{ name: "asc" }, { id: "asc" }],
         })
@@ -21583,6 +21583,15 @@ app.patch("/system/company-requests/:id/approve", async (req, res) => {
   const organizationType =
     resolveOnboardingOrganizationType(companyRequest.organizationType) ??
     ORGANIZATION_TYPE_KEYS.MANUFACTURER;
+  // 2026-08-20 fail-closed check: onboarding approval creates a real tenant
+  // (Organization + Employee login). resolveOnboardingOrganizationType can
+  // only resolve MANUFACTURER/BRAND today, but this stays an explicit
+  // assertion so a future change there can never silently create an
+  // Employee login under a vendor-type Organization (PROCESS_OUTSOURCING/
+  // MATERIAL_SUPPLIER, merged from BusinessPartner - see AGENTS.md).
+  if (organizationType !== "MANUFACTURER" && organizationType !== "BRAND") {
+    return res.status(400).json({ ok: false, error: "invalid organization type" });
+  }
   const organizationCountry = resolveOnboardingCountry(companyRequest.country);
   const organization = await prisma.organization.create({
     data: {
@@ -29974,6 +29983,24 @@ app.put("/assignment-board-state", async (req, res) => {
   });
 });
 
+// Vendor Organizations (2026-08-20 merge of BusinessPartner into
+// Organization, see AGENTS.md). Every /business-partners* handler below
+// queries Organization rows scoped by ownerOrgId+type instead of a separate
+// BusinessPartner table, but keeps returning the original BusinessPartner
+// DTO shape so the frontend needs no changes: contactName/contactPhone map
+// to Organization.representative/phone.
+const toBusinessPartnerResponse = (organizationRow: any) => ({
+  id: organizationRow.id,
+  name: organizationRow.name,
+  type: organizationRow.type,
+  contactName: organizationRow.representative ?? null,
+  contactPhone: organizationRow.phone ?? null,
+  isActive: organizationRow.isActive,
+  createdAt: organizationRow.createdAt,
+  createdBy: organizationRow.createdBy,
+  updatedAt: organizationRow.updatedAt,
+});
+
 app.get("/business-partners", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
@@ -29981,14 +30008,14 @@ app.get("/business-partners", async (req, res) => {
   if (type && !['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'].includes(type)) {
     return res.status(400).json({ ok: false, error: "invalid partner type" });
   }
-  const rows = await prisma.businessPartner.findMany({
+  const rows = await prisma.organization.findMany({
     where: {
-      orgId: organization.id,
-      ...(type ? { type: type as any } : {}),
+      ownerOrgId: organization.id,
+      type: type ? (type as any) : { in: ['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'] },
     },
     orderBy: [{ isActive: "desc" }, { name: "asc" }],
   });
-  res.json(rows);
+  res.json(rows.map(toBusinessPartnerResponse));
 });
 
 app.post("/business-partners", async (req, res) => {
@@ -30003,12 +30030,19 @@ app.post("/business-partners", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid partner type" });
   }
   const actor = resolveOptionalString(getRequesterEmail(req), "system@baro.local") || "system@baro.local";
-  const row = await prisma.businessPartner.upsert({
-    where: { orgId_type_name: { orgId: organization.id, type: type as any, name } },
-    create: { orgId: organization.id, name, type: type as any, contactName, contactPhone, createdBy: actor },
-    update: { isActive: true, contactName, contactPhone },
+  const row = await prisma.organization.upsert({
+    where: { ownerOrgId_type_name: { ownerOrgId: organization.id, type: type as any, name } },
+    create: {
+      ownerOrgId: organization.id,
+      name,
+      type: type as any,
+      representative: contactName,
+      phone: contactPhone,
+      createdBy: actor,
+    },
+    update: { isActive: true, representative: contactName, phone: contactPhone },
   });
-  res.status(201).json(row);
+  res.status(201).json(toBusinessPartnerResponse(row));
 });
 
 app.put("/business-partners/:id", async (req, res) => {
@@ -30016,7 +30050,7 @@ app.put("/business-partners/:id", async (req, res) => {
   if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
   const id = toPositiveIntOrNull(req.params.id);
   if (!id) return res.status(400).json({ ok: false, error: "invalid partner id" });
-  const existing = await prisma.businessPartner.findFirst({ where: { id, orgId: organization.id } });
+  const existing = await prisma.organization.findFirst({ where: { id, ownerOrgId: organization.id } });
   if (!existing) return res.status(404).json({ ok: false, error: "business partner not found" });
 
   const name = resolveOptionalString(req.body?.name, null);
@@ -30030,18 +30064,18 @@ app.put("/business-partners/:id", async (req, res) => {
   const contactPhone = resolveOptionalString(req.body?.contactPhone, null);
   const isActive = typeof req.body?.isActive === "boolean" ? req.body.isActive : existing.isActive;
 
-  const conflict = await prisma.businessPartner.findFirst({
-    where: { orgId: organization.id, type: type as any, name, id: { not: id } },
+  const conflict = await prisma.organization.findFirst({
+    where: { ownerOrgId: organization.id, type: type as any, name, id: { not: id } },
   });
   if (conflict) {
     return res.status(409).json({ ok: false, error: "a partner with this name and type already exists" });
   }
 
-  const row = await prisma.businessPartner.update({
+  const row = await prisma.organization.update({
     where: { id },
-    data: { name, type: type as any, contactName, contactPhone, isActive },
+    data: { name, type: type as any, representative: contactName, phone: contactPhone, isActive },
   });
-  res.json(row);
+  res.json(toBusinessPartnerResponse(row));
 });
 
 app.get("/business-partners/:id/history", async (req, res) => {
@@ -30049,7 +30083,7 @@ app.get("/business-partners/:id/history", async (req, res) => {
   if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
   const id = toPositiveIntOrNull(req.params.id);
   if (!id) return res.status(400).json({ ok: false, error: "invalid partner id" });
-  const partner = await prisma.businessPartner.findFirst({ where: { id, orgId: organization.id } });
+  const partner = await prisma.organization.findFirst({ where: { id, ownerOrgId: organization.id } });
   if (!partner) return res.status(404).json({ ok: false, error: "business partner not found" });
   const records = await prisma.outsourcedWorkRecord.findMany({
     where: { orgId: organization.id, outsourcingPartnerId: id },
@@ -30061,7 +30095,7 @@ app.get("/business-partners/:id/history", async (req, res) => {
     },
   });
   res.json({
-    partner,
+    partner: toBusinessPartnerResponse(partner),
     records: records.map((record) => ({
       id: record.id,
       workDate: record.workLog?.displayDate || null,
@@ -34412,6 +34446,72 @@ const ensureWorkOrderStatusSchemaReady = async () => {
   }
 };
 
+// 2026-08-20: BusinessPartner was merged into Organization (see AGENTS.md).
+// migration_fix.sql only adds the OrganizationType enum values and the
+// ownerOrgId/isActive columns/FK (DDL only) - it cannot also move data,
+// because PostgreSQL forbids using an enum value added by ALTER TYPE ...
+// ADD VALUE within the same transaction that added it (this repo already
+// hit this once for WorkOrderStatus.EDITING, see
+// ensureWorkOrderStatusSchemaReady above). So the actual row migration runs
+// here, in its own transaction, after migration_fix.sql has already
+// committed. Idempotent: once BusinessPartner is dropped this is a no-op.
+const ensureBusinessPartnerMergedIntoOrganization = async () => {
+  const tableExistsRows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'BusinessPartner'
+    ) AS exists
+  `;
+  if (!tableExistsRows[0]?.exists) return;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      INSERT INTO "Organization"
+        ("name", "type", "representative", "phone", "isActive", "ownerOrgId",
+         "createdAt", "createdBy", "updatedAt", "defaultSizeSetCode")
+      SELECT bp."name", bp."type"::text::"OrganizationType", bp."contactName", bp."contactPhone",
+             bp."isActive", bp."orgId", bp."createdAt", bp."createdBy", bp."updatedAt",
+             'LEGACY_APPAREL'
+      FROM "BusinessPartner" bp
+      WHERE NOT EXISTS (
+        SELECT 1 FROM "Organization" o
+        WHERE o."ownerOrgId" = bp."orgId"
+          AND o."type" = bp."type"::text::"OrganizationType"
+          AND o."name" = bp."name"
+      )
+    `;
+
+    await tx.$executeRaw`
+      UPDATE "OutsourcedWorkRecord" owr
+      SET "outsourcingPartnerId" = o."id"
+      FROM "BusinessPartner" bp
+      JOIN "Organization" o
+        ON o."ownerOrgId" = bp."orgId"
+        AND o."type" = bp."type"::text::"OrganizationType"
+        AND o."name" = bp."name"
+      WHERE owr."outsourcingPartnerId" = bp."id"
+    `;
+
+    await tx.$executeRaw`ALTER TABLE "OutsourcedWorkRecord" DROP CONSTRAINT IF EXISTS "OutsourcedWorkRecord_outsourcingPartnerId_fkey"`;
+    await tx.$executeRawUnsafe(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_outsourcingPartnerId_org_fkey') THEN
+          ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_outsourcingPartnerId_org_fkey"
+            FOREIGN KEY ("outsourcingPartnerId") REFERENCES "Organization"("id") ON DELETE RESTRICT;
+        END IF;
+      END $$;
+    `);
+
+    await tx.$executeRaw`DROP TABLE IF EXISTS "BusinessPartner"`;
+    await tx.$executeRaw`DROP TYPE IF EXISTS "BusinessPartnerType"`;
+  });
+
+  console.log(
+    "[startup] BusinessPartner rows merged into Organization (ownerOrgId-scoped); BusinessPartner table dropped."
+  );
+};
+
 const ensureProcessMasterOptionTypeSchemaReady = async () => {
   const requiredEnumValues = [
     "LOCATION",
@@ -34552,6 +34652,7 @@ const bootstrapApplicationServices = async () => {
     await ensureStyleLocalizationColumnsReady();
     await ensureWorkRecordCanonicalSchemaReady();
     await ensureWorkOrderStatusSchemaReady();
+    await ensureBusinessPartnerMergedIntoOrganization();
     await ensureProcessMasterOptionTypeSchemaReady();
     await ensureProcessMasterOptionRelationSchemaReady();
     await ensureHardcodedSystemAdmin();

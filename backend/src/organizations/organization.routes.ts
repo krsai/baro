@@ -114,6 +114,11 @@ export const createOrganizationRouter = ({
     }
 
     const organizations = await prisma.organization.findMany({
+      // 2026-08-20: vendor Organizations (PROCESS_OUTSOURCING/MATERIAL_SUPPLIER,
+      // merged from BusinessPartner) must never appear in this list - they
+      // are not real tenants and must never get an auto-created subscription
+      // via attachOrganizationSubscription below. See AGENTS.md.
+      where: { type: { in: ["MANUFACTURER", "BRAND"] } },
       include: ORGANIZATION_REPRESENTATIVE_INCLUDE,
       orderBy: { id: "asc" },
     });
