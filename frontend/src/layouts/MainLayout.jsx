@@ -940,6 +940,7 @@ const MainLayout = () => {
     miscOpen,
     operationsOpen,
     orderOpen,
+    partnersOpen,
     pendingEmployeeCount,
     unassignedLineWorkerCount,
     pendingOnboardingCount,
