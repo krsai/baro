@@ -135,10 +135,11 @@ const WORK_DETAIL_LABELS = {
     currencyUnit: 'đồng', outsourceNamePrefix: 'Gia công ngoài', outsourceUnitPriceLabel: 'Đơn giá gia công', outsourceUnitPricePlaceholder: 'Đơn giá mỗi cái', addOutsourcePartnerOption: '＋ Thêm đối tác', outsourcePartnersLoadError: 'Không thể tải danh sách đối tác gia công.',
   },
 };
+const OUTSOURCING_PARTNER_COLUMN_LABEL = { ko: '외주 업체', en: 'Outsourcing Partner', vi: 'Đối tác gia công' };
 const WORK_DETAIL_MESSAGES = {
-  ko: { loading: '기본 정보를 불러오는 중입니다.', entryModeHelp: '종료일 기준으로 저장하며, 시작일과 종료일이 같으면 일별 입력으로 처리합니다.', legacyReadOnly: '라인 정보가 없는 기존 기록은 이 화면에서 수정할 수 없습니다.', duplicateRows: '같은 작업자/배정/공정 조합이 중복되어 있습니다. 수량으로 합산해 주세요.', selectFactory: '공장을 선택하면 라인과 작업자를 불러옵니다.', selectLine: '라인을 선택하면 해당 라인의 작업자/스타일/공정 옵션을 불러옵니다.', loadingLine: '라인 데이터를 불러오는 중입니다.', noWorkers: '선택한 라인/작업일 기준으로 작업자가 없습니다.', preparingRow: '첫 작업자 입력 행을 준비 중입니다.', noSearchResults: '검색 결과가 없습니다.', previousEndConnector: '입니다.', suggestedFromConnector: '부터 ' },
-  en: { loading: 'Loading basic information.', entryModeHelp: 'Records are saved by end date. When the start and end dates are the same, they are treated as a daily entry.', legacyReadOnly: 'Legacy records without line information cannot be edited here.', duplicateRows: 'The same worker/assignment/process combination appears more than once. Combine the quantities.', selectFactory: 'Select a factory to load lines and workers.', selectLine: 'Select a line to load its workers, styles, and processes.', loadingLine: 'Loading line data.', noWorkers: 'No workers are available for the selected line and work date.', preparingRow: 'Preparing the first worker entry row.', noSearchResults: 'No search results.', previousEndConnector: '.', suggestedFromConnector: ' Starting from ' },
-  vi: { loading: 'Đang tải thông tin cơ bản.', entryModeHelp: 'Dữ liệu được lưu theo ngày kết thúc. Nếu ngày bắt đầu và ngày kết thúc giống nhau, hệ thống sẽ xử lý như nhập theo ngày.', legacyReadOnly: 'Không thể sửa bản ghi cũ không có thông tin chuyền trên màn hình này.', duplicateRows: 'Tổ hợp nhân viên/phân công/công đoạn bị trùng. Vui lòng cộng gộp số lượng.', selectFactory: 'Chọn nhà máy để tải chuyền và nhân viên.', selectLine: 'Chọn chuyền để tải nhân viên, style và công đoạn.', loadingLine: 'Đang tải dữ liệu chuyền.', noWorkers: 'Không có nhân viên theo chuyền và ngày làm việc đã chọn.', preparingRow: 'Đang chuẩn bị dòng nhập cho nhân viên đầu tiên.', noSearchResults: 'Không có kết quả tìm kiếm.', previousEndConnector: '.', suggestedFromConnector: ' Bắt đầu từ ', startDateRequired: 'Vui lòng nhập ngày bắt đầu công việc.', sameMonthRequired: 'Ngày bắt đầu và ngày kết thúc phải trong cùng một tháng. Vui lòng đăng ký riêng theo từng tháng.', factoryRequired: 'Vui lòng chọn nhà máy.', lineRequired: 'Vui lòng chọn chuyền.', noRowsToSave: 'Không có dòng công việc để lưu.', invalidWorkerLine: 'Có nhân viên không thuộc chuyền đã chọn.', wageMissing: 'Chưa thiết lập đơn giá mỗi giây của nhà máy.', duplicateEntry: 'Không thể nhập trùng cùng nhân viên, phân công và công đoạn trong cùng ngày.' },
+  ko: { loading: '기본 정보를 불러오는 중입니다.', entryModeHelp: '종료일 기준으로 저장하며, 시작일과 종료일이 같으면 일별 입력으로 처리합니다.', legacyReadOnly: '라인 정보가 없는 기존 기록은 이 화면에서 수정할 수 없습니다.', duplicateRows: '같은 작업자/배정/공정 조합이 중복되어 있습니다. 수량으로 합산해 주세요.', selectFactory: '공장을 선택하면 라인과 작업자를 불러옵니다.', selectLine: '라인을 선택하면 해당 라인의 작업자/스타일/공정 옵션을 불러옵니다.', loadingLine: '라인 데이터를 불러오는 중입니다.', noWorkers: '선택한 라인/작업일 기준으로 작업자가 없습니다.', noOutsourcingPartners: '등록된 외주 업체가 없습니다. 거래처 관리 > 외주 업체에서 등록해 주세요.', preparingRow: '첫 작업자 입력 행을 준비 중입니다.', noSearchResults: '검색 결과가 없습니다.', previousEndConnector: '입니다.', suggestedFromConnector: '부터 ' },
+  en: { loading: 'Loading basic information.', entryModeHelp: 'Records are saved by end date. When the start and end dates are the same, they are treated as a daily entry.', legacyReadOnly: 'Legacy records without line information cannot be edited here.', duplicateRows: 'The same worker/assignment/process combination appears more than once. Combine the quantities.', selectFactory: 'Select a factory to load lines and workers.', selectLine: 'Select a line to load its workers, styles, and processes.', loadingLine: 'Loading line data.', noWorkers: 'No workers are available for the selected line and work date.', noOutsourcingPartners: 'No outsourcing partners are registered. Add one under Business Partners > Outsourcing Partner.', preparingRow: 'Preparing the first worker entry row.', noSearchResults: 'No search results.', previousEndConnector: '.', suggestedFromConnector: ' Starting from ' },
+  vi: { loading: 'Đang tải thông tin cơ bản.', entryModeHelp: 'Dữ liệu được lưu theo ngày kết thúc. Nếu ngày bắt đầu và ngày kết thúc giống nhau, hệ thống sẽ xử lý như nhập theo ngày.', legacyReadOnly: 'Không thể sửa bản ghi cũ không có thông tin chuyền trên màn hình này.', duplicateRows: 'Tổ hợp nhân viên/phân công/công đoạn bị trùng. Vui lòng cộng gộp số lượng.', selectFactory: 'Chọn nhà máy để tải chuyền và nhân viên.', selectLine: 'Chọn chuyền để tải nhân viên, style và công đoạn.', loadingLine: 'Đang tải dữ liệu chuyền.', noWorkers: 'Không có nhân viên theo chuyền và ngày làm việc đã chọn.', noOutsourcingPartners: 'Chưa có đối tác gia công nào được đăng ký. Vui lòng thêm tại Quản lý đối tác > Đối tác gia công.', preparingRow: 'Đang chuẩn bị dòng nhập cho nhân viên đầu tiên.', noSearchResults: 'Không có kết quả tìm kiếm.', previousEndConnector: '.', suggestedFromConnector: ' Bắt đầu từ ', startDateRequired: 'Vui lòng nhập ngày bắt đầu công việc.', sameMonthRequired: 'Ngày bắt đầu và ngày kết thúc phải trong cùng một tháng. Vui lòng đăng ký riêng theo từng tháng.', factoryRequired: 'Vui lòng chọn nhà máy.', lineRequired: 'Vui lòng chọn chuyền.', noRowsToSave: 'Không có dòng công việc để lưu.', invalidWorkerLine: 'Có nhân viên không thuộc chuyền đã chọn.', wageMissing: 'Chưa thiết lập đơn giá mỗi giây của nhà máy.', duplicateEntry: 'Không thể nhập trùng cùng nhân viên, phân công và công đoạn trong cùng ngày.' },
 };
 
 const toText = (value) => String(value || '').trim();
@@ -1138,6 +1139,12 @@ const WorkDetail = ({
   const { languageCode } = useLanguage();
   const LABELS = WORK_DETAIL_LABELS[languageCode] || WORK_DETAIL_LABELS.en;
   const messages = WORK_DETAIL_MESSAGES[languageCode] || WORK_DETAIL_MESSAGES.en;
+  // Outsourcing rows pick a vendor (Organization, PROCESS_OUTSOURCING), not an
+  // employee - the "worker" column header/label must say so instead of
+  // implying an employee picker.
+  const workerColumnLabel = isOutsourcingMode
+    ? (OUTSOURCING_PARTNER_COLUMN_LABEL[languageCode] || OUTSOURCING_PARTNER_COLUMN_LABEL.en)
+    : LABELS.worker;
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [baseLoading, setBaseLoading] = useState(() => !initialLog?.id);
@@ -3181,7 +3188,11 @@ const WorkDetail = ({
               <Alert severity="info">{messages.noSearchResults}</Alert>
             ) : (
               <Stack spacing={1.25} sx={{ flex: 1, minHeight: 0 }}>
-              {lineWorkers.length === 0 ? <Alert severity="warning">{messages.noWorkers}</Alert> : null}
+              {lineWorkers.length === 0 ? (
+                <Alert severity="warning">
+                  {isOutsourcingMode ? messages.noOutsourcingPartners : messages.noWorkers}
+                </Alert>
+              ) : null}
               {ctWarningMessage ? <Alert severity="warning">{ctWarningMessage}</Alert> : null}
               {missingAssignmentPlanLinkMessage ? (
                 <Alert severity="warning">{missingAssignmentPlanLinkMessage}</Alert>
@@ -3277,7 +3288,7 @@ const WorkDetail = ({
                             </Typography>
                           </Stack>
                           <SearchableSelect
-                            label={LABELS.worker}
+                            label={workerColumnLabel}
                             options={rowWorkerOptions}
                             value={row?.worker || null}
                             onChange={(_event, value) => handleWorkerChange(row.id, value)}
@@ -3538,7 +3549,7 @@ const WorkDetail = ({
                     <TableHead>
                       <TableRow>
                         <TableCell sx={{ width: 56 }} align="center">{LABELS.rowNumber}</TableCell>
-                        <TableCell sx={{ width: '14%' }}>{LABELS.worker}</TableCell>
+                        <TableCell sx={{ width: '14%' }}>{workerColumnLabel}</TableCell>
                         <TableCell sx={{ width: '24%' }}>{LABELS.style}</TableCell>
                         <TableCell sx={{ width: '21%' }}>{LABELS.process}</TableCell>
                         <TableCell sx={{ width: '10%' }} align="right">{LABELS.ctSeconds}</TableCell>

@@ -1010,7 +1010,14 @@ const ONBOARDING_ORGANIZATION_TYPE_OPTIONS = new Set<OrganizationTypeKey>(
   Object.values(ORGANIZATION_TYPE_KEYS)
 );
 const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 8;
+// 2026-08-20: must stay in lockstep with frontend/src/utils/roleAccessPolicyCore.mjs's
+// own independent copy of this schema (two separate implementations, no
+// shared import - see AGENTS.md "접근 제어"). Letting the two versions drift
+// makes the frontend treat every backend response as permanently stale and
+// re-apply ALL legacy defaults (including production-analysis/outsourcing-
+// record/etc auto-add) on every load, silently reverting saved toggles -
+// this is exactly the bug that motivated this comment.
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 9;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
   "DASHBOARD",
@@ -1033,6 +1040,8 @@ const ROLE_ACCESS_POLICY_FEATURES = [
   "EMPLOYEE_SYSTEM",
   "SALARY_SYSTEM",
   "CUSTOMER",
+  "OUTSOURCING_PARTNER",
+  "MATERIAL_SUPPLIER",
   "PERMISSION",
   "HOLIDAY",
 ] as const;
@@ -1053,6 +1062,8 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
     OPERATOR: [
       "DASHBOARD",
       "ORDER",
+      "OUTSOURCING_PARTNER",
+      "MATERIAL_SUPPLIER",
       "STYLE",
       "ST_REVIEW",
       "SHIPMENT_REVIEW",
@@ -1079,8 +1090,16 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
     WORKER: ["DASHBOARD"],
   },
   BRAND: {
-    ADMIN: ["DASHBOARD", "ORDER", "STYLE", "EMPLOYEE_SYSTEM", "SALARY_SYSTEM"],
-    OPERATOR: ["DASHBOARD", "ORDER", "STYLE"],
+    ADMIN: [
+      "DASHBOARD",
+      "ORDER",
+      "OUTSOURCING_PARTNER",
+      "MATERIAL_SUPPLIER",
+      "STYLE",
+      "EMPLOYEE_SYSTEM",
+      "SALARY_SYSTEM",
+    ],
+    OPERATOR: ["DASHBOARD", "ORDER", "OUTSOURCING_PARTNER", "MATERIAL_SUPPLIER", "STYLE"],
     ACCOUNTANT: ["DASHBOARD"],
     WORKER: ["DASHBOARD"],
   },
@@ -1151,6 +1170,24 @@ const applyLegacyOutsourcingRecordDefault = (policy: RoleAccessPolicy): void => 
     }
   );
 };
+const applyLegacyBusinessPartnerSplitDefault = (policy: RoleAccessPolicy): void => {
+  (Object.values(ORGANIZATION_TYPE_KEYS) as OrganizationTypeKey[]).forEach(
+    (orgType) => {
+      ORG_ACCESS_ROLES.forEach((role) => {
+        const features = policy[orgType][role];
+        if (!features.includes("ORDER")) return;
+        const orderIndex = features.indexOf("ORDER");
+        const insertAt = orderIndex >= 0 ? orderIndex + 1 : features.length;
+        if (!features.includes("OUTSOURCING_PARTNER")) {
+          features.splice(insertAt, 0, "OUTSOURCING_PARTNER");
+        }
+        if (!features.includes("MATERIAL_SUPPLIER")) {
+          features.splice(insertAt, 0, "MATERIAL_SUPPLIER");
+        }
+      });
+    }
+  );
+};
 const applyLegacyRevenueAnalysisDefault = (policy: RoleAccessPolicy): void => {
   (Object.values(ORGANIZATION_TYPE_KEYS) as OrganizationTypeKey[]).forEach(
     (orgType) => {
@@ -1210,6 +1247,7 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
     applyLegacyDashboardDefault(policy);
     applyLegacyProductionAnalysisDefault(policy);
     applyLegacyOutsourcingRecordDefault(policy);
+    applyLegacyBusinessPartnerSplitDefault(policy);
     applyLegacyRevenueAnalysisDefault(policy);
     applyLegacyEmployeeLineAccessDefault(policy);
     applyLegacyEmployeeSystemDefault(policy);
