@@ -24447,11 +24447,12 @@ const buildAssignmentPlanProgressRows = async (
           : baselineQuantityRaw != null && baselineQuantityRaw > 0
             ? Math.min(1, Math.max(0, producedQuantity / baselineQuantityRaw))
             : null;
-    const operationalProgressRatio = isMarkedCompleted
-      ? 1
-      : totalExpected != null && totalExpected > 0
-        ? Math.min(1, Math.max(0, totalDone / totalExpected))
-        : null;
+    const operationalProgressRatio =
+      totalExpected != null && totalExpected > 0
+        ? Math.max(0, totalDone / totalExpected)
+        : isMarkedCompleted
+          ? 1
+          : null;
     const ratioProgressForRemainingRatio = isMarkedCompleted
       ? 1
       : producedRatio != null && operationalProgressRatio != null
@@ -24510,7 +24511,7 @@ const buildAssignmentPlanProgressRows = async (
         ? null
         : Math.max(0, Math.round(operationalProgressRatio * 100));
     const progressPercent =
-      operationalProgressPercent == null ? null : Math.min(100, operationalProgressPercent);
+      operationalProgressPercent;
     const plannedStTotalSeconds = resolvePersistedAssignmentPlanStTotalSeconds(plan);
     const isStUnknown =
       plannedStTotalSeconds == null || plannedStTotalSeconds <= 0;
@@ -24692,29 +24693,12 @@ const buildAssignmentPlanProgressRows = async (
       : hasWorkProgressReachedCompletion
         ? ASSIGNMENT_STATUS_REVIEW_REQUIRED
         : ASSIGNMENT_STATUS_IN_PROGRESS;
-    const displayProgressPercent =
-      scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED &&
-      baselineQuantityRaw != null &&
-      baselineQuantityRaw > 0 &&
-      reviewProcessTotals.length > 0
-        ? Math.max(
-            0,
-            Math.min(
-              99,
-              ...reviewProcessTotals
-                .filter((process) => Math.max(0, Number(process?.applicableQuantity) || 0) > 0)
-                .map((process) => {
-                  const processTarget = Math.max(
-                    0,
-                    Number(process?.applicableQuantity) || 0
-                  );
-                  return Math.round(
-                    (Math.max(0, Number(process?.quantity) || 0) / processTarget) * 100
-                  );
-                })
-            )
-          )
-        : operationalProgressPercent;
+    // Display the factual aggregate production ratio even while quantity review
+    // is required. REVIEW_REQUIRED already communicates a process mismatch; it
+    // must not fabricate a 99% ceiling when every process met its own target.
+    // Overproduction is intentionally visible above 100% here, while scheduler
+    // and remaining-load ratios stay capped independently below.
+    const displayProgressPercent = operationalProgressPercent;
 
     const stateAssignment = stateAssignmentsByExternalId.get(plan.externalId) || null;
     const snapshotSchedule = resolveNormalizedAssignmentCtSnapshot(plan)?.schedule || null;
