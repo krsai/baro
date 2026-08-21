@@ -4523,54 +4523,24 @@ ALTER TABLE "StyleProcessAtObservation"
 ALTER TABLE "AssignmentPlan"
   ADD COLUMN IF NOT EXISTS "completionAdjustmentHistory" JSONB;
 
--- Organization-scoped business partners used by outsourced work records.
--- This block is intentionally idempotent because Railway applies migration_fix
--- before starting the API, including databases whose Prisma migration history
--- has not yet caught up with the generated client.
-DO $$
-BEGIN
-  CREATE TYPE "BusinessPartnerType" AS ENUM ('PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER');
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-END $$;
-
-CREATE TABLE IF NOT EXISTS "BusinessPartner" (
-  "id" SERIAL NOT NULL,
-  "orgId" INTEGER NOT NULL,
-  "name" TEXT NOT NULL,
-  "type" "BusinessPartnerType" NOT NULL DEFAULT 'PROCESS_OUTSOURCING',
-  "isActive" BOOLEAN NOT NULL DEFAULT true,
-  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "createdBy" TEXT NOT NULL DEFAULT 'system@baro.local',
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT "BusinessPartner_pkey" PRIMARY KEY ("id")
-);
-
-ALTER TABLE "BusinessPartner"
-  ADD COLUMN IF NOT EXISTS "contactName" TEXT,
-  ADD COLUMN IF NOT EXISTS "contactPhone" TEXT;
-
-CREATE UNIQUE INDEX IF NOT EXISTS "BusinessPartner_orgId_type_name_key"
-  ON "BusinessPartner"("orgId", "type", "name");
-CREATE INDEX IF NOT EXISTS "BusinessPartner_orgId_type_isActive_idx"
-  ON "BusinessPartner"("orgId", "type", "isActive");
-
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'BusinessPartner_orgId_fkey') THEN
-    ALTER TABLE "BusinessPartner" ADD CONSTRAINT "BusinessPartner_orgId_fkey"
-      FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-  END IF;
-END $$;
--- Step 0s: split outsourced production into its own table (20260818)
+-- Step 0s: split outsourced production into its own table (20260818).
 -- WorkRecord is now employee-only (worker/ctSeconds). Outsourced (vendor)
 -- production moved out to OutsourcedWorkRecord: no workerId/ctSeconds at
--- all, outsourcingPartnerId is a required FK (no more free-text-only rows),
--- unit-price x quantity based. Must run after the BusinessPartner block
--- above (OutsourcedWorkRecord.outsourcingPartnerId references it) and
--- after any legacy WorkRecord.isOutsourced=true rows have been migrated
--- out by scripts/migrate-outsourced-work-records.js --apply, or the
--- DROP COLUMN statements below discard that data.
+-- all, outsourcingPartnerId is a required FK, unit-price x quantity based.
+-- outsourcingPartnerId originally referenced a short-lived "BusinessPartner"
+-- table; that table was merged into Organization on 20260820 (see
+-- ensureBusinessPartnerMergedIntoOrganization in src/index.ts, which does the
+-- one-time row migration + drops BusinessPartner) and schema.prisma has never
+-- had a BusinessPartner model since. This block used to CREATE TABLE IF NOT
+-- EXISTS "BusinessPartner" and FK outsourcingPartnerId to it on every run,
+-- which on an already-merged DB kept recreating an empty BusinessPartner
+-- table and then failed to (re)add that FK against outsourcingPartnerId
+-- values that already point at Organization ids - crash-looping every
+-- deploy. outsourcingPartnerId now targets Organization directly, matching
+-- the current schema.prisma source of truth. Also run after any legacy
+-- WorkRecord.isOutsourced=true rows have been migrated out by
+-- scripts/migrate-outsourced-work-records.js --apply, or the DROP COLUMN
+-- statements below discard that data.
 DO $$
 BEGIN
   CREATE TYPE "WorkLogRecordKind" AS ENUM ('EMPLOYEE', 'OUTSOURCING');
@@ -4621,9 +4591,13 @@ BEGIN
     ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_workLogId_fkey"
       FOREIGN KEY ("workLogId") REFERENCES "WorkLog"("id") ON DELETE CASCADE;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_outsourcingPartnerId_fkey') THEN
-    ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_outsourcingPartnerId_fkey"
-      FOREIGN KEY ("outsourcingPartnerId") REFERENCES "BusinessPartner"("id");
+  -- Legacy FK from the short-lived BusinessPartner table (see comment above
+  -- Step 0s). Drop it if it still exists anywhere so the Organization-based
+  -- FK below can be added without a stale duplicate constraint name.
+  ALTER TABLE "OutsourcedWorkRecord" DROP CONSTRAINT IF EXISTS "OutsourcedWorkRecord_outsourcingPartnerId_fkey";
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_outsourcingPartnerId_org_fkey') THEN
+    ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_outsourcingPartnerId_org_fkey"
+      FOREIGN KEY ("outsourcingPartnerId") REFERENCES "Organization"("id") ON DELETE RESTRICT;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_assignmentPlan_org_fkey') THEN
     ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_assignmentPlan_org_fkey"
