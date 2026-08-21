@@ -637,7 +637,11 @@ export const buildLineMonthCapacityBoardRows = ({
           progressPercent:
             assignment?.progressPercent == null
               ? null
-              : Math.max(0, Math.min(100, Number(assignment.progressPercent) || 0)),
+              : Math.max(0, Number(assignment.progressPercent) || 0),
+          workProgressPercent:
+            assignment?.workProgressPercent == null
+              ? null
+              : Math.max(0, Number(assignment.workProgressPercent) || 0),
           scheduleStatus: String(assignment?.scheduleStatus || '').trim() || null,
           reviewReason: assignment?.reviewReason || null,
           visiblePlannedStTotalSeconds: 0,
