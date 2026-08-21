@@ -842,6 +842,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "AssignmentPlan", columnName: "assignmentCtTotalSeconds" },
   { tableName: "AssignmentPlan", columnName: "assignmentCtSnapshot" },
   { tableName: "AssignmentPlan", columnName: "assignmentProcessRevisionHistory" },
+  { tableName: "AssignmentPlan", columnName: "completionAdjustmentHistory" },
   { tableName: "AssignmentPlan", columnName: "styleProcessVersionId" },
   { tableName: "StyleProcessVersion", columnName: "processSnapshot" },
   { tableName: "Employee", columnName: "gradeId" },
@@ -16276,6 +16277,7 @@ const toAssignmentPlanResponse = (plan: any) => {
     closeMode,
     closeBasis,
     completionReason: resolveOptionalString(plan?.completionReason, null),
+    completionAdjustmentHistory: ensureArray(plan?.completionAdjustmentHistory),
     atTrainingExcluded: plan?.atTrainingExcluded === true,
     atTrainingExclusionReason: resolveOptionalString(plan?.atTrainingExclusionReason, null),
     isPayrollLocked: Boolean(plan?.isPayrollLocked),
@@ -17705,6 +17707,7 @@ const ASSIGNMENT_PLAN_SELECT_WITH_CLOSE = {
   closeMode: true,
   closeBasis: true,
   completionReason: true,
+  completionAdjustmentHistory: true,
   atTrainingExcluded: true,
   atTrainingExclusionReason: true,
 } as const;
@@ -24843,6 +24846,8 @@ const buildAssignmentPlanProgressRows = async (
       closedBy: resolveOptionalString(plan?.closedBy, null),
       closeMode,
       closeBasis,
+      completionReason: resolveOptionalString(plan?.completionReason, null),
+      completionAdjustmentHistory: ensureArray(plan?.completionAdjustmentHistory),
       firstWorkDate,
       lastWorkDate,
       elapsedDays,
@@ -25266,6 +25271,7 @@ const buildAssignmentPlanCloseResponse = (plan: any) => {
     isCompleted,
     finalQuantity,
     completionReason: resolveOptionalString(plan?.completionReason, null),
+    completionAdjustmentHistory: ensureArray(plan?.completionAdjustmentHistory),
     atTrainingExcluded: plan?.atTrainingExcluded === true,
     atTrainingExclusionReason: resolveOptionalString(plan?.atTrainingExclusionReason, null),
     qcPassedTotal,
@@ -25648,7 +25654,6 @@ app.get("/assignment-plans/:externalId/qc-history", async (req, res) => {
   if (!externalId) {
     return res.status(400).json({ ok: false, error: "invalid externalId" });
   }
-
   const plan = await prisma.assignmentPlan.findFirst({
     where: { orgId: organization.id, externalId },
     select: {
@@ -26075,6 +26080,13 @@ app.patch([
   if (!externalId) {
     return res.status(400).json({ ok: false, error: "invalid externalId" });
   }
+  const adjustmentReason = resolveOptionalString(req.body?.reason, null);
+  if (!adjustmentReason) {
+    return res.status(400).json({ ok: false, error: "completion adjustment reason is required" });
+  }
+  if (adjustmentReason.length > 1000) {
+    return res.status(400).json({ ok: false, error: "completion adjustment reason is too long" });
+  }
 
   const plan = await prisma.assignmentPlan.findFirst({
     where: { orgId: organization.id, externalId },
@@ -26156,6 +26168,16 @@ app.patch([
   const atStFallbackStyleProcessId =
     incompleteProcessIds.length === 1 ? incompleteProcessIds[0]! : null;
   const actor = getCurrentRequestActor();
+  const adjustedAt = new Date();
+  const completionAdjustmentHistory = [
+    ...ensureArray(plan.completionAdjustmentHistory),
+    {
+      action: "MANUAL_COMPLETE",
+      reason: adjustmentReason,
+      actor,
+      adjustedAt: adjustedAt.toISOString(),
+    },
+  ];
   const updatedPlan = await prisma.$transaction(async (tx) => {
     const changed = await tx.assignmentPlan.updateMany({
       where: {
@@ -26175,6 +26197,7 @@ app.patch([
         closeMode: "FULL",
         closeBasis: "MANUAL",
         completionReason: "MANUAL_PROGRESS_ADJUSTMENT",
+        completionAdjustmentHistory: completionAdjustmentHistory as any,
         atTrainingExcluded: false,
         atTrainingExclusionReason: null,
         candidateEndDate: completedAt,

@@ -6,6 +6,10 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Drawer,
   IconButton,
   Menu,
@@ -2279,8 +2283,14 @@ const resolveAssignmentProgressState = ({
       progressRow?.actualProducedCompletedAt ?? assignment?.actualProducedCompletedAt ?? null,
     closedAt: progressRow?.closedAt ?? assignment?.closedAt ?? assignment?.completedAt ?? null,
     closedQty: progressRow?.closedQty ?? assignment?.closedQty ?? assignment?.finalQuantity ?? null,
+    closedBy: progressRow?.closedBy ?? assignment?.closedBy ?? null,
     closeMode: progressRow?.closeMode ?? assignment?.closeMode ?? null,
     closeBasis: progressRow?.closeBasis ?? assignment?.closeBasis ?? null,
+    completionReason: progressRow?.completionReason ?? assignment?.completionReason ?? null,
+    completionAdjustmentHistory:
+      progressRow?.completionAdjustmentHistory ??
+      assignment?.completionAdjustmentHistory ??
+      [],
     isCompletionInconsistent: Boolean(
       progressRow?.isCompletionInconsistent ?? assignment?.isCompletionInconsistent
     ),
@@ -3038,6 +3048,11 @@ const AssignBoard = () => {
   // threw "setCompletingAssignmentId is not defined" before the request ever
   // went out.
   const [completingAssignmentId, setCompletingAssignmentId] = useState(null);
+  const [completionAdjustmentDialog, setCompletionAdjustmentDialog] = useState({
+    open: false,
+    assignmentId: null,
+    reason: '',
+  });
   const [detailState, setDetailState] = useState(null);
   const [quantityReviewAssignmentId, setQuantityReviewAssignmentId] = useState(null);
   const [cursorWarningState, setCursorWarningState] = useState({
@@ -6519,24 +6534,32 @@ const AssignBoard = () => {
       'warning'
     );
   }, [assignmentById, showNotification, languageCode]);
-  const handleContextRecordOmissionComplete = useCallback(async () => {
+  const handleContextRecordOmissionComplete = useCallback(() => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return;
     const assignment = assignmentById.get(contextMenuState.id);
     setContextMenuState(null);
     if (!assignment?.id || assignment.isCompleted) return;
-    const confirmed = window.confirm(
-      languageCode === 'ko'
-        ? `외주 공정 등으로 실제 생산은 끝났지만 내부 작업기록만으로 진행률이 100%가 되지 않는 경우에 사용하세요.\n\n배정수량 ${Number(assignment.quantity || 0).toLocaleString()}장을 100% 완료로 조정합니다. 기존 작업기록과 AT 학습 데이터는 그대로 유지하며, 작업기록이나 생산수당 기록을 새로 만들지는 않습니다. 계속할까요?`
-        : languageCode === 'vi'
-          ? 'Chỉ sử dụng khi sản xuất thực tế đã hoàn tất, ví dụ có công đoạn gia công ngoài, nhưng hồ sơ nội bộ chưa đạt 100%. Phân công sẽ được điều chỉnh hoàn tất; các bản ghi hiện có và dữ liệu học AT vẫn được giữ nguyên. Tiếp tục?'
-          : 'Use this when production is actually complete, such as with an outsourced process, but internal records do not reach 100%. Existing work records and AT training data will be preserved. Continue?'
-    );
-    if (!confirmed) return;
+    setCompletionAdjustmentDialog({ open: true, assignmentId: assignment.id, reason: '' });
+  }, [assignmentById, contextMenuState]);
+
+  const handleCloseCompletionAdjustmentDialog = useCallback(() => {
+    if (completingAssignmentId) return;
+    setCompletionAdjustmentDialog({ open: false, assignmentId: null, reason: '' });
+  }, [completingAssignmentId]);
+
+  const handleConfirmCompletionAdjustment = useCallback(async () => {
+    const assignment = assignmentById.get(completionAdjustmentDialog.assignmentId);
+    const reason = String(completionAdjustmentDialog.reason || '').trim();
+    if (!assignment?.id || assignment.isCompleted || !reason) return;
     setCompletingAssignmentId(assignment.id);
     try {
       await requestJSON(
         `/assignment-plans/${encodeURIComponent(String(assignment.id))}/manual-production-complete` + buildQueryString({ orgId: activeOrgId }),
-        { method: 'PATCH' }
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason }),
+        }
       );
       showNotification(
         languageCode === 'ko'
@@ -6547,6 +6570,7 @@ const AssignBoard = () => {
         'success'
       );
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD], orgId: activeOrgId, assignmentIds: [assignment.id], source: 'assign-manual-production-complete' });
+      setCompletionAdjustmentDialog({ open: false, assignmentId: null, reason: '' });
       requestExternalBoardReload();
       handleCloseDetail();
     } catch (error) {
@@ -6554,7 +6578,7 @@ const AssignBoard = () => {
     } finally {
       setCompletingAssignmentId(null);
     }
-  }, [activeOrgId, assignmentById, contextMenuState, handleCloseDetail, languageCode, requestExternalBoardReload, showNotification]);
+  }, [activeOrgId, assignmentById, completionAdjustmentDialog, handleCloseDetail, languageCode, requestExternalBoardReload, showNotification]);
 
   const handleContextReopenCompletion = useCallback(async () => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return;
@@ -7156,6 +7180,64 @@ const AssignBoard = () => {
           )}
         </Menu>
 
+        <Dialog
+          open={completionAdjustmentDialog.open}
+          onClose={handleCloseCompletionAdjustmentDialog}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>
+            {languageCode === 'ko'
+              ? '완료 조정'
+              : languageCode === 'vi'
+                ? 'Điều chỉnh hoàn tất'
+                : 'Adjust completion'}
+          </DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ pt: 0.5 }}>
+              <Alert severity="warning">
+                {languageCode === 'ko'
+                  ? '실제 생산이 끝났지만 작업기록만으로 완료되지 않는 경우에만 사용하세요. 기존 작업기록과 AT 학습 데이터는 유지됩니다.'
+                  : languageCode === 'vi'
+                    ? 'Chỉ sử dụng khi sản xuất thực tế đã hoàn tất nhưng hồ sơ công việc chưa thể hiện hoàn tất. Các bản ghi và dữ liệu học AT vẫn được giữ nguyên.'
+                    : 'Use only when production is actually complete but work records cannot show completion. Existing records and AT training data are preserved.'}
+              </Alert>
+              <TextField
+                autoFocus
+                required
+                multiline
+                minRows={3}
+                label={languageCode === 'ko' ? '완료 조정 사유' : languageCode === 'vi' ? 'Lý do điều chỉnh' : 'Adjustment reason'}
+                placeholder={languageCode === 'ko' ? '완료로 조정하는 구체적인 사유를 입력하세요.' : undefined}
+                value={completionAdjustmentDialog.reason}
+                onChange={(event) =>
+                  setCompletionAdjustmentDialog((current) => ({
+                    ...current,
+                    reason: event.target.value.slice(0, 1000),
+                  }))
+                }
+                helperText={`${completionAdjustmentDialog.reason.length}/1000`}
+                disabled={Boolean(completingAssignmentId)}
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseCompletionAdjustmentDialog} disabled={Boolean(completingAssignmentId)}>
+              {languageCode === 'ko' ? '취소' : languageCode === 'vi' ? 'Hủy' : 'Cancel'}
+            </Button>
+            <Button
+              variant="contained"
+              color="error"
+              onClick={handleConfirmCompletionAdjustment}
+              disabled={Boolean(completingAssignmentId) || !completionAdjustmentDialog.reason.trim()}
+            >
+              {completingAssignmentId
+                ? languageCode === 'ko' ? '처리 중...' : 'Saving...'
+                : languageCode === 'ko' ? '완료로 조정' : languageCode === 'vi' ? 'Điều chỉnh' : 'Confirm adjustment'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
         <QuantityReviewDrawer
           externalId={quantityReviewAssignmentId}
           orgId={activeOrgId}
@@ -7607,6 +7689,27 @@ const AssignBoard = () => {
                         : 'This assignment was adjusted to complete because internal records were incomplete. Existing records and AT training data are preserved.'}
                   </Alert>
                 )}
+
+                {Array.isArray(detailAssignment?.completionAdjustmentHistory) &&
+                detailAssignment.completionAdjustmentHistory.length > 0 ? (
+                  <Paper variant="outlined" sx={{ p: 2 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.25 }}>
+                      {languageCode === 'ko' ? '완료 조정 이력' : languageCode === 'vi' ? 'Lịch sử điều chỉnh hoàn tất' : 'Completion adjustment history'}
+                    </Typography>
+                    <Stack spacing={1}>
+                      {[...detailAssignment.completionAdjustmentHistory].reverse().map((entry, index) => (
+                        <Box key={`${entry?.adjustedAt || 'history'}-${index}`} sx={{ borderLeft: '3px solid', borderColor: 'warning.main', pl: 1.25 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                            {entry?.actor || '-'} · {formatDateTimeLabel(entry?.adjustedAt, '-', languageCode)}
+                          </Typography>
+                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 0.25 }}>
+                            {entry?.reason || '-'}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Paper>
+                ) : null}
 
                 {detailAssignment?.scheduleStatus === 'REVIEW_REQUIRED' &&
                 detailAssignment?.reviewReason ? (

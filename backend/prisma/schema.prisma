@@ -1366,6 +1366,7 @@ model AssignmentPlan {
   closeMode                 AssignmentCloseMode?
   closeBasis                AssignmentCloseBasis?
   completionReason          String?
+  completionAdjustmentHistory Json?
   atTrainingExcluded        Boolean               @default(false)
   atTrainingExclusionReason String?
   createdAt                 DateTime              @default(now())

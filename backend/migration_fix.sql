@@ -4519,6 +4519,10 @@ ALTER TABLE "StyleProcessAtObservation"
   ALTER COLUMN "productionStage" SET DEFAULT 'SEWING'::"ProductionStage",
   ALTER COLUMN "productionStage" SET NOT NULL;
 
+-- Immutable audit trail for manual assignment completion adjustments.
+ALTER TABLE "AssignmentPlan"
+  ADD COLUMN IF NOT EXISTS "completionAdjustmentHistory" JSONB;
+
 -- Organization-scoped business partners used by outsourced work records.
 -- This block is intentionally idempotent because Railway applies migration_fix
 -- before starting the API, including databases whose Prisma migration history
