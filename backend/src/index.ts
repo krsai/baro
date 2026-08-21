@@ -24701,9 +24701,17 @@ const buildAssignmentPlanProgressRows = async (
             0,
             Math.min(
               99,
-              ...reviewProcessTotals.map((process) =>
-                Math.round((Math.max(0, Number(process?.quantity) || 0) / baselineQuantityRaw) * 100)
-              )
+              ...reviewProcessTotals
+                .filter((process) => Math.max(0, Number(process?.applicableQuantity) || 0) > 0)
+                .map((process) => {
+                  const processTarget = Math.max(
+                    0,
+                    Number(process?.applicableQuantity) || 0
+                  );
+                  return Math.round(
+                    (Math.max(0, Number(process?.quantity) || 0) / processTarget) * 100
+                  );
+                })
             )
           )
         : operationalProgressPercent;

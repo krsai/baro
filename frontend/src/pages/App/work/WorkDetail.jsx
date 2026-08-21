@@ -3548,7 +3548,18 @@ const WorkDetail = ({
                   <Table stickyHeader size="small" sx={{ tableLayout: 'fixed' }}>
                     <TableHead>
                       <TableRow>
-                        <TableCell sx={{ width: 56 }} align="center">{LABELS.rowNumber}</TableCell>
+                        <TableCell sx={{ width: 56 }} align="center">
+                          <Stack direction="row" spacing={0.25} alignItems="center" justifyContent="center">
+                            <DragIndicatorIcon
+                              fontSize="small"
+                              aria-hidden="true"
+                              sx={{ visibility: 'hidden' }}
+                            />
+                            <Typography component="span" variant="body2" sx={{ fontWeight: 600 }}>
+                              {LABELS.rowNumber}
+                            </Typography>
+                          </Stack>
+                        </TableCell>
                         <TableCell sx={{ width: '14%' }}>{workerColumnLabel}</TableCell>
                         <TableCell sx={{ width: '24%' }}>{LABELS.style}</TableCell>
                         <TableCell sx={{ width: '21%' }}>{LABELS.process}</TableCell>
