@@ -32,11 +32,9 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { DndContext, DragOverlay, useDroppable, pointerWithin, MeasuringStrategy } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
-import dayjs from 'dayjs';
 import { useAssignBoardDnd } from './hooks/useAssignBoardDnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
-import CustomDatePicker from '../../../components/CustomDatePicker';
 import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
@@ -3001,10 +2999,6 @@ const AssignBoard = () => {
   const [assignmentOperationStartDateKey, setAssignmentOperationStartDateKey] = useState(
     DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY
   );
-  const assignmentOperationStartDay = useMemo(
-    () => dayjs(assignmentOperationStartDateKey).startOf('day'),
-    [assignmentOperationStartDateKey]
-  );
   const startDateRef = useRef(
     clampAssignmentViewDate(getMonthStartDate(), DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY)
   );
@@ -3018,7 +3012,6 @@ const AssignBoard = () => {
   const historyApplyingRef = useRef(false);
   const [historyStatus, setHistoryStatus] = useState({ undoCount: 0, redoCount: 0 });
   const { holidaySet } = useHolidayCalendar(activeOrgId);
-  const MAX_RANGE_DAYS = 92;
   const [viewStart, setViewStart] = useState(() =>
     clampAssignmentViewDate(getMonthStartDate(), DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY)
   );
@@ -6794,92 +6787,7 @@ const AssignBoard = () => {
     syncHistoryStatus,
   ]);
 
-  const applyViewRange = useCallback(
-    (nextStart, nextEnd) => {
-      const normalizedStart = clampAssignmentViewDate(
-        nextStart,
-        assignmentOperationStartDateKey
-      );
-      const normalizedEnd = clampAssignmentViewDate(
-        nextEnd,
-        assignmentOperationStartDateKey
-      );
-
-      if (normalizedStart > normalizedEnd) return false;
-      if (
-        normalizedStart.getTime() === viewStart.getTime() &&
-        normalizedEnd.getTime() === viewEnd.getTime()
-      ) {
-        return true;
-      }
-
-      setViewStart(normalizedStart);
-      setViewEnd(normalizedEnd);
-      return true;
-    },
-    [assignmentOperationStartDateKey, viewEnd, viewStart]
-  );
-
-  // ── 날짜 범위 네비게이션 헬퍼 ──────────────────────────────────────
-  const toMonthStart = (d) => { const r = new Date(d); r.setDate(1); r.setHours(0,0,0,0); return r; };
-  const toMonthEnd   = (d) => { const r = new Date(d); r.setDate(1); r.setMonth(r.getMonth()+1); r.setDate(0); r.setHours(0,0,0,0); return r; };
-
-  const handleViewStartChange = (newStart) => {
-    const s = clampAssignmentViewDate(toMonthStart(newStart), assignmentOperationStartDateKey);
-    let e = clampAssignmentViewDate(viewEnd, assignmentOperationStartDateKey);
-    if (s > e) {
-      e = getMonthEndDate(s);
-    }
-    const range = Math.round((e - s) / 86400000) + 1;
-    if (range > MAX_RANGE_DAYS) {
-      const cappedEnd = new Date(s); cappedEnd.setDate(cappedEnd.getDate() + MAX_RANGE_DAYS - 1);
-      applyViewRange(s, cappedEnd);
-      return;
-    }
-    applyViewRange(s, e);
-  };
-  const handleViewEndChange = (newEnd) => {
-    const e = clampAssignmentViewDate(toMonthEnd(newEnd), assignmentOperationStartDateKey);
-    let s = clampAssignmentViewDate(viewStart, assignmentOperationStartDateKey);
-    if (e < s) {
-      s = clampAssignmentViewDate(toMonthStart(e), assignmentOperationStartDateKey);
-    }
-    const range = Math.round((e - s) / 86400000) + 1;
-    if (range > MAX_RANGE_DAYS) return;
-    applyViewRange(s, e);
-  };
-  const handleViewMonthChange = (newMonth) => {
-    const s = clampAssignmentViewDate(toMonthStart(newMonth), assignmentOperationStartDateKey);
-    applyViewRange(s, getMonthEndDate(s));
-  };
-  // ? : FROM → 전달 1일
-  const handlePrevMonthFrom = () => {
-    const prev = toMonthStart(viewStart); prev.setMonth(prev.getMonth() - 1);
-    handleViewStartChange(prev);
-  };
-  // ? : TO → 다음달 말일
-  const handleNextMonthTo = () => {
-    const nextMonthFirst = new Date(viewEnd.getFullYear(), viewEnd.getMonth() + 1, 1);
-    const nextEnd = toMonthEnd(nextMonthFirst);
-    handleViewEndChange(nextEnd);
-  };
-  // M- : 전달 전체 (from 기준)
-  const handleMonthMinus = () => {
-    const newStart = toMonthStart(viewStart); newStart.setMonth(newStart.getMonth() - 1);
-    const newEnd   = toMonthEnd(newStart);
-    applyViewRange(newStart, newEnd);
-  };
-  // M+ : 다음달 전체 (from 기준)
-  const handleMonthPlus = () => {
-    const newStart = toMonthStart(viewStart); newStart.setMonth(newStart.getMonth() + 1);
-    const newEnd   = toMonthEnd(newStart);
-    applyViewRange(newStart, newEnd);
-  };
   const controlsDisabled = persisting || loading;
-  const monthMinusDisabled =
-    controlsDisabled ||
-    toMonthStart(viewStart).getTime() <=
-      getAssignmentOperationStartDate(assignmentOperationStartDateKey).getTime();
 
   return (
     <AppPageContainer
@@ -7030,35 +6938,6 @@ const AssignBoard = () => {
               <Typography variant="subtitle2">
                 {getUiMessage('assign.lineCapacityBoard', 'Line Capacity', languageCode)}
               </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                <CustomDatePicker
-                  value={viewStart}
-                  onChange={(val) => { if (val?.isValid?.()) handleViewMonthChange(val.toDate()); }}
-                  monthOnly
-                  disabled={controlsDisabled}
-                  minDate={assignmentOperationStartDay}
-                />
-                <Stack sx={{ gap: '2px' }}>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={handleMonthPlus}
-                    disabled={controlsDisabled}
-                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-                  >
-                    M+
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={handleMonthMinus}
-                    disabled={monthMinusDisabled}
-                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-                  >
-                    M-
-                  </Button>
-                </Stack>
-              </Box>
             </Box>
             <Stack spacing={1}>
               <Typography variant="caption" color="text.secondary">
