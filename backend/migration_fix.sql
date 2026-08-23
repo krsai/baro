@@ -4735,6 +4735,34 @@ BEGIN
   RETURN NEW;
 END; $$ LANGUAGE plpgsql;
 
+-- 2026-08-23: canonical employee pay type codes (FIXED/CT -> GENERAL/OUTPUT)
+ALTER TABLE "AttrRole" ALTER COLUMN "defaultPayType" SET DEFAULT 'GENERAL';
+UPDATE "AttrRole"
+SET "defaultPayType" = CASE "defaultPayType"
+  WHEN 'FIXED' THEN 'GENERAL'
+  WHEN 'CT' THEN 'OUTPUT'
+  ELSE "defaultPayType"
+END
+WHERE "defaultPayType" IN ('FIXED', 'CT');
+UPDATE "AttrRole"
+SET "defaultPayType" = 'GENERAL'
+WHERE "code" = 'WORKER_SUPERVISOR'
+  AND "defaultPayType" <> 'GENERAL';
+UPDATE "Employee"
+SET "payType" = CASE "payType"
+  WHEN 'FIXED' THEN 'GENERAL'
+  WHEN 'CT' THEN 'OUTPUT'
+  ELSE "payType"
+END
+WHERE "payType" IN ('FIXED', 'CT');
+UPDATE "Employee" e
+SET "payType" = 'GENERAL'
+FROM "AttrRole" r
+WHERE e."roleId" = r."id"
+  AND e."orgId" = r."orgId"
+  AND r."code" = 'WORKER_SUPERVISOR'
+  AND e."payType" IS DISTINCT FROM 'GENERAL';
+
 -- 2026-08-16: salary policy matrix by organization role and employee grade
 CREATE TABLE IF NOT EXISTS "EmployeeCompensationPolicy" (
   "id" SERIAL PRIMARY KEY,

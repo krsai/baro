@@ -26,7 +26,7 @@ import TableStatusRow from '../../../components/TableStatusRow';
 import { useAuth } from '../../../context/AuthContext';
 import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
-import { getPayTypeOptions } from '../../../constants/payType';
+import { getPayTypeOptions, PAY_TYPE_KEYS } from '../../../constants/payType';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
 import {
   getStaticOptionLabel,
@@ -300,7 +300,8 @@ const isLoginRequiredRole = (role) =>
   LOGIN_REQUIRED_ROLES.has(String(role || '').toUpperCase());
 const isSalaryAmountPayType = (payType) => {
   const normalizedPayType = String(payType || '').toUpperCase();
-  return normalizedPayType === 'FIXED' || normalizedPayType === 'CT';
+  return normalizedPayType === PAY_TYPE_KEYS.GENERAL
+    || normalizedPayType === PAY_TYPE_KEYS.OUTPUT;
 };
 
 const isAdminOrgRole = (value) => String(value || '').toUpperCase() === 'ADMIN';
@@ -445,7 +446,9 @@ const resolveNameFromEmail = (email) => {
 
 const buildEmployeeDraft = (member, employee, options = {}) => {
   const orgRole = String(member?.role || 'WORKER').toUpperCase();
-  const defaultPayType = orgRole === 'WORKER' ? 'CT' : 'FIXED';
+  const defaultPayType = orgRole === 'WORKER'
+    ? PAY_TYPE_KEYS.OUTPUT
+    : PAY_TYPE_KEYS.GENERAL;
   return {
     name:
       String(employee?.name || '').trim() ||
@@ -747,7 +750,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     orgRole: 'WORKER',
     jobRoleId: '',
     gradeId: '',
-    payType: 'CT',
+    payType: PAY_TYPE_KEYS.OUTPUT,
     fixedSalary: '',
     factoryId: '',
     employeeNo: '',
@@ -1122,7 +1125,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         }
 
         const normalizedPayType = String(
-          draft.payType || (draft.orgRole === 'WORKER' ? 'CT' : 'FIXED')
+          draft.payType || (
+            draft.orgRole === 'WORKER'
+              ? PAY_TYPE_KEYS.OUTPUT
+              : PAY_TYPE_KEYS.GENERAL
+          )
         ).toUpperCase();
         const isSalaryPayType = isSalaryAmountPayType(normalizedPayType);
         const currentEmployee = employeeByMembership.get(member.id) || null;
@@ -1222,7 +1229,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       orgRole: defaultRole,
       jobRoleId: defaultRole === 'WORKER' ? defaultWorkerJobRoleId : '',
       gradeId: String(gradeOptions.find((grade) => grade.isDefault)?.id || ''),
-      payType: defaultRole === 'WORKER' ? 'CT' : 'FIXED',
+      payType: defaultRole === 'WORKER'
+        ? PAY_TYPE_KEYS.OUTPUT
+        : PAY_TYPE_KEYS.GENERAL,
       fixedSalary: '',
       factoryId: defaultFactoryId,
       employeeNo: '',
@@ -1269,17 +1278,28 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       const normalizedRole = String(next.orgRole || '').toUpperCase();
       const normalizedPayType = String(next.payType || '').toUpperCase();
       const patchKeys = patch ? Object.keys(patch) : [];
+      const hasJobRolePatch = patchKeys.includes('jobRoleId');
       const hasLeftAtPatch = patchKeys.includes('leftAt');
       const hasStatusPatch = patchKeys.includes('status');
       const normalizedLeftAt = String(next.leftAt || '').trim();
 
       if (!isWorkerOrgRole(normalizedRole)) {
         next.jobRoleId = '';
-        if (!normalizedPayType || normalizedPayType === 'CT') {
-          next.payType = 'FIXED';
+        if (!normalizedPayType || normalizedPayType === PAY_TYPE_KEYS.OUTPUT) {
+          next.payType = PAY_TYPE_KEYS.GENERAL;
         }
       } else if (!normalizedPayType) {
-        next.payType = 'CT';
+        next.payType = PAY_TYPE_KEYS.OUTPUT;
+      }
+
+      if (isWorkerOrgRole(normalizedRole) && hasJobRolePatch) {
+        const selectedJobRole = jobRoleOptions.find(
+          (role) => String(role?.id) === String(next.jobRoleId || '')
+        );
+        next.payType = String(selectedJobRole?.code || '').trim().toUpperCase()
+          === 'WORKER_SUPERVISOR'
+          ? PAY_TYPE_KEYS.GENERAL
+          : PAY_TYPE_KEYS.OUTPUT;
       }
 
       if (isWorkerOrgRole(normalizedRole) && isNoFactoryFilterValue(next.factoryId)) {
@@ -1294,7 +1314,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       }
       return next;
     });
-  }, [languageCode]);
+  }, [jobRoleOptions, languageCode]);
 
   const handleDrawerSave = useCallback(async () => {
     if (isDrawerSaving || !activeOrgId) return;
@@ -1311,7 +1331,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       ? drawerDraft.jobRoleId || defaultWorkerJobRoleId
       : '';
     const normalizedPayType = String(
-      drawerDraft.payType || (isWorker ? 'CT' : 'FIXED')
+      drawerDraft.payType || (
+        isWorker ? PAY_TYPE_KEYS.OUTPUT : PAY_TYPE_KEYS.GENERAL
+      )
     ).toUpperCase();
     const normalizedStatus = String(drawerDraft.status || 'ACTIVE').toUpperCase();
     const normalizedJoinedAt = String(drawerDraft.joinedAt || '').trim();
@@ -1628,6 +1650,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const drawerEffectiveJobRoleId = drawerIsWorker
     ? drawerDraft.jobRoleId || defaultWorkerJobRoleId
     : '';
+  const drawerIsSupervisor = drawerIsWorker && jobRoleOptions.some(
+    (role) =>
+      String(role?.id) === String(drawerEffectiveJobRoleId)
+      && String(role?.code || '').trim().toUpperCase() === 'WORKER_SUPERVISOR'
+  );
   const drawerNeedsLoginEmail = isLoginRequiredRole(drawerDraft.orgRole);
 
   return (
@@ -1844,7 +1871,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 label={text('payTypeLabel', languageCode)}
                 value={drawerDraft.payType}
                 onChange={(e) => handleDrawerDraftChange({ payType: e.target.value })}
-                disabled={isDrawerSaving}
+                disabled={isDrawerSaving || drawerIsSupervisor}
               >
                 {payTypeOptions.map((option) => (
                   <MenuItem key={option.value || 'default'} value={option.value}>
@@ -1856,7 +1883,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 <TextField
                   size="small"
                   label={text(
-                    String(drawerDraft.payType || '').toUpperCase() === 'CT'
+                    String(drawerDraft.payType || '').toUpperCase()
+                      === PAY_TYPE_KEYS.OUTPUT
                       ? 'ctSalaryLabel'
                       : 'fixedSalaryLabel',
                     languageCode
@@ -2161,7 +2189,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                     const payTypeValue = String(
                       employee?.effectivePayType ||
                       employee?.payType ||
-                      (isWorkerOrgRole(member.role) ? 'CT' : 'FIXED')
+                      (isWorkerOrgRole(member.role)
+                        ? PAY_TYPE_KEYS.OUTPUT
+                        : PAY_TYPE_KEYS.GENERAL)
                     ).toUpperCase();
                     const payTypeLabel =
                       payTypeOptions.find((option) => option.value === payTypeValue)?.label ||

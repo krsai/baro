@@ -3,6 +3,7 @@ import { Router } from "express";
 import { prisma } from "../db";
 import { getOrganizationByQuery, getRequesterEmail } from "../middleware/access";
 import {
+  type EmployeePayType,
   normalizePayType,
   resolveEmployeeEffectivePayType,
   resolveRoleDefaultPayType,
@@ -26,7 +27,7 @@ type EmployeeRoutesDeps = {
     membershipRole: OrgUserRole;
     roleId: number | null;
     payType: unknown;
-  }) => Promise<"CT" | "FIXED">;
+  }) => Promise<EmployeePayType>;
 };
 
 const toFixedSalaryOrNull = (

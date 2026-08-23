@@ -1,5 +1,6 @@
 import { prisma } from "../db";
 import {
+  EMPLOYEE_PAY_TYPE,
   normalizePayType,
   resolveEmployeeEffectivePayType,
   resolveOrgRoleLabel,
@@ -128,7 +129,9 @@ const normalizePayrollProcessSnapshot = (process: any) => {
 };
 
 export const normalizePayrollSnapshotEmployee = (employee: any) => {
-  const payType = normalizePayType(employee?.payType, "FIXED") ?? "FIXED";
+  const payType =
+    normalizePayType(employee?.payType, EMPLOYEE_PAY_TYPE.GENERAL) ??
+    EMPLOYEE_PAY_TYPE.GENERAL;
   const workerName =
     resolveOptionalString(employee?.workerName, null) ??
     resolveOptionalString(employee?.name, null) ??
@@ -140,7 +143,7 @@ export const normalizePayrollSnapshotEmployee = (employee: any) => {
     "";
   const processes = ensureArray(employee?.processes).map(normalizePayrollProcessSnapshot);
   const productionEarnings =
-    payType === "CT"
+    payType === EMPLOYEE_PAY_TYPE.OUTPUT
       ? toPayrollAmountOrNull(employee?.productionEarnings) ??
         toPayrollAmountOrNull(employee?.productionAllowance) ??
         0
@@ -288,7 +291,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       const employees = Array.from(employeesForLine.values()).filter(
         (employee) =>
           isPayrollEmployeeRelevantForMonth(employee, getPayrollMonthRange(month)) &&
-          resolveEmployeeEffectivePayType(employee) === "CT"
+          resolveEmployeeEffectivePayType(employee) === EMPLOYEE_PAY_TYPE.OUTPUT
       );
       if (employees.length === 0) return null;
       const factoryStart = resolveFactoryManagementStartDateKey(line.factory);
@@ -305,7 +308,10 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
             if (dateKey >= coverageStart && dateKey <= coverageEnd) workDateKeys.add(dateKey);
           });
           const employee = record.workerId ? employeeById.get(record.workerId) : null;
-          if (employee && resolveEmployeeEffectivePayType(employee) === "CT") {
+          if (
+            employee &&
+            resolveEmployeeEffectivePayType(employee) === EMPLOYEE_PAY_TYPE.OUTPUT
+          ) {
             const quantity = Number(record.quantity);
             const ctSeconds = Number(record.ctSeconds);
             const rate = resolveFactoryProductionAllowanceRate(workLog.factory);
@@ -451,7 +457,7 @@ export const listPayrollSnapshots = async (orgId: number) => {
     ...snapshot,
     data: ensureArray(snapshot.data)
       .map(normalizePayrollSnapshotEmployee)
-      .filter((employee) => employee.payType === "CT"),
+      .filter((employee) => employee.payType === EMPLOYEE_PAY_TYPE.OUTPUT),
   }));
 };
 
@@ -482,7 +488,7 @@ export const getPayrollByMonth = async (
       month,
       employees: ensureArray(snapshot.data)
         .map(normalizePayrollSnapshotEmployee)
-        .filter((employee) => employee.payType === "CT"),
+        .filter((employee) => employee.payType === EMPLOYEE_PAY_TYPE.OUTPUT),
     };
   }
 
@@ -538,7 +544,7 @@ export const getPayrollByMonth = async (
   const payrollEmployees = employeeRows.filter(
     (employee) =>
       isPayrollEmployeeRelevantForMonth(employee, payrollMonthRange) &&
-      resolveEmployeeEffectivePayType(employee) === "CT"
+      resolveEmployeeEffectivePayType(employee) === EMPLOYEE_PAY_TYPE.OUTPUT
   );
 
   const employeeMap = new Map<
@@ -549,7 +555,7 @@ export const getPayrollByMonth = async (
       workerName: string;
       orgRole: string;
       roleName: string;
-      payType: "CT";
+      payType: "OUTPUT";
       bankName: string | null;
       bankAccountNumber: string | null;
       productionEarnings: number;
@@ -581,7 +587,7 @@ export const getPayrollByMonth = async (
       workerName,
       orgRole: String(employee?.orgRole || "").trim().toUpperCase(),
       roleName: resolvePayrollRoleName(employee),
-      payType: "CT",
+      payType: EMPLOYEE_PAY_TYPE.OUTPUT,
       bankName: resolveOptionalString(employee?.bankName, null),
       bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
       productionEarnings: 0,
@@ -604,13 +610,16 @@ export const getPayrollByMonth = async (
       const key = buildPayrollEmployeeKey(record.workerId, workerName);
       const effectivePayType = employee
         ? resolveEmployeeEffectivePayType(employee)
-        : "CT";
-      if (effectivePayType !== "CT") continue;
+        : EMPLOYEE_PAY_TYPE.OUTPUT;
+      if (effectivePayType !== EMPLOYEE_PAY_TYPE.OUTPUT) continue;
       const ctSeconds = Number(record.ctSeconds);
       const quantity = Number(record.quantity);
       const totalCtSeconds = ctSeconds > 0 && quantity > 0 ? ctSeconds * quantity : 0;
       const earnings =
-        effectivePayType === "CT" && validWage && ctSeconds > 0 && quantity > 0
+        effectivePayType === EMPLOYEE_PAY_TYPE.OUTPUT &&
+        validWage &&
+        ctSeconds > 0 &&
+        quantity > 0
           ? ctSeconds * quantity * wagePerSecond
           : 0;
 
@@ -621,7 +630,7 @@ export const getPayrollByMonth = async (
           workerName,
           orgRole: String(employee?.orgRole || "").trim().toUpperCase(),
           roleName: resolvePayrollRoleName(employee),
-          payType: "CT",
+          payType: EMPLOYEE_PAY_TYPE.OUTPUT,
           bankName: resolveOptionalString(employee?.bankName, null),
           bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
           productionEarnings: 0,
@@ -774,7 +783,7 @@ export const savePayrollSnapshot = async ({
   const calculated = await getPayrollByMonth(orgId, month, { ignoreSnapshot: true });
   const snapshotEmployees = calculated.employees
     .map(normalizePayrollSnapshotEmployee)
-    .filter((employee) => employee.payType === "CT");
+    .filter((employee) => employee.payType === EMPLOYEE_PAY_TYPE.OUTPUT);
   const savedAt = new Date();
   const savedByText = String(savedBy || "unknown");
 
@@ -890,7 +899,7 @@ export const recalculatePayrollSnapshotLine = async ({
       rateOverridden: Boolean(stored?.rateOverridden),
       processes: [...retainedProcesses, ...refreshedProcesses],
     });
-  }).filter((employee) => employee.payType === "CT");
+  }).filter((employee) => employee.payType === EMPLOYEE_PAY_TYPE.OUTPUT);
 
   return prisma.payrollSnapshot.update({
     where: { id: snapshot.id },

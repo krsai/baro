@@ -12,6 +12,8 @@ import {
 } from "./auth/requestAuth";
 import { prisma } from "./db";
 import {
+  EMPLOYEE_PAY_TYPE,
+  type EmployeePayType,
   normalizePayType,
   resolveEmployeeEffectivePayType,
   resolveOrgRoleLabel,
@@ -485,43 +487,43 @@ const DEFAULT_EMPLOYEE_ROLES = [
   {
     code: "WORKER_SUPERVISOR",
     name: "감독",
-    defaultPayType: "CT",
+    defaultPayType: "GENERAL",
     sortOrder: 1,
   },
   {
     code: "WORKER_CUTTING",
     name: "재단",
-    defaultPayType: "CT",
+    defaultPayType: "OUTPUT",
     sortOrder: 2,
   },
   {
     code: DEFAULT_EMPLOYEE_ROLE_CODE_SEWING,
     name: "봉제",
-    defaultPayType: "CT",
+    defaultPayType: "OUTPUT",
     sortOrder: 3,
   },
   {
     code: "WORKER_IRONING",
     name: "다림",
-    defaultPayType: "CT",
+    defaultPayType: "OUTPUT",
     sortOrder: 4,
   },
   {
     code: "WORKER_INSPECTION",
     name: "검수",
-    defaultPayType: "CT",
+    defaultPayType: "OUTPUT",
     sortOrder: 5,
   },
   {
     code: "WORKER_PACKING",
     name: "포장",
-    defaultPayType: "CT",
+    defaultPayType: "OUTPUT",
     sortOrder: 6,
   },
   {
     code: "WORKER_OTHER",
     name: "기타",
-    defaultPayType: "CT",
+    defaultPayType: "OUTPUT",
     sortOrder: 7,
   },
 ] as const;
@@ -17938,22 +17940,23 @@ const resolveEmployeeStoredPayType = async ({
   membershipRole: OrgUserRole;
   roleId: number | null;
   payType: unknown;
-}): Promise<"CT" | "FIXED"> => {
-  if (membershipRole !== "WORKER") return "FIXED";
-
-  const explicitPayType = normalizePayType(payType, null);
-  if (explicitPayType) return explicitPayType;
+}): Promise<EmployeePayType> => {
+  if (membershipRole !== "WORKER") return EMPLOYEE_PAY_TYPE.GENERAL;
 
   const normalizedRoleId = Number(roleId);
   if (Number.isSafeInteger(normalizedRoleId) && normalizedRoleId > 0) {
     const role = await prisma.attrRole.findFirst({
       where: { id: normalizedRoleId, orgId },
-      select: { defaultPayType: true },
+      select: { code: true, defaultPayType: true },
     });
+    if (role?.code === "WORKER_SUPERVISOR") return EMPLOYEE_PAY_TYPE.GENERAL;
+
+    const explicitPayType = normalizePayType(payType, null);
+    if (explicitPayType) return explicitPayType;
     return resolveRoleDefaultPayType(role);
   }
 
-  return "FIXED";
+  return normalizePayType(payType, EMPLOYEE_PAY_TYPE.GENERAL) ?? EMPLOYEE_PAY_TYPE.GENERAL;
 };
 
 const toAttrRoleResponse = (role: any) => ({
@@ -20605,19 +20608,22 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
         employee.roleId && isWorkerEmployeeRoleCode(employee.role?.code)
           ? resolveRoleDefaultPayType(employee.role)
           : resolveRoleDefaultPayType(sewingRole);
-      return nextPayType === "CT";
+      return nextPayType === EMPLOYEE_PAY_TYPE.OUTPUT;
     })
     .map((employee) => Number(employee.id))
     .filter((employeeId) => Number.isFinite(employeeId));
   const workerIdsNeedingFixedPayType = workerEmployees
     .filter((employee) => {
       if (employee.orgRole !== "WORKER") return false;
+      if (employee.role?.code === "WORKER_SUPERVISOR") {
+        return normalizePayType(employee.payType, null) !== EMPLOYEE_PAY_TYPE.GENERAL;
+      }
       if (normalizePayType(employee.payType, null)) return false;
       const nextPayType =
         employee.roleId && isWorkerEmployeeRoleCode(employee.role?.code)
           ? resolveRoleDefaultPayType(employee.role)
           : resolveRoleDefaultPayType(sewingRole);
-      return nextPayType === "FIXED";
+      return nextPayType === EMPLOYEE_PAY_TYPE.GENERAL;
     })
     .map((employee) => Number(employee.id))
     .filter((employeeId) => Number.isFinite(employeeId));
@@ -20625,7 +20631,7 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
     .filter(
       (employee) =>
         employee.orgRole !== "WORKER" &&
-        normalizePayType(employee.payType, null) !== "FIXED"
+        normalizePayType(employee.payType, null) !== EMPLOYEE_PAY_TYPE.GENERAL
     )
     .map((employee) => Number(employee.id))
     .filter((employeeId) => Number.isFinite(employeeId));
@@ -20658,7 +20664,7 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
       reconciliationWrites.push(
         prisma.employee.updateMany({
           where: { id: { in: workerIdsNeedingCtPayType } },
-          data: { payType: "CT" },
+          data: { payType: EMPLOYEE_PAY_TYPE.OUTPUT },
         })
       );
     }
@@ -20666,7 +20672,7 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
       reconciliationWrites.push(
         prisma.employee.updateMany({
           where: { id: { in: workerIdsNeedingFixedPayType } },
-          data: { payType: "FIXED" },
+          data: { payType: EMPLOYEE_PAY_TYPE.GENERAL },
         })
       );
     }
@@ -20674,7 +20680,7 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
       reconciliationWrites.push(
         prisma.employee.updateMany({
           where: { id: { in: nonWorkerIdsNeedingFixedPayType } },
-          data: { payType: "FIXED" },
+          data: { payType: EMPLOYEE_PAY_TYPE.GENERAL },
         })
       );
     }
@@ -21109,7 +21115,9 @@ const syncRoleSection = async (orgId: number, items: any) => {
     const itemId = isNumericId(item.id) ? toId(item.id) : null;
     const code = resolveOptionalString(item.code, null);
     const name = resolveOptionalString(item.name, null);
-    const defaultPayType = normalizePayType(item.defaultPayType, "FIXED") ?? "FIXED";
+    const defaultPayType =
+      normalizePayType(item.defaultPayType, EMPLOYEE_PAY_TYPE.GENERAL) ??
+      EMPLOYEE_PAY_TYPE.GENERAL;
     const sortOrder = toSortOrder(item.sortOrder, index + 1);
 
     if (!code && !name) continue;

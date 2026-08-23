@@ -17,7 +17,10 @@ const getEffectiveAttributeOrgId = (value) => {
 };
 const normalizePayType = (value) => {
   const normalized = String(value ?? '').trim().toUpperCase();
-  return normalized === 'CT' || normalized === 'FIXED' ? normalized : null;
+  if (normalized === 'GENERAL' || normalized === 'OUTPUT') return normalized;
+  if (normalized === 'FIXED') return 'GENERAL';
+  if (normalized === 'CT') return 'OUTPUT';
+  return null;
 };
 const normalizeSortOrder = (value) => {
   const parsed = Number(value);
@@ -95,7 +98,7 @@ const normalizeAttributePayload = (payload = {}) => {
       nameVi: toTrimmedText(item.nameVi),
       ...(key === 'roles'
         ? {
-            defaultPayType: normalizePayType(item.defaultPayType) ?? 'FIXED',
+            defaultPayType: normalizePayType(item.defaultPayType) ?? 'GENERAL',
             sortOrder: normalizeSortOrder(item.sortOrder),
           }
         : {}),

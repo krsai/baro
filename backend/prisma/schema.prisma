@@ -856,7 +856,7 @@ model AttrRole {
   orgId          Int
   code           String
   name           String
-  defaultPayType String @default("FIXED")
+  defaultPayType String @default("GENERAL")
   sortOrder      Int    @default(0)
 
   organization Organization @relation(fields: [orgId], references: [id])

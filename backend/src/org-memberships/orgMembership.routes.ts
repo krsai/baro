@@ -6,6 +6,10 @@ import {
   normalizeEmployeeNo,
 } from "../employees/employeeNumber";
 import {
+  type EmployeePayType,
+  normalizePayType,
+} from "../employees/employeeCompensation";
+import {
   getOrganizationByQuery,
   getRequesterEmail,
   requireSystemAdmin,
@@ -26,7 +30,7 @@ type OrgMembershipRoutesDeps = {
     membershipRole: OrgUserRole;
     roleId: number | null;
     payType: unknown;
-  }) => Promise<"CT" | "FIXED">;
+  }) => Promise<EmployeePayType>;
   resolveRole: (value: any, fallback?: OrgUserRole) => OrgUserRole;
   resolveStatus: (value: any) => string | null;
 };
@@ -325,11 +329,11 @@ export const createOrgMembershipRouter = ({
       if (payType === "" || payType === null) {
         payTypeValue = null;
       } else {
-        const normalizedPayType = String(payType).trim().toUpperCase();
-        if (normalizedPayType !== "CT" && normalizedPayType !== "FIXED") {
+        const normalizedPayType = normalizePayType(payType, null);
+        if (!normalizedPayType) {
           return { ok: false as const, status: 400, error: "invalid payType" };
         }
-        payTypeValue = normalizedPayType as "CT" | "FIXED";
+        payTypeValue = normalizedPayType;
       }
     }
 
