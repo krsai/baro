@@ -108,7 +108,7 @@ const EMPLOYEE_BOARD_TEXT = {
   },
   payTypeLabel: { ko: '급여 타입', en: 'Pay Type', vi: 'Loai luong' },
   fixedSalaryLabel: { ko: '기본급', en: 'Base Salary', vi: 'Lương cơ bản' },
-  ctSalaryLabel: { ko: '기본급', en: 'Base Salary', vi: 'Lương cơ bản' },
+  outputSalaryLabel: { ko: '기본급', en: 'Base Salary', vi: 'Lương cơ bản' },
   moneyPlaceholder: { ko: '예: 8,000,000', en: 'e.g. 8,000,000', vi: 'Vi du: 8,000,000' },
   joinedAtLabel: { ko: '입사일', en: 'Join Date', vi: 'Ngay vao lam' },
   leftAtLabel: { ko: '퇴사일', en: 'Leave Date', vi: 'Ngày nghỉ viec' },
@@ -1293,13 +1293,20 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       }
 
       if (isWorkerOrgRole(normalizedRole) && hasJobRolePatch) {
+        const previousJobRoleId = prev.jobRoleId || defaultWorkerJobRoleId;
+        const previousJobRole = jobRoleOptions.find(
+          (role) => String(role?.id) === String(previousJobRoleId || '')
+        );
         const selectedJobRole = jobRoleOptions.find(
           (role) => String(role?.id) === String(next.jobRoleId || '')
         );
-        next.payType = String(selectedJobRole?.code || '').trim().toUpperCase()
-          === 'WORKER_SUPERVISOR'
-          ? PAY_TYPE_KEYS.GENERAL
-          : PAY_TYPE_KEYS.OUTPUT;
+        const wasSupervisor = String(previousJobRole?.code || '').trim().toUpperCase()
+          === 'WORKER_SUPERVISOR';
+        const isSupervisor = String(selectedJobRole?.code || '').trim().toUpperCase()
+          === 'WORKER_SUPERVISOR';
+        if (wasSupervisor !== isSupervisor) {
+          next.payType = isSupervisor ? PAY_TYPE_KEYS.GENERAL : PAY_TYPE_KEYS.OUTPUT;
+        }
       }
 
       if (isWorkerOrgRole(normalizedRole) && isNoFactoryFilterValue(next.factoryId)) {
@@ -1885,7 +1892,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   label={text(
                     String(drawerDraft.payType || '').toUpperCase()
                       === PAY_TYPE_KEYS.OUTPUT
-                      ? 'ctSalaryLabel'
+                      ? 'outputSalaryLabel'
                       : 'fixedSalaryLabel',
                     languageCode
                   )}

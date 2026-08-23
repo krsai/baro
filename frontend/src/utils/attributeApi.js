@@ -1,5 +1,6 @@
 import { buildQueryString, getRequestContext, requestJSON } from './apiClient';
 import { buildAttributeSearchText, resolveLocalizedAttributeName } from './appLanguage';
+import { normalizePayType } from '../constants/payType';
 
 const ATTRIBUTE_CACHE_TTL_MS = 30 * 1000;
 const attributesCache = new Map();
@@ -14,13 +15,6 @@ const getEffectiveAttributeOrgId = (value) => {
   const explicitOrgId = toPositiveOrgId(value);
   if (explicitOrgId !== null) return explicitOrgId;
   return toPositiveOrgId(getRequestContext().orgId);
-};
-const normalizePayType = (value) => {
-  const normalized = String(value ?? '').trim().toUpperCase();
-  if (normalized === 'GENERAL' || normalized === 'OUTPUT') return normalized;
-  if (normalized === 'FIXED') return 'GENERAL';
-  if (normalized === 'CT') return 'OUTPUT';
-  return null;
 };
 const normalizeSortOrder = (value) => {
   const parsed = Number(value);
@@ -45,7 +39,7 @@ const normalizeAttributeItem = (item = {}) => {
     nameKo: toTrimmedText(item.nameKo),
     nameEn: toTrimmedText(item.nameEn) || toTrimmedText(item.name),
     nameVi: toTrimmedText(item.nameVi),
-    defaultPayType: normalizePayType(item.defaultPayType),
+    defaultPayType: normalizePayType(item.defaultPayType, null),
     sortOrder: normalizeSortOrder(item.sortOrder),
   };
 
@@ -98,7 +92,7 @@ const normalizeAttributePayload = (payload = {}) => {
       nameVi: toTrimmedText(item.nameVi),
       ...(key === 'roles'
         ? {
-            defaultPayType: normalizePayType(item.defaultPayType) ?? 'GENERAL',
+            defaultPayType: normalizePayType(item.defaultPayType, null) ?? 'GENERAL',
             sortOrder: normalizeSortOrder(item.sortOrder),
           }
         : {}),

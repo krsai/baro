@@ -27,6 +27,7 @@ type EmployeeRoutesDeps = {
     membershipRole: OrgUserRole;
     roleId: number | null;
     payType: unknown;
+    role?: { code?: string | null; defaultPayType?: string | null } | null | undefined;
   }) => Promise<EmployeePayType>;
 };
 
@@ -489,7 +490,7 @@ export const createEmployeeRouter = ({
 
     const existingEmployee = await prisma.employee.findUnique({
       where: { id: employeeIdNum },
-      include: { organization: true },
+      include: { organization: true, role: true },
     });
 
     if (!existingEmployee) {
@@ -560,6 +561,7 @@ export const createEmployeeRouter = ({
     }
 
     let roleIdNum = null;
+    let requestedAttrRole: { code: string; defaultPayType: string } | undefined;
     if (roleId !== "" && roleId !== null && roleId !== undefined) {
       const parsedRoleId = Number(roleId);
       if (!Number.isFinite(parsedRoleId)) {
@@ -571,6 +573,7 @@ export const createEmployeeRouter = ({
       if (!attrRole) {
         return res.status(404).json({ ok: false, error: "role not found" });
       }
+      requestedAttrRole = attrRole;
       roleIdNum = parsedRoleId;
     }
 
@@ -627,11 +630,22 @@ export const createEmployeeRouter = ({
           ? roleIdNum
           : existingEmployee?.roleId ?? (await resolveDefaultEmployeeRoleId(existingEmployee.orgId))
         : null;
+    const resolvedAttrRole = resolvedRoleId === existingEmployee.roleId
+      ? existingEmployee.role
+      : requestedAttrRole;
+    const wasSupervisor = existingEmployee.role?.code === "WORKER_SUPERVISOR";
+    const isSupervisor = resolvedAttrRole?.code === "WORKER_SUPERVISOR";
+    const crossedSupervisorBoundary = wasSupervisor !== isSupervisor;
     const resolvedPayType = await resolveEmployeeStoredPayType({
       orgId: existingEmployee.orgId,
       membershipRole: existingEmployee.orgRole,
       roleId: resolvedRoleId,
-      payType: payType !== undefined ? payTypeValue : existingEmployee?.payType,
+      payType: payType !== undefined
+        ? payTypeValue
+        : crossedSupervisorBoundary
+          ? null
+          : existingEmployee?.payType,
+      role: resolvedAttrRole,
     });
     const resolvedFixedSalary = hasFixedSalaryInput
       ? fixedSalaryParseResult.value

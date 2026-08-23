@@ -36,9 +36,11 @@ export const resolveRoleDefaultPayType = (role: any): EmployeePayType =>
   EMPLOYEE_PAY_TYPE.GENERAL;
 
 export const resolveEmployeeEffectivePayType = (employee: any): EmployeePayType =>
-  normalizePayType(employee?.payType, null) ??
-  resolveRoleDefaultPayType(employee?.role) ??
-  EMPLOYEE_PAY_TYPE.GENERAL;
+  String(employee?.role?.code || "").trim().toUpperCase() === "WORKER_SUPERVISOR"
+    ? EMPLOYEE_PAY_TYPE.GENERAL
+    : normalizePayType(employee?.payType, null) ??
+      resolveRoleDefaultPayType(employee?.role) ??
+      EMPLOYEE_PAY_TYPE.GENERAL;
 
 export const resolveOrgRoleLabel = (value: unknown): string => {
   const normalized = String(value || "").trim().toUpperCase() as OrgUserRole;

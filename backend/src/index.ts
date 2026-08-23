@@ -17935,20 +17935,24 @@ const resolveEmployeeStoredPayType = async ({
   membershipRole,
   roleId,
   payType,
+  role: providedRole,
 }: {
   orgId: number;
   membershipRole: OrgUserRole;
   roleId: number | null;
   payType: unknown;
+  role?: { code?: string | null; defaultPayType?: string | null } | null | undefined;
 }): Promise<EmployeePayType> => {
   if (membershipRole !== "WORKER") return EMPLOYEE_PAY_TYPE.GENERAL;
 
   const normalizedRoleId = Number(roleId);
   if (Number.isSafeInteger(normalizedRoleId) && normalizedRoleId > 0) {
-    const role = await prisma.attrRole.findFirst({
-      where: { id: normalizedRoleId, orgId },
-      select: { code: true, defaultPayType: true },
-    });
+    const role = providedRole !== undefined
+      ? providedRole
+      : await prisma.attrRole.findFirst({
+          where: { id: normalizedRoleId, orgId },
+          select: { code: true, defaultPayType: true },
+        });
     if (role?.code === "WORKER_SUPERVISOR") return EMPLOYEE_PAY_TYPE.GENERAL;
 
     const explicitPayType = normalizePayType(payType, null);
@@ -20600,7 +20604,7 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
     .filter((employee) => employee.orgRole !== "WORKER" && employee.roleId !== null)
     .map((employee) => Number(employee.id))
     .filter((employeeId) => Number.isFinite(employeeId));
-  const workerIdsNeedingCtPayType = workerEmployees
+  const workerIdsNeedingOutputPayType = workerEmployees
     .filter((employee) => {
       if (employee.orgRole !== "WORKER") return false;
       if (normalizePayType(employee.payType, null)) return false;
@@ -20612,7 +20616,7 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
     })
     .map((employee) => Number(employee.id))
     .filter((employeeId) => Number.isFinite(employeeId));
-  const workerIdsNeedingFixedPayType = workerEmployees
+  const workerIdsNeedingGeneralPayType = workerEmployees
     .filter((employee) => {
       if (employee.orgRole !== "WORKER") return false;
       if (employee.role?.code === "WORKER_SUPERVISOR") {
@@ -20627,7 +20631,7 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
     })
     .map((employee) => Number(employee.id))
     .filter((employeeId) => Number.isFinite(employeeId));
-  const nonWorkerIdsNeedingFixedPayType = workerEmployees
+  const nonWorkerIdsNeedingGeneralPayType = workerEmployees
     .filter(
       (employee) =>
         employee.orgRole !== "WORKER" &&
@@ -20639,9 +20643,9 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
   if (
     migrateEmployeeIds.length > 0 ||
     clearEmployeeRoleIds.length > 0 ||
-    workerIdsNeedingCtPayType.length > 0 ||
-    workerIdsNeedingFixedPayType.length > 0 ||
-    nonWorkerIdsNeedingFixedPayType.length > 0
+    workerIdsNeedingOutputPayType.length > 0 ||
+    workerIdsNeedingGeneralPayType.length > 0 ||
+    nonWorkerIdsNeedingGeneralPayType.length > 0
   ) {
     const reconciliationWrites: Prisma.PrismaPromise<any>[] = [];
     if (migrateEmployeeIds.length > 0) {
@@ -20660,26 +20664,26 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
         })
       );
     }
-    if (workerIdsNeedingCtPayType.length > 0) {
+    if (workerIdsNeedingOutputPayType.length > 0) {
       reconciliationWrites.push(
         prisma.employee.updateMany({
-          where: { id: { in: workerIdsNeedingCtPayType } },
+          where: { id: { in: workerIdsNeedingOutputPayType } },
           data: { payType: EMPLOYEE_PAY_TYPE.OUTPUT },
         })
       );
     }
-    if (workerIdsNeedingFixedPayType.length > 0) {
+    if (workerIdsNeedingGeneralPayType.length > 0) {
       reconciliationWrites.push(
         prisma.employee.updateMany({
-          where: { id: { in: workerIdsNeedingFixedPayType } },
+          where: { id: { in: workerIdsNeedingGeneralPayType } },
           data: { payType: EMPLOYEE_PAY_TYPE.GENERAL },
         })
       );
     }
-    if (nonWorkerIdsNeedingFixedPayType.length > 0) {
+    if (nonWorkerIdsNeedingGeneralPayType.length > 0) {
       reconciliationWrites.push(
         prisma.employee.updateMany({
-          where: { id: { in: nonWorkerIdsNeedingFixedPayType } },
+          where: { id: { in: nonWorkerIdsNeedingGeneralPayType } },
           data: { payType: EMPLOYEE_PAY_TYPE.GENERAL },
         })
       );
