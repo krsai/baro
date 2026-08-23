@@ -93,8 +93,7 @@ const SalarySystem = () => {
   const [message, setMessage] = useState(null);
   const [formulaDialogOpen, setFormulaDialogOpen] = useState(false);
   const [formulaDraft, setFormulaDraft] = useState([]);
-  const [formulaCalcType, setFormulaCalcType] = useState('FORMULA');
-  const [formulaCondition, setFormulaCondition] = useState('NONE');
+  const [formulaSettingsDraft, setFormulaSettingsDraft] = useState(DEFAULT_DRAFT);
   const [constantDraft, setConstantDraft] = useState('');
 
   const load = useCallback(async () => {
@@ -146,8 +145,7 @@ const SalarySystem = () => {
   };
   const openFormulaDialog = () => {
     setFormulaDraft([...(selected.formula || [])]);
-    setFormulaCalcType(selected.calcType || 'FORMULA');
-    setFormulaCondition(selected.condition || 'NONE');
+    setFormulaSettingsDraft({ ...selected, payTypes: [...(selected.payTypes || [])] });
     setConstantDraft('');
     setFormulaDialogOpen(true);
   };
@@ -160,7 +158,7 @@ const SalarySystem = () => {
     setConstantDraft('');
   };
   const saveFormula = () => {
-    setItems((rows) => rows.map((row) => row.id === selected.id ? { ...row, calcType: formulaCalcType, condition: formulaCondition, formula: formulaDraft } : row));
+    setItems((rows) => rows.map((row) => row.id === selected.id ? { ...row, ...formulaSettingsDraft, formula: formulaDraft } : row));
     setFormulaDialogOpen(false);
   };
 
@@ -213,10 +211,9 @@ const SalarySystem = () => {
       <Paper variant="outlined" sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" alignItems="center" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Box><Typography variant="h6" fontWeight={700}>{selected.name}</Typography><Typography variant="body2" color="text.secondary">{calculationLabel(selected)}</Typography></Box>
           <Tooltip title={selected.required ? '기본급은 삭제할 수 없습니다.' : '항목 삭제'}><span style={{ marginLeft: 'auto' }}><IconButton color="error" disabled={selected.required} onClick={removeItem}><DeleteOutlineIcon /></IconButton></span></Tooltip></Stack>
-        <Box sx={{ p: 2, bgcolor: 'action.hover', borderBottom: 1, borderColor: 'divider' }}><Typography fontWeight={700} sx={{ mb: 1.5 }}>적용 및 단가 설정</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(180px, 1fr))', xl: 'repeat(3, minmax(180px, 1fr))' }, gap: 1.5 }}>{calculationFields(selected, updateSelected)}</Box>
-          <Paper variant="outlined" sx={{ mt: 1.5, p: 1.5, bgcolor: 'background.paper' }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Box sx={{ flex: 1 }}><Typography variant="caption" color="text.secondary">{CALC_TYPES[selected.calcType]}</Typography><Typography fontWeight={700}>{selected.calcType === 'FORMULA' || selected.calcType === 'EXTERNAL' ? formulaLabel(selected.formula) || '계산식이 비어 있습니다.' : selected.calcType === 'CONDITIONAL' ? `${CONDITIONS[selected.condition]} 직급별 정액 지급` : '직급별 정액 지급'}</Typography></Box><Button variant="outlined" startIcon={<FunctionsIcon />} onClick={openFormulaDialog}>계산 방식 설정</Button></Stack></Paper>
-          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1.5 }}>{(selected.payTypes || []).map((payType) => <Chip key={payType} size="small" color={PAY_TYPES[payType]?.color} label={PAY_TYPES[payType]?.label || payType} />)}<Chip size="small" label={RATE_BASES[selected.rateBasis]} /><Chip size="small" label={`정산: ${PAY_CYCLES[selected.payCycle]}`} /><Chip size="small" label={`조건: ${CONDITIONS[selected.condition]}`} />{selected.capValue && <Chip size="small" label={`상한: ${selected.capValue}`} />}</Stack>
+        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Typography variant="body2" fontWeight={700}>지급 설정</Typography><Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">{(selected.payTypes || []).map((payType) => <Chip key={payType} size="small" color={PAY_TYPES[payType]?.color} label={PAY_TYPES[payType]?.label || payType} />)}<Chip size="small" variant="outlined" label={PAY_CYCLES[selected.payCycle]} /><Chip size="small" variant="outlined" label={RATE_BASES[selected.rateBasis]} />{selected.capValue && <Chip size="small" variant="outlined" label={`상한 ${selected.capValue}`} />}</Stack><Button size="small" color="inherit" onClick={openFormulaDialog} sx={{ ml: { md: 'auto' } }}>설정</Button></Stack>
+          <Paper variant="outlined" sx={{ mt: 1.5, p: 2, bgcolor: 'action.hover', borderColor: 'divider' }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{ flex: 1 }}><Typography variant="h6" fontWeight={700}>{selected.name}</Typography><Typography variant="h6" color="primary.main" fontWeight={700}>=</Typography><Typography fontWeight={700}>{selected.calcType === 'FORMULA' || selected.calcType === 'EXTERNAL' ? formulaLabel(selected.formula) || '계산식이 비어 있습니다.' : selected.calcType === 'CONDITIONAL' ? `${CONDITIONS[selected.condition]} 직급별 정액` : '직급별 정액'}</Typography></Stack><Button variant="outlined" startIcon={<FunctionsIcon />} onClick={openFormulaDialog}>수정</Button></Stack></Paper>
         </Box>
         <Box sx={{ px: 2, py: 1.5 }}><Typography fontWeight={700}>{effectiveMonth}부터 적용할 급여 타입·직급별 단가</Typography><Typography variant="body2" color="text.secondary">권한이나 직무와 관계없이 직원에게 지정된 급여 타입과 직급으로 단가를 결정합니다.</Typography></Box>
         <TableContainer><Table size="small"><TableHead><TableRow><TableCell>급여 타입</TableCell><TableCell>직급</TableCell><TableCell align="right">단가</TableCell><TableCell>계산 기준</TableCell></TableRow></TableHead><TableBody>
@@ -231,16 +228,17 @@ const SalarySystem = () => {
       </TableBody></Table></TableContainer></Paper>}
 
     <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>계산 방식 설정 · {selected.name}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
-      <FormControl fullWidth size="small"><InputLabel>계산 방식 종류</InputLabel><Select label="계산 방식 종류" value={formulaCalcType} onChange={(e) => setFormulaCalcType(e.target.value)}>{Object.entries(CALC_TYPES).map(([key, label]) => <MenuItem key={key} value={key}>{label}</MenuItem>)}</Select></FormControl>
-      {formulaCalcType === 'CONDITIONAL' && <FormControl fullWidth size="small"><InputLabel>지급 조건</InputLabel><Select label="지급 조건" value={formulaCondition} onChange={(e) => setFormulaCondition(e.target.value)}>{Object.entries(CONDITIONS).map(([key, label]) => <MenuItem key={key} value={key}>{label}</MenuItem>)}</Select></FormControl>}
-      {formulaCalcType === 'FLAT' && <Alert severity="info">직급별로 설정한 단가를 정산 주기마다 정액으로 지급합니다.</Alert>}
-      {formulaCalcType === 'EXTERNAL' && <Alert severity="info">이 항목의 금액은 BARO의 다른 계산 시스템에서 전달받습니다. 현재 연결 값은 {formulaLabel(formulaDraft) || '지정되지 않음'}입니다.</Alert>}
-      {formulaCalcType === 'FORMULA' && <><Alert severity="info">기준 근무일수는 고정값이 아니라 선택 월의 근무요일에서 등록 공휴일을 제외해 서버가 계산합니다.</Alert>
+      <Paper variant="outlined" sx={{ p: 2 }}><Typography fontWeight={700} sx={{ mb: 1.5 }}>지급 설정</Typography><Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(180px, 1fr))' }, gap: 1.5 }}>{calculationFields(formulaSettingsDraft, (field, value) => setFormulaSettingsDraft((prev) => ({ ...prev, [field]: value })))}</Box></Paper>
+      <FormControl fullWidth size="small"><InputLabel>계산 방식 종류</InputLabel><Select label="계산 방식 종류" value={formulaSettingsDraft.calcType || 'FORMULA'} onChange={(e) => setFormulaSettingsDraft((prev) => ({ ...prev, calcType: e.target.value }))}>{Object.entries(CALC_TYPES).map(([key, label]) => <MenuItem key={key} value={key}>{label}</MenuItem>)}</Select></FormControl>
+      {formulaSettingsDraft.calcType === 'CONDITIONAL' && <FormControl fullWidth size="small"><InputLabel>지급 조건</InputLabel><Select label="지급 조건" value={formulaSettingsDraft.condition || 'NONE'} onChange={(e) => setFormulaSettingsDraft((prev) => ({ ...prev, condition: e.target.value }))}>{Object.entries(CONDITIONS).map(([key, label]) => <MenuItem key={key} value={key}>{label}</MenuItem>)}</Select></FormControl>}
+      {formulaSettingsDraft.calcType === 'FLAT' && <Alert severity="info">직급별로 설정한 단가를 정산 주기마다 정액으로 지급합니다.</Alert>}
+      {formulaSettingsDraft.calcType === 'EXTERNAL' && <Alert severity="info">이 항목의 금액은 BARO의 다른 계산 시스템에서 전달받습니다. 현재 연결 값은 {formulaLabel(formulaDraft) || '지정되지 않음'}입니다.</Alert>}
+      {formulaSettingsDraft.calcType === 'FORMULA' && <><Alert severity="info">기준 근무일수는 고정값이 아니라 선택 월의 근무요일에서 등록 공휴일을 제외해 서버가 계산합니다.</Alert>
       <Paper variant="outlined" sx={{ p: 2, minHeight: 96 }}><Typography variant="subtitle2" sx={{ mb: 1 }}>계산식 작업 영역</Typography><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{formulaDraft.length === 0 ? <Typography color="text.secondary">아래 모듈을 눌러 계산식을 만드세요.</Typography> : formulaDraft.map((token, index) => <Chip key={`${token}-${index}`} label={formulaTokenLabel(token)} onDelete={() => removeFormulaToken(index)} color={FORMULA_PARAMETERS[token] ? 'primary' : 'default'} variant={FORMULA_PARAMETERS[token] ? 'filled' : 'outlined'} />)}</Stack></Paper>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' }, gap: 2 }}><Paper variant="outlined" sx={{ p: 2 }}><Typography fontWeight={700} sx={{ mb: 1 }}>파라미터 모듈</Typography><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{Object.entries(FORMULA_PARAMETERS).map(([key, parameter]) => <Tooltip key={key} title={parameter.hint || parameter.unit}><Button size="small" variant="outlined" onClick={() => appendFormulaToken(key)}>{parameter.label} · {parameter.unit}</Button></Tooltip>)}</Stack></Paper><Paper variant="outlined" sx={{ p: 2 }}><Typography fontWeight={700} sx={{ mb: 1 }}>연산자</Typography><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{FORMULA_OPERATORS.map((operator) => <Button key={operator} size="small" variant="outlined" onClick={() => appendFormulaToken(operator)}>{operator}</Button>)}</Stack></Paper></Box>
       <Paper variant="outlined" sx={{ p: 2 }}><Typography fontWeight={700} sx={{ mb: 1 }}>숫자 상수</Typography><Stack direction="row" spacing={1}><TextField size="small" value={constantDraft} onChange={(e) => setConstantDraft(e.target.value)} placeholder="예: 할증률 1.5" inputProps={{ inputMode: 'decimal' }} /><Button variant="outlined" onClick={appendFormulaConstant}>상수 추가</Button><Button color="inherit" onClick={() => setFormulaDraft([])}>전체 지우기</Button></Stack></Paper>
       <Box><Typography variant="caption" color="text.secondary">완성된 식</Typography><Typography variant="h6">{formulaLabel(formulaDraft) || '-'}</Typography></Box></>}
-    </Stack></DialogContent><DialogActions><Button onClick={() => setFormulaDialogOpen(false)}>취소</Button><Button variant="contained" onClick={saveFormula} disabled={formulaCalcType === 'FORMULA' && formulaDraft.length === 0}>계산 방식 적용</Button></DialogActions></Dialog>
+    </Stack></DialogContent><DialogActions><Button onClick={() => setFormulaDialogOpen(false)}>취소</Button><Button variant="contained" onClick={saveFormula} disabled={formulaSettingsDraft.calcType === 'FORMULA' && formulaDraft.length === 0}>계산 방식 적용</Button></DialogActions></Dialog>
 
     <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm"><DialogTitle>급여 항목 추가</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
       <TextField autoFocus label="항목명" value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder="예: 자격수당" />
