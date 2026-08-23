@@ -57,21 +57,6 @@ export const createOrgMembershipRouter = ({
   const resolveMemberName = (employee: any) =>
     resolveOptionalString(employee?.requestedName ?? employee?.name, null);
 
-  const toFixedSalaryOrNull = (
-    value: unknown
-  ): { ok: true; value: number | null } | { ok: false } => {
-    if (value === undefined || value === null || value === "") {
-      return { ok: true, value: null };
-    }
-    const sanitized =
-      typeof value === "string" ? value.replace(/[,\s]/g, "") : value;
-    const parsed = Number(sanitized);
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      return { ok: false };
-    }
-    return { ok: true, value: Math.round(parsed) };
-  };
-
   const toOptionalDateOrNull = (
     value: unknown
   ):
@@ -262,7 +247,6 @@ export const createOrgMembershipRouter = ({
     factoryId,
     employeeRoleId,
     payType,
-    fixedSalary,
     employeeNo,
     joinedAt,
     leftAt,
@@ -274,7 +258,6 @@ export const createOrgMembershipRouter = ({
     factoryId: unknown;
     employeeRoleId: unknown;
     payType: unknown;
-    fixedSalary: unknown;
     employeeNo: unknown;
     joinedAt: unknown;
     leftAt: unknown;
@@ -337,10 +320,6 @@ export const createOrgMembershipRouter = ({
       }
     }
 
-    const fixedSalaryParseResult = toFixedSalaryOrNull(fixedSalary);
-    if (!fixedSalaryParseResult.ok) {
-      return { ok: false as const, status: 400, error: "invalid fixedSalary" };
-    }
     const joinedAtParseResult = toOptionalDateOrNull(joinedAt);
     if (!joinedAtParseResult.ok) {
       return { ok: false as const, status: 400, error: "invalid joinedAt" };
@@ -388,11 +367,6 @@ export const createOrgMembershipRouter = ({
         ? factoryIdNum
         : existingEmployee?.factoryId ?? null
       : null;
-    const resolvedFixedSalary = isManufacturer
-      ? fixedSalary !== undefined
-        ? fixedSalaryParseResult.value
-        : existingEmployee?.fixedSalary ?? null
-      : null;
     if (
       isManufacturer &&
       role === "WORKER" &&
@@ -411,7 +385,6 @@ export const createOrgMembershipRouter = ({
         factoryId: resolvedFactoryId,
         roleId: resolvedRoleId,
         payType: resolvedPayType,
-        fixedSalary: resolvedFixedSalary,
         employeeNo: resolvedEmployeeNo,
         joinedAtParseResult,
         leftAtParseResult,
@@ -434,7 +407,6 @@ export const createOrgMembershipRouter = ({
       position,
       employeeRoleId,
       payType,
-      fixedSalary,
       employeeNo,
       joinedAt,
       leftAt,
@@ -493,7 +465,6 @@ export const createOrgMembershipRouter = ({
       factoryId,
       employeeRoleId,
       payType,
-      fixedSalary,
       employeeNo,
       joinedAt,
       leftAt,
@@ -518,7 +489,6 @@ export const createOrgMembershipRouter = ({
       factoryId: accountPatch.value.factoryId,
       roleId: accountPatch.value.roleId,
       payType: accountPatch.value.payType,
-      fixedSalary: accountPatch.value.fixedSalary,
       name: resolveOptionalString(
         name,
         (existingEmployee?.name ?? requestedName) || null
@@ -738,7 +708,6 @@ export const createOrgMembershipRouter = ({
       factoryId,
       employeeRoleId,
       payType: employee.payType,
-      fixedSalary: employee.fixedSalary,
       employeeNo: undefined,
       joinedAt: undefined,
       leftAt: null,
@@ -764,7 +733,6 @@ export const createOrgMembershipRouter = ({
           factoryId: accountPatch.value.factoryId,
           roleId: accountPatch.value.roleId,
           payType: accountPatch.value.payType,
-          fixedSalary: accountPatch.value.fixedSalary,
           name: resolveOptionalString(employee.name, employee.requestedName ?? null),
           ...(employeeNo ? { employeeNo } : {}),
           joinedAt: employee.joinedAt ?? now,
@@ -932,7 +900,6 @@ export const createOrgMembershipRouter = ({
       data.factoryId = null;
       data.roleId = null;
       data.payType = null;
-      data.fixedSalary = null;
       data.employeeNo = null;
     }
 

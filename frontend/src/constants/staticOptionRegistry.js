@@ -118,7 +118,6 @@ const RAW_STATIC_OPTION_GROUPS = [
       ]),
       createItem('GENERAL', { ko: '일반급여', en: 'General Pay', vi: 'Lương thường' }, [
         '일반급여',
-        '기본급',
         '고정급',
         'FIXED',
       ]),

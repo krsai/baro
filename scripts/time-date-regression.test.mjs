@@ -206,7 +206,7 @@ test('production allowance is calculated from the board and rows open read-only 
 
 test('production allowance calculation excludes unfinished salary components', () => {
   assert.match(payrollEntrySource, /Production allowance = quantity × CT seconds × the current factory rate when the month is calculated/);
-  assert.match(payrollServiceSource, /resolveEmployeeEffectivePayType\(employee\) === "CT"/);
+  assert.match(payrollServiceSource, /resolveEmployeeEffectivePayType\(employee\) === EMPLOYEE_PAY_TYPE\.OUTPUT/);
   assert.match(payrollServiceSource, /productionAllowance/);
   assert.match(payrollServiceSource, /ctSeconds \* quantity \* wagePerSecond/);
   assert.match(payrollServiceSource, /resolveFactoryProductionAllowanceRate\(workLog\.factory\)/);

@@ -31,21 +31,6 @@ type EmployeeRoutesDeps = {
   }) => Promise<EmployeePayType>;
 };
 
-const toFixedSalaryOrNull = (
-  value: unknown
-): { ok: true; value: number | null } | { ok: false } => {
-  if (value === undefined || value === null || value === "") {
-    return { ok: true, value: null };
-  }
-
-  const sanitized =
-    typeof value === "string" ? value.replace(/[,\s]/g, "") : value;
-  const parsed = Number(sanitized);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return { ok: false };
-  }
-  return { ok: true, value: Math.round(parsed) };
-};
 const toOptionalDateOrNull = (
   value: unknown
 ):
@@ -92,7 +77,6 @@ const toEmployeeResponse = (employee: any) => ({
   roleDefaultPayType: resolveRoleDefaultPayType(employee?.role),
   payType: resolveEmployeeEffectivePayType(employee),
   effectivePayType: resolveEmployeeEffectivePayType(employee),
-  fixedSalary: employee?.fixedSalary ?? null,
   name: employee?.name ?? null,
   email: employee?.email ?? null,
   orgRole: employee?.orgRole ?? null,
@@ -474,7 +458,6 @@ export const createEmployeeRouter = ({
       roleId,
       gradeId,
       payType,
-      fixedSalary,
       name,
       bankName,
       bankAccountNumber,
@@ -603,11 +586,6 @@ export const createEmployeeRouter = ({
       }
     }
 
-    const fixedSalaryParseResult = toFixedSalaryOrNull(fixedSalary);
-    if (!fixedSalaryParseResult.ok) {
-      return res.status(400).json({ ok: false, error: "invalid fixedSalary" });
-    }
-    const hasFixedSalaryInput = fixedSalary !== undefined;
     const joinedAtParseResult = toOptionalDateOrNull(joinedAt);
     if (!joinedAtParseResult.ok) {
       return res.status(400).json({ ok: false, error: "invalid joinedAt" });
@@ -647,9 +625,6 @@ export const createEmployeeRouter = ({
           : existingEmployee?.payType,
       role: resolvedAttrRole,
     });
-    const resolvedFixedSalary = hasFixedSalaryInput
-      ? fixedSalaryParseResult.value
-      : existingEmployee?.fixedSalary ?? null;
 
     if (
       isManufacturerOrg(existingEmployee.organization) &&
@@ -694,7 +669,6 @@ export const createEmployeeRouter = ({
       roleId: resolvedRoleId,
       ...(gradeIdNum !== undefined ? { gradeId: gradeIdNum } : {}),
       payType: resolvedPayType,
-      fixedSalary: resolvedFixedSalary,
       name: resolveOptionalString(name, existingEmployee?.name ?? null),
       bankName: resolveOptionalString(bankName, existingEmployee?.bankName ?? null),
       bankAccountNumber: resolveOptionalString(

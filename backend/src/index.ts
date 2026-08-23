@@ -883,6 +883,7 @@ const STARTUP_REQUIRED_RUNTIME_AUDIT_FK_COLUMNS = Prisma.dmmf.datamodel.models.f
 const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
   { tableName: "Employee", columnName: "lineName" },
   { tableName: "Employee", columnName: "orgMembershipId" },
+  { tableName: "Employee", columnName: "fixedSalary" },
   { tableName: "Style", columnName: "uid" },
   { tableName: "Style", columnName: "styleId" },
   { tableName: "Style", columnName: "styleCode" },

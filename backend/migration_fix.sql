@@ -4763,6 +4763,9 @@ WHERE e."roleId" = r."id"
   AND r."code" = 'WORKER_SUPERVISOR'
   AND e."payType" IS DISTINCT FROM 'GENERAL';
 
+-- 2026-08-23: employee base salary is managed only by compensation policies
+ALTER TABLE "Employee" DROP COLUMN IF EXISTS "fixedSalary";
+
 -- 2026-08-16: salary policy matrix by organization role and employee grade
 CREATE TABLE IF NOT EXISTS "EmployeeCompensationPolicy" (
   "id" SERIAL PRIMARY KEY,

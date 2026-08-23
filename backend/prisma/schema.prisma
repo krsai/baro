@@ -468,7 +468,6 @@ model Employee {
   gradeId             Int            @default(dbgenerated())
   employeeNo          String?
   payType             String?
-  fixedSalary         Int?
   name                String?
   phone               String?
   bankName            String?
