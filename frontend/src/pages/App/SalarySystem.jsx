@@ -17,13 +17,7 @@ const PAY_TYPES = {
   GENERAL: { label: '일반', color: 'primary' },
   OUTPUT: { label: '수당', color: 'warning' },
 };
-const PAY_TARGETS = [
-  { key: 'GENERAL:ADMIN', payType: 'GENERAL', policyRole: 'ADMIN', label: '관리자', code: 'ADMIN' },
-  { key: 'GENERAL:OPERATOR', payType: 'GENERAL', policyRole: 'OPERATOR', label: '운영자', code: 'OPERATOR' },
-  { key: 'GENERAL:ACCOUNTANT', payType: 'GENERAL', policyRole: 'ACCOUNTANT', label: '회계사', code: 'ACCOUNTANT' },
-  { key: 'GENERAL:SUPERVISOR', payType: 'GENERAL', policyRole: 'WORKER', label: '생산 감독', code: 'WORKER_SUPERVISOR' },
-  { key: 'OUTPUT:WORKER', payType: 'OUTPUT', policyRole: 'WORKER', label: '생산 작업자', code: 'WORKER' },
-];
+const PAY_TYPE_ORDER = ['GENERAL', 'OUTPUT'];
 const CATEGORIES = { BASE: '기본급', FIXED: '고정수당', VARIABLE: '변동수당' };
 const CATEGORY_COLORS = { BASE: 'primary', FIXED: 'success', VARIABLE: 'warning' };
 const RATE_BASES = {
@@ -88,11 +82,13 @@ const SalarySystem = () => {
       setGrades((Array.isArray(sets) ? sets : []).flatMap((set) => set.grades || []).filter((grade) => grade.isActive));
       const next = {};
       (Array.isArray(policies) ? policies : []).forEach((row) => {
-        PAY_TARGETS.filter((target) => target.policyRole === row.orgRole).forEach((target) => {
-          next[`${target.key}:${row.gradeId}`] = {
+        const payType = row.orgRole === 'WORKER' ? 'OUTPUT' : 'GENERAL';
+        const key = `${payType}:${row.gradeId}`;
+        if (!next[key]) {
+          next[key] = {
             baseSalary: money(row.baseSalary), fixedTotal: money(row.fixedAllowance), variableTotal: money(row.variableAllowance),
           };
-        });
+        }
       });
       setRates(next);
     } catch (error) {
@@ -104,9 +100,9 @@ const SalarySystem = () => {
   const selected = items.find((row) => row.id === selectedId) || items[0];
   const counts = useMemo(() => items.reduce((map, row) => ({ ...map, [row.category]: (map[row.category] || 0) + 1 }), {}), [items]);
   const updateSelected = (field, value) => setItems((rows) => rows.map((row) => row.id === selected.id ? { ...row, [field]: value } : row));
-  const getRate = (targetKey, gradeId) => rates[`${targetKey}:${gradeId}`]?.[selected.id] || '0';
-  const changeRate = (targetKey, gradeId, value) => {
-    const key = `${targetKey}:${gradeId}`;
+  const getRate = (payType, gradeId) => rates[`${payType}:${gradeId}`]?.[selected.id] || '0';
+  const changeRate = (payType, gradeId, value) => {
+    const key = `${payType}:${gradeId}`;
     setRates((prev) => ({ ...prev, [key]: { ...prev[key], [selected.id]: money(value) } }));
   };
   const addItem = () => {
@@ -180,10 +176,10 @@ const SalarySystem = () => {
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(180px, 1fr))', xl: 'repeat(5, minmax(150px, 1fr))' }, gap: 1.5 }}>{calculationFields(selected, updateSelected)}</Box>
           <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1.5 }}>{(selected.payTypes || []).map((payType) => <Chip key={payType} size="small" color={PAY_TYPES[payType]?.color} label={PAY_TYPES[payType]?.label || payType} />)}<Chip size="small" label={RATE_BASES[selected.rateBasis]} /><Chip size="small" label={`정산: ${PAY_CYCLES[selected.payCycle]}`} /><Chip size="small" label={`조건: ${CONDITIONS[selected.condition]}`} />{selected.capValue && <Chip size="small" label={`상한: ${selected.capValue}`} />}</Stack>
         </Box>
-        <Box sx={{ px: 2, py: 1.5 }}><Typography fontWeight={700}>{effectiveMonth}부터 적용할 직급별 단가</Typography></Box>
-        <TableContainer><Table size="small"><TableHead><TableRow><TableCell>급여 타입 / 대상</TableCell><TableCell>직급</TableCell><TableCell align="right">단가</TableCell><TableCell>계산 기준</TableCell></TableRow></TableHead><TableBody>
-          {PAY_TARGETS.filter((target) => (selected.payTypes || []).includes(target.payType)).flatMap((target) => grades.map((grade, index) => <TableRow key={`${target.key}:${grade.id}`} hover>{index === 0 && <TableCell rowSpan={grades.length} sx={{ verticalAlign: 'top', pt: 2 }}><Chip size="small" color={PAY_TYPES[target.payType].color} label={PAY_TYPES[target.payType].label} sx={{ mb: 0.75 }} /><Typography fontWeight={700}>{target.label}</Typography><Typography variant="caption" display="block" color="text.secondary">{target.code}</Typography></TableCell>}<TableCell>{gradeName(grade, languageCode)} ({grade.code})</TableCell>
-            <TableCell align="right"><TextField size="small" value={getRate(target.key, grade.id)} onChange={(e) => changeRate(target.key, grade.id, e.target.value)} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} sx={{ width: 170 }} /></TableCell><TableCell>{RATE_BASES[selected.rateBasis]}</TableCell></TableRow>))}
+        <Box sx={{ px: 2, py: 1.5 }}><Typography fontWeight={700}>{effectiveMonth}부터 적용할 급여 타입·직급별 단가</Typography><Typography variant="body2" color="text.secondary">권한이나 직무와 관계없이 직원에게 지정된 급여 타입과 직급으로 단가를 결정합니다.</Typography></Box>
+        <TableContainer><Table size="small"><TableHead><TableRow><TableCell>급여 타입</TableCell><TableCell>직급</TableCell><TableCell align="right">단가</TableCell><TableCell>계산 기준</TableCell></TableRow></TableHead><TableBody>
+          {PAY_TYPE_ORDER.filter((payType) => (selected.payTypes || []).includes(payType)).flatMap((payType) => grades.map((grade, index) => <TableRow key={`${payType}:${grade.id}`} hover>{index === 0 && <TableCell rowSpan={grades.length} sx={{ verticalAlign: 'top', pt: 2 }}><Chip size="small" color={PAY_TYPES[payType].color} label={PAY_TYPES[payType].label} /><Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{payType}</Typography></TableCell>}<TableCell>{gradeName(grade, languageCode)} ({grade.code})</TableCell>
+            <TableCell align="right"><TextField size="small" value={getRate(payType, grade.id)} onChange={(e) => changeRate(payType, grade.id, e.target.value)} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} sx={{ width: 170 }} /></TableCell><TableCell>{RATE_BASES[selected.rateBasis]}</TableCell></TableRow>))}
         </TableBody></Table></TableContainer>
       </Paper>
     </Stack> : <Paper variant="outlined"><Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Typography variant="h6" fontWeight={700}>급여체계 적용 이력</Typography><Typography variant="body2" color="text.secondary">적용 시점별 급여 기준을 조회하고 새 버전의 기준으로 복사합니다.</Typography></Box>

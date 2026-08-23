@@ -1,5 +1,14 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-08-23 급여 타입 정비 + 직원 기본급 제거 + 급여 체계 UI 기준 변경
+
+- **급여 타입 최종 용어/저장값**: 직원 급여 타입의 canonical 저장값은 `GENERAL`/`OUTPUT`이다. 화면의 짧은 표기는 한국어 `일반`/`수당`, 영어 `General`/`Output`, 베트남어 `Thường`/`Sản lượng`을 쓴다. 과거 `FIXED`/`CT` 입력은 정규화 계층에서 각각 `GENERAL`/`OUTPUT`으로만 호환하고 신규 저장에는 쓰지 않는다.
+- **급여 구성**: `GENERAL`은 기본급+고정수당+변동수당, `OUTPUT`은 기본급+고정수당+변동수당+생산수당이다. 생산수당은 기존 작업 실적 기반 계산 시스템에서 별도로 계산하며 급여 체계 UI가 단가를 직접 관리하지 않는다.
+- **감독 예외**: `WORKER_SUPERVISOR`는 생산 현장 직무지만 생산수당 대상이 아니므로 항상 `GENERAL`이다. 관리자/운영자/회계사도 `GENERAL`, 감독을 제외한 생산 작업자는 기본적으로 `OUTPUT`이다. 감독 여부의 경계를 넘는 직무 변경에서만 급여 타입을 자동 재설정하고, 비감독 직무끼리 변경할 때는 사용자가 명시한 급여 타입을 보존한다. 읽기 시점 급여 계산도 감독이면 저장값과 무관하게 `GENERAL`로 판정한다.
+- **직원별 기본급 제거**: `Employee.fixedSalary`는 Prisma 모델, 직원 API, 직원 관리 UI에서 제거됐다. 배포 시 `20260823170000_remove_employee_fixed_salary`와 `migration_fix.sql`이 컬럼을 삭제하며, `STARTUP_FORBIDDEN_RUNTIME_COLUMNS`가 잔존 컬럼을 감지한다. 직원 관리에서는 급여 타입만 지정하고 기본급은 입력하거나 표시하지 않는다.
+- **급여 체계의 단가 축**: 급여 항목 단가는 더 이상 권한(`orgRole`)이나 직무별로 나누지 않고 **급여 타입(`GENERAL`/`OUTPUT`) + 직급(`gradeId`)** 조합으로 관리하는 것이 최종 방향이다. 관리자·운영자·회계사·생산 감독처럼 권한/직무가 달라도 같은 급여 타입과 직급이면 같은 단가를 쓴다. 2026-08-23 현재 `SalarySystem.jsx`는 이 구조를 먼저 보여주는 UI 시안이며, 기존 `EmployeeCompensationPolicy.orgRole + gradeId` 서버 스키마/API를 `payType + gradeId`로 바꾸는 작업은 아직 미구현이다.
+- **UI 시안 주의**: 서버 구조가 전환되기 전까지 급여 체계 화면은 기존 정책 응답을 임시로 `WORKER→OUTPUT`, 그 외 권한→`GENERAL`로 접어 초기값을 표시한다. 중복된 일반 정책은 첫 값을 임시 사용한다. 이 매핑은 데이터 모델이 아니라 전환 전 미리보기 호환 로직이므로 백엔드 구현 시 제거해야 한다.
+
 ## 2026-08-21 BusinessPartner→Organization 병합 후속: migration_fix.sql이 매 배포마다 크래시루프에 빠진 버그 수정
 
 - **증상**: 8/20 병합(바로 아래 §"2026-08-20 BusinessPartner를 Organization에 흡수") 배포는 정상 완료됐는데, 그 이후 커밋(예: `AssignmentPlan.completionAdjustmentHistory` 컬럼 추가처럼 새 스키마 drift를 유발하는 아무 변경이든)을 배포할 때마다 컨테이너가 healthcheck를 통과하지 못하고 재시작 루프에 빠졌다. 런타임 로그: `[startup] Runtime DB schema drift detected (AssignmentPlan.completionAdjustmentHistory). Applying migration_fix.sql...` 직후 `Error: insert or update on table "OutsourcedWorkRecord" violates foreign key constraint "OutsourcedWorkRecord_outsourcingPartnerId_fkey"`.
