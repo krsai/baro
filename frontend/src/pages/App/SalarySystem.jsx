@@ -183,18 +183,6 @@ const SalarySystem = () => {
     </Stack>
     <Alert severity="info" sx={{ mb: 2 }}>UI 시안입니다. 계산 방식 종류에 따라 필요한 설정만 표시하며, 계산식 모듈과 월별 근무 캘린더 값은 아직 서버에 저장되지 않습니다.</Alert>
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
-    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
-      <Paper variant="outlined" sx={{ p: 2, borderTop: 3, borderTopColor: 'primary.main' }}>
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}><Chip size="small" color="primary" label="일반" /><Typography variant="caption" color="text.secondary">GENERAL</Typography></Stack>
-        <Typography fontWeight={700}>기본급 + 고정수당 + 변동수당</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>관리자, 운영자, 회계사와 생산 감독에게 적용합니다.</Typography>
-      </Paper>
-      <Paper variant="outlined" sx={{ p: 2, borderTop: 3, borderTopColor: 'warning.main' }}>
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}><Chip size="small" color="warning" label="수당" /><Typography variant="caption" color="text.secondary">OUTPUT</Typography></Stack>
-        <Typography fontWeight={700}>기본급 + 고정수당 + 변동수당 + 생산수당</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>감독을 제외한 생산 작업자에게 적용하며, 생산수당은 작업 실적 시스템에서 별도로 계산합니다.</Typography>
-      </Paper>
-    </Box>
     <Paper variant="outlined" sx={{ mb: 2 }}><Tabs value={tab} onChange={(_e, value) => setTab(value)} sx={{ px: 1 }}><Tab label="급여 항목 및 단가" /><Tab label="적용 이력" /></Tabs></Paper>
 
     {tab === 0 ? <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="stretch">
