@@ -14,8 +14,8 @@ import { useLanguage } from '../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
 
 const PAY_TYPES = {
-  GENERAL: { label: '일반급여', color: 'primary' },
-  OUTPUT: { label: '수당급여', color: 'warning' },
+  GENERAL: { label: '일반', color: 'primary' },
+  OUTPUT: { label: '수당', color: 'warning' },
 };
 const PAY_TARGETS = [
   { key: 'GENERAL:ADMIN', payType: 'GENERAL', policyRole: 'ADMIN', label: '관리자', code: 'ADMIN' },
@@ -150,12 +150,12 @@ const SalarySystem = () => {
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
       <Paper variant="outlined" sx={{ p: 2, borderTop: 3, borderTopColor: 'primary.main' }}>
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}><Chip size="small" color="primary" label="일반급여" /><Typography variant="caption" color="text.secondary">GENERAL</Typography></Stack>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}><Chip size="small" color="primary" label="일반" /><Typography variant="caption" color="text.secondary">GENERAL</Typography></Stack>
         <Typography fontWeight={700}>기본급 + 고정수당 + 변동수당</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>관리자, 운영자, 회계사와 생산 감독에게 적용합니다.</Typography>
       </Paper>
       <Paper variant="outlined" sx={{ p: 2, borderTop: 3, borderTopColor: 'warning.main' }}>
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}><Chip size="small" color="warning" label="수당급여" /><Typography variant="caption" color="text.secondary">OUTPUT</Typography></Stack>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}><Chip size="small" color="warning" label="수당" /><Typography variant="caption" color="text.secondary">OUTPUT</Typography></Stack>
         <Typography fontWeight={700}>기본급 + 고정수당 + 변동수당 + 생산수당</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>감독을 제외한 생산 작업자에게 적용하며, 생산수당은 작업 실적 시스템에서 별도로 계산합니다.</Typography>
       </Paper>
@@ -188,7 +188,7 @@ const SalarySystem = () => {
       </Paper>
     </Stack> : <Paper variant="outlined"><Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Typography variant="h6" fontWeight={700}>급여체계 적용 이력</Typography><Typography variant="body2" color="text.secondary">적용 시점별 급여 기준을 조회하고 새 버전의 기준으로 복사합니다.</Typography></Box>
       <TableContainer><Table size="small"><TableHead><TableRow><TableCell>버전</TableCell><TableCell>적용 기간</TableCell><TableCell>상태</TableCell><TableCell>급여 항목</TableCell><TableCell>비고</TableCell><TableCell align="right">작업</TableCell></TableRow></TableHead><TableBody>
-        <TableRow><TableCell sx={{ fontWeight: 700 }}>현재 기준</TableCell><TableCell>{effectiveMonth} ~</TableCell><TableCell><Chip size="small" color="success" label="적용 예정" /></TableCell><TableCell>{items.length}개</TableCell><TableCell>일반급여·수당급여 대상과 복합 계산 단위를 편집 중인 기준</TableCell><TableCell align="right"><Button size="small" onClick={() => setTab(0)}>편집</Button></TableCell></TableRow>
+        <TableRow><TableCell sx={{ fontWeight: 700 }}>현재 기준</TableCell><TableCell>{effectiveMonth} ~</TableCell><TableCell><Chip size="small" color="success" label="적용 예정" /></TableCell><TableCell>{items.length}개</TableCell><TableCell>일반·수당 대상과 복합 계산 단위를 편집 중인 기준</TableCell><TableCell align="right"><Button size="small" onClick={() => setTab(0)}>편집</Button></TableCell></TableRow>
         <TableRow><TableCell sx={{ fontWeight: 700 }}>기존 기준</TableCell><TableCell>최초 적용 ~ 현재</TableCell><TableCell><Chip size="small" variant="outlined" label="사용 중" /></TableCell><TableCell>기본급·고정수당·변동수당</TableCell><TableCell>현재 서버에 저장된 기존 기준</TableCell><TableCell align="right"><Button size="small" disabled>조회</Button></TableCell></TableRow>
       </TableBody></Table></TableContainer></Paper>}
 

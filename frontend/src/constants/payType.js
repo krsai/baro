@@ -7,14 +7,14 @@ export const PAY_TYPE_KEYS = {
 
 export const PAY_TYPE_DEFAULT_LABELS = {
   [PAY_TYPE_KEYS.OUTPUT]: {
-    ko: '\uC218\uB2F9\uAE09\uC5EC',
-    en: 'Output Pay',
-    vi: 'L\u01B0\u01A1ng s\u1EA3n l\u01B0\u1EE3ng',
+    ko: '\uC218\uB2F9',
+    en: 'Output',
+    vi: 'S\u1EA3n l\u01B0\u1EE3ng',
   },
   [PAY_TYPE_KEYS.GENERAL]: {
-    ko: '\uC77C\uBC18\uAE09\uC5EC',
-    en: 'General Pay',
-    vi: 'L\u01B0\u01A1ng th\u01B0\u1EDDng',
+    ko: '\uC77C\uBC18',
+    en: 'General',
+    vi: 'Th\u01B0\u1EDDng',
   },
 };
 
