@@ -789,15 +789,27 @@ const buildWorkerStyleProcessSignature = (value = {}) => {
   }
   return `${workerMetric.key}:${assignmentPlanMetric.key}:${processMetric.key}`;
 };
-const findDuplicateRow = (records = []) => {
-  const seen = new Set();
+const findDuplicateGroups = (records = []) => {
+  const recordsBySignature = new Map();
   for (const record of records) {
     const signature = buildWorkerStyleProcessSignature(record);
     if (!signature) continue;
-    if (seen.has(signature)) return record;
-    seen.add(signature);
+    const matchedRecords = recordsBySignature.get(signature) || [];
+    matchedRecords.push(record);
+    recordsBySignature.set(signature, matchedRecords);
   }
-  return null;
+  return [...recordsBySignature.values()].filter((matchedRecords) => matchedRecords.length > 1);
+};
+const formatDuplicateGroupDetail = (records, languageCode) => {
+  const first = records?.[0] || {};
+  const rowLabel = languageCode === 'en' ? 'Rows' : languageCode === 'vi' ? 'D\u00f2ng' : '\uD589';
+  const workerLabel = languageCode === 'en' ? 'Worker' : languageCode === 'vi' ? 'Nh\u00e2n vi\u00ean' : '\uC791\uC5C5\uC790';
+  const assignmentLabel = languageCode === 'en' ? 'Assignment' : languageCode === 'vi' ? 'Ph\u00e2n c\u00f4ng' : '\uBC30\uC815';
+  const processLabel = languageCode === 'en' ? 'Process' : languageCode === 'vi' ? 'C\u00f4ng \u0111o\u1ea1n' : '\uACF5\uC815';
+  const rowNumbers = records.map((record) => record.rowNumber).filter(Boolean).join(', ');
+  const assignment = [first.orderNo, first.styleName || first.styleCode].filter(Boolean).join(' / ');
+  const process = [first.processCode, first.processName].filter(Boolean).join(' ');
+  return `${rowLabel} ${rowNumbers} \u00b7 ${workerLabel}: ${first.workerName || '-'} \u00b7 ${assignmentLabel}: ${assignment || '-'} \u00b7 ${processLabel}: ${process || '-'}`;
 };
 const matchByIdOrName = (options = [], value, idKey = 'id', labelKey = 'name') => {
   if (!value) return null;
@@ -1835,17 +1847,19 @@ const WorkDetail = ({
   }, [filteredRows]);
   const summary = useMemo(() => {
     const records = rows
-      .map((row) => {
+      .map((row, rowIndex) => {
         const rowId = toText(row?.id);
         const resolvedMeta = rowResolvedMetaById.get(rowId) || null;
         const assignment = resolvedMeta?.assignment || resolveAssignmentForRow(row) || row?.assignment || null;
         const process = resolvedMeta?.process || resolveProcessForRow(row, assignment) || row?.process || null;
-        return { row, assignment, process };
+        return { row, rowIndex, assignment, process };
       })
       .filter(({ process, row }) => process && Number(row?.quantity) > 0)
-      .map(({ row, assignment, process }) => ({
+      .map(({ row, rowIndex, assignment, process }) => ({
         rowId: toText(row?.id),
+        rowNumber: rowIndex + 1,
         workerId: row?.worker?.isOutsourced ? null : toPositiveIdOrNull(row?.worker?.id),
+        workerName: toText(row?.worker?.name || row?.worker?.vendorName),
         isOutsourced: row?.worker?.isOutsourced === true,
         outsourceVendorName: row?.worker?.isOutsourced ? toText(row?.worker?.vendorName) : null,
         outsourcingPartnerId: row?.worker?.isOutsourced
@@ -1853,11 +1867,19 @@ const WorkDetail = ({
           : null,
         outsourceUnitPrice: row?.worker?.isOutsourced ? Math.max(0, Number(row?.outsourceUnitPrice) || 0) : null,
         styleId: toPositiveIdOrNull(row?.styleRefId ?? row?.styleId),
-        styleCode: toText(row?.styleCode || assignment?.styleId),
-        styleProcessId: toPositiveIdOrNull(process?.styleProcessId),
+        styleCode: toText(row?.styleCode || row?.assignment?.styleId || assignment?.styleId),
+        styleName: toText(row?.assignment?.label || assignment?.label),
+        orderNo: toText(row?.assignment?.orderNo || assignment?.orderNo),
+        styleProcessId: toPositiveIdOrNull(
+          row?.process?.styleProcessId ?? process?.styleProcessId
+        ),
+        processCode: toText(row?.process?.code || row?.process?.processCode || process?.code || process?.processCode),
+        processName: toText(row?.process?.name || row?.process?.processName || process?.name || process?.processName),
         ctSeconds: Math.max(0, Math.round(Number(process?.ctSeconds) || 0)),
         quantity: Math.max(0, Math.round(Number(row?.quantity) || 0)),
-        assignmentPlanId: toPositiveIdOrNull(assignment?.dbId),
+        assignmentPlanId: toPositiveIdOrNull(
+          row?.assignment?.dbId ?? assignment?.dbId
+        ),
       }));
     const workerCount = new Set(records.map((record) => record.workerId).filter((workerId) => workerId !== null)).size;
     const workLogCtTotalSeconds = records.reduce(
@@ -1871,6 +1893,10 @@ const WorkDetail = ({
     );
     return { records, workerCount, workLogCtTotalSeconds, workLogQuantityTotal };
   }, [resolveAssignmentForRow, resolveProcessForRow, rowResolvedMetaById, rows]);
+  const duplicateGroups = useMemo(
+    () => findDuplicateGroups(summary.records),
+    [summary.records]
+  );
   const assignmentLimitGroupMeta = useMemo(() => {
     const planMetaById = new Map();
     const groupMetaByKey = new Map();
@@ -2671,8 +2697,10 @@ const WorkDetail = ({
       setFormError(messages.wageMissing || '공장 초당 공임이 설정되지 않았습니다.');
       return;
     }
-    if (findDuplicateRow(summary.records)) {
-      setFormError(messages.duplicateEntry || '같은 작업자가 같은 배정의 같은 공정을 같은 날짜에 중복 입력할 수 없습니다.');
+    if (duplicateGroups.length > 0) {
+      setFormError(
+        `${messages.duplicateEntry || '같은 작업자가 같은 배정의 같은 공정을 같은 날짜에 중복 입력할 수 없습니다.'} ${formatDuplicateGroupDetail(duplicateGroups[0], languageCode)}`
+      );
       return;
     }
     if (missingAssignmentPlanLinkMessage) {
@@ -2701,7 +2729,7 @@ const WorkDetail = ({
         employmentAutoNote: savedEmploymentAutoNote,
       }),
     });
-  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, entryMode, hasFactoryWage, initialLog?.id, isDirty, isOutsourcingMode, lineWorkers, missingAssignmentPlanLinkMessage, note, onSave, recordKind, savedEmploymentAutoNote, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey, workLogOperationStartDateKey, workLogOperationStartErrorMessage]);
+  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, duplicateGroups, entryMode, hasFactoryWage, initialLog?.id, isDirty, isOutsourcingMode, languageCode, lineWorkers, missingAssignmentPlanLinkMessage, note, onSave, recordKind, savedEmploymentAutoNote, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey, workLogOperationStartDateKey, workLogOperationStartErrorMessage]);
   const rowOrderIndexById = useMemo(() => {
     const map = new Map();
     rows.forEach((row, index) => {
@@ -3137,7 +3165,18 @@ const WorkDetail = ({
             ) : null}
             {isAggregateLegacyLog ? <Alert severity="warning">{messages.legacyReadOnly}</Alert> : null}
             {formError ? <Alert severity="error">{formError}</Alert> : null}
-            {findDuplicateRow(summary.records) ? <Alert severity="warning">{messages.duplicateRows}</Alert> : null}
+            {duplicateGroups.length > 0 ? (
+              <Alert severity="warning">
+                <Stack spacing={0.5}>
+                  <Typography variant="body2">{messages.duplicateRows}</Typography>
+                  {duplicateGroups.map((group, index) => (
+                    <Typography key={index} variant="caption" sx={{ display: 'block' }}>
+                      {formatDuplicateGroupDetail(group, languageCode)}
+                    </Typography>
+                  ))}
+                </Stack>
+              </Alert>
+            ) : null}
           </Stack>
         </Paper>
 
