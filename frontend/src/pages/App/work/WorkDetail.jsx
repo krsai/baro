@@ -528,13 +528,8 @@ const formatAssignmentLabel = (assignment) => {
 };
 const buildStyleOptionSearchText = (assignment) =>
   [
-    assignment?.label,
-    assignment?.styleName,
-    assignment?.styleId,
+    formatAssignmentLabel(assignment),
     assignment?.styleCode,
-    assignment?.orderNo,
-    assignment?.customer,
-    assignment?.customerName,
   ]
     .map(toText)
     .filter(Boolean)
