@@ -801,11 +801,6 @@ const MainLayout = () => {
             notificationActive: pendingEmployeeCount > 0,
           },
           {
-            label: getUiMessage('menu.salarySystem', '급여 체계', languageCode),
-            icon: <AccountBalanceWalletIcon />,
-            path: '/salary-system',
-          },
-          {
             label: getUiMessage('menu.holiday', '\uD734\uC77C', languageCode),
             icon: <CalendarMonthIcon />,
             path: '/holiday',
@@ -836,7 +831,18 @@ const MainLayout = () => {
         isParent: true,
         menuGroupKey: MENU_GROUP_KEYS.SETTINGS,
         isOpen: settingsOpen,
-        children: [{ label: getUiMessage('menu.employeeSystem', '직원 체계', languageCode), icon: <GroupIcon />, path: '/employee-system' }],
+        children: [
+          {
+            label: getUiMessage('menu.salarySystem', '급여 체계', languageCode),
+            icon: <AccountBalanceWalletIcon />,
+            path: '/salary-system',
+          },
+          {
+            label: getUiMessage('menu.employeeSystem', '직원 체계', languageCode),
+            icon: <GroupIcon />,
+            path: '/employee-system',
+          },
+        ],
       },
       {
         label: getUiMessage('menu.misc', '\uAE30\uD0C0 \uAD00\uB9AC', languageCode),
