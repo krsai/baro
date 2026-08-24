@@ -1161,6 +1161,7 @@ const WorkDetail = ({
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [baseLoading, setBaseLoading] = useState(() => !initialLog?.id);
   const [lineDataLoading, setLineDataLoading] = useState(false);
+  const [lineContextReady, setLineContextReady] = useState(false);
   const [assignmentContextRefreshKey, setAssignmentContextRefreshKey] = useState(0);
   const [factories, setFactories] = useState(() => {
     const initialFactory = buildFactorySelection(initialLog);
@@ -1360,6 +1361,7 @@ const WorkDetail = ({
   useEffect(() => {
     initialRowsHydratedRef.current = false;
     setPersistedSnapshotText(null);
+    setLineContextReady(false);
     setSelectedFactory(initialFactoryOption);
     setSelectedLine(initialLineOption);
     setWorkDate(buildInitialWorkDate(initialLog));
@@ -1494,6 +1496,7 @@ const WorkDetail = ({
 
   useEffect(() => {
     if (!selectedFactoryId || !selectedLineId) {
+      setLineContextReady(false);
       setLineWorkers([]);
       setAllAssignmentPlans([]);
       setAssignmentOptions([]);
@@ -1514,11 +1517,13 @@ const WorkDetail = ({
         suggestedCoverageStartDate: initialContext?.suggestedCoverageStartDate || null,
         isFirstLineWorkLog: Boolean(initialContext?.isFirstLineWorkLog),
       });
+      setLineContextReady(true);
       setLineDataLoading(false);
       return;
     }
     const abortController = new AbortController();
     let cancelled = false;
+    setLineContextReady(false);
     setLineDataLoading(true);
     loadWorkLogContext({
       orgId: activeOrgId,
@@ -1579,6 +1584,7 @@ const WorkDetail = ({
             ensureOptionIncluded(currentLines, context.line, (item) => item?.id || item?.name)
           );
         }
+        setLineContextReady(true);
       })
       .catch((error) => {
         if (cancelled || isCancelledRequestError(error)) return;
@@ -1595,6 +1601,7 @@ const WorkDetail = ({
         setAllAssignmentPlans([]);
         setAssignmentOptions([]);
         setLineWorkers([]);
+        setLineContextReady(true);
       })
       .finally(() => {
         if (!cancelled) setLineDataLoading(false);
@@ -2034,12 +2041,12 @@ const WorkDetail = ({
   );
   useEffect(() => {
     if (!initialLog?.id || persistedSnapshotText !== null) return;
-    if (!initialRowsHydratedRef.current || lineDataLoading) return;
+    if (!initialRowsHydratedRef.current || lineDataLoading || !lineContextReady) return;
     // Use the fully hydrated/normalized form as the persisted baseline. Comparing
     // raw API records with hydrated rows can produce false changes when the same
     // assignment or process is represented by different compatible identifiers.
     setPersistedSnapshotText(currentSnapshotText);
-  }, [currentSnapshotText, initialLog?.id, lineDataLoading, persistedSnapshotText]);
+  }, [currentSnapshotText, initialLog?.id, lineContextReady, lineDataLoading, persistedSnapshotText]);
   const isDirty = useMemo(() => {
     if (!initialLog?.id) return true;
     if (persistedSnapshotText === null) return false;
