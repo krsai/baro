@@ -1240,14 +1240,22 @@ export const createLineRouter = ({
     }
     const employee = await prisma.employee.findFirst({
       where: { id: employeeId, orgId: organization.id },
-      select: { id: true },
+      select: { id: true, joinedAt: true, leftAt: true },
     });
     if (!employee) {
       return res.status(404).json({ ok: false, error: "worker not found" });
     }
     const rows = await prisma.lineAssignment.findMany({
       where: { employeeId, line: { orgId: organization.id } },
-      include: { line: { select: { id: true, name: true } } },
+      include: {
+        line: {
+          select: {
+            id: true,
+            name: true,
+            factory: { select: { id: true, name: true, managementStartDate: true } },
+          },
+        },
+      },
       orderBy: [{ startAt: "desc" }, { id: "desc" }],
     });
     return res.json(
@@ -1255,6 +1263,13 @@ export const createLineRouter = ({
         id: row.id,
         lineId: row.lineId,
         lineName: row.line.name,
+        factoryId: row.line.factory.id,
+        factoryName: row.line.factory.name,
+        joinedDate: toDateKeyInTimeZone(employee.joinedAt) || null,
+        leftDate: toDateKeyInTimeZone(employee.leftAt) || null,
+        factoryManagementStartDate:
+          toDateKeyInTimeZone(row.line.factory.managementStartDate) ||
+          DEFAULT_FACTORY_MANAGEMENT_START_DATE,
         startDate: toDateKeyInTimeZone(row.startAt),
         endDate: toDateKeyInTimeZone(row.endAt) || null,
       }))

@@ -33,9 +33,15 @@ import GroupWorkOutlinedIcon from '@mui/icons-material/GroupWorkOutlined';
 import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
 import PersonOffOutlinedIcon from '@mui/icons-material/PersonOffOutlined';
 import HistoryIcon from '@mui/icons-material/History';
+import {
+  enUS as datePickerEnUS,
+  koKR as datePickerKoKR,
+  viVN as datePickerViVN,
+} from '@mui/x-date-pickers/locales';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useLocation } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
+import CustomDatePicker from '../../../components/CustomDatePicker';
 import PageToolbar from '../../../components/PageToolbar';
 import SaveButton from '../../../components/SaveButton';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
@@ -48,6 +54,15 @@ import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 
 const LINE_ASSIGNMENTS_UPDATED_EVENT = 'baro:line-assignments-updated';
 const LINE_BOARD_COLUMN_WIDTH = 330;
+const getDatePickerLocaleText = (languageCode) => {
+  if (languageCode === 'ko') {
+    return datePickerKoKR.components.MuiLocalizationProvider.defaultProps.localeText;
+  }
+  if (languageCode === 'vi') {
+    return datePickerViVN.components.MuiLocalizationProvider.defaultProps.localeText;
+  }
+  return datePickerEnUS.components.MuiLocalizationProvider.defaultProps.localeText;
+};
 const LINE_BOARD_MESSAGES = {
   ko: {
     title: '라인 관리', selectedFactory: '선택 공장', line: '라인', managerAssigned: '라인장 지정',
@@ -67,6 +82,7 @@ const LINE_BOARD_MESSAGES = {
     confirmFactoryChange: '저장되지 않은 변경사항이 있습니다. 저장하지 않고 공장을 변경하시겠습니까?', selectFactoryFirst: '먼저 공장을 선택해 주세요.',
     confirmDeleteLine: "'{line}'을(를) 삭제하시겠습니까?", confirmDeleteLineWithWorkers: "'{line}'을(를) 삭제하시겠습니까?\n배정된 작업자 {count}명은 미배정으로 이동됩니다.",
     confirmReset: '저장되지 않은 변경사항을 모두 되돌릴까요?', noChanges: '변경사항이 없습니다.', saveSuccess: '라인 변경사항이 저장되었습니다.', saveFailed: '라인 저장에 실패했습니다.',
+    startDate: '시작일', endDate: '종료일', save: '저장', close: '닫기', loadingHistory: '불러오는 중...', noSavedHistory: '저장된 라인 이력이 없습니다.',
   },
   en: {
     title: 'Line Management', selectedFactory: 'Selected Factory', line: 'Lines', managerAssigned: 'Line Managers',
@@ -86,6 +102,7 @@ const LINE_BOARD_MESSAGES = {
     confirmFactoryChange: 'You have unsaved changes. Change the factory without saving?', selectFactoryFirst: 'Select a factory first.',
     confirmDeleteLine: "Delete '{line}'?", confirmDeleteLineWithWorkers: "Delete '{line}'?\n{count} assigned workers will be moved to unassigned.",
     confirmReset: 'Discard all unsaved changes?', noChanges: 'There are no changes.', saveSuccess: 'Line changes have been saved.', saveFailed: 'Failed to save line changes.',
+    startDate: 'Start Date', endDate: 'End Date', save: 'Save', close: 'Close', loadingHistory: 'Loading...', noSavedHistory: 'No saved line assignment history.',
   },
   vi: {
     title: 'Quản lý chuyền', selectedFactory: 'Nhà máy đã chọn', line: 'Chuyền', managerAssigned: 'Đã chỉ định trưởng chuyền',
@@ -117,6 +134,39 @@ const emitLineAssignmentsUpdated = ({ orgId }) => {
       },
     })
   );
+};
+
+const LINE_HISTORY_MESSAGES = {
+  ko: {
+    startDate: '시작일', endDate: '종료일', save: '저장', close: '닫기',
+    loadingHistory: '불러오는 중...', noSavedHistory: '저장된 라인 이력이 없습니다.',
+    beforeJoined: '라인 배치 시작일은 입사일({date})보다 빠를 수 없습니다.',
+    beforeFactoryManagement: '라인 배치 시작일은 해당 공장의 운영 시작일({date})보다 빠를 수 없습니다.',
+    invalidDateRange: '종료일은 시작일보다 빠를 수 없습니다.',
+    afterLeft: '라인 배치 종료일은 퇴사일({date})보다 늦을 수 없습니다.',
+    overlap: '다른 라인 배치 이력과 기간이 겹칩니다.',
+    saveHistoryFailed: '라인 배치 이력을 저장하지 못했습니다.',
+  },
+  en: {
+    startDate: 'Start Date', endDate: 'End Date', save: 'Save', close: 'Close',
+    loadingHistory: 'Loading...', noSavedHistory: 'No saved line assignment history.',
+    beforeJoined: 'The line assignment cannot start before the employment date ({date}).',
+    beforeFactoryManagement: 'The line assignment cannot start before the factory management start date ({date}).',
+    invalidDateRange: 'The end date cannot be earlier than the start date.',
+    afterLeft: 'The line assignment cannot end after the termination date ({date}).',
+    overlap: 'This period overlaps another line assignment.',
+    saveHistoryFailed: 'Failed to save the line assignment history.',
+  },
+  vi: {
+    startDate: 'Ng\u00e0y b\u1eaft \u0111\u1ea7u', endDate: 'Ng\u00e0y k\u1ebft th\u00fac', save: 'L\u01b0u', close: '\u0110\u00f3ng',
+    loadingHistory: '\u0110ang t\u1ea3i...', noSavedHistory: 'Kh\u00f4ng c\u00f3 l\u1ecbch s\u1eed ph\u00e2n c\u00f4ng chuy\u1ec1n \u0111\u00e3 l\u01b0u.',
+    beforeJoined: 'Ng\u00e0y b\u1eaft \u0111\u1ea7u ph\u00e2n c\u00f4ng chuy\u1ec1n kh\u00f4ng th\u1ec3 tr\u01b0\u1edbc ng\u00e0y v\u00e0o l\u00e0m ({date}).',
+    beforeFactoryManagement: 'Ng\u00e0y b\u1eaft \u0111\u1ea7u ph\u00e2n c\u00f4ng chuy\u1ec1n kh\u00f4ng th\u1ec3 tr\u01b0\u1edbc ng\u00e0y nh\u00e0 m\u00e1y b\u1eaft \u0111\u1ea7u qu\u1ea3n l\u00fd ({date}).',
+    invalidDateRange: 'Ng\u00e0y k\u1ebft th\u00fac kh\u00f4ng th\u1ec3 tr\u01b0\u1edbc ng\u00e0y b\u1eaft \u0111\u1ea7u.',
+    afterLeft: 'Ng\u00e0y k\u1ebft th\u00fac ph\u00e2n c\u00f4ng chuy\u1ec1n kh\u00f4ng th\u1ec3 sau ng\u00e0y ngh\u1ec9 vi\u1ec7c ({date}).',
+    overlap: 'Kho\u1ea3ng th\u1eddi gian n\u00e0y tr\u00f9ng v\u1edbi m\u1ed9t l\u1ecbch s\u1eed ph\u00e2n c\u00f4ng chuy\u1ec1n kh\u00e1c.',
+    saveHistoryFailed: 'Kh\u00f4ng th\u1ec3 l\u01b0u l\u1ecbch s\u1eed ph\u00e2n c\u00f4ng chuy\u1ec1n.',
+  },
 };
 
 const buildWorkerLabel = (worker, fallback = 'Worker') => {
@@ -201,7 +251,10 @@ const LineBoard = () => {
   const { showNotification } = useAppActions();
   const { activeOrgId } = useAuth();
   const { languageCode } = useLanguage();
-  const msg = LINE_BOARD_MESSAGES[languageCode] || LINE_BOARD_MESSAGES.ko;
+  const msg = {
+    ...(LINE_BOARD_MESSAGES[languageCode] || LINE_BOARD_MESSAGES.ko),
+    ...(LINE_HISTORY_MESSAGES[languageCode] || LINE_HISTORY_MESSAGES.ko),
+  };
   const location = useLocation();
   const requestedFactoryId = useMemo(
     () => String(new URLSearchParams(location.search).get('factoryId') || ''),
@@ -653,6 +706,29 @@ const LineBoard = () => {
 
   const handleSaveHistoryRow = useCallback(
     async (row) => {
+      const withDate = (message, date) => String(message || '').replace('{date}', date || '-');
+      if (row.joinedDate && row.startDate < row.joinedDate) {
+        showNotification(withDate(msg.beforeJoined, row.joinedDate), 'warning');
+        return;
+      }
+      if (
+        row.factoryManagementStartDate &&
+        row.startDate < row.factoryManagementStartDate
+      ) {
+        showNotification(
+          withDate(msg.beforeFactoryManagement, row.factoryManagementStartDate),
+          'warning'
+        );
+        return;
+      }
+      if (row.endDate && row.startDate > row.endDate) {
+        showNotification(msg.invalidDateRange, 'warning');
+        return;
+      }
+      if (row.leftDate && (!row.endDate || row.endDate > row.leftDate)) {
+        showNotification(withDate(msg.afterLeft, row.leftDate), 'warning');
+        return;
+      }
       setSavingHistoryId(row.id);
       try {
         const updated = await requestJSON(
@@ -676,12 +752,30 @@ const LineBoard = () => {
         emitLineAssignmentsUpdated({ orgId: activeOrgId });
         showNotification('\uB77C\uC778 \uBC30\uCE58 \uC774\uB825\uC744 \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.', 'success');
       } catch (error) {
-        showNotification(error?.message || '\uB77C\uC778 \uC774\uB825 \uC800\uC7A5\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.', 'error');
+        const detail = String(error?.message || '');
+        let localizedMessage = msg.saveHistoryFailed;
+        if (/starts before employment or factory management period/i.test(detail)) {
+          localizedMessage =
+            row.joinedDate && row.startDate < row.joinedDate
+              ? withDate(msg.beforeJoined, row.joinedDate)
+              : row.factoryManagementStartDate
+                ? withDate(msg.beforeFactoryManagement, row.factoryManagementStartDate)
+                : msg.saveHistoryFailed;
+        } else if (/ends after leftAt/i.test(detail)) {
+          localizedMessage = row.leftDate
+            ? withDate(msg.afterLeft, row.leftDate)
+            : msg.saveHistoryFailed;
+        } else if (/periods overlap/i.test(detail)) {
+          localizedMessage = msg.overlap;
+        } else if (/invalid assignment date range/i.test(detail)) {
+          localizedMessage = msg.invalidDateRange;
+        }
+        showNotification(localizedMessage, 'error');
       } finally {
         setSavingHistoryId(null);
       }
     },
-    [activeOrgId, buildOrgQuery, showNotification]
+    [activeOrgId, buildOrgQuery, msg, showNotification]
   );
 
   const handleResetDraft = useCallback(async () => {
@@ -1453,51 +1547,68 @@ const LineBoard = () => {
           </Paper>
         ) : null}
         {loadingHistory ? (
-          <Typography color="text.secondary">{'\uBD88\uB7EC\uC624\uB294 \uC911...'}</Typography>
+          <Typography color="text.secondary">{msg.loadingHistory}</Typography>
         ) : historyRows.length === 0 ? (
-          <Typography color="text.secondary">{'\uC800\uC7A5\uB41C \uB77C\uC778 \uC774\uB825\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.'}</Typography>
+          <Typography color="text.secondary">{msg.noSavedHistory}</Typography>
         ) : (
           <Stack spacing={1}>
             {historyRows.map((row) => (
               <Paper key={row.id} variant="outlined" sx={{ p: 1.5 }}>
-                <Typography fontWeight={700}>{row.lineName}</Typography>
                 <Stack
                   direction={{ xs: 'column', sm: 'row' }}
                   spacing={1}
                   alignItems={{ sm: 'center' }}
-                  sx={{ mt: 1, width: '100%' }}
+                  sx={{ width: '100%' }}
                 >
                   <TextField
                     size="small"
-                    type="date"
-                    label={'\uC2DC\uC791\uC77C'}
-                    value={row.startDate || ''}
-                    onChange={(event) =>
-                      setHistoryRows((previous) =>
-                        previous.map((item) =>
-                          item.id === row.id ? { ...item, startDate: event.target.value } : item
-                        )
-                      )
-                    }
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ flex: 1, minWidth: 210 }}
+                    label={msg.factory}
+                    value={row.factoryName || msg.noFactory}
+                    slotProps={{ input: { readOnly: true } }}
+                    sx={{ flex: 0.85, minWidth: 150 }}
                   />
                   <TextField
                     size="small"
-                    type="date"
-                    label={'\uC885\uB8CC\uC77C'}
-                    value={row.endDate || ''}
-                    onChange={(event) =>
+                    label={msg.line}
+                    value={row.lineName || '-'}
+                    slotProps={{ input: { readOnly: true } }}
+                    sx={{ flex: 0.85, minWidth: 150 }}
+                  />
+                  <CustomDatePicker
+                    label={msg.startDate}
+                    value={row.startDate || null}
+                    onChange={(value) =>
                       setHistoryRows((previous) =>
                         previous.map((item) =>
                           item.id === row.id
-                            ? { ...item, endDate: event.target.value || null }
+                            ? { ...item, startDate: value?.isValid?.() ? value.format('YYYY-MM-DD') : '' }
                             : item
                         )
                       )
                     }
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ flex: 1, minWidth: 210 }}
+                    adapterLocale={languageCode}
+                    localeText={getDatePickerLocaleText(languageCode)}
+                    slotProps={{ textField: { sx: { flex: 1, minWidth: 170 } } }}
+                  />
+                  <CustomDatePicker
+                    label={msg.endDate}
+                    value={row.endDate || null}
+                    allowEmpty
+                    onChange={(value) =>
+                      setHistoryRows((previous) =>
+                        previous.map((item) =>
+                          item.id === row.id
+                            ? { ...item, endDate: value?.isValid?.() ? value.format('YYYY-MM-DD') : null }
+                            : item
+                        )
+                      )
+                    }
+                    adapterLocale={languageCode}
+                    localeText={getDatePickerLocaleText(languageCode)}
+                    slotProps={{
+                      field: { clearable: true },
+                      textField: { sx: { flex: 1, minWidth: 170 } },
+                    }}
                   />
                   <Button
                     variant="outlined"
@@ -1505,7 +1616,7 @@ const LineBoard = () => {
                     disabled={savingHistoryId === row.id || !row.startDate}
                     sx={{ ml: { sm: 'auto' }, minWidth: 88, alignSelf: { xs: 'stretch', sm: 'center' } }}
                   >
-                    {'\uC800\uC7A5'}
+                    {msg.save}
                   </Button>
                 </Stack>
               </Paper>
@@ -1515,7 +1626,7 @@ const LineBoard = () => {
       </DialogContent>
       <DialogActions>
         <Button onClick={() => setHistoryWorker(null)} disabled={savingHistoryId !== null}>
-          {'\uB2EB\uAE30'}
+          {msg.close}
         </Button>
       </DialogActions>
     </Dialog>

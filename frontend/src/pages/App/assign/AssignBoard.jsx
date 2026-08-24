@@ -32,9 +32,11 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { DndContext, DragOverlay, useDroppable, pointerWithin, MeasuringStrategy } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
+import dayjs from 'dayjs';
 import { useAssignBoardDnd } from './hooks/useAssignBoardDnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
+import CustomDatePicker from '../../../components/CustomDatePicker';
 import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
@@ -2998,6 +3000,10 @@ const AssignBoard = () => {
   const detailStyleFetchAttemptRef = useRef(new Set());
   const [assignmentOperationStartDateKey, setAssignmentOperationStartDateKey] = useState(
     DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY
+  );
+  const assignmentOperationStartDay = useMemo(
+    () => dayjs(assignmentOperationStartDateKey).startOf('day'),
+    [assignmentOperationStartDateKey]
   );
   const startDateRef = useRef(
     clampAssignmentViewDate(getMonthStartDate(), DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY)
@@ -6788,6 +6794,31 @@ const AssignBoard = () => {
   ]);
 
   const controlsDisabled = persisting || loading;
+  const handleViewMonthChange = useCallback(
+    (value) => {
+      const nextStart = clampAssignmentViewDate(
+        getMonthStartDate(value),
+        assignmentOperationStartDateKey
+      );
+      setViewStart(nextStart);
+      setViewEnd(getMonthEndDate(nextStart));
+    },
+    [assignmentOperationStartDateKey]
+  );
+  const handleViewMonthShift = useCallback(
+    (amount) => {
+      const nextMonth = getMonthStartDate(viewStart);
+      nextMonth.setMonth(nextMonth.getMonth() + amount);
+      handleViewMonthChange(nextMonth);
+    },
+    [handleViewMonthChange, viewStart]
+  );
+  const monthMinusDisabled =
+    controlsDisabled ||
+    getMonthStartDate(viewStart).getTime() <=
+      getMonthStartDate(
+        getAssignmentOperationStartDate(assignmentOperationStartDateKey)
+      ).getTime();
 
   return (
     <AppPageContainer
@@ -6938,6 +6969,37 @@ const AssignBoard = () => {
               <Typography variant="subtitle2">
                 {getUiMessage('assign.lineCapacityBoard', 'Line Capacity', languageCode)}
               </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                <CustomDatePicker
+                  value={viewStart}
+                  onChange={(value) => {
+                    if (value?.isValid?.()) handleViewMonthChange(value.toDate());
+                  }}
+                  monthOnly
+                  disabled={controlsDisabled}
+                  minDate={assignmentOperationStartDay}
+                />
+                <Stack sx={{ gap: '2px' }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => handleViewMonthShift(1)}
+                    disabled={controlsDisabled}
+                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                  >
+                    M+
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => handleViewMonthShift(-1)}
+                    disabled={monthMinusDisabled}
+                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                  >
+                    M-
+                  </Button>
+                </Stack>
+              </Box>
             </Box>
             <Stack spacing={1}>
               <Typography variant="caption" color="text.secondary">

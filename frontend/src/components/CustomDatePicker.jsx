@@ -12,14 +12,15 @@ const CustomDatePicker = ({
   onChange,
   slotProps,
   monthOnly = false,
+  allowEmpty = false,
   adapterLocale = 'ko',
   localeText,
   ...props
 }) => {
   const { minDate, maxDate, format, ...pickerProps } = props;
-  const parsedValue = value ? dayjs(value) : dayjs();
-  const safeValue = parsedValue.isValid() ? parsedValue : dayjs();
-  const dateValue = monthOnly ? safeValue.startOf('month') : safeValue;
+  const parsedValue = value ? dayjs(value) : null;
+  const safeValue = parsedValue?.isValid() ? parsedValue : allowEmpty ? null : dayjs();
+  const dateValue = monthOnly && safeValue ? safeValue.startOf('month') : safeValue;
   const parsedMinDate = minDate ? dayjs(minDate) : null;
   const parsedMaxDate = maxDate ? dayjs(maxDate) : null;
   const safeMinDate = parsedMinDate?.isValid() ? parsedMinDate : undefined;
