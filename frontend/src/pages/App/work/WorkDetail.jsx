@@ -1808,6 +1808,10 @@ const WorkDetail = ({
     if (!keyword) return rows;
 
     return rows.filter((row) => {
+      // Keep the row being edited visible while its fields are temporarily
+      // incomplete or changing, even when an active table search would no
+      // longer match it. Hiding it mid-selection looks like the row was deleted.
+      if (toText(row?.id) === toText(editingRowId)) return true;
       const rowId = toText(row?.id);
       const resolvedMeta = rowResolvedMetaById.get(rowId) || null;
       const assignment = resolvedMeta?.assignment || resolveAssignmentForRow(row) || row?.assignment || null;
@@ -1834,7 +1838,7 @@ const WorkDetail = ({
         .toLowerCase();
       return searchText.includes(keyword);
     });
-  }, [deferredSearchTerm, resolveAssignmentForRow, resolveProcessForRow, rowResolvedMetaById, rows, selectedLineId]);
+  }, [deferredSearchTerm, editingRowId, resolveAssignmentForRow, resolveProcessForRow, rowResolvedMetaById, rows, selectedLineId]);
   const workerGroupMetaByRowId = useMemo(() => {
     let previousWorkerKey = '';
     let groupId = -1;
@@ -2534,15 +2538,6 @@ const WorkDetail = ({
           ? {
               ...row,
               worker: resolvedWorker || null,
-              ...(toText(row?.worker?.id || row?.worker?.name) !==
-              toText(resolvedWorker?.id || resolvedWorker?.name)
-                ? {
-                    styleOptionId: '',
-                    assignment: null,
-                    process: null,
-                    quantity: '',
-                  }
-                : {}),
             }
           : row
       )
