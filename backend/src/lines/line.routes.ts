@@ -1276,6 +1276,118 @@ export const createLineRouter = ({
     );
   });
 
+  lineRouter.patch("/line-assignments/history", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) {
+      return res.status(404).json({ ok: false, error: "organization not found" });
+    }
+    const inputRows = Array.isArray(req.body?.assignments) ? req.body.assignments : [];
+    const updates: Array<{ id: number; startDate: string; endDate: string }> = inputRows.map((row: any) => ({
+      id: Number(row?.id),
+      startDate: normalizeDateKey(row?.startDate),
+      endDate: row?.endDate ? normalizeDateKey(row.endDate) : "",
+    }));
+    if (
+      updates.length === 0 ||
+      updates.some(
+        (row) =>
+          !Number.isSafeInteger(row.id) ||
+          row.id <= 0 ||
+          !row.startDate ||
+          (row.endDate && row.startDate > row.endDate)
+      ) ||
+      new Set(updates.map((row) => row.id)).size !== updates.length
+    ) {
+      return res.status(400).json({ ok: false, error: "invalid assignment date range" });
+    }
+
+    try {
+      const savedRows = await prisma.$transaction(async (tx) => {
+        const assignments = await tx.lineAssignment.findMany({
+          where: { id: { in: updates.map((row) => row.id) }, line: { orgId: organization.id } },
+          include: {
+            employee: { select: { joinedAt: true, leftAt: true } },
+            line: { include: { factory: { select: { managementStartDate: true } } } },
+          },
+        });
+        if (assignments.length !== updates.length) {
+          throw createHttpError(404, "line assignment not found");
+        }
+        const employeeIds = [...new Set(assignments.map((row) => row.employeeId))];
+        if (employeeIds.length !== 1) {
+          throw createHttpError(400, "history rows must belong to one employee");
+        }
+        const employeeId = employeeIds[0]!;
+        const assignmentById = new Map(assignments.map((row) => [row.id, row]));
+        updates.forEach((update) => {
+          const assignment = assignmentById.get(update.id)!;
+          const joinedDate = toDateKeyInTimeZone(assignment.employee.joinedAt);
+          const leftDate = toDateKeyInTimeZone(assignment.employee.leftAt);
+          const managementStartDate =
+            toDateKeyInTimeZone(assignment.line.factory.managementStartDate) ||
+            DEFAULT_FACTORY_MANAGEMENT_START_DATE;
+          const managedStartDate = laterDateKey(joinedDate || managementStartDate, managementStartDate);
+          if (update.startDate < managedStartDate) {
+            throw createHttpError(
+              400,
+              "assignment starts before employment or factory management period"
+            );
+          }
+          if (leftDate && (!update.endDate || update.endDate > leftDate)) {
+            throw createHttpError(400, "assignment ends after leftAt");
+          }
+        });
+
+        const allRows = await tx.lineAssignment.findMany({
+          where: { employeeId, line: { orgId: organization.id } },
+          select: { id: true, startAt: true, endAt: true },
+        });
+        const updateById = new Map(updates.map((row) => [row.id, row]));
+        const finalRanges = allRows
+          .map((row) => {
+            const update = updateById.get(row.id);
+            return {
+              id: row.id,
+              startDate: update?.startDate || toDateKeyInTimeZone(row.startAt),
+              endDate: update ? update.endDate : toDateKeyInTimeZone(row.endAt),
+            };
+          })
+          .sort((left, right) => left.startDate.localeCompare(right.startDate));
+        for (let index = 1; index < finalRanges.length; index += 1) {
+          const previous = finalRanges[index - 1]!;
+          const current = finalRanges[index]!;
+          if (!previous.endDate || previous.endDate >= current.startDate) {
+            throw createHttpError(409, "line assignment periods overlap");
+          }
+        }
+
+        return Promise.all(
+          updates.map(async (update) => {
+            const saved = await tx.lineAssignment.update({
+              where: { id: update.id },
+              data: {
+                startAt: dateKeyToStableDate(update.startDate)!,
+                endAt: update.endDate ? dateKeyToStableDate(update.endDate) : null,
+              },
+            });
+            return {
+              id: saved.id,
+              startDate: toDateKeyInTimeZone(saved.startAt),
+              endDate: toDateKeyInTimeZone(saved.endAt) || null,
+            };
+          })
+        );
+      });
+      return res.json({ assignments: savedRows });
+    } catch (error: any) {
+      const status = Number(error?.status || error?.statusCode);
+      if (Number.isInteger(status) && status >= 400 && status < 500) {
+        return res.status(status).json({ ok: false, error: error.message });
+      }
+      throw error;
+    }
+  });
+
   lineRouter.get("/line-assignment-history-candidates", async (req, res) => {
     const organization = await getOrganizationByQuery(req);
     if (!organization) {

@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -274,7 +275,9 @@ const LineBoard = () => {
   const [historyWorker, setHistoryWorker] = useState(null);
   const [historyRows, setHistoryRows] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [savingHistoryId, setSavingHistoryId] = useState(null);
+  const [savingHistory, setSavingHistory] = useState(false);
+  const [historyDialogError, setHistoryDialogError] = useState('');
+  const originalHistoryRowsRef = useRef([]);
   const [includeTerminated, setIncludeTerminated] = useState(false);
   const [historicalCandidates, setHistoricalCandidates] = useState([]);
   const [terminatedWorkers, setTerminatedWorkers] = useState([]);
@@ -689,14 +692,20 @@ const LineBoard = () => {
       event.stopPropagation();
       setHistoryWorker(worker);
       setHistoryRows([]);
+      originalHistoryRowsRef.current = [];
+      setHistoryDialogError('');
       setLoadingHistory(true);
       try {
         const rows = await requestJSON(
           '/line-assignments/history' + buildOrgQuery({ employeeId: worker.id })
         );
-        setHistoryRows(Array.isArray(rows) ? rows : []);
+        const nextRows = Array.isArray(rows) ? rows : [];
+        setHistoryRows(nextRows);
+        originalHistoryRowsRef.current = nextRows;
       } catch (error) {
-        showNotification(error?.message || '\uB77C\uC778 \uC774\uB825\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.', 'error');
+        setHistoryDialogError(
+          error?.message || '\uB77C\uC778 \uC774\uB825\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.'
+        );
       } finally {
         setLoadingHistory(false);
       }
@@ -704,78 +713,105 @@ const LineBoard = () => {
     [buildOrgQuery, showNotification]
   );
 
-  const handleSaveHistoryRow = useCallback(
-    async (row) => {
+  const handleSaveHistoryChanges = useCallback(
+    async () => {
+      setHistoryDialogError('');
       const withDate = (message, date) => String(message || '').replace('{date}', date || '-');
-      if (row.joinedDate && row.startDate < row.joinedDate) {
-        showNotification(withDate(msg.beforeJoined, row.joinedDate), 'warning');
-        return;
+      for (const row of historyRows) {
+        if (row.joinedDate && row.startDate < row.joinedDate) {
+          setHistoryDialogError(withDate(msg.beforeJoined, row.joinedDate));
+          return;
+        }
+        if (
+          row.factoryManagementStartDate &&
+          row.startDate < row.factoryManagementStartDate
+        ) {
+          setHistoryDialogError(
+            withDate(msg.beforeFactoryManagement, row.factoryManagementStartDate)
+          );
+          return;
+        }
+        if (row.endDate && row.startDate > row.endDate) {
+          setHistoryDialogError(msg.invalidDateRange);
+          return;
+        }
+        if (row.leftDate && (!row.endDate || row.endDate > row.leftDate)) {
+          setHistoryDialogError(withDate(msg.afterLeft, row.leftDate));
+          return;
+        }
       }
-      if (
-        row.factoryManagementStartDate &&
-        row.startDate < row.factoryManagementStartDate
-      ) {
-        showNotification(
-          withDate(msg.beforeFactoryManagement, row.factoryManagementStartDate),
-          'warning'
+      const orderedRows = [...historyRows].sort((left, right) =>
+        String(left.startDate).localeCompare(String(right.startDate))
+      );
+      for (let index = 1; index < orderedRows.length; index += 1) {
+        const previous = orderedRows[index - 1];
+        const current = orderedRows[index];
+        if (!previous.endDate || previous.endDate >= current.startDate) {
+          setHistoryDialogError(msg.overlap);
+          return;
+        }
+      }
+
+      const originalById = new Map(
+        originalHistoryRowsRef.current.map((row) => [String(row.id), row])
+      );
+      const changedRows = historyRows.filter((row) => {
+        const original = originalById.get(String(row.id));
+        return (
+          !original ||
+          original.startDate !== row.startDate ||
+          (original.endDate || null) !== (row.endDate || null)
         );
-        return;
-      }
-      if (row.endDate && row.startDate > row.endDate) {
-        showNotification(msg.invalidDateRange, 'warning');
-        return;
-      }
-      if (row.leftDate && (!row.endDate || row.endDate > row.leftDate)) {
-        showNotification(withDate(msg.afterLeft, row.leftDate), 'warning');
-        return;
-      }
-      setSavingHistoryId(row.id);
+      });
+      if (changedRows.length === 0) return;
+
+      setSavingHistory(true);
       try {
-        const updated = await requestJSON(
-          `/line-assignments/${row.id}` + buildOrgQuery(),
-          {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+        const response = await requestJSON('/line-assignments/history' + buildOrgQuery(), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            assignments: changedRows.map((row) => ({
+              id: row.id,
               startDate: row.startDate,
               endDate: row.endDate || null,
-            }),
-          }
+            })),
+          }),
+        });
+        const savedById = new Map(
+          (Array.isArray(response?.assignments) ? response.assignments : []).map((row) => [
+            String(row.id),
+            row,
+          ])
         );
-        setHistoryRows((previous) =>
-          previous.map((item) =>
-            item.id === row.id
-              ? { ...item, startDate: updated.startDate, endDate: updated.endDate }
-              : item
-          )
-        );
+        const nextRows = historyRows.map((row) => {
+          const saved = savedById.get(String(row.id));
+          return saved
+            ? { ...row, startDate: saved.startDate, endDate: saved.endDate }
+            : row;
+        });
+        setHistoryRows(nextRows);
+        originalHistoryRowsRef.current = nextRows;
         emitLineAssignmentsUpdated({ orgId: activeOrgId });
         showNotification('\uB77C\uC778 \uBC30\uCE58 \uC774\uB825\uC744 \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.', 'success');
       } catch (error) {
         const detail = String(error?.message || '');
         let localizedMessage = msg.saveHistoryFailed;
         if (/starts before employment or factory management period/i.test(detail)) {
-          localizedMessage =
-            row.joinedDate && row.startDate < row.joinedDate
-              ? withDate(msg.beforeJoined, row.joinedDate)
-              : row.factoryManagementStartDate
-                ? withDate(msg.beforeFactoryManagement, row.factoryManagementStartDate)
-                : msg.saveHistoryFailed;
+          localizedMessage = msg.beforeFactoryManagement.replace('{date}', '-');
         } else if (/ends after leftAt/i.test(detail)) {
-          localizedMessage = row.leftDate
-            ? withDate(msg.afterLeft, row.leftDate)
-            : msg.saveHistoryFailed;
+          localizedMessage = msg.saveHistoryFailed;
         } else if (/periods overlap/i.test(detail)) {
           localizedMessage = msg.overlap;
         } else if (/invalid assignment date range/i.test(detail)) {
           localizedMessage = msg.invalidDateRange;
         }
-        showNotification(localizedMessage, 'error');
+        setHistoryDialogError(localizedMessage);
       } finally {
-        setSavingHistoryId(null);
+        setSavingHistory(false);
       }
     },
-    [activeOrgId, buildOrgQuery, msg, showNotification]
+    [activeOrgId, buildOrgQuery, historyRows, msg, showNotification]
   );
 
   const handleResetDraft = useCallback(async () => {
@@ -924,6 +960,20 @@ const LineBoard = () => {
     ),
     [handleOpenHistory, msg, saving]
   );
+
+  const historyHasChanges = useMemo(() => {
+    const originalById = new Map(
+      originalHistoryRowsRef.current.map((row) => [String(row.id), row])
+    );
+    return historyRows.some((row) => {
+      const original = originalById.get(String(row.id));
+      return (
+        !original ||
+        original.startDate !== row.startDate ||
+        (original.endDate || null) !== (row.endDate || null)
+      );
+    });
+  }, [historyRows]);
 
   return (
     <>
@@ -1528,11 +1578,23 @@ const LineBoard = () => {
         </Button>
       </DialogActions>
     </Dialog>
-    <Dialog open={Boolean(historyWorker)} onClose={() => setHistoryWorker(null)} maxWidth="md" fullWidth>
+    <Dialog
+      open={Boolean(historyWorker)}
+      onClose={() => {
+        if (!savingHistory) setHistoryWorker(null);
+      }}
+      maxWidth="md"
+      fullWidth
+    >
       <DialogTitle>
         {buildWorkerLabel(historyWorker, msg.workerFallback)} {'\u00B7'} {msg.assignmentHistory}
       </DialogTitle>
       <DialogContent>
+        {historyDialogError ? (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {historyDialogError}
+          </Alert>
+        ) : null}
         {(historyWorker?.joinedDate || historyWorker?.leftDate || historyWorker?.joinedAt || historyWorker?.leftAt) ? (
           <Paper
             variant="outlined"
@@ -1577,15 +1639,16 @@ const LineBoard = () => {
                   <CustomDatePicker
                     label={msg.startDate}
                     value={row.startDate || null}
-                    onChange={(value) =>
+                    onChange={(value) => {
+                      setHistoryDialogError('');
                       setHistoryRows((previous) =>
                         previous.map((item) =>
                           item.id === row.id
                             ? { ...item, startDate: value?.isValid?.() ? value.format('YYYY-MM-DD') : '' }
                             : item
                         )
-                      )
-                    }
+                      );
+                    }}
                     adapterLocale={languageCode}
                     localeText={getDatePickerLocaleText(languageCode)}
                     slotProps={{ textField: { sx: { flex: 1, minWidth: 170 } } }}
@@ -1594,15 +1657,16 @@ const LineBoard = () => {
                     label={msg.endDate}
                     value={row.endDate || null}
                     allowEmpty
-                    onChange={(value) =>
+                    onChange={(value) => {
+                      setHistoryDialogError('');
                       setHistoryRows((previous) =>
                         previous.map((item) =>
                           item.id === row.id
                             ? { ...item, endDate: value?.isValid?.() ? value.format('YYYY-MM-DD') : null }
                             : item
                         )
-                      )
-                    }
+                      );
+                    }}
                     adapterLocale={languageCode}
                     localeText={getDatePickerLocaleText(languageCode)}
                     slotProps={{
@@ -1610,14 +1674,6 @@ const LineBoard = () => {
                       textField: { sx: { flex: 1, minWidth: 170 } },
                     }}
                   />
-                  <Button
-                    variant="outlined"
-                    onClick={() => handleSaveHistoryRow(row)}
-                    disabled={savingHistoryId === row.id || !row.startDate}
-                    sx={{ ml: { sm: 'auto' }, minWidth: 88, alignSelf: { xs: 'stretch', sm: 'center' } }}
-                  >
-                    {msg.save}
-                  </Button>
                 </Stack>
               </Paper>
             ))}
@@ -1625,8 +1681,12 @@ const LineBoard = () => {
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={() => setHistoryWorker(null)} disabled={savingHistoryId !== null}>
-          {msg.close}
+        <Button
+          variant="contained"
+          onClick={handleSaveHistoryChanges}
+          disabled={savingHistory || loadingHistory || !historyHasChanges || historyRows.some((row) => !row.startDate)}
+        >
+          {msg.save}
         </Button>
       </DialogActions>
     </Dialog>
