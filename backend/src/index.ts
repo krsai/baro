@@ -8260,6 +8260,32 @@ const evaluateWorkerEmploymentOnDateKey = ({
     leftDateKey,
   } as const;
 };
+const evaluateWorkerEmploymentInDateRange = ({
+  joinedAt,
+  leftAt,
+  startDateKey,
+  endDateKey,
+}: {
+  joinedAt?: unknown;
+  leftAt?: unknown;
+  startDateKey?: string | null;
+  endDateKey?: string | null;
+}) => {
+  const normalizedStartDateKey = normalizeDateKey(startDateKey);
+  const normalizedEndDateKey = normalizeDateKey(endDateKey);
+  const joinedDateKey = toDateKeyInTimeZone(joinedAt, BUSINESS_TIME_ZONE);
+  const leftDateKey = toDateKeyInTimeZone(leftAt, BUSINESS_TIME_ZONE);
+  if (!normalizedStartDateKey || !normalizedEndDateKey) {
+    return { passed: false, reason: "invalid_workDate", joinedDateKey, leftDateKey } as const;
+  }
+  if (joinedDateKey && joinedDateKey > normalizedEndDateKey) {
+    return { passed: false, reason: "joinedAt_after_range", joinedDateKey, leftDateKey } as const;
+  }
+  if (leftDateKey && leftDateKey < normalizedStartDateKey) {
+    return { passed: false, reason: "leftAt_before_range", joinedDateKey, leftDateKey } as const;
+  }
+  return { passed: true, reason: "pass", joinedDateKey, leftDateKey } as const;
+};
 const normalizeTimeText = (value: any): string | null => {
   if (value === null || value === undefined) return null;
   const trimmed = String(value).trim();
@@ -12686,12 +12712,13 @@ const buildWorkLogContextResponse = async ({
     normalizeDateKey(normalizedCoverageStartDate) ||
     normalizeDateKey(suggestedCoverageStartDate) ||
     normalizedWorkDate;
+  const employmentDateRange = buildWorkDateRange(employmentFilterDateKey) || dateRange;
 
   const lineAssignmentsOnWorkDatePromise = prisma.lineAssignment.findMany({
     where: {
       lineId: line.id,
       startAt: { lte: dateRange.endAt },
-      OR: [{ endAt: null }, { endAt: { gte: dateRange.startAt } }],
+      OR: [{ endAt: null }, { endAt: { gte: employmentDateRange.startAt } }],
       employee: {
         is: {
           orgId,
@@ -12832,10 +12859,11 @@ const buildWorkLogContextResponse = async ({
         });
         return;
       }
-      const employmentCheck = evaluateWorkerEmploymentOnDateKey({
+      const employmentCheck = evaluateWorkerEmploymentInDateRange({
         joinedAt: employee?.joinedAt,
         leftAt: employee?.leftAt,
-        targetDateKey: employmentFilterDateKey,
+        startDateKey: employmentFilterDateKey,
+        endDateKey: normalizedWorkDate,
       });
       if (!employmentCheck.passed) {
         droppedWorkers.push({
@@ -13028,7 +13056,7 @@ const buildWorkLogContextResponse = async ({
       where: {
         lineId: { in: factoryLineIds },
         startAt: { lte: dateRange.endAt },
-        OR: [{ endAt: null }, { endAt: { gte: dateRange.startAt } }],
+        OR: [{ endAt: null }, { endAt: { gte: employmentDateRange.startAt } }],
         employee: { is: { orgId, factoryId: line.factoryId, orgRole: "WORKER" } },
       },
       select: { employeeId: true, lineId: true, startAt: true, endAt: true },
@@ -13043,10 +13071,11 @@ const buildWorkLogContextResponse = async ({
   });
   const factoryWorkerRows = factoryWorkers
     .filter((employee) =>
-      evaluateWorkerEmploymentOnDateKey({
+      evaluateWorkerEmploymentInDateRange({
         joinedAt: employee.joinedAt,
         leftAt: employee.leftAt,
-        targetDateKey: employmentFilterDateKey,
+        startDateKey: employmentFilterDateKey,
+        endDateKey: normalizedWorkDate,
       }).passed
     )
     .map((employee) => ({
@@ -13134,13 +13163,14 @@ const buildWorkLogContextResponse = async ({
           .toUpperCase();
         const joinedDateKey = toDateKeyInTimeZone(employee?.joinedAt, BUSINESS_TIME_ZONE);
         const leftDateKey = toDateKeyInTimeZone(employee?.leftAt, BUSINESS_TIME_ZONE);
-        const employmentCheck = evaluateWorkerEmploymentOnDateKey({
+        const employmentCheck = evaluateWorkerEmploymentInDateRange({
           joinedAt: employee?.joinedAt,
           leftAt: employee?.leftAt,
-          targetDateKey: employmentFilterDateKey,
+          startDateKey: employmentFilterDateKey,
+          endDateKey: normalizedWorkDate,
         });
-        const joinedPass = employmentCheck.reason !== "workDate_before_joinedAt";
-        const leftPass = employmentCheck.reason !== "workDate_after_leftAt";
+        const joinedPass = employmentCheck.reason !== "joinedAt_after_range";
+        const leftPass = employmentCheck.reason !== "leftAt_before_range";
         const membershipPass = true;
         return {
           workerId: toPositiveIntOrNull(employee?.id ?? assignment?.employeeId),
