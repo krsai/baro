@@ -1188,6 +1188,7 @@ const WorkDetail = ({
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [note, setNote] = useState('');
   const [formError, setFormError] = useState('');
+  const [persistedSnapshotText, setPersistedSnapshotText] = useState(null);
   const [rowRenderLimit, setRowRenderLimit] = useState(ROW_RENDER_BATCH_SIZE);
   const initialRowsHydratedRef = useRef(false);
   const rowRenderSentinelRef = useRef(null);
@@ -1346,6 +1347,7 @@ const WorkDetail = ({
   }, [activeOrgId, isOutsourcingMode]);
   useEffect(() => {
     initialRowsHydratedRef.current = false;
+    setPersistedSnapshotText(null);
     setSelectedFactory(initialFactoryOption);
     setSelectedLine(initialLineOption);
     setWorkDate(buildInitialWorkDate(initialLog));
@@ -1990,37 +1992,6 @@ const WorkDetail = ({
     () => extractEmploymentAutoNoteFromText(initialLog?.note || ''),
     [initialLog?.note]
   );
-  const initialComparableSnapshot = useMemo(() => {
-    if (!initialLog?.id) return null;
-    const initialCoverageEndDate = resolveLegacyCoverageEndDateKey(initialLog);
-    const initialCoverageStartDate = toText(
-      initialLog?.coverageStartDate || initialCoverageEndDate
-    );
-    return {
-      workDate: initialCoverageEndDate,
-      coverageStartDate: initialCoverageStartDate,
-      coverageEndDate: initialCoverageEndDate,
-      entryMode:
-        toText(initialLog?.entryMode) ||
-        (initialCoverageStartDate && initialCoverageStartDate !== initialCoverageEndDate
-          ? 'period_summary'
-          : 'daily'),
-      factoryId: toPositiveIdOrNull(initialLog?.factoryId),
-      lineId: toPositiveIdOrNull(initialLog?.lineId),
-      note: toText(stripAutoNoteFromText(initialLog?.note || '')),
-      records: buildComparableWorkRecords(initialLog?.records),
-    };
-  }, [
-    initialLog?.coverageEndDate,
-    initialLog?.coverageStartDate,
-    initialLog?.entryMode,
-    initialLog?.factoryId,
-    initialLog?.id,
-    initialLog?.lineId,
-    initialLog?.note,
-    initialLog?.records,
-    initialLog?.workDate,
-  ]);
   const currentComparableSnapshot = useMemo(() => ({
     workDate: toText(workDateKey),
     coverageStartDate: toText(coverageStartDateKey),
@@ -2031,13 +2002,23 @@ const WorkDetail = ({
     note: toText(note),
     records: buildComparableWorkRecords(summary.records),
   }), [coverageStartDateKey, entryMode, note, selectedFactoryId, selectedLineId, summary.records, workDateKey]);
+  const currentSnapshotText = useMemo(
+    () => toStableSnapshotText(currentComparableSnapshot),
+    [currentComparableSnapshot]
+  );
+  useEffect(() => {
+    if (!initialLog?.id || persistedSnapshotText !== null) return;
+    if (!initialRowsHydratedRef.current || lineDataLoading) return;
+    // Use the fully hydrated/normalized form as the persisted baseline. Comparing
+    // raw API records with hydrated rows can produce false changes when the same
+    // assignment or process is represented by different compatible identifiers.
+    setPersistedSnapshotText(currentSnapshotText);
+  }, [currentSnapshotText, initialLog?.id, lineDataLoading, persistedSnapshotText]);
   const isDirty = useMemo(() => {
     if (!initialLog?.id) return true;
-    return (
-      toStableSnapshotText(currentComparableSnapshot) !==
-      toStableSnapshotText(initialComparableSnapshot)
-    );
-  }, [currentComparableSnapshot, initialComparableSnapshot, initialLog?.id]);
+    if (persistedSnapshotText === null) return false;
+    return currentSnapshotText !== persistedSnapshotText;
+  }, [currentSnapshotText, initialLog?.id, persistedSnapshotText]);
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
     topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],

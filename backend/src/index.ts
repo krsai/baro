@@ -13041,7 +13041,7 @@ const buildWorkLogContextResponse = async ({
       homeAssignmentByEmployeeId.set(assignment.employeeId, assignment);
     }
   });
-  workersForDate = factoryWorkers
+  const factoryWorkerRows = factoryWorkers
     .filter((employee) =>
       evaluateWorkerEmploymentOnDateKey({
         joinedAt: employee.joinedAt,
@@ -13055,6 +13055,27 @@ const buildWorkLogContextResponse = async ({
       lineId: homeAssignmentByEmployeeId.get(employee.id)?.lineId ?? null,
       employee,
     }));
+  // Do not discard workers already proven eligible by a date-effective
+  // LineAssignment. Employee.factoryId/orgRole are denormalized convenience fields
+  // and older rows can temporarily be stale after line-history corrections. The
+  // assignment is the source of truth for line membership, so merge those workers
+  // with the broader factory worker list instead of replacing them.
+  const workerRowByEmployeeId = new Map<number, any>();
+  workersForDate.forEach((row) => {
+    const employeeId = toPositiveIntOrNull(row?.employee?.id ?? row?.employeeId);
+    if (employeeId !== null) workerRowByEmployeeId.set(employeeId, row);
+  });
+  factoryWorkerRows.forEach((row) => {
+    const employeeId = toPositiveIntOrNull(row?.employee?.id ?? row?.employeeId);
+    if (employeeId !== null) workerRowByEmployeeId.set(employeeId, row);
+  });
+  workersForDate = Array.from(workerRowByEmployeeId.values()).sort((left, right) => {
+    const leftName = resolveOptionalString(left?.employee?.name, "") ?? "";
+    const rightName = resolveOptionalString(right?.employee?.name, "") ?? "";
+    return leftName.localeCompare(rightName) ||
+      Number(left?.employee?.id ?? left?.employeeId ?? 0) -
+        Number(right?.employee?.id ?? right?.employeeId ?? 0);
+  });
 
   const outsourcedVendorRows =
     recordKind === "OUTSOURCING"
