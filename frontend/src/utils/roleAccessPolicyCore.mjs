@@ -24,6 +24,7 @@ export const ACCESS_FEATURE_KEYS = {
   WORK_HISTORY: 'WORK_HISTORY',
   OUTSOURCING_RECORD: 'OUTSOURCING_RECORD',
   PAYROLL: 'PAYROLL',
+  REVENUE_FORECAST: 'REVENUE_FORECAST',
   REVENUE_ANALYSIS: 'REVENUE_ANALYSIS',
   BUSINESS: 'BUSINESS',
   LINE: 'LINE',
@@ -38,7 +39,7 @@ export const ACCESS_FEATURE_KEYS = {
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
-export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 9;
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 10;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND];
 const POLICY_ORG_ROLES = [
@@ -76,6 +77,7 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
     [ORG_ROLE_KEYS.ACCOUNTANT]: Object.freeze([
       ACCESS_FEATURE_KEYS.DASHBOARD,
       ACCESS_FEATURE_KEYS.PAYROLL,
+      ACCESS_FEATURE_KEYS.REVENUE_FORECAST,
       ACCESS_FEATURE_KEYS.REVENUE_ANALYSIS,
       ACCESS_FEATURE_KEYS.BUSINESS,
       ACCESS_FEATURE_KEYS.LINE,
@@ -130,14 +132,11 @@ const sanitizeFeatureArray = (value) => {
   );
 };
 
-const hasPolicySchemaVersion = (value) => {
+const getPolicySchemaVersion = (value) => {
   const schemaVersion = Number(
     value?.[ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY] ?? value?.schemaVersion ?? 0
   );
-  return (
-    Number.isFinite(schemaVersion) &&
-    schemaVersion >= ROLE_ACCESS_POLICY_SCHEMA_VERSION
-  );
+  return Number.isFinite(schemaVersion) ? schemaVersion : 0;
 };
 
 const applyLegacyDashboardDefault = (policy) => {
@@ -225,6 +224,19 @@ const applyLegacyRevenueAnalysisDefault = (policy) => {
   });
 };
 
+const applyLegacyRevenueForecastSplitDefault = (policy) => {
+  POLICY_ORG_TYPES.forEach((orgType) => {
+    POLICY_ORG_ROLES.forEach((role) => {
+      const features = policy?.[orgType]?.[role];
+      if (!Array.isArray(features)) return;
+      if (!features.includes(ACCESS_FEATURE_KEYS.REVENUE_ANALYSIS)) return;
+      if (features.includes(ACCESS_FEATURE_KEYS.REVENUE_FORECAST)) return;
+      const analysisIndex = features.indexOf(ACCESS_FEATURE_KEYS.REVENUE_ANALYSIS);
+      features.splice(Math.max(0, analysisIndex), 0, ACCESS_FEATURE_KEYS.REVENUE_FORECAST);
+    });
+  });
+};
+
 const applyLegacyEmployeeLineAccessDefault = (policy) => {
   const operatorFeatures = policy?.[ORG_TYPE_KEYS.MANUFACTURER]?.[ORG_ROLE_KEYS.OPERATOR];
   if (Array.isArray(operatorFeatures) && !operatorFeatures.includes(ACCESS_FEATURE_KEYS.EMPLOYEE)) {
@@ -285,7 +297,8 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
     });
   });
 
-  if (!hasPolicySchemaVersion(candidate)) {
+  const sourceSchemaVersion = getPolicySchemaVersion(candidate);
+  if (sourceSchemaVersion < 9) {
     applyLegacyDashboardDefault(base);
     applyLegacyProductionAnalysisDefault(base);
     applyLegacyOutsourcingRecordDefault(base);
@@ -294,6 +307,9 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
     applyLegacyEmployeeLineAccessDefault(base);
     applyLegacyEmployeeSystemDefault(base);
     applyLegacySalarySystemDefault(base);
+  }
+  if (sourceSchemaVersion < 10) {
+    applyLegacyRevenueForecastSplitDefault(base);
   }
 
   return base;

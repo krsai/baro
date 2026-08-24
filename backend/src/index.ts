@@ -1021,7 +1021,7 @@ const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
 // re-apply ALL legacy defaults (including production-analysis/outsourcing-
 // record/etc auto-add) on every load, silently reverting saved toggles -
 // this is exactly the bug that motivated this comment.
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 9;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 10;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
   "DASHBOARD",
@@ -1037,6 +1037,7 @@ const ROLE_ACCESS_POLICY_FEATURES = [
   "WORK_HISTORY",
   "OUTSOURCING_RECORD",
   "PAYROLL",
+  "REVENUE_FORECAST",
   "REVENUE_ANALYSIS",
   "BUSINESS",
   "LINE",
@@ -1085,6 +1086,7 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
     ACCOUNTANT: [
       "DASHBOARD",
       "PAYROLL",
+      "REVENUE_FORECAST",
       "REVENUE_ANALYSIS",
       "BUSINESS",
       "LINE",
@@ -1121,17 +1123,14 @@ const sanitizeRoleAccessPolicyFeatureList = (
   });
   return Array.from(featureSet);
 };
-const hasRoleAccessPolicySchemaVersion = (value: unknown): boolean => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+const getRoleAccessPolicySchemaVersion = (value: unknown): number => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return 0;
   const schemaVersion = Number(
     (value as any)?.[ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY] ??
       (value as any)?.schemaVersion ??
       0
   );
-  return (
-    Number.isFinite(schemaVersion) &&
-    schemaVersion >= ROLE_ACCESS_POLICY_SCHEMA_VERSION
-  );
+  return Number.isFinite(schemaVersion) ? schemaVersion : 0;
 };
 const applyLegacyDashboardDefault = (policy: RoleAccessPolicy): void => {
   (Object.values(ORGANIZATION_TYPE_KEYS) as OrganizationTypeKey[]).forEach(
@@ -1205,6 +1204,19 @@ const applyLegacyRevenueAnalysisDefault = (policy: RoleAccessPolicy): void => {
     }
   );
 };
+const applyLegacyRevenueForecastSplitDefault = (policy: RoleAccessPolicy): void => {
+  (Object.values(ORGANIZATION_TYPE_KEYS) as OrganizationTypeKey[]).forEach(
+    (orgType) => {
+      ORG_ACCESS_ROLES.forEach((role) => {
+        const features = policy[orgType][role];
+        if (!features.includes("REVENUE_ANALYSIS")) return;
+        if (features.includes("REVENUE_FORECAST")) return;
+        const analysisIndex = features.indexOf("REVENUE_ANALYSIS");
+        features.splice(Math.max(0, analysisIndex), 0, "REVENUE_FORECAST");
+      });
+    }
+  );
+};
 const applyLegacyEmployeeLineAccessDefault = (policy: RoleAccessPolicy): void => {
   const operatorFeatures = policy.MANUFACTURER.OPERATOR;
   if (!operatorFeatures.includes("EMPLOYEE")) {
@@ -1247,7 +1259,8 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
       });
     }
   );
-  if (!hasRoleAccessPolicySchemaVersion(value)) {
+  const sourceSchemaVersion = getRoleAccessPolicySchemaVersion(value);
+  if (sourceSchemaVersion < 9) {
     applyLegacyDashboardDefault(policy);
     applyLegacyProductionAnalysisDefault(policy);
     applyLegacyOutsourcingRecordDefault(policy);
@@ -1256,6 +1269,9 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
     applyLegacyEmployeeLineAccessDefault(policy);
     applyLegacyEmployeeSystemDefault(policy);
     applyLegacySalarySystemDefault(policy);
+  }
+  if (sourceSchemaVersion < 10) {
+    applyLegacyRevenueForecastSplitDefault(policy);
   }
   return policy;
 };
