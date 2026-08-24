@@ -2582,12 +2582,6 @@ const WorkDetail = ({
       })),
     [updateRow]
   );
-  const handleStyleInputChange = useCallback((rowId, selectedStyleOption, nextInputValue, reason) => {
-    if (reason !== 'input') return;
-    const selectedLabel = selectedStyleOption ? getStyleOptionLabel(selectedStyleOption) : '';
-    if (!selectedLabel || nextInputValue === selectedLabel) return;
-    handleStyleChange(rowId, null);
-  }, [getStyleOptionLabel, handleStyleChange]);
   const handleQuantityChange = useCallback((rowId, nextQuantity) => updateRow(rowId, (row) => ({ ...row, quantity: nextQuantity })), [updateRow]);
   const handleOutsourceUnitPriceChange = useCallback((rowId, value) => updateRow(rowId, (row) => ({ ...row, outsourceUnitPrice: value })), [updateRow]);
   const handleProcessInputChange = useCallback((rowId, selectedProcessOption, nextInputValue, reason) => {
@@ -3336,9 +3330,6 @@ const WorkDetail = ({
                               options={styleOptions}
                               value={selectedStyleOption}
                               onChange={(_event, value) => handleStyleChange(row.id, value)}
-                              onInputChange={(_event, nextInputValue, reason) =>
-                                handleStyleInputChange(row.id, selectedStyleOption, nextInputValue, reason)
-                              }
                               onKeyboardSelect={() => beginFieldEdit(row.id, 'process')}
                               autoSelect={false}
                               disabled={styleDisabled}
@@ -3734,9 +3725,6 @@ const WorkDetail = ({
                                   options={styleOptions}
                                   value={selectedStyleOption}
                                   onChange={(_event, value) => handleStyleChange(row.id, value)}
-                                  onInputChange={(_event, nextInputValue, reason) =>
-                                    handleStyleInputChange(row.id, selectedStyleOption, nextInputValue, reason)
-                                  }
                                   onKeyboardSelect={() => beginFieldEdit(row.id, 'process')}
                                   autoSelect={false}
                                   disabled={styleDisabled}
