@@ -227,7 +227,7 @@ const QuantityReviewDrawer = ({
     // after navigating away) - works the same regardless of which page hosts
     // this drawer.
     onClose?.();
-    navigateToPath(`/work-history/${workLogId}`, {
+    navigateToPath(`/work-history/${workLogId}?quantityReviewRefresh=${Date.now()}`, {
       label: workDate ? `${title}: ${workDate}` : title,
     });
   }, [languageCode, navigateToPath, onClose]);

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { CircularProgress, Paper, Stack, Typography } from '@mui/material';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -105,6 +105,7 @@ const WorkEntry = ({ recordKind = 'EMPLOYEE' } = {}) => {
   const isOutsourcingMode = recordKind === 'OUTSOURCING';
   const basePath = isOutsourcingMode ? '/outsourcing-record' : '/work-history';
   const { workLogId } = useParams();
+  const location = useLocation();
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId } = useAuth();
   const { languageCode } = useLanguage();
@@ -143,6 +144,8 @@ const WorkEntry = ({ recordKind = 'EMPLOYEE' } = {}) => {
         const record = await findWorkLogById(routeWorkLogId, {
           orgId: activeOrgId,
           skipGlobalLoading: true,
+          skipCache: true,
+          forceRefresh: true,
           requestTimeoutMs: 15000,
         });
 
@@ -171,7 +174,7 @@ const WorkEntry = ({ recordKind = 'EMPLOYEE' } = {}) => {
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, closeEntry, isEditMode, languageCode, routeWorkLogId, showNotification]);
+  }, [activeOrgId, closeEntry, isEditMode, languageCode, location.search, routeWorkLogId, showNotification]);
 
   const handleSave = useCallback(
     async (payload) => {
