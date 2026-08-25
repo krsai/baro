@@ -36,7 +36,6 @@ import dayjs from 'dayjs';
 import { useAssignBoardDnd } from './hooks/useAssignBoardDnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
-import CustomDatePicker from '../../../components/CustomDatePicker';
 import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
@@ -3000,10 +2999,6 @@ const AssignBoard = () => {
   const detailStyleFetchAttemptRef = useRef(new Set());
   const [assignmentOperationStartDateKey, setAssignmentOperationStartDateKey] = useState(
     DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY
-  );
-  const assignmentOperationStartDay = useMemo(
-    () => dayjs(assignmentOperationStartDateKey).startOf('day'),
-    [assignmentOperationStartDateKey]
   );
   const startDateRef = useRef(
     clampAssignmentViewDate(getMonthStartDate(), DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY)
@@ -6965,14 +6960,22 @@ const AssignBoard = () => {
                 {getUiMessage('assign.lineCapacityBoard', 'Line Capacity', languageCode)}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                <CustomDatePicker
-                  value={viewStart}
-                  onChange={(value) => {
-                    if (value?.isValid?.()) handleViewMonthChange(value.toDate());
+                <TextField
+                  type="month"
+                  value={dayjs(viewStart).format('YYYY-MM')}
+                  onChange={(event) => {
+                    const monthValue = dayjs(`${event.target.value}-01`);
+                    if (monthValue.isValid()) handleViewMonthChange(monthValue.toDate());
                   }}
-                  monthOnly
                   disabled={controlsDisabled}
-                  minDate={assignmentOperationStartDay}
+                  slotProps={{
+                    htmlInput: {
+                      min: String(assignmentOperationStartDateKey || '').slice(0, 7),
+                      'aria-label': getUiMessage('assign.viewMonth', 'View month', languageCode),
+                    },
+                  }}
+                  size="small"
+                  sx={{ width: 132 }}
                 />
                 <Stack sx={{ gap: '2px' }}>
                   <Button
