@@ -5714,11 +5714,6 @@ const AssignBoard = () => {
   const handleSelectCard = useCallback((cardId) => {
     setSelectedCardId(cardId);
   }, []);
-  const handleOpenAssignmentDetail = useCallback((assignmentId) => {
-    if (!assignmentId) return;
-    blurActiveElement();
-    setDetailState({ targetType: 'assignment', assignmentId: String(assignmentId) });
-  }, [blurActiveElement]);
   const handleContextMenuClose = useCallback(() => setContextMenuState(null), []);
   const handleContextOpenDetail = useCallback(() => {
     if (!contextMenuState) return;
@@ -7016,7 +7011,6 @@ const AssignBoard = () => {
                 error={lineMonthCapacityError}
                 languageCode={languageCode}
                 searchTerm={deferredSearchTerm}
-                onOpenAssignmentDetail={handleOpenAssignmentDetail}
                 onOpenContextMenu={handleContextMenuOpen}
               />
             </Stack>

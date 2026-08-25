@@ -212,7 +212,6 @@ const LineAssignmentDropSlot = memo(function LineAssignmentDropSlot({
 const AssignmentDetailCard = memo(function AssignmentDetailCard({
   assignment,
   languageCode,
-  onOpenDetail,
   onOpenContextMenu,
 }) {
   const queueStatus = assignment?.queueStatus || (assignment?.isCompleted ? 'completed' : 'queued');
@@ -336,7 +335,6 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
       previewUrl={assignment.previewUrl || ''}
       accentColor={accentColor}
       backgroundColor={backgroundColor}
-      onClick={() => onOpenDetail?.(assignment.id)}
       onContextMenu={(event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -580,7 +578,6 @@ const LineMonthCapacityBoard = ({
   error = false,
   languageCode = 'en',
   searchTerm = '',
-  onOpenAssignmentDetail,
   onOpenContextMenu,
 }) => {
   const [expandedLineIds, setExpandedLineIds] = useState(() => new Set());
@@ -746,7 +743,6 @@ const LineMonthCapacityBoard = ({
                                         <AssignmentDetailCard
                                           assignment={assignment}
                                           languageCode={languageCode}
-                                          onOpenDetail={onOpenAssignmentDetail}
                                           onOpenContextMenu={onOpenContextMenu}
                                         />
                                         <LineAssignmentDropSlot
@@ -794,7 +790,6 @@ const LineMonthCapacityBoard = ({
                                     key={assignment.id || `${row.lineId}:${assignment.label}:review`}
                                     assignment={assignment}
                                     languageCode={languageCode}
-                                    onOpenDetail={onOpenAssignmentDetail}
                                     onOpenContextMenu={onOpenContextMenu}
                                   />
                                 ))}
@@ -820,7 +815,6 @@ const LineMonthCapacityBoard = ({
                                     key={assignment.id || `${row.lineId}:${assignment.label}:completed`}
                                     assignment={assignment}
                                     languageCode={languageCode}
-                                    onOpenDetail={onOpenAssignmentDetail}
                                     onOpenContextMenu={onOpenContextMenu}
                                   />
                                 ))}
@@ -846,7 +840,6 @@ const LineMonthCapacityBoard = ({
                                     key={assignment.id || `${row.lineId}:${assignment.label}:zero-overflow`}
                                     assignment={assignment}
                                     languageCode={languageCode}
-                                    onOpenDetail={onOpenAssignmentDetail}
                                     onOpenContextMenu={onOpenContextMenu}
                                   />
                                 ))}
