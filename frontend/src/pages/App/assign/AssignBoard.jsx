@@ -1687,6 +1687,26 @@ const hasLinkedWorkRecords = (assignment, progressRow = null) => {
   );
 };
 
+const hasExactRecordedCompletion = (assignment) => {
+  const targetQuantity = Number(
+    assignment?.completionTargetQuantity ??
+      assignment?.plannedQuantity ??
+      assignment?.quantity
+  );
+  const producedQuantity = Number(assignment?.producedQuantity);
+  const progressPercent = Number(
+    assignment?.workProgressPercent ?? assignment?.progressPercent
+  );
+  return (
+    Number.isFinite(targetQuantity) &&
+    targetQuantity >= 0 &&
+    Number.isFinite(producedQuantity) &&
+    producedQuantity === targetQuantity &&
+    Number.isFinite(progressPercent) &&
+    progressPercent === 100
+  );
+};
+
 function doesAssignmentScheduleNeedRecompute(
   assignment,
   targetStSeconds,
@@ -5693,7 +5713,10 @@ const AssignBoard = () => {
   const contextReopenCompletionDisabled = useMemo(() => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return true;
     if (!contextMenuTargetAssignment) return true;
-    return !Boolean(contextMenuTargetAssignment.isCompleted);
+    return (
+      !Boolean(contextMenuTargetAssignment.isCompleted) ||
+      hasExactRecordedCompletion(contextMenuTargetAssignment)
+    );
   }, [contextMenuState, contextMenuTargetAssignment]);
 
   const handleContextMenuOpen = useCallback((payload) => {
@@ -6572,8 +6595,13 @@ const AssignBoard = () => {
   const handleContextReopenCompletion = useCallback(async () => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return;
     const assignment = assignmentById.get(contextMenuState.id);
+    const assignmentWithProgress = resolveAssignmentWithSchedulerProgress(contextMenuState.id);
     setContextMenuState(null);
-    if (!assignment?.id || !assignment.isCompleted) return;
+    if (
+      !assignment?.id ||
+      !assignment.isCompleted ||
+      hasExactRecordedCompletion(assignmentWithProgress)
+    ) return;
     const confirmed = window.confirm(
       languageCode === 'ko'
         ? '이 배정을 완료 상태에서 되돌립니다. 기존 작업기록과 AT 학습 데이터는 그대로 유지되며, 이후 다시 작업기록을 추가하거나 완료 처리를 할 수 있습니다. 계속할까요?'
@@ -6604,7 +6632,7 @@ const AssignBoard = () => {
     } finally {
       setCompletingAssignmentId(null);
     }
-  }, [activeOrgId, assignmentById, contextMenuState, handleCloseDetail, languageCode, requestExternalBoardReload, showNotification]);
+  }, [activeOrgId, assignmentById, contextMenuState, handleCloseDetail, languageCode, requestExternalBoardReload, resolveAssignmentWithSchedulerProgress, showNotification]);
 
   const getAssignmentOriginId = (assignment) => {
     if (!assignment) return null;
