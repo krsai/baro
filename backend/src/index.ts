@@ -22202,9 +22202,45 @@ const loadAssignmentPlanProgressWorkRows = async ({
       effectiveCoverageEndDate: null,
     })));
 
-  void context;
+  const planStyleIdByPlanId = new Map<number, number>();
+  normalizedPlans.forEach((plan) => {
+    const planId = toPositiveIntOrNull(plan?.id);
+    const styleId = toPositiveIntOrNull(plan?.styleId ?? plan?.style?.id);
+    if (planId !== null && styleId !== null) planStyleIdByPlanId.set(planId, styleId);
+  });
+  const allRows = [...employeeRows, ...outsourcedRows];
+  const mismatchedRows: any[] = [];
+  const validRows = allRows.filter((row) => {
+    const planId = toPositiveIntOrNull(row?.assignmentPlanId);
+    const planStyleId = planId !== null ? planStyleIdByPlanId.get(planId) ?? null : null;
+    const recordStyleId = toPositiveIntOrNull(row?.styleId);
+    const processStyleId = toPositiveIntOrNull(row?.styleProcess?.styleId);
+    const isMismatch =
+      planStyleId !== null &&
+      (recordStyleId !== planStyleId || processStyleId !== planStyleId);
+    if (isMismatch) mismatchedRows.push(row);
+    return !isMismatch;
+  });
+  if (mismatchedRows.length > 0) {
+    console.warn(
+      `[${context}] orgId=${orgId} excluded ${mismatchedRows.length} work records whose style does not match their assignment plan`,
+      JSON.stringify(
+        mismatchedRows.slice(0, 10).map((row) => ({
+          recordKind: row?.isOutsourced === true ? "OUTSOURCING" : "EMPLOYEE",
+          workRecordId: row?.id ?? null,
+          workLogId: row?.workLogId ?? null,
+          assignmentPlanId: row?.assignmentPlanId ?? null,
+          assignmentPlanStyleId:
+            planStyleIdByPlanId.get(toPositiveIntOrNull(row?.assignmentPlanId) ?? -1) ?? null,
+          workRecordStyleId: row?.styleId ?? null,
+          styleProcessId: row?.styleProcessId ?? null,
+          styleProcessStyleId: row?.styleProcess?.styleId ?? null,
+        }))
+      )
+    );
+  }
   void stateAssignmentsByExternalId;
-  return [...employeeRows, ...outsourcedRows];
+  return validRows;
 };
 
 // A gender-restricted (MALE_ONLY/FEMALE_ONLY) process's own completion target is
