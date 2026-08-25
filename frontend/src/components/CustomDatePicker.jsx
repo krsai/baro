@@ -50,7 +50,7 @@ const CustomDatePicker = ({
   const monthPickerProps = monthOnly
     ? {
         views: ['year', 'month'],
-        openTo: 'year',
+        openTo: 'month',
         disableHighlightToday: true,
       }
     : {};
