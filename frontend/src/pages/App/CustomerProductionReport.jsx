@@ -21,7 +21,7 @@ const TEXT = {
   ko: {
     title: '보고서', customer: '고객', allCustomers: '전체 고객', search: '주문번호·스타일 검색',
     print: '인쇄 / PDF', generated: '기준 시각', order: '주문번호', style: '스타일', due: '납기',
-    quantity: '주문수량', assigned: '배정수량', progress: '공정 진행률', status: '상태',
+    quantity: '주문수량', produced: '완성품 수량', progress: '공정 진행률', status: '상태',
     empty: '조건에 맞는 보고서 항목이 없습니다.',
     loadError: '생산 진행 보고서를 불러오지 못했습니다.',
     includeCompleted: '완료 포함',
@@ -32,7 +32,7 @@ const TEXT = {
   en: {
     title: 'Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style',
     print: 'Print / PDF', generated: 'As of', order: 'Order', style: 'Style', due: 'Due', quantity: 'Order qty',
-    assigned: 'Assigned', progress: 'Process progress', status: 'Status',
+    produced: 'Finished qty', progress: 'Process progress', status: 'Status',
     empty: 'No report rows match the filters.',
     loadError: 'Failed to load the production progress report.',
     includeCompleted: 'Include completed',
@@ -43,7 +43,7 @@ const TEXT = {
   vi: {
     title: 'Báo cáo', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng',
     print: 'In / PDF', generated: 'Thời điểm', order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Số lượng đơn',
-    assigned: 'Đã phân công', progress: 'Tiến độ công đoạn', status: 'Trạng thái',
+    produced: 'Số lượng thành phẩm', progress: 'Tiến độ công đoạn', status: 'Trạng thái',
     empty: 'Không có dữ liệu phù hợp.',
     loadError: 'Không thể tải báo cáo tiến độ sản xuất.',
     includeCompleted: 'Bao gồm đã hoàn thành',
@@ -59,7 +59,7 @@ const STATUS = {
   SCHEDULED: { ko: '배정 완료', en: 'Assigned', vi: 'Đã phân công', color: 'info' },
   UNASSIGNED: { ko: '미배정', en: 'Unassigned', vi: 'Chưa phân công', color: 'default' },
 };
-// toggle + customer + order + style + due + quantity + assigned + progress + status
+// toggle + customer + order + style + due + quantity + produced + progress + status
 const REPORT_COLUMN_COUNT = 9;
 const fmt = (value) => Math.max(0, Number(value) || 0).toLocaleString();
 const customerLabel = (customer, languageCode) =>
@@ -109,6 +109,7 @@ const groupRowsByOrder = (styleRows) => {
       0
     );
     const assignedQuantity = styles.reduce((sum, row) => sum + Math.max(0, Number(row.assignedQuantity) || 0), 0);
+    const producedQuantity = styles.reduce((sum, row) => sum + Math.max(0, Number(row.producedQuantity) || 0), 0);
     const status = assignedQuantity <= 0
       ? 'UNASSIGNED'
       : assignedQuantity < orderedQuantity
@@ -121,6 +122,7 @@ const groupRowsByOrder = (styleRows) => {
       status,
       orderedQuantity,
       assignedQuantity,
+      producedQuantity,
       unassignedQuantity: styles.reduce((sum, row) => sum + Math.max(0, Number(row.unassignedQuantity) || 0), 0),
       progressPercent: progressWeight > 0 ? Math.round(weightedProgress / progressWeight) : 0,
       completedStyleCount: styles.filter((row) => row.status === 'COMPLETED').length,
@@ -263,7 +265,7 @@ const CustomerProductionReport = () => {
       {loading ? <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress size={30} /></Box> : rows.length === 0 ? <Paper variant="outlined" sx={{ p: 5, textAlign: 'center' }}><Typography color="text.secondary">{text.empty}</Typography></Paper> :
         <TableContainer component={Paper} variant="outlined">
           <Table size="small">
-            <TableHead><TableRow><TableCell sx={{ width: 44 }} /><TableCell>{text.customer}</TableCell><TableCell>{text.order}</TableCell><TableCell>{text.style}</TableCell><TableCell>{text.due}</TableCell><TableCell align="right">{text.quantity}</TableCell><TableCell align="right">{text.assigned}</TableCell><TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell><TableCell>{text.status}</TableCell></TableRow></TableHead>
+            <TableHead><TableRow><TableCell sx={{ width: 44 }} /><TableCell>{text.customer}</TableCell><TableCell>{text.order}</TableCell><TableCell>{text.style}</TableCell><TableCell>{text.due}</TableCell><TableCell align="right">{text.quantity}</TableCell><TableCell align="right">{text.produced}</TableCell><TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell><TableCell>{text.status}</TableCell></TableRow></TableHead>
             <TableBody>{rows.map((row) => {
               const hasMultipleStyles = row.styles.length > 1;
               const expanded = hasMultipleStyles && expandedOrders.has(row.key);
@@ -293,7 +295,7 @@ const CustomerProductionReport = () => {
                   </TableCell>
                   <TableCell>{row.dueDate || '-'}</TableCell>
                   <TableCell align="right">{fmt(row.orderedQuantity)}</TableCell>
-                  <TableCell align="right">{fmt(row.assignedQuantity)}{row.unassignedQuantity > 0 ? <Typography variant="caption" color="warning.main" display="block">-{fmt(row.unassignedQuantity)}</Typography> : null}</TableCell>
+                  <TableCell align="right">{fmt(row.producedQuantity)}</TableCell>
                   <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={row.progressPercent} /></TableCell>
                   <TableCell><ReportStatusChip status={row.status} languageCode={languageCode} /></TableCell>
                 </TableRow>
@@ -307,7 +309,7 @@ const CustomerProductionReport = () => {
                               <TableCell>{text.style}</TableCell>
                               <TableCell>{text.due}</TableCell>
                               <TableCell align="right">{text.quantity}</TableCell>
-                              <TableCell align="right">{text.assigned}</TableCell>
+                              <TableCell align="right">{text.produced}</TableCell>
                               <TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell>
                               <TableCell>{text.status}</TableCell>
                             </TableRow>
@@ -321,7 +323,7 @@ const CustomerProductionReport = () => {
                               <TableCell>{styleRow.styleName || styleRow.styleCode || '-'}</TableCell>
                               <TableCell>{styleRow.dueDate || '-'}</TableCell>
                               <TableCell align="right">{fmt(styleRow.orderedQuantity)}</TableCell>
-                              <TableCell align="right">{fmt(styleRow.assignedQuantity)}{styleRow.unassignedQuantity > 0 ? <Typography variant="caption" color="warning.main" display="block">-{fmt(styleRow.unassignedQuantity)}</Typography> : null}</TableCell>
+                              <TableCell align="right">{fmt(styleRow.producedQuantity)}</TableCell>
                               <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={styleRow.progressPercent} /></TableCell>
                               <TableCell><ReportStatusChip status={styleRow.status} languageCode={languageCode} /></TableCell>
                             </TableRow>
