@@ -201,7 +201,7 @@ export const resolveFeatureByPath = (pathname) => {
   if (path === '/system-setting' || path === '/system-setting/') return FEATURE_KEYS.SUBSCRIPTION;
   if (path.startsWith('/system-setting')) return FEATURE_KEYS.SYSTEM_SETTING;
   if (path.startsWith('/system-onboarding')) return FEATURE_KEYS.SYSTEM_ONBOARDING;
-  if (path.startsWith('/profile')) return FEATURE_KEYS.PROFILE;
+  if (path.startsWith('/profile') || path.startsWith('/personal-settings')) return FEATURE_KEYS.PROFILE;
   return null;
 };
 

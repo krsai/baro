@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router
 import { useAuth } from './context/AuthContext';
 import GlobalLoadingOverlay from './components/GlobalLoadingOverlay';
 import { canAccessPath, resolveFirstAccessiblePath } from './utils/accessControl';
+import { readPersonalPreferences } from './utils/personalPreferences';
 import Login from './pages/Auth/Login';
 import SubscriptionRequired from './pages/Auth/SubscriptionRequired';
 
@@ -88,6 +89,7 @@ const Order = lazyImportWithRetry(() => import('./pages/App/Order.jsx'));
 const ProductionPlan = lazyImportWithRetry(() => import('./pages/App/ProductionPlan'));
 const Inventory = lazyImportWithRetry(() => import('./pages/App/Inventory'));
 const MyProfile = lazyImportWithRetry(() => import('./pages/App/MyProfile'));
+const PersonalSettings = lazyImportWithRetry(() => import('./pages/App/PersonalSettings'));
 const WorkspaceDashboard = lazyImportWithRetry(() => import('./pages/App/WorkspaceDashboard'));
 
 const AuthOnlyRoute = () => {
@@ -132,11 +134,14 @@ const OAuthCallbackRedirect = () => {
 };
 
 const RootRedirect = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, activeProfile, user, accessProfile, devBypass, devProfile } = useAuth();
+  const shouldOpenDashboard =
+    readPersonalPreferences(activeProfile, user).openDashboardOnLogin &&
+    canAccessPath('/dashboard', { isAuthenticated, accessProfile, devBypass, devProfile });
 
   return (
     <Navigate
-      to={isAuthenticated ? '/workspace' : '/login'}
+      to={isAuthenticated ? (shouldOpenDashboard ? '/dashboard' : '/workspace') : '/login'}
       replace
     />
   );
@@ -469,6 +474,10 @@ const router = createBrowserRouter([
           {
             path: 'profile',
             element: <MyProfile />,
+          },
+          {
+            path: 'personal-settings',
+            element: <PersonalSettings />,
           },
         ],
       },

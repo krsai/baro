@@ -833,6 +833,11 @@ const MainLayout = () => {
         isOpen: settingsOpen,
         children: [
           {
+            label: getUiMessage('menu.personalSettings', 'Personal Settings', languageCode),
+            icon: <AccountCircleIcon />,
+            path: '/personal-settings',
+          },
+          {
             label: getUiMessage('menu.salarySystem', '급여 체계', languageCode),
             icon: <AccountBalanceWalletIcon />,
             path: '/salary-system',
@@ -2391,4 +2396,3 @@ const MainLayout = () => {
 };
 
 export default MainLayout;
-

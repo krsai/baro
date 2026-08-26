@@ -12,7 +12,8 @@ import AppVersionLabel from '../../components/AppVersionLabel';
 import LanguageSwitcher from '../../components/LanguageSwitcher';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { resolveFirstAccessiblePath } from '../../utils/accessControl';
+import { canAccessPath, resolveFirstAccessiblePath } from '../../utils/accessControl';
+import { readPersonalPreferences } from '../../utils/personalPreferences';
 
 const LOGIN_COPY_BY_LANGUAGE = {
   ko: {
@@ -80,13 +81,21 @@ const Login = () => {
 
   const loginCopy = getLoginCopy(languageCode);
   const postAuthPath = useMemo(
-    () =>
-      resolveFirstAccessiblePath({
+    () => {
+      const authState = {
         isAuthenticated,
         devBypass: false,
         devProfile: null,
         accessProfile,
-      }),
+      };
+      if (
+        readPersonalPreferences(accessProfile, null).openDashboardOnLogin &&
+        canAccessPath('/dashboard', authState)
+      ) {
+        return '/dashboard';
+      }
+      return resolveFirstAccessiblePath(authState);
+    },
     [accessProfile, isAuthenticated]
   );
 

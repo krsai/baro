@@ -78,6 +78,7 @@ export const UI_MESSAGES = {
     payroll: { ko: '생산수당', en: 'Production Allowance', vi: 'Tính phụ cấp sản lượng' },
     organization: { ko: '조직 관리', en: 'Organization', vi: 'Tổ chức' },
     settings: { ko: '설정', en: 'Settings', vi: 'Cài đặt' },
+    personalSettings: { ko: '개인 설정', en: 'Personal Settings', vi: 'Cài đặt cá nhân' },
     employeeSystem: { ko: '직원 체계', en: 'Employee Structure', vi: 'Hệ thống nhân viên' },
     salarySystem: { ko: '급여 체계', en: 'Salary Structure', vi: 'Cơ cấu lương' },
     business: { ko: '사업체', en: 'Business', vi: 'Doanh nghiệp' },
