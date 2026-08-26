@@ -15397,13 +15397,24 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
     return map;
   }, new Map<number, any>());
 
+  // A style with structurally-changing assignments may have been assigned
+  // before the process-version-confirmation feature existed (or before
+  // anyone opened its "process version manager" screen), so it can have
+  // zero StyleProcessVersion rows even though it already has live
+  // StyleProcess rows and pre-existing AssignmentPlan rows. Auto-creating
+  // Ver.1 from the current live processes (and backfilling any
+  // styleProcessVersionId=null legacy plans onto it) here - the same helper
+  // used when a brand new assignment is first created - means saving a
+  // structural change never dead-ends on "confirm Ver.1 first" for a style
+  // that was simply never confirmed.
   const confirmedVersionByStyleId = new Map<number, any>();
   for (const styleId of targetStyleIds) {
-    const version = await db.styleProcessVersion.findFirst({
-      where: { orgId: organization.id, styleId },
-      orderBy: { versionNumber: "desc" },
+    const version = await ensureInitialStyleProcessVersion({
+      orgId: organization.id,
+      styleId,
+      db,
     });
-    if (version) confirmedVersionByStyleId.set(styleId, version);
+    confirmedVersionByStyleId.set(styleId, version);
   }
 
   const updatedAt = new Date().toISOString();
@@ -17532,18 +17543,18 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     );
   }
 
+  // See the matching comment in refreshIncomingAssignmentCtSnapshotsFromStyles:
+  // a style can have live StyleProcess rows and pre-existing AssignmentPlan
+  // rows with zero StyleProcessVersion rows if it predates (or never went
+  // through) the process-version-confirmation screen. Auto-create Ver.1 here
+  // instead of dead-ending the save.
   const effectiveVersionByStyleId = new Map<number, any>();
   for (const styleId of assignmentStyleIds) {
-    const version = await db.styleProcessVersion.findFirst({
-      where: { orgId: organization.id, styleId },
-      orderBy: { versionNumber: "desc" },
+    const version = await ensureInitialStyleProcessVersion({
+      orgId: organization.id,
+      styleId,
+      db,
     });
-    if (!version) {
-      throw createHttpError(
-        409,
-        `style ${styleId} has no confirmed process version; confirm Ver.1 before assignment`
-      );
-    }
     effectiveVersionByStyleId.set(styleId, version);
   }
   const assignedVersionIds = Array.from(

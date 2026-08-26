@@ -1,5 +1,15 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-08-26 레거시 스타일의 배정 저장이 "공정 버전 미확정"으로 막히던 문제 근본 수정
+
+- **증상**: 이미 오래전에 배정(`AssignmentPlan`)이 생성된 스타일(공정 버전 관리 기능이 생기기 전, 혹은 그 화면을 한 번도 열어본 적 없는 스타일)에서, 그 배정을 구조적으로 바꾸는 저장(라인 이동/수량 변경/날짜 변경 등)을 하면 `"style {styleId} has no confirmed process version; confirm Ver.1 before assignment"` 409 에러로 저장 자체가 막혔다.
+- **근본 원인**: `PUT /assignment-board-state` 안에는 스타일의 "확정된 공정 버전"(`StyleProcessVersion`)을 조회하는 코드가 세 갈래로 나뉘어 있었다.
+  1. `createPlanRows`(카드를 라인에 처음 드래그해 **신규** `AssignmentPlan`을 만드는 경로) — `ensureInitialStyleProcessVersion()`을 호출해서, 버전이 하나도 없으면 **현재 살아있는 공정 구성으로 Ver.1을 그 자리에서 자동 생성**하고, `styleProcessVersionId=null`인 기존 레거시 배정도 함께 그 Ver.1로 백필한다.
+  2. `refreshIncomingAssignmentCtSnapshotsFromStyles`/`prepareAssignmentBoardStTotalsForSave`(**이미 존재하는** 배정의 구조 변경을 재계산하는 두 경로) — 이 둘은 `db.styleProcessVersion.findFirst(...)`로 **조회만** 하고, 없으면 그냥 409를 던졌다. 자동 생성 로직이 없었다.
+  - 즉 "신규 배정 생성"에는 자동 백필이 있었지만 "기존 배정 구조 변경"에는 없었다 — 정확히 사용자가 지적한 "배정이 먼저 생기고 버전 개념이 나중에 도입된" 레거시 스타일이 이 갭에 걸린다. 그런 스타일은 애초에 `createPlanRows` 경로(신규 배정 생성)를 다시 탈 일이 없으니 자동 생성 기회 자체가 없고, 배정을 만질 때마다 영원히 409에 막힌다.
+- **수정**: 위 2번 두 경로도 `db.styleProcessVersion.findFirst`(조회만) 대신 `ensureInitialStyleProcessVersion()`(조회 없으면 자동 생성+레거시 배정 백필)을 쓰도록 통일했다(`backend/src/index.ts`, `refreshIncomingAssignmentCtSnapshotsFromStyles`/`prepareAssignmentBoardStTotalsForSave` 내부). 이제 세 경로 모두 "버전이 없으면 현재 공정 구성으로 Ver.1을 자동 확정하고 그것을 기본값으로 쓴다"는 동일한 규칙을 따른다 — 사용자가 수동으로 스타일 상세 화면에 들어가 "공정 버전 관리"에서 Ver.1을 눌러 확정할 필요가 없어졌다(원한다면 여전히 그 화면에서 버전을 새로 확정/재확정할 수 있고, 그렇게 만든 버전이 있으면 자동 생성 로직은 그 최신 버전을 그대로 쓴다).
+- **영향받지 않는 것**: 이미 `styleProcessVersionId`가 있는 배정, 완료된 배정, 급여 잠금된 배정은 이번 변경 이전과 동일하게 자동 재계산 대상에서 제외된다. `ensureInitialStyleProcessVersion`은 `createPlanRows` 경로에서 이미 검증되어 쓰이던 기존 함수를 그대로 재사용한 것이라 신규 로직을 추가하지 않았다.
+
 ## 2026-08-26 사이드바 "조직 관리"/"설정" 메뉴 그룹 재배치
 
 - `조직 관리`(ADMIN) 그룹 순서를 `직원 → 휴일 → (구독 관리, 시스템 관리자 전용) → 직원 체계 → 급여 체계 → 사업체`로 확정했다. `급여 체계`(`/salary-system`)와 `직원 체계`(`/employee-system`)는 기존에 `설정`(SETTINGS) 그룹 소속이었으나 `조직 관리` 그룹으로 옮겼다.

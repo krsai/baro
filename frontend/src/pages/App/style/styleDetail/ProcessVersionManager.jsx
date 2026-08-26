@@ -238,7 +238,11 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
                   </Box>
                 );
               })}
-              {!busy && assignments.length === 0 && <Typography color="text.secondary">배정된 작업이 없습니다.</Typography>}
+              {!busy && assignments.length === 0 && (
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '.75rem' }}>
+                  배정된 작업이 없습니다.
+                </Typography>
+              )}
             </Box>
           </Box>
         </Stack>
