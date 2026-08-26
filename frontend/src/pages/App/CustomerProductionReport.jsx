@@ -1,15 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Box, Button, Chip, CircularProgress, Collapse, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, GlobalStyles, InputLabel,
+  Alert, Box, Button, Chip, CircularProgress, Collapse, Dialog, DialogContent, DialogTitle, FormControl, FormControlLabel, GlobalStyles, InputLabel,
   LinearProgress, IconButton, Menu, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Typography, Switch,
+  TableHead, TableRow, Tooltip, Typography, Switch,
 } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AppPageContainer from '../../components/AppPageContainer';
 import PageToolbar from '../../components/PageToolbar';
 import SearchInput from '../../components/SearchInput';
@@ -32,7 +30,7 @@ const TEXT = {
     detailToggleOpen: '스타일별 상세 닫기',
     detailToggleClosed: '스타일별 상세 보기',
     dailyProduced: '일일 내역', dailyProducedTitle: '일일 완성품 수량', date: '날짜', close: '닫기', noDailyProduced: '등록된 일일 완성품 내역이 없습니다.',
-    previousMonth: '이전 달', nextMonth: '다음 달', pieces: '개',
+    pieces: '개',
   },
   en: {
     title: 'Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style',
@@ -45,7 +43,7 @@ const TEXT = {
     detailToggleOpen: 'Hide style breakdown',
     detailToggleClosed: 'Show style breakdown',
     dailyProduced: 'Daily details', dailyProducedTitle: 'Daily finished quantity', date: 'Date', close: 'Close', noDailyProduced: 'No daily finished quantities are recorded.',
-    previousMonth: 'Previous month', nextMonth: 'Next month', pieces: 'pcs',
+    pieces: 'pcs',
   },
   vi: {
     title: 'Báo cáo', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng',
@@ -58,7 +56,7 @@ const TEXT = {
     detailToggleOpen: 'Ẩn chi tiết theo kiểu dáng',
     detailToggleClosed: 'Xem chi tiết theo kiểu dáng',
     dailyProduced: 'Chi tiết ngày', dailyProducedTitle: 'Số lượng thành phẩm theo ngày', date: 'Ngày', close: 'Đóng', noDailyProduced: 'Không có số lượng thành phẩm theo ngày.',
-    previousMonth: 'Tháng trước', nextMonth: 'Tháng sau', pieces: 'cái',
+    pieces: 'cái',
   },
 };
 
@@ -72,23 +70,18 @@ const STATUS = {
 const REPORT_COLUMN_COUNT = 9;
 const fmt = (value) => Math.max(0, Number(value) || 0).toLocaleString();
 const reportLocale = (languageCode) => languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US';
-const monthKeyFromDate = (date) => /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? String(date).slice(0, 7) : '';
-const shiftMonthKey = (monthKey, offset) => {
-  const [year, month] = String(monthKey || '').split('-').map(Number);
-  if (!year || !month) return '';
-  const shifted = new Date(Date.UTC(year, month - 1 + offset, 1));
-  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`;
-};
-const buildCalendarDays = (monthKey) => {
-  const [year, month] = String(monthKey || '').split('-').map(Number);
-  if (!year || !month) return [];
-  const firstWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
-  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const days = [
-    ...Array.from({ length: firstWeekday }, () => null),
-    ...Array.from({ length: lastDay }, (_, index) => `${year}-${String(month).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`),
-  ];
-  return [...days, ...Array.from({ length: (7 - (days.length % 7)) % 7 }, () => null)];
+const isReportDateKey = (date) => /^\d{4}-\d{2}-\d{2}$/.test(String(date || ''));
+const toDateKey = (date) => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+const buildProductionCalendarDays = (dailyProducedQuantities) => {
+  const producedDates = (dailyProducedQuantities || []).map((daily) => daily?.date).filter(isReportDateKey).sort();
+  if (!producedDates.length) return [];
+  const start = new Date(`${producedDates[0]}T00:00:00Z`);
+  start.setUTCDate(start.getUTCDate() - start.getUTCDay());
+  const end = new Date(`${producedDates[producedDates.length - 1]}T00:00:00Z`);
+  end.setUTCDate(end.getUTCDate() + (6 - end.getUTCDay()));
+  const days = [];
+  for (const cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) days.push(toDateKey(cursor));
+  return days;
 };
 const customerLabel = (customer, languageCode) =>
   (languageCode === 'ko' ? customer?.nameKo : languageCode === 'vi' ? customer?.nameVi : null) || customer?.name || '-';
@@ -191,14 +184,8 @@ const CustomerProductionReport = () => {
   const [contextMenuState, setContextMenuState] = useState(null);
   const [activeQuantityReviewRow, setActiveQuantityReviewRow] = useState(null);
   const [dailyProducedRow, setDailyProducedRow] = useState(null);
-  const [dailyProducedMonth, setDailyProducedMonth] = useState('');
 
   const openDailyProducedCalendar = useCallback((row) => {
-    const firstProducedDate = (row?.dailyProducedQuantities || [])
-      .map((daily) => daily?.date)
-      .filter((date) => monthKeyFromDate(date))
-      .sort()[0];
-    setDailyProducedMonth(monthKeyFromDate(firstProducedDate));
     setDailyProducedRow(row);
   }, []);
 
@@ -341,7 +328,7 @@ const CustomerProductionReport = () => {
                   </TableCell>
                   <TableCell>{row.dueDate || '-'}</TableCell>
                   <TableCell align="right">{fmt(row.orderedQuantity)}</TableCell>
-                  <TableCell align="right"><Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', width: '100%' }}><Typography variant="body2" sx={{ textAlign: 'right' }}>{fmt(row.producedQuantity)}</Typography><Button className="report-screen-actions" size="small" variant="text" startIcon={<CalendarMonthIcon fontSize="small" />} sx={{ ml: 1, justifySelf: 'end' }} onClick={() => openDailyProducedCalendar(row)}>{text.dailyProduced}</Button></Box></TableCell>
+                  <TableCell align="right" sx={{ minWidth: 180 }}><Stack direction="row" alignItems="center" sx={{ width: '100%' }}><Typography variant="body2" sx={{ flex: 1, textAlign: 'right' }}>{fmt(row.producedQuantity)}</Typography><Tooltip title={text.dailyProduced}><IconButton className="report-screen-actions" size="small" color="primary" aria-label={text.dailyProduced} sx={{ ml: 1 }} onClick={() => openDailyProducedCalendar(row)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></Stack></TableCell>
                   <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={row.progressPercent} /></TableCell>
                   <TableCell><ReportStatusChip status={row.status} languageCode={languageCode} /></TableCell>
                 </TableRow>
@@ -369,7 +356,7 @@ const CustomerProductionReport = () => {
                               <TableCell>{styleRow.styleName || styleRow.styleCode || '-'}</TableCell>
                               <TableCell>{styleRow.dueDate || '-'}</TableCell>
                               <TableCell align="right">{fmt(styleRow.orderedQuantity)}</TableCell>
-                              <TableCell align="right"><Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', width: '100%' }}><Typography variant="body2" sx={{ textAlign: 'right' }}>{fmt(styleRow.producedQuantity)}</Typography><Button className="report-screen-actions" size="small" variant="text" startIcon={<CalendarMonthIcon fontSize="small" />} sx={{ ml: 1, justifySelf: 'end' }} onClick={() => openDailyProducedCalendar(styleRow)}>{text.dailyProduced}</Button></Box></TableCell>
+                              <TableCell align="right" sx={{ minWidth: 180 }}><Stack direction="row" alignItems="center" sx={{ width: '100%' }}><Typography variant="body2" sx={{ flex: 1, textAlign: 'right' }}>{fmt(styleRow.producedQuantity)}</Typography><Tooltip title={text.dailyProduced}><IconButton className="report-screen-actions" size="small" color="primary" aria-label={text.dailyProduced} sx={{ ml: 1 }} onClick={() => openDailyProducedCalendar(styleRow)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></Stack></TableCell>
                               <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={styleRow.progressPercent} /></TableCell>
                               <TableCell><ReportStatusChip status={styleRow.status} languageCode={languageCode} /></TableCell>
                             </TableRow>
@@ -418,29 +405,25 @@ const CustomerProductionReport = () => {
           ? <Typography variant="body2" color="text.secondary">{text.noDailyProduced}</Typography>
           : (() => {
             const quantityByDate = new Map(dailyProducedRow.dailyProducedQuantities.map((daily) => [daily.date, daily.quantity]));
-            const calendarDays = buildCalendarDays(dailyProducedMonth);
-            const [year, month] = dailyProducedMonth.split('-').map(Number);
-            const monthLabel = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString(reportLocale(languageCode), { year: 'numeric', month: 'long', timeZone: 'UTC' });
+            const calendarDays = buildProductionCalendarDays(dailyProducedRow.dailyProducedQuantities);
             const weekdayLabels = Array.from({ length: 7 }, (_, day) => new Date(Date.UTC(2026, 7, 23 + day)).toLocaleDateString(reportLocale(languageCode), { weekday: 'short', timeZone: 'UTC' }));
             return <Stack spacing={1.5}>
-              <Stack direction="row" alignItems="center" justifyContent="space-between">
-                <IconButton size="small" aria-label={text.previousMonth || 'Previous month'} onClick={() => setDailyProducedMonth((current) => shiftMonthKey(current, -1))}><ChevronLeftIcon /></IconButton>
-                <Typography variant="subtitle1">{monthLabel}</Typography>
-                <IconButton size="small" aria-label={text.nextMonth || 'Next month'} onClick={() => setDailyProducedMonth((current) => shiftMonthKey(current, 1))}><ChevronRightIcon /></IconButton>
-              </Stack>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', borderTop: '1px solid', borderLeft: '1px solid', borderColor: 'divider' }}>
                 {weekdayLabels.map((label, index) => <Box key={`${label}-${index}`} sx={{ py: 0.75, textAlign: 'center', bgcolor: 'grey.50', borderRight: '1px solid', borderBottom: '1px solid', borderColor: 'divider' }}><Typography variant="caption" color={index === 0 ? 'error.main' : index === 6 ? 'primary.main' : 'text.secondary'}>{label}</Typography></Box>)}
                 {calendarDays.map((date, index) => {
                   const quantity = date ? quantityByDate.get(date) : null;
-                  return <Box key={date || `blank-${index}`} sx={{ minHeight: 72, p: 0.75, borderRight: '1px solid', borderBottom: '1px solid', borderColor: 'divider', bgcolor: date ? 'background.paper' : 'grey.50' }}>
-                    {date ? <><Typography variant="caption" color={index % 7 === 0 ? 'error.main' : index % 7 === 6 ? 'primary.main' : 'text.secondary'}>{Number(date.slice(-2))}</Typography>{quantity ? <Box sx={{ mt: 0.5, px: 0.75, py: 0.5, borderRadius: 1, bgcolor: 'action.hover', color: 'primary.dark', textAlign: 'right' }}><Typography variant="body2">{fmt(quantity)} {text.pieces}</Typography></Box> : null}</> : null}
+                  const day = Number(date.slice(-2));
+                  const showMonth = index === 0 || day === 1;
+                  const showYear = index === 0 || date.slice(5) === '01-01';
+                  const dateLabel = new Date(`${date}T00:00:00Z`).toLocaleDateString(reportLocale(languageCode), showMonth ? { year: showYear ? 'numeric' : undefined, month: 'short', day: 'numeric', timeZone: 'UTC' } : { day: 'numeric', timeZone: 'UTC' });
+                  return <Box key={date} sx={{ minHeight: 72, p: 0.75, borderRight: '1px solid', borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
+                    <Typography variant="caption" color={index % 7 === 0 ? 'error.main' : index % 7 === 6 ? 'primary.main' : 'text.secondary'}>{dateLabel}</Typography>{quantity ? <Box sx={{ mt: 0.5, px: 0.75, py: 0.5, borderRadius: 1, bgcolor: 'action.hover', color: 'primary.dark', textAlign: 'right' }}><Typography variant="body2">{fmt(quantity)} {text.pieces}</Typography></Box> : null}
                   </Box>;
                 })}
               </Box>
             </Stack>;
           })()}
       </DialogContent>
-      <DialogActions><Button onClick={() => setDailyProducedRow(null)}>{text.close}</Button></DialogActions>
     </Dialog>
   </AppPageContainer>;
 };
