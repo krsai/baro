@@ -5,7 +5,6 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
   TextField, Tooltip, Typography,
 } from '@mui/material';
-import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import FunctionsIcon from '@mui/icons-material/Functions';
@@ -125,7 +124,7 @@ const FormulaCursorSlot = ({ position, active, onSelect }) => (
     onClick={() => onSelect(position)}
     sx={{
       width: active ? 3 : 10,
-      height: 26,
+      height: 32,
       mx: 0.375,
       borderRadius: 1,
       flexShrink: 0,
@@ -323,9 +322,9 @@ const SalarySystem = () => {
                   <Chip
                     label={formulaTokenLabel(token, t)}
                     onDelete={removable ? () => removeFormulaToken(index) : undefined}
-                    sx={operand
-                      ? { fontWeight: 600, color: 'primary.dark', bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12), '& .MuiChip-deleteIcon': { color: 'primary.main' } }
-                      : { fontWeight: 700, color: 'text.secondary', bgcolor: 'background.paper' }}
+                    color={operand ? 'primary' : 'default'}
+                    variant="outlined"
+                    sx={{ fontWeight: operand ? 600 : 700 }}
                   />
                   <FormulaCursorSlot position={index + 1} active={cursorIndex === index + 1} onSelect={setCursorIndex} />
                 </React.Fragment>;
