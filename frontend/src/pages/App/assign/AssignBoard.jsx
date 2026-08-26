@@ -3497,6 +3497,30 @@ const AssignBoard = () => {
         languageCode
       );
     }
+    const missingProcessVersionMatch = raw.match(
+      /style (\d+) has no confirmed process version/i
+    );
+    if (missingProcessVersionMatch) {
+      const missingStyleId = missingProcessVersionMatch[1];
+      const currentStyles = Array.isArray(stylesRef.current) ? stylesRef.current : [];
+      const matchedStyle = currentStyles.find(
+        (style) => String(style?.id) === String(missingStyleId)
+      );
+      const styleLabel = matchedStyle
+        ? [matchedStyle.styleCode, matchedStyle.name].filter(Boolean).join(' / ') ||
+          `#${missingStyleId}`
+        : `#${missingStyleId}`;
+      return getUiMessage(
+        'assign.styleProcessVersionRequiredSaveError',
+        languageCode === 'vi'
+          ? 'Khong the luu vi kieu dang {styleLabel} chua co phien ban cong doan nao duoc xac nhan. Vao chi tiet kieu dang > Quan ly phien ban cong doan de xac nhan Ver.1, roi luu lai.'
+          : languageCode === 'en'
+            ? 'Save failed because style {styleLabel} has no confirmed process version yet. Open the style detail page, confirm Ver.1 under "Process Version Manager", then save again.'
+            : '스타일 {styleLabel}의 공정 버전이 아직 하나도 확정되지 않아 저장하지 못했습니다. 스타일 상세 화면의 "공정 버전 관리"에서 Ver.1을 확정한 뒤 다시 저장해 주세요.',
+        languageCode,
+        { styleLabel }
+      );
+    }
     return raw || fallbackMessage;
   }, [languageCode]);
 
