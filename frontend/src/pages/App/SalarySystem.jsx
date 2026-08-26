@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControl, IconButton, InputLabel, MenuItem, Paper, Select, Stack, Tab,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
+  FormControl, IconButton, InputLabel, MenuItem, Paper, Select, Stack,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   TextField, Tooltip, Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import FunctionsIcon from '@mui/icons-material/Functions';
+import HistoryIcon from '@mui/icons-material/History';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
@@ -145,8 +146,12 @@ const SalarySystem = () => {
   const [items, setItems] = useState(DEFAULT_ITEMS);
   const [selectedId, setSelectedId] = useState('baseSalary');
   const [effectiveMonth, setEffectiveMonth] = useState(monthKey());
-  const [tab, setTab] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
+  // 저장(=버전 확정)할 때마다 그 시점의 항목/단가 스냅샷이 쌓인다. 공정 버전 관리처럼
+  // 버전 목록을 훑어보고, 하나를 고르면 그 시점 스냅샷을 읽기 전용으로 볼 수 있다.
+  const [versions, setVersions] = useState([]);
+  const [versionDialogOpen, setVersionDialogOpen] = useState(false);
+  const [viewingVersion, setViewingVersion] = useState(null);
   const [draft, setDraft] = useState(DEFAULT_DRAFT);
   const [message, setMessage] = useState(null);
   const [formulaDialogOpen, setFormulaDialogOpen] = useState(false);
@@ -207,8 +212,16 @@ const SalarySystem = () => {
     setMessage({ severity: 'info', text: t('화면 시안에 항목을 추가했습니다. 서버 저장은 백엔드 구현 후 연결됩니다.') });
   };
   const saveDraft = () => {
+    setVersions((prev) => [
+      ...prev,
+      { versionNumber: prev.length + 1, effectiveMonth, items, rates, confirmedAt: new Date().toISOString().slice(0, 10) },
+    ]);
     setSavedSnapshot(JSON.stringify({ items, rates, effectiveMonth }));
     setMessage({ severity: 'info', text: t('화면 시안 상태이며 서버 저장 기능은 아직 연결되지 않았습니다. 백엔드 구현 후 실제로 저장됩니다.') });
+  };
+  const openVersionDialog = () => {
+    setViewingVersion(null);
+    setVersionDialogOpen(true);
   };
   const removeItem = () => {
     if (selected.required) return;
@@ -263,12 +276,12 @@ const SalarySystem = () => {
     <Stack direction="row" flexWrap="wrap" justifyContent="space-between" alignItems="center" rowGap={1.5} sx={{ mb: 2, width: '100%' }}>
       <Typography variant="h5" fontWeight={700}>{t('급여 체계')}</Typography>
       <Stack direction="row" spacing={1}><TextField label={t('적용 시작월')} type="month" size="small" value={effectiveMonth} onChange={(e) => setEffectiveMonth(e.target.value)} InputLabelProps={{ shrink: true }} />
+        <Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog}>{t('버전 관리')}</Button>
         <SaveButton onClick={saveDraft} disabled={!isDirty}>{t('저장')}</SaveButton></Stack>
     </Stack>
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
-    <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}><Tabs value={tab} onChange={(_e, value) => setTab(value)}><Tab label={t('급여 항목 및 단가')} /><Tab label={t('적용 이력')} /></Tabs></Box>
 
-    {tab === 0 ? <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="stretch">
+    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="stretch">
       <Paper variant="outlined" sx={{ width: { xs: '100%', lg: 350 }, flexShrink: 0 }}>
         <Stack direction="row" alignItems="flex-start" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
           <Box><Typography fontWeight={700}>{t('급여 항목')}</Typography><Typography variant="caption" color="text.secondary">{t('항목을 선택해 계산 방식과 직급별 단가를 설정하세요.')}</Typography></Box>
@@ -295,11 +308,7 @@ const SalarySystem = () => {
             <TableCell align="right"><TextField size="small" value={getRate(payType, grade.id)} onChange={(e) => changeRate(payType, grade.id, e.target.value)} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} sx={{ width: 170 }} /></TableCell></TableRow>))}
         </TableBody></Table></TableContainer>
       </Paper>
-    </Stack> : <Paper variant="outlined"><Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Typography variant="h6" fontWeight={700}>{t('급여체계 적용 이력')}</Typography><Typography variant="body2" color="text.secondary">{t('적용 시점별 급여 기준을 조회하고 새 버전의 기준으로 복사합니다.')}</Typography></Box>
-      <TableContainer><Table size="small"><TableHead><TableRow><TableCell>{t('버전')}</TableCell><TableCell>{t('적용 기간')}</TableCell><TableCell>{t('상태')}</TableCell><TableCell>{t('급여 항목')}</TableCell><TableCell>{t('비고')}</TableCell><TableCell align="right">{t('작업')}</TableCell></TableRow></TableHead><TableBody>
-        <TableRow><TableCell sx={{ fontWeight: 700 }}>{t('현재 기준')}</TableCell><TableCell>{effectiveMonth} ~</TableCell><TableCell><Chip size="small" color="success" label={t('적용 예정')} /></TableCell><TableCell>{languageCode === 'ko' ? `${items.length}개` : `${items.length} ${t('개')}`}</TableCell><TableCell>{t('일반·수당 대상과 복합 계산 단위를 편집 중인 기준')}</TableCell><TableCell align="right"><Button size="small" onClick={() => setTab(0)}>{t('편집')}</Button></TableCell></TableRow>
-        <TableRow><TableCell sx={{ fontWeight: 700 }}>{t('기존 기준')}</TableCell><TableCell>{t('최초 적용 ~ 현재')}</TableCell><TableCell><Chip size="small" variant="outlined" label={t('사용 중')} /></TableCell><TableCell>{t('기본급·수당·성과급')}</TableCell><TableCell>{t('현재 서버에 저장된 기존 기준')}</TableCell><TableCell align="right"><Button size="small" disabled>{t('조회')}</Button></TableCell></TableRow>
-      </TableBody></Table></TableContainer></Paper>}
+    </Stack>
 
     <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('계산 방식 설정')} · {t(selected.name)}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
       <Paper variant="outlined" sx={{ p: 2.5, minHeight: 96, bgcolor: 'action.hover', borderStyle: 'dashed' }}>
@@ -363,6 +372,42 @@ const SalarySystem = () => {
         </Stack>
       </Box>
     </Stack></DialogContent><DialogActions><Button variant="contained" onClick={saveFormula} disabled={formulaDraft.length === 0}>{t('계산식 적용')}</Button></DialogActions></Dialog>
+
+    <Dialog open={versionDialogOpen} onClose={() => setVersionDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 체계 버전 관리')}</DialogTitle><DialogContent>
+      {versions.length === 0
+        ? <Typography color="text.secondary">{t('아직 확정된 버전이 없습니다. 저장하면 새 버전으로 기록됩니다.')}</Typography>
+        : <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ pt: 1 }}>
+          <Stack spacing={1} sx={{ width: { xs: '100%', md: 220 }, flexShrink: 0 }}>
+            {[...versions].reverse().map((version) => <Paper
+              key={version.versionNumber}
+              variant="outlined"
+              onClick={() => setViewingVersion(version)}
+              sx={{
+                p: 1.25, cursor: 'pointer',
+                borderColor: viewingVersion?.versionNumber === version.versionNumber ? 'primary.main' : 'divider',
+                bgcolor: viewingVersion?.versionNumber === version.versionNumber ? 'action.selected' : 'transparent',
+              }}
+            >
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <Chip size="small" color="primary" label={`Ver.${version.versionNumber}`} />
+                <Typography variant="caption" color="text.secondary">{version.confirmedAt}</Typography>
+              </Stack>
+              <Typography variant="body2" fontWeight={600} sx={{ mt: 0.5 }}>{version.effectiveMonth} {t('부터 적용')}</Typography>
+            </Paper>)}
+          </Stack>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            {!viewingVersion
+              ? <Typography color="text.secondary">{t('왼쪽에서 버전을 선택하면 그 시점의 급여 항목을 볼 수 있습니다.')}</Typography>
+              : <Stack spacing={1}>
+                <Typography variant="subtitle2" fontWeight={700}>{`Ver.${viewingVersion.versionNumber}`} · {languageCode === 'ko' ? `${viewingVersion.items.length}${t('개')}` : `${viewingVersion.items.length} ${t('개')}`}</Typography>
+                {viewingVersion.items.map((row) => <Paper key={row.id} variant="outlined" sx={{ p: 1.25 }}>
+                  <Typography variant="body2" fontWeight={600}>{t(row.name)}</Typography>
+                  <Typography variant="caption" color="text.secondary">{formulaLabel(row.formula, t) || t('계산식이 비어 있습니다.')}</Typography>
+                </Paper>)}
+              </Stack>}
+          </Box>
+        </Stack>}
+    </DialogContent><DialogActions><Button onClick={() => setVersionDialogOpen(false)}>{t('닫기')}</Button></DialogActions></Dialog>
 
     <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm"><DialogTitle>{t('급여 항목 추가')}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
       <TextField autoFocus label={t('항목명')} value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder={t('예: 자격수당')} />
