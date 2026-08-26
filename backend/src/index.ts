@@ -4697,6 +4697,83 @@ const collectStoredAtTrainingMonthKeysForOrg = async (orgId: number) => {
   ).sort();
 };
 
+// Mirrors the staleness definition used by buildAtSyncStatusForOrg's
+// stale_month_count (source WorkLog/WorkRecord/AttendanceEntry updated after
+// the month's AtTrainingBucket rows were last written). Only returns months
+// that already have bucket rows - fully missing months are handled by the
+// caller via collectStoredAtTrainingMonthKeysForOrg/rawMonthKeys instead.
+const collectStaleStoredAtTrainingMonthKeysForOrg = async ({
+  orgId,
+  maxMonthKey,
+}: {
+  orgId: number;
+  maxMonthKey: string;
+}) => {
+  const rows = await prisma.$queryRaw<Array<{ month_key: string }>>(Prisma.sql`
+    WITH work_log_months AS (
+      SELECT
+        LEFT(wl."workDate", 7) AS month_key,
+        MAX(wl."updatedAt") AS latest_work_log_updated_at
+      FROM "WorkLog" wl
+      WHERE wl."orgId" = ${orgId}
+        AND LEFT(wl."workDate", 7) <= ${maxMonthKey}
+      GROUP BY LEFT(wl."workDate", 7)
+    ),
+    work_record_months AS (
+      SELECT
+        LEFT(wl."workDate", 7) AS month_key,
+        MAX(wr."updatedAt") AS latest_work_record_updated_at
+      FROM "WorkLog" wl
+      JOIN "WorkRecord" wr ON wr."workLogId" = wl.id
+      WHERE wl."orgId" = ${orgId}
+        AND LEFT(wl."workDate", 7) <= ${maxMonthKey}
+      GROUP BY LEFT(wl."workDate", 7)
+    ),
+    attendance_months AS (
+      SELECT
+        LEFT(a."workDate", 7) AS month_key,
+        MAX(a."updatedAt") AS latest_attendance_updated_at
+      FROM "AttendanceEntry" a
+      WHERE a."orgId" = ${orgId}
+        AND LEFT(a."workDate", 7) <= ${maxMonthKey}
+      GROUP BY LEFT(a."workDate", 7)
+    ),
+    source_months AS (
+      SELECT
+        wlm.month_key,
+        GREATEST(
+          COALESCE(wlm.latest_work_log_updated_at, TIMESTAMPTZ 'epoch'),
+          COALESCE(wrm.latest_work_record_updated_at, TIMESTAMPTZ 'epoch'),
+          COALESCE(am.latest_attendance_updated_at, TIMESTAMPTZ 'epoch')
+        ) AS latest_source_updated_at
+      FROM work_log_months wlm
+      LEFT JOIN work_record_months wrm ON wrm.month_key = wlm.month_key
+      LEFT JOIN attendance_months am ON am.month_key = wlm.month_key
+    ),
+    bucket_months AS (
+      SELECT
+        b."monthKey" AS month_key,
+        MAX(b."updatedAt") AS latest_bucket_updated_at
+      FROM "AtTrainingBucket" b
+      WHERE b."orgId" = ${orgId}
+        AND b."monthKey" <= ${maxMonthKey}
+      GROUP BY b."monthKey"
+    )
+    SELECT sm.month_key
+    FROM source_months sm
+    JOIN bucket_months bm ON bm.month_key = sm.month_key
+    WHERE sm.latest_source_updated_at > bm.latest_bucket_updated_at
+    ORDER BY sm.month_key ASC
+  `);
+  return Array.from(
+    new Set(
+      rows
+        .map((row: { month_key: string }) => normalizeMonthKey(row.month_key))
+        .filter((monthKey: string) => monthKey !== "")
+    )
+  ).sort();
+};
+
 const ensureHistoricalAtTrainingBucketsForOrg = async ({
   orgId,
   maxMonthKey,
@@ -4709,9 +4786,13 @@ const ensureHistoricalAtTrainingBucketsForOrg = async ({
   const normalizedMaxMonthKey = normalizeMonthKey(maxMonthKey);
   if (!normalizedMaxMonthKey) return [] as string[];
 
-  const [rawMonthKeys, storedMonthKeys] = await Promise.all([
+  const [rawMonthKeys, storedMonthKeys, staleStoredMonthKeys] = await Promise.all([
     collectRawAtTrainingMonthKeysForOrg(orgId),
     collectStoredAtTrainingMonthKeysForOrg(orgId),
+    collectStaleStoredAtTrainingMonthKeysForOrg({
+      orgId,
+      maxMonthKey: normalizedMaxMonthKey,
+    }),
   ]);
   const storedMonthKeySet = new Set(storedMonthKeys);
   const excludeMonthKeySet = new Set(
@@ -4725,8 +4806,21 @@ const ensureHistoricalAtTrainingBucketsForOrg = async ({
       !storedMonthKeySet.has(monthKey) &&
       !excludeMonthKeySet.has(monthKey)
   );
+  // A month can already have AtTrainingBucket rows yet still be stale if its
+  // source WorkLog/WorkRecord/AttendanceEntry data was corrected/added after
+  // the bucket was last built. buildAtSyncStatusForOrg's needsUpdate check
+  // treats this the same as a fully missing month, so resync must too -
+  // otherwise the AT sync button stays perpetually enabled even after a
+  // successful run because the target month is fresh but an older month
+  // never gets rebuilt.
+  const staleMonthKeys = staleStoredMonthKeys.filter(
+    (monthKey) => !excludeMonthKeySet.has(monthKey)
+  );
+  const monthKeysToResync = Array.from(
+    new Set([...missingMonthKeys, ...staleMonthKeys])
+  ).sort();
 
-  for (const monthKey of missingMonthKeys) {
+  for (const monthKey of monthKeysToResync) {
     await prisma.$transaction(
       async (tx) => {
         await syncAtTrainingBucketsForMonth({
@@ -4739,7 +4833,7 @@ const ensureHistoricalAtTrainingBucketsForOrg = async ({
     );
   }
 
-  return missingMonthKeys;
+  return monthKeysToResync;
 };
 
 const loadAtTrainingDataFromBuckets = async ({

@@ -1,5 +1,12 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-08-26 AT 갱신 버튼이 갱신 성공 후에도 계속 활성 상태로 남던 버그 수정
+
+- 증상: 스타일 화면에서 `AT 갱신`을 눌러 "AT 갱신 완료" 알림까지 받았는데도, 버튼이 다시 비활성화되지 않고 계속 눌러지는 상태로 남아있었다.
+- 원인: `GET /at-sync/status`의 `needsUpdate` 판정(`buildAtSyncStatusForOrg`)은 대상월(직전월)까지의 **모든 과거 월**을 검사해서, 그중 하나라도 "소스 데이터(WorkLog/WorkRecord/AttendanceEntry)의 최신 `updatedAt`이 그 달 `AtTrainingBucket.updatedAt`보다 최신"이면 전체를 `needsUpdate: true`로 판정한다. 반면 `AT 갱신` 버튼이 호출하는 실제 동기화(`syncStyleProcessActualTimesFromWorkRecords`)는 (1) 대상월 자체만 무조건 재계산하고, (2) 과거 월은 `ensureHistoricalAtTrainingBucketsForOrg`가 **버킷이 아예 없는(완전히 missing) 달만** 백필했다. 즉 "버킷은 이미 있지만 그 이후 원본 데이터가 수정/추가되어 낡아진(stale) 과거 달"은 두 로직 어디에서도 다시 계산되지 않아, 이런 달이 하나라도 있으면 대상월 갱신이 몇 번을 성공해도 `needsUpdate`가 영원히 `true`로 남았다.
+- 수정: `ensureHistoricalAtTrainingBucketsForOrg`가 "버킷 자체가 없는 달"뿐 아니라 "버킷은 있지만 소스 데이터가 버킷보다 최신인 달"도 함께 찾아 재동기화하도록 확장했다(`collectStaleStoredAtTrainingMonthKeysForOrg` 신규 — `buildAtSyncStatusForOrg`의 staleness 판정 SQL과 동일한 정의: 월별 WorkLog/WorkRecord/AttendanceEntry 최신 `updatedAt` vs 해당 월 `AtTrainingBucket` 최신 `updatedAt` 비교). 이제 "missing 달 ∪ stale 달"을 합쳐 전부 `syncAtTrainingBucketsForMonth`로 재계산한다 — 상태 판정과 실제 재계산의 대상 범위가 동일해졌으므로, 재계산이 끝나면 `needsUpdate`도 정확히 `false`로 떨어진다.
+- 영향 범위: `AT 갱신` 버튼 클릭 시 과거 stale 월이 있으면 이전보다 더 많은 달을 재계산하므로 실행 시간이 늘어날 수 있다. 기존에 stale 과거 월이 있던 조직은 다음 `AT 갱신` 클릭 때 그 달들의 `StyleProcessAtObservation`/`AtTrainingBucket`이 최신 데이터 기준으로 다시 계산된다(정상적으로 기대되는 동작이며, 과거 값을 임의로 덮어쓰는 게 아니라 실제로 더 최신인 원본 데이터를 반영하는 것).
+
 ## 2026-08-23 급여 타입 정비 + 직원 기본급 제거 + 급여 체계 UI 기준 변경
 
 - **급여 타입 최종 용어/저장값**: 직원 급여 타입의 canonical 저장값은 `GENERAL`/`OUTPUT`이다. 화면의 짧은 표기는 한국어 `일반`/`수당`, 영어 `General`/`Output`, 베트남어 `Thường`/`Sản lượng`을 쓴다. 과거 `FIXED`/`CT` 입력은 정규화 계층에서 각각 `GENERAL`/`OUTPUT`으로만 호환하고 신규 저장에는 쓰지 않는다.
