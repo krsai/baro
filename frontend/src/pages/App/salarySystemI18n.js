@@ -1,7 +1,7 @@
 const translations = {
   '일반': ['General', 'Thường'], '수당': ['Output', 'Sản lượng'],
   '기본급': ['Base salary', 'Lương cơ bản'], '급여 수당': ['Allowances', 'Phụ cấp'], '성과급': ['Incentives', 'Thưởng hiệu suất'],
-  '매월': ['Monthly', 'Hàng tháng'], '3개월마다': ['Quarterly', 'Mỗi 3 tháng'], '6개월마다': ['Every 6 months', 'Mỗi 6 tháng'], '매년': ['Annually', 'Hàng năm'], '1회 지급': ['One-time', 'Chi trả một lần'],
+  '1개월': ['1 month', '1 tháng'], '3개월': ['3 months', '3 tháng'], '6개월': ['6 months', '6 tháng'], '12개월': ['12 months', '12 tháng'],
   '직급별 단가': ['Rate by grade', 'Đơn giá theo cấp bậc'], '실제 근무일수': ['Actual workdays', 'Ngày công thực tế'], '기준 근무일수': ['Scheduled workdays', 'Ngày công tiêu chuẩn'],
   '일': ['days', 'ngày'], '시간': ['hours', 'giờ'], '년': ['years', 'năm'],
   '해당 월의 근무요일에서 등록 공휴일을 제외하고 서버가 계산합니다.': ['The server calculates this by excluding registered holidays from the month’s working weekdays.', 'Máy chủ tính bằng cách loại trừ ngày lễ đã đăng ký khỏi các ngày làm việc trong tháng.'],
@@ -31,9 +31,9 @@ const translations = {
   '버전': ['Version', 'Phiên bản'], '적용 기간': ['Effective period', 'Thời gian áp dụng'], '상태': ['Status', 'Trạng thái'], '비고': ['Notes', 'Ghi chú'], '작업': ['Action', 'Thao tác'],
   '현재 기준': ['Current settings', 'Thiết lập hiện tại'], '적용 예정': ['Scheduled', 'Sắp áp dụng'], '일반·수당 대상과 복합 계산 단위를 편집 중인 기준': ['Draft settings for General/Output targets and formula components', 'Thiết lập đang sửa cho đối tượng Thường/Sản lượng và thành phần công thức'], '편집': ['Edit', 'Sửa'],
   '기존 기준': ['Existing settings', 'Thiết lập hiện có'], '최초 적용 ~ 현재': ['First applied ~ present', 'Áp dụng lần đầu ~ hiện tại'], '사용 중': ['In use', 'Đang sử dụng'], '기본급·수당·성과급': ['Base salary · allowances · incentives', 'Lương cơ bản · phụ cấp · thưởng hiệu suất'], '현재 서버에 저장된 기존 기준': ['Existing settings currently stored on the server', 'Thiết lập hiện có đang lưu trên máy chủ'], '조회': ['View', 'Xem'],
-  '계산 방식 설정': ['Configure formula', 'Thiết lập công thức'], '모든 지급 방식은 아래 모듈의 조합으로 만듭니다. 기준 근무일수는 선택 월의 근무요일에서 등록 공휴일을 제외해 서버가 계산합니다.': ['Build every payment method from the modules below. The server calculates scheduled workdays from working weekdays minus registered holidays.', 'Mọi phương thức chi trả được tạo từ các mô-đun dưới đây. Máy chủ tính ngày công tiêu chuẩn từ ngày làm việc và loại trừ ngày lễ đã đăng ký.'],
+  '계산 방식 설정': ['Configure formula', 'Thiết lập công thức'],
   '계산식': ['Formula', 'Công thức'], '아래 모듈을 눌러 계산식을 만드세요.': ['Select modules below to build a formula.', 'Chọn các mô-đun bên dưới để tạo công thức.'], '파라미터 모듈': ['Parameter modules', 'Mô-đun tham số'], '연산자': ['Operators', 'Toán tử'],
-  '숫자 상수': ['Numeric constant', 'Hằng số'], '예: 할증률 1.5': ['e.g. multiplier 1.5', 'VD: hệ số 1.5'], '상수 추가': ['Add constant', 'Thêm hằng số'], '전체 지우기': ['Clear all', 'Xóa tất cả'], '취소': ['Cancel', 'Hủy'], '계산식 적용': ['Apply formula', 'Áp dụng công thức'],
+  '숫자 상수': ['Numeric constant', 'Hằng số'], '예: 할증률 1.5': ['e.g. multiplier 1.5', 'VD: hệ số 1.5'], '상수 추가': ['Add constant', 'Thêm hằng số'], '초기화': ['Reset', 'Đặt lại'], '취소': ['Cancel', 'Hủy'], '계산식 적용': ['Apply formula', 'Áp dụng công thức'],
   '급여 항목 추가': ['Add salary item', 'Thêm khoản lương'], '항목명': ['Item name', 'Tên khoản mục'], '예: 자격수당': ['e.g. qualification allowance', 'VD: phụ cấp chứng chỉ'], '급여 구분': ['Salary category', 'Phân loại lương'], '추가': ['Add', 'Thêm'],
 };
 

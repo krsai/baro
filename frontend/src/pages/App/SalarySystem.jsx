@@ -5,10 +5,11 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
   TextField, Tooltip, Typography,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
-import ClearAllIcon from '@mui/icons-material/ClearAll';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import FunctionsIcon from '@mui/icons-material/Functions';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
 import { useAuth } from '../../context/AuthContext';
@@ -24,8 +25,7 @@ const PAY_TYPE_ORDER = ['GENERAL', 'OUTPUT'];
 const CATEGORIES = { BASE: '기본급', ALLOWANCE: '급여 수당', INCENTIVE: '성과급' };
 const CATEGORY_COLORS = { BASE: 'primary', ALLOWANCE: 'success', INCENTIVE: 'warning' };
 const PAY_CYCLES = {
-  MONTHLY: '매월', QUARTERLY: '3개월마다', SEMIANNUAL: '6개월마다',
-  ANNUAL: '매년', ONCE: '1회 지급',
+  MONTHLY: '1개월', QUARTERLY: '3개월', SEMIANNUAL: '6개월', ANNUAL: '12개월',
 };
 // 파라미터를 성격별로 묶어서 보여준다 (단가/근속 -> 근무일수 -> 근무시간 -> 조건·외부 계산값).
 const FORMULA_PARAMETERS = {
@@ -93,6 +93,22 @@ const canAppendOperatorToken = (formula, token) => {
   const last = formula[formula.length - 1];
   return isOperandToken(last) || last === ')';
 };
+// 커서 위치(cursorIndex)에 토큰을 끼워 넣어도 좌우 모두 올바른 순서를 유지하는지 검사한다.
+// 왼쪽은 "커서 앞부분 배열에 이 토큰을 이어붙일 수 있는가", 오른쪽은 "커서 뒤에 있던 토큰이
+// 방금 끼운 토큰 다음에 와도 되는가"를 같은 canAppendOperand/canAppendOperatorToken으로 검사한다.
+const canInsertTokenAt = (formula, cursorIndex, token) => {
+  const left = formula.slice(0, cursorIndex);
+  const right = formula[cursorIndex];
+  const leftOk = (token === '(' || isOperandToken(token))
+    ? canAppendOperand(left)
+    : canAppendOperatorToken(left, token);
+  if (!leftOk) return false;
+  if (right === undefined) return true;
+  const hypothetical = [...left, token];
+  return (isOperandToken(right) || right === '(')
+    ? canAppendOperand(hypothetical)
+    : canAppendOperatorToken(hypothetical, right);
+};
 // 일반(GENERAL)/수당(OUTPUT) 항목의 급여는 결국 직급별 단가에서 출발하므로, 생산수당처럼
 // 외부에서 이미 계산된 값을 그대로 지급하는 항목(INCENTIVE)이 아니면 계산식의 첫 토큰을
 // 직급별 단가로 고정한다.
@@ -101,6 +117,25 @@ const ensureFormulaStartsWithGradeRate = (formula, category) => {
   if (category === 'INCENTIVE' || normalized[0] === 'GRADE_RATE') return normalized;
   return ['GRADE_RATE', ...normalized];
 };
+
+// 계산식 칩 사이사이에 놓이는 삽입 위치 표시. 클릭하면 그 자리가 커서가 되고, 다음 모듈/연산자
+// 클릭은 항상 이 위치에 끼워진다. 현재 커서는 굵은 파란 막대로, 나머지는 옅은 클릭 영역으로 보인다.
+const FormulaCursorSlot = ({ position, active, onSelect }) => (
+  <Box
+    onClick={() => onSelect(position)}
+    sx={{
+      width: active ? 3 : 10,
+      height: 26,
+      mx: 0.375,
+      borderRadius: 1,
+      flexShrink: 0,
+      cursor: 'pointer',
+      bgcolor: active ? 'primary.main' : 'transparent',
+      transition: 'background-color .12s, width .12s',
+      '&:hover': { bgcolor: active ? 'primary.main' : 'action.selected' },
+    }}
+  />
+);
 
 const SalarySystem = () => {
   const { activeOrgId } = useAuth();
@@ -117,6 +152,8 @@ const SalarySystem = () => {
   const [message, setMessage] = useState(null);
   const [formulaDialogOpen, setFormulaDialogOpen] = useState(false);
   const [formulaDraft, setFormulaDraft] = useState([]);
+  // 새 토큰이 끼워질 위치. 항상 이 인덱스 앞에 삽입되고, 삽입 후에는 그 다음 자리로 한 칸 이동한다.
+  const [cursorIndex, setCursorIndex] = useState(0);
   const [formulaSettingsDraft, setFormulaSettingsDraft] = useState(DEFAULT_DRAFT);
   const [constantDraft, setConstantDraft] = useState('');
   // 마지막으로 불러오거나(저장을 흉내낸) 저장한 시점의 스냅샷. 현재 상태와 다르면 미저장 변경으로 본다.
@@ -180,18 +217,35 @@ const SalarySystem = () => {
     setSelectedId('baseSalary');
   };
   const openFormulaDialog = () => {
-    setFormulaDraft(ensureFormulaStartsWithGradeRate(selected.formula, selected.category));
+    const initialFormula = ensureFormulaStartsWithGradeRate(selected.formula, selected.category);
+    setFormulaDraft(initialFormula);
+    setCursorIndex(initialFormula.length);
     setFormulaSettingsDraft({ ...selected });
     setConstantDraft('');
     setFormulaDialogOpen(true);
   };
   const isFirstTokenLocked = selected.category !== 'INCENTIVE';
-  const appendFormulaToken = (token) => setFormulaDraft((tokens) => [...tokens, token]);
-  const removeFormulaToken = (index) => setFormulaDraft((tokens) => tokens.filter((_token, tokenIndex) => tokenIndex !== index));
+  const minCursorIndex = isFirstTokenLocked ? 1 : 0;
+  const resetFormulaDraft = () => {
+    const resetFormula = isFirstTokenLocked ? ['GRADE_RATE'] : [];
+    setFormulaDraft(resetFormula);
+    setCursorIndex(resetFormula.length);
+  };
+  const insertFormulaToken = (token) => {
+    setFormulaDraft((tokens) => [...tokens.slice(0, cursorIndex), token, ...tokens.slice(cursorIndex)]);
+    setCursorIndex((index) => index + 1);
+  };
+  const removeFormulaToken = (index) => {
+    setFormulaDraft((tokens) => tokens.filter((_token, tokenIndex) => tokenIndex !== index));
+    setCursorIndex((current) => {
+      const next = index < current ? current - 1 : current;
+      return Math.max(minCursorIndex, next);
+    });
+  };
   const appendFormulaConstant = () => {
     const normalized = String(constantDraft || '').trim();
     if (!/^\d+(\.\d+)?$/.test(normalized)) return;
-    appendFormulaToken(`CONST:${normalized}`);
+    insertFormulaToken(`CONST:${normalized}`);
     setConstantDraft('');
   };
   const saveFormula = () => {
@@ -249,33 +303,34 @@ const SalarySystem = () => {
       </TableBody></Table></TableContainer></Paper>}
 
     <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('계산 방식 설정')} · {t(selected.name)}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
-      <Alert severity="info">{t('모든 지급 방식은 아래 모듈의 조합으로 만듭니다. 기준 근무일수는 선택 월의 근무요일에서 등록 공휴일을 제외해 서버가 계산합니다.')}</Alert>
-
       <Paper variant="outlined" sx={{ p: 2.5, minHeight: 96, bgcolor: 'action.hover', borderStyle: 'dashed' }}>
         <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}>
           <FunctionsIcon fontSize="small" color="primary" sx={{ mr: 1 }} />
           <Typography variant="subtitle2" fontWeight={700}>{t('계산식')}</Typography>
-          <Tooltip title={t('전체 지우기')}><span style={{ marginLeft: 'auto' }}>
-            <IconButton size="small" disabled={formulaDraft.length === 0} onClick={() => setFormulaDraft(isFirstTokenLocked ? ['GRADE_RATE'] : [])}><ClearAllIcon fontSize="small" /></IconButton>
+          <Tooltip title={t('초기화')}><span style={{ marginLeft: 'auto' }}>
+            <IconButton size="small" disabled={formulaDraft.length === (isFirstTokenLocked ? 1 : 0)} onClick={resetFormulaDraft}><RestartAltIcon fontSize="small" /></IconButton>
           </span></Tooltip>
         </Stack>
-        <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" alignItems="center">
+        <Stack direction="row" spacing={0} useFlexGap flexWrap="wrap" alignItems="center">
           {formulaDraft.length === 0
             ? <Typography color="text.secondary" variant="body2">{t('아래 모듈을 눌러 계산식을 만드세요.')}</Typography>
-            : formulaDraft.map((token, index) => {
+            : <>
+              {minCursorIndex === 0 && <FormulaCursorSlot position={0} active={cursorIndex === 0} onSelect={setCursorIndex} />}
+              {formulaDraft.map((token, index) => {
                 const operand = isOperandToken(token);
                 const removable = !(index === 0 && isFirstTokenLocked);
-                return <Chip
-                  key={`${token}-${index}`}
-                  label={formulaTokenLabel(token, t)}
-                  onDelete={removable ? () => removeFormulaToken(index) : undefined}
-                  color={operand ? 'primary' : 'default'}
-                  variant={operand ? 'filled' : 'outlined'}
-                  sx={operand
-                    ? { fontWeight: 600 }
-                    : { fontWeight: 700, color: 'text.secondary', bgcolor: 'background.paper' }}
-                />;
+                return <React.Fragment key={`${token}-${index}`}>
+                  <Chip
+                    label={formulaTokenLabel(token, t)}
+                    onDelete={removable ? () => removeFormulaToken(index) : undefined}
+                    sx={operand
+                      ? { fontWeight: 600, color: 'primary.dark', bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12), '& .MuiChip-deleteIcon': { color: 'primary.main' } }
+                      : { fontWeight: 700, color: 'text.secondary', bgcolor: 'background.paper' }}
+                  />
+                  <FormulaCursorSlot position={index + 1} active={cursorIndex === index + 1} onSelect={setCursorIndex} />
+                </React.Fragment>;
               })}
+            </>}
         </Stack>
       </Paper>
 
@@ -286,7 +341,7 @@ const SalarySystem = () => {
             {FORMULA_PARAMETER_GROUPS.map((group) => <Box key={group.label}>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t(group.label)}</Typography>
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{group.keys.map((key) => <Tooltip key={key} title={t(FORMULA_PARAMETERS[key].hint || FORMULA_PARAMETERS[key].unit)}><span>
-                <Button size="small" variant="outlined" disabled={!canAppendOperand(formulaDraft)} onClick={() => appendFormulaToken(key)}>{t(FORMULA_PARAMETERS[key].label)} · {t(FORMULA_PARAMETERS[key].unit)}</Button>
+                <Button size="small" variant="outlined" disabled={!canInsertTokenAt(formulaDraft, cursorIndex, key)} onClick={() => insertFormulaToken(key)}>{t(FORMULA_PARAMETERS[key].label)} · {t(FORMULA_PARAMETERS[key].unit)}</Button>
               </span></Tooltip>)}</Stack>
             </Box>)}
           </Stack>
@@ -295,12 +350,12 @@ const SalarySystem = () => {
           <Paper variant="outlined" sx={{ p: 2 }}>
             <Typography fontWeight={700} sx={{ mb: 1 }}>{t('연산자')}</Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, mb: 1.5 }}>
-              {FORMULA_OPERATORS.map((operator) => <Button key={operator} size="small" variant="outlined" disabled={!canAppendOperatorToken(formulaDraft, operator)} onClick={() => appendFormulaToken(operator)}>{operator}</Button>)}
+              {FORMULA_OPERATORS.map((operator) => <Button key={operator} size="small" variant="outlined" disabled={!canInsertTokenAt(formulaDraft, cursorIndex, operator)} onClick={() => insertFormulaToken(operator)}>{operator}</Button>)}
             </Box>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t('숫자 상수')}</Typography>
             <Stack spacing={1}>
               <TextField fullWidth size="small" value={constantDraft} onChange={(e) => setConstantDraft(e.target.value)} placeholder={t('예: 할증률 1.5')} inputProps={{ inputMode: 'decimal' }} />
-              <Button fullWidth variant="outlined" disabled={!canAppendOperand(formulaDraft) || !/^\d+(\.\d+)?$/.test(String(constantDraft || '').trim())} onClick={appendFormulaConstant}>{t('상수 추가')}</Button>
+              <Button fullWidth variant="outlined" disabled={!canInsertTokenAt(formulaDraft, cursorIndex, 'CONST:0') || !/^\d+(\.\d+)?$/.test(String(constantDraft || '').trim())} onClick={appendFormulaConstant}>{t('상수 추가')}</Button>
             </Stack>
           </Paper>
           <Paper variant="outlined" sx={{ p: 2 }}>
