@@ -6,6 +6,7 @@ import {
   TextField, Tooltip, Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import ClearAllIcon from '@mui/icons-material/ClearAll';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import HistoryIcon from '@mui/icons-material/History';
 import FunctionsIcon from '@mui/icons-material/Functions';
@@ -62,7 +63,7 @@ const DEFAULT_ITEMS = [
   item('housing', '주거수당', 'ALLOWANCE'),
   item('language', '어학수당', 'ALLOWANCE'),
   item('holiday', '휴일근무수당', 'ALLOWANCE', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'HOLIDAY_HOURS', '×', 'CONST:1.5'] }),
-  item('attendance', '만근수당', 'ALLOWANCE', 'MONTHLY', { formula: ['FULL_ATTENDANCE_FACTOR', '×', 'GRADE_RATE'] }),
+  item('attendance', '만근수당', 'ALLOWANCE', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'FULL_ATTENDANCE_FACTOR'] }),
   item('seniority', '근속수당', 'ALLOWANCE', 'SEMIANNUAL', { formula: ['GRADE_RATE', '×', 'TENURE_YEARS'], capValue: '5' }),
   item('overPlan', '생산 목표 초과 달성 성과급', 'INCENTIVE', 'MONTHLY', { formula: ['PRODUCTION_ALLOWANCE'] }),
 ];
@@ -78,6 +79,29 @@ const formulaTokenLabel = (token, t) => token.startsWith('CONST:')
   ? token.slice(6)
   : t(FORMULA_PARAMETERS[token]?.label || token);
 const formulaLabel = (formula = [], t) => formula.map((token) => formulaTokenLabel(token, t)).join(' ');
+
+// 계산식은 "파라미터/상수(피연산자) - 연산자 - 파라미터/상수 - 연산자 ..." 순서만 허용한다.
+// 상수는 파라미터와 같은 피연산자 취급이라 서로 자리를 대신할 수 있다.
+const isOperandToken = (token) => typeof token === 'string' && (token.startsWith('CONST:') || Boolean(FORMULA_PARAMETERS[token]));
+const isOperatorSymbolToken = (token) => token === '+' || token === '−' || token === '×' || token === '÷';
+const canAppendOperand = (formula) => {
+  const last = formula[formula.length - 1];
+  return formula.length === 0 || isOperatorSymbolToken(last) || last === '(';
+};
+const canAppendOperatorToken = (formula, token) => {
+  if (token === '(') return canAppendOperand(formula);
+  if (formula.length === 0) return false;
+  const last = formula[formula.length - 1];
+  return isOperandToken(last) || last === ')';
+};
+// 일반(GENERAL)/수당(OUTPUT) 항목의 급여는 결국 직급별 단가에서 출발하므로, 생산수당처럼
+// 외부에서 이미 계산된 값을 그대로 지급하는 항목(INCENTIVE)이 아니면 계산식의 첫 토큰을
+// 직급별 단가로 고정한다.
+const ensureFormulaStartsWithGradeRate = (formula, category) => {
+  const normalized = Array.isArray(formula) ? formula : [];
+  if (category === 'INCENTIVE' || normalized[0] === 'GRADE_RATE') return normalized;
+  return ['GRADE_RATE', ...normalized];
+};
 
 const SalarySystem = () => {
   const { activeOrgId } = useAuth();
@@ -157,11 +181,12 @@ const SalarySystem = () => {
     setSelectedId('baseSalary');
   };
   const openFormulaDialog = () => {
-    setFormulaDraft([...(selected.formula || [])]);
+    setFormulaDraft(ensureFormulaStartsWithGradeRate(selected.formula, selected.category));
     setFormulaSettingsDraft({ ...selected });
     setConstantDraft('');
     setFormulaDialogOpen(true);
   };
+  const isFirstTokenLocked = selected.category !== 'INCENTIVE';
   const appendFormulaToken = (token) => setFormulaDraft((tokens) => [...tokens, token]);
   const removeFormulaToken = (index) => setFormulaDraft((tokens) => tokens.filter((_token, tokenIndex) => tokenIndex !== index));
   const appendFormulaConstant = () => {
@@ -223,31 +248,64 @@ const SalarySystem = () => {
       </TableBody></Table></TableContainer></Paper>}
 
     <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('계산 방식 설정')} · {t(selected.name)}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
-      <Paper variant="outlined" sx={{ p: 2 }}><Typography fontWeight={700} sx={{ mb: 1.5 }}>{t('지급 설정')}</Typography><Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(180px, 1fr))' }, gap: 1.5 }}>{calculationFields(formulaSettingsDraft, (field, value) => setFormulaSettingsDraft((prev) => ({ ...prev, [field]: value })))}</Box></Paper>
       <Alert severity="info">{t('모든 지급 방식은 아래 모듈의 조합으로 만듭니다. 기준 근무일수는 선택 월의 근무요일에서 등록 공휴일을 제외해 서버가 계산합니다.')}</Alert>
-      <Paper variant="outlined" sx={{ p: 2, minHeight: 96 }}>
-        <Stack direction="row" alignItems="center" sx={{ mb: 1 }}>
-          <Typography variant="subtitle2">{t('계산식 작업 영역')}</Typography>
-          <Button size="small" color="inherit" sx={{ ml: 'auto' }} disabled={formulaDraft.length === 0} onClick={() => setFormulaDraft([])}>{t('전체 지우기')}</Button>
+
+      <Paper variant="outlined" sx={{ p: 2.5, minHeight: 96, bgcolor: 'action.hover', borderStyle: 'dashed' }}>
+        <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}>
+          <FunctionsIcon fontSize="small" color="primary" sx={{ mr: 1 }} />
+          <Typography variant="subtitle2" fontWeight={700}>{t('계산식')}</Typography>
+          <Tooltip title={t('전체 지우기')}><span style={{ marginLeft: 'auto' }}>
+            <IconButton size="small" disabled={formulaDraft.length === 0} onClick={() => setFormulaDraft(isFirstTokenLocked ? ['GRADE_RATE'] : [])}><ClearAllIcon fontSize="small" /></IconButton>
+          </span></Tooltip>
         </Stack>
-        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{formulaDraft.length === 0 ? <Typography color="text.secondary">{t('아래 모듈을 눌러 계산식을 만드세요.')}</Typography> : formulaDraft.map((token, index) => <Chip key={`${token}-${index}`} label={formulaTokenLabel(token, t)} onDelete={() => removeFormulaToken(index)} color={FORMULA_PARAMETERS[token] ? 'primary' : 'default'} variant={FORMULA_PARAMETERS[token] ? 'filled' : 'outlined'} />)}</Stack>
+        <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" alignItems="center">
+          {formulaDraft.length === 0
+            ? <Typography color="text.secondary" variant="body2">{t('아래 모듈을 눌러 계산식을 만드세요.')}</Typography>
+            : formulaDraft.map((token, index) => {
+                const operand = isOperandToken(token);
+                const removable = !(index === 0 && isFirstTokenLocked);
+                return <Chip
+                  key={`${token}-${index}`}
+                  label={formulaTokenLabel(token, t)}
+                  onDelete={removable ? () => removeFormulaToken(index) : undefined}
+                  color={operand ? 'primary' : 'default'}
+                  variant={operand ? 'filled' : 'outlined'}
+                  sx={operand
+                    ? { fontWeight: 600 }
+                    : { fontWeight: 700, color: 'text.secondary', bgcolor: 'background.paper' }}
+                />;
+              })}
+        </Stack>
       </Paper>
+
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' }, gap: 2 }}>
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Typography fontWeight={700} sx={{ mb: 1.5 }}>{t('파라미터 모듈')}</Typography>
           <Stack spacing={1.5}>
             {FORMULA_PARAMETER_GROUPS.map((group) => <Box key={group.label}>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t(group.label)}</Typography>
-              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{group.keys.map((key) => <Tooltip key={key} title={t(FORMULA_PARAMETERS[key].hint || FORMULA_PARAMETERS[key].unit)}><Button size="small" variant="outlined" onClick={() => appendFormulaToken(key)}>{t(FORMULA_PARAMETERS[key].label)} · {t(FORMULA_PARAMETERS[key].unit)}</Button></Tooltip>)}</Stack>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{group.keys.map((key) => <Tooltip key={key} title={t(FORMULA_PARAMETERS[key].hint || FORMULA_PARAMETERS[key].unit)}><span>
+                <Button size="small" variant="outlined" disabled={!canAppendOperand(formulaDraft)} onClick={() => appendFormulaToken(key)}>{t(FORMULA_PARAMETERS[key].label)} · {t(FORMULA_PARAMETERS[key].unit)}</Button>
+              </span></Tooltip>)}</Stack>
             </Box>)}
           </Stack>
         </Paper>
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          <Typography fontWeight={700} sx={{ mb: 1 }}>{t('연산자')}</Typography>
-          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 1.5 }}>{FORMULA_OPERATORS.map((operator) => <Button key={operator} size="small" variant="outlined" onClick={() => appendFormulaToken(operator)}>{operator}</Button>)}</Stack>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t('숫자 상수')}</Typography>
-          <Stack direction="row" spacing={1}><TextField size="small" value={constantDraft} onChange={(e) => setConstantDraft(e.target.value)} placeholder={t('예: 할증률 1.5')} inputProps={{ inputMode: 'decimal' }} /><Button variant="outlined" onClick={appendFormulaConstant}>{t('상수 추가')}</Button></Stack>
-        </Paper>
+        <Stack spacing={2}>
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Typography fontWeight={700} sx={{ mb: 1 }}>{t('연산자')}</Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, mb: 1.5 }}>
+              {FORMULA_OPERATORS.map((operator) => <Button key={operator} size="small" variant="outlined" disabled={!canAppendOperatorToken(formulaDraft, operator)} onClick={() => appendFormulaToken(operator)}>{operator}</Button>)}
+            </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t('숫자 상수')}</Typography>
+            <Stack spacing={1}>
+              <TextField fullWidth size="small" value={constantDraft} onChange={(e) => setConstantDraft(e.target.value)} placeholder={t('예: 할증률 1.5')} inputProps={{ inputMode: 'decimal' }} />
+              <Button fullWidth variant="outlined" disabled={!canAppendOperand(formulaDraft) || !/^\d+(\.\d+)?$/.test(String(constantDraft || '').trim())} onClick={appendFormulaConstant}>{t('상수 추가')}</Button>
+            </Stack>
+          </Paper>
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Stack spacing={1.5}>{calculationFields(formulaSettingsDraft, (field, value) => setFormulaSettingsDraft((prev) => ({ ...prev, [field]: value })))}</Stack>
+          </Paper>
+        </Stack>
       </Box>
     </Stack></DialogContent><DialogActions><Button variant="contained" onClick={saveFormula} disabled={formulaDraft.length === 0}>{t('계산식 적용')}</Button></DialogActions></Dialog>
 
