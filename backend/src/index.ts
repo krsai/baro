@@ -861,7 +861,11 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "EmployeeCompensationPolicy", columnName: "incentive" },
   { tableName: "SalaryItem", columnName: "formula" },
   { tableName: "SalaryItemRate", columnName: "amount" },
+  { tableName: "SalarySystemVersion", columnName: "effectiveMonth" },
   { tableName: "SalarySystemVersion", columnName: "snapshot" },
+] as const;
+const STARTUP_REQUIRED_NULLABLE_RUNTIME_COLUMNS = [
+  { tableName: "SalarySystemVersion", columnName: "effectiveMonth" },
 ] as const;
 // createdByEmployeeId/updatedByEmployeeId is an audit FK pattern applied to 24+
 // tables (migration_fix.sql's "audited_tables" DO block) plus SystemSetting
@@ -34527,6 +34531,27 @@ const findForbiddenRuntimeSchemaColumns = async (): Promise<string[]> => {
     .filter((columnKey) => available.has(columnKey));
 };
 
+const findNonNullableRuntimeSchemaColumns = async (): Promise<string[]> => {
+  const targetTableNames = Array.from(
+    new Set(STARTUP_REQUIRED_NULLABLE_RUNTIME_COLUMNS.map((column) => column.tableName))
+  );
+  const rows = await prisma.$queryRaw<
+    Array<{ table_name: string; column_name: string; is_nullable: string }>
+  >`
+    SELECT table_name, column_name, is_nullable
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = ANY(${targetTableNames}::text[])
+  `;
+  const nullableByColumn = new Map(
+    rows.map((row) => [`${row.table_name}.${row.column_name}`, row.is_nullable === "YES"])
+  );
+  return STARTUP_REQUIRED_NULLABLE_RUNTIME_COLUMNS
+    .map((column) => `${column.tableName}.${column.columnName}`)
+    .filter((columnKey) => nullableByColumn.get(columnKey) === false)
+    .map((columnKey) => `${columnKey} must be nullable`);
+};
+
 const findForbiddenRuntimeSchemaTables = async (): Promise<string[]> => {
   const targetTableNames = Array.from(STARTUP_FORBIDDEN_RUNTIME_TABLES);
   if (targetTableNames.length === 0) return [];
@@ -34560,6 +34585,7 @@ const findMissingRuntimeSchemaConstraints = async (): Promise<string[]> => {
 const findRuntimeSchemaDriftReasons = async (): Promise<string[]> => {
   const driftReasons = await findMissingRuntimeSchemaColumns();
   driftReasons.push(...await findMissingRuntimeSchemaConstraints());
+  driftReasons.push(...await findNonNullableRuntimeSchemaColumns());
   const forbiddenColumns = await findForbiddenRuntimeSchemaColumns();
   forbiddenColumns.forEach((column) => {
     driftReasons.push(`${column} still present`);
