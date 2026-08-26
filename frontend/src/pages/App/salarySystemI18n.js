@@ -1,6 +1,6 @@
 const translations = {
   '일반': ['General', 'Thường'], '수당': ['Output', 'Sản lượng'],
-  '기본급': ['Base salary', 'Lương cơ bản'], '고정수당': ['Fixed allowances', 'Phụ cấp cố định'], '변동수당': ['Variable allowances', 'Phụ cấp biến đổi'],
+  '기본급': ['Base salary', 'Lương cơ bản'], '급여 수당': ['Allowances', 'Phụ cấp'], '성과급': ['Incentives', 'Thưởng hiệu suất'],
   'VND / 월': ['VND / month', 'VND / tháng'], 'VND / 근무일': ['VND / workday', 'VND / ngày công'], 'VND / 근무시간': ['VND / work hour', 'VND / giờ làm'],
   'VND / 휴일근무일': ['VND / holiday worked', 'VND / ngày làm lễ'], 'VND / 건': ['VND / event', 'VND / lần'], 'VND / 근속연수': ['VND / service year', 'VND / năm thâm niên'],
   '기본급의 %': ['% of base salary', '% lương cơ bản'], '직접 입력': ['Manual entry', 'Nhập trực tiếp'],
@@ -14,7 +14,7 @@ const translations = {
   '점심수당': ['Lunch allowance', 'Phụ cấp ăn trưa'], '통신비': ['Communication allowance', 'Phụ cấp điện thoại'], '교통비': ['Transportation allowance', 'Phụ cấp đi lại'],
   '직책수당': ['Position allowance', 'Phụ cấp chức vụ'], '주거수당': ['Housing allowance', 'Phụ cấp nhà ở'], '어학수당': ['Language allowance', 'Phụ cấp ngoại ngữ'],
   '휴일근무수당': ['Holiday work allowance', 'Phụ cấp làm ngày lễ'], '만근수당': ['Full-attendance allowance', 'Phụ cấp chuyên cần'], '근속수당': ['Seniority allowance', 'Phụ cấp thâm niên'],
-  '생산 목표 초과 달성 수당': ['Production target bonus', 'Thưởng vượt mục tiêu sản xuất'],
+  '생산 목표 초과 달성 성과급': ['Production target incentive', 'Thưởng hiệu suất vượt mục tiêu sản xuất'],
   '급여 기준을 불러오지 못했습니다.': ['Could not load salary settings.', 'Không thể tải thiết lập lương.'],
   '화면 시안에 항목을 추가했습니다. 서버 저장은 백엔드 구현 후 연결됩니다.': ['The item was added to this UI preview. Server persistence will be connected after the backend is implemented.', 'Đã thêm khoản mục vào bản xem trước giao diện. Việc lưu trên máy chủ sẽ được kết nối sau khi hoàn thiện backend.'],
   '적용 급여 타입': ['Applicable pay types', 'Loại lương áp dụng'], '정산 주기': ['Payment cycle', 'Chu kỳ thanh toán'], '단가 기준': ['Rate basis', 'Cơ sở đơn giá'],
@@ -31,7 +31,7 @@ const translations = {
   '급여체계 적용 이력': ['Salary structure history', 'Lịch sử áp dụng cơ cấu lương'], '적용 시점별 급여 기준을 조회하고 새 버전의 기준으로 복사합니다.': ['Review salary settings by effective date and copy them into a new version.', 'Xem thiết lập lương theo thời điểm áp dụng và sao chép làm cơ sở cho phiên bản mới.'],
   '버전': ['Version', 'Phiên bản'], '적용 기간': ['Effective period', 'Thời gian áp dụng'], '상태': ['Status', 'Trạng thái'], '비고': ['Notes', 'Ghi chú'], '작업': ['Action', 'Thao tác'],
   '현재 기준': ['Current settings', 'Thiết lập hiện tại'], '적용 예정': ['Scheduled', 'Sắp áp dụng'], '일반·수당 대상과 복합 계산 단위를 편집 중인 기준': ['Draft settings for General/Output targets and formula components', 'Thiết lập đang sửa cho đối tượng Thường/Sản lượng và thành phần công thức'], '편집': ['Edit', 'Sửa'],
-  '기존 기준': ['Existing settings', 'Thiết lập hiện có'], '최초 적용 ~ 현재': ['First applied ~ present', 'Áp dụng lần đầu ~ hiện tại'], '사용 중': ['In use', 'Đang sử dụng'], '기본급·고정수당·변동수당': ['Base salary · fixed allowances · variable allowances', 'Lương cơ bản · phụ cấp cố định · phụ cấp biến đổi'], '현재 서버에 저장된 기존 기준': ['Existing settings currently stored on the server', 'Thiết lập hiện có đang lưu trên máy chủ'], '조회': ['View', 'Xem'],
+  '기존 기준': ['Existing settings', 'Thiết lập hiện có'], '최초 적용 ~ 현재': ['First applied ~ present', 'Áp dụng lần đầu ~ hiện tại'], '사용 중': ['In use', 'Đang sử dụng'], '기본급·수당·성과급': ['Base salary · allowances · incentives', 'Lương cơ bản · phụ cấp · thưởng hiệu suất'], '현재 서버에 저장된 기존 기준': ['Existing settings currently stored on the server', 'Thiết lập hiện có đang lưu trên máy chủ'], '조회': ['View', 'Xem'],
   '계산 방식 설정': ['Configure formula', 'Thiết lập công thức'], '모든 지급 방식은 아래 모듈의 조합으로 만듭니다. 기준 근무일수는 선택 월의 근무요일에서 등록 공휴일을 제외해 서버가 계산합니다.': ['Build every payment method from the modules below. The server calculates scheduled workdays from working weekdays minus registered holidays.', 'Mọi phương thức chi trả được tạo từ các mô-đun dưới đây. Máy chủ tính ngày công tiêu chuẩn từ ngày làm việc và loại trừ ngày lễ đã đăng ký.'],
   '계산식 작업 영역': ['Formula workspace', 'Khu vực công thức'], '아래 모듈을 눌러 계산식을 만드세요.': ['Select modules below to build a formula.', 'Chọn các mô-đun bên dưới để tạo công thức.'], '파라미터 모듈': ['Parameter modules', 'Mô-đun tham số'], '연산자': ['Operators', 'Toán tử'],
   '숫자 상수': ['Numeric constant', 'Hằng số'], '예: 할증률 1.5': ['e.g. multiplier 1.5', 'VD: hệ số 1.5'], '상수 추가': ['Add constant', 'Thêm hằng số'], '전체 지우기': ['Clear all', 'Xóa tất cả'], '완성된 식': ['Completed formula', 'Công thức hoàn chỉnh'], '취소': ['Cancel', 'Hủy'], '계산식 적용': ['Apply formula', 'Áp dụng công thức'],
@@ -39,6 +39,7 @@ const translations = {
 };
 
 export const salaryText = (text, languageCode) => {
-  if (languageCode === 'ko' || !translations[text]) return text;
+  if (languageCode === 'ko') return text === '급여 수당' ? '수당' : text;
+  if (!translations[text]) return text;
   return translations[text][languageCode === 'vi' ? 1 : 0];
 };

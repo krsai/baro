@@ -4713,7 +4713,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 INSERT INTO "EmployeeGradeSet" ("orgId", "code", "name", "updatedAt") SELECT "id", 'CL', 'CL', CURRENT_TIMESTAMP FROM "Organization" ON CONFLICT ("orgId", "code") DO NOTHING;
 INSERT INTO "EmployeeGrade" ("orgId", "setId", "code", "name", "nameKo", "nameEn", "nameVi", "sortOrder", "isDefault", "updatedAt")
 SELECT s."orgId", s."id", v.code, v.name_ko, v.name_ko, v.name_en, v.name_vi, v.sort_order, v.is_default, CURRENT_TIMESTAMP FROM "EmployeeGradeSet" s
-CROSS JOIN (VALUES ('CL1','일반','General','Nhân viên',1,true), ('CL2','선임','Senior','Chuyên viên cao cấp',2,false), ('CL3','책임','Principal','Chuyên viên chính',3,false), ('CL4','수석','Master','Chuyên gia',4,false)) v(code,name_ko,name_en,name_vi,sort_order,is_default)
+CROSS JOIN (VALUES ('CL1','일반','Staff','Nhân viên',1,true), ('CL2','선임','Senior','Chuyên viên cao cấp',2,false), ('CL3','책임','Principal','Chuyên viên chính',3,false), ('CL4','수석','Master','Chuyên gia',4,false)) v(code,name_ko,name_en,name_vi,sort_order,is_default)
 WHERE s."code"='CL' ON CONFLICT ("orgId", "code") DO NOTHING;
 ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "gradeId" INTEGER;
 UPDATE "Employee" e SET "gradeId"=g."id" FROM "EmployeeGrade" g WHERE e."gradeId" IS NULL AND g."orgId"=e."orgId" AND g."isDefault"=true;
@@ -4728,7 +4728,7 @@ BEGIN
     INSERT INTO "EmployeeGradeSet" ("orgId","code","name","updatedAt") VALUES (NEW."orgId",'CL','CL',CURRENT_TIMESTAMP) ON CONFLICT ("orgId","code") DO NOTHING;
     INSERT INTO "EmployeeGrade" ("orgId","setId","code","name","nameKo","nameEn","nameVi","sortOrder","isDefault","updatedAt")
     SELECT s."orgId",s."id",v.code,v.name_ko,v.name_ko,v.name_en,v.name_vi,v.sort_order,v.is_default,CURRENT_TIMESTAMP FROM "EmployeeGradeSet" s
-    CROSS JOIN (VALUES ('CL1','일반','General','Nhân viên',1,true),('CL2','선임','Senior','Chuyên viên cao cấp',2,false),('CL3','책임','Principal','Chuyên viên chính',3,false),('CL4','수석','Master','Chuyên gia',4,false)) v(code,name_ko,name_en,name_vi,sort_order,is_default)
+    CROSS JOIN (VALUES ('CL1','일반','Staff','Nhân viên',1,true),('CL2','선임','Senior','Chuyên viên cao cấp',2,false),('CL3','책임','Principal','Chuyên viên chính',3,false),('CL4','수석','Master','Chuyên gia',4,false)) v(code,name_ko,name_en,name_vi,sort_order,is_default)
     WHERE s."orgId"=NEW."orgId" AND s."code"='CL' ON CONFLICT ("orgId","code") DO NOTHING;
     SELECT "id" INTO NEW."gradeId" FROM "EmployeeGrade" WHERE "orgId"=NEW."orgId" AND "isDefault"=true LIMIT 1;
   END IF;
@@ -4773,16 +4773,33 @@ CREATE TABLE IF NOT EXISTS "EmployeeCompensationPolicy" (
   "orgRole" "OrgUserRole" NOT NULL,
   "gradeId" INTEGER NOT NULL,
   "baseSalary" INTEGER NOT NULL DEFAULT 0,
-  "fixedAllowance" INTEGER NOT NULL DEFAULT 0,
-  "variableAllowance" INTEGER NOT NULL DEFAULT 0,
+  "allowance" INTEGER NOT NULL DEFAULT 0,
+  "incentive" INTEGER NOT NULL DEFAULT 0,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "EmployeeCompensationPolicy_orgId_orgRole_gradeId_key" ON "EmployeeCompensationPolicy"("orgId","orgRole","gradeId");
 CREATE INDEX IF NOT EXISTS "EmployeeCompensationPolicy_orgId_gradeId_idx" ON "EmployeeCompensationPolicy"("orgId","gradeId");
+ALTER TABLE "EmployeeCompensationPolicy" ADD COLUMN IF NOT EXISTS "allowance" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "EmployeeCompensationPolicy" ADD COLUMN IF NOT EXISTS "incentive" INTEGER NOT NULL DEFAULT 0;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='EmployeeCompensationPolicy' AND column_name='fixedAllowance'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='EmployeeCompensationPolicy' AND column_name='variableAllowance'
+  ) THEN
+    UPDATE "EmployeeCompensationPolicy"
+    SET "allowance" = "fixedAllowance" + "variableAllowance";
+  END IF;
+END $$;
+ALTER TABLE "EmployeeCompensationPolicy" DROP COLUMN IF EXISTS "fixedAllowance";
+ALTER TABLE "EmployeeCompensationPolicy" DROP COLUMN IF EXISTS "variableAllowance";
 DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_gradeId_fkey" FOREIGN KEY ("gradeId") REFERENCES "EmployeeGrade"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_nonnegative_check" CHECK ("baseSalary" >= 0 AND "fixedAllowance" >= 0 AND "variableAllowance" >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_nonnegative_components_check" CHECK ("baseSalary" >= 0 AND "allowance" >= 0 AND "incentive" >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- 2026-08-16: enforce organization-scoped employee role/grade relationships
 CREATE UNIQUE INDEX IF NOT EXISTS "EmployeeGrade_orgId_id_key" ON "EmployeeGrade"("orgId","id");
@@ -4803,9 +4820,10 @@ ALTER TABLE "EmployeeGrade"
   ADD COLUMN IF NOT EXISTS "nameVi" TEXT;
 UPDATE "EmployeeGrade" SET
   "nameKo"=CASE "code" WHEN 'CL1' THEN '일반' WHEN 'CL2' THEN '선임' WHEN 'CL3' THEN '책임' WHEN 'CL4' THEN '수석' ELSE "name" END,
-  "nameEn"=CASE "code" WHEN 'CL1' THEN 'General' WHEN 'CL2' THEN 'Senior' WHEN 'CL3' THEN 'Principal' WHEN 'CL4' THEN 'Master' ELSE COALESCE("nameEn", "name") END,
+  "nameEn"=CASE "code" WHEN 'CL1' THEN 'Staff' WHEN 'CL2' THEN 'Senior' WHEN 'CL3' THEN 'Principal' WHEN 'CL4' THEN 'Master' ELSE COALESCE("nameEn", "name") END,
   "nameVi"=CASE "code" WHEN 'CL1' THEN 'Nhân viên' WHEN 'CL2' THEN 'Chuyên viên cao cấp' WHEN 'CL3' THEN 'Chuyên viên chính' WHEN 'CL4' THEN 'Chuyên gia' ELSE COALESCE("nameVi", "name") END
 WHERE "nameKo" IS NULL OR "nameEn" IS NULL OR "nameVi" IS NULL;
+UPDATE "EmployeeGrade" SET "nameEn"='Staff' WHERE "code"='CL1' AND "nameEn"='General';
 ALTER TABLE "EmployeeGrade" ALTER COLUMN "nameKo" SET NOT NULL, ALTER COLUMN "nameEn" SET NOT NULL, ALTER COLUMN "nameVi" SET NOT NULL;
 CREATE OR REPLACE FUNCTION baro_assign_default_employee_grade() RETURNS trigger AS $$
 BEGIN
@@ -4813,7 +4831,7 @@ BEGIN
     INSERT INTO "EmployeeGradeSet" ("orgId","code","name","updatedAt") VALUES (NEW."orgId",'CL','CL',CURRENT_TIMESTAMP) ON CONFLICT ("orgId","code") DO NOTHING;
     INSERT INTO "EmployeeGrade" ("orgId","setId","code","name","nameKo","nameEn","nameVi","sortOrder","isDefault","updatedAt")
     SELECT s."orgId",s."id",v.code,v.name_ko,v.name_ko,v.name_en,v.name_vi,v.sort_order,v.is_default,CURRENT_TIMESTAMP FROM "EmployeeGradeSet" s
-    CROSS JOIN (VALUES ('CL1','일반','General','Nhân viên',1,true),('CL2','선임','Senior','Chuyên viên cao cấp',2,false),('CL3','책임','Principal','Chuyên viên chính',3,false),('CL4','수석','Master','Chuyên gia',4,false)) v(code,name_ko,name_en,name_vi,sort_order,is_default)
+    CROSS JOIN (VALUES ('CL1','일반','Staff','Nhân viên',1,true),('CL2','선임','Senior','Chuyên viên cao cấp',2,false),('CL3','책임','Principal','Chuyên viên chính',3,false),('CL4','수석','Master','Chuyên gia',4,false)) v(code,name_ko,name_en,name_vi,sort_order,is_default)
     WHERE s."orgId"=NEW."orgId" AND s."code"='CL' ON CONFLICT ("orgId","code") DO NOTHING;
     SELECT "id" INTO NEW."gradeId" FROM "EmployeeGrade" WHERE "orgId"=NEW."orgId" AND "isDefault"=true LIMIT 1;
   END IF;

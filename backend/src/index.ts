@@ -857,8 +857,8 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "EmployeeCompensationPolicy", columnName: "orgRole" },
   { tableName: "EmployeeCompensationPolicy", columnName: "gradeId" },
   { tableName: "EmployeeCompensationPolicy", columnName: "baseSalary" },
-  { tableName: "EmployeeCompensationPolicy", columnName: "fixedAllowance" },
-  { tableName: "EmployeeCompensationPolicy", columnName: "variableAllowance" },
+  { tableName: "EmployeeCompensationPolicy", columnName: "allowance" },
+  { tableName: "EmployeeCompensationPolicy", columnName: "incentive" },
 ] as const;
 // createdByEmployeeId/updatedByEmployeeId is an audit FK pattern applied to 24+
 // tables (migration_fix.sql's "audited_tables" DO block) plus SystemSetting
@@ -881,6 +881,8 @@ const STARTUP_REQUIRED_RUNTIME_AUDIT_FK_COLUMNS = Prisma.dmmf.datamodel.models.f
     ).map((columnName) => ({ tableName: model.name, columnName }))
 );
 const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
+  { tableName: "EmployeeCompensationPolicy", columnName: "fixedAllowance" },
+  { tableName: "EmployeeCompensationPolicy", columnName: "variableAllowance" },
   { tableName: "Employee", columnName: "lineName" },
   { tableName: "Employee", columnName: "orgMembershipId" },
   { tableName: "Employee", columnName: "fixedSalary" },

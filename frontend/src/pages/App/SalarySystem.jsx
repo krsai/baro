@@ -20,8 +20,8 @@ const PAY_TYPES = {
   OUTPUT: { label: '수당', color: 'warning' },
 };
 const PAY_TYPE_ORDER = ['GENERAL', 'OUTPUT'];
-const CATEGORIES = { BASE: '기본급', FIXED: '고정수당', VARIABLE: '변동수당' };
-const CATEGORY_COLORS = { BASE: 'primary', FIXED: 'success', VARIABLE: 'warning' };
+const CATEGORIES = { BASE: '기본급', ALLOWANCE: '급여 수당', INCENTIVE: '성과급' };
+const CATEGORY_COLORS = { BASE: 'primary', ALLOWANCE: 'success', INCENTIVE: 'warning' };
 const RATE_BASES = {
   PER_MONTH: 'VND / 월', PER_WORKDAY: 'VND / 근무일', PER_WORK_HOUR: 'VND / 근무시간',
   PER_HOLIDAY_DAY: 'VND / 휴일근무일', PER_EVENT: 'VND / 건',
@@ -44,21 +44,21 @@ const FORMULA_PARAMETERS = {
 };
 const FORMULA_OPERATORS = ['+', '−', '×', '÷', '(', ')', 'MIN', 'MAX'];
 const DEFAULT_FORMULA = ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS', '÷', 'SCHEDULED_WORKDAYS'];
-const DEFAULT_DRAFT = { name: '', category: 'FIXED', payTypes: ['GENERAL', 'OUTPUT'], formula: ['GRADE_RATE'], rateBasis: 'PER_MONTH', payCycle: 'MONTHLY', capValue: '' };
+const DEFAULT_DRAFT = { name: '', category: 'ALLOWANCE', payTypes: ['GENERAL', 'OUTPUT'], formula: ['GRADE_RATE'], rateBasis: 'PER_MONTH', payCycle: 'MONTHLY', capValue: '' };
 const item = (id, name, category, rateBasis, payCycle = 'MONTHLY', extra = {}) =>
   ({ id, name, category, payTypes: ['GENERAL', 'OUTPUT'], formula: ['GRADE_RATE'], rateBasis, payCycle, capValue: '', ...extra });
 const DEFAULT_ITEMS = [
   item('baseSalary', '기본급', 'BASE', 'PER_MONTH', 'MONTHLY', { required: true, formula: DEFAULT_FORMULA }),
-  item('lunch', '점심수당', 'FIXED', 'PER_WORKDAY', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS'] }),
-  item('phone', '통신비', 'FIXED', 'PER_MONTH'),
-  item('transport', '교통비', 'FIXED', 'PER_MONTH'),
-  item('position', '직책수당', 'FIXED', 'PER_MONTH'),
-  item('housing', '주거수당', 'FIXED', 'PER_MONTH'),
-  item('language', '어학수당', 'VARIABLE', 'PER_MONTH'),
-  item('holiday', '휴일근무수당', 'VARIABLE', 'PER_HOLIDAY_DAY', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'HOLIDAY_HOURS', '×', 'CONST:1.5'] }),
-  item('attendance', '만근수당', 'VARIABLE', 'PER_MONTH', 'MONTHLY', { formula: ['FULL_ATTENDANCE_FACTOR', '×', 'GRADE_RATE'] }),
-  item('seniority', '근속수당', 'VARIABLE', 'PER_TENURE_YEAR', 'SEMIANNUAL', { formula: ['GRADE_RATE', '×', 'TENURE_YEARS'], capValue: '5' }),
-  item('overPlan', '생산 목표 초과 달성 수당', 'VARIABLE', 'PER_EVENT', 'MONTHLY', { payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'] }),
+  item('lunch', '점심수당', 'ALLOWANCE', 'PER_WORKDAY', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS'] }),
+  item('phone', '통신비', 'ALLOWANCE', 'PER_MONTH'),
+  item('transport', '교통비', 'ALLOWANCE', 'PER_MONTH'),
+  item('position', '직책수당', 'ALLOWANCE', 'PER_MONTH'),
+  item('housing', '주거수당', 'ALLOWANCE', 'PER_MONTH'),
+  item('language', '어학수당', 'ALLOWANCE', 'PER_MONTH'),
+  item('holiday', '휴일근무수당', 'ALLOWANCE', 'PER_HOLIDAY_DAY', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'HOLIDAY_HOURS', '×', 'CONST:1.5'] }),
+  item('attendance', '만근수당', 'ALLOWANCE', 'PER_MONTH', 'MONTHLY', { formula: ['FULL_ATTENDANCE_FACTOR', '×', 'GRADE_RATE'] }),
+  item('seniority', '근속수당', 'ALLOWANCE', 'PER_TENURE_YEAR', 'SEMIANNUAL', { formula: ['GRADE_RATE', '×', 'TENURE_YEARS'], capValue: '5' }),
+  item('overPlan', '생산 목표 초과 달성 성과급', 'INCENTIVE', 'PER_EVENT', 'MONTHLY', { payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'] }),
 ];
 
 const money = (value) => {
@@ -105,7 +105,7 @@ const SalarySystem = () => {
         const key = `${payType}:${row.gradeId}`;
         if (!next[key]) {
           next[key] = {
-            baseSalary: money(row.baseSalary), fixedTotal: money(row.fixedAllowance), variableTotal: money(row.variableAllowance),
+            baseSalary: money(row.baseSalary), allowanceTotal: money(row.allowance), incentiveTotal: money(row.incentive),
           };
         }
       });
@@ -207,7 +207,7 @@ const SalarySystem = () => {
     </Stack> : <Paper variant="outlined"><Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Typography variant="h6" fontWeight={700}>{t('급여체계 적용 이력')}</Typography><Typography variant="body2" color="text.secondary">{t('적용 시점별 급여 기준을 조회하고 새 버전의 기준으로 복사합니다.')}</Typography></Box>
       <TableContainer><Table size="small"><TableHead><TableRow><TableCell>{t('버전')}</TableCell><TableCell>{t('적용 기간')}</TableCell><TableCell>{t('상태')}</TableCell><TableCell>{t('급여 항목')}</TableCell><TableCell>{t('비고')}</TableCell><TableCell align="right">{t('작업')}</TableCell></TableRow></TableHead><TableBody>
         <TableRow><TableCell sx={{ fontWeight: 700 }}>{t('현재 기준')}</TableCell><TableCell>{effectiveMonth} ~</TableCell><TableCell><Chip size="small" color="success" label={t('적용 예정')} /></TableCell><TableCell>{languageCode === 'ko' ? `${items.length}개` : `${items.length} ${t('개')}`}</TableCell><TableCell>{t('일반·수당 대상과 복합 계산 단위를 편집 중인 기준')}</TableCell><TableCell align="right"><Button size="small" onClick={() => setTab(0)}>{t('편집')}</Button></TableCell></TableRow>
-        <TableRow><TableCell sx={{ fontWeight: 700 }}>{t('기존 기준')}</TableCell><TableCell>{t('최초 적용 ~ 현재')}</TableCell><TableCell><Chip size="small" variant="outlined" label={t('사용 중')} /></TableCell><TableCell>{t('기본급·고정수당·변동수당')}</TableCell><TableCell>{t('현재 서버에 저장된 기존 기준')}</TableCell><TableCell align="right"><Button size="small" disabled>{t('조회')}</Button></TableCell></TableRow>
+        <TableRow><TableCell sx={{ fontWeight: 700 }}>{t('기존 기준')}</TableCell><TableCell>{t('최초 적용 ~ 현재')}</TableCell><TableCell><Chip size="small" variant="outlined" label={t('사용 중')} /></TableCell><TableCell>{t('기본급·수당·성과급')}</TableCell><TableCell>{t('현재 서버에 저장된 기존 기준')}</TableCell><TableCell align="right"><Button size="small" disabled>{t('조회')}</Button></TableCell></TableRow>
       </TableBody></Table></TableContainer></Paper>}
 
     <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('계산 방식 설정')} · {t(selected.name)}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>

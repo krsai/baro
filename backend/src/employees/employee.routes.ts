@@ -162,16 +162,16 @@ export const createEmployeeRouter = ({
     const gradeIds = new Set((await prisma.employeeGrade.findMany({ where: { orgId: organization.id, isActive: true }, select: { id: true } })).map((grade) => grade.id));
     const normalized = rows.map((row: any) => ({
       orgRole: String(row?.orgRole || "").trim().toUpperCase(), gradeId: Number(row?.gradeId),
-      baseSalary: Number(row?.baseSalary), fixedAllowance: Number(row?.fixedAllowance), variableAllowance: Number(row?.variableAllowance),
+      baseSalary: Number(row?.baseSalary), allowance: Number(row?.allowance), incentive: Number(row?.incentive),
     }));
     const keys = normalized.map((row: any) => `${row.orgRole}:${row.gradeId}`);
     if (new Set(keys).size !== keys.length || normalized.some((row: any) =>
       !allowedRoles.has(row.orgRole) || !gradeIds.has(row.gradeId)
-      || ![row.baseSalary, row.fixedAllowance, row.variableAllowance].every((amount) => Number.isSafeInteger(amount) && amount >= 0)
+      || ![row.baseSalary, row.allowance, row.incentive].every((amount) => Number.isSafeInteger(amount) && amount >= 0)
     )) return res.status(400).json({ ok: false, error: "valid unique role, grade and nonnegative amounts are required" });
     await prisma.$transaction(normalized.map((row: any) => prisma.employeeCompensationPolicy.upsert({
       where: { orgId_orgRole_gradeId: { orgId: organization.id, orgRole: row.orgRole, gradeId: row.gradeId } },
-      create: { orgId: organization.id, ...row }, update: { baseSalary: row.baseSalary, fixedAllowance: row.fixedAllowance, variableAllowance: row.variableAllowance },
+      create: { orgId: organization.id, ...row }, update: { baseSalary: row.baseSalary, allowance: row.allowance, incentive: row.incentive },
     })));
     return res.json(await prisma.employeeCompensationPolicy.findMany({ where: { orgId: organization.id } }));
   });

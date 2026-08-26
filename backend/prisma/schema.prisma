@@ -623,8 +623,8 @@ model EmployeeCompensationPolicy {
   orgRole           OrgUserRole
   gradeId           Int
   baseSalary        Int         @default(0)
-  fixedAllowance    Int         @default(0)
-  variableAllowance Int         @default(0)
+  allowance         Int         @default(0)
+  incentive         Int         @default(0)
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 

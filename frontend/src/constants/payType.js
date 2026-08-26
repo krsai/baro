@@ -24,15 +24,15 @@ export const PAY_COMPONENT_DEFAULT_LABELS = {
     en: 'Base Salary',
     vi: 'L\u01B0\u01A1ng c\u01A1 b\u1EA3n',
   },
-  FIXED_ALLOWANCE: {
-    ko: '\uACE0\uC815\uC218\uB2F9',
-    en: 'Fixed Allowance',
-    vi: 'Ph\u1EE5 c\u1EA5p c\u1ED1 \u0111\u1ECBnh',
+  ALLOWANCE: {
+    ko: '\uC218\uB2F9',
+    en: 'Allowance',
+    vi: 'Ph\u1EE5 c\u1EA5p',
   },
-  PRODUCTION_ALLOWANCE: {
-    ko: '\uC0DD\uC0B0\uC218\uB2F9',
-    en: 'Production Allowance',
-    vi: 'Ph\u1EE5 c\u1EA5p s\u1EA3n l\u01B0\u1EE3ng',
+  INCENTIVE: {
+    ko: '\uC131\uACFC\uAE09',
+    en: 'Incentive',
+    vi: 'Th\u01B0\u1EDFng hi\u1EC7u su\u1EA5t',
   },
 };
 
