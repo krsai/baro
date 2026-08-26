@@ -8,6 +8,8 @@ import PrintIcon from '@mui/icons-material/Print';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AppPageContainer from '../../components/AppPageContainer';
 import PageToolbar from '../../components/PageToolbar';
 import SearchInput from '../../components/SearchInput';
@@ -30,6 +32,7 @@ const TEXT = {
     detailToggleOpen: '스타일별 상세 닫기',
     detailToggleClosed: '스타일별 상세 보기',
     dailyProduced: '일일 내역', dailyProducedTitle: '일일 완성품 수량', date: '날짜', close: '닫기', noDailyProduced: '등록된 일일 완성품 내역이 없습니다.',
+    previousMonth: '이전 달', nextMonth: '다음 달', pieces: '개',
   },
   en: {
     title: 'Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style',
@@ -42,6 +45,7 @@ const TEXT = {
     detailToggleOpen: 'Hide style breakdown',
     detailToggleClosed: 'Show style breakdown',
     dailyProduced: 'Daily details', dailyProducedTitle: 'Daily finished quantity', date: 'Date', close: 'Close', noDailyProduced: 'No daily finished quantities are recorded.',
+    previousMonth: 'Previous month', nextMonth: 'Next month', pieces: 'pcs',
   },
   vi: {
     title: 'Báo cáo', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng',
@@ -54,6 +58,7 @@ const TEXT = {
     detailToggleOpen: 'Ẩn chi tiết theo kiểu dáng',
     detailToggleClosed: 'Xem chi tiết theo kiểu dáng',
     dailyProduced: 'Chi tiết ngày', dailyProducedTitle: 'Số lượng thành phẩm theo ngày', date: 'Ngày', close: 'Đóng', noDailyProduced: 'Không có số lượng thành phẩm theo ngày.',
+    previousMonth: 'Tháng trước', nextMonth: 'Tháng sau', pieces: 'cái',
   },
 };
 
@@ -66,11 +71,24 @@ const STATUS = {
 // toggle + customer + order + style + due + quantity + produced + progress + status
 const REPORT_COLUMN_COUNT = 9;
 const fmt = (value) => Math.max(0, Number(value) || 0).toLocaleString();
-const formatReportDate = (date, languageCode) => {
-  const locale = languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US';
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))
-    ? new Date(`${date}T00:00:00Z`).toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
-    : date || '-';
+const reportLocale = (languageCode) => languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US';
+const monthKeyFromDate = (date) => /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? String(date).slice(0, 7) : '';
+const shiftMonthKey = (monthKey, offset) => {
+  const [year, month] = String(monthKey || '').split('-').map(Number);
+  if (!year || !month) return '';
+  const shifted = new Date(Date.UTC(year, month - 1 + offset, 1));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`;
+};
+const buildCalendarDays = (monthKey) => {
+  const [year, month] = String(monthKey || '').split('-').map(Number);
+  if (!year || !month) return [];
+  const firstWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const days = [
+    ...Array.from({ length: firstWeekday }, () => null),
+    ...Array.from({ length: lastDay }, (_, index) => `${year}-${String(month).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`),
+  ];
+  return [...days, ...Array.from({ length: (7 - (days.length % 7)) % 7 }, () => null)];
 };
 const customerLabel = (customer, languageCode) =>
   (languageCode === 'ko' ? customer?.nameKo : languageCode === 'vi' ? customer?.nameVi : null) || customer?.name || '-';
@@ -173,6 +191,16 @@ const CustomerProductionReport = () => {
   const [contextMenuState, setContextMenuState] = useState(null);
   const [activeQuantityReviewRow, setActiveQuantityReviewRow] = useState(null);
   const [dailyProducedRow, setDailyProducedRow] = useState(null);
+  const [dailyProducedMonth, setDailyProducedMonth] = useState('');
+
+  const openDailyProducedCalendar = useCallback((row) => {
+    const firstProducedDate = (row?.dailyProducedQuantities || [])
+      .map((daily) => daily?.date)
+      .filter((date) => monthKeyFromDate(date))
+      .sort()[0];
+    setDailyProducedMonth(monthKeyFromDate(firstProducedDate));
+    setDailyProducedRow(row);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -313,7 +341,7 @@ const CustomerProductionReport = () => {
                   </TableCell>
                   <TableCell>{row.dueDate || '-'}</TableCell>
                   <TableCell align="right">{fmt(row.orderedQuantity)}</TableCell>
-                  <TableCell align="right"><Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end"><Typography variant="body2">{fmt(row.producedQuantity)}</Typography><Button className="report-screen-actions" size="small" variant="text" startIcon={<CalendarMonthIcon fontSize="small" />} onClick={() => setDailyProducedRow(row)}>{text.dailyProduced}</Button></Stack></TableCell>
+                  <TableCell align="right"><Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', width: '100%' }}><Typography variant="body2" sx={{ textAlign: 'right' }}>{fmt(row.producedQuantity)}</Typography><Button className="report-screen-actions" size="small" variant="text" startIcon={<CalendarMonthIcon fontSize="small" />} sx={{ ml: 1, justifySelf: 'end' }} onClick={() => openDailyProducedCalendar(row)}>{text.dailyProduced}</Button></Box></TableCell>
                   <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={row.progressPercent} /></TableCell>
                   <TableCell><ReportStatusChip status={row.status} languageCode={languageCode} /></TableCell>
                 </TableRow>
@@ -341,7 +369,7 @@ const CustomerProductionReport = () => {
                               <TableCell>{styleRow.styleName || styleRow.styleCode || '-'}</TableCell>
                               <TableCell>{styleRow.dueDate || '-'}</TableCell>
                               <TableCell align="right">{fmt(styleRow.orderedQuantity)}</TableCell>
-                              <TableCell align="right"><Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end"><Typography variant="body2">{fmt(styleRow.producedQuantity)}</Typography><Button className="report-screen-actions" size="small" variant="text" startIcon={<CalendarMonthIcon fontSize="small" />} onClick={() => setDailyProducedRow(styleRow)}>{text.dailyProduced}</Button></Stack></TableCell>
+                              <TableCell align="right"><Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', width: '100%' }}><Typography variant="body2" sx={{ textAlign: 'right' }}>{fmt(styleRow.producedQuantity)}</Typography><Button className="report-screen-actions" size="small" variant="text" startIcon={<CalendarMonthIcon fontSize="small" />} sx={{ ml: 1, justifySelf: 'end' }} onClick={() => openDailyProducedCalendar(styleRow)}>{text.dailyProduced}</Button></Box></TableCell>
                               <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={styleRow.progressPercent} /></TableCell>
                               <TableCell><ReportStatusChip status={styleRow.status} languageCode={languageCode} /></TableCell>
                             </TableRow>
@@ -379,7 +407,7 @@ const CustomerProductionReport = () => {
       headerQuantity={activeQuantityReviewRow?.assignedQuantity ?? activeQuantityReviewRow?.orderedQuantity}
       onClose={handleCloseQuantityReview}
     />
-    <Dialog open={Boolean(dailyProducedRow)} onClose={() => setDailyProducedRow(null)} fullWidth maxWidth="xs">
+    <Dialog open={Boolean(dailyProducedRow)} onClose={() => setDailyProducedRow(null)} fullWidth maxWidth="sm">
       <DialogTitle>{text.dailyProducedTitle}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={0.5} sx={{ mb: 2 }}>
@@ -388,10 +416,29 @@ const CustomerProductionReport = () => {
         </Stack>
         {(dailyProducedRow?.dailyProducedQuantities || []).length === 0
           ? <Typography variant="body2" color="text.secondary">{text.noDailyProduced}</Typography>
-          : <Table size="small">
-            <TableHead><TableRow><TableCell>{text.date}</TableCell><TableCell align="right">{text.produced}</TableCell></TableRow></TableHead>
-            <TableBody>{dailyProducedRow.dailyProducedQuantities.map((daily) => <TableRow key={daily.date}><TableCell>{formatReportDate(daily.date, languageCode)}</TableCell><TableCell align="right">{fmt(daily.quantity)}</TableCell></TableRow>)}</TableBody>
-          </Table>}
+          : (() => {
+            const quantityByDate = new Map(dailyProducedRow.dailyProducedQuantities.map((daily) => [daily.date, daily.quantity]));
+            const calendarDays = buildCalendarDays(dailyProducedMonth);
+            const [year, month] = dailyProducedMonth.split('-').map(Number);
+            const monthLabel = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString(reportLocale(languageCode), { year: 'numeric', month: 'long', timeZone: 'UTC' });
+            const weekdayLabels = Array.from({ length: 7 }, (_, day) => new Date(Date.UTC(2026, 7, 23 + day)).toLocaleDateString(reportLocale(languageCode), { weekday: 'short', timeZone: 'UTC' }));
+            return <Stack spacing={1.5}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between">
+                <IconButton size="small" aria-label={text.previousMonth || 'Previous month'} onClick={() => setDailyProducedMonth((current) => shiftMonthKey(current, -1))}><ChevronLeftIcon /></IconButton>
+                <Typography variant="subtitle1">{monthLabel}</Typography>
+                <IconButton size="small" aria-label={text.nextMonth || 'Next month'} onClick={() => setDailyProducedMonth((current) => shiftMonthKey(current, 1))}><ChevronRightIcon /></IconButton>
+              </Stack>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', borderTop: '1px solid', borderLeft: '1px solid', borderColor: 'divider' }}>
+                {weekdayLabels.map((label, index) => <Box key={`${label}-${index}`} sx={{ py: 0.75, textAlign: 'center', bgcolor: 'grey.50', borderRight: '1px solid', borderBottom: '1px solid', borderColor: 'divider' }}><Typography variant="caption" color={index === 0 ? 'error.main' : index === 6 ? 'primary.main' : 'text.secondary'}>{label}</Typography></Box>)}
+                {calendarDays.map((date, index) => {
+                  const quantity = date ? quantityByDate.get(date) : null;
+                  return <Box key={date || `blank-${index}`} sx={{ minHeight: 72, p: 0.75, borderRight: '1px solid', borderBottom: '1px solid', borderColor: 'divider', bgcolor: date ? 'background.paper' : 'grey.50' }}>
+                    {date ? <><Typography variant="caption" color={index % 7 === 0 ? 'error.main' : index % 7 === 6 ? 'primary.main' : 'text.secondary'}>{Number(date.slice(-2))}</Typography>{quantity ? <Box sx={{ mt: 0.5, px: 0.75, py: 0.5, borderRadius: 1, bgcolor: 'action.hover', color: 'primary.dark', textAlign: 'right' }}><Typography variant="body2">{fmt(quantity)} {text.pieces}</Typography></Box> : null}</> : null}
+                  </Box>;
+                })}
+              </Box>
+            </Stack>;
+          })()}
       </DialogContent>
       <DialogActions><Button onClick={() => setDailyProducedRow(null)}>{text.close}</Button></DialogActions>
     </Dialog>
