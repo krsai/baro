@@ -260,13 +260,13 @@ const SalarySystem = () => {
   </>;
 
   return <AppPageContainer><Box sx={{ p: 2, width: '100%' }}>
-    <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} sx={{ mb: 2, width: '100%' }}>
-      <Box><Typography variant="h5" fontWeight={700}>{t('급여 체계')}</Typography><Typography variant="body2" color="text.secondary">{t('급여 항목, 복합 계산 단위, 적용 대상별 단가와 변경 이력을 관리합니다.')}</Typography></Box>
-      <Stack direction="row" spacing={1} sx={{ ml: { md: 'auto' } }}><TextField label={t('적용 시작월')} type="month" size="small" value={effectiveMonth} onChange={(e) => setEffectiveMonth(e.target.value)} InputLabelProps={{ shrink: true }} />
+    <Stack direction="row" flexWrap="wrap" justifyContent="space-between" alignItems="center" rowGap={1.5} sx={{ mb: 2, width: '100%' }}>
+      <Typography variant="h5" fontWeight={700}>{t('급여 체계')}</Typography>
+      <Stack direction="row" spacing={1}><TextField label={t('적용 시작월')} type="month" size="small" value={effectiveMonth} onChange={(e) => setEffectiveMonth(e.target.value)} InputLabelProps={{ shrink: true }} />
         <SaveButton onClick={saveDraft} disabled={!isDirty}>{t('저장')}</SaveButton></Stack>
     </Stack>
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
-    <Paper variant="outlined" sx={{ mb: 2 }}><Tabs value={tab} onChange={(_e, value) => setTab(value)} sx={{ px: 1 }}><Tab label={t('급여 항목 및 단가')} /><Tab label={t('적용 이력')} /></Tabs></Paper>
+    <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}><Tabs value={tab} onChange={(_e, value) => setTab(value)}><Tab label={t('급여 항목 및 단가')} /><Tab label={t('적용 이력')} /></Tabs></Box>
 
     {tab === 0 ? <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="stretch">
       <Paper variant="outlined" sx={{ width: { xs: '100%', lg: 350 }, flexShrink: 0 }}>
@@ -286,7 +286,7 @@ const SalarySystem = () => {
         <Stack direction="row" alignItems="center" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Box><Typography variant="h6" fontWeight={700}>{t(selected.name)}</Typography><Typography variant="body2" color="text.secondary">{calculationLabel(selected, t)}</Typography></Box>
           <Tooltip title={t(selected.required ? '기본급은 삭제할 수 없습니다.' : '항목 삭제')}><span style={{ marginLeft: 'auto' }}><IconButton color="error" disabled={selected.required} onClick={removeItem}><DeleteOutlineIcon /></IconButton></span></Tooltip></Stack>
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Typography variant="body2" fontWeight={700}>{t('지급 설정')}</Typography><Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">{(selected.payTypes || []).map((payType) => <Chip key={payType} size="small" color={PAY_TYPES[payType]?.color} label={t(PAY_TYPES[payType]?.label || payType)} />)}<Chip size="small" variant="outlined" label={t(PAY_CYCLES[selected.payCycle])} />{selected.capValue && <Chip size="small" variant="outlined" label={`${t('상한')} ${selected.capValue}`} />}</Stack><Button size="small" color="inherit" onClick={openFormulaDialog} sx={{ ml: { md: 'auto' } }}>{t('설정')}</Button></Stack>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Typography variant="body2" fontWeight={700}>{t('지급 설정')}</Typography><Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">{(selected.payTypes || []).map((payType) => <Chip key={payType} size="small" color={PAY_TYPES[payType]?.color} label={t(PAY_TYPES[payType]?.label || payType)} />)}<Chip size="small" variant="outlined" label={t(PAY_CYCLES[selected.payCycle])} />{selected.capValue && <Chip size="small" variant="outlined" label={`${t('상한')} ${selected.capValue}`} />}</Stack></Stack>
           <Paper variant="outlined" sx={{ mt: 1.5, p: 2, bgcolor: 'action.hover', borderColor: 'divider' }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{ flex: 1 }}><Typography variant="h6" fontWeight={700}>{t(selected.name)}</Typography><Typography variant="h6" color="primary.main" fontWeight={700}>=</Typography><Typography fontWeight={700}>{formulaLabel(selected.formula, t) || t('계산식이 비어 있습니다.')}</Typography></Stack><Button variant="outlined" startIcon={<FunctionsIcon />} onClick={openFormulaDialog}>{t('수정')}</Button></Stack></Paper>
         </Box>
         <Box sx={{ px: 2, py: 1.5 }}><Typography fontWeight={700}>{languageCode === 'ko' ? `${effectiveMonth}부터 적용할 급여 타입·직급별 단가` : languageCode === 'vi' ? `Đơn giá theo loại lương và cấp bậc áp dụng từ ${effectiveMonth}` : `Pay type and grade rates effective ${effectiveMonth}`}</Typography><Typography variant="body2" color="text.secondary">{t('권한이나 직무와 관계없이 직원에게 지정된 급여 타입과 직급으로 단가를 결정합니다.')}</Typography></Box>
