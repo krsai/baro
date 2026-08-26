@@ -3,6 +3,7 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   Paper,
   Stack,
   Typography,
@@ -14,6 +15,8 @@ import HistoryIcon from '@mui/icons-material/History';
 import GroupIcon from '@mui/icons-material/Group';
 import DnsIcon from '@mui/icons-material/Dns';
 import TuneIcon from '@mui/icons-material/Tune';
+import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import AppPageContainer from '../../components/AppPageContainer';
 import {
   STATIC_OPTION_GROUPS,
@@ -59,6 +62,9 @@ const DASHBOARD_TEXT = {
     en: 'Quick Actions',
     vi: 'Di chuyen nhanh',
   },
+  notificationTitle: { ko: '알림', en: 'Notifications', vi: 'Thông báo' },
+  notificationDescription: { ko: '확인이 필요한 항목을 모아 보여줍니다.', en: 'Items that need your attention.', vi: 'Các mục cần bạn kiểm tra.' },
+  notificationEmpty: { ko: '확인이 필요한 알림이 없습니다.', en: 'You are all caught up.', vi: 'Không có thông báo cần kiểm tra.' },
   widgetSlotTitle: {
     ko: '위젯 슬롯',
     en: 'Widget Slots',
@@ -118,6 +124,9 @@ const EMPTY_SUMMARY = Object.freeze({
   monthlyAssignedOrderCount: 0,
   monthlyAssignedQuantity: 0,
   materialStockRate: null,
+  pendingEmployeeCount: 0,
+  unassignedLineWorkerCount: 0,
+  missingSalesPriceCustomerCount: 0,
 });
 
 const createEmptySummary = () => ({
@@ -125,6 +134,9 @@ const createEmptySummary = () => ({
   monthlyAssignedOrderCount: EMPTY_SUMMARY.monthlyAssignedOrderCount,
   monthlyAssignedQuantity: EMPTY_SUMMARY.monthlyAssignedQuantity,
   materialStockRate: EMPTY_SUMMARY.materialStockRate,
+  pendingEmployeeCount: EMPTY_SUMMARY.pendingEmployeeCount,
+  unassignedLineWorkerCount: EMPTY_SUMMARY.unassignedLineWorkerCount,
+  missingSalesPriceCustomerCount: EMPTY_SUMMARY.missingSalesPriceCustomerCount,
 });
 
 const EMPTY_SYSTEM_SUMMARY = Object.freeze({
@@ -523,6 +535,19 @@ const buildQuickActions = (languageCode, isSystemProfile) =>
         },
       ];
 
+const buildNotificationItems = ({ languageCode, isSystemProfile, summaryData, systemSummaryData }) => {
+  const candidates = isSystemProfile
+    ? [{ key: 'onboarding', count: systemSummaryData?.pendingOnboardingCount, path: '/system-onboarding', label: { ko: '가입 승인 대기', en: 'Pending onboarding requests', vi: 'Yêu cầu đăng ký chờ duyệt' } }]
+    : [
+        { key: 'employees', count: summaryData?.pendingEmployeeCount, path: '/employee', label: { ko: '승인 대기 직원', en: 'Employees awaiting approval', vi: 'Nhân viên chờ phê duyệt' } },
+        { key: 'line-workers', count: summaryData?.unassignedLineWorkerCount, path: '/line', label: { ko: '라인 미배정 작업자', en: 'Workers without a line', vi: 'Công nhân chưa được xếp chuyền' } },
+        { key: 'sales-prices', count: summaryData?.missingSalesPriceCustomerCount, path: '/customer', label: { ko: '판매단가 미설정 고객사', en: 'Customers missing sales prices', vi: 'Khách hàng chưa có đơn giá bán' } },
+      ];
+  return candidates
+    .filter((item) => Number(item.count) > 0)
+    .map((item) => ({ ...item, countLabel: languageCode === 'ko' ? `${item.count}건` : String(item.count) }));
+};
+
 const WorkspaceDashboard = () => {
   const { languageCode } = useLanguage();
   const { navigateToPath, showNotification } = useAppActions();
@@ -550,6 +575,9 @@ const WorkspaceDashboard = () => {
     }),
     [accessProfile, devBypass, devProfile, isAuthenticated]
   );
+  const canViewEmployee = canAccessPath('/employee', authState);
+  const canViewLine = canAccessPath('/line', authState);
+  const canViewCustomer = canAccessPath('/customer', authState);
 
   const loadSummaryData = useCallback(
     async ({ forceRefresh = false, cancelledRef = null } = {}) => {
@@ -604,22 +632,27 @@ const WorkspaceDashboard = () => {
           orgId: activeOrgId,
           includeCards: 0,
         });
-        const [orders, boardState] = await Promise.all([
+        const [orders, boardState, memberships, lineWorkers, customers] = await Promise.all([
           fetchOrders({ orgId: activeOrgId, forceRefresh }),
           requestJSON('/assignment-board-view' + boardQuery, {
             forceRefresh,
             skipGlobalLoading: true,
           }),
+          canViewEmployee ? requestJSON(`/org-memberships${buildQueryString({ status: 'PENDING', orgId: activeOrgId })}`, { forceRefresh, skipGlobalLoading: true }).catch(() => []) : [],
+          canViewLine ? requestJSON(`/line-workers${buildQueryString({ orgId: activeOrgId })}`, { forceRefresh, skipGlobalLoading: true }).catch(() => []) : [],
+          canViewCustomer ? requestJSON(`/customers${buildQueryString({ orgId: activeOrgId })}`, { forceRefresh, skipGlobalLoading: true }).catch(() => []) : [],
         ]);
         if (!cancelledRef?.current) {
-          setSummaryData(
-            buildSummaryData({
+          const nextSummary = buildSummaryData({
               orders,
               assignments: Array.isArray(boardState?.assignments)
                 ? boardState.assignments
                 : [],
-            })
-          );
+            });
+          nextSummary.pendingEmployeeCount = Array.isArray(memberships) ? memberships.filter((item) => String(item?.status || '').toUpperCase() === 'PENDING').length : 0;
+          nextSummary.unassignedLineWorkerCount = Array.isArray(lineWorkers) ? lineWorkers.filter((worker) => worker?.currentLineId == null).length : 0;
+          nextSummary.missingSalesPriceCustomerCount = Array.isArray(customers) ? customers.filter((customer) => Number(customer?.missingSalesPriceStyleCount) > 0).length : 0;
+          setSummaryData(nextSummary);
         }
       } catch (error) {
         if (!cancelledRef?.current) {
@@ -636,7 +669,7 @@ const WorkspaceDashboard = () => {
         }
       }
     },
-    [activeOrgId, isSystemProfile, languageCode, showNotification]
+    [activeOrgId, canViewCustomer, canViewEmployee, canViewLine, isSystemProfile, languageCode, showNotification]
   );
 
   useEffect(() => {
@@ -694,6 +727,10 @@ const WorkspaceDashboard = () => {
         canAccessPath(item.path, authState)
       ),
     [authState, isSystemProfile, languageCode]
+  );
+  const notificationItems = useMemo(
+    () => buildNotificationItems({ languageCode, isSystemProfile, summaryData, systemSummaryData }).filter((item) => canAccessPath(item.path, authState)),
+    [authState, isSystemProfile, languageCode, summaryData, systemSummaryData]
   );
 
   return (
@@ -780,6 +817,34 @@ const WorkspaceDashboard = () => {
         </Paper>
 
         <Paper variant="outlined" sx={{ p: 2.25 }}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+            <NotificationsNoneIcon color="primary" />
+            <Typography variant="h6">{resolveText(DASHBOARD_TEXT.notificationTitle, languageCode)}</Typography>
+          </Stack>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>{resolveText(DASHBOARD_TEXT.notificationDescription, languageCode)}</Typography>
+          {summaryLoading ? (
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 1.5 }}>
+              <CircularProgress size={18} />
+              <Typography variant="body2" color="text.secondary">{resolveText(DASHBOARD_TEXT.syncing, languageCode)}</Typography>
+            </Stack>
+          ) : notificationItems.length === 0 ? (
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 1.5, bgcolor: 'success.50', borderRadius: 1 }}>
+              <CheckCircleOutlineIcon color="success" fontSize="small" />
+              <Typography variant="body2">{resolveText(DASHBOARD_TEXT.notificationEmpty, languageCode)}</Typography>
+            </Stack>
+          ) : (
+            <Stack spacing={1}>
+              {notificationItems.map((item) => (
+                <Button key={item.key} variant="outlined" color="warning" onClick={() => navigateToPath(item.path)} sx={{ justifyContent: 'space-between', px: 1.5, py: 1, textTransform: 'none' }}>
+                  <Typography variant="body2" fontWeight={600}>{resolveText(item.label, languageCode)}</Typography>
+                  <Chip size="small" color="warning" label={item.countLabel} />
+                </Button>
+              ))}
+            </Stack>
+          )}
+        </Paper>
+
+        <Paper variant="outlined" sx={{ p: 2.25 }}>
           <Typography variant="h6" sx={{ mb: 1.5 }}>
             {resolveText(DASHBOARD_TEXT.quickActionTitle, languageCode)}
           </Typography>
@@ -797,48 +862,6 @@ const WorkspaceDashboard = () => {
           </Stack>
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: 2.25 }}>
-          <Typography variant="h6" sx={{ mb: 0.75 }}>
-            {resolveText(DASHBOARD_TEXT.widgetSlotTitle, languageCode)}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-            {resolveText(DASHBOARD_TEXT.widgetSlotDescription, languageCode)}
-          </Typography>
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
-              gap: 1.25,
-            }}
-          >
-            {['A', 'B', 'C', 'D'].map((slotId) => (
-              <Paper
-                key={slotId}
-                variant="outlined"
-                sx={{
-                  p: 1.5,
-                  borderStyle: 'dashed',
-                  borderColor: 'divider',
-                  bgcolor: '#fafafa',
-                }}
-              >
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  alignItems="center"
-                >
-                  <Typography variant="subtitle2">{`Slot ${slotId}`}</Typography>
-                  <Chip
-                    size="small"
-                    color="success"
-                    variant="outlined"
-                    label={resolveText(DASHBOARD_TEXT.slotStatus, languageCode)}
-                  />
-                </Stack>
-              </Paper>
-            ))}
-          </Box>
-        </Paper>
       </Stack>
     </AppPageContainer>
   );
