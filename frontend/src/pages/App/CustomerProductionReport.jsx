@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Box, Button, Chip, CircularProgress, Collapse, FormControl, FormControlLabel, GlobalStyles, InputLabel,
+  Alert, Box, Button, Chip, CircularProgress, Collapse, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, GlobalStyles, InputLabel,
   LinearProgress, IconButton, Menu, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Typography, Switch,
 } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import AppPageContainer from '../../components/AppPageContainer';
 import PageToolbar from '../../components/PageToolbar';
 import SearchInput from '../../components/SearchInput';
@@ -28,6 +29,7 @@ const TEXT = {
     completedCount: (count, total) => `완료 ${count}/${total}`,
     detailToggleOpen: '스타일별 상세 닫기',
     detailToggleClosed: '스타일별 상세 보기',
+    dailyProduced: '일일 내역', dailyProducedTitle: '일일 완성품 수량', date: '날짜', close: '닫기', noDailyProduced: '등록된 일일 완성품 내역이 없습니다.',
   },
   en: {
     title: 'Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style',
@@ -39,6 +41,7 @@ const TEXT = {
     completedCount: (count, total) => `${count}/${total} completed`,
     detailToggleOpen: 'Hide style breakdown',
     detailToggleClosed: 'Show style breakdown',
+    dailyProduced: 'Daily details', dailyProducedTitle: 'Daily finished quantity', date: 'Date', close: 'Close', noDailyProduced: 'No daily finished quantities are recorded.',
   },
   vi: {
     title: 'Báo cáo', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng',
@@ -50,6 +53,7 @@ const TEXT = {
     completedCount: (count, total) => `Hoàn thành ${count}/${total}`,
     detailToggleOpen: 'Ẩn chi tiết theo kiểu dáng',
     detailToggleClosed: 'Xem chi tiết theo kiểu dáng',
+    dailyProduced: 'Chi tiết ngày', dailyProducedTitle: 'Số lượng thành phẩm theo ngày', date: 'Ngày', close: 'Đóng', noDailyProduced: 'Không có số lượng thành phẩm theo ngày.',
   },
 };
 
@@ -62,6 +66,12 @@ const STATUS = {
 // toggle + customer + order + style + due + quantity + produced + progress + status
 const REPORT_COLUMN_COUNT = 9;
 const fmt = (value) => Math.max(0, Number(value) || 0).toLocaleString();
+const formatReportDate = (date, languageCode) => {
+  const locale = languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US';
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))
+    ? new Date(`${date}T00:00:00Z`).toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
+    : date || '-';
+};
 const customerLabel = (customer, languageCode) =>
   (languageCode === 'ko' ? customer?.nameKo : languageCode === 'vi' ? customer?.nameVi : null) || customer?.name || '-';
 const rowCustomerLabel = (row, languageCode) =>
@@ -110,6 +120,12 @@ const groupRowsByOrder = (styleRows) => {
     );
     const assignedQuantity = styles.reduce((sum, row) => sum + Math.max(0, Number(row.assignedQuantity) || 0), 0);
     const producedQuantity = styles.reduce((sum, row) => sum + Math.max(0, Number(row.producedQuantity) || 0), 0);
+    const dailyProducedByDate = new Map();
+    styles.forEach((row) => (Array.isArray(row.dailyProducedQuantities) ? row.dailyProducedQuantities : []).forEach((daily) => {
+      const date = String(daily?.date || '');
+      const quantity = Math.max(0, Number(daily?.quantity) || 0);
+      if (date && quantity > 0) dailyProducedByDate.set(date, (dailyProducedByDate.get(date) || 0) + quantity);
+    }));
     const status = assignedQuantity <= 0
       ? 'UNASSIGNED'
       : assignedQuantity < orderedQuantity
@@ -123,6 +139,7 @@ const groupRowsByOrder = (styleRows) => {
       orderedQuantity,
       assignedQuantity,
       producedQuantity,
+      dailyProducedQuantities: Array.from(dailyProducedByDate.entries()).sort(([left], [right]) => left.localeCompare(right)).map(([date, quantity]) => ({ date, quantity })),
       unassignedQuantity: styles.reduce((sum, row) => sum + Math.max(0, Number(row.unassignedQuantity) || 0), 0),
       progressPercent: progressWeight > 0 ? Math.round(weightedProgress / progressWeight) : 0,
       completedStyleCount: styles.filter((row) => row.status === 'COMPLETED').length,
@@ -155,6 +172,7 @@ const CustomerProductionReport = () => {
   const [expandedOrders, setExpandedOrders] = useState(() => new Set());
   const [contextMenuState, setContextMenuState] = useState(null);
   const [activeQuantityReviewRow, setActiveQuantityReviewRow] = useState(null);
+  const [dailyProducedRow, setDailyProducedRow] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -295,7 +313,7 @@ const CustomerProductionReport = () => {
                   </TableCell>
                   <TableCell>{row.dueDate || '-'}</TableCell>
                   <TableCell align="right">{fmt(row.orderedQuantity)}</TableCell>
-                  <TableCell align="right">{fmt(row.producedQuantity)}</TableCell>
+                  <TableCell align="right"><Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end"><Typography variant="body2">{fmt(row.producedQuantity)}</Typography><Button className="report-screen-actions" size="small" variant="text" startIcon={<CalendarMonthIcon fontSize="small" />} onClick={() => setDailyProducedRow(row)}>{text.dailyProduced}</Button></Stack></TableCell>
                   <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={row.progressPercent} /></TableCell>
                   <TableCell><ReportStatusChip status={row.status} languageCode={languageCode} /></TableCell>
                 </TableRow>
@@ -323,7 +341,7 @@ const CustomerProductionReport = () => {
                               <TableCell>{styleRow.styleName || styleRow.styleCode || '-'}</TableCell>
                               <TableCell>{styleRow.dueDate || '-'}</TableCell>
                               <TableCell align="right">{fmt(styleRow.orderedQuantity)}</TableCell>
-                              <TableCell align="right">{fmt(styleRow.producedQuantity)}</TableCell>
+                              <TableCell align="right"><Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end"><Typography variant="body2">{fmt(styleRow.producedQuantity)}</Typography><Button className="report-screen-actions" size="small" variant="text" startIcon={<CalendarMonthIcon fontSize="small" />} onClick={() => setDailyProducedRow(styleRow)}>{text.dailyProduced}</Button></Stack></TableCell>
                               <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={styleRow.progressPercent} /></TableCell>
                               <TableCell><ReportStatusChip status={styleRow.status} languageCode={languageCode} /></TableCell>
                             </TableRow>
@@ -361,6 +379,22 @@ const CustomerProductionReport = () => {
       headerQuantity={activeQuantityReviewRow?.assignedQuantity ?? activeQuantityReviewRow?.orderedQuantity}
       onClose={handleCloseQuantityReview}
     />
+    <Dialog open={Boolean(dailyProducedRow)} onClose={() => setDailyProducedRow(null)} fullWidth maxWidth="xs">
+      <DialogTitle>{text.dailyProducedTitle}</DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={0.5} sx={{ mb: 2 }}>
+          <Typography fontWeight={700}>{dailyProducedRow?.orderNumber || '-'}</Typography>
+          <Typography variant="body2" color="text.secondary">{dailyProducedRow?.styles ? resolveStyleSummaryLabel(dailyProducedRow.styles, languageCode) : dailyProducedRow?.styleName || dailyProducedRow?.styleCode || '-'}</Typography>
+        </Stack>
+        {(dailyProducedRow?.dailyProducedQuantities || []).length === 0
+          ? <Typography variant="body2" color="text.secondary">{text.noDailyProduced}</Typography>
+          : <Table size="small">
+            <TableHead><TableRow><TableCell>{text.date}</TableCell><TableCell align="right">{text.produced}</TableCell></TableRow></TableHead>
+            <TableBody>{dailyProducedRow.dailyProducedQuantities.map((daily) => <TableRow key={daily.date}><TableCell>{formatReportDate(daily.date, languageCode)}</TableCell><TableCell align="right">{fmt(daily.quantity)}</TableCell></TableRow>)}</TableBody>
+          </Table>}
+      </DialogContent>
+      <DialogActions><Button onClick={() => setDailyProducedRow(null)}>{text.close}</Button></DialogActions>
+    </Dialog>
   </AppPageContainer>;
 };
 

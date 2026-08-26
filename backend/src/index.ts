@@ -24835,6 +24835,27 @@ const buildAssignmentPlanProgressRows = async (
 
     let actualProducedCompletedDateKey: string | null = null;
     let actualProducedCompletedIsProxy = false;
+    const dailyProducedQuantities: Array<{ date: string; quantity: number }> = [];
+    const cumulativeDailyProcessTotalsByKey = new Map<string, number>();
+    let previousDailyProducedQuantity = 0;
+    Array.from(stats.dailyProcessTotalsByDate.keys()).sort((a, b) => a.localeCompare(b)).forEach((dateKey) => {
+      const dailyTotals = stats.dailyProcessTotalsByDate.get(dateKey);
+      dailyTotals?.forEach((value, processKey) => {
+        cumulativeDailyProcessTotalsByKey.set(
+          processKey,
+          (cumulativeDailyProcessTotalsByKey.get(processKey) || 0) + Math.max(0, Math.round(Number(value) || 0))
+        );
+      });
+      const cumulativeProducedQuantity = resolveProducedQtyFromProcessKeyTotals({
+        processTotalsByKey: cumulativeDailyProcessTotalsByKey,
+        processKeyGroups: requiredProcessGroups,
+        applicableQuantityByKey,
+        plannedQuantity: baselineQuantityRaw,
+      });
+      const dailyProducedQuantity = Math.max(0, cumulativeProducedQuantity - previousDailyProducedQuantity);
+      if (dailyProducedQuantity > 0) dailyProducedQuantities.push({ date: dateKey, quantity: dailyProducedQuantity });
+      previousDailyProducedQuantity = Math.max(previousDailyProducedQuantity, cumulativeProducedQuantity);
+    });
     if (
       baselineQuantityRaw != null &&
       baselineQuantityRaw > 0 &&
@@ -24991,6 +25012,7 @@ const buildAssignmentPlanProgressRows = async (
       baselineQuantity: baselineQuantityRaw,
       producedQuantity,
       producedQty: producedQuantity,
+      dailyProducedQuantities,
       remainingQty,
       overflowQuantity,
       isOverflow: overflowQuantity > 0,
@@ -31509,6 +31531,15 @@ app.get("/customer-production-reports", async (req, res) => {
         (sum, row) => sum + Math.max(0, Math.round(Number(row?.producedQuantity) || 0)),
         0
       );
+      const dailyProducedByDate = new Map<string, number>();
+      progress.forEach((row) => ensureArray(row?.dailyProducedQuantities).forEach((daily) => {
+        const date = normalizeDateKey(daily?.date);
+        const quantity = Math.max(0, Math.round(Number(daily?.quantity) || 0));
+        if (date && quantity > 0) dailyProducedByDate.set(date, (dailyProducedByDate.get(date) || 0) + quantity);
+      }));
+      const dailyProducedQuantities = Array.from(dailyProducedByDate.entries())
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([date, quantity]) => ({ date, quantity }));
       const weightedProgress = progress.reduce(
         (acc, row) => {
           const weight = Math.max(0, Number(row?.plannedStTotalSeconds) || 0) ||
@@ -31625,6 +31656,7 @@ app.get("/customer-production-reports", async (req, res) => {
         assignedQuantity,
         unassignedQuantity: Math.max(0, item.orderedQuantity - assignedQuantity),
         producedQuantity,
+        dailyProducedQuantities,
         progressPercent: reportedProgressPercent,
         status,
         firstWorkDate,
