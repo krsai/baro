@@ -4829,7 +4829,8 @@ DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_grade_fk
 DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_item_fkey" FOREIGN KEY ("orgId","salaryItemId") REFERENCES "SalaryItem"("orgId","id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_payType_check" CHECK ("payType" IN ('GENERAL','OUTPUT')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_amount_check" CHECK ("amount" >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-CREATE TABLE IF NOT EXISTS "SalarySystemVersion" ("id" SERIAL PRIMARY KEY,"orgId" INTEGER NOT NULL,"versionNumber" INTEGER NOT NULL,"effectiveMonth" TEXT NOT NULL,"snapshot" JSONB NOT NULL,"confirmedBy" TEXT NOT NULL,"confirmedDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS "SalarySystemVersion" ("id" SERIAL PRIMARY KEY,"orgId" INTEGER NOT NULL,"versionNumber" INTEGER NOT NULL,"effectiveMonth" TEXT,"snapshot" JSONB NOT NULL,"confirmedBy" TEXT NOT NULL,"confirmedDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+ALTER TABLE "SalarySystemVersion" ALTER COLUMN "effectiveMonth" DROP NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS "SalarySystemVersion_orgId_versionNumber_key" ON "SalarySystemVersion"("orgId","versionNumber");
 CREATE UNIQUE INDEX IF NOT EXISTS "SalarySystemVersion_orgId_effectiveMonth_key" ON "SalarySystemVersion"("orgId","effectiveMonth");
 DO $$ BEGIN ALTER TABLE "SalarySystemVersion" ADD CONSTRAINT "SalarySystemVersion_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;

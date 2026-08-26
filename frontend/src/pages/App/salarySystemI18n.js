@@ -1,5 +1,5 @@
 const translations = {
-  '일반': ['General', 'Thường'], '수당': ['Output', 'Sản lượng'],
+  '일반': ['General', 'Thường'], '생산': ['Output', 'Sản lượng'],
   '기본급': ['Base salary', 'Lương cơ bản'], '급여 수당': ['Allowances', 'Phụ cấp'], '성과급': ['Incentives', 'Thưởng hiệu suất'],
   '1개월': ['1 month', '1 tháng'], '3개월': ['3 months', '3 tháng'], '6개월': ['6 months', '6 tháng'], '12개월': ['12 months', '12 tháng'],
   '직급별 단가': ['Rate by grade', 'Đơn giá theo cấp bậc'], '실제 근무일수': ['Actual workdays', 'Ngày công thực tế'], '기준 근무일수': ['Scheduled workdays', 'Ngày công tiêu chuẩn'],
@@ -8,7 +8,9 @@ const translations = {
   '정규 근무시간': ['Regular work hours', 'Giờ làm việc chính thức'], '연장근무시간': ['Overtime hours', 'Giờ tăng ca'], '휴일 특근시간': ['Holiday work hours', 'Giờ làm ngày lễ'], '근속연수': ['Years of service', 'Số năm làm việc'],
   '만근 충족값': ['Full-attendance factor', 'Hệ số đủ công'], '1 또는 0': ['1 or 0', '1 hoặc 0'], '만근을 채우면 1, 아니면 0으로 계산됩니다.': ['Calculated as 1 when full attendance is met, otherwise 0.', 'Tính là 1 khi đủ công, ngược lại là 0.'],
   '생산수당 계산 결과': ['Production allowance result', 'Kết quả tính phụ cấp sản lượng'],
-  '단가·근속': ['Rate & tenure', 'Đơn giá & thâm niên'], '근무일수': ['Workdays', 'Ngày công'], '근무시간': ['Work hours', 'Giờ làm việc'], '조건·외부 계산값': ['Conditions & external values', 'Điều kiện & giá trị tính từ bên ngoài'],
+  '공장 초당 단가 × CT × 작업 수량': ['Factory rate per second × CT × work quantity', 'Đơn giá nhà máy mỗi giây × CT × sản lượng công việc'],
+  '성과급은 작업 기록을 기준으로 자동 계산되며 급여 체계에서 수정할 수 없습니다.': ['Incentives are calculated automatically from work records and cannot be edited in the salary structure.', 'Thưởng hiệu suất được tự động tính từ nhật ký công việc và không thể chỉnh sửa trong cơ cấu lương.'],
+  '단가·근속': ['Rate & tenure', 'Đơn giá & thâm niên'], '근무일수': ['Workdays', 'Ngày công'], '근무시간': ['Work hours', 'Giờ làm việc'], '조건': ['Conditions', 'Điều kiện'],
   '점심수당': ['Lunch allowance', 'Phụ cấp ăn trưa'], '통신비': ['Communication allowance', 'Phụ cấp điện thoại'], '교통비': ['Transportation allowance', 'Phụ cấp đi lại'],
   '직책수당': ['Position allowance', 'Phụ cấp chức vụ'], '주거수당': ['Housing allowance', 'Phụ cấp nhà ở'], '어학수당': ['Language allowance', 'Phụ cấp ngoại ngữ'],
   '휴일근무수당': ['Holiday work allowance', 'Phụ cấp làm ngày lễ'], '만근수당': ['Full-attendance allowance', 'Phụ cấp chuyên cần'], '근속수당': ['Seniority allowance', 'Phụ cấp thâm niên'],

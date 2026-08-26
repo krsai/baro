@@ -685,7 +685,7 @@ model SalarySystemVersion {
   id            Int      @id @default(autoincrement())
   orgId         Int
   versionNumber Int
-  effectiveMonth String
+  effectiveMonth String?
   snapshot      Json
   confirmedBy   String
   confirmedDate DateTime @default(now())

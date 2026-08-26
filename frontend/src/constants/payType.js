@@ -7,7 +7,7 @@ export const PAY_TYPE_KEYS = {
 
 export const PAY_TYPE_DEFAULT_LABELS = {
   [PAY_TYPE_KEYS.OUTPUT]: {
-    ko: '\uC218\uB2F9',
+    ko: '\uC0DD\uC0B0',
     en: 'Output',
     vi: 'S\u1EA3n l\u01B0\u1EE3ng',
   },

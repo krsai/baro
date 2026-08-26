@@ -111,7 +111,9 @@ const RAW_STATIC_OPTION_GROUPS = [
     key: 'payType',
     title: '급여 타입',
     items: [
-      createItem('OUTPUT', { ko: '수당', en: 'Output', vi: 'Sản lượng' }, [
+      createItem('OUTPUT', { ko: '생산', en: 'Output', vi: 'Sản lượng' }, [
+        '생산',
+        '생산급여',
         '수당',
         '수당급여',
         '성과급',

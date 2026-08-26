@@ -10,6 +10,8 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import FunctionsIcon from '@mui/icons-material/Functions';
 import HistoryIcon from '@mui/icons-material/History';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
 import { useAuth } from '../../context/AuthContext';
@@ -19,7 +21,7 @@ import { salaryText } from './salarySystemI18n';
 
 const PAY_TYPES = {
   GENERAL: { label: '일반', color: 'primary' },
-  OUTPUT: { label: '수당', color: 'warning' },
+  OUTPUT: { label: '생산', color: 'warning' },
 };
 const PAY_TYPE_ORDER = ['GENERAL', 'OUTPUT'];
 const CATEGORIES = { BASE: '기본급', ALLOWANCE: '급여 수당', INCENTIVE: '성과급' };
@@ -43,11 +45,11 @@ const FORMULA_PARAMETER_GROUPS = [
   { label: '단가·근속', keys: ['GRADE_RATE', 'TENURE_YEARS'] },
   { label: '근무일수', keys: ['ACTUAL_WORKDAYS', 'SCHEDULED_WORKDAYS'] },
   { label: '근무시간', keys: ['WORK_HOURS', 'OVERTIME_HOURS', 'HOLIDAY_HOURS'] },
-  { label: '조건·외부 계산값', keys: ['FULL_ATTENDANCE_FACTOR', 'PRODUCTION_ALLOWANCE'] },
+  { label: '조건', keys: ['FULL_ATTENDANCE_FACTOR'] },
 ];
 const FORMULA_OPERATORS = ['+', '−', '×', '÷', '(', ')'];
 const DEFAULT_FORMULA = ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS', '÷', 'SCHEDULED_WORKDAYS'];
-// 일반(GENERAL) 급여 타입과 수당(OUTPUT) 급여 타입의 유일한 차이는 생산수당 유무이므로,
+// 일반(GENERAL) 급여 타입과 생산(OUTPUT) 급여 타입의 유일한 차이는 성과급 유무이므로,
 // 적용 대상 급여 타입은 항목별로 따로 선택하지 않고 급여 구분(카테고리)에서 자동으로 정해진다.
 const defaultPayTypesForCategory = (category) => (category === 'INCENTIVE' ? ['OUTPUT'] : ['GENERAL', 'OUTPUT']);
 const DEFAULT_DRAFT = { name: '', category: 'ALLOWANCE', formula: ['GRADE_RATE'], payCycle: 'MONTHLY', capValue: '' };
@@ -64,7 +66,7 @@ const DEFAULT_ITEMS = [
   item('holiday', '휴일근무수당', 'ALLOWANCE', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'HOLIDAY_HOURS', '×', 'CONST:1.5'] }),
   item('attendance', '만근수당', 'ALLOWANCE', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'FULL_ATTENDANCE_FACTOR'] }),
   item('seniority', '근속수당', 'ALLOWANCE', 'SEMIANNUAL', { formula: ['GRADE_RATE', '×', 'TENURE_YEARS'], capValue: '5' }),
-  item('overPlan', '생산 목표 초과 달성 성과급', 'INCENTIVE', 'MONTHLY', { formula: ['PRODUCTION_ALLOWANCE'] }),
+  item('incentiveTotal', '성과급', 'INCENTIVE', 'MONTHLY', { formula: ['PRODUCTION_ALLOWANCE'], required: true }),
 ];
 
 const money = (value) => {
@@ -72,6 +74,17 @@ const money = (value) => {
   return digits ? Number(digits).toLocaleString('en-US') : '0';
 };
 const monthKey = () => new Date().toISOString().slice(0, 7);
+const VERSION_GRAPH_COLORS = ['#1976d2', '#9c27b0', '#2e7d32', '#ed6c02', '#d32f2f', '#0288d1', '#6d4c41', '#5e35b1'];
+const monthRange = (startMonth, endMonth) => {
+  const months = [];
+  const cursor = new Date(`${startMonth}-01T00:00:00Z`);
+  const end = new Date(`${endMonth}-01T00:00:00Z`);
+  while (cursor <= end) {
+    months.push(cursor.toISOString().slice(0, 7));
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return months;
+};
 const gradeName = (grade, language) => language === 'en' ? grade.nameEn : language === 'vi' ? grade.nameVi : grade.nameKo;
 const calculationLabel = (row, t) => t(PAY_CYCLES[row.payCycle]) || '';
 const formulaTokenLabel = (token, t) => token.startsWith('CONST:')
@@ -145,13 +158,14 @@ const SalarySystem = () => {
   const [rates, setRates] = useState({});
   const [items, setItems] = useState(DEFAULT_ITEMS);
   const [selectedId, setSelectedId] = useState('baseSalary');
-  const [effectiveMonth, setEffectiveMonth] = useState(monthKey());
   const [dialogOpen, setDialogOpen] = useState(false);
   // 저장(=버전 확정)할 때마다 그 시점의 항목/단가 스냅샷이 쌓인다. 공정 버전 관리처럼
   // 버전 목록을 훑어보고, 하나를 고르면 그 시점 스냅샷을 읽기 전용으로 볼 수 있다.
   const [versions, setVersions] = useState([]);
   const [versionDialogOpen, setVersionDialogOpen] = useState(false);
-  const [viewingVersion, setViewingVersion] = useState(null);
+  const [versionBoundaries, setVersionBoundaries] = useState({});
+  const [savedVersionBoundaries, setSavedVersionBoundaries] = useState({});
+  const [versionBusy, setVersionBusy] = useState(false);
   const [draft, setDraft] = useState(DEFAULT_DRAFT);
   const [message, setMessage] = useState(null);
   const [formulaDialogOpen, setFormulaDialogOpen] = useState(false);
@@ -171,7 +185,9 @@ const SalarySystem = () => {
         requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId })}`),
       ]);
       setGrades((Array.isArray(sets) ? sets : []).flatMap((set) => set.grades || []).filter((grade) => grade.isActive));
-      const loadedItems = Array.isArray(salarySystem?.items) && salarySystem.items.length ? salarySystem.items : DEFAULT_ITEMS;
+      const loadedItems = (Array.isArray(salarySystem?.items) && salarySystem.items.length ? salarySystem.items : DEFAULT_ITEMS).map((row) => row.category === 'INCENTIVE'
+        ? { ...row, name: '성과급', payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', capValue: '', required: true }
+        : row);
       const next = {};
       (Array.isArray(salarySystem?.rates) ? salarySystem.rates : []).forEach((row) => {
         const key = `${row.payType}:${row.gradeId}`;
@@ -180,7 +196,7 @@ const SalarySystem = () => {
       setItems(loadedItems);
       setVersions(Array.isArray(salarySystem?.versions) ? salarySystem.versions : []);
       setRates(next);
-      setSavedSnapshot(JSON.stringify({ items: loadedItems, rates: next, effectiveMonth: monthKey() }));
+      setSavedSnapshot(JSON.stringify({ items: loadedItems, rates: next }));
     } catch (error) {
       setMessage({ severity: 'error', text: error?.message || t('급여 기준을 불러오지 못했습니다.') });
     }
@@ -188,11 +204,12 @@ const SalarySystem = () => {
   useEffect(() => { load(); }, [load]);
 
   const isDirty = useMemo(
-    () => savedSnapshot !== null && JSON.stringify({ items, rates, effectiveMonth }) !== savedSnapshot,
-    [items, rates, effectiveMonth, savedSnapshot]
+    () => savedSnapshot !== null && JSON.stringify({ items, rates }) !== savedSnapshot,
+    [items, rates, savedSnapshot]
   );
 
   const selected = items.find((row) => row.id === selectedId) || items[0];
+  const isFixedIncentive = selected.category === 'INCENTIVE';
   const counts = useMemo(() => items.reduce((map, row) => ({ ...map, [row.category]: (map[row.category] || 0) + 1 }), {}), [items]);
   const updateSelected = (field, value) => setItems((rows) => rows.map((row) => row.id === selected.id ? { ...row, [field]: value } : row));
   const getRate = (payType, gradeId) => rates[`${payType}:${gradeId}`]?.[selected.id] || '0';
@@ -207,28 +224,80 @@ const SalarySystem = () => {
     setSelectedId(next.id);
     setDialogOpen(false);
     setDraft(DEFAULT_DRAFT);
-    setMessage({ severity: 'info', text: t('화면 시안에 항목을 추가했습니다. 서버 저장은 백엔드 구현 후 연결됩니다.') });
+    setMessage({ severity: 'info', text: t('급여 항목을 추가했습니다. 저장하면 새 버전으로 등록됩니다.') });
+  };
+  const reorderItems = ({ source, destination }) => {
+    if (!destination || source.droppableId !== destination.droppableId || source.index === destination.index) return;
+    const category = source.droppableId.replace('salary-items:', '');
+    setItems((rows) => {
+      const categoryItems = rows.filter((row) => row.category === category);
+      const [moved] = categoryItems.splice(source.index, 1);
+      if (!moved) return rows;
+      categoryItems.splice(destination.index, 0, moved);
+      let categoryIndex = 0;
+      return rows.map((row) => row.category === category ? categoryItems[categoryIndex++] : row);
+    });
   };
   const saveDraft = async () => {
     try {
+      const editableItemIds = new Set(items.filter((itemRow) => itemRow.category !== 'INCENTIVE').map((itemRow) => String(itemRow.id)));
       const rateRows = Object.entries(rates).flatMap(([key, itemRates]) => {
         const [payType, gradeId] = key.split(':');
-        return Object.entries(itemRates || {}).map(([salaryItemCode, amount]) => ({ payType, gradeId: Number(gradeId), salaryItemCode, amount: Number(String(amount).replace(/,/g, '')) || 0 }));
+        return Object.entries(itemRates || {}).filter(([salaryItemCode]) => editableItemIds.has(String(salaryItemCode))).map(([salaryItemCode, amount]) => ({ payType, gradeId: Number(gradeId), salaryItemCode, amount: Number(String(amount).replace(/,/g, '')) || 0 }));
       });
       await requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: items.map((row) => ({ ...row, code: row.code || row.id })), rates: rateRows }) });
-      await requestJSON(`/salary-system/versions${buildQueryString({ orgId: activeOrgId })}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ effectiveMonth }) });
+      await requestJSON(`/salary-system/versions${buildQueryString({ orgId: activeOrgId })}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       await load();
-    setMessage({ severity: 'info', text: t('화면 시안 상태이며 서버 저장 기능은 아직 연결되지 않았습니다. 백엔드 구현 후 실제로 저장됩니다.') });
+      setMessage({ severity: 'success', text: t('급여 체계를 저장하고 새 버전을 등록했습니다. 적용 월은 버전 관리에서 지정할 수 있습니다.') });
     } catch (error) {
       setMessage({ severity: 'error', text: error?.message || 'Failed to save salary system.' });
     }
   };
   const openVersionDialog = () => {
-    setViewingVersion(null);
+    const next = {};
+    versions.forEach((version) => { if (version.versionNumber > 1 && version.effectiveMonth) next[version.id] = version.effectiveMonth; });
+    setVersionBoundaries(next);
+    setSavedVersionBoundaries(next);
     setVersionDialogOpen(true);
   };
+  const managementStartMonth = useMemo(() => {
+    const registeredMonths = versions.filter((version) => version.versionNumber > 1).map((version) => String(version.confirmedAt || '').slice(0, 7)).filter((month) => /^\d{4}-\d{2}$/.test(month));
+    const appliedMonths = versions.filter((version) => version.versionNumber > 1 && version.effectiveMonth).map((version) => version.effectiveMonth);
+    return [...registeredMonths, ...appliedMonths, monthKey()].sort()[0];
+  }, [versions]);
+  const managedMonths = useMemo(() => monthRange(managementStartMonth, monthKey()), [managementStartMonth]);
+  const colorByVersionId = useMemo(() => new Map([...versions].sort((a, b) => a.versionNumber - b.versionNumber).map((version, index) => [version.id, VERSION_GRAPH_COLORS[index % VERSION_GRAPH_COLORS.length]])), [versions]);
+  const versionForMonth = useCallback((month) => {
+    const applicable = versions.filter((version) => version.versionNumber === 1 || (versionBoundaries[version.id] && versionBoundaries[version.id] <= month));
+    return applicable.sort((a, b) => a.versionNumber - b.versionNumber).at(-1) || null;
+  }, [versionBoundaries, versions]);
+  const assignVersionToMonth = (version, month) => {
+    if (version.versionNumber === 1) return;
+    setVersionBoundaries((current) => {
+      const next = { ...current, [version.id]: month };
+      versions.forEach((other) => {
+        if (other.id === version.id || other.versionNumber === 1 || !next[other.id]) return;
+        const conflicts = other.versionNumber < version.versionNumber ? next[other.id] >= month : next[other.id] <= month;
+        if (conflicts) delete next[other.id];
+      });
+      return next;
+    });
+  };
+  const saveVersionBoundaries = async () => {
+    setVersionBusy(true);
+    try {
+      const response = await requestJSON(`/salary-system/version-boundaries${buildQueryString({ orgId: activeOrgId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boundaries: Object.entries(versionBoundaries).map(([versionId, startMonth]) => ({ versionId: Number(versionId), startMonth })) }) });
+      setVersions(Array.isArray(response?.versions) ? response.versions : versions);
+      setSavedVersionBoundaries(versionBoundaries);
+      setVersionDialogOpen(false);
+      setMessage({ severity: 'success', text: t('급여 버전 적용 구간을 저장했습니다.') });
+    } catch (error) {
+      setMessage({ severity: 'error', text: error?.message || t('급여 버전 적용 구간을 저장하지 못했습니다.') });
+    } finally { setVersionBusy(false); }
+  };
+  const hasVersionBoundaryChanges = JSON.stringify(versionBoundaries) !== JSON.stringify(savedVersionBoundaries);
   const removeItem = () => {
-    if (selected.required) return;
+    if (selected.required || isFixedIncentive) return;
     setItems((rows) => rows.filter((row) => row.id !== selected.id));
     setSelectedId('baseSalary');
   };
@@ -279,8 +348,7 @@ const SalarySystem = () => {
   return <AppPageContainer><Box sx={{ p: 2, width: '100%' }}>
     <Stack direction="row" flexWrap="wrap" justifyContent="space-between" alignItems="center" rowGap={1.5} sx={{ mb: 2, width: '100%' }}>
       <Typography variant="h5" fontWeight={700}>{t('급여 체계')}</Typography>
-      <Stack direction="row" spacing={1}><TextField label={t('적용 시작월')} type="month" size="small" value={effectiveMonth} onChange={(e) => setEffectiveMonth(e.target.value)} InputLabelProps={{ shrink: true }} />
-        <Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog}>{t('버전 관리')}</Button>
+      <Stack direction="row" spacing={1}><Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog}>{t('버전 관리')}</Button>
         <SaveButton onClick={saveDraft} disabled={!isDirty}>{t('저장')}</SaveButton></Stack>
     </Stack>
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
@@ -291,26 +359,40 @@ const SalarySystem = () => {
           <Box><Typography fontWeight={700}>{t('급여 항목')}</Typography><Typography variant="caption" color="text.secondary">{t('항목을 선택해 계산 방식과 직급별 단가를 설정하세요.')}</Typography></Box>
           <Tooltip title={t('항목 추가')}><IconButton size="small" color="primary" sx={{ ml: 'auto' }} onClick={() => setDialogOpen(true)}><AddIcon /></IconButton></Tooltip>
         </Stack>
-        {Object.entries(CATEGORIES).map(([category, label]) => <Box key={category} sx={{ p: 1.5, borderBottom: 1, borderColor: 'divider' }}>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 0.5, mb: 1 }}><Chip size="small" color={CATEGORY_COLORS[category]} label={t(label)} /><Typography variant="caption" color="text.secondary">{languageCode === 'ko' ? `${counts[category] || 0}${t('개')}` : `${counts[category] || 0} ${t('개')}`}</Typography></Stack>
-          <Stack spacing={0.5}>{items.filter((row) => row.category === category).map((row) => <Button key={row.id} variant={selectedId === row.id ? 'contained' : 'text'} color={selectedId === row.id ? 'primary' : 'inherit'} onClick={() => setSelectedId(row.id)} sx={{ display: 'block', textAlign: 'left', px: 1.5 }}>
-            <Typography variant="body2" fontWeight={600}>{t(row.name)}</Typography><Typography variant="caption" sx={{ display: 'block', opacity: 0.75 }}>{(row.payTypes || []).map((payType) => t(PAY_TYPES[payType]?.label || payType)).join(' · ')} · {t(PAY_CYCLES[row.payCycle])}</Typography>
-          </Button>)}</Stack>
-        </Box>)}
+        <DragDropContext onDragEnd={reorderItems}>
+          {Object.entries(CATEGORIES).map(([category, label]) => <Box key={category} sx={{ p: 1.5, borderBottom: 1, borderColor: 'divider' }}>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 0.5, mb: 1 }}><Chip size="small" color={CATEGORY_COLORS[category]} label={t(label)} /><Typography variant="caption" color="text.secondary">{languageCode === 'ko' ? `${counts[category] || 0}${t('개')}` : `${counts[category] || 0} ${t('개')}`}</Typography></Stack>
+            <Droppable droppableId={`salary-items:${category}`}>
+              {(dropProvided) => <Stack ref={dropProvided.innerRef} {...dropProvided.droppableProps} spacing={0.5}>
+                {items.filter((row) => row.category === category).map((row, index) => <Draggable key={row.id} draggableId={String(row.id)} index={index}>
+                  {(dragProvided, snapshot) => <Stack ref={dragProvided.innerRef} {...dragProvided.draggableProps} direction="row" alignItems="center" sx={{ bgcolor: snapshot.isDragging ? 'action.hover' : 'transparent', borderRadius: 1 }}>
+                    <IconButton {...dragProvided.dragHandleProps} size="small" aria-label="순서 변경" sx={{ flexShrink: 0, cursor: 'grab', color: 'text.disabled', '&:active': { cursor: 'grabbing' } }}><DragIndicatorIcon fontSize="small" /></IconButton>
+                    <Button variant={selectedId === row.id ? 'contained' : 'text'} color={selectedId === row.id ? 'primary' : 'inherit'} onClick={() => setSelectedId(row.id)} sx={{ display: 'block', flex: 1, minWidth: 0, textAlign: 'left', px: 1.5 }}>
+                      <Typography variant="body2" fontWeight={600}>{t(row.name)}</Typography><Typography variant="caption" sx={{ display: 'block', opacity: 0.75 }}>{(row.payTypes || []).map((payType) => t(PAY_TYPES[payType]?.label || payType)).join(' · ')} · {t(PAY_CYCLES[row.payCycle])}</Typography>
+                    </Button>
+                  </Stack>}
+                </Draggable>)}
+                {dropProvided.placeholder}
+              </Stack>}
+            </Droppable>
+          </Box>)}
+        </DragDropContext>
       </Paper>
 
       <Paper variant="outlined" sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" alignItems="center" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Box><Typography variant="h6" fontWeight={700}>{t(selected.name)}</Typography><Typography variant="body2" color="text.secondary">{calculationLabel(selected, t)}</Typography></Box>
-          <Tooltip title={t(selected.required ? '기본급은 삭제할 수 없습니다.' : '항목 삭제')}><span style={{ marginLeft: 'auto' }}><IconButton color="error" disabled={selected.required} onClick={removeItem}><DeleteOutlineIcon /></IconButton></span></Tooltip></Stack>
+          {!isFixedIncentive && <Tooltip title={t(selected.required ? '기본급은 삭제할 수 없습니다.' : '항목 삭제')}><span style={{ marginLeft: 'auto' }}><IconButton color="error" disabled={selected.required} onClick={removeItem}><DeleteOutlineIcon /></IconButton></span></Tooltip>}</Stack>
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Typography variant="body2" fontWeight={700}>{t('지급 설정')}</Typography><Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">{(selected.payTypes || []).map((payType) => <Chip key={payType} size="small" color={PAY_TYPES[payType]?.color} label={t(PAY_TYPES[payType]?.label || payType)} />)}<Chip size="small" variant="outlined" label={t(PAY_CYCLES[selected.payCycle])} />{selected.capValue && <Chip size="small" variant="outlined" label={`${t('상한')} ${selected.capValue}`} />}</Stack></Stack>
-          <Paper variant="outlined" sx={{ mt: 1.5, p: 2, bgcolor: 'action.hover', borderColor: 'divider' }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{ flex: 1 }}><Typography variant="h6" fontWeight={700}>{t(selected.name)}</Typography><Typography variant="h6" color="primary.main" fontWeight={700}>=</Typography><Typography fontWeight={700}>{formulaLabel(selected.formula, t) || t('계산식이 비어 있습니다.')}</Typography></Stack><Button variant="outlined" startIcon={<FunctionsIcon />} onClick={openFormulaDialog}>{t('수정')}</Button></Stack></Paper>
+          <Paper variant="outlined" sx={{ mt: 1.5, p: 2, bgcolor: 'action.hover', borderColor: 'divider' }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{ flex: 1 }}><Typography variant="h6" fontWeight={700}>{t(selected.name)}</Typography><Typography variant="h6" color="primary.main" fontWeight={700}>=</Typography><Typography fontWeight={700}>{isFixedIncentive ? t('공장 초당 단가 × CT × 작업 수량') : formulaLabel(selected.formula, t) || t('계산식이 비어 있습니다.')}</Typography></Stack>{!isFixedIncentive && <Button variant="outlined" startIcon={<FunctionsIcon />} onClick={openFormulaDialog}>{t('수정')}</Button>}</Stack></Paper>
         </Box>
-        <Box sx={{ px: 2, py: 1.5 }}><Typography fontWeight={700}>{languageCode === 'ko' ? `${effectiveMonth}부터 적용할 급여 타입·직급별 단가` : languageCode === 'vi' ? `Đơn giá theo loại lương và cấp bậc áp dụng từ ${effectiveMonth}` : `Pay type and grade rates effective ${effectiveMonth}`}</Typography><Typography variant="body2" color="text.secondary">{t('권한이나 직무와 관계없이 직원에게 지정된 급여 타입과 직급으로 단가를 결정합니다.')}</Typography></Box>
-        <TableContainer><Table size="small"><TableHead><TableRow><TableCell>{t('급여 타입')}</TableCell><TableCell>{t('직급')}</TableCell><TableCell align="right">{t('단가')}</TableCell></TableRow></TableHead><TableBody>
-          {PAY_TYPE_ORDER.filter((payType) => (selected.payTypes || []).includes(payType)).flatMap((payType) => grades.map((grade, index) => <TableRow key={`${payType}:${grade.id}`} hover>{index === 0 && <TableCell rowSpan={grades.length} sx={{ verticalAlign: 'top', pt: 2 }}><Chip size="small" color={PAY_TYPES[payType].color} label={t(PAY_TYPES[payType].label)} /><Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{payType}</Typography></TableCell>}<TableCell>{gradeName(grade, languageCode)} ({grade.code})</TableCell>
-            <TableCell align="right"><TextField size="small" value={getRate(payType, grade.id)} onChange={(e) => changeRate(payType, grade.id, e.target.value)} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} sx={{ width: 170 }} /></TableCell></TableRow>))}
-        </TableBody></Table></TableContainer>
+        {isFixedIncentive
+          ? <Alert severity="info" icon={false} sx={{ m: 2 }}>{t('성과급은 작업 기록을 기준으로 자동 계산되며 급여 체계에서 수정할 수 없습니다.')}</Alert>
+          : <><Box sx={{ px: 2, py: 1.5 }}><Typography fontWeight={700}>{t('급여 타입·직급별 단가')}</Typography><Typography variant="body2" color="text.secondary">{t('권한이나 직무와 관계없이 직원에게 지정된 급여 타입과 직급으로 단가를 결정합니다.')}</Typography></Box>
+            <TableContainer><Table size="small"><TableHead><TableRow><TableCell>{t('급여 타입')}</TableCell><TableCell>{t('직급')}</TableCell><TableCell align="right">{t('단가')}</TableCell></TableRow></TableHead><TableBody>
+              {PAY_TYPE_ORDER.filter((payType) => (selected.payTypes || []).includes(payType)).flatMap((payType) => grades.map((grade, index) => <TableRow key={`${payType}:${grade.id}`} hover>{index === 0 && <TableCell rowSpan={grades.length} sx={{ verticalAlign: 'top', pt: 2 }}><Chip size="small" color={PAY_TYPES[payType].color} label={t(PAY_TYPES[payType].label)} /><Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{payType}</Typography></TableCell>}<TableCell>{gradeName(grade, languageCode)} ({grade.code})</TableCell>
+                <TableCell align="right"><TextField size="small" value={getRate(payType, grade.id)} onFocus={(e) => e.target.select()} onChange={(e) => changeRate(payType, grade.id, e.target.value)} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} sx={{ width: 170 }} /></TableCell></TableRow>))}
+            </TableBody></Table></TableContainer></>}
       </Paper>
     </Stack>
 
@@ -377,45 +459,52 @@ const SalarySystem = () => {
       </Box>
     </Stack></DialogContent><DialogActions><Button variant="contained" onClick={saveFormula} disabled={formulaDraft.length === 0}>{t('계산식 적용')}</Button></DialogActions></Dialog>
 
-    <Dialog open={versionDialogOpen} onClose={() => setVersionDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 체계 버전 관리')}</DialogTitle><DialogContent>
-      {versions.length === 0
-        ? <Typography color="text.secondary">{t('아직 확정된 버전이 없습니다. 저장하면 새 버전으로 기록됩니다.')}</Typography>
-        : <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ pt: 1 }}>
-          <Stack spacing={1} sx={{ width: { xs: '100%', md: 220 }, flexShrink: 0 }}>
-            {[...versions].reverse().map((version) => <Paper
-              key={version.versionNumber}
-              variant="outlined"
-              onClick={() => setViewingVersion(version)}
-              sx={{
-                p: 1.25, cursor: 'pointer',
-                borderColor: viewingVersion?.versionNumber === version.versionNumber ? 'primary.main' : 'divider',
-                bgcolor: viewingVersion?.versionNumber === version.versionNumber ? 'action.selected' : 'transparent',
-              }}
-            >
-              <Stack direction="row" alignItems="center" spacing={1}>
-                <Chip size="small" color="primary" label={`Ver.${version.versionNumber}`} />
-                <Typography variant="caption" color="text.secondary">{version.confirmedAt}</Typography>
-              </Stack>
-              <Typography variant="body2" fontWeight={600} sx={{ mt: 0.5 }}>{version.effectiveMonth} {t('부터 적용')}</Typography>
-            </Paper>)}
+    <Dialog open={versionDialogOpen} onClose={versionBusy ? undefined : () => setVersionDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 체계 버전 관리')}</DialogTitle><DialogContent dividers>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
+        <Box sx={{ width: { xs: '100%', md: 260 }, flexShrink: 0 }}>
+          <Stack spacing={0.75}>
+            {[...versions].sort((a, b) => a.versionNumber - b.versionNumber).map((version) => {
+              const versionColor = colorByVersionId.get(version.id) || '#9e9e9e';
+              const draggable = version.versionNumber > 1;
+              return <Box key={version.id} draggable={draggable} onDragStart={(event) => { if (!draggable) return; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(version.id)); }} sx={{ display: 'flex', alignItems: 'center', minHeight: 38, px: 0.75, border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: versionColor, borderRadius: 1, cursor: draggable ? 'grab' : 'default', bgcolor: 'background.paper', '&:active': { cursor: draggable ? 'grabbing' : 'default' } }}>
+                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: versionColor, mr: 0.75, flexShrink: 0 }} />
+                <DragIndicatorIcon sx={{ mr: 0.5, color: draggable ? 'text.secondary' : 'text.disabled', fontSize: 18 }} />
+                <Typography variant="body2" fontWeight={700} sx={{ flex: 1, fontSize: '.78rem' }}>{version.confirmedAt} · Ver.{version.versionNumber}</Typography>
+                <Chip size="small" variant="outlined" label={`${version.items?.length || 0}${t('개')}`} sx={{ height: 22, fontSize: '.7rem' }} />
+              </Box>;
+            })}
+            {versions.length === 0 && <Typography variant="body2" color="text.secondary">{t('아직 확정된 버전이 없습니다. 저장하면 새 버전으로 기록됩니다.')}</Typography>}
           </Stack>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            {!viewingVersion
-              ? <Typography color="text.secondary">{t('왼쪽에서 버전을 선택하면 그 시점의 급여 항목을 볼 수 있습니다.')}</Typography>
-              : <Stack spacing={1}>
-                <Typography variant="subtitle2" fontWeight={700}>{`Ver.${viewingVersion.versionNumber}`} · {languageCode === 'ko' ? `${viewingVersion.items.length}${t('개')}` : `${viewingVersion.items.length} ${t('개')}`}</Typography>
-                {viewingVersion.items.map((row) => <Paper key={row.id} variant="outlined" sx={{ p: 1.25 }}>
-                  <Typography variant="body2" fontWeight={600}>{t(row.name)}</Typography>
-                  <Typography variant="caption" color="text.secondary">{formulaLabel(row.formula, t) || t('계산식이 비어 있습니다.')}</Typography>
-                </Paper>)}
-              </Stack>}
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>{managementStartMonth} ~ {monthKey()}</Typography>
+          <Box sx={{ position: 'relative' }}>
+            {[...managedMonths].reverse().map((month, index, displayMonths) => {
+              const activeVersion = versionForMonth(month);
+              const versionColor = activeVersion ? colorByVersionId.get(activeVersion.id) || '#9e9e9e' : '#9e9e9e';
+              const isBoundary = Object.values(versionBoundaries).includes(month);
+              const isNewest = index === 0;
+              const dotSize = isNewest ? 20 : isBoundary ? 16 : 12;
+              const olderVersion = index < displayMonths.length - 1 ? versionForMonth(displayMonths[index + 1]) : null;
+              const olderColor = olderVersion ? colorByVersionId.get(olderVersion.id) || '#9e9e9e' : '#9e9e9e';
+              return <Box key={month} onDragEnter={(event) => { event.preventDefault(); event.currentTarget.dataset.dragover = 'true'; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) delete event.currentTarget.dataset.dragover; }} onDrop={(event) => { delete event.currentTarget.dataset.dragover; const version = versions.find((item) => item.id === Number(event.dataTransfer.getData('text/plain'))); if (version) assignVersionToMonth(version, month); }} sx={{ position: 'relative', display: 'flex', alignItems: 'center', minHeight: 34, pl: 3.5, pr: 0.5, borderRadius: 1, transition: 'background-color .15s', '&[data-dragover="true"]': { bgcolor: 'action.hover' } }}>
+                {index > 0 && <Box sx={{ position: 'absolute', zIndex: 0, left: 11, top: 0, height: '50%', width: 2, bgcolor: versionColor }} />}
+                {index < displayMonths.length - 1 && <Box sx={{ position: 'absolute', zIndex: 0, left: 11, top: '50%', height: '50%', width: 2, bgcolor: olderColor }} />}
+                <Box sx={{ position: 'absolute', zIndex: 1, left: 12 - dotSize / 2, width: dotSize, height: dotSize, borderRadius: '50%', bgcolor: versionColor, border: 2, borderColor: versionColor, boxShadow: isNewest || isBoundary ? `0 0 0 3px ${versionColor}26` : 'none' }} />
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%', minWidth: 0 }}>
+                  <Typography variant="body2" fontWeight={600} noWrap sx={{ flex: 1, fontSize: '.78rem' }}>{month}</Typography>
+                  <Chip size="small" variant="outlined" label={activeVersion ? `Ver.${activeVersion.versionNumber}` : t('미지정')} sx={{ height: 22, fontSize: '.7rem', color: versionColor, borderColor: versionColor }} />
+                </Stack>
+              </Box>;
+            })}
           </Box>
-        </Stack>}
-    </DialogContent><DialogActions><Button onClick={() => setVersionDialogOpen(false)}>{t('닫기')}</Button></DialogActions></Dialog>
+        </Box>
+      </Stack>
+    </DialogContent><DialogActions><Button variant="contained" onClick={saveVersionBoundaries} disabled={versionBusy || !hasVersionBoundaryChanges}>{t('저장')}</Button></DialogActions></Dialog>
 
     <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm"><DialogTitle>{t('급여 항목 추가')}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
       <TextField autoFocus label={t('항목명')} value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder={t('예: 자격수당')} />
-      <FormControl fullWidth size="small"><InputLabel>{t('급여 구분')}</InputLabel><Select label={t('급여 구분')} value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>{Object.entries(CATEGORIES).map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}</Select></FormControl>
+      <FormControl fullWidth size="small"><InputLabel>{t('급여 구분')}</InputLabel><Select label={t('급여 구분')} value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>{Object.entries(CATEGORIES).filter(([key]) => key !== 'INCENTIVE').map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}</Select></FormControl>
       {calculationFields(draft, (field, value) => setDraft((prev) => ({ ...prev, [field]: value })))}
     </Stack></DialogContent><DialogActions><Button onClick={() => setDialogOpen(false)}>{t('취소')}</Button><Button variant="contained" onClick={addItem} disabled={!draft.name.trim()}>{t('추가')}</Button></DialogActions></Dialog>
   </Box></AppPageContainer>;

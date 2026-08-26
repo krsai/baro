@@ -9,7 +9,9 @@ const PRECEDENCE: Record<string, number> = { "+": 1, "-": 1, "×": 2, "÷": 2 };
 export const validateSalaryFormula = (value: unknown, category: string) => {
   if (!Array.isArray(value) || value.length === 0 || value.length > 100) return false;
   const tokens = value.map(String);
+  if (category === "INCENTIVE" && (tokens.length !== 1 || tokens[0] !== "PRODUCTION_ALLOWANCE")) return false;
   if (category !== "INCENTIVE" && tokens[0] !== "GRADE_RATE") return false;
+  if (category !== "INCENTIVE" && tokens.includes("PRODUCTION_ALLOWANCE")) return false;
   let depth = 0;
   let expectOperand = true;
   for (const token of tokens) {
@@ -29,7 +31,7 @@ export const validateSalaryFormula = (value: unknown, category: string) => {
 };
 
 export const evaluateSalaryFormula = (formula: string[], parameters: Record<string, number>) => {
-  if (!validateSalaryFormula(formula, "INCENTIVE")) throw new Error("invalid salary formula");
+  if (!validateSalaryFormula(formula, formula[0] === "GRADE_RATE" ? "ALLOWANCE" : "INCENTIVE")) throw new Error("invalid salary formula");
   const output: string[] = [];
   const operators: string[] = [];
   for (const token of formula) {
