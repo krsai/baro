@@ -1,5 +1,13 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-08-26 급여 체계 백엔드 Phase 1·2 구현
+
+- `EmployeeCompensationPolicy`의 단가 축을 `orgRole + gradeId`에서 canonical `payType(GENERAL/OUTPUT) + gradeId`로 전환했다. 레거시 역할별 행을 접을 때 같은 급여 타입·직급의 금액이 다르면 마이그레이션은 임의 선택하지 않고 명시적으로 실패한다.
+- 급여 항목은 `SalaryItem`, 항목별 단가는 `SalaryItemRate`, 확정 버전은 `SalarySystemVersion`으로 저장한다. 첫 조회 시 레거시 정책을 기본급·수당·성과급 항목으로 백필하고, `1900-01`부터 적용되는 Ver.1 스냅샷을 자동 생성해 과거 월에 버전 공백이 없게 한다.
+- 계산식은 `backend/src/employees/salaryFormula.ts`의 제한형 파서/인터프리터만 사용한다. 허용된 9개 파라미터, `+ - × ÷ ( )`, `CONST:n` 외에는 거부하며 `eval`/`Function`을 사용하지 않는다. 비성과급 항목은 반드시 `GRADE_RATE`로 시작한다.
+- `/salary-system` GET/PUT과 `/salary-system/versions` POST는 기존 `requireSalarySystemManager` 권한을 공유한다. 프론트 `SalarySystem.jsx`는 이 API에서 항목·단가·버전을 읽고 저장 버튼에서 현재 전체 상태를 저장한 뒤 새 버전을 확정한다.
+- 실제 월 급여 실행 및 `PayrollSnapshot` 연동은 정책 결정이 필요한 Phase 3로 남겼다. 현재 생산수당 계산 로직은 변경하지 않았다.
+
 ## 2026-08-26 급여 체계 UI 시안: "적용 이력" 탭 제거 → 공정 버전 관리 스타일 "버전 관리" 다이얼로그로 대체
 
 - **탭 구조 제거**: "급여 항목 및 단가"/"적용 이력" 2탭 구조를 없애고 화면에는 급여 항목 목록+상세 패널 하나만 남겼다. `tab` state와 `Tabs`/`Tab` 사용을 전부 제거했다.

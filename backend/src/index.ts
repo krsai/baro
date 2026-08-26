@@ -854,11 +854,14 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "EmployeeGrade", columnName: "nameKo" },
   { tableName: "EmployeeGrade", columnName: "nameEn" },
   { tableName: "EmployeeGrade", columnName: "nameVi" },
-  { tableName: "EmployeeCompensationPolicy", columnName: "orgRole" },
+  { tableName: "EmployeeCompensationPolicy", columnName: "payType" },
   { tableName: "EmployeeCompensationPolicy", columnName: "gradeId" },
   { tableName: "EmployeeCompensationPolicy", columnName: "baseSalary" },
   { tableName: "EmployeeCompensationPolicy", columnName: "allowance" },
   { tableName: "EmployeeCompensationPolicy", columnName: "incentive" },
+  { tableName: "SalaryItem", columnName: "formula" },
+  { tableName: "SalaryItemRate", columnName: "amount" },
+  { tableName: "SalarySystemVersion", columnName: "snapshot" },
 ] as const;
 // createdByEmployeeId/updatedByEmployeeId is an audit FK pattern applied to 24+
 // tables (migration_fix.sql's "audited_tables" DO block) plus SystemSetting
@@ -881,6 +884,7 @@ const STARTUP_REQUIRED_RUNTIME_AUDIT_FK_COLUMNS = Prisma.dmmf.datamodel.models.f
     ).map((columnName) => ({ tableName: model.name, columnName }))
 );
 const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
+  { tableName: "EmployeeCompensationPolicy", columnName: "orgRole" },
   { tableName: "EmployeeCompensationPolicy", columnName: "fixedAllowance" },
   { tableName: "EmployeeCompensationPolicy", columnName: "variableAllowance" },
   { tableName: "Employee", columnName: "lineName" },
@@ -971,8 +975,9 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "AttrRole_orgId_id_key",
   "EmployeeGrade_one_default_per_org_key",
   "Employee_gradeId_fkey",
-  "EmployeeCompensationPolicy_orgId_orgRole_gradeId_key",
+  "EmployeeCompensationPolicy_orgId_payType_gradeId_key",
   "EmployeeCompensationPolicy_nonnegative_components_check",
+  "EmployeeCompensationPolicy_payType_check",
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_ENUM_VALUES = [
   { enumName: "OrgMembershipStatus", value: "TERMINATED" },

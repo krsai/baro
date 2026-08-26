@@ -166,23 +166,21 @@ const SalarySystem = () => {
   const load = useCallback(async () => {
     if (!activeOrgId) return;
     try {
-      const [sets, policies] = await Promise.all([
+      const [sets, salarySystem] = await Promise.all([
         requestJSON(`/employee-grades${buildQueryString({ orgId: activeOrgId })}`),
-        requestJSON(`/employee-compensation-policies${buildQueryString({ orgId: activeOrgId })}`),
+        requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId })}`),
       ]);
       setGrades((Array.isArray(sets) ? sets : []).flatMap((set) => set.grades || []).filter((grade) => grade.isActive));
+      const loadedItems = Array.isArray(salarySystem?.items) && salarySystem.items.length ? salarySystem.items : DEFAULT_ITEMS;
       const next = {};
-      (Array.isArray(policies) ? policies : []).forEach((row) => {
-        const payType = row.orgRole === 'WORKER' ? 'OUTPUT' : 'GENERAL';
-        const key = `${payType}:${row.gradeId}`;
-        if (!next[key]) {
-          next[key] = {
-            baseSalary: money(row.baseSalary), allowanceTotal: money(row.allowance), incentiveTotal: money(row.incentive),
-          };
-        }
+      (Array.isArray(salarySystem?.rates) ? salarySystem.rates : []).forEach((row) => {
+        const key = `${row.payType}:${row.gradeId}`;
+        next[key] = { ...next[key], [row.salaryItemCode]: money(row.amount) };
       });
+      setItems(loadedItems);
+      setVersions(Array.isArray(salarySystem?.versions) ? salarySystem.versions : []);
       setRates(next);
-      setSavedSnapshot(JSON.stringify({ items: DEFAULT_ITEMS, rates: next, effectiveMonth: monthKey() }));
+      setSavedSnapshot(JSON.stringify({ items: loadedItems, rates: next, effectiveMonth: monthKey() }));
     } catch (error) {
       setMessage({ severity: 'error', text: error?.message || t('급여 기준을 불러오지 못했습니다.') });
     }
@@ -211,13 +209,19 @@ const SalarySystem = () => {
     setDraft(DEFAULT_DRAFT);
     setMessage({ severity: 'info', text: t('화면 시안에 항목을 추가했습니다. 서버 저장은 백엔드 구현 후 연결됩니다.') });
   };
-  const saveDraft = () => {
-    setVersions((prev) => [
-      ...prev,
-      { versionNumber: prev.length + 1, effectiveMonth, items, rates, confirmedAt: new Date().toISOString().slice(0, 10) },
-    ]);
-    setSavedSnapshot(JSON.stringify({ items, rates, effectiveMonth }));
+  const saveDraft = async () => {
+    try {
+      const rateRows = Object.entries(rates).flatMap(([key, itemRates]) => {
+        const [payType, gradeId] = key.split(':');
+        return Object.entries(itemRates || {}).map(([salaryItemCode, amount]) => ({ payType, gradeId: Number(gradeId), salaryItemCode, amount: Number(String(amount).replace(/,/g, '')) || 0 }));
+      });
+      await requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: items.map((row) => ({ ...row, code: row.code || row.id })), rates: rateRows }) });
+      await requestJSON(`/salary-system/versions${buildQueryString({ orgId: activeOrgId })}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ effectiveMonth }) });
+      await load();
     setMessage({ severity: 'info', text: t('화면 시안 상태이며 서버 저장 기능은 아직 연결되지 않았습니다. 백엔드 구현 후 실제로 저장됩니다.') });
+    } catch (error) {
+      setMessage({ severity: 'error', text: error?.message || 'Failed to save salary system.' });
+    }
   };
   const openVersionDialog = () => {
     setViewingVersion(null);

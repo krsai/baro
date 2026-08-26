@@ -4766,11 +4766,11 @@ WHERE e."roleId" = r."id"
 -- 2026-08-23: employee base salary is managed only by compensation policies
 ALTER TABLE "Employee" DROP COLUMN IF EXISTS "fixedSalary";
 
--- 2026-08-16: salary policy matrix by organization role and employee grade
+-- 2026-08-26: salary policy matrix by pay type and employee grade
 CREATE TABLE IF NOT EXISTS "EmployeeCompensationPolicy" (
   "id" SERIAL PRIMARY KEY,
   "orgId" INTEGER NOT NULL,
-  "orgRole" "OrgUserRole" NOT NULL,
+  "payType" TEXT NOT NULL,
   "gradeId" INTEGER NOT NULL,
   "baseSalary" INTEGER NOT NULL DEFAULT 0,
   "allowance" INTEGER NOT NULL DEFAULT 0,
@@ -4778,7 +4778,20 @@ CREATE TABLE IF NOT EXISTS "EmployeeCompensationPolicy" (
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE UNIQUE INDEX IF NOT EXISTS "EmployeeCompensationPolicy_orgId_orgRole_gradeId_key" ON "EmployeeCompensationPolicy"("orgId","orgRole","gradeId");
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='EmployeeCompensationPolicy' AND column_name='orgRole') THEN
+    IF EXISTS (SELECT 1 FROM "EmployeeCompensationPolicy" GROUP BY "orgId", CASE WHEN "orgRole"='WORKER' THEN 'OUTPUT' ELSE 'GENERAL' END, "gradeId" HAVING COUNT(DISTINCT ("baseSalary","allowance","incentive")) > 1) THEN
+      RAISE EXCEPTION 'Conflicting legacy compensation policies must be resolved before payType migration';
+    END IF;
+    ALTER TABLE "EmployeeCompensationPolicy" ADD COLUMN IF NOT EXISTS "payType" TEXT;
+    UPDATE "EmployeeCompensationPolicy" SET "payType"=CASE WHEN "orgRole"='WORKER' THEN 'OUTPUT' ELSE 'GENERAL' END WHERE "payType" IS NULL;
+    DELETE FROM "EmployeeCompensationPolicy" a USING "EmployeeCompensationPolicy" b WHERE a."id">b."id" AND a."orgId"=b."orgId" AND a."payType"=b."payType" AND a."gradeId"=b."gradeId";
+    DROP INDEX IF EXISTS "EmployeeCompensationPolicy_orgId_orgRole_gradeId_key";
+    ALTER TABLE "EmployeeCompensationPolicy" DROP COLUMN "orgRole";
+    ALTER TABLE "EmployeeCompensationPolicy" ALTER COLUMN "payType" SET NOT NULL;
+  END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS "EmployeeCompensationPolicy_orgId_payType_gradeId_key" ON "EmployeeCompensationPolicy"("orgId","payType","gradeId");
 CREATE INDEX IF NOT EXISTS "EmployeeCompensationPolicy_orgId_gradeId_idx" ON "EmployeeCompensationPolicy"("orgId","gradeId");
 ALTER TABLE "EmployeeCompensationPolicy" ADD COLUMN IF NOT EXISTS "allowance" INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE "EmployeeCompensationPolicy" ADD COLUMN IF NOT EXISTS "incentive" INTEGER NOT NULL DEFAULT 0;
@@ -4800,6 +4813,27 @@ ALTER TABLE "EmployeeCompensationPolicy" DROP COLUMN IF EXISTS "variableAllowanc
 DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_gradeId_fkey" FOREIGN KEY ("gradeId") REFERENCES "EmployeeGrade"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_nonnegative_components_check" CHECK ("baseSalary" >= 0 AND "allowance" >= 0 AND "incentive" >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_payType_check" CHECK ("payType" IN ('GENERAL','OUTPUT')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS "SalaryItem" ("id" SERIAL PRIMARY KEY,"orgId" INTEGER NOT NULL,"code" TEXT NOT NULL,"name" TEXT NOT NULL,"category" TEXT NOT NULL,"payTypes" JSONB NOT NULL,"formula" JSONB NOT NULL,"payCycle" TEXT NOT NULL,"capValue" INTEGER,"required" BOOLEAN NOT NULL DEFAULT false,"sortOrder" INTEGER NOT NULL DEFAULT 0,"isActive" BOOLEAN NOT NULL DEFAULT true,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE UNIQUE INDEX IF NOT EXISTS "SalaryItem_orgId_code_key" ON "SalaryItem"("orgId","code");
+CREATE UNIQUE INDEX IF NOT EXISTS "SalaryItem_orgId_id_key" ON "SalaryItem"("orgId","id");
+DO $$ BEGIN ALTER TABLE "SalaryItem" ADD CONSTRAINT "SalaryItem_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "SalaryItem" ADD CONSTRAINT "SalaryItem_category_check" CHECK ("category" IN ('BASE','ALLOWANCE','INCENTIVE')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "SalaryItem" ADD CONSTRAINT "SalaryItem_payCycle_check" CHECK ("payCycle" IN ('MONTHLY','QUARTERLY','SEMIANNUAL','ANNUAL')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE TABLE IF NOT EXISTS "SalaryItemRate" ("id" SERIAL PRIMARY KEY,"orgId" INTEGER NOT NULL,"payType" TEXT NOT NULL,"gradeId" INTEGER NOT NULL,"salaryItemId" INTEGER NOT NULL,"amount" INTEGER NOT NULL DEFAULT 0,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE UNIQUE INDEX IF NOT EXISTS "SalaryItemRate_orgId_payType_gradeId_salaryItemId_key" ON "SalaryItemRate"("orgId","payType","gradeId","salaryItemId");
+CREATE UNIQUE INDEX IF NOT EXISTS "EmployeeGrade_orgId_id_key" ON "EmployeeGrade"("orgId","id");
+DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_grade_fkey" FOREIGN KEY ("orgId","gradeId") REFERENCES "EmployeeGrade"("orgId","id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_item_fkey" FOREIGN KEY ("orgId","salaryItemId") REFERENCES "SalaryItem"("orgId","id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_payType_check" CHECK ("payType" IN ('GENERAL','OUTPUT')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_amount_check" CHECK ("amount" >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE TABLE IF NOT EXISTS "SalarySystemVersion" ("id" SERIAL PRIMARY KEY,"orgId" INTEGER NOT NULL,"versionNumber" INTEGER NOT NULL,"effectiveMonth" TEXT NOT NULL,"snapshot" JSONB NOT NULL,"confirmedBy" TEXT NOT NULL,"confirmedDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE UNIQUE INDEX IF NOT EXISTS "SalarySystemVersion_orgId_versionNumber_key" ON "SalarySystemVersion"("orgId","versionNumber");
+CREATE UNIQUE INDEX IF NOT EXISTS "SalarySystemVersion_orgId_effectiveMonth_key" ON "SalarySystemVersion"("orgId","effectiveMonth");
+DO $$ BEGIN ALTER TABLE "SalarySystemVersion" ADD CONSTRAINT "SalarySystemVersion_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "SalarySystemVersion" ADD CONSTRAINT "SalarySystemVersion_effectiveMonth_check" CHECK ("effectiveMonth" ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- 2026-08-16: enforce organization-scoped employee role/grade relationships
 CREATE UNIQUE INDEX IF NOT EXISTS "EmployeeGrade_orgId_id_key" ON "EmployeeGrade"("orgId","id");

@@ -13,6 +13,7 @@ import {
   normalizeEmployeeNo,
 } from "./employeeNumber";
 import { resolveOptionalString } from "../utils/common";
+import { createSalarySystemRouter } from "./salarySystem.routes";
 
 type EmployeeRoutesDeps = {
   hasOrgFeatureAccess: (args: {
@@ -145,11 +146,13 @@ export const createEmployeeRouter = ({
     res.status(403).json({ ok: false, error: "salary system access required" }); return false;
   };
 
+  employeeRouter.use(createSalarySystemRouter({ requireSalarySystemManager }));
+
   employeeRouter.get("/employee-compensation-policies", async (req, res) => {
     const organization = await getOrganizationByQuery(req);
     if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
     if (!(await requireSalarySystemManager(req, res, organization.id))) return;
-    const rows = await prisma.employeeCompensationPolicy.findMany({ where: { orgId: organization.id }, orderBy: [{ orgRole: "asc" }, { grade: { sortOrder: "asc" } }] });
+    const rows = await prisma.employeeCompensationPolicy.findMany({ where: { orgId: organization.id }, orderBy: [{ payType: "asc" }, { grade: { sortOrder: "asc" } }] });
     return res.json(rows);
   });
 
@@ -158,19 +161,19 @@ export const createEmployeeRouter = ({
     if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
     if (!(await requireSalarySystemManager(req, res, organization.id))) return;
     const rows = Array.isArray(req.body?.policies) ? req.body.policies : [];
-    const allowedRoles = new Set(["ADMIN", "OPERATOR", "ACCOUNTANT", "WORKER"]);
+    const allowedPayTypes = new Set(["GENERAL", "OUTPUT"]);
     const gradeIds = new Set((await prisma.employeeGrade.findMany({ where: { orgId: organization.id, isActive: true }, select: { id: true } })).map((grade) => grade.id));
     const normalized = rows.map((row: any) => ({
-      orgRole: String(row?.orgRole || "").trim().toUpperCase(), gradeId: Number(row?.gradeId),
+      payType: String(row?.payType || "").trim().toUpperCase(), gradeId: Number(row?.gradeId),
       baseSalary: Number(row?.baseSalary), allowance: Number(row?.allowance), incentive: Number(row?.incentive),
     }));
-    const keys = normalized.map((row: any) => `${row.orgRole}:${row.gradeId}`);
+    const keys = normalized.map((row: any) => `${row.payType}:${row.gradeId}`);
     if (new Set(keys).size !== keys.length || normalized.some((row: any) =>
-      !allowedRoles.has(row.orgRole) || !gradeIds.has(row.gradeId)
+      !allowedPayTypes.has(row.payType) || !gradeIds.has(row.gradeId)
       || ![row.baseSalary, row.allowance, row.incentive].every((amount) => Number.isSafeInteger(amount) && amount >= 0)
     )) return res.status(400).json({ ok: false, error: "valid unique role, grade and nonnegative amounts are required" });
     await prisma.$transaction(normalized.map((row: any) => prisma.employeeCompensationPolicy.upsert({
-      where: { orgId_orgRole_gradeId: { orgId: organization.id, orgRole: row.orgRole, gradeId: row.gradeId } },
+      where: { orgId_payType_gradeId: { orgId: organization.id, payType: row.payType, gradeId: row.gradeId } },
       create: { orgId: organization.id, ...row }, update: { baseSalary: row.baseSalary, allowance: row.allowance, incentive: row.incentive },
     })));
     return res.json(await prisma.employeeCompensationPolicy.findMany({ where: { orgId: organization.id } }));
