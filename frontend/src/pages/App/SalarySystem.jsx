@@ -8,7 +8,6 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import ClearAllIcon from '@mui/icons-material/ClearAll';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import HistoryIcon from '@mui/icons-material/History';
 import FunctionsIcon from '@mui/icons-material/Functions';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
@@ -208,18 +207,20 @@ const SalarySystem = () => {
   </>;
 
   return <AppPageContainer><Box sx={{ p: 2, width: '100%' }}>
-    <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} sx={{ mb: 2 }}>
+    <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} sx={{ mb: 2, width: '100%' }}>
       <Box><Typography variant="h5" fontWeight={700}>{t('급여 체계')}</Typography><Typography variant="body2" color="text.secondary">{t('급여 항목, 복합 계산 단위, 적용 대상별 단가와 변경 이력을 관리합니다.')}</Typography></Box>
       <Stack direction="row" spacing={1} sx={{ ml: { md: 'auto' } }}><TextField label={t('적용 시작월')} type="month" size="small" value={effectiveMonth} onChange={(e) => setEffectiveMonth(e.target.value)} InputLabelProps={{ shrink: true }} />
-        <Button variant="outlined" startIcon={<HistoryIcon />} onClick={() => setTab(1)}>{t('적용 이력')}</Button><Button variant="outlined" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>{t('항목 추가')}</Button><SaveButton onClick={saveDraft} disabled={!isDirty}>{t('저장')}</SaveButton></Stack>
+        <SaveButton onClick={saveDraft} disabled={!isDirty}>{t('저장')}</SaveButton></Stack>
     </Stack>
-    <Alert severity="info" sx={{ mb: 2 }}>{t('UI 시안입니다. 제한된 계산식 모듈과 월별 근무 캘린더 값은 아직 서버에 저장되지 않습니다.')}</Alert>
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
     <Paper variant="outlined" sx={{ mb: 2 }}><Tabs value={tab} onChange={(_e, value) => setTab(value)} sx={{ px: 1 }}><Tab label={t('급여 항목 및 단가')} /><Tab label={t('적용 이력')} /></Tabs></Paper>
 
     {tab === 0 ? <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="stretch">
       <Paper variant="outlined" sx={{ width: { xs: '100%', lg: 350 }, flexShrink: 0 }}>
-        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Typography fontWeight={700}>{t('급여 항목')}</Typography><Typography variant="caption" color="text.secondary">{t('항목을 선택해 계산 방식과 직급별 단가를 설정하세요.')}</Typography></Box>
+        <Stack direction="row" alignItems="flex-start" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+          <Box><Typography fontWeight={700}>{t('급여 항목')}</Typography><Typography variant="caption" color="text.secondary">{t('항목을 선택해 계산 방식과 직급별 단가를 설정하세요.')}</Typography></Box>
+          <Tooltip title={t('항목 추가')}><IconButton size="small" color="primary" sx={{ ml: 'auto' }} onClick={() => setDialogOpen(true)}><AddIcon /></IconButton></Tooltip>
+        </Stack>
         {Object.entries(CATEGORIES).map(([category, label]) => <Box key={category} sx={{ p: 1.5, borderBottom: 1, borderColor: 'divider' }}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 0.5, mb: 1 }}><Chip size="small" color={CATEGORY_COLORS[category]} label={t(label)} /><Typography variant="caption" color="text.secondary">{languageCode === 'ko' ? `${counts[category] || 0}${t('개')}` : `${counts[category] || 0} ${t('개')}`}</Typography></Stack>
           <Stack spacing={0.5}>{items.filter((row) => row.category === category).map((row) => <Button key={row.id} variant={selectedId === row.id ? 'contained' : 'text'} color={selectedId === row.id ? 'primary' : 'inherit'} onClick={() => setSelectedId(row.id)} sx={{ display: 'block', textAlign: 'left', px: 1.5 }}>

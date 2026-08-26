@@ -21,7 +21,6 @@ const translations = {
   '상한값 (선택)': ['Cap (optional)', 'Giới hạn (tùy chọn)'], '계산 결과 최대 금액': ['Maximum calculated amount', 'Số tiền tính tối đa'],
   '급여 체계': ['Salary Structure', 'Cơ cấu lương'], '급여 항목, 복합 계산 단위, 적용 대상별 단가와 변경 이력을 관리합니다.': ['Manage salary items, formula components, rates by target, and change history.', 'Quản lý khoản lương, thành phần công thức, đơn giá theo đối tượng và lịch sử thay đổi.'],
   '적용 시작월': ['Effective month', 'Tháng bắt đầu áp dụng'], '적용 이력': ['Application history', 'Lịch sử áp dụng'], '항목 추가': ['Add item', 'Thêm khoản mục'],
-  'UI 시안입니다. 제한된 계산식 모듈과 월별 근무 캘린더 값은 아직 서버에 저장되지 않습니다.': ['This is a UI preview. Formula modules and monthly work-calendar values are not yet stored on the server.', 'Đây là bản xem trước giao diện. Mô-đun công thức và lịch làm việc theo tháng chưa được lưu trên máy chủ.'],
   '급여 항목 및 단가': ['Salary items and rates', 'Khoản lương và đơn giá'], '급여 항목': ['Salary items', 'Khoản lương'],
   '항목을 선택해 계산 방식과 직급별 단가를 설정하세요.': ['Select an item to configure its formula and grade-based rates.', 'Chọn khoản mục để thiết lập công thức và đơn giá theo cấp bậc.'],
   '개': ['items', 'mục'], '기본급은 삭제할 수 없습니다.': ['Base salary cannot be deleted.', 'Không thể xóa lương cơ bản.'], '항목 삭제': ['Delete item', 'Xóa khoản mục'],
