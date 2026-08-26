@@ -972,7 +972,7 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "EmployeeGrade_one_default_per_org_key",
   "Employee_gradeId_fkey",
   "EmployeeCompensationPolicy_orgId_orgRole_gradeId_key",
-  "EmployeeCompensationPolicy_nonnegative_check",
+  "EmployeeCompensationPolicy_nonnegative_components_check",
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_ENUM_VALUES = [
   { enumName: "OrgMembershipStatus", value: "TERMINATED" },
