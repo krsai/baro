@@ -225,6 +225,10 @@ const toFactoryResponse = (factory: any) => {
 
   return {
     ...factoryFields,
+    productionAllowanceVersions: ensureArray(productionAllowanceRates).map((rate) => ({
+      ...rate,
+      confirmedAt: rate.confirmedAt?.toISOString?.() ?? rate.confirmedAt,
+    })),
     productionAllowanceEffectiveMonth:
       ensureArray(productionAllowanceRates)[0]?.effectiveMonth ?? null,
     managerEmployee,
@@ -251,7 +255,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
         managerEmployee: {
           select: FACTORY_MANAGER_EMPLOYEE_SELECT,
         },
-        productionAllowanceRates: { orderBy: { effectiveMonth: "desc" }, take: 1 },
+        productionAllowanceRates: { orderBy: { versionNumber: "desc" } },
       },
       orderBy: { id: "asc" },
     });
@@ -369,6 +373,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
           data: {
             orgId: organization.id,
             factoryId: createdFactory.id,
+            versionNumber: 1,
             effectiveMonth,
             targetMonthlyWage: wageFields.targetMonthlyWage,
             wagePerSecond: wageFields.wagePerSecond,
@@ -397,7 +402,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     const existing = await prisma.factory.findFirst({
       where: { id, orgId: organization.id },
       include: {
-        productionAllowanceRates: { orderBy: { effectiveMonth: "desc" }, take: 1 },
+        productionAllowanceRates: { orderBy: { versionNumber: "desc" } },
       },
     });
 
@@ -490,7 +495,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     let factory;
     try {
       factory = await prisma.$transaction(async (tx) => {
-        if (productionAllowanceChanged && wageFields.wagePerSecond !== null && effectiveMonth) {
+        if (productionAllowanceChanged && wageFields.wagePerSecond !== null) {
           const existingRateCount = await tx.factoryProductionAllowanceRate.count({
             where: { factoryId: id },
           });
@@ -503,6 +508,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
               data: {
                 orgId: organization.id,
                 factoryId: id,
+                versionNumber: 1,
                 effectiveMonth: baselineMonth,
                 targetMonthlyWage: existing.targetMonthlyWage,
                 wagePerSecond: existing.wagePerSecond,
@@ -518,19 +524,13 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
               where: { id: latestProductionAllowanceRate.id },
               data: { effectiveMonth },
             });
-          } else {
-            await tx.factoryProductionAllowanceRate.upsert({
-              where: {
-                factoryId_effectiveMonth: { factoryId: id, effectiveMonth },
-              },
-              create: {
+          } else if (productionAllowanceValueChanged) {
+            await tx.factoryProductionAllowanceRate.create({
+              data: {
                 orgId: organization.id,
                 factoryId: id,
-                effectiveMonth,
-                targetMonthlyWage: wageFields.targetMonthlyWage,
-                wagePerSecond: wageFields.wagePerSecond,
-              },
-              update: {
+                versionNumber: (latestProductionAllowanceRate?.versionNumber || (existingRateCount === 0 ? 1 : existingRateCount)) + 1,
+                effectiveMonth: null,
                 targetMonthlyWage: wageFields.targetMonthlyWage,
                 wagePerSecond: wageFields.wagePerSecond,
               },
@@ -542,7 +542,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
             managerEmployee: {
               select: FACTORY_MANAGER_EMPLOYEE_SELECT,
             },
-            productionAllowanceRates: { orderBy: { effectiveMonth: "desc" }, take: 1 },
+        productionAllowanceRates: { orderBy: { versionNumber: "desc" } },
           },
           where: { id },
           data: {
@@ -605,6 +605,31 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     }
 
     return res.json(toFactoryResponse(factory));
+  });
+
+  factoryRouter.put("/factories/:id/production-allowance-version-boundaries", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    const id = Number(req.params.id);
+    if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+    const factory = await prisma.factory.findFirst({ where: { id, orgId: organization.id } });
+    if (!factory) return res.status(404).json({ ok: false, error: "factory not found" });
+    const versions = await prisma.factoryProductionAllowanceRate.findMany({ where: { factoryId: id }, orderBy: { versionNumber: "asc" } });
+    const byId = new Map(versions.map((version) => [version.id, version]));
+    const boundaries: any[] = Array.isArray(req.body?.boundaries) ? req.body.boundaries : [];
+    const seenIds = new Set<number>(); const seenMonths = new Set<string>();
+    for (const boundary of boundaries) {
+      const versionId = Number(boundary?.versionId); const startMonth = String(boundary?.startMonth || "");
+      if (!byId.has(versionId) || seenIds.has(versionId) || seenMonths.has(startMonth) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth)) return res.status(400).json({ ok: false, error: "invalid production allowance version boundaries" });
+      seenIds.add(versionId); seenMonths.add(startMonth);
+    }
+    const ordered = [...boundaries].sort((a, b) => String(a.startMonth).localeCompare(String(b.startMonth)));
+    for (let index = 1; index < ordered.length; index += 1) if (byId.get(Number(ordered[index - 1].versionId))!.versionNumber >= byId.get(Number(ordered[index].versionId))!.versionNumber) return res.status(400).json({ ok: false, error: "version boundaries must follow version order" });
+    await prisma.$transaction(async (tx) => {
+      await tx.factoryProductionAllowanceRate.updateMany({ where: { factoryId: id }, data: { effectiveMonth: null } });
+      for (const boundary of boundaries) await tx.factoryProductionAllowanceRate.update({ where: { id: Number(boundary.versionId) }, data: { effectiveMonth: String(boundary.startMonth) } });
+    });
+    const updated = await prisma.factoryProductionAllowanceRate.findMany({ where: { factoryId: id }, orderBy: { versionNumber: "desc" } });
+    return res.json({ versions: updated });
   });
 
   factoryRouter.get("/factories/:id/warehouses", async (req, res) => {

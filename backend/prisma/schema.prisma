@@ -385,17 +385,20 @@ model FactoryProductionAllowanceRate {
   id                Int      @id @default(autoincrement())
   orgId             Int
   factoryId         Int
-  effectiveMonth    String
+  versionNumber     Int
+  effectiveMonth    String?
   targetMonthlyWage Float?
   wagePerSecond     Float
   createdAt         DateTime @default(now())
   createdBy         String   @default("system@baro.local")
   updatedAt         DateTime @updatedAt
+  confirmedAt       DateTime @default(now())
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   factory      Factory      @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Cascade, map: "FactoryProductionAllowanceRate_factory_org_fkey")
 
   @@unique([factoryId, effectiveMonth])
+  @@unique([factoryId, versionNumber])
   @@index([orgId, effectiveMonth])
   @@index([factoryId, effectiveMonth])
 }

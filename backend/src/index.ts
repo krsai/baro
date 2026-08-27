@@ -863,9 +863,12 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "SalaryItemRate", columnName: "amount" },
   { tableName: "SalarySystemVersion", columnName: "effectiveMonth" },
   { tableName: "SalarySystemVersion", columnName: "snapshot" },
+  { tableName: "FactoryProductionAllowanceRate", columnName: "versionNumber" },
+  { tableName: "FactoryProductionAllowanceRate", columnName: "confirmedAt" },
 ] as const;
 const STARTUP_REQUIRED_NULLABLE_RUNTIME_COLUMNS = [
   { tableName: "SalarySystemVersion", columnName: "effectiveMonth" },
+  { tableName: "FactoryProductionAllowanceRate", columnName: "effectiveMonth" },
 ] as const;
 // createdByEmployeeId/updatedByEmployeeId is an audit FK pattern applied to 24+
 // tables (migration_fix.sql's "audited_tables" DO block) plus SystemSetting

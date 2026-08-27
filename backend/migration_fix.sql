@@ -4872,3 +4872,22 @@ BEGIN
   END IF;
   RETURN NEW;
 END; $$ LANGUAGE plpgsql;
+ALTER TABLE "FactoryProductionAllowanceRate"
+  ADD COLUMN IF NOT EXISTS "versionNumber" INTEGER,
+  ADD COLUMN IF NOT EXISTS "confirmedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+WITH ranked AS (
+  SELECT "id", ROW_NUMBER() OVER (PARTITION BY "factoryId" ORDER BY "effectiveMonth" ASC NULLS LAST, "createdAt" ASC, "id" ASC) AS version_number
+  FROM "FactoryProductionAllowanceRate"
+)
+UPDATE "FactoryProductionAllowanceRate" rate
+SET "versionNumber" = ranked.version_number
+FROM ranked
+WHERE rate."id" = ranked."id" AND rate."versionNumber" IS NULL;
+
+ALTER TABLE "FactoryProductionAllowanceRate"
+  ALTER COLUMN "versionNumber" SET NOT NULL,
+  ALTER COLUMN "effectiveMonth" DROP NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "FactoryProductionAllowanceRate_factoryId_versionNumber_key"
+  ON "FactoryProductionAllowanceRate"("factoryId", "versionNumber");

@@ -345,6 +345,7 @@ const FactoryList = () => {
         open={isDetailOpen}
         onClose={handleDetailClose}
         onSave={handleSave}
+        onRefresh={() => fetchFactories()}
         factory={selectedFactory}
       />
     </AppPageContainer>

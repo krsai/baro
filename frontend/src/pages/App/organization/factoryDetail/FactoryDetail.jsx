@@ -1,7 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
+  Button,
+  Chip,
   Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Drawer,
   Grid,
   IconButton,
@@ -11,19 +17,14 @@ import {
   Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import dayjs from 'dayjs';
-import 'dayjs/locale/en';
-import 'dayjs/locale/ko';
-import 'dayjs/locale/vi';
+import HistoryIcon from '@mui/icons-material/History';
 import SaveButton from '../../../../components/SaveButton';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../../constants/layout';
 import { getStaticOptionOptions } from '../../../../constants/staticOptionRegistry';
 import { getUiMessage } from '../../../../constants/uiMessages';
 import { useLanguage } from '../../../../context/LanguageContext';
 import { requestJSON } from '../../../../utils/apiClient';
+import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../../utils/workspaceDataEvents';
 import {
   DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
   normalizeFactoryManagementStartDateKey,
@@ -48,10 +49,14 @@ const currentMonthKey = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
-const monthPickerFormat = (languageCode) => {
-  if (languageCode === 'ko') return 'YYYY년 M월';
-  if (languageCode === 'vi') return '[Tháng] M YYYY';
-  return 'MMMM YYYY';
+const monthRange = (startMonth, endMonth) => {
+  const months = [];
+  const cursor = new Date(`${startMonth}-01T00:00:00Z`);
+  while (cursor.toISOString().slice(0, 7) <= endMonth) {
+    months.push(cursor.toISOString().slice(0, 7));
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return months;
 };
 
 const parseNumber = (value) => parseNumberLike(value);
@@ -231,7 +236,7 @@ const formatProductionAllowanceUpdatedAt = (value, languageCode) => {
   }).format(date);
 };
 
-const FactoryDetail = ({ open, onClose, onSave, factory }) => {
+const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
   const { languageCode } = useLanguage();
   const countryOptions = useMemo(
     () => getStaticOptionOptions('country', languageCode),
@@ -313,6 +318,10 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
   const [formData, setFormData] = useState(buildFactoryFormData(null));
   const warehouseSectionRef = useRef(null);
   const [warehouseDirty, setWarehouseDirty] = useState(false);
+  const [versionDialogOpen, setVersionDialogOpen] = useState(false);
+  const [versionBoundaries, setVersionBoundaries] = useState({});
+  const [savedVersionBoundaries, setSavedVersionBoundaries] = useState({});
+  const [versionBusy, setVersionBusy] = useState(false);
   const [managerEmployees, setManagerEmployees] = useState([]);
   const [managerEmployeesLoading, setManagerEmployeesLoading] = useState(false);
 
@@ -325,6 +334,37 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
     () => buildFactoryChangeSnapshot(formData) !== buildFactoryChangeSnapshot(buildFactoryFormData(factory)),
     [factory, formData]
   );
+  const productionAllowanceVersions = useMemo(
+    () => Array.isArray(factory?.productionAllowanceVersions) ? factory.productionAllowanceVersions : [],
+    [factory?.productionAllowanceVersions]
+  );
+  const managedMonths = useMemo(
+    () => monthRange(String(formData.managementStartDate || DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY).slice(0, 7), currentMonthKey()),
+    [formData.managementStartDate]
+  );
+  const openVersionDialog = () => {
+    const boundaries = Object.fromEntries(productionAllowanceVersions.filter((version) => version.effectiveMonth).map((version) => [version.id, version.effectiveMonth]));
+    setVersionBoundaries(boundaries);
+    setSavedVersionBoundaries(boundaries);
+    setVersionDialogOpen(true);
+  };
+  const versionForMonth = (month) => productionAllowanceVersions
+    .filter((version) => versionBoundaries[version.id] && versionBoundaries[version.id] <= month)
+    .sort((left, right) => left.versionNumber - right.versionNumber).at(-1) || null;
+  const saveVersionBoundaries = async () => {
+    setVersionBusy(true);
+    try {
+      await requestJSON(`/factories/${factory.id}/production-allowance-version-boundaries`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ boundaries: Object.entries(versionBoundaries).map(([versionId, startMonth]) => ({ versionId: Number(versionId), startMonth })) }),
+      });
+      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.PRODUCTION_ALLOWANCE_SETTINGS], orgId: factory?.orgId, source: 'factory-production-allowance-version-boundaries' });
+      await onRefresh?.();
+      setSavedVersionBoundaries(versionBoundaries);
+      setVersionDialogOpen(false);
+      onClose?.();
+    } finally { setVersionBusy(false); }
+  };
 
   useEffect(() => {
     let active = true;
@@ -673,32 +713,9 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode}>
-                  <DatePicker
-                    views={['year', 'month']}
-                    openTo="month"
-                    label={languageCode === 'ko' ? '적용 시작 월' : languageCode === 'vi' ? 'Tháng bắt đầu áp dụng' : 'Effective From'}
-                    value={dayjs(`${formData.productionAllowanceEffectiveMonth || currentMonthKey()}-01`)}
-                    minDate={dayjs(String(formData.managementStartDate || DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY).slice(0, 7) + '-01')}
-                    format={monthPickerFormat(languageCode)}
-                    onChange={(value) => {
-                      if (value?.isValid()) {
-                        setFormData((previous) => ({ ...previous, productionAllowanceEffectiveMonth: value.format('YYYY-MM') }));
-                      }
-                    }}
-                    slotProps={{
-                      textField: {
-                        fullWidth: true,
-                        size: 'small',
-                        helperText: languageCode === 'ko'
-                          ? '변경된 초당 단가를 어느 월의 작업기록부터 적용할지 선택합니다.'
-                          : languageCode === 'vi'
-                            ? 'Chọn tháng bắt đầu áp dụng đơn giá mới cho dữ liệu sản xuất.'
-                            : 'Select the first work-record month that uses the new rate.',
-                      },
-                    }}
-                  />
-                </LocalizationProvider>
+                <Button fullWidth variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog} disabled={!factory?.id} sx={{ height: 40 }}>
+                  {languageCode === 'ko' ? '버전 관리' : languageCode === 'vi' ? 'Quản lý phiên bản' : 'Version Management'}
+                </Button>
               </Grid>
             </Grid>
           </SectionBlock>
@@ -717,6 +734,21 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
           />
         </Box>
       </Box>
+      <Dialog open={versionDialogOpen} onClose={versionBusy ? undefined : () => setVersionDialogOpen(false)} fullWidth maxWidth="md">
+        <DialogTitle>{languageCode === 'ko' ? '생산수당 단가 버전 관리' : 'Production Allowance Rate Versions'}</DialogTitle>
+        <DialogContent dividers>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
+            <Stack spacing={0.75} sx={{ width: { xs: '100%', md: 280 }, flexShrink: 0 }}>
+              {[...productionAllowanceVersions].sort((a, b) => a.versionNumber - b.versionNumber).map((version) => <Box key={version.id} sx={{ p: 1, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                <Stack direction="row" justifyContent="space-between"><Typography variant="body2" fontWeight={700}>{String(version.confirmedAt || version.createdAt || '').slice(0, 10)} · Ver.{version.versionNumber}</Typography><Chip size="small" label={`${Number(version.wagePerSecond || 0).toFixed(2)} VND/s`} /></Stack>
+                <TextField type="month" size="small" fullWidth sx={{ mt: 1 }} value={versionBoundaries[version.id] || ''} onChange={(event) => setVersionBoundaries((current) => ({ ...current, [version.id]: event.target.value }))} inputProps={{ min: managedMonths[0], max: currentMonthKey() }} />
+              </Box>)}
+            </Stack>
+            <Box sx={{ flex: 1 }}><Typography variant="caption" color="text.secondary">{managedMonths[0]} ~ {currentMonthKey()}</Typography><Stack spacing={0.5} sx={{ mt: 1 }}>{[...managedMonths].reverse().map((month) => { const version = versionForMonth(month); return <Stack key={month} direction="row" justifyContent="space-between" alignItems="center" sx={{ minHeight: 32, borderBottom: 1, borderColor: 'divider' }}><Typography variant="body2">{month}</Typography><Chip size="small" variant="outlined" label={version ? `Ver.${version.versionNumber}` : '-'} /></Stack>; })}</Stack></Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions><Button variant="contained" onClick={saveVersionBoundaries} disabled={versionBusy || JSON.stringify(versionBoundaries) === JSON.stringify(savedVersionBoundaries)}>{languageCode === 'ko' ? '저장' : 'Save'}</Button></DialogActions>
+      </Dialog>
     </Drawer>
   );
 };
