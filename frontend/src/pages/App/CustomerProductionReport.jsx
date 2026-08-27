@@ -397,7 +397,7 @@ const CustomerProductionReport = () => {
       headerQuantity={activeQuantityReviewRow?.assignedQuantity ?? activeQuantityReviewRow?.orderedQuantity}
       onClose={handleCloseQuantityReview}
     />
-    <Dialog open={Boolean(dailyProducedRow)} onClose={() => setDailyProducedRow(null)} fullWidth maxWidth="md">
+    <Dialog open={Boolean(dailyProducedRow)} onClose={() => setDailyProducedRow(null)} fullWidth maxWidth="lg">
       <DialogTitle>{text.dailyProducedTitle}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={0.5} sx={{ mb: 2 }}>
@@ -427,10 +427,15 @@ const CustomerProductionReport = () => {
                     <Typography sx={{ fontSize: '0.68rem' }} color={index % 7 === 0 ? 'error.main' : index % 7 === 6 ? 'primary.main' : 'text.secondary'}>{dateLabel}</Typography>
                     {production ? <Box sx={{ mt: 0.5, px: 0.75, py: 0.6, borderRadius: 1, bgcolor: 'action.hover', minWidth: 0 }}>
                       <Typography sx={{ fontSize: '1rem', lineHeight: 1.2, fontWeight: 800, color: 'primary.dark', textAlign: 'right' }}>{fmt(production.quantity)}</Typography>
-                      <Stack spacing={0.15} sx={{ mt: 0.4 }}>
-                        {styleBreakdown.map((style, styleIndex) => <Typography key={`${style.label}-${styleIndex}`} noWrap title={style.label} sx={{ fontSize: '0.62rem', lineHeight: 1.25, color: 'text.secondary', textAlign: 'right' }}>
-                          {style.label}{styleBreakdown.length > 1 ? ` · ${fmt(style.quantity)}` : ''}
-                        </Typography>)}
+                      <Stack spacing={0.25} sx={{ mt: 0.5 }}>
+                        {styleBreakdown.map((style, styleIndex) => <Stack key={`${style.label}-${styleIndex}`} direction="row" spacing={0.5} alignItems="baseline" justifyContent="flex-end" sx={{ minWidth: 0 }}>
+                          <Typography noWrap title={style.label} sx={{ minWidth: 0, fontSize: '0.62rem', lineHeight: 1.25, color: 'text.secondary' }}>
+                            {style.label}
+                          </Typography>
+                          <Typography sx={{ flexShrink: 0, fontSize: '0.68rem', lineHeight: 1.25, fontWeight: 700, color: 'primary.dark' }}>
+                            {fmt(style.quantity)}
+                          </Typography>
+                        </Stack>)}
                       </Stack>
                     </Box> : null}
                   </Box>;
