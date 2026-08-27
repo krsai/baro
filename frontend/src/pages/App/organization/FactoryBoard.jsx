@@ -25,6 +25,10 @@ import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { requestJSON } from '../../../utils/apiClient';
 import { resolveFactoryManagementStartDateKey } from '../../../utils/factoryManagementStart';
+import {
+  emitWorkspaceDataChanged,
+  WORKSPACE_DATA_TOPICS,
+} from '../../../utils/workspaceDataEvents';
 
 const FactoryList = () => {
   const [factories, setFactories] = useState([]);
@@ -170,6 +174,12 @@ const FactoryList = () => {
         setFactories((prev) => [...prev, data]);
       }
 
+      emitWorkspaceDataChanged({
+        topics: [WORKSPACE_DATA_TOPICS.PRODUCTION_ALLOWANCE_SETTINGS],
+        orgId: data?.orgId,
+        source: isEdit ? 'factory-production-allowance-update' : 'factory-create',
+      });
+
       handleDetailClose();
       showNotification(text.saveSuccess, 'success');
     } catch (error) {
@@ -195,6 +205,11 @@ const FactoryList = () => {
         method: 'DELETE',
       });
       setFactories((prev) => prev.filter((item) => item.id !== factory.id));
+      emitWorkspaceDataChanged({
+        topics: [WORKSPACE_DATA_TOPICS.PRODUCTION_ALLOWANCE_SETTINGS],
+        orgId: factory?.orgId,
+        source: 'factory-delete',
+      });
       if (selectedFactory?.id === factory.id) {
         handleDetailClose();
       }

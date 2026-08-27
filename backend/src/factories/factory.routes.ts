@@ -396,6 +396,9 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     }
     const existing = await prisma.factory.findFirst({
       where: { id, orgId: organization.id },
+      include: {
+        productionAllowanceRates: { orderBy: { effectiveMonth: "desc" }, take: 1 },
+      },
     });
 
     if (!existing) {
@@ -444,13 +447,19 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       targetMonthlyWage !== undefined || wagePerSecond !== undefined;
     const hasProductionAllowance =
       wageFields.targetMonthlyWage !== null || wageFields.wagePerSecond !== null;
-    const productionAllowanceChanged =
+    const productionAllowanceValueChanged =
       wageFields.targetMonthlyWage !== existing.targetMonthlyWage ||
       wageFields.wagePerSecond !== existing.wagePerSecond ||
       (existing.productionAllowanceUpdatedAt === null &&
         productionAllowanceInputProvided &&
         hasProductionAllowance);
     const effectiveMonth = resolveFactoryRateEffectiveMonth(productionAllowanceEffectiveMonth);
+    const latestProductionAllowanceRate = ensureArray(existing.productionAllowanceRates)[0] ?? null;
+    const productionAllowanceEffectiveMonthChanged = Boolean(
+      effectiveMonth && latestProductionAllowanceRate?.effectiveMonth !== effectiveMonth
+    );
+    const productionAllowanceChanged =
+      productionAllowanceValueChanged || productionAllowanceEffectiveMonthChanged;
     if (productionAllowanceChanged && effectiveMonth === null) {
       return res.status(400).json({ ok: false, error: "productionAllowanceEffectiveMonth must be YYYY-MM" });
     }
@@ -500,22 +509,33 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
               },
             });
           }
-          await tx.factoryProductionAllowanceRate.upsert({
-            where: {
-              factoryId_effectiveMonth: { factoryId: id, effectiveMonth },
-            },
-            create: {
-              orgId: organization.id,
-              factoryId: id,
-              effectiveMonth,
-              targetMonthlyWage: wageFields.targetMonthlyWage,
-              wagePerSecond: wageFields.wagePerSecond,
-            },
-            update: {
-              targetMonthlyWage: wageFields.targetMonthlyWage,
-              wagePerSecond: wageFields.wagePerSecond,
-            },
-          });
+          if (
+            productionAllowanceEffectiveMonthChanged &&
+            !productionAllowanceValueChanged &&
+            latestProductionAllowanceRate
+          ) {
+            await tx.factoryProductionAllowanceRate.update({
+              where: { id: latestProductionAllowanceRate.id },
+              data: { effectiveMonth },
+            });
+          } else {
+            await tx.factoryProductionAllowanceRate.upsert({
+              where: {
+                factoryId_effectiveMonth: { factoryId: id, effectiveMonth },
+              },
+              create: {
+                orgId: organization.id,
+                factoryId: id,
+                effectiveMonth,
+                targetMonthlyWage: wageFields.targetMonthlyWage,
+                wagePerSecond: wageFields.wagePerSecond,
+              },
+              update: {
+                targetMonthlyWage: wageFields.targetMonthlyWage,
+                wagePerSecond: wageFields.wagePerSecond,
+              },
+            });
+          }
         }
         const updatedFactory = await tx.factory.update({
           include: {
@@ -566,6 +586,15 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
         return updatedFactory;
       });
     } catch (error) {
+      if (
+        (error as { code?: string; meta?: { target?: unknown } })?.code === "P2002" &&
+        String((error as { meta?: { target?: unknown } })?.meta?.target ?? "").includes("effectiveMonth")
+      ) {
+        return res.status(409).json({
+          ok: false,
+          error: "a production allowance rate already exists for this effective month",
+        });
+      }
       if ((error as { code?: string })?.code === "P2002") {
         return res.status(409).json({
           ok: false,

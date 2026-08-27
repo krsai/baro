@@ -26,6 +26,8 @@ import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
+import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
+import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 
 const TEXT = {
   ko: {
@@ -164,6 +166,12 @@ const PayrollBoard = () => {
   }, [activeOrgId, languageCode, showNotification]);
 
   useEffect(() => { load(); }, [load]);
+
+  useWorkspaceRefreshOnEvent({
+    orgId: activeOrgId,
+    topics: [WORKSPACE_DATA_TOPICS.PRODUCTION_ALLOWANCE_SETTINGS],
+    onRefresh: () => load({ silent: true }),
+  });
 
   const latestCompletedMonthKey = String(calendar?.latestCompletedMonthKey || '');
   const snapshotsByMonth = useMemo(

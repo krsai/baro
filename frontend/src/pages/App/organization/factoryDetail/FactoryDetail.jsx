@@ -110,7 +110,8 @@ const buildFactoryFormData = (factory) => {
     managerEmployeeId: normalizeManagerEmployeeId(factory?.managerEmployeeId),
     targetMonthlyWage: factory?.targetMonthlyWage ?? '',
     wagePerSecond: factory?.wagePerSecond ?? '',
-    productionAllowanceEffectiveMonth: currentMonthKey(),
+    productionAllowanceEffectiveMonth:
+      factory?.productionAllowanceEffectiveMonth || currentMonthKey(),
   };
 };
 
