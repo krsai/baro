@@ -22,7 +22,7 @@ const TEXT = {
   ko: {
     title: '보고서', customer: '고객', allCustomers: '전체 고객', search: '주문번호·스타일 검색',
     print: '인쇄 / PDF', generated: '기준 시각', order: '주문번호', style: '스타일', due: '납기',
-    quantity: '주문수량', produced: '완성품 수량', progress: '공정 진행률', status: '상태',
+    quantity: '완성품/주문', produced: '완성품 수량', progress: '공정 진행률', status: '상태', schedule: '스케줄',
     empty: '조건에 맞는 보고서 항목이 없습니다.',
     loadError: '생산 진행 보고서를 불러오지 못했습니다.',
     includeCompleted: '완료 포함',
@@ -35,7 +35,7 @@ const TEXT = {
   en: {
     title: 'Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style',
     print: 'Print / PDF', generated: 'As of', order: 'Order', style: 'Style', due: 'Due', quantity: 'Order qty',
-    produced: 'Finished qty', progress: 'Process progress', status: 'Status',
+    produced: 'Finished qty', progress: 'Process progress', status: 'Status', schedule: 'Schedule',
     empty: 'No report rows match the filters.',
     loadError: 'Failed to load the production progress report.',
     includeCompleted: 'Include completed',
@@ -48,7 +48,7 @@ const TEXT = {
   vi: {
     title: 'Báo cáo', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng',
     print: 'In / PDF', generated: 'Thời điểm', order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Số lượng đơn',
-    produced: 'Số lượng thành phẩm', progress: 'Tiến độ công đoạn', status: 'Trạng thái',
+    produced: 'Số lượng thành phẩm', progress: 'Tiến độ công đoạn', status: 'Trạng thái', schedule: 'Lịch',
     empty: 'Không có dữ liệu phù hợp.',
     loadError: 'Không thể tải báo cáo tiến độ sản xuất.',
     includeCompleted: 'Bao gồm đã hoàn thành',
@@ -298,7 +298,7 @@ const CustomerProductionReport = () => {
       {loading ? <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress size={30} /></Box> : rows.length === 0 ? <Paper variant="outlined" sx={{ p: 5, textAlign: 'center' }}><Typography color="text.secondary">{text.empty}</Typography></Paper> :
         <TableContainer component={Paper} variant="outlined">
           <Table size="small">
-            <TableHead><TableRow><TableCell sx={{ width: 44 }} /><TableCell>{text.customer}</TableCell><TableCell>{text.order}</TableCell><TableCell>{text.style}</TableCell><TableCell>{text.due}</TableCell><TableCell align="right">{text.quantity}</TableCell><TableCell align="right">{text.produced}</TableCell><TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell><TableCell>{text.status}</TableCell></TableRow></TableHead>
+            <TableHead><TableRow><TableCell sx={{ width: 44 }} /><TableCell>{text.customer}</TableCell><TableCell>{text.order}</TableCell><TableCell>{text.style}</TableCell><TableCell>{text.due}</TableCell><TableCell align="right">{text.quantity}</TableCell><TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell><TableCell>{text.status}</TableCell><TableCell align="center">{text.schedule}</TableCell></TableRow></TableHead>
             <TableBody>{rows.map((row) => {
               const hasMultipleStyles = row.styles.length > 1;
               const expanded = hasMultipleStyles && expandedOrders.has(row.key);
@@ -327,10 +327,10 @@ const CustomerProductionReport = () => {
                       : soleStyle?.styleName || soleStyle?.styleCode || '-'}
                   </TableCell>
                   <TableCell>{row.dueDate || '-'}</TableCell>
-                  <TableCell align="right">{fmt(row.orderedQuantity)}</TableCell>
-                  <TableCell align="right" sx={{ minWidth: 180 }}><Stack direction="row" alignItems="center" sx={{ width: '100%' }}><Typography variant="body2" sx={{ flex: 1, textAlign: 'right' }}>{fmt(row.producedQuantity)}</Typography><Tooltip title={text.dailyProduced}><IconButton className="report-screen-actions" size="small" color="primary" aria-label={text.dailyProduced} sx={{ ml: 1 }} onClick={() => openDailyProducedCalendar(row)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></Stack></TableCell>
+                  <TableCell align="right">{fmt(row.producedQuantity)}/{fmt(row.orderedQuantity)}</TableCell>
                   <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={row.progressPercent} /></TableCell>
                   <TableCell><ReportStatusChip status={row.status} languageCode={languageCode} /></TableCell>
+                  <TableCell align="center"><Tooltip title={text.dailyProduced}><IconButton className="report-screen-actions" size="small" color="primary" aria-label={text.dailyProduced} onClick={() => openDailyProducedCalendar(row)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></TableCell>
                 </TableRow>
                 {hasMultipleStyles ? <TableRow>
                   <TableCell colSpan={REPORT_COLUMN_COUNT} sx={{ p: 0, borderBottom: expanded ? undefined : 'none' }}>
@@ -342,9 +342,9 @@ const CustomerProductionReport = () => {
                               <TableCell>{text.style}</TableCell>
                               <TableCell>{text.due}</TableCell>
                               <TableCell align="right">{text.quantity}</TableCell>
-                              <TableCell align="right">{text.produced}</TableCell>
                               <TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell>
                               <TableCell>{text.status}</TableCell>
+                              <TableCell align="center">{text.schedule}</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>{row.styles.map((styleRow) =>
@@ -355,10 +355,10 @@ const CustomerProductionReport = () => {
                             >
                               <TableCell>{styleRow.styleName || styleRow.styleCode || '-'}</TableCell>
                               <TableCell>{styleRow.dueDate || '-'}</TableCell>
-                              <TableCell align="right">{fmt(styleRow.orderedQuantity)}</TableCell>
-                              <TableCell align="right" sx={{ minWidth: 180 }}><Stack direction="row" alignItems="center" sx={{ width: '100%' }}><Typography variant="body2" sx={{ flex: 1, textAlign: 'right' }}>{fmt(styleRow.producedQuantity)}</Typography><Tooltip title={text.dailyProduced}><IconButton className="report-screen-actions" size="small" color="primary" aria-label={text.dailyProduced} sx={{ ml: 1 }} onClick={() => openDailyProducedCalendar(styleRow)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></Stack></TableCell>
+                              <TableCell align="right">{fmt(styleRow.producedQuantity)}/{fmt(styleRow.orderedQuantity)}</TableCell>
                               <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={styleRow.progressPercent} /></TableCell>
                               <TableCell><ReportStatusChip status={styleRow.status} languageCode={languageCode} /></TableCell>
+                              <TableCell align="center"><Tooltip title={text.dailyProduced}><IconButton className="report-screen-actions" size="small" color="primary" aria-label={text.dailyProduced} onClick={() => openDailyProducedCalendar(styleRow)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></TableCell>
                             </TableRow>
                           )}</TableBody>
                         </Table>
