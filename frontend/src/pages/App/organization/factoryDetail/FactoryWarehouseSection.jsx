@@ -17,7 +17,7 @@ const buildDraft = (warehouse = {}) => ({
   nameVi: warehouse.nameVi || '',
 });
 
-const FactoryWarehouseSection = forwardRef(({ factoryId }, ref) => {
+const FactoryWarehouseSection = forwardRef(({ factoryId, onDirtyChange }, ref) => {
   const { languageCode } = useLanguage();
   const { showNotification } = useAppActions();
   const text = TEXT[languageCode] || TEXT.en;
@@ -48,6 +48,21 @@ const FactoryWarehouseSection = forwardRef(({ factoryId }, ref) => {
     () => [...warehouses].sort((left, right) => Number(right.isDefault) - Number(left.isDefault) || Number(right.isActive) - Number(left.isActive) || left.id - right.id),
     [warehouses]
   );
+
+  const hasDraftChanges = useMemo(
+    () => warehouses.some((warehouse) => {
+      const draft = draftNames[String(warehouse.id)] || buildDraft();
+      return ['name', 'nameKo', 'nameVi'].some(
+        (field) => String(draft[field] || '').trim() !== String(warehouse[field] || '').trim()
+      );
+    }),
+    [draftNames, warehouses]
+  );
+
+  useEffect(() => {
+    onDirtyChange?.(hasDraftChanges);
+    return () => onDirtyChange?.(false);
+  }, [hasDraftChanges, onDirtyChange]);
 
   useImperativeHandle(ref, () => ({
     saveChanges: async () => {

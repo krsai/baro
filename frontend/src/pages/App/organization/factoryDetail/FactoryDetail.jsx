@@ -115,6 +115,25 @@ const buildFactoryFormData = (factory) => {
   };
 };
 
+const buildFactoryChangeSnapshot = (formData) => JSON.stringify({
+  name: String(formData?.name || '').trim(),
+  nameKo: String(formData?.nameKo || '').trim(),
+  nameVi: String(formData?.nameVi || '').trim(),
+  factoryCode: normalizeFactoryCode(formData?.factoryCode),
+  managementStartDate:
+    normalizeFactoryManagementStartDateKey(formData?.managementStartDate) ||
+    DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
+  address: String(formData?.address || '').trim(),
+  country: normalizeCountry(formData?.country) || DEFAULT_COUNTRY,
+  countryCode: String(formData?.countryCode || '').trim(),
+  phoneNumber: String(formData?.phoneNumber || '').trim(),
+  managerEmployeeId: normalizeManagerEmployeeId(formData?.managerEmployeeId),
+  targetMonthlyWage: parseNumber(formData?.targetMonthlyWage),
+  wagePerSecond: parseNumber(formData?.wagePerSecond),
+  productionAllowanceEffectiveMonth:
+    String(formData?.productionAllowanceEffectiveMonth || currentMonthKey()),
+});
+
 const getExtraText = (languageCode) => {
   if (languageCode === 'ko') {
     return {
@@ -293,12 +312,19 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
 
   const [formData, setFormData] = useState(buildFactoryFormData(null));
   const warehouseSectionRef = useRef(null);
+  const [warehouseDirty, setWarehouseDirty] = useState(false);
   const [managerEmployees, setManagerEmployees] = useState([]);
   const [managerEmployeesLoading, setManagerEmployeesLoading] = useState(false);
 
   useEffect(() => {
     setFormData(buildFactoryFormData(factory));
+    setWarehouseDirty(false);
   }, [factory, open]);
+
+  const formDirty = useMemo(
+    () => buildFactoryChangeSnapshot(formData) !== buildFactoryChangeSnapshot(buildFactoryFormData(factory)),
+    [factory, formData]
+  );
 
   useEffect(() => {
     let active = true;
@@ -677,11 +703,18 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
             </Grid>
           </SectionBlock>
 
-          <FactoryWarehouseSection ref={warehouseSectionRef} factoryId={factory?.id || null} />
+          <FactoryWarehouseSection
+            ref={warehouseSectionRef}
+            factoryId={factory?.id || null}
+            onDirtyChange={setWarehouseDirty}
+          />
         </Stack>
 
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end' }}>
-          <SaveButton onClick={handleSave} disabled={Boolean(factoryCodeError)} />
+          <SaveButton
+            onClick={handleSave}
+            disabled={Boolean(factoryCodeError) || (!formDirty && !warehouseDirty)}
+          />
         </Box>
       </Box>
     </Drawer>
