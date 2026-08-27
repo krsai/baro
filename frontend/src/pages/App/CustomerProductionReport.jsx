@@ -29,12 +29,11 @@ const TEXT = {
     completedCount: (count, total) => `완료 ${count}/${total}`,
     detailToggleOpen: '스타일별 상세 닫기',
     detailToggleClosed: '스타일별 상세 보기',
-    dailyProduced: '일일 내역', dailyProducedTitle: '일일 완성품 수량', date: '날짜', close: '닫기', noDailyProduced: '등록된 일일 완성품 내역이 없습니다.',
-    pieces: '개',
+    dailyProduced: '일일 내역', dailyProducedTitle: '일일 완성품 수량', close: '닫기', noDailyProduced: '등록된 일일 완성품 내역이 없습니다.',
   },
   en: {
     title: 'Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style',
-    print: 'Print / PDF', generated: 'As of', order: 'Order', style: 'Style', due: 'Due', quantity: 'Order qty',
+    print: 'Print / PDF', generated: 'As of', order: 'Order', style: 'Style', due: 'Due', quantity: 'Finished/Order',
     produced: 'Finished qty', progress: 'Process progress', status: 'Status', schedule: 'Schedule',
     empty: 'No report rows match the filters.',
     loadError: 'Failed to load the production progress report.',
@@ -42,12 +41,11 @@ const TEXT = {
     completedCount: (count, total) => `${count}/${total} completed`,
     detailToggleOpen: 'Hide style breakdown',
     detailToggleClosed: 'Show style breakdown',
-    dailyProduced: 'Daily details', dailyProducedTitle: 'Daily finished quantity', date: 'Date', close: 'Close', noDailyProduced: 'No daily finished quantities are recorded.',
-    pieces: 'pcs',
+    dailyProduced: 'Daily details', dailyProducedTitle: 'Daily finished quantity', close: 'Close', noDailyProduced: 'No daily finished quantities are recorded.',
   },
   vi: {
     title: 'Báo cáo', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng',
-    print: 'In / PDF', generated: 'Thời điểm', order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Số lượng đơn',
+    print: 'In / PDF', generated: 'Thời điểm', order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Thành phẩm/Đơn hàng',
     produced: 'Số lượng thành phẩm', progress: 'Tiến độ công đoạn', status: 'Trạng thái', schedule: 'Lịch',
     empty: 'Không có dữ liệu phù hợp.',
     loadError: 'Không thể tải báo cáo tiến độ sản xuất.',
@@ -55,8 +53,7 @@ const TEXT = {
     completedCount: (count, total) => `Hoàn thành ${count}/${total}`,
     detailToggleOpen: 'Ẩn chi tiết theo kiểu dáng',
     detailToggleClosed: 'Xem chi tiết theo kiểu dáng',
-    dailyProduced: 'Chi tiết ngày', dailyProducedTitle: 'Số lượng thành phẩm theo ngày', date: 'Ngày', close: 'Đóng', noDailyProduced: 'Không có số lượng thành phẩm theo ngày.',
-    pieces: 'cái',
+    dailyProduced: 'Chi tiết ngày', dailyProducedTitle: 'Số lượng thành phẩm theo ngày', close: 'Đóng', noDailyProduced: 'Không có số lượng thành phẩm theo ngày.',
   },
 };
 
@@ -66,7 +63,7 @@ const STATUS = {
   SCHEDULED: { ko: '배정 완료', en: 'Assigned', vi: 'Đã phân công', color: 'info' },
   UNASSIGNED: { ko: '미배정', en: 'Unassigned', vi: 'Chưa phân công', color: 'default' },
 };
-// toggle + customer + order + style + due + quantity + produced + progress + status
+// toggle + customer + order + style + due + finished/order + progress + status + schedule
 const REPORT_COLUMN_COUNT = 9;
 const fmt = (value) => Math.max(0, Number(value) || 0).toLocaleString();
 const reportLocale = (languageCode) => languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US';
@@ -135,7 +132,13 @@ const groupRowsByOrder = (styleRows) => {
     styles.forEach((row) => (Array.isArray(row.dailyProducedQuantities) ? row.dailyProducedQuantities : []).forEach((daily) => {
       const date = String(daily?.date || '');
       const quantity = Math.max(0, Number(daily?.quantity) || 0);
-      if (date && quantity > 0) dailyProducedByDate.set(date, (dailyProducedByDate.get(date) || 0) + quantity);
+      if (!date || quantity <= 0) return;
+      const bucket = dailyProducedByDate.get(date) || { quantity: 0, styles: new Map() };
+      const styleKey = String(row.styleId || row.styleCode || row.styleName || 'style');
+      const styleLabel = row.styleName || row.styleCode || '-';
+      bucket.quantity += quantity;
+      bucket.styles.set(styleKey, { label: styleLabel, quantity: (bucket.styles.get(styleKey)?.quantity || 0) + quantity });
+      dailyProducedByDate.set(date, bucket);
     }));
     const status = assignedQuantity <= 0
       ? 'UNASSIGNED'
@@ -150,7 +153,7 @@ const groupRowsByOrder = (styleRows) => {
       orderedQuantity,
       assignedQuantity,
       producedQuantity,
-      dailyProducedQuantities: Array.from(dailyProducedByDate.entries()).sort(([left], [right]) => left.localeCompare(right)).map(([date, quantity]) => ({ date, quantity })),
+      dailyProducedQuantities: Array.from(dailyProducedByDate.entries()).sort(([left], [right]) => left.localeCompare(right)).map(([date, bucket]) => ({ date, quantity: bucket.quantity, styles: Array.from(bucket.styles.values()) })),
       unassignedQuantity: styles.reduce((sum, row) => sum + Math.max(0, Number(row.unassignedQuantity) || 0), 0),
       progressPercent: progressWeight > 0 ? Math.round(weightedProgress / progressWeight) : 0,
       completedStyleCount: styles.filter((row) => row.status === 'COMPLETED').length,
@@ -394,7 +397,7 @@ const CustomerProductionReport = () => {
       headerQuantity={activeQuantityReviewRow?.assignedQuantity ?? activeQuantityReviewRow?.orderedQuantity}
       onClose={handleCloseQuantityReview}
     />
-    <Dialog open={Boolean(dailyProducedRow)} onClose={() => setDailyProducedRow(null)} fullWidth maxWidth="sm">
+    <Dialog open={Boolean(dailyProducedRow)} onClose={() => setDailyProducedRow(null)} fullWidth maxWidth="md">
       <DialogTitle>{text.dailyProducedTitle}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={0.5} sx={{ mb: 2 }}>
@@ -404,20 +407,32 @@ const CustomerProductionReport = () => {
         {(dailyProducedRow?.dailyProducedQuantities || []).length === 0
           ? <Typography variant="body2" color="text.secondary">{text.noDailyProduced}</Typography>
           : (() => {
-            const quantityByDate = new Map(dailyProducedRow.dailyProducedQuantities.map((daily) => [daily.date, daily.quantity]));
+            const productionByDate = new Map(dailyProducedRow.dailyProducedQuantities.map((daily) => [daily.date, daily]));
             const calendarDays = buildProductionCalendarDays(dailyProducedRow.dailyProducedQuantities);
             const weekdayLabels = Array.from({ length: 7 }, (_, day) => new Date(Date.UTC(2026, 7, 23 + day)).toLocaleDateString(reportLocale(languageCode), { weekday: 'short', timeZone: 'UTC' }));
             return <Stack spacing={1.5}>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', borderTop: '1px solid', borderLeft: '1px solid', borderColor: 'divider' }}>
-                {weekdayLabels.map((label, index) => <Box key={`${label}-${index}`} sx={{ py: 0.75, textAlign: 'center', bgcolor: 'grey.50', borderRight: '1px solid', borderBottom: '1px solid', borderColor: 'divider' }}><Typography variant="caption" color={index === 0 ? 'error.main' : index === 6 ? 'primary.main' : 'text.secondary'}>{label}</Typography></Box>)}
+                {weekdayLabels.map((label, index) => <Box key={`${label}-${index}`} sx={{ py: 0.75, textAlign: 'center', bgcolor: 'grey.50', borderRight: '1px solid', borderBottom: '1px solid', borderColor: 'divider' }}><Typography sx={{ fontSize: '0.68rem' }} color={index === 0 ? 'error.main' : index === 6 ? 'primary.main' : 'text.secondary'}>{label}</Typography></Box>)}
                 {calendarDays.map((date, index) => {
-                  const quantity = date ? quantityByDate.get(date) : null;
+                  const production = date ? productionByDate.get(date) : null;
+                  const styleBreakdown = production
+                    ? (production.styles?.length
+                      ? production.styles
+                      : [{ label: dailyProducedRow?.styleName || dailyProducedRow?.styleCode || '-', quantity: production.quantity }])
+                    : [];
                   const day = Number(date.slice(-2));
                   const showMonth = index === 0 || day === 1;
-                  const showYear = index === 0 || date.slice(5) === '01-01';
-                  const dateLabel = new Date(`${date}T00:00:00Z`).toLocaleDateString(reportLocale(languageCode), showMonth ? { year: showYear ? 'numeric' : undefined, month: 'short', day: 'numeric', timeZone: 'UTC' } : { day: 'numeric', timeZone: 'UTC' });
-                  return <Box key={date} sx={{ minHeight: 72, p: 0.75, borderRight: '1px solid', borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
-                    <Typography variant="caption" color={index % 7 === 0 ? 'error.main' : index % 7 === 6 ? 'primary.main' : 'text.secondary'}>{dateLabel}</Typography>{quantity ? <Box sx={{ mt: 0.5, px: 0.75, py: 0.5, borderRadius: 1, bgcolor: 'action.hover', color: 'primary.dark', textAlign: 'right' }}><Typography variant="body2">{fmt(quantity)} {text.pieces}</Typography></Box> : null}
+                  const dateLabel = new Date(`${date}T00:00:00Z`).toLocaleDateString(reportLocale(languageCode), showMonth ? { month: 'short', day: 'numeric', timeZone: 'UTC' } : { day: 'numeric', timeZone: 'UTC' });
+                  return <Box key={date} sx={{ minHeight: 108, p: 0.75, borderRight: '1px solid', borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
+                    <Typography sx={{ fontSize: '0.68rem' }} color={index % 7 === 0 ? 'error.main' : index % 7 === 6 ? 'primary.main' : 'text.secondary'}>{dateLabel}</Typography>
+                    {production ? <Box sx={{ mt: 0.5, px: 0.75, py: 0.6, borderRadius: 1, bgcolor: 'action.hover', minWidth: 0 }}>
+                      <Typography sx={{ fontSize: '1rem', lineHeight: 1.2, fontWeight: 800, color: 'primary.dark', textAlign: 'right' }}>{fmt(production.quantity)}</Typography>
+                      <Stack spacing={0.15} sx={{ mt: 0.4 }}>
+                        {styleBreakdown.map((style, styleIndex) => <Typography key={`${style.label}-${styleIndex}`} noWrap title={style.label} sx={{ fontSize: '0.62rem', lineHeight: 1.25, color: 'text.secondary', textAlign: 'right' }}>
+                          {style.label}{styleBreakdown.length > 1 ? ` · ${fmt(style.quantity)}` : ''}
+                        </Typography>)}
+                      </Stack>
+                    </Box> : null}
                   </Box>;
                 })}
               </Box>
