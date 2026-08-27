@@ -432,7 +432,7 @@ const CustomerProductionReport = () => {
                           <Typography noWrap title={style.label} sx={{ minWidth: 0, fontSize: '0.62rem', lineHeight: 1.25, color: 'text.secondary' }}>
                             {style.label}
                           </Typography>
-                          <Typography sx={{ flexShrink: 0, fontSize: '0.68rem', lineHeight: 1.25, fontWeight: 700, color: 'primary.dark' }}>
+                          <Typography sx={{ flexShrink: 0, fontSize: '0.68rem', lineHeight: 1.25, fontWeight: 700, color: 'text.secondary' }}>
                             {fmt(style.quantity)}
                           </Typography>
                         </Stack>)}
