@@ -647,6 +647,9 @@ model SalaryItem {
   orgId     Int
   code      String
   name      String
+  nameKo    String
+  nameEn    String
+  nameVi    String
   category  String
   payTypes  Json
   formula   Json

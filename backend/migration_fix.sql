@@ -4891,3 +4891,9 @@ ALTER TABLE "FactoryProductionAllowanceRate"
 
 CREATE UNIQUE INDEX IF NOT EXISTS "FactoryProductionAllowanceRate_factoryId_versionNumber_key"
   ON "FactoryProductionAllowanceRate"("factoryId", "versionNumber");
+ALTER TABLE "SalaryItem"
+  ADD COLUMN IF NOT EXISTS "nameKo" TEXT,
+  ADD COLUMN IF NOT EXISTS "nameEn" TEXT,
+  ADD COLUMN IF NOT EXISTS "nameVi" TEXT;
+UPDATE "SalaryItem" SET "nameKo"=COALESCE("nameKo","name"), "nameEn"=COALESCE("nameEn","name"), "nameVi"=COALESCE("nameVi","name");
+ALTER TABLE "SalaryItem" ALTER COLUMN "nameKo" SET NOT NULL, ALTER COLUMN "nameEn" SET NOT NULL, ALTER COLUMN "nameVi" SET NOT NULL;

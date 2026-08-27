@@ -28,9 +28,9 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     if (await prisma.salaryItem.findFirst({ where: { orgId }, select: { id: true } })) return;
     const legacy = await prisma.employeeCompensationPolicy.findMany({ where: { orgId } });
     const definitions = [
-      { code: "baseSalary", name: "기본급", category: "BASE", payTypes: PAY_TYPES, formula: ["GRADE_RATE"], required: true },
-      { code: "allowanceTotal", name: "수당", category: "ALLOWANCE", payTypes: PAY_TYPES, formula: ["GRADE_RATE"], required: false },
-      { code: "incentiveTotal", name: "성과급", category: "INCENTIVE", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], required: true },
+      { code: "baseSalary", name: "기본급", nameKo: "기본급", nameEn: "Base Salary", nameVi: "Lương cơ bản", category: "BASE", payTypes: PAY_TYPES, formula: ["GRADE_RATE"], required: true },
+      { code: "allowanceTotal", name: "수당", nameKo: "수당", nameEn: "Allowance", nameVi: "Phụ cấp", category: "ALLOWANCE", payTypes: PAY_TYPES, formula: ["GRADE_RATE"], required: false },
+      { code: "incentiveTotal", name: "성과급", nameKo: "성과급", nameEn: "Performance Pay", nameVi: "Thưởng năng suất", category: "INCENTIVE", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], required: true },
     ];
     await prisma.$transaction(async (tx) => {
       for (const [sortOrder, definition] of definitions.entries()) {
@@ -45,14 +45,14 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     const incentiveItems = await prisma.salaryItem.findMany({ where: { orgId, category: "INCENTIVE", isActive: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
     if (incentiveItems.length === 0) {
       const last = await prisma.salaryItem.findFirst({ where: { orgId, isActive: true }, orderBy: { sortOrder: "desc" }, select: { sortOrder: true } });
-      const data = { name: "성과급", category: "INCENTIVE", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], payCycle: "MONTHLY", capValue: null, required: true, sortOrder: (last?.sortOrder || 0) + 1, isActive: true };
+      const data = { name: "성과급", nameKo: "성과급", nameEn: "Performance Pay", nameVi: "Thưởng năng suất", category: "INCENTIVE", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], payCycle: "MONTHLY", capValue: null, required: true, sortOrder: (last?.sortOrder || 0) + 1, isActive: true };
       await prisma.salaryItem.upsert({ where: { orgId_code: { orgId, code: "incentiveTotal" } }, create: { orgId, code: "incentiveTotal", ...data }, update: data });
       return;
     }
     const [fixedItem, ...duplicates] = incentiveItems;
     const fixedItemId = fixedItem!.id;
     await prisma.$transaction(async (tx) => {
-      await tx.salaryItem.update({ where: { id: fixedItemId }, data: { name: "성과급", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], payCycle: "MONTHLY", capValue: null, required: true } });
+      await tx.salaryItem.update({ where: { id: fixedItemId }, data: { name: "성과급", nameKo: "성과급", nameEn: "Performance Pay", nameVi: "Thưởng năng suất", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], payCycle: "MONTHLY", capValue: null, required: true } });
       await tx.salaryItemRate.deleteMany({ where: { orgId, salaryItemId: { in: incentiveItems.map((item) => item.id) } } });
       if (duplicates.length) await tx.salaryItem.updateMany({ where: { id: { in: duplicates.map((item) => item.id) } }, data: { isActive: false } });
     });
@@ -85,7 +85,7 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
       const code = String(raw?.code || raw?.id || "").trim();
       const category = String(raw?.category || "").toUpperCase();
       const capValue = raw?.capValue === "" || raw?.capValue == null ? null : Number(raw.capValue);
-      if (!code || codes.has(code) || !String(raw?.name || "").trim() || !["BASE", "ALLOWANCE", "INCENTIVE"].includes(category) || !["MONTHLY", "QUARTERLY", "SEMIANNUAL", "ANNUAL"].includes(raw?.payCycle) || (capValue !== null && (!Number.isSafeInteger(capValue) || capValue < 0)) || !validateSalaryFormula(raw?.formula, category)) return res.status(400).json({ ok: false, error: "invalid salary item" });
+      if (!code || codes.has(code) || [raw?.nameKo, raw?.nameEn, raw?.nameVi].some((name) => !String(name || "").trim()) || !["BASE", "ALLOWANCE", "INCENTIVE"].includes(category) || !["MONTHLY", "QUARTERLY", "SEMIANNUAL", "ANNUAL"].includes(raw?.payCycle) || (capValue !== null && (!Number.isSafeInteger(capValue) || capValue < 0)) || !validateSalaryFormula(raw?.formula, category)) return res.status(400).json({ ok: false, error: "invalid salary item" });
       codes.add(code);
       categoryByCode.set(code, category);
     }
@@ -97,7 +97,8 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
       const ids = new Map<string, number>();
       for (const [sortOrder, raw] of items.entries()) {
         const code = String(raw.code || raw.id).trim(); const category = String(raw.category).toUpperCase();
-        const data = { name: category === "INCENTIVE" ? "성과급" : String(raw.name).trim(), category, payTypes: category === "INCENTIVE" ? ["OUTPUT"] : PAY_TYPES, formula: category === "INCENTIVE" ? ["PRODUCTION_ALLOWANCE"] : raw.formula, payCycle: category === "INCENTIVE" ? "MONTHLY" : raw.payCycle, capValue: category === "INCENTIVE" ? null : raw.capValue === "" || raw.capValue == null ? null : Number(raw.capValue), required: category === "INCENTIVE" || raw.required === true, sortOrder, isActive: true };
+        const nameKo = category === "INCENTIVE" ? "성과급" : String(raw.nameKo).trim(); const nameEn = category === "INCENTIVE" ? "Performance Pay" : String(raw.nameEn).trim(); const nameVi = category === "INCENTIVE" ? "Thưởng năng suất" : String(raw.nameVi).trim();
+        const data = { name: nameKo, nameKo, nameEn, nameVi, category, payTypes: category === "INCENTIVE" ? ["OUTPUT"] : PAY_TYPES, formula: category === "INCENTIVE" ? ["PRODUCTION_ALLOWANCE"] : raw.formula, payCycle: category === "INCENTIVE" ? "MONTHLY" : raw.payCycle, capValue: category === "INCENTIVE" ? null : raw.capValue === "" || raw.capValue == null ? null : Number(raw.capValue), required: category === "INCENTIVE" || raw.required === true, sortOrder, isActive: true };
         const saved = await tx.salaryItem.upsert({ where: { orgId_code: { orgId: org.id, code } }, create: { orgId: org.id, code, ...data }, update: data }); ids.set(code, saved.id);
       }
       await tx.salaryItem.updateMany({ where: { orgId: org.id, code: { notIn: [...codes] }, required: false }, data: { isActive: false } });

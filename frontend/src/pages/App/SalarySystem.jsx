@@ -52,9 +52,9 @@ const DEFAULT_FORMULA = ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS', '÷', 'SCHEDULED
 // 일반(GENERAL) 급여 타입과 생산(OUTPUT) 급여 타입의 유일한 차이는 성과급 유무이므로,
 // 적용 대상 급여 타입은 항목별로 따로 선택하지 않고 급여 구분(카테고리)에서 자동으로 정해진다.
 const defaultPayTypesForCategory = (category) => (category === 'INCENTIVE' ? ['OUTPUT'] : ['GENERAL', 'OUTPUT']);
-const DEFAULT_DRAFT = { name: '', category: 'ALLOWANCE', formula: ['GRADE_RATE'], payCycle: 'MONTHLY', capValue: '' };
+const DEFAULT_DRAFT = { name: '', nameKo: '', nameEn: '', nameVi: '', category: 'ALLOWANCE', formula: ['GRADE_RATE'], payCycle: 'MONTHLY', capValue: '' };
 const item = (id, name, category, payCycle = 'MONTHLY', extra = {}) =>
-  ({ id, name, category, payTypes: defaultPayTypesForCategory(category), formula: ['GRADE_RATE'], payCycle, capValue: '', ...extra });
+  ({ id, name, nameKo: name, nameEn: name, nameVi: name, category, payTypes: defaultPayTypesForCategory(category), formula: ['GRADE_RATE'], payCycle, capValue: '', ...extra });
 const DEFAULT_ITEMS = [
   item('baseSalary', '기본급', 'BASE', 'MONTHLY', { required: true, formula: DEFAULT_FORMULA }),
   item('lunch', '점심수당', 'ALLOWANCE', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS'] }),
@@ -86,6 +86,7 @@ const monthRange = (startMonth, endMonth) => {
   return months;
 };
 const gradeName = (grade, language) => language === 'en' ? grade.nameEn : language === 'vi' ? grade.nameVi : grade.nameKo;
+const salaryItemName = (row, language) => language === 'en' ? row.nameEn : language === 'vi' ? row.nameVi : row.nameKo;
 const calculationLabel = (row, t) => t(PAY_CYCLES[row.payCycle]) || '';
 const formulaTokenLabel = (token, t) => token.startsWith('CONST:')
   ? token.slice(6)
@@ -186,8 +187,8 @@ const SalarySystem = () => {
       ]);
       setGrades((Array.isArray(sets) ? sets : []).flatMap((set) => set.grades || []).filter((grade) => grade.isActive));
       const loadedItems = (Array.isArray(salarySystem?.items) && salarySystem.items.length ? salarySystem.items : DEFAULT_ITEMS).map((row) => row.category === 'INCENTIVE'
-        ? { ...row, name: '성과급', payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', capValue: '', required: true }
-        : row);
+        ? { ...row, name: '성과급', nameKo: '성과급', nameEn: 'Performance Pay', nameVi: 'Thưởng năng suất', payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', capValue: '', required: true }
+        : { ...row, nameKo: row.nameKo || row.name, nameEn: row.nameEn || row.name, nameVi: row.nameVi || row.name });
       const next = {};
       (Array.isArray(salarySystem?.rates) ? salarySystem.rates : []).forEach((row) => {
         const key = `${row.payType}:${row.gradeId}`;
@@ -218,8 +219,8 @@ const SalarySystem = () => {
     setRates((prev) => ({ ...prev, [key]: { ...prev[key], [selected.id]: money(value) } }));
   };
   const addItem = () => {
-    if (!draft.name.trim()) return;
-    const next = { ...draft, name: draft.name.trim(), id: `draft-${Date.now()}`, payTypes: defaultPayTypesForCategory(draft.category) };
+    if ([draft.nameKo, draft.nameEn, draft.nameVi].some((name) => !name.trim())) return;
+    const next = { ...draft, name: draft.nameKo.trim(), nameKo: draft.nameKo.trim(), nameEn: draft.nameEn.trim(), nameVi: draft.nameVi.trim(), id: `draft-${Date.now()}`, payTypes: defaultPayTypesForCategory(draft.category) };
     setItems((rows) => [...rows, next]);
     setSelectedId(next.id);
     setDialogOpen(false);
@@ -334,7 +335,8 @@ const SalarySystem = () => {
     setConstantDraft('');
   };
   const saveFormula = () => {
-    setItems((rows) => rows.map((row) => row.id === selected.id ? { ...row, ...formulaSettingsDraft, formula: formulaDraft } : row));
+    const names = { nameKo: formulaSettingsDraft.nameKo.trim(), nameEn: formulaSettingsDraft.nameEn.trim(), nameVi: formulaSettingsDraft.nameVi.trim() };
+    setItems((rows) => rows.map((row) => row.id === selected.id ? { ...row, ...formulaSettingsDraft, ...names, name: names.nameKo, formula: formulaDraft } : row));
     setFormulaDialogOpen(false);
   };
 
@@ -368,7 +370,7 @@ const SalarySystem = () => {
                   {(dragProvided, snapshot) => <Stack ref={dragProvided.innerRef} {...dragProvided.draggableProps} direction="row" alignItems="center" sx={{ bgcolor: snapshot.isDragging ? 'action.hover' : 'transparent', borderRadius: 1 }}>
                     <IconButton {...dragProvided.dragHandleProps} size="small" aria-label="순서 변경" sx={{ flexShrink: 0, cursor: 'grab', color: 'text.disabled', '&:active': { cursor: 'grabbing' } }}><DragIndicatorIcon fontSize="small" /></IconButton>
                     <Button variant={selectedId === row.id ? 'contained' : 'text'} color={selectedId === row.id ? 'primary' : 'inherit'} onClick={() => setSelectedId(row.id)} sx={{ display: 'block', flex: 1, minWidth: 0, textAlign: 'left', px: 1.5 }}>
-                      <Typography variant="body2" fontWeight={600}>{t(row.name)}</Typography><Typography variant="caption" sx={{ display: 'block', opacity: 0.75 }}>{(row.payTypes || []).map((payType) => t(PAY_TYPES[payType]?.label || payType)).join(' · ')} · {t(PAY_CYCLES[row.payCycle])}</Typography>
+                      <Typography variant="body2" fontWeight={600}>{salaryItemName(row, languageCode)}</Typography><Typography variant="caption" sx={{ display: 'block', opacity: 0.75 }}>{(row.payTypes || []).map((payType) => t(PAY_TYPES[payType]?.label || payType)).join(' · ')} · {t(PAY_CYCLES[row.payCycle])}</Typography>
                     </Button>
                   </Stack>}
                 </Draggable>)}
@@ -380,11 +382,11 @@ const SalarySystem = () => {
       </Paper>
 
       <Paper variant="outlined" sx={{ flex: 1, minWidth: 0 }}>
-        <Stack direction="row" alignItems="center" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Box><Typography variant="h6" fontWeight={700}>{t(selected.name)}</Typography><Typography variant="body2" color="text.secondary">{calculationLabel(selected, t)}</Typography></Box>
+        <Stack direction="row" alignItems="center" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Box><Typography variant="h6" fontWeight={700}>{salaryItemName(selected, languageCode)}</Typography><Typography variant="body2" color="text.secondary">{calculationLabel(selected, t)}</Typography></Box>
           {!isFixedIncentive && <Tooltip title={t(selected.required ? '기본급은 삭제할 수 없습니다.' : '항목 삭제')}><span style={{ marginLeft: 'auto' }}><IconButton color="error" disabled={selected.required} onClick={removeItem}><DeleteOutlineIcon /></IconButton></span></Tooltip>}</Stack>
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Typography variant="body2" fontWeight={700}>{t('지급 설정')}</Typography><Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">{(selected.payTypes || []).map((payType) => <Chip key={payType} size="small" color={PAY_TYPES[payType]?.color} label={t(PAY_TYPES[payType]?.label || payType)} />)}<Chip size="small" variant="outlined" label={t(PAY_CYCLES[selected.payCycle])} />{selected.capValue && <Chip size="small" variant="outlined" label={`${t('상한')} ${selected.capValue}`} />}</Stack></Stack>
-          <Paper variant="outlined" sx={{ mt: 1.5, p: 2, bgcolor: 'action.hover', borderColor: 'divider' }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{ flex: 1 }}><Typography variant="h6" fontWeight={700}>{t(selected.name)}</Typography><Typography variant="h6" color="primary.main" fontWeight={700}>=</Typography><Typography fontWeight={700}>{isFixedIncentive ? t('공장 초당 단가 × CT × 작업 수량') : formulaLabel(selected.formula, t) || t('계산식이 비어 있습니다.')}</Typography></Stack>{!isFixedIncentive && <Button variant="outlined" startIcon={<FunctionsIcon />} onClick={openFormulaDialog}>{t('수정')}</Button>}</Stack></Paper>
+          <Paper variant="outlined" sx={{ mt: 1.5, p: 2, bgcolor: 'action.hover', borderColor: 'divider' }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{ flex: 1 }}><Typography variant="h6" fontWeight={700}>{salaryItemName(selected, languageCode)}</Typography><Typography variant="h6" color="primary.main" fontWeight={700}>=</Typography><Typography fontWeight={700}>{isFixedIncentive ? t('공장 초당 단가 × CT × 작업 수량') : formulaLabel(selected.formula, t) || t('계산식이 비어 있습니다.')}</Typography></Stack>{!isFixedIncentive && <Button variant="outlined" startIcon={<FunctionsIcon />} onClick={openFormulaDialog}>{t('수정')}</Button>}</Stack></Paper>
         </Box>
         {isFixedIncentive
           ? <Alert severity="info" icon={false} sx={{ m: 2 }}>{t('성과급은 작업 기록을 기준으로 자동 계산되며 급여 체계에서 수정할 수 없습니다.')}</Alert>
@@ -396,7 +398,12 @@ const SalarySystem = () => {
       </Paper>
     </Stack>
 
-    <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('계산 방식 설정')} · {t(selected.name)}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
+    <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('계산 방식 설정')} · {salaryItemName(selected, languageCode)}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
+      <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1.5}>
+        <TextField size="small" required label="항목명 (한국어)" value={formulaSettingsDraft.nameKo || ''} onChange={(e) => setFormulaSettingsDraft((prev) => ({ ...prev, nameKo: e.target.value }))} />
+        <TextField size="small" required label="Item Name (English)" value={formulaSettingsDraft.nameEn || ''} onChange={(e) => setFormulaSettingsDraft((prev) => ({ ...prev, nameEn: e.target.value }))} />
+        <TextField size="small" required label="Tên khoản mục (Tiếng Việt)" value={formulaSettingsDraft.nameVi || ''} onChange={(e) => setFormulaSettingsDraft((prev) => ({ ...prev, nameVi: e.target.value }))} />
+      </Stack></Paper>
       <Paper variant="outlined" sx={{ p: 2.5, minHeight: 96, bgcolor: 'action.hover', borderStyle: 'dashed' }}>
         <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}>
           <FunctionsIcon fontSize="small" color="primary" sx={{ mr: 1 }} />
@@ -457,7 +464,7 @@ const SalarySystem = () => {
           </Paper>
         </Stack>
       </Box>
-    </Stack></DialogContent><DialogActions><Button variant="contained" onClick={saveFormula} disabled={formulaDraft.length === 0}>{t('계산식 적용')}</Button></DialogActions></Dialog>
+    </Stack></DialogContent><DialogActions><Button variant="contained" onClick={saveFormula} disabled={formulaDraft.length === 0 || [formulaSettingsDraft.nameKo, formulaSettingsDraft.nameEn, formulaSettingsDraft.nameVi].some((name) => !String(name || '').trim())}>{t('계산식 적용')}</Button></DialogActions></Dialog>
 
     <Dialog open={versionDialogOpen} onClose={versionBusy ? undefined : () => setVersionDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 체계 버전 관리')}</DialogTitle><DialogContent dividers>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
@@ -503,10 +510,12 @@ const SalarySystem = () => {
     </DialogContent><DialogActions><Button variant="contained" onClick={saveVersionBoundaries} disabled={versionBusy || !hasVersionBoundaryChanges}>{t('저장')}</Button></DialogActions></Dialog>
 
     <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm"><DialogTitle>{t('급여 항목 추가')}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
-      <TextField autoFocus label={t('항목명')} value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder={t('예: 자격수당')} />
+      <TextField autoFocus required label="항목명 (한국어)" value={draft.nameKo} onChange={(e) => setDraft((prev) => ({ ...prev, nameKo: e.target.value }))} placeholder="예: 자격수당" />
+      <TextField required label="Item Name (English)" value={draft.nameEn} onChange={(e) => setDraft((prev) => ({ ...prev, nameEn: e.target.value }))} placeholder="e.g. Qualification Allowance" />
+      <TextField required label="Tên khoản mục (Tiếng Việt)" value={draft.nameVi} onChange={(e) => setDraft((prev) => ({ ...prev, nameVi: e.target.value }))} placeholder="Ví dụ: Phụ cấp chứng chỉ" />
       <FormControl fullWidth size="small"><InputLabel>{t('급여 구분')}</InputLabel><Select label={t('급여 구분')} value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>{Object.entries(CATEGORIES).filter(([key]) => key !== 'INCENTIVE').map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}</Select></FormControl>
       {calculationFields(draft, (field, value) => setDraft((prev) => ({ ...prev, [field]: value })))}
-    </Stack></DialogContent><DialogActions><Button onClick={() => setDialogOpen(false)}>{t('취소')}</Button><Button variant="contained" onClick={addItem} disabled={!draft.name.trim()}>{t('추가')}</Button></DialogActions></Dialog>
+    </Stack></DialogContent><DialogActions><Button onClick={() => setDialogOpen(false)}>{t('취소')}</Button><Button variant="contained" onClick={addItem} disabled={[draft.nameKo, draft.nameEn, draft.nameVi].some((name) => !name.trim())}>{t('추가')}</Button></DialogActions></Dialog>
   </Box></AppPageContainer>;
 };
 
