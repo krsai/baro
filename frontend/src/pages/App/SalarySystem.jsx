@@ -216,6 +216,14 @@ const SalarySystem = () => {
     if (isFixedIncentive) return;
     const current = selected.payTypes || [];
     if (current.includes(payType) && current.length === 1) return;
+    if (current.includes(payType)) {
+      setRates((previous) => Object.fromEntries(Object.entries(previous).map(([key, itemRates]) => {
+        if (!key.startsWith(`${payType}:`)) return [key, itemRates];
+        const nextItemRates = { ...itemRates };
+        delete nextItemRates[selected.id];
+        return [key, nextItemRates];
+      })));
+    }
     const next = current.includes(payType) ? current.filter((value) => value !== payType) : [...current, payType];
     updateSelected('payTypes', PAY_TYPE_ORDER.filter((value) => next.includes(value)));
   };
