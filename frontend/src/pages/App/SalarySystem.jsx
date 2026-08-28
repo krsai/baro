@@ -25,6 +25,7 @@ const PAY_TYPES = {
   OUTPUT: { label: '생산', palette: 'orange' },
 };
 const PAY_TYPE_ORDER = ['GENERAL', 'OUTPUT'];
+const SALARY_CURRENCIES = ['VND', 'USD', 'KRW'];
 const CATEGORIES = { BASE: '기본급', ALLOWANCE: '급여 수당', INCENTIVE: '성과급' };
 const CATEGORY_PALETTES = { BASE: 'blue', ALLOWANCE: 'green', INCENTIVE: 'orange' };
 const PAY_CYCLES = {
@@ -32,7 +33,7 @@ const PAY_CYCLES = {
 };
 // 파라미터를 성격별로 묶어서 보여준다 (단가/근속 -> 근무일수 -> 근무시간 -> 조건·외부 계산값).
 const FORMULA_PARAMETERS = {
-  GRADE_RATE: { label: '직급별 단가', unit: 'VND' },
+  GRADE_RATE: { label: '직급별 단가', currencyUnit: true },
   TENURE_YEARS: { label: '근속연수', unit: '년' },
   ACTUAL_WORKDAYS: { label: '실제 근무일수', unit: '일' },
   SCHEDULED_WORKDAYS: { label: '기준 근무일수', unit: '일', hint: '해당 월의 근무요일에서 등록 공휴일을 제외하고 서버가 계산합니다.' },
@@ -40,8 +41,9 @@ const FORMULA_PARAMETERS = {
   OVERTIME_HOURS: { label: '연장근무시간', unit: '시간' },
   HOLIDAY_HOURS: { label: '휴일 특근시간', unit: '시간' },
   FULL_ATTENDANCE_FACTOR: { label: '만근 충족값', unit: '1 또는 0', hint: '만근을 채우면 1, 아니면 0으로 계산됩니다.' },
-  PRODUCTION_ALLOWANCE: { label: '생산수당 계산 결과', unit: 'VND' },
+  PRODUCTION_ALLOWANCE: { label: '생산수당 계산 결과', currencyUnit: true },
 };
+const formulaParameterUnit = (parameter, currencyCode) => parameter.currencyUnit ? currencyCode : parameter.unit;
 const FORMULA_PARAMETER_GROUPS = [
   { label: '단가·근속', keys: ['GRADE_RATE', 'TENURE_YEARS'] },
   { label: '근무일수', keys: ['ACTUAL_WORKDAYS', 'SCHEDULED_WORKDAYS'] },
@@ -158,6 +160,7 @@ const SalarySystem = () => {
   const t = useCallback((text) => salaryText(text, languageCode), [languageCode]);
   const [grades, setGrades] = useState([]);
   const [rates, setRates] = useState({});
+  const [currencyCode, setCurrencyCode] = useState('VND');
   const [items, setItems] = useState(DEFAULT_ITEMS);
   const [selectedId, setSelectedId] = useState('baseSalary');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -196,9 +199,11 @@ const SalarySystem = () => {
         next[key] = { ...next[key], [row.salaryItemCode]: money(row.amount) };
       });
       setItems(loadedItems);
+      const loadedCurrencyCode = SALARY_CURRENCIES.includes(salarySystem?.currencyCode) ? salarySystem.currencyCode : 'VND';
+      setCurrencyCode(loadedCurrencyCode);
       setVersions(Array.isArray(salarySystem?.versions) ? salarySystem.versions : []);
       setRates(next);
-      setSavedSnapshot(JSON.stringify({ items: loadedItems, rates: next }));
+      setSavedSnapshot(JSON.stringify({ currencyCode: loadedCurrencyCode, items: loadedItems, rates: next }));
     } catch (error) {
       setMessage({ severity: 'error', text: error?.message || t('급여 기준을 불러오지 못했습니다.') });
     }
@@ -206,8 +211,8 @@ const SalarySystem = () => {
   useEffect(() => { load(); }, [load]);
 
   const isDirty = useMemo(
-    () => savedSnapshot !== null && JSON.stringify({ items, rates }) !== savedSnapshot,
-    [items, rates, savedSnapshot]
+    () => savedSnapshot !== null && JSON.stringify({ currencyCode, items, rates }) !== savedSnapshot,
+    [currencyCode, items, rates, savedSnapshot]
   );
 
   const selected = items.find((row) => row.id === selectedId) || items[0];
@@ -262,7 +267,7 @@ const SalarySystem = () => {
         const [payType, gradeId] = key.split(':');
         return Object.entries(itemRates || {}).filter(([salaryItemCode]) => editableItems.get(String(salaryItemCode))?.payTypes?.includes(payType)).map(([salaryItemCode, amount]) => ({ payType, gradeId: Number(gradeId), salaryItemCode, amount: Number(String(amount).replace(/,/g, '')) || 0 }));
       });
-      await requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: items.map((row) => ({ ...row, code: row.code || row.id })), rates: rateRows }) });
+      await requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currencyCode, items: items.map((row) => ({ ...row, code: row.code || row.id })), rates: rateRows }) });
       await requestJSON(`/salary-system/versions${buildQueryString({ orgId: activeOrgId })}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       await load();
       setMessage({ severity: 'success', text: t('급여 체계를 저장하고 새 버전을 등록했습니다. 적용 월은 버전 관리에서 지정할 수 있습니다.') });
@@ -360,13 +365,13 @@ const SalarySystem = () => {
     <FormControl fullWidth size="small"><InputLabel>{t('정산 주기')}</InputLabel><Select label={t('정산 주기')} value={value.payCycle} onChange={(e) => onChange('payCycle', e.target.value)}>
       {Object.entries(PAY_CYCLES).map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}
     </Select></FormControl>
-    <TextField size="small" label={t('상한값 (선택)')} value={value.capValue || ''} onChange={(e) => onChange('capValue', e.target.value)} placeholder={t('계산 결과 최대 금액')} />
+    <TextField size="small" label={`${t('상한값 (선택)')} (${currencyCode})`} value={value.capValue || ''} onChange={(e) => onChange('capValue', e.target.value)} placeholder={t('계산 결과 최대 금액')} />
   </>;
 
   return <AppPageContainer><Box sx={{ p: 2, width: '100%' }}>
     <Stack direction="row" flexWrap="wrap" justifyContent="space-between" alignItems="center" rowGap={1.5} sx={{ mb: 2, width: '100%' }}>
       <Typography variant="h5" fontWeight={700}>{t('급여 체계')}</Typography>
-      <Stack direction="row" spacing={1}><Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog}>{t('버전 관리')}</Button>
+      <Stack direction="row" spacing={1}><FormControl size="small" sx={{ minWidth: 120 }}><InputLabel>{t('통화')}</InputLabel><Select label={t('통화')} value={currencyCode} onChange={(event) => setCurrencyCode(event.target.value)}>{SALARY_CURRENCIES.map((code) => <MenuItem key={code} value={code}>{code}</MenuItem>)}</Select></FormControl><Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog}>{t('버전 관리')}</Button>
         <SaveButton onClick={saveDraft} disabled={!isDirty}>{t('저장')}</SaveButton></Stack>
     </Stack>
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
@@ -401,13 +406,13 @@ const SalarySystem = () => {
         <Stack direction="row" alignItems="center" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Box><Typography variant="h6" fontWeight={700}>{salaryItemName(selected, languageCode)}</Typography><Typography variant="body2" color="text.secondary">{calculationLabel(selected, t)}</Typography></Box>
           {!isFixedIncentive && <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 'auto' }}><Button variant="outlined" startIcon={<FunctionsIcon />} onClick={openFormulaDialog}>{t('수정')}</Button><Tooltip title={t(selected.required ? '기본급은 삭제할 수 없습니다.' : '항목 삭제')}><span><IconButton color="error" disabled={selected.required} onClick={removeItem}><DeleteOutlineIcon /></IconButton></span></Tooltip></Stack>}</Stack>
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Typography variant="body2" fontWeight={700}>{t('지급 설정')}</Typography><Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">{PAY_TYPE_ORDER.map((payType) => { const active = (selected.payTypes || []).includes(payType); return <Chip key={payType} size="small" clickable={!isFixedIncentive} variant="outlined" label={t(PAY_TYPES[payType]?.label || payType)} onClick={isFixedIncentive ? undefined : () => toggleSelectedPayType(payType)} sx={labelChipSx(PAY_TYPES[payType].palette, active)} />; })}<Chip size="small" variant="outlined" label={t(PAY_CYCLES[selected.payCycle])} />{selected.capValue && <Chip size="small" variant="outlined" label={`${t('상한')} ${selected.capValue}`} />}</Stack></Stack>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Typography variant="body2" fontWeight={700}>{t('지급 설정')}</Typography><Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">{PAY_TYPE_ORDER.map((payType) => { const active = (selected.payTypes || []).includes(payType); return <Chip key={payType} size="small" clickable={!isFixedIncentive} variant="outlined" label={t(PAY_TYPES[payType]?.label || payType)} onClick={isFixedIncentive ? undefined : () => toggleSelectedPayType(payType)} sx={labelChipSx(PAY_TYPES[payType].palette, active)} />; })}<Chip size="small" variant="outlined" label={t(PAY_CYCLES[selected.payCycle])} />{selected.capValue && <Chip size="small" variant="outlined" label={`${t('상한')} ${selected.capValue} ${currencyCode}`} />}</Stack></Stack>
           <Paper variant="outlined" sx={{ mt: 1.5, p: 2, bgcolor: 'action.hover', borderColor: 'divider' }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{ flex: 1 }}><Typography variant="h6" fontWeight={700}>{salaryItemName(selected, languageCode)}</Typography><Typography variant="h6" color="primary.main" fontWeight={700}>=</Typography><Typography fontWeight={700}>{isFixedIncentive ? t('공장 초당 단가 × CT × 작업 수량') : formulaLabel(selected.formula, t) || t('계산식이 비어 있습니다.')}</Typography></Stack></Stack></Paper>
         </Box>
         {isFixedIncentive
           ? <Alert severity="info" icon={false} sx={{ m: 2 }}>{t('성과급은 작업 기록을 기준으로 자동 계산되며 급여 체계에서 수정할 수 없습니다.')}</Alert>
           : <><Box sx={{ px: 2, py: 1.5 }}><Typography fontWeight={700}>{t('급여 타입·직급별 단가')}</Typography><Typography variant="body2" color="text.secondary">{t('권한이나 직무와 관계없이 직원에게 지정된 급여 타입과 직급으로 단가를 결정합니다.')}</Typography></Box>
-            <TableContainer><Table size="small"><TableHead><TableRow><TableCell>{t('급여 타입')}</TableCell><TableCell>{t('직급')}</TableCell><TableCell align="right">{t('단가')}</TableCell></TableRow></TableHead><TableBody>
+            <TableContainer><Table size="small"><TableHead><TableRow><TableCell>{t('급여 타입')}</TableCell><TableCell>{t('직급')}</TableCell><TableCell align="right">{t('단가')} ({currencyCode})</TableCell></TableRow></TableHead><TableBody>
               {PAY_TYPE_ORDER.flatMap((payType) => { const active = (selected.payTypes || []).includes(payType); return grades.map((grade, index) => <TableRow key={`${payType}:${grade.id}`} hover={active} sx={{ opacity: active ? 1 : 0.48 }}>{index === 0 && <TableCell rowSpan={grades.length} sx={{ verticalAlign: 'top', pt: 2 }}><Chip size="small" variant="outlined" label={t(PAY_TYPES[payType].label)} sx={labelChipSx(PAY_TYPES[payType].palette, active)} /><Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{payType}</Typography></TableCell>}<TableCell>{gradeName(grade, languageCode)} ({grade.code})</TableCell>
                 <TableCell align="right"><TextField size="small" disabled={!active} value={getRate(payType, grade.id)} onFocus={(e) => e.target.select()} onChange={(e) => changeRate(payType, grade.id, e.target.value)} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} sx={{ width: 170 }} /></TableCell></TableRow>); })}
             </TableBody></Table></TableContainer></>}
@@ -457,9 +462,9 @@ const SalarySystem = () => {
           <Stack spacing={1.5}>
             {FORMULA_PARAMETER_GROUPS.map((group) => <Box key={group.label}>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t(group.label)}</Typography>
-              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{group.keys.map((key) => <Tooltip key={key} title={t(FORMULA_PARAMETERS[key].hint || FORMULA_PARAMETERS[key].unit)}><span>
-                <Button size="small" variant="outlined" disabled={!canInsertTokenAt(formulaDraft, cursorIndex, key)} onClick={() => insertFormulaToken(key)}>{t(FORMULA_PARAMETERS[key].label)} · {t(FORMULA_PARAMETERS[key].unit)}</Button>
-              </span></Tooltip>)}</Stack>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{group.keys.map((key) => { const unit = formulaParameterUnit(FORMULA_PARAMETERS[key], currencyCode); return <Tooltip key={key} title={t(FORMULA_PARAMETERS[key].hint || unit)}><span>
+                <Button size="small" variant="outlined" disabled={!canInsertTokenAt(formulaDraft, cursorIndex, key)} onClick={() => insertFormulaToken(key)}>{t(FORMULA_PARAMETERS[key].label)} · {t(unit)}</Button>
+              </span></Tooltip>; })}</Stack>
             </Box>)}
           </Stack>
         </Paper>

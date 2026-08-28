@@ -4816,6 +4816,8 @@ DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCom
 DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_payType_check" CHECK ("payType" IN ('GENERAL','OUTPUT')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 CREATE TABLE IF NOT EXISTS "SalaryItem" ("id" SERIAL PRIMARY KEY,"orgId" INTEGER NOT NULL,"code" TEXT NOT NULL,"name" TEXT NOT NULL,"category" TEXT NOT NULL,"payTypes" JSONB NOT NULL,"formula" JSONB NOT NULL,"payCycle" TEXT NOT NULL,"capValue" INTEGER,"required" BOOLEAN NOT NULL DEFAULT false,"sortOrder" INTEGER NOT NULL DEFAULT 0,"isActive" BOOLEAN NOT NULL DEFAULT true,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "salaryCurrencyCode" TEXT NOT NULL DEFAULT 'VND';
+DO $$ BEGIN ALTER TABLE "Organization" ADD CONSTRAINT "Organization_salaryCurrencyCode_check" CHECK ("salaryCurrencyCode" IN ('VND','USD','KRW')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS "SalaryItem_orgId_code_key" ON "SalaryItem"("orgId","code");
 CREATE UNIQUE INDEX IF NOT EXISTS "SalaryItem_orgId_id_key" ON "SalaryItem"("orgId","id");
 DO $$ BEGIN ALTER TABLE "SalaryItem" ADD CONSTRAINT "SalaryItem_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;

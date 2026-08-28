@@ -191,6 +191,7 @@ model Organization {
   // employees, or OrgRelationship membership.
   isActive                 Boolean          @default(true)
   ownerOrgId               Int?
+  salaryCurrencyCode       String           @default("VND")
   createdAt                DateTime         @default(now())
   createdBy                String           @default("system@baro.local")
   createdByEmployeeId      Int?
