@@ -862,6 +862,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "EmployeeCompensationPolicy", columnName: "allowance" },
   { tableName: "EmployeeCompensationPolicy", columnName: "incentive" },
   { tableName: "SalaryItem", columnName: "formula" },
+  { tableName: "SalaryItem", columnName: "paymentMonths" },
   { tableName: "SalaryItem", columnName: "nameKo" },
   { tableName: "SalaryItem", columnName: "nameEn" },
   { tableName: "SalaryItem", columnName: "nameVi" },

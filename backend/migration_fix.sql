@@ -4816,6 +4816,9 @@ DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCom
 DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_payType_check" CHECK ("payType" IN ('GENERAL','OUTPUT')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 CREATE TABLE IF NOT EXISTS "SalaryItem" ("id" SERIAL PRIMARY KEY,"orgId" INTEGER NOT NULL,"code" TEXT NOT NULL,"name" TEXT NOT NULL,"category" TEXT NOT NULL,"payTypes" JSONB NOT NULL,"formula" JSONB NOT NULL,"payCycle" TEXT NOT NULL,"capValue" INTEGER,"required" BOOLEAN NOT NULL DEFAULT false,"sortOrder" INTEGER NOT NULL DEFAULT 0,"isActive" BOOLEAN NOT NULL DEFAULT true,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+ALTER TABLE "SalaryItem" ADD COLUMN IF NOT EXISTS "paymentMonths" JSONB;
+UPDATE "SalaryItem" SET "paymentMonths"=CASE "payCycle" WHEN 'QUARTERLY' THEN '[3,6,9,12]'::jsonb WHEN 'SEMIANNUAL' THEN '[6,12]'::jsonb WHEN 'ANNUAL' THEN '[12]'::jsonb ELSE '[1,2,3,4,5,6,7,8,9,10,11,12]'::jsonb END WHERE "paymentMonths" IS NULL;
+ALTER TABLE "SalaryItem" ALTER COLUMN "paymentMonths" SET NOT NULL;
 ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "salaryCurrencyId" INTEGER;
 UPDATE "Organization" organization SET "salaryCurrencyId"=currency.id FROM "Currency" currency WHERE organization."salaryCurrencyId" IS NULL AND currency.code='VND';
 CREATE INDEX IF NOT EXISTS "Organization_salaryCurrencyId_idx" ON "Organization"("salaryCurrencyId");

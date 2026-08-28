@@ -20,6 +20,8 @@ const translations = {
   '화면 시안 상태이며 서버 저장 기능은 아직 연결되지 않았습니다. 백엔드 구현 후 실제로 저장됩니다.': ['This is still a UI preview - saving is not yet connected to the server. Values will be persisted once the backend is implemented.', 'Đây vẫn là bản xem trước giao diện - chức năng lưu chưa được kết nối với máy chủ. Giá trị sẽ được lưu khi hoàn thiện backend.'],
   '저장': ['Save', 'Lưu'],
   '정산 주기': ['Payment cycle', 'Chu kỳ thanh toán'],
+  '지급 월': ['Payment months', 'Tháng chi trả'], '매월': ['Every month', 'Hàng tháng'], '월': ['month', 'tháng'],
+  '1개 월을 선택하세요.': ['Select 1 payment month.', 'Chọn 1 tháng chi trả.'], '2개 월을 선택하세요.': ['Select 2 payment months.', 'Chọn 2 tháng chi trả.'], '4개 월을 선택하세요.': ['Select 4 payment months.', 'Chọn 4 tháng chi trả.'],
   '상한값 (선택)': ['Cap (optional)', 'Giới hạn (tùy chọn)'], '계산 결과 최대 금액': ['Maximum calculated amount', 'Số tiền tính tối đa'],
   '급여 체계': ['Salary Structure', 'Cơ cấu lương'],
   '적용 시작월': ['Effective month', 'Tháng bắt đầu áp dụng'], '버전 관리': ['Version history', 'Lịch sử phiên bản'], '항목 추가': ['Add item', 'Thêm khoản mục'],

@@ -6,6 +6,12 @@ import { normalizeCurrencyCode } from "../currency";
 
 type Args = { requireSalarySystemManager: (req: any, res: any, orgId: number) => Promise<boolean> };
 const PAY_TYPES = ["GENERAL", "OUTPUT"];
+const PAYMENT_MONTHS_BY_CYCLE = {
+  MONTHLY: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  QUARTERLY: [3, 6, 9, 12],
+  SEMIANNUAL: [6, 12],
+  ANNUAL: [12],
+} as const;
 const toJsonSnapshot = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) => {
@@ -37,7 +43,7 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     ];
     await prisma.$transaction(async (tx) => {
       for (const [sortOrder, definition] of definitions.entries()) {
-        const item = await tx.salaryItem.create({ data: { orgId, ...definition, payCycle: "MONTHLY", sortOrder } });
+        const item = await tx.salaryItem.create({ data: { orgId, ...definition, payCycle: "MONTHLY", paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, sortOrder } });
         const field = definition.code === "baseSalary" ? "baseSalary" : definition.code === "allowanceTotal" ? "allowance" : "incentive";
         const rows = definition.category === "INCENTIVE" ? [] : legacy.map((row) => ({ orgId, payType: row.payType, gradeId: row.gradeId, salaryItemId: item.id, amount: row[field] }));
         if (rows.length) await tx.salaryItemRate.createMany({ data: rows });
@@ -48,14 +54,14 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     const incentiveItems = await prisma.salaryItem.findMany({ where: { orgId, category: "INCENTIVE", isActive: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
     if (incentiveItems.length === 0) {
       const last = await prisma.salaryItem.findFirst({ where: { orgId, isActive: true }, orderBy: { sortOrder: "desc" }, select: { sortOrder: true } });
-      const data = { name: "성과급", nameKo: "성과급", nameEn: "Performance Pay", nameVi: "Thưởng năng suất", category: "INCENTIVE", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], payCycle: "MONTHLY", capValue: null, required: true, sortOrder: (last?.sortOrder || 0) + 1, isActive: true };
+      const data = { name: "성과급", nameKo: "성과급", nameEn: "Performance Pay", nameVi: "Thưởng năng suất", category: "INCENTIVE", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], payCycle: "MONTHLY", paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: null, required: true, sortOrder: (last?.sortOrder || 0) + 1, isActive: true };
       await prisma.salaryItem.upsert({ where: { orgId_code: { orgId, code: "incentiveTotal" } }, create: { orgId, code: "incentiveTotal", ...data }, update: data });
       return;
     }
     const [fixedItem, ...duplicates] = incentiveItems;
     const fixedItemId = fixedItem!.id;
     await prisma.$transaction(async (tx) => {
-      await tx.salaryItem.update({ where: { id: fixedItemId }, data: { name: "성과급", nameKo: "성과급", nameEn: "Performance Pay", nameVi: "Thưởng năng suất", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], payCycle: "MONTHLY", capValue: null, required: true } });
+      await tx.salaryItem.update({ where: { id: fixedItemId }, data: { name: "성과급", nameKo: "성과급", nameEn: "Performance Pay", nameVi: "Thưởng năng suất", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], payCycle: "MONTHLY", paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: null, required: true } });
       await tx.salaryItemRate.deleteMany({ where: { orgId, salaryItemId: { in: incentiveItems.map((item) => item.id) } } });
       if (duplicates.length) await tx.salaryItem.updateMany({ where: { id: { in: duplicates.map((item) => item.id) } }, data: { isActive: false } });
     });
@@ -90,9 +96,12 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     for (const raw of items) {
       const code = String(raw?.code || raw?.id || "").trim();
       const category = String(raw?.category || "").toUpperCase();
+      const payCycle = String(raw?.payCycle || "").toUpperCase();
       const payTypes: string[] = Array.isArray(raw?.payTypes) ? raw.payTypes.map((value: unknown) => String(value).toUpperCase()) : [];
+      const paymentMonths: number[] = Array.isArray(raw?.paymentMonths) ? raw.paymentMonths.map(Number).sort((a: number, b: number) => a - b) : [];
       const capValue = raw?.capValue === "" || raw?.capValue == null ? null : Number(raw.capValue);
-      if (!code || codes.has(code) || [raw?.nameKo, raw?.nameEn, raw?.nameVi].some((name) => !String(name || "").trim()) || !["BASE", "ALLOWANCE", "INCENTIVE"].includes(category) || payTypes.length < 1 || new Set(payTypes).size !== payTypes.length || payTypes.some((value) => !PAY_TYPES.includes(value)) || (category === "INCENTIVE" && (payTypes.length !== 1 || payTypes[0] !== "OUTPUT")) || !["MONTHLY", "QUARTERLY", "SEMIANNUAL", "ANNUAL"].includes(raw?.payCycle) || (capValue !== null && (!Number.isSafeInteger(capValue) || capValue < 0)) || !validateSalaryFormula(raw?.formula, category)) return res.status(400).json({ ok: false, error: "invalid salary item" });
+      const expectedMonthCount = PAYMENT_MONTHS_BY_CYCLE[payCycle as keyof typeof PAYMENT_MONTHS_BY_CYCLE]?.length;
+      if (!code || codes.has(code) || [raw?.nameKo, raw?.nameEn, raw?.nameVi].some((name) => !String(name || "").trim()) || !["BASE", "ALLOWANCE", "INCENTIVE"].includes(category) || payTypes.length < 1 || new Set(payTypes).size !== payTypes.length || payTypes.some((value) => !PAY_TYPES.includes(value)) || (category === "INCENTIVE" && (payTypes.length !== 1 || payTypes[0] !== "OUTPUT")) || !expectedMonthCount || paymentMonths.length !== expectedMonthCount || new Set(paymentMonths).size !== paymentMonths.length || paymentMonths.some((month) => !Number.isInteger(month) || month < 1 || month > 12) || (category === "INCENTIVE" && paymentMonths.some((month, index) => month !== PAYMENT_MONTHS_BY_CYCLE.MONTHLY[index])) || (capValue !== null && (!Number.isSafeInteger(capValue) || capValue < 0)) || !validateSalaryFormula(raw?.formula, category)) return res.status(400).json({ ok: false, error: "invalid salary item" });
       codes.add(code);
       categoryByCode.set(code, category);
       payTypesByCode.set(code, payTypes);
@@ -109,7 +118,7 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
       for (const [sortOrder, raw] of items.entries()) {
         const code = String(raw.code || raw.id).trim(); const category = String(raw.category).toUpperCase();
         const nameKo = category === "INCENTIVE" ? "성과급" : String(raw.nameKo).trim(); const nameEn = category === "INCENTIVE" ? "Performance Pay" : String(raw.nameEn).trim(); const nameVi = category === "INCENTIVE" ? "Thưởng năng suất" : String(raw.nameVi).trim();
-        const data = { name: nameKo, nameKo, nameEn, nameVi, category, payTypes: category === "INCENTIVE" ? ["OUTPUT"] : payTypesByCode.get(code)!, formula: category === "INCENTIVE" ? ["PRODUCTION_ALLOWANCE"] : raw.formula, payCycle: category === "INCENTIVE" ? "MONTHLY" : raw.payCycle, capValue: category === "INCENTIVE" ? null : raw.capValue === "" || raw.capValue == null ? null : Number(raw.capValue), required: category === "INCENTIVE" || raw.required === true, sortOrder, isActive: true };
+        const data = { name: nameKo, nameKo, nameEn, nameVi, category, payTypes: category === "INCENTIVE" ? ["OUTPUT"] : payTypesByCode.get(code)!, formula: category === "INCENTIVE" ? ["PRODUCTION_ALLOWANCE"] : raw.formula, payCycle: category === "INCENTIVE" ? "MONTHLY" : raw.payCycle, paymentMonths: category === "INCENTIVE" ? PAYMENT_MONTHS_BY_CYCLE.MONTHLY : raw.paymentMonths, capValue: category === "INCENTIVE" ? null : raw.capValue === "" || raw.capValue == null ? null : Number(raw.capValue), required: category === "INCENTIVE" || raw.required === true, sortOrder, isActive: true };
         const saved = await tx.salaryItem.upsert({ where: { orgId_code: { orgId: org.id, code } }, create: { orgId: org.id, code, ...data }, update: data }); ids.set(code, saved.id);
       }
       await tx.salaryItem.updateMany({ where: { orgId: org.id, code: { notIn: [...codes] }, required: false }, data: { isActive: false } });

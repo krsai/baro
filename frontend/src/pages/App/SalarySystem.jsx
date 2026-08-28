@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControl, IconButton, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack,
+  Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
+  FormControl, FormHelperText, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   TextField, Tooltip, Typography,
 } from '@mui/material';
@@ -31,6 +31,12 @@ const CATEGORY_PALETTES = { BASE: 'blue', ALLOWANCE: 'green', INCENTIVE: 'orange
 const PAY_CYCLES = {
   MONTHLY: '1개월', QUARTERLY: '3개월', SEMIANNUAL: '6개월', ANNUAL: '12개월',
 };
+const PAYMENT_MONTHS_BY_CYCLE = {
+  MONTHLY: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  QUARTERLY: [3, 6, 9, 12],
+  SEMIANNUAL: [6, 12],
+  ANNUAL: [12],
+};
 // 파라미터를 성격별로 묶어서 보여준다 (단가/근속 -> 근무일수 -> 근무시간 -> 조건·외부 계산값).
 const FORMULA_PARAMETERS = {
   GRADE_RATE: { label: '직급별 단가', currencyUnit: true },
@@ -44,6 +50,11 @@ const FORMULA_PARAMETERS = {
   PRODUCTION_ALLOWANCE: { label: '생산수당 계산 결과', currencyUnit: true },
 };
 const formulaParameterUnit = (parameter, currencyCode) => parameter.currencyUnit ? currencyCode : parameter.unit;
+const hasValidPaymentMonths = (item) => {
+  const months = Array.isArray(item.paymentMonths) ? item.paymentMonths : [];
+  const expectedCount = PAYMENT_MONTHS_BY_CYCLE[item.payCycle]?.length;
+  return Boolean(expectedCount) && months.length === expectedCount && new Set(months).size === months.length && months.every((month) => Number.isInteger(Number(month)) && Number(month) >= 1 && Number(month) <= 12);
+};
 const FORMULA_PARAMETER_GROUPS = [
   { label: '단가·근속', keys: ['GRADE_RATE', 'TENURE_YEARS'] },
   { label: '근무일수', keys: ['ACTUAL_WORKDAYS', 'SCHEDULED_WORKDAYS'] },
@@ -55,9 +66,9 @@ const DEFAULT_FORMULA = ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS', '÷', 'SCHEDULED
 // 일반(GENERAL) 급여 타입과 생산(OUTPUT) 급여 타입의 유일한 차이는 성과급 유무이므로,
 // 적용 대상 급여 타입은 항목별로 따로 선택하지 않고 급여 구분(카테고리)에서 자동으로 정해진다.
 const defaultPayTypesForCategory = (category) => (category === 'INCENTIVE' ? ['OUTPUT'] : ['GENERAL', 'OUTPUT']);
-const DEFAULT_DRAFT = { name: '', nameKo: '', nameEn: '', nameVi: '', category: 'ALLOWANCE', formula: ['GRADE_RATE'], payCycle: 'MONTHLY', capValue: '' };
+const DEFAULT_DRAFT = { name: '', nameKo: '', nameEn: '', nameVi: '', category: 'ALLOWANCE', formula: ['GRADE_RATE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '' };
 const item = (id, name, category, payCycle = 'MONTHLY', extra = {}) =>
-  ({ id, name, nameKo: name, nameEn: name, nameVi: name, category, payTypes: defaultPayTypesForCategory(category), formula: ['GRADE_RATE'], payCycle, capValue: '', ...extra });
+  ({ id, name, nameKo: name, nameEn: name, nameVi: name, category, payTypes: defaultPayTypesForCategory(category), formula: ['GRADE_RATE'], payCycle, paymentMonths: PAYMENT_MONTHS_BY_CYCLE[payCycle], capValue: '', ...extra });
 const DEFAULT_ITEMS = [
   item('baseSalary', '기본급', 'BASE', 'MONTHLY', { required: true, formula: DEFAULT_FORMULA }),
   item('lunch', '점심수당', 'ALLOWANCE', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS'] }),
@@ -86,6 +97,7 @@ const salaryStateSignature = ({ currencyCode, items, rates }) => {
     payTypes: PAY_TYPE_ORDER.filter((payType) => (item.payTypes || []).includes(payType)),
     formula: Array.isArray(item.formula) ? item.formula : [],
     payCycle: item.payCycle,
+    paymentMonths: [...(item.paymentMonths || PAYMENT_MONTHS_BY_CYCLE[item.payCycle] || [])].map(Number).sort((a, b) => a - b),
     capValue: item.capValue === '' || item.capValue == null
       ? null
       : Number.isFinite(Number(item.capValue)) ? Number(item.capValue) : String(item.capValue),
@@ -118,7 +130,7 @@ const monthRange = (startMonth, endMonth) => {
 };
 const gradeName = (grade, language) => language === 'en' ? grade.nameEn : language === 'vi' ? grade.nameVi : grade.nameKo;
 const salaryItemName = (row, language) => language === 'en' ? row.nameEn : language === 'vi' ? row.nameVi : row.nameKo;
-const calculationLabel = (row, t) => t(PAY_CYCLES[row.payCycle]) || '';
+const calculationLabel = (row, t) => `${t(PAY_CYCLES[row.payCycle]) || ''}${row.payCycle === 'MONTHLY' ? '' : ` · ${(row.paymentMonths || []).map((month) => `${month}${t('월')}`).join(', ')}`}`;
 const formulaTokenLabel = (token, t) => token.startsWith('CONST:')
   ? token.slice(6)
   : t(FORMULA_PARAMETERS[token]?.label || token);
@@ -219,8 +231,8 @@ const SalarySystem = () => {
       ]);
       setGrades((Array.isArray(sets) ? sets : []).flatMap((set) => set.grades || []).filter((grade) => grade.isActive));
       const loadedItems = (Array.isArray(salarySystem?.items) && salarySystem.items.length ? salarySystem.items : DEFAULT_ITEMS).map((row) => row.category === 'INCENTIVE'
-        ? { ...row, name: '성과급', nameKo: '성과급', nameEn: 'Performance Pay', nameVi: 'Thưởng năng suất', payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', capValue: '', required: true }
-        : { ...row, nameKo: row.nameKo || row.name, nameEn: row.nameEn || row.name, nameVi: row.nameVi || row.name });
+        ? { ...row, name: '성과급', nameKo: '성과급', nameEn: 'Performance Pay', nameVi: 'Thưởng năng suất', payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '', required: true }
+        : { ...row, nameKo: row.nameKo || row.name, nameEn: row.nameEn || row.name, nameVi: row.nameVi || row.name, paymentMonths: Array.isArray(row.paymentMonths) ? row.paymentMonths : PAYMENT_MONTHS_BY_CYCLE[row.payCycle] });
       const next = {};
       (Array.isArray(salarySystem?.rates) ? salarySystem.rates : []).forEach((row) => {
         const key = `${row.payType}:${row.gradeId}`;
@@ -390,9 +402,16 @@ const SalarySystem = () => {
   };
 
   const calculationFields = (value, onChange) => <>
-    <FormControl fullWidth size="small"><InputLabel>{t('정산 주기')}</InputLabel><Select label={t('정산 주기')} value={value.payCycle} onChange={(e) => onChange('payCycle', e.target.value)}>
+    <FormControl fullWidth size="small"><InputLabel>{t('정산 주기')}</InputLabel><Select label={t('정산 주기')} value={value.payCycle} onChange={(e) => { onChange('payCycle', e.target.value); onChange('paymentMonths', PAYMENT_MONTHS_BY_CYCLE[e.target.value]); }}>
       {Object.entries(PAY_CYCLES).map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}
     </Select></FormControl>
+    <FormControl fullWidth size="small" disabled={value.payCycle === 'MONTHLY'} error={(value.paymentMonths || []).length !== PAYMENT_MONTHS_BY_CYCLE[value.payCycle].length}>
+      <InputLabel>{t('지급 월')}</InputLabel>
+      <Select multiple label={t('지급 월')} value={value.paymentMonths || []} renderValue={(selectedMonths) => value.payCycle === 'MONTHLY' ? t('매월') : selectedMonths.map((month) => `${month}${t('월')}`).join(', ')} onChange={(event) => { const months = event.target.value.map(Number).sort((a, b) => a - b); if (months.length <= PAYMENT_MONTHS_BY_CYCLE[value.payCycle].length) onChange('paymentMonths', months); }}>
+        {PAYMENT_MONTHS_BY_CYCLE.MONTHLY.map((month) => <MenuItem key={month} value={month}><Checkbox size="small" checked={(value.paymentMonths || []).includes(month)} /><ListItemText primary={`${month}${t('월')}`} /></MenuItem>)}
+      </Select>
+      {value.payCycle !== 'MONTHLY' && <FormHelperText>{t(`${PAYMENT_MONTHS_BY_CYCLE[value.payCycle].length}개 월을 선택하세요.`)}</FormHelperText>}
+    </FormControl>
     <TextField size="small" label={t('상한값 (선택)')} value={value.capValue || ''} onChange={(e) => onChange('capValue', e.target.value)} placeholder={t('계산 결과 최대 금액')} InputProps={{ startAdornment: <InputAdornment position="start">{currencySymbol(currencyCode)}</InputAdornment> }} />
   </>;
 
@@ -434,7 +453,7 @@ const SalarySystem = () => {
         <Stack direction="row" alignItems="center" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Box><Typography variant="h6" fontWeight={700}>{salaryItemName(selected, languageCode)}</Typography><Typography variant="body2" color="text.secondary">{calculationLabel(selected, t)}</Typography></Box>
           {!isFixedIncentive && <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 'auto' }}><Button variant="outlined" startIcon={<FunctionsIcon />} onClick={openFormulaDialog}>{t('수정')}</Button><Tooltip title={t(selected.required ? '기본급은 삭제할 수 없습니다.' : '항목 삭제')}><span><IconButton color="error" disabled={selected.required} onClick={removeItem}><DeleteOutlineIcon /></IconButton></span></Tooltip></Stack>}</Stack>
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Typography variant="body2" fontWeight={700}>{t('지급 설정')}</Typography><Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">{PAY_TYPE_ORDER.map((payType) => { const active = (selected.payTypes || []).includes(payType); return <Chip key={payType} size="small" clickable={!isFixedIncentive} variant="outlined" label={t(PAY_TYPES[payType]?.label || payType)} onClick={isFixedIncentive ? undefined : () => toggleSelectedPayType(payType)} sx={labelChipSx(PAY_TYPES[payType].palette, active)} />; })}<Chip size="small" variant="outlined" label={t(PAY_CYCLES[selected.payCycle])} />{selected.capValue && <Chip size="small" variant="outlined" label={`${t('상한')} ${selected.capValue} ${currencyCode}`} />}</Stack></Stack>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Typography variant="body2" fontWeight={700}>{t('지급 설정')}</Typography><Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">{PAY_TYPE_ORDER.map((payType) => { const active = (selected.payTypes || []).includes(payType); return <Chip key={payType} size="small" clickable={!isFixedIncentive} variant="outlined" label={t(PAY_TYPES[payType]?.label || payType)} onClick={isFixedIncentive ? undefined : () => toggleSelectedPayType(payType)} sx={labelChipSx(PAY_TYPES[payType].palette, active)} />; })}<Chip size="small" variant="outlined" label={t(PAY_CYCLES[selected.payCycle])} />{selected.payCycle !== 'MONTHLY' && <Chip size="small" variant="outlined" label={(selected.paymentMonths || []).map((month) => `${month}${t('월')}`).join(' · ')} />}{selected.capValue && <Chip size="small" variant="outlined" label={`${t('상한')} ${selected.capValue} ${currencyCode}`} />}</Stack></Stack>
           <Paper variant="outlined" sx={{ mt: 1.5, p: 2, bgcolor: 'action.hover', borderColor: 'divider' }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{ flex: 1 }}><Typography variant="h6" fontWeight={700}>{salaryItemName(selected, languageCode)}</Typography><Typography variant="h6" color="primary.main" fontWeight={700}>=</Typography><Typography fontWeight={700}>{isFixedIncentive ? t('공장 초당 단가 × CT × 작업 수량') : formulaLabel(selected.formula, t) || t('계산식이 비어 있습니다.')}</Typography></Stack></Stack></Paper>
         </Box>
         {isFixedIncentive
@@ -513,7 +532,7 @@ const SalarySystem = () => {
           </Paper>
         </Stack>
       </Box>
-    </Stack></DialogContent><DialogActions><Button variant="contained" onClick={saveFormula} disabled={formulaDraft.length === 0 || [formulaSettingsDraft.nameKo, formulaSettingsDraft.nameEn, formulaSettingsDraft.nameVi].some((name) => !String(name || '').trim())}>{t('계산식 적용')}</Button></DialogActions></Dialog>
+    </Stack></DialogContent><DialogActions><Button variant="contained" onClick={saveFormula} disabled={formulaDraft.length === 0 || !hasValidPaymentMonths(formulaSettingsDraft) || [formulaSettingsDraft.nameKo, formulaSettingsDraft.nameEn, formulaSettingsDraft.nameVi].some((name) => !String(name || '').trim())}>{t('계산식 적용')}</Button></DialogActions></Dialog>
 
     <Dialog open={versionDialogOpen} onClose={versionBusy ? undefined : () => setVersionDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 체계 버전 관리')}</DialogTitle><DialogContent dividers>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
@@ -566,7 +585,7 @@ const SalarySystem = () => {
       </Box>
       <FormControl fullWidth size="small"><InputLabel>{t('급여 구분')}</InputLabel><Select label={t('급여 구분')} value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>{Object.entries(CATEGORIES).filter(([key]) => key !== 'INCENTIVE').map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}</Select></FormControl>
       {calculationFields(draft, (field, value) => setDraft((prev) => ({ ...prev, [field]: value })))}
-    </Stack></DialogContent><DialogActions><Button onClick={() => setDialogOpen(false)}>{t('취소')}</Button><Button variant="contained" onClick={addItem} disabled={[draft.nameKo, draft.nameEn, draft.nameVi].some((name) => !name.trim())}>{t('추가')}</Button></DialogActions></Dialog>
+    </Stack></DialogContent><DialogActions><Button onClick={() => setDialogOpen(false)}>{t('취소')}</Button><Button variant="contained" onClick={addItem} disabled={!hasValidPaymentMonths(draft) || [draft.nameKo, draft.nameEn, draft.nameVi].some((name) => !name.trim())}>{t('추가')}</Button></DialogActions></Dialog>
   </Box></AppPageContainer>;
 };
 

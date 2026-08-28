@@ -658,6 +658,7 @@ model SalaryItem {
   payTypes  Json
   formula   Json
   payCycle  String
+  paymentMonths Json
   capValue  Int?
   required  Boolean  @default(false)
   sortOrder Int      @default(0)
