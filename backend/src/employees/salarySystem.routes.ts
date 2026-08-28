@@ -81,24 +81,27 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     const rates: any[] = Array.isArray(req.body?.rates) ? req.body.rates : [];
     const codes = new Set<string>();
     const categoryByCode = new Map<string, string>();
+    const payTypesByCode = new Map<string, string[]>();
     for (const raw of items) {
       const code = String(raw?.code || raw?.id || "").trim();
       const category = String(raw?.category || "").toUpperCase();
+      const payTypes: string[] = Array.isArray(raw?.payTypes) ? raw.payTypes.map((value: unknown) => String(value).toUpperCase()) : [];
       const capValue = raw?.capValue === "" || raw?.capValue == null ? null : Number(raw.capValue);
-      if (!code || codes.has(code) || [raw?.nameKo, raw?.nameEn, raw?.nameVi].some((name) => !String(name || "").trim()) || !["BASE", "ALLOWANCE", "INCENTIVE"].includes(category) || !["MONTHLY", "QUARTERLY", "SEMIANNUAL", "ANNUAL"].includes(raw?.payCycle) || (capValue !== null && (!Number.isSafeInteger(capValue) || capValue < 0)) || !validateSalaryFormula(raw?.formula, category)) return res.status(400).json({ ok: false, error: "invalid salary item" });
+      if (!code || codes.has(code) || [raw?.nameKo, raw?.nameEn, raw?.nameVi].some((name) => !String(name || "").trim()) || !["BASE", "ALLOWANCE", "INCENTIVE"].includes(category) || payTypes.length < 1 || new Set(payTypes).size !== payTypes.length || payTypes.some((value) => !PAY_TYPES.includes(value)) || (category === "INCENTIVE" && (payTypes.length !== 1 || payTypes[0] !== "OUTPUT")) || !["MONTHLY", "QUARTERLY", "SEMIANNUAL", "ANNUAL"].includes(raw?.payCycle) || (capValue !== null && (!Number.isSafeInteger(capValue) || capValue < 0)) || !validateSalaryFormula(raw?.formula, category)) return res.status(400).json({ ok: false, error: "invalid salary item" });
       codes.add(code);
       categoryByCode.set(code, category);
+      payTypesByCode.set(code, payTypes);
     }
     if (items.filter((raw) => String(raw?.category || "").toUpperCase() === "INCENTIVE").length !== 1) return res.status(400).json({ ok: false, error: "exactly one fixed incentive item is required" });
     const gradeIds = new Set((await prisma.employeeGrade.findMany({ where: { orgId: org.id, isActive: true }, select: { id: true } })).map((row) => row.id));
     const rateKeys = rates.map((r) => `${r.payType}:${Number(r.gradeId)}:${String(r.salaryItemCode)}`);
-    if (new Set(rateKeys).size !== rateKeys.length || rates.some((r) => !codes.has(String(r.salaryItemCode)) || categoryByCode.get(String(r.salaryItemCode)) === "INCENTIVE" || !PAY_TYPES.includes(r.payType) || !gradeIds.has(Number(r.gradeId)) || !Number.isSafeInteger(Number(r.amount)) || Number(r.amount) < 0)) return res.status(400).json({ ok: false, error: "invalid salary rate" });
+    if (new Set(rateKeys).size !== rateKeys.length || rates.some((r) => !codes.has(String(r.salaryItemCode)) || categoryByCode.get(String(r.salaryItemCode)) === "INCENTIVE" || !PAY_TYPES.includes(r.payType) || !payTypesByCode.get(String(r.salaryItemCode))?.includes(r.payType) || !gradeIds.has(Number(r.gradeId)) || !Number.isSafeInteger(Number(r.amount)) || Number(r.amount) < 0)) return res.status(400).json({ ok: false, error: "invalid salary rate" });
     await prisma.$transaction(async (tx) => {
       const ids = new Map<string, number>();
       for (const [sortOrder, raw] of items.entries()) {
         const code = String(raw.code || raw.id).trim(); const category = String(raw.category).toUpperCase();
         const nameKo = category === "INCENTIVE" ? "성과급" : String(raw.nameKo).trim(); const nameEn = category === "INCENTIVE" ? "Performance Pay" : String(raw.nameEn).trim(); const nameVi = category === "INCENTIVE" ? "Thưởng năng suất" : String(raw.nameVi).trim();
-        const data = { name: nameKo, nameKo, nameEn, nameVi, category, payTypes: category === "INCENTIVE" ? ["OUTPUT"] : PAY_TYPES, formula: category === "INCENTIVE" ? ["PRODUCTION_ALLOWANCE"] : raw.formula, payCycle: category === "INCENTIVE" ? "MONTHLY" : raw.payCycle, capValue: category === "INCENTIVE" ? null : raw.capValue === "" || raw.capValue == null ? null : Number(raw.capValue), required: category === "INCENTIVE" || raw.required === true, sortOrder, isActive: true };
+        const data = { name: nameKo, nameKo, nameEn, nameVi, category, payTypes: category === "INCENTIVE" ? ["OUTPUT"] : payTypesByCode.get(code)!, formula: category === "INCENTIVE" ? ["PRODUCTION_ALLOWANCE"] : raw.formula, payCycle: category === "INCENTIVE" ? "MONTHLY" : raw.payCycle, capValue: category === "INCENTIVE" ? null : raw.capValue === "" || raw.capValue == null ? null : Number(raw.capValue), required: category === "INCENTIVE" || raw.required === true, sortOrder, isActive: true };
         const saved = await tx.salaryItem.upsert({ where: { orgId_code: { orgId: org.id, code } }, create: { orgId: org.id, code, ...data }, update: data }); ids.set(code, saved.id);
       }
       await tx.salaryItem.updateMany({ where: { orgId: org.id, code: { notIn: [...codes] }, required: false }, data: { isActive: false } });
