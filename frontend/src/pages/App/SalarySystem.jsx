@@ -18,13 +18,15 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
 import { salaryText } from './salarySystemI18n';
+import { labelChipSx } from '../../theme/labelPalette';
 
 const PAY_TYPES = {
-  GENERAL: { label: '일반' },
-  OUTPUT: { label: '생산' },
+  GENERAL: { label: '일반', palette: 'blue' },
+  OUTPUT: { label: '생산', palette: 'orange' },
 };
 const PAY_TYPE_ORDER = ['GENERAL', 'OUTPUT'];
 const CATEGORIES = { BASE: '기본급', ALLOWANCE: '급여 수당', INCENTIVE: '성과급' };
+const CATEGORY_PALETTES = { BASE: 'blue', ALLOWANCE: 'green', INCENTIVE: 'orange' };
 const PAY_CYCLES = {
   MONTHLY: '1개월', QUARTERLY: '3개월', SEMIANNUAL: '6개월', ANNUAL: '12개월',
 };
@@ -377,7 +379,7 @@ const SalarySystem = () => {
         </Stack>
         <DragDropContext onDragEnd={reorderItems}>
           {Object.entries(CATEGORIES).map(([category, label]) => <Box key={category} sx={{ p: 1.5, borderBottom: 1, borderColor: 'divider' }}>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 0.5, mb: 1 }}><Chip size="small" color="primary" variant="outlined" label={t(label)} /><Typography variant="caption" color="text.secondary">{languageCode === 'ko' ? `${counts[category] || 0}${t('개')}` : `${counts[category] || 0} ${t('개')}`}</Typography></Stack>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 0.5, mb: 1 }}><Chip size="small" variant="outlined" label={t(label)} sx={labelChipSx(CATEGORY_PALETTES[category])} /><Typography variant="caption" color="text.secondary">{languageCode === 'ko' ? `${counts[category] || 0}${t('개')}` : `${counts[category] || 0} ${t('개')}`}</Typography></Stack>
             <Droppable droppableId={`salary-items:${category}`}>
               {(dropProvided) => <Stack ref={dropProvided.innerRef} {...dropProvided.droppableProps} spacing={0.5}>
                 {items.filter((row) => row.category === category).map((row, index) => <Draggable key={row.id} draggableId={String(row.id)} index={index}>
@@ -399,14 +401,14 @@ const SalarySystem = () => {
         <Stack direction="row" alignItems="center" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Box><Typography variant="h6" fontWeight={700}>{salaryItemName(selected, languageCode)}</Typography><Typography variant="body2" color="text.secondary">{calculationLabel(selected, t)}</Typography></Box>
           {!isFixedIncentive && <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 'auto' }}><Button variant="outlined" startIcon={<FunctionsIcon />} onClick={openFormulaDialog}>{t('수정')}</Button><Tooltip title={t(selected.required ? '기본급은 삭제할 수 없습니다.' : '항목 삭제')}><span><IconButton color="error" disabled={selected.required} onClick={removeItem}><DeleteOutlineIcon /></IconButton></span></Tooltip></Stack>}</Stack>
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Typography variant="body2" fontWeight={700}>{t('지급 설정')}</Typography><Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">{PAY_TYPE_ORDER.map((payType) => { const active = (selected.payTypes || []).includes(payType); return <Chip key={payType} size="small" clickable={!isFixedIncentive} color={active ? 'primary' : 'default'} variant={active ? 'filled' : 'outlined'} label={t(PAY_TYPES[payType]?.label || payType)} onClick={isFixedIncentive ? undefined : () => toggleSelectedPayType(payType)} sx={{ opacity: active ? 1 : 0.55 }} />; })}<Chip size="small" variant="outlined" label={t(PAY_CYCLES[selected.payCycle])} />{selected.capValue && <Chip size="small" variant="outlined" label={`${t('상한')} ${selected.capValue}`} />}</Stack></Stack>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Typography variant="body2" fontWeight={700}>{t('지급 설정')}</Typography><Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">{PAY_TYPE_ORDER.map((payType) => { const active = (selected.payTypes || []).includes(payType); return <Chip key={payType} size="small" clickable={!isFixedIncentive} variant="outlined" label={t(PAY_TYPES[payType]?.label || payType)} onClick={isFixedIncentive ? undefined : () => toggleSelectedPayType(payType)} sx={labelChipSx(PAY_TYPES[payType].palette, active)} />; })}<Chip size="small" variant="outlined" label={t(PAY_CYCLES[selected.payCycle])} />{selected.capValue && <Chip size="small" variant="outlined" label={`${t('상한')} ${selected.capValue}`} />}</Stack></Stack>
           <Paper variant="outlined" sx={{ mt: 1.5, p: 2, bgcolor: 'action.hover', borderColor: 'divider' }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{ flex: 1 }}><Typography variant="h6" fontWeight={700}>{salaryItemName(selected, languageCode)}</Typography><Typography variant="h6" color="primary.main" fontWeight={700}>=</Typography><Typography fontWeight={700}>{isFixedIncentive ? t('공장 초당 단가 × CT × 작업 수량') : formulaLabel(selected.formula, t) || t('계산식이 비어 있습니다.')}</Typography></Stack></Stack></Paper>
         </Box>
         {isFixedIncentive
           ? <Alert severity="info" icon={false} sx={{ m: 2 }}>{t('성과급은 작업 기록을 기준으로 자동 계산되며 급여 체계에서 수정할 수 없습니다.')}</Alert>
           : <><Box sx={{ px: 2, py: 1.5 }}><Typography fontWeight={700}>{t('급여 타입·직급별 단가')}</Typography><Typography variant="body2" color="text.secondary">{t('권한이나 직무와 관계없이 직원에게 지정된 급여 타입과 직급으로 단가를 결정합니다.')}</Typography></Box>
             <TableContainer><Table size="small"><TableHead><TableRow><TableCell>{t('급여 타입')}</TableCell><TableCell>{t('직급')}</TableCell><TableCell align="right">{t('단가')}</TableCell></TableRow></TableHead><TableBody>
-              {PAY_TYPE_ORDER.flatMap((payType) => { const active = (selected.payTypes || []).includes(payType); return grades.map((grade, index) => <TableRow key={`${payType}:${grade.id}`} hover={active} sx={{ opacity: active ? 1 : 0.48 }}>{index === 0 && <TableCell rowSpan={grades.length} sx={{ verticalAlign: 'top', pt: 2 }}><Chip size="small" color={active ? 'primary' : 'default'} variant={active ? 'filled' : 'outlined'} label={t(PAY_TYPES[payType].label)} /><Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{payType}</Typography></TableCell>}<TableCell>{gradeName(grade, languageCode)} ({grade.code})</TableCell>
+              {PAY_TYPE_ORDER.flatMap((payType) => { const active = (selected.payTypes || []).includes(payType); return grades.map((grade, index) => <TableRow key={`${payType}:${grade.id}`} hover={active} sx={{ opacity: active ? 1 : 0.48 }}>{index === 0 && <TableCell rowSpan={grades.length} sx={{ verticalAlign: 'top', pt: 2 }}><Chip size="small" variant="outlined" label={t(PAY_TYPES[payType].label)} sx={labelChipSx(PAY_TYPES[payType].palette, active)} /><Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{payType}</Typography></TableCell>}<TableCell>{gradeName(grade, languageCode)} ({grade.code})</TableCell>
                 <TableCell align="right"><TextField size="small" disabled={!active} value={getRate(payType, grade.id)} onFocus={(e) => e.target.select()} onChange={(e) => changeRate(payType, grade.id, e.target.value)} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} sx={{ width: 170 }} /></TableCell></TableRow>); })}
             </TableBody></Table></TableContainer></>}
       </Paper>
