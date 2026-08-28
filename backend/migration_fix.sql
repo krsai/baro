@@ -4845,6 +4845,53 @@ CREATE UNIQUE INDEX IF NOT EXISTS "SalarySystemVersion_orgId_effectiveMonth_key"
 DO $$ BEGIN ALTER TABLE "SalarySystemVersion" ADD CONSTRAINT "SalarySystemVersion_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "SalarySystemVersion" ADD CONSTRAINT "SalarySystemVersion_effectiveMonth_check" CHECK ("effectiveMonth" ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- 2026-08-28: scope salary systems, rates, currencies, and versions by factory.
+ALTER TABLE "Factory" ADD COLUMN IF NOT EXISTS "salaryCurrencyId" INTEGER;
+UPDATE "Factory" f SET "salaryCurrencyId"=o."salaryCurrencyId" FROM "Organization" o WHERE o.id=f."orgId" AND f."salaryCurrencyId" IS NULL;
+ALTER TABLE "SalaryItem" ADD COLUMN IF NOT EXISTS "factoryId" INTEGER;
+ALTER TABLE "SalaryItemRate" ADD COLUMN IF NOT EXISTS "factoryId" INTEGER;
+ALTER TABLE "SalarySystemVersion" ADD COLUMN IF NOT EXISTS "factoryId" INTEGER;
+ALTER TABLE "SalaryItem" ADD COLUMN IF NOT EXISTS "nameKo" TEXT;
+ALTER TABLE "SalaryItem" ADD COLUMN IF NOT EXISTS "nameEn" TEXT;
+ALTER TABLE "SalaryItem" ADD COLUMN IF NOT EXISTS "nameVi" TEXT;
+UPDATE "SalaryItem" SET "nameKo"=COALESCE("nameKo",name), "nameEn"=COALESCE("nameEn",name), "nameVi"=COALESCE("nameVi",name);
+ALTER TABLE "SalaryItem" ALTER COLUMN "nameKo" SET NOT NULL, ALTER COLUMN "nameEn" SET NOT NULL, ALTER COLUMN "nameVi" SET NOT NULL;
+UPDATE "SalaryItem" s SET "factoryId"=(SELECT id FROM "Factory" WHERE "orgId"=s."orgId" ORDER BY id LIMIT 1) WHERE s."factoryId" IS NULL;
+UPDATE "SalaryItemRate" s SET "factoryId"=(SELECT id FROM "Factory" WHERE "orgId"=s."orgId" ORDER BY id LIMIT 1) WHERE s."factoryId" IS NULL;
+UPDATE "SalarySystemVersion" s SET "factoryId"=(SELECT id FROM "Factory" WHERE "orgId"=s."orgId" ORDER BY id LIMIT 1) WHERE s."factoryId" IS NULL;
+ALTER TABLE "SalaryItem" DROP CONSTRAINT IF EXISTS "SalaryItem_orgId_code_key";
+ALTER TABLE "SalaryItemRate" DROP CONSTRAINT IF EXISTS "SalaryItemRate_orgId_payType_gradeId_salaryItemId_key";
+ALTER TABLE "SalarySystemVersion" DROP CONSTRAINT IF EXISTS "SalarySystemVersion_orgId_versionNumber_key";
+ALTER TABLE "SalarySystemVersion" DROP CONSTRAINT IF EXISTS "SalarySystemVersion_orgId_effectiveMonth_key";
+DROP INDEX IF EXISTS "SalaryItem_orgId_code_key";
+DROP INDEX IF EXISTS "SalaryItemRate_orgId_payType_gradeId_salaryItemId_key";
+DROP INDEX IF EXISTS "SalarySystemVersion_orgId_versionNumber_key";
+DROP INDEX IF EXISTS "SalarySystemVersion_orgId_effectiveMonth_key";
+INSERT INTO "SalaryItem" ("orgId","factoryId",code,name,"nameKo","nameEn","nameVi",category,"payTypes",formula,"payCycle","paymentMonths","capValue",required,"sortOrder","isActive","createdAt","updatedAt")
+SELECT source."orgId",target.id,source.code,source.name,source."nameKo",source."nameEn",source."nameVi",source.category,source."payTypes",source.formula,source."payCycle",source."paymentMonths",source."capValue",source.required,source."sortOrder",source."isActive",source."createdAt",source."updatedAt"
+FROM "SalaryItem" source JOIN "Factory" target ON target."orgId"=source."orgId" AND target.id<>source."factoryId"
+WHERE source."factoryId"=(SELECT MIN(f.id) FROM "Factory" f WHERE f."orgId"=source."orgId") AND NOT EXISTS (SELECT 1 FROM "SalaryItem" existing WHERE existing."factoryId"=target.id);
+INSERT INTO "SalaryItemRate" ("orgId","factoryId","payType","gradeId","salaryItemId",amount,"createdAt","updatedAt")
+SELECT source_rate."orgId",target_item."factoryId",source_rate."payType",source_rate."gradeId",target_item.id,source_rate.amount,source_rate."createdAt",source_rate."updatedAt"
+FROM "SalaryItemRate" source_rate JOIN "SalaryItem" source_item ON source_item.id=source_rate."salaryItemId" JOIN "SalaryItem" target_item ON target_item."orgId"=source_item."orgId" AND target_item.code=source_item.code AND target_item."factoryId"<>source_item."factoryId"
+WHERE source_rate."factoryId"=source_item."factoryId" AND NOT EXISTS (SELECT 1 FROM "SalaryItemRate" existing WHERE existing."factoryId"=target_item."factoryId");
+INSERT INTO "SalarySystemVersion" ("orgId","factoryId","versionNumber","effectiveMonth",snapshot,"confirmedBy","confirmedDate")
+SELECT source."orgId",target.id,source."versionNumber",source."effectiveMonth",source.snapshot,source."confirmedBy",source."confirmedDate"
+FROM "SalarySystemVersion" source JOIN "Factory" target ON target."orgId"=source."orgId" AND target.id<>source."factoryId"
+WHERE source."factoryId"=(SELECT MIN(f.id) FROM "Factory" f WHERE f."orgId"=source."orgId") AND NOT EXISTS (SELECT 1 FROM "SalarySystemVersion" existing WHERE existing."factoryId"=target.id);
+ALTER TABLE "SalaryItem" ALTER COLUMN "factoryId" SET NOT NULL;
+ALTER TABLE "SalaryItemRate" ALTER COLUMN "factoryId" SET NOT NULL;
+ALTER TABLE "SalarySystemVersion" ALTER COLUMN "factoryId" SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "SalaryItem_factoryId_code_key" ON "SalaryItem"("factoryId",code);
+CREATE UNIQUE INDEX IF NOT EXISTS "SalaryItemRate_factoryId_payType_gradeId_salaryItemId_key" ON "SalaryItemRate"("factoryId","payType","gradeId","salaryItemId");
+CREATE UNIQUE INDEX IF NOT EXISTS "SalarySystemVersion_factoryId_versionNumber_key" ON "SalarySystemVersion"("factoryId","versionNumber");
+CREATE UNIQUE INDEX IF NOT EXISTS "SalarySystemVersion_factoryId_effectiveMonth_key" ON "SalarySystemVersion"("factoryId","effectiveMonth");
+CREATE INDEX IF NOT EXISTS "Factory_salaryCurrencyId_idx" ON "Factory"("salaryCurrencyId");
+DO $$ BEGIN ALTER TABLE "Factory" ADD CONSTRAINT "Factory_salaryCurrencyId_fkey" FOREIGN KEY ("salaryCurrencyId") REFERENCES "Currency"("id") ON DELETE RESTRICT; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "SalaryItem" ADD CONSTRAINT "SalaryItem_factoryId_orgId_fkey" FOREIGN KEY ("factoryId","orgId") REFERENCES "Factory"("id","orgId") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_factoryId_orgId_fkey" FOREIGN KEY ("factoryId","orgId") REFERENCES "Factory"("id","orgId") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "SalarySystemVersion" ADD CONSTRAINT "SalarySystemVersion_factoryId_orgId_fkey" FOREIGN KEY ("factoryId","orgId") REFERENCES "Factory"("id","orgId") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- 2026-08-16: enforce organization-scoped employee role/grade relationships
 CREATE UNIQUE INDEX IF NOT EXISTS "EmployeeGrade_orgId_id_key" ON "EmployeeGrade"("orgId","id");
 CREATE UNIQUE INDEX IF NOT EXISTS "AttrRole_orgId_id_key" ON "AttrRole"("orgId","id");

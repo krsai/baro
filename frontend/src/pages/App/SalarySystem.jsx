@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
   FormControl, FormControlLabel, FormHelperText, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack, Switch,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
   TextField, Tooltip, Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -204,6 +204,8 @@ const SalarySystem = () => {
   const { languageCode } = useLanguage();
   const t = useCallback((text) => salaryText(text, languageCode), [languageCode]);
   const [grades, setGrades] = useState([]);
+  const [factories, setFactories] = useState([]);
+  const [factoryId, setFactoryId] = useState(null);
   const [rates, setRates] = useState({});
   const [currencyCode, setCurrencyCode] = useState('VND');
   const [items, setItems] = useState(DEFAULT_ITEMS);
@@ -227,12 +229,24 @@ const SalarySystem = () => {
   // 마지막으로 불러오거나(저장을 흉내낸) 저장한 시점의 스냅샷. 현재 상태와 다르면 미저장 변경으로 본다.
   const [savedSnapshot, setSavedSnapshot] = useState(null);
 
-  const load = useCallback(async () => {
+  useEffect(() => {
     if (!activeOrgId) return;
+    let cancelled = false;
+    requestJSON(`/factories${buildQueryString({ orgId: activeOrgId })}`).then((rows) => {
+      if (cancelled) return;
+      const nextFactories = Array.isArray(rows) ? rows : [];
+      setFactories(nextFactories);
+      setFactoryId((current) => nextFactories.some((factory) => Number(factory.id) === Number(current)) ? current : (nextFactories[0]?.id || null));
+    }).catch((error) => { if (!cancelled) setMessage({ severity: 'error', text: error?.message || 'Failed to load factories.' }); });
+    return () => { cancelled = true; };
+  }, [activeOrgId]);
+
+  const load = useCallback(async () => {
+    if (!activeOrgId || !factoryId) return;
     try {
       const [sets, salarySystem] = await Promise.all([
         requestJSON(`/employee-grades${buildQueryString({ orgId: activeOrgId })}`),
-        requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId })}`),
+        requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId, factoryId })}`),
       ]);
       setGrades((Array.isArray(sets) ? sets : []).flatMap((set) => set.grades || []).filter((grade) => grade.isActive));
       const loadedItems = (Array.isArray(salarySystem?.items) && salarySystem.items.length ? salarySystem.items : DEFAULT_ITEMS).map((row) => row.category === 'INCENTIVE'
@@ -252,7 +266,7 @@ const SalarySystem = () => {
     } catch (error) {
       setMessage({ severity: 'error', text: error?.message || t('급여 기준을 불러오지 못했습니다.') });
     }
-  }, [activeOrgId, t]);
+  }, [activeOrgId, factoryId, t]);
   useEffect(() => { load(); }, [load]);
 
   const isDirty = useMemo(
@@ -312,8 +326,8 @@ const SalarySystem = () => {
         const [payType, gradeId] = key.split(':');
         return Object.entries(itemRates || {}).filter(([salaryItemCode]) => editableItems.get(String(salaryItemCode))?.payTypes?.includes(payType)).map(([salaryItemCode, amount]) => ({ payType, gradeId: Number(gradeId), salaryItemCode, amount: Number(String(amount).replace(/,/g, '')) || 0 }));
       });
-      await requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currencyCode, items: items.map((row) => ({ ...row, code: row.code || row.id, capValue: row.capValue === '' || row.capValue == null ? null : Number(String(row.capValue).replace(/,/g, '')) })), rates: rateRows }) });
-      await requestJSON(`/salary-system/versions${buildQueryString({ orgId: activeOrgId })}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      await requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currencyCode, items: items.map((row) => ({ ...row, code: row.code || row.id, capValue: row.capValue === '' || row.capValue == null ? null : Number(String(row.capValue).replace(/,/g, '')) })), rates: rateRows }) });
+      await requestJSON(`/salary-system/versions${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS], orgId: activeOrgId, source: 'salary-system-version-create' });
       await load();
       setMessage({ severity: 'success', text: t('급여 체계를 저장하고 새 버전을 등록했습니다. 적용 월은 버전 관리에서 지정할 수 있습니다.') });
@@ -354,7 +368,7 @@ const SalarySystem = () => {
   const saveVersionBoundaries = async () => {
     setVersionBusy(true);
     try {
-      const response = await requestJSON(`/salary-system/version-boundaries${buildQueryString({ orgId: activeOrgId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boundaries: Object.entries(versionBoundaries).map(([versionId, startMonth]) => ({ versionId: Number(versionId), startMonth })) }) });
+      const response = await requestJSON(`/salary-system/version-boundaries${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boundaries: Object.entries(versionBoundaries).map(([versionId, startMonth]) => ({ versionId: Number(versionId), startMonth })) }) });
       setVersions(Array.isArray(response?.versions) ? response.versions : versions);
       setSavedVersionBoundaries(versionBoundaries);
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS], orgId: activeOrgId, source: 'salary-system-version-boundaries' });
@@ -447,6 +461,9 @@ const SalarySystem = () => {
       <Stack direction="row" spacing={1}><FormControl size="small" sx={{ minWidth: 120 }}><InputLabel>{t('통화')}</InputLabel><Select label={t('통화')} value={currencyCode} onChange={(event) => setCurrencyCode(event.target.value)}>{CURRENCY_CODES.map((code) => <MenuItem key={code} value={code}>{code}</MenuItem>)}</Select></FormControl><Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog}>{t('버전 관리')}</Button>
         <SaveButton onClick={saveDraft} disabled={!isDirty}>{t('저장')}</SaveButton></Stack>
     </Stack>
+    {factories.length > 1 && <Tabs value={factoryId} onChange={(_event, value) => { setSavedSnapshot(null); setSelectedId('baseSalary'); setFactoryId(value); }} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+      {factories.map((factory) => <Tab key={factory.id} value={factory.id} label={languageCode === 'ko' ? (factory.nameKo || factory.name) : languageCode === 'vi' ? (factory.nameVi || factory.name) : factory.name} />)}
+    </Tabs>}
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
 
     <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="stretch">

@@ -16,15 +16,21 @@ const toJsonSnapshot = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) => {
   const router = Router();
-  const state = async (orgId: number) => {
-    const [organization, items, rates, versions] = await Promise.all([
-      prisma.organization.findUnique({ where: { id: orgId }, select: { salaryCurrency: { select: { code: true } } } }),
-      prisma.salaryItem.findMany({ where: { orgId, isActive: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }),
-      prisma.salaryItemRate.findMany({ where: { orgId }, orderBy: [{ payType: "asc" }, { gradeId: "asc" }, { salaryItemId: "asc" }] }),
-      prisma.salarySystemVersion.findMany({ where: { orgId }, orderBy: { versionNumber: "desc" } }),
+  const resolveFactory = async (orgId: number, rawFactoryId: unknown) => {
+    const requestedId = Number(rawFactoryId);
+    if (Number.isSafeInteger(requestedId) && requestedId > 0) return prisma.factory.findFirst({ where: { id: requestedId, orgId } });
+    return prisma.factory.findFirst({ where: { orgId }, orderBy: { id: "asc" } });
+  };
+  const state = async (orgId: number, factoryId: number) => {
+    const [factory, items, rates, versions] = await Promise.all([
+      prisma.factory.findFirst({ where: { id: factoryId, orgId }, select: { salaryCurrency: { select: { code: true } }, organization: { select: { salaryCurrency: { select: { code: true } } } } } }),
+      prisma.salaryItem.findMany({ where: { orgId, factoryId, isActive: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }),
+      prisma.salaryItemRate.findMany({ where: { orgId, factoryId }, orderBy: [{ payType: "asc" }, { gradeId: "asc" }, { salaryItemId: "asc" }] }),
+      prisma.salarySystemVersion.findMany({ where: { orgId, factoryId }, orderBy: { versionNumber: "desc" } }),
     ]);
     return {
-      currencyCode: organization?.salaryCurrency?.code || "VND",
+      factoryId,
+      currencyCode: factory?.salaryCurrency?.code || factory?.organization.salaryCurrency?.code || "VND",
       items: items.map(({ id, ...item }) => ({ ...item, id: item.code, databaseId: id })),
       rates: rates.map((rate) => ({ ...rate, salaryItemCode: items.find((item) => item.id === rate.salaryItemId)?.code })),
       versions: versions.map((version) => {
@@ -33,8 +39,8 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
       }),
     };
   };
-  const ensureInitialDraft = async (orgId: number) => {
-    if (await prisma.salaryItem.findFirst({ where: { orgId }, select: { id: true } })) return;
+  const ensureInitialDraft = async (orgId: number, factoryId: number) => {
+    if (await prisma.salaryItem.findFirst({ where: { orgId, factoryId }, select: { id: true } })) return;
     const legacy = await prisma.employeeCompensationPolicy.findMany({ where: { orgId } });
     const definitions = [
       { code: "baseSalary", name: "기본급", nameKo: "기본급", nameEn: "Base Salary", nameVi: "Lương cơ bản", category: "BASE", payTypes: PAY_TYPES, formula: ["GRADE_RATE"], required: true },
@@ -43,49 +49,53 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     ];
     await prisma.$transaction(async (tx) => {
       for (const [sortOrder, definition] of definitions.entries()) {
-        const item = await tx.salaryItem.create({ data: { orgId, ...definition, payCycle: "MONTHLY", paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, sortOrder } });
+        const item = await tx.salaryItem.create({ data: { orgId, factoryId, ...definition, payCycle: "MONTHLY", paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, sortOrder } });
         const field = definition.code === "baseSalary" ? "baseSalary" : definition.code === "allowanceTotal" ? "allowance" : "incentive";
-        const rows = definition.category === "INCENTIVE" ? [] : legacy.map((row) => ({ orgId, payType: row.payType, gradeId: row.gradeId, salaryItemId: item.id, amount: row[field] }));
+        const rows = definition.category === "INCENTIVE" ? [] : legacy.map((row) => ({ orgId, factoryId, payType: row.payType, gradeId: row.gradeId, salaryItemId: item.id, amount: row[field] }));
         if (rows.length) await tx.salaryItemRate.createMany({ data: rows });
       }
     });
   };
-  const ensureFixedIncentiveItem = async (orgId: number) => {
-    const incentiveItems = await prisma.salaryItem.findMany({ where: { orgId, category: "INCENTIVE", isActive: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
+  const ensureFixedIncentiveItem = async (orgId: number, factoryId: number) => {
+    const incentiveItems = await prisma.salaryItem.findMany({ where: { orgId, factoryId, category: "INCENTIVE", isActive: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
     if (incentiveItems.length === 0) {
-      const last = await prisma.salaryItem.findFirst({ where: { orgId, isActive: true }, orderBy: { sortOrder: "desc" }, select: { sortOrder: true } });
+      const last = await prisma.salaryItem.findFirst({ where: { orgId, factoryId, isActive: true }, orderBy: { sortOrder: "desc" }, select: { sortOrder: true } });
       const data = { name: "성과급", nameKo: "성과급", nameEn: "Performance Pay", nameVi: "Thưởng năng suất", category: "INCENTIVE", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], payCycle: "MONTHLY", paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: null, required: true, sortOrder: (last?.sortOrder || 0) + 1, isActive: true };
-      await prisma.salaryItem.upsert({ where: { orgId_code: { orgId, code: "incentiveTotal" } }, create: { orgId, code: "incentiveTotal", ...data }, update: data });
+      await prisma.salaryItem.upsert({ where: { factoryId_code: { factoryId, code: "incentiveTotal" } }, create: { orgId, factoryId, code: "incentiveTotal", ...data }, update: data });
       return;
     }
     const [fixedItem, ...duplicates] = incentiveItems;
     const fixedItemId = fixedItem!.id;
     await prisma.$transaction(async (tx) => {
       await tx.salaryItem.update({ where: { id: fixedItemId }, data: { name: "성과급", nameKo: "성과급", nameEn: "Performance Pay", nameVi: "Thưởng năng suất", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], payCycle: "MONTHLY", paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: null, required: true } });
-      await tx.salaryItemRate.deleteMany({ where: { orgId, salaryItemId: { in: incentiveItems.map((item) => item.id) } } });
+      await tx.salaryItemRate.deleteMany({ where: { orgId, factoryId, salaryItemId: { in: incentiveItems.map((item) => item.id) } } });
       if (duplicates.length) await tx.salaryItem.updateMany({ where: { id: { in: duplicates.map((item) => item.id) } }, data: { isActive: false } });
     });
   };
-  const ensureV1 = async (orgId: number, actor: string) => {
-    if (await prisma.salarySystemVersion.findFirst({ where: { orgId }, select: { id: true } })) return;
-    const current = await state(orgId);
-    await prisma.salarySystemVersion.create({ data: { orgId, versionNumber: 1, effectiveMonth: "1900-01", confirmedBy: actor, snapshot: toJsonSnapshot({ currencyCode: current.currencyCode, items: current.items, rates: current.rates }) } });
+  const ensureV1 = async (orgId: number, factoryId: number, actor: string) => {
+    if (await prisma.salarySystemVersion.findFirst({ where: { orgId, factoryId }, select: { id: true } })) return;
+    const current = await state(orgId, factoryId);
+    await prisma.salarySystemVersion.create({ data: { orgId, factoryId, versionNumber: 1, effectiveMonth: "1900-01", confirmedBy: actor, snapshot: toJsonSnapshot({ currencyCode: current.currencyCode, items: current.items, rates: current.rates }) } });
   };
 
   router.get("/salary-system", async (req, res) => {
     const org = await getOrganizationByQuery(req);
     if (!org) return res.status(404).json({ ok: false, error: "organization not found" });
     if (!(await requireSalarySystemManager(req, res, org.id))) return;
-    await ensureInitialDraft(org.id);
-    await ensureFixedIncentiveItem(org.id);
-    await ensureV1(org.id, getRequesterEmail(req) || "system@baro.local");
-    res.json(await state(org.id));
+    const factory = await resolveFactory(org.id, req.query.factoryId);
+    if (!factory) return res.status(404).json({ ok: false, error: "factory not found" });
+    await ensureInitialDraft(org.id, factory.id);
+    await ensureFixedIncentiveItem(org.id, factory.id);
+    await ensureV1(org.id, factory.id, getRequesterEmail(req) || "system@baro.local");
+    res.json(await state(org.id, factory.id));
   });
 
   router.put("/salary-system", async (req, res) => {
     const org = await getOrganizationByQuery(req);
     if (!org) return res.status(404).json({ ok: false, error: "organization not found" });
     if (!(await requireSalarySystemManager(req, res, org.id))) return;
+    const factory = await resolveFactory(org.id, req.query.factoryId);
+    if (!factory) return res.status(404).json({ ok: false, error: "factory not found" });
     const items: any[] = Array.isArray(req.body?.items) ? req.body.items : [];
     const rates: any[] = Array.isArray(req.body?.rates) ? req.body.rates : [];
     const currencyCode = normalizeCurrencyCode(req.body?.currencyCode);
@@ -113,34 +123,36 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     await prisma.$transaction(async (tx) => {
       const currency = await tx.currency.findUnique({ where: { code: currencyCode }, select: { id: true } });
       if (!currency) throw new Error(`currency ${currencyCode} is not configured`);
-      await tx.organization.update({ where: { id: org.id }, data: { salaryCurrencyId: currency.id } });
+      await tx.factory.update({ where: { id: factory.id }, data: { salaryCurrencyId: currency.id } });
       const ids = new Map<string, number>();
       for (const [sortOrder, raw] of items.entries()) {
         const code = String(raw.code || raw.id).trim(); const category = String(raw.category).toUpperCase();
         const nameKo = category === "INCENTIVE" ? "성과급" : String(raw.nameKo).trim(); const nameEn = category === "INCENTIVE" ? "Performance Pay" : String(raw.nameEn).trim(); const nameVi = category === "INCENTIVE" ? "Thưởng năng suất" : String(raw.nameVi).trim();
         const data = { name: nameKo, nameKo, nameEn, nameVi, category, payTypes: category === "INCENTIVE" ? ["OUTPUT"] : payTypesByCode.get(code)!, formula: category === "INCENTIVE" ? ["PRODUCTION_ALLOWANCE"] : raw.formula, payCycle: category === "INCENTIVE" ? "MONTHLY" : raw.payCycle, paymentMonths: category === "INCENTIVE" ? PAYMENT_MONTHS_BY_CYCLE.MONTHLY : raw.paymentMonths, capValue: category === "INCENTIVE" ? null : raw.capValue === "" || raw.capValue == null ? null : Number(raw.capValue), required: category === "INCENTIVE" || raw.required === true, sortOrder, isActive: true };
-        const saved = await tx.salaryItem.upsert({ where: { orgId_code: { orgId: org.id, code } }, create: { orgId: org.id, code, ...data }, update: data }); ids.set(code, saved.id);
+        const saved = await tx.salaryItem.upsert({ where: { factoryId_code: { factoryId: factory.id, code } }, create: { orgId: org.id, factoryId: factory.id, code, ...data }, update: data }); ids.set(code, saved.id);
       }
-      await tx.salaryItem.updateMany({ where: { orgId: org.id, code: { notIn: [...codes] }, required: false }, data: { isActive: false } });
-      await tx.salaryItemRate.deleteMany({ where: { orgId: org.id } });
-      if (rates.length) await tx.salaryItemRate.createMany({ data: rates.map((r) => ({ orgId: org.id, payType: r.payType, gradeId: Number(r.gradeId), salaryItemId: ids.get(String(r.salaryItemCode))!, amount: Number(r.amount) })) });
+      await tx.salaryItem.updateMany({ where: { orgId: org.id, factoryId: factory.id, code: { notIn: [...codes] }, required: false }, data: { isActive: false } });
+      await tx.salaryItemRate.deleteMany({ where: { orgId: org.id, factoryId: factory.id } });
+      if (rates.length) await tx.salaryItemRate.createMany({ data: rates.map((r) => ({ orgId: org.id, factoryId: factory.id, payType: r.payType, gradeId: Number(r.gradeId), salaryItemId: ids.get(String(r.salaryItemCode))!, amount: Number(r.amount) })) });
     });
-    res.json(await state(org.id));
+    res.json(await state(org.id, factory.id));
   });
 
   router.post("/salary-system/versions", async (req, res) => {
     const org = await getOrganizationByQuery(req); if (!org) return res.status(404).json({ ok: false, error: "organization not found" });
     if (!(await requireSalarySystemManager(req, res, org.id))) return;
-    const actor = getRequesterEmail(req) || "system@baro.local"; await ensureInitialDraft(org.id); await ensureFixedIncentiveItem(org.id); await ensureV1(org.id, actor); const current = await state(org.id);
-    const last = await prisma.salarySystemVersion.findFirst({ where: { orgId: org.id }, orderBy: { versionNumber: "desc" } });
-    const created = await prisma.salarySystemVersion.create({ data: { orgId: org.id, versionNumber: (last?.versionNumber || 0) + 1, effectiveMonth: null, confirmedBy: actor, snapshot: toJsonSnapshot({ currencyCode: current.currencyCode, items: current.items, rates: current.rates }) } }); res.status(201).json(created);
+    const factory = await resolveFactory(org.id, req.query.factoryId); if (!factory) return res.status(404).json({ ok: false, error: "factory not found" });
+    const actor = getRequesterEmail(req) || "system@baro.local"; await ensureInitialDraft(org.id, factory.id); await ensureFixedIncentiveItem(org.id, factory.id); await ensureV1(org.id, factory.id, actor); const current = await state(org.id, factory.id);
+    const last = await prisma.salarySystemVersion.findFirst({ where: { orgId: org.id, factoryId: factory.id }, orderBy: { versionNumber: "desc" } });
+    const created = await prisma.salarySystemVersion.create({ data: { orgId: org.id, factoryId: factory.id, versionNumber: (last?.versionNumber || 0) + 1, effectiveMonth: null, confirmedBy: actor, snapshot: toJsonSnapshot({ currencyCode: current.currencyCode, items: current.items, rates: current.rates }) } }); res.status(201).json(created);
   });
 
   router.put("/salary-system/version-boundaries", async (req, res) => {
     const org = await getOrganizationByQuery(req); if (!org) return res.status(404).json({ ok: false, error: "organization not found" });
     if (!(await requireSalarySystemManager(req, res, org.id))) return;
+    const factory = await resolveFactory(org.id, req.query.factoryId); if (!factory) return res.status(404).json({ ok: false, error: "factory not found" });
     const boundaries: any[] = Array.isArray(req.body?.boundaries) ? req.body.boundaries : [];
-    const versions = await prisma.salarySystemVersion.findMany({ where: { orgId: org.id }, orderBy: { versionNumber: "asc" } });
+    const versions = await prisma.salarySystemVersion.findMany({ where: { orgId: org.id, factoryId: factory.id }, orderBy: { versionNumber: "asc" } });
     const editableVersions = versions.filter((version) => version.versionNumber > 1);
     const versionById = new Map(editableVersions.map((version) => [version.id, version]));
     const seenVersionIds = new Set<number>(); const seenMonths = new Set<string>();
@@ -154,10 +166,10 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
       if (versionById.get(Number(ordered[index - 1].versionId))!.versionNumber >= versionById.get(Number(ordered[index].versionId))!.versionNumber) return res.status(400).json({ ok: false, error: "salary version boundaries must follow version order" });
     }
     await prisma.$transaction(async (tx) => {
-      if (editableVersions.length) await tx.salarySystemVersion.updateMany({ where: { orgId: org.id, versionNumber: { gt: 1 } }, data: { effectiveMonth: null } });
+      if (editableVersions.length) await tx.salarySystemVersion.updateMany({ where: { orgId: org.id, factoryId: factory.id, versionNumber: { gt: 1 } }, data: { effectiveMonth: null } });
       for (const row of boundaries) await tx.salarySystemVersion.update({ where: { id: Number(row.versionId) }, data: { effectiveMonth: String(row.startMonth) } });
     });
-    res.json(await state(org.id));
+    res.json(await state(org.id, factory.id));
   });
   return router;
 };

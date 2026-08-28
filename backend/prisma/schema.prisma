@@ -271,6 +271,7 @@ model Currency {
   defaultSalesRelationships OrgRelationship[] @relation("OrgRelationshipSalesCurrency")
   styleSalesCurrencyOverrides OrgRelationshipStyleSalesCurrency[]
   salaryOrganizations Organization[] @relation("OrganizationSalaryCurrency")
+  salaryFactories Factory[] @relation("FactorySalaryCurrency")
 }
 
 model SystemSetting {
@@ -360,6 +361,7 @@ model Factory {
   targetMonthlyWage            Float?
   wagePerSecond                Float?
   productionAllowanceUpdatedAt DateTime?
+  salaryCurrencyId             Int?
   createdAt                    DateTime  @default(now())
   createdBy                    String    @default("system@baro.local")
   createdByEmployeeId          Int?
@@ -375,6 +377,10 @@ model Factory {
   atTrainingBuckets        AtTrainingBucket[]
   warehouses               Warehouse[]
   productionAllowanceRates FactoryProductionAllowanceRate[]
+  salaryItems              SalaryItem[]
+  salaryItemRates          SalaryItemRate[]
+  salarySystemVersions     SalarySystemVersion[]
+  salaryCurrency           Currency?                         @relation("FactorySalaryCurrency", fields: [salaryCurrencyId], references: [id], onDelete: Restrict)
 
   createdByEmployee Employee? @relation("FactoryCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("FactoryUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -383,6 +389,7 @@ model Factory {
   @@unique([id, orgId], map: "Factory_id_org_key")
   @@index([orgId])
   @@index([managerEmployeeId])
+  @@index([salaryCurrencyId])
 }
 
 model FactoryProductionAllowanceRate {
@@ -649,6 +656,7 @@ model EmployeeCompensationPolicy {
 model SalaryItem {
   id        Int      @id @default(autoincrement())
   orgId     Int
+  factoryId Int
   code      String
   name      String
   nameKo    String
@@ -667,9 +675,10 @@ model SalaryItem {
   updatedAt DateTime @updatedAt
 
   organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  factory      Factory          @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Cascade)
   rates        SalaryItemRate[]
 
-  @@unique([orgId, code])
+  @@unique([factoryId, code])
   @@unique([orgId, id])
   @@index([orgId, isActive, sortOrder])
 }
@@ -677,6 +686,7 @@ model SalaryItem {
 model SalaryItemRate {
   id           Int      @id @default(autoincrement())
   orgId        Int
+  factoryId    Int
   payType      String
   gradeId      Int
   salaryItemId Int
@@ -685,16 +695,18 @@ model SalaryItemRate {
   updatedAt    DateTime @updatedAt
 
   organization Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  factory      Factory       @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Cascade)
   grade        EmployeeGrade @relation(fields: [orgId, gradeId], references: [orgId, id], onDelete: Cascade)
   salaryItem   SalaryItem     @relation(fields: [orgId, salaryItemId], references: [orgId, id], onDelete: Cascade)
 
-  @@unique([orgId, payType, gradeId, salaryItemId])
+  @@unique([factoryId, payType, gradeId, salaryItemId])
   @@index([orgId, salaryItemId])
 }
 
 model SalarySystemVersion {
   id            Int      @id @default(autoincrement())
   orgId         Int
+  factoryId     Int
   versionNumber Int
   effectiveMonth String?
   snapshot      Json
@@ -702,9 +714,10 @@ model SalarySystemVersion {
   confirmedDate DateTime @default(now())
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  factory      Factory      @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Cascade)
 
-  @@unique([orgId, versionNumber])
-  @@unique([orgId, effectiveMonth])
+  @@unique([factoryId, versionNumber])
+  @@unique([factoryId, effectiveMonth])
   @@index([orgId, effectiveMonth])
 }
 
