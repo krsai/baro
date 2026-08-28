@@ -6,7 +6,7 @@ const translations = {
   '일': ['days', 'ngày'], '시간': ['hours', 'giờ'], '년': ['years', 'năm'],
   '해당 월의 근무요일에서 등록 공휴일을 제외하고 서버가 계산합니다.': ['The server calculates this by excluding registered holidays from the month’s working weekdays.', 'Máy chủ tính bằng cách loại trừ ngày lễ đã đăng ký khỏi các ngày làm việc trong tháng.'],
   '정규 근무시간': ['Regular work hours', 'Giờ làm việc chính thức'], '연장근무시간': ['Overtime hours', 'Giờ tăng ca'], '휴일 특근시간': ['Holiday work hours', 'Giờ làm ngày lễ'], '근속연수': ['Years of service', 'Số năm làm việc'],
-  '만근 충족값': ['Full-attendance factor', 'Hệ số đủ công'], '1 또는 0': ['1 or 0', '1 hoặc 0'], '만근을 채우면 1, 아니면 0으로 계산됩니다.': ['Calculated as 1 when full attendance is met, otherwise 0.', 'Tính là 1 khi đủ công, ngược lại là 0.'],
+  '만근 충족값': ['Full-attendance factor', 'Hệ số đủ công'], '만근 조건 적용': ['Apply full-attendance condition', 'Áp dụng điều kiện đủ công'], '1 또는 0': ['1 or 0', '1 hoặc 0'], '만근을 채우면 1, 아니면 0으로 계산됩니다.': ['Calculated as 1 when full attendance is met, otherwise 0.', 'Tính là 1 khi đủ công, ngược lại là 0.'],
   '생산수당 계산 결과': ['Production allowance result', 'Kết quả tính phụ cấp sản lượng'],
   '공장 초당 단가 × CT × 작업 수량': ['Factory rate per second × CT × work quantity', 'Đơn giá nhà máy mỗi giây × CT × sản lượng công việc'],
   '성과급은 작업 기록을 기준으로 자동 계산되며 급여 체계에서 수정할 수 없습니다.': ['Incentives are calculated automatically from work records and cannot be edited in the salary structure.', 'Thưởng hiệu suất được tự động tính từ nhật ký công việc và không thể chỉnh sửa trong cơ cấu lương.'],

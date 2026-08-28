@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControl, FormHelperText, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack,
+  FormControl, FormControlLabel, FormHelperText, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack, Switch,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   TextField, Tooltip, Typography,
 } from '@mui/material';
@@ -389,6 +389,25 @@ const SalarySystem = () => {
       return Math.max(minCursorIndex, next);
     });
   };
+  const toggleFullAttendanceFactor = () => {
+    const tokenIndex = formulaDraft.indexOf('FULL_ATTENDANCE_FACTOR');
+    if (tokenIndex >= 0) {
+      const previousToken = formulaDraft[tokenIndex - 1];
+      const nextToken = formulaDraft[tokenIndex + 1];
+      const removeIndexes = new Set([tokenIndex]);
+      if (isOperatorSymbolToken(previousToken)) removeIndexes.add(tokenIndex - 1);
+      else if (isOperatorSymbolToken(nextToken)) removeIndexes.add(tokenIndex + 1);
+      const nextFormula = formulaDraft.filter((_token, index) => !removeIndexes.has(index));
+      setFormulaDraft(nextFormula);
+      setCursorIndex(Math.max(minCursorIndex, nextFormula.length));
+      return;
+    }
+    const lastToken = formulaDraft[formulaDraft.length - 1];
+    const connector = isOperandToken(lastToken) || lastToken === ')' ? ['×'] : [];
+    const nextFormula = [...formulaDraft, ...connector, 'FULL_ATTENDANCE_FACTOR'];
+    setFormulaDraft(nextFormula);
+    setCursorIndex(nextFormula.length);
+  };
   const appendFormulaConstant = () => {
     const normalized = String(constantDraft || '').trim();
     if (!/^\d+(\.\d+)?$/.test(normalized)) return;
@@ -509,9 +528,19 @@ const SalarySystem = () => {
           <Stack spacing={1.5}>
             {FORMULA_PARAMETER_GROUPS.map((group) => <Box key={group.label}>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t(group.label)}</Typography>
-              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{group.keys.map((key) => { const unit = formulaParameterUnit(FORMULA_PARAMETERS[key], currencyCode); return <Tooltip key={key} title={t(FORMULA_PARAMETERS[key].hint || unit)}><span>
-                <Button size="small" variant="outlined" disabled={!canInsertTokenAt(formulaDraft, cursorIndex, key)} onClick={() => insertFormulaToken(key)}>{t(FORMULA_PARAMETERS[key].label)} · {t(unit)}</Button>
-              </span></Tooltip>; })}</Stack>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{group.keys.map((key) => {
+                const unit = formulaParameterUnit(FORMULA_PARAMETERS[key], currencyCode);
+                if (key === 'FULL_ATTENDANCE_FACTOR') return <Tooltip key={key} title={t(FORMULA_PARAMETERS[key].hint || unit)}><span>
+                  <FormControlLabel
+                    control={<Switch size="small" checked={formulaDraft.includes(key)} onChange={toggleFullAttendanceFactor} />}
+                    label={<Typography variant="body2">{t('만근 조건 적용')}</Typography>}
+                    sx={{ m: 0, px: 1, py: 0.25, border: 1, borderColor: 'divider', borderRadius: 2 }}
+                  />
+                </span></Tooltip>;
+                return <Tooltip key={key} title={t(FORMULA_PARAMETERS[key].hint || unit)}><span>
+                  <Button size="small" variant="outlined" disabled={!canInsertTokenAt(formulaDraft, cursorIndex, key)} onClick={() => insertFormulaToken(key)}>{t(FORMULA_PARAMETERS[key].label)} · {t(unit)}</Button>
+                </span></Tooltip>;
+              })}</Stack>
             </Box>)}
           </Stack>
         </Paper>
