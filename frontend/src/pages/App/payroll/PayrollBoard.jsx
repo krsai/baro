@@ -169,7 +169,10 @@ const PayrollBoard = () => {
 
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
-    topics: [WORKSPACE_DATA_TOPICS.PRODUCTION_ALLOWANCE_SETTINGS],
+    topics: [
+      WORKSPACE_DATA_TOPICS.PRODUCTION_ALLOWANCE_SETTINGS,
+      WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS,
+    ],
     onRefresh: () => load({ silent: true }),
   });
 

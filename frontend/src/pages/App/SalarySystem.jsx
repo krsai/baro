@@ -20,6 +20,7 @@ import { buildQueryString, requestJSON } from '../../utils/apiClient';
 import { salaryText } from './salarySystemI18n';
 import { labelChipSx } from '../../theme/labelPalette';
 import { CURRENCY_CODES, currencySymbol } from '../../constants/currencies';
+import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
 
 const PAY_TYPES = {
   GENERAL: { label: '일반', palette: 'blue' },
@@ -313,6 +314,7 @@ const SalarySystem = () => {
       });
       await requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currencyCode, items: items.map((row) => ({ ...row, code: row.code || row.id, capValue: row.capValue === '' || row.capValue == null ? null : Number(String(row.capValue).replace(/,/g, '')) })), rates: rateRows }) });
       await requestJSON(`/salary-system/versions${buildQueryString({ orgId: activeOrgId })}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS], orgId: activeOrgId, source: 'salary-system-version-create' });
       await load();
       setMessage({ severity: 'success', text: t('급여 체계를 저장하고 새 버전을 등록했습니다. 적용 월은 버전 관리에서 지정할 수 있습니다.') });
     } catch (error) {
@@ -355,6 +357,7 @@ const SalarySystem = () => {
       const response = await requestJSON(`/salary-system/version-boundaries${buildQueryString({ orgId: activeOrgId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boundaries: Object.entries(versionBoundaries).map(([versionId, startMonth]) => ({ versionId: Number(versionId), startMonth })) }) });
       setVersions(Array.isArray(response?.versions) ? response.versions : versions);
       setSavedVersionBoundaries(versionBoundaries);
+      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS], orgId: activeOrgId, source: 'salary-system-version-boundaries' });
       setVersionDialogOpen(false);
       setMessage({ severity: 'success', text: t('급여 버전 적용 구간을 저장했습니다.') });
     } catch (error) {
