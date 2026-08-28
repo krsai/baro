@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControl, IconButton, InputLabel, MenuItem, Paper, Select, Stack,
+  FormControl, IconButton, InputAdornment, InputLabel, MenuItem, Paper, Select, Stack,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   TextField, Tooltip, Typography,
 } from '@mui/material';
@@ -19,7 +19,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
 import { salaryText } from './salarySystemI18n';
 import { labelChipSx } from '../../theme/labelPalette';
-import { CURRENCY_CODES } from '../../constants/currencies';
+import { CURRENCY_CODES, currencySymbol } from '../../constants/currencies';
 
 const PAY_TYPES = {
   GENERAL: { label: '일반', palette: 'blue' },
@@ -365,7 +365,7 @@ const SalarySystem = () => {
     <FormControl fullWidth size="small"><InputLabel>{t('정산 주기')}</InputLabel><Select label={t('정산 주기')} value={value.payCycle} onChange={(e) => onChange('payCycle', e.target.value)}>
       {Object.entries(PAY_CYCLES).map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}
     </Select></FormControl>
-    <TextField size="small" label={`${t('상한값 (선택)')} (${currencyCode})`} value={value.capValue || ''} onChange={(e) => onChange('capValue', e.target.value)} placeholder={t('계산 결과 최대 금액')} />
+    <TextField size="small" label={t('상한값 (선택)')} value={value.capValue || ''} onChange={(e) => onChange('capValue', e.target.value)} placeholder={t('계산 결과 최대 금액')} InputProps={{ startAdornment: <InputAdornment position="start">{currencySymbol(currencyCode)}</InputAdornment> }} />
   </>;
 
   return <AppPageContainer><Box sx={{ p: 2, width: '100%' }}>
@@ -414,7 +414,7 @@ const SalarySystem = () => {
           : <><Box sx={{ px: 2, py: 1.5 }}><Typography fontWeight={700}>{t('급여 타입·직급별 단가')}</Typography><Typography variant="body2" color="text.secondary">{t('권한이나 직무와 관계없이 직원에게 지정된 급여 타입과 직급으로 단가를 결정합니다.')}</Typography></Box>
             <TableContainer><Table size="small"><TableHead><TableRow><TableCell>{t('급여 타입')}</TableCell><TableCell>{t('직급')}</TableCell><TableCell align="right">{t('단가')} ({currencyCode})</TableCell></TableRow></TableHead><TableBody>
               {PAY_TYPE_ORDER.flatMap((payType) => { const active = (selected.payTypes || []).includes(payType); return grades.map((grade, index) => <TableRow key={`${payType}:${grade.id}`} hover={active} sx={{ opacity: active ? 1 : 0.48 }}>{index === 0 && <TableCell rowSpan={grades.length} sx={{ verticalAlign: 'top', pt: 2 }}><Chip size="small" variant="outlined" label={t(PAY_TYPES[payType].label)} sx={labelChipSx(PAY_TYPES[payType].palette, active)} /><Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{payType}</Typography></TableCell>}<TableCell>{gradeName(grade, languageCode)} ({grade.code})</TableCell>
-                <TableCell align="right"><TextField size="small" disabled={!active} value={getRate(payType, grade.id)} onFocus={(e) => e.target.select()} onChange={(e) => changeRate(payType, grade.id, e.target.value)} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} sx={{ width: 170 }} /></TableCell></TableRow>); })}
+                <TableCell align="right"><TextField size="small" disabled={!active} value={getRate(payType, grade.id)} onFocus={(e) => e.target.select()} onChange={(e) => changeRate(payType, grade.id, e.target.value)} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} InputProps={{ startAdornment: <InputAdornment position="start">{currencySymbol(currencyCode)}</InputAdornment> }} sx={{ width: 170 }} /></TableCell></TableRow>); })}
             </TableBody></Table></TableContainer></>}
       </Paper>
     </Stack>
