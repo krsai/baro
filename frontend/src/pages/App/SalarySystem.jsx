@@ -76,6 +76,34 @@ const money = (value) => {
   const digits = String(value ?? '').replace(/[^0-9]/g, '');
   return digits ? Number(digits).toLocaleString('en-US') : '0';
 };
+const salaryStateSignature = ({ currencyCode, items, rates }) => {
+  const normalizedItems = items.map((item) => ({
+    id: String(item.id),
+    nameKo: String(item.nameKo || '').trim(),
+    nameEn: String(item.nameEn || '').trim(),
+    nameVi: String(item.nameVi || '').trim(),
+    category: item.category,
+    payTypes: PAY_TYPE_ORDER.filter((payType) => (item.payTypes || []).includes(payType)),
+    formula: Array.isArray(item.formula) ? item.formula : [],
+    payCycle: item.payCycle,
+    capValue: item.capValue === '' || item.capValue == null
+      ? null
+      : Number.isFinite(Number(item.capValue)) ? Number(item.capValue) : String(item.capValue),
+    required: item.required === true,
+  }));
+  const activeItems = new Map(normalizedItems.filter((item) => item.category !== 'INCENTIVE').map((item) => [item.id, item]));
+  const normalizedRates = Object.entries(rates).flatMap(([key, itemRates]) => {
+    const [payType, gradeId] = key.split(':');
+    return Object.entries(itemRates || {}).flatMap(([itemId, value]) => {
+      const amount = Number(String(value).replace(/,/g, '')) || 0;
+      const item = activeItems.get(String(itemId));
+      return amount !== 0 && item?.payTypes.includes(payType)
+        ? [{ payType, gradeId: Number(gradeId), itemId: String(itemId), amount }]
+        : [];
+    });
+  }).sort((left, right) => `${left.payType}:${left.gradeId}:${left.itemId}`.localeCompare(`${right.payType}:${right.gradeId}:${right.itemId}`));
+  return JSON.stringify({ currencyCode, items: normalizedItems, rates: normalizedRates });
+};
 const monthKey = () => new Date().toISOString().slice(0, 7);
 const VERSION_GRAPH_COLORS = ['#1976d2', '#9c27b0', '#2e7d32', '#ed6c02', '#d32f2f', '#0288d1', '#6d4c41', '#5e35b1'];
 const monthRange = (startMonth, endMonth) => {
@@ -203,7 +231,7 @@ const SalarySystem = () => {
       setCurrencyCode(loadedCurrencyCode);
       setVersions(Array.isArray(salarySystem?.versions) ? salarySystem.versions : []);
       setRates(next);
-      setSavedSnapshot(JSON.stringify({ currencyCode: loadedCurrencyCode, items: loadedItems, rates: next }));
+      setSavedSnapshot(salaryStateSignature({ currencyCode: loadedCurrencyCode, items: loadedItems, rates: next }));
     } catch (error) {
       setMessage({ severity: 'error', text: error?.message || t('급여 기준을 불러오지 못했습니다.') });
     }
@@ -211,7 +239,7 @@ const SalarySystem = () => {
   useEffect(() => { load(); }, [load]);
 
   const isDirty = useMemo(
-    () => savedSnapshot !== null && JSON.stringify({ currencyCode, items, rates }) !== savedSnapshot,
+    () => savedSnapshot !== null && salaryStateSignature({ currencyCode, items, rates }) !== savedSnapshot,
     [currencyCode, items, rates, savedSnapshot]
   );
 
