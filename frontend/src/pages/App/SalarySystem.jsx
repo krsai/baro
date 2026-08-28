@@ -399,11 +399,11 @@ const SalarySystem = () => {
     </Stack>
 
     <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('계산 방식 설정')} · {salaryItemName(selected, languageCode)}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
-      <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1.5}>
-        <TextField size="small" required label="항목명 (한국어)" value={formulaSettingsDraft.nameKo || ''} onChange={(e) => setFormulaSettingsDraft((prev) => ({ ...prev, nameKo: e.target.value }))} />
+      <Paper variant="outlined" sx={{ p: 2 }}><Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1.5 }}>
         <TextField size="small" required label="Item Name (English)" value={formulaSettingsDraft.nameEn || ''} onChange={(e) => setFormulaSettingsDraft((prev) => ({ ...prev, nameEn: e.target.value }))} />
+        <TextField size="small" required label="항목명 (한국어)" value={formulaSettingsDraft.nameKo || ''} onChange={(e) => setFormulaSettingsDraft((prev) => ({ ...prev, nameKo: e.target.value }))} />
         <TextField size="small" required label="Tên khoản mục (Tiếng Việt)" value={formulaSettingsDraft.nameVi || ''} onChange={(e) => setFormulaSettingsDraft((prev) => ({ ...prev, nameVi: e.target.value }))} />
-      </Stack></Paper>
+      </Box></Paper>
       <Paper variant="outlined" sx={{ p: 2.5, minHeight: 96, bgcolor: 'action.hover', borderStyle: 'dashed' }}>
         <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}>
           <FunctionsIcon fontSize="small" color="primary" sx={{ mr: 1 }} />
@@ -509,10 +509,12 @@ const SalarySystem = () => {
       </Stack>
     </DialogContent><DialogActions><Button variant="contained" onClick={saveVersionBoundaries} disabled={versionBusy || !hasVersionBoundaryChanges}>{t('저장')}</Button></DialogActions></Dialog>
 
-    <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm"><DialogTitle>{t('급여 항목 추가')}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
-      <TextField autoFocus required label="항목명 (한국어)" value={draft.nameKo} onChange={(e) => setDraft((prev) => ({ ...prev, nameKo: e.target.value }))} placeholder="예: 자격수당" />
-      <TextField required label="Item Name (English)" value={draft.nameEn} onChange={(e) => setDraft((prev) => ({ ...prev, nameEn: e.target.value }))} placeholder="e.g. Qualification Allowance" />
-      <TextField required label="Tên khoản mục (Tiếng Việt)" value={draft.nameVi} onChange={(e) => setDraft((prev) => ({ ...prev, nameVi: e.target.value }))} placeholder="Ví dụ: Phụ cấp chứng chỉ" />
+    <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 항목 추가')}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1.5 }}>
+        <TextField autoFocus required label="Item Name (English)" value={draft.nameEn} onChange={(e) => setDraft((prev) => ({ ...prev, nameEn: e.target.value }))} placeholder="e.g. Qualification Allowance" />
+        <TextField required label="항목명 (한국어)" value={draft.nameKo} onChange={(e) => setDraft((prev) => ({ ...prev, nameKo: e.target.value }))} placeholder="예: 자격수당" />
+        <TextField required label="Tên khoản mục (Tiếng Việt)" value={draft.nameVi} onChange={(e) => setDraft((prev) => ({ ...prev, nameVi: e.target.value }))} placeholder="Ví dụ: Phụ cấp chứng chỉ" />
+      </Box>
       <FormControl fullWidth size="small"><InputLabel>{t('급여 구분')}</InputLabel><Select label={t('급여 구분')} value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>{Object.entries(CATEGORIES).filter(([key]) => key !== 'INCENTIVE').map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}</Select></FormControl>
       {calculationFields(draft, (field, value) => setDraft((prev) => ({ ...prev, [field]: value })))}
     </Stack></DialogContent><DialogActions><Button onClick={() => setDialogOpen(false)}>{t('취소')}</Button><Button variant="contained" onClick={addItem} disabled={[draft.nameKo, draft.nameEn, draft.nameVi].some((name) => !name.trim())}>{t('추가')}</Button></DialogActions></Dialog>
