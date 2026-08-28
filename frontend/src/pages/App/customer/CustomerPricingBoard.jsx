@@ -41,6 +41,7 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { resolveCustomerDisplayName } from '../../../utils/appLanguage';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
+import { CURRENCY_CODES, CURRENCY_SYMBOLS } from '../../../constants/currencies';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import {
   WORKSPACE_DATA_TOPICS,
@@ -228,7 +229,6 @@ const isValidPositivePrice = (value) => {
     canonicalPrice(normalized) !== '0';
 };
 
-const CURRENCY_SYMBOLS = Object.freeze({ USD: '$', VND: '₫', KRW: '₩' });
 const resolveNumberLocale = (languageCode) => languageCode === 'vi' ? 'vi-VN' : languageCode === 'ko' ? 'ko-KR' : 'en-US';
 const formatPriceForDisplay = (value, currencyCode, languageCode) => {
   if (value === null || value === undefined || value === '') return '';
@@ -522,7 +522,7 @@ const CustomerPricingBoard = () => {
       if (!selectedCustomerId) return;
       setLoadingPrices(true);
       try {
-        const payloads = await Promise.all(['USD', 'VND', 'KRW'].map(async (code) => ({
+        const payloads = await Promise.all(CURRENCY_CODES.map(async (code) => ({
           code,
           payload: await requestJSON(
             `/customers/${selectedCustomerId}/sales-prices${buildQueryString({
@@ -995,9 +995,7 @@ const CustomerPricingBoard = () => {
                   })}
                   disabled={savingCurrency || dirtyPriceChanges.length > 0}
                 >
-                  <MenuItem value="USD">USD</MenuItem>
-                  <MenuItem value="VND">VND</MenuItem>
-                  <MenuItem value="KRW">KRW</MenuItem>
+                  {CURRENCY_CODES.map((code) => <MenuItem key={code} value={code}>{code}</MenuItem>)}
                 </Select>
               </FormControl>
             </Stack>
@@ -1117,9 +1115,7 @@ const CustomerPricingBoard = () => {
                               })}
                             >
                               <MenuItem value="">{text.useDefaultCurrency} ({currencyCode})</MenuItem>
-                              <MenuItem value="USD">USD</MenuItem>
-                              <MenuItem value="VND">VND</MenuItem>
-                              <MenuItem value="KRW">KRW</MenuItem>
+                              {CURRENCY_CODES.map((code) => <MenuItem key={code} value={code}>{code}</MenuItem>)}
                             </Select>
                           </FormControl>
                         )}

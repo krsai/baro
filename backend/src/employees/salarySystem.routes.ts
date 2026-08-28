@@ -2,28 +2,28 @@ import { Router } from "express";
 import { prisma } from "../db";
 import { getOrganizationByQuery, getRequesterEmail } from "../middleware/access";
 import { validateSalaryFormula } from "./salaryFormula";
+import { normalizeCurrencyCode } from "../currency";
 
 type Args = { requireSalarySystemManager: (req: any, res: any, orgId: number) => Promise<boolean> };
 const PAY_TYPES = ["GENERAL", "OUTPUT"];
-const SALARY_CURRENCIES = ["VND", "USD", "KRW"];
 const toJsonSnapshot = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) => {
   const router = Router();
   const state = async (orgId: number) => {
     const [organization, items, rates, versions] = await Promise.all([
-      prisma.organization.findUnique({ where: { id: orgId }, select: { salaryCurrencyCode: true } }),
+      prisma.organization.findUnique({ where: { id: orgId }, select: { salaryCurrency: { select: { code: true } } } }),
       prisma.salaryItem.findMany({ where: { orgId, isActive: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }),
       prisma.salaryItemRate.findMany({ where: { orgId }, orderBy: [{ payType: "asc" }, { gradeId: "asc" }, { salaryItemId: "asc" }] }),
       prisma.salarySystemVersion.findMany({ where: { orgId }, orderBy: { versionNumber: "desc" } }),
     ]);
     return {
-      currencyCode: organization?.salaryCurrencyCode || "VND",
+      currencyCode: organization?.salaryCurrency?.code || "VND",
       items: items.map(({ id, ...item }) => ({ ...item, id: item.code, databaseId: id })),
       rates: rates.map((rate) => ({ ...rate, salaryItemCode: items.find((item) => item.id === rate.salaryItemId)?.code })),
       versions: versions.map((version) => {
         const snapshot = version.snapshot && typeof version.snapshot === "object" && !Array.isArray(version.snapshot) ? version.snapshot as any : {};
-        return { ...version, confirmedAt: version.confirmedDate.toISOString().slice(0, 10), currencyCode: SALARY_CURRENCIES.includes(snapshot.currencyCode) ? snapshot.currencyCode : "VND", items: Array.isArray(snapshot.items) ? snapshot.items : [], rates: Array.isArray(snapshot.rates) ? snapshot.rates : [] };
+        return { ...version, confirmedAt: version.confirmedDate.toISOString().slice(0, 10), currencyCode: normalizeCurrencyCode(snapshot.currencyCode) || "VND", items: Array.isArray(snapshot.items) ? snapshot.items : [], rates: Array.isArray(snapshot.rates) ? snapshot.rates : [] };
       }),
     };
   };
@@ -82,8 +82,8 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     if (!(await requireSalarySystemManager(req, res, org.id))) return;
     const items: any[] = Array.isArray(req.body?.items) ? req.body.items : [];
     const rates: any[] = Array.isArray(req.body?.rates) ? req.body.rates : [];
-    const currencyCode = String(req.body?.currencyCode || "").toUpperCase();
-    if (!SALARY_CURRENCIES.includes(currencyCode)) return res.status(400).json({ ok: false, error: "invalid salary currency" });
+    const currencyCode = normalizeCurrencyCode(req.body?.currencyCode);
+    if (!currencyCode) return res.status(400).json({ ok: false, error: "invalid salary currency" });
     const codes = new Set<string>();
     const categoryByCode = new Map<string, string>();
     const payTypesByCode = new Map<string, string[]>();
@@ -102,7 +102,9 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     const rateKeys = rates.map((r) => `${r.payType}:${Number(r.gradeId)}:${String(r.salaryItemCode)}`);
     if (new Set(rateKeys).size !== rateKeys.length || rates.some((r) => !codes.has(String(r.salaryItemCode)) || categoryByCode.get(String(r.salaryItemCode)) === "INCENTIVE" || !PAY_TYPES.includes(r.payType) || !payTypesByCode.get(String(r.salaryItemCode))?.includes(r.payType) || !gradeIds.has(Number(r.gradeId)) || !Number.isSafeInteger(Number(r.amount)) || Number(r.amount) < 0)) return res.status(400).json({ ok: false, error: "invalid salary rate" });
     await prisma.$transaction(async (tx) => {
-      await tx.organization.update({ where: { id: org.id }, data: { salaryCurrencyCode: currencyCode } });
+      const currency = await tx.currency.findUnique({ where: { code: currencyCode }, select: { id: true } });
+      if (!currency) throw new Error(`currency ${currencyCode} is not configured`);
+      await tx.organization.update({ where: { id: org.id }, data: { salaryCurrencyId: currency.id } });
       const ids = new Map<string, number>();
       for (const [sortOrder, raw] of items.entries()) {
         const code = String(raw.code || raw.id).trim(); const category = String(raw.category).toUpperCase();

@@ -19,13 +19,13 @@ import { useLanguage } from '../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
 import { salaryText } from './salarySystemI18n';
 import { labelChipSx } from '../../theme/labelPalette';
+import { CURRENCY_CODES } from '../../constants/currencies';
 
 const PAY_TYPES = {
   GENERAL: { label: '일반', palette: 'blue' },
   OUTPUT: { label: '생산', palette: 'orange' },
 };
 const PAY_TYPE_ORDER = ['GENERAL', 'OUTPUT'];
-const SALARY_CURRENCIES = ['VND', 'USD', 'KRW'];
 const CATEGORIES = { BASE: '기본급', ALLOWANCE: '급여 수당', INCENTIVE: '성과급' };
 const CATEGORY_PALETTES = { BASE: 'blue', ALLOWANCE: 'green', INCENTIVE: 'orange' };
 const PAY_CYCLES = {
@@ -199,7 +199,7 @@ const SalarySystem = () => {
         next[key] = { ...next[key], [row.salaryItemCode]: money(row.amount) };
       });
       setItems(loadedItems);
-      const loadedCurrencyCode = SALARY_CURRENCIES.includes(salarySystem?.currencyCode) ? salarySystem.currencyCode : 'VND';
+      const loadedCurrencyCode = CURRENCY_CODES.includes(salarySystem?.currencyCode) ? salarySystem.currencyCode : 'VND';
       setCurrencyCode(loadedCurrencyCode);
       setVersions(Array.isArray(salarySystem?.versions) ? salarySystem.versions : []);
       setRates(next);
@@ -371,7 +371,7 @@ const SalarySystem = () => {
   return <AppPageContainer><Box sx={{ p: 2, width: '100%' }}>
     <Stack direction="row" flexWrap="wrap" justifyContent="space-between" alignItems="center" rowGap={1.5} sx={{ mb: 2, width: '100%' }}>
       <Typography variant="h5" fontWeight={700}>{t('급여 체계')}</Typography>
-      <Stack direction="row" spacing={1}><FormControl size="small" sx={{ minWidth: 120 }}><InputLabel>{t('통화')}</InputLabel><Select label={t('통화')} value={currencyCode} onChange={(event) => setCurrencyCode(event.target.value)}>{SALARY_CURRENCIES.map((code) => <MenuItem key={code} value={code}>{code}</MenuItem>)}</Select></FormControl><Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog}>{t('버전 관리')}</Button>
+      <Stack direction="row" spacing={1}><FormControl size="small" sx={{ minWidth: 120 }}><InputLabel>{t('통화')}</InputLabel><Select label={t('통화')} value={currencyCode} onChange={(event) => setCurrencyCode(event.target.value)}>{CURRENCY_CODES.map((code) => <MenuItem key={code} value={code}>{code}</MenuItem>)}</Select></FormControl><Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog}>{t('버전 관리')}</Button>
         <SaveButton onClick={saveDraft} disabled={!isDirty}>{t('저장')}</SaveButton></Stack>
     </Stack>
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}

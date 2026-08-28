@@ -11,6 +11,7 @@ import {
   resolveRequestAuthErrorMessage,
 } from "./auth/requestAuth";
 import { prisma } from "./db";
+import { normalizeCurrencyCode } from "./currency";
 import {
   EMPLOYEE_PAY_TYPE,
   type EmployeePayType,
@@ -760,7 +761,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "WorkLog", columnName: "factoryId" },
   { tableName: "Organization", columnName: "nameKo" },
   { tableName: "Organization", columnName: "nameVi" },
-  { tableName: "Organization", columnName: "salaryCurrencyCode" },
+  { tableName: "Organization", columnName: "salaryCurrencyId" },
   { tableName: "Organization", columnName: "representativeEmployeeId" },
   { tableName: "Organization", columnName: "defaultSizeSetCode" },
   { tableName: "OrgRelationship", columnName: "defaultSizeSetCode" },
@@ -945,6 +946,8 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "Currency_code_key",
+  "Organization_salaryCurrencyId_idx",
+  "Organization_salaryCurrency_fkey",
   "OrgRelationshipStyleSalesBucket_relationship_style_key",
   "OrgRelationshipStyleSalesCurrency_relationship_style_key",
   "OrgRelationshipStyleSalesCurrency_relationship_scope_fkey",
@@ -30970,7 +30973,6 @@ const SALES_PRICING_BASES = new Set([
   "MANUFACTURING_SERVICE_PRICE",
   "FINISHED_GOODS_PRICE",
 ]);
-const SALES_CURRENCY_CODES = new Set(["USD", "VND", "KRW"]);
 
 const normalizeSalesPricingBasis = (value: unknown) => {
   const normalized = String(value ?? "").trim().toUpperCase();
@@ -30978,8 +30980,7 @@ const normalizeSalesPricingBasis = (value: unknown) => {
 };
 
 const normalizeSalesCurrencyCode = (value: unknown) => {
-  const normalized = String(value ?? "").trim().toUpperCase();
-  return SALES_CURRENCY_CODES.has(normalized) ? normalized : null;
+  return normalizeCurrencyCode(value);
 };
 
 const normalizePositiveSalesPrice = (value: unknown): string | null => {

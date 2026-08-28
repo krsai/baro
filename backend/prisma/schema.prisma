@@ -191,7 +191,7 @@ model Organization {
   // employees, or OrgRelationship membership.
   isActive                 Boolean          @default(true)
   ownerOrgId               Int?
-  salaryCurrencyCode       String           @default("VND")
+  salaryCurrencyId         Int?
   createdAt                DateTime         @default(now())
   createdBy                String           @default("system@baro.local")
   createdByEmployeeId      Int?
@@ -226,6 +226,7 @@ model Organization {
   salaryItems                     SalaryItem[]
   salaryItemRates                 SalaryItemRate[]
   salarySystemVersions            SalarySystemVersion[]
+  salaryCurrency                  Currency?                         @relation("OrganizationSalaryCurrency", fields: [salaryCurrencyId], references: [id], onDelete: Restrict)
   quantitySettlementSnapshots     QuantitySettlementSnapshot[]
   attendanceEntries               AttendanceEntry[]
   holidays                        OrganizationHoliday[]
@@ -254,6 +255,7 @@ model Organization {
   vendors Organization[] @relation("OrganizationVendorOwner")
 
   @@index([representativeEmployeeId])
+  @@index([salaryCurrencyId])
   @@unique([ownerOrgId, type, name])
   @@index([ownerOrgId, type, isActive])
 }
@@ -268,6 +270,7 @@ model Currency {
   salesPriceLists CustomerSalesPriceList[]
   defaultSalesRelationships OrgRelationship[] @relation("OrgRelationshipSalesCurrency")
   styleSalesCurrencyOverrides OrgRelationshipStyleSalesCurrency[]
+  salaryOrganizations Organization[] @relation("OrganizationSalaryCurrency")
 }
 
 model SystemSetting {
