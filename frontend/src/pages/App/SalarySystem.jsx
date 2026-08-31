@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControl, FormControlLabel, FormHelperText, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack,
+  FormControl, FormHelperText, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack,
   Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
   TextField, Tooltip, Typography,
 } from '@mui/material';
@@ -470,6 +470,12 @@ const SalarySystem = () => {
           <Box><Typography fontWeight={700}>{t('급여 항목')}</Typography><Typography variant="caption" color="text.secondary">{t('항목을 선택해 계산 방식과 직급별 단가를 설정하세요.')}</Typography></Box>
           <Tooltip title={t('항목 추가')}><IconButton size="small" color="primary" sx={{ ml: 'auto' }} onClick={() => setDialogOpen(true)}><AddIcon /></IconButton></Tooltip>
         </Stack>
+        <Box sx={{ display: 'grid', gridTemplateColumns: '34px minmax(0, 1fr) 42px 42px', alignItems: 'center', px: 1.5, py: 0.75, borderBottom: 1, borderColor: 'divider', bgcolor: 'grey.50' }}>
+          <span />
+          <Typography variant="caption" color="text.secondary" fontWeight={700}>{t('항목명')}</Typography>
+          <Typography variant="caption" color="text.secondary" fontWeight={700} textAlign="center">{t('일반')}</Typography>
+          <Typography variant="caption" color="text.secondary" fontWeight={700} textAlign="center">{t('생산')}</Typography>
+        </Box>
         <DragDropContext onDragEnd={reorderItems}>
           {Object.entries(CATEGORIES).map(([category, label]) => <Box key={category} sx={{ p: 1.5, borderBottom: 1, borderColor: 'divider' }}>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 0.5, mb: 1 }}><Chip size="small" variant="outlined" label={t(label)} sx={labelChipSx(CATEGORY_PALETTES[category])} /><Typography variant="caption" color="text.secondary">{languageCode === 'ko' ? `${counts[category] || 0}${t('개')}` : `${counts[category] || 0} ${t('개')}`}</Typography></Stack>
@@ -478,12 +484,9 @@ const SalarySystem = () => {
                 {items.filter((row) => row.category === category).map((row, index) => <Draggable key={row.id} draggableId={String(row.id)} index={index}>
                   {(dragProvided, snapshot) => <Stack ref={dragProvided.innerRef} {...dragProvided.draggableProps} direction="row" alignItems="center" sx={{ bgcolor: snapshot.isDragging ? 'action.hover' : 'transparent', borderRadius: 1 }}>
                     <IconButton {...dragProvided.dragHandleProps} size="small" aria-label="순서 변경" sx={{ flexShrink: 0, cursor: 'grab', color: 'text.disabled', '&:active': { cursor: 'grabbing' } }}><DragIndicatorIcon fontSize="small" /></IconButton>
-                    <Box role="button" tabIndex={0} onClick={() => setSelectedId(row.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(row.id); } }} sx={{ flex: 1, minWidth: 0, px: 1.5, py: 0.75, borderRadius: 1, cursor: 'pointer', bgcolor: selectedId === row.id ? 'primary.main' : 'transparent', color: selectedId === row.id ? 'primary.contrastText' : 'text.primary', '&:hover': { bgcolor: selectedId === row.id ? 'primary.dark' : 'action.hover' } }}>
-                      <Typography variant="body2" fontWeight={600}>{salaryItemName(row, languageCode)}</Typography>
-                      <Stack direction="row" spacing={0.5} alignItems="center" useFlexGap flexWrap="wrap" sx={{ mt: 0.15 }}>
-                        {PAY_TYPE_ORDER.map((payType) => { const active = (row.payTypes || []).includes(payType); const fixed = row.category === 'INCENTIVE'; const isLastActiveType = active && (row.payTypes || []).length === 1; return <FormControlLabel key={payType} onClick={(event) => event.stopPropagation()} control={<Checkbox size="small" checked={active} disabled={fixed || isLastActiveType} onChange={() => toggleItemPayType(row, payType)} sx={{ p: 0.25, color: selectedId === row.id ? 'rgba(255,255,255,.72)' : undefined, '&.Mui-checked': { color: selectedId === row.id ? 'common.white' : undefined } }} />} label={<Typography variant="caption">{t(PAY_TYPES[payType]?.label || payType)}</Typography>} sx={{ m: 0 }} />; })}
-                        <Typography variant="caption" sx={{ opacity: 0.75 }}>· {t(PAY_CYCLES[row.payCycle])}</Typography>
-                      </Stack>
+                    <Box role="button" tabIndex={0} onClick={() => setSelectedId(row.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(row.id); } }} sx={{ flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 42px 42px', alignItems: 'center', pl: 1.5, pr: 0.25, py: 0.65, borderRadius: 1, cursor: 'pointer', bgcolor: selectedId === row.id ? 'primary.main' : 'transparent', color: selectedId === row.id ? 'primary.contrastText' : 'text.primary', '&:hover': { bgcolor: selectedId === row.id ? 'primary.dark' : 'action.hover' } }}>
+                      <Box sx={{ minWidth: 0 }}><Typography variant="body2" fontWeight={600} noWrap>{salaryItemName(row, languageCode)}</Typography><Typography variant="caption" sx={{ display: 'block', opacity: 0.75 }}>{t(PAY_CYCLES[row.payCycle])}</Typography></Box>
+                      {PAY_TYPE_ORDER.map((payType) => { const active = (row.payTypes || []).includes(payType); const fixed = row.category === 'INCENTIVE'; const isLastActiveType = active && (row.payTypes || []).length === 1; return <Checkbox key={payType} size="small" checked={active} disabled={fixed || isLastActiveType} onClick={(event) => event.stopPropagation()} onChange={() => toggleItemPayType(row, payType)} inputProps={{ 'aria-label': `${salaryItemName(row, languageCode)} ${t(PAY_TYPES[payType]?.label || payType)}` }} sx={{ justifySelf: 'center', p: 0.5, color: selectedId === row.id ? 'rgba(255,255,255,.72)' : undefined, '&.Mui-checked': { color: selectedId === row.id ? 'common.white' : undefined } }} />; })}
                     </Box>
                   </Stack>}
                 </Draggable>)}
