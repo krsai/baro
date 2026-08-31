@@ -463,12 +463,17 @@ const SalarySystem = () => {
   return <AppPageContainer><Box sx={{ p: 2, width: '100%' }}>
     <Stack direction="row" flexWrap="wrap" justifyContent="space-between" alignItems="center" rowGap={1.5} sx={{ mb: 2, width: '100%' }}>
       <Typography variant="h5" fontWeight={700}>{t('급여 체계')}</Typography>
-      <Stack direction="row" spacing={1}><FormControl size="small" sx={{ minWidth: 120 }}><InputLabel>{t('통화')}</InputLabel><Select label={t('통화')} value={currencyCode} onChange={(event) => setCurrencyCode(event.target.value)}>{CURRENCY_CODES.map((code) => <MenuItem key={code} value={code}>{code}</MenuItem>)}</Select></FormControl><Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog}>{t('버전 관리')}</Button>
-        <SaveButton onClick={saveDraft} disabled={!isDirty}>{t('저장')}</SaveButton></Stack>
+      <FormControl size="small" sx={{ minWidth: 120 }}><InputLabel>{t('통화')}</InputLabel><Select label={t('통화')} value={currencyCode} onChange={(event) => setCurrencyCode(event.target.value)}>{CURRENCY_CODES.map((code) => <MenuItem key={code} value={code}>{code}</MenuItem>)}</Select></FormControl>
     </Stack>
-    {factories.length > 0 && <Tabs value={factoryId} onChange={(_event, value) => { setSavedSnapshot(null); setSelectedId('baseSalary'); setFactoryId(value); }} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
-      {factories.map((factory) => <Tab key={factory.id} value={factory.id} label={languageCode === 'ko' ? (factory.nameKo || factory.name) : languageCode === 'vi' ? (factory.nameVi || factory.name) : factory.name} />)}
-    </Tabs>}
+    {factories.length > 0 && <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+      <Tabs value={factoryId} onChange={(_event, value) => { setSavedSnapshot(null); setSelectedId('baseSalary'); setFactoryId(value); }} sx={{ flex: 1, minWidth: 0 }}>
+        {factories.map((factory) => <Tab key={factory.id} value={factory.id} label={languageCode === 'ko' ? (factory.nameKo || factory.name) : languageCode === 'vi' ? (factory.nameVi || factory.name) : factory.name} />)}
+      </Tabs>
+      <Stack direction="row" spacing={1} sx={{ pb: 0.75, flexShrink: 0 }}>
+        <Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog}>{t('버전 관리')}</Button>
+        <SaveButton onClick={saveDraft} disabled={!isDirty}>{t('저장')}</SaveButton>
+      </Stack>
+    </Stack>}
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
 
     <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="stretch">
