@@ -16,7 +16,6 @@ import {
 } from '@mui/material';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import AppPageContainer from '../../../components/AppPageContainer';
-import DeleteActionButton from '../../../components/DeleteActionButton';
 import LockToggleSwitch from '../../../components/LockToggleSwitch';
 import PageToolbar from '../../../components/PageToolbar';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -25,7 +24,6 @@ import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
-import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 
@@ -97,14 +95,6 @@ const resolveText = (languageCode, key, replacements = {}) => {
   );
 };
 
-const formatDong = (value) =>
-  `${formatNumberWithCommas(Math.round(Number(value)), {
-    fallback: '0', maximumFractionDigits: 0,
-  })} VND`;
-const formatRate = (value) => `${formatNumberWithCommas(Number(value), {
-  fallback: '0', maximumFractionDigits: 2,
-})} VND/s`;
-
 const PayrollBoard = () => {
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeProfile } = useAuth();
@@ -116,6 +106,7 @@ const PayrollBoard = () => {
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [mutating, setMutating] = useState('');
+  const [employeeDirectory, setEmployeeDirectory] = useState([]);
 
   const text = useMemo(() => ({
     title: getUiMessage('menu.payroll', 'Payroll', languageCode),
@@ -131,15 +122,24 @@ const PayrollBoard = () => {
     : languageCode === 'vi'
       ? { notCalculated: 'Chua tinh', recalculationRequired: 'Can tinh lai', calculated: 'Da tinh xong' }
       : { notCalculated: 'Not Calculated', recalculationRequired: 'Recalculation Required', calculated: 'Calculated' };
+  const payrollSummaryText = languageCode === 'ko'
+    ? { generalPeople: '\uC77C\uBC18 \uC778\uC6D0', generalPayroll: '\uC77C\uBC18 \uAE09\uC5EC', outputPeople: '\uC0DD\uC0B0 \uC778\uC6D0', outputPayroll: '\uC0DD\uC0B0 \uAE09\uC5EC', totalPayroll: '\uCD1D \uAE09\uC5EC', pending: '\uBBF8\uACC4\uC0B0' }
+    : languageCode === 'vi'
+      ? { generalPeople: 'NV thuong', generalPayroll: 'Luong thuong', outputPeople: 'NV san luong', outputPayroll: 'Luong san luong', totalPayroll: 'Tong luong', pending: 'Chua tinh' }
+      : { generalPeople: 'General Employees', generalPayroll: 'General Payroll', outputPeople: 'Production Employees', outputPayroll: 'Production Payroll', totalPayroll: 'Total Payroll', pending: 'Not calculated' };
+  const activeEmployees = useMemo(() => employeeDirectory.filter((employee) => !['PENDING', 'REJECTED', 'TERMINATED'].includes(String(employee?.status || '').toUpperCase())), [employeeDirectory]);
+  const generalEmployeeCount = useMemo(() => activeEmployees.filter((employee) => !['OUTPUT', 'CT'].includes(String(employee?.payType || '').toUpperCase())).length, [activeEmployees]);
+  const outputEmployeeCount = activeEmployees.length - generalEmployeeCount;
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!activeOrgId) return;
     if (!silent) setLoading(true);
     try {
       const query = buildQueryString({ orgId: activeOrgId });
-      const [snapshotRows, calendarPayload] = await Promise.all([
+      const [snapshotRows, calendarPayload, employeeRows] = await Promise.all([
         requestJSON('/payroll/snapshots' + query, { forceRefresh: true, skipGlobalLoading: silent }),
         requestJSON('/payroll/calendar' + query, { forceRefresh: true, skipGlobalLoading: true }),
+        requestJSON('/employees' + query, { forceRefresh: true, skipGlobalLoading: true }),
       ]);
       const nextSnapshots = Array.isArray(snapshotRows) ? snapshotRows : [];
       const nextAvailableMonths = Array.isArray(calendarPayload?.availableMonthKeys)
@@ -160,6 +160,7 @@ const PayrollBoard = () => {
       );
 
       setSnapshots(nextSnapshots);
+      setEmployeeDirectory(Array.isArray(employeeRows) ? employeeRows : []);
       setCalendar(calendarPayload || null);
       setReadinessByMonth(Object.fromEntries(readinessRows));
     } catch (error) {
@@ -201,49 +202,6 @@ const PayrollBoard = () => {
       ? monthRows.filter(({ month }) => month === selectedMonth)
       : monthRows,
     [monthRows, selectedMonth]
-  );
-  const lineRows = useMemo(
-    () => filteredMonthRows.flatMap(({ month, snapshot }) => {
-      const monthReadiness = readinessByMonth[month];
-      const groups = Array.isArray(monthReadiness?.groups) ? monthReadiness.groups : [];
-      return groups.map((group) => {
-        const snapshotEmployees = Array.isArray(snapshot?.data) ? snapshot.data : [];
-        const matchingEmployees = snapshotEmployees
-          .map((employee) => ({
-            processes: (Array.isArray(employee?.processes) ? employee.processes : []).filter(
-              (process) => Number(process?.factoryId) === Number(group.factoryId) &&
-                Number(process?.lineId) === Number(group.lineId)
-            ),
-          }))
-          .filter(({ processes }) => processes.length > 0);
-        const snapshotLineTotal = matchingEmployees.reduce(
-          (sum, { processes }) => sum + processes.reduce(
-            (processSum, process) => processSum + Number(process?.totalEarnings || 0),
-            0
-          ),
-          0
-        );
-        const snapshotLineCtSeconds = matchingEmployees.reduce(
-          (sum, { processes }) => sum + processes.reduce(
-            (processSum, process) => processSum + Number(process?.totalCtSeconds || 0),
-            0
-          ),
-          0
-        );
-        return {
-          month,
-          snapshot,
-          readiness: monthReadiness,
-          group,
-          snapshotEmployeeCount: matchingEmployees.length,
-          snapshotLineTotal,
-          snapshotAppliedRate: snapshotLineCtSeconds > 0
-            ? snapshotLineTotal / snapshotLineCtSeconds
-            : null,
-        };
-      });
-    }),
-    [filteredMonthRows, readinessByMonth]
   );
   const calculableMonths = useMemo(
     () => monthRows
@@ -310,29 +268,6 @@ const PayrollBoard = () => {
     }
   };
 
-  const handleRecalculateLine = async (month, group) => {
-    const mutationKey = `recalculate:${month}:${group.factoryId}:${group.lineId}`;
-    setMutating(mutationKey);
-    try {
-      const updatedSnapshot = await requestJSON(
-        `/payroll/snapshots/${month}/recalculate-line` + buildQueryString({ orgId: activeOrgId }),
-        {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ factoryId: group.factoryId, lineId: group.lineId }),
-        }
-      );
-      setSnapshots((previous) => previous.map((row) =>
-        String(row?.month || '') === month ? updatedSnapshot : row
-      ));
-      await load();
-      showNotification(resolveText(languageCode, 'calculateSuccess', { month }), 'success');
-    } catch (error) {
-      showNotification(error?.message || resolveText(languageCode, 'calculateError'), 'error');
-    } finally {
-      setMutating('');
-    }
-  };
-
   const handleLockToggle = async (snapshot, checked) => {
     const month = String(snapshot?.month || '');
     if (!month) return;
@@ -379,23 +314,6 @@ const PayrollBoard = () => {
     }
   };
 
-  const handleDelete = async (month) => {
-    if (!snapshotsByMonth.has(month)) return;
-    if (!window.confirm(resolveText(languageCode, 'deleteConfirm', { month }))) return;
-    setMutating('delete');
-    try {
-      await requestJSON(`/payroll/snapshots/${month}` + buildQueryString({ orgId: activeOrgId }), {
-        method: 'DELETE',
-      });
-      await load();
-      showNotification(resolveText(languageCode, 'deleteSuccess', { month }), 'success');
-    } catch (error) {
-      showNotification(error?.message || resolveText(languageCode, 'deleteError'), 'error');
-    } finally {
-      setMutating('');
-    }
-  };
-
   return (
     <AppPageContainer
       title={text.title}
@@ -435,31 +353,31 @@ const PayrollBoard = () => {
             <Table stickyHeader size="small">
               <TableHead><TableRow>
                 <TableCell sx={{ fontWeight: 700 }}>{text.month}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }} align="right">{text.employees}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }} align="right">{languageCode === 'ko' ? '\uCD1D \uC9C0\uAE09\uC561' : languageCode === 'vi' ? 'Tong chi tra' : 'Gross Payroll'}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }} align="right">{text.total}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.generalPeople}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.generalPayroll}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.outputPeople}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.outputPayroll}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.totalPayroll}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{text.status}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{languageCode === 'ko' ? '\uD655\uC815' : languageCode === 'vi' ? 'Xac nhan' : 'Confirmed'}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }} align="center">{text.delete}</TableCell>
               </TableRow></TableHead>
               <TableBody>
-                {loading ? <TableStatusRow colSpan={7} message={resolveText(languageCode, 'loading')} />
-                  : filteredMonthRows.length === 0 ? <TableStatusRow colSpan={7} message={resolveText(languageCode, 'empty')} />
+                {loading ? <TableStatusRow colSpan={8} message={resolveText(languageCode, 'loading')} />
+                  : filteredMonthRows.length === 0 ? <TableStatusRow colSpan={8} message={resolveText(languageCode, 'empty')} />
                     : filteredMonthRows.map(({ month, snapshot }) => {
                       const groups = readinessByMonth[month]?.groups || [];
                       const rowNeedsRecalculation = Boolean(snapshot && groups.some((group) => group.needsRecalculation));
-                      const snapshotEmployees = Array.isArray(snapshot?.data) ? snapshot.data : [];
-                      const productionSubtotal = snapshotEmployees.reduce((sum, employee) => sum + (employee?.processes || []).reduce((processSum, process) => processSum + Number(process?.totalEarnings || 0), 0), 0);
-                      const targetCount = snapshot ? snapshotEmployees.length : groups.reduce((sum, group) => sum + Number(group.employeeCount || 0), 0);
                       return (
                         <TableRow
                           key={month} hover sx={{ cursor: snapshot ? 'pointer' : 'default' }}
                           onClick={() => snapshot && navigateToPath(`/payroll/${month}`, { label: `${text.title} ${month}` })}
                         >
                           <TableCell sx={{ fontWeight: 700 }}>{month}</TableCell>
-                          <TableCell align="right">{targetCount}{text.peopleSuffix}</TableCell>
-                          <TableCell align="right">{languageCode === 'ko' ? '\uBBF8\uACC4\uC0B0' : languageCode === 'vi' ? 'Chua tinh' : 'Not calculated'}</TableCell>
-                          <TableCell align="right">{snapshot ? formatDong(productionSubtotal) : '-'}</TableCell>
+                          <TableCell align="right">{generalEmployeeCount}{text.peopleSuffix}</TableCell>
+                          <TableCell align="right" sx={{ color: 'text.secondary' }}>{payrollSummaryText.pending}</TableCell>
+                          <TableCell align="right">{outputEmployeeCount}{text.peopleSuffix}</TableCell>
+                          <TableCell align="right" sx={{ color: 'text.secondary' }}>{payrollSummaryText.pending}</TableCell>
+                          <TableCell align="right" sx={{ color: 'text.secondary', fontWeight: 700 }}>{payrollSummaryText.pending}</TableCell>
                           <TableCell align="center">
                             <Stack direction="row" spacing={0.75} justifyContent="center" alignItems="center">
                               <Chip
@@ -489,14 +407,6 @@ const PayrollBoard = () => {
                               stopPropagation
                               onChange={(_event, checked) => handleLockToggle(snapshot, checked)}
                               ariaLabel={`${resolveText(languageCode, 'lock')} ${month}`}
-                            />
-                          </TableCell>
-                          <TableCell align="center">
-                            <DeleteActionButton
-                              disabled={!snapshot || !snapshot.isProvisional || Boolean(mutating)}
-                              title={snapshot?.isProvisional ? text.delete : resolveText(languageCode, 'unlockBeforeDelete')}
-                              stopPropagation
-                              onClick={() => handleDelete(month)}
                             />
                           </TableCell>
                         </TableRow>
