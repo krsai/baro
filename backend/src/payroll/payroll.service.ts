@@ -22,6 +22,8 @@ import {
   WORK_RECORD_WITH_REFS_INCLUDE,
 } from "../work-records/workRecord.shared";
 import { resolveFactoryManagementStartDateKey } from "../factories/factoryManagementStart";
+import { evaluateSalaryFormula } from "../employees/salaryFormula";
+import { resolveSalaryAttendanceParameters } from "../employees/salaryAttendanceParameters";
 
 const toPayrollAmountOrNull = (value: unknown): number | null => {
   const parsed = Number(value);
@@ -160,9 +162,29 @@ export const normalizePayrollSnapshotEmployee = (employee: any) => {
     payType,
     bankName: resolveOptionalString(employee?.bankName, null),
     bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
+    factoryId: toPositiveIntOrNull(employee?.factoryId),
+    gradeId: toPositiveIntOrNull(employee?.gradeId),
+    currencyCode: resolveOptionalString(employee?.currencyCode, "VND") || "VND",
+    salarySystemVersionId: toPositiveIntOrNull(employee?.salarySystemVersionId),
+    salarySystemVersionNumber: toPositiveIntOrNull(employee?.salarySystemVersionNumber),
+    parameters: employee?.parameters && typeof employee.parameters === "object" ? employee.parameters : {},
+    salaryItems: ensureArray(employee?.salaryItems).map((item) => ({
+      code: String(item?.code || ""),
+      name: resolveOptionalString(item?.name, null) || String(item?.code || "-"),
+      nameKo: resolveOptionalString(item?.nameKo, null),
+      nameEn: resolveOptionalString(item?.nameEn, null),
+      nameVi: resolveOptionalString(item?.nameVi, null),
+      category: String(item?.category || "ALLOWANCE").toUpperCase(),
+      amount: toPayrollAmount(item?.amount, 0),
+      formula: ensureArray(item?.formula).map(String),
+    })),
+    grossSalary: toPayrollAmount(employee?.grossSalary ?? employee?.totalSalary, productionEarnings),
+    deductions: toPayrollAmount(employee?.deductions, 0),
+    netSalary: toPayrollAmount(employee?.netSalary ?? employee?.grossSalary ?? employee?.totalSalary, productionEarnings),
+    calculationSignature: resolveOptionalString(employee?.calculationSignature, null),
     productionAllowance: productionEarnings,
     productionEarnings,
-    totalEarnings: productionEarnings,
+    totalEarnings: toPayrollAmount(employee?.totalEarnings ?? employee?.grossSalary, productionEarnings),
     rateOverridden: Boolean(employee?.rateOverridden),
     processes,
   };
@@ -380,6 +402,13 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   const snapshotByWorkerId = new Map(
     snapshotEmployees.map((employee) => [employee.workerId, employee])
   );
+  const currentSignatureByWorkerId = new Map(
+    currentCalculatedEmployees.map((employee) => [employee.workerId, employee.calculationSignature || null])
+  );
+  const salaryCalculationChanged = Boolean(snapshot && (
+    snapshotEmployees.length !== currentCalculatedEmployees.length ||
+    snapshotEmployees.some((employee) => currentSignatureByWorkerId.get(employee.workerId) !== (employee.calculationSignature || null))
+  ));
   const groupsWithRecalculation = groups.map((group) => {
     const sourceChangedAfterCalculation = Boolean(snapshot && workLogs.some((workLog) => {
       const records = workLog.workRecords.filter((record) => record.lineId === group.lineId);
@@ -421,13 +450,11 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       ...group,
       needsRecalculation: Boolean(
         snapshot && snapshot.isProvisional &&
-        (sourceChangedAfterCalculation || configuredRateChanged || calculatedBasisChanged || !group.ready)
+        (salaryCalculationChanged || sourceChangedAfterCalculation || configuredRateChanged || calculatedBasisChanged || !group.ready)
       ),
     };
   });
-  const needsRecalculation = groupsWithRecalculation.some(
-    (group) => group.needsRecalculation
-  );
+  const needsRecalculation = salaryCalculationChanged || groupsWithRecalculation.some((group) => group.needsRecalculation);
 
   return {
     month,
@@ -437,6 +464,184 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     ready: completedMonth && groupsComplete,
     groups: groupsWithRecalculation,
   };
+};
+
+const buildIntegratedPayrollEmployees = async (
+  orgId: number,
+  month: string,
+  productionEmployeesInput: any[]
+) => {
+  const range = getPayrollMonthRange(month);
+  const monthEndDate = new Date(range.endExclusive.getTime() - 1);
+  const monthNumber = Number(month.slice(5, 7));
+  const monthStartKey = `${month}-01`;
+  const monthEndKey = monthEndDate.toISOString().slice(0, 10);
+  const [employees, attendance, holidays, factories] = await Promise.all([
+    prisma.employee.findMany({
+      where: { orgId, status: { notIn: ["PENDING", "REJECTED"] } },
+      include: { role: true },
+    }),
+    prisma.attendanceEntry.findMany({
+      where: { orgId, workDate: { gte: monthStartKey, lte: monthEndKey } },
+      orderBy: { workDate: "asc" },
+    }),
+    prisma.organizationHoliday.findMany({
+      where: { orgId, holidayDate: { gte: monthStartKey, lte: monthEndKey } },
+      select: { holidayDate: true },
+    }),
+    prisma.factory.findMany({
+      where: { orgId },
+      include: {
+        salaryCurrency: { select: { code: true } },
+        organization: { select: { salaryCurrency: { select: { code: true } } } },
+        salarySystemVersions: {
+          where: { effectiveMonth: { lte: month } },
+          orderBy: [{ effectiveMonth: "desc" }, { versionNumber: "desc" }],
+        },
+        salaryItems: { where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], include: { rates: true } },
+      },
+    }),
+  ]);
+  const holidayDateKeys = new Set(holidays.map((row) => String(row.holidayDate)));
+  const attendanceByWorker = new Map<number, any[]>();
+  for (const row of attendance) {
+    const rows = attendanceByWorker.get(row.workerId) || [];
+    rows.push(row);
+    attendanceByWorker.set(row.workerId, rows);
+  }
+  const productionByWorkerId = new Map(
+    productionEmployeesInput.map((employee) => [Number(employee?.workerId), normalizePayrollSnapshotEmployee(employee)])
+  );
+  const factoryById = new Map(factories.map((factory) => [factory.id, factory]));
+
+  return employees
+    .filter((employee) => isPayrollEmployeeRelevantForMonth(employee, range))
+    .map((employee) => {
+      const payType = resolveEmployeeEffectivePayType(employee);
+      const factory = employee.factoryId ? factoryById.get(employee.factoryId) : null;
+      if (!factory) {
+        throw createHttpError(409, `employee ${employee.id} has no payroll factory`);
+      }
+      const version = factory?.salarySystemVersions?.[0] || null;
+      if (!version) {
+        throw createHttpError(409, `factory ${factory.id} has no salary system version for ${month}`);
+      }
+      const versionSnapshot = version?.snapshot && typeof version.snapshot === "object" && !Array.isArray(version.snapshot)
+        ? version.snapshot as any
+        : null;
+      const items = versionSnapshot && Array.isArray(versionSnapshot.items)
+        ? versionSnapshot.items
+        : (factory?.salaryItems || []).map((item: any) => ({ ...item, id: item.code }));
+      const rates = versionSnapshot && Array.isArray(versionSnapshot.rates)
+        ? versionSnapshot.rates
+        : (factory?.salaryItems || []).flatMap((item: any) => item.rates.map((rate: any) => ({ ...rate, salaryItemCode: item.code })));
+      const currencyCode = resolveOptionalString(versionSnapshot?.currencyCode, null)
+        || factory?.salaryCurrency?.code
+        || factory?.organization?.salaryCurrency?.code
+        || "VND";
+      const workerAttendance = attendanceByWorker.get(employee.id) || [];
+      const attendanceParameters = resolveSalaryAttendanceParameters({ month, payType, holidayDateKeys, attendanceEntries: workerAttendance });
+      let regularSeconds = 0;
+      let overtimeSeconds = 0;
+      let holidaySeconds = 0;
+      for (const entry of workerAttendance) {
+        const seconds = Math.max(0, Number(entry.workedSeconds) || 0);
+        const dateKey = String(entry.workDate || "");
+        const day = new Date(`${dateKey}T00:00:00.000Z`).getUTCDay();
+        const isHoliday = holidayDateKeys.has(dateKey) || (payType === EMPLOYEE_PAY_TYPE.OUTPUT ? day === 0 : day === 0 || day === 6);
+        if (isHoliday) holidaySeconds += seconds;
+        else {
+          regularSeconds += Math.min(seconds, 8 * 60 * 60);
+          overtimeSeconds += Math.max(0, seconds - 8 * 60 * 60);
+        }
+      }
+      const joinedAt = employee.joinedAt ?? employee.approvedAt ?? employee.createdAt;
+      const tenureYears = joinedAt
+        ? Math.max(0, (monthEndDate.getTime() - new Date(joinedAt).getTime()) / (365.2425 * 24 * 60 * 60 * 1000))
+        : 0;
+      const production = productionByWorkerId.get(employee.id);
+      const productionAllowance = payType === EMPLOYEE_PAY_TYPE.OUTPUT
+        ? toPayrollAmount(production?.productionAllowance, 0)
+        : 0;
+      const parameters: Record<string, number> = {
+        GRADE_RATE: 0,
+        TENURE_YEARS: tenureYears,
+        ...attendanceParameters,
+        WORK_HOURS: regularSeconds / 3600,
+        OVERTIME_HOURS: overtimeSeconds / 3600,
+        HOLIDAY_HOURS: holidaySeconds / 3600,
+        PRODUCTION_ALLOWANCE: productionAllowance,
+      };
+      const applicableItems = ensureArray(items).filter((item) => {
+        const payTypes = ensureArray(item?.payTypes).map((value) => String(value).toUpperCase());
+        const paymentMonths = ensureArray(item?.paymentMonths).map(Number);
+        return payTypes.includes(payType) && (paymentMonths.length === 0 || paymentMonths.includes(monthNumber));
+      });
+      const salaryItems = applicableItems.map((item) => {
+        const code = String(item?.code || item?.id || "");
+        const rate = ensureArray(rates).find((row) =>
+          String(row?.salaryItemCode || "") === code &&
+          String(row?.payType || "").toUpperCase() === payType &&
+          Number(row?.gradeId) === employee.gradeId
+        );
+        if (String(item?.category || "").toUpperCase() !== "INCENTIVE" && !rate) {
+          throw createHttpError(409, `salary rate is missing for employee ${employee.id}, item ${code}`);
+        }
+        const itemParameters = { ...parameters, GRADE_RATE: toPayrollAmount(rate?.amount, 0) };
+        const formula = ensureArray(item?.formula).map(String);
+        let amount = Number(evaluateSalaryFormula(formula, itemParameters) ?? 0);
+        const capValue = toPayrollAmountOrNull(item?.capValue);
+        if (capValue !== null) amount = Math.min(amount, capValue);
+        amount = Math.max(0, Math.round(amount));
+        return {
+          code,
+          name: resolveOptionalString(item?.name, null) || code,
+          nameKo: resolveOptionalString(item?.nameKo, null),
+          nameEn: resolveOptionalString(item?.nameEn, null),
+          nameVi: resolveOptionalString(item?.nameVi, null),
+          category: String(item?.category || "ALLOWANCE").toUpperCase(),
+          formula,
+          amount,
+        };
+      });
+      const grossSalary = salaryItems.reduce((sum, item) => sum + item.amount, 0);
+      const calculationSignature = JSON.stringify({
+        workerId: employee.id,
+        factoryId: employee.factoryId,
+        gradeId: employee.gradeId,
+        payType,
+        versionId: version?.id || null,
+        items: salaryItems.map((item) => [item.code, item.amount]),
+        parameters,
+      });
+      return normalizePayrollSnapshotEmployee({
+        ...(production || {}),
+        employeeKey: buildPayrollEmployeeKey(employee.id, employee.name),
+        workerId: employee.id,
+        workerName: resolvePayrollEmployeeName(employee),
+        orgRole: employee.orgRole,
+        roleName: resolvePayrollRoleName(employee),
+        payType,
+        bankName: employee.bankName,
+        bankAccountNumber: employee.bankAccountNumber,
+        factoryId: employee.factoryId,
+        gradeId: employee.gradeId,
+        currencyCode,
+        salarySystemVersionId: version?.id || null,
+        salarySystemVersionNumber: version?.versionNumber || null,
+        parameters,
+        salaryItems,
+        productionAllowance,
+        productionEarnings: productionAllowance,
+        grossSalary,
+        deductions: 0,
+        netSalary: grossSalary,
+        totalEarnings: grossSalary,
+        calculationSignature,
+        processes: production?.processes || [],
+      });
+    })
+    .sort((left, right) => left.workerName.localeCompare(right.workerName));
 };
 
 export const listPayrollSnapshots = async (orgId: number) => {
@@ -455,9 +660,7 @@ export const listPayrollSnapshots = async (orgId: number) => {
   });
   return snapshots.map((snapshot) => ({
     ...snapshot,
-    data: ensureArray(snapshot.data)
-      .map(normalizePayrollSnapshotEmployee)
-      .filter((employee) => employee.payType === EMPLOYEE_PAY_TYPE.OUTPUT),
+    data: ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee),
   }));
 };
 
@@ -486,9 +689,7 @@ export const getPayrollByMonth = async (
       lockedBy: snapshot.lockedBy,
       isProvisional: snapshot.isProvisional,
       month,
-      employees: ensureArray(snapshot.data)
-        .map(normalizePayrollSnapshotEmployee)
-        .filter((employee) => employee.payType === EMPLOYEE_PAY_TYPE.OUTPUT),
+      employees: ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee),
     };
   }
 
@@ -721,13 +922,14 @@ export const getPayrollByMonth = async (
     })
     .sort((a, b) => b.productionAllowance - a.productionAllowance);
 
+  const integratedEmployees = await buildIntegratedPayrollEmployees(orgId, month, employees);
   return {
     locked: false,
     snapshotExists: false,
     isProvisional: !monthReady,
     monthReady,
     month,
-    employees,
+    employees: integratedEmployees,
   };
 };
 
@@ -750,10 +952,6 @@ export const savePayrollSnapshot = async ({
     throw createHttpError(409, "production allowance can only be calculated through the previous month");
   }
   const monthReady = isPayrollMonthReady(month, { timeZone });
-  const readiness = await getPayrollMonthReadiness(orgId, month);
-  if (!readiness.ready) {
-    throw createHttpError(409, "monthly work records are incomplete");
-  }
   const unreviewedCtPlans = monthReady ? await prisma.assignmentPlan.findMany({
     where: {
       orgId,
@@ -781,9 +979,7 @@ export const savePayrollSnapshot = async ({
 
   void _employees;
   const calculated = await getPayrollByMonth(orgId, month, { ignoreSnapshot: true });
-  const snapshotEmployees = calculated.employees
-    .map(normalizePayrollSnapshotEmployee)
-    .filter((employee) => employee.payType === EMPLOYEE_PAY_TYPE.OUTPUT);
+  const snapshotEmployees = calculated.employees.map(normalizePayrollSnapshotEmployee);
   const savedAt = new Date();
   const savedByText = String(savedBy || "unknown");
 
@@ -971,11 +1167,21 @@ export const updatePayrollEmployeeRates = async ({
       (sum, process) => sum + toPayrollAmount(process.totalEarnings, 0),
       0
     );
+    const salaryItems = ensureArray(employee.salaryItems).map((item) => {
+      const formula = ensureArray(item?.formula).map(String);
+      return item?.category === "INCENTIVE" || formula.includes("PRODUCTION_ALLOWANCE")
+        ? { ...item, amount: Math.round(productionAllowance) }
+        : item;
+    });
+    const grossSalary = salaryItems.reduce((sum, item) => sum + toPayrollAmount(item?.amount, 0), 0);
     return {
       ...employee,
+      salaryItems,
       productionAllowance,
       productionEarnings: productionAllowance,
-      totalEarnings: productionAllowance,
+      grossSalary,
+      netSalary: grossSalary - toPayrollAmount(employee.deductions, 0),
+      totalEarnings: grossSalary,
       rateOverridden: true,
       processes,
     };
@@ -1051,6 +1257,7 @@ export const lockPayrollSnapshot = async ({
 
   const readiness = await getPayrollMonthReadiness(orgId, month);
   if (!readiness.ready) throw createHttpError(409, "monthly work records are incomplete");
+  if (readiness.needsRecalculation) throw createHttpError(409, "payroll must be recalculated before locking");
 
   await prisma.payrollSnapshot.update({
     where: { id: existing.id },

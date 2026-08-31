@@ -39,28 +39,18 @@ export const getPayrollCalendarController = async (req: Request, res: Response) 
         .sort((a, b) => a.localeCompare(b))[0] ?? DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY
     : DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY;
   const currentMonthKey = resolveCurrentPayrollMonthKey({ timeZone });
-  const workLogs = await prisma.workLog.findMany({
-    where: {
-      orgId: organization.id,
-      workRecords: { some: {} },
-    },
-    select: {
-      displayDate: true,
-      factory: { select: { managementStartDate: true } },
-    },
-  });
-  const availableMonthKeys = Array.from(
-    new Set(
-      workLogs
-        .filter(
-          (workLog) =>
-            String(workLog.displayDate || "") >=
-            resolveFactoryManagementStartDateKey(workLog.factory)
-        )
-        .map((workLog) => String(workLog.displayDate || "").slice(0, 7))
-        .filter((month) => /^\d{4}-(0[1-9]|1[0-2])$/.test(month) && month <= currentMonthKey)
-    )
-  ).sort((a, b) => b.localeCompare(a));
+  const availableMonthKeys: string[] = [];
+  const startMonthKey = managementStartDateKey.slice(0, 7);
+  const startYear = Number(startMonthKey.slice(0, 4));
+  const startMonth = Number(startMonthKey.slice(5, 7));
+  const endYear = Number(currentMonthKey.slice(0, 4));
+  const endMonth = Number(currentMonthKey.slice(5, 7));
+  for (let year = startYear, month = startMonth; year < endYear || (year === endYear && month <= endMonth);) {
+    availableMonthKeys.push(`${year}-${String(month).padStart(2, "0")}`);
+    month += 1;
+    if (month > 12) { year += 1; month = 1; }
+  }
+  availableMonthKeys.sort((a, b) => b.localeCompare(a));
   return res.json({
     currentMonthKey,
     latestCompletedMonthKey: resolveLatestCompletedPayrollMonthKey({ timeZone }),

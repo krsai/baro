@@ -128,8 +128,6 @@ const PayrollBoard = () => {
       ? { people: 'Tong (Thuong/San luong)', generalPayroll: 'Luong thuong', outputPayroll: 'Luong san luong', totalPayroll: 'Tong luong', lock: 'Khoa', pending: 'Chua tinh' }
       : { people: 'Total (General/Production)', generalPayroll: 'General Payroll', outputPayroll: 'Production Payroll', totalPayroll: 'Total Payroll', lock: 'Lock', pending: 'Not calculated' };
   const activeEmployees = useMemo(() => employeeDirectory.filter((employee) => !['PENDING', 'REJECTED', 'TERMINATED'].includes(String(employee?.status || '').toUpperCase())), [employeeDirectory]);
-  const generalEmployeeCount = useMemo(() => activeEmployees.filter((employee) => !['OUTPUT', 'CT'].includes(String(employee?.payType || '').toUpperCase())).length, [activeEmployees]);
-  const outputEmployeeCount = activeEmployees.length - generalEmployeeCount;
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!activeOrgId) return;
@@ -207,7 +205,7 @@ const PayrollBoard = () => {
     () => monthRows
       .filter(({ month, snapshot }) => {
         const monthReadiness = readinessByMonth[month];
-        return Boolean(monthReadiness?.ready && !snapshot);
+        return Boolean(monthReadiness?.completedMonth && !snapshot);
       })
       .map(({ month }) => month)
       .sort((left, right) => left.localeCompare(right)),
@@ -249,16 +247,13 @@ const PayrollBoard = () => {
   };
 
   const handleRecalculateMonth = async (month) => {
-    const groups = (readinessByMonth[month]?.groups || []).filter((group) => group.needsRecalculation);
-    if (groups.length === 0) return;
+    if (!readinessByMonth[month]?.needsRecalculation) return;
     setMutating(`recalculate:${month}`);
     try {
-      for (const group of groups) {
-        await requestJSON(`/payroll/snapshots/${month}/recalculate-line` + buildQueryString({ orgId: activeOrgId }), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ factoryId: group.factoryId, lineId: group.lineId }),
-        });
-      }
+      await requestJSON('/payroll/snapshots' + buildQueryString({ orgId: activeOrgId }), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month, savedBy: activeProfile?.email || activeProfile?.name || 'administrator' }),
+      });
       await load();
       showNotification(resolveText(languageCode, 'calculateSuccess', { month }), 'success');
     } catch (error) {
@@ -365,17 +360,24 @@ const PayrollBoard = () => {
                   : filteredMonthRows.length === 0 ? <TableStatusRow colSpan={7} message={resolveText(languageCode, 'empty')} />
                     : filteredMonthRows.map(({ month, snapshot }) => {
                       const groups = readinessByMonth[month]?.groups || [];
-                      const rowNeedsRecalculation = Boolean(snapshot && groups.some((group) => group.needsRecalculation));
+                      const rowNeedsRecalculation = Boolean(snapshot && readinessByMonth[month]?.needsRecalculation);
+                      const snapshotEmployees = Array.isArray(snapshot?.data) ? snapshot.data : [];
+                      const summaryEmployees = snapshot ? snapshotEmployees : activeEmployees;
+                      const generalEmployees = summaryEmployees.filter((employee) => !['OUTPUT', 'CT'].includes(String(employee?.payType || '').toUpperCase()));
+                      const outputEmployees = summaryEmployees.filter((employee) => ['OUTPUT', 'CT'].includes(String(employee?.payType || '').toUpperCase()));
+                      const salaryTotal = (rows) => rows.reduce((sum, employee) => sum + Number(employee?.grossSalary || 0), 0);
+                      const generalPayroll = salaryTotal(generalEmployees);
+                      const outputPayroll = salaryTotal(outputEmployees);
                       return (
                         <TableRow
                           key={month} hover sx={{ cursor: snapshot ? 'pointer' : 'default' }}
                           onClick={() => snapshot && navigateToPath(`/payroll/${month}`, { label: `${text.title} ${month}` })}
                         >
                           <TableCell sx={{ fontWeight: 700 }}>{month}</TableCell>
-                          <TableCell align="right">{activeEmployees.length} ({generalEmployeeCount}/{outputEmployeeCount}){text.peopleSuffix}</TableCell>
-                          <TableCell align="right" sx={{ color: 'text.secondary' }}>{payrollSummaryText.pending}</TableCell>
-                          <TableCell align="right" sx={{ color: 'text.secondary' }}>{payrollSummaryText.pending}</TableCell>
-                          <TableCell align="right" sx={{ color: 'text.secondary', fontWeight: 700 }}>{payrollSummaryText.pending}</TableCell>
+                          <TableCell align="right">{summaryEmployees.length} ({generalEmployees.length}/{outputEmployees.length}){text.peopleSuffix}</TableCell>
+                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? `${generalPayroll.toLocaleString()} VND` : payrollSummaryText.pending}</TableCell>
+                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? `${outputPayroll.toLocaleString()} VND` : payrollSummaryText.pending}</TableCell>
+                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary', fontWeight: 700 }}>{snapshot ? `${(generalPayroll + outputPayroll).toLocaleString()} VND` : payrollSummaryText.pending}</TableCell>
                           <TableCell align="center">
                             <Stack direction="row" spacing={0.75} justifyContent="center" alignItems="center">
                               <Chip
@@ -384,7 +386,7 @@ const PayrollBoard = () => {
                                 label={!snapshot ? payrollStatusText.notCalculated : rowNeedsRecalculation ? payrollStatusText.recalculationRequired : payrollStatusText.calculated}
                                 variant="outlined"
                               />
-                              {!snapshot ? <Button size="small" disabled={!groups.some((group) => group.ready) || calculating} onClick={(event) => { event.stopPropagation(); handleCalculate(month); }}>
+                              {!snapshot ? <Button size="small" disabled={calculating} onClick={(event) => { event.stopPropagation(); handleCalculate(month); }}>
                                 {resolveText(languageCode, 'calculate')}
                               </Button> : rowNeedsRecalculation && snapshot?.isProvisional ? <Button
                                 size="small" variant="text" color="warning"
