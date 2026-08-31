@@ -69,8 +69,7 @@ const FORMULA_PARAMETER_GROUPS = [
 ];
 const FORMULA_OPERATORS = ['+', '−', '×', '÷', '(', ')'];
 const DEFAULT_FORMULA = ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS', '÷', 'SCHEDULED_WORKDAYS'];
-// 일반(GENERAL) 급여 타입과 생산(OUTPUT) 급여 타입의 유일한 차이는 성과급 유무이므로,
-// 적용 대상 급여 타입은 항목별로 따로 선택하지 않고 급여 구분(카테고리)에서 자동으로 정해진다.
+// 새 항목의 최초 급여 타입만 카테고리 기준으로 정하고, 이후에는 항목 목록의 체크박스로 직접 편집한다.
 const defaultPayTypesForCategory = (category) => (category === 'INCENTIVE' ? ['OUTPUT'] : ['GENERAL', 'OUTPUT']);
 const DEFAULT_DRAFT = { name: '', nameKo: '', nameEn: '', nameVi: '', category: 'ALLOWANCE', formula: ['GRADE_RATE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '' };
 const item = (id, name, category, payCycle = 'MONTHLY', extra = {}) =>
@@ -286,20 +285,20 @@ const SalarySystem = () => {
   const isFixedIncentive = selected.category === 'INCENTIVE';
   const counts = useMemo(() => items.reduce((map, row) => ({ ...map, [row.category]: (map[row.category] || 0) + 1 }), {}), [items]);
   const updateSelected = (field, value) => setItems((rows) => rows.map((row) => row.id === selected.id ? { ...row, [field]: value } : row));
-  const toggleSelectedPayType = (payType) => {
-    if (isFixedIncentive) return;
-    const current = selected.payTypes || [];
+  const toggleItemPayType = (itemRow, payType) => {
+    if (itemRow.category === 'INCENTIVE') return;
+    const current = itemRow.payTypes || [];
     if (current.includes(payType) && current.length === 1) return;
     if (current.includes(payType)) {
       setRates((previous) => Object.fromEntries(Object.entries(previous).map(([key, itemRates]) => {
         if (!key.startsWith(`${payType}:`)) return [key, itemRates];
         const nextItemRates = { ...itemRates };
-        delete nextItemRates[selected.id];
+        delete nextItemRates[itemRow.id];
         return [key, nextItemRates];
       })));
     }
     const next = current.includes(payType) ? current.filter((value) => value !== payType) : [...current, payType];
-    updateSelected('payTypes', PAY_TYPE_ORDER.filter((value) => next.includes(value)));
+    setItems((rows) => rows.map((row) => row.id === itemRow.id ? { ...row, payTypes: PAY_TYPE_ORDER.filter((value) => next.includes(value)) } : row));
   };
   const getRate = (payType, gradeId) => rates[`${payType}:${gradeId}`]?.[selected.id] || '0';
   const changeRate = (payType, gradeId, value) => {
@@ -479,9 +478,13 @@ const SalarySystem = () => {
                 {items.filter((row) => row.category === category).map((row, index) => <Draggable key={row.id} draggableId={String(row.id)} index={index}>
                   {(dragProvided, snapshot) => <Stack ref={dragProvided.innerRef} {...dragProvided.draggableProps} direction="row" alignItems="center" sx={{ bgcolor: snapshot.isDragging ? 'action.hover' : 'transparent', borderRadius: 1 }}>
                     <IconButton {...dragProvided.dragHandleProps} size="small" aria-label="순서 변경" sx={{ flexShrink: 0, cursor: 'grab', color: 'text.disabled', '&:active': { cursor: 'grabbing' } }}><DragIndicatorIcon fontSize="small" /></IconButton>
-                    <Button variant={selectedId === row.id ? 'contained' : 'text'} color={selectedId === row.id ? 'primary' : 'inherit'} onClick={() => setSelectedId(row.id)} sx={{ display: 'block', flex: 1, minWidth: 0, textAlign: 'left', px: 1.5 }}>
-                      <Typography variant="body2" fontWeight={600}>{salaryItemName(row, languageCode)}</Typography><Typography variant="caption" sx={{ display: 'block', opacity: 0.75 }}>{(row.payTypes || []).map((payType) => t(PAY_TYPES[payType]?.label || payType)).join(' · ')} · {t(PAY_CYCLES[row.payCycle])}</Typography>
-                    </Button>
+                    <Box role="button" tabIndex={0} onClick={() => setSelectedId(row.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(row.id); } }} sx={{ flex: 1, minWidth: 0, px: 1.5, py: 0.75, borderRadius: 1, cursor: 'pointer', bgcolor: selectedId === row.id ? 'primary.main' : 'transparent', color: selectedId === row.id ? 'primary.contrastText' : 'text.primary', '&:hover': { bgcolor: selectedId === row.id ? 'primary.dark' : 'action.hover' } }}>
+                      <Typography variant="body2" fontWeight={600}>{salaryItemName(row, languageCode)}</Typography>
+                      <Stack direction="row" spacing={0.5} alignItems="center" useFlexGap flexWrap="wrap" sx={{ mt: 0.15 }}>
+                        {PAY_TYPE_ORDER.map((payType) => { const active = (row.payTypes || []).includes(payType); const fixed = row.category === 'INCENTIVE'; const isLastActiveType = active && (row.payTypes || []).length === 1; return <FormControlLabel key={payType} onClick={(event) => event.stopPropagation()} control={<Checkbox size="small" checked={active} disabled={fixed || isLastActiveType} onChange={() => toggleItemPayType(row, payType)} sx={{ p: 0.25, color: selectedId === row.id ? 'rgba(255,255,255,.72)' : undefined, '&.Mui-checked': { color: selectedId === row.id ? 'common.white' : undefined } }} />} label={<Typography variant="caption">{t(PAY_TYPES[payType]?.label || payType)}</Typography>} sx={{ m: 0 }} />; })}
+                        <Typography variant="caption" sx={{ opacity: 0.75 }}>· {t(PAY_CYCLES[row.payCycle])}</Typography>
+                      </Stack>
+                    </Box>
                   </Stack>}
                 </Draggable>)}
                 {dropProvided.placeholder}
@@ -495,10 +498,7 @@ const SalarySystem = () => {
         <Stack direction="row" alignItems="center" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Box><Typography variant="h6" fontWeight={700}>{salaryItemName(selected, languageCode)}</Typography><Typography variant="body2" color="text.secondary">{calculationLabel(selected, t)}</Typography></Box>
           {!isFixedIncentive && <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 'auto' }}><Button variant="outlined" startIcon={<EditOutlinedIcon />} onClick={openFormulaDialog}>{t('수정')}</Button><Tooltip title={t(selected.required ? '기본급은 삭제할 수 없습니다.' : '항목 삭제')}><span><IconButton color="error" disabled={selected.required} onClick={removeItem}><DeleteOutlineIcon /></IconButton></span></Tooltip></Stack>}</Stack>
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-          <Stack spacing={1}>
-            <Stack direction="row" spacing={1.5} alignItems="center"><Typography variant="body2" fontWeight={700}>{t('급여 타입')}</Typography><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{PAY_TYPE_ORDER.map((payType) => { const active = (selected.payTypes || []).includes(payType); const isLastActiveType = active && (selected.payTypes || []).length === 1; return <FormControlLabel key={payType} control={<Checkbox size="small" checked={active} disabled={isFixedIncentive || isLastActiveType} onChange={() => toggleSelectedPayType(payType)} />} label={t(PAY_TYPES[payType]?.label || payType)} sx={{ m: 0 }} />; })}</Stack></Stack>
-            <Stack direction="row" spacing={1.5} alignItems="center"><Typography variant="body2" fontWeight={700}>{t('정산 설정')}</Typography><Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap"><Chip size="small" variant="outlined" label={t(PAY_CYCLES[selected.payCycle])} />{selected.payCycle !== 'MONTHLY' && <Chip size="small" variant="outlined" label={(selected.paymentMonths || []).map((month) => `${month}${t('월')}`).join(' · ')} />}{selected.capValue && <Chip size="small" variant="outlined" label={`${t('상한')} ${money(selected.capValue)} ${currencyCode}`} />}</Stack></Stack>
-          </Stack>
+          <Stack direction="row" spacing={1.5} alignItems="center"><Typography variant="body2" fontWeight={700}>{t('정산 설정')}</Typography><Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap"><Chip size="small" variant="outlined" label={t(PAY_CYCLES[selected.payCycle])} />{selected.payCycle !== 'MONTHLY' && <Chip size="small" variant="outlined" label={(selected.paymentMonths || []).map((month) => `${month}${t('월')}`).join(' · ')} />}{selected.capValue && <Chip size="small" variant="outlined" label={`${t('상한')} ${money(selected.capValue)} ${currencyCode}`} />}</Stack></Stack>
           <Paper variant="outlined" sx={{ mt: 1.5, p: 2, bgcolor: 'action.hover', borderColor: 'divider' }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{ flex: 1 }}><Typography variant="h6" fontWeight={700}>{salaryItemName(selected, languageCode)}</Typography><Typography variant="h6" color="primary.main" fontWeight={700}>=</Typography><Typography fontWeight={700}>{isFixedIncentive ? t('공장 초당 단가 × CT × 작업 수량') : formulaLabel(selected.formula, t) || t('계산식이 비어 있습니다.')}</Typography></Stack></Stack></Paper>
         </Box>
         {isFixedIncentive
