@@ -776,7 +776,7 @@ const MainLayout = () => {
         isOpen: accountingOpen,
         children: [
           {
-            label: getUiMessage('menu.payroll', '\uC0DD\uC0B0\uC218\uB2F9', languageCode),
+            label: getUiMessage('menu.payroll', '\uAE09\uC5EC \uACC4\uC0B0', languageCode),
             icon: <CalculateIcon />,
             path: '/payroll',
           },
@@ -1304,7 +1304,7 @@ const MainLayout = () => {
       }
       if (tabPath.startsWith('/payroll/') && tabPath !== '/payroll') {
         const monthContext = String(tab?.label || '').match(/\b\d{4}-\d{2}\b/)?.[0] || '';
-        const payrollLabel = getUiMessage('menu.payroll', '생산수당', languageCode);
+        const payrollLabel = getUiMessage('menu.payroll', '급여 계산', languageCode);
         return monthContext ? `${payrollLabel}: ${monthContext}` : payrollLabel;
       }
 

@@ -118,10 +118,10 @@ const PayrollBoard = () => {
   const [mutating, setMutating] = useState('');
 
   const text = useMemo(() => ({
-    title: getUiMessage('menu.payroll', 'Production Allowance', languageCode),
+    title: getUiMessage('menu.payroll', 'Payroll', languageCode),
     month: getUiMessage('payrollBoard.month', 'Settlement Month', languageCode),
     employees: getUiMessage('payrollBoard.employees', 'Employees', languageCode),
-    total: getUiMessage('payrollBoard.total', 'Total Production Allowance', languageCode),
+    total: getUiMessage('payrollBoard.total', 'Production Allowance Subtotal', languageCode),
     status: getUiMessage('payrollBoard.status', 'Status', languageCode),
     delete: getUiMessage('payrollBoard.delete', 'Delete', languageCode),
     peopleSuffix: getUiMessage('payrollBoard.peopleSuffix', '', languageCode),

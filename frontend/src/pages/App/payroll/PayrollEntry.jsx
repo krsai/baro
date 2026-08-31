@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
-  Alert, Box, Button, Chip, CircularProgress, Collapse, Paper, Stack, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow, TextField, Typography,
+  Alert, Box, Button, Chip, CircularProgress, Collapse, Dialog, DialogActions, DialogContent,
+  DialogTitle, Divider, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
+  TableRow, TextField, Typography,
   Tooltip, alpha,
 } from '@mui/material';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import LockOpenOutlinedIcon from '@mui/icons-material/LockOpenOutlined';
+import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import SaveButton from '../../../components/SaveButton';
@@ -61,6 +63,12 @@ const formatRate = (value) => `${formatNumberWithCommas(Number(value) || 0, {
 })} VND/s`;
 const productionAllowanceOf = (employee) =>
   Number(employee?.productionAllowance ?? employee?.productionEarnings ?? 0) || 0;
+const normalizeEmployeePayType = (value) => {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'OUTPUT' || normalized === 'CT') return 'OUTPUT';
+  return 'GENERAL';
+};
+const escapePrintText = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
 const appliedRateOf = (employee) => {
   const processes = Array.isArray(employee?.processes) ? employee.processes : [];
   const totalCtSeconds = processes.reduce((sum, process) => sum + Number(process?.totalCtSeconds || 0), 0);
@@ -110,6 +118,7 @@ const PayrollEntry = () => {
   const { activeOrgId, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
   const text = TEXT[languageCode] || TEXT.en;
+  const pageTitle = languageCode === 'ko' ? '급여 계산 상세' : languageCode === 'vi' ? 'Chi tiết tính lương' : 'Payroll Details';
   const month = String(payrollId || '').trim();
   const factoryId = Number(searchParams.get('factoryId')) || null;
   const lineId = Number(searchParams.get('lineId')) || null;
@@ -120,16 +129,19 @@ const PayrollEntry = () => {
   const [initialRates, setInitialRates] = useState({});
   const [savingRates, setSavingRates] = useState(false);
   const [togglingLock, setTogglingLock] = useState(false);
+  const [employeeDirectory, setEmployeeDirectory] = useState([]);
+  const [payslipEmployee, setPayslipEmployee] = useState(null);
 
   const load = useCallback(async () => {
     if (!activeOrgId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return;
     setLoading(true);
     try {
-      const payload = await requestJSON(
-        '/payroll' + buildQueryString({ orgId: activeOrgId, month }),
-        { forceRefresh: true }
-      );
+      const [payload, directory] = await Promise.all([
+        requestJSON('/payroll' + buildQueryString({ orgId: activeOrgId, month }), { forceRefresh: true }),
+        requestJSON('/employees' + buildQueryString({ orgId: activeOrgId }), { forceRefresh: true }),
+      ]);
       setData(payload);
+      setEmployeeDirectory(Array.isArray(directory) ? directory : []);
       const loadedRates = buildEmployeeRateDrafts(payload?.employees);
       setRateDrafts(loadedRates);
       setInitialRates(loadedRates);
@@ -144,8 +156,14 @@ const PayrollEntry = () => {
   useEffect(() => { load(); }, [load]);
 
   const employees = useMemo(() => {
-    const rows = Array.isArray(data?.employees) ? data.employees : [];
-    if (!factoryId && !lineId) return rows;
+    const payrollRows = Array.isArray(data?.employees) ? data.employees : [];
+    const payrollByWorkerId = new Map(payrollRows.filter((employee) => Number(employee?.workerId) > 0).map((employee) => [Number(employee.workerId), employee]));
+    const directoryRows = employeeDirectory.filter((employee) => !['PENDING', 'REJECTED'].includes(String(employee?.status || '').toUpperCase()));
+    const knownWorkerIds = new Set(directoryRows.map((employee) => Number(employee.id)));
+    const rows = [
+      ...directoryRows.map((employee) => ({ ...employee, ...(payrollByWorkerId.get(Number(employee.id)) || {}), workerId: Number(employee.id), workerName: employee.name || payrollByWorkerId.get(Number(employee.id))?.workerName, payType: normalizeEmployeePayType(employee.payType) })),
+      ...payrollRows.filter((employee) => !knownWorkerIds.has(Number(employee?.workerId))),
+    ];
     return rows.map((employee) => {
       const processes = (Array.isArray(employee?.processes) ? employee.processes : []).filter(
         (process) => (!factoryId || Number(process.factoryId) === factoryId) &&
@@ -154,13 +172,40 @@ const PayrollEntry = () => {
       const productionAllowance = processes.reduce(
         (sum, process) => sum + Number(process.totalEarnings || 0), 0
       );
-      return { ...employee, processes, productionAllowance, productionEarnings: productionAllowance };
-    }).filter((employee) => employee.processes.length > 0);
-  }, [data?.employees, factoryId, lineId]);
+      return { ...employee, payType: normalizeEmployeePayType(employee.payType), processes, productionAllowance, productionEarnings: productionAllowance };
+    }).filter((employee) => (!factoryId || Number(employee.factoryId) === factoryId || employee.processes.length > 0) && (!lineId || Number(employee.lineId) === lineId || employee.processes.length > 0));
+  }, [data?.employees, employeeDirectory, factoryId, lineId]);
   const total = useMemo(
     () => employees.reduce((sum, employee) => sum + productionAllowanceOf(employee), 0),
     [employees]
   );
+  const payslipText = languageCode === 'ko' ? {
+    title: '월 급여명세서', employee: '직원', payType: '급여 타입', earnings: '지급 항목', amount: '금액',
+    base: '기본급', allowance: '일반 수당', production: '생산수당', deductions: '공제', net: '최종 지급액',
+    pending: '미계산', notApplicable: '해당 없음', print: '인쇄', close: '닫기', open: '급여표', preview: 'UI 시안',
+  } : languageCode === 'vi' ? {
+    title: 'Phiếu lương tháng', employee: 'Nhân viên', payType: 'Loại lương', earnings: 'Khoản chi trả', amount: 'Số tiền',
+    base: 'Lương cơ bản', allowance: 'Phụ cấp', production: 'Phụ cấp sản lượng', deductions: 'Khấu trừ', net: 'Thực lĩnh',
+    pending: 'Chưa tính', notApplicable: 'Không áp dụng', print: 'In', close: 'Đóng', open: 'Phiếu lương', preview: 'Bản xem trước UI',
+  } : {
+    title: 'Monthly Payslip', employee: 'Employee', payType: 'Pay Type', earnings: 'Earnings', amount: 'Amount',
+    base: 'Base Salary', allowance: 'Allowances', production: 'Production Allowance', deductions: 'Deductions', net: 'Net Pay',
+    pending: 'Not calculated', notApplicable: 'Not applicable', print: 'Print', close: 'Close', open: 'Payslip', preview: 'UI Preview',
+    payrollByEmployee: 'Payroll by Employee', productionSubtotal: 'Production Allowance Subtotal', details: 'Production Details',
+  };
+  const unifiedPayrollText = languageCode === 'ko'
+    ? { payrollByEmployee: '\uC9C1\uC6D0\uBCC4 \uAE09\uC5EC \uACC4\uC0B0', productionSubtotal: '\uC0DD\uC0B0\uC218\uB2F9 \uC18C\uACC4', details: '\uC0DD\uC0B0 \uC0C1\uC138' }
+    : languageCode === 'vi'
+      ? { payrollByEmployee: 'Tinh luong theo nhan vien', productionSubtotal: 'Tong phu cap san luong', details: 'Chi tiet san luong' }
+      : { payrollByEmployee: 'Payroll by Employee', productionSubtotal: 'Production Allowance Subtotal', details: 'Production Details' };
+  const handlePrintPayslip = () => {
+    if (!payslipEmployee) return;
+    const production = payslipEmployee.payType === 'OUTPUT' ? formatDong(productionAllowanceOf(payslipEmployee)) : payslipText.notApplicable;
+    const popup = window.open('', '_blank', 'width=820,height=900');
+    if (!popup) return;
+    popup.document.write(`<!doctype html><html><head><title>${escapePrintText(payslipText.title)} ${escapePrintText(month)}</title><style>body{font-family:Arial,sans-serif;color:#111;padding:36px}h1{font-size:22px;margin:0 0 24px}.meta{display:grid;grid-template-columns:120px 1fr;gap:8px;margin-bottom:24px}table{width:100%;border-collapse:collapse}th,td{padding:11px;border:1px solid #ccc;text-align:left}th:last-child,td:last-child{text-align:right}.total{font-weight:700;background:#f5f5f5}.note{margin-top:18px;color:#666;font-size:12px}@media print{body{padding:0}}</style></head><body><h1>${escapePrintText(payslipText.title)} · ${escapePrintText(month)}</h1><div class="meta"><b>${escapePrintText(payslipText.employee)}</b><span>${escapePrintText(payslipEmployee.workerName || '-')}</span><b>${escapePrintText(payslipText.payType)}</b><span>${escapePrintText(payslipEmployee.payType)}</span></div><table><thead><tr><th>${escapePrintText(payslipText.earnings)}</th><th>${escapePrintText(payslipText.amount)}</th></tr></thead><tbody><tr><td>${escapePrintText(payslipText.base)}</td><td>${escapePrintText(payslipText.pending)}</td></tr><tr><td>${escapePrintText(payslipText.allowance)}</td><td>${escapePrintText(payslipText.pending)}</td></tr><tr><td>${escapePrintText(payslipText.production)}</td><td>${escapePrintText(production)}</td></tr><tr><td>${escapePrintText(payslipText.deductions)}</td><td>${escapePrintText(payslipText.pending)}</td></tr><tr class="total"><td>${escapePrintText(payslipText.net)}</td><td>${escapePrintText(payslipText.pending)}</td></tr></tbody></table><div class="note">${escapePrintText(payslipText.preview)}</div><script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script></body></html>`);
+    popup.document.close();
+  };
   const provisional = data?.isProvisional === true;
   const locked = Boolean(data && !provisional);
   const changedRateWorkerIds = useMemo(
@@ -229,7 +274,7 @@ const PayrollEntry = () => {
 
   return (
     <AppPageContainer
-      title={`${text.title} · ${month}`}
+      title={`${pageTitle} · ${month}`}
       toolbar={<PageToolbar showLastUpdater={false} right={data ? (
         <Stack direction="row" spacing={1} alignItems="center">
           <Tooltip title={(LOCK_TEXT[languageCode] || LOCK_TEXT.en)[locked ? 'lockedHelp' : 'unlockedHelp']}>
@@ -266,20 +311,24 @@ const PayrollEntry = () => {
           <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
             <Box sx={{ px: 2, py: 1.25, bgcolor: 'grey.50', display: 'flex', justifyContent: 'space-between', gap: 2 }}>
               <Stack direction="row" spacing={1} alignItems="center">
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{text.employeeAllowance}</Typography>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{unifiedPayrollText.payrollByEmployee}</Typography>
                 <Chip size="small" label={`${employees.length}${text.people}`} variant="outlined" />
                 <Chip size="small" color={provisional ? 'warning' : 'success'} label={provisional ? text.current : text.confirmed} variant="outlined" />
               </Stack>
               <Stack direction="row" spacing={1} alignItems="center">
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>{text.total} {formatDong(total)}</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>{unifiedPayrollText.productionSubtotal} {formatDong(total)}</Typography>
               </Stack>
             </Box>
             <TableContainer><Table size="small">
               <TableHead><TableRow>
                 <TableCell>{text.employee}</TableCell>
-                <TableCell align="right">{text.appliedRate}</TableCell>
-                <TableCell align="right">{text.allowance}</TableCell>
-                <TableCell align="center">{text.basis}</TableCell>
+                <TableCell align="center">{payslipText.payType}</TableCell>
+                <TableCell align="right">{payslipText.base}</TableCell>
+                <TableCell align="right">{payslipText.allowance}</TableCell>
+                <TableCell align="right">{payslipText.production}</TableCell>
+                <TableCell align="right">{payslipText.deductions}</TableCell>
+                <TableCell align="right">{payslipText.net}</TableCell>
+                <TableCell align="center">{payslipText.open}</TableCell>
               </TableRow></TableHead>
               <TableBody>{employees.map((employee, index) => {
                 const key = employee.employeeKey || `employee-${index}`;
@@ -291,21 +340,31 @@ const PayrollEntry = () => {
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>{employee.workerName || '-'}</Typography>
                       <Typography variant="caption" color="text.secondary">{employee.roleName || '-'}</Typography>
                     </TableCell>
+                    <TableCell align="center"><Chip size="small" variant="outlined" label={employee.payType === 'OUTPUT' ? '생산' : '일반'} /></TableCell>
+                    <TableCell align="right" sx={{ color: 'text.secondary' }}>{payslipText.pending}</TableCell>
+                    <TableCell align="right" sx={{ color: 'text.secondary' }}>{payslipText.pending}</TableCell>
                     <TableCell align="right">
-                      <TextField
-                        size="small" type="number" value={rateDrafts[String(employee.workerId)] ?? ''}
-                        disabled={!provisional || savingRates}
-                        onChange={(event) => setRateDrafts((previous) => ({ ...previous, [String(employee.workerId)]: event.target.value }))}
-                        inputProps={{ min: 0, step: 0.01 }} sx={{ width: 130 }}
-                      />
+                      {employee.payType === 'OUTPUT' ? <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>{formatDong(productionAllowanceOf(employee))}</Typography>
+                        <Button size="small" onClick={() => setExpandedEmployeeKey(expanded ? null : key)}>{expanded ? text.collapse : unifiedPayrollText.details}</Button>
+                      </Stack> : <Typography variant="body2" color="text.secondary">{payslipText.notApplicable}</Typography>}
                     </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>{formatDong(productionAllowanceOf(employee))}</TableCell>
-                    <TableCell align="center"><Button size="small" onClick={() => setExpandedEmployeeKey(expanded ? null : key)}>{expanded ? text.collapse : text.details}</Button></TableCell>
+                    <TableCell align="right" sx={{ color: 'text.secondary' }}>{payslipText.pending}</TableCell>
+                    <TableCell align="right" sx={{ color: 'text.secondary', fontWeight: 700 }}>{payslipText.pending}</TableCell>
+                    <TableCell align="center"><Button size="small" variant="outlined" startIcon={<PrintOutlinedIcon />} onClick={() => setPayslipEmployee(employee)}>{payslipText.open}</Button></TableCell>
                   </TableRow>
-                  <TableRow><TableCell colSpan={4} sx={{ p: 0, borderBottom: expanded ? undefined : 0 }}>
+                  <TableRow><TableCell colSpan={8} sx={{ p: 0, borderBottom: expanded ? undefined : 0 }}>
                     <Collapse in={expanded} timeout="auto" unmountOnExit>
                       <Box sx={{ p: 2, bgcolor: 'grey.50' }}>
-                        <Typography variant="caption" color="text.secondary">{text.formula}</Typography>
+                        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+                          <Typography variant="caption" color="text.secondary">{text.formula}</Typography>
+                          <TextField
+                            label={text.appliedRate} size="small" type="number" value={rateDrafts[String(employee.workerId)] ?? ''}
+                            disabled={!provisional || savingRates}
+                            onChange={(event) => setRateDrafts((previous) => ({ ...previous, [String(employee.workerId)]: event.target.value }))}
+                            inputProps={{ min: 0, step: 0.01 }} sx={{ width: 170 }}
+                          />
+                        </Stack>
                         <TableContainer component={Paper} variant="outlined" sx={{ mt: 1 }}><Table size="small">
                           <TableHead><TableRow>
                             <TableCell>{text.process}</TableCell><TableCell align="right">{text.quantity}</TableCell>
@@ -331,6 +390,23 @@ const PayrollEntry = () => {
           </Paper>
         ) : null}
       </Box>
+      <Dialog open={Boolean(payslipEmployee)} onClose={() => setPayslipEmployee(null)} fullWidth maxWidth="sm">
+        <DialogTitle><Stack direction="row" spacing={1} alignItems="center"><span>{payslipText.title} · {month}</span><Chip size="small" label={payslipText.preview} variant="outlined" /></Stack></DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '110px 1fr', rowGap: 1 }}><Typography color="text.secondary">{payslipText.employee}</Typography><Typography fontWeight={700}>{payslipEmployee?.workerName || '-'}</Typography><Typography color="text.secondary">{payslipText.payType}</Typography><Typography>{payslipEmployee?.payType === 'OUTPUT' ? '생산 (OUTPUT)' : '일반 (GENERAL)'}</Typography></Box>
+            <Divider />
+            <Table size="small"><TableHead><TableRow><TableCell>{payslipText.earnings}</TableCell><TableCell align="right">{payslipText.amount}</TableCell></TableRow></TableHead><TableBody>
+              <TableRow><TableCell>{payslipText.base}</TableCell><TableCell align="right" sx={{ color: 'text.secondary' }}>{payslipText.pending}</TableCell></TableRow>
+              <TableRow><TableCell>{payslipText.allowance}</TableCell><TableCell align="right" sx={{ color: 'text.secondary' }}>{payslipText.pending}</TableCell></TableRow>
+              <TableRow><TableCell>{payslipText.production}</TableCell><TableCell align="right">{payslipEmployee?.payType === 'OUTPUT' ? formatDong(productionAllowanceOf(payslipEmployee)) : payslipText.notApplicable}</TableCell></TableRow>
+              <TableRow><TableCell>{payslipText.deductions}</TableCell><TableCell align="right" sx={{ color: 'text.secondary' }}>{payslipText.pending}</TableCell></TableRow>
+              <TableRow sx={{ bgcolor: 'action.hover' }}><TableCell sx={{ fontWeight: 700 }}>{payslipText.net}</TableCell><TableCell align="right" sx={{ fontWeight: 700, color: 'text.secondary' }}>{payslipText.pending}</TableCell></TableRow>
+            </TableBody></Table>
+          </Stack>
+        </DialogContent>
+        <DialogActions><Button onClick={() => setPayslipEmployee(null)}>{payslipText.close}</Button><Button variant="contained" startIcon={<PrintOutlinedIcon />} onClick={handlePrintPayslip}>{payslipText.print}</Button></DialogActions>
+      </Dialog>
     </AppPageContainer>
   );
 };
