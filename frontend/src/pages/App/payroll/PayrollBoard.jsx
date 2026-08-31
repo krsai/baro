@@ -126,6 +126,11 @@ const PayrollBoard = () => {
     delete: getUiMessage('payrollBoard.delete', 'Delete', languageCode),
     peopleSuffix: getUiMessage('payrollBoard.peopleSuffix', '', languageCode),
   }), [languageCode]);
+  const payrollStatusText = languageCode === 'ko'
+    ? { notCalculated: '\uBBF8\uACC4\uC0B0', recalculationRequired: '\uC7AC\uACC4\uC0B0 \uD544\uC694', calculated: '\uACC4\uC0B0 \uC644\uB8CC' }
+    : languageCode === 'vi'
+      ? { notCalculated: 'Chua tinh', recalculationRequired: 'Can tinh lai', calculated: 'Da tinh xong' }
+      : { notCalculated: 'Not Calculated', recalculationRequired: 'Recalculation Required', calculated: 'Calculated' };
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!activeOrgId) return;
@@ -257,12 +262,13 @@ const PayrollBoard = () => {
       ? 'Tất cả'
       : 'All';
 
-  const handleCalculate = async () => {
-    if (calculableMonths.length === 0) return;
+  const handleCalculate = async (requestedMonth = '') => {
+    const targetMonths = requestedMonth ? calculableMonths.filter((month) => month === requestedMonth) : (selectedMonth ? calculableMonths.filter((month) => month === selectedMonth) : calculableMonths);
+    if (targetMonths.length === 0) return;
     setCalculating(true);
     try {
       const query = buildQueryString({ orgId: activeOrgId });
-      for (const month of calculableMonths) {
+      for (const month of targetMonths) {
         await requestJSON('/payroll/snapshots' + query, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -273,7 +279,7 @@ const PayrollBoard = () => {
       }
       await load();
       showNotification(
-        resolveText(languageCode, 'calculateSuccess', { month: calculableMonths.join(', ') }),
+        resolveText(languageCode, 'calculateSuccess', { month: targetMonths.join(', ') }),
         'success'
       );
     } catch (error) {
@@ -281,6 +287,26 @@ const PayrollBoard = () => {
       showNotification(error?.message || resolveText(languageCode, 'calculateError'), 'error');
     } finally {
       setCalculating(false);
+    }
+  };
+
+  const handleRecalculateMonth = async (month) => {
+    const groups = (readinessByMonth[month]?.groups || []).filter((group) => group.needsRecalculation);
+    if (groups.length === 0) return;
+    setMutating(`recalculate:${month}`);
+    try {
+      for (const group of groups) {
+        await requestJSON(`/payroll/snapshots/${month}/recalculate-line` + buildQueryString({ orgId: activeOrgId }), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ factoryId: group.factoryId, lineId: group.lineId }),
+        });
+      }
+      await load();
+      showNotification(resolveText(languageCode, 'calculateSuccess', { month }), 'success');
+    } catch (error) {
+      showNotification(error?.message || resolveText(languageCode, 'calculateError'), 'error');
+    } finally {
+      setMutating('');
     }
   };
 
@@ -391,7 +417,7 @@ const PayrollBoard = () => {
           </TextField>
           <Button
             variant="contained" startIcon={<CalculateIcon />}
-            disabled={!canCalculate} onClick={handleCalculate}
+            disabled={!canCalculate} onClick={() => handleCalculate()}
           >
             {calculating
               ? resolveText(languageCode, 'calculating')
@@ -400,65 +426,61 @@ const PayrollBoard = () => {
         </Stack>
       )} />}
     >
-      <Box>
+      <Box sx={{ width: '100%' }}>
         <Box sx={{ mb: 1, color: 'text.secondary', fontSize: 13 }}>
-          {resolveText(languageCode, 'rowHint')}
+          {languageCode === 'ko' ? '\uC6D4\uBCC4\uB85C \uC804\uCCB4 \uC9C1\uC6D0\uC758 \uAE09\uC5EC\uB97C \uACC4\uC0B0\uD558\uACE0 \uD655\uC815\uD569\uB2C8\uB2E4.' : languageCode === 'vi' ? 'Tinh va xac nhan luong cua tat ca nhan vien theo thang.' : 'Calculate and confirm payroll for all employees by month.'}
         </Box>
         <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
           <TableContainer>
             <Table stickyHeader size="small">
               <TableHead><TableRow>
                 <TableCell sx={{ fontWeight: 700 }}>{text.month}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{resolveText(languageCode, 'factory')}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{resolveText(languageCode, 'line')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{text.employees}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="right">{languageCode === 'ko' ? '\uCD1D \uC9C0\uAE09\uC561' : languageCode === 'vi' ? 'Tong chi tra' : 'Gross Payroll'}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{text.total}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }} align="right">{resolveText(languageCode, 'averageProductionAllowance')}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }} align="right">{resolveText(languageCode, 'appliedRate')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{text.status}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }} align="center">{resolveText(languageCode, 'lock')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="center">{languageCode === 'ko' ? '\uD655\uC815' : languageCode === 'vi' ? 'Xac nhan' : 'Confirmed'}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{text.delete}</TableCell>
               </TableRow></TableHead>
               <TableBody>
-                {loading ? <TableStatusRow colSpan={10} message={resolveText(languageCode, 'loading')} />
-                  : lineRows.length === 0 ? <TableStatusRow colSpan={10} message={resolveText(languageCode, 'empty')} />
-                    : lineRows.map(({ month, snapshot, group, snapshotEmployeeCount, snapshotLineTotal, snapshotAppliedRate }) => {
-                      const rowNeedsRecalculation = Boolean(snapshot && group.needsRecalculation);
-                      const recalculationKey = `recalculate:${month}:${group.factoryId}:${group.lineId}`;
-                      const factoryName = languageCode === 'ko'
-                        ? group.factoryNameKo || group.factoryName
-                        : languageCode === 'vi'
-                          ? group.factoryNameVi || group.factoryName
-                          : group.factoryName;
+                {loading ? <TableStatusRow colSpan={7} message={resolveText(languageCode, 'loading')} />
+                  : filteredMonthRows.length === 0 ? <TableStatusRow colSpan={7} message={resolveText(languageCode, 'empty')} />
+                    : filteredMonthRows.map(({ month, snapshot }) => {
+                      const groups = readinessByMonth[month]?.groups || [];
+                      const rowNeedsRecalculation = Boolean(snapshot && groups.some((group) => group.needsRecalculation));
+                      const snapshotEmployees = Array.isArray(snapshot?.data) ? snapshot.data : [];
+                      const productionSubtotal = snapshotEmployees.reduce((sum, employee) => sum + (employee?.processes || []).reduce((processSum, process) => processSum + Number(process?.totalEarnings || 0), 0), 0);
+                      const targetCount = snapshot ? snapshotEmployees.length : groups.reduce((sum, group) => sum + Number(group.employeeCount || 0), 0);
                       return (
                         <TableRow
-                          key={`${month}:${group.factoryId}:${group.lineId}`} hover={Boolean(snapshot)} sx={{ cursor: snapshot ? 'pointer' : 'default' }}
+                          key={month} hover sx={{ cursor: snapshot ? 'pointer' : 'default' }}
                           onClick={() => snapshot && navigateToPath(`/payroll/${month}`, { label: `${text.title} ${month}` })}
                         >
                           <TableCell sx={{ fontWeight: 700 }}>{month}</TableCell>
-                          <TableCell>{factoryName || '-'}</TableCell>
-                          <TableCell>{group.lineName || '-'}</TableCell>
-                          <TableCell align="right">{snapshot ? snapshotEmployeeCount : group.employeeCount || 0}{text.peopleSuffix}</TableCell>
-                          <TableCell align="right">{snapshot ? formatDong(snapshotLineTotal) : '-'}</TableCell>
-                          <TableCell align="right">{snapshot && snapshotEmployeeCount > 0 ? formatDong(snapshotLineTotal / snapshotEmployeeCount) : '-'}</TableCell>
-                          <TableCell align="right">{snapshotAppliedRate === null ? '-' : formatRate(snapshotAppliedRate)}</TableCell>
+                          <TableCell align="right">{targetCount}{text.peopleSuffix}</TableCell>
+                          <TableCell align="right">{languageCode === 'ko' ? '\uBBF8\uACC4\uC0B0' : languageCode === 'vi' ? 'Chua tinh' : 'Not calculated'}</TableCell>
+                          <TableCell align="right">{snapshot ? formatDong(productionSubtotal) : '-'}</TableCell>
                           <TableCell align="center">
-                            {rowNeedsRecalculation && snapshot?.isProvisional ? (
-                              <Button
-                                size="small" variant="outlined" color="warning"
-                                disabled={Boolean(mutating) || calculating || !group.ready}
+                            <Stack direction="row" spacing={0.75} justifyContent="center" alignItems="center">
+                              <Chip
+                                size="small"
+                                color={!snapshot ? 'default' : rowNeedsRecalculation ? 'warning' : 'success'}
+                                label={!snapshot ? payrollStatusText.notCalculated : rowNeedsRecalculation ? payrollStatusText.recalculationRequired : payrollStatusText.calculated}
+                                variant="outlined"
+                              />
+                              {!snapshot ? <Button size="small" disabled={!groups.some((group) => group.ready) || calculating} onClick={(event) => { event.stopPropagation(); handleCalculate(month); }}>
+                                {resolveText(languageCode, 'calculate')}
+                              </Button> : rowNeedsRecalculation && snapshot?.isProvisional ? <Button
+                                size="small" variant="text" color="warning"
+                                disabled={Boolean(mutating) || calculating}
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  handleRecalculateLine(month, group);
+                                  handleRecalculateMonth(month);
                                 }}
                               >
-                                {mutating === recalculationKey
-                                  ? resolveText(languageCode, 'calculating')
-                                  : resolveText(languageCode, 'recalculateConfirmed')}
-                              </Button>
-                            ) : (
-                              <Chip size="small" color={!snapshot ? 'default' : snapshot.isProvisional ? 'info' : 'success'} label={resolveText(languageCode, !snapshot ? 'notCalculated' : snapshot.isProvisional ? 'current' : 'confirmed')} variant="outlined" />
-                            )}
+                                {mutating === `recalculate:${month}` ? resolveText(languageCode, 'calculating') : resolveText(languageCode, 'recalculateConfirmed')}
+                              </Button> : null}
+                            </Stack>
                           </TableCell>
                           <TableCell align="center">
                             <LockToggleSwitch
