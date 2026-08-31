@@ -264,8 +264,10 @@ const SalarySystem = () => {
       setVersions(Array.isArray(salarySystem?.versions) ? salarySystem.versions : []);
       setRates(next);
       setSavedSnapshot(salaryStateSignature({ currencyCode: loadedCurrencyCode, items: loadedItems, rates: next }));
+      return salarySystem;
     } catch (error) {
       setMessage({ severity: 'error', text: error?.message || t('급여 기준을 불러오지 못했습니다.') });
+      return null;
     }
   }, [activeOrgId, factoryId, t]);
   useEffect(() => { load(); }, [load]);
@@ -330,15 +332,17 @@ const SalarySystem = () => {
       await requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currencyCode, items: items.map((row) => ({ ...row, code: row.code || row.id, capValue: row.capValue === '' || row.capValue == null ? null : Number(String(row.capValue).replace(/,/g, '')) })), rates: rateRows }) });
       await requestJSON(`/salary-system/versions${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS], orgId: activeOrgId, source: 'salary-system-version-create' });
-      await load();
+      const refreshed = await load();
       setMessage({ severity: 'success', text: t('급여 체계를 저장하고 새 버전을 등록했습니다. 적용 월은 버전 관리에서 지정할 수 있습니다.') });
+      openVersionDialog(Array.isArray(refreshed?.versions) ? refreshed.versions : versions);
     } catch (error) {
       setMessage({ severity: 'error', text: error?.message || 'Failed to save salary system.' });
     }
   };
-  const openVersionDialog = () => {
+  const openVersionDialog = (versionRows = versions) => {
+    const sourceVersions = Array.isArray(versionRows) ? versionRows : versions;
     const next = {};
-    versions.forEach((version) => { if (version.versionNumber > 1 && version.effectiveMonth) next[version.id] = version.effectiveMonth; });
+    sourceVersions.forEach((version) => { if (version.versionNumber > 1 && version.effectiveMonth) next[version.id] = version.effectiveMonth; });
     setVersionBoundaries(next);
     setSavedVersionBoundaries(next);
     setVersionDialogOpen(true);
@@ -462,7 +466,7 @@ const SalarySystem = () => {
       <Stack direction="row" spacing={1}><FormControl size="small" sx={{ minWidth: 120 }}><InputLabel>{t('통화')}</InputLabel><Select label={t('통화')} value={currencyCode} onChange={(event) => setCurrencyCode(event.target.value)}>{CURRENCY_CODES.map((code) => <MenuItem key={code} value={code}>{code}</MenuItem>)}</Select></FormControl><Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog}>{t('버전 관리')}</Button>
         <SaveButton onClick={saveDraft} disabled={!isDirty}>{t('저장')}</SaveButton></Stack>
     </Stack>
-    {factories.length > 1 && <Tabs value={factoryId} onChange={(_event, value) => { setSavedSnapshot(null); setSelectedId('baseSalary'); setFactoryId(value); }} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+    {factories.length > 0 && <Tabs value={factoryId} onChange={(_event, value) => { setSavedSnapshot(null); setSelectedId('baseSalary'); setFactoryId(value); }} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
       {factories.map((factory) => <Tab key={factory.id} value={factory.id} label={languageCode === 'ko' ? (factory.nameKo || factory.name) : languageCode === 'vi' ? (factory.nameVi || factory.name) : factory.name} />)}
     </Tabs>}
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
