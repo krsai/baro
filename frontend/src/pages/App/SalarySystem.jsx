@@ -15,6 +15,7 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
+import { useAppActions } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
@@ -203,6 +204,7 @@ const FormulaCursorSlot = ({ position, active, onSelect }) => (
 
 const SalarySystem = () => {
   const { activeOrgId } = useAuth();
+  const { showNotification } = useAppActions();
   const { languageCode } = useLanguage();
   const t = useCallback((text) => salaryText(text, languageCode), [languageCode]);
   const [grades, setGrades] = useState([]);
@@ -309,7 +311,7 @@ const SalarySystem = () => {
     setSelectedId(next.id);
     setDialogOpen(false);
     setDraft(DEFAULT_DRAFT);
-    setMessage({ severity: 'info', text: t('급여 항목을 추가했습니다. 저장하면 새 버전으로 등록됩니다.') });
+    showNotification(t('급여 항목을 추가했습니다. 저장하면 새 버전으로 등록됩니다.'), 'info');
   };
   const reorderItems = ({ source, destination }) => {
     if (!destination || source.droppableId !== destination.droppableId || source.index === destination.index) return;
@@ -334,10 +336,10 @@ const SalarySystem = () => {
       await requestJSON(`/salary-system/versions${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS], orgId: activeOrgId, source: 'salary-system-version-create' });
       const refreshed = await load();
-      setMessage({ severity: 'success', text: t('급여 체계를 저장하고 새 버전을 등록했습니다. 적용 월은 버전 관리에서 지정할 수 있습니다.') });
+      showNotification(t('급여 체계를 저장하고 새 버전을 등록했습니다. 적용 월은 버전 관리에서 지정할 수 있습니다.'), 'success');
       openVersionDialog(Array.isArray(refreshed?.versions) ? refreshed.versions : versions);
     } catch (error) {
-      setMessage({ severity: 'error', text: error?.message || 'Failed to save salary system.' });
+      showNotification(error?.message || 'Failed to save salary system.', 'error');
     }
   };
   const openVersionDialog = (versionRows = versions) => {
@@ -382,9 +384,9 @@ const SalarySystem = () => {
       setSavedVersionBoundaries(versionBoundaries);
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS], orgId: activeOrgId, source: 'salary-system-version-boundaries' });
       setVersionDialogOpen(false);
-      setMessage({ severity: 'success', text: t('급여 버전 적용 구간을 저장했습니다.') });
+      showNotification(t('급여 버전 적용 구간을 저장했습니다.'), 'success');
     } catch (error) {
-      setMessage({ severity: 'error', text: error?.message || t('급여 버전 적용 구간을 저장하지 못했습니다.') });
+      showNotification(error?.message || t('급여 버전 적용 구간을 저장하지 못했습니다.'), 'error');
     } finally { setVersionBusy(false); }
   };
   const hasVersionBoundaryChanges = JSON.stringify(versionBoundaries) !== JSON.stringify(savedVersionBoundaries);
