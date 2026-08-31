@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControl, FormControlLabel, FormHelperText, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack, Switch,
+  FormControl, FormHelperText, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack,
   Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
   TextField, Tooltip, Typography,
 } from '@mui/material';
@@ -10,6 +10,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import FunctionsIcon from '@mui/icons-material/Functions';
 import HistoryIcon from '@mui/icons-material/History';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
@@ -43,15 +44,16 @@ const PAYMENT_MONTHS_BY_CYCLE = {
 };
 // 파라미터를 성격별로 묶어서 보여준다 (단가/근속 -> 근무일수 -> 근무시간 -> 조건·외부 계산값).
 const FORMULA_PARAMETERS = {
-  GRADE_RATE: { label: '직급별 단가', currencyUnit: true },
-  TENURE_YEARS: { label: '근속연수', unit: '년' },
-  ACTUAL_WORKDAYS: { label: '실제 근무일수', unit: '일' },
-  SCHEDULED_WORKDAYS: { label: '기준 근무일수', unit: '일', hint: '해당 월의 근무요일에서 등록 공휴일을 제외하고 서버가 계산합니다.' },
-  WORK_HOURS: { label: '정규 근무시간', unit: '시간' },
-  OVERTIME_HOURS: { label: '연장근무시간', unit: '시간' },
-  HOLIDAY_HOURS: { label: '휴일 특근시간', unit: '시간' },
-  FULL_ATTENDANCE_FACTOR: { label: '만근 충족값', unit: '1 또는 0', hint: '만근을 채우면 1, 아니면 0으로 계산됩니다.' },
-  PRODUCTION_ALLOWANCE: { label: '생산수당 계산 결과', currencyUnit: true },
+  GRADE_RATE: { label: '직급별 단가', currencyUnit: true, hint: '직원의 급여 타입과 직급에 지정된 이 급여 항목의 단가입니다.' },
+  TENURE_YEARS: { label: '근속연수', unit: '년', hint: '급여 정산월 말일을 기준으로 계산한 직원의 근속연수입니다.' },
+  ACTUAL_WORKDAYS: { label: '실제 근무일수', unit: '일', hint: '주말과 휴일 메뉴에 등록된 휴일을 제외한 정규 근무일 중 4시간 이상 근무한 날짜 수입니다. 휴일 근무는 포함하지 않습니다.' },
+  SCHEDULED_WORKDAYS: { label: '기준 근무일수', unit: '일', hint: '생산 급여 타입은 일요일과 등록 휴일을, 일반 급여 타입은 토·일요일과 등록 휴일을 제외한 해당 월의 날짜 수입니다.' },
+  HOLIDAY_WORKDAYS: { label: '휴일 근무일수', unit: '일', hint: '급여 타입별 주말 또는 휴일 메뉴에 등록된 휴일 중 4시간 이상 근무한 날짜 수입니다. 실제 근무일수와 만근 여부에는 포함하지 않습니다.' },
+  WORK_HOURS: { label: '정규 근무시간', unit: '시간', hint: '휴일이 아닌 정규 근무일에 기록된 근무시간입니다.' },
+  OVERTIME_HOURS: { label: '연장근무시간', unit: '시간', hint: '하루 기준 근무시간을 초과해 인정된 근무시간입니다. 최소 인정 단위와 승인 규칙은 추후 확정합니다.' },
+  HOLIDAY_HOURS: { label: '휴일 특근시간', unit: '시간', hint: '급여 타입별 주말 또는 휴일 메뉴에 등록된 휴일에 기록된 근무시간입니다.' },
+  FULL_ATTENDANCE_FACTOR: { label: '만근 여부', unit: '1 또는 0', hint: '실제 근무일수가 기준 근무일수 이상이면 1, 아니면 0입니다. 휴일 근무일수는 만근 판정에 포함하지 않습니다.' },
+  PRODUCTION_ALLOWANCE: { label: '생산수당 계산 결과', currencyUnit: true, hint: '작업 기록과 공장 생산수당 단가로 별도 계산된 해당 월의 생산수당 금액입니다.' },
 };
 const formulaParameterUnit = (parameter, currencyCode) => parameter.currencyUnit ? currencyCode : parameter.unit;
 const hasValidPaymentMonths = (item) => {
@@ -61,7 +63,7 @@ const hasValidPaymentMonths = (item) => {
 };
 const FORMULA_PARAMETER_GROUPS = [
   { label: '단가·근속', keys: ['GRADE_RATE', 'TENURE_YEARS'] },
-  { label: '근무일수', keys: ['ACTUAL_WORKDAYS', 'SCHEDULED_WORKDAYS'] },
+  { label: '근무일수', keys: ['ACTUAL_WORKDAYS', 'SCHEDULED_WORKDAYS', 'HOLIDAY_WORKDAYS'] },
   { label: '근무시간', keys: ['WORK_HOURS', 'OVERTIME_HOURS', 'HOLIDAY_HOURS'] },
   { label: '조건', keys: ['FULL_ATTENDANCE_FACTOR'] },
 ];
@@ -81,7 +83,7 @@ const DEFAULT_ITEMS = [
   item('position', '직책수당', 'ALLOWANCE'),
   item('housing', '주거수당', 'ALLOWANCE'),
   item('language', '어학수당', 'ALLOWANCE'),
-  item('holiday', '휴일근무수당', 'ALLOWANCE', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'HOLIDAY_HOURS', '×', 'CONST:1.5'] }),
+  item('holiday', '휴일근무수당', 'ALLOWANCE', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'HOLIDAY_WORKDAYS'] }),
   item('attendance', '만근수당', 'ALLOWANCE', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'FULL_ATTENDANCE_FACTOR'] }),
   item('seniority', '근속수당', 'ALLOWANCE', 'SEMIANNUAL', { formula: ['GRADE_RATE', '×', 'TENURE_YEARS'], capValue: '5' }),
   item('incentiveTotal', '성과급', 'INCENTIVE', 'MONTHLY', { formula: ['PRODUCTION_ALLOWANCE'], required: true }),
@@ -421,25 +423,6 @@ const SalarySystem = () => {
       return Math.max(minCursorIndex, next);
     });
   };
-  const toggleFullAttendanceFactor = () => {
-    const tokenIndex = formulaDraft.indexOf('FULL_ATTENDANCE_FACTOR');
-    if (tokenIndex >= 0) {
-      const previousToken = formulaDraft[tokenIndex - 1];
-      const nextToken = formulaDraft[tokenIndex + 1];
-      const removeIndexes = new Set([tokenIndex]);
-      if (isOperatorSymbolToken(previousToken)) removeIndexes.add(tokenIndex - 1);
-      else if (isOperatorSymbolToken(nextToken)) removeIndexes.add(tokenIndex + 1);
-      const nextFormula = formulaDraft.filter((_token, index) => !removeIndexes.has(index));
-      setFormulaDraft(nextFormula);
-      setCursorIndex(Math.max(minCursorIndex, nextFormula.length));
-      return;
-    }
-    const lastToken = formulaDraft[formulaDraft.length - 1];
-    const connector = isOperandToken(lastToken) || lastToken === ')' ? ['×'] : [];
-    const nextFormula = [...formulaDraft, ...connector, 'FULL_ATTENDANCE_FACTOR'];
-    setFormulaDraft(nextFormula);
-    setCursorIndex(nextFormula.length);
-  };
   const appendFormulaConstant = () => {
     const normalized = String(constantDraft || '').trim();
     if (!/^\d+(\.\d+)?$/.test(normalized)) return;
@@ -570,16 +553,12 @@ const SalarySystem = () => {
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t(group.label)}</Typography>
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{group.keys.map((key) => {
                 const unit = formulaParameterUnit(FORMULA_PARAMETERS[key], currencyCode);
-                if (key === 'FULL_ATTENDANCE_FACTOR') return <Tooltip key={key} title={t(FORMULA_PARAMETERS[key].hint || unit)}><span>
-                  <FormControlLabel
-                    control={<Switch size="small" checked={formulaDraft.includes(key)} onChange={toggleFullAttendanceFactor} />}
-                    label={<Typography variant="body2">{t('만근 조건 적용')}</Typography>}
-                    sx={{ m: 0, px: 1, py: 0.25, border: 1, borderColor: 'divider', borderRadius: 2 }}
-                  />
-                </span></Tooltip>;
-                return <Tooltip key={key} title={t(FORMULA_PARAMETERS[key].hint || unit)}><span>
+                return <Stack key={key} direction="row" spacing={0.25} alignItems="center">
                   <Button size="small" variant="outlined" disabled={!canInsertTokenAt(formulaDraft, cursorIndex, key)} onClick={() => insertFormulaToken(key)}>{t(FORMULA_PARAMETERS[key].label)} · {t(unit)}</Button>
-                </span></Tooltip>;
+                  <Tooltip arrow title={t(FORMULA_PARAMETERS[key].hint || unit)}>
+                    <IconButton size="small" aria-label={`${t(FORMULA_PARAMETERS[key].label)} ${t('설명')}`} sx={{ color: 'text.secondary' }}><InfoOutlinedIcon sx={{ fontSize: 17 }} /></IconButton>
+                  </Tooltip>
+                </Stack>;
               })}</Stack>
             </Box>)}
           </Stack>
