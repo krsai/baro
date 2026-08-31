@@ -22,6 +22,7 @@ import { salaryText } from './salarySystemI18n';
 import { labelChipSx } from '../../theme/labelPalette';
 import { CURRENCY_CODES, currencySymbol } from '../../constants/currencies';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
+import { resolveFactoryManagementStartDateKey } from '../../utils/factoryManagementStart';
 
 const PAY_TYPES = {
   GENERAL: { label: '일반', palette: 'blue' },
@@ -347,11 +348,14 @@ const SalarySystem = () => {
     setSavedVersionBoundaries(next);
     setVersionDialogOpen(true);
   };
-  const managementStartMonth = useMemo(() => {
-    const registeredMonths = versions.filter((version) => version.versionNumber > 1).map((version) => String(version.confirmedAt || '').slice(0, 7)).filter((month) => /^\d{4}-\d{2}$/.test(month));
-    const appliedMonths = versions.filter((version) => version.versionNumber > 1 && version.effectiveMonth).map((version) => version.effectiveMonth);
-    return [...registeredMonths, ...appliedMonths, monthKey()].sort()[0];
-  }, [versions]);
+  const selectedFactory = useMemo(
+    () => factories.find((factory) => Number(factory.id) === Number(factoryId)) || null,
+    [factories, factoryId]
+  );
+  const managementStartMonth = useMemo(
+    () => resolveFactoryManagementStartDateKey(selectedFactory).slice(0, 7),
+    [selectedFactory]
+  );
   const managedMonths = useMemo(() => monthRange(managementStartMonth, monthKey()), [managementStartMonth]);
   const colorByVersionId = useMemo(() => new Map([...versions].sort((a, b) => a.versionNumber - b.versionNumber).map((version, index) => [version.id, VERSION_GRAPH_COLORS[index % VERSION_GRAPH_COLORS.length]])), [versions]);
   const versionForMonth = useCallback((month) => {
@@ -616,7 +620,7 @@ const SalarySystem = () => {
         </Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>{managementStartMonth} ~ {monthKey()}</Typography>
-          <Box sx={{ position: 'relative' }}>
+          <Box sx={{ position: 'relative', maxHeight: 420, overflowY: 'auto', pr: 0.5 }}>
             {[...managedMonths].reverse().map((month, index, displayMonths) => {
               const activeVersion = versionForMonth(month);
               const versionColor = activeVersion ? colorByVersionId.get(activeVersion.id) || '#9e9e9e' : '#9e9e9e';

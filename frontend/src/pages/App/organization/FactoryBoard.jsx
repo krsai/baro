@@ -24,7 +24,7 @@ import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { requestJSON } from '../../../utils/apiClient';
-import { resolveFactoryManagementStartDateKey } from '../../../utils/factoryManagementStart';
+import { normalizeFactoryManagementStartDateKey, resolveFactoryManagementStartDateKey } from '../../../utils/factoryManagementStart';
 import {
   emitWorkspaceDataChanged,
   WORKSPACE_DATA_TOPICS,
@@ -139,12 +139,12 @@ const FactoryList = () => {
     if (saving) return;
     setSaving(true);
 
+    const isEdit = Boolean(savedData.id);
     const payload = {
       name: savedData.name,
       nameKo: savedData.nameKo,
       nameVi: savedData.nameVi,
       factoryCode: savedData.factoryCode,
-      managementStartDate: savedData.managementStartDate,
       address: savedData.address,
       country: savedData.country,
       countryCode: savedData.countryCode,
@@ -154,9 +154,13 @@ const FactoryList = () => {
       wagePerSecond: savedData.wagePerSecond,
       productionAllowanceEffectiveMonth: savedData.productionAllowanceEffectiveMonth,
     };
+    const savedManagementStartDate = normalizeFactoryManagementStartDateKey(savedData.managementStartDate);
+    const existingManagementStartDate = normalizeFactoryManagementStartDateKey(selectedFactory?.managementStartDate);
+    if (!isEdit || savedManagementStartDate !== existingManagementStartDate) {
+      payload.managementStartDate = savedManagementStartDate;
+    }
 
     try {
-      const isEdit = Boolean(savedData.id);
       const data = await requestJSON(
         isEdit ? `/factories/${savedData.id}` : '/factories',
         {
