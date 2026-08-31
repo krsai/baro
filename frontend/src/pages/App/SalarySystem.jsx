@@ -606,7 +606,7 @@ const SalarySystem = () => {
     <Dialog open={versionDialogOpen} onClose={versionBusy ? undefined : () => setVersionDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 체계 버전 관리')}</DialogTitle><DialogContent dividers>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
         <Box sx={{ width: { xs: '100%', md: 260 }, flexShrink: 0 }}>
-          <Stack spacing={0.75}>
+          <Stack spacing={0.75} sx={{ maxHeight: 434, overflowY: 'auto', pr: 0.5 }}>
             {[...versions].sort((a, b) => a.versionNumber - b.versionNumber).map((version) => {
               const versionColor = colorByVersionId.get(version.id) || '#9e9e9e';
               const draggable = version.versionNumber > 1;
@@ -622,7 +622,7 @@ const SalarySystem = () => {
         </Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>{managementStartMonth} ~ {monthKey()}</Typography>
-          <Box sx={{ position: 'relative', maxHeight: 420, overflowY: 'auto', pr: 0.5 }}>
+          <Box sx={{ position: 'relative', maxHeight: 340, overflowY: 'auto', pr: 0.5 }}>
             {[...managedMonths].reverse().map((month, index, displayMonths) => {
               const activeVersion = versionForMonth(month);
               const versionColor = activeVersion ? colorByVersionId.get(activeVersion.id) || '#9e9e9e' : '#9e9e9e';
