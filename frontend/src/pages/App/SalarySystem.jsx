@@ -3,7 +3,7 @@ import {
   Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
   FormControl, FormHelperText, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack,
   Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
-  TextField, Tooltip, Typography,
+  TextField, Tooltip, Typography, alpha,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -487,9 +487,9 @@ const SalarySystem = () => {
                 {items.filter((row) => row.category === category).map((row, index) => <Draggable key={row.id} draggableId={String(row.id)} index={index}>
                   {(dragProvided, snapshot) => <Stack ref={dragProvided.innerRef} {...dragProvided.draggableProps} direction="row" alignItems="center" sx={{ bgcolor: snapshot.isDragging ? 'action.hover' : 'transparent', borderRadius: 1 }}>
                     <IconButton {...dragProvided.dragHandleProps} size="small" aria-label="순서 변경" sx={{ flexShrink: 0, cursor: 'grab', color: 'text.disabled', '&:active': { cursor: 'grabbing' } }}><DragIndicatorIcon fontSize="small" /></IconButton>
-                    <Box role="button" tabIndex={0} onClick={() => setSelectedId(row.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(row.id); } }} sx={{ flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 42px 42px', alignItems: 'center', pl: 1.5, pr: 0.25, py: 0.65, borderRadius: 1, cursor: 'pointer', bgcolor: selectedId === row.id ? 'primary.main' : 'transparent', color: selectedId === row.id ? 'primary.contrastText' : 'text.primary', '&:hover': { bgcolor: selectedId === row.id ? 'primary.dark' : 'action.hover' } }}>
+                    <Box role="button" tabIndex={0} onClick={() => setSelectedId(row.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(row.id); } }} sx={(theme) => ({ flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 42px 42px', alignItems: 'center', pl: 1.5, pr: 0.25, py: 0.65, borderRadius: 1, cursor: 'pointer', bgcolor: selectedId === row.id ? alpha(theme.palette.primary.main, 0.12) : 'transparent', color: selectedId === row.id ? 'primary.dark' : 'text.primary', '&:hover': { bgcolor: selectedId === row.id ? alpha(theme.palette.primary.main, 0.18) : 'action.hover' } })}>
                       <Box sx={{ minWidth: 0 }}><Typography variant="body2" fontWeight={600} noWrap>{salaryItemName(row, languageCode)}</Typography><Typography variant="caption" sx={{ display: 'block', opacity: 0.75 }}>{t(PAY_CYCLES[row.payCycle])}</Typography></Box>
-                      {PAY_TYPE_ORDER.map((payType) => { const active = (row.payTypes || []).includes(payType); const fixed = row.category === 'INCENTIVE'; return <Checkbox key={payType} size="small" checked={active} disabled={fixed} onClick={(event) => event.stopPropagation()} onChange={() => toggleItemPayType(row, payType)} inputProps={{ 'aria-label': `${salaryItemName(row, languageCode)} ${t(PAY_TYPES[payType]?.label || payType)}` }} sx={{ justifySelf: 'center', p: 0.5, color: selectedId === row.id ? 'rgba(255,255,255,.72)' : undefined, '&.Mui-checked': { color: selectedId === row.id ? 'common.white' : undefined } }} />; })}
+                      {PAY_TYPE_ORDER.map((payType) => { const active = (row.payTypes || []).includes(payType); const fixed = row.category === 'INCENTIVE'; return <Checkbox key={payType} size="small" checked={active} disabled={fixed} onClick={(event) => event.stopPropagation()} onChange={() => toggleItemPayType(row, payType)} inputProps={{ 'aria-label': `${salaryItemName(row, languageCode)} ${t(PAY_TYPES[payType]?.label || payType)}` }} sx={{ justifySelf: 'center', p: 0.5 }} />; })}
                     </Box>
                   </Stack>}
                 </Draggable>)}
