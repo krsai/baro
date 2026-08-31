@@ -1207,6 +1207,11 @@ const MainLayout = () => {
       if (path.startsWith('/attendance/') && path !== '/attendance') {
         return resolveAttendanceTabLabel('detail');
       }
+      if (path.startsWith('/payroll/') && path !== '/payroll') {
+        const month = path.match(/^\/payroll\/(\d{4}-\d{2})/)?.[1] || '';
+        const detailLabel = languageCode === 'ko' ? '\uAE09\uC5EC \uC0C1\uC138' : languageCode === 'vi' ? 'Chi tiet luong' : 'Payroll Detail';
+        return month ? `${detailLabel}: ${month}` : detailLabel;
+      }
       const matchedMenu =
         flattenedMenuItems.find((item) => item.path === path) ||
         flattenedMenuItems.find((item) => path.startsWith(item.path + '/'));
@@ -1303,9 +1308,11 @@ const MainLayout = () => {
         return getUiMessage('menu.customerPricing', '단가', languageCode);
       }
       if (tabPath.startsWith('/payroll/') && tabPath !== '/payroll') {
-        const monthContext = String(tab?.label || '').match(/\b\d{4}-\d{2}\b/)?.[0] || '';
-        const payrollLabel = getUiMessage('menu.payroll', '급여 계산', languageCode);
-        return monthContext ? `${payrollLabel}: ${monthContext}` : payrollLabel;
+        const monthContext = tabPath.match(/^\/payroll\/(\d{4}-\d{2})/)?.[1]
+          || String(tab?.label || '').match(/\b\d{4}-\d{2}\b/)?.[0]
+          || '';
+        const detailLabel = languageCode === 'ko' ? '\uAE09\uC5EC \uC0C1\uC138' : languageCode === 'vi' ? 'Chi tiet luong' : 'Payroll Detail';
+        return monthContext ? `${detailLabel}: ${monthContext}` : detailLabel;
       }
 
       const exactMenuItem = flattenedMenuItems.find((item) => item.path === tabPath);
