@@ -123,10 +123,10 @@ const PayrollBoard = () => {
       ? { notCalculated: 'Chua tinh', recalculationRequired: 'Can tinh lai', calculated: 'Da tinh xong' }
       : { notCalculated: 'Not Calculated', recalculationRequired: 'Recalculation Required', calculated: 'Calculated' };
   const payrollSummaryText = languageCode === 'ko'
-    ? { generalPeople: '\uC77C\uBC18 \uC778\uC6D0', generalPayroll: '\uC77C\uBC18 \uAE09\uC5EC', outputPeople: '\uC0DD\uC0B0 \uC778\uC6D0', outputPayroll: '\uC0DD\uC0B0 \uAE09\uC5EC', totalPayroll: '\uCD1D \uAE09\uC5EC', pending: '\uBBF8\uACC4\uC0B0' }
+    ? { people: '\uCD1D\uC6D0 (\uC77C\uBC18/\uC0DD\uC0B0)', generalPayroll: '\uC77C\uBC18 \uAE09\uC5EC', outputPayroll: '\uC0DD\uC0B0 \uAE09\uC5EC', totalPayroll: '\uCD1D \uAE09\uC5EC', lock: '\uC7A0\uAE08', pending: '\uBBF8\uACC4\uC0B0' }
     : languageCode === 'vi'
-      ? { generalPeople: 'NV thuong', generalPayroll: 'Luong thuong', outputPeople: 'NV san luong', outputPayroll: 'Luong san luong', totalPayroll: 'Tong luong', pending: 'Chua tinh' }
-      : { generalPeople: 'General Employees', generalPayroll: 'General Payroll', outputPeople: 'Production Employees', outputPayroll: 'Production Payroll', totalPayroll: 'Total Payroll', pending: 'Not calculated' };
+      ? { people: 'Tong (Thuong/San luong)', generalPayroll: 'Luong thuong', outputPayroll: 'Luong san luong', totalPayroll: 'Tong luong', lock: 'Khoa', pending: 'Chua tinh' }
+      : { people: 'Total (General/Production)', generalPayroll: 'General Payroll', outputPayroll: 'Production Payroll', totalPayroll: 'Total Payroll', lock: 'Lock', pending: 'Not calculated' };
   const activeEmployees = useMemo(() => employeeDirectory.filter((employee) => !['PENDING', 'REJECTED', 'TERMINATED'].includes(String(employee?.status || '').toUpperCase())), [employeeDirectory]);
   const generalEmployeeCount = useMemo(() => activeEmployees.filter((employee) => !['OUTPUT', 'CT'].includes(String(employee?.payType || '').toUpperCase())).length, [activeEmployees]);
   const outputEmployeeCount = activeEmployees.length - generalEmployeeCount;
@@ -353,17 +353,16 @@ const PayrollBoard = () => {
             <Table stickyHeader size="small">
               <TableHead><TableRow>
                 <TableCell sx={{ fontWeight: 700 }}>{text.month}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.generalPeople}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.people}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.generalPayroll}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.outputPeople}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.outputPayroll}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.totalPayroll}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{text.status}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }} align="center">{languageCode === 'ko' ? '\uD655\uC815' : languageCode === 'vi' ? 'Xac nhan' : 'Confirmed'}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="center">{payrollSummaryText.lock}</TableCell>
               </TableRow></TableHead>
               <TableBody>
-                {loading ? <TableStatusRow colSpan={8} message={resolveText(languageCode, 'loading')} />
-                  : filteredMonthRows.length === 0 ? <TableStatusRow colSpan={8} message={resolveText(languageCode, 'empty')} />
+                {loading ? <TableStatusRow colSpan={7} message={resolveText(languageCode, 'loading')} />
+                  : filteredMonthRows.length === 0 ? <TableStatusRow colSpan={7} message={resolveText(languageCode, 'empty')} />
                     : filteredMonthRows.map(({ month, snapshot }) => {
                       const groups = readinessByMonth[month]?.groups || [];
                       const rowNeedsRecalculation = Boolean(snapshot && groups.some((group) => group.needsRecalculation));
@@ -373,9 +372,8 @@ const PayrollBoard = () => {
                           onClick={() => snapshot && navigateToPath(`/payroll/${month}`, { label: `${text.title} ${month}` })}
                         >
                           <TableCell sx={{ fontWeight: 700 }}>{month}</TableCell>
-                          <TableCell align="right">{generalEmployeeCount}{text.peopleSuffix}</TableCell>
+                          <TableCell align="right">{activeEmployees.length} ({generalEmployeeCount}/{outputEmployeeCount}){text.peopleSuffix}</TableCell>
                           <TableCell align="right" sx={{ color: 'text.secondary' }}>{payrollSummaryText.pending}</TableCell>
-                          <TableCell align="right">{outputEmployeeCount}{text.peopleSuffix}</TableCell>
                           <TableCell align="right" sx={{ color: 'text.secondary' }}>{payrollSummaryText.pending}</TableCell>
                           <TableCell align="right" sx={{ color: 'text.secondary', fontWeight: 700 }}>{payrollSummaryText.pending}</TableCell>
                           <TableCell align="center">
