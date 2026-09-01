@@ -233,7 +233,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   const monthEnd = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0))
     .toISOString().slice(0, 10);
 
-  const [lines, holidays, attendanceEntries, workLogs, payrollEmployees, snapshot, payTypePolicies] = await Promise.all([
+  const [lines, holidays, attendanceEntries, workLogs, payrollEmployees, payrollFactories, snapshot, payTypePolicies] = await Promise.all([
     prisma.line.findMany({
       where: { orgId, isActive: true },
       include: {
@@ -291,6 +291,11 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       where: { orgId, status: { notIn: ["PENDING", "REJECTED"] } },
       include: { role: true, factory: { select: { id: true, managementStartDate: true } } },
     }),
+    prisma.factory.findMany({
+      where: { orgId },
+      select: { id: true, managementStartDate: true },
+      orderBy: { id: "asc" },
+    }),
     prisma.payrollSnapshot.findUnique({
       where: { orgId_month: { orgId, month } },
       select: { id: true, isProvisional: true, lockedAt: true, data: true },
@@ -306,27 +311,31 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     attendanceEntries.map((row) => `${row.factoryId}:${row.workerId}:${row.workDate}`)
   );
   const payrollMonthRange = getPayrollMonthRange(month);
+  const soleFactory = payrollFactories.length === 1 ? payrollFactories[0] : null;
   const relevantPayrollEmployees = payrollEmployees.filter((employee) =>
     isPayrollEmployeeRelevantForMonth(employee, payrollMonthRange)
   );
   const payrollEmployeeById = new Map(relevantPayrollEmployees.map((employee) => [employee.id, employee]));
   const invalidPayrollAttendance = attendanceEntries.flatMap((entry) => {
     const employee = payrollEmployeeById.get(entry.workerId);
-    if (!employee?.factoryId || Number(employee.factoryId) === Number(entry.factoryId)) return [];
+    const expectedFactoryId = employee?.factoryId || soleFactory?.id || null;
+    if (!expectedFactoryId || Number(expectedFactoryId) === Number(entry.factoryId)) return [];
     return [{
       workerId: entry.workerId,
       workerName: resolvePayrollEmployeeName(employee),
       date: entry.workDate,
-      expectedFactoryId: employee.factoryId,
+      expectedFactoryId,
       recordedFactoryId: entry.factoryId,
     }];
   });
   const allMonthDates = enumerateMonthDateKeys(month);
   const requiredAttendance = relevantPayrollEmployees.flatMap((employee) => {
-    if (!employee.factoryId || !employee.factory) return [];
+    const payrollFactory = employee.factory || soleFactory;
+    const payrollFactoryId = employee.factoryId || soleFactory?.id || null;
+    if (!payrollFactoryId || !payrollFactory) return [];
     const payType = resolveEmployeeEffectivePayType(employee);
     const payTypePolicy = payTypePolicyByType.get(payType)!;
-    const factoryStart = resolveFactoryManagementStartDateKey(employee.factory);
+    const factoryStart = resolveFactoryManagementStartDateKey(payrollFactory);
     return allMonthDates
       .filter((dateKey) =>
         dateKey >= factoryStart &&
@@ -334,7 +343,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         isExpectedSalaryWorkDate(dateKey, payTypePolicy, holidayDateKeys)
       )
       .map((dateKey) => ({
-        factoryId: employee.factoryId!,
+        factoryId: payrollFactoryId,
         workerId: employee.id,
         workerName: resolvePayrollEmployeeName(employee),
         payType,
@@ -584,15 +593,19 @@ const buildIntegratedPayrollEmployees = async (
     productionEmployeesInput.map((employee) => [Number(employee?.workerId), normalizePayrollSnapshotEmployee(employee)])
   );
   const factoryById = new Map(factories.map((factory) => [factory.id, factory]));
+  const soleFactory = factories.length === 1 ? factories[0] : null;
 
   return employees
     .filter((employee) => isPayrollEmployeeRelevantForMonth(employee, range))
     .map((employee) => {
       const payType = resolveEmployeeEffectivePayType(employee);
       const payTypePolicy = payTypePolicyByType.get(payType)!;
-      const factory = employee.factoryId ? factoryById.get(employee.factoryId) : null;
+      const payrollFactoryId = employee.factoryId || soleFactory?.id || null;
+      const factory = payrollFactoryId ? factoryById.get(payrollFactoryId) : null;
       if (!factory) {
-        throw createHttpError(409, `employee ${employee.id} has no payroll factory`);
+        throw createHttpError(409, factories.length > 1
+          ? `employee ${employee.id} has no payroll factory in a multi-factory organization`
+          : `employee ${employee.id} has no payroll factory`);
       }
       const version = factory?.salarySystemVersions?.[0] || null;
       if (!version) {
@@ -611,7 +624,7 @@ const buildIntegratedPayrollEmployees = async (
         || factory?.organization?.salaryCurrency?.code
         || "VND";
       const allWorkerAttendance = attendanceByWorker.get(employee.id) || [];
-      const foreignFactoryAttendance = allWorkerAttendance.find((entry) => Number(entry.factoryId) !== Number(employee.factoryId));
+      const foreignFactoryAttendance = allWorkerAttendance.find((entry) => Number(entry.factoryId) !== Number(payrollFactoryId));
       if (foreignFactoryAttendance) {
         throw createHttpError(409, `employee ${employee.id} has attendance in multiple factories on ${foreignFactoryAttendance.workDate}`);
       }
@@ -686,7 +699,7 @@ const buildIntegratedPayrollEmployees = async (
       const grossSalary = salaryItems.reduce((sum, item) => sum + item.amount, 0);
       const calculationSignature = JSON.stringify({
         workerId: employee.id,
-        factoryId: employee.factoryId,
+        factoryId: payrollFactoryId,
         gradeId: employee.gradeId,
         payType,
         versionId: version?.id || null,
@@ -704,7 +717,7 @@ const buildIntegratedPayrollEmployees = async (
         payType,
         bankName: employee.bankName,
         bankAccountNumber: employee.bankAccountNumber,
-        factoryId: employee.factoryId,
+        factoryId: payrollFactoryId,
         gradeId: employee.gradeId,
         currencyCode,
         salarySystemVersionId: version?.id || null,

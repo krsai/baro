@@ -208,9 +208,10 @@ const PayrollBoard = () => {
     ]);
     return Array.from(months)
       .filter((month) => !latestCompletedMonthKey || month <= latestCompletedMonthKey)
+      .filter((month) => snapshotsByMonth.has(month) || readinessByMonth[month]?.ready === true)
       .sort((left, right) => right.localeCompare(left))
       .map((month) => ({ month, snapshot: snapshotsByMonth.get(month) || null }));
-  }, [calendar?.availableMonthKeys, latestCompletedMonthKey, snapshots, snapshotsByMonth]);
+  }, [calendar?.availableMonthKeys, latestCompletedMonthKey, readinessByMonth, snapshots, snapshotsByMonth]);
   const filteredMonthRows = useMemo(
     () => selectedMonth
       ? monthRows.filter(({ month }) => month === selectedMonth)
