@@ -211,39 +211,47 @@ const PayrollBoard = () => {
       : monthRows,
     [monthRows, selectedMonth]
   );
-  const calculableMonths = useMemo(
+  const batchTargetMonths = useMemo(
     () => monthRows
       .filter(({ month, snapshot }) => {
         const monthReadiness = readinessByMonth[month];
-        return Boolean(monthReadiness?.ready && !snapshot);
+        const selected = !selectedMonth || month === selectedMonth;
+        const unlocked = !snapshot || snapshot.isProvisional === true;
+        return Boolean(selected && unlocked && monthReadiness?.ready);
       })
       .map(({ month }) => month)
       .sort((left, right) => left.localeCompare(right)),
-    [monthRows, readinessByMonth]
+    [monthRows, readinessByMonth, selectedMonth]
   );
-  const canCalculate = calculableMonths.length > 0 && !loading && !calculating;
+  const canCalculate = batchTargetMonths.length > 0 && !loading && !calculating;
   const allMonthsLabel = languageCode === 'ko'
     ? '전체'
     : languageCode === 'vi'
       ? 'Tất cả'
       : 'All';
 
-  const handleCalculate = async (requestedMonth = '') => {
-    const targetMonths = requestedMonth ? calculableMonths.filter((month) => month === requestedMonth) : (selectedMonth ? calculableMonths.filter((month) => month === selectedMonth) : calculableMonths);
+  const handleCalculate = async () => {
+    const targetMonths = batchTargetMonths;
     if (targetMonths.length === 0) return;
     setCalculating(true);
     try {
       const query = buildQueryString({ orgId: activeOrgId });
+      const failed = [];
       for (const month of targetMonths) {
-        await requestJSON('/payroll/snapshots' + query, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            month,
-            savedBy: activeProfile?.email || activeProfile?.name || 'administrator',
-          }),
-        });
+        try {
+          await requestJSON('/payroll/snapshots' + query, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ month, savedBy: activeProfile?.email || activeProfile?.name || 'administrator' }),
+          });
+        } catch (error) {
+          failed.push({ month, message: error?.message || resolveText(languageCode, 'calculateError') });
+        }
       }
       await load();
+      if (failed.length > 0) {
+        showNotification(`${failed.map((row) => row.month).join(', ')}: ${failed[0].message}`, 'error');
+        return;
+      }
       showNotification(
         resolveText(languageCode, 'calculateSuccess', { month: targetMonths.join(', ') }),
         'success'
@@ -253,23 +261,6 @@ const PayrollBoard = () => {
       showNotification(error?.message || resolveText(languageCode, 'calculateError'), 'error');
     } finally {
       setCalculating(false);
-    }
-  };
-
-  const handleRecalculateMonth = async (month) => {
-    if (!readinessByMonth[month]?.needsRecalculation) return;
-    setMutating(`recalculate:${month}`);
-    try {
-      await requestJSON('/payroll/snapshots' + buildQueryString({ orgId: activeOrgId }), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month, savedBy: activeProfile?.email || activeProfile?.name || 'administrator' }),
-      });
-      await load();
-      showNotification(resolveText(languageCode, 'calculateSuccess', { month }), 'success');
-    } catch (error) {
-      showNotification(error?.message || resolveText(languageCode, 'calculateError'), 'error');
-    } finally {
-      setMutating('');
     }
   };
 
@@ -340,11 +331,13 @@ const PayrollBoard = () => {
           </TextField>
           <Button
             variant="contained" startIcon={<CalculateIcon />}
-            disabled={!canCalculate} onClick={() => handleCalculate()}
+            disabled={!canCalculate} onClick={handleCalculate}
           >
             {calculating
               ? resolveText(languageCode, 'calculating')
-              : resolveText(languageCode, 'calculate')}
+              : languageCode === 'ko' ? `일괄 계산 (${batchTargetMonths.length})`
+                : languageCode === 'vi' ? `Tính hàng loạt (${batchTargetMonths.length})`
+                  : `Calculate All (${batchTargetMonths.length})`}
           </Button>
         </Stack>
       )} />}
@@ -400,18 +393,6 @@ const PayrollBoard = () => {
                                   : !snapshot ? payrollStatusText.notCalculated : rowNeedsRecalculation ? payrollStatusText.recalculationRequired : payrollStatusText.calculated}
                                 variant="outlined"
                               />
-                              {!snapshot ? <Button size="small" disabled={!readinessByMonth[month]?.ready || calculating} onClick={(event) => { event.stopPropagation(); handleCalculate(month); }}>
-                                {resolveText(languageCode, 'calculate')}
-                              </Button> : rowNeedsRecalculation && snapshot?.isProvisional ? <Button
-                                size="small" variant="text" color="warning"
-                                disabled={Boolean(mutating) || calculating}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleRecalculateMonth(month);
-                                }}
-                              >
-                                {mutating === `recalculate:${month}` ? resolveText(languageCode, 'calculating') : resolveText(languageCode, 'recalculateConfirmed')}
-                              </Button> : null}
                             </Stack>
                           </TableCell>
                           <TableCell align="center">
