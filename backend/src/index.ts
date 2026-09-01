@@ -861,6 +861,13 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "EmployeeCompensationPolicy", columnName: "baseSalary" },
   { tableName: "EmployeeCompensationPolicy", columnName: "allowance" },
   { tableName: "EmployeeCompensationPolicy", columnName: "incentive" },
+  { tableName: "EmployeePayTypePolicy", columnName: "orgId" },
+  { tableName: "EmployeePayTypePolicy", columnName: "payType" },
+  { tableName: "EmployeePayTypePolicy", columnName: "workWeekdays" },
+  { tableName: "EmployeePayTypePolicy", columnName: "standardClockIn" },
+  { tableName: "EmployeePayTypePolicy", columnName: "standardClockOut" },
+  { tableName: "EmployeePayTypePolicy", columnName: "breakMinutes" },
+  { tableName: "EmployeePayTypePolicy", columnName: "workdayMinimumMinutes" },
   { tableName: "SalaryItem", columnName: "formula" },
   { tableName: "SalaryItem", columnName: "paymentMonths" },
   { tableName: "Factory", columnName: "salaryCurrencyId" },
@@ -875,6 +882,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "SalarySystemVersion", columnName: "snapshot" },
   { tableName: "FactoryProductionAllowanceRate", columnName: "versionNumber" },
   { tableName: "FactoryProductionAllowanceRate", columnName: "confirmedAt" },
+  { tableName: "PayrollSnapshot", columnName: "revision" },
 ] as const;
 const STARTUP_REQUIRED_NULLABLE_RUNTIME_COLUMNS = [
   { tableName: "SalarySystemVersion", columnName: "effectiveMonth" },
