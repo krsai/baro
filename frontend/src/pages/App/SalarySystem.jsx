@@ -21,6 +21,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
 import { salaryText } from './salarySystemI18n';
+import { getPayTypeLabel } from '../../constants/payType';
 import { labelChipSx } from '../../theme/labelPalette';
 import { CURRENCY_CODES, currencySymbol } from '../../constants/currencies';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
@@ -74,7 +75,7 @@ const DEFAULT_FORMULA = ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS', '÷', 'SCHEDULED
 const defaultPayTypesForCategory = (category) => (category === 'INCENTIVE' ? ['OUTPUT'] : PAY_TYPE_ORDER);
 const DEFAULT_DRAFT = { name: '', nameKo: '', nameEn: '', nameVi: '', category: 'ALLOWANCE', formula: ['GRADE_RATE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '' };
 const item = (id, name, category, payCycle = 'MONTHLY', extra = {}) =>
-  ({ id, name, nameKo: name, nameEn: name, nameVi: name, category, payTypes: defaultPayTypesForCategory(category), formula: ['GRADE_RATE'], payCycle, paymentMonths: PAYMENT_MONTHS_BY_CYCLE[payCycle], capValue: '', ...extra });
+  ({ id, name, nameKo: name, nameEn: salaryText(name, 'en'), nameVi: salaryText(name, 'vi'), category, payTypes: defaultPayTypesForCategory(category), formula: ['GRADE_RATE'], payCycle, paymentMonths: PAYMENT_MONTHS_BY_CYCLE[payCycle], capValue: '', ...extra });
 const DEFAULT_ITEMS = [
   item('baseSalary', '기본급', 'BASE', 'MONTHLY', { required: true, formula: DEFAULT_FORMULA }),
   item('lunch', '점심수당', 'ALLOWANCE', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS'] }),
@@ -478,9 +479,9 @@ const SalarySystem = () => {
           <span />
           <Typography variant="caption" color="text.secondary" fontWeight={700}>{t('항목명')}</Typography>
           {PAY_TYPE_ORDER.map((payType) => (
-            <Tooltip key={payType} title={t(PAY_TYPES[payType]?.label || payType)}>
+            <Tooltip key={payType} title={getPayTypeLabel(payType, payType, languageCode)}>
               <Typography variant="caption" color="text.secondary" fontWeight={700} textAlign="center" sx={{ lineHeight: 1.2, whiteSpace: 'pre-line' }}>
-                {t(PAY_TYPES[payType]?.label || payType).replace('(', '\n(')}
+                {getPayTypeLabel(payType, payType, languageCode).replace('(', '\n(')}
               </Typography>
             </Tooltip>
           ))}
@@ -495,7 +496,7 @@ const SalarySystem = () => {
                     <IconButton {...dragProvided.dragHandleProps} size="small" aria-label="순서 변경" sx={{ flexShrink: 0, cursor: 'grab', color: 'text.disabled', '&:active': { cursor: 'grabbing' } }}><DragIndicatorIcon fontSize="small" /></IconButton>
                     <Box role="button" tabIndex={0} onClick={() => setSelectedId(row.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(row.id); } }} sx={(theme) => ({ flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: `minmax(0, 1fr) repeat(${PAY_TYPE_ORDER.length}, 46px)`, alignItems: 'center', pl: 1.5, pr: 0.25, py: 0.65, borderRadius: 1, cursor: 'pointer', bgcolor: selectedId === row.id ? alpha(theme.palette.primary.main, 0.12) : 'transparent', color: selectedId === row.id ? 'primary.dark' : 'text.primary', '&:hover': { bgcolor: selectedId === row.id ? alpha(theme.palette.primary.main, 0.18) : 'action.hover' } })}>
                       <Box sx={{ minWidth: 0 }}><Typography variant="body2" fontWeight={600} noWrap>{salaryItemName(row, languageCode)}</Typography><Typography variant="caption" sx={{ display: 'block', opacity: 0.75 }}>{t(PAY_CYCLES[row.payCycle])}</Typography></Box>
-                      {PAY_TYPE_ORDER.map((payType) => { const active = (row.payTypes || []).includes(payType); const fixed = row.category === 'INCENTIVE'; return <Checkbox key={payType} size="small" checked={active} disabled={fixed} onClick={(event) => event.stopPropagation()} onChange={() => toggleItemPayType(row, payType)} inputProps={{ 'aria-label': `${salaryItemName(row, languageCode)} ${t(PAY_TYPES[payType]?.label || payType)}` }} sx={{ justifySelf: 'center', p: 0.5 }} />; })}
+                      {PAY_TYPE_ORDER.map((payType) => { const active = (row.payTypes || []).includes(payType); const fixed = row.category === 'INCENTIVE'; return <Checkbox key={payType} size="small" checked={active} disabled={fixed} onClick={(event) => event.stopPropagation()} onChange={() => toggleItemPayType(row, payType)} inputProps={{ 'aria-label': `${salaryItemName(row, languageCode)} ${getPayTypeLabel(payType, payType, languageCode)}` }} sx={{ justifySelf: 'center', p: 0.5 }} />; })}
                     </Box>
                   </Stack>}
                 </Draggable>)}
@@ -517,7 +518,7 @@ const SalarySystem = () => {
           ? <Alert severity="info" icon={false} sx={{ m: 2 }}>{t('성과급은 작업 기록을 기준으로 자동 계산되며 급여 체계에서 수정할 수 없습니다.')}</Alert>
           : <><Box sx={{ px: 2, py: 1.5 }}><Typography fontWeight={700}>{t('급여 타입·직급별 단가')}</Typography><Typography variant="body2" color="text.secondary">{t('권한이나 직무와 관계없이 직원에게 지정된 급여 타입과 직급으로 단가를 결정합니다.')}</Typography></Box>
             <TableContainer><Table size="small"><TableHead><TableRow><TableCell>{t('급여 타입')}</TableCell><TableCell>{t('직급')}</TableCell><TableCell align="right">{t('단가')}/{t(PAY_CYCLES[selected.payCycle])} ({currencyCode})</TableCell></TableRow></TableHead><TableBody>
-              {PAY_TYPE_ORDER.flatMap((payType) => { const active = (selected.payTypes || []).includes(payType); return grades.map((grade, index) => <TableRow key={`${payType}:${grade.id}`} hover={active} sx={{ opacity: active ? 1 : 0.48 }}>{index === 0 && <TableCell rowSpan={grades.length} sx={{ verticalAlign: 'top', pt: 2 }}><Chip size="small" variant="outlined" label={t(PAY_TYPES[payType].label)} sx={labelChipSx(PAY_TYPES[payType].palette, active)} /><Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{payType}</Typography></TableCell>}<TableCell>{gradeName(grade, languageCode)} ({grade.code})</TableCell>
+              {PAY_TYPE_ORDER.flatMap((payType) => { const active = (selected.payTypes || []).includes(payType); return grades.map((grade, index) => <TableRow key={`${payType}:${grade.id}`} hover={active} sx={{ opacity: active ? 1 : 0.48 }}>{index === 0 && <TableCell rowSpan={grades.length} sx={{ verticalAlign: 'top', pt: 2 }}><Chip size="small" variant="outlined" label={getPayTypeLabel(payType, payType, languageCode)} sx={labelChipSx(PAY_TYPES[payType].palette, active)} /><Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{payType}</Typography></TableCell>}<TableCell>{gradeName(grade, languageCode)} ({grade.code})</TableCell>
                 <TableCell align="right"><TextField size="small" disabled={!active} value={getRate(payType, grade.id)} onFocus={(e) => e.target.select()} onChange={(e) => changeRate(payType, grade.id, e.target.value)} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} InputProps={{ startAdornment: <InputAdornment position="start">{currencySymbol(currencyCode)}</InputAdornment> }} sx={{ width: 170 }} /></TableCell></TableRow>); })}
             </TableBody></Table></TableContainer></>}
       </Paper>

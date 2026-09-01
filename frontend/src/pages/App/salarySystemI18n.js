@@ -40,6 +40,13 @@ const translations = {
   '계산식': ['Formula', 'Công thức'], '아래 모듈을 눌러 계산식을 만드세요.': ['Select modules below to build a formula.', 'Chọn các mô-đun bên dưới để tạo công thức.'], '파라미터 모듈': ['Parameter modules', 'Mô-đun tham số'], '연산자': ['Operators', 'Toán tử'],
   '숫자 상수': ['Numeric constant', 'Hằng số'], '예: 할증률 1.5': ['e.g. multiplier 1.5', 'VD: hệ số 1.5'], '상수 추가': ['Add constant', 'Thêm hằng số'], '초기화': ['Reset', 'Đặt lại'], '취소': ['Cancel', 'Hủy'], '계산식 적용': ['Apply formula', 'Áp dụng công thức'],
   '급여 항목 추가': ['Add salary item', 'Thêm khoản lương'], '항목명': ['Item name', 'Tên khoản mục'], '예: 자격수당': ['e.g. qualification allowance', 'VD: phụ cấp chứng chỉ'], '급여 구분': ['Salary category', 'Phân loại lương'], '추가': ['Add', 'Thêm'],
+  '통화': ['Currency', 'Tiền tệ'], '설명': ['Description', 'Mô tả'], '미지정': ['Unassigned', 'Chưa chỉ định'],
+  '정산 설정': ['Settlement settings', 'Thiết lập quyết toán'], '급여 타입·직급별 단가': ['Rate by pay type & grade', 'Đơn giá theo loại lương và cấp bậc'],
+  '선택된 급여 타입이 없습니다.': ['No pay type is selected.', 'Chưa chọn loại lương nào.'],
+  '급여 항목을 추가했습니다. 저장하면 새 버전으로 등록됩니다.': ['Added the salary item. Saving will register it as a new version.', 'Đã thêm khoản lương. Lưu lại sẽ đăng ký thành phiên bản mới.'],
+  '급여 체계를 저장하고 새 버전을 등록했습니다. 적용 월은 버전 관리에서 지정할 수 있습니다.': ['Saved the salary structure and registered a new version. You can assign the effective month in version history.', 'Đã lưu cơ cấu lương và đăng ký phiên bản mới. Bạn có thể chỉ định tháng áp dụng trong lịch sử phiên bản.'],
+  '급여 버전 적용 구간을 저장했습니다.': ['Saved the salary version’s effective range.', 'Đã lưu phạm vi áp dụng của phiên bản lương.'],
+  '급여 버전 적용 구간을 저장하지 못했습니다.': ['Failed to save the salary version’s effective range.', 'Không thể lưu phạm vi áp dụng của phiên bản lương.'],
 };
 
 export const salaryText = (text, languageCode) => {
