@@ -3,6 +3,10 @@ import {
   Box,
   Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   MenuItem,
   Paper,
   Stack,
@@ -13,6 +17,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Typography,
 } from '@mui/material';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -117,6 +122,7 @@ const PayrollBoard = () => {
   const [calculating, setCalculating] = useState(false);
   const [mutating, setMutating] = useState('');
   const [employeeDirectory, setEmployeeDirectory] = useState([]);
+  const [calculationErrors, setCalculationErrors] = useState(null);
 
   const text = useMemo(() => ({
     title: getUiMessage('menu.payroll', 'Payroll', languageCode),
@@ -225,6 +231,26 @@ const PayrollBoard = () => {
     [monthRows, readinessByMonth, selectedMonth]
   );
   const canCalculate = batchTargetMonths.length > 0 && !loading && !calculating;
+  const explainCalculationError = useCallback((message) => {
+    const raw = String(message || '');
+    let match = raw.match(/employee (\d+) has no payroll factory/i);
+    if (match) {
+      const employee = employeeDirectory.find((row) => Number(row?.id) === Number(match[1]));
+      const name = employee?.name || `직원 #${match[1]}`;
+      return `${name}에게 소속 공장이 지정되어 있지 않습니다. 조직 관리 > 직원에서 해당 직원의 공장을 지정해 주세요.`;
+    }
+    match = raw.match(/factory (\d+) has no salary system version for ([0-9-]+)/i);
+    if (match) return `공장 #${match[1]}에 ${match[2]}월에 적용되는 급여 체계 버전이 없습니다. 급여 체계 > 버전 관리에서 적용 구간을 지정해 주세요.`;
+    match = raw.match(/salary rate is missing for employee (\d+), item (.+)/i);
+    if (match) {
+      const employee = employeeDirectory.find((row) => Number(row?.id) === Number(match[1]));
+      return `${employee?.name || `직원 #${match[1]}`}의 급여 항목 '${match[2]}' 단가가 없습니다. 급여 체계에서 해당 급여 타입과 직급의 단가를 입력해 주세요.`;
+    }
+    if (/attendance records must belong/i.test(raw) || /attendance in multiple factories/i.test(raw)) return '직원의 출퇴근 기록이 소속 공장과 일치하지 않습니다. 출퇴근 기록을 확인해 한 직원의 기록이 올바른 공장 한 곳에만 있도록 수정해 주세요.';
+    if (/salary system version .* is invalid/i.test(raw)) return '적용 중인 급여 체계 버전의 항목 또는 단가 정보가 손상되었습니다. 급여 체계를 새 버전으로 저장하고 적용 구간을 지정해 주세요.';
+    if (/attendance and work records are incomplete/i.test(raw)) return '해당 월의 필수 출퇴근 기록 또는 생산 작업 기록이 모두 입력되지 않았습니다.';
+    return raw || '알 수 없는 오류가 발생했습니다. 입력 자료와 급여 체계 설정을 확인해 주세요.';
+  }, [employeeDirectory]);
   const allMonthsLabel = languageCode === 'ko'
     ? '전체'
     : languageCode === 'vi'
@@ -238,19 +264,21 @@ const PayrollBoard = () => {
     try {
       const query = buildQueryString({ orgId: activeOrgId });
       const failed = [];
+      const succeeded = [];
       for (const month of targetMonths) {
         try {
           await requestJSON('/payroll/snapshots' + query, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ month, savedBy: activeProfile?.email || activeProfile?.name || 'administrator' }),
           });
+          succeeded.push(month);
         } catch (error) {
           failed.push({ month, message: error?.message || resolveText(languageCode, 'calculateError') });
         }
       }
       await load();
       if (failed.length > 0) {
-        showNotification(`${failed.map((row) => row.month).join(', ')}: ${failed[0].message}`, 'error');
+        setCalculationErrors({ failed, succeeded });
         return;
       }
       showNotification(
@@ -413,6 +441,21 @@ const PayrollBoard = () => {
           </TableContainer>
         </Paper>
       </Box>
+      <Dialog open={Boolean(calculationErrors)} onClose={() => setCalculationErrors(null)} fullWidth maxWidth="sm">
+        <DialogTitle>급여 계산 오류</DialogTitle>
+        <DialogContent dividers>
+          {calculationErrors?.succeeded?.length > 0 && <Box sx={{ mb: 2, p: 1.5, borderRadius: 1, bgcolor: 'success.50' }}>
+            <Typography variant="subtitle2" color="success.dark">계산 완료</Typography>
+            <Typography variant="body2">{calculationErrors.succeeded.join(', ')}</Typography>
+          </Box>}
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>아래 문제를 수정한 뒤 해당 월을 다시 계산해 주세요.</Typography>
+          <Stack spacing={1.5}>{calculationErrors?.failed?.map((row) => <Box key={row.month} sx={{ p: 2, border: 1, borderColor: 'error.light', borderRadius: 1 }}>
+            <Typography variant="subtitle2" color="error.main" sx={{ mb: .5 }}>{row.month}</Typography>
+            <Typography variant="body2">{explainCalculationError(row.message)}</Typography>
+          </Box>)}</Stack>
+        </DialogContent>
+        <DialogActions><Button onClick={() => setCalculationErrors(null)}>확인</Button></DialogActions>
+      </Dialog>
     </AppPageContainer>
   );
 };
