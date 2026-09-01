@@ -43,7 +43,6 @@ import {
 const EMPLOYEE_STATUS_VALUES = ['ACTIVE', 'SUSPENDED', 'TERMINATED'];
 const EMPLOYEE_STATUS_FILTER_VALUES = ['ALL', ...EMPLOYEE_STATUS_VALUES];
 const ORG_ROLE_VALUES = ['ADMIN', 'OPERATOR', 'ACCOUNTANT', 'WORKER'];
-const NO_FACTORY_FILTER_VALUE = '__NO_FACTORY__';
 const EMPLOYEE_STATUS_LABELS = {
   ACTIVE: { ko: '재직', en: 'Active', vi: 'Dang lam' },
   SUSPENDED: { ko: '휴직', en: 'Suspended', vi: 'Tam nghi' },
@@ -95,11 +94,6 @@ const EMPLOYEE_BOARD_TEXT = {
   factoryLabel: { ko: '공장', en: 'Factory', vi: 'Nhà máy' },
   factorySelect: { ko: '공장 선택', en: 'Select Factory', vi: 'Chon nha may' },
   allFactory: { ko: '전체 공장', en: 'All Factories', vi: 'Tất cả nha may' },
-  operationsSupportTeam: {
-    ko: '운영 지원팀',
-    en: 'Operations Support Team',
-    vi: 'Bo phan ho tro van hanh',
-  },
   noFactory: { ko: '공장 없음', en: 'No Factory', vi: 'Khong nha may' },
   factoryRequiredAuto: {
     ko: '필수 항목(내 소속 공장으로 자동 설정)',
@@ -398,17 +392,11 @@ const isValidDateInput = (value) => {
   return !Number.isNaN(date.getTime());
 };
 const normalizeSearchText = (value) => String(value || '').trim().toLowerCase();
-const isNoFactoryFilterValue = (value) => String(value || '') === NO_FACTORY_FILTER_VALUE;
 const resolveFactoryIdForSave = (value) => {
-  if (!value || isNoFactoryFilterValue(value)) return null;
+  if (!value) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
-const hasAssignedFactory = (employee) => {
-  const factoryId = Number(employee?.factoryId);
-  return Number.isFinite(factoryId) && factoryId > 0;
-};
-
 const resolveNameFromEmail = (email) => {
   const normalized = normalizeEmail(email);
   if (!normalized || !normalized.includes('@')) return '';
@@ -431,11 +419,7 @@ const buildEmployeeDraft = (member, employee, options = {}) => {
     jobRoleId: employee?.roleId ? String(employee.roleId) : '',
     gradeId: employee?.gradeId ? String(employee.gradeId) : '',
     payType: String(employee?.payType || employee?.effectivePayType || defaultPayType).toUpperCase(),
-    factoryId: employee?.factoryId
-      ? String(employee.factoryId)
-      : options.useOperationsSupportTeam
-        ? NO_FACTORY_FILTER_VALUE
-        : '',
+    factoryId: employee?.factoryId ? String(employee.factoryId) : '',
     employeeNo: employee?.employeeNo || '',
     joinedAt: formatDateInput(employee?.joinedAt || member?.approvedAt),
     leftAt: formatDateInput(employee?.leftAt),
@@ -751,6 +735,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const defaultPendingFactoryId =
     operatorFactoryId ||
     selectedFactoryFilterId ||
+    (factories.length === 1 ? String(factories[0].id) : '') ||
     '';
   const currentUserName = String(activeProfile?.employeeName || '').trim();
   const payTypeOptions = useMemo(() => getPayTypeOptions(languageCode), [languageCode]);
@@ -825,10 +810,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       const data = await requestJSON(
         `/employees${buildQueryString({
           orgId,
-          factoryId:
-            normalizedFactoryFilterId && !isNoFactoryFilterValue(normalizedFactoryFilterId)
-              ? normalizedFactoryFilterId
-              : undefined,
+          factoryId: normalizedFactoryFilterId || undefined,
           systemOnly: isSystemProfile && !isBrowsingOrgAsSystemAdmin ? '1' : undefined,
         })}`
       );
@@ -884,7 +866,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       return;
     }
     setSelectedFactoryFilterId((prev) => {
-      if (isNoFactoryFilterValue(prev)) return prev;
       if (!prev) return '';
       const exists = factories.some((factory) => String(factory?.id) === String(prev));
       return exists ? prev : '';
@@ -909,8 +890,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
       if (
         activeOrgType !== 'BRAND' &&
-        selectedRole === 'WORKER' &&
-        (!factoryId || isNoFactoryFilterValue(factoryId))
+        !factoryId
       ) {
         setStatusMessage({ type: 'error', text: text('errNeedFactoryBeforeApprove', languageCode) });
         setApprovingId(null);
@@ -1008,12 +988,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       const membershipId = Number(nextEmployee.orgMembershipId);
       const activeFilterId = String(selectedFactoryFilterId || '');
       const nextFactoryId = String(nextEmployee?.factoryId || '');
-      const shouldInclude =
-        !activeFilterId
-          ? true
-          : isNoFactoryFilterValue(activeFilterId)
-            ? true
-            : nextFactoryId === activeFilterId;
+      const shouldInclude = !activeFilterId || nextFactoryId === activeFilterId;
 
       setEmployees((prev) => {
         const filtered = prev.filter(
@@ -1157,7 +1132,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     const defaultFactoryId =
       activeOrgType === 'BRAND'
         ? ''
-        : selectedFactoryFilterId || '';
+        : selectedFactoryFilterId || (factories.length === 1 ? String(factories[0].id) : '');
     setDrawerMode('create');
     setSelectedMemberId(null);
     setDrawerEmail('');
@@ -1184,6 +1159,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     gradeOptions,
     roleOptions,
     selectedFactoryFilterId,
+    factories,
   ]);
 
   const openEditDrawer = useCallback((member) => {
@@ -1196,7 +1172,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       buildEmployeeDraft(member, employee, {
         useEmailFallback: normalizedMemberEmail === myEmail,
         currentUserName: normalizedMemberEmail === myEmail ? currentUserName : '',
-        useOperationsSupportTeam: activeOrgType !== 'BRAND',
       })
     );
     setIsAddDrawerOpen(true);
@@ -1245,10 +1220,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         if (wasSupervisor !== isSupervisor) {
           next.payType = isSupervisor ? PAY_TYPE_KEYS.GENERAL : PAY_TYPE_KEYS.OUTPUT;
         }
-      }
-
-      if (isWorkerOrgRole(normalizedRole) && isNoFactoryFilterValue(next.factoryId)) {
-        next.factoryId = '';
       }
 
       if (hasLeftAtPatch && !hasStatusPatch && normalizedLeftAt) {
@@ -1307,13 +1278,12 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     }
 
     if (activeOrgType !== 'BRAND') {
-      if (isWorker && (!selectedFactoryId || isNoFactoryFilterValue(selectedFactoryId))) {
+      if (!selectedFactoryId) {
         setStatusMessage({ type: 'error', text: text('errNeedFactory', languageCode) });
         return;
       }
       if (
         selectedFactoryId &&
-        !isNoFactoryFilterValue(selectedFactoryId) &&
         !Number.isFinite(Number(selectedFactoryId))
       ) {
         setStatusMessage({ type: 'error', text: text('errInvalidFactory', languageCode) });
@@ -1470,12 +1440,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
   const visibleActiveMembers = useMemo(() => {
     if (!selectedFactoryFilterId) return activeMembers;
-    if (isNoFactoryFilterValue(selectedFactoryFilterId)) {
-      return activeMembers.filter((member) => {
-        const employee = employeeByMembership.get(member.id) || null;
-        return !hasAssignedFactory(employee);
-      });
-    }
     return activeMembers.filter((member) => {
       const employee = employeeByMembership.get(member.id);
       if (!employee) return false;
@@ -1787,16 +1751,13 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   select
                   size="small"
                   label={text('factoryLabel', languageCode)}
-                  required={drawerIsWorker}
+                  required
                   value={drawerDraft.factoryId}
                   onChange={(e) => handleDrawerDraftChange({ factoryId: e.target.value })}
                   disabled={isDrawerSaving}
-                  helperText={drawerIsWorker ? text('requiredInput', languageCode) : ''}
+                  helperText={text('requiredInput', languageCode)}
                 >
                   <MenuItem value="">{text('factorySelect', languageCode)}</MenuItem>
-                  <MenuItem value={NO_FACTORY_FILTER_VALUE} disabled={drawerIsWorker}>
-                    {text('operationsSupportTeam', languageCode)}
-                  </MenuItem>
                   {factories.map((factory) => (
                     <MenuItem key={factory.id} value={String(factory.id)}>
                       {factory.name}
@@ -1913,14 +1874,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                             sx={{ minWidth: 150 }}
                           >
                             <MenuItem value="">{text('factorySelect', languageCode)}</MenuItem>
-                            <MenuItem
-                              value={NO_FACTORY_FILTER_VALUE}
-                              disabled={isWorkerOrgRole(
-                                pendingRoleOverrides[member.id] || member.role || ''
-                              )}
-                            >
-                              {text('operationsSupportTeam', languageCode)}
-                            </MenuItem>
                             {factories.map((factory) => (
                               <MenuItem key={factory.id} value={String(factory.id)}>
                                 {factory.name}
@@ -2046,9 +1999,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                       if (!normalizedValue) {
                         return text('allFactory', languageCode);
                       }
-                      if (isNoFactoryFilterValue(normalizedValue)) {
-                        return text('operationsSupportTeam', languageCode);
-                      }
                       return (
                         factories.find((factory) => String(factory?.id) === normalizedValue)?.name ||
                         text('allFactory', languageCode)
@@ -2058,9 +2008,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   InputLabelProps={{ shrink: true }}
                 >
                   <MenuItem value="">{text('allFactory', languageCode)}</MenuItem>
-                  <MenuItem value={NO_FACTORY_FILTER_VALUE}>
-                    {text('operationsSupportTeam', languageCode)}
-                  </MenuItem>
                   {factories.map((factory) => (
                     <MenuItem key={factory.id} value={String(factory.id)}>
                       {factory.name}

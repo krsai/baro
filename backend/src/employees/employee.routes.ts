@@ -656,12 +656,11 @@ export const createEmployeeRouter = ({
 
     if (
       isManufacturerOrg(existingEmployee.organization) &&
-      existingEmployee.orgRole === "WORKER" &&
       (resolvedFactoryId === null || resolvedFactoryId === undefined)
     ) {
       return res.status(400).json({
         ok: false,
-        error: "factoryId is required for worker employees",
+        error: "factoryId is required for manufacturer employees",
       });
     }
 

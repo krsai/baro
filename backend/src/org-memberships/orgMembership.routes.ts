@@ -369,13 +369,12 @@ export const createOrgMembershipRouter = ({
       : null;
     if (
       isManufacturer &&
-      role === "WORKER" &&
       (resolvedFactoryId === null || resolvedFactoryId === undefined)
     ) {
       return {
         ok: false as const,
         status: 400,
-        error: "factoryId is required for worker employees",
+        error: "factoryId is required for manufacturer employees",
       };
     }
 
