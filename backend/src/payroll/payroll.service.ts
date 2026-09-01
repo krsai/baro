@@ -206,6 +206,12 @@ const enumerateMonthWorkingDateKeys = (month: string, holidayDateKeys: Set<strin
   return result;
 };
 
+const isExpectedSalaryWorkDate = (dateKey: string, payType: string, holidayDateKeys: Set<string>) => {
+  if (holidayDateKeys.has(dateKey)) return false;
+  const day = new Date(`${dateKey}T00:00:00.000Z`).getUTCDay();
+  return payType === EMPLOYEE_PAY_TYPE.OUTPUT ? day !== 0 : day !== 0 && day !== 6;
+};
+
 const employeeExpectedOnDate = (employee: any, dateKey: string) => {
   const joined = toDateKey(employee?.joinedAt ?? employee?.approvedAt ?? employee?.createdAt);
   const left = toDateKey(employee?.leftAt);
@@ -227,7 +233,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   const monthEnd = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0))
     .toISOString().slice(0, 10);
 
-  const [lines, holidays, attendanceEntries, workLogs, snapshot] = await Promise.all([
+  const [lines, holidays, attendanceEntries, workLogs, payrollEmployees, snapshot] = await Promise.all([
     prisma.line.findMany({
       where: { orgId, isActive: true },
       include: {
@@ -281,6 +287,10 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         },
       },
     }),
+    prisma.employee.findMany({
+      where: { orgId, status: { notIn: ["PENDING", "REJECTED"] } },
+      include: { role: true, factory: { select: { id: true, managementStartDate: true } } },
+    }),
     prisma.payrollSnapshot.findUnique({
       where: { orgId_month: { orgId, month } },
       select: { id: true, isProvisional: true, lockedAt: true, data: true },
@@ -291,6 +301,32 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   const monthWorkingDates = enumerateMonthWorkingDateKeys(month, holidayDateKeys);
   const attendanceKeys = new Set(
     attendanceEntries.map((row) => `${row.factoryId}:${row.workerId}:${row.workDate}`)
+  );
+  const payrollMonthRange = getPayrollMonthRange(month);
+  const relevantPayrollEmployees = payrollEmployees.filter((employee) =>
+    isPayrollEmployeeRelevantForMonth(employee, payrollMonthRange)
+  );
+  const allMonthDates = enumerateMonthWorkingDateKeys(month, new Set());
+  const requiredAttendance = relevantPayrollEmployees.flatMap((employee) => {
+    if (!employee.factoryId || !employee.factory) return [];
+    const payType = resolveEmployeeEffectivePayType(employee);
+    const factoryStart = resolveFactoryManagementStartDateKey(employee.factory);
+    return allMonthDates
+      .filter((dateKey) =>
+        dateKey >= factoryStart &&
+        employeeExpectedOnDate(employee, dateKey) &&
+        isExpectedSalaryWorkDate(dateKey, payType, holidayDateKeys)
+      )
+      .map((dateKey) => ({
+        factoryId: employee.factoryId!,
+        workerId: employee.id,
+        workerName: resolvePayrollEmployeeName(employee),
+        payType,
+        date: dateKey,
+      }));
+  });
+  const missingPayrollAttendance = requiredAttendance.filter((row) =>
+    !attendanceKeys.has(`${row.factoryId}:${row.workerId}:${row.date}`)
   );
   const employeeById = new Map<number, any>();
   for (const line of lines) for (const employee of line.employees) employeeById.set(employee.id, employee);
@@ -384,7 +420,11 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     })
     .filter((group): group is NonNullable<typeof group> => group !== null);
 
-  const groupsComplete = groups.length > 0 && groups.every((group) => group.ready);
+  const hasOutputEmployees = relevantPayrollEmployees.some(
+    (employee) => resolveEmployeeEffectivePayType(employee) === EMPLOYEE_PAY_TYPE.OUTPUT
+  );
+  const groupsComplete = groups.every((group) => group.ready) && (!hasOutputEmployees || groups.length > 0);
+  const attendanceComplete = requiredAttendance.length > 0 && missingPayrollAttendance.length === 0;
   const snapshotEmployees = snapshot
     ? ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee)
     : [];
@@ -469,7 +509,10 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     snapshotExists: Boolean(snapshot && !snapshot.isProvisional),
     needsRecalculation,
     salaryCalculationError,
-    ready: completedMonth && groupsComplete,
+    attendanceRequiredCount: requiredAttendance.length,
+    attendanceRecordedCount: requiredAttendance.length - missingPayrollAttendance.length,
+    missingPayrollAttendance,
+    ready: completedMonth && groupsComplete && attendanceComplete,
     groups: groupsWithRecalculation,
   };
 };
