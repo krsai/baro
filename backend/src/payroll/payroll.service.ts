@@ -378,6 +378,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         ready:
           expectedDates.length > 0 &&
           missingWorkDates.length === 0 &&
+          missingAttendance.length === 0 &&
           invalidCalculationBasisCount === 0,
       };
     })
@@ -387,9 +388,15 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   const snapshotEmployees = snapshot
     ? ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee)
     : [];
-  const currentCalculatedEmployees = snapshot
-    ? (await getPayrollByMonth(orgId, month, { ignoreSnapshot: true })).employees
-    : [];
+  let currentCalculatedEmployees: any[] = [];
+  let salaryCalculationError: string | null = null;
+  if (snapshot) {
+    try {
+      currentCalculatedEmployees = (await getPayrollByMonth(orgId, month, { ignoreSnapshot: true })).employees;
+    } catch (error: any) {
+      salaryCalculationError = String(error?.message || "salary calculation prerequisites are incomplete");
+    }
+  }
   const currentCalculatedByWorkerId = new Map(
     currentCalculatedEmployees.map((employee) => [employee.workerId, employee])
   );
@@ -405,7 +412,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   const currentSignatureByWorkerId = new Map(
     currentCalculatedEmployees.map((employee) => [employee.workerId, employee.calculationSignature || null])
   );
-  const salaryCalculationChanged = Boolean(snapshot && (
+  const salaryCalculationChanged = Boolean(snapshot && (salaryCalculationError ||
     snapshotEmployees.length !== currentCalculatedEmployees.length ||
     snapshotEmployees.some((employee) => currentSignatureByWorkerId.get(employee.workerId) !== (employee.calculationSignature || null))
   ));
@@ -461,6 +468,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     completedMonth,
     snapshotExists: Boolean(snapshot && !snapshot.isProvisional),
     needsRecalculation,
+    salaryCalculationError,
     ready: completedMonth && groupsComplete,
     groups: groupsWithRecalculation,
   };

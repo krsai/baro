@@ -153,7 +153,7 @@ const PayrollBoard = () => {
           await requestJSON(
             '/payroll/readiness' + buildQueryString({ orgId: activeOrgId, month }),
             { forceRefresh: true, skipGlobalLoading: true }
-          ),
+          ).catch((error) => ({ month, completedMonth: true, ready: false, groups: [], error: error?.message || 'Failed to check payroll readiness.' })),
         ])
       );
 
@@ -205,7 +205,7 @@ const PayrollBoard = () => {
     () => monthRows
       .filter(({ month, snapshot }) => {
         const monthReadiness = readinessByMonth[month];
-        return Boolean(monthReadiness?.completedMonth && !snapshot);
+        return Boolean(monthReadiness?.ready && !snapshot);
       })
       .map(({ month }) => month)
       .sort((left, right) => left.localeCompare(right)),
@@ -386,7 +386,7 @@ const PayrollBoard = () => {
                                 label={!snapshot ? payrollStatusText.notCalculated : rowNeedsRecalculation ? payrollStatusText.recalculationRequired : payrollStatusText.calculated}
                                 variant="outlined"
                               />
-                              {!snapshot ? <Button size="small" disabled={calculating} onClick={(event) => { event.stopPropagation(); handleCalculate(month); }}>
+                              {!snapshot ? <Button size="small" disabled={!readinessByMonth[month]?.ready || calculating} onClick={(event) => { event.stopPropagation(); handleCalculate(month); }}>
                                 {resolveText(languageCode, 'calculate')}
                               </Button> : rowNeedsRecalculation && snapshot?.isProvisional ? <Button
                                 size="small" variant="text" color="warning"
