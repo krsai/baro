@@ -4869,6 +4869,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS "EmployeePayTypePolicy_orgId_payType_key" ON "
 CREATE INDEX IF NOT EXISTS "EmployeePayTypePolicy_orgId_idx" ON "EmployeePayTypePolicy"("orgId");
 DO $$ BEGIN ALTER TABLE "EmployeePayTypePolicy" ADD CONSTRAINT "EmployeePayTypePolicy_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "EmployeePayTypePolicy" ADD CONSTRAINT "EmployeePayTypePolicy_payType_check" CHECK ("payType" IN ('GENERAL','OUTPUT')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- 2026-09-01: optimistic concurrency guard for payroll mutations.
+ALTER TABLE "PayrollSnapshot" ADD COLUMN IF NOT EXISTS "revision" INTEGER NOT NULL DEFAULT 0;
 UPDATE "SalaryItem" s SET "factoryId"=(SELECT id FROM "Factory" WHERE "orgId"=s."orgId" ORDER BY id LIMIT 1) WHERE s."factoryId" IS NULL;
 UPDATE "SalaryItemRate" s SET "factoryId"=(SELECT id FROM "Factory" WHERE "orgId"=s."orgId" ORDER BY id LIMIT 1) WHERE s."factoryId" IS NULL;
 UPDATE "SalarySystemVersion" s SET "factoryId"=(SELECT id FROM "Factory" WHERE "orgId"=s."orgId" ORDER BY id LIMIT 1) WHERE s."factoryId" IS NULL;

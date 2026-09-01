@@ -1682,6 +1682,7 @@ model PayrollSnapshot {
   lockedAt            DateTime
   lockedBy            String
   isProvisional       Boolean  @default(false)
+  revision            Int      @default(0)
   createdAt           DateTime @default(now())
   createdBy           String   @default("system@baro.local")
   createdByEmployeeId Int?

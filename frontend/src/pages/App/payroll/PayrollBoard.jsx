@@ -95,6 +95,16 @@ const resolveText = (languageCode, key, replacements = {}) => {
   );
 };
 
+const payrollAmountSummary = (employees) => {
+  const totals = new Map();
+  employees.forEach((employee) => {
+    const currency = String(employee?.currencyCode || 'VND').toUpperCase();
+    totals.set(currency, (totals.get(currency) || 0) + Number(employee?.grossSalary || 0));
+  });
+  return Array.from(totals.entries()).sort(([left], [right]) => left.localeCompare(right))
+    .map(([currency, amount]) => `${amount.toLocaleString()} ${currency}`).join(' / ');
+};
+
 const PayrollBoard = () => {
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeProfile } = useAuth();
@@ -361,13 +371,15 @@ const PayrollBoard = () => {
                     : filteredMonthRows.map(({ month, snapshot }) => {
                       const groups = readinessByMonth[month]?.groups || [];
                       const rowNeedsRecalculation = Boolean(snapshot && readinessByMonth[month]?.needsRecalculation);
+                      const invalidAttendanceCount = Array.isArray(readinessByMonth[month]?.invalidPayrollAttendance)
+                        ? readinessByMonth[month].invalidPayrollAttendance.length : 0;
                       const snapshotEmployees = Array.isArray(snapshot?.data) ? snapshot.data : [];
                       const summaryEmployees = snapshot ? snapshotEmployees : activeEmployees;
                       const generalEmployees = summaryEmployees.filter((employee) => !['OUTPUT', 'CT'].includes(String(employee?.payType || '').toUpperCase()));
                       const outputEmployees = summaryEmployees.filter((employee) => ['OUTPUT', 'CT'].includes(String(employee?.payType || '').toUpperCase()));
-                      const salaryTotal = (rows) => rows.reduce((sum, employee) => sum + Number(employee?.grossSalary || 0), 0);
-                      const generalPayroll = salaryTotal(generalEmployees);
-                      const outputPayroll = salaryTotal(outputEmployees);
+                      const generalPayroll = payrollAmountSummary(generalEmployees);
+                      const outputPayroll = payrollAmountSummary(outputEmployees);
+                      const totalPayroll = payrollAmountSummary(summaryEmployees);
                       return (
                         <TableRow
                           key={month} hover sx={{ cursor: snapshot ? 'pointer' : 'default' }}
@@ -375,15 +387,17 @@ const PayrollBoard = () => {
                         >
                           <TableCell sx={{ fontWeight: 700 }}>{month}</TableCell>
                           <TableCell align="right">{summaryEmployees.length} ({generalEmployees.length}/{outputEmployees.length}){text.peopleSuffix}</TableCell>
-                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? `${generalPayroll.toLocaleString()} VND` : payrollSummaryText.pending}</TableCell>
-                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? `${outputPayroll.toLocaleString()} VND` : payrollSummaryText.pending}</TableCell>
-                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary', fontWeight: 700 }}>{snapshot ? `${(generalPayroll + outputPayroll).toLocaleString()} VND` : payrollSummaryText.pending}</TableCell>
+                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? generalPayroll || '-' : payrollSummaryText.pending}</TableCell>
+                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? outputPayroll || '-' : payrollSummaryText.pending}</TableCell>
+                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary', fontWeight: 700 }}>{snapshot ? totalPayroll || '-' : payrollSummaryText.pending}</TableCell>
                           <TableCell align="center">
                             <Stack direction="row" spacing={0.75} justifyContent="center" alignItems="center">
                               <Chip
                                 size="small"
-                                color={!snapshot ? 'default' : rowNeedsRecalculation ? 'warning' : 'success'}
-                                label={!snapshot ? payrollStatusText.notCalculated : rowNeedsRecalculation ? payrollStatusText.recalculationRequired : payrollStatusText.calculated}
+                                color={invalidAttendanceCount > 0 ? 'error' : !snapshot ? 'default' : rowNeedsRecalculation ? 'warning' : 'success'}
+                                label={invalidAttendanceCount > 0
+                                  ? (languageCode === 'ko' ? `출퇴근 공장 오류 ${invalidAttendanceCount}건` : languageCode === 'vi' ? `Lỗi nhà máy chấm công ${invalidAttendanceCount}` : `Attendance factory errors: ${invalidAttendanceCount}`)
+                                  : !snapshot ? payrollStatusText.notCalculated : rowNeedsRecalculation ? payrollStatusText.recalculationRequired : payrollStatusText.calculated}
                                 variant="outlined"
                               />
                               {!snapshot ? <Button size="small" disabled={!readinessByMonth[month]?.ready || calculating} onClick={(event) => { event.stopPropagation(); handleCalculate(month); }}>

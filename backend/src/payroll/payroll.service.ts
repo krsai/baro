@@ -309,6 +309,18 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   const relevantPayrollEmployees = payrollEmployees.filter((employee) =>
     isPayrollEmployeeRelevantForMonth(employee, payrollMonthRange)
   );
+  const payrollEmployeeById = new Map(relevantPayrollEmployees.map((employee) => [employee.id, employee]));
+  const invalidPayrollAttendance = attendanceEntries.flatMap((entry) => {
+    const employee = payrollEmployeeById.get(entry.workerId);
+    if (!employee?.factoryId || Number(employee.factoryId) === Number(entry.factoryId)) return [];
+    return [{
+      workerId: entry.workerId,
+      workerName: resolvePayrollEmployeeName(employee),
+      date: entry.workDate,
+      expectedFactoryId: employee.factoryId,
+      recordedFactoryId: entry.factoryId,
+    }];
+  });
   const allMonthDates = enumerateMonthDateKeys(month);
   const requiredAttendance = relevantPayrollEmployees.flatMap((employee) => {
     if (!employee.factoryId || !employee.factory) return [];
@@ -428,7 +440,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     (employee) => resolveEmployeeEffectivePayType(employee) === EMPLOYEE_PAY_TYPE.OUTPUT
   );
   const groupsComplete = groups.every((group) => group.ready) && (!hasOutputEmployees || groups.length > 0);
-  const attendanceComplete = requiredAttendance.length > 0 && missingPayrollAttendance.length === 0;
+  const attendanceComplete = requiredAttendance.length > 0 && missingPayrollAttendance.length === 0 && invalidPayrollAttendance.length === 0;
   const snapshotEmployees = snapshot
     ? ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee)
     : [];
@@ -516,6 +528,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     attendanceRequiredCount: requiredAttendance.length,
     attendanceRecordedCount: requiredAttendance.length - missingPayrollAttendance.length,
     missingPayrollAttendance,
+    invalidPayrollAttendance,
     ready: completedMonth && groupsComplete && attendanceComplete,
     groups: groupsWithRecalculation,
   };
@@ -552,6 +565,7 @@ const buildIntegratedPayrollEmployees = async (
         salarySystemVersions: {
           where: { effectiveMonth: { lte: month } },
           orderBy: [{ effectiveMonth: "desc" }, { versionNumber: "desc" }],
+          take: 1,
         },
         salaryItems: { where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], include: { rates: true } },
       },
@@ -587,24 +601,31 @@ const buildIntegratedPayrollEmployees = async (
       const versionSnapshot = version?.snapshot && typeof version.snapshot === "object" && !Array.isArray(version.snapshot)
         ? version.snapshot as any
         : null;
-      const items = versionSnapshot && Array.isArray(versionSnapshot.items)
-        ? versionSnapshot.items
-        : (factory?.salaryItems || []).map((item: any) => ({ ...item, id: item.code }));
-      const rates = versionSnapshot && Array.isArray(versionSnapshot.rates)
-        ? versionSnapshot.rates
-        : (factory?.salaryItems || []).flatMap((item: any) => item.rates.map((rate: any) => ({ ...rate, salaryItemCode: item.code })));
+      if (!versionSnapshot || !Array.isArray(versionSnapshot.items) || !Array.isArray(versionSnapshot.rates)) {
+        throw createHttpError(409, `factory ${factory.id} salary system version ${version.id} is invalid`);
+      }
+      const items = versionSnapshot.items;
+      const rates = versionSnapshot.rates;
       const currencyCode = resolveOptionalString(versionSnapshot?.currencyCode, null)
         || factory?.salaryCurrency?.code
         || factory?.organization?.salaryCurrency?.code
         || "VND";
-      const workerAttendance = attendanceByWorker.get(employee.id) || [];
+      const allWorkerAttendance = attendanceByWorker.get(employee.id) || [];
+      const foreignFactoryAttendance = allWorkerAttendance.find((entry) => Number(entry.factoryId) !== Number(employee.factoryId));
+      if (foreignFactoryAttendance) {
+        throw createHttpError(409, `employee ${employee.id} has attendance in multiple factories on ${foreignFactoryAttendance.workDate}`);
+      }
+      const workerAttendance = allWorkerAttendance;
       const attendanceParameters = resolveSalaryAttendanceParameters({ month, payType, holidayDateKeys, attendanceEntries: workerAttendance, policy: payTypePolicy });
       let regularSeconds = 0;
       let overtimeSeconds = 0;
       let holidaySeconds = 0;
+      const workedSecondsByDate = new Map<string, number>();
       for (const entry of workerAttendance) {
-        const seconds = Math.max(0, Number(entry.workedSeconds) || 0);
         const dateKey = String(entry.workDate || "");
+        workedSecondsByDate.set(dateKey, (workedSecondsByDate.get(dateKey) || 0) + Math.max(0, Number(entry.workedSeconds) || 0));
+      }
+      for (const [dateKey, seconds] of workedSecondsByDate) {
         const isHoliday = holidayDateKeys.has(dateKey) || !isPolicyWorkday(dateKey, payTypePolicy);
         if (isHoliday) holidaySeconds += seconds;
         else {
@@ -1010,6 +1031,19 @@ export const savePayrollSnapshot = async ({
   if (month >= currentMonth) {
     throw createHttpError(409, "production allowance can only be calculated through the previous month");
   }
+  const existingSnapshot = await prisma.payrollSnapshot.findUnique({
+    where: { orgId_month: { orgId, month } },
+  });
+  if (existingSnapshot && !existingSnapshot.isProvisional) {
+    throw createHttpError(409, "unlock payroll before recalculation");
+  }
+  const readiness = await getPayrollMonthReadiness(orgId, month);
+  if (!readiness.ready) {
+    if (readiness.invalidPayrollAttendance.length > 0) {
+      throw createHttpError(409, "attendance records must belong to each employee's assigned factory");
+    }
+    throw createHttpError(409, "attendance and work records are incomplete for this payroll month");
+  }
   const monthReady = isPayrollMonthReady(month, { timeZone });
   const unreviewedCtPlans = monthReady ? await prisma.assignmentPlan.findMany({
     where: {
@@ -1038,43 +1072,79 @@ export const savePayrollSnapshot = async ({
 
   void _employees;
   const calculated = await getPayrollByMonth(orgId, month, { ignoreSnapshot: true });
-  const snapshotEmployees = calculated.employees.map(normalizePayrollSnapshotEmployee);
+  const storedByWorkerId = new Map(
+    ensureArray(existingSnapshot?.data).map(normalizePayrollSnapshotEmployee).map((employee) => [employee.workerId, employee])
+  );
+  const snapshotEmployees = calculated.employees
+    .map(normalizePayrollSnapshotEmployee)
+    .map((employee) => preserveManualProductionRate(employee, storedByWorkerId.get(employee.workerId)));
   const savedAt = new Date();
   const savedByText = String(savedBy || "unknown");
 
-  const snapshot = await prisma.payrollSnapshot.upsert({
-    where: { orgId_month: { orgId, month } },
-    create: {
-      orgId,
-      month,
+  if (!existingSnapshot) {
+    try {
+      return await prisma.payrollSnapshot.create({ data: {
+        orgId, month, data: snapshotEmployees, lockedAt: savedAt, lockedBy: savedByText, isProvisional: true,
+      } });
+    } catch (error: any) {
+      if (error?.code === "P2002") throw createHttpError(409, "payroll was created by another request");
+      throw error;
+    }
+  }
+  const updated = await prisma.payrollSnapshot.updateMany({
+    where: { id: existingSnapshot.id, isProvisional: true, revision: existingSnapshot.revision },
+    data: {
       data: snapshotEmployees,
       lockedAt: savedAt,
       lockedBy: savedByText,
       isProvisional: true,
-    },
-    update: {
-      data: snapshotEmployees,
-      lockedAt: savedAt,
-      lockedBy: savedByText,
-      isProvisional: true,
+      revision: { increment: 1 },
     },
   });
-  return snapshot;
+  if (updated.count !== 1) throw createHttpError(409, "payroll was locked or changed while recalculating");
+  return prisma.payrollSnapshot.findUniqueOrThrow({ where: { id: existingSnapshot.id } });
 };
 
-const recalculatePayrollEmployeeTotals = (employee: any) => {
-  const processes = ensureArray(employee?.processes).map(normalizePayrollProcessSnapshot);
+const applyProductionProcessesToPayrollEmployee = (employee: any, processInput: any[], rateOverridden: boolean) => {
+  const processes = ensureArray(processInput).map(normalizePayrollProcessSnapshot);
   const productionAllowance = processes.reduce(
     (sum, process) => sum + toPayrollAmount(process.totalEarnings, 0),
     0
   );
+  const salaryItems = ensureArray(employee?.salaryItems).map((item) => {
+    const formula = ensureArray(item?.formula).map(String);
+    return String(item?.category || "").toUpperCase() === "INCENTIVE" || formula.includes("PRODUCTION_ALLOWANCE")
+      ? { ...item, amount: Math.max(0, Math.round(productionAllowance)) }
+      : item;
+  });
+  const grossSalary = salaryItems.reduce((sum, item) => sum + toPayrollAmount(item?.amount, 0), 0);
   return {
     ...normalizePayrollSnapshotEmployee(employee),
     processes,
+    salaryItems,
     productionAllowance,
     productionEarnings: productionAllowance,
-    totalEarnings: productionAllowance,
+    grossSalary,
+    netSalary: grossSalary - toPayrollAmount(employee?.deductions, 0),
+    totalEarnings: grossSalary,
+    rateOverridden,
   };
+};
+
+const preserveManualProductionRate = (fresh: any, stored: any) => {
+  if (!stored?.rateOverridden) return fresh;
+  const storedProcesses = ensureArray(stored.processes).map(normalizePayrollProcessSnapshot);
+  const storedSeconds = storedProcesses.reduce((sum, process) => sum + toPayrollAmount(process.totalCtSeconds, 0), 0);
+  const storedEarnings = storedProcesses.reduce((sum, process) => sum + toPayrollAmount(process.totalEarnings, 0), 0);
+  const manualRate = storedSeconds > 0
+    ? storedEarnings / storedSeconds
+    : toPayrollAmount(storedProcesses.find((process) => Number.isFinite(Number(process?.wagePerSecond)))?.wagePerSecond, 0);
+  const processes = ensureArray(fresh?.processes).map((process) => ({
+    ...process,
+    wagePerSecond: manualRate,
+    totalEarnings: toPayrollAmount(process?.totalCtSeconds, 0) * manualRate,
+  }));
+  return applyProductionProcessesToPayrollEmployee(fresh, processes, true);
 };
 
 export const recalculatePayrollSnapshotLine = async ({
@@ -1149,21 +1219,27 @@ export const recalculatePayrollSnapshotLine = async ({
       }));
     }
 
-    return recalculatePayrollEmployeeTotals({
-      ...(fresh ?? stored),
-      rateOverridden: Boolean(stored?.rateOverridden),
-      processes: [...retainedProcesses, ...refreshedProcesses],
-    });
-  }).filter((employee) => employee.payType === EMPLOYEE_PAY_TYPE.OUTPUT);
+    const source = fresh ?? stored;
+    if (!source) return null;
+    if (source.payType !== EMPLOYEE_PAY_TYPE.OUTPUT) return source;
+    return applyProductionProcessesToPayrollEmployee(
+      source,
+      [...retainedProcesses, ...refreshedProcesses],
+      Boolean(stored?.rateOverridden)
+    );
+  }).filter(Boolean);
 
-  return prisma.payrollSnapshot.update({
-    where: { id: snapshot.id },
+  const updated = await prisma.payrollSnapshot.updateMany({
+    where: { id: snapshot.id, isProvisional: true, revision: snapshot.revision },
     data: {
       data: mergedEmployees,
       lockedAt: new Date(),
       lockedBy: String(updatedBy || "unknown"),
+      revision: { increment: 1 },
     },
   });
+  if (updated.count !== 1) throw createHttpError(409, "payroll was locked or changed while recalculating");
+  return prisma.payrollSnapshot.findUniqueOrThrow({ where: { id: snapshot.id } });
 };
 
 export const updatePayrollEmployeeRates = async ({
@@ -1246,14 +1322,17 @@ export const updatePayrollEmployeeRates = async ({
     };
   });
 
-  return prisma.payrollSnapshot.update({
-    where: { id: snapshot.id },
+  const updated = await prisma.payrollSnapshot.updateMany({
+    where: { id: snapshot.id, isProvisional: true, revision: snapshot.revision },
     data: {
       data: updatedEmployees,
       lockedAt: new Date(),
       lockedBy: String(updatedBy || "unknown"),
+      revision: { increment: 1 },
     },
   });
+  if (updated.count !== 1) throw createHttpError(409, "payroll was locked or changed while editing rates");
+  return prisma.payrollSnapshot.findUniqueOrThrow({ where: { id: snapshot.id } });
 };
 
 export const deletePayrollSnapshot = async (orgId: number, monthInput: string) => {
@@ -1262,7 +1341,7 @@ export const deletePayrollSnapshot = async (orgId: number, monthInput: string) =
 
   const existing = await prisma.payrollSnapshot.findUnique({
     where: { orgId_month: { orgId, month } },
-    select: { id: true, isProvisional: true },
+    select: { id: true, isProvisional: true, revision: true },
   });
   if (!existing) {
     throw createHttpError(404, "snapshot not found");
@@ -1271,9 +1350,8 @@ export const deletePayrollSnapshot = async (orgId: number, monthInput: string) =
     throw createHttpError(409, "unlock production allowance before deletion");
   }
 
-  await prisma.payrollSnapshot.delete({
-    where: { id: existing.id },
-  });
+  const deleted = await prisma.payrollSnapshot.deleteMany({ where: { id: existing.id, isProvisional: true, revision: existing.revision } });
+  if (deleted.count !== 1) throw createHttpError(409, "payroll was locked while deleting");
 
   return { ok: true, month };
 };
@@ -1284,16 +1362,15 @@ export const unlockPayrollSnapshot = async (orgId: number, monthInput: string) =
 
   const existing = await prisma.payrollSnapshot.findUnique({
     where: { orgId_month: { orgId, month } },
-    select: { id: true },
+    select: { id: true, isProvisional: true, revision: true },
   });
   if (!existing) {
     throw createHttpError(404, "snapshot not found");
   }
 
-  await prisma.payrollSnapshot.update({
-    where: { id: existing.id },
-    data: { isProvisional: true },
-  });
+  if (existing.isProvisional) return { ok: true, month };
+  const unlocked = await prisma.payrollSnapshot.updateMany({ where: { id: existing.id, isProvisional: false, revision: existing.revision }, data: { isProvisional: true, revision: { increment: 1 } } });
+  if (unlocked.count !== 1) throw createHttpError(409, "payroll state changed while unlocking");
   return { ok: true, month };
 };
 
@@ -1310,21 +1387,24 @@ export const lockPayrollSnapshot = async ({
   assertPayrollMonth(month);
   const existing = await prisma.payrollSnapshot.findUnique({
     where: { orgId_month: { orgId, month } },
-    select: { id: true },
+    select: { id: true, isProvisional: true, revision: true },
   });
   if (!existing) throw createHttpError(404, "calculate production allowance before locking");
+  if (!existing.isProvisional) return { ok: true, month };
 
   const readiness = await getPayrollMonthReadiness(orgId, month);
   if (!readiness.ready) throw createHttpError(409, "monthly work records are incomplete");
   if (readiness.needsRecalculation) throw createHttpError(409, "payroll must be recalculated before locking");
 
-  await prisma.payrollSnapshot.update({
-    where: { id: existing.id },
+  const locked = await prisma.payrollSnapshot.updateMany({
+    where: { id: existing.id, isProvisional: true, revision: existing.revision },
     data: {
       isProvisional: false,
       lockedAt: new Date(),
       lockedBy: String(lockedBy || "unknown"),
+      revision: { increment: 1 },
     },
   });
+  if (locked.count !== 1) throw createHttpError(409, "payroll state changed while locking");
   return { ok: true, month };
 };

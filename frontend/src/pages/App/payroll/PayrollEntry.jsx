@@ -158,7 +158,9 @@ const PayrollEntry = () => {
   const employees = useMemo(() => {
     const payrollRows = Array.isArray(data?.employees) ? data.employees : [];
     const payrollByWorkerId = new Map(payrollRows.filter((employee) => Number(employee?.workerId) > 0).map((employee) => [Number(employee.workerId), employee]));
-    const directoryRows = employeeDirectory.filter((employee) => !['PENDING', 'REJECTED'].includes(String(employee?.status || '').toUpperCase()));
+    const directoryRows = data?.snapshotExists
+      ? []
+      : employeeDirectory.filter((employee) => !['PENDING', 'REJECTED'].includes(String(employee?.status || '').toUpperCase()));
     const knownWorkerIds = new Set(directoryRows.map((employee) => Number(employee.id)));
     const rows = [
       ...directoryRows.map((employee) => ({ ...employee, ...(payrollByWorkerId.get(Number(employee.id)) || {}), workerId: Number(employee.id), workerName: employee.name || payrollByWorkerId.get(Number(employee.id))?.workerName, payType: normalizeEmployeePayType(employee.payType) })),
@@ -174,7 +176,7 @@ const PayrollEntry = () => {
       );
       return { ...employee, payType: normalizeEmployeePayType(employee.payType), processes, productionAllowance, productionEarnings: productionAllowance };
     }).filter((employee) => (!factoryId || Number(employee.factoryId) === factoryId || employee.processes.length > 0) && (!lineId || Number(employee.lineId) === lineId || employee.processes.length > 0));
-  }, [data?.employees, employeeDirectory, factoryId, lineId]);
+  }, [data?.employees, data?.snapshotExists, employeeDirectory, factoryId, lineId]);
   const total = useMemo(
     () => employees.reduce((sum, employee) => sum + productionAllowanceOf(employee), 0),
     [employees]
