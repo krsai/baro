@@ -474,11 +474,16 @@ const SalarySystem = () => {
           <Box><Typography fontWeight={700}>{t('급여 항목')}</Typography><Typography variant="caption" color="text.secondary">{t('항목을 선택해 계산 방식과 직급별 단가를 설정하세요.')}</Typography></Box>
           <Tooltip title={t('항목 추가')}><IconButton size="small" color="primary" sx={{ ml: 'auto' }} onClick={() => setDialogOpen(true)}><AddIcon /></IconButton></Tooltip>
         </Stack>
-        <Box sx={{ display: 'grid', gridTemplateColumns: '34px minmax(0, 1fr) 42px 42px', alignItems: 'center', px: 1.5, py: 0.75, borderBottom: 1, borderColor: 'divider', bgcolor: 'grey.50' }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: `34px minmax(0, 1fr) repeat(${PAY_TYPE_ORDER.length}, 46px)`, alignItems: 'center', px: 1.5, py: 0.75, borderBottom: 1, borderColor: 'divider', bgcolor: 'grey.50' }}>
           <span />
           <Typography variant="caption" color="text.secondary" fontWeight={700}>{t('항목명')}</Typography>
-          <Typography variant="caption" color="text.secondary" fontWeight={700} textAlign="center">{t('일반')}</Typography>
-          <Typography variant="caption" color="text.secondary" fontWeight={700} textAlign="center">{t('생산')}</Typography>
+          {PAY_TYPE_ORDER.map((payType) => (
+            <Tooltip key={payType} title={t(PAY_TYPES[payType]?.label || payType)}>
+              <Typography variant="caption" color="text.secondary" fontWeight={700} textAlign="center" sx={{ lineHeight: 1.2, whiteSpace: 'pre-line' }}>
+                {t(PAY_TYPES[payType]?.label || payType).replace('(', '\n(')}
+              </Typography>
+            </Tooltip>
+          ))}
         </Box>
         <DragDropContext onDragEnd={reorderItems}>
           {Object.entries(CATEGORIES).map(([category, label]) => <Box key={category} sx={{ p: 1.5, borderBottom: 1, borderColor: 'divider' }}>
@@ -488,7 +493,7 @@ const SalarySystem = () => {
                 {items.filter((row) => row.category === category).map((row, index) => <Draggable key={row.id} draggableId={String(row.id)} index={index}>
                   {(dragProvided, snapshot) => <Stack ref={dragProvided.innerRef} {...dragProvided.draggableProps} direction="row" alignItems="center" sx={{ bgcolor: snapshot.isDragging ? 'action.hover' : 'transparent', borderRadius: 1 }}>
                     <IconButton {...dragProvided.dragHandleProps} size="small" aria-label="순서 변경" sx={{ flexShrink: 0, cursor: 'grab', color: 'text.disabled', '&:active': { cursor: 'grabbing' } }}><DragIndicatorIcon fontSize="small" /></IconButton>
-                    <Box role="button" tabIndex={0} onClick={() => setSelectedId(row.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(row.id); } }} sx={(theme) => ({ flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 42px 42px', alignItems: 'center', pl: 1.5, pr: 0.25, py: 0.65, borderRadius: 1, cursor: 'pointer', bgcolor: selectedId === row.id ? alpha(theme.palette.primary.main, 0.12) : 'transparent', color: selectedId === row.id ? 'primary.dark' : 'text.primary', '&:hover': { bgcolor: selectedId === row.id ? alpha(theme.palette.primary.main, 0.18) : 'action.hover' } })}>
+                    <Box role="button" tabIndex={0} onClick={() => setSelectedId(row.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(row.id); } }} sx={(theme) => ({ flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: `minmax(0, 1fr) repeat(${PAY_TYPE_ORDER.length}, 46px)`, alignItems: 'center', pl: 1.5, pr: 0.25, py: 0.65, borderRadius: 1, cursor: 'pointer', bgcolor: selectedId === row.id ? alpha(theme.palette.primary.main, 0.12) : 'transparent', color: selectedId === row.id ? 'primary.dark' : 'text.primary', '&:hover': { bgcolor: selectedId === row.id ? alpha(theme.palette.primary.main, 0.18) : 'action.hover' } })}>
                       <Box sx={{ minWidth: 0 }}><Typography variant="body2" fontWeight={600} noWrap>{salaryItemName(row, languageCode)}</Typography><Typography variant="caption" sx={{ display: 'block', opacity: 0.75 }}>{t(PAY_CYCLES[row.payCycle])}</Typography></Box>
                       {PAY_TYPE_ORDER.map((payType) => { const active = (row.payTypes || []).includes(payType); const fixed = row.category === 'INCENTIVE'; return <Checkbox key={payType} size="small" checked={active} disabled={fixed} onClick={(event) => event.stopPropagation()} onChange={() => toggleItemPayType(row, payType)} inputProps={{ 'aria-label': `${salaryItemName(row, languageCode)} ${t(PAY_TYPES[payType]?.label || payType)}` }} sx={{ justifySelf: 'center', p: 0.5 }} />; })}
                     </Box>
