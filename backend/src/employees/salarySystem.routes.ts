@@ -5,7 +5,7 @@ import { validateSalaryFormula } from "./salaryFormula";
 import { normalizeCurrencyCode } from "../currency";
 
 type Args = { requireSalarySystemManager: (req: any, res: any, orgId: number) => Promise<boolean> };
-const PAY_TYPES = ["GENERAL", "OUTPUT"];
+const PAY_TYPES = ["GENERAL", "OUTPUT_FIXED", "OUTPUT"];
 const PAYMENT_MONTHS_BY_CYCLE = {
   MONTHLY: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
   QUARTERLY: [3, 6, 9, 12],

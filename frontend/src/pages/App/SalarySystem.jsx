@@ -27,10 +27,11 @@ import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/wor
 import { resolveFactoryManagementStartDateKey } from '../../utils/factoryManagementStart';
 
 const PAY_TYPES = {
-  GENERAL: { label: '일반', palette: 'blue' },
-  OUTPUT: { label: '생산', palette: 'orange' },
+  GENERAL: { label: '사무(고정)', palette: 'blue' },
+  OUTPUT_FIXED: { label: '생산(고정)', palette: 'green' },
+  OUTPUT: { label: '생산(변동)', palette: 'orange' },
 };
-const PAY_TYPE_ORDER = ['GENERAL', 'OUTPUT'];
+const PAY_TYPE_ORDER = ['GENERAL', 'OUTPUT_FIXED', 'OUTPUT'];
 const CATEGORIES = { BASE: '기본급', ALLOWANCE: '급여 수당', INCENTIVE: '성과급' };
 const CATEGORY_PALETTES = { BASE: 'blue', ALLOWANCE: 'green', INCENTIVE: 'orange' };
 const PAY_CYCLES = {
@@ -70,7 +71,7 @@ const FORMULA_PARAMETER_GROUPS = [
 const FORMULA_OPERATORS = ['+', '−', '×', '÷', '(', ')'];
 const DEFAULT_FORMULA = ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS', '÷', 'SCHEDULED_WORKDAYS'];
 // 새 항목의 최초 급여 타입만 카테고리 기준으로 정하고, 이후에는 항목 목록의 체크박스로 직접 편집한다.
-const defaultPayTypesForCategory = (category) => (category === 'INCENTIVE' ? ['OUTPUT'] : ['GENERAL', 'OUTPUT']);
+const defaultPayTypesForCategory = (category) => (category === 'INCENTIVE' ? ['OUTPUT'] : PAY_TYPE_ORDER);
 const DEFAULT_DRAFT = { name: '', nameKo: '', nameEn: '', nameVi: '', category: 'ALLOWANCE', formula: ['GRADE_RATE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '' };
 const item = (id, name, category, payCycle = 'MONTHLY', extra = {}) =>
   ({ id, name, nameKo: name, nameEn: name, nameVi: name, category, payTypes: defaultPayTypesForCategory(category), formula: ['GRADE_RATE'], payCycle, paymentMonths: PAYMENT_MONTHS_BY_CYCLE[payCycle], capValue: '', ...extra });

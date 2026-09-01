@@ -2,19 +2,25 @@ import { getCurrentLanguageCode, normalizeLanguageCode } from '../utils/appLangu
 
 export const PAY_TYPE_KEYS = {
   GENERAL: 'GENERAL',
+  OUTPUT_FIXED: 'OUTPUT_FIXED',
   OUTPUT: 'OUTPUT',
 };
 
 export const PAY_TYPE_DEFAULT_LABELS = {
   [PAY_TYPE_KEYS.OUTPUT]: {
-    ko: '\uC0DD\uC0B0',
-    en: 'Output',
-    vi: 'S\u1EA3n l\u01B0\u1EE3ng',
+    ko: '\uC0DD\uC0B0(\uBCC0\uB3D9)',
+    en: 'Production (Variable)',
+    vi: 'S\u1EA3n xu\u1EA5t (Bi\u1EBFn \u0111\u1ED5i)',
+  },
+  [PAY_TYPE_KEYS.OUTPUT_FIXED]: {
+    ko: '\uC0DD\uC0B0(\uACE0\uC815)',
+    en: 'Production (Fixed)',
+    vi: 'S\u1EA3n xu\u1EA5t (C\u1ED1 \u0111\u1ECBnh)',
   },
   [PAY_TYPE_KEYS.GENERAL]: {
-    ko: '\uC77C\uBC18',
-    en: 'General',
-    vi: 'Th\u01B0\u1EDDng',
+    ko: '\uC0AC\uBB34(\uACE0\uC815)',
+    en: 'Office (Fixed)',
+    vi: 'V\u0103n ph\u00F2ng (C\u1ED1 \u0111\u1ECBnh)',
   },
 };
 
@@ -52,7 +58,7 @@ export const normalizePayType = (value, fallback = PAY_TYPE_KEYS.GENERAL) => {
   const upper = String(value || '')
     .trim()
     .toUpperCase();
-  if (upper === PAY_TYPE_KEYS.GENERAL || upper === PAY_TYPE_KEYS.OUTPUT) return upper;
+  if ([PAY_TYPE_KEYS.GENERAL, PAY_TYPE_KEYS.OUTPUT_FIXED, PAY_TYPE_KEYS.OUTPUT].includes(upper)) return upper;
   if (upper === 'FIXED') return PAY_TYPE_KEYS.GENERAL;
   if (upper === 'CT') return PAY_TYPE_KEYS.OUTPUT;
   return fallback;
@@ -68,7 +74,7 @@ export const getPayTypeLabel = (
 };
 
 export const getPayTypeOptions = (languageCode = getCurrentLanguageCode()) =>
-  [PAY_TYPE_KEYS.OUTPUT, PAY_TYPE_KEYS.GENERAL].map((value) => ({
+  [PAY_TYPE_KEYS.GENERAL, PAY_TYPE_KEYS.OUTPUT_FIXED, PAY_TYPE_KEYS.OUTPUT].map((value) => ({
     value,
     label: getPayTypeLabel(value, value, languageCode),
   }));

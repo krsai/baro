@@ -1,9 +1,10 @@
 import { type OrgUserRole } from "@prisma/client";
 
-export type EmployeePayType = "GENERAL" | "OUTPUT";
+export type EmployeePayType = "GENERAL" | "OUTPUT_FIXED" | "OUTPUT";
 
 export const EMPLOYEE_PAY_TYPE = {
   GENERAL: "GENERAL",
+  OUTPUT_FIXED: "OUTPUT_FIXED",
   OUTPUT: "OUTPUT",
 } as const;
 
@@ -25,8 +26,8 @@ export const normalizePayType = (
 ): EmployeePayType | null => {
   if (value === "" || value === null || value === undefined) return fallback;
   const normalized = String(value).trim().toUpperCase();
-  if (normalized === EMPLOYEE_PAY_TYPE.GENERAL || normalized === EMPLOYEE_PAY_TYPE.OUTPUT) {
-    return normalized;
+  if ([EMPLOYEE_PAY_TYPE.GENERAL, EMPLOYEE_PAY_TYPE.OUTPUT_FIXED, EMPLOYEE_PAY_TYPE.OUTPUT].includes(normalized as EmployeePayType)) {
+    return normalized as EmployeePayType;
   }
   return LEGACY_PAY_TYPE_MAP[normalized] ?? fallback;
 };

@@ -3,6 +3,8 @@ import { Alert, Box, Button, Checkbox, FormControlLabel, IconButton, MenuItem, P
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AppPageContainer from '../../components/AppPageContainer';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
+import { getPayTypeLabel } from '../../constants/payType';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
 
@@ -15,6 +17,7 @@ const dailyMinutes = (row) => { let span = timeMinutes(row.standardClockOut) - t
 
 const EmployeeSystem = () => {
   const { activeOrgId } = useAuth();
+  const { languageCode } = useLanguage();
   const [tab, setTab] = useState(0);
   const [sets, setSets] = useState([]);
   const [grades, setGrades] = useState({});
@@ -46,7 +49,7 @@ const EmployeeSystem = () => {
   const gradesChanged = allGrades.some((grade) => JSON.stringify(grades[grade.id]) !== JSON.stringify(toGradeDraft(grade)));
   const gradesValid = allGrades.every((grade) => { const row = grades[grade.id]; return row?.nameKo.trim() && row?.nameEn.trim() && row?.nameVi.trim() && Number(row?.sortOrder) > 0; });
   const policiesChanged = JSON.stringify(policyPayload(policies)) !== savedPolicies;
-  const policiesValid = policies.length === 2 && policies.every((row) => row.workWeekdays.length && dailyMinutes(row) > 0 && Number(row.workdayMinimumHours) > 0 && Number(row.workdayMinimumHours) * 60 <= dailyMinutes(row));
+  const policiesValid = policies.length === 3 && policies.every((row) => row.workWeekdays.length && dailyMinutes(row) > 0 && Number(row.workdayMinimumHours) > 0 && Number(row.workdayMinimumHours) * 60 <= dailyMinutes(row));
   const canSave = tab === 0 ? gradesChanged && gradesValid : policiesChanged && policiesValid;
 
   const save = async () => {

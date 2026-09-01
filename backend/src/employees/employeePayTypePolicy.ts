@@ -14,6 +14,7 @@ export type EmployeePayTypePolicyValue = {
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const DEFAULTS: Record<string, Omit<EmployeePayTypePolicyValue, "standardWorkMinutes">> = {
   [EMPLOYEE_PAY_TYPE.GENERAL]: { payType: EMPLOYEE_PAY_TYPE.GENERAL, workWeekdays: [1, 2, 3, 4, 5], standardClockIn: "08:00", standardClockOut: "17:00", breakMinutes: 60, workdayMinimumMinutes: 240 },
+  [EMPLOYEE_PAY_TYPE.OUTPUT_FIXED]: { payType: EMPLOYEE_PAY_TYPE.OUTPUT_FIXED, workWeekdays: [1, 2, 3, 4, 5, 6], standardClockIn: "08:00", standardClockOut: "17:00", breakMinutes: 60, workdayMinimumMinutes: 240 },
   [EMPLOYEE_PAY_TYPE.OUTPUT]: { payType: EMPLOYEE_PAY_TYPE.OUTPUT, workWeekdays: [1, 2, 3, 4, 5, 6], standardClockIn: "08:00", standardClockOut: "17:00", breakMinutes: 60, workdayMinimumMinutes: 240 },
 };
 
@@ -49,7 +50,7 @@ export const validateEmployeePayTypePolicy = (input: any) => {
 export const loadEmployeePayTypePolicies = async (orgId: number) => {
   const rows = await prisma.employeePayTypePolicy.findMany({ where: { orgId } });
   const byType = new Map(rows.map((row) => [row.payType, normalizeEmployeePayTypePolicy(row)]));
-  return [EMPLOYEE_PAY_TYPE.GENERAL, EMPLOYEE_PAY_TYPE.OUTPUT].map((payType) => byType.get(payType) || normalizeEmployeePayTypePolicy(DEFAULTS[payType]));
+  return [EMPLOYEE_PAY_TYPE.GENERAL, EMPLOYEE_PAY_TYPE.OUTPUT_FIXED, EMPLOYEE_PAY_TYPE.OUTPUT].map((payType) => byType.get(payType) || normalizeEmployeePayTypePolicy(DEFAULTS[payType]));
 };
 
 export const employeePayTypePolicyMap = (rows: EmployeePayTypePolicyValue[]) => new Map(rows.map((row) => [row.payType, row]));

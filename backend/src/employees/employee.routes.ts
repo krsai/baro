@@ -162,8 +162,8 @@ export const createEmployeeRouter = ({
     const input = Array.isArray(req.body?.policies) ? req.body.policies : [];
     const policies = input.map((row: any) => normalizeEmployeePayTypePolicy(row));
     const keys = policies.map((row: ReturnType<typeof normalizeEmployeePayTypePolicy>) => row.payType);
-    if (policies.length !== 2 || new Set(keys).size !== 2 || !input.every(validateEmployeePayTypePolicy)) {
-      return res.status(400).json({ ok: false, error: "valid GENERAL and OUTPUT pay type policies are required" });
+    if (policies.length !== 3 || new Set(keys).size !== 3 || !input.every(validateEmployeePayTypePolicy)) {
+      return res.status(400).json({ ok: false, error: "valid GENERAL, OUTPUT_FIXED, and OUTPUT pay type policies are required" });
     }
     await prisma.$transaction(policies.map((policy: ReturnType<typeof normalizeEmployeePayTypePolicy>) => prisma.employeePayTypePolicy.upsert({
       where: { orgId_payType: { orgId: organization.id, payType: policy.payType } },
@@ -186,7 +186,7 @@ export const createEmployeeRouter = ({
     if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
     if (!(await requireSalarySystemManager(req, res, organization.id))) return;
     const rows = Array.isArray(req.body?.policies) ? req.body.policies : [];
-    const allowedPayTypes = new Set(["GENERAL", "OUTPUT"]);
+    const allowedPayTypes = new Set(["GENERAL", "OUTPUT_FIXED", "OUTPUT"]);
     const gradeIds = new Set((await prisma.employeeGrade.findMany({ where: { orgId: organization.id, isActive: true }, select: { id: true } })).map((grade) => grade.id));
     const normalized = rows.map((row: any) => ({
       payType: String(row?.payType || "").trim().toUpperCase(), gradeId: Number(row?.gradeId),
