@@ -4856,6 +4856,19 @@ ALTER TABLE "SalaryItem" ADD COLUMN IF NOT EXISTS "nameEn" TEXT;
 ALTER TABLE "SalaryItem" ADD COLUMN IF NOT EXISTS "nameVi" TEXT;
 UPDATE "SalaryItem" SET "nameKo"=COALESCE("nameKo",name), "nameEn"=COALESCE("nameEn",name), "nameVi"=COALESCE("nameVi",name);
 ALTER TABLE "SalaryItem" ALTER COLUMN "nameKo" SET NOT NULL, ALTER COLUMN "nameEn" SET NOT NULL, ALTER COLUMN "nameVi" SET NOT NULL;
+
+-- 2026-09-01: organization pay-type attendance policies used by payroll.
+CREATE TABLE IF NOT EXISTS "EmployeePayTypePolicy" (
+  "id" SERIAL PRIMARY KEY, "orgId" INTEGER NOT NULL, "payType" TEXT NOT NULL,
+  "workWeekdays" JSONB NOT NULL, "standardClockIn" TEXT NOT NULL DEFAULT '08:00',
+  "standardClockOut" TEXT NOT NULL DEFAULT '17:00', "breakMinutes" INTEGER NOT NULL DEFAULT 60,
+  "workdayMinimumMinutes" INTEGER NOT NULL DEFAULT 240,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "EmployeePayTypePolicy_orgId_payType_key" ON "EmployeePayTypePolicy"("orgId","payType");
+CREATE INDEX IF NOT EXISTS "EmployeePayTypePolicy_orgId_idx" ON "EmployeePayTypePolicy"("orgId");
+DO $$ BEGIN ALTER TABLE "EmployeePayTypePolicy" ADD CONSTRAINT "EmployeePayTypePolicy_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "EmployeePayTypePolicy" ADD CONSTRAINT "EmployeePayTypePolicy_payType_check" CHECK ("payType" IN ('GENERAL','OUTPUT')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 UPDATE "SalaryItem" s SET "factoryId"=(SELECT id FROM "Factory" WHERE "orgId"=s."orgId" ORDER BY id LIMIT 1) WHERE s."factoryId" IS NULL;
 UPDATE "SalaryItemRate" s SET "factoryId"=(SELECT id FROM "Factory" WHERE "orgId"=s."orgId" ORDER BY id LIMIT 1) WHERE s."factoryId" IS NULL;
 UPDATE "SalarySystemVersion" s SET "factoryId"=(SELECT id FROM "Factory" WHERE "orgId"=s."orgId" ORDER BY id LIMIT 1) WHERE s."factoryId" IS NULL;

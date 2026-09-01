@@ -246,6 +246,7 @@ model Organization {
   employeeGradeSets               EmployeeGradeSet[]
   employeeGrades                  EmployeeGrade[]
   employeeCompensationPolicies    EmployeeCompensationPolicy[]
+  employeePayTypePolicies         EmployeePayTypePolicy[]
 
   createdByEmployee Employee? @relation("OrganizationCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("OrganizationUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -651,6 +652,24 @@ model EmployeeCompensationPolicy {
 
   @@unique([orgId, payType, gradeId])
   @@index([orgId, gradeId])
+}
+
+model EmployeePayTypePolicy {
+  id                    Int      @id @default(autoincrement())
+  orgId                 Int
+  payType               String
+  workWeekdays          Json
+  standardClockIn       String   @default("08:00")
+  standardClockOut      String   @default("17:00")
+  breakMinutes          Int      @default(60)
+  workdayMinimumMinutes Int      @default(240)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, payType])
+  @@index([orgId])
 }
 
 model SalaryItem {

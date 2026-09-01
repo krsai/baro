@@ -14,6 +14,7 @@ import {
 } from "./employeeNumber";
 import { resolveOptionalString } from "../utils/common";
 import { createSalarySystemRouter } from "./salarySystem.routes";
+import { loadEmployeePayTypePolicies, normalizeEmployeePayTypePolicy, validateEmployeePayTypePolicy } from "./employeePayTypePolicy";
 
 type EmployeeRoutesDeps = {
   hasOrgFeatureAccess: (args: {
@@ -147,6 +148,30 @@ export const createEmployeeRouter = ({
   };
 
   employeeRouter.use(createSalarySystemRouter({ requireSalarySystemManager }));
+
+  employeeRouter.get("/employee-pay-type-policies", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+    return res.json(await loadEmployeePayTypePolicies(organization.id));
+  });
+
+  employeeRouter.put("/employee-pay-type-policies", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+    if (!(await requireGradeManager(req, res, organization.id))) return;
+    const input = Array.isArray(req.body?.policies) ? req.body.policies : [];
+    const policies = input.map((row: any) => normalizeEmployeePayTypePolicy(row));
+    const keys = policies.map((row: ReturnType<typeof normalizeEmployeePayTypePolicy>) => row.payType);
+    if (policies.length !== 2 || new Set(keys).size !== 2 || !input.every(validateEmployeePayTypePolicy)) {
+      return res.status(400).json({ ok: false, error: "valid GENERAL and OUTPUT pay type policies are required" });
+    }
+    await prisma.$transaction(policies.map((policy: ReturnType<typeof normalizeEmployeePayTypePolicy>) => prisma.employeePayTypePolicy.upsert({
+      where: { orgId_payType: { orgId: organization.id, payType: policy.payType } },
+      create: { orgId: organization.id, payType: policy.payType, workWeekdays: policy.workWeekdays, standardClockIn: policy.standardClockIn, standardClockOut: policy.standardClockOut, breakMinutes: policy.breakMinutes, workdayMinimumMinutes: policy.workdayMinimumMinutes },
+      update: { workWeekdays: policy.workWeekdays, standardClockIn: policy.standardClockIn, standardClockOut: policy.standardClockOut, breakMinutes: policy.breakMinutes, workdayMinimumMinutes: policy.workdayMinimumMinutes },
+    })));
+    return res.json(await loadEmployeePayTypePolicies(organization.id));
+  });
 
   employeeRouter.get("/employee-compensation-policies", async (req, res) => {
     const organization = await getOrganizationByQuery(req);

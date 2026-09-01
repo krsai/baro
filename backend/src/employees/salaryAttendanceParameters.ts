@@ -1,7 +1,7 @@
 import { EMPLOYEE_PAY_TYPE, normalizePayType } from "./employeeCompensation";
+import { isPolicyWorkday, normalizeEmployeePayTypePolicy, type EmployeePayTypePolicyValue } from "./employeePayTypePolicy";
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
-export const SALARY_WORKDAY_MINIMUM_SECONDS = 4 * 60 * 60;
 
 type AttendanceRow = {
   workDate?: unknown;
@@ -28,24 +28,21 @@ const enumerateMonthDateKeys = (month: string): string[] => {
   return result;
 };
 
-const isWeeklyRestDay = (dateKey: string, payType: string): boolean => {
-  const day = new Date(`${dateKey}T00:00:00.000Z`).getUTCDay();
-  if (payType === EMPLOYEE_PAY_TYPE.OUTPUT) return day === 0;
-  return day === 0 || day === 6;
-};
-
 export const resolveSalaryAttendanceParameters = ({
   month,
   payType: payTypeInput,
   holidayDateKeys: holidayDateKeyInput,
   attendanceEntries,
+  policy: policyInput,
 }: {
   month: string;
   payType: unknown;
   holidayDateKeys: Iterable<string>;
   attendanceEntries: AttendanceRow[];
+  policy?: EmployeePayTypePolicyValue;
 }): SalaryAttendanceParameters => {
   const payType = normalizePayType(payTypeInput, EMPLOYEE_PAY_TYPE.GENERAL) ?? EMPLOYEE_PAY_TYPE.GENERAL;
+  const policy = normalizeEmployeePayTypePolicy(policyInput, payType);
   const holidayDateKeys = new Set(Array.from(holidayDateKeyInput, String));
   const workedSecondsByDate = new Map<string, number>();
 
@@ -62,8 +59,8 @@ export const resolveSalaryAttendanceParameters = ({
   let holidayWorkdays = 0;
 
   enumerateMonthDateKeys(month).forEach((dateKey) => {
-    const holiday = holidayDateKeys.has(dateKey) || isWeeklyRestDay(dateKey, payType);
-    const qualifiesAsWorkedDay = (workedSecondsByDate.get(dateKey) || 0) >= SALARY_WORKDAY_MINIMUM_SECONDS;
+    const holiday = holidayDateKeys.has(dateKey) || !isPolicyWorkday(dateKey, policy);
+    const qualifiesAsWorkedDay = (workedSecondsByDate.get(dateKey) || 0) >= policy.workdayMinimumMinutes * 60;
     if (holiday) {
       if (qualifiesAsWorkedDay) holidayWorkdays += 1;
       return;

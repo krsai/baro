@@ -24,6 +24,7 @@ import {
 import { resolveFactoryManagementStartDateKey } from "../factories/factoryManagementStart";
 import { evaluateSalaryFormula } from "../employees/salaryFormula";
 import { resolveSalaryAttendanceParameters } from "../employees/salaryAttendanceParameters";
+import { employeePayTypePolicyMap, isPolicyWorkday, loadEmployeePayTypePolicies } from "../employees/employeePayTypePolicy";
 
 const toPayrollAmountOrNull = (value: unknown): number | null => {
   const parsed = Number(value);
@@ -196,20 +197,19 @@ const toDateKey = (value: unknown): string => {
   return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
 };
 
-const enumerateMonthWorkingDateKeys = (month: string, holidayDateKeys: Set<string>) => {
+const enumerateMonthDateKeys = (month: string) => {
   const { start, endExclusive } = getPayrollMonthRange(month);
   const result: string[] = [];
   for (let cursor = new Date(start); cursor < endExclusive; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
     const key = cursor.toISOString().slice(0, 10);
-    if (cursor.getUTCDay() !== 0 && !holidayDateKeys.has(key)) result.push(key);
+    result.push(key);
   }
   return result;
 };
 
-const isExpectedSalaryWorkDate = (dateKey: string, payType: string, holidayDateKeys: Set<string>) => {
+const isExpectedSalaryWorkDate = (dateKey: string, policy: any, holidayDateKeys: Set<string>) => {
   if (holidayDateKeys.has(dateKey)) return false;
-  const day = new Date(`${dateKey}T00:00:00.000Z`).getUTCDay();
-  return payType === EMPLOYEE_PAY_TYPE.OUTPUT ? day !== 0 : day !== 0 && day !== 6;
+  return isPolicyWorkday(dateKey, policy);
 };
 
 const employeeExpectedOnDate = (employee: any, dateKey: string) => {
@@ -233,7 +233,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   const monthEnd = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0))
     .toISOString().slice(0, 10);
 
-  const [lines, holidays, attendanceEntries, workLogs, payrollEmployees, snapshot] = await Promise.all([
+  const [lines, holidays, attendanceEntries, workLogs, payrollEmployees, snapshot, payTypePolicies] = await Promise.all([
     prisma.line.findMany({
       where: { orgId, isActive: true },
       include: {
@@ -295,10 +295,13 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       where: { orgId_month: { orgId, month } },
       select: { id: true, isProvisional: true, lockedAt: true, data: true },
     }),
+    loadEmployeePayTypePolicies(orgId),
   ]);
+  const payTypePolicyByType = employeePayTypePolicyMap(payTypePolicies);
 
   const holidayDateKeys = new Set(holidays.map((row) => String(row.holidayDate)));
-  const monthWorkingDates = enumerateMonthWorkingDateKeys(month, holidayDateKeys);
+  const outputPolicy = payTypePolicyByType.get(EMPLOYEE_PAY_TYPE.OUTPUT)!;
+  const monthWorkingDates = enumerateMonthDateKeys(month).filter((dateKey) => isExpectedSalaryWorkDate(dateKey, outputPolicy, holidayDateKeys));
   const attendanceKeys = new Set(
     attendanceEntries.map((row) => `${row.factoryId}:${row.workerId}:${row.workDate}`)
   );
@@ -306,16 +309,17 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   const relevantPayrollEmployees = payrollEmployees.filter((employee) =>
     isPayrollEmployeeRelevantForMonth(employee, payrollMonthRange)
   );
-  const allMonthDates = enumerateMonthWorkingDateKeys(month, new Set());
+  const allMonthDates = enumerateMonthDateKeys(month);
   const requiredAttendance = relevantPayrollEmployees.flatMap((employee) => {
     if (!employee.factoryId || !employee.factory) return [];
     const payType = resolveEmployeeEffectivePayType(employee);
+    const payTypePolicy = payTypePolicyByType.get(payType)!;
     const factoryStart = resolveFactoryManagementStartDateKey(employee.factory);
     return allMonthDates
       .filter((dateKey) =>
         dateKey >= factoryStart &&
         employeeExpectedOnDate(employee, dateKey) &&
-        isExpectedSalaryWorkDate(dateKey, payType, holidayDateKeys)
+        isExpectedSalaryWorkDate(dateKey, payTypePolicy, holidayDateKeys)
       )
       .map((dateKey) => ({
         factoryId: employee.factoryId!,
@@ -527,7 +531,7 @@ const buildIntegratedPayrollEmployees = async (
   const monthNumber = Number(month.slice(5, 7));
   const monthStartKey = `${month}-01`;
   const monthEndKey = monthEndDate.toISOString().slice(0, 10);
-  const [employees, attendance, holidays, factories] = await Promise.all([
+  const [employees, attendance, holidays, factories, payTypePolicies] = await Promise.all([
     prisma.employee.findMany({
       where: { orgId, status: { notIn: ["PENDING", "REJECTED"] } },
       include: { role: true },
@@ -552,7 +556,9 @@ const buildIntegratedPayrollEmployees = async (
         salaryItems: { where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], include: { rates: true } },
       },
     }),
+    loadEmployeePayTypePolicies(orgId),
   ]);
+  const payTypePolicyByType = employeePayTypePolicyMap(payTypePolicies);
   const holidayDateKeys = new Set(holidays.map((row) => String(row.holidayDate)));
   const attendanceByWorker = new Map<number, any[]>();
   for (const row of attendance) {
@@ -569,6 +575,7 @@ const buildIntegratedPayrollEmployees = async (
     .filter((employee) => isPayrollEmployeeRelevantForMonth(employee, range))
     .map((employee) => {
       const payType = resolveEmployeeEffectivePayType(employee);
+      const payTypePolicy = payTypePolicyByType.get(payType)!;
       const factory = employee.factoryId ? factoryById.get(employee.factoryId) : null;
       if (!factory) {
         throw createHttpError(409, `employee ${employee.id} has no payroll factory`);
@@ -591,19 +598,19 @@ const buildIntegratedPayrollEmployees = async (
         || factory?.organization?.salaryCurrency?.code
         || "VND";
       const workerAttendance = attendanceByWorker.get(employee.id) || [];
-      const attendanceParameters = resolveSalaryAttendanceParameters({ month, payType, holidayDateKeys, attendanceEntries: workerAttendance });
+      const attendanceParameters = resolveSalaryAttendanceParameters({ month, payType, holidayDateKeys, attendanceEntries: workerAttendance, policy: payTypePolicy });
       let regularSeconds = 0;
       let overtimeSeconds = 0;
       let holidaySeconds = 0;
       for (const entry of workerAttendance) {
         const seconds = Math.max(0, Number(entry.workedSeconds) || 0);
         const dateKey = String(entry.workDate || "");
-        const day = new Date(`${dateKey}T00:00:00.000Z`).getUTCDay();
-        const isHoliday = holidayDateKeys.has(dateKey) || (payType === EMPLOYEE_PAY_TYPE.OUTPUT ? day === 0 : day === 0 || day === 6);
+        const isHoliday = holidayDateKeys.has(dateKey) || !isPolicyWorkday(dateKey, payTypePolicy);
         if (isHoliday) holidaySeconds += seconds;
         else {
-          regularSeconds += Math.min(seconds, 8 * 60 * 60);
-          overtimeSeconds += Math.max(0, seconds - 8 * 60 * 60);
+          const standardSeconds = payTypePolicy.standardWorkMinutes * 60;
+          regularSeconds += Math.min(seconds, standardSeconds);
+          overtimeSeconds += Math.max(0, seconds - standardSeconds);
         }
       }
       const joinedAt = employee.joinedAt ?? employee.approvedAt ?? employee.createdAt;
@@ -664,6 +671,7 @@ const buildIntegratedPayrollEmployees = async (
         versionId: version?.id || null,
         items: salaryItems.map((item) => [item.code, item.amount]),
         parameters,
+        payTypePolicy,
       });
       return normalizePayrollSnapshotEmployee({
         ...(production || {}),
