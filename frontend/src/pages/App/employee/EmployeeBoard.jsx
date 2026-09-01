@@ -426,6 +426,21 @@ const buildEmployeeDraft = (member, employee, options = {}) => {
     status: member.status,
   };
 };
+const buildDrawerSignature = (email, draft) => JSON.stringify({
+  email: String(email || '').trim(),
+  name: String(draft?.name || '').trim(),
+  bankName: String(draft?.bankName || '').trim(),
+  bankAccountNumber: String(draft?.bankAccountNumber || '').trim(),
+  orgRole: String(draft?.orgRole || '').toUpperCase(),
+  jobRoleId: String(draft?.jobRoleId || ''),
+  gradeId: String(draft?.gradeId || ''),
+  payType: String(draft?.payType || '').toUpperCase(),
+  factoryId: String(draft?.factoryId || ''),
+  employeeNo: String(draft?.employeeNo || ''),
+  joinedAt: String(draft?.joinedAt || ''),
+  leftAt: String(draft?.leftAt || ''),
+  status: String(draft?.status || '').toUpperCase(),
+});
 const getEmployeeDisplayName = (member, employee, myEmail, currentUserName) => {
   const normalizedMemberEmail = normalizeEmail(member?.email);
   return (
@@ -694,6 +709,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     leftAt: '',
     status: 'ACTIVE',
   });
+  const [drawerBaseline, setDrawerBaseline] = useState(null);
   const [lineAssignmentPrompt, setLineAssignmentPrompt] = useState(null);
 
   const [pendingFactoryOverrides, setPendingFactoryOverrides] = useState({});
@@ -1152,6 +1168,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       leftAt: '',
       status: 'ACTIVE',
     });
+    setDrawerBaseline(null);
     setIsAddDrawerOpen(true);
   }, [
     activeOrgType,
@@ -1165,15 +1182,15 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const openEditDrawer = useCallback((member) => {
     const employee = employeeByMembership.get(member.id) || null;
     const normalizedMemberEmail = normalizeEmail(member?.email);
+    const draft = buildEmployeeDraft(member, employee, {
+      useEmailFallback: normalizedMemberEmail === myEmail,
+      currentUserName: normalizedMemberEmail === myEmail ? currentUserName : '',
+    });
     setDrawerMode('edit');
     setSelectedMemberId(member.id);
     setDrawerEmail(member?.email || '');
-    setDrawerDraft(
-      buildEmployeeDraft(member, employee, {
-        useEmailFallback: normalizedMemberEmail === myEmail,
-        currentUserName: normalizedMemberEmail === myEmail ? currentUserName : '',
-      })
-    );
+    setDrawerDraft(draft);
+    setDrawerBaseline({ email: member?.email || '', draft });
     setIsAddDrawerOpen(true);
   }, [activeOrgType, currentUserName, employeeByMembership, myEmail]);
 
@@ -1559,6 +1576,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       && String(role?.code || '').trim().toUpperCase() === 'WORKER_SUPERVISOR'
   );
   const drawerNeedsLoginEmail = isLoginRequiredRole(drawerDraft.orgRole);
+  const isDrawerDirty = drawerMode !== 'edit' || !drawerBaseline || (
+    buildDrawerSignature(drawerEmail, drawerDraft) !== buildDrawerSignature(drawerBaseline.email, drawerBaseline.draft)
+  );
 
   return (
     <AppPageContainer
@@ -1824,7 +1844,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 </Button>
                 <SaveButton
                   onClick={handleDrawerSave}
-                  disabled={isDrawerSaving || !activeOrgId}
+                  disabled={isDrawerSaving || !activeOrgId || !isDrawerDirty}
                   loading={isDrawerSaving}
                 />
               </Box>
@@ -2077,7 +2097,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                       <TableRow
                         key={member.id}
                         hover
-                        onDoubleClick={canManageMembers ? () => openEditDrawer(member) : undefined}
+                        onClick={canManageMembers ? () => openEditDrawer(member) : undefined}
                         sx={{ cursor: canManageMembers ? 'pointer' : 'default' }}
                       >
                         <TableCell>{displayName}</TableCell>
