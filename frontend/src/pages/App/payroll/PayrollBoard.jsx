@@ -217,7 +217,8 @@ const PayrollBoard = () => {
         const monthReadiness = readinessByMonth[month];
         const selected = !selectedMonth || month === selectedMonth;
         const unlocked = !snapshot || snapshot.isProvisional === true;
-        return Boolean(selected && unlocked && monthReadiness?.ready);
+        const calculable = snapshot ? snapshot.isProvisional === true : monthReadiness?.ready === true;
+        return Boolean(selected && unlocked && calculable);
       })
       .map(({ month }) => month)
       .sort((left, right) => left.localeCompare(right)),

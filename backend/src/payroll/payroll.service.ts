@@ -1038,10 +1038,10 @@ export const savePayrollSnapshot = async ({
     throw createHttpError(409, "unlock payroll before recalculation");
   }
   const readiness = await getPayrollMonthReadiness(orgId, month);
-  if (!readiness.ready) {
-    if (readiness.invalidPayrollAttendance.length > 0) {
-      throw createHttpError(409, "attendance records must belong to each employee's assigned factory");
-    }
+  if (readiness.invalidPayrollAttendance.length > 0) {
+    throw createHttpError(409, "attendance records must belong to each employee's assigned factory");
+  }
+  if (!existingSnapshot && !readiness.ready) {
     throw createHttpError(409, "attendance and work records are incomplete for this payroll month");
   }
   const monthReady = isPayrollMonthReady(month, { timeZone });
