@@ -32,6 +32,15 @@ const PAY_TYPES = {
   OUTPUT_FIXED: { label: '생산(고정)', palette: 'green' },
   OUTPUT: { label: '생산(변동)', palette: 'orange' },
 };
+// 급여 항목 목록의 좁은 열 헤더 전용 약어. 전체 이름은 헤더 위 툴팁과
+// 체크박스 aria-label, 상세 패널 칩(getPayTypeLabel)에서 그대로 보여준다.
+const PAY_TYPE_HEADER_LABELS = {
+  GENERAL: { ko: '사무', en: 'Office', vi: 'VP' },
+  OUTPUT_FIXED: { ko: '생산\n(고정)', en: 'Prod.\n(F)', vi: 'SX\n(CĐ)' },
+  OUTPUT: { ko: '생산\n(변동)', en: 'Prod.\n(V)', vi: 'SX\n(BĐ)' },
+};
+const payTypeHeaderLabel = (payType, languageCode) =>
+  PAY_TYPE_HEADER_LABELS[payType]?.[languageCode] || PAY_TYPE_HEADER_LABELS[payType]?.en || payType;
 const PAY_TYPE_ORDER = ['GENERAL', 'OUTPUT_FIXED', 'OUTPUT'];
 const CATEGORIES = { BASE: '기본급', ALLOWANCE: '급여 수당', INCENTIVE: '성과급' };
 const CATEGORY_PALETTES = { BASE: 'blue', ALLOWANCE: 'green', INCENTIVE: 'orange' };
@@ -480,8 +489,8 @@ const SalarySystem = () => {
           <Typography variant="caption" color="text.secondary" fontWeight={700}>{t('항목명')}</Typography>
           {PAY_TYPE_ORDER.map((payType) => (
             <Tooltip key={payType} title={getPayTypeLabel(payType, payType, languageCode)}>
-              <Typography variant="caption" color="text.secondary" fontWeight={700} textAlign="center" sx={{ lineHeight: 1.2, whiteSpace: 'pre-line' }}>
-                {getPayTypeLabel(payType, payType, languageCode).replace('(', '\n(')}
+              <Typography variant="caption" color="text.secondary" fontWeight={700} textAlign="center" sx={{ lineHeight: 1.2, whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
+                {payTypeHeaderLabel(payType, languageCode)}
               </Typography>
             </Tooltip>
           ))}
