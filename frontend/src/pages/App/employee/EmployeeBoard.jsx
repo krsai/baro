@@ -2024,6 +2024,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   <TableCell>{text('nameColumn', languageCode)}</TableCell>
                   <TableCell>{text('employeeNoColumn', languageCode)}</TableCell>
                   <TableCell>{text('emailOrCodeColumn', languageCode)}</TableCell>
+                  <TableCell>{text('factoryLabel', languageCode)}</TableCell>
                   <TableCell>{text('roleLabel', languageCode)}</TableCell>
                   <TableCell>{text('jobLabel', languageCode)}</TableCell>
                   <TableCell>{text('gradeLabel', languageCode)}</TableCell>
@@ -2036,7 +2037,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TableBody>
                 {sortedActiveMembers.length === 0 ? (
                   <TableStatusRow
-                    colSpan={10}
+                    colSpan={11}
                     message={
                       searchTerm
                         ? text('noSearchResult', languageCode)
@@ -2064,6 +2065,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                       payTypeOptions.find((option) => option.value === payTypeValue)?.label ||
                       payTypeValue ||
                       '-';
+                    const factoryName =
+                      factoryById.get(String(employee?.factoryId || ''))?.name || '-';
                     const displayName = getEmployeeDisplayName(
                       member,
                       employee,
@@ -2082,6 +2085,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                           {employee?.employeeNo || '-'}
                         </TableCell>
                         <TableCell>{getMemberIdentityLabel(member) || '-'}</TableCell>
+                        <TableCell>{factoryName}</TableCell>
                         <TableCell>{roleLabel}</TableCell>
                         <TableCell>{jobRoleLabel}</TableCell>
                         <TableCell>{getEmployeeGradeLabel(employee, languageCode)}</TableCell>
