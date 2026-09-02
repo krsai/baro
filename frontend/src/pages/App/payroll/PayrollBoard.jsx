@@ -123,6 +123,7 @@ const PayrollBoard = () => {
   const [mutating, setMutating] = useState('');
   const [employeeDirectory, setEmployeeDirectory] = useState([]);
   const [calculationErrors, setCalculationErrors] = useState(null);
+  const [manuallyRecalculatedMonths, setManuallyRecalculatedMonths] = useState(() => new Set());
 
   const text = useMemo(() => ({
     title: getUiMessage('menu.payroll', 'Payroll', languageCode),
@@ -186,6 +187,7 @@ const PayrollBoard = () => {
   }, [activeOrgId, languageCode, showNotification]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setManuallyRecalculatedMonths(new Set()); }, [activeOrgId]);
 
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
@@ -225,13 +227,15 @@ const PayrollBoard = () => {
         const selected = !selectedMonth || month === selectedMonth;
         const unlocked = !snapshot || snapshot.isProvisional === true;
         const calculable = snapshot
-          ? snapshot.isProvisional === true && monthReadiness?.needsRecalculation === true
+          ? snapshot.isProvisional === true && (
+              monthReadiness?.needsRecalculation === true || !manuallyRecalculatedMonths.has(month)
+            )
           : monthReadiness?.ready === true;
         return Boolean(selected && unlocked && calculable);
       })
       .map(({ month }) => month)
       .sort((left, right) => left.localeCompare(right)),
-    [monthRows, readinessByMonth, selectedMonth]
+    [manuallyRecalculatedMonths, monthRows, readinessByMonth, selectedMonth]
   );
   const canCalculate = batchTargetMonths.length > 0 && !loading && !calculating;
   const explainCalculationError = useCallback((message) => {
@@ -278,6 +282,9 @@ const PayrollBoard = () => {
         } catch (error) {
           failed.push({ month, message: error?.message || resolveText(languageCode, 'calculateError') });
         }
+      }
+      if (succeeded.length > 0) {
+        setManuallyRecalculatedMonths((previous) => new Set([...previous, ...succeeded]));
       }
       await load();
       if (failed.length > 0) {
