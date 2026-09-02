@@ -884,6 +884,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "FactoryProductionAllowanceRate", columnName: "versionNumber" },
   { tableName: "FactoryProductionAllowanceRate", columnName: "confirmedAt" },
   { tableName: "PayrollSnapshot", columnName: "revision" },
+  { tableName: "PayrollSnapshot", columnName: "factoryId" },
 ] as const;
 const STARTUP_REQUIRED_NULLABLE_RUNTIME_COLUMNS = [
   { tableName: "SalarySystemVersion", columnName: "effectiveMonth" },

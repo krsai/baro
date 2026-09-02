@@ -31,7 +31,8 @@ export const getPayrollCalendarController = async (req: Request, res: Response) 
   const timeZone = process.env.BUSINESS_TIME_ZONE || "Asia/Seoul";
   const factories = await prisma.factory.findMany({
     where: { orgId: organization.id },
-    select: { managementStartDate: true },
+    select: { id: true, name: true, nameKo: true, nameVi: true, managementStartDate: true },
+    orderBy: { id: "asc" },
   });
   const managementStartDateKey = factories.length > 0
     ? factories
@@ -58,6 +59,13 @@ export const getPayrollCalendarController = async (req: Request, res: Response) 
     managementStartMonthKey: managementStartDateKey.slice(0, 7),
     availableMonthKeys,
     timeZone,
+    factories: factories.map((factory) => ({
+      id: factory.id,
+      name: factory.name,
+      nameKo: factory.nameKo,
+      nameVi: factory.nameVi,
+      managementStartDateKey: resolveFactoryManagementStartDateKey(factory),
+    })),
   });
 };
 
@@ -77,7 +85,11 @@ export const getPayrollController = async (req: Request, res: Response) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
-  const payroll = await getPayrollByMonth(organization.id, String(req.query.month || ""));
+  const payroll = await getPayrollByMonth(
+    organization.id,
+    String(req.query.month || ""),
+    Number(req.query.factoryId)
+  );
   return res.json(payroll);
 };
 
@@ -88,7 +100,8 @@ export const getPayrollReadinessController = async (req: Request, res: Response)
   }
   const readiness = await getPayrollMonthReadiness(
     organization.id,
-    String(req.query.month || "")
+    String(req.query.month || ""),
+    Number(req.query.factoryId)
   );
   return res.json(readiness);
 };
@@ -100,6 +113,7 @@ export const savePayrollSnapshotController = async (req: Request, res: Response)
   const snapshot = await savePayrollSnapshot({
     orgId: accessContext.organization.id,
     month: String(req.body?.month || ""),
+    factoryId: Number(req.body?.factoryId),
     savedBy:
       resolveOptionalString(req.body?.savedBy, null) ??
       resolveOptionalString(req.body?.lockedBy, null) ??
@@ -130,7 +144,8 @@ export const deletePayrollSnapshotController = async (req: Request, res: Respons
 
   const result = await deletePayrollSnapshot(
     accessContext.organization.id,
-    String(req.params.month || "")
+    String(req.params.month || ""),
+    Number(req.query.factoryId ?? req.body?.factoryId)
   );
   return res.json(result);
 };
@@ -141,6 +156,7 @@ export const updatePayrollEmployeeRatesController = async (req: Request, res: Re
   const result = await updatePayrollEmployeeRates({
     orgId: accessContext.organization.id,
     month: String(req.params.month || ""),
+    factoryId: Number(req.body?.factoryId),
     overrides: req.body?.overrides,
     updatedBy: accessContext.requesterEmail ?? "unknown",
   });
@@ -153,7 +169,8 @@ export const unlockPayrollSnapshotController = async (req: Request, res: Respons
 
   const result = await unlockPayrollSnapshot(
     accessContext.organization.id,
-    String(req.params.month || "")
+    String(req.params.month || ""),
+    Number(req.query.factoryId ?? req.body?.factoryId)
   );
   return res.json(result);
 };
@@ -164,6 +181,7 @@ export const lockPayrollSnapshotController = async (req: Request, res: Response)
   const result = await lockPayrollSnapshot({
     orgId: accessContext.organization.id,
     month: String(req.params.month || ""),
+    factoryId: Number(req.body?.factoryId),
     lockedBy:
       resolveOptionalString(req.body?.lockedBy, null) ??
       accessContext.requesterEmail ??

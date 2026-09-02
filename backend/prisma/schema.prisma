@@ -381,6 +381,7 @@ model Factory {
   salaryItems              SalaryItem[]
   salaryItemRates          SalaryItemRate[]
   salarySystemVersions     SalarySystemVersion[]
+  payrollSnapshots         PayrollSnapshot[]
   salaryCurrency           Currency?                         @relation("FactorySalaryCurrency", fields: [salaryCurrencyId], references: [id], onDelete: Restrict)
 
   createdByEmployee Employee? @relation("FactoryCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
@@ -1679,6 +1680,7 @@ model PayrollSnapshot {
   id                  Int      @id @default(autoincrement())
   orgId               Int
   month               String
+  factoryId           Int
   data                Json
   lockedAt            DateTime
   lockedBy            String
@@ -1690,12 +1692,14 @@ model PayrollSnapshot {
   updatedByEmployeeId Int?
 
   organization Organization @relation(fields: [orgId], references: [id])
+  factory      Factory      @relation(fields: [factoryId, orgId], references: [id, orgId])
 
   createdByEmployee Employee? @relation("PayrollSnapshotCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("PayrollSnapshotUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
-  @@unique([orgId, month])
+  @@unique([orgId, month, factoryId])
   @@index([orgId])
+  @@index([factoryId])
 }
 
 model QuantitySettlementSnapshot {

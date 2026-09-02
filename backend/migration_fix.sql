@@ -1,3 +1,35 @@
+-- 2026-09-02: payroll snapshots become factory-scoped (one snapshot per
+-- org+month+factory instead of one per org+month combining every factory).
+-- Backfill only auto-assigns factoryId when the org has exactly one factory,
+-- which is the case for every org that currently has PayrollSnapshot rows
+-- (verified against production before writing this). If a multi-factory org
+-- ever has a pre-existing ambiguous row, this deliberately does NOT guess a
+-- factory for it - the later SET NOT NULL will fail loudly instead of
+-- silently mis-attributing that month's payroll to the wrong factory.
+ALTER TABLE "PayrollSnapshot" ADD COLUMN IF NOT EXISTS "factoryId" INTEGER;
+UPDATE "PayrollSnapshot" AS snapshot
+SET "factoryId" = single_factory.id
+FROM (
+  SELECT "orgId", MIN(id) AS id
+  FROM "Factory"
+  GROUP BY "orgId"
+  HAVING COUNT(*) = 1
+) AS single_factory
+WHERE snapshot."orgId" = single_factory."orgId"
+  AND snapshot."factoryId" IS NULL;
+ALTER TABLE "PayrollSnapshot" ALTER COLUMN "factoryId" SET NOT NULL;
+DROP INDEX IF EXISTS "PayrollSnapshot_orgId_month_key";
+DO $$ BEGIN
+  ALTER TABLE "PayrollSnapshot" DROP CONSTRAINT "PayrollSnapshot_orgId_month_key";
+EXCEPTION WHEN undefined_object THEN NULL; END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS "PayrollSnapshot_orgId_month_factoryId_key"
+  ON "PayrollSnapshot"("orgId", "month", "factoryId");
+CREATE INDEX IF NOT EXISTS "PayrollSnapshot_factoryId_idx" ON "PayrollSnapshot"("factoryId");
+DO $$ BEGIN
+  ALTER TABLE "PayrollSnapshot" ADD CONSTRAINT "PayrollSnapshot_factoryId_orgId_fkey"
+    FOREIGN KEY ("factoryId", "orgId") REFERENCES "Factory"("id", "orgId");
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- 2026-09-02: per-employee "always full attendance" payroll override.
 ALTER TABLE "Employee"
   ADD COLUMN IF NOT EXISTS "alwaysFullAttendance" BOOLEAN NOT NULL DEFAULT false;

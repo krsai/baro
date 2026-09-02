@@ -224,9 +224,13 @@ const employeeExpectedOnDate = (employee: any, dateKey: string) => {
   return true;
 };
 
-export const getPayrollMonthReadiness = async (orgId: number, monthInput: string) => {
+export const getPayrollMonthReadiness = async (orgId: number, monthInput: string, factoryIdInput: number) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
+  const factoryId = toPositiveIntOrNull(factoryIdInput);
+  if (factoryId === null) {
+    throw createHttpError(400, "factoryId is required");
+  }
   const timeZone = process.env.BUSINESS_TIME_ZONE || "Asia/Seoul";
   const currentMonth = resolveCurrentPayrollMonthKey({ timeZone });
   const completedMonth = month < currentMonth;
@@ -236,7 +240,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
 
   const [lines, holidays, attendanceEntries, workLogs, payrollEmployees, payrollFactories, snapshot, payTypePolicies] = await Promise.all([
     prisma.line.findMany({
-      where: { orgId, isActive: true },
+      where: { orgId, factoryId, isActive: true },
       include: {
         factory: {
           select: {
@@ -256,11 +260,11 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       select: { holidayDate: true },
     }),
     prisma.attendanceEntry.findMany({
-      where: { orgId, workDate: { gte: monthStart, lte: monthEnd } },
+      where: { orgId, factoryId, workDate: { gte: monthStart, lte: monthEnd } },
       select: { workerId: true, factoryId: true, workDate: true, createdAt: true, updatedAt: true },
     }),
     prisma.workLog.findMany({
-      where: { orgId, displayDate: { startsWith: month } },
+      where: { orgId, factoryId, displayDate: { startsWith: month } },
       select: {
         displayDate: true,
         createdAt: true,
@@ -289,16 +293,16 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       },
     }),
     prisma.employee.findMany({
-      where: { orgId, status: { notIn: ["PENDING", "REJECTED"] } },
+      where: { orgId, factoryId, status: { notIn: ["PENDING", "REJECTED"] } },
       include: { role: true, factory: { select: { id: true, managementStartDate: true } } },
     }),
     prisma.factory.findMany({
-      where: { orgId },
+      where: { orgId, id: factoryId },
       select: { id: true, managementStartDate: true },
       orderBy: { id: "asc" },
     }),
     prisma.payrollSnapshot.findUnique({
-      where: { orgId_month: { orgId, month } },
+      where: { orgId_month_factoryId: { orgId, month, factoryId } },
       select: { id: true, isProvisional: true, lockedAt: true, data: true },
     }),
     loadEmployeePayTypePolicies(orgId),
@@ -458,7 +462,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   let salaryCalculationError: string | null = null;
   if (snapshot) {
     try {
-      currentCalculatedEmployees = (await getPayrollByMonth(orgId, month, { ignoreSnapshot: true })).employees;
+      currentCalculatedEmployees = (await getPayrollByMonth(orgId, month, factoryId, { ignoreSnapshot: true })).employees;
     } catch (error: any) {
       salaryCalculationError = String(error?.message || "salary calculation prerequisites are incomplete");
     }
@@ -547,7 +551,8 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
 const buildIntegratedPayrollEmployees = async (
   orgId: number,
   month: string,
-  productionEmployeesInput: any[]
+  productionEmployeesInput: any[],
+  factoryId: number
 ) => {
   const range = getPayrollMonthRange(month);
   const monthEndDate = new Date(range.endExclusive.getTime() - 1);
@@ -556,9 +561,12 @@ const buildIntegratedPayrollEmployees = async (
   const monthEndKey = monthEndDate.toISOString().slice(0, 10);
   const [employees, attendance, holidays, factories, payTypePolicies] = await Promise.all([
     prisma.employee.findMany({
-      where: { orgId, status: { notIn: ["PENDING", "REJECTED"] } },
+      where: { orgId, factoryId, status: { notIn: ["PENDING", "REJECTED"] } },
       include: { role: true },
     }),
+    // Intentionally org-wide (not scoped to factoryId): the foreignFactoryAttendance
+    // check below needs to see attendance recorded under a *different* factory than
+    // the employee's assigned one, to fail closed instead of silently ignoring it.
     prisma.attendanceEntry.findMany({
       where: { orgId, workDate: { gte: monthStartKey, lte: monthEndKey } },
       orderBy: { workDate: "asc" },
@@ -568,7 +576,7 @@ const buildIntegratedPayrollEmployees = async (
       select: { holidayDate: true },
     }),
     prisma.factory.findMany({
-      where: { orgId },
+      where: { orgId, id: factoryId },
       include: {
         salaryCurrency: { select: { code: true } },
         organization: { select: { salaryCurrency: { select: { code: true } } } },
@@ -760,6 +768,7 @@ export const listPayrollSnapshots = async (orgId: number) => {
     select: {
       id: true,
       month: true,
+      factoryId: true,
       data: true,
       lockedAt: true,
       lockedBy: true,
@@ -776,10 +785,15 @@ export const listPayrollSnapshots = async (orgId: number) => {
 export const getPayrollByMonth = async (
   orgId: number,
   monthInput: string,
+  factoryIdInput: number,
   { ignoreSnapshot = false }: { ignoreSnapshot?: boolean } = {}
 ) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
+  const factoryId = toPositiveIntOrNull(factoryIdInput);
+  if (factoryId === null) {
+    throw createHttpError(400, "factoryId is required");
+  }
   const monthReady = isPayrollMonthReady(month, {
     timeZone: process.env.BUSINESS_TIME_ZONE || "Asia/Seoul",
   });
@@ -787,7 +801,7 @@ export const getPayrollByMonth = async (
   const snapshot = ignoreSnapshot
     ? null
     : await prisma.payrollSnapshot.findUnique({
-        where: { orgId_month: { orgId, month } },
+        where: { orgId_month_factoryId: { orgId, month, factoryId } },
       });
   if (snapshot) {
     return {
@@ -798,13 +812,14 @@ export const getPayrollByMonth = async (
       lockedBy: snapshot.lockedBy,
       isProvisional: snapshot.isProvisional,
       month,
+      factoryId,
       employees: ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee),
     };
   }
 
   const [workLogRows, payrollLines] = await Promise.all([
     prisma.workLog.findMany({
-      where: { orgId, displayDate: { startsWith: month } },
+      where: { orgId, factoryId, displayDate: { startsWith: month } },
       include: {
         factory: {
           select: {
@@ -818,7 +833,7 @@ export const getPayrollByMonth = async (
         workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
       },
     }),
-    prisma.line.findMany({ where: { orgId }, select: { id: true, name: true } }),
+    prisma.line.findMany({ where: { orgId, factoryId }, select: { id: true, name: true } }),
   ]);
   const payrollLinesById = new Map(payrollLines.map((line) => [line.id, line]));
   const workLogs = workLogRows.filter(
@@ -837,6 +852,7 @@ export const getPayrollByMonth = async (
   const employeeRows = await prisma.employee.findMany({
     where: {
       orgId,
+      factoryId,
       ...(workerIds.length > 0
         ? {
             OR: [
@@ -1031,12 +1047,13 @@ export const getPayrollByMonth = async (
     })
     .sort((a, b) => b.productionAllowance - a.productionAllowance);
 
-  const integratedEmployees = await buildIntegratedPayrollEmployees(orgId, month, employees);
+  const integratedEmployees = await buildIntegratedPayrollEmployees(orgId, month, employees, factoryId);
   return {
     locked: false,
     snapshotExists: false,
     isProvisional: !monthReady,
     monthReady,
+    factoryId,
     month,
     employees: integratedEmployees,
   };
@@ -1045,28 +1062,34 @@ export const getPayrollByMonth = async (
 export const savePayrollSnapshot = async ({
   orgId,
   month: monthInput,
+  factoryId: factoryIdInput,
   savedBy,
   employees: _employees,
 }: {
   orgId: number;
   month: string;
+  factoryId: number;
   savedBy: string;
   employees?: any;
 }) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
+  const factoryId = toPositiveIntOrNull(factoryIdInput);
+  if (factoryId === null) {
+    throw createHttpError(400, "factoryId is required");
+  }
   const timeZone = process.env.BUSINESS_TIME_ZONE || "Asia/Seoul";
   const currentMonth = resolveCurrentPayrollMonthKey({ timeZone });
   if (month >= currentMonth) {
     throw createHttpError(409, "production allowance can only be calculated through the previous month");
   }
   const existingSnapshot = await prisma.payrollSnapshot.findUnique({
-    where: { orgId_month: { orgId, month } },
+    where: { orgId_month_factoryId: { orgId, month, factoryId } },
   });
   if (existingSnapshot && !existingSnapshot.isProvisional) {
     throw createHttpError(409, "unlock payroll before recalculation");
   }
-  const readiness = await getPayrollMonthReadiness(orgId, month);
+  const readiness = await getPayrollMonthReadiness(orgId, month, factoryId);
   if (readiness.invalidPayrollAttendance.length > 0) {
     throw createHttpError(409, "attendance records must belong to each employee's assigned factory");
   }
@@ -1082,6 +1105,7 @@ export const savePayrollSnapshot = async ({
       workRecords: {
         some: {
           workLog: {
+            factoryId,
             displayDate: { startsWith: month },
           },
         },
@@ -1100,7 +1124,7 @@ export const savePayrollSnapshot = async ({
   }
 
   void _employees;
-  const calculated = await getPayrollByMonth(orgId, month, { ignoreSnapshot: true });
+  const calculated = await getPayrollByMonth(orgId, month, factoryId, { ignoreSnapshot: true });
   const storedByWorkerId = new Map(
     ensureArray(existingSnapshot?.data).map(normalizePayrollSnapshotEmployee).map((employee) => [employee.workerId, employee])
   );
@@ -1113,7 +1137,7 @@ export const savePayrollSnapshot = async ({
   if (!existingSnapshot) {
     try {
       return await prisma.payrollSnapshot.create({ data: {
-        orgId, month, data: snapshotEmployees, lockedAt: savedAt, lockedBy: savedByText, isProvisional: true,
+        orgId, month, factoryId, data: snapshotEmployees, lockedAt: savedAt, lockedBy: savedByText, isProvisional: true,
       } });
     } catch (error: any) {
       if (error?.code === "P2002") throw createHttpError(409, "payroll was created by another request");
@@ -1198,21 +1222,21 @@ export const recalculatePayrollSnapshotLine = async ({
   }
 
   const snapshot = await prisma.payrollSnapshot.findUnique({
-    where: { orgId_month: { orgId, month } },
+    where: { orgId_month_factoryId: { orgId, month, factoryId: normalizedFactoryId } },
   });
   if (!snapshot) throw createHttpError(404, "snapshot not found");
   if (!snapshot.isProvisional) {
     throw createHttpError(409, "unlock production allowance before recalculation");
   }
 
-  const readiness = await getPayrollMonthReadiness(orgId, month);
+  const readiness = await getPayrollMonthReadiness(orgId, month, normalizedFactoryId);
   const targetGroup = readiness.groups.find(
     (group) => group.factoryId === normalizedFactoryId && group.lineId === normalizedLineId
   );
   if (!targetGroup) throw createHttpError(404, "payroll line not found");
   if (!targetGroup.ready) throw createHttpError(409, "line work records are incomplete");
 
-  const calculated = await getPayrollByMonth(orgId, month, { ignoreSnapshot: true });
+  const calculated = await getPayrollByMonth(orgId, month, normalizedFactoryId, { ignoreSnapshot: true });
   const storedEmployees = ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee);
   const freshEmployees = calculated.employees.map(normalizePayrollSnapshotEmployee);
   const storedByKey = new Map(storedEmployees.map((employee) => [employee.employeeKey, employee]));
@@ -1274,18 +1298,24 @@ export const recalculatePayrollSnapshotLine = async ({
 export const updatePayrollEmployeeRates = async ({
   orgId,
   month: monthInput,
+  factoryId: factoryIdInput,
   overrides,
   updatedBy,
 }: {
   orgId: number;
   month: string;
+  factoryId: number;
   overrides: unknown;
   updatedBy: string;
 }) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
+  const factoryId = toPositiveIntOrNull(factoryIdInput);
+  if (factoryId === null) {
+    throw createHttpError(400, "factoryId is required");
+  }
   const snapshot = await prisma.payrollSnapshot.findUnique({
-    where: { orgId_month: { orgId, month } },
+    where: { orgId_month_factoryId: { orgId, month, factoryId } },
   });
   if (!snapshot) throw createHttpError(404, "snapshot not found");
   if (!snapshot.isProvisional) {
@@ -1364,12 +1394,16 @@ export const updatePayrollEmployeeRates = async ({
   return prisma.payrollSnapshot.findUniqueOrThrow({ where: { id: snapshot.id } });
 };
 
-export const deletePayrollSnapshot = async (orgId: number, monthInput: string) => {
+export const deletePayrollSnapshot = async (orgId: number, monthInput: string, factoryIdInput: number) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
+  const factoryId = toPositiveIntOrNull(factoryIdInput);
+  if (factoryId === null) {
+    throw createHttpError(400, "factoryId is required");
+  }
 
   const existing = await prisma.payrollSnapshot.findUnique({
-    where: { orgId_month: { orgId, month } },
+    where: { orgId_month_factoryId: { orgId, month, factoryId } },
     select: { id: true, isProvisional: true, revision: true },
   });
   if (!existing) {
@@ -1385,12 +1419,16 @@ export const deletePayrollSnapshot = async (orgId: number, monthInput: string) =
   return { ok: true, month };
 };
 
-export const unlockPayrollSnapshot = async (orgId: number, monthInput: string) => {
+export const unlockPayrollSnapshot = async (orgId: number, monthInput: string, factoryIdInput: number) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
+  const factoryId = toPositiveIntOrNull(factoryIdInput);
+  if (factoryId === null) {
+    throw createHttpError(400, "factoryId is required");
+  }
 
   const existing = await prisma.payrollSnapshot.findUnique({
-    where: { orgId_month: { orgId, month } },
+    where: { orgId_month_factoryId: { orgId, month, factoryId } },
     select: { id: true, isProvisional: true, revision: true },
   });
   if (!existing) {
@@ -1406,22 +1444,28 @@ export const unlockPayrollSnapshot = async (orgId: number, monthInput: string) =
 export const lockPayrollSnapshot = async ({
   orgId,
   month: monthInput,
+  factoryId: factoryIdInput,
   lockedBy,
 }: {
   orgId: number;
   month: string;
+  factoryId: number;
   lockedBy: string;
 }) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
+  const factoryId = toPositiveIntOrNull(factoryIdInput);
+  if (factoryId === null) {
+    throw createHttpError(400, "factoryId is required");
+  }
   const existing = await prisma.payrollSnapshot.findUnique({
-    where: { orgId_month: { orgId, month } },
+    where: { orgId_month_factoryId: { orgId, month, factoryId } },
     select: { id: true, isProvisional: true, revision: true },
   });
   if (!existing) throw createHttpError(404, "calculate production allowance before locking");
   if (!existing.isProvisional) return { ok: true, month };
 
-  const readiness = await getPayrollMonthReadiness(orgId, month);
+  const readiness = await getPayrollMonthReadiness(orgId, month, factoryId);
   if (!readiness.ready) throw createHttpError(409, "monthly work records are incomplete");
   if (readiness.needsRecalculation) throw createHttpError(409, "payroll must be recalculated before locking");
 

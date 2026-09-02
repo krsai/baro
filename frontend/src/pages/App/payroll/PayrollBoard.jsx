@@ -110,20 +110,29 @@ const payrollAmountSummary = (employees) => {
     .map(([currency, amount]) => `${amount.toLocaleString()} ${currency}`).join(' / ');
 };
 
+const resolveFactoryDisplayName = (factory, languageCode) => {
+  if (!factory) return '';
+  if (languageCode === 'ko') return factory.nameKo || factory.name || '';
+  if (languageCode === 'vi') return factory.nameVi || factory.name || '';
+  return factory.name || factory.nameKo || factory.nameVi || '';
+};
+
+const rowKey = (month, factoryId) => `${month}:${factoryId}`;
+
 const PayrollBoard = () => {
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
   const [snapshots, setSnapshots] = useState([]);
   const [calendar, setCalendar] = useState(null);
-  const [readinessByMonth, setReadinessByMonth] = useState({});
+  const [readinessByKey, setReadinessByKey] = useState({});
   const [selectedMonth, setSelectedMonth] = useState('');
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [mutating, setMutating] = useState('');
   const [employeeDirectory, setEmployeeDirectory] = useState([]);
   const [calculationErrors, setCalculationErrors] = useState(null);
-  const [manuallyRecalculatedMonths, setManuallyRecalculatedMonths] = useState(() => new Set());
+  const [manuallyRecalculatedRows, setManuallyRecalculatedRows] = useState(() => new Set());
 
   const text = useMemo(() => ({
     title: getUiMessage('menu.payroll', 'Payroll', languageCode),
@@ -135,12 +144,12 @@ const PayrollBoard = () => {
     peopleSuffix: getUiMessage('payrollBoard.peopleSuffix', '', languageCode),
   }), [languageCode]);
   const payrollStatusText = languageCode === 'ko'
-    ? { notCalculated: '\uBBF8\uACC4\uC0B0', recalculationRequired: '\uC7AC\uACC4\uC0B0 \uD544\uC694', calculated: '\uACC4\uC0B0 \uC644\uB8CC' }
+    ? { notCalculated: '미계산', recalculationRequired: '재계산 필요', calculated: '계산 완료' }
     : languageCode === 'vi'
       ? { notCalculated: 'Chua tinh', recalculationRequired: 'Can tinh lai', calculated: 'Da tinh xong' }
       : { notCalculated: 'Not Calculated', recalculationRequired: 'Recalculation Required', calculated: 'Calculated' };
   const payrollSummaryText = languageCode === 'ko'
-    ? { people: '\uCD1D\uC6D0 (\uC0AC\uBB34\uACE0\uC815/\uC0DD\uC0B0\uACE0\uC815/\uC0DD\uC0B0\uBCC0\uB3D9)', generalPayroll: '\uC0AC\uBB34(\uACE0\uC815) \uAE09\uC5EC', fixedOutputPayroll: '\uC0DD\uC0B0(\uACE0\uC815) \uAE09\uC5EC', outputPayroll: '\uC0DD\uC0B0(\uBCC0\uB3D9) \uAE09\uC5EC', totalPayroll: '\uCD1D \uAE09\uC5EC', lock: '\uC7A0\uAE08', pending: '\uBBF8\uACC4\uC0B0' }
+    ? { people: '총원 (사무고정/생산고정/생산변동)', generalPayroll: '사무(고정) 급여', fixedOutputPayroll: '생산(고정) 급여', outputPayroll: '생산(변동) 급여', totalPayroll: '총 급여', lock: '잠금', pending: '미계산' }
     : languageCode === 'vi'
       ? { people: 'Tổng (VP cố định/SX cố định/SX biến đổi)', generalPayroll: 'Lương VP cố định', fixedOutputPayroll: 'Lương SX cố định', outputPayroll: 'Lương SX biến đổi', totalPayroll: 'Tổng lương', lock: 'Khóa', pending: 'Chưa tính' }
       : { people: 'Total (Office Fixed/Production Fixed/Production Variable)', generalPayroll: 'Office (Fixed)', fixedOutputPayroll: 'Production (Fixed)', outputPayroll: 'Production (Variable)', totalPayroll: 'Total Payroll', lock: 'Lock', pending: 'Not calculated' };
@@ -160,24 +169,39 @@ const PayrollBoard = () => {
       const nextAvailableMonths = Array.isArray(calendarPayload?.availableMonthKeys)
         ? calendarPayload.availableMonthKeys
         : [];
+      const nextFactories = Array.isArray(calendarPayload?.factories) ? calendarPayload.factories : [];
       const latestCompletedMonth = String(calendarPayload?.latestCompletedMonthKey || '');
       const completedAvailableMonths = nextAvailableMonths.filter(
         (month) => !latestCompletedMonth || month <= latestCompletedMonth
       );
-      const readinessRows = await Promise.all(
-        completedAvailableMonths.map(async (month) => [
-          month,
-          await requestJSON(
-            '/payroll/readiness' + buildQueryString({ orgId: activeOrgId, month }),
-            { forceRefresh: true, skipGlobalLoading: true }
-          ).catch((error) => ({ month, completedMonth: true, ready: false, groups: [], error: error?.message || 'Failed to check payroll readiness.' })),
-        ])
+      const readinessEntries = await Promise.all(
+        completedAvailableMonths.flatMap((month) =>
+          nextFactories.map(async (factory) => {
+            const key = rowKey(month, factory.id);
+            try {
+              const readiness = await requestJSON(
+                '/payroll/readiness' + buildQueryString({ orgId: activeOrgId, month, factoryId: factory.id }),
+                { forceRefresh: true, skipGlobalLoading: true }
+              );
+              return [key, readiness];
+            } catch (error) {
+              return [key, {
+                month,
+                factoryId: factory.id,
+                completedMonth: true,
+                ready: false,
+                groups: [],
+                error: error?.message || 'Failed to check payroll readiness.',
+              }];
+            }
+          })
+        )
       );
 
       setSnapshots(nextSnapshots);
       setEmployeeDirectory(Array.isArray(employeeRows) ? employeeRows : []);
       setCalendar(calendarPayload || null);
-      setReadinessByMonth(Object.fromEntries(readinessRows));
+      setReadinessByKey(Object.fromEntries(readinessEntries));
     } catch (error) {
       if (!silent) setSnapshots([]);
       showNotification(error?.message || resolveText(languageCode, 'fetchError'), 'error');
@@ -187,7 +211,7 @@ const PayrollBoard = () => {
   }, [activeOrgId, languageCode, showNotification]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setManuallyRecalculatedMonths(new Set()); }, [activeOrgId]);
+  useEffect(() => { setManuallyRecalculatedRows(new Set()); }, [activeOrgId]);
 
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
@@ -199,45 +223,57 @@ const PayrollBoard = () => {
   });
 
   const latestCompletedMonthKey = String(calendar?.latestCompletedMonthKey || '');
-  const snapshotsByMonth = useMemo(
-    () => new Map(snapshots.map((snapshot) => [String(snapshot?.month || ''), snapshot])),
+  const factories = useMemo(() => Array.isArray(calendar?.factories) ? calendar.factories : [], [calendar?.factories]);
+  const snapshotsByKey = useMemo(
+    () => new Map(snapshots.map((snapshot) => [rowKey(String(snapshot?.month || ''), Number(snapshot?.factoryId)), snapshot])),
     [snapshots]
   );
-  const monthRows = useMemo(() => {
+  const monthFactoryRows = useMemo(() => {
+    if (factories.length === 0) return [];
     const months = new Set([
       ...(Array.isArray(calendar?.availableMonthKeys) ? calendar.availableMonthKeys : []),
       ...snapshots.map((snapshot) => String(snapshot?.month || '')).filter(Boolean),
     ]);
-    return Array.from(months)
-      .filter((month) => !latestCompletedMonthKey || month <= latestCompletedMonthKey)
-      .filter((month) => snapshotsByMonth.has(month) || readinessByMonth[month]?.ready === true)
-      .sort((left, right) => right.localeCompare(left))
-      .map((month) => ({ month, snapshot: snapshotsByMonth.get(month) || null }));
-  }, [calendar?.availableMonthKeys, latestCompletedMonthKey, readinessByMonth, snapshots, snapshotsByMonth]);
-  const filteredMonthRows = useMemo(
+    const rows = [];
+    for (const month of months) {
+      if (latestCompletedMonthKey && month > latestCompletedMonthKey) continue;
+      for (const factory of factories) {
+        const key = rowKey(month, factory.id);
+        const snapshot = snapshotsByKey.get(key) || null;
+        const readiness = readinessByKey[key];
+        if (!snapshot && readiness?.ready !== true) continue;
+        rows.push({ month, factory, snapshot });
+      }
+    }
+    return rows.sort((a, b) => {
+      if (a.month !== b.month) return b.month.localeCompare(a.month);
+      return Number(a.factory.id) - Number(b.factory.id);
+    });
+  }, [calendar?.availableMonthKeys, factories, latestCompletedMonthKey, readinessByKey, snapshots, snapshotsByKey]);
+  const filteredMonthFactoryRows = useMemo(
     () => selectedMonth
-      ? monthRows.filter(({ month }) => month === selectedMonth)
-      : monthRows,
-    [monthRows, selectedMonth]
+      ? monthFactoryRows.filter((row) => row.month === selectedMonth)
+      : monthFactoryRows,
+    [monthFactoryRows, selectedMonth]
   );
-  const batchTargetMonths = useMemo(
-    () => monthRows
-      .filter(({ month, snapshot }) => {
-        const monthReadiness = readinessByMonth[month];
-        const selected = !selectedMonth || month === selectedMonth;
-        const unlocked = !snapshot || snapshot.isProvisional === true;
-        const calculable = snapshot
-          ? snapshot.isProvisional === true && (
-              monthReadiness?.needsRecalculation === true || !manuallyRecalculatedMonths.has(month)
+  const batchTargetRows = useMemo(
+    () => monthFactoryRows
+      .filter((row) => {
+        const key = rowKey(row.month, row.factory.id);
+        const monthReadiness = readinessByKey[key];
+        const selected = !selectedMonth || row.month === selectedMonth;
+        const unlocked = !row.snapshot || row.snapshot.isProvisional === true;
+        const calculable = row.snapshot
+          ? row.snapshot.isProvisional === true && (
+              monthReadiness?.needsRecalculation === true || !manuallyRecalculatedRows.has(key)
             )
           : monthReadiness?.ready === true;
         return Boolean(selected && unlocked && calculable);
       })
-      .map(({ month }) => month)
-      .sort((left, right) => left.localeCompare(right)),
-    [manuallyRecalculatedMonths, monthRows, readinessByMonth, selectedMonth]
+      .sort((a, b) => a.month.localeCompare(b.month) || Number(a.factory.id) - Number(b.factory.id)),
+    [manuallyRecalculatedRows, monthFactoryRows, readinessByKey, selectedMonth]
   );
-  const canCalculate = batchTargetMonths.length > 0 && !loading && !calculating;
+  const canCalculate = batchTargetRows.length > 0 && !loading && !calculating;
   const explainCalculationError = useCallback((message) => {
     const raw = String(message || '');
     let match = raw.match(/employee (\d+) has no payroll factory/i);
@@ -265,26 +301,30 @@ const PayrollBoard = () => {
       : 'All';
 
   const handleCalculate = async () => {
-    const targetMonths = batchTargetMonths;
-    if (targetMonths.length === 0) return;
+    const targetRows = batchTargetRows;
+    if (targetRows.length === 0) return;
     setCalculating(true);
     try {
       const query = buildQueryString({ orgId: activeOrgId });
       const failed = [];
       const succeeded = [];
-      for (const month of targetMonths) {
+      for (const row of targetRows) {
+        const key = rowKey(row.month, row.factory.id);
+        const factoryLabel = resolveFactoryDisplayName(row.factory, languageCode);
         try {
           await requestJSON('/payroll/snapshots' + query, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ month, savedBy: activeProfile?.email || activeProfile?.name || 'administrator' }),
+            body: JSON.stringify({
+              month: row.month,
+              factoryId: row.factory.id,
+              savedBy: activeProfile?.email || activeProfile?.name || 'administrator',
+            }),
           });
-          succeeded.push(month);
+          succeeded.push(`${row.month} (${factoryLabel})`);
+          setManuallyRecalculatedRows((previous) => new Set([...previous, key]));
         } catch (error) {
-          failed.push({ month, message: error?.message || resolveText(languageCode, 'calculateError') });
+          failed.push({ month: row.month, factoryLabel, message: error?.message || resolveText(languageCode, 'calculateError') });
         }
-      }
-      if (succeeded.length > 0) {
-        setManuallyRecalculatedMonths((previous) => new Set([...previous, ...succeeded]));
       }
       await load();
       if (failed.length > 0) {
@@ -292,7 +332,7 @@ const PayrollBoard = () => {
         return;
       }
       showNotification(
-        resolveText(languageCode, 'calculateSuccess', { month: targetMonths.join(', ') }),
+        resolveText(languageCode, 'calculateSuccess', { month: succeeded.join(', ') }),
         'success'
       );
     } catch (error) {
@@ -303,23 +343,28 @@ const PayrollBoard = () => {
     }
   };
 
-  const handleLockToggle = async (snapshot, checked) => {
-    const month = String(snapshot?.month || '');
-    if (!month) return;
-    const mutationKey = `lock:${month}`;
+  const handleLockToggle = async (row, checked) => {
+    const { month, factory, snapshot } = row;
+    if (!month || !factory?.id) return;
+    const mutationKey = `lock:${rowKey(month, factory.id)}`;
     setMutating(mutationKey);
     try {
       if (checked) {
-        const updatedSnapshot = await requestJSON(`/payroll/snapshots/${month}/lock` + buildQueryString({ orgId: activeOrgId }), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lockedBy: activeProfile?.email || activeProfile?.name || 'administrator' }),
-        });
-        setSnapshots((previous) => previous.map((row) =>
-          String(row?.month || '') === month ? { ...row, ...updatedSnapshot } : row
+        const updatedSnapshot = await requestJSON(
+          `/payroll/snapshots/${month}/lock` + buildQueryString({ orgId: activeOrgId, factoryId: factory.id }),
+          {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ factoryId: factory.id, lockedBy: activeProfile?.email || activeProfile?.name || 'administrator' }),
+          }
+        );
+        setSnapshots((previous) => previous.map((row2) =>
+          String(row2?.month || '') === month && Number(row2?.factoryId) === Number(factory.id)
+            ? { ...row2, ...updatedSnapshot }
+            : row2
         ));
         await load({ silent: true });
       } else {
-        await handleUnlock(month);
+        await handleUnlock(month, factory, snapshot);
       }
     } catch (error) {
       showNotification(error?.message || resolveText(languageCode, 'calculateError'), 'error');
@@ -328,17 +373,19 @@ const PayrollBoard = () => {
     }
   };
 
-  const handleUnlock = async (month) => {
-    const snapshot = snapshotsByMonth.get(month);
+  const handleUnlock = async (month, factory, snapshot) => {
     if (!snapshot || snapshot.isProvisional) return;
     if (!window.confirm(resolveText(languageCode, 'unlockConfirm', { month }))) return;
-    setMutating(`lock:${month}`);
+    setMutating(`lock:${rowKey(month, factory.id)}`);
     try {
-      const updatedSnapshot = await requestJSON(`/payroll/snapshots/${month}/unlock` + buildQueryString({ orgId: activeOrgId }), {
-        method: 'POST',
-      });
-      setSnapshots((previous) => previous.map((row) =>
-        String(row?.month || '') === month ? { ...row, ...updatedSnapshot } : row
+      const updatedSnapshot = await requestJSON(
+        `/payroll/snapshots/${month}/unlock` + buildQueryString({ orgId: activeOrgId, factoryId: factory.id }),
+        { method: 'POST' }
+      );
+      setSnapshots((previous) => previous.map((row2) =>
+        String(row2?.month || '') === month && Number(row2?.factoryId) === Number(factory.id)
+          ? { ...row2, ...updatedSnapshot }
+          : row2
       ));
       await load({ silent: true });
       showNotification(resolveText(languageCode, 'unlockSuccess', { month }), 'success');
@@ -364,7 +411,7 @@ const PayrollBoard = () => {
             sx={{ minWidth: 150 }}
           >
             <MenuItem value="">{allMonthsLabel}</MenuItem>
-            {monthRows.map(({ month }) => (
+            {Array.from(new Set(monthFactoryRows.map((row) => row.month))).map((month) => (
               <MenuItem key={month} value={month}>{month}</MenuItem>
             ))}
           </TextField>
@@ -374,22 +421,23 @@ const PayrollBoard = () => {
           >
             {calculating
               ? resolveText(languageCode, 'calculating')
-              : languageCode === 'ko' ? `일괄 계산 (${batchTargetMonths.length})`
-                : languageCode === 'vi' ? `Tính hàng loạt (${batchTargetMonths.length})`
-                  : `Calculate All (${batchTargetMonths.length})`}
+              : languageCode === 'ko' ? `일괄 계산 (${batchTargetRows.length})`
+                : languageCode === 'vi' ? `Tính hàng loạt (${batchTargetRows.length})`
+                  : `Calculate All (${batchTargetRows.length})`}
           </Button>
         </Stack>
       )} />}
     >
       <Box sx={{ width: '100%' }}>
         <Box sx={{ mb: 1, color: 'text.secondary', fontSize: 13 }}>
-          {languageCode === 'ko' ? '\uC6D4\uBCC4\uB85C \uC804\uCCB4 \uC9C1\uC6D0\uC758 \uAE09\uC5EC\uB97C \uACC4\uC0B0\uD558\uACE0 \uD655\uC815\uD569\uB2C8\uB2E4.' : languageCode === 'vi' ? 'Tinh va xac nhan luong cua tat ca nhan vien theo thang.' : 'Calculate and confirm payroll for all employees by month.'}
+          {languageCode === 'ko' ? '월별·공장별로 직원의 급여를 계산하고 확정합니다.' : languageCode === 'vi' ? 'Tinh va xac nhan luong cua tat ca nhan vien theo thang va nha may.' : 'Calculate and confirm payroll for all employees by month and factory.'}
         </Box>
         <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
           <TableContainer>
             <Table stickyHeader size="small">
               <TableHead><TableRow>
                 <TableCell sx={{ fontWeight: 700 }}>{text.month}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{resolveText(languageCode, 'factory')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.people}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.generalPayroll}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.fixedOutputPayroll}</TableCell>
@@ -399,15 +447,18 @@ const PayrollBoard = () => {
                 <TableCell sx={{ fontWeight: 700 }} align="center">{payrollSummaryText.lock}</TableCell>
               </TableRow></TableHead>
               <TableBody>
-                {loading ? <TableStatusRow colSpan={8} message={resolveText(languageCode, 'loading')} />
-                  : filteredMonthRows.length === 0 ? <TableStatusRow colSpan={8} message={resolveText(languageCode, 'empty')} />
-                    : filteredMonthRows.map(({ month, snapshot }) => {
-                      const groups = readinessByMonth[month]?.groups || [];
-                      const rowNeedsRecalculation = Boolean(snapshot && readinessByMonth[month]?.needsRecalculation);
-                      const invalidAttendanceCount = Array.isArray(readinessByMonth[month]?.invalidPayrollAttendance)
-                        ? readinessByMonth[month].invalidPayrollAttendance.length : 0;
+                {loading ? <TableStatusRow colSpan={9} message={resolveText(languageCode, 'loading')} />
+                  : filteredMonthFactoryRows.length === 0 ? <TableStatusRow colSpan={9} message={resolveText(languageCode, 'empty')} />
+                    : filteredMonthFactoryRows.map((row) => {
+                      const { month, factory, snapshot } = row;
+                      const key = rowKey(month, factory.id);
+                      const groups = readinessByKey[key]?.groups || [];
+                      const rowNeedsRecalculation = Boolean(snapshot && readinessByKey[key]?.needsRecalculation);
+                      const invalidAttendanceCount = Array.isArray(readinessByKey[key]?.invalidPayrollAttendance)
+                        ? readinessByKey[key].invalidPayrollAttendance.length : 0;
                       const snapshotEmployees = Array.isArray(snapshot?.data) ? snapshot.data : [];
-                      const summaryEmployees = snapshot ? snapshotEmployees : activeEmployees;
+                      const factoryEmployees = activeEmployees.filter((employee) => Number(employee?.factoryId) === Number(factory.id));
+                      const summaryEmployees = snapshot ? snapshotEmployees : factoryEmployees;
                       const generalEmployees = summaryEmployees.filter((employee) => ['GENERAL', 'FIXED'].includes(String(employee?.payType || '').toUpperCase()));
                       const fixedOutputEmployees = summaryEmployees.filter((employee) => String(employee?.payType || '').toUpperCase() === 'OUTPUT_FIXED');
                       const outputEmployees = summaryEmployees.filter((employee) => ['OUTPUT', 'CT'].includes(String(employee?.payType || '').toUpperCase()));
@@ -415,12 +466,14 @@ const PayrollBoard = () => {
                       const fixedOutputPayroll = payrollAmountSummary(fixedOutputEmployees);
                       const outputPayroll = payrollAmountSummary(outputEmployees);
                       const totalPayroll = payrollAmountSummary(summaryEmployees);
+                      const factoryLabel = resolveFactoryDisplayName(factory, languageCode);
                       return (
                         <TableRow
-                          key={month} hover sx={{ cursor: snapshot ? 'pointer' : 'default' }}
-                          onClick={() => snapshot && navigateToPath(`/payroll/${month}`, { label: `${text.title} ${month}` })}
+                          key={key} hover sx={{ cursor: snapshot ? 'pointer' : 'default' }}
+                          onClick={() => snapshot && navigateToPath(`/payroll/${month}?factoryId=${factory.id}`, { label: `${text.title} ${month} · ${factoryLabel}` })}
                         >
                           <TableCell sx={{ fontWeight: 700 }}>{month}</TableCell>
+                          <TableCell>{factoryLabel || '-'}</TableCell>
                           <TableCell align="right">{summaryEmployees.length} ({generalEmployees.length}/{fixedOutputEmployees.length}/{outputEmployees.length}){text.peopleSuffix}</TableCell>
                           <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? generalPayroll || '-' : payrollSummaryText.pending}</TableCell>
                           <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? fixedOutputPayroll || '-' : payrollSummaryText.pending}</TableCell>
@@ -443,8 +496,8 @@ const PayrollBoard = () => {
                               checked={Boolean(snapshot && !snapshot.isProvisional)}
                               disabled={!snapshot || Boolean(mutating) || calculating}
                               stopPropagation
-                              onChange={(_event, checked) => handleLockToggle(snapshot, checked)}
-                              ariaLabel={`${resolveText(languageCode, 'lock')} ${month}`}
+                              onChange={(_event, checked) => handleLockToggle(row, checked)}
+                              ariaLabel={`${resolveText(languageCode, 'lock')} ${month} ${factoryLabel}`}
                             />
                           </TableCell>
                         </TableRow>
@@ -463,8 +516,8 @@ const PayrollBoard = () => {
             <Typography variant="body2">{calculationErrors.succeeded.join(', ')}</Typography>
           </Box>}
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>아래 문제를 수정한 뒤 해당 월을 다시 계산해 주세요.</Typography>
-          <Stack spacing={1.5}>{calculationErrors?.failed?.map((row) => <Box key={row.month} sx={{ p: 2, border: 1, borderColor: 'error.light', borderRadius: 1 }}>
-            <Typography variant="subtitle2" color="error.main" sx={{ mb: .5 }}>{row.month}</Typography>
+          <Stack spacing={1.5}>{calculationErrors?.failed?.map((row) => <Box key={`${row.month}:${row.factoryLabel}`} sx={{ p: 2, border: 1, borderColor: 'error.light', borderRadius: 1 }}>
+            <Typography variant="subtitle2" color="error.main" sx={{ mb: .5 }}>{row.month} · {row.factoryLabel}</Typography>
             <Typography variant="body2">{explainCalculationError(row.message)}</Typography>
           </Box>)}</Stack>
         </DialogContent>

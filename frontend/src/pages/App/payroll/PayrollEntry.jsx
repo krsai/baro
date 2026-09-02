@@ -13,6 +13,44 @@ import { useLanguage } from "../../../context/LanguageContext";
 import { buildQueryString, requestJSON } from "../../../utils/apiClient";
 import { formatNumberWithCommas } from "../../../utils/numberFormat";
 import { getPayTypeLabel, normalizePayType } from "../../../constants/payType";
+import { fetchAttributes } from "../../../utils/attributeApi";
+
+// Mirrors EmployeeBoard.jsx's active-member sort order (org role -> worker job role -> employeeNo -> name)
+// so the payroll detail table lists employees in the same order as the Employee menu.
+const WORKER_JOB_ROLE_CODES = new Set([
+  "WORKER_SUPERVISOR",
+  "WORKER_CUTTING",
+  "WORKER_SEWING",
+  "WORKER_IRONING",
+  "WORKER_INSPECTION",
+  "WORKER_PACKING",
+  "WORKER_OTHER",
+]);
+const ORG_ROLE_SORT_ORDER = { ADMIN: 1, OPERATOR: 2, ACCOUNTANT: 3, WORKER: 4 };
+const isWorkerJobRoleOption = (role) =>
+  WORKER_JOB_ROLE_CODES.has(String(role?.code || "").trim().toUpperCase());
+const isWorkerOrgRole = (value) => String(value || "").toUpperCase() === "WORKER";
+const getOrgRoleSortOrder = (value) =>
+  ORG_ROLE_SORT_ORDER[String(value || "").toUpperCase()] || Number.MAX_SAFE_INTEGER;
+const sortJobRoleOptions = (rows = []) =>
+  [...rows].sort((a, b) => {
+    const aOrder = Number.isFinite(Number(a?.sortOrder)) ? Number(a.sortOrder) : Number.MAX_SAFE_INTEGER;
+    const bOrder = Number.isFinite(Number(b?.sortOrder)) ? Number(b.sortOrder) : Number.MAX_SAFE_INTEGER;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return String(a?.name || a?.code || "").localeCompare(String(b?.name || b?.code || ""));
+  });
+const resolveWorkerJobSortOrder = (employee, workerRoleOrderIndex) => {
+  const roleCode = String(employee?.roleCode || "").trim().toUpperCase();
+  if (roleCode === "WORKER_SUPERVISOR") return -1;
+  const roleIdKey = String(employee?.roleId || "").trim();
+  if (roleIdKey && workerRoleOrderIndex.byId.has(roleIdKey)) {
+    return workerRoleOrderIndex.byId.get(roleIdKey);
+  }
+  if (roleCode && workerRoleOrderIndex.byCode.has(roleCode)) {
+    return workerRoleOrderIndex.byCode.get(roleCode);
+  }
+  return Number.MAX_SAFE_INTEGER;
+};
 
 const TEXT = {
   ko: {
@@ -192,35 +230,66 @@ const PayrollEntry = () => {
   const [data, setData] = useState(null);
   const [togglingLock, setTogglingLock] = useState(false);
   const [employeeDirectory, setEmployeeDirectory] = useState([]);
+  const [jobRoleOptions, setJobRoleOptions] = useState([]);
+  const [factories, setFactories] = useState([]);
   const [payslipEmployee, setPayslipEmployee] = useState(null);
 
   const load = useCallback(async () => {
-    if (!activeOrgId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return;
+    if (!activeOrgId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || !factoryId) return;
     setLoading(true);
     try {
-      const [payload, directory] = await Promise.all([
-        requestJSON("/payroll" + buildQueryString({ orgId: activeOrgId, month }), { forceRefresh: true }),
+      const [payload, directory, attributes, calendar] = await Promise.all([
+        requestJSON("/payroll" + buildQueryString({ orgId: activeOrgId, month, factoryId }), { forceRefresh: true }),
         requestJSON("/employees" + buildQueryString({ orgId: activeOrgId }), {
           forceRefresh: true,
         }),
+        fetchAttributes({
+          orgId: activeOrgId,
+          includeColors: false,
+          includeCategories: false,
+          includeRoles: true,
+          includeProcesses: false,
+          skipGlobalLoading: true,
+        }).catch(() => null),
+        requestJSON("/payroll/calendar" + buildQueryString({ orgId: activeOrgId }), {
+          forceRefresh: true,
+          skipGlobalLoading: true,
+        }).catch(() => null),
       ]);
       setData(payload);
       setEmployeeDirectory(Array.isArray(directory) ? directory : []);
+      const roles = Array.isArray(attributes?.roles) ? attributes.roles : [];
+      setJobRoleOptions(sortJobRoleOptions(roles.filter(isWorkerJobRoleOption)));
+      setFactories(Array.isArray(calendar?.factories) ? calendar.factories : []);
     } catch (error) {
       setData(null);
       showNotification(error?.message || text.fetchError, "error");
     } finally {
       setLoading(false);
     }
-  }, [activeOrgId, month, showNotification, text.fetchError]);
+  }, [activeOrgId, factoryId, month, showNotification, text.fetchError]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  const workerRoleOrderIndex = useMemo(() => {
+    const byId = new Map();
+    const byCode = new Map();
+    jobRoleOptions.forEach((role, index) => {
+      const order = Number.isFinite(Number(role?.sortOrder)) ? Number(role.sortOrder) : index + 1;
+      const roleIdKey = String(role?.id || "").trim();
+      const roleCodeKey = String(role?.code || "").trim().toUpperCase();
+      if (roleIdKey) byId.set(roleIdKey, order);
+      if (roleCodeKey) byCode.set(roleCodeKey, order);
+    });
+    return { byId, byCode };
+  }, [jobRoleOptions]);
+
   const employees = useMemo(() => {
     const payrollRows = Array.isArray(data?.employees) ? data.employees : [];
     const payrollByWorkerId = new Map(payrollRows.filter((employee) => Number(employee?.workerId) > 0).map((employee) => [Number(employee.workerId), employee]));
+    const directoryById = new Map(employeeDirectory.map((employee) => [Number(employee.id), employee]));
     const directoryRows = data?.snapshotExists ? [] : employeeDirectory.filter((employee) => !["PENDING", "REJECTED"].includes(String(employee?.status || "").toUpperCase()));
     const knownWorkerIds = new Set(directoryRows.map((employee) => Number(employee.id)));
     const rows = [
@@ -233,12 +302,16 @@ const PayrollEntry = () => {
       })),
       ...payrollRows.filter((employee) => !knownWorkerIds.has(Number(employee?.workerId))),
     ];
-    return rows
+    const mapped = rows
       .map((employee) => {
         const processes = (Array.isArray(employee?.processes) ? employee.processes : []).filter((process) => (!factoryId || Number(process.factoryId) === factoryId) && (!lineId || Number(process.lineId) === lineId));
         const productionAllowance = processes.reduce((sum, process) => sum + Number(process.totalEarnings || 0), 0);
+        const directoryMatch = directoryById.get(Number(employee?.workerId));
         return {
           ...employee,
+          roleCode: employee.roleCode || directoryMatch?.roleCode || "",
+          roleId: employee.roleId ?? directoryMatch?.roleId ?? null,
+          employeeNo: employee.employeeNo ?? directoryMatch?.employeeNo ?? null,
           payType: normalizeEmployeePayType(employee.payType),
           processes,
           productionAllowance,
@@ -246,7 +319,26 @@ const PayrollEntry = () => {
         };
       })
       .filter((employee) => (!factoryId || Number(employee.factoryId) === factoryId || employee.processes.length > 0) && (!lineId || Number(employee.lineId) === lineId || employee.processes.length > 0));
-  }, [data?.employees, data?.snapshotExists, employeeDirectory, factoryId, lineId]);
+    return [...mapped].sort((a, b) => {
+      const roleOrderDiff = getOrgRoleSortOrder(a.orgRole) - getOrgRoleSortOrder(b.orgRole);
+      if (roleOrderDiff !== 0) return roleOrderDiff;
+      if (isWorkerOrgRole(a.orgRole) && isWorkerOrgRole(b.orgRole)) {
+        const workerJobDiff =
+          resolveWorkerJobSortOrder(a, workerRoleOrderIndex) - resolveWorkerJobSortOrder(b, workerRoleOrderIndex);
+        if (workerJobDiff !== 0) return workerJobDiff;
+      }
+      const aNo = String(a?.employeeNo || "");
+      const bNo = String(b?.employeeNo || "");
+      if (aNo && bNo) {
+        const noCompare = aNo.localeCompare(bNo, undefined, { numeric: true, sensitivity: "base" });
+        if (noCompare !== 0) return noCompare;
+      } else if (aNo) return -1;
+      else if (bNo) return 1;
+      const aName = String(a?.workerName || "");
+      const bName = String(b?.workerName || "");
+      return aName.localeCompare(bName, "ko");
+    });
+  }, [data?.employees, data?.snapshotExists, employeeDirectory, factoryId, lineId, workerRoleOrderIndex]);
   const total = useMemo(() => employees.reduce((sum, employee) => sum + Number(employee?.grossSalary || 0), 0), [employees]);
   const payslipText =
     languageCode === "ko"
@@ -458,6 +550,15 @@ const PayrollEntry = () => {
   };
   const provisional = data?.isProvisional === true;
   const locked = Boolean(data && !provisional);
+  const currentFactory = useMemo(
+    () => factories.find((factory) => Number(factory.id) === Number(factoryId)) || null,
+    [factories, factoryId],
+  );
+  const factoryDisplayName = currentFactory
+    ? (languageCode === "vi" ? currentFactory.nameVi : languageCode === "ko" ? currentFactory.nameKo : currentFactory.name)
+      || currentFactory.name
+      || ""
+    : "";
 
   const handleLockToggle = async () => {
     if (!data || togglingLock) return;
@@ -466,13 +567,14 @@ const PayrollEntry = () => {
     setTogglingLock(true);
     try {
       const updated = await requestJSON(
-        `/payroll/snapshots/${month}/${locked ? "unlock" : "lock"}` + buildQueryString({ orgId: activeOrgId }),
+        `/payroll/snapshots/${month}/${locked ? "unlock" : "lock"}` + buildQueryString({ orgId: activeOrgId, factoryId }),
         locked
           ? { method: "POST" }
           : {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
+                factoryId,
                 lockedBy: activeProfile?.email || activeProfile?.name || "administrator",
               }),
             },
@@ -487,7 +589,7 @@ const PayrollEntry = () => {
 
   return (
     <AppPageContainer
-      title={`${pageTitle} · ${month}`}
+      title={factoryDisplayName ? `${pageTitle} · ${month} · ${factoryDisplayName}` : `${pageTitle} · ${month}`}
       toolbar={
         <PageToolbar
           showLastUpdater={false}
@@ -509,12 +611,21 @@ const PayrollEntry = () => {
       }
     >
       <Box sx={{ width: "100%" }}>
-        {loading ? (
+        {!factoryId ? (
+          <Alert severity="error">
+            {languageCode === "ko"
+              ? "공장이 지정되지 않았습니다. 급여 계산 목록에서 다시 진입해 주세요."
+              : languageCode === "vi"
+                ? "Chưa chọn nhà máy. Vui lòng vào lại từ danh sách tính lương."
+                : "No factory selected. Please open this page from the payroll list again."}
+          </Alert>
+        ) : null}
+        {factoryId && loading ? (
           <Paper variant="outlined" sx={{ p: 3 }}>
             {text.loading}
           </Paper>
         ) : null}
-        {!loading && !data ? <Alert severity="error">{text.fetchError}</Alert> : null}
+        {factoryId && !loading && !data ? <Alert severity="error">{text.fetchError}</Alert> : null}
         {!loading && data && employees.length === 0 ? <Alert severity="info">{text.empty}</Alert> : null}
         {!loading && data && employees.length > 0 ? (
           <Paper variant="outlined" sx={{ overflow: "hidden" }}>
