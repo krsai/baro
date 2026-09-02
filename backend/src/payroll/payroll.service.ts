@@ -27,6 +27,7 @@ import { resolveSalaryAttendanceParameters } from "../employees/salaryAttendance
 import { employeePayTypePolicyMap, isPolicyWorkday, loadEmployeePayTypePolicies } from "../employees/employeePayTypePolicy";
 
 const toPayrollAmountOrNull = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
