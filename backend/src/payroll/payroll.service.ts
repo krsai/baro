@@ -522,7 +522,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       ...group,
       needsRecalculation: Boolean(
         snapshot && snapshot.isProvisional &&
-        (salaryCalculationChanged || sourceChangedAfterCalculation || configuredRateChanged || calculatedBasisChanged || !group.ready)
+        (salaryCalculationChanged || sourceChangedAfterCalculation || configuredRateChanged || calculatedBasisChanged)
       ),
     };
   });

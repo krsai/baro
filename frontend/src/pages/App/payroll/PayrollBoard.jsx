@@ -36,7 +36,7 @@ const TEXT = {
   ko: {
     calculateMonth: '계산 월', calculate: '계산', recalculate: '현재까지 다시 계산', calculating: '계산 중...',
     noData: '선택한 월에 계산할 작업기록이 없습니다.', alreadyCalculated: '이미 계산이 완료된 월입니다.',
-    calculateSuccess: '{month} 생산수당을 계산했습니다.', fetchError: '생산수당 내역을 불러오지 못했습니다.',
+    calculateSuccess: '{month} 급여를 계산했습니다.', fetchError: '급여 계산 내역을 불러오지 못했습니다.',
     calculateError: '생산수당 계산에 실패했습니다.', deleteConfirm: '{month} 생산수당 계산 내역을 삭제하시겠습니까?',
     deleteSuccess: '{month} 생산수당 계산 내역을 삭제했습니다.', deleteError: '생산수당 계산 내역 삭제에 실패했습니다.',
     current: '진행 중', confirmed: '확정', empty: '계산된 생산수당 내역이 없습니다.', loading: '불러오는 중...',
@@ -55,7 +55,7 @@ const TEXT = {
   en: {
     calculateMonth: 'Calculation Month', calculate: 'Calculate', recalculate: 'Recalculate to Date', calculating: 'Calculating...',
     noData: 'There are no work records to calculate for the selected month.', alreadyCalculated: 'This month has already been calculated.',
-    calculateSuccess: 'Calculated production allowance for {month}.', fetchError: 'Failed to load production allowance records.',
+    calculateSuccess: 'Calculated payroll for {month}.', fetchError: 'Failed to load payroll records.',
     calculateError: 'Failed to calculate production allowance.', deleteConfirm: 'Delete the {month} production allowance result?',
     deleteSuccess: 'Deleted the {month} production allowance result.', deleteError: 'Failed to delete the production allowance result.',
     current: 'In Progress', confirmed: 'Confirmed', empty: 'No production allowance results have been calculated.', loading: 'Loading...',
@@ -74,7 +74,7 @@ const TEXT = {
   vi: {
     calculateMonth: 'Thang tinh', calculate: 'Tinh', recalculate: 'Tinh lai den hien tai', calculating: 'Dang tinh...',
     noData: 'Không có du lieu cong viec de tinh trong thang da chon.', alreadyCalculated: 'Thang nay da duoc tinh.',
-    calculateSuccess: 'Da tinh phu cap san luong thang {month}.', fetchError: 'Không thể tai ket qua phu cap san luong.',
+    calculateSuccess: 'Đã tính lương cho {month}.', fetchError: 'Không thể tải dữ liệu tính lương.',
     calculateError: 'Không thể tinh phu cap san luong.', deleteConfirm: 'Xóa ket qua phu cap san luong thang {month}?',
     deleteSuccess: 'Đã xóa ket qua phu cap san luong thang {month}.', deleteError: 'Không thể xoa ket qua phu cap san luong.',
     current: 'Đang tiến hành', confirmed: 'Đã xác nhận', empty: 'Chưa có ket qua phu cap san luong.', loading: 'Đang tải...',
@@ -224,7 +224,9 @@ const PayrollBoard = () => {
         const monthReadiness = readinessByMonth[month];
         const selected = !selectedMonth || month === selectedMonth;
         const unlocked = !snapshot || snapshot.isProvisional === true;
-        const calculable = snapshot ? snapshot.isProvisional === true : monthReadiness?.ready === true;
+        const calculable = snapshot
+          ? snapshot.isProvisional === true && monthReadiness?.needsRecalculation === true
+          : monthReadiness?.ready === true;
         return Boolean(selected && unlocked && calculable);
       })
       .map(({ month }) => month)
