@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { Alert, Box, Button, Chip, CircularProgress, Collapse, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Tooltip, alpha } from "@mui/material";
+import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Tooltip, alpha } from "@mui/material";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import LockOpenOutlinedIcon from "@mui/icons-material/LockOpenOutlined";
 import PrintOutlinedIcon from "@mui/icons-material/PrintOutlined";
 import AppPageContainer from "../../../components/AppPageContainer";
 import PageToolbar from "../../../components/PageToolbar";
-import SaveButton from "../../../components/SaveButton";
 import TableStatusRow from "../../../components/TableStatusRow";
 import { useAppActions } from "../../../context/AppContext";
 import { useAuth } from "../../../context/AuthContext";
@@ -119,18 +118,6 @@ const normalizeEmployeePayType = (value) => {
   return normalizePayType(value, "GENERAL");
 };
 const escapePrintText = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
-const appliedRateOf = (employee) => {
-  const processes = Array.isArray(employee?.processes) ? employee.processes : [];
-  const totalCtSeconds = processes.reduce((sum, process) => sum + Number(process?.totalCtSeconds || 0), 0);
-  const totalEarnings = processes.reduce((sum, process) => sum + Number(process?.totalEarnings || 0), 0);
-  return totalCtSeconds > 0 ? totalEarnings / totalCtSeconds : 0;
-};
-const formatRateDraft = (value) => {
-  const rate = Number(value);
-  if (!Number.isFinite(rate)) return "";
-  return String(Math.round((rate + Number.EPSILON) * 100) / 100);
-};
-const buildEmployeeRateDrafts = (employees) => Object.fromEntries((Array.isArray(employees) ? employees : []).filter((employee) => Number(employee?.workerId) > 0).map((employee) => [String(employee.workerId), formatRateDraft(appliedRateOf(employee))]));
 const LOCK_TEXT = {
   ko: {
     locked: "잠금됨",
@@ -203,10 +190,6 @@ const PayrollEntry = () => {
   const lineId = Number(searchParams.get("lineId")) || null;
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
-  const [expandedEmployeeKey, setExpandedEmployeeKey] = useState(null);
-  const [rateDrafts, setRateDrafts] = useState({});
-  const [initialRates, setInitialRates] = useState({});
-  const [savingRates, setSavingRates] = useState(false);
   const [togglingLock, setTogglingLock] = useState(false);
   const [employeeDirectory, setEmployeeDirectory] = useState([]);
   const [payslipEmployee, setPayslipEmployee] = useState(null);
@@ -223,9 +206,6 @@ const PayrollEntry = () => {
       ]);
       setData(payload);
       setEmployeeDirectory(Array.isArray(directory) ? directory : []);
-      const loadedRates = buildEmployeeRateDrafts(payload?.employees);
-      setRateDrafts(loadedRates);
-      setInitialRates(loadedRates);
     } catch (error) {
       setData(null);
       showNotification(error?.message || text.fetchError, "error");
@@ -267,7 +247,7 @@ const PayrollEntry = () => {
       })
       .filter((employee) => (!factoryId || Number(employee.factoryId) === factoryId || employee.processes.length > 0) && (!lineId || Number(employee.lineId) === lineId || employee.processes.length > 0));
   }, [data?.employees, data?.snapshotExists, employeeDirectory, factoryId, lineId]);
-  const total = useMemo(() => employees.reduce((sum, employee) => sum + productionAllowanceOf(employee), 0), [employees]);
+  const total = useMemo(() => employees.reduce((sum, employee) => sum + Number(employee?.grossSalary || 0), 0), [employees]);
   const payslipText =
     languageCode === "ko"
       ? {
@@ -353,8 +333,28 @@ const PayrollEntry = () => {
             details: "Production Details",
             calculated: "Calculated",
             item: "Payroll Item",
-            category: "Category",
-          };
+          category: "Category",
+        };
+  const payslipInfoText = languageCode === "ko"
+    ? {
+        basicInfo: "급여 계산 기본 정보", actualWorkdays: "실제 근무일수", scheduledWorkdays: "기준 근무일수",
+        holidayWorkdays: "휴일 근무일수", fullAttendance: "만근 여부", tenureYears: "근속 연수",
+        salaryVersion: "급여 체계 버전", yes: "만근", no: "미만근", days: "일", years: "년",
+        productionBasis: "생산수당 산출 내역", totalPayroll: "총 급여",
+      }
+    : languageCode === "vi"
+      ? {
+          basicInfo: "Thông tin cơ bản tính lương", actualWorkdays: "Ngày làm việc thực tế", scheduledWorkdays: "Ngày làm việc tiêu chuẩn",
+          holidayWorkdays: "Ngày làm việc ngày nghỉ", fullAttendance: "Chuyên cần đầy đủ", tenureYears: "Thâm niên",
+          salaryVersion: "Phiên bản cơ cấu lương", yes: "Đủ", no: "Chưa đủ", days: "ngày", years: "năm",
+          productionBasis: "Chi tiết tính phụ cấp sản lượng", totalPayroll: "Tổng lương",
+        }
+      : {
+          basicInfo: "Payroll Calculation Information", actualWorkdays: "Actual Workdays", scheduledWorkdays: "Scheduled Workdays",
+          holidayWorkdays: "Holiday Workdays", fullAttendance: "Full Attendance", tenureYears: "Tenure",
+          salaryVersion: "Salary System Version", yes: "Yes", no: "No", days: "days", years: "years",
+          productionBasis: "Production Allowance Calculation", totalPayroll: "Total Payroll",
+        };
   const salaryItemName = useCallback(
     (item) => {
       if (languageCode === "vi") return item?.nameVi || item?.nameKo || item?.nameEn || item?.name || "-";
@@ -404,64 +404,31 @@ const PayrollEntry = () => {
     if (!payslipEmployee) return;
     const rows = payslipRows(payslipEmployee);
     const itemHtml = rows.map((row) => `<tr><td>${escapePrintText(row.name)}</td><td>${escapePrintText(row.category || "-")}</td><td>${escapePrintText(row.amount)}</td></tr>`).join("");
+    const parameters = payslipEmployee.parameters || {};
+    const infoHtml = [
+      [payslipText.employee, payslipEmployee.workerName || "-"],
+      [payslipText.payType, getPayTypeLabel(payslipEmployee.payType, payslipEmployee.payType, languageCode)],
+      [payslipInfoText.actualWorkdays, `${Number(parameters.ACTUAL_WORKDAYS || 0)} ${payslipInfoText.days}`],
+      [payslipInfoText.scheduledWorkdays, `${Number(parameters.SCHEDULED_WORKDAYS || 0)} ${payslipInfoText.days}`],
+      [payslipInfoText.holidayWorkdays, `${Number(parameters.HOLIDAY_WORKDAYS || 0)} ${payslipInfoText.days}`],
+      [payslipInfoText.fullAttendance, Number(parameters.FULL_ATTENDANCE_FACTOR || 0) >= 1 ? payslipInfoText.yes : payslipInfoText.no],
+      [payslipInfoText.tenureYears, `${formatNumberWithCommas(Number(parameters.TENURE_YEARS || 0), { maximumFractionDigits: 2 })} ${payslipInfoText.years}`],
+      [payslipInfoText.salaryVersion, payslipEmployee.salarySystemVersionNumber ? `Ver.${payslipEmployee.salarySystemVersionNumber}` : "-"],
+    ].map(([label, value]) => `<b>${escapePrintText(label)}</b><span>${escapePrintText(value)}</span>`).join("");
+    const productionHtml = payslipEmployee.payType === "OUTPUT"
+      ? `<h2>${escapePrintText(payslipInfoText.productionBasis)}</h2><table><thead><tr><th>${escapePrintText(text.process)}</th><th>${escapePrintText(text.quantity)}</th><th>${escapePrintText(text.ctSeconds)}</th><th>${escapePrintText(text.averageRate)}</th><th>${escapePrintText(text.allowance)}</th></tr></thead><tbody>${(payslipEmployee.processes || []).map((process) => `<tr><td>${escapePrintText(process.processName || process.processCode || "-")}</td><td>${escapePrintText(formatNumberWithCommas(process.totalQuantity || 0))}</td><td>${escapePrintText(formatSeconds(process.totalCtSeconds))}</td><td>${escapePrintText(formatRate(process.wagePerSecond))}</td><td>${escapePrintText(formatDong(process.totalEarnings))}</td></tr>`).join("")}</tbody></table>`
+      : "";
     const popup = window.open("", "_blank", "width=820,height=900");
     if (!popup) return;
-    popup.document.write(`<!doctype html><html><head><title>${escapePrintText(payslipText.title)} ${escapePrintText(month)}</title><style>body{font-family:Arial,sans-serif;color:#111;padding:36px}h1{font-size:22px;margin:0 0 24px}.meta{display:grid;grid-template-columns:120px 1fr;gap:8px;margin-bottom:24px}table{width:100%;border-collapse:collapse}th,td{padding:11px;border:1px solid #ccc;text-align:left}th:last-child,td:last-child{text-align:right}.total{font-weight:700;background:#f5f5f5}.note{margin-top:18px;color:#666;font-size:12px}@media print{body{padding:0}}</style></head><body><h1>${escapePrintText(payslipText.title)} · ${escapePrintText(month)}</h1><div class="meta"><b>${escapePrintText(payslipText.employee)}</b><span>${escapePrintText(payslipEmployee.workerName || "-")}</span><b>${escapePrintText(payslipText.payType)}</b><span>${escapePrintText(getPayTypeLabel(payslipEmployee.payType, payslipEmployee.payType, languageCode))}</span></div><table><thead><tr><th>${escapePrintText(unifiedPayrollText.item)}</th><th>${escapePrintText(unifiedPayrollText.category)}</th><th>${escapePrintText(payslipText.amount)}</th></tr></thead><tbody>${itemHtml}<tr><td>${escapePrintText(payslipText.deductions)}</td><td>-</td><td>${escapePrintText(formatDong(payslipEmployee.deductions || 0))}</td></tr><tr class="total"><td>${escapePrintText(payslipText.net)}</td><td>-</td><td>${escapePrintText(formatDong(payslipEmployee.netSalary || 0))}</td></tr></tbody></table><div class="note">${escapePrintText(payslipText.preview)}</div><script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script></body></html>`);
+    popup.document.write(`<!doctype html><html><head><title>${escapePrintText(payslipText.title)} ${escapePrintText(month)}</title><style>body{font-family:Arial,sans-serif;color:#111;padding:36px}h1{font-size:22px;margin:0 0 24px}h2{font-size:16px;margin:26px 0 10px}.meta{display:grid;grid-template-columns:150px 1fr 150px 1fr;gap:8px 16px;margin-bottom:24px}table{width:100%;border-collapse:collapse}th,td{padding:11px;border:1px solid #ccc;text-align:left}th:not(:first-child),td:not(:first-child){text-align:right}.total{font-weight:700;background:#f5f5f5}.note{margin-top:18px;color:#666;font-size:12px}@media print{body{padding:0}}</style></head><body><h1>${escapePrintText(payslipText.title)} · ${escapePrintText(month)}</h1><h2>${escapePrintText(payslipInfoText.basicInfo)}</h2><div class="meta">${infoHtml}</div><table><thead><tr><th>${escapePrintText(unifiedPayrollText.item)}</th><th>${escapePrintText(unifiedPayrollText.category)}</th><th>${escapePrintText(payslipText.amount)}</th></tr></thead><tbody>${itemHtml}<tr><td>${escapePrintText(payslipText.deductions)}</td><td>-</td><td>${escapePrintText(formatDong(payslipEmployee.deductions || 0))}</td></tr><tr class="total"><td>${escapePrintText(payslipText.net)}</td><td>-</td><td>${escapePrintText(formatDong(payslipEmployee.netSalary || 0))}</td></tr></tbody></table>${productionHtml}<div class="note">${escapePrintText(payslipText.preview)}</div><script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script></body></html>`);
     popup.document.close();
   };
   const provisional = data?.isProvisional === true;
   const locked = Boolean(data && !provisional);
-  const changedRateWorkerIds = useMemo(
-    () =>
-      Object.keys(rateDrafts).filter((workerId) => {
-        const current = Number(rateDrafts[workerId]);
-        const initial = Number(initialRates[workerId]);
-        return Number.isFinite(current) && Number.isFinite(initial) && Math.abs(current - initial) > 0.000001;
-      }),
-    [initialRates, rateDrafts],
-  );
-  const handleSaveRates = async () => {
-    const overrides = (Array.isArray(data?.employees) ? data.employees : [])
-      .filter((employee) => changedRateWorkerIds.includes(String(employee?.workerId)))
-      .map((employee) => ({
-        workerId: Number(employee.workerId),
-        wagePerSecond: Number(rateDrafts[String(employee.workerId)]),
-      }));
-    if (overrides.some((row) => !Number.isFinite(row.wagePerSecond) || row.wagePerSecond < 0)) {
-      showNotification(text.saveError, "error");
-      return;
-    }
-    setSavingRates(true);
-    try {
-      const updated = await requestJSON(`/payroll/snapshots/${month}/employee-rates` + buildQueryString({ orgId: activeOrgId }), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ overrides }),
-      });
-      const updatedEmployees = Array.isArray(updated?.data) ? updated.data : [];
-      const loadedRates = buildEmployeeRateDrafts(updatedEmployees);
-      setData((previous) => ({
-        ...previous,
-        ...updated,
-        employees: updatedEmployees,
-      }));
-      setRateDrafts(loadedRates);
-      setInitialRates(loadedRates);
-      showNotification(text.saveSuccess, "success");
-    } catch (error) {
-      showNotification(error?.message || text.saveError, "error");
-    } finally {
-      setSavingRates(false);
-    }
-  };
 
   const handleLockToggle = async () => {
     if (!data || togglingLock) return;
     const lockText = LOCK_TEXT[languageCode] || LOCK_TEXT.en;
-    if (!locked && changedRateWorkerIds.length > 0) {
-      showNotification(lockText.saveFirst, "warning");
-      return;
-    }
     if (locked && !window.confirm(lockText.unlockConfirm)) return;
     setTogglingLock(true);
     try {
@@ -502,9 +469,6 @@ const PayrollEntry = () => {
                   </span>
                 </Tooltip>
                 {togglingLock ? <CircularProgress size={16} /> : null}
-                <SaveButton onClick={handleSaveRates} disabled={!provisional || togglingLock || changedRateWorkerIds.length === 0} loading={savingRates}>
-                  {text.saveRates}
-                </SaveButton>
               </Stack>
             ) : null
           }
@@ -540,7 +504,7 @@ const PayrollEntry = () => {
               </Stack>
               <Stack direction="row" spacing={1} alignItems="center">
                 <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                  {unifiedPayrollText.productionSubtotal} {formatDong(total)}
+                  {payslipInfoText.totalPayroll} {formatDong(total)}
                 </Typography>
               </Stack>
             </Box>
@@ -561,8 +525,6 @@ const PayrollEntry = () => {
                 <TableBody>
                   {employees.map((employee, index) => {
                     const key = employee.employeeKey || `employee-${index}`;
-                    const expanded = expandedEmployeeKey === key;
-                    const processes = Array.isArray(employee.processes) ? employee.processes : [];
                     const salaryItems = Array.isArray(employee.salaryItems) ? employee.salaryItems : [];
                     const baseAmount = salaryItems.filter((item) => item.category === "BASE").reduce((sum, item) => sum + Number(item.amount || 0), 0);
                     const allowanceAmount = salaryItems.filter((item) => item.category === "ALLOWANCE").reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -584,14 +546,7 @@ const PayrollEntry = () => {
                           <TableCell align="right">{formatDong(allowanceAmount)}</TableCell>
                           <TableCell align="right">
                             {employee.payType === "OUTPUT" ? (
-                              <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
-                                <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                                  {formatDong(productionAllowanceOf(employee))}
-                                </Typography>
-                                <Button size="small" onClick={() => setExpandedEmployeeKey(expanded ? null : key)}>
-                                  {expanded ? text.collapse : unifiedPayrollText.details}
-                                </Button>
-                              </Stack>
+                              <Typography variant="body2" sx={{ fontWeight: 700 }}>{formatDong(productionAllowanceOf(employee))}</Typography>
                             ) : (
                               <Typography variant="body2" color="text.secondary">
                                 {payslipText.notApplicable}
@@ -606,68 +561,6 @@ const PayrollEntry = () => {
                             <Button size="small" variant="outlined" startIcon={<PrintOutlinedIcon />} onClick={() => setPayslipEmployee(employee)}>
                               {payslipText.open}
                             </Button>
-                          </TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell
-                            colSpan={8}
-                            sx={{
-                              p: 0,
-                              borderBottom: expanded ? undefined : 0,
-                            }}
-                          >
-                            <Collapse in={expanded} timeout="auto" unmountOnExit>
-                              <Box sx={{ p: 2, bgcolor: "grey.50" }}>
-                                <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-                                  <Typography variant="caption" color="text.secondary">
-                                    {text.formula}
-                                  </Typography>
-                                  <TextField
-                                    label={text.appliedRate}
-                                    size="small"
-                                    type="number"
-                                    value={rateDrafts[String(employee.workerId)] ?? ""}
-                                    disabled={!provisional || savingRates}
-                                    onChange={(event) =>
-                                      setRateDrafts((previous) => ({
-                                        ...previous,
-                                        [String(employee.workerId)]: event.target.value,
-                                      }))
-                                    }
-                                    inputProps={{ min: 0, step: 0.01 }}
-                                    sx={{ width: 170 }}
-                                  />
-                                </Stack>
-                                <TableContainer component={Paper} variant="outlined" sx={{ mt: 1 }}>
-                                  <Table size="small">
-                                    <TableHead>
-                                      <TableRow>
-                                        <TableCell>{text.process}</TableCell>
-                                        <TableCell align="right">{text.quantity}</TableCell>
-                                        <TableCell align="right">{text.ctSeconds}</TableCell>
-                                        <TableCell align="right">{text.averageRate}</TableCell>
-                                        <TableCell align="right">{text.allowance}</TableCell>
-                                      </TableRow>
-                                    </TableHead>
-                                    <TableBody>
-                                      {processes.length === 0 ? (
-                                        <TableStatusRow colSpan={5} message={text.noRecords} />
-                                      ) : (
-                                        processes.map((process, processIndex) => (
-                                          <TableRow key={process.styleProcessId || `${key}-${processIndex}`}>
-                                            <TableCell>{process.processName || process.processCode || "-"}</TableCell>
-                                            <TableCell align="right">{formatNumberWithCommas(process.totalQuantity || 0)}</TableCell>
-                                            <TableCell align="right">{formatSeconds(process.totalCtSeconds)}</TableCell>
-                                            <TableCell align="right">{formatRate(process.wagePerSecond)}</TableCell>
-                                            <TableCell align="right">{formatDong(process.totalEarnings)}</TableCell>
-                                          </TableRow>
-                                        ))
-                                      )}
-                                    </TableBody>
-                                  </Table>
-                                </TableContainer>
-                              </Box>
-                            </Collapse>
                           </TableCell>
                         </TableRow>
                       </React.Fragment>
@@ -690,11 +583,13 @@ const PayrollEntry = () => {
         </DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2}>
+            <Typography variant="subtitle2" fontWeight={700}>{payslipInfoText.basicInfo}</Typography>
             <Box
               sx={{
                 display: "grid",
-                gridTemplateColumns: "110px 1fr",
+                gridTemplateColumns: { xs: "130px 1fr", md: "150px 1fr 150px 1fr" },
                 rowGap: 1,
+                columnGap: 2,
               }}
             >
               <Typography color="text.secondary">{payslipText.employee}</Typography>
@@ -703,6 +598,18 @@ const PayrollEntry = () => {
               <Typography>
                 {getPayTypeLabel(payslipEmployee?.payType, payslipEmployee?.payType || "-", languageCode)} ({payslipEmployee?.payType || "-"})
               </Typography>
+              <Typography color="text.secondary">{payslipInfoText.actualWorkdays}</Typography>
+              <Typography>{Number(payslipEmployee?.parameters?.ACTUAL_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
+              <Typography color="text.secondary">{payslipInfoText.scheduledWorkdays}</Typography>
+              <Typography>{Number(payslipEmployee?.parameters?.SCHEDULED_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
+              <Typography color="text.secondary">{payslipInfoText.holidayWorkdays}</Typography>
+              <Typography>{Number(payslipEmployee?.parameters?.HOLIDAY_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
+              <Typography color="text.secondary">{payslipInfoText.fullAttendance}</Typography>
+              <Typography>{Number(payslipEmployee?.parameters?.FULL_ATTENDANCE_FACTOR || 0) >= 1 ? payslipInfoText.yes : payslipInfoText.no}</Typography>
+              <Typography color="text.secondary">{payslipInfoText.tenureYears}</Typography>
+              <Typography>{formatNumberWithCommas(Number(payslipEmployee?.parameters?.TENURE_YEARS || 0), { maximumFractionDigits: 2 })} {payslipInfoText.years}</Typography>
+              <Typography color="text.secondary">{payslipInfoText.salaryVersion}</Typography>
+              <Typography>{payslipEmployee?.salarySystemVersionNumber ? `Ver.${payslipEmployee.salarySystemVersionNumber}` : "-"}</Typography>
             </Box>
             <Divider />
             <Table size="small">
@@ -743,6 +650,32 @@ const PayrollEntry = () => {
                 </TableRow>
               </TableBody>
             </Table>
+            {payslipEmployee?.payType === "OUTPUT" ? <>
+              <Divider />
+              <Typography variant="subtitle2" fontWeight={700}>{payslipInfoText.productionBasis}</Typography>
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                  <TableHead><TableRow>
+                    <TableCell>{text.process}</TableCell>
+                    <TableCell align="right">{text.quantity}</TableCell>
+                    <TableCell align="right">{text.ctSeconds}</TableCell>
+                    <TableCell align="right">{text.averageRate}</TableCell>
+                    <TableCell align="right">{text.allowance}</TableCell>
+                  </TableRow></TableHead>
+                  <TableBody>
+                    {(payslipEmployee.processes || []).length === 0
+                      ? <TableStatusRow colSpan={5} message={text.noRecords} />
+                      : payslipEmployee.processes.map((process, processIndex) => <TableRow key={process.styleProcessId || `payslip-process-${processIndex}`}>
+                          <TableCell>{process.processName || process.processCode || "-"}</TableCell>
+                          <TableCell align="right">{formatNumberWithCommas(process.totalQuantity || 0)}</TableCell>
+                          <TableCell align="right">{formatSeconds(process.totalCtSeconds)}</TableCell>
+                          <TableCell align="right">{formatRate(process.wagePerSecond)}</TableCell>
+                          <TableCell align="right">{formatDong(process.totalEarnings)}</TableCell>
+                        </TableRow>)}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </> : null}
           </Stack>
         </DialogContent>
         <DialogActions>
