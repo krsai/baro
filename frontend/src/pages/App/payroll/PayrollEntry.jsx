@@ -316,7 +316,7 @@ const PayrollEntry = () => {
           details: "\uC0DD\uC0B0 \uC0C1\uC138",
           calculated: "\uACC4\uC0B0 \uC644\uB8CC",
           item: "\uAE09\uC5EC \uD56D\uBAA9",
-          category: "\uAD6C\uBD84",
+          category: "\uC218\uC2DD",
         }
       : languageCode === "vi"
         ? {
@@ -325,7 +325,7 @@ const PayrollEntry = () => {
             details: "Chi tiet san luong",
             calculated: "Da tinh xong",
             item: "Khoan luong",
-            category: "Phan loai",
+            category: "Công thức",
           }
         : {
             payrollByEmployee: "Payroll by Employee",
@@ -333,7 +333,7 @@ const PayrollEntry = () => {
             details: "Production Details",
             calculated: "Calculated",
             item: "Payroll Item",
-          category: "Category",
+          category: "Formula",
         };
   const payslipInfoText = languageCode === "ko"
     ? {
@@ -363,6 +363,35 @@ const PayrollEntry = () => {
     },
     [languageCode],
   );
+  const formulaParameterLabels = useMemo(() => {
+    if (languageCode === "ko") return {
+      GRADE_RATE: "직급별 단가", TENURE_YEARS: "근속 연수", ACTUAL_WORKDAYS: "실제 근무일수",
+      SCHEDULED_WORKDAYS: "기준 근무일수", HOLIDAY_WORKDAYS: "휴일 근무일수", WORK_HOURS: "정규 근무시간",
+      OVERTIME_HOURS: "연장근무시간", HOLIDAY_HOURS: "휴일 특근시간", FULL_ATTENDANCE_FACTOR: "만근 여부",
+      PRODUCTION_ALLOWANCE: "생산수당",
+    };
+    if (languageCode === "vi") return {
+      GRADE_RATE: "Đơn giá theo cấp bậc", TENURE_YEARS: "Thâm niên", ACTUAL_WORKDAYS: "Ngày làm thực tế",
+      SCHEDULED_WORKDAYS: "Ngày làm tiêu chuẩn", HOLIDAY_WORKDAYS: "Ngày làm ngày nghỉ", WORK_HOURS: "Giờ làm chính thức",
+      OVERTIME_HOURS: "Giờ tăng ca", HOLIDAY_HOURS: "Giờ làm ngày nghỉ", FULL_ATTENDANCE_FACTOR: "Đủ chuyên cần",
+      PRODUCTION_ALLOWANCE: "Phụ cấp sản lượng",
+    };
+    return {
+      GRADE_RATE: "Grade Rate", TENURE_YEARS: "Tenure Years", ACTUAL_WORKDAYS: "Actual Workdays",
+      SCHEDULED_WORKDAYS: "Scheduled Workdays", HOLIDAY_WORKDAYS: "Holiday Workdays", WORK_HOURS: "Regular Hours",
+      OVERTIME_HOURS: "Overtime Hours", HOLIDAY_HOURS: "Holiday Hours", FULL_ATTENDANCE_FACTOR: "Full Attendance",
+      PRODUCTION_ALLOWANCE: "Production Allowance",
+    };
+  }, [languageCode]);
+  const formatSalaryFormula = useCallback((formula) => {
+    const tokens = Array.isArray(formula) ? formula : [];
+    if (tokens.length === 0) return "-";
+    return tokens.map((token) => {
+      const value = String(token);
+      if (value.startsWith("CONST:")) return value.slice(6);
+      return formulaParameterLabels[value] || value;
+    }).join(" ");
+  }, [formulaParameterLabels]);
   const payslipRows = useCallback(
     (employee) => {
       const calculatedItems = Array.isArray(employee?.salaryItems) ? employee.salaryItems : [];
@@ -371,6 +400,7 @@ const PayrollEntry = () => {
           key: item.code,
           name: salaryItemName(item),
           category: item.category,
+          formula: formatSalaryFormula(item.formula),
           amount: formatDong(item.amount),
         }));
       return [
@@ -378,12 +408,14 @@ const PayrollEntry = () => {
           key: "legacy-base",
           name: payslipText.base,
           category: "BASE",
+          formula: "-",
           amount: payslipText.pending,
         },
         {
           key: "legacy-allowance",
           name: payslipText.allowance,
           category: "ALLOWANCE",
+          formula: "-",
           amount: payslipText.pending,
         },
         ...(employee?.payType === "OUTPUT"
@@ -392,18 +424,19 @@ const PayrollEntry = () => {
                 key: "legacy-production",
                 name: payslipText.production,
                 category: "INCENTIVE",
+                formula: "-",
                 amount: formatDong(productionAllowanceOf(employee)),
               },
             ]
           : []),
       ];
     },
-    [payslipText.allowance, payslipText.base, payslipText.pending, payslipText.production, salaryItemName],
+    [formatSalaryFormula, payslipText.allowance, payslipText.base, payslipText.pending, payslipText.production, salaryItemName],
   );
   const handlePrintPayslip = () => {
     if (!payslipEmployee) return;
     const rows = payslipRows(payslipEmployee);
-    const itemHtml = rows.map((row) => `<tr><td>${escapePrintText(row.name)}</td><td>${escapePrintText(row.category || "-")}</td><td>${escapePrintText(row.amount)}</td></tr>`).join("");
+    const itemHtml = rows.map((row) => `<tr><td>${escapePrintText(row.name)}</td><td>${escapePrintText(row.formula || "-")}</td><td>${escapePrintText(row.amount)}</td></tr>`).join("");
     const parameters = payslipEmployee.parameters || {};
     const infoHtml = [
       [payslipText.employee, payslipEmployee.workerName || "-"],
@@ -625,7 +658,7 @@ const PayrollEntry = () => {
                   payslipRows(payslipEmployee).map((row) => (
                     <TableRow key={row.key}>
                       <TableCell sx={{ fontWeight: 600 }}>{row.name}</TableCell>
-                      <TableCell>{row.category || "-"}</TableCell>
+                      <TableCell>{row.formula || "-"}</TableCell>
                       <TableCell
                         align="right"
                         sx={{
