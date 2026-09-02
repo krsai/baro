@@ -1,7 +1,8 @@
 -- Weekday full-attendance backfill for the three specified BARO office employees.
 WITH target_organization AS (
   SELECT employee."orgId" FROM "Employee" AS employee
-  WHERE employee."employeeNo" = '0001' AND TRIM(COALESCE(employee."name", '')) = '정동원'
+  WHERE employee."employeeNo" = '0001'
+    AND LOWER(TRIM(COALESCE(employee."email", ''))) = 'baro.garment@gmail.com'
   LIMIT 1
 ),
 target_employees AS (

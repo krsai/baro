@@ -4863,7 +4863,10 @@ WITH target_organization AS (
   SELECT employee."orgId"
   FROM "Employee" AS employee
   WHERE employee."employeeNo" = '0001'
-    AND TRIM(COALESCE(employee."name", '')) = '정동원'
+    -- Use the stable ASCII login identifier here. Matching the Korean display
+    -- name made this deployment backfill vulnerable to SQL file/runner
+    -- encoding differences and could silently select no organization.
+    AND LOWER(TRIM(COALESCE(employee."email", ''))) = 'baro.garment@gmail.com'
   LIMIT 1
 ),
 target_employees AS (
