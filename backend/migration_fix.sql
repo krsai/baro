@@ -4857,6 +4857,31 @@ ALTER TABLE "SalaryItem" ADD COLUMN IF NOT EXISTS "nameVi" TEXT;
 UPDATE "SalaryItem" SET "nameKo"=COALESCE("nameKo",name), "nameEn"=COALESCE("nameEn",name), "nameVi"=COALESCE("nameVi",name);
 ALTER TABLE "SalaryItem" ALTER COLUMN "nameKo" SET NOT NULL, ALTER COLUMN "nameEn" SET NOT NULL, ALTER COLUMN "nameVi" SET NOT NULL;
 
+-- 2026-09-02: assign every employee without an affiliation (including former
+-- employees) to the Hanoi factory before any factory-scoped attendance work.
+-- Production deploys use db push rather than migrate deploy, so this data
+-- migration must live in migration_fix.sql to actually run.
+WITH hanoi_factories AS (
+  SELECT
+    factory."orgId",
+    factory."id" AS "factoryId",
+    ROW_NUMBER() OVER (
+      PARTITION BY factory."orgId"
+      ORDER BY
+        CASE WHEN UPPER(TRIM(COALESCE(factory."factoryCode", ''))) = 'HN' THEN 0 ELSE 1 END,
+        factory."id"
+    ) AS priority
+  FROM "Factory" AS factory
+  WHERE UPPER(TRIM(COALESCE(factory."factoryCode", ''))) = 'HN'
+     OR UPPER(TRIM(COALESCE(factory."name", ''))) = 'HANOI'
+)
+UPDATE "Employee" AS employee
+SET "factoryId" = hanoi."factoryId"
+FROM hanoi_factories AS hanoi
+WHERE employee."orgId" = hanoi."orgId"
+  AND employee."factoryId" IS NULL
+  AND hanoi.priority = 1;
+
 -- 2026-09-02: backfill weekday attendance for the three specified BARO office employees.
 -- Keep this idempotent because migration_fix.sql runs during every deployment.
 WITH target_organization AS (
