@@ -611,7 +611,7 @@ const SalarySystem = () => {
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
         <Box sx={{ width: { xs: '100%', md: 260 }, flexShrink: 0 }}>
           <Stack spacing={0.75} sx={{ maxHeight: 434, overflowY: 'auto', pr: 0.5 }}>
-            {[...versions].sort((a, b) => a.versionNumber - b.versionNumber).map((version) => {
+            {[...versions].sort((a, b) => b.versionNumber - a.versionNumber).map((version) => {
               const versionColor = colorByVersionId.get(version.id) || '#9e9e9e';
               const draggable = version.versionNumber > 1;
               return <Box key={version.id} draggable={draggable} onDragStart={(event) => { if (!draggable) return; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(version.id)); }} sx={{ display: 'flex', alignItems: 'center', minHeight: 38, px: 0.75, border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: versionColor, borderRadius: 1, cursor: draggable ? 'grab' : 'default', bgcolor: 'background.paper', '&:active': { cursor: draggable ? 'grabbing' : 'default' } }}>

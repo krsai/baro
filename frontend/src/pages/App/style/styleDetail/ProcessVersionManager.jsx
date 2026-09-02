@@ -128,7 +128,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
           <Box sx={{ width: { xs: '100%', md: 260 }, flexShrink: 0 }}>
             <Stack spacing={.75}>
-              {versions.map((version) => {
+              {[...versions].sort((left, right) => right.versionNumber - left.versionNumber).map((version) => {
                 const versionColor = resolveVersionColor(version);
                 return (
                   <Box key={version.id} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(version.id)); }}

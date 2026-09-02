@@ -739,7 +739,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
         <DialogContent dividers>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
             <Stack spacing={0.75} sx={{ width: { xs: '100%', md: 280 }, flexShrink: 0 }}>
-              {[...productionAllowanceVersions].sort((a, b) => a.versionNumber - b.versionNumber).map((version) => <Box key={version.id} sx={{ p: 1, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+              {[...productionAllowanceVersions].sort((a, b) => b.versionNumber - a.versionNumber).map((version) => <Box key={version.id} sx={{ p: 1, border: 1, borderColor: 'divider', borderRadius: 1 }}>
                 <Stack direction="row" justifyContent="space-between"><Typography variant="body2" fontWeight={700}>{String(version.confirmedAt || version.createdAt || '').slice(0, 10)} · Ver.{version.versionNumber}</Typography><Chip size="small" label={`${Number(version.wagePerSecond || 0).toFixed(2)} VND/s`} /></Stack>
                 <TextField type="month" size="small" fullWidth sx={{ mt: 1 }} value={versionBoundaries[version.id] || ''} onChange={(event) => setVersionBoundaries((current) => ({ ...current, [version.id]: event.target.value }))} inputProps={{ min: managedMonths[0], max: currentMonthKey() }} />
               </Box>)}
