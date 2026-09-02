@@ -409,6 +409,7 @@ export const createOrgMembershipRouter = ({
       employeeNo,
       joinedAt,
       leftAt,
+      alwaysFullAttendance,
     } = req.body ?? {};
     const orgIdNum = Number(orgId);
 
@@ -506,6 +507,9 @@ export const createOrgMembershipRouter = ({
         : null,
       leaveStartAt: null,
       leaveEndAt: null,
+      alwaysFullAttendance: alwaysFullAttendance !== undefined
+        ? Boolean(alwaysFullAttendance)
+        : existingEmployee?.alwaysFullAttendance ?? false,
     };
     if (accountPatch.value.employeeNo !== undefined) {
       data.employeeNo = accountPatch.value.employeeNo;

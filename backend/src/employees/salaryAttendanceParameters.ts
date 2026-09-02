@@ -34,12 +34,14 @@ export const resolveSalaryAttendanceParameters = ({
   holidayDateKeys: holidayDateKeyInput,
   attendanceEntries,
   policy: policyInput,
+  alwaysFullAttendance = false,
 }: {
   month: string;
   payType: unknown;
   holidayDateKeys: Iterable<string>;
   attendanceEntries: AttendanceRow[];
   policy?: EmployeePayTypePolicyValue;
+  alwaysFullAttendance?: boolean;
 }): SalaryAttendanceParameters => {
   const payType = normalizePayType(payTypeInput, EMPLOYEE_PAY_TYPE.GENERAL) ?? EMPLOYEE_PAY_TYPE.GENERAL;
   const policy = normalizeEmployeePayTypePolicy(policyInput, payType);
@@ -68,6 +70,13 @@ export const resolveSalaryAttendanceParameters = ({
     scheduledWorkdays += 1;
     if (qualifiesAsWorkedDay) actualWorkdays += 1;
   });
+
+  // 관리직 등 출퇴근 기록을 남기지 않는 직원을 위한 예외. 실제 기록과 무관하게
+  // 기준 근무일수만큼 출근한 것으로 판정한다. 등록 휴일 근무(HOLIDAY_WORKDAYS)는
+  // 실제 기록이 없으면 여전히 0으로 둔다 — 하지 않은 휴일 근무를 만들어내지 않는다.
+  if (alwaysFullAttendance) {
+    actualWorkdays = scheduledWorkdays;
+  }
 
   return {
     ACTUAL_WORKDAYS: actualWorkdays,

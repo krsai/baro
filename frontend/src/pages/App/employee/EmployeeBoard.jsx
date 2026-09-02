@@ -3,11 +3,13 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Drawer,
+  FormControlLabel,
   MenuItem,
   Paper,
   Table,
@@ -17,6 +19,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -104,6 +107,12 @@ const EMPLOYEE_BOARD_TEXT = {
   joinedAtLabel: { ko: '입사일', en: 'Join Date', vi: 'Ngay vao lam' },
   leftAtLabel: { ko: '퇴사일', en: 'Leave Date', vi: 'Ngày nghỉ viec' },
   statusLabel: { ko: '상태', en: 'Status', vi: 'Trạng thái' },
+  alwaysFullAttendanceLabel: { ko: '상시 만근 처리', en: 'Always full attendance', vi: 'Luon tinh du cong' },
+  alwaysFullAttendanceHint: {
+    ko: '출퇴근 기록과 무관하게 이 직원은 매달 만근으로 계산합니다.',
+    en: 'Calculate payroll as if this employee has full attendance every month, regardless of attendance records.',
+    vi: 'Tinh luong nhu nhan vien nay luon du cong moi thang, bat ke du lieu cham cong.',
+  },
   drawerHint: {
     ko: '직원 목록에서 선택한 항목을 여기서 수정하고 저장합니다.',
     en: 'Edit and save the selected employee here.',
@@ -424,6 +433,7 @@ const buildEmployeeDraft = (member, employee, options = {}) => {
     joinedAt: formatDateInput(employee?.joinedAt || member?.approvedAt),
     leftAt: formatDateInput(employee?.leftAt),
     status: member.status,
+    alwaysFullAttendance: Boolean(employee?.alwaysFullAttendance),
   };
 };
 const buildDrawerSignature = (email, draft) => JSON.stringify({
@@ -440,6 +450,7 @@ const buildDrawerSignature = (email, draft) => JSON.stringify({
   joinedAt: String(draft?.joinedAt || ''),
   leftAt: String(draft?.leftAt || ''),
   status: String(draft?.status || '').toUpperCase(),
+  alwaysFullAttendance: Boolean(draft?.alwaysFullAttendance),
 });
 const getEmployeeDisplayName = (member, employee, myEmail, currentUserName) => {
   const normalizedMemberEmail = normalizeEmail(member?.email);
@@ -708,6 +719,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     joinedAt: '',
     leftAt: '',
     status: 'ACTIVE',
+    alwaysFullAttendance: false,
   });
   const [drawerBaseline, setDrawerBaseline] = useState(null);
   const [lineAssignmentPrompt, setLineAssignmentPrompt] = useState(null);
@@ -1081,6 +1093,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           roleId: draft.orgRole === 'WORKER' && draft.jobRoleId ? Number(draft.jobRoleId) : null,
           gradeId: draft.gradeId ? Number(draft.gradeId) : undefined,
           payType: normalizedPayType,
+          alwaysFullAttendance: Boolean(draft.alwaysFullAttendance),
         };
 
         if (Object.prototype.hasOwnProperty.call(draft, 'factoryId')) {
@@ -1167,6 +1180,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       joinedAt: formatDateInput(new Date()),
       leftAt: '',
       status: 'ACTIVE',
+      alwaysFullAttendance: false,
     });
     setDrawerBaseline(null);
     setIsAddDrawerOpen(true);
@@ -1339,6 +1353,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 ? Number(effectiveJobRoleId)
                 : null,
             payType: normalizedPayType,
+            alwaysFullAttendance: Boolean(drawerDraft.alwaysFullAttendance),
             ...(normalizedJoinedAt ? { joinedAt: normalizedJoinedAt } : {}),
             ...(normalizedLeftAt ? { leftAt: normalizedLeftAt } : {}),
             ...(normalizedDrawerEmail ? { email: normalizedDrawerEmail } : {}),
@@ -1831,6 +1846,19 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   </MenuItem>
                 ))}
               </TextField>
+              <Tooltip title={text('alwaysFullAttendanceHint', languageCode)}>
+                <FormControlLabel
+                  sx={{ mr: 0 }}
+                  control={
+                    <Checkbox
+                      checked={Boolean(drawerDraft.alwaysFullAttendance)}
+                      onChange={(e) => handleDrawerDraftChange({ alwaysFullAttendance: e.target.checked })}
+                      disabled={isDrawerSaving}
+                    />
+                  }
+                  label={text('alwaysFullAttendanceLabel', languageCode)}
+                />
+              </Tooltip>
               <Typography variant="caption" color="text.secondary">
                 {text('drawerHint', languageCode)}
               </Typography>

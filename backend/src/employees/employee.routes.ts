@@ -96,6 +96,7 @@ const toEmployeeResponse = (employee: any) => ({
   leftAt: employee?.leftAt ?? null,
   leaveStartAt: employee?.leaveStartAt ?? null,
   leaveEndAt: employee?.leaveEndAt ?? null,
+  alwaysFullAttendance: Boolean(employee?.alwaysFullAttendance),
   createdAt: employee?.createdAt ?? null,
   updatedAt: employee?.updatedAt ?? null,
 });
@@ -492,6 +493,7 @@ export const createEmployeeRouter = ({
       employeeNo,
       joinedAt,
       leftAt,
+      alwaysFullAttendance,
     } = req.body ?? {};
     const employeeIdNum = Number(employeeId ?? orgMembershipId);
 
@@ -706,6 +708,7 @@ export const createEmployeeRouter = ({
       ...(resolvedEmployeeNo !== undefined ? { employeeNo: resolvedEmployeeNo } : {}),
       ...(joinedAtParseResult.hasInput ? { joinedAt: joinedAtParseResult.value } : {}),
       ...(leftAtParseResult.hasInput ? { leftAt: leftAtParseResult.value } : {}),
+      ...(alwaysFullAttendance !== undefined ? { alwaysFullAttendance: Boolean(alwaysFullAttendance) } : {}),
     };
 
     let employee;

@@ -630,7 +630,8 @@ const buildIntegratedPayrollEmployees = async (
         throw createHttpError(409, `employee ${employee.id} has attendance in multiple factories on ${foreignFactoryAttendance.workDate}`);
       }
       const workerAttendance = allWorkerAttendance;
-      const attendanceParameters = resolveSalaryAttendanceParameters({ month, payType, holidayDateKeys, attendanceEntries: workerAttendance, policy: payTypePolicy });
+      const alwaysFullAttendance = Boolean(employee.alwaysFullAttendance);
+      const attendanceParameters = resolveSalaryAttendanceParameters({ month, payType, holidayDateKeys, attendanceEntries: workerAttendance, policy: payTypePolicy, alwaysFullAttendance });
       let regularSeconds = 0;
       let overtimeSeconds = 0;
       let holidaySeconds = 0;
@@ -647,6 +648,12 @@ const buildIntegratedPayrollEmployees = async (
           regularSeconds += Math.min(seconds, standardSeconds);
           overtimeSeconds += Math.max(0, seconds - standardSeconds);
         }
+      }
+      if (alwaysFullAttendance) {
+        // 실제 출퇴근 기록이 없어도 기준 근무일수만큼 정규 근무시간을 인정한다.
+        // 연장근무는 실제 기록이 있어야만 인정되므로 여기서는 만들어내지 않는다.
+        regularSeconds = attendanceParameters.SCHEDULED_WORKDAYS * payTypePolicy.standardWorkMinutes * 60;
+        overtimeSeconds = 0;
       }
       const joinedAt = employee.joinedAt ?? employee.approvedAt ?? employee.createdAt;
       const tenureYears = joinedAt

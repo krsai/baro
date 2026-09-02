@@ -777,6 +777,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "Employee", columnName: "status" },
   { tableName: "Employee", columnName: "requestedName" },
   { tableName: "Employee", columnName: "approvedAt" },
+  { tableName: "Employee", columnName: "alwaysFullAttendance" },
   { tableName: "Style", columnName: "id" },
   { tableName: "Style", columnName: "code" },
   { tableName: "WorkRecord", columnName: "styleId" },
