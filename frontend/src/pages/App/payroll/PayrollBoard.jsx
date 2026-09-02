@@ -139,10 +139,10 @@ const PayrollBoard = () => {
       ? { notCalculated: 'Chua tinh', recalculationRequired: 'Can tinh lai', calculated: 'Da tinh xong' }
       : { notCalculated: 'Not Calculated', recalculationRequired: 'Recalculation Required', calculated: 'Calculated' };
   const payrollSummaryText = languageCode === 'ko'
-    ? { people: '\uCD1D\uC6D0 (\uC77C\uBC18/\uC0DD\uC0B0)', generalPayroll: '\uC77C\uBC18 \uAE09\uC5EC', outputPayroll: '\uC0DD\uC0B0 \uAE09\uC5EC', totalPayroll: '\uCD1D \uAE09\uC5EC', lock: '\uC7A0\uAE08', pending: '\uBBF8\uACC4\uC0B0' }
+    ? { people: '\uCD1D\uC6D0 (\uC0AC\uBB34\uACE0\uC815/\uC0DD\uC0B0\uACE0\uC815/\uC0DD\uC0B0\uBCC0\uB3D9)', generalPayroll: '\uC0AC\uBB34(\uACE0\uC815) \uAE09\uC5EC', fixedOutputPayroll: '\uC0DD\uC0B0(\uACE0\uC815) \uAE09\uC5EC', outputPayroll: '\uC0DD\uC0B0(\uBCC0\uB3D9) \uAE09\uC5EC', totalPayroll: '\uCD1D \uAE09\uC5EC', lock: '\uC7A0\uAE08', pending: '\uBBF8\uACC4\uC0B0' }
     : languageCode === 'vi'
-      ? { people: 'Tong (Thuong/San luong)', generalPayroll: 'Luong thuong', outputPayroll: 'Luong san luong', totalPayroll: 'Tong luong', lock: 'Khoa', pending: 'Chua tinh' }
-      : { people: 'Total (General/Production)', generalPayroll: 'General Payroll', outputPayroll: 'Production Payroll', totalPayroll: 'Total Payroll', lock: 'Lock', pending: 'Not calculated' };
+      ? { people: 'Tổng (VP cố định/SX cố định/SX biến đổi)', generalPayroll: 'Lương VP cố định', fixedOutputPayroll: 'Lương SX cố định', outputPayroll: 'Lương SX biến đổi', totalPayroll: 'Tổng lương', lock: 'Khóa', pending: 'Chưa tính' }
+      : { people: 'Total (Office Fixed/Production Fixed/Production Variable)', generalPayroll: 'Office (Fixed)', fixedOutputPayroll: 'Production (Fixed)', outputPayroll: 'Production (Variable)', totalPayroll: 'Total Payroll', lock: 'Lock', pending: 'Not calculated' };
   const activeEmployees = useMemo(() => employeeDirectory.filter((employee) => !['PENDING', 'REJECTED', 'TERMINATED'].includes(String(employee?.status || '').toUpperCase())), [employeeDirectory]);
 
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -383,14 +383,15 @@ const PayrollBoard = () => {
                 <TableCell sx={{ fontWeight: 700 }}>{text.month}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.people}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.generalPayroll}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.fixedOutputPayroll}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.outputPayroll}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.totalPayroll}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{text.status}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{payrollSummaryText.lock}</TableCell>
               </TableRow></TableHead>
               <TableBody>
-                {loading ? <TableStatusRow colSpan={7} message={resolveText(languageCode, 'loading')} />
-                  : filteredMonthRows.length === 0 ? <TableStatusRow colSpan={7} message={resolveText(languageCode, 'empty')} />
+                {loading ? <TableStatusRow colSpan={8} message={resolveText(languageCode, 'loading')} />
+                  : filteredMonthRows.length === 0 ? <TableStatusRow colSpan={8} message={resolveText(languageCode, 'empty')} />
                     : filteredMonthRows.map(({ month, snapshot }) => {
                       const groups = readinessByMonth[month]?.groups || [];
                       const rowNeedsRecalculation = Boolean(snapshot && readinessByMonth[month]?.needsRecalculation);
@@ -398,9 +399,11 @@ const PayrollBoard = () => {
                         ? readinessByMonth[month].invalidPayrollAttendance.length : 0;
                       const snapshotEmployees = Array.isArray(snapshot?.data) ? snapshot.data : [];
                       const summaryEmployees = snapshot ? snapshotEmployees : activeEmployees;
-                      const generalEmployees = summaryEmployees.filter((employee) => !['OUTPUT', 'CT'].includes(String(employee?.payType || '').toUpperCase()));
+                      const generalEmployees = summaryEmployees.filter((employee) => ['GENERAL', 'FIXED'].includes(String(employee?.payType || '').toUpperCase()));
+                      const fixedOutputEmployees = summaryEmployees.filter((employee) => String(employee?.payType || '').toUpperCase() === 'OUTPUT_FIXED');
                       const outputEmployees = summaryEmployees.filter((employee) => ['OUTPUT', 'CT'].includes(String(employee?.payType || '').toUpperCase()));
                       const generalPayroll = payrollAmountSummary(generalEmployees);
+                      const fixedOutputPayroll = payrollAmountSummary(fixedOutputEmployees);
                       const outputPayroll = payrollAmountSummary(outputEmployees);
                       const totalPayroll = payrollAmountSummary(summaryEmployees);
                       return (
@@ -409,8 +412,9 @@ const PayrollBoard = () => {
                           onClick={() => snapshot && navigateToPath(`/payroll/${month}`, { label: `${text.title} ${month}` })}
                         >
                           <TableCell sx={{ fontWeight: 700 }}>{month}</TableCell>
-                          <TableCell align="right">{summaryEmployees.length} ({generalEmployees.length}/{outputEmployees.length}){text.peopleSuffix}</TableCell>
+                          <TableCell align="right">{summaryEmployees.length} ({generalEmployees.length}/{fixedOutputEmployees.length}/{outputEmployees.length}){text.peopleSuffix}</TableCell>
                           <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? generalPayroll || '-' : payrollSummaryText.pending}</TableCell>
+                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? fixedOutputPayroll || '-' : payrollSummaryText.pending}</TableCell>
                           <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? outputPayroll || '-' : payrollSummaryText.pending}</TableCell>
                           <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary', fontWeight: 700 }}>{snapshot ? totalPayroll || '-' : payrollSummaryText.pending}</TableCell>
                           <TableCell align="center">

@@ -4813,7 +4813,7 @@ ALTER TABLE "EmployeeCompensationPolicy" DROP COLUMN IF EXISTS "variableAllowanc
 DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_gradeId_fkey" FOREIGN KEY ("gradeId") REFERENCES "EmployeeGrade"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_nonnegative_components_check" CHECK ("baseSalary" >= 0 AND "allowance" >= 0 AND "incentive" >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_payType_check" CHECK ("payType" IN ('GENERAL','OUTPUT')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "EmployeeCompensationPolicy" ADD CONSTRAINT "EmployeeCompensationPolicy_payType_check" CHECK ("payType" IN ('GENERAL','OUTPUT_FIXED','OUTPUT')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 CREATE TABLE IF NOT EXISTS "SalaryItem" ("id" SERIAL PRIMARY KEY,"orgId" INTEGER NOT NULL,"code" TEXT NOT NULL,"name" TEXT NOT NULL,"category" TEXT NOT NULL,"payTypes" JSONB NOT NULL,"formula" JSONB NOT NULL,"payCycle" TEXT NOT NULL,"capValue" INTEGER,"required" BOOLEAN NOT NULL DEFAULT false,"sortOrder" INTEGER NOT NULL DEFAULT 0,"isActive" BOOLEAN NOT NULL DEFAULT true,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
 ALTER TABLE "SalaryItem" ADD COLUMN IF NOT EXISTS "paymentMonths" JSONB;
@@ -4836,7 +4836,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "EmployeeGrade_orgId_id_key" ON "EmployeeGrade
 DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_grade_fkey" FOREIGN KEY ("orgId","gradeId") REFERENCES "EmployeeGrade"("orgId","id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_item_fkey" FOREIGN KEY ("orgId","salaryItemId") REFERENCES "SalaryItem"("orgId","id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_payType_check" CHECK ("payType" IN ('GENERAL','OUTPUT')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_payType_check" CHECK ("payType" IN ('GENERAL','OUTPUT_FIXED','OUTPUT')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_amount_check" CHECK ("amount" >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 CREATE TABLE IF NOT EXISTS "SalarySystemVersion" ("id" SERIAL PRIMARY KEY,"orgId" INTEGER NOT NULL,"versionNumber" INTEGER NOT NULL,"effectiveMonth" TEXT,"snapshot" JSONB NOT NULL,"confirmedBy" TEXT NOT NULL,"confirmedDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
 ALTER TABLE "SalarySystemVersion" ALTER COLUMN "effectiveMonth" DROP NOT NULL;
@@ -4868,7 +4868,7 @@ CREATE TABLE IF NOT EXISTS "EmployeePayTypePolicy" (
 CREATE UNIQUE INDEX IF NOT EXISTS "EmployeePayTypePolicy_orgId_payType_key" ON "EmployeePayTypePolicy"("orgId","payType");
 CREATE INDEX IF NOT EXISTS "EmployeePayTypePolicy_orgId_idx" ON "EmployeePayTypePolicy"("orgId");
 DO $$ BEGIN ALTER TABLE "EmployeePayTypePolicy" ADD CONSTRAINT "EmployeePayTypePolicy_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TABLE "EmployeePayTypePolicy" ADD CONSTRAINT "EmployeePayTypePolicy_payType_check" CHECK ("payType" IN ('GENERAL','OUTPUT')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE "EmployeePayTypePolicy" ADD CONSTRAINT "EmployeePayTypePolicy_payType_check" CHECK ("payType" IN ('GENERAL','OUTPUT_FIXED','OUTPUT')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- 2026-09-01: optimistic concurrency guard for payroll mutations.
 ALTER TABLE "PayrollSnapshot" ADD COLUMN IF NOT EXISTS "revision" INTEGER NOT NULL DEFAULT 0;

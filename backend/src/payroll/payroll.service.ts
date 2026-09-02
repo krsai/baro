@@ -667,15 +667,23 @@ const buildIntegratedPayrollEmployees = async (
       const applicableItems = ensureArray(items).filter((item) => {
         const payTypes = ensureArray(item?.payTypes).map((value) => String(value).toUpperCase());
         const paymentMonths = ensureArray(item?.paymentMonths).map(Number);
-        return payTypes.includes(payType) && (paymentMonths.length === 0 || paymentMonths.includes(monthNumber));
+        const supportsPayType = payTypes.includes(payType) || (
+          payType === EMPLOYEE_PAY_TYPE.OUTPUT_FIXED &&
+          String(item?.category || "").toUpperCase() !== "INCENTIVE" &&
+          payTypes.includes(EMPLOYEE_PAY_TYPE.OUTPUT)
+        );
+        return supportsPayType && (paymentMonths.length === 0 || paymentMonths.includes(monthNumber));
       });
       const salaryItems = applicableItems.map((item) => {
         const code = String(item?.code || item?.id || "");
-        const rate = ensureArray(rates).find((row) =>
+        const matchingRates = ensureArray(rates).filter((row) =>
           String(row?.salaryItemCode || "") === code &&
-          String(row?.payType || "").toUpperCase() === payType &&
           Number(row?.gradeId) === employee.gradeId
         );
+        const rate = matchingRates.find((row) => String(row?.payType || "").toUpperCase() === payType)
+          || (payType === EMPLOYEE_PAY_TYPE.OUTPUT_FIXED
+            ? matchingRates.find((row) => String(row?.payType || "").toUpperCase() === EMPLOYEE_PAY_TYPE.OUTPUT)
+            : null);
         if (String(item?.category || "").toUpperCase() !== "INCENTIVE" && !rate) {
           throw createHttpError(409, `salary rate is missing for employee ${employee.id}, item ${code}`);
         }
