@@ -133,8 +133,8 @@ const formatRateDraft = (value) => {
 const buildEmployeeRateDrafts = (employees) => Object.fromEntries((Array.isArray(employees) ? employees : []).filter((employee) => Number(employee?.workerId) > 0).map((employee) => [String(employee.workerId), formatRateDraft(appliedRateOf(employee))]));
 const LOCK_TEXT = {
   ko: {
-    locked: "잠금",
-    unlocked: "잠금 해제",
+    locked: "잠금됨",
+    unlocked: "수정 가능",
     unlockConfirm: "이 생산수당 계산의 잠금을 해제하시겠습니까?",
     lockedHelp: "잠금 상태입니다. 누르면 잠금을 해제합니다.",
     unlockedHelp: "잠금 해제 상태입니다. 누르면 잠급니다.",
@@ -143,7 +143,7 @@ const LOCK_TEXT = {
   },
   en: {
     locked: "Locked",
-    unlocked: "Unlocked",
+    unlocked: "Editable",
     unlockConfirm: "Unlock this production allowance calculation?",
     lockedHelp: "Locked. Click to unlock.",
     unlockedHelp: "Unlocked. Click to lock.",
@@ -151,8 +151,8 @@ const LOCK_TEXT = {
     error: "Failed to change the lock status.",
   },
   vi: {
-    locked: "Da khoa",
-    unlocked: "Da mo khoa",
+    locked: "Đã khóa",
+    unlocked: "Có thể sửa",
     unlockConfirm: "Mở khóa ket qua phu cap san luong nay?",
     lockedHelp: "Đang khóa. Bam de mo khoa.",
     unlockedHelp: "Dang mo khoa. Bam de khoa.",
@@ -161,7 +161,7 @@ const LOCK_TEXT = {
   },
 };
 const getPayrollLockButtonSx = (locked) => (theme) => ({
-  minWidth: 108,
+  minWidth: 116,
   height: 36,
   px: 1.75,
   borderRadius: 1.5,
@@ -170,8 +170,24 @@ const getPayrollLockButtonSx = (locked) => (theme) => ({
   color: locked ? theme.palette.common.white : theme.palette.primary.main,
   fontWeight: 700,
   "&:hover": {
+    borderColor: locked ? theme.palette.text.primary : alpha(theme.palette.primary.main, 0.55),
     backgroundColor: locked ? theme.palette.text.primary : alpha(theme.palette.primary.main, 0.16),
   },
+  "& .MuiButton-startIcon": {
+    marginLeft: 0,
+    marginRight: theme.spacing(0.75),
+  },
+  "&.Mui-disabled": locked
+    ? {
+        borderColor: alpha(theme.palette.text.primary, 0.38),
+        backgroundColor: alpha(theme.palette.text.primary, 0.38),
+        color: alpha(theme.palette.common.white, 0.76),
+      }
+    : {
+        borderColor: alpha(theme.palette.primary.main, 0.22),
+        backgroundColor: alpha(theme.palette.primary.main, 0.08),
+        color: alpha(theme.palette.primary.main, 0.48),
+      },
 });
 
 const PayrollEntry = () => {
