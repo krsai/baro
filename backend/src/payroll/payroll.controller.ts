@@ -8,7 +8,6 @@ import {
   getPayrollSettings,
   listPayrollSnapshots,
   lockPayrollSnapshot,
-  recalculatePayrollSnapshotLine,
   savePayrollSnapshot,
   unlockPayrollSnapshot,
   updatePayrollEmployeeRates,
@@ -141,19 +140,6 @@ export const savePayrollSnapshotController = async (req: Request, res: Response)
   });
 
   return res.json(snapshot);
-};
-
-export const recalculatePayrollSnapshotLineController = async (req: Request, res: Response) => {
-  const accessContext = await requireOrgRole(req, res);
-  if (!accessContext) return;
-  const result = await recalculatePayrollSnapshotLine({
-    orgId: accessContext.organization.id,
-    month: String(req.params.month || ""),
-    factoryId: Number(req.body?.factoryId),
-    lineId: Number(req.body?.lineId),
-    updatedBy: accessContext.requesterEmail ?? "unknown",
-  });
-  return res.json(result);
 };
 
 export const deletePayrollSnapshotController = async (req: Request, res: Response) => {

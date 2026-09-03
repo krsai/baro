@@ -53,28 +53,6 @@ const TEXT = {
 
 const resolveText = (bundle, languageCode, fallback = '') =>
   bundle?.[languageCode] || bundle?.ko || fallback;
-const getCrossLineAssignmentWarning = (payload) =>
-  payload?.warnings?.crossLineAssignment || null;
-const buildCrossLineAssignmentSaveMessage = ({
-  languageCode,
-  rowCount,
-  isUpdate,
-}) => {
-  if (languageCode === 'en') {
-    return isUpdate
-      ? `Work log updated. ${rowCount} cross-line assignment row${rowCount === 1 ? '' : 's'} were noted in the remark.`
-      : `Work log saved. ${rowCount} cross-line assignment row${rowCount === 1 ? '' : 's'} were noted in the remark.`;
-  }
-  if (languageCode === 'vi') {
-    return isUpdate
-      ? `Đã cập nhật nhật ký công việc. Đã ghi chú ${rowCount} dòng được phân công ở chuyền khác.`
-      : `Đã lưu nhật ký công việc. Đã ghi chú ${rowCount} dòng được phân công ở chuyền khác.`;
-  }
-  return isUpdate
-    ? `작업 기록을 수정했습니다. 다른 라인 배정 작업 ${rowCount}건을 비고에 남겼습니다.`
-    : `작업 기록을 저장했습니다. 다른 라인 배정 작업 ${rowCount}건을 비고에 남겼습니다.`;
-};
-
 const normalizeWorkLogId = (value) => String(value || '').trim();
 const buildWorkListTabLabel = (languageCode, isOutsourcing) => {
   if (isOutsourcing) {
@@ -186,16 +164,9 @@ const WorkEntry = ({ recordKind = 'EMPLOYEE' } = {}) => {
             showNotification(resolveText(TEXT.saveError, languageCode, '기록 저장에 실패했습니다.'), 'error');
             return;
           }
-          const crossLineWarning = getCrossLineAssignmentWarning(updated);
           showNotification(
-            crossLineWarning?.rowCount
-              ? buildCrossLineAssignmentSaveMessage({
-                  languageCode,
-                  rowCount: crossLineWarning.rowCount,
-                  isUpdate: true,
-                })
-              : resolveText(TEXT.updateSuccess, languageCode, '기록을 수정했습니다.'),
-            crossLineWarning?.rowCount ? 'warning' : 'success'
+            resolveText(TEXT.updateSuccess, languageCode, '기록을 수정했습니다.'),
+            'success'
           );
           setExistingLog(updated);
           return;
@@ -207,16 +178,9 @@ const WorkEntry = ({ recordKind = 'EMPLOYEE' } = {}) => {
           return;
         }
 
-        const crossLineWarning = getCrossLineAssignmentWarning(created);
         showNotification(
-          crossLineWarning?.rowCount
-            ? buildCrossLineAssignmentSaveMessage({
-                languageCode,
-                rowCount: crossLineWarning.rowCount,
-                isUpdate: false,
-              })
-            : resolveText(TEXT.saveSuccess, languageCode, '기록을 저장했습니다.'),
-          crossLineWarning?.rowCount ? 'warning' : 'success'
+          resolveText(TEXT.saveSuccess, languageCode, '기록을 저장했습니다.'),
+          'success'
         );
         navigateToPath(`${basePath}/${created.id}`, {
           label: buildWorkDetailTabLabel(payload?.workDate, languageCode, isOutsourcingMode),

@@ -36,3 +36,12 @@ test('removed line page has no active route or navigation link', () => {
   ].map(read).join('\n');
   assert.doesNotMatch(activeNavigationSources, /['"]\/line(?:\?|['"])/);
 });
+
+test('production analysis and payroll expose no line UI or line recalculation route', () => {
+  const productionAnalysis = read('frontend/src/pages/App/work/WorkMonthlyBoard.jsx');
+  const payrollBoard = read('frontend/src/pages/App/payroll/PayrollBoard.jsx');
+  const payrollRoutes = read('backend/src/payroll/payroll.routes.ts');
+  assert.doesNotMatch(productionAnalysis, /lineView|value="line"|TEXT\.line|row\.lineName/);
+  assert.doesNotMatch(payrollBoard, /rowHint:|noLines:|\bline:/);
+  assert.doesNotMatch(payrollRoutes, /recalculate-line/);
+});

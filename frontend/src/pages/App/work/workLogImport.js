@@ -98,34 +98,34 @@ const wrapWithDetail = (message, detail) => {
 
 const translateLineResolutionIssue = (detail, languageCode) => {
   if (/multiple line assignments matched the work date/i.test(detail)) {
-    if (languageCode === 'en') return 'Multiple line assignments match the work date.';
-    if (languageCode === 'vi') return 'Co nhieu chuyen khop voi ngay lam viec.';
-    return '작업일자에 해당하는 라인 배정이 여러 개입니다.';
+    if (languageCode === 'en') return 'Multiple employee assignments match the work date.';
+    if (languageCode === 'vi') return 'Có nhiều phân công nhân viên khớp với ngày làm việc.';
+    return '작업일자에 해당하는 직원 배정이 여러 개입니다.';
   }
   if (/employee line name matched multiple lines in the factory/i.test(detail)) {
     if (languageCode === 'en') {
-      return 'The employee line name matches multiple lines in the factory.';
+      return 'The employee assignment information is ambiguous in the factory.';
     }
     if (languageCode === 'vi') {
-      return 'Ten chuyen cua nhan vien khop voi nhieu chuyen trong nha may.';
+      return 'Thông tin phân công của nhân viên không rõ ràng trong nhà máy.';
     }
-    return '직원 라인명이 공장 안의 여러 라인과 일치합니다.';
+    return '공장 안에서 직원의 배정 정보를 하나로 확인할 수 없습니다.';
   }
   if (/line could not be resolved for the employee on the work date/i.test(detail)) {
     if (languageCode === 'en') {
-      return 'The employee line could not be resolved for the work date.';
+      return 'The employee assignment could not be resolved for the work date.';
     }
     if (languageCode === 'vi') {
-      return 'Khong xac dinh duoc chuyen cua nhan vien vao ngay lam viec.';
+      return 'Không xác định được phân công của nhân viên vào ngày làm việc.';
     }
-    return '작업일자 기준 직원의 라인을 찾을 수 없습니다.';
+    return '작업일자 기준 직원의 배정 정보를 찾을 수 없습니다.';
   }
   return wrapWithDetail(
     languageCode === 'en'
-      ? 'Could not resolve the employee line.'
+      ? 'Could not resolve the employee assignment.'
       : languageCode === 'vi'
-        ? 'Khong xac dinh duoc chuyen cua nhan vien.'
-        : '직원의 라인을 찾을 수 없습니다.',
+        ? 'Không xác định được phân công của nhân viên.'
+        : '직원의 배정 정보를 찾을 수 없습니다.',
     detail
   );
 };
@@ -138,12 +138,12 @@ const translateAssignmentMatchIssue = (detail, languageCode) => {
   );
   if (orderUnassigned) {
     if (languageCode === 'en') {
-      return `Order ${orderUnassigned.orderNo} - style ${orderUnassigned.styleId} has cards, but they are not assigned to a line in the worker's factory.`;
+      return `Order ${orderUnassigned.orderNo} - style ${orderUnassigned.styleId} is not assigned in the worker's factory.`;
     }
     if (languageCode === 'vi') {
       return `Don ${orderUnassigned.orderNo} - ma hang ${orderUnassigned.styleId} da co the nhung chua duoc phan vao chuyen trong nha may cua cong nhan.`;
     }
-    return `주문 ${orderUnassigned.orderNo} - 스타일 ${orderUnassigned.styleId}은 미배정 상태입니다. 작업기록 업로드 전에 작업자 공장의 라인에 배정해 주세요.`;
+    return `주문 ${orderUnassigned.orderNo} - 스타일 ${orderUnassigned.styleId}은 미배정 상태입니다. 작업기록 업로드 전에 작업자 공장에 배정해 주세요.`;
   }
 
   const orderMissing = parseDetail(
@@ -168,12 +168,12 @@ const translateAssignmentMatchIssue = (detail, languageCode) => {
   );
   if (styleUnassigned) {
     if (languageCode === 'en') {
-      return `Order ${styleUnassigned.orderNo} / style ${styleUnassigned.styleId} has a card, but it is not assigned to a line in the worker's factory.`;
+      return `Order ${styleUnassigned.orderNo} / style ${styleUnassigned.styleId} is not assigned in the worker's factory.`;
     }
     if (languageCode === 'vi') {
       return `Don ${styleUnassigned.orderNo} / ma hang ${styleUnassigned.styleId} da co the nhung chua duoc phan vao chuyen trong nha may cua cong nhan.`;
     }
-    return `주문 ${styleUnassigned.orderNo} / 스타일 ${styleUnassigned.styleId}은 미배정 상태입니다. 작업기록 업로드 전에 작업자 공장의 라인에 배정해 주세요.`;
+    return `주문 ${styleUnassigned.orderNo} / 스타일 ${styleUnassigned.styleId}은 미배정 상태입니다. 작업기록 업로드 전에 작업자 공장에 배정해 주세요.`;
   }
 
   const styleMismatch = parseDetail(
@@ -192,9 +192,9 @@ const translateAssignmentMatchIssue = (detail, languageCode) => {
       return `\uC8FC\uBB38 ${styleMismatch.orderNo}\uC5D0\uB294 \uC2A4\uD0C0\uC77C ${styleMismatch.styleId} \uBC30\uC815 \uCE74\uB4DC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.`;
     }
     if (languageCode === 'ko') {
-      return `주문 ${styleMismatch.orderNo} / 스타일 ${styleMismatch.styleId}가 배정된 라인이 없습니다.`;
+      return `주문 ${styleMismatch.orderNo} / 스타일 ${styleMismatch.styleId}의 배정 정보가 없습니다.`;
     }
-    return `확인된 라인에서 스타일 ${styleMismatch.styleId}이 주문 ${styleMismatch.orderNo}와 일치하지 않습니다.`;
+    return `확인된 배정에서 스타일 ${styleMismatch.styleId}이 주문 ${styleMismatch.orderNo}와 일치하지 않습니다.`;
   }
 
   const processMismatch = parseDetail(
@@ -358,10 +358,10 @@ const translateImportIssueDetail = (issue, languageCode) => {
       return translateAssignmentMatchIssue(detail, languageCode);
     case 'FACTORY_NOT_FOUND':
       return languageCode === 'en'
-        ? 'The factory for the resolved line was not found.'
+        ? 'The employee factory could not be resolved.'
         : languageCode === 'vi'
           ? 'Không tìm thấy nha may cua chuyen da xac dinh.'
-          : '확인된 라인의 공장을 찾을 수 없습니다.';
+          : '직원의 공장을 찾을 수 없습니다.';
     case 'INVALID_WORKER':
       return languageCode === 'en'
         ? 'Worker could not be resolved for this row.'
@@ -378,10 +378,10 @@ const translateImportIssueDetail = (issue, languageCode) => {
     case 'LINE_VALIDATION_FAILED':
     case 'LINE_WORKER_MISMATCH':
       return languageCode === 'en'
-        ? 'Worker is not assigned to the resolved line for the imported period.'
+        ? 'Worker is not assigned to the factory for the imported period.'
         : languageCode === 'vi'
           ? 'Cong nhan khong duoc phan vao chuyen da xac dinh trong ky nhap.'
-          : '작업자가 가져온 기간에 해당 라인에 배정되어 있지 않습니다.';
+          : '작업자가 가져온 기간에 해당 공장에 소속되어 있지 않습니다.';
     case 'MISSING_ASSIGNMENT_PLAN':
       return languageCode === 'en'
         ? 'Every imported row must be linked to an assignment card.'

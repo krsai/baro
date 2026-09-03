@@ -9135,6 +9135,9 @@ const collectWorkLogCrossLineAssignmentWarnings = async ({
   records: any[];
   db?: any;
 }): Promise<WorkLogCrossLineAssignmentWarning[]> => {
+  // Factory is the only assignment scope. Keep the legacy line column only
+  // for storage compatibility; it must not generate warnings or edit notes.
+  return [];
   const normalizedWorkLogLineId = toPositiveIntOrNull(workLogLineId);
   if (normalizedWorkLogLineId === null) return [];
 
