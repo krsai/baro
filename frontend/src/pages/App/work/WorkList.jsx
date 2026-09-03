@@ -86,14 +86,13 @@ const TEXT = {
   close: { ko: '닫기', en: 'Close', vi: 'Dong' },
   add: { ko: '기록 추가', en: 'Add Log', vi: 'Them ghi chep' },
   searchPlaceholder: {
-    ko: '날짜, 공장, 라인 검색',
-    en: 'Search date, factory, line',
-    vi: 'Tim ngay, nha may, chuyen',
+    ko: '날짜, 공장 검색',
+    en: 'Search date or factory',
+    vi: 'Tìm ngày hoặc nhà máy',
   },
   workDate: { ko: '작업일자', en: 'Work Date', vi: 'Ngay lam viec' },
   factory: { ko: '공장', en: 'Factory', vi: 'Nhà máy' },
   selectFactory: { ko: '공장 선택', en: 'Select factory', vi: 'Chon nha may' },
-  line: { ko: '라인', en: 'Line', vi: 'Chuyền' },
   workers: { ko: '작업자', en: 'Workers', vi: 'Cong nhan' },
   partnerCount: { ko: '업체 수', en: 'Vendors', vi: 'So doi tac' },
   items: { ko: '기록 건수', en: 'Entries', vi: 'So dong' },
@@ -574,7 +573,6 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
       const searchText = [
         log?.workDate,
         log?.factoryName,
-        log?.lineName,
         log?.updatedBy,
       ]
         .filter(Boolean)
@@ -807,7 +805,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
             <SearchInput
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder={resolveText(TEXT.searchPlaceholder, languageCode, '날짜, 공장, 라인 검색')}
+              placeholder={resolveText(TEXT.searchPlaceholder, languageCode, '날짜, 공장 검색')}
               sx={{
                 width: { xs: '100%', sm: 'auto' },
                 minWidth: { sm: 320 },
@@ -934,7 +932,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                       </Tooltip>
                     </Box>
                     <Typography variant="body2" color="text.secondary">
-                      {[log.factoryName, log.lineName].filter(Boolean).join(' / ') || '-'}
+                      {log.factoryName || '-'}
                     </Typography>
                     <Box
                       sx={{
@@ -986,7 +984,6 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
               <TableRow>
                 <TableCell>{resolveText(TEXT.workDate, languageCode, '작업일자')}</TableCell>
                 <TableCell>{resolveText(TEXT.factory, languageCode, '공장')}</TableCell>
-                <TableCell>{resolveText(TEXT.line, languageCode, '라인')}</TableCell>
                 <TableCell align="right">
                   {isOutsourcingMode
                     ? resolveText(TEXT.partnerCount, languageCode, '업체 수')
@@ -1027,7 +1024,6 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                   >
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{log.workDate || '-'}</TableCell>
                     <TableCell>{log.factoryName || '-'}</TableCell>
-                    <TableCell>{log.lineName || '-'}</TableCell>
                     <TableCell align="right">
                       {isOutsourcingMode ? log.partnerCount || 0 : log.workerCount || 0}
                     </TableCell>

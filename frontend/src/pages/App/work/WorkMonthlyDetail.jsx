@@ -29,12 +29,11 @@ const TEXT = {
     vi: 'Phan tich san xuat',
   },
   searchPlaceholder: {
-    ko: '작업일, 라인 검색',
-    en: 'Search date, line',
-    vi: 'Tim ngay, chuyen',
+    ko: '작업일 검색',
+    en: 'Search work date',
+    vi: 'Tìm ngày làm việc',
   },
   workDate: { ko: '작업일', en: 'Work Date', vi: 'Ngay lam viec' },
-  line: { ko: '라인', en: 'Line', vi: 'Chuyền' },
   attendance: { ko: '근태', en: 'Attendance', vi: 'Cham cong' },
   items: { ko: '기록건수', en: 'Entries', vi: 'So dong' },
   averageCt: { ko: '일평균 CT', en: 'Daily Avg CT', vi: 'CT TB/ngay' },
@@ -254,7 +253,7 @@ const WorkMonthlyDetail = () => {
     const keyword = String(searchTerm || '').trim().toLowerCase();
     if (!keyword) return rows;
     return rows.filter((row) => {
-      const searchText = [row?.workDate, row?.lineName]
+      const searchText = [row?.workDate]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -275,10 +274,6 @@ const WorkMonthlyDetail = () => {
         {
           label: resolveText(TEXT.factory, languageCode, '공장'),
           value: summary.factoryName || '-',
-        },
-        {
-          label: resolveText(TEXT.line, languageCode, '라인'),
-          value: summary.lineName || '-',
         },
         {
           label: resolveText(TEXT.attendance, languageCode, '근태'),
@@ -322,7 +317,7 @@ const WorkMonthlyDetail = () => {
         <SearchInput
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
-          placeholder={resolveText(TEXT.searchPlaceholder, languageCode, '작업일, 라인 검색')}
+          placeholder={resolveText(TEXT.searchPlaceholder, languageCode, '작업일 검색')}
         />
       )}
     >
@@ -361,7 +356,6 @@ const WorkMonthlyDetail = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell>{resolveText(TEXT.workDate, languageCode, '작업일')}</TableCell>
-                    <TableCell>{resolveText(TEXT.line, languageCode, '라인')}</TableCell>
                     <TableCell align="right">
                       {resolveText(TEXT.items, languageCode, '기록건수')}
                     </TableCell>
@@ -386,7 +380,6 @@ const WorkMonthlyDetail = () => {
                     filteredRows.map((row) => (
                       <TableRow key={row.workDate}>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.workDate}</TableCell>
-                        <TableCell>{row.lineName || '-'}</TableCell>
                         <TableCell align="right">{row.recordCount || 0}</TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>
                           {row.averageCtPerDaySeconds == null
