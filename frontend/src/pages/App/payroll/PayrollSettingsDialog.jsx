@@ -10,11 +10,11 @@ import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../utils/
 const WEEKDAYS = { ko: ['월', '화', '수', '목', '금', '토', '일'], en: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], vi: ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] };
 const toPolicyDraft = (row) => ({ ...row, workWeekdays: [...(row.workWeekdays || [])].map(Number).sort(), breakMinutes: String(row.breakMinutes), workdayMinimumHours: String(Number(row.workdayMinimumMinutes) / 60) });
 const policyPayload = (rows) => rows.map((row) => ({ payType: row.payType, workWeekdays: [...row.workWeekdays].sort(), standardClockIn: row.standardClockIn, standardClockOut: row.standardClockOut, breakMinutes: Number(row.breakMinutes), workdayMinimumMinutes: Math.round(Number(row.workdayMinimumHours) * 60) }));
-const settingsSignature = (policies, attendanceSelected, payrollExcluded) => JSON.stringify({
-  policies: policyPayload(policies),
+const employeeSettingsSignature = (attendanceSelected, payrollExcluded) => JSON.stringify({
   alwaysFullAttendanceEmployeeIds: Array.from(attendanceSelected).sort((a, b) => a - b),
   payrollExcludedEmployeeIds: Array.from(payrollExcluded).sort((a, b) => a - b),
 });
+const policySignature = (policies) => JSON.stringify(policyPayload(policies));
 const timeMinutes = (value) => { const [hour, minute] = String(value || '').split(':').map(Number); return Number.isFinite(hour + minute) ? hour * 60 + minute : 0; };
 const dailyMinutes = (row) => { let span = timeMinutes(row.standardClockOut) - timeMinutes(row.standardClockIn); if (span <= 0) span += 1440; return Math.max(0, span - Number(row.breakMinutes || 0)); };
 
@@ -49,7 +49,8 @@ const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, sh
   const [attendanceSelected, setAttendanceSelected] = useState(new Set());
   const [payrollExcluded, setPayrollExcluded] = useState(new Set());
   const [policies, setPolicies] = useState([]);
-  const [baseline, setBaseline] = useState('');
+  const [employeeBaseline, setEmployeeBaseline] = useState('');
+  const [policyBaseline, setPolicyBaseline] = useState('');
   const [factoryId, setFactoryId] = useState('');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
@@ -67,14 +68,17 @@ const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, sh
       const nextPayrollExcluded = new Set(rows.filter((row) => row.payrollExcluded).map((row) => Number(row.id)));
       const nextPolicies = (Array.isArray(policyRows) ? policyRows : []).map(toPolicyDraft);
       setEmployees(rows); setAttendanceSelected(nextSelected); setPayrollExcluded(nextPayrollExcluded); setPolicies(nextPolicies);
-      setBaseline(settingsSignature(nextPolicies, nextSelected, nextPayrollExcluded));
+      setEmployeeBaseline(employeeSettingsSignature(nextSelected, nextPayrollExcluded));
+      setPolicyBaseline(policySignature(nextPolicies));
     }).catch((error) => showNotification(error?.message || 'Failed to load payroll settings.', 'error'))
       .finally(() => setLoading(false));
   }, [open, orgId, showNotification]);
 
   const factories = useMemo(() => Array.from(new Map(employees.filter((row) => row.factory).map((row) => [row.factory.id, row.factory])).values()), [employees]);
   const visible = useMemo(() => employees.filter((row) => (!factoryId || String(row.factoryId) === factoryId) && (!search.trim() || `${row.name || ''} ${row.employeeNo || ''} ${row.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()))), [employees, factoryId, search]);
-  const dirty = baseline !== '' && settingsSignature(policies, attendanceSelected, payrollExcluded) !== baseline;
+  const employeesDirty = employeeBaseline !== '' && employeeSettingsSignature(attendanceSelected, payrollExcluded) !== employeeBaseline;
+  const policiesDirty = policyBaseline !== '' && policySignature(policies) !== policyBaseline;
+  const dirty = employeesDirty || policiesDirty;
   const valid = policies.length === 3 && policies.every((row) => row.workWeekdays.length && dailyMinutes(row) > 0 && Number(row.workdayMinimumHours) > 0 && Number(row.workdayMinimumHours) * 60 <= dailyMinutes(row));
   const editPolicy = (type, key, value) => setPolicies((rows) => rows.map((row) => row.payType === type ? { ...row, [key]: value } : row));
   const toggleDay = (type, day) => setPolicies((rows) => rows.map((row) => row.payType !== type ? row : { ...row, workWeekdays: row.workWeekdays.includes(day) ? row.workWeekdays.filter((value) => value !== day) : [...row.workWeekdays, day].sort() }));
@@ -96,11 +100,12 @@ const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, sh
     if (!dirty || !valid) return;
     setSaving(true);
     try {
-      await Promise.all([
-        requestJSON('/payroll/settings' + buildQueryString({ orgId }), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alwaysFullAttendanceEmployeeIds: Array.from(attendanceSelected), payrollExcludedEmployeeIds: Array.from(payrollExcluded) }) }),
-        requestJSON('/employee-pay-type-policies' + buildQueryString({ orgId }), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ policies: policyPayload(policies) }) }),
-      ]);
-      setBaseline(settingsSignature(policies, attendanceSelected, payrollExcluded));
+      const requests = [];
+      if (employeesDirty) requests.push(requestJSON('/payroll/settings' + buildQueryString({ orgId }), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alwaysFullAttendanceEmployeeIds: Array.from(attendanceSelected), payrollExcludedEmployeeIds: Array.from(payrollExcluded) }) }));
+      if (policiesDirty) requests.push(requestJSON('/employee-pay-type-policies' + buildQueryString({ orgId }), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ policies: policyPayload(policies) }) }));
+      await Promise.all(requests);
+      setEmployeeBaseline(employeeSettingsSignature(attendanceSelected, payrollExcluded));
+      setPolicyBaseline(policySignature(policies));
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.EMPLOYEES, WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS], orgId, source: 'payroll-settings-save' });
       showNotification(text.saved, 'success'); onSaved?.(); onClose();
     } catch (error) { showNotification(error?.message || 'Failed to save payroll settings.', 'error'); }
