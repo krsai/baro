@@ -10,10 +10,12 @@ import {
   DialogContentText,
   DialogTitle,
   FormControl,
+  IconButton,
   InputLabel,
   InputAdornment,
   MenuItem,
   Paper,
+  Popover,
   Select,
   Skeleton,
   Stack,
@@ -29,11 +31,11 @@ import {
   Typography,
 } from '@mui/material';
 import AddOutlinedIcon from '@mui/icons-material/AddOutlined';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
-import { getStaticOptionOptions } from '../../../constants/staticOptionRegistry';
 import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -47,6 +49,11 @@ import {
   WORKSPACE_DATA_TOPICS,
   emitWorkspaceDataChanged,
 } from '../../../utils/workspaceDataEvents';
+
+// This board manages sales (revenue) prices only, where CMT vs. FP does not
+// change how the customer is billed, so the pricing-basis toggle is removed
+// from the UI and every read/write always uses this single fixed basis.
+const SALES_PRICING_BASIS = 'MANUFACTURING_SERVICE_PRICE';
 
 const SALES_BUCKET_PRESETS = Object.freeze([
   { id: '135', label: '1 · 3 · 5 방식', values: [1, 3, 5, 10, 30, 50, 100, 300, 500, 1000, 3000, 5000, 10000] },
@@ -68,7 +75,7 @@ const TEXT = {
     title: '단가',
     preview: '가격 입력 준비중',
     noticeTitle: '매출 단가와 수량 버킷을 관리합니다.',
-    noticeBody: '고객 기본 버킷 또는 스타일 예외 버킷을 정한 뒤, 판매 방식과 통화별 단가를 입력하고 저장하세요.',
+    noticeBody: '고객 기본 버킷 또는 스타일 예외 버킷을 정한 뒤, 통화별 단가를 입력하고 저장하세요.',
     customer: '고객사',
     selectCustomer: '고객사를 선택하세요',
     searchStyle: '스타일명 또는 코드 검색...',
@@ -82,12 +89,9 @@ const TEXT = {
     noCustomer: '고객사를 선택하면 등록된 스타일의 단가표가 표시됩니다.',
     noStyles: '이 고객사에 연결된 스타일이 없습니다.',
     loadFailed: '단가 관리 화면에 필요한 정보를 불러오지 못했습니다.',
-    save: '단가 저장',
+    save: '저장',
     styleCount: '{count}개 스타일',
     selectedCustomer: '선택 고객',
-    pricingBasis: '판매 방식',
-    salesBuckets: '매출 단가 버킷',
-    salesBucketsHelp: '고객 기본값을 정하고, 필요한 스타일만 별도 버킷으로 바꿀 수 있습니다.',
     bucketTarget: '적용 대상',
     customerDefault: '고객 기본값',
     useCustomerDefault: '고객 기본값 사용',
@@ -99,10 +103,7 @@ const TEXT = {
     duplicateBucket: '이미 있는 수량입니다.',
     keepOneBucket: '버킷은 최소 하나가 필요합니다.',
     inheritedHint: '현재 고객 기본 버킷을 사용합니다. 별도 설정을 선택하면 이 스타일만 변경할 수 있습니다.',
-    saveBuckets: '버킷 저장',
     bucketSaved: '수량 버킷을 저장했습니다.',
-    noBucketChanges: '변경된 버킷이 없습니다.',
-    savePricesFirst: '버킷을 변경하기 전에 편집 중인 단가를 저장하거나 취소하세요.',
     cancel: '취소',
     confirmBucketChange: '버킷 변경',
     addedBuckets: '추가',
@@ -114,7 +115,7 @@ const TEXT = {
     title: 'Pricing',
     preview: 'Price entry pending',
     noticeTitle: 'Manage sales prices and quantity buckets.',
-    noticeBody: 'Choose customer-default or style-specific buckets, then enter and save prices by pricing basis and currency.',
+    noticeBody: 'Choose customer-default or style-specific buckets, then enter and save prices by currency.',
     customer: 'Customer',
     selectCustomer: 'Select a customer',
     searchStyle: 'Search style name or code...',
@@ -128,12 +129,9 @@ const TEXT = {
     noCustomer: 'Select a customer to view the style price table.',
     noStyles: 'No styles are linked to this customer.',
     loadFailed: 'Failed to load data for the price management preview.',
-    save: 'Save Prices',
+    save: 'Save',
     styleCount: '{count} styles',
     selectedCustomer: 'Customer',
-    pricingBasis: 'Pricing Basis',
-    salesBuckets: 'Sales price buckets',
-    salesBucketsHelp: 'Set the customer default and override only the styles that need different buckets.',
     bucketTarget: 'Target',
     customerDefault: 'Customer default',
     useCustomerDefault: 'Use customer default',
@@ -145,10 +143,7 @@ const TEXT = {
     duplicateBucket: 'That quantity already exists.',
     keepOneBucket: 'At least one bucket is required.',
     inheritedHint: 'This style currently uses the customer default. Choose custom to edit only this style.',
-    saveBuckets: 'Save buckets',
     bucketSaved: 'Quantity buckets saved.',
-    noBucketChanges: 'There are no bucket changes.',
-    savePricesFirst: 'Save or discard the edited prices before changing buckets.',
     cancel: 'Cancel',
     confirmBucketChange: 'Change buckets',
     addedBuckets: 'Added',
@@ -160,7 +155,7 @@ const TEXT = {
     title: 'Đơn giá',
     preview: 'Nhap gia dang cho',
     noticeTitle: 'Quản lý don gia ban va moc so luong.',
-    noticeBody: 'Chon moc mac dinh cua khach hang hoac moc rieng cua style, sau do nhap va luu don gia theo hinh thuc gia va tien te.',
+    noticeBody: 'Chon moc mac dinh cua khach hang hoac moc rieng cua style, sau do nhap va luu don gia theo tien te.',
     customer: 'Khách hàng',
     selectCustomer: 'Chon khach hang',
     searchStyle: 'Tim ten hoac ma style...',
@@ -174,12 +169,9 @@ const TEXT = {
     noCustomer: 'Chon khach hang de xem bang don gia style.',
     noStyles: 'Không có style lien ket voi khach hang nay.',
     loadFailed: 'Không thể tai du lieu cho giao dien quan ly don gia.',
-    save: 'Luu don gia',
+    save: 'Luu',
     styleCount: '{count} style',
     selectedCustomer: 'Khách hàng',
-    pricingBasis: 'Hinh thuc gia',
-    salesBuckets: 'Moc so luong don gia',
-    salesBucketsHelp: 'Dat moc mac dinh cua khach hang va chi sua rieng style can ngoai le.',
     bucketTarget: 'Doi tuong',
     customerDefault: 'Mặc định khach hang',
     useCustomerDefault: 'Dung mac dinh khach hang',
@@ -191,10 +183,7 @@ const TEXT = {
     duplicateBucket: 'Số lượng nay da ton tai.',
     keepOneBucket: 'Can it nhat mot moc.',
     inheritedHint: 'Style nay dang dung moc mac dinh cua khach hang. Chon dat rieng de sua.',
-    saveBuckets: 'Luu moc',
     bucketSaved: 'Đã lưu moc so luong.',
-    noBucketChanges: 'Không có thay doi moc so luong.',
-    savePricesFirst: 'Hay luu hoac huy gia dang sua truoc khi doi moc.',
     cancel: 'Huy',
     confirmBucketChange: 'Doi moc',
     addedBuckets: 'Them',
@@ -350,17 +339,12 @@ const CustomerPricingBoard = () => {
   const text = useMemo(() => ({
     ...getText(languageCode),
     title: getUiMessage('customerPricingBoard.title', 'Pricing', languageCode),
-    save: getUiMessage('customerPricingBoard.save', 'Save Prices', languageCode),
+    save: getUiMessage('customerPricingBoard.save', 'Save', languageCode),
   }), [languageCode]);
-  const pricingBasisOptions = useMemo(
-    () => getStaticOptionOptions('commercialPricingBasis', languageCode),
-    [languageCode]
-  );
 
   const [customers, setCustomers] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [styles, setStyles] = useState([]);
-  const [pricingBasis, setPricingBasis] = useState('MANUFACTURING_SERVICE_PRICE');
   const [currencyCode, setCurrencyCode] = useState('USD');
   const [styleCurrencyOverrides, setStyleCurrencyOverrides] = useState({});
   const [savingCurrency, setSavingCurrency] = useState(false);
@@ -384,6 +368,7 @@ const CustomerPricingBoard = () => {
   const [savingPrices, setSavingPrices] = useState(false);
   const [priceReloadKey, setPriceReloadKey] = useState(0);
   const [bucketConfirmation, setBucketConfirmation] = useState(null);
+  const [noticeAnchorEl, setNoticeAnchorEl] = useState(null);
   const bucketConfirmationResolver = useRef(null);
 
   const requestBucketConfirmation = useCallback((details) => {
@@ -527,7 +512,7 @@ const CustomerPricingBoard = () => {
           payload: await requestJSON(
             `/customers/${selectedCustomerId}/sales-prices${buildQueryString({
               orgId: activeOrgId,
-              pricingBasis,
+              pricingBasis: SALES_PRICING_BASIS,
               currencyCode: code,
             })}`,
             { skipGlobalLoading: true }
@@ -539,12 +524,12 @@ const CustomerPricingBoard = () => {
           (Array.isArray(payload?.styles) ? payload.styles : []).forEach((style) => {
             (Array.isArray(style?.prices) ? style.prices : []).forEach((price) => {
               loadedPrices[
-                `${selectedCustomerId}:${pricingBasis}:${code}:${style.styleId}:${price.bucketQuantity}`
+                `${selectedCustomerId}:${SALES_PRICING_BASIS}:${code}:${style.styleId}:${price.bucketQuantity}`
               ] = String(price.unitPrice ?? '');
             });
           });
         });
-        const scopePrefix = `${selectedCustomerId}:${pricingBasis}:`;
+        const scopePrefix = `${selectedCustomerId}:${SALES_PRICING_BASIS}:`;
         setDraftPrices((previous) => {
           const next = Object.fromEntries(
             Object.entries(previous).filter(([key]) => !key.startsWith(scopePrefix))
@@ -569,7 +554,6 @@ const CustomerPricingBoard = () => {
     };
   }, [
     activeOrgId,
-    pricingBasis,
     priceReloadKey,
     selectedCustomerId,
     showNotification,
@@ -678,21 +662,12 @@ const CustomerPricingBoard = () => {
     ]
   );
 
+  // Saves the currently active bucket target's quantities (customer default or the
+  // selected style). Called from handleSaveAll only when there is an actual bucket
+  // change to apply; returns false when the save didn't happen (cancelled/failed) so
+  // the caller can skip the follow-up price save.
   const saveActiveBuckets = useCallback(async () => {
-    if (!selectedCustomerId) return;
-    const priceScopePrefix = `${selectedCustomerId}:${pricingBasis}:`;
-    const hasUnsavedPriceInScope = Object.entries(draftPrices).some(
-      ([key, value]) =>
-        key.startsWith(priceScopePrefix) &&
-        canonicalPrice(value) !== canonicalPrice(savedPrices[key])
-    );
-    if (hasUnsavedPriceInScope) {
-      showNotification(
-        text.savePricesFirst || 'Save or discard the edited prices before changing buckets.',
-        'warning'
-      );
-      return;
-    }
+    if (!selectedCustomerId) return false;
     const previousBuckets = selectedStyleId
       ? savedStyleBuckets[styleBucketKey] || resolvedCustomerBuckets
       : savedCustomerBuckets[customerBucketKey] || DEFAULT_SALES_BUCKETS;
@@ -701,14 +676,11 @@ const CustomerPricingBoard = () => {
       : savedCustomerBucketVersionIds[customerBucketKey];
     if (!expectedVersionId) {
       showNotification(text.loadFailed, 'error');
-      return;
+      return false;
     }
     const added = activeSalesBuckets.filter((quantity) => !previousBuckets.includes(quantity));
     const removed = previousBuckets.filter((quantity) => !activeSalesBuckets.includes(quantity));
-    if (added.length === 0 && removed.length === 0) {
-      showNotification(text.noBucketChanges, 'info');
-      return;
-    }
+    if (added.length === 0 && removed.length === 0) return true;
     const targetLabel = selectedStyleId
       ? styles.find((style) => String(style.id) === selectedStyleId)?.name || selectedStyleId
       : selectedCustomer?.name || selectedCustomer?.companyName || selectedCustomerId;
@@ -716,7 +688,7 @@ const CustomerPricingBoard = () => {
       ? `${targetLabel} 버킷을 변경합니다.\n\n추가: ${added.join(', ') || '없음'}\n삭제: ${removed.join(', ') || '없음'}\n\n기존 단가와 과거 급여 자료는 유지됩니다. 새 버킷의 단가는 비어 있고, ST는 바로 아래 구간 값으로 복사되어 빨간색 검토 대상으로 표시됩니다. 계속할까요?`
       : `Change buckets for ${targetLabel}?\n\nAdded: ${added.join(', ') || 'none'}\nRemoved: ${removed.join(', ') || 'none'}\n\nExisting prices and historical payroll remain unchanged. New prices stay empty and new ST values require review.`;
     const confirmed = await requestBucketConfirmation({ targetLabel, added, removed, confirmation });
-    if (!confirmed) return;
+    if (!confirmed) return false;
     setSavingBuckets(true);
     try {
       const result = await requestJSON(
@@ -762,8 +734,10 @@ const CustomerPricingBoard = () => {
         ? `영향 스타일 ${result?.affectedStyleCount || 0}개 · 유지 단가 ${result?.copiedPriceCount || 0}개 · 검토할 신규 ST ${result?.unreviewedStandardCount || 0}개`
         : `${result?.affectedStyleCount || 0} affected styles · ${result?.copiedPriceCount || 0} retained prices · ${result?.unreviewedStandardCount || 0} ST values to review`;
       showNotification(`${text.bucketSaved} ${summary}`, 'success');
+      return true;
     } catch (error) {
       showNotification(error?.message || text.loadFailed, 'error');
+      return false;
     } finally {
       setSavingBuckets(false);
     }
@@ -772,14 +746,11 @@ const CustomerPricingBoard = () => {
     activeSalesBuckets,
     customerBucketKey,
     customerQuery,
-    draftPrices,
     languageCode,
-    pricingBasis,
     resolvedCustomerBuckets,
     requestBucketConfirmation,
     savedCustomerBuckets,
     savedCustomerBucketVersionIds,
-    savedPrices,
     savedStyleBuckets,
     savedStyleBucketVersionIds,
     selectedCustomerId,
@@ -790,7 +761,6 @@ const CustomerPricingBoard = () => {
     styleBucketKey,
     styles,
     text.bucketSaved,
-    text.noBucketChanges,
     text.loadFailed,
   ]);
 
@@ -807,7 +777,7 @@ const CustomerPricingBoard = () => {
       activeSalesBuckets.flatMap((bucketQuantity) => {
         const effectiveCurrencyCode = resolveStyleCurrencyCode(style.id);
         const key =
-          `${selectedCustomerId}:${pricingBasis}:${effectiveCurrencyCode}:${style.id}:${bucketQuantity}`;
+          `${selectedCustomerId}:${SALES_PRICING_BASIS}:${effectiveCurrencyCode}:${style.id}:${bucketQuantity}`;
         const draft = draftPrices[key] || '';
         const saved = savedPrices[key] || '';
         if (canonicalPrice(draft) === canonicalPrice(saved)) return [];
@@ -825,7 +795,6 @@ const CustomerPricingBoard = () => {
       activeSalesBuckets,
       displayedStyles,
       draftPrices,
-      pricingBasis,
       savedPrices,
       selectedCustomerId,
       resolveStyleCurrencyCode,
@@ -837,19 +806,26 @@ const CustomerPricingBoard = () => {
     ),
     [dirtyPriceChanges]
   );
-  useUnsavedChanges(dirtyPriceChanges.length > 0);
+  const bucketChangeSummary = useMemo(() => {
+    const previousBuckets = selectedStyleId
+      ? savedStyleBuckets[styleBucketKey] || resolvedCustomerBuckets
+      : savedCustomerBuckets[customerBucketKey] || DEFAULT_SALES_BUCKETS;
+    const added = activeSalesBuckets.filter((quantity) => !previousBuckets.includes(quantity));
+    const removed = previousBuckets.filter((quantity) => !activeSalesBuckets.includes(quantity));
+    return { added, removed, hasChanges: added.length > 0 || removed.length > 0 };
+  }, [
+    activeSalesBuckets,
+    customerBucketKey,
+    resolvedCustomerBuckets,
+    savedCustomerBuckets,
+    savedStyleBuckets,
+    selectedStyleId,
+    styleBucketKey,
+  ]);
+  useUnsavedChanges(dirtyPriceChanges.length > 0 || bucketChangeSummary.hasChanges);
 
   const savePrices = useCallback(async () => {
-    if (!selectedCustomerId || dirtyPriceChanges.length === 0) return;
-    if (invalidPriceChanges.length > 0) {
-      const invalid = invalidPriceChanges[0];
-      showNotification(
-        `${invalid.styleName} / ${invalid.bucketQuantity}: ` +
-          'price must be greater than 0 with at most 14 integer digits and 4 decimals.',
-        'error'
-      );
-      return;
-    }
+    if (!selectedCustomerId || dirtyPriceChanges.length === 0) return true;
     setSavingPrices(true);
     try {
       const changesByCurrency = dirtyPriceChanges.reduce((map, change) => {
@@ -863,7 +839,7 @@ const CustomerPricingBoard = () => {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            pricingBasis,
+            pricingBasis: SALES_PRICING_BASIS,
             currencyCode: code,
             prices: changes.map(({ styleId, bucketQuantity, unitPrice }) => ({
               styleId, bucketQuantity, unitPrice,
@@ -886,8 +862,10 @@ const CustomerPricingBoard = () => {
             : 'Sales prices saved.',
         'success'
       );
+      return true;
     } catch (error) {
       showNotification(error?.message || text.loadFailed, 'error');
+      return false;
     } finally {
       setSavingPrices(false);
     }
@@ -895,32 +873,72 @@ const CustomerPricingBoard = () => {
     activeOrgId,
     customerQuery,
     dirtyPriceChanges,
-    invalidPriceChanges,
     languageCode,
-    pricingBasis,
     selectedCustomerId,
     showNotification,
     text.loadFailed,
+  ]);
+
+  const handleSaveAll = useCallback(async () => {
+    if (!selectedCustomerId) return;
+    if (invalidPriceChanges.length > 0) {
+      const invalid = invalidPriceChanges[0];
+      showNotification(
+        `${invalid.styleName} / ${invalid.bucketQuantity}: ` +
+          'price must be greater than 0 with at most 14 integer digits and 4 decimals.',
+        'error'
+      );
+      return;
+    }
+    if (bucketChangeSummary.hasChanges) {
+      const bucketsSaved = await saveActiveBuckets();
+      if (!bucketsSaved) return;
+    }
+    if (dirtyPriceChanges.length > 0) {
+      await savePrices();
+    }
+  }, [
+    bucketChangeSummary.hasChanges,
+    dirtyPriceChanges.length,
+    invalidPriceChanges,
+    saveActiveBuckets,
+    savePrices,
+    selectedCustomerId,
+    showNotification,
   ]);
 
   const customerLabel = selectedCustomer
     ? resolveCustomerDisplayName(selectedCustomer, languageCode) || selectedCustomer.code || '-'
     : '-';
 
+  const hasNothingToSave = !bucketChangeSummary.hasChanges && dirtyPriceChanges.length === 0;
+
   return (
     <AppPageContainer
-      title={text.title}
+      title={(
+        <Stack direction="row" spacing={0.25} alignItems="center" component="span">
+          <span>{text.title}</span>
+          <IconButton
+            size="small"
+            onClick={(event) => setNoticeAnchorEl(event.currentTarget)}
+            aria-label={text.noticeTitle}
+            sx={{ color: 'text.secondary' }}
+          >
+            <InfoOutlinedIcon fontSize="small" />
+          </IconButton>
+        </Stack>
+      )}
       titleActions={
         <Stack direction="row" spacing={1} alignItems="center">
           <Button
             variant="contained"
-            onClick={savePrices}
+            onClick={handleSaveAll}
             disabled={
               loadingPrices ||
               savingPrices ||
+              savingBuckets ||
               !selectedCustomerId ||
-              displayedStyles.length === 0 ||
-              dirtyPriceChanges.length === 0 ||
+              hasNothingToSave ||
               invalidPriceChanges.length > 0
             }
           >
@@ -970,21 +988,6 @@ const CustomerPricingBoard = () => {
                 </Select>
               </FormControl>
 
-              <ToggleButtonGroup
-                size="small"
-                value={pricingBasis}
-                exclusive
-                onChange={(_event, value) => {
-                  if (value) setPricingBasis(value);
-                }}
-              >
-                {pricingBasisOptions.map((option) => (
-                  <ToggleButton key={option.value} value={option.value}>
-                    {option.label}
-                  </ToggleButton>
-                ))}
-              </ToggleButtonGroup>
-
               <FormControl size="small" sx={{ minWidth: 110 }}>
                 <InputLabel>{text.defaultCurrency}</InputLabel>
                 <Select
@@ -1004,20 +1007,66 @@ const CustomerPricingBoard = () => {
       }
     >
       <Stack spacing={2}>
-        <Alert severity="info">
-          <Typography variant="body2" sx={{ fontWeight: 800 }}>
-            {text.noticeTitle}
-          </Typography>
-          <Typography variant="body2">{text.noticeBody}</Typography>
-        </Alert>
-
-        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-          <Chip label={`${text.selectedCustomer}: ${customerLabel}`} />
-          <Chip
-            label={formatMessage(text.styleCount, { count: styles.length })}
-            variant="outlined"
-          />
-          <Chip label={`${text.defaultCurrency}: ${currencyCode}`} variant="outlined" />
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={1}
+          justifyContent="space-between"
+          alignItems={{ md: 'center' }}
+          useFlexGap
+          flexWrap="wrap"
+        >
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+            <Chip label={`${text.selectedCustomer}: ${customerLabel}`} />
+            <Chip
+              label={formatMessage(text.styleCount, { count: styles.length })}
+              variant="outlined"
+            />
+            <Chip label={`${text.defaultCurrency}: ${currencyCode}`} variant="outlined" />
+          </Stack>
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center">
+            <FormControl size="small" sx={{ minWidth: 220 }}>
+              <InputLabel>{text.bucketTarget}</InputLabel>
+              <Select
+                value={bucketTarget}
+                label={text.bucketTarget}
+                onChange={(event) => {
+                  setBucketTarget(event.target.value);
+                  setNewSalesBucket('');
+                }}
+              >
+                <MenuItem value="customer">{text.customerDefault}</MenuItem>
+                {styles.map((style) => (
+                  <MenuItem key={style.id} value={`style:${style.id}`}>
+                    {style.name || style.styleCode || style.id}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl
+              size="small"
+              sx={{ minWidth: 170 }}
+              disabled={!canEditSalesBuckets}
+            >
+              <InputLabel>{text.bucketPreset}</InputLabel>
+              <Select
+                value={resolvePresetId(SALES_BUCKET_PRESETS, activeSalesBuckets)}
+                label={text.bucketPreset}
+                onChange={(event) => {
+                  const preset = SALES_BUCKET_PRESETS.find(
+                    (candidate) => candidate.id === event.target.value
+                  );
+                  if (preset) updateActiveSalesBuckets(preset.values);
+                }}
+              >
+                {SALES_BUCKET_PRESETS.map((preset) => (
+                  <MenuItem key={preset.id} value={preset.id}>
+                    {preset.label}
+                  </MenuItem>
+                ))}
+                <MenuItem value="custom" disabled>{text.customPreset}</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
         </Stack>
         {hiddenCustomStyleCount > 0 && (
           <Alert severity="warning">
@@ -1037,44 +1086,17 @@ const CustomerPricingBoard = () => {
             <TableContainer>
               <Table size="small" sx={{ minWidth: 1450 }}>
                 <TableHead>
-                  <TableRow>
-                    <TableCell
-                      colSpan={activeSalesBuckets.length + 3}
-                      sx={{ py: 1.25, backgroundColor: 'grey.50' }}
-                    >
-                      <Stack
-                        direction={{ xs: 'column', lg: 'row' }}
-                        spacing={1}
-                        alignItems={{ lg: 'center' }}
+                  {selectedStyleId && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={activeSalesBuckets.length + 3}
+                        sx={{ py: 1.25, backgroundColor: 'grey.50' }}
                       >
-                        <Box sx={{ minWidth: 175 }}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-                            {text.salesBuckets}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {text.salesBucketsHelp}
-                          </Typography>
-                        </Box>
-                        <FormControl size="small" sx={{ minWidth: 240 }}>
-                          <InputLabel>{text.bucketTarget}</InputLabel>
-                          <Select
-                            value={bucketTarget}
-                            label={text.bucketTarget}
-                            onChange={(event) => {
-                              setBucketTarget(event.target.value);
-                              setNewSalesBucket('');
-                            }}
-                          >
-                            <MenuItem value="customer">{text.customerDefault}</MenuItem>
-                            {styles.map((style) => (
-                              <MenuItem key={style.id} value={`style:${style.id}`}>
-                                {style.name || style.styleCode || style.id}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-
-                        {selectedStyleId && (
+                        <Stack
+                          direction={{ xs: 'column', lg: 'row' }}
+                          spacing={1}
+                          alignItems={{ lg: 'center' }}
+                        >
                           <ToggleButtonGroup
                             size="small"
                             exclusive
@@ -1100,9 +1122,7 @@ const CustomerPricingBoard = () => {
                               {text.useStyleBuckets}
                             </ToggleButton>
                           </ToggleButtonGroup>
-                        )}
 
-                        {selectedStyleId && (
                           <FormControl size="small" sx={{ minWidth: 190 }}>
                             <InputLabel>{text.styleCurrency}</InputLabel>
                             <Select
@@ -1118,49 +1138,16 @@ const CustomerPricingBoard = () => {
                               {CURRENCY_CODES.map((code) => <MenuItem key={code} value={code}>{code}</MenuItem>)}
                             </Select>
                           </FormControl>
-                        )}
 
-                        <FormControl
-                          size="small"
-                          sx={{ minWidth: 180 }}
-                          disabled={!canEditSalesBuckets}
-                        >
-                          <InputLabel>{text.bucketPreset}</InputLabel>
-                          <Select
-                            value={resolvePresetId(SALES_BUCKET_PRESETS, activeSalesBuckets)}
-                            label={text.bucketPreset}
-                            onChange={(event) => {
-                              const preset = SALES_BUCKET_PRESETS.find(
-                                (candidate) => candidate.id === event.target.value
-                              );
-                              if (preset) updateActiveSalesBuckets(preset.values);
-                            }}
-                          >
-                            {SALES_BUCKET_PRESETS.map((preset) => (
-                              <MenuItem key={preset.id} value={preset.id}>
-                                {preset.label}
-                              </MenuItem>
-                            ))}
-                            <MenuItem value="custom" disabled>{text.customPreset}</MenuItem>
-                          </Select>
-                        </FormControl>
-
-                        {selectedStyleId && !selectedStyleUsesCustomBuckets && (
-                          <Typography variant="caption" color="text.secondary">
-                            {text.inheritedHint}
-                          </Typography>
-                        )}
-                        <Button
-                          size="small"
-                          variant="contained"
-                          onClick={saveActiveBuckets}
-                          disabled={savingBuckets || !selectedCustomerId}
-                        >
-                          {text.saveBuckets}
-                        </Button>
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
+                          {!selectedStyleUsesCustomBuckets && (
+                            <Typography variant="caption" color="text.secondary">
+                              {text.inheritedHint}
+                            </Typography>
+                          )}
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  )}
                   <TableRow>
                     <TableCell sx={{ minWidth: 190, fontWeight: 800, position: 'sticky', left: 0, zIndex: 4 }}>
                       {text.style}
@@ -1233,7 +1220,7 @@ const CustomerPricingBoard = () => {
                       key={style.id}
                       style={style}
                       quantities={activeSalesBuckets}
-                      scopePrefix={`${selectedCustomerId}:${pricingBasis}:${resolveStyleCurrencyCode(style.id)}:`}
+                      scopePrefix={`${selectedCustomerId}:${SALES_PRICING_BASIS}:${resolveStyleCurrencyCode(style.id)}:`}
                       draftPrices={draftPrices}
                       focusedPriceKey={focusedPriceKey}
                       currencyCode={resolveStyleCurrencyCode(style.id)}
@@ -1282,6 +1269,21 @@ const CustomerPricingBoard = () => {
           </Button>
         </DialogActions>
       </Dialog>
+      <Popover
+        open={Boolean(noticeAnchorEl)}
+        anchorEl={noticeAnchorEl}
+        onClose={() => setNoticeAnchorEl(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Box sx={{ p: 2, maxWidth: 320 }}>
+          <Typography variant="body2" sx={{ fontWeight: 800, mb: 0.5 }}>
+            {text.noticeTitle}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {text.noticeBody}
+          </Typography>
+        </Box>
+      </Popover>
     </AppPageContainer>
   );
 };

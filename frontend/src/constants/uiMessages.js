@@ -105,7 +105,7 @@ export const UI_MESSAGES = {
   },
   customerPricingBoard: {
     title: { ko: '단가', en: 'Pricing', vi: 'Đơn giá' },
-    save: { ko: '단가 저장', en: 'Save Prices', vi: 'Lưu đơn giá' },
+    save: { ko: '저장', en: 'Save', vi: 'Lưu' },
   },
   accessPolicy: {
     save: { ko: '\uC800\uC7A5', en: 'Save', vi: 'Luu' },
