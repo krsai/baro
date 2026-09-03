@@ -143,6 +143,7 @@ const formatDong = (value) =>
     maximumFractionDigits: 0,
   })} VND`;
 const productionAllowanceOf = (employee) => Number(employee?.productionAllowance ?? employee?.productionEarnings ?? 0) || 0;
+const SALARY_ITEM_CATEGORY_ORDER = { BASE: 0, ALLOWANCE: 1, INCENTIVE: 2 };
 const normalizeEmployeePayType = (value) => {
   return normalizePayType(value, "GENERAL");
 };
@@ -516,13 +517,21 @@ const PayrollEntry = () => {
     (employee) => {
       const calculatedItems = Array.isArray(employee?.salaryItems) ? employee.salaryItems : [];
       if (calculatedItems.length > 0)
-        return calculatedItems.map((item) => ({
-          key: item.code,
-          name: salaryItemName(item),
-          category: item.category,
-          formula: formatSalaryFormulaValues(item, employee?.parameters),
-          amount: formatDong(item.amount),
-        }));
+        return calculatedItems
+          .map((item, sourceIndex) => ({
+            key: item.code,
+            name: salaryItemName(item),
+            category: item.category,
+            formula: formatSalaryFormulaValues(item, employee?.parameters),
+            amount: formatDong(item.amount),
+            sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : sourceIndex,
+            sourceIndex,
+          }))
+          .sort((left, right) =>
+            (SALARY_ITEM_CATEGORY_ORDER[left.category] ?? 99) - (SALARY_ITEM_CATEGORY_ORDER[right.category] ?? 99)
+            || left.sortOrder - right.sortOrder
+            || left.sourceIndex - right.sourceIndex
+          );
       return [
         {
           key: "legacy-base",
@@ -761,7 +770,13 @@ const PayrollEntry = () => {
           </Paper>
         ) : null}
       </Box>
-      <Dialog open={Boolean(payslipEmployee)} onClose={() => setPayslipEmployee(null)} fullWidth maxWidth="md">
+      <Dialog
+        open={Boolean(payslipEmployee)}
+        onClose={() => setPayslipEmployee(null)}
+        slotProps={{ backdrop: { onClick: () => setPayslipEmployee(null) } }}
+        fullWidth
+        maxWidth="md"
+      >
         <DialogTitle>
           <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
             <Stack direction="row" spacing={1} alignItems="center">
