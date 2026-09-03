@@ -791,17 +791,6 @@ const PayrollEntry = () => {
           </Stack>
         </DialogTitle>
         <DialogContent dividers>
-          {productionAllowanceOf(payslipEmployee) > 0 ? (
-            <Stack direction="row" alignItems="center" justifyContent="center" spacing={1} sx={{ mb: 2 }}>
-              <IconButton size="small" disabled={payslipPageIndex === 0} onClick={() => setPayslipPageIndex(0)}>
-                <ChevronLeftIcon fontSize="small" />
-              </IconButton>
-              <Typography variant="caption" color="text.secondary">{payslipPageIndex + 1} / 2</Typography>
-              <IconButton size="small" disabled={payslipPageIndex === 1} onClick={() => setPayslipPageIndex(1)}>
-                <ChevronRightIcon fontSize="small" />
-              </IconButton>
-            </Stack>
-          ) : null}
           <Stack spacing={2} sx={{ display: payslipPageIndex === 0 ? "flex" : "none" }}>
             <Typography variant="subtitle2" fontWeight={700} fontSize={13}>{payslipInfoText.basicInfo}</Typography>
             <Box
@@ -903,6 +892,17 @@ const PayrollEntry = () => {
               ) : (
                 <Typography variant="body2" color="text.secondary">{text.noRecords}</Typography>
               )}
+            </Stack>
+          ) : null}
+          {productionAllowanceOf(payslipEmployee) > 0 ? (
+            <Stack direction="row" alignItems="center" justifyContent="center" spacing={1} sx={{ mt: 2 }}>
+              <IconButton size="small" disabled={payslipPageIndex === 0} onClick={() => setPayslipPageIndex(0)}>
+                <ChevronLeftIcon fontSize="small" />
+              </IconButton>
+              <Typography variant="caption" color="text.secondary">{payslipPageIndex + 1} / 2</Typography>
+              <IconButton size="small" disabled={payslipPageIndex === 1} onClick={() => setPayslipPageIndex(1)}>
+                <ChevronRightIcon fontSize="small" />
+              </IconButton>
             </Stack>
           ) : null}
         </DialogContent>
