@@ -78,6 +78,7 @@ const isPayrollEmployeeRelevantForMonth = (
   employee: any,
   range: { start: Date; endExclusive: Date }
 ) => {
+  if (employee?.payrollExcluded) return false;
   const membershipStatus = String(employee?.status || "")
     .trim()
     .toUpperCase();
@@ -412,6 +413,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
           const employee = record.workerId ? employeeById.get(record.workerId) : null;
           if (
             employee &&
+            isPayrollEmployeeRelevantForMonth(employee, payrollMonthRange) &&
             resolveEmployeeEffectivePayType(employee) === EMPLOYEE_PAY_TYPE.OUTPUT
           ) {
             const quantity = Number(record.quantity);
@@ -807,7 +809,7 @@ export const getPayrollSettings = async (orgId: number) => ({
     where: { orgId, status: { notIn: ["PENDING", "REJECTED"] } },
     select: {
       id: true, employeeNo: true, name: true, email: true, factoryId: true,
-      orgRole: true, status: true, alwaysFullAttendance: true,
+      orgRole: true, status: true, alwaysFullAttendance: true, payrollExcluded: true,
       factory: { select: { id: true, name: true, nameKo: true, nameVi: true } },
       role: { select: { name: true } },
     },
@@ -817,17 +819,30 @@ export const getPayrollSettings = async (orgId: number) => ({
 
 export const updatePayrollSettings = async (
   orgId: number,
-  alwaysFullAttendanceEmployeeIds: unknown
+  alwaysFullAttendanceEmployeeIds: unknown,
+  payrollExcludedEmployeeIds: unknown
 ) => {
   if (!Array.isArray(alwaysFullAttendanceEmployeeIds)) {
     throw createHttpError(400, "alwaysFullAttendanceEmployeeIds must be an array");
+  }
+  if (!Array.isArray(payrollExcludedEmployeeIds)) {
+    throw createHttpError(400, "payrollExcludedEmployeeIds must be an array");
   }
   const ids = Array.from(new Set(alwaysFullAttendanceEmployeeIds.map(toPositiveIntOrNull)));
   if (ids.some((id) => id === null)) {
     throw createHttpError(400, "alwaysFullAttendanceEmployeeIds contains an invalid employee id");
   }
   const employeeIds = ids as number[];
-  if (await prisma.employee.count({ where: { orgId, id: { in: employeeIds } } }) !== employeeIds.length) {
+  const excludedIds = Array.from(new Set(payrollExcludedEmployeeIds.map(toPositiveIntOrNull)));
+  if (excludedIds.some((id) => id === null)) {
+    throw createHttpError(400, "payrollExcludedEmployeeIds contains an invalid employee id");
+  }
+  const payrollExcludedIds = excludedIds as number[];
+  if (employeeIds.some((id) => payrollExcludedIds.includes(id))) {
+    throw createHttpError(400, "an employee cannot be both an attendance exception and a payroll exception");
+  }
+  const configuredIds = Array.from(new Set([...employeeIds, ...payrollExcludedIds]));
+  if (await prisma.employee.count({ where: { orgId, id: { in: configuredIds } } }) !== configuredIds.length) {
     throw createHttpError(400, "employee does not belong to the organization");
   }
   await prisma.$transaction([
@@ -838,6 +853,14 @@ export const updatePayrollSettings = async (
     prisma.employee.updateMany({
       where: { orgId, alwaysFullAttendance: false, id: { in: employeeIds } },
       data: { alwaysFullAttendance: true },
+    }),
+    prisma.employee.updateMany({
+      where: { orgId, payrollExcluded: true, id: { notIn: payrollExcludedIds } },
+      data: { payrollExcluded: false },
+    }),
+    prisma.employee.updateMany({
+      where: { orgId, payrollExcluded: false, id: { in: payrollExcludedIds } },
+      data: { payrollExcluded: true },
     }),
   ]);
   return getPayrollSettings(orgId);
@@ -1001,6 +1024,7 @@ export const getPayrollByMonth = async (
       const effectivePayType = employee
         ? resolveEmployeeEffectivePayType(employee)
         : EMPLOYEE_PAY_TYPE.OUTPUT;
+      if (employee?.payrollExcluded) continue;
       if (effectivePayType !== EMPLOYEE_PAY_TYPE.OUTPUT) continue;
       const ctSeconds = Number(record.ctSeconds);
       const quantity = Number(record.quantity);

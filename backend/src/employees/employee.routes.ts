@@ -97,6 +97,7 @@ const toEmployeeResponse = (employee: any) => ({
   leaveStartAt: employee?.leaveStartAt ?? null,
   leaveEndAt: employee?.leaveEndAt ?? null,
   alwaysFullAttendance: Boolean(employee?.alwaysFullAttendance),
+  payrollExcluded: Boolean(employee?.payrollExcluded),
   createdAt: employee?.createdAt ?? null,
   updatedAt: employee?.updatedAt ?? null,
 });

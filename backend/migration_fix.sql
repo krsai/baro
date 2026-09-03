@@ -34,6 +34,10 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 ALTER TABLE "Employee"
   ADD COLUMN IF NOT EXISTS "alwaysFullAttendance" BOOLEAN NOT NULL DEFAULT false;
 
+-- 2026-09-03: employees who remain active but must never be included in payroll.
+ALTER TABLE "Employee"
+  ADD COLUMN IF NOT EXISTS "payrollExcluded" BOOLEAN NOT NULL DEFAULT false;
+
 -- Step 0r: outsourced production records (20260814)
 -- Railway runs this idempotent file as the production schema source of truth.
 ALTER TABLE "OrgRelationship"

@@ -497,6 +497,7 @@ model Employee {
   leaveStartAt        DateTime?
   leaveEndAt          DateTime?
   alwaysFullAttendance Boolean       @default(false)
+  payrollExcluded      Boolean       @default(false)
   createdAt           DateTime       @default(now())
   createdBy           String         @default("system@baro.local")
   createdByEmployeeId Int?

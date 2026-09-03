@@ -26,7 +26,8 @@ export const updatePayrollSettingsController = async (req: Request, res: Respons
   if (!accessContext) return;
   return res.json(await updatePayrollSettings(
     accessContext.organization.id,
-    req.body?.alwaysFullAttendanceEmployeeIds
+    req.body?.alwaysFullAttendanceEmployeeIds,
+    req.body?.payrollExcludedEmployeeIds
   ));
 };
 import {

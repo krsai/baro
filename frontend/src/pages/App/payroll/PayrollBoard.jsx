@@ -156,7 +156,10 @@ const PayrollBoard = () => {
     : languageCode === 'vi'
       ? { people: 'Tổng (VP cố định/SX cố định/SX biến đổi)', generalPayroll: 'Lương VP cố định', fixedOutputPayroll: 'Lương SX cố định', outputPayroll: 'Lương SX biến đổi', totalPayroll: 'Tổng lương', lock: 'Khóa', pending: 'Chưa tính' }
       : { people: 'Total (Office Fixed/Production Fixed/Production Variable)', generalPayroll: 'Office (Fixed)', fixedOutputPayroll: 'Production (Fixed)', outputPayroll: 'Production (Variable)', totalPayroll: 'Total Payroll', lock: 'Lock', pending: 'Not calculated' };
-  const activeEmployees = useMemo(() => employeeDirectory.filter((employee) => !['PENDING', 'REJECTED', 'TERMINATED'].includes(String(employee?.status || '').toUpperCase())), [employeeDirectory]);
+  const activeEmployees = useMemo(() => employeeDirectory.filter((employee) =>
+    !employee?.payrollExcluded &&
+    !['PENDING', 'REJECTED', 'TERMINATED'].includes(String(employee?.status || '').toUpperCase())
+  ), [employeeDirectory]);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!activeOrgId) return;
