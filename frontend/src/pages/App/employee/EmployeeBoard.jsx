@@ -1715,7 +1715,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   select
                   size="small"
                   label={text('jobLabel', languageCode)}
-                  value={drawerEffectiveJobRoleId}
+                  value={drawerDraft.jobRoleId || defaultWorkerJobRoleId}
                   onChange={(e) => handleDrawerDraftChange({ jobRoleId: e.target.value })}
                   disabled={isDrawerSaving}
                 >
