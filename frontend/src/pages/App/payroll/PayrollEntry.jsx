@@ -736,7 +736,7 @@ const PayrollEntry = () => {
                           <TableCell align="right">{formatDong(allowanceAmount)}</TableCell>
                           <TableCell align="right">
                             {employee.payType === "OUTPUT" ? (
-                              <Typography variant="body2" sx={{ fontWeight: 700 }}>{formatDong(productionAllowanceOf(employee))}</Typography>
+                              formatDong(productionAllowanceOf(employee))
                             ) : (
                               <Typography variant="body2" color="text.secondary">
                                 {payslipText.notApplicable}

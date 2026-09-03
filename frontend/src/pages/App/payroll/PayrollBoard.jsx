@@ -425,9 +425,9 @@ const PayrollBoard = () => {
           >
             {calculating
               ? resolveText(languageCode, 'calculating')
-              : languageCode === 'ko' ? `일괄 계산 (${batchTargetRows.length})`
-                : languageCode === 'vi' ? `Tính hàng loạt (${batchTargetRows.length})`
-                  : `Calculate All (${batchTargetRows.length})`}
+              : languageCode === 'ko' ? `급여 계산 (${batchTargetRows.length})`
+                : languageCode === 'vi' ? `Tính lương (${batchTargetRows.length})`
+                  : `Calculate Payroll (${batchTargetRows.length})`}
           </Button>
         </Stack>
       )} />}
@@ -478,7 +478,7 @@ const PayrollBoard = () => {
                         >
                           <TableCell sx={{ fontWeight: 700 }}>{month}</TableCell>
                           <TableCell>{factoryLabel || '-'}</TableCell>
-                          <TableCell align="right">{summaryEmployees.length} ({generalEmployees.length}/{fixedOutputEmployees.length}/{outputEmployees.length}){text.peopleSuffix}</TableCell>
+                          <TableCell align="right">{summaryEmployees.length}{text.peopleSuffix}({generalEmployees.length}, {fixedOutputEmployees.length}, {outputEmployees.length})</TableCell>
                           <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? generalPayroll || '-' : payrollSummaryText.pending}</TableCell>
                           <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? fixedOutputPayroll || '-' : payrollSummaryText.pending}</TableCell>
                           <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? outputPayroll || '-' : payrollSummaryText.pending}</TableCell>
