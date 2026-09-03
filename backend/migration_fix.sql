@@ -4933,6 +4933,7 @@ DO $$ BEGIN ALTER TABLE "EmployeePayTypePolicy" ADD CONSTRAINT "EmployeePayTypeP
 
 -- 2026-09-01: optimistic concurrency guard for payroll mutations.
 ALTER TABLE "PayrollSnapshot" ADD COLUMN IF NOT EXISTS "revision" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "PayrollSnapshot" ADD COLUMN IF NOT EXISTS "recalculationRequested" BOOLEAN NOT NULL DEFAULT false;
 UPDATE "SalaryItem" s SET "factoryId"=(SELECT id FROM "Factory" WHERE "orgId"=s."orgId" ORDER BY id LIMIT 1) WHERE s."factoryId" IS NULL;
 UPDATE "SalaryItemRate" s SET "factoryId"=(SELECT id FROM "Factory" WHERE "orgId"=s."orgId" ORDER BY id LIMIT 1) WHERE s."factoryId" IS NULL;
 UPDATE "SalarySystemVersion" s SET "factoryId"=(SELECT id FROM "Factory" WHERE "orgId"=s."orgId" ORDER BY id LIMIT 1) WHERE s."factoryId" IS NULL;

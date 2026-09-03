@@ -311,7 +311,13 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     }),
     prisma.payrollSnapshot.findUnique({
       where: { orgId_month_factoryId: { orgId, month, factoryId } },
-      select: { id: true, isProvisional: true, lockedAt: true, data: true },
+      select: {
+        id: true,
+        isProvisional: true,
+        recalculationRequested: true,
+        lockedAt: true,
+        data: true,
+      },
     }),
     loadEmployeePayTypePolicies(orgId),
   ]);
@@ -539,7 +545,11 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       ),
     };
   });
-  const needsRecalculation = salaryCalculationChanged || groupsWithRecalculation.some((group) => group.needsRecalculation);
+  const needsRecalculation = Boolean(
+    snapshot?.recalculationRequested ||
+    salaryCalculationChanged ||
+    groupsWithRecalculation.some((group) => group.needsRecalculation)
+  );
 
   return {
     month,
@@ -1200,7 +1210,14 @@ export const savePayrollSnapshot = async ({
   if (!existingSnapshot) {
     try {
       return await prisma.payrollSnapshot.create({ data: {
-        orgId, month, factoryId, data: snapshotEmployees, lockedAt: savedAt, lockedBy: savedByText, isProvisional: true,
+        orgId,
+        month,
+        factoryId,
+        data: snapshotEmployees,
+        lockedAt: savedAt,
+        lockedBy: savedByText,
+        isProvisional: true,
+        recalculationRequested: false,
       } });
     } catch (error: any) {
       if (error?.code === "P2002") throw createHttpError(409, "payroll was created by another request");
@@ -1214,6 +1231,7 @@ export const savePayrollSnapshot = async ({
       lockedAt: savedAt,
       lockedBy: savedByText,
       isProvisional: true,
+      recalculationRequested: false,
       revision: { increment: 1 },
     },
   });
@@ -1499,7 +1517,14 @@ export const unlockPayrollSnapshot = async (orgId: number, monthInput: string, f
   }
 
   if (existing.isProvisional) return { ok: true, month };
-  const unlocked = await prisma.payrollSnapshot.updateMany({ where: { id: existing.id, isProvisional: false, revision: existing.revision }, data: { isProvisional: true, revision: { increment: 1 } } });
+  const unlocked = await prisma.payrollSnapshot.updateMany({
+    where: { id: existing.id, isProvisional: false, revision: existing.revision },
+    data: {
+      isProvisional: true,
+      recalculationRequested: true,
+      revision: { increment: 1 },
+    },
+  });
   if (unlocked.count !== 1) throw createHttpError(409, "payroll state changed while unlocking");
   return { ok: true, month };
 };
