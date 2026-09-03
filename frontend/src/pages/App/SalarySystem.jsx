@@ -234,6 +234,7 @@ const SalarySystem = () => {
   const [versionBoundaries, setVersionBoundaries] = useState({});
   const [savedVersionBoundaries, setSavedVersionBoundaries] = useState({});
   const [versionBusy, setVersionBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(DEFAULT_DRAFT);
   const [message, setMessage] = useState(null);
   const [formulaDialogOpen, setFormulaDialogOpen] = useState(false);
@@ -341,6 +342,8 @@ const SalarySystem = () => {
     });
   };
   const saveDraft = async () => {
+    if (saving || !isDirty) return;
+    setSaving(true);
     try {
       const editableItems = new Map(items.filter((itemRow) => itemRow.category !== 'INCENTIVE').map((itemRow) => [String(itemRow.id), itemRow]));
       const rateRows = Object.entries(rates).flatMap(([key, itemRates]) => {
@@ -355,6 +358,8 @@ const SalarySystem = () => {
       openVersionDialog(Array.isArray(refreshed?.versions) ? refreshed.versions : versions);
     } catch (error) {
       showNotification(error?.message || 'Failed to save salary system.', 'error');
+    } finally {
+      setSaving(false);
     }
   };
   const openVersionDialog = (versionRows = versions) => {
@@ -473,7 +478,7 @@ const SalarySystem = () => {
       </Tabs>
       <Stack direction="row" spacing={1} sx={{ pb: 0.75, flexShrink: 0 }}>
         <Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog}>{t('버전 관리')}</Button>
-        <SaveButton onClick={saveDraft} disabled={!isDirty}>{t('저장')}</SaveButton>
+        <SaveButton onClick={saveDraft} loading={saving} disabled={!isDirty}>{t('저장')}</SaveButton>
       </Stack>
     </Stack>}
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}

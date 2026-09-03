@@ -134,7 +134,7 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
       await tx.salaryItem.updateMany({ where: { orgId: org.id, factoryId: factory.id, code: { notIn: [...codes] }, required: false }, data: { isActive: false } });
       await tx.salaryItemRate.deleteMany({ where: { orgId: org.id, factoryId: factory.id } });
       if (rates.length) await tx.salaryItemRate.createMany({ data: rates.map((r) => ({ orgId: org.id, factoryId: factory.id, payType: r.payType, gradeId: Number(r.gradeId), salaryItemId: ids.get(String(r.salaryItemCode))!, amount: Number(r.amount) })) });
-    });
+    }, { timeout: 30000 });
     res.json(await state(org.id, factory.id));
   });
 
