@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Tooltip, alpha } from "@mui/material";
+import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Tooltip, alpha } from "@mui/material";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import LockOpenOutlinedIcon from "@mui/icons-material/LockOpenOutlined";
 import PrintOutlinedIcon from "@mui/icons-material/PrintOutlined";
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import AppPageContainer from "../../../components/AppPageContainer";
 import PageToolbar from "../../../components/PageToolbar";
-import TableStatusRow from "../../../components/TableStatusRow";
 import { useAppActions } from "../../../context/AppContext";
 import { useAuth } from "../../../context/AuthContext";
 import { useLanguage } from "../../../context/LanguageContext";
@@ -141,16 +142,6 @@ const formatDong = (value) =>
     fallback: "0",
     maximumFractionDigits: 0,
   })} VND`;
-const formatSeconds = (value) =>
-  `${formatNumberWithCommas(Math.round(Number(value) || 0), {
-    fallback: "0",
-    maximumFractionDigits: 0,
-  })} s`;
-const formatRate = (value) =>
-  `${formatNumberWithCommas(Number(value) || 0, {
-    fallback: "0",
-    maximumFractionDigits: 2,
-  })} VND/s`;
 const productionAllowanceOf = (employee) => Number(employee?.productionAllowance ?? employee?.productionEarnings ?? 0) || 0;
 const normalizeEmployeePayType = (value) => {
   return normalizePayType(value, "GENERAL");
@@ -233,6 +224,7 @@ const PayrollEntry = () => {
   const [jobRoleOptions, setJobRoleOptions] = useState([]);
   const [factories, setFactories] = useState([]);
   const [payslipEmployee, setPayslipEmployee] = useState(null);
+  const [processPageIndex, setProcessPageIndex] = useState(0);
 
   const load = useCallback(async () => {
     if (!activeOrgId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || !factoryId) return;
@@ -359,6 +351,7 @@ const PayrollEntry = () => {
           close: "닫기",
           open: "급여표",
           preview: "계산 결과",
+          productionFormulaRef: "산출 내역 참조",
         }
       : languageCode === "vi"
         ? {
@@ -378,6 +371,7 @@ const PayrollEntry = () => {
             close: "Đóng",
             open: "Phiếu lương",
             preview: "Kết quả tính",
+            productionFormulaRef: "Xem chi tiết bên dưới",
           }
         : {
             title: "Monthly Payslip",
@@ -399,6 +393,7 @@ const PayrollEntry = () => {
             payrollByEmployee: "Payroll by Employee",
             productionSubtotal: "Production Allowance Subtotal",
             details: "Production Details",
+            productionFormulaRef: "See production details below",
           };
   const unifiedPayrollText =
     languageCode === "ko"
@@ -431,21 +426,21 @@ const PayrollEntry = () => {
     ? {
         basicInfo: "급여 계산 기본 정보", actualWorkdays: "실제 근무일수", scheduledWorkdays: "기준 근무일수",
         holidayWorkdays: "휴일 근무일수", fullAttendance: "만근 여부", tenureYears: "근속 연수",
-        salaryVersion: "급여 체계 버전", yes: "만근", no: "미만근", days: "일", years: "년",
-        productionBasis: "생산수당 산출 내역", totalPayroll: "총 급여",
+        salaryVersion: "급여 체계 버전", yes: "O", no: "X", days: "일", years: "년", hours: "시간",
+        productionBasis: "생산수당 산출 내역", totalPayroll: "총 급여", styleName: "스타일명",
       }
     : languageCode === "vi"
       ? {
           basicInfo: "Thông tin cơ bản tính lương", actualWorkdays: "Ngày làm việc thực tế", scheduledWorkdays: "Ngày làm việc tiêu chuẩn",
           holidayWorkdays: "Ngày làm việc ngày nghỉ", fullAttendance: "Chuyên cần đầy đủ", tenureYears: "Thâm niên",
-          salaryVersion: "Phiên bản cơ cấu lương", yes: "Đủ", no: "Chưa đủ", days: "ngày", years: "năm",
-          productionBasis: "Chi tiết tính phụ cấp sản lượng", totalPayroll: "Tổng lương",
+          salaryVersion: "Phiên bản cơ cấu lương", yes: "O", no: "X", days: "ngày", years: "năm", hours: "giờ",
+          productionBasis: "Chi tiết tính phụ cấp sản lượng", totalPayroll: "Tổng lương", styleName: "Kiểu dáng",
         }
       : {
           basicInfo: "Payroll Calculation Information", actualWorkdays: "Actual Workdays", scheduledWorkdays: "Scheduled Workdays",
           holidayWorkdays: "Holiday Workdays", fullAttendance: "Full Attendance", tenureYears: "Tenure",
-          salaryVersion: "Salary System Version", yes: "Yes", no: "No", days: "days", years: "years",
-          productionBasis: "Production Allowance Calculation", totalPayroll: "Total Payroll",
+          salaryVersion: "Salary System Version", yes: "O", no: "X", days: "days", years: "years", hours: "hrs",
+          productionBasis: "Production Allowance Calculation", totalPayroll: "Total Payroll", styleName: "Style",
         };
   const salaryItemName = useCallback(
     (item) => {
@@ -475,15 +470,48 @@ const PayrollEntry = () => {
       PRODUCTION_ALLOWANCE: "Production Allowance",
     };
   }, [languageCode]);
-  const formatSalaryFormula = useCallback((formula) => {
-    const tokens = Array.isArray(formula) ? formula : [];
-    if (tokens.length === 0) return "-";
-    return tokens.map((token) => {
-      const value = String(token);
-      if (value.startsWith("CONST:")) return value.slice(6);
-      return formulaParameterLabels[value] || value;
-    }).join(" ");
-  }, [formulaParameterLabels]);
+  const formulaUnitSuffixes = useMemo(() => {
+    if (languageCode === "ko") return { days: "일", years: "년", hours: "시간" };
+    if (languageCode === "vi") return { days: " ngày", years: " năm", hours: " giờ" };
+    return { days: " days", years: " yrs", hours: " hrs" };
+  }, [languageCode]);
+  const formatFormulaParameterValue = useCallback(
+    (token, rawValue) => {
+      const numeric = Number(rawValue) || 0;
+      if (token === "GRADE_RATE") return formatDong(numeric);
+      if (token === "ACTUAL_WORKDAYS" || token === "SCHEDULED_WORKDAYS" || token === "HOLIDAY_WORKDAYS") {
+        return `${formatNumberWithCommas(numeric)}${formulaUnitSuffixes.days}`;
+      }
+      if (token === "TENURE_YEARS") {
+        return `${formatNumberWithCommas(numeric, { maximumFractionDigits: 2 })}${formulaUnitSuffixes.years}`;
+      }
+      if (token === "WORK_HOURS" || token === "OVERTIME_HOURS" || token === "HOLIDAY_HOURS") {
+        return `${formatNumberWithCommas(numeric, { maximumFractionDigits: 1 })}${formulaUnitSuffixes.hours}`;
+      }
+      if (token === "FULL_ATTENDANCE_FACTOR") return numeric >= 1 ? "1" : "0";
+      return formatNumberWithCommas(numeric);
+    },
+    [formulaUnitSuffixes],
+  );
+  const formatSalaryFormulaValues = useCallback(
+    (item, parameters) => {
+      const tokens = Array.isArray(item?.formula) ? item.formula.map(String) : [];
+      if (tokens.length === 0) return "-";
+      if (tokens.length === 1 && tokens[0] === "PRODUCTION_ALLOWANCE") return payslipText.productionFormulaRef;
+      const paramValues = { ...(parameters && typeof parameters === "object" ? parameters : {}) };
+      if (item?.rate !== null && item?.rate !== undefined) paramValues.GRADE_RATE = item.rate;
+      return tokens
+        .map((token) => {
+          if (token === "(" || token === ")" || token === "+" || token === "-" || token === "×" || token === "÷") return token;
+          if (token.startsWith("CONST:")) return formatNumberWithCommas(Number(token.slice(6)) || 0);
+          const rawValue = paramValues[token];
+          if (rawValue === undefined || rawValue === null) return formulaParameterLabels[token] || token;
+          return formatFormulaParameterValue(token, rawValue);
+        })
+        .join(" ");
+    },
+    [formatFormulaParameterValue, formulaParameterLabels, payslipText.productionFormulaRef],
+  );
   const payslipRows = useCallback(
     (employee) => {
       const calculatedItems = Array.isArray(employee?.salaryItems) ? employee.salaryItems : [];
@@ -492,7 +520,7 @@ const PayrollEntry = () => {
           key: item.code,
           name: salaryItemName(item),
           category: item.category,
-          formula: formatSalaryFormula(item.formula),
+          formula: formatSalaryFormulaValues(item, employee?.parameters),
           amount: formatDong(item.amount),
         }));
       return [
@@ -516,14 +544,22 @@ const PayrollEntry = () => {
                 key: "legacy-production",
                 name: payslipText.production,
                 category: "INCENTIVE",
-                formula: "-",
+                formula: payslipText.productionFormulaRef,
                 amount: formatDong(productionAllowanceOf(employee)),
               },
             ]
           : []),
       ];
     },
-    [formatSalaryFormula, payslipText.allowance, payslipText.base, payslipText.pending, payslipText.production, salaryItemName],
+    [
+      formatSalaryFormulaValues,
+      payslipText.allowance,
+      payslipText.base,
+      payslipText.pending,
+      payslipText.production,
+      payslipText.productionFormulaRef,
+      salaryItemName,
+    ],
   );
   const handlePrintPayslip = () => {
     if (!payslipEmployee) return;
@@ -541,11 +577,12 @@ const PayrollEntry = () => {
       [payslipInfoText.salaryVersion, payslipEmployee.salarySystemVersionNumber ? `Ver.${payslipEmployee.salarySystemVersionNumber}` : "-"],
     ].map(([label, value]) => `<b>${escapePrintText(label)}</b><span>${escapePrintText(value)}</span>`).join("");
     const productionHtml = payslipEmployee.payType === "OUTPUT"
-      ? `<h2>${escapePrintText(payslipInfoText.productionBasis)}</h2><table><thead><tr><th>${escapePrintText(text.process)}</th><th>${escapePrintText(text.quantity)}</th><th>${escapePrintText(text.ctSeconds)}</th><th>${escapePrintText(text.averageRate)}</th><th>${escapePrintText(text.allowance)}</th></tr></thead><tbody>${(payslipEmployee.processes || []).map((process) => `<tr><td>${escapePrintText(process.processName || process.processCode || "-")}</td><td>${escapePrintText(formatNumberWithCommas(process.totalQuantity || 0))}</td><td>${escapePrintText(formatSeconds(process.totalCtSeconds))}</td><td>${escapePrintText(formatRate(process.wagePerSecond))}</td><td>${escapePrintText(formatDong(process.totalEarnings))}</td></tr>`).join("")}</tbody></table>`
+      ? `<h2>${escapePrintText(payslipInfoText.productionBasis)}</h2><table><thead><tr><th>${escapePrintText(payslipInfoText.styleName)}</th><th>${escapePrintText(text.process)}</th><th>${escapePrintText(text.quantity)}</th><th>${escapePrintText(text.allowance)}</th></tr></thead><tbody>${(payslipEmployee.processes || []).map((process) => `<tr><td>${escapePrintText(process.styleName || process.styleCode || "-")}</td><td>${escapePrintText(process.processName || process.processCode || "-")}</td><td>${escapePrintText(formatNumberWithCommas(process.totalQuantity || 0))}</td><td>${escapePrintText(formatDong(process.totalEarnings))}</td></tr>`).join("")}</tbody></table>`
       : "";
+    const printFileName = `${payslipEmployee.workerName || ""} ${month} ${payslipText.title}`.replace(/\s+/g, " ").trim();
     const popup = window.open("", "_blank", "width=820,height=900");
     if (!popup) return;
-    popup.document.write(`<!doctype html><html><head><title>${escapePrintText(payslipText.title)} ${escapePrintText(month)}</title><style>body{font-family:Arial,sans-serif;color:#111;padding:36px}h1{font-size:22px;margin:0 0 24px}h2{font-size:16px;margin:26px 0 10px}.meta{display:grid;grid-template-columns:150px 1fr 150px 1fr;gap:8px 16px;margin-bottom:24px}table{width:100%;border-collapse:collapse}th,td{padding:11px;border:1px solid #ccc;text-align:left}th:not(:first-child),td:not(:first-child){text-align:right}.total{font-weight:700;background:#f5f5f5}.note{margin-top:18px;color:#666;font-size:12px}@media print{body{padding:0}}</style></head><body><h1>${escapePrintText(payslipText.title)} · ${escapePrintText(month)}</h1><h2>${escapePrintText(payslipInfoText.basicInfo)}</h2><div class="meta">${infoHtml}</div><table><thead><tr><th>${escapePrintText(unifiedPayrollText.item)}</th><th>${escapePrintText(unifiedPayrollText.category)}</th><th>${escapePrintText(payslipText.amount)}</th></tr></thead><tbody>${itemHtml}<tr><td>${escapePrintText(payslipText.deductions)}</td><td>-</td><td>${escapePrintText(formatDong(payslipEmployee.deductions || 0))}</td></tr><tr class="total"><td>${escapePrintText(payslipText.net)}</td><td>-</td><td>${escapePrintText(formatDong(payslipEmployee.netSalary || 0))}</td></tr></tbody></table>${productionHtml}<div class="note">${escapePrintText(payslipText.preview)}</div><script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script></body></html>`);
+    popup.document.write(`<!doctype html><html><head><title>${escapePrintText(printFileName)}</title><style>body{font-family:Arial,sans-serif;color:#111;padding:36px}h1{font-size:22px;margin:0 0 24px}h2{font-size:16px;margin:26px 0 10px}.meta{display:grid;grid-template-columns:150px 1fr 150px 1fr;gap:8px 16px;margin-bottom:24px}table{width:100%;border-collapse:collapse}th,td{padding:11px;border:1px solid #ccc;text-align:left}th:not(:first-child),td:not(:first-child){text-align:right}.total{font-weight:700;background:#f5f5f5}.note{margin-top:18px;color:#666;font-size:12px}@media print{body{padding:0}}</style></head><body><h1>${escapePrintText(payslipText.title)} · ${escapePrintText(month)}</h1><h2>${escapePrintText(payslipInfoText.basicInfo)}</h2><div class="meta">${infoHtml}</div><table><thead><tr><th>${escapePrintText(unifiedPayrollText.item)}</th><th>${escapePrintText(unifiedPayrollText.category)}</th><th>${escapePrintText(payslipText.amount)}</th></tr></thead><tbody>${itemHtml}<tr><td>${escapePrintText(payslipText.deductions)}</td><td>-</td><td>${escapePrintText(formatDong(payslipEmployee.deductions || 0))}</td></tr><tr class="total"><td>${escapePrintText(payslipText.net)}</td><td>-</td><td>${escapePrintText(formatDong(payslipEmployee.netSalary || 0))}</td></tr></tbody></table>${productionHtml}<div class="note">${escapePrintText(payslipText.preview)}</div><script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script></body></html>`);
     popup.document.close();
   };
   const provisional = data?.isProvisional === true;
@@ -702,7 +739,15 @@ const PayrollEntry = () => {
                             {formatDong(employee.netSalary || 0)}
                           </TableCell>
                           <TableCell align="center">
-                            <Button size="small" variant="outlined" startIcon={<PrintOutlinedIcon />} onClick={() => setPayslipEmployee(employee)}>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<PrintOutlinedIcon />}
+                              onClick={() => {
+                                setPayslipEmployee(employee);
+                                setProcessPageIndex(0);
+                              }}
+                            >
                               {payslipText.open}
                             </Button>
                           </TableCell>
@@ -727,7 +772,7 @@ const PayrollEntry = () => {
         </DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2}>
-            <Typography variant="subtitle2" fontWeight={700}>{payslipInfoText.basicInfo}</Typography>
+            <Typography variant="subtitle2" fontWeight={700} fontSize={13}>{payslipInfoText.basicInfo}</Typography>
             <Box
               sx={{
                 display: "grid",
@@ -736,27 +781,27 @@ const PayrollEntry = () => {
                 columnGap: 2,
               }}
             >
-              <Typography color="text.secondary">{payslipText.employee}</Typography>
-              <Typography fontWeight={700}>{payslipEmployee?.workerName || "-"}</Typography>
-              <Typography color="text.secondary">{payslipText.payType}</Typography>
-              <Typography>
-                {getPayTypeLabel(payslipEmployee?.payType, payslipEmployee?.payType || "-", languageCode)} ({payslipEmployee?.payType || "-"})
+              <Typography variant="body2" color="text.secondary">{payslipText.employee}</Typography>
+              <Typography variant="body2" fontWeight={700}>{payslipEmployee?.workerName || "-"}</Typography>
+              <Typography variant="body2" color="text.secondary">{payslipText.payType}</Typography>
+              <Typography variant="body2">
+                {getPayTypeLabel(payslipEmployee?.payType, payslipEmployee?.payType || "-", languageCode)}
               </Typography>
-              <Typography color="text.secondary">{payslipInfoText.actualWorkdays}</Typography>
-              <Typography>{Number(payslipEmployee?.parameters?.ACTUAL_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
-              <Typography color="text.secondary">{payslipInfoText.scheduledWorkdays}</Typography>
-              <Typography>{Number(payslipEmployee?.parameters?.SCHEDULED_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
-              <Typography color="text.secondary">{payslipInfoText.holidayWorkdays}</Typography>
-              <Typography>{Number(payslipEmployee?.parameters?.HOLIDAY_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
-              <Typography color="text.secondary">{payslipInfoText.fullAttendance}</Typography>
-              <Typography>{Number(payslipEmployee?.parameters?.FULL_ATTENDANCE_FACTOR || 0) >= 1 ? payslipInfoText.yes : payslipInfoText.no}</Typography>
-              <Typography color="text.secondary">{payslipInfoText.tenureYears}</Typography>
-              <Typography>{formatNumberWithCommas(Number(payslipEmployee?.parameters?.TENURE_YEARS || 0), { maximumFractionDigits: 2 })} {payslipInfoText.years}</Typography>
-              <Typography color="text.secondary">{payslipInfoText.salaryVersion}</Typography>
-              <Typography>{payslipEmployee?.salarySystemVersionNumber ? `Ver.${payslipEmployee.salarySystemVersionNumber}` : "-"}</Typography>
+              <Typography variant="body2" color="text.secondary">{payslipInfoText.actualWorkdays}</Typography>
+              <Typography variant="body2">{Number(payslipEmployee?.parameters?.ACTUAL_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
+              <Typography variant="body2" color="text.secondary">{payslipInfoText.scheduledWorkdays}</Typography>
+              <Typography variant="body2">{Number(payslipEmployee?.parameters?.SCHEDULED_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
+              <Typography variant="body2" color="text.secondary">{payslipInfoText.holidayWorkdays}</Typography>
+              <Typography variant="body2">{Number(payslipEmployee?.parameters?.HOLIDAY_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
+              <Typography variant="body2" color="text.secondary">{payslipInfoText.fullAttendance}</Typography>
+              <Typography variant="body2">{Number(payslipEmployee?.parameters?.FULL_ATTENDANCE_FACTOR || 0) >= 1 ? payslipInfoText.yes : payslipInfoText.no}</Typography>
+              <Typography variant="body2" color="text.secondary">{payslipInfoText.tenureYears}</Typography>
+              <Typography variant="body2">{formatNumberWithCommas(Number(payslipEmployee?.parameters?.TENURE_YEARS || 0), { maximumFractionDigits: 2 })} {payslipInfoText.years}</Typography>
+              <Typography variant="body2" color="text.secondary">{payslipInfoText.salaryVersion}</Typography>
+              <Typography variant="body2">{payslipEmployee?.salarySystemVersionNumber ? `Ver.${payslipEmployee.salarySystemVersionNumber}` : "-"}</Typography>
             </Box>
             <Divider />
-            <Table size="small">
+            <Table size="small" sx={{ "& .MuiTableCell-root": { fontSize: 13, py: 0.75 } }}>
               <TableHead>
                 <TableRow>
                   <TableCell>{unifiedPayrollText.item}</TableCell>
@@ -769,7 +814,7 @@ const PayrollEntry = () => {
                   payslipRows(payslipEmployee).map((row) => (
                     <TableRow key={row.key}>
                       <TableCell sx={{ fontWeight: 600 }}>{row.name}</TableCell>
-                      <TableCell>{row.formula || "-"}</TableCell>
+                      <TableCell sx={{ color: "text.secondary" }}>{row.formula || "-"}</TableCell>
                       <TableCell
                         align="right"
                         sx={{
@@ -796,29 +841,52 @@ const PayrollEntry = () => {
             </Table>
             {payslipEmployee?.payType === "OUTPUT" ? <>
               <Divider />
-              <Typography variant="subtitle2" fontWeight={700}>{payslipInfoText.productionBasis}</Typography>
-              <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
-                  <TableHead><TableRow>
-                    <TableCell>{text.process}</TableCell>
-                    <TableCell align="right">{text.quantity}</TableCell>
-                    <TableCell align="right">{text.ctSeconds}</TableCell>
-                    <TableCell align="right">{text.averageRate}</TableCell>
-                    <TableCell align="right">{text.allowance}</TableCell>
-                  </TableRow></TableHead>
-                  <TableBody>
-                    {(payslipEmployee.processes || []).length === 0
-                      ? <TableStatusRow colSpan={5} message={text.noRecords} />
-                      : payslipEmployee.processes.map((process, processIndex) => <TableRow key={process.styleProcessId || `payslip-process-${processIndex}`}>
-                          <TableCell>{process.processName || process.processCode || "-"}</TableCell>
-                          <TableCell align="right">{formatNumberWithCommas(process.totalQuantity || 0)}</TableCell>
-                          <TableCell align="right">{formatSeconds(process.totalCtSeconds)}</TableCell>
-                          <TableCell align="right">{formatRate(process.wagePerSecond)}</TableCell>
-                          <TableCell align="right">{formatDong(process.totalEarnings)}</TableCell>
-                        </TableRow>)}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+              <Typography variant="subtitle2" fontWeight={700} fontSize={13}>{payslipInfoText.productionBasis}</Typography>
+              {(() => {
+                const processes = Array.isArray(payslipEmployee.processes) ? payslipEmployee.processes : [];
+                if (processes.length === 0) {
+                  return (
+                    <Typography variant="body2" color="text.secondary">
+                      {text.noRecords}
+                    </Typography>
+                  );
+                }
+                const pageIndex = Math.min(processPageIndex, processes.length - 1);
+                const process = processes[pageIndex];
+                return (
+                  <Paper variant="outlined" sx={{ p: 2 }}>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
+                      <IconButton
+                        size="small"
+                        disabled={pageIndex === 0}
+                        onClick={() => setProcessPageIndex((current) => Math.max(0, current - 1))}
+                      >
+                        <ChevronLeftIcon fontSize="small" />
+                      </IconButton>
+                      <Typography variant="caption" color="text.secondary">
+                        {pageIndex + 1} / {processes.length}
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        disabled={pageIndex >= processes.length - 1}
+                        onClick={() => setProcessPageIndex((current) => Math.min(processes.length - 1, current + 1))}
+                      >
+                        <ChevronRightIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                    <Box sx={{ display: "grid", gridTemplateColumns: "120px 1fr", rowGap: 1, columnGap: 2 }}>
+                      <Typography variant="body2" color="text.secondary">{payslipInfoText.styleName}</Typography>
+                      <Typography variant="body2" fontWeight={600}>{process.styleName || process.styleCode || "-"}</Typography>
+                      <Typography variant="body2" color="text.secondary">{text.process}</Typography>
+                      <Typography variant="body2" fontWeight={600}>{process.processName || process.processCode || "-"}</Typography>
+                      <Typography variant="body2" color="text.secondary">{text.quantity}</Typography>
+                      <Typography variant="body2">{formatNumberWithCommas(process.totalQuantity || 0)}</Typography>
+                      <Typography variant="body2" color="text.secondary">{text.allowance}</Typography>
+                      <Typography variant="body2" fontWeight={700}>{formatDong(process.totalEarnings)}</Typography>
+                    </Box>
+                  </Paper>
+                );
+              })()}
             </> : null}
           </Stack>
         </DialogContent>

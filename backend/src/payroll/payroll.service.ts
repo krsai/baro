@@ -19,6 +19,9 @@ import {
 import {
   resolveWorkRecordProcessCode,
   resolveWorkRecordProcessName,
+  resolveWorkRecordStyleCode,
+  resolveWorkRecordStyleName,
+  resolveWorkRecordStyleRefId,
   WORK_RECORD_WITH_REFS_INCLUDE,
 } from "../work-records/workRecord.shared";
 import { resolveFactoryManagementStartDateKey } from "../factories/factoryManagementStart";
@@ -114,6 +117,9 @@ const normalizePayrollProcessSnapshot = (process: any) => {
     factoryName: resolveOptionalString(process?.factoryName, null),
     lineId: toPositiveIntOrNull(process?.lineId),
     lineName: resolveOptionalString(process?.lineName, null),
+    styleId: toPositiveIntOrNull(process?.styleId),
+    styleName: resolveOptionalString(process?.styleName, null),
+    styleCode: resolveOptionalString(process?.styleCode, null),
     styleProcessId,
     processCode: resolveOptionalString(process?.processCode, "") || "",
     processName:
@@ -179,6 +185,7 @@ export const normalizePayrollSnapshotEmployee = (employee: any) => {
       category: String(item?.category || "ALLOWANCE").toUpperCase(),
       amount: toPayrollAmount(item?.amount, 0),
       formula: ensureArray(item?.formula).map(String),
+      rate: toPayrollAmountOrNull(item?.rate),
     })),
     grossSalary: toPayrollAmount(employee?.grossSalary ?? employee?.totalSalary, productionEarnings),
     deductions: toPayrollAmount(employee?.deductions, 0),
@@ -718,6 +725,7 @@ const buildIntegratedPayrollEmployees = async (
           category: String(item?.category || "ALLOWANCE").toUpperCase(),
           formula,
           amount,
+          rate: rate ? toPayrollAmount(rate.amount, 0) : null,
         };
       });
       const grossSalary = salaryItems.reduce((sum, item) => sum + item.amount, 0);
@@ -933,6 +941,9 @@ export const getPayrollByMonth = async (
           factoryName: string | null;
           lineId: number | null;
           lineName: string | null;
+          styleId: number | null;
+          styleName: string | null;
+          styleCode: string | null;
           styleProcessId: number | null;
           processCode: string;
           processName: string;
@@ -1014,6 +1025,9 @@ export const getPayrollByMonth = async (
       const hasStyleProcess = styleProcessId !== null;
       const processName = hasStyleProcess ? resolveWorkRecordProcessName(record) ?? "" : "";
       const processCode = hasStyleProcess ? resolveWorkRecordProcessCode(record) ?? "" : "";
+      const styleId = resolveWorkRecordStyleRefId(record);
+      const styleName = resolveWorkRecordStyleName(record);
+      const styleCode = resolveWorkRecordStyleCode(record);
       const processKey = hasStyleProcess
         ? `factory:${workLog.factoryId ?? "none"}:line:${record.lineId ?? "none"}:style-process:${styleProcessId}`
         : `factory:${workLog.factoryId ?? "none"}:line:${record.lineId ?? "none"}:missing-style-process`;
@@ -1029,6 +1043,9 @@ export const getPayrollByMonth = async (
             record.lineId ? payrollLinesById.get(record.lineId)?.name : null,
             null
           ),
+          styleId,
+          styleName,
+          styleCode,
           styleProcessId,
           processCode,
           processName: hasStyleProcess
@@ -1072,6 +1089,9 @@ export const getPayrollByMonth = async (
           factoryName: process.factoryName,
           lineId: process.lineId,
           lineName: process.lineName,
+          styleId: process.styleId,
+          styleName: process.styleName,
+          styleCode: process.styleCode,
           styleProcessId: process.styleProcessId,
           processCode: process.processCode,
           processName: process.processName,
