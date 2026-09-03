@@ -5,13 +5,30 @@ import {
   deletePayrollSnapshot,
   getPayrollByMonth,
   getPayrollMonthReadiness,
+  getPayrollSettings,
   listPayrollSnapshots,
   lockPayrollSnapshot,
   recalculatePayrollSnapshotLine,
   savePayrollSnapshot,
   unlockPayrollSnapshot,
   updatePayrollEmployeeRates,
+  updatePayrollSettings,
 } from "./payroll.service";
+
+export const getPayrollSettingsController = async (req: Request, res: Response) => {
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ["ADMIN", "OPERATOR", "ACCOUNTANT"] });
+  if (!accessContext) return;
+  return res.json(await getPayrollSettings(accessContext.organization.id));
+};
+
+export const updatePayrollSettingsController = async (req: Request, res: Response) => {
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ["ADMIN", "OPERATOR", "ACCOUNTANT"] });
+  if (!accessContext) return;
+  return res.json(await updatePayrollSettings(
+    accessContext.organization.id,
+    req.body?.alwaysFullAttendanceEmployeeIds
+  ));
+};
 import {
   resolveCurrentPayrollMonthKey,
   resolveLatestCompletedPayrollMonthKey,

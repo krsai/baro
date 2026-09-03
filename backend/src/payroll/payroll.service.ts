@@ -782,6 +782,47 @@ export const listPayrollSnapshots = async (orgId: number) => {
   }));
 };
 
+export const getPayrollSettings = async (orgId: number) => ({
+  employees: await prisma.employee.findMany({
+    where: { orgId, status: { notIn: ["PENDING", "REJECTED"] } },
+    select: {
+      id: true, employeeNo: true, name: true, email: true, factoryId: true,
+      orgRole: true, status: true, alwaysFullAttendance: true,
+      factory: { select: { id: true, name: true, nameKo: true, nameVi: true } },
+      role: { select: { name: true } },
+    },
+    orderBy: [{ factoryId: "asc" }, { employeeNo: "asc" }, { name: "asc" }],
+  }),
+});
+
+export const updatePayrollSettings = async (
+  orgId: number,
+  alwaysFullAttendanceEmployeeIds: unknown
+) => {
+  if (!Array.isArray(alwaysFullAttendanceEmployeeIds)) {
+    throw createHttpError(400, "alwaysFullAttendanceEmployeeIds must be an array");
+  }
+  const ids = Array.from(new Set(alwaysFullAttendanceEmployeeIds.map(toPositiveIntOrNull)));
+  if (ids.some((id) => id === null)) {
+    throw createHttpError(400, "alwaysFullAttendanceEmployeeIds contains an invalid employee id");
+  }
+  const employeeIds = ids as number[];
+  if (await prisma.employee.count({ where: { orgId, id: { in: employeeIds } } }) !== employeeIds.length) {
+    throw createHttpError(400, "employee does not belong to the organization");
+  }
+  await prisma.$transaction([
+    prisma.employee.updateMany({
+      where: { orgId, alwaysFullAttendance: true, id: { notIn: employeeIds } },
+      data: { alwaysFullAttendance: false },
+    }),
+    prisma.employee.updateMany({
+      where: { orgId, alwaysFullAttendance: false, id: { in: employeeIds } },
+      data: { alwaysFullAttendance: true },
+    }),
+  ]);
+  return getPayrollSettings(orgId);
+};
+
 export const getPayrollByMonth = async (
   orgId: number,
   monthInput: string,

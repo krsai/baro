@@ -18162,8 +18162,6 @@ const resolveEmployeeStoredPayType = async ({
           where: { id: normalizedRoleId, orgId },
           select: { code: true, defaultPayType: true },
         });
-    if (role?.code === "WORKER_SUPERVISOR") return EMPLOYEE_PAY_TYPE.GENERAL;
-
     const explicitPayType = normalizePayType(payType, null);
     if (explicitPayType) return explicitPayType;
     return resolveRoleDefaultPayType(role);

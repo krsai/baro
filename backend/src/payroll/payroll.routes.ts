@@ -3,6 +3,7 @@ import {
   deletePayrollSnapshotController,
   getPayrollCalendarController,
   getPayrollController,
+  getPayrollSettingsController,
   getPayrollReadinessController,
   listPayrollSnapshotsController,
   lockPayrollSnapshotController,
@@ -10,6 +11,7 @@ import {
   savePayrollSnapshotController,
   unlockPayrollSnapshotController,
   updatePayrollEmployeeRatesController,
+  updatePayrollSettingsController,
 } from "./payroll.controller";
 
 export const payrollRouter = Router();
@@ -17,6 +19,8 @@ export const payrollRouter = Router();
 payrollRouter.get("/payroll/snapshots", listPayrollSnapshotsController);
 payrollRouter.get("/payroll/calendar", getPayrollCalendarController);
 payrollRouter.get("/payroll/readiness", getPayrollReadinessController);
+payrollRouter.get("/payroll/settings", getPayrollSettingsController);
+payrollRouter.put("/payroll/settings", updatePayrollSettingsController);
 payrollRouter.get("/payroll", getPayrollController);
 payrollRouter.post("/payroll/snapshots", savePayrollSnapshotController);
 payrollRouter.post("/payroll/snapshots/:month/recalculate-line", recalculatePayrollSnapshotLineController);

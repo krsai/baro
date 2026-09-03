@@ -20,6 +20,7 @@ import {
   Typography,
 } from '@mui/material';
 import CalculateIcon from '@mui/icons-material/Calculate';
+import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import AppPageContainer from '../../../components/AppPageContainer';
 import LockToggleSwitch from '../../../components/LockToggleSwitch';
 import PageToolbar from '../../../components/PageToolbar';
@@ -31,6 +32,7 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
+import PayrollSettingsDialog from './PayrollSettingsDialog';
 
 const TEXT = {
   ko: {
@@ -133,6 +135,7 @@ const PayrollBoard = () => {
   const [employeeDirectory, setEmployeeDirectory] = useState([]);
   const [calculationErrors, setCalculationErrors] = useState(null);
   const [manuallyRecalculatedRows, setManuallyRecalculatedRows] = useState(() => new Set());
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const text = useMemo(() => ({
     title: getUiMessage('menu.payroll', 'Payroll', languageCode),
@@ -401,6 +404,9 @@ const PayrollBoard = () => {
       title={text.title}
       toolbar={<PageToolbar right={(
         <Stack direction="row" spacing={1} alignItems="center">
+          <Button variant="outlined" startIcon={<SettingsOutlinedIcon />} onClick={() => setSettingsOpen(true)}>
+            {languageCode === 'ko' ? '설정' : languageCode === 'vi' ? 'Cài đặt' : 'Settings'}
+          </Button>
           <TextField
             select
             label={resolveText(languageCode, 'calculateMonth')}
@@ -523,6 +529,14 @@ const PayrollBoard = () => {
         </DialogContent>
         <DialogActions><Button onClick={() => setCalculationErrors(null)}>확인</Button></DialogActions>
       </Dialog>
+      <PayrollSettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        orgId={activeOrgId}
+        languageCode={languageCode}
+        showNotification={showNotification}
+        onSaved={() => load({ silent: true })}
+      />
     </AppPageContainer>
   );
 };
