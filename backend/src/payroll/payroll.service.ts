@@ -1553,8 +1553,15 @@ export const lockPayrollSnapshot = async ({
   if (!existing) throw createHttpError(404, "calculate production allowance before locking");
   if (!existing.isProvisional) return { ok: true, month };
 
+  // A snapshot already exists here, so - like recalculation (savePayrollSnapshot) -
+  // locking does not re-require full source-data completeness (`readiness.ready`).
+  // That check only gates the *first* calculation of a month. What matters for an
+  // already-calculated snapshot is that it isn't stale (needsRecalculation) and that
+  // no cross-factory attendance integrity error has appeared since it was calculated.
   const readiness = await getPayrollMonthReadiness(orgId, month, factoryId);
-  if (!readiness.ready) throw createHttpError(409, "monthly work records are incomplete");
+  if (readiness.invalidPayrollAttendance.length > 0) {
+    throw createHttpError(409, "attendance records must belong to each employee's assigned factory");
+  }
   if (readiness.needsRecalculation) throw createHttpError(409, "payroll must be recalculated before locking");
 
   const locked = await prisma.payrollSnapshot.updateMany({

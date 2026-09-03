@@ -192,6 +192,12 @@
 - 기존 `FactoryProductionAllowanceRate` 월별 이력은 버전 전환 시 보존·이관하며 임의 삭제하거나 최신 한 건으로 접지 않는다. 모든 조회와 급여 계산은 대상 공장·대상 월에 적용되는 확정 버전을 선택해야 한다.
 - 버전 적용 구간이 바뀌면 `PRODUCTION_ALLOWANCE_SETTINGS` 연결 이벤트를 발행해 열려 있는 생산수당 페이지를 다시 조회하고, 기존 스냅샷과 적용 단가가 달라진 월은 재계산 대상으로 표시한다.
 
+## 2026-09-03 급여 잠금이 "재계산 필요"가 아닌데도 409로 막히던 버그 수정
+
+- 증상: 급여 계산 목록에서 이미 `계산 완료`(재계산 필요 아님)로 표시된 월도 잠금 토글을 누르면 `monthly work records are incomplete` 409로 실패했다.
+- 원인: `lockPayrollSnapshot`이 이미 스냅샷이 존재하는데도 최초 계산 전용 완결성 검사인 `readiness.ready`(그 시점 기준 전체 직원·라인의 출퇴근/작업기록 완결성)를 다시 요구하고 있었다. `savePayrollSnapshot`(계산/재계산)은 기존 스냅샷이 있으면 이미 `readiness.ready`를 재요구하지 않는데(§"급여 재계산 상태와 버튼" 원칙과 동일), 잠금만 이 예외를 적용받지 못해 화면 상태(`재계산 필요` 아님)와 실제 잠금 가능 여부가 어긋났다.
+- 수정: `lockPayrollSnapshot`은 이제 `readiness.ready`를 확인하지 않고, `savePayrollSnapshot`과 동일하게 `readiness.invalidPayrollAttendance`(공장 불일치 같은 무결성 오류)와 `readiness.needsRecalculation`(스냅샷이 최신 데이터와 달라졌는지)만 확인한다. 이미 계산된(스냅샷 존재) 월은 계산 당시 완결성이 검증됐고 이후 변경 여부는 `needsRecalculation`이 이미 추적하므로, 잠금 시점에 전체 완결성을 다시 요구할 필요가 없다.
+
 ## 기본 작업 완료 정책: 자동 커밋 및 푸시
 
 - 코드·설정·문서 변경 작업은 구현과 필요한 검증이 끝나면 사용자가 매번 별도로 요청하지 않아도 현재 브랜치에 커밋하고 해당 원격 브랜치로 푸시한다.
