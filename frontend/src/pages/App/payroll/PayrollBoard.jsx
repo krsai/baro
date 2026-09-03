@@ -135,7 +135,6 @@ const PayrollBoard = () => {
   const [mutating, setMutating] = useState('');
   const [employeeDirectory, setEmployeeDirectory] = useState([]);
   const [calculationErrors, setCalculationErrors] = useState(null);
-  const [manuallyRecalculatedRows, setManuallyRecalculatedRows] = useState(() => new Set());
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const text = useMemo(() => ({
@@ -215,8 +214,6 @@ const PayrollBoard = () => {
   }, [activeOrgId, languageCode, showNotification]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setManuallyRecalculatedRows(new Set()); }, [activeOrgId]);
-
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
     topics: [
@@ -266,16 +263,13 @@ const PayrollBoard = () => {
         const key = rowKey(row.month, row.factory.id);
         const monthReadiness = readinessByKey[key];
         const selected = !selectedMonth || row.month === selectedMonth;
-        const unlocked = !row.snapshot || row.snapshot.isProvisional === true;
         const calculable = row.snapshot
-          ? row.snapshot.isProvisional === true && (
-              monthReadiness?.needsRecalculation === true || !manuallyRecalculatedRows.has(key)
-            )
+          ? row.snapshot.isProvisional === true && monthReadiness?.needsRecalculation === true
           : monthReadiness?.ready === true;
-        return Boolean(selected && unlocked && calculable);
+        return Boolean(selected && calculable);
       })
       .sort((a, b) => a.month.localeCompare(b.month) || Number(a.factory.id) - Number(b.factory.id)),
-    [manuallyRecalculatedRows, monthFactoryRows, readinessByKey, selectedMonth]
+    [monthFactoryRows, readinessByKey, selectedMonth]
   );
   const canCalculate = batchTargetRows.length > 0 && !loading && !calculating;
   const explainCalculationError = useCallback((message) => {
@@ -313,7 +307,6 @@ const PayrollBoard = () => {
       const failed = [];
       const succeeded = [];
       for (const row of targetRows) {
-        const key = rowKey(row.month, row.factory.id);
         const factoryLabel = resolveFactoryDisplayName(row.factory, languageCode);
         try {
           await requestJSON('/payroll/snapshots' + query, {
@@ -325,7 +318,6 @@ const PayrollBoard = () => {
             }),
           });
           succeeded.push(`${row.month} (${factoryLabel})`);
-          setManuallyRecalculatedRows((previous) => new Set([...previous, key]));
         } catch (error) {
           failed.push({ month: row.month, factoryLabel, message: error?.message || resolveText(languageCode, 'calculateError') });
         }
