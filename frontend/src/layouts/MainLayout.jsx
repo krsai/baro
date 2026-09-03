@@ -73,7 +73,6 @@ const EMPTY_WORKSPACE_HINT = {
   vi: 'Hay su dung menu.',
 };
 const ORG_MEMBERSHIPS_UPDATED_EVENT = 'baro:org-memberships-updated';
-const LINE_ASSIGNMENTS_UPDATED_EVENT = 'baro:line-assignments-updated';
 const MENU_GROUP_KEYS = {
   ORDER: 'ORDER',
   PARTNERS: 'PARTNERS',
@@ -340,7 +339,6 @@ const MainLayout = () => {
   const [systemOpen, setSystemOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pendingEmployeeCount, setPendingEmployeeCount] = useState(0);
-  const [unassignedLineWorkerCount, setUnassignedLineWorkerCount] = useState(0);
   const [pendingOnboardingCount, setPendingOnboardingCount] = useState(0);
   const [missingSalesPriceCustomerCount, setMissingSalesPriceCustomerCount] = useState(0);
   const [pendingTabPath, setPendingTabPath] = useState('');
@@ -506,7 +504,6 @@ const MainLayout = () => {
     [authState]
   );
   const canViewEmployeeMenu = hasPathAccess('/employee');
-  const canViewLineMenu = hasPathAccess('/line');
   const canViewCustomerMenu = hasPathAccess('/customer');
   const canViewSystemOnboardingMenu = hasPathAccess('/system-onboarding');
   const isSystemProfile = activeProfile?.entryType === 'SYSTEM';
@@ -564,28 +561,6 @@ const MainLayout = () => {
       setPendingEmployeeCount(0);
     }
   }, [activeOrgId, canViewEmployeeMenu]);
-
-  const fetchUnassignedLineWorkerCount = React.useCallback(async () => {
-    if (!canViewLineMenu || !activeOrgId) {
-      setUnassignedLineWorkerCount(0);
-      return;
-    }
-    try {
-      const data = await requestJSON(
-        `/line-workers${buildQueryString({ orgId: activeOrgId })}`,
-        { forceRefresh: true, skipGlobalLoading: true }
-      );
-      const unassignedCount = Array.isArray(data)
-        ? data.filter(
-            (worker) =>
-              worker?.currentLineId === null || worker?.currentLineId === undefined
-          ).length
-        : 0;
-      setUnassignedLineWorkerCount(unassignedCount);
-    } catch (_error) {
-      setUnassignedLineWorkerCount(0);
-    }
-  }, [activeOrgId, canViewLineMenu]);
 
   const fetchPendingOnboardingCount = React.useCallback(async () => {
     if (!canViewSystemOnboardingMenu) {
@@ -711,12 +686,6 @@ const MainLayout = () => {
         menuGroupKey: MENU_GROUP_KEYS.RECORDS,
         isOpen: recordsOpen,
         children: [
-          {
-            label: getUiMessage('menu.line', '라인', languageCode),
-            icon: <ContentCut />,
-            path: '/line',
-            notificationActive: unassignedLineWorkerCount > 0,
-          },
           {
             label: getUiMessage('menu.assignment', '\uBC30\uC815', languageCode),
             icon: <ContentCut />,
@@ -948,7 +917,6 @@ const MainLayout = () => {
     orderOpen,
     partnersOpen,
     pendingEmployeeCount,
-    unassignedLineWorkerCount,
     pendingOnboardingCount,
     missingSalesPriceCustomerCount,
     processMasterOpen,
@@ -1004,7 +972,6 @@ const MainLayout = () => {
 
       if (childPaths.has('/assignment') && childPaths.has('/work-history')) {
         const preferredRecordPaths = [
-          '/line',
           '/assignment',
           '/work-history',
           '/outsourcing-record',
@@ -1394,16 +1361,7 @@ const MainLayout = () => {
     return () => clearInterval(intervalId);
   }, [canViewEmployeeMenu, fetchPendingEmployeeCount]);
   useEffect(() => {
-    if (!canViewLineMenu) {
-      setUnassignedLineWorkerCount(0);
-      return () => {};
-    }
-    fetchUnassignedLineWorkerCount();
-    const intervalId = setInterval(fetchUnassignedLineWorkerCount, 30000);
-    return () => clearInterval(intervalId);
-  }, [canViewLineMenu, fetchUnassignedLineWorkerCount]);
-  useEffect(() => {
-    if (!canViewEmployeeMenu && !canViewLineMenu) return () => {};
+    if (!canViewEmployeeMenu) return () => {};
     const activeOrgIdNumber = Number(activeOrgId);
 
     const handleMembershipUpdated = (event) => {
@@ -1427,9 +1385,6 @@ const MainLayout = () => {
           fetchPendingEmployeeCount();
         }
       }
-      if (canViewLineMenu) {
-        fetchUnassignedLineWorkerCount();
-      }
     };
 
     window.addEventListener(ORG_MEMBERSHIPS_UPDATED_EVENT, handleMembershipUpdated);
@@ -1437,32 +1392,8 @@ const MainLayout = () => {
   }, [
     activeOrgId,
     canViewEmployeeMenu,
-    canViewLineMenu,
     fetchPendingEmployeeCount,
-    fetchUnassignedLineWorkerCount,
   ]);
-  useEffect(() => {
-    if (!canViewLineMenu) return () => {};
-    const activeOrgIdNumber = Number(activeOrgId);
-
-    const handleLineAssignmentsUpdated = (event) => {
-      const detail = event?.detail && typeof event.detail === 'object' ? event.detail : null;
-      const changedOrgId = Number(detail?.orgId);
-      if (
-        Number.isFinite(changedOrgId) &&
-        Number.isFinite(activeOrgIdNumber) &&
-        changedOrgId > 0 &&
-        activeOrgIdNumber > 0 &&
-        changedOrgId !== activeOrgIdNumber
-      ) {
-        return;
-      }
-      fetchUnassignedLineWorkerCount();
-    };
-
-    window.addEventListener(LINE_ASSIGNMENTS_UPDATED_EVENT, handleLineAssignmentsUpdated);
-    return () => window.removeEventListener(LINE_ASSIGNMENTS_UPDATED_EVENT, handleLineAssignmentsUpdated);
-  }, [activeOrgId, canViewLineMenu, fetchUnassignedLineWorkerCount]);
   useEffect(() => {
     if (!canViewSystemOnboardingMenu) {
       setPendingOnboardingCount(0);

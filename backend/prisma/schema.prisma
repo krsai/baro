@@ -373,6 +373,7 @@ model Factory {
   managerEmployee          Employee?                        @relation("FactoryManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
   employees                Employee[]                       @relation("FactoryEmployees")
   lines                    Line[]
+  assignmentPlans          AssignmentPlan[]
   attendanceEntries        AttendanceEntry[]
   workLogs                 WorkLog[]
   atTrainingBuckets        AtTrainingBucket[]
@@ -1420,6 +1421,7 @@ model CustomerSalesPrice {
 model AssignmentPlan {
   id                        Int                   @id @default(autoincrement())
   orgId                     Int
+  factoryId                 Int?
   lineId                    Int
   externalId                String
   cardId                    String?
@@ -1483,6 +1485,7 @@ model AssignmentPlan {
   updatedAt                 DateTime              @updatedAt
 
   line                    Line                        @relation(fields: [lineId], references: [id], onDelete: Restrict)
+  factory                 Factory?                    @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Restrict, map: "AssignmentPlan_factory_org_fkey")
   organization            Organization                @relation(fields: [orgId], references: [id])
   workOrder               WorkOrder?                  @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   style                   Style?                      @relation(fields: [styleId], references: [id], onDelete: SetNull)
@@ -1506,6 +1509,7 @@ model AssignmentPlan {
   @@unique([orgId, externalId])
   @@unique([id, orgId], map: "AssignmentPlan_id_org_key")
   @@index([orgId, lineId])
+  @@index([orgId, factoryId])
   @@index([workOrderId])
   @@index([styleId])
   @@index([styleProcessVersionId])

@@ -190,7 +190,6 @@ export const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/revenue-analysis')) return FEATURE_KEYS.REVENUE_ANALYSIS;
   if (path.startsWith('/revenue-forecast')) return FEATURE_KEYS.REVENUE_FORECAST;
   if (path.startsWith('/business')) return FEATURE_KEYS.BUSINESS;
-  if (path.startsWith('/line')) return FEATURE_KEYS.LINE;
   if (path.startsWith('/employee-system')) return FEATURE_KEYS.EMPLOYEE_SYSTEM;
   if (path.startsWith('/salary-system')) return FEATURE_KEYS.SALARY_SYSTEM;
   if (path.startsWith('/employee')) return FEATURE_KEYS.EMPLOYEE;
@@ -236,7 +235,6 @@ const ACCESS_PATH_PRIORITY = [
   '/production-analysis',
   '/payroll',
   '/business',
-  '/line',
   '/employee',
   '/customer',
   '/outsourcing-partner',

@@ -33,6 +33,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import useWorkspaceRefreshOnEvent from '../../hooks/useWorkspaceRefreshOnEvent';
 import { canAccessPath } from '../../utils/accessControl';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
+import { buildLocalDateKey as buildDateKey } from '../../utils/dateKey.mjs';
 import { formatNumberWithCommas } from '../../utils/numberFormat';
 import { fetchOrders } from '../../utils/orderApi';
 import { subscribeOrderModificationLockChanged } from '../../utils/orderSyncEvents';
@@ -125,7 +126,6 @@ const EMPTY_SUMMARY = Object.freeze({
   monthlyAssignedQuantity: 0,
   materialStockRate: null,
   pendingEmployeeCount: 0,
-  unassignedLineWorkerCount: 0,
   missingSalesPriceCustomerCount: 0,
 });
 
@@ -135,7 +135,6 @@ const createEmptySummary = () => ({
   monthlyAssignedQuantity: EMPTY_SUMMARY.monthlyAssignedQuantity,
   materialStockRate: EMPTY_SUMMARY.materialStockRate,
   pendingEmployeeCount: EMPTY_SUMMARY.pendingEmployeeCount,
-  unassignedLineWorkerCount: EMPTY_SUMMARY.unassignedLineWorkerCount,
   missingSalesPriceCustomerCount: EMPTY_SUMMARY.missingSalesPriceCustomerCount,
 });
 
@@ -150,15 +149,6 @@ const createEmptySystemSummary = () => ({
 const normalizeDateKey = (value) => {
   const key = String(value || '').trim().slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : '';
-};
-
-const buildDateKey = (value) => {
-  const date = value instanceof Date ? new Date(value) : new Date();
-  if (Number.isNaN(date.getTime())) return '';
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 };
 
 const getCurrentMonthRange = (baseDate = new Date()) => {
@@ -540,7 +530,6 @@ const buildNotificationItems = ({ languageCode, isSystemProfile, summaryData, sy
     ? [{ key: 'onboarding', count: systemSummaryData?.pendingOnboardingCount, path: '/system-onboarding', label: { ko: '가입 승인 대기', en: 'Pending onboarding requests', vi: 'Yêu cầu đăng ký chờ duyệt' } }]
     : [
         { key: 'employees', count: summaryData?.pendingEmployeeCount, path: '/employee', label: { ko: '승인 대기 직원', en: 'Employees awaiting approval', vi: 'Nhân viên chờ phê duyệt' } },
-        { key: 'line-workers', count: summaryData?.unassignedLineWorkerCount, path: '/line', label: { ko: '라인 미배정 작업자', en: 'Workers without a line', vi: 'Công nhân chưa được xếp chuyền' } },
         { key: 'sales-prices', count: summaryData?.missingSalesPriceCustomerCount, path: '/customer', label: { ko: '판매단가 미설정 고객사', en: 'Customers missing sales prices', vi: 'Khách hàng chưa có đơn giá bán' } },
       ];
   return candidates
@@ -576,7 +565,6 @@ const WorkspaceDashboard = () => {
     [accessProfile, devBypass, devProfile, isAuthenticated]
   );
   const canViewEmployee = canAccessPath('/employee', authState);
-  const canViewLine = canAccessPath('/line', authState);
   const canViewCustomer = canAccessPath('/customer', authState);
 
   const loadSummaryData = useCallback(
@@ -632,14 +620,13 @@ const WorkspaceDashboard = () => {
           orgId: activeOrgId,
           includeCards: 0,
         });
-        const [orders, boardState, memberships, lineWorkers, customers] = await Promise.all([
+        const [orders, boardState, memberships, customers] = await Promise.all([
           fetchOrders({ orgId: activeOrgId, forceRefresh }),
           requestJSON('/assignment-board-view' + boardQuery, {
             forceRefresh,
             skipGlobalLoading: true,
           }),
           canViewEmployee ? requestJSON(`/org-memberships${buildQueryString({ status: 'PENDING', orgId: activeOrgId })}`, { forceRefresh, skipGlobalLoading: true }).catch(() => []) : [],
-          canViewLine ? requestJSON(`/line-workers${buildQueryString({ orgId: activeOrgId })}`, { forceRefresh, skipGlobalLoading: true }).catch(() => []) : [],
           canViewCustomer ? requestJSON(`/customers${buildQueryString({ orgId: activeOrgId })}`, { forceRefresh, skipGlobalLoading: true }).catch(() => []) : [],
         ]);
         if (!cancelledRef?.current) {
@@ -650,7 +637,6 @@ const WorkspaceDashboard = () => {
                 : [],
             });
           nextSummary.pendingEmployeeCount = Array.isArray(memberships) ? memberships.filter((item) => String(item?.status || '').toUpperCase() === 'PENDING').length : 0;
-          nextSummary.unassignedLineWorkerCount = Array.isArray(lineWorkers) ? lineWorkers.filter((worker) => worker?.currentLineId == null).length : 0;
           nextSummary.missingSalesPriceCustomerCount = Array.isArray(customers) ? customers.filter((customer) => Number(customer?.missingSalesPriceStyleCount) > 0).length : 0;
           setSummaryData(nextSummary);
         }
@@ -669,7 +655,7 @@ const WorkspaceDashboard = () => {
         }
       }
     },
-    [activeOrgId, canViewCustomer, canViewEmployee, canViewLine, isSystemProfile, languageCode, showNotification]
+    [activeOrgId, canViewCustomer, canViewEmployee, isSystemProfile, languageCode, showNotification]
   );
 
   useEffect(() => {

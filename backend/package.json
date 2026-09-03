@@ -46,6 +46,7 @@
     "verify:assignment-board-state-backfill": "node scripts/verify-assignment-board-state-backfill.js",
     "verify:assignment-ready-status-removal": "node scripts/verify-assignment-ready-status-removal.js --require-clean",
     "verify:relational-integrity": "npm run build && node scripts/verify-relational-integrity.js",
+    "audit:line-removal": "npm run build && node scripts/audit-line-removal.js",
     "verify:st-bucket-fk": "node scripts/inspect-st-bucket-fk-readiness.js",
     "verify:at-v2-shadow": "node scripts/verify-at-v2-shadow.js",
     "test:work-record-employment": "npm run build && node scripts/test-work-record-employment.js",

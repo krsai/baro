@@ -837,6 +837,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "AssignmentCard", columnName: "payload" },
   { tableName: "AssignmentCard", columnName: "sortOrder" },
   { tableName: "AssignmentPlan", columnName: "externalId" },
+  { tableName: "AssignmentPlan", columnName: "factoryId" },
   { tableName: "AssignmentPlan", columnName: "lineId" },
   { tableName: "AssignmentPlan", columnName: "startIndex" },
   { tableName: "AssignmentPlan", columnName: "endIndex" },
@@ -15720,9 +15721,17 @@ const assertAssignmentPlansCanBeDetached = async ({
 const detachWorkRecordsAndDeleteAssignmentPlans = async ({
   planIds,
   db = prisma,
+  requireIncomplete = false,
 }: {
   planIds: any;
   db?: any;
+  // When true, the delete only removes plans that are still isCompleted:false
+  // at the moment of deletion (compare-and-swap), and throws 409 if a plan
+  // was completed between the caller's earlier read and this delete. Callers
+  // that intentionally remove completed plans too (full board reset, order
+  // deletion cleanup) must leave this false - see AGENTS.md "완료된 assignment는
+  // 읽기 전용" invariant and the 2026-09 assignment-cancel race fix.
+  requireIncomplete?: boolean;
 }): Promise<{ detachedCount: number; deletedCount: number }> => {
   const normalizedPlanIds = normalizePlanIdList(planIds);
   if (normalizedPlanIds.length === 0) {
@@ -15733,11 +15742,20 @@ const detachWorkRecordsAndDeleteAssignmentPlans = async ({
     db,
   });
   const deletedResult = await db.assignmentPlan.deleteMany({
-    where: { id: { in: normalizedPlanIds } },
+    where: requireIncomplete
+      ? { id: { in: normalizedPlanIds }, isCompleted: false }
+      : { id: { in: normalizedPlanIds } },
   });
+  const deletedCount = toNonNegativeInt(deletedResult?.count, 0);
+  if (requireIncomplete && deletedCount !== normalizedPlanIds.length) {
+    throw createHttpError(
+      409,
+      "assignment was completed before it could be cancelled"
+    );
+  }
   return {
     detachedCount: 0,
-    deletedCount: toNonNegativeInt(deletedResult?.count, 0),
+    deletedCount,
   };
 };
 type OrderStyleRemovalIssue = {
@@ -16423,6 +16441,7 @@ const toAssignmentPlanResponse = (plan: any) => {
   return {
     id: plan.externalId,
     lineId: String(plan.lineId),
+    factoryId: toPositiveIntOrNull(plan.factoryId ?? plan?.line?.factoryId),
     cardId: plan.cardId ?? "",
     workOrderId: toPositiveIntOrNull(plan?.workOrderId),
     // styleId/buyerOrgId: read via the joined relation first (every current
@@ -16651,19 +16670,31 @@ const syncAssignmentPlanWorkOrderRefs = async (
     };
   });
 };
-const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | null = null) =>
+const normalizeAssignmentPlanPayload = (
+  items: any,
+  scopeMaps: {
+    byFactoryId: Map<number, { lineId: number; factoryId: number }>;
+    byLineId: Map<number, { lineId: number; factoryId: number }>;
+  } | null = null
+) =>
   ensureArray(items)
     .map((item) => {
       if (!item || typeof item !== "object") return null;
 
       const externalId = resolveOptionalString(item.id ?? item.externalId, null);
-      const lineId = toNumberOrNull(item.lineId);
-      const lineIdNum =
-        typeof lineId === "number" && Number.isFinite(lineId)
-          ? Math.round(lineId)
-          : null;
-      if (!externalId || !lineIdNum) return null;
-      if (lineIdSet && !lineIdSet.has(lineIdNum)) return null;
+      const explicitFactoryId = toPositiveIntOrNull(item.factoryId);
+      const legacyLineId = toPositiveIntOrNull(item.lineId);
+      const scope = scopeMaps
+        ? explicitFactoryId != null
+          ? scopeMaps.byFactoryId.get(explicitFactoryId) ?? null
+          : legacyLineId != null
+            ? scopeMaps.byLineId.get(legacyLineId) ?? null
+            : null
+        : null;
+      if (!externalId || (scopeMaps && !scope)) return null;
+      const resolvedLineId = scope?.lineId ?? legacyLineId;
+      const resolvedFactoryId = scope?.factoryId ?? explicitFactoryId;
+      if (!resolvedLineId) return null;
 
       const startIndex = toSignedInt(item.startIndex, 0);
       const endIndex = Math.max(startIndex, toSignedInt(item.endIndex, startIndex));
@@ -16680,7 +16711,8 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
       });
       const stTotalSeconds = resolveStateAssignmentStTotalSeconds(item);
       return {
-        lineId: lineIdNum,
+        lineId: resolvedLineId,
+        factoryId: resolvedFactoryId,
         externalId,
         cardId: resolveOptionalString(item.cardId, null),
         workOrderId: toPositiveIntOrNull(item?.workOrderId),
@@ -16797,6 +16829,7 @@ const toAssignmentPlanWriteData = (
   // Assignment board save must not overwrite completion-related fields.
   return {
     lineId: item.lineId,
+    factoryId: toPositiveIntOrNull(item.factoryId),
     cardId: item.cardId ?? null,
     assignmentCardId,
     styleId,
@@ -17874,6 +17907,7 @@ const ASSIGNMENT_PLAN_SELECT_CORE = {
   id: true,
   externalId: true,
   styleProcessVersionId: true,
+  factoryId: true,
   lineId: true,
   cardId: true,
   workOrderId: true,
@@ -17943,6 +17977,7 @@ const ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION = {
 const ASSIGNMENT_PLAN_SELECT_LEGACY = {
   id: true,
   externalId: true,
+  factoryId: true,
   lineId: true,
   cardId: true,
   assignmentQuantity: true,
@@ -22137,6 +22172,7 @@ app.get("/assignment-plans", async (req, res) => {
         dbId: plan.id,
         id: plan.externalId,
         lineId: String(plan.lineId),
+        factoryId: toPositiveIntOrNull(plan.factoryId ?? plan?.line?.factoryId),
         cardId,
         workOrderId: toPositiveIntOrNull(plan?.workOrderId),
         styleId: toPositiveIntOrNull(plan?.style?.id),
@@ -29468,9 +29504,13 @@ app.delete("/assignment-board-state/assignment/:assignmentId", async (req, res) 
         assignments: Prisma.JsonNull,
       },
     });
+    // Re-verified against isCompleted at delete time (not just the earlier
+    // findFirst check above) - see requireIncomplete doc comment. Throwing
+    // here rolls back the card/board-state writes in this same transaction.
     await detachWorkRecordsAndDeleteAssignmentPlans({
       planIds: [targetPlan.id],
       db: tx,
+      requireIncomplete: true,
     });
   });
 
@@ -29946,22 +29986,24 @@ app.put("/assignment-board-state", async (req, res) => {
       })
     );
     const removedExternalIdList = Array.from(removedExternalIds.values());
-    const lineIdSet =
+    const assignmentScopes =
       planSyncTargetAssignments.length > 0
-        ? new Set(
-            (
-              await tx.line.findMany({
-                where: { orgId: organization.id },
-                select: { id: true },
-              })
-            ).map((line) => line.id)
-          )
-        : null;
+        ? (await tx.line.findMany({
+            where: { orgId: organization.id },
+            select: { id: true, factoryId: true },
+          })).map((line) => ({ lineId: line.id, factoryId: line.factoryId }))
+        : [];
+    const resolvedScopeMaps = planSyncTargetAssignments.length > 0
+      ? {
+          byFactoryId: new Map(assignmentScopes.map((scope) => [scope.factoryId, scope])),
+          byLineId: new Map(assignmentScopes.map((scope) => [scope.lineId, scope])),
+        }
+      : null;
     const normalizedPlanChanges =
       planSyncTargetAssignments.length > 0
         ? await syncAssignmentPlanWorkOrderRefs(
             organization.id,
-            normalizeAssignmentPlanPayload(planSyncTargetAssignments, lineIdSet),
+            normalizeAssignmentPlanPayload(planSyncTargetAssignments, resolvedScopeMaps),
             tx
           )
         : [];

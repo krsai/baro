@@ -53,19 +53,6 @@ const EMPLOYEE_BOARD_TEXT = {
   gradeLabel: { ko: '직급', en: 'Grade', vi: 'Cấp bậc' },
   pageTitle: { ko: '직원 관리', en: 'Employee Management', vi: 'Quản lý nhan vien' },
   addEmployee: { ko: '직원 추가', en: 'Add Employee', vi: 'Them nhan vien' },
-  lineAssignmentPromptTitle: {
-    ko: '라인 배정이 필요합니다',
-    en: 'Line assignment required',
-    vi: 'Can phan cong chuyen',
-  },
-  lineAssignmentPromptBody: {
-    ko: '{name} 직원이 봉제로 등록되었습니다. 지금 라인에 배정하시겠습니까?',
-    en: '{name} was registered as a sewing worker. Assign this employee to a line now?',
-    vi: '{name} da duoc dang ky la cong nhan may. Phân công vao chuyen ngay bay gio?',
-  },
-  lineAssignmentLater: { ko: '나중에', en: 'Later', vi: 'De sau' },
-  lineAssignmentNow: { ko: '라인 배정', en: 'Assign line', vi: 'Phân công chuyen' },
-  lineMenuLabel: { ko: '라인', en: 'Lines', vi: 'Chuyền' },
   drawerAddTitle: { ko: '직원 추가', en: 'Add Employee', vi: 'Them nhan vien' },
   drawerEditTitle: { ko: '직원 수정', en: 'Edit Employee', vi: 'Sua nhan vien' },
   requiredHint: {
@@ -664,7 +651,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     devProfile,
     isAuthenticated,
   } = useAuth();
-  const { navigateToPath, showNotification } = useAppActions();
+  const { showNotification } = useAppActions();
   const { languageCode } = useLanguage();
 
   const activeOrgId = overrideOrgId != null ? overrideOrgId : authOrgId;
@@ -710,7 +697,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     status: 'ACTIVE',
   });
   const [drawerBaseline, setDrawerBaseline] = useState(null);
-  const [lineAssignmentPrompt, setLineAssignmentPrompt] = useState(null);
 
   const [pendingFactoryOverrides, setPendingFactoryOverrides] = useState({});
   const [pendingRoleOverrides, setPendingRoleOverrides] = useState({});
@@ -720,14 +706,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const roleOptions = useMemo(
     () => getRoleOptionsByOrgType(activeOrgType, languageCode),
     [activeOrgType, languageCode]
-  );
-  const isSewingJobRoleId = useCallback(
-    (roleId) => jobRoleOptions.some(
-      (role) =>
-        String(role?.id) === String(roleId || '')
-        && String(role?.code || '').trim().toUpperCase() === DEFAULT_WORKER_JOB_ROLE_CODE
-    ),
-    [jobRoleOptions]
   );
   const employeeStatusOptions = useMemo(
     () => getEmployeeStatusOptions(languageCode),
@@ -1344,16 +1322,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         });
         setStatusMessage({ type: 'success', text: text('employeeSaved', languageCode) });
         closeEmployeeDrawer();
-        if (
-          normalizedOrgRole === 'WORKER'
-          && resolvedStatus === 'ACTIVE'
-          && isSewingJobRoleId(effectiveJobRoleId)
-        ) {
-          setLineAssignmentPrompt({
-            employeeName: normalizedName,
-            factoryId: Number(selectedFactoryId) || null,
-          });
-        }
         return;
       } else {
         targetMember = activeMembers.find((member) => member.id === selectedMemberId) || null;
@@ -1427,7 +1395,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     fetchMemberships,
     handleEmployeeSave,
     isDrawerSaving,
-    isSewingJobRoleId,
     languageCode,
     myEmail,
     pendingMembers,
@@ -1573,43 +1540,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         {statusMessage && (
           <Alert severity={statusMessage.type || 'info'}>{statusMessage.text}</Alert>
         )}
-
-        <Dialog
-          open={Boolean(lineAssignmentPrompt)}
-          onClose={() => setLineAssignmentPrompt(null)}
-          fullWidth
-          maxWidth="xs"
-        >
-          <DialogTitle>{text('lineAssignmentPromptTitle', languageCode)}</DialogTitle>
-          <DialogContent>
-            <Typography>
-              {text('lineAssignmentPromptBody', languageCode).replace(
-                '{name}',
-                String(lineAssignmentPrompt?.employeeName || '').trim()
-              )}
-            </Typography>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setLineAssignmentPrompt(null)}>
-              {text('lineAssignmentLater', languageCode)}
-            </Button>
-            <Button
-              variant="contained"
-              onClick={() => {
-                const factoryId = Number(lineAssignmentPrompt?.factoryId);
-                setLineAssignmentPrompt(null);
-                navigateToPath(
-                  Number.isSafeInteger(factoryId) && factoryId > 0
-                    ? `/line?factoryId=${encodeURIComponent(String(factoryId))}`
-                    : '/line',
-                  { label: text('lineMenuLabel', languageCode) }
-                );
-              }}
-            >
-              {text('lineAssignmentNow', languageCode)}
-            </Button>
-          </DialogActions>
-        </Dialog>
 
         {canManageMembers && (
           <Drawer

@@ -52,7 +52,6 @@ const Employee = lazyImportWithRetry(() => import('./pages/App/Employee'));
 const EmployeeSystem = lazyImportWithRetry(() => import('./pages/App/EmployeeSystem'));
 const SalarySystem = lazyImportWithRetry(() => import('./pages/App/SalarySystem'));
 const Permission = lazyImportWithRetry(() => import('./pages/App/Permission'));
-const Line = lazyImportWithRetry(() => import('./pages/App/Line'));
 const Holiday = lazyImportWithRetry(() => import('./pages/App/Holiday'));
 const SystemBoard = lazyImportWithRetry(() => import('./pages/App/system/systemBoard'));
 const StaticOptionBoard = lazyImportWithRetry(() => import('./pages/App/system/StaticOptionBoard'));
@@ -462,10 +461,6 @@ const router = createBrowserRouter([
           {
             path: 'attribute/*',
             element: <Attribute />,
-          },
-          {
-            path: 'line',
-            element: <Line />,
           },
           {
             path: 'holiday',

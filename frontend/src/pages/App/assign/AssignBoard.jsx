@@ -99,7 +99,10 @@ import {
   hasWorkspaceDataTopic,
   WORKSPACE_DATA_TOPICS,
 } from '../../../utils/workspaceDataEvents';
-import { todayDateKey as getTodayDateKey } from '../../../utils/dateKey.mjs';
+import {
+  todayDateKey as getTodayDateKey,
+  buildLocalDateKey as buildDateKey,
+} from '../../../utils/dateKey.mjs';
 import {
   buildLineMonthCapacityBoardRows,
   buildMonthKeyRange,
@@ -627,24 +630,32 @@ const buildAssignableLines = ({ factories, lines, lineHeadcounts }) => {
     return map;
   }, new Map());
 
-  return safeLines
-    .filter((line) => factoryById.has(normalizeKey(line?.factoryId)))
-    .map((line) => {
-      const factory = factoryById.get(normalizeKey(line?.factoryId));
-      const assignedCount = lineHeadcountMap.get(normalizeKey(line?.id)) || 0;
+  return safeFactories
+    .map((factory) => {
+      const legacyLines = safeLines.filter(
+        (line) => normalizeKey(line?.factoryId) === normalizeKey(factory?.id)
+      );
+      if (legacyLines.length !== 1) {
+        throw new Error(
+          `Factory ${factory?.id ?? ''} must have exactly one legacy line during the factory-scope migration.`
+        );
+      }
+      const legacyLine = legacyLines[0];
+      const assignedCount = lineHeadcountMap.get(normalizeKey(legacyLine?.id)) || 0;
       if (assignedCount <= 0) return null;
       const headcount = assignedCount;
       return {
-        id: String(line.id),
-        name: line.name || `Line ${line.id}`,
+        id: String(factory.id),
+        name: factory.name || `Factory ${factory.id}`,
+        legacyLineId: String(legacyLine.id),
         headcount,
-        shift: line?.shift || formatLineShiftLabel(line),
-        shiftHours: toNonNegativeNumber(line?.shiftHours, 8),
-        overtimeHours: toNonNegativeNumber(line?.overtimeHours, 0),
-        dailyCapacitySeconds: resolveLineDailyCapacitySeconds(line, headcount),
-        wagePerSecond: toOptionalPositiveNumber(line?.wagePerSecond),
+        shift: legacyLine?.shift || formatLineShiftLabel(legacyLine),
+        shiftHours: toNonNegativeNumber(legacyLine?.shiftHours, 8),
+        overtimeHours: toNonNegativeNumber(legacyLine?.overtimeHours, 0),
+        dailyCapacitySeconds: resolveLineDailyCapacitySeconds(legacyLine, headcount),
+        wagePerSecond: toOptionalPositiveNumber(legacyLine?.wagePerSecond),
         factoryId: factory?.id,
-        factoryName: factory?.name || `Factory ${line?.factoryId}`,
+        factoryName: factory?.name || `Factory ${factory?.id}`,
         factoryWagePerSecond: toOptionalPositiveNumber(factory?.wagePerSecond),
         factoryOrder: factory?.__order ?? Number.MAX_SAFE_INTEGER,
       };
@@ -1767,12 +1778,6 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
   };
 };
 
-const buildDateKey = (date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
 const clampPercentValue = (value) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 0;
@@ -3581,6 +3586,9 @@ const AssignBoard = () => {
       const safeBaseCards = Array.isArray(baseCards) ? baseCards : [];
       const nextLineCapacityById = buildLineCapacityMap(nextLines);
       const nextLineIdSet = new Set(nextLines.map((line) => normalizeKey(line.id)));
+      const factoryIdByLegacyLineId = new Map(
+        nextLines.map((line) => [normalizeKey(line.legacyLineId), normalizeKey(line.id)])
+      );
 
       const hasSavedBoardState =
         Array.isArray(boardState?.cards) || Array.isArray(boardState?.assignments);
@@ -3600,6 +3608,13 @@ const AssignBoard = () => {
       const normalizedSavedAssignments = hasSavedBoardState
         ? savedAssignments
             .filter((item) => item?.id)
+            .map((item) => ({
+              ...item,
+              lineId:
+                normalizeKey(item?.factoryId) ||
+                factoryIdByLegacyLineId.get(normalizeKey(item?.lineId)) ||
+                '',
+            }))
             .filter((item) => nextLineIdSet.has(normalizeKey(item?.lineId)))
             .filter((item) => restoredCardIdSet.has(item?.cardId))
             .map((item) =>
@@ -4195,7 +4210,10 @@ const AssignBoard = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             cards: currentCards.map(normalizeAssignmentCardForPersistence),
-            assignments: assignmentPayload,
+            assignments: assignmentPayload.map((assignment) => ({
+              ...assignment,
+              factoryId: Number(assignment.lineId),
+            })),
             stDrafts,
           }),
           skipGlobalLoading: true,
@@ -4876,6 +4894,18 @@ const AssignBoard = () => {
         .join(','),
     [lines]
   );
+  const legacyLineIdsKey = useMemo(
+    () =>
+      lines
+        .map((line) => String(line?.legacyLineId || '').trim())
+        .filter(Boolean)
+        .join(','),
+    [lines]
+  );
+  const factoryIdByLegacyLineId = useMemo(
+    () => new Map(lines.map((line) => [String(line?.legacyLineId || ''), String(line?.id || '')])),
+    [lines]
+  );
   const shouldDebugLineMonthCapacity = false;
   useEffect(() => {
     const normalizedOrgId = Number(activeOrgId);
@@ -4900,7 +4930,7 @@ const AssignBoard = () => {
         orgId: normalizedOrgId,
         monthFrom: planningMonthKeys[0],
         monthTo: planningMonthKeys[planningMonthKeys.length - 1],
-        lineIds: lineIdsKey,
+        lineIds: legacyLineIdsKey,
         ...(shouldDebugLineMonthCapacity ? { debug: 'actual-output' } : {}),
       });
     requestJSON(
@@ -4913,7 +4943,12 @@ const AssignBoard = () => {
     )
       .then((payload) => {
         if (cancelled) return;
-        const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+        const rows = (Array.isArray(payload?.rows) ? payload.rows : [])
+          .map((row) => ({
+            ...row,
+            lineId: factoryIdByLegacyLineId.get(String(row?.lineId || '')) || '',
+          }))
+          .filter((row) => row.lineId);
         setLineMonthCapacityRows(rows);
         if (Number(payload?.capacityOverlapCount) > 0) {
           // An employee has overlapping LineAssignment rows on two different lines the
@@ -5161,6 +5196,8 @@ const AssignBoard = () => {
     activeOrgId,
     externalReloadTick,
     lineIdsKey,
+    legacyLineIdsKey,
+    factoryIdByLegacyLineId,
     planningMonthKeys,
     planningMonthKeysKey,
     shouldDebugLineMonthCapacity,

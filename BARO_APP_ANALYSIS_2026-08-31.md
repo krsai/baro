@@ -1,4 +1,16 @@
-# BARO 앱 구조 분석 리포트 (2026-08-31)
+# BARO 앱 구조 분석 리포트 (2026-08-31, 2026-09-03 재검증)
+
+## 2026-09-03 재검증 메모
+
+Claude Code(Sonnet 5)가 이 문서를 코덱스에게 재조사시키기 전에, 08-31 이후 커밋(특히 09-01~09-03에 집중된 급여 계산/급여명세서/급여 체계 관련 16개 커밋)을 대조해 각 finding이 여전히 유효한지 직접 코드로 재확인했다. 새로운 독립 조사가 아니라 **기존 finding에 대한 최신성 검증**이며, 결과는 아래 세 가지로 나뉜다.
+
+- **여전히 유효**(라인 번호만 소폭 이동): 1-1, 1-2, 1-3, 1-4, 1-5, 1-6, 1-7, 2-1~2-6, 3-2, 3-3, 3-4, 3-5, 3-6, 4장 전체.
+- **더 이상 유효하지 않음 (수정 필요)**: **3-1** — 아래 해당 절에 취소선과 정정 사유를 남겼다. 그대로 두면 코덱스가 이미 없는 코드 경로를 조사하느라 시간을 낭비한다.
+- **수치 갱신 필요**: 2-6의 `index.ts` 비중(84% → 76%), `AssignBoard.jsx`는 08-31 이후 단 한 줄도 안 바뀜(라인 수 7,795로 동일, `getTodayDayIndex`/`getAssignmentStartKey` 등 인용 라인 번호도 정확히 일치) — 3장의 "이미 수정되어 있음" 목록은 재검증 결과도 그대로 유효.
+
+09-03 커밋들은 전부 급여 계산 화면(`PayrollBoard.jsx`, `PayrollEntry.jsx`, `PayrollSettingsDialog.jsx` 신설)·급여 체계(`SalarySystem.jsx`)·직원 관리 쪽이었고, 이 문서가 지적한 DB 스키마 결함(1장)이나 배정/스케줄러 프론트 로직(3장의 AssignBoard 항목들)에는 손대지 않았다. 신규로 생긴 `Employee.payrollExcluded`(급여 예외 직원 플래그, `schema.prisma:500`)는 이번 문서의 finding과 직접 관련은 없지만, 급여 관련 String 필드 논의(1-6)를 다시 볼 때 함께 검토할 컨텍스트로 참고할 것.
+
+---
 
 ## 조사 방법
 
@@ -26,7 +38,7 @@ Claude Code(Sonnet 5)가 3개의 독립 에이전트를 병렬로 투입해 아�
 
 ### 🔴 High
 
-**1-1. `LineAssignment` 테이블에 `orgId`가 아예 없음** — `schema.prisma:772-785`
+**1-1. `LineAssignment` 테이블에 `orgId`가 아예 없음** — `schema.prisma:794-807`(2026-09-03 기준 라인, 이하 동일 구조로 재확인됨)
 
 직원의 라인 소속 이력을 담는 이 테이블은 스키마 전체에서 유일하게 `orgId` 컬럼 자체가 없다. `lineId`/`employeeId`가 단일 컬럼 FK라서 DB 차원에서 "A조직 직원이 B조직 라인에 배정되는 것"을 막을 방법이 없다. 게다가 같은 직원이 같은 기간에 두 라인에 동시 소속되는 것을 막는 제약(unique/exclusion constraint)도 전혀 없다.
 
@@ -34,7 +46,7 @@ Claude Code(Sonnet 5)가 3개의 독립 에이전트를 병렬로 투입해 아�
 - 라인-월 capacity·스케줄러 forecast 계산 전체가 이 테이블에 의존하므로 파급력이 크다.
 - **개선 방향**: `orgId` 컬럼 추가(+ `Line`/`Employee`와의 복합 FK로 조직 일치 강제) 및 Postgres의 `EXCLUDE` 제약(또는 daterange 컬럼 + GiST 인덱스)으로 같은 직원의 활성 기간 중복을 DB 레벨에서 원천 차단.
 
-**1-2. 완료 확정된 `AssignmentPlan`이 레이스 컨디션으로 삭제될 수 있음** — `backend/src/index.ts:29396-29465`, `:15708-15730`
+**1-2. 완료 확정된 `AssignmentPlan`이 레이스 컨디션으로 삭제될 수 있음** — `backend/src/index.ts:29406-29485`, `:15704-15742`(2026-09-03 재확인, 여전히 동일 패턴)
 
 `PATCH .../production-complete`와 `PATCH .../final-quantity`는 이미 "조회 후 조건부 업데이트" 문제를 `updateMany` + compare-and-swap(`where: { isCompleted:false, updatedAt: plan.updatedAt }`)으로 고쳐놨다. 그런데 바로 옆의 취소 엔드포인트(`DELETE /assignment-board-state/assignment/:assignmentId`)는:
 1. `prisma.assignmentPlan.findFirst`로 `isCompleted`를 조회(트랜잭션 밖)
@@ -63,7 +75,7 @@ Claude Code(Sonnet 5)가 3개의 독립 에이전트를 병렬로 투입해 아�
 
 ### 🟠 Medium
 
-**1-4. `WorkOrder`의 3중 유니크 제약이 카운터파티 미정 상태를 못 막음** — `schema.prisma:1257`
+**1-4. `WorkOrder`의 3중 유니크 제약이 카운터파티 미정 상태를 못 막음** — `schema.prisma:1279`(2026-09-03 기준, 내용 동일)
 
 `@@unique([buyerOrgId, sellerOrgId, orderNumber])`인데 `buyerOrgId`/`sellerOrgId` 둘 다 `Int?`. Postgres는 NULL을 서로 다르게 취급하므로, `EDITING`(초안, 카운터파티 미정) 상태의 주문끼리는 같은 `orderNumber`가 여러 개 생겨도 DB가 막지 못한다.
 
@@ -116,9 +128,11 @@ Claude Code(Sonnet 5)가 3개의 독립 에이전트를 병렬로 투입해 아�
 
 ### 아키텍처
 
-**2-6. `index.ts`가 백엔드 로직의 84%(35,054/41,866줄)를 차지**
+**2-6. `index.ts`가 백엔드 로직의 76%(35,064/46,091줄)를 차지** — 2026-09-03 기준 갱신(08-31 당시엔 84%/35,054/41,900줄)
 
 도메인별로 분리된 8개 모듈(`organizations`, `employees`, `factories`, `lines`, `payroll`, `work-records`, `auth`, `middleware`)의 경계 설정 자체는 합리적이다. 문제는 이 프로젝트에서 가장 자주 변경되고 버그가 가장 많이 났던 영역 — 배정/스케줄러, 주문, 스타일, 작업기록, AT 학습 — 이 전부 분리 대상에서 빠져 있다는 것. 실제로 이번에 찾은 버그들(2-1, 2-2, 2-3, 1-2)도 전부 이 미분리 영역에서 나왔다.
+
+> **2026-09-03 추가 관찰**: `index.ts` 자체는 08-31 이후 사실상 정체(35,054 → 35,064줄, +10줄)인데 백엔드 전체는 41,900 → 46,091줄로 4,191줄 늘었다. 늘어난 대부분은 `backend/src/payroll/payroll.service.ts`(현재 1,602줄, 급여 계산/급여명세서/급여 예외 직원 기능이 이번 주에 대거 여기 추가됨)처럼 이미 분리된 모듈 쪽이다. 즉 **최근 신규 기능(급여)은 올바르게 분리된 모듈에 쌓이고 있고, `index.ts`의 절대적 비대함은 새 코드 증가가 아니라 기존 배정/스케줄러/주문 로직이 아직 안 옮겨진 결과**라는 게 더 명확해졌다 — 리팩터링 우선순위 판단에 참고할 것.
 
 ### 검증 완료: 과거 문서에 "미수정"이라 적힌 항목들의 현재 상태
 
@@ -147,9 +161,15 @@ Claude Code(Sonnet 5)가 3개의 독립 에이전트를 병렬로 투입해 아�
 
 ### 🔴 새로 발견된 문제
 
-**3-1. 급여 화면 하나가 동시편집 보호 없이 통째로 덮어씀**
+**3-1. ~~급여 화면 하나가 동시편집 보호 없이 통째로 덮어씀~~ — 2026-09-03 재검증 결과 더 이상 유효하지 않음 (조사 대상에서 제외할 것)**
 
-`PayrollEntry.jsx:185-189`의 직원별 생산수당 override 저장(`PUT /payroll/snapshots/:month/employee-rates`)이 `version`/`expectedVersionId` 없이 `{ overrides }`만 보낸다. 관리자 두 명이 같은 달을 동시에 열어 수정하면 조용히 한쪽이 사라진다. 정확히 같은 패턴(`expectedVersionId` + 서버 409)이 `CustomerPricingBoard.jsx:699-752`에 이미 구현되어 있으니 그대로 이식하면 된다. 돈이 걸린 화면인데 보호가 없는 유일한 사례라 우선순위가 높다.
+> **정정**: 이 finding은 두 가지 이유로 폐기한다.
+>
+> 1. **프론트 호출 경로 자체가 사라졌다.** `PayrollEntry.jsx`(현재 914줄)에서 `employee-rates` 문자열을 전체 grep해도 0건이다. `AGENTS.md` §"2026-08-31 급여 명세서 중심 상세 구성"의 "급여 계산 상세의 직원 목록에서는 생산수당 금액만 보여주고 별도의 생산 상세 확장 버튼과 직원별 생산 단가 편집 및 단가 저장 기능을 제공하지 않는다"는 정책대로, 이 화면에서 개별 직원 생산 단가를 편집하는 UI 자체가 이후 리팩터링에서 제거됐다. `requestJSON(...)` 호출 목록을 다시 확인해도 `PayrollEntry.jsx`는 `/payroll`, `/payroll/calendar`만 부르고 `/payroll/snapshots/:month/employee-rates`는 어디에서도 호출하지 않는다.
+> 2. **더 중요한 점: 백엔드 자체는 애초부터(08-31 시점에도) revision 기반 CAS를 갖고 있었다** — 원래 finding이 코드를 잘못 읽은 것으로 보인다. `backend/src/payroll/payroll.service.ts:1403-1500`의 `updatePayrollEmployeeRates`는 요청 시작 시점에 `prisma.payrollSnapshot.findUnique`로 현재 `revision`을 읽어두고, 최종 쓰기를 `prisma.payrollSnapshot.updateMany({ where: { id, isProvisional:true, revision: snapshot.revision }, data: { ..., revision: { increment: 1 } } })`로 실행한 뒤 `updated.count !== 1`이면 `409 "payroll was locked or changed while editing rates"`를 던진다. 클라이언트가 `expectedVersionId`를 보낼 필요 없이, 서버가 같은 요청 안에서 읽은 revision을 그대로 조건절에 쓰는 표준적인 compare-and-swap이라 동시 수정 유실은 이미 막혀 있다. `deletePayrollSnapshot`(`:1502-1522`)도 동일 패턴이다.
+> 3. **백엔드 라우트(`payroll.routes.ts:29`)는 아직 남아 있지만 죽은 코드에 가깝다.** 호출부가 없으므로 실사용 위험은 없다. 다음 정리 때 라우트/컨트롤러/서비스 함수를 함께 제거할지 검토할 가치는 있지만, 이건 "버그"가 아니라 "미사용 코드" 항목이므로 3-1이 아니라 참고(🟡) 수준으로 재분류해야 한다.
+>
+> 코덱스에게 재조사를 맡길 때 이 항목은 대상에서 빼거나, 넣더라도 "삭제 후보 죽은 코드" 정도로 격을 낮춰서 전달할 것.
 
 **3-2. 프론트엔드 테스트 0개**
 
@@ -161,9 +181,9 @@ Claude Code(Sonnet 5)가 3개의 독립 에이전트를 병렬로 투입해 아�
 
 ### 🟡 참고
 
-**3-4. `PayrollBoard.jsx`의 백그라운드 새로고침 실패 시 시각적 stale 표시 없음** (`:130-165`)
+**3-4. `PayrollBoard.jsx`의 백그라운드 새로고침 실패 시 시각적 stale 표시 없음** (`:164-217`, 2026-09-03 재확인 — 이 파일은 09-03에 여러 번 수정됐지만 이 `load()` 함수의 실패 처리 구조 자체는 그대로다)
 
-토스트는 뜨지만 테이블 자체에 "이 값은 오래됐을 수 있다" 같은 표시가 없다. `AssignBoard.jsx`가 진행률/capacity 조회 실패 시 `assignmentProgressStale` 같은 플래그로 화면에 명시 표시하는 것과 대조적. 토스트를 놓치면 사용자는 낡은 급여 요약을 최신으로 착각할 수 있다.
+토스트는 뜨지만(`showNotification`) 테이블 자체에 "이 값은 오래됐을 수 있다" 같은 표시가 없다. `catch` 블록이 `silent`일 때는 `setSnapshots([])`조차 하지 않고 그냥 토스트만 띄우므로, 화면엔 직전에 로드된(이제는 낡았을 수 있는) 데이터가 아무 표시 없이 계속 보인다. `AssignBoard.jsx`가 진행률/capacity 조회 실패 시 `assignmentProgressStale` 같은 플래그로 화면에 명시 표시하는 것과 대조적. 토스트를 놓치면 사용자는 낡은 급여 요약을 최신으로 착각할 수 있다.
 
 **3-5. 크로스탭 동기화는 여전히 같은 브라우저 창 안에서만 동작**
 
@@ -206,7 +226,7 @@ Claude Code(Sonnet 5)가 3개의 독립 에이전트를 병렬로 투입해 아�
 빠르고 파급력 큰 순서로 묶으면 대략 이렇다(구현 난이도는 낮은데 영향은 큰 것부터):
 
 1. **1-2 (완료 배정 삭제 레이스)** — 삭제 쿼리의 `where`에 `isCompleted: false` 한 줄 추가 + 삭제 건수 검증. 가장 작은 수정으로 가장 위험한 구멍을 막음.
-2. **3-1 (PayrollEntry 동시편집 보호)** — 이미 있는 `CustomerPricingBoard.jsx` 패턴을 그대로 이식.
+2. ~~**3-1 (PayrollEntry 동시편집 보호)**~~ — 2026-09-03 재검증으로 폐기됨(위 3장 정정 참고). 우선순위 목록에서 제외.
 3. **1-1 (LineAssignment orgId + 기간 중복 방지)** — 스키마 변경 + 마이그레이션 필요해서 위 두 개보다는 크지만, 라인/스케줄러 계산 전체의 신뢰도에 영향.
 4. **1-3 (단일 컬럼 FK → 복합 FK 전환)** — 급여/근태 관련 모델부터 순차적으로.
 5. **1-6 / 3장 (String → enum 전환)** — `payType`, `scheduleStatus`부터. `AGENTS.md`에 이미 canonical 값 목록이 문서화되어 있어 설계 논의 없이 바로 enum화 가능.
@@ -221,4 +241,92 @@ Claude Code(Sonnet 5)가 3개의 독립 에이전트를 병렬로 투입해 아�
 - 이 프로젝트(`AGENTS.md`)는 "정확 계산 원칙"이라는 강한 규칙을 갖고 있다: 계산에 필요한 FK/근거 데이터가 없으면 절대 추정치·fallback으로 채우지 말고 명시적으로 실패시켜야 한다(0/null + 진단 로그). 어떤 제안을 받든 이 원칙과 충돌하는 해법(예: "값이 없으면 그냥 0으로 채우자" 류)은 이 프로젝트에서는 반려 대상이라는 점을 함께 전달하면 좋다.
 - DB 마이그레이션은 Prisma 표준 방식이 아니라 `backend/migration_fix.sql` 누적 파일 방식을 쓴다는 것, 그리고 운영 DB(Railway)와 Supabase(인증 전용, DB 아님)를 혼동하면 안 된다는 것도 다른 AI에게 미리 알려주는 게 안전하다 — 이 저장소 자체가 그 혼동을 막기 위해 `AGENTS.md` 최상단에 굵게 경고를 박아둘 정도로 실수가 잦았던 지점이다.
 - 이 문서의 발견 사항 중 "✅ 이미 수정되어 있음"으로 표시한 것들은 실제 현재 코드를 읽고 검증한 것이고, 그 외 항목은 전부 현재 코드 기준 미해결로 검증된 것이다. 다만 이 저장소는 변경이 매우 잦으므로, 구현을 맡기기 전에 해당 파일/줄 번호를 다시 한번 열어 최신 상태인지 확인하길 권한다.
-- 이 문서 작성 시점에 다른 세션이 `frontend/src/pages/App/payroll/PayrollBoard.jsx`, `PayrollEntry.jsx` 등을 동시에 수정 중이었다. 3-1/3-4 항목은 그 작업이 반영되기 전 상태 기준이므로, 실제 구현에 들어가기 전 최신 diff를 다시 확인할 것.
+- **2026-09-03 갱신**: 08-31 시점에 "다른 세션이 동시 수정 중이라 재검증 필요"라고 남겨뒀던 `PayrollBoard.jsx`/`PayrollEntry.jsx` 관련 항목(3-1, 3-4)은 이번에 재검증을 마쳤다. **3-1은 폐기(더 이상 존재하지 않는 코드 경로를 지적한 오탐이었음), 3-4는 유효(라인 번호만 갱신)**로 결론났다. 나머지 1~4장 항목은 08-31 이후 커밋이 전부 급여 화면에만 집중되어 있어 직접 영향을 받지 않았고, 재검증에서도 전부 그대로 유효함을 확인했다.
+- 이 문서를 코덱스에게 넘길 때는 3-1을 조사 대상에서 빼거나 "이미 폐기됨, 검증만 재확인" 정도로 낮춰서 전달할 것 — 존재하지 않는 코드를 찾느라 시간을 쓰게 하지 않기 위함이다.
+
+---
+
+## 2026-09-03 Codex 독립 검토 의견
+
+이 절은 위 분석을 현재 워킹 트리와 다시 대조한 결과다. 결론부터 말하면, **클로드에게 즉시 수정을 맡겨도 되는 항목은 1-2와 3-3 두 건**이다. 나머지는 유효한 문제의식이 있더라도 데이터 조사, 요구사항 확정, 실행계획 또는 성능 측정이 먼저 필요하다.
+
+### 즉시 수정 권장 — 명확하고 국소적인 결함
+
+1. **1-2 완료 배정 삭제 레이스: 확인됨. 최우선 수정 권장.**
+   - `DELETE /assignment-board-state/assignment/:assignmentId`는 트랜잭션 밖에서 `isCompleted`를 확인한 뒤, 트랜잭션 안의 `detachWorkRecordsAndDeleteAssignmentPlans()`가 `id`만 조건으로 삭제한다.
+   - 조회 뒤 삭제 전 사이에 완료 요청이 커밋되면 완료 배정이 삭제될 수 있다는 지적이 정확하다.
+   - 단, 공용 helper 전체를 단순 변경하기보다 이 취소 경로에서 `orgId + id + isCompleted:false`를 조건으로 원자적 삭제하고 삭제 건수가 정확히 1인지 확인하는 편이 안전하다. 카드 수정과 보드 상태 갱신도 같은 트랜잭션 안에 있으므로 409를 throw하면 함께 롤백되어야 한다.
+   - 이 레이스를 재현하는 회귀 테스트를 반드시 같이 추가해야 한다.
+
+2. **3-3 `buildDateKey`의 Invalid Date 처리: 확인됨. 작은 명확 개선으로 수정 권장.**
+   - `AssignBoard.jsx`와 `ProductionPlanBoard.jsx` 구현은 invalid `Date`를 거부하지 않아 `NaN-NaN-NaN`을 만들 수 있다.
+   - 공용 `dateKey` 유틸로 합치고 invalid 입력은 `null`을 반환하도록 하되, 호출부가 `null`을 명시적으로 처리하게 해야 한다. 단순히 잘못된 날짜를 오늘이나 0번 인덱스로 보정하면 정확 계산 원칙에 어긋난다.
+   - 날짜 유틸 단위 테스트를 추가하는 범위까지 한 작업으로 묶는 것이 좋다.
+
+### 유효하지만 바로 구현시키면 위험 — 조사/설계 선행
+
+3. **1-1 `LineAssignment` 조직 격리: 무결성 공백은 확인됨. 그러나 문서의 “국소적 수정” 평가는 부정확하다.**
+   - `LineAssignment`에 `orgId`가 없고 `lineId`/`employeeId`가 단일 FK인 것은 사실이다. 서로 다른 조직의 두 행을 DB가 결합하지 못하게 막는 제약도 없다.
+   - 다만 `orgId` 추가, 기존 행 백필, 부모 `(id, orgId)` unique 확인, 복합 FK, 기존 교차 조직/중복 기간 데이터 감사, 기간 경계의 포함·배제 규칙, open-ended `endAt` 처리까지 필요하다.
+   - 특히 GiST exclusion constraint는 Prisma schema만으로 완결되지 않아 수동 SQL과 배포 경로 검증이 필요하다. **우선 read-only 감사 쿼리와 마이그레이션 계획을 만들고, 이상 데이터가 0건임을 확인한 뒤 구현**해야 한다.
+
+4. **1-3 조직 스코프 복합 FK: 문제의식은 맞지만 일괄 전환 지시는 금지해야 한다.**
+   - `Line.factory`, `Employee.factory/line`, `AttendanceEntry.factory/worker`, `WorkRecord.worker/line` 등에 DB 수준의 조직 일치 보장이 없는 것은 확인된다.
+   - 그러나 nullable 관계, `onDelete` 의미, 브랜드 직원의 `factoryId=null`, 과거 데이터 정리 순서가 모델마다 다르다. “패턴 누락이라 쉽게 고칠 수 있다”는 평가는 과도하다.
+   - 급여 정확도와 직접 연결되는 `AttendanceEntry` 및 `WorkRecord`부터 교차 조직 데이터 감사 → 복합 FK별 영향 분석 → 단계별 적용 순서가 안전하다.
+
+5. **1-6 String→enum: 유효한 장기 개선이지만 즉시 일괄 변환 대상은 아니다.**
+   - `payType`, `category`, `payCycle`, `scheduleStatus`가 String인 것은 사실이다.
+   - 현재 코드는 레거시 급여 타입 호환(`FIXED`, `CT`)과 `OUTPUT_FIXED` fallback을 명시적으로 처리한다. enum 전환 전에 운영 DB의 distinct 값 감사와 정규화/백필이 필요하다.
+   - `scheduleStatus`와 급여 관련 필드는 서로 다른 도메인이므로 별도 마이그레이션으로 나누는 것이 맞다. “canonical 값이 문서화됐으니 설계 없이 바로 enum화 가능”하다는 결론에는 동의하지 않는다.
+
+6. **2-1/2-2 N+1: 순차 호출은 확인되지만, 성능 장애로 단정할 근거는 부족하다.**
+   - `ensureInitialStyleProcessVersion()`을 스타일별 순차 호출하고 내부에서 여러 쿼리를 수행하는 구조는 맞다.
+   - 다만 30초 transaction timeout 자체가 이 경로 때문에 생겼다는 문서의 인과관계는 코드만으로 증명되지 않는다. 실제 스타일 수, 쿼리 시간, timeout 로그를 먼저 측정해야 우선순위를 정할 수 있다.
+   - 최적화 시 무작정 `Promise.all`을 쓰면 한 트랜잭션 연결 위에서 실질 병렬성이 없거나 충돌만 늘 수 있다. bulk 조회 후 필요한 생성/백필만 묶는 방식으로 설계해야 한다.
+
+7. **2-3 ST 합계 중복: drift 위험은 확인됨. 다만 기존 helper 직접 대체는 곤란하다.**
+   - `createPlanRows` 경로와 repair 경로에 합계 reduce가 별도로 남아 있다.
+   - 이 경로들은 live style row가 아니라 version snapshot에서 `applicableQuantity`가 이미 계산된 데이터를 사용하므로, 현재 `calculateAssignmentStTotalSecondsFromStyleRows()`를 그대로 호출할 수 없다. snapshot용 공용 helper를 만들고 두 인라인 구현을 그 helper로 통합하는 것이 정확하다.
+
+8. **3-4 급여 목록 stale 표시: 개선점은 명확하지만 오류 수정 우선순위는 낮다.**
+   - silent refresh 실패 시 기존 snapshot을 유지하고 토스트만 띄우는 동작은 확인된다.
+   - 금액 화면이라는 점에서 stale 배지/마지막 성공 시각을 추가할 가치는 있다. 다만 기존 값을 지우는 것은 오히려 사용성을 해치므로, 데이터 유지 + 명시적 stale 상태가 적절하다.
+
+### 현재 근거로는 수정 지시하지 말 것 — 오탐 또는 과장
+
+9. **1-4 `WorkOrder` 카운터파티 미정 중복: 현재 런타임 기준 오탐에 가깝다.**
+   - DB 컬럼이 nullable이고 PostgreSQL unique가 NULL 중복을 허용하는 설명 자체는 맞다.
+   - 그러나 현재 POST/PUT `/orders`는 `resolveOrderPartiesOrThrow()`로 buyer와 seller를 모두 확정한 뒤 저장하고, update에는 별도 충돌 검사도 있다. 즉 문서가 가정한 “EDITING 상태에서 카운터파티 미정으로 저장” 경로가 현재 코드에 없다.
+   - 레거시/직접 SQL 쓰기까지 DB가 방어하지 못한다는 hardening 후보일 수는 있지만, 실제 버그로 분류하거나 partial unique를 바로 추가해서는 안 된다. 먼저 null 행 존재 여부와 nullable 유지 이유를 확인해야 한다.
+
+10. **1-7 인덱스 부재: 쿼리 플랜 없이 추가하지 말 것.**
+    - 컬럼에 인덱스가 없다는 사실만으로 성능 문제가 성립하지 않는다. 테이블 크기, 실제 where/order 조건, 선택도, `EXPLAIN (ANALYZE, BUFFERS)`가 필요하다.
+    - 특히 별도 단일 인덱스와 복합 인덱스의 효용은 쿼리별로 다르므로 “화면 필터에 쓰인다”만으로 생성하면 쓰기 비용과 중복 인덱스만 늘 수 있다.
+
+11. **3-2 “프론트엔드 테스트 0개”: 표현이 사실과 다르다.**
+    - `frontend/src` 안에 co-located `*.test.*`가 없고 frontend package에 test runner가 없는 것은 맞다.
+    - 하지만 저장소 루트 `scripts/*.test.mjs`에는 `AssignBoard.jsx`, `PayrollBoard.jsx`, 프론트 유틸을 검사하는 다수의 regression test가 있고, 루트 `test:regression` 체인에도 여러 테스트가 연결돼 있다.
+    - 정확한 평가는 **“프론트 전용 테스트 러너/컴포넌트 테스트가 없고, 현재 테스트 상당수는 소스 문자열 회귀 검사에 의존한다”**이다. 개선 방향은 순수 로직 분리 후 행동 기반 단위 테스트를 늘리는 것이지, 0에서 테스트 체계를 새로 만든다는 설명은 아니다.
+
+12. **3-5 크로스탭 미동기화: 요구사항이 확인되기 전에는 결함이 아니다.**
+    - 현재 event bus가 동일 document의 `window` 이벤트만 쓰는 것은 사실이다.
+    - 그러나 다중 탭 실시간 일관성이 제품 요구사항인지 명시되지 않았다. `BroadcastChannel`을 넣더라도 인증 조직 전환, 이벤트 중복, 탭 종료, 미지원 환경을 함께 설계해야 한다. 현재는 개선 후보로만 유지한다.
+
+13. **4-1 배포 자동화 설명은 현재 상태로 정정 필요.**
+    - `backend/railway.json`에는 현재 `preDeployCommand: "npm run railway:predeploy"`가 켜져 있다.
+    - 실제 predeploy는 `migration_fix.sql` 적용 후 `prisma:deploy:safe`를 실행하며, 후자는 `prisma db push --skip-generate`다. 표준 migration 디렉터리도 다수 존재하지만 운영 소스오브트루스는 여전히 누적 SQL + db push라는 설명이 더 정확하다.
+    - 따라서 “preDeploy가 현재 꺼져 있어 매번 수동 실행해야 한다”는 현재형 주장은 폐기해야 한다. 남는 진짜 리스크는 누적 SQL의 재실행 안전성, migration history와 운영 배포 방식의 이원화, predeploy 성공 여부를 검증하는 CI/CD 가시성이다.
+
+14. **4-3 CI/CD 불확실성: 저장소 기준으로는 자동 CI 정의를 찾지 못했지만 외부 Railway/GitHub 설정은 코드만으로 확정할 수 없다.**
+    - 루트에 실행 가능한 regression script는 있다.
+    - 저장소에는 `.github/workflows`가 보이지 않는다. 따라서 클로드에게는 “CI가 없다”고 단정해 수정시키기보다, 외부 설정 확인 후 PR/push 게이트에 `npm run test:regression`과 양쪽 build를 연결하는 별도 작업을 맡기는 것이 맞다.
+
+### 클로드에게 줄 1차 작업 범위 제안
+
+아래 두 작업만 먼저 독립 커밋으로 맡기는 것이 안전하다.
+
+1. 완료 배정 취소를 조건부 삭제로 바꾸고, 동시 완료 시 409와 전체 트랜잭션 롤백을 검증하는 회귀 테스트 추가.
+2. `buildDateKey`를 공용 안전 유틸로 통합하고 invalid date가 조용한 `NaN-NaN-NaN` 키가 되지 않도록 호출부 및 단위 테스트 수정.
+
+그 다음 작업은 코드 변경이 아니라 read-only 조사로 제한한다: `LineAssignment` 기간 중복/교차 조직 데이터, 급여·스케줄 String 필드의 distinct 값, 조직 불일치 가능 FK 데이터, 배정 저장의 실제 쿼리 시간과 timeout 로그. 이 조사 결과가 나온 뒤 스키마 마이그레이션과 성능 개선 범위를 확정하는 것이 맞다.

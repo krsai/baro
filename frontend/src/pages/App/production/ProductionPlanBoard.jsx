@@ -38,6 +38,7 @@ import { useLanguage } from '../../../context/LanguageContext';
 import useHolidayCalendar from '../../../hooks/useHolidayCalendar';
 import { getGenderLabel } from '../../../constants/productAttributes';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import { buildLocalDateKey as buildDateKey } from '../../../utils/dateKey.mjs';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import {
@@ -384,13 +385,6 @@ const resolveLineDailyCapacitySeconds = (line, headcount) => {
     return Math.round(directCapacity);
   }
   return Math.max(1, toPositiveInt(headcount, 1)) * 8 * 60 * 60;
-};
-
-const buildDateKey = (date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 };
 
 const CALENDAR_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
