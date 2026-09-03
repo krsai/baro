@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Tooltip, alpha } from "@mui/material";
+import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, Divider, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Tooltip, alpha } from "@mui/material";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import LockOpenOutlinedIcon from "@mui/icons-material/LockOpenOutlined";
 import PrintOutlinedIcon from "@mui/icons-material/PrintOutlined";
@@ -224,7 +224,7 @@ const PayrollEntry = () => {
   const [jobRoleOptions, setJobRoleOptions] = useState([]);
   const [factories, setFactories] = useState([]);
   const [payslipEmployee, setPayslipEmployee] = useState(null);
-  const [processPageIndex, setProcessPageIndex] = useState(0);
+  const [payslipPageIndex, setPayslipPageIndex] = useState(0);
 
   const load = useCallback(async () => {
     if (!activeOrgId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || !factoryId) return;
@@ -576,13 +576,13 @@ const PayrollEntry = () => {
       [payslipInfoText.tenureYears, `${formatNumberWithCommas(Number(parameters.TENURE_YEARS || 0), { maximumFractionDigits: 2 })} ${payslipInfoText.years}`],
       [payslipInfoText.salaryVersion, payslipEmployee.salarySystemVersionNumber ? `Ver.${payslipEmployee.salarySystemVersionNumber}` : "-"],
     ].map(([label, value]) => `<b>${escapePrintText(label)}</b><span>${escapePrintText(value)}</span>`).join("");
-    const productionHtml = payslipEmployee.payType === "OUTPUT"
-      ? `<h2>${escapePrintText(payslipInfoText.productionBasis)}</h2><table><thead><tr><th>${escapePrintText(payslipInfoText.styleName)}</th><th>${escapePrintText(text.process)}</th><th>${escapePrintText(text.quantity)}</th><th>${escapePrintText(text.allowance)}</th></tr></thead><tbody>${(payslipEmployee.processes || []).map((process) => `<tr><td>${escapePrintText(process.styleName || process.styleCode || "-")}</td><td>${escapePrintText(process.processName || process.processCode || "-")}</td><td>${escapePrintText(formatNumberWithCommas(process.totalQuantity || 0))}</td><td>${escapePrintText(formatDong(process.totalEarnings))}</td></tr>`).join("")}</tbody></table>`
+    const productionHtml = productionAllowanceOf(payslipEmployee) > 0
+      ? `<section class="page production-page"><h1>${escapePrintText(payslipInfoText.productionBasis)} · ${escapePrintText(month)}</h1><div class="employee-name">${escapePrintText(payslipEmployee.workerName || "-")}</div><table><thead><tr><th>${escapePrintText(payslipInfoText.styleName)}</th><th>${escapePrintText(text.process)}</th><th>${escapePrintText(text.quantity)}</th><th>${escapePrintText(text.allowance)}</th></tr></thead><tbody>${(payslipEmployee.processes || []).map((process) => `<tr><td>${escapePrintText(process.styleName || process.styleCode || "-")}</td><td>${escapePrintText(process.processName || process.processCode || "-")}</td><td>${escapePrintText(formatNumberWithCommas(process.totalQuantity || 0))}</td><td>${escapePrintText(formatDong(process.totalEarnings))}</td></tr>`).join("")}</tbody></table></section>`
       : "";
     const printFileName = `${payslipEmployee.workerName || ""} ${month} ${payslipText.title}`.replace(/\s+/g, " ").trim();
     const popup = window.open("", "_blank", "width=820,height=900");
     if (!popup) return;
-    popup.document.write(`<!doctype html><html><head><title>${escapePrintText(printFileName)}</title><style>body{font-family:Arial,sans-serif;color:#111;padding:36px}h1{font-size:22px;margin:0 0 24px}h2{font-size:16px;margin:26px 0 10px}.meta{display:grid;grid-template-columns:150px 1fr 150px 1fr;gap:8px 16px;margin-bottom:24px}table{width:100%;border-collapse:collapse}th,td{padding:11px;border:1px solid #ccc;text-align:left}th:not(:first-child),td:not(:first-child){text-align:right}.total{font-weight:700;background:#f5f5f5}.note{margin-top:18px;color:#666;font-size:12px}@media print{body{padding:0}}</style></head><body><h1>${escapePrintText(payslipText.title)} · ${escapePrintText(month)}</h1><h2>${escapePrintText(payslipInfoText.basicInfo)}</h2><div class="meta">${infoHtml}</div><table><thead><tr><th>${escapePrintText(unifiedPayrollText.item)}</th><th>${escapePrintText(unifiedPayrollText.category)}</th><th>${escapePrintText(payslipText.amount)}</th></tr></thead><tbody>${itemHtml}<tr><td>${escapePrintText(payslipText.deductions)}</td><td>-</td><td>${escapePrintText(formatDong(payslipEmployee.deductions || 0))}</td></tr><tr class="total"><td>${escapePrintText(payslipText.net)}</td><td>-</td><td>${escapePrintText(formatDong(payslipEmployee.netSalary || 0))}</td></tr></tbody></table>${productionHtml}<div class="note">${escapePrintText(payslipText.preview)}</div><script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script></body></html>`);
+    popup.document.write(`<!doctype html><html><head><title>${escapePrintText(printFileName)}</title><style>@page{size:A4;margin:12mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;margin:0}.page{min-height:273mm;page-break-after:always}.page:last-child{page-break-after:auto}h1{font-size:22px;margin:0 0 24px}h2{font-size:16px;margin:26px 0 10px}.employee-name{font-size:14px;font-weight:700;margin:-14px 0 20px}.meta{display:grid;grid-template-columns:150px 1fr 150px 1fr;gap:8px 16px;margin-bottom:24px}table{width:100%;border-collapse:collapse}th,td{padding:11px;border:1px solid #ccc;text-align:left}th:not(:first-child),td:not(:first-child){text-align:right}.total{font-weight:700;background:#f5f5f5}.note{margin-top:18px;color:#666;font-size:12px}.production-page{break-before:page;page-break-before:always}@media screen{body{padding:36px}.page{min-height:auto;margin-bottom:36px}.production-page{padding-top:36px;border-top:1px dashed #aaa}}@media print{body{padding:0}}</style></head><body><section class="page"><h1>${escapePrintText(payslipText.title)} · ${escapePrintText(month)}</h1><h2>${escapePrintText(payslipInfoText.basicInfo)}</h2><div class="meta">${infoHtml}</div><table><thead><tr><th>${escapePrintText(unifiedPayrollText.item)}</th><th>${escapePrintText(unifiedPayrollText.category)}</th><th>${escapePrintText(payslipText.amount)}</th></tr></thead><tbody>${itemHtml}<tr><td>${escapePrintText(payslipText.deductions)}</td><td>-</td><td>${escapePrintText(formatDong(payslipEmployee.deductions || 0))}</td></tr><tr class="total"><td>${escapePrintText(payslipText.net)}</td><td>-</td><td>${escapePrintText(formatDong(payslipEmployee.netSalary || 0))}</td></tr></tbody></table><div class="note">${escapePrintText(payslipText.preview)}</div></section>${productionHtml}<script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script></body></html>`);
     popup.document.close();
   };
   const provisional = data?.isProvisional === true;
@@ -745,7 +745,7 @@ const PayrollEntry = () => {
                               startIcon={<PrintOutlinedIcon />}
                               onClick={() => {
                                 setPayslipEmployee(employee);
-                                setProcessPageIndex(0);
+                                setPayslipPageIndex(0);
                               }}
                             >
                               {payslipText.open}
@@ -763,15 +763,31 @@ const PayrollEntry = () => {
       </Box>
       <Dialog open={Boolean(payslipEmployee)} onClose={() => setPayslipEmployee(null)} fullWidth maxWidth="md">
         <DialogTitle>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <span>
-              {payslipText.title} · {month}
-            </span>
-            <Chip size="small" label={payslipText.preview} variant="outlined" />
+          <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+            <Stack direction="row" spacing={1} alignItems="center">
+              <span>
+                {payslipText.title} · {month}
+              </span>
+              <Chip size="small" label={payslipText.preview} variant="outlined" />
+            </Stack>
+            <Button variant="contained" startIcon={<PrintOutlinedIcon />} onClick={handlePrintPayslip}>
+              {payslipText.print}
+            </Button>
           </Stack>
         </DialogTitle>
         <DialogContent dividers>
-          <Stack spacing={2}>
+          {productionAllowanceOf(payslipEmployee) > 0 ? (
+            <Stack direction="row" alignItems="center" justifyContent="center" spacing={1} sx={{ mb: 2 }}>
+              <IconButton size="small" disabled={payslipPageIndex === 0} onClick={() => setPayslipPageIndex(0)}>
+                <ChevronLeftIcon fontSize="small" />
+              </IconButton>
+              <Typography variant="caption" color="text.secondary">{payslipPageIndex + 1} / 2</Typography>
+              <IconButton size="small" disabled={payslipPageIndex === 1} onClick={() => setPayslipPageIndex(1)}>
+                <ChevronRightIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+          ) : null}
+          <Stack spacing={2} sx={{ display: payslipPageIndex === 0 ? "flex" : "none" }}>
             <Typography variant="subtitle2" fontWeight={700} fontSize={13}>{payslipInfoText.basicInfo}</Typography>
             <Box
               sx={{
@@ -839,63 +855,42 @@ const PayrollEntry = () => {
                 </TableRow>
               </TableBody>
             </Table>
-            {payslipEmployee?.payType === "OUTPUT" ? <>
-              <Divider />
-              <Typography variant="subtitle2" fontWeight={700} fontSize={13}>{payslipInfoText.productionBasis}</Typography>
-              {(() => {
-                const processes = Array.isArray(payslipEmployee.processes) ? payslipEmployee.processes : [];
-                if (processes.length === 0) {
-                  return (
-                    <Typography variant="body2" color="text.secondary">
-                      {text.noRecords}
-                    </Typography>
-                  );
-                }
-                const pageIndex = Math.min(processPageIndex, processes.length - 1);
-                const process = processes[pageIndex];
-                return (
-                  <Paper variant="outlined" sx={{ p: 2 }}>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
-                      <IconButton
-                        size="small"
-                        disabled={pageIndex === 0}
-                        onClick={() => setProcessPageIndex((current) => Math.max(0, current - 1))}
-                      >
-                        <ChevronLeftIcon fontSize="small" />
-                      </IconButton>
-                      <Typography variant="caption" color="text.secondary">
-                        {pageIndex + 1} / {processes.length}
-                      </Typography>
-                      <IconButton
-                        size="small"
-                        disabled={pageIndex >= processes.length - 1}
-                        onClick={() => setProcessPageIndex((current) => Math.min(processes.length - 1, current + 1))}
-                      >
-                        <ChevronRightIcon fontSize="small" />
-                      </IconButton>
-                    </Stack>
-                    <Box sx={{ display: "grid", gridTemplateColumns: "120px 1fr", rowGap: 1, columnGap: 2 }}>
-                      <Typography variant="body2" color="text.secondary">{payslipInfoText.styleName}</Typography>
-                      <Typography variant="body2" fontWeight={600}>{process.styleName || process.styleCode || "-"}</Typography>
-                      <Typography variant="body2" color="text.secondary">{text.process}</Typography>
-                      <Typography variant="body2" fontWeight={600}>{process.processName || process.processCode || "-"}</Typography>
-                      <Typography variant="body2" color="text.secondary">{text.quantity}</Typography>
-                      <Typography variant="body2">{formatNumberWithCommas(process.totalQuantity || 0)}</Typography>
-                      <Typography variant="body2" color="text.secondary">{text.allowance}</Typography>
-                      <Typography variant="body2" fontWeight={700}>{formatDong(process.totalEarnings)}</Typography>
-                    </Box>
-                  </Paper>
-                );
-              })()}
-            </> : null}
           </Stack>
+          {productionAllowanceOf(payslipEmployee) > 0 ? (
+            <Stack spacing={2} sx={{ display: payslipPageIndex === 1 ? "flex" : "none" }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="baseline">
+                <Typography variant="subtitle1" fontWeight={700}>{payslipInfoText.productionBasis}</Typography>
+                <Typography variant="body2" color="text.secondary">{payslipEmployee?.workerName || "-"}</Typography>
+              </Stack>
+              {(payslipEmployee.processes || []).length > 0 ? (
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small" sx={{ "& .MuiTableCell-root": { fontSize: 13, py: 0.9 } }}>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>{payslipInfoText.styleName}</TableCell>
+                        <TableCell>{text.process}</TableCell>
+                        <TableCell align="right">{text.quantity}</TableCell>
+                        <TableCell align="right">{text.allowance}</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {(payslipEmployee.processes || []).map((process, index) => (
+                        <TableRow key={`${process.styleId || process.styleCode || "style"}:${process.processId || process.processCode || index}`}>
+                          <TableCell sx={{ fontWeight: 600 }}>{process.styleName || process.styleCode || "-"}</TableCell>
+                          <TableCell>{process.processName || process.processCode || "-"}</TableCell>
+                          <TableCell align="right">{formatNumberWithCommas(process.totalQuantity || 0)}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700 }}>{formatDong(process.totalEarnings)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              ) : (
+                <Typography variant="body2" color="text.secondary">{text.noRecords}</Typography>
+              )}
+            </Stack>
+          ) : null}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPayslipEmployee(null)}>{payslipText.close}</Button>
-          <Button variant="contained" startIcon={<PrintOutlinedIcon />} onClick={handlePrintPayslip}>
-            {payslipText.print}
-          </Button>
-        </DialogActions>
       </Dialog>
     </AppPageContainer>
   );
