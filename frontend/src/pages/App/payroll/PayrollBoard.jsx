@@ -22,6 +22,7 @@ import {
 import CalculateIcon from '@mui/icons-material/Calculate';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import AppPageContainer from '../../../components/AppPageContainer';
+import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
 import LockToggleSwitch from '../../../components/LockToggleSwitch';
 import PageToolbar from '../../../components/PageToolbar';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -402,11 +403,16 @@ const PayrollBoard = () => {
   return (
     <AppPageContainer
       title={text.title}
-      toolbar={<PageToolbar right={(
+      titleActions={(
         <Stack direction="row" spacing={1} alignItems="center">
+          <LastUpdaterLabel />
           <Button variant="outlined" startIcon={<SettingsOutlinedIcon />} onClick={() => setSettingsOpen(true)}>
             {languageCode === 'ko' ? '설정' : languageCode === 'vi' ? 'Cài đặt' : 'Settings'}
           </Button>
+        </Stack>
+      )}
+      toolbar={<PageToolbar showLastUpdater={false} right={(
+        <Stack direction="row" spacing={1} alignItems="center">
           <TextField
             select
             label={resolveText(languageCode, 'calculateMonth')}
