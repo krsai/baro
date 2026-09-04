@@ -66,11 +66,14 @@ test('assignment board headcount counts active factory employees without LineAss
   assert.doesNotMatch(summarySource, /prisma\.lineAssignment\.findMany/);
 });
 
-test('unassigned work panel defaults from content and provides an explicit toggle button', () => {
+test('unassigned work panel defaults from content and collapses its desktop column horizontally', () => {
   assert.match(assignBoard, /unassignedPanelExpandedOverride \?\? unassignedCards\.length > 0/);
   assert.match(assignBoard, /setUnassignedPanelExpandedOverride\(!unassignedPanelExpanded\)/);
   assert.match(assignBoard, /aria-expanded=\{expanded\}/);
-  assert.match(assignBoard, /expanded \? 'assign\.collapseUnassignedWork' : 'assign\.expandUnassignedWork'/);
+  assert.match(assignBoard, /KeyboardArrowLeftIcon/);
+  assert.match(assignBoard, /KeyboardArrowRightIcon/);
+  assert.match(assignBoard, /unassignedPanelExpanded[\s\S]*'minmax\(0, 1fr\) 48px'/);
+  assert.match(assignBoard, /collapsed=\{!unassignedPanelExpanded\}/);
   assert.match(assignBoard, /\{expanded \? <Stack[\s\S]*<\/Stack> : null\}/);
 });
 

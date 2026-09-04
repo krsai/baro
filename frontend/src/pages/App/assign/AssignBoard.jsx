@@ -26,8 +26,8 @@ import {
   Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
-import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
+import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { DndContext, DragOverlay, useDroppable, pointerWithin, MeasuringStrategy } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
@@ -335,6 +335,7 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
 
 const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
   activeDragType,
+  collapsed,
   children,
 }) {
   const acceptsAssignment = activeDragType === 'assignment';
@@ -356,7 +357,7 @@ const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
         minHeight: 0,
         overflow: { lg: 'hidden' },
         position: 'relative',
-        pl: { xs: 0, lg: 1.5 },
+        pl: { xs: 0, lg: collapsed ? 0.75 : 1.5 },
         pt: { xs: 1.5, lg: 0 },
         borderLeft: { xs: 0, lg: '1px solid' },
         borderTop: { xs: '1px solid', lg: 0 },
@@ -368,7 +369,7 @@ const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
               lg: 'inset 3px 0 0 rgba(211, 47, 47, 0.55)',
             }
           : 'none',
-        transition: 'border-color 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease',
+        transition: 'border-color 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease, padding 0.18s ease',
       }}
     >
       <Box
@@ -424,12 +425,23 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
 
   return (
     <Stack spacing={1.5} sx={{ minWidth: 0, height: '100%', minHeight: 0 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
-        <Typography variant="subtitle2">
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: expanded ? 'space-between' : { xs: 'space-between', lg: 'center' },
+          alignItems: 'center',
+          gap: 1,
+        }}
+      >
+        <Typography variant="subtitle2" sx={{ display: expanded ? 'block' : { xs: 'block', lg: 'none' } }}>
           {getUiMessage('assign.unassignedCards', '미배정 작업', languageCode)}
         </Typography>
-        <Stack direction="row" alignItems="center" spacing={1}>
-          <Typography variant="caption" color="text.secondary">
+        <Stack direction="row" alignItems="center" spacing={expanded ? 1 : 0}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: expanded ? 'block' : 'none' }}
+          >
             {loading ? summaryText : `${summaryText} · ${quantitySummary}`}
           </Typography>
           <Button
@@ -438,14 +450,23 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
             variant="outlined"
             onClick={onToggleExpanded}
             aria-expanded={expanded}
-            endIcon={expanded ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
-            sx={{ flexShrink: 0, minWidth: 76 }}
-          >
-            {getUiMessage(
+            aria-label={getUiMessage(
               expanded ? 'assign.collapseUnassignedWork' : 'assign.expandUnassignedWork',
               expanded ? 'Collapse' : 'Expand',
               languageCode
             )}
+            endIcon={expanded ? <KeyboardArrowRightIcon /> : null}
+            sx={{
+              flexShrink: 0,
+              minWidth: expanded ? 76 : 36,
+              px: expanded ? 1.25 : 0.5,
+            }}
+          >
+            {expanded ? getUiMessage(
+              'assign.collapseUnassignedWork',
+              'Collapse',
+              languageCode
+            ) : <KeyboardArrowLeftIcon />}
           </Button>
         </Stack>
       </Box>
@@ -7050,14 +7071,17 @@ const AssignBoard = () => {
             display: 'grid',
             gridTemplateColumns: {
               xs: '1fr',
-              lg: 'minmax(0, 1fr) minmax(320px, clamp(340px, 28vw, 400px))',
+              lg: unassignedPanelExpanded
+                ? 'minmax(0, 1fr) minmax(320px, clamp(340px, 28vw, 400px))'
+                : 'minmax(0, 1fr) 48px',
             },
-            gap: { xs: 1.5, lg: 1.5 },
+            gap: { xs: 1.5, lg: unassignedPanelExpanded ? 1.5 : 0.5 },
             alignItems: 'stretch',
             minWidth: 0,
             flex: { lg: 1 },
             minHeight: 0,
             overflow: { lg: 'hidden' },
+            transition: 'grid-template-columns 0.18s ease, gap 0.18s ease',
           }}
         >
           <Stack spacing={1.5} sx={{ minWidth: 0, minHeight: 0, overflowY: { lg: 'auto' } }}>
@@ -7134,6 +7158,7 @@ const AssignBoard = () => {
           </Stack>
           <AssignmentCancelDropZone
             activeDragType={activeDrag?.type || null}
+            collapsed={!unassignedPanelExpanded}
           >
             <Box sx={{ minWidth: 0, height: '100%', minHeight: 0 }}>
               <UnassignedCardGroupsPanel
