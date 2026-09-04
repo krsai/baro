@@ -21,6 +21,7 @@ test('single-month screens reuse the global month selector', () => {
   const screens = [
     'frontend/src/pages/App/assign/AssignBoard.jsx',
     'frontend/src/pages/App/ShipmentReview.jsx',
+    'frontend/src/pages/App/work/WorkList.jsx',
     'frontend/src/pages/App/work/WorkMonthlyBoard.jsx',
   ];
 
@@ -30,4 +31,12 @@ test('single-month screens reuse the global month selector', () => {
     assert.match(source, /<MonthSelector/);
     assert.doesNotMatch(source, /type="month"/);
   });
+});
+
+test('work history maps the selected global month to its full query range', () => {
+  const workList = read('frontend/src/pages/App/work/WorkList.jsx');
+  assert.match(workList, /const handleFilterMonthChange = useCallback/);
+  assert.match(workList, /setDateFilterStart\(nextStart\)/);
+  assert.match(workList, /setDateFilterEnd\([\s\S]*getMonthEnd\(nextStart/);
+  assert.match(workList, /min=\{workHistoryOperationStartDay\.format\('YYYY-MM'\)\}/);
 });

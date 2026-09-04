@@ -31,7 +31,7 @@ import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
 import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
-import MonthRangeSelector from '../../../components/MonthRangeSelector';
+import MonthSelector from '../../../components/MonthSelector';
 import PageSectionHeader from '../../../components/PageSectionHeader';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -135,8 +135,7 @@ const TEXT = {
   },
   prevMonth: { ko: '이전 달', en: 'Previous month', vi: 'Thang truoc' },
   nextMonth: { ko: '다음 달', en: 'Next month', vi: 'Thang sau' },
-  startDate: { ko: '시작일', en: 'Start Date', vi: 'Ngày bắt đầu' },
-  endDate: { ko: '종료일', en: 'End Date', vi: 'Ngày kết thúc' },
+  workMonth: { ko: '작업 월', en: 'Work month', vi: 'Tháng làm việc' },
 };
 
 const DAILY_LOG_LABELS = {
@@ -146,14 +145,6 @@ const DAILY_LOG_LABELS = {
 };
 
 const WORK_LIST_FILTER_STORAGE_PREFIX = 'work-history:list-filters:v1';
-
-const FILTER_DATE_PICKER_SLOT_PROPS = {
-  textField: {
-    sx: {
-      width: { xs: 132, sm: 140 },
-    },
-  },
-};
 
 const resolveText = (bundle, languageCode, fallback = '') =>
   bundle?.[languageCode] || bundle?.ko || fallback;
@@ -386,18 +377,16 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
   );
   const [dateFilterStart, setDateFilterStart] = useState(
     () =>
-      storedFilters?.dateFilterStart ||
       getMonthStart(
-        new Date(),
+        storedFilters?.dateFilterStart || new Date(),
         dayjs(DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY).startOf('month'),
         dayjs(DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY).startOf('day')
       )
   );
   const [dateFilterEnd, setDateFilterEnd] = useState(
     () =>
-      storedFilters?.dateFilterEnd ||
       getMonthEnd(
-        new Date(),
+        storedFilters?.dateFilterStart || new Date(),
         dayjs(DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY).startOf('month'),
         dayjs(DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY).startOf('day')
       )
@@ -480,17 +469,24 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
   }, [activeFactoryId, activeOrgId]);
 
   useEffect(() => {
-    setDateFilterStart((current) => {
-      const clamped = clampWorkHistoryFilterDate(current, workHistoryOperationStartDay);
-      return current?.getTime?.() === clamped?.getTime?.() ? current : clamped;
-    });
-    setDateFilterEnd((current) => {
-      const clampedEnd = clampWorkHistoryFilterDate(current, workHistoryOperationStartDay);
-      const clampedStart = clampWorkHistoryFilterDate(dateFilterStart, workHistoryOperationStartDay);
-      const nextValue = clampedEnd >= clampedStart ? clampedEnd : clampedStart;
-      return current?.getTime?.() === nextValue?.getTime?.() ? current : nextValue;
-    });
-  }, [dateFilterStart, workHistoryOperationStartDay]);
+    const operationStartMonth = workHistoryOperationStartDay.startOf('month');
+    const nextStart = getMonthStart(
+      dateFilterStart,
+      operationStartMonth,
+      workHistoryOperationStartDay
+    );
+    const nextEnd = getMonthEnd(
+      nextStart,
+      operationStartMonth,
+      workHistoryOperationStartDay
+    );
+    setDateFilterStart((current) =>
+      current?.getTime?.() === nextStart?.getTime?.() ? current : nextStart
+    );
+    setDateFilterEnd((current) =>
+      current?.getTime?.() === nextEnd?.getTime?.() ? current : nextEnd
+    );
+  }, [workHistoryOperationStartDay]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -694,61 +690,20 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
     [activeOrgId, importing, languageCode, showNotification, workHistoryOperationStartDateKey]
   );
 
-  const handleDateFilterStartChange = useCallback((value) => {
-    if (!value?.isValid?.()) return;
-    const nextStart = clampWorkHistoryFilterDate(value.toDate(), workHistoryOperationStartDay);
-    if (!nextStart) return;
+  const handleFilterMonthChange = useCallback((monthKey) => {
+    const selectedMonth = dayjs(`${monthKey}-01`);
+    if (!selectedMonth.isValid()) return;
+    const operationStartMonth = workHistoryOperationStartDay.startOf('month');
+    const nextStart = getMonthStart(
+      selectedMonth.toDate(),
+      operationStartMonth,
+      workHistoryOperationStartDay
+    );
     setDateFilterStart(nextStart);
-    setDateFilterEnd((prev) => {
-      const currentEnd = normalizeFilterDate(prev);
-      return currentEnd && currentEnd >= nextStart ? currentEnd : nextStart;
-    });
+    setDateFilterEnd(
+      getMonthEnd(nextStart, operationStartMonth, workHistoryOperationStartDay)
+    );
   }, [workHistoryOperationStartDay]);
-
-  const handleDateFilterEndChange = useCallback((value) => {
-    if (!value?.isValid?.()) return;
-    const nextEnd = clampWorkHistoryFilterDate(value.toDate(), workHistoryOperationStartDay);
-    if (!nextEnd) return;
-    setDateFilterEnd(nextEnd);
-    setDateFilterStart((prev) => {
-      const currentStart = normalizeFilterDate(prev);
-      return currentStart && currentStart <= nextEnd ? currentStart : nextEnd;
-    });
-  }, [workHistoryOperationStartDay]);
-
-  const shiftDateFilterMonth = useCallback(
-    (amount) => {
-      // Plain dayjs `.add(amount, 'month')` preserves the day-of-month number
-      // and clamps into the target month when that day doesn't exist there
-      // (e.g. Aug 31 + 1 month -> Sep 30, since September has no 31st). That
-      // clamped day then sticks on every later shift even once the range
-      // moves back into a 31-day month (Sep 30 + 1 month -> Oct 30, not
-      // Oct 31), so a range that started as a full calendar month silently
-      // drifts short by a day. Re-snap to the month boundary only when the
-      // current start/end date IS that boundary, so a deliberately partial
-      // range (e.g. the 5th-20th) still shifts by plain day-preserving month
-      // math as before.
-      const currentStart = dayjs(dateFilterStart);
-      const currentEnd = dayjs(dateFilterEnd);
-      const startIsMonthStart = currentStart.isSame(currentStart.startOf('month'), 'day');
-      const endIsMonthEnd = currentEnd.isSame(currentEnd.endOf('month'), 'day');
-      const shiftedStart = currentStart.add(amount, 'month');
-      const shiftedEnd = currentEnd.add(amount, 'month');
-      const nextMonthStart = clampWorkHistoryFilterDate(
-        (startIsMonthStart ? shiftedStart.startOf('month') : shiftedStart).toDate(),
-        workHistoryOperationStartDay
-      );
-      setDateFilterStart(nextMonthStart);
-      setDateFilterEnd((previous) => {
-        const shifted = clampWorkHistoryFilterDate(
-          (endIsMonthEnd ? shiftedEnd.endOf('month') : shiftedEnd).toDate(),
-          workHistoryOperationStartDay
-        );
-        return shifted >= nextMonthStart ? shifted : nextMonthStart;
-      });
-    },
-    [dateFilterStart, dateFilterEnd, workHistoryOperationStartDay]
-  );
 
   return (
     <AppPageContainer
@@ -841,17 +796,11 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                   flexShrink: 0,
                 }}
               >
-                <MonthRangeSelector
-                  monthOnly={false}
-                  startValue={dateFilterStart}
-                  endValue={dateFilterEnd}
-                  onStartChange={handleDateFilterStartChange}
-                  onEndChange={handleDateFilterEndChange}
-                  onShift={shiftDateFilterMonth}
-                  slotProps={FILTER_DATE_PICKER_SLOT_PROPS}
-                  minDate={workHistoryOperationStartDay}
-                  startLabel={resolveText(TEXT.startDate, languageCode, 'Start Date')}
-                  endLabel={resolveText(TEXT.endDate, languageCode, 'End Date')}
+                <MonthSelector
+                  value={dayjs(dateFilterStart).format('YYYY-MM')}
+                  onChange={handleFilterMonthChange}
+                  min={workHistoryOperationStartDay.format('YYYY-MM')}
+                  ariaLabel={resolveText(TEXT.workMonth, languageCode, 'Work month')}
                 />
               </Stack>
             </Box>
