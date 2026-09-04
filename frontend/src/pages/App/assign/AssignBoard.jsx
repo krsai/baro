@@ -393,6 +393,8 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
   loading,
   selectedCardId,
   languageCode,
+  expanded,
+  onToggleExpanded,
   onSelectCard,
   onOpenContextMenu,
   onDisabledCardDragAttempt,
@@ -422,15 +424,32 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
 
   return (
     <Stack spacing={1.5} sx={{ minWidth: 0, height: '100%', minHeight: 0 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
         <Typography variant="subtitle2">
           {getUiMessage('assign.unassignedCards', '미배정 작업', languageCode)}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
-          {loading ? summaryText : `${summaryText} · ${quantitySummary}`}
-        </Typography>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <Typography variant="caption" color="text.secondary">
+            {loading ? summaryText : `${summaryText} · ${quantitySummary}`}
+          </Typography>
+          <Button
+            type="button"
+            size="small"
+            variant="outlined"
+            onClick={onToggleExpanded}
+            aria-expanded={expanded}
+            endIcon={expanded ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+            sx={{ flexShrink: 0, minWidth: 76 }}
+          >
+            {getUiMessage(
+              expanded ? 'assign.collapseUnassignedWork' : 'assign.expandUnassignedWork',
+              expanded ? 'Collapse' : 'Expand',
+              languageCode
+            )}
+          </Button>
+        </Stack>
       </Box>
-      <Stack
+      {expanded ? <Stack
         spacing={1}
         sx={{
           maxHeight: { xs: 360, lg: 'none' },
@@ -530,7 +549,7 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
             {getUiMessage('assign.noUnassignedCards', '미배정 카드가 없습니다.', languageCode)}
           </Typography>
         ) : null}
-      </Stack>
+      </Stack> : null}
     </Stack>
   );
 });
@@ -3005,6 +3024,7 @@ const AssignBoard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [selectedCardId, setSelectedCardId] = useState(null);
+  const [unassignedPanelExpandedOverride, setUnassignedPanelExpandedOverride] = useState(null);
   const [cards, setCards] = useState(() => initialCards);
   const [styles, setStyles] = useState([]);
   const [lines, setLines] = useState(() => initialLines);
@@ -5228,6 +5248,11 @@ const AssignBoard = () => {
     () => cards.filter((card) => !assignedCardIds.has(card.id)),
     [cards, assignedCardIds]
   );
+  const unassignedPanelExpanded =
+    unassignedPanelExpandedOverride ?? unassignedCards.length > 0;
+  useEffect(() => {
+    setUnassignedPanelExpandedOverride(null);
+  }, [activeOrgId]);
   const unlockedUnassignedCardCount = useMemo(
     () =>
       unassignedCards.reduce(
@@ -7091,8 +7116,8 @@ const AssignBoard = () => {
             <Stack spacing={1}>
               <Typography variant="caption" color="text.secondary">
                 {getUiMessage(
-                  'assign.capacitySummaryHint',
-                  'For recorded past months, planned load uses the month capacity as 100%. Actual production follows saved work logs, and remaining assignments are forecast from the next workday after the latest record.',
+                  'assign.capacitySummaryHintFactoryPlan',
+                  'Past-month planned load reflects actual production plus the remaining assigned work. Actual output follows saved work logs only.',
                   languageCode
                 )}
               </Typography>
@@ -7119,6 +7144,10 @@ const AssignBoard = () => {
                 loading={loading}
                 selectedCardId={selectedCardId}
                 languageCode={languageCode}
+                expanded={unassignedPanelExpanded}
+                onToggleExpanded={() => {
+                  setUnassignedPanelExpandedOverride(!unassignedPanelExpanded);
+                }}
                 onSelectCard={handleSelectCard}
                 onOpenContextMenu={handleContextMenuOpen}
                 onDisabledCardDragAttempt={handleDisabledCardDragAttempt}

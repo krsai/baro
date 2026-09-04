@@ -844,7 +844,9 @@ export const buildLineMonthCapacityBoardRows = ({
       }
       const totalEstimatedLoadStSeconds =
         inferredMonthType === 'historical'
-          ? lineMonthlyActualOutputStSeconds
+          ? backendRow?.totalEstimatedLoadStSeconds != null
+            ? Math.max(0, Math.round(Number(backendRow.totalEstimatedLoadStSeconds) || 0))
+            : lineMonthlyActualOutputStSeconds + currentBoardRemainingBacklogStSeconds
           : lineMonthlyActualOutputStSeconds + forecastLoadStSeconds;
       const { forecastWindowStartDateKey, forecastWindowEndDateKey } =
         resolveForecastWindowRange({
@@ -857,13 +859,6 @@ export const buildLineMonthCapacityBoardRows = ({
         carryOutStSeconds,
         holidaySet,
       });
-      // A historical (past) month has no forward-looking "plan" left to show
-      // - it already happened. plannedLoadPercent used to hardcode 100% here
-      // (capacitySeconds / capacitySeconds, an identity unrelated to any
-      // real AssignmentPlan data), which kept showing a full load bar for
-      // months where every assignment had since been deleted. For a past
-      // month, what actually got produced is the only real signal left, so
-      // plannedLoadPercent mirrors actualOutputPercent instead.
       const resolvedActualOutputPercent =
         backendRow?.actualOutputPercent != null
           ? Number(backendRow.actualOutputPercent)
@@ -891,20 +886,21 @@ export const buildLineMonthCapacityBoardRows = ({
         forecastAvailableCapacitySeconds,
         forecastWorkingDayCount,
         forecastLoadStSeconds,
-        // plannedLoadPercent is "how much of this month's capacity is filled",
-        // capped at 100 - it is never allowed to read like 196%, unlike
-        // actualOutputPercent above (which is intentionally uncapped: overproduction
-        // is a real, useful signal). For a historical month this mirrors
-        // actualOutputPercent (see the comment above resolvedActualOutputPercent) but
-        // still clamps to 100, since "filled the month's capacity" tops out at 100%
-        // even when actual output overshot it. For anchor/forecast months this
-        // prefers the backend's own forecastLoadPercent (bounded by construction:
-        // forecastLoadStSeconds = min(entering, available)) over a local recompute.
+        // Plan is capped at 100%. For historical months it combines actual output
+        // with today's remaining assigned backlog, so sustained work that carries
+        // into later months still shows the past month as fully loaded while actual
+        // production remains an independent percentage.
         plannedLoadPercent:
           inferredMonthType === 'historical'
-            ? resolvedActualOutputPercent == null
-              ? null
-              : Math.min(100, resolvedActualOutputPercent)
+            ? (() => {
+                const historicalPlanPercent =
+                  backendRow?.totalEstimatedLoadPercent != null
+                    ? Number(backendRow.totalEstimatedLoadPercent)
+                    : roundPercent(totalEstimatedLoadStSeconds, lineMonthlyCapacitySeconds);
+                return historicalPlanPercent == null
+                  ? null
+                  : Math.min(100, Math.max(0, historicalPlanPercent));
+              })()
             : backendRow?.forecastLoadPercent != null
               ? Math.min(100, Math.max(0, Number(backendRow.forecastLoadPercent) || 0))
               : (() => {
@@ -941,9 +937,6 @@ export const buildLineMonthCapacityBoardRows = ({
         0,
         Math.round(Number(backendRow?.lineMonthlyActualOutputStSeconds) || 0)
       );
-      // Same fix as the historical branch above: this month has no backend
-      // summary at all, so there is even less basis for a hardcoded 100%
-      // plannedLoadPercent here. Fall back to the real actual-output percent.
       const resolvedActualOutputPercent =
         backendRow?.actualOutputPercent != null
           ? Number(backendRow.actualOutputPercent)
@@ -978,15 +971,22 @@ export const buildLineMonthCapacityBoardRows = ({
         forecastAvailableCapacitySeconds: 0,
         forecastWorkingDayCount: 0,
         forecastLoadStSeconds: 0,
-        // Capped at 100 - see the comment above plannedLoadPercent in the main branch.
-        plannedLoadPercent:
-          resolvedActualOutputPercent == null ? null : Math.min(100, resolvedActualOutputPercent),
+        plannedLoadPercent: (() => {
+          const historicalPlanPercent = roundPercent(
+            lineMonthlyActualOutputStSeconds + currentBoardRemainingBacklogStSeconds,
+            lineMonthlyCapacitySeconds
+          );
+          return historicalPlanPercent == null
+            ? null
+            : Math.min(100, Math.max(0, historicalPlanPercent));
+        })(),
         carryInStSeconds: 0,
         carryOutStSeconds: 0,
         carryOutDateKey: '',
-        totalEstimatedLoadStSeconds: lineMonthlyActualOutputStSeconds,
+        totalEstimatedLoadStSeconds:
+          lineMonthlyActualOutputStSeconds + currentBoardRemainingBacklogStSeconds,
         totalEstimatedLoadPercent: roundPercent(
-          lineMonthlyActualOutputStSeconds,
+          lineMonthlyActualOutputStSeconds + currentBoardRemainingBacklogStSeconds,
           lineMonthlyCapacitySeconds
         ),
         monthType: 'historical',

@@ -23067,17 +23067,24 @@ const buildLineMonthCapacityRows = async ({
     return { monthKeys: [], rows: [] };
   }
 
-  const requestedLineIds = lineIds.length
-    ? lineIds
-    : (
-        await prisma.line.findMany({
-          where: { orgId },
-          select: { id: true },
-          orderBy: [{ id: "asc" }],
-        })
-      )
-        .map((row) => toPositiveIntOrNull(row?.id))
-        .filter((value): value is number => value !== null);
+  const requestedLineRows = await prisma.line.findMany({
+    where: {
+      orgId,
+      ...(lineIds.length ? { id: { in: lineIds } } : {}),
+    },
+    select: { id: true, factoryId: true },
+    orderBy: [{ id: "asc" }],
+  });
+  const requestedLineIds = requestedLineRows
+    .map((row) => toPositiveIntOrNull(row?.id))
+    .filter((value): value is number => value !== null);
+  const factoryIdByLegacyLineId = new Map<number, number>(
+    requestedLineRows.flatMap((row) => {
+      const legacyLineId = toPositiveIntOrNull(row?.id);
+      const factoryId = toPositiveIntOrNull(row?.factoryId);
+      return legacyLineId && factoryId ? [[legacyLineId, factoryId]] : [];
+    })
+  );
 
   if (requestedLineIds.length === 0) {
     return { monthKeys: requestedMonthKeys, rows: [] };
@@ -23708,70 +23715,49 @@ const buildLineMonthCapacityRows = async ({
     });
   });
 
-  const lineAssignmentRows = await prisma.lineAssignment.findMany({
+  // A factory is the production staffing unit. LineAssignment is legacy history and
+  // must not decide whether a newly hired employee contributes capacity.
+  const capacityEmployees = await prisma.employee.findMany({
     where: {
-      lineId: { in: requestedLineIds },
-      startAt: {
-        lte:
-          toDateValueFromDateKeyForAssignmentSchedule(internalEndDateKey) ||
-          new Date(),
-      },
-      OR: [
-        { endAt: null },
-        {
-          endAt: {
-            gte:
-              toDateValueFromDateKeyForAssignmentSchedule(internalStartDateKey) ||
-              new Date(),
-          },
-        },
+      orgId,
+      factoryId: { in: Array.from(new Set(factoryIdByLegacyLineId.values())) },
+      orgRole: "WORKER",
+      role: { code: "WORKER_SEWING" },
+      status: { in: ["ACTIVE", "SUSPENDED", "TERMINATED"] },
+      AND: [
+        { OR: [{ joinedAt: null }, { joinedAt: { lte: toDateValueFromDateKeyForAssignmentSchedule(internalEndDateKey) || new Date() } }] },
+        { OR: [{ leftAt: null }, { leftAt: { gte: toDateValueFromDateKeyForAssignmentSchedule(internalStartDateKey) || new Date() } }] },
       ],
     },
     select: {
-      lineId: true,
-      employeeId: true,
-      startAt: true,
-      endAt: true,
-      employee: {
-        select: {
-          joinedAt: true,
-          leftAt: true,
-        },
-      },
+      id: true,
+      factoryId: true,
+      joinedAt: true,
+      leftAt: true,
     },
   });
 
   const employeeIdsByLineDateKey = new Map<string, Set<number>>();
-  // Diagnostics only (does not affect the capacity sums below): tracks which lines
-  // each employee is counted as active on for the same date, so an employee with
-  // overlapping LineAssignment rows across two different lines on the same day can be
-  // surfaced instead of silently double-counted into both lines' capacity. The normal
-  // write path (closeActiveLineAssignments, called from /line-assignments/assign)
-  // already closes an employee's prior active assignment before creating a new one, so
-  // this should only ever fire for legacy data or a rare create-time race - see
-  // AGENTS.md.
+  // Diagnostics only: a factory must resolve to one compatibility row while the
+  // response contract still exposes lineId. Staffing itself is factory-based.
   const lineIdsByEmployeeDateKey = new Map<string, Set<number>>();
-  lineAssignmentRows.forEach((row) => {
-    const lineId = toPositiveIntOrNull(row?.lineId);
-    const employeeId = toPositiveIntOrNull(row?.employeeId);
+  capacityEmployees.forEach((row) => {
+    const employeeId = toPositiveIntOrNull(row?.id);
+    const factoryId = toPositiveIntOrNull(row?.factoryId);
+    const lineId = requestedLineRows.length === 1
+      ? toPositiveIntOrNull(requestedLineRows[0]?.id)
+      : requestedLineRows.find((line) => Number(line.factoryId) === factoryId)?.id ?? null;
     if (!lineId || !employeeId || !requestedLineIdSet.has(lineId)) return;
-    const assignmentStartDateKey = toDateKeyInTimeZone(
-      row?.startAt,
-      BUSINESS_TIME_ZONE
-    );
-    const assignmentEndDateKey =
-      toDateKeyInTimeZone(row?.endAt, BUSINESS_TIME_ZONE) || internalEndDateKey;
     const joinedDateKey = toDateKeyInTimeZone(
-      row?.employee?.joinedAt,
+      row?.joinedAt,
       BUSINESS_TIME_ZONE
     );
     const leftDateKey =
-      toDateKeyInTimeZone(row?.employee?.leftAt, BUSINESS_TIME_ZONE) ||
+      toDateKeyInTimeZone(row?.leftAt, BUSINESS_TIME_ZONE) ||
       internalEndDateKey;
 
     const activeStartDateKey = [
       internalStartDateKey,
-      assignmentStartDateKey,
       joinedDateKey || null,
     ]
       .filter((value): value is string => Boolean(value))
@@ -23779,7 +23765,6 @@ const buildLineMonthCapacityRows = async ({
       .pop();
     const activeEndDateKey = [
       internalEndDateKey,
-      assignmentEndDateKey,
       leftDateKey || null,
     ]
       .filter((value): value is string => Boolean(value))
@@ -24273,7 +24258,11 @@ const buildLineMonthCapacityRows = async ({
       if (!target) return;
       if (!anchorMonthKey || monthKey < anchorMonthKey) {
         target.monthType = "historical";
-        target.totalEstimatedLoadStSeconds = target.lineMonthlyActualOutputStSeconds;
+        // Past-month planned load represents all known assigned demand, not just the
+        // portion that happened to be produced in that month. This keeps plan and
+        // actual separate while avoiding a blanket 100% when no assignments remain.
+        target.totalEstimatedLoadStSeconds =
+          target.lineMonthlyActualOutputStSeconds + remainingBacklog;
         target.totalEstimatedLoadPercent =
           target.lineMonthlyCapacitySeconds > 0
             ? Math.round(

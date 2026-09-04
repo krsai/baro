@@ -1095,45 +1095,39 @@ export const createLineRouter = ({
     };
 
     if (summaryOnly) {
-      const assignments = await prisma.lineAssignment.findMany({
-        where: assignmentWhere,
-        select: { employeeId: true, lineId: true },
+      const factories = await prisma.factory.findMany({
+        where: { orgId: organization.id, ...(hasFactoryFilter ? { id: factoryId } : {}) },
+        select: { id: true, lines: { select: { id: true }, orderBy: { id: "asc" } } },
+        orderBy: { id: "asc" },
       });
-      const eligibleEmployeeIds = Array.from(
-        new Set(assignments.map((assignment) => Number(assignment.employeeId)))
-      );
-      const eligibleRows =
-        eligibleEmployeeIds.length > 0
-          ? await prisma.employee.findMany({
-              where: {
-                orgId: organization.id,
-                id: { in: eligibleEmployeeIds },
-                ...(hasFactoryFilter ? { factoryId } : {}),
-                ...buildLineEligibleWorkerWhere(effectiveDateRange),
-              },
-              select: { id: true },
-            })
-          : [];
-      const eligibleEmployeeIdSet = new Set(
-        eligibleRows.map((employee) => Number(employee.id))
-      );
-      const employeeIdsByLine = assignments.reduce((map, assignment) => {
-        const employeeId = Number(assignment.employeeId);
-        if (!eligibleEmployeeIdSet.has(employeeId)) return map;
-        const key = Number(assignment.lineId);
-        const current = map.get(key) ?? new Set<number>();
-        current.add(employeeId);
-        map.set(key, current);
+      const invalidFactory = factories.find((factory) => factory.lines.length !== 1);
+      if (invalidFactory) {
+        return res.status(409).json({
+          ok: false,
+          error: `factory ${invalidFactory.id} must have exactly one compatibility line`,
+        });
+      }
+      const factoryIds = factories.map((factory) => factory.id);
+      const employees = factoryIds.length
+        ? await prisma.employee.findMany({
+            where: {
+              orgId: organization.id,
+              factoryId: { in: factoryIds },
+              ...buildLineEligibleWorkerWhere(effectiveDateRange),
+            },
+            select: { id: true, factoryId: true },
+          })
+        : [];
+      const workerCountByFactoryId = employees.reduce((map, employee) => {
+        if (!employee.factoryId) return map;
+        map.set(employee.factoryId, (map.get(employee.factoryId) ?? 0) + 1);
         return map;
-      }, new Map<number, Set<number>>());
-      return res.json(
-        Array.from(employeeIdsByLine.entries())
-          .map(([currentLineId, employeeIds]) => ({
-            lineId: currentLineId,
-            workerCount: employeeIds.size,
-          }))
-          .sort((a, b) => a.lineId - b.lineId)
-      );
+      }, new Map<number, number>());
+      return res.json(factories.map((factory) => ({
+        lineId: factory.lines[0]!.id,
+        factoryId: factory.id,
+        workerCount: workerCountByFactoryId.get(factory.id) ?? 0,
+      })));
     }
 
     const [workers, assignments] = await Promise.all([
