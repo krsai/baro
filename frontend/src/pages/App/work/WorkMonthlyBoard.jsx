@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
-  Button,
   FormControl,
   InputLabel,
   MenuItem,
@@ -20,13 +19,8 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
 import 'dayjs/locale/vi';
-import {
-  enUS as datePickerEnUS,
-  koKR as datePickerKoKR,
-  viVN as datePickerViVN,
-} from '@mui/x-date-pickers/locales';
 import AppPageContainer from '../../../components/AppPageContainer';
-import CustomDatePicker from '../../../components/CustomDatePicker';
+import MonthSelector from '../../../components/MonthSelector';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -82,13 +76,6 @@ const TEXT = {
   selectFactory: { ko: '공장 선택', en: 'Select factory', vi: 'Chon nha may' },
 };
 
-const MONTH_PICKER_SLOT_PROPS = {
-  textField: {
-    size: 'small',
-    sx: { minWidth: 150 },
-  },
-};
-
 const resolveText = (bundle, languageCode, fallback = '') =>
   bundle?.[languageCode] || bundle?.ko || fallback;
 
@@ -101,16 +88,6 @@ const normalizeProductionAnalysisMonth = (
   return month.isBefore(minMonth, 'month')
     ? minMonth
     : month;
-};
-
-const getDatePickerLocaleText = (languageCode) => {
-  if (languageCode === 'ko') {
-    return datePickerKoKR.components.MuiLocalizationProvider.defaultProps.localeText;
-  }
-  if (languageCode === 'vi') {
-    return datePickerViVN.components.MuiLocalizationProvider.defaultProps.localeText;
-  }
-  return datePickerEnUS.components.MuiLocalizationProvider.defaultProps.localeText;
 };
 
 const formatAverageCtHours = (seconds, languageCode) => {
@@ -418,46 +395,19 @@ const WorkMonthlyBoard = () => {
                 ))}
               </Select>
             </FormControl>,
-            <CustomDatePicker
+            <MonthSelector
               key="month-picker"
-              adapterLocale={languageCode}
-              localeText={getDatePickerLocaleText(languageCode)}
-              monthOnly
-              value={selectedMonth}
-              onChange={(value) =>
+              value={selectedMonth.format('YYYY-MM')}
+              onChange={(monthKey) =>
                 setSelectedMonth(
-                  normalizeProductionAnalysisMonth(value, productionAnalysisMinMonth)
+                  normalizeProductionAnalysisMonth(monthKey, productionAnalysisMinMonth)
                 )
               }
-              minDate={productionAnalysisMinMonth}
-              slotProps={MONTH_PICKER_SLOT_PROPS}
+              min={productionAnalysisMinMonth.format('YYYY-MM')}
+              previousDisabled={!canMoveToPreviousMonth}
+              ariaLabel={resolveText(TEXT.workMonth, languageCode, 'Month')}
+              inputSx={{ minWidth: 150 }}
             />,
-            <Stack key="month-shift" sx={{ gap: '2px' }}>
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() => setSelectedMonth((prev) => prev.add(1, 'month'))}
-                sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-              >
-                M+
-              </Button>
-              <Button
-                size="small"
-                variant="outlined"
-                disabled={!canMoveToPreviousMonth}
-                onClick={() =>
-                  setSelectedMonth((prev) =>
-                    normalizeProductionAnalysisMonth(
-                      prev.subtract(1, 'month'),
-                      productionAnalysisMinMonth
-                    )
-                  )
-                }
-                sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-              >
-                M-
-              </Button>
-            </Stack>
           ]}
         />
       )}

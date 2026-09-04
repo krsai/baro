@@ -36,6 +36,7 @@ import dayjs from 'dayjs';
 import { useAssignBoardDnd } from './hooks/useAssignBoardDnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
+import MonthSelector from '../../../components/MonthSelector';
 import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
@@ -6933,14 +6934,6 @@ const AssignBoard = () => {
     },
     [assignmentOperationStartDateKey]
   );
-  const handleViewMonthShift = useCallback(
-    (amount) => {
-      const nextMonth = getMonthStartDate(viewStart);
-      nextMonth.setMonth(nextMonth.getMonth() + amount);
-      handleViewMonthChange(nextMonth);
-    },
-    [handleViewMonthChange, viewStart]
-  );
   const monthMinusDisabled =
     controlsDisabled ||
     getMonthStartDate(viewStart).getTime() <=
@@ -7099,43 +7092,17 @@ const AssignBoard = () => {
                 {getUiMessage('assign.lineCapacityBoard', 'Line Capacity', languageCode)}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                <TextField
-                  type="month"
+                <MonthSelector
                   value={dayjs(viewStart).format('YYYY-MM')}
-                  onChange={(event) => {
-                    const monthValue = dayjs(`${event.target.value}-01`);
+                  onChange={(monthKey) => {
+                    const monthValue = dayjs(`${monthKey}-01`);
                     if (monthValue.isValid()) handleViewMonthChange(monthValue.toDate());
                   }}
                   disabled={controlsDisabled}
-                  slotProps={{
-                    htmlInput: {
-                      min: String(assignmentOperationStartDateKey || '').slice(0, 7),
-                      'aria-label': getUiMessage('assign.viewMonth', 'View month', languageCode),
-                    },
-                  }}
-                  size="small"
-                  sx={{ width: 132 }}
+                  previousDisabled={monthMinusDisabled}
+                  min={String(assignmentOperationStartDateKey || '').slice(0, 7)}
+                  ariaLabel={getUiMessage('assign.viewMonth', 'View month', languageCode)}
                 />
-                <Stack sx={{ gap: '2px' }}>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => handleViewMonthShift(1)}
-                    disabled={controlsDisabled}
-                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-                  >
-                    M+
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => handleViewMonthShift(-1)}
-                    disabled={monthMinusDisabled}
-                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-                  >
-                    M-
-                  </Button>
-                </Stack>
               </Box>
             </Box>
             <Stack spacing={1}>

@@ -26,6 +26,7 @@
     "test:assignment-review-quantity": "node --test scripts/assignment-review-process-quantity-regression.test.mjs",
     "test:workspace-navigation": "node --test scripts/workspace-navigation-regression.test.mjs",
     "test:line-removal-transition": "node --test scripts/line-removal-transition-regression.test.mjs",
+    "test:month-selector": "node --test scripts/month-selector-regression.test.mjs",
     "test:salary-system": "npm --prefix backend run build && node --test scripts/salary-system-regression.test.mjs",
     "test:relational-integrity": "node --test scripts/relational-integrity-regression.test.mjs",
     "test:time-date": "npm --prefix backend run build && node --test scripts/time-date-regression.test.mjs",

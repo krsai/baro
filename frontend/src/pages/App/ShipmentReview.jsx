@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
-  Button,
   Chip,
   MenuItem,
   Paper,
@@ -17,6 +16,7 @@ import {
   Typography,
 } from '@mui/material';
 import AppPageContainer from '../../components/AppPageContainer';
+import MonthSelector from '../../components/MonthSelector';
 import SaveButton from '../../components/SaveButton';
 import { useAppActions } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -39,11 +39,6 @@ const normalizeReviewMonthKey = (value) =>
   /^\d{4}-\d{2}$/.test(String(value || '').trim())
     ? String(value).trim()
     : getLocalMonthKey();
-
-const shiftReviewMonthKey = (value, amount) => {
-  const [year, month] = normalizeReviewMonthKey(value).split('-').map((item) => Number(item));
-  return getLocalMonthKey(new Date(year, month - 1 + amount, 1));
-};
 
 const PAGE_TEXT = {
   title: {
@@ -592,40 +587,13 @@ const ShipmentReview = () => {
             justifyContent="space-between"
           >
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-              <Stack
-                direction="row"
-                spacing={0.5}
-                alignItems="center"
+              <MonthSelector
+                label={text('month')}
+                value={month}
+                onChange={setMonth}
+                inputSx={{ width: { xs: '100%', sm: 180 } }}
                 sx={{ width: { xs: '100%', sm: 'auto' } }}
-              >
-                <TextField
-                  label={text('month')}
-                  type="month"
-                  size="small"
-                  value={month}
-                  onChange={(event) => setMonth(event.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ width: { xs: '100%', sm: 180 } }}
-                />
-                <Stack sx={{ gap: '2px' }}>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => setMonth((prev) => shiftReviewMonthKey(prev, 1))}
-                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-                  >
-                    M+
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => setMonth((prev) => shiftReviewMonthKey(prev, -1))}
-                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-                  >
-                    M-
-                  </Button>
-                </Stack>
-              </Stack>
+              />
               <TextField
                 label={text('filter')}
                 select
