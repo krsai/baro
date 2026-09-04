@@ -72,7 +72,10 @@ test('unassigned work panel defaults from content and collapses its desktop colu
   assert.match(assignBoard, /aria-expanded=\{expanded\}/);
   assert.match(assignBoard, /KeyboardArrowLeftIcon/);
   assert.match(assignBoard, /KeyboardArrowRightIcon/);
-  assert.match(assignBoard, /unassignedPanelExpanded[\s\S]*'minmax\(0, 1fr\) 48px'/);
+  assert.match(assignBoard, /width: \{ lg: collapsed \? 48 : 'clamp\(340px, 28vw, 400px\)' \}/);
+  assert.match(assignBoard, /width 0\.32s cubic-bezier\(0\.4, 0, 0\.2, 1\)/);
+  assert.match(assignBoard, /backgroundColor: isOver \? [^\n]+ : '#F6F7F9'/);
+  assert.doesNotMatch(assignBoard, /borderLeft: \{ xs: 0, lg: '1px solid' \}/);
   assert.match(assignBoard, /collapsed=\{!unassignedPanelExpanded\}/);
   assert.match(assignBoard, /\{expanded \? <Stack[\s\S]*<\/Stack> : null\}/);
 });

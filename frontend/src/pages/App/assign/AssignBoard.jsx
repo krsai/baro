@@ -353,23 +353,26 @@ const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
       ref={setNodeRef}
       sx={{
         minWidth: 0,
+        width: { lg: collapsed ? 48 : 'clamp(340px, 28vw, 400px)' },
         height: { lg: '100%' },
         minHeight: 0,
         overflow: { lg: 'hidden' },
         position: 'relative',
-        pl: { xs: 0, lg: collapsed ? 0.75 : 1.5 },
-        pt: { xs: 1.5, lg: 0 },
-        borderLeft: { xs: 0, lg: '1px solid' },
-        borderTop: { xs: '1px solid', lg: 0 },
-        borderColor: isOver ? 'error.main' : 'divider',
-        backgroundColor: isOver ? 'rgba(211, 47, 47, 0.05)' : 'transparent',
+        p: { xs: 1.25, lg: collapsed ? 0.75 : 1.5 },
+        borderRadius: 2,
+        backgroundColor: isOver ? 'rgba(211, 47, 47, 0.06)' : '#F6F7F9',
         boxShadow: isOver
           ? {
               xs: 'inset 0 3px 0 rgba(211, 47, 47, 0.55)',
               lg: 'inset 3px 0 0 rgba(211, 47, 47, 0.55)',
             }
           : 'none',
-        transition: 'border-color 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease, padding 0.18s ease',
+        transition: [
+          'width 0.32s cubic-bezier(0.4, 0, 0.2, 1)',
+          'padding 0.32s cubic-bezier(0.4, 0, 0.2, 1)',
+          'background-color 0.16s ease',
+          'box-shadow 0.16s ease',
+        ].join(', '),
       }}
     >
       <Box
@@ -7071,9 +7074,7 @@ const AssignBoard = () => {
             display: 'grid',
             gridTemplateColumns: {
               xs: '1fr',
-              lg: unassignedPanelExpanded
-                ? 'minmax(0, 1fr) minmax(320px, clamp(340px, 28vw, 400px))'
-                : 'minmax(0, 1fr) 48px',
+              lg: 'minmax(0, 1fr) auto',
             },
             gap: { xs: 1.5, lg: unassignedPanelExpanded ? 1.5 : 0.5 },
             alignItems: 'stretch',
@@ -7081,7 +7082,7 @@ const AssignBoard = () => {
             flex: { lg: 1 },
             minHeight: 0,
             overflow: { lg: 'hidden' },
-            transition: 'grid-template-columns 0.18s ease, gap 0.18s ease',
+            transition: 'gap 0.32s cubic-bezier(0.4, 0, 0.2, 1)',
           }}
         >
           <Stack spacing={1.5} sx={{ minWidth: 0, minHeight: 0, overflowY: { lg: 'auto' } }}>
