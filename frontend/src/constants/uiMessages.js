@@ -364,6 +364,7 @@ export const UI_MESSAGES = {
       vi: 'Không thể dua cong viec da co nhat ky san xuat ve danh sach chua phan cong.',
     },
     capacityMode: { ko: '용량', en: 'Capacity', vi: 'Cong suat' },
+    viewMonth: { ko: '조회 월', en: 'View month', vi: 'Thang xem' },
     timelineMode: { ko: '타임라인', en: 'Timeline', vi: 'Tien do' },
     capacitySummaryHint: {
       ko: '과거 기록월의 계획 부하는 실제 생산률과 동일하게 표시됩니다(이미 지난 달은 실제로 일어난 일만 의미가 있습니다). 마지막 기록 다음 작업일부터는 남은 배정 예측 부하를 표시합니다.',
@@ -497,9 +498,9 @@ export const UI_MESSAGES = {
       vi: 'Không thể cap nhat tien do moi nhat. Dữ liệu thanh cong gan nhat dang duoc hien thi. Hay thu tai lai.',
     },
     lineAssignments: {
-      ko: '이 라인 배정 목록',
-      en: 'Assignments on this line',
-      vi: 'Danh sách phan cong tren chuyen nay',
+      ko: '이 공장 배정 목록',
+      en: 'Assignments in this factory',
+      vi: 'Danh sách phan cong trong nha may nay',
     },
     noQueuedAssignmentsInLine: {
       ko: '이 공장에 대기 작업이 없습니다.',

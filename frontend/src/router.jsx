@@ -85,7 +85,6 @@ const BusinessPartners = lazyImportWithRetry(() => import('./pages/App/BusinessP
 const Onboarding = lazyImportWithRetry(() => import('./pages/Auth/Onboarding'));
 const Attribute = lazyImportWithRetry(() => import('./pages/App/Attribute'));
 const Order = lazyImportWithRetry(() => import('./pages/App/Order.jsx'));
-const ProductionPlan = lazyImportWithRetry(() => import('./pages/App/ProductionPlan'));
 const Inventory = lazyImportWithRetry(() => import('./pages/App/Inventory'));
 const MyProfile = lazyImportWithRetry(() => import('./pages/App/MyProfile'));
 const PersonalSettings = lazyImportWithRetry(() => import('./pages/App/PersonalSettings'));
@@ -401,10 +400,6 @@ const router = createBrowserRouter([
           {
             path: 'attendance/:factoryId/:workDate',
             element: <AttendanceEntry />,
-          },
-          {
-            path: 'production-plan',
-            element: <ProductionPlan />,
           },
           {
             path: 'inventory',

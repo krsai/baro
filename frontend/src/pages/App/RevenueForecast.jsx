@@ -37,7 +37,7 @@ const TEXT = {
     time: '3. 예상 작업시간', direct: '직접 입력', similar: '유사 스타일 참조', seconds: '한 벌 예상시간', similarStyle: '유사 스타일', timeHint: '같은 카테고리의 스타일만 표시합니다. 선택한 스타일의 ST를 시작값으로 가져옵니다.',
     production: '4. 생산 계획', factory: '생산 공장', workers: '투입 인원', factoryHint: '공장을 선택하면 해당 공장의 근무일·근무시간·고정비·인건비 기준으로 계산합니다.',
     cost: '5. 목표 이익', directCost: '기타 직접비 (한 벌)', margin: '목표 이익률',
-    estimate: '예가 계산서', laborTime: '총 필요 작업시간', workerDays: '총 필요 인일', duration: '투입 인원 기준 예상 기간', completion: '예상 완료', accessoryCost: '부자재·포장·물류비', otherDirect: '기타 직접비', laborCost: '예상 변동 인건비', fixedCost: '기간 배부 고정비', totalCost: '예상 총원가', unitCost: '한 벌 원가', recommended: '필요한 한 벌 판매가', revenue: '필요한 총매출', profit: '목표 이익', assumption: '생산효율 100% 기준입니다. 실제 휴무·잔업·라인 효율은 추후 정책 확정 시 반영해야 합니다.',
+    estimate: '예가 계산서', laborTime: '총 필요 작업시간', workerDays: '총 필요 인일', duration: '투입 인원 기준 예상 기간', completion: '예상 완료', accessoryCost: '부자재·포장·물류비', otherDirect: '기타 직접비', laborCost: '예상 변동 인건비', fixedCost: '기간 배부 고정비', totalCost: '예상 총원가', unitCost: '한 벌 원가', recommended: '필요한 한 벌 판매가', revenue: '필요한 총매출', profit: '목표 이익', assumption: '생산효율 100% 기준입니다. 실제 휴무·잔업·공장 생산효율은 추후 정책 확정 시 반영해야 합니다.',
   },
   en: {
     title: 'Cost Estimation',
@@ -46,7 +46,7 @@ const TEXT = {
     time: '3. Estimated Work Time', direct: 'Direct Input', similar: 'Reference Similar Style', seconds: 'Seconds per Piece', similarStyle: 'Similar Style', timeHint: 'Only styles in the same category are shown. Its ST is used as a starting value.',
     production: '4. Production Plan', factory: 'Factory', workers: 'Workers', factoryHint: 'Factory workdays, hours, fixed costs, and labor rates are used automatically.',
     cost: '5. Profit Target', directCost: 'Other Direct Cost per Piece', margin: 'Target Profit Margin',
-    estimate: 'Cost Estimate', laborTime: 'Total Required Labor Time', workerDays: 'Required Worker-days', duration: 'Estimated Duration', completion: 'Estimated Completion', accessoryCost: 'Trims, Packaging & Logistics', otherDirect: 'Other Direct Cost', laborCost: 'Estimated Variable Labor', fixedCost: 'Allocated Fixed Cost', totalCost: 'Estimated Total Cost', unitCost: 'Unit Cost', recommended: 'Required Unit Price', revenue: 'Required Revenue', profit: 'Target Profit', assumption: 'Assumes 100% efficiency. Holidays, overtime, and line efficiency can be included after policies are finalized.',
+    estimate: 'Cost Estimate', laborTime: 'Total Required Labor Time', workerDays: 'Required Worker-days', duration: 'Estimated Duration', completion: 'Estimated Completion', accessoryCost: 'Trims, Packaging & Logistics', otherDirect: 'Other Direct Cost', laborCost: 'Estimated Variable Labor', fixedCost: 'Allocated Fixed Cost', totalCost: 'Estimated Total Cost', unitCost: 'Unit Cost', recommended: 'Required Unit Price', revenue: 'Required Revenue', profit: 'Target Profit', assumption: 'Assumes 100% efficiency. Holidays, overtime, and factory production efficiency can be included after policies are finalized.',
   },
   vi: {
     title: 'Tính giá dự toán',

@@ -90,3 +90,30 @@ test('historical planned load includes remaining assigned backlog without changi
     /inferredMonthType === 'historical'[\s\S]{0,120}Math\.min\(100, resolvedActualOutputPercent\)/
   );
 });
+
+test('live QC review is factory-scoped and exposes no line selector or column', () => {
+  const qcReview = read('frontend/src/pages/App/QcReview.jsx');
+  assert.match(qcReview, /buildQueryString\(\{\s*orgId: activeOrgId,\s*factoryId,/);
+  assert.doesNotMatch(qcReview, /setSelectedLineId|selectedLineId|\/lines\$\{query\}/);
+  assert.doesNotMatch(qcReview, /<TableCell>라인<\/TableCell>|label="라인"/);
+  assert.doesNotMatch(qcReview, /조직 관리\s*>?\s*라인/);
+});
+
+test('orphan line pages and hidden legacy production-plan route are removed', () => {
+  [
+    'frontend/src/pages/App/Line.jsx',
+    'frontend/src/pages/App/line/LineBoard.jsx',
+    'frontend/src/pages/App/line/LineDetail.jsx',
+    'frontend/src/pages/App/ProductionPlan.jsx',
+    'frontend/src/pages/App/production/ProductionPlanBoard.jsx',
+  ].forEach((relativePath) => {
+    assert.equal(fs.existsSync(path.join(root, relativePath)), false, relativePath);
+  });
+  const router = read('frontend/src/router.jsx');
+  assert.doesNotMatch(router, /path:\s*['"]production-plan['"]|pages\/App\/ProductionPlan/);
+});
+
+test('work import no longer handles retired cross-line warnings', () => {
+  const workList = read('frontend/src/pages/App/work/WorkList.jsx');
+  assert.doesNotMatch(workList, /crossLineRowCount|getCrossLineAssignmentWarning|crossLineAssignment/);
+});

@@ -215,8 +215,8 @@ const RAW_STATIC_OPTION_GROUPS = [
       ),
       createItem(
         'ISSUE_TO_LINE',
-        { ko: '라인 불출(-)', en: 'Issue to Line (-)', vi: 'Xuat cho chuyen (-)' },
-        ['라인불출', '불출']
+        { ko: '생산 불출(-)', en: 'Issue to Production (-)', vi: 'Xuat cho san xuat (-)' },
+        ['라인불출', '생산불출', '불출']
       ),
       createItem(
         'ADJUSTMENT',

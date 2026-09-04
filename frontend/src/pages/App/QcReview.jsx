@@ -256,8 +256,6 @@ const resolveQcReviewApiErrorMessage = ({
   error,
   stage,
   selectedFactoryId = null,
-  selectedLineId = null,
-  lineCount = null,
   row = null,
 }) => {
   const rawMessage = normalizeApiErrorMessage(error);
@@ -269,10 +267,10 @@ const resolveQcReviewApiErrorMessage = ({
     return '선택한 공장을 찾을 수 없습니다. 공장 설정을 확인해 주세요.';
   }
   if (/line not found/i.test(rawMessage)) {
-    return '선택한 라인을 찾을 수 없습니다. 라인 설정을 확인해 주세요.';
+    return '선택한 공장의 생산 배정 정보를 찾을 수 없습니다. 배정 데이터를 확인해 주세요.';
   }
   if (/lineId or factoryId is required/i.test(rawMessage)) {
-    return '검수 대상을 불러오려면 공장 또는 라인 선택이 필요합니다.';
+    return '검수 대상을 불러오려면 공장 선택이 필요합니다.';
   }
   if (/assignment plan not found/i.test(rawMessage)) {
     return '해당 배치 계획을 찾을 수 없습니다. 배정 데이터를 새로고침해 주세요.';
@@ -297,7 +295,7 @@ const resolveQcReviewApiErrorMessage = ({
     return '생산 배치 데이터를 읽지 못했습니다. 주문 또는 스타일 데이터가 누락되었는지 확인해 주세요.';
   }
   if (/production batch data is missing linked line or factory rows/i.test(rawMessage)) {
-    return '생산 배치 데이터를 읽지 못했습니다. 공장 또는 라인 데이터가 누락되었는지 확인해 주세요.';
+    return '생산 배치 데이터를 읽지 못했습니다. 공장 연결 데이터가 누락되었는지 확인해 주세요.';
   }
   if (/production batch data is incomplete/i.test(rawMessage)) {
     return '생산 배치 원본 데이터가 불완전합니다. 배정 카드와 배치 계획 데이터를 확인해 주세요.';
@@ -319,13 +317,7 @@ const resolveQcReviewApiErrorMessage = ({
     if (!selectedFactoryId) {
       return '검수 대상을 불러오려면 공장을 먼저 선택해 주세요.';
     }
-    if (lineCount === 0) {
-      return '선택한 공장에 등록된 라인이 없습니다. 조직 관리에서 라인을 먼저 등록해 주세요.';
-    }
-    if (selectedLineId) {
-      return '선택한 라인의 검수 대상 조회에 필요한 앞단 데이터가 부족합니다. 라인, 배정, 주문, 스타일, 작업 기록 연결 상태를 확인해 주세요.';
-    }
-    return '검수 대상 조회에 필요한 앞단 데이터가 부족합니다. 공장의 라인, 배정, 주문, 스타일, 작업 기록 연결 상태를 확인해 주세요.';
+    return '검수 대상 조회에 필요한 앞단 데이터가 부족합니다. 공장, 배정, 주문, 스타일, 작업 기록 연결 상태를 확인해 주세요.';
   }
   if (stage === 'detail') {
     return '상세 검수 데이터를 만들 수 없습니다. 주문서의 스타일, 색상, 사이즈 정보가 준비됐는지 확인해 주세요.';
@@ -346,8 +338,6 @@ const resolveQcReviewApiErrorMessage = ({
 const resolveQcReviewEmptyMessage = ({
   loadError,
   selectedFactoryId,
-  selectedLineId,
-  lineCount,
   rowCount,
   visibleRowCount,
   statusFilter,
@@ -355,13 +345,7 @@ const resolveQcReviewEmptyMessage = ({
 }) => {
   if (loadError) return loadError;
   if (!selectedFactoryId) return '공장을 먼저 선택해 주세요.';
-  if (lineCount === 0) {
-    return '선택한 공장에 등록된 라인이 없습니다. 조직 관리 > 라인에서 먼저 등록해 주세요.';
-  }
   if (rowCount === 0) {
-    if (selectedLineId) {
-      return '선택한 라인에 배정된 생산 배치가 없습니다. 먼저 배정 진행에서 배치를 만들고 작업 기록을 입력해 주세요.';
-    }
     return '선택한 공장에 배정된 생산 배치가 없습니다. 먼저 배정 진행에서 배치를 만들고 작업 기록을 입력해 주세요.';
   }
   if (String(searchText || '').trim()) {
@@ -382,9 +366,7 @@ const QcReview = () => {
   const todayKey = useMemo(() => todayDateKey(), []);
 
   const [factories, setFactories] = useState([]);
-  const [lines, setLines] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState(toPositiveIntOrNull(activeFactoryId));
-  const [selectedLineId, setSelectedLineId] = useState(null);
   const [rows, setRows] = useState([]);
   const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -399,16 +381,6 @@ const QcReview = () => {
   const [ordersCache, setOrdersCache] = useState({ loaded: false, rows: [] });
   const orderLoadPromiseRef = useRef(null);
 
-  const lineNameById = useMemo(() => {
-    const map = new Map();
-    (Array.isArray(lines) ? lines : []).forEach((line) => {
-      const id = toPositiveIntOrNull(line?.id);
-      if (!id) return;
-      map.set(id, String(line?.name || '').trim());
-    });
-    return map;
-  }, [lines]);
-
   const loadFactories = useCallback(async () => {
     const query = buildQueryString({ orgId: activeOrgId });
     const response = await requestJSON(`/factories${query}`, { skipGlobalLoading: true }).catch(() => []);
@@ -417,25 +389,6 @@ const QcReview = () => {
     if (!toPositiveIntOrNull(selectedFactoryId) && safeRows.length > 0) {
       setSelectedFactoryId(toPositiveIntOrNull(safeRows[0]?.id));
     }
-  }, [activeOrgId, selectedFactoryId]);
-
-  const loadLines = useCallback(async () => {
-    const factoryId = toPositiveIntOrNull(selectedFactoryId);
-    if (!factoryId) {
-      setLines([]);
-      setSelectedLineId(null);
-      return;
-    }
-    const query = buildQueryString({ orgId: activeOrgId, factoryId });
-    const response = await requestJSON(`/lines${query}`, { skipGlobalLoading: true }).catch(() => []);
-    const safeRows = Array.isArray(response) ? response : [];
-    setLines(safeRows);
-    setSelectedLineId((current) => {
-      const currentId = toPositiveIntOrNull(current);
-      if (!currentId) return null;
-      const exists = safeRows.some((line) => Number(line?.id) === currentId);
-      return exists ? currentId : null;
-    });
   }, [activeOrgId, selectedFactoryId]);
 
   const loadRows = useCallback(
@@ -455,7 +408,6 @@ const QcReview = () => {
             buildQueryString({
               orgId: activeOrgId,
               factoryId,
-              lineId: toPositiveIntOrNull(selectedLineId),
             }),
           { skipGlobalLoading: true, forceRefresh }
         );
@@ -508,11 +460,6 @@ const QcReview = () => {
               id,
               dbId: toPositiveIntOrNull(plan?.dbId),
               workOrderId: toPositiveIntOrNull(plan?.workOrderId),
-              lineId: toPositiveIntOrNull(plan?.lineId),
-              lineName:
-                String(progress?.lineName || '').trim() ||
-                lineNameById.get(toPositiveIntOrNull(plan?.lineId)) ||
-                '-',
               cardId: String(plan?.cardId || '').trim(),
               originOrderId: String(plan?.originOrderId || '').trim(),
               orderNo: String(plan?.orderNo || progress?.orderNo || '').trim(),
@@ -566,15 +513,13 @@ const QcReview = () => {
             error,
             stage: 'rows',
             selectedFactoryId: factoryId,
-            selectedLineId,
-            lineCount: Array.isArray(lines) ? lines.length : 0,
           })
         );
       } finally {
         setLoading(false);
       }
     },
-    [activeOrgId, expandedRowId, lineNameById, lines, selectedFactoryId, selectedLineId, todayKey]
+    [activeOrgId, expandedRowId, selectedFactoryId, todayKey]
   );
 
   const ensureOrdersLoaded = useCallback(async () => {
@@ -704,10 +649,6 @@ const QcReview = () => {
   useEffect(() => {
     loadFactories();
   }, [loadFactories]);
-
-  useEffect(() => {
-    loadLines();
-  }, [loadLines]);
 
   useEffect(() => {
     loadRows();
@@ -936,7 +877,7 @@ const QcReview = () => {
       if (statusFilter === 'pending' && row.isCompleted) return false;
       if (statusFilter === 'completed' && !row.isCompleted) return false;
       if (!keyword) return true;
-      const haystack = [row.orderNo, row.styleCode, row.styleLabel, row.colorName, row.lineName]
+      const haystack = [row.orderNo, row.styleCode, row.styleLabel, row.colorName]
         .join(' ')
         .toLowerCase();
       return haystack.includes(keyword);
@@ -948,14 +889,12 @@ const QcReview = () => {
       resolveQcReviewEmptyMessage({
         loadError,
         selectedFactoryId,
-        selectedLineId,
-        lineCount: Array.isArray(lines) ? lines.length : 0,
         rowCount: Array.isArray(rows) ? rows.length : 0,
         visibleRowCount: Array.isArray(visibleRows) ? visibleRows.length : 0,
         statusFilter,
         searchText,
       }),
-    [lines, loadError, rows, searchText, selectedFactoryId, selectedLineId, statusFilter, visibleRows]
+    [loadError, rows, searchText, selectedFactoryId, statusFilter, visibleRows]
   );
 
   return (
@@ -982,38 +921,12 @@ const QcReview = () => {
                 value={selectedFactoryId || ''}
                 onChange={(event) => {
                   setSelectedFactoryId(toPositiveIntOrNull(event.target.value));
-                  setSelectedLineId(null);
                 }}
                 sx={{ minWidth: { xs: '100%', sm: 220 } }}
               >
                 {(Array.isArray(factories) ? factories : []).map((factory) => (
                   <MenuItem key={factory.id} value={factory.id}>
                     {factory.name || `공장 ${factory.id}`}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField
-                select
-                size="small"
-                label="라인"
-                value={selectedLineId || ''}
-                onChange={(event) => setSelectedLineId(toPositiveIntOrNull(event.target.value))}
-                sx={{ minWidth: { xs: '100%', sm: 220 } }}
-                SelectProps={{
-                  displayEmpty: true,
-                  renderValue: (value) => {
-                    if (!value) return '전체';
-                    const matched = (Array.isArray(lines) ? lines : []).find(
-                      (line) => String(line?.id) === String(value)
-                    );
-                    return matched?.name || String(value);
-                  },
-                }}
-              >
-                <MenuItem value="">전체</MenuItem>
-                {(Array.isArray(lines) ? lines : []).map((line) => (
-                  <MenuItem key={line.id} value={line.id}>
-                    {line.name || `라인 ${line.id}`}
                   </MenuItem>
                 ))}
               </TextField>
@@ -1055,7 +968,6 @@ const QcReview = () => {
               <TableHead>
                 <TableRow>
                   <TableCell>상태</TableCell>
-                  <TableCell>라인</TableCell>
                   <TableCell>주문</TableCell>
                   <TableCell>스타일/색상</TableCell>
                   <TableCell align="right">주문수량</TableCell>
@@ -1067,7 +979,7 @@ const QcReview = () => {
               <TableBody>
                 {!loading && visibleRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} align="center" sx={{ py: 5 }}>
+                    <TableCell colSpan={7} align="center" sx={{ py: 5 }}>
                       <Typography variant="body2" color="text.secondary">
                         {emptyStateMessage}
                       </Typography>
@@ -1117,7 +1029,6 @@ const QcReview = () => {
                               variant={statusChip.variant}
                             />
                           </TableCell>
-                          <TableCell>{row.lineName || '-'}</TableCell>
                           <TableCell sx={{ minWidth: 140 }}>
                             <Typography variant="body2" sx={{ fontWeight: 700 }}>
                               {row.orderNo || '-'}

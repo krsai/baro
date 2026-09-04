@@ -141,7 +141,7 @@ const translateAssignmentMatchIssue = (detail, languageCode) => {
       return `Order ${orderUnassigned.orderNo} - style ${orderUnassigned.styleId} is not assigned in the worker's factory.`;
     }
     if (languageCode === 'vi') {
-      return `Don ${orderUnassigned.orderNo} - ma hang ${orderUnassigned.styleId} da co the nhung chua duoc phan vao chuyen trong nha may cua cong nhan.`;
+      return `Don ${orderUnassigned.orderNo} - ma hang ${orderUnassigned.styleId} chua duoc phan cong trong nha may cua cong nhan.`;
     }
     return `주문 ${orderUnassigned.orderNo} - 스타일 ${orderUnassigned.styleId}은 미배정 상태입니다. 작업기록 업로드 전에 작업자 공장에 배정해 주세요.`;
   }
@@ -171,7 +171,7 @@ const translateAssignmentMatchIssue = (detail, languageCode) => {
       return `Order ${styleUnassigned.orderNo} / style ${styleUnassigned.styleId} is not assigned in the worker's factory.`;
     }
     if (languageCode === 'vi') {
-      return `Don ${styleUnassigned.orderNo} / ma hang ${styleUnassigned.styleId} da co the nhung chua duoc phan vao chuyen trong nha may cua cong nhan.`;
+      return `Don ${styleUnassigned.orderNo} / ma hang ${styleUnassigned.styleId} chua duoc phan cong trong nha may cua cong nhan.`;
     }
     return `주문 ${styleUnassigned.orderNo} / 스타일 ${styleUnassigned.styleId}은 미배정 상태입니다. 작업기록 업로드 전에 작업자 공장에 배정해 주세요.`;
   }

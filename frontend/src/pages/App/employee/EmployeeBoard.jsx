@@ -139,8 +139,8 @@ const EMPLOYEE_BOARD_TEXT = {
     vi: 'Khi nghi viec, du lieu tong hop san xuat/luong hien co van duoc giu nguyen.',
   },
   rehiredNote: {
-    ko: '재입사 처리됩니다. 저장 후 라인 배정을 확인해주세요.',
-    en: 'This will be treated as rehire. Please review line assignment after saving.',
+    ko: '재입사 처리됩니다. 저장 후 소속 공장과 입사일을 확인해주세요.',
+    en: 'This will be treated as rehire. Please review the factory and join date after saving.',
     vi: 'Se duoc xu ly la tai gia nhap. Hay kiem tra phan cong chuyen sau khi luu.',
   },
   errLoadMembership: {

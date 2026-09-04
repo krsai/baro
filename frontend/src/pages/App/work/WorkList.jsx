@@ -157,25 +157,11 @@ const FILTER_DATE_PICKER_SLOT_PROPS = {
 
 const resolveText = (bundle, languageCode, fallback = '') =>
   bundle?.[languageCode] || bundle?.ko || fallback;
-const getCrossLineAssignmentWarning = (payload) =>
-  payload?.warnings?.crossLineAssignment || null;
 const buildImportSuccessMessage = ({
   languageCode,
   recordCount,
   createdCount,
-  crossLineRowCount,
-}) => {
-  if (crossLineRowCount > 0) {
-    if (languageCode === 'en') {
-      return `Excel work logs imported (${recordCount} rows, ${createdCount} logs). ${crossLineRowCount} cross-line assignment rows were noted in the remark.`;
-    }
-    if (languageCode === 'vi') {
-      return `Da nhap ghi chep Excel (${recordCount} dong, ${createdCount} ghi chep). Da ghi chu ${crossLineRowCount} dong gan line khac vao ghi chu.`;
-    }
-    return `엑셀 작업기록을 저장했습니다. 다른 라인 배정 작업 ${crossLineRowCount}건을 상세 비고에 남겼습니다. (${recordCount}행, ${createdCount}개 기록)`;
-  }
-  return `${resolveText(TEXT.importSuccess, languageCode, 'Excel work logs imported.')} (${recordCount} rows, ${createdCount} logs)`;
-};
+}) => `${resolveText(TEXT.importSuccess, languageCode, 'Excel work logs imported.')} (${recordCount} rows, ${createdCount} logs)`;
 
 const normalizeImportText = (value) => String(value ?? '').trim();
 const isImportDateBeforeOperationStart = (
@@ -672,15 +658,13 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
         setReloadNonce((current) => current + 1);
         const createdCount = Number(result?.createdCount ?? 0) || 0;
         const recordCount = Number(result?.recordCount ?? rows.length) || rows.length;
-        const crossLineWarning = getCrossLineAssignmentWarning(result);
         showNotification(
           buildImportSuccessMessage({
             languageCode,
             recordCount,
             createdCount,
-            crossLineRowCount: Number(crossLineWarning?.rowCount ?? 0) || 0,
           }),
-          crossLineWarning?.rowCount ? 'warning' : 'success'
+          'success'
         );
       } catch (error) {
         const issueRows = extractWorkLogImportIssueRows(error, languageCode);
