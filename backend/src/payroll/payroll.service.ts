@@ -721,6 +721,12 @@ const buildIntegratedPayrollEmployees = async (
         HOLIDAY_HOURS: holidaySeconds / 3600,
         PRODUCTION_ALLOWANCE: productionAllowance,
         PRODUCTION_ST_EXCESS_PERCENT: productionStExcessPercent,
+        // 급여명세서 기본 정보에 표시하는 참고값. 계산식에서 직접 쓸 수 있는 공식
+        // 파라미터가 아니므로 SALARY_FORMULA_PARAMETERS에는 등록하지 않는다 -
+        // 초과율(%) 하나로 이미 계산식 표현이 가능하고, 이 두 값은 그 초과율이
+        // 어떻게 나왔는지 사람이 확인하기 위한 분자/분모 원본일 뿐이다.
+        PRODUCTION_ST_BASELINE_HOURS: productionStBaselineSeconds / 3600,
+        PRODUCTION_ST_HOURS: productionStSeconds / 3600,
       };
       const applicableItems = ensureArray(items).filter((item) => {
         const payTypes = ensureArray(item?.payTypes).map((value) => String(value).toUpperCase());

@@ -429,6 +429,7 @@ const PayrollEntry = () => {
         holidayWorkdays: "휴일 근무일수", fullAttendance: "만근 여부", tenureYears: "근속 연수",
         salaryVersion: "급여 체계 버전", yes: "O", no: "X", days: "일", years: "년", hours: "시간",
         productionBasis: "생산수당 산출 내역", totalPayroll: "총 급여", styleName: "스타일명",
+        productionStBaselineHours: "이번달 기준 근무시간", productionStHours: "이번달 생산 총 ST",
       }
     : languageCode === "vi"
       ? {
@@ -436,12 +437,14 @@ const PayrollEntry = () => {
           holidayWorkdays: "Ngày làm việc ngày nghỉ", fullAttendance: "Chuyên cần đầy đủ", tenureYears: "Thâm niên",
           salaryVersion: "Phiên bản cơ cấu lương", yes: "O", no: "X", days: "ngày", years: "năm", hours: "giờ",
           productionBasis: "Chi tiết tính phụ cấp sản lượng", totalPayroll: "Tổng lương", styleName: "Kiểu dáng",
+          productionStBaselineHours: "Giờ làm tiêu chuẩn tháng này", productionStHours: "Tổng ST sản xuất tháng này",
         }
       : {
           basicInfo: "Payroll Calculation Information", actualWorkdays: "Actual Workdays", scheduledWorkdays: "Scheduled Workdays",
           holidayWorkdays: "Holiday Workdays", fullAttendance: "Full Attendance", tenureYears: "Tenure",
           salaryVersion: "Salary System Version", yes: "O", no: "X", days: "days", years: "years", hours: "hrs",
           productionBasis: "Production Allowance Calculation", totalPayroll: "Total Payroll", styleName: "Style",
+          productionStBaselineHours: "This Month's Standard Hours", productionStHours: "This Month's Total Production ST",
         };
   const salaryItemName = useCallback(
     (item) => {
@@ -582,6 +585,10 @@ const PayrollEntry = () => {
       [payslipInfoText.actualWorkdays, `${Number(parameters.ACTUAL_WORKDAYS || 0)} ${payslipInfoText.days}`],
       [payslipInfoText.scheduledWorkdays, `${Number(parameters.SCHEDULED_WORKDAYS || 0)} ${payslipInfoText.days}`],
       [payslipInfoText.holidayWorkdays, `${Number(parameters.HOLIDAY_WORKDAYS || 0)} ${payslipInfoText.days}`],
+      ...(payslipEmployee.payType === "OUTPUT" ? [
+        [payslipInfoText.productionStBaselineHours, `${formatNumberWithCommas(Number(parameters.PRODUCTION_ST_BASELINE_HOURS || 0), { maximumFractionDigits: 1 })} ${payslipInfoText.hours}`],
+        [payslipInfoText.productionStHours, `${formatNumberWithCommas(Number(parameters.PRODUCTION_ST_HOURS || 0), { maximumFractionDigits: 1 })} ${payslipInfoText.hours}`],
+      ] : []),
       [payslipInfoText.fullAttendance, Number(parameters.FULL_ATTENDANCE_FACTOR || 0) >= 1 ? payslipInfoText.yes : payslipInfoText.no],
       [payslipInfoText.tenureYears, `${formatNumberWithCommas(Number(parameters.TENURE_YEARS || 0), { maximumFractionDigits: 2 })} ${payslipInfoText.years}`],
       [payslipInfoText.salaryVersion, payslipEmployee.salarySystemVersionNumber ? `Ver.${payslipEmployee.salarySystemVersionNumber}` : "-"],
@@ -814,6 +821,12 @@ const PayrollEntry = () => {
               <Typography variant="body2">{Number(payslipEmployee?.parameters?.SCHEDULED_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
               <Typography variant="body2" color="text.secondary">{payslipInfoText.holidayWorkdays}</Typography>
               <Typography variant="body2">{Number(payslipEmployee?.parameters?.HOLIDAY_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
+              {payslipEmployee?.payType === "OUTPUT" && <>
+                <Typography variant="body2" color="text.secondary">{payslipInfoText.productionStBaselineHours}</Typography>
+                <Typography variant="body2">{formatNumberWithCommas(Number(payslipEmployee?.parameters?.PRODUCTION_ST_BASELINE_HOURS || 0), { maximumFractionDigits: 1 })} {payslipInfoText.hours}</Typography>
+                <Typography variant="body2" color="text.secondary">{payslipInfoText.productionStHours}</Typography>
+                <Typography variant="body2">{formatNumberWithCommas(Number(payslipEmployee?.parameters?.PRODUCTION_ST_HOURS || 0), { maximumFractionDigits: 1 })} {payslipInfoText.hours}</Typography>
+              </>}
               <Typography variant="body2" color="text.secondary">{payslipInfoText.fullAttendance}</Typography>
               <Typography variant="body2">{Number(payslipEmployee?.parameters?.FULL_ATTENDANCE_FACTOR || 0) >= 1 ? payslipInfoText.yes : payslipInfoText.no}</Typography>
               <Typography variant="body2" color="text.secondary">{payslipInfoText.tenureYears}</Typography>
