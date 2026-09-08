@@ -65,7 +65,7 @@ const PayTypeScheduleSettingsDialog = ({ open, onClose, orgId, languageCode, sho
     }
   };
 
-  return <Dialog open={open} onClose={saving ? undefined : onClose} fullWidth maxWidth="sm">
+  return <Dialog open={open} onClose={saving ? undefined : onClose} fullWidth maxWidth="md">
     <DialogTitle>{text.title}</DialogTitle>
     <DialogContent dividers sx={{ bgcolor: 'grey.50' }}>
       <Stack spacing={2}>
@@ -91,21 +91,31 @@ const PayTypeScheduleSettingsDialog = ({ open, onClose, orgId, languageCode, sho
                 mb: 2, gap: 0.75, flexWrap: 'wrap',
                 '& .MuiToggleButtonGroup-grouped': {
                   border: '1px solid', borderColor: 'divider', borderRadius: '50% !important',
-                  m: 0, width: 34, height: 34, minWidth: 34, p: 0, fontSize: '0.72rem', fontWeight: 600, color: 'text.secondary',
-                },
-                '& .Mui-selected': {
-                  bgcolor: `${palette.background} !important`, color: `${palette.text} !important`, borderColor: `${palette.border} !important`,
+                  m: 0, width: 34, height: 34, minWidth: 34, p: 0, fontSize: '0.72rem', fontWeight: 600,
                 },
               }}
             >
-              {(WEEKDAYS[languageCode] || WEEKDAYS.en).map((label, index) => <ToggleButton key={label} value={index + 1}>{label}</ToggleButton>)}
+              {(WEEKDAYS[languageCode] || WEEKDAYS.en).map((label, index) => {
+                // 일요일은 선택 여부와 무관하게 항상 빨간 글자로 표시한다(한국 달력 관례).
+                const isSunday = index === 6;
+                const selected = row.workWeekdays.includes(index + 1);
+                return <ToggleButton
+                  key={label}
+                  value={index + 1}
+                  sx={{
+                    color: `${isSunday ? '#c62828' : (selected ? palette.text : 'rgba(0, 0, 0, 0.6)')} !important`,
+                    bgcolor: selected ? `${palette.background} !important` : undefined,
+                    borderColor: selected ? `${palette.border} !important` : 'divider',
+                  }}
+                >{label}</ToggleButton>;
+              })}
             </ToggleButtonGroup>
 
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1.25 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, minmax(130px, 1fr))' }, gap: 1.25 }}>
               <TextField size="small" type="time" label={text.clockIn} value={row.standardClockIn} onChange={(event) => editPolicy(row.payType, 'standardClockIn', event.target.value)} InputLabelProps={{ shrink: true }} />
               <TextField size="small" type="time" label={text.clockOut} value={row.standardClockOut} onChange={(event) => editPolicy(row.payType, 'standardClockOut', event.target.value)} InputLabelProps={{ shrink: true }} />
-              <TextField size="small" type="number" label={text.breakTime} value={row.breakMinutes} onChange={(event) => editPolicy(row.payType, 'breakMinutes', event.target.value)} InputProps={{ endAdornment: <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>{text.minutes}</Typography> }} />
-              <TextField size="small" type="number" label={text.minimum} value={row.workdayMinimumHours} onChange={(event) => editPolicy(row.payType, 'workdayMinimumHours', event.target.value)} inputProps={{ min: .5, step: .5 }} InputProps={{ endAdornment: <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>{text.hours}</Typography> }} />
+              <TextField size="small" type="number" label={text.breakTime} value={row.breakMinutes} onChange={(event) => editPolicy(row.payType, 'breakMinutes', event.target.value)} InputLabelProps={{ shrink: true }} InputProps={{ endAdornment: <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5, whiteSpace: 'nowrap' }}>{text.minutes}</Typography> }} />
+              <TextField size="small" type="number" label={text.minimum} value={row.workdayMinimumHours} onChange={(event) => editPolicy(row.payType, 'workdayMinimumHours', event.target.value)} inputProps={{ min: .5, step: .5 }} InputLabelProps={{ shrink: true }} InputProps={{ endAdornment: <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5, whiteSpace: 'nowrap' }}>{text.hours}</Typography> }} />
             </Box>
           </Paper>;
         })}
