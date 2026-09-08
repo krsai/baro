@@ -24,6 +24,14 @@
 - BARO는 이 SaaS를 만든 회사이자 개발 과정의 메인 사용 조직이지만, 구독·권한 로직에서 이름으로 특별 취급받을 이유는 없다. 다른 모든 조직과 동일하게 `ensureOrganizationSubscription`의 일반 흐름(기존 구독은 `buildSubscriptionLifecyclePatch`로 TRIAL/ACTIVE/GRACE/SUSPENDED 상태만 갱신, 신규 조직은 `NOT_SUBSCRIBED`로 생성)을 그대로 탄다.
 - 이미 운영 DB에 있는 BARO 조직의 `OrganizationSubscription` 행은 이번 변경으로 값이 바뀌지 않는다(코드가 더 이상 강제로 `ACTIVE`로 되돌리지 않을 뿐). 그 조직의 구독을 계속 활성 상태로 유지하려면 다른 조직과 동일하게 시스템 관리자가 `PATCH /organizations/:id/subscription`으로 관리해야 한다.
 
+## 2026-09-08 고정 `INCENTIVE` 급여 항목 이름을 "성과급"에서 "생산수당"으로 변경
+
+- 급여 체계 화면의 `INCENTIVE` 카테고리 고정 항목(`code: incentiveTotal`, 삭제·수정 불가, `PRODUCTION_ALLOWANCE` 계산식 전용)의 표시 이름을 `성과급`/`Performance Pay`/`Thưởng năng suất`에서 `생산수당`/`Production Allowance`/`Phụ cấp sản lượng`로 바꿨다. `INCENTIVE` 카테고리 자체의 한국어 라벨(`성과급`, 좌측 급여 항목 목록의 그룹 배지)은 이번 변경 범위가 아니며 그대로 유지한다 — 사용자가 명시적으로 요청한 것은 카테고리명이 아니라 그 카테고리 안 유일한 항목의 이름이다.
+- 이 항목은 화면에서 수정 버튼 자체가 숨겨져 있어(§"급여 항목별 적용 급여 타입 선택" 원칙과 동일하게 `INCENTIVE`는 작업기록 기반 자동 계산 전용이라 사용자가 이름을 바꿀 수 없다) 이름을 바꾸려면 코드의 하드코딩된 기본값을 고쳐야 한다. 백엔드 `backend/src/employees/salarySystem.routes.ts`의 세 지점(`ensureInitialDraft`의 최초 시드, `ensureFixedIncentiveItem`의 신규 생성/기존 항목 강제 보정, `PUT /salary-system` 저장 시 `INCENTIVE` 카테고리 이름 강제)과 프론트 `SalarySystem.jsx`의 두 지점(`DEFAULT_ITEMS`, 데이터 로드 시 `INCENTIVE` 행 강제 오버라이드)을 전부 새 이름으로 갱신했다.
+- `ensureFixedIncentiveItem`은 급여 체계 화면을 열 때마다(`GET /salary-system`) 실행되는 자가치유 함수라, 이미 운영 DB에 "성과급"으로 저장된 기존 조직·공장의 항목도 다음 조회 시점에 자동으로 "생산수당"으로 갱신된다. 별도 백필 스크립트나 마이그레이션은 필요 없다.
+- 항목이 자동 계산 전용이라 수정할 수 없음을 안내하는 Alert 문구도 `생산수당은 작업 기록을 기준으로 자동 계산되며...`로 함께 갱신했다(`frontend/src/pages/App/salarySystemI18n.js`).
+- 급여명세서(`PayrollEntry.jsx`)의 생산수당 관련 표시(`payslipText.production` 등)는 이미 이전부터 "생산수당"/"Production Allowance"/"Phụ cấp sản lượng"을 쓰고 있어 이번 변경과 무관하게 일치했다. 직원 급여 타입 검색 별칭(`staticOptionRegistry.js`)과 급여 화면 밖의 "성과급 직원" 문구(`PayrollEntry.jsx`의 구 `OUTPUT` 급여 타입 지칭)는 이 항목 이름과 무관한 별개 용어라 이번 범위에서 건드리지 않았다.
+
 ## 2026-09-04 라인 사용자 노출 및 죽은 프론트 정리
 
 - 살아 있는 `/qc-review` 화면은 공장만 선택하고 공장 `factoryId`로 배정 계획을 조회한다. 라인 선택 드롭다운, 라인 표 컬럼, 라인명 검색 및 삭제된 라인 관리 메뉴 안내를 제거했다.

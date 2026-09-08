@@ -8,7 +8,7 @@ const revision = require('../backend/dist/utils/editRevision.js');
 
 function salaryHarness() {
   let data = {
-    items: [{ id: 1, code: 'incentiveTotal', nameKo: '성과급', nameEn: 'Performance Pay', nameVi: 'Thưởng năng suất', category: 'INCENTIVE', payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', paymentMonths: Array.from({ length: 12 }, (_, i) => i + 1), required: true, isActive: true }],
+    items: [{ id: 1, code: 'incentiveTotal', nameKo: '생산수당', nameEn: 'Production Allowance', nameVi: 'Phụ cấp sản lượng', category: 'INCENTIVE', payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', paymentMonths: Array.from({ length: 12 }, (_, i) => i + 1), required: true, isActive: true }],
     rates: [], versions: [{ id: 1, versionNumber: 1, effectiveMonth: '1900-01', confirmedDate: new Date('2026-01-01'), snapshot: {} }], currency: 'VND',
   };
   let generation = 0;

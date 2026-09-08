@@ -99,7 +99,7 @@ const DEFAULT_ITEMS = [
   item('holiday', '휴일근무수당', 'ALLOWANCE', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'HOLIDAY_WORKDAYS'] }),
   item('attendance', '만근수당', 'ALLOWANCE', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'FULL_ATTENDANCE_FACTOR'] }),
   item('seniority', '근속수당', 'ALLOWANCE', 'SEMIANNUAL', { formula: ['GRADE_RATE', '×', 'TENURE_YEARS'], capValue: '5' }),
-  item('incentiveTotal', '성과급', 'INCENTIVE', 'MONTHLY', { formula: ['PRODUCTION_ALLOWANCE'], required: true }),
+  item('incentiveTotal', '생산수당', 'INCENTIVE', 'MONTHLY', { formula: ['PRODUCTION_ALLOWANCE'], required: true }),
 ];
 
 const money = (value) => {
@@ -278,7 +278,7 @@ const SalarySystem = () => {
       if (sequence !== loadSequence.current || scope !== loadScope.current) return null;
       setGrades((Array.isArray(sets) ? sets : []).flatMap((set) => set.grades || []).filter((grade) => grade.isActive));
       const loadedItems = (Array.isArray(salarySystem?.items) && salarySystem.items.length ? salarySystem.items : DEFAULT_ITEMS).map((row) => row.category === 'INCENTIVE'
-        ? { ...row, name: '성과급', nameKo: '성과급', nameEn: 'Performance Pay', nameVi: 'Thưởng năng suất', payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '', required: true }
+        ? { ...row, name: '생산수당', nameKo: '생산수당', nameEn: 'Production Allowance', nameVi: 'Phụ cấp sản lượng', payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '', required: true }
         : { ...row, nameKo: row.nameKo || row.name, nameEn: row.nameEn || row.name, nameVi: row.nameVi || row.name, paymentMonths: Array.isArray(row.paymentMonths) ? row.paymentMonths : PAYMENT_MONTHS_BY_CYCLE[row.payCycle], capValue: optionalMoney(row.capValue) });
       const next = {};
       (Array.isArray(salarySystem?.rates) ? salarySystem.rates : []).forEach((row) => {
@@ -545,7 +545,7 @@ const SalarySystem = () => {
           <Paper variant="outlined" sx={{ mt: 1.5, p: 2, bgcolor: 'action.hover', borderColor: 'divider' }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{ flex: 1 }}><Typography variant="h6" fontWeight={700}>{salaryItemName(selected, languageCode)}</Typography><Typography variant="h6" color="primary.main" fontWeight={700}>=</Typography><Typography fontWeight={700}>{isFixedIncentive ? t('공장 초당 단가 × CT × 작업 수량') : formulaLabel(selected.formula, t) || t('계산식이 비어 있습니다.')}</Typography></Stack></Stack></Paper>
         </Box>
         {isFixedIncentive
-          ? <Alert severity="info" icon={false} sx={{ m: 2 }}>{t('성과급은 작업 기록을 기준으로 자동 계산되며 급여 체계에서 수정할 수 없습니다.')}</Alert>
+          ? <Alert severity="info" icon={false} sx={{ m: 2 }}>{t('생산수당은 작업 기록을 기준으로 자동 계산되며 급여 체계에서 수정할 수 없습니다.')}</Alert>
           : <><Box sx={{ px: 2, py: 1.5 }}><Typography fontWeight={700}>{t('급여 타입·직급별 단가')}</Typography><Typography variant="body2" color="text.secondary">{t('권한이나 직무와 관계없이 직원에게 지정된 급여 타입과 직급으로 단가를 결정합니다.')}</Typography></Box>
             <TableContainer><Table size="small"><TableHead><TableRow><TableCell>{t('급여 타입')}</TableCell><TableCell>{t('직급')}</TableCell><TableCell align="right">{t('단가')}/{t(PAY_CYCLES[selected.payCycle])} ({currencyCode})</TableCell></TableRow></TableHead><TableBody>
               {PAY_TYPE_ORDER.flatMap((payType) => { const active = (selected.payTypes || []).includes(payType); return grades.map((grade, index) => <TableRow key={`${payType}:${grade.id}`} hover={active} sx={{ opacity: active ? 1 : 0.48 }}>{index === 0 && <TableCell rowSpan={grades.length} sx={{ verticalAlign: 'top', pt: 2 }}><Chip size="small" variant="outlined" label={getPayTypeLabel(payType, payType, languageCode)} sx={labelChipSx(PAY_TYPES[payType].palette, active)} /><Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{payType}</Typography></TableCell>}<TableCell>{gradeName(grade, languageCode)} ({grade.code})</TableCell>

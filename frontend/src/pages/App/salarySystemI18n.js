@@ -9,7 +9,7 @@ const translations = {
   '만근 충족값': ['Full-attendance factor', 'Hệ số đủ công'], '만근 조건 적용': ['Apply full-attendance condition', 'Áp dụng điều kiện đủ công'], '1 또는 0': ['1 or 0', '1 hoặc 0'], '만근을 채우면 1, 아니면 0으로 계산됩니다.': ['Calculated as 1 when full attendance is met, otherwise 0.', 'Tính là 1 khi đủ công, ngược lại là 0.'],
   '생산수당 계산 결과': ['Production allowance result', 'Kết quả tính phụ cấp sản lượng'],
   '공장 초당 단가 × CT × 작업 수량': ['Factory rate per second × CT × work quantity', 'Đơn giá nhà máy mỗi giây × CT × sản lượng công việc'],
-  '성과급은 작업 기록을 기준으로 자동 계산되며 급여 체계에서 수정할 수 없습니다.': ['Incentives are calculated automatically from work records and cannot be edited in the salary structure.', 'Thưởng hiệu suất được tự động tính từ nhật ký công việc và không thể chỉnh sửa trong cơ cấu lương.'],
+  '생산수당은 작업 기록을 기준으로 자동 계산되며 급여 체계에서 수정할 수 없습니다.': ['The production allowance is calculated automatically from work records and cannot be edited in the salary structure.', 'Phụ cấp sản lượng được tự động tính từ nhật ký công việc và không thể chỉnh sửa trong cơ cấu lương.'],
   '단가·근속': ['Rate & tenure', 'Đơn giá & thâm niên'], '근무일수': ['Workdays', 'Ngày công'], '근무시간': ['Work hours', 'Giờ làm việc'], '조건': ['Conditions', 'Điều kiện'],
   '점심수당': ['Lunch allowance', 'Phụ cấp ăn trưa'], '통신비': ['Communication allowance', 'Phụ cấp điện thoại'], '교통비': ['Transportation allowance', 'Phụ cấp đi lại'],
   '직책수당': ['Position allowance', 'Phụ cấp chức vụ'], '주거수당': ['Housing allowance', 'Phụ cấp nhà ở'], '어학수당': ['Language allowance', 'Phụ cấp ngoại ngữ'],
