@@ -1,3 +1,4 @@
+import { assignmentBoardRevision, assertEditRevision, editTransaction } from "./utils/editRevision";
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import compression from "compression";
@@ -29273,6 +29274,7 @@ app.get("/assignment-board-view", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
+  const editRevision = await assignmentBoardRevision(prisma, organization.id);
   const includeCards = !(
     req.query.includeCards === "0" || req.query.includeCards === "false"
   );
@@ -29286,6 +29288,7 @@ app.get("/assignment-board-view", async (req, res) => {
   ]);
   const response = {
     ...boardResponse,
+    editRevision,
     createdAt: state?.createdAt ?? null,
     updatedAt: state?.updatedAt ?? null,
   };
@@ -29406,6 +29409,12 @@ app.get("/assignment-cards", async (req, res) => {
     updatedAt: state?.updatedAt ?? null,
     serverNow: new Date().toISOString(),
   });
+});
+
+app.get("/assignment-board-revision", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+  res.json({ editRevision: await assignmentBoardRevision(prisma, organization.id) });
 });
 
 app.get("/assignment-board-state", async (req, res) => {
@@ -29571,6 +29580,7 @@ app.put("/assignment-board-state", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
+  assertEditRevision(req.body?.expectedRevision, await assignmentBoardRevision(prisma, organization.id));
   const cards = ensureArray(req.body?.cards);
   const incomingAssignments = ensureArray(req.body?.assignments);
   const stDraftsByExternalId = normalizeAssignmentStDraftsPayload(req.body?.stDrafts);
@@ -29603,7 +29613,8 @@ app.put("/assignment-board-state", async (req, res) => {
       planIds: removedPlanRowsForDetachGuard.map((plan) => plan.id),
     });
   }
-  const updated = await prisma.$transaction(async (tx) => {
+  const updated = await editTransaction(prisma, async (tx) => {
+    assertEditRevision(req.body?.expectedRevision, await assignmentBoardRevision(tx, organization.id));
     const existingState = await tx.assignmentBoardState.findUnique({
       where: { orgId: organization.id },
       select: { id: true, createdAt: true, updatedAt: true },
@@ -30327,8 +30338,9 @@ app.put("/assignment-board-state", async (req, res) => {
       savedCards,
       assignmentPlans,
       stDraftWarnings: stTotalPreparation.warnings,
+      editRevision: await assignmentBoardRevision(tx, organization.id),
     };
-  }, { timeout: 90000 });
+  }, 90000);
   const updatedState = updated?.state ?? null;
   const updatedCards = ensureArray(updated?.savedCards);
   const updatedAssignmentPlans = await annotateAssignmentPlanRowsWithPayrollLocks(
@@ -30346,6 +30358,7 @@ app.put("/assignment-board-state", async (req, res) => {
   res.json({
     ...toAssignmentBoardStateResponse(updatedState, updatedAssignmentPlans, updatedCards),
     warnings: stDraftWarnings,
+    editRevision: updated.editRevision,
   });
 });
 

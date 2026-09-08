@@ -1,3 +1,5 @@
+import useEditRevision, { isStaleEditError } from '../../../hooks/useEditRevision';
+import StaleEditNotice from '../../../components/StaleEditNotice';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -3278,6 +3280,7 @@ const AssignBoard = () => {
     });
   }, []);
   const isAssignmentRouteActive = location.pathname === '/assignment';
+  const edit = useEditRevision({ scope: activeOrgId, url: '/assignment-board-revision' + buildQueryString({ orgId: activeOrgId }), enabled: isAssignmentRouteActive && persistReady, busy: loading || persisting });
 
   useEffect(() => {
     return subscribeOrderModificationLockChanged((detail) => {
@@ -3799,6 +3802,7 @@ const AssignBoard = () => {
         setStyles(nextStyles);
       }
       setLines(nextLines);
+      edit.accept(boardState?.editRevision);
       setCards(restoredCards);
       // Keep absolute date keys loaded from server state.
       // Recomputing them from current view base date causes cross-month schedules to shift visually.
@@ -3830,6 +3834,7 @@ const AssignBoard = () => {
       createBoardSnapshotText,
       createPersistSnapshotText,
       days,
+      edit.accept,
       holidaySet,
       syncHistoryStatus,
     ]
@@ -3890,6 +3895,9 @@ const AssignBoard = () => {
           orgId: activeOrgId,
           summary: 1,
         });
+        // Capture the revision before any of the separate board/card reads start.
+        const initialRevision = await requestJSON('/assignment-board-revision' + orgQuery, { forceRefresh: true, skipGlobalLoading: true });
+        if (cancelled) return;
         const assignmentCardsSummaryPromise = requestJSON('/assignment-cards' + assignmentCardsSummaryQuery, {
           forceRefresh: true,
         }).catch(() => null);
@@ -3931,6 +3939,8 @@ const AssignBoard = () => {
         ]);
         if (cancelled) return;
 
+        if (!boardState || !initialRevision?.editRevision) throw new Error("Board revision unavailable");
+        boardState.editRevision = initialRevision.editRevision;
         const safeFactories = Array.isArray(factories) ? factories : [];
         // This board spans multiple factories at once, so keep the global min date at the
         // earliest configured factory start date until the UX supports factory-scoped windows.
@@ -4106,7 +4116,7 @@ const AssignBoard = () => {
   ]);
 
   const handleSaveBoard = async () => {
-    if (!activeOrgId || !persistReady || persisting || !isDirty) return;
+    if (!activeOrgId || !persistReady || persisting || !isDirty || edit.stale || !edit.revision) return;
 
     blurActiveElement();
     setPersisting(true);
@@ -4254,6 +4264,7 @@ const AssignBoard = () => {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            expectedRevision: edit.revision,
             cards: currentCards.map(normalizeAssignmentCardForPersistence),
             assignments: assignmentPayload.map((assignment) => ({
               ...assignment,
@@ -4266,6 +4277,7 @@ const AssignBoard = () => {
 
       const stDraftsForPut = buildStDraftPayload(normalizedAssignments);
       const response = await persistBoardState(normalizedAssignments, stDraftsForPut);
+      edit.accept(response?.editRevision);
       const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
         response,
         currentCards,
@@ -4320,6 +4332,7 @@ const AssignBoard = () => {
         'success'
       );
     } catch (error) {
+      if (isStaleEditError(error)) { edit.markStale(); return; }
       showNotification(
         resolveBoardSaveErrorMessage(
           error,
@@ -6965,7 +6978,7 @@ const AssignBoard = () => {
             <SaveButton
               onMouseDown={preventToolbarButtonFocus}
               onClick={handleSaveBoard}
-              disabled={persisting || !persistReady || !isDirty}
+              disabled={persisting || !persistReady || !isDirty || edit.stale || !edit.revision}
               loading={persisting}
               sx={{ minWidth: 72 }}
             />
@@ -7031,6 +7044,7 @@ const AssignBoard = () => {
         </Box>
       }
     >
+      <StaleEditNotice stale={edit.stale && isAssignmentRouteActive} dirty={isDirty} busy={loading || persisting} languageCode={languageCode} onRefresh={requestExternalBoardReload} />
       <DndContext
         sensors={sensors}
         collisionDetection={assignBoardCollisionDetection}

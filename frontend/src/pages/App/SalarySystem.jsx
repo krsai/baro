@@ -1,4 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import useEditRevision, { isStaleEditError } from '../../hooks/useEditRevision';
+import StaleEditNotice from '../../components/StaleEditNotice';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
   FormControl, FormHelperText, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack,
@@ -216,6 +219,7 @@ const FormulaCursorSlot = ({ position, active, onSelect }) => (
 
 const SalarySystem = () => {
   const { activeOrgId } = useAuth();
+  const isRouteActive = useLocation().pathname === '/salary-system';
   const { showNotification } = useAppActions();
   const { languageCode } = useLanguage();
   const t = useCallback((text) => salaryText(text, languageCode), [languageCode]);
@@ -235,6 +239,7 @@ const SalarySystem = () => {
   const [savedVersionBoundaries, setSavedVersionBoundaries] = useState({});
   const [versionBusy, setVersionBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+  const edit = useEditRevision({ scope: `${activeOrgId}:${factoryId}`, url: `/salary-system/revision${buildQueryString({ orgId: activeOrgId, factoryId })}`, enabled: isRouteActive && Boolean(activeOrgId && factoryId), busy: saving || versionBusy });
   const [draft, setDraft] = useState(DEFAULT_DRAFT);
   const [message, setMessage] = useState(null);
   const [formulaDialogOpen, setFormulaDialogOpen] = useState(false);
@@ -258,13 +263,19 @@ const SalarySystem = () => {
     return () => { cancelled = true; };
   }, [activeOrgId]);
 
+  const loadSequence = useRef(0);
+  const loadScope = useRef(null);
+  loadScope.current = `${activeOrgId}:${factoryId}`;
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
+    const scope = `${activeOrgId}:${factoryId}`;
     if (!activeOrgId || !factoryId) return;
     try {
       const [sets, salarySystem] = await Promise.all([
         requestJSON(`/employee-grades${buildQueryString({ orgId: activeOrgId })}`),
-        requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId, factoryId })}`),
+        requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId, factoryId })}`, { forceRefresh: true }),
       ]);
+      if (sequence !== loadSequence.current || scope !== loadScope.current) return null;
       setGrades((Array.isArray(sets) ? sets : []).flatMap((set) => set.grades || []).filter((grade) => grade.isActive));
       const loadedItems = (Array.isArray(salarySystem?.items) && salarySystem.items.length ? salarySystem.items : DEFAULT_ITEMS).map((row) => row.category === 'INCENTIVE'
         ? { ...row, name: '성과급', nameKo: '성과급', nameEn: 'Performance Pay', nameVi: 'Thưởng năng suất', payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '', required: true }
@@ -274,6 +285,7 @@ const SalarySystem = () => {
         const key = `${row.payType}:${row.gradeId}`;
         next[key] = { ...next[key], [row.salaryItemCode]: money(row.amount) };
       });
+      edit.accept(salarySystem?.editRevision);
       setItems(loadedItems);
       const loadedCurrencyCode = CURRENCY_CODES.includes(salarySystem?.currencyCode) ? salarySystem.currencyCode : 'VND';
       setCurrencyCode(loadedCurrencyCode);
@@ -285,7 +297,7 @@ const SalarySystem = () => {
       setMessage({ severity: 'error', text: error?.message || t('급여 기준을 불러오지 못했습니다.') });
       return null;
     }
-  }, [activeOrgId, factoryId, t]);
+  }, [activeOrgId, factoryId, t, edit.accept]);
   useEffect(() => { load(); }, [load]);
 
   const isDirty = useMemo(
@@ -342,7 +354,7 @@ const SalarySystem = () => {
     });
   };
   const saveDraft = async () => {
-    if (saving || !isDirty) return;
+    if (saving || versionBusy || !isDirty || edit.stale || !edit.revision) return;
     setSaving(true);
     try {
       const editableItems = new Map(items.filter((itemRow) => itemRow.category !== 'INCENTIVE').map((itemRow) => [String(itemRow.id), itemRow]));
@@ -350,13 +362,13 @@ const SalarySystem = () => {
         const [payType, gradeId] = key.split(':');
         return Object.entries(itemRates || {}).filter(([salaryItemCode]) => editableItems.get(String(salaryItemCode))?.payTypes?.includes(payType)).map(([salaryItemCode, amount]) => ({ payType, gradeId: Number(gradeId), salaryItemCode, amount: Number(String(amount).replace(/,/g, '')) || 0 }));
       });
-      await requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currencyCode, items: items.map((row) => ({ ...row, code: row.code || row.id, capValue: row.capValue === '' || row.capValue == null ? null : Number(String(row.capValue).replace(/,/g, '')) })), rates: rateRows }) });
-      await requestJSON(`/salary-system/versions${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      await requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision: edit.revision, createVersion: true, currencyCode, items: items.map((row) => ({ ...row, code: row.code || row.id, capValue: row.capValue === '' || row.capValue == null ? null : Number(String(row.capValue).replace(/,/g, '')) })), rates: rateRows }) });
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS], orgId: activeOrgId, source: 'salary-system-version-create' });
       const refreshed = await load();
       showNotification(t('급여 체계를 저장하고 새 버전을 등록했습니다. 적용 월은 버전 관리에서 지정할 수 있습니다.'), 'success');
       openVersionDialog(Array.isArray(refreshed?.versions) ? refreshed.versions : versions);
     } catch (error) {
+      if (isStaleEditError(error)) { edit.markStale(); return; }
       showNotification(error?.message || 'Failed to save salary system.', 'error');
     } finally {
       setSaving(false);
@@ -397,15 +409,18 @@ const SalarySystem = () => {
     });
   };
   const saveVersionBoundaries = async () => {
+    if (versionBusy || saving || edit.stale || !edit.revision) return;
     setVersionBusy(true);
     try {
-      const response = await requestJSON(`/salary-system/version-boundaries${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boundaries: Object.entries(versionBoundaries).map(([versionId, startMonth]) => ({ versionId: Number(versionId), startMonth })) }) });
+      const response = await requestJSON(`/salary-system/version-boundaries${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision: edit.revision, boundaries: Object.entries(versionBoundaries).map(([versionId, startMonth]) => ({ versionId: Number(versionId), startMonth })) }) });
+      edit.accept(response?.editRevision);
       setVersions(Array.isArray(response?.versions) ? response.versions : versions);
       setSavedVersionBoundaries(versionBoundaries);
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS], orgId: activeOrgId, source: 'salary-system-version-boundaries' });
       setVersionDialogOpen(false);
       showNotification(t('급여 버전 적용 구간을 저장했습니다.'), 'success');
     } catch (error) {
+      if (isStaleEditError(error)) { edit.markStale(); return; }
       showNotification(error?.message || t('급여 버전 적용 구간을 저장하지 못했습니다.'), 'error');
     } finally { setVersionBusy(false); }
   };
@@ -468,6 +483,7 @@ const SalarySystem = () => {
   </>;
 
   return <AppPageContainer><Box sx={{ p: 2, width: '100%' }}>
+    <StaleEditNotice stale={edit.stale && isRouteActive} dirty={isDirty || hasVersionBoundaryChanges || dialogOpen || formulaDialogOpen} busy={saving || versionBusy} languageCode={languageCode} onRefresh={async () => { const result = await load(); if (result) { setVersionDialogOpen(false); setDialogOpen(false); setFormulaDialogOpen(false); setVersionBoundaries({}); setSavedVersionBoundaries({}); } }} />
     <Stack direction="row" flexWrap="wrap" justifyContent="space-between" alignItems="center" rowGap={1.5} sx={{ mb: 2, width: '100%' }}>
       <Typography variant="h5" fontWeight={700}>{t('급여 체계')}</Typography>
       <FormControl size="small" sx={{ minWidth: 120 }}><InputLabel>{t('통화')}</InputLabel><Select label={t('통화')} value={currencyCode} onChange={(event) => setCurrencyCode(event.target.value)}>{CURRENCY_CODES.map((code) => <MenuItem key={code} value={code}>{code}</MenuItem>)}</Select></FormControl>
@@ -478,7 +494,7 @@ const SalarySystem = () => {
       </Tabs>
       <Stack direction="row" spacing={1} sx={{ pb: 0.75, flexShrink: 0 }}>
         <Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog}>{t('버전 관리')}</Button>
-        <SaveButton onClick={saveDraft} loading={saving} disabled={!isDirty}>{t('저장')}</SaveButton>
+        <SaveButton onClick={saveDraft} loading={saving} disabled={!isDirty || edit.stale || !edit.revision || versionBusy}>{t('저장')}</SaveButton>
       </Stack>
     </Stack>}
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
@@ -653,7 +669,7 @@ const SalarySystem = () => {
           </Box>
         </Box>
       </Stack>
-    </DialogContent><DialogActions><Button variant="contained" onClick={saveVersionBoundaries} disabled={versionBusy || !hasVersionBoundaryChanges}>{t('저장')}</Button></DialogActions></Dialog>
+    </DialogContent><DialogActions><Button variant="contained" onClick={saveVersionBoundaries} disabled={versionBusy || saving || edit.stale || !edit.revision || !hasVersionBoundaryChanges}>{t('저장')}</Button></DialogActions></Dialog>
 
     <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 항목 추가')}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1.5 }}>

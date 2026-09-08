@@ -1,3 +1,5 @@
+import { createHttpError } from "../utils/http";
+import { editRevision, assertEditRevision, editTransaction } from "../utils/editRevision";
 import { Router } from "express";
 import { prisma } from "../db";
 import { getOrganizationByQuery, getRequesterEmail } from "../middleware/access";
@@ -21,14 +23,14 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     if (Number.isSafeInteger(requestedId) && requestedId > 0) return prisma.factory.findFirst({ where: { id: requestedId, orgId } });
     return prisma.factory.findFirst({ where: { orgId }, orderBy: { id: "asc" } });
   };
-  const state = async (orgId: number, factoryId: number) => {
+  const state = async (orgId: number, factoryId: number, db: typeof prisma | import("@prisma/client").Prisma.TransactionClient = prisma) => {
     const [factory, items, rates, versions] = await Promise.all([
-      prisma.factory.findFirst({ where: { id: factoryId, orgId }, select: { salaryCurrency: { select: { code: true } }, organization: { select: { salaryCurrency: { select: { code: true } } } } } }),
-      prisma.salaryItem.findMany({ where: { orgId, factoryId, isActive: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }),
-      prisma.salaryItemRate.findMany({ where: { orgId, factoryId }, orderBy: [{ payType: "asc" }, { gradeId: "asc" }, { salaryItemId: "asc" }] }),
-      prisma.salarySystemVersion.findMany({ where: { orgId, factoryId }, orderBy: { versionNumber: "desc" } }),
+      db.factory.findFirst({ where: { id: factoryId, orgId }, select: { salaryCurrency: { select: { code: true } }, organization: { select: { salaryCurrency: { select: { code: true } } } } } }),
+      db.salaryItem.findMany({ where: { orgId, factoryId, isActive: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }),
+      db.salaryItemRate.findMany({ where: { orgId, factoryId }, orderBy: [{ payType: "asc" }, { gradeId: "asc" }, { salaryItemId: "asc" }] }),
+      db.salarySystemVersion.findMany({ where: { orgId, factoryId }, orderBy: { versionNumber: "desc" } }),
     ]);
-    return {
+    const result = {
       factoryId,
       currencyCode: factory?.salaryCurrency?.code || factory?.organization.salaryCurrency?.code || "VND",
       items: items.map(({ id, ...item }) => ({ ...item, id: item.code, databaseId: id })),
@@ -38,6 +40,7 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
         return { ...version, confirmedAt: version.confirmedDate.toISOString().slice(0, 10), currencyCode: normalizeCurrencyCode(snapshot.currencyCode) || "VND", items: Array.isArray(snapshot.items) ? snapshot.items : [], rates: Array.isArray(snapshot.rates) ? snapshot.rates : [] };
       }),
     };
+    return { ...result, editRevision: editRevision(result) };
   };
   const ensureInitialDraft = async (orgId: number, factoryId: number) => {
     if (await prisma.salaryItem.findFirst({ where: { orgId, factoryId }, select: { id: true } })) return;
@@ -90,6 +93,15 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     res.json(await state(org.id, factory.id));
   });
 
+  router.get("/salary-system/revision", async (req, res) => {
+    const org = await getOrganizationByQuery(req);
+    if (!org) return res.status(404).json({ ok: false, error: "organization not found" });
+    if (!(await requireSalarySystemManager(req, res, org.id))) return;
+    const factory = await resolveFactory(org.id, req.query.factoryId);
+    if (!factory) return res.status(404).json({ ok: false, error: "factory not found" });
+    res.json({ editRevision: (await state(org.id, factory.id)).editRevision });
+  });
+
   router.put("/salary-system", async (req, res) => {
     const org = await getOrganizationByQuery(req);
     if (!org) return res.status(404).json({ ok: false, error: "organization not found" });
@@ -120,7 +132,8 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     const gradeIds = new Set((await prisma.employeeGrade.findMany({ where: { orgId: org.id, isActive: true }, select: { id: true } })).map((row) => row.id));
     const rateKeys = rates.map((r) => `${r.payType}:${Number(r.gradeId)}:${String(r.salaryItemCode)}`);
     if (new Set(rateKeys).size !== rateKeys.length || rates.some((r) => !codes.has(String(r.salaryItemCode)) || categoryByCode.get(String(r.salaryItemCode)) === "INCENTIVE" || !PAY_TYPES.includes(r.payType) || !payTypesByCode.get(String(r.salaryItemCode))?.includes(r.payType) || !gradeIds.has(Number(r.gradeId)) || !Number.isSafeInteger(Number(r.amount)) || Number(r.amount) < 0)) return res.status(400).json({ ok: false, error: "invalid salary rate" });
-    await prisma.$transaction(async (tx) => {
+    const result = await editTransaction(prisma, async (tx) => {
+      assertEditRevision(req.body?.expectedRevision, (await state(org.id, factory.id, tx)).editRevision);
       const currency = await tx.currency.findUnique({ where: { code: currencyCode }, select: { id: true } });
       if (!currency) throw new Error(`currency ${currencyCode} is not configured`);
       await tx.factory.update({ where: { id: factory.id }, data: { salaryCurrencyId: currency.id } });
@@ -134,17 +147,25 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
       await tx.salaryItem.updateMany({ where: { orgId: org.id, factoryId: factory.id, code: { notIn: [...codes] }, required: false }, data: { isActive: false } });
       await tx.salaryItemRate.deleteMany({ where: { orgId: org.id, factoryId: factory.id } });
       if (rates.length) await tx.salaryItemRate.createMany({ data: rates.map((r) => ({ orgId: org.id, factoryId: factory.id, payType: r.payType, gradeId: Number(r.gradeId), salaryItemId: ids.get(String(r.salaryItemCode))!, amount: Number(r.amount) })) });
-    }, { timeout: 30000 });
-    res.json(await state(org.id, factory.id));
+      if (req.body?.createVersion === true) {
+        const current = await state(org.id, factory.id, tx);
+        await tx.salarySystemVersion.create({ data: { orgId: org.id, factoryId: factory.id, versionNumber: (current.versions[0]?.versionNumber || 0) + 1, effectiveMonth: null, confirmedBy: getRequesterEmail(req) || "system@baro.local", snapshot: toJsonSnapshot({ currencyCode: current.currencyCode, items: current.items, rates: current.rates }) } });
+      }
+      return state(org.id, factory.id, tx);
+    });
+    res.json(result);
   });
 
   router.post("/salary-system/versions", async (req, res) => {
     const org = await getOrganizationByQuery(req); if (!org) return res.status(404).json({ ok: false, error: "organization not found" });
     if (!(await requireSalarySystemManager(req, res, org.id))) return;
     const factory = await resolveFactory(org.id, req.query.factoryId); if (!factory) return res.status(404).json({ ok: false, error: "factory not found" });
-    const actor = getRequesterEmail(req) || "system@baro.local"; await ensureInitialDraft(org.id, factory.id); await ensureFixedIncentiveItem(org.id, factory.id); await ensureV1(org.id, factory.id, actor); const current = await state(org.id, factory.id);
-    const last = await prisma.salarySystemVersion.findFirst({ where: { orgId: org.id, factoryId: factory.id }, orderBy: { versionNumber: "desc" } });
-    const created = await prisma.salarySystemVersion.create({ data: { orgId: org.id, factoryId: factory.id, versionNumber: (last?.versionNumber || 0) + 1, effectiveMonth: null, confirmedBy: actor, snapshot: toJsonSnapshot({ currencyCode: current.currencyCode, items: current.items, rates: current.rates }) } }); res.status(201).json(created);
+    const created = await editTransaction(prisma, async (tx) => {
+      const current = await state(org.id, factory.id, tx);
+      assertEditRevision(req.body?.expectedRevision, current.editRevision);
+      return tx.salarySystemVersion.create({ data: { orgId: org.id, factoryId: factory.id, versionNumber: (current.versions[0]?.versionNumber || 0) + 1, effectiveMonth: null, confirmedBy: getRequesterEmail(req) || "system@baro.local", snapshot: toJsonSnapshot({ currencyCode: current.currencyCode, items: current.items, rates: current.rates }) } });
+    });
+    res.status(201).json(created);
   });
 
   router.put("/salary-system/version-boundaries", async (req, res) => {
@@ -152,24 +173,27 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     if (!(await requireSalarySystemManager(req, res, org.id))) return;
     const factory = await resolveFactory(org.id, req.query.factoryId); if (!factory) return res.status(404).json({ ok: false, error: "factory not found" });
     const boundaries: any[] = Array.isArray(req.body?.boundaries) ? req.body.boundaries : [];
-    const versions = await prisma.salarySystemVersion.findMany({ where: { orgId: org.id, factoryId: factory.id }, orderBy: { versionNumber: "asc" } });
-    const editableVersions = versions.filter((version) => version.versionNumber > 1);
-    const versionById = new Map(editableVersions.map((version) => [version.id, version]));
-    const seenVersionIds = new Set<number>(); const seenMonths = new Set<string>();
-    for (const row of boundaries) {
-      const versionId = Number(row?.versionId); const startMonth = String(row?.startMonth || "");
-      if (!versionById.has(versionId) || seenVersionIds.has(versionId) || seenMonths.has(startMonth) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth)) return res.status(400).json({ ok: false, error: "invalid salary version boundaries" });
-      seenVersionIds.add(versionId); seenMonths.add(startMonth);
-    }
-    const ordered = [...boundaries].sort((a, b) => String(a.startMonth).localeCompare(String(b.startMonth)));
-    for (let index = 1; index < ordered.length; index += 1) {
-      if (versionById.get(Number(ordered[index - 1].versionId))!.versionNumber >= versionById.get(Number(ordered[index].versionId))!.versionNumber) return res.status(400).json({ ok: false, error: "salary version boundaries must follow version order" });
-    }
-    await prisma.$transaction(async (tx) => {
+    const result = await editTransaction(prisma, async (tx) => {
+      assertEditRevision(req.body?.expectedRevision, (await state(org.id, factory.id, tx)).editRevision);
+      const versions = await tx.salarySystemVersion.findMany({ where: { orgId: org.id, factoryId: factory.id }, orderBy: { versionNumber: "asc" } });
+      const editableVersions = versions.filter((version) => version.versionNumber > 1);
+      const versionById = new Map(editableVersions.map((version) => [version.id, version]));
+      const seenVersionIds = new Set<number>(); const seenMonths = new Set<string>();
+      for (const row of boundaries) {
+        const versionId = Number(row?.versionId); const startMonth = String(row?.startMonth || "");
+        if (!versionById.has(versionId) || seenVersionIds.has(versionId) || seenMonths.has(startMonth) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth)) throw createHttpError(400, "invalid salary version boundaries");
+        seenVersionIds.add(versionId); seenMonths.add(startMonth);
+      }
+      const ordered = [...boundaries].sort((a, b) => String(a.startMonth).localeCompare(String(b.startMonth)));
+      for (let index = 1; index < ordered.length; index += 1) {
+        if (versionById.get(Number(ordered[index - 1].versionId))!.versionNumber >= versionById.get(Number(ordered[index].versionId))!.versionNumber) throw createHttpError(400, "salary version boundaries must follow version order");
+      }
+
       if (editableVersions.length) await tx.salarySystemVersion.updateMany({ where: { orgId: org.id, factoryId: factory.id, versionNumber: { gt: 1 } }, data: { effectiveMonth: null } });
       for (const row of boundaries) await tx.salarySystemVersion.update({ where: { id: Number(row.versionId) }, data: { effectiveMonth: String(row.startMonth) } });
+      return state(org.id, factory.id, tx);
     });
-    res.json(await state(org.id, factory.id));
+    res.json(result);
   });
   return router;
 };
