@@ -18,7 +18,6 @@ const ORG_ACCESS_ROLES: OrgUserRole[] = [
   "ACCOUNTANT",
   "WORKER",
 ];
-const BARO_SUBSCRIPTION_EMAIL = "baro.garment@gmail.com";
 const TRIAL_DAYS = 30;
 const GRACE_DAYS = 30;
 const SUBSCRIPTION_NULL_DATE_CUTOFF_MS = Date.UTC(1971, 0, 1);
@@ -47,18 +46,6 @@ const requestOrganizationAccessCacheKey = Symbol("requestOrganizationAccessCache
 
 type RequestWithOrganizationAccessCache = Request & {
   [requestOrganizationAccessCacheKey]?: Map<string, any>;
-};
-
-const isBaroOrganization = (organization: any) => {
-  const normalizedName =
-    typeof organization?.name === "string"
-      ? organization.name.trim().toLowerCase()
-      : "";
-  const normalizedCode =
-    typeof organization?.code === "string"
-      ? organization.code.trim().toUpperCase()
-      : "";
-  return normalizedName === "baro" || normalizedCode === "BARO";
 };
 
 export const getHardCodedSystemAdminEmail = () =>
@@ -248,47 +235,11 @@ export const ensureOrganizationSubscription = async (organization: any) => {
     where: { orgId: organization.id },
   });
   if (existing) {
-    const patch: any = {};
-    if (isBaroOrganization(organization)) {
-      if (existing.status !== "ACTIVE") {
-        patch.status = "ACTIVE";
-      }
-      if (!existing.membershipEmail) {
-        patch.membershipEmail = BARO_SUBSCRIPTION_EMAIL;
-      }
-      if (!existing.billingEmail) {
-        patch.billingEmail = BARO_SUBSCRIPTION_EMAIL;
-      }
-      if (!existing.activatedAt) {
-        patch.activatedAt = new Date();
-      }
-      if (existing.activeEndsAt) {
-        patch.activeEndsAt = null;
-      }
-      if (existing.suspendedAt) {
-        patch.suspendedAt = null;
-      }
-    }
-
-    Object.assign(patch, buildSubscriptionLifecyclePatch({ ...existing, ...patch }));
-
+    const patch: any = buildSubscriptionLifecyclePatch(existing);
     if (Object.keys(patch).length === 0) return existing;
     return prisma.organizationSubscription.update({
       where: { id: existing.id },
       data: patch,
-    });
-  }
-
-  if (isBaroOrganization(organization)) {
-    return prisma.organizationSubscription.create({
-      data: {
-        orgId: organization.id,
-        status: "ACTIVE",
-        membershipEmail: BARO_SUBSCRIPTION_EMAIL,
-        billingEmail: BARO_SUBSCRIPTION_EMAIL,
-        activatedAt: new Date(),
-        activeEndsAt: null,
-      },
     });
   }
 

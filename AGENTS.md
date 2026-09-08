@@ -17,6 +17,13 @@
 - 검증 중 기존 회귀 실패 27건을 확인했다. 수정 전 HEAD를 사용해 같은 실패 27건을 재현했으며 이번 변경의 신규 실패는 없었다. 전체 회귀 통과로 기록하지 않는다.
 - `APP_AUDIT_2026-09-08.md`는 사용자가 요청한 남은 작업 목록으로 Git에 보관한다. 항목별로 상의 후 진행하고 완료한 항목은 제거한다. 보안 항목은 사용자 결정으로 후순위다. 승인된 구현의 검증 후 커밋·푸시는 추가 확인 없이 진행한다.
 
+## 2026-09-08 BARO 조직 이름 기반 구독 자동 활성화 특례 제거
+
+- `backend/src/middleware/access.ts`의 `ensureOrganizationSubscription`에 있던 `isBaroOrganization`/`BARO_SUBSCRIPTION_EMAIL` 특례를 제거했다. 조직명이 "baro"이거나 코드가 "BARO"이면 구독 상태를 매 요청마다 무조건 `ACTIVE`로 되돌리던 로직이다.
+- 이 판정 기준(`name`)은 시스템 관리자 전용 필드가 아니라 해당 조직 `ADMIN`이 `PUT /organizations/:id`로 자유롭게 바꿀 수 있는 값이었다. 즉 이름을 "Baro"로만 바꾸면 누구나 구독을 영구 활성화할 수 있는 하드코딩된 백도어였다 — `APP_AUDIT_2026-09-08.md`가 지적한 항목.
+- BARO는 이 SaaS를 만든 회사이자 개발 과정의 메인 사용 조직이지만, 구독·권한 로직에서 이름으로 특별 취급받을 이유는 없다. 다른 모든 조직과 동일하게 `ensureOrganizationSubscription`의 일반 흐름(기존 구독은 `buildSubscriptionLifecyclePatch`로 TRIAL/ACTIVE/GRACE/SUSPENDED 상태만 갱신, 신규 조직은 `NOT_SUBSCRIBED`로 생성)을 그대로 탄다.
+- 이미 운영 DB에 있는 BARO 조직의 `OrganizationSubscription` 행은 이번 변경으로 값이 바뀌지 않는다(코드가 더 이상 강제로 `ACTIVE`로 되돌리지 않을 뿐). 그 조직의 구독을 계속 활성 상태로 유지하려면 다른 조직과 동일하게 시스템 관리자가 `PATCH /organizations/:id/subscription`으로 관리해야 한다.
+
 ## 2026-09-04 라인 사용자 노출 및 죽은 프론트 정리
 
 - 살아 있는 `/qc-review` 화면은 공장만 선택하고 공장 `factoryId`로 배정 계획을 조회한다. 라인 선택 드롭다운, 라인 표 컬럼, 라인명 검색 및 삭제된 라인 관리 메뉴 안내를 제거했다.
