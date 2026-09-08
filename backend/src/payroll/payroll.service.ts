@@ -696,18 +696,21 @@ const buildIntegratedPayrollEmployees = async (
       const productionAllowance = payType === EMPLOYEE_PAY_TYPE.OUTPUT
         ? toPayrollAmount(production?.productionAllowance, 0)
         : 0;
-      // PRODUCTION_ST_EXCESS_RATIO: 그 직원이 그 달 실제로 생산한 수량의 ST초 합계가
+      // PRODUCTION_ST_EXCESS_PERCENT: 그 직원이 그 달 실제로 생산한 수량의 ST초 합계가
       // 공장 공통 기준 근무시간(생산 급여 타입의 그 달 기준 근무일수 × 1일 기준
-      // 근무시간, 개인 출퇴근 실적과 무관한 값)을 초과한 비율이다. 미달이면 0으로
-      // 클램프한다(초과분에 대한 보너스이지 페널티가 아니다).
+      // 근무시간, 개인 출퇴근 실적과 무관한 값)을 초과한 정도를 "퍼센트 포인트" 숫자로
+      // 나타낸다 (10% 초과면 10, 비율 0.10이 아니다). 미달이면 0으로 클램프한다
+      // (초과분에 대한 보너스이지 페널티가 아니다). 이 값을 GRADE_RATE에 곱하면
+      // "초과 1%포인트당 지급액 × 초과 퍼센트"가 되어, 직급별 단가에 "1% 초과 시
+      // 지급액"을 그대로 입력하는 용도로 쓸 수 있다.
       const productionStSeconds = payType === EMPLOYEE_PAY_TYPE.OUTPUT
         ? Number(production?.productionStSeconds) || 0
         : 0;
       const productionStBaselineSeconds = payType === EMPLOYEE_PAY_TYPE.OUTPUT
         ? attendanceParameters.SCHEDULED_WORKDAYS * payTypePolicy.standardWorkMinutes * 60
         : 0;
-      const productionStExcessRatio = productionStBaselineSeconds > 0
-        ? Math.max(0, productionStSeconds - productionStBaselineSeconds) / productionStBaselineSeconds
+      const productionStExcessPercent = productionStBaselineSeconds > 0
+        ? (Math.max(0, productionStSeconds - productionStBaselineSeconds) / productionStBaselineSeconds) * 100
         : 0;
       const parameters: Record<string, number> = {
         GRADE_RATE: 0,
@@ -717,7 +720,7 @@ const buildIntegratedPayrollEmployees = async (
         OVERTIME_HOURS: overtimeSeconds / 3600,
         HOLIDAY_HOURS: holidaySeconds / 3600,
         PRODUCTION_ALLOWANCE: productionAllowance,
-        PRODUCTION_ST_EXCESS_RATIO: productionStExcessRatio,
+        PRODUCTION_ST_EXCESS_PERCENT: productionStExcessPercent,
       };
       const applicableItems = ensureArray(items).filter((item) => {
         const payTypes = ensureArray(item?.payTypes).map((value) => String(value).toUpperCase());
@@ -949,7 +952,7 @@ export const getPayrollByMonth = async (
   );
   // Assignment ST snapshots are fetched separately (not via WORK_RECORD_WITH_REFS_INCLUDE,
   // which is shared with plain work-record listing screens) because they are only needed
-  // here to compute each employee's monthly production ST for PRODUCTION_ST_EXCESS_RATIO.
+  // here to compute each employee's monthly production ST for PRODUCTION_ST_EXCESS_PERCENT.
   const assignmentPlanIdsForSt = Array.from(
     new Set(
       workLogs
@@ -1107,7 +1110,7 @@ export const getPayrollByMonth = async (
         record?.styleProcess?.id ?? record?.styleProcessId
       );
       const hasStyleProcess = styleProcessId !== null;
-      // 생산 ST 초과율(PRODUCTION_ST_EXCESS_RATIO)의 분자: 그 직원이 그 달 실제로
+      // 생산 ST 초과율(PRODUCTION_ST_EXCESS_PERCENT)의 분자: 그 직원이 그 달 실제로
       // 작업한 수량 × 배정 시점에 동결된 ST초(assignmentStSnapshot). CT와 무관한
       // 별도 합계이며, 스냅샷/공정 매칭에 실패한 행은 조용히 대체하지 않고 0으로
       // 남긴다(§정확 계산 원칙) - 카운트만 진단용으로 남긴다.
@@ -1173,7 +1176,7 @@ export const getPayrollByMonth = async (
   }
   if (payrollProductionStUnresolvedCount > 0) {
     console.warn(
-      `[payroll] orgId=${orgId} month=${month} could not resolve assignment ST snapshot for ${payrollProductionStUnresolvedCount} work records; excluded from PRODUCTION_ST_EXCESS_RATIO`
+      `[payroll] orgId=${orgId} month=${month} could not resolve assignment ST snapshot for ${payrollProductionStUnresolvedCount} work records; excluded from PRODUCTION_ST_EXCESS_PERCENT`
     );
   }
 

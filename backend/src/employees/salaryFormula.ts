@@ -1,7 +1,7 @@
 export const SALARY_FORMULA_PARAMETERS = new Set([
   "GRADE_RATE", "TENURE_YEARS", "ACTUAL_WORKDAYS", "SCHEDULED_WORKDAYS",
   "HOLIDAY_WORKDAYS", "WORK_HOURS", "OVERTIME_HOURS", "HOLIDAY_HOURS", "FULL_ATTENDANCE_FACTOR",
-  "PRODUCTION_ALLOWANCE", "PRODUCTION_ST_EXCESS_RATIO",
+  "PRODUCTION_ALLOWANCE", "PRODUCTION_ST_EXCESS_PERCENT",
 ]);
 const OPERATORS = new Set(["+", "-", "×", "÷", "(", ")"]);
 const PRECEDENCE: Record<string, number> = { "+": 1, "-": 1, "×": 2, "÷": 2 };
@@ -33,16 +33,17 @@ const isWellFormedFormulaTokenSequence = (tokens: string[]): boolean => {
 // INCENTIVE has exactly two allowed shapes: the fixed production-allowance
 // passthrough (single PRODUCTION_ALLOWANCE token, always code "incentiveTotal"),
 // or a normal GRADE_RATE-starting arithmetic formula that may reference
-// PRODUCTION_ST_EXCESS_RATIO (a second, optional, output-only incentive item -
-// e.g. a bonus proportional to how much an employee's monthly production ST
-// exceeds the factory's standard work-time baseline for that month).
+// PRODUCTION_ST_EXCESS_PERCENT (a second, optional, output-only incentive item -
+// e.g. GRADE_RATE × PRODUCTION_ST_EXCESS_PERCENT pays the grade rate once per
+// percentage point that an employee's monthly production ST exceeds the
+// factory's standard work-time baseline for that month).
 export const validateSalaryFormula = (value: unknown, category: string) => {
   if (!Array.isArray(value) || value.length === 0 || value.length > 100) return false;
   const tokens = value.map(String);
   const isProductionAllowancePassthrough = tokens.length === 1 && tokens[0] === "PRODUCTION_ALLOWANCE";
   if (tokens.includes("PRODUCTION_ALLOWANCE") && !isProductionAllowancePassthrough) return false;
   if (category !== "INCENTIVE" && tokens.includes("PRODUCTION_ALLOWANCE")) return false;
-  if (category !== "INCENTIVE" && tokens.includes("PRODUCTION_ST_EXCESS_RATIO")) return false;
+  if (category !== "INCENTIVE" && tokens.includes("PRODUCTION_ST_EXCESS_PERCENT")) return false;
   if (!isProductionAllowancePassthrough && tokens[0] !== "GRADE_RATE") return false;
   return isWellFormedFormulaTokenSequence(tokens);
 };

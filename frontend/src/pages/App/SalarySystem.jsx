@@ -70,7 +70,7 @@ const FORMULA_PARAMETERS = {
   HOLIDAY_HOURS: { label: '휴일 특근시간', unit: '시간', hint: '급여 타입별 주말 또는 휴일 메뉴에 등록된 휴일에 기록된 근무시간입니다.' },
   FULL_ATTENDANCE_FACTOR: { label: '만근 여부', unit: '1 또는 0', hint: '실제 근무일수가 기준 근무일수 이상이면 1, 아니면 0입니다. 휴일 근무일수는 만근 판정에 포함하지 않습니다.' },
   PRODUCTION_ALLOWANCE: { label: '생산수당 계산 결과', currencyUnit: true, hint: '작업 기록과 공장 생산수당 단가로 별도 계산된 해당 월의 생산수당 금액입니다.' },
-  PRODUCTION_ST_EXCESS_RATIO: { label: '생산 ST 초과율', unit: '비율', hint: '그 직원이 그 달 실제로 생산한 수량의 ST초 합계가 공장 공통 기준 근무시간(생산 급여 타입의 그 달 기준 근무일수 × 1일 기준 근무시간, 개인 출퇴근 실적과 무관)을 초과한 비율입니다. 예: 0.1은 10% 초과. 미달이면 0입니다.' },
+  PRODUCTION_ST_EXCESS_PERCENT: { label: '생산 ST 초과율', unit: '%p', hint: '그 직원이 그 달 실제로 생산한 수량의 ST초 합계가 공장 공통 기준 근무시간(생산 급여 타입의 그 달 기준 근무일수 × 1일 기준 근무시간, 개인 출퇴근 실적과 무관)을 초과한 정도를 퍼센트 포인트 숫자로 나타냅니다. 예: 10% 초과하면 10, 미달이면 0입니다(비율 0.1이 아닙니다). 직급별 단가는 "초과 1%포인트당 지급액"을 의미합니다 — 예를 들어 단가를 100,000으로 설정하면 10% 초과 시 100,000 × 10 = 1,000,000이 지급됩니다.' },
 };
 const formulaParameterUnit = (parameter, currencyCode) => parameter.currencyUnit ? currencyCode : parameter.unit;
 const hasValidPaymentMonths = (item) => {
@@ -84,7 +84,7 @@ const FORMULA_PARAMETER_GROUPS = [
   { label: '근무시간', keys: ['WORK_HOURS', 'OVERTIME_HOURS', 'HOLIDAY_HOURS'] },
   { label: '조건', keys: ['FULL_ATTENDANCE_FACTOR'] },
   // 성과급(INCENTIVE) 카테고리 항목을 편집할 때만 보여준다 - 일반/수당 항목에는 의미가 없다.
-  { label: '생산 실적', keys: ['PRODUCTION_ST_EXCESS_RATIO'], incentiveOnly: true },
+  { label: '생산 실적', keys: ['PRODUCTION_ST_EXCESS_PERCENT'], incentiveOnly: true },
 ];
 const FORMULA_OPERATORS = ['+', '−', '×', '÷', '(', ')'];
 const DEFAULT_FORMULA = ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS', '÷', 'SCHEDULED_WORKDAYS'];
