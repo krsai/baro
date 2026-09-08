@@ -24,7 +24,7 @@ const translations = {
   '1개 월을 선택하세요.': ['Select 1 payment month.', 'Chọn 1 tháng chi trả.'], '2개 월을 선택하세요.': ['Select 2 payment months.', 'Chọn 2 tháng chi trả.'], '4개 월을 선택하세요.': ['Select 4 payment months.', 'Chọn 4 tháng chi trả.'],
   '상한값 (선택)': ['Cap (optional)', 'Giới hạn (tùy chọn)'], '계산 결과 최대 금액': ['Maximum calculated amount', 'Số tiền tính tối đa'],
   '급여 체계': ['Salary Structure', 'Cơ cấu lương'],
-  '적용 시작월': ['Effective month', 'Tháng bắt đầu áp dụng'], '버전 관리': ['Version history', 'Lịch sử phiên bản'], '항목 추가': ['Add item', 'Thêm khoản mục'],
+  '적용 시작월': ['Effective month', 'Tháng bắt đầu áp dụng'], '버전 관리': ['Version history', 'Lịch sử phiên bản'], '항목 추가': ['Add item', 'Thêm khoản mục'], '설정': ['Settings', 'Cài đặt'],
   '급여 항목': ['Salary items', 'Khoản lương'],
   '항목을 선택해 계산 방식과 직급별 단가를 설정하세요.': ['Select an item to configure its formula and grade-based rates.', 'Chọn khoản mục để thiết lập công thức và đơn giá theo cấp bậc.'],
   '개': ['items', 'mục'], '기본급은 삭제할 수 없습니다.': ['Base salary cannot be deleted.', 'Không thể xóa lương cơ bản.'], '항목 삭제': ['Delete item', 'Xóa khoản mục'],

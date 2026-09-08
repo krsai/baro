@@ -13,12 +13,14 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import FunctionsIcon from '@mui/icons-material/Functions';
 import HistoryIcon from '@mui/icons-material/History';
+import SettingsIcon from '@mui/icons-material/Settings';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
+import PayTypeScheduleSettingsDialog from './PayTypeScheduleSettingsDialog';
 import { useAppActions } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -243,6 +245,7 @@ const SalarySystem = () => {
   const [savedVersionBoundaries, setSavedVersionBoundaries] = useState({});
   const [versionBusy, setVersionBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [scheduleSettingsOpen, setScheduleSettingsOpen] = useState(false);
   const edit = useEditRevision({ scope: `${activeOrgId}:${factoryId}`, url: `/salary-system/revision${buildQueryString({ orgId: activeOrgId, factoryId })}`, enabled: isRouteActive && Boolean(activeOrgId && factoryId), busy: saving || versionBusy });
   const [draft, setDraft] = useState(DEFAULT_DRAFT);
   const [message, setMessage] = useState(null);
@@ -498,6 +501,7 @@ const SalarySystem = () => {
         {factories.map((factory) => <Tab key={factory.id} value={factory.id} label={languageCode === 'ko' ? (factory.nameKo || factory.name) : languageCode === 'vi' ? (factory.nameVi || factory.name) : factory.name} />)}
       </Tabs>
       <Stack direction="row" spacing={1} sx={{ pb: 0.75, flexShrink: 0 }}>
+        <Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => setScheduleSettingsOpen(true)}>{t('설정')}</Button>
         <Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog}>{t('버전 관리')}</Button>
         <SaveButton onClick={saveDraft} loading={saving} disabled={!isDirty || edit.stale || !edit.revision || versionBusy}>{t('저장')}</SaveButton>
       </Stack>
@@ -685,6 +689,8 @@ const SalarySystem = () => {
       <FormControl fullWidth size="small"><InputLabel>{t('급여 구분')}</InputLabel><Select label={t('급여 구분')} value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>{Object.entries(CATEGORIES).map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}</Select></FormControl>
       {calculationFields(draft, (field, value) => setDraft((prev) => ({ ...prev, [field]: value })))}
     </Stack></DialogContent><DialogActions><Button onClick={() => setDialogOpen(false)}>{t('취소')}</Button><Button variant="contained" onClick={addItem} disabled={!hasValidPaymentMonths(draft) || [draft.nameKo, draft.nameEn, draft.nameVi].some((name) => !name.trim())}>{t('추가')}</Button></DialogActions></Dialog>
+
+    <PayTypeScheduleSettingsDialog open={scheduleSettingsOpen} onClose={() => setScheduleSettingsOpen(false)} orgId={activeOrgId} languageCode={languageCode} showNotification={showNotification} />
   </Box></AppPageContainer>;
 };
 
