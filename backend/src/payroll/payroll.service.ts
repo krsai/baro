@@ -159,6 +159,10 @@ export const normalizePayrollSnapshotEmployee = (employee: any) => {
         toPayrollAmountOrNull(employee?.productionAllowance) ??
         0
       : 0;
+  const productionStSeconds =
+    payType === EMPLOYEE_PAY_TYPE.OUTPUT
+      ? Math.max(0, toPayrollAmountOrNull(employee?.productionStSeconds) ?? 0)
+      : 0;
 
   return {
     employeeKey:
@@ -195,6 +199,7 @@ export const normalizePayrollSnapshotEmployee = (employee: any) => {
     calculationSignature: resolveOptionalString(employee?.calculationSignature, null),
     productionAllowance: productionEarnings,
     productionEarnings,
+    productionStSeconds,
     totalEarnings: toPayrollAmount(employee?.totalEarnings ?? employee?.grossSalary, productionEarnings),
     rateOverridden: Boolean(employee?.rateOverridden),
     processes,
@@ -691,6 +696,19 @@ const buildIntegratedPayrollEmployees = async (
       const productionAllowance = payType === EMPLOYEE_PAY_TYPE.OUTPUT
         ? toPayrollAmount(production?.productionAllowance, 0)
         : 0;
+      // PRODUCTION_ST_EXCESS_RATIO: 그 직원이 그 달 실제로 생산한 수량의 ST초 합계가
+      // 공장 공통 기준 근무시간(생산 급여 타입의 그 달 기준 근무일수 × 1일 기준
+      // 근무시간, 개인 출퇴근 실적과 무관한 값)을 초과한 비율이다. 미달이면 0으로
+      // 클램프한다(초과분에 대한 보너스이지 페널티가 아니다).
+      const productionStSeconds = payType === EMPLOYEE_PAY_TYPE.OUTPUT
+        ? Number(production?.productionStSeconds) || 0
+        : 0;
+      const productionStBaselineSeconds = payType === EMPLOYEE_PAY_TYPE.OUTPUT
+        ? attendanceParameters.SCHEDULED_WORKDAYS * payTypePolicy.standardWorkMinutes * 60
+        : 0;
+      const productionStExcessRatio = productionStBaselineSeconds > 0
+        ? Math.max(0, productionStSeconds - productionStBaselineSeconds) / productionStBaselineSeconds
+        : 0;
       const parameters: Record<string, number> = {
         GRADE_RATE: 0,
         TENURE_YEARS: tenureYears,
@@ -699,6 +717,7 @@ const buildIntegratedPayrollEmployees = async (
         OVERTIME_HOURS: overtimeSeconds / 3600,
         HOLIDAY_HOURS: holidaySeconds / 3600,
         PRODUCTION_ALLOWANCE: productionAllowance,
+        PRODUCTION_ST_EXCESS_RATIO: productionStExcessRatio,
       };
       const applicableItems = ensureArray(items).filter((item) => {
         const payTypes = ensureArray(item?.payTypes).map((value) => String(value).toUpperCase());
@@ -720,11 +739,15 @@ const buildIntegratedPayrollEmployees = async (
           || (payType === EMPLOYEE_PAY_TYPE.OUTPUT_FIXED
             ? matchingRates.find((row) => String(row?.payType || "").toUpperCase() === EMPLOYEE_PAY_TYPE.OUTPUT)
             : null);
-        if (String(item?.category || "").toUpperCase() !== "INCENTIVE" && !rate) {
+        const formula = ensureArray(item?.formula).map(String);
+        // Only formulas that actually start with GRADE_RATE need a configured rate row.
+        // The fixed production-allowance passthrough item (formula === [PRODUCTION_ALLOWANCE])
+        // never has a rate; a custom INCENTIVE item that starts with GRADE_RATE (e.g. a
+        // production-ST-excess bonus) does, exactly like a normal BASE/ALLOWANCE item.
+        if (formula[0] === "GRADE_RATE" && !rate) {
           throw createHttpError(409, `salary rate is missing for employee ${employee.id}, item ${code}`);
         }
         const itemParameters = { ...parameters, GRADE_RATE: toPayrollAmount(rate?.amount, 0) };
-        const formula = ensureArray(item?.formula).map(String);
         let amount = Number(evaluateSalaryFormula(formula, itemParameters) ?? 0);
         const capValue = toPayrollAmountOrNull(item?.capValue);
         if (capValue !== null) amount = Math.min(amount, capValue);
@@ -924,6 +947,27 @@ export const getPayrollByMonth = async (
     (workLog) =>
       String(workLog.displayDate || "") >= resolveFactoryManagementStartDateKey(workLog.factory)
   );
+  // Assignment ST snapshots are fetched separately (not via WORK_RECORD_WITH_REFS_INCLUDE,
+  // which is shared with plain work-record listing screens) because they are only needed
+  // here to compute each employee's monthly production ST for PRODUCTION_ST_EXCESS_RATIO.
+  const assignmentPlanIdsForSt = Array.from(
+    new Set(
+      workLogs
+        .flatMap((workLog) => workLog.workRecords)
+        .map((record) => toPositiveIntOrNull(record?.assignmentPlan?.id))
+        .filter((id): id is number => id !== null)
+    )
+  );
+  const assignmentStSnapshotByPlanId = new Map(
+    assignmentPlanIdsForSt.length
+      ? (
+          await prisma.assignmentPlan.findMany({
+            where: { id: { in: assignmentPlanIdsForSt } },
+            select: { id: true, assignmentStSnapshot: true },
+          })
+        ).map((plan) => [plan.id, plan.assignmentStSnapshot as any])
+      : []
+  );
   const payrollMonthRange = getPayrollMonthRange(month);
   const workerIds = Array.from(
     new Set(
@@ -969,6 +1013,7 @@ export const getPayrollByMonth = async (
       bankName: string | null;
       bankAccountNumber: string | null;
       productionEarnings: number;
+      productionStSeconds: number;
       processes: Map<
         string,
         {
@@ -1004,11 +1049,13 @@ export const getPayrollByMonth = async (
       bankName: resolveOptionalString(employee?.bankName, null),
       bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
       productionEarnings: 0,
+      productionStSeconds: 0,
       processes: new Map(),
     });
   });
 
   let payrollBreakdownMissingStyleProcessCount = 0;
+  let payrollProductionStUnresolvedCount = 0;
   for (const workLog of workLogs) {
     const wagePerSecond = resolveFactoryProductionAllowanceRate(workLog.factory);
     const validWage = Number.isFinite(wagePerSecond) && wagePerSecond > 0;
@@ -1048,6 +1095,7 @@ export const getPayrollByMonth = async (
           bankName: resolveOptionalString(employee?.bankName, null),
           bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
           productionEarnings: 0,
+          productionStSeconds: 0,
           processes: new Map(),
         });
       }
@@ -1059,6 +1107,25 @@ export const getPayrollByMonth = async (
         record?.styleProcess?.id ?? record?.styleProcessId
       );
       const hasStyleProcess = styleProcessId !== null;
+      // 생산 ST 초과율(PRODUCTION_ST_EXCESS_RATIO)의 분자: 그 직원이 그 달 실제로
+      // 작업한 수량 × 배정 시점에 동결된 ST초(assignmentStSnapshot). CT와 무관한
+      // 별도 합계이며, 스냅샷/공정 매칭에 실패한 행은 조용히 대체하지 않고 0으로
+      // 남긴다(§정확 계산 원칙) - 카운트만 진단용으로 남긴다.
+      if (hasStyleProcess && quantity > 0) {
+        const assignmentPlanId = toPositiveIntOrNull(record?.assignmentPlan?.id);
+        const stSnapshot = assignmentPlanId !== null ? assignmentStSnapshotByPlanId.get(assignmentPlanId) : null;
+        const snapshotProcess = stSnapshot
+          ? ensureArray((stSnapshot as any)?.processes).find(
+              (process: any) => toPositiveIntOrNull(process?.styleProcessId) === styleProcessId
+            )
+          : null;
+        const stSecondsPerPiece = Number(snapshotProcess?.stSeconds);
+        if (Number.isFinite(stSecondsPerPiece) && stSecondsPerPiece >= 0) {
+          emp.productionStSeconds += stSecondsPerPiece * quantity;
+        } else {
+          payrollProductionStUnresolvedCount += 1;
+        }
+      }
       const processName = hasStyleProcess ? resolveWorkRecordProcessName(record) ?? "" : "";
       const processCode = hasStyleProcess ? resolveWorkRecordProcessCode(record) ?? "" : "";
       const styleId = resolveWorkRecordStyleRefId(record);
@@ -1104,6 +1171,11 @@ export const getPayrollByMonth = async (
       `[payroll] orgId=${orgId} month=${month} grouped ${payrollBreakdownMissingStyleProcessCount} work records without WorkRecord.styleProcessId into unresolved payroll breakdown`
     );
   }
+  if (payrollProductionStUnresolvedCount > 0) {
+    console.warn(
+      `[payroll] orgId=${orgId} month=${month} could not resolve assignment ST snapshot for ${payrollProductionStUnresolvedCount} work records; excluded from PRODUCTION_ST_EXCESS_RATIO`
+    );
+  }
 
   const employees = Array.from(employeeMap.values())
     .map((emp) => {
@@ -1119,6 +1191,7 @@ export const getPayrollByMonth = async (
         bankAccountNumber: emp.bankAccountNumber,
         productionAllowance,
         productionEarnings: productionAllowance,
+        productionStSeconds: Math.max(0, Math.round(Number(emp.productionStSeconds) || 0)),
         totalEarnings: productionAllowance,
         processes: Array.from(emp.processes.values()).map((process) => ({
           factoryId: process.factoryId,

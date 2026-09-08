@@ -1,17 +1,17 @@
 export const SALARY_FORMULA_PARAMETERS = new Set([
   "GRADE_RATE", "TENURE_YEARS", "ACTUAL_WORKDAYS", "SCHEDULED_WORKDAYS",
   "HOLIDAY_WORKDAYS", "WORK_HOURS", "OVERTIME_HOURS", "HOLIDAY_HOURS", "FULL_ATTENDANCE_FACTOR",
-  "PRODUCTION_ALLOWANCE",
+  "PRODUCTION_ALLOWANCE", "PRODUCTION_ST_EXCESS_RATIO",
 ]);
 const OPERATORS = new Set(["+", "-", "×", "÷", "(", ")"]);
 const PRECEDENCE: Record<string, number> = { "+": 1, "-": 1, "×": 2, "÷": 2 };
 
-export const validateSalaryFormula = (value: unknown, category: string) => {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 100) return false;
-  const tokens = value.map(String);
-  if (category === "INCENTIVE" && (tokens.length !== 1 || tokens[0] !== "PRODUCTION_ALLOWANCE")) return false;
-  if (category !== "INCENTIVE" && tokens[0] !== "GRADE_RATE") return false;
-  if (category !== "INCENTIVE" && tokens.includes("PRODUCTION_ALLOWANCE")) return false;
+// Pure grammar check: "piece/parameter (operand) - operator - operand - operator ..."
+// with balanced parens, using only known parameters/constants/operators. This has no
+// opinion about which category a formula belongs to - that is a save-time business
+// rule enforced by validateSalaryFormula, not a safety property evaluateSalaryFormula
+// needs to re-derive from token shape.
+const isWellFormedFormulaTokenSequence = (tokens: string[]): boolean => {
   let depth = 0;
   let expectOperand = true;
   for (const token of tokens) {
@@ -30,8 +30,31 @@ export const validateSalaryFormula = (value: unknown, category: string) => {
   return !expectOperand && depth === 0;
 };
 
+// INCENTIVE has exactly two allowed shapes: the fixed production-allowance
+// passthrough (single PRODUCTION_ALLOWANCE token, always code "incentiveTotal"),
+// or a normal GRADE_RATE-starting arithmetic formula that may reference
+// PRODUCTION_ST_EXCESS_RATIO (a second, optional, output-only incentive item -
+// e.g. a bonus proportional to how much an employee's monthly production ST
+// exceeds the factory's standard work-time baseline for that month).
+export const validateSalaryFormula = (value: unknown, category: string) => {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 100) return false;
+  const tokens = value.map(String);
+  const isProductionAllowancePassthrough = tokens.length === 1 && tokens[0] === "PRODUCTION_ALLOWANCE";
+  if (tokens.includes("PRODUCTION_ALLOWANCE") && !isProductionAllowancePassthrough) return false;
+  if (category !== "INCENTIVE" && tokens.includes("PRODUCTION_ALLOWANCE")) return false;
+  if (category !== "INCENTIVE" && tokens.includes("PRODUCTION_ST_EXCESS_RATIO")) return false;
+  if (!isProductionAllowancePassthrough && tokens[0] !== "GRADE_RATE") return false;
+  return isWellFormedFormulaTokenSequence(tokens);
+};
+
 export const evaluateSalaryFormula = (formula: string[], parameters: Record<string, number>) => {
-  if (!validateSalaryFormula(formula, formula[0] === "GRADE_RATE" ? "ALLOWANCE" : "INCENTIVE")) throw new Error("invalid salary formula");
+  // Defense-in-depth: only re-check grammar well-formedness here, not category
+  // business rules. The real category-aware validation already happened at
+  // save time (validateSalaryFormula with the item's actual category); guessing
+  // a category back out of the token shape here would be unreliable.
+  if (!Array.isArray(formula) || formula.length === 0 || formula.length > 100 || !isWellFormedFormulaTokenSequence(formula.map(String))) {
+    throw new Error("invalid salary formula");
+  }
   const output: string[] = [];
   const operators: string[] = [];
   for (const token of formula) {

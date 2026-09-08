@@ -456,19 +456,19 @@ const PayrollEntry = () => {
       GRADE_RATE: "직급별 단가", TENURE_YEARS: "근속 연수", ACTUAL_WORKDAYS: "실제 근무일수",
       SCHEDULED_WORKDAYS: "기준 근무일수", HOLIDAY_WORKDAYS: "휴일 근무일수", WORK_HOURS: "정규 근무시간",
       OVERTIME_HOURS: "연장근무시간", HOLIDAY_HOURS: "휴일 특근시간", FULL_ATTENDANCE_FACTOR: "만근 여부",
-      PRODUCTION_ALLOWANCE: "생산수당",
+      PRODUCTION_ALLOWANCE: "생산수당", PRODUCTION_ST_EXCESS_RATIO: "생산 ST 초과율",
     };
     if (languageCode === "vi") return {
       GRADE_RATE: "Đơn giá theo cấp bậc", TENURE_YEARS: "Thâm niên", ACTUAL_WORKDAYS: "Ngày làm thực tế",
       SCHEDULED_WORKDAYS: "Ngày làm tiêu chuẩn", HOLIDAY_WORKDAYS: "Ngày làm ngày nghỉ", WORK_HOURS: "Giờ làm chính thức",
       OVERTIME_HOURS: "Giờ tăng ca", HOLIDAY_HOURS: "Giờ làm ngày nghỉ", FULL_ATTENDANCE_FACTOR: "Đủ chuyên cần",
-      PRODUCTION_ALLOWANCE: "Phụ cấp sản lượng",
+      PRODUCTION_ALLOWANCE: "Phụ cấp sản lượng", PRODUCTION_ST_EXCESS_RATIO: "Tỷ lệ vượt ST sản xuất",
     };
     return {
       GRADE_RATE: "Grade Rate", TENURE_YEARS: "Tenure Years", ACTUAL_WORKDAYS: "Actual Workdays",
       SCHEDULED_WORKDAYS: "Scheduled Workdays", HOLIDAY_WORKDAYS: "Holiday Workdays", WORK_HOURS: "Regular Hours",
       OVERTIME_HOURS: "Overtime Hours", HOLIDAY_HOURS: "Holiday Hours", FULL_ATTENDANCE_FACTOR: "Full Attendance",
-      PRODUCTION_ALLOWANCE: "Production Allowance",
+      PRODUCTION_ALLOWANCE: "Production Allowance", PRODUCTION_ST_EXCESS_RATIO: "Production ST Excess Ratio",
     };
   }, [languageCode]);
   const formulaUnitSuffixes = useMemo(() => {
@@ -490,6 +490,7 @@ const PayrollEntry = () => {
         return `${formatNumberWithCommas(numeric, { maximumFractionDigits: 1 })}${formulaUnitSuffixes.hours}`;
       }
       if (token === "FULL_ATTENDANCE_FACTOR") return numeric >= 1 ? "1" : "0";
+      if (token === "PRODUCTION_ST_EXCESS_RATIO") return `${formatNumberWithCommas(numeric * 100, { maximumFractionDigits: 1 })}%`;
       return formatNumberWithCommas(numeric);
     },
     [formulaUnitSuffixes],

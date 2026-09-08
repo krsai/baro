@@ -68,6 +68,7 @@ const FORMULA_PARAMETERS = {
   HOLIDAY_HOURS: { label: '휴일 특근시간', unit: '시간', hint: '급여 타입별 주말 또는 휴일 메뉴에 등록된 휴일에 기록된 근무시간입니다.' },
   FULL_ATTENDANCE_FACTOR: { label: '만근 여부', unit: '1 또는 0', hint: '실제 근무일수가 기준 근무일수 이상이면 1, 아니면 0입니다. 휴일 근무일수는 만근 판정에 포함하지 않습니다.' },
   PRODUCTION_ALLOWANCE: { label: '생산수당 계산 결과', currencyUnit: true, hint: '작업 기록과 공장 생산수당 단가로 별도 계산된 해당 월의 생산수당 금액입니다.' },
+  PRODUCTION_ST_EXCESS_RATIO: { label: '생산 ST 초과율', unit: '비율', hint: '그 직원이 그 달 실제로 생산한 수량의 ST초 합계가 공장 공통 기준 근무시간(생산 급여 타입의 그 달 기준 근무일수 × 1일 기준 근무시간, 개인 출퇴근 실적과 무관)을 초과한 비율입니다. 예: 0.1은 10% 초과. 미달이면 0입니다.' },
 };
 const formulaParameterUnit = (parameter, currencyCode) => parameter.currencyUnit ? currencyCode : parameter.unit;
 const hasValidPaymentMonths = (item) => {
@@ -80,6 +81,8 @@ const FORMULA_PARAMETER_GROUPS = [
   { label: '근무일수', keys: ['ACTUAL_WORKDAYS', 'SCHEDULED_WORKDAYS', 'HOLIDAY_WORKDAYS'] },
   { label: '근무시간', keys: ['WORK_HOURS', 'OVERTIME_HOURS', 'HOLIDAY_HOURS'] },
   { label: '조건', keys: ['FULL_ATTENDANCE_FACTOR'] },
+  // 성과급(INCENTIVE) 카테고리 항목을 편집할 때만 보여준다 - 일반/수당 항목에는 의미가 없다.
+  { label: '생산 실적', keys: ['PRODUCTION_ST_EXCESS_RATIO'], incentiveOnly: true },
 ];
 const FORMULA_OPERATORS = ['+', '−', '×', '÷', '(', ')'];
 const DEFAULT_FORMULA = ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS', '÷', 'SCHEDULED_WORKDAYS'];
@@ -126,7 +129,7 @@ const salaryStateSignature = ({ currencyCode, items, rates }) => {
       : Number.isFinite(Number(item.capValue)) ? Number(item.capValue) : String(item.capValue),
     required: item.required === true,
   }));
-  const activeItems = new Map(normalizedItems.filter((item) => item.category !== 'INCENTIVE').map((item) => [item.id, item]));
+  const activeItems = new Map(normalizedItems.filter((item) => item.id !== 'incentiveTotal').map((item) => [item.id, item]));
   const normalizedRates = Object.entries(rates).flatMap(([key, itemRates]) => {
     const [payType, gradeId] = key.split(':');
     return Object.entries(itemRates || {}).flatMap(([itemId, value]) => {
@@ -190,11 +193,12 @@ const canInsertTokenAt = (formula, cursorIndex, token) => {
     : canAppendOperatorToken(hypothetical, right);
 };
 // 일반(GENERAL)/수당(OUTPUT) 항목의 급여는 결국 직급별 단가에서 출발하므로, 생산수당처럼
-// 외부에서 이미 계산된 값을 그대로 지급하는 항목(INCENTIVE)이 아니면 계산식의 첫 토큰을
-// 직급별 단가로 고정한다.
-const ensureFormulaStartsWithGradeRate = (formula, category) => {
+// 외부에서 이미 계산된 값을 그대로 지급하는 고정 항목(계산식이 정확히 PRODUCTION_ALLOWANCE
+// 단일 토큰인 경우)이 아니면 계산식의 첫 토큰을 직급별 단가로 고정한다.
+const ensureFormulaStartsWithGradeRate = (formula) => {
   const normalized = Array.isArray(formula) ? formula : [];
-  if (category === 'INCENTIVE' || normalized[0] === 'GRADE_RATE') return normalized;
+  const isProductionAllowancePassthrough = normalized.length === 1 && normalized[0] === 'PRODUCTION_ALLOWANCE';
+  if (isProductionAllowancePassthrough || normalized[0] === 'GRADE_RATE') return normalized;
   return ['GRADE_RATE', ...normalized];
 };
 
@@ -277,7 +281,7 @@ const SalarySystem = () => {
       ]);
       if (sequence !== loadSequence.current || scope !== loadScope.current) return null;
       setGrades((Array.isArray(sets) ? sets : []).flatMap((set) => set.grades || []).filter((grade) => grade.isActive));
-      const loadedItems = (Array.isArray(salarySystem?.items) && salarySystem.items.length ? salarySystem.items : DEFAULT_ITEMS).map((row) => row.category === 'INCENTIVE'
+      const loadedItems = (Array.isArray(salarySystem?.items) && salarySystem.items.length ? salarySystem.items : DEFAULT_ITEMS).map((row) => row.id === 'incentiveTotal'
         ? { ...row, name: '생산수당', nameKo: '생산수당', nameEn: 'Production Allowance', nameVi: 'Phụ cấp sản lượng', payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '', required: true }
         : { ...row, nameKo: row.nameKo || row.name, nameEn: row.nameEn || row.name, nameVi: row.nameVi || row.name, paymentMonths: Array.isArray(row.paymentMonths) ? row.paymentMonths : PAYMENT_MONTHS_BY_CYCLE[row.payCycle], capValue: optionalMoney(row.capValue) });
       const next = {};
@@ -306,7 +310,7 @@ const SalarySystem = () => {
   );
 
   const selected = items.find((row) => row.id === selectedId) || items[0];
-  const isFixedIncentive = selected.category === 'INCENTIVE';
+  const isFixedIncentive = selected.id === 'incentiveTotal';
   const counts = useMemo(() => items.reduce((map, row) => ({ ...map, [row.category]: (map[row.category] || 0) + 1 }), {}), [items]);
   const updateSelected = (field, value) => setItems((rows) => rows.map((row) => row.id === selected.id ? { ...row, [field]: value } : row));
   const toggleItemPayType = (itemRow, payType) => {
@@ -357,7 +361,7 @@ const SalarySystem = () => {
     if (saving || versionBusy || !isDirty || edit.stale || !edit.revision) return;
     setSaving(true);
     try {
-      const editableItems = new Map(items.filter((itemRow) => itemRow.category !== 'INCENTIVE').map((itemRow) => [String(itemRow.id), itemRow]));
+      const editableItems = new Map(items.filter((itemRow) => itemRow.id !== 'incentiveTotal').map((itemRow) => [String(itemRow.id), itemRow]));
       const rateRows = Object.entries(rates).flatMap(([key, itemRates]) => {
         const [payType, gradeId] = key.split(':');
         return Object.entries(itemRates || {}).filter(([salaryItemCode]) => editableItems.get(String(salaryItemCode))?.payTypes?.includes(payType)).map(([salaryItemCode, amount]) => ({ payType, gradeId: Number(gradeId), salaryItemCode, amount: Number(String(amount).replace(/,/g, '')) || 0 }));
@@ -431,14 +435,14 @@ const SalarySystem = () => {
     setSelectedId('baseSalary');
   };
   const openFormulaDialog = () => {
-    const initialFormula = ensureFormulaStartsWithGradeRate(selected.formula, selected.category);
+    const initialFormula = ensureFormulaStartsWithGradeRate(selected.formula);
     setFormulaDraft(initialFormula);
     setCursorIndex(initialFormula.length);
     setFormulaSettingsDraft({ ...selected });
     setConstantDraft('');
     setFormulaDialogOpen(true);
   };
-  const isFirstTokenLocked = selected.category !== 'INCENTIVE';
+  const isFirstTokenLocked = selected.id !== 'incentiveTotal';
   const minCursorIndex = isFirstTokenLocked ? 1 : 0;
   const resetFormulaDraft = () => {
     const resetFormula = isFirstTokenLocked ? ['GRADE_RATE'] : [];
@@ -469,10 +473,11 @@ const SalarySystem = () => {
   };
 
   const calculationFields = (value, onChange) => <>
-    <FormControl fullWidth size="small"><InputLabel>{t('정산 주기')}</InputLabel><Select label={t('정산 주기')} value={value.payCycle} onChange={(e) => { onChange('payCycle', e.target.value); onChange('paymentMonths', PAYMENT_MONTHS_BY_CYCLE[e.target.value]); }}>
+    {/* 성과급(INCENTIVE) 항목은 서버가 항상 1개월 정산으로 고정한다 - 다른 값을 골라도 저장 시 되돌아간다. */}
+    <FormControl fullWidth size="small" disabled={value.category === 'INCENTIVE'}><InputLabel>{t('정산 주기')}</InputLabel><Select label={t('정산 주기')} value={value.payCycle} onChange={(e) => { onChange('payCycle', e.target.value); onChange('paymentMonths', PAYMENT_MONTHS_BY_CYCLE[e.target.value]); }}>
       {Object.entries(PAY_CYCLES).map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}
     </Select></FormControl>
-    <FormControl fullWidth size="small" disabled={value.payCycle === 'MONTHLY'} error={(value.paymentMonths || []).length !== PAYMENT_MONTHS_BY_CYCLE[value.payCycle].length}>
+    <FormControl fullWidth size="small" disabled={value.payCycle === 'MONTHLY' || value.category === 'INCENTIVE'} error={(value.paymentMonths || []).length !== PAYMENT_MONTHS_BY_CYCLE[value.payCycle].length}>
       <InputLabel>{t('지급 월')}</InputLabel>
       <Select multiple label={t('지급 월')} value={value.paymentMonths || []} renderValue={(selectedMonths) => value.payCycle === 'MONTHLY' ? t('매월') : selectedMonths.map((month) => `${month}${t('월')}`).join(', ')} onChange={(event) => { const months = event.target.value.map(Number).sort((a, b) => a - b); if (months.length <= PAYMENT_MONTHS_BY_CYCLE[value.payCycle].length) onChange('paymentMonths', months); }}>
         {PAYMENT_MONTHS_BY_CYCLE.MONTHLY.map((month) => <MenuItem key={month} value={month}><Checkbox size="small" checked={(value.paymentMonths || []).includes(month)} /><ListItemText primary={`${month}${t('월')}`} /></MenuItem>)}
@@ -595,7 +600,7 @@ const SalarySystem = () => {
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Typography fontWeight={700} sx={{ mb: 1.5 }}>{t('파라미터 모듈')}</Typography>
           <Stack spacing={1.5}>
-            {FORMULA_PARAMETER_GROUPS.map((group) => <Box key={group.label}>
+            {FORMULA_PARAMETER_GROUPS.filter((group) => !group.incentiveOnly || formulaSettingsDraft.category === 'INCENTIVE').map((group) => <Box key={group.label}>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t(group.label)}</Typography>
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{group.keys.map((key) => {
                 const unit = formulaParameterUnit(FORMULA_PARAMETERS[key], currencyCode);
@@ -677,7 +682,7 @@ const SalarySystem = () => {
         <TextField required label="항목명 (한국어)" value={draft.nameKo} onChange={(e) => setDraft((prev) => ({ ...prev, nameKo: e.target.value }))} placeholder="예: 자격수당" />
         <TextField required label="Tên khoản mục (Tiếng Việt)" value={draft.nameVi} onChange={(e) => setDraft((prev) => ({ ...prev, nameVi: e.target.value }))} placeholder="Ví dụ: Phụ cấp chứng chỉ" />
       </Box>
-      <FormControl fullWidth size="small"><InputLabel>{t('급여 구분')}</InputLabel><Select label={t('급여 구분')} value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>{Object.entries(CATEGORIES).filter(([key]) => key !== 'INCENTIVE').map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}</Select></FormControl>
+      <FormControl fullWidth size="small"><InputLabel>{t('급여 구분')}</InputLabel><Select label={t('급여 구분')} value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>{Object.entries(CATEGORIES).map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}</Select></FormControl>
       {calculationFields(draft, (field, value) => setDraft((prev) => ({ ...prev, [field]: value })))}
     </Stack></DialogContent><DialogActions><Button onClick={() => setDialogOpen(false)}>{t('취소')}</Button><Button variant="contained" onClick={addItem} disabled={!hasValidPaymentMonths(draft) || [draft.nameKo, draft.nameEn, draft.nameVi].some((name) => !name.trim())}>{t('추가')}</Button></DialogActions></Dialog>
   </Box></AppPageContainer>;
