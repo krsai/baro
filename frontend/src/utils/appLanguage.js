@@ -33,6 +33,13 @@ export const normalizeLanguageCode = (value, fallback = DEFAULT_LANGUAGE_CODE) =
 
 export const getSupportedLanguageCodes = () => [...SUPPORTED_LANGUAGE_CODES];
 
+// 브라우저 네이티브 <input type="time"|"date">는 앱 언어 상태가 아니라 이 BCP47
+// lang 속성을 보고 오전/오후 표기, 12/24시간 표기 등을 렌더링한다. 이게 없으면
+// OS/브라우저 로케일(예: 한국어 Windows)을 그대로 따라가 화면 언어와 어긋난다.
+const NATIVE_INPUT_LOCALE_BY_LANGUAGE_CODE = { ko: 'ko-KR', en: 'en-US', vi: 'vi-VN' };
+export const resolveNativeInputLocale = (languageCode) =>
+  NATIVE_INPUT_LOCALE_BY_LANGUAGE_CODE[normalizeLanguageCode(languageCode)] || NATIVE_INPUT_LOCALE_BY_LANGUAGE_CODE.en;
+
 export const resolveLanguageCodeFromNavigator = () => {
   if (typeof navigator === 'undefined') return DEFAULT_LANGUAGE_CODE;
   const candidates = [

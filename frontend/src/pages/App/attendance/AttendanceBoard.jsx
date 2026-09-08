@@ -35,6 +35,7 @@ import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import { resolveNativeInputLocale } from '../../../utils/appLanguage';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import {
   buildAttendanceImportPlan,
@@ -305,6 +306,7 @@ const AttendanceBoard = ({
   const { showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
+  const nativeInputLocale = resolveNativeInputLocale(languageCode);
   const [selectedDate, setSelectedDate] = useState(() => resolveInitialDate(initialWorkDate));
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
@@ -855,6 +857,7 @@ const AttendanceBoard = ({
                             handleEntryChange(workerId, 'clockIn', event.target.value)
                           }
                           InputProps={{ startAdornment: <LoginIcon fontSize="small" sx={{ mr: 0.5 }} /> }}
+                          inputProps={{ lang: nativeInputLocale }}
                         />
                       </TableCell>
                       <TableCell align="center" sx={{ width: 140 }}>
@@ -866,6 +869,7 @@ const AttendanceBoard = ({
                             handleEntryChange(workerId, 'clockOut', event.target.value)
                           }
                           InputProps={{ startAdornment: <LogoutIcon fontSize="small" sx={{ mr: 0.5 }} /> }}
+                          inputProps={{ lang: nativeInputLocale }}
                         />
                       </TableCell>
                       <TableCell align="center" sx={{ width: 110 }}>
