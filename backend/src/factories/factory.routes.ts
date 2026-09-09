@@ -500,7 +500,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
             where: { factoryId: id },
           });
           if (existingRateCount === 0 && existing.wagePerSecond !== null) {
-            const baselineMonth = (
+            const basefactoryMonth = (
               normalizeFactoryManagementStartDateKey(existing.managementStartDate) ??
               DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY
             ).slice(0, 7);
@@ -509,7 +509,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
                 orgId: organization.id,
                 factoryId: id,
                 versionNumber: 1,
-                effectiveMonth: baselineMonth,
+                effectiveMonth: basefactoryMonth,
                 targetMonthlyWage: existing.targetMonthlyWage,
                 wagePerSecond: existing.wagePerSecond,
               },
@@ -761,12 +761,6 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
 
     const deleted = await prisma.$transaction(
       async (tx) => {
-        const lines = await tx.line.findMany({
-          where: { orgId: organization.id, factoryId: existing.id },
-          select: { id: true },
-        });
-        const lineIds = lines.map((line) => line.id);
-
         const employees = await tx.employee.findMany({
           where: { orgId: organization.id, factoryId: existing.id },
           select: { id: true },
@@ -781,21 +775,14 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
             },
             data: { managerEmployeeId: null },
           });
-          await tx.line.updateMany({
-            where: {
-              orgId: organization.id,
-              managerEmployeeId: { in: employeeIds },
-            },
-            data: { managerEmployeeId: null },
-          });
         }
 
         let deletedAssignmentPlans = 0;
-        if (lineIds.length > 0) {
+        {
           const planRows = await tx.assignmentPlan.findMany({
             where: {
               orgId: organization.id,
-              lineId: { in: lineIds },
+              factoryId: existing.id,
             },
             select: { id: true },
           });
@@ -822,32 +809,6 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
           deletedAssignmentPlans = Number(result?.count || 0);
         }
 
-        let deletedLineAssignments = 0;
-        const assignmentWhereOr: any[] = [];
-        if (lineIds.length > 0) {
-          assignmentWhereOr.push({ lineId: { in: lineIds } });
-        }
-        if (employeeIds.length > 0) {
-          assignmentWhereOr.push({ employeeId: { in: employeeIds } });
-        }
-        if (assignmentWhereOr.length > 0) {
-          const result = await tx.lineAssignment.deleteMany({
-            where: { OR: assignmentWhereOr },
-          });
-          deletedLineAssignments = result.count;
-        }
-
-        let deletedLines = 0;
-        if (lineIds.length > 0) {
-          const result = await tx.line.deleteMany({
-            where: {
-              orgId: organization.id,
-              id: { in: lineIds },
-            },
-          });
-          deletedLines = result.count;
-        }
-
         let deletedEmployees = 0;
         if (employeeIds.length > 0) {
           const result = await tx.employee.deleteMany({
@@ -862,9 +823,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
         await tx.factory.delete({ where: { id: existing.id } });
 
         return {
-          deletedLineAssignments,
           deletedAssignmentPlans,
-          deletedLines,
           deletedEmployees,
         };
       },

@@ -36,7 +36,7 @@ if (orgIdFilter !== null && (!Number.isInteger(orgIdFilter) || orgIdFilter <= 0)
 const main = async () => {
   const legacyRows = await prisma.$queryRaw`
     SELECT "id", "orgId", "workLogId", "outsourcingPartnerId", "outsourceVendorName",
-           "outsourceUnitPrice", "lineId", "styleId", "styleProcessId", "assignmentPlanId",
+           "outsourceUnitPrice", "styleId", "styleProcessId", "assignmentPlanId",
            "quantity", "createdAt", "createdBy", "createdByEmployeeId", "updatedByEmployeeId"
     FROM "WorkRecord"
     WHERE "isOutsourced" = true
@@ -158,7 +158,6 @@ const main = async () => {
           outsourcingPartnerId: row.outsourcingPartnerId,
           outsourceVendorName: row.outsourceVendorName,
           outsourceUnitPrice: row.outsourceUnitPrice,
-          lineId: row.lineId,
           styleId: row.styleId,
           styleProcessId: row.styleProcessId,
           assignmentPlanId: row.assignmentPlanId,

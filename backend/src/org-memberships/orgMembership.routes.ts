@@ -17,7 +17,6 @@ import {
 import { normalizeEmail, resolveOptionalString } from "../utils/common";
 
 type OrgMembershipRoutesDeps = {
-  closeActiveLineAssignments: (employeeId: number, endedAt?: Date) => Promise<number[]>;
   hasOrgFeatureAccess: (args: {
     orgType: unknown;
     orgRole: OrgUserRole;
@@ -36,7 +35,6 @@ type OrgMembershipRoutesDeps = {
 };
 
 export const createOrgMembershipRouter = ({
-  closeActiveLineAssignments,
   hasOrgFeatureAccess,
   isManufacturerOrg,
   resolveDefaultEmployeeRoleId,
@@ -570,16 +568,10 @@ export const createOrgMembershipRouter = ({
       });
     }
 
-    const [attendanceCount, lineAssignmentCount, managedLineCount, workRecordCount] =
+    const [attendanceCount, workRecordCount] =
       await Promise.all([
         prisma.attendanceEntry.count({
           where: { orgId: employee.orgId, workerId: employee.id },
-        }),
-        prisma.lineAssignment.count({
-          where: { employeeId: employee.id },
-        }),
-        prisma.line.count({
-          where: { managerEmployeeId: employee.id },
         }),
         prisma.workRecord.count({
           where: { orgId: employee.orgId, workerId: employee.id },
@@ -588,8 +580,6 @@ export const createOrgMembershipRouter = ({
 
     if (
       attendanceCount > 0 ||
-      lineAssignmentCount > 0 ||
-      managedLineCount > 0 ||
       workRecordCount > 0
     ) {
       return res.status(409).json({
@@ -597,8 +587,6 @@ export const createOrgMembershipRouter = ({
         error: "employee has dependent data",
         details: {
           attendanceCount,
-          lineAssignmentCount,
-          managedLineCount,
           workRecordCount,
         },
       });
@@ -766,7 +754,6 @@ export const createOrgMembershipRouter = ({
     if (!requesterEmail) return;
 
     const now = new Date();
-    await closeActiveLineAssignments(employee.id, employee.leftAt ?? now);
     const updated = await prisma.employee.update({
       where: { id: employee.id },
       data: {
@@ -912,7 +899,6 @@ export const createOrgMembershipRouter = ({
     });
 
     if (effectiveStatus !== "ACTIVE") {
-      await closeActiveLineAssignments(updated.id, updated.leftAt ?? now);
     }
 
     return res.json(toMembershipResponseFromEmployee(updated));

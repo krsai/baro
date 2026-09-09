@@ -32,10 +32,12 @@
     "test:time-date": "npm --prefix backend run build && node --test scripts/time-date-regression.test.mjs",
     "test:edit-revision": "npm --prefix backend run build && node --test scripts/edit-revision-regression.test.mjs",
     "test:assignment-snapshot-integrity": "npm --prefix backend run build && node --test scripts/assignment-snapshot-integrity-regression.test.mjs",
-    "test:regression": "npm run test:assignment-snapshot-integrity && npm run test:edit-revision && npm run test:access-policy && npm run test:database-target-guard && npm run test:relational-integrity && npm run test:time-date && npm run test:at-reliability && npm run test:st-buckets && npm run test:assignment-st-snapshot && npm run test:sales-prices && npm run test:attendance-fallback && npm run test:at-training && npm run test:employee-number && npm run test:work-record-response && npm run test:customer-production-report && npm run test:outsourced-work-record && npm run test:assignment-review-quantity && npm run test:workspace-navigation",
-    "reset:baseline": "npm --prefix backend run reset:baseline"
+    "test:regression": "npm run test:factory-domain && npm run test:assignment-snapshot-integrity && npm run test:edit-revision && npm run test:access-policy && npm run test:database-target-guard && npm run test:relational-integrity && npm run test:time-date && npm run test:at-reliability && npm run test:st-buckets && npm run test:assignment-st-snapshot && npm run test:sales-prices && npm run test:attendance-fallback && npm run test:at-training && npm run test:employee-number && npm run test:work-record-response && npm run test:customer-production-report && npm run test:outsourced-work-record && npm run test:assignment-review-quantity && npm run test:workspace-navigation",
+    "reset:baseline": "npm --prefix backend run reset:baseline",
+    "test:factory-domain": "npm --prefix backend run build && node --test scripts/factory-domain-runtime.test.mjs scripts/factory-domain-migration.test.mjs scripts/line-removal-transition-regression.test.mjs"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.3.15",
     "concurrently": "^9.2.1"
   }
 }

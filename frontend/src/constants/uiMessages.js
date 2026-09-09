@@ -82,7 +82,7 @@ export const UI_MESSAGES = {
     employeeSystem: { ko: '직원 체계', en: 'Employee Structure', vi: 'Hệ thống nhân viên' },
     salarySystem: { ko: '급여 체계', en: 'Salary Structure', vi: 'Cơ cấu lương' },
     business: { ko: '사업체', en: 'Business', vi: 'Doanh nghiệp' },
-    line: { ko: '라인', en: 'Line', vi: 'Chuyền' },
+    factoryScope: { ko: '라인', en: 'Line', vi: 'Chuyền' },
     employee: { ko: '직원', en: 'Employee', vi: 'Nhân viên' },
     customer: { ko: '고객사', en: 'Customer', vi: 'Khách hàng' },
     misc: { ko: '기타 관리', en: 'Miscellaneous', vi: 'Quản lý khác' },
@@ -296,9 +296,9 @@ export const UI_MESSAGES = {
     statusActive: { ko: '진행 중', en: 'In Progress', vi: 'Đang thực hiện' },
     actualCompletionTooltip: { ko: '실제 완료: {value}', en: 'Actual completion: {value}', vi: 'Hoàn thành thực tế: {value}' },
     capacityUnavailable: { ko: '현재 생산능력과 계획 부하를 계산할 수 없습니다. 데이터를 확인한 뒤 다시 시도하세요.', en: 'Current capacity and planned load cannot be calculated. Check the data and try again.', vi: 'Không thể tính năng lực hiện tại và tải kế hoạch. Hãy kiểm tra dữ liệu rồi thử lại.' },
-    lineRemainingWork: { ko: '남은 일감 {value}', en: 'Remaining work {value}', vi: 'Công việc còn lại {value}' },
-    lineFreeDate: { ko: '비는 예상일 {value}', en: 'Expected free date {value}', vi: 'Ngày dự kiến rảnh {value}' },
-    lineAvailableWork: { ko: '추가 배정 여유 {value}', en: 'Additional capacity {value}', vi: 'Khả năng nhận thêm {value}' },
+    factoryScopeRemainingWork: { ko: '남은 일감 {value}', en: 'Remaining work {value}', vi: 'Công việc còn lại {value}' },
+    factoryScopeFreeDate: { ko: '비는 예상일 {value}', en: 'Expected free date {value}', vi: 'Ngày dự kiến rảnh {value}' },
+    factoryScopeAvailableWork: { ko: '추가 배정 여유 {value}', en: 'Additional capacity {value}', vi: 'Khả năng nhận thêm {value}' },
     pageTitle: { ko: '작업 배정', en: 'Assignment', vi: 'Phân công' },
     searchPlaceholder: {
       ko: '스타일/고객사/색상 검색',
@@ -342,7 +342,7 @@ export const UI_MESSAGES = {
       en: 'Unlinked logs',
       vi: 'Nhat ky chua lien ket',
     },
-    lineCapacityBoard: { ko: '공장 용량', en: 'Factory Capacity', vi: 'Cong suat nha may' },
+    factoryScopeCapacityBoard: { ko: '공장 용량', en: 'Factory Capacity', vi: 'Cong suat nha may' },
     assignmentCancelSection: {
       ko: '배정 취소',
       en: 'Cancel Assignment',
@@ -376,7 +376,7 @@ export const UI_MESSAGES = {
       en: 'Past-month planned load reflects both actual production in that month and the currently remaining assigned work. Actual output reflects work records only. Remaining work is forecast from the next workday after the latest record.',
       vi: 'Tai ke hoach cua thang truoc phan anh ca san luong thuc te trong thang va cong viec da phan cong con lai. San luong thuc te chi phan anh nhat ky cong viec. Cong viec con lai duoc du bao tu ngay lam viec tiep theo sau ban ghi moi nhat.',
     },
-    lineCapacityHeader: { ko: '공장', en: 'Factory', vi: 'Nhà máy' },
+    factoryScopeCapacityHeader: { ko: '공장', en: 'Factory', vi: 'Nhà máy' },
     assignmentCountCompact: {
       ko: '배정 {count}건',
       en: '{count} assignments',
@@ -419,8 +419,8 @@ export const UI_MESSAGES = {
     },
     remainingLoadCompact: { ko: '잔량 {hours}', en: 'Remain {hours}', vi: 'Con lai {hours}' },
     backlogDaysCompact: { ko: '예상 {days}', en: 'Backlog {days}', vi: 'Ton dong {days}' },
-    lineFreeByCompact: { ko: '{date} 비움 예상', en: 'Free by {date}', vi: 'Ranh vao {date}' },
-    lineFreeNowCompact: { ko: '지금 비어 있음', en: 'Free now', vi: 'Dang ranh' },
+    factoryScopeFreeByCompact: { ko: '{date} 비움 예상', en: 'Free by {date}', vi: 'Ranh vao {date}' },
+    factoryScopeFreeNowCompact: { ko: '지금 비어 있음', en: 'Free now', vi: 'Dang ranh' },
     queuePositionCompact: { ko: '순서 {position}', en: 'Q{position}', vi: 'Thu tu {position}' },
     etaDaysCompact: { ko: '남은 {days}', en: 'ETA {days}', vi: 'Con {days}' },
     forecastEndCompact: { ko: '예상 종료 {date}', en: 'Finish {date}', vi: 'Xong {date}' },
@@ -497,27 +497,27 @@ export const UI_MESSAGES = {
       en: 'The latest progress could not be refreshed. The last successful data is still displayed. Try refreshing.',
       vi: 'Không thể cap nhat tien do moi nhat. Dữ liệu thanh cong gan nhat dang duoc hien thi. Hay thu tai lai.',
     },
-    lineAssignments: {
+    factoryScopeAssignments: {
       ko: '이 공장 배정 목록',
       en: 'Assignments in this factory',
       vi: 'Danh sách phan cong trong nha may nay',
     },
-    noQueuedAssignmentsInLine: {
+    noQueuedAssignmentsInFactoryScope: {
       ko: '이 공장에 대기 작업이 없습니다.',
       en: 'No queued assignments in this factory.',
       vi: 'Không có phan cong dang cho tren nha may nay.',
     },
-    noFinishedAssignmentsInLine: {
+    noFinishedAssignmentsInFactoryScope: {
       ko: '이 공장에 생산 완료 항목이 없습니다.',
       en: 'No production-complete assignments in this factory.',
       vi: 'Khong co muc hoan tat san xuat tren nha may nay.',
     },
-    noAssignmentsInLine: {
+    noAssignmentsInFactoryScope: {
       ko: '이 공장에는 배정이 없습니다.',
       en: 'No assignments in this factory.',
       vi: 'Không có phan cong tren nha may nay.',
     },
-    noLineCapacityRows: {
+    noFactoryScopeCapacityRows: {
       ko: '표시할 공장 용량 데이터가 없습니다.',
       en: 'No factory capacity data is available.',
       vi: 'Không có du lieu cong suat nha may de hien thi.',
@@ -532,7 +532,7 @@ export const UI_MESSAGES = {
       en: 'Time missing',
       vi: 'Chưa có thoi gian',
     },
-    lineDropHint: {
+    factoryScopeDropHint: {
       ko: '이 공장에 배정하려면 여기에 놓으세요.',
       en: 'Drop cards here to assign to this factory',
       vi: 'Tha the vao day de phan cong cho nha may nay',
@@ -542,10 +542,10 @@ export const UI_MESSAGES = {
       en: 'Insert assignment here',
       vi: 'Chen phan cong vao day',
     },
-    expandLineAria: { ko: '공장 펼치기', en: 'Expand factory', vi: 'Mo rong nha may' },
-    collapseLineAria: { ko: '공장 접기', en: 'Collapse factory', vi: 'Thu gon nha may' },
-    lineTimeline: { ko: '라인 타임라인', en: 'Line Timeline', vi: 'Tien do chuyen' },
-    lineColumn: { ko: '라인', en: 'Line', vi: 'Chuyền' },
+    expandFactoryScopeAria: { ko: '공장 펼치기', en: 'Expand factory', vi: 'Mo rong nha may' },
+    collapseFactoryScopeAria: { ko: '공장 접기', en: 'Collapse factory', vi: 'Thu gon nha may' },
+    factoryScopeTimeline: { ko: '라인 타임라인', en: 'Line Timeline', vi: 'Tien do chuyen' },
+    factoryScopeColumn: { ko: '라인', en: 'Line', vi: 'Chuyền' },
     headcount: {
       ko: '{count}명',
       en: '{count} ppl',
@@ -607,7 +607,7 @@ export const UI_MESSAGES = {
     cardStyleLabel: { ko: '스타일', en: 'Style', vi: 'Style' },
     cardQuantityLabel: { ko: '수량', en: 'Quantity', vi: 'Số lượng' },
     cardProgressLabel: { ko: '진행률', en: 'Progress', vi: 'Tien do' },
-    lineLabel: { ko: '공장', en: 'Factory', vi: 'Nhà máy' },
+    factoryScopeLabel: { ko: '공장', en: 'Factory', vi: 'Nhà máy' },
     imageUnavailable: {
       ko: '이미지\n없음',
       en: 'No\nImage',

@@ -75,7 +75,7 @@ const LABELS = {
   coverageStartDate: '작업 시작일',
   factory: '공장',
   autoFactory: '공장 (자동선택)',
-  line: '공장',
+  factoryScope: '공장',
   wagePerSecond: '초당 공임',
   wagePerSecondUnit: '동/초',
   note: '비고',
@@ -90,7 +90,7 @@ const LABELS = {
   noStylesAvailable: '선택 가능한 스타일이 없습니다.',
   selectStyleFirst: '스타일을 먼저 선택하세요.',
   assignmentException: '예외',
-  assignmentOtherLine: '배정 공장 정보 불일치',
+  assignmentOtherFactoryScope: '배정 공장 정보 불일치',
   orderNo: '주문번호',
   orderQuantity: '주문수량',
   assignmentQuantityExceeded: '주문 수량 초과',
@@ -113,7 +113,7 @@ const LABELS = {
   entryModePeriodSummary: '기간 입력',
   coverageSuggestionPrefix: '직전 작업기록 종료일',
   coverageSuggestionSuffix: '시작일을 자동 제안했습니다.',
-  firstLineCoverage: '이 공장의 첫 작업기록입니다. 시작 날짜를 직접 입력하세요.',
+  firstFactoryScopeCoverage: '이 공장의 첫 작업기록입니다. 시작 날짜를 직접 입력하세요.',
   zeroCoverageHint: '직전 작업기록이 없으면 시작일을 직접 입력해 주세요.',
   coverageValidation: '작업 시작일은 종료일보다 늦을 수 없습니다.',
   assignmentLinkRequired: '배정카드 연결이 없는 작업은 저장할 수 없습니다.',
@@ -127,19 +127,19 @@ const LABELS = {
 const WORK_DETAIL_LABELS = {
   ko: LABELS,
   en: {
-    title: 'Work Log Detail', workDate: 'Work End Date', coverageStartDate: 'Work Start Date', factory: 'Factory', autoFactory: 'Factory (Auto-selected)', line: 'Factory', wagePerSecond: 'Rate per Second', wagePerSecondUnit: 'VND/sec', note: 'Note', notePlaceholder: 'Enter a note.', autoNote: 'Automatic Note', searchPlaceholder: 'Search worker/style/process', rowNumber: 'Row', worker: 'Worker', workerPlaceholder: 'Select a worker.', style: 'Style', stylePlaceholder: 'Select a style.', noStylesAvailable: 'No styles available.', selectStyleFirst: 'Select a style first.', assignmentException: 'Exception', assignmentOtherLine: 'Assignment factory mismatch', orderNo: 'Order No.', orderQuantity: 'Order Quantity', assignmentQuantityExceeded: 'Order quantity exceeded', selectWorkerFirst: 'Select a worker first.', process: 'Process', processPlaceholder: 'Select a process.', noProcessesAvailable: 'No processes available.', ctSeconds: 'CT', quantity: 'Produced Quantity', quantityCtTotal: 'Quantity × CT', recordCount: 'Work Rows', totalQuantity: 'Total Produced', totalQuantityCt: 'Total Quantity × CT', moveUp: 'Move Up', moveDown: 'Move Down', addBelow: 'Add Worker Below', remove: 'Remove Worker', entryMode: 'Entry Mode', entryModeDaily: 'Daily Entry', entryModePeriodSummary: 'Period Entry', coverageSuggestionPrefix: 'The previous work log ended on', coverageSuggestionSuffix: 'The start date was suggested automatically.', firstLineCoverage: 'This is the first work log for this factory. Enter the start date.', zeroCoverageHint: 'If there is no previous work log, enter the start date.', coverageValidation: 'The work start date cannot be later than the end date.', assignmentLinkRequired: 'Work without an assignment card cannot be saved.',
+    title: 'Work Log Detail', workDate: 'Work End Date', coverageStartDate: 'Work Start Date', factory: 'Factory', autoFactory: 'Factory (Auto-selected)', factoryScope: 'Factory', wagePerSecond: 'Rate per Second', wagePerSecondUnit: 'VND/sec', note: 'Note', notePlaceholder: 'Enter a note.', autoNote: 'Automatic Note', searchPlaceholder: 'Search worker/style/process', rowNumber: 'Row', worker: 'Worker', workerPlaceholder: 'Select a worker.', style: 'Style', stylePlaceholder: 'Select a style.', noStylesAvailable: 'No styles available.', selectStyleFirst: 'Select a style first.', assignmentException: 'Exception', assignmentOtherFactoryScope: 'Assignment factory mismatch', orderNo: 'Order No.', orderQuantity: 'Order Quantity', assignmentQuantityExceeded: 'Order quantity exceeded', selectWorkerFirst: 'Select a worker first.', process: 'Process', processPlaceholder: 'Select a process.', noProcessesAvailable: 'No processes available.', ctSeconds: 'CT', quantity: 'Produced Quantity', quantityCtTotal: 'Quantity × CT', recordCount: 'Work Rows', totalQuantity: 'Total Produced', totalQuantityCt: 'Total Quantity × CT', moveUp: 'Move Up', moveDown: 'Move Down', addBelow: 'Add Worker Below', remove: 'Remove Worker', entryMode: 'Entry Mode', entryModeDaily: 'Daily Entry', entryModePeriodSummary: 'Period Entry', coverageSuggestionPrefix: 'The previous work log ended on', coverageSuggestionSuffix: 'The start date was suggested automatically.', firstFactoryScopeCoverage: 'This is the first work log for this factory. Enter the start date.', zeroCoverageHint: 'If there is no previous work log, enter the start date.', coverageValidation: 'The work start date cannot be later than the end date.', assignmentLinkRequired: 'Work without an assignment card cannot be saved.',
     currencyUnit: 'VND', outsourceNamePrefix: 'Outsourced', outsourceUnitPriceLabel: 'Outsource Unit Price', outsourceUnitPricePlaceholder: 'Unit price', addOutsourcePartnerOption: '＋ Add Partner', outsourcePartnersLoadError: 'Failed to load outsourcing partners.',
   },
   vi: {
-    title: 'Chi tiết nhật ký công việc', workDate: 'Ngày kết thúc công việc', coverageStartDate: 'Ngày bắt đầu công việc', factory: 'Nhà máy', autoFactory: 'Nhà máy (tự động chọn)', line: 'Nhà máy', wagePerSecond: 'Đơn giá mỗi giây', wagePerSecondUnit: 'đồng/giây', note: 'Ghi chú', notePlaceholder: 'Nhập ghi chú.', autoNote: 'Ghi chú tự động', searchPlaceholder: 'Tìm nhân viên/style/công đoạn', rowNumber: 'Dòng', worker: 'Nhân viên', workerPlaceholder: 'Chọn nhân viên.', style: 'Style', stylePlaceholder: 'Chọn style.', noStylesAvailable: 'Không có style để chọn.', selectStyleFirst: 'Vui lòng chọn style trước.', assignmentException: 'Ngoại lệ', assignmentOtherLine: 'Thông tin nhà máy phân công không khớp', orderNo: 'Số đơn hàng', orderQuantity: 'Số lượng đơn hàng', assignmentQuantityExceeded: 'Vượt số lượng đơn hàng', selectWorkerFirst: 'Vui lòng chọn nhân viên trước.', process: 'Công đoạn', processPlaceholder: 'Chọn công đoạn.', noProcessesAvailable: 'Không có công đoạn để chọn.', ctSeconds: 'CT', quantity: 'Sản lượng', quantityCtTotal: 'Số lượng × CT', recordCount: 'Dòng công việc', totalQuantity: 'Tổng sản lượng', totalQuantityCt: 'Tổng số lượng × CT', moveUp: 'Di chuyển lên', moveDown: 'Di chuyển xuống', addBelow: 'Thêm nhân viên bên dưới', remove: 'Xóa nhân viên', entryMode: 'Cách nhập', entryModeDaily: 'Nhập theo ngày', entryModePeriodSummary: 'Nhập theo khoảng thời gian', coverageSuggestionPrefix: 'Nhật ký công việc trước kết thúc ngày', coverageSuggestionSuffix: 'Ngày bắt đầu đã được đề xuất tự động.', firstLineCoverage: 'Đây là nhật ký công việc đầu tiên của nhà máy này. Vui lòng nhập ngày bắt đầu.', zeroCoverageHint: 'Nếu không có nhật ký trước đó, vui lòng nhập ngày bắt đầu.', coverageValidation: 'Ngày bắt đầu không được muộn hơn ngày kết thúc.', assignmentLinkRequired: 'Không thể lưu công việc chưa liên kết với thẻ phân công.',
+    title: 'Chi tiết nhật ký công việc', workDate: 'Ngày kết thúc công việc', coverageStartDate: 'Ngày bắt đầu công việc', factory: 'Nhà máy', autoFactory: 'Nhà máy (tự động chọn)', factoryScope: 'Nhà máy', wagePerSecond: 'Đơn giá mỗi giây', wagePerSecondUnit: 'đồng/giây', note: 'Ghi chú', notePlaceholder: 'Nhập ghi chú.', autoNote: 'Ghi chú tự động', searchPlaceholder: 'Tìm nhân viên/style/công đoạn', rowNumber: 'Dòng', worker: 'Nhân viên', workerPlaceholder: 'Chọn nhân viên.', style: 'Style', stylePlaceholder: 'Chọn style.', noStylesAvailable: 'Không có style để chọn.', selectStyleFirst: 'Vui lòng chọn style trước.', assignmentException: 'Ngoại lệ', assignmentOtherFactoryScope: 'Thông tin nhà máy phân công không khớp', orderNo: 'Số đơn hàng', orderQuantity: 'Số lượng đơn hàng', assignmentQuantityExceeded: 'Vượt số lượng đơn hàng', selectWorkerFirst: 'Vui lòng chọn nhân viên trước.', process: 'Công đoạn', processPlaceholder: 'Chọn công đoạn.', noProcessesAvailable: 'Không có công đoạn để chọn.', ctSeconds: 'CT', quantity: 'Sản lượng', quantityCtTotal: 'Số lượng × CT', recordCount: 'Dòng công việc', totalQuantity: 'Tổng sản lượng', totalQuantityCt: 'Tổng số lượng × CT', moveUp: 'Di chuyển lên', moveDown: 'Di chuyển xuống', addBelow: 'Thêm nhân viên bên dưới', remove: 'Xóa nhân viên', entryMode: 'Cách nhập', entryModeDaily: 'Nhập theo ngày', entryModePeriodSummary: 'Nhập theo khoảng thời gian', coverageSuggestionPrefix: 'Nhật ký công việc trước kết thúc ngày', coverageSuggestionSuffix: 'Ngày bắt đầu đã được đề xuất tự động.', firstFactoryScopeCoverage: 'Đây là nhật ký công việc đầu tiên của nhà máy này. Vui lòng nhập ngày bắt đầu.', zeroCoverageHint: 'Nếu không có nhật ký trước đó, vui lòng nhập ngày bắt đầu.', coverageValidation: 'Ngày bắt đầu không được muộn hơn ngày kết thúc.', assignmentLinkRequired: 'Không thể lưu công việc chưa liên kết với thẻ phân công.',
     currencyUnit: 'đồng', outsourceNamePrefix: 'Gia công ngoài', outsourceUnitPriceLabel: 'Đơn giá gia công', outsourceUnitPricePlaceholder: 'Đơn giá mỗi cái', addOutsourcePartnerOption: '＋ Thêm đối tác', outsourcePartnersLoadError: 'Không thể tải danh sách đối tác gia công.',
   },
 };
 const OUTSOURCING_PARTNER_COLUMN_LABEL = { ko: '외주 업체', en: 'Outsourcing Partner', vi: 'Đối tác gia công' };
 const WORK_DETAIL_MESSAGES = {
-  ko: { loading: '기본 정보를 불러오는 중입니다.', entryModeHelp: '종료일 기준으로 저장하며, 시작일과 종료일이 같으면 일별 입력으로 처리합니다.', legacyReadOnly: '공장 정보가 없는 기존 기록은 이 화면에서 수정할 수 없습니다.', duplicateRows: '같은 작업자/배정/공정 조합이 중복되어 있습니다. 수량으로 합산해 주세요.', selectFactory: '공장을 선택하면 작업자와 배정 정보를 불러옵니다.', selectLine: '선택한 공장의 작업자/스타일/공정 정보를 준비하고 있습니다.', loadingLine: '공장 작업 정보를 불러오는 중입니다.', noWorkers: '선택한 공장/작업일 기준으로 작업자가 없습니다.', noOutsourcingPartners: '등록된 외주 업체가 없습니다. 거래처 관리 > 외주 업체에서 등록해 주세요.', preparingRow: '첫 작업자 입력 행을 준비 중입니다.', noSearchResults: '검색 결과가 없습니다.', previousEndConnector: '입니다.', suggestedFromConnector: '부터 ' },
-  en: { loading: 'Loading basic information.', entryModeHelp: 'Records are saved by end date. When the start and end dates are the same, they are treated as a daily entry.', legacyReadOnly: 'Legacy records without factory information cannot be edited here.', duplicateRows: 'The same worker/assignment/process combination appears more than once. Combine the quantities.', selectFactory: 'Select a factory to load workers and assignments.', selectLine: 'Preparing workers, styles, and processes for the selected factory.', loadingLine: 'Loading factory work data.', noWorkers: 'No workers are available for the selected factory and work date.', noOutsourcingPartners: 'No outsourcing partners are registered. Add one under Business Partners > Outsourcing Partner.', preparingRow: 'Preparing the first worker entry row.', noSearchResults: 'No search results.', previousEndConnector: '.', suggestedFromConnector: ' Starting from ' },
-  vi: { loading: 'Đang tải thông tin cơ bản.', entryModeHelp: 'Dữ liệu được lưu theo ngày kết thúc. Nếu ngày bắt đầu và ngày kết thúc giống nhau, hệ thống sẽ xử lý như nhập theo ngày.', legacyReadOnly: 'Không thể sửa bản ghi cũ không có thông tin nhà máy trên màn hình này.', duplicateRows: 'Tổ hợp nhân viên/phân công/công đoạn bị trùng. Vui lòng cộng gộp số lượng.', selectFactory: 'Chọn nhà máy để tải nhân viên và phân công.', selectLine: 'Đang chuẩn bị nhân viên, style và công đoạn của nhà máy đã chọn.', loadingLine: 'Đang tải dữ liệu công việc của nhà máy.', noWorkers: 'Không có nhân viên theo nhà máy và ngày làm việc đã chọn.', noOutsourcingPartners: 'Chưa có đối tác gia công nào được đăng ký. Vui lòng thêm tại Quản lý đối tác > Đối tác gia công.', preparingRow: 'Đang chuẩn bị dòng nhập cho nhân viên đầu tiên.', noSearchResults: 'Không có kết quả tìm kiếm.', previousEndConnector: '.', suggestedFromConnector: ' Bắt đầu từ ', startDateRequired: 'Vui lòng nhập ngày bắt đầu công việc.', sameMonthRequired: 'Ngày bắt đầu và ngày kết thúc phải trong cùng một tháng. Vui lòng đăng ký riêng theo từng tháng.', factoryRequired: 'Vui lòng chọn nhà máy.', lineRequired: 'Không thể xác định dữ liệu công việc của nhà máy.', noRowsToSave: 'Không có dòng công việc để lưu.', invalidWorkerLine: 'Có nhân viên không thuộc nhà máy đã chọn.', wageMissing: 'Chưa thiết lập đơn giá mỗi giây của nhà máy.', duplicateEntry: 'Không thể nhập trùng cùng nhân viên, phân công và công đoạn trong cùng ngày.' },
+  ko: { loading: '기본 정보를 불러오는 중입니다.', entryModeHelp: '종료일 기준으로 저장하며, 시작일과 종료일이 같으면 일별 입력으로 처리합니다.', legacyReadOnly: '공장 정보가 없는 기존 기록은 이 화면에서 수정할 수 없습니다.', duplicateRows: '같은 작업자/배정/공정 조합이 중복되어 있습니다. 수량으로 합산해 주세요.', selectFactory: '공장을 선택하면 작업자와 배정 정보를 불러옵니다.', selectFactoryScope: '선택한 공장의 작업자/스타일/공정 정보를 준비하고 있습니다.', loadingFactoryScope: '공장 작업 정보를 불러오는 중입니다.', noWorkers: '선택한 공장/작업일 기준으로 작업자가 없습니다.', noOutsourcingPartners: '등록된 외주 업체가 없습니다. 거래처 관리 > 외주 업체에서 등록해 주세요.', preparingRow: '첫 작업자 입력 행을 준비 중입니다.', noSearchResults: '검색 결과가 없습니다.', previousEndConnector: '입니다.', suggestedFromConnector: '부터 ' },
+  en: { loading: 'Loading basic information.', entryModeHelp: 'Records are saved by end date. When the start and end dates are the same, they are treated as a daily entry.', legacyReadOnly: 'Legacy records without factory information cannot be edited here.', duplicateRows: 'The same worker/assignment/process combination appears more than once. Combine the quantities.', selectFactory: 'Select a factory to load workers and assignments.', selectFactoryScope: 'Preparing workers, styles, and processes for the selected factory.', loadingFactoryScope: 'Loading factory work data.', noWorkers: 'No workers are available for the selected factory and work date.', noOutsourcingPartners: 'No outsourcing partners are registered. Add one under Business Partners > Outsourcing Partner.', preparingRow: 'Preparing the first worker entry row.', noSearchResults: 'No search results.', previousEndConnector: '.', suggestedFromConnector: ' Starting from ' },
+  vi: { loading: 'Đang tải thông tin cơ bản.', entryModeHelp: 'Dữ liệu được lưu theo ngày kết thúc. Nếu ngày bắt đầu và ngày kết thúc giống nhau, hệ thống sẽ xử lý như nhập theo ngày.', legacyReadOnly: 'Không thể sửa bản ghi cũ không có thông tin nhà máy trên màn hình này.', duplicateRows: 'Tổ hợp nhân viên/phân công/công đoạn bị trùng. Vui lòng cộng gộp số lượng.', selectFactory: 'Chọn nhà máy để tải nhân viên và phân công.', selectFactoryScope: 'Đang chuẩn bị nhân viên, style và công đoạn của nhà máy đã chọn.', loadingFactoryScope: 'Đang tải dữ liệu công việc của nhà máy.', noWorkers: 'Không có nhân viên theo nhà máy và ngày làm việc đã chọn.', noOutsourcingPartners: 'Chưa có đối tác gia công nào được đăng ký. Vui lòng thêm tại Quản lý đối tác > Đối tác gia công.', preparingRow: 'Đang chuẩn bị dòng nhập cho nhân viên đầu tiên.', noSearchResults: 'Không có kết quả tìm kiếm.', previousEndConnector: '.', suggestedFromConnector: ' Bắt đầu từ ', startDateRequired: 'Vui lòng nhập ngày bắt đầu công việc.', sameMonthRequired: 'Ngày bắt đầu và ngày kết thúc phải trong cùng một tháng. Vui lòng đăng ký riêng theo từng tháng.', factoryRequired: 'Vui lòng chọn nhà máy.', factoryScopeRequired: 'Không thể xác định dữ liệu công việc của nhà máy.', noRowsToSave: 'Không có dòng công việc để lưu.', invalidWorkerFactoryScope: 'Có nhân viên không thuộc nhà máy đã chọn.', wageMissing: 'Chưa thiết lập đơn giá mỗi giây của nhà máy.', duplicateEntry: 'Không thể nhập trùng cùng nhân viên, phân công và công đoạn trong cùng ngày.' },
 };
 
 const toText = (value) => String(value || '').trim();
@@ -467,12 +467,7 @@ const buildFactorySelection = (log) => {
   if (!log?.factoryId && !log?.factoryName) return null;
   return { id: log?.factoryId || '', name: log?.factoryName || '', wagePerSecond: log?.factoryWagePerSecond ?? null };
 };
-const buildLineSelection = (log) => {
-  if (!log?.lineId && !log?.lineName) return null;
-  return { id: log?.lineId || '', name: log?.lineName || '' };
-};
-// Legacy rows created before coverage dates were consistently backfilled may still expose only
-// the display date (`workDate`). Keep that fallback limited to form initialization/diffing only.
+
 const resolveLegacyCoverageEndSeed = (log) =>
   log?.coverageEndDate || log?.workDate || log?.createdAt || undefined;
 const resolveLegacyCoverageEndDateKey = (log) =>
@@ -545,31 +540,31 @@ const filterStyleOptions = (options, state) => {
     return tokens.every((token) => searchText.includes(token));
   });
 };
-const isOtherLineAssignmentOption = (assignment, currentLineId) => {
-  const assignmentLineId = toPositiveIdOrNull(assignment?.lineId);
-  const normalizedCurrentLineId = toPositiveIdOrNull(currentLineId);
+const isOtherFactoryScopeAssignmentOption = (assignment, currentFactoryId) => {
+  const assignmentFactoryId = toPositiveIdOrNull(assignment?.factoryId);
+  const normalizedCurrentFactoryId = toPositiveIdOrNull(currentFactoryId);
   return Boolean(
-    assignmentLineId !== null &&
-      normalizedCurrentLineId !== null &&
-      assignmentLineId !== normalizedCurrentLineId
+    assignmentFactoryId !== null &&
+      normalizedCurrentFactoryId !== null &&
+      assignmentFactoryId !== normalizedCurrentFactoryId
   );
 };
-const formatAssignmentAutocompleteLabel = (assignment, currentLineId) => {
+const formatAssignmentAutocompleteLabel = (assignment, currentFactoryId) => {
   const baseLabel = formatAssignmentLabel(assignment);
-  if (!isOtherLineAssignmentOption(assignment, currentLineId)) return baseLabel;
-  const lineName = toText(assignment?.lineName);
-  return [LABELS.assignmentException, lineName, baseLabel].filter(Boolean).join(' · ');
+  if (!isOtherFactoryScopeAssignmentOption(assignment, currentFactoryId)) return baseLabel;
+  const factoryName = toText(assignment?.factoryName);
+  return [LABELS.assignmentException, factoryName, baseLabel].filter(Boolean).join(' · ');
 };
 const resolveStyleOptionId = (assignment) =>
   toText(assignment?.dbId || assignment?.id || '');
-const sortAssignmentOptionsByLineContext = (options = [], currentLineId = null) =>
+const sortAssignmentOptionsByFactoryScopeContext = (options = [], currentFactoryId = null) =>
   [...(Array.isArray(options) ? options : [])].sort((left, right) => {
-    const leftIsException = isOtherLineAssignmentOption(left, currentLineId);
-    const rightIsException = isOtherLineAssignmentOption(right, currentLineId);
+    const leftIsException = isOtherFactoryScopeAssignmentOption(left, currentFactoryId);
+    const rightIsException = isOtherFactoryScopeAssignmentOption(right, currentFactoryId);
     if (leftIsException !== rightIsException) return leftIsException ? 1 : -1;
 
-    const lineCompare = COLLATOR.compare(toText(left?.lineName), toText(right?.lineName));
-    if (lineCompare !== 0) return lineCompare;
+    const factoryScopeCompare = COLLATOR.compare(toText(left?.factoryName), toText(right?.factoryName));
+    if (factoryScopeCompare !== 0) return factoryScopeCompare;
     return COLLATOR.compare(formatAssignmentLabel(left), formatAssignmentLabel(right));
   });
 const ensureOptionIncluded = (options = [], current, getKey) => {
@@ -906,7 +901,7 @@ const dedupeAssignmentPlans = (plans = []) => {
   return (Array.isArray(plans) ? plans : []).filter((plan) => {
     const primaryKey = toText(plan?.dbId || plan?.id || plan?.externalId);
     const fallbackKey = [
-      toText(plan?.lineId),
+      toText(plan?.factoryId),
       toText(plan?.orderNo),
       toText(plan?.label || plan?.styleId),
       toText(plan?.assignmentQuantity),
@@ -1155,19 +1150,14 @@ const WorkDetail = ({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [baseLoading, setBaseLoading] = useState(() => !initialLog?.id);
-  const [lineDataLoading, setLineDataLoading] = useState(false);
-  const [lineContextReady, setLineContextReady] = useState(false);
+  const [factoryScopeDataLoading, setFactoryScopeDataLoading] = useState(false);
+  const [factoryScopeContextReady, setFactoryScopeContextReady] = useState(false);
   const [assignmentContextRefreshKey, setAssignmentContextRefreshKey] = useState(0);
   const [factories, setFactories] = useState(() => {
     const initialFactory = buildFactorySelection(initialLog);
     return initialFactory ? [initialFactory] : [];
   });
-  const [lines, setLines] = useState(() => {
-    const initialLine = buildLineSelection(initialLog);
-    return initialLine ? [initialLine] : [];
-  });
   const [selectedFactory, setSelectedFactory] = useState(() => buildFactorySelection(initialLog));
-  const [selectedLine, setSelectedLine] = useState(() => buildLineSelection(initialLog));
   const [workDate, setWorkDate] = useState(() => buildInitialWorkDate(initialLog));
   const [coverageStartDate, setCoverageStartDate] = useState(() =>
     buildInitialCoverageStartDate(initialLog)
@@ -1175,9 +1165,9 @@ const WorkDetail = ({
   const [coverageSuggestion, setCoverageSuggestion] = useState({
     previousCoverageEndDate: null,
     suggestedCoverageStartDate: null,
-    isFirstLineWorkLog: false,
+    isFirstFactoryWorkLog: false,
   });
-  const [lineWorkers, setLineWorkers] = useState(() =>
+  const [factoryScopeWorkers, setFactoryScopeWorkers] = useState(() =>
     normalizeWorkerOptions(initialContext?.workers)
   );
   const [outsourcingPartners, setOutsourcingPartners] = useState([]);
@@ -1202,7 +1192,6 @@ const WorkDetail = ({
   const rowRenderSentinelRef = useRef(null);
   const hasInitialRecords = Array.isArray(initialLog?.records) && initialLog.records.length > 0;
   const initialFactoryOption = useMemo(() => buildFactorySelection(initialLog), [initialLog]);
-  const initialLineOption = useMemo(() => buildLineSelection(initialLog), [initialLog]);
   const prefetchedWorkers = useMemo(
     () => normalizeWorkerOptions(initialContext?.workers),
     [initialContext?.workers]
@@ -1225,7 +1214,6 @@ const WorkDetail = ({
   );
 
   const selectedFactoryId = toPositiveIdOrNull(selectedFactory?.id);
-  const selectedLineId = toPositiveIdOrNull(selectedLine?.id);
   const currentFactory = useMemo(() => {
     if (!selectedFactory) return null;
     return matchByIdOrName(factories, selectedFactory, 'id', 'name') || selectedFactory;
@@ -1279,23 +1267,23 @@ const WorkDetail = ({
         : workDateKey,
     [coverageStartDateKey, workDateKey]
   );
-  const isAggregateLegacyLog = Boolean(initialLog?.id) && !toPositiveIdOrNull(initialLog?.lineId) && !toText(initialLog?.lineName);
+  const isAggregateLegacyLog = Boolean(initialLog?.id) && !toPositiveIdOrNull(initialLog?.factoryId) && !toText(initialLog?.factoryName);
   const initialContextKey = useMemo(() => {
-    const lineId = toPositiveIdOrNull(initialContext?.line?.id ?? initialLog?.lineId);
+    const factoryId = toPositiveIdOrNull(initialContext?.factory?.id ?? initialLog?.factoryId);
     const dateKey = toText(initialLog?.workDate);
     const startDateKey = toText(initialLog?.coverageStartDate || initialLog?.workDate);
-    if (!lineId || !dateKey) return '';
-    return `${lineId}:${dateKey}:${startDateKey}`;
+    if (!factoryId || !dateKey) return '';
+    return `${factoryId}:${dateKey}:${startDateKey}`;
   }, [
-    initialContext?.line?.id,
-    initialLog?.lineId,
+    initialContext?.factory?.id,
+    initialLog?.factoryId,
     initialLog?.workDate,
     initialLog?.coverageStartDate,
   ]);
   const currentContextKey = useMemo(() => {
-    if (!selectedLineId || !workDateKey) return '';
-    return `${selectedLineId}:${workDateKey}:${coverageStartDateKey || workDateKey}`;
-  }, [selectedLineId, workDateKey, coverageStartDateKey]);
+    if (!selectedFactoryId || !workDateKey) return '';
+    return `${selectedFactoryId}:${workDateKey}:${coverageStartDateKey || workDateKey}`;
+  }, [selectedFactoryId, workDateKey, coverageStartDateKey]);
   const workerDebugEnabled = false;
   const isCancelledRequestError = useCallback(
     (error) =>
@@ -1356,20 +1344,18 @@ const WorkDetail = ({
   useEffect(() => {
     initialRowsHydratedRef.current = false;
     setPersistedSnapshotText(null);
-    setLineContextReady(false);
+    setFactoryScopeContextReady(false);
     setSelectedFactory(initialFactoryOption);
-    setSelectedLine(initialLineOption);
     setWorkDate(buildInitialWorkDate(initialLog));
     setCoverageStartDate(buildInitialCoverageStartDate(initialLog));
     setCoverageSuggestion({
       previousCoverageEndDate: null,
       suggestedCoverageStartDate: null,
-      isFirstLineWorkLog: false,
+      isFirstFactoryWorkLog: false,
     });
     setNote(stripAutoNoteFromText(initialLog?.note || ''));
     setFactories(initialFactoryOption ? [initialFactoryOption] : []);
-    setLines(initialLineOption ? [initialLineOption] : []);
-    setLineWorkers(prefetchedWorkers);
+    setFactoryScopeWorkers(prefetchedWorkers);
     setAllAssignmentPlans(prefetchedAllAssignments);
     setAssignmentOptions(prefetchedAssignments);
     setRows(
@@ -1388,7 +1374,6 @@ const WorkDetail = ({
   }, [
     hasInitialRecords,
     initialFactoryOption,
-    initialLineOption,
     initialLog?.createdAt,
     initialLog?.coverageEndDate,
     initialLog?.coverageStartDate,
@@ -1453,50 +1438,14 @@ const WorkDetail = ({
     });
   }, [initialLog?.id, selectedFactoryId, workDate, workLogOperationStartDateKey]);
 
-  useEffect(() => {
-    if (!selectedFactoryId) {
-      setLines([]);
-      setSelectedLine(null);
-      return;
-    }
-    const abortController = new AbortController();
-    let cancelled = false;
-    setLines([]);
-    requestJSON(`/lines${buildQueryString({ orgId: activeOrgId, factoryId: selectedFactoryId })}`, {
-      skipGlobalLoading: true,
-      signal: abortController.signal,
-    })
-      .then((response) => {
-        if (cancelled) return;
-        const nextLines = sortByLabel(Array.isArray(response) ? response : [], (line) => line?.name || '');
-        setLines(nextLines);
-        setSelectedLine((currentLine) => {
-          if (!currentLine && initialLog?.id) {
-            return matchByIdOrName(nextLines, buildLineSelection(initialLog), 'id', 'name');
-          }
-          if (nextLines.length === 1) return nextLines[0];
-          return matchByIdOrName(nextLines, currentLine, 'id', 'name') || currentLine;
-        });
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLines([]);
-          setSelectedLine(null);
-        }
-      });
-    return () => {
-      cancelled = true;
-      abortController.abort();
-    };
-  }, [activeOrgId, initialLog, selectedFactoryId]);
 
   useEffect(() => {
-    if (!selectedFactoryId || !selectedLineId) {
-      setLineContextReady(false);
-      setLineWorkers([]);
+    if (!selectedFactoryId) {
+      setFactoryScopeContextReady(false);
+      setFactoryScopeWorkers([]);
       setAllAssignmentPlans([]);
       setAssignmentOptions([]);
-      setLineDataLoading(false);
+      setFactoryScopeDataLoading(false);
       return;
     }
     if (
@@ -1505,26 +1454,26 @@ const WorkDetail = ({
       initialContext &&
       currentContextKey === initialContextKey
     ) {
-      setLineWorkers(prefetchedWorkers);
+      setFactoryScopeWorkers(prefetchedWorkers);
       setAllAssignmentPlans(prefetchedAllAssignments);
       setAssignmentOptions(prefetchedAssignments);
       setCoverageSuggestion({
         previousCoverageEndDate: initialContext?.previousCoverageEndDate || null,
         suggestedCoverageStartDate: initialContext?.suggestedCoverageStartDate || null,
-        isFirstLineWorkLog: Boolean(initialContext?.isFirstLineWorkLog),
+        isFirstFactoryWorkLog: Boolean(initialContext?.isFirstFactoryWorkLog),
       });
-      setLineContextReady(true);
-      setLineDataLoading(false);
+      setFactoryScopeContextReady(true);
+      setFactoryScopeDataLoading(false);
       return;
     }
     const abortController = new AbortController();
     let cancelled = false;
-    setLineContextReady(false);
-    setLineDataLoading(true);
+    setFactoryScopeContextReady(false);
+    setFactoryScopeDataLoading(true);
     loadWorkLogContext({
       orgId: activeOrgId,
       factoryId: selectedFactoryId,
-      lineId: selectedLineId,
+
       workDate: workDateKey,
       coverageStartDate: coverageStartDateKey || workDateKey,
       debug: workerDebugEnabled,
@@ -1555,11 +1504,11 @@ const WorkDetail = ({
         setAssignmentOptions(
           normalizedCtAssignments.filter((plan) => !Boolean(plan?.isCompleted))
         );
-        setLineWorkers(normalizeWorkerOptions(context?.workers));
+        setFactoryScopeWorkers(normalizeWorkerOptions(context?.workers));
         const nextCoverageSuggestion = {
           previousCoverageEndDate: context?.previousCoverageEndDate || null,
           suggestedCoverageStartDate: context?.suggestedCoverageStartDate || null,
-          isFirstLineWorkLog: Boolean(context?.isFirstLineWorkLog),
+          isFirstFactoryWorkLog: Boolean(context?.isFirstFactoryWorkLog),
         };
         setCoverageSuggestion(nextCoverageSuggestion);
         if (!initialLog?.id) {
@@ -1575,19 +1524,14 @@ const WorkDetail = ({
                 )
           );
         }
-        if (context?.line) {
-          setLines((currentLines) =>
-            ensureOptionIncluded(currentLines, context.line, (item) => item?.id || item?.name)
-          );
-        }
-        setLineContextReady(true);
+        setFactoryScopeContextReady(true);
       })
       .catch((error) => {
         if (cancelled || isCancelledRequestError(error)) return;
         console.error('[WorkDetail.loadWorkLogContext] error', {
           orgId: activeOrgId,
           factoryId: selectedFactoryId,
-          lineId: selectedLineId,
+
           workDate: workDateKey,
           coverageStartDate: coverageStartDateKey || workDateKey,
           status: error?.status ?? null,
@@ -1596,11 +1540,11 @@ const WorkDetail = ({
         });
         setAllAssignmentPlans([]);
         setAssignmentOptions([]);
-        setLineWorkers([]);
-        setLineContextReady(true);
+        setFactoryScopeWorkers([]);
+        setFactoryScopeContextReady(true);
       })
       .finally(() => {
-        if (!cancelled) setLineDataLoading(false);
+        if (!cancelled) setFactoryScopeDataLoading(false);
       });
     return () => {
       cancelled = true;
@@ -1618,7 +1562,7 @@ const WorkDetail = ({
     prefetchedWorkers,
     recordKind,
     selectedFactoryId,
-    selectedLineId,
+    selectedFactoryId,
     coverageStartDateKey,
     isCancelledRequestError,
     workDate,
@@ -1629,25 +1573,25 @@ const WorkDetail = ({
 
   useEffect(() => {
     if (!initialLog?.id || initialRowsHydratedRef.current) return;
-    if (!selectedFactoryId || !selectedLineId) return;
+    if (!selectedFactoryId) return;
     if (!hasInitialRecords) {
       initialRowsHydratedRef.current = true;
       return;
     }
     const hydratedRows = buildHydratedRows({
       records: initialLog?.records,
-      workers: lineWorkers,
+      workers: factoryScopeWorkers,
       assignments: ctAssignmentPool,
       languageCode,
     });
     setRows(hydratedRows.length > 0 ? hydratedRows : []);
     initialRowsHydratedRef.current = true;
-  }, [ctAssignmentPool, hasInitialRecords, initialLog, languageCode, lineWorkers, selectedFactoryId, selectedLineId]);
+  }, [ctAssignmentPool, hasInitialRecords, initialLog, languageCode, factoryScopeWorkers, selectedFactoryId, selectedFactoryId]);
 
   useEffect(() => {
     if (initialLog?.id && hasInitialRecords) return;
     if (initialLog?.id && !initialRowsHydratedRef.current) return;
-    if (!selectedFactoryId || !selectedLineId || lineDataLoading) return;
+    if (!selectedFactoryId || factoryScopeDataLoading) return;
     setRows((currentRows) => {
       const safeRows = Array.isArray(currentRows) ? currentRows : [];
       if (!initialLog?.id && !initialRowsHydratedRef.current) {
@@ -1656,7 +1600,7 @@ const WorkDetail = ({
       }
       return safeRows.length > 0 ? safeRows : [createBlankRow()];
     });
-  }, [hasInitialRecords, initialLog?.id, lineDataLoading, lineWorkers.length, selectedFactoryId, selectedLineId]);
+  }, [hasInitialRecords, initialLog?.id, factoryScopeDataLoading, factoryScopeWorkers.length, selectedFactoryId, selectedFactoryId]);
   useEffect(() => {
     if (!Array.isArray(rows) || rows.length === 0) {
       if (editingRowId) setEditingRowId('');
@@ -1795,9 +1739,9 @@ const WorkDetail = ({
     });
     return map;
   }, [rowResolvedMetaById, rows]);
-  const sortedAssignmentOptionsByLine = useMemo(
-    () => sortAssignmentOptionsByLineContext(assignmentOptions, selectedLineId),
-    [assignmentOptions, selectedLineId]
+  const sortedAssignmentOptionsByFactoryScope = useMemo(
+    () => sortAssignmentOptionsByFactoryScopeContext(assignmentOptions, selectedFactoryId),
+    [assignmentOptions, selectedFactoryId]
   );
   const filteredRows = useMemo(() => {
     const keyword = toText(deferredSearchTerm).toLowerCase();
@@ -1814,7 +1758,7 @@ const WorkDetail = ({
       const process = resolvedMeta?.process || resolveProcessForRow(row, assignment) || row?.process || null;
       const searchText = [
         row?.worker?.name,
-        formatAssignmentAutocompleteLabel(assignment, selectedLineId),
+        formatAssignmentAutocompleteLabel(assignment, selectedFactoryId),
         assignment?.label,
         assignment?.styleName,
         assignment?.styleId,
@@ -1834,7 +1778,7 @@ const WorkDetail = ({
         .toLowerCase();
       return searchText.includes(keyword);
     });
-  }, [deferredSearchTerm, editingRowId, resolveAssignmentForRow, resolveProcessForRow, rowResolvedMetaById, rows, selectedLineId]);
+  }, [deferredSearchTerm, editingRowId, resolveAssignmentForRow, resolveProcessForRow, rowResolvedMetaById, rows, selectedFactoryId]);
   const workerGroupMetaByRowId = useMemo(() => {
     let previousWorkerKey = '';
     let groupId = -1;
@@ -2031,22 +1975,22 @@ const WorkDetail = ({
     coverageEndDate: toText(workDateKey),
     entryMode,
     factoryId: selectedFactoryId,
-    lineId: selectedLineId,
+
     note: toText(note),
     records: buildComparableWorkRecords(summary.records),
-  }), [coverageStartDateKey, entryMode, note, selectedFactoryId, selectedLineId, summary.records, workDateKey]);
+  }), [coverageStartDateKey, entryMode, note, selectedFactoryId, selectedFactoryId, summary.records, workDateKey]);
   const currentSnapshotText = useMemo(
     () => toStableSnapshotText(currentComparableSnapshot),
     [currentComparableSnapshot]
   );
   useEffect(() => {
     if (!initialLog?.id || persistedSnapshotText !== null) return;
-    if (!initialRowsHydratedRef.current || lineDataLoading || !lineContextReady) return;
+    if (!initialRowsHydratedRef.current || factoryScopeDataLoading || !factoryScopeContextReady) return;
     // Use the fully hydrated/normalized form as the persisted baseline. Comparing
     // raw API records with hydrated rows can produce false changes when the same
     // assignment or process is represented by different compatible identifiers.
     setPersistedSnapshotText(currentSnapshotText);
-  }, [currentSnapshotText, initialLog?.id, lineContextReady, lineDataLoading, persistedSnapshotText]);
+  }, [currentSnapshotText, initialLog?.id, factoryScopeContextReady, factoryScopeDataLoading, persistedSnapshotText]);
   const isDirty = useMemo(() => {
     if (!initialLog?.id) return true;
     if (persistedSnapshotText === null) return false;
@@ -2130,24 +2074,24 @@ const WorkDetail = ({
             })),
             { id: '__add_outsource__', name: LABELS.addOutsourcePartnerOption, isOutsourceAction: true },
           ]
-        : lineWorkers.filter((worker) => !worker?.isOutsourced),
+        : factoryScopeWorkers.filter((worker) => !worker?.isOutsourced),
       row?.worker,
       (item) => item?.id || item?.name
     ),
-    [LABELS.addOutsourcePartnerOption, isOutsourcingMode, languageCode, lineWorkers, outsourcingPartners]
+    [LABELS.addOutsourcePartnerOption, isOutsourcingMode, languageCode, factoryScopeWorkers, outsourcingPartners]
   );
   const resolveStyleOptions = useCallback(
     (row) => {
       const currentAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
       return ensureOptionIncluded(
-        sortedAssignmentOptionsByLine,
+        sortedAssignmentOptionsByFactoryScope,
         currentAssignment,
         (item) => item?.dbId || item?.id
       );
     },
     [
       resolveAssignmentForRow,
-      sortedAssignmentOptionsByLine,
+      sortedAssignmentOptionsByFactoryScope,
     ]
   );
   const resolveSelectedStyleOption = useCallback(
@@ -2183,17 +2127,17 @@ const WorkDetail = ({
   const isStyleExceptionForWorker = useCallback(
     (styleOption, workerOption) => {
       if (!styleOption) return false;
-      if (isOtherLineAssignmentOption(styleOption, selectedLineId)) return true;
+      if (isOtherFactoryScopeAssignmentOption(styleOption, selectedFactoryId)) return true;
 
-      const workerLineId = toPositiveIdOrNull(
-        workerOption?.currentLineId ?? workerOption?.lineId
+      const workerFactoryId = toPositiveIdOrNull(
+        workerOption?.currentFactoryId ?? workerOption?.factoryId
       );
-      const styleLineId = toPositiveIdOrNull(styleOption?.lineId);
+      const styleFactoryId = toPositiveIdOrNull(styleOption?.factoryId);
       return Boolean(
-        workerLineId !== null && styleLineId !== null && workerLineId !== styleLineId
+        workerFactoryId !== null && styleFactoryId !== null && workerFactoryId !== styleFactoryId
       );
     },
-    [selectedLineId]
+    [selectedFactoryId]
   );
   const buildStyleOrderMetaLabel = useCallback((styleOption) => {
     if (!styleOption) return '';
@@ -2210,8 +2154,8 @@ const WorkDetail = ({
     (styleOption, workerOption) => {
       if (!styleOption) return '';
       if (!isStyleExceptionForWorker(styleOption, workerOption)) return '';
-      const lineName = toText(styleOption?.lineName);
-      return [LABELS.assignmentException, lineName || LABELS.assignmentOtherLine]
+      const factoryName = toText(styleOption?.factoryName);
+      return [LABELS.assignmentException, factoryName || LABELS.assignmentOtherFactoryScope]
         .filter(Boolean)
         .join(' · ');
     },
@@ -2223,10 +2167,10 @@ const WorkDetail = ({
   }, []);
   const renderStyleOption = useCallback(
     (props, option) => {
-      const isException = isOtherLineAssignmentOption(option, selectedLineId);
+      const isException = isOtherFactoryScopeAssignmentOption(option, selectedFactoryId);
       const orderMetaText = buildStyleOrderMetaLabel(option);
-      const lineName = toText(option?.lineName);
-      const secondaryText = orderMetaText || lineName;
+      const factoryName = toText(option?.factoryName);
+      const secondaryText = orderMetaText || factoryName;
       const description = formatAssignmentLabel(option);
       return (
         <Box
@@ -2286,7 +2230,7 @@ const WorkDetail = ({
         </Box>
       );
     },
-    [buildStyleOrderMetaLabel, selectedLineId]
+    [buildStyleOrderMetaLabel, selectedFactoryId]
   );
   const resolveProcessOptions = useCallback(
     (row) => {
@@ -2296,7 +2240,7 @@ const WorkDetail = ({
       const currentAssignment =
         resolvedMeta?.assignment || resolveAssignmentForRow(row) || row?.assignment || null;
       const assignmentPool = ensureOptionIncluded(
-        sortedAssignmentOptionsByLine,
+        sortedAssignmentOptionsByFactoryScope,
         currentAssignment,
         (item) => item?.dbId || item?.id
       );
@@ -2380,7 +2324,7 @@ const WorkDetail = ({
       rowSignatureCountByKey,
       resolveAssignmentForRow,
       resolveProcessForRow,
-      sortedAssignmentOptionsByLine,
+      sortedAssignmentOptionsByFactoryScope,
     ]
   );
   const resolveSelectedProcessOption = useCallback(
@@ -2453,11 +2397,11 @@ const WorkDetail = ({
 
   const handleFactoryChange = useCallback((nextFactory) => {
     setSelectedFactory(nextFactory || null);
-    setSelectedLine(null);
+    setSelectedFactoryScope(null);
     setCoverageSuggestion({
       previousCoverageEndDate: null,
       suggestedCoverageStartDate: null,
-      isFirstLineWorkLog: false,
+      isFirstFactoryWorkLog: false,
     });
     if (!initialLog?.id) {
       setCoverageStartDate(
@@ -2473,12 +2417,12 @@ const WorkDetail = ({
     setSearchTerm('');
     initialRowsHydratedRef.current = Boolean(initialLog?.id);
   }, [initialLog?.id, workDate, workLogOperationStartDateKey]);
-  const handleLineChange = useCallback((nextLine) => {
-    setSelectedLine(nextLine || null);
+  const handleFactoryScopeChange = useCallback((nextFactoryScope) => {
+    setSelectedFactoryScope(nextFactoryScope || null);
     setCoverageSuggestion({
       previousCoverageEndDate: null,
       suggestedCoverageStartDate: null,
-      isFirstLineWorkLog: false,
+      isFirstFactoryWorkLog: false,
     });
     if (!initialLog?.id) {
       setCoverageStartDate(
@@ -2503,7 +2447,7 @@ const WorkDetail = ({
     setCoverageSuggestion({
       previousCoverageEndDate: null,
       suggestedCoverageStartDate: null,
-      isFirstLineWorkLog: false,
+      isFirstFactoryWorkLog: false,
     });
     setCoverageStartDate((current) => {
       if (!current?.isValid?.()) return resolvedNextDate;
@@ -2628,10 +2572,10 @@ const WorkDetail = ({
     setRows((currentRows) => {
       const nextRows = currentRows.filter((row) => row.id !== rowId);
       if (nextRows.length > 0) return nextRows;
-      return selectedLineId ? [createBlankRow()] : [];
+      return selectedFactoryId ? [createBlankRow()] : [];
     });
     setEditingField(null);
-  }, [lineWorkers.length, selectedLineId]);
+  }, [factoryScopeWorkers.length, selectedFactoryId]);
 
   const handleSave = useCallback(() => {
     setFormError('');
@@ -2664,25 +2608,25 @@ const WorkDetail = ({
       setFormError(messages.factoryRequired || '공장을 선택해 주세요.');
       return;
     }
-    if (!selectedLineId) {
-      setFormError(messages.lineRequired || '공장의 작업 정보를 확인해 주세요.');
+    if (!selectedFactoryId) {
+      setFormError(messages.factoryScopeRequired || '공장의 작업 정보를 확인해 주세요.');
       return;
     }
     if (summary.records.length === 0) {
       setFormError(messages.noRowsToSave || '저장할 작업 행이 없습니다.');
       return;
     }
-    const availableWorkerIds = new Set(lineWorkers.map((worker) => toPositiveIdOrNull(worker?.id)).filter((workerId) => workerId !== null));
-    const shouldValidateWorkerLineMembership = availableWorkerIds.size > 0;
+    const availableWorkerIds = new Set(factoryScopeWorkers.map((worker) => toPositiveIdOrNull(worker?.id)).filter((workerId) => workerId !== null));
+    const shouldValidateWorkerFactoryScopeMembership = availableWorkerIds.size > 0;
     const invalidWorkerRecord = summary.records.find((record) => {
       const workerId = toPositiveIdOrNull(record?.workerId);
       if (record?.isOutsourced) return !record?.outsourceVendorName;
       if (!workerId) return true;
-      if (!shouldValidateWorkerLineMembership) return false;
+      if (!shouldValidateWorkerFactoryScopeMembership) return false;
       return !availableWorkerIds.has(workerId);
     });
     if (invalidWorkerRecord) {
-      setFormError(messages.invalidWorkerLine || '선택한 공장에 속하지 않은 작업자가 포함되어 있습니다.');
+      setFormError(messages.invalidWorkerFactoryScope || '선택한 공장에 속하지 않은 작업자가 포함되어 있습니다.');
       return;
     }
     if (!isOutsourcingMode && !hasFactoryWage && summary.records.some((record) => !record?.isOutsourced)) {
@@ -2707,8 +2651,8 @@ const WorkDetail = ({
       entryMode,
       factoryId: selectedFactoryId,
       factoryName: toText(currentFactory?.name),
-      lineId: selectedLineId,
-      lineName: toText(selectedLine?.name),
+
+
       factoryWagePerSecond: selectedFactoryWagePerSecond,
       ctBasis: 'CT',
       workerCount: summary.workerCount,
@@ -2721,7 +2665,7 @@ const WorkDetail = ({
         employmentAutoNote: savedEmploymentAutoNote,
       }),
     });
-  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, duplicateGroups, entryMode, hasFactoryWage, initialLog?.id, isDirty, isOutsourcingMode, languageCode, lineWorkers, missingAssignmentPlanLinkMessage, note, onSave, recordKind, savedEmploymentAutoNote, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey, workLogOperationStartDateKey, workLogOperationStartErrorMessage]);
+  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, duplicateGroups, entryMode, hasFactoryWage, initialLog?.id, isDirty, isOutsourcingMode, languageCode, factoryScopeWorkers, missingAssignmentPlanLinkMessage, note, onSave, recordKind, savedEmploymentAutoNote, selectedFactoryId, selectedFactoryWagePerSecond, currentFactory?.name, selectedFactoryId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey, workLogOperationStartDateKey, workLogOperationStartErrorMessage]);
   const rowOrderIndexById = useMemo(() => {
     const map = new Map();
     rows.forEach((row, index) => {
@@ -3086,7 +3030,7 @@ const WorkDetail = ({
         <LastUpdaterLabel fallbackName={initialLog?.updatedBy} />
         <SaveButton
           onClick={handleSave}
-          disabled={loading || baseLoading || lineDataLoading || isAggregateLegacyLog || (Boolean(initialLog?.id) && !isDirty)}
+          disabled={loading || baseLoading || factoryScopeDataLoading || isAggregateLegacyLog || (Boolean(initialLog?.id) && !isDirty)}
           loading={saving}
         />
       </Stack>
@@ -3143,15 +3087,15 @@ const WorkDetail = ({
               multiline
               minRows={2}
             />
-            {!initialLog?.id && selectedLineId && !lineDataLoading && coverageSuggestion.previousCoverageEndDate && coverageSuggestion.suggestedCoverageStartDate ? (
+            {!initialLog?.id && selectedFactoryId && !factoryScopeDataLoading && coverageSuggestion.previousCoverageEndDate && coverageSuggestion.suggestedCoverageStartDate ? (
               <Alert severity="info">
                 {`${LABELS.coverageSuggestionPrefix} ${coverageSuggestion.previousCoverageEndDate}${messages.previousEndConnector}${messages.suggestedFromConnector}${coverageSuggestion.suggestedCoverageStartDate} ${LABELS.coverageSuggestionSuffix}`}
               </Alert>
             ) : null}
-            {!initialLog?.id && selectedLineId && !lineDataLoading && coverageSuggestion.isFirstLineWorkLog ? (
-              <Alert severity="info">{LABELS.firstLineCoverage}</Alert>
+            {!initialLog?.id && selectedFactoryId && !factoryScopeDataLoading && coverageSuggestion.isFirstFactoryWorkLog ? (
+              <Alert severity="info">{LABELS.firstFactoryScopeCoverage}</Alert>
             ) : null}
-            {!initialLog?.id && selectedLineId && !lineDataLoading && !coverageSuggestion.previousCoverageEndDate && !coverageSuggestion.isFirstLineWorkLog ? (
+            {!initialLog?.id && selectedFactoryId && !factoryScopeDataLoading && !coverageSuggestion.previousCoverageEndDate && !coverageSuggestion.isFirstFactoryWorkLog ? (
               <Alert severity="info">{LABELS.zeroCoverageHint}</Alert>
             ) : null}
             {isAggregateLegacyLog ? <Alert severity="warning">{messages.legacyReadOnly}</Alert> : null}
@@ -3186,10 +3130,10 @@ const WorkDetail = ({
           <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             {!selectedFactoryId ? (
               <Alert severity="info">{messages.selectFactory}</Alert>
-            ) : !selectedLineId ? (
-              <Alert severity="info">{messages.selectLine}</Alert>
-            ) : lineDataLoading && rows.length === 0 ? (
-              <Alert severity="info">{messages.loadingLine}</Alert>
+            ) : !selectedFactoryId ? (
+              <Alert severity="info">{messages.selectFactoryScope}</Alert>
+            ) : factoryScopeDataLoading && rows.length === 0 ? (
+              <Alert severity="info">{messages.loadingFactoryScope}</Alert>
             ) : rows.length === 0 ? (
               <Stack spacing={1.5} alignItems="flex-start">
                 {ctWarningMessage ? <Alert severity="warning">{ctWarningMessage}</Alert> : null}
@@ -3199,7 +3143,7 @@ const WorkDetail = ({
               <Alert severity="info">{messages.noSearchResults}</Alert>
             ) : (
               <Stack spacing={1.25} sx={{ flex: 1, minHeight: 0 }}>
-              {lineWorkers.length === 0 ? (
+              {factoryScopeWorkers.length === 0 ? (
                 <Alert severity="warning">
                   {isOutsourcingMode ? messages.noOutsourcingPartners : messages.noWorkers}
                 </Alert>

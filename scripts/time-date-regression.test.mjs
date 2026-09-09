@@ -195,7 +195,7 @@ test('production allowance is calculated from the board and rows open read-only 
   assert.match(payrollBoardSource, /monthRows\.map/);
   assert.match(payrollBoardSource, /filteredMonthRows\.flatMap/);
   assert.match(payrollBoardSource, /group\.factoryId/);
-  assert.match(payrollBoardSource, /group\.lineId/);
+  assert.match(payrollBoardSource, /group\.factoryId/);
   assert.match(payrollBoardSource, /snapshotLineTotal \/ snapshotEmployeeCount/);
   assert.match(payrollBoardSource, /snapshotAppliedRate/);
   assert.match(payrollBoardSource, /forceRefresh: true/);

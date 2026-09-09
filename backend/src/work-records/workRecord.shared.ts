@@ -44,7 +44,6 @@ export const WORK_RECORD_WITH_REFS_INCLUDE = {
     assignmentPlan: {
       select: {
         id: true,
-        lineId: true,
         workOrderId: true,
         // orderNo/customer/label were dropped from AssignmentPlan (FK+join
         // redesign Phase E) - workOrder.orderNumber/buyerOrg.name/style.name
@@ -85,7 +84,6 @@ export const OUTSOURCED_WORK_RECORD_WITH_REFS_INCLUDE = {
     assignmentPlan: {
       select: {
         id: true,
-        lineId: true,
         workOrderId: true,
         workOrder: { select: { orderNumber: true } },
         buyerOrg: { select: { name: true } },

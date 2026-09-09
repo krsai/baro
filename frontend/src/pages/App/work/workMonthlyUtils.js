@@ -246,8 +246,8 @@ export const aggregateMonthlyWorkerRows = ({
         workerName: workerName || '',
         workMonth: monthRange.monthKey,
         factoryName: factoryName || '',
-        lineNameCounts: new Map(),
-        lineNameFallback: '',
+        factoryNameCounts: new Map(),
+        factoryNameFallback: '',
         recordCount: 0,
         totalCtSeconds: 0,
         workDates: new Set(),
@@ -270,7 +270,7 @@ export const aggregateMonthlyWorkerRows = ({
       workerName: normalizeLabel(employee?.name),
     });
     if (!row) return;
-    row.lineNameFallback = normalizeLabel(employee?.lineName);
+    row.factoryNameFallback = normalizeLabel(employee?.factoryName);
   });
 
   (Array.isArray(logs) ? logs : []).forEach((log) => {
@@ -278,7 +278,6 @@ export const aggregateMonthlyWorkerRows = ({
     const logCoverageStartDate = normalizeDateKey(log?.coverageStartDate) || workDate;
     const logCoverageEndDate = normalizeDateKey(log?.coverageEndDate) || workDate;
     const logFactoryName = normalizeLabel(log?.factoryName);
-    const logLineName = normalizeLabel(log?.lineName);
 
     (Array.isArray(log?.records) ? log.records : []).forEach((record) => {
       const workerId = normalizePositiveId(record?.workerId);
@@ -294,8 +293,8 @@ export const aggregateMonthlyWorkerRows = ({
         row.factoryName = logFactoryName;
       }
 
-      if (logLineName) {
-        incrementLabelCount(row.lineNameCounts, logLineName);
+      if (logFactoryName) {
+        incrementLabelCount(row.factoryNameCounts, logFactoryName);
       }
 
       const ctSeconds = Math.max(0, Math.round(Number(record?.ctSeconds) || 0));
@@ -319,10 +318,10 @@ export const aggregateMonthlyWorkerRows = ({
 
   return Array.from(rowByKey.values()).map((row) => {
     const employee = row.workerId ? eligibleEmployeeById.get(String(row.workerId)) || null : null;
-    const lineName =
-      resolveDominantLabel(row.lineNameCounts, '') ||
-      normalizeLabel(employee?.lineName) ||
-      row.lineNameFallback ||
+    const factoryName =
+      resolveDominantLabel(row.factoryNameCounts, '') ||
+      normalizeLabel(employee?.factoryName) ||
+      row.factoryNameFallback ||
       '-';
     const workDayCount = row.workDates.size;
     const joinedDateKey = resolveEmploymentDateKey(employee?.joinedAt);
@@ -349,7 +348,7 @@ export const aggregateMonthlyWorkerRows = ({
       workerName: row.workerName || '-',
       workMonth: row.workMonth,
       factoryName: row.factoryName || factoryName || '-',
-      lineName,
+
       workDayCount,
       recordCount: row.recordCount,
       totalCtSeconds: row.totalCtSeconds,
@@ -366,85 +365,6 @@ export const aggregateMonthlyWorkerRows = ({
   });
 };
 
-export const aggregateMonthlyLineRows = (workerRows = []) => {
-  const rowByKey = new Map();
-
-  (Array.isArray(workerRows) ? workerRows : []).forEach((workerRow) => {
-    const workMonth = normalizeMonthKey(workerRow?.workMonth);
-    const factoryName = normalizeLabel(workerRow?.factoryName) || '-';
-    const lineName = normalizeLabel(workerRow?.lineName);
-    if (!workMonth || !lineName || lineName === '-') return;
-
-    const key = [workMonth, factoryName, lineName].join('::');
-    if (!rowByKey.has(key)) {
-      rowByKey.set(key, {
-        key: `line:${key}`,
-        workMonth,
-        factoryName,
-        lineName,
-        workerCount: 0,
-        recordCount: 0,
-        totalCtSeconds: 0,
-        expectedCtDayCount: 0,
-        attendanceWorkedDays: null,
-        attendanceTargetDays: 0,
-        attendanceWorkedDaySum: 0,
-        hasAttendanceWorkedDays: false,
-      });
-    }
-
-    const row = rowByKey.get(key);
-    row.workerCount += 1;
-    row.recordCount += Math.max(0, Math.trunc(Number(workerRow?.recordCount) || 0));
-    row.totalCtSeconds += Math.max(0, Math.round(Number(workerRow?.totalCtSeconds) || 0));
-
-    const expectedCtDayCount = Number(workerRow?.expectedCtDayCount);
-    if (Number.isFinite(expectedCtDayCount) && expectedCtDayCount > 0) {
-      row.expectedCtDayCount += expectedCtDayCount;
-    }
-
-    const attendanceTargetDays = Number(workerRow?.attendanceTargetDays);
-    if (Number.isFinite(attendanceTargetDays) && attendanceTargetDays > 0) {
-      row.attendanceTargetDays += attendanceTargetDays;
-    }
-
-    const attendanceWorkedDays = Number(workerRow?.attendanceWorkedDays);
-    if (Number.isFinite(attendanceWorkedDays) && attendanceWorkedDays >= 0) {
-      row.hasAttendanceWorkedDays = true;
-      row.attendanceWorkedDaySum += attendanceWorkedDays;
-    }
-  });
-
-  return Array.from(rowByKey.values()).map((row) => {
-    const averageCtPerDaySeconds =
-      row.expectedCtDayCount > 0
-        ? Math.round(row.totalCtSeconds / row.expectedCtDayCount)
-        : null;
-    const attendanceWorkedDays =
-      row.hasAttendanceWorkedDays && row.workerCount > 0
-        ? roundDayCount(row.attendanceWorkedDaySum / row.workerCount)
-        : null;
-    const attendanceTargetDays =
-      row.workerCount > 0 ? roundDayCount(row.attendanceTargetDays / row.workerCount) : 0;
-
-    return {
-      key: row.key,
-      workMonth: row.workMonth,
-      factoryName: row.factoryName,
-      lineName: row.lineName,
-      workerCount: row.workerCount,
-      recordCount: row.recordCount,
-      totalCtSeconds: row.totalCtSeconds,
-      averageCtPerDaySeconds,
-      attendanceWorkedDays,
-      attendanceTargetDays,
-      attendanceDisplay:
-        attendanceWorkedDays === null
-          ? `-/${attendanceTargetDays}`
-          : `${attendanceWorkedDays}/${attendanceTargetDays}`,
-    };
-  });
-};
 
 export const buildMonthlyWorkerDetail = ({
   workerId,
@@ -481,7 +401,7 @@ export const buildMonthlyWorkerDetail = ({
 
   (Array.isArray(logs) ? logs : []).forEach((log) => {
     const workDate = normalizeDateKey(log?.workDate);
-    const logLineName = normalizeLabel(log?.lineName);
+    const logFactoryName = normalizeLabel(log?.factoryName);
     if (!workDate) return;
 
     (Array.isArray(log?.records) ? log.records : []).forEach((record) => {
@@ -490,15 +410,15 @@ export const buildMonthlyWorkerDetail = ({
       if (!bucketByDate.has(workDate)) {
         bucketByDate.set(workDate, {
           workDate,
-          lineNameCounts: new Map(),
+          factoryNameCounts: new Map(),
           recordCount: 0,
           totalCtSeconds: 0,
         });
       }
 
       const bucket = bucketByDate.get(workDate);
-      if (logLineName) {
-        incrementLabelCount(bucket.lineNameCounts, logLineName);
+      if (logFactoryName) {
+        incrementLabelCount(bucket.factoryNameCounts, logFactoryName);
       }
       const ctSeconds = Math.max(0, Math.round(Number(record?.ctSeconds) || 0));
       const quantity = Math.max(0, Math.round(Number(record?.quantity) || 0));
@@ -529,9 +449,9 @@ export const buildMonthlyWorkerDetail = ({
           : null;
       return {
         workDate: dateKey,
-        lineName:
-          resolveDominantLabel(bucket?.lineNameCounts || new Map(), '') ||
-          normalizeLabel(employee?.lineName) ||
+        factoryName:
+          resolveDominantLabel(bucket?.factoryNameCounts || new Map(), '') ||
+          normalizeLabel(employee?.factoryName) ||
           '-',
         recordCount: bucket?.recordCount || 0,
         averageCtPerDaySeconds:

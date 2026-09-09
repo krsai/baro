@@ -65,7 +65,6 @@ const toEmployeeResponse = (employee: any) => ({
   orgId: employee?.orgId ?? null,
   orgMembershipId: employee?.id ?? null,
   factoryId: employee?.factoryId ?? null,
-  lineId: employee?.lineId ?? null,
   roleId: employee?.roleId ?? null,
   gradeId: employee?.gradeId ?? null,
   gradeCode: String(employee?.grade?.code ?? "").trim(),
@@ -90,7 +89,6 @@ const toEmployeeResponse = (employee: any) => ({
   phone: employee?.phone ?? null,
   bankName: employee?.bankName ?? null,
   bankAccountNumber: employee?.bankAccountNumber ?? null,
-  lineName: employee?.line?.name ?? null,
   position: employee?.position ?? null,
   joinedAt: employee?.joinedAt ?? null,
   leftAt: employee?.leftAt ?? null,
@@ -472,7 +470,6 @@ export const createEmployeeRouter = ({
       include: {
         role: true,
         grade: true,
-        line: true,
       },
       orderBy: { id: "asc" },
     });
@@ -728,19 +725,6 @@ export const createEmployeeRouter = ({
           data: transactionData,
         });
 
-        if (leftAtParseResult.hasInput && leftAtParseResult.value !== null) {
-          await tx.lineAssignment.updateMany({
-            where: {
-              employeeId: upsertedEmployee.id,
-              OR: [
-                { endAt: null },
-                { endAt: { gt: leftAtParseResult.value } },
-              ],
-            },
-            data: { endAt: leftAtParseResult.value },
-          });
-        }
-
         await tx.factory.updateMany({
           where: {
             orgId: existingEmployee.orgId,
@@ -761,30 +745,7 @@ export const createEmployeeRouter = ({
       throw error;
     }
 
-    const activeAssignment = await prisma.lineAssignment.findFirst({
-      where: {
-        employeeId: employee.id,
-        endAt: null,
-        line: { orgId: existingEmployee.orgId },
-      },
-      include: {
-        line: {
-          select: { id: true, name: true },
-        },
-      },
-      orderBy: [{ startAt: "desc" }, { id: "desc" }],
-    });
-
-    const syncedLineId = activeAssignment?.line?.id ?? null;
-    const refreshedEmployee = await prisma.employee.update({
-      where: { id: employee.id },
-      data: { lineId: syncedLineId },
-      include: {
-        role: true,
-        grade: true,
-        line: true,
-      },
-    });
+    const refreshedEmployee = await prisma.employee.findUniqueOrThrow({ where: { id: employee.id }, include: { role: true, grade: true } });
 
     return res.json(toEmployeeResponse(refreshedEmployee));
   });

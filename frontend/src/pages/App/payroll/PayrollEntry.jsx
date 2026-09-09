@@ -229,7 +229,6 @@ const PayrollEntry = () => {
   const pageTitle = languageCode === "ko" ? "급여 계산 상세" : languageCode === "vi" ? "Chi tiết tính lương" : "Payroll Details";
   const month = String(payrollId || "").trim();
   const factoryId = Number(searchParams.get("factoryId")) || null;
-  const lineId = Number(searchParams.get("lineId")) || null;
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
   const [togglingLock, setTogglingLock] = useState(false);
@@ -309,7 +308,7 @@ const PayrollEntry = () => {
     ];
     const mapped = rows
       .map((employee) => {
-        const processes = (Array.isArray(employee?.processes) ? employee.processes : []).filter((process) => (!factoryId || Number(process.factoryId) === factoryId) && (!lineId || Number(process.lineId) === lineId));
+        const processes = (Array.isArray(employee?.processes) ? employee.processes : []).filter((process) => (!factoryId || Number(process.factoryId) === factoryId));
         const productionAllowance = processes.reduce((sum, process) => sum + Number(process.totalEarnings || 0), 0);
         const directoryMatch = directoryById.get(Number(employee?.workerId));
         return {
@@ -323,7 +322,7 @@ const PayrollEntry = () => {
           productionEarnings: productionAllowance,
         };
       })
-      .filter((employee) => (!factoryId || Number(employee.factoryId) === factoryId || employee.processes.length > 0) && (!lineId || Number(employee.lineId) === lineId || employee.processes.length > 0));
+      .filter((employee) => (!factoryId || Number(employee.factoryId) === factoryId || employee.processes.length > 0));
     return [...mapped].sort((a, b) => {
       const roleOrderDiff = getOrgRoleSortOrder(a.orgRole) - getOrgRoleSortOrder(b.orgRole);
       if (roleOrderDiff !== 0) return roleOrderDiff;
@@ -343,7 +342,7 @@ const PayrollEntry = () => {
       const bName = String(b?.workerName || "");
       return aName.localeCompare(bName, "ko");
     });
-  }, [data?.employees, data?.snapshotExists, employeeDirectory, factoryId, lineId, workerRoleOrderIndex]);
+  }, [data?.employees, data?.snapshotExists, employeeDirectory, factoryId, workerRoleOrderIndex]);
   const total = useMemo(() => employees.reduce((sum, employee) => sum + Number(employee?.grossSalary || 0), 0), [employees]);
   const payslipText =
     languageCode === "ko"

@@ -438,7 +438,6 @@ DECLARE
     'OnboardingRequest',
     'OrganizationSubscription',
     'Factory',
-    'Line',
     'Employee',
     'AttendanceEntry',
     'OrganizationHoliday',
@@ -516,7 +515,6 @@ DECLARE
     'OnboardingRequest',
     'OrganizationSubscription',
     'Factory',
-    'Line',
     'Employee',
     'AttendanceEntry',
     'OrganizationHoliday',
@@ -1190,76 +1188,6 @@ ALTER TABLE "Style"
   DROP COLUMN IF EXISTS "customerNameKo",
   DROP COLUMN IF EXISTS "customerNameVi";
 
--- Step 0d-2: employee current line is a FK to Line, not denormalized text (20260701)
-ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "lineId" INTEGER;
-
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'Employee'
-      AND column_name = 'lineName'
-  ) THEN
-    WITH employee_line_source AS (
-      SELECT
-        e.id AS "employeeId",
-        e."orgId",
-        e."factoryId",
-        btrim(e."lineName") AS "lineName"
-      FROM "Employee" e
-      WHERE e."lineId" IS NULL
-        AND e."lineName" IS NOT NULL
-        AND btrim(e."lineName") <> ''
-    ),
-    line_matches AS (
-      SELECT
-        source."employeeId",
-        l.id AS "lineId",
-        count(*) OVER (PARTITION BY source."employeeId") AS "matchCount"
-      FROM employee_line_source source
-      JOIN "Line" l
-        ON l."orgId" = source."orgId"
-       AND lower(btrim(l."name")) = lower(source."lineName")
-       AND (
-         source."factoryId" IS NULL
-         OR l."factoryId" = source."factoryId"
-       )
-    ),
-    unique_line_matches AS (
-      SELECT "employeeId", "lineId"
-      FROM line_matches
-      WHERE "matchCount" = 1
-    )
-    UPDATE "Employee" e
-    SET "lineId" = unique_line_matches."lineId"
-    FROM unique_line_matches
-    WHERE e.id = unique_line_matches."employeeId"
-      AND e."lineId" IS NULL;
-
-    IF EXISTS (
-      SELECT 1
-      FROM "Employee"
-      WHERE "lineName" IS NOT NULL
-        AND btrim("lineName") <> ''
-        AND "lineId" IS NULL
-    ) THEN
-      RAISE EXCEPTION 'Employee.lineName could not be mapped to exactly one Line.id; resolve Employee.lineId before dropping lineName.';
-    END IF;
-
-    ALTER TABLE "Employee" DROP COLUMN "lineName";
-  END IF;
-END $$;
-
-CREATE INDEX IF NOT EXISTS "Employee_lineId_idx" ON "Employee"("lineId");
-DO $$ BEGIN
-  ALTER TABLE "Employee"
-    ADD CONSTRAINT "Employee_lineId_fkey"
-    FOREIGN KEY ("lineId") REFERENCES "Line"("id")
-    ON DELETE SET NULL ON UPDATE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
 -- Step 0d-3: remaining FK-able display columns cleanup (20260701)
 DO $$
 BEGIN
@@ -1514,12 +1442,6 @@ DO $$ BEGIN
     ON DELETE SET NULL ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-DO $$ BEGIN
-  ALTER TABLE "WorkRecord"
-    ADD CONSTRAINT "WorkRecord_lineId_fkey"
-    FOREIGN KEY ("lineId") REFERENCES "Line"("id")
-    ON DELETE SET NULL ON UPDATE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Step 0e: customer pricing prototype storage (20260613)
 ALTER TABLE "OrgRelationship" ADD COLUMN IF NOT EXISTS "pricingDefaultTradeType" TEXT;
@@ -2653,7 +2575,6 @@ WHERE "payload" IS NOT NULL
   AND ("payload"::jsonb ? 'totalSeconds' OR "payload"::jsonb ? 'stSeconds' OR "payload"::jsonb ? 'contractedSeconds');
 -- Step 5: WorkRecord effective coverage fields
 ALTER TABLE "WorkRecord"
-  ADD COLUMN IF NOT EXISTS "lineId" INTEGER,
   ADD COLUMN IF NOT EXISTS "effectiveCoverageStartDate" TEXT,
   ADD COLUMN IF NOT EXISTS "effectiveCoverageEndDate" TEXT;
 
@@ -2754,8 +2675,6 @@ FROM adjustment_notes AS notes
 WHERE wl."id" = notes."workLogId"
   AND POSITION('[재직기간 자동 조정]' IN COALESCE(wl."note", '')) = 0;
 
-CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_lineId_idx"
-  ON "WorkRecord"("orgId", "lineId");
 
 -- Step 5a-2: WorkRecord exact style process FK (20260629)
 -- styleProcessId points to StyleProcess.id and is the canonical ST matching key.
@@ -4600,7 +4519,6 @@ CREATE TABLE IF NOT EXISTS "OutsourcedWorkRecord" (
   "outsourcingPartnerId" INTEGER NOT NULL,
   "outsourceVendorName"  TEXT NOT NULL,
   "outsourceUnitPrice"   DECIMAL(18, 4) NOT NULL,
-  "lineId"               INTEGER,
   "styleId"              INTEGER NOT NULL,
   "styleProcessId"       INTEGER NOT NULL,
   "assignmentPlanId"     INTEGER NOT NULL,
@@ -4616,7 +4534,6 @@ CREATE TABLE IF NOT EXISTS "OutsourcedWorkRecord" (
 CREATE INDEX IF NOT EXISTS "OutsourcedWorkRecord_orgId_workLogId_idx" ON "OutsourcedWorkRecord"("orgId", "workLogId");
 CREATE INDEX IF NOT EXISTS "OutsourcedWorkRecord_orgId_outsourcingPartnerId_idx" ON "OutsourcedWorkRecord"("orgId", "outsourcingPartnerId");
 CREATE INDEX IF NOT EXISTS "OutsourcedWorkRecord_orgId_styleId_idx" ON "OutsourcedWorkRecord"("orgId", "styleId");
-CREATE INDEX IF NOT EXISTS "OutsourcedWorkRecord_orgId_lineId_idx" ON "OutsourcedWorkRecord"("orgId", "lineId");
 CREATE INDEX IF NOT EXISTS "OutsourcedWorkRecord_styleProcessId_idx" ON "OutsourcedWorkRecord"("styleProcessId");
 CREATE INDEX IF NOT EXISTS "OutsourcedWorkRecord_assignmentPlanId_idx" ON "OutsourcedWorkRecord"("assignmentPlanId");
 CREATE INDEX IF NOT EXISTS "OutsourcedWorkRecord_workLogId_idx" ON "OutsourcedWorkRecord"("workLogId");
@@ -4650,10 +4567,6 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_styleProcess_style_org_fkey') THEN
     ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_styleProcess_style_org_fkey"
       FOREIGN KEY ("styleProcessId", "styleId", "orgId") REFERENCES "StyleProcess"("id", "styleId", "orgId");
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_lineId_fkey') THEN
-    ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_lineId_fkey"
-      FOREIGN KEY ("lineId") REFERENCES "Line"("id") ON DELETE SET NULL;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OutsourcedWorkRecord_createdByEmployeeId_fkey') THEN
     ALTER TABLE "OutsourcedWorkRecord" ADD CONSTRAINT "OutsourcedWorkRecord_createdByEmployeeId_fkey"
@@ -5035,40 +4948,9 @@ ALTER TABLE "SalaryItem"
   ADD COLUMN IF NOT EXISTS "nameVi" TEXT;
 UPDATE "SalaryItem" SET "nameKo"=COALESCE("nameKo","name"), "nameEn"=COALESCE("nameEn","name"), "nameVi"=COALESCE("nameVi","name");
 ALTER TABLE "SalaryItem" ALTER COLUMN "nameKo" SET NOT NULL, ALTER COLUMN "nameEn" SET NOT NULL, ALTER COLUMN "nameVi" SET NOT NULL;
--- 2026-09-03: begin Line -> Factory assignment-scope migration.
--- Keep lineId during the compatibility window; all rows must resolve exactly
--- through their existing Line FK before factory-based runtime writes are enabled.
-ALTER TABLE "AssignmentPlan"
-  ADD COLUMN IF NOT EXISTS "factoryId" INTEGER;
-
-UPDATE "AssignmentPlan" AS plan
-SET "factoryId" = line."factoryId"
-FROM "Line" AS line
-WHERE plan."lineId" = line."id"
-  AND plan."factoryId" IS NULL;
-
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT "factoryId"
-    FROM "Line"
-    GROUP BY "factoryId"
-    HAVING COUNT(*) <> 1
-  ) THEN
-    RAISE EXCEPTION 'Line removal requires exactly one legacy Line per factory; resolve factory line counts before deployment.';
-  END IF;
-  IF EXISTS (
-    SELECT 1
-    FROM "AssignmentPlan" AS plan
-    LEFT JOIN "Line" AS line ON line."id" = plan."lineId"
-    WHERE plan."factoryId" IS NULL
-       OR line."id" IS NULL
-       OR line."orgId" <> plan."orgId"
-       OR line."factoryId" <> plan."factoryId"
-  ) THEN
-    RAISE EXCEPTION 'AssignmentPlan factory backfill is ambiguous or inconsistent; resolve invalid line/org/factory rows before deployment.';
-  END IF;
-END $$;
+-- Factory ownership is backfilled and validated by scripts/remove-line-domain.sql
+-- before prisma db push; this bootstrap never recreates the retired Line domain.
+ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "factoryId" INTEGER;
 
 CREATE INDEX IF NOT EXISTS "AssignmentPlan_orgId_factoryId_idx"
   ON "AssignmentPlan"("orgId", "factoryId");

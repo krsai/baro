@@ -16,7 +16,7 @@ const checks = [
   ["WorkLog recordKind mismatch", `SELECT COUNT(*)::int AS count FROM "WorkLog" wl WHERE ("recordKind"='EMPLOYEE' AND EXISTS (SELECT 1 FROM "OutsourcedWorkRecord" owr WHERE owr."workLogId"=wl.id)) OR ("recordKind"='OUTSOURCING' AND EXISTS (SELECT 1 FROM "WorkRecord" wr WHERE wr."workLogId"=wl.id))`],
   ["AssignmentPlan without AssignmentCard", `SELECT COUNT(*)::int AS count FROM "AssignmentPlan" WHERE "assignmentCardId" IS NULL`],
   ["AssignmentPlan identity mismatch", `SELECT COUNT(*)::int AS count FROM "AssignmentPlan" ap JOIN "AssignmentCard" ac ON ac.id=ap."assignmentCardId" WHERE ap."orgId"<>ac."orgId" OR ap."styleId" IS DISTINCT FROM ac."styleId" OR ap."workOrderId" IS DISTINCT FROM ac."workOrderId" OR ap."buyerOrgId" IS DISTINCT FROM ac."buyerOrgId"`],
-  ["Employee factory/line org mismatch", `SELECT COUNT(*)::int AS count FROM "Employee" e LEFT JOIN "Factory" f ON f.id=e."factoryId" LEFT JOIN "Line" l ON l.id=e."lineId" WHERE (f.id IS NOT NULL AND f."orgId"<>e."orgId") OR (l.id IS NOT NULL AND l."orgId"<>e."orgId")`],
+  ["Employee factory org mismatch", `SELECT COUNT(*)::int AS count FROM "Employee" e LEFT JOIN "Factory" f ON f.id=e."factoryId" WHERE (f.id IS NOT NULL AND f."orgId"<>e."orgId")`],
   ["Warehouse factory org mismatch", `SELECT COUNT(*)::int AS count FROM "Warehouse" w JOIN "Factory" f ON f.id=w."factoryId" WHERE w."orgId"<>f."orgId"`],
   ["Factory production allowance rate org mismatch", `SELECT COUNT(*)::int AS count FROM "FactoryProductionAllowanceRate" r JOIN "Factory" f ON f.id=r."factoryId" WHERE r."orgId"<>f."orgId"`],
 ];

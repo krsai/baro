@@ -10,20 +10,23 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 const backend = read('backend/src/index.ts');
 const assignBoard = read('frontend/src/pages/App/assign/AssignBoard.jsx');
 
-test('assignment responses keep legacy lineId separate from factoryId', () => {
-  assert.match(backend, /lineId: String\(plan\.lineId\),\s*factoryId: toPositiveIntOrNull\(plan\.factoryId \?\? plan\?\.line\?\.factoryId\)/);
-  assert.doesNotMatch(backend, /lineId: String\(plan\.factoryId \?\?/);
+test('assignment schema and responses contain only canonical factory scope', () => {
+  assert.match(backend, /factoryId: String\(plan\.factoryId\)/);
+  assert.doesNotMatch(backend, /\blineId\b|\bprisma\.line\b|\bprisma\.lineAssignment\b/);
+  const schema = read('backend/prisma/schema.prisma');
+  assert.doesNotMatch(schema, /model Line\b|model LineAssignment\b|\blineId\b/);
+  assert.match(schema, /factoryId\s+Int\s/);
 });
 
-test('board load maps persisted line ids to the factory-scoped lane', () => {
-  assert.match(assignBoard, /factoryIdByLegacyLineId\.get\(normalizeKey\(item\?\.lineId\)\)/);
+test('board loads and saves canonical factory IDs without a compatibility mapping', () => {
+  assert.doesNotMatch(assignBoard, /legacyLine|legacyFactory|\/lines['"]/);
   assert.match(assignBoard, /normalizeKey\(item\?\.factoryId\)/);
-  assert.match(assignBoard, /factoryId: Number\(assignment\.lineId\)/);
+  assert.match(assignBoard, /factoryId: Number\(assignment\.factoryId\)/);
 });
 
-test('server distinguishes new factory ids from legacy line ids', () => {
-  assert.match(backend, /explicitFactoryId != null[\s\S]*scopeMaps\.byFactoryId\.get\(explicitFactoryId\)/);
-  assert.match(backend, /scopeMaps\.byLineId\.get\(legacyLineId\)/);
+test('server validates assignment factory IDs against organization factories', () => {
+  assert.match(backend, /scopeMaps\.byFactoryId\.has\(resolvedFactoryId\)/);
+  assert.match(backend, /assignment factoryId is invalid/);
 });
 
 test('removed line page has no active route or navigation link', () => {
@@ -47,22 +50,21 @@ test('production analysis and payroll expose no line UI or line recalculation ro
 });
 
 test('assignment capacity derives factory staffing from employee employment dates', () => {
-  const start = backend.indexOf('const buildLineMonthCapacityRows = async');
-  const end = backend.indexOf('app.get("/line-month-capacity"', start);
+  const start = backend.indexOf('const buildFactoryMonthCapacityRows = async');
+  const end = backend.indexOf('app.get("/factory-month-capacity"', start);
   const capacitySource = backend.slice(start, end);
   assert.match(capacitySource, /const capacityEmployees = await prisma\.employee\.findMany/);
-  assert.match(capacitySource, /factoryId: \{ in: Array\.from\(new Set\(factoryIdByLegacyLineId\.values\(\)\)\) \}/);
+  assert.match(capacitySource, /factoryId: \{ in: requestedFactoryIds \}/);
   assert.match(capacitySource, /joinedAt[\s\S]*leftAt/);
   assert.doesNotMatch(capacitySource, /const lineAssignmentRows = await prisma\.lineAssignment\.findMany/);
 });
 
 test('assignment board headcount counts active factory employees without LineAssignment', () => {
-  const lineRoutes = read('backend/src/lines/line.routes.ts');
-  const summaryStart = lineRoutes.indexOf('if (summaryOnly) {', lineRoutes.indexOf('const assignmentWhere'));
-  const summaryEnd = lineRoutes.indexOf('const [workers, assignments]', summaryStart);
-  const summarySource = lineRoutes.slice(summaryStart, summaryEnd);
+  const summaryStart = backend.indexOf('app.get("/factory-workers"');
+  const summaryEnd = backend.indexOf('app.get("/assignment-plans"', summaryStart);
+  const summarySource = backend.slice(summaryStart, summaryEnd);
   assert.match(summarySource, /await prisma\.employee\.findMany/);
-  assert.match(summarySource, /factoryId: \{ in: factoryIds \}/);
+  assert.match(summarySource, /factoryId: \{ in: factories\.map\(factory => factory\.id\) \}/);
   assert.doesNotMatch(summarySource, /prisma\.lineAssignment\.findMany/);
 });
 
@@ -81,14 +83,14 @@ test('unassigned work panel defaults from content and collapses its desktop colu
 });
 
 test('historical planned load includes remaining assigned backlog without changing actual output', () => {
-  const capacityUtils = read('frontend/src/pages/App/assign/utils/lineMonthCapacity.js');
+  const capacityUtils = read('frontend/src/pages/App/assign/utils/factoryMonthCapacity.js');
   assert.match(
     backend,
-    /target\.totalEstimatedLoadStSeconds\s*=\s*target\.lineMonthlyActualOutputStSeconds \+ remainingBacklog/
+    /target\.totalEstimatedLoadStSeconds\s*=\s*target\.factoryMonthlyActualOutputStSeconds \+ remainingBacklog/
   );
   assert.match(
     capacityUtils,
-    /lineMonthlyActualOutputStSeconds \+ currentBoardRemainingBacklogStSeconds/
+    /factoryMonthlyActualOutputStSeconds \+ currentBoardRemainingBacklogStSeconds/
   );
   assert.match(capacityUtils, /actualOutputPercent: resolvedActualOutputPercent/);
   assert.doesNotMatch(

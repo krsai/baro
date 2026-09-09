@@ -269,7 +269,7 @@ const resolveQcReviewApiErrorMessage = ({
   if (/line not found/i.test(rawMessage)) {
     return '선택한 공장의 생산 배정 정보를 찾을 수 없습니다. 배정 데이터를 확인해 주세요.';
   }
-  if (/lineId or factoryId is required/i.test(rawMessage)) {
+  if (/factoryId or factoryId is required/i.test(rawMessage)) {
     return '검수 대상을 불러오려면 공장 선택이 필요합니다.';
   }
   if (/assignment plan not found/i.test(rawMessage)) {

@@ -34,7 +34,7 @@ const summarizeWorkLogPayload = (payload = {}) => {
     coverageEndDate: payload?.coverageEndDate ?? '',
     entryMode: payload?.entryMode ?? '',
     factoryId: payload?.factoryId ?? null,
-    lineId: payload?.lineId ?? null,
+
     workerCount: payload?.workerCount ?? null,
     itemCount: payload?.itemCount ?? null,
     totalCtSeconds: payload?.totalCtSeconds ?? null,
@@ -126,7 +126,7 @@ export const loadWorkLogContext = async (options = {}) => {
   const query = buildQueryString({
     orgId: options?.orgId,
     factoryId: options?.factoryId,
-    lineId: options?.lineId,
+
     workDate: options?.workDate,
     coverageStartDate: options?.coverageStartDate,
     debug: options?.debug ? 1 : undefined,

@@ -55,7 +55,7 @@ test('line and schedule movement never replace an existing historical ST snapsho
   const basisChange = backend.slice(basisStart, basisEnd);
   assert.match(basisChange, /assignmentQuantity !== existingQuantity/);
   assert.match(basisChange, /existingPlan\?\.styleId/);
-  assert.doesNotMatch(basisChange, /lineId|startIndex|endIndex/);
+  assert.doesNotMatch(basisChange, /factoryId|startIndex|endIndex/);
 });
 
 test('progress requires all canonical coverage and outsource columns without fallback', () => {
@@ -81,7 +81,7 @@ test('line month capacity only loads display relations and ST bucket diagnostics
   assert.match(loader, /includeDiagnostics[\s\S]*style:\s*\{/);
   assert.match(loader, /includeDiagnostics[\s\S]*ctSeconds: true/);
 
-  const capacityStart = backend.indexOf('const buildLineMonthCapacityRows =');
+  const capacityStart = backend.indexOf('const buildFactoryMonthCapacityRows =');
   const capacityEnd = backend.indexOf('app.get("/assignment-plan-progress"', capacityStart);
   const capacity = backend.slice(capacityStart, capacityEnd);
   assert.match(capacity, /includeDiagnostics: includeActualOutputDebug/);
@@ -158,14 +158,14 @@ test('style saves refresh unassigned cards without rewriting assigned snapshots'
 
 test('progress endpoint always rebuilds rows and the board bypasses request cache', () => {
   const routeStart = backend.indexOf('app.get("/assignment-plan-progress"');
-  const routeEnd = backend.indexOf('app.get("/line-month-capacity"', routeStart);
+  const routeEnd = backend.indexOf('app.get("/factory-month-capacity"', routeStart);
   assert.match(backend.slice(routeStart, routeEnd), /await buildAssignmentPlanProgressRows\(organization\.id, externalIds\)/);
   assert.match(assignBoard, /requestJSON\([\s\S]{0,200}'\/assignment-plan-progress'[\s\S]{0,300}forceRefresh: true/);
   assert.match(assignBoard, /catch\(\(error\) => \{[\s\S]{0,160}setAssignmentProgressById\(\{\}\)/);
   const progressStart = assignBoard.indexOf("'/assignment-plan-progress'");
   const progressEnd = assignBoard.indexOf('const applySchedulerProgressToAssignments', progressStart);
   assert.doesNotMatch(assignBoard.slice(progressStart, progressEnd), /keeping previous data/);
-  assert.match(assignBoard, /setLineMonthCapacityRows\(\[\]\)[\s\S]{0,100}setLineMonthCapacityError\(true\)/);
+  assert.match(assignBoard, /setFactoryMonthCapacityRows\(\[\]\)[\s\S]{0,100}setFactoryMonthCapacityError\(true\)/);
 });
 
 test('assignment workflow exposes review and production-completed states', () => {

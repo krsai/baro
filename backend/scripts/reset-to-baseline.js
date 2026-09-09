@@ -601,7 +601,7 @@ async function runTimeModelRealignment(prisma, options = {}) {
       styleId: true,
       assignmentQuantity: true,
       finalQuantity: true,
-      lineId: true,
+      factoryId: true,
       startIndex: true,
       endIndex: true,
       assignmentStTotalSeconds: true,
@@ -762,7 +762,7 @@ const runReplaceStyleProcessMaster = (() => {
     return Math.max(0, Math.round(parsed));
   };
   const toSeedSeconds = (value) => clampProcessSeconds(value) ?? 0;
-  
+
   const masterProcess = (code, nameEn, nameKo, nameVi) =>
     normalizeProcessNaming({
       code,
@@ -771,7 +771,7 @@ const runReplaceStyleProcessMaster = (() => {
       nameKo,
       nameVi,
     });
-  
+
   const row = (
     code,
     totalSeconds,
@@ -791,7 +791,7 @@ const runReplaceStyleProcessMaster = (() => {
     detailVi,
     detailKo,
   });
-  
+
   const MASTER_PROCESSES = [
     masterProcess(
       "PKT_FLAP_TURN_CHEST",
@@ -1271,7 +1271,7 @@ const runReplaceStyleProcessMaster = (() => {
       "Vat so 5 chi tui than truoc"
     ),
     ];
-  
+
   const STYLES = [
     {
       styleId: "BL20",
@@ -1724,10 +1724,10 @@ const runReplaceStyleProcessMaster = (() => {
       ],
     },
   ];
-  
+
   const buildStyleRowMap = (rows) => {
     const aggregated = new Map();
-  
+
     rows.forEach((item) => {
       const totalSeconds = Number(item.totalSeconds) || 0;
       const quantity = Number(item.quantity) || 0;
@@ -1751,7 +1751,7 @@ const runReplaceStyleProcessMaster = (() => {
       if (item.detailKo) current.detailsKo.add(item.detailKo);
       aggregated.set(item.code, current);
     });
-  
+
     return Array.from(aggregated.values()).map((item) => {
       const quantity = Math.max(1, Math.round(item.quantity || 1));
       const totalSeconds = round4(item.totalSeconds);
@@ -1761,7 +1761,7 @@ const runReplaceStyleProcessMaster = (() => {
       const sectionsVi = Array.from(item.sectionsVi).join(", ");
       const detailLine = [detailsKo, detailsVi].filter(Boolean).join(" / ");
       const sectionLine = [sectionsKo, sectionsVi].filter(Boolean).join(" / ");
-  
+
       return {
         ...item,
         totalSeconds,
@@ -1807,7 +1807,7 @@ const runReplaceStyleProcessMaster = (() => {
 
     return normalizedRows;
   };
-  
+
   const buildStyleProcessPayload = ({
     styleId,
     processIdByCode,
@@ -1818,7 +1818,7 @@ const runReplaceStyleProcessMaster = (() => {
     if (!master) {
       throw new Error(`Unknown master process code: ${row.code}`);
     }
-  
+
     return {
       id: processIdByCode.get(master.code) ?? null,
       code: master.code,
@@ -1842,13 +1842,13 @@ const runReplaceStyleProcessMaster = (() => {
       instanceId: `${master.code}-${styleId}-${sortOrder + 1}`,
     };
   };
-  
+
   const summarizeTotalSeconds = (processes) =>
     processes.reduce(
       (sum, process) => sum + (Number(process.pt) || 0),
       0
     );
-  
+
   const buildStyleDrafts = () =>
     STYLES.map((style) => {
       const aggregatedRows = calibrateStyleRows(
@@ -1867,10 +1867,10 @@ const runReplaceStyleProcessMaster = (() => {
         totalSeconds,
       };
     });
-  
+
   const validateSeedDefinition = (styleDrafts) => {
     const masterCodes = new Set(MASTER_PROCESSES.map((item) => item.code));
-  
+
     styleDrafts.forEach((style) => {
       style.aggregatedRows.forEach((item) => {
         if (!masterCodes.has(item.code)) {
@@ -1879,7 +1879,7 @@ const runReplaceStyleProcessMaster = (() => {
           );
         }
       });
-  
+
       if (Math.abs(Number(style.totalSeconds) - Number(style.expectedTotalSeconds)) >= 0.001) {
         throw new Error(
           `Style ${style.styleId} total mismatch: expected ${style.expectedTotalSeconds}, got ${style.totalSeconds}`
@@ -1887,7 +1887,7 @@ const runReplaceStyleProcessMaster = (() => {
       }
     });
   };
-  
+
   const runReplaceStyleProcessMaster = async ({
     prismaClient = null,
     orgId = Number(process.env.ORG_ID || DEFAULT_ORG_ID),
@@ -1902,21 +1902,21 @@ const runReplaceStyleProcessMaster = (() => {
       ? Math.trunc(Number(orgId))
       : DEFAULT_ORG_ID;
     const resolvedCustomerName = String(customerName || DEFAULT_CUSTOMER_NAME).trim() || DEFAULT_CUSTOMER_NAME;
-  
+
     try {
       const styleDrafts = buildStyleDrafts();
       validateSeedDefinition(styleDrafts);
-  
+
       await prisma.$transaction(
         async (tx) => {
           await tx.style.deleteMany({
             where: { orgId: resolvedOrgId },
           });
-  
+
           await tx.attrProcess.deleteMany({
             where: { orgId: resolvedOrgId },
           });
-  
+
           await tx.attrProcess.createMany({
             data: MASTER_PROCESSES.map((item) => ({
               orgId: resolvedOrgId,
@@ -1927,7 +1927,7 @@ const runReplaceStyleProcessMaster = (() => {
               nameVi: item.nameVi,
             })),
           });
-  
+
           const createdProcesses = await tx.attrProcess.findMany({
             where: { orgId: resolvedOrgId },
             orderBy: { id: "asc" },
@@ -1960,7 +1960,7 @@ const runReplaceStyleProcessMaster = (() => {
           const seedEntryByQuantity = new Map(
             seedTimeVersion.entries.map((entry) => [entry.bucketQuantity, entry])
           );
-  
+
           for (const style of styleDrafts) {
             const processes = style.aggregatedRows.map((item, index) =>
               buildStyleProcessPayload({
@@ -1971,7 +1971,7 @@ const runReplaceStyleProcessMaster = (() => {
                 sortOrder: index,
               })
             );
-  
+
             const createdStyle = await tx.style.create({
               data: {
                 orgId: resolvedOrgId,
@@ -1988,7 +1988,7 @@ const runReplaceStyleProcessMaster = (() => {
                 timeBucketSetVersionId: seedTimeVersion.id,
               },
             });
-  
+
             for (let index = 0; index < processes.length; index += 1) {
               const process = processes[index];
               const createdStyleProcess = await tx.styleProcess.create({
@@ -2004,7 +2004,7 @@ const runReplaceStyleProcessMaster = (() => {
                   atParams: null,
                 },
               });
-  
+
               await tx.styleProcessStandard.createMany({
                 data: (Array.isArray(process.stBuckets) ? process.stBuckets : process.stValues || []).map((standard) => {
                   const quantity = standard.bucketQuantity ?? standard.quantity;
@@ -2028,7 +2028,7 @@ const runReplaceStyleProcessMaster = (() => {
           timeout: 60000,
         }
       );
-  
+
       const timeModelRealign =
         typeof runTimeModelRealignment === "function"
           ? await runTimeModelRealignment({
@@ -2036,7 +2036,7 @@ const runReplaceStyleProcessMaster = (() => {
               updatedBy: "SYSTEM_RESET_BASELINE",
             })
           : null;
-  
+
       const [styles, processCount] = await Promise.all([
         prisma.style.findMany({
           where: {
@@ -2054,7 +2054,7 @@ const runReplaceStyleProcessMaster = (() => {
           where: { orgId: resolvedOrgId },
         }),
       ]);
-  
+
       const summary = styles.map((style) => ({
         styleCode: style.code,
         name: style.name,
@@ -2063,17 +2063,17 @@ const runReplaceStyleProcessMaster = (() => {
           Array.isArray(style.processes) ? style.processes : []
         ),
       }));
-  
+
       const result = {
         replacedProcessMasterCount: processCount,
         timeModelRealign: timeModelRealign?.summary ?? null,
         styles: summary,
       };
-  
+
       if (log) {
         console.log(JSON.stringify(result, null, 2));
       }
-  
+
       return result;
     } finally {
       if (shouldDisconnect) {
@@ -2081,7 +2081,7 @@ const runReplaceStyleProcessMaster = (() => {
       }
     }
   };
-  
+
 
   return runReplaceStyleProcessMaster;
 })();
@@ -2588,10 +2588,9 @@ const BRAND_MEMBERSHIPS = [
   },
 ];
 
-const LINE_CONFIGS = [
+const FACTORY_WORKER_CONFIGS = [
   {
     key: 'sample-line',
-    lineName: 'Sample Line',
     workerPrefix: 'sample-worker-',
     workerLabel: 'Sample Worker',
   },
@@ -2647,7 +2646,7 @@ const BASELINE_ASSIGNMENT_SNAPSHOT = {
       label: 'BL20',
       cardId: 'order-tsbr-po-260322-01::BL20::BLACK::U',
       gender: 'U',
-      lineId: '16',
+      factoryId: '16',
       orderNo: 'TSBR-PO-260322-01',
       version: 2,
       customer: 'TSBR',
@@ -2691,7 +2690,7 @@ const BASELINE_ASSIGNMENT_SNAPSHOT = {
       label: 'AM01160',
       cardId: 'order-tsbr-po-260322-01::AM01160::NAVY::M',
       gender: 'M',
-      lineId: '16',
+      factoryId: '16',
       orderNo: 'TSBR-PO-260322-01',
       version: 2,
       customer: 'TSBR',
@@ -2735,7 +2734,7 @@ const BASELINE_ASSIGNMENT_SNAPSHOT = {
       label: 'AM01622',
       cardId: 'order-tsbr-po-260322-01::AM01622::WHITE::U',
       gender: 'U',
-      lineId: '16',
+      factoryId: '16',
       orderNo: 'TSBR-PO-260322-01',
       version: 2,
       customer: 'TSBR',
@@ -2779,7 +2778,7 @@ const BASELINE_ASSIGNMENT_SNAPSHOT = {
       label: 'AM02053',
       cardId: 'order-tsbr-po-260322-01::AM02053::INDIGO::U',
       gender: 'U',
-      lineId: '16',
+      factoryId: '16',
       orderNo: 'TSBR-PO-260322-01',
       version: 2,
       customer: 'TSBR',
@@ -2942,9 +2941,6 @@ const SAMPLE_WORK_LOG_EXTRA_HOLIDAY_KEYS = String(process.env.HOLIDAYS ?? '')
   .map((value) => value.trim())
   .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value));
 const SAMPLE_WORK_LOG_EXTRA_HOLIDAY_SET = new Set(SAMPLE_WORK_LOG_EXTRA_HOLIDAY_KEYS);
-const SAMPLE_LINE_ASSIGNMENT_START_AT = new Date(
-  process.env.LINE_ASSIGNMENT_START_AT ?? '2026-02-01T00:00:00Z'
-);
 
 const toWorkerEmail = (prefix, index) => `${prefix}${String(index).padStart(2, '0')}@baro.local`;
 const toWorkerName = (label, index) => `${label} ${String(index).padStart(2, '0')}`;
@@ -3047,14 +3043,6 @@ async function ensureFactory(orgId) {
   });
 }
 
-async function ensureLine(orgId, factoryId, name) {
-  return prisma.line.upsert({
-    where: { factoryId_name: { factoryId, name } },
-    update: { orgId, isActive: true },
-    create: { orgId, factoryId, name, isActive: true },
-  });
-}
-
 async function cleanupSampleFactoryData(orgId) {
   const sampleFactories = (await prisma.factory.findMany({
     where: { orgId },
@@ -3088,23 +3076,14 @@ async function cleanupSampleFactoryData(orgId) {
   if (sampleFactoryIds.length === 0 && baselineWorkerIds.length === 0) {
     return {
       deletedFactories: 0,
-      deletedLines: 0,
       deletedWorkers: 0,
       deletedWorkerAccounts: 0,
     };
   }
 
-  const sampleLines = sampleFactoryIds.length
-    ? await prisma.line.findMany({
-        where: { orgId, factoryId: { in: sampleFactoryIds } },
-        select: { id: true },
-      })
-    : [];
-  const sampleLineIds = sampleLines.map((line) => line.id);
-
   await prisma.$transaction(async (tx) => {
     if (baselineWorkerIds.length > 0) {
-      await tx.line.updateMany({
+      await tx.factory.updateMany({
         where: { orgId, managerEmployeeId: { in: baselineWorkerIds } },
         data: { managerEmployeeId: null },
       });
@@ -3133,26 +3112,8 @@ async function cleanupSampleFactoryData(orgId) {
       });
     }
 
-    const assignmentDeleteOr = [];
-    if (sampleLineIds.length > 0) {
-      assignmentDeleteOr.push({ lineId: { in: sampleLineIds } });
-      await tx.assignmentPlan.deleteMany({
-        where: { orgId, lineId: { in: sampleLineIds } },
-      });
-    }
-    if (baselineWorkerIds.length > 0) {
-      assignmentDeleteOr.push({ employeeId: { in: baselineWorkerIds } });
-    }
-    if (assignmentDeleteOr.length > 0) {
-      await tx.lineAssignment.deleteMany({
-        where: { OR: assignmentDeleteOr },
-      });
-    }
-
-    if (sampleLineIds.length > 0) {
-      await tx.line.deleteMany({
-        where: { orgId, id: { in: sampleLineIds } },
-      });
+    if (sampleFactoryIds.length > 0) {
+      await tx.assignmentPlan.deleteMany({ where: { orgId, factoryId: { in: sampleFactoryIds } } });
     }
 
     if (baselineWorkerIds.length > 0) {
@@ -3170,7 +3131,6 @@ async function cleanupSampleFactoryData(orgId) {
 
   return {
     deletedFactories: sampleFactoryIds.length,
-    deletedLines: sampleLineIds.length,
     deletedWorkers: baselineWorkerIds.length,
     deletedWorkerAccounts: baselineWorkerIds.length,
   };
@@ -3427,12 +3387,12 @@ function resolveBaselineAssignmentSnapshot(capturedSnapshot) {
   };
 }
 
-function remapAssignmentExternalIdLineSegment(externalId, previousLineId, nextLineId) {
+function remapAssignmentExternalIdFactorySegment(externalId, previousFactoryId, nextFactoryId) {
   const raw = String(externalId || '').trim();
   if (!raw) return raw;
 
-  const prev = sampleToPositiveIntOrNull(previousLineId);
-  const next = sampleToPositiveIntOrNull(nextLineId);
+  const prev = sampleToPositiveIntOrNull(previousFactoryId);
+  const next = sampleToPositiveIntOrNull(nextFactoryId);
   if (!prev || !next || prev === next) return raw;
 
   const suffixPattern = new RegExp(`-${prev}-(\\d+)$`);
@@ -3440,20 +3400,20 @@ function remapAssignmentExternalIdLineSegment(externalId, previousLineId, nextLi
   return raw.replace(suffixPattern, `-${next}-$1`);
 }
 
-function remapAssignmentSnapshotLines(assignments, targetLineId) {
-  const nextLineId = sampleToPositiveIntOrNull(targetLineId);
-  if (!nextLineId) return [];
+function remapAssignmentSnapshotFactories(assignments, targetFactoryId) {
+  const nextFactoryId = sampleToPositiveIntOrNull(targetFactoryId);
+  if (!nextFactoryId) return [];
 
   return (Array.isArray(assignments) ? assignments : [])
     .map((row) => {
       if (!row || typeof row !== 'object') return null;
-      const previousLineId = sampleToPositiveIntOrNull(row.lineId);
+      const previousFactoryId = sampleToPositiveIntOrNull(row.factoryId);
       const nextRow = { ...row };
-      nextRow.lineId = String(nextLineId);
-      nextRow.id = remapAssignmentExternalIdLineSegment(
+      nextRow.factoryId = String(nextFactoryId);
+      nextRow.id = remapAssignmentExternalIdFactorySegment(
         nextRow.id,
-        previousLineId,
-        nextLineId
+        previousFactoryId,
+        nextFactoryId
       );
       return nextRow;
     })
@@ -3661,22 +3621,8 @@ async function sampleLoadManufacturingContext(manufacturer, brand) {
   const factory =
     factories.find((item) => String(item?.name || '').trim() === preferredFactoryName) ||
     factories[0];
-  const lines = await sampleApiRequest(
-    `/lines${sampleBuildQuery({ orgId: manufacturer.id, factoryId: factory.id })}`,
-    {
-      userEmail: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
-      orgId: manufacturer.id,
-    }
-  );
-  const preferredLineName = String(LINE_CONFIGS[0]?.lineName || '').trim();
-  const line =
-    (Array.isArray(lines) ? lines : []).find(
-      (item) => String(item?.name || '').trim() === preferredLineName
-    ) || ((Array.isArray(lines) && lines.length > 0) ? lines[0] : null);
-  sampleAssert(line, 'no line found for selected factory');
-
   const lineWorkers = await sampleApiRequest(
-    `/line-workers${sampleBuildQuery({ orgId: manufacturer.id, factoryId: factory.id })}`,
+    `/factory-workers${sampleBuildQuery({ orgId: manufacturer.id, factoryId: factory.id })}`,
     {
       userEmail: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
       orgId: manufacturer.id,
@@ -3684,7 +3630,7 @@ async function sampleLoadManufacturingContext(manufacturer, brand) {
   );
 
   const assignedWorkerCount = Array.isArray(lineWorkers)
-    ? lineWorkers.filter((worker) => Number(worker?.currentLineId) === Number(line.id)).length
+    ? lineWorkers.filter((worker) => Number(worker?.factoryId) === Number(factory.id)).length
     : 0;
 
   return {
@@ -3694,7 +3640,6 @@ async function sampleLoadManufacturingContext(manufacturer, brand) {
       return map;
     }, new Map()),
     factory,
-    line,
     assignedWorkerCount: assignedWorkerCount || SAMPLE_WORKER_COUNT,
   };
 }
@@ -3913,7 +3858,7 @@ async function runSampleOrders(options = {}) {
     (sum, item) => sum + item.ptPerPiece * Number(item.definition.quantity || 0),
     0
   );
-  const estimatedLineDays =
+  const estimatedFactoryDays =
     totalPtSeconds / (Math.max(1, context.assignedWorkerCount) * SAMPLE_WORK_LOG_SHIFT_SECONDS);
   const timeModelRealign = await runTimeModelRealignment(prisma, {
     orgIds: [manufacturer.id],
@@ -3934,8 +3879,8 @@ async function runSampleOrders(options = {}) {
       name: context.factory.name,
     },
     line: {
-      id: context.line.id,
-      name: context.line.name,
+      id: context.factory.id,
+      name: context.factory.name,
       assignedWorkerCount: context.assignedWorkerCount,
     },
     summary: {
@@ -3946,7 +3891,7 @@ async function runSampleOrders(options = {}) {
         0
       ),
       totalPtSeconds,
-      estimatedLineDays: Number(estimatedLineDays.toFixed(2)),
+      estimatedFactoryDays: Number(estimatedFactoryDays.toFixed(2)),
       orderMode: consolidatedOrder.mode,
       timeModelRealign: timeModelRealign.summary,
     },
@@ -3968,8 +3913,8 @@ async function runSampleOrders(options = {}) {
 
 function buildAssignmentPlanWriteDataFromSnapshot(orgId, assignment, timestamp = new Date()) {
   const externalId = String(assignment?.id || '').trim();
-  const lineId = sampleToPositiveIntOrNull(assignment?.lineId);
-  if (!externalId || !lineId) return null;
+  const factoryId = sampleToPositiveIntOrNull(assignment?.factoryId);
+  if (!externalId || !factoryId) return null;
 
   const startIndex = sampleToPositiveInt(assignment?.startIndex, 0);
   const endIndex = sampleToPositiveInt(assignment?.endIndex, startIndex);
@@ -3979,7 +3924,7 @@ function buildAssignmentPlanWriteDataFromSnapshot(orgId, assignment, timestamp =
 
   return {
     orgId,
-    lineId,
+    factoryId,
     externalId,
     cardId: assignment?.cardId ? String(assignment.cardId) : null,
     orderNo: assignment?.orderNo ? String(assignment.orderNo) : null,
@@ -4026,9 +3971,9 @@ async function restoreAssignmentSnapshotWithPrisma({
   assignments,
   boardCards,
   cards,
-  targetLineId,
+  targetFactoryId,
 }) {
-  const normalizedAssignments = remapAssignmentSnapshotLines(assignments, targetLineId);
+  const normalizedAssignments = remapAssignmentSnapshotFactories(assignments, targetFactoryId);
   if (normalizedAssignments.length === 0) {
     return {
       attempted: false,
@@ -4093,16 +4038,16 @@ async function restoreAssignmentSnapshotWithPrisma({
     restoredAssignmentCount: normalizedAssignments.length,
     restoredCardCount: cardRows.length,
     restoredPlanCount: planRows.length,
-    targetLineId: sampleToPositiveIntOrNull(targetLineId),
+    targetFactoryId: sampleToPositiveIntOrNull(targetFactoryId),
   };
 }
 
 async function sampleRestoreAssignmentSnapshot({
   manufacturerId,
   assignments,
-  targetLineId,
+  targetFactoryId,
 }) {
-  const normalizedAssignments = remapAssignmentSnapshotLines(assignments, targetLineId);
+  const normalizedAssignments = remapAssignmentSnapshotFactories(assignments, targetFactoryId);
   if (normalizedAssignments.length === 0) {
     return {
       attempted: false,
@@ -4131,7 +4076,7 @@ async function sampleRestoreAssignmentSnapshot({
     attempted: true,
     restoredAssignmentCount: normalizedAssignments.length,
     persistedPlanCount: persistedPlans,
-    targetLineId: sampleToPositiveIntOrNull(targetLineId),
+    targetFactoryId: sampleToPositiveIntOrNull(targetFactoryId),
   };
 }
 
@@ -4266,12 +4211,12 @@ function sampleBuildDailyWeights(plan) {
 }
 
 function sampleNormalizePlan(plan, random, processMirrorByStyleId) {
-  const lineId = sampleToPositiveInt(plan?.lineId, 0);
+  const factoryId = sampleToPositiveInt(plan?.factoryId, 0);
   const baselineQuantity = sampleToPositiveInt(plan?.finalQuantity ?? plan?.quantity, 0);
   const processes = sampleBuildPlanProcesses(plan, processMirrorByStyleId);
   const dailyWeights = sampleBuildDailyWeights(plan);
 
-  if (!lineId || !baselineQuantity || processes.length === 0 || dailyWeights.length === 0) {
+  if (!factoryId || !baselineQuantity || processes.length === 0 || dailyWeights.length === 0) {
     return null;
   }
 
@@ -4291,7 +4236,7 @@ function sampleNormalizePlan(plan, random, processMirrorByStyleId) {
   return {
     dbId: sampleToPositiveInt(plan?.dbId, 0),
     externalId: String(plan?.id || ''),
-    lineId,
+    factoryId,
     styleId: sampleToPositiveIntOrNull(plan?.styleId),
     styleName: String(plan?.label || ''),
     orderNo: String(plan?.orderNo || ''),
@@ -4349,15 +4294,15 @@ function sampleAllocateWorkerCounts(tasks, workerCount) {
   return counts;
 }
 
-function sampleBuildLineDayEntries(plans) {
+function sampleBuildFactoryDayEntries(plans) {
   const entryMap = new Map();
 
   plans.forEach((plan, planOrder) => {
     plan.dailyRows.forEach((row) => {
-      const key = `${plan.lineId}::${row.dateKey}`;
+      const key = `${plan.factoryId}::${row.dateKey}`;
       if (!entryMap.has(key)) {
         entryMap.set(key, {
-          lineId: plan.lineId,
+          factoryId: plan.factoryId,
           dateKey: row.dateKey,
           items: [],
         });
@@ -4373,7 +4318,7 @@ function sampleBuildLineDayEntries(plans) {
 
   return Array.from(entryMap.values()).sort(
     (left, right) =>
-      left.lineId - right.lineId || left.dateKey.localeCompare(right.dateKey)
+      left.factoryId - right.factoryId || left.dateKey.localeCompare(right.dateKey)
   );
 }
 
@@ -4445,56 +4390,22 @@ async function sampleLoadWorkRecordRefMaps(orgId, plans) {
   };
 }
 
-async function sampleEnsureLineAssignmentsCoverPlanDates(plans) {
-  const lineIds = Array.from(
-    new Set(
-      plans
-        .map((plan) => sampleToPositiveIntOrNull(plan?.lineId))
-        .filter((lineId) => Number.isFinite(lineId))
-    )
-  );
-  const { earliestDateKey, latestDateKey } = sampleResolvePlanDateWindow(plans);
-  if (lineIds.length === 0 || !earliestDateKey) {
-    return {
-      lineIds,
-      earliestDateKey,
-      latestDateKey,
-      updatedLineAssignmentCount: 0,
-    };
-  }
-
-  const earliestStartAt = sampleResolveWorkStartAt(earliestDateKey);
-  const updated = await prisma.lineAssignment.updateMany({
-    where: {
-      lineId: { in: lineIds },
-      startAt: { gt: earliestStartAt },
-      OR: [{ endAt: null }, { endAt: { gte: earliestStartAt } }],
-    },
-    data: {
-      startAt: earliestStartAt,
-    },
-  });
-
-  return {
-    lineIds,
-    earliestDateKey,
-    latestDateKey,
-    updatedLineAssignmentCount: updated.count,
-  };
+function samplePlanDateWindow(plans) {
+  return sampleResolvePlanDateWindow(plans);
 }
 
 async function sampleSeedAttendanceEntries({
   orgId,
   factoryId,
   entries,
-  getWorkersForLineDate,
+  getWorkersForFactoryDate,
   replaceExisting,
   isDryRun,
 }) {
   const draftByWorkerDate = new Map();
 
   for (const entry of entries) {
-    const workers = await getWorkersForLineDate(entry.lineId, entry.dateKey);
+    const workers = await getWorkersForFactoryDate(entry.factoryId, entry.dateKey);
     workers.forEach((worker) => {
       const workerId = sampleToPositiveIntOrNull(worker?.id);
       if (!workerId) return;
@@ -4764,7 +4675,7 @@ async function runSampleWorkLogs(options = {}) {
 
   sampleAssert(plans.length > 0, 'no agreed assignment plans found');
   const workRecordRefMaps = await sampleLoadWorkRecordRefMaps(workLogOrgId, plans);
-  const scheduleWindow = await sampleEnsureLineAssignmentsCoverPlanDates(plans);
+  const scheduleWindow = samplePlanDateWindow(plans);
 
   const existingLogRows = Array.isArray(existingLogs) ? existingLogs : [];
   let replacedLogCount = 0;
@@ -4781,19 +4692,18 @@ async function runSampleWorkLogs(options = {}) {
   }
   const existingKeys = replaceExisting
     ? new Set()
-    : new Set(existingLogRows.map((log) => `${log.lineId ?? '?'}::${log.workDate ?? ''}`));
+    : new Set(existingLogRows.map((log) => `${log.factoryId ?? '?'}::${log.workDate ?? ''}`));
 
   const workerCache = new Map();
-  const getWorkersForLineDate = async (lineId, dateKey) => {
-    const cacheKey = `${lineId}::${dateKey}`;
+  const getWorkersForFactoryDate = async (factoryId, dateKey) => {
+    const cacheKey = `${factoryId}::${dateKey}`;
     if (!workerCache.has(cacheKey)) {
       workerCache.set(
         cacheKey,
         sampleApiRequest(
-          `/line-workers${sampleBuildQuery({
+          `/factory-workers${sampleBuildQuery({
             orgId: workLogOrgId,
-            factoryId: factory.id,
-            lineId,
+            factoryId,
             workDate: dateKey,
           })}`,
           {
@@ -4807,13 +4717,13 @@ async function runSampleWorkLogs(options = {}) {
     return Array.isArray(rows) ? rows.slice().sort((left, right) => left.id - right.id) : [];
   };
 
-  const entries = sampleBuildLineDayEntries(plans);
+  const entries = sampleBuildFactoryDayEntries(plans);
   const planByExternalId = new Map(plans.map((plan) => [plan.externalId, plan]));
   const attendanceSeed = await sampleSeedAttendanceEntries({
     orgId: workLogOrgId,
     factoryId: factory.id,
     entries,
-    getWorkersForLineDate,
+    getWorkersForFactoryDate,
     replaceExisting,
     isDryRun,
   });
@@ -4823,13 +4733,13 @@ async function runSampleWorkLogs(options = {}) {
   const failureSamples = [];
 
   for (const entry of entries) {
-    const logKey = `${entry.lineId}::${entry.dateKey}`;
+    const logKey = `${entry.factoryId}::${entry.dateKey}`;
     if (existingKeys.has(logKey)) {
       skippedCount += 1;
       continue;
     }
 
-    const workers = await getWorkersForLineDate(entry.lineId, entry.dateKey);
+    const workers = await getWorkersForFactoryDate(entry.factoryId, entry.dateKey);
     if (workers.length === 0) {
       skippedCount += 1;
       continue;
@@ -4883,7 +4793,6 @@ async function runSampleWorkLogs(options = {}) {
       workDate: entry.dateKey,
       factoryId: factory.id,
       factoryWagePerSecond: sampleToFiniteNumber(factory.wagePerSecond, null),
-      lineId: entry.lineId,
       ctBasis: 'CT',
       workerCount: workers.length,
       itemCount: requestRecords.length,
@@ -4910,7 +4819,6 @@ async function runSampleWorkLogs(options = {}) {
       if (failureSamples.length < 10) {
         failureSamples.push({
           workDate: entry.dateKey,
-          lineId: entry.lineId,
           message: error?.message || 'failed to create work log',
         });
       }
@@ -4953,7 +4861,6 @@ async function runSampleWorkLogs(options = {}) {
       createdCount,
       skippedCount,
       failureSamples,
-      updatedLineAssignmentCount: scheduleWindow.updatedLineAssignmentCount,
       attendanceSeed,
       timeModelRealign: timeModelRealign.summary,
     },
@@ -5029,13 +4936,7 @@ async function runBaselineReset() {
     where: { orgId_code: { orgId: manufacturer.id, code: 'WORKER_SEWING' } },
   });
   const factory = await ensureFactory(manufacturer.id);
-  const lineRows = [];
-  for (const lineConfig of LINE_CONFIGS) {
-    lineRows.push({
-      config: lineConfig,
-      line: await ensureLine(manufacturer.id, factory.id, lineConfig.lineName),
-    });
-  }
+  const workerGroups = FACTORY_WORKER_CONFIGS.map(config => ({ config, factory }));
 
   for (const membership of STAFF_MEMBERSHIPS) {
     const createdMembership = await ensureMembership(manufacturer.id, membership);
@@ -5067,9 +4968,9 @@ async function runBaselineReset() {
     });
   }
 
-  const workerEmployeeIdsByLine = new Map();
-  for (const { config } of lineRows) {
-    workerEmployeeIdsByLine.set(config.key, []);
+  const workerEmployeeIdsByFactory = new Map();
+  for (const { config } of workerGroups) {
+    workerEmployeeIdsByFactory.set(config.key, []);
     for (let index = 1; index <= SAMPLE_WORKER_COUNT; index += 1) {
       const email = toWorkerEmail(config.workerPrefix, index);
       const membership = await ensureMembership(manufacturer.id, {
@@ -5085,31 +4986,8 @@ async function runBaselineReset() {
         name: toWorkerName(config.workerLabel, index),
         position: index === 1 ? 'LINE_LEADER' : 'WORKER',
       });
-      workerEmployeeIdsByLine.get(config.key).push(employee.id);
+      workerEmployeeIdsByFactory.get(config.key).push(employee.id);
     }
-  }
-
-  const baselineWorkerIds = Array.from(workerEmployeeIdsByLine.values()).flat();
-  await prisma.lineAssignment.deleteMany({
-    where: { employeeId: { in: baselineWorkerIds } },
-  });
-
-  for (const { config, line } of lineRows) {
-    const workerIds = workerEmployeeIdsByLine.get(config.key) || [];
-    if (workerIds.length === 0) continue;
-
-    await prisma.line.update({
-      where: { id: line.id },
-      data: { managerEmployeeId: workerIds[0], isActive: true },
-    });
-
-    await prisma.lineAssignment.createMany({
-      data: workerIds.map((employeeId) => ({
-        lineId: line.id,
-        employeeId,
-        startAt: SAMPLE_LINE_ASSIGNMENT_START_AT,
-      })),
-    });
   }
 
   const styleMasterReset = await runStyleProcessMasterReplacement({
@@ -5147,7 +5025,7 @@ async function runBaselineReset() {
         ...(await sampleRestoreAssignmentSnapshot({
           manufacturerId: manufacturer.id,
           assignments: assignmentSnapshot.assignments,
-          targetLineId: lineRows[0]?.line?.id ?? null,
+          targetFactoryId: workerGroups[0]?.factory?.id ?? null,
         })),
       };
     } catch (error) {
@@ -5165,7 +5043,7 @@ async function runBaselineReset() {
           assignments: assignmentSnapshot.assignments,
           boardCards: assignmentSnapshot.boardCards,
           cards: assignmentSnapshot.cards,
-          targetLineId: lineRows[0]?.line?.id ?? null,
+          targetFactoryId: workerGroups[0]?.factory?.id ?? null,
         })),
       };
     }
@@ -5292,5 +5170,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-
 

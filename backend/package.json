@@ -34,7 +34,7 @@
     "predev": "npm run prisma:prepare-client && npm run prisma:deploy:safe && npm run prisma:fix-entry",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
-    "start": "npm run prisma:apply:payroll-provisional && npm run prisma:apply:at-observation-quality && npm run prisma:apply:at-stable-allocation-audit && npm run prisma:apply:assignment-manual-completion && npm run prisma:apply:restore-manual-completion-at-training && npm run prisma:apply:style-process-at-st-fallback && npm run prisma:apply:backfill-style-process-at-st-fallback && npm run prisma:apply:correct-style-process-at-st-fallback && npm run prisma:apply:style-process-is-active && npm run prisma:apply:style-process-gender-scope && npm run prisma:apply:factory-warehouse-rollout && npm run prisma:apply:factory-production-allowance-rate && npm run prisma:apply:factory-child-org-integrity && node dist/index.js",
+    "start": "npm run prisma:remove-line-domain && npm run prisma:apply:payroll-provisional && npm run prisma:apply:at-observation-quality && npm run prisma:apply:at-stable-allocation-audit && npm run prisma:apply:assignment-manual-completion && npm run prisma:apply:restore-manual-completion-at-training && npm run prisma:apply:style-process-at-st-fallback && npm run prisma:apply:backfill-style-process-at-st-fallback && npm run prisma:apply:correct-style-process-at-st-fallback && npm run prisma:apply:style-process-is-active && npm run prisma:apply:style-process-gender-scope && npm run prisma:apply:factory-warehouse-rollout && npm run prisma:apply:factory-production-allowance-rate && npm run prisma:apply:factory-child-org-integrity && node dist/index.js",
     "start:api": "node dist/index.js",
     "repair:assignment-text": "node scripts/repair-assignment-text.js",
     "repair:assignment-schedule": "node scripts/repair-assignment-schedule.js",
@@ -57,7 +57,8 @@
     "process-master:cleanup-duplicates": "node scripts/cleanup-process-master-duplicates.js",
     "process-master:cleanup-duplicates:apply": "node scripts/cleanup-process-master-duplicates.js --apply",
     "process-master:clear-specs": "node scripts/clear-process-master-specs.js",
-    "process-master:clear-specs:apply": "node scripts/clear-process-master-specs.js --apply"
+    "process-master:clear-specs:apply": "node scripts/clear-process-master-specs.js --apply",
+    "prisma:remove-line-domain": "node scripts/run-prisma.js db execute --schema ./prisma/schema.prisma --file ./scripts/remove-line-domain.sql"
   },
   "keywords": [],
   "author": "",

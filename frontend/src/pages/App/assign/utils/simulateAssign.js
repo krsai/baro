@@ -1,6 +1,6 @@
-﻿export const simulateAssign = ({ lineId, dayIndex, cardId }) => {
+﻿export const simulateAssign = ({ factoryId, dayIndex, cardId }) => {
   return {
-    lineId,
+    factoryId,
     dayIndex,
     cardId,
     status: 'preview',

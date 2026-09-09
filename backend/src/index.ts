@@ -30,7 +30,6 @@ import {
   normalizeFactoryManagementStartDateKey,
   resolveFactoryManagementStartDateKey,
 } from "./factories/factoryManagementStart";
-import { createLineRouter } from "./lines/line.routes";
 import { createOrgMembershipRouter } from "./org-memberships/orgMembership.routes";
 import { createOrganizationRouter } from "./organizations/organization.routes";
 import {
@@ -104,11 +103,6 @@ import {
   resolveWorkRecordEmploymentCoverage,
   type WorkRecordEmploymentAdjustment,
 } from "./work-records/workRecordEmployment";
-import {
-  buildWorkLogNoteWithCrossLineAssignments,
-  buildWorkLogWarningResponse,
-  type WorkLogCrossLineAssignmentWarning,
-} from "./work-records/workRecordCrossLine";
 import {
   validateWorkLogSingleMonthRange,
   WORK_LOG_CROSS_MONTH_ERROR,
@@ -201,11 +195,11 @@ function assertGeneratedPrismaClientShape() {
   if (hasField("Style", "customerNameVi")) {
     staleSignals.push("Style.customerNameVi still present");
   }
-  if (hasField("Employee", "lineName")) {
-    staleSignals.push("Employee.lineName still present");
+  if (hasField("Employee", "factoryName")) {
+    staleSignals.push("Employee.factoryName still present");
   }
-  if (!hasField("Employee", "lineId")) {
-    staleSignals.push("Employee.lineId missing");
+  if (!hasField("Employee", "factoryId")) {
+    staleSignals.push("Employee.factoryId missing");
   }
   if (hasField("Employee", "orgMembershipId")) {
     staleSignals.push("Employee.orgMembershipId still present");
@@ -242,9 +236,6 @@ function assertGeneratedPrismaClientShape() {
   }
   if (hasField("WorkLog", "factoryName")) {
     staleSignals.push("WorkLog.factoryName still present");
-  }
-  if (!hasField("WorkRecord", "lineId")) {
-    staleSignals.push("WorkRecord.lineId missing");
   }
   if (!hasField("WorkRecord", "effectiveCoverageStartDate")) {
     staleSignals.push("WorkRecord.effectiveCoverageStartDate missing");
@@ -773,7 +764,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "Factory", columnName: "managerEmployeeId" },
   { tableName: "Warehouse", columnName: "nameKo" },
   { tableName: "Warehouse", columnName: "nameVi" },
-  { tableName: "Employee", columnName: "lineId" },
+  { tableName: "Employee", columnName: "factoryId" },
   { tableName: "Employee", columnName: "email" },
   { tableName: "Employee", columnName: "orgRole" },
   { tableName: "Employee", columnName: "status" },
@@ -785,7 +776,6 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "Style", columnName: "code" },
   { tableName: "WorkRecord", columnName: "styleId" },
   { tableName: "WorkRecord", columnName: "styleProcessId" },
-  { tableName: "WorkRecord", columnName: "lineId" },
   { tableName: "WorkRecord", columnName: "effectiveCoverageStartDate" },
   { tableName: "WorkRecord", columnName: "effectiveCoverageEndDate" },
   { tableName: "OutsourcedWorkRecord", columnName: "outsourcingPartnerId" },
@@ -840,7 +830,6 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "AssignmentCard", columnName: "sortOrder" },
   { tableName: "AssignmentPlan", columnName: "externalId" },
   { tableName: "AssignmentPlan", columnName: "factoryId" },
-  { tableName: "AssignmentPlan", columnName: "lineId" },
   { tableName: "AssignmentPlan", columnName: "startIndex" },
   { tableName: "AssignmentPlan", columnName: "endIndex" },
   { tableName: "AssignmentPlan", columnName: "completedAt" },
@@ -919,7 +908,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
   { tableName: "EmployeeCompensationPolicy", columnName: "orgRole" },
   { tableName: "EmployeeCompensationPolicy", columnName: "fixedAllowance" },
   { tableName: "EmployeeCompensationPolicy", columnName: "variableAllowance" },
-  { tableName: "Employee", columnName: "lineName" },
+  { tableName: "Employee", columnName: "factoryName" },
   { tableName: "Employee", columnName: "orgMembershipId" },
   { tableName: "Employee", columnName: "fixedSalary" },
   { tableName: "Style", columnName: "uid" },
@@ -1258,11 +1247,11 @@ const applyLegacyRevenueForecastSplitDefault = (policy: RoleAccessPolicy): void 
     }
   );
 };
-const applyLegacyEmployeeLineAccessDefault = (policy: RoleAccessPolicy): void => {
+const applyLegacyEmployeeFactoryScopeAccessDefault = (policy: RoleAccessPolicy): void => {
   const operatorFeatures = policy.MANUFACTURER.OPERATOR;
   if (!operatorFeatures.includes("EMPLOYEE")) {
-    const lineIndex = operatorFeatures.indexOf("LINE");
-    operatorFeatures.splice(lineIndex >= 0 ? lineIndex + 1 : operatorFeatures.length, 0, "EMPLOYEE");
+    const factoryScopeIndex = operatorFeatures.indexOf("LINE");
+    operatorFeatures.splice(factoryScopeIndex >= 0 ? factoryScopeIndex + 1 : operatorFeatures.length, 0, "EMPLOYEE");
   }
 
   const accountantFeatures = policy.MANUFACTURER.ACCOUNTANT;
@@ -1307,7 +1296,7 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
     applyLegacyOutsourcingRecordDefault(policy);
     applyLegacyBusinessPartnerSplitDefault(policy);
     applyLegacyRevenueAnalysisDefault(policy);
-    applyLegacyEmployeeLineAccessDefault(policy);
+    applyLegacyEmployeeFactoryScopeAccessDefault(policy);
     applyLegacyEmployeeSystemDefault(policy);
     applyLegacySalarySystemDefault(policy);
   }
@@ -8655,7 +8644,7 @@ const normalizeWorkRecordPayloadList = (records: any) => {
 
     rows.push({
       workerId,
-      lineId: toPositiveIntOrNull(record.lineId),
+      factoryId: toPositiveIntOrNull(record.factoryId),
       styleId: toPositiveIntOrNull(record.styleId),
       styleCode: resolveOptionalString(record.styleCode, null),
       styleProcessId: toPositiveIntOrNull(record.styleProcessId),
@@ -8673,14 +8662,12 @@ const buildCanonicalWorkRecordWriteData = ({
   orgId,
   workLogId,
   record,
-  defaultLineId = null,
   defaultCoverageStartDate = null,
   defaultCoverageEndDate = null,
 }: {
   orgId: number;
   workLogId: number;
   record: any;
-  defaultLineId?: number | null;
   defaultCoverageStartDate?: string | null;
   defaultCoverageEndDate?: string | null;
 }): Prisma.WorkRecordCreateManyInput => {
@@ -8694,7 +8681,6 @@ const buildCanonicalWorkRecordWriteData = ({
     orgId,
     workLogId,
     workerId: toPositiveIntOrNull(record?.workerId),
-    lineId: toPositiveIntOrNull(record?.lineId) ?? toPositiveIntOrNull(defaultLineId),
     styleId,
     styleProcessId,
     effectiveCoverageStartDate:
@@ -8808,7 +8794,7 @@ const resolveWorkRecordCanonicalStyleRefs = async ({
       directStyleProcessMatchesStyle ? directStyleProcess : null;
     return {
       ...record,
-      lineId: toPositiveIntOrNull(record?.lineId),
+      factoryId: toPositiveIntOrNull(record?.factoryId),
       styleId: recordStyleId,
       styleCode: resolveOptionalString(linkedStyle?.code, null),
       styleName: resolveOptionalString(linkedStyle?.name, null),
@@ -8869,7 +8855,7 @@ const normalizeOutsourcedRecordPayloadList = (records: any) => {
       outsourcingPartnerId,
       outsourceVendorName: resolveOptionalString(record?.outsourceVendorName, null),
       outsourceUnitPrice,
-      lineId: toPositiveIntOrNull(record.lineId),
+      factoryId: toPositiveIntOrNull(record.factoryId),
       styleId: toPositiveIntOrNull(record.styleId),
       styleCode: resolveOptionalString(record.styleCode, null),
       styleProcessId: toPositiveIntOrNull(record.styleProcessId),
@@ -8886,12 +8872,10 @@ const buildCanonicalOutsourcedRecordWriteData = ({
   orgId,
   workLogId,
   record,
-  defaultLineId = null,
 }: {
   orgId: number;
   workLogId: number;
   record: any;
-  defaultLineId?: number | null;
 }): Prisma.OutsourcedWorkRecordCreateManyInput => {
   const styleId = toPositiveIntOrNull(record?.styleId);
   const styleProcessId = toPositiveIntOrNull(record?.styleProcessId);
@@ -8915,7 +8899,6 @@ const buildCanonicalOutsourcedRecordWriteData = ({
     outsourcingPartnerId,
     outsourceVendorName,
     outsourceUnitPrice,
-    lineId: toPositiveIntOrNull(record?.lineId) ?? toPositiveIntOrNull(defaultLineId),
     styleId,
     styleProcessId,
     quantity: toNonNegativeInt(record?.quantity, 0),
@@ -9012,12 +8995,12 @@ const resolveAssignmentPlanStyleMetaById = async ({
 
 const attachCanonicalFieldsToWorkRecords = async ({
   orgId,
-  lineId,
+  factoryId,
   records,
   db = prisma,
 }: {
   orgId: number;
-  lineId: number | null;
+  factoryId: number | null;
   records: any[];
   db?: any;
 }) => {
@@ -9026,7 +9009,7 @@ const attachCanonicalFieldsToWorkRecords = async ({
   );
   if (normalizedRecords.length === 0) return [];
 
-  const normalizedLineId = toPositiveIntOrNull(lineId);
+  const normalizedFactoryId = toPositiveIntOrNull(factoryId);
   const assignmentPlanIds = collectWorkRecordAssignmentPlanIds(normalizedRecords);
   const styleMetaByPlanId = await resolveAssignmentPlanStyleMetaById({
     orgId,
@@ -9056,7 +9039,7 @@ const attachCanonicalFieldsToWorkRecords = async ({
         : null;
     return {
       ...record,
-      lineId: normalizedLineId ?? toPositiveIntOrNull(record?.lineId),
+      factoryId: normalizedFactoryId ?? toPositiveIntOrNull(record?.factoryId),
       styleId: nextStyleId,
       styleCode: resolveOptionalString(planStyleMeta?.styleCode, null),
       styleName: resolveOptionalString(planStyleMeta?.styleName, null),
@@ -9124,135 +9107,7 @@ const attachCanonicalFieldsToWorkRecords = async ({
   }
   return result;
 };
-const collectWorkLogCrossLineAssignmentWarnings = async ({
-  orgId,
-  workLogLineId,
-  workLogLineName = null,
-  records,
-  db = prisma,
-}: {
-  orgId: number;
-  workLogLineId: number | null;
-  workLogLineName?: string | null;
-  records: any[];
-  db?: any;
-}): Promise<WorkLogCrossLineAssignmentWarning[]> => {
-  // Factory is the only assignment scope. Keep the legacy line column only
-  // for storage compatibility; it must not generate warnings or edit notes.
-  return [];
-  const normalizedWorkLogLineId = toPositiveIntOrNull(workLogLineId);
-  if (normalizedWorkLogLineId === null) return [];
 
-  const normalizedRecords = ensureArray(records).filter(
-    (record) => record && typeof record === "object"
-  );
-  if (normalizedRecords.length === 0) return [];
-
-  const assignmentPlanIds = collectWorkRecordAssignmentPlanIds(normalizedRecords);
-  if (assignmentPlanIds.length === 0) return [];
-
-  const workerIds = collectWorkRecordWorkerIds(normalizedRecords);
-  const [plans, workers] = await Promise.all([
-    db.assignmentPlan.findMany({
-    where: {
-      orgId,
-      id: { in: assignmentPlanIds },
-    },
-    select: {
-      id: true,
-      lineId: true,
-      // orderNo/label dropped in Phase E - workOrder.orderNumber is the only
-      // source now (label itself was already unused here).
-      workOrder: { select: { orderNumber: true } },
-    },
-    }),
-    workerIds.length > 0
-      ? db.employee.findMany({
-          where: { orgId, id: { in: workerIds } },
-          select: { id: true, name: true },
-        })
-      : Promise.resolve([]),
-  ]);
-  const planById = new Map(
-    ensureArray(plans).map((plan) => [toPositiveIntOrNull(plan?.id), plan])
-  );
-  const workerNameById = new Map(
-    ensureArray(workers).map((worker) => [
-      toPositiveIntOrNull(worker?.id),
-      resolveOptionalString(worker?.name, null),
-    ])
-  );
-  const styleMetaByPlanId = await resolveAssignmentPlanStyleMetaById({
-    orgId,
-    assignmentPlanIds,
-    db,
-  });
-
-  const lineIds = collectPositiveIntSet(
-    normalizedWorkLogLineId,
-    ...ensureArray(plans).map((plan) => plan?.lineId)
-  );
-  const lines =
-    lineIds.length > 0
-      ? await db.line.findMany({
-          where: {
-            orgId,
-            id: { in: lineIds },
-          },
-          select: {
-            id: true,
-            name: true,
-          },
-        })
-      : [];
-  const lineById = new Map(
-    ensureArray(lines).map((line) => [toPositiveIntOrNull(line?.id), line])
-  );
-  const fallbackWorkLogLineName =
-    resolveOptionalString(workLogLineName, null) ??
-    resolveOptionalString(lineById.get(normalizedWorkLogLineId)?.name, null);
-
-  return normalizedRecords.reduce(
-    (warnings: WorkLogCrossLineAssignmentWarning[], record) => {
-      const assignmentPlanId = toPositiveIntOrNull(record?.assignmentPlanId);
-      if (assignmentPlanId === null) return warnings;
-      const plan = planById.get(assignmentPlanId) ?? null;
-      const assignmentLineId = toPositiveIntOrNull(plan?.lineId);
-      if (
-        assignmentLineId === null ||
-        assignmentLineId === normalizedWorkLogLineId
-      ) {
-        return warnings;
-      }
-      warnings.push({
-        workerId: toPositiveIntOrNull(record?.workerId),
-        workerName:
-          workerNameById.get(toPositiveIntOrNull(record?.workerId)) ?? null,
-        workLogLineId: normalizedWorkLogLineId,
-        workLogLineName: fallbackWorkLogLineName,
-        assignmentLineId,
-        assignmentLineName:
-          resolveOptionalString(lineById.get(assignmentLineId)?.name, null) ?? null,
-        orderNo:
-          resolveOptionalString(plan?.workOrder?.orderNumber, null),
-        styleId:
-          resolveOptionalString(
-            styleMetaByPlanId.get(assignmentPlanId)?.styleId,
-            null
-          ) ?? null,
-        styleName:
-          resolveOptionalString(
-            styleMetaByPlanId.get(assignmentPlanId)?.styleName,
-            null
-          ) ?? null,
-        processCode: resolveOptionalString(record?.processCode, null),
-        processName: resolveOptionalString(record?.processName, null),
-      });
-      return warnings;
-    },
-    []
-  );
-};
 const buildWorkDateRange = (workDate: any) => {
   const normalized = normalizeDateKey(workDate);
   if (!normalized) return null;
@@ -9271,20 +9126,7 @@ const shiftDateKeyByDays = (dateKey: string, days: number): string | null => {
   utcDate.setUTCDate(utcDate.getUTCDate() + Math.trunc(days));
   return utcDate.toISOString().slice(0, 10);
 };
-const resolveWorkLogLineMeta = (
-  value: any
-): { lineId: number | null; lineName: string | null } => {
-  const source =
-    value && typeof value === "object" && !Array.isArray(value)
-      ? value
-      : Array.isArray(value)
-        ? value.find((item) => item && typeof item === "object")
-        : null;
 
-  const lineId = toPositiveIntOrNull(source?.lineId);
-  const lineName = resolveOptionalString(source?.lineName, null);
-  return { lineId, lineName };
-};
 const isWorkLogCoverageMissingColumnError = (error: any) => {
   const code = resolveOptionalString((error as any)?.code, "") || "";
   if (code !== "P2022") return false;
@@ -9377,20 +9219,18 @@ const fetchWorkLogByIdWithRecordsSafe = async ({
     return fallbackRow;
   }
 };
-const findPreviousWorkLogCoverageForLine = async ({
+const findPreviousWorkLogCoverageForFactoryScope = async ({
   orgId,
   factoryId = null,
-  lineId,
   beforeWorkDate,
 }: {
   orgId: number;
   factoryId?: number | null;
-  lineId: number;
   beforeWorkDate: string;
 }) => {
   const normalizedBeforeWorkDate = normalizeDateKey(beforeWorkDate);
   const normalizedFactoryId = toPositiveIntOrNull(factoryId);
-  if (!lineId || !normalizedBeforeWorkDate) {
+  if (!normalizedFactoryId || !normalizedBeforeWorkDate) {
     return null;
   }
 
@@ -9435,15 +9275,13 @@ const findPreviousWorkLogCoverageForLine = async ({
       });
       if (skip === 0) {
         console.warn(
-          `[work-log-context] orgId=${orgId} lineId=${lineId} missing work-log coverage columns; fallback previous-coverage query activated`
+          `[work-log-context] orgId=${orgId} factoryId=${factoryId} missing work-log coverage columns; fallback previous-coverage query activated`
         );
       }
     }
     if (candidates.length === 0) break;
 
     for (const candidate of candidates) {
-      const candidateLineMeta = resolveWorkLogLineMeta(candidate?.records);
-      if (toPositiveIntOrNull(candidateLineMeta.lineId) !== lineId) continue;
       const coverageEndDate = resolveWorkLogCoverageEndDate(candidate, candidate?.displayDate);
       const coverageStartDate = resolveWorkLogCoverageStartDate(
         candidate,
@@ -9470,7 +9308,7 @@ const findPreviousWorkLogCoverageForLine = async ({
 const resolveWorkLogRecordResponses = (workLog: any) => {
   // WorkRecord/OutsourcedWorkRecord are the sole source of truth for record
   // data, chosen by WorkLog.recordKind. WorkLog.records JSON only ever stores
-  // header metadata ({ lineId, lineName }), never row data, so it must not be
+  // header metadata ({ factoryId, factoryName }), never row data, so it must not be
   // read here as a fallback.
   if (workLog?.recordKind === "OUTSOURCING") {
     return Array.isArray(workLog?.outsourcedWorkRecords) ? workLog.outsourcedWorkRecords : [];
@@ -9696,7 +9534,7 @@ const summarizeWorkLogRecordsForDebug = (records: any) =>
   ensureArray(records).slice(0, 5).map((record, index) => ({
     index,
     workerId: toPositiveIntOrNull(record?.workerId),
-    lineId: toPositiveIntOrNull(record?.lineId),
+    factoryId: toPositiveIntOrNull(record?.factoryId),
     styleId: toPositiveIntOrNull(record?.styleId),
     styleCode: resolveOptionalString(record?.styleCode, null),
     processCode: resolveOptionalString(record?.processCode, null),
@@ -9710,7 +9548,7 @@ const buildWorkLogRecordTraceRows = (records: any, limit = 40) =>
       index: index + 1,
       workerId: toPositiveIntOrNull(record?.workerId),
       assignmentPlanId: toPositiveIntOrNull(record?.assignmentPlanId),
-      lineId: toPositiveIntOrNull(record?.lineId),
+      factoryId: toPositiveIntOrNull(record?.factoryId),
       styleId: toPositiveIntOrNull(record?.styleId),
       styleCode: resolveOptionalString(record?.styleCode, null),
       processCode: resolveOptionalString(record?.processCode, null),
@@ -9731,7 +9569,7 @@ const summarizeWorkLogPayloadForDebug = (payload: any = {}) => {
     coverageEndDate: normalizeDateKey(payload?.coverageEndDate),
     entryMode: resolveOptionalString(payload?.entryMode, null),
     factoryId: toPositiveIntOrNull(payload?.factoryId),
-    lineId: toPositiveIntOrNull(payload?.lineId),
+
     workerCount: toNonNegativeInt(payload?.workerCount, 0),
     itemCount: toNonNegativeInt(payload?.itemCount, records.length),
     totalCtSeconds: toNonNegativeInt(payload?.totalCtSeconds, 0),
@@ -10164,32 +10002,32 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
 
   const affectedPlans = await prisma.assignmentPlan.findMany({
       where: { orgId, id: { in: normalizedPlanIds } },
-      select: { id: true, externalId: true, lineId: true },
+      select: { id: true, externalId: true, factoryId: true },
     });
   if (affectedPlans.length === 0) {
     return { updatedAssignmentCount: 0 };
   }
 
-  const lineIds = Array.from(
+  const factoryIds = Array.from(
     new Set(
       affectedPlans
-        .map((plan) => toPositiveIntOrNull(plan?.lineId))
-        .filter((lineId): lineId is number => lineId !== null)
+        .map((plan) => toPositiveIntOrNull(plan?.factoryId))
+        .filter((factoryId): factoryId is number => factoryId !== null)
     )
   );
-  if (lineIds.length === 0) {
+  if (factoryIds.length === 0) {
     return { updatedAssignmentCount: 0 };
   }
 
-  const linePlans = await prisma.assignmentPlan.findMany({
+  const factoryScopePlans = await prisma.assignmentPlan.findMany({
     where: {
       orgId,
-      lineId: { in: lineIds },
+      factoryId: { in: factoryIds },
     },
     select: {
       id: true,
       externalId: true,
-      lineId: true,
+      factoryId: true,
       assignmentQuantity: true,
       assignmentCtSnapshot: true,
       startIndex: true,
@@ -10198,13 +10036,13 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
       startDayPercent: true,
       endDayPercent: true,
     },
-    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+    orderBy: [{ factoryId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
   });
-  if (linePlans.length === 0) {
+  if (factoryScopePlans.length === 0) {
     return { updatedAssignmentCount: 0 };
   }
 
-  const linePlanIds = linePlans.map((plan) => plan.id);
+  const factoryScopePlanIds = factoryScopePlans.map((plan) => plan.id);
   const workRecordSelect = {
     assignmentPlanId: true,
     styleProcess: {
@@ -10222,20 +10060,20 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
   // Union employee (WorkRecord) and outsourced (OutsourcedWorkRecord)
   // production - both advance the same assignment schedule reflow.
   const workRecords =
-    linePlanIds.length > 0
+    factoryScopePlanIds.length > 0
       ? await Promise.all([
           prisma.workRecord.findMany({
-            where: { orgId, assignmentPlanId: { in: linePlanIds } },
+            where: { orgId, assignmentPlanId: { in: factoryScopePlanIds } },
             select: workRecordSelect,
           }),
           prisma.outsourcedWorkRecord.findMany({
-            where: { orgId, assignmentPlanId: { in: linePlanIds } },
+            where: { orgId, assignmentPlanId: { in: factoryScopePlanIds } },
             select: workRecordSelect,
           }),
         ]).then(([employeeRows, outsourcedRows]) => [...employeeRows, ...outsourcedRows])
       : [];
 
-  const baselineQuantityByPlanId = linePlans.reduce((map, plan) => {
+  const baselineQuantityByPlanId = factoryScopePlans.reduce((map, plan) => {
     const baselineQuantity = resolveAssignmentQuantity(plan);
     if (baselineQuantity != null && baselineQuantity > 0) {
       map.set(plan.id, baselineQuantity);
@@ -10275,7 +10113,7 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
   }
 
   const completionDateByPlanId = new Map<number, string>();
-  linePlans.forEach((plan) => {
+  factoryScopePlans.forEach((plan) => {
     const baselineQuantity = baselineQuantityByPlanId.get(plan.id);
     if (baselineQuantity == null || baselineQuantity <= 0) return;
     const processKeyGroups = resolveAssignmentPlanRequiredProcessGroups(plan);
@@ -10309,15 +10147,15 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
     }
   });
 
-  const planByExternalId = linePlans.reduce((map, plan) => {
+  const planByExternalId = factoryScopePlans.reduce((map, plan) => {
     if (!plan?.externalId || map.has(plan.externalId)) return map;
     map.set(plan.externalId, plan);
     return map;
   }, new Map<string, any>());
-  const targetLineIdSet = new Set(lineIds.map((lineId) => String(lineId)));
+  const targetFactoryIdSet = new Set(factoryIds.map((factoryId) => String(factoryId)));
 
   const stateAssignments = normalizeStateAssignments(
-    linePlans.map((plan) => toAssignmentPlanResponse(plan))
+    factoryScopePlans.map((plan) => toAssignmentPlanResponse(plan))
   );
   const changedExternalIds = new Set<string>();
 
@@ -10370,28 +10208,28 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
     changedExternalIds.add(entry.externalId);
   };
 
-  lineIds.forEach((lineId) => {
-    const lineIdText = String(lineId);
-    if (!targetLineIdSet.has(lineIdText)) return;
+  factoryIds.forEach((factoryId) => {
+    const factoryIdText = String(factoryId);
+    if (!targetFactoryIdSet.has(factoryIdText)) return;
 
-    const lineCandidates = stateAssignments
+    const factoryScopeCandidates = stateAssignments
       .map((assignment, stateIndex) => ({ assignment, stateIndex }))
-      .filter(({ assignment }) => String(assignment?.lineId ?? "") === lineIdText)
+      .filter(({ assignment }) => String(assignment?.factoryId ?? "") === factoryIdText)
       .filter(({ assignment }) => {
         const externalId = resolveAssignmentExternalId(assignment);
         if (!externalId) return false;
         const plan = planByExternalId.get(externalId);
-        return Boolean(plan && Number(plan.lineId) === Number(lineId));
+        return Boolean(plan && Number(plan.factoryId) === Number(factoryId));
       });
-    if (lineCandidates.length === 0) return;
+    if (factoryScopeCandidates.length === 0) return;
 
     let missingDateCandidateCount = 0;
-    const lineEntries = lineCandidates
+    const factoryScopeEntries = factoryScopeCandidates
       .map(({ assignment, stateIndex }) => {
         const externalId = resolveAssignmentExternalId(assignment);
         if (!externalId) return null;
         const plan = planByExternalId.get(externalId);
-        if (!plan || Number(plan.lineId) !== Number(lineId)) return null;
+        if (!plan || Number(plan.factoryId) !== Number(factoryId)) return null;
 
         const startDateKey =
           normalizeDateKey(assignment?.startDateKey) ||
@@ -10435,9 +10273,9 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
         return String(a.externalId).localeCompare(String(b.externalId));
       });
     if (missingDateCandidateCount > 0) return;
-    if (lineEntries.length === 0) return;
+    if (factoryScopeEntries.length === 0) return;
 
-    const anchorEpochOffsets = lineEntries
+    const anchorEpochOffsets = factoryScopeEntries
       .map((entry) => {
         const startEpochDay = toEpochDayFromDateKeyForAssignmentSchedule(entry.startDateKey);
         if (startEpochDay == null) return null;
@@ -10448,7 +10286,7 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
     const epochOffset = anchorEpochOffsets.length > 0 ? anchorEpochOffsets[0]! : null;
 
     const chains: any[][] = [];
-    lineEntries.forEach((entry) => {
+    factoryScopeEntries.forEach((entry) => {
       const lastChain = chains.length > 0 ? chains[chains.length - 1]! : null;
       if (!lastChain || lastChain.length === 0) {
         chains.push([entry]);
@@ -10599,7 +10437,7 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
       }
     });
 
-    lineEntries.forEach((entry) => {
+    factoryScopeEntries.forEach((entry) => {
       stateAssignments[entry.stateIndex] = normalizeStateAssignmentItem(entry.assignment);
     });
   });
@@ -10625,7 +10463,7 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
     map.set(externalId, item);
     return map;
   }, new Map<string, any>());
-  const planUpdates = linePlans
+  const planUpdates = factoryScopePlans
     .filter((plan) => changedExternalIds.has(plan.externalId))
     .map((plan) => {
       const assignment = nextAssignmentByExternalId.get(plan.externalId);
@@ -10877,12 +10715,12 @@ const validateAssignmentPlanPayrollLock = async ({
 };
 const validateWorkLogAssignmentPlanCtSnapshot = async ({
   orgId,
-  lineId,
+  factoryId,
   records,
   allowCompletedAssignmentPlanIds = [],
 }: {
   orgId: number;
-  lineId: number | null;
+  factoryId: number | null;
   records: any;
   allowCompletedAssignmentPlanIds?: number[];
 }) => {
@@ -10890,7 +10728,7 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
   if (assignmentPlanIds.length === 0) {
     return { status: 200, error: null as string | null };
   }
-  void lineId;
+  if (!factoryId) return { status: 400, error: "factoryId is required" };
   const allowedCompletedPlanIdSet = new Set(
     normalizePlanIdList(allowCompletedAssignmentPlanIds)
   );
@@ -10898,11 +10736,11 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
   let plans: any[] = [];
   try {
     plans = await prisma.assignmentPlan.findMany({
-      where: { orgId, id: { in: assignmentPlanIds } },
+      where: { orgId, factoryId, id: { in: assignmentPlanIds } },
       select: {
         id: true,
         externalId: true,
-        lineId: true,
+        factoryId: true,
         assignmentCtSnapshot: true,
         assignmentCtTotalSeconds: true,
         isCompleted: true,
@@ -10914,11 +10752,11 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
   } catch (error) {
     if (!isAssignmentPlanMissingColumnError(error)) throw error;
     plans = await prisma.assignmentPlan.findMany({
-      where: { orgId, id: { in: assignmentPlanIds } },
+      where: { orgId, factoryId, id: { in: assignmentPlanIds } },
       select: {
         id: true,
         externalId: true,
-        lineId: true,
+        factoryId: true,
         assignmentCtSnapshot: true,
         isCompleted: true,
         completedAt: true,
@@ -11136,130 +10974,17 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
     conflictRows: [],
   };
 };
-const validateWorkLogLineWorkers = async ({
-  orgId,
-  lineId,
-  factoryId,
-  workDate,
-  coverageEndDate = null,
-  workerIds,
-}: {
-  orgId: number;
-  lineId: number | null;
-  factoryId: number | null;
-  workDate: string;
-  coverageEndDate?: string | null;
-  workerIds: number[];
+const validateWorkLogFactoryScopeWorkers = async ({ orgId, factoryId, workDate, coverageEndDate = null }: {
+  orgId: number; factoryId: number | null;
+  workDate: string; coverageEndDate?: string | null; workerIds: number[];
 }) => {
-  const normalizedWorkDate = normalizeDateKey(workDate);
-  const normalizedCoverageEndDate =
-    normalizeDateKey(coverageEndDate) || normalizedWorkDate;
-  if (!normalizedWorkDate) {
-    return {
-      status: 400,
-      error: "invalid workDate",
-      line: null as { id: number; factoryId: number; name: string } | null,
-      missingWorkerIds: [] as number[],
-    };
-  }
-
-  if (!lineId) {
-    return {
-      status: 400,
-      error: "lineId is required",
-      line: null as { id: number; factoryId: number; name: string } | null,
-      missingWorkerIds: [] as number[],
-    };
-  }
-
-  const line = await prisma.line.findFirst({
-    where: { id: lineId, orgId },
-    select: { id: true, factoryId: true, name: true },
-  });
-  if (!line) {
-    return {
-      status: 404,
-      error: "line not found",
-      line: null as { id: number; factoryId: number; name: string } | null,
-      missingWorkerIds: [] as number[],
-    };
-  }
-
-  if (factoryId !== null && line.factoryId !== factoryId) {
-    return {
-      status: 400,
-      error: "line does not belong to selected factory",
-      line,
-      missingWorkerIds: [] as number[],
-    };
-  }
-
-  const startDateRange = buildWorkDateRange(normalizedWorkDate);
-  const endDateRange = buildWorkDateRange(normalizedCoverageEndDate);
-  if (
-    !startDateRange ||
-    !endDateRange ||
-    normalizedWorkDate > normalizedCoverageEndDate
-  ) {
-    return {
-      status: 400,
-      error: "invalid workDate",
-      line,
-      missingWorkerIds: [] as number[],
-    };
-  }
-
-  if (workerIds.length === 0) {
-    return {
-      status: 200,
-      error: null as string | null,
-      line,
-      missingWorkerIds: [] as number[],
-    };
-  }
-
-  const matchedAssignments = await prisma.lineAssignment.findMany({
-    where: {
-      lineId: line.id,
-      employeeId: { in: workerIds },
-      startAt: { lte: endDateRange.endAt },
-      OR: [{ endAt: null }, { endAt: { gte: startDateRange.startAt } }],
-    },
-    select: { employeeId: true },
-  });
-  const matchedWorkerIdSet = new Set(
-    matchedAssignments.map((assignment) => assignment.employeeId)
-  );
-  let missingWorkerIds = workerIds.filter(
-    (workerId) => !matchedWorkerIdSet.has(workerId)
-  );
-
-  // 과거 작업일 기준 배정 이력이 비어 있는 경우(월말 일괄입력 등)에는
-  // 현재 활성 배정(endAt = null)도 허용해 작업 기록 입력이 막히지 않도록 한다.
-  if (missingWorkerIds.length > 0) {
-    const fallbackAssignments = await prisma.lineAssignment.findMany({
-      where: {
-        lineId: line.id,
-        employeeId: { in: missingWorkerIds },
-        endAt: null,
-      },
-      select: { employeeId: true },
-    });
-    fallbackAssignments.forEach((assignment) => {
-      matchedWorkerIdSet.add(assignment.employeeId);
-    });
-    missingWorkerIds = workerIds.filter(
-      (workerId) => !matchedWorkerIdSet.has(workerId)
-    );
-  }
-
+  const date = normalizeDateKey(workDate);
+  const end = normalizeDateKey(coverageEndDate) || date;
+  const factoryScope = factoryId ? await prisma.factory.findFirst({ where: { id: factoryId, orgId }, select: { id: true, name: true } }) : null;
   return {
-    status: 200,
-    error: null as string | null,
-    line,
-    // LineAssignment is capacity-planning history, not permission to record actual
-    // production. Employment and factory validation are enforced separately.
-    missingWorkerIds: [] as number[],
+    status: !date || date > end || !factoryId ? 400 : !factoryScope ? 404 : 200,
+    error: !date || date > end ? "invalid workDate" : !factoryId ? "factoryId is required" : !factoryScope ? "factory not found" : null,
+    factoryScope, missingWorkerIds: [] as number[],
   };
 };
 const validateWorkLogWorkerEmploymentWindow = async ({
@@ -11398,7 +11123,7 @@ const translateWorkLogErrorMessage = (error: any) => {
   if (text === "invalid id") return "작업 기록 ID가 올바르지 않습니다.";
   if (text === "factory not found") return "선택한 공장을 찾을 수 없습니다.";
   if (text === "work log not found") return "작업 기록을 찾을 수 없습니다.";
-  if (text === "lineId is required") return "라인을 선택해 주세요.";
+  if (text === "factoryId is required") return "라인을 선택해 주세요.";
   if (text === "line not found") return "선택한 라인을 찾을 수 없습니다.";
   if (text === "line does not belong to selected factory") {
     return "선택한 라인이 현재 공장에 속하지 않습니다.";
@@ -11478,7 +11203,7 @@ const loadWorkRecordResponseDisplayContext = async ({
           where: { orgId: normalizedOrgId, id: { in: assignmentPlanIds } },
           select: {
             id: true,
-            lineId: true,
+            factoryId: true,
             // orderNo/customer/label dropped in Phase E - workOrder.orderNumber/
             // buyerOrg.name/style.name are the only source now.
             workOrder: { select: { orderNumber: true } },
@@ -11564,9 +11289,9 @@ const hydrateWorkRecordResponseDisplayFields = (
       assignmentPlanMeta?.orderNo ?? assignmentPlanMeta?.workOrder?.orderNumber,
       null
     ),
-    lineId:
-      toPositiveIntOrNull(record?.lineId) ??
-      toPositiveIntOrNull(assignmentPlanMeta?.lineId),
+    factoryId:
+      toPositiveIntOrNull(record?.factoryId) ??
+      toPositiveIntOrNull(assignmentPlanMeta?.factoryId),
     styleId:
       resolveWorkRecordStyleRefId(record) ??
       toPositiveIntOrNull(assignmentPlanMeta?.styleId),
@@ -11592,7 +11317,7 @@ const toWorkRecordResponse = (record: any) => {
     isOutsourced: false,
     customerName: hydrated?.customerName ?? "",
     orderNo: resolveOptionalString(hydrated?.orderNo, "") ?? "",
-    lineId: toPositiveIntOrNull(hydrated?.lineId),
+    factoryId: toPositiveIntOrNull(hydrated?.factoryId),
     styleRefId: resolveWorkRecordStyleRefId(hydrated),
     styleId: resolveWorkRecordStyleRefId(hydrated),
     styleCode: resolveWorkRecordStyleCode(hydrated) ?? "",
@@ -11630,7 +11355,7 @@ const toOutsourcedWorkRecordResponse = (record: any) => {
       Number(hydrated?.outsourceUnitPrice || 0) * toNonNegativeInt(hydrated?.quantity, 0),
     customerName: hydrated?.customerName ?? "",
     orderNo: resolveOptionalString(hydrated?.orderNo, "") ?? "",
-    lineId: toPositiveIntOrNull(hydrated?.lineId),
+    factoryId: toPositiveIntOrNull(hydrated?.factoryId),
     styleRefId: resolveWorkRecordStyleRefId(hydrated),
     styleId: resolveWorkRecordStyleRefId(hydrated),
     styleCode: resolveWorkRecordStyleCode(hydrated) ?? "",
@@ -11737,7 +11462,6 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
     requestedEntryMode:
       payload?.entryMode !== undefined ? payload.entryMode : fallback?.entryMode,
   });
-  const fallbackLineMeta = resolveWorkLogLineMeta(fallback?.records);
   const rawRecords = payload?.records !== undefined ? payload.records : fallback?.records;
   const normalizedRecords =
     recordKind === "OUTSOURCING"
@@ -11757,12 +11481,10 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
     factoryId: toNumberOrNull(
       payload?.factoryId !== undefined ? payload.factoryId : fallback?.factoryId
     ),
-    lineId: toPositiveIntOrNull(
-      payload?.lineId !== undefined ? payload?.lineId : fallbackLineMeta.lineId
-    ),
-    lineName: resolveOptionalString(
-      payload?.lineName,
-      fallbackLineMeta.lineName ?? null
+
+    factoryName: resolveOptionalString(
+      payload?.factoryName,
+      fallback?.factory?.name ?? null
     ),
     factoryWagePerSecond: toOptionalFiniteNumber(
       payload?.factoryWagePerSecond,
@@ -11870,176 +11592,28 @@ const normalizeImportedWorkLogRows = (rows: any) =>
       };
     });
 
-const buildWorkLogImportLineLookup = (lines: any[]) =>
-  ensureArray(lines).reduce((map, line) => {
-    const factoryId = toPositiveIntOrNull(line?.factoryId);
-    const nameKey = normalizeComparableText(line?.name);
+const buildWorkLogImportFactoryScopeLookup = (factoryScopes: any[]) =>
+  ensureArray(factoryScopes).reduce((map, factoryScope) => {
+    const factoryId = toPositiveIntOrNull(factoryScope?.factoryId);
+    const nameKey = normalizeComparableText(factoryScope?.name);
     if (!factoryId || !nameKey) return map;
     const key = `${factoryId}:${nameKey}`;
     const current = map.get(key) || [];
     current.push({
-      id: toPositiveIntOrNull(line?.id),
+      id: toPositiveIntOrNull(factoryScope?.id),
       factoryId,
-      name: resolveOptionalString(line?.name, "") ?? "",
+      name: resolveOptionalString(factoryScope?.name, "") ?? "",
     });
     map.set(key, current);
     return map;
   }, new Map<string, Array<{ id: number | null; factoryId: number; name: string }>>());
 
-const doesWorkLogImportLineAssignmentOverlapCoverage = ({
-  assignment,
-  coverageStartDate,
-  coverageEndDate,
-}: {
-  assignment: any;
-  coverageStartDate: string;
-  coverageEndDate: string;
-}) => {
-  const startDateRange = buildWorkDateRange(coverageStartDate);
-  const endDateRange = buildWorkDateRange(coverageEndDate);
-  if (!startDateRange || !endDateRange) return false;
-  const startAt = assignment?.startAt ? new Date(assignment.startAt) : null;
-  const endAt = assignment?.endAt ? new Date(assignment.endAt) : null;
-  if (!startAt || Number.isNaN(startAt.getTime())) return false;
-  if (startAt > endDateRange.endAt) return false;
-  if (
-    endAt &&
-    !Number.isNaN(endAt.getTime()) &&
-    endAt < startDateRange.startAt
-  ) {
-    return false;
-  }
-  return true;
-};
 
-const resolveWorkLogImportLineForEmployee = ({
-  employee,
-  coverageStartDate,
-  coverageEndDate,
-  lineAssignmentsByEmployeeId,
-}: {
-  employee: any;
-  coverageStartDate: string;
-  coverageEndDate: string;
-  lineAssignmentsByEmployeeId: Map<number, any[]>;
-}) => {
-  const employeeId = toPositiveIntOrNull(employee?.id);
-  const assignments = employeeId
-    ? ensureArray(lineAssignmentsByEmployeeId.get(employeeId))
-    : [];
-  const activeMatches = assignments.filter((assignment) =>
-    doesWorkLogImportLineAssignmentOverlapCoverage({
-      assignment,
-      coverageStartDate,
-      coverageEndDate,
-    })
-  );
-  const activeLineMatches = Array.from(
-    new Map(
-      activeMatches
-        .map((assignment) => {
-          const lineId = toPositiveIntOrNull(assignment?.line?.id ?? assignment?.lineId);
-          const factoryId = toPositiveIntOrNull(assignment?.line?.factoryId);
-          const lineName = resolveOptionalString(assignment?.line?.name, null);
-          if (!lineId || !factoryId || !lineName) return null;
-          return [
-            lineId,
-            {
-              id: lineId,
-              factoryId,
-              name: lineName,
-              source: "line_assignment",
-            },
-          ] as const;
-        })
-        .filter(Boolean) as Array<
-        readonly [
-          number,
-          { id: number; factoryId: number; name: string; source: string }
-        ]
-      >
-    ).values()
-  );
-  if (activeLineMatches.length === 1) {
-    return { line: activeLineMatches[0], error: null as string | null };
-  }
-  if (activeLineMatches.length > 1) {
-    return {
-      line: null,
-      error: "multiple line assignments matched the work date",
-    };
-  }
-
-  // A worker can be registered after historical work was recorded and then be
-  // assigned to the correct line today. The normal work-log validator already
-  // accepts that single current assignment for historical recovery; Excel
-  // import must resolve the line by the same rule instead of depending on the
-  // denormalized Employee.lineId mirror.
-  const currentAssignments = assignments.filter(
-    (assignment) => !assignment?.endAt
-  );
-  const currentLineMatches = Array.from(
-    new Map(
-      currentAssignments
-        .map((assignment) => {
-          const currentLineId = toPositiveIntOrNull(
-            assignment?.line?.id ?? assignment?.lineId
-          );
-          const currentFactoryId = toPositiveIntOrNull(
-            assignment?.line?.factoryId
-          );
-          const currentLineName = resolveOptionalString(
-            assignment?.line?.name,
-            null
-          );
-          if (!currentLineId || !currentFactoryId || !currentLineName) return null;
-          return [
-            currentLineId,
-            {
-              id: currentLineId,
-              factoryId: currentFactoryId,
-              name: currentLineName,
-              source: "current_line_assignment_fallback",
-            },
-          ] as const;
-        })
-        .filter(Boolean) as Array<
-        readonly [
-          number,
-          { id: number; factoryId: number; name: string; source: string }
-        ]
-      >
-    ).values()
-  );
-  if (currentLineMatches.length === 1) {
-    return { line: currentLineMatches[0], error: null as string | null };
-  }
-  if (currentLineMatches.length > 1) {
-    return {
-      line: null,
-      error: "multiple active line assignments found for employee",
-    };
-  }
-
-  const lineId = toPositiveIntOrNull(employee?.line?.id ?? employee?.lineId);
-  const lineFactoryId = toPositiveIntOrNull(employee?.line?.factoryId);
-  const lineName = resolveOptionalString(employee?.line?.name, null);
-  if (lineId && lineFactoryId && lineName) {
-    return {
-      line: {
-        id: lineId,
-        factoryId: lineFactoryId,
-        name: lineName,
-        source: "employee_line_id",
-      },
-      error: null as string | null,
-    };
-  }
-
-  return {
-    line: null,
-    error: "line could not be resolved for the employee on the work date",
-  };
+const resolveWorkLogImportFactoryScopeForEmployee = ({ employee }: { employee: any; coverageStartDate?: string; coverageEndDate?: string }) => {
+  const factory = employee?.factory;
+  return factory && Number(factory.id) === Number(employee.factoryId)
+    ? { factoryScope: factory, error: null as string | null }
+    : { factoryScope: null, error: "factory could not be resolved for employee" };
 };
 
 const buildWorkLogImportProcessCodeCandidates = (process: any): string[] =>
@@ -12185,15 +11759,13 @@ const resolveWorkLogImportMatchedProcess = ({
 
 const resolveWorkLogImportAssignmentCandidate = ({
   row,
-  lineId,
-  factoryLineIds,
+  factoryId,
   plans,
   assignmentCardsByOrderKey,
   assignmentCardsByOrderStyleKey,
 }: {
   row: any;
-  lineId: number;
-  factoryLineIds: number[];
+  factoryId: number;
   plans: any[];
   assignmentCardsByOrderKey?: Map<string, any[]>;
   assignmentCardsByOrderStyleKey?: Map<string, any[]>;
@@ -12208,14 +11780,9 @@ const resolveWorkLogImportAssignmentCandidate = ({
     };
   }
 
-  const factoryLineIdSet = new Set(
-    ensureArray(factoryLineIds)
-      .map((value) => toPositiveIntOrNull(value))
-      .filter((value): value is number => value !== null)
-  );
   const orderCandidates = ensureArray(plans).filter(
     (plan) =>
-      factoryLineIdSet.has(toPositiveIntOrNull(plan?.lineId) ?? -1) &&
+      toPositiveIntOrNull(plan?.factoryId) === factoryId &&
       // orderNo column dropped in Phase E - workOrder.orderNumber is the only
       // source now.
       normalizeComparableText(plan?.workOrder?.orderNumber) === orderKey
@@ -12225,7 +11792,7 @@ const resolveWorkLogImportAssignmentCandidate = ({
       return {
         plan: null,
         process: null,
-        error: `order ${row.orderNo} / style ${row.styleId} has assignment cards but is not assigned to a line in the worker factory`,
+        error: `order ${row.orderNo} / style ${row.styleId} has assignment cards but is not assigned to the worker factory`,
       };
     }
     return {
@@ -12251,7 +11818,7 @@ const resolveWorkLogImportAssignmentCandidate = ({
       return {
         plan: null,
         process: null,
-        error: `style ${row.styleId} for order ${row.orderNo} has an assignment card but is not assigned to a line in the worker factory`,
+        error: `style ${row.styleId} for order ${row.orderNo} has an assignment card but is not assigned to the worker factory`,
       };
     }
     return {
@@ -12271,52 +11838,16 @@ const resolveWorkLogImportAssignmentCandidate = ({
         }),
       }))
       .filter((item) => item.process !== null);
-  const sameLineStyleCandidates = styleCandidates.filter(
-    (plan) => toPositiveIntOrNull(plan?.lineId) === lineId
-  );
-  const sameLineProcessMatches = findProcessMatches(sameLineStyleCandidates);
-  if (sameLineProcessMatches.length > 1) {
+  const matches = findProcessMatches(styleCandidates);
+  if (matches.length !== 1) {
     return {
-      plan: null,
-      process: null,
-      error: `multiple assignment plans matched order ${row.orderNo} / style ${row.styleId} / process ${row.processCode}`,
+      plan: null, process: null,
+      error: matches.length > 1
+        ? 'multiple assignment plans matched the order, style and process'
+        : 'process is not assigned for this order and style in the worker factory',
     };
   }
-  if (sameLineProcessMatches.length === 1) {
-    return {
-      plan: sameLineProcessMatches[0]?.plan ?? null,
-      process: sameLineProcessMatches[0]?.process ?? null,
-      error: null as string | null,
-      matchedOnOtherLine: false,
-    };
-  }
-
-  const otherLineStyleCandidates = styleCandidates.filter(
-    (plan) => toPositiveIntOrNull(plan?.lineId) !== lineId
-  );
-  const otherLineProcessMatches = findProcessMatches(otherLineStyleCandidates);
-  if (otherLineProcessMatches.length === 0) {
-    return {
-      plan: null,
-      process: null,
-      error: `process ${row.processCode} is not assigned for order ${row.orderNo} / style ${row.styleId} in the worker factory`,
-    };
-  }
-  if (otherLineProcessMatches.length > 1) {
-    return {
-      plan: null,
-      process: null,
-      error: `multiple assignment plans matched order ${row.orderNo} / style ${row.styleId} / process ${row.processCode}`,
-    };
-  }
-
-  const matched = otherLineProcessMatches[0] ?? null;
-  return {
-    plan: matched?.plan ?? null,
-    process: matched?.process ?? null,
-    error: null as string | null,
-    matchedOnOtherLine: true,
-  };
+  return { plan: matches[0]!.plan, process: matches[0]!.process, error: null as string | null };
 };
 
 const collectMissingWorkRecordAssignmentPlanLinkIndices = (records: any): number[] =>
@@ -12498,7 +12029,6 @@ const toWorkLogResponse = async (
     } | null;
   } = {}
 ) => {
-  const lineMeta = resolveWorkLogLineMeta(workLog?.records);
   const coverageEndDate = resolveWorkLogCoverageEndDate(workLog, workLog?.displayDate);
   const coverageStartDate = resolveWorkLogCoverageStartDate(workLog, coverageEndDate);
   const entryMode = resolveWorkLogEntryMode({
@@ -12514,8 +12044,8 @@ const toWorkLogResponse = async (
     entryMode,
     factoryId: workLog.factoryId ?? null,
     factoryName: resolveOptionalString(workLog.factory?.name, "") ?? "",
-    lineId: lineMeta.lineId,
-    lineName: lineMeta.lineName ?? "",
+
+
     factoryWagePerSecond: workLog.factoryWagePerSecond ?? null,
     ctBasis: workLog.ctBasis ?? "CT",
     workerCount: workLog.workerCount ?? 0,
@@ -12538,7 +12068,6 @@ const toWorkLogContextWorkerResponse = (row: any) => ({
   name: resolveOptionalString(row?.employee?.name, "") ?? "",
   email: resolveOptionalString(row?.employee?.email, "") ?? "",
   factoryId: row?.employee?.factoryId ?? null,
-  currentLineId: row?.lineId ?? null,
 });
 const toWorkLogContextAssignmentResponse = (plan: any) => {
   const contextDateKey = normalizeDateKey(plan?._workLogContextDateKey);
@@ -12587,8 +12116,8 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
   return {
     dbId: plan?.id ?? null,
     id: resolveOptionalString(plan?.externalId, "") ?? "",
-    lineId: String(plan?.lineId ?? ""),
-    lineName: resolveOptionalString(plan?.lineName, "") ?? "",
+    factoryId: String(plan?.factoryId ?? ""),
+    factoryName: resolveOptionalString(plan?.factoryName, "") ?? "",
     styleId: joinedLabel ?? joinedOrderNo ?? "",
     styleCode: joinedLabel ?? joinedOrderNo ?? "",
     orderNo: joinedOrderNo ?? "",
@@ -12630,738 +12159,29 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     closedBy: resolveOptionalString(plan?.closedBy, null),
   };
 };
-const buildWorkLogContextResponse = async ({
-  orgId,
-  factoryId = null,
-  lineId = null,
-  lineName = null,
-  workDate = null,
-  coverageStartDate = null,
-  debug = false,
-  recordKind = "EMPLOYEE",
-}: {
-  orgId: number;
-  factoryId?: number | null;
-  lineId?: number | null;
-  lineName?: string | null;
-  workDate?: string | null;
-  coverageStartDate?: string | null;
-  debug?: boolean;
-  recordKind?: WorkLogRecordKindValue;
+const buildWorkLogContextResponse = async ({ orgId, factoryId, workDate, coverageStartDate, recordKind = "EMPLOYEE" }: {
+  orgId: number; factoryId?: number | null; workDate?: string | null;
+  coverageStartDate?: string | null; recordKind?: WorkLogRecordKindValue; debug?: boolean;
+   factoryName?: string | null;
 }) => {
-  const normalizedLineId = toPositiveIntOrNull(lineId);
-  const normalizedFactoryId = toPositiveIntOrNull(factoryId);
-  const normalizedWorkDate = normalizeDateKey(workDate);
-  const normalizedCoverageStartDate = normalizeDateKey(coverageStartDate);
-  console.log(
-    `[buildWorkLogContextResponse] called orgId=${orgId} factoryId=${normalizedFactoryId ?? "null"} lineId=${normalizedLineId ?? "null"} workDate=${normalizedWorkDate || "-"} coverageStartDate=${normalizedCoverageStartDate || "-"}`
-  );
-  const buildBaseResponse = ({
-    line: currentLine = null,
-    workers = [],
-    assignments = [],
-    previousCoverageEndDate = null,
-    suggestedCoverageStartDate = null,
-    isFirstLineWorkLog = false,
-  }: {
-    line?: { id: number; name: string } | null;
-    workers?: any[];
-    assignments?: any[];
-    previousCoverageEndDate?: string | null;
-    suggestedCoverageStartDate?: string | null;
-    isFirstLineWorkLog?: boolean;
-  }) => ({
-    line: currentLine,
-    workers,
-    assignments,
-    previousCoverageEndDate,
-    suggestedCoverageStartDate,
-    isFirstLineWorkLog,
-  });
-  if (!normalizedLineId || !normalizedWorkDate) {
-    const response = buildBaseResponse({
-      line: normalizedLineId
-        ? {
-            id: normalizedLineId,
-            name: resolveOptionalString(lineName, "") ?? "",
-          }
-        : null,
-    });
-    if (debug) {
-      return {
-        ...response,
-        _debug: {
-          reason: "missing_line_or_work_date",
-          orgId,
-          factoryId: normalizedFactoryId,
-          lineId: normalizedLineId,
-          workDate: normalizedWorkDate,
-        },
-      };
-    }
-    return response;
-  }
-
-  const line = await prisma.line.findFirst({
-    where: {
-      id: normalizedLineId,
-      orgId,
-      ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
-    },
-    select: { id: true, name: true, factoryId: true },
-  });
-  if (!line) {
-    const response = buildBaseResponse({
-      line: normalizedLineId
-        ? {
-            id: normalizedLineId,
-            name: resolveOptionalString(lineName, "") ?? "",
-          }
-        : null,
-    });
-    if (debug) {
-      return {
-        ...response,
-        _debug: {
-          reason: "line_not_found_or_factory_mismatch",
-          orgId,
-          factoryId: normalizedFactoryId,
-          lineId: normalizedLineId,
-          workDate: normalizedWorkDate,
-        },
-      };
-    }
-    return response;
-  }
-
-  // Keep employee.factoryId aligned with active line assignments so
-  // line-based work-log worker queries stay consistent.
-  try {
-    const activeLineAssignments = await prisma.lineAssignment.findMany({
-      where: {
-        lineId: line.id,
-        endAt: null,
-      },
-      select: {
-        employeeId: true,
-        employee: {
-          select: {
-            factoryId: true,
-          },
-        },
-      },
-    });
-    const workerIdsToSync = activeLineAssignments
-      .filter((assignment) => {
-        const workerId = toPositiveIntOrNull(assignment?.employeeId);
-        if (workerId === null) return false;
-        const workerFactoryId = toPositiveIntOrNull(assignment?.employee?.factoryId);
-        return workerFactoryId !== line.factoryId;
-      })
-      .map((assignment) => toPositiveIntOrNull(assignment?.employeeId))
-      .filter((workerId): workerId is number => workerId !== null);
-
-    if (workerIdsToSync.length > 0) {
-      await prisma.employee.updateMany({
-        where: {
-          orgId,
-          id: { in: workerIdsToSync },
-        },
-        data: {
-          factoryId: line.factoryId,
-        },
-      });
-      console.warn(
-        `[work-log-context] orgId=${orgId} lineId=${line.id} synced employee.factoryId for ${workerIdsToSync.length} active line workers`
-      );
-    }
-  } catch (error) {
-    console.warn(
-      `[work-log-context] orgId=${orgId} lineId=${line.id} failed to sync line worker factory links: ${
-        resolveOptionalString((error as any)?.message, String(error || ""))
-      }`
-    );
-  }
-
-  const dateRange = buildWorkDateRange(normalizedWorkDate);
-  if (!dateRange) {
-    const response = buildBaseResponse({
-      line: { id: line.id, name: line.name ?? "" },
-    });
-    if (debug) {
-      return {
-        ...response,
-        _debug: {
-          reason: "invalid_date_range",
-          orgId,
-          factoryId: normalizedFactoryId,
-          lineId: line.id,
-          workDate: normalizedWorkDate,
-        },
-      };
-    }
-    return response;
-  }
-
-  const factoryLines = await prisma.line.findMany({
-    where: {
-      orgId,
-      factoryId: line.factoryId,
-    },
-    select: { id: true, name: true },
-    orderBy: [{ name: "asc" }, { id: "asc" }],
-  });
-  const factoryLineIds = factoryLines
-    .map((item) => toPositiveIntOrNull(item?.id))
-    .filter((item): item is number => item !== null);
-  const lineNameById = new Map(
-    factoryLines.map((item) => [
-      Number(item.id),
-      resolveOptionalString(item.name, "") ?? "",
-    ])
-  );
-  const lineAssignmentSelect = {
-    employeeId: true,
-    lineId: true,
-    startAt: true,
-    endAt: true,
-    employee: {
-      select: {
-        id: true,
-        email: true,
-        orgRole: true,
-        status: true,
-        name: true,
-        factoryId: true,
-        lineId: true,
-        line: {
-          select: {
-            id: true,
-            factoryId: true,
-            name: true,
-          },
-        },
-        joinedAt: true,
-        leftAt: true,
-        role: {
-          select: {
-            code: true,
-          },
-        },
-      },
-    },
-  } as const;
-  const previousCoverage = await findPreviousWorkLogCoverageForLine({
-    orgId,
-    factoryId: line.factoryId,
-    lineId: line.id,
-    beforeWorkDate: normalizedWorkDate,
-  });
-  const previousCoverageEndDate =
-    resolveWorkLogCoverageEndDate(previousCoverage, previousCoverage?.displayDate) || null;
-  const suggestedCoverageStartDate = previousCoverageEndDate
-    ? shiftDateKeyByDays(previousCoverageEndDate, 1)
-    : null;
-  const employmentFilterDateKey =
-    normalizeDateKey(normalizedCoverageStartDate) ||
-    normalizeDateKey(suggestedCoverageStartDate) ||
-    normalizedWorkDate;
-  const employmentDateRange = buildWorkDateRange(employmentFilterDateKey) || dateRange;
-
-  const lineAssignmentsOnWorkDatePromise = prisma.lineAssignment.findMany({
-    where: {
-      lineId: line.id,
-      startAt: { lte: dateRange.endAt },
-      OR: [{ endAt: null }, { endAt: { gte: employmentDateRange.startAt } }],
-      employee: {
-        is: {
-          orgId,
-        },
-      },
-    },
-    select: lineAssignmentSelect,
-    orderBy: [{ employeeId: "asc" }],
-  });
-  const loadAssignmentPlansForWorkLogContext = async () => {
-    if (factoryLineIds.length === 0) return [] as any[];
-    const where = { orgId, lineId: { in: factoryLineIds }, isCompleted: false };
-    const orderBy: any[] = [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }];
-    try {
-      return await prisma.assignmentPlan.findMany({
-        where,
-        select: {
-          id: true,
-          externalId: true,
-          lineId: true,
-          assignmentQuantity: true,
-          assignmentStTotalSeconds: true,
-          assignmentCtTotalSeconds: true,
-          assignmentCtSnapshot: true,
-          assignmentProcessRevisionHistory: true,
-          startIndex: true,
-          endIndex: true,
-          isCompleted: true,
-          finalQuantity: true,
-          completedAt: true,
-          // orderNo/customer/label dropped in Phase E - these joins are the
-          // only source now (see toAssignmentPlanResponse).
-          ...ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
-        },
-        orderBy,
-      });
-    } catch (error) {
-      if (!isAssignmentPlanMissingColumnError(error)) throw error;
-      return prisma.assignmentPlan.findMany({
-        where,
-        select: {
-          id: true,
-          externalId: true,
-          lineId: true,
-          assignmentQuantity: true,
-          assignmentCtSnapshot: true,
-          startIndex: true,
-          endIndex: true,
-          isCompleted: true,
-          finalQuantity: true,
-          completedAt: true,
-          ...ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
-        },
-        orderBy,
-      });
-    }
-  };
-
-  let [lineAssignmentsOnWorkDate, assignmentPlans] = await Promise.all([
-    lineAssignmentsOnWorkDatePromise,
-    loadAssignmentPlansForWorkLogContext(),
+  const date = normalizeDateKey(workDate);
+  const factory = factoryId ? await prisma.factory.findFirst({ where: { id: factoryId, orgId }, select: { id: true, name: true } }) : null;
+  if (!factory || !date) return { factory, workers: [], assignments: [], previousCoverageEndDate: null, suggestedCoverageStartDate: null, isFirstFactoryWorkLog: true };
+  const previous = await findPreviousWorkLogCoverageForFactoryScope({ orgId, factoryId: factory.id, beforeWorkDate: date });
+  const previousCoverageEndDate = resolveWorkLogCoverageEndDate(previous, previous?.displayDate) || null;
+  const suggestedCoverageStartDate = previousCoverageEndDate ? shiftDateKeyByDays(previousCoverageEndDate, 1) : null;
+  const start = normalizeDateKey(coverageStartDate) || suggestedCoverageStartDate || date;
+  const [employees, rawPlans, vendors] = await Promise.all([
+    prisma.employee.findMany({ where: { orgId, factoryId: factory.id, orgRole: "WORKER", status: { in: ["ACTIVE", "TERMINATED", "SUSPENDED"] } }, orderBy: [{ name: "asc" }, { id: "asc" }] }),
+    prisma.assignmentPlan.findMany({ where: { orgId, factoryId: factory.id, isCompleted: false }, select: { ...ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, assignmentProcessRevisionHistory: true, ...ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE }, orderBy: [{ startIndex: "asc" }, { id: "asc" }] }),
+    recordKind === "OUTSOURCING" ? prisma.organization.findMany({ where: { ownerOrgId: orgId, type: "PROCESS_OUTSOURCING", isActive: true }, select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }] }) : Promise.resolve([]),
   ]);
-  assignmentPlans = await attachLiveStyleProcessMirrorsToAssignmentPlans({
-    orgId,
-    plans: assignmentPlans,
-  });
-
-  const filterDebugStages: Array<{
-    stage: string;
-    total: number;
-    passed: number;
-    dropped: number;
-    droppedByReason: Record<string, number>;
-    droppedWorkers: Array<{
-      employeeId: number | null;
-      name: string;
-      reason: string;
-      workerFactoryId: number | null;
-      joinedDateKey: string;
-      leftDateKey: string;
-      assignmentStartDateKey: string;
-      assignmentEndDateKey: string;
-      membershipStatus: string;
-      membershipRole: string;
-      roleCode: string;
-    }>;
-  }> = [];
-  const filterWorkersByEmploymentWindow = (rows: any[], stage: string) => {
-    const safeRows = ensureArray(rows);
-    const passed: any[] = [];
-    const droppedWorkers: Array<{
-      employeeId: number | null;
-      name: string;
-      reason: string;
-      workerFactoryId: number | null;
-      joinedDateKey: string;
-      leftDateKey: string;
-      assignmentStartDateKey: string;
-      assignmentEndDateKey: string;
-      membershipStatus: string;
-      membershipRole: string;
-      roleCode: string;
-    }> = [];
-
-    safeRows.forEach((assignment) => {
-      const employee = assignment?.employee;
-      const employeeId = toPositiveIntOrNull(employee?.id ?? assignment?.employeeId);
-      const joinedDateKey = toDateKeyInTimeZone(employee?.joinedAt, BUSINESS_TIME_ZONE);
-      const leftDateKey = toDateKeyInTimeZone(employee?.leftAt, BUSINESS_TIME_ZONE);
-      const assignmentStartDateKey = toDateKeyInTimeZone(
-        assignment?.startAt,
-        BUSINESS_TIME_ZONE
-      );
-      const assignmentEndDateKey = toDateKeyInTimeZone(
-        assignment?.endAt,
-        BUSINESS_TIME_ZONE
-      );
-      const membershipStatus = String(employee?.status ?? "").trim();
-      const membershipRole = String(employee?.orgRole ?? "").trim();
-      const roleCode = String(employee?.role?.code ?? "").trim();
-      const baseInfo = {
-        employeeId,
-        name: resolveOptionalString(employee?.name, "") ?? "",
-        workerFactoryId: toPositiveIntOrNull(employee?.factoryId),
-        joinedDateKey,
-        leftDateKey,
-        assignmentStartDateKey,
-        assignmentEndDateKey,
-        membershipStatus,
-        membershipRole,
-        roleCode,
-      };
-
-      if (!employee) {
-        droppedWorkers.push({
-          ...baseInfo,
-          reason: "missing_employee",
-        });
-        return;
-      }
-      const employmentCheck = evaluateWorkerEmploymentInDateRange({
-        joinedAt: employee?.joinedAt,
-        leftAt: employee?.leftAt,
-        startDateKey: employmentFilterDateKey,
-        endDateKey: normalizedWorkDate,
-      });
-      if (!employmentCheck.passed) {
-        droppedWorkers.push({
-          ...baseInfo,
-          reason: employmentCheck.reason,
-        });
-        return;
-      }
-      passed.push(assignment);
-    });
-
-    const droppedByReason = droppedWorkers.reduce<Record<string, number>>(
-      (acc, item) => {
-        const key = item.reason || "unknown";
-        acc[key] = (acc[key] ?? 0) + 1;
-        return acc;
-      },
-      {}
-    );
-    filterDebugStages.push({
-      stage,
-      total: safeRows.length,
-      passed: passed.length,
-      dropped: droppedWorkers.length,
-      droppedByReason,
-      droppedWorkers,
-    });
-    return passed;
-  };
-
-  let workersForDate = filterWorkersByEmploymentWindow(
-    lineAssignmentsOnWorkDate,
-    "line_assignments_on_work_date"
-  );
-
-  if (workersForDate.length === 0) {
-    const activeLineAssignments = await prisma.lineAssignment.findMany({
-      where: {
-        lineId: line.id,
-        endAt: null,
-        employee: {
-          is: {
-            orgId,
-          },
-        },
-      },
-      select: lineAssignmentSelect,
-      orderBy: [{ employeeId: "asc" }],
-    });
-    const fallbackWorkers = filterWorkersByEmploymentWindow(
-      activeLineAssignments,
-      "fallback_active_line_assignments"
-    );
-    if (fallbackWorkers.length > 0) {
-      workersForDate = fallbackWorkers;
-      console.log(
-        `[work-log-context] orgId=${orgId} lineId=${line.id} workDate=${normalizedWorkDate} filterDate=${employmentFilterDateKey} workers=fallback_active_assignments`
-      );
-    }
-  }
-
-  // Last fallback for data-recovery cases:
-  // if active assignment rows are missing but the line has historical members,
-  // surface workers from the latest historical assignment on this line.
-  if (workersForDate.length === 0) {
-    const historicalAssignments = await prisma.lineAssignment.findMany({
-      where: {
-        lineId: line.id,
-        endAt: { not: null },
-        employee: {
-          is: {
-            orgId,
-          },
-        },
-      },
-      select: lineAssignmentSelect,
-      orderBy: [{ endAt: "desc" }, { id: "desc" }],
-    });
-
-    const latestHistoricalByEmployeeId = new Map<number, any>();
-    historicalAssignments.forEach((assignment) => {
-      const employeeId = toPositiveIntOrNull(assignment?.employeeId);
-      if (employeeId === null) return;
-      if (latestHistoricalByEmployeeId.has(employeeId)) return;
-      latestHistoricalByEmployeeId.set(employeeId, assignment);
-    });
-
-    const historicalEmployeeIds = Array.from(latestHistoricalByEmployeeId.keys());
-    if (historicalEmployeeIds.length > 0) {
-      const activeAssignmentsOnAnyLine = await prisma.lineAssignment.findMany({
-        where: {
-          employeeId: { in: historicalEmployeeIds },
-          endAt: null,
-          employee: {
-            is: {
-              orgId,
-            },
-          },
-        },
-        select: { employeeId: true, lineId: true },
-      });
-      const activeLineByEmployeeId = new Map<number, number>();
-      activeAssignmentsOnAnyLine.forEach((assignment) => {
-        const employeeId = toPositiveIntOrNull(assignment?.employeeId);
-        const activeLineId = toPositiveIntOrNull(assignment?.lineId);
-        if (employeeId === null || activeLineId === null) return;
-        if (activeLineByEmployeeId.has(employeeId)) return;
-        activeLineByEmployeeId.set(employeeId, activeLineId);
-      });
-
-      const historicalCandidates = Array.from(latestHistoricalByEmployeeId.values()).filter(
-        (assignment) => {
-          const employeeId = toPositiveIntOrNull(assignment?.employeeId);
-          if (employeeId === null) return false;
-          const activeLineId = activeLineByEmployeeId.get(employeeId);
-          if (activeLineId === undefined) return true;
-          return activeLineId === line.id;
-        }
-      );
-      const fallbackWorkers = filterWorkersByEmploymentWindow(
-        historicalCandidates,
-        "fallback_historical_line_assignments"
-      );
-      if (fallbackWorkers.length > 0) {
-        workersForDate = fallbackWorkers;
-        console.log(
-          `[work-log-context] orgId=${orgId} lineId=${line.id} workDate=${normalizedWorkDate} filterDate=${employmentFilterDateKey} workers=fallback_historical_line_assignments`
-        );
-      }
-    }
-  }
-
-  if (workersForDate.length === 0) {
-    const activeAssignmentsAllFactories = await prisma.lineAssignment.findMany({
-      where: {
-        lineId: line.id,
-        endAt: null,
-        employee: {
-          is: {
-            orgId,
-          },
-        },
-      },
-      select: lineAssignmentSelect,
-      orderBy: [{ employeeId: "asc" }],
-    });
-    const activeAssignmentsOnSelectedFactory = activeAssignmentsAllFactories.filter(
-      (assignment) => {
-        if (!normalizedFactoryId) return true;
-        const workerFactoryId = toPositiveIntOrNull(assignment?.employee?.factoryId);
-        return workerFactoryId === normalizedFactoryId;
-      }
-    );
-
-    console.log(
-      `[work-log-context][debug] orgId=${orgId} lineId=${line.id} lineName=${line.name ?? ""} factoryId=${normalizedFactoryId ?? "null"} workDate=${normalizedWorkDate} filterDate=${employmentFilterDateKey} finalWorkers=0`
-    );
-    console.log(
-      `[work-log-context][debug] baseCounts onWorkDate=${lineAssignmentsOnWorkDate.length} activeAnyFactory=${activeAssignmentsAllFactories.length} activeSelectedFactory=${activeAssignmentsOnSelectedFactory.length} assignmentPlans=${assignmentPlans.length}`
-    );
-    filterDebugStages.forEach((stageSummary) => {
-      console.log(
-        `[work-log-context][debug] stage=${stageSummary.stage} total=${stageSummary.total} passed=${stageSummary.passed} dropped=${stageSummary.dropped} droppedByReason=${JSON.stringify(
-          stageSummary.droppedByReason
-        )}`
-      );
-      stageSummary.droppedWorkers.slice(0, 40).forEach((worker) => {
-        console.log(
-          `[work-log-context][debug] stage=${stageSummary.stage} drop workerId=${worker.employeeId ?? "null"} name=${worker.name || "-"} reason=${worker.reason} workerFactoryId=${worker.workerFactoryId ?? "null"} joined=${worker.joinedDateKey || "-"} left=${worker.leftDateKey || "-"} assignmentStart=${worker.assignmentStartDateKey || "-"} assignmentEnd=${worker.assignmentEndDateKey || "-"} membershipStatus=${worker.membershipStatus || "-"} membershipRole=${worker.membershipRole || "-"} roleCode=${worker.roleCode || "-"}`
-        );
-      });
-    });
-  }
-
-  // A worker's permanent LineAssignment drives capacity, but workers may support a
-  // different line. Offer every employed WORKER in the selected factory and retain
-  // the date-effective home line only as display context.
-  const [factoryWorkers, factoryAssignmentsOnWorkDate] = await Promise.all([
-    prisma.employee.findMany({
-      where: {
-        orgId,
-        factoryId: line.factoryId,
-        orgRole: "WORKER",
-        status: { in: ["ACTIVE", "TERMINATED", "SUSPENDED"] },
-      },
-      select: lineAssignmentSelect.employee.select,
-      orderBy: [{ name: "asc" }, { id: "asc" }],
-    }),
-    prisma.lineAssignment.findMany({
-      where: {
-        lineId: { in: factoryLineIds },
-        startAt: { lte: dateRange.endAt },
-        OR: [{ endAt: null }, { endAt: { gte: employmentDateRange.startAt } }],
-        employee: { is: { orgId, factoryId: line.factoryId, orgRole: "WORKER" } },
-      },
-      select: { employeeId: true, lineId: true, startAt: true, endAt: true },
-      orderBy: [{ startAt: "desc" }, { id: "desc" }],
-    }),
-  ]);
-  const homeAssignmentByEmployeeId = new Map<number, any>();
-  factoryAssignmentsOnWorkDate.forEach((assignment) => {
-    if (!homeAssignmentByEmployeeId.has(assignment.employeeId)) {
-      homeAssignmentByEmployeeId.set(assignment.employeeId, assignment);
-    }
-  });
-  const factoryWorkerRows = factoryWorkers
-    .filter((employee) =>
-      evaluateWorkerEmploymentInDateRange({
-        joinedAt: employee.joinedAt,
-        leftAt: employee.leftAt,
-        startDateKey: employmentFilterDateKey,
-        endDateKey: normalizedWorkDate,
-      }).passed
-    )
-    .map((employee) => ({
-      ...(homeAssignmentByEmployeeId.get(employee.id) || {}),
-      employeeId: employee.id,
-      lineId: homeAssignmentByEmployeeId.get(employee.id)?.lineId ?? null,
-      employee,
-    }));
-  // Do not discard workers already proven eligible by a date-effective
-  // LineAssignment. Employee.factoryId/orgRole are denormalized convenience fields
-  // and older rows can temporarily be stale after line-history corrections. The
-  // assignment is the source of truth for line membership, so merge those workers
-  // with the broader factory worker list instead of replacing them.
-  const workerRowByEmployeeId = new Map<number, any>();
-  workersForDate.forEach((row) => {
-    const employeeId = toPositiveIntOrNull(row?.employee?.id ?? row?.employeeId);
-    if (employeeId !== null) workerRowByEmployeeId.set(employeeId, row);
-  });
-  factoryWorkerRows.forEach((row) => {
-    const employeeId = toPositiveIntOrNull(row?.employee?.id ?? row?.employeeId);
-    if (employeeId !== null) workerRowByEmployeeId.set(employeeId, row);
-  });
-  workersForDate = Array.from(workerRowByEmployeeId.values()).sort((left, right) => {
-    const leftName = resolveOptionalString(left?.employee?.name, "") ?? "";
-    const rightName = resolveOptionalString(right?.employee?.name, "") ?? "";
-    return leftName.localeCompare(rightName) ||
-      Number(left?.employee?.id ?? left?.employeeId ?? 0) -
-        Number(right?.employee?.id ?? right?.employeeId ?? 0);
-  });
-
-  const outsourcedVendorRows =
-    recordKind === "OUTSOURCING"
-      ? await prisma.organization.findMany({
-          where: { ownerOrgId: orgId, type: "PROCESS_OUTSOURCING", isActive: true },
-          select: { id: true, name: true },
-          orderBy: [{ name: "asc" }, { id: "asc" }],
-        })
-      : [];
-  const response = buildBaseResponse({
-    line: { id: line.id, name: line.name ?? "" },
-    workers:
-      recordKind === "OUTSOURCING"
-        ? outsourcedVendorRows.map((row) => ({
-            id: `partner:${row.id}`,
-            partnerId: row.id,
-            name: row.name,
-            vendorName: row.name,
-            isOutsourced: true,
-          }))
-        : workersForDate.map(toWorkLogContextWorkerResponse),
-    assignments: assignmentPlans
-      .map((plan) =>
-        toWorkLogContextAssignmentResponse({
-          ...plan,
-          _workLogContextDateKey: normalizedWorkDate,
-          lineName: lineNameById.get(Number(plan?.lineId)) || "",
-        })
-      ),
-    previousCoverageEndDate,
-    suggestedCoverageStartDate,
-    isFirstLineWorkLog: !previousCoverageEndDate,
-  });
-  console.log(
-    `[buildWorkLogContextResponse] result orgId=${orgId} lineId=${line.id} workers=${response.workers.length} assignments=${response.assignments.length} previousCoverageEndDate=${response.previousCoverageEndDate ?? "-"} suggestedCoverageStartDate=${response.suggestedCoverageStartDate ?? "-"}`
-  );
-  if (!debug) return response;
-
+  const plans = await attachLiveStyleProcessMirrorsToAssignmentPlans({ orgId, plans: rawPlans });
   return {
-    ...response,
-    _debug: {
-      orgId,
-      factoryId: normalizedFactoryId,
-      lineId: line.id,
-      lineName: line.name ?? "",
-      workDate: normalizedWorkDate,
-      filterWorkDate: employmentFilterDateKey,
-      baseCounts: {
-        lineAssignmentsOnWorkDate: lineAssignmentsOnWorkDate.length,
-        assignmentPlansInFactory: assignmentPlans.length,
-      },
-      lineAssignmentsOnWorkDateWorkers: lineAssignmentsOnWorkDate.map((assignment) => {
-        const employee = assignment?.employee;
-        const membershipStatus = String(employee?.status ?? "")
-          .trim()
-          .toUpperCase();
-        const joinedDateKey = toDateKeyInTimeZone(employee?.joinedAt, BUSINESS_TIME_ZONE);
-        const leftDateKey = toDateKeyInTimeZone(employee?.leftAt, BUSINESS_TIME_ZONE);
-        const employmentCheck = evaluateWorkerEmploymentInDateRange({
-          joinedAt: employee?.joinedAt,
-          leftAt: employee?.leftAt,
-          startDateKey: employmentFilterDateKey,
-          endDateKey: normalizedWorkDate,
-        });
-        const joinedPass = employmentCheck.reason !== "joinedAt_after_range";
-        const leftPass = employmentCheck.reason !== "leftAt_before_range";
-        const membershipPass = true;
-        return {
-          workerId: toPositiveIntOrNull(employee?.id ?? assignment?.employeeId),
-          workerName: resolveOptionalString(employee?.name, "") ?? "",
-          membershipStatus,
-          membershipRole: String(employee?.orgRole ?? "").trim().toUpperCase(),
-          roleCode: String(employee?.role?.code ?? "").trim().toUpperCase(),
-          workerFactoryId: toPositiveIntOrNull(employee?.factoryId),
-          joinedAtRaw: employee?.joinedAt ?? null,
-          leftAtRaw: employee?.leftAt ?? null,
-          joinedDateKey,
-          leftDateKey,
-          joinedPass,
-          membershipPass,
-          leftPass,
-          finalPass: employmentCheck.passed && membershipPass,
-          employmentReason: employmentCheck.reason,
-        };
-      }),
-      stageSummaries: filterDebugStages,
-      stageReasonTotals: filterDebugStages.map((stage) => ({
-        stage: stage.stage,
-        droppedByReason: stage.droppedByReason,
-      })),
-      stageDropExamples: filterDebugStages.map((stage) => ({
-        stage: stage.stage,
-        examples: stage.droppedWorkers.slice(0, 5),
-      })),
-      finalWorkerCount: response.workers.length,
-      finalWorkerIds: response.workers
-        .map((worker) => toPositiveIntOrNull(worker?.id))
-        .filter((workerId): workerId is number => workerId !== null),
-      fallbackUsed:
-        workersForDate.length > 0 && lineAssignmentsOnWorkDate.length === 0
-          ? "fallback"
-          : "on_work_date_assignments",
-    },
+    factory,
+    workers: recordKind === "OUTSOURCING" ? vendors.map(row => ({ id: `partner:${row.id}`, partnerId: row.id, name: row.name, vendorName: row.name, isOutsourced: true })) : employees.filter(employee => evaluateWorkerEmploymentInDateRange({ joinedAt: employee.joinedAt, leftAt: employee.leftAt, startDateKey: start, endDateKey: date }).passed).map(employee => toWorkLogContextWorkerResponse({ employee })),
+    assignments: plans.map(plan => toWorkLogContextAssignmentResponse({ ...plan, _workLogContextDateKey: date })),
+    previousCoverageEndDate, suggestedCoverageStartDate, isFirstFactoryWorkLog: !previousCoverageEndDate,
   };
 };
 const resolveWorkLogUpdatedBy = async (orgId: number, req: Request): Promise<string | null> => {
@@ -15006,7 +13826,7 @@ const buildEditableAssignmentCtSnapshotFromLiveStyle = ({
     processes.length > 0
       ? {
           sourceAssignmentId: resolveAssignmentExternalId(assignment),
-          lineId: assignment?.lineId ?? null,
+          factoryId: assignment?.factoryId ?? null,
           quantity: orderQuantity,
           schedule: buildAssignmentCtSnapshotScheduleForSave(assignment),
           pieceCtTotalSeconds,
@@ -16447,8 +15267,8 @@ const toAssignmentPlanResponse = (plan: any) => {
       : null;
   return {
     id: plan.externalId,
-    lineId: String(plan.lineId),
-    factoryId: toPositiveIntOrNull(plan.factoryId ?? plan?.line?.factoryId),
+    factoryId: String(plan.factoryId),
+
     cardId: plan.cardId ?? "",
     workOrderId: toPositiveIntOrNull(plan?.workOrderId),
     // styleId/buyerOrgId: read via the joined relation first (every current
@@ -16679,29 +15499,17 @@ const syncAssignmentPlanWorkOrderRefs = async (
 };
 const normalizeAssignmentPlanPayload = (
   items: any,
-  scopeMaps: {
-    byFactoryId: Map<number, { lineId: number; factoryId: number }>;
-    byLineId: Map<number, { lineId: number; factoryId: number }>;
-  } | null = null
+  scopeMaps: { byFactoryId: Map<number, { factoryId: number }> } | null = null
 ) =>
   ensureArray(items)
     .map((item) => {
       if (!item || typeof item !== "object") return null;
 
       const externalId = resolveOptionalString(item.id ?? item.externalId, null);
-      const explicitFactoryId = toPositiveIntOrNull(item.factoryId);
-      const legacyLineId = toPositiveIntOrNull(item.lineId);
-      const scope = scopeMaps
-        ? explicitFactoryId != null
-          ? scopeMaps.byFactoryId.get(explicitFactoryId) ?? null
-          : legacyLineId != null
-            ? scopeMaps.byLineId.get(legacyLineId) ?? null
-            : null
-        : null;
-      if (!externalId || (scopeMaps && !scope)) return null;
-      const resolvedLineId = scope?.lineId ?? legacyLineId;
-      const resolvedFactoryId = scope?.factoryId ?? explicitFactoryId;
-      if (!resolvedLineId) return null;
+      const resolvedFactoryId = toPositiveIntOrNull(item.factoryId);
+      if (!externalId || !resolvedFactoryId || (scopeMaps && !scopeMaps.byFactoryId.has(resolvedFactoryId))) {
+        throw createHttpError(400, "assignment factoryId is invalid");
+      }
 
       const startIndex = toSignedInt(item.startIndex, 0);
       const endIndex = Math.max(startIndex, toSignedInt(item.endIndex, startIndex));
@@ -16718,7 +15526,6 @@ const normalizeAssignmentPlanPayload = (
       });
       const stTotalSeconds = resolveStateAssignmentStTotalSeconds(item);
       return {
-        lineId: resolvedLineId,
         factoryId: resolvedFactoryId,
         externalId,
         cardId: resolveOptionalString(item.cardId, null),
@@ -16835,8 +15642,8 @@ const toAssignmentPlanWriteData = (
   // Completion state is owned by dedicated completion endpoints.
   // Assignment board save must not overwrite completion-related fields.
   return {
-    lineId: item.lineId,
-    factoryId: toPositiveIntOrNull(item.factoryId),
+    factoryId: item.factoryId,
+
     cardId: item.cardId ?? null,
     assignmentCardId,
     styleId,
@@ -16948,7 +15755,7 @@ const validateNewAssignmentPlanCtSnapshotProcesses = async ({
 const COMPLETED_ASSIGNMENT_PLAN_WRITE_SELECT = {
   id: true,
   externalId: true,
-  lineId: true,
+  factoryId: true,
   cardId: true,
   workOrderId: true,
   // styleId/buyerOrgId: real scalar FK columns on AssignmentPlan (not a join-
@@ -16980,10 +15787,10 @@ const COMPLETED_ASSIGNMENT_PLAN_WRITE_SELECT = {
   endDayPercent: true,
   isCompleted: true,
 };
-const normalizeAssignmentLineIdForWriteCompare = (value: any): number | null => {
-  const lineId = toNumberOrNull(value);
-  return typeof lineId === "number" && Number.isFinite(lineId)
-    ? Math.round(lineId)
+const normalizeAssignmentFactoryIdForWriteCompare = (value: any): number | null => {
+  const factoryId = toNumberOrNull(value);
+  return typeof factoryId === "number" && Number.isFinite(factoryId)
+    ? Math.round(factoryId)
     : null;
 };
 const buildCompletedAssignmentWriteComparable = (item: any) => {
@@ -16995,7 +15802,7 @@ const buildCompletedAssignmentWriteComparable = (item: any) => {
     assignmentCtSnapshot,
   });
   return {
-    lineId: normalizeAssignmentLineIdForWriteCompare(item?.lineId),
+    factoryId: normalizeAssignmentFactoryIdForWriteCompare(item?.factoryId),
     cardId: resolveOptionalString(item?.cardId, null),
     workOrderId: toPositiveIntOrNull(item?.workOrderId),
     // Accept either shape: a raw AssignmentPlan row (scalar styleId/buyerOrgId,
@@ -17915,7 +16722,7 @@ const ASSIGNMENT_PLAN_SELECT_CORE = {
   externalId: true,
   styleProcessVersionId: true,
   factoryId: true,
-  lineId: true,
+
   cardId: true,
   workOrderId: true,
   // orderNo/customer/label/previewUrl dropped in Phase E, and
@@ -17985,7 +16792,7 @@ const ASSIGNMENT_PLAN_SELECT_LEGACY = {
   id: true,
   externalId: true,
   factoryId: true,
-  lineId: true,
+
   cardId: true,
   assignmentQuantity: true,
   originOrderId: true,
@@ -18059,7 +16866,7 @@ const findAssignmentPlansWithSelectFallback = async ({
 const loadAssignmentPlansForBoardState = async (orgId: number) => {
   return findAssignmentPlansWithSelectFallback({
     where: { orgId },
-    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+    orderBy: [{ factoryId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
     selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY, ASSIGNMENT_PLAN_SELECT_LEGACY],
     context: "loadAssignmentPlansForBoardState",
   });
@@ -18067,7 +16874,7 @@ const loadAssignmentPlansForBoardState = async (orgId: number) => {
 const loadAssignmentPlanRowsForBoardTx = async (orgId: number, db: any) =>
   db.assignmentPlan.findMany({
     where: { orgId },
-    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+    orderBy: [{ factoryId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
     select: ASSIGNMENT_PLAN_SELECT_FOR_BOARD_SAVE as any,
   });
 const buildReadOnlyAssignmentBoardStateResponse = async (
@@ -18092,34 +16899,6 @@ const buildReadOnlyAssignmentBoardStateResponse = async (
   return toAssignmentBoardStateResponse(nextState, assignmentPlans, cards);
 };
 
-const closeActiveLineAssignments = async (employeeId: number, endedAt: Date = new Date()) => {
-  const activeAssignments = await prisma.lineAssignment.findMany({
-    where: { employeeId, endAt: null },
-    select: { lineId: true },
-  });
-
-  if (activeAssignments.length === 0) {
-    return [];
-  }
-
-  const lineIds = activeAssignments.map((item) => item.lineId);
-  await prisma.lineAssignment.updateMany({
-    where: { employeeId, endAt: null },
-    data: { endAt: endedAt },
-  });
-
-  await prisma.line.updateMany({
-    where: { id: { in: lineIds }, managerEmployeeId: employeeId },
-    data: { managerEmployeeId: null },
-  });
-
-  await prisma.employee.updateMany({
-    where: { id: employeeId },
-    data: { lineId: null },
-  });
-
-  return lineIds;
-};
 
 const seedAttributesIfEmpty = async (
   orgId: number,
@@ -22040,7 +20819,6 @@ app.use(
 
 app.use(
   createOrgMembershipRouter({
-    closeActiveLineAssignments,
     hasOrgFeatureAccess: hasRoleAccessPolicyFeature,
     isManufacturerOrg,
     resolveDefaultEmployeeRoleId,
@@ -22065,71 +20843,46 @@ app.use(
   })
 );
 
-app.use(
-  createLineRouter({
-    closeActiveLineAssignments,
-    isManufacturerOrg,
-  })
-);
+
+app.get("/factory-workers", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+  const factoryId = toPositiveIntOrNull(req.query.factoryId);
+  if (req.query.factoryId !== undefined && !factoryId) return res.status(400).json({ ok: false, error: "invalid factoryId" });
+  const dateKey = req.query.workDate === undefined ? toDateKeyInTimeZone(new Date(), BUSINESS_TIME_ZONE) : normalizeDateKey(req.query.workDate);
+  const range = buildWorkDateRange(dateKey);
+  if (!range) return res.status(400).json({ ok: false, error: "invalid workDate" });
+  const factories = await prisma.factory.findMany({ where: { orgId: organization.id, ...(factoryId ? { id: factoryId } : {}) }, select: { id: true }, orderBy: { id: "asc" } });
+  if (factoryId && factories.length === 0) return res.status(404).json({ ok: false, error: "factory not found" });
+  const employees = await prisma.employee.findMany({ where: {
+    orgId: organization.id, factoryId: { in: factories.map(factory => factory.id) }, orgRole: "WORKER",
+    role: { code: "WORKER_SEWING" }, status: { in: ["ACTIVE", "SUSPENDED", "TERMINATED"] },
+    AND: [{ OR: [{ joinedAt: null }, { joinedAt: { lte: range.endAt } }] }, { OR: [{ leftAt: null }, { leftAt: { gte: range.startAt } }] }],
+  }, select: { id: true, factoryId: true, name: true, email: true }, orderBy: { id: "asc" } });
+  if (req.query.summary === "1" || req.query.summary === "true") {
+    const counts = new Map<number, number>();
+    employees.forEach(employee => { if (employee.factoryId) counts.set(employee.factoryId, (counts.get(employee.factoryId) || 0) + 1); });
+    return res.json(factories.map(factory => ({ factoryId: factory.id, workerCount: counts.get(factory.id) || 0 })));
+  }
+  return res.json(employees);
+});
 app.get("/assignment-plans", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
-  const lineId = Number(req.query.lineId);
-  const hasLineFilter = Number.isFinite(lineId) && lineId > 0;
-  const factoryId = Number(req.query.factoryId);
-  const hasFactoryFilter = Number.isFinite(factoryId) && factoryId > 0;
-  if (!hasLineFilter && !hasFactoryFilter) {
-    return res
-      .status(400)
-      .json({ ok: false, error: "lineId or factoryId is required" });
-  }
-
-  let lineIds: number[] = [];
-  if (hasLineFilter) {
-    const line = await prisma.line.findFirst({
-      where: {
-        id: lineId,
-        orgId: organization.id,
-        ...(hasFactoryFilter ? { factoryId } : {}),
-      },
-      select: { id: true },
-    });
-    if (!line) {
-      return res.status(404).json({ ok: false, error: "line not found" });
-    }
-    lineIds = [line.id];
-  } else {
-    const factory = await prisma.factory.findFirst({
-      where: { id: factoryId, orgId: organization.id },
-      select: { id: true },
-    });
-    if (!factory) {
-      return res.status(404).json({ ok: false, error: "factory not found" });
-    }
-
-    const factoryLines = await prisma.line.findMany({
-      where: { orgId: organization.id, factoryId },
-      select: { id: true },
-    });
-    lineIds = factoryLines
-      .map((line) => Number(line.id))
-      .filter((id) => Number.isFinite(id) && id > 0);
-    if (lineIds.length === 0) {
-      return res.json([]);
-    }
-  }
-
-  const assignmentPlanLineFilter: Prisma.AssignmentPlanWhereInput["lineId"] =
-    lineIds.length === 1 ? lineIds[0]! : { in: lineIds };
+  const factoryId = toPositiveIntOrNull(req.query.factoryId);
+  if (!factoryId) return res.status(400).json({ ok: false, error: "factoryId is required" });
+  const factory = await prisma.factory.findFirst({ where: { id: factoryId, orgId: organization.id }, select: { id: true } });
+  if (!factory) return res.status(404).json({ ok: false, error: "factory not found" });
+  const assignmentPlanFactoryScopeFilter = factoryId;
   let plans = await findAssignmentPlansWithSelectFallback({
     where: {
       orgId: organization.id,
-      lineId: assignmentPlanLineFilter,
+      factoryId: assignmentPlanFactoryScopeFilter,
     },
-    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+    orderBy: [{ factoryId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
     selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY, ASSIGNMENT_PLAN_SELECT_LEGACY],
     context: "GET /assignment-plans",
   });
@@ -22178,8 +20931,8 @@ app.get("/assignment-plans", async (req, res) => {
       return {
         dbId: plan.id,
         id: plan.externalId,
-        lineId: String(plan.lineId),
-        factoryId: toPositiveIntOrNull(plan.factoryId ?? plan?.line?.factoryId),
+        factoryId: String(plan.factoryId),
+
         cardId,
         workOrderId: toPositiveIntOrNull(plan?.workOrderId),
         styleId: toPositiveIntOrNull(plan?.style?.id),
@@ -22311,7 +21064,6 @@ const loadAssignmentPlanProgressWorkRows = async ({
         workLogId: true,
         assignmentPlanId: true,
         workerId: true,
-        lineId: true,
         styleId: true,
         styleProcessId: true,
         worker: { select: { name: true } },
@@ -22353,7 +21105,6 @@ const loadAssignmentPlanProgressWorkRows = async ({
         workLogId: true,
         assignmentPlanId: true,
         outsourceVendorName: true,
-        lineId: true,
         styleId: true,
         styleProcessId: true,
         styleProcess: {
@@ -22789,8 +21540,8 @@ const resolveNextWorkingDateKeyForAssignmentSchedule = ({
   return cursor;
 };
 
-const DEFAULT_LINE_DAILY_WORK_SECONDS = 8 * 60 * 60;
-const MAX_LINE_MONTH_CAPACITY_MONTH_SPAN = 18;
+const DEFAULT_FACTORY_DAILY_WORK_SECONDS = 8 * 60 * 60;
+const MAX_FACTORY_MONTH_CAPACITY_MONTH_SPAN = 18;
 
 
 const resolveStrictWorkLogCoverageStartDate = (source: any): string | null =>
@@ -22799,14 +21550,14 @@ const resolveStrictWorkLogCoverageStartDate = (source: any): string | null =>
 const resolveStrictWorkLogCoverageEndDate = (source: any): string | null =>
   normalizeDateKey(source?.coverageEndDate) || null;
 
-const getMonthStartDateKeyForLineMonthCapacity = (
+const getMonthStartDateKeyForFactoryMonthCapacity = (
   monthKeyInput: string
 ): string | null => {
   const monthKey = normalizeMonthKey(monthKeyInput);
   return monthKey ? `${monthKey}-01` : null;
 };
 
-const getMonthEndDateKeyForLineMonthCapacity = (
+const getMonthEndDateKeyForFactoryMonthCapacity = (
   monthKeyInput: string
 ): string | null => {
   const monthKey = normalizeMonthKey(monthKeyInput);
@@ -22818,7 +21569,7 @@ const getMonthEndDateKeyForLineMonthCapacity = (
   );
 };
 
-const buildMonthKeyRangeForLineMonthCapacity = (
+const buildMonthKeyRangeForFactoryMonthCapacity = (
   monthFromInput: string,
   monthToInput: string
 ): string[] => {
@@ -22827,7 +21578,7 @@ const buildMonthKeyRangeForLineMonthCapacity = (
   if (!monthFrom || !monthTo || monthFrom > monthTo) return [];
   const monthKeys: string[] = [];
   let cursor = monthFrom;
-  for (let i = 0; i < MAX_LINE_MONTH_CAPACITY_MONTH_SPAN; i += 1) {
+  for (let i = 0; i < MAX_FACTORY_MONTH_CAPACITY_MONTH_SPAN; i += 1) {
     monthKeys.push(cursor);
     if (cursor === monthTo) break;
     const shifted = shiftMonthKey(cursor, 1);
@@ -22837,7 +21588,7 @@ const buildMonthKeyRangeForLineMonthCapacity = (
   return monthKeys;
 };
 
-const listDateKeysInclusiveForLineMonthCapacity = (
+const listDateKeysInclusiveForFactoryMonthCapacity = (
   startDateKeyInput: string,
   endDateKeyInput: string
 ): string[] => {
@@ -22856,7 +21607,7 @@ const listDateKeysInclusiveForLineMonthCapacity = (
   return dateKeys;
 };
 
-const isWorkingDateKeyForLineMonthCapacity = ({
+const isWorkingDateKeyForFactoryMonthCapacity = ({
   dateKey,
   holidaySet,
 }: {
@@ -22868,7 +21619,7 @@ const isWorkingDateKeyForLineMonthCapacity = ({
   return date.getUTCDay() !== 0 && !holidaySet.has(dateKey);
 };
 
-const resolveSameOrNextWorkingDateKeyForLineMonthCapacity = ({
+const resolveSameOrNextWorkingDateKeyForFactoryMonthCapacity = ({
   fromDateKey,
   holidaySet,
 }: {
@@ -22877,7 +21628,7 @@ const resolveSameOrNextWorkingDateKeyForLineMonthCapacity = ({
 }): string => {
   let cursor = normalizeDateKey(fromDateKey) || fromDateKey;
   for (let i = 0; i < 366 * 3; i += 1) {
-    if (isWorkingDateKeyForLineMonthCapacity({ dateKey: cursor, holidaySet })) {
+    if (isWorkingDateKeyForFactoryMonthCapacity({ dateKey: cursor, holidaySet })) {
       return cursor;
     }
     const shifted = shiftDateKeyByDaysForAssignmentSchedule(cursor, 1);
@@ -22887,7 +21638,7 @@ const resolveSameOrNextWorkingDateKeyForLineMonthCapacity = ({
   return cursor;
 };
 
-const countWorkingDateKeysInRangeForLineMonthCapacity = ({
+const countWorkingDateKeysInRangeForFactoryMonthCapacity = ({
   startDateKey,
   endDateKey,
   holidaySet,
@@ -22896,15 +21647,15 @@ const countWorkingDateKeysInRangeForLineMonthCapacity = ({
   endDateKey: string;
   holidaySet: Set<string>;
 }) =>
-  listDateKeysInclusiveForLineMonthCapacity(startDateKey, endDateKey).reduce(
+  listDateKeysInclusiveForFactoryMonthCapacity(startDateKey, endDateKey).reduce(
     (sum, dateKey) =>
-      isWorkingDateKeyForLineMonthCapacity({ dateKey, holidaySet })
+      isWorkingDateKeyForFactoryMonthCapacity({ dateKey, holidaySet })
         ? sum + 1
         : sum,
     0
   );
 
-const countCalendarDateKeysInRangeForLineMonthCapacity = ({
+const countCalendarDateKeysInRangeForFactoryMonthCapacity = ({
   startDateKey,
   endDateKey,
 }: {
@@ -22912,7 +21663,7 @@ const countCalendarDateKeysInRangeForLineMonthCapacity = ({
   endDateKey: string;
 }) => countDateRangeDaysInclusiveForAssignmentSchedule(startDateKey, endDateKey);
 
-const buildLineMonthCapacityWeightRows = ({
+const buildFactoryMonthCapacityWeightRows = ({
   coverageStartDate,
   coverageEndDate,
   monthKeys,
@@ -22926,9 +21677,9 @@ const buildLineMonthCapacityWeightRows = ({
   const rows = monthKeys
     .map((monthKey) => {
       const monthStartDateKey =
-        getMonthStartDateKeyForLineMonthCapacity(monthKey);
+        getMonthStartDateKeyForFactoryMonthCapacity(monthKey);
       const monthEndDateKey =
-        getMonthEndDateKeyForLineMonthCapacity(monthKey);
+        getMonthEndDateKeyForFactoryMonthCapacity(monthKey);
       if (!monthStartDateKey || !monthEndDateKey) return null;
       const overlapStartDateKey =
         coverageStartDate > monthStartDateKey
@@ -22937,12 +21688,12 @@ const buildLineMonthCapacityWeightRows = ({
       const overlapEndDateKey =
         coverageEndDate < monthEndDateKey ? coverageEndDate : monthEndDateKey;
       if (overlapStartDateKey > overlapEndDateKey) return null;
-      const workingDays = countWorkingDateKeysInRangeForLineMonthCapacity({
+      const workingDays = countWorkingDateKeysInRangeForFactoryMonthCapacity({
         startDateKey: overlapStartDateKey,
         endDateKey: overlapEndDateKey,
         holidaySet,
       });
-      const calendarDays = countCalendarDateKeysInRangeForLineMonthCapacity({
+      const calendarDays = countCalendarDateKeysInRangeForFactoryMonthCapacity({
         startDateKey: overlapStartDateKey,
         endDateKey: overlapEndDateKey,
       });
@@ -22977,7 +21728,7 @@ const buildLineMonthCapacityWeightRows = ({
     .filter((row) => row.weight > 0);
 };
 
-const distributeIntegerTotalByWeightsForLineMonthCapacity = ({
+const distributeIntegerTotalByWeightsForFactoryMonthCapacity = ({
   total,
   weightedRows,
 }: {
@@ -23033,7 +21784,7 @@ const distributeIntegerTotalByWeightsForLineMonthCapacity = ({
     .filter((row) => row.allocatedTotal > 0);
 };
 
-const parseLineIdsForLineMonthCapacity = (input: any): number[] =>
+const parseFactoryIdsForFactoryMonthCapacity = (input: any): number[] =>
   Array.from(
     new Set(
       (resolveOptionalString(input, "") || "")
@@ -23043,56 +21794,49 @@ const parseLineIdsForLineMonthCapacity = (input: any): number[] =>
     )
   );
 
-const buildLineMonthCapacityRows = async ({
+const buildFactoryMonthCapacityRows = async ({
   organization,
   orgId,
   monthFrom,
   monthTo,
-  lineIds = [],
+  factoryIds = [],
   includeActualOutputDebug = false,
 }: {
   organization: any;
   orgId: number;
   monthFrom: string;
   monthTo: string;
-  lineIds?: number[];
+  factoryIds?: number[];
   includeActualOutputDebug?: boolean;
 }) => {
-  const requestedMonthKeys = buildMonthKeyRangeForLineMonthCapacity(monthFrom, monthTo);
+  const requestedMonthKeys = buildMonthKeyRangeForFactoryMonthCapacity(monthFrom, monthTo);
   if (requestedMonthKeys.length === 0) {
     return { monthKeys: [], rows: [] };
   }
 
   const requestedStartDateKey =
-    getMonthStartDateKeyForLineMonthCapacity(requestedMonthKeys[0]!);
+    getMonthStartDateKeyForFactoryMonthCapacity(requestedMonthKeys[0]!);
   const requestedEndDateKey =
-    getMonthEndDateKeyForLineMonthCapacity(
+    getMonthEndDateKeyForFactoryMonthCapacity(
       requestedMonthKeys[requestedMonthKeys.length - 1]!
     );
   if (!requestedStartDateKey || !requestedEndDateKey) {
     return { monthKeys: [], rows: [] };
   }
 
-  const requestedLineRows = await prisma.line.findMany({
+  const requestedFactoryScopeRows = await prisma.factory.findMany({
     where: {
       orgId,
-      ...(lineIds.length ? { id: { in: lineIds } } : {}),
+      ...(factoryIds.length ? { id: { in: factoryIds } } : {}),
     },
-    select: { id: true, factoryId: true },
+    select: { id: true },
     orderBy: [{ id: "asc" }],
   });
-  const requestedLineIds = requestedLineRows
+  const requestedFactoryIds = requestedFactoryScopeRows
     .map((row) => toPositiveIntOrNull(row?.id))
     .filter((value): value is number => value !== null);
-  const factoryIdByLegacyLineId = new Map<number, number>(
-    requestedLineRows.flatMap((row) => {
-      const legacyLineId = toPositiveIntOrNull(row?.id);
-      const factoryId = toPositiveIntOrNull(row?.factoryId);
-      return legacyLineId && factoryId ? [[legacyLineId, factoryId]] : [];
-    })
-  );
 
-  if (requestedLineIds.length === 0) {
+  if (requestedFactoryIds.length === 0) {
     return { monthKeys: requestedMonthKeys, rows: [] };
   }
 
@@ -23112,13 +21856,13 @@ const buildLineMonthCapacityRows = async ({
       .filter((value): value is string => Boolean(value))
   );
 
-  const requestedLineIdSet = new Set(requestedLineIds);
+  const requestedFactoryIdSet = new Set(requestedFactoryIds);
   const plans = await findAssignmentPlansWithSelectFallback({
     where: {
       orgId,
-      lineId: { in: requestedLineIds },
+      factoryId: { in: requestedFactoryIds },
     },
-    orderBy: [{ lineId: "asc" }, { id: "asc" }],
+    orderBy: [{ factoryId: "asc" }, { id: "asc" }],
     selectAttempts: [
       ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION,
       ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
@@ -23126,7 +21870,7 @@ const buildLineMonthCapacityRows = async ({
       ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY,
       ASSIGNMENT_PLAN_SELECT_LEGACY,
     ],
-    context: "buildLineMonthCapacityRows",
+    context: "buildFactoryMonthCapacityRows",
   });
   const invalidProcessPlanIds = await invalidAssignmentProcessRefIds(prisma, orgId, plans);
   const stateAssignmentsByExternalId = new Map<string, any>();
@@ -23134,7 +21878,7 @@ const buildLineMonthCapacityRows = async ({
     orgId,
     plans,
     stateAssignmentsByExternalId,
-    context: "buildLineMonthCapacityRows",
+    context: "buildFactoryMonthCapacityRows",
     includeDiagnostics: includeActualOutputDebug,
   });
   // Actual output must use the canonical references already stored on WorkRecord.
@@ -23212,7 +21956,7 @@ const buildLineMonthCapacityRows = async ({
         processMatchRule:
           "WorkRecord.styleProcessId -> StyleProcess.id only. processCode/process name fallback is not allowed.",
         orgId,
-        requestedLineIds,
+        requestedFactoryIds,
         requestedMonthKeys,
         planCount: plans.length,
         workRowCount: canonicalWorkRows.length,
@@ -23289,7 +22033,7 @@ const buildLineMonthCapacityRows = async ({
         })),
       }
     : null;
-  const resolveWorkRecordStSecondsForLineMonthCapacity = ({
+  const resolveWorkRecordStSecondsForFactoryMonthCapacity = ({
     record,
     assignmentStSnapshot,
   }: {
@@ -23405,10 +22149,10 @@ const buildLineMonthCapacityRows = async ({
       matchedProcessName,
     };
   };
-  const lineLatestActualCoverageEndDateKeyByLineId = new Map<number, string>();
-  const lineRemainingBacklogStSecondsByLineId = new Map<number, number>();
-  const lineStUnknownAssignmentCountByLineId = new Map<number, number>();
-  const lineProgressUnknownAssignmentCountByLineId = new Map<number, number>();
+  const factoryScopeLatestActualCoverageEndDateKeyByFactoryId = new Map<number, string>();
+  const factoryScopeRemainingBacklogStSecondsByFactoryId = new Map<number, number>();
+  const factoryScopeStUnknownAssignmentCountByFactoryId = new Map<number, number>();
+  const factoryScopeProgressUnknownAssignmentCountByFactoryId = new Map<number, number>();
   const planProgressMetaById = new Map<
     number,
     {
@@ -23423,8 +22167,8 @@ const buildLineMonthCapacityRows = async ({
 
   plans.forEach((plan) => {
     const planId = toPositiveIntOrNull(plan?.id);
-    const lineId = toPositiveIntOrNull(plan?.lineId);
-    if (!planId || !lineId || !requestedLineIdSet.has(lineId)) return;
+    const factoryId = toPositiveIntOrNull(plan?.factoryId);
+    if (!planId || !factoryId || !requestedFactoryIdSet.has(factoryId)) return;
     const plannedQuantity = resolveAssignmentQuantity(plan);
     const plannedStTotalSeconds = resolvePersistedAssignmentPlanStTotalSeconds(plan);
     ensureArray(workRowsByPlanId.get(planId)).forEach((record) => {
@@ -23436,9 +22180,9 @@ const buildLineMonthCapacityRows = async ({
         return;
       }
       const latestCoverageEndDateKey =
-        lineLatestActualCoverageEndDateKeyByLineId.get(lineId) || null;
+        factoryScopeLatestActualCoverageEndDateKeyByFactoryId.get(factoryId) || null;
       if (!latestCoverageEndDateKey || coverageEndDate > latestCoverageEndDateKey) {
-        lineLatestActualCoverageEndDateKeyByLineId.set(lineId, coverageEndDate);
+        factoryScopeLatestActualCoverageEndDateKeyByFactoryId.set(factoryId, coverageEndDate);
       }
     });
     if (
@@ -23448,9 +22192,9 @@ const buildLineMonthCapacityRows = async ({
       plannedStTotalSeconds <= 0
     ) {
       if (plan?.isCompleted !== true) {
-        lineStUnknownAssignmentCountByLineId.set(
-          lineId,
-          (lineStUnknownAssignmentCountByLineId.get(lineId) || 0) + 1
+        factoryScopeStUnknownAssignmentCountByFactoryId.set(
+          factoryId,
+          (factoryScopeStUnknownAssignmentCountByFactoryId.get(factoryId) || 0) + 1
         );
       }
       return;
@@ -23486,7 +22230,7 @@ const buildLineMonthCapacityRows = async ({
     });
     if (skippedWorkRecordWithoutStyleProcessId > 0) {
       console.warn(
-        `[line-month-capacity] orgId=${orgId} assignmentPlanId=${planId} skipped ${skippedWorkRecordWithoutStyleProcessId} work records without WorkRecord.styleProcessId`
+        `[factory-month-capacity] orgId=${orgId} assignmentPlanId=${planId} skipped ${skippedWorkRecordWithoutStyleProcessId} work records without WorkRecord.styleProcessId`
       );
     }
 
@@ -23565,16 +22309,16 @@ const buildLineMonthCapacityRows = async ({
                   Math.max(0, Math.round(plannedStTotalSeconds * progressRatio))
               );
     if (remainingStTotalSeconds != null && remainingStTotalSeconds > 0) {
-      lineRemainingBacklogStSecondsByLineId.set(
-        lineId,
-        (lineRemainingBacklogStSecondsByLineId.get(lineId) || 0) +
+      factoryScopeRemainingBacklogStSecondsByFactoryId.set(
+        factoryId,
+        (factoryScopeRemainingBacklogStSecondsByFactoryId.get(factoryId) || 0) +
           remainingStTotalSeconds
       );
     }
     if (isProgressUnknown) {
-      lineProgressUnknownAssignmentCountByLineId.set(
-        lineId,
-        (lineProgressUnknownAssignmentCountByLineId.get(lineId) || 0) + 1
+      factoryScopeProgressUnknownAssignmentCountByFactoryId.set(
+        factoryId,
+        (factoryScopeProgressUnknownAssignmentCountByFactoryId.get(factoryId) || 0) + 1
       );
     }
     planProgressMetaById.set(planId, {
@@ -23589,13 +22333,13 @@ const buildLineMonthCapacityRows = async ({
 
   const currentDateKey = todayDateKey();
   const defaultForecastAnchorDateKey =
-    resolveSameOrNextWorkingDateKeyForLineMonthCapacity({
+    resolveSameOrNextWorkingDateKeyForFactoryMonthCapacity({
       fromDateKey: currentDateKey,
       holidaySet,
     }) || currentDateKey;
 
   let internalMonthFrom = requestedMonthKeys[0] || monthFrom;
-  const lineForecastMetaByLineId = new Map<
+  const factoryScopeForecastMetaByFactoryId = new Map<
     number,
     {
       latestActualCoverageEndDateKey: string | null;
@@ -23605,9 +22349,9 @@ const buildLineMonthCapacityRows = async ({
       progressUnknownAssignmentCount: number;
     }
   >();
-  requestedLineIds.forEach((lineId) => {
+  requestedFactoryIds.forEach((factoryId) => {
     const latestActualCoverageEndDateKey =
-      lineLatestActualCoverageEndDateKeyByLineId.get(lineId) || null;
+      factoryScopeLatestActualCoverageEndDateKeyByFactoryId.get(factoryId) || null;
     const forecastAnchorDateKey = latestActualCoverageEndDateKey
       ? resolveNextWorkingDateKeyForAssignmentSchedule({
           fromDateKey: latestActualCoverageEndDateKey,
@@ -23618,25 +22362,25 @@ const buildLineMonthCapacityRows = async ({
     if (anchorMonthKey && anchorMonthKey < internalMonthFrom) {
       internalMonthFrom = anchorMonthKey;
     }
-    lineForecastMetaByLineId.set(lineId, {
+    factoryScopeForecastMetaByFactoryId.set(factoryId, {
       latestActualCoverageEndDateKey,
       forecastAnchorDateKey,
       remainingBacklogStSeconds: Math.max(
         0,
-        Math.round(Number(lineRemainingBacklogStSecondsByLineId.get(lineId) || 0))
+        Math.round(Number(factoryScopeRemainingBacklogStSecondsByFactoryId.get(factoryId) || 0))
       ),
       stUnknownAssignmentCount: Math.max(
         0,
-        Math.round(Number(lineStUnknownAssignmentCountByLineId.get(lineId) || 0))
+        Math.round(Number(factoryScopeStUnknownAssignmentCountByFactoryId.get(factoryId) || 0))
       ),
       progressUnknownAssignmentCount: Math.max(
         0,
-        Math.round(Number(lineProgressUnknownAssignmentCountByLineId.get(lineId) || 0))
+        Math.round(Number(factoryScopeProgressUnknownAssignmentCountByFactoryId.get(factoryId) || 0))
       ),
     });
   });
 
-  const internalMonthKeys = buildMonthKeyRangeForLineMonthCapacity(
+  const internalMonthKeys = buildMonthKeyRangeForFactoryMonthCapacity(
     internalMonthFrom,
     monthTo
   );
@@ -23644,26 +22388,26 @@ const buildLineMonthCapacityRows = async ({
     return { monthKeys: requestedMonthKeys, rows: [] };
   }
   const internalStartDateKey =
-    getMonthStartDateKeyForLineMonthCapacity(internalMonthKeys[0]!) ||
+    getMonthStartDateKeyForFactoryMonthCapacity(internalMonthKeys[0]!) ||
     requestedStartDateKey;
   const internalEndDateKey =
-    getMonthEndDateKeyForLineMonthCapacity(
+    getMonthEndDateKeyForFactoryMonthCapacity(
       internalMonthKeys[internalMonthKeys.length - 1]!
     ) || requestedEndDateKey;
 
-  const lineMonthBaseByKey = new Map<
+  const factoryMonthBaseByKey = new Map<
     string,
     {
-      lineId: string;
+      factoryId: string;
       monthKey: string;
       workingDayCount: number;
       headcountDayUnits: number;
-      lineMonthlyCapacitySeconds: number;
-      lineMonthlyAttendanceSeconds: number;
-      lineMonthlyDefaultCapacitySeconds: number;
+      factoryMonthlyCapacitySeconds: number;
+      factoryMonthlyAttendanceSeconds: number;
+      factoryMonthlyDefaultCapacitySeconds: number;
       attendanceWorkerDayCount: number;
       defaultCapacityWorkerDayCount: number;
-      lineMonthlyActualOutputStSeconds: number;
+      factoryMonthlyActualOutputStSeconds: number;
       actualOutputRecordedThroughDateKey: string | null;
       orphanWorkRecordCount: number;
       latestActualCoverageEndDateKey: string | null;
@@ -23680,30 +22424,30 @@ const buildLineMonthCapacityRows = async ({
         stUnknownAssignmentCount: number;
       }
   >();
-  requestedLineIds.forEach((lineId) => {
-    const forecastMeta = lineForecastMetaByLineId.get(lineId) || null;
+  requestedFactoryIds.forEach((factoryId) => {
+    const forecastMeta = factoryScopeForecastMetaByFactoryId.get(factoryId) || null;
     internalMonthKeys.forEach((monthKey) => {
       const monthStartDateKey =
-        getMonthStartDateKeyForLineMonthCapacity(monthKey) ||
+        getMonthStartDateKeyForFactoryMonthCapacity(monthKey) ||
         internalStartDateKey;
       const monthEndDateKey =
-        getMonthEndDateKeyForLineMonthCapacity(monthKey) || internalEndDateKey;
-      const workingDayCount = countWorkingDateKeysInRangeForLineMonthCapacity({
+        getMonthEndDateKeyForFactoryMonthCapacity(monthKey) || internalEndDateKey;
+      const workingDayCount = countWorkingDateKeysInRangeForFactoryMonthCapacity({
         startDateKey: monthStartDateKey,
         endDateKey: monthEndDateKey,
         holidaySet,
       });
-      lineMonthBaseByKey.set(`${lineId}:${monthKey}`, {
-        lineId: String(lineId),
+      factoryMonthBaseByKey.set(`${factoryId}:${monthKey}`, {
+        factoryId: String(factoryId),
         monthKey,
         workingDayCount,
         headcountDayUnits: 0,
-        lineMonthlyCapacitySeconds: 0,
-        lineMonthlyAttendanceSeconds: 0,
-        lineMonthlyDefaultCapacitySeconds: 0,
+        factoryMonthlyCapacitySeconds: 0,
+        factoryMonthlyAttendanceSeconds: 0,
+        factoryMonthlyDefaultCapacitySeconds: 0,
         attendanceWorkerDayCount: 0,
         defaultCapacityWorkerDayCount: 0,
-        lineMonthlyActualOutputStSeconds: 0,
+        factoryMonthlyActualOutputStSeconds: 0,
         actualOutputRecordedThroughDateKey: null,
         orphanWorkRecordCount: 0,
         latestActualCoverageEndDateKey:
@@ -23723,12 +22467,11 @@ const buildLineMonthCapacityRows = async ({
     });
   });
 
-  // A factory is the production staffing unit. LineAssignment is legacy history and
-  // must not decide whether a newly hired employee contributes capacity.
+  // Factory employment dates determine production staffing directly.
   const capacityEmployees = await prisma.employee.findMany({
     where: {
       orgId,
-      factoryId: { in: Array.from(new Set(factoryIdByLegacyLineId.values())) },
+      factoryId: { in: requestedFactoryIds },
       orgRole: "WORKER",
       role: { code: "WORKER_SEWING" },
       status: { in: ["ACTIVE", "SUSPENDED", "TERMINATED"] },
@@ -23745,17 +22488,11 @@ const buildLineMonthCapacityRows = async ({
     },
   });
 
-  const employeeIdsByLineDateKey = new Map<string, Set<number>>();
-  // Diagnostics only: a factory must resolve to one compatibility row while the
-  // response contract still exposes lineId. Staffing itself is factory-based.
-  const lineIdsByEmployeeDateKey = new Map<string, Set<number>>();
+  const employeeIdsByFactoryScopeDateKey = new Map<string, Set<number>>();
   capacityEmployees.forEach((row) => {
     const employeeId = toPositiveIntOrNull(row?.id);
     const factoryId = toPositiveIntOrNull(row?.factoryId);
-    const lineId = requestedLineRows.length === 1
-      ? toPositiveIntOrNull(requestedLineRows[0]?.id)
-      : requestedLineRows.find((line) => Number(line.factoryId) === factoryId)?.id ?? null;
-    if (!lineId || !employeeId || !requestedLineIdSet.has(lineId)) return;
+    if (!factoryId || !employeeId || !requestedFactoryIdSet.has(factoryId)) return;
     const joinedDateKey = toDateKeyInTimeZone(
       row?.joinedAt,
       BUSINESS_TIME_ZONE
@@ -23782,12 +22519,12 @@ const buildLineMonthCapacityRows = async ({
       return;
     }
 
-    listDateKeysInclusiveForLineMonthCapacity(
+    listDateKeysInclusiveForFactoryMonthCapacity(
       activeStartDateKey,
       activeEndDateKey
     ).forEach((dateKey) => {
       if (
-        !isWorkingDateKeyForLineMonthCapacity({
+        !isWorkingDateKeyForFactoryMonthCapacity({
           dateKey,
           holidaySet,
         })
@@ -23796,46 +22533,17 @@ const buildLineMonthCapacityRows = async ({
       }
       const monthKey = normalizeMonthKey(dateKey.slice(0, 7));
       if (!monthKey) return;
-      const compositeKey = `${lineId}:${dateKey}`;
-      const current = employeeIdsByLineDateKey.get(compositeKey) || new Set<number>();
+      const compositeKey = `${factoryId}:${dateKey}`;
+      const current = employeeIdsByFactoryScopeDateKey.get(compositeKey) || new Set<number>();
       current.add(employeeId);
-      employeeIdsByLineDateKey.set(compositeKey, current);
+      employeeIdsByFactoryScopeDateKey.set(compositeKey, current);
 
-      const employeeDateKey = `${employeeId}:${dateKey}`;
-      const lineIdsForEmployeeDate =
-        lineIdsByEmployeeDateKey.get(employeeDateKey) || new Set<number>();
-      lineIdsForEmployeeDate.add(lineId);
-      lineIdsByEmployeeDateKey.set(employeeDateKey, lineIdsForEmployeeDate);
     });
   });
 
-  const capacityOverlapSamples: Array<{
-    employeeId: number;
-    dateKey: string;
-    lineIds: number[];
-  }> = [];
-  let capacityOverlapCount = 0;
-  lineIdsByEmployeeDateKey.forEach((lineIdSet, employeeDateKey) => {
-    if (lineIdSet.size <= 1) return;
-    capacityOverlapCount += 1;
-    if (capacityOverlapSamples.length < 50) {
-      const [employeeIdText, dateKey] = employeeDateKey.split(":");
-      capacityOverlapSamples.push({
-        employeeId: toPositiveIntOrNull(employeeIdText) ?? 0,
-        dateKey: dateKey ?? "",
-        lineIds: Array.from(lineIdSet.values()).sort((left, right) => left - right),
-      });
-    }
-  });
-  if (capacityOverlapCount > 0) {
-    console.warn(
-      `[line-month-capacity] orgId=${orgId} found ${capacityOverlapCount} employee-date pairs active on more than one line (overlapping LineAssignment rows)`
-    );
-  }
-
   const activeEmployeeIdsForCapacity = Array.from(
     new Set(
-      Array.from(employeeIdsByLineDateKey.values()).flatMap((employeeIds) =>
+      Array.from(employeeIdsByFactoryScopeDateKey.values()).flatMap((employeeIds) =>
         Array.from(employeeIds.values())
       )
     )
@@ -23870,7 +22578,7 @@ const buildLineMonthCapacityRows = async ({
       (attendanceSecondsByWorkerDateKey.get(key) || 0) + workedSeconds
     );
   });
-  const resolveLineWorkerAttendanceSecondsForDate = ({
+  const resolveFactoryScopeWorkerAttendanceSecondsForDate = ({
     employeeId,
     dateKey,
   }: {
@@ -23884,38 +22592,38 @@ const buildLineMonthCapacityRows = async ({
     return null;
   };
 
-  employeeIdsByLineDateKey.forEach((employeeIds, compositeKey) => {
-    const [lineIdText, dateKey] = compositeKey.split(":");
-    const lineId = toPositiveIntOrNull(lineIdText);
+  employeeIdsByFactoryScopeDateKey.forEach((employeeIds, compositeKey) => {
+    const [factoryIdText, dateKey] = compositeKey.split(":");
+    const factoryId = toPositiveIntOrNull(factoryIdText);
     const monthKey = normalizeMonthKey(dateKey?.slice(0, 7));
-    if (!lineId || !dateKey || !monthKey) return;
-    const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
+    if (!factoryId || !dateKey || !monthKey) return;
+    const target = factoryMonthBaseByKey.get(`${factoryId}:${monthKey}`);
     if (!target) return;
     const dayHeadcount = employeeIds.size;
     target.headcountDayUnits += dayHeadcount;
     Array.from(employeeIds.values()).forEach((employeeId) => {
       // Monthly actual production rate uses baseline capacity:
       // active line workers * working days * 8h, regardless of attendance logs.
-      target.lineMonthlyCapacitySeconds += DEFAULT_LINE_DAILY_WORK_SECONDS;
-      target.lineMonthlyDefaultCapacitySeconds += DEFAULT_LINE_DAILY_WORK_SECONDS;
+      target.factoryMonthlyCapacitySeconds += DEFAULT_FACTORY_DAILY_WORK_SECONDS;
+      target.factoryMonthlyDefaultCapacitySeconds += DEFAULT_FACTORY_DAILY_WORK_SECONDS;
       target.defaultCapacityWorkerDayCount += 1;
-      const attendanceSeconds = resolveLineWorkerAttendanceSecondsForDate({
+      const attendanceSeconds = resolveFactoryScopeWorkerAttendanceSecondsForDate({
         employeeId,
         dateKey,
       });
       if (attendanceSeconds !== null) {
-        target.lineMonthlyAttendanceSeconds += attendanceSeconds;
+        target.factoryMonthlyAttendanceSeconds += attendanceSeconds;
         target.attendanceWorkerDayCount += 1;
       }
     });
   });
 
-  const actualOutputDebugByLineMonthKey = new Map<string, any>();
-  const ensureActualOutputDebug = (lineId: number, monthKey: string) => {
-    const key = `${lineId}:${monthKey}`;
-    if (!actualOutputDebugByLineMonthKey.has(key)) {
-      actualOutputDebugByLineMonthKey.set(key, {
-        lineId: String(lineId),
+  const actualOutputDebugByFactoryMonthKey = new Map<string, any>();
+  const ensureActualOutputDebug = (factoryId: number, monthKey: string) => {
+    const key = `${factoryId}:${monthKey}`;
+    if (!actualOutputDebugByFactoryMonthKey.has(key)) {
+      actualOutputDebugByFactoryMonthKey.set(key, {
+        factoryId: String(factoryId),
         monthKey,
         directCandidateRecordCount: 0,
         directMatchedRecordCount: 0,
@@ -23932,7 +22640,7 @@ const buildLineMonthCapacityRows = async ({
         sampleMatches: [],
       });
     }
-    return actualOutputDebugByLineMonthKey.get(key);
+    return actualOutputDebugByFactoryMonthKey.get(key);
   };
   const incrementActualOutputDebugReason = (
     debug: any,
@@ -23957,9 +22665,9 @@ const buildLineMonthCapacityRows = async ({
 
   plans.forEach((plan) => {
     const planId = toPositiveIntOrNull(plan?.id);
-    const lineId = toPositiveIntOrNull(plan?.lineId);
+    const factoryId = toPositiveIntOrNull(plan?.factoryId);
     const progressMeta = planId ? planProgressMetaById.get(planId) : null;
-    if (!planId || !lineId || !progressMeta || !requestedLineIdSet.has(lineId)) return;
+    if (!planId || !factoryId || !progressMeta || !requestedFactoryIdSet.has(factoryId)) return;
     const {
       plannedQuantity,
     } = progressMeta;
@@ -23968,7 +22676,7 @@ const buildLineMonthCapacityRows = async ({
     // last rewritten by the process-version-boundaries path use a different
     // shape (`revision`/`confirmedDate`/`styleProcessVersionId`, no top-level
     // bucketQuantity) even though their `processes[].stSeconds` - the only
-    // thing resolveWorkRecordStSecondsForLineMonthCapacity actually reads -
+    // thing resolveWorkRecordStSecondsForFactoryMonthCapacity actually reads -
     // is still valid. Gating the whole plan on this field being present used
     // to silently drop 100% of such a plan's real WorkRecord ST from the
     // line's actual-output sum. Keep it nullable for diagnostics only.
@@ -24012,7 +22720,7 @@ const buildLineMonthCapacityRows = async ({
                 ? requestedMonthKeys
                 : internalMonthKeys;
           debugMonthKeys.forEach((monthKey) => {
-            const debug = ensureActualOutputDebug(lineId, monthKey);
+            const debug = ensureActualOutputDebug(factoryId, monthKey);
             debug.invalidCoverageRecordCount += 1;
             incrementActualOutputDebugReason(debug, "COVERAGE_DATE_MISSING_OR_INVALID");
             pushActualOutputDebugFailure(debug, {
@@ -24037,16 +22745,16 @@ const buildLineMonthCapacityRows = async ({
         }
         return;
       }
-      const monthWeightRows = buildLineMonthCapacityWeightRows({
+      const monthWeightRows = buildFactoryMonthCapacityWeightRows({
         coverageStartDate,
         coverageEndDate,
         monthKeys: internalMonthKeys,
         holidaySet,
       });
       monthWeightRows.forEach(({ monthKey }) => {
-        const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
+        const target = factoryMonthBaseByKey.get(`${factoryId}:${monthKey}`);
         const monthEndDateKey =
-          getMonthEndDateKeyForLineMonthCapacity(monthKey) || coverageEndDate;
+          getMonthEndDateKeyForFactoryMonthCapacity(monthKey) || coverageEndDate;
         const recordedThroughDateKey =
           coverageEndDate < monthEndDateKey ? coverageEndDate : monthEndDateKey;
         if (
@@ -24058,14 +22766,14 @@ const buildLineMonthCapacityRows = async ({
         }
       });
       const monthAllocations =
-        distributeIntegerTotalByWeightsForLineMonthCapacity({
+        distributeIntegerTotalByWeightsForFactoryMonthCapacity({
           total: quantity,
           weightedRows: monthWeightRows,
         });
       if (monthAllocations.length === 0) {
         if (includeActualOutputDebug) {
           monthWeightRows.forEach(({ monthKey }) => {
-            const debug = ensureActualOutputDebug(lineId, monthKey);
+            const debug = ensureActualOutputDebug(factoryId, monthKey);
             debug.emptyMonthAllocationRecordCount += 1;
             incrementActualOutputDebugReason(debug, "MONTH_ALLOCATION_EMPTY");
             pushActualOutputDebugFailure(debug, {
@@ -24090,7 +22798,7 @@ const buildLineMonthCapacityRows = async ({
       monthAllocations.forEach(({ monthKey }) => {
         planTouchedMonthKeys.add(monthKey);
       });
-      const processSt = resolveWorkRecordStSecondsForLineMonthCapacity({
+      const processSt = resolveWorkRecordStSecondsForFactoryMonthCapacity({
         record,
         assignmentStSnapshot: plan?.assignmentStSnapshot,
       });
@@ -24098,7 +22806,7 @@ const buildLineMonthCapacityRows = async ({
         addPlanActualOutputFailureReason(processSt.reason);
         if (includeActualOutputDebug) {
           monthAllocations.forEach(({ monthKey, allocatedTotal }) => {
-            const debug = ensureActualOutputDebug(lineId, monthKey);
+            const debug = ensureActualOutputDebug(factoryId, monthKey);
             debug.directCandidateRecordCount += 1;
             debug.directFailedRecordCount += 1;
             debug.directCandidateQuantity += Math.max(
@@ -24158,7 +22866,7 @@ const buildLineMonthCapacityRows = async ({
               directSeconds
           );
           if (includeActualOutputDebug) {
-            const debug = ensureActualOutputDebug(lineId, monthKey);
+            const debug = ensureActualOutputDebug(factoryId, monthKey);
             debug.directCandidateRecordCount += 1;
             debug.directMatchedRecordCount += 1;
             debug.directCandidateQuantity += Math.max(
@@ -24200,14 +22908,14 @@ const buildLineMonthCapacityRows = async ({
 
     if (hasDirectActualOutputStSeconds) {
       monthlyDirectActualOutputStSecondsByMonthKey.forEach((seconds, monthKey) => {
-        const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
+        const target = factoryMonthBaseByKey.get(`${factoryId}:${monthKey}`);
         if (!target) return;
         if (includeActualOutputDebug) {
-          const debug = ensureActualOutputDebug(lineId, monthKey);
+          const debug = ensureActualOutputDebug(factoryId, monthKey);
           debug.directUsedPlanCount += 1;
           debug.directUsedStSeconds += Math.max(0, Math.round(Number(seconds) || 0));
         }
-        target.lineMonthlyActualOutputStSeconds += Math.max(
+        target.factoryMonthlyActualOutputStSeconds += Math.max(
           0,
           Math.round(Number(seconds) || 0)
         );
@@ -24217,7 +22925,7 @@ const buildLineMonthCapacityRows = async ({
 
     if (includeActualOutputDebug && planTouchedMonthKeys.size > 0) {
       planTouchedMonthKeys.forEach((monthKey) => {
-        const debug = ensureActualOutputDebug(lineId, monthKey);
+        const debug = ensureActualOutputDebug(factoryId, monthKey);
         debug.skippedPlanCount += 1;
         if (planActualOutputFailureReasons.size === 0) {
           incrementActualOutputDebugReason(debug, "DIRECT_ST_NOT_AVAILABLE");
@@ -24232,26 +22940,26 @@ const buildLineMonthCapacityRows = async ({
     }
   });
 
-  const resolveLineCapacitySecondsForDateRange = ({
-    lineId,
+  const resolveFactoryScopeCapacitySecondsForDateRange = ({
+    factoryId,
     startDateKey,
     endDateKey,
   }: {
-    lineId: number;
+    factoryId: number;
     startDateKey: string;
     endDateKey: string;
   }) =>
-    listDateKeysInclusiveForLineMonthCapacity(startDateKey, endDateKey).reduce(
+    listDateKeysInclusiveForFactoryMonthCapacity(startDateKey, endDateKey).reduce(
       (sum, dateKey) => {
-        const employeeIds = employeeIdsByLineDateKey.get(`${lineId}:${dateKey}`);
+        const employeeIds = employeeIdsByFactoryScopeDateKey.get(`${factoryId}:${dateKey}`);
         if (!employeeIds || employeeIds.size === 0) return sum;
-        return sum + employeeIds.size * DEFAULT_LINE_DAILY_WORK_SECONDS;
+        return sum + employeeIds.size * DEFAULT_FACTORY_DAILY_WORK_SECONDS;
       },
       0
     );
 
-  requestedLineIds.forEach((lineId) => {
-    const forecastMeta = lineForecastMetaByLineId.get(lineId);
+  requestedFactoryIds.forEach((factoryId) => {
+    const forecastMeta = factoryScopeForecastMetaByFactoryId.get(factoryId);
     if (!forecastMeta) return;
     const anchorDateKey = normalizeDateKey(forecastMeta.forecastAnchorDateKey);
     const anchorMonthKey = normalizeMonthKey(anchorDateKey?.slice(0, 7));
@@ -24262,7 +22970,7 @@ const buildLineMonthCapacityRows = async ({
     let previousCarryOutStSeconds = 0;
 
     internalMonthKeys.forEach((monthKey) => {
-      const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
+      const target = factoryMonthBaseByKey.get(`${factoryId}:${monthKey}`);
       if (!target) return;
       if (!anchorMonthKey || monthKey < anchorMonthKey) {
         target.monthType = "historical";
@@ -24270,12 +22978,12 @@ const buildLineMonthCapacityRows = async ({
         // portion that happened to be produced in that month. This keeps plan and
         // actual separate while avoiding a blanket 100% when no assignments remain.
         target.totalEstimatedLoadStSeconds =
-          target.lineMonthlyActualOutputStSeconds + remainingBacklog;
+          target.factoryMonthlyActualOutputStSeconds + remainingBacklog;
         target.totalEstimatedLoadPercent =
-          target.lineMonthlyCapacitySeconds > 0
+          target.factoryMonthlyCapacitySeconds > 0
             ? Math.round(
                 (target.totalEstimatedLoadStSeconds /
-                  target.lineMonthlyCapacitySeconds) *
+                  target.factoryMonthlyCapacitySeconds) *
                   1000
               ) / 10
             : null;
@@ -24284,27 +22992,27 @@ const buildLineMonthCapacityRows = async ({
 
       target.monthType = monthKey === anchorMonthKey ? "anchor" : "forecast";
       const monthStartDateKey =
-        getMonthStartDateKeyForLineMonthCapacity(monthKey) || internalStartDateKey;
+        getMonthStartDateKeyForFactoryMonthCapacity(monthKey) || internalStartDateKey;
       const monthEndDateKey =
-        getMonthEndDateKeyForLineMonthCapacity(monthKey) || internalEndDateKey;
+        getMonthEndDateKeyForFactoryMonthCapacity(monthKey) || internalEndDateKey;
       const forecastStartDateKey =
         monthKey === anchorMonthKey
           ? anchorDateKey
-          : resolveSameOrNextWorkingDateKeyForLineMonthCapacity({
+          : resolveSameOrNextWorkingDateKeyForFactoryMonthCapacity({
               fromDateKey: monthStartDateKey,
               holidaySet,
             });
       const forecastAvailableCapacitySeconds =
         forecastStartDateKey && forecastStartDateKey <= monthEndDateKey
-          ? resolveLineCapacitySecondsForDateRange({
-              lineId,
+          ? resolveFactoryScopeCapacitySecondsForDateRange({
+              factoryId,
               startDateKey: forecastStartDateKey,
               endDateKey: monthEndDateKey,
             })
           : 0;
       const forecastWorkingDayCount =
         forecastStartDateKey && forecastStartDateKey <= monthEndDateKey
-          ? countWorkingDateKeysInRangeForLineMonthCapacity({
+          ? countWorkingDateKeysInRangeForFactoryMonthCapacity({
               startDateKey: forecastStartDateKey,
               endDateKey: monthEndDateKey,
               holidaySet,
@@ -24333,22 +23041,22 @@ const buildLineMonthCapacityRows = async ({
       target.carryInStSeconds = carryInStSeconds;
       target.carryOutStSeconds = carryOutStSeconds;
       target.totalEstimatedLoadStSeconds =
-        target.lineMonthlyActualOutputStSeconds + forecastLoadStSeconds;
+        target.factoryMonthlyActualOutputStSeconds + forecastLoadStSeconds;
       target.totalEstimatedLoadPercent =
-        target.lineMonthlyCapacitySeconds > 0
+        target.factoryMonthlyCapacitySeconds > 0
           ? Math.round(
               (target.totalEstimatedLoadStSeconds /
-                target.lineMonthlyCapacitySeconds) *
+                target.factoryMonthlyCapacitySeconds) *
                 1000
             ) / 10
           : null;
     });
   });
 
-  const rows = Array.from(lineMonthBaseByKey.values())
+  const rows = Array.from(factoryMonthBaseByKey.values())
     .sort((left, right) => {
-      const lineCompare = Number(left.lineId) - Number(right.lineId);
-      if (lineCompare !== 0) return lineCompare;
+      const factoryScopeCompare = Number(left.factoryId) - Number(right.factoryId);
+      if (factoryScopeCompare !== 0) return factoryScopeCompare;
       return left.monthKey.localeCompare(right.monthKey);
     })
     .map((row) => {
@@ -24357,18 +23065,18 @@ const buildLineMonthCapacityRows = async ({
           ? Math.round((row.headcountDayUnits / row.workingDayCount) * 10) / 10
           : 0;
       const actualOutputPercent =
-        row.lineMonthlyCapacitySeconds > 0
+        row.factoryMonthlyCapacitySeconds > 0
           ? Math.round(
-              (row.lineMonthlyActualOutputStSeconds /
-                row.lineMonthlyCapacitySeconds) *
+              (row.factoryMonthlyActualOutputStSeconds /
+                row.factoryMonthlyCapacitySeconds) *
                 1000
             ) / 10
           : null;
       const actualOutputDebug = includeActualOutputDebug
         ? {
-            ...(actualOutputDebugByLineMonthKey.get(`${row.lineId}:${row.monthKey}`) ||
+            ...(actualOutputDebugByFactoryMonthKey.get(`${row.factoryId}:${row.monthKey}`) ||
               {
-                lineId: row.lineId,
+                factoryId: row.factoryId,
                 monthKey: row.monthKey,
                 directCandidateRecordCount: 0,
                 directMatchedRecordCount: 0,
@@ -24384,14 +23092,14 @@ const buildLineMonthCapacityRows = async ({
                 sampleFailures: [],
                 sampleMatches: [],
               }),
-            actualOutputNumeratorStSeconds: row.lineMonthlyActualOutputStSeconds,
-            actualOutputDenominatorCapacitySeconds: row.lineMonthlyCapacitySeconds,
+            actualOutputNumeratorStSeconds: row.factoryMonthlyActualOutputStSeconds,
+            actualOutputDenominatorCapacitySeconds: row.factoryMonthlyCapacitySeconds,
             actualOutputFormula:
-              "actualOutputPercent = lineMonthlyActualOutputStSeconds / lineMonthlyCapacitySeconds * 100",
+              "actualOutputPercent = factoryMonthlyActualOutputStSeconds / factoryMonthlyCapacitySeconds * 100",
             actualOutputDenominatorSource:
               "active line assignments x working days x 8h",
             actualOutputDenominatorZeroReason:
-              row.lineMonthlyCapacitySeconds > 0
+              row.factoryMonthlyCapacitySeconds > 0
                 ? null
                 : row.workingDayCount <= 0
                   ? "WORKING_DAY_COUNT_ZERO"
@@ -24399,7 +23107,7 @@ const buildLineMonthCapacityRows = async ({
                     ? "NO_ACTIVE_LINE_ASSIGNMENTS"
                     : "CAPACITY_SECONDS_ZERO",
             actualOutputNumeratorZeroReason:
-              row.lineMonthlyActualOutputStSeconds > 0
+              row.factoryMonthlyActualOutputStSeconds > 0
                 ? null
                 : row.orphanWorkRecordCount > 0
                   ? "MATCHED_PLAN_RECORD_ST_SECONDS_ZERO_OR_ORPHAN_RECORDS_PRESENT"
@@ -24407,28 +23115,28 @@ const buildLineMonthCapacityRows = async ({
             workingDayCount: row.workingDayCount,
             headcountDayUnits: row.headcountDayUnits,
             averageHeadcount,
-            lineMonthlyCapacitySeconds: row.lineMonthlyCapacitySeconds,
-            lineMonthlyAttendanceSeconds: row.lineMonthlyAttendanceSeconds,
-            lineMonthlyDefaultCapacitySeconds: row.lineMonthlyDefaultCapacitySeconds,
+            factoryMonthlyCapacitySeconds: row.factoryMonthlyCapacitySeconds,
+            factoryMonthlyAttendanceSeconds: row.factoryMonthlyAttendanceSeconds,
+            factoryMonthlyDefaultCapacitySeconds: row.factoryMonthlyDefaultCapacitySeconds,
             attendanceWorkerDayCount: row.attendanceWorkerDayCount,
             defaultCapacityWorkerDayCount: row.defaultCapacityWorkerDayCount,
-            lineMonthlyActualOutputStSeconds: row.lineMonthlyActualOutputStSeconds,
+            factoryMonthlyActualOutputStSeconds: row.factoryMonthlyActualOutputStSeconds,
             actualOutputPercent,
             actualOutputRecordedThroughDateKey: row.actualOutputRecordedThroughDateKey,
             orphanWorkRecordCount: row.orphanWorkRecordCount,
           }
         : null;
       return {
-        lineId: row.lineId,
+        factoryId: row.factoryId,
         monthKey: row.monthKey,
         workingDayCount: row.workingDayCount,
         averageHeadcount,
-        lineMonthlyCapacitySeconds: row.lineMonthlyCapacitySeconds,
-        lineMonthlyAttendanceSeconds: row.lineMonthlyAttendanceSeconds,
-        lineMonthlyDefaultCapacitySeconds: row.lineMonthlyDefaultCapacitySeconds,
+        factoryMonthlyCapacitySeconds: row.factoryMonthlyCapacitySeconds,
+        factoryMonthlyAttendanceSeconds: row.factoryMonthlyAttendanceSeconds,
+        factoryMonthlyDefaultCapacitySeconds: row.factoryMonthlyDefaultCapacitySeconds,
         attendanceWorkerDayCount: row.attendanceWorkerDayCount,
         defaultCapacityWorkerDayCount: row.defaultCapacityWorkerDayCount,
-        lineMonthlyActualOutputStSeconds: row.lineMonthlyActualOutputStSeconds,
+        factoryMonthlyActualOutputStSeconds: row.factoryMonthlyActualOutputStSeconds,
         actualOutputPercent,
         ...(includeActualOutputDebug ? { actualOutputDebug } : {}),
         actualOutputRecordedThroughDateKey:
@@ -24445,17 +23153,17 @@ const buildLineMonthCapacityRows = async ({
         totalEstimatedLoadStSeconds: row.totalEstimatedLoadStSeconds,
         totalEstimatedLoadPercent: row.totalEstimatedLoadPercent,
         monthType: row.monthType,
-        lineRemainingBacklogStSeconds:
-          lineForecastMetaByLineId.get(Number(row.lineId))?.remainingBacklogStSeconds ?? 0,
+        factoryScopeRemainingBacklogStSeconds:
+          factoryScopeForecastMetaByFactoryId.get(Number(row.factoryId))?.remainingBacklogStSeconds ?? 0,
         stUnknownAssignmentCount:
-          lineForecastMetaByLineId.get(Number(row.lineId))?.stUnknownAssignmentCount ?? 0,
+          factoryScopeForecastMetaByFactoryId.get(Number(row.factoryId))?.stUnknownAssignmentCount ?? 0,
         // Assignments with actual recorded work whose progress ratio could not be
         // computed (e.g. assignmentCtSnapshot processes missing styleProcessId - see
         // the comment above isProgressUnknown). Excluded from
         // lineRemainingBacklogStSeconds rather than guessed at, so the forecast can
         // under-count but never silently re-inflate to the full planned ST.
         progressUnknownAssignmentCount:
-          lineForecastMetaByLineId.get(Number(row.lineId))?.progressUnknownAssignmentCount ?? 0,
+          factoryScopeForecastMetaByFactoryId.get(Number(row.factoryId))?.progressUnknownAssignmentCount ?? 0,
       };
     });
 
@@ -24463,10 +23171,7 @@ const buildLineMonthCapacityRows = async ({
     monthKeys: requestedMonthKeys,
     rows,
     // Employee active on more than one line the same day (see the comment above
-    // lineIdsByEmployeeDateKey). Read-only diagnostics - does not change any capacity
     // sum above, which still counts the employee once per line they overlap on.
-    capacityOverlapCount,
-    capacityOverlapSamples,
     ...(includeActualOutputDebug && actualOutputRequestDiagnostics
       ? { actualOutputDiagnostics: actualOutputRequestDiagnostics }
       : {}),
@@ -24493,7 +23198,7 @@ const buildAssignmentPlanProgressRows = async (
         ? { externalId: { in: normalizedExternalIds } }
         : {}),
     },
-    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+    orderBy: [{ factoryId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
     selectAttempts: [
       ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION,
       ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
@@ -24506,22 +23211,22 @@ const buildAssignmentPlanProgressRows = async (
   if (plans.length === 0) return [];
 
   const stateAssignmentsByExternalId = new Map<string, any>();
-  const lineIds = Array.from(
+  const factoryIds = Array.from(
     new Set(
       plans
-        .map((plan) => Number(plan?.lineId))
-        .filter((lineId) => Number.isSafeInteger(lineId) && lineId > 0)
+        .map((plan) => Number(plan?.factoryId))
+        .filter((factoryId) => Number.isSafeInteger(factoryId) && factoryId > 0)
     )
   );
-  const lineRows =
-    lineIds.length > 0
-      ? await prisma.line.findMany({
-          where: { id: { in: lineIds } },
+  const factoryScopeRows =
+    factoryIds.length > 0
+      ? await prisma.factory.findMany({
+          where: { id: { in: factoryIds } },
           select: { id: true, name: true },
         })
       : [];
-  const lineNameById = new Map(
-    lineRows.map((line) => [Number(line.id), resolveOptionalString(line.name, "") || ""])
+  const factoryNameById = new Map(
+    factoryScopeRows.map((factoryScope) => [Number(factoryScope.id), resolveOptionalString(factoryScope.name, "") || ""])
   );
 
   const holidayModel = (prisma as any).organizationHoliday;
@@ -24546,7 +23251,7 @@ const buildAssignmentPlanProgressRows = async (
     stateAssignmentsByExternalId,
     context: "buildAssignmentPlanProgressRows",
   });
-  const orphanWorkRecordCountByLine = new Map<number, number>();
+  const orphanWorkRecordCountByFactoryScope = new Map<number, number>();
   const payrollLockMonthByPlanId = new Map<number, string>();
   plans.forEach((plan) => {
     const monthKey = resolveAssignmentPlanPayrollLockMonth(plan);
@@ -25002,8 +23707,8 @@ const buildAssignmentPlanProgressRows = async (
     const isPayrollLocked = payrollLockMonth
       ? payrollLockedMonthSet.has(payrollLockMonth)
       : false;
-    const lineOrphanWorkRecordCount =
-      orphanWorkRecordCountByLine.get(Number(plan.lineId)) || 0;
+    const factoryScopeOrphanWorkRecordCount =
+      orphanWorkRecordCountByFactoryScope.get(Number(plan.factoryId)) || 0;
 
     const scheduleStatus:
       | "IN_PROGRESS"
@@ -25060,8 +23765,8 @@ const buildAssignmentPlanProgressRows = async (
     return {
       id: plan.externalId,
       dbId: planId,
-      lineId: String(plan.lineId),
-      lineName: lineNameById.get(Number(plan.lineId)) || "",
+      factoryId: String(plan.factoryId),
+      factoryName: factoryNameById.get(Number(plan.factoryId)) || "",
       // Phase E (AssignmentCard/AssignmentPlan FK+join redesign): orderNo/
       // customer/label columns are gone - these joins are the only source now.
       orderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null) ?? "",
@@ -25151,8 +23856,8 @@ const buildAssignmentPlanProgressRows = async (
       isProgressUnknown,
       hasInvalidProcessReferences,
       hasRangeCoverage: stats.hasRangeCoverage,
-      lineOrphanWorkRecordCount,
-      hasOrphanWorkRecords: lineOrphanWorkRecordCount > 0,
+      factoryScopeOrphanWorkRecordCount,
+      hasOrphanWorkRecords: factoryScopeOrphanWorkRecordCount > 0,
       officialProgressPercent:
         scheduleStatus === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED ? 100 : null,
       isCompleted: scheduleStatus === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
@@ -25190,17 +23895,17 @@ const buildAssignmentPlanProgressRows = async (
     };
   });
 
-  const rowsByLine = rows.reduce((map, row) => {
-    const lineId = String(row.lineId || "");
-    if (!lineId) return map;
-    const bucket = map.get(lineId) || [];
+  const rowsByFactoryScope = rows.reduce((map, row) => {
+    const factoryId = String(row.factoryId || "");
+    if (!factoryId) return map;
+    const bucket = map.get(factoryId) || [];
     bucket.push(row);
-    map.set(lineId, bucket);
+    map.set(factoryId, bucket);
     return map;
   }, new Map<string, any[]>());
 
-  rowsByLine.forEach((lineRows) => {
-    lineRows.sort((left, right) => {
+  rowsByFactoryScope.forEach((factoryScopeRows) => {
+    factoryScopeRows.sort((left, right) => {
       const leftCompleted =
         String(left?.scheduleStatus || "") === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED ? 0 : 1;
       const rightCompleted =
@@ -25218,7 +23923,7 @@ const buildAssignmentPlanProgressRows = async (
     });
 
     let cursorEndDateKey: string | null = null;
-    lineRows.forEach((row) => {
+    factoryScopeRows.forEach((row) => {
       const isCompleted =
         String(row?.scheduleStatus || "") === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED;
       // Only compute render coords for completed cards.
@@ -25582,7 +24287,7 @@ const buildAssignmentPlanCloseResponse = (plan: any) => {
   return {
     id: plan?.externalId,
     dbId: plan?.id ?? null,
-    lineId: String(plan?.lineId ?? ""),
+    factoryId: String(plan?.factoryId ?? ""),
     orderNo: resolveOptionalString(plan?.workOrder?.orderNumber, null) ?? "",
     label: resolveOptionalString(plan?.style?.name, null) ?? "",
     // colorName dropped in Phase D - see the comment in toAssignmentPlanResponse.
@@ -25644,7 +24349,7 @@ const completeAssignmentPlanProduction = async ({
     select: {
       id: true,
       externalId: true,
-      lineId: true,
+      factoryId: true,
       assignmentQuantity: true,
       finalQuantity: true,
       isCompleted: true,
@@ -25858,7 +24563,7 @@ app.get("/assignment-plans/:id/quantity-review", async (req, res) => {
   });
 });
 
-app.get("/line-month-capacity", async (req, res) => {
+app.get("/factory-month-capacity", async (req, res) => {
   try {
     const organization = await getOrganizationByQuery(req);
     if (!organization) {
@@ -25879,7 +24584,7 @@ app.get("/line-month-capacity", async (req, res) => {
       });
     }
 
-    const monthKeys = buildMonthKeyRangeForLineMonthCapacity(monthFrom, monthTo);
+    const monthKeys = buildMonthKeyRangeForFactoryMonthCapacity(monthFrom, monthTo);
     if (monthKeys.length === 0) {
       return res.status(400).json({
         ok: false,
@@ -25887,26 +24592,26 @@ app.get("/line-month-capacity", async (req, res) => {
       });
     }
 
-    const lineIds = parseLineIdsForLineMonthCapacity(req.query.lineIds);
+    const factoryIds = parseFactoryIdsForFactoryMonthCapacity(req.query.factoryIds);
     const debugMode = resolveOptionalString(req.query.debug, null);
     const includeActualOutputDebug =
       debugMode === "actual-output" || debugMode === "1" || debugMode === "true";
-    const payload = await buildLineMonthCapacityRows({
+    const payload = await buildFactoryMonthCapacityRows({
       organization,
       orgId: organization.id,
       monthFrom,
       monthTo,
-      lineIds,
+      factoryIds,
       includeActualOutputDebug,
     });
     res.json(payload);
   } catch (error) {
-    console.error("[line-month-capacity] request failed", {
+    console.error("[factory-month-capacity] request failed", {
       orgId: req.query?.orgId ?? null,
       monthFrom: resolveOptionalString(req.query?.monthFrom ?? req.query?.monthKey, null),
       monthTo: resolveOptionalString(req.query?.monthTo, null),
-      lineIds: resolveOptionalString(req.query?.lineIds, null),
-      message: getErrorMessage(error, "unknown line-month-capacity error"),
+      factoryIds: resolveOptionalString(req.query?.factoryIds, null),
+      message: getErrorMessage(error, "unknown factory-month-capacity error"),
       code: getErrorCode(error),
     });
     throw error;
@@ -26197,7 +24902,7 @@ app.patch("/assignment-plans/:externalId/final-quantity", async (req, res) => {
     select: {
       id: true,
       externalId: true,
-      lineId: true,
+      factoryId: true,
       isCompleted: true,
       completedAt: true,
       closedAt: true,
@@ -27145,7 +25850,6 @@ app.get("/work-log-context", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
-  const lineId = toPositiveIntOrNull(req.query.lineId);
   const factoryId = toPositiveIntOrNull(req.query.factoryId);
   const workDate = normalizeDateKey(req.query.workDate);
   const coverageStartDate = normalizeDateKey(req.query.coverageStartDate);
@@ -27153,8 +25857,8 @@ app.get("/work-log-context", async (req, res) => {
     String(req.query.debug || "").trim() === "1" ||
     String(req.query.debug || "").trim().toLowerCase() === "true";
   const recordKind = normalizeWorkLogRecordKind(req.query.recordKind, "EMPLOYEE");
-  if (!lineId) {
-    return res.status(400).json({ ok: false, error: "lineId is required" });
+  if (!factoryId) {
+    return res.status(400).json({ ok: false, error: "factoryId is required" });
   }
   if (!workDate) {
     return res.status(400).json({ ok: false, error: "invalid workDate" });
@@ -27164,7 +25868,7 @@ app.get("/work-log-context", async (req, res) => {
     orgId: organization.id,
     recordKind,
     factoryId,
-    lineId,
+
     workDate,
     coverageStartDate: coverageStartDate || null,
     debug,
@@ -27221,14 +25925,13 @@ app.get("/work-logs/:id", async (req, res) => {
     return res.status(404).json({ ok: false, error: "work log not found" });
   }
 
-  const lineMeta = resolveWorkLogLineMeta(baseWorkLog?.records);
   const context = includeContext
     ? await buildWorkLogContextResponse({
         orgId: organization.id,
         recordKind: normalizeWorkLogRecordKind(baseWorkLog.recordKind, "EMPLOYEE"),
         factoryId: toPositiveIntOrNull(baseWorkLog.factoryId),
-        lineId: toPositiveIntOrNull(lineMeta.lineId),
-        lineName: resolveOptionalString(lineMeta.lineName, null),
+
+        factoryName: resolveOptionalString(baseWorkLog.factory?.name, null),
         workDate: baseWorkLog.displayDate,
         coverageStartDate: resolveWorkLogCoverageStartDate(
           baseWorkLog,
@@ -27401,14 +26104,7 @@ app.post("/work-logs/import", async (req, res) => {
             employeeNo: true,
             name: true,
             factoryId: true,
-            lineId: true,
-            line: {
-              select: {
-                id: true,
-                factoryId: true,
-                name: true,
-              },
-            },
+            factory: { select: { id: true, name: true } },
             joinedAt: true,
             leftAt: true,
           },
@@ -27456,70 +26152,34 @@ app.post("/work-logs/import", async (req, res) => {
   const employeeIds = employees
     .map((employee) => toPositiveIntOrNull(employee?.id))
     .filter((value): value is number => value !== null);
-  const [lineAssignments, lines] = await Promise.all([
-    employeeIds.length > 0
-      ? prisma.lineAssignment.findMany({
-          where: {
-            employeeId: { in: employeeIds },
-            line: { orgId: organization.id },
-          },
-          select: {
-            employeeId: true,
-            startAt: true,
-            endAt: true,
-            lineId: true,
-            line: {
-              select: {
-                id: true,
-                factoryId: true,
-                name: true,
-              },
-            },
-          },
-        })
-      : Promise.resolve([]),
-    prisma.line.findMany({
-      where: { orgId: organization.id },
-      select: { id: true, factoryId: true, name: true },
-    }),
-  ]);
-
-  const lineAssignmentsByEmployeeId = ensureArray(lineAssignments).reduce((map, assignment) => {
-    const employeeId = toPositiveIntOrNull(assignment?.employeeId);
-    if (!employeeId) return map;
-    const bucket = map.get(employeeId) || [];
-    bucket.push(assignment);
-    map.set(employeeId, bucket);
-    return map;
-  }, new Map<number, any[]>());
-  const lineById = ensureArray(lines).reduce((map, line) => {
-    const lineId = toPositiveIntOrNull(line?.id);
-    if (!lineId || map.has(lineId)) return map;
-    map.set(lineId, line);
+  const factoryScopes = await prisma.factory.findMany({ where: { orgId: organization.id }, select: { id: true, name: true } });
+  const factoryScopeById = ensureArray(factoryScopes).reduce((map, factoryScope) => {
+    const factoryId = toPositiveIntOrNull(factoryScope?.id);
+    if (!factoryId || map.has(factoryId)) return map;
+    map.set(factoryId, factoryScope);
     return map;
   }, new Map<number, any>());
   const preparedRows: Array<{
     row: (typeof importedRows)[number];
     employee: any;
-    line: { id: number; factoryId: number; name: string; source: string };
+    factoryScope: { id: number; name: string };
   }> = [];
 
   importedRows.forEach((row) => {
     const employee = row.employeeNo ? employeeByNo.get(row.employeeNo) ?? null : null;
     if (!employee || !row.coverageEndDate) return;
-    const resolvedLine = resolveWorkLogImportLineForEmployee({
+    const resolvedFactoryScope = resolveWorkLogImportFactoryScopeForEmployee({
       employee,
       coverageStartDate: row.coverageStartDate || row.coverageEndDate,
       coverageEndDate: row.coverageEndDate,
-      lineAssignmentsByEmployeeId,
     });
-    if (resolvedLine.error || !resolvedLine.line?.id || !resolvedLine.line?.factoryId) {
+    if (resolvedFactoryScope.error || !resolvedFactoryScope.factoryScope?.id) {
       issues.push(
         buildWorkLogImportIssue({
           row,
           code: "LINE_RESOLUTION_FAILED",
           message:
-            resolvedLine.error ||
+            resolvedFactoryScope.error ||
             "line could not be resolved for the employee on the work date",
         })
       );
@@ -27528,7 +26188,7 @@ app.post("/work-logs/import", async (req, res) => {
     preparedRows.push({
       row,
       employee,
-      line: resolvedLine.line,
+      factoryScope: resolvedFactoryScope.factoryScope,
     });
   });
 
@@ -27537,11 +26197,11 @@ app.post("/work-logs/import", async (req, res) => {
   }
 
   const planFactoryIds = Array.from(
-    new Set(preparedRows.map((item) => item.line.factoryId))
+    new Set(preparedRows.map((item) => item.factoryScope.id))
   );
-  const assignmentPlanLineIds = ensureArray(lines)
-    .filter((line) => planFactoryIds.includes(line.factoryId))
-    .map((line) => toPositiveIntOrNull(line?.id))
+  const assignmentPlanFactoryIds = ensureArray(factoryScopes)
+    .filter((factoryScope) => planFactoryIds.includes(factoryScope.id))
+    .map((factoryScope) => toPositiveIntOrNull(factoryScope?.id))
     .filter((value): value is number => value !== null);
   const planOrderNos = Array.from(
     new Set(
@@ -27551,17 +26211,17 @@ app.post("/work-logs/import", async (req, res) => {
     )
   );
   const [rawAssignmentPlans, assignmentCards] = await Promise.all([
-    assignmentPlanLineIds.length > 0 && planOrderNos.length > 0
+    assignmentPlanFactoryIds.length > 0 && planOrderNos.length > 0
       ? findAssignmentPlansWithSelectFallback({
           where: {
             orgId: organization.id,
-            lineId: { in: assignmentPlanLineIds },
+            factoryId: { in: assignmentPlanFactoryIds },
             // orderNo column dropped in Phase E - match through the
             // workOrder relation instead (workOrderId is populated for every
             // active plan by syncAssignmentPlanWorkOrderRefs).
             workOrder: { orderNumber: { in: planOrderNos } },
           },
-          orderBy: [{ lineId: "asc" }, { id: "asc" }],
+          orderBy: [{ factoryId: "asc" }, { id: "asc" }],
           selectAttempts: [
             ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
             ASSIGNMENT_PLAN_SELECT_CORE,
@@ -27622,19 +26282,15 @@ app.post("/work-logs/import", async (req, res) => {
   const matchedRows: Array<{
     row: (typeof importedRows)[number];
     employee: any;
-    line: { id: number; factoryId: number; name: string; source: string };
+    factoryScope: { id: number; name: string };
     plan: any;
     process: any;
-    matchedOnOtherLine: boolean;
   }> = [];
 
   preparedRows.forEach((item) => {
     const assignmentMatch = resolveWorkLogImportAssignmentCandidate({
       row: item.row,
-      lineId: item.line.id,
-      factoryLineIds: ensureArray(lines)
-        .filter((line) => line.factoryId === item.line.factoryId)
-        .map((line) => line.id),
+      factoryId: item.factoryScope.id,
       plans: assignmentPlans,
       assignmentCardsByOrderKey,
       assignmentCardsByOrderStyleKey,
@@ -27655,7 +26311,6 @@ app.post("/work-logs/import", async (req, res) => {
       ...item,
       plan: assignmentMatch.plan,
       process: assignmentMatch.process,
-      matchedOnOtherLine: Boolean((assignmentMatch as any).matchedOnOtherLine),
     });
   });
 
@@ -27663,7 +26318,7 @@ app.post("/work-logs/import", async (req, res) => {
     return respondWithIssues();
   }
 
-  const factoryIds = Array.from(new Set(matchedRows.map((item) => item.line.factoryId)));
+  const factoryIds = Array.from(new Set(matchedRows.map((item) => item.factoryScope.id)));
   const factories =
     factoryIds.length > 0
       ? await prisma.factory.findMany({
@@ -27686,7 +26341,7 @@ app.post("/work-logs/import", async (req, res) => {
   const groups = new Map<
     string,
     {
-      line: any;
+      factoryScope: any;
       factory: any;
       rows: Array<(typeof importedRows)[number]>;
       records: any[];
@@ -27695,8 +26350,8 @@ app.post("/work-logs/import", async (req, res) => {
   >();
 
   matchedRows.forEach((item) => {
-    const line = lineById.get(item.line.id) ?? item.line;
-    const factory = factoryById.get(item.line.factoryId) ?? null;
+    const factoryScope = factoryScopeById.get(item.factoryScope.id) ?? item.factoryScope;
+    const factory = factoryById.get(item.factoryScope.id) ?? null;
     if (!factory) {
       issues.push(
         buildWorkLogImportIssue({
@@ -27708,13 +26363,12 @@ app.post("/work-logs/import", async (req, res) => {
       return;
     }
     const groupKey = [
-      item.line.factoryId,
-      item.line.id,
+      item.factoryScope.id,
       item.row.coverageStartDate,
       item.row.coverageEndDate,
     ].join("::");
     const currentGroup = groups.get(groupKey) || {
-      line,
+      factoryScope,
       factory,
       rows: [],
       records: [],
@@ -27722,7 +26376,7 @@ app.post("/work-logs/import", async (req, res) => {
     currentGroup.rows.push(item.row);
     currentGroup.records.push({
       workerId: item.employee.id,
-      lineId: item.line.id,
+      factoryId: item.factoryScope.id,
       styleCode: resolveOptionalString(item.row.styleId, null),
       styleProcessId: toPositiveIntOrNull(item.process?.styleProcessId),
       processCode: resolveOptionalString(
@@ -27745,10 +26399,9 @@ app.post("/work-logs/import", async (req, res) => {
   }
 
   const validatedGroups: Array<{
-    line: any;
+    factoryScope: any;
     sourceRows: Array<(typeof importedRows)[number]>;
     normalized: any;
-    crossLineWarnings: WorkLogCrossLineAssignmentWarning[];
   }> = [];
 
   for (const group of groups.values()) {
@@ -27758,8 +26411,8 @@ app.post("/work-logs/import", async (req, res) => {
       coverageEndDate: group.rows[0]?.coverageEndDate ?? null,
       factoryId: group.factory?.id ?? null,
       factoryName: resolveOptionalString(group.factory?.name, null),
-      lineId: group.line?.id ?? null,
-      lineName: resolveOptionalString(group.line?.name, null),
+
+
       factoryWagePerSecond: toOptionalFiniteNumber(group.factory?.wagePerSecond, null),
       ctBasis: "CT",
       workerCount: new Set(
@@ -27861,26 +26514,26 @@ app.post("/work-logs/import", async (req, res) => {
           effectiveCoverage?.effectiveEndDate ?? normalized.coverageEndDate,
       };
     });
-    const lineValidation = await validateWorkLogLineWorkers({
+    const factoryScopeValidation = await validateWorkLogFactoryScopeWorkers({
       orgId: organization.id,
-      lineId: normalized.lineId,
       factoryId: normalized.factoryId,
+
       workDate: workerFilterDateKey,
       coverageEndDate: normalized.coverageEndDate,
       workerIds,
     });
-    if (lineValidation.error) {
+    if (factoryScopeValidation.error) {
       issues.push(
         buildWorkLogImportIssue({
           row: groupAnchorRow,
           code: "LINE_VALIDATION_FAILED",
-          message: lineValidation.error,
+          message: factoryScopeValidation.error,
         })
       );
       continue;
     }
-    if (lineValidation.missingWorkerIds.length > 0) {
-      const missingWorkerIdSet = new Set(lineValidation.missingWorkerIds);
+    if (factoryScopeValidation.missingWorkerIds.length > 0) {
+      const missingWorkerIdSet = new Set(factoryScopeValidation.missingWorkerIds);
       group.records.forEach((record, index) => {
         const workerId = toPositiveIntOrNull(record?.workerId);
         if (!workerId || !missingWorkerIdSet.has(workerId)) return;
@@ -27903,7 +26556,7 @@ app.post("/work-logs/import", async (req, res) => {
     // first (the previous order) always wiped processCode back to null for import rows.
     normalized.records = await attachCanonicalFieldsToWorkRecords({
       orgId: organization.id,
-      lineId: lineValidation.line?.id ?? normalized.lineId,
+      factoryId: factoryScopeValidation.factoryScope?.id ?? normalized.factoryId,
       records: normalized.records,
     });
 
@@ -27967,7 +26620,7 @@ app.post("/work-logs/import", async (req, res) => {
         : [];
     const ctSnapshotValidation = await validateWorkLogAssignmentPlanCtSnapshot({
       orgId: organization.id,
-      lineId: lineValidation.line?.id ?? normalized.lineId,
+      factoryId: factoryScopeValidation.factoryScope?.id ?? normalized.factoryId,
       records: normalized.records,
       allowCompletedAssignmentPlanIds,
     });
@@ -27996,23 +26649,6 @@ app.post("/work-logs/import", async (req, res) => {
       );
       continue;
     }
-
-    const crossLineWarnings = await collectWorkLogCrossLineAssignmentWarnings({
-      orgId: organization.id,
-      workLogLineId: lineValidation.line?.id ?? normalized.lineId,
-      workLogLineName:
-        resolveOptionalString(lineValidation.line?.name, null) ??
-        resolveOptionalString(group.line?.name, null),
-      records: normalized.records,
-    });
-    normalized.note = buildWorkLogNoteWithCrossLineAssignments({
-      note: normalized.note,
-      workLogLineId: lineValidation.line?.id ?? normalized.lineId,
-      workLogLineName:
-        resolveOptionalString(lineValidation.line?.name, null) ??
-        resolveOptionalString(group.line?.name, null),
-      warnings: crossLineWarnings,
-    });
     normalized.note = buildWorkLogNoteWithEmploymentAdjustments({
       note: normalized.note,
       adjustments: employmentValidation.adjustments,
@@ -28038,10 +26674,9 @@ app.post("/work-logs/import", async (req, res) => {
     }
 
     validatedGroups.push({
-      line: lineValidation.line ?? group.line,
+      factoryScope: factoryScopeValidation.factoryScope ?? group.factoryScope,
       sourceRows: group.rows,
       normalized,
-      crossLineWarnings,
     });
   }
 
@@ -28091,8 +26726,7 @@ app.post("/work-logs/import", async (req, res) => {
           const {
             records,
             invalidWorkerRecordIndex: _invalidWorkerRecordIndex,
-            lineId: _lineId,
-            lineName: _lineName,
+            factoryName: _factoryName,
             ...workLogData
           } = group.normalized;
           const createData = {
@@ -28101,10 +26735,7 @@ app.post("/work-logs/import", async (req, res) => {
               includeCoverage,
             }),
             updatedBy,
-            records: {
-              lineId: group.line?.id ?? null,
-              lineName: group.line?.name ?? null,
-            },
+            records: Prisma.DbNull,
           } as unknown as Prisma.WorkLogUncheckedCreateInput;
           const next = await tx.workLog.create({
             data: createData,
@@ -28117,7 +26748,6 @@ app.post("/work-logs/import", async (req, res) => {
                   orgId: organization.id,
                   workLogId: next.id,
                   record,
-                  defaultLineId: group.line?.id ?? null,
                   defaultCoverageStartDate: group.normalized.coverageStartDate,
                   defaultCoverageEndDate: group.normalized.coverageEndDate,
                 })
@@ -28143,9 +26773,6 @@ app.post("/work-logs/import", async (req, res) => {
   }
 
   const importedRecords = validatedGroups.flatMap((group) => ensureArray(group.normalized.records));
-  const importCrossLineWarnings = validatedGroups.flatMap((group) =>
-    ensureArray(group.crossLineWarnings)
-  );
   await trySyncConfirmedOrdersToInProgressFromWorkRecords({
     orgId: organization.id,
     records: importedRecords,
@@ -28162,16 +26789,14 @@ app.post("/work-logs/import", async (req, res) => {
     createdCount: createdWorkLogIds.length,
     recordCount: importedRecords.length,
     workLogIds: createdWorkLogIds,
-    warnings: buildWorkLogWarningResponse({
-      crossLineWarnings: importCrossLineWarnings,
-    }),
+    warnings: null,
   });
 });
 
 // Outsourcing (recordKind=OUTSOURCING) create path for POST /work-logs.
 // Parallel to the employee create path below, but skips everything that only
-// makes sense for employees (employment window/line-worker validation, cross-
-// line warnings, CT snapshot/payroll-lock checks - outsourcing has no CT and
+// makes sense for employees (employment validation and CT snapshot/payroll-lock
+// checks - outsourcing has no CT and
 // never participates in payroll).
 const handleCreateOutsourcedWorkLog = async ({
   req,
@@ -28224,7 +26849,7 @@ const handleCreateOutsourcedWorkLog = async ({
 
   normalized.records = await attachCanonicalFieldsToWorkRecords({
     orgId: organization.id,
-    lineId: normalized.lineId,
+    factoryId: normalized.factoryId,
     records: normalized.records,
   });
   const missingAssignmentPlanLinkIndices = collectMissingWorkRecordAssignmentPlanLinkIndices(
@@ -28273,8 +26898,7 @@ const handleCreateOutsourcedWorkLog = async ({
   const {
     records,
     invalidWorkerRecordIndex: _invalidWorkerRecordIndex,
-    lineId: _lineId,
-    lineName: _lineName,
+    factoryName: _factoryName,
     ...workLogData
   } = normalized;
   const createWorkLogTransaction = async (includeCoverage: boolean) =>
@@ -28284,7 +26908,7 @@ const handleCreateOutsourcedWorkLog = async ({
           orgId: organization.id,
           ...buildWorkLogWriteDataWithOptionalCoverage(workLogData, { includeCoverage }),
           updatedBy,
-          records: { lineId: normalized.lineId ?? null, lineName: null },
+          records: Prisma.DbNull,
         } as unknown as Prisma.WorkLogUncheckedCreateInput,
         select: { id: true },
       });
@@ -28295,7 +26919,6 @@ const handleCreateOutsourcedWorkLog = async ({
               orgId: organization.id,
               workLogId: next.id,
               record,
-              defaultLineId: normalized.lineId ?? null,
             })
           ),
         });
@@ -28332,7 +26955,7 @@ const handleCreateOutsourcedWorkLog = async ({
   });
   res.status(201).json({
     ...(await toWorkLogResponse(createdWithRecords ?? created, { orgId: organization.id })),
-    warnings: buildWorkLogWarningResponse({ crossLineWarnings: [] }),
+    warnings: null,
   });
 };
 
@@ -28404,7 +27027,7 @@ const handleUpdateOutsourcedWorkLog = async ({
 
   normalized.records = await attachCanonicalFieldsToWorkRecords({
     orgId: organization.id,
-    lineId: normalized.lineId,
+    factoryId: normalized.factoryId,
     records: normalized.records,
   });
   const missingAssignmentPlanLinkIndices = collectMissingWorkRecordAssignmentPlanLinkIndices(
@@ -28457,8 +27080,7 @@ const handleUpdateOutsourcedWorkLog = async ({
   const {
     records,
     invalidWorkerRecordIndex: _invalidWorkerRecordIndex,
-    lineId: _lineId,
-    lineName: _lineName,
+    factoryName: _factoryName,
     ...workLogData
   } = normalized;
   const updateWorkLogTransaction = async (includeCoverage: boolean) =>
@@ -28468,7 +27090,7 @@ const handleUpdateOutsourcedWorkLog = async ({
         data: {
           ...buildWorkLogWriteDataWithOptionalCoverage(workLogData, { includeCoverage }),
           updatedBy,
-          records: { lineId: normalized.lineId ?? null, lineName: null },
+          records: Prisma.DbNull,
         },
         select: { id: true },
       });
@@ -28482,7 +27104,6 @@ const handleUpdateOutsourcedWorkLog = async ({
               orgId: organization.id,
               workLogId: existing.id,
               record,
-              defaultLineId: normalized.lineId ?? null,
             })
           ),
         });
@@ -28520,7 +27141,7 @@ const handleUpdateOutsourcedWorkLog = async ({
   });
   res.json({
     ...(await toWorkLogResponse(updatedWithRecords ?? updated, { orgId: organization.id })),
-    warnings: buildWorkLogWarningResponse({ crossLineWarnings: [] }),
+    warnings: null,
   });
 };
 
@@ -28623,37 +27244,37 @@ app.post("/work-logs", async (req, res) => {
         effectiveCoverage?.effectiveEndDate ?? normalized.coverageEndDate,
     };
   });
-  const lineValidation = await validateWorkLogLineWorkers({
+  const factoryScopeValidation = await validateWorkLogFactoryScopeWorkers({
     orgId: organization.id,
-    lineId: normalized.lineId,
     factoryId: normalized.factoryId,
+
     workDate: workerFilterDateKey,
     coverageEndDate: normalized.coverageEndDate,
     workerIds,
   });
-  if (lineValidation.error) {
+  if (factoryScopeValidation.error) {
     return res
-      .status(lineValidation.status)
-      .json({ ok: false, error: translateWorkLogErrorMessage(lineValidation.error) });
+      .status(factoryScopeValidation.status)
+      .json({ ok: false, error: translateWorkLogErrorMessage(factoryScopeValidation.error) });
   }
-  if (lineValidation.missingWorkerIds.length > 0) {
+  if (factoryScopeValidation.missingWorkerIds.length > 0) {
     return res.status(400).json({
       ok: false,
       error: translateWorkLogErrorMessage(
-        `line worker mismatch for workDate (${lineValidation.missingWorkerIds.join(",")})`
+        `line worker mismatch for workDate (${factoryScopeValidation.missingWorkerIds.join(",")})`
       ),
     });
   }
   updateWorkLogMutationTrace(trace, "line-validated", {
-    lineId: lineValidation.line?.id ?? normalized.lineId ?? null,
-    lineName: lineValidation.line?.name ?? null,
+    factoryId: factoryScopeValidation.factoryScope?.id ?? normalized.factoryId ?? null,
+    factoryName: factoryScopeValidation.factoryScope?.name ?? null,
   });
   // attachCanonicalFieldsToWorkRecords must run before syncWorkRecordRefs: it is what
   // resolves styleId/styleProcessId in the first place, and syncWorkRecordRefs only
   // trusts an already-resolved styleProcessId (no fallback to caller-supplied processCode).
   normalized.records = await attachCanonicalFieldsToWorkRecords({
     orgId: organization.id,
-    lineId: lineValidation.line?.id ?? normalized.lineId,
+    factoryId: factoryScopeValidation.factoryScope?.id ?? normalized.factoryId,
     records: normalized.records,
   });
   const missingAssignmentPlanLinkIndices = collectMissingWorkRecordAssignmentPlanLinkIndices(
@@ -28680,7 +27301,7 @@ app.post("/work-logs", async (req, res) => {
   updateWorkLogMutationTrace(trace, "duplicates-validated");
   const ctSnapshotValidation = await validateWorkLogAssignmentPlanCtSnapshot({
     orgId: organization.id,
-    lineId: lineValidation.line?.id ?? normalized.lineId,
+    factoryId: factoryScopeValidation.factoryScope?.id ?? normalized.factoryId,
     records: normalized.records,
     allowCompletedAssignmentPlanIds: [],
   });
@@ -28701,22 +27322,6 @@ app.post("/work-logs", async (req, res) => {
     });
   }
   updateWorkLogMutationTrace(trace, "payroll-lock-validated");
-  const crossLineWarnings = await collectWorkLogCrossLineAssignmentWarnings({
-    orgId: organization.id,
-    workLogLineId: lineValidation.line?.id ?? normalized.lineId,
-    workLogLineName:
-      resolveOptionalString(lineValidation.line?.name, null) ??
-      resolveOptionalString(normalized.lineName, null),
-    records: normalized.records,
-  });
-  normalized.note = buildWorkLogNoteWithCrossLineAssignments({
-    note: normalized.note,
-    workLogLineId: lineValidation.line?.id ?? normalized.lineId,
-    workLogLineName:
-      resolveOptionalString(lineValidation.line?.name, null) ??
-      resolveOptionalString(normalized.lineName, null),
-    warnings: crossLineWarnings,
-  });
   normalized.note = buildWorkLogNoteWithEmploymentAdjustments({
     note: normalized.note,
     adjustments: employmentValidation.adjustments,
@@ -28755,8 +27360,7 @@ app.post("/work-logs", async (req, res) => {
   const {
     records,
     invalidWorkerRecordIndex: _invalidWorkerRecordIndex,
-    lineId: _lineId,
-    lineName: _lineName,
+    factoryName: _factoryName,
     ...workLogData
   } = normalized;
   const createWorkLogTransaction = async (includeCoverage: boolean) =>
@@ -28766,10 +27370,7 @@ app.post("/work-logs", async (req, res) => {
           orgId: organization.id,
           ...buildWorkLogWriteDataWithOptionalCoverage(workLogData, { includeCoverage }),
           updatedBy,
-          records: {
-            lineId: lineValidation.line?.id ?? null,
-            lineName: lineValidation.line?.name ?? null,
-          },
+          records: Prisma.DbNull,
         },
         select: { id: true },
       });
@@ -28781,7 +27382,6 @@ app.post("/work-logs", async (req, res) => {
               orgId: organization.id,
               workLogId: next.id,
               record,
-              defaultLineId: lineValidation.line?.id ?? normalized.lineId ?? null,
               defaultCoverageStartDate: normalized.coverageStartDate,
               defaultCoverageEndDate: normalized.coverageEndDate,
             })
@@ -28837,9 +27437,7 @@ app.post("/work-logs", async (req, res) => {
     ...(await toWorkLogResponse(createdWithRecords ?? created, {
       orgId: organization.id,
     })),
-    warnings: buildWorkLogWarningResponse({
-      crossLineWarnings,
-    }),
+    warnings: null,
   });
 });
 
@@ -28970,37 +27568,37 @@ app.put("/work-logs/:id", async (req, res) => {
         effectiveCoverage?.effectiveEndDate ?? normalized.coverageEndDate,
     };
   });
-  const lineValidation = await validateWorkLogLineWorkers({
+  const factoryScopeValidation = await validateWorkLogFactoryScopeWorkers({
     orgId: organization.id,
-    lineId: normalized.lineId,
     factoryId: normalized.factoryId,
+
     workDate: workerFilterDateKey,
     coverageEndDate: normalized.coverageEndDate,
     workerIds,
   });
-  if (lineValidation.error) {
+  if (factoryScopeValidation.error) {
     return res
-      .status(lineValidation.status)
-      .json({ ok: false, error: translateWorkLogErrorMessage(lineValidation.error) });
+      .status(factoryScopeValidation.status)
+      .json({ ok: false, error: translateWorkLogErrorMessage(factoryScopeValidation.error) });
   }
-  if (lineValidation.missingWorkerIds.length > 0) {
+  if (factoryScopeValidation.missingWorkerIds.length > 0) {
     return res.status(400).json({
       ok: false,
       error: translateWorkLogErrorMessage(
-        `line worker mismatch for workDate (${lineValidation.missingWorkerIds.join(",")})`
+        `line worker mismatch for workDate (${factoryScopeValidation.missingWorkerIds.join(",")})`
       ),
     });
   }
   updateWorkLogMutationTrace(trace, "line-validated", {
-    lineId: lineValidation.line?.id ?? normalized.lineId ?? null,
-    lineName: lineValidation.line?.name ?? null,
+    factoryId: factoryScopeValidation.factoryScope?.id ?? normalized.factoryId ?? null,
+    factoryName: factoryScopeValidation.factoryScope?.name ?? null,
   });
   // attachCanonicalFieldsToWorkRecords must run before syncWorkRecordRefs: it is what
   // resolves styleId/styleProcessId in the first place, and syncWorkRecordRefs only
   // trusts an already-resolved styleProcessId (no fallback to caller-supplied processCode).
   normalized.records = await attachCanonicalFieldsToWorkRecords({
     orgId: organization.id,
-    lineId: lineValidation.line?.id ?? normalized.lineId,
+    factoryId: factoryScopeValidation.factoryScope?.id ?? normalized.factoryId,
     records: normalized.records,
   });
   const missingAssignmentPlanLinkIndices = collectMissingWorkRecordAssignmentPlanLinkIndices(
@@ -29031,7 +27629,7 @@ app.put("/work-logs/:id", async (req, res) => {
   );
   const ctSnapshotValidation = await validateWorkLogAssignmentPlanCtSnapshot({
     orgId: organization.id,
-    lineId: lineValidation.line?.id ?? normalized.lineId,
+    factoryId: factoryScopeValidation.factoryScope?.id ?? normalized.factoryId,
     records: normalized.records,
     allowCompletedAssignmentPlanIds: previousPlanIds,
   });
@@ -29054,22 +27652,6 @@ app.put("/work-logs/:id", async (req, res) => {
   }
   updateWorkLogMutationTrace(trace, "payroll-lock-validated", {
     assignmentPlanIds: normalizePlanIdList([...previousPlanIds, ...nextPlanIds]),
-  });
-  const crossLineWarnings = await collectWorkLogCrossLineAssignmentWarnings({
-    orgId: organization.id,
-    workLogLineId: lineValidation.line?.id ?? normalized.lineId,
-    workLogLineName:
-      resolveOptionalString(lineValidation.line?.name, null) ??
-      resolveOptionalString(normalized.lineName, null),
-    records: normalized.records,
-  });
-  normalized.note = buildWorkLogNoteWithCrossLineAssignments({
-    note: normalized.note,
-    workLogLineId: lineValidation.line?.id ?? normalized.lineId,
-    workLogLineName:
-      resolveOptionalString(lineValidation.line?.name, null) ??
-      resolveOptionalString(normalized.lineName, null),
-    warnings: crossLineWarnings,
   });
   normalized.note = buildWorkLogNoteWithEmploymentAdjustments({
     note: normalized.note,
@@ -29109,8 +27691,7 @@ app.put("/work-logs/:id", async (req, res) => {
   const {
     records,
     invalidWorkerRecordIndex: _invalidWorkerRecordIndex,
-    lineId: _lineId,
-    lineName: _lineName,
+    factoryName: _factoryName,
     ...workLogData
   } = normalized;
   const updateWorkLogTransaction = async (includeCoverage: boolean) =>
@@ -29120,10 +27701,7 @@ app.put("/work-logs/:id", async (req, res) => {
         data: {
           ...buildWorkLogWriteDataWithOptionalCoverage(workLogData, { includeCoverage }),
           updatedBy,
-          records: {
-            lineId: lineValidation.line?.id ?? null,
-            lineName: lineValidation.line?.name ?? null,
-          },
+          records: Prisma.DbNull,
         },
         select: { id: true },
       });
@@ -29139,7 +27717,6 @@ app.put("/work-logs/:id", async (req, res) => {
               orgId: organization.id,
               workLogId: existing.id,
               record,
-              defaultLineId: lineValidation.line?.id ?? normalized.lineId ?? null,
               defaultCoverageStartDate: normalized.coverageStartDate,
               defaultCoverageEndDate: normalized.coverageEndDate,
             })
@@ -29195,9 +27772,7 @@ app.put("/work-logs/:id", async (req, res) => {
     ...(await toWorkLogResponse(updatedWithRecords ?? updated, {
       orgId: organization.id,
     })),
-    warnings: buildWorkLogWarningResponse({
-      crossLineWarnings,
-    }),
+    warnings: null,
   });
 });
 
@@ -30006,15 +28581,14 @@ app.put("/assignment-board-state", async (req, res) => {
     const removedExternalIdList = Array.from(removedExternalIds.values());
     const assignmentScopes =
       planSyncTargetAssignments.length > 0
-        ? (await tx.line.findMany({
+        ? (await tx.factory.findMany({
             where: { orgId: organization.id },
-            select: { id: true, factoryId: true },
-          })).map((line) => ({ lineId: line.id, factoryId: line.factoryId }))
+            select: { id: true },
+          })).map((factory) => ({ factoryId: factory.id }))
         : [];
     const resolvedScopeMaps = planSyncTargetAssignments.length > 0
       ? {
           byFactoryId: new Map(assignmentScopes.map((scope) => [scope.factoryId, scope])),
-          byLineId: new Map(assignmentScopes.map((scope) => [scope.lineId, scope])),
         }
       : null;
     const normalizedPlanChanges =
@@ -34214,7 +32788,7 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
           "production batch data is missing linked order or style rows. Check order and style setup first",
       });
     }
-    if (/Line|Factory|lineId|factoryId/i.test(rawErrorMessage)) {
+    if (/Factory|factoryId/i.test(rawErrorMessage)) {
       return res.status(409).json({
         ok: false,
         error:
@@ -34340,13 +32914,12 @@ const ensureWorkRecordCanonicalSchemaReady = async () => {
   if (workRecordCanonicalSchemaReady) return;
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "WorkRecord"
-      ADD COLUMN IF NOT EXISTS "lineId" INTEGER,
       ADD COLUMN IF NOT EXISTS "effectiveCoverageStartDate" TEXT,
       ADD COLUMN IF NOT EXISTS "effectiveCoverageEndDate" TEXT
   `);
   await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_lineId_idx"
-      ON "WorkRecord"("orgId", "lineId")
+    CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_idx"
+      ON "WorkRecord"("orgId")
   `);
   workRecordCanonicalSchemaReady = true;
 };

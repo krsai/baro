@@ -61,7 +61,7 @@ const formatDateKeyLabel = (dateKey = '', fallback = '-') => {
   return dateKey;
 };
 
-const formatLineCompletionLabel = (dateKey, languageCode = 'en') => {
+const formatFactoryScopeCompletionLabel = (dateKey, languageCode = 'en') => {
   const template =
     languageCode === 'ko'
       ? '완료 예상 {date}'
@@ -117,7 +117,7 @@ const resolvePlanTone = (plannedLoadPercent) => {
   };
 };
 
-const LineRowDropHint = memo(function LineRowDropHint({ isOver, languageCode }) {
+const FactoryScopeRowDropHint = memo(function FactoryScopeRowDropHint({ isOver, languageCode }) {
   return (
     <Box
       sx={{
@@ -132,7 +132,7 @@ const LineRowDropHint = memo(function LineRowDropHint({ isOver, languageCode }) 
       }}
     >
       <Typography variant="caption" color={isOver ? 'primary.main' : 'text.secondary'}>
-        {getUiMessage('assign.lineDropHint', 'Drop cards here to assign to this line', languageCode)}
+        {getUiMessage('assign.factoryScopeDropHint', 'Drop cards here to assign to this line', languageCode)}
       </Typography>
     </Box>
   );
@@ -166,22 +166,22 @@ const groupAssignmentsByOrderNo = (assignments = [], languageCode = 'en') => {
   return groups;
 };
 
-const LineAssignmentDropSlot = memo(function LineAssignmentDropSlot({
-  lineId,
+const FactoryScopeAssignmentDropSlot = memo(function FactoryScopeAssignmentDropSlot({
+  factoryId,
   beforeAssignmentId = null,
   afterAssignmentId = null,
   languageCode,
 }) {
   const dropId = beforeAssignmentId
-    ? `line-slot-drop::${lineId}::before::${beforeAssignmentId}`
+    ? `line-slot-drop::${factoryId}::before::${beforeAssignmentId}`
     : afterAssignmentId
-      ? `line-slot-drop::${lineId}::after::${afterAssignmentId}`
-      : `line-slot-drop::${lineId}::empty`;
+      ? `line-slot-drop::${factoryId}::after::${afterAssignmentId}`
+      : `line-slot-drop::${factoryId}::empty`;
   const { setNodeRef, isOver } = useDroppable({
     id: dropId,
     data: {
       dropMode: 'line-slot',
-      lineId,
+      factoryId,
       beforeAssignmentId,
       afterAssignmentId,
     },
@@ -349,7 +349,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
   );
 });
 
-const LineCapacityMainRow = memo(function LineCapacityMainRow({
+const FactoryScopeCapacityMainRow = memo(function FactoryScopeCapacityMainRow({
   row,
   normalizedMonthKeys,
   languageCode,
@@ -357,8 +357,8 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
   onToggleExpand,
 }) {
   const { setNodeRef, isOver } = useDroppable({
-    id: `line-row-drop::${row.lineId}`,
-    data: { dropMode: 'line-row', lineId: row.lineId },
+    id: `line-row-drop::${row.factoryId}`,
+    data: { dropMode: 'line-row', factoryId: row.factoryId },
   });
 
   return (
@@ -377,7 +377,7 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
             size="small"
             onClick={onToggleExpand}
             aria-label={getUiMessage(
-              isExpanded ? 'assign.collapseLineAria' : 'assign.expandLineAria',
+              isExpanded ? 'assign.collapseFactoryScopeAria' : 'assign.expandFactoryScopeAria',
               isExpanded ? 'Collapse line' : 'Expand line',
               languageCode
             )}
@@ -386,7 +386,7 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
             {isExpanded ? <KeyboardArrowDownIcon fontSize="small" /> : <KeyboardArrowRightIcon fontSize="small" />}
           </IconButton>
           <Box sx={{ minWidth: 0 }}>
-            <Typography variant="subtitle2">{row.lineName}</Typography>
+            <Typography variant="subtitle2">{row.factoryName}</Typography>
             <Typography variant="caption" color="text.secondary">
               {getUiMessage('assign.headcount', '{count} ppl', languageCode, {
                 count: row.headcount || 0,
@@ -430,7 +430,7 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
                 )}
               </Typography>
             ) : null}
-            <LineRowDropHint isOver={isOver} languageCode={languageCode} />
+            <FactoryScopeRowDropHint isOver={isOver} languageCode={languageCode} />
           </Box>
         </Stack>
       </TableCell>
@@ -459,7 +459,7 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
           Math.min(100, Number(summary?.actualOutputPercent) || 0)
         );
         return (
-          <TableCell key={`${row.lineId}:${monthKey}`} sx={{ verticalAlign: 'top' }}>
+          <TableCell key={`${row.factoryId}:${monthKey}`} sx={{ verticalAlign: 'top' }}>
             <Box
               sx={{
                 borderRadius: 1.5,
@@ -489,11 +489,11 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
                         color="text.secondary"
                         sx={{ textAlign: 'right' }}
                       >
-                        {row.lineFreeDateKey
-                          ? formatLineCompletionLabel(row.lineFreeDateKey, languageCode)
+                        {row.factoryScopeFreeDateKey
+                          ? formatFactoryScopeCompletionLabel(row.factoryScopeFreeDateKey, languageCode)
                           : Number(row.activeAssignmentCount) > 0
                             ? getUiMessage('assign.etaUnavailableCompact', 'ETA unavailable', languageCode)
-                            : getUiMessage('assign.lineFreeNowCompact', 'Free now', languageCode)}
+                            : getUiMessage('assign.factoryScopeFreeNowCompact', 'Free now', languageCode)}
                       </Typography>
                     ) : null}
                   </Stack>
@@ -571,7 +571,7 @@ const LineCapacityMainRow = memo(function LineCapacityMainRow({
   );
 });
 
-const LineMonthCapacityBoard = ({
+const FactoryMonthCapacityBoard = ({
   rows,
   monthKeys,
   loading = false,
@@ -580,7 +580,7 @@ const LineMonthCapacityBoard = ({
   searchTerm = '',
   onOpenContextMenu,
 }) => {
-  const [expandedLineIds, setExpandedLineIds] = useState(() => new Set());
+  const [expandedFactoryIds, setExpandedFactoryIds] = useState(() => new Set());
 
   const lowerSearchTerm = useMemo(
     () => String(searchTerm || '').trim().toLowerCase(),
@@ -624,13 +624,13 @@ const LineMonthCapacityBoard = ({
     );
   }
 
-  const toggleExpanded = (lineId) => {
-    setExpandedLineIds((prev) => {
+  const toggleExpanded = (factoryId) => {
+    setExpandedFactoryIds((prev) => {
       const next = new Set(prev);
-      if (next.has(lineId)) {
-        next.delete(lineId);
+      if (next.has(factoryId)) {
+        next.delete(factoryId);
       } else {
-        next.add(lineId);
+        next.add(factoryId);
       }
       return next;
     });
@@ -643,7 +643,7 @@ const LineMonthCapacityBoard = ({
           <TableHead>
             <TableRow>
               <TableCell sx={{ width: 250, minWidth: 250 }}>
-                {getUiMessage('assign.lineCapacityHeader', 'Line', languageCode)}
+                {getUiMessage('assign.factoryScopeCapacityHeader', 'Line', languageCode)}
               </TableCell>
               {normalizedMonthKeys.map((monthKey) => (
                 <TableCell
@@ -658,15 +658,15 @@ const LineMonthCapacityBoard = ({
           </TableHead>
           <TableBody>
             {normalizedRows.map((row) => {
-              const isExpanded = expandedLineIds.has(row.lineId);
+              const isExpanded = expandedFactoryIds.has(row.factoryId);
               return (
-                <React.Fragment key={row.lineId}>
-                  <LineCapacityMainRow
+                <React.Fragment key={row.factoryId}>
+                  <FactoryScopeCapacityMainRow
                     row={row}
                     normalizedMonthKeys={normalizedMonthKeys}
                     languageCode={languageCode}
                     isExpanded={isExpanded}
-                    onToggleExpand={() => toggleExpanded(row.lineId)}
+                    onToggleExpand={() => toggleExpanded(row.factoryId)}
                   />
                   <TableRow>
                     <TableCell
@@ -685,13 +685,13 @@ const LineMonthCapacityBoard = ({
                           <Stack spacing={0}>
                             {row.queuedAssignments.length > 0 ? (
                               <>
-                                <LineAssignmentDropSlot
-                                  lineId={row.lineId}
+                                <FactoryScopeAssignmentDropSlot
+                                  factoryId={row.factoryId}
                                   beforeAssignmentId={row.queuedAssignments[0]?.id || null}
                                   languageCode={languageCode}
                                 />
                                 {groupAssignmentsByOrderNo(row.queuedAssignments, languageCode).map((group) => (
-                                  <Box key={group.orderNo || `${row.lineId}:no-order`} sx={{ mb: 0.5 }}>
+                                  <Box key={group.orderNo || `${row.factoryId}:no-order`} sx={{ mb: 0.5 }}>
                                     <Box
                                       sx={{
                                         display: 'flex',
@@ -739,14 +739,14 @@ const LineMonthCapacityBoard = ({
                                       </Typography>
                                     </Box>
                                     {group.items.map((assignment) => (
-                                      <React.Fragment key={assignment.id || `${row.lineId}:${assignment.label}`}>
+                                      <React.Fragment key={assignment.id || `${row.factoryId}:${assignment.label}`}>
                                         <AssignmentDetailCard
                                           assignment={assignment}
                                           languageCode={languageCode}
                                           onOpenContextMenu={onOpenContextMenu}
                                         />
-                                        <LineAssignmentDropSlot
-                                          lineId={row.lineId}
+                                        <FactoryScopeAssignmentDropSlot
+                                          factoryId={row.factoryId}
                                           afterAssignmentId={assignment.id}
                                           languageCode={languageCode}
                                         />
@@ -757,13 +757,13 @@ const LineMonthCapacityBoard = ({
                               </>
                             ) : (
                               <>
-                                <LineAssignmentDropSlot
-                                  lineId={row.lineId}
+                                <FactoryScopeAssignmentDropSlot
+                                  factoryId={row.factoryId}
                                   languageCode={languageCode}
                                 />
                                 <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
                                   {getUiMessage(
-                                    'assign.noQueuedAssignmentsInLine',
+                                    'assign.noQueuedAssignmentsInFactoryScope',
                                     'No queued assignments in this line.',
                                     languageCode
                                   )}
@@ -787,7 +787,7 @@ const LineMonthCapacityBoard = ({
                               <Stack spacing={1}>
                                 {row.reviewRequiredAssignments.map((assignment) => (
                                   <AssignmentDetailCard
-                                    key={assignment.id || `${row.lineId}:${assignment.label}:review`}
+                                    key={assignment.id || `${row.factoryId}:${assignment.label}:review`}
                                     assignment={assignment}
                                     languageCode={languageCode}
                                     onOpenContextMenu={onOpenContextMenu}
@@ -812,7 +812,7 @@ const LineMonthCapacityBoard = ({
                               <Stack spacing={1}>
                                 {row.completedAssignments.map((assignment) => (
                                   <AssignmentDetailCard
-                                    key={assignment.id || `${row.lineId}:${assignment.label}:completed`}
+                                    key={assignment.id || `${row.factoryId}:${assignment.label}:completed`}
                                     assignment={assignment}
                                     languageCode={languageCode}
                                     onOpenContextMenu={onOpenContextMenu}
@@ -837,7 +837,7 @@ const LineMonthCapacityBoard = ({
                               <Stack spacing={1}>
                                 {row.zeroQuantityOverflowAssignments.map((assignment) => (
                                   <AssignmentDetailCard
-                                    key={assignment.id || `${row.lineId}:${assignment.label}:zero-overflow`}
+                                    key={assignment.id || `${row.factoryId}:${assignment.label}:zero-overflow`}
                                     assignment={assignment}
                                     languageCode={languageCode}
                                     onOpenContextMenu={onOpenContextMenu}
@@ -867,7 +867,7 @@ const LineMonthCapacityBoard = ({
                 <TableCell colSpan={normalizedMonthKeys.length + 1}>
                   <Typography variant="body2" color="text.secondary">
                     {getUiMessage(
-                      'assign.noLineCapacityRows',
+                      'assign.noFactoryScopeCapacityRows',
                       'No line capacity data is available.',
                       languageCode
                     )}
@@ -882,4 +882,4 @@ const LineMonthCapacityBoard = ({
   );
 };
 
-export default memo(LineMonthCapacityBoard);
+export default memo(FactoryMonthCapacityBoard);

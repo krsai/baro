@@ -206,7 +206,6 @@ model Organization {
   factoryProductionAllowanceRates FactoryProductionAllowanceRate[]
   warehouses                      Warehouse[]
   employees                       Employee[]
-  lines                           Line[]
   styles                          Style[]
   styleProcesses                  StyleProcess[]
   styleProcessVersions            StyleProcessVersion[]
@@ -372,7 +371,6 @@ model Factory {
   organization             Organization                     @relation(fields: [orgId], references: [id])
   managerEmployee          Employee?                        @relation("FactoryManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
   employees                Employee[]                       @relation("FactoryEmployees")
-  lines                    Line[]
   assignmentPlans          AssignmentPlan[]
   attendanceEntries        AttendanceEntry[]
   workLogs                 WorkLog[]
@@ -442,35 +440,6 @@ model Warehouse {
   @@index([factoryId, isActive])
 }
 
-model Line {
-  id                  Int      @id @default(autoincrement())
-  orgId               Int
-  factoryId           Int
-  name                String
-  managerEmployeeId   Int?
-  isActive            Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  createdBy           String   @default("system@baro.local")
-  createdByEmployeeId Int?
-  updatedByEmployeeId Int?
-  updatedAt           DateTime @updatedAt
-
-  organization    Organization     @relation(fields: [orgId], references: [id])
-  factory         Factory          @relation(fields: [factoryId], references: [id])
-  manager         Employee?        @relation("LineManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
-  assignments     LineAssignment[]
-  assignmentPlans AssignmentPlan[]
-  employees             Employee[]             @relation("EmployeeCurrentLine")
-  workRecords           WorkRecord[]           @relation("WorkRecordLine")
-  outsourcedWorkRecords OutsourcedWorkRecord[]  @relation("OutsourcedWorkRecordLine")
-
-  createdByEmployee Employee? @relation("LineCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
-  updatedByEmployee Employee? @relation("LineUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
-
-  @@unique([factoryId, name])
-  @@index([orgId])
-  @@index([factoryId])
-}
 
 model Employee {
   id                  Int            @id @default(autoincrement())
@@ -483,7 +452,6 @@ model Employee {
   approvedAt          DateTime?
   approvedBy          String?
   factoryId           Int?
-  lineId              Int?
   roleId              Int?
   gradeId             Int            @default(dbgenerated())
   employeeNo          String?
@@ -507,13 +475,10 @@ model Employee {
 
   organization             Organization       @relation(fields: [orgId], references: [id])
   factory                  Factory?           @relation("FactoryEmployees", fields: [factoryId], references: [id])
-  line                     Line?              @relation("EmployeeCurrentLine", fields: [lineId], references: [id], onDelete: SetNull)
   role                     AttrRole?          @relation(fields: [orgId, roleId], references: [orgId, id], onDelete: Restrict)
   grade                    EmployeeGrade      @relation(fields: [orgId, gradeId], references: [orgId, id])
-  lineAssignments          LineAssignment[]
   representedOrganizations Organization[]     @relation("OrganizationRepresentative")
   managedFactories         Factory[]          @relation("FactoryManager")
-  managedLines             Line[]             @relation("LineManager")
   attendanceEntries        AttendanceEntry[]
   workRecords              WorkRecord[]
   atTrainingBuckets        AtTrainingBucket[]
@@ -534,8 +499,6 @@ model Employee {
   updatedFactories                   Factory[]                         @relation("FactoryUpdatedByEmployee")
   createdWarehouses                  Warehouse[]                       @relation("WarehouseCreatedByEmployee")
   updatedWarehouses                  Warehouse[]                       @relation("WarehouseUpdatedByEmployee")
-  createdLines                       Line[]                            @relation("LineCreatedByEmployee")
-  updatedLines                       Line[]                            @relation("LineUpdatedByEmployee")
   createdAttendanceEntries           AttendanceEntry[]                 @relation("AttendanceEntryCreatedByEmployee")
   updatedAttendanceEntries           AttendanceEntry[]                 @relation("AttendanceEntryUpdatedByEmployee")
   createdOrganizationHolidays        OrganizationHoliday[]             @relation("OrganizationHolidayCreatedByEmployee")
@@ -589,7 +552,6 @@ model Employee {
   @@unique([orgId, employeeNo])
   @@index([orgId])
   @@index([factoryId])
-  @@index([lineId])
   @@index([roleId])
   @@index([gradeId])
   @@index([email])
@@ -792,20 +754,6 @@ model OrganizationHoliday {
   @@index([orgId, holidayDate])
 }
 
-model LineAssignment {
-  id         Int       @id @default(autoincrement())
-  lineId     Int
-  employeeId Int
-  startAt    DateTime  @default(now())
-  endAt      DateTime?
-
-  line     Line     @relation(fields: [lineId], references: [id])
-  employee Employee @relation(fields: [employeeId], references: [id])
-
-  @@index([lineId])
-  @@index([employeeId])
-  @@index([endAt])
-}
 
 model OrgRelationship {
   id                      Int      @id @default(autoincrement())
@@ -1421,8 +1369,7 @@ model CustomerSalesPrice {
 model AssignmentPlan {
   id                        Int                   @id @default(autoincrement())
   orgId                     Int
-  factoryId                 Int?
-  lineId                    Int
+  factoryId                 Int
   externalId                String
   cardId                    String?
   assignmentCardId          Int?
@@ -1484,8 +1431,7 @@ model AssignmentPlan {
   updatedByEmployeeId       Int?
   updatedAt                 DateTime              @updatedAt
 
-  line                    Line                        @relation(fields: [lineId], references: [id], onDelete: Restrict)
-  factory                 Factory?                    @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Restrict, map: "AssignmentPlan_factory_org_fkey")
+  factory                 Factory                    @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Restrict, map: "AssignmentPlan_factory_org_fkey")
   organization            Organization                @relation(fields: [orgId], references: [id])
   workOrder               WorkOrder?                  @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   style                   Style?                      @relation(fields: [styleId], references: [id], onDelete: SetNull)
@@ -1508,7 +1454,6 @@ model AssignmentPlan {
 
   @@unique([orgId, externalId])
   @@unique([id, orgId], map: "AssignmentPlan_id_org_key")
-  @@index([orgId, lineId])
   @@index([orgId, factoryId])
   @@index([workOrderId])
   @@index([styleId])
@@ -1570,7 +1515,6 @@ model WorkLog {
   itemCount            Int               @default(0)
   totalCtSeconds       Float             @default(0)
   note                 String?
-  /// Header metadata only ({ lineId, lineName }) ??never a copy of row data. WorkRecord
   /// (FK workLogId) is and has always been the sole source of truth for record rows;
   /// do not read this field as a records-list fallback.
   records              Json?
@@ -1604,7 +1548,6 @@ model WorkRecord {
   orgId                      Int
   workLogId                  Int
   workerId                   Int?
-  lineId                     Int?
   styleId                    Int
   styleProcessId             Int
   assignmentPlanId           Int
@@ -1624,7 +1567,6 @@ model WorkRecord {
   assignmentPlan AssignmentPlan @relation(fields: [assignmentPlanId, orgId], references: [id, orgId], onDelete: Restrict, map: "WorkRecord_assignmentPlan_org_fkey")
   style          Style          @relation(fields: [styleId], references: [id], onDelete: Restrict)
   styleProcess   StyleProcess   @relation(fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, map: "WorkRecord_styleProcess_style_org_fkey")
-  line           Line?          @relation("WorkRecordLine", fields: [lineId], references: [id], onDelete: SetNull)
 
   createdByEmployee Employee? @relation("WorkRecordCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("WorkRecordUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -1632,7 +1574,6 @@ model WorkRecord {
   @@index([orgId, workLogId])
   @@index([orgId, workerId])
   @@index([orgId, styleId])
-  @@index([orgId, lineId])
   @@index([styleProcessId])
   @@index([assignmentPlanId])
   @@index([workLogId])
@@ -1650,7 +1591,6 @@ model OutsourcedWorkRecord {
   outsourcingPartnerId  Int
   outsourceVendorName   String
   outsourceUnitPrice    Decimal  @db.Decimal(18, 4)
-  lineId                Int?
   styleId               Int
   styleProcessId        Int
   assignmentPlanId      Int
@@ -1667,7 +1607,6 @@ model OutsourcedWorkRecord {
   assignmentPlan     AssignmentPlan  @relation(fields: [assignmentPlanId, orgId], references: [id, orgId], onDelete: Restrict, map: "OutsourcedWorkRecord_assignmentPlan_org_fkey")
   style              Style           @relation(fields: [styleId], references: [id], onDelete: Restrict)
   styleProcess       StyleProcess    @relation(fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, map: "OutsourcedWorkRecord_styleProcess_style_org_fkey")
-  line               Line?           @relation("OutsourcedWorkRecordLine", fields: [lineId], references: [id], onDelete: SetNull)
 
   createdByEmployee Employee? @relation("OutsourcedWorkRecordCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("OutsourcedWorkRecordUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -1675,7 +1614,6 @@ model OutsourcedWorkRecord {
   @@index([orgId, workLogId])
   @@index([orgId, outsourcingPartnerId])
   @@index([orgId, styleId])
-  @@index([orgId, lineId])
   @@index([styleProcessId])
   @@index([assignmentPlanId])
   @@index([workLogId])

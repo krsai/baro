@@ -5,8 +5,8 @@ import test from 'node:test';
 const [backend, board, capacity, card] = await Promise.all([
   readFile(new URL('../backend/src/index.ts', import.meta.url), 'utf8'),
   readFile(new URL('../frontend/src/pages/App/assign/AssignBoard.jsx', import.meta.url), 'utf8'),
-  readFile(new URL('../frontend/src/pages/App/assign/utils/lineMonthCapacity.js', import.meta.url), 'utf8'),
-  readFile(new URL('../frontend/src/pages/App/assign/components/LineMonthCapacityBoard.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../frontend/src/pages/App/assign/utils/factoryMonthCapacity.js', import.meta.url), 'utf8'),
+  readFile(new URL('../frontend/src/pages/App/assign/components/FactoryMonthCapacityBoard.jsx', import.meta.url), 'utf8'),
 ]);
 
 test('review-required progress response carries only the compact review summary', () => {

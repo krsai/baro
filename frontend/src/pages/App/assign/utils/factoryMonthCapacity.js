@@ -233,12 +233,12 @@ const roundPercent = (numerator, denominator) => {
   return Math.round((Number(numerator || 0) / safeDenominator) * 1000) / 10;
 };
 
-const resolveLineDailyCapacitySeconds = (line) => {
-  const explicitDailyCapacity = Number(line?.dailyCapacitySeconds);
+const resolveFactoryScopeDailyCapacitySeconds = (factoryScope) => {
+  const explicitDailyCapacity = Number(factoryScope?.dailyCapacitySeconds);
   if (Number.isFinite(explicitDailyCapacity) && explicitDailyCapacity > 0) {
     return Math.round(explicitDailyCapacity);
   }
-  const headcount = Math.max(0, Math.round(Number(line?.headcount) || 0));
+  const headcount = Math.max(0, Math.round(Number(factoryScope?.headcount) || 0));
   return headcount > 0 ? headcount * 8 * 60 * 60 : 0;
 };
 
@@ -282,9 +282,9 @@ const roundDaysEstimate = (seconds, dailyCapacitySeconds) => {
   return Math.round((normalizedSeconds / normalizedDailyCapacity) * 10) / 10;
 };
 
-const buildLineQueueForecast = ({
+const buildFactoryScopeQueueForecast = ({
   assignments,
-  line,
+  factoryScope,
   holidaySet,
   todayDateKey,
   anchorDateKey,
@@ -292,14 +292,14 @@ const buildLineQueueForecast = ({
   // totalRequiredWorkingDays/lineFreeDateKey/queueBacklogDays. Callers pass the
   // backend's lineRemainingBacklogStSeconds here so the line summary row's "완료
   // 예상" agrees with the per-month plannedLoadPercent cells, which are seeded from
-  // the same backend value - see buildLineMonthCapacityBoardRows.
+  // the same backend value - see buildFactoryMonthCapacityBoardRows.
   remainingBacklogStSecondsOverride = null,
 }) => {
   const normalizedAnchorDateKey =
     normalizeDateKey(anchorDateKey) ||
     normalizeDateKey(todayDateKey) ||
     new Date().toISOString().slice(0, 10);
-  const dailyCapacitySeconds = resolveLineDailyCapacitySeconds(line);
+  const dailyCapacitySeconds = resolveFactoryScopeDailyCapacitySeconds(factoryScope);
   const queuedAssignments = [];
   const reviewRequiredAssignments = [];
   const completedAssignments = [];
@@ -423,7 +423,7 @@ const buildLineQueueForecast = ({
     dailyCapacitySeconds > 0
       ? Math.max(1, Math.ceil(totalRemainingStTotalSeconds / dailyCapacitySeconds))
       : 0;
-  const lineFreeDateKey =
+  const factoryScopeFreeDateKey =
     totalRemainingStTotalSeconds > 0 && totalRequiredWorkingDays > 0
       ? addWorkingDaysToDateKey(
           normalizedAnchorDateKey,
@@ -441,7 +441,7 @@ const buildLineQueueForecast = ({
     reviewRequiredCount,
     totalRemainingStTotalSeconds,
     queueBacklogDays: roundDaysEstimate(totalRemainingStTotalSeconds, dailyCapacitySeconds),
-    lineFreeDateKey,
+    factoryScopeFreeDateKey,
     zeroQuantityOverflowAssignments,
     zeroQuantityOverflowCount,
   };
@@ -535,8 +535,8 @@ const resolveForecastWindowRange = ({
   };
 };
 
-export const buildLineMonthCapacityBoardRows = ({
-  lines,
+export const buildFactoryMonthCapacityBoardRows = ({
+  factoryScopes,
   assignments,
   planningMonthKeys,
   visibleMonthKeys,
@@ -557,35 +557,35 @@ export const buildLineMonthCapacityBoardRows = ({
   const backendRowByKey = new Map(
     (Array.isArray(backendRows) ? backendRows : [])
       .map((row) => {
-        const lineId = String(row?.lineId || '').trim();
+        const factoryId = String(row?.factoryId || '').trim();
         const monthKey = normalizeMonthKey(row?.monthKey);
-        return lineId && monthKey ? [`${lineId}:${monthKey}`, row] : null;
+        return factoryId && monthKey ? [`${factoryId}:${monthKey}`, row] : null;
       })
       .filter(Boolean)
   );
-  const backendRowsByLineId = new Map();
+  const backendRowsByFactoryId = new Map();
   (Array.isArray(backendRows) ? backendRows : []).forEach((row) => {
-    const lineId = String(row?.lineId || '').trim();
-    if (!lineId) return;
-    const current = backendRowsByLineId.get(lineId) || [];
+    const factoryId = String(row?.factoryId || '').trim();
+    if (!factoryId) return;
+    const current = backendRowsByFactoryId.get(factoryId) || [];
     current.push(row);
-    backendRowsByLineId.set(lineId, current);
+    backendRowsByFactoryId.set(factoryId, current);
   });
-  backendRowsByLineId.forEach((rows, lineId) => {
+  backendRowsByFactoryId.forEach((rows, factoryId) => {
     rows.sort((left, right) =>
       String(left?.monthKey || '').localeCompare(String(right?.monthKey || ''))
     );
   });
-  const lineBackendMetaByLineId = new Map();
-  backendRowsByLineId.forEach((rows, lineId) => {
+  const factoryScopeBackendMetaByFactoryId = new Map();
+  backendRowsByFactoryId.forEach((rows, factoryId) => {
     const sourceRow = rows[0] || null;
-    lineBackendMetaByLineId.set(lineId, {
+    factoryScopeBackendMetaByFactoryId.set(factoryId, {
       latestActualCoverageEndDateKey: normalizeDateKey(sourceRow?.latestActualCoverageEndDateKey),
       forecastAnchorDateKey: normalizeDateKey(sourceRow?.forecastAnchorDateKey),
-      lineRemainingBacklogStSeconds:
-        sourceRow?.lineRemainingBacklogStSeconds == null
+      factoryScopeRemainingBacklogStSeconds:
+        sourceRow?.factoryScopeRemainingBacklogStSeconds == null
           ? null
-          : Math.max(0, Math.round(Number(sourceRow.lineRemainingBacklogStSeconds) || 0)),
+          : Math.max(0, Math.round(Number(sourceRow.factoryScopeRemainingBacklogStSeconds) || 0)),
       stUnknownAssignmentCount: Math.max(
         0,
         Math.round(Number(sourceRow?.stUnknownAssignmentCount) || 0)
@@ -597,11 +597,11 @@ export const buildLineMonthCapacityBoardRows = ({
     });
   });
 
-  return (Array.isArray(lines) ? lines : []).map((line) => {
-    const lineId = String(line?.id || '').trim();
-    const lineMeta = lineBackendMetaByLineId.get(lineId) || null;
-    const assignmentsForLine = (Array.isArray(assignments) ? assignments : [])
-      .filter((assignment) => String(assignment?.lineId || '').trim() === lineId)
+  return (Array.isArray(factoryScopes) ? factoryScopes : []).map((factoryScope) => {
+    const factoryId = String(factoryScope?.id || '').trim();
+    const factoryScopeMeta = factoryScopeBackendMetaByFactoryId.get(factoryId) || null;
+    const assignmentsForFactoryScope = (Array.isArray(assignments) ? assignments : [])
+      .filter((assignment) => String(assignment?.factoryId || '').trim() === factoryId)
       .map((assignment, sourceOrderIndex) => {
         const assignmentId = String(assignment?.id || '').trim();
         return {
@@ -687,17 +687,17 @@ export const buildLineMonthCapacityBoardRows = ({
         });
       });
 
-    const lineBackendRows = backendRowsByLineId.get(lineId) || [];
+    const factoryScopeBackendRows = backendRowsByFactoryId.get(factoryId) || [];
     // Forecast rows are server-owned calculations. Do not invent months that
     // the backend did not return; a missing response must remain unavailable.
     const internalMonthKeys = Array.from(
       new Set(
-        lineBackendRows
+        factoryScopeBackendRows
           .map((row) => normalizeMonthKey(row?.monthKey))
           .filter(Boolean)
       )
     ).sort((left, right) => left.localeCompare(right));
-    const forecastAnchorDateKey = lineMeta?.forecastAnchorDateKey || null;
+    const forecastAnchorDateKey = factoryScopeMeta?.forecastAnchorDateKey || null;
     const forecastAnchorMonthKey = normalizeMonthKey(
       forecastAnchorDateKey ? forecastAnchorDateKey.slice(0, 7) : ''
     );
@@ -705,65 +705,65 @@ export const buildLineMonthCapacityBoardRows = ({
     // fallback source only - see resolvedRemainingBacklogStSeconds below. Kept because
     // it is still the only source for a line/month combo the backend response never
     // covered (e.g. backendRows fetch failed outright for this line).
-    const liveBoardRemainingBacklogStSeconds = assignmentsForLine.reduce(
+    const liveBoardRemainingBacklogStSeconds = assignmentsForFactoryScope.reduce(
       (sum, assignment) => {
         if (assignment?.isCompleted) return sum;
         return sum + Math.max(0, resolveAssignmentForecastStTotalSeconds(assignment) || 0);
       },
       0
     );
-    const liveBoardStUnknownAssignmentCount = assignmentsForLine.reduce(
+    const liveBoardStUnknownAssignmentCount = assignmentsForFactoryScope.reduce(
       (count, assignment) => {
         if (assignment?.isCompleted) return count;
         return Boolean(assignment?.isStUnknown) ? count + 1 : count;
       },
       0
     );
-    const liveBoardProgressUnknownAssignmentCount = assignmentsForLine.reduce(
+    const liveBoardProgressUnknownAssignmentCount = assignmentsForFactoryScope.reduce(
       (count, assignment) => {
         if (assignment?.isCompleted) return count;
         return Boolean(assignment?.isProgressUnknown) ? count + 1 : count;
       },
       0
     );
-    // The backend (buildLineMonthCapacityRows) computes this from actual WorkRecord
+    // The backend (buildFactoryMonthCapacityRows) computes this from actual WorkRecord
     // progress per assignment, the same source of truth used everywhere else on this
     // board (AGENTS.md: "실제 진행률 기반 remaining backlog의 소스오브트루스는
     // backend"). Prefer it whenever the API returned a value for this line; only fall
     // back to the live per-assignment re-simulation when the backend genuinely has no
-    // data for this line (e.g. the /line-month-capacity fetch failed). This trades
+    // data for this line (e.g. the /factory-month-capacity fetch failed). This trades
     // "anchor-month backlog reflects unsaved drag changes instantly" for "anchor-month
     // backlog can never silently balloon back to the full planned ST of an
     // already-mostly-produced assignment" - the latter was the actual bug (see
-    // AGENTS.md), and the board still re-fetches /line-month-capacity after every
+    // AGENTS.md), and the board still re-fetches /factory-month-capacity after every
     // save, so a save is enough to pick up drag changes.
     const currentBoardRemainingBacklogStSeconds =
-      lineMeta?.lineRemainingBacklogStSeconds != null
-        ? lineMeta.lineRemainingBacklogStSeconds
+      factoryScopeMeta?.factoryScopeRemainingBacklogStSeconds != null
+        ? factoryScopeMeta.factoryScopeRemainingBacklogStSeconds
         : liveBoardRemainingBacklogStSeconds;
     const currentBoardStUnknownAssignmentCount =
-      lineMeta != null
-        ? lineMeta.stUnknownAssignmentCount
+      factoryScopeMeta != null
+        ? factoryScopeMeta.stUnknownAssignmentCount
         : liveBoardStUnknownAssignmentCount;
     const currentBoardProgressUnknownAssignmentCount =
-      lineMeta != null
-        ? lineMeta.progressUnknownAssignmentCount
+      factoryScopeMeta != null
+        ? factoryScopeMeta.progressUnknownAssignmentCount
         : liveBoardProgressUnknownAssignmentCount;
     const monthSummaryByKey = new Map();
     let previousCarryOutStSeconds = 0;
     internalMonthKeys.forEach((monthKey) => {
-      const backendRow = backendRowByKey.get(`${lineId}:${monthKey}`) || null;
-      const lineMonthlyCapacitySeconds =
-        Number(backendRow?.lineMonthlyCapacitySeconds) > 0
-          ? Math.round(Number(backendRow.lineMonthlyCapacitySeconds))
+      const backendRow = backendRowByKey.get(`${factoryId}:${monthKey}`) || null;
+      const factoryMonthlyCapacitySeconds =
+        Number(backendRow?.factoryMonthlyCapacitySeconds) > 0
+          ? Math.round(Number(backendRow.factoryMonthlyCapacitySeconds))
           : 0;
-      const lineMonthlyActualOutputStSeconds = Math.max(
+      const factoryMonthlyActualOutputStSeconds = Math.max(
         0,
-        Math.round(Number(backendRow?.lineMonthlyActualOutputStSeconds) || 0)
+        Math.round(Number(backendRow?.factoryMonthlyActualOutputStSeconds) || 0)
       );
       const latestActualCoverageEndDateKey =
         normalizeDateKey(backendRow?.latestActualCoverageEndDateKey) ||
-        lineMeta?.latestActualCoverageEndDateKey ||
+        factoryScopeMeta?.latestActualCoverageEndDateKey ||
         null;
       const actualOutputRecordedThroughDateKey =
         normalizeDateKey(backendRow?.actualOutputRecordedThroughDateKey) || null;
@@ -779,7 +779,7 @@ export const buildLineMonthCapacityBoardRows = ({
         inferredMonthType === 'historical'
           ? 0
           : backendRow?.forecastAvailableCapacitySeconds == null
-            ? lineMonthlyCapacitySeconds
+            ? factoryMonthlyCapacitySeconds
             : Math.max(
                 0,
                 Math.round(Number(backendRow.forecastAvailableCapacitySeconds) || 0)
@@ -789,7 +789,7 @@ export const buildLineMonthCapacityBoardRows = ({
           ? 0
           : Math.max(0, Math.round(Number(backendRow?.forecastWorkingDayCount) || 0));
       // Local re-simulation, used only as a fallback for a line/month the backend
-      // response did not cover at all (e.g. the /line-month-capacity fetch failed, or
+      // response did not cover at all (e.g. the /factory-month-capacity fetch failed, or
       // this month is outside the requested range). previousCarryOutStSeconds always
       // advances from whichever value (backend or local) was actually used below, so
       // a mix of backend-covered and fallback months still chains correctly.
@@ -815,7 +815,7 @@ export const buildLineMonthCapacityBoardRows = ({
               0,
               locallyComputedBacklogEnteringStSeconds - forecastAvailableCapacitySeconds
             );
-      // buildLineMonthCapacityRows (backend/src/index.ts) runs this exact same
+      // buildFactoryMonthCapacityRows (backend/src/index.ts) runs this exact same
       // anchor-month + carry-forward simulation server-side, seeded from actual
       // WorkRecord progress. Prefer its numbers directly whenever this line/month was
       // covered by the API response, instead of trusting a second, independent
@@ -846,8 +846,8 @@ export const buildLineMonthCapacityBoardRows = ({
         inferredMonthType === 'historical'
           ? backendRow?.totalEstimatedLoadStSeconds != null
             ? Math.max(0, Math.round(Number(backendRow.totalEstimatedLoadStSeconds) || 0))
-            : lineMonthlyActualOutputStSeconds + currentBoardRemainingBacklogStSeconds
-          : lineMonthlyActualOutputStSeconds + forecastLoadStSeconds;
+            : factoryMonthlyActualOutputStSeconds + currentBoardRemainingBacklogStSeconds
+          : factoryMonthlyActualOutputStSeconds + forecastLoadStSeconds;
       const { forecastWindowStartDateKey, forecastWindowEndDateKey } =
         resolveForecastWindowRange({
           monthKey,
@@ -862,9 +862,9 @@ export const buildLineMonthCapacityBoardRows = ({
       const resolvedActualOutputPercent =
         backendRow?.actualOutputPercent != null
           ? Number(backendRow.actualOutputPercent)
-          : roundPercent(lineMonthlyActualOutputStSeconds, lineMonthlyCapacitySeconds);
+          : roundPercent(factoryMonthlyActualOutputStSeconds, factoryMonthlyCapacitySeconds);
       monthSummaryByKey.set(monthKey, {
-        lineId,
+        factoryId,
         monthKey,
         workingDayCount: Math.max(
           0,
@@ -875,8 +875,8 @@ export const buildLineMonthCapacityBoardRows = ({
           0,
           Math.round(Number(backendRow?.orphanWorkRecordCount) || 0)
         ),
-        lineMonthlyCapacitySeconds,
-        lineMonthlyActualOutputStSeconds,
+        factoryMonthlyCapacitySeconds,
+        factoryMonthlyActualOutputStSeconds,
         actualOutputPercent: resolvedActualOutputPercent,
         actualOutputRecordedThroughDateKey,
         latestActualCoverageEndDateKey,
@@ -896,7 +896,7 @@ export const buildLineMonthCapacityBoardRows = ({
                 const historicalPlanPercent =
                   backendRow?.totalEstimatedLoadPercent != null
                     ? Number(backendRow.totalEstimatedLoadPercent)
-                    : roundPercent(totalEstimatedLoadStSeconds, lineMonthlyCapacitySeconds);
+                    : roundPercent(totalEstimatedLoadStSeconds, factoryMonthlyCapacitySeconds);
                 return historicalPlanPercent == null
                   ? null
                   : Math.min(100, Math.max(0, historicalPlanPercent));
@@ -916,7 +916,7 @@ export const buildLineMonthCapacityBoardRows = ({
         totalEstimatedLoadStSeconds,
         totalEstimatedLoadPercent: roundPercent(
           totalEstimatedLoadStSeconds,
-          lineMonthlyCapacitySeconds
+          factoryMonthlyCapacitySeconds
         ),
         monthType: inferredMonthType,
         isAnchorMonth: inferredMonthType === 'anchor',
@@ -928,21 +928,21 @@ export const buildLineMonthCapacityBoardRows = ({
     const months = monthKeysForDisplay.map((monthKey) => {
       const summary = monthSummaryByKey.get(monthKey);
       if (summary) return summary;
-      const backendRow = backendRowByKey.get(`${lineId}:${monthKey}`) || null;
-      const lineMonthlyCapacitySeconds =
-        Number(backendRow?.lineMonthlyCapacitySeconds) > 0
-          ? Math.round(Number(backendRow.lineMonthlyCapacitySeconds))
+      const backendRow = backendRowByKey.get(`${factoryId}:${monthKey}`) || null;
+      const factoryMonthlyCapacitySeconds =
+        Number(backendRow?.factoryMonthlyCapacitySeconds) > 0
+          ? Math.round(Number(backendRow.factoryMonthlyCapacitySeconds))
           : 0;
-      const lineMonthlyActualOutputStSeconds = Math.max(
+      const factoryMonthlyActualOutputStSeconds = Math.max(
         0,
-        Math.round(Number(backendRow?.lineMonthlyActualOutputStSeconds) || 0)
+        Math.round(Number(backendRow?.factoryMonthlyActualOutputStSeconds) || 0)
       );
       const resolvedActualOutputPercent =
         backendRow?.actualOutputPercent != null
           ? Number(backendRow.actualOutputPercent)
-          : roundPercent(lineMonthlyActualOutputStSeconds, lineMonthlyCapacitySeconds);
+          : roundPercent(factoryMonthlyActualOutputStSeconds, factoryMonthlyCapacitySeconds);
       return {
-        lineId,
+        factoryId,
         monthKey,
         workingDayCount: Math.max(
           0,
@@ -953,14 +953,14 @@ export const buildLineMonthCapacityBoardRows = ({
           0,
           Math.round(Number(backendRow?.orphanWorkRecordCount) || 0)
         ),
-        lineMonthlyCapacitySeconds,
-        lineMonthlyActualOutputStSeconds,
+        factoryMonthlyCapacitySeconds,
+        factoryMonthlyActualOutputStSeconds,
         actualOutputPercent: resolvedActualOutputPercent,
         actualOutputRecordedThroughDateKey:
           normalizeDateKey(backendRow?.actualOutputRecordedThroughDateKey) || null,
         latestActualCoverageEndDateKey:
           normalizeDateKey(backendRow?.latestActualCoverageEndDateKey) ||
-          lineMeta?.latestActualCoverageEndDateKey ||
+          factoryScopeMeta?.latestActualCoverageEndDateKey ||
           null,
         forecastAnchorDateKey:
           normalizeDateKey(backendRow?.forecastAnchorDateKey) ||
@@ -973,8 +973,8 @@ export const buildLineMonthCapacityBoardRows = ({
         forecastLoadStSeconds: 0,
         plannedLoadPercent: (() => {
           const historicalPlanPercent = roundPercent(
-            lineMonthlyActualOutputStSeconds + currentBoardRemainingBacklogStSeconds,
-            lineMonthlyCapacitySeconds
+            factoryMonthlyActualOutputStSeconds + currentBoardRemainingBacklogStSeconds,
+            factoryMonthlyCapacitySeconds
           );
           return historicalPlanPercent == null
             ? null
@@ -984,10 +984,10 @@ export const buildLineMonthCapacityBoardRows = ({
         carryOutStSeconds: 0,
         carryOutDateKey: '',
         totalEstimatedLoadStSeconds:
-          lineMonthlyActualOutputStSeconds + currentBoardRemainingBacklogStSeconds,
+          factoryMonthlyActualOutputStSeconds + currentBoardRemainingBacklogStSeconds,
         totalEstimatedLoadPercent: roundPercent(
-          lineMonthlyActualOutputStSeconds + currentBoardRemainingBacklogStSeconds,
-          lineMonthlyCapacitySeconds
+          factoryMonthlyActualOutputStSeconds + currentBoardRemainingBacklogStSeconds,
+          factoryMonthlyCapacitySeconds
         ),
         monthType: 'historical',
         isAnchorMonth: false,
@@ -996,28 +996,28 @@ export const buildLineMonthCapacityBoardRows = ({
       };
     });
 
-    const queueForecast = buildLineQueueForecast({
-      assignments: assignmentsForLine,
-      line,
+    const queueForecast = buildFactoryScopeQueueForecast({
+      assignments: assignmentsForFactoryScope,
+      factoryScope,
       holidaySet,
       todayDateKey,
-      anchorDateKey: lineMeta?.forecastAnchorDateKey || null,
+      anchorDateKey: factoryScopeMeta?.forecastAnchorDateKey || null,
       remainingBacklogStSecondsOverride: currentBoardRemainingBacklogStSeconds,
     });
 
     return {
-      lineId,
-      lineName: line?.name || `Line ${lineId}`,
-      headcount: Math.max(0, Math.round(Number(line?.headcount) || 0)),
-      latestActualCoverageEndDateKey: lineMeta?.latestActualCoverageEndDateKey || null,
+      factoryId,
+      factoryName: factoryScope?.name || `Line ${factoryId}`,
+      headcount: Math.max(0, Math.round(Number(factoryScope?.headcount) || 0)),
+      latestActualCoverageEndDateKey: factoryScopeMeta?.latestActualCoverageEndDateKey || null,
       forecastAnchorDateKey: forecastAnchorDateKey,
-      lineRemainingBacklogStSeconds: queueForecast.totalRemainingStTotalSeconds,
+      factoryScopeRemainingBacklogStSeconds: queueForecast.totalRemainingStTotalSeconds,
       stUnknownAssignmentCount: currentBoardStUnknownAssignmentCount,
       progressUnknownAssignmentCount: currentBoardProgressUnknownAssignmentCount,
       dailyCapacitySeconds: queueForecast.dailyCapacitySeconds,
       totalRemainingStTotalSeconds: queueForecast.totalRemainingStTotalSeconds,
       queueBacklogDays: queueForecast.queueBacklogDays,
-      lineFreeDateKey: queueForecast.lineFreeDateKey || null,
+      factoryScopeFreeDateKey: queueForecast.factoryScopeFreeDateKey || null,
       activeAssignmentCount: queueForecast.queuedAssignments.length,
       reviewRequiredAssignmentCount: queueForecast.reviewRequiredCount,
       completedAssignmentCount: queueForecast.completedCount,
@@ -1025,7 +1025,7 @@ export const buildLineMonthCapacityBoardRows = ({
       finishedAssignmentCount: queueForecast.completedAssignments.length,
       zeroQuantityOverflowAssignmentCount: queueForecast.zeroQuantityOverflowAssignments.length,
       months,
-      assignments: assignmentsForLine,
+      assignments: assignmentsForFactoryScope,
       queuedAssignments: queueForecast.queuedAssignments,
       reviewRequiredAssignments: queueForecast.reviewRequiredAssignments,
       completedAssignments: queueForecast.completedAssignments,

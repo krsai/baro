@@ -50,7 +50,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { getGenderLabel } from '../../../constants/productAttributes';
 import CompactBoardCard from './components/CompactBoardCard';
-import LineMonthCapacityBoard from './components/LineMonthCapacityBoard';
+import FactoryMonthCapacityBoard from './components/FactoryMonthCapacityBoard';
 import QuantityReviewDrawer from '../../../components/QuantityReviewDrawer';
 import {
   ASSIGN_RECOMPUTE_RANGE_BUFFER_DAYS,
@@ -107,12 +107,12 @@ import {
   buildLocalDateKey as buildDateKey,
 } from '../../../utils/dateKey.mjs';
 import {
-  buildLineMonthCapacityBoardRows,
+  buildFactoryMonthCapacityBoardRows,
   buildMonthKeyRange,
   normalizeDateKey as normalizeCapacityDateKey,
   normalizeMonthKey as normalizeCapacityMonthKey,
   resolvePlanningMonthKeys,
-} from './utils/lineMonthCapacity';
+} from './utils/factoryMonthCapacity';
 
 const { useDeferredValue } = React;
 const ASSIGN_BOARD_SYNC_SOURCE = 'assignment-board';
@@ -154,21 +154,21 @@ const toNonNegativeNumber = (value, fallback = 0) => {
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
   return parsed;
 };
-const resolveLineHours = (line) => {
-  const shiftHours = toNonNegativeNumber(line?.shiftHours, 8);
-  const overtimeHours = toNonNegativeNumber(line?.overtimeHours, 0);
+const resolveFactoryScopeHours = (factoryScope) => {
+  const shiftHours = toNonNegativeNumber(factoryScope?.shiftHours, 8);
+  const overtimeHours = toNonNegativeNumber(factoryScope?.overtimeHours, 0);
   return { shiftHours, overtimeHours, totalHours: shiftHours + overtimeHours };
 };
-const resolveLineDailyCapacitySeconds = (line, headcount) => {
-  const directCapacity = Number(line?.dailyCapacitySeconds);
+const resolveFactoryScopeDailyCapacitySeconds = (factoryScope, headcount) => {
+  const directCapacity = Number(factoryScope?.dailyCapacitySeconds);
   if (Number.isFinite(directCapacity) && directCapacity > 0) {
     return Math.round(directCapacity);
   }
-  const { totalHours } = resolveLineHours(line);
+  const { totalHours } = resolveFactoryScopeHours(factoryScope);
   return Math.round(Math.max(0, headcount) * totalHours * 60 * 60);
 };
-const formatLineShiftLabel = (line) => {
-  const { shiftHours, overtimeHours } = resolveLineHours(line);
+const formatFactoryScopeShiftLabel = (factoryScope) => {
+  const { shiftHours, overtimeHours } = resolveFactoryScopeHours(factoryScope);
   if (overtimeHours > 0) {
     return `${shiftHours}h + OT ${overtimeHours}h`;
   }
@@ -661,64 +661,21 @@ const resolveProcessStSeedSeconds = ({
 };
 const hasSavedCtSnapshot = (assignment) => hasAssignmentCtSnapshot(assignment);
 
-const buildAssignableLines = ({ factories, lines, lineHeadcounts }) => {
-  const safeFactories = Array.isArray(factories) ? factories : [];
-  const safeLines = Array.isArray(lines) ? lines : [];
-  const safeLineHeadcounts = Array.isArray(lineHeadcounts) ? lineHeadcounts : [];
-  const factoryById = new Map(
-    safeFactories.map((factory, index) => [normalizeKey(factory?.id), { ...factory, __order: index }])
-  );
-  const lineHeadcountMap = safeLineHeadcounts.reduce((map, item) => {
-    const key = normalizeKey(item?.lineId);
-    const workerCount = Number(item?.workerCount);
-    if (!key || !Number.isFinite(workerCount) || workerCount <= 0) return map;
-    map.set(key, Math.max(0, Math.trunc(workerCount)));
-    return map;
-  }, new Map());
-
-  return safeFactories
-    .map((factory) => {
-      const legacyLines = safeLines.filter(
-        (line) => normalizeKey(line?.factoryId) === normalizeKey(factory?.id)
-      );
-      if (legacyLines.length !== 1) {
-        throw new Error(
-          `Factory ${factory?.id ?? ''} must have exactly one legacy line during the factory-scope migration.`
-        );
-      }
-      const legacyLine = legacyLines[0];
-      const assignedCount = lineHeadcountMap.get(normalizeKey(legacyLine?.id)) || 0;
-      if (assignedCount <= 0) return null;
-      const headcount = assignedCount;
-      return {
-        id: String(factory.id),
-        name: factory.name || `Factory ${factory.id}`,
-        legacyLineId: String(legacyLine.id),
-        headcount,
-        shift: legacyLine?.shift || formatLineShiftLabel(legacyLine),
-        shiftHours: toNonNegativeNumber(legacyLine?.shiftHours, 8),
-        overtimeHours: toNonNegativeNumber(legacyLine?.overtimeHours, 0),
-        dailyCapacitySeconds: resolveLineDailyCapacitySeconds(legacyLine, headcount),
-        wagePerSecond: toOptionalPositiveNumber(legacyLine?.wagePerSecond),
-        factoryId: factory?.id,
-        factoryName: factory?.name || `Factory ${factory?.id}`,
-        factoryWagePerSecond: toOptionalPositiveNumber(factory?.wagePerSecond),
-        factoryOrder: factory?.__order ?? Number.MAX_SAFE_INTEGER,
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => {
-      if (a.factoryOrder !== b.factoryOrder) return a.factoryOrder - b.factoryOrder;
-      return normalizeKey(a.id).localeCompare(normalizeKey(b.id), undefined, { numeric: true });
-    })
-    .map(({ factoryOrder, ...line }) => line);
+const buildAssignableFactoryScopes = ({ factories, factoryScopeHeadcounts }) => {
+  const counts = new Map((Array.isArray(factoryScopeHeadcounts) ? factoryScopeHeadcounts : []).map(row => [normalizeKey(row.factoryId), toNonNegativeNumber(row.workerCount, 0)]));
+  return (Array.isArray(factories) ? factories : []).map(factory => {
+    const headcount = counts.get(normalizeKey(factory.id)) || 0;
+    return { ...factory, id: String(factory.id), factoryId: factory.id, factoryName: factory.name, headcount,
+      shiftHours: 8, overtimeHours: 0, shift: formatFactoryScopeShiftLabel({ shiftHours: 8, overtimeHours: 0 }),
+      dailyCapacitySeconds: headcount * 8 * 3600,
+      factoryWagePerSecond: toOptionalPositiveNumber(factory.wagePerSecond) };
+  }).filter(factory => factory.headcount > 0);
 };
-
-const buildLineCapacityMap = (lines = []) =>
+const buildFactoryScopeCapacityMap = (factoryScopes = []) =>
   new Map(
-    (Array.isArray(lines) ? lines : []).map((line) => {
-      const key = normalizeKey(line?.id);
-      const parsed = Number(line?.dailyCapacitySeconds);
+    (Array.isArray(factoryScopes) ? factoryScopes : []).map((factoryScope) => {
+      const key = normalizeKey(factoryScope?.id);
+      const parsed = Number(factoryScope?.dailyCapacitySeconds);
       const resolved =
         Number.isFinite(parsed) && parsed > 0 ? parsed : DAILY_CAPACITY_SECONDS;
       return [key, resolved];
@@ -736,7 +693,7 @@ const BASIS_COLORS = {
 };
 
 const initialCards = [];
-const initialLines = [];
+const initialFactoryScopes = [];
 const initialAssignments = [];
 const MAX_HISTORY_STEPS = 30;
 
@@ -806,7 +763,7 @@ const normalizeAssignmentLayout = (assignment) => {
 
   return {
     ...assignment,
-    lineId: String(assignment.lineId ?? ''),
+    factoryId: String(assignment.factoryId ?? ''),
     stTotalSeconds,
     startIndex,
     endIndex,
@@ -1202,10 +1159,10 @@ const buildCardsFromOrders = ({ orders, styles }) => {
   return cards;
 };
 
-const getLineCapacitySeconds = (lineId, lineCapacityById = null) => {
-  if (!lineId) return DAILY_CAPACITY_SECONDS;
-  const key = normalizeKey(lineId);
-  const resolved = Number(lineCapacityById?.get?.(key));
+const getFactoryScopeCapacitySeconds = (factoryId, factoryScopeCapacityById = null) => {
+  if (!factoryId) return DAILY_CAPACITY_SECONDS;
+  const key = normalizeKey(factoryId);
+  const resolved = Number(factoryScopeCapacityById?.get?.(key));
   if (!Number.isFinite(resolved) || resolved <= 0) return DAILY_CAPACITY_SECONDS;
   return resolved;
 };
@@ -1217,9 +1174,9 @@ const isNonWorkingDay = (dayIndex, days) => {
   return day.isSunday || day.isHoliday;
 };
 
-const getDayCapacitySeconds = (dayIndex, lineId, days, lineCapacityById = null) => {
+const getDayCapacitySeconds = (dayIndex, factoryId, days, factoryScopeCapacityById = null) => {
   if (isNonWorkingDay(dayIndex, days)) return 0;
-  return getLineCapacitySeconds(lineId, lineCapacityById);
+  return getFactoryScopeCapacitySeconds(factoryId, factoryScopeCapacityById);
 };
 
 const hasPt = (card) => resolveCardPtTotalSeconds(card, 0) > 0;
@@ -1291,14 +1248,14 @@ const mergeCardData = (target, source) => {
   return normalizeAssignmentCardForBoard(mergedCard);
 };
 
-const recomputeAssignmentRange = (assignment, stTotalSeconds, days, lineCapacityById = null) => {
+const recomputeAssignmentRange = (assignment, stTotalSeconds, days, factoryScopeCapacityById = null) => {
   const startDayOffsetPercent = assignment.startDayOffsetPercent ?? 0;
   const startIndex = toNonNegativeInt(assignment?.startIndex, 0);
   const startCapacity = getDayCapacitySeconds(
     startIndex,
-    assignment.lineId,
+    assignment.factoryId,
     days,
-    lineCapacityById
+    factoryScopeCapacityById
   );
   const startOffsetSeconds = (startDayOffsetPercent / 100) * startCapacity;
   const startAvailable = Math.max(startCapacity - startOffsetSeconds, 0);
@@ -1321,7 +1278,7 @@ const recomputeAssignmentRange = (assignment, stTotalSeconds, days, lineCapacity
   let cursor = startIndex + 1;
   const fallbackDailyCapacity = Math.max(
     1,
-    getLineCapacitySeconds(assignment?.lineId, lineCapacityById)
+    getFactoryScopeCapacitySeconds(assignment?.factoryId, factoryScopeCapacityById)
   );
   const projectedWorkingDays = Math.max(
     1,
@@ -1341,9 +1298,9 @@ const recomputeAssignmentRange = (assignment, stTotalSeconds, days, lineCapacity
     }
     const dailyCapacity = getDayCapacitySeconds(
       cursor,
-      assignment.lineId,
+      assignment.factoryId,
       days,
-      lineCapacityById
+      factoryScopeCapacityById
     );
     if (dailyCapacity <= 0) {
       endIndex = cursor;
@@ -1620,7 +1577,7 @@ const buildAssignmentCtSnapshotForSave = ({
   );
   const snapshotCore = {
     sourceAssignmentId: String(assignment?.id || '').trim() || null,
-    lineId: assignment?.lineId ?? null,
+    factoryId: assignment?.factoryId ?? null,
     quantity: orderQuantity,
     schedule: buildAssignmentSchedulePatch(assignment, baseDate),
     pieceCtTotalSeconds,
@@ -1768,20 +1725,20 @@ function doesAssignmentScheduleNeedRecompute(
   assignment,
   targetStSeconds,
   days,
-  lineCapacityById = null
+  factoryScopeCapacityById = null
 ) {
   const plannedSeconds = Number(targetStSeconds);
   if (!Number.isFinite(plannedSeconds) || plannedSeconds <= 0) return false;
 
   const scheduledSeconds = Number(
-    getAssignmentScheduledStTotalSeconds(assignment, days, lineCapacityById)
+    getAssignmentScheduledStTotalSeconds(assignment, days, factoryScopeCapacityById)
   );
   if (!Number.isFinite(scheduledSeconds) || scheduledSeconds < 0) return true;
 
   return Math.abs(scheduledSeconds - plannedSeconds) > 1;
 }
 
-const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null) => {
+const syncAssignmentFromCard = (assignment, card, days, factoryScopeCapacityById = null) => {
   if (!assignment || !card) return assignment;
 
   const persistedStTotalSeconds = toNonNegativeInt(
@@ -1817,7 +1774,7 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
   if (hasAbsoluteScheduleKeys) {
     return next;
   }
-  const range = recomputeAssignmentRange(next, stTotalSeconds, days, lineCapacityById);
+  const range = recomputeAssignmentRange(next, stTotalSeconds, days, factoryScopeCapacityById);
   return {
     ...next,
     ...range,
@@ -1965,13 +1922,13 @@ const getTodayDayIndex = (days, targetDate = new Date()) => {
   return index >= 0 ? index : null;
 };
 
-const getUsageSeconds = (assignment, days, lineCapacityById = null) => {
+const getUsageSeconds = (assignment, days, factoryScopeCapacityById = null) => {
   const startPercent = (assignment.startDayPercent ?? 100) / 100;
   const endPercent = (assignment.endDayPercent ?? 100) / 100;
   const usage = [];
 
   for (let i = assignment.startIndex; i <= assignment.endIndex; i += 1) {
-    const dailyCapacity = getDayCapacitySeconds(i, assignment.lineId, days, lineCapacityById);
+    const dailyCapacity = getDayCapacitySeconds(i, assignment.factoryId, days, factoryScopeCapacityById);
     if (dailyCapacity <= 0) {
       usage.push({ dayIndex: i, seconds: 0 });
       continue;
@@ -1994,12 +1951,12 @@ const getUsageSeconds = (assignment, days, lineCapacityById = null) => {
   return usage;
 };
 
-const buildUsageMap = (assignments, lineId, totalDays, days, lineCapacityById = null) => {
+const buildUsageMap = (assignments, factoryId, totalDays, days, factoryScopeCapacityById = null) => {
   const usage = Array.from({ length: totalDays }).map(() => 0);
   assignments
-    .filter((item) => item.lineId === lineId)
+    .filter((item) => item.factoryId === factoryId)
     .forEach((item) => {
-      getUsageSeconds(item, days, lineCapacityById).forEach(({ dayIndex, seconds }) => {
+      getUsageSeconds(item, days, factoryScopeCapacityById).forEach(({ dayIndex, seconds }) => {
         if (usage[dayIndex] != null) usage[dayIndex] += seconds;
       });
     });
@@ -2009,13 +1966,13 @@ const buildUsageMap = (assignments, lineId, totalDays, days, lineCapacityById = 
 const planAssignmentDetailed = ({
   startIndex,
   stTotalSeconds,
-  lineId,
+  factoryId,
   assignments,
   totalDays,
   days,
-  lineCapacityById,
+  factoryScopeCapacityById,
 }) => {
-  const usage = buildUsageMap(assignments, lineId, totalDays, days, lineCapacityById);
+  const usage = buildUsageMap(assignments, factoryId, totalDays, days, factoryScopeCapacityById);
   let remaining = stTotalSeconds;
   let dayIndex = startIndex;
   while (dayIndex < totalDays && isNonWorkingDay(dayIndex, days)) {
@@ -2029,7 +1986,7 @@ const planAssignmentDetailed = ({
     };
   }
 
-  const startCapacity = getDayCapacitySeconds(dayIndex, lineId, days, lineCapacityById);
+  const startCapacity = getDayCapacitySeconds(dayIndex, factoryId, days, factoryScopeCapacityById);
   if (startCapacity <= 0 || usage[dayIndex] >= startCapacity) {
     return {
       planned: null,
@@ -2071,7 +2028,7 @@ const planAssignmentDetailed = ({
         needsMoreDays: false,
       };
     }
-    const dailyCapacity = getDayCapacitySeconds(cursor, lineId, days, lineCapacityById);
+    const dailyCapacity = getDayCapacitySeconds(cursor, factoryId, days, factoryScopeCapacityById);
     if (dailyCapacity <= 0) {
       cursor += 1;
       continue;
@@ -2110,9 +2067,9 @@ const getAssignmentStartKey = (assignment) => {
   return startIndex + offset;
 };
 
-const getTargetOnDay = (assignments, lineId, dayIndex) => {
+const getTargetOnDay = (assignments, factoryId, dayIndex) => {
   const candidates = assignments.filter(
-    (item) => item.lineId === lineId && dayIndex >= item.startIndex && dayIndex <= item.endIndex
+    (item) => item.factoryId === factoryId && dayIndex >= item.startIndex && dayIndex <= item.endIndex
   );
   if (candidates.length === 0) return null;
   return candidates.reduce((earliest, item) =>
@@ -2120,8 +2077,8 @@ const getTargetOnDay = (assignments, lineId, dayIndex) => {
   );
 };
 
-const getAssignmentScheduledStTotalSeconds = (assignment, days, lineCapacityById = null) => {
-  return getUsageSeconds(assignment, days, lineCapacityById).reduce(
+const getAssignmentScheduledStTotalSeconds = (assignment, days, factoryScopeCapacityById = null) => {
+  return getUsageSeconds(assignment, days, factoryScopeCapacityById).reduce(
     (sum, item) => sum + item.seconds,
     0
   );
@@ -2331,8 +2288,8 @@ const resolveAssignmentProgressState = ({
       progressRow?.isFullyPayrollSettled ?? assignment?.isFullyPayrollSettled
     ),
     hasRangeCoverage: Boolean(progressRow?.hasRangeCoverage ?? assignment?.hasRangeCoverage),
-    lineOrphanWorkRecordCount:
-      Number(progressRow?.lineOrphanWorkRecordCount ?? assignment?.lineOrphanWorkRecordCount) ||
+    factoryScopeOrphanWorkRecordCount:
+      Number(progressRow?.factoryScopeOrphanWorkRecordCount ?? assignment?.factoryScopeOrphanWorkRecordCount) ||
       0,
     hasOrphanWorkRecords: Boolean(
       progressRow?.hasOrphanWorkRecords ?? assignment?.hasOrphanWorkRecords
@@ -2410,33 +2367,33 @@ const getUsageSecondsBeforeIndex = (
   assignment,
   beforeIndex,
   days,
-  lineCapacityById = null
+  factoryScopeCapacityById = null
 ) => {
   const safeBeforeIndex = toNonNegativeInt(beforeIndex, 0);
   if (safeBeforeIndex <= 0) return 0;
-  return getUsageSeconds(assignment, days, lineCapacityById).reduce((sum, item) => {
+  return getUsageSeconds(assignment, days, factoryScopeCapacityById).reduce((sum, item) => {
     if (item.dayIndex >= safeBeforeIndex) return sum;
     return sum + item.seconds;
   }, 0);
 };
 
-const resolveAssignmentPlannedStTotalSeconds = (assignment, days, lineCapacityById = null) => {
+const resolveAssignmentPlannedStTotalSeconds = (assignment, days, factoryScopeCapacityById = null) => {
   const explicitStTotalSeconds = Number(assignment?.stTotalSeconds);
   if (Number.isFinite(explicitStTotalSeconds) && explicitStTotalSeconds > 0) return explicitStTotalSeconds;
 
-  return getAssignmentScheduledStTotalSeconds(assignment, days, lineCapacityById);
+  return getAssignmentScheduledStTotalSeconds(assignment, days, factoryScopeCapacityById);
 };
 
-const getNextStartIndex = (assignment, days, lineCapacityById = null) => {
+const getNextStartIndex = (assignment, days, factoryScopeCapacityById = null) => {
   if (!assignment) return null;
-  const usage = getUsageSeconds(assignment, days, lineCapacityById);
+  const usage = getUsageSeconds(assignment, days, factoryScopeCapacityById);
   const lastUsage = usage.find((item) => item.dayIndex === assignment.endIndex);
   if (!lastUsage) return assignment.endIndex;
   const dailyCapacity = getDayCapacitySeconds(
     assignment.endIndex,
-    assignment.lineId,
+    assignment.factoryId,
     days,
-    lineCapacityById
+    factoryScopeCapacityById
   );
   if (dailyCapacity > 0 && lastUsage.seconds < dailyCapacity) {
     return assignment.endIndex;
@@ -2453,23 +2410,23 @@ const isAssignmentBeforeInsertIndex = (
   assignment,
   insertIndex,
   days,
-  lineCapacityById = null
+  factoryScopeCapacityById = null
 ) => {
-  const nextStart = getNextStartIndex(assignment, days, lineCapacityById);
+  const nextStart = getNextStartIndex(assignment, days, factoryScopeCapacityById);
   if (nextStart == null) return false;
   return nextStart <= insertIndex;
 };
 
-const reflowSingleLineAssignmentsByCapacity = ({
-  lineId,
-  lineItems,
+const reflowSingleFactoryScopeAssignmentsByCapacity = ({
+  factoryId,
+  factoryScopeItems,
   totalDays,
   days,
-  lineCapacityById,
+  factoryScopeCapacityById,
   capacityForSource,
   safeReflowStartIndex,
 }) => {
-  const sorted = (Array.isArray(lineItems) ? lineItems : [])
+  const sorted = (Array.isArray(factoryScopeItems) ? factoryScopeItems : [])
     .slice()
     .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
   if (sorted.length === 0) {
@@ -2480,14 +2437,14 @@ const reflowSingleLineAssignmentsByCapacity = ({
     };
   }
 
-  const fallbackAssignments = sorted.map((item) => ({ ...item, lineId }));
+  const fallbackAssignments = sorted.map((item) => ({ ...item, factoryId }));
   const fixed = sorted
     .filter((item) => {
       const endIndex = toNonNegativeInt(item?.endIndex, 0);
       if (endIndex >= safeReflowStartIndex) return false;
       return !hasAssignmentRemainingSchedulerWork(item);
     })
-    .map((item) => ({ ...item, lineId }));
+    .map((item) => ({ ...item, factoryId }));
   const queue = sorted.filter((item) => {
     const endIndex = toNonNegativeInt(item?.endIndex, 0);
     if (endIndex >= safeReflowStartIndex) return true;
@@ -2503,7 +2460,7 @@ const reflowSingleLineAssignmentsByCapacity = ({
     const nextFromFixed = getNextStartIndex(
       fixed[fixed.length - 1],
       days,
-      lineCapacityById
+      factoryScopeCapacityById
     );
     if (nextFromFixed != null) {
       cursorStart = Math.max(cursorStart, nextFromFixed);
@@ -2513,12 +2470,12 @@ const reflowSingleLineAssignmentsByCapacity = ({
   for (let index = 0; index < queue.length; index += 1) {
     const item = queue[index];
     if (isAssignmentSchedulerCompleted(item)) {
-      const fixedItem = { ...item, lineId };
+      const fixedItem = { ...item, factoryId };
       placed.push(fixedItem);
       const nextCursorStart = getNextStartIndex(
         fixedItem,
         days,
-        lineCapacityById
+        factoryScopeCapacityById
       );
       cursorStart = nextCursorStart == null ? fixedItem.endIndex : nextCursorStart;
       continue;
@@ -2567,11 +2524,11 @@ const reflowSingleLineAssignmentsByCapacity = ({
     const planResult = planAssignmentDetailed({
       startIndex,
       stTotalSeconds: remainingSeconds,
-      lineId,
+      factoryId,
       assignments: placed,
       totalDays,
       days,
-      lineCapacityById,
+      factoryScopeCapacityById,
     });
     if (!planResult.planned) {
       return {
@@ -2584,7 +2541,7 @@ const reflowSingleLineAssignmentsByCapacity = ({
     const planned = planResult.planned;
     const nextItem = {
       ...item,
-      lineId,
+      factoryId,
       stTotalSeconds,
       ...planned,
       startDateKey: days[planned.startIndex]?.key ?? item.startDateKey,
@@ -2592,7 +2549,7 @@ const reflowSingleLineAssignmentsByCapacity = ({
     };
     placed.push(nextItem);
 
-    const nextCursorStart = getNextStartIndex(nextItem, days, lineCapacityById);
+    const nextCursorStart = getNextStartIndex(nextItem, days, factoryScopeCapacityById);
     cursorStart = nextCursorStart == null ? nextItem.endIndex : nextCursorStart;
   }
 
@@ -2603,56 +2560,56 @@ const reflowSingleLineAssignmentsByCapacity = ({
   };
 };
 
-const reflowAssignmentsByLineCapacity = ({
+const reflowAssignmentsByFactoryScopeCapacity = ({
   assignments,
   totalDays,
   days,
-  lineCapacityById,
-  sourceLineCapacityById = null,
+  factoryScopeCapacityById,
+  sourceFactoryScopeCapacityById = null,
   reflowStartIndex = 0,
 }) => {
-  const capacityForSource = sourceLineCapacityById || lineCapacityById;
+  const capacityForSource = sourceFactoryScopeCapacityById || factoryScopeCapacityById;
   const safeReflowStartIndex = toNonNegativeInt(reflowStartIndex, 0);
   const grouped = new Map();
   (Array.isArray(assignments) ? assignments : []).forEach((item) => {
-    const lineKey = normalizeKey(item?.lineId);
-    if (!lineKey) return;
-    if (!grouped.has(lineKey)) grouped.set(lineKey, []);
-    grouped.get(lineKey).push(item);
+    const factoryScopeKey = normalizeKey(item?.factoryId);
+    if (!factoryScopeKey) return;
+    if (!grouped.has(factoryScopeKey)) grouped.set(factoryScopeKey, []);
+    grouped.get(factoryScopeKey).push(item);
   });
 
   const nextAssignments = [];
-  const failedLineIds = [];
+  const failedFactoryIds = [];
   let needsMoreDays = false;
 
-  for (const [lineId, lineItems] of grouped.entries()) {
-    const lineResult = reflowSingleLineAssignmentsByCapacity({
-      lineId,
-      lineItems,
+  for (const [factoryId, factoryScopeItems] of grouped.entries()) {
+    const factoryScopeResult = reflowSingleFactoryScopeAssignmentsByCapacity({
+      factoryId,
+      factoryScopeItems,
       totalDays,
       days,
-      lineCapacityById,
+      factoryScopeCapacityById,
       capacityForSource,
       safeReflowStartIndex,
     });
-    if (lineResult.failed) {
-      failedLineIds.push(lineId);
+    if (factoryScopeResult.failed) {
+      failedFactoryIds.push(factoryId);
     }
-    if (lineResult.needsMoreDays) {
+    if (factoryScopeResult.needsMoreDays) {
       needsMoreDays = true;
     }
-    nextAssignments.push(...lineResult.assignments);
+    nextAssignments.push(...factoryScopeResult.assignments);
   }
 
   return {
     assignments: nextAssignments,
-    failedLineIds,
+    failedFactoryIds,
     needsMoreDays,
   };
 };
 
-const rebuildLineWithInsert = ({
-  lineId,
+const rebuildFactoryScopeWithInsert = ({
+  factoryId,
   insertIndex,
   insertAfterId,
   insertBeforeId,
@@ -2660,10 +2617,10 @@ const rebuildLineWithInsert = ({
   assignments,
   totalDays,
   days,
-  lineCapacityById,
+  factoryScopeCapacityById,
 }) => {
-  const lineItems = assignments
-    .filter((item) => item.lineId === lineId)
+  const factoryScopeItems = assignments
+    .filter((item) => item.factoryId === factoryId)
     .slice()
     .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
 
@@ -2673,20 +2630,20 @@ const rebuildLineWithInsert = ({
   let after = [];
 
   if (insertAfterId) {
-    const targetIndex = lineItems.findIndex((item) => item.id === insertAfterId);
+    const targetIndex = factoryScopeItems.findIndex((item) => item.id === insertAfterId);
     if (targetIndex === -1) return null;
-    before = lineItems.slice(0, targetIndex + 1);
-    after = lineItems.slice(targetIndex + 1);
-    insertIndex = getNextStartIndex(before[before.length - 1], days, lineCapacityById);
+    before = factoryScopeItems.slice(0, targetIndex + 1);
+    after = factoryScopeItems.slice(targetIndex + 1);
+    insertIndex = getNextStartIndex(before[before.length - 1], days, factoryScopeCapacityById);
     if (insertIndex == null || insertIndex >= totalDays) return null;
   } else if (insertBeforeId) {
-    const targetIndex = lineItems.findIndex((item) => item.id === insertBeforeId);
+    const targetIndex = factoryScopeItems.findIndex((item) => item.id === insertBeforeId);
     if (targetIndex === -1) return null;
-    before = lineItems.slice(0, targetIndex);
-    after = lineItems.slice(targetIndex);
+    before = factoryScopeItems.slice(0, targetIndex);
+    after = factoryScopeItems.slice(targetIndex);
   } else {
-    lineItems.forEach((item) => {
-      if (isAssignmentBeforeInsertIndex(item, insertIndex, days, lineCapacityById)) {
+    factoryScopeItems.forEach((item) => {
+      if (isAssignmentBeforeInsertIndex(item, insertIndex, days, factoryScopeCapacityById)) {
         before.push(item);
       } else {
         after.push(item);
@@ -2699,19 +2656,19 @@ const rebuildLineWithInsert = ({
     startIndex: insertIndex,
     stTotalSeconds:
       insertItem.stTotalSeconds ??
-      getAssignmentScheduledStTotalSeconds(insertItem, days, lineCapacityById),
-    lineId,
+      getAssignmentScheduledStTotalSeconds(insertItem, days, factoryScopeCapacityById),
+    factoryId,
     assignments: placed,
     totalDays,
     days,
-    lineCapacityById,
+    factoryScopeCapacityById,
   });
 
   if (!planned) return null;
 
   placed.push({
     ...insertItem,
-    lineId,
+    factoryId,
     ...planned,
     startDateKey: days[planned.startIndex]?.key ?? insertItem.startDateKey,
     endDateKey: days[planned.endIndex]?.key ?? insertItem.endDateKey,
@@ -2720,7 +2677,7 @@ const rebuildLineWithInsert = ({
   let cursorStart = getNextStartIndex(
     placed[placed.length - 1],
     days,
-    lineCapacityById
+    factoryScopeCapacityById
   );
 
   const queue = after;
@@ -2736,34 +2693,34 @@ const rebuildLineWithInsert = ({
       if (cursorStart > fixedStartIndex) return null;
       placed.push({
         ...item,
-        lineId,
+        factoryId,
         startDateKey: days[fixedStartIndex]?.key ?? item.startDateKey,
         endDateKey: days[fixedEndIndex]?.key ?? item.endDateKey,
       });
       cursorStart = getNextStartIndex(
         placed[placed.length - 1],
         days,
-        lineCapacityById
+        factoryScopeCapacityById
       );
       continue;
     }
     const stTotalSeconds =
-      item.stTotalSeconds ?? getAssignmentScheduledStTotalSeconds(item, days, lineCapacityById);
+      item.stTotalSeconds ?? getAssignmentScheduledStTotalSeconds(item, days, factoryScopeCapacityById);
     planned = planAssignment({
       startIndex: cursorStart,
       stTotalSeconds,
-      lineId,
+      factoryId,
       assignments: placed,
       totalDays,
       days,
-      lineCapacityById,
+      factoryScopeCapacityById,
     });
 
     if (!planned) return null;
 
     placed.push({
       ...item,
-      lineId,
+      factoryId,
       ...planned,
       startDateKey: days[planned.startIndex]?.key ?? item.startDateKey,
       endDateKey: days[planned.endIndex]?.key ?? item.endDateKey,
@@ -2772,26 +2729,26 @@ const rebuildLineWithInsert = ({
     cursorStart = getNextStartIndex(
       placed[placed.length - 1],
       days,
-      lineCapacityById
+      factoryScopeCapacityById
     );
   }
 
   return [
-    ...assignments.filter((item) => item.lineId !== lineId),
+    ...assignments.filter((item) => item.factoryId !== factoryId),
     ...placed,
   ];
 };
 
-const getNextAssignmentAfterDay = (items, lineId, dayIndex, excludeId) => {
+const getNextAssignmentAfterDay = (items, factoryId, dayIndex, excludeId) => {
   const sorted = items
-    .filter((item) => item.lineId === lineId && item.id !== excludeId)
+    .filter((item) => item.factoryId === factoryId && item.id !== excludeId)
     .slice()
     .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
 
   return sorted.find((item) => item.startIndex > dayIndex) || null;
 };
 
-const buildConnectedChain = (items, startIndex, days, lineCapacityById = null) => {
+const buildConnectedChain = (items, startIndex, days, factoryScopeCapacityById = null) => {
   if (startIndex == null || startIndex < 0) return [];
   const chain = [];
   for (let i = startIndex; i < items.length; i += 1) {
@@ -2802,7 +2759,7 @@ const buildConnectedChain = (items, startIndex, days, lineCapacityById = null) =
     const expectedStart = getNextStartIndex(
       chain[chain.length - 1],
       days,
-      lineCapacityById
+      factoryScopeCapacityById
     );
     if (items[i].startIndex === expectedStart) {
       chain.push(items[i]);
@@ -2813,20 +2770,20 @@ const buildConnectedChain = (items, startIndex, days, lineCapacityById = null) =
   return chain;
 };
 
-const rebuildLineWithChain = ({
-  lineId,
+const rebuildFactoryScopeWithChain = ({
+  factoryId,
   insertIndex,
   insertAfterId,
   chainItems,
   assignments,
   totalDays,
   days,
-  lineCapacityById,
+  factoryScopeCapacityById,
 }) => {
   if (!Array.isArray(chainItems) || chainItems.length === 0) return null;
   const chainIds = new Set(chainItems.map((item) => item.id));
-  const lineItems = assignments
-    .filter((item) => item.lineId === lineId && !chainIds.has(item.id))
+  const factoryScopeItems = assignments
+    .filter((item) => item.factoryId === factoryId && !chainIds.has(item.id))
     .slice()
     .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
 
@@ -2836,15 +2793,15 @@ const rebuildLineWithChain = ({
   let after = [];
 
   if (insertAfterId) {
-    const targetIndex = lineItems.findIndex((item) => item.id === insertAfterId);
+    const targetIndex = factoryScopeItems.findIndex((item) => item.id === insertAfterId);
     if (targetIndex === -1) return null;
-    before = lineItems.slice(0, targetIndex + 1);
-    after = lineItems.slice(targetIndex + 1);
-    insertIndex = getNextStartIndex(before[before.length - 1], days, lineCapacityById);
+    before = factoryScopeItems.slice(0, targetIndex + 1);
+    after = factoryScopeItems.slice(targetIndex + 1);
+    insertIndex = getNextStartIndex(before[before.length - 1], days, factoryScopeCapacityById);
     if (insertIndex == null || insertIndex >= totalDays) return null;
   } else {
-    lineItems.forEach((item) => {
-      if (isAssignmentBeforeInsertIndex(item, insertIndex, days, lineCapacityById)) {
+    factoryScopeItems.forEach((item) => {
+      if (isAssignmentBeforeInsertIndex(item, insertIndex, days, factoryScopeCapacityById)) {
         before.push(item);
       } else {
         after.push(item);
@@ -2857,22 +2814,22 @@ const rebuildLineWithChain = ({
 
   for (const item of chainItems) {
     const stTotalSeconds =
-      item.stTotalSeconds ?? getAssignmentScheduledStTotalSeconds(item, days, lineCapacityById);
+      item.stTotalSeconds ?? getAssignmentScheduledStTotalSeconds(item, days, factoryScopeCapacityById);
     const planned = planAssignment({
       startIndex: cursorStart,
       stTotalSeconds,
-      lineId,
+      factoryId,
       assignments: placed,
       totalDays,
       days,
-      lineCapacityById,
+      factoryScopeCapacityById,
     });
 
     if (!planned) return null;
 
     placed.push({
       ...item,
-      lineId,
+      factoryId,
       ...planned,
       startDateKey: days[planned.startIndex]?.key ?? item.startDateKey,
       endDateKey: days[planned.endIndex]?.key ?? item.endDateKey,
@@ -2881,7 +2838,7 @@ const rebuildLineWithChain = ({
     cursorStart = getNextStartIndex(
       placed[placed.length - 1],
       days,
-      lineCapacityById
+      factoryScopeCapacityById
     );
   }
 
@@ -2896,35 +2853,35 @@ const rebuildLineWithChain = ({
       if (cursorStart > fixedStartIndex) return null;
       placed.push({
         ...item,
-        lineId,
+        factoryId,
         startDateKey: days[fixedStartIndex]?.key ?? item.startDateKey,
         endDateKey: days[fixedEndIndex]?.key ?? item.endDateKey,
       });
       cursorStart = getNextStartIndex(
         placed[placed.length - 1],
         days,
-        lineCapacityById
+        factoryScopeCapacityById
       );
       continue;
     }
 
     const stTotalSeconds =
-      item.stTotalSeconds ?? getAssignmentScheduledStTotalSeconds(item, days, lineCapacityById);
+      item.stTotalSeconds ?? getAssignmentScheduledStTotalSeconds(item, days, factoryScopeCapacityById);
     const planned = planAssignment({
       startIndex: cursorStart,
       stTotalSeconds,
-      lineId,
+      factoryId,
       assignments: placed,
       totalDays,
       days,
-      lineCapacityById,
+      factoryScopeCapacityById,
     });
 
     if (!planned) return null;
 
     placed.push({
       ...item,
-      lineId,
+      factoryId,
       ...planned,
       startDateKey: days[planned.startIndex]?.key ?? item.startDateKey,
       endDateKey: days[planned.endIndex]?.key ?? item.endDateKey,
@@ -2933,52 +2890,52 @@ const rebuildLineWithChain = ({
     cursorStart = getNextStartIndex(
       placed[placed.length - 1],
       days,
-      lineCapacityById
+      factoryScopeCapacityById
     );
   }
 
   return [
-    ...assignments.filter((item) => item.lineId !== lineId),
+    ...assignments.filter((item) => item.factoryId !== factoryId),
     ...placed,
   ];
 };
 
-const rebuildLineWithReplace = ({
-  lineId,
+const rebuildFactoryScopeWithReplace = ({
+  factoryId,
   targetId,
   newItem,
   assignments,
   totalDays,
   days,
-  lineCapacityById,
+  factoryScopeCapacityById,
 }) => {
-  const lineItems = assignments
-    .filter((item) => item.lineId === lineId)
+  const factoryScopeItems = assignments
+    .filter((item) => item.factoryId === factoryId)
     .slice()
     .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
-  const targetIndex = lineItems.findIndex((item) => item.id === targetId);
+  const targetIndex = factoryScopeItems.findIndex((item) => item.id === targetId);
   if (targetIndex === -1) return null;
-  const before = lineItems.slice(0, targetIndex);
-  const after = lineItems.slice(targetIndex + 1);
-  const insertIndex = newItem.startIndex ?? lineItems[targetIndex].startIndex;
+  const before = factoryScopeItems.slice(0, targetIndex);
+  const after = factoryScopeItems.slice(targetIndex + 1);
+  const insertIndex = newItem.startIndex ?? factoryScopeItems[targetIndex].startIndex;
   if (insertIndex == null || insertIndex >= totalDays) return null;
 
   const placed = before.map((item) => ({ ...item }));
   const planned = planAssignment({
     startIndex: insertIndex,
     stTotalSeconds:
-      newItem.stTotalSeconds ?? getAssignmentScheduledStTotalSeconds(newItem, days, lineCapacityById),
-    lineId,
+      newItem.stTotalSeconds ?? getAssignmentScheduledStTotalSeconds(newItem, days, factoryScopeCapacityById),
+    factoryId,
     assignments: placed,
     totalDays,
     days,
-    lineCapacityById,
+    factoryScopeCapacityById,
   });
   if (!planned) return null;
 
   placed.push({
     ...newItem,
-    lineId,
+    factoryId,
     ...planned,
     startDateKey: days[planned.startIndex]?.key ?? newItem.startDateKey,
     endDateKey: days[planned.endIndex]?.key ?? newItem.endDateKey,
@@ -2987,7 +2944,7 @@ const rebuildLineWithReplace = ({
   let cursorStart = getNextStartIndex(
     placed[placed.length - 1],
     days,
-    lineCapacityById
+    factoryScopeCapacityById
   );
   for (const item of after) {
     if (cursorStart == null || cursorStart >= totalDays) return null;
@@ -3000,32 +2957,32 @@ const rebuildLineWithReplace = ({
       if (cursorStart > fixedStartIndex) return null;
       placed.push({
         ...item,
-        lineId,
+        factoryId,
         startDateKey: days[fixedStartIndex]?.key ?? item.startDateKey,
         endDateKey: days[fixedEndIndex]?.key ?? item.endDateKey,
       });
       cursorStart = getNextStartIndex(
         placed[placed.length - 1],
         days,
-        lineCapacityById
+        factoryScopeCapacityById
       );
       continue;
     }
     const stTotalSeconds =
-      item.stTotalSeconds ?? getAssignmentScheduledStTotalSeconds(item, days, lineCapacityById);
+      item.stTotalSeconds ?? getAssignmentScheduledStTotalSeconds(item, days, factoryScopeCapacityById);
     const nextPlanned = planAssignment({
       startIndex: cursorStart,
       stTotalSeconds,
-      lineId,
+      factoryId,
       assignments: placed,
       totalDays,
       days,
-      lineCapacityById,
+      factoryScopeCapacityById,
     });
     if (!nextPlanned) return null;
     placed.push({
       ...item,
-      lineId,
+      factoryId,
       ...nextPlanned,
       startDateKey: days[nextPlanned.startIndex]?.key ?? item.startDateKey,
       endDateKey: days[nextPlanned.endIndex]?.key ?? item.endDateKey,
@@ -3033,12 +2990,12 @@ const rebuildLineWithReplace = ({
     cursorStart = getNextStartIndex(
       placed[placed.length - 1],
       days,
-      lineCapacityById
+      factoryScopeCapacityById
     );
   }
 
   return [
-    ...assignments.filter((item) => item.lineId !== lineId),
+    ...assignments.filter((item) => item.factoryId !== factoryId),
     ...placed,
   ];
 };
@@ -3054,13 +3011,13 @@ const AssignBoard = () => {
   const [unassignedPanelExpandedOverride, setUnassignedPanelExpandedOverride] = useState(null);
   const [cards, setCards] = useState(() => initialCards);
   const [styles, setStyles] = useState([]);
-  const [lines, setLines] = useState(() => initialLines);
+  const [factoryScopes, setFactoryScopes] = useState(() => initialFactoryScopes);
   const [assignments, setAssignments] = useState(initialAssignments);
   const [assignmentProgressById, setAssignmentProgressById] = useState({});
   const [assignmentProgressStale, setAssignmentProgressStale] = useState(false);
-  const [lineMonthCapacityRows, setLineMonthCapacityRows] = useState([]);
-  const [lineMonthCapacityLoading, setLineMonthCapacityLoading] = useState(false);
-  const [lineMonthCapacityError, setLineMonthCapacityError] = useState(false);
+  const [factoryMonthCapacityRows, setFactoryMonthCapacityRows] = useState([]);
+  const [factoryMonthCapacityLoading, setFactoryMonthCapacityLoading] = useState(false);
+  const [factoryMonthCapacityError, setFactoryMonthCapacityError] = useState(false);
   const [activeDrag, setActiveDrag] = useState(null);
   const [loading, setLoading] = useState(false);
   const [persisting, setPersisting] = useState(false);
@@ -3132,7 +3089,7 @@ const AssignBoard = () => {
   const [detailStyleLoadingKey, setDetailStyleLoadingKey] = useState('');
   const stylesRef = useRef(styles);
   const cardsRef = useRef(cards);
-  const linesRef = useRef(lines);
+  const factoryScopesRef = useRef(factoryScopes);
   const assignmentsRef = useRef(assignments);
   const assignmentProgressByIdRef = useRef(assignmentProgressById);
   const daysRef = useRef(days);
@@ -3164,9 +3121,9 @@ const AssignBoard = () => {
     setActiveDrag,
     languageCode,
   });
-  const lineCapacityById = useMemo(() => {
-    return buildLineCapacityMap(lines);
-  }, [lines]);
+  const factoryScopeCapacityById = useMemo(() => {
+    return buildFactoryScopeCapacityMap(factoryScopes);
+  }, [factoryScopes]);
   const blurActiveElement = useCallback(() => {
     const activeElement = document.activeElement;
     if (activeElement && typeof activeElement.blur === 'function') {
@@ -3246,8 +3203,8 @@ const AssignBoard = () => {
   }, [cards]);
 
   useEffect(() => {
-    linesRef.current = lines;
-  }, [lines]);
+    factoryScopesRef.current = factoryScopes;
+  }, [factoryScopes]);
 
   useEffect(() => {
     assignmentsRef.current = assignments;
@@ -3633,17 +3590,14 @@ const AssignBoard = () => {
   const applyLoadedBoardData = useCallback(
     ({
       nextStyles = null,
-      nextLines = [],
+      nextFactoryScopes = [],
       baseCards = [],
       boardState = null,
       markPersistReady = false,
     }) => {
       const safeBaseCards = Array.isArray(baseCards) ? baseCards : [];
-      const nextLineCapacityById = buildLineCapacityMap(nextLines);
-      const nextLineIdSet = new Set(nextLines.map((line) => normalizeKey(line.id)));
-      const factoryIdByLegacyLineId = new Map(
-        nextLines.map((line) => [normalizeKey(line.legacyLineId), normalizeKey(line.id)])
-      );
+      const nextFactoryScopeCapacityById = buildFactoryScopeCapacityMap(nextFactoryScopes);
+      const nextFactoryIdSet = new Set(nextFactoryScopes.map((factoryScope) => normalizeKey(factoryScope.id)));
 
       const hasSavedBoardState =
         Array.isArray(boardState?.cards) || Array.isArray(boardState?.assignments);
@@ -3665,17 +3619,16 @@ const AssignBoard = () => {
             .filter((item) => item?.id)
             .map((item) => ({
               ...item,
-              lineId:
+              factoryId:
                 normalizeKey(item?.factoryId) ||
-                factoryIdByLegacyLineId.get(normalizeKey(item?.lineId)) ||
                 '',
             }))
-            .filter((item) => nextLineIdSet.has(normalizeKey(item?.lineId)))
+            .filter((item) => nextFactoryIdSet.has(normalizeKey(item?.factoryId)))
             .filter((item) => restoredCardIdSet.has(item?.cardId))
             .map((item) =>
               normalizeAssignmentLayout({
                 ...item,
-                lineId: String(item.lineId),
+                factoryId: String(item.factoryId),
               })
             )
         : [];
@@ -3690,11 +3643,11 @@ const AssignBoard = () => {
           ),
           linkedCard ? toNonNegativeInt(resolveCardStTotalSeconds(linkedCard), 0) : 0
         );
-        const lineCapacity = Math.max(
+        const factoryScopeCapacity = Math.max(
           1,
-          getLineCapacitySeconds(item.lineId, nextLineCapacityById)
+          getFactoryScopeCapacitySeconds(item.factoryId, nextFactoryScopeCapacityById)
         );
-        const estimatedDays = Math.max(1, Math.ceil(stTotalSeconds / lineCapacity));
+        const estimatedDays = Math.max(1, Math.ceil(stTotalSeconds / factoryScopeCapacity));
         return Math.max(max, item.endIndex, item.startIndex + estimatedDays + 14);
       }, days.length - 1);
       const restoreDayCount = Math.max(days.length, projectedMaxEndIndex + 1);
@@ -3711,7 +3664,7 @@ const AssignBoard = () => {
                 item,
                 linkedCard,
                 restoreDays,
-                nextLineCapacityById
+                nextFactoryScopeCapacityById
               )
             );
           })
@@ -3750,12 +3703,12 @@ const AssignBoard = () => {
           let reflowResult = null;
 
           for (let attempt = 0; attempt < 6; attempt += 1) {
-            reflowResult = reflowAssignmentsByLineCapacity({
+            reflowResult = reflowAssignmentsByFactoryScopeCapacity({
               assignments: normalizedRestoredAssignments,
               totalDays: candidateDays.length,
               days: candidateDays,
-              lineCapacityById: nextLineCapacityById,
-              sourceLineCapacityById: nextLineCapacityById,
+              factoryScopeCapacityById: nextFactoryScopeCapacityById,
+              sourceFactoryScopeCapacityById: nextFactoryScopeCapacityById,
               reflowStartIndex,
             });
             if (!reflowResult?.needsMoreDays) break;
@@ -3808,7 +3761,7 @@ const AssignBoard = () => {
       if (Array.isArray(nextStyles)) {
         setStyles(nextStyles);
       }
-      setLines(nextLines);
+      setFactoryScopes(nextFactoryScopes);
       edit.accept(boardState?.editRevision);
       setCards(restoredCards);
       // Keep absolute date keys loaded from server state.
@@ -3898,7 +3851,7 @@ const AssignBoard = () => {
           orgId: activeOrgId,
           includeCards: 0,
         });
-        const lineHeadcountQuery = buildQueryString({
+        const factoryScopeHeadcountQuery = buildQueryString({
           orgId: activeOrgId,
           summary: 1,
         });
@@ -3911,7 +3864,7 @@ const AssignBoard = () => {
 
         const applyAssignmentCardsResponse = (
           assignmentCardsResponse,
-          nextLines,
+          nextFactoryScopes,
           boardState,
           markPersistReady = true
         ) => {
@@ -3929,17 +3882,16 @@ const AssignBoard = () => {
           );
           applyLoadedBoardData({
             nextStyles,
-            nextLines,
+            nextFactoryScopes,
             baseCards: nextCards,
             boardState,
             markPersistReady,
           });
         };
 
-        const [factories, lines, lineHeadcounts, boardState] = await Promise.all([
+        const [factories, factoryScopeHeadcounts, boardState] = await Promise.all([
           requestJSON('/factories' + orgQuery).catch(() => []),
-          requestJSON('/lines' + orgQuery).catch(() => []),
-          requestJSON('/line-workers' + lineHeadcountQuery).catch(() => []),
+          requestJSON('/factory-workers' + factoryScopeHeadcountQuery).catch(() => []),
           requestJSON('/assignment-board-view' + boardViewQuery, {
             forceRefresh: true,
           }).catch(() => null),
@@ -3954,10 +3906,9 @@ const AssignBoard = () => {
         setAssignmentOperationStartDateKey(
           resolveEarliestFactoryManagementStartDateKey(safeFactories)
         );
-        const nextLines = buildAssignableLines({
+        const nextFactoryScopes = buildAssignableFactoryScopes({
           factories: safeFactories,
-          lines,
-          lineHeadcounts,
+          factoryScopeHeadcounts,
         });
 
         const assignmentCardsResponse = await assignmentCardsSummaryPromise;
@@ -3977,7 +3928,7 @@ const AssignBoard = () => {
           );
           if (!hasLoadedSourceDataRef.current || lastLoadedOrgIdRef.current !== normalizedOrgId) {
             setStyles([]);
-            setLines(nextLines);
+            setFactoryScopes(nextFactoryScopes);
             setCards([]);
             setAssignments([]);
             lastSavedSnapshotRef.current = createPersistSnapshotText([], []);
@@ -3992,7 +3943,7 @@ const AssignBoard = () => {
 
         // Render the board from persisted card aggregates first. Loading every process/ST row
         // is substantially heavier and is only required before edits can be persisted.
-        applyAssignmentCardsResponse(assignmentCardsResponse, nextLines, boardState, false);
+        applyAssignmentCardsResponse(assignmentCardsResponse, nextFactoryScopes, boardState, false);
         appliedSavedBoardState = true;
 
         // The lightweight response is already sufficient to display cards and saved plans.
@@ -4046,7 +3997,7 @@ const AssignBoard = () => {
           );
           if (!appliedSavedBoardState) {
             setStyles([]);
-            setLines([]);
+            setFactoryScopes([]);
             setCards([]);
             setAssignments([]);
             lastSavedSnapshotRef.current = createPersistSnapshotText([], []);
@@ -4198,7 +4149,7 @@ const AssignBoard = () => {
       days: predictiveDaysForSave,
     } = buildPredictiveAssignments(assignmentsWithCtSnapshot, {
       daysOverride: currentDays,
-      lineCapacityOverride: lineCapacityById,
+      factoryScopeCapacityOverride: factoryScopeCapacityById,
       useCompletedRenderRange: false,
     });
 
@@ -4275,7 +4226,7 @@ const AssignBoard = () => {
             cards: currentCards.map(normalizeAssignmentCardForPersistence),
             assignments: assignmentPayload.map((assignment) => ({
               ...assignment,
-              factoryId: Number(assignment.lineId),
+              factoryId: Number(assignment.factoryId),
             })),
             stDrafts,
           }),
@@ -4405,7 +4356,7 @@ const AssignBoard = () => {
         ...params,
         totalDays: candidateDays.length,
         days: candidateDays,
-        lineCapacityById,
+        factoryScopeCapacityById,
       });
       if (planResult?.planned) return planResult.planned;
       if (!planResult?.needsMoreDays) return null;
@@ -4423,7 +4374,7 @@ const AssignBoard = () => {
         ...params,
         totalDays: candidateDays.length,
         days: candidateDays,
-        lineCapacityById,
+        factoryScopeCapacityById,
       });
       if (result) return result;
 
@@ -4433,16 +4384,16 @@ const AssignBoard = () => {
     }
   };
 
-  const tryRebuildLineWithInsert = (params) => {
-    return runRebuildWithAutoExtend(rebuildLineWithInsert, params);
+  const tryRebuildFactoryScopeWithInsert = (params) => {
+    return runRebuildWithAutoExtend(rebuildFactoryScopeWithInsert, params);
   };
 
-  const tryRebuildLineWithChain = (params) => {
-    return runRebuildWithAutoExtend(rebuildLineWithChain, params);
+  const tryRebuildFactoryScopeWithChain = (params) => {
+    return runRebuildWithAutoExtend(rebuildFactoryScopeWithChain, params);
   };
 
-  const tryRebuildLineWithReplace = (params) => {
-    return runRebuildWithAutoExtend(rebuildLineWithReplace, params);
+  const tryRebuildFactoryScopeWithReplace = (params) => {
+    return runRebuildWithAutoExtend(rebuildFactoryScopeWithReplace, params);
   };
   const assignedCardIds = useMemo(() => {
     return new Set(assignments.map((item) => item.cardId).filter(Boolean));
@@ -4648,12 +4599,12 @@ const AssignBoard = () => {
       inputAssignments,
       {
         daysOverride = null,
-        lineCapacityOverride = null,
+        factoryScopeCapacityOverride = null,
         useCompletedRenderRange = false,
       } = {}
     ) => {
       const sourceDays = Array.isArray(daysOverride) && daysOverride.length > 0 ? daysOverride : days;
-      const capacityMap = lineCapacityOverride || lineCapacityById;
+      const capacityMap = factoryScopeCapacityOverride || factoryScopeCapacityById;
       const seededAssignments = applySchedulerProgressToAssignments(inputAssignments, {
         useCompletedRenderRange,
         daysOverride: sourceDays,
@@ -4684,12 +4635,12 @@ const AssignBoard = () => {
       let reflowResult = null;
 
       for (let attempt = 0; attempt < 6; attempt += 1) {
-        reflowResult = reflowAssignmentsByLineCapacity({
+        reflowResult = reflowAssignmentsByFactoryScopeCapacity({
           assignments: seededAssignments,
           totalDays: candidateDays.length,
           days: candidateDays,
-          lineCapacityById: capacityMap,
-          sourceLineCapacityById: capacityMap,
+          factoryScopeCapacityById: capacityMap,
+          sourceFactoryScopeCapacityById: capacityMap,
           reflowStartIndex: safeReflowStartIndex,
         });
         if (!reflowResult?.needsMoreDays) break;
@@ -4729,7 +4680,7 @@ const AssignBoard = () => {
         days: candidateDays,
       };
     },
-    [applySchedulerProgressToAssignments, days, holidaySet, languageCode, lineCapacityById]
+    [applySchedulerProgressToAssignments, days, holidaySet, languageCode, factoryScopeCapacityById]
   );
 
   const assignmentCtDisplayStateById = useMemo(() => {
@@ -4801,7 +4752,7 @@ const AssignBoard = () => {
       assignments,
       {
         daysOverride: days,
-        lineCapacityOverride: lineCapacityById,
+        factoryScopeCapacityOverride: factoryScopeCapacityById,
         useCompletedRenderRange: true,
       }
     );
@@ -4877,10 +4828,10 @@ const AssignBoard = () => {
       });
 
     const compareDisplayOrder = (left, right) => {
-      const leftLineId = String(left?.lineId ?? '');
-      const rightLineId = String(right?.lineId ?? '');
-      const lineCompare = leftLineId.localeCompare(rightLineId, undefined, { numeric: true });
-      if (lineCompare !== 0) return lineCompare;
+      const leftFactoryId = String(left?.factoryId ?? '');
+      const rightFactoryId = String(right?.factoryId ?? '');
+      const factoryScopeCompare = leftFactoryId.localeCompare(rightFactoryId, undefined, { numeric: true });
+      if (factoryScopeCompare !== 0) return factoryScopeCompare;
 
       const leftStartIndex = toSignedInt(left?.startIndex, 0);
       const rightStartIndex = toSignedInt(right?.startIndex, 0);
@@ -4909,7 +4860,7 @@ const AssignBoard = () => {
     cardById,
     days,
     dayCount,
-    lineCapacityById,
+    factoryScopeCapacityById,
     todayDateKey,
   ]);
   const visibleMonthKeys = useMemo(() => {
@@ -4951,55 +4902,43 @@ const AssignBoard = () => {
     () => planningMonthKeys.join(','),
     [planningMonthKeys]
   );
-  const lineIdsKey = useMemo(
+  const factoryIdsKey = useMemo(
     () =>
-      lines
-        .map((line) => String(line?.id || '').trim())
+      factoryScopes
+        .map((factoryScope) => String(factoryScope?.id || '').trim())
         .filter(Boolean)
         .join(','),
-    [lines]
+    [factoryScopes]
   );
-  const legacyLineIdsKey = useMemo(
-    () =>
-      lines
-        .map((line) => String(line?.legacyLineId || '').trim())
-        .filter(Boolean)
-        .join(','),
-    [lines]
-  );
-  const factoryIdByLegacyLineId = useMemo(
-    () => new Map(lines.map((line) => [String(line?.legacyLineId || ''), String(line?.id || '')])),
-    [lines]
-  );
-  const shouldDebugLineMonthCapacity = false;
+  const shouldDebugFactoryMonthCapacity = false;
   useEffect(() => {
     const normalizedOrgId = Number(activeOrgId);
     if (
       !Number.isFinite(normalizedOrgId) ||
       normalizedOrgId <= 0 ||
       !planningMonthKeysKey ||
-      !lineIdsKey
+      !factoryIdsKey
     ) {
-      setLineMonthCapacityRows([]);
-      setLineMonthCapacityLoading(false);
+      setFactoryMonthCapacityRows([]);
+      setFactoryMonthCapacityLoading(false);
       return undefined;
     }
 
     let cancelled = false;
     const abortController = new AbortController();
-    setLineMonthCapacityLoading(true);
-    setLineMonthCapacityError(false);
-    const lineMonthCapacityPath =
-      '/line-month-capacity' +
+    setFactoryMonthCapacityLoading(true);
+    setFactoryMonthCapacityError(false);
+    const factoryMonthCapacityPath =
+      '/factory-month-capacity' +
       buildQueryString({
         orgId: normalizedOrgId,
         monthFrom: planningMonthKeys[0],
         monthTo: planningMonthKeys[planningMonthKeys.length - 1],
-        lineIds: legacyLineIdsKey,
-        ...(shouldDebugLineMonthCapacity ? { debug: 'actual-output' } : {}),
+        factoryIds: factoryIdsKey,
+        ...(shouldDebugFactoryMonthCapacity ? { debug: 'actual-output' } : {}),
       });
     requestJSON(
-      lineMonthCapacityPath,
+      factoryMonthCapacityPath,
       {
         forceRefresh: true,
         skipGlobalLoading: true,
@@ -5011,25 +4950,14 @@ const AssignBoard = () => {
         const rows = (Array.isArray(payload?.rows) ? payload.rows : [])
           .map((row) => ({
             ...row,
-            lineId: factoryIdByLegacyLineId.get(String(row?.lineId || '')) || '',
+            factoryId: String(row?.factoryId || ''),
           }))
-          .filter((row) => row.lineId);
-        setLineMonthCapacityRows(rows);
-        if (Number(payload?.capacityOverlapCount) > 0) {
-          // An employee has overlapping LineAssignment rows on two different lines the
-          // same day - read-only diagnostic surfaced by buildLineMonthCapacityRows
-          // (backend/src/index.ts). Does not change any capacity number; see
-          // AGENTS.md for how this can happen despite the normal write path guarding
-          // against it (closeActiveLineAssignments).
-          console.warn(
-            '[line-month-capacity] capacity overlap detected',
-            payload.capacityOverlapCount,
-            payload.capacityOverlapSamples
-          );
-        }
-        if (shouldDebugLineMonthCapacity && payload?.actualOutputDiagnostics) {
+          .filter((row) => row.factoryId);
+        setFactoryMonthCapacityRows(rows);
+
+        if (shouldDebugFactoryMonthCapacity && payload?.actualOutputDiagnostics) {
           const diagnostics = payload.actualOutputDiagnostics;
-          console.group('[line-month-capacity] actual output diagnostics');
+          console.group('[factory-month-capacity] actual output diagnostics');
           console.log('rules', {
             calculationRule: diagnostics.calculationRule,
             styleMatchRule: diagnostics.styleMatchRule,
@@ -5038,7 +4966,7 @@ const AssignBoard = () => {
           });
           console.log('summary', {
             orgId: diagnostics.orgId,
-            requestedLineIds: diagnostics.requestedLineIds,
+            requestedFactoryIds: diagnostics.requestedFactoryIds,
             requestedMonthKeys: diagnostics.requestedMonthKeys,
             planCount: diagnostics.planCount,
             workRowCount: diagnostics.workRowCount,
@@ -5082,11 +5010,11 @@ const AssignBoard = () => {
         const debugRows = rows
           .map((row) => row?.actualOutputDebug)
           .filter(Boolean);
-        if (shouldDebugLineMonthCapacity && debugRows.length > 0) {
-          console.group('[line-month-capacity] actual output debug');
+        if (shouldDebugFactoryMonthCapacity && debugRows.length > 0) {
+          console.group('[factory-month-capacity] actual output debug');
           console.table(
             debugRows.map((debug) => ({
-              lineId: debug.lineId,
+              factoryId: debug.factoryId,
               monthKey: debug.monthKey,
               actualPercent: debug.actualOutputPercent,
               numeratorStSeconds: debug.actualOutputNumeratorStSeconds,
@@ -5095,18 +5023,18 @@ const AssignBoard = () => {
                 Math.round((Number(debug.actualOutputNumeratorStSeconds) || 0) / 360) / 10,
               denominatorHours:
                 Math.round((Number(debug.actualOutputDenominatorCapacitySeconds) || 0) / 360) / 10,
-              capacityHours: Math.round((Number(debug.lineMonthlyCapacitySeconds) || 0) / 360) / 10,
+              capacityHours: Math.round((Number(debug.factoryMonthlyCapacitySeconds) || 0) / 360) / 10,
               attendanceHours:
-                Math.round((Number(debug.lineMonthlyAttendanceSeconds) || 0) / 360) / 10,
+                Math.round((Number(debug.factoryMonthlyAttendanceSeconds) || 0) / 360) / 10,
               defaultCapacityHours:
-                Math.round((Number(debug.lineMonthlyDefaultCapacitySeconds) || 0) / 360) / 10,
+                Math.round((Number(debug.factoryMonthlyDefaultCapacitySeconds) || 0) / 360) / 10,
               workingDays: debug.workingDayCount,
               headcountDayUnits: debug.headcountDayUnits,
               averageHeadcount: debug.averageHeadcount,
               attendanceWorkerDays: debug.attendanceWorkerDayCount,
               defaultCapacityWorkerDays: debug.defaultCapacityWorkerDayCount,
               actualHours:
-                Math.round((Number(debug.lineMonthlyActualOutputStSeconds) || 0) / 360) / 10,
+                Math.round((Number(debug.factoryMonthlyActualOutputStSeconds) || 0) / 360) / 10,
               directCandidateRecords: debug.directCandidateRecordCount,
               directMatchedRecords: debug.directMatchedRecordCount,
               directFailedRecords: debug.directFailedRecordCount,
@@ -5126,17 +5054,17 @@ const AssignBoard = () => {
           );
           debugRows.forEach((debug) => {
             console.group(
-              `[line-month-capacity] formula ${debug.lineId}/${debug.monthKey}`
+              `[factory-month-capacity] formula ${debug.factoryId}/${debug.monthKey}`
             );
             console.log('formula', debug.actualOutputFormula);
             console.log('numerator', {
-              lineMonthlyActualOutputStSeconds: debug.actualOutputNumeratorStSeconds,
+              factoryMonthlyActualOutputStSeconds: debug.actualOutputNumeratorStSeconds,
               hours:
                 Math.round((Number(debug.actualOutputNumeratorStSeconds) || 0) / 360) / 10,
               zeroReason: debug.actualOutputNumeratorZeroReason,
             });
             console.log('denominator', {
-              lineMonthlyCapacitySeconds: debug.actualOutputDenominatorCapacitySeconds,
+              factoryMonthlyCapacitySeconds: debug.actualOutputDenominatorCapacitySeconds,
               hours:
                 Math.round((Number(debug.actualOutputDenominatorCapacitySeconds) || 0) / 360) / 10,
               source: debug.actualOutputDenominatorSource,
@@ -5162,16 +5090,16 @@ const AssignBoard = () => {
           });
           const failureSamples = debugRows.flatMap((debug) =>
             (Array.isArray(debug.sampleFailures) ? debug.sampleFailures : []).map((sample) => ({
-              lineId: debug.lineId,
+              factoryId: debug.factoryId,
               monthKey: debug.monthKey,
               ...sample,
             }))
           );
           if (failureSamples.length > 0) {
-            console.group('[line-month-capacity] failed work-record samples');
+            console.group('[factory-month-capacity] failed work-record samples');
             console.table(
               failureSamples.map((sample) => ({
-                lineId: sample.lineId,
+                factoryId: sample.factoryId,
                 monthKey: sample.monthKey,
                 reason: sample.reason,
                 workRecordId: sample.workRecordId,
@@ -5206,16 +5134,16 @@ const AssignBoard = () => {
           }
           const matchSamples = debugRows.flatMap((debug) =>
             (Array.isArray(debug.sampleMatches) ? debug.sampleMatches : []).map((sample) => ({
-              lineId: debug.lineId,
+              factoryId: debug.factoryId,
               monthKey: debug.monthKey,
               ...sample,
             }))
           );
           if (matchSamples.length > 0) {
-            console.group('[line-month-capacity] matched work-record samples');
+            console.group('[factory-month-capacity] matched work-record samples');
             console.table(
               matchSamples.map((sample) => ({
-                lineId: sample.lineId,
+                factoryId: sample.factoryId,
                 monthKey: sample.monthKey,
                 workRecordId: sample.workRecordId,
                 planId: sample.planId,
@@ -5242,14 +5170,14 @@ const AssignBoard = () => {
       })
       .catch((error) => {
         if (!cancelled) {
-          setLineMonthCapacityRows([]);
-          setLineMonthCapacityError(true);
-          console.warn('[line-month-capacity] fetch failed; current capacity is unavailable', error);
+          setFactoryMonthCapacityRows([]);
+          setFactoryMonthCapacityError(true);
+          console.warn('[factory-month-capacity] fetch failed; current capacity is unavailable', error);
         }
       })
       .finally(() => {
         if (!cancelled) {
-          setLineMonthCapacityLoading(false);
+          setFactoryMonthCapacityLoading(false);
         }
       });
 
@@ -5260,29 +5188,27 @@ const AssignBoard = () => {
   }, [
     activeOrgId,
     externalReloadTick,
-    lineIdsKey,
-    legacyLineIdsKey,
-    factoryIdByLegacyLineId,
+    factoryIdsKey,
     planningMonthKeys,
     planningMonthKeysKey,
-    shouldDebugLineMonthCapacity,
+    shouldDebugFactoryMonthCapacity,
   ]);
-  const lineMonthCapacityBoardRows = useMemo(
+  const factoryMonthCapacityBoardRows = useMemo(
     () =>
-      buildLineMonthCapacityBoardRows({
-        lines,
+      buildFactoryMonthCapacityBoardRows({
+        factoryScopes,
         assignments: assignmentsForCapacityBoard,
         planningMonthKeys,
         visibleMonthKeys,
         holidaySet,
-        backendRows: lineMonthCapacityRows,
+        backendRows: factoryMonthCapacityRows,
         todayDateKey,
       }),
     [
       assignmentsForCapacityBoard,
       holidaySet,
-      lineMonthCapacityRows,
-      lines,
+      factoryMonthCapacityRows,
+      factoryScopes,
       planningMonthKeys,
       todayDateKey,
       visibleMonthKeys,
@@ -5457,9 +5383,9 @@ const AssignBoard = () => {
     [groupedFilteredCards]
   );
 
-  const lineById = useMemo(
-    () => new Map((Array.isArray(lines) ? lines : []).map((line) => [String(line.id), line])),
-    [lines]
+  const factoryScopeById = useMemo(
+    () => new Map((Array.isArray(factoryScopes) ? factoryScopes : []).map((factoryScope) => [String(factoryScope.id), factoryScope])),
+    [factoryScopes]
   );
   const resolveAssignmentWithSchedulerProgress = useCallback((assignmentId) => {
     const assignment = assignmentById.get(String(assignmentId || '')) || null;
@@ -5550,10 +5476,10 @@ const AssignBoard = () => {
     };
   }, [activeOrgId, currentDetailStyleKey, detailCard, styleById]);
   const detailStyleLoading = Boolean(currentDetailStyleKey) && detailStyleLoadingKey === currentDetailStyleKey;
-  const detailLine = useMemo(() => {
+  const detailFactoryScope = useMemo(() => {
     if (!detailAssignment) return null;
-    return lineById.get(String(detailAssignment.lineId)) || null;
-  }, [detailAssignment, lineById]);
+    return factoryScopeById.get(String(detailAssignment.factoryId)) || null;
+  }, [detailAssignment, factoryScopeById]);
   const detailTargetKey = useMemo(() => {
     if (!detailState) return '';
     if (detailState.targetType === 'assignment') {
@@ -5576,14 +5502,14 @@ const AssignBoard = () => {
     );
     const processes = normalizeProcesses(detailStyle?.processes);
     if (processes.length === 0) return [];
-    const lineDailyCapacitySeconds = Number(
+    const factoryScopeDailyCapacitySeconds = Number(
       detailAssignment
-        ? getLineCapacitySeconds(detailAssignment.lineId, lineCapacityById)
+        ? getFactoryScopeCapacitySeconds(detailAssignment.factoryId, factoryScopeCapacityById)
         : DAILY_CAPACITY_SECONDS
     );
     const wagePerSecond = toOptionalPositiveNumber(
-      detailLine?.factoryWagePerSecond ??
-        detailLine?.wagePerSecond ??
+      detailFactoryScope?.factoryWagePerSecond ??
+        detailFactoryScope?.wagePerSecond ??
         detailAssignment?.factoryWagePerSecond ??
         detailAssignment?.wagePerSecond
     );
@@ -5685,8 +5611,8 @@ const AssignBoard = () => {
             : totalProposedSeconds * wagePerSecond,
         expectedDays:
           totalProposedSeconds != null &&
-          Number.isFinite(lineDailyCapacitySeconds) && lineDailyCapacitySeconds > 0
-            ? totalProposedSeconds / lineDailyCapacitySeconds
+          Number.isFinite(factoryScopeDailyCapacitySeconds) && factoryScopeDailyCapacitySeconds > 0
+            ? totalProposedSeconds / factoryScopeDailyCapacitySeconds
             : null,
       };
     });
@@ -5699,10 +5625,10 @@ const AssignBoard = () => {
     detailStDraftByProcess,
     detailAssignment?.assignmentCtSnapshot,
     detailAssignment?.ctSnapshot,
-    detailLine?.factoryWagePerSecond,
-    detailLine?.wagePerSecond,
+    detailFactoryScope?.factoryWagePerSecond,
+    detailFactoryScope?.wagePerSecond,
     languageCode,
-    lineCapacityById,
+    factoryScopeCapacityById,
   ]);
   const detailSummary = useMemo(() => {
     if (!detailCard) return null;
@@ -5720,9 +5646,9 @@ const AssignBoard = () => {
       }
       return total;
     };
-    const lineDailyCapacitySeconds = Number(
+    const factoryScopeDailyCapacitySeconds = Number(
       detailAssignment
-        ? getLineCapacitySeconds(detailAssignment.lineId, lineCapacityById)
+        ? getFactoryScopeCapacitySeconds(detailAssignment.factoryId, factoryScopeCapacityById)
         : DAILY_CAPACITY_SECONDS
     );
     const totalBasePerPieceSeconds = sumProcessSeconds('basePerPieceSeconds');
@@ -5730,10 +5656,10 @@ const AssignBoard = () => {
     const totalSavedPerPieceSeconds = sumProcessSeconds('savedPerPieceSeconds');
     const totalRequestedSeconds = sumProcessSeconds('totalRequestedSeconds');
     const totalBaseSeconds = sumProcessSeconds('totalBaseSeconds');
-    const headcount = Math.max(1, Number(detailLine?.headcount || 1));
+    const headcount = Math.max(1, Number(detailFactoryScope?.headcount || 1));
     const wagePerSecond = toOptionalPositiveNumber(
-      detailLine?.factoryWagePerSecond ??
-        detailLine?.wagePerSecond ??
+      detailFactoryScope?.factoryWagePerSecond ??
+        detailFactoryScope?.wagePerSecond ??
         detailAssignment?.factoryWagePerSecond ??
         detailAssignment?.wagePerSecond
     );
@@ -5743,8 +5669,8 @@ const AssignBoard = () => {
         : totalRequestedSeconds * wagePerSecond;
     const totalDurationDays =
       totalRequestedSeconds != null &&
-      Number.isFinite(lineDailyCapacitySeconds) && lineDailyCapacitySeconds > 0
-        ? totalRequestedSeconds / lineDailyCapacitySeconds
+      Number.isFinite(factoryScopeDailyCapacitySeconds) && factoryScopeDailyCapacitySeconds > 0
+        ? totalRequestedSeconds / factoryScopeDailyCapacitySeconds
         : null;
     const perPersonExpected = expectedCost == null ? null : expectedCost / headcount;
     return {
@@ -5760,7 +5686,7 @@ const AssignBoard = () => {
       totalDurationDays,
       perPersonExpected,
     };
-  }, [detailCard, detailAssignment, detailLine, detailProcessRows, lineCapacityById]);
+  }, [detailCard, detailAssignment, detailFactoryScope, detailProcessRows, factoryScopeCapacityById]);
   const detailQuantityLabel = useMemo(
     () =>
       formatNumberWithCommas(
@@ -5969,29 +5895,29 @@ const AssignBoard = () => {
     return cursor < sourceDays.length ? cursor : null;
   };
 
-  const resolveLineStripDropPlacement = ({
-    lineId,
+  const resolveFactoryScopeStripDropPlacement = ({
+    factoryId,
     beforeAssignmentId = null,
     afterAssignmentId = null,
     excludeAssignmentId = null,
     sourceAssignments = assignments,
   }) => {
-    const normalizedLineId = String(lineId || '').trim();
-    if (!normalizedLineId) return null;
-    const lineItems = (Array.isArray(sourceAssignments) ? sourceAssignments : [])
+    const normalizedFactoryId = String(factoryId || '').trim();
+    if (!normalizedFactoryId) return null;
+    const factoryScopeItems = (Array.isArray(sourceAssignments) ? sourceAssignments : [])
       .filter(
         (item) =>
-          String(item?.lineId || '').trim() === normalizedLineId &&
+          String(item?.factoryId || '').trim() === normalizedFactoryId &&
           item?.id !== excludeAssignmentId
       )
       .slice()
       .sort((left, right) => getAssignmentStartKey(left) - getAssignmentStartKey(right));
 
     if (beforeAssignmentId) {
-      const target = lineItems.find((item) => item.id === beforeAssignmentId);
+      const target = factoryScopeItems.find((item) => item.id === beforeAssignmentId);
       if (!target) return null;
       return {
-        lineId: normalizedLineId,
+        factoryId: normalizedFactoryId,
         insertIndex: Math.max(0, toSignedInt(target.startIndex, 0)),
         insertBeforeId: target.id,
         insertAfterId: null,
@@ -5999,36 +5925,36 @@ const AssignBoard = () => {
     }
 
     if (afterAssignmentId) {
-      const target = lineItems.find((item) => item.id === afterAssignmentId);
+      const target = factoryScopeItems.find((item) => item.id === afterAssignmentId);
       if (!target) return null;
-      const insertIndex = getNextStartIndex(target, days, lineCapacityById);
+      const insertIndex = getNextStartIndex(target, days, factoryScopeCapacityById);
       if (insertIndex == null) return null;
       return {
-        lineId: normalizedLineId,
+        factoryId: normalizedFactoryId,
         insertIndex,
         insertBeforeId: null,
         insertAfterId: target.id,
       };
     }
 
-    if (lineItems.length === 0) {
+    if (factoryScopeItems.length === 0) {
       const todayIndex = getTodayDayIndex(days);
       if (todayIndex == null) return null;
       const insertIndex = getNextWorkingDropIndex(todayIndex);
       if (insertIndex == null) return null;
       return {
-        lineId: normalizedLineId,
+        factoryId: normalizedFactoryId,
         insertIndex,
         insertBeforeId: null,
         insertAfterId: null,
       };
     }
 
-    const lastItem = lineItems[lineItems.length - 1];
-    const insertIndex = getNextStartIndex(lastItem, days, lineCapacityById);
+    const lastItem = factoryScopeItems[factoryScopeItems.length - 1];
+    const insertIndex = getNextStartIndex(lastItem, days, factoryScopeCapacityById);
     if (insertIndex == null) return null;
     return {
-      lineId: normalizedLineId,
+      factoryId: normalizedFactoryId,
       insertIndex,
       insertBeforeId: null,
       insertAfterId: lastItem.id,
@@ -6104,8 +6030,8 @@ const AssignBoard = () => {
       return;
     }
     if (overDropMode === 'line-row' || overDropMode === 'line-slot') {
-      const placement = resolveLineStripDropPlacement({
-        lineId: over?.data?.current?.lineId,
+      const placement = resolveFactoryScopeStripDropPlacement({
+        factoryId: over?.data?.current?.factoryId,
         beforeAssignmentId:
           overDropMode === 'line-slot'
             ? String(over?.data?.current?.beforeAssignmentId || '').trim() || null
@@ -6154,10 +6080,10 @@ const AssignBoard = () => {
         }
         const colors = BASIS_COLORS[basis] || BASIS_COLORS.PT;
         const newItem = {
-          id: `A-${cardId}-${placement.lineId}-${placement.insertIndex}`,
+          id: `A-${cardId}-${placement.factoryId}-${placement.insertIndex}`,
           cardId,
           workOrderId: card.workOrderId ?? null,
-          lineId: placement.lineId,
+          factoryId: placement.factoryId,
           orderNo: card.orderNo ?? `ORD-NEW-${cardId}`,
           customer: card.customer,
           label: card.styleName,
@@ -6182,7 +6108,7 @@ const AssignBoard = () => {
           const planned = tryPlanAssignment({
             startIndex: placement.insertIndex,
             stTotalSeconds,
-            lineId: placement.lineId,
+            factoryId: placement.factoryId,
             assignments,
           });
           if (planned) {
@@ -6201,8 +6127,8 @@ const AssignBoard = () => {
           return;
         }
 
-        const pushed = tryRebuildLineWithInsert({
-          lineId: placement.lineId,
+        const pushed = tryRebuildFactoryScopeWithInsert({
+          factoryId: placement.factoryId,
           insertIndex: placement.insertIndex,
           insertAfterId: placement.insertAfterId,
           insertBeforeId: placement.insertBeforeId,
@@ -6230,7 +6156,7 @@ const AssignBoard = () => {
           ) || 0
         );
         const sameStartAnchor =
-          String(placement.lineId) === String(movingAssignment?.lineId) &&
+          String(placement.factoryId) === String(movingAssignment?.factoryId) &&
           placement.insertIndex === toSignedInt(movingAssignment?.startIndex, 0) &&
           !placement.insertBeforeId &&
           !placement.insertAfterId;
@@ -6260,20 +6186,20 @@ const AssignBoard = () => {
           const stTotalSeconds = getAssignmentScheduledStTotalSeconds(
             target,
             days,
-            lineCapacityById
+            factoryScopeCapacityById
           );
 
           if (!placement.insertBeforeId && !placement.insertAfterId) {
             if (
               placement.insertIndex === target.startIndex &&
-              String(placement.lineId) === String(target.lineId)
+              String(placement.factoryId) === String(target.factoryId)
             ) {
               return prev;
             }
             const planned = tryPlanAssignment({
               startIndex: placement.insertIndex,
               stTotalSeconds,
-              lineId: placement.lineId,
+              factoryId: placement.factoryId,
               assignments: filtered,
             });
             if (planned) {
@@ -6281,7 +6207,7 @@ const AssignBoard = () => {
                 syncAssignmentDateKeys(
                   {
                     ...target,
-                    lineId: placement.lineId,
+                    factoryId: placement.factoryId,
                     ...planned,
                   },
                   startDateRef.current
@@ -6291,14 +6217,14 @@ const AssignBoard = () => {
             return prev;
           }
 
-          const pushed = tryRebuildLineWithInsert({
-            lineId: placement.lineId,
+          const pushed = tryRebuildFactoryScopeWithInsert({
+            factoryId: placement.factoryId,
             insertIndex: placement.insertIndex,
             insertAfterId: placement.insertAfterId,
             insertBeforeId: placement.insertBeforeId,
             insertItem: {
               ...target,
-              lineId: placement.lineId,
+              factoryId: placement.factoryId,
               stTotalSeconds,
             },
             assignments: filtered,
@@ -6347,7 +6273,7 @@ const AssignBoard = () => {
       }
     }
 
-    let lineId = null;
+    let factoryId = null;
     let dayIndex = null;
     let targetOnDay = null;
     let dropBeforeTarget = false; // true: 타겟 앞에 배치, false: 타겟 뒤에 배치
@@ -6356,8 +6282,8 @@ const AssignBoard = () => {
       const detectedId = overId.replace('assign-drop-', '');
       const detectedAssignment = assignmentById.get(detectedId) ?? null;
       if (detectedAssignment) {
-        // lineId는 dnd-kit 감지 카드에서 가져옴 (라인 판별은 정확)
-        lineId = detectedAssignment.lineId;
+        // factoryId는 dnd-kit 감지 카드에서 가져옴 (라인 판별은 정확)
+        factoryId = detectedAssignment.factoryId;
 
         // 자신의 droppable 위에 드롭한 경우: drag delta로 날짜 추정
         if (activeId.startsWith('assign-') && detectedId === activeId.replace('assign-', '')) {
@@ -6383,7 +6309,7 @@ const AssignBoard = () => {
             dayIndex = detectedAssignment.startIndex;
           }
           // 커서 위치 기준으로 실제 타겟 카드 재탐색 (인디케이터와 동일한 로직)
-          targetOnDay = getTargetOnDay(assignments, lineId, dayIndex);
+          targetOnDay = getTargetOnDay(assignments, factoryId, dayIndex);
           if (targetOnDay) {
             // 타겟 카드 기준 앞/뒤 판단 (day index 중점 비교)
             const cardMidDay = (targetOnDay.startIndex + targetOnDay.endIndex + 1) / 2;
@@ -6393,14 +6319,14 @@ const AssignBoard = () => {
       }
     } else {
       const dropId = overId;
-      const [lineIdRaw, dayIndexRaw] = String(dropId).split('::');
-      lineId = lineIdRaw;
+      const [factoryIdRaw, dayIndexRaw] = String(dropId).split('::');
+      factoryId = factoryIdRaw;
       const parsedDayIndex = Number(dayIndexRaw);
       dayIndex = Number.isFinite(parsedDayIndex) ? Math.max(0, Math.trunc(parsedDayIndex)) : null;
-      targetOnDay = getTargetOnDay(assignments, lineId, dayIndex);
+      targetOnDay = getTargetOnDay(assignments, factoryId, dayIndex);
     }
 
-    if (!lineId || !Number.isFinite(dayIndex)) {
+    if (!factoryId || !Number.isFinite(dayIndex)) {
       setActiveDrag(null);
       return;
     }
@@ -6445,10 +6371,10 @@ const AssignBoard = () => {
       const colors = BASIS_COLORS[basis] || BASIS_COLORS.PT;
 
       const newItem = {
-        id: `A-${cardId}-${lineId}-${dayIndex}`,
+        id: `A-${cardId}-${factoryId}-${dayIndex}`,
         cardId,
         workOrderId: card.workOrderId ?? null,
-        lineId,
+        factoryId,
         orderNo: card.orderNo ?? `ORD-NEW-${cardId}`,
         customer: card.customer,
         label: card.styleName,
@@ -6473,7 +6399,7 @@ const AssignBoard = () => {
         const planned = tryPlanAssignment({
           startIndex: dayIndex,
           stTotalSeconds,
-          lineId,
+          factoryId,
           assignments,
         });
 
@@ -6492,10 +6418,10 @@ const AssignBoard = () => {
           return;
         }
 
-        const nextAssignment = getNextAssignmentAfterDay(assignments, lineId, dayIndex);
+        const nextAssignment = getNextAssignmentAfterDay(assignments, factoryId, dayIndex);
         if (nextAssignment && !nextAssignment.isCompleted) {
-          const pushed = tryRebuildLineWithInsert({
-            lineId,
+          const pushed = tryRebuildFactoryScopeWithInsert({
+            factoryId,
             insertIndex: dayIndex,
             insertBeforeId: nextAssignment.id,
             insertItem: newItem,
@@ -6510,8 +6436,8 @@ const AssignBoard = () => {
         return;
       }
 
-      const pushed = tryRebuildLineWithInsert({
-        lineId,
+      const pushed = tryRebuildFactoryScopeWithInsert({
+        factoryId,
         insertIndex: dayIndex,
         insertAfterId: targetOnDay.id,
         insertItem: newItem,
@@ -6539,7 +6465,7 @@ const AssignBoard = () => {
         ) || 0
       );
       const sameStartAnchor =
-        String(lineId) === String(movingAssignment?.lineId) &&
+        String(factoryId) === String(movingAssignment?.factoryId) &&
         dayIndex === toSignedInt(movingAssignment?.startIndex, 0) &&
         (!targetOnDay || targetOnDay.id === assignmentId);
       if (producedQty > 0 && !sameStartAnchor) {
@@ -6561,11 +6487,11 @@ const AssignBoard = () => {
 
         const filtered = prev.filter((item) => item.id !== assignmentId);
 
-        const stTotalSeconds = getAssignmentScheduledStTotalSeconds(target, days, lineCapacityById);
+        const stTotalSeconds = getAssignmentScheduledStTotalSeconds(target, days, factoryScopeCapacityById);
 
         if (!targetOnDay || targetOnDay.id === assignmentId) {
           // Dropped on same day & same line ? nothing to change
-          if (dayIndex === target.startIndex && String(lineId) === String(target.lineId)) {
+          if (dayIndex === target.startIndex && String(factoryId) === String(target.factoryId)) {
             return prev;
           }
 
@@ -6574,7 +6500,7 @@ const AssignBoard = () => {
           const planned = tryPlanAssignment({
             startIndex: dayIndex,
             stTotalSeconds,
-            lineId,
+            factoryId,
             assignments: filtered,
           });
 
@@ -6583,7 +6509,7 @@ const AssignBoard = () => {
               syncAssignmentDateKeys(
                 {
                   ...target,
-                  lineId,
+                  factoryId,
                   ...planned,
                 },
                 startDateRef.current
@@ -6602,13 +6528,13 @@ const AssignBoard = () => {
             insertAfterId = targetOnDay.id;
           }
         } else {
-          const nextAssignment = getNextAssignmentAfterDay(filtered, lineId, dayIndex, assignmentId);
+          const nextAssignment = getNextAssignmentAfterDay(filtered, factoryId, dayIndex, assignmentId);
           if (nextAssignment && !nextAssignment.isCompleted) insertBeforeId = nextAssignment.id;
         }
 
         if (insertAfterId || insertBeforeId) {
-          const pushed = tryRebuildLineWithInsert({
-            lineId,
+          const pushed = tryRebuildFactoryScopeWithInsert({
+            factoryId,
             insertIndex: dayIndex,
             insertAfterId,
             insertBeforeId,
@@ -6827,8 +6753,8 @@ const AssignBoard = () => {
         basis: getCardBasis(mergedCard),
       };
       const rest = prev.filter((item) => item.id !== targetAssignmentId);
-      const replaced = tryRebuildLineWithReplace({
-        lineId: target.lineId,
+      const replaced = tryRebuildFactoryScopeWithReplace({
+        factoryId: target.factoryId,
         targetId: targetAssignmentId,
         newItem: updated,
         assignments: rest.concat(target),
@@ -6870,8 +6796,8 @@ const AssignBoard = () => {
         basis: getCardBasis(mergedCard),
       };
       const rest = prev.filter((item) => item.id !== sourceAssignmentId);
-      const replaced = tryRebuildLineWithReplace({
-        lineId: target.lineId,
+      const replaced = tryRebuildFactoryScopeWithReplace({
+        factoryId: target.factoryId,
         targetId: targetAssignmentId,
         newItem: updated,
         assignments: rest,
@@ -7110,7 +7036,7 @@ const AssignBoard = () => {
               }}
             >
               <Typography variant="subtitle2">
-                {getUiMessage('assign.lineCapacityBoard', 'Line Capacity', languageCode)}
+                {getUiMessage('assign.factoryScopeCapacityBoard', 'Line Capacity', languageCode)}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
                 <MonthSelector
@@ -7134,11 +7060,11 @@ const AssignBoard = () => {
                   languageCode
                 )}
               </Typography>
-              <LineMonthCapacityBoard
-                rows={lineMonthCapacityBoardRows}
+              <FactoryMonthCapacityBoard
+                rows={factoryMonthCapacityBoardRows}
                 monthKeys={visibleMonthKeys}
-                loading={lineMonthCapacityLoading}
-                error={lineMonthCapacityError}
+                loading={factoryMonthCapacityLoading}
+                error={factoryMonthCapacityError}
                 languageCode={languageCode}
                 searchTerm={deferredSearchTerm}
                 onOpenContextMenu={handleContextMenuOpen}
@@ -7415,8 +7341,8 @@ const AssignBoard = () => {
                       </Typography>
                     ) : null}
                     <Typography variant="body2">
-                      <strong>{getUiMessage('assign.lineLabel', 'Line', languageCode)}:</strong>{' '}
-                      {detailLine?.name || '-'}
+                      <strong>{getUiMessage('assign.factoryScopeLabel', 'Line', languageCode)}:</strong>{' '}
+                      {detailFactoryScope?.name || '-'}
                     </Typography>
                     {detailAssignment && (
                       <>

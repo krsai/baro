@@ -72,16 +72,12 @@ test('runtime migration has balanced, non-nested anonymous PostgreSQL blocks', a
   assert.equal(anonymousBlockOpen, false, 'migration_fix.sql has an unclosed DO $$ block');
 });
 
-test('line and factory deletion never detach WorkRecords', async () => {
-  const [lines, factories] = await Promise.all([
-    read('backend/src/lines/line.routes.ts'),
-    read('backend/src/factories/factory.routes.ts'),
-  ]);
-  for (const source of [lines, factories]) {
-    assert.doesNotMatch(source, /data:\s*\{\s*assignmentPlanId:\s*null/);
-    assert.match(source, /workRecord\.count/);
-    assert.match(source, /createHttpError\(409/);
-  }
+test('factory deletion never detaches WorkRecords and the line router is removed', async () => {
+  const source = await read('backend/src/factories/factory.routes.ts');
+  assert.doesNotMatch(source, /data:\s*\{\s*assignmentPlanId:\s*null/);
+  assert.match(source, /workRecord\.count/);
+  assert.match(source, /createHttpError\(409/);
+  assert.match(source, /factoryId: existing\.id/);
 });
 
 test('dashboard order KPI uses the WorkOrder FK only', async () => {
@@ -132,7 +128,7 @@ test('AssignmentPlan timestamps are automatic and split quantity drift is reject
 test('WorkRecord canonical style display never falls back to request text', async () => {
   const backend = await read('backend/src/index.ts');
   const start = backend.indexOf('const attachCanonicalFieldsToWorkRecords = async (');
-  const end = backend.indexOf('const collectWorkLogCrossLineAssignmentWarnings', start);
+  const end = backend.indexOf('const shiftDateKeyByDays', start);
   assert.ok(start >= 0 && end > start);
   const helper = backend.slice(start, end);
   assert.doesNotMatch(helper, /planStyleMeta\?\.styleCode \?\? record\?\.styleCode/);

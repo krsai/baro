@@ -128,8 +128,6 @@ const normalizePayrollProcessSnapshot = (process: any) => {
   return {
     factoryId: toPositiveIntOrNull(process?.factoryId),
     factoryName: resolveOptionalString(process?.factoryName, null),
-    lineId: toPositiveIntOrNull(process?.lineId),
-    lineName: resolveOptionalString(process?.lineName, null),
     styleId: toPositiveIntOrNull(process?.styleId),
     styleName: resolveOptionalString(process?.styleName, null),
     styleCode: resolveOptionalString(process?.styleCode, null),
@@ -269,23 +267,11 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   const monthEnd = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0))
     .toISOString().slice(0, 10);
 
-  const [lines, holidays, attendanceEntries, workLogs, payrollEmployees, payrollFactories, snapshot, payTypePolicies] = await Promise.all([
-    prisma.line.findMany({
-      where: { orgId, factoryId, isActive: true },
-      include: {
-        factory: {
-          select: {
-            id: true, name: true, nameKo: true, nameVi: true, managementStartDate: true, wagePerSecond: true,
-            productionAllowanceRates: {
-              where: { effectiveMonth: { lte: month } }, orderBy: { effectiveMonth: "desc" }, take: 1,
-              select: { wagePerSecond: true },
-            },
-          },
-        },
-        employees: { include: { role: true } },
-      },
-      orderBy: [{ factoryId: "asc" }, { name: "asc" }],
-    }),
+  const [factories, holidays, attendanceEntries, workLogs, payrollEmployees, payrollFactories, snapshot, payTypePolicies] = await Promise.all([
+    prisma.factory.findMany({ where: { orgId, id: factoryId }, include: {
+      employees: { include: { role: true } },
+      productionAllowanceRates: { where: { effectiveMonth: { lte: month } }, orderBy: { effectiveMonth: "desc" }, take: 1, select: { wagePerSecond: true } },
+    }}),
     prisma.organizationHoliday.findMany({
       where: { orgId, holidayDate: { gte: monthStart, lte: monthEnd } },
       select: { holidayDate: true },
@@ -315,7 +301,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         },
         workRecords: {
           select: {
-            lineId: true, workerId: true, quantity: true, ctSeconds: true,
+            workerId: true, quantity: true, ctSeconds: true,
             createdAt: true, updatedAt: true,
             effectiveCoverageStartDate: true, effectiveCoverageEndDate: true,
             worker: { include: { role: true } },
@@ -396,37 +382,37 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     !attendanceKeys.has(`${row.factoryId}:${row.workerId}:${row.date}`)
   );
   const employeeById = new Map<number, any>();
-  for (const line of lines) for (const employee of line.employees) employeeById.set(employee.id, employee);
+  for (const factory of factories) for (const employee of factory.employees) employeeById.set(employee.id, employee);
   for (const workLog of workLogs) {
     for (const record of workLog.workRecords) {
       if (record.worker) employeeById.set(record.worker.id, record.worker);
     }
   }
 
-  const groups = lines
-    .map((line) => {
-      const employeesForLine = new Map(line.employees.map((employee) => [employee.id, employee]));
+  const groups = factories
+    .map((factory) => {
+      const employeesForFactory = new Map(factory.employees.map((employee) => [employee.id, employee]));
       for (const workLog of workLogs) {
         for (const record of workLog.workRecords) {
-          if (record.lineId === line.id && record.worker) {
-            employeesForLine.set(record.worker.id, record.worker);
+          if (workLog.factoryId === factory.id && record.worker) {
+            employeesForFactory.set(record.worker.id, record.worker);
           }
         }
       }
-      const employees = Array.from(employeesForLine.values()).filter(
+      const employees = Array.from(employeesForFactory.values()).filter(
         (employee) =>
           isPayrollEmployeeRelevantForMonth(employee, getPayrollMonthRange(month)) &&
           resolveEmployeeEffectivePayType(employee) === EMPLOYEE_PAY_TYPE.OUTPUT
       );
       if (employees.length === 0) return null;
-      const factoryStart = resolveFactoryManagementStartDateKey(line.factory);
+      const factoryStart = resolveFactoryManagementStartDateKey(factory);
       const expectedDates = monthWorkingDates.filter((dateKey) => dateKey >= factoryStart);
       const workDateKeys = new Set<string>();
       let productionAllowance = 0;
       let invalidCalculationBasisCount = 0;
       for (const workLog of workLogs) {
         for (const record of workLog.workRecords) {
-          if (record.lineId !== line.id) continue;
+          if (workLog.factoryId !== factory.id) continue;
           const coverageStart = String(record.effectiveCoverageStartDate || workLog.coverageStartDate || workLog.displayDate || "");
           const coverageEnd = String(record.effectiveCoverageEndDate || workLog.coverageEndDate || workLog.displayDate || coverageStart);
           expectedDates.forEach((dateKey) => {
@@ -453,17 +439,15 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       const missingAttendance = employees.flatMap((employee) =>
         expectedDates
           .filter((dateKey) => employeeExpectedOnDate(employee, dateKey))
-          .filter((dateKey) => !attendanceKeys.has(`${line.factoryId}:${employee.id}:${dateKey}`))
+          .filter((dateKey) => !attendanceKeys.has(`${factory.id}:${employee.id}:${dateKey}`))
           .map((dateKey) => ({ workerId: employee.id, workerName: resolvePayrollEmployeeName(employee), date: dateKey }))
       );
       return {
-        factoryId: line.factoryId,
-        factoryName: line.factory.name,
-        factoryNameKo: line.factory.nameKo,
-        factoryNameVi: line.factory.nameVi,
-        lineId: line.id,
-        lineName: line.name,
-        configuredWagePerSecond: resolveFactoryProductionAllowanceRate(line.factory),
+        factoryId: factory.id,
+        factoryName: factory.name,
+        factoryNameKo: factory.nameKo,
+        factoryNameVi: factory.nameVi,
+        configuredWagePerSecond: resolveFactoryProductionAllowanceRate(factory),
         employeeCount: employees.length,
         expectedWorkingDayCount: expectedDates.length,
         workRecordedDayCount: workDateKeys.size,
@@ -472,7 +456,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         ),
         attendanceRecordedCount: employees.reduce(
           (sum, employee) => sum + expectedDates.filter(
-            (dateKey) => employeeExpectedOnDate(employee, dateKey) && attendanceKeys.has(`${line.factoryId}:${employee.id}:${dateKey}`)
+            (dateKey) => employeeExpectedOnDate(employee, dateKey) && attendanceKeys.has(`${factory.id}:${employee.id}:${dateKey}`)
           ).length, 0
         ),
         missingWorkDates,
@@ -508,10 +492,10 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   const currentCalculatedByWorkerId = new Map(
     currentCalculatedEmployees.map((employee) => [employee.workerId, employee])
   );
-  const groupTotal = (employee: any, factoryId: number, lineId: number) =>
+  const groupTotal = (employee: any, factoryId: number) =>
     ensureArray(employee?.processes)
       .filter((process) =>
-        Number(process?.factoryId) === factoryId && Number(process?.lineId) === lineId
+        Number(process?.factoryId) === factoryId
       )
       .reduce((sum, process) => sum + toPayrollAmount(process?.totalEarnings, 0), 0);
   const snapshotByWorkerId = new Map(
@@ -526,7 +510,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   ));
   const groupsWithRecalculation = groups.map((group) => {
     const sourceChangedAfterCalculation = Boolean(snapshot && workLogs.some((workLog) => {
-      const records = workLog.workRecords.filter((record) => record.lineId === group.lineId);
+      const records = workLog.factoryId === group.factoryId ? workLog.workRecords : [];
       if (records.length === 0) return false;
       return [
         workLog.createdAt,
@@ -535,7 +519,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       ].some((changedAt) => new Date(changedAt).getTime() > snapshot.lockedAt.getTime());
     }));
     const snapshotTotal = snapshotEmployees.reduce(
-      (sum, employee) => sum + groupTotal(employee, group.factoryId, group.lineId),
+      (sum, employee) => sum + groupTotal(employee, group.factoryId),
       0
     );
     const workerIds = new Set([
@@ -546,7 +530,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       const stored = snapshotByWorkerId.get(workerId);
       const current = currentCalculatedByWorkerId.get(workerId);
       const source = stored?.rateOverridden ? stored : current;
-      return sum + groupTotal(source, group.factoryId, group.lineId);
+      return sum + groupTotal(source, group.factoryId);
     }, 0);
     const calculatedBasisChanged = Boolean(
       snapshot && Math.abs(expectedTotal - snapshotTotal) > 0.000001
@@ -554,7 +538,6 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     const configuredRateChanged = Boolean(snapshot && snapshotEmployees.some((employee) =>
       !employee.rateOverridden && ensureArray(employee.processes).some((process) =>
         Number(process?.factoryId) === group.factoryId &&
-        Number(process?.lineId) === group.lineId &&
         Math.abs(
           toPayrollAmount(process?.wagePerSecond, 0) -
           toPayrollAmount(group.configuredWagePerSecond, 0)
@@ -963,8 +946,8 @@ export const getPayrollByMonth = async (
     };
   }
 
-  const [workLogRows, payrollLines] = await Promise.all([
-    prisma.workLog.findMany({
+  const workLogRows = await prisma.workLog.findMany(
+    {
       where: { orgId, factoryId, displayDate: { startsWith: month } },
       include: {
         factory: {
@@ -978,10 +961,7 @@ export const getPayrollByMonth = async (
         },
         workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
       },
-    }),
-    prisma.line.findMany({ where: { orgId, factoryId }, select: { id: true, name: true } }),
-  ]);
-  const payrollLinesById = new Map(payrollLines.map((line) => [line.id, line]));
+    });
   const workLogs = workLogRows.filter(
     (workLog) =>
       String(workLog.displayDate || "") >= resolveFactoryManagementStartDateKey(workLog.factory)
@@ -1058,8 +1038,6 @@ export const getPayrollByMonth = async (
         {
           factoryId: number | null;
           factoryName: string | null;
-          lineId: number | null;
-          lineName: string | null;
           styleId: number | null;
           styleName: string | null;
           styleCode: string | null;
@@ -1171,8 +1149,8 @@ export const getPayrollByMonth = async (
       const styleName = resolveWorkRecordStyleName(record);
       const styleCode = resolveWorkRecordStyleCode(record);
       const processKey = hasStyleProcess
-        ? `factory:${workLog.factoryId ?? "none"}:line:${record.lineId ?? "none"}:style-process:${styleProcessId}`
-        : `factory:${workLog.factoryId ?? "none"}:line:${record.lineId ?? "none"}:missing-style-process`;
+        ? `factory:${workLog.factoryId ?? "none"}:style-process:${styleProcessId}`
+        : `factory:${workLog.factoryId ?? "none"}:missing-style-process`;
       if (!hasStyleProcess) {
         payrollBreakdownMissingStyleProcessCount += 1;
       }
@@ -1180,11 +1158,6 @@ export const getPayrollByMonth = async (
         emp.processes.set(processKey, {
           factoryId: workLog.factoryId ?? null,
           factoryName: resolveOptionalString(workLog.factory?.name, null),
-          lineId: record.lineId ?? null,
-          lineName: resolveOptionalString(
-            record.lineId ? payrollLinesById.get(record.lineId)?.name : null,
-            null
-          ),
           styleId,
           styleName,
           styleCode,
@@ -1235,8 +1208,6 @@ export const getPayrollByMonth = async (
         processes: Array.from(emp.processes.values()).map((process) => ({
           factoryId: process.factoryId,
           factoryName: process.factoryName,
-          lineId: process.lineId,
-          lineName: process.lineName,
           styleId: process.styleId,
           styleName: process.styleName,
           styleCode: process.styleCode,
