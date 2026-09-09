@@ -6,7 +6,6 @@ const EXCEL_DAY_MS = 24 * 60 * 60 * 1000;
 
 const VIETNAMESE_DIACRITIC_PATTERN = /[\u0300-\u036f]/g;
 const NON_ALPHANUMERIC_PATTERN = /[^a-z0-9]/g;
-const DIGIT_PATTERN = /\d+/g;
 
 const HEADER_KEYWORDS = {
   workerId: {
@@ -54,9 +53,10 @@ const buildSurnameGivenNameKey = (value) => {
   return `${tokens[0]}::${tokens[tokens.length - 1]}`;
 };
 
-const toDigits = (value) => {
-  const digits = toText(value).match(DIGIT_PATTERN);
-  return digits ? digits.join('') : '';
+const normalizeEmployeeNumber = (value) => {
+  const text = toText(value).replace(/^'/, '');
+  const match = text.match(/^(?:[A-Za-z]{2,3}-)?(\d+)$/);
+  return match ? match[1].replace(/^0+(?=\d)/, '') : text;
 };
 
 const toMinuteText = (totalMinutes) => {
@@ -226,15 +226,16 @@ export const parseAttendanceImportFile = async (file) => {
   };
 };
 
-const buildEmployeeResolver = (employees = []) => {
-  const byNumericId = new Map();
+const buildEmployeeResolver = (employees = [], languageCode = 'ko') => {
+  const byEmployeeNumber = new Map();
   const byNameBuckets = new Map();
   const byNameKeyBuckets = new Map();
 
   employees.forEach((employee) => {
-    const numericIdKey = String(Number(employee?.id));
-    if (numericIdKey && numericIdKey !== 'NaN') {
-      byNumericId.set(numericIdKey, employee);
+    const numericIdKey = normalizeEmployeeNumber(employee?.employeeNo);
+    if (numericIdKey) {
+      if (!byEmployeeNumber.has(numericIdKey)) byEmployeeNumber.set(numericIdKey, []);
+      byEmployeeNumber.get(numericIdKey).push(employee);
     }
 
     const normalizedName = normalizeAscii(employee?.name);
@@ -255,13 +256,28 @@ const buildEmployeeResolver = (employees = []) => {
   });
 
   return (event) => {
-    const idDigits = toDigits(event?.workerCode);
+    const idDigits = normalizeEmployeeNumber(event?.workerCode);
     if (idDigits) {
-      const normalizedId = String(Number(idDigits));
-      const byId = byNumericId.get(normalizedId);
-      if (byId) {
-        return { employee: byId, reason: 'matched_id' };
+      // Excel IDs are employee numbers, never database primary keys.
+      const candidates = byEmployeeNumber.get(idDigits) || [];
+      if (!candidates.length) return { employee: null, reason: 'unmatched_worker' };
+      const byId = candidates[0];
+      const name = normalizeAscii(event?.workerName);
+      const key = buildSurnameGivenNameKey(event?.workerName);
+      const compatible = !name || name === normalizeAscii(byId.name) || (
+        !(byNameBuckets.get(name) || []).length && key && key === buildSurnameGivenNameKey(byId.name)
+      );
+      if (candidates.length !== 1 || !compatible) {
+        const message = {
+          ko: '사번·이름 불일치 또는 사번 중복입니다. 직원 정보와 엑셀을 확인하세요',
+          en: 'Employee number/name mismatch or duplicate number. Check employees and the spreadsheet',
+          vi: 'Mã nhân viên và tên không khớp hoặc mã bị trùng. Kiểm tra nhân viên và tệp Excel',
+        };
+        const error = new Error(`${message[languageCode] || message.en}: ${event.workerCode} / ${event.workerName}`);
+        error.code = 'ATTENDANCE_EMPLOYEE_CONFLICT';
+        throw error;
       }
+      return { employee: byId, reason: 'matched_employee_number' };
     }
 
     const normalizedName = normalizeAscii(event?.workerName);
@@ -298,8 +314,9 @@ const buildEmployeeResolver = (employees = []) => {
 export const buildAttendanceImportPlan = ({
   events = [],
   employees = [],
+  languageCode = 'ko',
 }) => {
-  const resolveEmployee = buildEmployeeResolver(employees);
+  const resolveEmployee = buildEmployeeResolver(employees, languageCode);
   const groupedByDateWorker = new Map();
   const unmatchedReasonCount = {
     missing_worker_key: 0,
@@ -333,10 +350,13 @@ export const buildAttendanceImportPlan = ({
       groupedByDateWorker.set(signature, {
         dateKey,
         workerId: Math.trunc(workerId),
+        workerName: toText(employee.name) || toText(event.workerName),
         minMinute: minuteOfDay,
         maxMinute: minuteOfDay,
+        timestamps: new Set([event.occurredAt.valueOf()]),
       });
     } else {
+      current.timestamps.add(event.occurredAt.valueOf());
       current.minMinute = Math.min(current.minMinute, minuteOfDay);
       current.maxMinute = Math.max(current.maxMinute, minuteOfDay);
     }
@@ -350,11 +370,19 @@ export const buildAttendanceImportPlan = ({
       byDate.set(item.dateKey, []);
     }
 
+    const singlePunch = item.timestamps.size === 1;
+    const missingIn = singlePunch && item.minMinute >= 12 * 60;
+    const missingOut = singlePunch && !missingIn;
+    const notes = {
+      ko: missingIn ? '출근 기록 없음 → 08:00 출근 자동 생성' : '퇴근 기록 없음 → 17:00 퇴근 자동 생성',
+      en: missingIn ? 'Missing clock-in → 08:00 clock-in auto-filled' : 'Missing clock-out → 17:00 clock-out auto-filled',
+      vi: missingIn ? 'Thiếu giờ vào → tự động bổ sung giờ vào 08:00' : 'Thiếu giờ ra → tự động bổ sung giờ ra 17:00',
+    };
     byDate.get(item.dateKey).push({
       workerId: item.workerId,
-      clockIn: toMinuteText(item.minMinute),
-      clockOut: item.maxMinute > item.minMinute ? toMinuteText(item.maxMinute) : null,
-      note: null,
+      clockIn: missingIn ? '08:00' : toMinuteText(item.minMinute),
+      clockOut: missingOut ? '17:00' : (missingIn || item.maxMinute > item.minMinute ? toMinuteText(item.maxMinute) : null),
+      note: singlePunch ? `${item.workerName}: ${notes[languageCode] || notes.en}` : null,
     });
   });
 
@@ -406,7 +434,7 @@ export const mergeImportedAttendanceEntries = (
       workerId: normalizedWorkerId,
       clockIn: toText(entry?.clockIn) || current.clockIn || null,
       clockOut: toText(entry?.clockOut) || current.clockOut || null,
-      note: current.note || null,
+      note: [...new Set([...toText(current.note).split('\n'), toText(entry?.note)].filter(Boolean))].join('\n') || null,
     });
   });
 

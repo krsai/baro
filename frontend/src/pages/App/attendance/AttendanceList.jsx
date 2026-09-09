@@ -622,6 +622,7 @@ const AttendanceList = () => {
         const importPlan = buildAttendanceImportPlan({
           events: parsed.events,
           employees: workers,
+          languageCode,
         });
         if (!importPlan.dailyEntries.length) {
           showNotification(

@@ -17,6 +17,7 @@
     "test:sales-prices": "npm --prefix backend run build && node --test scripts/sales-price-regression.test.mjs",
     "test:relationship-bucket-integration": "npm --prefix backend run build && node scripts/relationship-time-bucket-integration.test.mjs",
     "test:attendance-fallback": "npm --prefix backend run build && node --test scripts/attendance-fallback-regression.test.mjs",
+    "test:attendance-import": "node --test scripts/attendance-import-regression.test.mjs",
     "test:at-training": "npm --prefix backend run build && node --test scripts/at-training-regression.test.mjs",
     "test:database-target-guard": "node --test scripts/database-target-guard-regression.test.mjs",
     "test:employee-number": "npm --prefix backend run build && node --test scripts/employee-number-regression.test.mjs",

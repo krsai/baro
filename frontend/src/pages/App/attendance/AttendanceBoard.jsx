@@ -556,6 +556,7 @@ const AttendanceBoard = ({
       const plan = buildAttendanceImportPlan({
         events: parsed.events,
         employees: attendanceEmployees,
+        languageCode,
       });
       const selectedDay = plan.dailyEntries.find((item) => item.workDate === dateKey);
       if (!selectedDay || selectedDay.entries.length === 0) {
