@@ -1,3 +1,4 @@
+import { hasValidAssignmentProcessRefs, invalidAssignmentProcessRefIds, snapshotProcessIds, assertAssignmentProcessRefs, SNAPSHOT_REFERENCE_ERROR } from "./utils/assignmentSnapshotIntegrity";
 import { assignmentBoardRevision, assertEditRevision, editTransaction } from "./utils/editRevision";
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
@@ -15572,6 +15573,8 @@ const resolveAssignmentCtSnapshotSaveReadiness = ({
     reason = "snapshot piece CT total missing";
   } else if (ctTotalSeconds === null) {
     reason = "snapshot assignment CT total missing";
+  } else if (!hasValidAssignmentProcessRefs(assignment, false)) {
+    reason = SNAPSHOT_REFERENCE_ERROR;
   } else if (toPositiveIntOrNull(snapshot?.styleProcessVersionId) !== null) {
     // A versioned assignment is validated against its immutable stored snapshot.
     // The current StyleProcess rows may be a newer, still-unconfirmed draft.
@@ -22250,7 +22253,7 @@ const toDateValueFromDateKeyForAssignmentSchedule = (
 const resolveAssignmentPlanRequiredProcessGroups = (plan: any): string[][] => {
   const snapshot = resolveNormalizedAssignmentCtSnapshot(plan);
   const processRows = ensureArray(snapshot?.processes);
-  if (processRows.length === 0) return [];
+  if (!snapshotProcessIds(plan?.assignmentCtSnapshot)) return [];
 
   const groups = processRows
     .map((process) => {
@@ -22591,7 +22594,9 @@ const calculateRemainingStTotalSecondsFromProcessProgress = ({
   );
   if (normalizedGroups.length === 0) return null;
   const snapshotProcesses = ensureArray(assignmentStSnapshot?.processes);
-  if (snapshotProcesses.length === 0) return null;
+  const snapshotIds = snapshotProcessIds(assignmentStSnapshot);
+  const groupIds = normalizedGroups.map(group => group.length === 1 ? resolveStyleProcessIdFromAssignmentProcessKey(group[0]) : null);
+  if (!snapshotIds || groupIds.length !== snapshotIds.length || new Set(groupIds).size !== groupIds.length || groupIds.some(id => id === null || !snapshotIds.includes(id))) return null;
   const snapshotByStyleProcessId = new Map<number, any>();
   snapshotProcesses.forEach((process) => {
     const styleProcessId = toPositiveIntOrNull(process?.styleProcessId);
@@ -23123,6 +23128,7 @@ const buildLineMonthCapacityRows = async ({
     ],
     context: "buildLineMonthCapacityRows",
   });
+  const invalidProcessPlanIds = await invalidAssignmentProcessRefIds(prisma, orgId, plans);
   const stateAssignmentsByExternalId = new Map<string, any>();
   const workRows = await loadAssignmentPlanProgressWorkRows({
     orgId,
@@ -23450,6 +23456,7 @@ const buildLineMonthCapacityRows = async ({
       return;
     }
 
+    const hasInvalidProcessReferences = invalidProcessPlanIds.has(plan.id);
     const requiredProcessGroups = resolveAssignmentPlanRequiredProcessGroups(plan);
     const applicableQuantityByKey = resolveAssignmentPlanRequiredProcessApplicableQuantities(plan);
     const snapshot = resolveNormalizedAssignmentCtSnapshot(plan);
@@ -23539,7 +23546,7 @@ const buildLineMonthCapacityRows = async ({
     // it from the backlog sum and surface it as a diagnostic instead.
     const isProgressUnknown =
       plan?.isCompleted !== true &&
-      (isStSnapshotMissing ||
+      (hasInvalidProcessReferences || isStSnapshotMissing ||
         (progressRatio == null &&
           exactRemainingStTotalSeconds == null &&
           cumulativeTotalDone > 0));
@@ -24657,6 +24664,7 @@ const buildAssignmentPlanProgressRows = async (
     allWorkRecordMonths
   );
 
+  const invalidProcessPlanIds = await invalidAssignmentProcessRefIds(prisma, orgId, plans);
   const rows = plans.map((plan) => {
     const planId = Number(plan.id);
     const stats = statsByPlanId.get(planId) || {
@@ -24667,6 +24675,7 @@ const buildAssignmentPlanProgressRows = async (
       hasRangeCoverage: false,
       records: [],
     };
+    const hasInvalidProcessReferences = invalidProcessPlanIds.has(plan.id);
     const requiredProcessGroups = resolveAssignmentPlanRequiredProcessGroups(plan);
     const applicableQuantityByKey = resolveAssignmentPlanRequiredProcessApplicableQuantities(plan);
     const plannedQuantity = resolveAssignmentQuantity(plan);
@@ -24762,6 +24771,7 @@ const buildAssignmentPlanProgressRows = async (
     const hasWorkProgressReachedCompletion =
       totalExpected != null && totalExpected > 0 && totalDone >= totalExpected;
     const hasExactProcessCompletion = Boolean(
+      !hasInvalidProcessReferences &&
       baselineQuantityRaw != null &&
         baselineQuantityRaw > 0 &&
         processCount != null &&
@@ -24779,7 +24789,8 @@ const buildAssignmentPlanProgressRows = async (
     // real recorded number next to the real target, e.g. "225 target / 510
     // recorded" for a MALE_ONLY process with legacy pre-gender-split records.
     const reviewProcessTotals = ensureArray(ctSnapshot?.processes).map((process, index) => {
-      const group = requiredProcessGroups[index] ?? [];
+      const processId = toPositiveIntOrNull(process?.styleProcessId);
+      const group = processId ? [`style-process:${processId}`] : [];
       const rawQuantity = group.reduce(
         (max, key) =>
           Math.max(max, Math.max(0, Math.round(Number(stats.processTotalsByKey.get(key) || 0)))),
@@ -24833,7 +24844,7 @@ const buildAssignmentPlanProgressRows = async (
             )
           : ratioProgressForRemainingRatio;
     const isProgressUnknown =
-      isStSnapshotMissing ||
+      hasInvalidProcessReferences || isStSnapshotMissing ||
       (ratioProgressUnknownCandidate && exactRemainingStTotalSeconds == null);
     const schedulerProgressPercent =
       progressForRemainingRatio == null
@@ -24998,7 +25009,7 @@ const buildAssignmentPlanProgressRows = async (
       | "IN_PROGRESS"
       | "REVIEW_REQUIRED"
       | "PRODUCTION_COMPLETED" =
-      isMarkedCompleted || Boolean(productionCompletedDateKey) || hasExactProcessCompletion
+      isMarkedCompleted || (!hasInvalidProcessReferences && (Boolean(productionCompletedDateKey) || hasExactProcessCompletion))
       ? ASSIGNMENT_STATUS_PRODUCTION_COMPLETED
       : hasWorkProgressReachedCompletion
         ? ASSIGNMENT_STATUS_REVIEW_REQUIRED
@@ -25138,6 +25149,7 @@ const buildAssignmentPlanProgressRows = async (
       schedulerProgressPercent,
       isStUnknown,
       isProgressUnknown,
+      hasInvalidProcessReferences,
       hasRangeCoverage: stats.hasRangeCoverage,
       lineOrphanWorkRecordCount,
       hasOrphanWorkRecords: lineOrphanWorkRecordCount > 0,
@@ -25670,6 +25682,7 @@ const completeAssignmentPlanProduction = async ({
     };
   }
   const currentProgressRows = await buildAssignmentPlanProgressRows(orgId, [externalId]);
+  if (currentProgressRows[0]?.hasInvalidProcessReferences) return { ok: false as const, status: 409, error: SNAPSHOT_REFERENCE_ERROR };
   const currentScheduleStatus =
     resolveOptionalString(currentProgressRows[0]?.scheduleStatus, null) ??
     ASSIGNMENT_STATUS_IN_PROGRESS;
@@ -26404,6 +26417,7 @@ app.patch([
   if (plan.isCompleted) {
     return res.status(409).json({ ok: false, error: "assignment plan already completed" });
   }
+  await assertAssignmentProcessRefs(prisma, organization.id, [plan]);
   const plannedQuantity = resolveAssignmentQuantity(plan);
   if (!plannedQuantity || plannedQuantity <= 0) {
     return res.status(409).json({ ok: false, error: "assignment quantity is missing" });
@@ -29988,6 +30002,7 @@ app.put("/assignment-board-state", async (req, res) => {
         );
       })
     );
+    await assertAssignmentProcessRefs(tx, organization.id, planSyncTargetAssignments.filter(item => existingPlanByExternalIdForStTotals.has(resolveAssignmentExternalId(item) ?? "")).map(item => ({ ...item, styleId: item.styleId ?? ctSnapshotPreparation.cardById.get(String(item.cardId))?.styleId })));
     const removedExternalIdList = Array.from(removedExternalIds.values());
     const assignmentScopes =
       planSyncTargetAssignments.length > 0
@@ -30264,6 +30279,7 @@ app.put("/assignment-board-state", async (req, res) => {
         );
         return {
           ...item,
+          styleId,
           styleProcessVersionId: version.id,
           assignmentCtSnapshot,
           assignmentCtTotalSeconds: assignmentCtSnapshot?.assignmentCtTotalSeconds ?? null,
@@ -30278,6 +30294,7 @@ app.put("/assignment-board-state", async (req, res) => {
           stTotalSeconds: assignmentStTotalSeconds,
         };
       });
+      await assertAssignmentProcessRefs(tx, organization.id, versionedCreatePlanRows);
       await tx.assignmentPlan.createMany({
         data: versionedCreatePlanRows.map((item: any) => {
           const cardId = resolveOptionalString(item?.cardId, null);
@@ -32982,7 +32999,7 @@ const ensureInitialStyleProcessVersion = async ({
 };
 
 const assignmentCtSnapshotMatchesProcessVersion = (plan: any, version: any) => {
-  if (!plan || !version) return false;
+  if (!plan || !version || !hasValidAssignmentProcessRefs(plan)) return false;
   if (
     toPositiveIntOrNull(plan?.styleProcessVersionId) !==
       toPositiveIntOrNull(version?.id) ||
@@ -33041,6 +33058,7 @@ app.get("/styles/:styleId/process-versions", async (req, res) => {
       processOrgId: accessContext.organization.id,
     }),
   ]);
+  const invalidReferencePlanIds = await invalidAssignmentProcessRefIds(prisma, accessContext.organization.id, assignments.map(plan => ({ ...plan, styleId: style.id })));
   const liveProcesses = normalizeStyleProcesses(processMirror.get(style.id) ?? []);
   const latestVersion = versions[versions.length - 1];
   const versionById = new Map(versions.map((version) => [version.id, version]));
@@ -33053,7 +33071,7 @@ app.get("/styles/:styleId/process-versions", async (req, res) => {
     assignments: assignments.map((plan) => ({ assignmentPlanId: plan.id, externalId: plan.externalId,
       orderNo: plan.workOrder?.orderNumber ?? "", assignmentQuantity: plan.assignmentQuantity ?? 0,
       assignedAt: plan.createdAt, workRecordCount: plan.workRecords.length, versionId: plan.styleProcessVersionId,
-      needsSnapshotRefresh: !assignmentCtSnapshotMatchesProcessVersion(
+      needsSnapshotRefresh: invalidReferencePlanIds.has(plan.id) || !assignmentCtSnapshotMatchesProcessVersion(
         plan,
         versionById.get(plan.styleProcessVersionId ?? -1)
       ) })),
@@ -33110,6 +33128,7 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
     prisma.styleProcessVersion.findMany({ where: { orgId: organization.id, styleId: style.id }, orderBy: { versionNumber: "asc" } }),
     prisma.assignmentPlan.findMany({ where: { orgId: organization.id, styleId: style.id }, select: { id: true, workOrderId: true, assignmentQuantity: true, styleProcessVersionId: true, assignmentCtSnapshot: true, assignmentStSnapshot: true, workRecords: { select: { id: true } } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
   ]);
+  await assertAssignmentProcessRefs(prisma, organization.id, plans.map(plan => ({ ...plan, styleId: style.id })));
   const starts = new Map<number | null, number | null>(ensureArray(req.body?.boundaries).map((row) => [toPositiveIntOrNull(row?.versionId), toPositiveIntOrNull(row?.startAssignmentPlanId)]));
   const firstVersion = versions[0];
   if (!firstVersion) throw createHttpError(409, "style has no confirmed process version");
@@ -33199,6 +33218,7 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
         `assignment ${plan.id}: style ${style.id} has a male-only/female-only process but its order lines include ${genderQuantities?.unspecified} unit(s) without an explicit gender - specify M/W gender for every order line of this style`
       );
     }
+    if (!hasValidAssignmentProcessRefs(plan)) throw createHttpError(409, SNAPSHOT_REFERENCE_ERROR);
     const withVersionProcesses = { id: style.id, code: style.code, name: style.name, processes: versionProcesses };
     const refreshed = buildEditableAssignmentCtSnapshotFromLiveStyle({ assignment: plan, card: { quantity: plan.assignmentQuantity }, style: withVersionProcesses, existingSnapshot: plan.assignmentCtSnapshot, updatedAt, updatedBy, genderQuantities });
     if (!refreshed.readiness.ready || !refreshed.assignment.assignmentCtSnapshot) throw createHttpError(409, `assignment ${plan.id}: ${refreshed.readiness.reason || "snapshot not ready"}`);

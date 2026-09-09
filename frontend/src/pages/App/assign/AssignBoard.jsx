@@ -3521,6 +3521,13 @@ const AssignBoard = () => {
   const resolveBoardSaveErrorMessage = useCallback((error, fallbackMessage) => {
     const raw = String(error?.message || '').trim();
     const lowerRaw = raw.toLowerCase();
+    if (raw.includes('SNAPSHOT_REFERENCE_INVALID')) {
+      return languageCode === 'en'
+        ? 'Some assignments have invalid process references. Review the warnings in process version management. Existing work times have not been changed.'
+        : languageCode === 'vi'
+          ? 'Một số phân công có liên kết công đoạn không hợp lệ. Hãy kiểm tra cảnh báo trong quản lý phiên bản công đoạn. Thời gian hiện có không bị thay đổi.'
+          : '공정 연결 확인이 필요한 배정이 있어 저장하지 않았습니다. 공정 버전 관리의 경고를 확인해 주세요. 기존 작업시간은 변경하지 않았습니다.';
+    }
     if (lowerRaw.includes('assignment version conflict')) {
       return getUiMessage(
         'assign.versionConflict',

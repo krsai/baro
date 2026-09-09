@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "audit:assignment-snapshots": "node scripts/audit-assignment-snapshot-integrity.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "prisma:prepare-client": "node scripts/run-prisma.js generate && npm run prisma:fix-entry",
     "prisma:migrate:deploy": "node scripts/run-prisma.js migrate deploy",

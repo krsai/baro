@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography } from '@mui/material';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { fetchStyleProcessVersions, saveStyleProcessVersionBoundaries } from '../../../../utils/styleApi';
+import { useLanguage } from '../../../../context/LanguageContext';
 
 // One distinct color per version, git-log-graph style, so the branch line
 // segment and dot a version "owns" in the timeline visually match the chip
@@ -29,6 +30,12 @@ const translateVersionBoundaryError = (message) => {
 };
 
 const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, notify }) => {
+  const { languageCode } = useLanguage();
+  const integrityWarning = languageCode === 'en'
+    ? 'Some assignments need their process references reviewed. Existing work times are preserved and are not recalculated automatically.'
+    : languageCode === 'vi'
+      ? 'Một số phân công cần kiểm tra liên kết công đoạn. Thời gian hiện có được giữ nguyên và không tự động tính lại.'
+      : '공정 연결 확인이 필요한 배정이 있습니다. 기존 작업시간은 유지되며 자동으로 다시 계산하지 않습니다.';
   const [versions, setVersions] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [boundaries, setBoundaries] = useState({});
@@ -38,25 +45,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      let data = await fetchStyleProcessVersions(styleId, { orgId, ownerOrgId });
-      if (data.assignments.some((assignment) => assignment.needsSnapshotRefresh)) {
-        const repairBoundaries = {};
-        data.versions.forEach((version) => {
-          const first = data.assignments.find((assignment) => assignment.versionId === version.id);
-          if (first) repairBoundaries[version.id] = first.assignmentPlanId;
-        });
-        await saveStyleProcessVersionBoundaries(
-          styleId,
-          data.versions
-            .map((version) => ({
-              versionId: version.id,
-              startAssignmentPlanId: repairBoundaries[version.id],
-            }))
-            .filter((row) => row.startAssignmentPlanId),
-          { orgId, ownerOrgId }
-        );
-        data = await fetchStyleProcessVersions(styleId, { orgId, ownerOrgId });
-      }
+      const data = await fetchStyleProcessVersions(styleId, { orgId, ownerOrgId });
       setVersions(data.versions);
       setAssignments(data.assignments);
       const next = {};
@@ -116,7 +105,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
       setSavedBoundaries(boundaries);
       notify('공정 버전 적용 구간을 저장했습니다.', 'success'); onClose();
     } catch (error) {
-      notify(translateVersionBoundaryError(error?.message) || error?.message || '적용 구간을 저장하지 못했습니다.', 'error');
+      notify(String(error?.message || '').includes('SNAPSHOT_REFERENCE_INVALID') ? integrityWarning : translateVersionBoundaryError(error?.message) || error?.message || '적용 구간을 저장하지 못했습니다.', 'error');
     }
     finally { setBusy(false); }
   };
@@ -125,6 +114,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
     <Dialog open={open} onClose={busy ? undefined : onClose} fullWidth maxWidth="md">
       <DialogTitle>공정 버전 관리</DialogTitle>
       <DialogContent dividers>
+        {assignments.some(item => item.needsSnapshotRefresh) && <Alert severity="warning" sx={{ mb: 2 }}>{integrityWarning}</Alert>}
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
           <Box sx={{ width: { xs: '100%', md: 260 }, flexShrink: 0 }}>
             <Stack spacing={.75}>
@@ -231,6 +221,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
                     }} />
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%', minWidth: 0 }}>
                       <Typography variant="body2" fontWeight={600} noWrap sx={{ minWidth: 70, fontSize: '.78rem' }}>{assignment.orderNo || assignment.externalId}</Typography>
+                      {assignment.needsSnapshotRefresh && <Chip size="small" color="warning" label={languageCode === 'en' ? 'Review references' : languageCode === 'vi' ? 'Kiểm tra liên kết' : '공정 연결 확인'} />}
                       <Typography variant="body2" color="text.secondary" noWrap sx={{ flex: 1, fontSize: '.75rem' }}>배정 {assignment.assignmentQuantity} · {new Date(assignment.assignedAt).toLocaleDateString()}</Typography>
                       {assignment.workRecordCount > 0 && <Typography variant="caption" color="text.secondary" noWrap sx={{ fontSize: '.7rem' }}>기록 {assignment.workRecordCount}</Typography>}
                       <Chip size="small" variant="outlined" label={assignment.activeVersion?.confirmedDate || '미지정'} sx={{ height: 22, maxWidth: 110, fontSize: '.7rem', color: dotColor, borderColor: dotColor }} />

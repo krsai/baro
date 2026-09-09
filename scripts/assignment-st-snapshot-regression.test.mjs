@@ -169,7 +169,7 @@ test('progress endpoint always rebuilds rows and the board bypasses request cach
 });
 
 test('assignment workflow exposes review and production-completed states', () => {
-  assert.match(backend, /isMarkedCompleted \|\| Boolean\(productionCompletedDateKey\) \|\| hasExactProcessCompletion[\s\S]{0,100}ASSIGNMENT_STATUS_PRODUCTION_COMPLETED/);
+  assert.match(backend, /isMarkedCompleted \|\| \(!hasInvalidProcessReferences && \(Boolean\(productionCompletedDateKey\) \|\| hasExactProcessCompletion\)\)[\s\S]{0,100}ASSIGNMENT_STATUS_PRODUCTION_COMPLETED/);
   assert.match(backend, /hasWorkProgressReachedCompletion[\s\S]{0,100}ASSIGNMENT_STATUS_REVIEW_REQUIRED/);
   assert.match(backend, /currentScheduleStatus !== ASSIGNMENT_STATUS_REVIEW_REQUIRED/);
   assert.match(assignBoard, /scheduleStatus \|\| ''\)\.trim\(\) === 'REVIEW_REQUIRED'\) return 'review'/);
