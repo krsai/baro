@@ -19,6 +19,7 @@ test('global month selector owns the preferred month input and stacked shift con
 
 test('single-month screens reuse the global month selector', () => {
   const screens = [
+    'frontend/src/pages/App/attendance/AttendanceList.jsx',
     'frontend/src/pages/App/assign/AssignBoard.jsx',
     'frontend/src/pages/App/ShipmentReview.jsx',
     'frontend/src/pages/App/work/WorkList.jsx',

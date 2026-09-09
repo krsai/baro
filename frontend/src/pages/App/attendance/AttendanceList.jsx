@@ -27,7 +27,7 @@ import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
-import AvailableMonthRangeSelector from '../../../components/AvailableMonthRangeSelector';
+import MonthSelector from '../../../components/MonthSelector';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
@@ -264,8 +264,7 @@ const AttendanceList = () => {
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
 
-  const [selectedStartMonth, setSelectedStartMonth] = useState('');
-  const [selectedEndMonth, setSelectedEndMonth] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState('');
   const [availableMonths, setAvailableMonths] = useState([]);
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
@@ -326,8 +325,7 @@ const AttendanceList = () => {
 
     if (!selectedFactoryId) {
       setAvailableMonths([]);
-      setSelectedStartMonth('');
-      setSelectedEndMonth('');
+      setSelectedMonth('');
       return () => controller.abort();
     }
 
@@ -345,11 +343,8 @@ const AttendanceList = () => {
         /^\d{4}-\d{2}$/.test(String(value || ''))
       );
       setAvailableMonths(months);
-      setSelectedStartMonth((previous) =>
-        months.includes(previous) ? previous : String(months[0] || '')
-      );
-      setSelectedEndMonth((previous) =>
-        months.includes(previous) ? previous : String(months[0] || '')
+      setSelectedMonth((previous) =>
+        months.includes(previous) ? previous : String([...months].sort().at(-1) || '')
       );
     };
 
@@ -364,7 +359,7 @@ const AttendanceList = () => {
     let cancelled = false;
     const controller = new AbortController();
 
-    if (!selectedFactoryId || !selectedStartMonth || !selectedEndMonth) {
+    if (!selectedFactoryId || !selectedMonth) {
       setRows([]);
       setEmployees([]);
       setLoadingRows(false);
@@ -377,26 +372,23 @@ const AttendanceList = () => {
     const loadRows = async () => {
       setLoadingRows(true);
       try {
-        const monthsToLoad = availableMonths.filter(
-          (month) => month >= selectedStartMonth && month <= selectedEndMonth
-        );
         const employeeQuery = buildQueryString({
           orgId: activeOrgId,
           factoryId: selectedFactoryId,
           membershipRole: 'WORKER',
         });
-        const [fetchedByMonth, fetchedEmployees] = await Promise.all([
-          Promise.all(monthsToLoad.map((month) => requestJSON('/attendance-entries' + buildQueryString({
+        const [fetchedRows, fetchedEmployees] = await Promise.all([
+          requestJSON('/attendance-entries' + buildQueryString({
             orgId: activeOrgId,
             factoryId: selectedFactoryId,
-            month,
-          }), { signal: controller.signal }))),
+            month: selectedMonth,
+          }), { signal: controller.signal }),
           requestJSON('/employees' + employeeQuery, {
             signal: controller.signal,
           }),
         ]);
         if (cancelled) return;
-        setRows(fetchedByMonth.flatMap((fetched) => (Array.isArray(fetched) ? fetched : [])));
+        setRows(Array.isArray(fetchedRows) ? fetchedRows : []);
         setEmployees(Array.isArray(fetchedEmployees) ? fetchedEmployees : []);
       } catch (_error) {
         if (cancelled || controller.signal.aborted) return;
@@ -419,11 +411,9 @@ const AttendanceList = () => {
   }, [
     activeOrgId,
     languageCode,
-    availableMonths,
     reloadToken,
     selectedFactoryId,
-    selectedEndMonth,
-    selectedStartMonth,
+    selectedMonth,
     showNotification,
   ]);
 
@@ -459,9 +449,9 @@ const AttendanceList = () => {
     });
 
     const nextRows = [];
-    const selectedStartDate = dayjs(`${selectedStartMonth}-01`);
-    const selectedEndDate = dayjs(`${selectedEndMonth}-01`).endOf('month');
-    if (!selectedStartMonth || !selectedEndMonth || !selectedStartDate.isValid() || !selectedEndDate.isValid()) return [];
+    const selectedStartDate = dayjs(`${selectedMonth}-01`);
+    const selectedEndDate = dayjs(`${selectedMonth}-01`).endOf('month');
+    if (!selectedMonth || !selectedStartDate.isValid() || !selectedEndDate.isValid()) return [];
     let cursor = selectedStartDate.startOf('month');
 
     while (!cursor.isAfter(selectedEndDate, 'day')) {
@@ -491,7 +481,7 @@ const AttendanceList = () => {
       (left, right) =>
         dayjs(right.workDate).valueOf() - dayjs(left.workDate).valueOf()
     );
-  }, [employees, rows, selectedEndMonth, selectedStartMonth]);
+  }, [employees, rows, selectedMonth]);
 
   const filteredRows = useMemo(() => {
     const keyword = String(searchTerm || '').trim().toLowerCase();
@@ -770,14 +760,14 @@ const AttendanceList = () => {
                 ))}
               </Select>
             </FormControl>,
-            <AvailableMonthRangeSelector
-              key="month-range"
-              months={availableMonths}
-              startMonth={selectedStartMonth}
-              endMonth={selectedEndMonth}
-              onStartChange={setSelectedStartMonth}
-              onEndChange={setSelectedEndMonth}
-              disabled={loadingRows}
+            <MonthSelector
+              key="month"
+              value={selectedMonth}
+              onChange={setSelectedMonth}
+              label={resolveText(TEXT.monthLabel, languageCode, 'Month')}
+              min={[...availableMonths].sort()[0]}
+              max={[...availableMonths].sort().at(-1)}
+              disabled={loadingRows || availableMonths.length === 0}
             />,
           ]}
         />
