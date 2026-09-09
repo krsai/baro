@@ -78,3 +78,18 @@ export const getPayTypeOptions = (languageCode = getCurrentLanguageCode()) =>
     value,
     label: getPayTypeLabel(value, value, languageCode),
   }));
+
+// SalaryItem.category 저장값(BASE/ALLOWANCE/INCENTIVE)을 급여 체계 화면과 동일한
+// 표시 이름으로 바꾼다. "BASE"만 PAY_COMPONENT_DEFAULT_LABELS의 키(BASE_SALARY)와
+// 이름이 달라 별도 매핑이 필요하다.
+const PAY_COMPONENT_CATEGORY_KEY_ALIASES = { BASE: 'BASE_SALARY' };
+
+export const getPayComponentLabel = (
+  category,
+  fallback = '-',
+  languageCode = getCurrentLanguageCode()
+) => {
+  const normalized = String(category || '').trim().toUpperCase();
+  const key = PAY_COMPONENT_CATEGORY_KEY_ALIASES[normalized] || normalized;
+  return resolveLocalizedText(PAY_COMPONENT_DEFAULT_LABELS[key], languageCode) || fallback;
+};

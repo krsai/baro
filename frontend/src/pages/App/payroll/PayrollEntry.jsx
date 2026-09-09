@@ -13,7 +13,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { useLanguage } from "../../../context/LanguageContext";
 import { buildQueryString, requestJSON } from "../../../utils/apiClient";
 import { formatNumberWithCommas } from "../../../utils/numberFormat";
-import { getPayTypeLabel, normalizePayType } from "../../../constants/payType";
+import { getPayComponentLabel, getPayTypeLabel, normalizePayType } from "../../../constants/payType";
 import { fetchAttributes } from "../../../utils/attributeApi";
 
 // Mirrors EmployeeBoard.jsx's active-member sort order (org role -> worker job role -> employeeNo -> name)
@@ -143,6 +143,18 @@ const formatDong = (value) =>
     maximumFractionDigits: 0,
   })} VND`;
 const productionAllowanceOf = (employee) => Number(employee?.productionAllowance ?? employee?.productionEarnings ?? 0) || 0;
+const EN_MONTH_ABBREVIATIONS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// 지급 월이 아닌 급여 항목(예: 반기 지급 근속수당의 7월 명세서)에 "다음 지급이 언제인지"를
+// 보여주기 위한 "YYYY-MM" 표시 포맷터.
+const formatPaymentMonthKey = (monthKey, languageCode) => {
+  if (!monthKey) return "-";
+  const [yearText, monthText] = String(monthKey).split("-");
+  const monthNumber = Number(monthText);
+  if (!yearText || !Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) return monthKey;
+  if (languageCode === "ko") return `${yearText}년 ${monthNumber}월`;
+  if (languageCode === "vi") return `Tháng ${monthNumber}/${yearText}`;
+  return `${EN_MONTH_ABBREVIATIONS[monthNumber - 1]} ${yearText}`;
+};
 const SALARY_ITEM_CATEGORY_ORDER = { BASE: 0, ALLOWANCE: 1, INCENTIVE: 2 };
 const normalizeEmployeePayType = (value) => {
   return normalizePayType(value, "GENERAL");
@@ -342,8 +354,8 @@ const PayrollEntry = () => {
           earnings: "지급 항목",
           amount: "금액",
           base: "기본급",
-          allowance: "일반 수당",
-          production: "생산수당",
+          allowance: "수당",
+          production: "성과급",
           deductions: "공제",
           net: "최종 지급액",
           pending: "미계산",
@@ -353,6 +365,7 @@ const PayrollEntry = () => {
           open: "급여표",
           preview: "계산 결과",
           productionFormulaRef: "산출 내역 참조",
+          nextPayment: "다음 지급",
         }
       : languageCode === "vi"
         ? {
@@ -363,7 +376,7 @@ const PayrollEntry = () => {
             amount: "Số tiền",
             base: "Lương cơ bản",
             allowance: "Phụ cấp",
-            production: "Phụ cấp sản lượng",
+            production: "Thưởng hiệu suất",
             deductions: "Khấu trừ",
             net: "Thực lĩnh",
             pending: "Chưa tính",
@@ -373,6 +386,7 @@ const PayrollEntry = () => {
             open: "Phiếu lương",
             preview: "Kết quả tính",
             productionFormulaRef: "Xem chi tiết bên dưới",
+            nextPayment: "Lần chi tiếp theo",
           }
         : {
             title: "Monthly Payslip",
@@ -381,8 +395,8 @@ const PayrollEntry = () => {
             earnings: "Earnings",
             amount: "Amount",
             base: "Base Salary",
-            allowance: "Allowances",
-            production: "Production Allowance",
+            allowance: "Allowance",
+            production: "Incentive",
             deductions: "Deductions",
             net: "Net Pay",
             pending: "Not calculated",
@@ -395,6 +409,7 @@ const PayrollEntry = () => {
             productionSubtotal: "Production Allowance Subtotal",
             details: "Production Details",
             productionFormulaRef: "See production details below",
+            nextPayment: "Next payment",
           };
   const unifiedPayrollText =
     languageCode === "ko"
@@ -522,15 +537,21 @@ const PayrollEntry = () => {
       const calculatedItems = Array.isArray(employee?.salaryItems) ? employee.salaryItems : [];
       if (calculatedItems.length > 0)
         return calculatedItems
-          .map((item, sourceIndex) => ({
-            key: item.code,
-            name: salaryItemName(item),
-            category: item.category,
-            formula: formatSalaryFormulaValues(item, employee?.parameters),
-            amount: formatDong(item.amount),
-            sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : sourceIndex,
-            sourceIndex,
-          }))
+          .map((item, sourceIndex) => {
+            const isPaymentMonth = item.isPaymentMonth !== false;
+            return {
+              key: item.code,
+              name: salaryItemName(item),
+              category: item.category,
+              formula: isPaymentMonth ? formatSalaryFormulaValues(item, employee?.parameters) : "-",
+              amount: isPaymentMonth
+                ? formatDong(item.amount)
+                : `${payslipText.nextPayment}: ${formatPaymentMonthKey(item.nextPaymentMonthKey, languageCode)}`,
+              isPaymentMonth,
+              sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : sourceIndex,
+              sourceIndex,
+            };
+          })
           .sort((left, right) =>
             (SALARY_ITEM_CATEGORY_ORDER[left.category] ?? 99) - (SALARY_ITEM_CATEGORY_ORDER[right.category] ?? 99)
             || left.sortOrder - right.sortOrder
@@ -566,8 +587,10 @@ const PayrollEntry = () => {
     },
     [
       formatSalaryFormulaValues,
+      languageCode,
       payslipText.allowance,
       payslipText.base,
+      payslipText.nextPayment,
       payslipText.pending,
       payslipText.production,
       payslipText.productionFormulaRef,
@@ -712,9 +735,9 @@ const PayrollEntry = () => {
                   <TableRow>
                     <TableCell>{text.employee}</TableCell>
                     <TableCell align="center">{payslipText.payType}</TableCell>
-                    <TableCell align="right">{payslipText.base}</TableCell>
-                    <TableCell align="right">{payslipText.allowance}</TableCell>
-                    <TableCell align="right">{payslipText.production}</TableCell>
+                    <TableCell align="right">{getPayComponentLabel("BASE", payslipText.base, languageCode)}</TableCell>
+                    <TableCell align="right">{getPayComponentLabel("ALLOWANCE", payslipText.allowance, languageCode)}</TableCell>
+                    <TableCell align="right">{getPayComponentLabel("INCENTIVE", payslipText.production, languageCode)}</TableCell>
                     <TableCell align="right">{payslipText.deductions}</TableCell>
                     <TableCell align="right">{payslipText.net}</TableCell>
                     <TableCell align="center">{payslipText.open}</TableCell>
@@ -726,6 +749,10 @@ const PayrollEntry = () => {
                     const salaryItems = Array.isArray(employee.salaryItems) ? employee.salaryItems : [];
                     const baseAmount = salaryItems.filter((item) => item.category === "BASE").reduce((sum, item) => sum + Number(item.amount || 0), 0);
                     const allowanceAmount = salaryItems.filter((item) => item.category === "ALLOWANCE").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+                    // 성과급 = 고정 생산수당(CT 기반) + 초과 수당 등 다른 INCENTIVE 항목 전부의 합.
+                    // productionAllowanceOf(employee)만 쓰면 새로 추가된 성과급 항목(예: 초과
+                    // 수당)이 이 열에서 누락되어 최종 지급액과 어긋나 보인다.
+                    const incentiveAmount = salaryItems.filter((item) => item.category === "INCENTIVE").reduce((sum, item) => sum + Number(item.amount || 0), 0);
                     return (
                       <React.Fragment key={key}>
                         <TableRow hover>
@@ -744,7 +771,7 @@ const PayrollEntry = () => {
                           <TableCell align="right">{formatDong(allowanceAmount)}</TableCell>
                           <TableCell align="right">
                             {employee.payType === "OUTPUT" ? (
-                              formatDong(productionAllowanceOf(employee))
+                              formatDong(incentiveAmount)
                             ) : (
                               <Typography variant="body2" color="text.secondary">
                                 {payslipText.notApplicable}
@@ -801,39 +828,50 @@ const PayrollEntry = () => {
         <DialogContent dividers>
           <Stack spacing={2} sx={{ display: payslipPageIndex === 0 ? "flex" : "none" }}>
             <Typography variant="subtitle2" fontWeight={700} fontSize={13}>{payslipInfoText.basicInfo}</Typography>
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: { xs: "130px 1fr", md: "150px 1fr 150px 1fr" },
-                rowGap: 1,
-                columnGap: 2,
-              }}
-            >
-              <Typography variant="body2" color="text.secondary">{payslipText.employee}</Typography>
-              <Typography variant="body2" fontWeight={700}>{payslipEmployee?.workerName || "-"}</Typography>
-              <Typography variant="body2" color="text.secondary">{payslipText.payType}</Typography>
-              <Typography variant="body2">
-                {getPayTypeLabel(payslipEmployee?.payType, payslipEmployee?.payType || "-", languageCode)}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">{payslipInfoText.actualWorkdays}</Typography>
-              <Typography variant="body2">{Number(payslipEmployee?.parameters?.ACTUAL_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
-              <Typography variant="body2" color="text.secondary">{payslipInfoText.scheduledWorkdays}</Typography>
-              <Typography variant="body2">{Number(payslipEmployee?.parameters?.SCHEDULED_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
-              <Typography variant="body2" color="text.secondary">{payslipInfoText.holidayWorkdays}</Typography>
-              <Typography variant="body2">{Number(payslipEmployee?.parameters?.HOLIDAY_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
-              {payslipEmployee?.payType === "OUTPUT" && <>
-                <Typography variant="body2" color="text.secondary">{payslipInfoText.productionStBaselineHours}</Typography>
-                <Typography variant="body2">{formatNumberWithCommas(Number(payslipEmployee?.parameters?.PRODUCTION_ST_BASELINE_HOURS || 0), { maximumFractionDigits: 1 })} {payslipInfoText.hours}</Typography>
-                <Typography variant="body2" color="text.secondary">{payslipInfoText.productionStHours}</Typography>
-                <Typography variant="body2">{formatNumberWithCommas(Number(payslipEmployee?.parameters?.PRODUCTION_ST_HOURS || 0), { maximumFractionDigits: 1 })} {payslipInfoText.hours}</Typography>
-              </>}
-              <Typography variant="body2" color="text.secondary">{payslipInfoText.fullAttendance}</Typography>
-              <Typography variant="body2">{Number(payslipEmployee?.parameters?.FULL_ATTENDANCE_FACTOR || 0) >= 1 ? payslipInfoText.yes : payslipInfoText.no}</Typography>
-              <Typography variant="body2" color="text.secondary">{payslipInfoText.tenureYears}</Typography>
-              <Typography variant="body2">{formatNumberWithCommas(Number(payslipEmployee?.parameters?.TENURE_YEARS || 0), { maximumFractionDigits: 2 })} {payslipInfoText.years}</Typography>
-              <Typography variant="body2" color="text.secondary">{payslipInfoText.salaryVersion}</Typography>
-              <Typography variant="body2">{payslipEmployee?.salarySystemVersionNumber ? `Ver.${payslipEmployee.salarySystemVersionNumber}` : "-"}</Typography>
-            </Box>
+            {(() => {
+              const infoGridSx = { display: "grid", gridTemplateColumns: { xs: "130px 1fr", md: "150px 1fr 150px 1fr" }, columnGap: 2 };
+              const productionStBaselineHours = Number(payslipEmployee?.parameters?.PRODUCTION_ST_BASELINE_HOURS || 0);
+              const productionStHours = Number(payslipEmployee?.parameters?.PRODUCTION_ST_HOURS || 0);
+              const productionStAchievedPercent = productionStBaselineHours > 0 ? (productionStHours / productionStBaselineHours) * 100 : 0;
+              // 각 행을 독립된 그리드로 분리해 항목 쌍이 항상 의도한 자리에 오도록 한다
+              // (하나의 긴 그리드에 넣으면 앞쪽 항목 개수에 따라 나중 항목의 좌/우 위치가
+              // 흐트러진다 - OUTPUT 전용 행이 정확히 기준근무시간/생산 총 ST 한 쌍으로만
+              // 구성되게 하기 위한 구조).
+              return <Stack spacing={1}>
+                <Box sx={infoGridSx}>
+                  <Typography variant="body2" color="text.secondary">{payslipText.employee}</Typography>
+                  <Typography variant="body2" fontWeight={700}>{payslipEmployee?.workerName || "-"}</Typography>
+                  <Typography variant="body2" color="text.secondary">{payslipText.payType}</Typography>
+                  <Typography variant="body2">
+                    {getPayTypeLabel(payslipEmployee?.payType, payslipEmployee?.payType || "-", languageCode)}
+                  </Typography>
+                </Box>
+                <Box sx={infoGridSx}>
+                  <Typography variant="body2" color="text.secondary">{payslipInfoText.actualWorkdays}</Typography>
+                  <Typography variant="body2">{Number(payslipEmployee?.parameters?.ACTUAL_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
+                  <Typography variant="body2" color="text.secondary">{payslipInfoText.scheduledWorkdays}</Typography>
+                  <Typography variant="body2">{Number(payslipEmployee?.parameters?.SCHEDULED_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
+                </Box>
+                <Box sx={infoGridSx}>
+                  <Typography variant="body2" color="text.secondary">{payslipInfoText.holidayWorkdays}</Typography>
+                  <Typography variant="body2">{Number(payslipEmployee?.parameters?.HOLIDAY_WORKDAYS || 0)} {payslipInfoText.days}</Typography>
+                  <Typography variant="body2" color="text.secondary">{payslipInfoText.fullAttendance}</Typography>
+                  <Typography variant="body2">{Number(payslipEmployee?.parameters?.FULL_ATTENDANCE_FACTOR || 0) >= 1 ? payslipInfoText.yes : payslipInfoText.no}</Typography>
+                </Box>
+                {payslipEmployee?.payType === "OUTPUT" && <Box sx={infoGridSx}>
+                  <Typography variant="body2" color="text.secondary">{payslipInfoText.productionStBaselineHours}</Typography>
+                  <Typography variant="body2">{formatNumberWithCommas(productionStBaselineHours, { maximumFractionDigits: 1 })} {payslipInfoText.hours}</Typography>
+                  <Typography variant="body2" color="text.secondary">{payslipInfoText.productionStHours}</Typography>
+                  <Typography variant="body2">{formatNumberWithCommas(productionStHours, { maximumFractionDigits: 1 })} {payslipInfoText.hours} ({formatNumberWithCommas(productionStAchievedPercent, { maximumFractionDigits: 1 })}%)</Typography>
+                </Box>}
+                <Box sx={infoGridSx}>
+                  <Typography variant="body2" color="text.secondary">{payslipInfoText.tenureYears}</Typography>
+                  <Typography variant="body2">{formatNumberWithCommas(Number(payslipEmployee?.parameters?.TENURE_YEARS || 0), { maximumFractionDigits: 2 })} {payslipInfoText.years}</Typography>
+                  <Typography variant="body2" color="text.secondary">{payslipInfoText.salaryVersion}</Typography>
+                  <Typography variant="body2">{payslipEmployee?.salarySystemVersionNumber ? `Ver.${payslipEmployee.salarySystemVersionNumber}` : "-"}</Typography>
+                </Box>
+              </Stack>;
+            })()}
             <Divider />
             <Table size="small" sx={{ "& .MuiTableCell-root": { fontSize: 13, py: 0.75 } }}>
               <TableHead>
@@ -846,13 +884,14 @@ const PayrollEntry = () => {
               <TableBody>
                 {payslipEmployee &&
                   payslipRows(payslipEmployee).map((row) => (
-                    <TableRow key={row.key}>
+                    <TableRow key={row.key} sx={{ opacity: row.isPaymentMonth === false ? 0.55 : 1 }}>
                       <TableCell sx={{ fontWeight: 600 }}>{row.name}</TableCell>
                       <TableCell sx={{ color: "text.secondary" }}>{row.formula || "-"}</TableCell>
                       <TableCell
                         align="right"
                         sx={{
-                          color: row.amount === payslipText.pending ? "text.secondary" : "text.primary",
+                          color: row.amount === payslipText.pending || row.isPaymentMonth === false ? "text.secondary" : "text.primary",
+                          fontStyle: row.isPaymentMonth === false ? "italic" : "normal",
                         }}
                       >
                         {row.amount}

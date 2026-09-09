@@ -45,6 +45,18 @@ const buildPayrollEmployeeKey = (workerId: unknown, fallbackName: unknown): stri
   return `n-${fallbackKey || "unknown"}`;
 };
 
+// A quarterly/semiannual/annual item that isn't paid this month still shows up
+// on the payslip (amount 0) with the next month it *will* be paid, so an
+// employee doesn't have to guess why e.g. 근속수당 vanished from July's payslip.
+const resolveNextPaymentMonthKey = (paymentMonths: number[], currentYear: number, currentMonthNumber: number): string | null => {
+  if (!paymentMonths.length) return null;
+  const sorted = [...paymentMonths].sort((a, b) => a - b);
+  const nextInSameYear = sorted.find((candidate) => candidate > currentMonthNumber);
+  const year = nextInSameYear !== undefined ? currentYear : currentYear + 1;
+  const monthValue = nextInSameYear !== undefined ? nextInSameYear : sorted[0];
+  return `${year}-${String(monthValue).padStart(2, "0")}`;
+};
+
 const assertPayrollMonth = (month: string) => {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(month || ""))) {
     throw createHttpError(400, "month is required (format: YYYY-MM)");
@@ -192,6 +204,11 @@ export const normalizePayrollSnapshotEmployee = (employee: any) => {
       amount: toPayrollAmount(item?.amount, 0),
       formula: ensureArray(item?.formula).map(String),
       rate: toPayrollAmountOrNull(item?.rate),
+      // 과거(이 필드 도입 전) 스냅샷의 항목은 애초에 지급 대상 월만 저장됐으므로
+      // isPaymentMonth가 없으면 true로 취급한다. nextPaymentMonthKey는 그 시절
+      // 계산되지 않았으므로 복구하지 않고 null로 둔다.
+      isPaymentMonth: item?.isPaymentMonth !== false,
+      nextPaymentMonthKey: resolveOptionalString(item?.nextPaymentMonthKey, null),
     })),
     grossSalary: toPayrollAmount(employee?.grossSalary ?? employee?.totalSalary, productionEarnings),
     deductions: toPayrollAmount(employee?.deductions, 0),
@@ -728,39 +745,50 @@ const buildIntegratedPayrollEmployees = async (
         PRODUCTION_ST_BASELINE_HOURS: productionStBaselineSeconds / 3600,
         PRODUCTION_ST_HOURS: productionStSeconds / 3600,
       };
+      const monthYearNumber = Number(month.slice(0, 4));
+      // paymentMonths no longer gates membership in this list - an item that doesn't
+      // support this employee's pay type at all is still excluded here, but a
+      // quarterly/semiannual/annual item that simply isn't due this month stays in
+      // the list (amount 0, isPaymentMonth false) so the payslip can show when it's
+      // next due instead of silently disappearing.
       const applicableItems = ensureArray(items).filter((item) => {
         const payTypes = ensureArray(item?.payTypes).map((value) => String(value).toUpperCase());
-        const paymentMonths = ensureArray(item?.paymentMonths).map(Number);
-        const supportsPayType = payTypes.includes(payType) || (
+        return payTypes.includes(payType) || (
           payType === EMPLOYEE_PAY_TYPE.OUTPUT_FIXED &&
           String(item?.category || "").toUpperCase() !== "INCENTIVE" &&
           payTypes.includes(EMPLOYEE_PAY_TYPE.OUTPUT)
         );
-        return supportsPayType && (paymentMonths.length === 0 || paymentMonths.includes(monthNumber));
       });
       const salaryItems = applicableItems.map((item) => {
         const code = String(item?.code || item?.id || "");
-        const matchingRates = ensureArray(rates).filter((row) =>
-          String(row?.salaryItemCode || "") === code &&
-          Number(row?.gradeId) === employee.gradeId
-        );
-        const rate = matchingRates.find((row) => String(row?.payType || "").toUpperCase() === payType)
-          || (payType === EMPLOYEE_PAY_TYPE.OUTPUT_FIXED
-            ? matchingRates.find((row) => String(row?.payType || "").toUpperCase() === EMPLOYEE_PAY_TYPE.OUTPUT)
-            : null);
+        const itemPaymentMonths = ensureArray(item?.paymentMonths).map(Number);
+        const isPaymentMonth = itemPaymentMonths.length === 0 || itemPaymentMonths.includes(monthNumber);
         const formula = ensureArray(item?.formula).map(String);
-        // Only formulas that actually start with GRADE_RATE need a configured rate row.
-        // The fixed production-allowance passthrough item (formula === [PRODUCTION_ALLOWANCE])
-        // never has a rate; a custom INCENTIVE item that starts with GRADE_RATE (e.g. a
-        // production-ST-excess bonus) does, exactly like a normal BASE/ALLOWANCE item.
-        if (formula[0] === "GRADE_RATE" && !rate) {
-          throw createHttpError(409, `salary rate is missing for employee ${employee.id}, item ${code}`);
+        let amount = 0;
+        let rate: number | null = null;
+        if (isPaymentMonth) {
+          const matchingRates = ensureArray(rates).filter((row) =>
+            String(row?.salaryItemCode || "") === code &&
+            Number(row?.gradeId) === employee.gradeId
+          );
+          const matchedRate = matchingRates.find((row) => String(row?.payType || "").toUpperCase() === payType)
+            || (payType === EMPLOYEE_PAY_TYPE.OUTPUT_FIXED
+              ? matchingRates.find((row) => String(row?.payType || "").toUpperCase() === EMPLOYEE_PAY_TYPE.OUTPUT)
+              : null);
+          // Only formulas that actually start with GRADE_RATE need a configured rate row.
+          // The fixed production-allowance passthrough item (formula === [PRODUCTION_ALLOWANCE])
+          // never has a rate; a custom INCENTIVE item that starts with GRADE_RATE (e.g. a
+          // production-ST-excess bonus) does, exactly like a normal BASE/ALLOWANCE item.
+          if (formula[0] === "GRADE_RATE" && !matchedRate) {
+            throw createHttpError(409, `salary rate is missing for employee ${employee.id}, item ${code}`);
+          }
+          rate = matchedRate ? toPayrollAmount(matchedRate.amount, 0) : null;
+          const itemParameters = { ...parameters, GRADE_RATE: toPayrollAmount(matchedRate?.amount, 0) };
+          amount = Number(evaluateSalaryFormula(formula, itemParameters) ?? 0);
+          const capValue = toPayrollAmountOrNull(item?.capValue);
+          if (capValue !== null) amount = Math.min(amount, capValue);
+          amount = Math.max(0, Math.round(amount));
         }
-        const itemParameters = { ...parameters, GRADE_RATE: toPayrollAmount(rate?.amount, 0) };
-        let amount = Number(evaluateSalaryFormula(formula, itemParameters) ?? 0);
-        const capValue = toPayrollAmountOrNull(item?.capValue);
-        if (capValue !== null) amount = Math.min(amount, capValue);
-        amount = Math.max(0, Math.round(amount));
         return {
           code,
           name: resolveOptionalString(item?.name, null) || code,
@@ -771,7 +799,9 @@ const buildIntegratedPayrollEmployees = async (
           sortOrder: Number.isFinite(Number(item?.sortOrder)) ? Number(item.sortOrder) : null,
           formula,
           amount,
-          rate: rate ? toPayrollAmount(rate.amount, 0) : null,
+          rate,
+          isPaymentMonth,
+          nextPaymentMonthKey: isPaymentMonth ? null : resolveNextPaymentMonthKey(itemPaymentMonths, monthYearNumber, monthNumber),
         };
       });
       const grossSalary = salaryItems.reduce((sum, item) => sum + item.amount, 0);
