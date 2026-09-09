@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Button,
-  CircularProgress,
   Chip,
   FormControl,
   InputLabel,
@@ -20,7 +18,6 @@ import {
 } from '@mui/material';
 import LoginIcon from '@mui/icons-material/Login';
 import LogoutIcon from '@mui/icons-material/Logout';
-import UploadFileIcon from '@mui/icons-material/UploadFile';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
@@ -37,11 +34,6 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { resolveNativeInputLocale } from '../../../utils/appLanguage';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
-import {
-  buildAttendanceImportPlan,
-  mergeImportedAttendanceEntries,
-  parseAttendanceImportFile,
-} from './attendanceFileImport';
 
 const toDateKey = (value) => dayjs(value).format('YYYY-MM-DD');
 
@@ -99,6 +91,28 @@ const calcWorkedMinutes = (clockIn, clockOut) => {
   return 24 * 60 - inMinutes + outMinutes;
 };
 
+const buildAttendanceEntryRows = (entriesByWorker) => {
+  const rows = Object.entries(entriesByWorker || {}).reduce((acc, [workerId, value]) => {
+    const parsedWorkerId = Number(workerId);
+    if (!Number.isFinite(parsedWorkerId) || parsedWorkerId <= 0) return acc;
+    const clockIn = String(value?.clockIn || '').trim();
+    const clockOut = String(value?.clockOut || '').trim();
+    const note = String(value?.note || '').trim();
+    if (!clockIn && !clockOut && !note) return acc;
+    acc.push({
+      workerId: Math.round(parsedWorkerId),
+      clockIn: clockIn || null,
+      clockOut: clockOut || null,
+      note: note || null,
+    });
+    return acc;
+  }, []);
+  return rows.sort((a, b) => a.workerId - b.workerId);
+};
+
+const buildAttendanceEntriesSignature = (entriesByWorker) =>
+  JSON.stringify(buildAttendanceEntryRows(entriesByWorker));
+
 const formatWorkedHours = (minutes) => {
   const value = Number(minutes);
   if (!Number.isFinite(value) || value < 0) return '-';
@@ -116,41 +130,6 @@ const TEXT = {
     en: 'Failed to load attendance entries.',
     vi: 'Không thể tai du lieu cham cong.',
   },
-  selectFactoryFirst: {
-    ko: '공장을 먼저 선택해 주세요.',
-    en: 'Select a factory first.',
-    vi: 'Hay chon nha may truoc.',
-  },
-  loadWorkersBeforeImport: {
-    ko: '작업자 목록을 불러온 후 업로드해 주세요.',
-    en: 'Upload after loading the worker list.',
-    vi: 'Hay tai danh sach cong nhan truoc khi nhap tep.',
-  },
-  noWorkersToMatch: {
-    ko: '매칭할 작업자 목록이 없습니다.',
-    en: 'No workers available for matching.',
-    vi: 'Không có cong nhan de doi chieu.',
-  },
-  noImportEvents: {
-    ko: '가져올 출퇴근 이벤트가 없습니다.',
-    en: 'No attendance events to import.',
-    vi: 'Không có su kien cham cong de nhap.',
-  },
-  noDataOnSelectedDate: {
-    ko: '선택한 근무일({dateKey})에 반영할 데이터가 없습니다.',
-    en: 'No data to apply on selected date ({dateKey}).',
-    vi: 'Không có du lieu de ap dung vao ngay da chon ({dateKey}).',
-  },
-  importApplied: {
-    ko: '업로드 반영 완료 ({dateKey}) - 반영 {appliedCount}명, 매칭 {matchedCount}건, 미매칭 {unmatchedCount}건',
-    en: 'Import applied ({dateKey}) - applied {appliedCount}, matched {matchedCount}, unmatched {unmatchedCount}',
-    vi: 'Đã áp dụng tep ({dateKey}) - ap dung {appliedCount}, khop {matchedCount}, khong khop {unmatchedCount}',
-  },
-  importFailed: {
-    ko: '파일 업로드에 실패했습니다.',
-    en: 'Failed to upload file.',
-    vi: 'Tai tep that bai.',
-  },
   saveSuccess: {
     ko: '출퇴근 입력을 저장했습니다.',
     en: 'Attendance entries saved.',
@@ -165,16 +144,6 @@ const TEXT = {
     ko: '출퇴근 상세',
     en: 'Attendance Detail',
     vi: 'Chi tiết cham cong',
-  },
-  cancel: {
-    ko: '취소',
-    en: 'Cancel',
-    vi: 'Huy',
-  },
-  list: {
-    ko: '목록',
-    en: 'List',
-    vi: 'Danh sách',
   },
   searchWorker: {
     ko: '작업자 검색',
@@ -195,16 +164,6 @@ const TEXT = {
     ko: '공장 {id}',
     en: 'Factory {id}',
     vi: 'Nhà máy {id}',
-  },
-  importing: {
-    ko: '업로드 중...',
-    en: 'Uploading...',
-    vi: 'Đang tải len...',
-  },
-  importFile: {
-    ko: '파일 업로드',
-    en: 'Upload File',
-    vi: 'Tai tep len',
   },
   atNotice: {
     ko: 'AT 계산은 스타일 메뉴의 AT 추정 버튼 실행 시 지난달까지의 작업기록과 출퇴근 기록을 기준으로 전체 재계산됩니다.',
@@ -312,15 +271,18 @@ const AttendanceBoard = ({
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
   const [employees, setEmployees] = useState([]);
   const [entriesByWorker, setEntriesByWorker] = useState({});
+  const [savedEntriesSignature, setSavedEntriesSignature] = useState('[]');
   const [loadingFactories, setLoadingFactories] = useState(false);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [loadingEntries, setLoadingEntries] = useState(false);
   const [savingEntries, setSavingEntries] = useState(false);
-  const [importingFile, setImportingFile] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const fileInputRef = React.useRef(null);
 
   const dateKey = useMemo(() => toDateKey(selectedDate), [selectedDate]);
+  const hasUnsavedEntryChanges = useMemo(
+    () => buildAttendanceEntriesSignature(entriesByWorker) !== savedEntriesSignature,
+    [entriesByWorker, savedEntriesSignature]
+  );
   const attendanceEmployees = useMemo(
     () => employees.filter((employee) => isAttendanceEmployeeVisibleOnDate(employee, dateKey)),
     [dateKey, employees]
@@ -445,6 +407,7 @@ const AttendanceBoard = ({
     const controller = new AbortController();
     if (!selectedFactoryId) {
       setEntriesByWorker({});
+      setSavedEntriesSignature('[]');
       setLoadingEntries(false);
       return () => {
         cancelled = true;
@@ -474,9 +437,11 @@ const AttendanceBoard = ({
           return acc;
         }, {});
         setEntriesByWorker(nextEntriesByWorker);
+        setSavedEntriesSignature(buildAttendanceEntriesSignature(nextEntriesByWorker));
       } catch (_error) {
         if (cancelled || controller.signal.aborted) return;
         setEntriesByWorker({});
+        setSavedEntriesSignature('[]');
         showNotification(
           resolveText(TEXT.fetchEntriesError, languageCode, 'Failed to load attendance entries.'),
           'error'
@@ -506,145 +471,11 @@ const AttendanceBoard = ({
     });
   };
 
-  const handleClickImport = () => {
-    if (!selectedFactoryId) {
-      showNotification(resolveText(TEXT.selectFactoryFirst, languageCode, 'Select a factory first.'), 'warning');
-      return;
-    }
-    fileInputRef.current?.click();
-  };
-
-  const handleImportFile = async (event) => {
-    const file = event?.target?.files?.[0] || null;
-    if (event?.target) event.target.value = '';
-    if (!file) return;
-
-    if (!selectedFactoryId) {
-      showNotification(resolveText(TEXT.selectFactoryFirst, languageCode, 'Select a factory first.'), 'warning');
-      return;
-    }
-    if (loadingEmployees) {
-      showNotification(
-        resolveText(
-          TEXT.loadWorkersBeforeImport,
-          languageCode,
-          'Upload after loading the worker list.'
-        ),
-        'warning'
-      );
-      return;
-    }
-    if (!attendanceEmployees.length) {
-      showNotification(
-        resolveText(TEXT.noWorkersToMatch, languageCode, 'No workers available for matching.'),
-        'warning'
-      );
-      return;
-    }
-
-    setImportingFile(true);
-    try {
-      const parsed = await parseAttendanceImportFile(file);
-      if (!parsed.events.length) {
-        showNotification(
-          resolveText(TEXT.noImportEvents, languageCode, 'No attendance events to import.'),
-          'warning'
-        );
-        return;
-      }
-
-      const plan = buildAttendanceImportPlan({
-        events: parsed.events,
-        employees: attendanceEmployees,
-        languageCode,
-      });
-      const selectedDay = plan.dailyEntries.find((item) => item.workDate === dateKey);
-      if (!selectedDay || selectedDay.entries.length === 0) {
-        showNotification(
-          formatTemplate(
-            resolveText(
-              TEXT.noDataOnSelectedDate,
-              languageCode,
-              'No data to apply on selected date ({dateKey}).'
-            ),
-            { dateKey }
-          ),
-          'warning'
-        );
-        return;
-      }
-
-      setEntriesByWorker((prev) => {
-        const existingRows = Object.entries(prev).reduce((acc, [workerId, value]) => {
-          const parsedWorkerId = Number(workerId);
-          if (!Number.isFinite(parsedWorkerId) || parsedWorkerId <= 0) return acc;
-          acc.push({
-            workerId: Math.trunc(parsedWorkerId),
-            clockIn: String(value?.clockIn || '').trim() || null,
-            clockOut: String(value?.clockOut || '').trim() || null,
-            note: String(value?.note || '').trim() || null,
-          });
-          return acc;
-        }, []);
-
-        const mergedRows = mergeImportedAttendanceEntries(existingRows, selectedDay.entries);
-        return mergedRows.reduce((acc, row) => {
-          const key = String(row?.workerId || '');
-          if (!key) return acc;
-          acc[key] = {
-            clockIn: String(row?.clockIn || ''),
-            clockOut: String(row?.clockOut || ''),
-            note: String(row?.note || ''),
-          };
-          return acc;
-        }, {});
-      });
-
-      showNotification(
-        formatTemplate(
-          resolveText(
-            TEXT.importApplied,
-            languageCode,
-            'Import applied ({dateKey}) - applied {appliedCount}, matched {matchedCount}, unmatched {unmatchedCount}'
-          ),
-          {
-            dateKey,
-            appliedCount: selectedDay.entries.length,
-            matchedCount: plan.matchedEventCount,
-            unmatchedCount: plan.unmatchedEventCount,
-          }
-        ),
-        'success'
-      );
-    } catch (error) {
-      showNotification(
-        error?.message || resolveText(TEXT.importFailed, languageCode, 'Failed to upload file.'),
-        'error'
-      );
-    } finally {
-      setImportingFile(false);
-    }
-  };
-
   const handleSaveEntries = async () => {
     if (!selectedFactoryId) return;
     setSavingEntries(true);
     try {
-      const entries = Object.entries(entriesByWorker).reduce((acc, [workerId, value]) => {
-        const parsedWorkerId = Number(workerId);
-        if (!Number.isFinite(parsedWorkerId) || parsedWorkerId <= 0) return acc;
-        const clockIn = String(value?.clockIn || '').trim();
-        const clockOut = String(value?.clockOut || '').trim();
-        const note = String(value?.note || '').trim();
-        if (!clockIn && !clockOut && !note) return acc;
-        acc.push({
-          workerId: Math.round(parsedWorkerId),
-          clockIn: clockIn || null,
-          clockOut: clockOut || null,
-          note: note || null,
-        });
-        return acc;
-      }, []);
+      const entries = buildAttendanceEntryRows(entriesByWorker);
       const query = buildQueryString({ orgId: activeOrgId });
       const rows = await requestJSON('/attendance-entries' + query, {
         method: 'PUT',
@@ -666,6 +497,7 @@ const AttendanceBoard = ({
         return acc;
       }, {});
       setEntriesByWorker(nextEntriesByWorker);
+      setSavedEntriesSignature(buildAttendanceEntriesSignature(nextEntriesByWorker));
       showNotification(resolveText(TEXT.saveSuccess, languageCode, 'Attendance entries saved.'), 'success');
       if (closeOnSave && typeof onClose === 'function') {
         onClose();
@@ -709,30 +541,9 @@ const AttendanceBoard = ({
       title={resolveText(TEXT.title, languageCode, 'Attendance Detail')}
       titleActions={(
         <Stack direction="row" spacing={1}>
-          {typeof onClose === 'function' ? (
-            <Button
-              variant="outlined"
-              onClick={onClose}
-              disabled={savingEntries}
-            >
-              {closeOnSave
-                ? resolveText(TEXT.cancel, languageCode, 'Cancel')
-                : resolveText(TEXT.list, languageCode, 'List')}
-            </Button>
-          ) : null}
-          <Button
-            variant="outlined"
-            startIcon={importingFile ? <CircularProgress size={16} /> : <UploadFileIcon />}
-            onClick={handleClickImport}
-            disabled={!selectedFactoryId || importingFile || loadingEmployees}
-          >
-            {importingFile
-              ? resolveText(TEXT.importing, languageCode, 'Uploading...')
-              : resolveText(TEXT.importFile, languageCode, 'Upload File')}
-          </Button>
           <SaveButton
             onClick={handleSaveEntries}
-            disabled={!selectedFactoryId || savingEntries}
+            disabled={!selectedFactoryId || savingEntries || !hasUnsavedEntryChanges}
             loading={savingEntries}
           />
         </Stack>
@@ -783,14 +594,6 @@ const AttendanceBoard = ({
         />
       )}
     >
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".xlsx,.xls,.csv"
-        onChange={handleImportFile}
-        style={{ display: 'none' }}
-      />
-
       <Alert severity="warning" sx={{ mb: 2 }}>
         {resolveText(
           TEXT.atNotice,
