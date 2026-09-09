@@ -1,5 +1,13 @@
 # TODO
 
+## 2026-09-09 출퇴근 실근무시간에 점심(휴게)시간이 포함되는 문제 — 정책 결정 필요, 미수정
+
+- **확인된 사실(코드로 직접 추적)**: `AttendanceEntry.workedSeconds`는 백엔드 `calculateWorkedSeconds(clockIn, clockOut)`(`backend/src/index.ts`)와 프론트 `calcWorkedMinutes()`(`frontend/src/pages/App/attendance/AttendanceBoard.jsx`) 둘 다 출근~퇴근의 순수 시간차만 계산하고 휴게시간을 전혀 빼지 않는다. 반면 급여/근태 판정의 기준값인 `standardWorkMinutes`(`backend/src/employees/employeePayTypePolicy.ts`)는 `spanMinutes - breakMinutes`로 이미 휴게시간을 뺀 순 근무시간이다. 08:00~17:00·휴게 60분 기본값 기준으로 실근무는 항상 9시간(원시)으로 기록되는데 기준 근무시간은 8시간(순)이라 매일 1시간이 구조적으로 어긋난다.
+- **영향 1 - 급여**: `backend/src/payroll/payroll.service.ts`의 `WORK_HOURS`/`OVERTIME_HOURS` 분리가 원시 실근무시간(9h)과 순 기준시간(8h)을 비교하므로, 정시 출퇴근·정상 점심시간을 지킨 직원도 매일 1시간의 가짜 연장근무가 잡힌다.
+- **영향 2 - AT 학습**: `backend/src/services/attendanceFallback.ts`의 `resolveAtAttendanceDay()`는 실제 출퇴근 기록이 있으면 이 원시값을 그대로 `laborInputSeconds`에 쓰고, 기록이 없는 날에만 순 8시간(`ATTENDANCE_DEFAULT_WORK_SECONDS`) 대체값을 쓴다. 즉 실제 기록이 있는 날이 대체값 적용일보다 오히려 더 많은 노동시간으로 학습되어(9h vs 8h) AT 회귀가 구조적으로 부풀려질 수 있다.
+- **왜 바로 고치지 않았는지**: `AGENTS.md`의 "검토할 사례"에 이미 "기본 근무가 점심시간 1시간을 제외한 08:00~17:00, 실근무 8시간인 경우... 정시보다 늦게 출근했더라도 당일 실근무 8시간을 채우면 하루 만근으로 인정할지"가 미확정 정책으로 남아 있다. 원시시간에서 무조건 `breakMinutes`를 빼면, 예를 들어 반차·조퇴로 08:00~12:00(4시간, 점심 없이 퇴근)만 일한 직원이 실제로는 4시간 일했는데 3시간으로 깎이는 등 부분 근무일을 부당하게 축소시킬 수 있다. 언제/어떤 조건으로 휴게시간을 뺄지(전체 근무구간이 휴게시간을 포함할 만큼 충분히 길 때만 빼는지, 실제 휴게 사용 여부를 별도로 기록할지 등)는 "정확 계산 원칙"상 임의로 정하지 않고 사용자 정책 확정 후 구현한다.
+- [ ] 위 정책을 확정한 뒤 `calculateWorkedSeconds`/`calcWorkedMinutes`(및 이를 사용하는 급여 정규/연장 분리, AT 학습 `laborInputSeconds`)에 일관되게 반영한다.
+
 ## 2026-09-03 BARO_APP_ANALYSIS_2026-08-31.md 재검토 후속 (코덱스 검토 반영)
 
 `BARO_APP_ANALYSIS_2026-08-31.md`의 완료 배정 삭제 레이스(1-2)와 `buildDateKey` invalid date 가드(3-3)는 코드 수정을 완료했다(원인·구현 메모는 해당 문서와 커밋 참고). 아래는 코덱스가 "문제의식은 맞지만 코드부터 바꾸면 위험하다"고 판단한, 조사·설계가 먼저 필요한 항목이다. 스키마·성능 변경은 이 조사 결과가 나온 뒤에 범위를 확정한다.
