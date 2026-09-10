@@ -46,7 +46,7 @@ import SearchInput from '../../../components/SearchInput';
 import SearchableSelect from '../../../components/SearchableSelect';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
-import { createAutocompleteFilterOptions } from '../../../utils/autocompleteSearch';
+import { createAutocompleteFilterOptions, matchesAutocompleteSearch } from '../../../utils/autocompleteSearch';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
@@ -1864,6 +1864,24 @@ const OrderList = () => {
   const getSelectedColorOption = (item) => getResolvedColorOption(item);
   const getSelectedGenderOption = (item) =>
     genderOptionByCode.get(normalizeGenderCode(item?.gender, '')) || null;
+  // SearchableSelect's default filter matches against every primitive field
+  // on the option object (see collectPrimitiveValues in autocompleteSearch.js),
+  // which for a style option includes `customer`. availableStyleOptions is
+  // already narrowed to the order's single buyer, so every option shares the
+  // same customer name - typing part of that name (e.g. "SAN" matching
+  // "THE SAN") then matched every style and made the filter look like it
+  // wasn't narrowing anything down. Only match on the fields a user is
+  // actually searching by here: style code and name.
+  const filterStyleAutocompleteOptions = (options, params) => {
+    const inputValue = params?.inputValue ?? '';
+    return (Array.isArray(options) ? options : []).filter((option) =>
+      matchesAutocompleteSearch(
+        { name: option?.name, styleCode: option?.styleCode },
+        inputValue,
+        (candidate) => candidate?.name || ''
+      )
+    );
+  };
   const filterColorAutocompleteOptions = (options, params) => {
     const filtered = filterColorOptions(options, params);
     const inputValue = String(params?.inputValue || '').trim();
@@ -3861,6 +3879,7 @@ const OrderList = () => {
                           >
                             <SearchableSelect
                               options={availableStyleOptions}
+                              filterOptions={filterStyleAutocompleteOptions}
                               value={groupStyleOption}
                               disabled={!selectedBuyerName}
                               onChange={(event, newValue, reason) => {
@@ -4266,6 +4285,7 @@ const OrderList = () => {
                               >
                                 <SearchableSelect
                                   options={availableStyleOptions}
+                                  filterOptions={filterStyleAutocompleteOptions}
                                   value={groupStyleOption}
                                   disabled={!selectedBuyerName}
                                   onChange={(event, newValue, reason) => {

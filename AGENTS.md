@@ -1,5 +1,12 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-09-10 주문 상세 스타일 검색이 같은 고객사의 모든 스타일과 매칭되던 문제 수정
+
+- **증상**: 주문 상세(주문 수정) 화면의 스타일 검색란에 "SAN"만 입력해도 좁혀지지 않고 그 고객사(THE SAN)의 모든 스타일이 그대로 나열됐다.
+- **원인**: 스타일 검색 드롭다운(`SearchableSelect`)이 별도 `filterOptions`를 넘기지 않아 기본 검색 로직(`autocompleteSearch.js`)을 그대로 썼다. 이 기본 로직은 옵션 객체의 모든 원시값 필드를 검색 대상에 포함하는데, 스타일 옵션 객체에 `customer`(고객사명) 필드가 들어있었다. 주문 상세의 스타일 후보 목록은 이미 그 주문의 고객사 하나로 좁혀져 있어 모든 후보의 `customer`가 동일한 값("THE SAN")이므로, 고객사명의 일부("SAN")를 입력해도 전부 매칭되어 필터가 안 걸리는 것처럼 보였다.
+- **수정**: 스타일 검색 전용 필터 함수(`filterStyleAutocompleteOptions`)를 만들어 스타일코드·스타일명 두 필드만 검색 대상으로 좁혔다(`frontend/src/pages/App/order/OrderList.jsx`). 세로형·가로형 두 레이아웃의 스타일 검색란 모두에 적용했다. 색상·성별 등 다른 검색란은 이번 범위에서 손대지 않았다.
+- `scripts/order-list-filter-regression.test.mjs`에 고객사명으로는 매칭되지 않고 스타일코드/스타일명으로는 매칭되는지, 두 레이아웃 모두 이 필터가 실제로 연결돼 있는지 확인하는 테스트를 추가하고 `test:regression`에 연결했다.
+
 ## 2026-09-10 공정 버전 저장이 SNAPSHOT_REFERENCE_INVALID로 계속 실패하던 두 번째 사전 검사 제거
 
 - **증상**: 저장 버튼을 활성화한 뒤에도(바로 위 항목), 실제로 저장을 누르면 `SNAPSHOT_REFERENCE_INVALID: assignment process references require review` 409로 계속 실패했다. 운영 화면에서 실제로 재현됨(스타일 AM01622, 배정 L16-1/L18-1).
