@@ -1,5 +1,11 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-09-10 작업 기록 목록에 기간 입력 항목의 시작~종료일 표시 추가
+
+- **배경**: "WorkLog Date 규칙"(이 문서 상단)에 따라 작업 기록 목록의 "작업일자" 열은 항상 `displayDate`(= `coverageEndDate`) 하나만 보여준다. 그래서 하루짜리 작업기록과, 한 달 전체(`DATE(START)~DATE(END)`)를 하나로 묶어 올린 작업기록이 같은 날짜(예: 월말)에 나란히 있으면 화면만 보고는 구분할 수 없었다. 사용자가 실제로 하루 입력분과 월간 합산 입력분을 같이 쓰는 걸 확인하면서 이 구분 불가 문제를 지적했다.
+- **수정**: 목록(모바일 카드·데스크톱 표 모두)의 날짜 표시를 `coverageStartDate === coverageEndDate`이면 기존처럼 하루 날짜만, 다르면 `시작일 ~ 종료일` 범위로 보여주도록 `frontend/src/pages/App/work/WorkList.jsx`에 `formatWorkLogDateRangeLabel` 헬퍼를 추가했다. 계산 로직(§WorkLog 날짜 규칙)은 그대로 `coverageStartDate/coverageEndDate` 기간을 쓰며, 이번 수정은 표시 전용이다.
+- `scripts/work-list-date-range-regression.test.mjs`를 추가해 하루짜리는 그대로, 기간짜리는 범위로, 좌표값이 없거나 잘못된 경우는 예외 없이 기존 날짜로 폴백하는지, 모바일/데스크톱 두 렌더링 모두 이 헬퍼를 쓰는지 확인하고 `test:regression`에 연결했다.
+
 ## 2026-09-10 주문 상세 스타일 검색이 같은 고객사의 모든 스타일과 매칭되던 문제 수정
 
 - **증상**: 주문 상세(주문 수정) 화면의 스타일 검색란에 "SAN"만 입력해도 좁혀지지 않고 그 고객사(THE SAN)의 모든 스타일이 그대로 나열됐다.

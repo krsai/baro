@@ -321,6 +321,22 @@ const resolveWorkLogCoverageDayCount = (log) => {
   return dayCount > 0 ? dayCount : 1;
 };
 
+// The list's date column otherwise only ever shows workDate (== coverageEndDate,
+// AGENTS.md "WorkLog Date 규칙"), so a whole-month period entry (e.g. imported
+// with DATE(START) 2026-08-01 / DATE(END) 2026-08-31) looks identical to a
+// genuine single-day entry that happens to land on the same end date - there
+// is no way to tell from the list that it actually spans a period. Show the
+// real range whenever the log covers more than one day; a single-day log
+// still shows just its one date, unchanged.
+const formatWorkLogDateRangeLabel = (log) => {
+  const workDate = log?.workDate || '-';
+  const start = dayjs(log?.coverageStartDate);
+  const end = dayjs(log?.coverageEndDate);
+  if (!start.isValid() || !end.isValid()) return workDate;
+  if (start.format('YYYY-MM-DD') === end.format('YYYY-MM-DD')) return workDate;
+  return `${start.format('YYYY-MM-DD')} ~ ${end.format('YYYY-MM-DD')}`;
+};
+
 const resolveAverageCtSecondsPerWorker = (log) => {
   const workerCount = Math.max(0, Math.round(Number(log?.workerCount) || 0));
   if (workerCount <= 0) return null;
@@ -848,7 +864,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                       }}
                     >
                       <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                        {log.workDate || '-'}
+                        {formatWorkLogDateRangeLabel(log)}
                       </Typography>
                       <Tooltip title={getUiMessage('common.delete', '삭제', languageCode)}>
                         <span>
@@ -955,7 +971,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                       '& td': { verticalAlign: 'middle' },
                     }}
                   >
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{log.workDate || '-'}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatWorkLogDateRangeLabel(log)}</TableCell>
                     <TableCell>{log.factoryName || '-'}</TableCell>
                     <TableCell align="right">
                       {isOutsourcingMode ? log.partnerCount || 0 : log.workerCount || 0}
