@@ -32,10 +32,10 @@ const translateVersionBoundaryError = (message) => {
 const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, notify }) => {
   const { languageCode } = useLanguage();
   const integrityWarning = languageCode === 'en'
-    ? 'Some assignments need their process references reviewed. Existing work times are preserved and are not recalculated automatically.'
+    ? 'Some assignments need their process references reviewed. Press Save below to rebuild them from this version - completed or payroll-locked assignments are left untouched either way.'
     : languageCode === 'vi'
-      ? 'Một số phân công cần kiểm tra liên kết công đoạn. Thời gian hiện có được giữ nguyên và không tự động tính lại.'
-      : '공정 연결 확인이 필요한 배정이 있습니다. 기존 작업시간은 유지되며 자동으로 다시 계산하지 않습니다.';
+      ? 'Một số phân công cần kiểm tra liên kết công đoạn. Nhấn Lưu bên dưới để tạo lại theo phiên bản này - các phân công đã hoàn tất hoặc đã khóa lương vẫn được giữ nguyên.'
+      : '공정 연결 확인이 필요한 배정이 있습니다. 아래 저장을 누르면 이 버전 기준으로 다시 계산합니다. 완료 확정되었거나 급여 잠금된 배정은 이 저장으로도 건드리지 않습니다.';
   const [versions, setVersions] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [boundaries, setBoundaries] = useState({});
@@ -98,6 +98,18 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
     [versions]
   );
   const hasBoundaryChanges = boundarySignature(boundaries) !== boundarySignature(savedBoundaries);
+  // The initial `boundaries`/`savedBoundaries` are both derived from each
+  // assignment's CURRENTLY STORED versionId (load(), above), so they are
+  // always identical right after opening the dialog - hasBoundaryChanges can
+  // only become true by actually dragging a version onto a different
+  // assignment. A style with a single version (the common case) has nothing
+  // to drag: its one version's boundary is already pinned to the oldest
+  // assignment, so hasBoundaryChanges would stay false forever and Save
+  // could never be pressed, even though this dialog is the only place that
+  // can repair an assignment whose stored CT/ST no longer matches its own
+  // already-assigned version (needsSnapshotRefresh). Also allow Save when
+  // there is something to repair, independent of any drag having happened.
+  const hasRefreshableAssignments = assignments.some((item) => item.needsSnapshotRefresh);
   const save = async () => {
     setBusy(true);
     try {
@@ -238,7 +250,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
           </Box>
         </Stack>
       </DialogContent>
-      <DialogActions><Button variant="contained" onClick={save} disabled={busy || assignments.length === 0 || !hasBoundaryChanges}>저장</Button></DialogActions>
+      <DialogActions><Button variant="contained" onClick={save} disabled={busy || assignments.length === 0 || (!hasBoundaryChanges && !hasRefreshableAssignments)}>저장</Button></DialogActions>
     </Dialog>
   );
 };

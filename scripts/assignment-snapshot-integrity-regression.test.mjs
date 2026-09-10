@@ -168,6 +168,22 @@ test('saving process version boundaries can repair assignments its own warning f
   assert.match(endpoint, /if \(plan\.isCompleted \|\| plan\.isPayrollLocked\) return \[\];/);
 });
 
+test('the version manager Save button stays reachable when a style has only one version', () => {
+  // boundaries/savedBoundaries are both derived from each assignment's
+  // CURRENTLY stored versionId on load, so they start out identical every
+  // time the dialog opens. hasBoundaryChanges can only become true by
+  // dragging a version onto a different assignment - a style with a single
+  // version (the common case) has nothing to drag, since that version's
+  // boundary is already pinned to the oldest assignment. Gating Save on
+  // hasBoundaryChanges alone would mean Save can never be pressed for a
+  // single-version style, so the one screen that can repair a
+  // needsSnapshotRefresh assignment could never actually be used for it.
+  const ui = fs.readFileSync(new URL('../frontend/src/pages/App/style/styleDetail/ProcessVersionManager.jsx', import.meta.url), 'utf8');
+  const disabledExpr = ui.slice(ui.indexOf('disabled={busy'), ui.indexOf('>저장</Button>'));
+  assert.match(disabledExpr, /hasRefreshableAssignments/);
+  assert.doesNotMatch(disabledExpr, /disabled=\{busy \|\| assignments\.length === 0 \|\| !hasBoundaryChanges\}/);
+});
+
 test('version window load is read-only and review quantities use process IDs, not shifted indexes', () => {
   const ui = fs.readFileSync(new URL('../frontend/src/pages/App/style/styleDetail/ProcessVersionManager.jsx', import.meta.url), 'utf8');
   const load = ui.slice(ui.indexOf('const load ='), ui.indexOf('useEffect(() =>'));
