@@ -25,7 +25,6 @@ import { buildQueryString } from '../../../utils/apiClient';
 import {
   createStyle as createStyleOnApi,
   confirmStyleProcessVersion,
-  fetchStyleProcessVersions,
   fetchStyleById,
   updateStyle as updateStyleOnApi,
 } from '../../../utils/styleApi';
@@ -282,15 +281,6 @@ const StyleDetail = () => {
         if (!active) return;
         setOriginalData(normalized);
         setStyleFormData(normalized);
-        try {
-          const versionData = await fetchStyleProcessVersions(styleId, {
-            orgId: activeOrgId,
-            ownerOrgId: ownerOrgIdFromQuery,
-          });
-          if (active) setHasUnconfirmedProcessDraft(versionData.hasUnconfirmedChanges);
-        } catch {
-          if (active) setHasUnconfirmedProcessDraft(false);
-        }
       } catch (error) {
         if (!active) return;
         const fallback = {
