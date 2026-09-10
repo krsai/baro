@@ -292,7 +292,7 @@ test('provisional AT only displays in the observed quantity bucket', () => {
   );
 });
 
-test('AT v2 preserves exact observations and blocks distant extrapolation', () => {
+test('AT v2 preserves exact observations and no longer refuses distant large extrapolation', () => {
   const process = {
     atModelVersion: 'v2',
     atV2Observations: [
@@ -325,10 +325,16 @@ test('AT v2 preserves exact observations and blocks distant extrapolation', () =
     resolveProcessAtCellState(process, 200, DEFAULT_BUCKETS).tone,
     'provisional'
   );
-  assert.equal(
-    resolveProcessAtCellState(process, 10000, DEFAULT_BUCKETS).shouldDisplayValue,
-    false
-  );
+  // A quantity far past the largest observed batch (300) used to be refused
+  // outright past 4x that (1,200). A customer's larger repeat order should
+  // still get an estimate - low-confidence, but not nothing - so this no
+  // longer returns null. This process has no fitted atParams.a/b (only raw
+  // observations), so it falls back to the largest observed point's flat
+  // per-piece rate rather than a true regression extrapolation; see the
+  // dedicated 'evaluates the fitted regression' test below for that path.
+  const distantCell = resolveProcessAtCellState(process, 10000, DEFAULT_BUCKETS);
+  assert.equal(distantCell.shouldDisplayValue, true);
+  assert.equal(distantCell.tone, 'provisional-extrapolated');
 });
 
 test('v2 rejects a decreasing total-time interpolation segment', () => {
@@ -489,14 +495,17 @@ test('near extrapolation uses the nearest constrained fitted AT', () => {
   assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 100) - pooledAt) < 0.0001);
   assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 500) - pooledAt) < 0.0001);
   assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 1000) - pooledAt) < 0.0001);
-  assert.equal(resolveProcessAtPerPieceSeconds(process, 1201), null);
+  // No fitted atParams.a/b on this process, and the upper side no longer has
+  // a hard cutoff - a quantity far past the largest observed batch (300)
+  // falls back to the same pooled flat rate as 1,000 above, instead of null.
+  assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 1201) - pooledAt) < 0.0001);
   assert.equal(
     resolveProcessAtCellState(process, 500, DEFAULT_BUCKETS).tone,
     'provisional-extrapolated'
   );
 });
 
-test('v2 extrapolation keeps the lower half boundary and upper fourfold boundary', () => {
+test('v2 keeps the lower half boundary, but the upper side has no cutoff and evaluates the fitted regression', () => {
   const process = createProcess({
     a: 30,
     b: 3000,
@@ -506,10 +515,67 @@ test('v2 extrapolation keeps the lower half boundary and upper fourfold boundary
     maxQuantity: 300,
   });
 
+  // Downward extrapolation is unchanged: still frozen at the smallest
+  // observed point below the range, still refused past half that quantity.
   assert.ok(resolveProcessAtPerPieceSeconds(process, 100) > 0);
   assert.equal(resolveProcessAtPerPieceSeconds(process, 99), null);
-  assert.ok(resolveProcessAtPerPieceSeconds(process, 1200) > 0);
-  assert.equal(resolveProcessAtPerPieceSeconds(process, 1201), null);
+
+  // Upward: a quantity far past the largest observed batch (300) must not
+  // be refused any more (a customer's larger repeat order should still get
+  // an estimate), and the value must come from the fitted regression
+  // (atParams a=30/b=3000), not a flat copy of the largest observed point's
+  // per-piece rate (which this style's own points would put at
+  // (30*300+3000)/300 = 40 for every quantity past 300 under the old
+  // behaviour).
+  const flatCopyValueIfUnfixed = 40;
+  const at1200 = resolveProcessAtPerPieceSeconds(process, 1200);
+  const at1201 = resolveProcessAtPerPieceSeconds(process, 1201);
+  const atFarBeyondFourfold = resolveProcessAtPerPieceSeconds(process, 100000);
+  assert.ok(Math.abs(at1200 - (30 * 1200 + 3000) / 1200) < 0.0001);
+  assert.ok(Math.abs(at1201 - (30 * 1201 + 3000) / 1201) < 0.0001);
+  assert.notEqual(at1200, flatCopyValueIfUnfixed);
+  // No longer refused at 4x the largest observed batch (1,200) or far beyond it.
+  assert.ok(Number.isFinite(at1201) && at1201 > 0);
+  assert.ok(Number.isFinite(atFarBeyondFourfold) && atFarBeyondFourfold > 0);
+  // As quantity grows, the per-piece estimate keeps sliding toward the
+  // fitted marginal rate (a) instead of staying flat - proof this is a real
+  // regression evaluation, not a frozen copy.
+  assert.ok(atFarBeyondFourfold < at1201);
+  assert.ok(Math.abs(atFarBeyondFourfold - 30) < 0.1);
+});
+
+test('a never-produced large quantity keeps reflecting newly-refined data instead of freezing', () => {
+  // The exact complaint this fixes: batches for a style never got close to
+  // 1,000, so every added work record kept landing on the same handful of
+  // small assignments - the q=1000 estimate used to be a flat copy of the
+  // largest observed point and never moved no matter how much more data
+  // came in for those same batches. Once a/b is refined by more
+  // observations (even ones that never touch 1,000 directly), q=1000 must
+  // change too, because it is now evaluated live against the current fit.
+  const beforeMoreData = createProcess({
+    a: 34,
+    b: 4200,
+    observationCount: 4,
+    distinctQuantityCount: 2,
+    minQuantity: 200,
+    maxQuantity: 300,
+  });
+  const afterMoreData = createProcess({
+    a: 28,
+    b: 3600,
+    observationCount: 10,
+    distinctQuantityCount: 3,
+    minQuantity: 200,
+    maxQuantity: 300,
+  });
+
+  const before = resolveProcessAtPerPieceSeconds(beforeMoreData, 1000);
+  const after = resolveProcessAtPerPieceSeconds(afterMoreData, 1000);
+  assert.ok(Number.isFinite(before) && before > 0);
+  assert.ok(Number.isFinite(after) && after > 0);
+  assert.notEqual(before, after);
+  assert.ok(Math.abs(before - (34 * 1000 + 4200) / 1000) < 0.0001);
+  assert.ok(Math.abs(after - (28 * 1000 + 3600) / 1000) < 0.0001);
 });
 
 test('repeat variation lowers data maturity without discarding observations', () => {

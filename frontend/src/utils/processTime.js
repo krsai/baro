@@ -343,8 +343,11 @@ const resolveAtObservedBucketRange = (atParams, bucketQuantities) => {
   };
 };
 
+// The upper (large-quantity) side has no equivalent cutoff any more - see
+// resolveProcessAtV2PerPieceSeconds, which evaluates the fitted regression
+// past the largest observed batch instead of refusing beyond a fixed
+// multiple of it.
 const AT_V2_MIN_EXTRAPOLATION_FACTOR = 2;
-const AT_V2_MAX_EXTRAPOLATION_FACTOR = 4;
 const AT_V2_MIN_ST_RATIO = 0.2;
 
 const median = (values) => {
@@ -683,15 +686,51 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
       modelStatus,
     };
   }
-  const outsideLimit =
-    resolvedQuantity < minQuantity / AT_V2_MIN_EXTRAPOLATION_FACTOR ||
-    resolvedQuantity > maxQuantity * AT_V2_MAX_EXTRAPOLATION_FACTOR;
-  if (outsideLimit) {
-    return { value: null, tone: 'extrapolated', observedRange, modelStatus };
+  if (resolvedQuantity < minQuantity) {
+    // Below the smallest observed batch: keep the existing conservative
+    // behaviour untouched. Extrapolating downward risks the setup-time
+    // distortion the 1/2 cutoff was added to guard against, so this side
+    // still freezes at the smallest point's per-piece rate and still
+    // refuses (null) once the input is less than half that quantity.
+    const outsideLowerLimit = resolvedQuantity < minQuantity / AT_V2_MIN_EXTRAPOLATION_FACTOR;
+    if (outsideLowerLimit) {
+      return { value: null, tone: 'extrapolated', observedRange, modelStatus };
+    }
+    const nearestPoint = points[0];
+    const value = nearestPoint.perPieceSeconds;
+    const stSeconds = resolveProcessStPerPieceSeconds(process, resolvedQuantity);
+    const minimumSeconds =
+      Number.isFinite(stSeconds) && stSeconds > 0
+        ? Math.max(1, stSeconds * AT_V2_MIN_ST_RATIO)
+        : 1;
+    return {
+      value:
+        Number.isFinite(value) && value >= minimumSeconds ? value : null,
+      tone: isProvisional ? 'provisional-extrapolated' : 'extrapolated',
+      observedRange,
+      modelStatus,
+    };
   }
-  const nearestPoint =
-    resolvedQuantity < minQuantity ? points[0] : points[points.length - 1];
-  const value = nearestPoint.perPieceSeconds;
+  // Above the largest observed batch (e.g. a 1,000-unit lookup against a
+  // process whose biggest actual batch was 640): this used to freeze at the
+  // largest point's per-piece rate and refuse entirely past 4x that
+  // quantity, so the number never moved no matter how much more data piled
+  // up for the same small batches, and a customer's larger repeat order
+  // could never get an estimate at all. Evaluate the server-fitted
+  // regression (atParams.a/b - the robust fit across every observation for
+  // this process, AGENTS.md AT v2 model) instead, with no upper cutoff, so
+  // the estimate keeps reflecting whatever the model has learned and always
+  // returns a value; confidence for a heavily-extrapolated quantity is
+  // still communicated through the existing provisional/extrapolated tone,
+  // not a separate indicator.
+  const fittedA = toOptionalNumber(process?.atParams?.a);
+  const fittedB = toOptionalNumber(process?.atParams?.b);
+  const hasFittedRegression =
+    Number.isFinite(fittedA) && fittedA > 0 && Number.isFinite(fittedB);
+  const nearestPoint = points[points.length - 1];
+  const value = hasFittedRegression
+    ? (fittedA * resolvedQuantity + fittedB) / resolvedQuantity
+    : nearestPoint.perPieceSeconds;
   const stSeconds = resolveProcessStPerPieceSeconds(process, resolvedQuantity);
   const minimumSeconds =
     Number.isFinite(stSeconds) && stSeconds > 0
