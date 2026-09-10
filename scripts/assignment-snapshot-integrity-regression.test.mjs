@@ -147,6 +147,27 @@ test('review reason distinguishes a broken process link from a genuine quantity 
   assert.match(reviewReasonBlock, /:\s*"PROCESS_QUANTITY_MISMATCH"/);
 });
 
+test('saving process version boundaries can repair assignments its own warning flags, and never touches locked ones', () => {
+  // An assignment made before a style's processes were reorganized (e.g.
+  // split into MALE_ONLY/FEMALE_ONLY variants) will not match whatever
+  // confirmed version the just-saved boundaries now assign it to - that
+  // mismatch is exactly what this endpoint exists to repair by rebuilding
+  // the assignment's CT/ST from the live style under that version. A
+  // precheck that rejects the save whenever ANY existing plan is already
+  // flagged would make this endpoint unable to ever fix the thing it exists
+  // to fix, so it must not run against the plans' pre-rebuild state.
+  const endpoint = backend.slice(
+    backend.indexOf('app.put("/styles/:styleId/process-version-boundaries"'),
+    backend.indexOf('app.delete("/styles/:styleId"')
+  );
+  assert.doesNotMatch(endpoint, /assertAssignmentProcessRefs\(prisma, organization\.id, plans\.map/);
+  assert.match(endpoint, /annotateAssignmentPlanRowsWithPayrollLocks\(organization\.id, rawPlans\)/);
+  // Completed or payroll-locked assignments stay read-only even when their
+  // stored version no longer matches the newly-saved boundary - they are
+  // left flagged instead of silently rewritten.
+  assert.match(endpoint, /if \(plan\.isCompleted \|\| plan\.isPayrollLocked\) return \[\];/);
+});
+
 test('version window load is read-only and review quantities use process IDs, not shifted indexes', () => {
   const ui = fs.readFileSync(new URL('../frontend/src/pages/App/style/styleDetail/ProcessVersionManager.jsx', import.meta.url), 'utf8');
   const load = ui.slice(ui.indexOf('const load ='), ui.indexOf('useEffect(() =>'));

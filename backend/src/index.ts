@@ -31748,11 +31748,21 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
   const style = await resolveStyleByIdForAccess({ organization, styleId: String(req.params.styleId || "").trim(), ownerOrgId: parseStyleOwnerOrgIdQuery(req.query.ownerOrgId) });
   if (!style) return res.status(404).json({ ok: false, error: "style not found" });
   await ensureInitialStyleProcessVersion({ orgId: organization.id, styleId: style.id });
-  const [versions, plans] = await Promise.all([
+  const [versions, rawPlans] = await Promise.all([
     prisma.styleProcessVersion.findMany({ where: { orgId: organization.id, styleId: style.id }, orderBy: { versionNumber: "asc" } }),
-    prisma.assignmentPlan.findMany({ where: { orgId: organization.id, styleId: style.id }, select: { id: true, workOrderId: true, assignmentQuantity: true, styleProcessVersionId: true, assignmentCtSnapshot: true, assignmentStSnapshot: true, workRecords: { select: { id: true } } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
+    prisma.assignmentPlan.findMany({ where: { orgId: organization.id, styleId: style.id }, select: { id: true, externalId: true, workOrderId: true, assignmentQuantity: true, styleProcessVersionId: true, assignmentCtSnapshot: true, assignmentStSnapshot: true, isCompleted: true, productionCompletedAt: true, completedAt: true, closedAt: true, workRecords: { select: { id: true } } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
   ]);
-  await assertAssignmentProcessRefs(prisma, organization.id, plans.map(plan => ({ ...plan, styleId: style.id })));
+  // No pre-check against the CURRENT (pre-rebuild) state here: this endpoint
+  // is the intended repair path for exactly the assignments its own
+  // needsSnapshotRefresh warning flags (a plan whose applicable version, per
+  // the just-saved boundaries, differs from what its stored snapshot
+  // reflects - e.g. an old assignment made before a style's processes were
+  // split into MALE_ONLY/FEMALE_ONLY variants). Rejecting the whole save
+  // whenever any existing plan is already flagged would make this endpoint
+  // unable to ever fix the thing it exists to fix. Each plan's rebuilt
+  // result is validated below instead (hasValidAssignmentProcessRefs on the
+  // freshly-built snapshot), which is the state that actually matters.
+  const plans = await annotateAssignmentPlanRowsWithPayrollLocks(organization.id, rawPlans);
   const starts = new Map<number | null, number | null>(ensureArray(req.body?.boundaries).map((row) => [toPositiveIntOrNull(row?.versionId), toPositiveIntOrNull(row?.startAssignmentPlanId)]));
   const firstVersion = versions[0];
   if (!firstVersion) throw createHttpError(409, "style has no confirmed process version");
@@ -31822,6 +31832,14 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
       snapshotVersionId === version.id &&
       assignmentCtSnapshotMatchesProcessVersion(plan, version)
     ) return [];
+    // Completed assignments and assignments whose completion month is
+    // already payroll-locked are read-only, the same as everywhere else in
+    // the app (AGENTS.md "완료된 assignment는 읽기 전용이다" /
+    // "payroll-locked assignment는 ... 변경할 수 없다"). A boundary change
+    // that would move one of these to a different version is left flagged
+    // (needsSnapshotRefresh keeps showing it) rather than silently rewritten
+    // or silently blocking every OTHER assignment in this same save.
+    if (plan.isCompleted || plan.isPayrollLocked) return [];
     const versionProcesses = normalizeStyleProcesses(version.processSnapshot);
     const needsGenderQuantities = versionProcesses.some(
       (process: any) => normalizeProcessGenderScope(process?.genderScope) !== "UNISEX"
