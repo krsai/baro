@@ -94,6 +94,43 @@ test('partial reference loss cannot turn 3800 seconds of remaining work into 180
   assert.equal(calculate([['style-process:11'], ['style-process:33']]), null);
 });
 
+const changeDetectionScope = vm.createContext({});
+vm.runInContext(require('typescript').transpileModule(
+  extract('toStableJsonText', 'buildAssignmentByExternalId') +
+  '\nglobalThis.hasChange = hasProcessReferenceRelevantAssignmentChange;',
+  { compilerOptions: { target: require('typescript').ScriptTarget.ES2022 } }
+).outputText, changeDetectionScope);
+
+test('reflow-only schedule moves do not retrigger process-reference validation on untouched assignments', () => {
+  const base = plan();
+  const reflowedOnly = { ...base, startIndex: base.startIndex ?? 0, endIndex: 5, startDayOffsetPercent: 40, lineId: 9 };
+  // A pre-existing broken assignment (e.g. already flagged for review) that
+  // only had its schedule position nudged by a serial-line reflow (AGENTS.md
+  // "Scheduler Serial Reflow Lock") must not be re-validated - otherwise an
+  // unrelated save on the same line (dropping a new card elsewhere) would
+  // fail the whole board save with SNAPSHOT_REFERENCE_INVALID because of a
+  // record this save never touched.
+  assert.equal(changeDetectionScope.hasChange(base, reflowedOnly), false);
+
+  const ctChanged = { ...base, assignmentCtSnapshot: { ...base.assignmentCtSnapshot, processes: base.assignmentCtSnapshot.processes.slice(0, 2) } };
+  assert.equal(changeDetectionScope.hasChange(base, ctChanged), true);
+
+  const styleChanged = { ...base, styleId: base.styleId + 1 };
+  assert.equal(changeDetectionScope.hasChange(base, styleChanged), true);
+
+  const quantityChanged = { ...base, assignmentQuantity: (base.assignmentQuantity ?? 0) + 1 };
+  assert.equal(changeDetectionScope.hasChange(base, quantityChanged), true);
+
+  const versionChanged = { ...base, styleProcessVersionId: (base.styleProcessVersionId ?? 0) + 1 };
+  assert.equal(changeDetectionScope.hasChange(base, versionChanged), true);
+});
+
+test('board save process-reference gate is scoped to process-relevant changes, not every synced assignment', () => {
+  const saveHandler = backend.slice(backend.indexOf('const processReferenceCheckTargets ='), backend.indexOf('await assertAssignmentProcessRefs(tx, organization.id, processReferenceCheckTargets)'));
+  assert.match(saveHandler, /hasProcessReferenceRelevantAssignmentChange\(currentItem, item\)/);
+  assert.doesNotMatch(saveHandler, /planSyncTargetAssignments\.filter\(item => existingPlanByExternalIdForStTotals\.has/);
+});
+
 test('version window load is read-only and review quantities use process IDs, not shifted indexes', () => {
   const ui = fs.readFileSync(new URL('../frontend/src/pages/App/style/styleDetail/ProcessVersionManager.jsx', import.meta.url), 'utf8');
   const load = ui.slice(ui.indexOf('const load ='), ui.indexOf('useEffect(() =>'));

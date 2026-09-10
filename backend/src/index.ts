@@ -12545,6 +12545,28 @@ const isSameAssignmentStateContent = (left: any, right: any) =>
     toComparableAssignmentStateItem(left),
     toComparableAssignmentStateItem(right)
   );
+// Schedule-only fields (startIndex/endIndex/day percents/lineId ordering)
+// change on every assignment a serial-line reflow touches (AGENTS.md
+// "Scheduler Serial Reflow Lock"), which previously made
+// isSameAssignmentStateContent report a change for every reflowed
+// assignment on the line - including ones whose CT/ST/process identity was
+// never touched by this save. That pulled long-since-broken, untouched
+// assignments back into assertAssignmentProcessRefs on every unrelated
+// save on the same line (e.g. dropping a new card), blocking the whole
+// board save. Only these fields actually determine process-reference
+// validity, so re-validate an existing plan's process refs only when one
+// of them actually changed in this save.
+const PROCESS_REFERENCE_RELEVANT_ASSIGNMENT_FIELDS = [
+  "assignmentCtSnapshot",
+  "assignmentStSnapshot",
+  "styleProcessVersionId",
+  "styleId",
+  "assignmentQuantity",
+] as const;
+const hasProcessReferenceRelevantAssignmentChange = (previous: any, next: any) =>
+  PROCESS_REFERENCE_RELEVANT_ASSIGNMENT_FIELDS.some(
+    (field) => !isDeepEqualByStableJson(previous?.[field] ?? null, next?.[field] ?? null)
+  );
 const buildAssignmentByExternalId = (items: any[]) =>
   ensureArray(items).reduce((map, item) => {
     const externalId = resolveAssignmentExternalId(item);
@@ -28579,7 +28601,22 @@ app.put("/assignment-board-state", async (req, res) => {
         );
       })
     );
-    await assertAssignmentProcessRefs(tx, organization.id, planSyncTargetAssignments.filter(item => existingPlanByExternalIdForStTotals.has(resolveAssignmentExternalId(item) ?? "")).map(item => ({ ...item, styleId: item.styleId ?? ctSnapshotPreparation.cardById.get(String(item.cardId))?.styleId })));
+    const processReferenceCheckTargets = planSyncTargetAssignments
+      .filter((item) => {
+        const externalId = resolveAssignmentExternalId(item) ?? "";
+        if (!existingPlanByExternalIdForStTotals.has(externalId)) return false;
+        const currentItem = currentAssignmentsByExternalId.get(externalId);
+        return (
+          !currentItem ||
+          hasProcessReferenceRelevantAssignmentChange(currentItem, item) ||
+          stDraftsByExternalId.has(externalId)
+        );
+      })
+      .map((item) => ({
+        ...item,
+        styleId: item.styleId ?? ctSnapshotPreparation.cardById.get(String(item.cardId))?.styleId,
+      }));
+    await assertAssignmentProcessRefs(tx, organization.id, processReferenceCheckTargets);
     const removedExternalIdList = Array.from(removedExternalIds.values());
     const assignmentScopes =
       planSyncTargetAssignments.length > 0

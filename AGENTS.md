@@ -1,5 +1,13 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-09-10 라인 리플로우가 무관한 배정 저장을 함께 막던 공정 연결 검사 범위 수정
+
+- **증상**: 배정 보드에서 미배정 작업을 라인에 새로 올리기만 해도(해당 라인의 다른 배정과 무관) "공정 연결 확인이 필요한 배정이 있어 저장하지 않았습니다" 409(`SNAPSHOT_REFERENCE_INVALID`)로 저장 전체가 실패하는 사례가 있었다. 콘솔에는 `PUT /assignment-board-state`가 409를 반환하는 것만 보였다.
+- **원인**: `PUT /assignment-board-state`는 라인 순차 재배치(§"Scheduler Serial Reflow Lock") 때문에 새 카드 하나만 올려도 같은 라인의 다른 배정들의 `startIndex/endIndex/startDayOffsetPercent` 등 일정 좌표가 함께 바뀐다. 저장 대상 판정(`planSyncTargetAssignments`)은 `isSameAssignmentStateContent`로 "이번 저장에서 내용이 바뀐 배정"을 추리는데, 이 비교 대상에 일정 좌표가 포함되어 있어 리플로우로 좌표만 밀린 배정도 전부 "변경됨"으로 잡혔다. 그 결과 CT/ST 공정 연결이 이미 손상되어 있던(예: `검토 필요`로 이미 표시되던) 기존 배정이, 이번 저장과 전혀 무관한데도 `assertAssignmentProcessRefs` 재검증 대상에 다시 포함되어 저장 전체를 막았다.
+- **수정**: `PUT /assignment-board-state`의 공정 연결 재검증 대상을 "CT/ST 공정 정체성에 실제로 영향을 주는 필드(`assignmentCtSnapshot`, `assignmentStSnapshot`, `styleProcessVersionId`, `styleId`, `assignmentQuantity`)가 DB의 직전 상태와 달라진 배정"으로만 좁혔다(`backend/src/index.ts`의 `hasProcessReferenceRelevantAssignmentChange`). 일정 좌표만 바뀐(리플로우로 밀린) 배정은 더 이상 이 검사에 다시 걸리지 않는다. 실제로 CT/ST나 공정 버전, 스타일 소속, 배정 수량 자체를 바꾸는 저장은 그대로 검증하며, 이미 손상된 배정을 몰래 통과시키지 않는다 — 손상된 배정 자체의 CT/ST를 직접 수정하려는 저장은 여전히 409로 막힌다.
+- 이미 `검토 필요`로 표시된 배정 자체의 CT/ST를 복구하려면 공정 버전 관리에서 해당 스타일의 공정을 다시 확인해야 한다. 이번 수정은 "무관한 저장이 손상된 배정 때문에 막히는 것"만 없앤 것이며, 손상 자체를 자동 복구하지 않는다.
+- `npm run test:assignment-snapshot-integrity`에 리플로우 전용 좌표 변경은 재검증을 건너뛰고 CT/ST·버전·styleId·수량 변경은 여전히 재검증 대상임을 확인하는 회귀 테스트를 추가했다.
+
 ## 2026-09-10 계획 부하 정상 배정 제외 수정
 
 - 배정 공통 조회(`ASSIGNMENT_PLAN_SELECT_CORE` 및 legacy select)는 `styleId`를 반드시 포함한다. 공정 연결 검사가 `plan.styleId`로 실제 공정·버전 소속을 검증하므로 조회 누락 시 정상 배정도 오류로 판정되어 잔여 ST와 계획 부하에서 제외된다.
