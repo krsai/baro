@@ -167,6 +167,7 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
   resolveRenderedTabLabel,
 }) {
   const networkLoading = useNetworkLoading();
+  const { languageCode } = useLanguage();
   const tabLoadingCounts = useMemo(
     () => buildTabLoadingCounts(networkLoading.scopes),
     [networkLoading.scopes]
@@ -252,6 +253,11 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
                       </Box>
                     )}
                     {resolveRenderedTabLabel(tab)}
+                    {tab.isEditing && (
+                      <Box component="span" sx={{ ml: 0.75, color: 'warning.dark', fontSize: '0.75rem', fontWeight: 700 }}>
+                        {languageCode === 'vi' ? 'Đang sửa' : languageCode === 'en' ? 'Editing' : '수정 중'}
+                      </Box>
+                    )}
                   </Box>
                   {isTabLoading && (
                     <Box component="span" sx={{ display: 'inline-flex', ml: 0.75, color: 'text.secondary' }}>

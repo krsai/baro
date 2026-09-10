@@ -33,7 +33,7 @@ import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { DndContext, DragOverlay, useDroppable, pointerWithin, MeasuringStrategy } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
-import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
+import { useBeforeUnload, useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { useAssignBoardDnd } from './hooks/useAssignBoardDnd';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -3001,7 +3001,7 @@ const rebuildFactoryScopeWithReplace = ({
 };
 
 const AssignBoard = () => {
-  const { showNotification, navigateToPath } = useAppActions();
+  const { showNotification, navigateToPath, setTabEditing, setUnsavedChangesGuard, clearUnsavedChangesGuard } = useAppActions();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
   const location = useLocation();
@@ -4304,25 +4304,17 @@ const AssignBoard = () => {
     }
   };
 
-  const navigationBlocker = useBlocker(
-    isAssignmentRouteActive && persistReady && isDirty && !persisting
-  );
-
   useEffect(() => {
-    if (navigationBlocker.state !== 'blocked') return;
-    const shouldLeave = window.confirm(
-      getUiMessage(
-        'assign.leaveWithoutSaving',
-        'There are unsaved assignment changes. Leave without saving?',
-        languageCode
-      )
-    );
-    if (shouldLeave) {
-      navigationBlocker.proceed();
-      return;
-    }
-    navigationBlocker.reset();
-  }, [languageCode, navigationBlocker, navigationBlocker.state]);
+    setTabEditing('/assignment', Boolean(persistReady && isDirty));
+    setUnsavedChangesGuard('assignment-board', {
+      path: '/assignment',
+      isDirty: Boolean(persistReady && isDirty),
+    });
+    return () => {
+      setTabEditing('/assignment', false);
+      clearUnsavedChangesGuard('assignment-board');
+    };
+  }, [persistReady, isDirty, setTabEditing, setUnsavedChangesGuard, clearUnsavedChangesGuard]);
 
   useBeforeUnload(
     useCallback(

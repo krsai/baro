@@ -29,6 +29,13 @@ export const AppProvider = ({ children }) => {
   const [openTabs, setOpenTabs] = useState([]);
   const unsavedGuardsRef = useRef(new Map());
 
+  const setTabEditing = useCallback((tabId, editing) => {
+    setOpenTabs((tabs) => {
+      if (!tabs.some((tab) => tab.id === tabId && Boolean(tab.isEditing) !== Boolean(editing))) return tabs;
+      return tabs.map((tab) => tab.id === tabId ? { ...tab, isEditing: Boolean(editing) } : tab);
+    });
+  }, []);
+
   const openTab = useCallback((tab, options) => {
     setOpenTabs((prev) => {
       let tabs = prev;
@@ -286,6 +293,7 @@ export const AppProvider = ({ children }) => {
       openTab,
       closeTab,
       markTabChanged,
+      setTabEditing,
       clearTabChanged,
       resetWorkspace,
       setFactories,
@@ -306,6 +314,7 @@ export const AppProvider = ({ children }) => {
       hasUnsavedChanges,
       navigateToPath,
       markTabChanged,
+      setTabEditing,
       openTab,
       resetWorkspace,
       setUnsavedChangesGuard,
