@@ -16720,6 +16720,7 @@ const ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE = {
 const ASSIGNMENT_PLAN_SELECT_CORE = {
   id: true,
   externalId: true,
+  styleId: true,
   styleProcessVersionId: true,
   factoryId: true,
 
@@ -16791,6 +16792,7 @@ const ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION = {
 const ASSIGNMENT_PLAN_SELECT_LEGACY = {
   id: true,
   externalId: true,
+  styleId: true,
   factoryId: true,
 
   cardId: true,

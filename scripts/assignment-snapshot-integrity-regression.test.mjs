@@ -43,6 +43,31 @@ test('valid references keep historical manual CT and ST untouched, independent o
 });
 
 const extract = (name, next) => backend.slice(backend.indexOf(`const ${name} =`), backend.indexOf(`const ${next} =`, backend.indexOf(`const ${name} =`)));
+
+test('capacity and progress query projections retain style ownership for valid remaining ST', async () => {
+  const scope = vm.createContext({});
+  vm.runInContext(require('typescript').transpileModule(
+    extract('ASSIGNMENT_PLAN_SELECT_CORE', 'isAssignmentPlanMissingColumnError') +
+    '\nglobalThis.selects = [ASSIGNMENT_PLAN_SELECT_CORE, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION, ASSIGNMENT_PLAN_SELECT_LEGACY, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY];',
+    { compilerOptions: { target: require('typescript').ScriptTarget.ES2022 } }
+  ).outputText, scope);
+  for (const select of scope.selects) {
+    assert.equal(select.styleId, true);
+  }
+  const stored = { ...plan(), style: { id: 5 } };
+  const select = scope.selects[2];
+  const projected = Object.fromEntries(Object.entries(stored).filter(([key]) => select[key]));
+  const before = structuredClone(projected);
+  const { styleId: omittedStyleId, ...previousProjection } = projected;
+  assert.deepEqual([...await invalidAssignmentProcessRefIds(db(), 1, [previousProjection])], [1]);
+  assert.deepEqual([...await invalidAssignmentProcessRefIds(db(), 1, [projected])], []);
+  assert.equal(context.remaining({
+    processTotalsByKey: new Map([['style-process:11', 100], ['style-process:33', 40]]),
+    processKeyGroups: context.groups(projected), plannedQuantity: 100,
+    assignmentStSnapshot: projected.assignmentStSnapshot,
+  }), 3800);
+  assert.deepEqual(projected, before);
+});
 const context = {
   snapshotProcessIds, ensureArray: value => Array.isArray(value) ? value : [],
   resolveNormalizedAssignmentCtSnapshot: value => value.assignmentCtSnapshot,
