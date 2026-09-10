@@ -1,3 +1,4 @@
+import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import { useLocation } from 'react-router-dom';
 import useEditRevision, { isStaleEditError } from '../../hooks/useEditRevision';
 import StaleEditNotice from '../../components/StaleEditNotice';
@@ -311,6 +312,7 @@ const SalarySystem = () => {
     () => savedSnapshot !== null && salaryStateSignature({ currencyCode, items, rates }) !== savedSnapshot,
     [currencyCode, items, rates, savedSnapshot]
   );
+  useUnsavedChanges(isDirty);
 
   const selected = items.find((row) => row.id === selectedId) || items[0];
   const isFixedIncentive = selected.id === 'incentiveTotal';

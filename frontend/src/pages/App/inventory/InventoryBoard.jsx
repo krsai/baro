@@ -1,3 +1,4 @@
+import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useMemo, useState } from 'react';
 import {
   Alert,
@@ -177,6 +178,7 @@ const InventoryBoard = () => {
   const [selectedItemId, setSelectedItemId] = useState(INITIAL_ITEMS[0]?.id || null);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [quickCreateDraft, setQuickCreateDraft] = useState(emptyQuickCreate);
+  useUnsavedChanges(quickCreateOpen && JSON.stringify(quickCreateDraft) !== JSON.stringify(emptyQuickCreate));
   const [movementDraft, setMovementDraft] = useState({
     type: INVENTORY_MOVEMENT_TYPES[0].value,
     quantity: '',

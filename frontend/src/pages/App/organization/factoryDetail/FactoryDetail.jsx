@@ -1,3 +1,4 @@
+import useUnsavedChanges from '../../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
@@ -334,6 +335,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
     () => buildFactoryChangeSnapshot(formData) !== buildFactoryChangeSnapshot(buildFactoryFormData(factory)),
     [factory, formData]
   );
+  useUnsavedChanges(open && (formDirty || warehouseDirty));
   const productionAllowanceVersions = useMemo(
     () => Array.isArray(factory?.productionAllowanceVersions) ? factory.productionAllowanceVersions : [],
     [factory?.productionAllowanceVersions]

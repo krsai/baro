@@ -1,3 +1,4 @@
+import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
@@ -60,6 +61,7 @@ const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, sh
   const factories = useMemo(() => Array.from(new Map(employees.filter((row) => row.factory).map((row) => [row.factory.id, row.factory])).values()), [employees]);
   const visible = useMemo(() => employees.filter((row) => (!factoryId || String(row.factoryId) === factoryId) && (!search.trim() || `${row.name || ''} ${row.employeeNo || ''} ${row.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()))), [employees, factoryId, search]);
   const dirty = employeeBaseline !== '' && employeeSettingsSignature(attendanceSelected, payrollExcluded) !== employeeBaseline;
+  useUnsavedChanges(open && dirty);
   const move = ({ destination, source, draggableId }) => {
     if (!destination || destination.droppableId === source.droppableId) return;
     const employeeId = Number(draggableId);

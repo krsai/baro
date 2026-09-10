@@ -1,3 +1,4 @@
+import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -1520,6 +1521,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const isDrawerDirty = drawerMode !== 'edit' || !drawerBaseline || (
     buildDrawerSignature(drawerEmail, drawerDraft) !== buildDrawerSignature(drawerBaseline.email, drawerBaseline.draft)
   );
+  useUnsavedChanges(isAddDrawerOpen && isDrawerDirty);
 
   return (
     <AppPageContainer

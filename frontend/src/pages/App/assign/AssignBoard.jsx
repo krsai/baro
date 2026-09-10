@@ -3001,7 +3001,7 @@ const rebuildFactoryScopeWithReplace = ({
 };
 
 const AssignBoard = () => {
-  const { showNotification, navigateToPath, setTabEditing, setUnsavedChangesGuard, clearUnsavedChangesGuard } = useAppActions();
+  const { showNotification, navigateToPath, setUnsavedChangesGuard, clearUnsavedChangesGuard } = useAppActions();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
   const location = useLocation();
@@ -4305,16 +4305,14 @@ const AssignBoard = () => {
   };
 
   useEffect(() => {
-    setTabEditing('/assignment', Boolean(persistReady && isDirty));
     setUnsavedChangesGuard('assignment-board', {
       path: '/assignment',
       isDirty: Boolean(persistReady && isDirty),
     });
     return () => {
-      setTabEditing('/assignment', false);
       clearUnsavedChangesGuard('assignment-board');
     };
-  }, [persistReady, isDirty, setTabEditing, setUnsavedChangesGuard, clearUnsavedChangesGuard]);
+  }, [persistReady, isDirty, setUnsavedChangesGuard, clearUnsavedChangesGuard]);
 
   useBeforeUnload(
     useCallback(

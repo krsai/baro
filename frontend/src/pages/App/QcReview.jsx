@@ -1,3 +1,4 @@
+import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -368,6 +369,7 @@ const QcReview = () => {
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState(toPositiveIntOrNull(activeFactoryId));
   const [rows, setRows] = useState([]);
+  useUnsavedChanges(rows.some(row => String(row.qcPassQuantity ?? '').trim() !== ''));
   const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(false);
   const [savingQcPlanId, setSavingQcPlanId] = useState(null);

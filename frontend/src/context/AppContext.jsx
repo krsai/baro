@@ -37,6 +37,7 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   const openTab = useCallback((tab, options) => {
+    tab = { ...tab, isEditing: Array.from(unsavedGuardsRef.current.values()).some(guard => guard.isDirty && guard.path === tab.id) };
     setOpenTabs((prev) => {
       let tabs = prev;
       let changed = false;
@@ -68,7 +69,7 @@ export const AppProvider = ({ children }) => {
         const existingTab = tabs[existingIndex];
         const nextPath = tab.path ?? existingTab.path;
         const nextLabel = tab.label ?? existingTab.label;
-        if (existingTab.path !== nextPath || existingTab.label !== nextLabel) {
+        if (existingTab.path !== nextPath || existingTab.label !== nextLabel || Boolean(existingTab.isEditing) !== tab.isEditing) {
           changed = true;
           tabs = tabs.map((item, index) =>
             index === existingIndex
@@ -165,12 +166,21 @@ export const AppProvider = ({ children }) => {
     unsavedGuardsRef.current.clear();
   }, []);
 
+  const syncEditingTabs = useCallback(() => {
+    const dirtyPaths = new Set(Array.from(unsavedGuardsRef.current.values()).filter(g => g.isDirty).map(g => g.path));
+    setOpenTabs(tabs => {
+      if (tabs.every(tab => Boolean(tab.isEditing) === dirtyPaths.has(tab.id))) return tabs;
+      return tabs.map(tab => ({ ...tab, isEditing: dirtyPaths.has(tab.id) }));
+    });
+  }, []);
+
   const setUnsavedChangesGuard = useCallback((guardKey, options = {}) => {
     const key = String(guardKey || '').trim();
     if (!key) return;
     const isDirty = Boolean(options?.isDirty);
     if (!isDirty) {
       unsavedGuardsRef.current.delete(key);
+      syncEditingTabs();
       return;
     }
     unsavedGuardsRef.current.set(key, {
@@ -179,13 +189,15 @@ export const AppProvider = ({ children }) => {
         typeof options?.message === 'string' ? options.message.trim() : '',
       path: typeof options?.path === 'string' ? options.path.trim() : '',
     });
-  }, []);
+    syncEditingTabs();
+  }, [syncEditingTabs]);
 
   const clearUnsavedChangesGuard = useCallback((guardKey) => {
     const key = String(guardKey || '').trim();
     if (!key) return;
     unsavedGuardsRef.current.delete(key);
-  }, []);
+    syncEditingTabs();
+  }, [syncEditingTabs]);
 
   const hasUnsavedChanges = useCallback((options = {}) => {
     const targetPath = typeof options?.path === 'string' ? options.path.trim() : '';

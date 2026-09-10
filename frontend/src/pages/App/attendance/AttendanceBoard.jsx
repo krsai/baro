@@ -1,3 +1,4 @@
+import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -283,6 +284,7 @@ const AttendanceBoard = ({
     () => buildAttendanceEntriesSignature(entriesByWorker) !== savedEntriesSignature,
     [entriesByWorker, savedEntriesSignature]
   );
+  useUnsavedChanges(hasUnsavedEntryChanges);
   const attendanceEmployees = useMemo(
     () => employees.filter((employee) => isAttendanceEmployeeVisibleOnDate(employee, dateKey)),
     [dateKey, employees]

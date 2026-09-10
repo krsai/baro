@@ -1,3 +1,4 @@
+import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import React, { useEffect, useState } from 'react';
 import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Paper, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import SaveButton from '../../components/SaveButton';
@@ -47,6 +48,7 @@ const PayTypeScheduleSettingsDialog = ({ open, onClose, orgId, languageCode, sho
   }, [open, orgId, showNotification]);
 
   const dirty = baseline !== '' && policySignature(policies) !== baseline;
+  useUnsavedChanges(open && dirty);
   const valid = policies.length === 3 && policies.every((row) => row.workWeekdays.length && dailyMinutes(row) > 0 && Number(row.workdayMinimumHours) > 0 && Number(row.workdayMinimumHours) * 60 <= dailyMinutes(row));
   const editPolicy = (type, key, value) => setPolicies((rows) => rows.map((row) => row.payType === type ? { ...row, [key]: value } : row));
   const setWeekdays = (type, days) => setPolicies((rows) => rows.map((row) => row.payType === type ? { ...row, workWeekdays: [...days].map(Number).sort((a, b) => a - b) } : row));

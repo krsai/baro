@@ -1,3 +1,4 @@
+import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React from 'react';
 import {
   Alert,
@@ -331,6 +332,7 @@ const AccessPolicyBoard = () => {
       serializeComparablePolicy(savedPolicy),
     [draftPolicy, savedPolicy]
   );
+  useUnsavedChanges(isDirty);
 
   const handleSave = React.useCallback(async () => {
     if (!isDirty || savingPolicy) return;

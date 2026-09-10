@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import { useRequestScopeContext } from '../context/RequestScopeContext';
 import { useLocation } from 'react-router-dom';
 import { useAppActions } from '../context/AppContext';
 import { getCurrentLanguageCode } from '../utils/appLanguage';
@@ -25,6 +26,7 @@ const normalizePathname = (value) => {
 
 const useUnsavedChanges = (isDirty, options = {}) => {
   const location = useLocation();
+  const { scopeId } = useRequestScopeContext();
   const { setUnsavedChangesGuard, clearUnsavedChangesGuard } = useAppActions();
   const isDirtyRef = useRef(Boolean(isDirty));
   const guardIdRef = useRef(
@@ -32,8 +34,8 @@ const useUnsavedChanges = (isDirty, options = {}) => {
   );
 
   const guardPath = useMemo(
-    () => normalizePathname(location.pathname || '/'),
-    [location.pathname]
+    () => normalizePathname(scopeId.split('::').find(part => part.startsWith('/')) || location.pathname || '/'),
+    [scopeId, location.pathname]
   );
   const message = useMemo(() => {
     const raw = typeof options?.message === 'string' ? options.message.trim() : '';

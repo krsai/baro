@@ -1,3 +1,4 @@
+import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -302,6 +303,7 @@ const ShipmentReview = () => {
   const [filterMode, setFilterMode] = useState('all');
   const [searchText, setSearchText] = useState('');
   const [dirty, setDirty] = useState(false);
+  useUnsavedChanges(dirty);
 
   const text = useCallback(
     (keyPath) => {

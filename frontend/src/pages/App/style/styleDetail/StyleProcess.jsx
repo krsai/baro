@@ -1,3 +1,4 @@
+import useUnsavedChanges from '../../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useCallback, useDeferredValue } from 'react';
 import {
@@ -2654,6 +2655,7 @@ const StyleProcess = ({
     JSON.stringify(resolvedDraftForChangeDetection) !==
       JSON.stringify(originalDraftForChangeDetection)
   );
+  useUnsavedChanges(isDraftChanged);
   const isSelectingTargetSpec = Boolean(targetCandidate);
   const targetComposerOptions = isSelectingTargetSpec
     ? filteredTargetSpecOptionsWithNone

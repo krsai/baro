@@ -1,3 +1,4 @@
+import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -1996,6 +1997,7 @@ const WorkDetail = ({
     if (persistedSnapshotText === null) return false;
     return currentSnapshotText !== persistedSnapshotText;
   }, [currentSnapshotText, initialLog?.id, persistedSnapshotText]);
+  useUnsavedChanges(isDirty);
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
     topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],

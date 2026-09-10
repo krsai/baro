@@ -1,3 +1,4 @@
+import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -152,6 +153,17 @@ const OrganizationSubscriptionBoard = () => {
   const [orgForm, setOrgForm] = useState(createEmptyOrgForm);
   const [loadingOrgs, setLoadingOrgs] = useState(false);
   const [savingOrg, setSavingOrg] = useState(false);
+  const editingOrganization = organizations.find(org => org.id === editingOrgId);
+  const subscriptionBaseline = editingOrganization ? {
+    subscriptionStatus: editingOrganization.subscription?.status ?? ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED,
+    serviceContactEmail: getSubscriptionServiceContactEmail(editingOrganization.subscription),
+    billingEmail: editingOrganization.subscription?.billingEmail ?? '',
+    activeEndsAt: toDateInputValue(editingOrganization.subscription?.activeEndsAt),
+  } : null;
+  useUnsavedChanges(Boolean(
+    (editingOrgId && subscriptionBaseline && JSON.stringify(subEditForm) !== JSON.stringify(subscriptionBaseline)) ||
+    (showCreateForm && JSON.stringify(orgForm) !== JSON.stringify(createEmptyOrgForm()))
+  ));
 
   const organizationTypeOptions = useMemo(
     () => getStaticOptionOptions('organizationType', languageCode),
