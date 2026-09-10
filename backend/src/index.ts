@@ -31860,7 +31860,14 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
         `assignment ${plan.id}: style ${style.id} has a male-only/female-only process but its order lines include ${genderQuantities?.unspecified} unit(s) without an explicit gender - specify M/W gender for every order line of this style`
       );
     }
-    if (!hasValidAssignmentProcessRefs(plan)) throw createHttpError(409, SNAPSHOT_REFERENCE_ERROR);
+    // No hasValidAssignmentProcessRefs(plan) gate here: that would reject
+    // exactly the plans this rebuild exists to fix (needsSnapshotRefresh is
+    // driven by the SAME kind of internal mismatch). buildEditableAssignmentCtSnapshotFromLiveStyle
+    // is already safe against a broken/mismatched existingSnapshot - it
+    // iterates the live/version process list (versionProcesses) and only
+    // optionally carries forward a manual CT value from the old snapshot when
+    // a process happens to match by id/code; anything in the old snapshot
+    // that doesn't match is simply never read, not merged in.
     const withVersionProcesses = { id: style.id, code: style.code, name: style.name, processes: versionProcesses };
     const refreshed = buildEditableAssignmentCtSnapshotFromLiveStyle({ assignment: plan, card: { quantity: plan.assignmentQuantity }, style: withVersionProcesses, existingSnapshot: plan.assignmentCtSnapshot, updatedAt, updatedBy, genderQuantities });
     if (!refreshed.readiness.ready || !refreshed.assignment.assignmentCtSnapshot) throw createHttpError(409, `assignment ${plan.id}: ${refreshed.readiness.reason || "snapshot not ready"}`);

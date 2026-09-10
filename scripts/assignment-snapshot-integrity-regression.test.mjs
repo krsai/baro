@@ -166,6 +166,18 @@ test('saving process version boundaries can repair assignments its own warning f
   // stored version no longer matches the newly-saved boundary - they are
   // left flagged instead of silently rewritten.
   assert.match(endpoint, /if \(plan\.isCompleted \|\| plan\.isPayrollLocked\) return \[\];/);
+  // A second, narrower precheck (hasValidAssignmentProcessRefs on the plan's
+  // OWN pre-rebuild snapshot) reproduced the exact same deadlock for plans
+  // whose stored CT/ST are not even internally self-consistent with each
+  // other (not just "different version than the boundary now assigns") -
+  // reproduced live: saving boundaries for a style with exactly this kind of
+  // plan failed with SNAPSHOT_REFERENCE_INVALID even after the first
+  // precheck was removed. buildEditableAssignmentCtSnapshotFromLiveStyle
+  // only reads the old snapshot per-process, keyed by matching the live
+  // version's own process list, so an inconsistent old snapshot cannot
+  // corrupt the rebuilt result - there is nothing left for this check to
+  // protect once the rebuild itself is what's about to run.
+  assert.doesNotMatch(endpoint, /if \(!hasValidAssignmentProcessRefs\(plan\)\) throw createHttpError\(409, SNAPSHOT_REFERENCE_ERROR\);/);
 });
 
 test('the version manager Save button stays reachable when a style has only one version', () => {
