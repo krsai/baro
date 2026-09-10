@@ -293,11 +293,17 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
           { quantity: Math.max(0, Number(assignment?.producedQuantity) || 0) }
         )
     : isReviewRequired
-      ? getUiMessage(
-          'assign.reviewRequiredCompact',
-          '수량 검토 필요',
-          languageCode
-        )
+      ? assignment?.reviewReason?.code === 'PROCESS_REFERENCE_INVALID'
+        ? getUiMessage(
+            'assign.reviewRequiredProcessReferenceCompact',
+            'Process link needs review',
+            languageCode
+          )
+        : getUiMessage(
+            'assign.reviewRequiredCompact',
+            '수량 검토 필요',
+            languageCode
+          )
       : '';
   const accentColor = isCompleted
     ? '#15803D'

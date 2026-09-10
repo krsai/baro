@@ -452,6 +452,11 @@ export const UI_MESSAGES = {
       en: 'Quantity review required',
       vi: 'Cần xem lại so luong',
     },
+    reviewRequiredProcessReferenceCompact: {
+      ko: '공정 연결 확인 필요',
+      en: 'Process link needs review',
+      vi: 'Can kiem tra lien ket cong doan',
+    },
     zeroQuantityOverflowStatusCompact: {
       ko: '0수량 오버플로우',
       en: 'Zero-qty overflow',

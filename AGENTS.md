@@ -8,6 +8,14 @@
 - 이미 `검토 필요`로 표시된 배정 자체의 CT/ST를 복구하려면 공정 버전 관리에서 해당 스타일의 공정을 다시 확인해야 한다. 이번 수정은 "무관한 저장이 손상된 배정 때문에 막히는 것"만 없앤 것이며, 손상 자체를 자동 복구하지 않는다.
 - `npm run test:assignment-snapshot-integrity`에 리플로우 전용 좌표 변경은 재검증을 건너뛰고 CT/ST·버전·styleId·수량 변경은 여전히 재검증 대상임을 확인하는 회귀 테스트를 추가했다.
 
+## 2026-09-10 공정 연결 손상으로 인한 검토 필요를 수량 불일치로 오인하게 표시하던 문제 수정
+
+- **증상**: 공정별 수량이 목표와 정확히 일치하고 진행률도 100%로 보이는 배정이 계속 `검토 필요`/`수량 검토 필요`로 표시되는 사례가 있었다. 상세를 열어도 "공정별 수량이 같지 않습니다"라는 문구만 보여 사용자가 수량을 아무리 다시 확인해도 원인을 알 수 없었다.
+- **원인**: `REVIEW_REQUIRED` 상태는 두 가지 서로 다른 원인으로 만들어진다. (1) 실제 공정별 완료 수량이 서로 안 맞는 경우, (2) 공정 연결(CT/ST) 스냅샷 자체가 손상된 경우(`hasInvalidProcessReferences`) — 이 경우는 공정별 수량이 전부 정확히 일치해도 `hasExactProcessCompletion`이 강제로 `false`가 되어 `완료 확정`으로 못 넘어가고 `REVIEW_REQUIRED`로 떨어진다. 그런데 `reviewReason.code`는 원인과 무관하게 항상 `PROCESS_QUANTITY_MISMATCH`로 고정되어 있어, 실제로는 공정 연결이 깨진 것인데 화면은 "수량이 안 맞는다"고 안내했다.
+- **수정**: `reviewReason.code`를 원인별로 `hasInvalidProcessReferences`이면 `PROCESS_REFERENCE_INVALID`, 실제 수량 불일치면 기존 `PROCESS_QUANTITY_MISMATCH`로 분리했다(`backend/src/index.ts`). 프론트 배정 카드 하단 문구(`FactoryMonthCapacityBoard.jsx`)와 상세 드로어 경고(`AssignBoard.jsx`)는 이 `code`를 보고, 공정 연결 손상이면 "공정 연결 확인 필요" 문구와 함께 스타일 상세의 공정 버전 관리에서 확인하라고 안내하며, 진짜 수량 불일치일 때만 기존 공정별 목표/기록/차이 문구를 보여준다.
+- 이 수정은 표시 문구만 바꾼 것이며 판정 로직 자체(`scheduleStatus` 계산)는 바꾸지 않았다. 공정 연결 손상 자체의 복구는 여전히 공정 버전 관리에서 사람이 확인해야 한다.
+- `npm run test:assignment-snapshot-integrity`에 `reviewReason.code`가 원인별로 분리되는지 확인하는 회귀 테스트를 추가했다.
+
 ## 2026-09-10 계획 부하 정상 배정 제외 수정
 
 - 배정 공통 조회(`ASSIGNMENT_PLAN_SELECT_CORE` 및 legacy select)는 `styleId`를 반드시 포함한다. 공정 연결 검사가 `plan.styleId`로 실제 공정·버전 소속을 검증하므로 조회 누락 시 정상 배정도 오류로 판정되어 잔여 ST와 계획 부하에서 제외된다.

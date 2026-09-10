@@ -131,6 +131,22 @@ test('board save process-reference gate is scoped to process-relevant changes, n
   assert.doesNotMatch(saveHandler, /planSyncTargetAssignments\.filter\(item => existingPlanByExternalIdForStTotals\.has/);
 });
 
+test('review reason distinguishes a broken process link from a genuine quantity mismatch', () => {
+  // A REVIEW_REQUIRED plan whose process references are broken
+  // (hasInvalidProcessReferences) can legitimately have every per-process
+  // quantity already matching its target - the assignment is blocked from
+  // completing because its CT/ST snapshot itself cannot be trusted, not
+  // because of a real count mismatch. reviewReason.code must say so
+  // distinctly, or the operator is misled into re-checking quantities that
+  // are already correct instead of the actual process version warning.
+  const reviewReasonBlock = backend.slice(
+    backend.indexOf('reviewReason:\n        scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED'),
+    backend.indexOf('quantityReview: includeQuantityReviewDetails')
+  );
+  assert.match(reviewReasonBlock, /hasInvalidProcessReferences\s*\n\s*\?\s*"PROCESS_REFERENCE_INVALID"/);
+  assert.match(reviewReasonBlock, /:\s*"PROCESS_QUANTITY_MISMATCH"/);
+});
+
 test('version window load is read-only and review quantities use process IDs, not shifted indexes', () => {
   const ui = fs.readFileSync(new URL('../frontend/src/pages/App/style/styleDetail/ProcessVersionManager.jsx', import.meta.url), 'utf8');
   const load = ui.slice(ui.indexOf('const load ='), ui.indexOf('useEffect(() =>'));

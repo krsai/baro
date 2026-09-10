@@ -23841,7 +23841,18 @@ const buildAssignmentPlanProgressRows = async (
       reviewReason:
         scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED
           ? {
-              code: "PROCESS_QUANTITY_MISMATCH",
+              // Reaching completion progress with a broken CT/ST process-link
+              // snapshot (hasInvalidProcessReferences) forces REVIEW_REQUIRED
+              // the same way a genuine per-process quantity mismatch does
+              // (see the scheduleStatus branch above), but the two need
+              // different operator guidance: a real mismatch is fixed by
+              // reviewing work records, while a broken link is fixed in
+              // process version management and the recorded-vs-target
+              // process quantities can legitimately show zero diff even
+              // though the assignment cannot be marked complete.
+              code: hasInvalidProcessReferences
+                ? "PROCESS_REFERENCE_INVALID"
+                : "PROCESS_QUANTITY_MISMATCH",
               plannedQuantity: baselineQuantityRaw,
               processCount,
               requiredTotalQuantity: totalExpected,

@@ -7703,14 +7703,22 @@ const AssignBoard = () => {
                   <Alert severity="warning" icon={false} sx={{ alignItems: 'stretch' }}>
                     <Stack spacing={1.25} sx={{ width: '100%' }}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-                        {languageCode === 'ko'
-                          ? '검토 필요 · 공정별 수량 불일치'
-                          : 'Review required · process quantities differ'}
+                        {detailAssignment.reviewReason.code === 'PROCESS_REFERENCE_INVALID'
+                          ? (languageCode === 'ko'
+                              ? '검토 필요 · 공정 연결 확인 필요'
+                              : 'Review required · process link needs review')
+                          : (languageCode === 'ko'
+                              ? '검토 필요 · 공정별 수량 불일치'
+                              : 'Review required · process quantities differ')}
                       </Typography>
                       <Typography variant="body2">
-                        {languageCode === 'ko'
-                          ? `작업기록 합계 ${Number(detailAssignment.reviewReason.recordedTotalQuantity || 0).toLocaleString()}건이 완료 기준 ${Number(detailAssignment.reviewReason.requiredTotalQuantity || 0).toLocaleString()}건(배정 ${Number(detailAssignment.reviewReason.plannedQuantity || 0).toLocaleString()}장 × 공정 ${Number(detailAssignment.reviewReason.processCount || 0).toLocaleString()}개)에 도달했지만, 공정별 수량이 같지 않습니다.`
-                          : 'The work-record total reached the completion threshold, but quantities differ by process.'}
+                        {detailAssignment.reviewReason.code === 'PROCESS_REFERENCE_INVALID'
+                          ? (languageCode === 'ko'
+                              ? '공정별 수량은 목표와 일치할 수 있지만, 이 배정의 공정 연결(CT/ST) 정보 자체가 손상되어 있어 완료 확정으로 넘어갈 수 없습니다. 스타일 상세의 공정 버전 관리에서 경고를 확인해 주세요.'
+                              : 'Per-process quantities may already match, but this assignment\'s process link (CT/ST) data itself is invalid, so it cannot move to completed. Check the warning in the style\'s process version management.')
+                          : (languageCode === 'ko'
+                              ? `작업기록 합계 ${Number(detailAssignment.reviewReason.recordedTotalQuantity || 0).toLocaleString()}건이 완료 기준 ${Number(detailAssignment.reviewReason.requiredTotalQuantity || 0).toLocaleString()}건(배정 ${Number(detailAssignment.reviewReason.plannedQuantity || 0).toLocaleString()}장 × 공정 ${Number(detailAssignment.reviewReason.processCount || 0).toLocaleString()}개)에 도달했지만, 공정별 수량이 같지 않습니다.`
+                              : 'The work-record total reached the completion threshold, but quantities differ by process.')}
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
                         {languageCode === 'ko'
