@@ -3558,10 +3558,11 @@ const AssignBoard = () => {
         !Array.isArray(parsed.detailStDraftsByTarget)
           ? parsed.detailStDraftsByTarget
           : {};
-      const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
-        { cards: snapshotCards, assignments: snapshotAssignments },
-        snapshotCards,
-        snapshotAssignments
+      // Local history is already a complete snapshot, not a partial API response.
+      // Response reconciliation changes ST/null values and makes reset dirty again.
+      const persistedCards = snapshotCards;
+      const persistedAssignments = snapshotAssignments.map((assignment) =>
+        remapAssignmentToDayWindow(assignment, days)
       );
       const maxEndIndex = persistedAssignments.reduce(
         (max, item) => Math.max(max, toSignedInt(item?.endIndex, 0)),
@@ -3585,7 +3586,7 @@ const AssignBoard = () => {
       // Ignore malformed snapshots and keep current state.
       return false;
     }
-  }, [holidaySet, resolvePersistedBoardState]);
+  }, [holidaySet, days, languageCode]);
 
   const applyLoadedBoardData = useCallback(
     ({
