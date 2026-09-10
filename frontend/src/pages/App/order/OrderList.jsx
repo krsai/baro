@@ -775,11 +775,12 @@ const toComparableOrderSnapshot = (source, fixedSellerOrg = null) => {
     }, {});
     return {
       styleId: String(item?.styleId || '').trim(),
-      styleName: String(item?.styleName || '').trim(),
-      styleCode: String(item?.styleCode || '').trim(),
+      // Linked entity labels can refresh without an order edit.
+      styleName: item?.styleId ? '' : String(item?.styleName || '').trim(),
+      styleCode: item?.styleId ? '' : String(item?.styleCode || '').trim(),
       colorId: toPositiveColorId(item?.colorId),
-      colorCode: getItemColorCode(item),
-      colorName: String(item?.colorName || '').trim(),
+      colorCode: toPositiveColorId(item?.colorId) ? '' : getItemColorCode(item),
+      colorName: toPositiveColorId(item?.colorId) ? '' : String(item?.colorName || '').trim(),
       gender: normalizeGenderCode(item?.gender, '') || '',
       sizeSetCode: itemSizeSetCode,
       sizeQuantities,
@@ -789,9 +790,9 @@ const toComparableOrderSnapshot = (source, fixedSellerOrg = null) => {
   return {
     orderNumber: String(source?.orderNumber || '').trim(),
     buyerOrgId: toOrgId(source?.buyerOrgId),
-    buyerOrgName: String(source?.buyerOrgName || source?.customerName || '').trim(),
+    buyerOrgName: toOrgId(source?.buyerOrgId) ? '' : String(source?.buyerOrgName || source?.customerName || '').trim(),
     sellerOrgId: resolvedSellerOrgId,
-    sellerOrgName: resolvedSellerOrgName,
+    sellerOrgName: resolvedSellerOrgId ? '' : resolvedSellerOrgName,
     dueDate: String(source?.dueDate || '').trim(),
     status: normalizeOrderProgressStage(source?.status) || ORDER_PROGRESS_STAGE_DEFAULT,
     sizeSetCode: orderSizeSetCode,
@@ -3146,11 +3147,12 @@ const OrderList = () => {
   };
 
   const handleSave = async () => {
+    if (isSavingOrder) return;
     if (isCurrentOrderModificationLocked) {
       showNotification(orderPageText.modificationLocked, 'warning');
       return;
     }
-    if (!isNewOrder && !hasFormChanges) {
+    if (!hasFormChanges) {
       showNotification(orderPageText.noChanges, 'info');
       return;
     }
@@ -3515,8 +3517,7 @@ const OrderList = () => {
           <SaveButton
             onClick={handleSave}
             disabled={
-              isSavingOrder ||
-              (!isNewOrder && (!hasFormChanges || isCurrentOrderModificationLocked))
+              isSavingOrder || !hasFormChanges || isCurrentOrderModificationLocked
             }
             loading={isSavingOrder}
           />
@@ -3583,8 +3584,7 @@ const OrderList = () => {
             <SaveButton
               onClick={handleSave}
               disabled={
-                isSavingOrder ||
-                (!isNewOrder && (!hasFormChanges || isCurrentOrderModificationLocked))
+                isSavingOrder || !hasFormChanges || isCurrentOrderModificationLocked
               }
               loading={isSavingOrder}
             />
