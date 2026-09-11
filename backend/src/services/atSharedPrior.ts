@@ -79,7 +79,7 @@ export const buildSharedAtPrediction = (target: Row, candidates: Row[]) => {
   }
   const donorBoundary = median([...boundariesByStyle.values()].map(values => median(values)));
   const ownBoundary = obs.length ? Math.min(...obs.map((o: Row) => Number(o.quantity))) : 0;
-  const smallQuantityBoundary = ownBoundary && donorBoundary ? Math.min(ownBoundary, donorBoundary) : ownBoundary || donorBoundary || 1;
+  const smallQuantityBoundary = ownBoundary ? Math.min(ownBoundary, Math.max(100, donorBoundary)) : Math.max(100, donorBoundary);
   return { version: 'shared-at-v1', a, b, smallQuantityBoundary, source: own ? 'OWN_BLEND' : obs.length ? 'OBSERVATION_ANCHORED' : sameCategory.count ? 'CATEGORY_PRIOR' : common.count ? 'COMMON_PRIOR' : 'PT_ST_PRIOR',
     category: category || null, donorStyleCount: common.count, categoryStyleCount: sameCategory.count,
     ownAssignmentCount: ownCount, ownWeight, categoryWeight, isProvisional: !own || ownWeight < 0.8,

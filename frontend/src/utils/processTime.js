@@ -615,10 +615,13 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
     const q = toPositiveInt(quantity, 1);
     const a = Number(shared.a);
     const b = Number(shared.b);
-    const boundary = Number(shared.smallQuantityBoundary);
+    const ownPoints = resolveAtV2Points(process);
+    const suppliedBoundary = Number(shared.smallQuantityBoundary);
+    // Missing metadata (including older API responses) must not bypass the guard.
+    const priorBoundary = Math.max(100, Number.isFinite(suppliedBoundary) ? suppliedBoundary : 100);
+    const boundary = ownPoints.length ? Math.min(ownPoints[0].quantity, priorBoundary) : priorBoundary;
     const softened = Number.isFinite(boundary) && boundary > 0 && q < boundary;
     const value = a + b * (softened ? (2 - q / boundary) / boundary : 1 / q);
-    const ownPoints = resolveAtV2Points(process);
     const ownStatus = resolveAtV2ModelStatus(process, ownPoints);
     const provisional = softened || shared.isProvisional !== false || !ownStatus.startsWith('SUPPORTED');
     const range = ownPoints.length ? { minQuantity: ownPoints[0].quantity, maxQuantity: ownPoints[ownPoints.length - 1].quantity } : null;
@@ -697,7 +700,7 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
       (1 / first.quantity - 1 / last.quantity));
     const a = first.perPieceSeconds - b / first.quantity;
     const value = a > 0 && Number.isFinite(b)
-      ? a + b / resolvedQuantity : null;
+      ? a + (b / minQuantity) * (2 - resolvedQuantity / minQuantity) : null;
     const stSeconds = resolveProcessStPerPieceSeconds(process, resolvedQuantity);
     const minimumSeconds =
       Number.isFinite(stSeconds) && stSeconds > 0
@@ -706,7 +709,7 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
     return {
       value:
         Number.isFinite(value) && value >= minimumSeconds ? value : null,
-      tone: isProvisional ? 'provisional-extrapolated' : 'extrapolated',
+      tone: 'provisional-extrapolated',
       observedRange,
       modelStatus,
     };

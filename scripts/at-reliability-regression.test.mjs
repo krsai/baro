@@ -557,10 +557,9 @@ test('v2 extrapolates in both directions without quantity cutoffs', () => {
     maxQuantity: 300,
   });
 
-  // Downward extrapolation is unchanged: still frozen at the smallest
-  // observed point below the range, still refused past half that quantity.
+  // Downward extrapolation uses a bounded tangent below the observed range.
   assert.ok(resolveProcessAtPerPieceSeconds(process, 100) > 0);
-  assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 99) - (30 + 3000 / 99)) < 1e-6);
+  assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 99) - (30 + 3000 / 200 * (2 - 99 / 200))) < 1e-6);
 
   // Upward: a quantity far past the largest observed batch (300) must not
   // be refused any more (a customer's larger repeat order should still get
@@ -768,4 +767,27 @@ test('shared small-batch regularization reaches displayed AT and quotation total
   assert.equal(resolveProcessAtPerPieceSeconds(process, 1000), 60);
   assert.equal(resolveProcessAtCellState(process, 10).isProvisional, true);
   assert.equal(calculateProcessDisplayAtTotalForOrderQuantity([process], 10), 2400);
+});
+
+test('all AT paths bound unobserved tiny batches, including old API metadata', () => {
+  const own = createProcess({ a: 1800, b: 66000, observationCount: 4, distinctQuantityCount: 2, minQuantity: 100, maxQuantity: 1000 });
+  const shared = { atV2Observations: [], atSharedPrediction: { version: 'shared-at-v1', a: 1800, b: 66000, source: 'COMMON_PRIOR' } };
+  for (const process of [own, shared, {...shared, atSharedPrediction: {...shared.atSharedPrediction, smallQuantityBoundary: 1}}]) {
+    const reference = resolveProcessAtPerPieceSeconds(process, 100);
+    let previous = Infinity, total = 0;
+    for (let q = 1; q <= 100; q++) {
+      const value = resolveProcessAtPerPieceSeconds(process, q);
+      assert.ok(value <= reference * 2);
+      assert.ok(value <= previous && value * q >= total);
+      previous = value; total = value * q;
+    }
+    assert.equal(resolveProcessAtCellState(process, 1).isProvisional, true);
+  }
+});
+
+test('a real small-batch observation is not capped to the 100-unit reference', () => {
+  const process = { atV2Observations: [{assignmentPlanId: 1, quantity: 10, allocatedLaborInputSeconds: 10500}],
+    atSharedPrediction: {version: 'shared-at-v1', a: 50, b: 10000, smallQuantityBoundary: 10, source: 'OBSERVATION_ANCHORED'} };
+  assert.equal(resolveProcessAtPerPieceSeconds(process, 10), 1050);
+  assert.equal(resolveProcessAtPerPieceSeconds(process, 100), 150);
 });
