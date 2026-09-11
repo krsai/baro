@@ -689,8 +689,11 @@ const buildIntegratedPayrollEmployees = async (
         overtimeSeconds = 0;
       }
       const joinedAt = employee.joinedAt ?? employee.approvedAt ?? employee.createdAt;
+      // 만 근속연수(정수)다. 근속수당처럼 "만 1년을 채워야 그 해분을 지급한다"는
+      // 항목이 소수 연차로 일부 지급되지 않도록 절사한다. 예: 11개월째는 0년,
+      // 만 1년을 채우면 1년이다.
       const tenureYears = joinedAt
-        ? Math.max(0, (monthEndDate.getTime() - new Date(joinedAt).getTime()) / (365.2425 * 24 * 60 * 60 * 1000))
+        ? Math.floor(Math.max(0, (monthEndDate.getTime() - new Date(joinedAt).getTime()) / (365.2425 * 24 * 60 * 60 * 1000)))
         : 0;
       const production = productionByWorkerId.get(employee.id);
       const productionAllowance = payType === EMPLOYEE_PAY_TYPE.OUTPUT

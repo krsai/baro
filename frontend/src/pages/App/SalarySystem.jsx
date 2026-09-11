@@ -53,6 +53,29 @@ const CATEGORY_PALETTES = { BASE: 'blue', ALLOWANCE: 'green', INCENTIVE: 'orange
 const PAY_CYCLES = {
   MONTHLY: '1개월', QUARTERLY: '3개월', SEMIANNUAL: '6개월', ANNUAL: '12개월',
 };
+const PAY_CYCLE_MONTHS = { MONTHLY: 1, QUARTERLY: 3, SEMIANNUAL: 6, ANNUAL: 12 };
+const MONTHS_LABEL_KEY = { 1: '1개월', 3: '3개월', 6: '6개월', 12: '12개월' };
+// 계산식이 "... ÷ CONST:N"으로 끝나면, 입력한 단가는 정산 주기(payCycle)가 아니라
+// 정산 주기 × N 기간을 기준으로 산정된 값이다(예: 6개월 주기 항목의 단가를
+// 연 단위로 산정해 매 회차 절반씩 나눠 지급하려고 "÷ CONST:2"를 붙인 경우,
+// 단가의 실제 기준 단위는 6개월이 아니라 12개월이다). 단가 입력값의 실제 기준
+// 단위는 이 나눗셈까지 반영해야 정확하다.
+const resolveFormulaTrailingDivisor = (formula) => {
+  const tokens = Array.isArray(formula) ? formula : [];
+  const last = tokens[tokens.length - 1];
+  const operator = tokens[tokens.length - 2];
+  if (operator === '÷' && typeof last === 'string' && last.startsWith('CONST:')) {
+    const value = Number(last.slice(6));
+    if (Number.isFinite(value) && value > 0) return value;
+  }
+  return 1;
+};
+const resolveRateUnitLabel = (item, currencyCode, t) => {
+  const cycleMonths = PAY_CYCLE_MONTHS[item?.payCycle] || 1;
+  const months = cycleMonths * resolveFormulaTrailingDivisor(item?.formula);
+  const monthsLabel = MONTHS_LABEL_KEY[months] ? t(MONTHS_LABEL_KEY[months]) : `${months}${t('개월')}`;
+  return `${currencyCode}/${monthsLabel}`;
+};
 const PAYMENT_MONTHS_BY_CYCLE = {
   MONTHLY: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
   QUARTERLY: [3, 6, 9, 12],
@@ -62,7 +85,7 @@ const PAYMENT_MONTHS_BY_CYCLE = {
 // 파라미터를 성격별로 묶어서 보여준다 (단가/근속 -> 근무일수 -> 근무시간 -> 조건·외부 계산값).
 const FORMULA_PARAMETERS = {
   GRADE_RATE: { label: '직급별 단가', currencyUnit: true, hint: '직원의 급여 타입과 직급에 지정된 이 급여 항목의 단가입니다.' },
-  TENURE_YEARS: { label: '근속연수', unit: '년', hint: '급여 정산월 말일을 기준으로 계산한 직원의 근속연수입니다.' },
+  TENURE_YEARS: { label: '근속연수', unit: '년', hint: '급여 정산월 말일을 기준으로 계산한 직원의 만 근속연수(정수, 소수점 절사)입니다. 예: 입사 후 11개월째면 0, 만 1년을 채우면 1입니다.' },
   ACTUAL_WORKDAYS: { label: '실제 근무일수', unit: '일', hint: '주말과 휴일 메뉴에 등록된 휴일을 제외한 정규 근무일 중 4시간 이상 근무한 날짜 수입니다. 휴일 근무는 포함하지 않습니다.' },
   SCHEDULED_WORKDAYS: { label: '기준 근무일수', unit: '일', hint: '생산 급여 타입은 일요일과 등록 휴일을, 일반 급여 타입은 토·일요일과 등록 휴일을 제외한 해당 월의 날짜 수입니다.' },
   HOLIDAY_WORKDAYS: { label: '휴일 근무일수', unit: '일', hint: '급여 타입별 주말 또는 휴일 메뉴에 등록된 휴일 중 4시간 이상 근무한 날짜 수입니다. 실제 근무일수와 만근 여부에는 포함하지 않습니다.' },
@@ -552,13 +575,13 @@ const SalarySystem = () => {
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
           <Stack direction="row" spacing={1.5} alignItems="center"><Typography variant="body2" fontWeight={700}>{t('정산 설정')}</Typography><Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap"><Chip size="small" variant="outlined" label={t(PAY_CYCLES[selected.payCycle])} />{selected.payCycle !== 'MONTHLY' && <Chip size="small" variant="outlined" label={(selected.paymentMonths || []).map((month) => `${month}${t('월')}`).join(' · ')} />}{selected.capValue && <Chip size="small" variant="outlined" label={`${t('상한')} ${money(selected.capValue)} ${currencyCode}`} />}</Stack></Stack>
           <Paper variant="outlined" sx={{ mt: 1.5, p: 2, bgcolor: 'action.hover', borderColor: 'divider' }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}><Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{ flex: 1 }}><Typography variant="h6" fontWeight={700}>{salaryItemName(selected, languageCode)}</Typography><Typography variant="h6" color="primary.main" fontWeight={700}>=</Typography><Typography fontWeight={700}>{isFixedIncentive
-              ? `${t('공장 초당 단가 × CT × 작업 수량')} (${currencyCode}/${t(PAY_CYCLES[selected.payCycle])})`
-              : (formulaLabel(selected.formula, t) ? `${formulaLabel(selected.formula, t)} (${currencyCode}/${t(PAY_CYCLES[selected.payCycle])})` : t('계산식이 비어 있습니다.'))}</Typography></Stack></Stack></Paper>
+              ? `${t('공장 초당 단가 × CT × 작업 수량')} (${resolveRateUnitLabel(selected, currencyCode, t)})`
+              : (formulaLabel(selected.formula, t) ? `${formulaLabel(selected.formula, t)} (${resolveRateUnitLabel(selected, currencyCode, t)})` : t('계산식이 비어 있습니다.'))}</Typography></Stack></Stack></Paper>
         </Box>
         {isFixedIncentive
           ? <Alert severity="info" icon={false} sx={{ m: 2 }}>{t('생산수당은 작업 기록을 기준으로 자동 계산되며 급여 체계에서 수정할 수 없습니다.')}</Alert>
           : <><Stack direction="row" alignItems="center" spacing={1.5} sx={{ px: 2, py: 1.5, width: '100%' }}><Typography fontWeight={700}>{t('급여 타입·직급별 단가')}</Typography><FormControl size="small" sx={{ minWidth: 120, ml: 'auto', flexShrink: 0 }}><InputLabel>{t('통화')}</InputLabel><Select label={t('통화')} value={currencyCode} onChange={(event) => setCurrencyCode(event.target.value)}>{CURRENCY_CODES.map((code) => <MenuItem key={code} value={code}>{code}</MenuItem>)}</Select></FormControl></Stack>
-            <TableContainer><Table size="small"><TableHead><TableRow><TableCell>{t('급여 타입')}</TableCell><TableCell>{t('직급')}</TableCell><TableCell align="right">{t('단가')} ({currencyCode}/{t(PAY_CYCLES[selected.payCycle])})</TableCell></TableRow></TableHead><TableBody>
+            <TableContainer><Table size="small"><TableHead><TableRow><TableCell>{t('급여 타입')}</TableCell><TableCell>{t('직급')}</TableCell><TableCell align="right">{t('단가')} ({resolveRateUnitLabel(selected, currencyCode, t)})</TableCell></TableRow></TableHead><TableBody>
               {PAY_TYPE_ORDER.flatMap((payType) => { const active = (selected.payTypes || []).includes(payType); return grades.map((grade, index) => <TableRow key={`${payType}:${grade.id}`} hover={active} sx={{ opacity: active ? 1 : 0.48 }}>{index === 0 && <TableCell rowSpan={grades.length} sx={{ verticalAlign: 'top', pt: 2 }}><Chip size="small" variant="outlined" label={getPayTypeLabel(payType, payType, languageCode)} sx={labelChipSx(PAY_TYPES[payType].palette, active)} /><Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{payType}</Typography></TableCell>}<TableCell>{gradeName(grade, languageCode)} ({grade.code})</TableCell>
                 <TableCell align="right"><TextField size="small" disabled={!active} value={getRate(payType, grade.id)} onFocus={(e) => e.target.select()} onChange={(e) => changeRate(payType, grade.id, e.target.value)} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} InputProps={{ startAdornment: <InputAdornment position="start">{currencySymbol(currencyCode)}</InputAdornment> }} sx={{ width: 170 }} /></TableCell></TableRow>); })}
             </TableBody></Table></TableContainer></>}
