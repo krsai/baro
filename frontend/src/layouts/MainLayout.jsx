@@ -661,31 +661,6 @@ const MainLayout = () => {
         ],
       },
       {
-        label: getUiMessage('menu.businessPartnerManagement', '거래처 관리', languageCode),
-        icon: <BusinessIcon />,
-        isParent: true,
-        menuGroupKey: MENU_GROUP_KEYS.PARTNERS,
-        isOpen: partnersOpen,
-        children: [
-          {
-            label: getUiMessage('menu.customer', '고객사', languageCode),
-            icon: <PeopleIcon />,
-            path: '/customer',
-            notificationActive: missingSalesPriceCustomerCount > 0,
-          },
-          {
-            label: getUiMessage('menu.outsourcingPartner', '외주 업체', languageCode),
-            icon: <LocalShippingIcon />,
-            path: '/outsourcing-partner',
-          },
-          {
-            label: getUiMessage('menu.materialSupplier', '공급 업체', languageCode),
-            icon: <Inventory2Icon />,
-            path: '/material-supplier',
-          },
-        ],
-      },
-      {
         label: getUiMessage('menu.production', 'Production', languageCode),
         icon: <HistoryIcon />,
         isParent: true,
@@ -802,6 +777,31 @@ const MainLayout = () => {
             label: getUiMessage('menu.business', '\uC0AC\uC5C5\uCCB4', languageCode),
             icon: <BusinessIcon />,
             path: '/business',
+          },
+        ],
+      },
+      {
+        label: getUiMessage('menu.businessPartnerManagement', '거래처 관리', languageCode),
+        icon: <BusinessIcon />,
+        isParent: true,
+        menuGroupKey: MENU_GROUP_KEYS.PARTNERS,
+        isOpen: partnersOpen,
+        children: [
+          {
+            label: getUiMessage('menu.customer', '고객사', languageCode),
+            icon: <PeopleIcon />,
+            path: '/customer',
+            notificationActive: missingSalesPriceCustomerCount > 0,
+          },
+          {
+            label: getUiMessage('menu.outsourcingPartner', '외주 업체', languageCode),
+            icon: <LocalShippingIcon />,
+            path: '/outsourcing-partner',
+          },
+          {
+            label: getUiMessage('menu.materialSupplier', '공급 업체', languageCode),
+            icon: <Inventory2Icon />,
+            path: '/material-supplier',
           },
         ],
       },
