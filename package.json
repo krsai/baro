@@ -11,7 +11,7 @@
     "check:encoding": "node scripts/check-encoding.mjs",
     "check:i18n": "node scripts/check-ui-message-keys.mjs",
     "test:access-policy": "node --test scripts/access-policy-regression.test.mjs",
-    "test:at-reliability": "node --test scripts/at-reliability-regression.test.mjs",
+    "test:at-reliability": "node --test scripts/at-reliability-regression.test.mjs scripts/at-extrapolation-audit.test.mjs",
     "test:st-buckets": "node --test scripts/st-bucket-regression.test.mjs",
     "test:assignment-st-snapshot": "node --test scripts/assignment-st-snapshot-regression.test.mjs",
     "test:sales-prices": "npm --prefix backend run build && node --test scripts/sales-price-regression.test.mjs",

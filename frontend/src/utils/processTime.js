@@ -631,6 +631,16 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
     };
   }
   if (points.length === 1) {
+    // Repeated batches identify the observed rate, not a setup-time curve.
+    // Use that empirical rate for larger quantities without inventing a discount.
+    if (resolvedQuantity > maxQuantity) {
+      return {
+        value: points[0].perPieceSeconds,
+        tone: 'provisional-extrapolated',
+        observedRange,
+        modelStatus: 'PROVISIONAL_CONSTANT',
+      };
+    }
     const bucketQuantities = (Array.isArray(process?.stBuckets)
       ? process.stBuckets
       : []
@@ -726,7 +736,7 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
   const fittedA = toOptionalNumber(process?.atParams?.a);
   const fittedB = toOptionalNumber(process?.atParams?.b);
   const hasFittedRegression =
-    Number.isFinite(fittedA) && fittedA > 0 && Number.isFinite(fittedB);
+    Number.isFinite(fittedA) && fittedA > 0 && Number.isFinite(fittedB) && fittedB >= 0;
   const nearestPoint = points[points.length - 1];
   const value = hasFittedRegression
     ? (fittedA * resolvedQuantity + fittedB) / resolvedQuantity
@@ -735,13 +745,14 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
   const minimumSeconds =
     Number.isFinite(stSeconds) && stSeconds > 0
       ? Math.max(1, stSeconds * AT_V2_MIN_ST_RATIO)
-      : 1;
+        : 1;
+  const reliableMagnitude = hasFittedRegression && Number.isFinite(value) && value >= minimumSeconds;
   return {
     value:
-      Number.isFinite(value) && value >= minimumSeconds ? value : null,
-    tone: isProvisional ? 'provisional-extrapolated' : 'extrapolated',
+      reliableMagnitude ? value : nearestPoint.perPieceSeconds,
+    tone: isProvisional || !reliableMagnitude ? 'provisional-extrapolated' : 'extrapolated',
     observedRange,
-    modelStatus,
+    modelStatus: reliableMagnitude ? modelStatus : 'PROVISIONAL_CONSTANT',
   };
 };
 

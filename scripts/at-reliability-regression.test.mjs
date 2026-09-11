@@ -41,6 +41,35 @@ const {
   resolveStBucketQuantity,
   resolveStyleAtReliability,
 } = loadProcessTimeModule();
+
+test('same-quantity repetitions update AT(1000), without fabricating a setup curve', () => {
+  const process = { atModelVersion: 'v2', atV2Observations: [
+    { assignmentPlanId: 1, quantity: 100, allocatedLaborInputSeconds: 6000 },
+  ] };
+  const before = JSON.stringify(process);
+  assert.equal(resolveProcessAtPerPieceSeconds(process, 1000), 60);
+  assert.equal(JSON.stringify(process), before);
+  const updated = { ...process, atV2Observations: [...process.atV2Observations,
+    { assignmentPlanId: 2, quantity: 100, allocatedLaborInputSeconds: 4000 },
+  ] };
+  assert.equal(resolveProcessAtPerPieceSeconds(updated, 1000), 50);
+  assert.equal(resolveProcessAtPerPieceSeconds(updated, 3000), 50);
+  assert.equal(resolveProcessAtCellState(updated, 1000).tone, 'provisional-extrapolated');
+  assert.equal(resolveProcessAtPerPieceSeconds({ atV2Observations: [] }, 1000), null);
+});
+
+test('invalid or implausibly low large-quantity regression retains an empirical provisional estimate', () => {
+  const base = { atModelVersion: 'v2', atV2Observations: [
+    { assignmentPlanId: 1, quantity: 100, allocatedLaborInputSeconds: 6000 },
+    { assignmentPlanId: 2, quantity: 200, allocatedLaborInputSeconds: 12000 },
+  ], stBuckets: [{ bucketQuantity: 1000, bucketStSeconds: 100 }] };
+  for (const atParams of [{ a: 1, b: 0 }, { a: 60, b: -5000 }, null]) {
+    const process = { ...base, atParams };
+    assert.equal(resolveProcessAtPerPieceSeconds(process, 1000), 60);
+    assert.equal(resolveProcessAtCellState(process, 1000).tone, 'provisional-extrapolated');
+  }
+  assert.equal(calculateProcessDisplayAtTotalForOrderQuantity([base, { atV2Observations: [] }], 1000), null);
+});
 const DEFAULT_BUCKETS = [1, 3, 5, 10, 30, 50, 100, 300, 500, 1000, 3000, 5000, 10000];
 
 const createProcess = ({
@@ -212,7 +241,7 @@ test('attendance fallback lowers v2 reliability without discarding observations'
   assert.ok(allFallbackReliability.percent < 65);
 });
 
-test('style reliability is weighted upward when mature processes dominate', () => {
+test('style score retains mature weights but unsupported extrapolation cannot be trusted', () => {
   const styleReliability = resolveStyleAtReliability([
     createProcess({
       at: 90,
@@ -236,7 +265,7 @@ test('style reliability is weighted upward when mature processes dominate', () =
   ]);
 
   assert.ok(styleReliability.percent >= 60, `expected mature process weight to dominate, got ${styleReliability.percent}`);
-  assert.equal(styleReliability.status, AT_RELIABILITY_STATUS.TRUSTED);
+  assert.equal(styleReliability.status, AT_RELIABILITY_STATUS.INSUFFICIENT);
 });
 
 test('quantity diversity increases confidence without letting two quantities verify', () => {
@@ -262,7 +291,7 @@ test('quantity diversity increases confidence without letting two quantities ver
   assert.equal(fiveQuantityReliability.status, AT_RELIABILITY_STATUS.TRUSTED);
 });
 
-test('provisional AT only displays in the observed quantity bucket', () => {
+test('single-quantity AT estimates larger quantities provisionally without ST buckets', () => {
   const provisional = createProcess({
     a: 65,
     b: 0,
@@ -281,14 +310,14 @@ test('provisional AT only displays in the observed quantity bucket', () => {
   assert.equal(observedCell.tone, 'provisional');
   assert.equal(observedCell.shouldDisplayValue, true);
   assert.equal(resolveProcessAtDisplayPerPieceSeconds(provisional, 500, DEFAULT_BUCKETS), 65);
-  assert.equal(outsideCell.tone, 'provisional');
-  assert.equal(outsideCell.shouldDisplayValue, false);
-  assert.equal(resolveProcessAtDisplayPerPieceSeconds(provisional, 1000, DEFAULT_BUCKETS), null);
-  assert.equal(resolveProcessAtPerPieceSeconds(provisional, 1000), null);
+  assert.equal(outsideCell.tone, 'provisional-extrapolated');
+  assert.equal(outsideCell.shouldDisplayValue, true);
+  assert.equal(resolveProcessAtDisplayPerPieceSeconds(provisional, 1000, DEFAULT_BUCKETS), 65);
+  assert.equal(resolveProcessAtPerPieceSeconds(provisional, 1000), 65);
   assert.equal(
     resolveProcessAtDisplayPerPieceSeconds(provisional, 1000),
-    null,
-    'provisional AT must not be extrapolated when the active bucket set is missing'
+    65,
+    'empirical large-quantity estimates do not require ST buckets'
   );
 });
 
@@ -662,7 +691,7 @@ test('actual q stays unbucketed for AT math even inside the same display bucket'
   );
 });
 
-test('display total is unavailable when any process is missing at the rendered bucket', () => {
+test('style total includes the provisional large-quantity estimate', () => {
   const provisional = createProcess({
     a: 65,
     b: 0,
@@ -687,7 +716,7 @@ test('display total is unavailable when any process is missing at the rendered b
       1000,
       DEFAULT_BUCKETS
     ),
-    null
+     92700
   );
   assert.equal(
     calculateProcessDisplayAtTotalForOrderQuantity(
