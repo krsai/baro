@@ -254,7 +254,7 @@ test('attendance fallback lowers v2 reliability without discarding observations'
   assert.ok(allFallbackReliability.percent < 65);
 });
 
-test('style score retains mature weights but unsupported extrapolation cannot be trusted', () => {
+test('style score includes unobserved processes without prediction-based weighting', () => {
   const styleReliability = resolveStyleAtReliability([
     createProcess({
       at: 90,
@@ -277,8 +277,8 @@ test('style score retains mature weights but unsupported extrapolation cannot be
     }),
   ]);
 
-  assert.ok(styleReliability.percent >= 60, `expected mature process weight to dominate, got ${styleReliability.percent}`);
-  assert.equal(styleReliability.status, AT_RELIABILITY_STATUS.INSUFFICIENT);
+  assert.equal(styleReliability.percent, 47);
+  assert.equal(styleReliability.status, AT_RELIABILITY_STATUS.UNRELIABLE);
 });
 
 test('quantity diversity increases confidence without letting two quantities verify', () => {
@@ -300,7 +300,7 @@ test('quantity diversity increases confidence without letting two quantities ver
   const twoQuantityReliability = resolveProcessAtReliability(twoQuantities, 500);
   const fiveQuantityReliability = resolveProcessAtReliability(fiveQuantities, 500);
   assert.ok(fiveQuantityReliability.percent > twoQuantityReliability.percent);
-  assert.ok(twoQuantityReliability.percent <= 55);
+  assert.ok(twoQuantityReliability.percent < 85);
   assert.equal(fiveQuantityReliability.status, AT_RELIABILITY_STATUS.TRUSTED);
 });
 
@@ -790,4 +790,19 @@ test('a real small-batch observation is not capped to the 100-unit reference', (
     atSharedPrediction: {version: 'shared-at-v1', a: 50, b: 10000, smallQuantityBoundary: 10, source: 'OBSERVATION_ANCHORED'} };
   assert.equal(resolveProcessAtPerPieceSeconds(process, 10), 1050);
   assert.equal(resolveProcessAtPerPieceSeconds(process, 100), 150);
+});
+
+test('overall maturity ignores reference quantity and prior mixing', () => {
+ const p=createProcess({a:50,b:10000,observationCount:16,distinctQuantityCount:5,minQuantity:100,maxQuantity:1000,attendanceFallbackShare:0});
+ const mixed={...p,timeRefQuantity:100000,atSharedPrediction:{version:'shared-at-v1',a:50,b:10000,isProvisional:true,source:'OWN_BLEND'}};
+ assert.equal(resolveStyleAtReliability([mixed]).percent,resolveStyleAtReliability([p]).percent);
+ assert.equal(resolveProcessAtReliability(mixed,1000).percent,resolveProcessAtReliability(p,1000).percent);
+ assert.ok(resolveProcessAtReliability(mixed,100000).percent < resolveProcessAtReliability(mixed,1000).percent);
+});
+test('stable repetitions grow overall evidence without inventing quantity diversity', () => {
+ const make=n=>({pt:50,atV2Observations:Array.from({length:n},(_,i)=>({assignmentPlanId:i+1,quantity:1000,allocatedLaborInputSeconds:50000}))});
+ assert.ok(resolveStyleAtReliability([make(20)]).percent > resolveStyleAtReliability([make(2)]).percent);
+ assert.equal(resolveStyleAtReliability([make(20)]).percent,70);
+ assert.ok(resolveProcessAtReliability(make(20),10000).percent < resolveProcessAtReliability(make(20),1000).percent);
+ assert.equal(resolveStyleAtReliability([{pt:50,atSharedPrediction:{version:'shared-at-v1',a:50,b:1000},atV2Observations:[]}]).percent,0);
 });

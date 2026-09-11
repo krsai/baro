@@ -3628,6 +3628,7 @@ const StyleProcess = ({
                         <Chip
                           size="small"
                           label={resolveAtReliabilityPercentLabel(styleAtReliability)}
+                          title={languageCode === 'ko' ? '전체 실적 근거 점수: 반복 배정, 수량 다양성, 기록 품질을 종합합니다. 특정 수량의 예측 정확률이 아닙니다.' : languageCode === 'vi' ? 'Điểm bằng chứng tổng thể; không phải độ chính xác ở một số lượng cụ thể.' : 'Overall evidence score; not prediction accuracy at a specific quantity.'}
                           sx={{
                             ...AT_RELIABILITY_CHIP_SX,
                             backgroundColor: resolveAtReliabilityPalette(styleAtReliability).bg,

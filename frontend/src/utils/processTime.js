@@ -994,21 +994,12 @@ export const resolveStyleAtReliability = (processes = []) => {
   const normalized = normalizeProcesses(processes);
   if (normalized.length === 0) return null;
 
-  const entries = normalized.map((process) => {
-    const referenceQuantity = toPositiveInt(
-      process?.timeRefQuantity,
-      DEFAULT_TIME_REF_QUANTITY
-    );
-    const atPerPieceSeconds = resolveProcessAtPerPieceSeconds(process, referenceQuantity);
-    const weight =
-      Number.isFinite(atPerPieceSeconds) && atPerPieceSeconds > 0
-        ? atPerPieceSeconds
-        : toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
-    return {
-      reliability: resolveProcessAtReliability(process, referenceQuantity),
-      weight,
-    };
-  });
+  const entries = normalized.map((process) => ({
+    reliability: resolveProcessAtReliability(process, 1, { overall: true }),
+    // Fixed process complexity weights; neither predicted AT nor selected quantity
+    // should change the overall evidence score.
+    weight: Number(process.pt) > 0 ? Number(process.pt) : 1,
+  }));
 
   return aggregateAtReliability(entries);
 };
@@ -1258,7 +1249,7 @@ export const hasCompleteDisplayableProcessAtTime = (
   );
 };
 
-export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
+export const resolveProcessAtReliability = (process, orderQuantity = 1, options = {}) => {
   const normalized = normalizeProcess(process);
   const observations = Array.isArray(normalized?.atV2Observations)
     ? normalized.atV2Observations
@@ -1272,7 +1263,7 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
     normalized,
     reliabilityReferenceQuantity
   );
-  if (atPerPieceSeconds == null) {
+  if (points.length === 0 || (!options.overall && atPerPieceSeconds == null)) {
     return toAtReliabilityResult(AT_RELIABILITY_STATUS.COLLECTING, {
       percent: 0,
     });
@@ -1290,53 +1281,22 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
       : observationCount;
   const distinctQuantityCount = points.length;
   const repeatVariation = resolveAtV2RepeatVariation(observations);
-  const quantityDiversityScore =
-    distinctQuantityCount >= 5
-      ? 40
-      : Math.max(0, distinctQuantityCount - 1) * 10;
-  const observedSpanRatio =
-    distinctQuantityCount >= 2 && points[0]?.quantity > 0
-      ? points[points.length - 1].quantity / points[0].quantity
-      : 1;
-  const spanScore =
-    observedSpanRatio >= 5
-      ? 10
-      : observedSpanRatio >= 2
-        ? 6
-        : observedSpanRatio > 1
-          ? 3
-          : 0;
-  const diversityCap =
-    distinctQuantityCount <= 1
-      ? 25
-      : distinctQuantityCount === 2
-        ? 55
-        : distinctQuantityCount === 3
-          ? 75
-          : distinctQuantityCount === 4
-            ? 85
-            : 95;
-  const currentCellState = resolveProcessAtCellState(
-    normalized,
-    orderQuantity,
-    normalized?.stBuckets?.map((bucket) => bucket?.bucketQuantity)
-  );
-  const rangeCap =
-    currentCellState.tone === 'extrapolated' ||
-    currentCellState.tone === 'provisional-extrapolated'
-      ? 50
-      : currentCellState.tone === 'provisional'
-        ? 25
-        : 95;
-  const basePercent = Math.min(
-    diversityCap,
-    rangeCap,
-    10 +
-      Math.min(35, effectiveObservationCount * 5) +
-      quantityDiversityScore +
-      spanScore -
-      repeatVariation.penalty
-  );
+  // Evidence score, not a calibrated probability of prediction accuracy.
+  // Repeated assignments build support even when all quantities are identical.
+  const quantityDiversityScore = Math.min(20, Math.max(0, distinctQuantityCount - 1) * 5);
+  const minQuantity = points[0].quantity;
+  const maxQuantity = points[points.length - 1].quantity;
+  const spanRatio = maxQuantity / minQuantity;
+  const spanScore = spanRatio >= 5 ? 5 : spanRatio >= 2 ? 3 : 0;
+  const evidenceScore = Math.max(0, Math.min(95,
+    10 + Math.min(60, effectiveObservationCount * 5) +
+    quantityDiversityScore + spanScore - repeatVariation.penalty));
+  const q = toPositiveInt(orderQuantity, 1);
+  const distance = q < minQuantity ? minQuantity / q : q > maxQuantity ? q / maxQuantity : 1;
+  // Overall maturity ignores extrapolation; a quantity-specific score discounts
+  // distance continuously. Display tones and prior mixing never cap evidence.
+  const distancePenalty = options.overall ? 0 : Math.min(60, 15 * Math.log2(distance));
+  const basePercent = Math.max(0, evidenceScore - distancePenalty);
   const attendanceCoverage = normalized?.atParams?.attendanceCoverage ?? null;
   const attendanceFallbackShare =
     normalized?.atParams?.attendanceFallbackShare ??
