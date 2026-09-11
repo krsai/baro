@@ -1249,6 +1249,36 @@ export const hasCompleteDisplayableProcessAtTime = (
   );
 };
 
+// Validate on whole held-out assignments, never on stored fitted parameters or priors.
+const assignmentValidationCache = new WeakMap();
+const calculateAssignmentValidation = (observations) => {
+  const groups = new Map();
+  for (const row of observations) {
+    const id = Number(row.assignmentPlanId), q = Number(row.quantity), total = Number(row.allocatedLaborInputSeconds);
+    if (!(id > 0 && q > 0 && total > 0) || !Number.isFinite(q + total)) continue;
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push({...row, quantity: q, perPieceSeconds: total / q});
+  }
+  if (groups.size < 3) return null;
+  const errors = [];
+  for (const [id, heldOut] of groups) {
+    const training = [...groups].filter(([other]) => other !== id).flatMap(([, rows]) => rows);
+    const fit = fitConstrainedAtCurve(training);
+    if (!fit) return null;
+    const error = heldOut.reduce((sum, row) => {
+      const predicted = fit.a + fit.b / row.quantity;
+      return sum + Math.min(1, Math.abs(predicted - row.perPieceSeconds) / row.perPieceSeconds);
+    }, 0) / heldOut.length;
+    errors.push(error);
+  }
+  return { assignmentCount: groups.size, relativeError: errors.reduce((a, b) => a + b, 0) / errors.length };
+};
+
+const resolveAssignmentValidation = (observations) => {
+  if (!assignmentValidationCache.has(observations)) assignmentValidationCache.set(observations, calculateAssignmentValidation(observations));
+  return assignmentValidationCache.get(observations);
+};
+
 export const resolveProcessAtReliability = (process, orderQuantity = 1, options = {}) => {
   const normalized = normalizeProcess(process);
   const observations = Array.isArray(normalized?.atV2Observations)
@@ -1291,12 +1321,17 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1, options 
   const evidenceScore = Math.max(0, Math.min(95,
     10 + Math.min(60, effectiveObservationCount * 5) +
     quantityDiversityScore + spanScore - repeatVariation.penalty));
+  const validation = resolveAssignmentValidation(observations);
+  // 3/4/5 independent checks have ceilings of 70/80/90 respectively.
+  // Error-based quality is a heuristic, not a calibrated probability.
+  const validatedEvidence = validation ? Math.min(95, 40 + validation.assignmentCount * 10,
+    evidenceScore * 0.25 + 95 * Math.max(0, 1 - validation.relativeError * 2) * 0.75) : evidenceScore;
   const q = toPositiveInt(orderQuantity, 1);
   const distance = q < minQuantity ? minQuantity / q : q > maxQuantity ? q / maxQuantity : 1;
   // Overall maturity ignores extrapolation; a quantity-specific score discounts
   // distance continuously. Display tones and prior mixing never cap evidence.
   const distancePenalty = options.overall ? 0 : Math.min(60, 15 * Math.log2(distance));
-  const basePercent = Math.max(0, evidenceScore - distancePenalty);
+  const basePercent = Math.max(0, validatedEvidence - distancePenalty);
   const attendanceCoverage = normalized?.atParams?.attendanceCoverage ?? null;
   const attendanceFallbackShare =
     normalized?.atParams?.attendanceFallbackShare ??

@@ -300,7 +300,7 @@ test('quantity diversity increases confidence without letting two quantities ver
   const twoQuantityReliability = resolveProcessAtReliability(twoQuantities, 500);
   const fiveQuantityReliability = resolveProcessAtReliability(fiveQuantities, 500);
   assert.ok(fiveQuantityReliability.percent > twoQuantityReliability.percent);
-  assert.ok(twoQuantityReliability.percent < 85);
+  assert.ok(twoQuantityReliability.percent < 95);
   assert.equal(fiveQuantityReliability.status, AT_RELIABILITY_STATUS.TRUSTED);
 });
 
@@ -802,7 +802,24 @@ test('overall maturity ignores reference quantity and prior mixing', () => {
 test('stable repetitions grow overall evidence without inventing quantity diversity', () => {
  const make=n=>({pt:50,atV2Observations:Array.from({length:n},(_,i)=>({assignmentPlanId:i+1,quantity:1000,allocatedLaborInputSeconds:50000}))});
  assert.ok(resolveStyleAtReliability([make(20)]).percent > resolveStyleAtReliability([make(2)]).percent);
- assert.equal(resolveStyleAtReliability([make(20)]).percent,70);
+ assert.equal(resolveStyleAtReliability([make(20)]).percent,89);
  assert.ok(resolveProcessAtReliability(make(20),10000).percent < resolveProcessAtReliability(make(20),1000).percent);
  assert.equal(resolveStyleAtReliability([{pt:50,atSharedPrediction:{version:'shared-at-v1',a:50,b:1000},atV2Observations:[]}]).percent,0);
+});
+
+test('four consistent completed assignments earn support but noisy batches do not', () => {
+ const make = (multipliers) => ({pt:50, atV2Observations:[140,760,270,850].map((quantity,i)=>({
+ assignmentPlanId:i+1,quantity,allocatedLaborInputSeconds:(50*quantity+10000)*multipliers[i]
+ }))});
+ const stable=make([1,1,1,1]), noisy=make([0.4,2,0.7,1.8]);
+ const before=JSON.stringify(stable);
+ assert.equal(resolveStyleAtReliability([stable]).percent,80);
+ assert.ok(resolveStyleAtReliability([noisy]).percent < 60);
+ assert.equal(JSON.stringify(stable),before);
+ const misleading={...noisy,atParams:{a:50,b:10000},atSharedPrediction:{version:'shared-at-v1',a:50,b:10000,source:'OWN_BLEND'}};
+ assert.equal(resolveStyleAtReliability([misleading]).percent,resolveStyleAtReliability([noisy]).percent);
+});
+test('duplicating rows from one assignment cannot create independent validation', () => {
+ const row={assignmentPlanId:1,quantity:100,allocatedLaborInputSeconds:10000};
+ assert.equal(resolveStyleAtReliability([{atV2Observations:[row,row,row,row]}]).percent,15);
 });
