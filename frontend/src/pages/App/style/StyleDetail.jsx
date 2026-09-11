@@ -142,8 +142,9 @@ const buildDirtyCheckProcesses = (processes) =>
   (Array.isArray(processes) ? processes : []).map((process) => {
     if (!process || typeof process !== 'object') return process;
     const stBuckets = Array.isArray(process.stBuckets) ? process.stBuckets : [];
+    const { atSharedPrediction: _prediction, ...editableProcess } = process;
     return {
-      ...process,
+      ...editableProcess,
       stBuckets: stBuckets.map(({ setAt: _setAt, updatedAt: _updatedAt, ...rest }) => rest),
     };
   });

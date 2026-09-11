@@ -42,6 +42,19 @@ const {
   resolveStyleAtReliability,
 } = loadProcessTimeModule();
 
+test('shared prior supplies new-style AT with explicit provenance and nonincreasing per-piece values', () => {
+  const process = { pt: 50, atV2Observations: [], atSharedPrediction: {
+    version: 'shared-at-v1', a: 50, b: 10000, source: 'CATEGORY_PRIOR', isProvisional: true,
+  } };
+  assert.equal(resolveProcessAtPerPieceSeconds(process, 100), 150);
+  assert.equal(resolveProcessAtPerPieceSeconds(process, 1000), 60);
+  assert.equal(resolveProcessAtCellState(process, 1000).predictionSource, 'CATEGORY_PRIOR');
+  assert.equal(resolveProcessAtCellState(process, 1000).isProvisional, true);
+  assert.equal(calculateProcessDisplayAtTotalForOrderQuantity([process], 1000), 60000);
+  assert.equal(resolveProcessAtPerPieceSeconds({ ...process, atSharedPrediction: { ...process.atSharedPrediction, b: -1 } }, 1000), null);
+  assert.equal(process.atV2Observations.length, 0);
+});
+
 test('same-quantity repetitions update AT(1000), without fabricating a setup curve', () => {
   const process = { atModelVersion: 'v2', atV2Observations: [
     { assignmentPlanId: 1, quantity: 100, allocatedLaborInputSeconds: 6000 },

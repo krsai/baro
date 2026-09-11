@@ -610,6 +610,24 @@ const resolveAtV2ModelStatus = (process, points) => {
 };
 
 const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
+  const shared = process?.atSharedPrediction;
+  if (shared?.version === 'shared-at-v1') {
+    const q = toPositiveInt(quantity, 1);
+    const a = Number(shared.a);
+    const b = Number(shared.b);
+    const value = a + b / q;
+    const ownPoints = resolveAtV2Points(process);
+    const ownStatus = resolveAtV2ModelStatus(process, ownPoints);
+    const provisional = shared.isProvisional !== false || !ownStatus.startsWith('SUPPORTED');
+    const range = ownPoints.length ? { minQuantity: ownPoints[0].quantity, maxQuantity: ownPoints[ownPoints.length - 1].quantity } : null;
+    const outside = range && (q < range.minQuantity || q > range.maxQuantity);
+    return {
+      value: a > 0 && b >= 0 && Number.isFinite(value) && value > 0 ? value : null,
+      tone: outside ? provisional ? 'provisional-extrapolated' : 'extrapolated' : provisional ? 'provisional' : 'fitted',
+      observedRange: range, modelStatus: shared.source,
+      predictionSource: shared.source,
+    };
+  }
   const points = resolveAtV2Points(process);
   const resolvedQuantity = toPositiveInt(quantity, 1);
   if (points.length === 0) {
@@ -739,6 +757,7 @@ export const resolveProcessAtCellState = (process, quantity = 1, bucketQuantitie
       observedBucketRange: v2.observedRange,
       shouldDisplayValue: v2.value !== null,
       modelStatus: v2.modelStatus ?? null,
+      predictionSource: v2.predictionSource ?? null,
     };
   }
   return {

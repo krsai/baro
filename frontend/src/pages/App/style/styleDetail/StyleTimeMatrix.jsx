@@ -270,6 +270,14 @@ const resolveAtCellState = (process, quantity, languageCode) => {
 };
 
 const resolveAtCellTitle = (cellState, languageCode) => {
+  if (cellState?.predictionSource) {
+    const labels = {
+      ko: { OWN_BLEND: '자체 실적 + 공통 모델 보정', OBSERVATION_ANCHORED: '실적에 맞춘 공통 곡선', CATEGORY_PRIOR: '동일 카테고리 기반 예상', COMMON_PRIOR: '조직·생산 단계 공통 예상', PT_ST_PRIOR: 'PT/ST 기반 잠정값' },
+      en: { OWN_BLEND: 'Own observations blended with shared model', OBSERVATION_ANCHORED: 'Shared curve anchored to observations', CATEGORY_PRIOR: 'Category-based prediction', COMMON_PRIOR: 'Organization/stage prediction', PT_ST_PRIOR: 'PT/ST provisional baseline' },
+      vi: { OWN_BLEND: 'Dữ liệu riêng kết hợp mô hình chung', OBSERVATION_ANCHORED: 'Đường cong chung hiệu chỉnh theo thực tế', CATEGORY_PRIOR: 'Dự đoán theo danh mục', COMMON_PRIOR: 'Dự đoán chung theo tổ chức/công đoạn', PT_ST_PRIOR: 'Giá trị tạm tính từ PT/ST' },
+    };
+    return (labels[languageCode] || labels.en)[cellState.predictionSource] || cellState.predictionSource;
+  }
   switch (cellState?.tone) {
     case 'st-fallback':
       return languageCode === 'vi'

@@ -1,3 +1,4 @@
+import { buildSharedAtPrediction } from "./services/atSharedPrior";
 import { hasValidAssignmentProcessRefs, invalidAssignmentProcessRefIds, snapshotProcessIds, assertAssignmentProcessRefs, SNAPSHOT_REFERENCE_ERROR } from "./utils/assignmentSnapshotIntegrity";
 import { assignmentBoardRevision, assertEditRevision, editTransaction } from "./utils/editRevision";
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -2964,6 +2965,7 @@ const normalizeStyleProcess = (process: any) => {
   }
   const {
     st: _legacySt,
+    atSharedPrediction: _readOnlyAtPrediction,
     processQuantity: _legacyProcessQuantity,
     quantity: _legacyQuantity,
     timesPerPiece: _rawTimesPerPiece,
@@ -6904,13 +6906,22 @@ const loadStyleProcessMirrorMapForStyleIds = async (
     db,
   });
 
+  const targetRows = Array.from(rowsByStyleId.values()).flat();
+  const priorOrgIds = [...new Set(targetRows.map(row => row.orgId))];
+  const donorRows = await db.styleProcess.findMany({
+    where: { orgId: { in: priorOrgIds }, isActive: true },
+    include: { style: { select: { collection: true } }, atObservations: { where: { modelVersion: AT_V2_MODEL_VERSION } } },
+  });
+  const categoryByStyle = new Map(donorRows.map(row => [row.styleId, row.style]));
+  const predictions = new Map(targetRows.map(row => [row.id, buildSharedAtPrediction({ ...row, style: categoryByStyle.get(row.styleId) }, donorRows)]));
+
   return normalizedStyleIds.reduce((map, styleId) => {
     map.set(
       styleId,
       buildStyleProcessMirrorFromRows(
         rowsByStyleId.get(styleId) || [],
         processNameLookup
-      )
+      ).map((process: any) => ({ ...process, atSharedPrediction: predictions.get(process.styleProcessId) ?? null }))
     );
     return map;
   }, new Map<number, any[]>());
