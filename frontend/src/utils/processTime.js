@@ -347,7 +347,6 @@ const resolveAtObservedBucketRange = (atParams, bucketQuantities) => {
 // resolveProcessAtV2PerPieceSeconds, which evaluates the fitted regression
 // past the largest observed batch instead of refusing beyond a fixed
 // multiple of it.
-const AT_V2_MIN_EXTRAPOLATION_FACTOR = 2;
 const AT_V2_MIN_ST_RATIO = 0.2;
 
 const median = (values) => {
@@ -631,38 +630,11 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
     };
   }
   if (points.length === 1) {
-    // Repeated batches identify the observed rate, not a setup-time curve.
-    // Use that empirical rate for larger quantities without inventing a discount.
-    if (resolvedQuantity > maxQuantity) {
-      return {
-        value: points[0].perPieceSeconds,
-        tone: 'provisional-extrapolated',
-        observedRange,
-        modelStatus: 'PROVISIONAL_CONSTANT',
-      };
-    }
-    const bucketQuantities = (Array.isArray(process?.stBuckets)
-      ? process.stBuckets
-      : []
-    )
-      .map((bucket) => toOptionalNumber(bucket?.bucketQuantity))
-      .filter((bucketQuantity) => bucketQuantity !== null);
-    const renderedBucket = resolveStBucketQuantity(
-      resolvedQuantity,
-      bucketQuantities
-    );
-    const observedBucket = resolveStBucketQuantity(
-      points[0].quantity,
-      bucketQuantities
-    );
     return {
-      value:
-        renderedBucket !== null && renderedBucket === observedBucket
-          ? points[0].perPieceSeconds
-          : null,
-      tone: 'provisional',
+      value: points[0].perPieceSeconds,
+      tone: 'provisional-extrapolated',
       observedRange,
-      modelStatus,
+      modelStatus: 'PROVISIONAL_CONSTANT',
     };
   }
   const upperIndex = points.findIndex(
@@ -697,17 +669,15 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
     };
   }
   if (resolvedQuantity < minQuantity) {
-    // Below the smallest observed batch: keep the existing conservative
-    // behaviour untouched. Extrapolating downward risks the setup-time
-    // distortion the 1/2 cutoff was added to guard against, so this side
-    // still freezes at the smallest point's per-piece rate and still
-    // refuses (null) once the input is less than half that quantity.
-    const outsideLowerLimit = resolvedQuantity < minQuantity / AT_V2_MIN_EXTRAPOLATION_FACTOR;
-    if (outsideLowerLimit) {
-      return { value: null, tone: 'extrapolated', observedRange, modelStatus };
-    }
-    const nearestPoint = points[0];
-    const value = nearestPoint.perPieceSeconds;
+    // Extend the same constrained curve represented by the observed points.
+    // a > 0 and b >= 0 imply AT(q)=a+b/q never increases with quantity.
+    const first = points[0];
+    const last = points[points.length - 1];
+    const b = Math.max(0, (first.perPieceSeconds - last.perPieceSeconds) /
+      (1 / first.quantity - 1 / last.quantity));
+    const a = first.perPieceSeconds - b / first.quantity;
+    const value = a > 0 && Number.isFinite(b)
+      ? a + b / resolvedQuantity : null;
     const stSeconds = resolveProcessStPerPieceSeconds(process, resolvedQuantity);
     const minimumSeconds =
       Number.isFinite(stSeconds) && stSeconds > 0
@@ -749,7 +719,8 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
   const reliableMagnitude = hasFittedRegression && Number.isFinite(value) && value >= minimumSeconds;
   return {
     value:
-      reliableMagnitude ? value : nearestPoint.perPieceSeconds,
+      reliableMagnitude ? Math.min(value, nearestPoint.perPieceSeconds)
+        : hasFittedRegression ? null : nearestPoint.perPieceSeconds,
     tone: isProvisional || !reliableMagnitude ? 'provisional-extrapolated' : 'extrapolated',
     observedRange,
     modelStatus: reliableMagnitude ? modelStatus : 'PROVISIONAL_CONSTANT',

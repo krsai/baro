@@ -65,7 +65,7 @@ test('invalid or implausibly low large-quantity regression retains an empirical 
   ], stBuckets: [{ bucketQuantity: 1000, bucketStSeconds: 100 }] };
   for (const atParams of [{ a: 1, b: 0 }, { a: 60, b: -5000 }, null]) {
     const process = { ...base, atParams };
-    assert.equal(resolveProcessAtPerPieceSeconds(process, 1000), 60);
+    assert.equal(resolveProcessAtPerPieceSeconds(process, 1000), atParams?.a === 1 ? null : 60);
     assert.equal(resolveProcessAtCellState(process, 1000).tone, 'provisional-extrapolated');
   }
   assert.equal(calculateProcessDisplayAtTotalForOrderQuantity([base, { atV2Observations: [] }], 1000), null);
@@ -307,7 +307,7 @@ test('single-quantity AT estimates larger quantities provisionally without ST bu
   const outsideCell = resolveProcessAtCellState(provisional, 1000, DEFAULT_BUCKETS);
 
   assert.equal(resolveStBucketQuantity(675, DEFAULT_BUCKETS), 500);
-  assert.equal(observedCell.tone, 'provisional');
+  assert.equal(observedCell.tone, 'provisional-extrapolated');
   assert.equal(observedCell.shouldDisplayValue, true);
   assert.equal(resolveProcessAtDisplayPerPieceSeconds(provisional, 500, DEFAULT_BUCKETS), 65);
   assert.equal(outsideCell.tone, 'provisional-extrapolated');
@@ -534,7 +534,7 @@ test('near extrapolation uses the nearest constrained fitted AT', () => {
   );
 });
 
-test('v2 keeps the lower half boundary, but the upper side has no cutoff and evaluates the fitted regression', () => {
+test('v2 extrapolates in both directions without quantity cutoffs', () => {
   const process = createProcess({
     a: 30,
     b: 3000,
@@ -547,7 +547,7 @@ test('v2 keeps the lower half boundary, but the upper side has no cutoff and eva
   // Downward extrapolation is unchanged: still frozen at the smallest
   // observed point below the range, still refused past half that quantity.
   assert.ok(resolveProcessAtPerPieceSeconds(process, 100) > 0);
-  assert.equal(resolveProcessAtPerPieceSeconds(process, 99), null);
+  assert.ok(Math.abs(resolveProcessAtPerPieceSeconds(process, 99) - (30 + 3000 / 99)) < 1e-6);
 
   // Upward: a quantity far past the largest observed batch (300) must not
   // be refused any more (a customer's larger repeat order should still get
@@ -653,7 +653,7 @@ test('legacy v1 atParams are never used as an operational AT fallback', () => {
   );
 });
 
-test('v2 only extrapolates within the guarded observed range', () => {
+test('v2 extrapolates beyond the former lower boundary', () => {
   const fitted = createProcess({
     a: 21,
     b: 67,
@@ -668,9 +668,9 @@ test('v2 only extrapolates within the guarded observed range', () => {
   const onePieceAt = resolveProcessAtDisplayPerPieceSeconds(fitted, 1, DEFAULT_BUCKETS);
   const thousandPieceAt = resolveProcessAtDisplayPerPieceSeconds(fitted, 1000, DEFAULT_BUCKETS);
 
-  assert.equal(resolveProcessAtCellState(fitted, 1, DEFAULT_BUCKETS).shouldDisplayValue, false);
+  assert.equal(resolveProcessAtCellState(fitted, 1, DEFAULT_BUCKETS).shouldDisplayValue, true);
   assert.equal(resolveProcessAtCellState(fitted, 1000, DEFAULT_BUCKETS).shouldDisplayValue, true);
-  assert.equal(onePieceAt, null);
+  assert.ok(onePieceAt >= thousandPieceAt);
   assert.ok(thousandPieceAt > 0);
 });
 
@@ -727,4 +727,19 @@ test('style total includes the provisional large-quantity estimate', () => {
     resolveProcessAtPerPieceSeconds(provisional, 500) * 500 +
       resolveProcessAtPerPieceSeconds(fitted, 500) * 500
   );
+});
+
+
+test('all positive quantities preserve nonincreasing per-piece AT across observed boundaries', () => {
+  for (const distinctQuantityCount of [1, 3]) {
+    const process = createProcess({ a: 30, b: 3000, observationCount: 12, distinctQuantityCount, minQuantity: 200, maxQuantity: 600 });
+    const original = JSON.stringify(process);
+    let previous = Infinity;
+    for (const quantity of [1, 10, 99, 100, 199, 200, 201, 300, 400, 599, 600, 601, 1000, 3000]) {
+      const value = resolveProcessAtPerPieceSeconds(process, quantity);
+      assert.ok(value > 0 && value <= previous + 1e-6);
+      previous = value;
+    }
+    assert.equal(JSON.stringify(process), original);
+  }
 });
