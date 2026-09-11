@@ -615,10 +615,12 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
     const q = toPositiveInt(quantity, 1);
     const a = Number(shared.a);
     const b = Number(shared.b);
-    const value = a + b / q;
+    const boundary = Number(shared.smallQuantityBoundary);
+    const softened = Number.isFinite(boundary) && boundary > 0 && q < boundary;
+    const value = a + b * (softened ? (2 - q / boundary) / boundary : 1 / q);
     const ownPoints = resolveAtV2Points(process);
     const ownStatus = resolveAtV2ModelStatus(process, ownPoints);
-    const provisional = shared.isProvisional !== false || !ownStatus.startsWith('SUPPORTED');
+    const provisional = softened || shared.isProvisional !== false || !ownStatus.startsWith('SUPPORTED');
     const range = ownPoints.length ? { minQuantity: ownPoints[0].quantity, maxQuantity: ownPoints[ownPoints.length - 1].quantity } : null;
     const outside = range && (q < range.minQuantity || q > range.maxQuantity);
     return {

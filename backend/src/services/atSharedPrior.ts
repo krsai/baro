@@ -13,11 +13,13 @@ const fitCache = new WeakMap<object, { a: number; b: number } | null>();
 const fitUncached = (row: Row) => {
   const obs = observations(row);
   if (new Set(obs.map((o: Row) => o.assignmentPlanId)).size < 2 || new Set(obs.map((o: Row) => Number(o.quantity))).size < 2) return null;
+  const quantities = obs.map((o: Row) => Number(o.quantity));
+  if (Math.max(...quantities) / Math.min(...quantities) < 2) return null;
   // Median pairwise slopes reduce the influence of an isolated unusual batch.
   const slopes: number[] = [];
   for (let i = 0; i < obs.length; i++) for (let j = i + 1; j < obs.length; j++) {
     const dq = Number(obs[j].quantity) - Number(obs[i].quantity);
-    if (dq) slopes.push((Number(obs[j].allocatedLaborInputSeconds) - Number(obs[i].allocatedLaborInputSeconds)) / dq);
+    if (Math.max(Number(obs[j].quantity), Number(obs[i].quantity)) / Math.min(Number(obs[j].quantity), Number(obs[i].quantity)) >= 2) slopes.push((Number(obs[j].allocatedLaborInputSeconds) - Number(obs[i].allocatedLaborInputSeconds)) / dq);
   }
   const a = median(slopes);
   const b = median(obs.map((o: Row) => Number(o.allocatedLaborInputSeconds) - a * Number(o.quantity)));
@@ -67,7 +69,18 @@ export const buildSharedAtPrediction = (target: Row, candidates: Row[]) => {
     if (!(a > 0)) { b = 0; a = total / quantity; }
   }
   if (!(a > 0) || b < 0 || !Number.isFinite(a + b)) return null;
-  return { version: 'shared-at-v1', a, b, source: own ? 'OWN_BLEND' : obs.length ? 'OBSERVATION_ANCHORED' : sameCategory.count ? 'CATEGORY_PRIOR' : common.count ? 'COMMON_PRIOR' : 'PT_ST_PRIOR',
+  // Below the evidence boundary use its tangent, not an unbounded 1/q tail.
+  // The smallest own observation always remains on the original curve.
+  const boundariesByStyle = new Map<number, number[]>();
+  for (const { row } of donors) {
+    const values = boundariesByStyle.get(row.styleId) || [];
+    values.push(Math.min(...observations(row).map((o: Row) => Number(o.quantity))));
+    boundariesByStyle.set(row.styleId, values);
+  }
+  const donorBoundary = median([...boundariesByStyle.values()].map(values => median(values)));
+  const ownBoundary = obs.length ? Math.min(...obs.map((o: Row) => Number(o.quantity))) : 0;
+  const smallQuantityBoundary = ownBoundary && donorBoundary ? Math.min(ownBoundary, donorBoundary) : ownBoundary || donorBoundary || 1;
+  return { version: 'shared-at-v1', a, b, smallQuantityBoundary, source: own ? 'OWN_BLEND' : obs.length ? 'OBSERVATION_ANCHORED' : sameCategory.count ? 'CATEGORY_PRIOR' : common.count ? 'COMMON_PRIOR' : 'PT_ST_PRIOR',
     category: category || null, donorStyleCount: common.count, categoryStyleCount: sameCategory.count,
     ownAssignmentCount: ownCount, ownWeight, categoryWeight, isProvisional: !own || ownWeight < 0.8,
     scope: 'ORGANIZATION_PRODUCTION_STAGE', seedSource: pt > 0 ? 'PT' : 'ST' };

@@ -11,7 +11,7 @@ const results = rows.map(row => {
   const observations = (row.atObservations || []).filter(o => Number(o.quantity) > 0 && Number(o.allocatedLaborInputSeconds) > 0);
   const total = observations.reduce((sum, o) => sum + Number(o.allocatedLaborInputSeconds), 0);
   if (!prediction || !observations.length || !total) return { id: row.id, status: 'NOT_EVALUABLE' };
-  const error = observations.reduce((sum, o) => sum + Math.abs(prediction.a * Number(o.quantity) + prediction.b - Number(o.allocatedLaborInputSeconds)), 0);
+  const error = observations.reduce((sum, o) => sum + Math.abs((prediction.a + prediction.b * (Number(o.quantity) < prediction.smallQuantityBoundary ? (2 - Number(o.quantity) / prediction.smallQuantityBoundary) / prediction.smallQuantityBoundary : 1 / Number(o.quantity))) * Number(o.quantity) - Number(o.allocatedLaborInputSeconds)), 0);
   const baseline = observations.reduce((sum, o) => sum + Math.abs(Number(row.ptSeconds) * Number(o.quantity) - Number(o.allocatedLaborInputSeconds)), 0);
   return { id: row.id, source: prediction.source, donorStyleCount: prediction.donorStyleCount,
     categoryStyleCount: prediction.categoryStyleCount, observationCount: observations.length,

@@ -756,3 +756,16 @@ test('all positive quantities preserve nonincreasing per-piece AT across observe
     assert.equal(JSON.stringify(process), original);
   }
 });
+
+test('shared small-batch regularization reaches displayed AT and quotation totals', () => {
+  const process = { atV2Observations: [], atSharedPrediction: {
+    version: 'shared-at-v1', a: 50, b: 10000, smallQuantityBoundary: 100,
+    source: 'CATEGORY_PRIOR', isProvisional: false,
+  }};
+  assert.equal(resolveProcessAtPerPieceSeconds(process, 1), 249);
+  assert.equal(resolveProcessAtPerPieceSeconds(process, 10), 240);
+  assert.equal(resolveProcessAtPerPieceSeconds(process, 100), 150);
+  assert.equal(resolveProcessAtPerPieceSeconds(process, 1000), 60);
+  assert.equal(resolveProcessAtCellState(process, 10).isProvisional, true);
+  assert.equal(calculateProcessDisplayAtTotalForOrderQuantity([process], 10), 2400);
+});

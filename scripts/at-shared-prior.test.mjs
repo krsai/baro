@@ -7,7 +7,7 @@ const row = (styleId, category = 'JACKET', a = 50, b = 10000, quantities = [100,
   style: { collection: category }, atObservations: quantities.map((quantity, index) => ({ assignmentPlanId: styleId * 100 + index, quantity, allocatedLaborInputSeconds: a * quantity + b })),
 });
 const target = (id = 20, category = 'JACKET') => ({ ...row(id, category), atObservations: [] });
-const seconds = (p, q) => p.a + p.b / q;
+const seconds = (p, q) => p.a + p.b * (q < p.smallQuantityBoundary ? (2 - q / p.smallQuantityBoundary) / p.smallQuantityBoundary : 1 / q);
 
 test('new style borrows category/common setup and stays monotonic without mutating training data', () => {
   const donors = [row(1), row(2), row(3, 'SHIRT', 50, 2000)];
@@ -50,4 +50,25 @@ test('leave-one-style-out prediction improves over a flat PT baseline on a known
     const expected = 50 + 10000 / 100;
     assert.ok(Math.abs(seconds(prediction, 100) - expected) < Math.abs(50 - expected));
   }
+});
+
+test('tiny quantities are bounded, continuous and monotonic in both unit and total time', () => {
+  const p = buildSharedAtPrediction(target(), [row(1), row(2)]);
+  assert.equal(p.smallQuantityBoundary, 100);
+  assert.ok(seconds(p, 1) < 250);
+  assert.ok(seconds(p, 10) < 250);
+  assert.equal(seconds(p, 100), 150);
+  assert.equal(seconds(p, 1000), 60);
+  let lastUnit = Infinity, lastTotal = 0;
+  for (let q = 1; q <= 10000; q++) {
+    const unit = seconds(p, q);
+    assert.ok(unit <= lastUnit && unit * q >= lastTotal);
+    lastUnit = unit; lastTotal = unit * q;
+  }
+});
+test('nearby large batches cannot identify shared setup; own small evidence is preserved', () => {
+  assert.equal(buildSharedAtPrediction(target(), [row(1, 'JACKET', 50, 10000, [3000, 3100])]).donorStyleCount, 0);
+  const p = buildSharedAtPrediction(row(20, 'JACKET', 50, 10000, [10]), [row(1)]);
+  assert.equal(p.smallQuantityBoundary, 10);
+  assert.equal(seconds(p, 10), 1050);
 });
