@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import InvoiceDraftDialog from './InvoiceDraftDialog';
 import { useLocation, useParams } from 'react-router-dom';
 import {
   Box,
@@ -2173,6 +2174,7 @@ const OrderList = () => {
     return orders.find((order) => order.id === orderId) || null;
   }, [isNewOrder, orderId, orders]);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const [invoiceDraftOpen, setInvoiceDraftOpen] = useState(false);
   const [saveIssueRows, setSaveIssueRows] = useState([]);
   const [saveIssueDialogOpen, setSaveIssueDialogOpen] = useState(false);
   const [isTogglingModificationLock, setIsTogglingModificationLock] = useState(false);
@@ -3507,6 +3509,12 @@ const OrderList = () => {
           spacing={1}
           sx={{ alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}
         >
+          {!isNewOrder && Number(currentDetailOrder?.sellerOrgId) === Number(activeOrgId) && (
+            <Button variant="outlined" size="small" disabled={hasFormChanges || isSavingOrder}
+              onClick={() => setInvoiceDraftOpen(true)}>
+              {languageCode === 'ko' ? '청구서 초안' : languageCode === 'vi' ? 'Bản nháp hóa đơn' : 'Invoice draft'}
+            </Button>
+          )}
           {!isNewOrder && (
             <Tooltip title={currentOrderLockTooltipText}>
               <span>
@@ -4526,6 +4534,8 @@ const OrderList = () => {
         </Box>
       </Box>
     </AppPageContainer>
+    <InvoiceDraftDialog open={invoiceDraftOpen} onClose={() => setInvoiceDraftOpen(false)}
+      orderId={orderId} orgId={activeOrgId} languageCode={languageCode} />
     <Dialog open={saveIssueDialogOpen} onClose={() => setSaveIssueDialogOpen(false)} maxWidth="md" fullWidth>
       <DialogTitle>
         {orderPageText.saveIssueDialogTitle}

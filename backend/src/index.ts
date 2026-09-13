@@ -89,6 +89,7 @@ import {
   syncStyleStandardsForBucketVersion as syncRelationshipStyleStandards,
 } from "./services/relationshipTimeBuckets";
 import { partitionRelationshipBucketStyles } from "./services/relationshipBucketStyles";
+import { buildInvoiceSource } from "./services/invoiceSource";
 import {
   resolveWorkRecordProcessCode,
   resolveWorkRecordProcessName,
@@ -30565,6 +30566,36 @@ app.put("/orders/:orderId", async (req, res) => {
       isAssignmentModificationLocked: updatedLockState.isAssignmentLocked,
     })
   );
+});
+
+app.get("/orders/:orderId/invoice-source", async (req, res) => {
+  const access = await requireOrgRole(req, res);
+  if (!access) return;
+  const { organization } = access;
+  if (access.systemUser?.systemRole !== "SYSTEM_ADMIN" && !(await hasRoleAccessPolicyFeature({
+    orgType: organization.type, orgRole: access.orgMembership!.role, feature: "ORDER",
+  }))) return res.status(403).json({ error: "order access is required" });
+  // Only the seller prepares its invoice; knowing an order id is not authorization.
+  const order = await prisma.workOrder.findFirst({
+    where: { orderId: String(req.params.orderId), sellerOrgId: organization.id },
+    include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE, buyerOrg: true, sellerOrg: true },
+  });
+  if (!order) return res.status(404).json({ error: "seller order not found" });
+  const [plans, relationship] = await Promise.all([
+    prisma.assignmentPlan.findMany({ where: { orgId: organization.id, workOrderId: order.id },
+      select: { id: true, externalId: true, styleId: true } }),
+    order.buyerOrgId ? prisma.orgRelationship.findFirst({
+      where: { manufacturerOrgId: organization.id, brandOrgId: order.buyerOrgId },
+      include: { salesBucketSetVersion: { include: { entries: true } },
+        salesBucketOverrides: { include: { quantityBucketSetVersion: { include: { entries: true } } } },
+        salesPriceLists: { where: { styleId: { in: order.workOrderItems.flatMap((item) => item.styleId ? [item.styleId] : []) } },
+          include: { currency: true, prices: true } } },
+    }) : Promise.resolve(null),
+  ]);
+  // An empty id array means all assignments to the progress helper: never call it here.
+  const progress = plans.length ? await buildAssignmentPlanProgressRows(organization.id, plans.map((plan) => plan.externalId)) : [];
+  res.setHeader("Cache-Control", "no-store");
+  return res.json(buildInvoiceSource(order, plans, progress, relationship));
 });
 
 app.post("/orders/:orderId/modification-lock", async (req, res) => {
