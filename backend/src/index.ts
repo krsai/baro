@@ -1,3 +1,4 @@
+import { planOrderItemWrites } from "./utils/orderItemIdentity";
 import { buildSharedAtPrediction } from "./services/atSharedPrior";
 import { hasValidAssignmentProcessRefs, invalidAssignmentProcessRefIds, snapshotProcessIds, assertAssignmentProcessRefs, SNAPSHOT_REFERENCE_ERROR } from "./utils/assignmentSnapshotIntegrity";
 import { assignmentBoardRevision, assertEditRevision, editTransaction } from "./utils/editRevision";
@@ -30542,25 +30543,36 @@ app.put("/orders/:orderId", async (req, res) => {
       data: {
         ...workOrderUpdateData,
         orgId: buyer.id,
-        // WorkOrderItem (rewritten below) is the source of truth; do not
+        // WorkOrderItem (updated in place below) is the source of truth; do not
         // duplicate the items array into the WorkOrder.items JSON column.
         items: Prisma.JsonNull,
       },
     });
-    await tx.workOrderItem.deleteMany({ where: { workOrderId: existing.id } });
-    if (itemsToUpsert.length > 0) {
-      await tx.workOrderItem.createMany({
-        data: itemsToUpsert.map((item: any, idx: number) => ({
+    const storedItems = await tx.workOrderItem.findMany({
+      where: { workOrderId: existing.id }, select: { id: true, itemId: true },
+    });
+    const itemWrites = planOrderItemWrites(storedItems,
+      itemsToUpsert.map((item: any, idx: number) => ({
           workOrderId: updatedOrder.id,
-          itemId: item.id || "",
+          itemId: String(item.id || ""),
           styleId: toPositiveIntOrNull(item.styleId),
           colorId: toPositiveIntOrNull(item.colorId),
           gender: normalizeWorkOrderItemGender(item.gender, "M"),
           sizeQuantities: item.sizeQuantities ?? null,
           totalQuantity: toNonNegativeInt(item.totalQuantity, 0),
           sortOrder: idx,
-        })),
+        })));
+    if (itemWrites.deleteIds.length) {
+      await tx.workOrderItem.deleteMany({
+        where: { workOrderId: existing.id, id: { in: itemWrites.deleteIds } },
       });
+    }
+    for (const write of itemWrites.writes) {
+      if (write.id !== null) {
+        await tx.workOrderItem.update({ where: { id: write.id }, data: write.data });
+      } else {
+        await tx.workOrderItem.create({ data: write.data });
+      }
     }
     return tx.workOrder.findUnique({
       where: { id: updatedOrder.id },
@@ -32734,6 +32746,9 @@ app.use(quantitySettlementRouter);
 // ───────────────────────────────────────────────────────────────────────────
 
 app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
+  if (error instanceof Error && error.message.startsWith("ORDER_ITEM_ID_CONFLICT:")) {
+    return res.status(409).json({ error: error.message });
+  }
   const errorRecord = toErrorRecord(error);
   const prismaErrorCode = getErrorCode(error);
   const prismaMeta =
