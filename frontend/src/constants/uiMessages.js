@@ -27,6 +27,7 @@ export const UI_MESSAGES = {
     },
   },
   menu: {
+    invoice: { ko: '청구서', en: 'Invoices', vi: 'Hóa đơn' },
     dashboard: { ko: '\uB300\uC2DC\uBCF4\uB4DC', en: 'Dashboard', vi: 'Bảng điều khiển' },
     operations: { ko: '운영 관리', en: 'Operations', vi: 'Quản lý vận hành' },
     revenueAnalysis: {

@@ -85,6 +85,7 @@ const BusinessPartners = lazyImportWithRetry(() => import('./pages/App/BusinessP
 const Onboarding = lazyImportWithRetry(() => import('./pages/Auth/Onboarding'));
 const Attribute = lazyImportWithRetry(() => import('./pages/App/Attribute'));
 const Order = lazyImportWithRetry(() => import('./pages/App/Order.jsx'));
+const Invoice = lazyImportWithRetry(() => import('./pages/App/invoice/InvoiceWorkspace.jsx'));
 const Inventory = lazyImportWithRetry(() => import('./pages/App/Inventory'));
 const MyProfile = lazyImportWithRetry(() => import('./pages/App/MyProfile'));
 const PersonalSettings = lazyImportWithRetry(() => import('./pages/App/PersonalSettings'));
@@ -449,6 +450,7 @@ const router = createBrowserRouter([
             path: 'revenue-forecast',
             element: <RevenueForecast />,
           },
+          { path: 'invoices', element: <Invoice /> },
           {
             path: 'revenue-analysis',
             element: <RevenueAnalysis />,

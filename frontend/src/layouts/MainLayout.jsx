@@ -431,6 +431,7 @@ const MainLayout = () => {
     }
     if (
       currentPath.startsWith('/order') ||
+      currentPath.startsWith('/invoices') ||
       currentPath.startsWith('/style') ||
       currentPath.startsWith('/customer-pricing') ||
       currentPath.startsWith('/customer-production-report')
@@ -652,6 +653,11 @@ const MainLayout = () => {
             label: getUiMessage('menu.order', '\uC8FC\uBB38', languageCode),
             icon: <ListAltIcon />,
             path: '/order',
+          },
+          {
+            label: getUiMessage('menu.invoice', 'Invoices', languageCode),
+            icon: <ListAltIcon />,
+            path: '/invoices',
           },
           {
             label: getUiMessage('menu.customerProductionReport', '보고서', languageCode),
@@ -944,6 +950,7 @@ const MainLayout = () => {
         const preferredSalesPaths = [
           '/style',
           '/order',
+          '/invoices',
           '/customer-production-report',
         ];
         orderedChildren = [

@@ -1053,9 +1053,10 @@ const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
 // re-apply ALL legacy defaults (including production-analysis/outsourcing-
 // record/etc auto-add) on every load, silently reverting saved toggles -
 // this is exactly the bug that motivated this comment.
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 10;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 11;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
+  "INVOICE",
   "DASHBOARD",
   "ORDER",
   "STYLE",
@@ -1116,6 +1117,7 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
       "CUSTOMER",
     ],
     ACCOUNTANT: [
+      "INVOICE",
       "DASHBOARD",
       "PAYROLL",
       "REVENUE_FORECAST",
@@ -1292,6 +1294,12 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
     }
   );
   const sourceSchemaVersion = getRoleAccessPolicySchemaVersion(value);
+  if (sourceSchemaVersion < 11) {
+    for (const role of ["ADMIN", "ACCOUNTANT"] as const) {
+      const features = policy.MANUFACTURER[role];
+      if (!features.includes("INVOICE")) features.push("INVOICE");
+    }
+  }
   if (sourceSchemaVersion < 9) {
     applyLegacyDashboardDefault(policy);
     applyLegacyProductionAnalysisDefault(policy);
@@ -30568,13 +30576,44 @@ app.put("/orders/:orderId", async (req, res) => {
   );
 });
 
-app.get("/orders/:orderId/invoice-source", async (req, res) => {
+const requireInvoiceAccess = async (req: any, res: any) => {
   const access = await requireOrgRole(req, res);
+  if (!access) return null;
+  const { organization } = access;
+  if (organization.type !== "MANUFACTURER") {
+    res.status(403).json({ error: "manufacturer invoice access is required" });
+    return null;
+  }
+  if (access.systemUser?.systemRole !== "SYSTEM_ADMIN" && !(await hasRoleAccessPolicyFeature({
+    orgType: organization.type, orgRole: access.orgMembership!.role, feature: "INVOICE",
+  }))) {
+    res.status(403).json({ error: "invoice access is required" });
+    return null;
+  }
+  return access;
+};
+
+app.get("/invoices/orders", async (req, res) => {
+  const access = await requireInvoiceAccess(req, res);
+  if (!access) return;
+  const search = String(req.query.search || "").trim().slice(0, 200);
+  const page = Math.max(0, Math.min(100000, Math.trunc(Number(req.query.page) || 0)));
+  const orders = await prisma.workOrder.findMany({
+    where: { sellerOrgId: access.organization.id,
+      ...(search ? { OR: [{ orderNumber: { contains: search, mode: "insensitive" as const } },
+        { buyerOrg: { name: { contains: search, mode: "insensitive" as const } } }] } : {}) },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: page * 50, take: 51,
+    select: { orderId: true, orderNumber: true, totalQuantity: true, dueDate: true,
+      buyerOrg: { select: { name: true } } },
+  });
+  res.setHeader("Cache-Control", "no-store");
+  return res.json({ rows: orders.slice(0, 50), hasMore: orders.length > 50 });
+});
+
+app.get(["/invoices/order-source/:orderId", "/orders/:orderId/invoice-source"], async (req, res) => {
+  const access = await requireInvoiceAccess(req, res);
   if (!access) return;
   const { organization } = access;
-  if (access.systemUser?.systemRole !== "SYSTEM_ADMIN" && !(await hasRoleAccessPolicyFeature({
-    orgType: organization.type, orgRole: access.orgMembership!.role, feature: "ORDER",
-  }))) return res.status(403).json({ error: "order access is required" });
   // Only the seller prepares its invoice; knowing an order id is not authorization.
   const order = await prisma.workOrder.findFirst({
     where: { orderId: String(req.params.orderId), sellerOrgId: organization.id },
@@ -30595,7 +30634,8 @@ app.get("/orders/:orderId/invoice-source", async (req, res) => {
   // An empty id array means all assignments to the progress helper: never call it here.
   const progress = plans.length ? await buildAssignmentPlanProgressRows(organization.id, plans.map((plan) => plan.externalId)) : [];
   res.setHeader("Cache-Control", "no-store");
-  return res.json(buildInvoiceSource(order, plans, progress, relationship));
+  const currencies = await prisma.currency.findMany({ select: { code: true }, orderBy: { code: "asc" } });
+  return res.json({ ...buildInvoiceSource(order, plans, progress, relationship), currencies: currencies.map((row) => row.code) });
 });
 
 app.post("/orders/:orderId/modification-lock", async (req, res) => {

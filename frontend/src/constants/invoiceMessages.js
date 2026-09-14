@@ -1,0 +1,30 @@
+export const invoiceMessages = {
+  ko: {
+    title: '청구서', orders: '청구 대상 주문', search: '주문번호·고객 검색', create: '초안 작성', next: '다음', previous: '이전', empty: '청구할 주문이 없습니다.', failed: '주문 목록을 불러오지 못했습니다.', retry: '다시 조회',
+    notice: '검토용 초안입니다. 정식 발행·서버 저장·누적 청구 관리는 아직 지원하지 않으며, 창을 닫으면 입력 내용이 사라집니다.',
+    modes: { QUANTITY: '수량으로 청구', PERCENTAGE: '전체 금액의 비율', FIXED_AMOUNT: '합의한 금액' }, mode: '청구 방식',
+    contract: '합의된 전체 금액', percentage: '이번 청구 비율 (%)', fixed: '이번 청구 금액', agreement: '합의 내용 / 청구 사유',
+    reference: '현재 단가표 기준 전체 주문 참고 금액', useReference: '참고 금액 사용',
+    moneyHint: '선금·중도금 요청입니다. 생산 수량을 청구한 것으로 처리하지 않습니다. 전체 금액은 고객과 합의한 금액을 확인해 입력하세요.',
+    draftHint: '금액 방식은 기청구·입금액을 차감한 잔금 계산이 아닙니다. 서버 저장과 누적 정산이 연결되기 전에는 검토용으로만 사용하세요.',
+    errors: { AGREEMENT: '합의 내용 또는 청구 사유를 입력하세요.', CONTRACT_AMOUNT: '통화 단위에 맞는 양수의 전체 금액을 입력하세요.', PERCENTAGE: '비율은 0 초과 100 이하, 소수 둘째 자리까지 입력하세요.', AMOUNT: '청구 금액은 양수이며 통화의 소수 자릿수에 맞아야 합니다.', BILLING_MODE: '청구 방식을 선택하세요.' },
+  },
+  en: {
+    title: 'Invoices', orders: 'Orders to invoice', search: 'Order number / customer', create: 'Prepare draft', next: 'Next', previous: 'Previous', empty: 'No orders found.', failed: 'Unable to load orders.', retry: 'Reload',
+    notice: 'Review drafts only. Issuing, server storage and cumulative billing are not available yet. Closing the dialog discards your changes.',
+    modes: { QUANTITY: 'By quantity', PERCENTAGE: 'Percentage of total', FIXED_AMOUNT: 'Agreed amount' }, mode: 'Billing method',
+    contract: 'Agreed contract total', percentage: 'Installment percentage (%)', fixed: 'Installment amount', agreement: 'Agreement / Reason', reference: 'Full order estimate at current prices', useReference: 'Use estimate',
+    moneyHint: 'Advance or installment payment request. It does not invoice garment quantities. Confirm the contract total agreed with the customer.',
+    draftHint: 'This is not a remaining-balance calculation after prior invoices or payments. Use for review only until stored billing and reconciliation are available.',
+    errors: { AGREEMENT: 'Enter the agreement or billing reason.', CONTRACT_AMOUNT: 'Enter a positive contract total using the currency precision.', PERCENTAGE: 'Enter a percentage above 0 and at most 100, up to two decimals.', AMOUNT: 'Enter a positive amount using the currency precision.', BILLING_MODE: 'Select a billing method.' },
+  },
+  vi: {
+    title: 'Hóa đơn', orders: 'Đơn hàng cần lập hóa đơn', search: 'Mã đơn hàng / Khách hàng', create: 'Tạo bản nháp', next: 'Tiếp', previous: 'Trước', empty: 'Không có đơn hàng.', failed: 'Không thể tải đơn hàng.', retry: 'Tải lại',
+    notice: 'Chỉ dùng để kiểm tra. Chưa hỗ trợ phát hành, lưu trên máy chủ hoặc cộng dồn hóa đơn. Đóng cửa sổ sẽ mất dữ liệu nhập.',
+    modes: { QUANTITY: 'Theo số lượng', PERCENTAGE: 'Phần trăm tổng tiền', FIXED_AMOUNT: 'Số tiền thỏa thuận' }, mode: 'Cách lập hóa đơn',
+    contract: 'Tổng tiền đã thỏa thuận', percentage: 'Tỷ lệ đợt này (%)', fixed: 'Số tiền đợt này', agreement: 'Thỏa thuận / Lý do', reference: 'Giá trị tham khảo theo bảng giá hiện tại', useReference: 'Dùng giá trị tham khảo',
+    moneyHint: 'Yêu cầu tạm ứng hoặc thanh toán theo đợt, không tính vào số lượng hàng đã lập hóa đơn. Xác nhận tổng tiền thỏa thuận với khách hàng.',
+    draftHint: 'Đây không phải số dư sau các hóa đơn hay khoản đã thu. Chỉ dùng để kiểm tra trước khi có chức năng lưu và đối soát.',
+    errors: { AGREEMENT: 'Nhập thỏa thuận hoặc lý do.', CONTRACT_AMOUNT: 'Nhập tổng tiền dương theo đơn vị tiền tệ.', PERCENTAGE: 'Nhập tỷ lệ lớn hơn 0 và không quá 100, tối đa hai chữ số thập phân.', AMOUNT: 'Nhập số tiền dương theo đơn vị tiền tệ.', BILLING_MODE: 'Chọn cách lập hóa đơn.' },
+  },
+};

@@ -4,6 +4,9 @@ import { Alert, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, 
   TableRow, TextField, Typography } from '@mui/material';
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
 import { INVOICE_BASES, calculateInvoiceDraft, buildInvoicePrintHtml } from '../../../utils/invoiceDraft.mjs';
+import { INVOICE_BILLING_MODES, calculateMonetaryInstallment } from '../../../utils/invoiceBilling.mjs';
+import { invoiceMessages } from '../../../constants/invoiceMessages';
+import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 
 const messages = {
   ko: { title: '청구서 초안', notice: '1단계: 검토용 초안입니다. 정식 발행·보관·완전 잠금은 아직 적용되지 않습니다. 입력한 내용은 창을 닫으면 사라집니다.',
@@ -24,6 +27,7 @@ const messages = {
 
 export default function InvoiceDraftDialog({ open, onClose, orderId, orgId, languageCode = 'ko' }) {
   const t = messages[languageCode] || messages.en;
+  const billingText = invoiceMessages[languageCode] || invoiceMessages.en;
   const [source, setSource] = useState(null);
   const [lines, setLines] = useState([]);
   const [basis, setBasis] = useState(INVOICE_BASES[0].value);
@@ -33,17 +37,27 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orgId, lang
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
+  const [mode, setMode] = useState('QUANTITY');
+  const [contractAmount, setContractAmount] = useState('');
+  const [percentage, setPercentage] = useState('');
+  const [fixedAmount, setFixedAmount] = useState('');
+  const [agreementNote, setAgreementNote] = useState('');
+  const [dirty, setDirty] = useState(false);
+  useUnsavedChanges(open && dirty);
+  const monetary = mode !== 'QUANTITY';
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setLoading(true); setSource(null); setFields(null); setError(''); setReviewed(false);
-    requestJSON(`/orders/${encodeURIComponent(orderId)}/invoice-source${buildQueryString({ orgId })}`, { forceRefresh: true })
+    setDirty(false);
+    setMode('QUANTITY'); setContractAmount(''); setPercentage(''); setFixedAmount(''); setAgreementNote('');
+    requestJSON(`/invoices/order-source/${encodeURIComponent(orderId)}${buildQueryString({ orgId })}`, { skipCache: true })
       .then((data) => {
         if (cancelled) return;
         setSource(data); setLines(data.lines);
         const prices = data.styles.flatMap((style) => style.prices);
         const first = prices.find((p) => p.pricingBasis === INVOICE_BASES[0].value && p.currencyCode === 'USD') || prices[0];
-        setBasis(first?.pricingBasis || INVOICE_BASES[0].value); setCurrency(first?.currencyCode || '');
+        setBasis(first?.pricingBasis || INVOICE_BASES[0].value); setCurrency(first?.currencyCode || data.currencies?.[0] || '');
         const date = new Date().toLocaleDateString('sv-SE');
         setFields({ number: `DRAFT-${data.orderNumber}`, date, seller: data.seller, buyer: data.buyer,
           shipTo: [data.buyer.name, data.buyer.address, data.buyer.country].filter(Boolean).join('\n'),
@@ -52,12 +66,21 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orgId, lang
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [open, orderId, orgId, reload, t.load]);
-  const currencies = useMemo(() => [...new Set((source?.styles || []).flatMap((style) => style.prices)
-    .filter((price) => price.pricingBasis === basis).map((price) => price.currencyCode))], [source, basis]);
-  const calculation = useMemo(() => source ? calculateInvoiceDraft(source, lines, basis, currency) : null, [source, lines, basis, currency]);
-  const changeField = (key, value) => { setFields((f) => ({ ...f, [key]: value })); setReviewed(false); };
+  const currencies = source?.currencies || [];
+  const reference = useMemo(() => source ? calculateInvoiceDraft(source, source.lines, basis, currency) : null, [source, basis, currency]);
+  const hasReference = reference && !reference.issues.some((issue) => issue !== 'PRODUCTION');
+  const calculation = useMemo(() => !source ? null : monetary
+    ? calculateMonetaryInstallment({ mode, currency, contractAmount, percentage, fixedAmount, agreementNote })
+    : calculateInvoiceDraft(source, lines, basis, currency), [source, lines, basis, currency, monetary, mode, contractAmount, percentage, fixedAmount, agreementNote]);
+  const changeBilling = (setter, value) => { setter(value); setReviewed(false); setDirty(true); };
+  const changeField = (key, value) => { setFields((f) => ({ ...f, [key]: value })); setReviewed(false); setDirty(true); };
   const changeLine = (key, property, value) => {
-    setLines((rows) => rows.map((row) => row.key === key ? { ...row, [property]: value } : row)); setReviewed(false);
+    setLines((rows) => rows.map((row) => row.key === key ? { ...row, [property]: value } : row)); setReviewed(false); setDirty(true);
+  };
+  const close = () => {
+    const message = languageCode === 'ko' ? '초안이 저장되지 않습니다. 입력 내용을 버리고 닫을까요?'
+      : languageCode === 'vi' ? 'Bản nháp chưa được lưu. Bỏ thay đổi và đóng?' : 'This draft is not saved. Discard changes and close?';
+    if (!dirty || window.confirm(message)) { setDirty(false); onClose(); }
   };
   const print = () => {
     if (!reviewed || calculation?.issues.length || !fields.number.trim() || !fields.date) return;
@@ -69,23 +92,40 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orgId, lang
     popup.document.close();
     popup.focus();
   };
-  return <Dialog open={open} onClose={onClose} fullWidth maxWidth="xl">
+  return <Dialog open={open} onClose={close} fullWidth maxWidth="xl">
     <DialogTitle>{t.title}{source ? ` · ${source.orderNumber}` : ''}</DialogTitle>
     <DialogContent dividers>
       <Stack spacing={2}>
-        <Alert severity="info">{t.notice}</Alert>
+        <Alert severity="info">{billingText.notice}</Alert>
         {loading && <CircularProgress />}
         {error && <Alert severity="error" action={<Button onClick={() => setReload((v) => v + 1)}>{t.retry}</Button>}>{error}</Alert>}
         {source && fields && <>
-          <Typography variant="body2">{t.explanation}</Typography>
+          <TextField select size="small" label={billingText.mode} value={mode} onChange={(e) => changeBilling(setMode, e.target.value)}>
+            {INVOICE_BILLING_MODES.map((value) => <MenuItem key={value} value={value}>{billingText.modes[value]}</MenuItem>)}
+          </TextField>
+          <Typography variant="body2">{monetary ? billingText.moneyHint : t.explanation}</Typography>
           <Stack direction="row" spacing={2}>
-            <TextField select size="small" label={t.scope} value={basis} onChange={(e) => { setBasis(e.target.value); setCurrency(''); setReviewed(false); }} sx={{ minWidth: 140 }}>
+            <TextField select size="small" label={t.scope} value={basis} onChange={(e) => { changeBilling(setBasis, e.target.value); setCurrency(''); }} sx={{ minWidth: 140 }}>
               {INVOICE_BASES.map((b) => <MenuItem key={b.value} value={b.value}>{b.label}</MenuItem>)}
             </TextField>
-            <TextField select size="small" label={t.currency} value={currency} onChange={(e) => { setCurrency(e.target.value); setReviewed(false); }} sx={{ minWidth: 140 }}>
+            <TextField select size="small" label={t.currency} value={currency} onChange={(e) => { changeBilling(setCurrency, e.target.value); setContractAmount(''); setFixedAmount(''); }} sx={{ minWidth: 140 }}>
               <MenuItem value="">—</MenuItem>{currencies.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
             </TextField>
           </Stack>
+          {monetary && <Stack spacing={2}>
+            <Alert severity="info">{billingText.draftHint}</Alert>
+            {mode === 'PERCENTAGE' && <>
+              <Typography variant="body2">{billingText.reference}: {hasReference ? `${currency} ${reference.total}` : '—'}</Typography>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <TextField fullWidth size="small" label={billingText.contract} value={contractAmount} onChange={(e) => changeBilling(setContractAmount, e.target.value)} inputProps={{ inputMode: 'decimal', maxLength: 20 }} />
+                <Button disabled={!hasReference} onClick={() => changeBilling(setContractAmount, reference.total)}>{billingText.useReference}</Button>
+              </Stack>
+              <TextField size="small" label={billingText.percentage} value={percentage} onChange={(e) => changeBilling(setPercentage, e.target.value)} inputProps={{ inputMode: 'decimal', maxLength: 6 }} />
+            </>}
+            {mode === 'FIXED_AMOUNT' && <TextField size="small" label={billingText.fixed} value={fixedAmount} onChange={(e) => changeBilling(setFixedAmount, e.target.value)} inputProps={{ inputMode: 'decimal', maxLength: 20 }} />}
+            <TextField size="small" multiline label={billingText.agreement} value={agreementNote} onChange={(e) => changeBilling(setAgreementNote, e.target.value)} inputProps={{ maxLength: 2000 }} />
+          </Stack>}
+          {!monetary && <>
           <Box sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>
             <TableCell>Style</TableCell>{[t.ordered, t.produced, t.invoice, t.difference].map((label) => <TableCell key={label} align="right">{label}</TableCell>)}
           </TableRow></TableHead><TableBody>{calculation.styles.map((style) => <TableRow key={style.styleId ?? 'missing'}>
@@ -104,7 +144,8 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orgId, lang
             <TableCell><TextField size="small" value={line.adjustmentReason} placeholder={t.reason} inputProps={{ 'aria-label': `${t.reason} ${line.key}`, maxLength: 500 }} onChange={(e) => changeLine(line.key, 'adjustmentReason', e.target.value)} /></TableCell>
             <TableCell><Stack spacing={1}>{['hsCode', 'origin'].map((key) => <TextField key={key} size="small" label={key === 'hsCode' ? 'HS code' : 'Origin'} value={line[key]} onChange={(e) => changeLine(line.key, key, e.target.value)} />)}</Stack></TableCell>
           </TableRow>)}</TableBody></Table></Box>
-          <Typography align="right" variant="h6">TOTAL {currency} {calculation.total}</Typography>
+          </>}
+          <Typography align="right" variant="h6">TOTAL {currency} {calculation.total ?? '—'}</Typography>
           <Typography variant="subtitle1">{t.metadata}</Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
             {[['number', 'Invoice reference'], ['date', 'Invoice date', 'date'], ['shipmentDate', 'Shipment date', 'date'], ['dueDate', 'Payment due date', 'date'], ['incoterm', 'Incoterm / Named place'], ['paymentTerms', 'Payment terms'], ['shipTo', 'Ship to / Consignee'], ['bank', 'Bank / Payment instructions'], ['notes', 'Remarks']].map(([key, label, type]) =>
@@ -113,11 +154,11 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orgId, lang
               {['name', 'address', 'country', 'taxId', 'email', 'phone'].map((key) => <TextField key={key} size="small" label={key} value={fields[party][key]} inputProps={{ maxLength: 1000 }} onChange={(e) => changeField(party, { ...fields[party], [key]: e.target.value })} />)}
             </Stack></Box>)}
           </Box>
-          {calculation.issues.map((issue) => <Alert severity="warning" key={issue}>{t.issues[issue]}</Alert>)}
+          {calculation.issues.map((issue) => <Alert severity="warning" key={issue}>{billingText.errors[issue] || t.issues[issue]}</Alert>)}
           <FormControlLabel control={<Checkbox checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} />} label={t.review} />
         </>}
       </Stack>
     </DialogContent>
-    <DialogActions><Button onClick={onClose}>{t.close}</Button><Button variant="contained" onClick={print} disabled={loading || !source || !reviewed || !!calculation?.issues.length || !fields?.number.trim() || !fields?.date}>{t.print}</Button></DialogActions>
+    <DialogActions><Button onClick={close}>{t.close}</Button><Button variant="contained" onClick={print} disabled={loading || !source || !reviewed || !!calculation?.issues.length || !fields?.number.trim() || !fields?.date}>{t.print}</Button></DialogActions>
   </Dialog>;
 }

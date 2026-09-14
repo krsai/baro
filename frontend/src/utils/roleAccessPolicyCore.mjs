@@ -13,6 +13,7 @@ export const ORG_ROLE_KEYS = {
 export const ACCESS_FEATURE_KEYS = {
   DASHBOARD: 'DASHBOARD',
   ORDER: 'ORDER',
+  INVOICE: 'INVOICE',
   STYLE: 'STYLE',
   ST_REVIEW: 'ST_REVIEW',
   SHIPMENT_REVIEW: 'SHIPMENT_REVIEW',
@@ -39,7 +40,7 @@ export const ACCESS_FEATURE_KEYS = {
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
-export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 10;
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 11;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND];
 const POLICY_ORG_ROLES = [
@@ -75,6 +76,7 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
       ACCESS_FEATURE_KEYS.CUSTOMER,
     ]),
     [ORG_ROLE_KEYS.ACCOUNTANT]: Object.freeze([
+      ACCESS_FEATURE_KEYS.INVOICE,
       ACCESS_FEATURE_KEYS.DASHBOARD,
       ACCESS_FEATURE_KEYS.PAYROLL,
       ACCESS_FEATURE_KEYS.REVENUE_FORECAST,
@@ -298,6 +300,12 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
   });
 
   const sourceSchemaVersion = getPolicySchemaVersion(candidate);
+  if (sourceSchemaVersion < 11) {
+    for (const role of ['ADMIN', 'ACCOUNTANT']) {
+      const features = base.MANUFACTURER[role];
+      if (!features.includes(ACCESS_FEATURE_KEYS.INVOICE)) features.push(ACCESS_FEATURE_KEYS.INVOICE);
+    }
+  }
   if (sourceSchemaVersion < 9) {
     applyLegacyDashboardDefault(base);
     applyLegacyProductionAnalysisDefault(base);

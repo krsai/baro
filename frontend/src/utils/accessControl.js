@@ -18,6 +18,7 @@ const ORG_ROLES = {
 const FEATURE_KEYS = {
   DASHBOARD: 'DASHBOARD',
   ORDER: 'ORDER',
+  INVOICE: 'INVOICE',
   STYLE: 'STYLE',
   ST_REVIEW: 'ST_REVIEW',
   SHIPMENT_REVIEW: 'SHIPMENT_REVIEW',
@@ -155,6 +156,8 @@ const canAccessFeatureByContext = (featureKey, context) => {
   const featureSet = resolveFeatureSetForContext(context);
 
   switch (featureKey) {
+    case FEATURE_KEYS.INVOICE:
+      return hasOrgType(context, ORG_TYPES.MANUFACTURER) && featureSet.has(featureKey);
     case FEATURE_KEYS.PROFILE:
       return isOrgMember;
     case FEATURE_KEYS.SUBSCRIPTION:
@@ -169,6 +172,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
 
 export const resolveFeatureByPath = (pathname) => {
   const path = normalizePathname(pathname);
+  if (path === '/invoices' || path.startsWith('/invoices/')) return FEATURE_KEYS.INVOICE;
   if (path === '/') return null;
   if (path.startsWith('/dashboard')) return FEATURE_KEYS.DASHBOARD;
   if (path.startsWith('/order')) return FEATURE_KEYS.ORDER;
@@ -222,6 +226,7 @@ const ACCESS_PATH_PRIORITY = [
   '/workspace',
   '/dashboard',
   '/order',
+  '/invoices',
   '/style',
   '/st-review',
   '/shipment-review',
