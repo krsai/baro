@@ -229,10 +229,10 @@ const router = createBrowserRouter([
   },
   {
     path: '/',
-    element: <MainLayout />,
+    element: <ProtectedRoute />,
     children: [
       {
-        element: <ProtectedRoute />,
+        element: <MainLayout />,
         children: [
           {
             index: true,
