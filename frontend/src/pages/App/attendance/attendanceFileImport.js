@@ -144,7 +144,10 @@ const detectHeaderColumns = (row = []) => {
     workerNameIndex,
     timestampIndex,
     score,
-    valid: timestampIndex >= 0 && (workerIdIndex >= 0 || workerNameIndex >= 0),
+    // 사번(직원 ID) 열은 유일한 매칭 근거이므로 반드시 있어야 한다. 이름 열은
+    // 매칭에 쓰지 않고, 사번으로 찾은 직원과 이름이 실제로 맞는지 확인하는
+    // 참고용 검증에만 쓰이므로 없어도 파일 자체는 유효하다.
+    valid: timestampIndex >= 0 && workerIdIndex >= 0,
   };
 };
 
@@ -189,7 +192,7 @@ export const parseAttendanceImportFile = async (file) => {
 
   const header = findHeaderInfo(rows);
   if (!header) {
-    throw new Error('Could not detect time/worker columns.');
+    throw new Error('Could not detect a time column and an employee ID/code column. Both are required.');
   }
 
   const events = [];
@@ -230,10 +233,12 @@ export const parseAttendanceImportFile = async (file) => {
   };
 };
 
+// 엑셀에서 추출한 사번(직원 ID)이 유일한 매칭 근거다. 이름은 매칭에 쓰지 않고,
+// 사번으로 찾은 직원의 실제 이름과 엑셀에 적힌 이름이 그럴듯하게 맞는지
+// 검증하는 용도로만 쓴다(오타·다른 직원 사번 오입력 등을 잡아내기 위함).
 const buildEmployeeResolver = (employees = [], languageCode = 'ko') => {
   const byEmployeeNumber = new Map();
   const byNameBuckets = new Map();
-  const byNameKeyBuckets = new Map();
 
   employees.forEach((employee) => {
     const numericIdKey = normalizeEmployeeNumber(employee?.employeeNo);
@@ -249,69 +254,36 @@ const buildEmployeeResolver = (employees = [], languageCode = 'ko') => {
       }
       byNameBuckets.get(normalizedName).push(employee);
     }
-
-    const nameKey = buildSurnameGivenNameKey(employee?.name);
-    if (nameKey) {
-      if (!byNameKeyBuckets.has(nameKey)) {
-        byNameKeyBuckets.set(nameKey, []);
-      }
-      byNameKeyBuckets.get(nameKey).push(employee);
-    }
   });
 
   return (event) => {
     const idDigits = normalizeEmployeeNumber(event?.workerCode);
-    if (idDigits) {
-      // Excel IDs are employee numbers, never database primary keys.
-      const candidates = byEmployeeNumber.get(idDigits) || [];
-      if (!candidates.length) return { employee: null, reason: 'unmatched_worker' };
-      const byId = candidates[0];
-      const name = normalizeAscii(event?.workerName);
-      const key = buildSurnameGivenNameKey(event?.workerName);
-      const compatible = !name || name === normalizeAscii(byId.name) || (
-        !(byNameBuckets.get(name) || []).length && key && key === buildSurnameGivenNameKey(byId.name)
-      );
-      if (candidates.length !== 1 || !compatible) {
-        const message = {
-          ko: '사번·이름 불일치 또는 사번 중복입니다. 직원 정보와 엑셀을 확인하세요',
-          en: 'Employee number/name mismatch or duplicate number. Check employees and the spreadsheet',
-          vi: 'Mã nhân viên và tên không khớp hoặc mã bị trùng. Kiểm tra nhân viên và tệp Excel',
-        };
-        const error = new Error(`${message[languageCode] || message.en}: ${event.workerCode} / ${event.workerName}`);
-        error.code = 'ATTENDANCE_EMPLOYEE_CONFLICT';
-        throw error;
-      }
-      return { employee: byId, reason: 'matched_employee_number' };
+    if (!idDigits) {
+      // 사번 열이 비었거나 숫자로 끝나지 않으면, 이름이 함께 적혀 있어도
+      // 이름으로 대신 매칭하지 않는다. 사번만이 유일한 매칭 근거다.
+      return { employee: null, reason: 'missing_employee_code' };
     }
 
-    const normalizedName = normalizeAscii(event?.workerName);
-    if (!normalizedName) {
-      return { employee: null, reason: 'missing_worker_key' };
+    // Excel IDs are employee numbers, never database primary keys.
+    const candidates = byEmployeeNumber.get(idDigits) || [];
+    if (!candidates.length) return { employee: null, reason: 'unmatched_worker' };
+    const byId = candidates[0];
+    const name = normalizeAscii(event?.workerName);
+    const key = buildSurnameGivenNameKey(event?.workerName);
+    const compatible = !name || name === normalizeAscii(byId.name) || (
+      !(byNameBuckets.get(name) || []).length && key && key === buildSurnameGivenNameKey(byId.name)
+    );
+    if (candidates.length !== 1 || !compatible) {
+      const message = {
+        ko: '사번·이름 불일치 또는 사번 중복입니다. 직원 정보와 엑셀을 확인하세요',
+        en: 'Employee number/name mismatch or duplicate number. Check employees and the spreadsheet',
+        vi: 'Mã nhân viên và tên không khớp hoặc mã bị trùng. Kiểm tra nhân viên và tệp Excel',
+      };
+      const error = new Error(`${message[languageCode] || message.en}: ${event.workerCode} / ${event.workerName}`);
+      error.code = 'ATTENDANCE_EMPLOYEE_CONFLICT';
+      throw error;
     }
-
-    const byNameList = byNameBuckets.get(normalizedName) || [];
-    if (byNameList.length === 1) {
-      return { employee: byNameList[0], reason: 'matched_name' };
-    }
-    if (byNameList.length > 1) {
-      return { employee: null, reason: 'ambiguous_name' };
-    }
-
-    // Full-name match failed (commonly because the device abbreviated the
-    // middle "chữ đệm" to a single initial). Fall back to surname + given
-    // name only; still refuse to guess when that's ambiguous too.
-    const nameKey = buildSurnameGivenNameKey(event?.workerName);
-    if (nameKey) {
-      const byKeyList = byNameKeyBuckets.get(nameKey) || [];
-      if (byKeyList.length === 1) {
-        return { employee: byKeyList[0], reason: 'matched_name_key' };
-      }
-      if (byKeyList.length > 1) {
-        return { employee: null, reason: 'ambiguous_name' };
-      }
-    }
-
-    return { employee: null, reason: 'unmatched_worker' };
+    return { employee: byId, reason: 'matched_employee_number' };
   };
 };
 
@@ -323,20 +295,25 @@ export const buildAttendanceImportPlan = ({
   const resolveEmployee = buildEmployeeResolver(employees, languageCode);
   const groupedByDateWorker = new Map();
   const unmatchedReasonCount = {
-    missing_worker_key: 0,
-    ambiguous_name: 0,
+    missing_employee_code: 0,
     unmatched_worker: 0,
   };
+  const unmatchedDetails = [];
   let matchedEventCount = 0;
 
   events.forEach((event) => {
     const { employee, reason } = resolveEmployee(event);
     if (!employee?.id) {
-      if (Object.prototype.hasOwnProperty.call(unmatchedReasonCount, reason)) {
-        unmatchedReasonCount[reason] += 1;
-      } else {
-        unmatchedReasonCount.unmatched_worker += 1;
-      }
+      const resolvedReason = Object.prototype.hasOwnProperty.call(unmatchedReasonCount, reason)
+        ? reason
+        : 'unmatched_worker';
+      unmatchedReasonCount[resolvedReason] += 1;
+      unmatchedDetails.push({
+        workerCode: toText(event?.workerCode),
+        workerName: toText(event?.workerName),
+        occurredAt: event?.occurredAt,
+        reason: resolvedReason,
+      });
       return;
     }
 
@@ -345,6 +322,12 @@ export const buildAttendanceImportPlan = ({
     const workerId = Number(employee.id);
     if (!Number.isFinite(workerId) || workerId <= 0) {
       unmatchedReasonCount.unmatched_worker += 1;
+      unmatchedDetails.push({
+        workerCode: toText(event?.workerCode),
+        workerName: toText(event?.workerName),
+        occurredAt: event?.occurredAt,
+        reason: 'unmatched_worker',
+      });
       return;
     }
 
@@ -403,6 +386,7 @@ export const buildAttendanceImportPlan = ({
     matchedEventCount,
     unmatchedEventCount: events.length - matchedEventCount,
     unmatchedReasonCount,
+    unmatchedDetails,
   };
 };
 

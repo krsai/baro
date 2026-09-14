@@ -20,7 +20,7 @@ test('rejects conflicting identity or duplicate employee numbers before producin
   assert.equal(plan([event('08:00:00', { workerCode: '9999' })]).matchedEventCount, 0);
 });
 
-test('supports accent-free and abbreviated Vietnamese names, with name-only ambiguity rejected', () => {
+test('accepts accent-free and abbreviated Vietnamese names as compatible with a code match', () => {
   const people = [
     ['Đỗ Thị Thắm', 'Do Thi Tham'], ['Chu Thị Diệp', 'Chu Thi Diep'],
     ['Trương Thị Kim Viên', 'Truong thi kim vien'], ['Nguyễn Thị Thanh Hương', 'Nguyen Thi T Huong'],
@@ -28,8 +28,21 @@ test('supports accent-free and abbreviated Vietnamese names, with name-only ambi
   for (const [name, workerName] of people) {
     assert.equal(plan([event('08:08:49', { workerName })], [{ ...mai, name }]).matchedEventCount, 1);
   }
-  assert.equal(plan([event('08:00:00', { workerCode: '' })]).matchedEventCount, 1);
-  assert.equal(plan([event('08:00:00', { workerCode: '' })], [mai, { ...mai, id: 101 }]).unmatchedReasonCount.ambiguous_name, 1);
+});
+
+test('employee number is the sole matching key: rows without a code are unmatched even with a name present', () => {
+  const result = plan([event('08:00:00', { workerCode: '' })]);
+  assert.equal(result.matchedEventCount, 0);
+  assert.equal(result.unmatchedReasonCount.missing_employee_code, 1);
+  assert.equal(result.unmatchedDetails.length, 1);
+  assert.equal(result.unmatchedDetails[0].reason, 'missing_employee_code');
+  assert.equal(result.unmatchedDetails[0].workerName, 'Le Phuong Mai');
+  // 이름이 같은 직원이 둘이어도(예전이라면 ambiguous_name) 애초에 이름으로
+  // 매칭을 시도하지 않으므로 여전히 missing_employee_code로 취급한다.
+  assert.equal(
+    plan([event('08:00:00', { workerCode: '' })], [mai, { ...mai, id: 101 }]).unmatchedReasonCount.missing_employee_code,
+    1
+  );
 });
 
 test('fills missing checkout before noon and missing checkin from noon, naming the employee', () => {

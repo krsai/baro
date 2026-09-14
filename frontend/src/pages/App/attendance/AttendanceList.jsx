@@ -1,7 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
+  Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   IconButton,
   InputLabel,
@@ -16,6 +21,7 @@ import {
   TableHead,
   TableRow,
   Tooltip,
+  Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -111,6 +117,29 @@ const TEXT = {
     en: 'Failed to import file.',
     vi: 'Nhap tep that bai.',
   },
+  importReviewTitle: {
+    ko: '가져오기 확인',
+    en: 'Review import',
+    vi: 'Xem lai truoc khi nhap',
+  },
+  importReviewSummary: {
+    ko: '전체 {rawCount}건 중 {matchedCount}건 일치, {unmatchedCount}건 미매칭 ({dayCount}일 데이터).',
+    en: '{matchedCount} of {rawCount} events matched, {unmatchedCount} unmatched ({dayCount} days).',
+    vi: 'Khop {matchedCount}/{rawCount} su kien, khong khop {unmatchedCount} ({dayCount} ngay).',
+  },
+  importReviewUnmatchedHint: {
+    ko: '아래 항목은 사번이 없거나 일치하는 직원을 찾지 못해 이번 가져오기에서 제외됩니다. 엑셀을 확인한 뒤 필요하면 다시 올려주세요.',
+    en: 'The rows below have no code or no matching employee and will be skipped. Check the spreadsheet and re-upload if needed.',
+    vi: 'Cac dong duoi day khong co ma hoac khong tim thay nhan vien khop, se bi bo qua. Kiem tra tep va tai lai neu can.',
+  },
+  importReviewColumnCode: { ko: '사번(엑셀)', en: 'Code (Excel)', vi: 'Ma (Excel)' },
+  importReviewColumnName: { ko: '이름(엑셀)', en: 'Name (Excel)', vi: 'Ten (Excel)' },
+  importReviewColumnTime: { ko: '시각', en: 'Time', vi: 'Thoi gian' },
+  importReviewColumnReason: { ko: '사유', en: 'Reason', vi: 'Ly do' },
+  importReviewReasonMissingCode: { ko: '사번 없음', en: 'No employee code', vi: 'Khong co ma NV' },
+  importReviewReasonUnmatched: { ko: '일치하는 직원 없음', en: 'No matching employee', vi: 'Khong khop nhan vien' },
+  importReviewCancel: { ko: '취소', en: 'Cancel', vi: 'Huy' },
+  importReviewProceed: { ko: '일치한 항목만 가져오기', en: 'Import matched rows', vi: 'Nhap cac dong khop' },
   deleteConfirm: {
     en: 'Delete all attendance records for this day?',
     vi: 'Ban co muon xoa toan bo cham cong cua ngay nay khong?',
@@ -136,6 +165,13 @@ const formatTemplate = (template, params = {}) =>
     if (!Object.prototype.hasOwnProperty.call(params, token)) return '';
     return String(params[token] ?? '');
   });
+
+const resolveImportUnmatchedReasonLabel = (reason, languageCode) => {
+  if (reason === 'missing_employee_code') {
+    return resolveText(TEXT.importReviewReasonMissingCode, languageCode, 'No employee code');
+  }
+  return resolveText(TEXT.importReviewReasonUnmatched, languageCode, 'No matching employee');
+};
 
 const buildAttendanceCreateTabLabel = (languageCode) => {
   if (languageCode === 'en') return 'New Attendance';
@@ -274,6 +310,7 @@ const AttendanceList = () => {
   const [loadingRows, setLoadingRows] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [importingFile, setImportingFile] = useState(false);
+  const [importReview, setImportReview] = useState(null);
   const [deletingWorkDate, setDeletingWorkDate] = useState('');
   const [reloadToken, setReloadToken] = useState(0);
   const fileInputRef = useRef(null);
@@ -585,6 +622,53 @@ const AttendanceList = () => {
     fileInputRef.current?.click();
   }, [languageCode, selectedFactoryId, showNotification]);
 
+  const commitImportPlan = useCallback(
+    async (importPlan) => {
+      let updatedDayCount = 0;
+      for (const daily of importPlan.dailyEntries) {
+        const readQuery = buildQueryString({
+          orgId: activeOrgId,
+          factoryId: selectedFactoryId,
+          workDate: daily.workDate,
+        });
+        const existingRows = await requestJSON('/attendance-entries' + readQuery, {
+          skipGlobalLoading: true,
+        }).catch(() => []);
+        const mergedEntries = mergeImportedAttendanceEntries(existingRows, daily.entries);
+
+        const saveQuery = buildQueryString({ orgId: activeOrgId });
+        await requestJSON('/attendance-entries' + saveQuery, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          skipGlobalLoading: true,
+          body: JSON.stringify({
+            factoryId: Number(selectedFactoryId),
+            workDate: daily.workDate,
+            entries: mergedEntries,
+          }),
+        });
+
+        updatedDayCount += 1;
+      }
+
+      refreshRows();
+      const doneTemplate = resolveText(
+        TEXT.importDone,
+        languageCode,
+        'Import done: {dayCount} days, matched {matchedCount}, unmatched {unmatchedCount}'
+      );
+      showNotification(
+        formatTemplate(doneTemplate, {
+          dayCount: updatedDayCount,
+          matchedCount: importPlan.matchedEventCount,
+          unmatchedCount: importPlan.unmatchedEventCount,
+        }),
+        'success'
+      );
+    },
+    [activeOrgId, languageCode, refreshRows, selectedFactoryId, showNotification]
+  );
+
   const handleImportFile = useCallback(
     async (event) => {
       const file = event.target.files?.[0] || null;
@@ -624,11 +708,18 @@ const AttendanceList = () => {
           employees: workers,
           languageCode,
         });
-        if (!importPlan.dailyEntries.length) {
+        if (!importPlan.dailyEntries.length && !importPlan.unmatchedDetails.length) {
           showNotification(
             resolveText(TEXT.importNoRows, languageCode, 'No importable attendance rows found.'),
             'warning'
           );
+          return;
+        }
+
+        // 사번이 없거나 일치하는 직원을 찾지 못한 항목이 하나라도 있으면, 조용히
+        // 건너뛰지 않고 상세 내역을 먼저 보여준 뒤 사용자가 확인하고 진행하게 한다.
+        if (importPlan.unmatchedDetails.length > 0) {
+          setImportReview({ importPlan });
           return;
         }
 
@@ -645,47 +736,7 @@ const AttendanceList = () => {
         );
         if (!shouldImport) return;
 
-        let updatedDayCount = 0;
-        for (const daily of importPlan.dailyEntries) {
-          const readQuery = buildQueryString({
-            orgId: activeOrgId,
-            factoryId: selectedFactoryId,
-            workDate: daily.workDate,
-          });
-          const existingRows = await requestJSON('/attendance-entries' + readQuery, {
-            skipGlobalLoading: true,
-          }).catch(() => []);
-          const mergedEntries = mergeImportedAttendanceEntries(existingRows, daily.entries);
-
-          const saveQuery = buildQueryString({ orgId: activeOrgId });
-          await requestJSON('/attendance-entries' + saveQuery, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            skipGlobalLoading: true,
-            body: JSON.stringify({
-              factoryId: Number(selectedFactoryId),
-              workDate: daily.workDate,
-              entries: mergedEntries,
-            }),
-          });
-
-          updatedDayCount += 1;
-        }
-
-        refreshRows();
-        const doneTemplate = resolveText(
-          TEXT.importDone,
-          languageCode,
-          'Import done: {dayCount} days, matched {matchedCount}, unmatched {unmatchedCount}'
-        );
-        showNotification(
-          formatTemplate(doneTemplate, {
-            dayCount: updatedDayCount,
-            matchedCount: importPlan.matchedEventCount,
-            unmatchedCount: importPlan.unmatchedEventCount,
-          }),
-          'success'
-        );
+        await commitImportPlan(importPlan);
       } catch (error) {
         showNotification(
           error?.message ||
@@ -696,17 +747,33 @@ const AttendanceList = () => {
         setImportingFile(false);
       }
     },
-    [
-      activeOrgId,
-      languageCode,
-      loadWorkersForFactory,
-      refreshRows,
-      selectedFactoryId,
-      showNotification,
-    ]
+    [commitImportPlan, languageCode, loadWorkersForFactory, selectedFactoryId, showNotification]
   );
 
+  const handleCancelImportReview = useCallback(() => {
+    setImportReview(null);
+  }, []);
+
+  const handleConfirmImportReview = useCallback(async () => {
+    const importPlan = importReview?.importPlan;
+    setImportReview(null);
+    if (!importPlan || !importPlan.dailyEntries.length) return;
+
+    setImportingFile(true);
+    try {
+      await commitImportPlan(importPlan);
+    } catch (error) {
+      showNotification(
+        error?.message || resolveText(TEXT.importFail, languageCode, 'Failed to import file.'),
+        'error'
+      );
+    } finally {
+      setImportingFile(false);
+    }
+  }, [commitImportPlan, importReview, languageCode, showNotification]);
+
   return (
+    <>
     <AppPageContainer
       title={getUiMessage('menu.attendance', 'Attendance', languageCode)}
       titleActions={(
@@ -882,6 +949,81 @@ const AttendanceList = () => {
         </TableContainer>
       </Paper>
     </AppPageContainer>
+    <Dialog open={Boolean(importReview)} onClose={handleCancelImportReview} maxWidth="md" fullWidth>
+      <DialogTitle>{resolveText(TEXT.importReviewTitle, languageCode, 'Review import')}</DialogTitle>
+      <DialogContent dividers>
+        {importReview && (
+          <Stack spacing={1.5}>
+            <Typography variant="body2">
+              {formatTemplate(
+                resolveText(
+                  TEXT.importReviewSummary,
+                  languageCode,
+                  '{matchedCount} of {rawCount} events matched, {unmatchedCount} unmatched ({dayCount} days).'
+                ),
+                {
+                  rawCount: importReview.importPlan.rawEventCount,
+                  matchedCount: importReview.importPlan.matchedEventCount,
+                  unmatchedCount: importReview.importPlan.unmatchedEventCount,
+                  dayCount: importReview.importPlan.dailyEntries.length,
+                }
+              )}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {resolveText(
+                TEXT.importReviewUnmatchedHint,
+                languageCode,
+                'The rows below have no code or no matching employee and will be skipped.'
+              )}
+            </Typography>
+            <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 360 }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>{resolveText(TEXT.importReviewColumnCode, languageCode, 'Code (Excel)')}</TableCell>
+                    <TableCell>{resolveText(TEXT.importReviewColumnName, languageCode, 'Name (Excel)')}</TableCell>
+                    <TableCell>{resolveText(TEXT.importReviewColumnTime, languageCode, 'Time')}</TableCell>
+                    <TableCell>{resolveText(TEXT.importReviewColumnReason, languageCode, 'Reason')}</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {importReview.importPlan.unmatchedDetails.map((detail, index) => (
+                    <TableRow key={`${detail.workerCode}-${index}`}>
+                      <TableCell>{detail.workerCode || '-'}</TableCell>
+                      <TableCell>{detail.workerName || '-'}</TableCell>
+                      <TableCell>
+                        {detail.occurredAt ? dayjs(detail.occurredAt).format('YYYY-MM-DD HH:mm') : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          color="warning"
+                          variant="outlined"
+                          label={resolveImportUnmatchedReasonLabel(detail.reason, languageCode)}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Stack>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleCancelImportReview}>
+          {resolveText(TEXT.importReviewCancel, languageCode, 'Cancel')}
+        </Button>
+        <Button
+          variant="contained"
+          onClick={handleConfirmImportReview}
+          disabled={!importReview?.importPlan?.dailyEntries.length}
+        >
+          {resolveText(TEXT.importReviewProceed, languageCode, 'Import matched rows')}
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 };
 
