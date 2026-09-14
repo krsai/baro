@@ -28,3 +28,16 @@ test('generates the next sequence across all factories in an organization', () =
 test('allows organization sequences to grow beyond four digits', () => {
   assert.equal(resolveNextEmployeeNo(['9999']), '10000');
 });
+
+test('prefixes generated numbers with the organization code when set', () => {
+  assert.equal(resolveNextEmployeeNo(['0001', '0024'], 'BRVN'), 'BRVN0025');
+});
+
+test('finds the max sequence across pre- and post-migration formats', () => {
+  assert.equal(resolveNextEmployeeNo(['0001', '0024', 'BRVN0025'], 'BRVN'), 'BRVN0026');
+});
+
+test('ignores blank/whitespace organization codes and falls back to plain numbers', () => {
+  assert.equal(resolveNextEmployeeNo(['0010'], '   '), '0011');
+  assert.equal(resolveNextEmployeeNo(['0010'], null), '0011');
+});

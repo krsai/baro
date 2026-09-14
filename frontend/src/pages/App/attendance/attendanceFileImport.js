@@ -53,9 +53,13 @@ const buildSurnameGivenNameKey = (value) => {
   return `${tokens[0]}::${tokens[tokens.length - 1]}`;
 };
 
+// 사번 앞의 접두어(과거 공장 접두어 "HN-", 조직 코드 "BRVN" 등)는 형태를 가리지 않고
+// 문자열 끝의 숫자만 추출해 선행 0을 지운다. 출퇴근 기기가 내보내는 raw ID는 접두어 없는
+// 순수 숫자(예: "23")이므로, 사번이 "0023"이든 "BRVN0023"이든 같은 값으로 정규화되어야
+// 매칭된다. 끝에 숫자가 전혀 없는 값(순수 이름 매칭 등)은 원문 그대로 반환한다.
 const normalizeEmployeeNumber = (value) => {
   const text = toText(value).replace(/^'/, '');
-  const match = text.match(/^(?:[A-Za-z]{2,3}-)?(\d+)$/);
+  const match = text.match(/(\d+)$/);
   return match ? match[1].replace(/^0+(?=\d)/, '') : text;
 };
 

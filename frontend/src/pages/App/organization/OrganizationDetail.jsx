@@ -41,6 +41,7 @@ const buildCompanyInfo = (data = {}) => {
     name: data.name ?? '',
     nameKo: data.nameKo ?? '',
     nameVi: data.nameVi ?? '',
+    code: data.code ?? '',
     businessNumber: data.businessNumber ?? '',
     representativeEmployeeId: normalizePositiveId(data.representativeEmployeeId),
     representative: representativeEmployee?.name ?? data.representative ?? '',
@@ -72,6 +73,7 @@ const getLocalText = (languageCode) => {
       addressTitle: 'Địa chỉ doanh nghiep', addressHelp: 'Nhap dia chi day du cua doanh nghiep.',
       country: 'Quoc gia',
       orderTitle: 'Thiet lap don hang mac dinh', orderHelp: 'Chi ap dung cho to chuc thuong hieu.', sizeSet: 'Cach ghi kich co mac dinh', businessNumber: 'Ma so doanh nghiep',
+      orgCode: 'Ma to chuc', orgCodeEmpty: 'Chua thiet lap', orgCodeHelp: 'Dung lam tien to ma nhan vien (vi du: BRVN0001). Chi quan tri he thong moi doi duoc.',
       industryOptions: {
         [ORGANIZATION_TYPE_KEYS.MANUFACTURER]: 'Nhà máy',
         [ORGANIZATION_TYPE_KEYS.BRAND]: 'Thuong hieu',
@@ -90,6 +92,7 @@ const getLocalText = (languageCode) => {
       addressTitle: 'Business address', addressHelp: 'Enter the full registered business address.',
       country: 'Country',
       orderTitle: 'Order defaults', orderHelp: 'Available only for brand organizations.', sizeSet: 'Default size notation', businessNumber: 'Business registration no.',
+      orgCode: 'Organization Code', orgCodeEmpty: 'Not set', orgCodeHelp: 'Used as the employee number prefix (e.g. BRVN0001). Only a system admin can change it.',
       industryOptions: {
         [ORGANIZATION_TYPE_KEYS.MANUFACTURER]: 'Manufacturer',
         [ORGANIZATION_TYPE_KEYS.BRAND]: 'Brand',
@@ -107,6 +110,7 @@ const getLocalText = (languageCode) => {
     addressTitle: '사업장 주소', addressHelp: '법인의 전체 사업장 주소를 입력하세요.',
     country: '국가',
     orderTitle: '기본 주문 설정', orderHelp: '브랜드 법인에서만 사용하는 신규 주문 기본값입니다.', sizeSet: '기본 사이즈 표기 방식', businessNumber: '사업자등록번호',
+    orgCode: '업체 코드', orgCodeEmpty: '미설정', orgCodeHelp: '사번 접두어로 사용됩니다(예: BRVN0001). 시스템 관리자만 변경할 수 있습니다.',
     industryOptions: {
       [ORGANIZATION_TYPE_KEYS.MANUFACTURER]: '\uACF5\uC7A5',
       [ORGANIZATION_TYPE_KEYS.BRAND]: '\uBE0C\uB79C\uB4DC',
@@ -355,6 +359,17 @@ const OrganizationDetail = () => {
 
           <Grid item xs={12} md={3}>
             <TextField fullWidth size="small" label={localText.businessNumber} name="businessNumber" value={formData.businessNumber} onChange={handleInputChange} />
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <TextField
+              fullWidth
+              size="small"
+              label={localText.orgCode}
+              value={formData.code || localText.orgCodeEmpty}
+              helperText={localText.orgCodeHelp}
+              disabled
+              inputProps={{ style: { letterSpacing: 1 } }}
+            />
           </Grid>
           <Grid item xs={12} md={6}>
             <TextField
