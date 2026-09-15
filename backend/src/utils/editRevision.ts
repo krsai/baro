@@ -30,8 +30,8 @@ export const assignmentBoardRevision = async (db: any, orgId: number) => {
   return editRevision([state?.updatedAt ?? null, plans.map((row: any) => [row.id, row.updatedAt]), cards.map((row: any) => [row.id, row.updatedAt])]);
 };
 
-// The candidate cards were computed before entering this transaction. Never
-// overwrite a newer board with that candidate; the caller must rebuild it.
+// Reject a changed board before running the caller's rebuild/write operation.
+// Source reads inside the callback share its Serializable transaction.
 export const commitAssignmentCardRebuild = async <T>(
   db: any, orgId: number, expectedRevision: string,
   write: (tx: Prisma.TransactionClient) => Promise<T>

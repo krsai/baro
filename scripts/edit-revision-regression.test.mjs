@@ -58,12 +58,49 @@ test('card rebuild rolls back failed writes and converts post-check serializatio
 test('rebuild captures revision before source reads and retries the whole computation on stale edits', () => {
   const source = readFileSync(new URL('../backend/src/index.ts', import.meta.url), 'utf8');
   const rebuild = source.slice(source.indexOf('const rebuildAssignmentCardsForOrg ='), source.indexOf('const ASSIGNMENT_CARD_REBUILD_RETRYABLE_PRISMA_CODES'));
-  assert.ok(rebuild.indexOf('const rebuildRevision =') < rebuild.indexOf('const [styles, orders, savedCards]'));
+  assert.ok(rebuild.indexOf('const rebuildRevision =') < rebuild.indexOf('tx => rebuildAssignmentCardsForOrgTx'));
   assert.match(rebuild, /commitAssignmentCardRebuild\(\s*prisma, orgId, rebuildRevision/);
   const retry = source.slice(source.indexOf('const isRetryableAssignmentCardRebuildError ='), source.indexOf('const enqueueAssignmentCardRebuildForOrg ='));
   assert.match(retry, /error.message === STALE_EDIT/);
   assert.match(retry, /return await rebuildAssignmentCardsForOrg\(orgId, options\)/);
   assert.match(retry, /attempt >= ASSIGNMENT_CARD_REBUILD_MAX_ATTEMPTS/);
+});
+
+test('transactional card rebuild routes all source and storage work through the supplied client', async () => {
+  const source = readFileSync(new URL('../backend/dist/index.js', import.meta.url), 'utf8');
+  const block = source.slice(source.indexOf('const rebuildAssignmentCardsForOrgTx ='), source.indexOf('const rebuildAssignmentCardsForOrg ='));
+  assert.ok(block.length > 0);
+  assert.doesNotMatch(block, /prisma\.|\$transaction|refreshUnlinkedAssignmentPlanSnapshotsForOrg/);
+  const calls = [];
+  let failWrite = false;
+  const db = {
+    organization: { findUnique: async () => ({ id: 2, type: 'MANUFACTURER' }) },
+    style: { findMany: async () => [{ id: 7, timeBucketSetVersion: { entries: [] } }] },
+    workOrder: { findMany: async () => [] },
+  };
+  const check = (name, client) => { assert.equal(client, db, name); calls.push(name); };
+  const context = {
+    console,
+    common_1: { ensureArray: value => value ?? [] },
+    getAccessibleStyleOwnerOrgIds: async (org, client) => { check('owners', client); return [org.id]; },
+    getOrderAccessWhere: () => [], WORK_ORDER_ITEM_WITH_COLOR_INCLUDE: {},
+    loadAssignmentCardsForOrg: async ({ db: client }) => { check('savedCards', client); return []; },
+    isManufacturerOrg: () => true,
+    loadRelationshipTimeBucketContextByStyleId: async ({ db: client }) => { check('relationship', client); return new Map(); },
+    applyRelationshipTimeBucketContexts: ({ styles }) => styles,
+    ensureStyleProcessStorageForStyles: async (styles, { db: client }) => { check('processes', client); return new Map(); },
+    ensureStyleStandardsForQuantities: async ({ db: client }) => { check('standards', client); return new Map(); },
+    ensureArray: value => value ?? [], collectStyleQuantityRequirementsFromOrders: () => new Map(),
+    buildAssignmentCardsFromOrders: () => [], mergeAssignmentCardsWithSaved: () => [],
+    syncAssignmentCardsForOrg: async ({ db: client }) => { check('write', client); if (failWrite) throw new Error('card failure'); return [{ id: 'saved' }]; },
+  };
+  vm.runInNewContext(`${block}\nthis.run = rebuildAssignmentCardsForOrgTx;`, context);
+  const result = await context.run(2, db);
+  assert.equal(result.syncedCards[0].id, 'saved');
+  assert.equal(result.manufacturerScope, true);
+  assert.deepEqual(calls, ['owners', 'savedCards', 'relationship', 'processes', 'standards', 'write']);
+  failWrite = true;
+  await assert.rejects(context.run(2, db), /card failure/);
 });
 
 function salaryHarness() {

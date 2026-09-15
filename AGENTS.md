@@ -2,7 +2,7 @@
 
 ## 2026-09-15 청구서 B1.5b 준비 — 배정 영향 판정
 
-- 카드 재구성은 저장된 카드 조회 전에 보드 revision을 캡처하고 `commitAssignmentCardRebuild`의 Serializable 트랜잭션에서 재검사한다. STALE_EDIT은 전체 재구성을 최대 3회 재시도하며 오래된 후보의 저장만 반복하지 않는다. 주문/스타일 원본까지 포함한 원자성과 주문 저장 트리거 통합은 아직 미완료다.
+- 카드 재구성은 보드 revision을 캡처하고 `commitAssignmentCardRebuild`의 Serializable 트랜잭션에서 재검사한다. `rebuildAssignmentCardsForOrgTx`의 조직/관계/주문/스타일/카드 조회와 공정 저장·카드 쓰기는 같은 트랜잭션을 사용한다. STALE_EDIT은 전체 재구성을 최대 3회 재시도한다. 주문 저장·양쪽 조직 통합은 미완료이며 진행 상태/기존 배정 스냅샷 갱신은 기존 래퍼의 후속 작업으로 남아 있다.
 
 - `backend/src/utils/orderAssignmentImpact.ts`는 한 주문·한 조직의 검증된 입력에서 스타일별 잔량/초과량, 수량·성별 변경 및 실적/완료/급여 잠금 배정 ID를 읽기 전용으로 반환한다. 배정 재분배·CT/ST 변경·저장 허용 판정은 하지 않는다. 실제 주문 저장 경로 연결은 아직 미구현이다.
 - `test:order-assignment-impact` 7건 및 관련 기존 45건 통과. 상세 진행은 `INVOICE_LOCK_ROADMAP.md` 상단 요약을 따르며 완료 항목을 체크하고 첫 미완료부터 진행한다. 코드·문서·검증 완료 후 자동 커밋·푸시한다.

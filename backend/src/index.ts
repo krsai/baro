@@ -6157,7 +6157,7 @@ const parseStyleOwnerOrgIdQuery = (rawValue: unknown): number | null => {
   return parsed;
 };
 
-const getAccessibleStyleOwnerOrgIds = async (organization: any) => {
+const getAccessibleStyleOwnerOrgIds = async (organization: any, db: StyleStorageClient = prisma) => {
   if (isBrandOrg(organization)) {
     return [organization.id];
   }
@@ -6165,7 +6165,7 @@ const getAccessibleStyleOwnerOrgIds = async (organization: any) => {
     throw createHttpError(400, "invalid organization type");
   }
 
-  const relationships = await prisma.orgRelationship.findMany({
+  const relationships = await db.orgRelationship.findMany({
     where: { manufacturerOrgId: organization.id },
     select: { brandOrgId: true },
   });
@@ -13244,26 +13244,25 @@ type AssignmentCardRebuildOptions = {
   refreshExistingAssignmentSnapshots?: boolean;
 };
 
-const rebuildAssignmentCardsForOrg = async (
+// Uses the caller's transaction for source reads, process storage and card writes.
+// Does not commit or refresh existing assignment snapshots.
+const rebuildAssignmentCardsForOrgTx = async (
   orgId: number,
-  options: AssignmentCardRebuildOptions = {}
+  db: Prisma.TransactionClient
 ) => {
   const diagPrefix = `[rebuildAssignmentCardsForOrg] orgId=${orgId}`;
-  const organization = await prisma.organization.findUnique({
+  const organization = await db.organization.findUnique({
     where: { id: orgId },
     select: { id: true, type: true },
   });
   if (!organization) {
     console.warn(`${diagPrefix} organization not found, skipping`);
-    return [];
+    return null;
   }
 
-  const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
-  // Capture before reading saved cards. A concurrent board save must invalidate
-  // the entire computed candidate, not merely retry its final upserts.
-  const rebuildRevision = await assignmentBoardRevision(prisma, orgId);
+  const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization, db);
   const [styles, orders, savedCards] = await Promise.all([
-    prisma.style.findMany({
+    db.style.findMany({
       where: { orgId: { in: accessibleOwnerOrgIds } },
       orderBy: { id: "asc" },
       select: {
@@ -13288,7 +13287,7 @@ const rebuildAssignmentCardsForOrg = async (
         },
       },
     }),
-    prisma.workOrder.findMany({
+    db.workOrder.findMany({
       // Cards only ever reflect locked orders (AGENTS.md 40번) - an unlocked
       // order is a draft with no production commitment yet, so it must not
       // contribute any pool card here regardless of which trigger (style
@@ -13310,13 +13309,14 @@ const rebuildAssignmentCardsForOrg = async (
         workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE,
       },
     }),
-    loadAssignmentCardsForOrg({ orgId }),
+    loadAssignmentCardsForOrg({ orgId, db }),
   ]);
   const manufacturerScope = isManufacturerOrg(organization);
   const relationshipStyles = manufacturerScope
     ? applyRelationshipTimeBucketContexts({
         styles,
         contextByStyleId: await loadRelationshipTimeBucketContextByStyleId({
+          db,
           manufacturerOrgId: orgId,
           styles,
         }),
@@ -13328,6 +13328,7 @@ const rebuildAssignmentCardsForOrg = async (
       initialProcessMirrorMap = await ensureStyleProcessStorageForStyles(
         relationshipStyles,
         {
+          db,
           processOrgId: orgId,
         }
       );
@@ -13351,6 +13352,7 @@ const rebuildAssignmentCardsForOrg = async (
     });
     try {
       processMirrorMap = await ensureStyleStandardsForQuantities({
+        db,
         styles: relationshipStyles,
         quantityByStyleId,
         processOrgId: orgId,
@@ -13376,21 +13378,22 @@ const rebuildAssignmentCardsForOrg = async (
     styles: hydratedStyles,
   });
   const cards = mergeAssignmentCardsWithSaved(baseCards, savedCards);
-  // syncAssignmentCardsForOrg does a deleteMany followed by a loop of
-  // upserts with no transaction of its own - run it inside one here so a
-  // mid-loop failure can't leave the org's card catalog partially wiped
-  // with nothing to show for it (suspected cause of an earlier incident
-  // where AssignmentCard ended up empty for every org).
-  let syncedCards: any[];
-  try {
-    syncedCards = await commitAssignmentCardRebuild(
-      prisma, orgId, rebuildRevision,
-      (tx) => syncAssignmentCardsForOrg({ orgId, cards, db: tx })
-    );
-  } catch (error) {
-    console.error(`${diagPrefix} syncAssignmentCardsForOrg transaction threw`, error);
-    throw error;
-  }
+  const syncedCards = await syncAssignmentCardsForOrg({ orgId, cards, db });
+  return { syncedCards, hydratedStyles, manufacturerScope };
+};
+
+const rebuildAssignmentCardsForOrg = async (
+  orgId: number,
+  options: AssignmentCardRebuildOptions = {}
+) => {
+  const diagPrefix = `[rebuildAssignmentCardsForOrg] orgId=${orgId}`;
+  const rebuildRevision = await assignmentBoardRevision(prisma, orgId);
+  const rebuilt = await commitAssignmentCardRebuild(
+    prisma, orgId, rebuildRevision,
+    tx => rebuildAssignmentCardsForOrgTx(orgId, tx)
+  );
+  if (!rebuilt) return [];
+  const { syncedCards, hydratedStyles, manufacturerScope } = rebuilt;
   try {
     await syncOrderProgressStatusesForOrg({
       orgId,
