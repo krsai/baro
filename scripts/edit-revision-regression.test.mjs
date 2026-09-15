@@ -6,6 +6,66 @@ import { createRequire } from 'node:module';
 const require = createRequire(new URL('../backend/package.json', import.meta.url));
 const revision = require('../backend/dist/utils/editRevision.js');
 
+test('card rebuild rejects a newer board before writes and accepts a freshly recomputed candidate', async () => {
+  let cards = [{ id: 1, updatedAt: new Date(1000) }];
+  let writes = 0;
+  const tx = {
+    assignmentBoardState: { findUnique: async () => null },
+    assignmentPlan: { findMany: async () => [] },
+    assignmentCard: { findMany: async () => cards },
+  };
+  const db = { ...tx, $transaction: async (run, options) => {
+    assert.equal(options.isolationLevel, 'Serializable');
+    return run(tx);
+  } };
+  const old = await revision.assignmentBoardRevision(db, 1);
+  cards = [{ id: 1, updatedAt: new Date(2000) }];
+  const write = async client => { assert.equal(client, tx); writes++; return 'saved'; };
+  await assert.rejects(revision.commitAssignmentCardRebuild(db, 1, old, write), error => error.status === 409);
+  assert.equal(writes, 0);
+  const fresh = await revision.assignmentBoardRevision(db, 1);
+  assert.equal(await revision.commitAssignmentCardRebuild(db, 1, fresh, write), 'saved');
+  assert.equal(writes, 1);
+});
+
+test('card rebuild rolls back failed writes and converts post-check serialization races to stale edits', async () => {
+  let persisted = ['original'];
+  let conflict = false;
+  const db = { $transaction: async run => {
+    const draft = [...persisted];
+    const tx = {
+      assignmentBoardState: { findUnique: async () => null },
+      assignmentPlan: { findMany: async () => [] },
+      assignmentCard: { findMany: async () => [] }, draft,
+    };
+    const result = await run(tx);
+    if (conflict) throw Object.assign(new Error('concurrent board writer'), { code: 'P2034' });
+    persisted = draft;
+    return result;
+  } };
+  const empty = revision.editRevision([null, [], []]);
+  await assert.rejects(revision.commitAssignmentCardRebuild(db, 1, empty, async tx => {
+    tx.draft.splice(0, 1, 'partial'); throw new Error('upsert failed');
+  }), /upsert failed/);
+  assert.deepEqual(persisted, ['original']);
+  conflict = true;
+  await assert.rejects(revision.commitAssignmentCardRebuild(db, 1, empty, async tx => {
+    tx.draft.splice(0, 1, 'stale candidate');
+  }), error => error.status === 409 && error.message === revision.STALE_EDIT);
+  assert.deepEqual(persisted, ['original']);
+});
+
+test('rebuild captures revision before source reads and retries the whole computation on stale edits', () => {
+  const source = readFileSync(new URL('../backend/src/index.ts', import.meta.url), 'utf8');
+  const rebuild = source.slice(source.indexOf('const rebuildAssignmentCardsForOrg ='), source.indexOf('const ASSIGNMENT_CARD_REBUILD_RETRYABLE_PRISMA_CODES'));
+  assert.ok(rebuild.indexOf('const rebuildRevision =') < rebuild.indexOf('const [styles, orders, savedCards]'));
+  assert.match(rebuild, /commitAssignmentCardRebuild\(\s*prisma, orgId, rebuildRevision/);
+  const retry = source.slice(source.indexOf('const isRetryableAssignmentCardRebuildError ='), source.indexOf('const enqueueAssignmentCardRebuildForOrg ='));
+  assert.match(retry, /error.message === STALE_EDIT/);
+  assert.match(retry, /return await rebuildAssignmentCardsForOrg\(orgId, options\)/);
+  assert.match(retry, /attempt >= ASSIGNMENT_CARD_REBUILD_MAX_ATTEMPTS/);
+});
+
 function salaryHarness() {
   let data = {
     items: [{ id: 1, code: 'incentiveTotal', nameKo: '생산수당', nameEn: 'Production Allowance', nameVi: 'Phụ cấp sản lượng', category: 'INCENTIVE', payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', paymentMonths: Array.from({ length: 12 }, (_, i) => i + 1), required: true, isActive: true }],

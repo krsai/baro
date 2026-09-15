@@ -1,7 +1,7 @@
 import { planOrderItemWrites } from "./utils/orderItemIdentity";
 import { buildSharedAtPrediction } from "./services/atSharedPrior";
 import { hasValidAssignmentProcessRefs, invalidAssignmentProcessRefIds, snapshotProcessIds, assertAssignmentProcessRefs, SNAPSHOT_REFERENCE_ERROR } from "./utils/assignmentSnapshotIntegrity";
-import { assignmentBoardRevision, assertEditRevision, editTransaction } from "./utils/editRevision";
+import { assignmentBoardRevision, assertEditRevision, editTransaction, commitAssignmentCardRebuild, STALE_EDIT } from "./utils/editRevision";
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import compression from "compression";
@@ -13259,6 +13259,9 @@ const rebuildAssignmentCardsForOrg = async (
   }
 
   const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
+  // Capture before reading saved cards. A concurrent board save must invalidate
+  // the entire computed candidate, not merely retry its final upserts.
+  const rebuildRevision = await assignmentBoardRevision(prisma, orgId);
   const [styles, orders, savedCards] = await Promise.all([
     prisma.style.findMany({
       where: { orgId: { in: accessibleOwnerOrgIds } },
@@ -13380,9 +13383,9 @@ const rebuildAssignmentCardsForOrg = async (
   // where AssignmentCard ended up empty for every org).
   let syncedCards: any[];
   try {
-    syncedCards = await prisma.$transaction(
-      (tx) => syncAssignmentCardsForOrg({ orgId, cards, db: tx }),
-      { timeout: 30000 }
+    syncedCards = await commitAssignmentCardRebuild(
+      prisma, orgId, rebuildRevision,
+      (tx) => syncAssignmentCardsForOrg({ orgId, cards, db: tx })
     );
   } catch (error) {
     console.error(`${diagPrefix} syncAssignmentCardsForOrg transaction threw`, error);
@@ -13425,6 +13428,7 @@ const waitMs = async (ms: number) =>
     setTimeout(resolve, ms);
   });
 const isRetryableAssignmentCardRebuildError = (error: unknown) => {
+  if (error instanceof Error && error.message === STALE_EDIT) return true;
   const code = getErrorCode(error);
   if (!code) return false;
   return ASSIGNMENT_CARD_REBUILD_RETRYABLE_PRISMA_CODES.has(code);

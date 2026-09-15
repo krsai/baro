@@ -29,3 +29,13 @@ export const assignmentBoardRevision = async (db: any, orgId: number) => {
   ]);
   return editRevision([state?.updatedAt ?? null, plans.map((row: any) => [row.id, row.updatedAt]), cards.map((row: any) => [row.id, row.updatedAt])]);
 };
+
+// The candidate cards were computed before entering this transaction. Never
+// overwrite a newer board with that candidate; the caller must rebuild it.
+export const commitAssignmentCardRebuild = async <T>(
+  db: any, orgId: number, expectedRevision: string,
+  write: (tx: Prisma.TransactionClient) => Promise<T>
+): Promise<T> => editTransaction(db, async tx => {
+  assertEditRevision(expectedRevision, await assignmentBoardRevision(tx, orgId));
+  return write(tx);
+});
