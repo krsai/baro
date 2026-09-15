@@ -20,6 +20,21 @@ const HEADER_KEYWORDS = {
     loose: ['time', 'datetime', 'check time', 'timestamp', 'thoi gian', 'ngay gio'],
     ascii: ['thoigian', 'ngaygio', 'datetime', 'timestamp', 'checktime', 'time'],
   },
+  // 하루 단위 요약 표(출근/퇴근이 별도 열로 나뉜 형태)에서 쓰는 열이다. "thoigian"
+  // 하나만으로는 "Thời gian biểu"(근무 시간대, 실제 펀치 시각이 아님) 같은 열과
+  // 겹치므로, "vao"/"ra"(들어옴/나감)까지 붙은 더 구체적인 키워드만 인정한다.
+  clockIn: {
+    loose: ['time in', 'check in', 'clock in'],
+    ascii: ['giovao', 'thoigianvao', 'checkin', 'clockin', 'timein'],
+  },
+  clockOut: {
+    loose: ['time out', 'check out', 'clock out'],
+    ascii: ['giora', 'thoigianra', 'checkout', 'clockout', 'timeout'],
+  },
+  date: {
+    loose: ['date', 'work date', 'ngay'],
+    ascii: ['ngay', 'date', 'workdate'],
+  },
 };
 
 const toText = (value) => String(value ?? '').trim();
@@ -107,6 +122,21 @@ const parseTimestamp = (value) => {
   return tryParseExcelSerial(raw);
 };
 
+// "day-summary" 형태의 출근/퇴근 열은 날짜 없이 시각만 담고 있다("07:37:40").
+// 값이 없거나("-" 등) 시각 형식이 아니면 그 날은 해당 펀치가 없는 것으로 본다.
+const PLACEHOLDER_TIME_VALUES = new Set(['', '-', '--', 'n/a', 'na']);
+const parseTimeOfDayMinutes = (value) => {
+  const text = toText(value);
+  if (!text || PLACEHOLDER_TIME_VALUES.has(text.toLowerCase())) return null;
+  const match = text.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isFinite(hour) || hour < 0 || hour > 23) return null;
+  if (!Number.isFinite(minute) || minute < 0 || minute > 59) return null;
+  return hour * 60 + minute;
+};
+
 const matchesKeywords = (value, keywordBundle) => {
   const loose = normalizeLoose(value);
   const ascii = normalizeAscii(value);
@@ -115,14 +145,37 @@ const matchesKeywords = (value, keywordBundle) => {
   return keywordBundle.ascii.some((keyword) => ascii.includes(normalizeAscii(keyword)));
 };
 
+// 출퇴근 파일은 두 형태를 모두 지원한다.
+//  - "event" 형태: 한 행 = 펀치 한 번(사번 + 단일 시각 열). 여러 행을 모아
+//    하루의 출근/퇴근을 추론한다(기존 방식).
+//  - "day-summary" 형태: 한 행 = 한 사람의 하루(날짜 열 + 출근/퇴근 열이 각각
+//    분리). 츨근·퇴근 중 하나만 있거나 둘 다 있을 수 있다. 이 형태를 쓰는
+//    기기는 대개 별도 사번 열이 없어 "이름" 열에 직접 사번을 적어 넣으므로,
+//    이 형태에서는 사번 열이 없으면 이름 열 값을 사번으로 취급한다(실제
+//    이름 대조 검증은 생략 — 애초에 진짜 이름 데이터가 없기 때문).
 const detectHeaderColumns = (row = []) => {
   let workerIdIndex = -1;
   let workerNameIndex = -1;
   let timestampIndex = -1;
+  let clockInIndex = -1;
+  let clockOutIndex = -1;
+  let dateIndex = -1;
 
   row.forEach((cell, index) => {
+    if (clockInIndex < 0 && matchesKeywords(cell, HEADER_KEYWORDS.clockIn)) {
+      clockInIndex = index;
+      return;
+    }
+    if (clockOutIndex < 0 && matchesKeywords(cell, HEADER_KEYWORDS.clockOut)) {
+      clockOutIndex = index;
+      return;
+    }
     if (timestampIndex < 0 && matchesKeywords(cell, HEADER_KEYWORDS.timestamp)) {
       timestampIndex = index;
+      return;
+    }
+    if (dateIndex < 0 && matchesKeywords(cell, HEADER_KEYWORDS.date)) {
+      dateIndex = index;
       return;
     }
     if (workerIdIndex < 0 && matchesKeywords(cell, HEADER_KEYWORDS.workerId)) {
@@ -134,20 +187,33 @@ const detectHeaderColumns = (row = []) => {
     }
   });
 
+  const hasEventShape = timestampIndex >= 0 && workerIdIndex >= 0;
+  const daySummaryIdentifierIndex = workerIdIndex >= 0 ? workerIdIndex : workerNameIndex;
+  const hasDaySummaryShape =
+    dateIndex >= 0 && (clockInIndex >= 0 || clockOutIndex >= 0) && daySummaryIdentifierIndex >= 0;
+
   const score =
     (timestampIndex >= 0 ? 4 : 0) +
     (workerIdIndex >= 0 ? 2 : 0) +
-    (workerNameIndex >= 0 ? 1 : 0);
+    (workerNameIndex >= 0 ? 1 : 0) +
+    (dateIndex >= 0 ? 3 : 0) +
+    (clockInIndex >= 0 ? 3 : 0) +
+    (clockOutIndex >= 0 ? 3 : 0);
 
   return {
     workerIdIndex,
     workerNameIndex,
     timestampIndex,
+    clockInIndex,
+    clockOutIndex,
+    dateIndex,
+    daySummaryIdentifierIndex,
+    // event 형태를 우선한다. 두 형태 신호가 동시에 잡히는 경우는 실제로는
+    // 없을 것으로 보지만, event 형태(사번 열이 명확히 있는 쪽)가 더 신뢰할
+    // 수 있는 근거이므로 그쪽을 우선한다.
+    shape: hasEventShape ? 'event' : (hasDaySummaryShape ? 'day-summary' : null),
     score,
-    // 사번(직원 ID) 열은 유일한 매칭 근거이므로 반드시 있어야 한다. 이름 열은
-    // 매칭에 쓰지 않고, 사번으로 찾은 직원과 이름이 실제로 맞는지 확인하는
-    // 참고용 검증에만 쓰이므로 없어도 파일 자체는 유효하다.
-    valid: timestampIndex >= 0 && workerIdIndex >= 0,
+    valid: hasEventShape || hasDaySummaryShape,
   };
 };
 
@@ -192,7 +258,10 @@ export const parseAttendanceImportFile = async (file) => {
 
   const header = findHeaderInfo(rows);
   if (!header) {
-    throw new Error('Could not detect a time column and an employee ID/code column. Both are required.');
+    throw new Error(
+      'Could not detect a valid layout. Need either a time column + employee ID/code column, ' +
+      'or a date column + clock-in/clock-out column(s) with an identifier column.'
+    );
   }
 
   const events = [];
@@ -201,6 +270,54 @@ export const parseAttendanceImportFile = async (file) => {
 
   for (let rowIndex = header.headerRowIndex + 1; rowIndex < rows.length; rowIndex += 1) {
     const row = Array.isArray(rows[rowIndex]) ? rows[rowIndex] : [];
+
+    if (header.shape === 'day-summary') {
+      // 이 형태는 사번 전용 열이 없는 기기가 많아, 없으면 이름 열 값을 그대로
+      // 사번으로 취급한다(그 경우 실제 이름 데이터가 없으므로 이름 대조 검증은
+      // 하지 않는다).
+      const identifierValue = toText(row[header.daySummaryIdentifierIndex]);
+      const hasRealNameColumn = header.workerIdIndex >= 0 && header.workerNameIndex >= 0;
+      const workerCode = identifierValue;
+      const workerName = hasRealNameColumn ? toText(row[header.workerNameIndex]) : '';
+      const dateRaw = toText(row[header.dateIndex]);
+      const clockInRaw = header.clockInIndex >= 0 ? row[header.clockInIndex] : '';
+      const clockOutRaw = header.clockOutIndex >= 0 ? row[header.clockOutIndex] : '';
+
+      if (!identifierValue && !dateRaw) continue;
+      if (!identifierValue) {
+        skippedMissingWorkerCount += 1;
+        continue;
+      }
+
+      const dayAnchor = parseTimestamp(dateRaw);
+      if (!dayAnchor) {
+        skippedInvalidTimeCount += 1;
+        continue;
+      }
+
+      const clockInMinutes = parseTimeOfDayMinutes(clockInRaw);
+      const clockOutMinutes = parseTimeOfDayMinutes(clockOutRaw);
+      if (clockInMinutes === null && clockOutMinutes === null) continue;
+
+      if (clockInMinutes !== null) {
+        events.push({
+          workerCode,
+          workerName,
+          occurredAt: dayAnchor.hour(0).minute(0).second(0).millisecond(0).add(clockInMinutes, 'minute'),
+          punchType: 'in',
+        });
+      }
+      if (clockOutMinutes !== null) {
+        events.push({
+          workerCode,
+          workerName,
+          occurredAt: dayAnchor.hour(0).minute(0).second(0).millisecond(0).add(clockOutMinutes, 'minute'),
+          punchType: 'out',
+        });
+      }
+      continue;
+    }
+
     const workerCode =
       header.workerIdIndex >= 0 ? toText(row[header.workerIdIndex]) : '';
     const workerName =
@@ -333,6 +450,8 @@ export const buildAttendanceImportPlan = ({
 
     const signature = `${dateKey}::${workerId}`;
     const current = groupedByDateWorker.get(signature);
+    const explicitInMinute = event.punchType === 'in' ? minuteOfDay : null;
+    const explicitOutMinute = event.punchType === 'out' ? minuteOfDay : null;
     if (!current) {
       groupedByDateWorker.set(signature, {
         dateKey,
@@ -341,11 +460,24 @@ export const buildAttendanceImportPlan = ({
         minMinute: minuteOfDay,
         maxMinute: minuteOfDay,
         timestamps: new Set([event.occurredAt.valueOf()]),
+        // "day-summary" 형태(출근/퇴근 열이 이미 분리된 원본)에서만 채워진다.
+        // 이 값이 있으면 아래에서 min/max 추론 대신 이 값을 그대로 쓴다.
+        explicitInMinute,
+        explicitOutMinute,
+        hasExplicitPunch: explicitInMinute !== null || explicitOutMinute !== null,
       });
     } else {
       current.timestamps.add(event.occurredAt.valueOf());
       current.minMinute = Math.min(current.minMinute, minuteOfDay);
       current.maxMinute = Math.max(current.maxMinute, minuteOfDay);
+      if (explicitInMinute !== null) {
+        current.explicitInMinute = explicitInMinute;
+        current.hasExplicitPunch = true;
+      }
+      if (explicitOutMinute !== null) {
+        current.explicitOutMinute = explicitOutMinute;
+        current.hasExplicitPunch = true;
+      }
     }
 
     matchedEventCount += 1;
@@ -355,6 +487,27 @@ export const buildAttendanceImportPlan = ({
   groupedByDateWorker.forEach((item) => {
     if (!byDate.has(item.dateKey)) {
       byDate.set(item.dateKey, []);
+    }
+
+    if (item.hasExplicitPunch) {
+      // 원본에 출근/퇴근이 이미 분리돼 있으므로 시각의 이르고 늦음으로
+      // 추측하지 않고 원본이 명시한 값을 그대로 쓴다.
+      const hasIn = item.explicitInMinute !== null && item.explicitInMinute !== undefined;
+      const hasOut = item.explicitOutMinute !== null && item.explicitOutMinute !== undefined;
+      const missingIn = !hasIn && hasOut;
+      const missingOut = hasIn && !hasOut;
+      const notes = {
+        ko: missingIn ? '출근 기록 없음 → 08:00 출근 자동 생성' : '퇴근 기록 없음 → 17:00 퇴근 자동 생성',
+        en: missingIn ? 'Missing clock-in → 08:00 clock-in auto-filled' : 'Missing clock-out → 17:00 clock-out auto-filled',
+        vi: missingIn ? 'Thiếu giờ vào → tự động bổ sung giờ vào 08:00' : 'Thiếu giờ ra → tự động bổ sung giờ ra 17:00',
+      };
+      byDate.get(item.dateKey).push({
+        workerId: item.workerId,
+        clockIn: hasIn ? toMinuteText(item.explicitInMinute) : (missingIn ? '08:00' : null),
+        clockOut: hasOut ? toMinuteText(item.explicitOutMinute) : (missingOut ? '17:00' : null),
+        note: (missingIn || missingOut) ? `${item.workerName}: ${notes[languageCode] || notes.en}` : null,
+      });
+      return;
     }
 
     const singlePunch = item.timestamps.size === 1;
