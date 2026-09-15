@@ -5,7 +5,8 @@ import vm from 'node:vm';
 import { createRequire } from 'node:module';
 const require = createRequire(new URL('../backend/package.json', import.meta.url));
 const { snapshotProcessIds, hasValidAssignmentProcessRefs, assertAssignmentProcessRefs, invalidAssignmentProcessRefIds } = require('../backend/dist/utils/assignmentSnapshotIntegrity.js');
-const backend = fs.readFileSync(new URL('../backend/src/index.ts', import.meta.url), 'utf8');
+// Source assertions must behave identically in Windows CRLF and LF checkouts.
+const backend = fs.readFileSync(new URL('../backend/src/index.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const plan = () => ({ id: 1, orgId: 1, styleId: 5, styleProcessVersionId: 7,
   assignmentCtSnapshot: { styleProcessVersionId: 7, processes: [11, 22, 33].map(styleProcessId => ({ styleProcessId, snapshotCtSeconds: 12 })) },
   assignmentStSnapshot: { styleProcessVersionId: 7, processes: [11, 22, 33].map((styleProcessId, index) => ({ styleProcessId, stSeconds: (index + 1) * 10 })) },
