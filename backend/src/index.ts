@@ -8113,6 +8113,14 @@ const createOrReuseSharedOrder = async ({
     try {
       return await prisma.$transaction(
         async (tx) => {
+          // Every successful create/reuse branch commits both organizations'
+          // cards with the order. Never refresh existing CT/ST on order save.
+          const finish = async (order: any, created: boolean, previousOrgId?: number) => {
+            await rebuildOrderPartyCardsTx(tx, [
+              previousOrgId, order.orgId, order.buyerOrgId, order.sellerOrgId,
+            ]);
+            return { order, created };
+          };
           const existing = await tx.workOrder.findFirst({
             where: {
               buyerOrgId: normalized.buyerOrgId,
@@ -8129,9 +8137,9 @@ const createOrReuseSharedOrder = async ({
                 data: { orgId: resolvedOwnerOrgId },
                 include: WORK_ORDER_RESPONSE_INCLUDE,
               });
-              return { order: normalizedExisting, created: false };
+              return finish(normalizedExisting, false, existing.orgId);
             }
-            return { order: existing, created: false };
+            return finish(existing, false);
           }
 
           const { items: _createItems, ...workOrderCreateData } = normalized;
@@ -8163,36 +8171,14 @@ const createOrReuseSharedOrder = async ({
             where: { id: created.id },
             include: WORK_ORDER_RESPONSE_INCLUDE,
           });
-          return { order: createdWithItems ?? created, created: true };
+          return finish(createdWithItems ?? created, true);
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 }
       );
     } catch (error) {
       const code = getErrorCode(error);
-      if (code === "P2034" && attempt < ORDER_CREATE_SERIALIZABLE_RETRIES) {
+      if ((code === "P2034" || code === "P2002") && attempt < ORDER_CREATE_SERIALIZABLE_RETRIES) {
         continue;
-      }
-      if (code === "P2002") {
-          const existing = await prisma.workOrder.findFirst({
-            where: {
-              buyerOrgId: normalized.buyerOrgId,
-              sellerOrgId: normalized.sellerOrgId,
-              orderNumber: normalized.orderNumber,
-            },
-            include: WORK_ORDER_RESPONSE_INCLUDE,
-            orderBy: { id: "asc" },
-          });
-        if (existing) {
-          if (existing.orgId !== resolvedOwnerOrgId) {
-            const normalizedExisting = await prisma.workOrder.update({
-              where: { id: existing.id },
-              data: { orgId: resolvedOwnerOrgId },
-              include: WORK_ORDER_RESPONSE_INCLUDE,
-            });
-            return { order: normalizedExisting, created: false };
-          }
-          return { order: existing, created: false };
-        }
       }
       throw error;
     }
@@ -13417,6 +13403,20 @@ const rebuildAssignmentCardsForOrg = async (
     throw error;
   }
   return syncedCards;
+};
+
+// The caller owns the transaction across all parties. Sequential, stable ordering
+// avoids independent commits and reduces lock-order inversions between requests.
+const rebuildOrderPartyCardsTx = async (
+  db: Prisma.TransactionClient,
+  orgIds: Array<number | null | undefined>
+) => {
+  const ids = [...new Set(orgIds.map(toPositiveIntOrNull)
+    .filter((id): id is number => id !== null))].sort((a, b) => a - b);
+  for (const orgId of ids) {
+    const result = await rebuildAssignmentCardsForOrgTx(orgId, db);
+    if (!result) throw createHttpError(409, "order organization no longer exists");
+  }
 };
 const ASSIGNMENT_CARD_REBUILD_RETRYABLE_PRISMA_CODES = new Set([
   "P2034",
@@ -30460,7 +30460,6 @@ app.post("/orders", async (req, res) => {
   const { order, created } = await createOrReuseSharedOrder({
     normalized,
   });
-  await rebuildAssignmentCardsForOrgIds([buyer.id, seller.id]);
   const orderLockState = await getOrderModificationLockState(order);
   res.status(created ? 201 : 200).json(
     toOrderResponse(order, {
