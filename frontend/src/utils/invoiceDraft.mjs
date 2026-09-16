@@ -92,6 +92,35 @@ export function calculateInvoiceDraft(source, lines, pricingBasis, currencyCode)
 export const escapeInvoiceHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
+// Each order is rounded independently, after summing its rounded line amounts.
+// This percentage changes money only; it never consumes a percentage of units.
+export function applyOrderBillingPercentages(source, calculation, percentages = {}) {
+  const digits = calculation.total.includes('.') ? calculation.total.split('.')[1].length : 0;
+  // Partial shipment / advance review does not require the whole order to be
+  // completed. Keep production uncertainty visible and require user review.
+  const issues = calculation.issues.filter(issue => issue !== 'PRODUCTION');
+  let total = 0n;
+  const orders = (source.orders || [source]).map(order => {
+    const raw = String(percentages[order.orderId] ?? '').trim() || '100';
+    const valid = /^\d+(\.\d{1,2})?$/.test(raw) && Number(raw) > 0 && Number(raw) <= 100;
+    if (!valid) issues.push('PERCENTAGE');
+    const [whole, fraction = ''] = valid ? raw.split('.') : ['0'];
+    const percent = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
+    const rows = calculation.lines.filter(line => (line.orderId ?? source.orderId) === order.orderId);
+    const known = rows.every(line => line.amount != null || line.quantity === 0);
+    const subtotal = rows.reduce((sum, line) => sum + BigInt((line.amount || '0').replace('.', '')), 0n);
+    const amount = (subtotal * percent + 5000n) / 10000n;
+    total += amount;
+    return { orderId: order.orderId, orderNumber: order.orderNumber, percentage: valid ? raw : null,
+      subtotal: known ? formatMinor(subtotal, digits) : null,
+      amount: known && valid ? formatMinor(amount, digits) : null,
+      difference: known && valid ? formatMinor(subtotal - amount, digits) : null };
+  });
+  return { ...calculation, orders, subtotal: calculation.total,
+    warnings: calculation.issues.includes('PRODUCTION') ? ['PRODUCTION'] : [],
+    total: orders.some(order => order.amount == null) ? null : formatMinor(total, digits), issues: [...new Set(issues)] };
+}
+
 export function buildInvoicePrintHtml({ source, calculation, fields, pricingBasis, currencyCode }) {
   const e = escapeInvoiceHtml;
   const party = (label, value) => `<section><h3>${label}</h3><strong>${e(value.name)}</strong><p>${e(value.address)}</p><p>${e(value.country)}</p><p>Tax ID: ${e(value.taxId)}</p><p>${e(value.email)} ${e(value.phone)}</p></section>`;
@@ -105,6 +134,7 @@ export function buildInvoicePrintHtml({ source, calculation, fields, pricingBasi
   <div class="parties">${party('SELLER / EXPORTER', fields.seller)}${party('BUYER / BILL TO', fields.buyer)}</div>
   <div class="meta"><section><h3>SHIP TO / CONSIGNEE</h3><p>${e(fields.shipTo)}</p></section><section><p>Shipment date: ${e(fields.shipmentDate)}</p><p>Incoterm / Named place: ${e(fields.incoterm)}</p><p>Payment terms: ${e(fields.paymentTerms)}</p><p>Due date: ${e(fields.dueDate)}</p></section></div>
   ${monetary ? paymentTable : `<table><thead><tr><th style="width:5%">No.</th><th style="width:30%">Order / Description / Style / Color / Gender / Size</th><th style="width:10%">HS / Origin</th><th class="num" style="width:9%">Qty (PCS)</th><th class="num" style="width:12%">Unit price</th><th class="num" style="width:14%">Amount</th><th style="width:20%">Remark</th></tr></thead><tbody>${calculation.lines.filter((line) => line.quantity > 0).map((line, i) => `<tr><td>${i + 1}</td><td><p>${e(line.orderNumber || source.orderNumber)}</p><strong>${e(line.styleCode)}</strong><p>${e(line.description)}</p><p>${e([line.color, line.gender, line.size].filter(Boolean).join(' / '))}</p></td><td>${e(line.hsCode)}<p>${e(line.origin)}</p></td><td class="num">${e(line.quantity)}</td><td class="num">${e(line.unitPrice)}</td><td class="num">${e(line.amount)}</td><td><p>${e(line.remark)}</p></td></tr>`).join('')}</tbody></table>`}
+  ${calculation.orders ? `<table><thead><tr><th>Order</th><th class="num">Quantity × unit price</th><th class="num">Billing %</th><th class="num">Amount due (${e(currencyCode)})</th></tr></thead><tbody>${calculation.orders.map(order => `<tr><td>${e(order.orderNumber)}</td><td class="num">${e(order.subtotal)}</td><td class="num">${e(order.percentage)}%</td><td class="num">${e(order.amount)}</td></tr>`).join('')}</tbody></table>` : ''}
   <div class="total">TOTAL ${e(currencyCode)} ${e(calculation.total)}</div><div class="terms"><h3>BANK / PAYMENT INSTRUCTIONS</h3><p>${e(fields.bank)}</p><h3>REMARKS</h3><p>${e(fields.notes)}</p></div>
   <footer>DRAFT — NOT ISSUED. Prepared for quantity and price review only.<br>Authorized signature: __________________________</footer></body></html>`;
 }

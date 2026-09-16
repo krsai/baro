@@ -3,8 +3,7 @@ import { Alert, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, 
   DialogTitle, FormControlLabel, MenuItem, Stack, Table, TableBody, TableCell, TableHead,
   TableRow, TextField, Typography } from '@mui/material';
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
-import { INVOICE_BASES, calculateInvoiceDraft, buildInvoicePrintHtml, combineInvoiceSources } from '../../../utils/invoiceDraft.mjs';
-import { INVOICE_BILLING_MODES, calculateMonetaryInstallment } from '../../../utils/invoiceBilling.mjs';
+import { INVOICE_BASES, calculateInvoiceDraft, buildInvoicePrintHtml, combineInvoiceSources, applyOrderBillingPercentages } from '../../../utils/invoiceDraft.mjs';
 import { invoiceMessages } from '../../../constants/invoiceMessages';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 
@@ -37,20 +36,17 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
-  const [mode, setMode] = useState('QUANTITY');
-  const [contractAmount, setContractAmount] = useState('');
-  const [percentage, setPercentage] = useState('');
-  const [fixedAmount, setFixedAmount] = useState('');
-  const [agreementNote, setAgreementNote] = useState('');
+  const [percentages, setPercentages] = useState({});
+  const [allPercentage, setAllPercentage] = useState('');
   const [dirty, setDirty] = useState(false);
   useUnsavedChanges(open && dirty);
-  const monetary = mode !== 'QUANTITY';
+
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setLoading(true); setSource(null); setFields(null); setError(''); setReviewed(false);
     setDirty(false);
-    setMode('QUANTITY'); setContractAmount(''); setPercentage(''); setFixedAmount(''); setAgreementNote('');
+    setPercentages({}); setAllPercentage('');
     Promise.all((orderIds || [orderId]).map(id => requestJSON(`/invoices/order-source/${encodeURIComponent(id)}${buildQueryString({ orgId, buyerOrgId })}`, { skipCache: true })))
       .then(combineInvoiceSources)
       .then((data) => {
@@ -68,11 +64,8 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
     return () => { cancelled = true; };
   }, [open, orderId, orderIds, orgId, buyerOrgId, reload, t.load]);
   const currencies = source?.currencies || [];
-  const reference = useMemo(() => source ? calculateInvoiceDraft(source, source.lines, basis, currency) : null, [source, basis, currency]);
-  const hasReference = reference && !reference.issues.some((issue) => issue !== 'PRODUCTION');
-  const calculation = useMemo(() => !source ? null : monetary
-    ? calculateMonetaryInstallment({ mode, currency, contractAmount, percentage, fixedAmount, agreementNote })
-    : calculateInvoiceDraft(source, lines, basis, currency), [source, lines, basis, currency, monetary, mode, contractAmount, percentage, fixedAmount, agreementNote]);
+  const calculation = useMemo(() => !source ? null : applyOrderBillingPercentages(source,
+    calculateInvoiceDraft(source, lines, basis, currency), percentages), [source, lines, basis, currency, percentages]);
   const changeBilling = (setter, value) => { setter(value); setReviewed(false); setDirty(true); };
   const changeField = (key, value) => { setFields((f) => ({ ...f, [key]: value })); setReviewed(false); setDirty(true); };
   const changeLine = (key, property, value) => {
@@ -101,32 +94,16 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
         {loading && <CircularProgress />}
         {error && <Alert severity="error" action={<Button onClick={() => setReload((v) => v + 1)}>{t.retry}</Button>}>{error}</Alert>}
         {source && fields && <>
-          <TextField select size="small" label={billingText.mode} value={mode} onChange={(e) => changeBilling(setMode, e.target.value)}>
-            {INVOICE_BILLING_MODES.map((value) => <MenuItem key={value} value={value}>{billingText.modes[value]}</MenuItem>)}
-          </TextField>
-          <Typography variant="body2">{monetary ? billingText.moneyHint : billingText.multiOrderExplanation}</Typography>
+          <Typography variant="body2">{billingText.multiOrderExplanation}</Typography>
           <Stack direction="row" spacing={2}>
             <TextField select size="small" label={t.scope} value={basis} onChange={(e) => { changeBilling(setBasis, e.target.value); setCurrency(''); }} sx={{ minWidth: 140 }}>
               {INVOICE_BASES.map((b) => <MenuItem key={b.value} value={b.value}>{b.label}</MenuItem>)}
             </TextField>
-            <TextField select size="small" label={t.currency} value={currency} onChange={(e) => { changeBilling(setCurrency, e.target.value); setContractAmount(''); setFixedAmount(''); }} sx={{ minWidth: 140 }}>
+            <TextField select size="small" label={t.currency} value={currency} onChange={(e) => { changeBilling(setCurrency, e.target.value); }} sx={{ minWidth: 140 }}>
               <MenuItem value="">—</MenuItem>{currencies.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
             </TextField>
           </Stack>
-          {monetary && <Stack spacing={2}>
-            <Alert severity="info">{billingText.draftHint}</Alert>
-            {mode === 'PERCENTAGE' && <>
-              <Typography variant="body2">{billingText.reference}: {hasReference ? `${currency} ${reference.total}` : '—'}</Typography>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <TextField fullWidth size="small" label={billingText.contract} value={contractAmount} onChange={(e) => changeBilling(setContractAmount, e.target.value)} inputProps={{ inputMode: 'decimal', maxLength: 20 }} />
-                <Button disabled={!hasReference} onClick={() => changeBilling(setContractAmount, reference.total)}>{billingText.useReference}</Button>
-              </Stack>
-              <TextField size="small" label={billingText.percentage} value={percentage} onChange={(e) => changeBilling(setPercentage, e.target.value)} inputProps={{ inputMode: 'decimal', maxLength: 6 }} />
-            </>}
-            {mode === 'FIXED_AMOUNT' && <TextField size="small" label={billingText.fixed} value={fixedAmount} onChange={(e) => changeBilling(setFixedAmount, e.target.value)} inputProps={{ inputMode: 'decimal', maxLength: 20 }} />}
-            <TextField size="small" multiline label={billingText.agreement} value={agreementNote} onChange={(e) => changeBilling(setAgreementNote, e.target.value)} inputProps={{ maxLength: 2000 }} />
-          </Stack>}
-          {!monetary && <>
+          <>
           <Box sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>
             <TableCell>{billingText.orderStyle}</TableCell>{[t.ordered, t.produced, t.invoice, t.price, t.amount].map((label) => <TableCell key={label} align="right">{label}</TableCell>)}
           </TableRow></TableHead><TableBody>{calculation.styles.map((style) => <TableRow key={style.styleScopeKey ?? style.styleId ?? 'missing'}>
@@ -146,7 +123,23 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
             <TableCell><TextField size="small" value={line.adjustmentReason} placeholder={t.reason} inputProps={{ 'aria-label': `${t.reason} ${line.key}`, maxLength: 500 }} onChange={(e) => changeLine(line.key, 'adjustmentReason', e.target.value)} /></TableCell>
             <TableCell><Stack spacing={1}>{['hsCode', 'origin'].map((key) => <TextField key={key} size="small" label={key === 'hsCode' ? 'HS code' : 'Origin'} value={line[key]} onChange={(e) => changeLine(line.key, key, e.target.value)} />)}</Stack></TableCell>
           </TableRow>)}</TableBody></Table></Box>
-          </>}
+          </>
+          <Typography variant="h6">{billingText.settlement}</Typography>
+          <Typography variant="body2">{billingText.percentHint}</Typography>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <TextField size="small" label={billingText.percentage} placeholder="100" value={allPercentage} inputProps={{ inputMode: 'decimal', maxLength: 6 }} onChange={e => setAllPercentage(e.target.value)} />
+            <Button onClick={() => changeBilling(setPercentages, Object.fromEntries(source.orders.map(order => [order.orderId, allPercentage])))}>{billingText.applyAll}</Button>
+          </Stack>
+          <Box sx={{ overflowX: 'auto' }}><Table size="small" sx={{ minWidth: 650 }}><TableHead><TableRow>
+            {[billingText.orderStyle, billingText.subtotal, billingText.percentage, billingText.currentAmount, billingText.remainingPreview].map(label => <TableCell key={label}>{label}</TableCell>)}
+          </TableRow></TableHead><TableBody>{calculation.orders.map(order => <TableRow key={order.orderId}>
+            <TableCell>{order.orderNumber}</TableCell><TableCell>{order.subtotal ?? '—'}</TableCell>
+            <TableCell><TextField size="small" placeholder="100" value={percentages[order.orderId] ?? ''} error={order.percentage == null}
+              inputProps={{ inputMode: 'decimal', maxLength: 6, 'aria-label': `${billingText.percentage} ${order.orderNumber}` }} sx={{ width: 100 }}
+              onChange={e => changeBilling(setPercentages, { ...percentages, [order.orderId]: e.target.value })} /></TableCell>
+            <TableCell>{order.amount ?? '—'}</TableCell><TableCell>{order.difference ?? '—'}</TableCell>
+          </TableRow>)}</TableBody></Table></Box>
+          <Typography variant="caption" color="text.secondary">{billingText.previewHint}</Typography>
           <Typography align="right" variant="h6">TOTAL {currency} {calculation.total ?? '—'}</Typography>
           <Typography variant="subtitle1">{t.metadata}</Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
@@ -157,6 +150,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
             </Stack></Box>)}
           </Box>
           {calculation.issues.map((issue) => <Alert severity="warning" key={issue}>{billingText.errors[issue] || t.issues[issue]}</Alert>)}
+          {calculation.warnings.map((issue) => <Alert severity="warning" key={issue}>{t.issues[issue]}</Alert>)}
           <FormControlLabel control={<Checkbox checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} />} label={t.review} />
         </>}
       </Stack>

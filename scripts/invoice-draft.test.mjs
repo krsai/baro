@@ -1,9 +1,43 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { calculateInvoiceDraft, buildInvoicePrintHtml, parseInvoiceQuantity, combineInvoiceSources } from '../frontend/src/utils/invoiceDraft.mjs';
+import { calculateInvoiceDraft, buildInvoicePrintHtml, parseInvoiceQuantity, combineInvoiceSources, applyOrderBillingPercentages } from '../frontend/src/utils/invoiceDraft.mjs';
 const require = createRequire(import.meta.url);
 const { buildInvoiceSource } = require('../backend/dist/services/invoiceSource.js');
+const { invoiceOrderProgress } = require('../backend/dist/services/invoiceOrderProgress.js');
+
+test('mixed order percentages default to 100 and change money without changing quantities', () => {
+  const s = { orders: [{ orderId: 'a', orderNumber: 'A' }, { orderId: 'b', orderNumber: 'B' }] };
+  const calculation = { total: '300.01', issues: [], lines: [
+    { orderId: 'a', amount: '100.00', quantity: 10 }, { orderId: 'b', amount: '200.01', quantity: 20 }] };
+  const result = applyOrderBillingPercentages(s, calculation, { b: '30' });
+  assert.equal(result.total, '160.00');
+  assert.deepEqual(result.orders.map(order => order.difference), ['0.00', '140.01']);
+  assert.deepEqual(result.lines.map(line => line.quantity), [10, 20]);
+  assert.equal(applyOrderBillingPercentages(s, calculation).total, '300.01');
+  const partial = applyOrderBillingPercentages(s, { ...calculation, issues: ['PRODUCTION'] }, { b: '30' });
+  assert.deepEqual(partial.issues, []); assert.deepEqual(partial.warnings, ['PRODUCTION']);
+  for (const b of ['0', '-1', '100.01', '1e1', 'NaN', '1.001']) {
+    const invalid = applyOrderBillingPercentages(s, calculation, { b });
+    assert.ok(invalid.issues.includes('PERCENTAGE')); assert.equal(invalid.total, null);
+  }
+  const html = buildInvoicePrintHtml({ source: { orderNumber: 'A, B' }, calculation: result,
+    currencyCode: 'USD', fields: { seller: {}, buyer: {} } });
+  assert.match(html, /30%/); assert.match(html, /TOTAL USD 160.00/);
+});
+
+test('order progress includes unassigned quantities and never guesses unknown production', () => {
+  const order = { id: 1, totalQuantity: 100 };
+  const plans = [{ workOrderId: 1, externalId: 'a' }, { workOrderId: 2, externalId: 'foreign' }];
+  const rows = [{ id: 'a', producedQuantity: 25, plannedQuantity: 50, displayProgressPercent: 50 }];
+  const result = invoiceOrderProgress(order, plans, rows);
+  assert.equal(result.progressPercent, 25);
+  assert.equal(result.assignments.length, 1);
+  assert.equal(result.assignments[0].progressPercent, 50);
+  assert.equal(invoiceOrderProgress(order, plans, []).progressPercent, null);
+  assert.equal(invoiceOrderProgress(order, [], []).producedQuantity, null);
+  assert.equal(invoiceOrderProgress(order, plans, [{ ...rows[0], hasInvalidProcessReferences: true }]).producedQuantity, null);
+});
 const order = { orderId: 'o1', orderNumber: 'PO-1', sellerOrg: { name: 'Seller' }, buyerOrg: { name: 'Buyer' }, workOrderItems: [
   { id: 1, styleId: 10, style: { code: 'S1', name: 'Jacket' }, totalQuantity: 100, sizeQuantities: { S: 40, M: 60 } },
 ] };

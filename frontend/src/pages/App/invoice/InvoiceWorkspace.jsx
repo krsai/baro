@@ -55,6 +55,7 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState(null);
   const [chosenOrders, setChosenOrders] = useState([]);
+  const [expandedOrders, setExpandedOrders] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [customer, setCustomer] = useState(null);
   const [customersLoading, setCustomersLoading] = useState(true);
@@ -96,7 +97,7 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
         noOptionsText={t.noCustomers}
         onChange={(_event, value) => {
           if ((value?.id ?? null) === (customer?.id ?? null)) return;
-          setCustomer(value); setSelected(null); setChosenOrders([]); setSearch(''); setPage(0);
+          setCustomer(value); setExpandedOrders([]); setSelected(null); setChosenOrders([]); setSearch(''); setPage(0);
           setResult({ rows: [], hasMore: false }); setError(false); setLoading(Boolean(value));
         }} />
       {customersError && <Alert severity="error" action={<Button onClick={() => setRevision((v) => v + 1)}>{t.retry}</Button>}>{t.customersFailed}</Alert>}
@@ -110,19 +111,34 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
       <Typography variant="body2" color="text.secondary">{t.billingHistoryUnknown}</Typography>
       <TextField size="small" label={t.search} value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); setResult({ rows: [], hasMore: false }); setLoading(true); }} inputProps={{ maxLength: 200 }} />
       {error && <Alert severity="error" action={<Button onClick={() => setRevision((v) => v + 1)}>{t.retry}</Button>}>{t.failed}</Alert>}
-      {loading ? <CircularProgress /> : <Box sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>
-        <TableCell>{t.selectOrder}</TableCell>
+      {loading ? <CircularProgress /> : <Box sx={{ overflowX: 'auto' }}><Table size="small" sx={{ minWidth: 850 }}><TableHead><TableRow>
+        <TableCell sx={{ width: 64, whiteSpace: 'nowrap' }}>{t.selectOrder}</TableCell>
         <TableCell>{languageCode === 'ko' ? '주문번호' : languageCode === 'vi' ? 'Mã đơn hàng' : 'Order'}</TableCell>
-        <TableCell>{languageCode === 'ko' ? '고객' : languageCode === 'vi' ? 'Khách hàng' : 'Customer'}</TableCell>
+        <TableCell>{t.dueDate}</TableCell><TableCell align="right">{t.productionProgress}</TableCell><TableCell>{t.assignmentDetails}</TableCell>
         <TableCell align="right">{languageCode === 'ko' ? '주문 수량' : languageCode === 'vi' ? 'Số lượng đặt' : 'Ordered quantity'}</TableCell>
       </TableRow></TableHead><TableBody>
-        {result.rows.map((order) => <TableRow key={order.orderId} hover>
+        {result.rows.map((order) => <React.Fragment key={order.orderId}><TableRow hover>
           <TableCell padding="checkbox"><Checkbox checked={chosenOrders.includes(order.orderId)} inputProps={{ 'aria-label': `${t.selectOrder} ${order.orderNumber}` }}
             onChange={(_event, checked) => setChosenOrders(ids => checked ? [...new Set([...ids, order.orderId])] : ids.filter(id => id !== order.orderId))} /></TableCell>
-          <TableCell>{order.orderNumber}</TableCell><TableCell>{order.buyerOrg?.name || '—'}</TableCell>
+          <TableCell>{order.orderNumber}</TableCell>
+          <TableCell sx={{ whiteSpace: 'nowrap' }}>{order.dueDate?.slice(0, 10) || '—'}</TableCell>
+          <TableCell align="right">{order.progressPercent == null ? '—' : `${order.progressPercent.toFixed(1)}%`}<Typography variant="caption" display="block">{order.producedQuantity ?? '—'} / {order.totalQuantity}</Typography></TableCell>
+          <TableCell><Button size="small" aria-expanded={expandedOrders.includes(order.orderId)} disabled={!order.assignments?.length}
+            onClick={() => setExpandedOrders(ids => ids.includes(order.orderId) ? ids.filter(id => id !== order.orderId) : [...ids, order.orderId])}>
+            {expandedOrders.includes(order.orderId) ? '▾' : '▸'} {t.assignmentDetails} ({order.assignments?.length || 0})</Button></TableCell>
           <TableCell align="right">{order.totalQuantity}</TableCell>
-        </TableRow>)}
-        {!result.rows.length && !error && <TableRow><TableCell colSpan={4}>{t.empty}</TableCell></TableRow>}
+        </TableRow>
+        {expandedOrders.includes(order.orderId) && <TableRow><TableCell colSpan={6} sx={{ bgcolor: 'grey.50' }}>
+          <Table size="small" aria-label={`${t.assignmentDetails} ${order.orderNumber}`}><TableHead><TableRow>
+            {[t.orderStyle, t.factory, t.planned, t.produced, t.productionProgress].map(label => <TableCell key={label}>{label}</TableCell>)}
+          </TableRow></TableHead><TableBody>{(order.assignments || []).map(plan => <TableRow key={plan.id}>
+            <TableCell>{plan.style}<Typography variant="caption" display="block">{plan.id}</Typography></TableCell><TableCell>{plan.factory || '—'}</TableCell>
+            <TableCell>{plan.plannedQuantity ?? '—'}</TableCell><TableCell>{plan.producedQuantity ?? '—'}</TableCell>
+            <TableCell>{plan.progressPercent == null ? '—' : `${plan.progressPercent.toFixed(1)}%`}</TableCell>
+          </TableRow>)}</TableBody></Table>
+        </TableCell></TableRow>}
+        </React.Fragment>)}
+        {!result.rows.length && !error && <TableRow><TableCell colSpan={6}>{t.empty}</TableCell></TableRow>}
       </TableBody></Table></Box>}
       <Stack direction="row" justifyContent="flex-end" spacing={1}>
         <Button disabled={loading || page === 0} onClick={() => setPage((v) => v - 1)}>{t.previous}</Button>

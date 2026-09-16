@@ -91,6 +91,7 @@ import {
 } from "./services/relationshipTimeBuckets";
 import { partitionRelationshipBucketStyles } from "./services/relationshipBucketStyles";
 import { buildInvoiceSource } from "./services/invoiceSource";
+import { invoiceOrderProgress } from "./services/invoiceOrderProgress";
 import {
   resolveWorkRecordProcessCode,
   resolveWorkRecordProcessName,
@@ -15229,7 +15230,7 @@ const loadOrderAssignmentModificationLockMap = async (
   });
   return lockMap;
 };
-const isOrderAssignmentModificationLocked = async (order: any): Promise<boolean> => {
+const isOrderAssignmentModificationLocked = async (order: any, db: Prisma.TransactionClient = prisma): Promise<boolean> => {
   const workOrderId = toPositiveIntOrNull(order?.id);
   if (workOrderId === null) return false;
   const orgIds = getOrderRelatedOrgIds(order);
@@ -15237,7 +15238,7 @@ const isOrderAssignmentModificationLocked = async (order: any): Promise<boolean>
 
   let lockedPlan: { id: number } | null = null;
   try {
-    lockedPlan = await prisma.assignmentPlan.findFirst({
+    lockedPlan = await db.assignmentPlan.findFirst({
       where: {
         orgId: { in: orgIds },
         assignmentCtTotalSeconds: { not: null },
@@ -15250,7 +15251,7 @@ const isOrderAssignmentModificationLocked = async (order: any): Promise<boolean>
     });
   } catch (error) {
     if (!isAssignmentPlanMissingColumnError(error)) throw error;
-    lockedPlan = await prisma.assignmentPlan.findFirst({
+    lockedPlan = await db.assignmentPlan.findFirst({
       where: {
         orgId: { in: orgIds },
         assignmentCtSnapshot: { not: Prisma.JsonNull },
@@ -15264,13 +15265,13 @@ const isOrderAssignmentModificationLocked = async (order: any): Promise<boolean>
   }
   return Boolean(lockedPlan);
 };
-const getOrderModificationLockState = async (order: any) =>
+const getOrderModificationLockState = async (order: any, db: Prisma.TransactionClient = prisma) =>
   buildOrderModificationLockState({
     order,
-    isAssignmentLocked: await isOrderAssignmentModificationLocked(order),
+    isAssignmentLocked: await isOrderAssignmentModificationLocked(order, db),
   });
-const isOrderModificationLocked = async (order: any): Promise<boolean> => {
-  return (await getOrderModificationLockState(order)).isLocked;
+const isOrderModificationLocked = async (order: any, db: Prisma.TransactionClient = prisma): Promise<boolean> => {
+  return (await getOrderModificationLockState(order, db)).isLocked;
 };
 // repairAssignmentPlanDisplayRows was retired here (Phase C of the
 // AssignmentCard/AssignmentPlan FK+join redesign): it re-derived
@@ -30543,7 +30544,16 @@ app.put("/orders/:orderId", async (req, res) => {
   // at order-lock time (POST /orders/:orderId/modification-lock, locked:true).
   // This endpoint only ever rewrites WorkOrderItem. See AGENTS.md 40번.
   const { items: _updateItems, ...workOrderUpdateData } = normalized;
-  const updated = await prisma.$transaction(async (tx) => {
+  const updated = await editTransaction(prisma, async (tx) => {
+    const current = await tx.workOrder.findFirst({
+      where: { id: existing.id, OR: getOrderAccessWhere(organization.id) },
+    });
+    if (!current || current.updatedAt.getTime() !== existing.updatedAt.getTime()) {
+      throw createHttpError(409, STALE_EDIT);
+    }
+    if (await isOrderModificationLocked(current, tx)) {
+      throw createHttpError(409, ORDER_MODIFICATION_LOCK_ERROR);
+    }
     const updatedOrder = await tx.workOrder.update({
       where: { id: existing.id },
       data: {
@@ -30584,7 +30594,7 @@ app.put("/orders/:orderId", async (req, res) => {
       where: { id: updatedOrder.id },
       include: WORK_ORDER_RESPONSE_INCLUDE,
     });
-  }, { timeout: 30000 });
+  });
 
   const updatedLockState = await getOrderModificationLockState(updated);
   res.json(
@@ -30636,11 +30646,17 @@ app.get("/invoices/orders", async (req, res) => {
     where: { sellerOrgId: access.organization.id, buyerOrgId,
       ...(search ? { orderNumber: { contains: search, mode: "insensitive" as const } } : {}) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: page * 50, take: 51,
-    select: { orderId: true, orderNumber: true, totalQuantity: true, dueDate: true,
+    select: { id: true, orderId: true, orderNumber: true, totalQuantity: true, dueDate: true,
       buyerOrg: { select: { id: true, name: true } } },
   });
   res.setHeader("Cache-Control", "no-store");
-  return res.json({ rows: orders.slice(0, 50), hasMore: orders.length > 50 });
+  const visible = orders.slice(0, 50);
+  const plans = visible.length ? await prisma.assignmentPlan.findMany({
+    where: { orgId: access.organization.id, workOrderId: { in: visible.map(order => order.id) } },
+    select: { externalId: true, workOrderId: true, style: { select: { name: true } } },
+  }) : [];
+  const progress = plans.length ? await buildAssignmentPlanProgressRows(access.organization.id, plans.map(plan => plan.externalId)) : [];
+  return res.json({ rows: visible.map(order => invoiceOrderProgress(order, plans, progress)), hasMore: orders.length > 50 });
 });
 
 app.get(["/invoices/order-source/:orderId", "/orders/:orderId/invoice-source"], async (req, res) => {

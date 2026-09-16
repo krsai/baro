@@ -29,7 +29,7 @@
     "test:workspace-navigation": "node --test scripts/workspace-navigation-regression.test.mjs",
     "test:tab-editing": "node --test scripts/tab-editing-regression.test.mjs",
     "test:order-list-filter": "node --test scripts/order-list-filter-regression.test.mjs",
-    "test:order-item-identity": "npm --prefix backend run build && node --test scripts/order-item-identity.test.mjs",
+    "test:order-item-identity": "npm --prefix backend run build && node --test scripts/order-item-identity.test.mjs scripts/order-save-lock-race.test.mjs",
     "test:work-list-date-range": "node --test scripts/work-list-date-range-regression.test.mjs",
     "test:line-removal-transition": "node --test scripts/line-removal-transition-regression.test.mjs",
     "test:month-selector": "node --test scripts/month-selector-regression.test.mjs",

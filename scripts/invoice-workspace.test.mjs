@@ -96,8 +96,15 @@ test('customer selection is required before listing orders; draft receives the s
   app.find(tree, 'CustomerSelect')[0].props.onChange(null, customer);
   app.render(); app.tick();
   assert.match(app.requests[1].url, /buyerOrgId=8/);
-  app.requests[1].resolve({ rows: [{ orderId: 'o', orderNumber: 'PO', totalQuantity: 10, buyerOrg: customer }, { orderId: 'o2', orderNumber: 'PO2', totalQuantity: 20, buyerOrg: customer }], hasMore: false });
+  app.requests[1].resolve({ rows: [{ orderId: 'o', orderNumber: 'PO', totalQuantity: 10, buyerOrg: customer,
+    assignments: [{ id: 'plan1', style: 'Jacket', progressPercent: 50, plannedQuantity: 10, producedQuantity: 5 }] }, { orderId: 'o2', orderNumber: 'PO2', totalQuantity: 20, buyerOrg: customer }], hasMore: false });
   await flush(); tree = app.render();
+  const expand = app.find(tree, 'Button').find(node => node.props['aria-expanded'] === false && !node.props.disabled);
+  expand.props.onClick(); tree = app.render();
+  assert.equal(app.find(tree, 'Table').length, 2);
+  assert.ok(app.find(tree, 'TableCell').some(node => node.props.children.includes('50.0%')));
+  app.find(tree, 'Button').find(node => node.props['aria-expanded'] === true).props.onClick(); tree = app.render();
+  assert.equal(app.find(tree, 'Table').length, 1);
   app.find(tree, 'Checkbox').forEach(box => box.props.onChange(null, true));
   tree = app.render();
   const create = app.find(tree, 'Button').find(node => node.props.children.includes('청구 내역 작성'));

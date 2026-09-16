@@ -83,7 +83,7 @@ const ts = require('../backend/node_modules/typescript');
 const backend = readFileSync('backend/src/index.ts', 'utf8');
 const section = backend.slice(backend.indexOf('const requireInvoiceAccess ='), backend.indexOf('app.post("/orders/:orderId/modification-lock"'));
 const routeCode = ts.transpileModule(section, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true } = {}) => {
+const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true, orders = [], plans = [], progress = [] } = {}) => {
   const routes = new Map();
   const queries = [];
   const response = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; },
@@ -91,15 +91,16 @@ const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true } = 
   const prisma = {
     organization: { async findMany(query) { queries.push(query); return []; } },
     workOrder: { async findFirst(query) { queries.push(query); return found ? { id: 10, orderId: 'o', buyerOrgId: null, workOrderItems: [] } : null; },
-      async findMany(query) { queries.push(query); return []; } },
-    assignmentPlan: { async findMany() { return []; } },
+      async findMany(query) { queries.push(query); return orders; } },
+    assignmentPlan: { async findMany(query) { queries.push(query); return plans; } },
     currency: { async findMany() { return [{ code: 'USD' }]; } },
   };
-  new Function('requireOrgRole', 'hasRoleAccessPolicyFeature', 'prisma', 'buildInvoiceSource', 'buildAssignmentPlanProgressRows', 'WORK_ORDER_ITEM_WITH_COLOR_INCLUDE', 'app', routeCode)(
+  new Function('requireOrgRole', 'hasRoleAccessPolicyFeature', 'prisma', 'buildInvoiceSource', 'buildAssignmentPlanProgressRows', 'WORK_ORDER_ITEM_WITH_COLOR_INCLUDE', 'app', 'invoiceOrderProgress', routeCode)(
     async () => ({ organization: { id: 7, type }, orgMembership: { role: 'ACCOUNTANT' } }),
     async ({ feature }) => { assert.equal(feature, 'INVOICE'); return allowed; }, prisma,
-    () => ({ ready: false }), () => { throw Error('empty plan list must not load all progress'); }, {},
-    { get(paths, handler) { for (const path of [paths].flat()) routes.set(path, handler); } });
+    () => ({ ready: false }), (orgId, ids) => { assert.equal(orgId, 7); assert.ok(ids.length); return progress; }, {},
+    { get(paths, handler) { for (const path of [paths].flat()) routes.set(path, handler); } },
+    require('../backend/dist/services/invoiceOrderProgress.js').invoiceOrderProgress);
   return { routes, response, queries };
 };
 test('invoice APIs reject missing permission and brand tenants before any order query', async () => {
@@ -129,6 +130,18 @@ test('list queries are paginated and preserve seller scope when searching', asyn
   assert.equal(queries[0].take, 51);
   assert.equal(queries[0].skip, 100);
   assert.deepEqual(response.body, { rows: [], hasMore: false });
+});
+
+test('invoice order list scopes and batches assignment progress for only its visible orders', async () => {
+  const orders = Array.from({ length: 51 }, (_, i) => ({ id: i + 1, orderId: `o${i}`, totalQuantity: 100 }));
+  const { routes, response, queries } = createRoutes({ orders,
+    plans: [{ workOrderId: 1, externalId: 'a' }], progress: [{ id: 'a', producedQuantity: 30, displayProgressPercent: 60 }] });
+  await routes.get('/invoices/orders')({ query: { buyerOrgId: '8' } }, response);
+  assert.equal(queries[1].where.orgId, 7);
+  assert.equal(queries[1].where.workOrderId.in.length, 50);
+  assert.equal(response.body.rows[0].progressPercent, 30);
+  assert.equal(response.body.rows[0].assignments[0].progressPercent, 60);
+  assert.equal(response.body.hasMore, true);
 });
 
 test('customer options contain only buyers with orders sold by the active factory', async () => {

@@ -1,6 +1,7 @@
 export const invoiceMessages = {
   ko: {
-    selectedOrders: '선택한 주문', selectOrder: '주문 선택', orderStyle: '주문 / 스타일',
+    dueDate: '납기일', productionProgress: '생산 진행률', assignmentDetails: '배정', factory: '공장', planned: '배정 수량', produced: '생산 수량', settlement: '주문별 청구 금액', subtotal: '수량 × 단가 합계', applyAll: '전체 적용', percentHint: '비율을 비우면 100%입니다. 비율은 금액에만 적용하며 수량은 변경하지 않습니다.', currentAmount: '이번 청구 금액', remainingPreview: '비율 적용 후 차액', previewHint: '차액은 이번 수량·단가 기준의 참고값입니다. 이전 발행분을 차감한 잔여 청구액은 아닙니다.',
+    selectedOrders: '선택한 주문', selectOrder: '선택', orderStyle: '주문 / 스타일',
     multiOrderExplanation: '단가는 각 주문의 스타일별 청구 수량에 맞는 단가표에서 가져옵니다. 주문·생산 수량은 참고용이며 출력본에서 제외됩니다. 생산 수량은 스타일별 실적이며 색상·사이즈별로 나누지 않습니다. 아래 세부 행에서 청구 수량과 Remark를 입력하세요.',
     issuedInvoices: '발행된 청구서', newInvoice: '청구서 작성', backToInvoices: '청구서 목록으로',
     invoiceNumber: '청구서 번호', issuedDate: '발행일', customerName: '고객', invoiceAmount: '청구 금액', invoiceStatus: '상태',
@@ -17,6 +18,7 @@ export const invoiceMessages = {
     errors: { AGREEMENT: '합의 내용 또는 청구 사유를 입력하세요.', CONTRACT_AMOUNT: '통화 단위에 맞는 양수의 전체 금액을 입력하세요.', PERCENTAGE: '비율은 0 초과 100 이하, 소수 둘째 자리까지 입력하세요.', AMOUNT: '청구 금액은 양수이며 통화의 소수 자릿수에 맞아야 합니다.', BILLING_MODE: '청구 방식을 선택하세요.' },
   },
   en: {
+    dueDate: 'Due date', productionProgress: 'Production progress', assignmentDetails: 'Assignments', factory: 'Factory', planned: 'Assigned qty', produced: 'Produced qty', settlement: 'Billing by order', subtotal: 'Quantity × unit price', applyAll: 'Apply to all', percentHint: 'Blank means 100%. The percentage affects amounts only, not quantities.', currentAmount: 'Amount to bill', remainingPreview: 'Difference after percentage', previewHint: 'This difference uses current quantities and prices. It does not deduct prior invoices.',
     selectedOrders: 'Selected orders', selectOrder: 'Select order', orderStyle: 'Order / Style',
     multiOrderExplanation: 'Prices come from the price tier for each style within each order. Ordered and produced quantities are for review only and are excluded from the printout. Production is per style, not allocated by color or size. Edit invoice quantities and remarks in the detail rows below.',
     issuedInvoices: 'Issued invoices', newInvoice: 'Create invoice', backToInvoices: 'Back to invoices',
@@ -33,6 +35,7 @@ export const invoiceMessages = {
     errors: { AGREEMENT: 'Enter the agreement or billing reason.', CONTRACT_AMOUNT: 'Enter a positive contract total using the currency precision.', PERCENTAGE: 'Enter a percentage above 0 and at most 100, up to two decimals.', AMOUNT: 'Enter a positive amount using the currency precision.', BILLING_MODE: 'Select a billing method.' },
   },
   vi: {
+    dueDate: 'Hạn giao', productionProgress: 'Tiến độ sản xuất', assignmentDetails: 'Phân công', factory: 'Xưởng', planned: 'SL phân công', produced: 'SL sản xuất', settlement: 'Số tiền theo đơn hàng', subtotal: 'Số lượng × đơn giá', applyAll: 'Áp dụng tất cả', percentHint: 'Để trống là 100%. Tỷ lệ chỉ áp dụng cho số tiền, không đổi số lượng.', currentAmount: 'Số tiền lần này', remainingPreview: 'Chênh lệch sau tỷ lệ', previewHint: 'Chênh lệch dựa trên số lượng và đơn giá hiện tại, chưa trừ hóa đơn trước.',
     selectedOrders: 'Đơn hàng đã chọn', selectOrder: 'Chọn đơn hàng', orderStyle: 'Đơn hàng / Mã hàng',
     multiOrderExplanation: 'Đơn giá lấy theo bậc số lượng của từng mã hàng trong từng đơn hàng. Số lượng đặt và sản xuất chỉ để tham khảo, không in trên hóa đơn. Sản lượng theo mã hàng, không phân bổ theo màu hoặc cỡ. Nhập số lượng hóa đơn và Remark ở các dòng chi tiết bên dưới.',
     issuedInvoices: 'Hóa đơn đã phát hành', newInvoice: 'Lập hóa đơn', backToInvoices: 'Về danh sách hóa đơn',
