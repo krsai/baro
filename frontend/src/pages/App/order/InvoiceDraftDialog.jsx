@@ -25,7 +25,7 @@ const messages = {
   vi: { title: 'Bản nháp hóa đơn', notice: 'Giai đoạn 1: chỉ để kiểm tra. Chưa phát hành, lưu trữ hoặc khóa hoàn toàn. Dữ liệu nhập sẽ mất khi đóng cửa sổ.', load: 'Không thể tải đơn hàng, sản lượng và đơn giá.', close: 'Đóng', print: 'In PDF bản nháp', review: 'Tôi đã kiểm tra chênh lệch sản lượng, số lượng chi tiết và đơn giá.', explanation: 'Thay đổi chỉ áp dụng cho bản nháp. Bậc giá hiện hành dựa trên tổng số lượng hóa đơn theo mã hàng. Sản lượng không được phân bổ theo màu hoặc cỡ.', ordered: 'Đặt hàng', produced: 'Sản xuất', invoice: 'Hóa đơn', difference: 'Chênh lệch', quantity: 'SL hóa đơn', reason: 'Lý do điều chỉnh', price: 'Đơn giá', amount: 'Thành tiền', scope: 'Cơ sở giá', currency: 'Tiền tệ', metadata: 'Thông tin hóa đơn và thanh toán', seller: 'Bên bán', buyer: 'Bên mua', retry: 'Tải lại', popup: 'Cho phép cửa sổ bật lên để in.', issues: { PRODUCTION: 'Có mã hàng/phân công chưa hoàn thành hoặc cần kiểm tra.', QUANTITY: 'Nhập số nguyên không âm.', REASON: 'Cần lý do điều chỉnh số lượng.', PRICE: 'Không có đơn giá hiện hành phù hợp. Kiểm tra bảng giá khách hàng.', EMPTY: 'Chưa có số lượng xuất hóa đơn.', CURRENCY: 'Chọn tiền tệ.' } },
 };
 
-export default function InvoiceDraftDialog({ open, onClose, orderId, orgId, languageCode = 'ko' }) {
+export default function InvoiceDraftDialog({ open, onClose, orderId, orgId, buyerOrgId, languageCode = 'ko' }) {
   const t = messages[languageCode] || messages.en;
   const billingText = invoiceMessages[languageCode] || invoiceMessages.en;
   const [source, setSource] = useState(null);
@@ -51,7 +51,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orgId, lang
     setLoading(true); setSource(null); setFields(null); setError(''); setReviewed(false);
     setDirty(false);
     setMode('QUANTITY'); setContractAmount(''); setPercentage(''); setFixedAmount(''); setAgreementNote('');
-    requestJSON(`/invoices/order-source/${encodeURIComponent(orderId)}${buildQueryString({ orgId })}`, { skipCache: true })
+    requestJSON(`/invoices/order-source/${encodeURIComponent(orderId)}${buildQueryString({ orgId, buyerOrgId })}`, { skipCache: true })
       .then((data) => {
         if (cancelled) return;
         setSource(data); setLines(data.lines);
@@ -65,7 +65,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orgId, lang
       }).catch(() => { if (!cancelled) setError(t.load); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open, orderId, orgId, reload, t.load]);
+  }, [open, orderId, orgId, buyerOrgId, reload, t.load]);
   const currencies = source?.currencies || [];
   const reference = useMemo(() => source ? calculateInvoiceDraft(source, source.lines, basis, currency) : null, [source, basis, currency]);
   const hasReference = reference && !reference.issues.some((issue) => issue !== 'PRODUCTION');

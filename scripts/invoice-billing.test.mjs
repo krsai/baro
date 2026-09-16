@@ -89,6 +89,7 @@ const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true } = 
   const response = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; },
     json(body) { this.body = body; return this; }, setHeader() {} };
   const prisma = {
+    organization: { async findMany(query) { queries.push(query); return []; } },
     workOrder: { async findFirst(query) { queries.push(query); return found ? { id: 10, orderId: 'o', buyerOrgId: null, workOrderItems: [] } : null; },
       async findMany(query) { queries.push(query); return []; } },
     assignmentPlan: { async findMany() { return []; } },
@@ -103,25 +104,53 @@ const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true } = 
 };
 test('invoice APIs reject missing permission and brand tenants before any order query', async () => {
   for (const options of [{ allowed: false }, { type: 'BRAND' }]) {
+    for (const path of ['/invoices/orders', '/invoices/customers']) {
     const { routes, response, queries } = createRoutes(options);
-    await routes.get('/invoices/orders')({ query: {} }, response);
+    await routes.get(path)({ query: {} }, response);
     assert.equal(response.statusCode, 403);
     assert.equal(queries.length, 0);
+    }
   }
 });
 test('source lookup always scopes seller, including the old endpoint alias', async () => {
   for (const path of ['/invoices/order-source/:orderId', '/orders/:orderId/invoice-source']) {
     const { routes, response, queries } = createRoutes({ found: false });
-    await routes.get(path)({ params: { orderId: 'foreign-order' } }, response);
+    await routes.get(path)({ params: { orderId: 'foreign-order' }, query: {} }, response);
     assert.deepEqual(queries[0].where, { orderId: 'foreign-order', sellerOrgId: 7 });
     assert.equal(response.statusCode, 404);
   }
 });
 test('list queries are paginated and preserve seller scope when searching', async () => {
   const { routes, response, queries } = createRoutes();
-  await routes.get('/invoices/orders')({ query: { search: 'Buyer', page: '2' } }, response);
+  await routes.get('/invoices/orders')({ query: { buyerOrgId: '8', search: 'PO', page: '2' } }, response);
   assert.equal(queries[0].where.sellerOrgId, 7);
+  assert.equal(queries[0].where.buyerOrgId, 8);
+  assert.deepEqual(queries[0].where.orderNumber, { contains: 'PO', mode: 'insensitive' });
   assert.equal(queries[0].take, 51);
   assert.equal(queries[0].skip, 100);
   assert.deepEqual(response.body, { rows: [], hasMore: false });
+});
+
+test('customer options contain only buyers with orders sold by the active factory', async () => {
+  const { routes, response, queries } = createRoutes();
+  await routes.get('/invoices/customers')({ query: {} }, response);
+  assert.deepEqual(queries[0].where, { buyerWorkOrders: { some: { sellerOrgId: 7 } } });
+  assert.deepEqual(queries[0].select, { id: true, name: true, nameKo: true, nameVi: true });
+  assert.deepEqual(response.body, { rows: [] });
+});
+
+test('order list requires a valid selected customer before querying orders', async () => {
+  for (const buyerOrgId of [undefined, '', '0', '-1', 'NaN', '1.5', '9007199254740992']) {
+    const { routes, response, queries } = createRoutes();
+    await routes.get('/invoices/orders')({ query: { buyerOrgId } }, response);
+    assert.equal(response.statusCode, 400);
+    assert.equal(queries.length, 0);
+  }
+});
+
+test('draft source validates both selected customer and selling factory', async () => {
+  const { routes, response, queries } = createRoutes({ found: false });
+  await routes.get('/invoices/order-source/:orderId')({ params: { orderId: 'other-customer' }, query: { buyerOrgId: '8' } }, response);
+  assert.deepEqual(queries[0].where, { orderId: 'other-customer', sellerOrgId: 7, buyerOrgId: 8 });
+  assert.equal(response.statusCode, 404);
 });

@@ -1,6 +1,7 @@
 export const invoiceMessages = {
   ko: {
-    title: '청구서', orders: '청구 대상 주문', search: '주문번호·고객 검색', create: '초안 작성', next: '다음', previous: '이전', empty: '청구할 주문이 없습니다.', failed: '주문 목록을 불러오지 못했습니다.', retry: '다시 조회',
+    title: '청구서', orders: '청구 대상 주문', search: '주문번호 검색', create: '청구 내역 작성', next: '다음', previous: '이전', empty: '청구할 주문이 없습니다.', failed: '주문 목록을 불러오지 못했습니다.', retry: '다시 조회',
+    workflow: '고객 선택 → 주문 선택 → 청구 내역 작성', customer: '고객 선택', selectCustomer: '먼저 고객을 선택하면 해당 고객의 주문이 표시됩니다.', noCustomers: '청구 대상 주문이 있는 고객이 없습니다.', customersFailed: '고객 목록을 불러오지 못했습니다.',
     notice: '검토용 초안입니다. 정식 발행·서버 저장·누적 청구 관리는 아직 지원하지 않으며, 창을 닫으면 입력 내용이 사라집니다.',
     modes: { QUANTITY: '수량으로 청구', PERCENTAGE: '전체 금액의 비율', FIXED_AMOUNT: '합의한 금액' }, mode: '청구 방식',
     contract: '합의된 전체 금액', percentage: '이번 청구 비율 (%)', fixed: '이번 청구 금액', agreement: '합의 내용 / 청구 사유',
@@ -10,7 +11,8 @@ export const invoiceMessages = {
     errors: { AGREEMENT: '합의 내용 또는 청구 사유를 입력하세요.', CONTRACT_AMOUNT: '통화 단위에 맞는 양수의 전체 금액을 입력하세요.', PERCENTAGE: '비율은 0 초과 100 이하, 소수 둘째 자리까지 입력하세요.', AMOUNT: '청구 금액은 양수이며 통화의 소수 자릿수에 맞아야 합니다.', BILLING_MODE: '청구 방식을 선택하세요.' },
   },
   en: {
-    title: 'Invoices', orders: 'Orders to invoice', search: 'Order number / customer', create: 'Prepare draft', next: 'Next', previous: 'Previous', empty: 'No orders found.', failed: 'Unable to load orders.', retry: 'Reload',
+    title: 'Invoices', orders: 'Orders to invoice', search: 'Order number', create: 'Prepare invoice details', next: 'Next', previous: 'Previous', empty: 'No orders found.', failed: 'Unable to load orders.', retry: 'Reload',
+    workflow: 'Select customer → Select order → Prepare invoice details', customer: 'Select customer', selectCustomer: 'Select a customer to view their orders.', noCustomers: 'No customers with orders to invoice.', customersFailed: 'Unable to load customers.',
     notice: 'Review drafts only. Issuing, server storage and cumulative billing are not available yet. Closing the dialog discards your changes.',
     modes: { QUANTITY: 'By quantity', PERCENTAGE: 'Percentage of total', FIXED_AMOUNT: 'Agreed amount' }, mode: 'Billing method',
     contract: 'Agreed contract total', percentage: 'Installment percentage (%)', fixed: 'Installment amount', agreement: 'Agreement / Reason', reference: 'Full order estimate at current prices', useReference: 'Use estimate',
@@ -19,7 +21,8 @@ export const invoiceMessages = {
     errors: { AGREEMENT: 'Enter the agreement or billing reason.', CONTRACT_AMOUNT: 'Enter a positive contract total using the currency precision.', PERCENTAGE: 'Enter a percentage above 0 and at most 100, up to two decimals.', AMOUNT: 'Enter a positive amount using the currency precision.', BILLING_MODE: 'Select a billing method.' },
   },
   vi: {
-    title: 'Hóa đơn', orders: 'Đơn hàng cần lập hóa đơn', search: 'Mã đơn hàng / Khách hàng', create: 'Tạo bản nháp', next: 'Tiếp', previous: 'Trước', empty: 'Không có đơn hàng.', failed: 'Không thể tải đơn hàng.', retry: 'Tải lại',
+    title: 'Hóa đơn', orders: 'Đơn hàng cần lập hóa đơn', search: 'Mã đơn hàng', create: 'Soạn chi tiết hóa đơn', next: 'Tiếp', previous: 'Trước', empty: 'Không có đơn hàng.', failed: 'Không thể tải đơn hàng.', retry: 'Tải lại',
+    workflow: 'Chọn khách hàng → Chọn đơn hàng → Soạn chi tiết hóa đơn', customer: 'Chọn khách hàng', selectCustomer: 'Chọn khách hàng để xem đơn hàng tương ứng.', noCustomers: 'Không có khách hàng có đơn hàng cần lập hóa đơn.', customersFailed: 'Không thể tải khách hàng.',
     notice: 'Chỉ dùng để kiểm tra. Chưa hỗ trợ phát hành, lưu trên máy chủ hoặc cộng dồn hóa đơn. Đóng cửa sổ sẽ mất dữ liệu nhập.',
     modes: { QUANTITY: 'Theo số lượng', PERCENTAGE: 'Phần trăm tổng tiền', FIXED_AMOUNT: 'Số tiền thỏa thuận' }, mode: 'Cách lập hóa đơn',
     contract: 'Tổng tiền đã thỏa thuận', percentage: 'Tỷ lệ đợt này (%)', fixed: 'Số tiền đợt này', agreement: 'Thỏa thuận / Lý do', reference: 'Giá trị tham khảo theo bảng giá hiện tại', useReference: 'Dùng giá trị tham khảo',

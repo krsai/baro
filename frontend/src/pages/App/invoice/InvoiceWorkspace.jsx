@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Box, Button, CircularProgress, Stack, Table, TableBody, TableCell,
   TableHead, TableRow, TextField, Typography } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
+import SearchableSelect from '../../../components/SearchableSelect';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
@@ -11,6 +12,10 @@ import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEven
 
 export default function InvoiceWorkspace() {
   const { activeOrgId } = useAuth();
+  return <InvoiceCustomerWorkspace key={activeOrgId || 'none'} activeOrgId={activeOrgId} />;
+}
+
+function InvoiceCustomerWorkspace({ activeOrgId }) {
   const { languageCode } = useLanguage();
   const t = invoiceMessages[languageCode] || invoiceMessages.en;
   const [search, setSearch] = useState('');
@@ -20,25 +25,54 @@ export default function InvoiceWorkspace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState(null);
-  useEffect(() => { setSelected(null); setSearch(''); setPage(0); }, [activeOrgId]);
+  const [customers, setCustomers] = useState([]);
+  const [customer, setCustomer] = useState(null);
+  const [customersLoading, setCustomersLoading] = useState(true);
+  const [customersError, setCustomersError] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    setLoading(true); setError(false); setResult({ rows: [], hasMore: false });
+    setCustomersLoading(true); setCustomersError(false);
+    if (!activeOrgId) { setCustomersLoading(false); return undefined; }
+    requestJSON(`/invoices/customers${buildQueryString({ orgId: activeOrgId })}`, { skipCache: true })
+      .then((data) => { if (!cancelled) setCustomers(data.rows); })
+      .catch(() => { if (!cancelled) setCustomersError(true); })
+      .finally(() => { if (!cancelled) setCustomersLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeOrgId, revision]);
+  useEffect(() => {
+    let cancelled = false;
+    setError(false); setResult({ rows: [], hasMore: false });
+    if (!activeOrgId || !customer) { setLoading(false); return undefined; }
+    setLoading(true);
     const timer = setTimeout(() => {
-      requestJSON(`/invoices/orders${buildQueryString({ orgId: activeOrgId, search, page })}`, { skipCache: true })
+      requestJSON(`/invoices/orders${buildQueryString({ orgId: activeOrgId, buyerOrgId: customer.id, search, page })}`, { skipCache: true })
         .then((data) => { if (!cancelled) setResult(data); })
         .catch(() => { if (!cancelled) setError(true); })
         .finally(() => { if (!cancelled) setLoading(false); });
     }, 250);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [activeOrgId, search, page, revision]);
+  }, [activeOrgId, customer, search, page, revision]);
   useWorkspaceRefreshOnEvent({ orgId: activeOrgId, topics: ['orders', 'customers'],
     isBlocked: Boolean(selected), onRefresh: () => setRevision((v) => v + 1) });
   return <AppPageContainer title={t.title}>
     <Stack spacing={2}>
       <Alert severity="info">{t.notice}</Alert>
+      <Typography variant="body2" color="text.secondary">{t.workflow}</Typography>
+      <SearchableSelect label={t.customer} options={customers} value={customer} loading={customersLoading}
+        disabled={Boolean(selected) || !activeOrgId} autoSelect={false}
+        isOptionEqualToValue={(option, value) => option.id === value.id}
+        getOptionLabel={(option) => (languageCode === 'ko' ? option.nameKo : languageCode === 'vi' ? option.nameVi : option.name) || option.name || ''}
+        noOptionsText={t.noCustomers}
+        onChange={(_event, value) => {
+          if ((value?.id ?? null) === (customer?.id ?? null)) return;
+          setCustomer(value); setSelected(null); setSearch(''); setPage(0);
+          setResult({ rows: [], hasMore: false }); setError(false); setLoading(Boolean(value));
+        }} />
+      {customersError && <Alert severity="error" action={<Button onClick={() => setRevision((v) => v + 1)}>{t.retry}</Button>}>{t.customersFailed}</Alert>}
+      {!customer && <Typography color="text.secondary">{t.selectCustomer}</Typography>}
+      {customer && <>
       <Typography variant="h6">{t.orders}</Typography>
-      <TextField size="small" label={t.search} value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} inputProps={{ maxLength: 200 }} />
+      <TextField size="small" label={t.search} value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); setResult({ rows: [], hasMore: false }); setLoading(true); }} inputProps={{ maxLength: 200 }} />
       {error && <Alert severity="error" action={<Button onClick={() => setRevision((v) => v + 1)}>{t.retry}</Button>}>{t.failed}</Alert>}
       {loading ? <CircularProgress /> : <Box sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>
         <TableCell>{languageCode === 'ko' ? '주문번호' : languageCode === 'vi' ? 'Mã đơn hàng' : 'Order'}</TableCell>
@@ -57,7 +91,8 @@ export default function InvoiceWorkspace() {
         <Button disabled={loading || page === 0} onClick={() => setPage((v) => v - 1)}>{t.previous}</Button>
         <Button disabled={loading || !result.hasMore} onClick={() => setPage((v) => v + 1)}>{t.next}</Button>
       </Stack>
+      </>}
     </Stack>
-    <InvoiceDraftDialog open={Boolean(selected)} orderId={selected} orgId={activeOrgId} languageCode={languageCode} onClose={() => setSelected(null)} />
+    <InvoiceDraftDialog open={Boolean(selected)} orderId={selected} orgId={activeOrgId} buyerOrgId={customer?.id} languageCode={languageCode} onClose={() => setSelected(null)} />
   </AppPageContainer>;
 }

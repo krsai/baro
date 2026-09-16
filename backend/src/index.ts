@@ -30611,18 +30611,33 @@ const requireInvoiceAccess = async (req: any, res: any) => {
   return access;
 };
 
+app.get("/invoices/customers", async (req, res) => {
+  const access = await requireInvoiceAccess(req, res);
+  if (!access) return;
+  const rows = await prisma.organization.findMany({
+    where: { buyerWorkOrders: { some: { sellerOrgId: access.organization.id } } },
+    select: { id: true, name: true, nameKo: true, nameVi: true },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+  });
+  res.setHeader("Cache-Control", "no-store");
+  return res.json({ rows });
+});
+
 app.get("/invoices/orders", async (req, res) => {
   const access = await requireInvoiceAccess(req, res);
   if (!access) return;
+  const buyerOrgId = Number(req.query.buyerOrgId);
+  if (!Number.isSafeInteger(buyerOrgId) || buyerOrgId <= 0) {
+    return res.status(400).json({ error: "buyerOrgId is required" });
+  }
   const search = String(req.query.search || "").trim().slice(0, 200);
   const page = Math.max(0, Math.min(100000, Math.trunc(Number(req.query.page) || 0)));
   const orders = await prisma.workOrder.findMany({
-    where: { sellerOrgId: access.organization.id,
-      ...(search ? { OR: [{ orderNumber: { contains: search, mode: "insensitive" as const } },
-        { buyerOrg: { name: { contains: search, mode: "insensitive" as const } } }] } : {}) },
+    where: { sellerOrgId: access.organization.id, buyerOrgId,
+      ...(search ? { orderNumber: { contains: search, mode: "insensitive" as const } } : {}) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: page * 50, take: 51,
     select: { orderId: true, orderNumber: true, totalQuantity: true, dueDate: true,
-      buyerOrg: { select: { name: true } } },
+      buyerOrg: { select: { id: true, name: true } } },
   });
   res.setHeader("Cache-Control", "no-store");
   return res.json({ rows: orders.slice(0, 50), hasMore: orders.length > 50 });
@@ -30633,8 +30648,13 @@ app.get(["/invoices/order-source/:orderId", "/orders/:orderId/invoice-source"], 
   if (!access) return;
   const { organization } = access;
   // Only the seller prepares its invoice; knowing an order id is not authorization.
+  const buyerOrgId = req.query.buyerOrgId == null ? null : Number(req.query.buyerOrgId);
+  if (buyerOrgId !== null && (!Number.isSafeInteger(buyerOrgId) || buyerOrgId <= 0)) {
+    return res.status(400).json({ error: "invalid buyerOrgId" });
+  }
   const order = await prisma.workOrder.findFirst({
-    where: { orderId: String(req.params.orderId), sellerOrgId: organization.id },
+    where: { orderId: String(req.params.orderId), sellerOrgId: organization.id,
+      ...(buyerOrgId !== null ? { buyerOrgId } : {}) },
     include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE, buyerOrg: true, sellerOrg: true },
   });
   if (!order) return res.status(404).json({ error: "seller order not found" });
