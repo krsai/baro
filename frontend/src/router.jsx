@@ -450,8 +450,8 @@ const router = createBrowserRouter([
             path: 'revenue-forecast',
             element: <RevenueForecast />,
           },
-          { path: 'invoices', element: <Navigate to="/invoices/list" replace /> },
-          { path: 'invoices/list', element: <Invoice /> },
+          { path: 'invoices', element: <Invoice /> },
+          { path: 'invoices/list', element: <Navigate to="/invoices" replace /> },
           { path: 'invoices/new', element: <Invoice view="editor" /> },
           {
             path: 'revenue-analysis',

@@ -21,7 +21,7 @@ function InvoiceMenuWorkspace({ activeOrgId, view = 'list' }) {
   const { languageCode } = useLanguage();
   const t = invoiceMessages[languageCode] || invoiceMessages.en;
   if (view === 'editor') {
-    return <InvoiceCustomerWorkspace activeOrgId={activeOrgId} onBack={() => navigateToPath('/invoices/list')} />;
+    return <InvoiceCustomerWorkspace activeOrgId={activeOrgId} onBack={() => navigateToPath('/invoices')} />;
   }
   return <AppPageContainer title={t.title}>
     <Stack spacing={3}>

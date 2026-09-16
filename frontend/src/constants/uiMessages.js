@@ -28,8 +28,7 @@ export const UI_MESSAGES = {
   },
   menu: {
     invoice: { ko: '청구서', en: 'Invoices', vi: 'Hóa đơn' },
-    invoiceList: { ko: '청구서 목록', en: 'Invoice list', vi: 'Danh sách hóa đơn' },
-    invoiceEditor: { ko: '청구서 작성/수정', en: 'Create / edit invoice', vi: 'Lập / sửa hóa đơn' },
+    invoiceEditor: { ko: '청구서 작성', en: 'Create invoice', vi: 'Lập hóa đơn' },
     dashboard: { ko: '\uB300\uC2DC\uBCF4\uB4DC', en: 'Dashboard', vi: 'Bảng điều khiển' },
     operations: { ko: '운영 관리', en: 'Operations', vi: 'Quản lý vận hành' },
     revenueAnalysis: {

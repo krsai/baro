@@ -658,10 +658,6 @@ const MainLayout = () => {
             label: getUiMessage('menu.invoice', 'Invoices', languageCode),
             icon: <ListAltIcon />,
             path: '/invoices',
-            children: [
-              { label: getUiMessage('menu.invoiceList', 'Invoice list', languageCode), path: '/invoices/list' },
-              { label: getUiMessage('menu.invoiceEditor', 'Create / edit invoice', languageCode), path: '/invoices/new' },
-            ],
           },
           {
             label: getUiMessage('menu.customerProductionReport', '보고서', languageCode),
@@ -1152,6 +1148,9 @@ const MainLayout = () => {
   );
   const resolveTabLabel = React.useCallback(
     (path) => {
+      if (path === '/invoices/new') {
+        return getUiMessage('menu.invoiceEditor', 'Create invoice', languageCode);
+      }
       if (path === '/profile') {
         return getUiMessage('menu.profile', 'Profile', languageCode);
       }
@@ -1212,6 +1211,9 @@ const MainLayout = () => {
   const resolveRenderedTabLabel = React.useCallback(
     (tab) => {
       const tabPath = toPathname(tab?.id || tab?.path || '');
+      if (tabPath === '/invoices/new') {
+        return getUiMessage('menu.invoiceEditor', 'Create invoice', languageCode);
+      }
       if (!tabPath) return tab?.label || '';
       const storedContext = String(tab?.label || '').match(/:\s*(.+)$/)?.[1]?.trim() || '';
       const withStoredContext = (baseLabel) =>

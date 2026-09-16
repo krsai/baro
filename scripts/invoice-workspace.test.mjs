@@ -79,7 +79,7 @@ test('invoice menu opens on issued history and enters a separate creation screen
   tree = app.menu('editor');
   assert.equal(typeof tree.type, 'function');
   tree.props.onBack();
-  assert.equal(app.navigations.at(-1), '/invoices/list');
+  assert.equal(app.navigations.at(-1), '/invoices');
   assert.equal(app.find(app.menu(), 'Table').length, 1);
 });
 
