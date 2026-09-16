@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { calculateInvoiceDraft, buildInvoicePrintHtml, parseInvoiceQuantity } from '../frontend/src/utils/invoiceDraft.mjs';
+import { calculateInvoiceDraft, buildInvoicePrintHtml, parseInvoiceQuantity, combineInvoiceSources } from '../frontend/src/utils/invoiceDraft.mjs';
 const require = createRequire(import.meta.url);
 const { buildInvoiceSource } = require('../backend/dist/services/invoiceSource.js');
 const order = { orderId: 'o1', orderNumber: 'PO-1', sellerOrg: { name: 'Seller' }, buyerOrg: { name: 'Buyer' }, workOrderItems: [
@@ -14,6 +14,47 @@ const relationship = { salesBucketSetVersion: { id: 1, entries: [{ id: 1, bucket
     prices: [{ id: 1, quantityBucketEntryId: 1, unitPrice: '2.1250' }, { id: 2, quantityBucketEntryId: 2, unitPrice: '1.0050' }] }] };
 const source = () => buildInvoiceSource(order, plans, progress, relationship);
 const calc = (s, lines = s.lines, currency = 'USD') => calculateInvoiceDraft(s, lines, 'FINISHED_GOODS_PRICE', currency);
+
+test('multiple orders retain row identity and separate price tiers for the same style', () => {
+  const a = { ...source(), buyerOrgId: 1, sellerOrgId: 2 };
+  const b = { ...source(), orderId: 'o2', orderNumber: 'PO-2', buyerOrgId: 1, sellerOrgId: 2 };
+  b.lines = b.lines.map(line => ({ ...line, orderedQuantity: 30, quantity: '30' }));
+  b.styles = b.styles.map(style => ({ ...style, orderedQuantity: 60, producedQuantity: 60 }));
+  const before = JSON.stringify([a, b]);
+  const merged = combineInvoiceSources([a, b]);
+  const result = calc(merged);
+  assert.equal(new Set(merged.lines.map(line => line.key)).size, 4);
+  assert.deepEqual(merged.lines.map(line => line.itemId), [1, 1, 1, 1]);
+  assert.deepEqual(result.styles.map(style => style.invoiceQuantity), [100, 60]);
+  assert.deepEqual(result.styles.map(style => style.unitPrice), ['1.0050', '2.1250']);
+  assert.deepEqual(result.styles.map(style => style.amount), ['100.50', '127.50']);
+  assert.equal(result.total, '228.00');
+  assert.equal(JSON.stringify([a, b]), before);
+});
+
+test('combined drafts reject different parties and duplicate orders; missing production still blocks print', () => {
+  const a = { ...source(), buyerOrgId: 1, sellerOrgId: 2 };
+  assert.throws(() => combineInvoiceSources([a, a]), /ORDER_CONFLICT/);
+  for (const extra of [{ buyerOrgId: 3 }, { sellerOrgId: 3 }]) {
+    assert.throws(() => combineInvoiceSources([a, { ...a, orderId: 'other', ...extra }]), /PARTY_CONFLICT/);
+  }
+  const combined = combineInvoiceSources([a, { ...a, orderId: 'other', ready: false }]);
+  assert.ok(calc(combined).issues.includes('PRODUCTION'));
+});
+
+test('printed multi-order invoice contains remarks and billing values but no internal quantities or reasons', () => {
+  const a = { ...source(), buyerOrgId: 1, sellerOrgId: 2 };
+  const merged = combineInvoiceSources([a, { ...a, orderId: 'other', orderNumber: 'PO-2' }]);
+  merged.lines[0].remark = '<script>remark</script>';
+  merged.lines[0].adjustmentReason = 'INTERNAL_ONLY_REASON';
+  merged.lines[0].orderedQuantity = 987654;
+  const html = buildInvoicePrintHtml({ source: merged, calculation: calc(merged), currencyCode: 'USD', pricingBasis: 'FINISHED_GOODS_PRICE',
+    fields: { number: 'DRAFT', seller: a.seller, buyer: a.buyer } });
+  assert.match(html, /PO-1/); assert.match(html, /PO-2/);
+  assert.match(html, /<th[^>]*>Remark<\/th>/);
+  assert.match(html, /&lt;script&gt;remark&lt;\/script&gt;/);
+  assert.doesNotMatch(html, /987654|INTERNAL_ONLY_REASON|Ordered|Produced|<script>/);
+});
 
 test('production stays at style level; original size quantities and inputs are preserved', () => {
   const before = JSON.stringify({ order, plans, progress, relationship });

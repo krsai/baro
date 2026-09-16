@@ -3,6 +3,33 @@ export const INVOICE_BASES = [
   { value: 'FINISHED_GOODS_PRICE', label: 'FP' },
 ];
 
+// Keep pricing and production scoped to each original order. Combining orders
+// must not move repeated styles into a cheaper aggregate price tier.
+export function combineInvoiceSources(sources) {
+  if (!sources.length) throw new Error('INVOICE_SOURCE_REQUIRED');
+  const first = sources[0];
+  if (sources.length > 1 && (!first.buyerOrgId || !first.sellerOrgId)) throw new Error('INVOICE_PARTIES_REQUIRED');
+  const ids = new Set();
+  for (const source of sources) {
+    if (!source.orderId || ids.has(source.orderId)) throw new Error('INVOICE_ORDER_CONFLICT');
+    if (source.buyerOrgId !== first.buyerOrgId || source.sellerOrgId !== first.sellerOrgId) throw new Error('INVOICE_PARTY_CONFLICT');
+    ids.add(source.orderId);
+  }
+  return {
+    ...first, orderId: sources.length === 1 ? first.orderId : null,
+    sourceUpdatedAt: sources.length === 1 ? first.sourceUpdatedAt : null,
+    orderNumber: sources.map(s => s.orderNumber).join(', '),
+    orders: sources.map(s => ({ orderId: s.orderId, orderNumber: s.orderNumber, sourceUpdatedAt: s.sourceUpdatedAt })),
+    ready: sources.every(s => s.ready),
+    currencies: [...new Set(sources.flatMap(s => s.currencies || []))],
+    styles: sources.flatMap(s => s.styles.map(style => ({ ...style, orderId: s.orderId,
+      orderNumber: s.orderNumber, styleScopeKey: JSON.stringify([s.orderId, style.styleId]) }))),
+    lines: sources.flatMap(s => s.lines.map(line => ({ ...line, orderId: s.orderId, orderNumber: s.orderNumber,
+      key: JSON.stringify([s.orderId, line.key]), styleScopeKey: JSON.stringify([s.orderId, line.styleId]), remark: '' }))),
+  };
+}
+const styleScope = row => row.styleScopeKey ?? row.styleId;
+
 export const parseInvoiceQuantity = (value) => {
   const text = String(value ?? '');
   if (!/^\d+$/.test(text)) return null;
@@ -32,13 +59,13 @@ export function calculateInvoiceDraft(source, lines, pricingBasis, currencyCode)
     const q = parseInvoiceQuantity(line.quantity);
     if (q == null) issues.push('QUANTITY');
     if (q !== line.orderedQuantity && !line.adjustmentReason?.trim()) issues.push('REASON');
-    quantities.set(line.styleId, (quantities.get(line.styleId) || 0) + (q ?? 0));
+    quantities.set(styleScope(line), (quantities.get(styleScope(line)) || 0) + (q ?? 0));
   }
   let total = 0n;
   const calculated = lines.map((line) => {
     const q = parseInvoiceQuantity(line.quantity);
-    const styleQuantity = quantities.get(line.styleId) || 0;
-    const style = source?.styles.find((style) => style.styleId === line.styleId);
+    const styleQuantity = quantities.get(styleScope(line)) || 0;
+    const style = source?.styles.find((style) => styleScope(style) === styleScope(line));
     const list = style?.prices.find((list) => list.pricingBasis === pricingBasis && list.currencyCode === currencyCode);
     const entries = [...(list?.entries || [])].sort((a, b) => a.quantity - b.quantity);
     const entry = entries.filter((entry) => entry.quantity <= styleQuantity).at(-1) || entries[0];
@@ -55,7 +82,11 @@ export function calculateInvoiceDraft(source, lines, pricingBasis, currencyCode)
   });
   if (!calculated.some((line) => line.quantity > 0)) issues.push('EMPTY');
   return { lines: calculated, total: formatMinor(total, digits), issues: [...new Set(issues)],
-    styles: (source?.styles || []).map((style) => ({ ...style, invoiceQuantity: quantities.get(style.styleId) || 0 })) };
+    styles: (source?.styles || []).map((style) => {
+      const rows = calculated.filter(line => styleScope(line) === styleScope(style));
+      const amount = rows.some(line => line.amount == null) ? null : formatMinor(rows.reduce((sum, line) => sum + BigInt(line.amount.replace('.', '')), 0n), digits);
+      return { ...style, invoiceQuantity: quantities.get(styleScope(style)) || 0, unitPrice: rows[0]?.unitPrice ?? null, amount };
+    }) };
 }
 
 export const escapeInvoiceHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) =>
@@ -73,7 +104,7 @@ export function buildInvoicePrintHtml({ source, calculation, fields, pricingBasi
   <div class="top"><div><h1>${title}</h1><span class="draft">DRAFT — NOT ISSUED / NOT FOR PAYMENT</span></div><div><p>Invoice reference: ${e(fields.number)}</p><p>Date: ${e(fields.date)}</p><p>Order: ${e(source.orderNumber)}</p><p>Currency: ${e(currencyCode)}</p></div></div>
   <div class="parties">${party('SELLER / EXPORTER', fields.seller)}${party('BUYER / BILL TO', fields.buyer)}</div>
   <div class="meta"><section><h3>SHIP TO / CONSIGNEE</h3><p>${e(fields.shipTo)}</p></section><section><p>Shipment date: ${e(fields.shipmentDate)}</p><p>Incoterm / Named place: ${e(fields.incoterm)}</p><p>Payment terms: ${e(fields.paymentTerms)}</p><p>Due date: ${e(fields.dueDate)}</p></section></div>
-  ${monetary ? paymentTable : `<table><thead><tr><th style="width:6%">No.</th><th style="width:43%">Description / Style / Color / Gender / Size</th><th style="width:12%">HS / Origin</th><th class="num" style="width:10%">Qty (PCS)</th><th class="num" style="width:14%">Unit price</th><th class="num" style="width:15%">Amount</th></tr></thead><tbody>${calculation.lines.filter((line) => line.quantity > 0).map((line, i) => `<tr><td>${i + 1}</td><td><strong>${e(line.styleCode)}</strong><p>${e(line.description)}</p><p>${e([line.color, line.gender, line.size].filter(Boolean).join(' / '))}</p></td><td>${e(line.hsCode)}<p>${e(line.origin)}</p></td><td class="num">${e(line.quantity)}</td><td class="num">${e(line.unitPrice)}</td><td class="num">${e(line.amount)}</td></tr>`).join('')}</tbody></table>`}
+  ${monetary ? paymentTable : `<table><thead><tr><th style="width:5%">No.</th><th style="width:30%">Order / Description / Style / Color / Gender / Size</th><th style="width:10%">HS / Origin</th><th class="num" style="width:9%">Qty (PCS)</th><th class="num" style="width:12%">Unit price</th><th class="num" style="width:14%">Amount</th><th style="width:20%">Remark</th></tr></thead><tbody>${calculation.lines.filter((line) => line.quantity > 0).map((line, i) => `<tr><td>${i + 1}</td><td><p>${e(line.orderNumber || source.orderNumber)}</p><strong>${e(line.styleCode)}</strong><p>${e(line.description)}</p><p>${e([line.color, line.gender, line.size].filter(Boolean).join(' / '))}</p></td><td>${e(line.hsCode)}<p>${e(line.origin)}</p></td><td class="num">${e(line.quantity)}</td><td class="num">${e(line.unitPrice)}</td><td class="num">${e(line.amount)}</td><td><p>${e(line.remark)}</p></td></tr>`).join('')}</tbody></table>`}
   <div class="total">TOTAL ${e(currencyCode)} ${e(calculation.total)}</div><div class="terms"><h3>BANK / PAYMENT INSTRUCTIONS</h3><p>${e(fields.bank)}</p><h3>REMARKS</h3><p>${e(fields.notes)}</p></div>
   <footer>DRAFT — NOT ISSUED. Prepared for quantity and price review only.<br>Authorized signature: __________________________</footer></body></html>`;
 }

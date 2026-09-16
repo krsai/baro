@@ -36,7 +36,7 @@ function harness() {
   vm.runInNewContext(ts.transpileModule(messages, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports: messageExports });
   const dependencies = {
     react: { ...react, default: react },
-    '@mui/material': Object.fromEntries(['Alert', 'Box', 'Button', 'CircularProgress', 'Stack', 'Table', 'TableBody', 'TableCell', 'TableHead', 'TableRow', 'TextField', 'Typography'].map(name => [name, name])),
+    '@mui/material': Object.fromEntries(['Alert', 'Box', 'Button', 'Checkbox', 'CircularProgress', 'Stack', 'Table', 'TableBody', 'TableCell', 'TableHead', 'TableRow', 'TextField', 'Typography'].map(name => [name, name])),
     '../../../components/AppPageContainer': { default: 'Container' },
     '../../../components/SearchableSelect': { default: 'CustomerSelect' },
     '../../../context/AuthContext': { useAuth: () => ({ activeOrgId: 7 }) },
@@ -91,12 +91,14 @@ test('customer selection is required before listing orders; draft receives the s
   app.find(tree, 'CustomerSelect')[0].props.onChange(null, customer);
   app.render(); app.tick();
   assert.match(app.requests[1].url, /buyerOrgId=8/);
-  app.requests[1].resolve({ rows: [{ orderId: 'o', orderNumber: 'PO', totalQuantity: 10, buyerOrg: customer }], hasMore: false });
+  app.requests[1].resolve({ rows: [{ orderId: 'o', orderNumber: 'PO', totalQuantity: 10, buyerOrg: customer }, { orderId: 'o2', orderNumber: 'PO2', totalQuantity: 20, buyerOrg: customer }], hasMore: false });
   await flush(); tree = app.render();
+  app.find(tree, 'Checkbox').forEach(box => box.props.onChange(null, true));
+  tree = app.render();
   const create = app.find(tree, 'Button').find(node => node.props.children.includes('청구 내역 작성'));
   create.props.onClick(); tree = app.render();
   const dialog = app.find(tree, 'DraftDialog')[0];
-  assert.equal(dialog.props.orderId, 'o');
+  assert.deepEqual([...dialog.props.orderIds], ['o', 'o2']);
   assert.equal(dialog.props.buyerOrgId, 8);
   assert.equal(dialog.props.open, true);
 });
@@ -113,7 +115,7 @@ test('changing or clearing customer discards old orders and ignores late respons
   app.render(); app.tick();
   app.requests[1].resolve({ rows: [{ orderId: 'wrong', orderNumber: 'Wrong customer' }], hasMore: false }); await flush();
   tree = app.render();
-  assert.equal(app.find(tree, 'Button').some(node => node.props.children.includes('청구 내역 작성')), false);
+  assert.equal(app.find(tree, 'Button').find(node => node.props.children.includes('청구 내역 작성')).props.disabled, true);
   assert.match(app.requests[2].url, /buyerOrgId=9/);
   app.find(tree, 'CustomerSelect')[0].props.onChange(null, null);
   app.render(); app.tick();
@@ -122,4 +124,25 @@ test('changing or clearing customer discards old orders and ignores late respons
   assert.equal(app.find(tree, 'Table').length, 0);
   assert.equal(app.requests.length, 3);
   assert.equal(app.root().props.key, 7, 'organization change remounts all customer/order/draft state');
+});
+
+test('order selection survives pagination and is cleared when the customer changes', async () => {
+  const app = harness();
+  let tree = app.render();
+  app.requests[0].resolve({ rows: [{ id: 8, name: 'A' }, { id: 9, name: 'B' }] }); await flush();
+  tree = app.render();
+  app.find(tree, 'CustomerSelect')[0].props.onChange(null, { id: 8, name: 'A' });
+  app.render(); app.tick();
+  app.requests[1].resolve({ rows: [{ orderId: 'first', orderNumber: 'PO1', buyerOrg: { name: 'A' } }], hasMore: true }); await flush();
+  tree = app.render(); app.find(tree, 'Checkbox')[0].props.onChange(null, true);
+  tree = app.render(); app.find(tree, 'Button').find(b => b.props.children.includes('다음')).props.onClick();
+  app.render(); app.tick();
+  app.requests[2].resolve({ rows: [{ orderId: 'second', orderNumber: 'PO2', buyerOrg: { name: 'A' } }], hasMore: false }); await flush();
+  tree = app.render(); app.find(tree, 'Checkbox')[0].props.onChange(null, true);
+  tree = app.render(); app.find(tree, 'Button').find(b => b.props.children.includes('청구 내역 작성')).props.onClick();
+  tree = app.render(); assert.deepEqual([...app.find(tree, 'DraftDialog')[0].props.orderIds], ['first', 'second']);
+  app.find(tree, 'DraftDialog')[0].props.onClose(); tree = app.render();
+  app.find(tree, 'CustomerSelect')[0].props.onChange(null, { id: 9, name: 'B' });
+  tree = app.render();
+  assert.equal(app.find(tree, 'Button').find(b => b.props.children.includes('청구 내역 작성')).props.disabled, true);
 });

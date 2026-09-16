@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Box, Button, CircularProgress, Stack, Table, TableBody, TableCell,
+import { Alert, Box, Button, Checkbox, CircularProgress, Stack, Table, TableBody, TableCell,
   TableHead, TableRow, TextField, Typography } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchableSelect from '../../../components/SearchableSelect';
@@ -53,6 +53,7 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [chosenOrders, setChosenOrders] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [customer, setCustomer] = useState(null);
   const [customersLoading, setCustomersLoading] = useState(true);
@@ -94,26 +95,31 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
         noOptionsText={t.noCustomers}
         onChange={(_event, value) => {
           if ((value?.id ?? null) === (customer?.id ?? null)) return;
-          setCustomer(value); setSelected(null); setSearch(''); setPage(0);
+          setCustomer(value); setSelected(null); setChosenOrders([]); setSearch(''); setPage(0);
           setResult({ rows: [], hasMore: false }); setError(false); setLoading(Boolean(value));
         }} />
       {customersError && <Alert severity="error" action={<Button onClick={() => setRevision((v) => v + 1)}>{t.retry}</Button>}>{t.customersFailed}</Alert>}
       {!customer && <Typography color="text.secondary">{t.selectCustomer}</Typography>}
       {customer && <>
       <Typography variant="h6">{t.orders}</Typography>
+      <Stack direction="row" alignItems="center" justifyContent="space-between">
+        <Typography>{t.selectedOrders}: {chosenOrders.length}</Typography>
+        <Button variant="contained" disabled={!chosenOrders.length} onClick={() => setSelected([...chosenOrders])}>{t.create}</Button>
+      </Stack>
       <Typography variant="body2" color="text.secondary">{t.billingHistoryUnknown}</Typography>
       <TextField size="small" label={t.search} value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); setResult({ rows: [], hasMore: false }); setLoading(true); }} inputProps={{ maxLength: 200 }} />
       {error && <Alert severity="error" action={<Button onClick={() => setRevision((v) => v + 1)}>{t.retry}</Button>}>{t.failed}</Alert>}
       {loading ? <CircularProgress /> : <Box sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>
+        <TableCell>{t.selectOrder}</TableCell>
         <TableCell>{languageCode === 'ko' ? '주문번호' : languageCode === 'vi' ? 'Mã đơn hàng' : 'Order'}</TableCell>
         <TableCell>{languageCode === 'ko' ? '고객' : languageCode === 'vi' ? 'Khách hàng' : 'Customer'}</TableCell>
         <TableCell align="right">{languageCode === 'ko' ? '주문 수량' : languageCode === 'vi' ? 'Số lượng đặt' : 'Ordered quantity'}</TableCell>
-        <TableCell />
       </TableRow></TableHead><TableBody>
         {result.rows.map((order) => <TableRow key={order.orderId} hover>
+          <TableCell padding="checkbox"><Checkbox checked={chosenOrders.includes(order.orderId)} inputProps={{ 'aria-label': `${t.selectOrder} ${order.orderNumber}` }}
+            onChange={(_event, checked) => setChosenOrders(ids => checked ? [...new Set([...ids, order.orderId])] : ids.filter(id => id !== order.orderId))} /></TableCell>
           <TableCell>{order.orderNumber}</TableCell><TableCell>{order.buyerOrg?.name || '—'}</TableCell>
           <TableCell align="right">{order.totalQuantity}</TableCell>
-          <TableCell align="right"><Button onClick={() => setSelected(order.orderId)}>{t.create}</Button></TableCell>
         </TableRow>)}
         {!result.rows.length && !error && <TableRow><TableCell colSpan={4}>{t.empty}</TableCell></TableRow>}
       </TableBody></Table></Box>}
@@ -123,6 +129,6 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
       </Stack>
       </>}
     </Stack>
-    <InvoiceDraftDialog open={Boolean(selected)} orderId={selected} orgId={activeOrgId} buyerOrgId={customer?.id} languageCode={languageCode} onClose={() => setSelected(null)} />
+    <InvoiceDraftDialog open={Boolean(selected)} orderIds={selected} orgId={activeOrgId} buyerOrgId={customer?.id} languageCode={languageCode} onClose={() => setSelected(null)} />
   </AppPageContainer>;
 }

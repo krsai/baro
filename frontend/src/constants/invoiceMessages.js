@@ -1,5 +1,7 @@
 export const invoiceMessages = {
   ko: {
+    selectedOrders: '선택한 주문', selectOrder: '주문 선택', orderStyle: '주문 / 스타일',
+    multiOrderExplanation: '단가는 각 주문의 스타일별 청구 수량에 맞는 단가표에서 가져옵니다. 주문·생산 수량은 참고용이며 출력본에서 제외됩니다. 생산 수량은 스타일별 실적이며 색상·사이즈별로 나누지 않습니다. 아래 세부 행에서 청구 수량과 Remark를 입력하세요.',
     issuedInvoices: '발행된 청구서', newInvoice: '청구서 작성', backToInvoices: '청구서 목록으로',
     invoiceNumber: '청구서 번호', issuedDate: '발행일', customerName: '고객', invoiceAmount: '청구 금액', invoiceStatus: '상태',
     historyUnavailable: '발행 내역 조회는 아직 지원하지 않습니다.', historyDraftHint: '청구서 작성에서 검토용 초안을 준비할 수 있습니다.',
@@ -15,6 +17,8 @@ export const invoiceMessages = {
     errors: { AGREEMENT: '합의 내용 또는 청구 사유를 입력하세요.', CONTRACT_AMOUNT: '통화 단위에 맞는 양수의 전체 금액을 입력하세요.', PERCENTAGE: '비율은 0 초과 100 이하, 소수 둘째 자리까지 입력하세요.', AMOUNT: '청구 금액은 양수이며 통화의 소수 자릿수에 맞아야 합니다.', BILLING_MODE: '청구 방식을 선택하세요.' },
   },
   en: {
+    selectedOrders: 'Selected orders', selectOrder: 'Select order', orderStyle: 'Order / Style',
+    multiOrderExplanation: 'Prices come from the price tier for each style within each order. Ordered and produced quantities are for review only and are excluded from the printout. Production is per style, not allocated by color or size. Edit invoice quantities and remarks in the detail rows below.',
     issuedInvoices: 'Issued invoices', newInvoice: 'Create invoice', backToInvoices: 'Back to invoices',
     invoiceNumber: 'Invoice number', issuedDate: 'Issue date', customerName: 'Customer', invoiceAmount: 'Amount', invoiceStatus: 'Status',
     historyUnavailable: 'Invoice history is not available yet.', historyDraftHint: 'Use Create invoice to prepare a review draft.',
@@ -29,6 +33,8 @@ export const invoiceMessages = {
     errors: { AGREEMENT: 'Enter the agreement or billing reason.', CONTRACT_AMOUNT: 'Enter a positive contract total using the currency precision.', PERCENTAGE: 'Enter a percentage above 0 and at most 100, up to two decimals.', AMOUNT: 'Enter a positive amount using the currency precision.', BILLING_MODE: 'Select a billing method.' },
   },
   vi: {
+    selectedOrders: 'Đơn hàng đã chọn', selectOrder: 'Chọn đơn hàng', orderStyle: 'Đơn hàng / Mã hàng',
+    multiOrderExplanation: 'Đơn giá lấy theo bậc số lượng của từng mã hàng trong từng đơn hàng. Số lượng đặt và sản xuất chỉ để tham khảo, không in trên hóa đơn. Sản lượng theo mã hàng, không phân bổ theo màu hoặc cỡ. Nhập số lượng hóa đơn và Remark ở các dòng chi tiết bên dưới.',
     issuedInvoices: 'Hóa đơn đã phát hành', newInvoice: 'Lập hóa đơn', backToInvoices: 'Về danh sách hóa đơn',
     invoiceNumber: 'Số hóa đơn', issuedDate: 'Ngày phát hành', customerName: 'Khách hàng', invoiceAmount: 'Số tiền', invoiceStatus: 'Trạng thái',
     historyUnavailable: 'Chưa hỗ trợ tra cứu lịch sử hóa đơn.', historyDraftHint: 'Chọn Lập hóa đơn để chuẩn bị bản nháp kiểm tra.',

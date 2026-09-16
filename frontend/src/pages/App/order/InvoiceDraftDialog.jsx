@@ -3,7 +3,7 @@ import { Alert, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, 
   DialogTitle, FormControlLabel, MenuItem, Stack, Table, TableBody, TableCell, TableHead,
   TableRow, TextField, Typography } from '@mui/material';
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
-import { INVOICE_BASES, calculateInvoiceDraft, buildInvoicePrintHtml } from '../../../utils/invoiceDraft.mjs';
+import { INVOICE_BASES, calculateInvoiceDraft, buildInvoicePrintHtml, combineInvoiceSources } from '../../../utils/invoiceDraft.mjs';
 import { INVOICE_BILLING_MODES, calculateMonetaryInstallment } from '../../../utils/invoiceBilling.mjs';
 import { invoiceMessages } from '../../../constants/invoiceMessages';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
@@ -25,7 +25,7 @@ const messages = {
   vi: { title: 'Bản nháp hóa đơn', notice: 'Giai đoạn 1: chỉ để kiểm tra. Chưa phát hành, lưu trữ hoặc khóa hoàn toàn. Dữ liệu nhập sẽ mất khi đóng cửa sổ.', load: 'Không thể tải đơn hàng, sản lượng và đơn giá.', close: 'Đóng', print: 'In PDF bản nháp', review: 'Tôi đã kiểm tra chênh lệch sản lượng, số lượng chi tiết và đơn giá.', explanation: 'Thay đổi chỉ áp dụng cho bản nháp. Bậc giá hiện hành dựa trên tổng số lượng hóa đơn theo mã hàng. Sản lượng không được phân bổ theo màu hoặc cỡ.', ordered: 'Đặt hàng', produced: 'Sản xuất', invoice: 'Hóa đơn', difference: 'Chênh lệch', quantity: 'SL hóa đơn', reason: 'Lý do điều chỉnh', price: 'Đơn giá', amount: 'Thành tiền', scope: 'Cơ sở giá', currency: 'Tiền tệ', metadata: 'Thông tin hóa đơn và thanh toán', seller: 'Bên bán', buyer: 'Bên mua', retry: 'Tải lại', popup: 'Cho phép cửa sổ bật lên để in.', issues: { PRODUCTION: 'Có mã hàng/phân công chưa hoàn thành hoặc cần kiểm tra.', QUANTITY: 'Nhập số nguyên không âm.', REASON: 'Cần lý do điều chỉnh số lượng.', PRICE: 'Không có đơn giá hiện hành phù hợp. Kiểm tra bảng giá khách hàng.', EMPTY: 'Chưa có số lượng xuất hóa đơn.', CURRENCY: 'Chọn tiền tệ.' } },
 };
 
-export default function InvoiceDraftDialog({ open, onClose, orderId, orgId, buyerOrgId, languageCode = 'ko' }) {
+export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, orgId, buyerOrgId, languageCode = 'ko' }) {
   const t = messages[languageCode] || messages.en;
   const billingText = invoiceMessages[languageCode] || invoiceMessages.en;
   const [source, setSource] = useState(null);
@@ -51,7 +51,8 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orgId, buye
     setLoading(true); setSource(null); setFields(null); setError(''); setReviewed(false);
     setDirty(false);
     setMode('QUANTITY'); setContractAmount(''); setPercentage(''); setFixedAmount(''); setAgreementNote('');
-    requestJSON(`/invoices/order-source/${encodeURIComponent(orderId)}${buildQueryString({ orgId, buyerOrgId })}`, { skipCache: true })
+    Promise.all((orderIds || [orderId]).map(id => requestJSON(`/invoices/order-source/${encodeURIComponent(id)}${buildQueryString({ orgId, buyerOrgId })}`, { skipCache: true })))
+      .then(combineInvoiceSources)
       .then((data) => {
         if (cancelled) return;
         setSource(data); setLines(data.lines);
@@ -65,7 +66,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orgId, buye
       }).catch(() => { if (!cancelled) setError(t.load); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open, orderId, orgId, buyerOrgId, reload, t.load]);
+  }, [open, orderId, orderIds, orgId, buyerOrgId, reload, t.load]);
   const currencies = source?.currencies || [];
   const reference = useMemo(() => source ? calculateInvoiceDraft(source, source.lines, basis, currency) : null, [source, basis, currency]);
   const hasReference = reference && !reference.issues.some((issue) => issue !== 'PRODUCTION');
@@ -103,7 +104,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orgId, buye
           <TextField select size="small" label={billingText.mode} value={mode} onChange={(e) => changeBilling(setMode, e.target.value)}>
             {INVOICE_BILLING_MODES.map((value) => <MenuItem key={value} value={value}>{billingText.modes[value]}</MenuItem>)}
           </TextField>
-          <Typography variant="body2">{monetary ? billingText.moneyHint : t.explanation}</Typography>
+          <Typography variant="body2">{monetary ? billingText.moneyHint : billingText.multiOrderExplanation}</Typography>
           <Stack direction="row" spacing={2}>
             <TextField select size="small" label={t.scope} value={basis} onChange={(e) => { changeBilling(setBasis, e.target.value); setCurrency(''); }} sx={{ minWidth: 140 }}>
               {INVOICE_BASES.map((b) => <MenuItem key={b.value} value={b.value}>{b.label}</MenuItem>)}
@@ -127,20 +128,21 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orgId, buye
           </Stack>}
           {!monetary && <>
           <Box sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>
-            <TableCell>Style</TableCell>{[t.ordered, t.produced, t.invoice, t.difference].map((label) => <TableCell key={label} align="right">{label}</TableCell>)}
-          </TableRow></TableHead><TableBody>{calculation.styles.map((style) => <TableRow key={style.styleId ?? 'missing'}>
-            <TableCell>{style.code} · {style.name}{!style.ready && ' ⚠'}</TableCell>
+            <TableCell>{billingText.orderStyle}</TableCell>{[t.ordered, t.produced, t.invoice, t.price, t.amount].map((label) => <TableCell key={label} align="right">{label}</TableCell>)}
+          </TableRow></TableHead><TableBody>{calculation.styles.map((style) => <TableRow key={style.styleScopeKey ?? style.styleId ?? 'missing'}>
+            <TableCell><Typography variant="subtitle2">{style.orderNumber}</Typography>{style.code} · {style.name}{!style.ready && ' ⚠'}</TableCell>
             <TableCell align="right">{style.orderedQuantity}</TableCell><TableCell align="right">{style.producedQuantity ?? '—'}</TableCell>
-            <TableCell align="right">{style.invoiceQuantity}</TableCell><TableCell align="right" sx={{ color: style.invoiceQuantity !== style.producedQuantity ? 'warning.main' : undefined }}>{style.producedQuantity == null ? '—' : style.invoiceQuantity - style.producedQuantity}</TableCell>
+            <TableCell align="right">{style.invoiceQuantity}</TableCell><TableCell align="right">{style.unitPrice ?? '—'}</TableCell><TableCell align="right">{style.amount ?? '—'}</TableCell>
           </TableRow>)}</TableBody></Table></Box>
           <Box sx={{ overflowX: 'auto' }}><Table size="small" sx={{ minWidth: 1100 }}><TableHead><TableRow>
-            {['Style / Color / Gender / Size', t.ordered, t.quantity, t.price, t.amount, t.reason, 'HS / Origin'].map((label) => <TableCell key={label}>{label}</TableCell>)}
+            {[billingText.orderStyle, t.ordered, t.quantity, t.price, t.amount, 'Remark', t.reason, 'HS / Origin'].map((label) => <TableCell key={label}>{label}</TableCell>)}
           </TableRow></TableHead><TableBody>{calculation.lines.map((line) => <TableRow key={line.key}>
-            <TableCell>{[line.styleCode, line.color, line.gender, line.size].filter(Boolean).join(' / ')}<Typography variant="caption" display="block">{line.description}</Typography></TableCell>
+            <TableCell><Typography variant="subtitle2">{line.orderNumber}</Typography>{[line.styleCode, line.color, line.gender, line.size].filter(Boolean).join(' / ')}<Typography variant="caption" display="block">{line.description}</Typography></TableCell>
             <TableCell>{line.orderedQuantity}</TableCell>
             <TableCell><TextField size="small" value={lines.find((row) => row.key === line.key)?.quantity ?? ''} inputProps={{ inputMode: 'numeric', 'aria-label': `${t.quantity} ${line.key}` }} onChange={(e) => changeLine(line.key, 'quantity', e.target.value)} sx={{ width: 100 }} /></TableCell>
             <TableCell>{line.unitPrice ?? '—'}<Typography variant="caption" display="block">{line.bucketQuantity == null ? '' : `≥ ${line.bucketQuantity} PCS`}</Typography></TableCell>
             <TableCell>{line.amount ?? '—'}</TableCell>
+            <TableCell><TextField size="small" multiline value={line.remark || ''} label="Remark" inputProps={{ maxLength: 1000, 'aria-label': `Remark ${line.key}` }} onChange={(e) => changeLine(line.key, 'remark', e.target.value)} /></TableCell>
             <TableCell><TextField size="small" value={line.adjustmentReason} placeholder={t.reason} inputProps={{ 'aria-label': `${t.reason} ${line.key}`, maxLength: 500 }} onChange={(e) => changeLine(line.key, 'adjustmentReason', e.target.value)} /></TableCell>
             <TableCell><Stack spacing={1}>{['hsCode', 'origin'].map((key) => <TextField key={key} size="small" label={key === 'hsCode' ? 'HS code' : 'Origin'} value={line[key]} onChange={(e) => changeLine(line.key, key, e.target.value)} />)}</Stack></TableCell>
           </TableRow>)}</TableBody></Table></Box>
