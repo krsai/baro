@@ -658,6 +658,10 @@ const MainLayout = () => {
             label: getUiMessage('menu.invoice', 'Invoices', languageCode),
             icon: <ListAltIcon />,
             path: '/invoices',
+            children: [
+              { label: getUiMessage('menu.invoiceList', 'Invoice list', languageCode), path: '/invoices/list' },
+              { label: getUiMessage('menu.invoiceEditor', 'Create / edit invoice', languageCode), path: '/invoices/new' },
+            ],
           },
           {
             label: getUiMessage('menu.customerProductionReport', '보고서', languageCode),

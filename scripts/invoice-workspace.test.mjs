@@ -13,6 +13,7 @@ function harness() {
   const slots = [];
   const timers = new Set();
   const requests = [];
+  const navigations = [];
   const react = {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), Fragment: 'Fragment',
     useState(initial) {
@@ -40,6 +41,7 @@ function harness() {
     '../../../components/AppPageContainer': { default: 'Container' },
     '../../../components/SearchableSelect': { default: 'CustomerSelect' },
     '../../../context/AuthContext': { useAuth: () => ({ activeOrgId: 7 }) },
+    '../../../context/AppContext': { useAppActions: () => ({ navigateToPath: path => navigations.push(path) }) },
     '../../../context/LanguageContext': { useLanguage: () => ({ languageCode: 'ko' }) },
     '../../../utils/apiClient': {
       buildQueryString: value => `?${new URLSearchParams(value)}`,
@@ -56,11 +58,12 @@ function harness() {
   const all = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(all) : [node, ...all(node.props?.children)];
   return {
     requests,
+    navigations,
     render() { index = 0; effects = []; const tree = exports.InvoiceCustomerWorkspace({ activeOrgId: 7 }); effects.forEach(run => run()); return tree; },
     find: (tree, type) => all(tree).filter(node => node.type === type),
     tick() { for (const run of [...timers]) { timers.delete(run); run(); } },
     root: () => exports.default(),
-    menu: () => { index = 0; return exports.InvoiceMenuWorkspace({ activeOrgId: 7 }); },
+    menu: (view = 'list') => { index = 0; return exports.InvoiceMenuWorkspace({ activeOrgId: 7, view }); },
   };
 }
 
@@ -72,9 +75,11 @@ test('invoice menu opens on issued history and enters a separate creation screen
   assert.equal(app.find(tree, 'Table')[0].props['aria-label'], '발행된 청구서');
   const create = app.find(tree, 'Button').find(node => node.props.children.includes('청구서 작성'));
   create.props.onClick();
-  tree = app.menu();
+  assert.equal(app.navigations.at(-1), '/invoices/new');
+  tree = app.menu('editor');
   assert.equal(typeof tree.type, 'function');
   tree.props.onBack();
+  assert.equal(app.navigations.at(-1), '/invoices/list');
   assert.equal(app.find(app.menu(), 'Table').length, 1);
 });
 

@@ -4,29 +4,30 @@ import { Alert, Box, Button, Checkbox, CircularProgress, Stack, Table, TableBody
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchableSelect from '../../../components/SearchableSelect';
 import { useAuth } from '../../../context/AuthContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
 import { invoiceMessages } from '../../../constants/invoiceMessages';
 import InvoiceDraftDialog from '../order/InvoiceDraftDialog';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 
-export default function InvoiceWorkspace() {
+export default function InvoiceWorkspace({ view = 'list' } = {}) {
   const { activeOrgId } = useAuth();
-  return <InvoiceMenuWorkspace key={activeOrgId || 'none'} activeOrgId={activeOrgId} />;
+  return <InvoiceMenuWorkspace key={activeOrgId || 'none'} activeOrgId={activeOrgId} view={view} />;
 }
 
-function InvoiceMenuWorkspace({ activeOrgId }) {
+function InvoiceMenuWorkspace({ activeOrgId, view = 'list' }) {
+  const { navigateToPath } = useAppActions();
   const { languageCode } = useLanguage();
   const t = invoiceMessages[languageCode] || invoiceMessages.en;
-  const [writing, setWriting] = useState(false);
-  if (writing) {
-    return <InvoiceCustomerWorkspace activeOrgId={activeOrgId} onBack={() => setWriting(false)} />;
+  if (view === 'editor') {
+    return <InvoiceCustomerWorkspace activeOrgId={activeOrgId} onBack={() => navigateToPath('/invoices/list')} />;
   }
   return <AppPageContainer title={t.title}>
     <Stack spacing={3}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
         <Typography variant="h6">{t.issuedInvoices}</Typography>
-        <Button variant="contained" disabled={!activeOrgId} onClick={() => setWriting(true)}>{t.newInvoice}</Button>
+        <Button variant="contained" disabled={!activeOrgId} onClick={() => navigateToPath('/invoices/new')}>{t.newInvoice}</Button>
       </Stack>
       <Box sx={{ overflowX: 'auto' }}>
         <Table size="small" aria-label={t.issuedInvoices}>
