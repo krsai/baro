@@ -479,6 +479,14 @@ const resolveOrderSaveErrorMessage = (error, options = {}) => {
     fallbackMessage = '주문 저장 중 오류가 발생했습니다.',
   } = options;
   const message = String(error?.message || '').trim();
+  if (message.startsWith('ORDER_ASSIGNMENT_REVIEW:')) {
+    const labels = {
+      ko: '기존 배정과 맞지 않아 저장하지 못했습니다. 배정 수량·스타일·성별 구성과 고객/공장을 확인한 뒤 배정을 먼저 정리해 주세요. 기존 생산 실적은 변경되지 않았습니다.',
+      en: 'The changes conflict with existing assignments. Review assigned quantities, styles, gender composition and buyer/seller before saving. Production records have not changed.',
+      vi: 'Thay đổi không khớp với phân công hiện tại. Kiểm tra số lượng, mã hàng, giới tính và bên mua/bán trước khi lưu. Dữ liệu sản xuất không thay đổi.',
+    };
+    return labels[options.languageCode] || labels.en;
+  }
   if (message.includes('order modification is locked')) {
     return modificationLockedMessage;
   }
@@ -3250,6 +3258,7 @@ const OrderList = () => {
       } else {
         showNotification(
           resolveOrderSaveErrorMessage(error, {
+            languageCode,
             modificationLockedMessage: orderPageText.modificationLocked,
             duplicateOrderNumberMessage: orderPageText.validationDuplicateOrderNumber,
             fallbackMessage: orderPageText.saveErrorFallback,

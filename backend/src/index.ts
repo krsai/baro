@@ -92,6 +92,7 @@ import {
 import { partitionRelationshipBucketStyles } from "./services/relationshipBucketStyles";
 import { buildInvoiceSource } from "./services/invoiceSource";
 import { invoiceOrderProgress } from "./services/invoiceOrderProgress";
+import { guardOrderSaveAssignments } from "./services/orderSaveAssignmentGuard";
 import {
   resolveWorkRecordProcessCode,
   resolveWorkRecordProcessName,
@@ -13122,10 +13123,12 @@ const syncAssignmentCardsForOrg = async ({
   orgId,
   cards,
   db = prisma,
+  preserveAssignedCards = false,
 }: {
   orgId: number;
   cards: any;
   db?: AssignmentCardStoreClient;
+  preserveAssignedCards?: boolean;
 }): Promise<any[]> => {
   const normalizedCards = normalizeAssignmentCardsForStore(cards);
   const nextCardIdSet = new Set(
@@ -13134,6 +13137,7 @@ const syncAssignmentCardsForOrg = async ({
   await db.assignmentCard.deleteMany({
     where: {
       orgId,
+      ...(preserveAssignedCards ? { assignmentPlans: { none: {} } } : {}),
       ...(nextCardIdSet.size > 0
         ? { cardId: { notIn: Array.from(nextCardIdSet.values()) } }
         : {}),
@@ -13235,7 +13239,8 @@ type AssignmentCardRebuildOptions = {
 // Does not commit or refresh existing assignment snapshots.
 const rebuildAssignmentCardsForOrgTx = async (
   orgId: number,
-  db: Prisma.TransactionClient
+  db: Prisma.TransactionClient,
+  preserveAssignedCards = false
 ) => {
   const diagPrefix = `[rebuildAssignmentCardsForOrg] orgId=${orgId}`;
   const organization = await db.organization.findUnique({
@@ -13365,7 +13370,7 @@ const rebuildAssignmentCardsForOrgTx = async (
     styles: hydratedStyles,
   });
   const cards = mergeAssignmentCardsWithSaved(baseCards, savedCards);
-  const syncedCards = await syncAssignmentCardsForOrg({ orgId, cards, db });
+  const syncedCards = await syncAssignmentCardsForOrg({ orgId, cards, db, preserveAssignedCards });
   return { syncedCards, hydratedStyles, manufacturerScope };
 };
 
@@ -13415,7 +13420,7 @@ const rebuildOrderPartyCardsTx = async (
   const ids = [...new Set(orgIds.map(toPositiveIntOrNull)
     .filter((id): id is number => id !== null))].sort((a, b) => a - b);
   for (const orgId of ids) {
-    const result = await rebuildAssignmentCardsForOrgTx(orgId, db);
+    const result = await rebuildAssignmentCardsForOrgTx(orgId, db, true);
     if (!result) throw createHttpError(409, "order organization no longer exists");
   }
 };
@@ -15398,7 +15403,8 @@ const toAssignmentPlanResponse = (plan: any) => {
 };
 const annotateAssignmentPlanRowsWithPayrollLocks = async (
   orgId: number,
-  plans: any[]
+  plans: any[],
+  db: Prisma.TransactionClient = prisma
 ) => {
   const monthByExternalId = new Map<string, string>();
   ensureArray(plans).forEach((plan) => {
@@ -15408,7 +15414,8 @@ const annotateAssignmentPlanRowsWithPayrollLocks = async (
   });
   const lockedMonthSet = await loadLockedPayrollMonthSet(
     orgId,
-    Array.from(monthByExternalId.values())
+    Array.from(monthByExternalId.values()),
+    db
   );
   return ensureArray(plans).map((plan) => {
     const externalId = resolveOptionalString(plan?.externalId, null);
@@ -30540,9 +30547,8 @@ app.put("/orders/:orderId", async (req, res) => {
 
   const itemsToUpsert = normalizeOrderItems(normalized.items);
 
-  // Card/AssignmentPlan sync no longer happens at save time - it happens once,
-  // at order-lock time (POST /orders/:orderId/modification-lock, locked:true).
-  // This endpoint only ever rewrites WorkOrderItem. See AGENTS.md 40번.
+  // Save order/items and both parties' cards atomically; existing assignment
+  // plans and their production/time snapshots are never recalculated here.
   const { items: _updateItems, ...workOrderUpdateData } = normalized;
   const updated = await editTransaction(prisma, async (tx) => {
     const current = await tx.workOrder.findFirst({
@@ -30554,6 +30560,10 @@ app.put("/orders/:orderId", async (req, res) => {
     if (await isOrderModificationLocked(current, tx)) {
       throw createHttpError(409, ORDER_MODIFICATION_LOCK_ERROR);
     }
+    await guardOrderSaveAssignments(tx, current, normalized, itemsToUpsert.map((item: any) => ({
+      styleId: toPositiveIntOrNull(item.styleId), totalQuantity: toNonNegativeInt(item.totalQuantity, 0),
+      gender: normalizeWorkOrderItemGender(item.gender, "M"),
+    })), annotateAssignmentPlanRowsWithPayrollLocks);
     const updatedOrder = await tx.workOrder.update({
       where: { id: existing.id },
       data: {
@@ -30590,6 +30600,8 @@ app.put("/orders/:orderId", async (req, res) => {
         await tx.workOrderItem.create({ data: write.data });
       }
     }
+    await rebuildOrderPartyCardsTx(tx, [current.orgId, current.buyerOrgId, current.sellerOrgId,
+      buyer.id, seller.id]);
     return tx.workOrder.findUnique({
       where: { id: updatedOrder.id },
       include: WORK_ORDER_RESPONSE_INCLUDE,

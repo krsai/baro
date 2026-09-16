@@ -106,3 +106,16 @@ test('persistent unique conflicts never return an existing order as a false succ
   assert.equal(app.attempts(), 3);
   assert.deepEqual(app.state(), { order: existing, items: [], cards: {} });
 });
+
+test('order-save card cleanup retains rows referenced by assignments while deleting unused cards', async () => {
+  let cards = [{ cardId: 'linked', assigned: true }, { cardId: 'unused', assigned: false }];
+  const db = { assignmentCard: { deleteMany: async ({ where }) => {
+    assert.equal(where.orgId, 3);
+    assert.deepEqual(JSON.parse(JSON.stringify(where.assignmentPlans)), { none: {} });
+    cards = cards.filter(card => card.assigned);
+  } } };
+  const context = { normalizeAssignmentCardsForStore: () => [], loadAssignmentCardsForOrg: async () => cards };
+  vm.runInNewContext(section('const syncAssignmentCardsForOrg =', 'const hydrateAssignmentFkRefsFromCards =') + '\nglobalThis.sync = syncAssignmentCardsForOrg;', context);
+  const result = await context.sync({ orgId: 3, cards: [], db, preserveAssignedCards: true });
+  assert.deepEqual(result, [{ cardId: 'linked', assigned: true }]);
+});
