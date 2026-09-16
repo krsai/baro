@@ -12,10 +12,38 @@ import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEven
 
 export default function InvoiceWorkspace() {
   const { activeOrgId } = useAuth();
-  return <InvoiceCustomerWorkspace key={activeOrgId || 'none'} activeOrgId={activeOrgId} />;
+  return <InvoiceMenuWorkspace key={activeOrgId || 'none'} activeOrgId={activeOrgId} />;
 }
 
-function InvoiceCustomerWorkspace({ activeOrgId }) {
+function InvoiceMenuWorkspace({ activeOrgId }) {
+  const { languageCode } = useLanguage();
+  const t = invoiceMessages[languageCode] || invoiceMessages.en;
+  const [writing, setWriting] = useState(false);
+  if (writing) {
+    return <InvoiceCustomerWorkspace activeOrgId={activeOrgId} onBack={() => setWriting(false)} />;
+  }
+  return <AppPageContainer title={t.title}>
+    <Stack spacing={3}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+        <Typography variant="h6">{t.issuedInvoices}</Typography>
+        <Button variant="contained" disabled={!activeOrgId} onClick={() => setWriting(true)}>{t.newInvoice}</Button>
+      </Stack>
+      <Box sx={{ overflowX: 'auto' }}>
+        <Table size="small" aria-label={t.issuedInvoices}>
+          <TableHead><TableRow>
+            {[t.invoiceNumber, t.issuedDate, t.customerName, t.invoiceAmount, t.invoiceStatus].map(label => <TableCell key={label}>{label}</TableCell>)}
+          </TableRow></TableHead>
+          <TableBody><TableRow><TableCell colSpan={5} sx={{ py: 7, textAlign: 'center' }}>
+            <Typography color="text.secondary">{t.historyUnavailable}</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{t.historyDraftHint}</Typography>
+          </TableCell></TableRow></TableBody>
+        </Table>
+      </Box>
+    </Stack>
+  </AppPageContainer>;
+}
+
+function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
   const { languageCode } = useLanguage();
   const t = invoiceMessages[languageCode] || invoiceMessages.en;
   const [search, setSearch] = useState('');
@@ -54,8 +82,9 @@ function InvoiceCustomerWorkspace({ activeOrgId }) {
   }, [activeOrgId, customer, search, page, revision]);
   useWorkspaceRefreshOnEvent({ orgId: activeOrgId, topics: ['orders', 'customers'],
     isBlocked: Boolean(selected), onRefresh: () => setRevision((v) => v + 1) });
-  return <AppPageContainer title={t.title}>
+  return <AppPageContainer title={t.newInvoice}>
     <Stack spacing={2}>
+      <Box><Button onClick={onBack} disabled={Boolean(selected)}>{t.backToInvoices}</Button></Box>
       <Alert severity="info">{t.notice}</Alert>
       <Typography variant="body2" color="text.secondary">{t.workflow}</Typography>
       <SearchableSelect label={t.customer} options={customers} value={customer} loading={customersLoading}
@@ -72,6 +101,7 @@ function InvoiceCustomerWorkspace({ activeOrgId }) {
       {!customer && <Typography color="text.secondary">{t.selectCustomer}</Typography>}
       {customer && <>
       <Typography variant="h6">{t.orders}</Typography>
+      <Typography variant="body2" color="text.secondary">{t.billingHistoryUnknown}</Typography>
       <TextField size="small" label={t.search} value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); setResult({ rows: [], hasMore: false }); setLoading(true); }} inputProps={{ maxLength: 200 }} />
       {error && <Alert severity="error" action={<Button onClick={() => setRevision((v) => v + 1)}>{t.retry}</Button>}>{t.failed}</Alert>}
       {loading ? <CircularProgress /> : <Box sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>

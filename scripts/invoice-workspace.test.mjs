@@ -49,10 +49,10 @@ function harness() {
     '../order/InvoiceDraftDialog': { default: 'DraftDialog' },
     '../../../hooks/useWorkspaceRefreshOnEvent': { default: () => {} },
   };
-  vm.runInNewContext(ts.transpileModule(`${component}\nexport { InvoiceCustomerWorkspace };`, {
+  vm.runInNewContext(ts.transpileModule(`${component}\nexport { InvoiceCustomerWorkspace, InvoiceMenuWorkspace };`, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2022 },
   }).outputText, { exports, require: name => { assert.ok(dependencies[name], name); return dependencies[name]; },
-    setTimeout: run => { timers.add(run); return run; }, clearTimeout: run => timers.delete(run) });
+    URLSearchParams, setTimeout: run => { timers.add(run); return run; }, clearTimeout: run => timers.delete(run) });
   const all = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(all) : [node, ...all(node.props?.children)];
   return {
     requests,
@@ -60,8 +60,23 @@ function harness() {
     find: (tree, type) => all(tree).filter(node => node.type === type),
     tick() { for (const run of [...timers]) { timers.delete(run); run(); } },
     root: () => exports.default(),
+    menu: () => { index = 0; return exports.InvoiceMenuWorkspace({ activeOrgId: 7 }); },
   };
 }
+
+test('invoice menu opens on issued history and enters a separate creation screen only on request', () => {
+  const app = harness();
+  let tree = app.menu();
+  assert.equal(app.find(tree, 'CustomerSelect').length, 0);
+  assert.equal(app.requests.length, 0);
+  assert.equal(app.find(tree, 'Table')[0].props['aria-label'], '발행된 청구서');
+  const create = app.find(tree, 'Button').find(node => node.props.children.includes('청구서 작성'));
+  create.props.onClick();
+  tree = app.menu();
+  assert.equal(typeof tree.type, 'function');
+  tree.props.onBack();
+  assert.equal(app.find(app.menu(), 'Table').length, 1);
+});
 
 test('customer selection is required before listing orders; draft receives the selected customer', async () => {
   const app = harness();

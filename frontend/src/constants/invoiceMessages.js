@@ -1,5 +1,9 @@
 export const invoiceMessages = {
   ko: {
+    issuedInvoices: '발행된 청구서', newInvoice: '청구서 작성', backToInvoices: '청구서 목록으로',
+    invoiceNumber: '청구서 번호', issuedDate: '발행일', customerName: '고객', invoiceAmount: '청구 금액', invoiceStatus: '상태',
+    historyUnavailable: '발행 내역 조회는 아직 지원하지 않습니다.', historyDraftHint: '청구서 작성에서 검토용 초안을 준비할 수 있습니다.',
+    billingHistoryUnknown: '아직 청구 이력이 연결되지 않아 미청구·잔여 청구 주문을 구분할 수 없습니다. 기존 청구 내역을 확인한 후 초안을 작성해 주세요.',
     title: '청구서', orders: '청구 대상 주문', search: '주문번호 검색', create: '청구 내역 작성', next: '다음', previous: '이전', empty: '청구할 주문이 없습니다.', failed: '주문 목록을 불러오지 못했습니다.', retry: '다시 조회',
     workflow: '고객 선택 → 주문 선택 → 청구 내역 작성', customer: '고객 선택', selectCustomer: '먼저 고객을 선택하면 해당 고객의 주문이 표시됩니다.', noCustomers: '청구 대상 주문이 있는 고객이 없습니다.', customersFailed: '고객 목록을 불러오지 못했습니다.',
     notice: '검토용 초안입니다. 정식 발행·서버 저장·누적 청구 관리는 아직 지원하지 않으며, 창을 닫으면 입력 내용이 사라집니다.',
@@ -11,6 +15,10 @@ export const invoiceMessages = {
     errors: { AGREEMENT: '합의 내용 또는 청구 사유를 입력하세요.', CONTRACT_AMOUNT: '통화 단위에 맞는 양수의 전체 금액을 입력하세요.', PERCENTAGE: '비율은 0 초과 100 이하, 소수 둘째 자리까지 입력하세요.', AMOUNT: '청구 금액은 양수이며 통화의 소수 자릿수에 맞아야 합니다.', BILLING_MODE: '청구 방식을 선택하세요.' },
   },
   en: {
+    issuedInvoices: 'Issued invoices', newInvoice: 'Create invoice', backToInvoices: 'Back to invoices',
+    invoiceNumber: 'Invoice number', issuedDate: 'Issue date', customerName: 'Customer', invoiceAmount: 'Amount', invoiceStatus: 'Status',
+    historyUnavailable: 'Invoice history is not available yet.', historyDraftHint: 'Use Create invoice to prepare a review draft.',
+    billingHistoryUnknown: 'Billing history is not connected yet, so unbilled orders and remaining balances cannot be identified. Check previous invoices before preparing a draft.',
     title: 'Invoices', orders: 'Orders to invoice', search: 'Order number', create: 'Prepare invoice details', next: 'Next', previous: 'Previous', empty: 'No orders found.', failed: 'Unable to load orders.', retry: 'Reload',
     workflow: 'Select customer → Select order → Prepare invoice details', customer: 'Select customer', selectCustomer: 'Select a customer to view their orders.', noCustomers: 'No customers with orders to invoice.', customersFailed: 'Unable to load customers.',
     notice: 'Review drafts only. Issuing, server storage and cumulative billing are not available yet. Closing the dialog discards your changes.',
@@ -21,6 +29,10 @@ export const invoiceMessages = {
     errors: { AGREEMENT: 'Enter the agreement or billing reason.', CONTRACT_AMOUNT: 'Enter a positive contract total using the currency precision.', PERCENTAGE: 'Enter a percentage above 0 and at most 100, up to two decimals.', AMOUNT: 'Enter a positive amount using the currency precision.', BILLING_MODE: 'Select a billing method.' },
   },
   vi: {
+    issuedInvoices: 'Hóa đơn đã phát hành', newInvoice: 'Lập hóa đơn', backToInvoices: 'Về danh sách hóa đơn',
+    invoiceNumber: 'Số hóa đơn', issuedDate: 'Ngày phát hành', customerName: 'Khách hàng', invoiceAmount: 'Số tiền', invoiceStatus: 'Trạng thái',
+    historyUnavailable: 'Chưa hỗ trợ tra cứu lịch sử hóa đơn.', historyDraftHint: 'Chọn Lập hóa đơn để chuẩn bị bản nháp kiểm tra.',
+    billingHistoryUnknown: 'Chưa kết nối lịch sử hóa đơn nên chưa thể xác định đơn chưa lập hóa đơn hoặc số dư còn lại. Kiểm tra hóa đơn trước đó trước khi soạn bản nháp.',
     title: 'Hóa đơn', orders: 'Đơn hàng cần lập hóa đơn', search: 'Mã đơn hàng', create: 'Soạn chi tiết hóa đơn', next: 'Tiếp', previous: 'Trước', empty: 'Không có đơn hàng.', failed: 'Không thể tải đơn hàng.', retry: 'Tải lại',
     workflow: 'Chọn khách hàng → Chọn đơn hàng → Soạn chi tiết hóa đơn', customer: 'Chọn khách hàng', selectCustomer: 'Chọn khách hàng để xem đơn hàng tương ứng.', noCustomers: 'Không có khách hàng có đơn hàng cần lập hóa đơn.', customersFailed: 'Không thể tải khách hàng.',
     notice: 'Chỉ dùng để kiểm tra. Chưa hỗ trợ phát hành, lưu trên máy chủ hoặc cộng dồn hóa đơn. Đóng cửa sổ sẽ mất dữ liệu nhập.',
