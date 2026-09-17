@@ -219,7 +219,7 @@ test('pricing grid reuses bucket style data and isolates price-cell rerenders by
   assert.doesNotMatch(frontend, /forceRefresh:\s*true/);
 });
 
-test('order locking is independent from sales prices and preserves item FK validation', () => {
+test('retired order locking remains independent from sales prices', () => {
   assert.match(schema, /enum SalesPricingBasis \{/);
   assert.match(schema, /model Currency \{/);
   const workOrderSchema = schema.slice(
@@ -242,7 +242,7 @@ test('order locking is independent from sales prices and preserves item FK valid
     backend.indexOf('app.post("/orders/:orderId/modification-lock"'),
     backend.indexOf('app.delete("/orders/:orderId"')
   );
-  assert.match(lockRoute, /await assertOrderItemsReadyForLock\(\{ orderId: existing\.id, db: tx \}\)/);
+  assert.match(lockRoute, /ORDER_MANUAL_LOCK_RETIRED/);
   assert.doesNotMatch(lockRoute, /customerSalesPrice|sales price|freezeOrderSalesPriceSnapshots/);
   assert.match(
     stFkVerifier,

@@ -93,6 +93,7 @@ import {
 import { partitionRelationshipBucketStyles } from "./services/relationshipBucketStyles";
 import { buildInvoiceSource } from "./services/invoiceSource";
 import { invoiceOrderProgress } from "./services/invoiceOrderProgress";
+import { isOrderReadyForAssignment } from "./utils/orderAssignmentReadiness";
 import { guardOrderSaveAssignments } from "./services/orderSaveAssignmentGuard";
 import {
   resolveWorkRecordProcessCode,
@@ -645,16 +646,10 @@ const resolveWorkOrderStatus = (
     | "SHIPPED"
     | "SETTLED";
 };
-const resolveDefaultWorkOrderStatusForLockState = (
-  isLocked: boolean
-): "EDITING" | "ORDER_RECEIVED" =>
-  isLocked ? "ORDER_RECEIVED" : resolveUnlockedWorkOrderStatus();
-const resolveCanonicalWorkOrderStatusForLockState = ({
+const resolveCanonicalWorkOrderProgressStatus = ({
   status,
-  isManualLocked,
 }: {
   status: unknown;
-  isManualLocked: boolean;
 }):
   | "EDITING"
   | "ORDER_RECEIVED"
@@ -664,13 +659,10 @@ const resolveCanonicalWorkOrderStatusForLockState = ({
   | "SETTLED" => {
   const rawStatus = resolveWorkOrderStatus(
     status,
-    resolveDefaultWorkOrderStatusForLockState(isManualLocked)
+    "ORDER_RECEIVED"
   );
   if (!AUTO_MANAGED_WORK_ORDER_PROGRESS_STATUSES.has(rawStatus)) {
     return rawStatus;
-  }
-  if (!isManualLocked) {
-    return resolveUnlockedWorkOrderStatus();
   }
   if (rawStatus === "EDITING") {
     return "ORDER_RECEIVED";
@@ -7989,9 +7981,8 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null): any => 
     fallback?.confirmationStatus ?? payload?.confirmationStatus,
     "PLANNED"
   );
-  const status = resolveCanonicalWorkOrderStatusForLockState({
+  const status = resolveCanonicalWorkOrderProgressStatus({
     status: payload?.status ?? fallback?.status,
-    isManualLocked: Boolean(fallback?.modificationLockedAt),
   });
 
   return {
@@ -8222,12 +8213,11 @@ const toOrderResponse = (
   const customerOrg = order.customerOrg ?? buyerOrg;
   const buyerOrgName = resolveOptionalString(buyerOrg?.name, "") ?? "";
   const customerName = resolveOptionalString(customerOrg?.name, buyerOrgName) ?? "";
-  const isManualModificationLocked = Boolean(order?.modificationLockedAt);
+  const isManualModificationLocked = false; // Legacy timestamps are history, not settlement locks.
   const isAssignmentModificationLocked = Boolean(options.isAssignmentModificationLocked);
   const isModificationLocked = isManualModificationLocked;
-  const status = resolveCanonicalWorkOrderStatusForLockState({
+  const status = resolveCanonicalWorkOrderProgressStatus({
     status: order.status,
-    isManualLocked: isManualModificationLocked,
   });
   return {
     id: order.orderId,
@@ -8255,7 +8245,7 @@ const toOrderResponse = (
     isModificationLocked,
     isManualModificationLocked,
     isAssignmentModificationLocked,
-    canToggleModificationLock: true,
+    canToggleModificationLock: false,
     modificationLockedAt: order.modificationLockedAt ?? null,
     modificationLockedBy: order.modificationLockedBy ?? "",
     createdAt: order.createdAt,
@@ -9386,15 +9376,10 @@ const buildOrderProgressCoverageByWorkOrderId = ({
   return coverageByWorkOrderId;
 };
 const resolveAutoOrderProgressStatus = ({
-  isManualLocked,
   coverage,
 }: {
-  isManualLocked: boolean;
   coverage?: { hasUnassignedCards: boolean; hasAssignments: boolean } | null;
 }): "EDITING" | "ORDER_RECEIVED" | "IN_PROGRESS" => {
-  if (!isManualLocked) {
-    return resolveUnlockedWorkOrderStatus();
-  }
   if (!coverage) {
     return "ORDER_RECEIVED";
   }
@@ -9447,13 +9432,11 @@ const syncOrderProgressStatusesForOrg = async ({
       id: true,
       orderId: true,
       status: true,
-      modificationLockedAt: true,
     },
   });
   const updates = orders.flatMap((order) => {
-    const currentStatus = resolveCanonicalWorkOrderStatusForLockState({
+    const currentStatus = resolveCanonicalWorkOrderProgressStatus({
       status: order?.status,
-      isManualLocked: Boolean(order?.modificationLockedAt),
     });
     if (
       !includeTerminalStages &&
@@ -9462,7 +9445,6 @@ const syncOrderProgressStatusesForOrg = async ({
       return [];
     }
     const nextStatus = resolveAutoOrderProgressStatus({
-      isManualLocked: Boolean(order?.modificationLockedAt),
       coverage:
         coverageByWorkOrderId.get(toPositiveIntOrNull(order?.id) ?? -1) ?? null,
     });
@@ -12774,6 +12756,7 @@ const buildAssignmentCardsFromOrders = ({
   }, new Map<number, any>());
 
   ensureArray(orders).forEach((order, orderIndex) => {
+    if (!isOrderReadyForAssignment(order)) return;
     const itemsFromRelation = Array.isArray(order?.workOrderItems) && order.workOrderItems.length > 0
       ? [...order.workOrderItems]
           .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
@@ -13248,11 +13231,7 @@ const rebuildAssignmentCardsForOrgTx = async (
       },
     }),
     db.workOrder.findMany({
-      // Cards only ever reflect locked orders (AGENTS.md 40번) - an unlocked
-      // order is a draft with no production commitment yet, so it must not
-      // contribute any pool card here regardless of which trigger (style
-      // save, color sync, order lock, ...) called this rebuild.
-      where: { OR: getOrderAccessWhere(orgId), modificationLockedAt: { not: null } },
+      where: { OR: getOrderAccessWhere(orgId) },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: {
         id: true,
@@ -15107,12 +15086,12 @@ const buildOrderModificationLockState = ({
   order: any;
   isAssignmentLocked?: boolean;
 }) => {
-  const isManualLocked = Boolean(order?.modificationLockedAt);
+  const isManualLocked = false; // Assignment guards remain active.
   const assignmentLocked = Boolean(isAssignmentLocked);
   return {
     isManualLocked,
     isAssignmentLocked: assignmentLocked,
-    canToggle: true,
+    canToggle: false,
     isLocked: isManualLocked,
   };
 };
@@ -27988,7 +27967,7 @@ app.get("/assignment-cards", async (req, res) => {
     },
     ...(includeProcesses ? { processes: true } : {}),
   };
-  const [orderManualLockRows, styles] = await Promise.all([
+  const [orderReadinessRows, styles] = await Promise.all([
     cardWorkOrderIds.length > 0
       ? prisma.workOrder.findMany({
           where: {
@@ -27997,7 +27976,7 @@ app.get("/assignment-cards", async (req, res) => {
           },
           select: {
             id: true,
-            modificationLockedAt: true,
+            workOrderItems: { select: { styleId: true, totalQuantity: true } },
           },
         })
       : Promise.resolve([]),
@@ -28011,19 +27990,19 @@ app.get("/assignment-cards", async (req, res) => {
         })
       : Promise.resolve([]),
   ]);
-  const manualLockByWorkOrderId = orderManualLockRows.reduce((map, row) => {
+  const readinessByWorkOrderId = orderReadinessRows.reduce((map, row) => {
     const workOrderId = toPositiveIntOrNull(row?.id);
     if (workOrderId === null) return map;
-    map.set(workOrderId, Boolean(row?.modificationLockedAt));
+    map.set(workOrderId, isOrderReadyForAssignment(row));
     return map;
   }, new Map<number, boolean>());
-  const cardsWithOrderLock = cards.map((card) => {
+  const cardsWithOrderReadiness = cards.map((card) => {
     const workOrderId = toPositiveIntOrNull(card?.workOrderId);
-    const isManualOrderLocked =
-      workOrderId == null ? true : Boolean(manualLockByWorkOrderId.get(workOrderId));
+    const isOrderAssignmentReady =
+      workOrderId != null && Boolean(readinessByWorkOrderId.get(workOrderId));
     return {
       ...card,
-      isManualOrderLocked,
+      isOrderAssignmentReady,
     };
   });
   const processMirrorMap = includeProcesses
@@ -28033,7 +28012,7 @@ app.get("/assignment-cards", async (req, res) => {
     : new Map<number, any[]>();
 
   res.json({
-    cards: cardsWithOrderLock,
+    cards: cardsWithOrderReadiness,
     styles: styles.map((style) =>
       toStyleResponse(style, {
         includeProcesses,
@@ -28411,6 +28390,9 @@ app.put("/assignment-board-state", async (req, res) => {
       const externalId = resolveAssignmentExternalId(item);
       return Boolean(externalId && changedIncomingExternalIds.has(externalId));
     });
+    if (changedIncomingAssignments.some(item => toPositiveIntOrNull(item?.workOrderId) === null)) {
+      throw createHttpError(409, "ORDER_NOT_READY_FOR_ASSIGNMENT: missing workOrderId");
+    }
     const changedWorkOrderIds = Array.from(
       new Set(
         changedIncomingAssignments
@@ -28427,13 +28409,13 @@ app.put("/assignment-board-state", async (req, res) => {
         select: {
           id: true,
           orderNumber: true,
-          modificationLockedAt: true,
+          workOrderItems: { select: { styleId: true, totalQuantity: true } },
         },
       });
-      const manualLockByWorkOrderId = orderRows.reduce((map, row) => {
+      const readinessByWorkOrderId = orderRows.reduce((map, row) => {
         const workOrderId = toPositiveIntOrNull(row?.id);
         if (workOrderId === null) return map;
-        map.set(workOrderId, Boolean(row?.modificationLockedAt));
+        map.set(workOrderId, isOrderReadyForAssignment(row));
         return map;
       }, new Map<number, boolean>());
       const orderNumberByWorkOrderId = orderRows.reduce((map, row) => {
@@ -28442,14 +28424,14 @@ app.put("/assignment-board-state", async (req, res) => {
         if (workOrderId !== null && orderNumber) map.set(workOrderId, orderNumber);
         return map;
       }, new Map<number, string>());
-      const unlockedWorkOrderIds = changedWorkOrderIds.filter(
-        (workOrderId) => !Boolean(manualLockByWorkOrderId.get(workOrderId))
+      const unreadyWorkOrderIds = changedWorkOrderIds.filter(
+        (workOrderId) => !Boolean(readinessByWorkOrderId.get(workOrderId))
       );
-      if (unlockedWorkOrderIds.length > 0) {
+      if (unreadyWorkOrderIds.length > 0) {
         throw createHttpError(
           409,
-          `order manual lock required before scheduling assignment: ` +
-            unlockedWorkOrderIds
+          `ORDER_NOT_READY_FOR_ASSIGNMENT: ` +
+            unreadyWorkOrderIds
               .slice(0, 5)
               .map((workOrderId) => orderNumberByWorkOrderId.get(workOrderId) ?? String(workOrderId))
               .join(", ")
@@ -30681,141 +30663,7 @@ app.get(["/invoices/order-source/:orderId", "/orders/:orderId/invoice-source"], 
 app.post("/orders/:orderId/modification-lock", async (req, res) => {
   const accessContext = await requireOrgRole(req, res);
   if (!accessContext) return;
-  const { organization } = accessContext;
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
-
-  const orderId = String(req.params.orderId || "").trim();
-  if (!orderId) {
-    return res.status(400).json({ ok: false, error: "orderId is required" });
-  }
-  if (typeof req.body?.locked !== "boolean") {
-    return res.status(400).json({ ok: false, error: "locked boolean is required" });
-  }
-
-  const existing = await prisma.workOrder.findFirst({
-    where: {
-      orderId,
-      OR: getOrderAccessWhere(organization.id),
-    },
-    include: WORK_ORDER_RESPONSE_INCLUDE,
-  });
-  if (!existing) {
-    return res.status(404).json({ ok: false, error: "order not found" });
-  }
-
-  const currentLockState = await getOrderModificationLockState(existing);
-  const requestedLocked = Boolean(req.body.locked);
-
-  if (
-    requestedLocked === currentLockState.isManualLocked
-  ) {
-    const refreshedLockState = await getOrderModificationLockState(existing);
-    return res.json(
-      toOrderResponse(existing, {
-        isAssignmentModificationLocked: refreshedLockState.isAssignmentLocked,
-      })
-    );
-  }
-
-  // Unlocking is still a pure editing-permission flag - it never creates,
-  // updates, or deletes AssignmentCard/AssignmentPlan rows. Unlocking used to
-  // hard-delete every AssignmentPlan/AssignmentCard for the order (guarded
-  // only by an order-wide "does anything have work records" check) - that
-  // destructive behavior caused a production data loss incident and has been
-  // removed on purpose. Do not reintroduce it.
-  //
-  // Locking is the one moment card/plan sync happens (AGENTS.md 40번): the
-  // pool card catalog is rebuilt from the current WorkOrderItem set, and
-  // already-placed AssignmentPlan rows for this order get their quantity/ST
-  // reconciled to match (syncAssignmentPlansForOrderLock). A style dropped
-  // from the order that already has linked work records is kept as a
-  // zero-quantity overflow assignment instead of being deleted.
-  const affectedOrgIds = [existing.buyerOrgId, existing.sellerOrgId]
-    .map((value) => toPositiveIntOrNull(value))
-    .filter((value): value is number => value !== null);
-  let zeroedStyles: OrderStyleRemovalIssue[] = [];
-  const lockedBy =
-    resolveOptionalString(req.body?.lockedBy, null) ??
-    getRequesterEmail(req) ??
-    "unknown";
-  let updated: any = null;
-  if (requestedLocked) {
-    // Assignment scheduling is exclusively a manufacturer-side concept, but
-    // either party can register/lock the shared order (buyer or seller) - so
-    // AssignmentPlan rows for this order may live under either org's id, not
-    // necessarily the org that happens to be calling this endpoint. Run the
-    // sync for every org on the order (same set rebuildAssignmentCardsForOrgIds
-    // uses below), not just `organization.id` - the org(s) with no plans just
-    // no-op (syncAssignmentPlansForOrderLock returns early on 0 rows).
-    const orgIdsToSync = affectedOrgIds.length > 0 ? affectedOrgIds : [organization.id];
-    const zeroedStylesByStyleId = new Map<number, OrderStyleRemovalIssue>();
-    await prisma.$transaction(
-      async (tx) => {
-        await assertOrderItemsReadyForLock({ orderId: existing.id, db: tx });
-        for (const orgId of orgIdsToSync) {
-          const syncResult = await syncAssignmentPlansForOrderLock({
-            orgId,
-            order: existing,
-            db: tx,
-          });
-          syncResult.zeroedStyles.forEach((issue) => {
-            zeroedStylesByStyleId.set(issue.styleId, issue);
-          });
-        }
-        updated = await tx.workOrder.update({
-          where: { id: existing.id },
-          data: {
-            modificationLockedAt: new Date(),
-            modificationLockedBy: lockedBy,
-          },
-          include: WORK_ORDER_RESPONSE_INCLUDE,
-        });
-      },
-      { timeout: 30000 }
-    );
-    zeroedStyles = Array.from(zeroedStylesByStyleId.values());
-  } else {
-    updated = await prisma.workOrder.update({
-      where: { id: existing.id },
-      data: {
-        modificationLockedAt: null,
-        modificationLockedBy: null,
-      },
-      include: WORK_ORDER_RESPONSE_INCLUDE,
-    });
-  }
-  if (requestedLocked) {
-    const rebuildOrgIds = affectedOrgIds.length > 0 ? affectedOrgIds : [organization.id];
-    try {
-      await rebuildAssignmentCardsForOrgIds(rebuildOrgIds);
-    } catch (error) {
-      console.error(
-        `[modification-lock] rebuildAssignmentCardsForOrgIds threw for order=${updated.orderId} orgIds=${JSON.stringify(rebuildOrgIds)}`,
-        error
-      );
-      throw error;
-    }
-  }
-  await syncOrderProgressStatusesForOrg({
-    orgId: organization.id,
-    orderIds: [updated.orderId],
-    includeTerminalStages: true,
-  });
-  const refreshed = await prisma.workOrder.findUnique({
-    where: { id: updated.id },
-    include: WORK_ORDER_RESPONSE_INCLUDE,
-  });
-  const orderForResponse = refreshed ?? updated;
-
-  const refreshedLockState = await getOrderModificationLockState(orderForResponse);
-  return res.json({
-    ...toOrderResponse(orderForResponse, {
-      isAssignmentModificationLocked: refreshedLockState.isAssignmentLocked,
-    }),
-    zeroedStyles,
-  });
+  return res.status(410).json({ ok: false, error: "ORDER_MANUAL_LOCK_RETIRED" });
 });
 
 app.delete("/orders/:orderId", async (req, res) => {
@@ -30840,77 +30688,31 @@ app.delete("/orders/:orderId", async (req, res) => {
   if (!existing) {
     return res.status(404).json({ ok: false, error: "order not found" });
   }
-  if (await isOrderModificationLocked(existing)) {
-    return res.status(409).json({
-      ok: false,
-      error: ORDER_MODIFICATION_LOCK_ERROR,
+  await editTransaction(prisma, async tx => {
+    const current = await tx.workOrder.findFirst({
+      where: { id: existing.id, OR: getOrderAccessWhere(organization.id) },
     });
-  }
-
-  // Deleting the order deletes every style's card for it, i.e. a full
-  // removal - guard it exactly like a partial style removal in
-  // PUT /orders/:orderId. This used to be covered only incidentally, by
-  // unlock always wiping cards/plans first; now that unlock is a pure
-  // permission flag (see POST .../modification-lock), this guard is the
-  // only thing standing between "delete an unlocked order" and silently
-  // detaching real work records from their assignment.
-  const deletableOrgIds = [existing.buyerOrgId, existing.sellerOrgId]
-    .map((value) => toPositiveIntOrNull(value))
-    .filter((value): value is number => value !== null);
-  // Match via real FK paths only. If assignmentCard points to this order but
-  // AssignmentPlan.workOrderId is missing, surface the drift explicitly
-  // instead of inferring ownership from cardId/originOrderId strings.
-  const plansForOrder = await prisma.assignmentPlan.findMany({
-    where: {
-      orgId: { in: deletableOrgIds },
-      OR: [
-        { workOrderId: existing.id },
-        { assignmentCard: { is: { workOrderId: existing.id } } },
-      ],
-    },
-    select: { id: true, externalId: true, workOrderId: true },
+    if (!current || current.updatedAt.getTime() !== existing.updatedAt.getTime()) {
+      throw createHttpError(409, STALE_EDIT);
+    }
+    if (await isOrderModificationLocked(current, tx)) {
+      throw createHttpError(409, ORDER_MODIFICATION_LOCK_ERROR);
+    }
+    // Preserve every existing assignment, including completed/zero-quantity rows
+    // and broken direct FKs still connected through a card. Never detach history.
+    const plan = await tx.assignmentPlan.findFirst({
+      where: { OR: [
+        { workOrderId: current.id },
+        { assignmentCard: { is: { workOrderId: current.id } } },
+      ] }, select: { id: true },
+    });
+    if (plan) throw createHttpError(409, "ORDER_ASSIGNMENT_REVIEW: order has assignments");
+    // WorkOrder deletion would SET NULL on these cards, leaving an orphan pool.
+    // The assignment guard above and this cleanup share the Serializable Tx.
+    await tx.assignmentCard.deleteMany({ where: { workOrderId: current.id } });
+    await tx.workOrder.delete({ where: { id: current.id } });
+    await rebuildOrderPartyCardsTx(tx, [current.buyerOrgId, current.sellerOrgId]);
   });
-  const plansMissingWorkOrderFk = plansForOrder.filter(
-    (plan) => toPositiveIntOrNull(plan.workOrderId) !== existing.id
-  );
-  if (plansMissingWorkOrderFk.length > 0) {
-    return res.status(409).json({
-      ok: false,
-      error: "assignment plan is missing workOrderId FK; fix assignment plan relations before deleting this order",
-      issues: plansMissingWorkOrderFk.map((plan) => ({
-        assignmentPlanId: plan.id,
-        externalId: resolveOptionalString(plan.externalId, null),
-        code: "ASSIGNMENT_PLAN_MISSING_WORK_ORDER_FK",
-      })),
-    });
-  }
-  const linkedPlanIds = await loadLinkedWorkRecordPlanIds({
-    planIds: plansForOrder.map((plan) => plan.id),
-  });
-  if (linkedPlanIds.length > 0) {
-    return res.status(409).json({
-      ok: false,
-      error: "order has assignment cards with linked work records and cannot be deleted",
-      issues: [{
-        styleId: null,
-        styleCode: "",
-        styleName: "",
-        code: "ORDER_HAS_WORK_RECORDS",
-        message: "This order has assignment cards with existing work records and cannot be deleted.",
-      }],
-    });
-  }
-
-  await prisma.$transaction(async (tx) => {
-    await tx.workOrder.delete({ where: { id: existing.id } });
-    // Already guard-verified above (linkedPlanIds is empty) - this is
-    // cleanup, not a second guard decision.
-    await detachWorkRecordsAndDeleteAssignmentPlans({
-      planIds: plansForOrder.map((plan) => plan.id),
-      db: tx,
-    });
-  });
-  await rebuildAssignmentCardsForOrgIds(deletableOrgIds);
   res.status(204).send();
 });
 

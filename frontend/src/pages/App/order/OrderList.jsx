@@ -34,12 +34,9 @@ import {
 import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
-import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
-import LockOpenOutlinedIcon from '@mui/icons-material/LockOpenOutlined';
 import AppPageContainer from '../../../components/AppPageContainer';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
-import LockToggleSwitch from '../../../components/LockToggleSwitch';
 import SaveButton from '../../../components/SaveButton';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
@@ -89,12 +86,9 @@ import {
   createOrder as createOrderToApi,
   updateOrder as updateOrderToApi,
   deleteOrder as deleteOrderToApi,
-  toggleOrderModificationLock as toggleOrderModificationLockToApi,
 } from '../../../utils/orderApi';
 import {
   emitOrderDeleted,
-  emitOrderModificationLockChanged,
-  subscribeOrderModificationLockChanged,
 } from '../../../utils/orderSyncEvents';
 import {
   emitWorkspaceDataChanged,
@@ -151,60 +145,7 @@ const formatOrderValue = (value) => {
     maximumFractionDigits: 2,
   })}`;
 };
-const getOrderLockButtonSx = (isLocked) => (theme) => {
-  const primaryMain = theme.palette.primary.main;
-  const textPrimary = theme.palette.text.primary;
 
-  if (isLocked) {
-    return {
-      minWidth: 116,
-      height: 36,
-      px: 1.75,
-      borderRadius: 1.5,
-      border: `1px solid ${alpha(textPrimary, 0.9)}`,
-      backgroundColor: alpha(textPrimary, 0.9),
-      color: theme.palette.common.white,
-      fontWeight: 700,
-      '&:hover': {
-        borderColor: textPrimary,
-        backgroundColor: textPrimary,
-      },
-      '& .MuiButton-startIcon': {
-        marginLeft: 0,
-        marginRight: theme.spacing(0.75),
-      },
-      '&.Mui-disabled': {
-        borderColor: alpha(textPrimary, 0.38),
-        backgroundColor: alpha(textPrimary, 0.38),
-        color: alpha(theme.palette.common.white, 0.76),
-      },
-    };
-  }
-
-  return {
-    minWidth: 116,
-    height: 36,
-    px: 1.75,
-    borderRadius: 1.5,
-    border: `1px solid ${alpha(primaryMain, 0.38)}`,
-    backgroundColor: alpha(primaryMain, 0.08),
-    color: primaryMain,
-    fontWeight: 700,
-    '&:hover': {
-      borderColor: alpha(primaryMain, 0.55),
-      backgroundColor: alpha(primaryMain, 0.16),
-    },
-    '& .MuiButton-startIcon': {
-      marginLeft: 0,
-      marginRight: theme.spacing(0.75),
-    },
-    '&.Mui-disabled': {
-      borderColor: alpha(primaryMain, 0.22),
-      backgroundColor: alpha(primaryMain, 0.08),
-      color: alpha(primaryMain, 0.48),
-    },
-  };
-};
 const GENDER_SORT_ORDER = {
   M: 0,
   W: 1,
@@ -506,33 +447,6 @@ const extractOrderSaveIssueRows = (error) => {
     location: issue?.styleName || issue?.styleCode || (issue?.styleId ? `style ${issue.styleId}` : '-'),
     detail: issue?.message || issue?.code || '',
   }));
-};
-// Lock/unlock is now a pure permission-flag toggle on the backend (see
-// AGENTS.md order-lock redesign) - it no longer touches assignment
-// cards/plans, so it no longer has its own family of structured errors.
-// Only the generic modification-locked case remains meaningful here.
-const resolveOrderModificationLockToggleErrorMessage = (error, options = {}) => {
-  const {
-    modificationLockedMessage = ORDER_MODIFICATION_LOCK_MESSAGE,
-    fallbackMessage = '주문 잠금 상태를 변경하는 중 오류가 발생했습니다.',
-  } = options;
-  const message = String(error?.message || '').trim();
-  if (message.includes('order modification is locked')) {
-    return modificationLockedMessage;
-  }
-  return message || fallbackMessage;
-};
-const formatOrderLockTimestamp = (value) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 };
 const getGenderOrder = (gender) =>
   Number.isFinite(GENDER_SORT_ORDER[gender]) ? GENDER_SORT_ORDER[gender] : 99;
@@ -1513,26 +1427,6 @@ const OrderList = () => {
     onRefresh: () => refreshStyles(activeOrgId, { forceRefresh: true }),
   });
 
-  useEffect(() => {
-    if (isDetailMode) return undefined;
-    return subscribeOrderModificationLockChanged((detail) => {
-      if (String(detail?.source || '').trim() === orderLockEventSourceRef.current) {
-        return;
-      }
-      const eventOrgId = Number(detail?.orgId);
-      const currentOrgId = Number(activeOrgId);
-      if (
-        Number.isFinite(eventOrgId) &&
-        eventOrgId > 0 &&
-        Number.isFinite(currentOrgId) &&
-        currentOrgId > 0 &&
-        eventOrgId !== currentOrgId
-      ) {
-        return;
-      }
-      loadOrdersFromDb({ forceRefresh: true });
-    });
-  }, [activeOrgId, isDetailMode, loadOrdersFromDb]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2183,8 +2077,6 @@ const OrderList = () => {
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [saveIssueRows, setSaveIssueRows] = useState([]);
   const [saveIssueDialogOpen, setSaveIssueDialogOpen] = useState(false);
-  const [isTogglingModificationLock, setIsTogglingModificationLock] = useState(false);
-  const orderLockEventSourceRef = useRef(createId('order-lock'));
   const orderDataChangedEventSourceRef = useRef(createId('order-data'));
   const emitOrderDataChanged = useCallback(() => {
     emitWorkspaceDataChanged({
@@ -2257,87 +2149,6 @@ const OrderList = () => {
   const isCurrentOrderModificationLocked = Boolean(
     !isNewOrder && currentDetailOrder?.isModificationLocked
   );
-  const isCurrentOrderManualModificationLocked = Boolean(
-    !isNewOrder && currentDetailOrder?.isManualModificationLocked
-  );
-  const isCurrentOrderAssignmentModificationLocked = Boolean(
-    !isNewOrder && currentDetailOrder?.isAssignmentModificationLocked
-  );
-  const canToggleCurrentOrderModificationLock = Boolean(
-    !isNewOrder && currentDetailOrder?.canToggleModificationLock
-  );
-  const canUnlockCurrentOrderByReleasingAssignments = Boolean(
-    !isNewOrder &&
-      isCurrentOrderModificationLocked &&
-      isCurrentOrderAssignmentModificationLocked
-  );
-  const currentOrderLockMetaText = useMemo(() => {
-    if (!currentDetailOrder) return '';
-    const parts = [
-      String(currentDetailOrder?.modificationLockedBy || '').trim(),
-      formatOrderLockTimestamp(currentDetailOrder?.modificationLockedAt),
-    ].filter(Boolean);
-    return parts.join(' · ');
-  }, [
-    currentDetailOrder?.modificationLockedAt,
-    currentDetailOrder?.modificationLockedBy,
-  ]);
-  const currentOrderLockTooltipText = useMemo(() => {
-    if (isNewOrder) {
-      return getUiMessage(
-        'orderDetail.lockHelperNew',
-        'Save the order before using the lock switch.',
-        languageCode
-      );
-    }
-    if (isCurrentOrderAssignmentModificationLocked) {
-      return getUiMessage(
-        'orderDetail.lockHelperAssignment',
-        'This order is auto-locked because assignment contract data exists.',
-        languageCode
-      );
-    }
-    if (isCurrentOrderManualModificationLocked) {
-      return currentOrderLockMetaText
-        ? getUiMessage(
-            'orderDetail.lockHelperManual',
-            'Manual lock is enabled. {meta}',
-            languageCode,
-            { meta: currentOrderLockMetaText }
-          )
-        : getUiMessage(
-            'orderDetail.lockHelperManualSimple',
-            'Manual lock is enabled.',
-            languageCode
-          );
-    }
-    if (hasFormChanges) {
-      return getUiMessage(
-        'orderDetail.lockHelperUnsaved',
-        'You cannot lock the order while there are unsaved changes. Save first.',
-        languageCode
-      );
-    }
-    return getUiMessage(
-      'orderDetail.lockHelperDefault',
-      'Turn on the edit lock when you want to freeze the basic order information.',
-      languageCode
-    );
-  }, [
-    languageCode,
-    currentOrderLockMetaText,
-    hasFormChanges,
-    isCurrentOrderAssignmentModificationLocked,
-    isCurrentOrderManualModificationLocked,
-    isNewOrder,
-  ]);
-  const isModificationLockToggleDisabled =
-    isNewOrder ||
-    isSavingOrder ||
-    isTogglingModificationLock ||
-    (!canToggleCurrentOrderModificationLock &&
-      !canUnlockCurrentOrderByReleasingAssignments) ||
-    (!isCurrentOrderManualModificationLocked && hasFormChanges);
   const handleAdd = () => {
     navigateToPath('/order/new', { label: orderPageText.newOrderTab });
   };
@@ -2346,111 +2157,6 @@ const OrderList = () => {
     if (!order?.id) return;
     navigateToPath(`/order/${order.id}`, {
       label: buildOrderTabLabel(order, orderPageText.listTitle),
-    });
-  };
-
-  const performOrderLockToggle = useCallback(
-    async ({ targetOrder, nextLocked, enforceDraftSaved = false }) => {
-      if (!targetOrder?.id) return;
-
-      if (nextLocked && enforceDraftSaved && hasFormChanges) {
-        showNotification(orderPageText.lockSaveFirstWarning, 'warning');
-        return;
-      }
-
-      const canToggleTarget = Boolean(targetOrder?.canToggleModificationLock);
-      if (!canToggleTarget) {
-        showNotification(orderPageText.lockChangeNotAllowed, 'warning');
-        return;
-      }
-
-      setIsTogglingModificationLock(true);
-      try {
-        const updated = await toggleOrderModificationLockToApi(
-          targetOrder.id,
-          {
-          locked: nextLocked,
-          lockedBy: activeProfile?.email || activeProfile?.name || orderPageText.manager,
-          },
-          { orgId: activeOrgId }
-        );
-        mergeOrderIntoState(updated);
-        if (
-          isDetailMode &&
-          !isNewOrder &&
-          String(updated?.id || '') === String(orderId || '')
-        ) {
-          setFormData(normalizeOrderForm(updated));
-        }
-        emitOrderModificationLockChanged({
-          orgId: activeOrgId,
-          orderId: updated?.id || targetOrder.id,
-          locked: nextLocked,
-          source: orderLockEventSourceRef.current,
-        });
-        showNotification(
-          nextLocked ? orderPageText.lockEnabledSuccess : orderPageText.lockDisabledSuccess,
-          'success'
-        );
-        const zeroedStyles = Array.isArray(updated?.zeroedStyles) ? updated.zeroedStyles : [];
-        if (zeroedStyles.length > 0) {
-          const zeroedStyleSummary = zeroedStyles
-            .map((issue) => issue?.styleName || issue?.styleCode || '')
-            .filter(Boolean)
-            .slice(0, 5)
-            .join(', ');
-          showNotification(
-            zeroedStyleSummary
-              ? `${orderPageText.zeroedStylesPrefix} ${zeroedStyleSummary}`
-              : orderPageText.zeroedStylesGeneric,
-            'warning'
-          );
-        }
-      } catch (error) {
-        showNotification(
-          resolveOrderModificationLockToggleErrorMessage(error, {
-            modificationLockedMessage: orderPageText.modificationLocked,
-            fallbackMessage: orderPageText.lockToggleErrorFallback,
-          }),
-          'error'
-        );
-      } finally {
-        setIsTogglingModificationLock(false);
-      }
-    },
-    [
-      activeOrgId,
-      activeProfile?.email,
-      activeProfile?.name,
-      hasFormChanges,
-      isDetailMode,
-      isNewOrder,
-      mergeOrderIntoState,
-      orderId,
-      orderPageText,
-      showNotification,
-    ]
-  );
-
-  const handleModificationLockToggle = async (nextLockedInput = null) => {
-    if (isNewOrder || !currentDetailOrder?.id) return;
-    const nextLocked =
-      typeof nextLockedInput === 'boolean'
-        ? nextLockedInput
-        : !isCurrentOrderModificationLocked;
-    await performOrderLockToggle({
-      targetOrder: currentDetailOrder,
-      nextLocked,
-      enforceDraftSaved: true,
-    });
-  };
-
-  const handleListModificationLockToggle = async (order, nextLocked) => {
-    if (!order?.id) return;
-    await performOrderLockToggle({
-      targetOrder: order,
-      nextLocked: Boolean(nextLocked),
-      enforceDraftSaved: false,
     });
   };
 
@@ -2485,7 +2191,10 @@ const OrderList = () => {
         setSaveIssueDialogOpen(true);
         showNotification(orderPageText.saveIssueDialogToast, 'error');
       } else {
-        showNotification(error?.message || orderPageText.deleteError, 'error');
+        showNotification(resolveOrderSaveErrorMessage(error, {
+          languageCode,
+          fallbackMessage: orderPageText.deleteError,
+        }), 'error');
       }
     }
   };
@@ -3357,15 +3066,6 @@ const OrderList = () => {
                   <TableCell
                     sx={{
                       fontWeight: 'bold',
-                      width: ORDER_LIST_COLUMN_WIDTHS.lock,
-                      textAlign: 'center',
-                    }}
-                  >
-                    {orderPageText.lockColumn}
-                  </TableCell>
-                  <TableCell
-                    sx={{
-                      fontWeight: 'bold',
                       width: ORDER_LIST_COLUMN_WIDTHS.actions,
                       textAlign: 'center',
                     }}
@@ -3376,19 +3076,12 @@ const OrderList = () => {
               </TableHead>
               <TableBody>
                 {!ordersLoaded ? (
-                  <TableStatusRow colSpan={10} message={orderPageText.loadingOrders} />
+                  <TableStatusRow colSpan={9} message={orderPageText.loadingOrders} />
                 ) : filteredOrders.length === 0 ? (
-                  <TableStatusRow colSpan={10} message={orderPageText.emptyOrders} />
+                  <TableStatusRow colSpan={9} message={orderPageText.emptyOrders} />
                 ) : (
                   filteredOrders.map((order) => {
                     const deletable = !order?.isModificationLocked;
-                    const canUnlockByReleasingAssignments = Boolean(
-                      order?.isModificationLocked && order?.isAssignmentModificationLocked
-                    );
-                    const listLockToggleDisabled =
-                      isTogglingModificationLock ||
-                      (!order?.canToggleModificationLock &&
-                        !canUnlockByReleasingAssignments);
                     const progressStageLabel = getOrderProgressStageLabel(
                       order.status,
                       ORDER_STATUS_TEXT.noneLabel,
@@ -3433,17 +3126,6 @@ const OrderList = () => {
                         </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
                           {order.dueDate || '-'}
-                        </TableCell>
-                        <TableCell sx={{ textAlign: 'center' }}>
-                          <LockToggleSwitch
-                            checked={Boolean(order?.isModificationLocked)}
-                            disabled={listLockToggleDisabled}
-                            stopPropagation
-                            onChange={(event, checked) => {
-                              handleListModificationLockToggle(order, checked);
-                            }}
-                            ariaLabel={`${orderPageText.lockColumn} ${order.orderNumber || ''}`.trim()}
-                          />
                         </TableCell>
                         <TableCell sx={{ textAlign: 'center' }}>
                           <DeleteActionButton
@@ -3516,30 +3198,6 @@ const OrderList = () => {
           spacing={1}
           sx={{ alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}
         >
-          {!isNewOrder && (
-            <Tooltip title={currentOrderLockTooltipText}>
-              <span>
-                <Button
-                  size="small"
-                  variant="contained"
-                  color="inherit"
-                  startIcon={
-                    isCurrentOrderModificationLocked ? <LockOutlinedIcon /> : <LockOpenOutlinedIcon />
-                  }
-                  onClick={() =>
-                    handleModificationLockToggle(!isCurrentOrderModificationLocked)
-                  }
-                  disabled={isModificationLockToggleDisabled}
-                  sx={getOrderLockButtonSx(isCurrentOrderModificationLocked)}
-                >
-                  {isCurrentOrderModificationLocked
-                    ? getUiMessage('orderDetail.lockedShort', '🔒', languageCode)
-                    : getUiMessage('orderDetail.unlockedShort', '🔓', languageCode)}
-                </Button>
-              </span>
-            </Tooltip>
-          )}
-          {isTogglingModificationLock && <CircularProgress size={16} />}
           <LastUpdaterLabel />
           <SaveButton
             onClick={handleSave}
@@ -3575,30 +3233,6 @@ const OrderList = () => {
               ? getUiMessage('orderDetail.newTitle', 'New Order', languageCode)
               : getUiMessage('orderDetail.editTitle', 'Edit Order', languageCode)}
           </Typography>
-          {!isNewOrder && (
-            <Tooltip title={currentOrderLockTooltipText}>
-              <span>
-                <Button
-                  size="small"
-                  variant="contained"
-                  color="inherit"
-                  startIcon={
-                    isCurrentOrderModificationLocked ? <LockOutlinedIcon /> : <LockOpenOutlinedIcon />
-                  }
-                  onClick={() =>
-                    handleModificationLockToggle(!isCurrentOrderModificationLocked)
-                  }
-                  disabled={isModificationLockToggleDisabled}
-                  sx={getOrderLockButtonSx(isCurrentOrderModificationLocked)}
-                >
-                  {isCurrentOrderModificationLocked
-                    ? getUiMessage('orderDetail.lockedShort', '🔒', languageCode)
-                    : getUiMessage('orderDetail.unlockedShort', '🔓', languageCode)}
-                </Button>
-              </span>
-            </Tooltip>
-          )}
-          {isTogglingModificationLock && <CircularProgress size={16} />}
         </Box>
         <Stack spacing={0.75} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
           <Stack
@@ -4574,4 +4208,3 @@ const OrderList = () => {
 };
 
 export default OrderList;
-

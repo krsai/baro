@@ -96,7 +96,6 @@ import {
   resolveCardScheduleTotalSeconds,
   resolveCardStOnlyTotalSeconds,
 } from './utils/assignmentCard';
-import { subscribeOrderModificationLockChanged } from '../../../utils/orderSyncEvents';
 import {
   emitWorkspaceDataChanged,
   hasWorkspaceDataTopic,
@@ -281,7 +280,7 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
   onDisabledCardDragAttempt,
 }) {
   const basis = getCardBasis(card);
-  const isLocked = isCardManualOrderLocked(card);
+  const isReady = isCardOrderAssignmentReady(card);
   const styleLabel =
     card.styleName ||
     card.styleCode ||
@@ -292,7 +291,7 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
       draggableId={`card-${card.id}`}
       droppableId={`card-drop-${card.id}`}
       droppableData={{ dropId: `card-drop-${card.id}` }}
-      disabled={!isLocked || basis === 'NONE'}
+      disabled={!isReady || basis === 'NONE'}
       selected={isSelected}
       languageCode={languageCode}
       showCustomer={false}
@@ -302,10 +301,10 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
       showProgress={false}
       compact
       footer={
-        !isLocked
+        !isReady
           ? getUiMessage(
-              'assign.manualLockRequiredCompact',
-              'Manual lock required',
+              'assign.orderReadinessRequiredCompact',
+              'Order review required',
               languageCode
             )
           : ''
@@ -327,7 +326,7 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
       onDisabledDragAttempt={(payload) =>
         onDisabledCardDragAttempt?.({
           card,
-          reason: !isLocked ? 'ORDER_UNLOCKED' : 'MISSING_PT_OR_ST',
+          reason: !isReady ? 'ORDER_NOT_READY' : 'MISSING_PT_OR_ST',
           clientX: payload?.clientX,
           clientY: payload?.clientY,
         })
@@ -1060,7 +1059,7 @@ const getTotalStForOrderQuantity = (processes, orderQuantity) => {
 
 const createCardId = (orderId, styleId) =>
   `${normalizeKey(orderId)}::${normalizeKey(styleId)}`;
-const isCardManualOrderLocked = (card) => card?.isManualOrderLocked !== false;
+const isCardOrderAssignmentReady = (card) => card?.isOrderAssignmentReady === true;
 
 const buildCardsFromOrders = ({ orders, styles }) => {
   const styleMap = new Map((Array.isArray(styles) ? styles : []).map((style) => [style.id, style]));
@@ -3158,14 +3157,14 @@ const AssignBoard = () => {
     if (now - disabledCardDragNoticeAtRef.current < 1200) return;
     disabledCardDragNoticeAtRef.current = now;
     const message =
-      payload?.reason === 'ORDER_UNLOCKED'
+      payload?.reason === 'ORDER_NOT_READY'
         ? getUiMessage(
-            'assign.dragRequiresOrderManualLock',
+            'assign.dragRequiresReadyOrder',
             languageCode === 'vi'
-              ? 'Chi co the phan cong tren lich khi don hang da duoc khoa thu cong.'
+              ? 'Luu don hang voi mau va so luong hop le truoc khi phan cong.'
               : languageCode === 'en'
-                ? 'Scheduling is allowed only when the order is manually locked.'
-                : '주문을 수동 잠금한 상태에서만 스케줄 배정이 가능합니다.',
+                ? 'Save an order with valid styles and quantities before scheduling.'
+                : '스타일과 수량이 유효한 주문을 저장한 뒤 배정해 주세요.',
             languageCode
           )
         : getUiMessage(
@@ -3238,25 +3237,6 @@ const AssignBoard = () => {
   }, []);
   const isAssignmentRouteActive = location.pathname === '/assignment';
   const edit = useEditRevision({ scope: activeOrgId, url: '/assignment-board-revision' + buildQueryString({ orgId: activeOrgId }), enabled: isAssignmentRouteActive && persistReady, busy: loading || persisting });
-
-  useEffect(() => {
-    return subscribeOrderModificationLockChanged((detail) => {
-      const eventOrgId = Number(detail?.orgId);
-      const currentOrgId = Number(activeOrgId);
-      if (
-        Number.isFinite(eventOrgId) &&
-        eventOrgId > 0 &&
-        Number.isFinite(currentOrgId) &&
-        currentOrgId > 0 &&
-        eventOrgId !== currentOrgId
-      ) {
-        return;
-      }
-      hasLoadedSourceDataRef.current = false;
-      lastLoadedOrgIdRef.current = null;
-      setExternalReloadTick((prev) => prev + 1);
-    });
-  }, [activeOrgId]);
 
   const serializeAssignmentsForSnapshot = useCallback((nextAssignments) => {
     const baseDate = startDateRef.current;
@@ -3364,6 +3344,7 @@ const AssignBoard = () => {
     setExternalReloadTick((prev) => prev + 1);
   }, []);
   const shouldHandleWorkspaceRefresh = useCallback((detail) => {
+    if (hasWorkspaceDataTopic(detail, WORKSPACE_DATA_TOPICS.ORDERS)) return true;
     if (hasWorkspaceDataTopic(detail, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD)) {
       return detail?.source !== ASSIGN_BOARD_SYNC_SOURCE;
     }
@@ -3387,7 +3368,7 @@ const AssignBoard = () => {
 
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
-    topics: [WORKSPACE_DATA_TOPICS.STYLES, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+    topics: [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.STYLES, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
     isActive: isAssignmentRouteActive,
     isBlocked: loading || persisting || isDirty,
     onRefresh: requestExternalBoardReload,
@@ -3503,14 +3484,14 @@ const AssignBoard = () => {
         languageCode
       );
     }
-    if (lowerRaw.includes('order manual lock required before scheduling assignment')) {
+    if (lowerRaw.includes('order_not_ready_for_assignment')) {
       return getUiMessage(
-        'assign.orderManualLockRequiredSaveError',
+        'assign.orderNotReadySaveError',
         languageCode === 'vi'
-          ? 'Chi co the luu thay doi phan cong khi don hang da duoc khoa thu cong.'
+          ? 'Kiem tra va luu don hang, sau do tai lai bang phan cong.'
           : languageCode === 'en'
-            ? 'You can save scheduling changes only when the order is manually locked.'
-            : '주문이 수동 잠금된 상태에서만 배정 변경을 저장할 수 있습니다.',
+            ? 'Check and save the order, then refresh the board.'
+            : '주문의 스타일과 수량을 확인하고 저장한 뒤 배정판을 새로고침해 주세요.',
         languageCode
       );
     }
@@ -3878,7 +3859,7 @@ const AssignBoard = () => {
           ).map((card) =>
             normalizeAssignmentCardForBoard({
               ...card,
-              isManualOrderLocked: isCardManualOrderLocked(card),
+              isOrderAssignmentReady: isCardOrderAssignmentReady(card),
             })
           );
           applyLoadedBoardData({
@@ -5215,14 +5196,6 @@ const AssignBoard = () => {
   useEffect(() => {
     setUnassignedPanelExpandedOverride(null);
   }, [activeOrgId]);
-  const unlockedUnassignedCardCount = useMemo(
-    () =>
-      unassignedCards.reduce(
-        (count, card) => count + (isCardManualOrderLocked(card) ? 0 : 1),
-        0
-      ),
-    [unassignedCards]
-  );
   const cardSearchTextById = useMemo(
     () =>
       new Map(
@@ -6047,15 +6020,15 @@ const AssignBoard = () => {
           setActiveDrag(null);
           return;
         }
-        if (!isCardManualOrderLocked(card)) {
+        if (!isCardOrderAssignmentReady(card)) {
           showNotification(
             getUiMessage(
-              'assign.dragRequiresOrderManualLock',
+              'assign.dragRequiresReadyOrder',
               languageCode === 'vi'
-                ? 'Chi co the phan cong khi don hang da duoc khoa thu cong.'
+                ? 'Luu don hang voi mau va so luong hop le truoc khi phan cong.'
                 : languageCode === 'en'
-                  ? 'Scheduling is allowed only when the order is manually locked.'
-                  : '주문이 수동 잠금 상태일 때만 배정할 수 있습니다.',
+                  ? 'Save an order with valid styles and quantities before scheduling.'
+                  : '스타일과 수량이 유효한 주문을 저장한 뒤 배정해 주세요.',
               languageCode
             ),
             'warning'
@@ -6333,15 +6306,15 @@ const AssignBoard = () => {
         setActiveDrag(null);
         return;
       }
-      if (!isCardManualOrderLocked(card)) {
+      if (!isCardOrderAssignmentReady(card)) {
         showNotification(
           getUiMessage(
-            'assign.dragRequiresOrderManualLock',
+            'assign.dragRequiresReadyOrder',
             languageCode === 'vi'
-              ? 'Chi co the phan cong tren lich khi don hang da duoc khoa thu cong.'
+              ? 'Luu don hang voi mau va so luong hop le truoc khi phan cong.'
               : languageCode === 'en'
-                ? 'Scheduling is allowed only when the order is manually locked.'
-                : '주문을 수동 잠금한 상태에서만 스케줄 배정이 가능합니다.',
+                ? 'Save an order with valid styles and quantities before scheduling.'
+                : '스타일과 수량이 유효한 주문을 저장한 뒤 배정해 주세요.',
             languageCode
           ),
           'warning'
@@ -6978,19 +6951,6 @@ const AssignBoard = () => {
         onDragCancel={handleDragCancel}
         autoScroll={false}
       >
-        {unlockedUnassignedCardCount > 0 ? (
-          <Alert severity="warning" sx={{ mb: 1.5 }}>
-            {getUiMessage(
-              'assign.manualLockRequiredForSchedulingBanner',
-              languageCode === 'vi'
-                ? `Co ${unlockedUnassignedCardCount} the chua khoa thu cong. Chi co the phan cong tren lich sau khi khoa don hang.`
-                : languageCode === 'en'
-                  ? `${unlockedUnassignedCardCount} cards are from unlocked orders. Lock the order manually before scheduling.`
-                  : `수동 잠금되지 않은 주문 카드가 ${unlockedUnassignedCardCount}건 있습니다. 주문을 수동 잠금한 뒤 스케줄 배정을 진행해 주세요.`,
-              languageCode
-            )}
-          </Alert>
-        ) : null}
         {assignmentProgressStale ? (
           <Alert severity="warning" sx={{ mb: 1.5 }}>
             {getUiMessage(

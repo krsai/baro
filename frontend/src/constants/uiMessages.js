@@ -277,7 +277,9 @@ export const UI_MESSAGES = {
     groupKey: { ko: 'key: {key}', en: 'key: {key}', vi: 'key: {key}' },
   },
   assign: {
-    dragRequiresOrderManualLock: { ko: '주문을 수동 잠금한 뒤에만 일정에 배정할 수 있습니다.', en: 'Scheduling is allowed only when the order is manually locked.', vi: 'Chỉ có thể phân công khi đơn hàng đã được khóa thủ công.' },
+    dragRequiresReadyOrder: { ko: '스타일과 수량이 유효한 주문을 저장한 뒤 배정해 주세요.', en: 'Save an order with valid styles and quantities before scheduling.', vi: 'Lưu đơn hàng với mẫu và số lượng hợp lệ trước khi phân công.' },
+    orderReadinessRequiredCompact: { ko: '주문 검토 필요', en: 'Order review required', vi: 'Cần kiểm tra đơn hàng' },
+    orderNotReadySaveError: { ko: '주문의 스타일과 수량을 확인하고 저장한 뒤 배정판을 새로고침해 주세요.', en: 'Check and save the order styles and quantities, then refresh the board.', vi: 'Kiểm tra và lưu mẫu, số lượng của đơn hàng, sau đó tải lại bảng phân công.' },
     dragRequiresPtOrSt: { ko: 'PT/ST를 등록한 뒤에만 배정할 수 있습니다.', en: 'You can assign only after registering PT/ST.', vi: 'Chỉ có thể phân công sau khi đăng ký PT/ST.' },
     externalDataPending: { ko: '관련 데이터가 변경되었습니다. 현재 미저장 배정이 있어 저장 또는 초기화 후 최신 상태를 반영합니다.', en: 'Related data changed. Save or reset the current unsaved assignments to apply the latest state.', vi: 'Dữ liệu liên quan đã thay đổi. Hãy lưu hoặc đặt lại các phân công chưa lưu để áp dụng trạng thái mới nhất.' },
     ctSnapshotRequiredBeforeSave: { ko: '일부 카드의 CT를 생성하지 못해 배정을 저장하지 않았습니다. 스타일·공정 데이터를 다시 불러온 뒤 시도하세요.', en: 'Assignment was not saved because CT could not be built for some cards. Reload the style and process data, then try again.', vi: 'Không lưu phân công vì không thể tạo CT cho một số thẻ. Hãy tải lại dữ liệu kiểu dáng và công đoạn rồi thử lại.' },

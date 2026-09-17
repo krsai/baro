@@ -54,7 +54,7 @@ export function reconcileAssignmentCards({ baseCards, savedCards, plans, sourceO
     result.push(card);
   };
   // Retain assigned cards, including historical zero-quantity/removed-style cards.
-  // Orders outside this rebuild's source scope (currently unlocked orders) stay intact.
+  // Orders outside this rebuild's authorized source scope stay intact.
   for (const card of savedCards) {
     if (assignedIds.has(card.id) || !sourceIds.has(card.workOrderId)) append(card);
   }
