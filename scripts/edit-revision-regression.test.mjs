@@ -77,6 +77,7 @@ test('transactional card rebuild routes all source and storage work through the 
     organization: { findUnique: async () => ({ id: 2, type: 'MANUFACTURER' }) },
     style: { findMany: async () => [{ id: 7, timeBucketSetVersion: { entries: [] } }] },
     workOrder: { findMany: async () => [] },
+    assignmentPlan: { findMany: async ({ where }) => { assert.equal(where.orgId, 2); calls.push('plans'); return []; } },
   };
   const check = (name, client) => { assert.equal(client, db, name); calls.push(name); };
   const context = {
@@ -91,14 +92,15 @@ test('transactional card rebuild routes all source and storage work through the 
     ensureStyleProcessStorageForStyles: async (styles, { db: client }) => { check('processes', client); return new Map(); },
     ensureStyleStandardsForQuantities: async ({ db: client }) => { check('standards', client); return new Map(); },
     ensureArray: value => value ?? [], collectStyleQuantityRequirementsFromOrders: () => new Map(),
-    buildAssignmentCardsFromOrders: () => [], mergeAssignmentCardsWithSaved: () => [],
+    buildAssignmentCardsFromOrders: () => [],
+    reconcileAssignmentCards_1: require('../backend/dist/utils/reconcileAssignmentCards.js'),
     syncAssignmentCardsForOrg: async ({ db: client }) => { check('write', client); if (failWrite) throw new Error('card failure'); return [{ id: 'saved' }]; },
   };
   vm.runInNewContext(`${block}\nthis.run = rebuildAssignmentCardsForOrgTx;`, context);
   const result = await context.run(2, db);
   assert.equal(result.syncedCards[0].id, 'saved');
   assert.equal(result.manufacturerScope, true);
-  assert.deepEqual(calls, ['owners', 'savedCards', 'relationship', 'processes', 'standards', 'write']);
+  assert.deepEqual(calls, ['owners', 'savedCards', 'relationship', 'processes', 'standards', 'plans', 'write']);
   failWrite = true;
   await assert.rejects(context.run(2, db), /card failure/);
 });

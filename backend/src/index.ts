@@ -1,4 +1,5 @@
 import { planOrderItemWrites } from "./utils/orderItemIdentity";
+import { reconcileAssignmentCards } from "./utils/reconcileAssignmentCards";
 import { buildSharedAtPrediction } from "./services/atSharedPrior";
 import { hasValidAssignmentProcessRefs, invalidAssignmentProcessRefIds, snapshotProcessIds, assertAssignmentProcessRefs, SNAPSHOT_REFERENCE_ERROR } from "./utils/assignmentSnapshotIntegrity";
 import { assignmentBoardRevision, assertEditRevision, editTransaction, commitAssignmentCardRebuild, STALE_EDIT } from "./utils/editRevision";
@@ -12908,39 +12909,6 @@ const buildAssignmentCardsFromOrders = ({
 
   return cards;
 };
-const mergeAssignmentCardsWithSaved = (baseCards: any, savedCards: any) => {
-  const merged: any[] = [];
-  const indexById = new Map<string, number>();
-  const isDeltaCard = (card: any) =>
-    (resolveOptionalString(card?.type, "") ?? "").toUpperCase() === "DELTA";
-
-  ensureArray(baseCards).forEach((card) => {
-    if (!card?.id) return;
-    indexById.set(String(card.id), merged.length);
-    merged.push(card);
-  });
-
-  ensureArray(savedCards).forEach((card) => {
-    if (!card?.id) return;
-    const key = String(card.id);
-    const existingIndex = indexById.get(key);
-    if (existingIndex == null) {
-      if (!isDeltaCard(card)) return;
-      indexById.set(key, merged.length);
-      merged.push(card);
-      return;
-    }
-    const baseCard = merged[existingIndex];
-    merged[existingIndex] = {
-      ...card,
-      ...baseCard,
-      id: baseCard.id,
-      originOrderId: baseCard.originOrderId || card.originOrderId || baseCard.id,
-    };
-  });
-
-  return merged;
-};
 type AssignmentCardStoreClient = Prisma.TransactionClient | typeof prisma;
 const resolveAssignmentCardPayloadStatus = (card: any) => {
   const status = (resolveOptionalString(card?.status, "") ?? "").toUpperCase();
@@ -13369,7 +13337,13 @@ const rebuildAssignmentCardsForOrgTx = async (
     orders,
     styles: hydratedStyles,
   });
-  const cards = mergeAssignmentCardsWithSaved(baseCards, savedCards);
+  const plans = await db.assignmentPlan.findMany({
+    where: { orgId },
+    select: { id: true, workOrderId: true, styleId: true, assignmentQuantity: true,
+      assignmentCard: { select: { cardId: true } } },
+  });
+  const cards = reconcileAssignmentCards({ baseCards, savedCards: savedCards as any[], plans,
+    sourceOrderIds: orders.map(order => order.id) });
   const syncedCards = await syncAssignmentCardsForOrg({ orgId, cards, db, preserveAssignedCards });
   return { syncedCards, hydratedStyles, manufacturerScope };
 };
