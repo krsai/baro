@@ -770,6 +770,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "Employee", columnName: "approvedAt" },
   { tableName: "Employee", columnName: "alwaysFullAttendance" },
   { tableName: "Employee", columnName: "payrollExcluded" },
+  { tableName: "AttendanceEntry", columnName: "managementExcluded" },
   { tableName: "Style", columnName: "id" },
   { tableName: "Style", columnName: "code" },
   { tableName: "WorkRecord", columnName: "styleId" },
@@ -3784,6 +3785,8 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         leaveEndAt: true,
         orgRole: true,
         status: true,
+        alwaysFullAttendance: true,
+        payrollExcluded: true,
         role: {
           select: {
             code: true,
@@ -3794,6 +3797,10 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     workerRows.forEach((worker) => {
       const workerId = toPositiveIntOrNull(worker.id);
       if (workerId === null) return;
+      if (worker.alwaysFullAttendance || worker.payrollExcluded) {
+        workerEligibilityFailureReasonById.set(workerId, "ATTENDANCE_MANAGEMENT_EXCLUDED");
+        return;
+      }
       if (worker.orgRole !== "WORKER") {
         workerEligibilityFailureReasonById.set(workerId, "WORKER_ORG_ROLE_NOT_ELIGIBLE");
         return;
@@ -3881,6 +3888,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       try {
         const attendanceRows = await db.attendanceEntry.findMany({
           where: {
+            managementExcluded: false,
             orgId,
             workDate: attendanceWorkDateWhere as any,
             workerId: { in: eligibleWorkerIds },
@@ -22565,6 +22573,7 @@ const buildFactoryMonthCapacityRows = async ({
     activeEmployeeIdsForCapacity.length > 0
       ? await prisma.attendanceEntry.findMany({
           where: {
+            managementExcluded: false,
             orgId,
             workerId: { in: activeEmployeeIdsForCapacity },
             workDate: {
@@ -25560,6 +25569,7 @@ app.get("/attendance-entries", async (req, res) => {
   if (monthsOnly) {
     const rows = await prisma.attendanceEntry.findMany({
       where: {
+        managementExcluded: false,
         orgId: organization.id,
         factoryId,
       },
@@ -25579,6 +25589,7 @@ app.get("/attendance-entries", async (req, res) => {
 
   const rows = await prisma.attendanceEntry.findMany({
     where: {
+      managementExcluded: false,
       orgId: organization.id,
       factoryId,
       ...(workDate ? { workDate } : { workDate: { startsWith: month } }),
@@ -25653,11 +25664,14 @@ app.put("/attendance-entries", async (req, res) => {
         joinedAt: true,
         leftAt: true,
         status: true,
+        alwaysFullAttendance: true,
+        payrollExcluded: true,
       },
     });
     const workersById = new Map<
       number,
       {
+        managementExcluded: boolean;
         membershipStatus: string;
         joinedDateKey: string;
         leftDateKey: string;
@@ -25667,6 +25681,7 @@ app.put("/attendance-entries", async (req, res) => {
       const workerId = toPositiveIntOrNull(worker.id);
       if (workerId === null) return;
       workersById.set(workerId, {
+        managementExcluded: worker.alwaysFullAttendance || worker.payrollExcluded,
         membershipStatus: String(worker.status ?? "")
           .trim()
           .toUpperCase(),
@@ -25684,6 +25699,10 @@ app.put("/attendance-entries", async (req, res) => {
       });
     }
 
+    const excludedWorkerIds = [...workersById].filter(([, worker]) => worker.managementExcluded).map(([id]) => id);
+    if (excludedWorkerIds.length) {
+      return res.status(409).json({ ok: false, error: 'Attendance management is disabled for these employees. Refresh the employee list.', code: 'ATTENDANCE_MANAGEMENT_EXCLUDED', employeeIds: excludedWorkerIds });
+    }
     const blockedWorkerIds = new Set<number>();
     workersById.forEach((worker, workerId) => {
       if (
@@ -25707,6 +25726,7 @@ app.put("/attendance-entries", async (req, res) => {
     if (normalized.rows.length === 0) {
       await tx.attendanceEntry.deleteMany({
         where: {
+          managementExcluded: false,
           orgId: organization.id,
           factoryId,
           workDate,
@@ -25750,6 +25770,7 @@ app.put("/attendance-entries", async (req, res) => {
 
     return tx.attendanceEntry.findMany({
       where: {
+        managementExcluded: false,
         orgId: organization.id,
         factoryId,
         workDate,

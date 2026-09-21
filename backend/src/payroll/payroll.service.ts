@@ -277,7 +277,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       select: { holidayDate: true },
     }),
     prisma.attendanceEntry.findMany({
-      where: { orgId, factoryId, workDate: { gte: monthStart, lte: monthEnd } },
+      where: { managementExcluded: false, orgId, factoryId, workDate: { gte: monthStart, lte: monthEnd } },
       select: { workerId: true, factoryId: true, workDate: true, createdAt: true, updatedAt: true },
     }),
     prisma.workLog.findMany({
@@ -358,6 +358,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   });
   const allMonthDates = enumerateMonthDateKeys(month);
   const requiredAttendance = relevantPayrollEmployees.flatMap((employee) => {
+    if (employee.alwaysFullAttendance || employee.payrollExcluded) return [];
     const payrollFactory = employee.factory || soleFactory;
     const payrollFactoryId = employee.factoryId || soleFactory?.id || null;
     if (!payrollFactoryId || !payrollFactory) return [];
@@ -436,7 +437,8 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         }
       }
       const missingWorkDates = expectedDates.filter((dateKey) => !workDateKeys.has(dateKey));
-      const missingAttendance = employees.flatMap((employee) =>
+      const attendanceEmployees = employees.filter((employee) => !employee.alwaysFullAttendance && !employee.payrollExcluded);
+      const missingAttendance = attendanceEmployees.flatMap((employee) =>
         expectedDates
           .filter((dateKey) => employeeExpectedOnDate(employee, dateKey))
           .filter((dateKey) => !attendanceKeys.has(`${factory.id}:${employee.id}:${dateKey}`))
@@ -451,10 +453,10 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         employeeCount: employees.length,
         expectedWorkingDayCount: expectedDates.length,
         workRecordedDayCount: workDateKeys.size,
-        attendanceRequiredCount: employees.reduce(
+        attendanceRequiredCount: attendanceEmployees.reduce(
           (sum, employee) => sum + expectedDates.filter((dateKey) => employeeExpectedOnDate(employee, dateKey)).length, 0
         ),
-        attendanceRecordedCount: employees.reduce(
+        attendanceRecordedCount: attendanceEmployees.reduce(
           (sum, employee) => sum + expectedDates.filter(
             (dateKey) => employeeExpectedOnDate(employee, dateKey) && attendanceKeys.has(`${factory.id}:${employee.id}:${dateKey}`)
           ).length, 0
@@ -476,7 +478,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     (employee) => resolveEmployeeEffectivePayType(employee) === EMPLOYEE_PAY_TYPE.OUTPUT
   );
   const groupsComplete = groups.every((group) => group.ready) && (!hasOutputEmployees || groups.length > 0);
-  const attendanceComplete = requiredAttendance.length > 0 && missingPayrollAttendance.length === 0 && invalidPayrollAttendance.length === 0;
+  const attendanceComplete = relevantPayrollEmployees.length > 0 && missingPayrollAttendance.length === 0 && invalidPayrollAttendance.length === 0;
   const snapshotEmployees = snapshot
     ? ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee)
     : [];
@@ -593,7 +595,7 @@ const buildIntegratedPayrollEmployees = async (
     // check below needs to see attendance recorded under a *different* factory than
     // the employee's assigned one, to fail closed instead of silently ignoring it.
     prisma.attendanceEntry.findMany({
-      where: { orgId, workDate: { gte: monthStartKey, lte: monthEndKey } },
+      where: { managementExcluded: false, orgId, workDate: { gte: monthStartKey, lte: monthEndKey } },
       orderBy: { workDate: "asc" },
     }),
     prisma.organizationHoliday.findMany({
@@ -857,7 +859,7 @@ export const getPayrollSettings = async (orgId: number) => ({
     where: { orgId, status: { notIn: ["PENDING", "REJECTED"] } },
     select: {
       id: true, employeeNo: true, name: true, email: true, factoryId: true,
-      orgRole: true, status: true, alwaysFullAttendance: true, payrollExcluded: true,
+      orgRole: true, status: true, leftAt: true, alwaysFullAttendance: true, payrollExcluded: true,
       factory: { select: { id: true, name: true, nameKo: true, nameVi: true } },
       role: { select: { name: true } },
     },

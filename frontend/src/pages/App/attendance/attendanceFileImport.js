@@ -1,4 +1,4 @@
-import { isAttendanceEmployeeVisibleOnDate } from './attendanceEmployment.js';
+import { isAttendanceEmployeeVisibleOnDate, isAttendanceManagementExcluded } from './attendanceEmployment.js';
 import dayjs from 'dayjs';
 import * as XLSX from 'xlsx';
 
@@ -416,6 +416,9 @@ const buildEmployeeResolver = (employees = [], languageCode = 'ko') => {
       error.code = 'ATTENDANCE_EMPLOYEE_CONFLICT';
       throw error;
     }
+    if (isAttendanceManagementExcluded(byId)) {
+      return { employee: null, reason: 'management_excluded' };
+    }
     if (!isAttendanceEmployeeVisibleOnDate(byId, event.occurredAt.format('YYYY-MM-DD'))) {
       return { employee: null, reason: 'outside_employment_period' };
     }
@@ -431,6 +434,7 @@ export const buildAttendanceImportPlan = ({
   const resolveEmployee = buildEmployeeResolver(employees, languageCode);
   const groupedByDateWorker = new Map();
   const unmatchedReasonCount = {
+    management_excluded: 0,
     outside_employment_period: 0,
     missing_employee_code: 0,
     unmatched_worker: 0,

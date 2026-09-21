@@ -1,4 +1,6 @@
 import { isAttendanceEmployeeVisibleOnDate } from './attendanceEmployment';
+import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
+import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -258,6 +260,7 @@ const AttendanceBoard = ({
   const [loadingEntries, setLoadingEntries] = useState(false);
   const [savingEntries, setSavingEntries] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [reloadToken, setReloadToken] = useState(0);
 
   const dateKey = useMemo(() => toDateKey(selectedDate), [selectedDate]);
   const hasUnsavedEntryChanges = useMemo(
@@ -265,6 +268,12 @@ const AttendanceBoard = ({
     [entriesByWorker, savedEntriesSignature]
   );
   useUnsavedChanges(hasUnsavedEntryChanges);
+  useWorkspaceRefreshOnEvent({
+    orgId: activeOrgId,
+    topics: [WORKSPACE_DATA_TOPICS.EMPLOYEES],
+    isBlocked: hasUnsavedEntryChanges || savingEntries,
+    onRefresh: () => setReloadToken((value) => value + 1),
+  });
   const attendanceEmployees = useMemo(
     () => employees.filter((employee) => isAttendanceEmployeeVisibleOnDate(employee, dateKey)),
     [dateKey, employees]
@@ -381,7 +390,7 @@ const AttendanceBoard = ({
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, languageCode, selectedFactoryId]);
+  }, [activeOrgId, languageCode, selectedFactoryId, reloadToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -436,7 +445,7 @@ const AttendanceBoard = ({
       cancelled = true;
       controller.abort();
     };
-  }, [activeOrgId, dateKey, languageCode, selectedFactoryId, showNotification]);
+  }, [activeOrgId, dateKey, languageCode, selectedFactoryId, showNotification, reloadToken]);
 
   const handleEntryChange = (workerId, field, value) => {
     const key = String(workerId || '');

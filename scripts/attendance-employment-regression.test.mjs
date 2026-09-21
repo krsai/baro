@@ -71,6 +71,14 @@ test('attendance API rejects dates outside employment and employees outside the 
   }
 });
 
+test('attendance API refuses manual entry for either exception group', async () => {
+  for (const flags of [{ alwaysFullAttendance: true }, { payrollExcluded: true }]) {
+    const result = await save('2026-04-08', { ...office, ...flags });
+    assert.equal(result.status, 409);
+    assert.equal(result.writes.length, 0);
+  }
+});
+
 test('attendance screens load office and retired staff and import errors use a dialog', () => {
   for (const file of ['AttendanceList.jsx', 'AttendanceBoard.jsx']) {
     const source = readFileSync(`frontend/src/pages/App/attendance/${file}`, 'utf8');

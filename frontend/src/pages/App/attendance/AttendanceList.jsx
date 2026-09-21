@@ -1,4 +1,8 @@
 import { isAttendanceEmployeeVisibleOnDate } from './attendanceEmployment';
+import PayrollSettingsDialog from '../payroll/PayrollSettingsDialog';
+import SettingsIcon from '@mui/icons-material/Settings';
+import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
+import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
@@ -109,9 +113,9 @@ const TEXT = {
     vi: 'Da tim thay {eventCount} su kien trong {dayCount} ngay. Tiep tuc nhap?',
   },
   importDone: {
-    ko: '파일 등록 완료: {dayCount}일, 반영 이벤트 {matchedCount}건, 미매칭 {unmatchedCount}건',
-    en: 'Import done: {dayCount} days, matched {matchedCount}, unmatched {unmatchedCount}',
-    vi: 'Nhap xong: {dayCount} ngay, khop {matchedCount}, khong khop {unmatchedCount}',
+    ko: '파일 등록 완료: {dayCount}일분, 등록 {matchedCount}건, 제외 {unmatchedCount}건',
+    en: 'Import done: {dayCount} days, {matchedCount} records imported, {unmatchedCount} excluded',
+    vi: 'Đã nhập: {dayCount} ngày, {matchedCount} bản ghi, loại trừ {unmatchedCount} bản ghi',
   },
   importFail: {
     ko: '파일 등록에 실패했습니다.',
@@ -124,14 +128,14 @@ const TEXT = {
     vi: 'Xem lai truoc khi nhap',
   },
   importReviewSummary: {
-    ko: '전체 {rawCount}건 중 {matchedCount}건 일치, {unmatchedCount}건 미매칭 ({dayCount}일 데이터).',
-    en: '{matchedCount} of {rawCount} events matched, {unmatchedCount} unmatched ({dayCount} days).',
-    vi: 'Khop {matchedCount}/{rawCount} su kien, khong khop {unmatchedCount} ({dayCount} ngay).',
+    ko: '출퇴근 기록 {rawCount}건 중 등록 가능 {matchedCount}건, 제외 {unmatchedCount}건 ({dayCount}일분).',
+    en: '{matchedCount} of {rawCount} attendance records can be imported; {unmatchedCount} excluded ({dayCount} days).',
+    vi: 'Có thể nhập {matchedCount}/{rawCount} bản ghi chấm công; loại trừ {unmatchedCount} bản ghi ({dayCount} ngày).',
   },
   importReviewUnmatchedHint: {
-    ko: '아래 항목은 사번 또는 근로기간을 확인해야 하므로 이번 가져오기에서 제외됩니다. 표시된 사유와 직원 정보·엑셀을 확인해 주세요.',
-    en: 'The rows below will be skipped because their employee code or employment period needs review. Check the reasons, employee details and spreadsheet.',
-    vi: 'Các dòng dưới đây sẽ bị bỏ qua vì cần kiểm tra mã nhân viên hoặc thời gian làm việc. Hãy kiểm tra lý do, thông tin nhân viên và tệp Excel.',
+    ko: '아래 기록은 출퇴근 관리 제외 설정 또는 사번·근로기간 사유로 등록하지 않습니다. 각 기록의 제외 사유를 확인해 주세요.',
+    en: 'The records below are excluded by attendance settings or employee code/employment period checks. Review each reason.',
+    vi: 'Các bản ghi dưới đây bị loại do cài đặt miễn chấm công hoặc mã nhân viên/thời gian làm việc. Hãy kiểm tra từng lý do.',
   },
   importReviewColumnCode: { ko: '사번(엑셀)', en: 'Code (Excel)', vi: 'Ma (Excel)' },
   importReviewColumnName: { ko: '이름(엑셀)', en: 'Name (Excel)', vi: 'Ten (Excel)' },
@@ -140,7 +144,8 @@ const TEXT = {
   importReviewReasonMissingCode: { ko: '사번 없음', en: 'No employee code', vi: 'Khong co ma NV' },
   importReviewReasonUnmatched: { ko: '일치하는 직원 없음', en: 'No matching employee', vi: 'Khong khop nhan vien' },
   importReviewCancel: { ko: '취소', en: 'Cancel', vi: 'Huy' },
-  importReviewProceed: { ko: '일치한 항목만 가져오기', en: 'Import matched rows', vi: 'Nhap cac dong khop' },
+  importReviewProceed: { ko: '등록 가능한 기록 가져오기', en: 'Import eligible records', vi: 'Nhập bản ghi hợp lệ' },
+  importReviewAll: { ko: '전체 등록', en: 'Import all', vi: 'Nhập tất cả' },
   deleteConfirm: {
     en: 'Delete all attendance records for this day?',
     vi: 'Ban co muon xoa toan bo cham cong cua ngay nay khong?',
@@ -168,6 +173,9 @@ const formatTemplate = (template, params = {}) =>
   });
 
 const resolveImportUnmatchedReasonLabel = (reason, languageCode) => {
+  if (reason === 'management_excluded') {
+    return resolveText({ ko: '출퇴근 관리 제외 직원', en: 'Attendance-exempt employee', vi: 'Nhân viên miễn chấm công' }, languageCode);
+  }
   if (reason === 'outside_employment_period') {
     return resolveText({ ko: '근로기간 밖의 기록', en: 'Outside employment period', vi: 'Ngoài thời gian làm việc' }, languageCode);
   }
@@ -297,6 +305,13 @@ const AttendanceList = () => {
   const [importError, setImportError] = useState(null);
   const [deletingWorkDate, setDeletingWorkDate] = useState('');
   const [reloadToken, setReloadToken] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  useWorkspaceRefreshOnEvent({
+    orgId: activeOrgId,
+    topics: [WORKSPACE_DATA_TOPICS.EMPLOYEES],
+    isBlocked: importingFile || Boolean(importReview),
+    onRefresh: () => setReloadToken((value) => value + 1),
+  });
   const fileInputRef = useRef(null);
 
   const { holidaySet } = useHolidayCalendar(activeOrgId);
@@ -719,6 +734,9 @@ const AttendanceList = () => {
       title={getUiMessage('menu.attendance', 'Attendance', languageCode)}
       titleActions={(
         <Stack direction="row" spacing={1}>
+          <Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => setSettingsOpen(true)} disabled={!activeOrgId || importingFile}>
+            {resolveText({ ko: '관리 대상 설정', en: 'Manage Employees', vi: 'Đối tượng quản lý' }, languageCode)}
+          </Button>
           <Button
             variant="outlined"
             startIcon={importingFile ? <CircularProgress size={16} /> : <UploadFileIcon />}
@@ -890,6 +908,7 @@ const AttendanceList = () => {
         </TableContainer>
       </Paper>
     </AppPageContainer>
+    <PayrollSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} orgId={activeOrgId} languageCode={languageCode} showNotification={showNotification} />
     <Dialog open={Boolean(importError)} onClose={() => setImportError(null)} maxWidth="md" fullWidth>
       <DialogTitle>{resolveText(TEXT.importFail, languageCode)}</DialogTitle>
       <DialogContent dividers><Typography sx={{ whiteSpace: 'pre-wrap' }}>{importError}</Typography></DialogContent>
@@ -967,7 +986,7 @@ const AttendanceList = () => {
           onClick={handleConfirmImportReview}
           disabled={!importReview?.importPlan?.dailyEntries.length}
         >
-          {resolveText(TEXT.importReviewProceed, languageCode, 'Import matched rows')}
+          {resolveText(importReview?.importPlan?.unmatchedEventCount ? TEXT.importReviewProceed : TEXT.importReviewAll, languageCode)}
         </Button>
       </DialogActions>
     </Dialog>
