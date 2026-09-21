@@ -1,3 +1,4 @@
+import { isAttendanceEmployeeVisibleOnDate } from './attendanceEmployment';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
@@ -128,9 +129,9 @@ const TEXT = {
     vi: 'Khop {matchedCount}/{rawCount} su kien, khong khop {unmatchedCount} ({dayCount} ngay).',
   },
   importReviewUnmatchedHint: {
-    ko: '아래 항목은 사번이 없거나 일치하는 직원을 찾지 못해 이번 가져오기에서 제외됩니다. 엑셀을 확인한 뒤 필요하면 다시 올려주세요.',
-    en: 'The rows below have no code or no matching employee and will be skipped. Check the spreadsheet and re-upload if needed.',
-    vi: 'Cac dong duoi day khong co ma hoac khong tim thay nhan vien khop, se bi bo qua. Kiem tra tep va tai lai neu can.',
+    ko: '아래 항목은 사번 또는 근로기간을 확인해야 하므로 이번 가져오기에서 제외됩니다. 표시된 사유와 직원 정보·엑셀을 확인해 주세요.',
+    en: 'The rows below will be skipped because their employee code or employment period needs review. Check the reasons, employee details and spreadsheet.',
+    vi: 'Các dòng dưới đây sẽ bị bỏ qua vì cần kiểm tra mã nhân viên hoặc thời gian làm việc. Hãy kiểm tra lý do, thông tin nhân viên và tệp Excel.',
   },
   importReviewColumnCode: { ko: '사번(엑셀)', en: 'Code (Excel)', vi: 'Ma (Excel)' },
   importReviewColumnName: { ko: '이름(엑셀)', en: 'Name (Excel)', vi: 'Ten (Excel)' },
@@ -167,6 +168,9 @@ const formatTemplate = (template, params = {}) =>
   });
 
 const resolveImportUnmatchedReasonLabel = (reason, languageCode) => {
+  if (reason === 'outside_employment_period') {
+    return resolveText({ ko: '근로기간 밖의 기록', en: 'Outside employment period', vi: 'Ngoài thời gian làm việc' }, languageCode);
+  }
   if (reason === 'missing_employee_code') {
     return resolveText(TEXT.importReviewReasonMissingCode, languageCode, 'No employee code');
   }
@@ -198,27 +202,6 @@ const toHoursTextFromSeconds = (seconds, languageCode) => {
   return `${roundedHours}시간`;
 };
 
-const toOptionalDateKey = (value) => {
-  if (!value) return '';
-  const text = String(value || '').trim();
-  const dateMatch = text.match(/^\d{4}-\d{2}-\d{2}/);
-  if (dateMatch) return dateMatch[0];
-  const parsed = dayjs(value);
-  return parsed.isValid() ? parsed.format('YYYY-MM-DD') : '';
-};
-
-const isAttendanceEmployeeVisibleOnDate = (employee, workDateKey) => {
-  if (String(employee?.status || '').toUpperCase() !== 'ACTIVE') return false;
-  if (String(employee?.orgRole || '').toUpperCase() !== 'WORKER') return false;
-
-  const joinedDateKey = toOptionalDateKey(employee?.joinedAt);
-  if (joinedDateKey && workDateKey && workDateKey < joinedDateKey) return false;
-
-  const leftDateKey = toOptionalDateKey(employee?.leftAt);
-  if (leftDateKey && workDateKey && workDateKey > leftDateKey) return false;
-
-  return true;
-};
 
 const toWorkerAttendanceRatioText = (enteredWorkerCount, activeWorkerCount) => {
   const entered = Number(enteredWorkerCount);
@@ -311,6 +294,7 @@ const AttendanceList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [importingFile, setImportingFile] = useState(false);
   const [importReview, setImportReview] = useState(null);
+  const [importError, setImportError] = useState(null);
   const [deletingWorkDate, setDeletingWorkDate] = useState('');
   const [reloadToken, setReloadToken] = useState(0);
   const fileInputRef = useRef(null);
@@ -412,7 +396,6 @@ const AttendanceList = () => {
         const employeeQuery = buildQueryString({
           orgId: activeOrgId,
           factoryId: selectedFactoryId,
-          membershipRole: 'WORKER',
         });
         const [fetchedRows, fetchedEmployees] = await Promise.all([
           requestJSON('/attendance-entries' + buildQueryString({
@@ -536,11 +519,10 @@ const AttendanceList = () => {
     const query = buildQueryString({
       orgId: activeOrgId,
       factoryId: selectedFactoryId,
-      membershipRole: 'WORKER',
     });
     const fetched = await requestJSON('/employees' + query, {
       skipGlobalLoading: true,
-    }).catch(() => []);
+    });
     return Array.isArray(fetched) ? fetched : [];
   }, [activeOrgId, selectedFactoryId]);
 
@@ -613,14 +595,11 @@ const AttendanceList = () => {
 
   const handleClickImport = useCallback(() => {
     if (!selectedFactoryId) {
-      showNotification(
-        resolveText(TEXT.selectFactoryFirst, languageCode, 'Select a factory first.'),
-        'warning'
-      );
+      setImportError(resolveText(TEXT.selectFactoryFirst, languageCode, 'Select a factory first.'));
       return;
     }
     fileInputRef.current?.click();
-  }, [languageCode, selectedFactoryId, showNotification]);
+  }, [languageCode, selectedFactoryId]);
 
   const commitImportPlan = useCallback(
     async (importPlan) => {
@@ -633,7 +612,7 @@ const AttendanceList = () => {
         });
         const existingRows = await requestJSON('/attendance-entries' + readQuery, {
           skipGlobalLoading: true,
-        }).catch(() => []);
+        });
         const mergedEntries = mergeImportedAttendanceEntries(existingRows, daily.entries);
 
         const saveQuery = buildQueryString({ orgId: activeOrgId });
@@ -676,10 +655,7 @@ const AttendanceList = () => {
       if (!file) return;
 
       if (!selectedFactoryId) {
-        showNotification(
-          resolveText(TEXT.selectFactoryFirst, languageCode, 'Select a factory first.'),
-          'warning'
-        );
+        setImportError(resolveText(TEXT.selectFactoryFirst, languageCode, 'Select a factory first.'));
         return;
       }
 
@@ -687,19 +663,13 @@ const AttendanceList = () => {
       try {
         const parsed = await parseAttendanceImportFile(file);
         if (!parsed.events.length) {
-          showNotification(
-            resolveText(TEXT.importNoRows, languageCode, 'No importable attendance rows found.'),
-            'warning'
-          );
+          setImportError(resolveText(TEXT.importNoRows, languageCode, 'No importable attendance rows found.'));
           return;
         }
 
         const workers = await loadWorkersForFactory();
         if (!workers.length) {
-          showNotification(
-            resolveText(TEXT.importNoWorkers, languageCode, 'No workers found. Cannot import this file.'),
-            'error'
-          );
+          setImportError(resolveText(TEXT.importNoWorkers, languageCode, 'No workers found. Cannot import this file.'));
           return;
         }
 
@@ -709,45 +679,19 @@ const AttendanceList = () => {
           languageCode,
         });
         if (!importPlan.dailyEntries.length && !importPlan.unmatchedDetails.length) {
-          showNotification(
-            resolveText(TEXT.importNoRows, languageCode, 'No importable attendance rows found.'),
-            'warning'
-          );
+          setImportError(resolveText(TEXT.importNoRows, languageCode, 'No importable attendance rows found.'));
           return;
         }
 
-        // 사번이 없거나 일치하는 직원을 찾지 못한 항목이 하나라도 있으면, 조용히
-        // 건너뛰지 않고 상세 내역을 먼저 보여준 뒤 사용자가 확인하고 진행하게 한다.
-        if (importPlan.unmatchedDetails.length > 0) {
-          setImportReview({ importPlan });
-          return;
-        }
-
-        const confirmTemplate = resolveText(
-          TEXT.importConfirm,
-          languageCode,
-          'Found {eventCount} events for {dayCount} days. Import now?'
-        );
-        const shouldImport = window.confirm(
-          formatTemplate(confirmTemplate, {
-            eventCount: importPlan.rawEventCount,
-            dayCount: importPlan.dailyEntries.length,
-          })
-        );
-        if (!shouldImport) return;
-
-        await commitImportPlan(importPlan);
+        setImportReview({ importPlan });
       } catch (error) {
-        showNotification(
-          error?.message ||
-            resolveText(TEXT.importFail, languageCode, 'Failed to import file.'),
-          'error'
-        );
+        setImportError(error?.message ||
+            resolveText(TEXT.importFail, languageCode, 'Failed to import file.'));
       } finally {
         setImportingFile(false);
       }
     },
-    [commitImportPlan, languageCode, loadWorkersForFactory, selectedFactoryId, showNotification]
+    [languageCode, loadWorkersForFactory, selectedFactoryId]
   );
 
   const handleCancelImportReview = useCallback(() => {
@@ -763,14 +707,11 @@ const AttendanceList = () => {
     try {
       await commitImportPlan(importPlan);
     } catch (error) {
-      showNotification(
-        error?.message || resolveText(TEXT.importFail, languageCode, 'Failed to import file.'),
-        'error'
-      );
+      setImportError(error?.message || resolveText(TEXT.importFail, languageCode, 'Failed to import file.'));
     } finally {
       setImportingFile(false);
     }
-  }, [commitImportPlan, importReview, languageCode, showNotification]);
+  }, [commitImportPlan, importReview, languageCode]);
 
   return (
     <>
@@ -949,10 +890,15 @@ const AttendanceList = () => {
         </TableContainer>
       </Paper>
     </AppPageContainer>
+    <Dialog open={Boolean(importError)} onClose={() => setImportError(null)} maxWidth="md" fullWidth>
+      <DialogTitle>{resolveText(TEXT.importFail, languageCode)}</DialogTitle>
+      <DialogContent dividers><Typography sx={{ whiteSpace: 'pre-wrap' }}>{importError}</Typography></DialogContent>
+      <DialogActions><Button onClick={() => setImportError(null)}>{resolveText(TEXT.importReviewCancel, languageCode)}</Button></DialogActions>
+    </Dialog>
     <Dialog open={Boolean(importReview)} onClose={handleCancelImportReview} maxWidth="md" fullWidth>
       <DialogTitle>{resolveText(TEXT.importReviewTitle, languageCode, 'Review import')}</DialogTitle>
       <DialogContent dividers>
-        {importReview && (
+        {importReview?.importPlan && (
           <Stack spacing={1.5}>
             <Typography variant="body2">
               {formatTemplate(
@@ -969,6 +915,7 @@ const AttendanceList = () => {
                 }
               )}
             </Typography>
+            {importReview.importPlan.unmatchedDetails.length > 0 && <>
             <Typography variant="body2" color="text.secondary">
               {resolveText(
                 TEXT.importReviewUnmatchedHint,
@@ -1007,6 +954,7 @@ const AttendanceList = () => {
                 </TableBody>
               </Table>
             </TableContainer>
+            </>}
           </Stack>
         )}
       </DialogContent>

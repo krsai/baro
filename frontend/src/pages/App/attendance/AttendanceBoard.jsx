@@ -1,3 +1,4 @@
+import { isAttendanceEmployeeVisibleOnDate } from './attendanceEmployment';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -38,27 +39,6 @@ import { formatNumberWithCommas } from '../../../utils/numberFormat';
 
 const toDateKey = (value) => dayjs(value).format('YYYY-MM-DD');
 
-const toOptionalDateKey = (value) => {
-  if (!value) return '';
-  const text = String(value || '').trim();
-  const dateMatch = text.match(/^\d{4}-\d{2}-\d{2}/);
-  if (dateMatch) return dateMatch[0];
-  const parsed = dayjs(value);
-  return parsed.isValid() ? parsed.format('YYYY-MM-DD') : '';
-};
-
-const isAttendanceEmployeeVisibleOnDate = (employee, workDateKey) => {
-  if (String(employee?.status || '').toUpperCase() !== 'ACTIVE') return false;
-  if (String(employee?.orgRole || '').toUpperCase() !== 'WORKER') return false;
-
-  const joinedDateKey = toOptionalDateKey(employee?.joinedAt);
-  if (joinedDateKey && workDateKey && workDateKey < joinedDateKey) return false;
-
-  const leftDateKey = toOptionalDateKey(employee?.leftAt);
-  if (leftDateKey && workDateKey && workDateKey > leftDateKey) return false;
-
-  return true;
-};
 
 const parseTimeToMinutes = (value) => {
   const text = String(value || '').trim();
@@ -374,7 +354,6 @@ const AttendanceBoard = ({
         const query = buildQueryString({
           orgId: activeOrgId,
           factoryId: selectedFactoryId,
-          membershipRole: 'WORKER',
         });
         const rows = await requestJSON('/employees' + query).catch(() => []);
         if (cancelled) return;

@@ -25562,7 +25562,6 @@ app.get("/attendance-entries", async (req, res) => {
       where: {
         orgId: organization.id,
         factoryId,
-        worker: { orgRole: "WORKER" },
       },
       select: { workDate: true },
       distinct: ["workDate"],
@@ -25641,7 +25640,7 @@ app.put("/attendance-entries", async (req, res) => {
   }
 
   const workerIds = Array.from(new Set(normalized.rows.map((row) => row.workerId)));
-  let writableRows = normalized.rows;
+  const writableRows = normalized.rows;
   if (workerIds.length > 0) {
     const workers = await prisma.employee.findMany({
       where: {
@@ -25651,16 +25650,16 @@ app.put("/attendance-entries", async (req, res) => {
       },
       select: {
         id: true,
+        joinedAt: true,
         leftAt: true,
-        orgRole: true,
         status: true,
       },
     });
     const workersById = new Map<
       number,
       {
-        membershipRole: string;
         membershipStatus: string;
+        joinedDateKey: string;
         leftDateKey: string;
       }
     >();
@@ -25668,12 +25667,10 @@ app.put("/attendance-entries", async (req, res) => {
       const workerId = toPositiveIntOrNull(worker.id);
       if (workerId === null) return;
       workersById.set(workerId, {
-        membershipRole: String(worker.orgRole ?? "")
-          .trim()
-          .toUpperCase(),
         membershipStatus: String(worker.status ?? "")
           .trim()
           .toUpperCase(),
+        joinedDateKey: toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE),
         leftDateKey: toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE),
       });
     });
@@ -25689,26 +25686,20 @@ app.put("/attendance-entries", async (req, res) => {
 
     const blockedWorkerIds = new Set<number>();
     workersById.forEach((worker, workerId) => {
-      if (worker.membershipStatus !== "TERMINATED") return;
-      if (!worker.leftDateKey) return;
-      if (workDate > worker.leftDateKey) {
+      if (
+        !["ACTIVE", "TERMINATED", "SUSPENDED"].includes(worker.membershipStatus) ||
+        (worker.membershipStatus === "TERMINATED" && !worker.leftDateKey) ||
+        (worker.joinedDateKey && workDate < worker.joinedDateKey) ||
+        (worker.leftDateKey && workDate > worker.leftDateKey)
+      ) {
         blockedWorkerIds.add(workerId);
       }
     });
     if (blockedWorkerIds.size > 0) {
-      writableRows = normalized.rows.filter(
-        (row) => !blockedWorkerIds.has(row.workerId)
-      );
-    }
-
-    const nonWorkerIds = new Set<number>();
-    workersById.forEach((worker, workerId) => {
-      if (worker.membershipRole !== "WORKER") {
-        nonWorkerIds.add(workerId);
-      }
-    });
-    if (nonWorkerIds.size > 0) {
-      writableRows = writableRows.filter((row) => !nonWorkerIds.has(row.workerId));
+      return res.status(400).json({
+        ok: false,
+        error: `Attendance date is outside the employee's employment period (${Array.from(blockedWorkerIds).join(", ")})`,
+      });
     }
   }
 

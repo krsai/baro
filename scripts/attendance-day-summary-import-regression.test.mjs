@@ -11,6 +11,59 @@ const buildXlsxFile = (rows) => {
   return { arrayBuffer: async () => buffer };
 };
 
+test('July event report prefers full employee code in name column over unrelated device ID', async () => {
+  const parsed = await parseAttendanceImportFile(buildXlsxFile([
+    ['Báo Cáo Ghi Chép Gốc'],
+    ['ID Người', 'Tên', 'Bộ phận', 'Thời gian'],
+    ["'07", 'BRVN0006', 'New Organization/Baro', '2026-07-01 07:48:09'],
+    ["'07", 'BRVN0006', 'New Organization/Baro', '2026-07-01 17:00:14'],
+  ]));
+  const plan = buildAttendanceImportPlan({ events: parsed.events, employees: [
+    { id: 6, employeeNo: 'BRVN0006', name: 'Employee Six' },
+    { id: 7, employeeNo: 'BRVN0007', name: 'Employee Seven' },
+  ] });
+  assert.equal(parsed.events[0].workerName, '');
+  assert.deepEqual(plan.dailyEntries[0].entries, [{ workerId: 6, clockIn: '07:48', clockOut: '17:00', note: null }]);
+});
+
+test('both layouts find employee codes in arbitrary columns and preserve company prefix', async () => {
+  for (const rows of [
+    [['Thời gian', 'Unrelated heading', 'ID Người'], ['2026-07-01 08:00:00', 'BRVN0006', '07']],
+    [['ID Người', 'Thời gian biểu', 'Ngày', 'Thời Gian Ra', 'Unrelated heading', 'Thời Gian Vào'],
+      ['07', '(00:00:00-23:59:00)', '2026-07-01', '17:00:00', 'BRVN0006', '08:00:00']],
+  ]) {
+    const parsed = await parseAttendanceImportFile(buildXlsxFile(rows));
+    assert.equal(parsed.events[0].workerCode, 'BRVN0006');
+    const people = [{ id: 6, employeeNo: 'BRVN0006' }, { id: 7, employeeNo: 'ABCD0006' }];
+    assert.equal(buildAttendanceImportPlan({ events: parsed.events, employees: people }).dailyEntries[0].entries[0].workerId, 6);
+    assert.equal(buildAttendanceImportPlan({ events: parsed.events, employees: people.slice(1) }).matchedEventCount, 0);
+  }
+});
+
+test('ambiguous full employee codes in one row stop the import', async () => {
+  await assert.rejects(parseAttendanceImportFile(buildXlsxFile([
+    ['ID Người', 'Tên', 'Thời gian'],
+    ['BRVN0007', 'BRVN0006', '2026-07-01 08:00:00'],
+  ])), { code: 'ATTENDANCE_EMPLOYEE_CONFLICT' });
+});
+
+test('retired office employee imports April and employment boundary dates, excluding days outside employment', async () => {
+  const dates = ['2025-10-23', '2025-10-24', '2026-04-08', '2026-06-18', '2026-06-19'];
+  for (const summary of [false, true]) {
+    const rows = summary
+      ? [['Tên', 'Ngày', 'Thời Gian Vào', 'Thời Gian Ra'], ...dates.map(d => ['BRVN0002', d, '07:59:00', '17:13:00'])]
+      : [['ID Người', 'Tên', 'Thời gian'], ...dates.flatMap(d => [['01', 'BRVN0002', `${d} 07:59:00`], ['01', 'BRVN0002', `${d} 17:13:00`]])];
+    const parsed = await parseAttendanceImportFile(buildXlsxFile(rows));
+    const plan = buildAttendanceImportPlan({ events: parsed.events, employees: [{
+      id: 2, employeeNo: 'BRVN0002', orgRole: 'OPERATOR', status: 'TERMINATED',
+      joinedAt: '2025-10-24T00:00:00.000Z', leftAt: '2026-06-18T00:00:00.000Z',
+    }] });
+    assert.deepEqual(plan.dailyEntries.map(d => d.workDate), dates.slice(1, 4));
+    assert.equal(plan.matchedEventCount, 6);
+    assert.equal(plan.unmatchedReasonCount.outside_employment_period, 4);
+  }
+});
+
 // 실제 기기가 출력하는 "Báo Cáo Thời Gian Bắt đầu/Kết Thúc Công Việc" 양식.
 // 이 기기는 별도 사번 열을 지원하지 않아 "Tên"(이름) 열에 사번을 직접 적는다.
 // "Thời gian biểu"는 근무 시간대 고정값("(00:00:00-23:59:00)")이며 실제

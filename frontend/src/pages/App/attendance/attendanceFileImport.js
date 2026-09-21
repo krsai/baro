@@ -1,3 +1,4 @@
+import { isAttendanceEmployeeVisibleOnDate } from './attendanceEmployment.js';
 import dayjs from 'dayjs';
 import * as XLSX from 'xlsx';
 
@@ -78,6 +79,26 @@ const normalizeEmployeeNumber = (value) => {
   return match ? match[1].replace(/^0+(?=\d)/, '') : text;
 };
 
+const companyEmployeeCode = (value) => {
+  const code = toText(value).replace(/^'/, '').toUpperCase();
+  return /^[A-Z]{4}\d{4}$/.test(code) ? code : '';
+};
+
+const readRowIdentity = (row, header) => {
+  const codes = [...new Set(row.map(companyEmployeeCode).filter(Boolean))];
+  if (codes.length > 1) {
+    const error = new Error('Multiple employee numbers in one row: ' + codes.join(', '));
+    error.code = 'ATTENDANCE_EMPLOYEE_CONFLICT';
+    throw error;
+  }
+  const name = header.workerNameIndex >= 0 ? toText(row[header.workerNameIndex]) : '';
+  const index = header.workerIdIndex >= 0 ? header.workerIdIndex : header.workerNameIndex;
+  return {
+    workerCode: codes[0] || (index >= 0 ? toText(row[index]) : ''),
+    workerName: companyEmployeeCode(name) || header.workerIdIndex < 0 ? '' : name,
+  };
+};
+
 const toMinuteText = (totalMinutes) => {
   const normalized = Math.max(0, Math.min(24 * 60 - 1, Math.round(Number(totalMinutes) || 0)));
   const hour = Math.floor(normalized / 60);
@@ -149,10 +170,8 @@ const matchesKeywords = (value, keywordBundle) => {
 //  - "event" 형태: 한 행 = 펀치 한 번(사번 + 단일 시각 열). 여러 행을 모아
 //    하루의 출근/퇴근을 추론한다(기존 방식).
 //  - "day-summary" 형태: 한 행 = 한 사람의 하루(날짜 열 + 출근/퇴근 열이 각각
-//    분리). 츨근·퇴근 중 하나만 있거나 둘 다 있을 수 있다. 이 형태를 쓰는
-//    기기는 대개 별도 사번 열이 없어 "이름" 열에 직접 사번을 적어 넣으므로,
-//    이 형태에서는 사번 열이 없으면 이름 열 값을 사번으로 취급한다(실제
-//    이름 대조 검증은 생략 — 애초에 진짜 이름 데이터가 없기 때문).
+//    분리). 출근·퇴근 중 하나만 있거나 둘 다 있을 수 있다.
+// 두 형태 모두 회사코드+4자리 사번을 행 전체에서 우선 찾는다.
 const detectHeaderColumns = (row = []) => {
   let workerIdIndex = -1;
   let workerNameIndex = -1;
@@ -187,10 +206,10 @@ const detectHeaderColumns = (row = []) => {
     }
   });
 
-  const hasEventShape = timestampIndex >= 0 && workerIdIndex >= 0;
+  const hasEventShape = timestampIndex >= 0;
   const daySummaryIdentifierIndex = workerIdIndex >= 0 ? workerIdIndex : workerNameIndex;
   const hasDaySummaryShape =
-    dateIndex >= 0 && (clockInIndex >= 0 || clockOutIndex >= 0) && daySummaryIdentifierIndex >= 0;
+    dateIndex >= 0 && (clockInIndex >= 0 || clockOutIndex >= 0);
 
   const score =
     (timestampIndex >= 0 ? 4 : 0) +
@@ -208,10 +227,8 @@ const detectHeaderColumns = (row = []) => {
     clockOutIndex,
     dateIndex,
     daySummaryIdentifierIndex,
-    // event 형태를 우선한다. 두 형태 신호가 동시에 잡히는 경우는 실제로는
-    // 없을 것으로 보지만, event 형태(사번 열이 명확히 있는 쪽)가 더 신뢰할
-    // 수 있는 근거이므로 그쪽을 우선한다.
-    shape: hasEventShape ? 'event' : (hasDaySummaryShape ? 'day-summary' : null),
+    // 일별 요약에서는 근무 시간대 열이 timestamp로 감지되어도 사용하지 않는다.
+    shape: hasDaySummaryShape ? 'day-summary' : (hasEventShape ? 'event' : null),
     score,
     valid: hasEventShape || hasDaySummaryShape,
   };
@@ -272,13 +289,8 @@ export const parseAttendanceImportFile = async (file) => {
     const row = Array.isArray(rows[rowIndex]) ? rows[rowIndex] : [];
 
     if (header.shape === 'day-summary') {
-      // 이 형태는 사번 전용 열이 없는 기기가 많아, 없으면 이름 열 값을 그대로
-      // 사번으로 취급한다(그 경우 실제 이름 데이터가 없으므로 이름 대조 검증은
-      // 하지 않는다).
-      const identifierValue = toText(row[header.daySummaryIdentifierIndex]);
-      const hasRealNameColumn = header.workerIdIndex >= 0 && header.workerNameIndex >= 0;
-      const workerCode = identifierValue;
-      const workerName = hasRealNameColumn ? toText(row[header.workerNameIndex]) : '';
+      const { workerCode, workerName } = readRowIdentity(row, header);
+      const identifierValue = workerCode;
       const dateRaw = toText(row[header.dateIndex]);
       const clockInRaw = header.clockInIndex >= 0 ? row[header.clockInIndex] : '';
       const clockOutRaw = header.clockOutIndex >= 0 ? row[header.clockOutIndex] : '';
@@ -318,10 +330,7 @@ export const parseAttendanceImportFile = async (file) => {
       continue;
     }
 
-    const workerCode =
-      header.workerIdIndex >= 0 ? toText(row[header.workerIdIndex]) : '';
-    const workerName =
-      header.workerNameIndex >= 0 ? toText(row[header.workerNameIndex]) : '';
+    const { workerCode, workerName } = readRowIdentity(row, header);
     const timestampRaw = toText(row[header.timestampIndex]);
 
     if (!workerCode && !workerName && !timestampRaw) continue;
@@ -355,9 +364,15 @@ export const parseAttendanceImportFile = async (file) => {
 // 검증하는 용도로만 쓴다(오타·다른 직원 사번 오입력 등을 잡아내기 위함).
 const buildEmployeeResolver = (employees = [], languageCode = 'ko') => {
   const byEmployeeNumber = new Map();
+  const byCompanyCode = new Map();
   const byNameBuckets = new Map();
 
   employees.forEach((employee) => {
+    const fullCode = companyEmployeeCode(employee?.employeeNo);
+    if (fullCode) {
+      if (!byCompanyCode.has(fullCode)) byCompanyCode.set(fullCode, []);
+      byCompanyCode.get(fullCode).push(employee);
+    }
     const numericIdKey = normalizeEmployeeNumber(employee?.employeeNo);
     if (numericIdKey) {
       if (!byEmployeeNumber.has(numericIdKey)) byEmployeeNumber.set(numericIdKey, []);
@@ -382,7 +397,8 @@ const buildEmployeeResolver = (employees = [], languageCode = 'ko') => {
     }
 
     // Excel IDs are employee numbers, never database primary keys.
-    const candidates = byEmployeeNumber.get(idDigits) || [];
+    const fullCode = companyEmployeeCode(event?.workerCode);
+    const candidates = (fullCode ? byCompanyCode.get(fullCode) : byEmployeeNumber.get(idDigits)) || [];
     if (!candidates.length) return { employee: null, reason: 'unmatched_worker' };
     const byId = candidates[0];
     const name = normalizeAscii(event?.workerName);
@@ -400,6 +416,9 @@ const buildEmployeeResolver = (employees = [], languageCode = 'ko') => {
       error.code = 'ATTENDANCE_EMPLOYEE_CONFLICT';
       throw error;
     }
+    if (!isAttendanceEmployeeVisibleOnDate(byId, event.occurredAt.format('YYYY-MM-DD'))) {
+      return { employee: null, reason: 'outside_employment_period' };
+    }
     return { employee: byId, reason: 'matched_employee_number' };
   };
 };
@@ -412,6 +431,7 @@ export const buildAttendanceImportPlan = ({
   const resolveEmployee = buildEmployeeResolver(employees, languageCode);
   const groupedByDateWorker = new Map();
   const unmatchedReasonCount = {
+    outside_employment_period: 0,
     missing_employee_code: 0,
     unmatched_worker: 0,
   };
