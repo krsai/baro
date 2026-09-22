@@ -168,6 +168,8 @@ model ProcessMasterOptionRelation {
 model Organization {
   invoiceDraftsSold InvoiceDraft[] @relation("InvoiceDraftSeller")
   invoiceDraftsBought InvoiceDraft[] @relation("InvoiceDraftBuyer")
+  invoicesSold Invoice[] @relation("InvoiceSeller")
+  invoicesBought Invoice[] @relation("InvoiceBuyer")
   id                       Int              @id @default(autoincrement())
   name                     String
   nameKo                   String?
@@ -1193,6 +1195,7 @@ model StyleProcessAtObservation {
 
 model WorkOrder {
   invoiceDraftOrders InvoiceDraftOrder[]
+  invoiceOrders InvoiceOrder[]
   id                   Int                         @id @default(autoincrement())
   orgId                Int
   orderId              String
@@ -1236,6 +1239,7 @@ model WorkOrder {
 
 model WorkOrderItem {
   invoiceDraftLines InvoiceDraftLine[]
+  invoiceLines InvoiceLine[]
   id                  Int                  @id @default(autoincrement())
   workOrderId         Int
   itemId              String               @default("")
@@ -1772,4 +1776,91 @@ model InvoiceDraftLine {
   workOrderItem WorkOrderItem? @relation(fields: [workOrderItemId], references: [id], onDelete: SetNull)
   @@unique([draftId, lineKey])
   @@index([workOrderItemId])
+}
+
+enum InvoiceStatus {
+  ISSUED
+  CANCELLED
+}
+
+// Immutable issuance snapshot. Corrections and settlements are appended in later phases.
+model Invoice {
+  id String @id @default(cuid())
+  sellerOrgId Int
+  buyerOrgId Int
+  invoiceNumber String
+  clientKey String
+  sequenceNumber Int
+  status InvoiceStatus @default(ISSUED)
+  pricingBasis SalesPricingBasis
+  currencyCode String
+  subtotal Decimal @db.Decimal(24, 4)
+  total Decimal @db.Decimal(24, 4)
+  snapshot Json
+  issuedBy String
+  issuedAt DateTime @default(now())
+  cancelledBy String?
+  cancelledAt DateTime?
+  cancellationReason String?
+  seller Organization @relation("InvoiceSeller", fields: [sellerOrgId], references: [id], onDelete: Restrict)
+  buyer Organization @relation("InvoiceBuyer", fields: [buyerOrgId], references: [id], onDelete: Restrict)
+  orders InvoiceOrder[]
+  lines InvoiceLine[]
+  @@unique([sellerOrgId, invoiceNumber])
+  @@unique([sellerOrgId, clientKey])
+  @@unique([sellerOrgId, sequenceNumber])
+  @@index([sellerOrgId, issuedAt, id])
+  @@index([buyerOrgId])
+  @@index([status])
+}
+
+model InvoiceOrder {
+  id Int @id @default(autoincrement())
+  invoiceId String
+  workOrderId Int?
+  sourceOrderId String
+  sourceOrderNumber String
+  sourceUpdatedAt DateTime
+  billingPercentage Decimal @db.Decimal(7, 2)
+  basisAmount Decimal @db.Decimal(24, 4)
+  billedAmount Decimal @db.Decimal(24, 4)
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  lines InvoiceLine[]
+  @@unique([invoiceId, sourceOrderId])
+  @@index([workOrderId])
+  @@index([sourceOrderId])
+}
+
+model InvoiceLine {
+  id Int @id @default(autoincrement())
+  invoiceId String
+  invoiceOrderId Int
+  workOrderItemId Int?
+  sourceItemId Int
+  lineKey String
+  styleId Int?
+  styleCode String
+  styleName String
+  description String
+  color String
+  gender String
+  size String
+  quantity Int
+  bucketQuantity Int
+  unitPrice Decimal @db.Decimal(24, 4)
+  amount Decimal @db.Decimal(24, 4)
+  priceId Int?
+  bucketVersionId Int?
+  remark String
+  adjustmentReason String
+  hsCode String
+  origin String
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  invoiceOrder InvoiceOrder @relation(fields: [invoiceOrderId], references: [id], onDelete: Restrict)
+  workOrderItem WorkOrderItem? @relation(fields: [workOrderItemId], references: [id], onDelete: SetNull)
+  @@unique([invoiceId, lineKey])
+  @@index([invoiceOrderId])
+  @@index([workOrderItemId])
+  @@index([sourceItemId])
 }

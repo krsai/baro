@@ -169,6 +169,9 @@ function assertGeneratedPrismaClientShape() {
     InvoiceDraft: ["id", "sellerOrgId", "buyerOrgId", "clientKey", "revision", "content", "createdBy", "updatedBy", "createdAt", "updatedAt"],
     InvoiceDraftOrder: ["id", "draftId", "workOrderId", "sourceOrderId", "sourceUpdatedAt"],
     InvoiceDraftLine: ["id", "draftId", "workOrderItemId", "sourceItemId", "lineKey"],
+    Invoice: ["id", "sellerOrgId", "buyerOrgId", "invoiceNumber", "clientKey", "sequenceNumber", "status", "pricingBasis", "currencyCode", "subtotal", "total", "snapshot", "issuedBy", "issuedAt", "cancelledBy", "cancelledAt", "cancellationReason"],
+    InvoiceOrder: ["id", "invoiceId", "workOrderId", "sourceOrderId", "sourceOrderNumber", "sourceUpdatedAt", "billingPercentage", "basisAmount", "billedAmount"],
+    InvoiceLine: ["id", "invoiceId", "invoiceOrderId", "workOrderItemId", "sourceItemId", "lineKey", "styleId", "styleCode", "styleName", "description", "color", "gender", "size", "quantity", "bucketQuantity", "unitPrice", "amount", "priceId", "bucketVersionId", "remark", "adjustmentReason", "hsCode", "origin"],
   })) {
     for (const field of fields) {
       if (!hasField(model, field)) staleSignals.push(model + "." + field + " is missing");
@@ -993,6 +996,18 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "InvoiceDraftLine_draftId_lineKey_key",
   "InvoiceDraftLine_draftId_fkey",
   "InvoiceDraftLine_workOrderItemId_fkey",
+  "Invoice_sellerOrgId_invoiceNumber_key",
+  "Invoice_sellerOrgId_clientKey_key",
+  "Invoice_sellerOrgId_sequenceNumber_key",
+  "Invoice_sellerOrgId_fkey",
+  "Invoice_buyerOrgId_fkey",
+  "InvoiceOrder_invoiceId_sourceOrderId_key",
+  "InvoiceOrder_invoiceId_fkey",
+  "InvoiceOrder_workOrderId_fkey",
+  "InvoiceLine_invoiceId_lineKey_key",
+  "InvoiceLine_invoiceId_fkey",
+  "InvoiceLine_invoiceOrderId_fkey",
+  "InvoiceLine_workOrderItemId_fkey",
   "Currency_code_key",
   "Organization_salaryCurrencyId_idx",
   "Organization_salaryCurrency_fkey",

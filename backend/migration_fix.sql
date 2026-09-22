@@ -5046,3 +5046,74 @@ CREATE TABLE IF NOT EXISTS "InvoiceDraftLine" (
   CONSTRAINT "InvoiceDraftLine_draftId_lineKey_key" UNIQUE ("draftId", "lineKey")
 );
 CREATE INDEX IF NOT EXISTS "InvoiceDraftLine_workOrderItemId_idx" ON "InvoiceDraftLine"("workOrderItemId");
+
+-- 2026-09-22: immutable issued-invoice ledger foundation.
+DO $$ BEGIN CREATE TYPE "InvoiceStatus" AS ENUM ('ISSUED', 'CANCELLED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE TABLE IF NOT EXISTS "Invoice" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "sellerOrgId" INTEGER NOT NULL REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  "buyerOrgId" INTEGER NOT NULL REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  "invoiceNumber" TEXT NOT NULL,
+  "clientKey" TEXT NOT NULL,
+  "sequenceNumber" INTEGER NOT NULL,
+  "status" "InvoiceStatus" NOT NULL DEFAULT 'ISSUED',
+  "pricingBasis" "SalesPricingBasis" NOT NULL,
+  "currencyCode" TEXT NOT NULL,
+  "subtotal" DECIMAL(24,4) NOT NULL,
+  "total" DECIMAL(24,4) NOT NULL,
+  "snapshot" JSONB NOT NULL,
+  "issuedBy" TEXT NOT NULL,
+  "issuedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "cancelledBy" TEXT,
+  "cancelledAt" TIMESTAMP(3),
+  "cancellationReason" TEXT,
+  CONSTRAINT "Invoice_sellerOrgId_invoiceNumber_key" UNIQUE ("sellerOrgId", "invoiceNumber"),
+  CONSTRAINT "Invoice_sellerOrgId_clientKey_key" UNIQUE ("sellerOrgId", "clientKey"),
+  CONSTRAINT "Invoice_sellerOrgId_sequenceNumber_key" UNIQUE ("sellerOrgId", "sequenceNumber")
+);
+CREATE INDEX IF NOT EXISTS "Invoice_sellerOrgId_issuedAt_id_idx" ON "Invoice"("sellerOrgId","issuedAt","id");
+CREATE INDEX IF NOT EXISTS "Invoice_buyerOrgId_idx" ON "Invoice"("buyerOrgId");
+CREATE INDEX IF NOT EXISTS "Invoice_status_idx" ON "Invoice"("status");
+CREATE TABLE IF NOT EXISTS "InvoiceOrder" (
+  "id" SERIAL PRIMARY KEY,
+  "invoiceId" TEXT NOT NULL REFERENCES "Invoice"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  "workOrderId" INTEGER REFERENCES "WorkOrder"("id") ON DELETE SET NULL ON UPDATE CASCADE,
+  "sourceOrderId" TEXT NOT NULL,
+  "sourceOrderNumber" TEXT NOT NULL,
+  "sourceUpdatedAt" TIMESTAMP(3) NOT NULL,
+  "billingPercentage" DECIMAL(7,2) NOT NULL,
+  "basisAmount" DECIMAL(24,4) NOT NULL,
+  "billedAmount" DECIMAL(24,4) NOT NULL,
+  CONSTRAINT "InvoiceOrder_invoiceId_sourceOrderId_key" UNIQUE ("invoiceId","sourceOrderId")
+);
+CREATE INDEX IF NOT EXISTS "InvoiceOrder_workOrderId_idx" ON "InvoiceOrder"("workOrderId");
+CREATE INDEX IF NOT EXISTS "InvoiceOrder_sourceOrderId_idx" ON "InvoiceOrder"("sourceOrderId");
+CREATE TABLE IF NOT EXISTS "InvoiceLine" (
+  "id" SERIAL PRIMARY KEY,
+  "invoiceId" TEXT NOT NULL REFERENCES "Invoice"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  "invoiceOrderId" INTEGER NOT NULL REFERENCES "InvoiceOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  "workOrderItemId" INTEGER REFERENCES "WorkOrderItem"("id") ON DELETE SET NULL ON UPDATE CASCADE,
+  "sourceItemId" INTEGER NOT NULL,
+  "lineKey" TEXT NOT NULL,
+  "styleId" INTEGER,
+  "styleCode" TEXT NOT NULL,
+  "styleName" TEXT NOT NULL,
+  "description" TEXT NOT NULL,
+  "color" TEXT NOT NULL,
+  "gender" TEXT NOT NULL,
+  "size" TEXT NOT NULL,
+  "quantity" INTEGER NOT NULL,
+  "bucketQuantity" INTEGER NOT NULL,
+  "unitPrice" DECIMAL(24,4) NOT NULL,
+  "amount" DECIMAL(24,4) NOT NULL,
+  "priceId" INTEGER,
+  "bucketVersionId" INTEGER,
+  "remark" TEXT NOT NULL,
+  "adjustmentReason" TEXT NOT NULL,
+  "hsCode" TEXT NOT NULL,
+  "origin" TEXT NOT NULL,
+  CONSTRAINT "InvoiceLine_invoiceId_lineKey_key" UNIQUE ("invoiceId","lineKey")
+);
+CREATE INDEX IF NOT EXISTS "InvoiceLine_invoiceOrderId_idx" ON "InvoiceLine"("invoiceOrderId");
+CREATE INDEX IF NOT EXISTS "InvoiceLine_workOrderItemId_idx" ON "InvoiceLine"("workOrderItemId");
+CREATE INDEX IF NOT EXISTS "InvoiceLine_sourceItemId_idx" ON "InvoiceLine"("sourceItemId");

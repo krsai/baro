@@ -47,7 +47,8 @@
     "test:order-card-transaction": "npm --prefix backend run build && node --test scripts/order-card-transaction.test.mjs scripts/reconcile-assignment-cards.test.mjs",
     "test:order-assignment-readiness": "npm --prefix backend run build && node --test scripts/order-assignment-readiness.test.mjs",
     "test:order-value": "npm --prefix backend run build && node --test scripts/order-value-regression.test.mjs",
-    "test:invoice-draft-store": "npm --prefix backend run build && node --test scripts/invoice-draft-store.test.mjs"
+    "test:invoice-draft-store": "npm --prefix backend run build && node --test scripts/invoice-draft-store.test.mjs",
+    "test:invoice-issue-store": "npm --prefix backend run build && node --test scripts/invoice-issue-store.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.15",

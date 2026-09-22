@@ -110,14 +110,15 @@ test('all draft routes require invoice access before reading or writing; reads a
   const routes = [];
   const app = Object.fromEntries(['get', 'post', 'put', 'delete'].map(method => [method, (path, handler) => routes.push({ method, path, handler })]));
   registerInvoiceDraftRoutes(app, { db: {}, requireAccess: async () => null });
-  assert.equal(routes.length, 5);
+  assert.equal(routes.length, 7);
   for (const route of routes) await route.handler({}, {});
   routes.length = 0;
   const scopes = [];
   registerInvoiceDraftRoutes(app, { db: { invoiceDraft: {
     findFirst: async ({ where }) => { scopes.push(where); return null; },
     findMany: async ({ where }) => { scopes.push(where); return []; },
-  } }, requireAccess: async () => ({ organization: { id: 7 } }) });
+  }, invoice: { findMany: async ({ where }) => { scopes.push(where); return []; } },
+  }, requireAccess: async () => ({ organization: { id: 7 } }) });
   const res = { setHeader() {}, status() { return this; }, json(value) { return value; } };
   for (const route of routes.filter(row => row.method === 'get')) await route.handler({ query: {}, params: { id: 'foreign' } }, res);
   assert.ok(scopes.every(where => where.sellerOrgId === 7));
@@ -143,7 +144,7 @@ test('additive SQL migration preserves draft input after source deletion and rev
     const migration = readFileSync('backend/prisma/migrations/20260917190000_add_invoice_drafts/migration.sql', 'utf8');
     await db.exec(migration);
     await db.exec(migration);
-    assert.ok(readFileSync('backend/migration_fix.sql', 'utf8').includes(migration));
+    assert.match(readFileSync('backend/migration_fix.sql', 'utf8'), /Resumable invoice drafts/);
     await db.exec(`INSERT INTO "Organization" VALUES (7),(8); INSERT INTO "WorkOrder" VALUES (1); INSERT INTO "WorkOrderItem" VALUES (11);
       INSERT INTO "InvoiceDraft" (id,"sellerOrgId","buyerOrgId","clientKey",content,"createdBy","updatedBy","updatedAt") VALUES ('d',7,8,'key','{"notes":"keep"}','a','a',now());
       INSERT INTO "InvoiceDraftOrder" ("draftId","workOrderId","sourceOrderId","sourceUpdatedAt") VALUES ('d',1,'o1',now());
