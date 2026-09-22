@@ -151,6 +151,13 @@ const formatOrderValue = (value, currencyCode = 'USD') => {
   }
 };
 
+const formatOrderValueStyle = (line) => {
+  const styleName = String(line?.styleName || '').trim();
+  const styleCode = String(line?.styleCode || '').trim();
+  if (styleName && styleCode && styleName !== styleCode) return `${styleName} (${styleCode})`;
+  return styleName || styleCode || `#${line?.styleId || ''}`;
+};
+
 const getOrderValueDetailText = (languageCode) => ({
   title: languageCode === 'vi' ? 'Chi tiết giá trị đơn hàng' : languageCode === 'en' ? 'Order value details' : '수주 금액 계산',
   description: languageCode === 'vi'
@@ -3239,7 +3246,7 @@ const OrderList = () => {
                 {(orderValueDetail?.currentOrderValue?.lines || []).map((line) => (
                   <TableRow key={line.styleId}>
                     <TableCell>
-                      {[line.styleCode, line.styleName].filter(Boolean).join(' · ') || `#${line.styleId}`}
+                      {formatOrderValueStyle(line)}
                     </TableCell>
                     <TableCell align="right">{Number(line.quantity || 0).toLocaleString()}</TableCell>
                     <TableCell align="right">{line.bucketQuantity == null ? '-' : Number(line.bucketQuantity).toLocaleString()}</TableCell>

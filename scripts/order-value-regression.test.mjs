@@ -68,4 +68,5 @@ test('the order list opens a currency-aware calculation dialog', () => {
   assert.match(page, /style: 'currency'/);
   assert.match(page, /Quantity tier/);
   assert.match(page, /단가 누락/);
+  assert.match(page, /return `\$\{styleName\} \(\$\{styleCode\}\)`/);
 });
