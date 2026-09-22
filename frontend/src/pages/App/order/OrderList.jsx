@@ -137,14 +137,47 @@ const ORDER_LIST_TEXT_ELLIPSIS_SX = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
 };
-const formatOrderValue = (value) => {
+const formatOrderValue = (value, currencyCode = 'USD') => {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return '-';
-  return `$${amount.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currencyCode || 'USD',
+      currencyDisplay: 'symbol',
+    }).format(amount);
+  } catch {
+    return `${currencyCode || ''} ${amount.toLocaleString('en-US', { maximumFractionDigits: 4 })}`.trim();
+  }
 };
+
+const getOrderValueDetailText = (languageCode) => ({
+  title: languageCode === 'vi' ? 'Chi tiết giá trị đơn hàng' : languageCode === 'en' ? 'Order value details' : '수주 금액 계산',
+  description: languageCode === 'vi'
+    ? 'Số lượng được cộng theo từng style, sau đó áp dụng đơn giá của mức số lượng tương ứng trong bảng giá hiện tại.'
+    : languageCode === 'en'
+      ? 'Quantities are grouped by style, then priced with the matching quantity tier from the current price list.'
+      : '스타일별 수량을 합산한 뒤 현재 단가표의 해당 수량 구간 단가를 적용합니다.',
+  currentPriceNotice: languageCode === 'vi'
+    ? 'Đây là bảng giá hiện tại, không phải ảnh chụp của hóa đơn đã phát hành.'
+    : languageCode === 'en'
+      ? 'This uses the current price list, not a snapshot from an issued invoice.'
+      : '현재 단가표 기준이며, 발행된 청구서의 저장 단가가 아닙니다.',
+  style: languageCode === 'vi' ? 'Style' : languageCode === 'en' ? 'Style' : '스타일',
+  quantity: languageCode === 'vi' ? 'Số lượng' : languageCode === 'en' ? 'Quantity' : '수량',
+  tier: languageCode === 'vi' ? 'Mức số lượng' : languageCode === 'en' ? 'Quantity tier' : '수량 구간',
+  unitPrice: languageCode === 'vi' ? 'Đơn giá' : languageCode === 'en' ? 'Unit price' : '단가',
+  amount: languageCode === 'vi' ? 'Thành tiền' : languageCode === 'en' ? 'Amount' : '금액',
+  total: languageCode === 'vi' ? 'Tổng cộng' : languageCode === 'en' ? 'Total' : '합계',
+  basis: languageCode === 'vi' ? 'Cơ sở giá' : languageCode === 'en' ? 'Pricing basis' : '가격 기준',
+  missing: languageCode === 'vi' ? 'Thiếu đơn giá' : languageCode === 'en' ? 'Missing price' : '단가 누락',
+  close: languageCode === 'vi' ? 'Đóng' : languageCode === 'en' ? 'Close' : '닫기',
+  multipleScopes: languageCode === 'vi'
+    ? 'Có nhiều phạm vi giá. Hệ thống ưu tiên CMT, sau đó ưu tiên USD.'
+    : languageCode === 'en'
+      ? 'Multiple price scopes exist. CMT is preferred, then USD.'
+      : '단가 범위가 여러 개이면 CMT를 먼저, 같은 기준에서는 USD를 먼저 표시합니다.',
+});
 
 const GENDER_SORT_ORDER = {
   M: 0,
@@ -775,6 +808,7 @@ const OrderList = () => {
   const { showNotification, navigateToPath } = useAppActions();
   const { activeOrgId, activeOrgType, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
+  const orderValueDetailText = useMemo(() => getOrderValueDetailText(languageCode), [languageCode]);
   const orderPageText = useMemo(
     () => ({
       listTitle: getUiMessage('menu.order', 'Orders', languageCode),
@@ -2077,6 +2111,7 @@ const OrderList = () => {
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [saveIssueRows, setSaveIssueRows] = useState([]);
   const [saveIssueDialogOpen, setSaveIssueDialogOpen] = useState(false);
+  const [orderValueDetail, setOrderValueDetail] = useState(null);
   const orderDataChangedEventSourceRef = useRef(createId('order-data'));
   const emitOrderDataChanged = useCallback(() => {
     emitWorkspaceDataChanged({
@@ -3117,11 +3152,24 @@ const OrderList = () => {
                         </TableCell>
                         <TableCell sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                           {order.currentOrderValue?.status === 'AVAILABLE' ? (
-                            <Typography variant="body2" fontWeight={700} noWrap>
-                              {formatOrderValue(order.currentOrderValue.amount)}
-                            </Typography>
+                            <Button
+                              variant="text"
+                              size="small"
+                              onClick={(event) => { event.stopPropagation(); setOrderValueDetail(order); }}
+                              onDoubleClick={(event) => event.stopPropagation()}
+                              sx={{ minWidth: 0, p: 0.25, fontWeight: 700, whiteSpace: 'nowrap' }}
+                            >
+                              {formatOrderValue(order.currentOrderValue.amount, order.currentOrderValue.currencyCode)}
+                            </Button>
                           ) : (
-                            <Chip size="small" color="warning" variant="outlined" label={orderPageText.missingSalesPrice} />
+                            <Chip
+                              size="small"
+                              color="warning"
+                              variant="outlined"
+                              label={orderPageText.missingSalesPrice}
+                              onClick={(event) => { event.stopPropagation(); setOrderValueDetail(order); }}
+                              onDoubleClick={(event) => event.stopPropagation()}
+                            />
                           )}
                         </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
@@ -3146,6 +3194,77 @@ const OrderList = () => {
           </TableContainer>
         </Paper>
       </AppPageContainer>
+      <Dialog open={Boolean(orderValueDetail)} onClose={() => setOrderValueDetail(null)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          {orderValueDetailText.title}
+          {orderValueDetail?.orderNumber ? ` · ${orderValueDetail.orderNumber}` : ''}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {orderValueDetailText.description}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+            {orderValueDetailText.currentPriceNotice}
+          </Typography>
+          {orderValueDetail?.currentOrderValue?.pricingBasis && (
+            <Stack direction="row" spacing={1} sx={{ mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Chip
+                size="small"
+                label={`${orderValueDetailText.basis}: ${orderValueDetail.currentOrderValue.pricingBasis === 'MANUFACTURING_SERVICE_PRICE' ? 'CMT' : 'FP'}`}
+              />
+              {orderValueDetail.currentOrderValue.currencyCode && (
+                <Chip size="small" variant="outlined" label={orderValueDetail.currentOrderValue.currencyCode} />
+              )}
+            </Stack>
+          )}
+          {orderValueDetail?.currentOrderValue?.hasMultipleScopes && (
+            <Alert severity="info" sx={{ mb: 2 }}>{orderValueDetailText.multipleScopes}</Alert>
+          )}
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>{orderValueDetailText.style}</TableCell>
+                  <TableCell align="right">{orderValueDetailText.quantity}</TableCell>
+                  <TableCell align="right">{orderValueDetailText.tier}</TableCell>
+                  <TableCell align="right">{orderValueDetailText.unitPrice}</TableCell>
+                  <TableCell align="right">{orderValueDetailText.amount}</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(orderValueDetail?.currentOrderValue?.lines || []).map((line) => (
+                  <TableRow key={line.styleId}>
+                    <TableCell>
+                      {[line.styleCode, line.styleName].filter(Boolean).join(' · ') || `#${line.styleId}`}
+                    </TableCell>
+                    <TableCell align="right">{Number(line.quantity || 0).toLocaleString()}</TableCell>
+                    <TableCell align="right">{line.bucketQuantity == null ? '-' : Number(line.bucketQuantity).toLocaleString()}</TableCell>
+                    <TableCell align="right">
+                      {line.unitPrice == null
+                        ? <Chip size="small" color="warning" variant="outlined" label={orderValueDetailText.missing} />
+                        : formatOrderValue(line.unitPrice, orderValueDetail.currentOrderValue.currencyCode)}
+                    </TableCell>
+                    <TableCell align="right">
+                      {line.amount == null ? '-' : formatOrderValue(line.amount, orderValueDetail.currentOrderValue.currencyCode)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                <TableRow>
+                  <TableCell colSpan={4} align="right" sx={{ fontWeight: 700 }}>{orderValueDetailText.total}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700 }}>
+                    {orderValueDetail?.currentOrderValue?.status === 'AVAILABLE'
+                      ? formatOrderValue(orderValueDetail.currentOrderValue.amount, orderValueDetail.currentOrderValue.currencyCode)
+                      : orderValueDetailText.missing}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOrderValueDetail(null)}>{orderValueDetailText.close}</Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={saveIssueDialogOpen} onClose={() => setSaveIssueDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>
           {orderPageText.saveIssueDialogTitle}

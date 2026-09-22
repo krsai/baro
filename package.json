@@ -46,6 +46,7 @@
     "test:order-assignment-impact": "npm --prefix backend run build && node --test scripts/order-assignment-impact.test.mjs scripts/order-save-assignment-guard.test.mjs scripts/order-save-lock-race.test.mjs",
     "test:order-card-transaction": "npm --prefix backend run build && node --test scripts/order-card-transaction.test.mjs scripts/reconcile-assignment-cards.test.mjs",
     "test:order-assignment-readiness": "npm --prefix backend run build && node --test scripts/order-assignment-readiness.test.mjs",
+    "test:order-value": "npm --prefix backend run build && node --test scripts/order-value-regression.test.mjs",
     "test:invoice-draft-store": "npm --prefix backend run build && node --test scripts/invoice-draft-store.test.mjs"
   },
   "devDependencies": {

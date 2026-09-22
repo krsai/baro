@@ -95,6 +95,7 @@ import { registerInvoiceDraftRoutes } from "./routes/invoiceDraft.routes";
 import { buildInvoiceSource } from "./services/invoiceSource";
 import { invoiceOrderProgress } from "./services/invoiceOrderProgress";
 import { isOrderReadyForAssignment } from "./utils/orderAssignmentReadiness";
+import { calculateOrderSalesValue } from "./utils/orderSalesValue";
 import { guardOrderSaveAssignments } from "./services/orderSaveAssignmentGuard";
 import {
   resolveWorkRecordProcessCode,
@@ -8299,8 +8300,7 @@ const loadCurrentOrderValueByOrderDbId = async (orders: any[]) => {
   const styleIds = Array.from(new Set(ensureArray(orders).flatMap((order) =>
     ensureArray(order?.workOrderItems).map((item) => toPositiveIntOrNull(item?.styleId)).filter(Boolean)
   ))) as number[];
-  if (!pairs.length || !styleIds.length) return result;
-  const relationships = await prisma.orgRelationship.findMany({
+  const relationships = pairs.length && styleIds.length ? await prisma.orgRelationship.findMany({
     where: { OR: pairs as any },
     include: {
       salesBucketSetVersion: { include: { entries: true } },
@@ -8313,48 +8313,13 @@ const loadCurrentOrderValueByOrderDbId = async (orders: any[]) => {
         include: { currency: true, prices: { include: { quantityBucketEntry: true } } },
       },
     },
-  });
+  }) : [];
   const relationshipByPair = new Map(relationships.map((row) => [`${row.manufacturerOrgId}:${row.brandOrgId}`, row] as const));
   ensureArray(orders).forEach((order) => {
     const orderDbId = toPositiveIntOrNull(order?.id);
     if (!orderDbId) return;
     const relationship: any = relationshipByPair.get(`${order?.sellerOrgId}:${order?.buyerOrgId}`);
-    if (!relationship) return;
-    const quantityByStyleId = new Map<number, number>();
-    let hasUnpricedItemIdentity = false;
-    ensureArray(order?.workOrderItems).forEach((item) => {
-      const styleId = toPositiveIntOrNull(item?.styleId);
-      const quantity = toNonNegativeInt(item?.totalQuantity, 0);
-      if (quantity <= 0) return;
-      if (!styleId) { hasUnpricedItemIdentity = true; return; }
-      quantityByStyleId.set(styleId, (quantityByStyleId.get(styleId) || 0) + quantity);
-    });
-    const scopes = new Set(ensureArray(relationship.salesPriceLists).map((list: any) => `${list.pricingBasis}:${list.currency?.code || ''}`));
-    const completeValues: any[] = [];
-    scopes.forEach((scope) => {
-      const [pricingBasis, currencyCode] = String(scope).split(':');
-      let amount = 0;
-      let complete = quantityByStyleId.size > 0 && !hasUnpricedItemIdentity;
-      quantityByStyleId.forEach((quantity, styleId) => {
-        const override = ensureArray(relationship.salesBucketOverrides).find((row: any) => row.styleId === styleId);
-        const version = override?.quantityBucketSetVersion || relationship.salesBucketSetVersion;
-        const list = ensureArray(relationship.salesPriceLists).find((row: any) =>
-          row.styleId === styleId && row.pricingBasis === pricingBasis && row.currency?.code === currencyCode && row.quantityBucketSetVersionId === version?.id
-        );
-        const bucketQuantity = resolveStBucketQuantityFromValues(quantity, ensureArray(version?.entries).map((entry: any) => entry.bucketQuantity));
-        const price = ensureArray(list?.prices).find((row: any) => row.quantityBucketEntry?.bucketQuantity === bucketQuantity);
-        if (!price) { complete = false; return; }
-        amount += quantity * Number(price.unitPrice);
-      });
-      if (complete && Number.isFinite(amount)) completeValues.push({ pricingBasis, currencyCode, amount });
-    });
-    completeValues.sort((left, right) => {
-      const rank = (row: any) => (row.pricingBasis === "MANUFACTURING_SERVICE_PRICE" ? 0 : 10) + (row.currencyCode === "USD" ? 0 : 1);
-      return rank(left) - rank(right);
-    });
-    result.set(orderDbId, completeValues.length
-      ? { status: "AVAILABLE", ...completeValues[0], hasMultipleScopes: completeValues.length > 1 }
-      : { status: "MISSING_PRICE" });
+    result.set(orderDbId, calculateOrderSalesValue(order, relationship));
   });
   return result;
 };

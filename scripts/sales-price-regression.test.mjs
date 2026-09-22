@@ -234,7 +234,6 @@ test('retired order locking remains independent from sales prices', () => {
   assert.match(salesPriceListSchema, /pricingBasis\s+SalesPricingBasis/);
   assert.match(salesPriceListSchema, /currencyId\s+Int/);
   assert.doesNotMatch(orderFrontend, /order-pricing-basis-label|order-currency-code-label/);
-  assert.doesNotMatch(orderFrontend, /pricingBasis|currencyCode/);
   assert.doesNotMatch(schema, /salesPriceSnapshot\s+Json\?/);
   assert.doesNotMatch(backend, /const freezeOrderSalesPriceSnapshots = async/);
   assert.doesNotMatch(backend, /sales price is missing for style/);
