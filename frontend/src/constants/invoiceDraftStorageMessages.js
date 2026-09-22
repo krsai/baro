@@ -1,0 +1,30 @@
+export const invoiceDraftStorageMessages = {
+  ko: {
+    title: '저장된 초안', save: '초안 저장', saved: '초안을 저장했습니다.', resume: '열기', remove: '삭제',
+    empty: '저장된 초안이 없습니다.', updated: '최종 수정', confirmDelete: '이 초안을 삭제할까요? 발행본이나 주문은 변경되지 않습니다.',
+    notice: '서버에 초안을 저장하고 다시 열 수 있습니다. 초안은 정식 발행·청구 잔액·주문 잠금에 반영되지 않습니다.',
+    review: '현재 생산 정보와 단가표로 다시 계산했습니다. 저장된 초안 금액은 확정 금액이 아니므로 출력 전에 다시 검토해 주세요.',
+    sourceChanged: '원주문이 변경되었거나 조회할 수 없습니다. 저장된 입력은 보존됩니다. 현재 주문을 선택해 새 초안을 작성해 주세요.',
+    conflict: '다른 창에서 수정 또는 삭제했습니다. 현재 입력을 확인한 후 다시 열어 주세요. 덮어쓰지 않았습니다.',
+    failed: '초안을 처리하지 못했습니다. 다시 시도해 주세요.', discard: '저장하지 않은 변경을 버리고 다시 불러올까요?',
+    stored: '보존된 입력 (검토용)',
+  },
+  en: {
+    title: 'Saved drafts', save: 'Save draft', saved: 'Draft saved.', resume: 'Open', remove: 'Delete',
+    empty: 'No saved drafts.', updated: 'Last updated', confirmDelete: 'Delete this draft? Issued documents and orders will not change.',
+    notice: 'Save drafts on the server and reopen them later. Drafts do not issue invoices, consume balances or lock orders.',
+    review: 'Recalculated using current production and prices. Draft amounts are not final; review again before printing.',
+    sourceChanged: 'An order changed or is unavailable. Saved inputs are preserved. Select the current orders to prepare a new draft.',
+    conflict: 'Another window changed or deleted this draft. Review your input before reopening. Nothing was overwritten.',
+    failed: 'Unable to process the draft. Please try again.', discard: 'Discard unsaved changes and reload?', stored: 'Preserved inputs (for review)',
+  },
+  vi: {
+    title: 'Bản nháp đã lưu', save: 'Lưu bản nháp', saved: 'Đã lưu bản nháp.', resume: 'Mở', remove: 'Xóa',
+    empty: 'Chưa có bản nháp.', updated: 'Cập nhật cuối', confirmDelete: 'Xóa bản nháp này? Hóa đơn đã phát hành và đơn hàng không thay đổi.',
+    notice: 'Có thể lưu bản nháp trên máy chủ và mở lại. Bản nháp không phát hành hóa đơn, trừ số dư hay khóa đơn hàng.',
+    review: 'Đã tính lại theo sản lượng và đơn giá hiện tại. Số tiền bản nháp chưa được chốt; hãy kiểm tra lại trước khi in.',
+    sourceChanged: 'Đơn hàng đã thay đổi hoặc không thể tải. Nội dung đã lưu được giữ nguyên. Chọn đơn hàng hiện tại để tạo bản nháp mới.',
+    conflict: 'Bản nháp đã được sửa hoặc xóa ở cửa sổ khác. Kiểm tra nội dung trước khi mở lại. Không ghi đè dữ liệu.',
+    failed: 'Không thể xử lý bản nháp. Vui lòng thử lại.', discard: 'Bỏ thay đổi chưa lưu và tải lại?', stored: 'Nội dung đã lưu (để kiểm tra)',
+  },
+};

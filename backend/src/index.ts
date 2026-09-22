@@ -91,6 +91,7 @@ import {
   syncStyleStandardsForBucketVersion as syncRelationshipStyleStandards,
 } from "./services/relationshipTimeBuckets";
 import { partitionRelationshipBucketStyles } from "./services/relationshipBucketStyles";
+import { registerInvoiceDraftRoutes } from "./routes/invoiceDraft.routes";
 import { buildInvoiceSource } from "./services/invoiceSource";
 import { invoiceOrderProgress } from "./services/invoiceOrderProgress";
 import { isOrderReadyForAssignment } from "./utils/orderAssignmentReadiness";
@@ -163,6 +164,15 @@ function assertGeneratedPrismaClientShape() {
     );
 
   const staleSignals: string[] = [];
+  for (const [model, fields] of Object.entries({
+    InvoiceDraft: ["id", "sellerOrgId", "buyerOrgId", "clientKey", "revision", "content", "createdBy", "updatedBy", "createdAt", "updatedAt"],
+    InvoiceDraftOrder: ["id", "draftId", "workOrderId", "sourceOrderId", "sourceUpdatedAt"],
+    InvoiceDraftLine: ["id", "draftId", "workOrderItemId", "sourceItemId", "lineKey"],
+  })) {
+    for (const field of fields) {
+      if (!hasField(model, field)) staleSignals.push(model + "." + field + " is missing");
+    }
+  }
   if (!hasField("WorkOrder", "workOrderItems")) {
     staleSignals.push("WorkOrder.workOrderItems missing");
   }
@@ -745,6 +755,26 @@ const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
   "20260723_clear_stale_at_params_v1",
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
+  { tableName: "InvoiceDraft", columnName: "id" },
+  { tableName: "InvoiceDraft", columnName: "sellerOrgId" },
+  { tableName: "InvoiceDraft", columnName: "buyerOrgId" },
+  { tableName: "InvoiceDraft", columnName: "clientKey" },
+  { tableName: "InvoiceDraft", columnName: "revision" },
+  { tableName: "InvoiceDraft", columnName: "content" },
+  { tableName: "InvoiceDraft", columnName: "createdBy" },
+  { tableName: "InvoiceDraft", columnName: "updatedBy" },
+  { tableName: "InvoiceDraft", columnName: "createdAt" },
+  { tableName: "InvoiceDraft", columnName: "updatedAt" },
+  { tableName: "InvoiceDraftOrder", columnName: "id" },
+  { tableName: "InvoiceDraftOrder", columnName: "draftId" },
+  { tableName: "InvoiceDraftOrder", columnName: "workOrderId" },
+  { tableName: "InvoiceDraftOrder", columnName: "sourceOrderId" },
+  { tableName: "InvoiceDraftOrder", columnName: "sourceUpdatedAt" },
+  { tableName: "InvoiceDraftLine", columnName: "id" },
+  { tableName: "InvoiceDraftLine", columnName: "draftId" },
+  { tableName: "InvoiceDraftLine", columnName: "workOrderItemId" },
+  { tableName: "InvoiceDraftLine", columnName: "sourceItemId" },
+  { tableName: "InvoiceDraftLine", columnName: "lineKey" },
   { tableName: "WorkLog", columnName: "coverageStartDate" },
   { tableName: "WorkLog", columnName: "coverageEndDate" },
   { tableName: "WorkLog", columnName: "entryMode" },
@@ -953,6 +983,15 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  "InvoiceDraft_sellerOrgId_clientKey_key",
+  "InvoiceDraft_sellerOrgId_fkey",
+  "InvoiceDraft_buyerOrgId_fkey",
+  "InvoiceDraftOrder_draftId_sourceOrderId_key",
+  "InvoiceDraftOrder_draftId_fkey",
+  "InvoiceDraftOrder_workOrderId_fkey",
+  "InvoiceDraftLine_draftId_lineKey_key",
+  "InvoiceDraftLine_draftId_fkey",
+  "InvoiceDraftLine_workOrderItemId_fkey",
   "Currency_code_key",
   "Organization_salaryCurrencyId_idx",
   "Organization_salaryCurrency_fkey",
@@ -30584,6 +30623,8 @@ const requireInvoiceAccess = async (req: any, res: any) => {
   }
   return access;
 };
+
+registerInvoiceDraftRoutes(app, { db: prisma, requireAccess: requireInvoiceAccess, actor: getRequesterEmail });
 
 app.get("/invoices/customers", async (req, res) => {
   const access = await requireInvoiceAccess(req, res);

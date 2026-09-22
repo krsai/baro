@@ -9,6 +9,7 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
 import { invoiceMessages } from '../../../constants/invoiceMessages';
 import InvoiceDraftDialog from '../order/InvoiceDraftDialog';
+import InvoiceDraftList from './InvoiceDraftList';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 
 export default function InvoiceWorkspace({ view = 'list' } = {}) {
@@ -29,6 +30,7 @@ function InvoiceMenuWorkspace({ activeOrgId, view = 'list' }) {
         <Typography variant="h6">{t.issuedInvoices}</Typography>
         <Button variant="contained" disabled={!activeOrgId} onClick={() => navigateToPath('/invoices/new')}>{t.newInvoice}</Button>
       </Stack>
+      <InvoiceDraftList orgId={activeOrgId} languageCode={languageCode} />
       <Box sx={{ overflowX: 'auto' }}>
         <Table size="small" aria-label={t.issuedInvoices}>
           <TableHead><TableRow>

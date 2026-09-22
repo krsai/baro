@@ -49,6 +49,7 @@ function harness() {
     },
     '../../../constants/invoiceMessages': messageExports,
     '../order/InvoiceDraftDialog': { default: 'DraftDialog' },
+    './InvoiceDraftList': { default: 'DraftList' },
     '../../../hooks/useWorkspaceRefreshOnEvent': { default: () => {} },
   };
   vm.runInNewContext(ts.transpileModule(`${component}\nexport { InvoiceCustomerWorkspace, InvoiceMenuWorkspace };`, {

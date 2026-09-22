@@ -166,6 +166,8 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  invoiceDraftsSold InvoiceDraft[] @relation("InvoiceDraftSeller")
+  invoiceDraftsBought InvoiceDraft[] @relation("InvoiceDraftBuyer")
   id                       Int              @id @default(autoincrement())
   name                     String
   nameKo                   String?
@@ -1190,6 +1192,7 @@ model StyleProcessAtObservation {
 }
 
 model WorkOrder {
+  invoiceDraftOrders InvoiceDraftOrder[]
   id                   Int                         @id @default(autoincrement())
   orgId                Int
   orderId              String
@@ -1232,6 +1235,7 @@ model WorkOrder {
 }
 
 model WorkOrderItem {
+  invoiceDraftLines InvoiceDraftLine[]
   id                  Int                  @id @default(autoincrement())
   workOrderId         Int
   itemId              String               @default("")
@@ -1723,4 +1727,49 @@ model AssignmentCard {
   @@index([styleId])
   @@index([workOrderId])
   @@index([buyerOrgId])
+}
+
+// A draft has no invoice number, issued status, settlement balance or order lock.
+model InvoiceDraft {
+  id String @id @default(cuid())
+  sellerOrgId Int
+  buyerOrgId Int
+  clientKey String
+  revision Int @default(1)
+  content Json
+  createdBy String
+  updatedBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  seller Organization @relation("InvoiceDraftSeller", fields: [sellerOrgId], references: [id], onDelete: Restrict)
+  buyer Organization @relation("InvoiceDraftBuyer", fields: [buyerOrgId], references: [id], onDelete: Restrict)
+  orders InvoiceDraftOrder[]
+  lines InvoiceDraftLine[]
+  @@unique([sellerOrgId, clientKey])
+  @@index([sellerOrgId, updatedAt, id])
+  @@index([buyerOrgId])
+}
+
+model InvoiceDraftOrder {
+  id Int @id @default(autoincrement())
+  draftId String
+  workOrderId Int?
+  sourceOrderId String
+  sourceUpdatedAt DateTime
+  draft InvoiceDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  @@unique([draftId, sourceOrderId])
+  @@index([workOrderId])
+}
+
+model InvoiceDraftLine {
+  id Int @id @default(autoincrement())
+  draftId String
+  workOrderItemId Int?
+  sourceItemId Int
+  lineKey String
+  draft InvoiceDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  workOrderItem WorkOrderItem? @relation(fields: [workOrderItemId], references: [id], onDelete: SetNull)
+  @@unique([draftId, lineKey])
+  @@index([workOrderItemId])
 }

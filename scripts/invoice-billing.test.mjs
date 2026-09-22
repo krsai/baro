@@ -95,17 +95,22 @@ const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true, ord
     assignmentPlan: { async findMany(query) { queries.push(query); return plans; } },
     currency: { async findMany() { return [{ code: 'USD' }]; } },
   };
-  new Function('requireOrgRole', 'hasRoleAccessPolicyFeature', 'prisma', 'buildInvoiceSource', 'buildAssignmentPlanProgressRows', 'WORK_ORDER_ITEM_WITH_COLOR_INCLUDE', 'app', 'invoiceOrderProgress', routeCode)(
+  new Function('requireOrgRole', 'hasRoleAccessPolicyFeature', 'prisma', 'buildInvoiceSource', 'buildAssignmentPlanProgressRows', 'WORK_ORDER_ITEM_WITH_COLOR_INCLUDE', 'app', 'invoiceOrderProgress', 'registerInvoiceDraftRoutes', 'getRequesterEmail', routeCode)(
     async () => ({ organization: { id: 7, type }, orgMembership: { role: 'ACCOUNTANT' } }),
     async ({ feature }) => { assert.equal(feature, 'INVOICE'); return allowed; }, prisma,
     () => ({ ready: false }), (orgId, ids) => { assert.equal(orgId, 7); assert.ok(ids.length); return progress; }, {},
-    { get(paths, handler) { for (const path of [paths].flat()) routes.set(path, handler); } },
-    require('../backend/dist/services/invoiceOrderProgress.js').invoiceOrderProgress);
+    Object.fromEntries(['get', 'post', 'put', 'delete'].map(method => [method, (paths, handler) => {
+      for (const path of [paths].flat()) routes.set(method === 'get' ? path : `${method} ${path}`, handler);
+    }])),
+    require('../backend/dist/services/invoiceOrderProgress.js').invoiceOrderProgress,
+    require('../backend/dist/routes/invoiceDraft.routes.js').registerInvoiceDraftRoutes,
+    () => 'invoice-test@example.com');
   return { routes, response, queries };
 };
 test('invoice APIs reject missing permission and brand tenants before any order query', async () => {
   for (const options of [{ allowed: false }, { type: 'BRAND' }]) {
-    for (const path of ['/invoices/orders', '/invoices/customers']) {
+    for (const path of ['/invoices/orders', '/invoices/customers', '/invoices/drafts', '/invoices/drafts/:id',
+      'post /invoices/drafts', 'put /invoices/drafts/:id', 'delete /invoices/drafts/:id']) {
     const { routes, response, queries } = createRoutes(options);
     await routes.get(path)({ query: {} }, response);
     assert.equal(response.statusCode, 403);
