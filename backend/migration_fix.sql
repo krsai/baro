@@ -5117,3 +5117,22 @@ CREATE TABLE IF NOT EXISTS "InvoiceLine" (
 CREATE INDEX IF NOT EXISTS "InvoiceLine_invoiceOrderId_idx" ON "InvoiceLine"("invoiceOrderId");
 CREATE INDEX IF NOT EXISTS "InvoiceLine_workOrderItemId_idx" ON "InvoiceLine"("workOrderItemId");
 CREATE INDEX IF NOT EXISTS "InvoiceLine_sourceItemId_idx" ON "InvoiceLine"("sourceItemId");
+
+ALTER TABLE "InvoiceOrder" ADD COLUMN IF NOT EXISTS "installmentNumber" INTEGER;
+WITH numbered AS (
+  SELECT io.id, ROW_NUMBER() OVER (PARTITION BY i."sellerOrgId", io."sourceOrderId" ORDER BY i."sequenceNumber", io.id) AS n
+  FROM "InvoiceOrder" io JOIN "Invoice" i ON i.id=io."invoiceId"
+) UPDATE "InvoiceOrder" io SET "installmentNumber"=numbered.n FROM numbered WHERE io.id=numbered.id AND io."installmentNumber" IS NULL;
+ALTER TABLE "InvoiceOrder" ALTER COLUMN "installmentNumber" SET NOT NULL;
+CREATE INDEX IF NOT EXISTS "InvoiceOrder_sourceOrderId_installmentNumber_idx" ON "InvoiceOrder"("sourceOrderId","installmentNumber");
+CREATE TABLE IF NOT EXISTS "InvoicePayment" (
+  "id" TEXT PRIMARY KEY, "invoiceId" TEXT NOT NULL REFERENCES "Invoice"("id") ON DELETE RESTRICT ON UPDATE CASCADE, "clientKey" TEXT NOT NULL,
+  "amount" DECIMAL(24,4) NOT NULL, "currencyCode" TEXT NOT NULL, "receivedAt" TIMESTAMP(3) NOT NULL,
+  "reference" TEXT NOT NULL, "note" TEXT NOT NULL, "createdBy" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "voidedBy" TEXT, "voidedAt" TIMESTAMP(3), "voidReason" TEXT
+);
+ALTER TABLE "InvoicePayment" ADD COLUMN IF NOT EXISTS "clientKey" TEXT;
+UPDATE "InvoicePayment" SET "clientKey"='legacy-' || id WHERE "clientKey" IS NULL;
+ALTER TABLE "InvoicePayment" ALTER COLUMN "clientKey" SET NOT NULL;
+CREATE INDEX IF NOT EXISTS "InvoicePayment_invoiceId_receivedAt_id_idx" ON "InvoicePayment"("invoiceId","receivedAt","id");
+CREATE UNIQUE INDEX IF NOT EXISTS "InvoicePayment_invoiceId_clientKey_key" ON "InvoicePayment"("invoiceId","clientKey");

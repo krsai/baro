@@ -120,6 +120,12 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
         salesPriceLists: { where: { styleId: { in: styleIds } }, include: { currency: true, prices: true } } } });
     const sources = orders.map((order: any) => ({ ...buildInvoiceSource(order, [], [], relationship), workOrderId: order.id }));
     const calculated = calculateInvoiceIssueSnapshot(content, sources);
+    for (const order of calculated.orders) {
+      const prior = await tx.invoiceOrder.findFirst({ where: { sourceOrderId: order.sourceOrderId,
+        invoice: { sellerOrgId } }, orderBy: { installmentNumber: "desc" }, select: { installmentNumber: true } });
+      (order as any).installmentNumber = (prior?.installmentNumber || 0) + 1;
+    }
+    calculated.snapshot.orders = calculated.orders;
     const latest = await tx.invoice.findFirst({ where: { sellerOrgId }, orderBy: { sequenceNumber: "desc" }, select: { sequenceNumber: true } });
     const invoice = await tx.invoice.create({ data: { sellerOrgId, buyerOrgId: draft.buyerOrgId, invoiceNumber,
       clientKey: issueKey, sequenceNumber: (latest?.sequenceNumber || 0) + 1, pricingBasis: calculated.pricingBasis,
@@ -150,5 +156,39 @@ export async function cancelIssuedInvoice(db: any, sellerOrgId: number, actor: s
       data: { status: "CANCELLED", cancelledBy: actor, cancelledAt: new Date(), cancellationReason } });
     if (updated.count !== 1) throw createHttpError(409, STALE_EDIT);
     return tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId } });
+  });
+}
+
+export async function recordInvoicePayment(db: any, sellerOrgId: number, actor: string, invoiceId: string, body: any) {
+  const rawAmount = String(body?.amount || "").trim();
+  const clientKey = String(body?.clientKey || "").trim();
+  const receivedAt = new Date(String(body?.receivedAt || ""));
+  if (!/^\d+(\.\d{1,4})?$/.test(rawAmount) || Number(rawAmount) <= 0 || !/^[A-Za-z0-9_-]{16,100}$/.test(clientKey) || !Number.isFinite(receivedAt.getTime())) {
+    fail("INVOICE_PAYMENT_INVALID");
+  }
+  const reference = String(body?.reference || "").trim(), note = String(body?.note || "").trim();
+  if (reference.length > 500 || note.length > 2000) fail("INVOICE_PAYMENT_INVALID");
+  return editTransaction(db, async (tx: any) => {
+    const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId } });
+    if (!invoice) throw createHttpError(404, "INVOICE_NOT_FOUND");
+    const existing = await tx.invoicePayment.findFirst({ where: { invoiceId, clientKey } });
+    if (existing) return existing;
+    if (invoice.status !== "ISSUED") fail("INVOICE_PAYMENT_CANCELLED_INVOICE");
+    return tx.invoicePayment.create({ data: { invoiceId, clientKey, amount: rawAmount,
+      currencyCode: invoice.currencyCode, receivedAt, reference, note, createdBy: actor } });
+  });
+}
+
+export async function voidInvoicePayment(db: any, sellerOrgId: number, actor: string, paymentId: string, reason: unknown) {
+  const voidReason = String(reason || "").trim();
+  if (!voidReason || voidReason.length > 1000) fail("INVOICE_PAYMENT_VOID_REASON_REQUIRED");
+  return editTransaction(db, async (tx: any) => {
+    const payment = await tx.invoicePayment.findFirst({ where: { id: paymentId, invoice: { sellerOrgId } } });
+    if (!payment) throw createHttpError(404, "INVOICE_PAYMENT_NOT_FOUND");
+    if (payment.voidedAt) return payment;
+    const updated = await tx.invoicePayment.updateMany({ where: { id: paymentId, voidedAt: null },
+      data: { voidedAt: new Date(), voidedBy: actor, voidReason } });
+    if (updated.count !== 1) throw createHttpError(409, STALE_EDIT);
+    return tx.invoicePayment.findFirst({ where: { id: paymentId } });
   });
 }

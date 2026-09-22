@@ -5,7 +5,7 @@ import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 
 const require = createRequire(import.meta.url);
-const { calculateInvoiceIssueSnapshot } = require('../backend/dist/services/invoiceIssueStore.js');
+const { calculateInvoiceIssueSnapshot, recordInvoicePayment, voidInvoicePayment } = require('../backend/dist/services/invoiceIssueStore.js');
 const [schema, migration, routes] = await Promise.all([
   readFile(new URL('../backend/prisma/schema.prisma', import.meta.url), 'utf8'),
   readFile(new URL('../backend/migration_fix.sql', import.meta.url), 'utf8'),
@@ -44,6 +44,22 @@ test('issued snapshot fails closed when a current price is missing', () => {
   assert.throws(() => calculateInvoiceIssueSnapshot(content, [source('o1', 'A', '1.00'), missing]), /INVOICE_ISSUE_PRICE_MISSING/);
 });
 
+test('actual payments are separate, idempotent records and voiding preserves the original row', async () => {
+  let payment = null;
+  const db = { $transaction: async run => run(db), invoice: { findFirst: async () => ({ id: 'i', status: 'ISSUED', currencyCode: 'USD' }) },
+    invoicePayment: {
+      findFirst: async ({ where }) => payment && (where.id === payment.id || where.clientKey === payment.clientKey) ? payment : null,
+      create: async ({ data }) => (payment = { id: 'p', ...data, voidedAt: null }),
+      updateMany: async ({ data }) => { payment = { ...payment, ...data }; return { count: 1 }; },
+    } };
+  const body = { clientKey: 'payment_key_123456', amount: '30.00', receivedAt: '2026-09-22T00:00:00.000Z', reference: 'BANK-1' };
+  const first = await recordInvoicePayment(db, 1, 'actor', 'i', body);
+  const retried = await recordInvoicePayment(db, 1, 'actor', 'i', body);
+  assert.equal(first.id, retried.id); assert.equal(first.currencyCode, 'USD');
+  const voided = await voidInvoicePayment(db, 1, 'admin', 'p', 'wrong transfer');
+  assert.equal(voided.voidReason, 'wrong transfer'); assert.ok(voided.voidedAt);
+});
+
 test('ledger schema and routes preserve immutable order and line snapshots', () => {
   assert.match(schema, /model Invoice \{/);
   assert.match(schema, /@@unique\(\[sellerOrgId, invoiceNumber\]\)/);
@@ -53,6 +69,8 @@ test('ledger schema and routes preserve immutable order and line snapshots', () 
   assert.match(routes, /\/invoices\/drafts\/:id\/issue/);
   assert.match(routes, /\/invoices\/issued/);
   assert.match(routes, /\/invoices\/issued\/:id\/cancel/);
+  assert.match(routes, /\/invoices\/issued\/:id\/payments/);
+  assert.match(routes, /\/invoices\/payments\/:id\/void/);
 });
 
 test('issued ledger bootstrap is repeatable and preserves snapshots when source rows are deleted', async () => {
@@ -67,8 +85,8 @@ test('issued ledger bootstrap is repeatable and preserves snapshots when source 
     await db.exec(`INSERT INTO "Organization" VALUES (1),(2); INSERT INTO "WorkOrder" VALUES (3); INSERT INTO "WorkOrderItem" VALUES (4);
       INSERT INTO "Invoice" (id,"sellerOrgId","buyerOrgId","invoiceNumber","clientKey","sequenceNumber","pricingBasis","currencyCode",subtotal,total,snapshot,"issuedBy")
       VALUES ('i',1,2,'INV-1','key',1,'MANUFACTURING_SERVICE_PRICE','USD',10,5,'{}','actor');
-      INSERT INTO "InvoiceOrder" ("invoiceId","workOrderId","sourceOrderId","sourceOrderNumber","sourceUpdatedAt","billingPercentage","basisAmount","billedAmount")
-      VALUES ('i',3,'o','O-1',now(),50,10,5);
+      INSERT INTO "InvoiceOrder" ("invoiceId","workOrderId","sourceOrderId","sourceOrderNumber","sourceUpdatedAt","billingPercentage","basisAmount","billedAmount","installmentNumber")
+      VALUES ('i',3,'o','O-1',now(),50,10,5,1);
       INSERT INTO "InvoiceLine" ("invoiceId","invoiceOrderId","workOrderItemId","sourceItemId","lineKey","styleCode","styleName",description,color,gender,size,quantity,"bucketQuantity","unitPrice",amount,remark,"adjustmentReason","hsCode",origin)
       SELECT 'i',id,4,4,'line','S','Style','Style','','','',1,1,10,10,'','','','' FROM "InvoiceOrder" WHERE "invoiceId"='i';
       DELETE FROM "WorkOrderItem"; DELETE FROM "WorkOrder";`);

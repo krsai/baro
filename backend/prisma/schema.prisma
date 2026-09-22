@@ -1806,6 +1806,7 @@ model Invoice {
   buyer Organization @relation("InvoiceBuyer", fields: [buyerOrgId], references: [id], onDelete: Restrict)
   orders InvoiceOrder[]
   lines InvoiceLine[]
+  payments InvoicePayment[]
   @@unique([sellerOrgId, invoiceNumber])
   @@unique([sellerOrgId, clientKey])
   @@unique([sellerOrgId, sequenceNumber])
@@ -1824,12 +1825,33 @@ model InvoiceOrder {
   billingPercentage Decimal @db.Decimal(7, 2)
   basisAmount Decimal @db.Decimal(24, 4)
   billedAmount Decimal @db.Decimal(24, 4)
+  installmentNumber Int
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
   workOrder WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   lines InvoiceLine[]
   @@unique([invoiceId, sourceOrderId])
   @@index([workOrderId])
   @@index([sourceOrderId])
+  @@index([sourceOrderId, installmentNumber])
+}
+
+model InvoicePayment {
+  id String @id @default(cuid())
+  invoiceId String
+  clientKey String
+  amount Decimal @db.Decimal(24, 4)
+  currencyCode String
+  receivedAt DateTime
+  reference String
+  note String
+  createdBy String
+  createdAt DateTime @default(now())
+  voidedBy String?
+  voidedAt DateTime?
+  voidReason String?
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  @@index([invoiceId, receivedAt, id])
+  @@unique([invoiceId, clientKey])
 }
 
 model InvoiceLine {

@@ -170,8 +170,9 @@ function assertGeneratedPrismaClientShape() {
     InvoiceDraftOrder: ["id", "draftId", "workOrderId", "sourceOrderId", "sourceUpdatedAt"],
     InvoiceDraftLine: ["id", "draftId", "workOrderItemId", "sourceItemId", "lineKey"],
     Invoice: ["id", "sellerOrgId", "buyerOrgId", "invoiceNumber", "clientKey", "sequenceNumber", "status", "pricingBasis", "currencyCode", "subtotal", "total", "snapshot", "issuedBy", "issuedAt", "cancelledBy", "cancelledAt", "cancellationReason"],
-    InvoiceOrder: ["id", "invoiceId", "workOrderId", "sourceOrderId", "sourceOrderNumber", "sourceUpdatedAt", "billingPercentage", "basisAmount", "billedAmount"],
+    InvoiceOrder: ["id", "invoiceId", "workOrderId", "sourceOrderId", "sourceOrderNumber", "sourceUpdatedAt", "billingPercentage", "basisAmount", "billedAmount", "installmentNumber"],
     InvoiceLine: ["id", "invoiceId", "invoiceOrderId", "workOrderItemId", "sourceItemId", "lineKey", "styleId", "styleCode", "styleName", "description", "color", "gender", "size", "quantity", "bucketQuantity", "unitPrice", "amount", "priceId", "bucketVersionId", "remark", "adjustmentReason", "hsCode", "origin"],
+    InvoicePayment: ["id", "invoiceId", "clientKey", "amount", "currencyCode", "receivedAt", "reference", "note", "createdBy", "createdAt", "voidedBy", "voidedAt", "voidReason"],
   })) {
     for (const field of fields) {
       if (!hasField(model, field)) staleSignals.push(model + "." + field + " is missing");
@@ -1008,6 +1009,8 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "InvoiceLine_invoiceId_fkey",
   "InvoiceLine_invoiceOrderId_fkey",
   "InvoiceLine_workOrderItemId_fkey",
+  "InvoicePayment_invoiceId_fkey",
+  "InvoicePayment_invoiceId_clientKey_key",
   "Currency_code_key",
   "Organization_salaryCurrencyId_idx",
   "Organization_salaryCurrency_fkey",

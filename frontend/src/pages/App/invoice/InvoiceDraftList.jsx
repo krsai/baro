@@ -7,6 +7,13 @@ import InvoiceDraftDialog from '../order/InvoiceDraftDialog';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 
+const subtractInvoiceMoney = (left, right) => {
+  const minor = value => { const [whole, fraction = ''] = String(value || '0').split('.'); return BigInt(whole || '0') * 10000n + BigInt(fraction.padEnd(4, '0').slice(0, 4)); };
+  const result = minor(left) - minor(right), negative = result < 0n, absolute = negative ? -result : result;
+  const text = absolute.toString().padStart(5, '0');
+  return `${negative ? '-' : ''}${text.slice(0, -4)}.${text.slice(-4)}`;
+};
+
 export default function InvoiceDraftList({ orgId, languageCode }) {
   const t = invoiceDraftStorageMessages[languageCode] || invoiceDraftStorageMessages.en;
   const common = invoiceMessages[languageCode] || invoiceMessages.en;
@@ -57,11 +64,21 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId }); setReload(value => value + 1);
     } catch (e) { setError(String(e.message).includes('REVERSE_ORDER') ? (languageCode === 'ko' ? '후속 회차를 먼저 취소해야 합니다.' : 'Cancel later installments first.') : t.failed); }
   };
+  const addPayment = async row => {
+    const amount = window.prompt(languageCode === 'ko' ? `실입금액을 입력하세요. (${row.currencyCode})` : `Enter received amount (${row.currencyCode}).`);
+    if (!amount?.trim()) return;
+    const reference = window.prompt(languageCode === 'ko' ? '입금 참고번호를 입력하세요. (선택)' : 'Payment reference (optional).') || '';
+    try { await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}/payments${buildQueryString({ orgId })}`, {
+      method: 'POST', body: JSON.stringify({ clientKey: globalThis.crypto.randomUUID(), amount: amount.trim(),
+        receivedAt: new Date().toISOString(), reference, note: '' }),
+    }); emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId }); setReload(value => value + 1);
+    } catch { setError(t.failed); }
+  };
   return <Stack spacing={2}>
     <Typography variant="h6">{languageCode === 'ko' ? '발행된 청구서' : languageCode === 'vi' ? 'Hóa đơn đã phát hành' : 'Issued invoices'}</Typography>
-    <Table size="small"><TableHead><TableRow>{[common.invoiceNumber, common.customerName, common.amount, t.updated, ''].map((label, i) => <TableCell key={i}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
-      {!issued.rows.length && <TableRow><TableCell colSpan={5}>{languageCode === 'ko' ? '발행된 청구서가 없습니다.' : 'No issued invoices.'}</TableCell></TableRow>}
-      {issued.rows.map(row => <TableRow key={row.id}><TableCell>{row.invoiceNumber}<Typography variant="caption" display="block">{row.status}</Typography></TableCell><TableCell>{row.buyerName}</TableCell><TableCell>{row.currencyCode} {row.total}</TableCell><TableCell>{new Date(row.issuedAt).toLocaleString()}</TableCell><TableCell><Button onClick={() => printIssued(row)}>PDF</Button>{row.status === 'ISSUED' && <Button color="error" onClick={() => cancelIssued(row)}>{languageCode === 'ko' ? '취소' : 'Cancel'}</Button>}</TableCell></TableRow>)}
+    <Table size="small"><TableHead><TableRow>{[common.invoiceNumber, common.customerName, common.amount, languageCode === 'ko' ? '입금 / 미수' : 'Received / Due', t.updated, ''].map((label, i) => <TableCell key={i}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
+      {!issued.rows.length && <TableRow><TableCell colSpan={6}>{languageCode === 'ko' ? '발행된 청구서가 없습니다.' : 'No issued invoices.'}</TableCell></TableRow>}
+      {issued.rows.map(row => { const due = subtractInvoiceMoney(row.total, row.receivedAmount); return <TableRow key={row.id}><TableCell>{row.invoiceNumber}<Typography variant="caption" display="block">{row.status} · {row.orders.map(order => `${order.sourceOrderNumber} ${order.installmentNumber}차`).join(', ')}</Typography></TableCell><TableCell>{row.buyerName}</TableCell><TableCell>{row.currencyCode} {row.total}</TableCell><TableCell>{row.currencyCode} {row.receivedAmount} / {due}</TableCell><TableCell>{new Date(row.issuedAt).toLocaleString()}</TableCell><TableCell><Button onClick={() => printIssued(row)}>PDF</Button>{row.status === 'ISSUED' && <><Button onClick={() => addPayment(row)}>{languageCode === 'ko' ? '입금' : 'Payment'}</Button><Button color="error" onClick={() => cancelIssued(row)}>{languageCode === 'ko' ? '취소' : 'Cancel'}</Button></>}</TableCell></TableRow>; })}
     </TableBody></Table>
     <Typography variant="h6">{t.title}</Typography>
     {error && <Alert severity="error" action={<Button onClick={() => setReload(value => value + 1)}>{common.retry}</Button>}>{error}</Alert>}

@@ -110,7 +110,7 @@ test('all draft routes require invoice access before reading or writing; reads a
   const routes = [];
   const app = Object.fromEntries(['get', 'post', 'put', 'delete'].map(method => [method, (path, handler) => routes.push({ method, path, handler })]));
   registerInvoiceDraftRoutes(app, { db: {}, requireAccess: async () => null });
-  assert.equal(routes.length, 9);
+  assert.equal(routes.length, 11);
   for (const route of routes) await route.handler({}, {});
   routes.length = 0;
   const scopes = [];
