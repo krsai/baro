@@ -61,7 +61,8 @@ test('order value rejects partial totals while preserving missing-line evidence'
 test('the order list opens a currency-aware calculation dialog', () => {
   assert.match(server, /calculateOrderSalesValue\(order, relationship\)/);
   assert.match(server, /currentOrderValue: currentOrderValueByOrderDbId\.get\(order\.id\)/);
-  assert.match(page, /setOrderValueDetail\(order\)/);
+  assert.match(page, /setOrderValueDetailId\(order\.id\)/);
+  assert.match(page, /WORKSPACE_DATA_TOPICS\.ORDERS, WORKSPACE_DATA_TOPICS\.SALES_PRICES/);
   assert.match(page, /currentOrderValue\?\.lines/);
   assert.match(page, /formatOrderValue\(order\.currentOrderValue\.amount, order\.currentOrderValue\.currencyCode\)/);
   assert.match(page, /style: 'currency'/);

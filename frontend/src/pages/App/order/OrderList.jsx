@@ -1447,7 +1447,7 @@ const OrderList = () => {
 
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
-    topics: isDetailMode ? [] : [WORKSPACE_DATA_TOPICS.ORDERS],
+    topics: isDetailMode ? [] : [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.SALES_PRICES],
     isActive: isOrderListRouteActive,
     onRefresh: () => loadOrdersFromDb({ forceRefresh: true }),
     shouldHandle: (detail) =>
@@ -2111,7 +2111,11 @@ const OrderList = () => {
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [saveIssueRows, setSaveIssueRows] = useState([]);
   const [saveIssueDialogOpen, setSaveIssueDialogOpen] = useState(false);
-  const [orderValueDetail, setOrderValueDetail] = useState(null);
+  const [orderValueDetailId, setOrderValueDetailId] = useState(null);
+  const orderValueDetail = useMemo(
+    () => orders.find((order) => order.id === orderValueDetailId) || null,
+    [orderValueDetailId, orders]
+  );
   const orderDataChangedEventSourceRef = useRef(createId('order-data'));
   const emitOrderDataChanged = useCallback(() => {
     emitWorkspaceDataChanged({
@@ -3155,7 +3159,7 @@ const OrderList = () => {
                             <Button
                               variant="text"
                               size="small"
-                              onClick={(event) => { event.stopPropagation(); setOrderValueDetail(order); }}
+                              onClick={(event) => { event.stopPropagation(); setOrderValueDetailId(order.id); }}
                               onDoubleClick={(event) => event.stopPropagation()}
                               sx={{ minWidth: 0, p: 0.25, fontWeight: 700, whiteSpace: 'nowrap' }}
                             >
@@ -3167,7 +3171,7 @@ const OrderList = () => {
                               color="warning"
                               variant="outlined"
                               label={orderPageText.missingSalesPrice}
-                              onClick={(event) => { event.stopPropagation(); setOrderValueDetail(order); }}
+                              onClick={(event) => { event.stopPropagation(); setOrderValueDetailId(order.id); }}
                               onDoubleClick={(event) => event.stopPropagation()}
                             />
                           )}
@@ -3194,7 +3198,7 @@ const OrderList = () => {
           </TableContainer>
         </Paper>
       </AppPageContainer>
-      <Dialog open={Boolean(orderValueDetail)} onClose={() => setOrderValueDetail(null)} maxWidth="md" fullWidth>
+      <Dialog open={Boolean(orderValueDetail)} onClose={() => setOrderValueDetailId(null)} maxWidth="md" fullWidth>
         <DialogTitle>
           {orderValueDetailText.title}
           {orderValueDetail?.orderNumber ? ` · ${orderValueDetail.orderNumber}` : ''}
@@ -3262,7 +3266,7 @@ const OrderList = () => {
           </TableContainer>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOrderValueDetail(null)}>{orderValueDetailText.close}</Button>
+          <Button onClick={() => setOrderValueDetailId(null)}>{orderValueDetailText.close}</Button>
         </DialogActions>
       </Dialog>
       <Dialog open={saveIssueDialogOpen} onClose={() => setSaveIssueDialogOpen(false)} maxWidth="md" fullWidth>
