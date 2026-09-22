@@ -33,13 +33,13 @@ import SearchInput from '../../../components/SearchInput';
 
 const INVENTORY_MOVEMENT_TYPES = [
   { value: 'INBOUND_CUSTOMER', label: '고객 입고(+)' },
-  { value: 'ISSUE_TO_LINE', label: '라인 불출(-)' },
+  { value: 'ISSUE_TO_PRODUCTION', label: '생산 불출(-)' },
   { value: 'ADJUSTMENT', label: '운영자 조정(+/-)' },
 ];
 
 const STOCK_MOVEMENT_DIRECTION = {
   INBOUND_CUSTOMER: 1,
-  ISSUE_TO_LINE: -1,
+  ISSUE_TO_PRODUCTION: -1,
   ADJUSTMENT: 1,
 };
 
@@ -88,10 +88,10 @@ const INITIAL_MOVEMENTS = [
   },
   {
     id: 'm2',
-    type: 'ISSUE_TO_LINE',
+    type: 'ISSUE_TO_PRODUCTION',
     itemId: 101,
     quantity: -75,
-    counterpart: '라인 2',
+    counterpart: '생산 부서',
     reason: '',
     createdAt: '2026-03-05 10:30',
   },
@@ -450,7 +450,7 @@ const InventoryBoard = () => {
           <Card variant="outlined">
             <CardHeader
               title="입고/불출 기록 (UI)"
-              subheader="고객 입고, 라인 불출, 조정을 하나의 입력 흐름으로 기록"
+              subheader="고객 입고, 생산 불출, 조정을 하나의 입력 흐름으로 기록"
             />
             <CardContent>
               <Stack spacing={1.5}>
@@ -492,7 +492,7 @@ const InventoryBoard = () => {
                   />
                   <TextField
                     size="small"
-                    label="상대(고객/라인)"
+                    label="상대(고객/생산)"
                     value={movementDraft.counterpart}
                     onChange={(event) =>
                       setMovementDraft((prev) => ({ ...prev, counterpart: event.target.value }))

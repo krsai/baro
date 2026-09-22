@@ -49,7 +49,7 @@ test('AT sync fail-closed paths clear stale v2 observations', () => {
 
 test('assignment card AT uses hydrated v2 mirrors and fails closed on a missing process', () => {
   const rebuildStart = backendSource.indexOf(
-    'const rebuildAssignmentCardsForOrg ='
+    'const rebuildAssignmentCardsForOrgTx ='
   );
   const rebuildEnd = backendSource.indexOf(
     'const resolveAssignmentPlanPayrollLockMonth',
@@ -232,7 +232,7 @@ test('split production from one assignment does not create an AT curve', () => {
       laborInputSeconds: 5000,
       sourceGroupKey: 'assignmentPlan:42',
     }),
-  ]);
+  ], { initialPerPieceByMetricKey: new Map([[metricKey, 100], [siblingMetricKey, 200]]) });
 
   const fitted = result.paramsByMetric.get(metricKey);
   assert.ok(fitted);
@@ -260,7 +260,7 @@ test('matching quantity variation from independent assignments can create an AT 
       laborInputSeconds: 5000,
       sourceGroupKey: 'assignmentPlan:43',
     }),
-  ]);
+  ], { initialPerPieceByMetricKey: new Map([[metricKey, 100], [siblingMetricKey, 200]]) });
 
   const fitted = result.paramsByMetric.get(metricKey);
   assert.ok(fitted);
@@ -298,7 +298,7 @@ test('implausibly low fitted params are rejected instead of saved as curves', ()
   assert.equal(result.diagnostics.statusCounts.IMPLAUSIBLY_LOW_AT_PARAMS, 1);
 });
 
-test('implausibly low fitted curve falls back to safe observed provisional AT', () => {
+test('event count metadata does not distort total-labor regression', () => {
   const result = fitAtParamsWithProportionalAllocation([
     createDay({
       dayKey: '2026-05-31#286',
@@ -322,17 +322,17 @@ test('implausibly low fitted curve falls back to safe observed provisional AT', 
 
   const fitted = result.paramsByMetric.get(metricKey);
   assert.ok(fitted);
-  assert.equal(fitted.fitStatus, 'USED_PROVISIONAL');
-  assert.equal(fitted.fallbackReason, 'IMPLAUSIBLY_LOW_AT_PARAMS');
-  assert.equal(fitted.b, 0);
-  assert.ok(fitted.a >= 31 && fitted.a <= 32, `unexpected provisional a=${fitted.a}`);
+  assert.equal(fitted.fitStatus, 'FITTED');
+  assert.equal(fitted.fallbackReason, null);
+  assert.ok(Math.abs(fitted.a - (8589.03306109015 - 7111.376615904082) / 100) < 0.001);
+  assert.ok(Math.abs(fitted.a * 200 + fitted.b - 7111.376615904082) < 0.1);
 });
 
-test('rejected process fits reset their allocation seed instead of leaking time to siblings', () => {
+test('one-pass ST allocation preserves worker labor and never feeds fitted AT into siblings', () => {
   const initialSeeds = new Map([
-    [metricKey, 135.08326770064136],
-    [siblingMetricKey, 58.245791054996545],
-    [thirdMetricKey, 131.86414378465648],
+    [metricKey, 135.0833],
+    [siblingMetricKey, 58.2458],
+    [thirdMetricKey, 131.8641],
   ]);
 
   const result = fitAtParamsWithProportionalAllocation([
@@ -415,21 +415,53 @@ test('rejected process fits reset their allocation seed instead of leaking time 
     initialPerPieceByMetricKey: initialSeeds,
   });
 
-  assert.equal(result.diagnostics.resetMetricCount, 1);
-  assert.ok(result.diagnostics.rejectedMetricCount >= 1);
+  assert.equal(result.iterationCount, 1);
+  assert.equal(result.diagnostics.resetMetricCount, 0);
+  for (const dayKey of new Set(result.allocatedObservations.map(row => row.dayKey))) {
+    const rows = result.allocatedObservations.filter(row => row.dayKey === dayKey);
+    const totalSt = rows.reduce((sum, row) => sum + row.quantity * initialSeeds.get(row.metricKey), 0);
+    const source = rows[0].sourceLaborInputSeconds;
+    const allocatable = Math.min(source, totalSt * 2);
+    assert.ok(Math.abs(rows.reduce((sum, row) => sum + row.laborInputSeconds, 0) - allocatable) < 1e-6);
+    for (const row of rows) {
+      assert.ok(Math.abs(row.laborInputSeconds - allocatable * row.quantity * initialSeeds.get(row.metricKey) / totalSt) < 1e-6);
+      assert.equal(row.unexplainedLaborInputSeconds, source - allocatable);
+    }
+  }
+});
 
-  const rejected = result.paramsByMetric.get(siblingMetricKey);
-  assert.ok(rejected);
-  assert.equal(rejected.fitStatus, 'USED_PROVISIONAL');
-  assert.equal(rejected.fallbackReason, 'NEGATIVE_OR_INVALID_PARAMS');
+test('missing ST seeds cannot fabricate allocated observations', () => {
+  const day = createDay({ dayKey: 'missing', order: 0, quantity: 100, laborInputSeconds: 10000 });
+  const result = fitAtParamsWithProportionalAllocation([day]);
+  assert.equal(result.paramsByMetric.size, 0);
+  assert.deepEqual(result.allocatedObservations, []);
+  const mixed = { ...day, processRows: [...day.processRows, { metricKey: siblingMetricKey, quantity: 100 }] };
+  const partial = fitAtParamsWithProportionalAllocation([mixed], { initialPerPieceByMetricKey: new Map([[metricKey, 100]]) });
+  assert.deepEqual(partial.allocatedObservations, []);
+});
 
-  const stableSibling = result.paramsByMetric.get(metricKey);
-  assert.ok(stableSibling);
-  assert.equal(stableSibling.fitStatus, 'FITTED');
-  assert.ok(
-    stableSibling.a < initialSeeds.get(metricKey) * 2,
-    `expected sibling fit to stay bounded, got a=${stableSibling.a}`
-  );
+test('ST cap preserves unexplained time and eventCount never changes allocation or fit', () => {
+  const days = [100, 200].map((quantity, order) => createDay({ dayKey: String(order), order, quantity, laborInputSeconds: quantity * 500, sourceGroupKey: `assignmentPlan:${order + 1}` }));
+  const options = { initialPerPieceByMetricKey: new Map([[metricKey, 100]]) };
+  const result = fitAtParamsWithProportionalAllocation(days, options);
+  const changed = fitAtParamsWithProportionalAllocation(days.map(day => ({ ...day, processRows: day.processRows.map(row => ({ ...row, eventCount: 27 })) })), options);
+  for (const row of result.allocatedObservations) {
+    assert.equal(row.laborInputSeconds, row.quantity * 200);
+    assert.equal(row.unexplainedLaborInputSeconds, row.quantity * 300);
+    assert.equal(row.laborInputSeconds + row.unexplainedLaborInputSeconds, row.sourceLaborInputSeconds);
+  }
+  assert.equal(result.paramsByMetric.get(metricKey).a, changed.paramsByMetric.get(metricKey).a);
+  assert.equal(result.paramsByMetric.get(metricKey).b, changed.paramsByMetric.get(metricKey).b);
+});
+
+test('a rejected sub-second curve retains a valid observed provisional value', () => {
+  const days = [200, 300].map((quantity, order) => createDay({ dayKey: String(order), order, quantity, laborInputSeconds: 9000 + 0.5 * quantity, sourceGroupKey: `assignmentPlan:${order + 1}` }));
+  const result = fitAtParamsWithProportionalAllocation(days, { initialPerPieceByMetricKey: new Map([[metricKey, 105]]) });
+  const fitted = result.paramsByMetric.get(metricKey);
+  assert.equal(fitted.fitStatus, 'USED_PROVISIONAL');
+  assert.equal(fitted.fallbackReason, 'IMPLAUSIBLY_LOW_AT_PARAMS');
+  assert.equal(fitted.b, 0);
+  assert.ok(fitted.a >= 30.5 && fitted.a <= 45.5);
 });
 
 test('missing source keys are not treated as independent observations', () => {
@@ -448,7 +480,7 @@ test('missing source keys are not treated as independent observations', () => {
       laborInputSeconds: 5000,
       sourceGroupKey: null,
     }),
-  ]);
+  ], { initialPerPieceByMetricKey: new Map([[metricKey, 100], [siblingMetricKey, 200]]) });
 
   const fitted = result.paramsByMetric.get(metricKey);
   assert.ok(fitted);
@@ -475,7 +507,7 @@ test('records without assignment plans stay grouped by process for fitting', () 
       laborInputSeconds: 5000,
       sourceGroupKey: 'missingAssignmentPlan:process:1',
     }),
-  ]);
+  ], { initialPerPieceByMetricKey: new Map([[metricKey, 100], [siblingMetricKey, 200]]) });
 
   const fitted = result.paramsByMetric.get(metricKey);
   assert.ok(fitted);
@@ -512,7 +544,7 @@ test('worker-scoped buckets do not allocate one worker labor to another worker p
         assignmentPlanId: 502,
       }],
     },
-  ]);
+  ], { initialPerPieceByMetricKey: new Map([[metricKey, 100], [siblingMetricKey, 200]]) });
 
   assert.equal(result.paramsByMetric.get(metricKey)?.a, 100);
   assert.equal(result.paramsByMetric.get(siblingMetricKey)?.a, 200);

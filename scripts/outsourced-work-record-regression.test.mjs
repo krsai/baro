@@ -113,7 +113,7 @@ test('OUTSOURCING_RECORD is its own access-control feature, independent of WORK_
 });
 
 test('sales partner screen lists both localized partner types and exposes history', () => {
-  assert.match(partnerPage, /title=\{labels\.title\}/);
+  assert.match(partnerPage, /title=\{pageTitle\}/);
   assert.match(partnerPage, /getBusinessPartnerTypeLabel/);
   assert.match(partnerPage, /record\.unitPrice/);
   assert.match(partnerPage, /record\.quantity/);

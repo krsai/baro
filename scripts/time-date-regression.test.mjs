@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { loadSourceBindings } from './helpers/source-bindings.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { formatDateKeyInTimeZone, todayDateKey } from '../frontend/src/utils/dateKey.mjs';
@@ -139,20 +140,28 @@ test('production allowance board uses the server business calendar instead of br
   assert.match(payrollBoardSource, /renderValue: \(value\) => value \|\| allMonthsLabel/);
 });
 
-test('payroll persistence requires complete work records but keeps attendance informational', () => {
-  assert.match(payrollServiceSource, /month >= currentMonth/);
-  assert.match(payrollServiceSource, /production allowance can only be calculated through the previous month/);
-  assert.match(payrollServiceSource, /getPayrollMonthReadiness\(orgId, month\)/);
-  assert.match(payrollServiceSource, /monthly work records are incomplete/);
-  assert.match(payrollServiceSource, /missingWorkDates\.length === 0 &&\s+invalidCalculationBasisCount === 0/);
-  assert.match(payrollServiceSource, /getPayrollByMonth\(orgId, month, \{ ignoreSnapshot: true \}\)/);
-  assert.match(payrollServiceSource, /isProvisional: !monthReady/);
-  assert.match(payrollServiceSource, /prisma\.payrollSnapshot\.upsert\(/);
-  assert.match(payrollServiceSource, /prisma\.payrollSnapshot\.delete\(/);
-  assert.match(payrollServiceSource, /needsRecalculation/);
-  assert.match(payrollServiceSource, /groupsWithRecalculation/);
-  assert.match(payrollServiceSource, /configuredRateChanged/);
-  assert.match(payrollServiceSource, /configuredWagePerSecond/);
+test('payroll save rejects current month, missing factory and locked snapshots before calculation', async () => {
+  for (const scenario of ['future', 'missing-factory', 'locked', 'incomplete']) {
+    let calculated = false;
+    const { savePayrollSnapshot } = loadSourceBindings('backend/src/payroll/payroll.service.ts', ['savePayrollSnapshot'], {
+      assertPayrollMonth: () => {},
+      toPositiveIntOrNull: value => Number(value) > 0 ? Number(value) : null,
+      createHttpError: (status, message) => Object.assign(new Error(message), { status }),
+      resolveCurrentPayrollMonthKey: () => '2026-09',
+      prisma: { payrollSnapshot: { findUnique: async ({ where }) => {
+        assert.deepEqual(where, { orgId_month_factoryId: { orgId: 1, month: '2026-08', factoryId: 2 } });
+        return scenario === 'locked' ? { isProvisional: false } : null;
+      } } },
+      getPayrollMonthReadiness: async (orgId, month, factoryId) => {
+        assert.deepEqual([orgId, month, factoryId], [1, '2026-08', 2]);
+        return { ready: false, invalidPayrollAttendance: [] };
+      },
+      getPayrollByMonth: async () => { calculated = true; throw new Error('unexpected calculation'); },
+    });
+    const expected = { future: /previous month/, 'missing-factory': /factoryId is required/, locked: /unlock payroll/, incomplete: /attendance and work records are incomplete/ };
+    await assert.rejects(savePayrollSnapshot({ orgId: 1, month: scenario === 'future' ? '2026-09' : '2026-08', factoryId: scenario === 'missing-factory' ? null : 2, savedBy: 'test' }), expected[scenario]);
+    assert.equal(calculated, false);
+  }
 });
 
 test('production startup applies safe database schema synchronization before serving requests', () => {
@@ -170,97 +179,41 @@ test('production allowance confirmation neither depends on shipment settlement n
   assert.doesNotMatch(quantitySettlementServiceSource, /quantity settlement locked by payroll/);
 });
 
-test('production allowance is calculated from the board and rows open read-only details', () => {
-  assert.match(payrollBoardSource, /canCalculate/);
-  assert.match(payrollBoardSource, /readinessByMonth\[month\]/);
-  assert.match(payrollBoardSource, /calculableMonths/);
-  assert.match(payrollBoardSource, /monthReadiness\?\.ready && !snapshot/);
-  assert.match(payrollBoardSource, /calculableMonths\.length > 0/);
-  assert.match(payrollBoardSource, /for \(const month of calculableMonths\)/);
-  assert.match(payrollBoardSource, /\/payroll\/readiness/);
-  assert.match(payrollBoardSource, /requestJSON\('\/payroll\/snapshots'/);
-  assert.match(payrollBoardSource, /snapshots\.map\(\(snapshot\)/);
-  assert.match(payrollBoardSource, /navigateToPath\(`\/payroll\/\$\{month\}`/);
-  assert.match(payrollBoardSource, /snapshot\.isProvisional/);
-  assert.doesNotMatch(payrollBoardSource, /\/payroll\/new/);
-  assert.match(payrollBoardSource, /\/payroll\/snapshots\/\$\{month\}\/unlock/);
-  assert.match(payrollBoardSource, /method: 'DELETE'/);
-  assert.match(payrollBoardSource, /<LockToggleSwitch/);
-  assert.match(payrollBoardSource, /await load\(\{ silent: true \}\)/);
-  assert.match(payrollBoardSource, /setSnapshots\(\(previous\) => previous\.map/);
-  assert.match(payrollBoardSource, /<DeleteActionButton/);
-  assert.match(payrollServiceSource, /unlock production allowance before deletion/);
-  assert.match(payrollServiceSource, /isProvisional: true/);
-  assert.match(payrollServiceSource, /export const lockPayrollSnapshot/);
-  assert.match(payrollBoardSource, /monthRows\.map/);
-  assert.match(payrollBoardSource, /filteredMonthRows\.flatMap/);
-  assert.match(payrollBoardSource, /group\.factoryId/);
-  assert.match(payrollBoardSource, /group\.factoryId/);
-  assert.match(payrollBoardSource, /snapshotLineTotal \/ snapshotEmployeeCount/);
-  assert.match(payrollBoardSource, /snapshotAppliedRate/);
-  assert.match(payrollBoardSource, /forceRefresh: true/);
-  assert.doesNotMatch(payrollBoardSource, /snapshot\?\.lockedBy/);
-  assert.doesNotMatch(payrollBoardSource, /snapshot\?\.lockedAt \?/);
-  assert.match(payrollServiceSource, /export const unlockPayrollSnapshot/);
-  assert.match(payrollServiceSource, /recalculationRequested: true/);
-  assert.match(payrollServiceSource, /snapshot\?\.recalculationRequested/);
-  assert.match(payrollServiceSource, /recalculationRequested: false/);
+test('payroll board calculates and opens details with explicit factory scope', () => {
+  assert.match(payrollBoardSource, /rowKey\(row\.month, row\.factory\.id\)/);
+  assert.match(payrollBoardSource, /factoryId: row\.factory\.id/);
+  assert.match(payrollBoardSource, /navigateToPath\(`\/payroll\/\$\{month\}\?factoryId=\$\{factory\.id\}/);
+  assert.match(payrollBoardSource, /readinessByKey\[key\]/);
+  assert.match(payrollBoardSource, /row\.snapshot\.isProvisional === true/);
+  assert.match(payrollBoardSource, /monthReadiness\?\.needsRecalculation === true/);
 });
 
-test('production allowance calculation excludes unfinished salary components', () => {
-  assert.match(payrollEntrySource, /Production allowance = quantity × CT seconds × the current factory rate when the month is calculated/);
-  assert.match(payrollServiceSource, /resolveEmployeeEffectivePayType\(employee\) === EMPLOYEE_PAY_TYPE\.OUTPUT/);
-  assert.match(payrollServiceSource, /productionAllowance/);
+test('integrated payroll uses the salary system while retaining recorded production CT', () => {
   assert.match(payrollServiceSource, /ctSeconds \* quantity \* wagePerSecond/);
-  assert.match(payrollServiceSource, /resolveFactoryProductionAllowanceRate\(workLog\.factory\)/);
+  assert.match(payrollServiceSource, /buildIntegratedPayrollEmployees\(orgId, month, employees, factoryId\)/);
+  assert.match(payrollServiceSource, /preserveManualProductionRate/);
   assert.doesNotMatch(payrollServiceSource, /Number\(workLog\.factoryWagePerSecond\)/);
-  assert.match(payrollServiceSource, /void _employees/);
-  assert.match(payrollServiceSource, /export const updatePayrollEmployeeRates/);
-  assert.match(payrollServiceSource, /totalCtSeconds, 0\) \* overrideRate/);
-  assert.match(payrollServiceSource, /rateOverridden: true/);
-  assert.match(payrollEntrySource, /\/employee-rates/);
-  assert.match(payrollEntrySource, /<LockOutlinedIcon/);
-  assert.match(payrollEntrySource, /<LockOpenOutlinedIcon/);
-  assert.match(payrollEntrySource, /\/snapshots\/\$\{month\}\/\$\{locked \? 'unlock' : 'lock'\}/);
-  assert.match(payrollEntrySource, /setData\(\(previous\) => \(\{ \.\.\.previous, \.\.\.updated \}\)\)/);
-  assert.match(payrollEntrySource, /<SaveButton/);
-  assert.match(payrollEntrySource, /changedRateWorkerIds\.length === 0/);
-  assert.match(payrollEntrySource, /employees: updatedEmployees/);
-  assert.match(payrollEntrySource, /snapshotLineTotal|appliedRateOf|rateDrafts/);
-  assert.match(payrollEntrySource, /formatRateDraft/);
-  assert.match(payrollServiceSource, /export const recalculatePayrollSnapshotLine/);
-  assert.match(payrollServiceSource, /stored\?\.rateOverridden/);
-  assert.match(payrollBoardSource, /\/recalculate-line/);
-  assert.match(payrollBoardSource, /group\.needsRecalculation/);
-  assert.doesNotMatch(payrollEntrySource, /fixedSalary|ctAmount|bonus|deduction|finalEarnings/);
-  assert.doesNotMatch(payrollEntrySource, /fixedSalary|fixedAllowance|variableAllowance|bonus|deduction/);
 });
 
-test('factory production allowance rate is derived from the monthly production allowance target', () => {
-  assert.match(factoryRoutesSource, /FACTORY_WORK_SECONDS_PER_MONTH = 26 \* 8 \* 60 \* 60/);
-  assert.match(factoryRoutesSource, /targetMonthlyWage \/ FACTORY_WORK_SECONDS_PER_MONTH/);
-  assert.match(factoryDetailSource, /name="wagePerSecond"/);
-  assert.match(factoryDetailSource, /name="targetMonthlyWage"/);
-  assert.match(factoryDetailSource, /productionAllowanceEffectiveMonth: value\.format\('YYYY-MM'\)/);
-  assert.match(factoryDetailSource, /computedWagePerSecond/);
-  assert.match(factoryRoutesSource, /factoryProductionAllowanceRate\.upsert/);
-  assert.match(factoryRoutesSource, /existingRateCount === 0/);
-  assert.match(payrollServiceSource, /effectiveMonth: \{ lte: month \}/);
-  assert.match(backendPackage.scripts.start, /prisma:apply:factory-production-allowance-rate/);
-  assert.match(uiMessagesSource, /월 목표 생산수당/);
+test('factory monthly target converts to a per-second rate and preserves explicit fallback', () => {
+  const { resolveFactoryWageFields } = loadSourceBindings('backend/src/factories/factory.routes.ts', ['FACTORY_WORK_SECONDS_PER_MONTH', 'roundToScale', 'resolveFactoryWageFields'], {
+    toNumberOrNull: value => value == null || value === '' ? null : Number(value),
+  });
+  assert.deepEqual(resolveFactoryWageFields(7488000, 999), { targetMonthlyWage: 7488000, wagePerSecond: 10 });
+  assert.deepEqual(resolveFactoryWageFields(null, 7.5), { targetMonthlyWage: null, wagePerSecond: 7.5 });
 });
 
-test('production allowance respects each factory management start date', () => {
-  assert.match(payrollServiceSource, /resolveFactoryManagementStartDateKey\(workLog\.factory\)/);
-  assert.match(payrollServiceSource, /enumerateMonthWorkingDateKeys/);
-  assert.match(payrollServiceSource, /cursor\.getUTCDay\(\) !== 0/);
-  assert.match(payrollServiceSource, /organizationHoliday\.findMany/);
-  assert.match(payrollServiceSource, /missingWorkDates/);
-  assert.match(payrollServiceSource, /missingAttendance/);
-  assert.match(payrollServiceSource, /id: true, name: true, managementStartDate: true, wagePerSecond: true/);
-  assert.match(payrollControllerSource, /managementStartMonthKey/);
-  assert.match(payrollBoardSource, /calendar\?\.availableMonthKeys/);
-  assert.match(factoryDetailSource, /생산수당 계산의 최소 시작 기준일/);
+test('payroll date enumeration and employment boundaries preserve leap days and leave', () => {
+  const { enumerateMonthDateKeys, employeeExpectedOnDate } = loadSourceBindings('backend/src/payroll/payroll.service.ts', ['toDateKey', 'enumerateMonthDateKeys', 'employeeExpectedOnDate'], {
+    getPayrollMonthRange: () => ({ start: new Date('2024-02-01Z'), endExclusive: new Date('2024-03-01Z') }),
+  });
+  const dates = enumerateMonthDateKeys('2024-02');
+  assert.equal(dates.length, 29);
+  assert.equal(dates.at(-1), '2024-02-29');
+  const employee = { joinedAt: '2024-02-10', leftAt: '2024-02-20', leaveStartAt: '2024-02-15', leaveEndAt: '2024-02-16' };
+  for (const [day, expected] of [['09', false], ['10', true], ['15', false], ['16', false], ['17', true], ['20', true], ['21', false]]) {
+    assert.equal(employeeExpectedOnDate(employee, '2024-02-' + day), expected);
+  }
 });
 
 test('invalid business time zones fail during server configuration', () => {

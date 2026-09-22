@@ -9,7 +9,7 @@ import { resolveCardCustomerDisplay } from '../utils/assignmentCard';
  * cardsRef/assignmentsRef를 사용해 훅을 컴포넌트 상단(cardById/assignmentById 정의 전)에서
  * 호출할 수 있도록 설계. ref.current는 event handler 실행 시점에 항상 최신 값.
  *
- * handleDragEnd는 assignments, days, lineCapacityById 등에 깊이 의존하므로
+ * handleDragEnd는 assignments, days, factoryCapacityById 등에 깊이 의존하므로
  * AssignBoard.jsx에서 useCallback으로 관리.
  */
 export const useAssignBoardDnd = ({

@@ -1,0 +1,49 @@
+name: Regression
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: baro_test
+          POSTGRES_PASSWORD: baro_test
+          POSTGRES_DB: baro_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U baro_test -d baro_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://baro_test:baro_test@localhost:5432/baro_test
+      DIRECT_URL: postgresql://baro_test:baro_test@localhost:5432/baro_test
+      RELATIONSHIP_BUCKET_TEST_DATABASE_URL: postgresql://baro_test:baro_test@localhost:5432/baro_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
+      - run: npm ci
+      - run: npm --prefix backend ci
+      - run: npm --prefix frontend ci
+      - run: npm run test:regression
+      - run: npm --prefix frontend run build
+        if: ${{ !cancelled() }}
+      - run: npm run check:i18n && npm run check:encoding
+        if: ${{ !cancelled() }}

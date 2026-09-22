@@ -1,87 +1,59 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { loadSourceBindings } from './helpers/source-bindings.mjs';
 
-const [backend, board, capacity, card] = await Promise.all([
-  readFile(new URL('../backend/src/index.ts', import.meta.url), 'utf8'),
-  readFile(new URL('../frontend/src/pages/App/assign/AssignBoard.jsx', import.meta.url), 'utf8'),
-  readFile(new URL('../frontend/src/pages/App/assign/utils/factoryMonthCapacity.js', import.meta.url), 'utf8'),
-  readFile(new URL('../frontend/src/pages/App/assign/components/FactoryMonthCapacityBoard.jsx', import.meta.url), 'utf8'),
-]);
+const read = file => readFileSync(new URL('../' + file, import.meta.url), 'utf8');
+const backend = read('backend/src/index.ts');
+const board = read('frontend/src/pages/App/assign/AssignBoard.jsx');
+const drawer = read('frontend/src/components/QuantityReviewDrawer.jsx');
+const capacity = read('frontend/src/pages/App/assign/utils/factoryMonthCapacity.js');
 
-test('review-required progress response carries only the compact review summary', () => {
-  const reviewSummary = backend.slice(
-    backend.indexOf('reviewReason:'),
-    backend.indexOf('quantityReview: includeQuantityReviewDetails')
-  );
-  assert.match(reviewSummary, /recordedTotalQuantity: totalDone/);
-  assert.doesNotMatch(reviewSummary, /processTotals|workRecords/);
+test('review summary retains process diagnostics while work records load on demand', () => {
+  const summary = backend.slice(backend.indexOf('reviewReason:'), backend.indexOf('quantityReview: includeQuantityReviewDetails'));
+  assert.match(summary, /recordedTotalQuantity: totalDone/);
+  assert.match(summary, /processTotals: reviewProcessTotals/);
+  assert.doesNotMatch(summary, /workRecords:/);
+  assert.match(backend, /quantityReview: includeQuantityReviewDetails\s*\?/);
   assert.match(board, /reviewReason: progressRow\?\.reviewReason/);
   assert.match(capacity, /reviewReason: assignment\?\.reviewReason/);
 });
 
-test('review card stays compact and opens a dedicated quantity-review drawer', () => {
-  assert.doesNotMatch(card, /reviewProcessTotals\.map/);
-  assert.match(board, /'수량 확인'.*'Quantity review'.*'Kiểm tra số lượng'/s);
-  assert.match(board, /disabled=\{!contextMenuTargetAssignment\}/);
-  assert.match(board, /reason\.processTotals/);
-  assert.match(board, /reason\.workRecords/);
-  assert.match(backend, /workRecords: \[\.\.\.stats\.records\]/);
-});
-
-test('quantity review menu uses the same scheduler-enriched status as the review card', () => {
-  assert.match(board, /const resolveAssignmentWithSchedulerProgress = useCallback/);
-  assert.match(board, /applySchedulerProgressToAssignments\(\[assignment\]/);
-  assert.match(board, /return resolveAssignmentWithSchedulerProgress\(detailState\.assignmentId\)/);
-  assert.doesNotMatch(board, /contextMenuTargetAssignment\?\.scheduleStatus !== 'REVIEW_REQUIRED'/);
-  assert.doesNotMatch(
-    board.slice(
-      board.indexOf('const handleContextOpenReviewReason'),
-      board.indexOf('const handleCloseDetail')
-    ),
-    /assignmentById\.get/
-  );
-});
-
-test('all assignments load quantity-review details only when the menu is opened', () => {
-  assert.match(backend, /app\.get\("\/assignment-plans\/:id\/quantity-review"/);
-  assert.match(backend, /includeQuantityReviewDetails: true/);
+test('quantity menu opens the shared drawer for the scheduler-enriched assignment', () => {
   assert.match(board, /setQuantityReviewAssignmentId\(contextMenuState\.id\)/);
-  assert.match(board, /\/quantity-review` \+/);
-  assert.match(board, /quantityReviewLoading/);
-  assert.match(board, /externalReloadTick[\s\S]*quantityReviewAssignmentId/);
+  assert.match(board, /<QuantityReviewDrawer/);
+  assert.match(board, /externalId=\{quantityReviewAssignmentId\}/);
+  assert.match(board, /resolveAssignmentWithSchedulerProgress\(quantityReviewAssignmentId\)/);
+  assert.match(board, /applySchedulerProgressToAssignments\(\[assignment\]/);
 });
 
-test('process quantity rows expand their linked work records inline', () => {
-  assert.match(board, /const QuantityReviewProcessTable =/);
-  assert.match(board, /setExpandedProcessKey/);
-  assert.match(board, /record\?\.styleProcessId[\s\S]*process\.styleProcessId/);
-  assert.match(board, /aria-label=\{label\('연결된 작업기록'/);
-  assert.match(board, /<QuantityReviewProcessTable/);
-  assert.doesNotMatch(board, /label\('생산 기록', 'Production records'/);
+test('shared drawer loads details only for a valid open assignment and cancels stale responses', () => {
+  assert.match(drawer, /if \(!assignmentId \|\| !Number\.isFinite\(normalizedOrgId\) \|\| normalizedOrgId <= 0\)/);
+  assert.match(drawer, /\/quantity-review/);
+  assert.match(drawer, /forceRefresh: true/);
+  assert.match(drawer, /if \(!cancelled\) setData/);
+  assert.match(drawer, /abortController\.abort\(\)/);
+  assert.match(backend, /includeQuantityReviewDetails: true/);
 });
 
-test('expanded quantity records can open their source work-log detail', () => {
+test('process rows expand linked records with each process own applicable quantity', () => {
+  assert.match(drawer, /setExpandedProcessKey/);
+  assert.match(drawer, /process\?\.applicableQuantity \?\? planned/);
+  assert.match(drawer, /record\?\.styleProcessId[\s\S]*process\.styleProcessId/);
+  assert.match(drawer, /aria-label=\{label\('연결된 작업기록'/);
+});
+
+test('linked records close the drawer before opening their source work log', () => {
+  assert.match(drawer, /onOpenWorkLog=\{handleOpenWorkLog\}/);
+  assert.match(drawer, /onClose\?\.\(\);\s*navigateToPath/);
+  assert.match(drawer, /\/work-history\/\$\{workLogId\}/);
   assert.match(backend, /workLogId: toPositiveIntOrNull\(record\?\.workLogId\)/);
-  assert.match(board, /onOpenWorkLog=\{handleOpenQuantityReviewWorkLog\}/);
-  assert.match(board, /navigateToPath\(`\/work-history\/\$\{workLogId\}`/);
-  assert.match(board, /label\('작업 기록', 'Work log', 'Nhật ký'\)/);
-  assert.match(board, /closeQuantityReviewAfterNavigationRef\.current = true/);
-  assert.match(board, /if \(isAssignmentRouteActive \|\| !closeQuantityReviewAfterNavigationRef\.current\) return/);
-  assert.match(board, /height: 26/);
 });
 
-test('review cards show uncapped actual progress while scheduling remains capped', () => {
-  assert.match(backend, /const operationalProgressPercent =[\s\S]*Math\.round\(operationalProgressRatio \* 100\)/);
-  assert.match(backend, /Math\.min\(100, operationalProgressPercent\)/);
-  assert.match(backend, /operationalProgressPercent,\s*\n\s*displayProgressPercent,\s*\n\s*schedulerProgressPercent/);
-  assert.match(card, /progressPercent=\{assignment\.workProgressPercent \?\? assignment\.progressPercent\}/);
-});
-
-test('review-card progress uses the least-complete process and reserves 100% for completion', () => {
-  assert.match(backend, /const displayProgressPercent =/);
-  assert.match(backend, /Math\.min\(\s*99,/);
-  assert.match(backend, /reviewProcessTotals\.map\(\(process\) =>/);
-  assert.match(backend, /process\?\.quantity[\s\S]*baselineQuantityRaw/);
-  assert.match(board, /progressRow\?\.displayProgressPercent \?\?/);
+test('display progress remains uncapped while scheduler progress is bounded and unknown stays unknown', () => {
+  for (const [operationalProgressPercent, progressForRemainingRatio, expected] of [[196, 1.96, 100], [60, 0.4, 40], [null, null, null]]) {
+    const actual = loadSourceBindings('backend/src/index.ts', ['schedulerProgressPercent', 'displayProgressPercent'], { operationalProgressPercent, progressForRemainingRatio });
+    assert.equal(actual.displayProgressPercent, operationalProgressPercent);
+    assert.equal(actual.schedulerProgressPercent, expected);
+  }
 });

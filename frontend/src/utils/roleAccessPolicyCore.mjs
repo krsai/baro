@@ -28,7 +28,6 @@ export const ACCESS_FEATURE_KEYS = {
   REVENUE_FORECAST: 'REVENUE_FORECAST',
   REVENUE_ANALYSIS: 'REVENUE_ANALYSIS',
   BUSINESS: 'BUSINESS',
-  LINE: 'LINE',
   EMPLOYEE: 'EMPLOYEE',
   EMPLOYEE_SYSTEM: 'EMPLOYEE_SYSTEM',
   SALARY_SYSTEM: 'SALARY_SYSTEM',
@@ -71,7 +70,6 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
       ACCESS_FEATURE_KEYS.PRODUCTION_ANALYSIS,
       ACCESS_FEATURE_KEYS.WORK_HISTORY,
       ACCESS_FEATURE_KEYS.OUTSOURCING_RECORD,
-      ACCESS_FEATURE_KEYS.LINE,
       ACCESS_FEATURE_KEYS.EMPLOYEE,
       ACCESS_FEATURE_KEYS.CUSTOMER,
     ]),
@@ -82,7 +80,6 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
       ACCESS_FEATURE_KEYS.REVENUE_FORECAST,
       ACCESS_FEATURE_KEYS.REVENUE_ANALYSIS,
       ACCESS_FEATURE_KEYS.BUSINESS,
-      ACCESS_FEATURE_KEYS.LINE,
       ACCESS_FEATURE_KEYS.EMPLOYEE,
       ACCESS_FEATURE_KEYS.HOLIDAY,
     ]),
@@ -239,25 +236,10 @@ const applyLegacyRevenueForecastSplitDefault = (policy) => {
   });
 };
 
-const applyLegacyEmployeeLineAccessDefault = (policy) => {
+const applyLegacyEmployeeAccessDefault = (policy) => {
   const operatorFeatures = policy?.[ORG_TYPE_KEYS.MANUFACTURER]?.[ORG_ROLE_KEYS.OPERATOR];
   if (Array.isArray(operatorFeatures) && !operatorFeatures.includes(ACCESS_FEATURE_KEYS.EMPLOYEE)) {
-    const lineIndex = operatorFeatures.indexOf(ACCESS_FEATURE_KEYS.LINE);
-    operatorFeatures.splice(
-      lineIndex >= 0 ? lineIndex + 1 : operatorFeatures.length,
-      0,
-      ACCESS_FEATURE_KEYS.EMPLOYEE
-    );
-  }
-
-  const accountantFeatures = policy?.[ORG_TYPE_KEYS.MANUFACTURER]?.[ORG_ROLE_KEYS.ACCOUNTANT];
-  if (Array.isArray(accountantFeatures) && !accountantFeatures.includes(ACCESS_FEATURE_KEYS.LINE)) {
-    const employeeIndex = accountantFeatures.indexOf(ACCESS_FEATURE_KEYS.EMPLOYEE);
-    accountantFeatures.splice(
-      employeeIndex >= 0 ? employeeIndex : accountantFeatures.length,
-      0,
-      ACCESS_FEATURE_KEYS.LINE
-    );
+    operatorFeatures.push(ACCESS_FEATURE_KEYS.EMPLOYEE);
   }
 };
 
@@ -312,7 +294,7 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
     applyLegacyOutsourcingRecordDefault(base);
     applyLegacyBusinessPartnerSplitDefault(base);
     applyLegacyRevenueAnalysisDefault(base);
-    applyLegacyEmployeeLineAccessDefault(base);
+    applyLegacyEmployeeAccessDefault(base);
     applyLegacyEmployeeSystemDefault(base);
     applyLegacySalarySystemDefault(base);
   }

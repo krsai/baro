@@ -25,7 +25,6 @@ const CACHE_INVALIDATION_MAP = {
   '/assignment-board-state': ['/assignment-board', '/assignment-cards', '/factory-month-capacity'],
   '/assignment-plans': ['/assignment-plans', '/assignment-board', '/assignment-plan-progress', '/factory-month-capacity'],
   '/assignment-cards': ['/assignment-cards', '/assignment-board'],
-  '/assignment-board-lines': ['/assignment-board'],
   '/factory-workers': ['/factory-workers'],
   '/customers': ['/customers'],
   '/orders': ['/orders', '/order-parties', '/assignment-cards'],

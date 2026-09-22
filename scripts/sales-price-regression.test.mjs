@@ -202,13 +202,13 @@ test('sales price saves send changes only and persist them in a batched transact
   assert.match(saveRoute, /ON CONFLICT/);
   assert.doesNotMatch(saveRoute, /for \(const entry of requestedPrices\)[\s\S]*findUnique/);
   assert.match(frontend, /const dirtyPriceChanges = useMemo/);
-  assert.match(frontend, /prices: dirtyPriceChanges\.map/);
+  assert.match(frontend, /prices: changes\.map/);
   const priceSaveRequest = frontend.slice(
     frontend.indexOf('const savePrices = useCallback'),
     frontend.indexOf('const customerLabel =')
   );
   assert.match(priceSaveRequest, /headers: \{ 'Content-Type': 'application\/json' \}/);
-  assert.match(frontend, /useUnsavedChanges\(dirtyPriceChanges\.length > 0\)/);
+  assert.match(frontend, /useUnsavedChanges\(dirtyPriceChanges\.length > 0 \|\| bucketChangeSummary\.hasChanges\)/);
 });
 
 test('pricing grid reuses bucket style data and isolates price-cell rerenders by row', () => {

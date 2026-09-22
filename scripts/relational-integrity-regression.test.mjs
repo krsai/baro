@@ -42,7 +42,7 @@ test('employee grade seeding supplies localized names before required constraint
   assert.ok(addLocalizedColumnsAt >= 0 && seedAt > addLocalizedColumnsAt);
   assert.match(
     migration.slice(seedAt, seedAt + 1200),
-    /'CL1','일반','General','Nhân viên'/
+    /'CL1','일반','Staff','Nhân viên'/
   );
 });
 
@@ -92,7 +92,7 @@ test('dashboard order KPI uses the WorkOrder FK only', async () => {
 
 test('WorkRecord normalization loads customer-owned Styles by canonical PK', async () => {
   const backend = await read('backend/src/index.ts');
-  const start = backend.indexOf('const syncWorkRecordRefs = async (');
+  const start = backend.indexOf('const resolveWorkRecordCanonicalStyleRefs = async (');
   const end = backend.indexOf('const resolveAssignmentPlanStyleMetaById', start);
   assert.ok(start >= 0 && end > start);
   const helper = backend.slice(start, end);

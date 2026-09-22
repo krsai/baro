@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { retiredLineReferences } from './helpers/retired-line-references.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
@@ -12,10 +13,37 @@ const assignBoard = read('frontend/src/pages/App/assign/AssignBoard.jsx');
 
 test('assignment schema and responses contain only canonical factory scope', () => {
   assert.match(backend, /factoryId: String\(plan\.factoryId\)/);
-  assert.doesNotMatch(backend, /\blineId\b|\bprisma\.line\b|\bprisma\.lineAssignment\b/);
+  assert.deepEqual(retiredLineReferences(backend), []);
   const schema = read('backend/prisma/schema.prisma');
   assert.doesNotMatch(schema, /model Line\b|model LineAssignment\b|\blineId\b/);
   assert.match(schema, /factoryId\s+Int\s/);
+});
+
+test('retired-domain guard ignores prose but catches identifiers and quoted property access', () => {
+  assert.deepEqual(retiredLineReferences('// lineId\nconst description = "LineAssignment was removed";'), []);
+  for (const code of ['const lineId = 1', 'type X = { lineId: number }', 'const x = { "lineId": 1 }', 'x["lineId"]', 'prisma.line.findMany()', 'prisma["lineAssignment"].findMany()']) {
+    assert.ok(retiredLineReferences(code).length > 0, code);
+  }
+});
+
+test('retired domain has no identifiers in active backend or frontend source', () => {
+  const scan = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const filename = path.join(directory, entry.name);
+      if (entry.isDirectory()) scan(filename);
+      else if (/\.[cm]?[jt]sx?$/.test(entry.name)) assert.deepEqual(retiredLineReferences(fs.readFileSync(filename, 'utf8'), filename), [], filename);
+    }
+  };
+  scan(path.join(root, 'backend/src'));
+  scan(path.join(root, 'frontend/src'));
+});
+
+test('PostgreSQL integration fixtures use factory ownership without retired models', () => {
+  const fixture = read('scripts/relationship-time-bucket-integration.test.mjs');
+  assert.deepEqual(retiredLineReferences(fixture), []);
+  assert.ok(retiredLineReferences('db.line.create({})').length > 0);
+  assert.ok(retiredLineReferences('tx["lineAssignment"].findMany()').length > 0);
+  assert.match(fixture, /factoryId: factory\.id/);
 });
 
 test('board loads and saves canonical factory IDs without a compatibility mapping', () => {

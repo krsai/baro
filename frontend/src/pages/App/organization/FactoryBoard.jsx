@@ -72,7 +72,7 @@ const FactoryList = () => {
     ),
     deleteSuccess: getUiMessage(
       'factoryBoard.deleteSuccess',
-      'Factory deleted. Lines {lineCount}, employees {employeeCount} were also deleted.',
+      'Factory deleted. Employees deleted: {employeeCount}.',
       languageCode
     ),
     deleteError: getUiMessage('factoryBoard.deleteError', 'Failed to delete factory.', languageCode),
@@ -218,10 +218,8 @@ const FactoryList = () => {
         handleDetailClose();
       }
       const deletedEmployees = Number(result?.deletedEmployees) || 0;
-      const deletedLines = Number(result?.deletedLines) || 0;
       showNotification(
         formatWithParams(text.deleteSuccess, {
-          lineCount: deletedLines,
           employeeCount: deletedEmployees,
         }),
         'success'

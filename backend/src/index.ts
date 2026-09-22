@@ -1070,7 +1070,6 @@ const ROLE_ACCESS_POLICY_FEATURES = [
   "REVENUE_FORECAST",
   "REVENUE_ANALYSIS",
   "BUSINESS",
-  "LINE",
   "EMPLOYEE",
   "EMPLOYEE_SYSTEM",
   "SALARY_SYSTEM",
@@ -1109,7 +1108,6 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
       "PRODUCTION_ANALYSIS",
       "WORK_HISTORY",
       "OUTSOURCING_RECORD",
-      "LINE",
       "EMPLOYEE",
       "CUSTOMER",
     ],
@@ -1120,7 +1118,6 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
       "REVENUE_FORECAST",
       "REVENUE_ANALYSIS",
       "BUSINESS",
-      "LINE",
       "EMPLOYEE",
       "HOLIDAY",
     ],
@@ -1251,14 +1248,7 @@ const applyLegacyRevenueForecastSplitDefault = (policy: RoleAccessPolicy): void 
 const applyLegacyEmployeeFactoryScopeAccessDefault = (policy: RoleAccessPolicy): void => {
   const operatorFeatures = policy.MANUFACTURER.OPERATOR;
   if (!operatorFeatures.includes("EMPLOYEE")) {
-    const factoryScopeIndex = operatorFeatures.indexOf("LINE");
-    operatorFeatures.splice(factoryScopeIndex >= 0 ? factoryScopeIndex + 1 : operatorFeatures.length, 0, "EMPLOYEE");
-  }
-
-  const accountantFeatures = policy.MANUFACTURER.ACCOUNTANT;
-  if (!accountantFeatures.includes("LINE")) {
-    const employeeIndex = accountantFeatures.indexOf("EMPLOYEE");
-    accountantFeatures.splice(employeeIndex >= 0 ? employeeIndex : accountantFeatures.length, 0, "LINE");
+    operatorFeatures.push("EMPLOYEE");
   }
 };
 const applyLegacyEmployeeSystemDefault = (policy: RoleAccessPolicy): void => {
@@ -11123,11 +11113,7 @@ const translateWorkLogErrorMessage = (error: any) => {
   if (text === "invalid id") return "작업 기록 ID가 올바르지 않습니다.";
   if (text === "factory not found") return "선택한 공장을 찾을 수 없습니다.";
   if (text === "work log not found") return "작업 기록을 찾을 수 없습니다.";
-  if (text === "factoryId is required") return "라인을 선택해 주세요.";
-  if (text === "line not found") return "선택한 라인을 찾을 수 없습니다.";
-  if (text === "line does not belong to selected factory") {
-    return "선택한 라인이 현재 공장에 속하지 않습니다.";
-  }
+  if (text === "factoryId is required") return "공장을 선택해 주세요.";
   if (text === "invalid workDate") return "작업일자가 올바르지 않습니다.";
   if (text.startsWith("duplicate worker-style-process on workDate")) {
     const detail = resolveOptionalString(text.split(":").slice(1).join(":").trim(), null);
@@ -11136,8 +11122,8 @@ const translateWorkLogErrorMessage = (error: any) => {
     }
     return "같은 작업자가 같은 배정의 같은 공정을 같은 날짜에 중복 입력할 수 없습니다.";
   }
-  if (text.startsWith("line worker mismatch for workDate")) {
-    return "선택한 작업일 기준으로 현재 라인에 속하지 않은 작업자가 포함되어 있습니다. 라인과 작업자를 다시 확인해 주세요.";
+  if (text.startsWith("factory worker mismatch for workDate")) {
+    return "선택한 작업일 기준으로 현재 공장에 속하지 않은 작업자가 포함되어 있습니다. 공장과 작업자를 다시 확인해 주세요.";
   }
   if (text.startsWith("worker employment mismatch for workDate")) {
     return "퇴사일(또는 입사일) 기준으로 입력할 수 없는 작업자가 포함되어 있습니다.";
@@ -11145,8 +11131,8 @@ const translateWorkLogErrorMessage = (error: any) => {
   if (text.startsWith("assignment plan not found")) {
     return "선택한 배정카드를 찾을 수 없습니다.";
   }
-  if (text.startsWith("assignment plan line mismatch")) {
-    return "선택한 라인과 맞지 않는 배정카드가 포함되어 있습니다.";
+  if (text.startsWith("assignment plan factory mismatch")) {
+    return "선택한 공장과 맞지 않는 배정카드가 포함되어 있습니다.";
   }
   if (text.startsWith("assignment plan already completed")) {
     return "이미 마감완료된 배정카드가 포함되어 있습니다. 관리자에게 확인해 주세요.";
@@ -12545,14 +12531,14 @@ const isSameAssignmentStateContent = (left: any, right: any) =>
     toComparableAssignmentStateItem(left),
     toComparableAssignmentStateItem(right)
   );
-// Schedule-only fields (startIndex/endIndex/day percents/lineId ordering)
-// change on every assignment a serial-line reflow touches (AGENTS.md
+// Schedule-only fields (startIndex/endIndex/day percents/factory ordering)
+// change on every assignment a factory queue reflow touches (AGENTS.md
 // "Scheduler Serial Reflow Lock"), which previously made
 // isSameAssignmentStateContent report a change for every reflowed
-// assignment on the line - including ones whose CT/ST/process identity was
+// assignment in the factory - including ones whose CT/ST/process identity was
 // never touched by this save. That pulled long-since-broken, untouched
 // assignments back into assertAssignmentProcessRefs on every unrelated
-// save on the same line (e.g. dropping a new card), blocking the whole
+// save in the same factory (e.g. dropping a new card), blocking the whole
 // board save. Only these fields actually determine process-reference
 // validity, so re-validate an existing plan's process refs only when one
 // of them actually changed in this save.
@@ -12561,7 +12547,7 @@ const PROCESS_REFERENCE_RELEVANT_ASSIGNMENT_FIELDS = [
   "assignmentStSnapshot",
   "styleProcessVersionId",
   "styleId",
-  "assignmentQuantity",
+  "quantity",
 ] as const;
 const hasProcessReferenceRelevantAssignmentChange = (previous: any, next: any) =>
   PROCESS_REFERENCE_RELEVANT_ASSIGNMENT_FIELDS.some(
@@ -14726,7 +14712,7 @@ const loadStyleGenderQuantityMapForWorkOrderIds = async (
 //        deleted, so the already-produced amount becomes pure overflow
 //        instead of silently disappearing
 // Completed and payroll-locked plans are never touched. Plans split across
-// more than one line (several AssignmentPlan rows sharing the same cardId)
+// more than one factory (several AssignmentPlan rows sharing the same cardId)
 // are also left untouched - redistributing a changed total across existing
 // splits is ambiguous and was not decided, see AGENTS.md 40번 known limitation.
 const syncAssignmentPlansForOrderLock = async ({
@@ -14850,7 +14836,7 @@ const syncAssignmentPlansForOrderLock = async ({
       if (targetQuantity !== currentQuantity) {
         throw createHttpError(
           409,
-          `style ${styleId} is split across multiple assignment plans; adjust line quantities explicitly before changing the order quantity`
+          `style ${styleId} is split across multiple assignment plans; adjust assignment quantities explicitly before changing the order quantity`
         );
       }
       return;
@@ -22625,7 +22611,7 @@ const buildFactoryMonthCapacityRows = async ({
     target.headcountDayUnits += dayHeadcount;
     Array.from(employeeIds.values()).forEach((employeeId) => {
       // Monthly actual production rate uses baseline capacity:
-      // active line workers * working days * 8h, regardless of attendance logs.
+      // active factory employees * working days * 8h, regardless of attendance logs.
       target.factoryMonthlyCapacitySeconds += DEFAULT_FACTORY_DAILY_WORK_SECONDS;
       target.factoryMonthlyDefaultCapacitySeconds += DEFAULT_FACTORY_DAILY_WORK_SECONDS;
       target.defaultCapacityWorkerDayCount += 1;
@@ -22701,7 +22687,7 @@ const buildFactoryMonthCapacityRows = async ({
     // thing resolveWorkRecordStSecondsForFactoryMonthCapacity actually reads -
     // is still valid. Gating the whole plan on this field being present used
     // to silently drop 100% of such a plan's real WorkRecord ST from the
-    // line's actual-output sum. Keep it nullable for diagnostics only.
+    // factory's actual-output sum. Keep it nullable for diagnostics only.
     const bucketQuantity = toPositiveIntOrNull(plan?.assignmentStSnapshot?.bucketQuantity);
     const monthlyDirectActualOutputStSecondsByMonthKey = new Map<string, number>();
     let hasDirectActualOutputStSeconds = false;
@@ -23119,14 +23105,14 @@ const buildFactoryMonthCapacityRows = async ({
             actualOutputFormula:
               "actualOutputPercent = factoryMonthlyActualOutputStSeconds / factoryMonthlyCapacitySeconds * 100",
             actualOutputDenominatorSource:
-              "active line assignments x working days x 8h",
+              "active factory employees x working days x 8h",
             actualOutputDenominatorZeroReason:
               row.factoryMonthlyCapacitySeconds > 0
                 ? null
                 : row.workingDayCount <= 0
                   ? "WORKING_DAY_COUNT_ZERO"
                   : row.defaultCapacityWorkerDayCount <= 0
-                    ? "NO_ACTIVE_LINE_ASSIGNMENTS"
+                    ? "NO_ACTIVE_FACTORY_EMPLOYEES"
                     : "CAPACITY_SECONDS_ZERO",
             actualOutputNumeratorZeroReason:
               row.factoryMonthlyActualOutputStSeconds > 0
@@ -23182,7 +23168,7 @@ const buildFactoryMonthCapacityRows = async ({
         // Assignments with actual recorded work whose progress ratio could not be
         // computed (e.g. assignmentCtSnapshot processes missing styleProcessId - see
         // the comment above isProgressUnknown). Excluded from
-        // lineRemainingBacklogStSeconds rather than guessed at, so the forecast can
+        // factoryScopeRemainingBacklogStSeconds rather than guessed at, so the forecast can
         // under-count but never silently re-inflate to the full planned ST.
         progressUnknownAssignmentCount:
           factoryScopeForecastMetaByFactoryId.get(Number(row.factoryId))?.progressUnknownAssignmentCount ?? 0,
@@ -23192,8 +23178,6 @@ const buildFactoryMonthCapacityRows = async ({
   return {
     monthKeys: requestedMonthKeys,
     rows,
-    // Employee active on more than one line the same day (see the comment above
-    // sum above, which still counts the employee once per line they overlap on.
     ...(includeActualOutputDebug && actualOutputRequestDiagnostics
       ? { actualOutputDiagnostics: actualOutputRequestDiagnostics }
       : {}),
@@ -26213,10 +26197,10 @@ app.post("/work-logs/import", async (req, res) => {
       issues.push(
         buildWorkLogImportIssue({
           row,
-          code: "LINE_RESOLUTION_FAILED",
+          code: "FACTORY_RESOLUTION_FAILED",
           message:
             resolvedFactoryScope.error ||
-            "line could not be resolved for the employee on the work date",
+            "factory could not be resolved for the employee on the work date",
         })
       );
       return;
@@ -26393,7 +26377,7 @@ app.post("/work-logs/import", async (req, res) => {
         buildWorkLogImportIssue({
           row: item.row,
           code: "FACTORY_NOT_FOUND",
-          message: "Factory for the resolved line was not found.",
+          message: "The employee's factory was not found.",
         })
       );
       return;
@@ -26562,7 +26546,7 @@ app.post("/work-logs/import", async (req, res) => {
       issues.push(
         buildWorkLogImportIssue({
           row: groupAnchorRow,
-          code: "LINE_VALIDATION_FAILED",
+          code: "FACTORY_VALIDATION_FAILED",
           message: factoryScopeValidation.error,
         })
       );
@@ -26576,8 +26560,8 @@ app.post("/work-logs/import", async (req, res) => {
         issues.push(
           buildWorkLogImportIssue({
             row: group.rows[index] ?? groupAnchorRow,
-            code: "LINE_WORKER_MISMATCH",
-            message: "Worker is not assigned to the resolved line for the imported period.",
+            code: "FACTORY_WORKER_MISMATCH",
+            message: "Worker does not belong to the selected factory for the imported period.",
           })
         );
       });
@@ -27297,11 +27281,11 @@ app.post("/work-logs", async (req, res) => {
     return res.status(400).json({
       ok: false,
       error: translateWorkLogErrorMessage(
-        `line worker mismatch for workDate (${factoryScopeValidation.missingWorkerIds.join(",")})`
+        `factory worker mismatch for workDate (${factoryScopeValidation.missingWorkerIds.join(",")})`
       ),
     });
   }
-  updateWorkLogMutationTrace(trace, "line-validated", {
+  updateWorkLogMutationTrace(trace, "factory-validated", {
     factoryId: factoryScopeValidation.factoryScope?.id ?? normalized.factoryId ?? null,
     factoryName: factoryScopeValidation.factoryScope?.name ?? null,
   });
@@ -27621,11 +27605,11 @@ app.put("/work-logs/:id", async (req, res) => {
     return res.status(400).json({
       ok: false,
       error: translateWorkLogErrorMessage(
-        `line worker mismatch for workDate (${factoryScopeValidation.missingWorkerIds.join(",")})`
+        `factory worker mismatch for workDate (${factoryScopeValidation.missingWorkerIds.join(",")})`
       ),
     });
   }
-  updateWorkLogMutationTrace(trace, "line-validated", {
+  updateWorkLogMutationTrace(trace, "factory-validated", {
     factoryId: factoryScopeValidation.factoryScope?.id ?? normalized.factoryId ?? null,
     factoryName: factoryScopeValidation.factoryScope?.name ?? null,
   });
@@ -32806,7 +32790,7 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
       return res.status(409).json({
         ok: false,
         error:
-          "production batch data is missing linked line or factory rows. Check organization setup first",
+          "production batch data is missing linked factory rows. Check organization setup first",
       });
     }
     if (/AssignmentPlan|AssignmentBoardState|assignment plan|assignment board|cardId|externalId/i.test(rawErrorMessage)) {

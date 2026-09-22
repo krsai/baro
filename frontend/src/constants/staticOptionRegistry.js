@@ -214,9 +214,9 @@ const RAW_STATIC_OPTION_GROUPS = [
         ['고객입고', '입고']
       ),
       createItem(
-        'ISSUE_TO_LINE',
+        'ISSUE_TO_PRODUCTION',
         { ko: '생산 불출(-)', en: 'Issue to Production (-)', vi: 'Xuat cho san xuat (-)' },
-        ['라인불출', '생산불출', '불출']
+        ['생산불출', '불출']
       ),
       createItem(
         'ADJUSTMENT',

@@ -132,7 +132,7 @@ const FactoryScopeRowDropHint = memo(function FactoryScopeRowDropHint({ isOver, 
       }}
     >
       <Typography variant="caption" color={isOver ? 'primary.main' : 'text.secondary'}>
-        {getUiMessage('assign.factoryScopeDropHint', 'Drop cards here to assign to this line', languageCode)}
+        {getUiMessage('assign.factoryScopeDropHint', 'Drop cards here to assign to this factory', languageCode)}
       </Typography>
     </Box>
   );
@@ -173,14 +173,14 @@ const FactoryScopeAssignmentDropSlot = memo(function FactoryScopeAssignmentDropS
   languageCode,
 }) {
   const dropId = beforeAssignmentId
-    ? `line-slot-drop::${factoryId}::before::${beforeAssignmentId}`
+    ? `factory-slot-drop::${factoryId}::before::${beforeAssignmentId}`
     : afterAssignmentId
-      ? `line-slot-drop::${factoryId}::after::${afterAssignmentId}`
-      : `line-slot-drop::${factoryId}::empty`;
+      ? `factory-slot-drop::${factoryId}::after::${afterAssignmentId}`
+      : `factory-slot-drop::${factoryId}::empty`;
   const { setNodeRef, isOver } = useDroppable({
     id: dropId,
     data: {
-      dropMode: 'line-slot',
+      dropMode: 'factory-slot',
       factoryId,
       beforeAssignmentId,
       afterAssignmentId,
@@ -219,7 +219,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
   const isReviewRequired = queueStatus === 'review_required';
   const isZeroQuantityOverflow = queueStatus === 'zero_quantity_overflow';
   // Kept only as a record of already-produced overflow (AGENTS.md 40번) -
-  // its planned quantity is 0, so there is nothing left to drag onto a line.
+  // its planned quantity is 0, so there is nothing left to drag onto a factory.
   const isLocked = isCompleted || isZeroQuantityOverflow;
   const chips = [
     isCompleted
@@ -255,7 +255,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
       : null,
     // Orthogonal to the queueStatus chip above - a queued/review/ready card can also
     // have actual recorded work whose progress ratio the backend could not compute
-    // (see isProgressUnknown, AGENTS.md). Its remaining ST is excluded from the line's
+    // (see isProgressUnknown, AGENTS.md). Its remaining ST is excluded from the factory's
     // forecast rather than guessed at, so this needs to stay visible to the operator
     // instead of just quietly under-counting the backlog.
     !isCompleted && !isZeroQuantityOverflow && Boolean(assignment?.isProgressUnknown)
@@ -363,8 +363,8 @@ const FactoryScopeCapacityMainRow = memo(function FactoryScopeCapacityMainRow({
   onToggleExpand,
 }) {
   const { setNodeRef, isOver } = useDroppable({
-    id: `line-row-drop::${row.factoryId}`,
-    data: { dropMode: 'line-row', factoryId: row.factoryId },
+    id: `factory-row-drop::${row.factoryId}`,
+    data: { dropMode: 'factory-row', factoryId: row.factoryId },
   });
 
   return (
@@ -649,7 +649,7 @@ const FactoryMonthCapacityBoard = ({
           <TableHead>
             <TableRow>
               <TableCell sx={{ width: 250, minWidth: 250 }}>
-                {getUiMessage('assign.factoryScopeCapacityHeader', 'Line', languageCode)}
+                {getUiMessage('assign.factoryScopeCapacityHeader', 'Factory', languageCode)}
               </TableCell>
               {normalizedMonthKeys.map((monthKey) => (
                 <TableCell

@@ -33,7 +33,6 @@ const FEATURE_KEYS = {
   REVENUE_FORECAST: 'REVENUE_FORECAST',
   REVENUE_ANALYSIS: 'REVENUE_ANALYSIS',
   BUSINESS: 'BUSINESS',
-  LINE: 'LINE',
   EMPLOYEE: 'EMPLOYEE',
   EMPLOYEE_SYSTEM: 'EMPLOYEE_SYSTEM',
   SALARY_SYSTEM: 'SALARY_SYSTEM',
@@ -58,25 +57,6 @@ const normalizePathname = (value) => {
   const withoutHash = raw.split('#')[0];
   const pathname = withoutHash.split('?')[0];
   return pathname || '/';
-};
-
-const toDateOrNull = (value) => {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-};
-
-const isLineLeaderActive = (profile) => {
-  if (!profile || typeof profile !== 'object') return false;
-  if (profile.isLineLeader === true) return true;
-
-  const startAt = toDateOrNull(profile.lineLeaderStartAt);
-  const endAt = toDateOrNull(profile.lineLeaderEndAt);
-  if (!startAt && !endAt) return false;
-
-  const now = new Date();
-  if (startAt && now < startAt) return false;
-  if (endAt && now > endAt) return false;
-  return true;
 };
 
 const hasOrgRole = (context, ...roles) =>
@@ -128,7 +108,6 @@ const buildAccessContext = ({
     entryType: 'ORG',
     orgType,
     orgRole,
-    isLineLeader: isLineLeaderActive(baseProfile),
     accessPolicy: sanitizeRoleAccessPolicy(baseProfile?.accessPolicy),
   };
 };

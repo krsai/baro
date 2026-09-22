@@ -289,8 +289,8 @@ const buildFactoryScopeQueueForecast = ({
   todayDateKey,
   anchorDateKey,
   // When provided (non-null), this replaces the per-card sum below as the basis for
-  // totalRequiredWorkingDays/lineFreeDateKey/queueBacklogDays. Callers pass the
-  // backend's lineRemainingBacklogStSeconds here so the line summary row's "완료
+  // totalRequiredWorkingDays/factoryFreeDateKey/queueBacklogDays. Callers pass the
+  // backend's factoryRemainingBacklogStSeconds here so the factory summary row's "완료
   // 예상" agrees with the per-month plannedLoadPercent cells, which are seeded from
   // the same backend value - see buildFactoryMonthCapacityBoardRows.
   remainingBacklogStSecondsOverride = null,
@@ -1007,7 +1007,7 @@ export const buildFactoryMonthCapacityBoardRows = ({
 
     return {
       factoryId,
-      factoryName: factoryScope?.name || `Line ${factoryId}`,
+      factoryName: factoryScope?.name || `Factory ${factoryId}`,
       headcount: Math.max(0, Math.round(Number(factoryScope?.headcount) || 0)),
       latestActualCoverageEndDateKey: factoryScopeMeta?.latestActualCoverageEndDateKey || null,
       forecastAnchorDateKey: forecastAnchorDateKey,

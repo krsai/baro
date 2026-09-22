@@ -104,7 +104,7 @@ vm.runInContext(require('typescript').transpileModule(
 
 test('reflow-only schedule moves do not retrigger process-reference validation on untouched assignments', () => {
   const base = plan();
-  const reflowedOnly = { ...base, startIndex: base.startIndex ?? 0, endIndex: 5, startDayOffsetPercent: 40, lineId: 9 };
+  const reflowedOnly = { ...base, startIndex: base.startIndex ?? 0, endIndex: 5, startDayOffsetPercent: 40, factoryId: 9 };
   // A pre-existing broken assignment (e.g. already flagged for review) that
   // only had its schedule position nudged by a serial-line reflow (AGENTS.md
   // "Scheduler Serial Reflow Lock") must not be re-validated - otherwise an
@@ -119,7 +119,7 @@ test('reflow-only schedule moves do not retrigger process-reference validation o
   const styleChanged = { ...base, styleId: base.styleId + 1 };
   assert.equal(changeDetectionScope.hasChange(base, styleChanged), true);
 
-  const quantityChanged = { ...base, assignmentQuantity: (base.assignmentQuantity ?? 0) + 1 };
+  const quantityChanged = { ...base, quantity: (base.quantity ?? 0) + 1 };
   assert.equal(changeDetectionScope.hasChange(base, quantityChanged), true);
 
   const versionChanged = { ...base, styleProcessVersionId: (base.styleProcessVersionId ?? 0) + 1 };

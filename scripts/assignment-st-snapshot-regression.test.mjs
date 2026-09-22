@@ -103,12 +103,12 @@ test('assignment board reads do not mutate plans and parallelize independent que
   assert.match(route, /const \[state, boardResponse\] = await Promise\.all\(\[/);
 });
 
-test('assignment card locks only inspect linked orders while styles load in parallel', () => {
+test('assignment card readiness only inspects linked orders while styles load in parallel', () => {
   const routeStart = backend.indexOf('app.get("/assignment-cards"');
   const routeEnd = backend.indexOf('app.get("/assignment-board-state"', routeStart);
   const route = backend.slice(routeStart, routeEnd);
   assert.match(route, /const cardWorkOrderIds = collectPositiveIntSet/);
-  assert.match(route, /const \[orderManualLockRows, styles\] = await Promise\.all\(\[/);
+  assert.match(route, /const \[orderReadinessRows, styles\] = await Promise\.all\(\[/);
   assert.match(route, /id: \{ in: cardWorkOrderIds \}/);
 });
 
@@ -134,7 +134,7 @@ test('style process mirrors fetch only standards from active relationship versio
 });
 
 test('style saves refresh unassigned cards without rewriting assigned snapshots', () => {
-  const rebuildStart = backend.indexOf('const rebuildAssignmentCardsForOrg = async');
+  const rebuildStart = backend.indexOf('const rebuildAssignmentCardsForOrgTx = async');
   const rebuildEnd = backend.indexOf('const ASSIGNMENT_CARD_REBUILD_RETRYABLE_PRISMA_CODES', rebuildStart);
   const rebuild = backend.slice(rebuildStart, rebuildEnd);
   assert.match(rebuild, /const baseCards = buildAssignmentCardsFromOrders/);
@@ -179,7 +179,7 @@ test('assignment workflow exposes review and production-completed states', () =>
 });
 
 test('review-required progress includes the visible calculation basis and completes directly', () => {
-  assert.match(backend, /reviewReason:[\s\S]{0,300}PROCESS_QUANTITY_MISMATCH/);
+  assert.match(backend, /reviewReason:[\s\S]*?PROCESS_REFERENCE_INVALID[\s\S]*?PROCESS_QUANTITY_MISMATCH/);
   assert.match(backend, /requiredTotalQuantity: totalExpected/);
   assert.match(backend, /recordedTotalQuantity: totalDone/);
   assert.match(backend, /processTotals: reviewProcessTotals/);

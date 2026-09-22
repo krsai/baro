@@ -185,9 +185,6 @@ try {
     const factory = await db.factory.create({
       data: { orgId: manufacturer.id, name: `Factory ${manufacturer.id}` },
     });
-    const line = await db.line.create({
-      data: { orgId: manufacturer.id, factoryId: factory.id, name: "Line 1" },
-    });
     const process = await db.styleProcess.create({
       data: {
         orgId: manufacturer.id,
@@ -213,7 +210,7 @@ try {
     await db.assignmentPlan.create({
       data: {
         orgId: manufacturer.id,
-        lineId: line.id,
+        factoryId: factory.id,
         externalId: `PLAN_${manufacturer.id}`,
         styleId: style.id,
         buyerOrgId: brand.id,

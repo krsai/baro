@@ -5964,7 +5964,7 @@ const AssignBoard = () => {
     const overDropMode = String(over?.data?.current?.dropMode || '').trim();
     if (overDropMode === 'card-return') {
       // Dropping an unassigned card anywhere in the unassigned panel is a
-      // no-op. This prevents an overlapping/stale line droppable from
+      // no-op. This prevents an overlapping/stale factory droppable from
       // accidentally consuming the card and making it disappear from here.
       setActiveDrag(null);
       return;
@@ -5993,15 +5993,15 @@ const AssignBoard = () => {
       setActiveDrag(null);
       return;
     }
-    if (overDropMode === 'line-row' || overDropMode === 'line-slot') {
+    if (overDropMode === 'factory-row' || overDropMode === 'factory-slot') {
       const placement = resolveFactoryScopeStripDropPlacement({
         factoryId: over?.data?.current?.factoryId,
         beforeAssignmentId:
-          overDropMode === 'line-slot'
+          overDropMode === 'factory-slot'
             ? String(over?.data?.current?.beforeAssignmentId || '').trim() || null
             : null,
         afterAssignmentId:
-          overDropMode === 'line-slot'
+          overDropMode === 'factory-slot'
             ? String(over?.data?.current?.afterAssignmentId || '').trim() || null
             : null,
         excludeAssignmentId: activeId.startsWith('assign-')
@@ -6246,7 +6246,7 @@ const AssignBoard = () => {
       const detectedId = overId.replace('assign-drop-', '');
       const detectedAssignment = assignmentById.get(detectedId) ?? null;
       if (detectedAssignment) {
-        // factoryId는 dnd-kit 감지 카드에서 가져옴 (라인 판별은 정확)
+        // factoryId는 dnd-kit 감지 카드에서 가져옴 (공장 판별은 정확)
         factoryId = detectedAssignment.factoryId;
 
         // 자신의 droppable 위에 드롭한 경우: drag delta로 날짜 추정
@@ -6454,7 +6454,7 @@ const AssignBoard = () => {
         const stTotalSeconds = getAssignmentScheduledStTotalSeconds(target, days, factoryScopeCapacityById);
 
         if (!targetOnDay || targetOnDay.id === assignmentId) {
-          // Dropped on same day & same line ? nothing to change
+          // Dropped on same day & same factory ? nothing to change
           if (dayIndex === target.startIndex && String(factoryId) === String(target.factoryId)) {
             return prev;
           }
@@ -6987,7 +6987,7 @@ const AssignBoard = () => {
               }}
             >
               <Typography variant="subtitle2">
-                {getUiMessage('assign.factoryScopeCapacityBoard', 'Line Capacity', languageCode)}
+                {getUiMessage('assign.factoryScopeCapacityBoard', 'Factory Capacity', languageCode)}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
                 <MonthSelector
@@ -7292,7 +7292,7 @@ const AssignBoard = () => {
                       </Typography>
                     ) : null}
                     <Typography variant="body2">
-                      <strong>{getUiMessage('assign.factoryScopeLabel', 'Line', languageCode)}:</strong>{' '}
+                      <strong>{getUiMessage('assign.factoryScopeLabel', 'Factory', languageCode)}:</strong>{' '}
                       {detailFactoryScope?.name || '-'}
                     </Typography>
                     {detailAssignment && (

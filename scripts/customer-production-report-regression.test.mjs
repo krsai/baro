@@ -35,15 +35,14 @@ test('report displays style name only, never the style code alongside it', () =>
 
 test('forecast is withheld until the full order-style quantity is assigned', () => {
   assert.match(server, /const canForecast = assignedQuantity >= item\.orderedQuantity && progress\.length > 0/);
-  assert.match(server, /ASSIGNMENT_REQUIRED/);
-  assert.match(server, /actualStartDate[\s\S]*plannedDurationDays - 1/);
-  assert.match(server, /ST_DURATION_FROM_ACTUAL_START/);
-  assert.match(server, /reportPlannedDurationDays/);
+  assert.match(server, /const canForecastFromWorkRate =\s*canForecast &&/);
+  assert.match(server, /Math\.ceil\(observedElapsedDays \/ observedProgressRatio\) - 1/);
+  assert.match(server, /canForecast && scheduledCompletionCandidates\.length === progress\.length/);
   assert.doesNotMatch(
     server.slice(server.indexOf('const buildAssignmentPlanProgressRows'), server.indexOf('const isAutoWorklogCompletedPlan')),
     /plannedDurationDays:\s*durationDays/
   );
-  assert.doesNotMatch(server.slice(server.indexOf('app.get("/customer-production-reports"')), /forecastCompletedAt\) \|\| normalizeDateKey\(row\?\.renderEndDate/);
+  assert.match(server, /const reportedProgressPercent = isCompleted\s*\? 100\s*:\s*Math\.min\(99,/);
 });
 
 test('assignment progress does not hide missing outsource columns with a legacy query', () => {
@@ -62,9 +61,9 @@ test('empty customer filter keeps the label clear of the all-customers value', (
   assert.match(page, /renderValue=.*text\.allCustomers/);
 });
 
-test('report omits the unfinished verified-output quantity column', () => {
-  assert.doesNotMatch(page, /text\.produced/);
-  assert.doesNotMatch(page, /row\.producedQuantity/);
+test('report shows finished versus ordered quantities for orders and individual styles', () => {
+  assert.match(page, /fmt\(row\.producedQuantity\).*fmt\(row\.orderedQuantity\)/);
+  assert.match(page, /fmt\(styleRow\.producedQuantity\).*fmt\(styleRow\.orderedQuantity\)/);
   assert.doesNotMatch(page, /produced: 'Verified output'/);
 });
 
@@ -86,9 +85,8 @@ test('multi-style order rows summarize as "first style 외 N개" like the order 
   assert.match(page, /\$\{names\[0\]\} 외 \$\{remaining\}개/);
 });
 
-test('report has no CSV export, no bold text, and prints full-width using the proven visibility-isolation pattern', () => {
+test('report has no CSV export and prints full-width with visibility isolation', () => {
   assert.doesNotMatch(page, /DownloadIcon|exportCsv|csvCell|text\.csv|Blob\(/);
-  assert.doesNotMatch(page, /fontWeight/);
   // The old `nav, header, aside { display: none }` print rule never matched this
   // app's actual DOM (the sidebar is an MUI Drawer, not <aside>, and the tabs
   // bar isn't a <nav>), so the app chrome squeezed the printed table. Lock in

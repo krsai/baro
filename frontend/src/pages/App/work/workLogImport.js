@@ -96,22 +96,8 @@ const wrapWithDetail = (message, detail) => {
   return normalizedDetail ? `${message} (${normalizedDetail})` : message;
 };
 
-const translateLineResolutionIssue = (detail, languageCode) => {
-  if (/multiple line assignments matched the work date/i.test(detail)) {
-    if (languageCode === 'en') return 'Multiple employee assignments match the work date.';
-    if (languageCode === 'vi') return 'Có nhiều phân công nhân viên khớp với ngày làm việc.';
-    return '작업일자에 해당하는 직원 배정이 여러 개입니다.';
-  }
-  if (/employee line name matched multiple lines in the factory/i.test(detail)) {
-    if (languageCode === 'en') {
-      return 'The employee assignment information is ambiguous in the factory.';
-    }
-    if (languageCode === 'vi') {
-      return 'Thông tin phân công của nhân viên không rõ ràng trong nhà máy.';
-    }
-    return '공장 안에서 직원의 배정 정보를 하나로 확인할 수 없습니다.';
-  }
-  if (/line could not be resolved for the employee on the work date/i.test(detail)) {
+const translateFactoryResolutionIssue = (detail, languageCode) => {
+  if (/factory could not be resolved for the employee on the work date/i.test(detail)) {
     if (languageCode === 'en') {
       return 'The employee assignment could not be resolved for the work date.';
     }
@@ -133,7 +119,7 @@ const translateLineResolutionIssue = (detail, languageCode) => {
 const translateAssignmentMatchIssue = (detail, languageCode) => {
   const orderUnassigned = parseDetail(
     detail,
-    /^order (.+) \/ style (.+) has assignment cards but is not assigned to a line in the worker factory\.?$/i,
+    /^order (.+) \/ style (.+) has assignment cards but is not assigned to the worker factory\.?$/i,
     ['orderNo', 'styleId']
   );
   if (orderUnassigned) {
@@ -163,7 +149,7 @@ const translateAssignmentMatchIssue = (detail, languageCode) => {
 
   const styleUnassigned = parseDetail(
     detail,
-    /^style (.+) for order (.+) has an assignment card but is not assigned to a line in the worker factory\.?$/i,
+    /^style (.+) for order (.+) has an assignment card but is not assigned to the worker factory\.?$/i,
     ['styleId', 'orderNo']
   );
   if (styleUnassigned) {
@@ -352,8 +338,8 @@ const translateImportIssueDetail = (issue, languageCode) => {
       }
       return `직원 코드 ${parsed.employeeNo}는 ${parsed.importName}이 아니라 ${parsed.actualName} 직원입니다.`;
     }
-    case 'LINE_RESOLUTION_FAILED':
-      return translateLineResolutionIssue(detail, languageCode);
+    case 'FACTORY_RESOLUTION_FAILED':
+      return translateFactoryResolutionIssue(detail, languageCode);
     case 'ASSIGNMENT_MATCH_FAILED':
       return translateAssignmentMatchIssue(detail, languageCode);
     case 'FACTORY_NOT_FOUND':
@@ -375,8 +361,8 @@ const translateImportIssueDetail = (issue, languageCode) => {
         : languageCode === 'vi'
           ? 'Ngay vao/nghi viec cua cong nhan khong bao phu ky nhap.'
           : '작업자의 입사/퇴사 기간이 가져온 작업 기간을 포함하지 않습니다.';
-    case 'LINE_VALIDATION_FAILED':
-    case 'LINE_WORKER_MISMATCH':
+    case 'FACTORY_VALIDATION_FAILED':
+    case 'FACTORY_WORKER_MISMATCH':
       return languageCode === 'en'
         ? 'Worker is not assigned to the factory for the imported period.'
         : languageCode === 'vi'
