@@ -4,6 +4,7 @@ export const WORKSPACE_DATA_TOPICS = Object.freeze({
   STYLES: 'styles',
   ORDERS: 'orders',
   INVOICE_DRAFTS: 'invoice-drafts',
+  ISSUED_INVOICES: 'issued-invoices',
   ASSIGNMENT_BOARD: 'assignment-board',
   EMPLOYEES: 'employees',
   SALES_PRICES: 'sales-prices',

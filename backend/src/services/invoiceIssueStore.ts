@@ -135,3 +135,20 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
     return invoice;
   });
 }
+
+export async function cancelIssuedInvoice(db: any, sellerOrgId: number, actor: string, invoiceId: string, reason: unknown) {
+  const cancellationReason = String(reason || "").trim();
+  if (!cancellationReason || cancellationReason.length > 1000) fail("INVOICE_CANCELLATION_REASON_REQUIRED");
+  return editTransaction(db, async (tx: any) => {
+    const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId }, include: { orders: true } });
+    if (!invoice) throw createHttpError(404, "INVOICE_NOT_FOUND");
+    if (invoice.status === "CANCELLED") return invoice;
+    const later = await tx.invoiceOrder.findFirst({ where: { sourceOrderId: { in: invoice.orders.map((row: any) => row.sourceOrderId) },
+      invoice: { sellerOrgId, status: "ISSUED", sequenceNumber: { gt: invoice.sequenceNumber } } } });
+    if (later) fail("INVOICE_CANCEL_REVERSE_ORDER_REQUIRED");
+    const updated = await tx.invoice.updateMany({ where: { id: invoiceId, sellerOrgId, status: "ISSUED" },
+      data: { status: "CANCELLED", cancelledBy: actor, cancelledAt: new Date(), cancellationReason } });
+    if (updated.count !== 1) throw createHttpError(409, STALE_EDIT);
+    return tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId } });
+  });
+}

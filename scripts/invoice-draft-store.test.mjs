@@ -110,14 +110,14 @@ test('all draft routes require invoice access before reading or writing; reads a
   const routes = [];
   const app = Object.fromEntries(['get', 'post', 'put', 'delete'].map(method => [method, (path, handler) => routes.push({ method, path, handler })]));
   registerInvoiceDraftRoutes(app, { db: {}, requireAccess: async () => null });
-  assert.equal(routes.length, 7);
+  assert.equal(routes.length, 9);
   for (const route of routes) await route.handler({}, {});
   routes.length = 0;
   const scopes = [];
   registerInvoiceDraftRoutes(app, { db: { invoiceDraft: {
     findFirst: async ({ where }) => { scopes.push(where); return null; },
     findMany: async ({ where }) => { scopes.push(where); return []; },
-  }, invoice: { findMany: async ({ where }) => { scopes.push(where); return []; } },
+  }, invoice: { findMany: async ({ where }) => { scopes.push(where); return []; }, findFirst: async ({ where }) => { scopes.push(where); return null; } },
   }, requireAccess: async () => ({ organization: { id: 7 } }) });
   const res = { setHeader() {}, status() { return this; }, json(value) { return value; } };
   for (const route of routes.filter(row => row.method === 'get')) await route.handler({ query: {}, params: { id: 'foreign' } }, res);

@@ -1,5 +1,5 @@
 import { saveInvoiceDraft, deleteInvoiceDraft } from "../services/invoiceDraftStore";
-import { issueInvoiceDraft } from "../services/invoiceIssueStore";
+import { cancelIssuedInvoice, issueInvoiceDraft } from "../services/invoiceIssueStore";
 
 export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor }: any) {
   app.get("/invoices/drafts", async (req: any, res: any) => {
@@ -50,5 +50,16 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     return res.json({ rows: rows.slice(0, 30).map((row: any) => ({ id: row.id, invoiceNumber: row.invoiceNumber,
       status: row.status, buyerName: row.buyer.name, currencyCode: row.currencyCode, total: String(row.total),
       issuedAt: row.issuedAt, issuedBy: row.issuedBy, orders: row.orders })), hasMore: rows.length > 30 });
+  });
+  app.get("/invoices/issued/:id", async (req: any, res: any) => {
+    const access = await requireAccess(req, res); if (!access) return;
+    const row = await db.invoice.findFirst({ where: { id: req.params.id, sellerOrgId: access.organization.id } });
+    if (!row) return res.status(404).json({ error: "INVOICE_NOT_FOUND" });
+    res.setHeader("Cache-Control", "no-store"); return res.json({ ...row, subtotal: String(row.subtotal), total: String(row.total) });
+  });
+  app.post("/invoices/issued/:id/cancel", async (req: any, res: any) => {
+    const access = await requireAccess(req, res); if (!access) return;
+    const row = await cancelIssuedInvoice(db, access.organization.id, actor(req) || "unknown", req.params.id, req.body?.reason);
+    res.setHeader("Cache-Control", "no-store"); return res.json(row);
   });
 }

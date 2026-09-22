@@ -8,6 +8,7 @@ export const invoiceDraftStorageMessages = {
     conflict: '다른 창에서 수정 또는 삭제했습니다. 현재 입력을 확인한 후 다시 열어 주세요. 덮어쓰지 않았습니다.',
     failed: '초안을 처리하지 못했습니다. 다시 시도해 주세요.', discard: '저장하지 않은 변경을 버리고 다시 불러올까요?',
     stored: '보존된 입력 (검토용)',
+    issue: '정식 발행', confirmIssue: '현재 주문과 단가를 서버에서 다시 검증한 뒤 정식 발행합니다. 계속할까요?', issued: '정식 발행했습니다.',
   },
   en: {
     title: 'Saved drafts', save: 'Save draft', saved: 'Draft saved.', resume: 'Open', remove: 'Delete',
@@ -17,6 +18,7 @@ export const invoiceDraftStorageMessages = {
     sourceChanged: 'An order changed or is unavailable. Saved inputs are preserved. Select the current orders to prepare a new draft.',
     conflict: 'Another window changed or deleted this draft. Review your input before reopening. Nothing was overwritten.',
     failed: 'Unable to process the draft. Please try again.', discard: 'Discard unsaved changes and reload?', stored: 'Preserved inputs (for review)',
+    issue: 'Issue invoice', confirmIssue: 'The server will revalidate current orders and prices before issuing. Continue?', issued: 'Invoice issued.',
   },
   vi: {
     title: 'Bản nháp đã lưu', save: 'Lưu bản nháp', saved: 'Đã lưu bản nháp.', resume: 'Mở', remove: 'Xóa',
@@ -26,5 +28,6 @@ export const invoiceDraftStorageMessages = {
     sourceChanged: 'Đơn hàng đã thay đổi hoặc không thể tải. Nội dung đã lưu được giữ nguyên. Chọn đơn hàng hiện tại để tạo bản nháp mới.',
     conflict: 'Bản nháp đã được sửa hoặc xóa ở cửa sổ khác. Kiểm tra nội dung trước khi mở lại. Không ghi đè dữ liệu.',
     failed: 'Không thể xử lý bản nháp. Vui lòng thử lại.', discard: 'Bỏ thay đổi chưa lưu và tải lại?', stored: 'Nội dung đã lưu (để kiểm tra)',
+    issue: 'Phát hành', confirmIssue: 'Máy chủ sẽ kiểm tra lại đơn hàng và đơn giá trước khi phát hành. Tiếp tục?', issued: 'Đã phát hành hóa đơn.',
   },
 };

@@ -52,6 +52,7 @@ test('ledger schema and routes preserve immutable order and line snapshots', () 
   assert.match(migration, /immutable issued-invoice ledger foundation/);
   assert.match(routes, /\/invoices\/drafts\/:id\/issue/);
   assert.match(routes, /\/invoices\/issued/);
+  assert.match(routes, /\/invoices\/issued\/:id\/cancel/);
 });
 
 test('issued ledger bootstrap is repeatable and preserves snapshots when source rows are deleted', async () => {

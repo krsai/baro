@@ -130,6 +130,22 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
     popup.document.close();
     popup.focus();
   };
+  const issue = async () => {
+    const current = draftRef.current;
+    if (!current || dirty || saving || !reviewed || calculation?.issues.length) return;
+    if (!window.confirm(storageText.confirmIssue)) return;
+    setSaving(true); setError('');
+    try {
+      await requestJSON(`/invoices/drafts/${encodeURIComponent(current.id)}/issue${buildQueryString({ orgId })}`, {
+        method: 'POST', body: JSON.stringify({ revision: current.revision }),
+      });
+      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId });
+      setDirty(false); window.alert(storageText.issued); onClose();
+    } catch (e) {
+      setError(String(e.message).includes('STALE_EDIT') || String(e.message).includes('SOURCE_CHANGED')
+        ? storageText.conflict : storageText.failed);
+    } finally { setSaving(false); }
+  };
   return <Dialog open={open} onClose={close} fullWidth maxWidth="xl">
     <DialogTitle>{t.title}{source ? ` · ${source.orderNumber}` : ''}</DialogTitle>
     <DialogContent dividers>
@@ -206,6 +222,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
     </DialogContent>
     <DialogActions><Button disabled={saving} onClick={close}>{t.close}</Button>
       <Button onClick={save} disabled={loading || saving || !source || (!dirty && !!savedDraft)}>{saving ? <CircularProgress size={18} /> : storageText.save}</Button>
+      <Button color="success" variant="contained" onClick={issue} disabled={loading || saving || !savedDraft || dirty || !source || !reviewed || !!calculation?.issues.length || !fields?.number.trim() || !fields?.date}>{storageText.issue}</Button>
       <Button variant="contained" onClick={print} disabled={loading || saving || !!error || !source || !reviewed || !!calculation?.issues.length || !fields?.number.trim() || !fields?.date}>{t.print}</Button></DialogActions>
   </Dialog>;
 }
