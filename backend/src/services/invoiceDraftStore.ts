@@ -43,7 +43,12 @@ export const normalizeInvoiceDraftContent = (body: any) => {
   };
   object(body.percentages);
   const percentages = Object.fromEntries(orders.map((row: any) => [row.orderId, text(body.percentages[row.orderId] ?? "", 32)]));
-  return { version: 1, buyerOrgId: body.buyerOrgId, orders, basis: body.basis, currency, fields, percentages, lines };
+  const settlementInput = body.settlements == null ? {} : object(body.settlements);
+  const settlements = Object.fromEntries(orders.map((row: any) => {
+    const value = settlementInput[row.orderId] == null ? {} : object(settlementInput[row.orderId]);
+    return [row.orderId, { deduction: text(value.deduction ?? "", 32), reason: text(value.reason ?? "", 1000) }];
+  }));
+  return { version: 2, buyerOrgId: body.buyerOrgId, orders, basis: body.basis, currency, fields, percentages, settlements, lines };
 };
 
 export async function saveInvoiceDraft(db: any, sellerOrgId: number, actor: string, body: any, id?: string) {

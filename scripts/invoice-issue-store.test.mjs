@@ -44,6 +44,24 @@ test('issued snapshot fails closed when a current price is missing', () => {
   assert.throws(() => calculateInvoiceIssueSnapshot(content, [source('o1', 'A', '1.00'), missing]), /INVOICE_ISSUE_PRICE_MISSING/);
 });
 
+test('settlement keeps prior billed, received and applied deduction separate without duplicate debt', () => {
+  const currentSource = source('o1', 'A', '100.0000'); currentSource.lines[0].orderedQuantity = 100;
+  const input = { ...content, orders: [{ orderId: 'o1' }], percentages: { o1: '100' },
+    lines: [{ ...content.lines[0], quantity: '100' }], settlements: { o1: { deduction: '3000', reason: 'deduct received amount only' } } };
+  const result = calculateInvoiceIssueSnapshot(input, [currentSource], { o1: {
+    priorBilledAmount: '5000.0000', priorReceivedAmount: '3000.0000', defaultDeductionAmount: '5000.0000',
+  } });
+  assert.equal(result.orders[0].billedAmount, '10000.00');
+  assert.equal(result.orders[0].priorBilledAmount, '5000.0000');
+  assert.equal(result.orders[0].priorReceivedAmount, '3000.0000');
+  assert.equal(result.orders[0].appliedDeductionAmount, '3000.00');
+  assert.equal(result.orders[0].netAmount, '7000.00'); assert.equal(result.total, '7000.00');
+  assert.equal(result.orders[0].priorOutstandingAmount, '2000.00');
+  assert.equal(result.orders[0].receivableAdded, '5000.00'); assert.equal(result.receivableAdded, '5000.00');
+  assert.throws(() => calculateInvoiceIssueSnapshot({ ...input, settlements: { o1: { deduction: '3000', reason: '' } } }, [currentSource],
+    { o1: { defaultDeductionAmount: '5000' } }), /DEDUCTION_REASON_REQUIRED/);
+});
+
 test('actual payments are separate, idempotent records and voiding preserves the original row', async () => {
   let payment = null;
   const db = { $transaction: async run => run(db), invoice: { findFirst: async () => ({ id: 'i', status: 'ISSUED', currencyCode: 'USD' }) },

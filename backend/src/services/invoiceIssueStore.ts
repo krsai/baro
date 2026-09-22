@@ -15,6 +15,12 @@ const parsePriceMinor = (value: unknown) => {
   const minor = BigInt(whole!) * 10000n + BigInt(fraction.padEnd(4, "0"));
   return minor > 0n ? minor : null;
 };
+const parseMoneyScale4 = (value: unknown) => {
+  if (!/^\d+(\.\d{1,4})?$/.test(String(value ?? ""))) return null;
+  const [whole, fraction = ""] = String(value).split(".");
+  return BigInt(whole!) * 10000n + BigInt(fraction.padEnd(4, "0"));
+};
+const scale4Decimal = (value: bigint) => { const text = value.toString().padStart(5, "0"); return `${text.slice(0, -4)}.${text.slice(-4)}`; };
 const currencyDigits = (currencyCode: string) => {
   try { return new Intl.NumberFormat("en", { style: "currency", currency: currencyCode }).resolvedOptions().maximumFractionDigits ?? 2; }
   catch { fail("INVOICE_ISSUE_INVALID_CURRENCY"); }
@@ -31,7 +37,7 @@ const percentage = (value: unknown) => {
   return { raw, basisPoints: BigInt(whole!) * 100n + BigInt(fraction.padEnd(2, "0")) };
 };
 
-export const calculateInvoiceIssueSnapshot = (content: any, sources: any[]) => {
+export const calculateInvoiceIssueSnapshot = (content: any, sources: any[], settlementContext: Record<string, any> = {}) => {
   const digits = currencyDigits(content.currency);
   const sourceLines = new Map<string, any>();
   const sourceStyles = new Map<string, any>();
@@ -76,21 +82,42 @@ export const calculateInvoiceIssueSnapshot = (content: any, sources: any[]) => {
   });
   if (!lines.some((line: any) => line.quantity > 0)) fail("INVOICE_ISSUE_EMPTY");
   let totalMinor = 0n;
+  let receivableAddedMinor = 0n;
   const orders = content.orders.map((input: any) => {
     const source = sourceOrders.get(input.orderId); if (!source) fail("INVOICE_SOURCE_CHANGED");
     const percent = percentage(content.percentages?.[input.orderId]);
     const basisMinor = orderMinor.get(input.orderId) || 0n;
     const billedMinor = (basisMinor * percent.basisPoints + 5000n) / 10000n;
-    totalMinor += billedMinor;
+    const context = settlementContext[input.orderId] || {};
+    const defaultScale4 = parseMoneyScale4(context.defaultDeductionAmount) ?? 0n;
+    const defaultMinor = (defaultScale4 + divisor / 2n) / divisor;
+    const deductionText = String(content.settlements?.[input.orderId]?.deduction ?? "").trim();
+    const appliedScale4 = deductionText ? parseMoneyScale4(deductionText) : defaultScale4;
+    if (appliedScale4 === null) throw createHttpError(409, "INVOICE_ISSUE_INVALID_DEDUCTION");
+    const appliedMinor = (appliedScale4 + divisor / 2n) / divisor;
+    const deductionReason = String(content.settlements?.[input.orderId]?.reason || "").trim();
+    if (appliedMinor !== defaultMinor && !deductionReason) fail("INVOICE_ISSUE_DEDUCTION_REASON_REQUIRED");
+    if (appliedMinor > billedMinor) fail("INVOICE_ISSUE_EXCESS_DEDUCTION_REVIEW");
+    const netMinor = billedMinor - appliedMinor;
+    const priorBilledMinor = ((parseMoneyScale4(context.priorBilledAmount) ?? 0n) + divisor / 2n) / divisor;
+    const priorReceivedMinor = ((parseMoneyScale4(context.priorReceivedAmount) ?? 0n) + divisor / 2n) / divisor;
+    const priorOutstandingMinor = priorBilledMinor > priorReceivedMinor ? priorBilledMinor - priorReceivedMinor : 0n;
+    const newReceivableMinor = netMinor > priorOutstandingMinor ? netMinor - priorOutstandingMinor : 0n;
+    totalMinor += netMinor;
+    receivableAddedMinor += newReceivableMinor;
     return { workOrderId: source.workOrderId, sourceOrderId: source.orderId, sourceOrderNumber: source.orderNumber,
       sourceUpdatedAt: source.sourceUpdatedAt, billingPercentage: percent.raw,
-      basisAmount: decimal(basisMinor, digits), billedAmount: decimal(billedMinor, digits) };
+      basisAmount: decimal(basisMinor, digits), billedAmount: decimal(billedMinor, digits),
+      priorBilledAmount: String(context.priorBilledAmount || "0"), priorReceivedAmount: String(context.priorReceivedAmount || "0"),
+      defaultDeductionAmount: decimal(defaultMinor, digits), appliedDeductionAmount: decimal(appliedMinor, digits),
+      deductionReason, netAmount: decimal(netMinor, digits), priorOutstandingAmount: decimal(priorOutstandingMinor, digits),
+      receivableAdded: decimal(newReceivableMinor, digits) };
   });
   const subtotalMinor = [...orderMinor.values()].reduce((sum, value) => sum + value, 0n);
   return { pricingBasis: content.basis, currencyCode: content.currency, subtotal: decimal(subtotalMinor, digits),
-    total: decimal(totalMinor, digits), orders, lines, snapshot: { version: 1, fields: content.fields,
+    total: decimal(totalMinor, digits), receivableAdded: decimal(receivableAddedMinor, digits), orders, lines, snapshot: { version: 2, fields: content.fields,
       pricingBasis: content.basis, currencyCode: content.currency, subtotal: decimal(subtotalMinor, digits),
-      total: decimal(totalMinor, digits), orders, lines } };
+      total: decimal(totalMinor, digits), receivableAdded: decimal(receivableAddedMinor, digits), orders, lines } };
 };
 
 export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: string, draftId: string, revision: unknown) {
@@ -119,7 +146,18 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
         salesBucketOverrides: { include: { quantityBucketSetVersion: { include: { entries: true } } } },
         salesPriceLists: { where: { styleId: { in: styleIds } }, include: { currency: true, prices: true } } } });
     const sources = orders.map((order: any) => ({ ...buildInvoiceSource(order, [], [], relationship), workOrderId: order.id }));
-    const calculated = calculateInvoiceIssueSnapshot(content, sources);
+    const settlementContext: Record<string, any> = {};
+    for (const source of sources) {
+      const previous = await tx.invoiceOrder.findMany({ where: { sourceOrderId: source.orderId,
+        invoice: { sellerOrgId, status: "ISSUED", currencyCode: content.currency } },
+        include: { invoice: { include: { payments: { where: { voidedAt: null } }, orders: { select: { id: true } } } } } });
+      const priorBilled = previous.reduce((sum: bigint, row: any) => sum + (parseMoneyScale4(row.receivableAdded ?? row.netAmount ?? row.billedAmount) ?? 0n), 0n);
+      const priorReceived = previous.reduce((sum: bigint, row: any) => row.invoice.orders.length === 1
+        ? sum + row.invoice.payments.reduce((paymentSum: bigint, payment: any) => paymentSum + (parseMoneyScale4(payment.amount) ?? 0n), 0n) : sum, 0n);
+      settlementContext[source.orderId] = { priorBilledAmount: scale4Decimal(priorBilled), priorReceivedAmount: scale4Decimal(priorReceived),
+        defaultDeductionAmount: scale4Decimal(priorReceived > 0n ? priorReceived : priorBilled), hasUnallocatedPayments: previous.some((row: any) => row.invoice.orders.length > 1 && row.invoice.payments.length) };
+    }
+    const calculated = calculateInvoiceIssueSnapshot(content, sources, settlementContext);
     for (const order of calculated.orders) {
       const prior = await tx.invoiceOrder.findFirst({ where: { sourceOrderId: order.sourceOrderId,
         invoice: { sellerOrgId } }, orderBy: { installmentNumber: "desc" }, select: { installmentNumber: true } });
@@ -129,7 +167,7 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
     const latest = await tx.invoice.findFirst({ where: { sellerOrgId }, orderBy: { sequenceNumber: "desc" }, select: { sequenceNumber: true } });
     const invoice = await tx.invoice.create({ data: { sellerOrgId, buyerOrgId: draft.buyerOrgId, invoiceNumber,
       clientKey: issueKey, sequenceNumber: (latest?.sequenceNumber || 0) + 1, pricingBasis: calculated.pricingBasis,
-      currencyCode: calculated.currencyCode, subtotal: calculated.subtotal, total: calculated.total,
+      currencyCode: calculated.currencyCode, subtotal: calculated.subtotal, total: calculated.total, receivableAdded: calculated.receivableAdded,
       snapshot: calculated.snapshot, issuedBy: actor } });
     for (const order of calculated.orders) {
       const orderRow = await tx.invoiceOrder.create({ data: { invoiceId: invoice.id, ...order } });

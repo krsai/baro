@@ -59,6 +59,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     res.setHeader("Cache-Control", "no-store");
     return res.json({ rows: rows.slice(0, 30).map((row: any) => ({ id: row.id, invoiceNumber: row.invoiceNumber,
       status: row.status, buyerName: row.buyer.name, currencyCode: row.currencyCode, total: String(row.total),
+      receivableAdded: String(row.receivableAdded),
       issuedAt: row.issuedAt, issuedBy: row.issuedBy, orders: row.orders,
       receivedAmount: invoiceMoney(row.payments.map((payment: any) => payment.amount)) })), hasMore: rows.length > 30 });
   });

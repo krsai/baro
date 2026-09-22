@@ -1796,6 +1796,7 @@ model Invoice {
   currencyCode String
   subtotal Decimal @db.Decimal(24, 4)
   total Decimal @db.Decimal(24, 4)
+  receivableAdded Decimal @default(0) @db.Decimal(24, 4)
   snapshot Json
   issuedBy String
   issuedAt DateTime @default(now())
@@ -1826,6 +1827,14 @@ model InvoiceOrder {
   basisAmount Decimal @db.Decimal(24, 4)
   billedAmount Decimal @db.Decimal(24, 4)
   installmentNumber Int
+  priorBilledAmount Decimal @default(0) @db.Decimal(24, 4)
+  priorReceivedAmount Decimal @default(0) @db.Decimal(24, 4)
+  defaultDeductionAmount Decimal @default(0) @db.Decimal(24, 4)
+  appliedDeductionAmount Decimal @default(0) @db.Decimal(24, 4)
+  deductionReason String @default("")
+  netAmount Decimal @default(0) @db.Decimal(24, 4)
+  priorOutstandingAmount Decimal @default(0) @db.Decimal(24, 4)
+  receivableAdded Decimal @default(0) @db.Decimal(24, 4)
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
   workOrder WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   lines InvoiceLine[]

@@ -5119,6 +5119,20 @@ CREATE INDEX IF NOT EXISTS "InvoiceLine_workOrderItemId_idx" ON "InvoiceLine"("w
 CREATE INDEX IF NOT EXISTS "InvoiceLine_sourceItemId_idx" ON "InvoiceLine"("sourceItemId");
 
 ALTER TABLE "InvoiceOrder" ADD COLUMN IF NOT EXISTS "installmentNumber" INTEGER;
+ALTER TABLE "InvoiceOrder"
+  ADD COLUMN IF NOT EXISTS "priorBilledAmount" DECIMAL(24,4) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS "priorReceivedAmount" DECIMAL(24,4) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS "defaultDeductionAmount" DECIMAL(24,4) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS "appliedDeductionAmount" DECIMAL(24,4) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS "deductionReason" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS "netAmount" DECIMAL(24,4) NOT NULL DEFAULT 0;
+ALTER TABLE "InvoiceOrder"
+  ADD COLUMN IF NOT EXISTS "priorOutstandingAmount" DECIMAL(24,4) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS "receivableAdded" DECIMAL(24,4) NOT NULL DEFAULT 0;
+UPDATE "InvoiceOrder" SET "netAmount"="billedAmount" WHERE "netAmount"=0 AND "billedAmount"<>0;
+UPDATE "InvoiceOrder" SET "receivableAdded"="netAmount" WHERE "receivableAdded"=0 AND "netAmount"<>0;
+ALTER TABLE "Invoice" ADD COLUMN IF NOT EXISTS "receivableAdded" DECIMAL(24,4) NOT NULL DEFAULT 0;
+UPDATE "Invoice" SET "receivableAdded"=total WHERE "receivableAdded"=0 AND total<>0;
 WITH numbered AS (
   SELECT io.id, ROW_NUMBER() OVER (PARTITION BY i."sellerOrgId", io."sourceOrderId" ORDER BY i."sequenceNumber", io.id) AS n
   FROM "InvoiceOrder" io JOIN "Invoice" i ON i.id=io."invoiceId"

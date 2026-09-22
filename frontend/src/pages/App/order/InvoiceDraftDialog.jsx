@@ -18,19 +18,26 @@ const messages = {
     ordered: '주문', produced: '생산 실적', invoice: '청구', difference: '차이', quantity: '청구 수량', reason: '수량 변경 사유',
     price: '단가', amount: '금액', scope: '단가 기준', currency: '통화', metadata: '문서 및 결제 정보',
     seller: '판매자', buyer: '구매자', retry: '다시 조회', popup: '팝업이 차단되었습니다. 이 사이트의 팝업을 허용해 주세요.',
-    issues: { PRODUCTION: '완료되지 않았거나 생산 근거 확인이 필요한 스타일/배정이 있습니다.', QUANTITY: '수량은 0 이상의 정수로 입력하세요.', REASON: '주문 수량과 달라진 행에는 변경 사유가 필요합니다.', PRICE: '해당 통화·CMT/FP·수량 구간의 활성 단가가 없습니다. 고객 단가표를 확인하세요.', EMPTY: '청구 수량이 없습니다.', CURRENCY: '통화를 선택하세요.' } },
+    issues: { PRODUCTION: '완료되지 않았거나 생산 근거 확인이 필요한 스타일/배정이 있습니다.', QUANTITY: '수량은 0 이상의 정수로 입력하세요.', REASON: '주문 수량과 달라진 행에는 변경 사유가 필요합니다.', PRICE: '해당 통화·CMT/FP·수량 구간의 활성 단가가 없습니다. 고객 단가표를 확인하세요.', EMPTY: '청구 수량이 없습니다.', CURRENCY: '통화를 선택하세요.', DEDUCTION: '차감액은 이번 기준액 이하의 유효한 금액이어야 합니다.', DEDUCTION_REASON: '기본 차감액을 변경하면 사유가 필요합니다.' } },
   en: { title: 'Invoice draft', notice: 'Phase 1: review draft only. Issuing, archiving and final locking are not yet available. Changes are discarded when this dialog closes.',
     load: 'Unable to load order, production and prices.', close: 'Close', print: 'Print PDF draft',
     review: 'I reviewed production differences, detailed quantities and prices.', explanation: 'Changes affect this draft only. Active price tiers use total invoice quantity per style. Production totals are per style, not per color or size.',
     ordered: 'Ordered', produced: 'Produced', invoice: 'Invoiced', difference: 'Difference', quantity: 'Invoice qty', reason: 'Adjustment reason', price: 'Unit price', amount: 'Amount', scope: 'Price basis', currency: 'Currency', metadata: 'Document and payment details', seller: 'Seller', buyer: 'Buyer', retry: 'Reload', popup: 'Allow pop-ups for this site to print.',
-    issues: { PRODUCTION: 'Some styles/assignments are incomplete or require production review.', QUANTITY: 'Enter a nonnegative integer quantity.', REASON: 'Explain each quantity adjustment.', PRICE: 'No active price for this currency, basis or quantity tier. Check customer prices.', EMPTY: 'No quantity to invoice.', CURRENCY: 'Select a currency.' } },
-  vi: { title: 'Bản nháp hóa đơn', notice: 'Giai đoạn 1: chỉ để kiểm tra. Chưa phát hành, lưu trữ hoặc khóa hoàn toàn. Dữ liệu nhập sẽ mất khi đóng cửa sổ.', load: 'Không thể tải đơn hàng, sản lượng và đơn giá.', close: 'Đóng', print: 'In PDF bản nháp', review: 'Tôi đã kiểm tra chênh lệch sản lượng, số lượng chi tiết và đơn giá.', explanation: 'Thay đổi chỉ áp dụng cho bản nháp. Bậc giá hiện hành dựa trên tổng số lượng hóa đơn theo mã hàng. Sản lượng không được phân bổ theo màu hoặc cỡ.', ordered: 'Đặt hàng', produced: 'Sản xuất', invoice: 'Hóa đơn', difference: 'Chênh lệch', quantity: 'SL hóa đơn', reason: 'Lý do điều chỉnh', price: 'Đơn giá', amount: 'Thành tiền', scope: 'Cơ sở giá', currency: 'Tiền tệ', metadata: 'Thông tin hóa đơn và thanh toán', seller: 'Bên bán', buyer: 'Bên mua', retry: 'Tải lại', popup: 'Cho phép cửa sổ bật lên để in.', issues: { PRODUCTION: 'Có mã hàng/phân công chưa hoàn thành hoặc cần kiểm tra.', QUANTITY: 'Nhập số nguyên không âm.', REASON: 'Cần lý do điều chỉnh số lượng.', PRICE: 'Không có đơn giá hiện hành phù hợp. Kiểm tra bảng giá khách hàng.', EMPTY: 'Chưa có số lượng xuất hóa đơn.', CURRENCY: 'Chọn tiền tệ.' } },
+    issues: { PRODUCTION: 'Some styles/assignments are incomplete or require production review.', QUANTITY: 'Enter a nonnegative integer quantity.', REASON: 'Explain each quantity adjustment.', PRICE: 'No active price for this currency, basis or quantity tier. Check customer prices.', EMPTY: 'No quantity to invoice.', CURRENCY: 'Select a currency.', DEDUCTION: 'Deduction must be valid and no greater than the current amount.', DEDUCTION_REASON: 'Explain changes from the default deduction.' } },
+  vi: { title: 'Bản nháp hóa đơn', notice: 'Giai đoạn 1: chỉ để kiểm tra. Chưa phát hành, lưu trữ hoặc khóa hoàn toàn. Dữ liệu nhập sẽ mất khi đóng cửa sổ.', load: 'Không thể tải đơn hàng, sản lượng và đơn giá.', close: 'Đóng', print: 'In PDF bản nháp', review: 'Tôi đã kiểm tra chênh lệch sản lượng, số lượng chi tiết và đơn giá.', explanation: 'Thay đổi chỉ áp dụng cho bản nháp. Bậc giá hiện hành dựa trên tổng số lượng hóa đơn theo mã hàng. Sản lượng không được phân bổ theo màu hoặc cỡ.', ordered: 'Đặt hàng', produced: 'Sản xuất', invoice: 'Hóa đơn', difference: 'Chênh lệch', quantity: 'SL hóa đơn', reason: 'Lý do điều chỉnh', price: 'Đơn giá', amount: 'Thành tiền', scope: 'Cơ sở giá', currency: 'Tiền tệ', metadata: 'Thông tin hóa đơn và thanh toán', seller: 'Bên bán', buyer: 'Bên mua', retry: 'Tải lại', popup: 'Cho phép cửa sổ bật lên để in.', issues: { PRODUCTION: 'Có mã hàng/phân công chưa hoàn thành hoặc cần kiểm tra.', QUANTITY: 'Nhập số nguyên không âm.', REASON: 'Cần lý do điều chỉnh số lượng.', PRICE: 'Không có đơn giá hiện hành phù hợp. Kiểm tra bảng giá khách hàng.', EMPTY: 'Chưa có số lượng xuất hóa đơn.', CURRENCY: 'Chọn tiền tệ.', DEDUCTION: 'Khoản khấu trừ phải hợp lệ và không vượt quá số tiền hiện tại.', DEDUCTION_REASON: 'Cần lý do khi thay đổi khoản khấu trừ mặc định.' } },
 };
 
 export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, orgId, buyerOrgId, draftId, languageCode = 'ko' }) {
   const t = messages[languageCode] || messages.en;
   const billingText = invoiceMessages[languageCode] || invoiceMessages.en;
   const storageText = invoiceDraftStorageMessages[languageCode] || invoiceDraftStorageMessages.en;
+  const settlementLabels = languageCode === 'ko' ? {
+    prior: '이전 청구 / 입금', deduction: '이번 차감', outstanding: '기존 미수', statement: '안내금액 / 신규채권', reason: '차감 변경 사유', unallocated: '다중 주문 입금 미배분', newReceivable: '신규 채권',
+  } : languageCode === 'vi' ? {
+    prior: 'Đã lập / đã thu', deduction: 'Khấu trừ', outstanding: 'Nợ cũ', statement: 'Thông báo / khoản phải thu mới', reason: 'Lý do đổi khấu trừ', unallocated: 'Khoản thu nhiều đơn chưa phân bổ', newReceivable: 'Khoản phải thu mới',
+  } : {
+    prior: 'Prior billed / received', deduction: 'Deduction', outstanding: 'Prior outstanding', statement: 'Statement / new receivable', reason: 'Reason for changing deduction', unallocated: 'Multi-order payment is unallocated', newReceivable: 'New receivable',
+  };
   const [savedDraft, setSavedDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saveNotice, setSaveNotice] = useState('');
@@ -46,6 +53,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
   const [percentages, setPercentages] = useState({});
+  const [settlements, setSettlements] = useState({});
   const [allPercentage, setAllPercentage] = useState('');
   const [dirty, setDirty] = useState(false);
   useUnsavedChanges(open && (dirty || saving));
@@ -58,7 +66,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
     let cancelled = false;
     setLoading(true); setSource(null); setFields(null); setError(''); setReviewed(false);
     setDirty(false);
-    setPercentages({}); setAllPercentage(''); setSaveNotice('');
+    setPercentages({}); setSettlements({}); setAllPercentage(''); setSaveNotice('');
     const load = async () => {
       const resumeId = draftId || draftRef.current?.id;
       const stored = resumeId ? await requestJSON(`/invoices/drafts/${encodeURIComponent(resumeId)}${buildQueryString({ orgId })}`, { skipCache: true }) : null;
@@ -74,7 +82,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
         if (stored) {
           setLines(restoredLines);
           setBasis(stored.content.basis); setCurrency(stored.content.currency);
-          setFields(stored.content.fields); setPercentages(stored.content.percentages);
+          setFields(stored.content.fields); setPercentages(stored.content.percentages); setSettlements(stored.content.settlements || {});
           return;
         }
         const prices = data.styles.flatMap((style) => style.prices);
@@ -84,6 +92,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
         setFields({ number: `DRAFT-${data.orderNumber}`, date, seller: data.seller, buyer: data.buyer,
           shipTo: [data.buyer.name, data.buyer.address, data.buyer.country].filter(Boolean).join('\n'),
           shipmentDate: '', dueDate: '', incoterm: '', paymentTerms: '', bank: '', notes: '' });
+        setSettlements(Object.fromEntries(data.orders.map(order => [order.orderId, { deduction: order.settlementsByCurrency?.[first?.currencyCode]?.defaultDeductionAmount || '', reason: '' }])));
     };
     load().catch((e) => { if (!cancelled) setError(String(e.message).includes('INVOICE_SOURCE_CHANGED') || /404|403/.test(String(e.status)) ? storageText.sourceChanged : t.load); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -91,7 +100,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
   }, [open, orderId, orderIds, orgId, buyerOrgId, draftId, reload, t.load, storageText.sourceChanged]);
   const currencies = source?.currencies || [];
   const calculation = useMemo(() => !source ? null : applyOrderBillingPercentages(source,
-    calculateInvoiceDraft(source, lines, basis, currency), percentages), [source, lines, basis, currency, percentages]);
+    calculateInvoiceDraft(source, lines, basis, currency), percentages, settlements, currency), [source, lines, basis, currency, percentages, settlements]);
   const changeBilling = (setter, value) => { if (saving) return; setter(value); setReviewed(false); setDirty(true); };
   const changeField = (key, value) => { if (saving) return; setFields((f) => ({ ...f, [key]: value })); setReviewed(false); setDirty(true); };
   const changeLine = (key, property, value) => {
@@ -111,7 +120,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
     try {
       const stored = await requestJSON(`/invoices/drafts${previous ? `/${encodeURIComponent(previous.id)}` : ''}${buildQueryString({ orgId })}`, {
         method: previous ? 'PUT' : 'POST', body: JSON.stringify({ clientKey: clientKey.current, revision: previous?.revision,
-          buyerOrgId: source.buyerOrgId, orders: source.orders, lines, basis, currency, fields, percentages }),
+          buyerOrgId: source.buyerOrgId, orders: source.orders, lines, basis, currency, fields, percentages, settlements }),
       });
       draftRef.current = stored; setSavedDraft(stored); setDirty(false); setSaveNotice(storageText.saved);
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS], orgId });
@@ -164,7 +173,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
             <TextField select size="small" label={t.scope} value={basis} onChange={(e) => { changeBilling(setBasis, e.target.value); setCurrency(''); }} sx={{ minWidth: 140 }}>
               {INVOICE_BASES.map((b) => <MenuItem key={b.value} value={b.value}>{b.label}</MenuItem>)}
             </TextField>
-            <TextField select size="small" label={t.currency} value={currency} onChange={(e) => { changeBilling(setCurrency, e.target.value); }} sx={{ minWidth: 140 }}>
+            <TextField select size="small" label={t.currency} value={currency} onChange={(e) => { const next = e.target.value; changeBilling(setCurrency, next); setSettlements(Object.fromEntries(source.orders.map(order => [order.orderId, { deduction: order.settlementsByCurrency?.[next]?.defaultDeductionAmount || '', reason: '' }]))); }} sx={{ minWidth: 140 }}>
               <MenuItem value="">—</MenuItem>{currencies.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
             </TextField>
           </Stack>
@@ -196,16 +205,19 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
             <Button onClick={() => changeBilling(setPercentages, Object.fromEntries(source.orders.map(order => [order.orderId, allPercentage])))}>{billingText.applyAll}</Button>
           </Stack>
           <Box sx={{ overflowX: 'auto' }}><Table size="small" sx={{ minWidth: 650 }}><TableHead><TableRow>
-            {[billingText.orderStyle, billingText.subtotal, billingText.percentage, billingText.currentAmount, billingText.remainingPreview].map(label => <TableCell key={label}>{label}</TableCell>)}
+            {[billingText.orderStyle, billingText.subtotal, billingText.percentage, billingText.currentAmount, settlementLabels.prior, settlementLabels.deduction, settlementLabels.outstanding, settlementLabels.statement].map(label => <TableCell key={label}>{label}</TableCell>)}
           </TableRow></TableHead><TableBody>{calculation.orders.map(order => <TableRow key={order.orderId}>
             <TableCell>{order.orderNumber}</TableCell><TableCell>{order.subtotal ?? '—'}</TableCell>
             <TableCell><TextField size="small" placeholder="100" value={percentages[order.orderId] ?? ''} error={order.percentage == null}
               inputProps={{ inputMode: 'decimal', maxLength: 6, 'aria-label': `${billingText.percentage} ${order.orderNumber}` }} sx={{ width: 100 }}
               onChange={e => changeBilling(setPercentages, { ...percentages, [order.orderId]: e.target.value })} /></TableCell>
-            <TableCell>{order.amount ?? '—'}</TableCell><TableCell>{order.difference ?? '—'}</TableCell>
+            <TableCell>{order.amount ?? '—'}</TableCell><TableCell>{order.priorBilledAmount} / {order.priorReceivedAmount}{order.hasUnallocatedPayments && <Typography color="warning.main" variant="caption" display="block">{settlementLabels.unallocated}</Typography>}</TableCell>
+            <TableCell><Stack spacing={1}><TextField size="small" value={settlements[order.orderId]?.deduction ?? ''} inputProps={{ inputMode: 'decimal' }} onChange={e => changeBilling(setSettlements, { ...settlements, [order.orderId]: { ...settlements[order.orderId], deduction: e.target.value } })} /><TextField size="small" placeholder={settlementLabels.reason} value={settlements[order.orderId]?.reason ?? ''} onChange={e => changeBilling(setSettlements, { ...settlements, [order.orderId]: { ...settlements[order.orderId], reason: e.target.value } })} /></Stack></TableCell>
+            <TableCell>{order.priorOutstandingAmount}</TableCell><TableCell>{order.netAmount ?? '—'} / {order.receivableAdded ?? '—'}</TableCell>
           </TableRow>)}</TableBody></Table></Box>
           <Typography variant="caption" color="text.secondary">{billingText.previewHint}</Typography>
           <Typography align="right" variant="h6">TOTAL {currency} {calculation.total ?? '—'}</Typography>
+          <Typography align="right" variant="subtitle1">{settlementLabels.newReceivable} {currency} {calculation.receivableAdded ?? '—'}</Typography>
           <Typography variant="subtitle1">{t.metadata}</Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
             {[['number', 'Invoice reference'], ['date', 'Invoice date', 'date'], ['shipmentDate', 'Shipment date', 'date'], ['dueDate', 'Payment due date', 'date'], ['incoterm', 'Incoterm / Named place'], ['paymentTerms', 'Payment terms'], ['shipTo', 'Ship to / Consignee'], ['bank', 'Bank / Payment instructions'], ['notes', 'Remarks']].map(([key, label, type]) =>

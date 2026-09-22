@@ -169,8 +169,8 @@ function assertGeneratedPrismaClientShape() {
     InvoiceDraft: ["id", "sellerOrgId", "buyerOrgId", "clientKey", "revision", "content", "createdBy", "updatedBy", "createdAt", "updatedAt"],
     InvoiceDraftOrder: ["id", "draftId", "workOrderId", "sourceOrderId", "sourceUpdatedAt"],
     InvoiceDraftLine: ["id", "draftId", "workOrderItemId", "sourceItemId", "lineKey"],
-    Invoice: ["id", "sellerOrgId", "buyerOrgId", "invoiceNumber", "clientKey", "sequenceNumber", "status", "pricingBasis", "currencyCode", "subtotal", "total", "snapshot", "issuedBy", "issuedAt", "cancelledBy", "cancelledAt", "cancellationReason"],
-    InvoiceOrder: ["id", "invoiceId", "workOrderId", "sourceOrderId", "sourceOrderNumber", "sourceUpdatedAt", "billingPercentage", "basisAmount", "billedAmount", "installmentNumber"],
+    Invoice: ["id", "sellerOrgId", "buyerOrgId", "invoiceNumber", "clientKey", "sequenceNumber", "status", "pricingBasis", "currencyCode", "subtotal", "total", "receivableAdded", "snapshot", "issuedBy", "issuedAt", "cancelledBy", "cancelledAt", "cancellationReason"],
+    InvoiceOrder: ["id", "invoiceId", "workOrderId", "sourceOrderId", "sourceOrderNumber", "sourceUpdatedAt", "billingPercentage", "basisAmount", "billedAmount", "installmentNumber", "priorBilledAmount", "priorReceivedAmount", "defaultDeductionAmount", "appliedDeductionAmount", "deductionReason", "netAmount", "priorOutstandingAmount", "receivableAdded"],
     InvoiceLine: ["id", "invoiceId", "invoiceOrderId", "workOrderItemId", "sourceItemId", "lineKey", "styleId", "styleCode", "styleName", "description", "color", "gender", "size", "quantity", "bucketQuantity", "unitPrice", "amount", "priceId", "bucketVersionId", "remark", "adjustmentReason", "hsCode", "origin"],
     InvoicePayment: ["id", "invoiceId", "clientKey", "amount", "currencyCode", "receivedAt", "reference", "note", "createdBy", "createdAt", "voidedBy", "voidedAt", "voidReason"],
   })) {
@@ -30677,7 +30677,25 @@ app.get(["/invoices/order-source/:orderId", "/orders/:orderId/invoice-source"], 
   const progress = plans.length ? await buildAssignmentPlanProgressRows(organization.id, plans.map((plan) => plan.externalId)) : [];
   res.setHeader("Cache-Control", "no-store");
   const currencies = await prisma.currency.findMany({ select: { code: true }, orderBy: { code: "asc" } });
-  return res.json({ ...buildInvoiceSource(order, plans, progress, relationship), currencies: currencies.map((row) => row.code) });
+  const previousInvoiceOrders = await prisma.invoiceOrder.findMany({ where: { sourceOrderId: order.orderId,
+    invoice: { sellerOrgId: organization.id, status: "ISSUED" } },
+    include: { invoice: { include: { payments: { where: { voidedAt: null } }, orders: { select: { id: true } } } } },
+    orderBy: { installmentNumber: "asc" } });
+  const sumInvoiceMoney = (values: unknown[]) => { const minor = values.reduce((sum: bigint, value) => {
+    const [whole, fraction = ""] = String(value ?? "0").split("."); return sum + BigInt(whole || "0") * 10000n + BigInt(fraction.padEnd(4, "0").slice(0, 4));
+  }, 0n); const text = minor.toString().padStart(5, "0"); return `${text.slice(0, -4)}.${text.slice(-4)}`; };
+  const settlementsByCurrency = Object.fromEntries([...new Set(previousInvoiceOrders.map(row => row.invoice.currencyCode))].map(currencyCode => {
+    const scoped = previousInvoiceOrders.filter(row => row.invoice.currencyCode === currencyCode);
+    const priorBilledAmount = sumInvoiceMoney(scoped.map(row => row.receivableAdded ?? row.netAmount ?? row.billedAmount));
+    const priorReceivedAmount = sumInvoiceMoney(scoped.flatMap(row => row.invoice.orders.length === 1 ? row.invoice.payments.map(payment => payment.amount) : []));
+    return [currencyCode, { priorBilledAmount,
+      priorReceivedAmount,
+      defaultDeductionAmount: priorReceivedAmount !== "0.0000" ? priorReceivedAmount : priorBilledAmount,
+      hasUnallocatedPayments: scoped.some(row => row.invoice.orders.length > 1 && row.invoice.payments.length > 0),
+      installments: scoped.map(row => ({ invoiceId: row.invoiceId, installmentNumber: row.installmentNumber,
+        billedAmount: String(row.netAmount ?? row.billedAmount), status: row.invoice.status })) }];
+  }));
+  return res.json({ ...buildInvoiceSource(order, plans, progress, relationship), settlementsByCurrency, currencies: currencies.map((row) => row.code) });
 });
 
 app.post("/orders/:orderId/modification-lock", async (req, res) => {

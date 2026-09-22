@@ -26,6 +26,20 @@ test('mixed order percentages default to 100 and change money without changing q
   assert.match(html, /30%/); assert.match(html, /TOTAL USD 160.00/);
 });
 
+test('settlement preview separates prior billing, receipts, deduction and new debt', () => {
+  const s = { orders: [{ orderId: 'a', orderNumber: 'A', settlementsByCurrency: { USD: {
+    priorBilledAmount: '5000.0000', priorReceivedAmount: '3000.0000', defaultDeductionAmount: '5000.0000',
+  } } }] };
+  const calculation = { total: '10000.00', issues: [], lines: [{ orderId: 'a', amount: '10000.00', quantity: 100 }] };
+  const changed = applyOrderBillingPercentages(s, calculation, {}, { a: { deduction: '3000', reason: 'received only' } }, 'USD');
+  assert.equal(changed.orders[0].amount, '10000.00'); assert.equal(changed.orders[0].netAmount, '7000.00');
+  assert.equal(changed.orders[0].priorReceivedAmount, '3000.0000'); assert.equal(changed.total, '7000.00');
+  assert.equal(changed.orders[0].priorOutstandingAmount, '2000.00');
+  assert.equal(changed.orders[0].receivableAdded, '5000.00'); assert.equal(changed.receivableAdded, '5000.00');
+  const missingReason = applyOrderBillingPercentages(s, calculation, {}, { a: { deduction: '3000', reason: '' } }, 'USD');
+  assert.ok(missingReason.issues.includes('DEDUCTION_REASON')); assert.equal(missingReason.total, '7000.00');
+});
+
 test('order progress includes unassigned quantities and never guesses unknown production', () => {
   const order = { id: 1, totalQuantity: 100 };
   const plans = [{ workOrderId: 1, externalId: 'a' }, { workOrderId: 2, externalId: 'foreign' }];

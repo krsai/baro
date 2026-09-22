@@ -19,7 +19,7 @@ export function combineInvoiceSources(sources) {
     ...first, orderId: sources.length === 1 ? first.orderId : null,
     sourceUpdatedAt: sources.length === 1 ? first.sourceUpdatedAt : null,
     orderNumber: sources.map(s => s.orderNumber).join(', '),
-    orders: sources.map(s => ({ orderId: s.orderId, orderNumber: s.orderNumber, sourceUpdatedAt: s.sourceUpdatedAt })),
+    orders: sources.map(s => ({ orderId: s.orderId, orderNumber: s.orderNumber, sourceUpdatedAt: s.sourceUpdatedAt, settlementsByCurrency: s.settlementsByCurrency || {} })),
     ready: sources.every(s => s.ready),
     currencies: [...new Set(sources.flatMap(s => s.currencies || []))],
     styles: sources.flatMap(s => s.styles.map(style => ({ ...style, orderId: s.orderId,
@@ -94,12 +94,20 @@ export const escapeInvoiceHtml = (value) => String(value ?? '').replace(/[&<>"']
 
 // Each order is rounded independently, after summing its rounded line amounts.
 // This percentage changes money only; it never consumes a percentage of units.
-export function applyOrderBillingPercentages(source, calculation, percentages = {}) {
+export function applyOrderBillingPercentages(source, calculation, percentages = {}, settlements = {}, currencyCode = '') {
   const digits = calculation.total.includes('.') ? calculation.total.split('.')[1].length : 0;
+  const deductionMinor = value => {
+    if (!/^\d+(\.\d{1,4})?$/.test(String(value))) return null;
+    const [whole, fraction = ''] = String(value).split('.');
+    const scale4 = BigInt(whole) * 10000n + BigInt(fraction.padEnd(4, '0'));
+    const divisor = 10n ** BigInt(4 - digits);
+    return (scale4 + divisor / 2n) / divisor;
+  };
   // Partial shipment / advance review does not require the whole order to be
   // completed. Keep production uncertainty visible and require user review.
   const issues = calculation.issues.filter(issue => issue !== 'PRODUCTION');
   let total = 0n;
+  let receivableAddedTotal = 0n;
   const orders = (source.orders || [source]).map(order => {
     const raw = String(percentages[order.orderId] ?? '').trim() || '100';
     const valid = /^\d+(\.\d{1,2})?$/.test(raw) && Number(raw) > 0 && Number(raw) <= 100;
@@ -110,15 +118,37 @@ export function applyOrderBillingPercentages(source, calculation, percentages = 
     const known = rows.every(line => line.amount != null || line.quantity === 0);
     const subtotal = rows.reduce((sum, line) => sum + BigInt((line.amount || '0').replace('.', '')), 0n);
     const amount = (subtotal * percent + 5000n) / 10000n;
-    total += amount;
+    const settlementContext = order.settlementsByCurrency?.[currencyCode] || {};
+    const defaultText = String(settlementContext.defaultDeductionAmount || '0');
+    const input = String(settlements[order.orderId]?.deduction ?? '').trim() || defaultText;
+    const parsedDeduction = deductionMinor(input), parsedDefault = deductionMinor(defaultText);
+    const validDeduction = parsedDeduction != null;
+    const deduction = parsedDeduction ?? 0n, defaultDeduction = parsedDefault ?? 0n;
+    const priorBilled = deductionMinor(settlementContext.priorBilledAmount || '0') ?? 0n;
+    const priorReceived = deductionMinor(settlementContext.priorReceivedAmount || '0') ?? 0n;
+    if (!validDeduction || deduction > amount) issues.push('DEDUCTION');
+    if (deduction !== defaultDeduction && !String(settlements[order.orderId]?.reason || '').trim()) issues.push('DEDUCTION_REASON');
+    const netAmount = amount >= deduction ? amount - deduction : 0n;
+    const priorOutstanding = priorBilled > priorReceived ? priorBilled - priorReceived : 0n;
+    const receivableAdded = netAmount > priorOutstanding ? netAmount - priorOutstanding : 0n;
+    total += netAmount;
+    receivableAddedTotal += receivableAdded;
     return { orderId: order.orderId, orderNumber: order.orderNumber, percentage: valid ? raw : null,
       subtotal: known ? formatMinor(subtotal, digits) : null,
-      amount: known && valid ? formatMinor(amount, digits) : null,
+      amount: known && valid ? formatMinor(amount, digits) : null, priorBilledAmount: settlementContext.priorBilledAmount || '0',
+      priorReceivedAmount: settlementContext.priorReceivedAmount || '0', defaultDeductionAmount: defaultText,
+      appliedDeductionAmount: validDeduction ? formatMinor(deduction, digits) : null,
+      netAmount: known && valid && validDeduction && deduction <= amount ? formatMinor(netAmount, digits) : null,
+      priorOutstandingAmount: formatMinor(priorOutstanding, digits),
+      receivableAdded: known && valid && validDeduction && deduction <= amount ? formatMinor(receivableAdded, digits) : null,
+      hasUnallocatedPayments: Boolean(settlementContext.hasUnallocatedPayments),
       difference: known && valid ? formatMinor(subtotal - amount, digits) : null };
   });
   return { ...calculation, orders, subtotal: calculation.total,
     warnings: calculation.issues.includes('PRODUCTION') ? ['PRODUCTION'] : [],
-    total: orders.some(order => order.amount == null) ? null : formatMinor(total, digits), issues: [...new Set(issues)] };
+    total: orders.some(order => order.netAmount == null) ? null : formatMinor(total, digits),
+    receivableAdded: orders.some(order => order.receivableAdded == null) ? null : formatMinor(receivableAddedTotal, digits),
+    issues: [...new Set(issues)] };
 }
 
 export function buildInvoicePrintHtml({ source, calculation, fields, pricingBasis, currencyCode }) {
@@ -134,7 +164,7 @@ export function buildInvoicePrintHtml({ source, calculation, fields, pricingBasi
   <div class="parties">${party('SELLER / EXPORTER', fields.seller)}${party('BUYER / BILL TO', fields.buyer)}</div>
   <div class="meta"><section><h3>SHIP TO / CONSIGNEE</h3><p>${e(fields.shipTo)}</p></section><section><p>Shipment date: ${e(fields.shipmentDate)}</p><p>Incoterm / Named place: ${e(fields.incoterm)}</p><p>Payment terms: ${e(fields.paymentTerms)}</p><p>Due date: ${e(fields.dueDate)}</p></section></div>
   ${monetary ? paymentTable : `<table><thead><tr><th style="width:5%">No.</th><th style="width:30%">Order / Description / Style / Color / Gender / Size</th><th style="width:10%">HS / Origin</th><th class="num" style="width:9%">Qty (PCS)</th><th class="num" style="width:12%">Unit price</th><th class="num" style="width:14%">Amount</th><th style="width:20%">Remark</th></tr></thead><tbody>${calculation.lines.filter((line) => line.quantity > 0).map((line, i) => `<tr><td>${i + 1}</td><td><p>${e(line.orderNumber || source.orderNumber)}</p><strong>${e(line.styleCode)}</strong><p>${e(line.description)}</p><p>${e([line.color, line.gender, line.size].filter(Boolean).join(' / '))}</p></td><td>${e(line.hsCode)}<p>${e(line.origin)}</p></td><td class="num">${e(line.quantity)}</td><td class="num">${e(line.unitPrice)}</td><td class="num">${e(line.amount)}</td><td><p>${e(line.remark)}</p></td></tr>`).join('')}</tbody></table>`}
-  ${calculation.orders ? `<table><thead><tr><th>Order</th><th class="num">Quantity × unit price</th><th class="num">Billing %</th><th class="num">Amount due (${e(currencyCode)})</th></tr></thead><tbody>${calculation.orders.map(order => `<tr><td>${e(order.orderNumber)}</td><td class="num">${e(order.subtotal)}</td><td class="num">${e(order.percentage)}%</td><td class="num">${e(order.amount)}</td></tr>`).join('')}</tbody></table>` : ''}
-  <div class="total">TOTAL ${e(currencyCode)} ${e(calculation.total)}</div><div class="terms"><h3>BANK / PAYMENT INSTRUCTIONS</h3><p>${e(fields.bank)}</p><h3>REMARKS</h3><p>${e(fields.notes)}</p></div>
+  ${calculation.orders ? `<table><thead><tr><th>Order</th><th class="num">Quantity × unit price</th><th class="num">Billing %</th><th class="num">Prior billed / received</th><th class="num">Deduction</th><th class="num">Prior outstanding</th><th class="num">Statement / new receivable (${e(currencyCode)})</th></tr></thead><tbody>${calculation.orders.map(order => `<tr><td>${e(order.orderNumber)}</td><td class="num">${e(order.subtotal)}</td><td class="num">${e(order.percentage)}%</td><td class="num">${e(order.priorBilledAmount)} / ${e(order.priorReceivedAmount)}</td><td class="num">${e(order.appliedDeductionAmount)}</td><td class="num">${e(order.priorOutstandingAmount)}</td><td class="num">${e(order.netAmount)} / ${e(order.receivableAdded)}</td></tr>`).join('')}</tbody></table>` : ''}
+  <div class="total">STATEMENT TOTAL ${e(currencyCode)} ${e(calculation.total)}<br>NEW RECEIVABLE ${e(currencyCode)} ${e(calculation.receivableAdded ?? calculation.total)}</div><div class="terms"><h3>BANK / PAYMENT INSTRUCTIONS</h3><p>${e(fields.bank)}</p><h3>REMARKS</h3><p>${e(fields.notes)}</p></div>
   <footer>DRAFT — NOT ISSUED. Prepared for quantity and price review only.<br>Authorized signature: __________________________</footer></body></html>`;
 }

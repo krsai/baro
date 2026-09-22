@@ -1,5 +1,5 @@
 export function restoreInvoiceDraftLines(content, source) {
-  if (content?.version !== 1 || content.buyerOrgId !== source.buyerOrgId ||
+  if (![1, 2].includes(content?.version) || content.buyerOrgId !== source.buyerOrgId ||
     content.orders.length !== source.orders.length ||
     content.orders.some(row => !source.orders.some(current => current.orderId === row.orderId &&
       new Date(current.sourceUpdatedAt).getTime() === new Date(row.sourceUpdatedAt).getTime())) ||
