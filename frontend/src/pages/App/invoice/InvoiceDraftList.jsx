@@ -68,17 +68,78 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
     const amount = window.prompt(languageCode === 'ko' ? `실입금액을 입력하세요. (${row.currencyCode})` : `Enter received amount (${row.currencyCode}).`);
     if (!amount?.trim()) return;
     const reference = window.prompt(languageCode === 'ko' ? '입금 참고번호를 입력하세요. (선택)' : 'Payment reference (optional).') || '';
-    try { await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}/payments${buildQueryString({ orgId })}`, {
+    try { const payment = await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}/payments${buildQueryString({ orgId })}`, {
       method: 'POST', body: JSON.stringify({ clientKey: globalThis.crypto.randomUUID(), amount: amount.trim(),
         receivedAt: new Date().toISOString(), reference, note: '' }),
-    }); emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId }); setReload(value => value + 1);
+    });
+      if (row.orders.length > 1) {
+        const allocations = [];
+        for (const order of row.orders) {
+          const allocated = window.prompt(languageCode === 'ko'
+            ? `${order.sourceOrderNumber} 주문에 배분할 금액을 입력하세요. (배분하지 않으면 0)`
+            : `Amount allocated to order ${order.sourceOrderNumber} (0 for none).`, '0');
+          if (allocated === null) return;
+          if (Number(allocated) > 0) allocations.push({ invoiceOrderId: order.id, amount: allocated.trim() });
+        }
+        if (allocations.length) await requestJSON(`/invoices/payments/${encodeURIComponent(payment.id)}/allocations${buildQueryString({ orgId })}`, {
+          method: 'POST', body: JSON.stringify({ clientKey: globalThis.crypto.randomUUID(), reason: '', allocations }),
+        });
+      }
+      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId }); setReload(value => value + 1);
+    } catch { setError(t.failed); }
+  };
+  const reviseIssued = async row => {
+    const reason = window.prompt(languageCode === 'ko' ? '개정 사유를 입력하세요.' : languageCode === 'vi' ? 'Nhập lý do sửa đổi.' : 'Enter a revision reason.');
+    if (!reason?.trim()) return;
+    try {
+      const draft = await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}/revision-draft${buildQueryString({ orgId })}`, {
+        method: 'POST', body: JSON.stringify({ clientKey: globalThis.crypto.randomUUID(), reason: reason.trim() }),
+      });
+      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS], orgId }); setSelected(draft.id);
+    } catch { setError(t.failed); }
+  };
+  const allocateExistingPayment = async row => {
+    try {
+      const invoice = await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}${buildQueryString({ orgId })}`, { skipCache: true });
+      const payments = (invoice.payments || []).filter(payment => !payment.voidedAt);
+      if (!payments.length) return;
+      const options = payments.map((payment, index) => `${index + 1}. ${payment.receivedAt} · ${invoice.currencyCode} ${payment.amount} · ${payment.reference || '-'}`).join('\n');
+      const selectedIndex = Number(window.prompt(`${options}\n\n${languageCode === 'ko' ? '배분할 입금 번호를 선택하세요.' : 'Select the payment number to allocate.'}`, '1')) - 1;
+      const payment = payments[selectedIndex]; if (!payment) return;
+      const allocations = [];
+      for (const order of invoice.orders || []) {
+        const current = (payment.allocations || []).find(item => !item.voidedAt && item.invoiceOrderId === order.id);
+        const amount = window.prompt(languageCode === 'ko' ? `${order.sourceOrderNumber} 주문 배분액` : `Allocation for ${order.sourceOrderNumber}`, current?.amount || '0');
+        if (amount === null) return;
+        if (Number(amount) > 0) allocations.push({ invoiceOrderId: order.id, amount: amount.trim() });
+      }
+      if (!allocations.length) return;
+      const hasCurrent = (payment.allocations || []).some(item => !item.voidedAt);
+      const reason = hasCurrent ? window.prompt(languageCode === 'ko' ? '기존 배분을 바꾸는 사유를 입력하세요.' : 'Reason for changing the allocation.') : '';
+      if (hasCurrent && !reason?.trim()) return;
+      await requestJSON(`/invoices/payments/${encodeURIComponent(payment.id)}/allocations${buildQueryString({ orgId })}`, {
+        method: 'POST', body: JSON.stringify({ clientKey: globalThis.crypto.randomUUID(), reason: reason?.trim() || '', allocations }),
+      });
+      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId }); setReload(value => value + 1);
+    } catch { setError(t.failed); }
+  };
+  const showHistory = async row => {
+    try {
+      const invoice = await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}${buildQueryString({ orgId })}`, { skipCache: true });
+      const lines = [
+        `${invoice.invoiceNumber} · r${invoice.revisionNumber || 1} · ${invoice.status}`,
+        invoice.revisedFrom ? `← ${invoice.revisedFrom.invoiceNumber} (r${invoice.revisedFrom.revisionNumber})` : '',
+        invoice.revision ? `→ ${invoice.revision.invoiceNumber} (r${invoice.revision.revisionNumber})` : '',
+        ...(invoice.payments || []).map(payment => `${payment.voidedAt ? '[VOID] ' : ''}${payment.receivedAt} ${invoice.currencyCode} ${payment.amount}${payment.allocations?.filter(item => !item.voidedAt).map(item => ` · #${item.invoiceOrderId} ${item.amount}`).join('') || ''}`),
+      ].filter(Boolean);
+      window.alert(lines.join('\n'));
     } catch { setError(t.failed); }
   };
   return <Stack spacing={2}>
     <Typography variant="h6">{languageCode === 'ko' ? '발행된 청구서' : languageCode === 'vi' ? 'Hóa đơn đã phát hành' : 'Issued invoices'}</Typography>
     <Table size="small"><TableHead><TableRow>{[common.invoiceNumber, common.customerName, languageCode === 'ko' ? '안내금액 / 신규채권' : 'Statement / New debt', languageCode === 'ko' ? '입금 / 신규미수' : 'Received / New due', t.updated, ''].map((label, i) => <TableCell key={i}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
       {!issued.rows.length && <TableRow><TableCell colSpan={6}>{languageCode === 'ko' ? '발행된 청구서가 없습니다.' : 'No issued invoices.'}</TableCell></TableRow>}
-      {issued.rows.map(row => { const due = subtractInvoiceMoney(row.receivableAdded, row.receivedAmount); return <TableRow key={row.id}><TableCell>{row.invoiceNumber}<Typography variant="caption" display="block">{row.status} · {row.orders.map(order => `${order.sourceOrderNumber} ${order.installmentNumber}차`).join(', ')}</Typography></TableCell><TableCell>{row.buyerName}</TableCell><TableCell>{row.currencyCode} {row.total} / {row.receivableAdded}</TableCell><TableCell>{row.currencyCode} {row.receivedAmount} / {due}</TableCell><TableCell>{new Date(row.issuedAt).toLocaleString()}</TableCell><TableCell><Button onClick={() => printIssued(row)}>PDF</Button>{row.status === 'ISSUED' && <><Button onClick={() => addPayment(row)}>{languageCode === 'ko' ? '입금' : 'Payment'}</Button><Button color="error" onClick={() => cancelIssued(row)}>{languageCode === 'ko' ? '취소' : 'Cancel'}</Button></>}</TableCell></TableRow>; })}
+      {issued.rows.map(row => { const due = subtractInvoiceMoney(row.receivableAdded, row.receivedAmount); return <TableRow key={row.id}><TableCell>{row.invoiceNumber}<Typography variant="caption" display="block">{row.status} · r{row.revisionNumber || 1} · {row.orders.map(order => `${order.sourceOrderNumber} ${order.installmentNumber}차`).join(', ')}</Typography></TableCell><TableCell>{row.buyerName}</TableCell><TableCell>{row.currencyCode} {row.total} / {row.receivableAdded}</TableCell><TableCell>{row.currencyCode} {row.receivedAmount} / {due}{row.orders.length > 1 && <Typography variant="caption" display="block">{languageCode === 'ko' ? '주문 배분' : 'Allocated'}: {row.allocatedAmount}</Typography>}</TableCell><TableCell>{new Date(row.issuedAt).toLocaleString()}</TableCell><TableCell><Button onClick={() => printIssued(row)}>PDF</Button><Button onClick={() => showHistory(row)}>{languageCode === 'ko' ? '이력' : 'History'}</Button>{row.status === 'ISSUED' && <><Button onClick={() => addPayment(row)}>{languageCode === 'ko' ? '입금' : 'Payment'}</Button>{row.orders.length > 1 && <Button onClick={() => allocateExistingPayment(row)}>{languageCode === 'ko' ? '배분' : 'Allocate'}</Button>}<Button onClick={() => reviseIssued(row)}>{languageCode === 'ko' ? '개정' : 'Revise'}</Button><Button color="error" onClick={() => cancelIssued(row)}>{languageCode === 'ko' ? '취소' : 'Cancel'}</Button></>}</TableCell></TableRow>; })}
     </TableBody></Table>
     <Typography variant="h6">{t.title}</Typography>
     {error && <Alert severity="error" action={<Button onClick={() => setReload(value => value + 1)}>{common.retry}</Button>}>{error}</Alert>}

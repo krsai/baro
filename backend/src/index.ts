@@ -166,13 +166,14 @@ function assertGeneratedPrismaClientShape() {
 
   const staleSignals: string[] = [];
   for (const [model, fields] of Object.entries({
-    InvoiceDraft: ["id", "sellerOrgId", "buyerOrgId", "clientKey", "revision", "content", "createdBy", "updatedBy", "createdAt", "updatedAt"],
+    InvoiceDraft: ["id", "sellerOrgId", "buyerOrgId", "clientKey", "revision", "content", "createdBy", "updatedBy", "createdAt", "updatedAt", "revisionOfInvoiceId", "revisionReason"],
     InvoiceDraftOrder: ["id", "draftId", "workOrderId", "sourceOrderId", "sourceUpdatedAt"],
     InvoiceDraftLine: ["id", "draftId", "workOrderItemId", "sourceItemId", "lineKey"],
-    Invoice: ["id", "sellerOrgId", "buyerOrgId", "invoiceNumber", "clientKey", "sequenceNumber", "status", "pricingBasis", "currencyCode", "subtotal", "total", "receivableAdded", "snapshot", "issuedBy", "issuedAt", "cancelledBy", "cancelledAt", "cancellationReason"],
+    Invoice: ["id", "sellerOrgId", "buyerOrgId", "invoiceNumber", "clientKey", "sequenceNumber", "status", "pricingBasis", "currencyCode", "subtotal", "total", "receivableAdded", "snapshot", "issuedBy", "issuedAt", "cancelledBy", "cancelledAt", "cancellationReason", "revisionOfInvoiceId", "rootInvoiceId", "revisionNumber", "revisionReason"],
     InvoiceOrder: ["id", "invoiceId", "workOrderId", "sourceOrderId", "sourceOrderNumber", "sourceUpdatedAt", "billingPercentage", "basisAmount", "billedAmount", "installmentNumber", "priorBilledAmount", "priorReceivedAmount", "defaultDeductionAmount", "appliedDeductionAmount", "deductionReason", "netAmount", "priorOutstandingAmount", "receivableAdded"],
     InvoiceLine: ["id", "invoiceId", "invoiceOrderId", "workOrderItemId", "sourceItemId", "lineKey", "styleId", "styleCode", "styleName", "description", "color", "gender", "size", "quantity", "bucketQuantity", "unitPrice", "amount", "priceId", "bucketVersionId", "remark", "adjustmentReason", "hsCode", "origin"],
     InvoicePayment: ["id", "invoiceId", "clientKey", "amount", "currencyCode", "receivedAt", "reference", "note", "createdBy", "createdAt", "voidedBy", "voidedAt", "voidReason"],
+    InvoicePaymentAllocation: ["id", "paymentId", "invoiceOrderId", "invoiceId", "batchKey", "amount", "createdBy", "createdAt", "voidedBy", "voidedAt", "voidReason"],
   })) {
     for (const field of fields) {
       if (!hasField(model, field)) staleSignals.push(model + "." + field + " is missing");
@@ -770,6 +771,8 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "InvoiceDraft", columnName: "updatedBy" },
   { tableName: "InvoiceDraft", columnName: "createdAt" },
   { tableName: "InvoiceDraft", columnName: "updatedAt" },
+  { tableName: "InvoiceDraft", columnName: "revisionOfInvoiceId" },
+  { tableName: "InvoiceDraft", columnName: "revisionReason" },
   { tableName: "InvoiceDraftOrder", columnName: "id" },
   { tableName: "InvoiceDraftOrder", columnName: "draftId" },
   { tableName: "InvoiceDraftOrder", columnName: "workOrderId" },
@@ -780,6 +783,14 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "InvoiceDraftLine", columnName: "workOrderItemId" },
   { tableName: "InvoiceDraftLine", columnName: "sourceItemId" },
   { tableName: "InvoiceDraftLine", columnName: "lineKey" },
+  { tableName: "Invoice", columnName: "revisionOfInvoiceId" },
+  { tableName: "Invoice", columnName: "rootInvoiceId" },
+  { tableName: "Invoice", columnName: "revisionNumber" },
+  { tableName: "InvoicePaymentAllocation", columnName: "paymentId" },
+  { tableName: "InvoicePaymentAllocation", columnName: "invoiceOrderId" },
+  { tableName: "InvoicePaymentAllocation", columnName: "invoiceId" },
+  { tableName: "InvoicePaymentAllocation", columnName: "batchKey" },
+  { tableName: "InvoicePaymentAllocation", columnName: "amount" },
   { tableName: "WorkLog", columnName: "coverageStartDate" },
   { tableName: "WorkLog", columnName: "coverageEndDate" },
   { tableName: "WorkLog", columnName: "entryMode" },
@@ -1011,6 +1022,12 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "InvoiceLine_workOrderItemId_fkey",
   "InvoicePayment_invoiceId_fkey",
   "InvoicePayment_invoiceId_clientKey_key",
+  "Invoice_revisionOfInvoiceId_key",
+  "Invoice_revisionOfInvoiceId_fkey",
+  "InvoiceDraft_revisionOfInvoiceId_fkey",
+  "InvoicePaymentAllocation_paymentId_invoiceOrderId_batchKey_key",
+  "InvoicePaymentAllocation_payment_invoice_fkey",
+  "InvoicePaymentAllocation_order_invoice_fkey",
   "Currency_code_key",
   "Organization_salaryCurrencyId_idx",
   "Organization_salaryCurrency_fkey",
@@ -30620,10 +30637,14 @@ app.get("/invoices/orders", async (req, res) => {
     return res.status(400).json({ error: "buyerOrgId is required" });
   }
   const search = String(req.query.search || "").trim().slice(0, 200);
+  const billingHistory = String(req.query.billingHistory || "ALL").toUpperCase();
+  if (!new Set(["ALL", "NONE", "EXISTS"]).has(billingHistory)) return res.status(400).json({ error: "invalid billingHistory" });
   const page = Math.max(0, Math.min(100000, Math.trunc(Number(req.query.page) || 0)));
   const orders = await prisma.workOrder.findMany({
     where: { sellerOrgId: access.organization.id, buyerOrgId,
-      ...(search ? { orderNumber: { contains: search, mode: "insensitive" as const } } : {}) },
+      ...(search ? { orderNumber: { contains: search, mode: "insensitive" as const } } : {}),
+      ...(billingHistory === "NONE" ? { invoiceOrders: { none: { invoice: { sellerOrgId: access.organization.id, status: "ISSUED" } } } }
+        : billingHistory === "EXISTS" ? { invoiceOrders: { some: { invoice: { sellerOrgId: access.organization.id, status: "ISSUED" } } } } : {}) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: page * 50, take: 51,
     select: { id: true, orderId: true, orderNumber: true, totalQuantity: true, dueDate: true,
       buyerOrg: { select: { id: true, name: true } } },
@@ -30635,7 +30656,21 @@ app.get("/invoices/orders", async (req, res) => {
     select: { externalId: true, workOrderId: true, style: { select: { name: true } } },
   }) : [];
   const progress = plans.length ? await buildAssignmentPlanProgressRows(access.organization.id, plans.map(plan => plan.externalId)) : [];
-  return res.json({ rows: visible.map(order => invoiceOrderProgress(order, plans, progress)), hasMore: orders.length > 50 });
+  const issuedRows = visible.length ? await prisma.invoiceOrder.findMany({ where: { workOrderId: { in: visible.map(order => order.id) },
+    invoice: { sellerOrgId: access.organization.id, status: "ISSUED" } }, select: { workOrderId: true, receivableAdded: true,
+      invoice: { select: { currencyCode: true } } } }) : [];
+  const billingByOrder = new Map<number, Record<string, bigint>>();
+  for (const row of issuedRows) {
+    if (!row.workOrderId) continue;
+    const byCurrency = billingByOrder.get(row.workOrderId) || {};
+    const [whole, fraction = ""] = String(row.receivableAdded).split(".");
+    byCurrency[row.invoice.currencyCode] = (byCurrency[row.invoice.currencyCode] || 0n) + BigInt(whole || "0") * 10000n + BigInt(fraction.padEnd(4, "0").slice(0, 4));
+    billingByOrder.set(row.workOrderId, byCurrency);
+  }
+  const moneyText = (value: bigint) => { const text = value.toString().padStart(5, "0"); return `${text.slice(0, -4)}.${text.slice(-4)}`; };
+  return res.json({ rows: visible.map(order => ({ ...invoiceOrderProgress(order, plans, progress),
+    billingHistory: Object.entries(billingByOrder.get(order.id) || {}).map(([currencyCode, value]) => ({ currencyCode, receivableAdded: moneyText(value) })) })),
+    hasMore: orders.length > 50 });
 });
 
 app.get(["/invoices/order-source/:orderId", "/orders/:orderId/invoice-source"], async (req, res) => {
@@ -30669,20 +30704,23 @@ app.get(["/invoices/order-source/:orderId", "/orders/:orderId/invoice-source"], 
   res.setHeader("Cache-Control", "no-store");
   const currencies = await prisma.currency.findMany({ select: { code: true }, orderBy: { code: "asc" } });
   const previousInvoiceOrders = await prisma.invoiceOrder.findMany({ where: { sourceOrderId: order.orderId,
-    invoice: { sellerOrgId: organization.id, status: "ISSUED" } },
-    include: { invoice: { include: { payments: { where: { voidedAt: null } }, orders: { select: { id: true } } } } },
+    invoice: { sellerOrgId: organization.id, status: { in: ["ISSUED", "SUPERSEDED"] } } },
+    include: { invoice: { include: { payments: { where: { voidedAt: null }, include: {
+      allocations: { where: { voidedAt: null }, select: { invoiceOrderId: true, amount: true } },
+    } }, orders: { select: { id: true } } } } },
     orderBy: { installmentNumber: "asc" } });
   const sumInvoiceMoney = (values: unknown[]) => { const minor = values.reduce((sum: bigint, value) => {
     const [whole, fraction = ""] = String(value ?? "0").split("."); return sum + BigInt(whole || "0") * 10000n + BigInt(fraction.padEnd(4, "0").slice(0, 4));
   }, 0n); const text = minor.toString().padStart(5, "0"); return `${text.slice(0, -4)}.${text.slice(-4)}`; };
   const settlementsByCurrency = Object.fromEntries([...new Set(previousInvoiceOrders.map(row => row.invoice.currencyCode))].map(currencyCode => {
     const scoped = previousInvoiceOrders.filter(row => row.invoice.currencyCode === currencyCode);
-    const priorBilledAmount = sumInvoiceMoney(scoped.map(row => row.receivableAdded ?? row.netAmount ?? row.billedAmount));
-    const priorReceivedAmount = sumInvoiceMoney(scoped.flatMap(row => row.invoice.orders.length === 1 ? row.invoice.payments.map(payment => payment.amount) : []));
+    const priorBilledAmount = sumInvoiceMoney(scoped.filter(row => row.invoice.status === "ISSUED").map(row => row.receivableAdded ?? row.netAmount ?? row.billedAmount));
+    const priorReceivedAmount = sumInvoiceMoney(scoped.flatMap(row => row.invoice.payments.flatMap(payment => row.invoice.orders.length === 1
+      ? [payment.amount] : payment.allocations.filter(allocation => allocation.invoiceOrderId === row.id).map(allocation => allocation.amount))));
     return [currencyCode, { priorBilledAmount,
       priorReceivedAmount,
       defaultDeductionAmount: priorReceivedAmount !== "0.0000" ? priorReceivedAmount : priorBilledAmount,
-      hasUnallocatedPayments: scoped.some(row => row.invoice.orders.length > 1 && row.invoice.payments.length > 0),
+      hasUnallocatedPayments: scoped.some(row => row.invoice.orders.length > 1 && row.invoice.payments.some(payment => payment.allocations.length === 0)),
       installments: scoped.map(row => ({ invoiceId: row.invoiceId, installmentNumber: row.installmentNumber,
         billedAmount: String(row.netAmount ?? row.billedAmount), status: row.invoice.status })) }];
   }));

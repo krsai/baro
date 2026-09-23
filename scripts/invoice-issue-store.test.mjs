@@ -5,7 +5,7 @@ import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 
 const require = createRequire(import.meta.url);
-const { calculateInvoiceIssueSnapshot, recordInvoicePayment, voidInvoicePayment } = require('../backend/dist/services/invoiceIssueStore.js');
+const { calculateInvoiceIssueSnapshot, createInvoiceRevisionDraft, recordInvoicePayment, replaceInvoicePaymentAllocations, voidInvoicePayment } = require('../backend/dist/services/invoiceIssueStore.js');
 const [schema, migration, routes] = await Promise.all([
   readFile(new URL('../backend/prisma/schema.prisma', import.meta.url), 'utf8'),
   readFile(new URL('../backend/migration_fix.sql', import.meta.url), 'utf8'),
@@ -78,17 +78,56 @@ test('actual payments are separate, idempotent records and voiding preserves the
   assert.equal(voided.voidReason, 'wrong transfer'); assert.ok(voided.voidedAt);
 });
 
+test('multi-order payments use explicit replaceable allocations and preserve voided history', async () => {
+  let rows = [];
+  const db = { $transaction: async run => run(db), invoicePayment: { findFirst: async () => ({ id: 'p', amount: '100.0000', voidedAt: null,
+    invoice: { id: 'i', status: 'ISSUED', orders: [{ id: 1 }, { id: 2 }] } }) }, invoicePaymentAllocation: {
+    findMany: async ({ where }) => rows.filter(row => row.paymentId === where.paymentId
+      && (where.batchKey === undefined || row.batchKey === where.batchKey) && (where.voidedAt === undefined || row.voidedAt === where.voidedAt)),
+    updateMany: async ({ data }) => { rows = rows.map(row => row.voidedAt ? row : { ...row, ...data }); return { count: rows.length }; },
+    createMany: async ({ data }) => { const start = rows.length; rows.push(...data.map((row, index) => ({ id: `a${start + index}`, ...row, voidedAt: null }))); return { count: data.length }; },
+  } };
+  const first = await replaceInvoicePaymentAllocations(db, 1, 'actor', 'p', { clientKey: 'allocation_batch_0001',
+    allocations: [{ invoiceOrderId: 1, amount: '60' }, { invoiceOrderId: 2, amount: '40' }] });
+  assert.equal(first.length, 2);
+  await assert.rejects(replaceInvoicePaymentAllocations(db, 1, 'actor', 'p', { clientKey: 'allocation_batch_0002',
+    allocations: [{ invoiceOrderId: 1, amount: '50' }] }), /ALLOCATION_REASON_REQUIRED/);
+  const replaced = await replaceInvoicePaymentAllocations(db, 1, 'actor', 'p', { clientKey: 'allocation_batch_0002', reason: 'correct split',
+    allocations: [{ invoiceOrderId: 1, amount: '50' }, { invoiceOrderId: 2, amount: '50' }] });
+  assert.equal(replaced.length, 2); assert.equal(rows.filter(row => row.voidedAt).length, 2);
+  await assert.rejects(replaceInvoicePaymentAllocations(db, 1, 'actor', 'p', { clientKey: 'allocation_batch_0003', reason: 'bad',
+    allocations: [{ invoiceOrderId: 1, amount: '101' }] }), /EXCEEDS_PAYMENT/);
+});
+
+test('revision draft copies immutable snapshot inputs and links the original invoice', async () => {
+  let draft;
+  const invoice = { id: 'i1', sellerOrgId: 1, buyerOrgId: 2, status: 'ISSUED', pricingBasis: 'MANUFACTURING_SERVICE_PRICE',
+    currencyCode: 'USD', snapshot: { fields: { number: 'INV-1', date: '2026-09-22' } },
+    orders: [{ id: 4, workOrderId: 3, sourceOrderId: 'o1', sourceUpdatedAt: new Date('2026-09-22'), billingPercentage: '100', appliedDeductionAmount: '0', deductionReason: '' }],
+    lines: [{ workOrderItemId: 11, sourceItemId: 11, lineKey: 'line', quantity: 3, remark: '', adjustmentReason: '', hsCode: '', origin: '' }] };
+  const db = { $transaction: async run => run(db), invoice: { findFirst: async ({ where }) => where.revisionOfInvoiceId ? null : invoice },
+    invoiceDraft: { findFirst: async () => null, create: async ({ data }) => (draft = { id: 'd1', ...data }) },
+    invoiceDraftOrder: { createMany: async () => ({ count: 1 }) }, invoiceDraftLine: { createMany: async () => ({ count: 1 }) } };
+  const result = await createInvoiceRevisionDraft(db, 1, 'actor', 'i1', { clientKey: 'revision_draft_0001', reason: 'correct address' });
+  assert.equal(result.revisionOfInvoiceId, 'i1'); assert.equal(result.revisionReason, 'correct address');
+  assert.equal(draft.content.orders[0].orderId, 'o1'); assert.equal(draft.content.lines[0].key, 'line');
+});
+
 test('ledger schema and routes preserve immutable order and line snapshots', () => {
   assert.match(schema, /model Invoice \{/);
   assert.match(schema, /@@unique\(\[sellerOrgId, invoiceNumber\]\)/);
   assert.match(schema, /model InvoiceOrder \{/);
   assert.match(schema, /model InvoiceLine \{/);
+  assert.match(schema, /model InvoicePaymentAllocation \{/);
+  assert.match(schema, /revisionOfInvoiceId String\? @unique/);
   assert.match(migration, /immutable issued-invoice ledger foundation/);
   assert.match(routes, /\/invoices\/drafts\/:id\/issue/);
   assert.match(routes, /\/invoices\/issued/);
   assert.match(routes, /\/invoices\/issued\/:id\/cancel/);
   assert.match(routes, /\/invoices\/issued\/:id\/payments/);
   assert.match(routes, /\/invoices\/payments\/:id\/void/);
+  assert.match(routes, /\/invoices\/payments\/:id\/allocations/);
+  assert.match(routes, /\/invoices\/issued\/:id\/revision-draft/);
 });
 
 test('issued ledger bootstrap is repeatable and preserves snapshots when source rows are deleted', async () => {
@@ -110,6 +149,16 @@ test('issued ledger bootstrap is repeatable and preserves snapshots when source 
       DELETE FROM "WorkOrderItem"; DELETE FROM "WorkOrder";`);
     assert.equal((await db.query('SELECT "workOrderItemId","sourceItemId" FROM "InvoiceLine"')).rows[0].workOrderItemId, null);
     assert.equal((await db.query('SELECT "workOrderId","sourceOrderId" FROM "InvoiceOrder"')).rows[0].workOrderId, null);
+    await db.exec(`INSERT INTO "Invoice" (id,"sellerOrgId","buyerOrgId","invoiceNumber","clientKey","sequenceNumber","pricingBasis","currencyCode",subtotal,total,snapshot,"issuedBy")
+      VALUES ('i2',1,2,'INV-2','key2',2,'MANUFACTURING_SERVICE_PRICE','USD',10,5,'{}','actor');
+      INSERT INTO "InvoiceOrder" ("invoiceId","sourceOrderId","sourceOrderNumber","sourceUpdatedAt","billingPercentage","basisAmount","billedAmount","installmentNumber")
+      VALUES ('i2','o2','O-2',now(),50,10,5,1);
+      INSERT INTO "InvoicePayment" (id,"invoiceId","clientKey",amount,"currencyCode","receivedAt",reference,note,"createdBy")
+      VALUES ('p','i','payment-key',5,'USD',now(),'','','actor');
+      INSERT INTO "InvoicePaymentAllocation" (id,"paymentId","invoiceOrderId","invoiceId","batchKey",amount,"createdBy")
+      SELECT 'a','p',id,'i','batch',5,'actor' FROM "InvoiceOrder" WHERE "invoiceId"='i';`);
+    await assert.rejects(db.exec(`INSERT INTO "InvoicePaymentAllocation" (id,"paymentId","invoiceOrderId","invoiceId","batchKey",amount,"createdBy")
+      SELECT 'bad','p',id,'i','batch2',5,'actor' FROM "InvoiceOrder" WHERE "invoiceId"='i2';`));
     await assert.rejects(db.exec('DELETE FROM "Invoice" WHERE id=\'i\''));
   } finally { await db.close(); }
 });

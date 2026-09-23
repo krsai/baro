@@ -5151,6 +5151,85 @@ ALTER TABLE "InvoicePayment" ALTER COLUMN "clientKey" SET NOT NULL;
 CREATE INDEX IF NOT EXISTS "InvoicePayment_invoiceId_receivedAt_id_idx" ON "InvoicePayment"("invoiceId","receivedAt","id");
 CREATE UNIQUE INDEX IF NOT EXISTS "InvoicePayment_invoiceId_clientKey_key" ON "InvoicePayment"("invoiceId","clientKey");
 
+-- 2026-09-23: explicit payment allocation and append-only invoice revisions.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_enum value
+    JOIN pg_type type ON type.oid = value.enumtypid
+    WHERE type.typname = 'InvoiceStatus' AND value.enumlabel = 'SUPERSEDED'
+  ) THEN
+    ALTER TYPE "InvoiceStatus" ADD VALUE 'SUPERSEDED';
+  END IF;
+END $$;
+
+ALTER TABLE IF EXISTS "InvoiceDraft" ADD COLUMN IF NOT EXISTS "revisionOfInvoiceId" TEXT;
+ALTER TABLE IF EXISTS "InvoiceDraft" ADD COLUMN IF NOT EXISTS "revisionReason" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Invoice" ADD COLUMN IF NOT EXISTS "revisionOfInvoiceId" TEXT;
+ALTER TABLE "Invoice" ADD COLUMN IF NOT EXISTS "rootInvoiceId" TEXT;
+ALTER TABLE "Invoice" ADD COLUMN IF NOT EXISTS "revisionNumber" INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE "Invoice" ADD COLUMN IF NOT EXISTS "revisionReason" TEXT NOT NULL DEFAULT '';
+
+DO $$
+BEGIN
+  IF to_regclass('"InvoiceDraft"') IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='InvoiceDraft_revisionOfInvoiceId_fkey') THEN
+    ALTER TABLE "InvoiceDraft" ADD CONSTRAINT "InvoiceDraft_revisionOfInvoiceId_fkey"
+      FOREIGN KEY ("revisionOfInvoiceId") REFERENCES "Invoice"(id) ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='Invoice_revisionOfInvoiceId_fkey') THEN
+    ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_revisionOfInvoiceId_fkey"
+      FOREIGN KEY ("revisionOfInvoiceId") REFERENCES "Invoice"(id) ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS "Invoice_revisionOfInvoiceId_key" ON "Invoice"("revisionOfInvoiceId");
+CREATE INDEX IF NOT EXISTS "Invoice_rootInvoiceId_revisionNumber_idx" ON "Invoice"("rootInvoiceId","revisionNumber");
+DO $$ BEGIN
+  IF to_regclass('"InvoiceDraft"') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS "InvoiceDraft_revisionOfInvoiceId_idx" ON "InvoiceDraft"("revisionOfInvoiceId");
+  END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS "InvoicePayment_id_invoiceId_key" ON "InvoicePayment"(id,"invoiceId");
+CREATE UNIQUE INDEX IF NOT EXISTS "InvoiceOrder_id_invoiceId_key" ON "InvoiceOrder"(id,"invoiceId");
+
+CREATE TABLE IF NOT EXISTS "InvoicePaymentAllocation" (
+  id TEXT PRIMARY KEY,
+  "paymentId" TEXT NOT NULL,
+  "invoiceOrderId" INTEGER NOT NULL,
+  "invoiceId" TEXT NOT NULL,
+  "batchKey" TEXT NOT NULL,
+  amount DECIMAL(24,4) NOT NULL,
+  "createdBy" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "voidedBy" TEXT,
+  "voidedAt" TIMESTAMP(3),
+  "voidReason" TEXT,
+  CONSTRAINT "InvoicePaymentAllocation_paymentId_invoiceOrderId_batchKey_key"
+    UNIQUE ("paymentId","invoiceOrderId","batchKey"),
+  CONSTRAINT "InvoicePaymentAllocation_payment_invoice_fkey" FOREIGN KEY ("paymentId","invoiceId")
+    REFERENCES "InvoicePayment"(id,"invoiceId") ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT "InvoicePaymentAllocation_order_invoice_fkey" FOREIGN KEY ("invoiceOrderId","invoiceId")
+    REFERENCES "InvoiceOrder"(id,"invoiceId") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+ALTER TABLE "InvoicePaymentAllocation" ADD COLUMN IF NOT EXISTS "invoiceId" TEXT;
+UPDATE "InvoicePaymentAllocation" allocation SET "invoiceId"=payment."invoiceId"
+FROM "InvoicePayment" payment WHERE allocation."paymentId"=payment.id AND allocation."invoiceId" IS NULL;
+ALTER TABLE "InvoicePaymentAllocation" ALTER COLUMN "invoiceId" SET NOT NULL;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='InvoicePaymentAllocation_payment_invoice_fkey') THEN
+    ALTER TABLE "InvoicePaymentAllocation" ADD CONSTRAINT "InvoicePaymentAllocation_payment_invoice_fkey"
+      FOREIGN KEY ("paymentId","invoiceId") REFERENCES "InvoicePayment"(id,"invoiceId") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='InvoicePaymentAllocation_order_invoice_fkey') THEN
+    ALTER TABLE "InvoicePaymentAllocation" ADD CONSTRAINT "InvoicePaymentAllocation_order_invoice_fkey"
+      FOREIGN KEY ("invoiceOrderId","invoiceId") REFERENCES "InvoiceOrder"(id,"invoiceId") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS "InvoicePaymentAllocation_paymentId_voidedAt_idx"
+  ON "InvoicePaymentAllocation"("paymentId","voidedAt");
+CREATE INDEX IF NOT EXISTS "InvoicePaymentAllocation_invoiceOrderId_voidedAt_idx"
+  ON "InvoicePaymentAllocation"("invoiceOrderId","voidedAt");
+
 -- Factory-owned rows must not point across organization boundaries. Refuse to
 -- hide damaged data; the read-only integrity audit identifies rows to repair.
 DO $$

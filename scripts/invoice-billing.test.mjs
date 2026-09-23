@@ -93,6 +93,7 @@ const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true, ord
     workOrder: { async findFirst(query) { queries.push(query); return found ? { id: 10, orderId: 'o', buyerOrgId: null, workOrderItems: [] } : null; },
       async findMany(query) { queries.push(query); return orders; } },
     assignmentPlan: { async findMany(query) { queries.push(query); return plans; } },
+    invoiceOrder: { async findMany(query) { queries.push(query); return []; } },
     currency: { async findMany() { return [{ code: 'USD' }]; } },
   };
   new Function('requireOrgRole', 'hasRoleAccessPolicyFeature', 'prisma', 'buildInvoiceSource', 'buildAssignmentPlanProgressRows', 'WORK_ORDER_ITEM_WITH_COLOR_INCLUDE', 'app', 'invoiceOrderProgress', 'registerInvoiceDraftRoutes', 'getRequesterEmail', routeCode)(

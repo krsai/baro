@@ -130,6 +130,13 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
     if (existing) return existing;
     if (draft.revision !== revision) throw createHttpError(409, STALE_EDIT);
     const content: any = draft.content;
+    const revisionReason = String(draft.revisionReason || "").trim();
+    const revisedFrom = draft.revisionOfInvoiceId ? await tx.invoice.findFirst({
+      where: { id: draft.revisionOfInvoiceId, sellerOrgId }, include: { orders: true },
+    }) : null;
+    if (draft.revisionOfInvoiceId && (!revisedFrom || revisedFrom.status !== "ISSUED" || !revisionReason)) {
+      fail("INVOICE_REVISION_SOURCE_INVALID");
+    }
     const invoiceNumber = String(content.fields?.number || "").trim();
     if (!invoiceNumber || invoiceNumber.length > 200 || !Number.isFinite(Date.parse(content.fields?.date || ""))) fail("INVOICE_ISSUE_DOCUMENT_FIELDS_REQUIRED");
     const orders = await tx.workOrder.findMany({ where: { sellerOrgId, buyerOrgId: draft.buyerOrgId,
@@ -149,32 +156,47 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
     const settlementContext: Record<string, any> = {};
     for (const source of sources) {
       const previous = await tx.invoiceOrder.findMany({ where: { sourceOrderId: source.orderId,
-        invoice: { sellerOrgId, status: "ISSUED", currencyCode: content.currency } },
-        include: { invoice: { include: { payments: { where: { voidedAt: null } }, orders: { select: { id: true } } } } } });
-      const priorBilled = previous.reduce((sum: bigint, row: any) => sum + (parseMoneyScale4(row.receivableAdded ?? row.netAmount ?? row.billedAmount) ?? 0n), 0n);
-      const priorReceived = previous.reduce((sum: bigint, row: any) => row.invoice.orders.length === 1
-        ? sum + row.invoice.payments.reduce((paymentSum: bigint, payment: any) => paymentSum + (parseMoneyScale4(payment.amount) ?? 0n), 0n) : sum, 0n);
+        invoice: { sellerOrgId, status: { in: ["ISSUED", "SUPERSEDED"] }, currencyCode: content.currency } },
+        include: { invoice: { include: { payments: { where: { voidedAt: null }, include: {
+          allocations: { where: { voidedAt: null }, select: { invoiceOrderId: true, amount: true } },
+        } }, orders: { select: { id: true } } } } } });
+      const priorBilled = previous.reduce((sum: bigint, row: any) => row.invoice.status === "ISSUED" && row.invoice.id !== revisedFrom?.id
+        ? sum + (parseMoneyScale4(row.receivableAdded ?? row.netAmount ?? row.billedAmount) ?? 0n) : sum, 0n);
+      const priorReceived = previous.reduce((sum: bigint, row: any) => sum + row.invoice.payments.reduce((paymentSum: bigint, payment: any) => {
+        if (row.invoice.orders.length === 1) return paymentSum + (parseMoneyScale4(payment.amount) ?? 0n);
+        return paymentSum + payment.allocations.filter((allocation: any) => allocation.invoiceOrderId === row.id)
+          .reduce((allocationSum: bigint, allocation: any) => allocationSum + (parseMoneyScale4(allocation.amount) ?? 0n), 0n);
+      }, 0n), 0n);
       settlementContext[source.orderId] = { priorBilledAmount: scale4Decimal(priorBilled), priorReceivedAmount: scale4Decimal(priorReceived),
-        defaultDeductionAmount: scale4Decimal(priorReceived > 0n ? priorReceived : priorBilled), hasUnallocatedPayments: previous.some((row: any) => row.invoice.orders.length > 1 && row.invoice.payments.length) };
+        defaultDeductionAmount: scale4Decimal(priorReceived > 0n ? priorReceived : priorBilled), hasUnallocatedPayments: previous.some((row: any) =>
+          row.invoice.orders.length > 1 && row.invoice.payments.some((payment: any) => payment.allocations.length === 0)) };
     }
     const calculated = calculateInvoiceIssueSnapshot(content, sources, settlementContext);
     for (const order of calculated.orders) {
-      const prior = await tx.invoiceOrder.findFirst({ where: { sourceOrderId: order.sourceOrderId,
+      const revisedOrder = revisedFrom?.orders.find((row: any) => row.sourceOrderId === order.sourceOrderId);
+      const prior = revisedOrder ? null : await tx.invoiceOrder.findFirst({ where: { sourceOrderId: order.sourceOrderId,
         invoice: { sellerOrgId } }, orderBy: { installmentNumber: "desc" }, select: { installmentNumber: true } });
-      (order as any).installmentNumber = (prior?.installmentNumber || 0) + 1;
+      (order as any).installmentNumber = revisedOrder?.installmentNumber ?? ((prior?.installmentNumber || 0) + 1);
     }
     calculated.snapshot.orders = calculated.orders;
     const latest = await tx.invoice.findFirst({ where: { sellerOrgId }, orderBy: { sequenceNumber: "desc" }, select: { sequenceNumber: true } });
     const invoice = await tx.invoice.create({ data: { sellerOrgId, buyerOrgId: draft.buyerOrgId, invoiceNumber,
       clientKey: issueKey, sequenceNumber: (latest?.sequenceNumber || 0) + 1, pricingBasis: calculated.pricingBasis,
       currencyCode: calculated.currencyCode, subtotal: calculated.subtotal, total: calculated.total, receivableAdded: calculated.receivableAdded,
-      snapshot: calculated.snapshot, issuedBy: actor } });
+      snapshot: calculated.snapshot, issuedBy: actor, revisionOfInvoiceId: revisedFrom?.id ?? null,
+      rootInvoiceId: revisedFrom ? (revisedFrom.rootInvoiceId || revisedFrom.id) : null,
+      revisionNumber: revisedFrom ? revisedFrom.revisionNumber + 1 : 1, revisionReason } });
     for (const order of calculated.orders) {
       const orderRow = await tx.invoiceOrder.create({ data: { invoiceId: invoice.id, ...order } });
       const related = calculated.lines.filter((line: any) => line.orderId === order.sourceOrderId);
       if (related.length) await tx.invoiceLine.createMany({ data: related.map(({ orderId: _orderId, ...line }: any) => ({
         ...line, invoiceId: invoice.id, invoiceOrderId: orderRow.id,
       })) });
+    }
+    if (revisedFrom) {
+      const superseded = await tx.invoice.updateMany({ where: { id: revisedFrom.id, sellerOrgId, status: "ISSUED" },
+        data: { status: "SUPERSEDED" } });
+      if (superseded.count !== 1) throw createHttpError(409, STALE_EDIT);
     }
     return invoice;
   });
@@ -228,5 +250,89 @@ export async function voidInvoicePayment(db: any, sellerOrgId: number, actor: st
       data: { voidedAt: new Date(), voidedBy: actor, voidReason } });
     if (updated.count !== 1) throw createHttpError(409, STALE_EDIT);
     return tx.invoicePayment.findFirst({ where: { id: paymentId } });
+  });
+}
+
+export async function replaceInvoicePaymentAllocations(db: any, sellerOrgId: number, actor: string, paymentId: string, body: any) {
+  const batchKey = String(body?.clientKey || "").trim();
+  const changeReason = String(body?.reason || "").trim();
+  if (!/^[A-Za-z0-9_-]{16,100}$/.test(batchKey) || changeReason.length > 1000 || !Array.isArray(body?.allocations)) {
+    fail("INVOICE_PAYMENT_ALLOCATION_INVALID");
+  }
+  const parsed = body.allocations.map((row: any) => ({
+    invoiceOrderId: Number(row?.invoiceOrderId), amount: String(row?.amount || "").trim(),
+  }));
+  if (!parsed.length || parsed.some((row: any) => !Number.isSafeInteger(row.invoiceOrderId)
+    || !/^\d+(\.\d{1,4})?$/.test(row.amount) || (parseMoneyScale4(row.amount) ?? 0n) <= 0n)
+    || new Set(parsed.map((row: any) => row.invoiceOrderId)).size !== parsed.length) {
+    fail("INVOICE_PAYMENT_ALLOCATION_INVALID");
+  }
+  return editTransaction(db, async (tx: any) => {
+    const payment = await tx.invoicePayment.findFirst({ where: { id: paymentId, invoice: { sellerOrgId } },
+      include: { invoice: { include: { orders: { select: { id: true } } } } } });
+    if (!payment) throw createHttpError(404, "INVOICE_PAYMENT_NOT_FOUND");
+    if (payment.voidedAt || payment.invoice.status === "CANCELLED") fail("INVOICE_PAYMENT_ALLOCATION_CLOSED");
+    const allowed = new Set(payment.invoice.orders.map((row: any) => row.id));
+    if (parsed.some((row: any) => !allowed.has(row.invoiceOrderId))) fail("INVOICE_PAYMENT_ALLOCATION_ORDER_SCOPE");
+    const total = parsed.reduce((sum: bigint, row: any) => sum + (parseMoneyScale4(row.amount) ?? 0n), 0n);
+    if (total > (parseMoneyScale4(payment.amount) ?? 0n)) fail("INVOICE_PAYMENT_ALLOCATION_EXCEEDS_PAYMENT");
+    const retried = await tx.invoicePaymentAllocation.findMany({ where: { paymentId, batchKey }, orderBy: { invoiceOrderId: "asc" } });
+    if (retried.length) {
+      const expected = [...parsed].sort((a: any, b: any) => a.invoiceOrderId - b.invoiceOrderId);
+      if (retried.length !== expected.length || retried.some((row: any, index: number) =>
+        row.invoiceOrderId !== expected[index].invoiceOrderId || (parseMoneyScale4(row.amount) ?? 0n) !== (parseMoneyScale4(expected[index].amount) ?? 0n))) {
+        fail("INVOICE_PAYMENT_ALLOCATION_RETRY_MISMATCH");
+      }
+      return retried;
+    }
+    const active = await tx.invoicePaymentAllocation.findMany({ where: { paymentId, voidedAt: null } });
+    if (active.length && !changeReason) fail("INVOICE_PAYMENT_ALLOCATION_REASON_REQUIRED");
+    if (active.length) await tx.invoicePaymentAllocation.updateMany({ where: { paymentId, voidedAt: null },
+      data: { voidedAt: new Date(), voidedBy: actor, voidReason: changeReason } });
+    await tx.invoicePaymentAllocation.createMany({ data: parsed.map((row: any) => ({ ...row, paymentId,
+      invoiceId: payment.invoice.id, batchKey, createdBy: actor })) });
+    return tx.invoicePaymentAllocation.findMany({ where: { paymentId, batchKey }, orderBy: { invoiceOrderId: "asc" } });
+  });
+}
+
+export async function createInvoiceRevisionDraft(db: any, sellerOrgId: number, actor: string, invoiceId: string, body: any) {
+  const clientKey = String(body?.clientKey || "").trim();
+  const revisionReason = String(body?.reason || "").trim();
+  if (!/^[A-Za-z0-9_-]{16,100}$/.test(clientKey) || !revisionReason || revisionReason.length > 1000) {
+    fail("INVOICE_REVISION_INVALID");
+  }
+  return editTransaction(db, async (tx: any) => {
+    const retried = await tx.invoiceDraft.findFirst({ where: { sellerOrgId, clientKey } });
+    if (retried) {
+      if (retried.revisionOfInvoiceId !== invoiceId || retried.revisionReason !== revisionReason) fail("INVOICE_REVISION_RETRY_MISMATCH");
+      return retried;
+    }
+    const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId }, include: { orders: true, lines: true } });
+    if (!invoice) throw createHttpError(404, "INVOICE_NOT_FOUND");
+    if (invoice.status !== "ISSUED") fail("INVOICE_REVISION_SOURCE_INVALID");
+    const existingRevision = await tx.invoice.findFirst({ where: { revisionOfInvoiceId: invoiceId } });
+    if (existingRevision) fail("INVOICE_REVISION_ALREADY_ISSUED");
+    const existingDraft = await tx.invoiceDraft.findFirst({ where: { revisionOfInvoiceId: invoiceId } });
+    if (existingDraft) return existingDraft;
+    const snapshot: any = invoice.snapshot || {};
+    const content = {
+      basis: invoice.pricingBasis, currency: invoice.currencyCode, fields: {
+        ...(snapshot.fields || {}), number: `${invoice.invoiceNumber}-R${Number(invoice.revisionNumber || 1) + 1}`,
+      },
+      orders: invoice.orders.map((row: any) => ({ orderId: row.sourceOrderId, sourceUpdatedAt: row.sourceUpdatedAt.toISOString() })),
+      percentages: Object.fromEntries(invoice.orders.map((row: any) => [row.sourceOrderId, String(row.billingPercentage)])),
+      settlements: Object.fromEntries(invoice.orders.map((row: any) => [row.sourceOrderId, {
+        deduction: String(row.appliedDeductionAmount), reason: row.deductionReason || "",
+      }])),
+      lines: invoice.lines.map((line: any) => ({ key: line.lineKey, quantity: String(line.quantity), remark: line.remark || "",
+        adjustmentReason: line.adjustmentReason || "", hsCode: line.hsCode || "", origin: line.origin || "" })),
+    };
+    const draft = await tx.invoiceDraft.create({ data: { sellerOrgId, buyerOrgId: invoice.buyerOrgId, clientKey,
+      content, createdBy: actor, updatedBy: actor, revisionOfInvoiceId: invoice.id, revisionReason } });
+    if (invoice.orders.length) await tx.invoiceDraftOrder.createMany({ data: invoice.orders.map((row: any) => ({ draftId: draft.id,
+      workOrderId: row.workOrderId, sourceOrderId: row.sourceOrderId, sourceUpdatedAt: row.sourceUpdatedAt })) });
+    if (invoice.lines.length) await tx.invoiceDraftLine.createMany({ data: invoice.lines.map((line: any) => ({ draftId: draft.id,
+      workOrderItemId: line.workOrderItemId, sourceItemId: line.sourceItemId, lineKey: line.lineKey })) });
+    return draft;
   });
 }

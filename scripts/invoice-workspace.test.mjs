@@ -73,7 +73,7 @@ test('invoice menu opens on issued history and enters a separate creation screen
   let tree = app.menu();
   assert.equal(app.find(tree, 'CustomerSelect').length, 0);
   assert.equal(app.requests.length, 0);
-  assert.equal(app.find(tree, 'Table')[0].props['aria-label'], '발행된 청구서');
+  assert.equal(app.find(tree, 'DraftList').length, 1);
   const create = app.find(tree, 'Button').find(node => node.props.children.includes('청구서 작성'));
   create.props.onClick();
   assert.equal(app.navigations.at(-1), '/invoices/new');
@@ -81,7 +81,7 @@ test('invoice menu opens on issued history and enters a separate creation screen
   assert.equal(typeof tree.type, 'function');
   tree.props.onBack();
   assert.equal(app.navigations.at(-1), '/invoices');
-  assert.equal(app.find(app.menu(), 'Table').length, 1);
+  assert.equal(app.find(app.menu(), 'Table').length, 0);
 });
 
 test('customer selection is required before listing orders; draft receives the selected customer', async () => {

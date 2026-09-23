@@ -1745,13 +1745,17 @@ model InvoiceDraft {
   updatedBy String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  revisionOfInvoiceId String?
+  revisionReason String @default("")
   seller Organization @relation("InvoiceDraftSeller", fields: [sellerOrgId], references: [id], onDelete: Restrict)
   buyer Organization @relation("InvoiceDraftBuyer", fields: [buyerOrgId], references: [id], onDelete: Restrict)
   orders InvoiceDraftOrder[]
   lines InvoiceDraftLine[]
+  revisionOfInvoice Invoice? @relation("InvoiceRevisionDrafts", fields: [revisionOfInvoiceId], references: [id], onDelete: Restrict)
   @@unique([sellerOrgId, clientKey])
   @@index([sellerOrgId, updatedAt, id])
   @@index([buyerOrgId])
+  @@index([revisionOfInvoiceId])
 }
 
 model InvoiceDraftOrder {
@@ -1781,6 +1785,7 @@ model InvoiceDraftLine {
 enum InvoiceStatus {
   ISSUED
   CANCELLED
+  SUPERSEDED
 }
 
 // Immutable issuance snapshot. Corrections and settlements are appended in later phases.
@@ -1803,17 +1808,25 @@ model Invoice {
   cancelledBy String?
   cancelledAt DateTime?
   cancellationReason String?
+  revisionOfInvoiceId String? @unique
+  rootInvoiceId String?
+  revisionNumber Int @default(1)
+  revisionReason String @default("")
   seller Organization @relation("InvoiceSeller", fields: [sellerOrgId], references: [id], onDelete: Restrict)
   buyer Organization @relation("InvoiceBuyer", fields: [buyerOrgId], references: [id], onDelete: Restrict)
   orders InvoiceOrder[]
   lines InvoiceLine[]
   payments InvoicePayment[]
+  revisedFrom Invoice? @relation("InvoiceRevisionChain", fields: [revisionOfInvoiceId], references: [id], onDelete: Restrict)
+  revision Invoice? @relation("InvoiceRevisionChain")
+  revisionDrafts InvoiceDraft[] @relation("InvoiceRevisionDrafts")
   @@unique([sellerOrgId, invoiceNumber])
   @@unique([sellerOrgId, clientKey])
   @@unique([sellerOrgId, sequenceNumber])
   @@index([sellerOrgId, issuedAt, id])
   @@index([buyerOrgId])
   @@index([status])
+  @@index([rootInvoiceId, revisionNumber])
 }
 
 model InvoiceOrder {
@@ -1838,7 +1851,9 @@ model InvoiceOrder {
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
   workOrder WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   lines InvoiceLine[]
+  paymentAllocations InvoicePaymentAllocation[]
   @@unique([invoiceId, sourceOrderId])
+  @@unique([id, invoiceId])
   @@index([workOrderId])
   @@index([sourceOrderId])
   @@index([sourceOrderId, installmentNumber])
@@ -1859,8 +1874,29 @@ model InvoicePayment {
   voidedAt DateTime?
   voidReason String?
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  allocations InvoicePaymentAllocation[]
   @@index([invoiceId, receivedAt, id])
   @@unique([invoiceId, clientKey])
+  @@unique([id, invoiceId])
+}
+
+model InvoicePaymentAllocation {
+  id String @id @default(cuid())
+  paymentId String
+  invoiceOrderId Int
+  invoiceId String
+  batchKey String
+  amount Decimal @db.Decimal(24, 4)
+  createdBy String
+  createdAt DateTime @default(now())
+  voidedBy String?
+  voidedAt DateTime?
+  voidReason String?
+  payment InvoicePayment @relation(fields: [paymentId, invoiceId], references: [id, invoiceId], onDelete: Restrict)
+  invoiceOrder InvoiceOrder @relation(fields: [invoiceOrderId, invoiceId], references: [id, invoiceId], onDelete: Restrict)
+  @@unique([paymentId, invoiceOrderId, batchKey])
+  @@index([paymentId, voidedAt])
+  @@index([invoiceOrderId, voidedAt])
 }
 
 model InvoiceLine {

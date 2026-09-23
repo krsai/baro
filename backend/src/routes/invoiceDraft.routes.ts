@@ -1,5 +1,5 @@
 import { saveInvoiceDraft, deleteInvoiceDraft } from "../services/invoiceDraftStore";
-import { cancelIssuedInvoice, issueInvoiceDraft, recordInvoicePayment, voidInvoicePayment } from "../services/invoiceIssueStore";
+import { cancelIssuedInvoice, createInvoiceRevisionDraft, issueInvoiceDraft, recordInvoicePayment, replaceInvoicePaymentAllocations, voidInvoicePayment } from "../services/invoiceIssueStore";
 
 const invoiceMoney = (values: unknown[]) => {
   const total = values.reduce((sum: bigint, value) => {
@@ -53,20 +53,25 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     if (!Number.isSafeInteger(page) || page < 0 || page > 10000) return res.status(400).json({ error: "invalid page" });
     const rows = await db.invoice.findMany({ where: { sellerOrgId: access.organization.id },
       orderBy: [{ issuedAt: "desc" }, { id: "desc" }], skip: page * 30, take: 31,
-      include: { buyer: { select: { name: true } }, orders: { select: { sourceOrderId: true, sourceOrderNumber: true, installmentNumber: true } },
-        payments: { where: { voidedAt: null }, select: { amount: true } } },
+      include: { buyer: { select: { name: true } }, orders: { select: { id: true, sourceOrderId: true, sourceOrderNumber: true, installmentNumber: true } },
+        payments: { where: { voidedAt: null }, select: { amount: true, allocations: { where: { voidedAt: null }, select: { amount: true } } } } },
     });
     res.setHeader("Cache-Control", "no-store");
     return res.json({ rows: rows.slice(0, 30).map((row: any) => ({ id: row.id, invoiceNumber: row.invoiceNumber,
       status: row.status, buyerName: row.buyer.name, currencyCode: row.currencyCode, total: String(row.total),
       receivableAdded: String(row.receivableAdded),
       issuedAt: row.issuedAt, issuedBy: row.issuedBy, orders: row.orders,
-      receivedAmount: invoiceMoney(row.payments.map((payment: any) => payment.amount)) })), hasMore: rows.length > 30 });
+      revisionOfInvoiceId: row.revisionOfInvoiceId, revisionNumber: row.revisionNumber, revisionReason: row.revisionReason,
+      receivedAmount: invoiceMoney(row.payments.map((payment: any) => payment.amount)),
+      allocatedAmount: invoiceMoney(row.payments.flatMap((payment: any) => payment.allocations.map((allocation: any) => allocation.amount))) })), hasMore: rows.length > 30 });
   });
   app.get("/invoices/issued/:id", async (req: any, res: any) => {
     const access = await requireAccess(req, res); if (!access) return;
     const row = await db.invoice.findFirst({ where: { id: req.params.id, sellerOrgId: access.organization.id },
-      include: { orders: true, payments: { orderBy: [{ receivedAt: "asc" }, { id: "asc" }] } } });
+      include: { orders: true, payments: { orderBy: [{ receivedAt: "asc" }, { id: "asc" }], include: {
+        allocations: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
+      } }, revisedFrom: { select: { id: true, invoiceNumber: true, revisionNumber: true } },
+      revision: { select: { id: true, invoiceNumber: true, revisionNumber: true, status: true } } } });
     if (!row) return res.status(404).json({ error: "INVOICE_NOT_FOUND" });
     res.setHeader("Cache-Control", "no-store"); return res.json({ ...row, subtotal: String(row.subtotal), total: String(row.total) });
   });
@@ -80,9 +85,19 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     const row = await recordInvoicePayment(db, access.organization.id, actor(req) || "unknown", req.params.id, req.body);
     res.setHeader("Cache-Control", "no-store"); return res.status(201).json(row);
   });
+  app.post("/invoices/payments/:id/allocations", async (req: any, res: any) => {
+    const access = await requireAccess(req, res); if (!access) return;
+    const rows = await replaceInvoicePaymentAllocations(db, access.organization.id, actor(req) || "unknown", req.params.id, req.body);
+    res.setHeader("Cache-Control", "no-store"); return res.json({ rows });
+  });
   app.post("/invoices/payments/:id/void", async (req: any, res: any) => {
     const access = await requireAccess(req, res); if (!access) return;
     const row = await voidInvoicePayment(db, access.organization.id, actor(req) || "unknown", req.params.id, req.body?.reason);
     res.setHeader("Cache-Control", "no-store"); return res.json(row);
+  });
+  app.post("/invoices/issued/:id/revision-draft", async (req: any, res: any) => {
+    const access = await requireAccess(req, res); if (!access) return;
+    const row = await createInvoiceRevisionDraft(db, access.organization.id, actor(req) || "unknown", req.params.id, req.body);
+    res.setHeader("Cache-Control", "no-store"); return res.status(201).json(row);
   });
 }
