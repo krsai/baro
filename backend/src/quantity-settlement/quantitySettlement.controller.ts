@@ -1,16 +1,19 @@
 import { type Request, type Response } from "express";
-import { getOrganizationByQuery, requireOrgRole } from "../middleware/access";
+import { requireOrgRole } from "../middleware/access";
 import { resolveOptionalString } from "../utils/common";
 import {
   getQuantitySettlementByMonth,
   saveQuantitySettlementByMonth,
 } from "./quantitySettlement.service";
 
+const QUANTITY_SETTLEMENT_ROLES = ["ADMIN", "OPERATOR", "ACCOUNTANT"] as const;
+
 export const getQuantitySettlementController = async (req: Request, res: Response) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: [...QUANTITY_SETTLEMENT_ROLES],
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   const settlement = await getQuantitySettlementByMonth(
     organization.id,
@@ -20,7 +23,9 @@ export const getQuantitySettlementController = async (req: Request, res: Respons
 };
 
 export const saveQuantitySettlementController = async (req: Request, res: Response) => {
-  const accessContext = await requireOrgRole(req, res);
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: [...QUANTITY_SETTLEMENT_ROLES],
+  });
   if (!accessContext) return;
 
   const settlement = await saveQuantitySettlementByMonth({
@@ -35,4 +40,3 @@ export const saveQuantitySettlementController = async (req: Request, res: Respon
 
   return res.json(settlement);
 };
-

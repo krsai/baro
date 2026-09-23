@@ -1055,6 +1055,10 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "AttrRole_orgId_id_key",
   "EmployeeGrade_one_default_per_org_key",
   "Employee_gradeId_fkey",
+  "Employee_factory_org_fkey",
+  "AttendanceEntry_factory_org_fkey",
+  "WorkLog_factory_org_fkey",
+  "AtTrainingBucket_factory_org_fkey",
   "EmployeeCompensationPolicy_orgId_payType_gradeId_key",
   "EmployeeCompensationPolicy_nonnegative_components_check",
   "EmployeeCompensationPolicy_payType_check",
@@ -1072,7 +1076,7 @@ const ORG_ACCESS_ROLES: OrgUserRole[] = [
   "ACCOUNTANT",
   "WORKER",
 ];
-const ORG_MANAGEMENT_ROLES: OrgUserRole[] = ORG_ACCESS_ROLES;
+const ORG_MANAGEMENT_ROLES: OrgUserRole[] = ["ADMIN", "OPERATOR", "ACCOUNTANT"];
 const MEMBERSHIP_STATUSES = new Set([
   "PENDING",
   "ACTIVE",
@@ -24763,10 +24767,9 @@ app.get("/assignment-plans/:externalId/qc-history", async (req, res) => {
 });
 
 app.post("/qc-pass-events", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   const plan =
     (await findAssignmentPlanForQcEvent({
@@ -24867,10 +24870,9 @@ app.post("/qc-pass-events", async (req, res) => {
 });
 
 app.patch("/qc-pass-events/:id/cancel", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   const eventId = toPositiveIntOrNull(req.params.id);
   if (eventId == null) {
@@ -24926,10 +24928,9 @@ app.patch("/qc-pass-events/:id/cancel", async (req, res) => {
 });
 
 app.patch("/assignment-plans/:externalId/final-quantity", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   const externalId = resolveOptionalString(req.params.externalId, null);
   if (!externalId) {
@@ -25025,10 +25026,9 @@ app.patch("/assignment-plans/:externalId/final-quantity", async (req, res) => {
 });
 
 app.post("/assignment-plans/:externalId/close", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   const externalId = resolveOptionalString(req.params.externalId, null);
   if (!externalId) {
@@ -25080,10 +25080,9 @@ app.post("/assignment-plans/:externalId/close", async (req, res) => {
 
 app.patch("/assignment-plans/:externalId/production-complete", async (req, res) => {
   const MAX_CONFIRMED_QTY = 100_000;
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   const externalId = resolveOptionalString(req.params.externalId, null);
   if (!externalId) {
@@ -25137,10 +25136,9 @@ app.patch([
   "/assignment-plans/:externalId/manual-production-complete",
   "/assignment-plans/:externalId/record-omission-complete",
 ], async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   const externalId = resolveOptionalString(req.params.externalId, null);
   if (!externalId) {
     return res.status(400).json({ ok: false, error: "invalid externalId" });
@@ -25319,10 +25317,9 @@ app.patch([
 // the "생산 완료" list and becomes editable again (AGENTS.md §31: "완료 후 추가 생산이
 // 필요하면 먼저 assignment를 미완료로 되돌린 뒤 작업기록을 추가한다").
 app.patch("/assignment-plans/:externalId/reopen", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   const externalId = resolveOptionalString(req.params.externalId, null);
   if (!externalId) {
     return res.status(400).json({ ok: false, error: "invalid externalId" });
@@ -25997,10 +25994,9 @@ app.get("/work-logs/:id", async (req, res) => {
 });
 
 app.post("/work-logs/import", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   const importedRows = normalizeImportedWorkLogRows(req.body?.rows);
   if (importedRows.length === 0) {
@@ -27188,10 +27184,9 @@ const handleUpdateOutsourcedWorkLog = async ({
 };
 
 app.post("/work-logs", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   const trace = createWorkLogMutationTrace({
     req,
@@ -27484,12 +27479,9 @@ app.post("/work-logs", async (req, res) => {
 });
 
 app.put("/work-logs/:id", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res
-      .status(404)
-      .json({ ok: false, error: translateWorkLogErrorMessage("organization not found") });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
@@ -27819,10 +27811,9 @@ app.put("/work-logs/:id", async (req, res) => {
 });
 
 app.delete("/work-logs/:id", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
@@ -28072,10 +28063,9 @@ app.get("/assignment-board-state", async (req, res) => {
 // 배정 취소 전용 경량 엔드포인트
 // 전체 보드 상태를 전송하지 않고 해당 assignment만 제거
 app.delete("/assignment-board-state/assignment/:assignmentId", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   const assignmentId = resolveOptionalString(req.params.assignmentId, null);
   if (!assignmentId) {
@@ -28206,10 +28196,9 @@ app.delete("/assignment-board-state", async (req, res) => {
 });
 
 app.put("/assignment-board-state", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   assertEditRevision(req.body?.expectedRevision, await assignmentBoardRevision(prisma, organization.id));
   const cards = ensureArray(req.body?.cards);
@@ -29049,8 +29038,9 @@ app.get("/business-partners", async (req, res) => {
 });
 
 app.post("/business-partners", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   const name = resolveOptionalString(req.body?.name, null);
   const type = resolveOptionalString(req.body?.type, "PROCESS_OUTSOURCING");
   const contactName = resolveOptionalString(req.body?.contactName, null);
@@ -29076,8 +29066,9 @@ app.post("/business-partners", async (req, res) => {
 });
 
 app.put("/business-partners/:id", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   const id = toPositiveIntOrNull(req.params.id);
   if (!id) return res.status(400).json({ ok: false, error: "invalid partner id" });
   const existing = await prisma.organization.findFirst({ where: { id, ownerOrgId: organization.id } });
@@ -30409,7 +30400,7 @@ app.get("/customer-production-reports", async (req, res) => {
 });
 
 app.post("/orders", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res);
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
   if (!accessContext) return;
   const { organization } = accessContext;
   if (!organization) {
@@ -30451,7 +30442,7 @@ app.post("/orders", async (req, res) => {
 });
 
 app.put("/orders/:orderId", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res);
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
   if (!accessContext) return;
   const { organization } = accessContext;
   if (!organization) {
@@ -30699,13 +30690,13 @@ app.get(["/invoices/order-source/:orderId", "/orders/:orderId/invoice-source"], 
 });
 
 app.post("/orders/:orderId/modification-lock", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res);
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
   if (!accessContext) return;
   return res.status(410).json({ ok: false, error: "ORDER_MANUAL_LOCK_RETIRED" });
 });
 
 app.delete("/orders/:orderId", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res);
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
   if (!accessContext) return;
   const { organization } = accessContext;
   if (!organization) {

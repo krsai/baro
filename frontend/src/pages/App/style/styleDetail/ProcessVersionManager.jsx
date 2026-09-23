@@ -15,22 +15,30 @@ const VERSION_GRAPH_COLORS = [
 // Backend validation messages (createHttpError) are plain English and were
 // leaking straight to the user - map the ones this screen can actually
 // trigger to a Korean explanation instead of showing raw English.
-const translateVersionBoundaryError = (message) => {
+const COPY = {
+  ko: { oldest: '가장 오래된 배정에는 반드시 어떤 버전이든 하나가 적용되어야 합니다.', oneBoundary: '최소 하나의 공정 버전은 적용 구간이 지정되어야 합니다.', order: '버전 적용 순서가 올바르지 않습니다. 이후 버전은 이전 버전보다 나중 배정부터 적용되어야 합니다.', loadFail: '공정 버전을 불러오지 못했습니다.', saved: '공정 버전 적용 구간을 저장했습니다.', saveFail: '적용 구간을 저장하지 못했습니다.', title: '공정 버전 관리', processes: '개', moveOldest: '가장 오래된 배정은 반드시 어떤 버전이든 하나가 적용되어야 합니다. 다른 버전을 먼저 오래된 배정 쪽으로 옮겨주세요.', assignment: '배정', records: '기록', unspecified: '미지정', empty: '배정된 작업이 없습니다.', save: '저장' },
+  en: { oldest: 'The oldest assignment must have a process version.', oneBoundary: 'At least one process version must have an effective boundary.', order: 'Version boundaries must follow version order.', loadFail: 'Failed to load process versions.', saved: 'Saved process version boundaries.', saveFail: 'Failed to save version boundaries.', title: 'Process Version Management', processes: ' processes', moveOldest: 'The oldest assignment must have a version. Move another version to the oldest assignment first.', assignment: 'Qty', records: 'Records', unspecified: 'Unspecified', empty: 'No assigned work.', save: 'Save' },
+  vi: { oldest: 'Phân công cũ nhất phải được áp dụng một phiên bản công đoạn.', oneBoundary: 'Phải thiết lập phạm vi áp dụng cho ít nhất một phiên bản công đoạn.', order: 'Phạm vi áp dụng phải theo đúng thứ tự phiên bản.', loadFail: 'Không thể tải phiên bản công đoạn.', saved: 'Đã lưu phạm vi áp dụng phiên bản công đoạn.', saveFail: 'Không thể lưu phạm vi áp dụng.', title: 'Quản lý phiên bản công đoạn', processes: ' công đoạn', moveOldest: 'Phân công cũ nhất phải có một phiên bản. Hãy chuyển một phiên bản khác đến phân công cũ nhất trước.', assignment: 'Số lượng', records: 'Ghi chép', unspecified: 'Chưa chỉ định', empty: 'Không có công việc đã phân công.', save: 'Lưu' },
+};
+
+const translateVersionBoundaryError = (message, languageCode = 'en') => {
+  const copy = COPY[languageCode] || COPY.en;
   if (!message) return null;
   if (message.includes('earliest-applied version must start at the oldest assignment')) {
-    return '가장 오래된 배정에는 반드시 어떤 버전이든 하나가 적용되어야 합니다.';
+    return copy.oldest;
   }
   if (message.includes('at least one process version boundary must be set')) {
-    return '최소 하나의 공정 버전은 적용 구간이 지정되어야 합니다.';
+    return copy.oneBoundary;
   }
   if (message.includes('version boundaries must follow version order')) {
-    return '버전 적용 순서가 올바르지 않습니다. 이후 버전은 이전 버전보다 나중 배정부터 적용되어야 합니다.';
+    return copy.order;
   }
   return null;
 };
 
 const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, notify }) => {
   const { languageCode } = useLanguage();
+  const copy = COPY[languageCode] || COPY.en;
   const integrityWarning = languageCode === 'en'
     ? 'Some assignments need their process references reviewed. Press Save below to rebuild them from this version - completed or payroll-locked assignments are left untouched either way.'
     : languageCode === 'vi'
@@ -56,10 +64,10 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
       setBoundaries(next);
       setSavedBoundaries(next);
     } catch (error) {
-      notify(translateVersionBoundaryError(error?.message) || error?.message || '공정 버전을 불러오지 못했습니다.', 'error');
+      notify(translateVersionBoundaryError(error?.message, languageCode) || error?.message || copy.loadFail, 'error');
     }
     finally { setBusy(false); }
-  }, [notify, orgId, ownerOrgId, styleId]);
+  }, [copy.loadFail, languageCode, notify, orgId, ownerOrgId, styleId]);
 
   useEffect(() => { if (open) load(); }, [load, open]);
 
@@ -115,16 +123,16 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
     try {
       await saveStyleProcessVersionBoundaries(styleId, versions.map((version) => ({ versionId: version.id, startAssignmentPlanId: boundaries[version.id] })).filter((row) => row.startAssignmentPlanId), { orgId, ownerOrgId });
       setSavedBoundaries(boundaries);
-      notify('공정 버전 적용 구간을 저장했습니다.', 'success'); onClose();
+      notify(copy.saved, 'success'); onClose();
     } catch (error) {
-      notify(String(error?.message || '').includes('SNAPSHOT_REFERENCE_INVALID') ? integrityWarning : translateVersionBoundaryError(error?.message) || error?.message || '적용 구간을 저장하지 못했습니다.', 'error');
+      notify(String(error?.message || '').includes('SNAPSHOT_REFERENCE_INVALID') ? integrityWarning : translateVersionBoundaryError(error?.message, languageCode) || error?.message || copy.saveFail, 'error');
     }
     finally { setBusy(false); }
   };
 
   return (
     <Dialog open={open} onClose={busy ? undefined : onClose} fullWidth maxWidth="md">
-      <DialogTitle>공정 버전 관리</DialogTitle>
+      <DialogTitle>{copy.title}</DialogTitle>
       <DialogContent dividers>
         {assignments.some(item => item.needsSnapshotRefresh) && <Alert severity="warning" sx={{ mb: 2 }}>{integrityWarning}</Alert>}
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
@@ -138,7 +146,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
                     <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: versionColor, mr: .75, flexShrink: 0 }} />
                     <DragIndicatorIcon sx={{ mr: .5, color: 'text.secondary', fontSize: 18 }} />
                     <Typography variant="body2" fontWeight={700} sx={{ flex: 1, fontSize: '.78rem' }}>{version.name}</Typography>
-                    <Chip size="small" variant="outlined" label={`${version.processCount}개`} sx={{ height: 22, fontSize: '.7rem' }} />
+                    <Chip size="small" variant="outlined" label={`${version.processCount}${copy.processes}`} sx={{ height: 22, fontSize: '.7rem' }} />
                   </Box>
                 );
               })}
@@ -206,7 +214,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
                       const earliestIndex = remainingIndexes.length > 0 ? Math.min(...remainingIndexes) : -1;
                       if (earliestIndex !== 0) {
                         notify(
-                          '가장 오래된 배정은 반드시 어떤 버전이든 하나가 적용되어야 합니다. 다른 버전을 먼저 오래된 배정 쪽으로 옮겨주세요.',
+                          copy.moveOldest,
                           'error'
                         );
                         return current;
@@ -234,23 +242,23 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%', minWidth: 0 }}>
                       <Typography variant="body2" fontWeight={600} noWrap sx={{ minWidth: 70, fontSize: '.78rem' }}>{assignment.orderNo || assignment.externalId}</Typography>
                       {assignment.needsSnapshotRefresh && <Chip size="small" color="warning" label={languageCode === 'en' ? 'Review references' : languageCode === 'vi' ? 'Kiểm tra liên kết' : '공정 연결 확인'} />}
-                      <Typography variant="body2" color="text.secondary" noWrap sx={{ flex: 1, fontSize: '.75rem' }}>배정 {assignment.assignmentQuantity} · {new Date(assignment.assignedAt).toLocaleDateString()}</Typography>
-                      {assignment.workRecordCount > 0 && <Typography variant="caption" color="text.secondary" noWrap sx={{ fontSize: '.7rem' }}>기록 {assignment.workRecordCount}</Typography>}
-                      <Chip size="small" variant="outlined" label={assignment.activeVersion?.confirmedDate || '미지정'} sx={{ height: 22, maxWidth: 110, fontSize: '.7rem', color: dotColor, borderColor: dotColor }} />
+                      <Typography variant="body2" color="text.secondary" noWrap sx={{ flex: 1, fontSize: '.75rem' }}>{copy.assignment} {assignment.assignmentQuantity} · {new Date(assignment.assignedAt).toLocaleDateString()}</Typography>
+                      {assignment.workRecordCount > 0 && <Typography variant="caption" color="text.secondary" noWrap sx={{ fontSize: '.7rem' }}>{copy.records} {assignment.workRecordCount}</Typography>}
+                      <Chip size="small" variant="outlined" label={assignment.activeVersion?.confirmedDate || copy.unspecified} sx={{ height: 22, maxWidth: 110, fontSize: '.7rem', color: dotColor, borderColor: dotColor }} />
                     </Stack>
                   </Box>
                 );
               })}
               {!busy && assignments.length === 0 && (
                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: '.75rem' }}>
-                  배정된 작업이 없습니다.
+                  {copy.empty}
                 </Typography>
               )}
             </Box>
           </Box>
         </Stack>
       </DialogContent>
-      <DialogActions><Button variant="contained" onClick={save} disabled={busy || assignments.length === 0 || (!hasBoundaryChanges && !hasRefreshableAssignments)}>저장</Button></DialogActions>
+      <DialogActions><Button variant="contained" onClick={save} disabled={busy || assignments.length === 0 || (!hasBoundaryChanges && !hasRefreshableAssignments)}>{copy.save}</Button></DialogActions>
     </Dialog>
   );
 };

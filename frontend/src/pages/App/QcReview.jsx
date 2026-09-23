@@ -21,6 +21,7 @@ import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
 import { useAppActions } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
 import { formatNumberWithCommas } from '../../utils/numberFormat';
 import {
@@ -93,11 +94,17 @@ const resolveSortedSizeKeys = (keys = []) => {
   });
 };
 
-const resolveStatusChip = (row) => {
+const QC_COPY = {
+  ko: { title: '검수', description: '검수 이력을 날짜별로 추가하고 누적 상태를 확인합니다. 생산 완료는 작업기록의 공정별 수량으로 자동 판정됩니다.', factory: '공장', status: '상태', search: '검색', searchPlaceholder: '주문/스타일/색상', pending: '진행 중', completed: '제작 완료', all: '전체', qcProgress: '검수 진행', order: '주문', style: '스타일', styleColor: '스타일/색상', orderQuantity: '주문수량', producedQuantity: '작업기록 생산수량', passedTotal: '검수 누적', actions: '처리', inspectedOn: '검수일', passQuantity: '검수 통과 수량', add: '검수 추가', noHistory: '이력 없음', recent: '최근', history: '검수 이력', loadingHistory: '검수 이력을 불러오는 중입니다.', emptyHistory: '등록된 검수 이력이 없습니다.', detail: '상세', quantity: '수량', note: '비고', cancelled: '취소됨', active: '적용 중', cancel: '이력 취소', dateRequired: '검수 날짜를 입력하세요.', quantityRequired: '검수 통과 수량을 입력하세요.', detailRequired: '상세 검수 수량을 입력하세요.', added: '검수 이력을 추가했습니다.', cancelledSuccess: '검수 이력을 취소했습니다.', dataError: '검수 화면 데이터를 처리하지 못했습니다. 앞단 데이터를 확인해 주세요.', detailFallback: '상세 데이터를 찾지 못했습니다. 기본 검수 수량 입력으로 처리하세요.', autoTotal: '상세 입력 자동합계', over: '초과', under: '부족', completedHelp: '제작 완료된 배치에 검수를 추가합니다.', loadingDetail: '주문 색상/사이즈 정보를 불러오는 중입니다.', colorGender: '색상/성별', total: '합계', unspecified: '미지정', gender: '성별', genderUnspecified: '성별 미지정', currentInput: '현재 입력합', difference: '차이', totalEntry: '총량 입력' },
+  en: { title: 'QC Review', description: 'Add QC pass history by date and review cumulative status. Production completion is determined automatically from process work records.', factory: 'Factory', status: 'Status', search: 'Search', searchPlaceholder: 'Order / style / color', pending: 'In Progress', completed: 'Production Complete', all: 'All', qcProgress: 'QC In Progress', order: 'Order', style: 'Style', styleColor: 'Style / Color', orderQuantity: 'Order Qty', producedQuantity: 'Recorded Production', passedTotal: 'QC Passed', actions: 'Actions', inspectedOn: 'Inspection Date', passQuantity: 'Passed Quantity', add: 'Add QC', noHistory: 'No history', recent: 'Latest', history: 'QC History', loadingHistory: 'Loading QC history.', emptyHistory: 'No QC history.', detail: 'Detail', quantity: 'Quantity', note: 'Note', cancelled: 'Cancelled', active: 'Active', cancel: 'Cancel History', dateRequired: 'Enter an inspection date.', quantityRequired: 'Enter the passed quantity.', detailRequired: 'Enter detailed QC quantities.', added: 'QC history added.', cancelledSuccess: 'QC history cancelled.', dataError: 'Could not process QC data. Check the upstream records.', detailFallback: 'Detailed data is unavailable. Use the total passed quantity instead.', autoTotal: 'Auto-total from details', over: 'Over', under: 'Short', completedHelp: 'Add QC to a production-completed batch.', loadingDetail: 'Loading order color and size details.', colorGender: 'Color / Gender', total: 'Total', unspecified: 'Unspecified', gender: 'Gender', genderUnspecified: 'Gender unspecified', currentInput: 'Current input', difference: 'Difference', totalEntry: 'Total entry' },
+  vi: { title: 'Kiểm tra chất lượng', description: 'Thêm lịch sử đạt QC theo ngày và kiểm tra số lũy kế. Trạng thái hoàn thành sản xuất được xác định tự động từ ghi chép công đoạn.', factory: 'Nhà máy', status: 'Trạng thái', search: 'Tìm kiếm', searchPlaceholder: 'Đơn hàng / kiểu / màu', pending: 'Đang thực hiện', completed: 'Đã hoàn thành sản xuất', all: 'Tất cả', qcProgress: 'Đang kiểm tra QC', order: 'Đơn hàng', style: 'Kiểu', styleColor: 'Kiểu / Màu', orderQuantity: 'Số lượng đơn hàng', producedQuantity: 'Sản lượng đã ghi', passedTotal: 'QC đạt lũy kế', actions: 'Thao tác', inspectedOn: 'Ngày kiểm tra', passQuantity: 'Số lượng đạt', add: 'Thêm QC', noHistory: 'Chưa có lịch sử', recent: 'Gần nhất', history: 'Lịch sử QC', loadingHistory: 'Đang tải lịch sử QC.', emptyHistory: 'Chưa có lịch sử QC.', detail: 'Chi tiết', quantity: 'Số lượng', note: 'Ghi chú', cancelled: 'Đã hủy', active: 'Đang áp dụng', cancel: 'Hủy lịch sử', dateRequired: 'Hãy nhập ngày kiểm tra.', quantityRequired: 'Hãy nhập số lượng đạt.', detailRequired: 'Hãy nhập số lượng QC chi tiết.', added: 'Đã thêm lịch sử QC.', cancelledSuccess: 'Đã hủy lịch sử QC.', dataError: 'Không thể xử lý dữ liệu QC. Hãy kiểm tra dữ liệu nguồn.', detailFallback: 'Không có dữ liệu chi tiết. Hãy nhập tổng số lượng đạt.', autoTotal: 'Tự động cộng chi tiết', over: 'Vượt', under: 'Thiếu', completedHelp: 'Thêm QC cho lô đã hoàn thành sản xuất.', loadingDetail: 'Đang tải màu và kích thước đơn hàng.', colorGender: 'Màu / Giới tính', total: 'Tổng', unspecified: 'Chưa chỉ định', gender: 'Giới tính', genderUnspecified: 'Chưa chỉ định giới tính', currentInput: 'Đã nhập', difference: 'Chênh lệch', totalEntry: 'Nhập tổng' },
+};
+
+const resolveStatusChip = (row, copy) => {
   if (row.isCompleted) {
-    return { label: '제작 완료', color: 'success', variant: 'filled' };
+    return { label: copy.completed, color: 'success', variant: 'filled' };
   }
-  return { label: '검수 진행', color: 'warning', variant: 'outlined' };
+  return { label: copy.qcProgress, color: 'warning', variant: 'outlined' };
 };
 
 const resolveDetailPassTotal = (detail) => {
@@ -155,7 +162,7 @@ const buildQcDetailFromOrders = ({ row, orders }) => {
 
   const variantMap = new Map();
   matchedItems.forEach((item, index) => {
-    const colorName = String(item?.colorName || item?.colorCode || '미지정').trim() || '미지정';
+    const colorName = String(item?.colorName || item?.colorCode || '').trim();
     const gender = String(item?.gender || '').trim().toUpperCase();
     const variantKey = `${normalizeComparableText(colorName)}::${gender || '-'}::${item?.colorId || 0}`;
     const sizeQuantities = normalizeSizeQuantities(item?.sizeQuantities);
@@ -364,6 +371,8 @@ const resolveQcReviewEmptyMessage = ({
 const QcReview = () => {
   const { activeOrgId, activeFactoryId } = useAuth();
   const { showNotification } = useAppActions();
+  const { languageCode } = useLanguage();
+  const copy = QC_COPY[languageCode] || QC_COPY.en;
   const todayKey = useMemo(() => todayDateKey(), []);
 
   const [factories, setFactories] = useState([]);
@@ -698,7 +707,7 @@ const QcReview = () => {
     async (row) => {
       const inspectedOn = String(row?.inspectionDate || '').trim();
       if (!inspectedOn) {
-        showNotification('검수 날짜를 입력하세요.', 'error');
+        showNotification(copy.dateRequired, 'error');
         return;
       }
 
@@ -722,11 +731,11 @@ const QcReview = () => {
       const passedQuantity = toNonNegativeIntOrNull(row?.qcPassQuantity);
 
       if (!hasMatrix && passedQuantity === null) {
-        showNotification('검수 통과 수량을 입력하세요.', 'error');
+        showNotification(copy.quantityRequired, 'error');
         return;
       }
       if (hasMatrix && entries.length === 0) {
-        showNotification('상세 검수 수량을 입력하세요.', 'error');
+        showNotification(copy.detailRequired, 'error');
         return;
       }
 
@@ -762,21 +771,21 @@ const QcReview = () => {
           loadRows({ forceRefresh: true }),
           loadQcHistory(row.id, { forceRefresh: true }),
         ]);
-        showNotification('검수 이력을 추가했습니다.', 'success');
+        showNotification(copy.added, 'success');
       } catch (error) {
         showNotification(
-          resolveQcReviewApiErrorMessage({
+          languageCode === 'ko' ? resolveQcReviewApiErrorMessage({
             error,
             stage: 'save',
             row,
-          }),
+          }) : copy.dataError,
           'error'
         );
       } finally {
         setSavingQcPlanId(null);
       }
     },
-    [activeOrgId, loadQcHistory, loadRows, qcDetailByPlanId, resetDetailPassInputs, showNotification]
+    [activeOrgId, copy, languageCode, loadQcHistory, loadRows, qcDetailByPlanId, resetDetailPassInputs, showNotification]
   );
 
   const handleCancelQcEvent = useCallback(
@@ -803,20 +812,20 @@ const QcReview = () => {
           loadRows({ forceRefresh: true }),
           loadQcHistory(planId, { forceRefresh: true }),
         ]);
-        showNotification('검수 이력을 취소했습니다.', 'success');
+        showNotification(copy.cancelledSuccess, 'success');
       } catch (error) {
         showNotification(
-          resolveQcReviewApiErrorMessage({
+          languageCode === 'ko' ? resolveQcReviewApiErrorMessage({
             error,
             stage: 'cancel',
-          }),
+          }) : copy.dataError,
           'error'
         );
       } finally {
         setCancellingEventId(null);
       }
     },
-    [activeOrgId, loadQcHistory, loadRows, showNotification]
+    [activeOrgId, copy, languageCode, loadQcHistory, loadRows, showNotification]
   );
 
   const handleToggleExpand = useCallback(
@@ -904,10 +913,10 @@ const QcReview = () => {
       header={
         <Stack spacing={0.5}>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            검수
+            {copy.title}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            검수 이력을 날짜별로 추가하고 누적 상태를 확인합니다. 생산 완료는 작업기록의 공정별 수량으로 자동 판정됩니다.
+            {copy.description}
           </Typography>
         </Stack>
       }
@@ -919,7 +928,7 @@ const QcReview = () => {
               <TextField
                 select
                 size="small"
-                label="공장"
+                label={copy.factory}
                 value={selectedFactoryId || ''}
                 onChange={(event) => {
                   setSelectedFactoryId(toPositiveIntOrNull(event.target.value));
@@ -928,28 +937,28 @@ const QcReview = () => {
               >
                 {(Array.isArray(factories) ? factories : []).map((factory) => (
                   <MenuItem key={factory.id} value={factory.id}>
-                    {factory.name || `공장 ${factory.id}`}
+                    {factory.name || `${copy.factory} ${factory.id}`}
                   </MenuItem>
                 ))}
               </TextField>
               <TextField
                 select
                 size="small"
-                label="상태"
+                label={copy.status}
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
                 sx={{ minWidth: { xs: '100%', sm: 140 } }}
               >
-                <MenuItem value="pending">진행 중</MenuItem>
-                <MenuItem value="completed">제작 완료</MenuItem>
-                <MenuItem value="all">전체</MenuItem>
+                <MenuItem value="pending">{copy.pending}</MenuItem>
+                <MenuItem value="completed">{copy.completed}</MenuItem>
+                <MenuItem value="all">{copy.all}</MenuItem>
               </TextField>
               <TextField
                 size="small"
-                label="검색"
+                label={copy.search}
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
-                placeholder="주문/스타일/색상"
+                placeholder={copy.searchPlaceholder}
                 sx={{ minWidth: { xs: '100%', sm: 220 } }}
               />
             </Stack>
@@ -957,11 +966,11 @@ const QcReview = () => {
         </Paper>
 
         <Alert severity="info">
-          QC 화면은 검수 통과 이력을 쌓는 용도입니다. 생산 완료는 작업기록의 공정별 수량으로 자동 판정됩니다.
+          {copy.description}
         </Alert>
-        {!loading && loadError ? <Alert severity="error">{loadError}</Alert> : null}
+        {!loading && loadError ? <Alert severity="error">{languageCode === 'ko' ? loadError : copy.dataError}</Alert> : null}
         {!loading && !loadError && visibleRows.length === 0 ? (
-          <Alert severity="info">{emptyStateMessage}</Alert>
+          <Alert severity="info">{languageCode === 'ko' ? emptyStateMessage : copy.noHistory}</Alert>
         ) : null}
 
         <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
@@ -969,13 +978,13 @@ const QcReview = () => {
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>상태</TableCell>
-                  <TableCell>주문</TableCell>
-                  <TableCell>스타일/색상</TableCell>
-                  <TableCell align="right">주문수량</TableCell>
-                  <TableCell align="right">작업기록 생산수량</TableCell>
-                  <TableCell align="right">검수 누적</TableCell>
-                  <TableCell align="right">처리</TableCell>
+                  <TableCell>{copy.status}</TableCell>
+                  <TableCell>{copy.order}</TableCell>
+                  <TableCell>{copy.styleColor}</TableCell>
+                  <TableCell align="right">{copy.orderQuantity}</TableCell>
+                  <TableCell align="right">{copy.producedQuantity}</TableCell>
+                  <TableCell align="right">{copy.passedTotal}</TableCell>
+                  <TableCell align="right">{copy.actions}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -983,7 +992,7 @@ const QcReview = () => {
                   <TableRow>
                     <TableCell colSpan={7} align="center" sx={{ py: 5 }}>
                       <Typography variant="body2" color="text.secondary">
-                        {emptyStateMessage}
+                        {languageCode === 'ko' ? emptyStateMessage : copy.noHistory}
                       </Typography>
                     </TableCell>
                   </TableRow>
@@ -1004,7 +1013,7 @@ const QcReview = () => {
                     const hasOverflow = quantityDelta > 0;
                     const hasShortage = quantityDelta < 0;
                     const isSavingQc = savingQcPlanId === row.id;
-                    const statusChip = resolveStatusChip(row);
+                    const statusChip = resolveStatusChip(row, copy);
                     const isExpanded = expandedRowId === row.id;
                     const qcPassedTotal =
                       toNonNegativeIntOrNull(historyState?.qcPassedTotal) ??
@@ -1051,7 +1060,7 @@ const QcReview = () => {
                               {formatInt(qcPassedTotal)}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
-                              {latestQcDate ? `최근 ${latestQcDate}` : '이력 없음'}
+                              {latestQcDate ? `${copy.recent} ${latestQcDate}` : copy.noHistory}
                             </Typography>
                           </TableCell>
                           <TableCell align="right" sx={{ minWidth: 320 }}>
@@ -1065,7 +1074,7 @@ const QcReview = () => {
                                 <TextField
                                   size="small"
                                   type="date"
-                                  label="검수일"
+                                  label={copy.inspectedOn}
                                   value={row.inspectionDate}
                                   onChange={(event) => {
                                     const nextValue = String(event.target.value || '').trim() || todayKey;
@@ -1085,7 +1094,7 @@ const QcReview = () => {
                                 />
                                 <TextField
                                   size="small"
-                                  label="검수 통과 수량"
+                                  label={copy.passQuantity}
                                   value={row.qcPassQuantity}
                                   onChange={(event) => {
                                     if (hasMatrix) return;
@@ -1105,11 +1114,11 @@ const QcReview = () => {
                                   inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }}
                                   helperText={
                                     hasMatrix
-                                      ? '상세 입력 자동합계'
+                                      ? copy.autoTotal
                                       : hasOverflow
-                                        ? `초과 +${formatInt(quantityDelta)}`
+                                        ? `${copy.over} +${formatInt(quantityDelta)}`
                                         : hasShortage
-                                          ? `부족 ${formatInt(quantityDelta)}`
+                                          ? `${copy.under} ${formatInt(quantityDelta)}`
                                           : ' '
                                   }
                                   FormHelperTextProps={{
@@ -1130,16 +1139,14 @@ const QcReview = () => {
                                   sx={{
                                     minWidth: 92,
                                     height: 40,
-                                    bgcolor: '#0d6efd',
-                                    '&:hover': { bgcolor: '#0a58ca' },
                                   }}
                                 >
-                                  검수 추가
+                                  {copy.add}
                                 </SaveButton>
                               </Stack>
                               {row.isCompleted ? (
                                 <Typography variant="caption" color="warning.main" sx={{ fontWeight: 600 }}>
-                                  제작 완료된 배치에 검수를 추가합니다.
+                                  {copy.completedHelp}
                                 </Typography>
                               ) : null}
                             </Stack>
@@ -1153,25 +1160,25 @@ const QcReview = () => {
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1 }}>
                                     <CircularProgress size={18} />
                                     <Typography variant="body2" color="text.secondary">
-                                      주문 색상/사이즈 정보를 불러오는 중입니다.
+                                      {copy.loadingDetail}
                                     </Typography>
                                   </Box>
                                 ) : detail?.matched ? (
                                   <Stack spacing={1.25}>
                                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                      주문 {detail.orderNumber || row.orderNo || '-'} · 스타일 {row.styleCode || row.styleId || '-'}
+                                      {copy.order} {detail.orderNumber || row.orderNo || '-'} · {copy.style} {row.styleCode || row.styleId || '-'}
                                     </Typography>
                                     <Table size="small" sx={{ bgcolor: 'white' }}>
                                       <TableHead>
                                         <TableRow>
-                                          <TableCell sx={{ minWidth: 160 }}>색상/성별</TableCell>
+                                          <TableCell sx={{ minWidth: 160 }}>{copy.colorGender}</TableCell>
                                           {(detail.sizeKeys || []).map((sizeKey) => (
                                             <TableCell key={`${row.id}:${sizeKey}`} align="right" sx={{ minWidth: 78 }}>
                                               {sizeKey === 'FREE' ? 'F' : sizeKey}
                                             </TableCell>
                                           ))}
                                           <TableCell align="right" sx={{ minWidth: 92 }}>
-                                            합계
+                                            {copy.total}
                                           </TableCell>
                                         </TableRow>
                                       </TableHead>
@@ -1186,13 +1193,13 @@ const QcReview = () => {
                                             <TableRow key={`${row.id}:${variant.key}`}>
                                               <TableCell>
                                                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                                  {variant.colorName || '미지정'}
+                                                  {variant.colorName || copy.unspecified}
                                                 </Typography>
                                                 <Typography variant="caption" color="text.secondary">
                                                   {variant.gender && variant.gender !== '-'
-                                                    ? `성별 ${variant.gender}`
-                                                    : '성별 미지정'}{' '}
-                                                  · 주문 {formatInt(variantOrderTotal)}
+                                                    ? `${copy.gender} ${variant.gender}`
+                                                    : copy.genderUnspecified}{' '}
+                                                  · {copy.order} {formatInt(variantOrderTotal)}
                                                 </Typography>
                                               </TableCell>
                                               {(detail.sizeKeys || []).map((sizeKey) => (
@@ -1224,44 +1231,44 @@ const QcReview = () => {
                                       color={quantityDelta === 0 ? 'text.secondary' : quantityDelta > 0 ? 'warning.main' : 'error.main'}
                                       sx={{ px: 0.5 }}
                                     >
-                                      주문수량 {formatInt(baselineQuantity)} / 현재 입력합 {formatInt(parsedQcPassQuantity)} / 차이{' '}
+                                      {copy.orderQuantity} {formatInt(baselineQuantity)} / {copy.currentInput} {formatInt(parsedQcPassQuantity)} / {copy.difference}{' '}
                                       {quantityDelta > 0 ? `+${formatInt(quantityDelta)}` : formatInt(quantityDelta)}
                                     </Typography>
                                   </Stack>
                                 ) : (
                                   <Alert severity="warning" sx={{ mx: 1 }}>
-                                    {detail?.error || '상세 데이터를 찾지 못했습니다. 기본 검수 수량 입력으로 처리하세요.'}
+                                    {languageCode === 'ko' ? (detail?.error || copy.detailFallback) : copy.detailFallback}
                                   </Alert>
                                 )}
 
                                 <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, bgcolor: 'white' }}>
                                   <Stack spacing={1}>
                                     <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                                      검수 이력
+                                      {copy.history}
                                     </Typography>
                                     {historyLoading ? (
                                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
                                         <CircularProgress size={18} />
                                         <Typography variant="body2" color="text.secondary">
-                                          검수 이력을 불러오는 중입니다.
+                                          {copy.loadingHistory}
                                         </Typography>
                                       </Box>
                                     ) : historyState?.error ? (
-                                      <Alert severity="warning">{historyState.error}</Alert>
+                                      <Alert severity="warning">{languageCode === 'ko' ? historyState.error : copy.dataError}</Alert>
                                     ) : history.length === 0 ? (
                                       <Typography variant="body2" color="text.secondary">
-                                        등록된 검수 이력이 없습니다.
+                                        {copy.emptyHistory}
                                       </Typography>
                                     ) : (
                                       <Table size="small">
                                         <TableHead>
                                           <TableRow>
-                                            <TableCell>검수일</TableCell>
-                                            <TableCell>상세</TableCell>
-                                            <TableCell align="right">수량</TableCell>
-                                            <TableCell>비고</TableCell>
-                                            <TableCell>상태</TableCell>
-                                            <TableCell align="right">처리</TableCell>
+                                            <TableCell>{copy.inspectedOn}</TableCell>
+                                            <TableCell>{copy.detail}</TableCell>
+                                            <TableCell align="right">{copy.quantity}</TableCell>
+                                            <TableCell>{copy.note}</TableCell>
+                                            <TableCell>{copy.status}</TableCell>
+                                            <TableCell align="right">{copy.actions}</TableCell>
                                           </TableRow>
                                         </TableHead>
                                         <TableBody>
@@ -1271,14 +1278,14 @@ const QcReview = () => {
                                               <TableRow key={`${row.id}:history:${eventRow.id}`}>
                                                 <TableCell>{eventRow.inspectedOn || '-'}</TableCell>
                                                 <TableCell>
-                                                  {[eventRow.colorName, eventRow.sizeKey].filter(Boolean).join(' / ') || '총량 입력'}
+                                                  {[eventRow.colorName, eventRow.sizeKey].filter(Boolean).join(' / ') || copy.totalEntry}
                                                 </TableCell>
                                                 <TableCell align="right">{formatInt(eventRow.passedQuantity)}</TableCell>
                                                 <TableCell>{eventRow.note || '-'}</TableCell>
                                                 <TableCell>
                                                   <Chip
                                                     size="small"
-                                                    label={isCancelled ? '취소됨' : '적용 중'}
+                                                    label={isCancelled ? copy.cancelled : copy.active}
                                                     color={isCancelled ? 'default' : 'success'}
                                                     variant={isCancelled ? 'outlined' : 'filled'}
                                                   />
@@ -1299,7 +1306,7 @@ const QcReview = () => {
                                                         '&:hover': { bgcolor: 'grey.800' },
                                                       }}
                                                     >
-                                                      이력 취소
+                                                      {copy.cancel}
                                                     </SaveButton>
                                                   ) : (
                                                     <Typography variant="caption" color="text.secondary">

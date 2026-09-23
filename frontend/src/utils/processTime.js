@@ -475,11 +475,14 @@ const resolveAtV2Points = (process) => {
   const grouped = new Map();
   (Array.isArray(process?.atV2Observations) ? process.atV2Observations : [])
     .forEach((observation) => {
+      const assignmentPlanId = toOptionalNumber(observation?.assignmentPlanId);
       const quantity = toOptionalNumber(observation?.quantity);
       const laborInputSeconds = toOptionalNumber(
         observation?.allocatedLaborInputSeconds
       );
       if (
+        assignmentPlanId === null ||
+        assignmentPlanId <= 0 ||
         quantity === null ||
         quantity <= 0 ||
         laborInputSeconds === null ||
@@ -617,9 +620,13 @@ const resolveProcessAtV2PerPieceSeconds = (process, quantity) => {
     const b = Number(shared.b);
     const ownPoints = resolveAtV2Points(process);
     const suppliedBoundary = Number(shared.smallQuantityBoundary);
-    // Missing metadata (including older API responses) must not bypass the guard.
-    const priorBoundary = Math.max(100, Number.isFinite(suppliedBoundary) ? suppliedBoundary : 100);
-    const boundary = ownPoints.length ? Math.min(ownPoints[0].quantity, priorBoundary) : priorBoundary;
+    // The server owns the boundary rule. Only legacy responses without the
+    // metadata use a conservative local fallback.
+    const boundary = Number.isFinite(suppliedBoundary) && suppliedBoundary >= 100
+      ? suppliedBoundary
+      : ownPoints.length
+        ? Math.min(100, ownPoints[0].quantity)
+        : 100;
     const softened = Number.isFinite(boundary) && boundary > 0 && q < boundary;
     const value = a + b * (softened ? (2 - q / boundary) / boundary : 1 / q);
     const ownStatus = resolveAtV2ModelStatus(process, ownPoints);

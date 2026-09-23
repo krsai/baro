@@ -24,6 +24,16 @@ const normalizeOptionalOrganizationText = (value: unknown): string | null => {
   return normalized || null;
 };
 
+const hasSubscriptionPayload = (payload: any = {}) =>
+  payload.subscriptionStatus !== undefined ||
+  payload.status !== undefined ||
+  payload.serviceContactEmail !== undefined ||
+  payload.membershipEmail !== undefined ||
+  payload.billingEmail !== undefined ||
+  payload.trialStartedAt !== undefined ||
+  payload.trialEndsAt !== undefined ||
+  payload.activeEndsAt !== undefined;
+
 const normalizePositiveIdOrNull = (value: unknown): number | null => {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
@@ -268,6 +278,13 @@ export const createOrganizationRouter = ({
       });
     }
 
+    if (hasSubscriptionPayload(req.body ?? {}) && !isSystemAdmin) {
+      return res.status(403).json({
+        ok: false,
+        error: "system admin access required to change subscription",
+      });
+    }
+
     const normalizedCode = normalizeOrgCode(code);
 
     if (code !== undefined) {
@@ -350,7 +367,9 @@ export const createOrganizationRouter = ({
       include: ORGANIZATION_REPRESENTATIVE_INCLUDE,
     });
 
-    await applySubscriptionPayload(organization, req.body ?? {});
+    if (isSystemAdmin) {
+      await applySubscriptionPayload(organization, req.body ?? {});
+    }
     const withSubscription = await attachOrganizationSubscription(organization);
     return res.json(toOrganizationResponse(withSubscription));
   });

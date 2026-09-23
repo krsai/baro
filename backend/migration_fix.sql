@@ -5150,3 +5150,65 @@ UPDATE "InvoicePayment" SET "clientKey"='legacy-' || id WHERE "clientKey" IS NUL
 ALTER TABLE "InvoicePayment" ALTER COLUMN "clientKey" SET NOT NULL;
 CREATE INDEX IF NOT EXISTS "InvoicePayment_invoiceId_receivedAt_id_idx" ON "InvoicePayment"("invoiceId","receivedAt","id");
 CREATE UNIQUE INDEX IF NOT EXISTS "InvoicePayment_invoiceId_clientKey_key" ON "InvoicePayment"("invoiceId","clientKey");
+
+-- Factory-owned rows must not point across organization boundaries. Refuse to
+-- hide damaged data; the read-only integrity audit identifies rows to repair.
+DO $$
+DECLARE mismatch_count BIGINT;
+BEGIN
+  IF to_regclass('"Employee"') IS NULL OR to_regclass('"Factory"') IS NULL THEN RETURN; END IF;
+  SELECT COUNT(*) INTO mismatch_count FROM "Employee" child
+  JOIN "Factory" factory ON factory.id=child."factoryId"
+  WHERE child."factoryId" IS NOT NULL AND factory."orgId"<>child."orgId";
+  IF mismatch_count > 0 THEN RAISE EXCEPTION 'Employee factory organization mismatch: % row(s)', mismatch_count; END IF;
+  ALTER TABLE "Employee" DROP CONSTRAINT IF EXISTS "Employee_factoryId_fkey";
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='Employee_factory_org_fkey') THEN
+    ALTER TABLE "Employee" ADD CONSTRAINT "Employee_factory_org_fkey"
+      FOREIGN KEY ("factoryId","orgId") REFERENCES "Factory"("id","orgId") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+DO $$
+DECLARE mismatch_count BIGINT;
+BEGIN
+  IF to_regclass('"AttendanceEntry"') IS NULL OR to_regclass('"Factory"') IS NULL THEN RETURN; END IF;
+  SELECT COUNT(*) INTO mismatch_count FROM "AttendanceEntry" child
+  JOIN "Factory" factory ON factory.id=child."factoryId"
+  WHERE factory."orgId"<>child."orgId";
+  IF mismatch_count > 0 THEN RAISE EXCEPTION 'AttendanceEntry factory organization mismatch: % row(s)', mismatch_count; END IF;
+  ALTER TABLE "AttendanceEntry" DROP CONSTRAINT IF EXISTS "AttendanceEntry_factoryId_fkey";
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='AttendanceEntry_factory_org_fkey') THEN
+    ALTER TABLE "AttendanceEntry" ADD CONSTRAINT "AttendanceEntry_factory_org_fkey"
+      FOREIGN KEY ("factoryId","orgId") REFERENCES "Factory"("id","orgId") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+DO $$
+DECLARE mismatch_count BIGINT;
+BEGIN
+  IF to_regclass('"WorkLog"') IS NULL OR to_regclass('"Factory"') IS NULL THEN RETURN; END IF;
+  SELECT COUNT(*) INTO mismatch_count FROM "WorkLog" child
+  JOIN "Factory" factory ON factory.id=child."factoryId"
+  WHERE child."factoryId" IS NOT NULL AND factory."orgId"<>child."orgId";
+  IF mismatch_count > 0 THEN RAISE EXCEPTION 'WorkLog factory organization mismatch: % row(s)', mismatch_count; END IF;
+  ALTER TABLE "WorkLog" DROP CONSTRAINT IF EXISTS "WorkLog_factoryId_fkey";
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='WorkLog_factory_org_fkey') THEN
+    ALTER TABLE "WorkLog" ADD CONSTRAINT "WorkLog_factory_org_fkey"
+      FOREIGN KEY ("factoryId","orgId") REFERENCES "Factory"("id","orgId") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+DO $$
+DECLARE mismatch_count BIGINT;
+BEGIN
+  IF to_regclass('"AtTrainingBucket"') IS NULL OR to_regclass('"Factory"') IS NULL THEN RETURN; END IF;
+  SELECT COUNT(*) INTO mismatch_count FROM "AtTrainingBucket" child
+  JOIN "Factory" factory ON factory.id=child."factoryId"
+  WHERE child."factoryId" IS NOT NULL AND factory."orgId"<>child."orgId";
+  IF mismatch_count > 0 THEN RAISE EXCEPTION 'AtTrainingBucket factory organization mismatch: % row(s)', mismatch_count; END IF;
+  ALTER TABLE "AtTrainingBucket" DROP CONSTRAINT IF EXISTS "AtTrainingBucket_factoryId_fkey";
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='AtTrainingBucket_factory_org_fkey') THEN
+    ALTER TABLE "AtTrainingBucket" ADD CONSTRAINT "AtTrainingBucket_factory_org_fkey"
+      FOREIGN KEY ("factoryId","orgId") REFERENCES "Factory"("id","orgId") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;

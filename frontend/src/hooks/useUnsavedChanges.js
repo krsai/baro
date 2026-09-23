@@ -7,7 +7,7 @@ import { getCurrentLanguageCode } from '../utils/appLanguage';
 const DEFAULT_CONFIRM_MESSAGE = {
   ko: '저장하지 않은 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?',
   en: 'You have unsaved changes. Leave without saving?',
-  vi: 'Ban co thay doi chua luu. Roi trang ma khong luu?',
+  vi: 'Bạn có thay đổi chưa lưu. Rời trang mà không lưu?',
 };
 
 const getDefaultConfirmMessage = () => {

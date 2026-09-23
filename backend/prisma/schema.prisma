@@ -478,7 +478,7 @@ model Employee {
   updatedAt           DateTime       @updatedAt
 
   organization             Organization       @relation(fields: [orgId], references: [id])
-  factory                  Factory?           @relation("FactoryEmployees", fields: [factoryId], references: [id])
+  factory                  Factory?           @relation("FactoryEmployees", fields: [factoryId, orgId], references: [id, orgId], onDelete: Restrict, map: "Employee_factory_org_fkey")
   role                     AttrRole?          @relation(fields: [orgId, roleId], references: [orgId, id], onDelete: Restrict)
   grade                    EmployeeGrade      @relation(fields: [orgId, gradeId], references: [orgId, id])
   representedOrganizations Organization[]     @relation("OrganizationRepresentative")
@@ -728,7 +728,7 @@ model AttendanceEntry {
   updatedAt           DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
-  factory      Factory      @relation(fields: [factoryId], references: [id])
+  factory      Factory      @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Restrict, map: "AttendanceEntry_factory_org_fkey")
   worker       Employee     @relation(fields: [workerId], references: [id])
 
   createdByEmployee Employee? @relation("AttendanceEntryCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
@@ -1113,7 +1113,7 @@ model AtTrainingBucket {
   organization  Organization              @relation(fields: [orgId], references: [id])
   sourceWorkLog WorkLog                   @relation(fields: [sourceWorkLogId], references: [id], onDelete: Cascade)
   worker        Employee                  @relation(fields: [workerId], references: [id], onDelete: Cascade)
-  factory       Factory?                  @relation(fields: [factoryId], references: [id], onDelete: SetNull)
+  factory       Factory?                  @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Restrict, map: "AtTrainingBucket_factory_org_fkey")
   processRows   AtTrainingBucketProcess[]
 
   createdByEmployee Employee? @relation("AtTrainingBucketCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
@@ -1535,7 +1535,7 @@ model WorkLog {
   updatedAt            DateTime          @updatedAt
 
   organization          Organization           @relation(fields: [orgId], references: [id])
-  factory                Factory?               @relation(fields: [factoryId], references: [id], onDelete: SetNull)
+  factory                Factory?               @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Restrict, map: "WorkLog_factory_org_fkey")
   workRecords            WorkRecord[]
   outsourcedWorkRecords  OutsourcedWorkRecord[]
   atTrainingBuckets      AtTrainingBucket[]

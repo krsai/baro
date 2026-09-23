@@ -53,6 +53,7 @@ const TEXT = {
     needsRecalculation: '재계산 필요', recalculateConfirmed: '재계산',
     unlock: '확정 해제', unlocking: '해제 중...', unlockConfirm: '{month} 생산수당 확정을 해제하시겠습니까?',
     unlockSuccess: '{month} 생산수당 확정을 해제했습니다.', unlockError: '생산수당 확정 해제에 실패했습니다.', deleting: '삭제 중...',
+    calculationErrorTitle: '급여 계산 오류', calculationSucceeded: '계산 완료', calculationRetryHint: '아래 문제를 수정한 뒤 해당 월을 다시 계산해 주세요.',
   },
   en: {
     calculateMonth: 'Calculation Month', calculate: 'Calculate', recalculate: 'Recalculate to Date', calculating: 'Calculating...',
@@ -71,6 +72,7 @@ const TEXT = {
     needsRecalculation: 'Recalculation Required', recalculateConfirmed: 'Recalculate',
     unlock: 'Unlock', unlocking: 'Unlocking...', unlockConfirm: 'Unlock the {month} production allowance result?',
     unlockSuccess: 'Unlocked the {month} production allowance result.', unlockError: 'Failed to unlock the production allowance result.', deleting: 'Deleting...',
+    calculationErrorTitle: 'Payroll Calculation Error', calculationSucceeded: 'Calculation Completed', calculationRetryHint: 'Fix the issues below, then calculate the month again.',
   },
   vi: {
     calculateMonth: 'Thang tinh', calculate: 'Tinh', recalculate: 'Tinh lai den hien tai', calculating: 'Dang tinh...',
@@ -89,6 +91,7 @@ const TEXT = {
     needsRecalculation: 'Can tinh lai', recalculateConfirmed: 'Tinh lai',
     unlock: 'Mở khóa', unlocking: 'Dang mo khoa...', unlockConfirm: 'Mở khóa ket qua phu cap san luong thang {month}?',
     unlockSuccess: 'Da mo khoa ket qua phu cap san luong thang {month}.', unlockError: 'Không thể mo khoa ket qua phu cap san luong.', deleting: 'Dang xoa...',
+    calculationErrorTitle: 'Lỗi tính lương', calculationSucceeded: 'Đã tính xong', calculationRetryHint: 'Hãy sửa các vấn đề bên dưới rồi tính lại tháng này.',
   },
 };
 
@@ -513,13 +516,13 @@ const PayrollBoard = () => {
         </Paper>
       </Box>
       <Dialog open={Boolean(calculationErrors)} onClose={() => setCalculationErrors(null)} fullWidth maxWidth="sm">
-        <DialogTitle>급여 계산 오류</DialogTitle>
+        <DialogTitle>{resolveText(languageCode, 'calculationErrorTitle')}</DialogTitle>
         <DialogContent dividers>
           {calculationErrors?.succeeded?.length > 0 && <Box sx={{ mb: 2, p: 1.5, borderRadius: 1, bgcolor: 'success.50' }}>
-            <Typography variant="subtitle2" color="success.dark">계산 완료</Typography>
+            <Typography variant="subtitle2" color="success.dark">{resolveText(languageCode, 'calculationSucceeded')}</Typography>
             <Typography variant="body2">{calculationErrors.succeeded.join(', ')}</Typography>
           </Box>}
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>아래 문제를 수정한 뒤 해당 월을 다시 계산해 주세요.</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{resolveText(languageCode, 'calculationRetryHint')}</Typography>
           <Stack spacing={1.5}>{calculationErrors?.failed?.map((row) => <Box key={`${row.month}:${row.factoryLabel}`} sx={{ p: 2, border: 1, borderColor: 'error.light', borderRadius: 1 }}>
             <Typography variant="subtitle2" color="error.main" sx={{ mb: .5 }}>{row.month} · {row.factoryLabel}</Typography>
             <Typography variant="body2">{explainCalculationError(row.message)}</Typography>

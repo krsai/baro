@@ -22,6 +22,27 @@ test('runtime migration validates the canonical FK set atomically', async () => 
   assert.doesNotMatch(migration, /WorkRecord_(?:assignmentPlan_org|styleProcess_style_org)_fkey[\s\S]{0,200}NOT VALID/);
 });
 
+test('factory-owned employee, attendance, work-log and AT rows are cross-org constrained', async () => {
+  const [schema, migration, backend] = await Promise.all([
+    read('backend/prisma/schema.prisma'),
+    read('backend/migration_fix.sql'),
+    read('backend/src/index.ts'),
+  ]);
+  const constraints = [
+    'Employee_factory_org_fkey',
+    'AttendanceEntry_factory_org_fkey',
+    'WorkLog_factory_org_fkey',
+    'AtTrainingBucket_factory_org_fkey',
+  ];
+
+  for (const constraint of constraints) {
+    assert.match(schema, new RegExp(`fields: \\[factoryId, orgId\\][^\\n]+map: "${constraint}"`));
+    assert.match(migration, new RegExp(`${constraint}[\\s\\S]{0,180}FOREIGN KEY \\(\\"factoryId\\",\\"orgId\\"\\)`));
+    assert.match(backend, new RegExp(`"${constraint}"`));
+  }
+  assert.match(migration, /factory organization mismatch: % row\(s\)/);
+});
+
 test('warehouse localized names are covered by runtime drift recovery', async () => {
   const [migration, backend] = await Promise.all([
     read('backend/migration_fix.sql'),
@@ -44,6 +65,20 @@ test('employee grade seeding supplies localized names before required constraint
     migration.slice(seedAt, seedAt + 1200),
     /'CL1','일반','Staff','Nhân viên'/
   );
+});
+
+test('every application employee-create path supplies the organization default grade', async () => {
+  const [routes, helper] = await Promise.all([
+    read('backend/src/org-memberships/orgMembership.routes.ts'),
+    read('backend/src/employees/employeeGrade.ts'),
+  ]);
+  assert.match(helper, /where: \{ orgId, isDefault: true, isActive: true \}/);
+  assert.match(helper, /default employee grade is not configured/);
+  assert.equal((routes.match(/employee\.create\(/g) || []).length, 3);
+  assert.equal((routes.match(/resolveDefaultEmployeeGradeId\(/g) || []).length, 3);
+  assert.match(routes, /transactionData\.gradeId = await resolveDefaultEmployeeGradeId\(tx, orgIdNum\)/);
+  assert.match(routes, /data: \{ \.\.\.data, gradeId: defaultGradeId! \}/);
+  assert.match(routes, /joinedAt: now,\s+gradeId: defaultGradeId!/);
 });
 
 test('runtime migration has balanced, non-nested anonymous PostgreSQL blocks', async () => {

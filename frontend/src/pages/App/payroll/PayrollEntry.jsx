@@ -13,6 +13,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { useLanguage } from "../../../context/LanguageContext";
 import { buildQueryString, requestJSON } from "../../../utils/apiClient";
 import { formatNumberWithCommas } from "../../../utils/numberFormat";
+import { formatCurrency } from "../../../utils/currencyFormat";
 import { getPayComponentLabel, getPayTypeLabel, normalizePayType } from "../../../constants/payType";
 import { fetchAttributes } from "../../../utils/attributeApi";
 
@@ -138,10 +139,7 @@ const TEXT = {
 };
 
 const formatDong = (value) =>
-  `${formatNumberWithCommas(Math.round(Number(value) || 0), {
-    fallback: "0",
-    maximumFractionDigits: 0,
-  })} VND`;
+  formatCurrency(value, { currencyCode: "VND", languageCode: "en", fallback: "VND 0" });
 const productionAllowanceOf = (employee) => Number(employee?.productionAllowance ?? employee?.productionEarnings ?? 0) || 0;
 const EN_MONTH_ABBREVIATIONS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // 지급 월이 아닌 급여 항목(예: 반기 지급 근속수당의 7월 명세서)에 "다음 지급이 언제인지"를

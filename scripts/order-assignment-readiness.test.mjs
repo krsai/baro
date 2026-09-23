@@ -95,6 +95,7 @@ test('retired manual lock endpoint never invokes the old assignment quantity/ST 
   let handler;
   execute(section('app.post("/orders/:orderId/modification-lock"', 'app.delete("/orders/:orderId"'), {
     app: { post: (_path, callback) => { handler = callback; } }, requireOrgRole: async () => ({}),
+    ORG_MANAGEMENT_ROLES: ['ADMIN', 'OPERATOR', 'ACCOUNTANT'],
   });
   let status;
   const response = await handler({}, { status: value => { status = value; return { json: value => value }; } });
@@ -119,6 +120,7 @@ function deletion({ assigned = false, stale = false, failCards = false, conflict
   execute(section('app.delete("/orders/:orderId"', 'app.post("/customers"'), {
     app: { delete: (_path, callback) => { handler = callback; } },
     requireOrgRole: async () => ({ organization: { id: 7 } }), getOrderAccessWhere: () => [{ sellerOrgId: 7 }],
+    ORG_MANAGEMENT_ROLES: ['ADMIN', 'OPERATOR', 'ACCOUNTANT'],
     prisma: { workOrder: { findFirst: async () => existing }, $transaction: async (run, options) => {
       assert.equal(options.isolationLevel, 'Serializable'); await run(tx);
       if (conflict) throw Object.assign(new Error(), { code: 'P2034' });

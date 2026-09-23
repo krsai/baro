@@ -30,6 +30,7 @@ function harness({ lock = false, stale = false, conflict = false, failCards = fa
       committed = true; return result;
     } },
     requireOrgRole: async () => ({ organization: { id: 7 } }), getOrderAccessWhere: () => [{ sellerOrgId: 7 }],
+    ORG_MANAGEMENT_ROLES: ['ADMIN', 'OPERATOR', 'ACCOUNTANT'],
     WORK_ORDER_RESPONSE_INCLUDE: {}, normalizeOrderPayload: () => ({ ...existing }),
     isOrderModificationLocked: async (_order, db) => { if (db) { assert.equal(db, tx); checkedTx = true; return lock; } return false; },
     toPositiveIntOrNull: Number, resolveOrderPartiesOrThrow: async () => ({ buyer: { id: 8 }, seller: { id: 7 } }),

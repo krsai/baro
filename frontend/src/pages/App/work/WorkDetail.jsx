@@ -55,6 +55,7 @@ import {
   resolveScopedFactoryManagementStartDay,
 } from '../../../utils/factoryManagementStart';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
+import { formatCurrency } from '../../../utils/currencyFormat';
 import { hasAssignmentCtSnapshot, resolveAssignmentCtSnapshot } from '../../../utils/assignmentCt';
 import { resolveLocalizedProcessName } from '../../../utils/processDisplay';
 import { formatSeconds } from '../../../utils/processTime';
@@ -265,9 +266,7 @@ const formatCount = (value) =>
     maximumFractionDigits: 0,
   });
 const formatCurrencyAmount = (value, languageCode) => {
-  const labels = WORK_DETAIL_LABELS[languageCode] || WORK_DETAIL_LABELS.en;
-  const separator = languageCode === 'ko' ? '' : ' ';
-  return `${formatCount(value)}${separator}${labels.currencyUnit}`;
+  return formatCurrency(value, { currencyCode: 'VND', languageCode, fallback: '-' });
 };
 const resolveRowCtDisplayMeta = ({ row, rowProcess, selectedProcessOption, languageCode }) => {
   const process = selectedProcessOption?.process || rowProcess || row?.process || null;

@@ -15,6 +15,7 @@ import {
   requireSystemAdmin,
 } from "../middleware/access";
 import { normalizeEmail, resolveOptionalString } from "../utils/common";
+import { resolveDefaultEmployeeGradeId } from "../employees/employeeGrade";
 
 type OrgMembershipRoutesDeps = {
   hasOrgFeatureAccess: (args: {
@@ -530,6 +531,7 @@ export const createOrgMembershipRouter = ({
             data: transactionData,
           });
         }
+        transactionData.gradeId = await resolveDefaultEmployeeGradeId(tx, orgIdNum);
         return tx.employee.create({ data: transactionData });
       });
 
@@ -662,13 +664,16 @@ export const createOrgMembershipRouter = ({
       approvedAt: null,
       approvedBy: null,
     };
+    const defaultGradeId = existing
+      ? null
+      : await resolveDefaultEmployeeGradeId(prisma, orgIdNum);
     const record = existing
       ? await prisma.employee.update({
           where: { id: existing.id },
           data,
         })
       : await prisma.employee.create({
-          data,
+          data: { ...data, gradeId: defaultGradeId! },
         });
 
     return res.status(existing ? 200 : 201).json(toMembershipResponseFromEmployee(record));
@@ -930,6 +935,9 @@ export const createOrgMembershipRouter = ({
     const existing = await prisma.employee.findUnique({
       where: { orgId_email: { orgId: orgIdNum, email: normalizedEmail } },
     });
+    const defaultGradeId = existing
+      ? null
+      : await resolveDefaultEmployeeGradeId(prisma, orgIdNum);
     const record = existing
       ? await prisma.employee.update({
           where: { id: existing.id },
@@ -950,6 +958,7 @@ export const createOrgMembershipRouter = ({
             requestedAt: now,
             approvedAt: now,
             joinedAt: now,
+            gradeId: defaultGradeId!,
           },
         });
 

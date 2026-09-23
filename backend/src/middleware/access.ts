@@ -12,12 +12,7 @@ import {
   readRequestHeader,
 } from "../utils/http";
 
-const ORG_ACCESS_ROLES: OrgUserRole[] = [
-  "ADMIN",
-  "OPERATOR",
-  "ACCOUNTANT",
-  "WORKER",
-];
+const ORG_MANAGEMENT_ROLES: OrgUserRole[] = ["ADMIN", "OPERATOR", "ACCOUNTANT"];
 const TRIAL_DAYS = 30;
 const GRACE_DAYS = 30;
 const SUBSCRIPTION_NULL_DATE_CUTOFF_MS = Date.UTC(1971, 0, 1);
@@ -32,16 +27,6 @@ type RequireOrgRoleOptions = OrganizationAccessOptions & {
   allowSystemAdmin?: boolean;
 };
 
-const ORG_ACCESS_CACHE_TTL_MS = 60_000;
-const MAX_ORG_ACCESS_CACHE_SIZE = 512;
-const organizationAccessCache = new Map<
-  string,
-  {
-    expiresAt: number;
-    value: any;
-  }
->();
-const organizationAccessInFlight = new Map<string, Promise<any>>();
 const requestOrganizationAccessCacheKey = Symbol("requestOrganizationAccessCache");
 
 type RequestWithOrganizationAccessCache = Request & {
@@ -154,24 +139,6 @@ const getRequestOrganizationAccessCache = (req: Request) => {
     typedRequest[requestOrganizationAccessCacheKey] = new Map<string, any>();
   }
   return typedRequest[requestOrganizationAccessCacheKey];
-};
-
-const purgeExpiredOrganizationAccessCache = () => {
-  const now = Date.now();
-  for (const [key, entry] of organizationAccessCache.entries()) {
-    if (!entry || entry.expiresAt <= now) {
-      organizationAccessCache.delete(key);
-    }
-  }
-};
-
-const trimOrganizationAccessCache = () => {
-  purgeExpiredOrganizationAccessCache();
-  while (organizationAccessCache.size > MAX_ORG_ACCESS_CACHE_SIZE) {
-    const oldestKey = organizationAccessCache.keys().next().value;
-    if (!oldestKey) break;
-    organizationAccessCache.delete(oldestKey);
-  }
 };
 
 const buildOrganizationAccessCacheKey = (
@@ -302,6 +269,7 @@ const getSystemAdminDefaultOrganization = async (
 ) => {
   const organizationWithActiveMembers = await prisma.organization.findFirst({
     where: {
+      type: { in: ["MANUFACTURER", "BRAND"] },
       employees: {
         some: { status: "ACTIVE" },
       },
@@ -319,13 +287,8 @@ const getSystemAdminDefaultOrganization = async (
 };
 
 // Returns { organization, employeeId } rather than setting the request actor's
-// employeeId as a side effect here - the caller (getOrganizationByQuery) also
-// serves cached results (module-level + in-flight dedup), and a side effect
-// buried in this function would only fire on the cache-miss path. Every
-// resolution path (cache hit or miss) must apply employeeId to the CURRENT
-// request's AsyncLocalStorage store, or createdByEmployeeId/updatedByEmployeeId
-// silently stay null on any request that lands within the 60s org-access cache
-// window - see AGENTS.md audit-field investigation.
+// Return employeeId with the organization so the request-local cache can apply
+// the actor to the CURRENT request's AsyncLocalStorage store on every lookup.
 const resolveOrganizationByQuery = async (
   rawOrgId: string,
   requesterEmail: string,
@@ -435,35 +398,12 @@ export const getOrganizationByQuery = async (
     return applyResolvedOrganizationAccess(requestCache.get(cacheKey));
   }
 
-  purgeExpiredOrganizationAccessCache();
-  const cached = organizationAccessCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    requestCache.set(cacheKey, cached.value);
-    return applyResolvedOrganizationAccess(cached.value);
-  }
-
-  let inFlight = organizationAccessInFlight.get(cacheKey);
-  if (!inFlight) {
-    inFlight = resolveOrganizationByQuery(rawOrgId, requesterEmail, options).then((value) => {
-      organizationAccessCache.set(cacheKey, {
-        value,
-        expiresAt: Date.now() + ORG_ACCESS_CACHE_TTL_MS,
-      });
-      trimOrganizationAccessCache();
-      return value;
-    });
-    organizationAccessInFlight.set(cacheKey, inFlight);
-  }
-
-  try {
-    const value = await inFlight;
-    requestCache.set(cacheKey, value);
-    return applyResolvedOrganizationAccess(value);
-  } finally {
-    if (organizationAccessInFlight.get(cacheKey) === inFlight) {
-      organizationAccessInFlight.delete(cacheKey);
-    }
-  }
+  // Authorization state is deliberately cached only for the lifetime of one
+  // request. Cross-request caching left role, employment and subscription
+  // changes effective up to 60 seconds after they were committed.
+  const value = await resolveOrganizationByQuery(rawOrgId, requesterEmail, options);
+  requestCache.set(cacheKey, value);
+  return applyResolvedOrganizationAccess(value);
 };
 
 export const getRequestAccessContext = async (
@@ -522,7 +462,7 @@ export const requireOrgRole = async (
   options: RequireOrgRoleOptions = {}
 ) => {
   const {
-    allowedRoles = ORG_ACCESS_ROLES,
+    allowedRoles = ORG_MANAGEMENT_ROLES,
     allowSystemAdmin = true,
     allowSuspended = false,
   } = options;

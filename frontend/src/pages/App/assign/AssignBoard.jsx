@@ -73,6 +73,7 @@ import {
   resolveProcessExactStPerPieceSeconds,
 } from '../../../utils/processTime';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
+import { formatCurrency } from '../../../utils/currencyFormat';
 import {
   hasAssignmentCtSnapshot,
   resolveAssignmentCtSnapshot,
@@ -231,11 +232,7 @@ const LANGUAGE_LOCALE_MAP = {
 };
 const resolveLocale = (languageCode = 'en') => LANGUAGE_LOCALE_MAP[languageCode] || LANGUAGE_LOCALE_MAP.en;
 const formatCurrencyDong = (value, languageCode = 'en') =>
-  `${formatNumberWithCommas(Math.round(Number(value)), { fallback: '0', maximumFractionDigits: 0 })} ${getUiMessage(
-    'assign.currencyUnit',
-    'dong',
-    languageCode
-  )}`;
+  formatCurrency(value, { currencyCode: 'VND', languageCode, fallback: 'VND 0' });
 const buildAssignableCardSearchText = (card) =>
   [
     card?.styleName,

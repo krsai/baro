@@ -1,5 +1,5 @@
 import { type Request, type Response } from "express";
-import { getOrganizationByQuery, requireOrgRole } from "../middleware/access";
+import { requireOrgRole } from "../middleware/access";
 import { resolveOptionalString } from "../utils/common";
 import {
   deletePayrollSnapshot,
@@ -14,14 +14,16 @@ import {
   updatePayrollSettings,
 } from "./payroll.service";
 
+const PAYROLL_ROLES = ["ADMIN", "OPERATOR", "ACCOUNTANT"] as const;
+
 export const getPayrollSettingsController = async (req: Request, res: Response) => {
-  const accessContext = await requireOrgRole(req, res, { allowedRoles: ["ADMIN", "OPERATOR", "ACCOUNTANT"] });
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
   if (!accessContext) return;
   return res.json(await getPayrollSettings(accessContext.organization.id));
 };
 
 export const updatePayrollSettingsController = async (req: Request, res: Response) => {
-  const accessContext = await requireOrgRole(req, res, { allowedRoles: ["ADMIN", "OPERATOR", "ACCOUNTANT"] });
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
   if (!accessContext) return;
   return res.json(await updatePayrollSettings(
     accessContext.organization.id,
@@ -40,10 +42,9 @@ import {
 } from "../factories/factoryManagementStart";
 
 export const getPayrollCalendarController = async (req: Request, res: Response) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   const timeZone = process.env.BUSINESS_TIME_ZONE || "Asia/Seoul";
   const factories = await prisma.factory.findMany({
@@ -87,20 +88,18 @@ export const getPayrollCalendarController = async (req: Request, res: Response) 
 };
 
 export const listPayrollSnapshotsController = async (req: Request, res: Response) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   const snapshots = await listPayrollSnapshots(organization.id);
   return res.json(snapshots);
 };
 
 export const getPayrollController = async (req: Request, res: Response) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   const payroll = await getPayrollByMonth(
     organization.id,
@@ -111,10 +110,9 @@ export const getPayrollController = async (req: Request, res: Response) => {
 };
 
 export const getPayrollReadinessController = async (req: Request, res: Response) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   const readiness = await getPayrollMonthReadiness(
     organization.id,
     String(req.query.month || ""),
@@ -124,7 +122,7 @@ export const getPayrollReadinessController = async (req: Request, res: Response)
 };
 
 export const savePayrollSnapshotController = async (req: Request, res: Response) => {
-  const accessContext = await requireOrgRole(req, res);
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
   if (!accessContext) return;
 
   const snapshot = await savePayrollSnapshot({
@@ -143,7 +141,7 @@ export const savePayrollSnapshotController = async (req: Request, res: Response)
 };
 
 export const deletePayrollSnapshotController = async (req: Request, res: Response) => {
-  const accessContext = await requireOrgRole(req, res);
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
   if (!accessContext) return;
 
   const result = await deletePayrollSnapshot(
@@ -155,7 +153,7 @@ export const deletePayrollSnapshotController = async (req: Request, res: Respons
 };
 
 export const updatePayrollEmployeeRatesController = async (req: Request, res: Response) => {
-  const accessContext = await requireOrgRole(req, res);
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
   if (!accessContext) return;
   const result = await updatePayrollEmployeeRates({
     orgId: accessContext.organization.id,
@@ -168,7 +166,7 @@ export const updatePayrollEmployeeRatesController = async (req: Request, res: Re
 };
 
 export const unlockPayrollSnapshotController = async (req: Request, res: Response) => {
-  const accessContext = await requireOrgRole(req, res);
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
   if (!accessContext) return;
 
   const result = await unlockPayrollSnapshot(
@@ -180,7 +178,7 @@ export const unlockPayrollSnapshotController = async (req: Request, res: Respons
 };
 
 export const lockPayrollSnapshotController = async (req: Request, res: Response) => {
-  const accessContext = await requireOrgRole(req, res);
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
   if (!accessContext) return;
   const result = await lockPayrollSnapshot({
     orgId: accessContext.organization.id,
@@ -193,4 +191,3 @@ export const lockPayrollSnapshotController = async (req: Request, res: Response)
   });
   return res.json(result);
 };
-

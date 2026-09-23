@@ -22,6 +22,7 @@ import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import { getUiMessage } from '../../../../constants/uiMessages';
 import { resolveCardCustomerDisplay } from '../utils/assignmentCard';
 import CompactBoardCard from './CompactBoardCard';
+import { LABEL_PALETTE } from '../../../../theme/labelPalette';
 
 const buildAssignmentSearchText = (assignment) =>
   [
@@ -91,29 +92,29 @@ const resolvePlanTone = (plannedLoadPercent) => {
   const value = Number(plannedLoadPercent);
   if (!Number.isFinite(value)) {
     return {
-      barColor: '#90CAF9',
+      barColor: LABEL_PALETTE.blue.border,
       textColor: 'text.secondary',
-      backgroundColor: 'rgba(144, 202, 249, 0.14)',
+      backgroundColor: LABEL_PALETTE.blue.background,
     };
   }
   if (value > 120) {
     return {
-      barColor: '#D32F2F',
+      barColor: LABEL_PALETTE.red.text,
       textColor: 'error.main',
-      backgroundColor: 'rgba(211, 47, 47, 0.08)',
+      backgroundColor: LABEL_PALETTE.red.background,
     };
   }
   if (value > 100) {
     return {
-      barColor: '#ED6C02',
+      barColor: LABEL_PALETTE.orange.text,
       textColor: 'warning.main',
-      backgroundColor: 'rgba(237, 108, 2, 0.08)',
+      backgroundColor: LABEL_PALETTE.orange.background,
     };
   }
   return {
-    barColor: '#1976D2',
+    barColor: LABEL_PALETTE.blue.text,
     textColor: 'primary.main',
-    backgroundColor: 'rgba(25, 118, 210, 0.08)',
+    backgroundColor: LABEL_PALETTE.blue.background,
   };
 };
 
@@ -306,19 +307,19 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
           )
       : '';
   const accentColor = isCompleted
-    ? '#15803D'
+    ? LABEL_PALETTE.green.text
     : isZeroQuantityOverflow
-      ? '#B45309'
+      ? LABEL_PALETTE.orange.text
     : isReviewRequired
-      ? '#B91C1C'
-      : '#2563EB';
+      ? LABEL_PALETTE.red.text
+      : LABEL_PALETTE.blue.text;
   const backgroundColor = isCompleted
-    ? '#F3F4F6'
+    ? LABEL_PALETTE.green.background
     : isZeroQuantityOverflow
-      ? '#FFFBEB'
+      ? LABEL_PALETTE.orange.background
     : isReviewRequired
-      ? '#FEF2F2'
-      : '#FFFFFF';
+      ? LABEL_PALETTE.red.background
+      : LABEL_PALETTE.blue.background;
 
   return (
     <CompactBoardCard
@@ -372,7 +373,7 @@ const FactoryScopeCapacityMainRow = memo(function FactoryScopeCapacityMainRow({
       ref={setNodeRef}
       sx={{
         backgroundColor: isOver ? 'rgba(37, 99, 235, 0.06)' : undefined,
-        outline: isOver ? '2px solid #2563EB' : undefined,
+        outline: isOver ? `2px solid ${LABEL_PALETTE.blue.text}` : undefined,
         outlineOffset: -2,
         transition: 'background-color 0.12s ease, outline 0.12s ease',
       }}

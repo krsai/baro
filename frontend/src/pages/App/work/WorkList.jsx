@@ -33,6 +33,7 @@ import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
 import MonthSelector from '../../../components/MonthSelector';
 import PageSectionHeader from '../../../components/PageSectionHeader';
+import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
@@ -40,6 +41,7 @@ import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import { formatCurrency } from '../../../utils/currencyFormat';
 import {
   DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
   isDateBeforeFactoryManagementStart,
@@ -218,11 +220,7 @@ const formatDuration = (seconds, languageCode) => {
 };
 
 const formatCurrencyValue = (value, languageCode) => {
-  const rounded = Math.round(Number(value) || 0);
-  const formatted = rounded.toLocaleString('en-US');
-  const unit = resolveText(TEXT.currencyUnit, languageCode, '동');
-  const separator = languageCode === 'ko' ? '' : ' ';
-  return `${formatted}${separator}${unit}`;
+  return formatCurrency(value, { currencyCode: 'VND', languageCode, fallback: '-' });
 };
 
 const normalizeFilterDate = (value) => {
@@ -747,17 +745,8 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
               </Stack>
             )}
           />
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: { xs: 'stretch', lg: 'center' },
-              justifyContent: 'space-between',
-              flexDirection: { xs: 'column', lg: 'row' },
-              gap: 1.25,
-              minWidth: 0,
-            }}
-          >
-            <SearchInput
+          <PageToolbar
+            left={<SearchInput
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder={resolveText(TEXT.searchPlaceholder, languageCode, '날짜, 공장 검색')}
@@ -767,7 +756,8 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                 maxWidth: { lg: 640 },
                 flex: 1,
               }}
-            />
+            />}
+            right={<>
             <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0, ml: { lg: 'auto' } }}>
               <InputLabel id="work-list-factory-filter-label">
                 {resolveText(TEXT.factory, languageCode, '공장')}
@@ -790,37 +780,14 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                 ))}
               </Select>
             </FormControl>
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: { xs: 'stretch', lg: 'center' },
-                justifyContent: { xs: 'flex-start', lg: 'flex-end' },
-                flexDirection: { xs: 'column', lg: 'row' },
-                gap: 1,
-                flexWrap: 'wrap',
-                flexShrink: 0,
-                minWidth: 0,
-              }}
-            >
-              <Stack
-                direction="row"
-                spacing={1}
-                sx={{
-                  alignItems: 'center',
-                  justifyContent: { xs: 'flex-start', lg: 'flex-end' },
-                  flexWrap: 'wrap',
-                  flexShrink: 0,
-                }}
-              >
-                <MonthSelector
+            <MonthSelector
                   value={dayjs(dateFilterStart).format('YYYY-MM')}
                   onChange={handleFilterMonthChange}
                   min={workHistoryOperationStartDay.format('YYYY-MM')}
                   ariaLabel={resolveText(TEXT.workMonth, languageCode, 'Work month')}
-                />
-              </Stack>
-            </Box>
-          </Box>
+            />
+            </>}
+          />
         </Stack>
       }
     >

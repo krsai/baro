@@ -21,6 +21,7 @@ import {
   Typography,
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
+import PageToolbar from '../../../components/PageToolbar';
 import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -1537,6 +1538,24 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           </Button>
         ) : null
       )}
+      toolbar={(
+        <PageToolbar
+          left={<SearchInput value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder={text('searchPlaceholder', languageCode)} sx={{ width: { xs: '100%', md: 320 } }} />}
+          right={(
+            <>
+              <TextField select label={text('statusLabel', languageCode)} size="small" value={selectedStatusFilter} onChange={(e) => setSelectedStatusFilter(e.target.value)} sx={{ minWidth: 160 }}>
+                {employeeStatusFilterOptions.map((option) => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}
+              </TextField>
+              {canFilterByFactory && (
+                <TextField select label={text('factoryLabel', languageCode)} size="small" value={selectedFactoryFilterId} onChange={(e) => setSelectedFactoryFilterId(e.target.value)} sx={{ minWidth: 220 }} SelectProps={{ displayEmpty: true, renderValue: (value) => factories.find((factory) => String(factory?.id) === String(value || ''))?.name || text('allFactory', languageCode) }} InputLabelProps={{ shrink: true }}>
+                  <MenuItem value="">{text('allFactory', languageCode)}</MenuItem>
+                  {factories.map((factory) => <MenuItem key={factory.id} value={String(factory.id)}>{factory.name}</MenuItem>)}
+                </TextField>
+              )}
+            </>
+          )}
+        />
+      )}
     >
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
         {statusMessage && (
@@ -1869,80 +1888,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         )}
 
         <Paper variant="outlined" sx={{ p: 3, width: '100%' }}>
-          <Box
-            sx={{
-              mb: 2,
-              display: 'flex',
-              alignItems: 'stretch',
-              flexDirection: 'column',
-              gap: 1,
-            }}
-          >
-            <Typography variant="h6">
-              {text('activeListTitle', languageCode)}
-            </Typography>
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                width: '100%',
-                flexDirection: { xs: 'column', md: 'row' },
-              }}
-            >
-              <SearchInput
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder={text('searchPlaceholder', languageCode)}
-                sx={{ width: { xs: '100%', md: 280 } }}
-              />
-              <TextField
-                select
-                label={text('statusLabel', languageCode)}
-                size="small"
-                value={selectedStatusFilter}
-                onChange={(e) => setSelectedStatusFilter(e.target.value)}
-                sx={{ minWidth: 160, width: { xs: '100%', md: 'auto' }, ml: { md: 'auto' } }}
-              >
-                {employeeStatusFilterOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </TextField>
-              {canFilterByFactory && (
-                <TextField
-                  select
-                  label={text('factoryLabel', languageCode)}
-                  size="small"
-                  value={selectedFactoryFilterId}
-                  onChange={(e) => setSelectedFactoryFilterId(e.target.value)}
-                  sx={{ minWidth: 220, width: { xs: '100%', md: 'auto' } }}
-                  SelectProps={{
-                    displayEmpty: true,
-                    renderValue: (value) => {
-                      const normalizedValue = String(value || '');
-                      if (!normalizedValue) {
-                        return text('allFactory', languageCode);
-                      }
-                      return (
-                        factories.find((factory) => String(factory?.id) === normalizedValue)?.name ||
-                        text('allFactory', languageCode)
-                      );
-                    },
-                  }}
-                  InputLabelProps={{ shrink: true }}
-                >
-                  <MenuItem value="">{text('allFactory', languageCode)}</MenuItem>
-                  {factories.map((factory) => (
-                    <MenuItem key={factory.id} value={String(factory.id)}>
-                      {factory.name}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              )}
-            </Box>
-          </Box>
+          <Typography variant="h6" sx={{ mb: 2 }}>{text('activeListTitle', languageCode)}</Typography>
           <TableContainer>
             <Table size="small">
               <TableHead>
