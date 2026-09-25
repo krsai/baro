@@ -174,6 +174,7 @@ function assertGeneratedPrismaClientShape() {
     InvoiceLine: ["id", "invoiceId", "invoiceOrderId", "workOrderItemId", "sourceItemId", "lineKey", "styleId", "styleCode", "styleName", "description", "color", "gender", "size", "quantity", "bucketQuantity", "unitPrice", "amount", "priceId", "bucketVersionId", "remark", "adjustmentReason", "hsCode", "origin"],
     InvoicePayment: ["id", "invoiceId", "clientKey", "amount", "currencyCode", "receivedAt", "reference", "note", "createdBy", "createdAt", "voidedBy", "voidedAt", "voidReason"],
     InvoicePaymentAllocation: ["id", "paymentId", "invoiceOrderId", "invoiceId", "batchKey", "amount", "createdBy", "createdAt", "voidedBy", "voidedAt", "voidReason"],
+    InvoiceFinalLockEvent: ["id", "sellerOrgId", "workOrderId", "invoiceId", "clientKey", "action", "recognizedQuantity", "reason", "actor", "createdAt"],
   })) {
     for (const field of fields) {
       if (!hasField(model, field)) staleSignals.push(model + "." + field + " is missing");
@@ -791,6 +792,14 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "InvoicePaymentAllocation", columnName: "invoiceId" },
   { tableName: "InvoicePaymentAllocation", columnName: "batchKey" },
   { tableName: "InvoicePaymentAllocation", columnName: "amount" },
+  { tableName: "WorkOrder", columnName: "invoiceFinalLockedAt" },
+  { tableName: "WorkOrder", columnName: "invoiceFinalLockedBy" },
+  { tableName: "WorkOrder", columnName: "invoiceFinalLockInvoiceId" },
+  { tableName: "WorkOrder", columnName: "invoiceFinalLockReason" },
+  { tableName: "WorkOrder", columnName: "invoiceFinalRecognizedQuantity" },
+  { tableName: "InvoiceFinalLockEvent", columnName: "workOrderId" },
+  { tableName: "InvoiceFinalLockEvent", columnName: "invoiceId" },
+  { tableName: "InvoiceFinalLockEvent", columnName: "action" },
   { tableName: "WorkLog", columnName: "coverageStartDate" },
   { tableName: "WorkLog", columnName: "coverageEndDate" },
   { tableName: "WorkLog", columnName: "entryMode" },
@@ -1028,6 +1037,10 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "InvoicePaymentAllocation_paymentId_invoiceOrderId_batchKey_key",
   "InvoicePaymentAllocation_payment_invoice_fkey",
   "InvoicePaymentAllocation_order_invoice_fkey",
+  "WorkOrder_invoiceFinalLockInvoiceId_fkey",
+  "InvoiceFinalLockEvent_workOrderId_clientKey_key",
+  "InvoiceFinalLockEvent_workOrderId_fkey",
+  "InvoiceFinalLockEvent_invoiceId_fkey",
   "Currency_code_key",
   "Organization_salaryCurrencyId_idx",
   "Organization_salaryCurrency_fkey",
@@ -8290,7 +8303,7 @@ const toOrderResponse = (
   const customerOrg = order.customerOrg ?? buyerOrg;
   const buyerOrgName = resolveOptionalString(buyerOrg?.name, "") ?? "";
   const customerName = resolveOptionalString(customerOrg?.name, buyerOrgName) ?? "";
-  const isManualModificationLocked = false; // Legacy timestamps are history, not settlement locks.
+  const isManualModificationLocked = Boolean(order?.invoiceFinalLockedAt);
   const isAssignmentModificationLocked = Boolean(options.isAssignmentModificationLocked);
   const isModificationLocked = isManualModificationLocked;
   const status = resolveCanonicalWorkOrderProgressStatus({
@@ -8325,6 +8338,11 @@ const toOrderResponse = (
     canToggleModificationLock: false,
     modificationLockedAt: order.modificationLockedAt ?? null,
     modificationLockedBy: order.modificationLockedBy ?? "",
+    invoiceFinalLockedAt: order.invoiceFinalLockedAt ?? null,
+    invoiceFinalLockedBy: order.invoiceFinalLockedBy ?? "",
+    invoiceFinalLockInvoiceId: order.invoiceFinalLockInvoiceId ?? null,
+    invoiceFinalLockReason: order.invoiceFinalLockReason ?? "",
+    invoiceFinalRecognizedQuantity: order.invoiceFinalRecognizedQuantity ?? null,
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
   };
@@ -15123,7 +15141,7 @@ const buildOrderModificationLockState = ({
   order: any;
   isAssignmentLocked?: boolean;
 }) => {
-  const isManualLocked = false; // Assignment guards remain active.
+  const isManualLocked = Boolean(order?.invoiceFinalLockedAt);
   const assignmentLocked = Boolean(isAssignmentLocked);
   return {
     isManualLocked,
@@ -32766,6 +32784,12 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
     });
   }
   const rawErrorMessage = getErrorMessage(error, String(error));
+  if (rawErrorMessage.includes("INVOICE_FINAL_LOCKED")) {
+    return res.status(409).json({
+      ok: false,
+      error: "INVOICE_FINAL_LOCKED",
+    });
+  }
   const workLogTrace = (req as any)?.__workLogTrace;
   const workLogRequestId = resolveOptionalString(workLogTrace?.requestId, null);
   if (workLogRequestId) {

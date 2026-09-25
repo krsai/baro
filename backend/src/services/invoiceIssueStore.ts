@@ -1,6 +1,7 @@
 import { createHttpError } from "../utils/http";
 import { editTransaction, STALE_EDIT } from "../utils/editRevision";
 import { buildInvoiceSource } from "./invoiceSource";
+import { rebaseInvoiceFinalLocks } from "./invoiceFinalLock";
 
 const fail = (code: string): never => { throw createHttpError(409, code); };
 const parseQuantity = (value: unknown) => {
@@ -194,6 +195,7 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
       })) });
     }
     if (revisedFrom) {
+      await rebaseInvoiceFinalLocks(tx, sellerOrgId, actor, revisedFrom.id, invoice.id);
       const superseded = await tx.invoice.updateMany({ where: { id: revisedFrom.id, sellerOrgId, status: "ISSUED" },
         data: { status: "SUPERSEDED" } });
       if (superseded.count !== 1) throw createHttpError(409, STALE_EDIT);
@@ -209,6 +211,11 @@ export async function cancelIssuedInvoice(db: any, sellerOrgId: number, actor: s
     const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId }, include: { orders: true } });
     if (!invoice) throw createHttpError(404, "INVOICE_NOT_FOUND");
     if (invoice.status === "CANCELLED") return invoice;
+    const lockedOrder = await tx.workOrder.findFirst({
+      where: { sellerOrgId, invoiceFinalLockInvoiceId: invoice.id },
+      select: { id: true },
+    });
+    if (lockedOrder) fail("INVOICE_FINAL_LOCK_UNLOCK_REQUIRED");
     const later = await tx.invoiceOrder.findFirst({ where: { sourceOrderId: { in: invoice.orders.map((row: any) => row.sourceOrderId) },
       invoice: { sellerOrgId, status: "ISSUED", sequenceNumber: { gt: invoice.sequenceNumber } } } });
     if (later) fail("INVOICE_CANCEL_REVERSE_ORDER_REQUIRED");

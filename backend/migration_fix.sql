@@ -5230,6 +5230,126 @@ CREATE INDEX IF NOT EXISTS "InvoicePaymentAllocation_paymentId_voidedAt_idx"
 CREATE INDEX IF NOT EXISTS "InvoicePaymentAllocation_invoiceOrderId_voidedAt_idx"
   ON "InvoicePaymentAllocation"("invoiceOrderId","voidedAt");
 
+-- 2026-09-25: explicit final-settlement approval lock and immutable lock history.
+DO $$ BEGIN CREATE TYPE "InvoiceFinalLockAction" AS ENUM ('LOCK','UNLOCK','REBASE'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ALTER TABLE "WorkOrder"
+  ADD COLUMN IF NOT EXISTS "invoiceFinalLockedAt" TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS "invoiceFinalLockedBy" TEXT,
+  ADD COLUMN IF NOT EXISTS "invoiceFinalLockInvoiceId" TEXT,
+  ADD COLUMN IF NOT EXISTS "invoiceFinalLockReason" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS "invoiceFinalRecognizedQuantity" INTEGER;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='WorkOrder_invoiceFinalLockInvoiceId_fkey') THEN
+    ALTER TABLE "WorkOrder" ADD CONSTRAINT "WorkOrder_invoiceFinalLockInvoiceId_fkey"
+      FOREIGN KEY ("invoiceFinalLockInvoiceId") REFERENCES "Invoice"(id) ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS "WorkOrder_invoiceFinalLockInvoiceId_idx" ON "WorkOrder"("invoiceFinalLockInvoiceId");
+CREATE TABLE IF NOT EXISTS "InvoiceFinalLockEvent" (
+  id TEXT PRIMARY KEY,
+  "sellerOrgId" INTEGER NOT NULL,
+  "workOrderId" INTEGER NOT NULL REFERENCES "WorkOrder"(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  "invoiceId" TEXT REFERENCES "Invoice"(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  "clientKey" TEXT NOT NULL,
+  action "InvoiceFinalLockAction" NOT NULL,
+  "recognizedQuantity" INTEGER,
+  reason TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "InvoiceFinalLockEvent_workOrderId_clientKey_key" UNIQUE ("workOrderId","clientKey")
+);
+CREATE INDEX IF NOT EXISTS "InvoiceFinalLockEvent_sellerOrgId_createdAt_id_idx" ON "InvoiceFinalLockEvent"("sellerOrgId","createdAt",id);
+CREATE INDEX IF NOT EXISTS "InvoiceFinalLockEvent_invoiceId_idx" ON "InvoiceFinalLockEvent"("invoiceId");
+
+CREATE OR REPLACE FUNCTION baro_assert_invoice_final_unlocked(target_order_id INTEGER)
+RETURNS VOID AS $$
+BEGIN
+  IF COALESCE(current_setting('baro.invoice_lock_bypass', true), '') = 'on' THEN RETURN; END IF;
+  IF target_order_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM "WorkOrder" WHERE id=target_order_id AND "invoiceFinalLockedAt" IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'INVOICE_FINAL_LOCKED' USING ERRCODE='P0001';
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION baro_guard_locked_work_order() RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM baro_assert_invoice_final_unlocked(COALESCE(OLD.id, NEW.id));
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION baro_guard_locked_order_child() RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM baro_assert_invoice_final_unlocked(COALESCE(OLD."workOrderId", NEW."workOrderId"));
+  IF TG_OP='UPDATE' AND OLD."workOrderId" IS DISTINCT FROM NEW."workOrderId" THEN
+    PERFORM baro_assert_invoice_final_unlocked(NEW."workOrderId");
+  END IF;
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION baro_guard_locked_assignment_plan() RETURNS TRIGGER AS $$
+DECLARE old_order_id INTEGER; new_order_id INTEGER;
+BEGIN
+  SELECT COALESCE(OLD."workOrderId", card."workOrderId") INTO old_order_id FROM "AssignmentCard" card WHERE card.id=OLD."assignmentCardId";
+  old_order_id := COALESCE(old_order_id, OLD."workOrderId");
+  PERFORM baro_assert_invoice_final_unlocked(old_order_id);
+  IF TG_OP<>'DELETE' THEN
+    SELECT COALESCE(NEW."workOrderId", card."workOrderId") INTO new_order_id FROM "AssignmentCard" card WHERE card.id=NEW."assignmentCardId";
+    new_order_id := COALESCE(new_order_id, NEW."workOrderId");
+    IF new_order_id IS DISTINCT FROM old_order_id THEN PERFORM baro_assert_invoice_final_unlocked(new_order_id); END IF;
+  END IF;
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION baro_guard_locked_work_record() RETURNS TRIGGER AS $$
+DECLARE old_order_id INTEGER; new_order_id INTEGER;
+BEGIN
+  SELECT COALESCE(plan."workOrderId", card."workOrderId") INTO old_order_id
+  FROM "AssignmentPlan" plan LEFT JOIN "AssignmentCard" card ON card.id=plan."assignmentCardId"
+  WHERE plan.id=OLD."assignmentPlanId";
+  PERFORM baro_assert_invoice_final_unlocked(old_order_id);
+  IF TG_OP<>'DELETE' THEN
+    SELECT COALESCE(plan."workOrderId", card."workOrderId") INTO new_order_id
+    FROM "AssignmentPlan" plan LEFT JOIN "AssignmentCard" card ON card.id=plan."assignmentCardId"
+    WHERE plan.id=NEW."assignmentPlanId";
+    IF new_order_id IS DISTINCT FROM old_order_id THEN PERFORM baro_assert_invoice_final_unlocked(new_order_id); END IF;
+  END IF;
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+DO $$
+DECLARE target_table TEXT; function_name TEXT;
+BEGIN
+  FOR target_table, function_name IN VALUES
+    ('WorkOrder','baro_guard_locked_work_order'),
+    ('WorkOrderItem','baro_guard_locked_order_child'),
+    ('AssignmentCard','baro_guard_locked_order_child'),
+    ('AssignmentPlan','baro_guard_locked_assignment_plan'),
+    ('WorkRecord','baro_guard_locked_work_record'),
+    ('OutsourcedWorkRecord','baro_guard_locked_work_record')
+  LOOP
+    IF to_regclass(format('"%s"', target_table)) IS NOT NULL AND (
+      target_table='WorkOrder'
+      OR (target_table IN ('WorkOrderItem','AssignmentCard') AND EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name=target_table AND column_name='workOrderId'
+      ))
+      OR (target_table='AssignmentPlan' AND EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name=target_table AND column_name='workOrderId'
+      ) AND EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name=target_table AND column_name='assignmentCardId'
+      ))
+      OR (target_table IN ('WorkRecord','OutsourcedWorkRecord') AND EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name=target_table AND column_name='assignmentPlanId'
+      ))
+    ) THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS baro_invoice_final_lock_guard ON %I', target_table);
+      EXECUTE format('CREATE TRIGGER baro_invoice_final_lock_guard BEFORE INSERT OR UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION %I()', target_table, function_name);
+    END IF;
+  END LOOP;
+END $$;
+
 -- Factory-owned rows must not point across organization boundaries. Refuse to
 -- hide damaged data; the read-only integrity audit identifies rows to repair.
 DO $$

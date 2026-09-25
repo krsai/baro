@@ -130,16 +130,44 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
         `${invoice.invoiceNumber} · r${invoice.revisionNumber || 1} · ${invoice.status}`,
         invoice.revisedFrom ? `← ${invoice.revisedFrom.invoiceNumber} (r${invoice.revisedFrom.revisionNumber})` : '',
         invoice.revision ? `→ ${invoice.revision.invoiceNumber} (r${invoice.revision.revisionNumber})` : '',
+        ...(invoice.finalLockEvents || []).map(event => `[${event.action}] ${event.createdAt} · ${event.actor} · ${event.recognizedQuantity ?? '-'} · ${event.reason}`),
         ...(invoice.payments || []).map(payment => `${payment.voidedAt ? '[VOID] ' : ''}${payment.receivedAt} ${invoice.currencyCode} ${payment.amount}${payment.allocations?.filter(item => !item.voidedAt).map(item => ` · #${item.invoiceOrderId} ${item.amount}`).join('') || ''}`),
       ].filter(Boolean);
       window.alert(lines.join('\n'));
+    } catch { setError(t.failed); }
+  };
+  const approveFinalLock = async row => {
+    const orders = [];
+    for (const order of row.orders) {
+      const quantity = window.prompt(languageCode === 'ko' ? `${order.sourceOrderNumber} 최종 인정 수량` : `Final recognized quantity for ${order.sourceOrderNumber}`,
+        String(order.workOrder?.totalQuantity ?? ''));
+      if (quantity === null) return;
+      const reason = window.prompt(languageCode === 'ko' ? `${order.sourceOrderNumber} 최종 마감 사유` : `Final settlement reason for ${order.sourceOrderNumber}`);
+      if (!reason?.trim()) return;
+      orders.push({ sourceOrderId: order.sourceOrderId, recognizedQuantity: Number(quantity), reason: reason.trim() });
+    }
+    try {
+      await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}/final-lock${buildQueryString({ orgId })}`, {
+        method: 'POST', body: JSON.stringify({ clientKey: globalThis.crypto.randomUUID(), orders }),
+      });
+      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ISSUED_INVOICES, WORKSPACE_DATA_TOPICS.ORDERS], orgId }); setReload(value => value + 1);
+    } catch { setError(t.failed); }
+  };
+  const unlockFinalLock = async row => {
+    const reason = window.prompt(languageCode === 'ko' ? '최종 정산 잠금 해제 사유를 입력하세요.' : languageCode === 'vi' ? 'Nhập lý do mở khóa quyết toán cuối cùng.' : 'Enter a reason for unlocking the final settlement.');
+    if (!reason?.trim()) return;
+    try {
+      await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}/final-unlock${buildQueryString({ orgId })}`, {
+        method: 'POST', body: JSON.stringify({ clientKey: globalThis.crypto.randomUUID(), reason: reason.trim() }),
+      });
+      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ISSUED_INVOICES, WORKSPACE_DATA_TOPICS.ORDERS], orgId }); setReload(value => value + 1);
     } catch { setError(t.failed); }
   };
   return <Stack spacing={2}>
     <Typography variant="h6">{languageCode === 'ko' ? '발행된 청구서' : languageCode === 'vi' ? 'Hóa đơn đã phát hành' : 'Issued invoices'}</Typography>
     <Table size="small"><TableHead><TableRow>{[common.invoiceNumber, common.customerName, languageCode === 'ko' ? '안내금액 / 신규채권' : 'Statement / New debt', languageCode === 'ko' ? '입금 / 신규미수' : 'Received / New due', t.updated, ''].map((label, i) => <TableCell key={i}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
       {!issued.rows.length && <TableRow><TableCell colSpan={6}>{languageCode === 'ko' ? '발행된 청구서가 없습니다.' : 'No issued invoices.'}</TableCell></TableRow>}
-      {issued.rows.map(row => { const due = subtractInvoiceMoney(row.receivableAdded, row.receivedAmount); return <TableRow key={row.id}><TableCell>{row.invoiceNumber}<Typography variant="caption" display="block">{row.status} · r{row.revisionNumber || 1} · {row.orders.map(order => `${order.sourceOrderNumber} ${order.installmentNumber}차`).join(', ')}</Typography></TableCell><TableCell>{row.buyerName}</TableCell><TableCell>{row.currencyCode} {row.total} / {row.receivableAdded}</TableCell><TableCell>{row.currencyCode} {row.receivedAmount} / {due}{row.orders.length > 1 && <Typography variant="caption" display="block">{languageCode === 'ko' ? '주문 배분' : 'Allocated'}: {row.allocatedAmount}</Typography>}</TableCell><TableCell>{new Date(row.issuedAt).toLocaleString()}</TableCell><TableCell><Button onClick={() => printIssued(row)}>PDF</Button><Button onClick={() => showHistory(row)}>{languageCode === 'ko' ? '이력' : 'History'}</Button>{row.status === 'ISSUED' && <><Button onClick={() => addPayment(row)}>{languageCode === 'ko' ? '입금' : 'Payment'}</Button>{row.orders.length > 1 && <Button onClick={() => allocateExistingPayment(row)}>{languageCode === 'ko' ? '배분' : 'Allocate'}</Button>}<Button onClick={() => reviseIssued(row)}>{languageCode === 'ko' ? '개정' : 'Revise'}</Button><Button color="error" onClick={() => cancelIssued(row)}>{languageCode === 'ko' ? '취소' : 'Cancel'}</Button></>}</TableCell></TableRow>; })}
+      {issued.rows.map(row => { const due = subtractInvoiceMoney(row.receivableAdded, row.receivedAmount); return <TableRow key={row.id}><TableCell>{row.invoiceNumber}<Typography variant="caption" display="block">{row.status} · r{row.revisionNumber || 1} · {row.orders.map(order => `${order.sourceOrderNumber} ${order.installmentNumber}차`).join(', ')}</Typography>{row.isFinalLocked && <Typography variant="caption" color="success.main" display="block">{languageCode === 'ko' ? '최종 정산 잠금' : 'Final settlement locked'}</Typography>}</TableCell><TableCell>{row.buyerName}</TableCell><TableCell>{row.currencyCode} {row.total} / {row.receivableAdded}</TableCell><TableCell>{row.currencyCode} {row.receivedAmount} / {due}{row.orders.length > 1 && <Typography variant="caption" display="block">{languageCode === 'ko' ? '주문 배분' : 'Allocated'}: {row.allocatedAmount}</Typography>}</TableCell><TableCell>{new Date(row.issuedAt).toLocaleString()}</TableCell><TableCell><Button onClick={() => printIssued(row)}>PDF</Button><Button onClick={() => showHistory(row)}>{languageCode === 'ko' ? '이력' : 'History'}</Button>{row.status === 'ISSUED' && <><Button onClick={() => addPayment(row)}>{languageCode === 'ko' ? '입금' : 'Payment'}</Button>{row.orders.length > 1 && <Button onClick={() => allocateExistingPayment(row)}>{languageCode === 'ko' ? '배분' : 'Allocate'}</Button>}<Button onClick={() => reviseIssued(row)}>{languageCode === 'ko' ? '개정' : 'Revise'}</Button>{row.isFinalLocked ? <Button color="warning" onClick={() => unlockFinalLock(row)}>{languageCode === 'ko' ? '잠금 해제' : 'Unlock'}</Button> : <Button color="success" onClick={() => approveFinalLock(row)}>{languageCode === 'ko' ? '최종 마감' : 'Final close'}</Button>}<Button color="error" onClick={() => cancelIssued(row)}>{languageCode === 'ko' ? '취소' : 'Cancel'}</Button></>}</TableCell></TableRow>; })}
     </TableBody></Table>
     <Typography variant="h6">{t.title}</Typography>
     {error && <Alert severity="error" action={<Button onClick={() => setReload(value => value + 1)}>{common.retry}</Button>}>{error}</Alert>}

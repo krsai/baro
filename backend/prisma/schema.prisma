@@ -1208,6 +1208,11 @@ model WorkOrder {
   confirmationStatus   WorkOrderConfirmationStatus @default(PLANNED)
   modificationLockedAt DateTime?
   modificationLockedBy String?
+  invoiceFinalLockedAt DateTime?
+  invoiceFinalLockedBy String?
+  invoiceFinalLockInvoiceId String?
+  invoiceFinalLockReason String @default("")
+  invoiceFinalRecognizedQuantity Int?
   /// Deprecated 2026-07-02. No longer written by new/updated code paths ??WorkOrderItem
   /// (FK workOrderId) is the source of truth. Read-dead except for legacy pre-relational
   /// rows; run `npm run verify:workorder-item-backfill` before dropping this column.
@@ -1226,6 +1231,8 @@ model WorkOrder {
   workOrderItems  WorkOrderItem[]
   assignmentPlans AssignmentPlan[]
   assignmentCards AssignmentCard[]
+  invoiceFinalLockInvoice Invoice? @relation("InvoiceFinalLockBasis", fields: [invoiceFinalLockInvoiceId], references: [id], onDelete: Restrict)
+  invoiceFinalLockEvents InvoiceFinalLockEvent[]
 
   createdByEmployee Employee? @relation("WorkOrderCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("WorkOrderUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
@@ -1235,6 +1242,7 @@ model WorkOrder {
   @@unique([buyerOrgId, sellerOrgId, orderNumber])
   @@index([orgId])
   @@index([orgId, orderNumber])
+  @@index([invoiceFinalLockInvoiceId])
 }
 
 model WorkOrderItem {
@@ -1788,6 +1796,12 @@ enum InvoiceStatus {
   SUPERSEDED
 }
 
+enum InvoiceFinalLockAction {
+  LOCK
+  UNLOCK
+  REBASE
+}
+
 // Immutable issuance snapshot. Corrections and settlements are appended in later phases.
 model Invoice {
   id String @id @default(cuid())
@@ -1820,6 +1834,8 @@ model Invoice {
   revisedFrom Invoice? @relation("InvoiceRevisionChain", fields: [revisionOfInvoiceId], references: [id], onDelete: Restrict)
   revision Invoice? @relation("InvoiceRevisionChain")
   revisionDrafts InvoiceDraft[] @relation("InvoiceRevisionDrafts")
+  finalLockedOrders WorkOrder[] @relation("InvoiceFinalLockBasis")
+  finalLockEvents InvoiceFinalLockEvent[]
   @@unique([sellerOrgId, invoiceNumber])
   @@unique([sellerOrgId, clientKey])
   @@unique([sellerOrgId, sequenceNumber])
@@ -1897,6 +1913,24 @@ model InvoicePaymentAllocation {
   @@unique([paymentId, invoiceOrderId, batchKey])
   @@index([paymentId, voidedAt])
   @@index([invoiceOrderId, voidedAt])
+}
+
+model InvoiceFinalLockEvent {
+  id String @id @default(cuid())
+  sellerOrgId Int
+  workOrderId Int
+  invoiceId String?
+  clientKey String
+  action InvoiceFinalLockAction
+  recognizedQuantity Int?
+  reason String
+  actor String
+  createdAt DateTime @default(now())
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Restrict)
+  invoice Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  @@unique([workOrderId, clientKey])
+  @@index([sellerOrgId, createdAt, id])
+  @@index([invoiceId])
 }
 
 model InvoiceLine {

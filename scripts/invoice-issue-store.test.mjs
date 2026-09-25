@@ -159,6 +159,10 @@ test('issued ledger bootstrap is repeatable and preserves snapshots when source 
       SELECT 'a','p',id,'i','batch',5,'actor' FROM "InvoiceOrder" WHERE "invoiceId"='i';`);
     await assert.rejects(db.exec(`INSERT INTO "InvoicePaymentAllocation" (id,"paymentId","invoiceOrderId","invoiceId","batchKey",amount,"createdBy")
       SELECT 'bad','p',id,'i','batch2',5,'actor' FROM "InvoiceOrder" WHERE "invoiceId"='i2';`));
+    await db.exec(`INSERT INTO "WorkOrder" (id) VALUES (5);
+      UPDATE "WorkOrder" SET "invoiceFinalLockedAt"=now(),"invoiceFinalLockInvoiceId"='i',"invoiceFinalLockReason"='final' WHERE id=5;`);
+    await assert.rejects(db.exec(`UPDATE "WorkOrder" SET "invoiceFinalLockReason"='changed' WHERE id=5;`), /INVOICE_FINAL_LOCKED/);
+    await db.exec(`SET baro.invoice_lock_bypass='on'; UPDATE "WorkOrder" SET "invoiceFinalLockedAt"=NULL,"invoiceFinalLockInvoiceId"=NULL WHERE id=5; SET baro.invoice_lock_bypass='off'; DELETE FROM "WorkOrder" WHERE id=5;`);
     await assert.rejects(db.exec('DELETE FROM "Invoice" WHERE id=\'i\''));
   } finally { await db.close(); }
 });
