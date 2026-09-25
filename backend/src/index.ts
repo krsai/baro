@@ -11391,12 +11391,17 @@ const toWorkRecordResponse = (record: any) => {
 // (unit-price x quantity based instead).
 const toOutsourcedWorkRecordResponse = (record: any) => {
   const hydrated = hydrateWorkRecordResponseDisplayFields(record);
+  const currentVendorName = resolveOptionalString(
+    hydrated?.outsourcingPartner?.name,
+    null
+  );
   return {
     workerId: null,
-    workerName: resolveOptionalString(hydrated?.outsourceVendorName, "") ?? "",
+    workerName: currentVendorName ?? resolveOptionalString(hydrated?.outsourceVendorName, "") ?? "",
     isOutsourced: true,
     outsourcingPartnerId: toPositiveIntOrNull(hydrated?.outsourcingPartnerId),
-    outsourceVendorName: resolveOptionalString(hydrated?.outsourceVendorName, null),
+    outsourceVendorName: currentVendorName ?? resolveOptionalString(hydrated?.outsourceVendorName, null),
+    outsourceVendorNameSnapshot: resolveOptionalString(hydrated?.outsourceVendorName, null),
     outsourceUnitPrice: toOptionalFiniteNumber(hydrated?.outsourceUnitPrice, null),
     outsourceAmount:
       Number(hydrated?.outsourceUnitPrice || 0) * toNonNegativeInt(hydrated?.quantity, 0),
@@ -29043,6 +29048,13 @@ app.put("/assignment-board-state", async (req, res) => {
 // BusinessPartner table, but keeps returning the original BusinessPartner
 // DTO shape so the frontend needs no changes: contactName/contactPhone map
 // to Organization.representative/phone.
+const BUSINESS_PARTNER_SERVICE_INCLUDE = {
+  outsourcingServiceAssignments: {
+    include: { serviceType: true },
+    orderBy: { serviceType: { sortOrder: "asc" as const } },
+  },
+};
+
 const toBusinessPartnerResponse = (organizationRow: any) => ({
   id: organizationRow.id,
   name: organizationRow.name,
@@ -29053,6 +29065,36 @@ const toBusinessPartnerResponse = (organizationRow: any) => ({
   createdAt: organizationRow.createdAt,
   createdBy: organizationRow.createdBy,
   updatedAt: organizationRow.updatedAt,
+  serviceTypes: ensureArray(organizationRow.outsourcingServiceAssignments).map(
+    (assignment: any) => assignment.serviceType
+  ),
+});
+
+const resolvePartnerServiceTypeIds = async (
+  tx: any,
+  ownerOrgId: number,
+  rawIds: unknown,
+  partnerType: string
+) => {
+  if (partnerType !== "PROCESS_OUTSOURCING") return [];
+  const ids = Array.from(new Set(ensureArray(rawIds).map(toPositiveIntOrNull).filter(Boolean))) as number[];
+  if (ids.length === 0) return [];
+  const rows = await tx.outsourcingServiceType.findMany({
+    where: { ownerOrgId, id: { in: ids }, isActive: true },
+    select: { id: true },
+  });
+  if (rows.length !== ids.length) throw new Error("INVALID_OUTSOURCING_SERVICE_TYPE");
+  return ids;
+};
+
+app.get("/outsourcing-service-types", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+  const rows = await prisma.outsourcingServiceType.findMany({
+    where: { ownerOrgId: organization.id, isActive: true },
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+  });
+  res.json(rows);
 });
 
 app.get("/business-partners", async (req, res) => {
@@ -29068,6 +29110,7 @@ app.get("/business-partners", async (req, res) => {
       type: type ? (type as any) : { in: ['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'] },
     },
     orderBy: [{ isActive: "desc" }, { name: "asc" }],
+    include: BUSINESS_PARTNER_SERVICE_INCLUDE,
   });
   res.json(rows.map(toBusinessPartnerResponse));
 });
@@ -29085,18 +29128,23 @@ app.post("/business-partners", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid partner type" });
   }
   const actor = resolveOptionalString(getRequesterEmail(req), "system@baro.local") || "system@baro.local";
-  const row = await prisma.organization.upsert({
-    where: { ownerOrgId_type_name: { ownerOrgId: organization.id, type: type as any, name } },
-    create: {
-      ownerOrgId: organization.id,
-      name,
-      type: type as any,
-      representative: contactName,
-      phone: contactPhone,
-      createdBy: actor,
-    },
-    update: { isActive: true, representative: contactName, phone: contactPhone },
-  });
+  let row: any;
+  try {
+    row = await prisma.$transaction(async (tx) => {
+      const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type || "");
+      const partner = await tx.organization.upsert({
+        where: { ownerOrgId_type_name: { ownerOrgId: organization.id, type: type as any, name } },
+        create: { ownerOrgId: organization.id, name, type: type as any, representative: contactName, phone: contactPhone, createdBy: actor },
+        update: { isActive: true, representative: contactName, phone: contactPhone },
+      });
+      await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: partner.id } });
+      if (serviceTypeIds.length) await tx.organizationOutsourcingServiceType.createMany({ data: serviceTypeIds.map((serviceTypeId) => ({ partnerOrgId: partner.id, serviceTypeId, ownerOrgId: organization.id })) });
+      return tx.organization.findUniqueOrThrow({ where: { id: partner.id }, include: BUSINESS_PARTNER_SERVICE_INCLUDE });
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "INVALID_OUTSOURCING_SERVICE_TYPE") return res.status(400).json({ ok: false, error: "invalid outsourcing service type" });
+    throw error;
+  }
   res.status(201).json(toBusinessPartnerResponse(row));
 });
 
@@ -29119,6 +29167,7 @@ app.put("/business-partners/:id", async (req, res) => {
   const contactName = resolveOptionalString(req.body?.contactName, null);
   const contactPhone = resolveOptionalString(req.body?.contactPhone, null);
   const isActive = typeof req.body?.isActive === "boolean" ? req.body.isActive : existing.isActive;
+  const hasServiceTypeSelection = Array.isArray(req.body?.serviceTypeIds);
 
   const conflict = await prisma.organization.findFirst({
     where: { ownerOrgId: organization.id, type: type as any, name, id: { not: id } },
@@ -29127,10 +29176,21 @@ app.put("/business-partners/:id", async (req, res) => {
     return res.status(409).json({ ok: false, error: "a partner with this name and type already exists" });
   }
 
-  const row = await prisma.organization.update({
-    where: { id },
-    data: { name, type: type as any, representative: contactName, phone: contactPhone, isActive },
-  });
+  let row: any;
+  try {
+    row = await prisma.$transaction(async (tx) => {
+      const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type);
+      await tx.organization.update({ where: { id }, data: { name, type: type as any, representative: contactName, phone: contactPhone, isActive } });
+      if (type !== "PROCESS_OUTSOURCING" || hasServiceTypeSelection) {
+        await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: id } });
+        if (serviceTypeIds.length) await tx.organizationOutsourcingServiceType.createMany({ data: serviceTypeIds.map((serviceTypeId) => ({ partnerOrgId: id, serviceTypeId, ownerOrgId: organization.id })) });
+      }
+      return tx.organization.findUniqueOrThrow({ where: { id }, include: BUSINESS_PARTNER_SERVICE_INCLUDE });
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "INVALID_OUTSOURCING_SERVICE_TYPE") return res.status(400).json({ ok: false, error: "invalid outsourcing service type" });
+    throw error;
+  }
   res.json(toBusinessPartnerResponse(row));
 });
 

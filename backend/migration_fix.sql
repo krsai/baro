@@ -5163,6 +5163,89 @@ BEGIN
   END IF;
 END $$;
 
+-- Outsourcing partners may provide several kinds of work. Keep the taxonomy
+-- owner-scoped and enforce both the service owner and partner owner in FKs.
+CREATE UNIQUE INDEX IF NOT EXISTS "Organization_id_ownerOrgId_key"
+  ON "Organization"("id", "ownerOrgId");
+
+CREATE TABLE IF NOT EXISTS "OutsourcingServiceType" (
+  "id" SERIAL PRIMARY KEY,
+  "ownerOrgId" INTEGER NOT NULL,
+  "code" TEXT NOT NULL,
+  "nameKo" TEXT NOT NULL,
+  "nameEn" TEXT NOT NULL,
+  "nameVi" TEXT NOT NULL,
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "sortOrder" INTEGER NOT NULL DEFAULT 0,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "OutsourcingServiceType_ownerOrgId_fkey"
+    FOREIGN KEY ("ownerOrgId") REFERENCES "Organization"("id") ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "OutsourcingServiceType_ownerOrgId_code_key"
+  ON "OutsourcingServiceType"("ownerOrgId", "code");
+CREATE UNIQUE INDEX IF NOT EXISTS "OutsourcingServiceType_id_ownerOrgId_key"
+  ON "OutsourcingServiceType"("id", "ownerOrgId");
+CREATE INDEX IF NOT EXISTS "OutsourcingServiceType_ownerOrgId_isActive_sortOrder_idx"
+  ON "OutsourcingServiceType"("ownerOrgId", "isActive", "sortOrder");
+
+CREATE TABLE IF NOT EXISTS "OrganizationOutsourcingServiceType" (
+  "partnerOrgId" INTEGER NOT NULL,
+  "serviceTypeId" INTEGER NOT NULL,
+  "ownerOrgId" INTEGER NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "OrganizationOutsourcingServiceType_pkey" PRIMARY KEY ("partnerOrgId", "serviceTypeId"),
+  CONSTRAINT "OrganizationOutsourcingServiceType_partner_owner_fkey"
+    FOREIGN KEY ("partnerOrgId", "ownerOrgId") REFERENCES "Organization"("id", "ownerOrgId") ON DELETE CASCADE,
+  CONSTRAINT "OrganizationOutsourcingServiceType_service_owner_fkey"
+    FOREIGN KEY ("serviceTypeId", "ownerOrgId") REFERENCES "OutsourcingServiceType"("id", "ownerOrgId") ON DELETE CASCADE,
+  CONSTRAINT "OrganizationOutsourcingServiceType_ownerOrgId_fkey"
+    FOREIGN KEY ("ownerOrgId") REFERENCES "Organization"("id") ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "OrganizationOutsourcingServiceType_ownerOrgId_serviceTypeId_idx"
+  ON "OrganizationOutsourcingServiceType"("ownerOrgId", "serviceTypeId");
+
+INSERT INTO "OutsourcingServiceType"
+  ("ownerOrgId", "code", "nameKo", "nameEn", "nameVi", "sortOrder", "updatedAt")
+SELECT owner.id, seed.code, seed.ko, seed.en, seed.vi, seed.sort_order, CURRENT_TIMESTAMP
+FROM "Organization" owner
+CROSS JOIN (VALUES
+  ('BUTTONHOLE', '단춧구멍', 'Buttonhole', 'Thùa khuy', 10),
+  ('CUTTING', '재단', 'Cutting', 'Cắt', 20),
+  ('EMBROIDERY', '자수', 'Embroidery', 'Thêu', 30),
+  ('PRINTING', '나염·인쇄', 'Printing', 'In', 40),
+  ('WASHING', '워싱', 'Washing', 'Giặt', 50),
+  ('PLEATING', '주름', 'Pleating', 'Xếp ly', 60),
+  ('SEWING', '봉제', 'Sewing', 'May', 70),
+  ('FINISHING', '마감', 'Finishing', 'Hoàn thiện', 80),
+  ('OTHER', '기타', 'Other', 'Khác', 999)
+) AS seed(code, ko, en, vi, sort_order)
+WHERE owner."ownerOrgId" IS NULL
+  AND owner.type::text IN ('MANUFACTURER', 'BRAND')
+ON CONFLICT ("ownerOrgId", "code") DO NOTHING;
+
+-- The current production record explicitly names this vendor as Buttonhole.
+-- This is deterministic and idempotent; other partners remain uncategorized
+-- until a user selects their actual capabilities.
+INSERT INTO "OrganizationOutsourcingServiceType"
+  ("partnerOrgId", "serviceTypeId", "ownerOrgId")
+SELECT partner.id, service.id, partner."ownerOrgId"
+FROM "Organization" partner
+JOIN "OutsourcingServiceType" service
+  ON service."ownerOrgId" = partner."ownerOrgId" AND service.code = 'BUTTONHOLE'
+WHERE partner.type::text = 'PROCESS_OUTSOURCING'
+  AND lower(partner.name) LIKE '%buttonhole%'
+ON CONFLICT ("partnerOrgId", "serviceTypeId") DO NOTHING;
+
+-- OrganizationHoliday.orgId is a real tenant reference (not a snapshot).
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='OrganizationHoliday_orgId_fkey') THEN
+    ALTER TABLE "OrganizationHoliday" ADD CONSTRAINT "OrganizationHoliday_orgId_fkey"
+      FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE RESTRICT;
+  END IF;
+END $$;
+
 ALTER TABLE IF EXISTS "InvoiceDraft" ADD COLUMN IF NOT EXISTS "revisionOfInvoiceId" TEXT;
 ALTER TABLE IF EXISTS "InvoiceDraft" ADD COLUMN IF NOT EXISTS "revisionReason" TEXT NOT NULL DEFAULT '';
 ALTER TABLE "Invoice" ADD COLUMN IF NOT EXISTS "revisionOfInvoiceId" TEXT;

@@ -82,6 +82,24 @@ test('business partner history reads OutsourcedWorkRecord', () => {
   assert.match(backend, /prisma\.outsourcedWorkRecord\.findMany/);
 });
 
+test('outsourced record display follows the linked partner while retaining its audit snapshot', () => {
+  assert.match(backend, /hydrated\?\.outsourcingPartner\?\.name/);
+  assert.match(backend, /outsourceVendorNameSnapshot:/);
+  assert.match(workRecordShared, /outsourcingPartner:/);
+});
+
+test('outsourcing services use owner-scoped foreign keys and support multiple services', () => {
+  assert.match(schema, /model OutsourcingServiceType/);
+  assert.match(schema, /model OrganizationOutsourcingServiceType/);
+  assert.match(schema, /fields: \[partnerOrgId, ownerOrgId\]/);
+  assert.match(schema, /fields: \[serviceTypeId, ownerOrgId\]/);
+  assert.match(migrationFix, /OrganizationOutsourcingServiceType_partner_owner_fkey/);
+  assert.match(migrationFix, /OrganizationHoliday_orgId_fkey/);
+  assert.match(backend, /app\.get\("\/outsourcing-service-types"/);
+  assert.match(partnerDialog, /serviceTypeIds/);
+  assert.match(partnerPage, /partner\.serviceTypes/);
+});
+
 test('WorkDetail supports a recordKind prop that gates the worker/vendor picker', () => {
   assert.match(page, /recordKind = 'EMPLOYEE'/);
   assert.match(page, /isOutsourcingMode/);

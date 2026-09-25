@@ -219,6 +219,9 @@ model Organization {
   workRecords                     WorkRecord[]
   outsourcedWorkRecords           OutsourcedWorkRecord[]
   vendorOutsourcedWorkRecords     OutsourcedWorkRecord[]            @relation("OutsourcedWorkRecordVendor")
+  outsourcingServiceTypes        OutsourcingServiceType[]           @relation("OutsourcingServiceTypeOwner")
+  outsourcingServiceAssignments  OrganizationOutsourcingServiceType[] @relation("OutsourcingServicePartner")
+  ownedOutsourcingServiceAssignments OrganizationOutsourcingServiceType[] @relation("OutsourcingServiceOwner")
   assignmentBoardState            AssignmentBoardState?
   assignmentCards                 AssignmentCard[]
   assignmentPlans                 AssignmentPlan[]
@@ -260,6 +263,7 @@ model Organization {
 
   @@index([representativeEmployeeId])
   @@index([salaryCurrencyId])
+  @@unique([id, ownerOrgId])
   @@unique([ownerOrgId, type, name])
   @@index([ownerOrgId, type, isActive])
 }
@@ -1243,6 +1247,40 @@ model WorkOrder {
   @@index([orgId])
   @@index([orgId, orderNumber])
   @@index([invoiceFinalLockInvoiceId])
+}
+
+model OutsourcingServiceType {
+  id          Int      @id @default(autoincrement())
+  ownerOrgId  Int
+  code        String
+  nameKo      String
+  nameEn      String
+  nameVi      String
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner       Organization @relation("OutsourcingServiceTypeOwner", fields: [ownerOrgId], references: [id], onDelete: Cascade)
+  partners    OrganizationOutsourcingServiceType[]
+
+  @@unique([ownerOrgId, code])
+  @@unique([id, ownerOrgId])
+  @@index([ownerOrgId, isActive, sortOrder])
+}
+
+model OrganizationOutsourcingServiceType {
+  partnerOrgId Int
+  serviceTypeId Int
+  ownerOrgId   Int
+  createdAt    DateTime @default(now())
+
+  partner      Organization @relation("OutsourcingServicePartner", fields: [partnerOrgId, ownerOrgId], references: [id, ownerOrgId], onDelete: Cascade)
+  serviceType  OutsourcingServiceType @relation(fields: [serviceTypeId, ownerOrgId], references: [id, ownerOrgId], onDelete: Cascade)
+  owner        Organization @relation("OutsourcingServiceOwner", fields: [ownerOrgId], references: [id], onDelete: Cascade)
+
+  @@id([partnerOrgId, serviceTypeId])
+  @@index([ownerOrgId, serviceTypeId])
 }
 
 model WorkOrderItem {

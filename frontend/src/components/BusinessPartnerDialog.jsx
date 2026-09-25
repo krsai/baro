@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControl, FormControlLabel, InputLabel, MenuItem, Select, Stack, Switch, TextField,
+  Alert, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle,
+  FormControl, FormControlLabel, InputLabel, ListItemText, MenuItem, Select, Stack, Switch, TextField,
 } from '@mui/material';
 import { buildQueryString, requestJSON } from '../utils/apiClient';
 
@@ -45,6 +45,7 @@ const buildFormFromPartner = (partner, initialType) => ({
   contactName: partner?.contactName || '',
   contactPhone: partner?.contactPhone || '',
   isActive: partner?.isActive !== false,
+  serviceTypeIds: (partner?.serviceTypes || []).map((item) => item.id),
 });
 
 export default function BusinessPartnerDialog({
@@ -63,6 +64,7 @@ export default function BusinessPartnerDialog({
   const [form, setForm] = useState(() => buildFormFromPartner(partner, initialType));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [serviceTypes, setServiceTypes] = useState([]);
 
   useEffect(() => {
     if (open) {
@@ -70,6 +72,13 @@ export default function BusinessPartnerDialog({
       setError('');
     }
   }, [initialType, open, partner]);
+
+  useEffect(() => {
+    if (!open || !activeOrgId) return;
+    requestJSON(`/outsourcing-service-types${buildQueryString({ orgId: activeOrgId })}`, { skipGlobalLoading: true })
+      .then((rows) => setServiceTypes(Array.isArray(rows) ? rows : []))
+      .catch(() => setServiceTypes([]));
+  }, [activeOrgId, open]);
 
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
   const save = async () => {
@@ -81,6 +90,7 @@ export default function BusinessPartnerDialog({
         name: form.name.trim(), type: form.type,
         contactName: form.contactName.trim() || null,
         contactPhone: form.contactPhone.trim() || null,
+        serviceTypeIds: form.type === 'PROCESS_OUTSOURCING' ? form.serviceTypeIds : [],
         ...(isEdit ? { isActive: Boolean(form.isActive) } : {}),
       };
       const savedPartner = await requestJSON(
@@ -114,6 +124,26 @@ export default function BusinessPartnerDialog({
               {BUSINESS_PARTNER_TYPES.map((type) => <MenuItem key={type} value={type}>{getBusinessPartnerTypeLabel(type, languageCode)}</MenuItem>)}
             </Select>
           </FormControl>
+          {form.type === 'PROCESS_OUTSOURCING' ? (
+            <FormControl fullWidth>
+              <InputLabel>{languageCode === 'ko' ? '외주 작업 종류' : languageCode === 'vi' ? 'Loại gia công' : 'Outsourcing services'}</InputLabel>
+              <Select
+                multiple
+                value={form.serviceTypeIds}
+                label={languageCode === 'ko' ? '외주 작업 종류' : languageCode === 'vi' ? 'Loại gia công' : 'Outsourcing services'}
+                onChange={update('serviceTypeIds')}
+                renderValue={(ids) => ids.map((id) => {
+                  const item = serviceTypes.find((candidate) => candidate.id === id);
+                  return item?.[languageCode === 'ko' ? 'nameKo' : languageCode === 'vi' ? 'nameVi' : 'nameEn'] || item?.nameEn || id;
+                }).join(', ')}
+              >
+                {serviceTypes.map((item) => {
+                  const label = item[languageCode === 'ko' ? 'nameKo' : languageCode === 'vi' ? 'nameVi' : 'nameEn'] || item.nameEn;
+                  return <MenuItem key={item.id} value={item.id}><Checkbox checked={form.serviceTypeIds.includes(item.id)} /><ListItemText primary={label} /></MenuItem>;
+                })}
+              </Select>
+            </FormControl>
+          ) : null}
           <TextField autoFocus fullWidth required label={labels.name} value={form.name} onChange={update('name')} />
           <TextField fullWidth label={labels.contact} value={form.contactName} onChange={update('contactName')} />
           <TextField fullWidth label={labels.phone} value={form.contactPhone} onChange={update('contactPhone')} onKeyDown={(event) => { if (event.key === 'Enter') save(); }} />
