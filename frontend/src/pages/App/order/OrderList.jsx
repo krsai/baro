@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useLocation, useParams } from 'react-router-dom';
 import {
   Box,
@@ -30,11 +31,11 @@ import {
   DialogContent,
   DialogActions,
   Chip,
+  GlobalStyles,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
-import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import AppPageContainer from '../../../components/AppPageContainer';
 import DeleteActionButton from '../../../components/DeleteActionButton';
@@ -1771,12 +1772,18 @@ const OrderList = () => {
     0
   );
   const toggleHorizontalGender = useCallback((genderCode) => {
-    setCollapsedHorizontalGenders((current) => {
-      const next = new Set(current);
-      if (next.has(genderCode)) next.delete(genderCode);
-      else next.add(genderCode);
-      return next;
-    });
+    const update = () => setCollapsedHorizontalGenders((current) => {
+        const next = new Set(current);
+        if (next.has(genderCode)) next.delete(genderCode);
+        else next.add(genderCode);
+        return next;
+      });
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    if (!reduceMotion && typeof document.startViewTransition === 'function') {
+      document.startViewTransition(() => flushSync(update));
+      return;
+    }
+    update();
   }, []);
   const currentSizeColumnWidth = getOrderDetailSizeColumnWidth(currentSizeColumns);
   const currentLastSizeColumn = currentSizeColumns[currentSizeColumns.length - 1] || '';
@@ -3351,6 +3358,17 @@ const OrderList = () => {
 
   return (
     <>
+    <GlobalStyles styles={{
+      '::view-transition-old(order-gender-table), ::view-transition-new(order-gender-table)': {
+        animationDuration: '280ms',
+        animationTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      },
+      '@media (prefers-reduced-motion: reduce)': {
+        '::view-transition-old(order-gender-table), ::view-transition-new(order-gender-table)': {
+          animationDuration: '0ms',
+        },
+      },
+    }} />
     <AppPageContainer
       title={
         isNewOrder
@@ -3919,6 +3937,7 @@ const OrderList = () => {
                 <Table
                   size="small"
                   sx={{
+                    viewTransitionName: 'order-gender-table',
                     minWidth: currentSizeSetUsesGender
                       ? Math.max(980, 620 + visibleHorizontalQuantityColumnCount * 72)
                       : Math.max(1180, 620 + currentSizeColumns.length * 72),
@@ -3979,9 +3998,13 @@ const OrderList = () => {
                                 aria-expanded={!collapsedHorizontalGenders.has(genderCode)}
                                 onClick={() => toggleHorizontalGender(genderCode)}
                               >
-                                {collapsedHorizontalGenders.has(genderCode)
-                                  ? <KeyboardArrowRightIcon fontSize="small" />
-                                  : <KeyboardArrowDownIcon fontSize="small" />}
+                                <KeyboardArrowRightIcon
+                                  fontSize="small"
+                                  sx={{
+                                    transform: collapsedHorizontalGenders.has(genderCode) ? 'rotate(0deg)' : 'rotate(90deg)',
+                                    transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+                                  }}
+                                />
                               </IconButton>
                             </Tooltip>
                             <span>{getGenderLabel(

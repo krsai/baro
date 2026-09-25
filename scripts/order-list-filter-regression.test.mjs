@@ -67,7 +67,10 @@ test('horizontal order detail can collapse each gender without removing its quan
   assert.match(page, /collapsedHorizontalGenders/);
   assert.match(page, /toggleHorizontalGender/);
   assert.match(page, /KeyboardArrowRightIcon/);
-  assert.match(page, /KeyboardArrowDownIcon/);
+  assert.match(page, /startViewTransition/);
+  assert.match(page, /prefers-reduced-motion/);
+  assert.match(page, /viewTransitionName: 'order-gender-table'/);
+  assert.match(page, /rotate\(90deg\)/);
   assert.match(page, /colorRow\.sizeByGender/);
   assert.doesNotMatch(page, /toggleHorizontalGender[\s\S]{0,500}setFormData/);
 });
