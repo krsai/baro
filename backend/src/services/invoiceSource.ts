@@ -1,3 +1,5 @@
+import { invoiceProducedQuantity } from "./invoiceOrderProgress";
+
 // Read-only invoice preparation. Production is known by style, never by size.
 export const buildInvoiceSource = (order: any, plans: any[], progressRows: any[], relationship: any) => {
   const progress = new Map(progressRows.map((row) => [row.id, row]));
@@ -7,6 +9,7 @@ export const buildInvoiceSource = (order: any, plans: any[], progressRows: any[]
     const styleItems = items.filter((item: any) => item.styleId === styleId);
     const linked = plans.filter((plan) => plan.styleId === styleId);
     const rows = linked.map((plan) => ({ ...plan, progress: progress.get(plan.externalId) }));
+    const producedQuantities = rows.map((row) => invoiceProducedQuantity(row.progress));
     const ready = Boolean(styleId) && rows.length > 0 && rows.every((row) =>
       row.progress?.isCompleted && !row.progress?.hasInvalidProcessReferences && !row.progress?.isProgressUnknown);
     const override = relationship?.salesBucketOverrides?.find((row: any) => row.styleId === styleId);
@@ -14,11 +17,13 @@ export const buildInvoiceSource = (order: any, plans: any[], progressRows: any[]
     return {
       styleId, code: styleItems[0]?.style?.code || '', name: styleItems[0]?.style?.name || '',
       orderedQuantity: styleItems.reduce((sum: number, item: any) => sum + item.totalQuantity, 0),
-      producedQuantity: rows.length && rows.every((row) => row.progress && !row.progress.isProgressUnknown)
-        ? rows.reduce((sum, row) => sum + row.progress.producedQuantity, 0) : null,
+      producedQuantity: rows.length && producedQuantities.every((quantity) => quantity != null)
+        ? producedQuantities.reduce((sum: number, quantity) => sum + (quantity ?? 0), 0) : null,
       ready,
       assignments: rows.map((row) => ({ id: row.id, externalId: row.externalId,
-        completed: Boolean(row.progress?.isCompleted), producedQuantity: row.progress?.producedQuantity ?? null,
+        completed: Boolean(row.progress?.isCompleted),
+        producedQuantity: invoiceProducedQuantity(row.progress),
+        recordedQuantity: row.progress?.producedQuantity ?? null,
         completionTargetQuantity: row.progress?.completionTargetQuantity ?? null,
         hasCompletionDifference: Boolean(row.progress?.isCompletionInconsistent) })),
       prices: (relationship?.salesPriceLists || []).filter((list: any) =>

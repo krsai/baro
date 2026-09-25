@@ -30195,14 +30195,24 @@ app.get("/orders", async (req, res) => {
   });
   const assignmentLockMap = await loadOrderAssignmentModificationLockMap(orders);
   const currentOrderValueByOrderDbId = await loadCurrentOrderValueByOrderDbId(orders);
+  const orderPlans = orders.length ? await prisma.assignmentPlan.findMany({
+    where: { orgId: organization.id, workOrderId: { in: orders.map((order) => order.id) } },
+    select: { externalId: true, workOrderId: true, style: { select: { name: true } } },
+  }) : [];
+  const orderProgressRows = orderPlans.length
+    ? await buildAssignmentPlanProgressRows(organization.id, orderPlans.map((plan) => plan.externalId))
+    : [];
   res.json(
     orders.map((order) =>
       {
         const orderKey = resolveOptionalString(order?.orderId ?? order?.id, null) ?? "";
-        return toOrderResponse(order, {
+        const production = invoiceOrderProgress(order, orderPlans, orderProgressRows);
+        return { ...toOrderResponse(order, {
           isAssignmentModificationLocked: Boolean(assignmentLockMap.get(orderKey)),
           currentOrderValue: currentOrderValueByOrderDbId.get(order.id),
-        });
+        }), productionProgressPercent: production.progressPercent,
+          producedQuantity: production.producedQuantity,
+          productionAssignments: production.assignments };
       }
     )
   );

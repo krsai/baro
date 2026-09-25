@@ -52,6 +52,26 @@ test('order progress includes unassigned quantities and never guesses unknown pr
   assert.equal(invoiceOrderProgress(order, [], []).producedQuantity, null);
   assert.equal(invoiceOrderProgress(order, plans, [{ ...rows[0], hasInvalidProcessReferences: true }]).producedQuantity, null);
 });
+
+test('completed assignments use the approved completion quantity and report completion progress', () => {
+  const order = { id: 1, totalQuantity: 100 };
+  const plans = [{ workOrderId: 1, externalId: 'legacy' }];
+  const result = invoiceOrderProgress(order, plans, [{ id: 'legacy', plannedQuantity: 100,
+    producedQuantity: 0, completionTargetQuantity: 100, isCompleted: true,
+    displayProgressPercent: 100 }]);
+  assert.equal(result.producedQuantity, 100);
+  assert.equal(result.progressPercent, 100);
+  assert.equal(result.assignments[0].recordedQuantity, 0);
+  assert.equal(result.assignments[0].producedQuantity, 100);
+});
+
+test('invoice source uses approved completion quantity when legacy process totals resolve to zero', () => {
+  const completed = buildInvoiceSource(order, plans, [{ id: 'a1', isCompleted: true,
+    producedQuantity: 0, completionTargetQuantity: 100, isProgressUnknown: true }], relationship);
+  assert.equal(completed.styles[0].producedQuantity, 100);
+  assert.equal(completed.styles[0].assignments[0].producedQuantity, 100);
+  assert.equal(completed.styles[0].assignments[0].recordedQuantity, 0);
+});
 const order = { orderId: 'o1', orderNumber: 'PO-1', sellerOrg: { name: 'Seller' }, buyerOrg: { name: 'Buyer' }, workOrderItems: [
   { id: 1, styleId: 10, style: { code: 'S1', name: 'Jacket' }, totalQuantity: 100, sizeQuantities: { S: 40, M: 60 } },
 ] };

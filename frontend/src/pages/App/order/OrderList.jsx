@@ -121,11 +121,12 @@ const GENDER_OPTION_LABELS = {
   U: '공용',
 };
 const ORDER_LIST_COLUMN_WIDTHS = {
-  progress: '8%',
-  orderNumber: '10%',
-  buyer: '15%',
-  seller: '15%',
-  style: '18%',
+  progress: '7%',
+  productionProgress: '9%',
+  orderNumber: '9%',
+  buyer: '14%',
+  seller: '14%',
+  style: '16%',
   totalQuantity: '8%',
   orderValue: '12%',
   dueDate: '10%',
@@ -867,6 +868,12 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Total Qty'
             : '합계 수량',
+      productionProgress:
+        languageCode === 'vi'
+          ? 'Tiến độ sản xuất'
+          : languageCode === 'en'
+            ? 'Production'
+            : '생산 진행률',
       orderValue:
         languageCode === 'vi'
           ? 'Giá trị đơn hàng'
@@ -3076,6 +3083,9 @@ const OrderList = () => {
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.progress }}>
                     {ORDER_STATUS_TEXT.fieldLabel}
                   </TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.productionProgress, textAlign: 'right' }}>
+                    {orderPageText.productionProgress}
+                  </TableCell>
                   <TableCell
                     sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.orderNumber }}
                   >
@@ -3122,9 +3132,9 @@ const OrderList = () => {
               </TableHead>
               <TableBody>
                 {!ordersLoaded ? (
-                  <TableStatusRow colSpan={9} message={orderPageText.loadingOrders} />
+                  <TableStatusRow colSpan={10} message={orderPageText.loadingOrders} />
                 ) : filteredOrders.length === 0 ? (
-                  <TableStatusRow colSpan={9} message={orderPageText.emptyOrders} />
+                  <TableStatusRow colSpan={10} message={orderPageText.emptyOrders} />
                 ) : (
                   filteredOrders.map((order) => {
                     const deletable = !order?.isModificationLocked;
@@ -3142,6 +3152,16 @@ const OrderList = () => {
                       >
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
                           {progressStageLabel}
+                        </TableCell>
+                        <TableCell sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {order.productionProgressPercent == null
+                            ? '—'
+                            : `${Number(order.productionProgressPercent).toFixed(1)}%`}
+                          <Typography variant="caption" display="block" color="text.secondary">
+                            {order.producedQuantity == null
+                              ? '—'
+                              : `${Number(order.producedQuantity).toLocaleString()} / ${Number(order.totalQuantity || 0).toLocaleString()}`}
+                          </Typography>
                         </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.orderNumber}</TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>

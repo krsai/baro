@@ -3,9 +3,10 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { matchesAutocompleteSearch } from '../frontend/src/utils/autocompleteSearch.js';
 
-const [page, statuses] = await Promise.all([
+const [page, statuses, backend] = await Promise.all([
   readFile(new URL('../frontend/src/pages/App/order/OrderList.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../frontend/src/constants/orderStatus.js', import.meta.url), 'utf8'),
+  readFile(new URL('../backend/src/index.ts', import.meta.url), 'utf8'),
 ]);
 
 test('order row style search matches style code/name only, not the shared customer name', () => {
@@ -51,4 +52,13 @@ test('order list exposes only all, in-progress, and completed filters', () => {
 
 test('order list does not filter by a date or month range', () => {
   assert.doesNotMatch(page, /MonthRangeSelector|dueDateFilterStart|dueDateFilterEnd|shiftDueDateFilterMonth/);
+});
+
+test('order list displays the same batched production progress used by invoice preparation', () => {
+  assert.match(page, /productionProgressPercent/);
+  assert.match(page, /order\.producedQuantity/);
+  const route = backend.slice(backend.indexOf('app.get("/orders"'), backend.indexOf('app.get("/customer-production-reports"'));
+  assert.match(route, /buildAssignmentPlanProgressRows/);
+  assert.match(route, /invoiceOrderProgress/);
+  assert.doesNotMatch(route, /for \(const order[\s\S]*buildAssignmentPlanProgressRows/);
 });
