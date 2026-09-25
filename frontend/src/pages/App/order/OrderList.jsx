@@ -3105,9 +3105,6 @@ const OrderList = () => {
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.progress }}>
                     {ORDER_STATUS_TEXT.fieldLabel}
                   </TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.productionProgress, textAlign: 'right' }}>
-                    {orderPageText.productionProgress}
-                  </TableCell>
                   <TableCell
                     sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.orderNumber }}
                   >
@@ -3140,6 +3137,9 @@ const OrderList = () => {
                   </TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.dueDate }}>
                     {orderPageText.dueDate}
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.productionProgress, textAlign: 'right' }}>
+                    {orderPageText.productionProgress}
                   </TableCell>
                   <TableCell
                     sx={{
@@ -3174,16 +3174,6 @@ const OrderList = () => {
                       >
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
                           {progressStageLabel}
-                        </TableCell>
-                        <TableCell sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                          {order.productionProgressPercent == null
-                            ? '—'
-                            : `${Number(order.productionProgressPercent).toFixed(1)}%`}
-                          <Typography variant="caption" display="block" color="text.secondary">
-                            {order.producedQuantity == null
-                              ? '—'
-                              : `${Number(order.producedQuantity).toLocaleString()} / ${Number(order.totalQuantity || 0).toLocaleString()}`}
-                          </Typography>
                         </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.orderNumber}</TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
@@ -3227,6 +3217,16 @@ const OrderList = () => {
                         </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
                           {order.dueDate || '-'}
+                        </TableCell>
+                        <TableCell sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {order.productionProgressPercent == null
+                            ? '—'
+                            : `${Number(order.productionProgressPercent).toFixed(1)}%`}
+                          <Typography variant="caption" display="block" color="text.secondary">
+                            {order.producedQuantity == null
+                              ? '—'
+                              : `${Number(order.producedQuantity).toLocaleString()} / ${Number(order.totalQuantity || 0).toLocaleString()}`}
+                          </Typography>
                         </TableCell>
                         <TableCell sx={{ textAlign: 'center' }}>
                           <DeleteActionButton

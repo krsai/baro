@@ -61,6 +61,9 @@ test('order list displays the same batched production progress used by invoice p
   assert.match(route, /buildAssignmentPlanProgressRows/);
   assert.match(route, /invoiceOrderProgress/);
   assert.doesNotMatch(route, /for \(const order[\s\S]*buildAssignmentPlanProgressRows/);
+  const listTable = page.slice(page.indexOf('<Table stickyHeader'), page.indexOf('<Dialog open={Boolean(orderValueDetail)}'));
+  assert.ok(listTable.indexOf('{orderPageText.dueDate}') < listTable.indexOf('{orderPageText.productionProgress}'));
+  assert.ok(listTable.indexOf('{orderPageText.productionProgress}') < listTable.indexOf('{orderPageText.actions}'));
 });
 
 test('horizontal order detail can collapse each gender without removing its quantities', () => {
