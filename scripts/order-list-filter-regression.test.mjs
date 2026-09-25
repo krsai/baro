@@ -62,3 +62,12 @@ test('order list displays the same batched production progress used by invoice p
   assert.match(route, /invoiceOrderProgress/);
   assert.doesNotMatch(route, /for \(const order[\s\S]*buildAssignmentPlanProgressRows/);
 });
+
+test('horizontal order detail can collapse each gender without removing its quantities', () => {
+  assert.match(page, /collapsedHorizontalGenders/);
+  assert.match(page, /toggleHorizontalGender/);
+  assert.match(page, /KeyboardArrowRightIcon/);
+  assert.match(page, /KeyboardArrowDownIcon/);
+  assert.match(page, /colorRow\.sizeByGender/);
+  assert.doesNotMatch(page, /toggleHorizontalGender[\s\S]{0,500}setFormData/);
+});

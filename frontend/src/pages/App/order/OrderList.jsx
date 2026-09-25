@@ -34,6 +34,8 @@ import {
 import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import AppPageContainer from '../../../components/AppPageContainer';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
@@ -1369,6 +1371,7 @@ const OrderList = () => {
   const [progressFilter, setProgressFilter] = useState(ORDER_FILTER_ALL);
   const [formData, setFormData] = useState(buildInitialFormData);
   const [detailViewMode, setDetailViewMode] = useState(ORDER_DETAIL_VIEW_MODES.HORIZONTAL);
+  const [collapsedHorizontalGenders, setCollapsedHorizontalGenders] = useState(() => new Set());
   const [deferredMergeRowIds, setDeferredMergeRowIds] = useState(() => new Set());
   const pendingStyleAdvanceFocusItemIdRef = useRef('');
   const [ordersLoaded, setOrdersLoaded] = useState(false);
@@ -1763,6 +1766,18 @@ const OrderList = () => {
     [currentSizeSetCode]
   );
   const currentSizeSetUsesGender = usesGenderForSizeSet(currentSizeSetCode);
+  const visibleHorizontalQuantityColumnCount = currentHorizontalGenderCodes.reduce(
+    (count, genderCode) => count + (collapsedHorizontalGenders.has(genderCode) ? 1 : currentSizeColumns.length),
+    0
+  );
+  const toggleHorizontalGender = useCallback((genderCode) => {
+    setCollapsedHorizontalGenders((current) => {
+      const next = new Set(current);
+      if (next.has(genderCode)) next.delete(genderCode);
+      else next.add(genderCode);
+      return next;
+    });
+  }, []);
   const currentSizeColumnWidth = getOrderDetailSizeColumnWidth(currentSizeColumns);
   const currentLastSizeColumn = currentSizeColumns[currentSizeColumns.length - 1] || '';
   const orderProgressFilterOptions = useMemo(
@@ -3905,7 +3920,7 @@ const OrderList = () => {
                   size="small"
                   sx={{
                     minWidth: currentSizeSetUsesGender
-                      ? Math.max(1600, 620 + currentHorizontalGenderCodes.length * currentSizeColumns.length * 72)
+                      ? Math.max(980, 620 + visibleHorizontalQuantityColumnCount * 72)
                       : Math.max(1180, 620 + currentSizeColumns.length * 72),
                     tableLayout: 'fixed',
                     '& .MuiTableCell-root': {
@@ -3945,7 +3960,7 @@ const OrderList = () => {
                       {currentSizeSetUsesGender ? currentHorizontalGenderCodes.map((genderCode, genderIndex) => (
                         <TableCell
                           key={`horizontal-group-${genderCode}`}
-                          colSpan={currentSizeColumns.length}
+                          colSpan={collapsedHorizontalGenders.has(genderCode) ? 1 : currentSizeColumns.length}
                           sx={{
                             fontWeight: 'bold',
                             textAlign: 'center',
@@ -3954,11 +3969,27 @@ const OrderList = () => {
                               genderIndex > 0 ? ORDER_DETAIL_HORIZONTAL_GROUP_DIVIDER : undefined,
                           }}
                         >
-                          {getGenderLabel(
-                            genderCode,
-                            GENDER_OPTION_LABELS[genderCode] || genderCode,
-                            languageCode
-                          )}
+                          <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="center">
+                            <Tooltip title={collapsedHorizontalGenders.has(genderCode)
+                              ? (languageCode === 'ko' ? '성별 수량 펼치기' : languageCode === 'vi' ? 'Mở rộng số lượng theo giới tính' : 'Expand gender quantities')
+                              : (languageCode === 'ko' ? '성별 수량 접기' : languageCode === 'vi' ? 'Thu gọn số lượng theo giới tính' : 'Collapse gender quantities')}>
+                              <IconButton
+                                size="small"
+                                aria-label={`${getGenderLabel(genderCode, GENDER_OPTION_LABELS[genderCode] || genderCode, languageCode)} ${collapsedHorizontalGenders.has(genderCode) ? 'expand' : 'collapse'}`}
+                                aria-expanded={!collapsedHorizontalGenders.has(genderCode)}
+                                onClick={() => toggleHorizontalGender(genderCode)}
+                              >
+                                {collapsedHorizontalGenders.has(genderCode)
+                                  ? <KeyboardArrowRightIcon fontSize="small" />
+                                  : <KeyboardArrowDownIcon fontSize="small" />}
+                              </IconButton>
+                            </Tooltip>
+                            <span>{getGenderLabel(
+                              genderCode,
+                              GENDER_OPTION_LABELS[genderCode] || genderCode,
+                              languageCode
+                            )}</span>
+                          </Stack>
                         </TableCell>
                       )) : (
                         <TableCell
@@ -3993,7 +4024,15 @@ const OrderList = () => {
                     </TableRow>
                     <TableRow>
                       {currentHorizontalGenderCodes.map((genderCode, genderIndex) =>
-                        currentSizeColumns.map((size, sizeIndex) => (
+                        collapsedHorizontalGenders.has(genderCode) ? (
+                          <TableCell
+                            key={`horizontal-${genderCode}-collapsed`}
+                            sx={{ fontWeight: 'bold', textAlign: 'center', whiteSpace: 'nowrap', minWidth: 72,
+                              borderLeft: currentSizeSetUsesGender && genderIndex > 0 ? ORDER_DETAIL_HORIZONTAL_GROUP_DIVIDER : undefined }}
+                          >
+                            {orderPageText.total}
+                          </TableCell>
+                        ) : currentSizeColumns.map((size, sizeIndex) => (
                           <TableCell
                             key={`horizontal-${genderCode}-${size}`}
                             sx={{
@@ -4212,7 +4251,17 @@ const OrderList = () => {
                               </FormControl>
                             </TableCell>
                             {currentHorizontalGenderCodes.map((genderCode, genderIndex) =>
-                              currentSizeColumns.map((size, sizeIndex) => {
+                              collapsedHorizontalGenders.has(genderCode) ? (
+                                <TableCell
+                                  key={`${colorRow.key}-${genderCode}-collapsed`}
+                                  sx={{ textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+                                    borderLeft: currentSizeSetUsesGender && genderIndex > 0 ? ORDER_DETAIL_HORIZONTAL_GROUP_DIVIDER : undefined }}
+                                >
+                                  {formatQuantityDisplay(currentSizeColumns.reduce(
+                                    (sum, size) => sum + (Number(colorRow.sizeByGender?.[genderCode]?.[size]) || 0), 0
+                                  ))}
+                                </TableCell>
+                              ) : currentSizeColumns.map((size, sizeIndex) => {
                                 const horizontalSizeValue = getHorizontalSizeInputValue(
                                   colorRow,
                                   genderCode,
