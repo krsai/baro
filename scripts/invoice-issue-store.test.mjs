@@ -36,6 +36,27 @@ test('issued snapshot prices each order independently and stores per-order settl
   ]);
   assert.equal(result.lines[0].unitPrice, '1.2345');
   assert.equal(result.lines[0].amount, '3.70');
+  assert.equal(result.snapshot.templateVersion, 'BARO_INVOICE_V1');
+  assert.deepEqual(result.snapshot.rendering, { format: 'HTML_PRINT', originalPdfStored: false });
+});
+
+test('issued document fields are immutable copies and preserve every printable term', () => {
+  const documentContent = structuredClone(content);
+  documentContent.fields = {
+    number: 'INV-SNAPSHOT', date: '2026-09-22', shipTo: 'Warehouse A', shipmentDate: '2026-09-23',
+    dueDate: '2026-10-22', incoterm: 'FOB', paymentTerms: '30 days', bank: 'Bank snapshot', notes: 'Frozen wording',
+    seller: { name: 'Seller', address: 'Seller address', country: 'VN', taxId: 'S-1', email: 's@example.com', phone: '1' },
+    buyer: { name: 'Buyer', address: 'Buyer address', country: 'KR', taxId: 'B-1', email: 'b@example.com', phone: '2' },
+  };
+  const result = calculateInvoiceIssueSnapshot(documentContent, [source('o1', 'A', '1.00'), source('o2', 'B', '2.00')]);
+  documentContent.fields.seller.address = 'CHANGED MASTER';
+  documentContent.fields.paymentTerms = 'CHANGED TERMS';
+  assert.equal(result.snapshot.fields.seller.address, 'Seller address');
+  assert.equal(result.snapshot.fields.buyer.address, 'Buyer address');
+  assert.equal(result.snapshot.fields.paymentTerms, '30 days');
+  assert.equal(result.snapshot.fields.notes, 'Frozen wording');
+  assert.equal(result.snapshot.currencyCode, 'USD');
+  assert.equal(result.snapshot.lines[0].unitPrice, '1.00');
 });
 
 test('issued snapshot fails closed when a current price is missing', () => {
@@ -137,7 +158,9 @@ test('issued ledger bootstrap is repeatable and preserves snapshots when source 
       CREATE TABLE "Organization" (id INTEGER PRIMARY KEY);
       CREATE TABLE "WorkOrder" (id INTEGER PRIMARY KEY);
       CREATE TABLE "WorkOrderItem" (id INTEGER PRIMARY KEY);`);
-    const sql = migration.slice(migration.indexOf('-- 2026-09-22: immutable issued-invoice ledger foundation.'));
+    const invoiceStart = migration.indexOf('-- 2026-09-22: immutable issued-invoice ledger foundation.');
+    const invoiceEnd = migration.indexOf('-- 2026-09-25: outsourcing service taxonomy.', invoiceStart);
+    const sql = migration.slice(invoiceStart, invoiceEnd);
     await db.exec(sql); await db.exec(sql);
     await db.exec(`INSERT INTO "Organization" VALUES (1),(2); INSERT INTO "WorkOrder" VALUES (3); INSERT INTO "WorkOrderItem" VALUES (4);
       INSERT INTO "Invoice" (id,"sellerOrgId","buyerOrgId","invoiceNumber","clientKey","sequenceNumber","pricingBasis","currencyCode",subtotal,total,snapshot,"issuedBy")

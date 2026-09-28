@@ -50,6 +50,23 @@ test('explicit final approval locks every invoice order and retry is idempotent'
   assert.equal(fake.state().events.length, 2);
 });
 
+test('short and excess settlements require explicit per-order quantity and reason without tolerance', async () => {
+  const fake = database();
+  fake.state().orders[0].totalQuantity = 100;
+  fake.state().orders[1].totalQuantity = 100;
+  await approveInvoiceFinalLock(fake.db, 7, 'actor', 'i', { clientKey: 'final_variance_001', orders: [
+    { sourceOrderId: 'o1', recognizedQuantity: 98, reason: 'approved shortage after count' },
+    { sourceOrderId: 'o2', recognizedQuantity: 102, reason: 'approved excess after count' },
+  ] });
+  assert.deepEqual(fake.state().orders.map(row => row.invoiceFinalRecognizedQuantity), [98, 102]);
+  assert.deepEqual(fake.state().events.map(row => row.reason), ['approved shortage after count', 'approved excess after count']);
+  const missingReason = database();
+  await assert.rejects(approveInvoiceFinalLock(missingReason.db, 7, 'actor', 'i', { clientKey: 'final_variance_002', orders: [
+    { sourceOrderId: 'o1', recognizedQuantity: 98, reason: '' },
+    { sourceOrderId: 'o2', recognizedQuantity: 102, reason: 'approved' },
+  ] }), /INVOICE_FINAL_LOCK_REASON_REQUIRED/);
+});
+
 test('any invoice-authorized caller can unlock the invoice batch while preserving history', async () => {
   const fake = database();
   await approveInvoiceFinalLock(fake.db, 7, 'accountant', 'i', { clientKey: 'final_lock_batch_002', orders: [

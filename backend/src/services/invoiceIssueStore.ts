@@ -4,6 +4,7 @@ import { buildInvoiceSource } from "./invoiceSource";
 import { rebaseInvoiceFinalLocks } from "./invoiceFinalLock";
 
 const fail = (code: string): never => { throw createHttpError(409, code); };
+export const INVOICE_TEMPLATE_VERSION = "BARO_INVOICE_V1";
 const parseQuantity = (value: unknown) => {
   if (!/^\d+$/.test(String(value ?? ""))) fail("INVOICE_ISSUE_INVALID_QUANTITY");
   const quantity = Number(value);
@@ -116,7 +117,10 @@ export const calculateInvoiceIssueSnapshot = (content: any, sources: any[], sett
   });
   const subtotalMinor = [...orderMinor.values()].reduce((sum, value) => sum + value, 0n);
   return { pricingBasis: content.basis, currencyCode: content.currency, subtotal: decimal(subtotalMinor, digits),
-    total: decimal(totalMinor, digits), receivableAdded: decimal(receivableAddedMinor, digits), orders, lines, snapshot: { version: 2, fields: content.fields,
+    total: decimal(totalMinor, digits), receivableAdded: decimal(receivableAddedMinor, digits), orders, lines, snapshot: { version: 3,
+      templateVersion: INVOICE_TEMPLATE_VERSION,
+      rendering: { format: "HTML_PRINT", originalPdfStored: false },
+      fields: structuredClone(content.fields),
       pricingBasis: content.basis, currencyCode: content.currency, subtotal: decimal(subtotalMinor, digits),
       total: decimal(totalMinor, digits), receivableAdded: decimal(receivableAddedMinor, digits), orders, lines } };
 };
