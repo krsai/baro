@@ -20,8 +20,9 @@ export async function approveInvoiceFinalLock(db: any, sellerOrgId: number, acto
   const key = clientKey(body?.clientKey);
   if (!Array.isArray(body?.orders) || !body.orders.length) fail("INVOICE_FINAL_LOCK_INVALID");
   const approvals = body.orders.map((row: any) => ({ sourceOrderId: String(row?.sourceOrderId || "").trim(),
-    recognizedQuantity: Number(row?.recognizedQuantity), reason: reason(row?.reason) }));
-  if (approvals.some((row: any) => !row.sourceOrderId || !Number.isSafeInteger(row.recognizedQuantity) || row.recognizedQuantity < 0)
+    recognizedQuantity: row?.recognizedQuantity, reason: reason(row?.reason) }));
+  if (approvals.some((row: any) => !row.sourceOrderId || !Number.isSafeInteger(row.recognizedQuantity)
+    || row.recognizedQuantity < 0 || row.recognizedQuantity > 2147483647)
     || new Set(approvals.map((row: any) => row.sourceOrderId)).size !== approvals.length) fail("INVOICE_FINAL_LOCK_INVALID");
   return editTransaction(db, async (tx: any) => {
     const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId }, include: { orders: true } });
@@ -32,7 +33,12 @@ export async function approveInvoiceFinalLock(db: any, sellerOrgId: number, acto
       .some((value: string, index: number) => value !== invoiceOrderIds[index])) fail("INVOICE_FINAL_LOCK_ORDER_SCOPE");
     const retried = await tx.invoiceFinalLockEvent.findMany({ where: { workOrder: { sellerOrgId }, clientKey: key }, orderBy: { workOrderId: "asc" } });
     if (retried.length) {
-      if (retried.length !== approvals.length || retried.some((event: any) => event.action !== "LOCK" || event.invoiceId !== invoice.id)) {
+      if (retried.length !== approvals.length || retried.some((event: any) => {
+        const source = invoice.orders.find((order: any) => order.workOrderId === event.workOrderId);
+        const approval = approvals.find((row: any) => row.sourceOrderId === source?.sourceOrderId);
+        return event.action !== "LOCK" || event.invoiceId !== invoice.id || !approval
+          || event.recognizedQuantity !== approval.recognizedQuantity || event.reason !== approval.reason;
+      })) {
         fail("INVOICE_FINAL_LOCK_RETRY_MISMATCH");
       }
       return retried;
@@ -66,7 +72,7 @@ export async function unlockInvoiceFinalLock(db: any, sellerOrgId: number, actor
     if (!order) throw createHttpError(404, "ORDER_NOT_FOUND");
     const retried = await tx.invoiceFinalLockEvent.findFirst({ where: { workOrderId: order.id, clientKey: key } });
     if (retried) {
-      if (retried.action !== "UNLOCK") fail("INVOICE_FINAL_LOCK_RETRY_MISMATCH");
+      if (retried.action !== "UNLOCK" || retried.reason !== unlockReason) fail("INVOICE_FINAL_LOCK_RETRY_MISMATCH");
       return retried;
     }
     if (!order.invoiceFinalLockedAt || !order.invoiceFinalLockInvoiceId) fail("INVOICE_FINAL_LOCK_NOT_LOCKED");
@@ -90,7 +96,7 @@ export async function unlockInvoiceFinalLocksForInvoice(db: any, sellerOrgId: nu
     if (!invoice) throw createHttpError(404, "INVOICE_NOT_FOUND");
     const retried = await tx.invoiceFinalLockEvent.findMany({ where: { invoiceId, clientKey: key }, orderBy: { workOrderId: "asc" } });
     if (retried.length) {
-      if (retried.some((event: any) => event.action !== "UNLOCK")) fail("INVOICE_FINAL_LOCK_RETRY_MISMATCH");
+      if (retried.some((event: any) => event.action !== "UNLOCK" || event.reason !== unlockReason)) fail("INVOICE_FINAL_LOCK_RETRY_MISMATCH");
       return retried;
     }
     const orders = await tx.workOrder.findMany({ where: { sellerOrgId, invoiceFinalLockInvoiceId: invoiceId,

@@ -60,11 +60,14 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     });
     res.setHeader("Cache-Control", "no-store");
     return res.json({ rows: rows.slice(0, 30).map((row: any) => ({ id: row.id, invoiceNumber: row.invoiceNumber,
-      status: row.status, buyerName: row.buyer.name, currencyCode: row.currencyCode, total: String(row.total),
+      status: row.status, buyerName: (row.snapshot as any)?.fields?.buyer?.name ?? row.buyer.name, currencyCode: row.currencyCode, total: String(row.total),
       receivableAdded: String(row.receivableAdded),
       issuedAt: row.issuedAt, issuedBy: row.issuedBy, orders: row.orders,
       revisionOfInvoiceId: row.revisionOfInvoiceId, revisionNumber: row.revisionNumber, revisionReason: row.revisionReason,
-      isFinalLocked: row.orders.length > 0 && row.orders.every((order: any) => Boolean(order.workOrder?.invoiceFinalLockedAt)),
+      // A partially unlocked document must still offer Unlock for its remaining
+      // locks. Locks belonging to a later invoice are not this document's locks.
+      isFinalLocked: row.orders.some((order: any) => Boolean(order.workOrder?.invoiceFinalLockedAt)
+        && order.workOrder.invoiceFinalLockInvoiceId === row.id),
       receivedAmount: invoiceMoney(row.payments.map((payment: any) => payment.amount)),
       allocatedAmount: invoiceMoney(row.payments.flatMap((payment: any) => payment.allocations.map((allocation: any) => allocation.amount))) })), hasMore: rows.length > 30 });
   });

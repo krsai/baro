@@ -10,7 +10,7 @@ const migration = await readFile(new URL('../backend/migration_fix.sql', import.
 
 const database = () => {
   const invoice = { id: 'i', sellerOrgId: 7, status: 'ISSUED', sequenceNumber: 2,
-    orders: [{ sourceOrderId: 'o1' }, { sourceOrderId: 'o2' }] };
+    orders: [{ sourceOrderId: 'o1', workOrderId: 1 }, { sourceOrderId: 'o2', workOrderId: 2 }] };
   const orders = [{ id: 1, orderId: 'o1', sellerOrgId: 7, totalQuantity: 10, invoiceFinalLockedAt: null },
     { id: 2, orderId: 'o2', sellerOrgId: 7, totalQuantity: 20, invoiceFinalLockedAt: null }];
   const events = [];
@@ -48,6 +48,25 @@ test('explicit final approval locks every invoice order and retry is idempotent'
   assert.ok(fake.state().orders.every(row => row.invoiceFinalLockedAt));
   assert.deepEqual(fake.state().orders.map(row => row.invoiceFinalRecognizedQuantity), [9, 21]);
   assert.equal(fake.state().events.length, 2);
+  for (const change of [{ recognizedQuantity: 10 }, { reason: 'changed approval' }]) {
+    const changed = structuredClone(body); Object.assign(changed.orders[0], change);
+    await assert.rejects(approveInvoiceFinalLock(fake.db, 7, 'actor', 'i', changed), /RETRY_MISMATCH/);
+    assert.equal(fake.state().events.length, 2);
+  }
+});
+
+test('final quantity rejects coercible empty values and quantities outside PostgreSQL integer range', async () => {
+  for (const quantity of [null, undefined, '', ' ', true, false, '10', -1, 0.5, 2147483648]) {
+    const fake = database();
+    await assert.rejects(approveInvoiceFinalLock(fake.db, 7, 'actor', 'i', {
+      clientKey: 'invalid_quantity_001', orders: [
+        { sourceOrderId: 'o1', recognizedQuantity: quantity, reason: 'final' },
+        { sourceOrderId: 'o2', recognizedQuantity: 20, reason: 'final' },
+      ],
+    }), /INVOICE_FINAL_LOCK_INVALID/);
+    assert.equal(fake.state().events.length, 0);
+    assert.ok(fake.state().orders.every(row => !row.invoiceFinalLockedAt));
+  }
 });
 
 test('short and excess settlements require explicit per-order quantity and reason without tolerance', async () => {
@@ -75,6 +94,9 @@ test('any invoice-authorized caller can unlock the invoice batch while preservin
   const unlocked = await unlockInvoiceFinalLocksForInvoice(fake.db, 7, 'operator', 'i', { clientKey: 'final_unlock_0002', reason: 'reopen settlement' });
   assert.equal(unlocked.length, 2); assert.ok(fake.state().orders.every(row => !row.invoiceFinalLockedAt));
   assert.deepEqual(fake.state().events.map(row => row.action), ['LOCK', 'LOCK', 'UNLOCK', 'UNLOCK']);
+  await assert.rejects(unlockInvoiceFinalLocksForInvoice(fake.db, 7, 'operator', 'i', {
+    clientKey: 'final_unlock_0002', reason: 'different reason',
+  }), /RETRY_MISMATCH/);
 });
 
 test('routes use the same invoice access gate for final approval and unlock', () => {

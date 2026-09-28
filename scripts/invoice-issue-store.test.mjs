@@ -134,6 +134,24 @@ test('revision draft copies immutable snapshot inputs and links the original inv
   assert.equal(draft.content.orders[0].orderId, 'o1'); assert.equal(draft.content.lines[0].key, 'line');
 });
 
+test('issued list preserves frozen buyer names and exposes remaining locks only on their owning invoice', async () => {
+  const { registerInvoiceDraftRoutes } = require('../backend/dist/routes/invoiceDraft.routes.js');
+  const handlers = new Map();
+  const app = Object.fromEntries(['get', 'post', 'put', 'delete'].map(method => [method, (path, handler) => handlers.set(`${method} ${path}`, handler)]));
+  const base = { total: '100', receivableAdded: '0', buyer: { name: 'Changed master' }, payments: [], snapshot: { fields: { buyer: { name: 'Issued name' } } } };
+  registerInvoiceDraftRoutes(app, { actor: () => 'actor', requireAccess: async () => ({ organization: { id: 7 } }),
+    db: { invoice: { findMany: async ({ where }) => {
+      assert.equal(where.sellerOrgId, 7);
+      return [{ ...base, id: 'i1', orders: [{ workOrder: { invoiceFinalLockedAt: new Date(), invoiceFinalLockInvoiceId: 'i1' } }, { workOrder: null }] },
+        { ...base, id: 'old', orders: [{ workOrder: { invoiceFinalLockedAt: new Date(), invoiceFinalLockInvoiceId: 'new' } }] }];
+    } } } });
+  let result;
+  await handlers.get('get /invoices/issued')({ query: {} }, { setHeader() {}, json(value) { result = value; } });
+  assert.equal(result.rows[0].buyerName, 'Issued name');
+  assert.equal(result.rows[0].isFinalLocked, true);
+  assert.equal(result.rows[1].isFinalLocked, false);
+});
+
 test('ledger schema and routes preserve immutable order and line snapshots', () => {
   assert.match(schema, /model Invoice \{/);
   assert.match(schema, /@@unique\(\[sellerOrgId, invoiceNumber\]\)/);
@@ -182,6 +200,18 @@ test('issued ledger bootstrap is repeatable and preserves snapshots when source 
       SELECT 'a','p',id,'i','batch',5,'actor' FROM "InvoiceOrder" WHERE "invoiceId"='i';`);
     await assert.rejects(db.exec(`INSERT INTO "InvoicePaymentAllocation" (id,"paymentId","invoiceOrderId","invoiceId","batchKey",amount,"createdBy")
       SELECT 'bad','p',id,'i','batch2',5,'actor' FROM "InvoiceOrder" WHERE "invoiceId"='i2';`));
+    // Repeat startup with real settlement data, not only an empty schema.
+    // Fully deducted orders and statements containing only prior debt both have
+    // legitimate zero amounts that must remain zero on every deployment.
+    await db.exec(`UPDATE "InvoiceOrder" SET "netAmount"=0,"receivableAdded"=0 WHERE "invoiceId"='i';
+      UPDATE "InvoiceOrder" SET "netAmount"=5,"receivableAdded"=0 WHERE "invoiceId"='i2';`);
+    const balances = async () => ({
+      invoices: (await db.query('SELECT id,total,"receivableAdded" FROM "Invoice" ORDER BY id')).rows,
+      orders: (await db.query('SELECT id,"billedAmount","netAmount","receivableAdded" FROM "InvoiceOrder" ORDER BY id')).rows,
+    });
+    const beforeRestart = await balances();
+    await db.exec(sql); await db.exec(sql);
+    assert.deepEqual(await balances(), beforeRestart);
     await db.exec(`INSERT INTO "WorkOrder" (id) VALUES (5);
       UPDATE "WorkOrder" SET "invoiceFinalLockedAt"=now(),"invoiceFinalLockInvoiceId"='i',"invoiceFinalLockReason"='final' WHERE id=5;`);
     await assert.rejects(db.exec(`UPDATE "WorkOrder" SET "invoiceFinalLockReason"='changed' WHERE id=5;`), /INVOICE_FINAL_LOCKED/);

@@ -3,6 +3,7 @@ import { Alert, Button, CircularProgress, Stack, Table, TableBody, TableCell, Ta
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
 import { invoiceDraftStorageMessages } from '../../../constants/invoiceDraftStorageMessages';
 import { invoiceMessages } from '../../../constants/invoiceMessages';
+import { buildIssuedInvoicePrintHtml } from '../../../utils/issuedInvoicePrint.mjs';
 import InvoiceDraftDialog from '../order/InvoiceDraftDialog';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
@@ -50,12 +51,16 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
     finally { setRemoving(false); }
   };
   const printIssued = async row => {
+    // Open synchronously from the click so browsers do not block the print tab.
+    const popup = window.open('', '_blank');
+    if (!popup) { setError(t.failed); return; }
+    popup.opener = null;
     try {
       const invoice = await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}${buildQueryString({ orgId })}`, { skipCache: true });
-      const s = invoice.snapshot || {}, e = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-      const popup = window.open('', '_blank'); if (!popup) return;
-      popup.opener = null; popup.document.write(`<!doctype html><meta charset="utf-8"><title>${e(invoice.invoiceNumber)}</title><style>body{font:12px Arial;margin:30px}table{width:100%;border-collapse:collapse}th,td{padding:7px;border-bottom:1px solid #ccc;text-align:left}.num{text-align:right}h1{margin-bottom:4px}</style><h1>INVOICE ${e(invoice.invoiceNumber)}</h1><p>${e(s.fields?.date)} · ${e(invoice.status)} · ${e(invoice.currencyCode)}</p><p><b>${e(s.fields?.seller?.name)}</b> → <b>${e(s.fields?.buyer?.name)}</b></p><table><thead><tr><th>Order / Style</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Amount</th></tr></thead><tbody>${(s.lines || []).filter(line => line.quantity > 0).map(line => `<tr><td>${e(line.orderId)} · ${e(line.styleName)} (${e(line.styleCode)})</td><td class="num">${e(line.quantity)}</td><td class="num">${e(line.unitPrice)}</td><td class="num">${e(line.amount)}</td></tr>`).join('')}</tbody></table><table><thead><tr><th>Order</th><th class="num">Current basis</th><th class="num">Prior billed / received</th><th class="num">Deduction</th><th class="num">Prior outstanding</th><th class="num">Statement / new receivable</th></tr></thead><tbody>${(s.orders || []).map(order => `<tr><td>${e(order.sourceOrderNumber)}</td><td class="num">${e(order.billedAmount)}</td><td class="num">${e(order.priorBilledAmount)} / ${e(order.priorReceivedAmount)}</td><td class="num">${e(order.appliedDeductionAmount)}</td><td class="num">${e(order.priorOutstandingAmount)}</td><td class="num">${e(order.netAmount)} / ${e(order.receivableAdded)}</td></tr>`).join('')}</tbody></table><h2 style="text-align:right">STATEMENT TOTAL ${e(invoice.currencyCode)} ${e(invoice.total)}<br>NEW RECEIVABLE ${e(invoice.currencyCode)} ${e(invoice.receivableAdded)}</h2><button onclick="window.print()">Print / Save as PDF</button>`); popup.document.close();
-    } catch { setError(t.failed); }
+      const html = buildIssuedInvoicePrintHtml(invoice);
+      if (popup.closed) return;
+      popup.document.write(html); popup.document.close();
+    } catch { popup.close(); setError(t.failed); }
   };
   const cancelIssued = async row => {
     const reason = window.prompt(languageCode === 'ko' ? '취소 사유를 입력하세요.' : languageCode === 'vi' ? 'Nhập lý do hủy.' : 'Enter a cancellation reason.');
@@ -142,6 +147,9 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
       const quantity = window.prompt(languageCode === 'ko' ? `${order.sourceOrderNumber} 최종 인정 수량` : `Final recognized quantity for ${order.sourceOrderNumber}`,
         String(order.workOrder?.totalQuantity ?? ''));
       if (quantity === null) return;
+      if (!quantity.trim() || !Number.isSafeInteger(Number(quantity)) || Number(quantity) < 0 || Number(quantity) > 2147483647) {
+        setError(t.failed); return;
+      }
       const reason = window.prompt(languageCode === 'ko' ? `${order.sourceOrderNumber} 최종 마감 사유` : `Final settlement reason for ${order.sourceOrderNumber}`);
       if (!reason?.trim()) return;
       orders.push({ sourceOrderId: order.sourceOrderId, recognizedQuantity: Number(quantity), reason: reason.trim() });
@@ -182,7 +190,7 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
       </TableRow>)}
     </TableBody></Table>}
     <Stack direction="row"><Button disabled={!page || loading} onClick={() => setPage(value => value - 1)}>{common.previous}</Button>
-      <Button disabled={!result.hasMore || loading} onClick={() => setPage(value => value + 1)}>{common.next}</Button></Stack>
+      <Button disabled={!(result.hasMore || issued.hasMore) || loading} onClick={() => setPage(value => value + 1)}>{common.next}</Button></Stack>
     {selected && <InvoiceDraftDialog key={selected} open draftId={selected} orgId={orgId} languageCode={languageCode}
       onClose={() => { setSelected(null); setReload(value => value + 1); }} />}
   </Stack>;
