@@ -5,6 +5,7 @@ import { invoiceDraftStorageMessages } from '../../../constants/invoiceDraftStor
 import { invoiceMessages } from '../../../constants/invoiceMessages';
 import { buildIssuedInvoicePrintHtml } from '../../../utils/issuedInvoicePrint.mjs';
 import InvoiceDraftDialog from '../order/InvoiceDraftDialog';
+import InvoiceFinalReviewDialog from './InvoiceFinalReviewDialog';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 
@@ -23,8 +24,9 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
   const [page, setPage] = useState(0), [reload, setReload] = useState(0), [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false), [error, setError] = useState('');
   const [removing, setRemoving] = useState(false);
+  const [finalReviewId, setFinalReviewId] = useState(null);
   useWorkspaceRefreshOnEvent({ orgId, topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES],
-    isBlocked: Boolean(selected) || removing, onRefresh: () => setReload(value => value + 1) });
+    isBlocked: Boolean(selected) || Boolean(finalReviewId) || removing, onRefresh: () => setReload(value => value + 1) });
   useEffect(() => {
     if (!orgId) return;
     let cancelled = false;
@@ -141,26 +143,7 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
       window.alert(lines.join('\n'));
     } catch { setError(t.failed); }
   };
-  const approveFinalLock = async row => {
-    const orders = [];
-    for (const order of row.orders) {
-      const quantity = window.prompt(languageCode === 'ko' ? `${order.sourceOrderNumber} 최종 인정 수량` : `Final recognized quantity for ${order.sourceOrderNumber}`,
-        String(order.workOrder?.totalQuantity ?? ''));
-      if (quantity === null) return;
-      if (!quantity.trim() || !Number.isSafeInteger(Number(quantity)) || Number(quantity) < 0 || Number(quantity) > 2147483647) {
-        setError(t.failed); return;
-      }
-      const reason = window.prompt(languageCode === 'ko' ? `${order.sourceOrderNumber} 최종 마감 사유` : `Final settlement reason for ${order.sourceOrderNumber}`);
-      if (!reason?.trim()) return;
-      orders.push({ sourceOrderId: order.sourceOrderId, recognizedQuantity: Number(quantity), reason: reason.trim() });
-    }
-    try {
-      await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}/final-lock${buildQueryString({ orgId })}`, {
-        method: 'POST', body: JSON.stringify({ clientKey: globalThis.crypto.randomUUID(), orders }),
-      });
-      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ISSUED_INVOICES, WORKSPACE_DATA_TOPICS.ORDERS], orgId }); setReload(value => value + 1);
-    } catch { setError(t.failed); }
-  };
+  const approveFinalLock = row => setFinalReviewId(row.id);
   const unlockFinalLock = async row => {
     const reason = window.prompt(languageCode === 'ko' ? '최종 정산 잠금 해제 사유를 입력하세요.' : languageCode === 'vi' ? 'Nhập lý do mở khóa quyết toán cuối cùng.' : 'Enter a reason for unlocking the final settlement.');
     if (!reason?.trim()) return;
@@ -193,5 +176,8 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
       <Button disabled={!(result.hasMore || issued.hasMore) || loading} onClick={() => setPage(value => value + 1)}>{common.next}</Button></Stack>
     {selected && <InvoiceDraftDialog key={selected} open draftId={selected} orgId={orgId} languageCode={languageCode}
       onClose={() => { setSelected(null); setReload(value => value + 1); }} />}
+    {finalReviewId && <InvoiceFinalReviewDialog key={finalReviewId} invoiceId={finalReviewId} orgId={orgId} languageCode={languageCode}
+      onClose={() => setFinalReviewId(null)} onSaved={() => { setFinalReviewId(null); setReload(value => value + 1);
+        emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ISSUED_INVOICES, WORKSPACE_DATA_TOPICS.ORDERS], orgId }); }} />}
   </Stack>;
 }

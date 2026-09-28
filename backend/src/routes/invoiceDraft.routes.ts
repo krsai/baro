@@ -1,6 +1,7 @@
 import { saveInvoiceDraft, deleteInvoiceDraft } from "../services/invoiceDraftStore";
 import { cancelIssuedInvoice, createInvoiceRevisionDraft, issueInvoiceDraft, recordInvoicePayment, replaceInvoicePaymentAllocations, voidInvoicePayment } from "../services/invoiceIssueStore";
 import { approveInvoiceFinalLock, unlockInvoiceFinalLock, unlockInvoiceFinalLocksForInvoice } from "../services/invoiceFinalLock";
+import { invoiceFinalReview } from '../services/invoiceFinalReview';
 
 const invoiceMoney = (values: unknown[]) => {
   const total = values.reduce((sum: bigint, value) => {
@@ -12,6 +13,11 @@ const invoiceMoney = (values: unknown[]) => {
 };
 
 export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor }: any) {
+  app.get('/invoices/issued/:id/final-review', async (req: any, res: any) => {
+    const access = await requireAccess(req, res); if (!access) return;
+    const review = await invoiceFinalReview(db, access.organization.id, req.params.id);
+    res.setHeader('Cache-Control', 'no-store'); return res.json(review);
+  });
   app.get("/invoices/drafts", async (req: any, res: any) => {
     const access = await requireAccess(req, res); if (!access) return;
     const page = Number(req.query.page ?? 0);

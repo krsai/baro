@@ -130,7 +130,8 @@ export function applyOrderBillingPercentages(source, calculation, percentages = 
     if (deduction !== defaultDeduction && !String(settlements[order.orderId]?.reason || '').trim()) issues.push('DEDUCTION_REASON');
     const netAmount = amount >= deduction ? amount - deduction : 0n;
     const priorOutstanding = priorBilled > priorReceived ? priorBilled - priorReceived : 0n;
-    const receivableAdded = netAmount > priorOutstanding ? netAmount - priorOutstanding : 0n;
+    if (amount < priorBilled) issues.push('CREDIT_REVIEW');
+    const receivableAdded = amount >= priorBilled ? amount - priorBilled : 0n;
     total += netAmount;
     receivableAddedTotal += receivableAdded;
     return { orderId: order.orderId, orderNumber: order.orderNumber, percentage: valid ? raw : null,

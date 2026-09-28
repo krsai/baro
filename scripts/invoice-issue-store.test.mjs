@@ -83,6 +83,19 @@ test('settlement keeps prior billed, received and applied deduction separate wit
     { o1: { defaultDeductionAmount: '5000' } }), /DEDUCTION_REASON_REQUIRED/);
 });
 
+test('new debt is independent of receipt-based or manual statement deductions', () => {
+  const s = source('o1', 'A', '100'); s.lines[0].orderedQuantity = 100;
+  const input = { ...content, orders: [{ orderId: 'o1' }], percentages: { o1: '100' },
+    lines: [{ ...content.lines[0], quantity: '100' }] };
+  for (const received of ['0', '3000', '5000']) for (const deduction of ['0', '3000', '5000']) {
+    const result = calculateInvoiceIssueSnapshot({ ...input, settlements: { o1: { deduction, reason: 'reviewed statement' } } }, [s], {
+      o1: { priorBilledAmount: '5000', priorReceivedAmount: received, defaultDeductionAmount: '5000' },
+    });
+    assert.equal(result.receivableAdded, '5000.00');
+  }
+  assert.throws(() => calculateInvoiceIssueSnapshot(input, [s], { o1: { priorBilledAmount: '11000' } }), /CREDIT_REVIEW_REQUIRED/);
+});
+
 test('actual payments are separate, idempotent records and voiding preserves the original row', async () => {
   let payment = null;
   const db = { $transaction: async run => run(db), invoice: { findFirst: async () => ({ id: 'i', status: 'ISSUED', currencyCode: 'USD' }) },

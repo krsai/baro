@@ -1,5 +1,6 @@
 import { createHttpError } from "../utils/http";
 import { editTransaction, STALE_EDIT } from "../utils/editRevision";
+import { invoiceFinalReview, validateFinalLines } from './invoiceFinalReview';
 
 const fail = (code: string): never => { throw createHttpError(409, code); };
 const clientKey = (value: unknown) => {
@@ -20,7 +21,7 @@ export async function approveInvoiceFinalLock(db: any, sellerOrgId: number, acto
   const key = clientKey(body?.clientKey);
   if (!Array.isArray(body?.orders) || !body.orders.length) fail("INVOICE_FINAL_LOCK_INVALID");
   const approvals = body.orders.map((row: any) => ({ sourceOrderId: String(row?.sourceOrderId || "").trim(),
-    recognizedQuantity: row?.recognizedQuantity, reason: reason(row?.reason) }));
+    recognizedQuantity: row?.recognizedQuantity, reason: reason(row?.reason), lines: row?.lines }));
   if (approvals.some((row: any) => !row.sourceOrderId || !Number.isSafeInteger(row.recognizedQuantity)
     || row.recognizedQuantity < 0 || row.recognizedQuantity > 2147483647)
     || new Set(approvals.map((row: any) => row.sourceOrderId)).size !== approvals.length) fail("INVOICE_FINAL_LOCK_INVALID");
@@ -37,7 +38,9 @@ export async function approveInvoiceFinalLock(db: any, sellerOrgId: number, acto
         const source = invoice.orders.find((order: any) => order.workOrderId === event.workOrderId);
         const approval = approvals.find((row: any) => row.sourceOrderId === source?.sourceOrderId);
         return event.action !== "LOCK" || event.invoiceId !== invoice.id || !approval
-          || event.recognizedQuantity !== approval.recognizedQuantity || event.reason !== approval.reason;
+          || event.recognizedQuantity !== approval.recognizedQuantity || event.reason !== approval.reason
+          || event.lineReview?.revision !== body.reviewRevision
+          || JSON.stringify(event.lineReview?.lines) !== JSON.stringify(validateFinalLines({ lines: event.lineReview?.lines || [] }, approval));
       })) {
         fail("INVOICE_FINAL_LOCK_RETRY_MISMATCH");
       }
@@ -49,6 +52,10 @@ export async function approveInvoiceFinalLock(db: any, sellerOrgId: number, acto
     const orders = await tx.workOrder.findMany({ where: { sellerOrgId, orderId: { in: invoiceOrderIds } } });
     if (orders.length !== invoiceOrderIds.length) fail("INVOICE_FINAL_LOCK_SOURCE_CHANGED");
     if (orders.some((order: any) => order.invoiceFinalLockedAt)) fail("INVOICE_FINAL_LOCK_ALREADY_LOCKED");
+    const review = await invoiceFinalReview(tx, sellerOrgId, invoiceId);
+    if (body.reviewRevision !== review.revision) fail("INVOICE_FINAL_LOCK_REVIEW_CHANGED");
+    const reviewed = new Map(review.orders.map((row: any) => [row.sourceOrderId,
+      validateFinalLines(row, approvals.find((approval: any) => approval.sourceOrderId === row.sourceOrderId))]));
     await bypassTrigger(tx);
     const now = new Date();
     for (const order of orders) {
@@ -59,7 +66,8 @@ export async function approveInvoiceFinalLock(db: any, sellerOrgId: number, acto
       } });
       if (updated.count !== 1) throw createHttpError(409, STALE_EDIT);
       await tx.invoiceFinalLockEvent.create({ data: { sellerOrgId, workOrderId: order.id, invoiceId: invoice.id,
-        clientKey: key, action: "LOCK", recognizedQuantity: approval.recognizedQuantity, reason: approval.reason, actor } });
+        clientKey: key, action: "LOCK", recognizedQuantity: approval.recognizedQuantity, reason: approval.reason, actor,
+        lineReview: { revision: review.revision, lines: reviewed.get(order.orderId) } } });
     }
     return tx.invoiceFinalLockEvent.findMany({ where: { workOrder: { sellerOrgId }, clientKey: key }, orderBy: { workOrderId: "asc" } });
   });

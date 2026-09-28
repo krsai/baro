@@ -15,7 +15,7 @@ export const invoiceMessages = {
     reference: '현재 단가표 기준 전체 주문 참고 금액', useReference: '참고 금액 사용',
     moneyHint: '선금·중도금 요청입니다. 생산 수량을 청구한 것으로 처리하지 않습니다. 전체 금액은 고객과 합의한 금액을 확인해 입력하세요.',
     draftHint: '금액 방식은 기청구·입금액을 차감한 잔금 계산이 아닙니다. 서버 저장과 누적 정산이 연결되기 전에는 검토용으로만 사용하세요.',
-    errors: { AGREEMENT: '합의 내용 또는 청구 사유를 입력하세요.', CONTRACT_AMOUNT: '통화 단위에 맞는 양수의 전체 금액을 입력하세요.', PERCENTAGE: '비율은 0 초과 100 이하, 소수 둘째 자리까지 입력하세요.', AMOUNT: '청구 금액은 양수이며 통화의 소수 자릿수에 맞아야 합니다.', BILLING_MODE: '청구 방식을 선택하세요.' },
+    errors: { CREDIT_REVIEW: '새 기준액이 기존 채권보다 작습니다. 감액·환급 검토가 필요합니다.', AGREEMENT: '합의 내용 또는 청구 사유를 입력하세요.', CONTRACT_AMOUNT: '통화 단위에 맞는 양수의 전체 금액을 입력하세요.', PERCENTAGE: '비율은 0 초과 100 이하, 소수 둘째 자리까지 입력하세요.', AMOUNT: '청구 금액은 양수이며 통화의 소수 자릿수에 맞아야 합니다.', BILLING_MODE: '청구 방식을 선택하세요.' },
   },
   en: {
     dueDate: 'Due date', productionProgress: 'Production progress', assignmentDetails: 'Assignments', factory: 'Factory', planned: 'Assigned qty', produced: 'Produced qty', settlement: 'Billing by order', subtotal: 'Quantity × unit price', applyAll: 'Apply to all', percentHint: 'Blank means 100%. The percentage affects amounts only, not quantities.', currentAmount: 'Amount to bill', remainingPreview: 'Difference after percentage', previewHint: 'This difference uses current quantities and prices. It does not deduct prior invoices.',
@@ -32,7 +32,7 @@ export const invoiceMessages = {
     contract: 'Agreed contract total', percentage: 'Installment percentage (%)', fixed: 'Installment amount', agreement: 'Agreement / Reason', reference: 'Full order estimate at current prices', useReference: 'Use estimate',
     moneyHint: 'Advance or installment payment request. It does not invoice garment quantities. Confirm the contract total agreed with the customer.',
     draftHint: 'This is not a remaining-balance calculation after prior invoices or payments. Use for review only until stored billing and reconciliation are available.',
-    errors: { AGREEMENT: 'Enter the agreement or billing reason.', CONTRACT_AMOUNT: 'Enter a positive contract total using the currency precision.', PERCENTAGE: 'Enter a percentage above 0 and at most 100, up to two decimals.', AMOUNT: 'Enter a positive amount using the currency precision.', BILLING_MODE: 'Select a billing method.' },
+    errors: { CREDIT_REVIEW: 'The new basis is below existing debt. Review a credit or refund before issuing.', AGREEMENT: 'Enter the agreement or billing reason.', CONTRACT_AMOUNT: 'Enter a positive contract total using the currency precision.', PERCENTAGE: 'Enter a percentage above 0 and at most 100, up to two decimals.', AMOUNT: 'Enter a positive amount using the currency precision.', BILLING_MODE: 'Select a billing method.' },
   },
   vi: {
     dueDate: 'Hạn giao', productionProgress: 'Tiến độ sản xuất', assignmentDetails: 'Phân công', factory: 'Xưởng', planned: 'SL phân công', produced: 'SL sản xuất', settlement: 'Số tiền theo đơn hàng', subtotal: 'Số lượng × đơn giá', applyAll: 'Áp dụng tất cả', percentHint: 'Để trống là 100%. Tỷ lệ chỉ áp dụng cho số tiền, không đổi số lượng.', currentAmount: 'Số tiền lần này', remainingPreview: 'Chênh lệch sau tỷ lệ', previewHint: 'Chênh lệch dựa trên số lượng và đơn giá hiện tại, chưa trừ hóa đơn trước.',
@@ -49,6 +49,6 @@ export const invoiceMessages = {
     contract: 'Tổng tiền đã thỏa thuận', percentage: 'Tỷ lệ đợt này (%)', fixed: 'Số tiền đợt này', agreement: 'Thỏa thuận / Lý do', reference: 'Giá trị tham khảo theo bảng giá hiện tại', useReference: 'Dùng giá trị tham khảo',
     moneyHint: 'Yêu cầu tạm ứng hoặc thanh toán theo đợt, không tính vào số lượng hàng đã lập hóa đơn. Xác nhận tổng tiền thỏa thuận với khách hàng.',
     draftHint: 'Đây không phải số dư sau các hóa đơn hay khoản đã thu. Chỉ dùng để kiểm tra trước khi có chức năng lưu và đối soát.',
-    errors: { AGREEMENT: 'Nhập thỏa thuận hoặc lý do.', CONTRACT_AMOUNT: 'Nhập tổng tiền dương theo đơn vị tiền tệ.', PERCENTAGE: 'Nhập tỷ lệ lớn hơn 0 và không quá 100, tối đa hai chữ số thập phân.', AMOUNT: 'Nhập số tiền dương theo đơn vị tiền tệ.', BILLING_MODE: 'Chọn cách lập hóa đơn.' },
+    errors: { CREDIT_REVIEW: 'Số tiền mới thấp hơn khoản phải thu hiện có. Cần kiểm tra giảm trừ hoặc hoàn tiền.', AGREEMENT: 'Nhập thỏa thuận hoặc lý do.', CONTRACT_AMOUNT: 'Nhập tổng tiền dương theo đơn vị tiền tệ.', PERCENTAGE: 'Nhập tỷ lệ lớn hơn 0 và không quá 100, tối đa hai chữ số thập phân.', AMOUNT: 'Nhập số tiền dương theo đơn vị tiền tệ.', BILLING_MODE: 'Chọn cách lập hóa đơn.' },
   },
 };

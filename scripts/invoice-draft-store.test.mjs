@@ -110,7 +110,7 @@ test('all draft routes require invoice access before reading or writing; reads a
   const routes = [];
   const app = Object.fromEntries(['get', 'post', 'put', 'delete'].map(method => [method, (path, handler) => routes.push({ method, path, handler })]));
   registerInvoiceDraftRoutes(app, { db: {}, requireAccess: async () => null });
-  assert.equal(routes.length, 16);
+  assert.equal(routes.length, 17);
   for (const route of routes) await route.handler({}, {});
   routes.length = 0;
   const scopes = [];
@@ -120,7 +120,11 @@ test('all draft routes require invoice access before reading or writing; reads a
   }, invoice: { findMany: async ({ where }) => { scopes.push(where); return []; }, findFirst: async ({ where }) => { scopes.push(where); return null; } },
   }, requireAccess: async () => ({ organization: { id: 7 } }) });
   const res = { setHeader() {}, status() { return this; }, json(value) { return value; } };
-  for (const route of routes.filter(row => row.method === 'get')) await route.handler({ query: {}, params: { id: 'foreign' } }, res);
+  for (const route of routes.filter(row => row.method === 'get')) {
+    const request = route.handler({ query: {}, params: { id: 'foreign' } }, res);
+    if (route.path.endsWith('/final-review')) await assert.rejects(request, /INVOICE_FINAL_LOCK_INVOICE_NOT_CURRENT/);
+    else await request;
+  }
   assert.ok(scopes.every(where => where.sellerOrgId === 7));
 });
 

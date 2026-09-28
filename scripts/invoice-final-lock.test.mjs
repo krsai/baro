@@ -5,6 +5,7 @@ import test from 'node:test';
 
 const require = createRequire(import.meta.url);
 const { approveInvoiceFinalLock, unlockInvoiceFinalLocksForInvoice } = require('../backend/dist/services/invoiceFinalLock.js');
+const { invoiceFinalReview } = require('../backend/dist/services/invoiceFinalReview.js');
 const routes = await readFile(new URL('../backend/src/routes/invoiceDraft.routes.ts', import.meta.url), 'utf8');
 const migration = await readFile(new URL('../backend/migration_fix.sql', import.meta.url), 'utf8');
 
@@ -14,9 +15,11 @@ const database = () => {
   const orders = [{ id: 1, orderId: 'o1', sellerOrgId: 7, totalQuantity: 10, invoiceFinalLockedAt: null },
     { id: 2, orderId: 'o2', sellerOrgId: 7, totalQuantity: 20, invoiceFinalLockedAt: null }];
   const events = [];
+  for (const order of orders) order.workOrderItems = [{ id: order.id, styleId: order.id, totalQuantity: order.totalQuantity, style: { name: `Style ${order.id}` } }];
   const db = { $transaction: async run => run(db), $executeRawUnsafe: async () => 0,
     invoice: { findFirst: async ({ where }) => where.id === invoice.id && where.sellerOrgId === invoice.sellerOrgId ? invoice : null },
     invoiceOrder: { findFirst: async () => null },
+    invoiceLine: { findMany: async () => [] },
     workOrder: {
       findMany: async ({ where }) => orders.filter(row => row.sellerOrgId === where.sellerOrgId
         && (!where.orderId?.in || where.orderId.in.includes(row.orderId))
@@ -36,12 +39,21 @@ const database = () => {
   return { db, state: () => ({ orders, events }) };
 };
 
+const reviewed = async (fake, body) => {
+  const review = await invoiceFinalReview(fake.db, 7, 'i');
+  return { ...body, reviewRevision: review.revision, orders: body.orders.map(order => ({ ...order,
+    lines: review.orders.find(row => row.sourceOrderId === order.sourceOrderId).lines.map(line => ({
+      key: line.key, recognizedQuantity: order.recognizedQuantity, reason: order.reason,
+    })),
+  })) };
+};
+
 test('explicit final approval locks every invoice order and retry is idempotent', async () => {
   const fake = database();
-  const body = { clientKey: 'final_lock_batch_001', orders: [
+  const body = await reviewed(fake, { clientKey: 'final_lock_batch_001', orders: [
     { sourceOrderId: 'o1', recognizedQuantity: 9, reason: 'approved shortage' },
     { sourceOrderId: 'o2', recognizedQuantity: 21, reason: 'approved overage' },
-  ] };
+  ] });
   const first = await approveInvoiceFinalLock(fake.db, 7, 'actor', 'i', body);
   const retried = await approveInvoiceFinalLock(fake.db, 7, 'actor', 'i', body);
   assert.equal(first.length, 2); assert.equal(retried.length, 2);
@@ -73,10 +85,10 @@ test('short and excess settlements require explicit per-order quantity and reaso
   const fake = database();
   fake.state().orders[0].totalQuantity = 100;
   fake.state().orders[1].totalQuantity = 100;
-  await approveInvoiceFinalLock(fake.db, 7, 'actor', 'i', { clientKey: 'final_variance_001', orders: [
+  await approveInvoiceFinalLock(fake.db, 7, 'actor', 'i', await reviewed(fake, { clientKey: 'final_variance_001', orders: [
     { sourceOrderId: 'o1', recognizedQuantity: 98, reason: 'approved shortage after count' },
     { sourceOrderId: 'o2', recognizedQuantity: 102, reason: 'approved excess after count' },
-  ] });
+  ] }));
   assert.deepEqual(fake.state().orders.map(row => row.invoiceFinalRecognizedQuantity), [98, 102]);
   assert.deepEqual(fake.state().events.map(row => row.reason), ['approved shortage after count', 'approved excess after count']);
   const missingReason = database();
@@ -88,9 +100,9 @@ test('short and excess settlements require explicit per-order quantity and reaso
 
 test('any invoice-authorized caller can unlock the invoice batch while preserving history', async () => {
   const fake = database();
-  await approveInvoiceFinalLock(fake.db, 7, 'accountant', 'i', { clientKey: 'final_lock_batch_002', orders: [
+  await approveInvoiceFinalLock(fake.db, 7, 'accountant', 'i', await reviewed(fake, { clientKey: 'final_lock_batch_002', orders: [
     { sourceOrderId: 'o1', recognizedQuantity: 10, reason: 'final' }, { sourceOrderId: 'o2', recognizedQuantity: 20, reason: 'final' },
-  ] });
+  ] }));
   const unlocked = await unlockInvoiceFinalLocksForInvoice(fake.db, 7, 'operator', 'i', { clientKey: 'final_unlock_0002', reason: 'reopen settlement' });
   assert.equal(unlocked.length, 2); assert.ok(fake.state().orders.every(row => !row.invoiceFinalLockedAt));
   assert.deepEqual(fake.state().events.map(row => row.action), ['LOCK', 'LOCK', 'UNLOCK', 'UNLOCK']);

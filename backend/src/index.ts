@@ -93,6 +93,7 @@ import {
 import { partitionRelationshipBucketStyles } from "./services/relationshipBucketStyles";
 import { registerInvoiceDraftRoutes } from "./routes/invoiceDraft.routes";
 import { buildInvoiceSource } from "./services/invoiceSource";
+import { invoiceFamily, invoiceSettlement } from "./services/invoiceSettlement";
 import { invoiceOrderProgress } from "./services/invoiceOrderProgress";
 import { isOrderReadyForAssignment } from "./utils/orderAssignmentReadiness";
 import { calculateOrderSalesValue } from "./utils/orderSalesValue";
@@ -174,7 +175,7 @@ function assertGeneratedPrismaClientShape() {
     InvoiceLine: ["id", "invoiceId", "invoiceOrderId", "workOrderItemId", "sourceItemId", "lineKey", "styleId", "styleCode", "styleName", "description", "color", "gender", "size", "quantity", "bucketQuantity", "unitPrice", "amount", "priceId", "bucketVersionId", "remark", "adjustmentReason", "hsCode", "origin"],
     InvoicePayment: ["id", "invoiceId", "clientKey", "amount", "currencyCode", "receivedAt", "reference", "note", "createdBy", "createdAt", "voidedBy", "voidedAt", "voidReason"],
     InvoicePaymentAllocation: ["id", "paymentId", "invoiceOrderId", "invoiceId", "batchKey", "amount", "createdBy", "createdAt", "voidedBy", "voidedAt", "voidReason"],
-    InvoiceFinalLockEvent: ["id", "sellerOrgId", "workOrderId", "invoiceId", "clientKey", "action", "recognizedQuantity", "reason", "actor", "createdAt"],
+    InvoiceFinalLockEvent: ["id", "sellerOrgId", "workOrderId", "invoiceId", "clientKey", "action", "recognizedQuantity", "reason", "lineReview", "actor", "createdAt"],
   })) {
     for (const field of fields) {
       if (!hasField(model, field)) staleSignals.push(model + "." + field + " is missing");
@@ -30792,23 +30793,20 @@ app.get(["/invoices/order-source/:orderId", "/orders/:orderId/invoice-source"], 
   res.setHeader("Cache-Control", "no-store");
   const currencies = await prisma.currency.findMany({ select: { code: true }, orderBy: { code: "asc" } });
   const previousInvoiceOrders = await prisma.invoiceOrder.findMany({ where: { sourceOrderId: order.orderId,
-    invoice: { sellerOrgId: organization.id, status: { in: ["ISSUED", "SUPERSEDED"] } } },
+    invoice: { sellerOrgId: organization.id } },
     include: { invoice: { include: { payments: { where: { voidedAt: null }, include: {
       allocations: { where: { voidedAt: null }, select: { invoiceOrderId: true, amount: true } },
     } }, orders: { select: { id: true } } } } },
     orderBy: { installmentNumber: "asc" } });
-  const sumInvoiceMoney = (values: unknown[]) => { const minor = values.reduce((sum: bigint, value) => {
-    const [whole, fraction = ""] = String(value ?? "0").split("."); return sum + BigInt(whole || "0") * 10000n + BigInt(fraction.padEnd(4, "0").slice(0, 4));
-  }, 0n); const text = minor.toString().padStart(5, "0"); return `${text.slice(0, -4)}.${text.slice(-4)}`; };
+  const revisionId = typeof req.query.revisionOfInvoiceId === "string" ? req.query.revisionOfInvoiceId : undefined;
+  const revisionSource = revisionId ? await prisma.invoice.findFirst({ where: {
+    id: revisionId, sellerOrgId: organization.id, buyerOrgId: order.buyerOrgId!,
+    status: "ISSUED", orders: { some: { sourceOrderId: order.orderId } },
+  } }) : null;
+  if (revisionId && !revisionSource) return res.status(409).json({ error: "INVOICE_REVISION_SOURCE_INVALID" });
   const settlementsByCurrency = Object.fromEntries([...new Set(previousInvoiceOrders.map(row => row.invoice.currencyCode))].map(currencyCode => {
     const scoped = previousInvoiceOrders.filter(row => row.invoice.currencyCode === currencyCode);
-    const priorBilledAmount = sumInvoiceMoney(scoped.filter(row => row.invoice.status === "ISSUED").map(row => row.receivableAdded ?? row.netAmount ?? row.billedAmount));
-    const priorReceivedAmount = sumInvoiceMoney(scoped.flatMap(row => row.invoice.payments.flatMap(payment => row.invoice.orders.length === 1
-      ? [payment.amount] : payment.allocations.filter(allocation => allocation.invoiceOrderId === row.id).map(allocation => allocation.amount))));
-    return [currencyCode, { priorBilledAmount,
-      priorReceivedAmount,
-      defaultDeductionAmount: priorReceivedAmount !== "0.0000" ? priorReceivedAmount : priorBilledAmount,
-      hasUnallocatedPayments: scoped.some(row => row.invoice.orders.length > 1 && row.invoice.payments.some(payment => payment.allocations.length === 0)),
+    return [currencyCode, { ...invoiceSettlement(scoped, revisionSource ? invoiceFamily(revisionSource) : undefined),
       installments: scoped.map(row => ({ invoiceId: row.invoiceId, installmentNumber: row.installmentNumber,
         billedAmount: String(row.netAmount ?? row.billedAmount), status: row.invoice.status })) }];
   }));

@@ -75,7 +75,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
       if (stored) clientKey.current = stored.clientKey;
       const ids = stored ? stored.content.orders.map(row => row.orderId) : (orderIds || [orderId]);
       const buyer = stored?.buyerOrgId ?? buyerOrgId;
-      const data = combineInvoiceSources(await Promise.all(ids.map(id => requestJSON(`/invoices/order-source/${encodeURIComponent(id)}${buildQueryString({ orgId, buyerOrgId: buyer })}`, { skipCache: true }))));
+      const data = combineInvoiceSources(await Promise.all(ids.map(id => requestJSON(`/invoices/order-source/${encodeURIComponent(id)}${buildQueryString({ orgId, buyerOrgId: buyer, revisionOfInvoiceId: stored?.revisionOfInvoiceId })}`, { skipCache: true }))));
       const restoredLines = stored ? restoreInvoiceDraftLines(stored.content, data) : data.lines;
         if (cancelled) return;
         setSource(data); setLines(data.lines);

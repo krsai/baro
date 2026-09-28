@@ -1962,6 +1962,7 @@ model InvoiceFinalLockEvent {
   action InvoiceFinalLockAction
   recognizedQuantity Int?
   reason String
+  lineReview Json?
   actor String
   createdAt DateTime @default(now())
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Restrict)

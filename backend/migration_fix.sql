@@ -5270,6 +5270,7 @@ CREATE TABLE IF NOT EXISTS "InvoiceFinalLockEvent" (
 );
 CREATE INDEX IF NOT EXISTS "InvoiceFinalLockEvent_sellerOrgId_createdAt_id_idx" ON "InvoiceFinalLockEvent"("sellerOrgId","createdAt",id);
 CREATE INDEX IF NOT EXISTS "InvoiceFinalLockEvent_invoiceId_idx" ON "InvoiceFinalLockEvent"("invoiceId");
+ALTER TABLE "InvoiceFinalLockEvent" ADD COLUMN IF NOT EXISTS "lineReview" JSONB;
 
 CREATE OR REPLACE FUNCTION baro_assert_invoice_final_unlocked(target_order_id INTEGER)
 RETURNS VOID AS $$

@@ -2,6 +2,7 @@ import { createHttpError } from "../utils/http";
 import { editTransaction, STALE_EDIT } from "../utils/editRevision";
 import { buildInvoiceSource } from "./invoiceSource";
 import { rebaseInvoiceFinalLocks } from "./invoiceFinalLock";
+import { invoiceFamily, invoiceSettlement } from "./invoiceSettlement";
 
 const fail = (code: string): never => { throw createHttpError(409, code); };
 export const INVOICE_TEMPLATE_VERSION = "BARO_INVOICE_V1";
@@ -104,7 +105,10 @@ export const calculateInvoiceIssueSnapshot = (content: any, sources: any[], sett
     const priorBilledMinor = ((parseMoneyScale4(context.priorBilledAmount) ?? 0n) + divisor / 2n) / divisor;
     const priorReceivedMinor = ((parseMoneyScale4(context.priorReceivedAmount) ?? 0n) + divisor / 2n) / divisor;
     const priorOutstandingMinor = priorBilledMinor > priorReceivedMinor ? priorBilledMinor - priorReceivedMinor : 0n;
-    const newReceivableMinor = netMinor > priorOutstandingMinor ? netMinor - priorOutstandingMinor : 0n;
+    // The statement deduction must not change the debt incurred. Existing debt
+    // is subtracted exactly once, regardless of whether it has been paid.
+    if (billedMinor < priorBilledMinor) fail("INVOICE_CREDIT_REVIEW_REQUIRED");
+    const newReceivableMinor = billedMinor - priorBilledMinor;
     totalMinor += netMinor;
     receivableAddedMinor += newReceivableMinor;
     return { workOrderId: source.workOrderId, sourceOrderId: source.orderId, sourceOrderNumber: source.orderNumber,
@@ -142,6 +146,15 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
     if (draft.revisionOfInvoiceId && (!revisedFrom || revisedFrom.status !== "ISSUED" || !revisionReason)) {
       fail("INVOICE_REVISION_SOURCE_INVALID");
     }
+    if (revisedFrom) {
+      const originalIds = revisedFrom.orders.map((row: any) => row.sourceOrderId).sort();
+      const requestedIds = content.orders.map((row: any) => row.orderId).sort();
+      if (revisedFrom.buyerOrgId !== draft.buyerOrgId || revisedFrom.currencyCode !== content.currency
+        || JSON.stringify(originalIds) !== JSON.stringify(requestedIds)) fail("INVOICE_REVISION_SCOPE_CHANGED");
+      const later = await tx.invoiceOrder.findFirst({ where: { sourceOrderId: { in: originalIds },
+        invoice: { sellerOrgId, status: "ISSUED", sequenceNumber: { gt: revisedFrom.sequenceNumber } } } });
+      if (later) fail("INVOICE_REVISION_REVERSE_ORDER_REQUIRED");
+    }
     const invoiceNumber = String(content.fields?.number || "").trim();
     if (!invoiceNumber || invoiceNumber.length > 200 || !Number.isFinite(Date.parse(content.fields?.date || ""))) fail("INVOICE_ISSUE_DOCUMENT_FIELDS_REQUIRED");
     const orders = await tx.workOrder.findMany({ where: { sellerOrgId, buyerOrgId: draft.buyerOrgId,
@@ -161,20 +174,11 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
     const settlementContext: Record<string, any> = {};
     for (const source of sources) {
       const previous = await tx.invoiceOrder.findMany({ where: { sourceOrderId: source.orderId,
-        invoice: { sellerOrgId, status: { in: ["ISSUED", "SUPERSEDED"] }, currencyCode: content.currency } },
+        invoice: { sellerOrgId, currencyCode: content.currency } },
         include: { invoice: { include: { payments: { where: { voidedAt: null }, include: {
           allocations: { where: { voidedAt: null }, select: { invoiceOrderId: true, amount: true } },
         } }, orders: { select: { id: true } } } } } });
-      const priorBilled = previous.reduce((sum: bigint, row: any) => row.invoice.status === "ISSUED" && row.invoice.id !== revisedFrom?.id
-        ? sum + (parseMoneyScale4(row.receivableAdded ?? row.netAmount ?? row.billedAmount) ?? 0n) : sum, 0n);
-      const priorReceived = previous.reduce((sum: bigint, row: any) => sum + row.invoice.payments.reduce((paymentSum: bigint, payment: any) => {
-        if (row.invoice.orders.length === 1) return paymentSum + (parseMoneyScale4(payment.amount) ?? 0n);
-        return paymentSum + payment.allocations.filter((allocation: any) => allocation.invoiceOrderId === row.id)
-          .reduce((allocationSum: bigint, allocation: any) => allocationSum + (parseMoneyScale4(allocation.amount) ?? 0n), 0n);
-      }, 0n), 0n);
-      settlementContext[source.orderId] = { priorBilledAmount: scale4Decimal(priorBilled), priorReceivedAmount: scale4Decimal(priorReceived),
-        defaultDeductionAmount: scale4Decimal(priorReceived > 0n ? priorReceived : priorBilled), hasUnallocatedPayments: previous.some((row: any) =>
-          row.invoice.orders.length > 1 && row.invoice.payments.some((payment: any) => payment.allocations.length === 0)) };
+      settlementContext[source.orderId] = invoiceSettlement(previous, revisedFrom ? invoiceFamily(revisedFrom) : undefined);
     }
     const calculated = calculateInvoiceIssueSnapshot(content, sources, settlementContext);
     for (const order of calculated.orders) {
