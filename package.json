@@ -54,10 +54,12 @@
     "test:invoice-issue-store": "npm --prefix backend run build && node --test scripts/invoice-issue-store.test.mjs",
     "test:invoice-final-lock": "npm --prefix backend run build && node --test scripts/invoice-final-lock.test.mjs",
     "test:issued-invoice-print": "node --test scripts/issued-invoice-print.test.mjs",
-    "test:invoice-postgres": "npm --prefix backend run build && node scripts/invoice-postgres-integration.test.mjs"
+    "test:invoice-postgres": "npm --prefix backend run build && node scripts/invoice-postgres-integration.test.mjs",
+    "test:invoice-browser": "node scripts/invoice-browser-acceptance.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.15",
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "playwright-core": "^1.63.0"
   }
 }

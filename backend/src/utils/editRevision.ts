@@ -21,6 +21,23 @@ export const editTransaction = async <T>(db: any, run: (tx: Prisma.TransactionCl
   }
 };
 
+// Ledger sequence allocation is intentionally derived inside the transaction.
+// Retry the whole read/validate/write unit when concurrent serializable writers
+// conflict; never retry validation or business-rule failures.
+export const retryEditTransaction = async <T>(db: any, run: (tx: Prisma.TransactionClient) => Promise<T>, timeout = 30000, attempts = 3): Promise<T> => {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await db.$transaction(run, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout });
+    } catch (error: any) {
+      if ((error?.code !== 'P2034' && error?.code !== 'P2002') || attempt === attempts) {
+        if (error?.code === 'P2034' || error?.code === 'P2002') throw createHttpError(409, STALE_EDIT);
+        throw error;
+      }
+    }
+  }
+  throw createHttpError(409, STALE_EDIT);
+};
+
 export const assignmentBoardRevision = async (db: any, orgId: number) => {
   const [state, plans, cards] = await Promise.all([
     db.assignmentBoardState.findUnique({ where: { orgId }, select: { updatedAt: true } }),

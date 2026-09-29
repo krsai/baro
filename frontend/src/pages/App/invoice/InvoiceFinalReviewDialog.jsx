@@ -8,19 +8,19 @@ const labels = {
   vi: { title: 'Kiểm tra quyết toán theo từng mục', notice: 'Tổng số lượng trên hóa đơn không phải số lượng giao hàng. Tỷ lệ thanh toán không làm giảm số lượng. Không suy đoán sản lượng theo từng mục. Nhập lý do cho từng chênh lệch.', order: 'Đơn / Mã hàng / Màu / Giới tính / Cỡ', ordered: 'Đặt hàng', billed: 'SL hóa đơn hiệu lực', current: 'Hóa đơn này', difference: 'Chênh lệch', recognized: 'SL cuối cùng', reason: 'Lý do từng mục', orderReason: 'Lý do quyết toán', reviewed: 'Tôi đã kiểm tra từng chênh lệch và xác nhận quyết toán.', save: 'Xác nhận và khóa', close: 'Đóng', error: 'Kiểm tra dữ liệu. Nếu dữ liệu đã thay đổi, đóng và mở lại.' },
 };
 
-export default function InvoiceFinalReviewDialog({ invoiceId, orgId, languageCode, onClose, onSaved }) {
+export default function InvoiceFinalReviewDialog({ invoiceId, orgId, languageCode, onClose, onSaved, request = requestJSON }) {
   const t = labels[languageCode] || labels.en;
   const [review, setReview] = useState(null), [orders, setOrders] = useState([]);
   const [checked, setChecked] = useState(false), [saving, setSaving] = useState(false), [error, setError] = useState('');
   const [clientKey] = useState(() => globalThis.crypto.randomUUID());
   useEffect(() => {
     let cancelled = false;
-    requestJSON(`/invoices/issued/${encodeURIComponent(invoiceId)}/final-review${buildQueryString({ orgId })}`, { skipCache: true })
+    request(`/invoices/issued/${encodeURIComponent(invoiceId)}/final-review${buildQueryString({ orgId })}`, { skipCache: true })
       .then(data => { if (!cancelled) { setReview(data); setOrders(data.orders.map(order => ({ ...order, reason: '',
         lines: order.lines.map(line => ({ ...line, recognizedQuantity: String(line.orderedQuantity), reason: '' })) }))); } })
       .catch(() => { if (!cancelled) setError(t.error); });
     return () => { cancelled = true; };
-  }, [invoiceId, orgId, t.error]);
+  }, [invoiceId, orgId, request, t.error]);
   const edit = (oi, li, field, value) => {
     setChecked(false);
     setOrders(previous => previous.map((order, i) => i !== oi ? order : li === null ? { ...order, [field]: value }
@@ -32,7 +32,7 @@ export default function InvoiceFinalReviewDialog({ invoiceId, orgId, languageCod
   const save = async () => {
     setSaving(true); setError('');
     try {
-      await requestJSON(`/invoices/issued/${encodeURIComponent(invoiceId)}/final-lock${buildQueryString({ orgId })}`, {
+      await request(`/invoices/issued/${encodeURIComponent(invoiceId)}/final-lock${buildQueryString({ orgId })}`, {
         method: 'POST', body: JSON.stringify({ clientKey, reviewRevision: review.revision,
           orders: orders.map(order => ({ sourceOrderId: order.sourceOrderId, reason: order.reason.trim(),
             recognizedQuantity: order.lines.reduce((sum, line) => sum + Number(line.recognizedQuantity), 0),

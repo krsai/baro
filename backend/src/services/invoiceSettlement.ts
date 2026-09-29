@@ -10,6 +10,19 @@ export const decimal4 = (value: bigint) => {
 };
 export const invoiceFamily = (invoice: any) => invoice.rootInvoiceId || invoice.id;
 
+export function invoiceFamilyBalance(invoices: any[], familyId: string) {
+  const family = invoices.filter(invoice => invoiceFamily(invoice) === familyId);
+  const current = family.find(invoice => invoice.status === 'ISSUED') || null;
+  const received = family.reduce((sum, invoice) => sum + (invoice.payments || [])
+    .filter((payment: any) => !payment.voidedAt)
+    .reduce((paymentSum: bigint, payment: any) => paymentSum
+      + (payment.kind === 'REFUND' ? -1n : 1n) * money4(payment.amount), 0n), 0n);
+  const debt = current ? money4(current.receivableAdded) : 0n;
+  return { currentInvoiceId: current?.id ?? null, receivedAmount: decimal4(received),
+    debtAmount: decimal4(debt), balanceAmount: decimal4(debt >= received ? debt - received : received - debt),
+    balanceKind: debt > received ? 'DUE' : debt < received ? 'CREDIT' : 'SETTLED' };
+}
+
 // A revision replaces one installment, including its entire payment family.
 // Cancelled documents lose their debt, not the money actually received.
 export function invoiceSettlement(rows: any[], excludedFamily?: string) {
@@ -18,11 +31,12 @@ export function invoiceSettlement(rows: any[], excludedFamily?: string) {
   let received = 0n, hasUnallocatedPayments = false;
   for (const row of scoped) for (const payment of row.invoice.payments) {
     if (payment.voidedAt) continue;
-    if (row.invoice.orders.length === 1) received += money4(payment.amount);
+    const sign = payment.kind === 'REFUND' ? -1n : 1n;
+    if (row.invoice.orders.length === 1) received += sign * money4(payment.amount);
     else {
       const allocations = payment.allocations.filter((item: any) => !item.voidedAt);
       if (allocations.reduce((sum: bigint, item: any) => sum + money4(item.amount), 0n) < money4(payment.amount)) hasUnallocatedPayments = true;
-      received += allocations.filter((item: any) => item.invoiceOrderId === row.id)
+      received += sign * allocations.filter((item: any) => item.invoiceOrderId === row.id)
         .reduce((sum: bigint, item: any) => sum + money4(item.amount), 0n);
     }
   }

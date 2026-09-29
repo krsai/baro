@@ -108,8 +108,10 @@ test('actual payments are separate, idempotent records and voiding preserves the
   const first = await recordInvoicePayment(db, 1, 'actor', 'i', body);
   const retried = await recordInvoicePayment(db, 1, 'actor', 'i', body);
   assert.equal(first.id, retried.id); assert.equal(first.currencyCode, 'USD');
+  await assert.rejects(recordInvoicePayment(db, 1, 'actor', 'i', { ...body, amount: '31.00' }), /RETRY_MISMATCH/);
   const voided = await voidInvoicePayment(db, 1, 'admin', 'p', 'wrong transfer');
   assert.equal(voided.voidReason, 'wrong transfer'); assert.ok(voided.voidedAt);
+  await assert.rejects(voidInvoicePayment(db, 1, 'admin', 'p', 'different reason'), /RETRY_MISMATCH/);
 });
 
 test('multi-order payments use explicit replaceable allocations and preserve voided history', async () => {

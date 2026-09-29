@@ -2,14 +2,19 @@ import { saveInvoiceDraft, deleteInvoiceDraft } from "../services/invoiceDraftSt
 import { cancelIssuedInvoice, createInvoiceRevisionDraft, issueInvoiceDraft, recordInvoicePayment, replaceInvoicePaymentAllocations, voidInvoicePayment } from "../services/invoiceIssueStore";
 import { approveInvoiceFinalLock, unlockInvoiceFinalLock, unlockInvoiceFinalLocksForInvoice } from "../services/invoiceFinalLock";
 import { invoiceFinalReview } from '../services/invoiceFinalReview';
+import { invoiceFamily, invoiceFamilyBalance } from '../services/invoiceSettlement';
 
-const invoiceMoney = (values: unknown[]) => {
-  const total = values.reduce((sum: bigint, value) => {
-    const [whole, fraction = ""] = String(value ?? "0").split(".");
-    return sum + BigInt(whole || "0") * 10000n + BigInt(fraction.padEnd(4, "0").slice(0, 4));
+const invoicePaymentMoney = (payments: any[], values: (payment: any) => unknown[]) => {
+  const total = payments.reduce((sum: bigint, payment: any) => {
+    const minor = values(payment).reduce((subtotal: bigint, value: unknown) => {
+      const [whole, fraction = ""] = String(value ?? "0").split(".");
+      return subtotal + BigInt(whole || "0") * 10000n + BigInt(fraction.padEnd(4, "0").slice(0, 4));
+    }, 0n);
+    return sum + (payment.kind === "REFUND" ? -minor : minor);
   }, 0n);
-  const text = total.toString().padStart(5, "0");
-  return `${text.slice(0, -4)}.${text.slice(-4)}`;
+  const negative = total < 0n, absolute = negative ? -total : total;
+  const text = absolute.toString().padStart(5, "0");
+  return `${negative ? "-" : ""}${text.slice(0, -4)}.${text.slice(-4)}`;
 };
 
 export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor }: any) {
@@ -62,10 +67,17 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
       orderBy: [{ issuedAt: "desc" }, { id: "desc" }], skip: page * 30, take: 31,
       include: { buyer: { select: { name: true } }, orders: { select: { id: true, sourceOrderId: true, sourceOrderNumber: true, installmentNumber: true,
         workOrder: { select: { totalQuantity: true, invoiceFinalLockedAt: true, invoiceFinalLockInvoiceId: true, invoiceFinalRecognizedQuantity: true } } } },
-        payments: { where: { voidedAt: null }, select: { amount: true, allocations: { where: { voidedAt: null }, select: { amount: true } } } } },
+        payments: { where: { voidedAt: null }, select: { amount: true, kind: true,
+          allocations: { where: { voidedAt: null }, select: { amount: true } } } } },
     });
+    const visible = rows.slice(0, 30);
+    const familyIds = [...new Set(visible.map((row: any) => invoiceFamily(row)))];
+    const familyInvoices = familyIds.length ? await db.invoice.findMany({ where: { sellerOrgId: access.organization.id,
+      OR: [{ id: { in: familyIds } }, { rootInvoiceId: { in: familyIds } }] },
+      select: { id: true, rootInvoiceId: true, status: true, receivableAdded: true,
+        payments: { select: { amount: true, kind: true, voidedAt: true } } } }) : [];
     res.setHeader("Cache-Control", "no-store");
-    return res.json({ rows: rows.slice(0, 30).map((row: any) => ({ id: row.id, invoiceNumber: row.invoiceNumber,
+    return res.json({ rows: visible.map((row: any) => { const familyBalance = invoiceFamilyBalance(familyInvoices, invoiceFamily(row)); return ({ id: row.id, invoiceNumber: row.invoiceNumber,
       status: row.status, buyerName: (row.snapshot as any)?.fields?.buyer?.name ?? row.buyer.name, currencyCode: row.currencyCode, total: String(row.total),
       receivableAdded: String(row.receivableAdded),
       issuedAt: row.issuedAt, issuedBy: row.issuedBy, orders: row.orders,
@@ -74,8 +86,11 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
       // locks. Locks belonging to a later invoice are not this document's locks.
       isFinalLocked: row.orders.some((order: any) => Boolean(order.workOrder?.invoiceFinalLockedAt)
         && order.workOrder.invoiceFinalLockInvoiceId === row.id),
-      receivedAmount: invoiceMoney(row.payments.map((payment: any) => payment.amount)),
-      allocatedAmount: invoiceMoney(row.payments.flatMap((payment: any) => payment.allocations.map((allocation: any) => allocation.amount))) })), hasMore: rows.length > 30 });
+      receivedAmount: familyBalance.receivedAmount, familyDebtAmount: familyBalance.debtAmount,
+      familyBalanceAmount: familyBalance.balanceAmount, familyBalanceKind: familyBalance.balanceKind,
+      isCurrentRevision: familyBalance.currentInvoiceId === row.id,
+      directReceivedAmount: invoicePaymentMoney(row.payments, payment => [payment.amount]),
+      allocatedAmount: invoicePaymentMoney(row.payments, payment => payment.allocations.map((allocation: any) => allocation.amount)) }); }), hasMore: rows.length > 30 });
   });
   app.get("/invoices/issued/:id", async (req: any, res: any) => {
     const access = await requireAccess(req, res); if (!access) return;

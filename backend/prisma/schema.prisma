@@ -1840,6 +1840,11 @@ enum InvoiceFinalLockAction {
   REBASE
 }
 
+enum InvoicePaymentKind {
+  RECEIPT
+  REFUND
+}
+
 // Immutable issuance snapshot. Corrections and settlements are appended in later phases.
 model Invoice {
   id String @id @default(cuid())
@@ -1918,6 +1923,7 @@ model InvoicePayment {
   invoiceId String
   clientKey String
   amount Decimal @db.Decimal(24, 4)
+  kind InvoicePaymentKind @default(RECEIPT)
   currencyCode String
   receivedAt DateTime
   reference String
@@ -1962,7 +1968,7 @@ model InvoiceFinalLockEvent {
   action InvoiceFinalLockAction
   recognizedQuantity Int?
   reason String
-  lineReview Json?
+  itemReview Json?
   actor String
   createdAt DateTime @default(now())
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Restrict)

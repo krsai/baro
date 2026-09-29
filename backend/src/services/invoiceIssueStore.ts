@@ -1,5 +1,5 @@
 import { createHttpError } from "../utils/http";
-import { editTransaction, STALE_EDIT } from "../utils/editRevision";
+import { editTransaction, retryEditTransaction, STALE_EDIT } from "../utils/editRevision";
 import { buildInvoiceSource } from "./invoiceSource";
 import { rebaseInvoiceFinalLocks } from "./invoiceFinalLock";
 import { invoiceFamily, invoiceSettlement } from "./invoiceSettlement";
@@ -131,7 +131,7 @@ export const calculateInvoiceIssueSnapshot = (content: any, sources: any[], sett
 
 export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: string, draftId: string, revision: unknown) {
   if (!Number.isSafeInteger(revision) || Number(revision) < 1) fail("INVOICE_ISSUE_INVALID_REVISION");
-  return editTransaction(db, async (tx: any) => {
+  return retryEditTransaction(db, async (tx: any) => {
     const draft = await tx.invoiceDraft.findFirst({ where: { id: draftId, sellerOrgId }, include: { orders: true, lines: true } });
     if (!draft) throw createHttpError(404, "INVOICE_DRAFT_NOT_FOUND");
     const issueKey = `${draft.id}:${revision}`;
@@ -242,15 +242,31 @@ export async function recordInvoicePayment(db: any, sellerOrgId: number, actor: 
     fail("INVOICE_PAYMENT_INVALID");
   }
   const reference = String(body?.reference || "").trim(), note = String(body?.note || "").trim();
+  const kind = body?.kind === "REFUND" ? "REFUND"
+    : body?.kind == null || body?.kind === "RECEIPT" ? "RECEIPT" : fail("INVOICE_PAYMENT_INVALID");
   if (reference.length > 500 || note.length > 2000) fail("INVOICE_PAYMENT_INVALID");
   return editTransaction(db, async (tx: any) => {
     const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId } });
     if (!invoice) throw createHttpError(404, "INVOICE_NOT_FOUND");
     const existing = await tx.invoicePayment.findFirst({ where: { invoiceId, clientKey } });
-    if (existing) return existing;
-    if (invoice.status !== "ISSUED") fail("INVOICE_PAYMENT_CANCELLED_INVOICE");
+    if (existing) {
+      if ((parseMoneyScale4(existing.amount) ?? -1n) !== (parseMoneyScale4(rawAmount) ?? -2n)
+        || new Date(existing.receivedAt).getTime() !== receivedAt.getTime()
+        || existing.kind !== kind || existing.reference !== reference || existing.note !== note) fail("INVOICE_PAYMENT_RETRY_MISMATCH");
+      return existing;
+    }
+    if (kind === "RECEIPT" && invoice.status !== "ISSUED") fail("INVOICE_PAYMENT_CANCELLED_INVOICE");
+    if (kind === "REFUND") {
+      const familyId = invoiceFamily(invoice);
+      const family = await tx.invoice.findMany({ where: { sellerOrgId,
+        OR: [{ id: familyId }, { rootInvoiceId: familyId }] }, include: { payments: true } });
+      const available = family.reduce((sum: bigint, row: any) => sum + row.payments.filter((payment: any) => !payment.voidedAt)
+        .reduce((paymentSum: bigint, payment: any) => paymentSum
+          + (payment.kind === "REFUND" ? -1n : 1n) * (parseMoneyScale4(payment.amount) ?? 0n), 0n), 0n);
+      if ((parseMoneyScale4(rawAmount) ?? 0n) > available) fail("INVOICE_REFUND_EXCEEDS_RECEIPTS");
+    }
     return tx.invoicePayment.create({ data: { invoiceId, clientKey, amount: rawAmount,
-      currencyCode: invoice.currencyCode, receivedAt, reference, note, createdBy: actor } });
+      kind, currencyCode: invoice.currencyCode, receivedAt, reference, note, createdBy: actor } });
   });
 }
 
@@ -260,7 +276,10 @@ export async function voidInvoicePayment(db: any, sellerOrgId: number, actor: st
   return editTransaction(db, async (tx: any) => {
     const payment = await tx.invoicePayment.findFirst({ where: { id: paymentId, invoice: { sellerOrgId } } });
     if (!payment) throw createHttpError(404, "INVOICE_PAYMENT_NOT_FOUND");
-    if (payment.voidedAt) return payment;
+    if (payment.voidedAt) {
+      if (payment.voidReason !== voidReason) fail("INVOICE_PAYMENT_VOID_RETRY_MISMATCH");
+      return payment;
+    }
     const updated = await tx.invoicePayment.updateMany({ where: { id: paymentId, voidedAt: null },
       data: { voidedAt: new Date(), voidedBy: actor, voidReason } });
     if (updated.count !== 1) throw createHttpError(409, STALE_EDIT);
@@ -286,7 +305,9 @@ export async function replaceInvoicePaymentAllocations(db: any, sellerOrgId: num
     const payment = await tx.invoicePayment.findFirst({ where: { id: paymentId, invoice: { sellerOrgId } },
       include: { invoice: { include: { orders: { select: { id: true } } } } } });
     if (!payment) throw createHttpError(404, "INVOICE_PAYMENT_NOT_FOUND");
-    if (payment.voidedAt || payment.invoice.status === "CANCELLED") fail("INVOICE_PAYMENT_ALLOCATION_CLOSED");
+    if (payment.voidedAt || (payment.invoice.status === "CANCELLED" && payment.kind !== "REFUND")) {
+      fail("INVOICE_PAYMENT_ALLOCATION_CLOSED");
+    }
     const allowed = new Set(payment.invoice.orders.map((row: any) => row.id));
     if (parsed.some((row: any) => !allowed.has(row.invoiceOrderId))) fail("INVOICE_PAYMENT_ALLOCATION_ORDER_SCOPE");
     const total = parsed.reduce((sum: bigint, row: any) => sum + (parseMoneyScale4(row.amount) ?? 0n), 0n);
@@ -325,6 +346,10 @@ export async function createInvoiceRevisionDraft(db: any, sellerOrgId: number, a
     const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId }, include: { orders: true, lines: true } });
     if (!invoice) throw createHttpError(404, "INVOICE_NOT_FOUND");
     if (invoice.status !== "ISSUED") fail("INVOICE_REVISION_SOURCE_INVALID");
+    if (invoice.orders.some((row: any) => row.workOrderId == null)
+      || invoice.lines.some((row: any) => row.workOrderItemId == null)) {
+      fail("INVOICE_REVISION_SOURCE_REMOVED");
+    }
     const existingRevision = await tx.invoice.findFirst({ where: { revisionOfInvoiceId: invoiceId } });
     if (existingRevision) fail("INVOICE_REVISION_ALREADY_ISSUED");
     const existingDraft = await tx.invoiceDraft.findFirst({ where: { revisionOfInvoiceId: invoiceId } });

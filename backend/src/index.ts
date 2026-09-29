@@ -173,9 +173,9 @@ function assertGeneratedPrismaClientShape() {
     Invoice: ["id", "sellerOrgId", "buyerOrgId", "invoiceNumber", "clientKey", "sequenceNumber", "status", "pricingBasis", "currencyCode", "subtotal", "total", "receivableAdded", "snapshot", "issuedBy", "issuedAt", "cancelledBy", "cancelledAt", "cancellationReason", "revisionOfInvoiceId", "rootInvoiceId", "revisionNumber", "revisionReason"],
     InvoiceOrder: ["id", "invoiceId", "workOrderId", "sourceOrderId", "sourceOrderNumber", "sourceUpdatedAt", "billingPercentage", "basisAmount", "billedAmount", "installmentNumber", "priorBilledAmount", "priorReceivedAmount", "defaultDeductionAmount", "appliedDeductionAmount", "deductionReason", "netAmount", "priorOutstandingAmount", "receivableAdded"],
     InvoiceLine: ["id", "invoiceId", "invoiceOrderId", "workOrderItemId", "sourceItemId", "lineKey", "styleId", "styleCode", "styleName", "description", "color", "gender", "size", "quantity", "bucketQuantity", "unitPrice", "amount", "priceId", "bucketVersionId", "remark", "adjustmentReason", "hsCode", "origin"],
-    InvoicePayment: ["id", "invoiceId", "clientKey", "amount", "currencyCode", "receivedAt", "reference", "note", "createdBy", "createdAt", "voidedBy", "voidedAt", "voidReason"],
+    InvoicePayment: ["id", "invoiceId", "clientKey", "amount", "kind", "currencyCode", "receivedAt", "reference", "note", "createdBy", "createdAt", "voidedBy", "voidedAt", "voidReason"],
     InvoicePaymentAllocation: ["id", "paymentId", "invoiceOrderId", "invoiceId", "batchKey", "amount", "createdBy", "createdAt", "voidedBy", "voidedAt", "voidReason"],
-    InvoiceFinalLockEvent: ["id", "sellerOrgId", "workOrderId", "invoiceId", "clientKey", "action", "recognizedQuantity", "reason", "lineReview", "actor", "createdAt"],
+    InvoiceFinalLockEvent: ["id", "sellerOrgId", "workOrderId", "invoiceId", "clientKey", "action", "recognizedQuantity", "reason", "itemReview", "actor", "createdAt"],
   })) {
     for (const field of fields) {
       if (!hasField(model, field)) staleSignals.push(model + "." + field + " is missing");

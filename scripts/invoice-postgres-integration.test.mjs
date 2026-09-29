@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import { PrismaClient } from '../backend/node_modules/@prisma/client/default.js';
 const require = createRequire(import.meta.url);
 const { saveInvoiceDraft } = require('../backend/dist/services/invoiceDraftStore.js');
-const { issueInvoiceDraft, recordInvoicePayment, createInvoiceRevisionDraft, cancelIssuedInvoice, replaceInvoicePaymentAllocations } = require('../backend/dist/services/invoiceIssueStore.js');
+const { issueInvoiceDraft, recordInvoicePayment, createInvoiceRevisionDraft, cancelIssuedInvoice, replaceInvoicePaymentAllocations, voidInvoicePayment } = require('../backend/dist/services/invoiceIssueStore.js');
 const { approveInvoiceFinalLock, unlockInvoiceFinalLocksForInvoice } = require('../backend/dist/services/invoiceFinalLock.js');
 const { invoiceFinalReview } = require('../backend/dist/services/invoiceFinalReview.js');
 const { invoiceSettlement } = require('../backend/dist/services/invoiceSettlement.js');
@@ -64,6 +64,8 @@ try {
   const issue = draft => issueInvoiceDraft(db, seller.id, 'test', draft.id, draft.revision);
   const pay = (invoice, amount, clientKey = key()) => recordInvoicePayment(db, seller.id, 'test', invoice.id,
     { clientKey, amount, receivedAt: '2026-09-28T00:00:00Z', reference: '', note: '' });
+  const refund = (invoice, amount, clientKey = key()) => recordInvoicePayment(db, seller.id, 'test', invoice.id,
+    { clientKey, amount, kind: 'REFUND', receivedAt: '2026-09-29T00:00:00Z', reference: 'refund', note: '' });
   const context = async sourceOrderId => invoiceSettlement(await db.invoiceOrder.findMany({ where: { sourceOrderId },
     include: { invoice: { include: { orders: true, payments: { include: { allocations: true } } } } } }));
   const approval = async invoice => {
@@ -124,6 +126,23 @@ try {
     assert.equal((await context(a.orderId)).priorReceivedAmount, '2000.0000');
     assert.equal((await context(b.orderId)).priorReceivedAmount, '0.0000');
     assert.equal((await context(a.orderId)).hasUnallocatedPayments, true);
+    await replaceInvoicePaymentAllocations(db, seller.id, 'test', p.id, { clientKey: key(), reason: 'correct allocation', allocations: [
+      { invoiceOrderId: (await db.invoiceOrder.findFirst({ where: { invoiceId: i.id, sourceOrderId: b.orderId } })).id, amount: '3000' },
+    ] });
+    assert.equal((await context(a.orderId)).priorReceivedAmount, '0.0000');
+    assert.equal((await context(b.orderId)).priorReceivedAmount, '3000.0000');
+    await voidInvoicePayment(db, seller.id, 'test', p.id, 'returned transfer');
+    assert.equal((await context(b.orderId)).priorReceivedAmount, '0.0000');
+  });
+  await check('refund ledger reduces receipts, rejects over-refunds and void restores the balance', async () => {
+    const source = await order(), invoice = await issue(await draft([source]));
+    await pay(invoice, '3000');
+    const returned = await refund(invoice, '1000');
+    assert.equal(returned.kind, 'REFUND');
+    assert.equal((await context(source.orderId)).priorReceivedAmount, '2000.0000');
+    await assert.rejects(refund(invoice, '2001'), /INVOICE_REFUND_EXCEEDS_RECEIPTS/);
+    await voidInvoicePayment(db, seller.id, 'test', returned.id, 'refund cancelled');
+    assert.equal((await context(source.orderId)).priorReceivedAmount, '3000.0000');
   });
   await check('same-order -2/+2 item differences never cancel each other and missing reasons fail', async () => {
     const p = await order(), d = await draft([p]);
@@ -160,6 +179,41 @@ try {
     assert.equal(await db.invoice.count(), before);
     assert.equal(await db.invoiceOrder.count({ where: { sourceOrderId: d.content.orders[0].orderId } }), 0);
     await issue(d);
+  });
+  await check('different-order sequence races retry and commit both invoices with distinct sequence numbers', async () => {
+    const left = await draft([await order()]), right = await draft([await order()]);
+    const results = await Promise.all([issue(left), issue(right)]);
+    assert.equal(new Set(results.map(row => row.sequenceNumber)).size, 2);
+    assert.equal(await db.invoice.count({ where: { id: { in: results.map(row => row.id) } } }), 2);
+  });
+  await check('revision issuance racing source cancellation leaves one coherent terminal state', async () => {
+    const source = await issue(await draft([await order()]));
+    const revisionDraft = await createInvoiceRevisionDraft(db, seller.id, 'test', source.id, { clientKey: key(), reason: 'race correction' });
+    await Promise.allSettled([issue(revisionDraft), cancelIssuedInvoice(db, seller.id, 'test', source.id, 'race cancellation')]);
+    const original = await db.invoice.findUnique({ where: { id: source.id }, include: { revision: true } });
+    assert.ok(original.status === 'CANCELLED' || (original.status === 'SUPERSEDED' && original.revision?.status === 'ISSUED'));
+    assert.ok(!(original.status === 'CANCELLED' && original.revision));
+  });
+  await check('order update racing issuance is serializable and snapshot source revision stays truthful', async () => {
+    const source = await order(), d = await draft([source]);
+    await Promise.allSettled([issue(d), db.workOrder.update({ where: { id: source.id }, data: { dueDate: '2026-12-31' } })]);
+    const invoice = await db.invoice.findFirst({ where: { clientKey: `${d.id}:${d.revision}` }, include: { orders: true } });
+    const current = await db.workOrder.findUnique({ where: { id: source.id } });
+    if (invoice) assert.ok(invoice.orders[0].sourceUpdatedAt.getTime() <= current.updatedAt.getTime());
+    else assert.equal(current.dueDate, '2026-12-31');
+  });
+  await check('final lock racing assignment mutation leaves the plan protected after lock commit', async () => {
+    const source = await order(), invoice = await issue(await draft([source]));
+    const factory = await db.factory.create({ data: { orgId: seller.id, name: `Factory ${key()}` } });
+    const plan = await db.assignmentPlan.create({ data: { orgId: seller.id, factoryId: factory.id, externalId: key(),
+      workOrderId: source.id, styleId: style.id, assignmentQuantity: 100, startIndex: 0, endIndex: 1 } });
+    const body = await approval(invoice);
+    await Promise.allSettled([
+      approveInvoiceFinalLock(db, seller.id, 'test', invoice.id, body),
+      db.assignmentPlan.update({ where: { id: plan.id }, data: { assignmentQuantity: 99 } }),
+    ]);
+    await approveInvoiceFinalLock(db, seller.id, 'test', invoice.id, body);
+    await assert.rejects(db.assignmentPlan.update({ where: { id: plan.id }, data: { assignmentQuantity: 98 } }), /INVOICE_FINAL_LOCKED/);
   });
   console.log(`PostgreSQL integration: ${count} scenarios passed (real Prisma transactions, isolated database).`);
 } finally {

@@ -5221,6 +5221,8 @@ CREATE TABLE IF NOT EXISTS "InvoicePaymentAllocation" (
   CONSTRAINT "InvoicePaymentAllocation_order_invoice_fkey" FOREIGN KEY ("invoiceOrderId","invoiceId")
     REFERENCES "InvoiceOrder"(id,"invoiceId") ON DELETE RESTRICT ON UPDATE CASCADE
 );
+DO $$ BEGIN CREATE TYPE "InvoicePaymentKind" AS ENUM ('RECEIPT','REFUND'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ALTER TABLE "InvoicePayment" ADD COLUMN IF NOT EXISTS kind "InvoicePaymentKind" NOT NULL DEFAULT 'RECEIPT';
 ALTER TABLE "InvoicePaymentAllocation" ADD COLUMN IF NOT EXISTS "invoiceId" TEXT;
 UPDATE "InvoicePaymentAllocation" allocation SET "invoiceId"=payment."invoiceId"
 FROM "InvoicePayment" payment WHERE allocation."paymentId"=payment.id AND allocation."invoiceId" IS NULL;
@@ -5270,7 +5272,19 @@ CREATE TABLE IF NOT EXISTS "InvoiceFinalLockEvent" (
 );
 CREATE INDEX IF NOT EXISTS "InvoiceFinalLockEvent_sellerOrgId_createdAt_id_idx" ON "InvoiceFinalLockEvent"("sellerOrgId","createdAt",id);
 CREATE INDEX IF NOT EXISTS "InvoiceFinalLockEvent_invoiceId_idx" ON "InvoiceFinalLockEvent"("invoiceId");
-ALTER TABLE "InvoiceFinalLockEvent" ADD COLUMN IF NOT EXISTS "lineReview" JSONB;
+ALTER TABLE "InvoiceFinalLockEvent" ADD COLUMN IF NOT EXISTS "itemReview" JSONB;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'InvoiceFinalLockEvent' AND column_name = 'lineReview') THEN
+    UPDATE "InvoiceFinalLockEvent"
+    SET "itemReview" = jsonb_build_object(
+      'revision', "lineReview"->'revision',
+      'items', "lineReview"->'lines'
+    )
+    WHERE "itemReview" IS NULL AND "lineReview" IS NOT NULL;
+    ALTER TABLE "InvoiceFinalLockEvent" DROP COLUMN "lineReview";
+  END IF;
+END $$;
 
 CREATE OR REPLACE FUNCTION baro_assert_invoice_final_unlocked(target_order_id INTEGER)
 RETURNS VOID AS $$

@@ -39,8 +39,8 @@ export async function approveInvoiceFinalLock(db: any, sellerOrgId: number, acto
         const approval = approvals.find((row: any) => row.sourceOrderId === source?.sourceOrderId);
         return event.action !== "LOCK" || event.invoiceId !== invoice.id || !approval
           || event.recognizedQuantity !== approval.recognizedQuantity || event.reason !== approval.reason
-          || event.lineReview?.revision !== body.reviewRevision
-          || JSON.stringify(event.lineReview?.lines) !== JSON.stringify(validateFinalLines({ lines: event.lineReview?.lines || [] }, approval));
+          || event.itemReview?.revision !== body.reviewRevision
+          || JSON.stringify(event.itemReview?.items) !== JSON.stringify(validateFinalLines({ lines: event.itemReview?.items || [] }, approval));
       })) {
         fail("INVOICE_FINAL_LOCK_RETRY_MISMATCH");
       }
@@ -67,7 +67,7 @@ export async function approveInvoiceFinalLock(db: any, sellerOrgId: number, acto
       if (updated.count !== 1) throw createHttpError(409, STALE_EDIT);
       await tx.invoiceFinalLockEvent.create({ data: { sellerOrgId, workOrderId: order.id, invoiceId: invoice.id,
         clientKey: key, action: "LOCK", recognizedQuantity: approval.recognizedQuantity, reason: approval.reason, actor,
-        lineReview: { revision: review.revision, lines: reviewed.get(order.orderId) } } });
+        itemReview: { revision: review.revision, items: reviewed.get(order.orderId) } } });
     }
     return tx.invoiceFinalLockEvent.findMany({ where: { workOrder: { sellerOrgId }, clientKey: key }, orderBy: { workOrderId: "asc" } });
   });
