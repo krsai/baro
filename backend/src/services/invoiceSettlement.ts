@@ -5,8 +5,9 @@ export const money4 = (value: unknown): bigint => {
   return BigInt(whole!) * 10000n + BigInt(fraction.padEnd(4, '0'));
 };
 export const decimal4 = (value: bigint) => {
-  const text = value.toString().padStart(5, '0');
-  return `${text.slice(0, -4)}.${text.slice(-4)}`;
+  const negative = value < 0n;
+  const text = (negative ? -value : value).toString().padStart(5, '0');
+  return `${negative ? '-' : ''}${text.slice(0, -4)}.${text.slice(-4)}`;
 };
 export const invoiceFamily = (invoice: any) => invoice.rootInvoiceId || invoice.id;
 

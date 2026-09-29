@@ -5,6 +5,18 @@ import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 
 const require = createRequire(import.meta.url);
+const { decimal4, invoiceSettlement } = require('../backend/dist/services/invoiceSettlement.js');
+
+test('refunds allocated to an order retain signed sub-unit amounts without corrupting decimal text', () => {
+  assert.equal(decimal4(-1n), '-0.0001');
+  assert.equal(decimal4(-1234n), '-0.1234');
+  assert.equal(decimal4(-12345n), '-1.2345');
+  const result = invoiceSettlement([{ id: 1, receivableAdded: '0', invoice: {
+    id: 'invoice', status: 'CANCELLED', orders: [{ id: 1 }, { id: 2 }],
+    payments: [{ kind: 'REFUND', amount: '0.1234', allocations: [{ invoiceOrderId: 1, amount: '0.1234' }] }],
+  } }]);
+  assert.equal(result.priorReceivedAmount, '-0.1234');
+});
 const { calculateInvoiceIssueSnapshot, createInvoiceRevisionDraft, recordInvoicePayment, replaceInvoicePaymentAllocations, voidInvoicePayment } = require('../backend/dist/services/invoiceIssueStore.js');
 const [schema, migration, routes] = await Promise.all([
   readFile(new URL('../backend/prisma/schema.prisma', import.meta.url), 'utf8'),
