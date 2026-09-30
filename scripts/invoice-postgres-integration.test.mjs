@@ -136,9 +136,11 @@ try {
   });
   await check('refund ledger reduces receipts, rejects over-refunds and void restores the balance', async () => {
     const source = await order(), invoice = await issue(await draft([source]));
-    await pay(invoice, '3000');
+    const receipt = await pay(invoice, '3000');
     const returned = await refund(invoice, '1000');
     assert.equal(returned.kind, 'REFUND');
+    await assert.rejects(voidInvoicePayment(db, seller.id, 'test', receipt.id, 'invalid correction'), /BALANCE_CONFLICT/);
+    assert.equal((await db.invoicePayment.findUnique({where:{id:receipt.id}})).voidedAt, null);
     assert.equal((await context(source.orderId)).priorReceivedAmount, '2000.0000');
     await assert.rejects(refund(invoice, '2001'), /INVOICE_REFUND_EXCEEDS_RECEIPTS/);
     await voidInvoicePayment(db, seller.id, 'test', returned.id, 'refund cancelled');

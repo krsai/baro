@@ -234,6 +234,8 @@ export async function cancelIssuedInvoice(db: any, sellerOrgId: number, actor: s
   });
 }
 
+import { guardInvoiceCashCorrection } from './invoiceCashGuard';
+
 export async function recordInvoicePayment(db: any, sellerOrgId: number, actor: string, invoiceId: string, body: any) {
   const rawAmount = String(body?.amount || "").trim();
   const clientKey = String(body?.clientKey || "").trim();
@@ -283,6 +285,7 @@ export async function voidInvoicePayment(db: any, sellerOrgId: number, actor: st
     const updated = await tx.invoicePayment.updateMany({ where: { id: paymentId, voidedAt: null },
       data: { voidedAt: new Date(), voidedBy: actor, voidReason } });
     if (updated.count !== 1) throw createHttpError(409, STALE_EDIT);
+    await guardInvoiceCashCorrection(tx, sellerOrgId, payment.invoiceId);
     return tx.invoicePayment.findFirst({ where: { id: paymentId } });
   });
 }
@@ -305,7 +308,7 @@ export async function replaceInvoicePaymentAllocations(db: any, sellerOrgId: num
     const payment = await tx.invoicePayment.findFirst({ where: { id: paymentId, invoice: { sellerOrgId } },
       include: { invoice: { include: { orders: { select: { id: true } } } } } });
     if (!payment) throw createHttpError(404, "INVOICE_PAYMENT_NOT_FOUND");
-    if (payment.voidedAt || (payment.invoice.status === "CANCELLED" && payment.kind !== "REFUND")) {
+    if (payment.voidedAt) {
       fail("INVOICE_PAYMENT_ALLOCATION_CLOSED");
     }
     const allowed = new Set(payment.invoice.orders.map((row: any) => row.id));
@@ -327,6 +330,7 @@ export async function replaceInvoicePaymentAllocations(db: any, sellerOrgId: num
       data: { voidedAt: new Date(), voidedBy: actor, voidReason: changeReason } });
     await tx.invoicePaymentAllocation.createMany({ data: parsed.map((row: any) => ({ ...row, paymentId,
       invoiceId: payment.invoice.id, batchKey, createdBy: actor })) });
+    await guardInvoiceCashCorrection(tx, sellerOrgId, payment.invoice.id);
     return tx.invoicePaymentAllocation.findMany({ where: { paymentId, batchKey }, orderBy: { invoiceOrderId: "asc" } });
   });
 }

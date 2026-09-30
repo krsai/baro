@@ -69,6 +69,7 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
     } catch (e) { setError(String(e.message).includes('REVERSE_ORDER') ? (languageCode === 'ko' ? '후속 회차를 먼저 취소해야 합니다.' : 'Cancel later installments first.') : t.failed); }
   };
   const addPayment = async row => {
+    let recorded = false;
     const amount = window.prompt(languageCode === 'ko' ? `실입금액을 입력하세요. (${row.currencyCode})` : `Enter received amount (${row.currencyCode}).`);
     if (!amount?.trim()) return;
     const reference = window.prompt(languageCode === 'ko' ? '입금 참고번호를 입력하세요. (선택)' : 'Payment reference (optional).') || '';
@@ -76,6 +77,8 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
       method: 'POST', body: JSON.stringify({ clientKey: globalThis.crypto.randomUUID(), amount: amount.trim(),
         receivedAt: new Date().toISOString(), reference, note: '', kind: 'RECEIPT' }),
     });
+      recorded = true;
+      window.alert(languageCode === 'ko' ? '입금이 저장되었습니다. 다음 배분 입력을 취소해도 입금은 유지됩니다. 배분 버튼에서 이어서 처리할 수 있습니다.' : languageCode === 'vi' ? 'Đã lưu khoản thu. Hủy nhập phân bổ không hủy khoản thu. Có thể tiếp tục bằng nút phân bổ.' : 'Receipt saved. Cancelling allocation will keep this receipt. Use Allocate to resume.');
       if (row.orders.length > 1) {
         const allocations = [];
         for (const order of row.orders) {
@@ -90,9 +93,11 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
         });
       }
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId }); setReload(value => value + 1);
-    } catch { setError(t.failed); }
+    } catch { setError(recorded ? (languageCode === 'ko' ? '입금은 저장되었으나 배분하지 못했습니다. 다시 입금하지 말고 배분 버튼을 사용하세요.' : languageCode === 'vi' ? 'Đã lưu khoản thu nhưng phân bổ thất bại. Hãy phân bổ lại, không nhập khoản thu lần nữa.' : 'Receipt saved, allocation failed. Use Allocate; do not record the receipt again.') : t.failed); }
+    finally { if (recorded) { emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId }); setReload(value => value + 1); } }
   };
   const refundPayment = async row => {
+    let recorded = false;
     const amount = window.prompt(`Refund amount (${row.currencyCode}).`);
     if (!amount?.trim()) return;
     const reference = window.prompt('Refund reference (optional).') || '';
@@ -101,6 +106,8 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
         method: 'POST', body: JSON.stringify({ clientKey: globalThis.crypto.randomUUID(), amount: amount.trim(),
           receivedAt: new Date().toISOString(), reference, note: '', kind: 'REFUND' }),
       });
+      recorded = true;
+      window.alert(languageCode === 'ko' ? '환불이 저장되었습니다. 배분 입력을 취소해도 환불은 유지됩니다. 배분 버튼에서 이어서 처리할 수 있습니다.' : languageCode === 'vi' ? 'Đã lưu hoàn tiền. Hủy phân bổ không hủy hoàn tiền. Có thể tiếp tục bằng nút phân bổ.' : 'Refund saved. Cancelling allocation will keep this refund. Use Allocate to resume.');
       if (row.orders.length > 1) {
         const allocations = [];
         for (const order of row.orders) {
@@ -114,7 +121,8 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
       }
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId });
       setReload(value => value + 1);
-    } catch { setError(t.failed); }
+    } catch { setError(recorded ? (languageCode === 'ko' ? '환불은 저장되었으나 배분하지 못했습니다. 다시 환불하지 말고 배분 버튼을 사용하세요.' : languageCode === 'vi' ? 'Đã lưu hoàn tiền nhưng phân bổ thất bại. Hãy phân bổ lại, không hoàn tiền lần nữa.' : 'Refund saved, allocation failed. Use Allocate; do not record the refund again.') : t.failed); }
+    finally { if (recorded) { emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId }); setReload(value => value + 1); } }
   };
   const reviseIssued = async row => {
     const reason = window.prompt(languageCode === 'ko' ? '개정 사유를 입력하세요.' : languageCode === 'vi' ? 'Nhập lý do sửa đổi.' : 'Enter a revision reason.');
@@ -184,7 +192,7 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
         ? (languageCode === 'ko' ? '예수금/환급 검토' : languageCode === 'vi' ? 'Số dư/hoàn tiền' : 'Credit/refund review')
         : row.familyBalanceKind === 'SETTLED' ? (languageCode === 'ko' ? '정산 완료' : languageCode === 'vi' ? 'Đã quyết toán' : 'Settled')
           : (languageCode === 'ko' ? '미수' : languageCode === 'vi' ? 'Còn phải thu' : 'Due');
-        return <TableRow key={row.id}><TableCell>{row.invoiceNumber}<Typography variant="caption" display="block">{row.status} · r{row.revisionNumber || 1} · {row.orders.map(order => `${order.sourceOrderNumber} ${order.installmentNumber}차`).join(', ')}</Typography>{!row.isCurrentRevision && <Typography variant="caption" color="text.secondary" display="block">{languageCode === 'ko' ? '이력 문서 — 현재 채권 아님' : 'Historical revision — not current debt'}</Typography>}{row.isFinalLocked && <Typography variant="caption" color="success.main" display="block">{languageCode === 'ko' ? '최종 정산 잠금' : 'Final settlement locked'}</Typography>}</TableCell><TableCell>{row.buyerName}</TableCell><TableCell>{row.currencyCode} {row.total} / {row.receivableAdded}</TableCell><TableCell>{row.currencyCode} {row.receivedAmount}<Typography variant="caption" display="block" color={row.familyBalanceKind === 'CREDIT' ? 'warning.main' : undefined}>{balanceLabel}: {row.currencyCode} {row.familyBalanceAmount}</Typography>{row.orders.length > 1 && <Typography variant="caption" display="block">{languageCode === 'ko' ? '이 문서 주문 배분' : 'This document allocated'}: {row.allocatedAmount}</Typography>}</TableCell><TableCell>{new Date(row.issuedAt).toLocaleString()}</TableCell><TableCell><Button onClick={() => printIssued(row)}>PDF</Button><Button onClick={() => showHistory(row)}>{languageCode === 'ko' ? '이력' : 'History'}</Button>{row.status === 'ISSUED' && <><Button onClick={() => addPayment(row)}>{languageCode === 'ko' ? '입금' : 'Payment'}</Button>{row.orders.length > 1 && <Button onClick={() => allocateExistingPayment(row)}>{languageCode === 'ko' ? '배분' : 'Allocate'}</Button>}<Button onClick={() => reviseIssued(row)}>{languageCode === 'ko' ? '개정' : 'Revise'}</Button>{row.isFinalLocked ? <Button color="warning" onClick={() => unlockFinalLock(row)}>{languageCode === 'ko' ? '잠금 해제' : 'Unlock'}</Button> : <Button color="success" onClick={() => approveFinalLock(row)}>{languageCode === 'ko' ? '최종 마감' : 'Final close'}</Button>}<Button color="error" onClick={() => cancelIssued(row)}>{languageCode === 'ko' ? '취소' : 'Cancel'}</Button></>} {Number(row.receivedAmount) > 0 && <Button color="warning" onClick={() => refundPayment(row)}>{languageCode === 'ko' ? '환불' : 'Refund'}</Button>}</TableCell></TableRow>; })}
+        return <TableRow key={row.id}><TableCell>{row.invoiceNumber}<Typography variant="caption" display="block">{row.status} · r{row.revisionNumber || 1} · {row.orders.map(order => `${order.sourceOrderNumber} ${order.installmentNumber}차`).join(', ')}</Typography>{!row.isCurrentRevision && <Typography variant="caption" color="text.secondary" display="block">{languageCode === 'ko' ? '이력 문서 — 현재 채권 아님' : 'Historical revision — not current debt'}</Typography>}{row.isFinalLocked && <Typography variant="caption" color="success.main" display="block">{languageCode === 'ko' ? '최종 정산 잠금' : 'Final settlement locked'}</Typography>}</TableCell><TableCell>{row.buyerName}</TableCell><TableCell>{row.currencyCode} {row.total} / {row.receivableAdded}</TableCell><TableCell>{row.currencyCode} {row.receivedAmount}<Typography variant="caption" display="block" color={row.familyBalanceKind === 'CREDIT' ? 'warning.main' : undefined}>{balanceLabel}: {row.currencyCode} {row.familyBalanceAmount}</Typography>{row.orders.length > 1 && <Typography variant="caption" display="block">{languageCode === 'ko' ? '이 문서 주문 배분' : 'This document allocated'}: {row.allocatedAmount}</Typography>}</TableCell><TableCell>{new Date(row.issuedAt).toLocaleString()}</TableCell><TableCell><Button onClick={() => printIssued(row)}>PDF</Button><Button onClick={() => showHistory(row)}>{languageCode === 'ko' ? '이력' : 'History'}</Button>{row.status !== 'ISSUED' && row.orders.length > 1 && <Button onClick={() => allocateExistingPayment(row)}>{languageCode === 'ko' ? '배분' : languageCode === 'vi' ? 'Phân bổ' : 'Allocate'}</Button>}{row.status === 'ISSUED' && <><Button onClick={() => addPayment(row)}>{languageCode === 'ko' ? '입금' : 'Payment'}</Button>{row.orders.length > 1 && <Button onClick={() => allocateExistingPayment(row)}>{languageCode === 'ko' ? '배분' : 'Allocate'}</Button>}<Button onClick={() => reviseIssued(row)}>{languageCode === 'ko' ? '개정' : 'Revise'}</Button>{row.isFinalLocked ? <Button color="warning" onClick={() => unlockFinalLock(row)}>{languageCode === 'ko' ? '잠금 해제' : 'Unlock'}</Button> : <Button color="success" onClick={() => approveFinalLock(row)}>{languageCode === 'ko' ? '최종 마감' : 'Final close'}</Button>}<Button color="error" onClick={() => cancelIssued(row)}>{languageCode === 'ko' ? '취소' : 'Cancel'}</Button></>} {Number(row.receivedAmount) > 0 && <Button color="warning" onClick={() => refundPayment(row)}>{languageCode === 'ko' ? '환불' : 'Refund'}</Button>}</TableCell></TableRow>; })}
     </TableBody></Table>
     <Typography variant="h6">{t.title}</Typography>
     {error && <Alert severity="error" action={<Button onClick={() => setReload(value => value + 1)}>{common.retry}</Button>}>{error}</Alert>}

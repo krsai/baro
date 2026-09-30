@@ -5,6 +5,20 @@ import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 
 const require = createRequire(import.meta.url);
+const { assertInvoiceCashBalances } = require('../backend/dist/services/invoiceCashGuard.js');
+test('cash corrections cannot invalidate a refund or move its receipt to another order', () => {
+  const receipt = { amount: '100', allocations: [{invoiceOrderId:1,amount:'100'}] };
+  const refund = { kind:'REFUND', amount:'60', allocations:[{invoiceOrderId:1,amount:'60'}] };
+  const invoice = {id:'i', orders:[{id:1,sourceOrderId:'a'},{id:2,sourceOrderId:'b'}],payments:[receipt,refund]};
+  assert.doesNotThrow(()=>assertInvoiceCashBalances([invoice]));
+  assert.throws(()=>assertInvoiceCashBalances([{...invoice,payments:[{...receipt,voidedAt:new Date()},refund]}]),/BALANCE_CONFLICT/);
+  assert.throws(()=>assertInvoiceCashBalances([{...invoice,payments:[{...receipt,allocations:[{invoiceOrderId:2,amount:'100'}]},refund]}]),/BALANCE_CONFLICT/);
+  assert.doesNotThrow(()=>assertInvoiceCashBalances([{...invoice,payments:[{...receipt,voidedAt:new Date()},{...refund,voidedAt:new Date()}]}]));
+  assert.doesNotThrow(()=>assertInvoiceCashBalances([
+    {...invoice,payments:[receipt]},
+    {id:'r',rootInvoiceId:'i',orders:[{id:3,sourceOrderId:'a'}],payments:[{kind:'REFUND',amount:'60',allocations:[]}]},
+  ]));
+});
 const { decimal4, invoiceSettlement } = require('../backend/dist/services/invoiceSettlement.js');
 
 test('refunds allocated to an order retain signed sub-unit amounts without corrupting decimal text', () => {
@@ -110,7 +124,7 @@ test('new debt is independent of receipt-based or manual statement deductions', 
 
 test('actual payments are separate, idempotent records and voiding preserves the original row', async () => {
   let payment = null;
-  const db = { $transaction: async run => run(db), invoice: { findFirst: async () => ({ id: 'i', status: 'ISSUED', currencyCode: 'USD' }) },
+  const db = { $transaction: async run => run(db), invoice: { findMany: async () => [], findFirst: async () => ({ id: 'i', status: 'ISSUED', currencyCode: 'USD' }) },
     invoicePayment: {
       findFirst: async ({ where }) => payment && (where.id === payment.id || where.clientKey === payment.clientKey) ? payment : null,
       create: async ({ data }) => (payment = { id: 'p', ...data, voidedAt: null }),
@@ -128,7 +142,7 @@ test('actual payments are separate, idempotent records and voiding preserves the
 
 test('multi-order payments use explicit replaceable allocations and preserve voided history', async () => {
   let rows = [];
-  const db = { $transaction: async run => run(db), invoicePayment: { findFirst: async () => ({ id: 'p', amount: '100.0000', voidedAt: null,
+  const db = { invoice: { findFirst: async () => ({id:'i'}), findMany: async () => [] }, $transaction: async run => run(db), invoicePayment: { findFirst: async () => ({ id: 'p', amount: '100.0000', voidedAt: null,
     invoice: { id: 'i', status: 'ISSUED', orders: [{ id: 1 }, { id: 2 }] } }) }, invoicePaymentAllocation: {
     findMany: async ({ where }) => rows.filter(row => row.paymentId === where.paymentId
       && (where.batchKey === undefined || row.batchKey === where.batchKey) && (where.voidedAt === undefined || row.voidedAt === where.voidedAt)),
