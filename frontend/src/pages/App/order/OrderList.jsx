@@ -3003,6 +3003,15 @@ const OrderList = () => {
         }
         payload.id = existingOrder.id;
         payload.createdAt = existingOrder.createdAt || payload.updatedAt;
+        const previousItems = buildSanitizedOrderItems(normalizeOrderForm(existingOrder).items);
+        const nextById = new Map(sanitizedItems.map(item => [String(item.id), item]));
+        const hasReduction = previousItems.some(item =>
+          Number(nextById.get(String(item.id))?.totalQuantity || 0) < Number(item.totalQuantity || 0));
+        if (hasReduction && !window.confirm(languageCode === 'ko'
+          ? '주문 수량을 줄입니다. 기존 배정 수량·생산 실적·CT/ST는 그대로 보존됩니다. 이미 생산한 수량보다 줄이면 초과 생산분이 생길 수 있으므로 배정·생산 수량과 차이를 확인해 주세요. 저장하시겠습니까?'
+          : languageCode === 'vi'
+            ? 'Giảm số lượng đơn hàng. Số lượng phân công, sản lượng thực tế và CT/ST được giữ nguyên. Nếu giảm dưới sản lượng đã làm sẽ có hàng dư. Hãy kiểm tra chênh lệch. Lưu thay đổi?'
+            : 'Reduce order quantities? Existing assignments, production records and CT/ST will be preserved. Reducing below actual production can leave excess goods. Review the difference before saving.')) return;
         // Assignment card/plan sync (create/update/removal-with-guard) now
         // happens atomically inside PUT /orders/:orderId on the backend -
         // there is no separate board reconciliation call here anymore. The

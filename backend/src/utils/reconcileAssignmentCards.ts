@@ -63,8 +63,7 @@ export function reconcileAssignmentCards({ baseCards, savedCards, plans, sourceO
     if (!sourceIds.has(base.workOrderId) || baseKeys.has(groupKey)) fail("invalid rebuild source scope");
     baseKeys.add(groupKey);
     const total = count(base.cardQuantity);
-    const remaining = total - (allocated.get(groupKey) ?? 0);
-    if (remaining < 0) fail(`style ${base.styleId} has more assigned quantity than the order`);
+    const remaining = Math.max(0, total - (allocated.get(groupKey) ?? 0));
     if (!remaining) continue;
     const unassigned = unassignedByKey.get(groupKey) ?? [];
     // A deliberate split remains a split on repeated saves or display/style updates.

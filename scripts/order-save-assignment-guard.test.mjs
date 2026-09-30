@@ -20,21 +20,24 @@ function app({ items = [item(100)], plans = [plan(1, 30), plan(2, 40)] } = {}) {
   }), payroll, unchanged: () => assert.equal(JSON.stringify({ items, plans }), before) };
 }
 test('split, worked and payroll-protected plans remain untouched while only unallocated quantity changes', async () => {
-  for (const quantity of [100, 150, 70]) {
+  for (const quantity of [100, 150, 70, 20]) {
     const a = app(); const result = await a.run([item(quantity)]);
-    assert.equal(result[0].impacts[0].remainingQuantity, quantity - 70);
+    assert.equal(result[0].impacts[0].remainingQuantity, Math.max(0, quantity - 70));
+    assert.equal(result[0].impacts[0].overAssignedQuantity, Math.max(0, 70 - quantity));
     assert.deepEqual(result[0].impacts[0].payrollLockedAssignmentIds, [1, 2]); a.unchanged();
   }
 });
-test('allocation reduction and style removal require explicit assignment review', async () => {
-  for (const items of [[item(69)], [], [item(100, 'M', 2)]]) {
+test('removing an assigned style still requires explicit assignment review', async () => {
+  for (const items of [[], [item(100, 'M', 2)]]) {
     const a = app(); await assert.rejects(a.run(items), /ORDER_ASSIGNMENT_REVIEW/); a.unchanged();
   }
 });
-test('same total gender swaps and mixed-gender quantity changes cannot silently change time targets', async () => {
-  await assert.rejects(app().run([item(100, 'W')]), /ORDER_ASSIGNMENT_REVIEW/);
-  await assert.rejects(app().run([item(50), item(50, 'W')]), /ORDER_ASSIGNMENT_REVIEW/);
-  await assert.rejects(app({ items: [item(50), item(50, 'W')] }).run([item(60), item(50, 'W')]), /ORDER_ASSIGNMENT_REVIEW/);
+test('mixed gender reductions on completed production preserve assignment and payroll history', async () => {
+  const a = app({ items: [item(50), item(50, 'W')], plans: [plan(1,100,3,{isCompleted:true})] });
+  const result = await a.run([item(20),item(30,'W')]);
+  assert.equal(result[0].impacts[0].overAssignedQuantity,50);
+  assert.deepEqual(result[0].impacts[0].completedAssignmentIds,[1]);
+  a.unchanged();
 });
 test('each organization has its own quantity floor, never a combined cross-organization sum', async () => {
   const a = app({ plans: [plan(1, 80, 2), plan(2, 80, 3)] });

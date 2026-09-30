@@ -40,13 +40,11 @@ export async function guardOrderSaveAssignments(
         isPayrollLocked: Boolean(plan.isPayrollLocked) })) });
     for (const impact of impacts) {
       if (!impact.requiresAssignmentReview) continue;
-      const genderKeys = ["male", "female", "unspecified"] as const;
-      const previousGenders = genderKeys.filter(key => impact.previous[key] > 0);
-      const nextGenders = genderKeys.filter(key => impact.next[key] > 0);
-      const sameSingleGender = previousGenders.length === 1 && nextGenders.length === 1 && previousGenders[0] === nextGenders[0];
-      if (impact.styleRemoved || impact.overAssignedQuantity > 0 ||
-          (impact.genderQuantitiesChanged && !sameSingleGender)) {
-        throw createHttpError(409, `ORDER_ASSIGNMENT_REVIEW: review assignments before reducing allocated quantity, removing style or changing gender composition (style ${impact.styleId})`);
+      // Order demand can change independently of historical production targets.
+      // Final settlement locking is enforced by the caller and database triggers.
+      // Retain linked styles; quantity/gender totals must not rewrite placed plans.
+      if (impact.styleRemoved) {
+        throw createHttpError(409, `ORDER_ASSIGNMENT_REVIEW: review assignments before removing style (style ${impact.styleId})`);
       }
     }
     results.push({ orgId, impacts });

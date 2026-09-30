@@ -55,8 +55,15 @@ test('removed unassigned style disappears, historical assigned style and exclude
   assert.equal(result[0],history);
   assert.equal(result[1],excluded);
 });
-test('over-allocation refuses regeneration rather than changing a placed plan', () => {
-  assert.throws(()=>run([card('o1',99)],[card('o1',100)],[plan(1,100,'o1')]),/more assigned/);
+test('reduced order removes the free pool and preserves historical assigned quantities and time', () => {
+  const placed = card('o1',100), free = card('free',20);
+  const plans = [plan(1,100,'o1')];
+  for (const total of [99, 1, 0]) {
+    const result = run([card('o1',total)],[placed,free],plans);
+    assert.deepEqual(result,[placed]);
+    assert.equal(result[0],placed);
+    assert.deepEqual(run([card('o1',total)],result,plans),result);
+  }
 });
 test('broken references, duplicate assignment references and quantity drift require review', () => {
   for (const plans of [[plan(1,10,'missing')],[plan(1,10,'o1',{styleId:11})],
