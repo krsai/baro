@@ -55,7 +55,8 @@
     "test:invoice-final-lock": "npm --prefix backend run build && node --test scripts/invoice-final-lock.test.mjs",
     "test:issued-invoice-print": "node --test scripts/issued-invoice-print.test.mjs",
     "test:invoice-postgres": "npm --prefix backend run build && node scripts/invoice-postgres-integration.test.mjs",
-    "test:invoice-browser": "node scripts/invoice-browser-acceptance.test.mjs"
+    "test:invoice-browser": "node scripts/invoice-browser-acceptance.test.mjs",
+    "test:invoice-credit-reduction": "npm --prefix backend run build && node --test scripts/invoice-credit-reduction.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.15",

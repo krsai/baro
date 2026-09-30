@@ -98,6 +98,7 @@ import { invoiceOrderProgress } from "./services/invoiceOrderProgress";
 import { isOrderReadyForAssignment } from "./utils/orderAssignmentReadiness";
 import { calculateOrderSalesValue } from "./utils/orderSalesValue";
 import { guardOrderSaveAssignments } from "./services/orderSaveAssignmentGuard";
+import { recordOrderQuantityReduction } from './services/orderQuantityChange';
 import {
   resolveWorkRecordProcessCode,
   resolveWorkRecordProcessName,
@@ -175,6 +176,8 @@ function assertGeneratedPrismaClientShape() {
     InvoiceLine: ["id", "invoiceId", "invoiceOrderId", "workOrderItemId", "sourceItemId", "lineKey", "styleId", "styleCode", "styleName", "description", "color", "gender", "size", "quantity", "bucketQuantity", "unitPrice", "amount", "priceId", "bucketVersionId", "remark", "adjustmentReason", "hsCode", "origin"],
     InvoicePayment: ["id", "invoiceId", "clientKey", "amount", "kind", "currencyCode", "receivedAt", "reference", "note", "createdBy", "createdAt", "voidedBy", "voidedAt", "voidReason"],
     InvoicePaymentAllocation: ["id", "paymentId", "invoiceOrderId", "invoiceId", "batchKey", "amount", "createdBy", "createdAt", "voidedBy", "voidedAt", "voidReason"],
+    InvoiceCredit: ["id", "invoiceId", "invoiceOrderId", "clientKey", "amount", "reason", "snapshot", "createdBy", "createdAt", "voidedAt", "voidedBy", "voidReason"],
+    OrderQuantityChange: ["id", "workOrderId", "reason", "actor", "createdAt", "snapshot"],
     InvoiceFinalLockEvent: ["id", "sellerOrgId", "workOrderId", "invoiceId", "clientKey", "action", "recognizedQuantity", "reason", "itemReview", "actor", "createdAt"],
   })) {
     for (const field of fields) {
@@ -30547,6 +30550,17 @@ app.post("/orders", async (req, res) => {
   );
 });
 
+app.get('/orders/:orderId/quantity-changes', async (req, res) => {
+  const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!access) return;
+  const order = await prisma.workOrder.findFirst({ where: { orderId: req.params.orderId,
+    OR: getOrderAccessWhere(access.organization.id) } });
+  if (!order) return res.status(404).json({ error: 'order not found' });
+  const rows = await prisma.orderQuantityChange.findMany({ where: { workOrderId: order.id },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
+  res.setHeader('Cache-Control', 'no-store'); return res.json({ rows });
+});
+
 app.put("/orders/:orderId", async (req, res) => {
   const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
   if (!accessContext) return;
@@ -30635,6 +30649,24 @@ app.put("/orders/:orderId", async (req, res) => {
       styleId: toPositiveIntOrNull(item.styleId), totalQuantity: toNonNegativeInt(item.totalQuantity, 0),
       gender: normalizeWorkOrderItemGender(item.gender, "M"),
     })), annotateAssignmentPlanRowsWithPayrollLocks);
+    const quantityReview = await recordOrderQuantityReduction(tx, current, itemsToUpsert, req.body?.reductionReason,
+      getRequesterEmail(req) || 'unknown', plans => plans.map(plan => {
+        const totals = new Map<string, number>();
+        for (const row of [...plan.workRecords, ...plan.outsourcedWorkRecords]) {
+          const key = resolveWorkRecordProcessBucketKeyForAssignmentSchedule(row);
+          if (key) totals.set(key, (totals.get(key) || 0) + row.quantity);
+        }
+        const groups = resolveAssignmentPlanRequiredProcessGroups(plan);
+        const required = new Set(groups.flat());
+        const unknownProcesses = [...totals.keys()].some(key => !required.has(key));
+        const producedQuantity = groups.length && !unknownProcesses ? resolveProducedQtyFromProcessKeyTotals({
+          processTotalsByKey: totals, processKeyGroups: groups,
+          applicableQuantityByKey: resolveAssignmentPlanRequiredProcessApplicableQuantities(plan),
+          plannedQuantity: resolveAssignmentQuantity(plan),
+        }) : null;
+        return { assignmentId: plan.id, orgId: plan.orgId, styleId: plan.styleId,
+          assignedQuantity: plan.assignmentQuantity, producedQuantity };
+      }));
     const updatedOrder = await tx.workOrder.update({
       where: { id: existing.id },
       data: {
@@ -30673,17 +30705,15 @@ app.put("/orders/:orderId", async (req, res) => {
     }
     await rebuildOrderPartyCardsTx(tx, [current.orgId, current.buyerOrgId, current.sellerOrgId,
       buyer.id, seller.id]);
-    return tx.workOrder.findUnique({
-      where: { id: updatedOrder.id },
-      include: WORK_ORDER_RESPONSE_INCLUDE,
-    });
+    const saved = await tx.workOrder.findUnique({ where: { id: updatedOrder.id }, include: WORK_ORDER_RESPONSE_INCLUDE });
+    return { ...saved!, quantityReview };
   });
 
   const updatedLockState = await getOrderModificationLockState(updated);
   res.json(
-    toOrderResponse(updated, {
+    { ...toOrderResponse(updated, {
       isAssignmentModificationLocked: updatedLockState.isAssignmentLocked,
-    })
+    }), quantityReview: updated.quantityReview }
   );
 });
 
@@ -30794,7 +30824,7 @@ app.get(["/invoices/order-source/:orderId", "/orders/:orderId/invoice-source"], 
   const currencies = await prisma.currency.findMany({ select: { code: true }, orderBy: { code: "asc" } });
   const previousInvoiceOrders = await prisma.invoiceOrder.findMany({ where: { sourceOrderId: order.orderId,
     invoice: { sellerOrgId: organization.id } },
-    include: { invoice: { include: { payments: { where: { voidedAt: null }, include: {
+    include: { invoice: { include: { credits: true, payments: { where: { voidedAt: null }, include: {
       allocations: { where: { voidedAt: null }, select: { invoiceOrderId: true, amount: true } },
     } }, orders: { select: { id: true } } } } },
     orderBy: { installmentNumber: "asc" } });

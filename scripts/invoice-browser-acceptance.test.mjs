@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
 import { buildIssuedInvoicePrintHtml } from '../frontend/src/utils/issuedInvoicePrint.mjs';
+import { buildInvoiceCreditPrintHtml } from '../frontend/src/utils/invoiceCreditPrint.mjs';
 
 const executablePath = [
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
@@ -59,7 +60,17 @@ try {
   await printPage.setContent(buildIssuedInvoicePrintHtml(invoice), { waitUntil: 'load' });
   assert.match(await printPage.locator('body').innerText(), /판매자 Công ty/); assert.match(await printPage.locator('body').innerText(), /STYLE-79/);
   const pdfPath = path.join(temp, 'invoice.pdf'); await printPage.pdf({ path: pdfPath, format: 'A4', printBackground: true });
-  const pdf = await readFile(pdfPath); assert.ok(pdf.length > 40_000); assert.ok((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length >= 2);
+  const pdf = await readFile(pdfPath);
+  // Byte length varies with OS fonts/subsetting/compression; it is not a correctness criterion.
+  const pdfText = pdf.toString('latin1');
+  assert.match(pdfText, /^%PDF-/); assert.match(pdfText, /%%EOF\s*$/);
+  assert.ok((pdfText.match(/\/Type\s*\/Page\b/g) || []).length >= 2);
+  await printPage.setContent(buildInvoiceCreditPrintHtml({ id: 'credit-test', createdBy: '검증', createdAt: '2026-09-30',
+    snapshot: { version: 1, invoiceNumber: 'INV', sourceOrderNumber: 'ORDER', amount: '2000', currencyCode: 'USD',
+      reason: '원단 부족 / Thiếu vải', seller: { name: '판매자' }, buyer: { name: 'Khách hàng' } } }));
+  assert.match(await printPage.locator('body').innerText(), /Thiếu vải/);
+  const creditPdf = await printPage.pdf({ format: 'A4' });
+  assert.match(creditPdf.toString('latin1'), /^%PDF-/);
   console.log('Browser acceptance: Korean/Vietnamese 48-row final review and multi-page Chromium PDF passed.');
 } finally {
   await browser?.close(); vite.kill(); await rm(temp, { recursive: true, force: true });

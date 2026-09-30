@@ -151,7 +151,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId });
       setDirty(false); window.alert(storageText.issued); onClose();
     } catch (e) {
-      setError(String(e.message).includes('STALE_EDIT') || String(e.message).includes('SOURCE_CHANGED')
+      setError(String(e.message).includes('INVOICE_CREDIT_') ? storageText.creditReview : String(e.message).includes('STALE_EDIT') || String(e.message).includes('SOURCE_CHANGED')
         ? storageText.conflict : storageText.failed);
     } finally { setSaving(false); }
   };

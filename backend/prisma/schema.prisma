@@ -1198,6 +1198,7 @@ model StyleProcessAtObservation {
 }
 
 model WorkOrder {
+  quantityChanges OrderQuantityChange[]
   invoiceDraftOrders InvoiceDraftOrder[]
   invoiceOrders InvoiceOrder[]
   id                   Int                         @id @default(autoincrement())
@@ -1874,6 +1875,7 @@ model Invoice {
   orders InvoiceOrder[]
   lines InvoiceLine[]
   payments InvoicePayment[]
+  credits InvoiceCredit[]
   revisedFrom Invoice? @relation("InvoiceRevisionChain", fields: [revisionOfInvoiceId], references: [id], onDelete: Restrict)
   revision Invoice? @relation("InvoiceRevisionChain")
   revisionDrafts InvoiceDraft[] @relation("InvoiceRevisionDrafts")
@@ -1911,11 +1913,42 @@ model InvoiceOrder {
   workOrder WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
   lines InvoiceLine[]
   paymentAllocations InvoicePaymentAllocation[]
+  credits InvoiceCredit[]
   @@unique([invoiceId, sourceOrderId])
   @@unique([id, invoiceId])
   @@index([workOrderId])
   @@index([sourceOrderId])
   @@index([sourceOrderId, installmentNumber])
+}
+
+model OrderQuantityChange {
+  id String @id @default(cuid())
+  workOrderId Int?
+  reason String
+  actor String
+  createdAt DateTime @default(now())
+  snapshot Json
+  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  @@index([workOrderId, createdAt])
+}
+
+model InvoiceCredit {
+  id String @id @default(cuid())
+  invoiceId String
+  invoiceOrderId Int
+  clientKey String
+  amount Decimal @db.Decimal(24, 4)
+  reason String
+  snapshot Json
+  createdBy String
+  createdAt DateTime @default(now())
+  voidedBy String?
+  voidedAt DateTime?
+  voidReason String?
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  invoiceOrder InvoiceOrder @relation(fields: [invoiceOrderId, invoiceId], references: [id, invoiceId], onDelete: Restrict)
+  @@unique([invoiceId, clientKey])
+  @@index([invoiceOrderId, voidedAt])
 }
 
 model InvoicePayment {

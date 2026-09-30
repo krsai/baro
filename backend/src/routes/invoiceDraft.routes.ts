@@ -3,6 +3,7 @@ import { cancelIssuedInvoice, createInvoiceRevisionDraft, issueInvoiceDraft, rec
 import { approveInvoiceFinalLock, unlockInvoiceFinalLock, unlockInvoiceFinalLocksForInvoice } from "../services/invoiceFinalLock";
 import { invoiceFinalReview } from '../services/invoiceFinalReview';
 import { invoiceFamily, invoiceFamilyBalance } from '../services/invoiceSettlement';
+import { createInvoiceCredit, voidInvoiceCredit } from '../services/invoiceCredit';
 
 const invoicePaymentMoney = (payments: any[], values: (payment: any) => unknown[]) => {
   const total = payments.reduce((sum: bigint, payment: any) => {
@@ -18,6 +19,16 @@ const invoicePaymentMoney = (payments: any[], values: (payment: any) => unknown[
 };
 
 export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor }: any) {
+  app.post('/invoices/issued/:id/credits', async (req: any, res: any) => {
+    const access = await requireAccess(req, res); if (!access) return;
+    const row = await createInvoiceCredit(db, access.organization.id, actor(req) || 'unknown', req.params.id, req.body);
+    res.setHeader('Cache-Control', 'no-store'); return res.status(201).json(row);
+  });
+  app.post('/invoices/credits/:id/void', async (req: any, res: any) => {
+    const access = await requireAccess(req, res); if (!access) return;
+    const row = await voidInvoiceCredit(db, access.organization.id, actor(req) || 'unknown', req.params.id, req.body?.reason);
+    res.setHeader('Cache-Control', 'no-store'); return res.json(row);
+  });
   app.get('/invoices/issued/:id/final-review', async (req: any, res: any) => {
     const access = await requireAccess(req, res); if (!access) return;
     const review = await invoiceFinalReview(db, access.organization.id, req.params.id);
@@ -74,7 +85,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     const familyIds = [...new Set(visible.map((row: any) => invoiceFamily(row)))];
     const familyInvoices = familyIds.length ? await db.invoice.findMany({ where: { sellerOrgId: access.organization.id,
       OR: [{ id: { in: familyIds } }, { rootInvoiceId: { in: familyIds } }] },
-      select: { id: true, rootInvoiceId: true, status: true, receivableAdded: true,
+      select: { id: true, rootInvoiceId: true, status: true, receivableAdded: true, credits: true,
         payments: { select: { amount: true, kind: true, voidedAt: true } } } }) : [];
     res.setHeader("Cache-Control", "no-store");
     return res.json({ rows: visible.map((row: any) => { const familyBalance = invoiceFamilyBalance(familyInvoices, invoiceFamily(row)); return ({ id: row.id, invoiceNumber: row.invoiceNumber,
@@ -100,6 +111,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
         allocations: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
       } }, revisedFrom: { select: { id: true, invoiceNumber: true, revisionNumber: true } },
       revision: { select: { id: true, invoiceNumber: true, revisionNumber: true, status: true } },
+      credits: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
       finalLockEvents: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] } } });
     if (!row) return res.status(404).json({ error: "INVOICE_NOT_FOUND" });
     res.setHeader("Cache-Control", "no-store"); return res.json({ ...row, subtotal: String(row.subtotal), total: String(row.total) });

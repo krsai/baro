@@ -84,6 +84,7 @@ import {
   ORDER_PARTY_ROLE_KEYS,
 } from '../../../constants/orderPartyRole';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import { formatQuantityReview } from '../../../utils/orderQuantityReview.mjs';
 import {
   fetchOrders as fetchOrdersFromApi,
   createOrder as createOrderToApi,
@@ -3012,6 +3013,13 @@ const OrderList = () => {
           : languageCode === 'vi'
             ? 'Giảm số lượng đơn hàng. Số lượng phân công, sản lượng thực tế và CT/ST được giữ nguyên. Nếu giảm dưới sản lượng đã làm sẽ có hàng dư. Hãy kiểm tra chênh lệch. Lưu thay đổi?'
             : 'Reduce order quantities? Existing assignments, production records and CT/ST will be preserved. Reducing below actual production can leave excess goods. Review the difference before saving.')) return;
+        if (hasReduction) {
+          const reason = window.prompt(languageCode === 'ko' ? '감량 사유와 초과 생산분 처리 계획을 입력하세요. 실적은 보존되며 재고 이동·폐기는 자동 처리하지 않습니다.'
+            : languageCode === 'vi' ? 'Nhập lý do giảm và kế hoạch xử lý hàng dư. Không tự động chuyển kho hoặc hủy hàng.'
+              : 'Enter the reduction reason and excess-goods handling plan. No stock movement or disposal is performed automatically.');
+          if (!reason?.trim()) return;
+          payload.reductionReason = reason.trim();
+        }
         // Assignment card/plan sync (create/update/removal-with-guard) now
         // happens atomically inside PUT /orders/:orderId on the backend -
         // there is no separate board reconciliation call here anymore. The
@@ -3021,6 +3029,7 @@ const OrderList = () => {
         // quietly diverged. See catch block below for how a blocked
         // removal (backend 409 with `issues`) now surfaces instead.
         const updated = await updateOrderToApi(existingOrder.id, payload, { orgId: activeOrgId });
+        if (updated.quantityReview) window.alert(formatQuantityReview(updated.quantityReview, languageCode));
         setOrders((prev) =>
           prev.map((order) => (order.id === existingOrder.id ? updated : order))
         );
@@ -3433,6 +3442,13 @@ const OrderList = () => {
             alignItems="center"
             justifyContent={{ xs: 'flex-end', md: 'flex-end' }}
           >
+            {!isNewOrder && <Button onClick={async () => {
+              try {
+                const result = await requestJSON(`/orders/${encodeURIComponent(orderId)}/quantity-changes${buildQueryString({ orgId: activeOrgId })}`, { skipCache: true });
+                window.alert(result.rows.length ? result.rows.map(row => formatQuantityReview(row, languageCode)).join('\n\n')
+                  : languageCode === 'ko' ? '감량 이력이 없습니다.' : languageCode === 'vi' ? 'Chưa có lịch sử giảm.' : 'No reduction history.');
+              } catch (error) { showNotification(error.message, 'error'); }
+            }}>{languageCode === 'ko' ? '감량 이력' : languageCode === 'vi' ? 'Lịch sử giảm' : 'Reduction history'}</Button>}
             <LastUpdaterLabel />
             <SaveButton
               onClick={handleSave}

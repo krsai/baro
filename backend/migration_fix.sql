@@ -5288,11 +5288,14 @@ END $$;
 
 CREATE OR REPLACE FUNCTION baro_assert_invoice_final_unlocked(target_order_id INTEGER)
 RETURNS VOID AS $$
+DECLARE locked_at TIMESTAMP;
 BEGIN
   IF COALESCE(current_setting('baro.invoice_lock_bypass', true), '') = 'on' THEN RETURN; END IF;
-  IF target_order_id IS NOT NULL AND EXISTS (
-    SELECT 1 FROM "WorkOrder" WHERE id=target_order_id AND "invoiceFinalLockedAt" IS NOT NULL
-  ) THEN
+  -- Serialize child writes with final approval, including READ COMMITTED callers.
+  -- A plain existence check can observe unlocked state while approval commits.
+  SELECT "invoiceFinalLockedAt" INTO locked_at FROM "WorkOrder"
+    WHERE id=target_order_id FOR UPDATE;
+  IF locked_at IS NOT NULL THEN
     RAISE EXCEPTION 'INVOICE_FINAL_LOCKED' USING ERRCODE='P0001';
   END IF;
 END;
@@ -5374,6 +5377,28 @@ BEGIN
     END IF;
   END LOOP;
 END $$;
+
+-- Immutable credit notes reduce receivables separately from cash refunds.
+CREATE TABLE IF NOT EXISTS "OrderQuantityChange" (
+  "id" TEXT PRIMARY KEY, "workOrderId" INTEGER REFERENCES "WorkOrder"("id") ON DELETE SET NULL,
+  "reason" TEXT NOT NULL, "actor" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "snapshot" JSONB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "OrderQuantityChange_workOrderId_createdAt_idx" ON "OrderQuantityChange"("workOrderId", "createdAt");
+CREATE TABLE IF NOT EXISTS "InvoiceCredit" (
+  "id" TEXT PRIMARY KEY,
+  "invoiceId" TEXT NOT NULL REFERENCES "Invoice"("id") ON DELETE RESTRICT,
+  "invoiceOrderId" INTEGER NOT NULL,
+  "clientKey" TEXT NOT NULL,
+  "amount" DECIMAL(24,4) NOT NULL CHECK ("amount" > 0),
+  "reason" TEXT NOT NULL, "snapshot" JSONB NOT NULL,
+  "createdBy" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "voidedBy" TEXT, "voidedAt" TIMESTAMP(3), "voidReason" TEXT,
+  CONSTRAINT "InvoiceCredit_invoiceOrderId_invoiceId_fkey" FOREIGN KEY ("invoiceOrderId", "invoiceId")
+    REFERENCES "InvoiceOrder"("id", "invoiceId") ON DELETE RESTRICT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "InvoiceCredit_invoiceId_clientKey_key" ON "InvoiceCredit"("invoiceId", "clientKey");
+CREATE INDEX IF NOT EXISTS "InvoiceCredit_invoiceOrderId_voidedAt_idx" ON "InvoiceCredit"("invoiceOrderId", "voidedAt");
 
 -- Factory-owned rows must not point across organization boundaries. Refuse to
 -- hide damaged data; the read-only integrity audit identifies rows to repair.

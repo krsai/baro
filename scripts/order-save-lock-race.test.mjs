@@ -6,6 +6,7 @@ const require = createRequire(import.meta.url);
 const ts = require('../backend/node_modules/typescript');
 const { editTransaction, STALE_EDIT } = require('../backend/dist/utils/editRevision.js');
 const { planOrderItemWrites } = require('../backend/dist/utils/orderItemIdentity.js');
+const { recordOrderQuantityReduction } = require('../backend/dist/services/orderQuantityChange.js');
 const source = readFileSync('backend/src/index.ts', 'utf8');
 const start = source.indexOf('app.put("/orders/:orderId"');
 const code = ts.transpileModule(source.slice(start, source.indexOf('const requireInvoiceAccess', start)), {
@@ -40,6 +41,7 @@ function harness({ lock = false, stale = false, conflict = false, failCards = fa
     ORDER_MODIFICATION_LOCK_ERROR: 'locked', Prisma: { JsonNull: null }, planOrderItemWrites,
     guardOrderSaveAssignments: async (db) => { assert.equal(db, tx); if (failImpact) throw Error('assignment review'); },
     annotateAssignmentPlanRowsWithPayrollLocks: () => {},
+    recordOrderQuantityReduction, getRequesterEmail: () => 'test@baro.local',
     rebuildOrderPartyCardsTx: async (db, orgIds) => { assert.equal(db, tx); assert.ok(orgIds.includes(7)); assert.ok(orgIds.includes(8)); if (failCards) throw Error('card failed'); },
     getOrderModificationLockState: async () => ({}), toOrderResponse: value => value,
   };

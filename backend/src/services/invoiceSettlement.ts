@@ -18,7 +18,9 @@ export function invoiceFamilyBalance(invoices: any[], familyId: string) {
     .filter((payment: any) => !payment.voidedAt)
     .reduce((paymentSum: bigint, payment: any) => paymentSum
       + (payment.kind === 'REFUND' ? -1n : 1n) * money4(payment.amount), 0n), 0n);
-  const debt = current ? money4(current.receivableAdded) : 0n;
+  const credit = (current?.credits || []).filter((row: any) => !row.voidedAt)
+    .reduce((sum: bigint, row: any) => sum + money4(row.amount), 0n);
+  const debt = current ? money4(current.receivableAdded) - credit : 0n;
   return { currentInvoiceId: current?.id ?? null, receivedAmount: decimal4(received),
     debtAmount: decimal4(debt), balanceAmount: decimal4(debt >= received ? debt - received : received - debt),
     balanceKind: debt > received ? 'DUE' : debt < received ? 'CREDIT' : 'SETTLED' };
@@ -28,7 +30,9 @@ export function invoiceFamilyBalance(invoices: any[], familyId: string) {
 // Cancelled documents lose their debt, not the money actually received.
 export function invoiceSettlement(rows: any[], excludedFamily?: string) {
   const scoped = rows.filter(row => invoiceFamily(row.invoice) !== excludedFamily);
-  const billed = scoped.reduce((sum, row) => sum + (row.invoice.status === 'ISSUED' ? money4(row.receivableAdded) : 0n), 0n);
+  const billed = scoped.reduce((sum, row) => sum + (row.invoice.status === 'ISSUED'
+    ? money4(row.receivableAdded) - (row.invoice.credits || []).filter((credit: any) => credit.invoiceOrderId === row.id && !credit.voidedAt)
+      .reduce((total: bigint, credit: any) => total + money4(credit.amount), 0n) : 0n), 0n);
   let received = 0n, hasUnallocatedPayments = false;
   for (const row of scoped) for (const payment of row.invoice.payments) {
     if (payment.voidedAt) continue;

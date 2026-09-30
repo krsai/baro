@@ -147,6 +147,7 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
       fail("INVOICE_REVISION_SOURCE_INVALID");
     }
     if (revisedFrom) {
+      if (await tx.invoiceCredit.count({ where: { invoiceId: revisedFrom.id, voidedAt: null } })) fail('INVOICE_CREDIT_VOID_BEFORE_REVISION');
       const originalIds = revisedFrom.orders.map((row: any) => row.sourceOrderId).sort();
       const requestedIds = content.orders.map((row: any) => row.orderId).sort();
       if (revisedFrom.buyerOrgId !== draft.buyerOrgId || revisedFrom.currencyCode !== content.currency
@@ -175,7 +176,7 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
     for (const source of sources) {
       const previous = await tx.invoiceOrder.findMany({ where: { sourceOrderId: source.orderId,
         invoice: { sellerOrgId, currencyCode: content.currency } },
-        include: { invoice: { include: { payments: { where: { voidedAt: null }, include: {
+        include: { invoice: { include: { credits: true, payments: { where: { voidedAt: null }, include: {
           allocations: { where: { voidedAt: null }, select: { invoiceOrderId: true, amount: true } },
         } }, orders: { select: { id: true } } } } } });
       settlementContext[source.orderId] = invoiceSettlement(previous, revisedFrom ? invoiceFamily(revisedFrom) : undefined);

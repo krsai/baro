@@ -11,6 +11,8 @@ const { issueInvoiceDraft, recordInvoicePayment, createInvoiceRevisionDraft, can
 const { approveInvoiceFinalLock, unlockInvoiceFinalLocksForInvoice } = require('../backend/dist/services/invoiceFinalLock.js');
 const { invoiceFinalReview } = require('../backend/dist/services/invoiceFinalReview.js');
 const { invoiceSettlement } = require('../backend/dist/services/invoiceSettlement.js');
+const { createInvoiceCredit, voidInvoiceCredit } = require('../backend/dist/services/invoiceCredit.js');
+const { recordOrderQuantityReduction } = require('../backend/dist/services/orderQuantityChange.js');
 const { buildInvoiceSource } = require('../backend/dist/services/invoiceSource.js');
 
 const base = process.env.INVOICE_TEST_DATABASE_URL;
@@ -67,7 +69,7 @@ try {
   const refund = (invoice, amount, clientKey = key()) => recordInvoicePayment(db, seller.id, 'test', invoice.id,
     { clientKey, amount, kind: 'REFUND', receivedAt: '2026-09-29T00:00:00Z', reference: 'refund', note: '' });
   const context = async sourceOrderId => invoiceSettlement(await db.invoiceOrder.findMany({ where: { sourceOrderId },
-    include: { invoice: { include: { orders: true, payments: { include: { allocations: true } } } } } }));
+    include: { invoice: { include: { credits: true, orders: true, payments: { include: { allocations: true } } } } } }));
   const approval = async invoice => {
     const review = await invoiceFinalReview(db, seller.id, invoice.id);
     return { clientKey: key(), reviewRevision: review.revision, orders: review.orders.map(row => ({ sourceOrderId: row.sourceOrderId,
@@ -217,6 +219,89 @@ try {
     await approveInvoiceFinalLock(db, seller.id, 'test', invoice.id, body);
     await assert.rejects(db.assignmentPlan.update({ where: { id: plan.id }, data: { assignmentQuantity: 98 } }), /INVOICE_FINAL_LOCKED/);
   });
+  await check('credit notes preserve originals, reduce debt once, and protect later settlements', async () => {
+    const source = await order(), invoice = await issue(await draft([source]));
+    const item = await db.invoiceOrder.findFirst({ where: { invoiceId: invoice.id } });
+    const input = { clientKey: key(), invoiceOrderId: item.id, amount: '2000', reason: 'agreed price reduction' };
+    const credits = await Promise.all([createInvoiceCredit(db, seller.id, 'test', invoice.id, input), createInvoiceCredit(db, seller.id, 'test', invoice.id, input)]);
+    assert.equal(credits[0].id, credits[1].id);
+    assert.equal((await context(source.orderId)).priorBilledAmount, '8000.0000');
+    assert.deepEqual((await db.invoice.findUnique({ where: { id: invoice.id } })).snapshot, invoice.snapshot);
+    await assert.rejects(createInvoiceCredit(db, seller.id, 'test', invoice.id, { ...input, amount: '1999' }), /RETRY_MISMATCH/);
+    await assert.rejects(createInvoiceCredit(db, buyer.id, 'test', invoice.id, input), /NOT_FOUND/);
+    await assert.rejects(createInvoiceCredit(db, seller.id, 'test', invoice.id, { ...input, clientKey: key(), amount: '8001' }), /EXCEEDS_DEBT/);
+    const revision = await createInvoiceRevisionDraft(db, seller.id, 'test', invoice.id, { clientKey: key(), reason: 'edit' });
+    await assert.rejects(issue(revision), /CREDIT_VOID_BEFORE_REVISION/);
+    const next = await issue(await draft([source], '80'));
+    assert.equal(String(next.receivableAdded), '0');
+    await assert.rejects(voidInvoiceCredit(db, seller.id, 'test', credits[0].id, 'correction'), /REVERSE_ORDER/);
+    await cancelIssuedInvoice(db, seller.id, 'test', next.id, 'reverse cancellation');
+    await voidInvoiceCredit(db, seller.id, 'test', credits[0].id, 'correction');
+    assert.equal((await context(source.orderId)).priorBilledAmount, '10000.0000');
+    assert.equal(await db.invoiceCredit.count({ where: { invoiceId: invoice.id } }), 1);
+  });
+  await check('quantity reduction audit is atomic and survives deletion of an unassigned source', async () => {
+    const source = await order();
+    const items = await db.workOrderItem.findMany({ where: { workOrderId: source.id } });
+    const next = items.map(item => ({ id: item.itemId, styleId: item.styleId, totalQuantity: 20 }));
+    await assert.rejects(db.$transaction(async tx => {
+      await recordOrderQuantityReduction(tx, source, next, 'short fabric; preserve excess', 'test', () => []);
+      await tx.workOrder.update({ where: { id: source.id }, data: { totalQuantity: 40 } });
+      throw Error('INJECTED_FAILURE');
+    }), /INJECTED_FAILURE/);
+    assert.equal(await db.orderQuantityChange.count({ where: { workOrderId: source.id } }), 0);
+    assert.equal((await db.workOrder.findUnique({ where: { id: source.id } })).totalQuantity, 100);
+    const audit = await db.$transaction(tx => recordOrderQuantityReduction(tx, source, next, 'short fabric; preserve excess', 'test', () => []));
+    await db.workOrder.delete({ where: { id: source.id } });
+    const preserved = await db.orderQuantityChange.findUnique({ where: { id: audit.id } });
+    assert.equal(preserved.workOrderId, null);
+    assert.equal(preserved.snapshot.sourceOrderId, source.orderId);
+    assert.equal(preserved.reason, 'short fabric; preserve excess');
+  });
+  for (const kind of ['EMPLOYEE', 'OUTSOURCE']) {
+    await check(`${kind} actual work-record writes wait for approval and reject after its commit`, async () => {
+      const source = await order(), invoice = await issue(await draft([source]));
+      const factory = await db.factory.create({ data: { orgId: seller.id, name: key() } });
+      const process = await db.styleProcess.create({ data: { orgId: seller.id, styleId: style.id,
+        processCode: key(), processName: 'Lock race' } });
+      const plan = await db.assignmentPlan.create({ data: { orgId: seller.id, factoryId: factory.id,
+        externalId: key(), workOrderId: source.id, styleId: style.id,
+        assignmentQuantity: 100, startIndex: 0, endIndex: 1 } });
+      const log = await db.workLog.create({ data: { orgId: seller.id, factoryId: factory.id,
+        displayDate: '2026-09-30', recordKind: kind === 'EMPLOYEE' ? 'EMPLOYEE' : 'OUTSOURCING' } });
+      const model = kind === 'EMPLOYEE' ? 'workRecord' : 'outsourcedWorkRecord';
+      const data = { orgId: seller.id, workLogId: log.id, styleId: style.id,
+        styleProcessId: process.id, assignmentPlanId: plan.id, quantity: 1,
+        ...(kind === 'EMPLOYEE' ? {} : { outsourcingPartnerId: buyer.id,
+          outsourceVendorName: 'Test vendor', outsourceUnitPrice: '1' }) };
+      const record = await db[model].create({ data });
+      const body = await approval(invoice);
+      let entered, release;
+      const locked = new Promise(resolve => { entered = resolve; });
+      const gate = new Promise(resolve => { release = resolve; });
+      const heldDb = { $transaction: (run, options) => db.$transaction(async tx => {
+        const result = await run(tx);
+        entered(); await gate;
+        return result;
+      }, { ...options, timeout: 15000 }) };
+      const approving = approveInvoiceFinalLock(heldDb, seller.id, 'test', invoice.id, body);
+      await locked;
+      let settled = false;
+      const mutation = db[model].update({ where: { id: record.id }, data: { quantity: 2 } })
+        .then(() => ({ ok: true }), error => ({ error })).finally(() => { settled = true; });
+      try {
+        await new Promise(resolve => setTimeout(resolve, 150));
+        assert.equal(settled, false, 'write must wait on the order locked by approval');
+      } finally { release(); }
+      await approving;
+      assert.match(String((await mutation).error), /INVOICE_FINAL_LOCKED/);
+      assert.equal((await db[model].findUnique({ where: { id: record.id } })).quantity, 1);
+      await assert.rejects(db[model].create({ data }), /INVOICE_FINAL_LOCKED/);
+      await assert.rejects(db[model].delete({ where: { id: record.id } }), /INVOICE_FINAL_LOCKED/);
+      await unlockInvoiceFinalLocksForInvoice(db, seller.id, 'test', invoice.id, { clientKey: key(), reason: 'test cleanup' });
+      await db[model].update({ where: { id: record.id }, data: { quantity: 2 } });
+    });
+  }
   console.log(`PostgreSQL integration: ${count} scenarios passed (real Prisma transactions, isolated database).`);
 } finally {
   await db.$disconnect();

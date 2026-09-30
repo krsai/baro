@@ -1,5 +1,6 @@
 export const invoiceDraftStorageMessages = {
   ko: {
+    creditReview: '기존 채권보다 금액이 작습니다. 발행 목록의 감액에서 감액 문서를 발행한 뒤 초안을 다시 여세요. 기존 감액이 있는 문서를 개정하려면 감액을 먼저 취소하세요.',
     title: '저장된 초안', save: '초안 저장', saved: '초안을 저장했습니다.', resume: '열기', remove: '삭제',
     empty: '저장된 초안이 없습니다.', updated: '최종 수정', confirmDelete: '이 초안을 삭제할까요? 발행본이나 주문은 변경되지 않습니다.',
     notice: '서버에 초안을 저장하고 다시 열 수 있습니다. 초안은 정식 발행·청구 잔액·주문 잠금에 반영되지 않습니다.',
@@ -11,6 +12,7 @@ export const invoiceDraftStorageMessages = {
     issue: '정식 발행', confirmIssue: '현재 주문과 단가를 서버에서 다시 검증한 뒤 정식 발행합니다. 계속할까요?', issued: '정식 발행했습니다.',
   },
   en: {
+    creditReview: 'The amount is below existing debt. Issue a credit note from the issued list, then reopen this draft. Void active credits before revising their original invoice.',
     title: 'Saved drafts', save: 'Save draft', saved: 'Draft saved.', resume: 'Open', remove: 'Delete',
     empty: 'No saved drafts.', updated: 'Last updated', confirmDelete: 'Delete this draft? Issued documents and orders will not change.',
     notice: 'Save drafts on the server and reopen them later. Drafts do not issue invoices, consume balances or lock orders.',
@@ -21,6 +23,7 @@ export const invoiceDraftStorageMessages = {
     issue: 'Issue invoice', confirmIssue: 'The server will revalidate current orders and prices before issuing. Continue?', issued: 'Invoice issued.',
   },
   vi: {
+    creditReview: 'Số tiền thấp hơn công nợ hiện có. Phát hành chứng từ giảm từ danh sách rồi mở lại bản nháp. Hủy chứng từ giảm trước khi sửa hóa đơn gốc.',
     title: 'Bản nháp đã lưu', save: 'Lưu bản nháp', saved: 'Đã lưu bản nháp.', resume: 'Mở', remove: 'Xóa',
     empty: 'Chưa có bản nháp.', updated: 'Cập nhật cuối', confirmDelete: 'Xóa bản nháp này? Hóa đơn đã phát hành và đơn hàng không thay đổi.',
     notice: 'Có thể lưu bản nháp trên máy chủ và mở lại. Bản nháp không phát hành hóa đơn, trừ số dư hay khóa đơn hàng.',
