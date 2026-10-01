@@ -1,3 +1,8 @@
+-- Preserve the customer identity before the manufacturer ownership transfer.
+ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "customerOrgId" INTEGER;
+UPDATE "Style" SET "customerOrgId"="orgId" WHERE "customerOrgId" IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "Style_id_customerOrgId_key" ON "Style"(id,"customerOrgId");
+ALTER TABLE "StyleProcess" ADD COLUMN IF NOT EXISTS "sourceOrgId" INTEGER NOT NULL DEFAULT 0;
 -- 2026-09-02: payroll snapshots become factory-scoped (one snapshot per
 -- org+month+factory instead of one per org+month combining every factory).
 -- Backfill only auto-assigns factoryId when the org has exactly one factory,
@@ -120,7 +125,7 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OrgRelationshipStyleSalesCurrency_style_brand_fkey') THEN
     ALTER TABLE "OrgRelationshipStyleSalesCurrency" ADD CONSTRAINT "OrgRelationshipStyleSalesCurrency_style_brand_fkey"
-      FOREIGN KEY ("styleId", "brandOrgId") REFERENCES "Style"("id", "orgId") ON DELETE CASCADE;
+      FOREIGN KEY ("styleId", "brandOrgId") REFERENCES "Style"("id", "customerOrgId") ON DELETE CASCADE;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OrgRelationshipStyleSalesCurrency_currency_fkey') THEN
     ALTER TABLE "OrgRelationshipStyleSalesCurrency" ADD CONSTRAINT "OrgRelationshipStyleSalesCurrency_currency_fkey"
@@ -826,7 +831,7 @@ BEGIN
   JOIN "QuantityBucketSetVersion" version_row ON version_row.id = override_row."quantityBucketSetVersionId"
   WHERE override_row."manufacturerOrgId" <> relationship_row."manufacturerOrgId"
      OR override_row."brandOrgId" <> relationship_row."brandOrgId"
-     OR style_row."orgId" <> override_row."brandOrgId"
+     OR style_row."customerOrgId" <> override_row."brandOrgId"
      OR version_row."orgId" <> override_row."manufacturerOrgId";
   IF invalid_count > 0 THEN
     RAISE EXCEPTION 'found % sales bucket overrides with invalid relationship ownership', invalid_count;
@@ -839,7 +844,7 @@ BEGIN
   JOIN "QuantityBucketSetVersion" version_row ON version_row.id = price_list."quantityBucketSetVersionId"
   WHERE price_list."manufacturerOrgId" <> relationship_row."manufacturerOrgId"
      OR price_list."brandOrgId" <> relationship_row."brandOrgId"
-     OR style_row."orgId" <> price_list."brandOrgId"
+     OR style_row."customerOrgId" <> price_list."brandOrgId"
      OR version_row."orgId" <> price_list."manufacturerOrgId";
   IF invalid_count > 0 THEN
     RAISE EXCEPTION 'found % sales price lists with invalid relationship ownership', invalid_count;
@@ -878,7 +883,7 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OrgRelationshipStyleSalesBucket_style_brand_fkey') THEN
     ALTER TABLE "OrgRelationshipStyleSalesBucket" ADD CONSTRAINT "OrgRelationshipStyleSalesBucket_style_brand_fkey"
-      FOREIGN KEY ("styleId", "brandOrgId") REFERENCES "Style"("id", "orgId") ON DELETE CASCADE ON UPDATE CASCADE;
+      FOREIGN KEY ("styleId", "brandOrgId") REFERENCES "Style"("id", "customerOrgId") ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OrgRelationshipStyleSalesBucket_version_manufacturer_fkey') THEN
     ALTER TABLE "OrgRelationshipStyleSalesBucket" ADD CONSTRAINT "OrgRelationshipStyleSalesBucket_version_manufacturer_fkey"
@@ -892,7 +897,7 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CustomerSalesPriceList_style_brand_fkey') THEN
     ALTER TABLE "CustomerSalesPriceList" ADD CONSTRAINT "CustomerSalesPriceList_style_brand_fkey"
-      FOREIGN KEY ("styleId", "brandOrgId") REFERENCES "Style"("id", "orgId") ON DELETE RESTRICT ON UPDATE CASCADE;
+      FOREIGN KEY ("styleId", "brandOrgId") REFERENCES "Style"("id", "customerOrgId") ON DELETE RESTRICT ON UPDATE CASCADE;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CustomerSalesPriceList_version_manufacturer_fkey') THEN
     ALTER TABLE "CustomerSalesPriceList" ADD CONSTRAINT "CustomerSalesPriceList_version_manufacturer_fkey"
@@ -1224,7 +1229,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 ALTER TABLE "Style" DROP CONSTRAINT IF EXISTS "Style_orgId_customer_name_key";
 DROP INDEX IF EXISTS "Style_orgId_customer_name_key";
 CREATE UNIQUE INDEX IF NOT EXISTS "Style_orgId_name_key"
-  ON "Style"("orgId", "name");
+  ON "Style"("customerOrgId", "name");
 ALTER TABLE "Style"
   DROP COLUMN IF EXISTS "customer",
   DROP COLUMN IF EXISTS "customerNameKo",
@@ -2100,9 +2105,9 @@ BEGIN
   ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "styleId" INTEGER;
 END $$;
 
-CREATE UNIQUE INDEX IF NOT EXISTS "Style_orgId_code_key" ON "Style"("orgId", "code");
+CREATE UNIQUE INDEX IF NOT EXISTS "Style_orgId_code_key" ON "Style"("customerOrgId", "code");
 CREATE INDEX IF NOT EXISTS "StyleProcess_styleId_idx" ON "StyleProcess"("styleId");
-CREATE UNIQUE INDEX IF NOT EXISTS "StyleProcess_styleId_orgId_processCode_key" ON "StyleProcess"("styleId", "orgId", "processCode");
+CREATE UNIQUE INDEX IF NOT EXISTS "StyleProcess_styleId_orgId_processCode_sourceOrgId_key" ON "StyleProcess"("styleId", "orgId", "processCode", "sourceOrgId");
 CREATE INDEX IF NOT EXISTS "WorkOrderItem_styleId_idx" ON "WorkOrderItem"("styleId");
 CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_styleId_idx" ON "WorkRecord"("orgId", "styleId");
 CREATE INDEX IF NOT EXISTS "AtTrainingBucketProcess_orgId_styleId_idx" ON "AtTrainingBucketProcess"("orgId", "styleId");
@@ -4067,7 +4072,7 @@ BEGIN
     ALTER TABLE "OrgRelationshipStyleTimeBucket"
       ADD CONSTRAINT "OrgRelationshipStyleTimeBucket_style_brand_fkey"
       FOREIGN KEY ("styleId", "brandOrgId")
-      REFERENCES "Style"("id", "orgId")
+      REFERENCES "Style"("id", "customerOrgId")
       ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'OrgRelationshipStyleTimeBucket_version_manufacturer_fkey') THEN
@@ -4124,7 +4129,7 @@ BEGIN
       SELECT MIN(s."timeBucketSetVersionId"), COUNT(DISTINCT s."timeBucketSetVersionId")
       INTO source_version_id, next_version
       FROM "Style" s
-      WHERE s."orgId" = rel."brandOrgId"
+      WHERE s."customerOrgId" = rel."brandOrgId"
         AND s."timeBucketSetVersionId" IS NOT NULL
         AND s."timeBucketSource" = 'CUSTOMER_DEFAULT';
       IF next_version > 1 THEN
@@ -4150,8 +4155,8 @@ BEGIN
     FOR style_row IN
       SELECT DISTINCT s.id, s."timeBucketSetVersionId", s."timeBucketSource"
       FROM "Style" s
-      JOIN "StyleProcess" sp ON sp."styleId" = s.id AND sp."orgId" = rel."manufacturerOrgId"
-      WHERE s."orgId" = rel."brandOrgId" AND s."timeBucketSetVersionId" IS NOT NULL
+      JOIN "StyleProcess" sp ON sp."styleId" = s.id AND sp."orgId" = rel."manufacturerOrgId" AND sp."sourceOrgId"=0
+      WHERE s."customerOrgId" = rel."brandOrgId" AND s."timeBucketSetVersionId" IS NOT NULL
       ORDER BY s.id
     LOOP
       IF style_row."timeBucketSource" = 'STYLE_OVERRIDE' THEN
@@ -4197,7 +4202,7 @@ BEGIN
       JOIN "QuantityBucketEntry" new_entry
         ON new_entry."quantityBucketSetVersionId" = source_version_id
        AND new_entry."bucketQuantity" = old_entry."bucketQuantity"
-      WHERE sp."styleId" = style_row.id AND sp."orgId" = rel."manufacturerOrgId"
+      WHERE sp."styleId" = style_row.id AND sp."orgId" = rel."manufacturerOrgId" AND sp."sourceOrgId"=0
       ON CONFLICT ("styleProcessId", "quantityBucketEntryId") DO NOTHING;
     END LOOP;
   END LOOP;
@@ -4216,9 +4221,9 @@ DECLARE
 BEGIN
   SELECT COUNT(*) INTO missing_standard_count
   FROM "OrgRelationship" r
-  JOIN "Style" s ON s."orgId" = r."brandOrgId"
+  JOIN "Style" s ON s."customerOrgId" = r."brandOrgId"
   JOIN "StyleProcess" sp
-    ON sp."styleId" = s.id AND sp."orgId" = r."manufacturerOrgId"
+    ON sp."styleId" = s.id AND sp."orgId" = r."manufacturerOrgId" AND sp."sourceOrgId"=0
   LEFT JOIN "OrgRelationshipStyleTimeBucket" override
     ON override."orgRelationshipId" = r.id AND override."styleId" = s.id
   JOIN "QuantityBucketEntry" e
@@ -4705,7 +4710,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE "EmployeeGrade" ADD CONSTRAINT "EmployeeGrade_setId_fkey" FOREIGN KEY ("setId") REFERENCES "EmployeeGradeSet"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-INSERT INTO "EmployeeGradeSet" ("orgId", "code", "name", "updatedAt") SELECT "id", 'CL', 'CL', CURRENT_TIMESTAMP FROM "Organization" ON CONFLICT ("orgId", "code") DO NOTHING;
+INSERT INTO "EmployeeGradeSet" ("orgId", "code", "name", "updatedAt") SELECT "id", 'CL', 'CL', CURRENT_TIMESTAMP FROM "Organization" WHERE type::text='MANUFACTURER' ON CONFLICT ("orgId", "code") DO NOTHING;
 INSERT INTO "EmployeeGrade" ("orgId", "setId", "code", "name", "nameKo", "nameEn", "nameVi", "sortOrder", "isDefault", "updatedAt")
 SELECT s."orgId", s."id", v.code, v.name_ko, v.name_ko, v.name_en, v.name_vi, v.sort_order, v.is_default, CURRENT_TIMESTAMP FROM "EmployeeGradeSet" s
 CROSS JOIN (VALUES ('CL1','일반','Staff','Nhân viên',1,true), ('CL2','선임','Senior','Chuyên viên cao cấp',2,false), ('CL3','책임','Principal','Chuyên viên chính',3,false), ('CL4','수석','Master','Chuyên gia',4,false)) v(code,name_ko,name_en,name_vi,sort_order,is_default)
@@ -5493,7 +5498,7 @@ FROM "Organization" owner CROSS JOIN (VALUES
   ('SEWING', '봉제', 'Sewing', 'May', 70), ('FINISHING', '마감', 'Finishing', 'Hoàn thiện', 80),
   ('OTHER', '기타', 'Other', 'Khác', 999)
 ) AS seed(code, ko, en, vi, sort_order)
-WHERE owner."ownerOrgId" IS NULL AND owner.type::text IN ('MANUFACTURER', 'BRAND')
+WHERE owner."ownerOrgId" IS NULL AND owner.type::text='MANUFACTURER'
 ON CONFLICT ("ownerOrgId", "code") DO NOTHING;
 INSERT INTO "OrganizationOutsourcingServiceType" ("partnerOrgId", "serviceTypeId", "ownerOrgId")
 SELECT partner.id, service.id, partner."ownerOrgId" FROM "Organization" partner

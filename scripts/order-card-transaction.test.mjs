@@ -71,7 +71,7 @@ test('second party failure rolls back order, items and first party cards', async
 test('reuse normalizes legacy owner and rebuilds old and current parties once', async () => {
   const app = harness({ existing: { id: 1, orgId: 1, buyerOrgId: 2, sellerOrgId: 3 } });
   assert.equal((await app.create()).created, false);
-  assert.equal(app.state().order.orgId, 2);
+  assert.equal(app.state().order.orgId, 3);
   assert.deepEqual(app.seen, [1, 2, 3]);
   await app.create();
   assert.deepEqual(app.seen.slice(3), [2, 3]);

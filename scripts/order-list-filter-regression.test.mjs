@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { createRequire } from 'node:module';
 import { matchesAutocompleteSearch } from '../frontend/src/utils/autocompleteSearch.js';
 
 const [page, statuses, backend] = await Promise.all([
@@ -8,6 +9,45 @@ const [page, statuses, backend] = await Promise.all([
   readFile(new URL('../frontend/src/constants/orderStatus.js', import.meta.url), 'utf8'),
   readFile(new URL('../backend/src/index.ts', import.meta.url), 'utf8'),
 ]);
+
+test('order deletion flags include employee, outsourced and card-linked history across organizations', async () => {
+  const require = createRequire(import.meta.url);
+  const ts = require('../backend/node_modules/typescript');
+  const route = backend.slice(backend.indexOf('app.get("/orders"'), backend.indexOf('app.get("/customer-production-reports"'));
+  const orders = [1, 2, 3, 4, 5].map(id => ({ id, orderId: String(id) }));
+  let handler, response;
+  const deps = {
+    app: { get: (_path, callback) => { handler = callback; } },
+    getOrganizationByQuery: async () => ({ id: 99 }),
+    getOrderAccessWhere: () => [], WORK_ORDER_RESPONSE_INCLUDE: {},
+    loadOrderAssignmentModificationLockMap: async () => new Map(),
+    loadCurrentOrderValueByOrderDbId: async () => new Map(),
+    resolveOptionalString: value => value,
+    invoiceOrderProgress: () => ({ progressPercent: 0, producedQuantity: 0, assignments: [] }),
+    toOrderResponse: order => order,
+    prisma: {
+      workOrder: { findMany: async () => orders },
+      assignmentPlan: { findMany: async query => {
+        if (!query.select._count) return [];
+        assert.equal(query.where.orgId, undefined);
+        assert.deepEqual(query.where.OR[0].workOrderId.in, [1, 2, 3, 4, 5]);
+        assert.deepEqual(query.where.OR[1].assignmentCard.is.workOrderId.in, [1, 2, 3, 4, 5]);
+        return [
+          { workOrderId: 1, _count: { workRecords: 1, outsourcedWorkRecords: 0 } },
+          { workOrderId: 2, _count: { workRecords: 0, outsourcedWorkRecords: 1 } },
+          { workOrderId: null, assignmentCard: { workOrderId: 3 }, _count: { workRecords: 1, outsourcedWorkRecords: 0 } },
+          { workOrderId: 4, _count: { workRecords: 0, outsourcedWorkRecords: 0 } },
+        ];
+      } },
+    },
+  };
+  const code = ts.transpileModule(route, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  new Function(...Object.keys(deps), code)(...Object.values(deps));
+  await handler({}, { json: value => { response = value; } });
+  assert.deepEqual(response.map(order => order.hasProductionRecords), [true, true, true, false, false]);
+  assert.deepEqual(response.map(order => order.hasAssignments), [true, true, true, true, false]);
+  assert.match(page, /const deletable = !order\?\.isModificationLocked && !order.hasProductionRecords && !order.hasAssignments/);
+});
 
 test('order row style search matches style code/name only, not the shared customer name', () => {
   // availableStyleOptions is already narrowed to the order's one buyer, so

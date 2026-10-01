@@ -51,6 +51,12 @@ const factoryMigration = runPrisma(
 );
 if (factoryMigration.status !== 0) process.exit(factoryMigration.status || 1);
 
+// Transfer existing ownership before Prisma makes Style.customerOrgId required.
+const ownershipMigration = spawnSync(process.execPath, [require.resolve('./transfer-manufacturer-ownership'), '--apply'], {
+  env: commandEnv, encoding: 'utf8', stdio: 'inherit',
+});
+if (ownershipMigration.status !== 0) process.exit(ownershipMigration.status || 1);
+
 const pushAttempt = runPrisma(
   ["db", "push", "--skip-generate"],
   "Running prisma db push --skip-generate"

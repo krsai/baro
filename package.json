@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:manufacturer-ownership": "npm --prefix backend run build && node --test scripts/manufacturer-ownership.test.mjs",
     "dev": "concurrently -n frontend,backend -c green,blue \"npm --prefix frontend run dev\" \"npm --prefix backend run dev\"",
     "initialize": "npm --prefix backend run initialize",
     "setup:env": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-env.ps1",

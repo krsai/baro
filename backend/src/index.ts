@@ -1,4 +1,5 @@
 import { planOrderItemWrites } from "./utils/orderItemIdentity";
+import { styleAccessWhere, canManageStyle } from "./utils/styleOwnership";
 import { reconcileAssignmentCards } from "./utils/reconcileAssignmentCards";
 import { buildSharedAtPrediction } from "./services/atSharedPrior";
 import { hasValidAssignmentProcessRefs, invalidAssignmentProcessRefIds, snapshotProcessIds, assertAssignmentProcessRefs, SNAPSHOT_REFERENCE_ERROR } from "./utils/assignmentSnapshotIntegrity";
@@ -168,6 +169,9 @@ function assertGeneratedPrismaClientShape() {
 
   const staleSignals: string[] = [];
   for (const [model, fields] of Object.entries({
+    Style: ["customerOrgId"],
+    Organization: ["dataOwnerOrgId"],
+    StyleProcess: ["sourceOrgId"],
     InvoiceDraft: ["id", "sellerOrgId", "buyerOrgId", "clientKey", "revision", "content", "createdBy", "updatedBy", "createdAt", "updatedAt", "revisionOfInvoiceId", "revisionReason"],
     InvoiceDraftOrder: ["id", "draftId", "workOrderId", "sourceOrderId", "sourceUpdatedAt"],
     InvoiceDraftLine: ["id", "draftId", "workOrderItemId", "sourceItemId", "lineKey"],
@@ -832,6 +836,8 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "AttendanceEntry", columnName: "managementExcluded" },
   { tableName: "Style", columnName: "id" },
   { tableName: "Style", columnName: "code" },
+  { tableName: "Style", columnName: "customerOrgId" },
+  { tableName: "Organization", columnName: "dataOwnerOrgId" },
   { tableName: "WorkRecord", columnName: "styleId" },
   { tableName: "WorkRecord", columnName: "styleProcessId" },
   { tableName: "WorkRecord", columnName: "effectiveCoverageStartDate" },
@@ -855,6 +861,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "StyleProcess", columnName: "timesPerPiece" },
   { tableName: "StyleProcess", columnName: "productionStage" },
   { tableName: "StyleProcess", columnName: "isActive" },
+  { tableName: "StyleProcess", columnName: "sourceOrgId" },
   { tableName: "StyleProcess", columnName: "genderScope" },
   { tableName: "StyleProcessStandard", columnName: "quantityBucketEntryId" },
   { tableName: "StyleProcessStandard", columnName: "quantityBucketSetVersionId" },
@@ -3785,18 +3792,18 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
   const syncTargetOrgIds = await resolveStyleSyncTargetOrgIds(orgId);
   const styleCandidates = await db.style.findMany({
     where: {
-      orgId: { in: syncTargetOrgIds },
+      customerOrgId: { in: syncTargetOrgIds },
       OR: [
         ...(styleIds.length > 0 ? [{ id: { in: styleIds } }] : []),
       ],
     },
     select: {
       id: true,
-      orgId: true,
+      customerOrgId: true, orgId: true,
       code: true,
       name: true,
       processes: true,
-      organization: {
+      customerOrganization: {
         select: { id: true, name: true, nameKo: true, nameVi: true },
       },
     },
@@ -5811,17 +5818,13 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
       );
     }
 
-    const trainingRelationships = await prisma.orgRelationship.findMany({
-      where: { manufacturerOrgId: orgId },
-      select: { brandOrgId: true },
-    });
     let stylesForStorageSync = await prisma.style.findMany({
       where: {
-        orgId: { in: trainingRelationships.map((item) => item.brandOrgId) },
+        orgId: orgId,
       },
       select: {
         id: true,
-        orgId: true,
+        customerOrgId: true, orgId: true,
         processes: true,
         timeBucketSetVersionId: true,
         timeBucketSetVersion: {
@@ -6246,30 +6249,6 @@ const parseStyleOwnerOrgIdQuery = (rawValue: unknown): number | null => {
   return parsed;
 };
 
-const getAccessibleStyleOwnerOrgIds = async (organization: any, db: StyleStorageClient = prisma) => {
-  if (isBrandOrg(organization)) {
-    return [organization.id];
-  }
-  if (!isManufacturerOrg(organization)) {
-    throw createHttpError(400, "invalid organization type");
-  }
-
-  const relationships = await db.orgRelationship.findMany({
-    where: { manufacturerOrgId: organization.id },
-    select: { brandOrgId: true },
-  });
-
-  const ownerIds = new Set<number>([organization.id]);
-  relationships.forEach((relationship) => {
-    const brandOrgId = Number(relationship?.brandOrgId);
-    if (Number.isSafeInteger(brandOrgId) && brandOrgId > 0) {
-      ownerIds.add(brandOrgId);
-    }
-  });
-
-  return Array.from(ownerIds.values());
-};
-
 const resolveStyleOwnerForCreateOrThrow = async ({
   organization,
   payload,
@@ -6277,14 +6256,6 @@ const resolveStyleOwnerForCreateOrThrow = async ({
   organization: any;
   payload: any;
 }) => {
-  if (isBrandOrg(organization)) {
-    return {
-      ownerOrgId: organization.id,
-      ownerOrgName: String(organization?.name || "").trim(),
-      ownerOrgNameKo: String(organization?.nameKo || "").trim(),
-      ownerOrgNameVi: String(organization?.nameVi || "").trim(),
-    };
-  }
   if (!isManufacturerOrg(organization)) {
     throw createHttpError(400, "invalid organization type");
   }
@@ -6307,7 +6278,8 @@ const resolveStyleOwnerForCreateOrThrow = async ({
       throw createHttpError(400, "customer relationship not found");
     }
     return {
-      ownerOrgId: relationship.brand.id,
+      ownerOrgId: organization.id,
+      customerOrgId: relationship.brand.id,
       ownerOrgName: String(relationship.brand.name || "").trim(),
       ownerOrgNameKo: String((relationship.brand as any).nameKo || "").trim(),
       ownerOrgNameVi: String((relationship.brand as any).nameVi || "").trim(),
@@ -6340,7 +6312,8 @@ const resolveStyleOwnerForCreateOrThrow = async ({
   }
 
   return {
-    ownerOrgId: matched[0].brand.id,
+    ownerOrgId: organization.id,
+    customerOrgId: matched[0].brand.id,
     ownerOrgName: String(matched[0].brand.name || "").trim(),
     ownerOrgNameKo: String((matched[0].brand as any).nameKo || "").trim(),
     ownerOrgNameVi: String((matched[0].brand as any).nameVi || "").trim(),
@@ -6358,23 +6331,14 @@ const resolveStyleByIdForAccess = async ({
 }) => {
   const numericStyleId = toPositiveIntOrNull(styleId);
   if (numericStyleId === null) return null;
-  const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
-  let ownerScope = accessibleOwnerOrgIds;
-
-  if (ownerOrgId !== null) {
-    if (!accessibleOwnerOrgIds.includes(ownerOrgId)) {
-      throw createHttpError(403, "style access denied");
-    }
-    ownerScope = [ownerOrgId];
-  }
-
   const styles = await prisma.style.findMany({
     where: {
       id: numericStyleId,
-      orgId: { in: ownerScope },
+      ...styleAccessWhere(organization, ownerOrgId),
     },
     include: {
-      organization: {
+      organization: { select: { id: true, name: true } },
+      customerOrganization: {
         select: { id: true, name: true, nameKo: true, nameVi: true },
       },
       timeBucketSetVersion: {
@@ -6407,7 +6371,7 @@ const findStyleConflict = async ({
   excludeStyleId?: number | null;
 }) => {
   const where: any = {
-    orgId,
+    customerOrgId: orgId,
     OR: [{ name }, { code: styleCode }],
   };
   if (Number.isFinite(excludeStyleId)) {
@@ -6886,7 +6850,7 @@ const loadStyleProcessRowsByStyleId = async (
   if (normalizedStyleIds.length === 0) return new Map<number, any[]>();
   const activeStyles = await db.style.findMany({
     where: { id: { in: normalizedStyleIds } },
-    select: { id: true, orgId: true },
+    select: { id: true, customerOrgId: true },
   });
   const activeVersionByProcessScope = new Map<string, number>();
   const processScopes =
@@ -7086,7 +7050,7 @@ const syncStyleProcessStorageForStyle = async ({
     where: { id: styleId },
     select: {
       id: true,
-      orgId: true,
+      customerOrgId: true, orgId: true,
       timeBucketSetVersionId: true,
       timeBucketSetVersion: {
         select: {
@@ -7130,7 +7094,7 @@ const syncStyleProcessStorageForStyle = async ({
   };
   const drafts = buildStyleProcessStorageDrafts(processes);
   const existingRows = await db.styleProcess.findMany({
-    where: { styleId, orgId: processOrgId },
+    where: { styleId, orgId: processOrgId, sourceOrgId: 0 },
     select: {
       id: true,
       processCode: true,
@@ -7265,6 +7229,7 @@ const syncStyleProcessStorageForStyle = async ({
       : await db.styleProcess.upsert({
           where: {
             styleId_orgId_processCode: {
+              sourceOrgId: 0,
               styleId,
               orgId: processOrgId,
               processCode: draft.processCode,
@@ -7538,13 +7503,13 @@ const loadRelationshipTimeBucketContextByStyleId = async ({
   const styleRows = ensureArray(styles).filter(
     (style) =>
       toPositiveIntOrNull(style?.id) !== null &&
-      toPositiveIntOrNull(style?.orgId) !== null
+      toPositiveIntOrNull(style?.customerOrgId) !== null
   );
   if (normalizedManufacturerOrgId === null || styleRows.length === 0) {
     return new Map<number, any>();
   }
   const brandOrgIds = Array.from(
-    new Set(styleRows.map((style) => toPositiveIntOrNull(style.orgId)!))
+    new Set(styleRows.map((style) => toPositiveIntOrNull(style.customerOrgId)!))
   );
   const styleIds = styleRows.map((style) => toPositiveIntOrNull(style.id)!);
   const relationships = await db.orgRelationship.findMany({
@@ -7582,7 +7547,7 @@ const loadRelationshipTimeBucketContextByStyleId = async ({
   const contextByStyleId = new Map<number, any>();
   styleRows.forEach((style) => {
     const styleId = toPositiveInt(style.id, 0);
-    const relationship = relationshipByBrandOrgId.get(toPositiveInt(style.orgId, 0));
+    const relationship = relationshipByBrandOrgId.get(toPositiveInt(style.customerOrgId, 0));
     if (!relationship) return;
     const override = ensureArray(relationship.timeBucketOverrides).find(
       (item) => item.styleId === styleId
@@ -7739,14 +7704,14 @@ const toStyleResponse = (
     processMirrorMap?: Map<number, any[]>;
   } = {}
 ) => {
-  const owner = style.organization ?? null;
+  const owner = style.customerOrganization ?? null;
   const ownerOrgName = resolveOptionalString(owner?.name, "") ?? "";
   return {
     id: style.id,
     styleId: style.id,
     ownerOrgId: style.orgId ?? null,
-    customerOrgId: style.orgId ?? null,
-    ownerOrgName,
+    customerOrgId: style.customerOrgId ?? null,
+    ownerOrgName: style.organization?.name ?? "",
     code: style.code ?? "",
     styleCode: style.code ?? "",
     name: style.name ?? "",
@@ -8192,9 +8157,9 @@ const createOrReuseSharedOrder = async ({
 }: {
   normalized: any;
 }) => {
-  const resolvedOwnerOrgId = toPositiveIntOrNull(normalized?.buyerOrgId);
+  const resolvedOwnerOrgId = toPositiveIntOrNull(normalized?.sellerOrgId);
   if (!resolvedOwnerOrgId) {
-    throw createHttpError(400, "buyerOrgId is required");
+    throw createHttpError(400, "sellerOrgId is required");
   }
 
   for (let attempt = 0; attempt <= ORDER_CREATE_SERIALIZABLE_RETRIES; attempt += 1) {
@@ -8233,8 +8198,8 @@ const createOrReuseSharedOrder = async ({
           const { items: _createItems, ...workOrderCreateData } = normalized;
           const created = await tx.workOrder.create({
             data: {
-              orgId: resolvedOwnerOrgId,
               ...workOrderCreateData,
+              orgId: resolvedOwnerOrgId,
               // WorkOrderItem (created below) is the source of truth; do not
               // duplicate the items array into the WorkOrder.items JSON column.
               items: Prisma.JsonNull,
@@ -8301,7 +8266,7 @@ const toOrderResponse = (
         .map(workOrderItemToItemShape)
     : null;
   const items = itemsFromRelation ?? [];
-  const ownerOrgId = order.buyerOrgId ?? order.orgId ?? null;
+  const ownerOrgId = order.orgId ?? order.sellerOrgId ?? null;
   const buyerOrg = order.buyerOrg ?? null;
   const sellerOrg = order.sellerOrg ?? null;
   const customerOrg = order.customerOrg ?? buyerOrg;
@@ -13267,14 +13232,14 @@ const rebuildAssignmentCardsForOrgTx = async (
     return null;
   }
 
-  const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization, db);
+  if (!isManufacturerOrg(organization)) return null;
   const [styles, orders, savedCards] = await Promise.all([
     db.style.findMany({
-      where: { orgId: { in: accessibleOwnerOrgIds } },
+      where: styleAccessWhere(organization),
       orderBy: { id: "asc" },
       select: {
         id: true,
-        orgId: true,
+        customerOrgId: true, orgId: true,
         code: true,
         name: true,
         imageUrls: true,
@@ -13289,7 +13254,7 @@ const rebuildAssignmentCardsForOrgTx = async (
             },
           },
         },
-        organization: {
+        customerOrganization: {
           select: { id: true, name: true, nameKo: true, nameVi: true },
         },
       },
@@ -14252,7 +14217,7 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
     orderBy: { id: "asc" },
     select: {
       id: true,
-      orgId: true,
+      customerOrgId: true, orgId: true,
       updatedAt: true,
       processes: true,
       timeBucketSetVersionId: true,
@@ -15014,7 +14979,7 @@ const syncAssignmentPlansForOrderLock = async ({
       where: { id: { in: styleIds } },
       select: {
         id: true,
-        orgId: true,
+        customerOrgId: true, orgId: true,
         processes: true,
         timeBucketSetVersionId: true,
         timeBucketSetVersion: {
@@ -16276,7 +16241,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
           orderBy: { id: "asc" },
           select: {
             id: true,
-            orgId: true,
+            customerOrgId: true, orgId: true,
             processes: true,
             timeBucketSetVersionId: true,
             timeBucketSetVersion: {
@@ -20147,7 +20112,7 @@ const syncGlobalCategorySection = async (
 ) => {
   const organizations = await prisma.organization.findMany({
     where: {
-      type: { in: ["MANUFACTURER", "BRAND"] },
+      type: "MANUFACTURER",
     },
     select: { id: true },
     orderBy: { id: "asc" },
@@ -28012,10 +27977,11 @@ app.get("/assignment-cards", async (req, res) => {
   const styleSelect = {
     id: true,
     orgId: true,
+    customerOrgId: true,
     code: true,
     name: true,
     updatedAt: true,
-    organization: {
+    customerOrganization: {
       select: { id: true, name: true, nameKo: true, nameVi: true },
     },
     ...(includeProcesses ? { processes: true } : {}),
@@ -29299,7 +29265,7 @@ app.get("/customers/:id/quantity-buckets", async (req, res) => {
     return res.status(404).json({ ok: false, error: "customer not found" });
   }
   const styles = await prisma.style.findMany({
-    where: { orgId: relationship.brandOrgId },
+    where: { customerOrgId: relationship.brandOrgId, orgId: relationship.manufacturerOrgId },
     orderBy: [{ name: "asc" }, { id: "asc" }],
     select: {
       id: true,
@@ -29405,7 +29371,7 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
       }
       if (styleId !== null) {
         const style = await tx.style.findFirst({
-          where: { id: styleId, orgId: relationship.brandOrgId },
+          where: { id: styleId, customerOrgId: relationship.brandOrgId, orgId: relationship.manufacturerOrgId },
           select: {
             id: true,
             timeBucketSource: true,
@@ -29687,7 +29653,7 @@ app.put("/customers/:id/quantity-buckets", async (req, res) => {
       }
       const relationshipStyles = await tx.style.findMany({
         where: {
-          orgId: relationship.brandOrgId,
+          customerOrgId: relationship.brandOrgId, orgId: relationship.manufacturerOrgId,
         },
         select: {
           id: true,
@@ -29879,7 +29845,7 @@ app.put("/customers/:id/sales-currencies", async (req, res) => {
       });
       return { defaultCurrencyCode: currencyCode, styleId: null, currencyCode };
     }
-    const style = await tx.style.findFirst({ where: { id: styleId, orgId: relationship.brandOrgId } });
+    const style = await tx.style.findFirst({ where: { id: styleId, customerOrgId: relationship.brandOrgId, orgId: relationship.manufacturerOrgId } });
     if (!style) throw createHttpError(409, "style is outside the customer relationship");
     if (!currencyCode) {
       await tx.orgRelationshipStyleSalesCurrency.deleteMany({
@@ -29933,7 +29899,7 @@ app.get("/customers/:id/sales-prices", async (req, res) => {
     return res.status(404).json({ ok: false, error: "customer not found" });
   }
   const styles = await prisma.style.findMany({
-    where: { orgId: relationship.brandOrgId },
+    where: { customerOrgId: relationship.brandOrgId, orgId: relationship.manufacturerOrgId },
     orderBy: [{ name: "asc" }, { id: "asc" }],
     include: {
       salesBucketOverrides: {
@@ -30016,7 +29982,7 @@ app.put("/customers/:id/sales-prices", async (req, res) => {
         .filter((value): value is number => value !== null)
     ));
     const styles = await tx.style.findMany({
-      where: { id: { in: styleIds }, orgId: relationship.brandOrgId },
+      where: { id: { in: styleIds }, customerOrgId: relationship.brandOrgId, orgId: relationship.manufacturerOrgId },
       include: {
         salesBucketOverrides: {
           where: { orgRelationshipId: relationship.id },
@@ -30259,6 +30225,28 @@ app.get("/orders", async (req, res) => {
   });
   const assignmentLockMap = await loadOrderAssignmentModificationLockMap(orders);
   const currentOrderValueByOrderDbId = await loadCurrentOrderValueByOrderDbId(orders);
+  // Match DELETE's history guard across both direct and card links, regardless
+  // of the viewing party. Zero-quantity records and other factories still count.
+  const deletionPlans = orders.length ? await prisma.assignmentPlan.findMany({
+    where: { OR: [
+      { workOrderId: { in: orders.map((order) => order.id) } },
+      { assignmentCard: { is: { workOrderId: { in: orders.map((order) => order.id) } } } },
+    ] },
+    select: {
+      workOrderId: true,
+      assignmentCard: { select: { workOrderId: true } },
+      _count: { select: { workRecords: true, outsourcedWorkRecords: true } },
+    },
+  }) : [];
+  const assignedOrderIds = new Set<number>();
+  const productionOrderIds = new Set<number>();
+  for (const plan of deletionPlans) {
+    for (const id of [plan.workOrderId, plan.assignmentCard?.workOrderId]) {
+      if (id == null) continue;
+      assignedOrderIds.add(id);
+      if (plan._count.workRecords || plan._count.outsourcedWorkRecords) productionOrderIds.add(id);
+    }
+  }
   const orderPlans = orders.length ? await prisma.assignmentPlan.findMany({
     where: { orgId: organization.id, workOrderId: { in: orders.map((order) => order.id) } },
     select: { externalId: true, workOrderId: true, style: { select: { name: true } } },
@@ -30275,6 +30263,8 @@ app.get("/orders", async (req, res) => {
           isAssignmentModificationLocked: Boolean(assignmentLockMap.get(orderKey)),
           currentOrderValue: currentOrderValueByOrderDbId.get(order.id),
         }), productionProgressPercent: production.progressPercent,
+          hasProductionRecords: productionOrderIds.has(order.id),
+          hasAssignments: assignedOrderIds.has(order.id),
           producedQuantity: production.producedQuantity,
           productionAssignments: production.assignments };
       }
@@ -30671,7 +30661,7 @@ app.put("/orders/:orderId", async (req, res) => {
       where: { id: existing.id },
       data: {
         ...workOrderUpdateData,
-        orgId: buyer.id,
+        orgId: seller.id,
         // WorkOrderItem (updated in place below) is the source of truth; do not
         // duplicate the items array into the WorkOrder.items JSON column.
         items: Prisma.JsonNull,
@@ -31265,28 +31255,18 @@ app.get("/styles", async (req, res) => {
   const includeProcesses = isManufacturerOrg(organization);
   const compact = req.query.compact === "1" || req.query.compact === "true";
   const ownerOrgId = parseStyleOwnerOrgIdQuery(req.query.ownerOrgId);
-  const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
-  const ownerScope =
-    ownerOrgId === null
-      ? accessibleOwnerOrgIds
-      : accessibleOwnerOrgIds.includes(ownerOrgId)
-        ? [ownerOrgId]
-        : null;
-  if (!ownerScope) {
-    return res.status(403).json({ ok: false, error: "style access denied" });
-  }
-
   let styles: any[] = compact
     ? await prisma.style.findMany({
-        where: { orgId: { in: ownerScope } },
+        where: styleAccessWhere(organization, ownerOrgId),
         orderBy: { id: "asc" },
         // Skip heavy BOM payload for list pages that only need summary/process data.
         select: {
           id: true,
-          orgId: true,
+          customerOrgId: true, orgId: true,
           code: true,
           name: true,
-          organization: {
+          organization: { select: { id: true, name: true } },
+          customerOrganization: {
             select: { id: true, name: true, nameKo: true, nameVi: true },
           },
           registrationDate: true,
@@ -31308,10 +31288,11 @@ app.get("/styles", async (req, res) => {
         },
       })
     : await prisma.style.findMany({
-        where: { orgId: { in: ownerScope } },
+        where: styleAccessWhere(organization, ownerOrgId),
         orderBy: { id: "asc" },
         include: {
-          organization: {
+          organization: { select: { id: true, name: true } },
+          customerOrganization: {
             select: { id: true, name: true, nameKo: true, nameVi: true },
           },
           timeBucketSetVersion: {
@@ -31414,7 +31395,7 @@ app.post("/styles", async (req, res) => {
   }
 
   const conflictMessage = await findStyleConflict({
-    orgId: owner.ownerOrgId,
+    orgId: owner.customerOrgId,
     name: payload.name,
     styleCode: payload.code,
   });
@@ -31423,7 +31404,7 @@ app.post("/styles", async (req, res) => {
   }
 
   const existing = await prisma.style.findFirst({
-    where: { orgId: owner.ownerOrgId, code: payload.code },
+    where: { customerOrgId: owner.customerOrgId, code: payload.code },
   });
   if (existing) {
     return res
@@ -31437,7 +31418,7 @@ app.post("/styles", async (req, res) => {
           where: {
             manufacturerOrgId_brandOrgId: {
               manufacturerOrgId: organization.id,
-              brandOrgId: owner.ownerOrgId,
+              brandOrgId: owner.customerOrgId,
             },
           },
           select: { timeBucketSetVersionId: true },
@@ -31467,6 +31448,7 @@ app.post("/styles", async (req, res) => {
 
     const createdStyle = await tx.style.create({
       data: {
+        customerOrgId: owner.customerOrgId,
         orgId: owner.ownerOrgId,
         code: payload.code,
         name: payload.name,
@@ -31496,7 +31478,8 @@ app.post("/styles", async (req, res) => {
     return tx.style.findUniqueOrThrow({
       where: { id: createdStyle.id },
       include: {
-        organization: {
+        organization: { select: { id: true, name: true } },
+        customerOrganization: {
           select: { id: true, name: true, nameKo: true, nameVi: true },
         },
         timeBucketSetVersion: {
@@ -31523,7 +31506,7 @@ app.post("/styles", async (req, res) => {
     : created;
 
   await rebuildAssignmentCardsForOrgIds(
-    await resolveStyleSyncTargetOrgIds(owner.ownerOrgId),
+    await resolveStyleSyncTargetOrgIds(owner.customerOrgId),
     { refreshExistingAssignmentSnapshots: false }
   );
   res
@@ -31557,6 +31540,10 @@ app.put("/styles/:styleId", async (req, res) => {
     return res.status(404).json({ ok: false, error: "style not found" });
   }
 
+  if (!canManageStyle(organization, existing)) {
+    return res.status(403).json({ ok: false, error: "only owner manufacturer can edit style" });
+  }
+
   // Style.processes JSON is no longer persisted (see Phase 2 above), so `existing.processes`
   // is not a usable "no change" fallback anymore. A request that omits `processes`
   // entirely means "leave the style's processes untouched", not "clear them".
@@ -31566,7 +31553,7 @@ app.put("/styles/:styleId", async (req, res) => {
     {
       code: req.body?.code ?? req.body?.styleCode ?? existing.code,
       name: req.body?.name ?? existing.name,
-      customer: existing.organization?.name,
+      customer: existing.customerOrganization?.name,
       registrationDate: req.body?.registrationDate ?? existing.registrationDate,
       designer: req.body?.designer ?? existing.designer,
       collection: req.body?.collection ?? existing.collection,
@@ -31594,7 +31581,7 @@ app.put("/styles/:styleId", async (req, res) => {
   }
 
   const conflictMessage = await findStyleConflict({
-    orgId: existing.orgId,
+    orgId: existing.customerOrgId,
     name: normalized.name,
     styleCode: normalized.code,
     excludeStyleId: existing.id,
@@ -31662,7 +31649,8 @@ app.put("/styles/:styleId", async (req, res) => {
     return tx.style.findUniqueOrThrow({
       where: { id: updatedStyle.id },
       include: {
-        organization: {
+        organization: { select: { id: true, name: true } },
+        customerOrganization: {
           select: { id: true, name: true, nameKo: true, nameVi: true },
         },
         timeBucketSetVersion: {
@@ -31680,7 +31668,7 @@ app.put("/styles/:styleId", async (req, res) => {
     : new Map<number, any[]>();
 
   await rebuildAssignmentCardsForOrgIds(
-    await resolveStyleSyncTargetOrgIds(existing.orgId),
+    await resolveStyleSyncTargetOrgIds(existing.customerOrgId),
     { refreshExistingAssignmentSnapshots: false }
   );
   const responseUpdated = includeProcesses
@@ -32028,7 +32016,7 @@ app.delete("/styles/:styleId", async (req, res) => {
   if (!existing) {
     return res.status(404).json({ ok: false, error: "style not found" });
   }
-  if (existing.orgId !== organization.id) {
+  if (!canManageStyle(organization, existing)) {
     return res
       .status(403)
       .json({ ok: false, error: "only owner organization can delete style" });
@@ -32040,7 +32028,8 @@ app.delete("/styles/:styleId", async (req, res) => {
     },
     select: { id: true },
   });
-  if (inUseWorkRecord) {
+  const inUseOutsourcedRecord = await prisma.outsourcedWorkRecord.findFirst({ where: { styleId: existing.id }, select: { id: true } });
+  if (inUseWorkRecord || inUseOutsourcedRecord) {
     return res.status(409).json({
       ok: false,
       error: "작업기록이 존재해서 삭제할 수 없습니다.",
@@ -32051,7 +32040,7 @@ app.delete("/styles/:styleId", async (req, res) => {
     where: {
       styleId: existing.id,
       workOrder: {
-        OR: [{ orgId: existing.orgId }, { buyerOrgId: existing.orgId }],
+        OR: [{ orgId: existing.orgId }, { buyerOrgId: existing.customerOrgId }],
       },
     },
     select: {
@@ -32140,7 +32129,7 @@ app.post("/styles/import", async (req, res) => {
       return {
         ...item.normalized,
         customer: owner.ownerOrgName || item.normalized.customer,
-        ownerOrgId: owner.ownerOrgId,
+        ownerOrgId: owner.customerOrgId,
       };
     })
   );
@@ -32175,13 +32164,16 @@ app.post("/styles/import", async (req, res) => {
   );
   const existingStyleRows = await prisma.style.findMany({
     where: {
-      orgId: { in: uniqueOwnerOrgIds },
+      customerOrgId: { in: uniqueOwnerOrgIds },
       code: { in: uniqueStyleCodes },
     },
-    select: { id: true, code: true, orgId: true },
+    select: { id: true, code: true, customerOrgId: true, orgId: true },
   });
+  if (existingStyleRows.some(row => row.orgId !== organization.id)) {
+    return res.status(409).json({ ok: false, error: "style belongs to another manufacturer" });
+  }
   const existingStyleIdByOwnerCode = new Map(
-    existingStyleRows.map((row) => [`${row.orgId}:${row.code}`, row.id])
+    existingStyleRows.map((row) => [`${row.customerOrgId}:${row.code}`, row.id])
   );
 
   for (const item of rowsWithOwner) {
@@ -32248,8 +32240,8 @@ app.post("/styles/import", async (req, res) => {
 
       const upserted = await tx.style.upsert({
         where: {
-          orgId_code: {
-            orgId: ownerOrgId,
+          customerOrgId_code: {
+            customerOrgId: ownerOrgId,
             code: stylePayload.code,
           },
         },
@@ -32268,7 +32260,8 @@ app.post("/styles/import", async (req, res) => {
           bomNotes: stylePayload.bomNotes,
         },
         create: {
-          orgId: ownerOrgId,
+          customerOrgId: ownerOrgId,
+          orgId: organization.id,
           ...stylePayload,
           processes: Prisma.JsonNull,
           timeBucketSetVersionId,
@@ -32287,9 +32280,10 @@ app.post("/styles/import", async (req, res) => {
   });
 
   let imported = await prisma.style.findMany({
-    where: { orgId: { in: uniqueOwnerOrgIds } },
+    where: { customerOrgId: { in: uniqueOwnerOrgIds }, orgId: organization.id },
     include: {
-      organization: {
+      organization: { select: { id: true, name: true } },
+      customerOrganization: {
         select: { id: true, name: true, nameKo: true, nameVi: true },
       },
       timeBucketSetVersion: {
@@ -32343,7 +32337,8 @@ app.get("/attributes", async (req, res) => {
   const includeProcesses =
     canManageProcesses &&
     !["0", "false"].includes(String(req.query.includeProcesses ?? "").trim().toLowerCase());
-  await seedAttributesIfEmpty(organization.id, {
+  const dataOrgId = organization.dataOwnerOrgId ?? organization.id;
+  await seedAttributesIfEmpty(dataOrgId, {
     includeColors,
     includeCategories,
     // Keep process master deletion persistent; do not auto-reseed processes on read.
@@ -32357,16 +32352,16 @@ app.get("/attributes", async (req, res) => {
         })
       : Promise.resolve([]),
     includeCategories
-      ? listGlobalCategorySection(organization.id)
+      ? listGlobalCategorySection(dataOrgId)
       : Promise.resolve([]),
     includeRoles
-      ? ensureDefaultEmployeeRoles(organization.id).then((items) =>
+      ? ensureDefaultEmployeeRoles(dataOrgId).then((items) =>
           items.filter((item) => isWorkerEmployeeRoleCode(item.code)).map(toAttrRoleResponse)
         )
       : Promise.resolve([]),
     includeProcesses
       ? prisma.attrProcess.findMany({
-          where: { orgId: organization.id },
+          where: { orgId: dataOrgId },
           orderBy: { id: "asc" },
         })
       : Promise.resolve([]),
@@ -33078,7 +33073,7 @@ const ensureStyleLocalizationColumnsReady = async () => {
   `);
   await prisma.$executeRawUnsafe(`
     CREATE UNIQUE INDEX IF NOT EXISTS "Style_orgId_name_key"
-      ON "Style"("orgId", "name")
+      ON "Style"("customerOrgId", "name")
   `);
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "Style"
@@ -33796,9 +33791,9 @@ const refreshAj1867UnassignedCardOnce = async () => {
 
   const styles = await prisma.style.findMany({
     where: { OR: [{ code: "AJ1867" }, { name: "AJ1867" }] },
-    select: { id: true, orgId: true },
+    select: { id: true, customerOrgId: true },
   });
-  const brandOrgIds = Array.from(new Set(styles.map((style) => style.orgId)));
+  const brandOrgIds = Array.from(new Set(styles.map((style) => style.customerOrgId)));
   const manufacturerOrgIds = brandOrgIds.length
     ? (
         await prisma.orgRelationship.findMany({

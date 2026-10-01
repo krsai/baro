@@ -83,7 +83,7 @@ test('transactional card rebuild routes all source and storage work through the 
   const context = {
     console,
     common_1: { ensureArray: value => value ?? [] },
-    getAccessibleStyleOwnerOrgIds: async (org, client) => { check('owners', client); return [org.id]; },
+    styleOwnership_1: require('../backend/dist/utils/styleOwnership.js'),
     getOrderAccessWhere: () => [], WORK_ORDER_ITEM_WITH_COLOR_INCLUDE: {},
     loadAssignmentCardsForOrg: async ({ db: client }) => { check('savedCards', client); return []; },
     isManufacturerOrg: () => true,
@@ -100,7 +100,7 @@ test('transactional card rebuild routes all source and storage work through the 
   const result = await context.run(2, db);
   assert.equal(result.syncedCards[0].id, 'saved');
   assert.equal(result.manufacturerScope, true);
-  assert.deepEqual(calls, ['owners', 'savedCards', 'relationship', 'processes', 'standards', 'plans', 'write']);
+  assert.deepEqual(calls, ['savedCards', 'relationship', 'processes', 'standards', 'plans', 'write']);
   failWrite = true;
   await assert.rejects(context.run(2, db), /card failure/);
 });

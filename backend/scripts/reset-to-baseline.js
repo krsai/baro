@@ -1974,7 +1974,8 @@ const runReplaceStyleProcessMaster = (() => {
 
             const createdStyle = await tx.style.create({
               data: {
-                orgId: resolvedOrgId,
+                orgId: await resolveSeedManufacturerOwner(resolvedOrgId),
+                customerOrgId: resolvedOrgId,
                 code: style.styleCode || style.styleId,
                 name: style.name,
                 customer: resolvedCustomerName,
@@ -2338,7 +2339,8 @@ async function runComposedStyleProcessReplacement({
 
       const createdStyle = await prisma.style.create({
         data: {
-          orgId: resolvedOrgId,
+          orgId: await resolveSeedManufacturerOwner(resolvedOrgId),
+          customerOrgId: resolvedOrgId,
           code: style.styleCode || style.styleId,
           name: style.name,
           customer: resolvedCustomerName,
@@ -3247,12 +3249,21 @@ async function ensureEmployee({
   return prisma.employee.create({ data });
 }
 
+async function resolveSeedManufacturerOwner(orgId) {
+  const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { type: true, dataOwnerOrgId: true } });
+  if (org?.type === 'MANUFACTURER') return orgId;
+  if (org?.dataOwnerOrgId) return org.dataOwnerOrgId;
+  const relationships = await prisma.orgRelationship.findMany({ where: { brandOrgId: orgId }, select: { manufacturerOrgId: true } });
+  if (relationships.length !== 1) throw new Error('Style seed requires one manufacturer owner');
+  return relationships[0].manufacturerOrgId;
+}
+
 async function ensureStyles(orgId) {
   for (const style of BASELINE_STYLES) {
     const { styleId, styleCode, customer: _customer, ...styleData } = style;
     const code = styleCode || styleId;
     await prisma.style.upsert({
-      where: { orgId_code: { orgId, code } },
+      where: { customerOrgId_code: { customerOrgId: orgId, code } },
       update: {
         code,
         name: style.name,
@@ -3265,7 +3276,7 @@ async function ensureStyles(orgId) {
         bom: style.bom,
         bomNotes: style.bomNotes,
       },
-      create: { orgId, code, ...styleData },
+      create: { customerOrgId: orgId, orgId: await resolveSeedManufacturerOwner(orgId), code, ...styleData },
     });
   }
 }

@@ -45,7 +45,7 @@ try {
   const entry = await db.quantityBucketEntry.create({ data: { orgId: seller.id, quantityBucketSetVersionId: version.id, bucketQuantity: 1 } });
   const relationship = await db.orgRelationship.create({ data: { ...scope, salesBucketSetVersionId: version.id } });
   const currency = await db.currency.create({ data: { code: 'USD', name: 'USD' } });
-  const style = await db.style.create({ data: { orgId: buyer.id, code: 'TEST', name: '검증 Áo sơ mi' } });
+  const style = await db.style.create({ data: { customerOrgId: buyer.id, orgId: seller.id, code: 'TEST', name: '검증 Áo sơ mi' } });
   const priceList = await db.customerSalesPriceList.create({ data: { ...scope, orgRelationshipId: relationship.id, styleId: style.id,
     currencyId: currency.id, quantityBucketSetVersionId: version.id, pricingBasis: 'MANUFACTURING_SERVICE_PRICE' } });
   await db.customerSalesPrice.create({ data: { salesPriceListId: priceList.id, quantityBucketEntryId: entry.id, quantityBucketSetVersionId: version.id, unitPrice: '100' } });

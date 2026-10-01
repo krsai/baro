@@ -175,7 +175,7 @@ try {
     },
   });
   const style = await db.style.create({
-    data: { orgId: brand.id, code: "SHARED_STYLE", name: "Shared Style" },
+    data: { customerOrgId: brand.id, orgId: manufacturerA.id, code: "SHARED_STYLE", name: "Shared Style" },
   });
 
   for (const [manufacturer, version, baseSeconds] of [

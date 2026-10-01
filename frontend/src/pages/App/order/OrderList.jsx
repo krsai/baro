@@ -1143,6 +1143,18 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'this order'
             : '해당 주문',
+      deleteProductionBlocked:
+        languageCode === 'vi'
+          ? 'Không thể xóa đơn hàng đã có lịch sử sản xuất.'
+          : languageCode === 'en'
+            ? 'Orders with production records cannot be deleted.'
+            : '제작 기록이 있는 주문은 삭제할 수 없습니다.',
+      deleteAssignmentBlocked:
+        languageCode === 'vi'
+          ? 'Không thể xóa đơn hàng đã có phân công sản xuất.'
+          : languageCode === 'en'
+            ? 'Orders with production assignments cannot be deleted.'
+            : '생산 배정이 있는 주문은 삭제할 수 없습니다.',
       deleteConfirm:
         languageCode === 'vi'
           ? 'Ban co muon xoa khong?'
@@ -1466,7 +1478,7 @@ const OrderList = () => {
 
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
-    topics: isDetailMode ? [] : [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.SALES_PRICES],
+    topics: isDetailMode ? [] : [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.SALES_PRICES, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
     isActive: isOrderListRouteActive,
     onRefresh: () => loadOrdersFromDb({ forceRefresh: true }),
     shouldHandle: (detail) =>
@@ -2168,7 +2180,7 @@ const OrderList = () => {
       const nextOrders = prev.map((order) => {
         if (order.id !== nextOrder.id) return order;
         found = true;
-        return nextOrder;
+        return { ...order, ...nextOrder };
       });
       return found ? nextOrders : prev;
     });
@@ -2238,6 +2250,10 @@ const OrderList = () => {
 
   const handleDeleteOrder = async (order) => {
     if (!order?.id) return;
+    if (order.hasProductionRecords || order.hasAssignments) {
+      showNotification(order.hasProductionRecords ? orderPageText.deleteProductionBlocked : orderPageText.deleteAssignmentBlocked, 'warning');
+      return;
+    }
     if (order?.isModificationLocked) {
       showNotification(orderPageText.modificationLocked, 'warning');
       return;
@@ -3031,7 +3047,7 @@ const OrderList = () => {
         const updated = await updateOrderToApi(existingOrder.id, payload, { orgId: activeOrgId });
         if (updated.quantityReview) window.alert(formatQuantityReview(updated.quantityReview, languageCode));
         setOrders((prev) =>
-          prev.map((order) => (order.id === existingOrder.id ? updated : order))
+          prev.map((order) => (order.id === existingOrder.id ? { ...order, ...updated } : order))
         );
         setFormData(normalizeOrderForm(updated));
       } else {
@@ -3177,7 +3193,10 @@ const OrderList = () => {
                   <TableStatusRow colSpan={10} message={orderPageText.emptyOrders} />
                 ) : (
                   filteredOrders.map((order) => {
-                    const deletable = !order?.isModificationLocked;
+                    const deletable = !order?.isModificationLocked && !order.hasProductionRecords && !order.hasAssignments;
+                    const deleteDisabledReason = order.hasProductionRecords
+                      ? orderPageText.deleteProductionBlocked
+                      : order.hasAssignments ? orderPageText.deleteAssignmentBlocked : orderPageText.modificationLocked;
                     const progressStageLabel = getOrderProgressStageLabel(
                       order.status,
                       ORDER_STATUS_TEXT.noneLabel,
@@ -3249,7 +3268,7 @@ const OrderList = () => {
                         <TableCell sx={{ textAlign: 'center' }}>
                           <DeleteActionButton
                             disabled={!deletable}
-                            title={deletable ? orderPageText.deleteOrder : orderPageText.modificationLocked}
+                            title={deletable ? orderPageText.deleteOrder : deleteDisabledReason}
                             stopPropagation
                             onClick={() => {
                               handleDeleteOrder(order);

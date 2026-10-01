@@ -166,6 +166,10 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  /// Data ownership is separate from customer, employer and production scope.
+  dataOwnerOrgId Int?
+  dataOwner Organization? @relation("OrganizationDataOwner", fields: [dataOwnerOrgId], references: [id], onDelete: Restrict)
+  dataOwnedOrganizations Organization[] @relation("OrganizationDataOwner")
   invoiceDraftsSold InvoiceDraft[] @relation("InvoiceDraftSeller")
   invoiceDraftsBought InvoiceDraft[] @relation("InvoiceDraftBuyer")
   invoicesSold Invoice[] @relation("InvoiceSeller")
@@ -210,7 +214,8 @@ model Organization {
   factoryProductionAllowanceRates FactoryProductionAllowanceRate[]
   warehouses                      Warehouse[]
   employees                       Employee[]
-  styles                          Style[]
+  styles                          Style[] @relation("StyleManufacturerOwner")
+  customerStyles                  Style[] @relation("StyleCustomer")
   styleProcesses                  StyleProcess[]
   styleProcessVersions            StyleProcessVersion[]
   styleProcessStandards           StyleProcessStandard[]
@@ -820,7 +825,7 @@ model OrgRelationshipStyleSalesCurrency {
   updatedAt         DateTime @updatedAt
 
   orgRelationship OrgRelationship @relation(fields: [orgRelationshipId, manufacturerOrgId, brandOrgId], references: [id, manufacturerOrgId, brandOrgId], onDelete: Cascade, map: "OrgRelationshipStyleSalesCurrency_relationship_scope_fkey")
-  style           Style           @relation(fields: [styleId, brandOrgId], references: [id, orgId], onDelete: Cascade, map: "OrgRelationshipStyleSalesCurrency_style_brand_fkey")
+  style           Style           @relation(fields: [styleId, brandOrgId], references: [id, customerOrgId], onDelete: Cascade, map: "OrgRelationshipStyleSalesCurrency_style_brand_fkey")
   currency        Currency        @relation(fields: [currencyId], references: [id], onDelete: Restrict, map: "OrgRelationshipStyleSalesCurrency_currency_fkey")
 
   @@unique([orgRelationshipId, styleId], map: "OrgRelationshipStyleSalesCurrency_relationship_style_key")
@@ -950,7 +955,9 @@ model AttrProcess {
 
 model Style {
   id                     Int      @id @default(autoincrement())
+  /// Authoritative data owner; always a manufacturer.
   orgId                  Int
+  customerOrgId          Int
   code                   String
   name                   String
   registrationDate       String?
@@ -975,7 +982,8 @@ model Style {
   updatedByEmployeeId    Int?
   updatedAt              DateTime @updatedAt
 
-  organization         Organization                      @relation(fields: [orgId], references: [id])
+  organization         Organization                      @relation("StyleManufacturerOwner", fields: [orgId], references: [id], onDelete: Restrict)
+  customerOrganization Organization                      @relation("StyleCustomer", fields: [customerOrgId], references: [id], onDelete: Restrict)
   styleProcesses       StyleProcess[]
   workOrderItems       WorkOrderItem[]
   trainingBuckets      AtTrainingBucketProcess[]
@@ -993,14 +1001,37 @@ model Style {
   createdByEmployee Employee? @relation("StyleCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("StyleUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
-  @@unique([orgId, code])
-  @@unique([orgId, name])
-  @@unique([id, orgId], map: "Style_id_org_key")
+  @@unique([customerOrgId, code], map: "Style_orgId_code_key")
+  @@unique([customerOrgId, name], map: "Style_orgId_name_key")
+  @@unique([id, customerOrgId], map: "Style_id_org_key")
   @@index([orgId])
   @@index([timeBucketSetVersionId])
+  @@index([customerOrgId])
+}
+
+/// Immutable migration evidence; original entities may later be deleted.
+model DataOwnershipTransfer {
+  key String @id
+  entityType String
+  entityId Int
+  previousOwnerOrgId Int
+  ownerOrgId Int
+  createdAt DateTime @default(now())
+}
+
+model ManufacturerDataArchive {
+  key String @id
+  orgId Int
+  sourceTable String
+  sourceId Int
+  sourceOrgId Int
+  row Json
+  createdAt DateTime @default(now())
 }
 
 model StyleProcess {
+  /// Nonzero only for retained historical customer-scoped processes.
+  sourceOrgId Int @default(0)
   id                                 Int             @id @default(autoincrement())
   orgId                              Int
   styleId                            Int
@@ -1035,7 +1066,7 @@ model StyleProcess {
   createdByEmployee Employee? @relation("StyleProcessCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   updatedByEmployee Employee? @relation("StyleProcessUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
-  @@unique([styleId, orgId, processCode])
+  @@unique([styleId, orgId, processCode, sourceOrgId], name: "styleId_orgId_processCode", map: "StyleProcess_styleId_orgId_processCode_sourceOrgId_key")
   @@unique([id, orgId], map: "StyleProcess_id_org_key")
   @@unique([id, styleId, orgId], map: "StyleProcess_id_style_org_key")
   @@index([orgId])
@@ -1328,7 +1359,7 @@ model OrgRelationshipStyleSalesBucket {
   updatedAt                  DateTime @updatedAt
 
   orgRelationship          OrgRelationship          @relation(fields: [orgRelationshipId, manufacturerOrgId, brandOrgId], references: [id, manufacturerOrgId, brandOrgId], onDelete: Cascade, map: "OrgRelationshipStyleSalesBucket_relationship_scope_fkey")
-  style                    Style                    @relation(fields: [styleId, brandOrgId], references: [id, orgId], onDelete: Cascade, map: "OrgRelationshipStyleSalesBucket_style_brand_fkey")
+  style                    Style                    @relation(fields: [styleId, brandOrgId], references: [id, customerOrgId], onDelete: Cascade, map: "OrgRelationshipStyleSalesBucket_style_brand_fkey")
   quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId, manufacturerOrgId], references: [id, orgId], onDelete: Restrict, map: "OrgRelationshipStyleSalesBucket_version_manufacturer_fkey")
 
   createdByEmployee Employee? @relation("SalesBucketOverrideCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
@@ -1354,7 +1385,7 @@ model OrgRelationshipStyleTimeBucket {
   updatedAt                  DateTime @updatedAt
 
   orgRelationship          OrgRelationship          @relation(fields: [orgRelationshipId, manufacturerOrgId, brandOrgId], references: [id, manufacturerOrgId, brandOrgId], onDelete: Cascade, map: "OrgRelationshipStyleTimeBucket_relationship_scope_fkey")
-  style                    Style                    @relation(fields: [styleId, brandOrgId], references: [id, orgId], onDelete: Cascade, map: "OrgRelationshipStyleTimeBucket_style_brand_fkey")
+  style                    Style                    @relation(fields: [styleId, brandOrgId], references: [id, customerOrgId], onDelete: Cascade, map: "OrgRelationshipStyleTimeBucket_style_brand_fkey")
   quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId, manufacturerOrgId], references: [id, orgId], onDelete: Restrict, map: "OrgRelationshipStyleTimeBucket_version_manufacturer_fkey")
 
   createdByEmployee Employee? @relation("TimeBucketOverrideCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
@@ -1382,7 +1413,7 @@ model CustomerSalesPriceList {
   updatedAt                  DateTime          @updatedAt
 
   orgRelationship          OrgRelationship          @relation(fields: [orgRelationshipId, manufacturerOrgId, brandOrgId], references: [id, manufacturerOrgId, brandOrgId], onDelete: Restrict, map: "CustomerSalesPriceList_relationship_scope_fkey")
-  style                    Style                    @relation(fields: [styleId, brandOrgId], references: [id, orgId], onDelete: Restrict, map: "CustomerSalesPriceList_style_brand_fkey")
+  style                    Style                    @relation(fields: [styleId, brandOrgId], references: [id, customerOrgId], onDelete: Restrict, map: "CustomerSalesPriceList_style_brand_fkey")
   quantityBucketSetVersion QuantityBucketSetVersion @relation(fields: [quantityBucketSetVersionId, manufacturerOrgId], references: [id, orgId], onDelete: Restrict, map: "CustomerSalesPriceList_version_manufacturer_fkey")
   currency                 Currency                 @relation(fields: [currencyId], references: [id], onDelete: Restrict, map: "CustomerSalesPriceList_currency_fkey")
   prices                   CustomerSalesPrice[]
