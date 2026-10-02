@@ -1683,6 +1683,7 @@ const OrderList = () => {
           name: style.name || '',
           styleCode: style.styleCode || '',
           customer: style.customer || '',
+          customerOrgId: style.customerOrgId ?? style.ownerOrgId,
         }))
         .sort((a, b) => {
           const labelA = String(a.name || a.styleCode || '').trim();
@@ -1701,12 +1702,12 @@ const OrderList = () => {
         }),
     [languageCode, styles]
   );
-  const selectedBuyerName = formData.buyerOrgName || formData.customerName || '';
+  const selectedBuyerOrgId = Number(formData.buyerOrgId);
 
   const availableStyleOptions = useMemo(() => {
-    if (!selectedBuyerName) return [];
-    return styleOptions.filter((style) => style.customer === selectedBuyerName);
-  }, [styleOptions, selectedBuyerName]);
+    if (!Number.isSafeInteger(selectedBuyerOrgId) || selectedBuyerOrgId <= 0) return [];
+    return styleOptions.filter((style) => Number(style.customerOrgId) === selectedBuyerOrgId);
+  }, [styleOptions, selectedBuyerOrgId]);
   const normalizedColorOptions = useMemo(
     () =>
       colorOptions
@@ -1885,9 +1886,6 @@ const OrderList = () => {
         null
       );
     }
-    if (formData.buyerOrgName) {
-      return buyerOptions.find((option) => option.name === formData.buyerOrgName) || null;
-    }
     return null;
   }, [buyerOptions, formData.buyerOrgId, formData.buyerOrgName]);
 
@@ -1903,9 +1901,6 @@ const OrderList = () => {
         sellerOptions.find((option) => Number(option.id) === Number(formData.sellerOrgId)) ||
         null
       );
-    }
-    if (formData.sellerOrgName) {
-      return sellerOptions.find((option) => option.name === formData.sellerOrgName) || null;
     }
     return null;
   }, [sellerOptions, formData.sellerOrgId, formData.sellerOrgName, fixedSellerOrg]);

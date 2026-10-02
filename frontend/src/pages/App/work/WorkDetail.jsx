@@ -164,7 +164,6 @@ const isWorkLogDateBeforeOperationStart = (
   managementStartDateKey = DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY
 ) => isDateBeforeFactoryManagementStart(value, managementStartDateKey);
 const toKey = (value) => toText(value).toLowerCase();
-const equalsText = (left, right) => toKey(left) === toKey(right);
 const normalizeProcessCode = (value) =>
   toText(value)
     .replace(/\[|\]/g, '')
@@ -215,50 +214,11 @@ const collectNormalizedProcessCodeCandidates = (process) => {
   });
   return candidates;
 };
-const hasMatchingProcessCode = (leftProcess, rightProcess) => {
-  const leftCandidates = collectNormalizedProcessCodeCandidates(leftProcess);
-  if (leftCandidates.length === 0) return false;
-  const rightCandidates = new Set(collectNormalizedProcessCodeCandidates(rightProcess));
-  if (rightCandidates.size === 0) return false;
-  return leftCandidates.some((candidate) => rightCandidates.has(candidate));
-};
-const collectProcessNameKeys = (process) =>
-  new Set(
-    [
-      process?.name,
-      process?.processName,
-      process?.nameKo,
-      process?.processNameKo,
-      process?.nameEn,
-      process?.processNameEn,
-      process?.nameVi,
-      process?.processNameVi,
-    ]
-      .map((value) => normalizeProcessNameKey(value))
-      .filter(Boolean)
-  );
-const hasMatchingProcessName = (leftProcess, rightProcess) => {
-  const leftNameKeys = collectProcessNameKeys(leftProcess);
-  if (leftNameKeys.size === 0) return false;
-  const rightNameKeys = collectProcessNameKeys(rightProcess);
-  if (rightNameKeys.size === 0) return false;
-  for (const nameKey of leftNameKeys) {
-    if (rightNameKeys.has(nameKey)) return true;
-  }
-  return false;
-};
 const isSameProcess = (leftProcess, rightProcess) => {
   if (!leftProcess || !rightProcess) return false;
-  const leftProcessKey = toText(leftProcess?.processKey || leftProcess?.id);
-  const rightProcessKey = toText(rightProcess?.processKey || rightProcess?.id);
-  if (leftProcessKey && rightProcessKey && leftProcessKey === rightProcessKey) return true;
-
-  const leftProcessId = toPositiveIdOrNull(leftProcess?.processId ?? leftProcess?.id);
-  const rightProcessId = toPositiveIdOrNull(rightProcess?.processId ?? rightProcess?.id);
-  if (leftProcessId && rightProcessId && leftProcessId === rightProcessId) return true;
-
-  if (hasMatchingProcessCode(leftProcess, rightProcess)) return true;
-  return hasMatchingProcessName(leftProcess, rightProcess);
+  const leftId = toPositiveIdOrNull(leftProcess.styleProcessId);
+  const rightId = toPositiveIdOrNull(rightProcess.styleProcessId);
+  return leftId !== null && leftId === rightId;
 };
 const formatCount = (value) =>
   formatNumberWithCommas(value, {
@@ -742,16 +702,17 @@ const buildAssignmentPlanMetric = (value = {}) => {
   return { key: `assignment-plan:${assignmentPlanId}`, label: `AssignmentPlan#${assignmentPlanId}` };
 };
 const buildWorkerMetric = (value = {}) => {
+  const partnerId = toPositiveIdOrNull(value?.outsourcingPartnerId);
+  if (partnerId) return { key: `partner:${partnerId}`, label: toText(value?.workerName) };
   const workerId = toPositiveIdOrNull(value?.workerId);
   if (workerId) {
     return { key: `id:${workerId}`, label: toText(value?.workerName) || `ID:${workerId}` };
   }
-  const workerName = toText(value?.workerName);
-  if (workerName) return { key: `name:${toKey(workerName)}`, label: workerName };
   return { key: '', label: '' };
 };
 const buildWorkerStyleProcessSignature = (value = {}) => {
   const workerMetric = buildWorkerMetric({
+    outsourcingPartnerId: value?.outsourcingPartnerId ?? value?.worker?.partnerId,
     workerId: value?.workerId ?? value?.worker?.id,
     workerName: value?.workerName ?? value?.worker?.name,
   });
@@ -801,17 +762,12 @@ const formatDuplicateGroupDetail = (records, languageCode) => {
   const process = [first.processCode, first.processName].filter(Boolean).join(' ');
   return `${rowLabel} ${rowNumbers} \u00b7 ${workerLabel}: ${first.workerName || '-'} \u00b7 ${assignmentLabel}: ${assignment || '-'} \u00b7 ${processLabel}: ${process || '-'}`;
 };
-const matchByIdOrName = (options = [], value, idKey = 'id', labelKey = 'name') => {
+const matchById = (options = [], value, idKey = 'id') => {
   if (!value) return null;
   const valueId = toText(value?.[idKey]);
   if (valueId) {
     const matchedById = options.find((option) => toText(option?.[idKey]) === valueId);
     if (matchedById) return matchedById;
-  }
-  const valueLabel = toText(value?.[labelKey]);
-  if (valueLabel) {
-    const matchedByLabel = options.find((option) => equalsText(option?.[labelKey], valueLabel));
-    if (matchedByLabel) return matchedByLabel;
   }
   return null;
 };
@@ -830,7 +786,7 @@ const buildHydratedRows = ({ records, workers, assignments, languageCode }) => {
           isOutsourced: true,
         }
       :
-      matchByIdOrName(workers, { id: record?.workerId, name: record?.workerName }) ||
+      matchById(workers, { id: record?.workerId }) ||
       (toText(record?.workerName)
         ? { id: record?.workerId || `legacy-worker-${index + 1}`, name: toText(record?.workerName), isLegacy: true }
         : null);
@@ -857,19 +813,9 @@ const buildHydratedRows = ({ records, workers, assignments, languageCode }) => {
       : buildLegacyAssignment(record, index);
 
     const assignmentProcessOptions = Array.isArray(assignment?.processes) ? assignment.processes : [];
-    const matchedProcess =
-      matchByIdOrName(
-        assignmentProcessOptions,
-        { styleProcessId: record?.styleProcessId, name: record?.processName },
-        'styleProcessId',
-        'name'
-      ) ||
-      assignmentProcessOptions.find((processOption) =>
-        hasMatchingProcessCode(processOption, {
-          processCode: record?.processCode,
-          code: record?.processCode,
-        })
-      );
+    const matchedProcess = assignmentProcessOptions.find((option) =>
+      isSameProcess(option, record)
+    );
     const process = matchedProcess
         ? {
           ...matchedProcess,
@@ -962,15 +908,8 @@ const buildProcessOptionDisplayLabel = (process, languageCode) => {
   return processCode ? `${processCode} · ${processName}` : processName;
 };
 const buildProcessIdentityKey = (process) => {
-  const processKey = toText(process?.processKey || process?.id);
-  if (processKey) return processKey;
-  const processId = toPositiveIdOrNull(process?.processId ?? process?.id);
-  if (processId) return `id:${processId}`;
-  const processCode = normalizeProcessCode(process?.processCode || process?.code);
-  if (processCode) return `code:${processCode}`;
-  const processName = toText(process?.name || process?.processName);
-  if (processName) return `name:${toKey(processName)}`;
-  return '';
+  const styleProcessId = toPositiveIdOrNull(process?.styleProcessId);
+  return styleProcessId ? `style-process:${styleProcessId}` : '';
 };
 const resolveAssignmentOption = (rowAssignment, assignmentMap) => {
   if (!rowAssignment) return null;
@@ -1046,67 +985,25 @@ const mergeMatchedProcessOption = (rowProcess, matchedProcess) => {
 const resolveProcessOption = (rowProcess, assignment) => {
   if (!rowProcess) return null;
   const processOptions = Array.isArray(assignment?.processes) ? assignment.processes : [];
-  if (processOptions.length === 0) return rowProcess;
-
-  const targetProcessKey = toText(rowProcess?.processKey || rowProcess?.id);
-  if (targetProcessKey) {
-    const matchedByKey = processOptions.find(
-      (processOption) =>
-        toText(processOption?.processKey || processOption?.id) === targetProcessKey
-    );
-    if (matchedByKey) {
-      return mergeMatchedProcessOption(rowProcess, matchedByKey);
-    }
-  }
-
-  const targetProcessId = toPositiveIdOrNull(rowProcess?.processId ?? rowProcess?.id);
-  if (targetProcessId) {
-    const matchedById = processOptions.find(
-      (processOption) => toPositiveIdOrNull(processOption?.processId ?? processOption?.id) === targetProcessId
-    );
-    if (matchedById) {
-      return mergeMatchedProcessOption(rowProcess, matchedById);
-    }
-  }
-
-  const matchedByCodeOrName = processOptions.find((processOption) =>
-    hasMatchingProcessCode(processOption, rowProcess) ||
-    hasMatchingProcessName(processOption, rowProcess)
-  );
-  if (matchedByCodeOrName) {
-    return mergeMatchedProcessOption(rowProcess, matchedByCodeOrName);
-  }
-
+  const matches = processOptions.filter((option) => isSameProcess(option, rowProcess));
+  if (matches.length === 1) return mergeMatchedProcessOption(rowProcess, matches[0]);
+  // Preserve unresolved input for server validation; never substitute another FK by its label.
   return rowProcess;
 };
 const mergeProcessWithCatalog = (
   process,
-  processCatalogById,
-  processCatalogByCode,
-  processCatalogByName
+  processCatalogById
 ) => {
   if (!process) return null;
-  const processId = toPositiveIdOrNull(process?.processId ?? process?.id);
-  const processCodeCandidates = collectNormalizedProcessCodeCandidates(process);
-  const matchedProcessByCode = processCodeCandidates.reduce((matched, codeCandidate) => {
-    if (matched) return matched;
-    return processCatalogByCode.get(codeCandidate) || null;
-  }, null);
-  const processNameKey = normalizeProcessNameKey(process?.name || process?.processName);
-  const matchedProcess =
-    (processId ? processCatalogById.get(processId) : null) ||
-    matchedProcessByCode ||
-    (processNameKey ? processCatalogByName.get(processNameKey) : null) ||
-    null;
+  const processId = toPositiveIdOrNull(process?.processId);
+  const matchedProcess = processId ? processCatalogById.get(processId) : null;
 
   if (!matchedProcess) return process;
   return {
     ...matchedProcess,
     ...process,
     processId: processId || toPositiveIdOrNull(matchedProcess?.id),
-    styleProcessId: toPositiveIdOrNull(
-      process?.styleProcessId ?? matchedProcess?.styleProcessId
-    ),
+    styleProcessId: toPositiveIdOrNull(process?.styleProcessId),
     processCode: toText(
       process?.processCode || matchedProcess?.processCode || matchedProcess?.code
     ),
@@ -1216,7 +1113,7 @@ const WorkDetail = ({
   const selectedFactoryId = toPositiveIdOrNull(selectedFactory?.id);
   const currentFactory = useMemo(() => {
     if (!selectedFactory) return null;
-    return matchByIdOrName(factories, selectedFactory, 'id', 'name') || selectedFactory;
+    return matchById(factories, selectedFactory) || selectedFactory;
   }, [factories, selectedFactory]);
   const workLogOperationStartDateKey = useMemo(
     () =>
@@ -1419,7 +1316,7 @@ const WorkDetail = ({
       return;
     }
     if (!selectedFactory) return;
-    const matchedFactory = matchByIdOrName(factories, selectedFactory, 'id', 'name');
+    const matchedFactory = matchById(factories, selectedFactory);
     if (matchedFactory && matchedFactory !== selectedFactory) {
       setSelectedFactory(matchedFactory);
     }
@@ -1619,38 +1516,6 @@ const WorkDetail = ({
       }, new Map()),
     [processAttributes]
   );
-  const processCatalogByCode = useMemo(
-    () =>
-      (Array.isArray(processAttributes) ? processAttributes : []).reduce((map, process) => {
-        const processCode = normalizeProcessCode(process?.code);
-        if (processCode) map.set(processCode, process);
-        return map;
-      }, new Map()),
-    [processAttributes]
-  );
-  const processCatalogByName = useMemo(() => {
-    const map = new Map();
-    const duplicatedKeys = new Set();
-    const addProcessName = (rawName, process) => {
-      const nameKey = normalizeProcessNameKey(rawName);
-      if (!nameKey || duplicatedKeys.has(nameKey)) return;
-      if (map.has(nameKey)) {
-        map.delete(nameKey);
-        duplicatedKeys.add(nameKey);
-        return;
-      }
-      map.set(nameKey, process);
-    };
-
-    (Array.isArray(processAttributes) ? processAttributes : []).forEach((process) => {
-      addProcessName(process?.name, process);
-      addProcessName(process?.nameKo, process);
-      addProcessName(process?.nameEn, process);
-      addProcessName(process?.nameVi, process);
-    });
-
-    return map;
-  }, [processAttributes]);
   const assignmentOptionMap = useMemo(
     () =>
       ctAssignmentPool.reduce((map, assignment) => {
@@ -1707,11 +1572,9 @@ const WorkDetail = ({
     const linkedProcess = resolveProcessOption(row?.process, assignment);
     return mergeProcessWithCatalog(
       linkedProcess,
-      processCatalogById,
-      processCatalogByCode,
-      processCatalogByName
+      processCatalogById
     );
-  }, [processCatalogByCode, processCatalogById, processCatalogByName, resolveAssignmentForRow]);
+  }, [processCatalogById, resolveAssignmentForRow]);
   const rowResolvedMetaById = useMemo(() => {
     const map = new Map();
     (Array.isArray(rows) ? rows : []).forEach((row) => {
@@ -2268,9 +2131,7 @@ const WorkDetail = ({
       sourceProcesses.forEach((processOption, processIndex) => {
         const mergedProcess = mergeProcessWithCatalog(
           processOption,
-          processCatalogById,
-          processCatalogByCode,
-          processCatalogByName
+          processCatalogById
         );
         const candidateSignature = buildWorkerStyleProcessSignature({
           worker: row?.worker,
@@ -2317,9 +2178,7 @@ const WorkDetail = ({
       return options;
     },
     [
-      processCatalogByCode,
       processCatalogById,
-      processCatalogByName,
       languageCode,
       rowResolvedMetaById,
       rowSignatureCountByKey,

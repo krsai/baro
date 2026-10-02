@@ -322,9 +322,6 @@ const StyleInfo = ({
 
     const resolvedOrgId = formData.customerOrgId ? Number(formData.customerOrgId) : null;
     const hasResolvedCustomer = baseOptions.some((customer) => {
-      if (String(customer?.name || '').trim() === resolvedCustomerValue) return true;
-      if (String(customer?.nameKo || '').trim() === resolvedCustomerValue) return true;
-      if (String(customer?.nameVi || '').trim() === resolvedCustomerValue) return true;
       if (resolvedOrgId) {
         const optId = Number(customer?.brandOrgId ?? customer?.id);
         return Number.isInteger(optId) && optId > 0 && optId === resolvedOrgId;
@@ -376,11 +373,7 @@ const StyleInfo = ({
           const optId = Number(customer?.brandOrgId ?? customer?.id);
           return Number.isInteger(optId) && optId > 0 && optId === resolvedCustomerOrgId;
         })
-      : null) ||
-    customerOptions.find((customer) => String(customer?.name || '').trim() === resolvedCustomerValue) ||
-    customerOptions.find((customer) => String(customer?.nameKo || '').trim() === resolvedCustomerValue) ||
-    customerOptions.find((customer) => String(customer?.nameVi || '').trim() === resolvedCustomerValue) ||
-    null;
+      : null);
   const selectedCategory =
     categoryOptions.find((category) => String(category?.name || '').trim() === String(formData.collection || '').trim()) ||
     null;
@@ -703,10 +696,8 @@ const StyleInfo = ({
                 noOptionsText="등록된 고객사가 없습니다"
                 getOptionLabel={(option) => resolveCustomerDisplayName(option, languageCode) || option?.name || ''}
                 isOptionEqualToValue={(option, value) =>
-                  String(option?.id || '') === String(value?.id || '') ||
-                  String(option?.name || '').trim() === String(value?.name || '').trim() ||
-                  String(option?.nameKo || '').trim() === String(value?.nameKo || '').trim() ||
-                  String(option?.nameVi || '').trim() === String(value?.nameVi || '').trim()
+                  Number(option?.brandOrgId ?? option?.id) > 0 &&
+                  Number(option?.brandOrgId ?? option?.id) === Number(value?.brandOrgId ?? value?.id)
                 }
                 sx={fieldControlSx}
                 textFieldProps={selectTextFieldProps}
