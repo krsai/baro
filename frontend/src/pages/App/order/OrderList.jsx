@@ -1695,6 +1695,7 @@ const OrderList = () => {
           name: style.name || '',
           styleCode: style.styleCode || '',
           customer: style.customer || '',
+          customerOrgId: style.customerOrgId ?? style.ownerOrgId,
         }))
         .sort((a, b) => {
           const labelA = String(a.name || a.styleCode || '').trim();
@@ -1713,12 +1714,14 @@ const OrderList = () => {
         }),
     [languageCode, styles]
   );
+  const selectedBuyerOrgId = Number(formData.buyerOrgId);
+  const hasSelectedBuyer = Number.isSafeInteger(selectedBuyerOrgId) && selectedBuyerOrgId > 0;
   const selectedBuyerName = formData.buyerOrgName || formData.customerName || '';
 
   const availableStyleOptions = useMemo(() => {
-    if (!selectedBuyerName) return [];
-    return styleOptions.filter((style) => style.customer === selectedBuyerName);
-  }, [styleOptions, selectedBuyerName]);
+    if (!Number.isSafeInteger(selectedBuyerOrgId) || selectedBuyerOrgId <= 0) return [];
+    return styleOptions.filter((style) => Number(style.customerOrgId) === selectedBuyerOrgId);
+  }, [styleOptions, selectedBuyerOrgId]);
   const normalizedColorOptions = useMemo(
     () =>
       colorOptions
@@ -1897,9 +1900,6 @@ const OrderList = () => {
         null
       );
     }
-    if (formData.buyerOrgName) {
-      return buyerOptions.find((option) => option.name === formData.buyerOrgName) || null;
-    }
     return null;
   }, [buyerOptions, formData.buyerOrgId, formData.buyerOrgName]);
 
@@ -1915,9 +1915,6 @@ const OrderList = () => {
         sellerOptions.find((option) => Number(option.id) === Number(formData.sellerOrgId)) ||
         null
       );
-    }
-    if (formData.sellerOrgName) {
-      return sellerOptions.find((option) => option.name === formData.sellerOrgName) || null;
     }
     return null;
   }, [sellerOptions, formData.sellerOrgId, formData.sellerOrgName, fixedSellerOrg]);
@@ -2472,7 +2469,7 @@ const OrderList = () => {
     reason === 'selectOption';
 
   const handleStyleChange = (itemIdOrIds, style, options = {}) => {
-    if (!selectedBuyerName) {
+    if (!hasSelectedBuyer) {
       showNotification(orderPartyText.selectBuyerFirst, 'warning');
       return;
     }
@@ -3751,7 +3748,7 @@ const OrderList = () => {
                               options={availableStyleOptions}
                               filterOptions={filterStyleAutocompleteOptions}
                               value={groupStyleOption}
-                              disabled={!selectedBuyerName}
+                              disabled={!hasSelectedBuyer}
                               onChange={(event, newValue, reason) => {
                                 const focusItemId = group.rows[0]?.item?.id || '';
                                 const shouldFocusNext =
@@ -3805,7 +3802,7 @@ const OrderList = () => {
                                   ),
                               }}
                               noOptionsText={
-                                selectedBuyerName
+                                hasSelectedBuyer
                                   ? orderPageText.noRegisteredStyles
                                   : orderPartyText.selectBuyerFirst
                               }
@@ -4186,7 +4183,7 @@ const OrderList = () => {
                                   options={availableStyleOptions}
                                   filterOptions={filterStyleAutocompleteOptions}
                                   value={groupStyleOption}
-                                  disabled={!selectedBuyerName}
+                                  disabled={!hasSelectedBuyer}
                                   onChange={(event, newValue, reason) => {
                                     const shouldFocusNext =
                                       shouldAdvanceAfterAutocompleteSelection(event, reason) ||
@@ -4245,7 +4242,7 @@ const OrderList = () => {
                                       ),
                                   }}
                                   noOptionsText={
-                                    selectedBuyerName
+                                    hasSelectedBuyer
                                       ? orderPageText.noRegisteredStyles
                                       : orderPartyText.selectBuyerFirst
                                   }

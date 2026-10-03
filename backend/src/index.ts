@@ -10634,9 +10634,9 @@ const buildWorkRecordWorkerStyleProcessSignature = (record: any) => {
   );
 };
 const buildOutsourcedWorkRecordSignature = (record: any) => {
-  const outsourceVendorName = resolveOptionalString(record?.outsourceVendorName, null)?.toLowerCase();
+  const outsourcingPartnerId = toPositiveIntOrNull(record?.outsourcingPartnerId);
   return buildWorkRecordActorProcessSignature(
-    outsourceVendorName ? `outsource:${outsourceVendorName}` : null,
+    outsourcingPartnerId ? `outsource:${outsourcingPartnerId}` : null,
     record
   );
 };
@@ -10912,14 +10912,14 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
   const existingRows: any[] =
     recordKind === "OUTSOURCING"
       ? await (async () => {
-          const outsourceVendorNames = Array.from(new Set(incomingRecords
-            .map((row) => resolveOptionalString(row?.outsourceVendorName, null))
-            .filter((value): value is string => Boolean(value))));
-          if (outsourceVendorNames.length === 0 || firstIncomingRecordBySignature.size === 0) return [];
+          const outsourcingPartnerIds = collectPositiveIntSet(
+            ...incomingRecords.map((row) => row?.outsourcingPartnerId)
+          );
+          if (outsourcingPartnerIds.length === 0 || firstIncomingRecordBySignature.size === 0) return [];
           return prisma.outsourcedWorkRecord.findMany({
             where: {
               orgId,
-              outsourceVendorName: { in: outsourceVendorNames },
+              outsourcingPartnerId: { in: outsourcingPartnerIds },
               workLog: {
                 orgId,
                 displayDate: normalizedWorkDate,
@@ -10927,6 +10927,7 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
               },
             },
             select: {
+              outsourcingPartnerId: true,
               outsourceVendorName: true,
               styleId: true,
               styleProcessId: true,
@@ -11770,12 +11771,14 @@ const resolveWorkLogImportMatchedProcess = ({
   if (!processToken) return null;
   const normalizedProcessCode = normalizeProcessCodeKey(processToken);
   const normalizedProcessName = normalizeProcessNameKey(processToken);
-  return (
-    buildWorkLogImportPlanProcessOptions(plan).find((process) =>
+  const matches = buildWorkLogImportPlanProcessOptions(plan).filter((process) =>
       buildWorkLogImportProcessCodeCandidates(process).includes(normalizedProcessCode) ||
       normalizeProcessNameKey(process?.processName) === normalizedProcessName
-    ) ?? null
   );
+  if (matches.length > 1) {
+    throw createHttpError(409, "ambiguous process code/name in assignment; provide a unique process code");
+  }
+  return matches[0] ?? null;
 };
 
 const resolveWorkLogImportAssignmentCandidate = ({
@@ -21147,6 +21150,8 @@ const loadAssignmentPlanProgressWorkRows = async ({
         workLogId: true,
         assignmentPlanId: true,
         outsourceVendorName: true,
+        outsourcingPartnerId: true,
+        outsourcingPartner: { select: { name: true } },
         styleId: true,
         styleProcessId: true,
         styleProcess: {
@@ -23340,7 +23345,7 @@ const buildAssignmentPlanProgressRows = async (
       coverageStartDate: resolveWorkRecordEffectiveCoverageStartDate(record),
       coverageEndDate: resolveWorkRecordEffectiveCoverageEndDate(record),
       workerName: record?.isOutsourced === true
-        ? resolveOptionalString(record?.outsourceVendorName, "외주")
+        ? resolveOptionalString(record?.outsourcingPartner?.name, "외주")
         : resolveOptionalString(record?.worker?.name, null),
       isOutsourced: record?.isOutsourced === true,
       styleProcessId: toPositiveIntOrNull(record?.styleProcessId),
