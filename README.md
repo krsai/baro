@@ -8,7 +8,7 @@ Detailed domain rules, operations notes, and current source-of-truth guidance li
 ## Docs Policy
 
 - `AGENTS.md`: single source of truth for domain and operations rules
-- `todo.md`: active work, production verification, and the paused inventory/profitability roadmap
+- `todo.md`: all unfinished work, FK follow-ups, production acceptance, policy decisions, and the paused inventory/profitability roadmap
 - `CLAUDE.md`: minimal pointer file for AI tooling
 
 For normal work, read only `AGENTS.md` and `todo.md`.
