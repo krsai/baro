@@ -13405,6 +13405,13 @@ const rebuildOrderPartyCardsTx = async (
   const ids = [...new Set(orgIds.map(toPositiveIntOrNull)
     .filter((id): id is number => id !== null))].sort((a, b) => a - b);
   for (const orgId of ids) {
+    const organization = await db.organization.findUnique({
+      where: { id: orgId },
+      select: { id: true, type: true },
+    });
+    if (!organization) throw createHttpError(409, "order organization no longer exists");
+    // Customers remain order parties, but only manufacturers own production cards.
+    if (!isManufacturerOrg(organization)) continue;
     const result = await rebuildAssignmentCardsForOrgTx(orgId, db, true);
     if (!result) throw createHttpError(409, "order organization no longer exists");
   }

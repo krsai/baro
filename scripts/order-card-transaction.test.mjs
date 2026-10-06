@@ -9,7 +9,7 @@ const section = (start, end) => {
   assert.ok(text.length > 0, start);
   return text;
 };
-function harness({ existing = null, failOrg = null, conflict = null, alwaysConflict = false } = {}) {
+function harness({ existing = null, failOrg = null, conflict = null, alwaysConflict = false, customerOrg = null, missingOrg = null } = {}) {
   let stored = { order: existing, items: [], cards: {} };
   let attempts = 0;
   const seen = [];
@@ -18,6 +18,8 @@ function harness({ existing = null, failOrg = null, conflict = null, alwaysConfl
     attempts++;
     const draft = structuredClone(stored);
     const tx = { draft,
+      organization: { findUnique: async ({ where }) => where.id === missingOrg ? null :
+        { id: where.id, type: where.id === customerOrg ? 'BRAND' : 'MANUFACTURER' } },
       workOrder: {
         findFirst: async () => draft.order,
         create: async ({ data }) => (draft.order = { id: 1, ...data }),
@@ -33,6 +35,7 @@ function harness({ existing = null, failOrg = null, conflict = null, alwaysConfl
   } };
   const positive = value => Number.isSafeInteger(value) && value > 0 ? value : null;
   const context = {
+    isManufacturerOrg: org => org.type === 'MANUFACTURER',
     db_1: { prisma: db }, common_1: { toPositiveIntOrNull: positive },
     http_1: { createHttpError: (status, message) => Object.assign(new Error(message), { status }), getErrorCode: error => error.code },
     client_1: { Prisma: { JsonNull: null, TransactionIsolationLevel: { Serializable: 'Serializable' } } },
@@ -55,6 +58,20 @@ function harness({ existing = null, failOrg = null, conflict = null, alwaysConfl
     items: [{ id: 'row1', styleId: 7, colorId: 8, gender: 'M', totalQuantity: 10 }],
   } }), state: () => stored, attempts: () => attempts, seen };
 }
+
+test('customer party is retained without creating customer production cards', async () => {
+  const app = harness({ customerOrg: 2 });
+  assert.equal((await app.create()).created, true);
+  assert.equal(app.state().order.buyerOrgId, 2);
+  assert.deepEqual(app.seen, [3]);
+  assert.deepEqual(Object.keys(app.state().cards), ['3']);
+});
+
+test('missing party rejects and rolls back the entire order transaction', async () => {
+  const app = harness({ missingOrg: 3 });
+  await assert.rejects(app.create(), error => error.status === 409 && /organization no longer exists/.test(error.message));
+  assert.deepEqual(app.state(), { order: null, items: [], cards: {} });
+});
 
 test('order creation persists both parties and items in the same transaction', async () => {
   const app = harness();
