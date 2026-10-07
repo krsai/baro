@@ -85,25 +85,15 @@ test('multi-style order rows summarize as "first style 외 N개" like the order 
   assert.match(page, /\$\{names\[0\]\} 외 \$\{remaining\}개/);
 });
 
-test('report has no CSV export and prints full-width with visibility isolation', () => {
-  assert.doesNotMatch(page, /DownloadIcon|exportCsv|csvCell|text\.csv|Blob\(/);
-  // The old `nav, header, aside { display: none }` print rule never matched this
-  // app's actual DOM (the sidebar is an MUI Drawer, not <aside>, and the tabs
-  // bar isn't a <nav>), so the app chrome squeezed the printed table. Lock in
-  // the same body-wide visibility-isolation technique StyleTimeMatrix.jsx
-  // already proved works, scoped to this report's own container.
-  assert.doesNotMatch(page, /nav, header, aside/);
-  assert.match(page, /import \{[\s\S]*GlobalStyles[\s\S]*\} from '@mui\/material'/);
-  assert.match(page, /'body \*': \{ visibility: 'hidden' \}/);
-  assert.match(page, /customer-production-report-print/);
-  assert.match(page, /position: 'absolute'/);
+test('report has no export or print action', () => {
+  assert.doesNotMatch(page, /DownloadIcon|exportCsv|csvCell|text\.csv|Blob\(|PrintIcon|GlobalStyles|window\.print|customer-production-report-print/);
 });
 
-test('sales report is routed, permissioned, and printable', () => {
+test('sales report is routed and permissioned', () => {
   assert.match(router, /path:\s*'customer-production-report'/);
   assert.match(layout, /customer-production-report/);
   assert.match(access, /\/customer-production-report.*FEATURE_KEYS\.ORDER/);
-  assert.match(page, /window\.print\(\)/);
+
   assert.doesNotMatch(page, /estimateBasis|text\.basis|const BASIS/);
   assert.doesNotMatch(page, /PARTIALLY_ASSIGNED|Partially assigned|일부 미배정/);
   assert.match(page, /SCHEDULED: \{ ko: '배정 완료'/);
