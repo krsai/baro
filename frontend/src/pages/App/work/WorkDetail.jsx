@@ -1085,6 +1085,7 @@ const WorkDetail = ({
   const [formError, setFormError] = useState('');
   const [persistedSnapshotText, setPersistedSnapshotText] = useState(null);
   const [rowRenderLimit, setRowRenderLimit] = useState(ROW_RENDER_BATCH_SIZE);
+  const coverageStartDateEditedRef = useRef(false);
   const initialRowsHydratedRef = useRef(false);
   const rowRenderSentinelRef = useRef(null);
   const hasInitialRecords = Array.isArray(initialLog?.records) && initialLog.records.length > 0;
@@ -1240,6 +1241,7 @@ const WorkDetail = ({
   }, [activeOrgId, isOutsourcingMode]);
   useEffect(() => {
     initialRowsHydratedRef.current = false;
+    coverageStartDateEditedRef.current = false;
     setPersistedSnapshotText(null);
     setFactoryScopeContextReady(false);
     setSelectedFactory(initialFactoryOption);
@@ -1408,7 +1410,7 @@ const WorkDetail = ({
           isFirstFactoryWorkLog: Boolean(context?.isFirstFactoryWorkLog),
         };
         setCoverageSuggestion(nextCoverageSuggestion);
-        if (!initialLog?.id) {
+        if (!initialLog?.id && !coverageStartDateEditedRef.current) {
           const suggestedStartDate = nextCoverageSuggestion.suggestedCoverageStartDate
             ? dayjs(nextCoverageSuggestion.suggestedCoverageStartDate)
             : null;
@@ -2256,6 +2258,7 @@ const WorkDetail = ({
   }, []);
 
   const handleFactoryChange = useCallback((nextFactory) => {
+    coverageStartDateEditedRef.current = false;
     setSelectedFactory(nextFactory || null);
     setSelectedFactoryScope(null);
     setCoverageSuggestion({
@@ -2278,6 +2281,7 @@ const WorkDetail = ({
     initialRowsHydratedRef.current = Boolean(initialLog?.id);
   }, [initialLog?.id, workDate, workLogOperationStartDateKey]);
   const handleFactoryScopeChange = useCallback((nextFactoryScope) => {
+    coverageStartDateEditedRef.current = false;
     setSelectedFactoryScope(nextFactoryScope || null);
     setCoverageSuggestion({
       previousCoverageEndDate: null,
@@ -2321,6 +2325,7 @@ const WorkDetail = ({
     initialRowsHydratedRef.current = Boolean(initialLog?.id);
   }, [initialLog?.id, workLogOperationStartDateKey]);
   const handleCoverageStartDateChange = useCallback((nextDate) => {
+    coverageStartDateEditedRef.current = true;
     setCoverageStartDate(
       clampWorkLogDay(nextDate || workDate || dayjs(), workLogOperationStartDateKey)
     );
