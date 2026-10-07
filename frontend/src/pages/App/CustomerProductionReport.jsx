@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Box, Button, Chip, CircularProgress, Collapse, Dialog, DialogContent, DialogTitle, FormControl, FormControlLabel, GlobalStyles, InputLabel,
+  Alert, Box, Button, Chip, CircularProgress, Collapse, Dialog, DialogContent, DialogTitle, FormControl, FormControlLabel, InputLabel,
   LinearProgress, IconButton, Menu, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Tooltip, Typography, Switch,
 } from '@mui/material';
-import PrintIcon from '@mui/icons-material/Print';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
@@ -21,7 +20,7 @@ import { WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
 const TEXT = {
   ko: {
     title: '보고서', customer: '고객', allCustomers: '전체 고객', search: '주문번호·스타일 검색',
-    print: '인쇄 / PDF', generated: '기준 시각', order: '주문번호', style: '스타일', due: '납기',
+    generated: '기준 시각', order: '주문번호', style: '스타일', due: '납기',
     quantity: '완성품/주문', produced: '완성품 수량', progress: '공정 진행률', status: '상태', schedule: '스케줄',
     empty: '조건에 맞는 보고서 항목이 없습니다.',
     loadError: '생산 진행 보고서를 불러오지 못했습니다.',
@@ -33,7 +32,7 @@ const TEXT = {
   },
   en: {
     title: 'Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style',
-    print: 'Print / PDF', generated: 'As of', order: 'Order', style: 'Style', due: 'Due', quantity: 'Finished/Order',
+    generated: 'As of', order: 'Order', style: 'Style', due: 'Due', quantity: 'Finished/Order',
     produced: 'Finished qty', progress: 'Process progress', status: 'Status', schedule: 'Schedule',
     empty: 'No report rows match the filters.',
     loadError: 'Failed to load the production progress report.',
@@ -45,7 +44,7 @@ const TEXT = {
   },
   vi: {
     title: 'Báo cáo', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng',
-    print: 'In / PDF', generated: 'Thời điểm', order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Thành phẩm/Đơn hàng',
+    generated: 'Thời điểm', order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Thành phẩm/Đơn hàng',
     produced: 'Số lượng thành phẩm', progress: 'Tiến độ công đoạn', status: 'Trạng thái', schedule: 'Lịch',
     empty: 'Không có dữ liệu phù hợp.',
     loadError: 'Không thể tải báo cáo tiến độ sản xuất.',
@@ -259,43 +258,9 @@ const CustomerProductionReport = () => {
 
   return <AppPageContainer
     title={text.title}
-    titleActions={<Stack direction="row" spacing={1} className="report-screen-actions"><Button variant="contained" startIcon={<PrintIcon />} onClick={() => window.print()} disabled={!rows.length}>{text.print}</Button></Stack>}
-    toolbar={<PageToolbar className="report-screen-actions" showLastUpdater={false} left={<SearchInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} sx={{ width: { xs: '100%', sm: 320 } }} />} right={<><FormControlLabel control={<Switch size="small" checked={includeCompleted} onChange={(event) => setIncludeCompleted(event.target.checked)} />} label={text.includeCompleted} sx={{ whiteSpace: 'nowrap', m: 0 }} /><FormControl size="small" sx={{ width: { xs: '100%', sm: 220 }, flexShrink: 0 }}><InputLabel shrink>{text.customer}</InputLabel><Select value={customerId} label={text.customer} displayEmpty onChange={(event) => setCustomerId(event.target.value)} renderValue={(value) => value ? customerLabel(data.customers.find((customer) => String(customer.id) === String(value)), languageCode) : text.allCustomers}><MenuItem value="">{text.allCustomers}</MenuItem>{data.customers.map((customer) => <MenuItem key={customer.id} value={String(customer.id)}>{customerLabel(customer, languageCode)}</MenuItem>)}</Select></FormControl></>} />}
+    toolbar={<PageToolbar showLastUpdater={false} left={<SearchInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} sx={{ width: { xs: '100%', sm: 320 } }} />} right={<><FormControlLabel control={<Switch size="small" checked={includeCompleted} onChange={(event) => setIncludeCompleted(event.target.checked)} />} label={text.includeCompleted} sx={{ whiteSpace: 'nowrap', m: 0 }} /><FormControl size="small" sx={{ width: { xs: '100%', sm: 220 }, flexShrink: 0 }}><InputLabel shrink>{text.customer}</InputLabel><Select value={customerId} label={text.customer} displayEmpty onChange={(event) => setCustomerId(event.target.value)} renderValue={(value) => value ? customerLabel(data.customers.find((customer) => String(customer.id) === String(value)), languageCode) : text.allCustomers}><MenuItem value="">{text.allCustomers}</MenuItem>{data.customers.map((customer) => <MenuItem key={customer.id} value={String(customer.id)}>{customerLabel(customer, languageCode)}</MenuItem>)}</Select></FormControl></>} />}
   >
-    <GlobalStyles styles={{
-      '@media print': {
-        '@page': { size: 'A4 landscape', margin: '10mm' },
-        'html, body, #root': {
-          height: 'auto !important',
-          maxHeight: 'none !important',
-          overflow: 'visible !important',
-        },
-        'body *': { visibility: 'hidden' },
-        'body *:has(.customer-production-report-print)': {
-          height: 'auto !important',
-          maxHeight: 'none !important',
-          overflow: 'visible !important',
-        },
-        '.customer-production-report-print, .customer-production-report-print *': { visibility: 'visible' },
-        '.customer-production-report-print': {
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: 'auto !important',
-          maxHeight: 'none !important',
-          overflow: 'visible !important',
-        },
-        '.report-screen-actions': { display: 'none !important' },
-        '.customer-production-report-print .MuiTableContainer-root': {
-          overflow: 'visible !important',
-          border: 'none !important',
-        },
-        '.customer-production-report-print table': { width: '100% !important' },
-        '.customer-production-report-print thead': { display: 'table-header-group' },
-        '.customer-production-report-print tr': { breakInside: 'avoid', pageBreakInside: 'avoid' },
-      },
-    }} />
-    <Stack spacing={2} className="customer-production-report customer-production-report-print">
+    <Stack spacing={2} className="customer-production-report">
       <Box><Typography variant="h5">{selectedCustomer ? customerLabel(selectedCustomer, languageCode) : text.allCustomers}</Typography><Typography variant="caption" color="text.secondary">{text.generated}: {data.generatedAt ? new Date(data.generatedAt).toLocaleString() : '-'}</Typography></Box>
       {error ? <Alert severity="error">{error}</Alert> : null}
       {loading ? <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress size={30} /></Box> : rows.length === 0 ? <Paper variant="outlined" sx={{ p: 5, textAlign: 'center' }}><Typography color="text.secondary">{text.empty}</Typography></Paper> :
@@ -333,7 +298,7 @@ const CustomerProductionReport = () => {
                   <TableCell align="right">{fmt(row.producedQuantity)}/{fmt(row.orderedQuantity)}</TableCell>
                   <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={row.progressPercent} /></TableCell>
                   <TableCell><ReportStatusChip status={row.status} languageCode={languageCode} /></TableCell>
-                  <TableCell align="center"><Tooltip title={text.dailyProduced}><IconButton className="report-screen-actions" size="small" color="primary" aria-label={text.dailyProduced} onClick={() => openDailyProducedCalendar(row)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></TableCell>
+                  <TableCell align="center"><Tooltip title={text.dailyProduced}><IconButton size="small" color="primary" aria-label={text.dailyProduced} onClick={() => openDailyProducedCalendar(row)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></TableCell>
                 </TableRow>
                 {hasMultipleStyles ? <TableRow>
                   <TableCell colSpan={REPORT_COLUMN_COUNT} sx={{ p: 0, borderBottom: expanded ? undefined : 'none' }}>
@@ -361,7 +326,7 @@ const CustomerProductionReport = () => {
                               <TableCell align="right">{fmt(styleRow.producedQuantity)}/{fmt(styleRow.orderedQuantity)}</TableCell>
                               <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={styleRow.progressPercent} /></TableCell>
                               <TableCell><ReportStatusChip status={styleRow.status} languageCode={languageCode} /></TableCell>
-                              <TableCell align="center"><Tooltip title={text.dailyProduced}><IconButton className="report-screen-actions" size="small" color="primary" aria-label={text.dailyProduced} onClick={() => openDailyProducedCalendar(styleRow)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></TableCell>
+                              <TableCell align="center"><Tooltip title={text.dailyProduced}><IconButton size="small" color="primary" aria-label={text.dailyProduced} onClick={() => openDailyProducedCalendar(styleRow)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></TableCell>
                             </TableRow>
                           )}</TableBody>
                         </Table>
