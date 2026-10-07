@@ -34,7 +34,7 @@ export const buildSharedAtPrediction = (target: Row, candidates: Row[]) => {
   const pt = Number(target.ptSeconds);
   const seed = pt > 0 ? pt : Number(target.standards?.[0]?.bucketStSeconds);
   if (!(seed > 0) || !Number.isFinite(seed)) return null;
-  const category = String(target.style?.collection || '').trim();
+  const category = Number(target.style?.categoryId) > 0 ? Number(target.style.categoryId) : null;
   const donors = candidates.filter(row => row.orgId === target.orgId && row.styleId !== target.styleId &&
     row.productionStage === target.productionStage && row.genderScope === target.genderScope && Number(row.ptSeconds) > 0)
     .map(row => ({ row, params: fit(row) })).filter(item => item.params && item.params.a / item.row.ptSeconds >= 0.2 && item.params.a / item.row.ptSeconds <= 5);
@@ -49,7 +49,7 @@ export const buildSharedAtPrediction = (target: Row, candidates: Row[]) => {
     return { count: styles.size, a: median([...styles.values()].map(v => median(v.a))), b: median([...styles.values()].map(v => median(v.b))) };
   };
   const common = summarize(donors);
-  const sameCategory = summarize(donors.filter(({ row }) => category && String(row.style?.collection || '').trim() === category));
+  const sameCategory = summarize(donors.filter(({ row }) => category !== null && Number(row.style?.categoryId) === category));
   const categoryWeight = sameCategory.count / (sameCategory.count + 3);
   // Three styles and five own assignments are explicit regularization strengths,
   // not confidence percentages. Calibrate using leave-one-style-out validation.
@@ -81,7 +81,7 @@ export const buildSharedAtPrediction = (target: Row, candidates: Row[]) => {
   const ownBoundary = obs.length ? Math.min(...obs.map((o: Row) => Number(o.quantity))) : 0;
   const smallQuantityBoundary = ownBoundary ? Math.min(ownBoundary, Math.max(100, donorBoundary)) : Math.max(100, donorBoundary);
   return { version: 'shared-at-v1', a, b, smallQuantityBoundary, source: own ? 'OWN_BLEND' : obs.length ? 'OBSERVATION_ANCHORED' : sameCategory.count ? 'CATEGORY_PRIOR' : common.count ? 'COMMON_PRIOR' : 'PT_ST_PRIOR',
-    category: category || null, donorStyleCount: common.count, categoryStyleCount: sameCategory.count,
+    categoryId: category, category: String(target.style?.collection || '').trim() || null, donorStyleCount: common.count, categoryStyleCount: sameCategory.count,
     ownAssignmentCount: ownCount, ownWeight, categoryWeight, isProvisional: !own || ownWeight < 0.8,
     scope: 'ORGANIZATION_PRODUCTION_STAGE', seedSource: pt > 0 ? 'PT' : 'ST' };
 };

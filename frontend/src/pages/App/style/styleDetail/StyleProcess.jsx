@@ -600,7 +600,7 @@ const normalizeProcessMasterOption = (item, defaultType = '') => {
   if (!label && !code) return null;
 
   return {
-    id: typeof item === 'object' && !Array.isArray(item) ? item?.id ?? null : null,
+    id: typeof item === 'object' && !Array.isArray(item) ? item?.masterOptionId ?? item?.id ?? null : null,
     type,
     code: code || null,
     label: label || code,
@@ -629,6 +629,7 @@ const normalizeProcessMasterOption = (item, defaultType = '') => {
 const getProcessMasterOptionIdentity = (item, defaultType = '') => {
   const normalized = normalizeProcessMasterOption(item, defaultType);
   if (!normalized) return '';
+  if (normalized.id) return `${normalized.type}:ID:${normalized.id}`;
   const normalizedCode = normalizeStyleProcessCodeSegment(normalized.code);
   if (normalizedCode) return `${normalized.type}:CODE:${normalizedCode}`;
   return `${normalized.type}:LABEL:${String(normalized.label ?? '')
@@ -636,9 +637,9 @@ const getProcessMasterOptionIdentity = (item, defaultType = '') => {
     .toLowerCase()}`;
 };
 
-const buildProcessMasterLookupByCode = (options = []) =>
+const buildProcessMasterLookupById = (options = []) =>
   (Array.isArray(options) ? options : []).reduce((map, option) => {
-    const codeKey = normalizeStyleProcessCodeSegment(option?.code);
+    const codeKey = String(option?.masterOptionId ?? option?.id ?? "");
     if (!codeKey) return map;
     map.set(codeKey, option);
     return map;
@@ -715,11 +716,9 @@ const buildProcessMasterMatchCandidates = (option, languageCode) => {
 const findProcessMasterOptionByInput = (options, inputText, languageCode) => {
   const normalizedInput = normalizeProcessMasterMatchText(inputText);
   if (!normalizedInput) return null;
-  return (
-    (Array.isArray(options) ? options : []).find((option) =>
-      buildProcessMasterMatchCandidates(option, languageCode).includes(normalizedInput)
-    ) || null
-  );
+  const matches = (Array.isArray(options) ? options : []).filter(option =>
+    buildProcessMasterMatchCandidates(option, languageCode).includes(normalizedInput));
+  return matches.length === 1 ? matches[0] : null;
 };
 
 const normalizeCompositionKind = (kind) => {
@@ -741,6 +740,7 @@ const normalizeProcessCompositionEntry = (value, kind) => {
   if (!label && !code) return null;
 
   return {
+    masterOptionId: Number.isInteger(Number(normalized.id)) && Number(normalized.id) > 0 ? Number(normalized.id) : null,
     code: code || null,
     label: label || code,
     nameKo: normalized.nameKo || label || code,
@@ -916,7 +916,7 @@ const hasStructuredProcessComposition = (composition) => {
 
 const resolveProcessCompositionText = (entry, languageCode, masterLookupByCode = null) => {
   if (!entry || typeof entry !== 'object') return '';
-  const codeKey = normalizeStyleProcessCodeSegment(entry?.code);
+  const codeKey = String(entry?.masterOptionId ?? entry?.id ?? "");
   const masterOption = codeKey && masterLookupByCode instanceof Map
     ? masterLookupByCode.get(codeKey)
     : null;
@@ -1595,13 +1595,13 @@ const StyleProcess = ({
   }, [actionSpecOptionsFromStyleProcesses, languageCode, processMasterOptions.actionSpecs]);
   const compositionMasterLookupByKind = useMemo(
     () => ({
-      location: buildProcessMasterLookupByCode(partOptions),
-      part: buildProcessMasterLookupByCode(partOptions),
-      target: buildProcessMasterLookupByCode(targetOptions),
-      action: buildProcessMasterLookupByCode(actionOptions),
-      targetSpec: buildProcessMasterLookupByCode(targetSpecOptions),
-      actionSpec: buildProcessMasterLookupByCode(actionSpecOptions),
-      spec: buildProcessMasterLookupByCode(targetSpecOptions),
+      location: buildProcessMasterLookupById(partOptions),
+      part: buildProcessMasterLookupById(partOptions),
+      target: buildProcessMasterLookupById(targetOptions),
+      action: buildProcessMasterLookupById(actionOptions),
+      targetSpec: buildProcessMasterLookupById(targetSpecOptions),
+      actionSpec: buildProcessMasterLookupById(actionSpecOptions),
+      spec: buildProcessMasterLookupById(targetSpecOptions),
     }),
     [actionOptions, actionSpecOptions, partOptions, targetOptions, targetSpecOptions]
   );

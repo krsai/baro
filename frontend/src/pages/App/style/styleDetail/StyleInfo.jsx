@@ -165,9 +165,7 @@ const StyleInfo = ({
         const normalizedCategories = Array.isArray(data?.categories) ? data.categories : [];
         const seen = new Set();
         const deduped = normalizedCategories.filter((category) => {
-          const key = String(category?.displayName || category?.name || category?.code || '')
-            .trim()
-            .toLowerCase();
+          const key = String(category?.id || '');
           if (!key || seen.has(key)) return false;
           seen.add(key);
           return true;
@@ -348,24 +346,8 @@ const StyleInfo = ({
     isBrandOrg,
     resolvedCustomerValue,
   ]);
-  const categoryOptions = useMemo(() => {
-    const collectionValue = String(formData.collection || '').trim();
-    if (!collectionValue) return categories;
+  const categoryOptions = categories;
 
-    const hasResolvedCategory = categories.some(
-      (category) => String(category?.name || '').trim() === collectionValue
-    );
-    if (hasResolvedCategory) return categories;
-
-    return [
-      {
-        id: `collection-${collectionValue}`,
-        name: collectionValue,
-        displayName: collectionValue,
-      },
-      ...categories,
-    ];
-  }, [categories, formData.collection]);
   const resolvedCustomerOrgId = formData.customerOrgId ? Number(formData.customerOrgId) : null;
   const selectedCustomer =
     (resolvedCustomerOrgId
@@ -375,7 +357,7 @@ const StyleInfo = ({
         })
       : null);
   const selectedCategory =
-    categoryOptions.find((category) => String(category?.name || '').trim() === String(formData.collection || '').trim()) ||
+    categoryOptions.find((category) => Number(category?.id) === Number(formData.categoryId)) ||
     null;
   const fieldControlSx = { width: '70%' };
   const selectTextFieldProps = { placeholder: '선택' };
@@ -408,6 +390,7 @@ const StyleInfo = ({
   };
 
   const handleCollectionChange = (_event, nextCategory) => {
+    emitInputChange('categoryId', nextCategory?.id ? Number(nextCategory.id) : null);
     emitInputChange('collection', String(nextCategory?.name || '').trim());
   };
 
@@ -714,9 +697,9 @@ const StyleInfo = ({
                 loadingText="불러오는 중..."
                 noOptionsText="등록된 카테고리가 없습니다"
                 getOptionLabel={(option) => option?.displayName || option?.name || ''}
+                getOptionKey={(option) => option.id}
                 isOptionEqualToValue={(option, value) =>
-                  String(option?.id || option?.code || option?.name || '').trim() ===
-                  String(value?.id || value?.code || value?.name || '').trim()
+                  Number(option?.id) === Number(value?.id)
                 }
                 sx={fieldControlSx}
                 textFieldProps={selectTextFieldProps}

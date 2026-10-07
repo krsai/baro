@@ -434,8 +434,6 @@ const hasDuplicateOrderNumberByCustomer = ({
 
   const targetBuyerId = toOrgId(buyerOrgId);
   const targetSellerId = toOrgId(sellerOrgId);
-  const targetBuyerName = normalizeTextKey(buyerOrgName);
-  const targetSellerName = normalizeTextKey(sellerOrgName);
 
   return (Array.isArray(orders) ? orders : []).some((order) => {
     if (!order) return false;
@@ -448,14 +446,7 @@ const hasDuplicateOrderNumberByCustomer = ({
       return targetBuyerId === orderBuyerId && targetSellerId === orderSellerId;
     }
 
-    const orderBuyerName = normalizeTextKey(
-      order.buyerOrgName || order.customerName || order.customer || ''
-    );
-    const orderSellerName = normalizeTextKey(order.sellerOrgName || '');
-    if (!targetBuyerName || !targetSellerName || !orderBuyerName || !orderSellerName) {
-      return false;
-    }
-    return targetBuyerName === orderBuyerName && targetSellerName === orderSellerName;
+    return false;
   });
 };
 const resolveOrderSaveErrorMessage = (error, options = {}) => {

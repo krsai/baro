@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:style-identity-postgres": "npm --prefix backend run build && node scripts/style-identity-postgres.test.mjs",
     "test:work-style-search": "node scripts/search-select-browser-check.mjs",
     "test:manufacturer-ownership": "npm --prefix backend run build && node --test scripts/manufacturer-ownership.test.mjs",
     "dev": "concurrently -n frontend,backend -c green,blue \"npm --prefix frontend run dev\" \"npm --prefix backend run dev\"",

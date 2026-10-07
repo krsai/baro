@@ -262,56 +262,17 @@ const resolveRowCtDisplayMeta = ({ row, rowProcess, selectedProcessOption, langu
 const buildComparableWorkRecord = (record = {}) => {
   const isOutsourced = record?.isOutsourced === true;
   const workerId = toPositiveIdOrNull(record?.workerId);
-  const outsourcingPartnerId = toPositiveIdOrNull(record?.outsourcingPartnerId);
-  const outsourceVendorKey = toKey(record?.outsourceVendorName);
-  const outsourceUnitPrice = isOutsourced
-    ? Math.max(0, Math.round(Number(record?.outsourceUnitPrice) || 0))
-    : null;
-  const workerKey = isOutsourced
-    ? outsourcingPartnerId
-      ? `partner:${outsourcingPartnerId}`
-      : outsourceVendorKey
-        ? `vendor:${outsourceVendorKey}`
-        : ''
-    : workerId
-      ? `worker:${workerId}`
-      : '';
-  const assignmentPlanId = toPositiveIdOrNull(record?.assignmentPlanId);
-  const styleRefId = toPositiveIdOrNull(record?.styleRefId ?? record?.styleId);
-  const styleCodeKey = toKey(record?.styleCode);
-  const styleNameKey = toKey(record?.styleName);
-  const styleProcessId = toPositiveIdOrNull(record?.styleProcessId);
-  const processCodeKey = normalizeProcessCode(
-    stripProcessInstanceCode(record?.processCode)
-  );
-  const processNameKey = normalizeProcessNameKey(
-    record?.processName || record?.processNameKo || record?.processNameEn || record?.processNameVi
-  );
-  const quantity = Math.max(0, Math.round(Number(record?.quantity) || 0));
-  const styleKey = assignmentPlanId
-    ? `plan:${assignmentPlanId}`
-    : styleRefId
-      ? `style:${styleRefId}`
-      : styleCodeKey
-        ? `code:${styleCodeKey}`
-        : styleNameKey
-          ? `name:${styleNameKey}`
-          : '';
-  const processKey = styleProcessId
-    ? `style-process:${styleProcessId}`
-    : processCodeKey
-      ? `code:${processCodeKey}`
-      : processNameKey
-        ? `name:${processNameKey}`
-        : '';
-
+  const partnerId = toPositiveIdOrNull(record?.outsourcingPartnerId);
+  const planId = toPositiveIdOrNull(record?.assignmentPlanId);
+  const styleId = toPositiveIdOrNull(record?.styleRefId ?? record?.styleId);
+  const processId = toPositiveIdOrNull(record?.styleProcessId);
   return {
-    workerKey,
-    styleKey,
-    processKey,
-    quantity,
+    workerKey: isOutsourced ? partnerId ? `partner:${partnerId}` : '' : workerId ? `worker:${workerId}` : '',
+    styleKey: planId ? `plan:${planId}` : styleId ? `style:${styleId}` : '',
+    processKey: processId ? `style-process:${processId}` : '',
+    quantity: Math.max(0, Math.round(Number(record?.quantity) || 0)),
     isOutsourced,
-    outsourceUnitPrice,
+    outsourceUnitPrice: isOutsourced ? Math.max(0, Math.round(Number(record?.outsourceUnitPrice) || 0)) : null,
   };
 };
 const buildComparableWorkRecords = (records = []) =>

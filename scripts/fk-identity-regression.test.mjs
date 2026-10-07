@@ -26,6 +26,69 @@ function load(source, names, deps = {}) {
 }
 const common = { toPositiveIntOrNull: positive, toPositiveIdOrNull: positive, toText: text };
 
+test('internal style creation requires customer ID; import resolves unique customer names only', async () => {
+  const customers = [{ brand: { id: 2, name: 'Same customer' } }, { brand: { id: 3, name: 'Same customer' } }];
+  const { resolveStyleOwnerForCreateOrThrow: resolve } = load(backend, ['resolveStyleOwnerForCreateOrThrow'], {
+    ...common, isManufacturerOrg: () => true,
+    createHttpError: (status,message) => Object.assign(new Error(message),{status}),
+    prisma: { orgRelationship: { findFirst: async ({where}) => customers.find(c=>c.brand.id===where.brandOrgId), findMany: async()=>customers } },
+  });
+  const organization={id:1};
+  await assert.rejects(()=>resolve({organization,payload:{customer:'Same customer'}}),/customerOrgId is required/);
+  await assert.rejects(()=>resolve({organization,payload:{customer:'Same customer'},allowImportName:true}),/multiple customers/);
+  assert.equal((await resolve({organization,payload:{customerOrgId:2,customer:'Renamed'}})).customerOrgId,2);
+  customers.pop();
+  assert.equal((await resolve({organization,payload:{customer:'Same customer'},allowImportName:true})).customerOrgId,2);
+});
+
+test('process component resolver uses master ID across code/name changes and rejects missing/wrong type IDs', () => {
+  const { findMatchingProcessMasterOptionRow: resolve } = load(backend,['findMatchingProcessMasterOptionRow'],{
+    ...common, createHttpError:(status,message)=>Object.assign(new Error(message),{status}),
+  });
+  const rows=[{id:7,type:'LOCATION',code:'NEW_CODE',label:'New name'},{id:8,type:'LOCATION',code:'OLD_CODE',label:'Old name'}];
+  assert.equal(resolve({rows,entry:{masterOptionId:7,code:'OLD_CODE',label:'Old name'}}).id,7);
+  assert.throws(()=>resolve({rows,entry:{masterOptionId:99,code:'OLD_CODE'}}),/missing or wrong type/);
+  assert.throws(()=>resolve({rows,entry:{code:'OLD_CODE'}}),/masterOptionId is required/);
+  assert.equal(resolve({rows,entry:{isCustom:true,label:'Direct input'}}),null);
+});
+
+test('current composition labels and codes refresh by master ID after a rename',()=>{
+  const {applyProcessMasterNamesToCompositionEntry: apply}=load(backend,['applyProcessMasterNamesToCompositionEntry'],{
+    PROCESS_COMPOSITION_KIND_BY_MASTER_TYPE:{LOCATION:'location'},normalizeStyleProcessCompositionEntry:value=>value,
+  });
+  const lookup=new Map([['LOCATION',new Map([['7',{code:'NEW',label:'Renamed',nameKo:'새 이름',nameEn:'Renamed',nameVi:'Moi'}]])]]);
+  const entry={masterOptionId:7,code:'OLD',label:'Original'};
+  const result=apply(entry,'LOCATION',lookup);
+  assert.equal(result.masterOptionId,7);assert.equal(result.code,'NEW');assert.equal(result.label,'Renamed');
+  assert.deepEqual(entry,{masterOptionId:7,code:'OLD',label:'Original'});
+});
+
+test('historical PART/SPEC masters are kept separate from the current editing resolver',()=>{
+  const {createProcessMasterResolverState: state}=load(backend,['createProcessMasterResolverState'],{
+    ...common, PROCESS_MASTER_TYPE_KEYS:['LOCATION','TARGET','TARGET_SPEC','ACTION','ACTION_SPEC'],
+    normalizeProcessMasterType:value=>({PART:'LOCATION',SPEC:'TARGET_SPEC'})[value]||value,
+    normalizeProcessMasterCode:text,
+  });
+  const result=state([{id:1,type:'LOCATION',code:'SAME'},{id:2,type:'PART',code:'SAME'},{id:3,type:'SPEC',code:'SPEC'}]);
+  assert.deepEqual(result.rowsByType.get('LOCATION').map(r=>r.id),[1]);
+  assert.equal(result.rowsByType.get('TARGET_SPEC').length,0);
+});
+
+test('order duplicate detection never substitutes party names for missing IDs',()=>{
+  const {hasDuplicateOrderNumberByCustomer: duplicate}=load(order,['hasDuplicateOrderNumberByCustomer'],{toOrgId:positive});
+  const existing={id:'o1',orderNumber:'001',buyerOrgId:2,sellerOrgId:1,buyerOrgName:'Same',sellerOrgName:'Baro'};
+  assert.equal(duplicate({orders:[existing],orderNumber:'001',buyerOrgId:3,sellerOrgId:1,buyerOrgName:'Same',sellerOrgName:'Baro'}),false);
+  assert.equal(duplicate({orders:[existing],orderNumber:'001',buyerOrgId:2,sellerOrgId:1,buyerOrgName:'Renamed'}),true);
+  assert.equal(duplicate({orders:[existing],orderNumber:'001',buyerOrgName:'Same',sellerOrgName:'Baro'}),false);
+});
+
+test('work record comparison is stable across renames and never restores identity from names/codes',()=>{
+  const {buildComparableWorkRecord: compare}=load(work,['buildComparableWorkRecord'],common);
+  const record={workerId:1,assignmentPlanId:2,styleProcessId:3,styleCode:'OLD',processName:'Old',quantity:10};
+  assert.deepEqual(compare(record),compare({...record,styleCode:'NEW',processName:'New'}));
+  assert.equal(compare({quantity:10,workerName:'Same',styleCode:'Same',processCode:'Same'}).processKey,'');
+});
+
 test('outsourcing duplicate lookup uses vendor FK across renames and distinguishes different vendors', async () => {
   let query;
   const existing = { outsourcingPartnerId: 7, outsourceVendorName: 'Old name', assignmentPlanId: 4, styleProcessId: 8 };

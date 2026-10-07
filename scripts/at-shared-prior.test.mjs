@@ -4,10 +4,19 @@ import prior from '../backend/dist/services/atSharedPrior.js';
 const { buildSharedAtPrediction } = prior;
 const row = (styleId, category = 'JACKET', a = 50, b = 10000, quantities = [100, 500, 1000]) => ({
   id: styleId, styleId, orgId: 1, productionStage: 'SEWING', genderScope: 'UNISEX', ptSeconds: 50,
-  style: { collection: category }, atObservations: quantities.map((quantity, index) => ({ assignmentPlanId: styleId * 100 + index, quantity, allocatedLaborInputSeconds: a * quantity + b })),
+  style: { categoryId: ({ JACKET: 1, SHIRT: 2, NEW: 3 })[category] ?? category, collection: category }, atObservations: quantities.map((quantity, index) => ({ assignmentPlanId: styleId * 100 + index, quantity, allocatedLaborInputSeconds: a * quantity + b })),
 });
 const target = (id = 20, category = 'JACKET') => ({ ...row(id, category), atObservations: [] });
 const seconds = (p, q) => p.a + p.b * (q < p.smallQuantityBoundary ? (2 - q / p.smallQuantityBoundary) / p.smallQuantityBoundary : 1 / q);
+
+test('category grouping uses immutable IDs across renames and isolates same-name categories',()=>{
+  const donors=[row(1),row(2),{...row(3),style:{categoryId:2,collection:'JACKET'}}];
+  const first=buildSharedAtPrediction(target(),donors);
+  const renamed=buildSharedAtPrediction({...target(),style:{categoryId:1,collection:'Renamed'}},donors);
+  assert.equal(first.categoryStyleCount,2);assert.equal(renamed.categoryStyleCount,2);
+  assert.equal(first.a,renamed.a);assert.equal(first.b,renamed.b);
+  assert.equal(buildSharedAtPrediction({...target(),style:{collection:'JACKET'}},donors).categoryStyleCount,0);
+});
 
 test('new style borrows category/common setup and stays monotonic without mutating training data', () => {
   const donors = [row(1), row(2), row(3, 'SHIRT', 50, 2000)];

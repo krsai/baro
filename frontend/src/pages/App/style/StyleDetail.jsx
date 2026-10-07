@@ -119,6 +119,7 @@ const createEmptyStyle = () => ({
   customerNameVi: '',
   registrationDate: '',
   designer: '',
+  categoryId: null,
   collection: '',
   season: '',
   imageUrls: [],

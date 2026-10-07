@@ -42,6 +42,7 @@ const normalizeStyle = (value = {}) => ({
   customerNameVi: value.customerNameVi || '',
   registrationDate: value.registrationDate || '',
   designer: value.designer || '',
+  categoryId: toPositiveOrgId(value.categoryId),
   collection: value.collection || '',
   season: value.season || '',
   imageUrls: normalizeArray(value.imageUrls),

@@ -1,3 +1,4 @@
+import { resolveStyleCategory, syncCategoryCopies } from './services/styleIdentity';
 import { planOrderItemWrites } from "./utils/orderItemIdentity";
 import { styleAccessWhere, canManageStyle } from "./utils/styleOwnership";
 import { reconcileAssignmentCards } from "./utils/reconcileAssignmentCards";
@@ -768,8 +769,15 @@ const STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT =
     .toLowerCase() !== "false";
 const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
   "20260723_clear_stale_at_params_v1",
+  "20261007_style_identity_fk_v1",
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
+  { tableName: "Style", columnName: "categoryId" },
+  { tableName: "StyleProcessComponent", columnName: "styleProcessId" },
+  { tableName: "StyleProcessComponent", columnName: "path" },
+  { tableName: "StyleProcessComponent", columnName: "type" },
+  { tableName: "StyleProcessComponent", columnName: "masterOptionId" },
+  { tableName: "StyleIdentityArchive", columnName: "original" },
   { tableName: "InvoiceDraft", columnName: "id" },
   { tableName: "InvoiceDraft", columnName: "sellerOrgId" },
   { tableName: "InvoiceDraft", columnName: "buyerOrgId" },
@@ -1019,6 +1027,9 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  "Style_category_manufacturer_fkey",
+  "StyleProcessComponent_master_fkey",
+  "StyleProcessComponent_pkey",
   "InvoiceDraft_sellerOrgId_clientKey_key",
   "InvoiceDraft_sellerOrgId_fkey",
   "InvoiceDraft_buyerOrgId_fkey",
@@ -2704,6 +2715,9 @@ const normalizeStyleProcessCompositionEntry = (
 ) => {
   const normalizedKind = normalizeStyleProcessCompositionEntryKind(kind);
   if (value === null || value === undefined) return null;
+  if (value?.masterOptionId != null && toPositiveIntOrNull(value.masterOptionId) === null) {
+    throw createHttpError(400, "invalid process component masterOptionId");
+  }
   const fallbackText =
     typeof value === "object" && !Array.isArray(value)
       ? resolveOptionalString(
@@ -2746,6 +2760,7 @@ const normalizeStyleProcessCompositionEntry = (
     "";
 
   return {
+    masterOptionId: toPositiveIntOrNull(value?.masterOptionId ?? value?.id),
     code: code || null,
     label: label || code,
     nameKo,
@@ -6199,6 +6214,9 @@ const normalizeStylePayload = (
   const customer =
     typeof payload?.customer === "string" ? payload.customer.trim() : "";
   const includeProcesses = options.includeProcesses !== false;
+  if (payload?.categoryId != null && payload.categoryId !== "" && toPositiveIntOrNull(payload.categoryId) === null) {
+    throw createHttpError(400, "invalid categoryId");
+  }
 
   return {
     code,
@@ -6206,6 +6224,7 @@ const normalizeStylePayload = (
     customer,
     registrationDate: resolveOptionalString(payload?.registrationDate, null),
     designer: resolveOptionalString(payload?.designer, null),
+    categoryId: toPositiveIntOrNull(payload?.categoryId),
     collection: resolveOptionalString(payload?.collection, null),
     season: resolveOptionalString(payload?.season, null),
     imageUrls: ensureArray(payload?.imageUrls),
@@ -6252,9 +6271,11 @@ const parseStyleOwnerOrgIdQuery = (rawValue: unknown): number | null => {
 const resolveStyleOwnerForCreateOrThrow = async ({
   organization,
   payload,
+  allowImportName = false,
 }: {
   organization: any;
   payload: any;
+  allowImportName?: boolean;
 }) => {
   if (!isManufacturerOrg(organization)) {
     throw createHttpError(400, "invalid organization type");
@@ -6286,6 +6307,7 @@ const resolveStyleOwnerForCreateOrThrow = async ({
     };
   }
 
+  if (!allowImportName) throw createHttpError(400, "customerOrgId is required");
   if (!customerName) {
     throw createHttpError(400, "customer is required");
   }
@@ -6973,7 +6995,7 @@ const loadStyleProcessMirrorMapForStyleIds = async (
   const priorOrgIds = [...new Set(targetRows.map(row => row.orgId))];
   const donorRows = await db.styleProcess.findMany({
     where: { orgId: { in: priorOrgIds }, isActive: true },
-    include: { style: { select: { collection: true } }, atObservations: { where: { modelVersion: AT_V2_MODEL_VERSION } } },
+    include: { style: { select: { categoryId: true, collection: true } }, atObservations: { where: { modelVersion: AT_V2_MODEL_VERSION } } },
   });
   const categoryByStyle = new Map(donorRows.map(row => [row.styleId, row.style]));
   const predictions = new Map(targetRows.map(row => [row.id, buildSharedAtPrediction({ ...row, style: categoryByStyle.get(row.styleId) }, donorRows)]));
@@ -7720,6 +7742,7 @@ const toStyleResponse = (
     customerNameVi: resolveOptionalString(owner?.nameVi, "") ?? "",
     registrationDate: style.registrationDate ?? "",
     designer: style.designer ?? "",
+    categoryId: style.categoryId ?? null,
     collection: style.collection ?? "",
     season: style.season ?? "",
     imageUrls: ensureArray(style.imageUrls),
@@ -7925,6 +7948,7 @@ const syncOrderItemColorSnapshots = async (items: any) => {
   return normalizedItems.map((item) => {
     const colorId = toPositiveIntOrNull(item?.colorId);
     const linkedColor = colorId ? colorById.get(colorId) ?? null : null;
+    if (colorId && !linkedColor) throw createHttpError(409, "color ID not found");
     const colorCode =
       resolveOptionalString(linkedColor?.code, null) ??
       resolveOptionalString(item?.colorCode ?? item?.color, null) ??
@@ -10620,11 +10644,9 @@ const buildWorkRecordActorProcessSignature = (
   if (!actorKey) return null;
   const assignmentPlanId = toPositiveIntOrNull(record?.assignmentPlanId);
   if (!assignmentPlanId) return null;
-  const processMetric = resolveWorkRecordProcessMetricFromRecord(record);
-  if (!processMetric.processMetricKey || processMetric.processMetricKey === "unknown") {
-    return null;
-  }
-  return `${actorKey}::assignmentPlan:${assignmentPlanId}::${processMetric.processMetricKey}`;
+  const styleProcessId = toPositiveIntOrNull(record?.styleProcessId);
+  if (!styleProcessId) return null;
+  return `${actorKey}::assignmentPlan:${assignmentPlanId}::style-process:${styleProcessId}`;
 };
 const buildWorkRecordWorkerStyleProcessSignature = (record: any) => {
   const workerId = toPositiveIntOrNull(record?.workerId);
@@ -17368,6 +17390,8 @@ const groupProcessMasterOptions = (rows: any[] = []) => {
   };
 
   rows.forEach((row) => {
+    // Legacy PART/SPEC rows remain available to historical FKs only.
+    if (!(PROCESS_MASTER_TYPE_KEYS as readonly string[]).includes(row.type)) return;
     const normalized = toProcessMasterOptionResponse(row);
     const type = normalizeProcessMasterType(normalized.type);
     if (!type) return;
@@ -17481,8 +17505,8 @@ const listProcessMasterOptionsWithDb = async (
     ORDER BY "type" ASC, "sortOrder" ASC, "id" ASC
   `);
 
-const listProcessMasterOptions = async (): Promise<ProcessMasterOptionRow[]> =>
-  listProcessMasterOptionsWithDb(prisma);
+const listProcessMasterOptions = async (db: ProcessMasterStoreClient = prisma): Promise<ProcessMasterOptionRow[]> =>
+  listProcessMasterOptionsWithDb(db);
 
 const countProcessMasterOptions = async () => {
   const rows = await prisma.$queryRaw<Array<{ count: bigint | number }>>(Prisma.sql`
@@ -17501,11 +17525,11 @@ const insertProcessMasterOptions = async (
     nameEn: string;
     nameVi: string;
     sortOrder: number;
-  }>
+  }>, db: ProcessMasterStoreClient = prisma
 ) => {
   if (rows.length === 0) return;
   const actor = getCurrentRequestActor();
-  await prisma.$executeRaw(Prisma.sql`
+  await db.$executeRaw(Prisma.sql`
     INSERT INTO "ProcessMasterOption" (
       "type",
       "code",
@@ -17536,9 +17560,9 @@ const insertProcessMasterOptions = async (
   `);
 };
 
-const deleteProcessMasterOptionsByIds = async (ids: number[]) => {
+const deleteProcessMasterOptionsByIds = async (ids: number[], db: ProcessMasterStoreClient = prisma) => {
   if (ids.length === 0) return;
-  await prisma.$executeRaw(
+  await db.$executeRaw(
     Prisma.sql`DELETE FROM "ProcessMasterOption" WHERE "id" IN (${Prisma.join(ids)})`
   );
 };
@@ -17552,8 +17576,8 @@ const updateProcessMasterOptionRow = async (row: {
   nameEn: string;
   nameVi: string;
   sortOrder: number;
-}) => {
-  await prisma.$executeRaw(Prisma.sql`
+}, db: ProcessMasterStoreClient = prisma) => {
+  await db.$executeRaw(Prisma.sql`
     UPDATE "ProcessMasterOption"
     SET
       "type" = ${row.type}::"ProcessMasterOptionType",
@@ -17568,10 +17592,10 @@ const updateProcessMasterOptionRow = async (row: {
   `);
 };
 
-const listProcessMasterOptionRelations = async (): Promise<
+const listProcessMasterOptionRelations = async (db: ProcessMasterStoreClient = prisma): Promise<
   ProcessMasterRelationRow[]
 > =>
-  prisma.$queryRaw<ProcessMasterRelationRow[]>(Prisma.sql`
+  db.$queryRaw<ProcessMasterRelationRow[]>(Prisma.sql`
     SELECT
       relation."id",
       relation."type",
@@ -17593,9 +17617,9 @@ const listProcessMasterOptionRelations = async (): Promise<
       relation."id" ASC
   `);
 
-const deleteProcessMasterOptionRelationsByIds = async (ids: number[]) => {
+const deleteProcessMasterOptionRelationsByIds = async (ids: number[], db: ProcessMasterStoreClient = prisma) => {
   if (ids.length === 0) return;
-  await prisma.$executeRaw(
+  await db.$executeRaw(
     Prisma.sql`
       DELETE FROM "ProcessMasterOptionRelation"
       WHERE "id" IN (${Prisma.join(ids)})
@@ -17896,105 +17920,17 @@ type ProcessMasterOptionInUseError = Error & {
 };
 
 const findProcessMasterDeletionUsageConflicts = async (
-  deleteRows: ProcessMasterOptionRow[]
+  deleteRows: ProcessMasterOptionRow[], db: ProcessMasterStoreClient = prisma
 ): Promise<ProcessMasterDeletionUsageConflict[]> => {
-  if (deleteRows.length === 0) return [];
-
-  const tracked = new Map<
-    string,
-    {
-      id: number;
-      type: ProcessMasterOptionType;
-      code: string;
-      label: string;
-      nameKo: string;
-      nameEn: string;
-      nameVi: string;
-      styleProcessIds: Set<number>;
-      referenceCount: number;
-      sampleStyleProcessIds: number[];
-    }
-  >();
-
-  deleteRows.forEach((row) => {
-    const id = toPositiveIntOrNull(row?.id);
-    const type = normalizeProcessMasterType(row?.type);
-    const code = normalizeProcessMasterCode(row?.code);
-    if (!id || !type || !code) return;
-    const key = `${type}:${code}`;
-    if (tracked.has(key)) return;
-    const label =
-      normalizeProcessMasterLabel(
-        row?.label ?? row?.nameKo ?? row?.nameEn ?? row?.nameVi ?? row?.code
-      ) || code;
-    tracked.set(key, {
-      id,
-      type,
-      code,
-      label,
-      nameKo: normalizeProcessMasterLabel(row?.nameKo) || label,
-      nameEn: normalizeProcessMasterLabel(row?.nameEn) || label,
-      nameVi: normalizeProcessMasterLabel(row?.nameVi) || label,
-      styleProcessIds: new Set<number>(),
-      referenceCount: 0,
-      sampleStyleProcessIds: [],
-    });
-  });
-  if (tracked.size === 0) return [];
-
-  const styleProcesses = await prisma.styleProcess.findMany({
-    select: { id: true, processComposition: true },
-    orderBy: { id: "asc" },
-  });
-
-  styleProcesses.forEach((styleProcess) => {
-    const styleProcessId = toPositiveIntOrNull(styleProcess?.id);
-    if (!styleProcessId) return;
-    const composition = normalizeStyleProcessComposition(styleProcess?.processComposition);
-    if (!composition) return;
-
-    PROCESS_MASTER_TYPE_KEYS.forEach((typeKey) => {
-      const type = typeKey as ProcessMasterOptionType;
-      const groupKey = PROCESS_MASTER_COMPOSITION_GROUP_BY_TYPE[type];
-      const entries = ensureArray((composition as any)?.[groupKey]);
-      entries.forEach((entry) => {
-        const code = normalizeProcessMasterCode((entry as any)?.code);
-        if (!code) return;
-        const key = `${type}:${code}`;
-        const candidate = tracked.get(key);
-        if (!candidate) return;
-        candidate.referenceCount += 1;
-        candidate.styleProcessIds.add(styleProcessId);
-        if (
-          candidate.sampleStyleProcessIds.length < 5 &&
-          !candidate.sampleStyleProcessIds.includes(styleProcessId)
-        ) {
-          candidate.sampleStyleProcessIds.push(styleProcessId);
-        }
-      });
-    });
-  });
-
-  return Array.from(tracked.values())
-    .map((item) => ({
-      id: item.id,
-      type: item.type,
-      code: item.code,
-      label: item.label,
-      nameKo: item.nameKo,
-      nameEn: item.nameEn,
-      nameVi: item.nameVi,
-      styleProcessCount: item.styleProcessIds.size,
-      referenceCount: item.referenceCount,
-      sampleStyleProcessIds: item.sampleStyleProcessIds,
-    }))
-    .filter((item) => item.styleProcessCount > 0)
-    .sort((left, right) => {
-      if (right.styleProcessCount !== left.styleProcessCount) {
-        return right.styleProcessCount - left.styleProcessCount;
-      }
-      return left.code.localeCompare(right.code, "en-US");
-    });
+  if (!deleteRows.length) return [];
+  const references = await db.styleProcessComponent.findMany({ where: { masterOptionId: { in: deleteRows.map(r => r.id) } } });
+  return deleteRows.map(row => {
+    const matched = references.filter(ref => ref.masterOptionId === row.id);
+    const ids = [...new Set(matched.map(ref => ref.styleProcessId))];
+    return { id: row.id, type: row.type, code: row.code, label: row.label,
+      nameKo: row.nameKo || row.label, nameEn: row.nameEn || row.label, nameVi: row.nameVi || row.label,
+      styleProcessCount: ids.length, referenceCount: matched.length, sampleStyleProcessIds: ids.slice(0, 5) };
+  }).filter(row => row.referenceCount > 0);
 };
 
 const createProcessMasterOptionInUseError = (
@@ -18023,7 +17959,7 @@ const isProcessMasterOptionInUseError = (
   return code === "PROCESS_MASTER_OPTION_IN_USE";
 };
 
-const syncProcessMasterOptions = async (payload: any) => {
+const syncProcessMasterOptions = async (payload: any, db: ProcessMasterStoreClient = prisma) => {
   const incomingItems = flattenProcessMasterPayloadItems(payload).filter(
     (item) =>
       item.type &&
@@ -18034,22 +17970,26 @@ const syncProcessMasterOptions = async (payload: any) => {
     .map((item) => item.id as number);
   const incomingIdSet = new Set(incomingIds);
 
-  const existing = await listProcessMasterOptions();
+  const existing = (await listProcessMasterOptions(db)).filter(row =>
+    (PROCESS_MASTER_TYPE_KEYS as readonly string[]).includes(row.type));
   const deleteRows = existing.filter((row) => !incomingIdSet.has(row.id));
   if (deleteRows.length > 0) {
-    const conflicts = await findProcessMasterDeletionUsageConflicts(deleteRows);
+    const conflicts = await findProcessMasterDeletionUsageConflicts(deleteRows, db);
     if (conflicts.length > 0) {
       throw createProcessMasterOptionInUseError(conflicts);
     }
   }
   const deleteIds = deleteRows.map((row) => row.id);
   if (deleteIds.length > 0) {
-    await deleteProcessMasterOptionsByIds(deleteIds);
+    await deleteProcessMasterOptionsByIds(deleteIds, db);
   }
 
   const existingById = new Map(
     existing.map((row) => [row.id, { type: row.type, code: row.code }])
   );
+  if (incomingItems.some(item => item.id !== null && !existingById.has(item.id))) {
+    throw createHttpError(400, "unknown or historical process master ID");
+  }
   const usedCodesByType = PROCESS_MASTER_TYPE_KEYS.reduce((map, typeKey) => {
     map.set(typeKey as ProcessMasterOptionType, new Set<string>());
     return map;
@@ -18145,16 +18085,16 @@ const syncProcessMasterOptions = async (payload: any) => {
   });
 
   if (creates.length > 0) {
-    await insertProcessMasterOptions(creates);
+    await insertProcessMasterOptions(creates, db);
   }
 
   if (updates.length > 0) {
     for (const row of updates) {
-      await updateProcessMasterOptionRow(row);
+      await updateProcessMasterOptionRow(row, db);
     }
   }
 
-  return listProcessMasterOptions();
+  return listProcessMasterOptions(db);
 };
 
 const parseProcessMasterRelationPayload = (payload: any) => {
@@ -18290,13 +18230,15 @@ const parseProcessMasterRelationPayload = (payload: any) => {
 const syncProcessMasterRelations = async ({
   payload,
   processMasterRows,
+  db = prisma,
 }: {
   payload: any;
   processMasterRows: ProcessMasterOptionRow[];
+  db?: ProcessMasterStoreClient;
 }) => {
   const parsedPayload = parseProcessMasterRelationPayload(payload);
   if (!parsedPayload.hasProvidedKeys) {
-    return listProcessMasterOptionRelations();
+    return listProcessMasterOptionRelations(db);
   }
 
   const optionCodeLookupByType = new Map<
@@ -18307,6 +18249,7 @@ const syncProcessMasterRelations = async ({
     optionCodeLookupByType.set(typeKey as ProcessMasterOptionType, new Map());
   });
   processMasterRows.forEach((row) => {
+    if (!(PROCESS_MASTER_TYPE_KEYS as readonly string[]).includes(row.type)) return;
     const type = normalizeProcessMasterType(row?.type);
     const code = normalizeProcessMasterCode(row?.code);
     if (!type || !code) return;
@@ -18315,7 +18258,7 @@ const syncProcessMasterRelations = async ({
     typeMap.set(code, row.id);
   });
 
-  const existingRelations = await listProcessMasterOptionRelations();
+  const existingRelations = await listProcessMasterOptionRelations(db);
   for (const relationType of parsedPayload.providedTypes) {
     const meta = PROCESS_MASTER_RELATION_META[relationType];
     if (!meta) continue;
@@ -18333,7 +18276,7 @@ const syncProcessMasterRelations = async ({
     desiredTuples.forEach(({ parentCode, childCode }) => {
       const parentOptionId = parentLookup.get(parentCode);
       const childOptionId = childLookup.get(childCode);
-      if (!parentOptionId || !childOptionId) return;
+      if (!parentOptionId || !childOptionId) throw createHttpError(409, "invalid process master relation references");
       if (
         relationType === "TARGET_TARGET" &&
         Number(parentOptionId) === Number(childOptionId)
@@ -18376,14 +18319,14 @@ const syncProcessMasterRelations = async ({
     );
 
     if (deleteIds.length > 0) {
-      await deleteProcessMasterOptionRelationsByIds(deleteIds);
+      await deleteProcessMasterOptionRelationsByIds(deleteIds, db);
     }
     if (creates.length > 0) {
-      await insertProcessMasterOptionRelations(creates);
+      await insertProcessMasterOptionRelationsWithDb(db, creates);
     }
   }
 
-  return listProcessMasterOptionRelations();
+  return listProcessMasterOptionRelations(db);
 };
 
 type ProcessMasterStoreClient = Prisma.TransactionClient | typeof prisma;
@@ -18697,6 +18640,7 @@ const createProcessMasterResolverState = (
   });
 
   rows.forEach((row) => {
+    if (!(PROCESS_MASTER_TYPE_KEYS as readonly string[]).includes(row.type)) return;
     const type = normalizeProcessMasterType(row?.type);
     if (!type) return;
     const group = rowsByType.get(type) ?? [];
@@ -18762,62 +18706,15 @@ const listProcessMasterEntryLabelTokens = (entry: any) =>
     normalizeProcessMasterMatchToken(entry?.nameVi),
   ].filter(Boolean);
 
-const findMatchingProcessMasterOptionRow = ({
-  rows,
-  entry,
-}: {
-  rows: ProcessMasterOptionRow[];
-  entry: any;
-}): ProcessMasterOptionRow | null => {
-  if (!rows.length || !entry) return null;
-
-  const entryCode = normalizeProcessMasterCode(entry?.code);
-  if (entryCode) {
-    const codeMatched =
-      rows.find((row) => normalizeProcessMasterCode(row?.code) === entryCode) ?? null;
-    if (codeMatched) return codeMatched;
+const findMatchingProcessMasterOptionRow = ({ rows, entry }: { rows: ProcessMasterOptionRow[]; entry: any }): ProcessMasterOptionRow | null => {
+  const id = toPositiveIntOrNull(entry?.masterOptionId);
+  if (id) {
+    const row = rows.find(row => row.id === id);
+    if (!row) throw createHttpError(409, "process component master ID missing or wrong type");
+    return row;
   }
-
-  const labelTokens = new Set(listProcessMasterEntryLabelTokens(entry));
-  if (labelTokens.size === 0) return null;
-
-  const primaryToken =
-    normalizeProcessMasterMatchToken(
-      entry?.label ?? entry?.nameKo ?? entry?.nameEn ?? entry?.nameVi
-    ) || null;
-
-  const matchedRows = rows.filter((row) => {
-    const rowTokens = buildProcessMasterMatchTokenSet(row);
-    for (const token of labelTokens) {
-      if (rowTokens.has(token)) return true;
-    }
-    return false;
-  });
-  if (matchedRows.length === 0) return null;
-  if (matchedRows.length === 1) return matchedRows[0] ?? null;
-
-  if (primaryToken) {
-    const primaryMatched =
-      matchedRows.find((row) => {
-        const rowPrimaryToken =
-          normalizeProcessMasterMatchToken(
-            row?.label ?? row?.nameKo ?? row?.nameEn ?? row?.nameVi
-          ) || null;
-        if (rowPrimaryToken && rowPrimaryToken === primaryToken) return true;
-        const rowTokens = buildProcessMasterMatchTokenSet(row);
-        return rowTokens.has(primaryToken);
-      }) ?? null;
-    if (primaryMatched) return primaryMatched;
-  }
-
-  return (
-    [...matchedRows].sort((left, right) => {
-      const leftSort = toPositiveIntOrNull(left?.sortOrder) ?? 0;
-      const rightSort = toPositiveIntOrNull(right?.sortOrder) ?? 0;
-      if (leftSort !== rightSort) return leftSort - rightSort;
-      return (toPositiveIntOrNull(left?.id) ?? 0) - (toPositiveIntOrNull(right?.id) ?? 0);
-    })[0] ?? null
-  );
+  if (Boolean(entry?.isCustom)) return null;
+  throw createHttpError(400, "masterOptionId is required for process components");
 };
 
 const findProcessMasterOptionByTypeAndCodeWithDb = async (
@@ -18862,6 +18759,7 @@ const toCanonicalStyleProcessCompositionEntry = (
         fallbackEntry?.nameVi
     ) || code;
   return {
+    masterOptionId: row.id,
     code: code || null,
     label,
     nameKo:
@@ -18948,16 +18846,37 @@ const resolveOrCreateProcessMasterOptionFromStyleEntry = async ({
 const syncProcessMasterFromStyleProcesses = async ({
   processes,
   db,
+  allowImportCodes = false,
 }: {
   processes: any;
   db: ProcessMasterStoreClient;
+  allowImportCodes?: boolean;
 }) => {
   await ensureProcessMasterOptionTypeSchemaReady();
   await ensureProcessMasterOptionRelationSchemaReady();
 
   const normalizedProcesses = normalizeStyleProcesses(processes);
+  if (allowImportCodes) {
+    const rows = await listProcessMasterOptionsWithDb(db);
+    const visit = (value: any, type: ProcessMasterOptionType | null = null): void => {
+      if (Array.isArray(value)) { value.forEach(v => visit(v, type)); return; }
+      if (!value || typeof value !== "object") return;
+      if (type && (value.code || value.label)) {
+        if (!value.masterOptionId && !value.isCustom) {
+          const matches = rows.filter(row => row.type === type && normalizeProcessMasterCode(row.code) === normalizeProcessMasterCode(value.code));
+          if (matches.length !== 1) throw createHttpError(409, "ambiguous or missing imported process component");
+          value.masterOptionId = matches[0]!.id;
+        }
+        return;
+      }
+      const kinds: Record<string, ProcessMasterOptionType> = { locations: "LOCATION", target: "TARGET", targetSpec: "TARGET_SPEC", action: "ACTION", actionSpec: "ACTION_SPEC" };
+      Object.entries(value).forEach(([key,v]) => visit(v,kinds[key] || type));
+    };
+    normalizedProcesses.forEach(p => visit((p as any).processComposition));
+  }
   if (normalizedProcesses.length === 0) return normalizedProcesses;
 
+  await db.$executeRawUnsafe('LOCK TABLE "ProcessMasterOption" IN SHARE ROW EXCLUSIVE MODE');
   const processMasterRows = await listProcessMasterOptionsWithDb(db);
   const resolverState = createProcessMasterResolverState(processMasterRows);
   const pendingTargetSpecRelations = new Map<string, { parentOptionId: number; childOptionId: number }>();
@@ -19148,6 +19067,7 @@ const buildProcessMasterNameLookupByTypeAndCode = (
     Map<
       string,
       {
+        code: string;
         label: string;
         nameKo: string;
         nameEn: string;
@@ -19169,7 +19089,8 @@ const buildProcessMasterNameLookupByTypeAndCode = (
     const label =
       normalizeProcessMasterLabel(row?.label ?? row?.nameKo ?? row?.nameEn ?? row?.nameVi) ||
       codeKey;
-    typeLookup.set(codeKey, {
+    typeLookup.set(String(row.id), {
+      code: codeKey,
       label,
       nameKo: normalizeProcessMasterLabel(row?.nameKo) || label,
       nameEn: normalizeProcessMasterLabel(row?.nameEn) || label,
@@ -19188,6 +19109,7 @@ const applyProcessMasterNamesToCompositionEntry = (
     Map<
       string,
       {
+        code: string;
         label: string;
         nameKo: string;
         nameEn: string;
@@ -19200,7 +19122,7 @@ const applyProcessMasterNamesToCompositionEntry = (
   const normalizedEntry = normalizeStyleProcessCompositionEntry(entry, kind);
   if (!normalizedEntry) return null;
 
-  const codeKey = normalizeProcessMasterCode(normalizedEntry.code);
+  const codeKey = String(normalizedEntry.masterOptionId || "");
   if (!codeKey) return normalizedEntry;
 
   const masterNames = lookupByTypeAndCode.get(type)?.get(codeKey);
@@ -19209,7 +19131,7 @@ const applyProcessMasterNamesToCompositionEntry = (
   const label = masterNames.label || normalizedEntry.label;
   return {
     ...normalizedEntry,
-    code: codeKey || normalizedEntry.code,
+    code: masterNames.code || normalizedEntry.code,
     label: label || normalizedEntry.label,
     nameKo: masterNames.nameKo || label || normalizedEntry.nameKo,
     nameEn: masterNames.nameEn || label || normalizedEntry.nameEn,
@@ -19224,6 +19146,7 @@ const applyProcessMasterNamesToComposition = (
     Map<
       string,
       {
+        code: string;
         label: string;
         nameKo: string;
         nameEn: string;
@@ -19311,6 +19234,7 @@ const syncStyleProcessCompositionNamesWithMasterOptions = async ({
 
   const lookupByTypeAndCode = buildProcessMasterNameLookupByTypeAndCode(rows);
   const styleProcesses = await db.styleProcess.findMany({
+    where: { sourceOrgId: 0 },
     select: {
       id: true,
       processCode: true,
@@ -20101,72 +20025,14 @@ const syncGlobalColorSection = async (items: any) => {
   return prisma.attrColor.findMany({ orderBy: { id: "asc" } });
 };
 
-const listGlobalCategorySection = async (fallbackOrgId: number | null = null) => {
-  const firstCategory = await prisma.attrCategory.findFirst({
-    select: { orgId: true },
-    orderBy: [{ orgId: "asc" }, { id: "asc" }],
-  });
-  const sourceOrgId = firstCategory?.orgId ?? fallbackOrgId;
-  if (!sourceOrgId) return [];
-  return prisma.attrCategory.findMany({
-    where: { orgId: sourceOrgId },
-    orderBy: { id: "asc" },
-  });
+const listGlobalCategorySection = async (orgId: number | null = null) => {
+  if (!orgId) return [];
+  return prisma.attrCategory.findMany({ where: { orgId }, orderBy: { id: "asc" } });
 };
-
-const syncGlobalCategorySection = async (
-  items: any,
-  options: {
-    fallbackOrgId?: number | null;
-  } = {}
-) => {
-  const organizations = await prisma.organization.findMany({
-    where: {
-      type: "MANUFACTURER",
-    },
-    select: { id: true },
-    orderBy: { id: "asc" },
-  });
-  const organizationIds = organizations
-    .map((item) => toPositiveIntOrNull(item.id))
-    .filter((id): id is number => id !== null);
-  const fallbackOrgId = toPositiveIntOrNull(options.fallbackOrgId) ?? organizationIds[0] ?? null;
-  if (!fallbackOrgId) return [];
-
-  const sourceRows = await syncSection(prisma.attrCategory, fallbackOrgId, items, {
-    resolveCode: ({ code, name, usedCodes }: { code: string; name: string; usedCodes: Set<string> }) =>
-      resolveCategoryAttributeCode({ code, name, usedCodes }),
-    trackCode: normalizeManagedAttributeCode,
-  });
-
-  const replicatedRows = sourceRows.map((row: any) => ({
-    code: row.code,
-    name: row.name,
-    nameKo: row.nameKo,
-    nameEn: row.nameEn,
-    nameVi: row.nameVi,
-  }));
-
-  await Promise.all(
-    organizationIds
-      .filter((orgId) => orgId !== fallbackOrgId)
-      .map((orgId) =>
-        syncSection(prisma.attrCategory, orgId, replicatedRows, {
-          resolveCode: ({
-            code,
-            name,
-            usedCodes,
-          }: {
-            code: string;
-            name: string;
-            usedCodes: Set<string>;
-          }) => resolveCategoryAttributeCode({ code, name, usedCodes }),
-          trackCode: normalizeManagedAttributeCode,
-        })
-      )
-  );
-
-  return sourceRows;
+const syncGlobalCategorySection = async (items: any, options: { fallbackOrgId?: number | null } = {}) => {
+  const orgId = toPositiveIntOrNull(options.fallbackOrgId);
+  if (!orgId) throw createHttpError(400, "category manufacturer is required");
+  return syncCategoryCopies(prisma, orgId, Array.isArray(items) ? items : [], resolveCategoryAttributeCode);
 };
 
 const syncRoleSection = async (orgId: number, items: any) => {
@@ -31284,6 +31150,7 @@ app.get("/styles", async (req, res) => {
           registrationDate: true,
           designer: true,
           collection: true,
+          categoryId: true,
           season: true,
           imageUrls: true,
           processes: true,
@@ -31466,7 +31333,7 @@ app.post("/styles", async (req, res) => {
         name: payload.name,
         registrationDate: payload.registrationDate,
         designer: payload.designer,
-        collection: payload.collection,
+        ...await resolveStyleCategory(tx, owner.ownerOrgId, payload),
         season: payload.season,
         imageUrls: payload.imageUrls,
         // Style.processes JSON is no longer written; StyleProcess/StyleProcessStandard
@@ -31568,7 +31435,8 @@ app.put("/styles/:styleId", async (req, res) => {
       customer: existing.customerOrganization?.name,
       registrationDate: req.body?.registrationDate ?? existing.registrationDate,
       designer: req.body?.designer ?? existing.designer,
-      collection: req.body?.collection ?? existing.collection,
+      categoryId: req.body?.categoryId === undefined ? existing.categoryId : req.body.categoryId,
+      collection: req.body?.categoryId === null ? null : req.body?.collection ?? existing.collection,
       season: req.body?.season ?? existing.season,
       imageUrls: req.body?.imageUrls ?? existing.imageUrls,
       processes: processesProvided ? req.body.processes : [],
@@ -31638,7 +31506,7 @@ app.put("/styles/:styleId", async (req, res) => {
         name: normalized.name,
         registrationDate: normalized.registrationDate,
         designer: normalized.designer,
-        collection: normalized.collection,
+        ...await resolveStyleCategory(tx, organization.id, normalized),
         season: normalized.season,
         imageUrls: normalized.imageUrls,
         // Style.processes JSON is no longer written; StyleProcess/StyleProcessStandard
@@ -32137,6 +32005,7 @@ app.post("/styles/import", async (req, res) => {
       const owner = await resolveStyleOwnerForCreateOrThrow({
         organization,
         payload: item.raw ?? item.normalized,
+        allowImportName: true,
       });
       return {
         ...item.normalized,
@@ -32208,6 +32077,7 @@ app.post("/styles/import", async (req, res) => {
       const syncedProcesses = includeProcesses
         ? await syncProcessMasterFromStyleProcesses({
             processes: stylePayload.processes,
+            allowImportCodes: true,
             db: tx,
           })
         : stylePayload.processes;
@@ -32262,7 +32132,7 @@ app.post("/styles/import", async (req, res) => {
           name: stylePayload.name,
           registrationDate: stylePayload.registrationDate,
           designer: stylePayload.designer,
-          collection: stylePayload.collection,
+          ...await resolveStyleCategory(tx, organization.id, stylePayload, true),
           season: stylePayload.season,
           imageUrls: stylePayload.imageUrls,
           // Style.processes JSON is no longer written; StyleProcess/StyleProcessStandard
@@ -32275,6 +32145,7 @@ app.post("/styles/import", async (req, res) => {
           customerOrgId: ownerOrgId,
           orgId: organization.id,
           ...stylePayload,
+          ...await resolveStyleCategory(tx, organization.id, stylePayload, true),
           processes: Prisma.JsonNull,
           timeBucketSetVersionId,
           timeBucketSource: "CUSTOMER_DEFAULT",
@@ -32425,15 +32296,15 @@ app.put("/process-master-options", async (req, res, next) => {
     await ensureProcessMasterOptionTypeSchemaReady();
     await ensureProcessMasterOptionRelationSchemaReady();
     const payload = req.body ?? {};
-    const rows = await syncProcessMasterOptions(payload);
-    const relations = await syncProcessMasterRelations({
-      payload,
-      processMasterRows: rows,
-    });
+    const { rows, relations } = await prisma.$transaction(async tx => {
+      await tx.$executeRawUnsafe('LOCK TABLE "ProcessMasterOption" IN SHARE ROW EXCLUSIVE MODE');
+      const saved = await syncProcessMasterOptions(payload, tx);
+      await syncStyleProcessCompositionNamesWithMasterOptions({ processMasterRows: saved, db: tx });
+      const relations = await syncProcessMasterRelations({ payload, processMasterRows: saved, db: tx });
+      return { rows: saved, relations };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 });
     const usageConflicts = await findProcessMasterDeletionUsageConflicts(rows);
-    await syncStyleProcessCompositionNamesWithMasterOptions({
-      processMasterRows: rows,
-    });
+
     return res.json(
       buildProcessMasterOptionsResponse(rows, relations, usageConflicts)
     );
@@ -32562,7 +32433,7 @@ app.put("/attributes", async (req, res) => {
   }
   if (payload.categories) {
     tasks.push(
-      syncGlobalCategorySection(payload.categories, { fallbackOrgId: organization.id }).then(
+      syncGlobalCategorySection(payload.categories, { fallbackOrgId: organization.dataOwnerOrgId ?? organization.id }).then(
         (data) => {
           response.categories = data;
         }

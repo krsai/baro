@@ -127,6 +127,8 @@ model SystemUser {
 }
 
 model ProcessMasterOption {
+  styleComponents StyleProcessComponent[]
+  @@unique([id, type])
   id                  Int                           @id @default(autoincrement())
   type                ProcessMasterOptionType
   code                String
@@ -907,6 +909,8 @@ model AttrColor {
 }
 
 model AttrCategory {
+  styles Style[]
+  @@unique([id, orgId])
   id     Int     @id @default(autoincrement())
   orgId  Int
   code   String
@@ -963,6 +967,8 @@ model Style {
   registrationDate       String?
   designer               String?
   collection             String?
+  categoryId             Int?
+  category               AttrCategory? @relation(fields: [categoryId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict, map: "Style_category_manufacturer_fkey")
   season                 String?
   imageUrls              Json?
   /// Deprecated 2026-07-02. No longer written by new/updated code paths ??
@@ -1040,6 +1046,7 @@ model StyleProcess {
   productionStage                    ProductionStage @default(SEWING)
   genderScope                        ProcessGenderScope @default(UNISEX)
   processComposition                 Json?
+  components                         StyleProcessComponent[]
   processDescription                 String?
   timesPerPiece                      Int             @default(1)
   sortOrder                          Int             @default(0)
@@ -1072,6 +1079,27 @@ model StyleProcess {
   @@index([orgId])
   @@index([styleId])
   @@index([styleId, isActive])
+}
+
+/// Original migration evidence retained independently of source deletion.
+model StyleIdentityArchive {
+  entity String
+  entityId Int
+  original Json
+  createdAt DateTime @default(now())
+  @@id([entity, entityId])
+}
+
+/// Current editing composition only; issued versions and assignment snapshots are immutable.
+model StyleProcessComponent {
+  styleProcessId Int
+  path String
+  type ProcessMasterOptionType
+  masterOptionId Int
+  styleProcess StyleProcess @relation(fields: [styleProcessId], references: [id], onDelete: Cascade)
+  masterOption ProcessMasterOption @relation(fields: [masterOptionId, type], references: [id, type], onDelete: Restrict, onUpdate: Restrict, map: "StyleProcessComponent_master_fkey")
+  @@id([styleProcessId, path])
+  @@index([masterOptionId])
 }
 
 model StyleProcessVersion {
