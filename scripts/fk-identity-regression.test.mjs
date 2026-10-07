@@ -26,6 +26,20 @@ function load(source, names, deps = {}) {
 }
 const common = { toPositiveIntOrNull: positive, toPositiveIdOrNull: positive, toText: text };
 
+test('unused style deletes editable prices atomically and rejects orders, production and assignments', async()=>{
+  const {deleteUnusedStyle:remove}=load(backend,['deleteUnusedStyle'],{createHttpError:(status,message)=>Object.assign(new Error(message),{status})});
+  for (const blocked of [null,'workRecord','outsourcedWorkRecord','workOrderItem','assignmentPlan']) {
+    const calls=[];
+    const tx={$queryRawUnsafe:async()=>calls.push('lock')};
+    for(const model of ['workRecord','outsourcedWorkRecord','workOrderItem','assignmentPlan']) tx[model]={findFirst:async()=>model===blocked?{id:1,workOrder:{orderId:'ORDER'}}:null};
+    tx.customerSalesPriceList={deleteMany:async()=>calls.push('prices')};
+    tx.style={delete:async()=>calls.push('style')};
+    const db={$transaction:async fn=>fn(tx)};
+    if(blocked){await assert.rejects(()=>remove(db,13),e=>e.status===409);assert.deepEqual(calls,['lock']);}
+    else {await remove(db,13);assert.deepEqual(calls,['lock','prices','style']);}
+  }
+});
+
 test('internal style creation requires customer ID; import resolves unique customer names only', async () => {
   const customers = [{ brand: { id: 2, name: 'Same customer' } }, { brand: { id: 3, name: 'Same customer' } }];
   const { resolveStyleOwnerForCreateOrThrow: resolve } = load(backend, ['resolveStyleOwnerForCreateOrThrow'], {

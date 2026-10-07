@@ -31872,6 +31872,23 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
   res.json({ ok: true });
 });
 
+const deleteUnusedStyle = async (db: any, styleId: number) => {
+  return db.$transaction(async (tx: any) => {
+    // Serialize deletion with FK writes before inspecting live references.
+    await tx.$queryRawUnsafe('SELECT id FROM "Style" WHERE id=$1 FOR UPDATE', styleId);
+    const work = await tx.workRecord.findFirst({ where: { styleId }, select: { id: true } });
+    const outsourced = await tx.outsourcedWorkRecord.findFirst({ where: { styleId }, select: { id: true } });
+    if (work || outsourced) throw createHttpError(409, "작업기록이 존재해서 삭제할 수 없습니다.");
+    const item = await tx.workOrderItem.findFirst({ where: { styleId }, select: { workOrder: { select: { orderId: true, orderNumber: true } } } });
+    if (item) throw createHttpError(409, `style is used by order ${item.workOrder.orderNumber || item.workOrder.orderId}`);
+    const assignment = await tx.assignmentPlan.findFirst({ where: { styleId }, select: { id: true } });
+    if (assignment) throw createHttpError(409, "style is used by assignment");
+    // These are editable prices, not issued invoice snapshots.
+    await tx.customerSalesPriceList.deleteMany({ where: { styleId } });
+    await tx.style.delete({ where: { id: styleId } });
+  }, { timeout: 15000 });
+};
+
 app.delete("/styles/:styleId", async (req, res) => {
   const accessContext = await requireOrgRole(req, res, {
     allowedRoles: ORG_MANAGEMENT_ROLES,
@@ -31902,45 +31919,13 @@ app.delete("/styles/:styleId", async (req, res) => {
       .json({ ok: false, error: "only owner organization can delete style" });
   }
 
-  const inUseWorkRecord = await prisma.workRecord.findFirst({
-    where: {
-      styleId: existing.id,
-    },
-    select: { id: true },
-  });
-  const inUseOutsourcedRecord = await prisma.outsourcedWorkRecord.findFirst({ where: { styleId: existing.id }, select: { id: true } });
-  if (inUseWorkRecord || inUseOutsourcedRecord) {
-    return res.status(409).json({
-      ok: false,
-      error: "작업기록이 존재해서 삭제할 수 없습니다.",
-    });
-  }
-
-  const inUseOrderItem = await prisma.workOrderItem.findFirst({
-    where: {
-      styleId: existing.id,
-      workOrder: {
-        OR: [{ orgId: existing.orgId }, { buyerOrgId: existing.customerOrgId }],
-      },
-    },
-    select: {
-      workOrder: { select: { orderId: true, orderNumber: true } },
-    },
-  });
-  if (inUseOrderItem) {
-    const orderLabel = inUseOrderItem.workOrder.orderNumber || inUseOrderItem.workOrder.orderId;
-    return res.status(409).json({
-      ok: false,
-      error: `style is used by order ${orderLabel}`,
-    });
-  }
-
   try {
-    await prisma.style.delete({
-      where: { id: existing.id },
-    });
+    await deleteUnusedStyle(prisma, existing.id);
     res.status(204).send();
   } catch (error) {
+    if ((error as any)?.status === 409 || getErrorCode(error) === "P2003") {
+      return res.status(409).json({ ok: false, error: (error as any)?.status === 409 ? (error as Error).message : "style has dependent records" });
+    }
     // P2025 = Record to delete does not exist.
     if (getErrorCode(error) === "P2025") {
       return res.status(404).json({ ok: false, error: "style not found" });
