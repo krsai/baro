@@ -3148,6 +3148,7 @@ const WorkDetail = ({
                               clearOnBlur={false}
                               handleHomeEndKeys
                               getOptionLabel={getStyleOptionLabel}
+                              getOptionKey={resolveStyleOptionId}
                               filterOptions={filterStyleOptions}
                               isOptionEqualToValue={(option, value) =>
                                 toText(option?.id || option?.dbId) ===
@@ -3543,6 +3544,7 @@ const WorkDetail = ({
                                   clearOnBlur={false}
                                   handleHomeEndKeys
                                   getOptionLabel={getStyleOptionLabel}
+                                  getOptionKey={resolveStyleOptionId}
                                   filterOptions={filterStyleOptions}
                                   isOptionEqualToValue={(option, value) =>
                                     toText(option?.id || option?.dbId) ===
