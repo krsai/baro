@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { loadSourceBindings } from './helpers/source-bindings.mjs';
+
+test('report includes unassigned quantity and credits confirmed completion', async () => {
+  const calculate = progress => loadSourceBindings('backend/src/index.ts', ['weightedProgress'], {
+    progress, ASSIGNMENT_STATUS_REVIEW_REQUIRED: 'REVIEW_REQUIRED',
+  }).weightedProgress;
+  const result = calculate([{ plannedQuantity: 30, operationalProgressRatio: 1 }]);
+  assert.equal(result.value / Math.max(60, result.weight) * 100, 50);
+  assert.equal(calculate([{ plannedQuantity: 60, isCompleted: true, operationalProgressRatio: 0 }]).value, 60);
+  assert.equal(calculate([{ plannedQuantity: 60, isProgressUnknown: true, operationalProgressRatio: 1 }]).value, 0);
+  assert.match(await readFile(new URL('../backend/src/index.ts', import.meta.url), 'utf8'), /weightedProgress\.value \/ Math\.max\(item\.orderedQuantity, weightedProgress\.weight\)/);
+});
 
 const [server, page, router, layout, access, pageToolbar] = await Promise.all([
   readFile(new URL('../backend/src/index.ts', import.meta.url), 'utf8'),

@@ -9,6 +9,16 @@ const board = read('frontend/src/pages/App/assign/AssignBoard.jsx');
 const drawer = read('frontend/src/components/QuantityReviewDrawer.jsx');
 const capacity = read('frontend/src/pages/App/assign/utils/factoryMonthCapacity.js');
 
+test('overproduction cannot replace unfinished work in another required process', () => {
+  const { resolveCreditedProcessQuantity } = loadSourceBindings('backend/src/index.ts', ['resolveCreditedProcessQuantity']);
+  const input = { requiredProcessGroups: [['shared'], ['male'], ['female']],
+    applicableQuantityByKey: new Map([['shared', 60], ['male', 30], ['female', 30]]),
+    plannedQuantity: 60, fallbackTotal: 120 };
+  assert.equal(resolveCreditedProcessQuantity({ ...input, processTotalsByKey: new Map([['shared', 90], ['male', 30]]) }), 90);
+  assert.equal(resolveCreditedProcessQuantity({ ...input, processTotalsByKey: new Map([['shared', 60], ['male', 30], ['female', 30]]) }), 120);
+  assert.equal(resolveCreditedProcessQuantity({ ...input, processTotalsByKey: new Map([['unrelated', 500]]) }), 0);
+});
+
 test('review summary retains process diagnostics while work records load on demand', () => {
   const summary = backend.slice(backend.indexOf('reviewReason:'), backend.indexOf('quantityReview: includeQuantityReviewDetails'));
   assert.match(summary, /recordedTotalQuantity: totalDone/);

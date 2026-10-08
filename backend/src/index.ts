@@ -96,7 +96,7 @@ import { partitionRelationshipBucketStyles } from "./services/relationshipBucket
 import { registerInvoiceDraftRoutes } from "./routes/invoiceDraft.routes";
 import { buildInvoiceSource } from "./services/invoiceSource";
 import { invoiceFamily, invoiceSettlement } from "./services/invoiceSettlement";
-import { invoiceOrderProgress } from "./services/invoiceOrderProgress";
+import { invoiceOrderProgress, invoiceProducedQuantity } from "./services/invoiceOrderProgress";
 import { isOrderReadyForAssignment } from "./utils/orderAssignmentReadiness";
 import { calculateOrderSalesValue } from "./utils/orderSalesValue";
 import { guardOrderSaveAssignments } from "./services/orderSaveAssignmentGuard";
@@ -21239,6 +21239,19 @@ const resolveTotalExpectedQuantityForRequiredProcesses = ({
     : null;
 };
 
+// Credit each required process only up to its own target. Excess production
+// remains in raw totals and quantity review, but cannot finish another process.
+const resolveCreditedProcessQuantity = ({ processTotalsByKey, requiredProcessGroups,
+  applicableQuantityByKey, plannedQuantity, fallbackTotal }: {
+  processTotalsByKey: Map<string, number>; requiredProcessGroups: string[][];
+  applicableQuantityByKey: Map<string, number>; plannedQuantity: number | null;
+  fallbackTotal: number;
+}): number => requiredProcessGroups.length === 0 ? fallbackTotal : requiredProcessGroups.reduce((sum, group) => {
+  const target = group.map(key => applicableQuantityByKey.get(key)).find(value => value != null) ?? plannedQuantity ?? 0;
+  const done = group.reduce((max, key) => Math.max(max, Number(processTotalsByKey.get(key)) || 0), 0);
+  return sum + Math.min(Math.max(0, target), Math.max(0, done));
+}, 0);
+
 const resolveAssignmentProcessGroupTotals = ({
   processTotalsByKey,
   processKeyGroups = [],
@@ -22268,7 +22281,10 @@ const buildFactoryMonthCapacityRows = async ({
         : null;
     const operationalProgressRatio =
       totalExpected != null && totalExpected > 0
-        ? Math.max(0, Math.min(1, cumulativeTotalDone / totalExpected))
+        ? Math.max(0, Math.min(1, resolveCreditedProcessQuantity({
+            processTotalsByKey: cumulativeProcessTotalsByKey, requiredProcessGroups,
+            applicableQuantityByKey, plannedQuantity, fallbackTotal: cumulativeTotalDone,
+          }) / totalExpected))
         : null;
     const progressRatio =
       producedRatio != null && operationalProgressRatio != null
@@ -23449,7 +23465,10 @@ const buildAssignmentPlanProgressRows = async (
             : null;
     const operationalProgressRatio =
       totalExpected != null && totalExpected > 0
-        ? Math.max(0, totalDone / totalExpected)
+        ? Math.max(0, resolveCreditedProcessQuantity({
+            processTotalsByKey: stats.processTotalsByKey, requiredProcessGroups,
+            applicableQuantityByKey, plannedQuantity: baselineQuantityRaw, fallbackTotal: totalDone,
+          }) / totalExpected)
         : isMarkedCompleted
           ? 1
           : null;
@@ -30357,7 +30376,7 @@ app.get("/customer-production-reports", async (req, res) => {
         0
       );
       const producedQuantity = progress.reduce(
-        (sum, row) => sum + Math.max(0, Math.round(Number(row?.producedQuantity) || 0)),
+        (sum, row) => sum + (invoiceProducedQuantity(row) ?? 0),
         0
       );
       const dailyProducedByDate = new Map<string, number>();
@@ -30371,9 +30390,8 @@ app.get("/customer-production-reports", async (req, res) => {
         .map(([date, quantity]) => ({ date, quantity }));
       const weightedProgress = progress.reduce(
         (acc, row) => {
-          const weight = Math.max(0, Number(row?.plannedStTotalSeconds) || 0) ||
-            Math.max(0, Number(row?.plannedQuantity) || 0);
-          const ratio = row?.scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED
+          const weight = Math.max(0, Number(row?.plannedQuantity) || 0);
+          const ratio = row?.isCompleted === true ? 1 : row?.isProgressUnknown ? 0 : row?.scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED
             ? Number(row?.displayProgressPercent) / 100
             : Number(row?.operationalProgressRatio);
           if (weight <= 0 || !Number.isFinite(ratio)) return acc;
@@ -30384,7 +30402,7 @@ app.get("/customer-production-reports", async (req, res) => {
         { weight: 0, value: 0 }
       );
       const progressPercent = weightedProgress.weight > 0
-        ? Math.round((weightedProgress.value / weightedProgress.weight) * 100)
+        ? Math.round(Math.min(1, weightedProgress.value / Math.max(item.orderedQuantity, weightedProgress.weight)) * 100)
         : assignedQuantity > 0
           ? Math.round(Math.min(1, producedQuantity / assignedQuantity) * 100)
           : 0;
