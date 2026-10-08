@@ -201,6 +201,31 @@ try {
     }),/invalid process master relation/);
     assert.deepEqual(await db.processMasterOption.findMany({orderBy:{id:'asc'}}),before);
   });
+  await check('shared-process import totals and cumulative quantity remarks use real order/history rows without blocking excess',async()=>{
+    const positive=v=>Number.isInteger(Number(v))&&Number(v)>0?Number(v):null;
+    const names=['appendWorkLogQuantityRemark','combineImportedWorkRecords','buildWorkRecordActorProcessSignature','buildWorkRecordWorkerStyleProcessSignature','loadStyleGenderQuantityMapForWorkOrderIds','accumulateStyleProcessGenderQuantity','resolveStyleProcessRowApplicableQuantity','normalizeProcessGenderScope','normalizeWorkOrderItemGender','sumOrderItemQuantity','workOrderItemToItemShape'];
+    const funcs=load(names,{collectWorkRecordAssignmentPlanIds:rows=>[...new Set(rows.map(r=>r.assignmentPlanId))],
+      toPositiveIntOrNull:positive,ensureArray:v=>Array.isArray(v)?v:[],PROCESS_GENDER_SCOPES:['UNISEX','MALE_ONLY','FEMALE_ONLY'],WORK_ORDER_ITEM_GENDER_CODES:new Set(['M','W','U']),
+      resolveWorkOrderItemStyleId:r=>r.styleId,resolveWorkOrderItemStyleName:()=>'',resolveWorkOrderItemStyleCode:()=>'',resolveWorkOrderItemColorName:()=>'',
+      createHttpError:(status,message)=>Object.assign(Error(message),{status})});
+    const factory=await db.factory.create({data:{orgId:seller.id,name:'Quantity test factory'}});
+    const order=await db.workOrder.create({data:{orgId:seller.id,orderId:'QTY-TEST',orderNumber:'L18-1'}});
+    await db.workOrderItem.createMany({data:['M','W'].map(gender=>({workOrderId:order.id,styleId:style.id,gender,totalQuantity:30}))});
+    const plan=await db.assignmentPlan.create({data:{orgId:seller.id,factoryId:factory.id,externalId:'QTY-PLAN',styleId:style.id,workOrderId:order.id,startIndex:0,endIndex:1}});
+    await db.styleProcess.update({where:{id:styleProcess.id},data:{genderScope:'UNISEX'}});
+    const input={workerId:1,assignmentPlanId:plan.id,styleProcessId:styleProcess.id,quantity:30};
+    const combined=funcs.combineImportedWorkRecords([input,{...input}]);assert.equal(combined.records[0].quantity,60);
+    const params={orgId:seller.id,records:combined.records,note:'Keep user note'};
+    assert.equal(await db.$transaction(tx=>funcs.appendWorkLogQuantityRemark({...params,db:tx})),'Keep user note');
+    const previous=await db.workLog.create({data:{orgId:seller.id,displayDate:'2026-09-20'}});
+    await db.workRecord.create({data:{orgId:seller.id,workLogId:previous.id,assignmentPlanId:plan.id,styleId:style.id,styleProcessId:styleProcess.id,quantity:20}});
+    const note=await db.$transaction(tx=>funcs.appendWorkLogQuantityRemark({...params,db:tx}));
+    assert.match(note,/기존 20개 \(2026-09-20 20개\) \+ 이번 60개 = 80개, 주문 대상 60개 대비 20개 초과/);
+    assert.equal(await db.$transaction(tx=>funcs.appendWorkLogQuantityRemark({...params,note,db:tx,excludedWorkLogId:previous.id})),'Keep user note');
+    const next=await db.workLog.create({data:{orgId:seller.id,displayDate:'2026-09-30',note}});
+    await db.workRecord.create({data:{orgId:seller.id,workLogId:next.id,assignmentPlanId:plan.id,styleId:style.id,styleProcessId:styleProcess.id,quantity:60}});
+    assert.equal(await db.workRecord.aggregate({where:{assignmentPlanId:plan.id},_sum:{quantity:true}}).then(r=>r._sum.quantity),80);
+  });
   console.log(`${checks} actual PostgreSQL identity scenarios passed`);
 } finally {
   await db.$disconnect();

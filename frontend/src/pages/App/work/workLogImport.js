@@ -236,7 +236,57 @@ const translateAssignmentMatchIssue = (detail, languageCode) => {
   );
 };
 
+export const formatDuplicateImportIssue = (duplicate, languageCode = 'ko') => {
+  const text = languageCode === 'en' ? {
+    file: 'This file contains more than one row for the same worker, assignment and process on the same work date.',
+    saved: 'A work record for this worker, assignment and process already exists on this work date.',
+    date: 'Work date (period end)', worker: 'Worker', order: 'Order', style: 'Style', process: 'Process',
+    rows: 'Compare Excel rows', quantity: 'Quantity', savedRows: 'Existing record',
+    fileAction: 'Compare these rows. Remove an accidental duplicate; if the quantities are separate outputs, combine them into one row after checking the total.',
+    savedAction: 'Compare with the existing work log. Remove an already imported row from this file; to correct its quantity, edit the existing record.',
+    unknownStyle: 'Style name unavailable', row: 'row',
+  } : languageCode === 'vi' ? {
+    file: 'Tệp có nhiều dòng cho cùng một công nhân, phân công và công đoạn trong cùng ngày làm việc.',
+    saved: 'Đã có ghi chép cho công nhân, phân công và công đoạn này trong cùng ngày làm việc.',
+    date: 'Ngày làm việc (ngày kết thúc kỳ)', worker: 'Công nhân', order: 'Đơn hàng', style: 'Tên kiểu dáng', process: 'Công đoạn',
+    rows: 'Đối chiếu dòng Excel', quantity: 'Số lượng', savedRows: 'Ghi chép đã lưu',
+    fileAction: 'Đối chiếu các dòng. Xóa dòng bị lặp nhầm; nếu là sản lượng riêng, kiểm tra tổng rồi gộp vào một dòng.',
+    savedAction: 'Đối chiếu ghi chép đã lưu. Bỏ dòng đã nhập khỏi tệp; nếu cần sửa số lượng, sửa ghi chép hiện có.',
+    unknownStyle: 'Không có tên kiểu dáng', row: 'dòng',
+  } : {
+    file: '엑셀 파일 안에 같은 작업일·작업자·배정·공정의 행이 두 번 이상 있습니다.',
+    saved: '같은 작업일·작업자·배정·공정의 작업기록이 이미 저장되어 있습니다.',
+    date: '작업 기준일(기간 종료일)', worker: '작업자', order: '주문', style: '스타일명', process: '공정',
+    rows: '비교할 엑셀 행', quantity: '수량', savedRows: '이미 저장된 기록',
+    fileAction: '위 행들을 비교하세요. 실수로 복사한 행이면 제거하고, 별도 작업 수량이면 합계를 확인한 뒤 한 행으로 합쳐 주세요.',
+    savedAction: '기존 작업기록과 비교하세요. 이미 업로드한 행이면 파일에서 제외하고, 수량을 정정하려면 기존 기록을 수정해 주세요.',
+    unknownStyle: '스타일명 확인 필요', row: '행',
+  };
+  const isSaved = duplicate.source === 'SAVED';
+  const worker = [toText(duplicate.workerName), toText(duplicate.employeeNo)].filter(Boolean).join(' / ');
+  const process = [toText(duplicate.processCode), toText(duplicate.processName)].filter(Boolean).join(' · ');
+  const lines = [isSaved ? text.saved : text.file,
+    `${text.date}: ${toText(duplicate.workDate)}`,
+    `${text.worker}: ${worker || '-'}`,
+    `${text.order}: ${toText(duplicate.orderNo) || '-'} / ${text.style}: ${toText(duplicate.styleName) || text.unknownStyle}`,
+    `${text.process}: ${process || '-'}`,
+  ];
+  const rowText = (row) => `${toText(row.sheetName)} / ${languageCode === 'ko' ? `${row.rowNumber}행` : `${text.row} ${row.rowNumber}`} (${text.quantity}: ${row.quantity ?? '-'})`;
+  lines.push(`${text.rows}: ${(duplicate.matchingRows || []).map(rowText).join('; ')}`);
+  if (isSaved) {
+    lines.push(`${text.savedRows}: ${(duplicate.savedRecords || []).map(record => [toText(record.workDate), toText(record.factoryName), `${text.quantity}: ${record.quantity ?? '-'}`].filter(Boolean).join(' / ')).join('; ')}`);
+    lines.push(`${text.quantity}: ${duplicate.quantity ?? '-'}`);
+  } else {
+    lines.push(`${text.quantity}: ${(duplicate.matchingRows || []).map(row => row.quantity ?? '-').join(' + ')} = ${duplicate.quantity ?? '-'}`);
+  }
+  lines.push(isSaved ? text.savedAction : text.fileAction);
+  return lines.join('\n');
+};
+
 const translateImportIssueDetail = (issue, languageCode) => {
+  if (issue?.code === 'DUPLICATE_WORK_RECORD' && issue?.duplicate) {
+    return formatDuplicateImportIssue(issue.duplicate, languageCode);
+  }
   const detail = stripIssueLocation(issue);
   const code = toText(issue?.code).toUpperCase();
 
@@ -650,7 +700,7 @@ export const parseWorkLogImportWorkbook = async (file) => {
   return parsedRows;
 };
 
-export const importWorkLogRows = async ({ orgId, fileName, rows }) => {
+export const importWorkLogRows = async ({ orgId, fileName, rows, confirmMerge = false }) => {
   const query = buildQueryString({ orgId });
   return requestJSON(`/work-logs/import${query}`, {
     method: 'POST',
@@ -658,6 +708,7 @@ export const importWorkLogRows = async ({ orgId, fileName, rows }) => {
     body: JSON.stringify({
       fileName: toText(fileName),
       rows: Array.isArray(rows) ? rows : [],
+      confirmMerge,
     }),
   });
 };

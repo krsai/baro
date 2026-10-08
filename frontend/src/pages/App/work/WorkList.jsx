@@ -51,6 +51,7 @@ import {
 import { deleteWorkLog, loadWorkLogs } from './workLogStorage';
 import {
   extractWorkLogImportIssueRows,
+  formatDuplicateImportIssue,
   formatWorkLogImportError,
   importWorkLogRows,
   parseWorkLogImportWorkbook,
@@ -410,6 +411,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
   const [reloadNonce, setReloadNonce] = useState(0);
   const [importIssueRows, setImportIssueRows] = useState([]);
   const [importIssueDialogOpen, setImportIssueDialogOpen] = useState(false);
+  const [pendingImportMerge, setPendingImportMerge] = useState(null);
   const importInputRef = useRef(null);
 
   const selectedFactoryIdNumber = useMemo(() => {
@@ -665,6 +667,10 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
           fileName: file.name,
           rows,
         });
+        if (result?.requiresMergeConfirmation) {
+          setPendingImportMerge({ orgId: activeOrgId, fileName: file.name, rows, groups: result.mergeGroups || [] });
+          return;
+        }
         setReloadNonce((current) => current + 1);
         const createdCount = Number(result?.createdCount ?? 0) || 0;
         const recordCount = Number(result?.recordCount ?? rows.length) || rows.length;
@@ -703,6 +709,31 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
     },
     [activeOrgId, importing, languageCode, showNotification, workHistoryOperationStartDateKey]
   );
+
+  const handleConfirmImportMerge = async () => {
+    if (!pendingImportMerge || importing) return;
+    if (pendingImportMerge.orgId !== activeOrgId) {
+      setPendingImportMerge(null);
+      return;
+    }
+    setImporting(true);
+    try {
+      const result = await importWorkLogRows({ ...pendingImportMerge, confirmMerge: true });
+      setPendingImportMerge(null);
+      setReloadNonce(current => current + 1);
+      showNotification(buildImportSuccessMessage({ languageCode, recordCount: result.recordCount, createdCount: result.createdCount }), 'success');
+    } catch (error) {
+      setPendingImportMerge(null);
+      const issueRows = extractWorkLogImportIssueRows(error, languageCode);
+      if (issueRows.length) {
+        setImportIssueRows(issueRows);
+        setImportIssueDialogOpen(true);
+      }
+      showNotification(formatWorkLogImportError(error, languageCode) || resolveText(TEXT.importError, languageCode), 'error');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const handleFilterMonthChange = useCallback((monthKey) => {
     const selectedMonth = dayjs(`${monthKey}-01`);
@@ -978,6 +1009,17 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
           </Table>
         </TableContainer>
       </Paper>
+      <Dialog open={Boolean(pendingImportMerge)} onClose={() => { if (!importing) setPendingImportMerge(null); }} maxWidth="md" fullWidth>
+        <DialogTitle>{languageCode === 'en' ? 'Confirm combined quantities' : languageCode === 'vi' ? 'Xác nhận gộp số lượng' : '작업 수량 합산 확인'}</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ mb: 2 }}>{languageCode === 'en' ? 'Rows for the same worker, assignment and process will be combined into one record. Review the source rows and totals. Nothing has been imported yet.' : languageCode === 'vi' ? 'Các dòng cùng công nhân, phân công và công đoạn sẽ được gộp thành một ghi chép. Kiểm tra dòng gốc và tổng số lượng. Chưa lưu dữ liệu nhập.' : '같은 작업자·배정·공정의 여러 행을 한 기록으로 합산합니다. 남녀 공용 공정의 남성복·여성복 수량도 합산할 수 있습니다. 원본 행과 합계를 확인하세요. 아직 가져온 작업기록은 저장하지 않았습니다.'}</Typography>
+          <Stack spacing={2}>{(pendingImportMerge?.groups || []).map((group, index) => <Paper key={index} variant="outlined" sx={{ p: 2 }}><Typography sx={{ whiteSpace: 'pre-line' }}>{formatDuplicateImportIssue(group, languageCode)}</Typography></Paper>)}</Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={importing} onClick={() => setPendingImportMerge(null)}>{languageCode === 'en' ? 'Cancel' : languageCode === 'vi' ? 'Hủy' : '취소'}</Button>
+          <Button variant="contained" disabled={importing || pendingImportMerge?.orgId !== activeOrgId} onClick={handleConfirmImportMerge}>{languageCode === 'en' ? 'Combine and import' : languageCode === 'vi' ? 'Gộp và nhập' : '합산해서 가져오기'}</Button>
+        </DialogActions>
+      </Dialog>
       <Dialog
         open={importIssueDialogOpen}
         onClose={() => setImportIssueDialogOpen(false)}
@@ -1021,7 +1063,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                     <TableCell sx={{ whiteSpace: 'nowrap', verticalAlign: 'top' }}>
                       {issue.location}
                     </TableCell>
-                    <TableCell>{issue.detail}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'pre-line', verticalAlign: 'top' }}>{issue.detail}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

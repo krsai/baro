@@ -10956,6 +10956,8 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
               styleId: true,
               styleProcessId: true,
               assignmentPlanId: true,
+              quantity: true,
+              workLog: { select: { id: true, displayDate: true, factory: { select: { name: true } } } },
               style: { select: { id: true, code: true, name: true } },
               styleProcess: { select: { id: true, processCode: true, processName: true } },
             } as any,
@@ -10981,6 +10983,8 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
               styleId: true,
               styleProcessId: true,
               assignmentPlanId: true,
+              quantity: true,
+              workLog: { select: { id: true, displayDate: true, factory: { select: { name: true } } } },
               worker: { select: { name: true } },
               style: { select: { id: true, code: true, name: true } },
               styleProcess: { select: { id: true, processCode: true, processName: true } },
@@ -11009,6 +11013,10 @@ const validateWorkLogWorkerStyleProcessDuplicates = async ({
       error: `duplicate worker-style-process on workDate: ${preview}${extraText}`,
       incomingDuplicateRows: [],
       conflictRows,
+      existingConflictRows: existingRows.filter((row) => {
+        const signature = buildSignature(row);
+        return signature && firstIncomingRecordBySignature.has(signature);
+      }),
     };
   }
 
@@ -11559,11 +11567,79 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
     invalidWorkerRecordIndex: normalizedRecords.invalidWorkerRecordIndex,
   };
 };
+const appendWorkLogQuantityRemark = async ({ db, orgId, records, note, excludedWorkLogId = null }: any) => {
+  const cleaned = String(note || "").replace(/\n?\[생산 수량 확인\][\s\S]*?\[\/생산 수량 확인\]/g, '').trim();
+  const planIds = collectWorkRecordAssignmentPlanIds(records);
+  if (!planIds.length) return cleaned || null;
+  const plans = await db.assignmentPlan.findMany({ where: { orgId, id: { in: planIds } },
+    select: { id: true, styleId: true, workOrderId: true, style: { select: { name: true } }, workOrder: { select: { orderNumber: true } } } });
+  const orders = [...new Set(plans.map((p: any) => p.workOrderId).filter(Boolean))] as number[];
+  if (!orders.length) return cleaned || null;
+  // Serializes cumulative remarks with other writes on the same orders.
+  await db.$queryRawUnsafe('SELECT id FROM "WorkOrder" WHERE "orgId"=$1 AND id=ANY($2::int[]) ORDER BY id FOR UPDATE', orgId, orders);
+  const processIds = [...new Set(records.map((r: any) => r.styleProcessId).filter(Boolean))];
+  const processes = await db.styleProcess.findMany({ where: { orgId, id: { in: processIds } }, select: { id: true, processCode: true, processName: true, genderScope: true } });
+  const quantities = await loadStyleGenderQuantityMapForWorkOrderIds(orders, db);
+  const existingWhere = { orgId, assignmentPlan: { workOrderId: { in: orders } }, styleProcessId: { in: processIds }, ...(excludedWorkLogId ? { workLogId: { not: excludedWorkLogId } } : {}) };
+  const select = { quantity: true, styleProcessId: true, assignmentPlan: { select: { workOrderId: true, styleId: true } }, workLog: { select: { displayDate: true } } };
+  const [employeeHistory, outsourcedHistory] = await Promise.all([db.workRecord.findMany({ where: existingWhere, select }), db.outsourcedWorkRecord.findMany({ where: existingWhere, select })]);
+  const key = (orderId: any, styleId: any, processId: any) => `${orderId}:${styleId}:${processId}`;
+  const incoming = new Map<string, any>();
+  records.forEach((r: any) => {
+    const plan = plans.find((p: any) => p.id === r.assignmentPlanId);
+    const process = processes.find((p: any) => p.id === r.styleProcessId);
+    if (!plan?.workOrderId || !plan.styleId || !process) return;
+    const k = key(plan.workOrderId, plan.styleId, process.id);
+    const group = incoming.get(k) || { plan, process, quantity: 0 };
+    group.quantity += Number(r.quantity || 0);
+    incoming.set(k, group);
+  });
+  const remarks: string[] = [];
+  for (const [k, group] of incoming) {
+    const history = [...employeeHistory, ...outsourcedHistory].filter((r: any) => key(r.assignmentPlan?.workOrderId, r.assignmentPlan?.styleId, r.styleProcessId) === k);
+    const previous = history.reduce((sum: number, r: any) => sum + Number(r.quantity || 0), 0);
+    const target = quantities.get(`${group.plan.workOrderId}:${group.plan.styleId}`);
+    if (!target) continue;
+    if (target.unspecified > 0 && group.process.genderScope !== "UNISEX") continue;
+    const limit = resolveStyleProcessRowApplicableQuantity(group.process, target);
+    const total = previous + group.quantity;
+    if (group.quantity <= 0 || total <= limit) continue;
+    const byDate = new Map<string, number>();
+    history.forEach((r: any) => { const date = r.workLog?.displayDate || ""; byDate.set(date, (byDate.get(date) || 0) + Number(r.quantity || 0)); });
+    const dates = [...byDate].sort(([a], [b]) => a.localeCompare(b)).map(([date, quantity]) => `${date} ${quantity}개`).join(', ');
+    remarks.push(`주문 ${group.plan.workOrder?.orderNumber || ""} / 스타일 ${group.plan.style?.name || ""} / 공정 ${group.process.processCode} ${group.process.processName || ""}: 기존 ${previous}개${dates ? ` (${dates})` : ""} + 이번 ${group.quantity}개 = ${total}개, 주문 대상 ${limit}개 대비 ${total - limit}개 초과. 초과 생산으로 저장함.`);
+  }
+  // Rebuild just this automatic section when editing; user notes remain intact.
+  return [cleaned, remarks.length ? `[생산 수량 확인]\n${remarks.join('\n')}\n[/생산 수량 확인]` : ""].filter(Boolean).join('\n') || null;
+};
+
+const combineImportedWorkRecords = (records: any[]) => {
+  const combined: any[] = [];
+  const sourceIndices: number[][] = [];
+  const indexBySignature = new Map<string, number>();
+  records.forEach((record, index) => {
+    const signature = buildWorkRecordWorkerStyleProcessSignature(record);
+    const targetIndex = signature ? indexBySignature.get(signature) : undefined;
+    if (targetIndex === undefined) {
+      if (signature) indexBySignature.set(signature, combined.length);
+      combined.push({ ...record });
+      sourceIndices.push([index]);
+    } else {
+      const total = Number(combined[targetIndex].quantity) + Number(record.quantity);
+      if (!Number.isSafeInteger(total) || total > 2147483647) throw createHttpError(400, "combined import quantity is too large");
+      combined[targetIndex].quantity = total;
+      sourceIndices[targetIndex]!.push(index);
+    }
+  });
+  return { records: combined, sourceIndices };
+};
+
 type WorkLogImportIssue = {
   rowNumber: number;
   sheetName: string | null;
   code: string;
   message: string;
+  duplicate?: any;
 };
 
 const formatWorkLogImportIssueLocation = (row: {
@@ -25897,6 +25973,7 @@ app.post("/work-logs/import", async (req, res) => {
   }
 
   const issues: WorkLogImportIssue[] = [];
+  const mergeGroups: any[] = [];
   const respondWithIssues = () =>
     res.status(400).json({
       ok: false,
@@ -26502,6 +26579,28 @@ app.post("/work-logs/import", async (req, res) => {
       continue;
     }
 
+    const combinedImport = combineImportedWorkRecords(normalized.records);
+    const originalRows = group.rows;
+    combinedImport.sourceIndices.forEach((indices: number[], index: number) => {
+      if (indices.length < 2) return;
+      const source = originalRows[indices[0]!];
+      const matched = matchedRows.find((item) => item.row === source);
+      const record = combinedImport.records[index];
+      mergeGroups.push({
+        source: "FILE", workDate: normalized.displayDate,
+        workerName: matched?.employee?.name ?? "", employeeNo: matched?.employee?.employeeNo ?? "",
+        orderNo: matched?.plan?.workOrder?.orderNumber ?? source?.orderNo ?? "",
+        styleName: matched?.plan?.style?.name ?? "",
+        processCode: matched?.process?.processCode ?? record.processCode ?? "",
+        processName: matched?.process?.processName ?? record.processName ?? "",
+        quantity: record.quantity,
+        matchingRows: indices.map((i: number) => ({ sheetName: originalRows[i]?.sheetName, rowNumber: originalRows[i]?.rowNumber, quantity: normalized.records[i]?.quantity })),
+      });
+    });
+    const allSourceRowsByRecord = combinedImport.sourceIndices.map((indices: number[]) => indices.map((i: number) => originalRows[i]));
+    group.rows = combinedImport.sourceIndices.map((indices: number[]) => originalRows[indices[0]!]!);
+    normalized.records = combinedImport.records;
+    normalized.itemCount = normalized.records.length;
     const duplicateValidation = await validateWorkLogWorkerStyleProcessDuplicates({
       orgId: organization.id,
       workDate: normalized.displayDate,
@@ -26517,17 +26616,44 @@ app.post("/work-logs/import", async (req, res) => {
         const emittedDuplicateIssueRowKeys = new Set<string>();
         duplicateIssueRecords.forEach((record: any) => {
           const recordIndex = normalized.records.indexOf(record);
-          const sourceRow = group.rows[recordIndex] ?? groupAnchorRow;
+          const sourceRow: any = group.rows[recordIndex] ?? groupAnchorRow;
           const rowKey = `${sourceRow?.sheetName ?? ""}:${sourceRow?.rowNumber ?? ""}`;
           if (emittedDuplicateIssueRowKeys.has(rowKey)) return;
           emittedDuplicateIssueRowKeys.add(rowKey);
-          issues.push(
-            buildWorkLogImportIssue({
+          const signature = buildWorkRecordWorkerStyleProcessSignature(record);
+          const matchingIndices = normalized.records.flatMap((candidate: any, index: number) =>
+            buildWorkRecordWorkerStyleProcessSignature(candidate) === signature ? [index] : []
+          );
+          const matched = matchedRows.find((item) => item.row === sourceRow);
+          const savedMatches = ensureArray((duplicateValidation as any).existingConflictRows).filter(
+            (candidate) => buildWorkRecordWorkerStyleProcessSignature(candidate) === signature
+          );
+          const duplicate = {
+            source: savedMatches.length ? "SAVED" : "FILE",
+            workDate: normalized.displayDate,
+            workerName: matched?.employee?.name ?? sourceRow?.employeeName ?? "",
+            employeeNo: matched?.employee?.employeeNo ?? sourceRow?.employeeNo ?? "",
+            orderNo: matched?.plan?.workOrder?.orderNumber ?? sourceRow?.orderNo ?? "",
+            styleName: matched?.plan?.style?.name ?? "",
+            processCode: matched?.process?.processCode ?? record.processCode ?? "",
+            processName: matched?.process?.processName ?? record.processName ?? "",
+            quantity: record.quantity,
+            matchingRows: matchingIndices.flatMap((index: number) => ensureArray(allSourceRowsByRecord[index]).map((row: any) => ({ sheetName: row.sheetName, rowNumber: row.rowNumber, quantity: row.quantity }))),
+            savedRecords: savedMatches.map((candidate) => ({
+              workLogId: candidate.workLog?.id,
+              workDate: candidate.workLog?.displayDate,
+              factoryName: candidate.workLog?.factory?.name,
+              quantity: candidate.quantity,
+            })),
+          };
+          issues.push({
+            ...buildWorkLogImportIssue({
               row: sourceRow,
               code: "DUPLICATE_WORK_RECORD",
               message: duplicateError,
-            })
-          );
+            }),
+            duplicate,
+          });
         });
       } else {
         issues.push(
@@ -26644,6 +26770,9 @@ app.post("/work-logs/import", async (req, res) => {
     return respondWithIssues();
   }
 
+  if (mergeGroups.length > 0 && req.body?.confirmMerge !== true) {
+    return res.json({ ok: true, requiresMergeConfirmation: true, mergeGroups });
+  }
   const updatedBy = await resolveWorkLogUpdatedBy(organization.id, req);
   const createImportTransaction = async (includeCoverage: boolean) =>
     prisma.$transaction(
@@ -26656,6 +26785,7 @@ app.post("/work-logs/import", async (req, res) => {
             factoryName: _factoryName,
             ...workLogData
           } = group.normalized;
+          workLogData.note = await appendWorkLogQuantityRemark({ db: tx, orgId: organization.id, records, note: workLogData.note });
           const createData = {
             orgId: organization.id,
             ...buildWorkLogWriteDataWithOptionalCoverage(workLogData, {
@@ -26830,6 +26960,7 @@ const handleCreateOutsourcedWorkLog = async ({
   } = normalized;
   const createWorkLogTransaction = async (includeCoverage: boolean) =>
     prisma.$transaction(async (tx) => {
+      workLogData.note = await appendWorkLogQuantityRemark({ db: tx, orgId: organization.id, records, note: workLogData.note });
       const next = await tx.workLog.create({
         data: {
           orgId: organization.id,
@@ -27012,6 +27143,7 @@ const handleUpdateOutsourcedWorkLog = async ({
   } = normalized;
   const updateWorkLogTransaction = async (includeCoverage: boolean) =>
     prisma.$transaction(async (tx) => {
+      workLogData.note = await appendWorkLogQuantityRemark({ db: tx, orgId: organization.id, records, note: workLogData.note, excludedWorkLogId: existing.id });
       const next = await tx.workLog.update({
         where: { id: existing.id },
         data: {
@@ -27291,6 +27423,7 @@ app.post("/work-logs", async (req, res) => {
   } = normalized;
   const createWorkLogTransaction = async (includeCoverage: boolean) =>
     prisma.$transaction(async (tx) => {
+      workLogData.note = await appendWorkLogQuantityRemark({ db: tx, orgId: organization.id, records, note: workLogData.note });
       const next = await tx.workLog.create({
         data: {
           orgId: organization.id,
@@ -27619,6 +27752,7 @@ app.put("/work-logs/:id", async (req, res) => {
   } = normalized;
   const updateWorkLogTransaction = async (includeCoverage: boolean) =>
     prisma.$transaction(async (tx) => {
+      workLogData.note = await appendWorkLogQuantityRemark({ db: tx, orgId: organization.id, records, note: workLogData.note, excludedWorkLogId: existing.id });
       const next = await tx.workLog.update({
         where: { id: existing.id },
         data: {

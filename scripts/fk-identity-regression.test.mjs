@@ -26,6 +26,82 @@ function load(source, names, deps = {}) {
 }
 const common = { toPositiveIntOrNull: positive, toPositiveIdOrNull: positive, toText: text };
 
+test('duplicate import explanation names the style, worker and exact conflicting rows in all languages',()=>{
+  const source=readFileSync('frontend/src/pages/App/work/workLogImport.js','utf8');
+  const {formatDuplicateImportIssue:format}=load(source,['formatDuplicateImportIssue'],{toText:text});
+  const detail={source:'FILE',workDate:'2026-09-30',workerName:'Trần Thị Luyến',employeeNo:'BRVN0007',orderNo:'L18-1',styleName:'Style name differs from code',styleCode:'S-W998JW',processCode:'TT01',processName:'Sewing task',quantity:30,matchingRows:[{sheetName:'26 SEP',rowNumber:119,quantity:30},{sheetName:'26 SEP',rowNumber:132,quantity:30}]};
+  for(const lang of ['ko','en','vi']){
+    const output=format(detail,lang);
+    for(const value of ['Trần Thị Luyến','BRVN0007','L18-1','Style name differs from code','TT01','Sewing task','119','132','2026-09-30'])assert.ok(output.includes(value));
+    assert.doesNotMatch(output,/S-W998JW|worker#|StyleProcess#|\+\d+ more/);
+    const saved=format({...detail,source:'SAVED',savedRecords:[{workDate:'2026-09-30',factoryName:'HANOI',quantity:20}]},lang);
+    assert.ok(saved.includes('HANOI'));assert.ok(saved.includes('20'));assert.notEqual(saved,output);
+  }
+  assert.match(format(detail,'ko'),/한 행으로 합쳐/);
+  assert.match(format({...detail,source:'SAVED',savedRecords:[]},'ko'),/기존 기록을 수정/);
+  assert.match(format({...detail,styleName:''},'ko'),/스타일명 확인 필요/);
+});
+
+test('import combines 30 male and 30 female pieces of a shared process by FK while retaining source rows',()=>{
+  const {combineImportedWorkRecords:combine}=load(backend,['combineImportedWorkRecords'],{
+    buildWorkRecordWorkerStyleProcessSignature:r=>`${r.workerId}:${r.assignmentPlanId}:${r.styleProcessId}`,
+    createHttpError:(status,message)=>Object.assign(Error(message),{status}),
+  });
+  const base={workerId:15,assignmentPlanId:7,styleProcessId:648,quantity:30,ctSeconds:551};
+  const records=[base,{...base},{...base,styleProcessId:649},{...base,workerId:16},{...base,assignmentPlanId:8}];
+  const result=combine(records);
+  assert.deepEqual(result.records.map(r=>r.quantity),[60,30,30,30]);
+  assert.deepEqual(result.sourceIndices,[[0,1],[2],[3],[4]]);
+  assert.equal(result.records[0].ctSeconds,551);assert.equal(base.quantity,30);
+  assert.throws(()=>combine([{...base,quantity:2147483647},base]),/too large/);
+  const importRoute=backend.slice(backend.indexOf('app.post("/work-logs/import"'));
+  const confirmation=importRoute.indexOf('requiresMergeConfirmation: true');
+  assert.ok(confirmation>=0&&confirmation<importRoute.indexOf('tx.workLog.create'));
+});
+
+test('quantity remark uses order-wide history, permits excess and excludes the log being edited',async()=>{
+  let history=[];let scope='UNISEX';let excluded;
+  const db={
+    $queryRawUnsafe:async()=>[],
+    assignmentPlan:{findMany:async()=>[{id:7,styleId:40,workOrderId:5,style:{name:'AP1968 name'},workOrder:{orderNumber:'L18-1'}}]},
+    styleProcess:{findMany:async()=>[{id:648,processCode:'TT01',processName:'Shared process',genderScope:scope}]},
+    workRecord:{findMany:async({where})=>{excluded=where.workLogId;return history;}},
+    outsourcedWorkRecord:{findMany:async()=>[]},
+  };
+  const {appendWorkLogQuantityRemark:remark,resolveStyleProcessRowApplicableQuantity:applicable}=load(backend,['appendWorkLogQuantityRemark','resolveStyleProcessRowApplicableQuantity'],{
+    collectWorkRecordAssignmentPlanIds:r=>[...new Set(r.map(x=>x.assignmentPlanId))],
+    loadStyleGenderQuantityMapForWorkOrderIds:async()=>new Map([['5:40',{total:60,male:30,female:30}]]),normalizeProcessGenderScope:v=>v,
+  });
+  const input={db,orgId:1,records:[{assignmentPlanId:7,styleProcessId:648,quantity:60}],note:'User note'};
+  assert.equal(await remark(input),'User note');
+  history=[{quantity:20,styleProcessId:648,assignmentPlan:{workOrderId:5,styleId:40},workLog:{displayDate:'2026-09-20'}}];
+  const output=await remark(input);
+  assert.match(output,/기존 20개 \(2026-09-20 20개\) \+ 이번 60개 = 80개, 주문 대상 60개 대비 20개 초과/);
+  assert.match(output,/AP1968 name/);assert.match(output,/초과 생산으로 저장함/);
+  await remark({...input,excludedWorkLogId:9});assert.deepEqual(excluded,{not:9});
+  history=[];
+  assert.equal(await remark({...input,note:output}),'User note');
+  scope='MALE_ONLY';assert.match(await remark(input),/주문 대상 30개 대비 30개 초과/);
+  assert.equal(applicable({genderScope:'UNISEX'},{total:60,male:30,female:30}),60);
+});
+
+test('employee duplicate validation returns only the matching saved records with date and quantity',async()=>{
+  const existing={workerId:15,assignmentPlanId:7,styleProcessId:648,quantity:20,workLog:{id:5,displayDate:'2026-09-30',factory:{name:'HANOI'}}};
+  let query;
+  const names=['buildWorkRecordActorProcessSignature','buildWorkRecordWorkerStyleProcessSignature','buildOutsourcedWorkRecordSignature','validateWorkLogWorkerStyleProcessDuplicates'];
+  const {validateWorkLogWorkerStyleProcessDuplicates:validate}=load(backend,names,{
+    ...common,ensureArray:v=>Array.isArray(v)?v:[],normalizeDateKey:text,
+    collectPositiveIntSet:(...values)=>[...new Set(values.map(positive).filter(Boolean))],
+    formatWorkerStyleProcessIdentityLabel:()=>'',formatOutsourcedRecordIdentityLabel:()=>'',
+    prisma:{workRecord:{findMany:async args=>{query=args;return [existing,{...existing,styleProcessId:999}];}}},
+  });
+  const result=await validate({orgId:1,workDate:'2026-09-30',records:[{...existing,quantity:30}]});
+  assert.deepEqual(result.existingConflictRows,[existing]);
+  assert.equal(query.select.quantity,true);assert.equal(query.select.workLog.select.displayDate,true);
+  const incoming=await validate({orgId:1,workDate:'2026-09-30',records:[existing,{...existing,quantity:30}]});
+  assert.equal(incoming.incomingDuplicateRows.length,1);assert.equal(incoming.conflictRows.length,0);
+});
+
 test('AT process projection keeps customer identity separate from manufacturer ownership', async()=>{
   const ast=ts.createSourceFile('index.ts',backend,ts.ScriptTarget.Latest,true);
   let projection;
