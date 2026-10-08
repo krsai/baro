@@ -162,8 +162,8 @@ const buildPayload = (data) => {
     ...createEmptyStyle(),
     ...data,
     id: data.id,
-    ownerOrgId: toOrgId(data.ownerOrgId ?? data.customerOrgId),
-    customerOrgId: toOrgId(data.customerOrgId ?? data.ownerOrgId),
+    ownerOrgId: toOrgId(data.ownerOrgId),
+    customerOrgId: toOrgId(data.customerOrgId),
     name: trimmedName,
     customer: (data.customer || '').trim(),
     styleCode: trimmedCode || fallbackCode,
@@ -211,15 +211,12 @@ const StyleDetail = () => {
       toOrgId(
         ownerOrgIdFromQuery ??
           styleFormData.ownerOrgId ??
-          styleFormData.customerOrgId ??
           originalData.ownerOrgId ??
-          originalData.customerOrgId
+          null
       ),
     [
       ownerOrgIdFromQuery,
-      originalData.customerOrgId,
       originalData.ownerOrgId,
-      styleFormData.customerOrgId,
       styleFormData.ownerOrgId,
     ]
   );
@@ -253,7 +250,6 @@ const StyleDetail = () => {
           const empty = createEmptyStyle();
           if (isBrandOrg) {
             empty.customer = defaultBrandCustomerName;
-            empty.ownerOrgId = activeOrgId;
             empty.customerOrgId = activeOrgId;
           }
           setOriginalData(empty);
@@ -273,8 +269,8 @@ const StyleDetail = () => {
           ...createEmptyStyle(),
           ...style,
           id: style.id || styleId,
-          ownerOrgId: toOrgId(style.ownerOrgId ?? style.customerOrgId),
-          customerOrgId: toOrgId(style.customerOrgId ?? style.ownerOrgId),
+          ownerOrgId: toOrgId(style.ownerOrgId),
+          customerOrgId: toOrgId(style.customerOrgId),
           // Normalize processes the same way StyleProcess.jsx does before comparing
           // originalData vs styleFormData, otherwise the dirty-check would keep
           // reporting a change even after reverting a field back to its saved value.
@@ -290,7 +286,7 @@ const StyleDetail = () => {
           id: styleId,
           styleCode: styleId,
           ownerOrgId: ownerOrgIdFromQuery,
-          customerOrgId: ownerOrgIdFromQuery,
+          customerOrgId: isBrandOrg ? activeOrgId : null,
           customer: isBrandOrg ? defaultBrandCustomerName : '',
         };
         setOriginalData(fallback);
@@ -392,7 +388,7 @@ const StyleDetail = () => {
         customer: isBrandOrg
           ? styleFormData.customer || defaultBrandCustomerName
           : styleFormData.customer,
-        customerOrgId: styleFormData.customerOrgId || resolvedOwnerOrgId || null,
+        customerOrgId: styleFormData.customerOrgId || null,
       });
       try {
         const saved = await createStyleOnApi(payload, { orgId: activeOrgId });
@@ -401,7 +397,7 @@ const StyleDetail = () => {
         setOriginalData(normalizedSaved);
         setStyleFormData(normalizedSaved);
         setProcessMasterReloadKey((prev) => prev + 1);
-        const savedOwnerOrgId = toOrgId(saved?.ownerOrgId ?? saved?.customerOrgId);
+        const savedOwnerOrgId = toOrgId(saved?.ownerOrgId);
         const savedQuery = buildQueryString({ ownerOrgId: savedOwnerOrgId });
         const savedStyleId = saved?.id || newId;
         if (hasProcessDraftChanges) {
@@ -431,7 +427,7 @@ const StyleDetail = () => {
       customer: isBrandOrg
         ? styleFormData.customer || defaultBrandCustomerName
         : styleFormData.customer,
-      customerOrgId: styleFormData.customerOrgId || resolvedOwnerOrgId || null,
+      customerOrgId: styleFormData.customerOrgId || null,
     });
 
     try {

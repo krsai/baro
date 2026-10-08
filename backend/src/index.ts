@@ -3807,6 +3807,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
   const syncTargetOrgIds = await resolveStyleSyncTargetOrgIds(orgId);
   const styleCandidates = await db.style.findMany({
     where: {
+      orgId,
       customerOrgId: { in: syncTargetOrgIds },
       OR: [
         ...(styleIds.length > 0 ? [{ id: { in: styleIds } }] : []),
@@ -5100,6 +5101,7 @@ const loadAtTrainingDataFromBuckets = async ({
               select: {
                 id: true,
                 orgId: true,
+                customerOrgId: true,
                 timeBucketSetVersionId: true,
                 timeBucketSetVersion: {
                   select: {

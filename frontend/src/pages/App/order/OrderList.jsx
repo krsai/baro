@@ -1686,7 +1686,7 @@ const OrderList = () => {
           name: style.name || '',
           styleCode: style.styleCode || '',
           customer: style.customer || '',
-          customerOrgId: style.customerOrgId ?? style.ownerOrgId,
+          customerOrgId: style.customerOrgId,
         }))
         .sort((a, b) => {
           const labelA = String(a.name || a.styleCode || '').trim();

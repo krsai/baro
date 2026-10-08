@@ -26,6 +26,70 @@ function load(source, names, deps = {}) {
 }
 const common = { toPositiveIntOrNull: positive, toPositiveIdOrNull: positive, toText: text };
 
+test('AT process projection keeps customer identity separate from manufacturer ownership', async()=>{
+  const ast=ts.createSourceFile('index.ts',backend,ts.ScriptTarget.Latest,true);
+  let projection;
+  function visit(node){
+    if(ts.isVariableDeclaration(node)&&node.name.getText(ast)==='loadAtTrainingDataFromBuckets'){
+      function query(n){
+        if(ts.isCallExpression(n)&&n.expression.getText(ast)==='prisma.styleProcess.findMany'){
+          const arg=n.arguments[0];const selected=arg.properties.find(p=>p.name?.getText(ast)==='select');
+          projection=new Function('return ('+selected.initializer.getText(ast)+');')();
+        }
+        ts.forEachChild(n,query);
+      }
+      query(node);
+    }
+    ts.forEachChild(node,visit);
+  }
+  visit(ast);
+  assert.ok(projection);
+  const source={id:40,orgId:1,customerOrgId:2};
+  const projected=Object.fromEntries(Object.entries(source).filter(([key])=>projection.style.select[key]===true));
+  const {loadRelationshipTimeBucketContextByStyleId:contexts,applyRelationshipTimeBucketContexts:apply}=load(backend,['loadRelationshipTimeBucketContextByStyleId','applyRelationshipTimeBucketContexts'],{
+    ...common,toPositiveInt:(v,d)=>positive(v)??d,ensureArray:v=>Array.isArray(v)?v:[],prisma:null,
+    createHttpError:(status,message)=>Object.assign(Error(message),{status}),
+  });
+  const db={orgRelationship:{findMany:async({where})=>{
+    assert.equal(where.manufacturerOrgId,1);assert.deepEqual(where.brandOrgId.in,[2]);
+    return [{id:9,brandOrgId:2,timeBucketSetVersion:{id:5,entries:[{bucketQuantity:1000}]},timeBucketOverrides:[]}];
+  }}};
+  const map=await contexts({db,manufacturerOrgId:1,styles:[projected]});
+  assert.equal(apply({styles:[projected],contextByStyleId:map})[0].timeBucketSetVersionId,5);
+  await assert.rejects(async()=>apply({styles:[{id:40,orgId:1}],contextByStyleId:await contexts({db,manufacturerOrgId:1,styles:[{id:40,orgId:1}]})}),/missing for style 40/);
+});
+
+test('style API and editor never substitute customer and manufacturer IDs',()=>{
+  const api=readFileSync('frontend/src/utils/styleApi.js','utf8');
+  const {normalizeStyle}=load(api,['normalizeStyle'],{
+    toPositiveOrgId:positive,normalizeProcesses:v=>v||[],normalizeArray:v=>Array.isArray(v)?v:[],normalizeBucketQuantities:v=>v||[],
+  });
+  assert.equal(normalizeStyle({customerOrgId:2}).ownerOrgId,null);
+  assert.equal(normalizeStyle({ownerOrgId:1}).customerOrgId,null);
+  assert.equal(normalizeStyle({orgId:1,customerOrgId:2}).ownerOrgId,1);
+  const detail=readFileSync('frontend/src/pages/App/style/StyleDetail.jsx','utf8');
+  const {buildPayload}=load(detail,['buildPayload'],{todayDateKey:()=> '2026-10-08',createEmptyStyle:()=>({}),toOrgId:positive});
+  assert.equal(buildPayload({id:'X',ownerOrgId:1}).customerOrgId,null);
+  assert.equal(buildPayload({id:'X',customerOrgId:2}).ownerOrgId,null);
+  assert.doesNotMatch(detail,/customerOrgId:\s*styleFormData.customerOrgId\s*\|\|\s*resolvedOwnerOrgId/);
+  assert.doesNotMatch(order,/customerOrgId:\s*style.customerOrgId\s*\?\?\s*style.ownerOrgId/);
+});
+
+test('AT source lookup isolates manufacturers sharing a customer',()=>{
+  const ast=ts.createSourceFile('index.ts',backend,ts.ScriptTarget.Latest,true);let where;
+  function visit(n){
+    if(ts.isVariableDeclaration(n)&&n.name.getText(ast)==='buildAtTrainingBucketDraftsFromRawSource'){
+      function query(q){if(ts.isCallExpression(q)&&q.expression.getText(ast)==='db.style.findMany'){
+        const property=q.arguments[0].properties.find(p=>p.name?.getText(ast)==='where');
+        where=new Function('orgId','syncTargetOrgIds','styleIds','return ('+property.initializer.getText(ast)+');')(1,[2],[40]);
+      }ts.forEachChild(q,query);}query(n);
+    }ts.forEachChild(n,visit);
+  }visit(ast);
+  assert.equal(where.orgId,1);assert.deepEqual(where.customerOrgId.in,[2]);
+  const rows=[{id:40,orgId:1,customerOrgId:2},{id:41,orgId:3,customerOrgId:2}];
+  assert.deepEqual(rows.filter(s=>s.orgId===where.orgId&&where.customerOrgId.in.includes(s.customerOrgId)).map(s=>s.id),[40]);
+});
+
 test('unused style deletes editable prices atomically and rejects orders, production and assignments', async()=>{
   const {deleteUnusedStyle:remove}=load(backend,['deleteUnusedStyle'],{createHttpError:(status,message)=>Object.assign(new Error(message),{status})});
   for (const blocked of [null,'workRecord','outsourcedWorkRecord','workOrderItem','assignmentPlan']) {

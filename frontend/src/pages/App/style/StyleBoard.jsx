@@ -287,7 +287,7 @@ const StyleBoard = () => {
   });
 
   const handleRowDoubleClick = (style) => {
-    const ownerOrgId = toOrgId(style?.ownerOrgId ?? style?.customerOrgId);
+    const ownerOrgId = toOrgId(style?.ownerOrgId);
     const query = buildQueryString({ ownerOrgId });
     navigateToPath(`/style/${style.id}${query}`, {
       label: resolveStyleWorkspaceTabLabel(languageCode, style?.name || style?.id),
@@ -443,7 +443,7 @@ const StyleBoard = () => {
     try {
       await deleteStyle(styleToDelete.id, {
         orgId: activeOrgId,
-        ownerOrgId: toOrgId(styleToDelete?.ownerOrgId ?? styleToDelete?.customerOrgId),
+        ownerOrgId: toOrgId(styleToDelete?.ownerOrgId),
       });
       setStyles((prevStyles) => prevStyles.filter((s) => s.id !== styleToDelete.id));
       showNotification(

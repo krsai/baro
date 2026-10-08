@@ -32,9 +32,9 @@ const toStyleCacheKey = (styleId, options = {}) => {
 
 const normalizeStyle = (value = {}) => ({
   id: value.id || '',
-  ownerOrgId: toPositiveOrgId(value.ownerOrgId ?? value.customerOrgId),
+  ownerOrgId: toPositiveOrgId(value.ownerOrgId ?? value.orgId),
   ownerOrgName: value.ownerOrgName || '',
-  customerOrgId: toPositiveOrgId(value.customerOrgId ?? value.ownerOrgId),
+  customerOrgId: toPositiveOrgId(value.customerOrgId),
   styleCode: value.styleCode || '',
   name: value.name || '',
   customer: value.customer || '',
@@ -73,7 +73,7 @@ const readFreshStyleFromCache = (styleId, options = {}) => {
 const writeStyleToCache = (style, options = {}) => {
   const key = toStyleCacheKey(style?.id, {
     orgId: options?.orgId,
-    ownerOrgId: style?.ownerOrgId ?? style?.customerOrgId ?? options?.ownerOrgId,
+    ownerOrgId: style?.ownerOrgId ?? options?.ownerOrgId,
   });
   if (!key) return;
   styleByIdCache.set(key, {
@@ -131,7 +131,7 @@ export const fetchStyles = async (options = {}) => {
   styles.forEach((style) => {
     writeStyleToCache(style, {
       orgId: orgIdNum,
-      ownerOrgId: style?.ownerOrgId ?? style?.customerOrgId,
+      ownerOrgId: style?.ownerOrgId,
     });
   });
   return styles;
@@ -193,7 +193,7 @@ export const createStyle = async (style, options = {}) => {
   const normalized = normalizeStyle(data);
   writeStyleToCache(normalized, {
     orgId: toPositiveOrgId(options?.orgId),
-    ownerOrgId: normalized?.ownerOrgId ?? normalized?.customerOrgId,
+    ownerOrgId: normalized?.ownerOrgId,
   });
   emitWorkspaceDataChanged({
     topics: [WORKSPACE_DATA_TOPICS.STYLES],
@@ -216,7 +216,7 @@ export const updateStyle = async (styleId, style, options = {}) => {
   const normalized = normalizeStyle(data);
   writeStyleToCache(normalized, {
     orgId: toPositiveOrgId(options?.orgId),
-    ownerOrgId: normalized?.ownerOrgId ?? normalized?.customerOrgId,
+    ownerOrgId: normalized?.ownerOrgId,
   });
   emitWorkspaceDataChanged({
     topics: [WORKSPACE_DATA_TOPICS.STYLES],
