@@ -1015,6 +1015,8 @@ export const resolveStyleAtReliability = (processes = [], referenceQuantity = nu
     validationOwnAssignmentCount: validations.length && validations.every(v => v?.version === 'held-out-shared-v1') ? Math.min(...validations.map(v => v.ownAssignmentCount)) : null,
     validationDonorStyleCount: validations.length && validations.every(v => v?.version === 'held-out-shared-v1') ? Math.min(...validations.map(v => v.donorStyleCount)) : null,
     validationErrorP80: complete ? Math.max(...validations.map(v => v.reference.errorP80)) : null,
+    validationReliabilityAvailable: validations.every(v => v?.version === 'held-out-shared-v1' &&
+      Number.isFinite((referenceQuantity == null ? v.overall : v.referenceQuantity === referenceQuantity ? v.reference : null)?.reliabilityPercent)),
     validationComplete: complete };
 };
 
@@ -1300,8 +1302,9 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1, options 
     ? options.overall ? validation.overall : Number(orderQuantity) === validation.referenceQuantity ? validation.reference : null
     : null;
   if (heldOut && Number.isFinite(heldOut.score)) {
-    return { ...toAtReliabilityResult(resolveAtReliabilityStatusFromPercent(heldOut.score), {
-      percent: heldOut.score, version: 3, observationCount: heldOut.independentCount,
+    const percent = Number.isFinite(heldOut.reliabilityPercent) ? heldOut.reliabilityPercent : heldOut.score;
+    return { ...toAtReliabilityResult(resolveAtReliabilityStatusFromPercent(percent), {
+      percent, version: 3, observationCount: heldOut.independentCount,
     }), validationRelativeError: heldOut.relativeError, validationErrorP80: heldOut.errorP80 };
   }
   const rawObservations = Array.isArray(normalized?.atV2Observations)

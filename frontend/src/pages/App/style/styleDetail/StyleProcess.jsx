@@ -1941,8 +1941,8 @@ const StyleProcess = ({
     []
   );
   const styleAtReliability = useMemo(() => {
-    return resolveStyleAtReliability(safeProcesses);
-  }, [safeProcesses]);
+    return resolveStyleAtReliability(safeProcesses, timeRefQuantity);
+  }, [safeProcesses, timeRefQuantity]);
   const totalStGapPercent = useMemo(
     () => (hasAT && hasST ? calculateDivergencePercent(totalST, totalAT) : null),
     [hasAT, hasST, totalAT, totalST]
@@ -3624,11 +3624,11 @@ const StyleProcess = ({
                           {`AT(${timeRefQuantityLabel})`}
                         </Box>
                       </Tooltip>
-                      {styleAtReliability && (
+                      {styleAtReliability?.validationReliabilityAvailable && (
                         <Chip
                           size="small"
-                          label={resolveAtReliabilityPercentLabel(styleAtReliability)}
-                          title={languageCode === 'ko' ? '전체 실적 근거 점수: 반복 배정, 수량 다양성, 기록 품질을 종합합니다. 특정 수량의 예측 정확률이 아닙니다.' : languageCode === 'vi' ? 'Điểm bằng chứng tổng thể; không phải độ chính xác ở một số lượng cụ thể.' : 'Overall evidence score; not prediction accuracy at a specific quantity.'}
+                          label={`${languageCode === 'ko' ? '신뢰도' : languageCode === 'vi' ? 'Độ tin cậy' : 'Reliability'} ${resolveAtReliabilityPercentLabel(styleAtReliability)}`}
+                          title={languageCode === 'ko' ? '표시 수량의 AT 신뢰도: 학습에서 제외한 기록을 ±20% 이내로 예측한 비율을 자료량과 수량 근접도로 보정한 공정별 신뢰도의 PT 가중 평균입니다.' : languageCode === 'vi' ? 'Độ tin cậy AT: tỷ lệ dự đoán kiểm định trong ±20%, điều chỉnh theo dữ liệu và số lượng; tổng hợp theo trọng số PT.' : 'AT reliability: held-out success rate within ±20%, adjusted for evidence and quantity proximity, aggregated by process PT weight.'}
                           sx={{
                             ...AT_RELIABILITY_CHIP_SX,
                             backgroundColor: resolveAtReliabilityPalette(styleAtReliability).bg,
@@ -3687,4 +3687,3 @@ const StyleProcess = ({
 };
 
 export default StyleProcess;
-

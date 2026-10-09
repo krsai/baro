@@ -94,6 +94,9 @@ test('validated prediction preserves estimates and gains support beyond old spar
   assert.ok(b.validation.reference.score > 90);
   assert.equal(b.validation.reference.relativeError, 0);
   assert.equal(b.validation.reference.errorP80, 0);
+  assert.ok(b.validation.reference.reliabilityPercent > 90);
+  assert.ok(b.validation.reference.reliabilityPercent > a.validation.reference.reliabilityPercent);
+  assert.equal(b.validation.reference.toleranceRelativeError, 0.2);
   assert.equal(b.validation.donorStyleCount, 25);
   assert.equal(JSON.stringify(large), before);
 });
@@ -112,6 +115,7 @@ test('many process copies do not inflate independent donor style evidence or err
   const a = buildValidatedSharedAtPrediction(target(), donors).validation;
   const b = buildValidatedSharedAtPrediction(target(), copies).validation;
   assert.equal(a.reference.score, b.reference.score);
+  assert.equal(a.reference.reliabilityPercent, b.reference.reliabilityPercent);
   assert.equal(b.reference.independentCount, 2);
   assert.equal(b.reference.errorP80, null);
 });
@@ -120,9 +124,11 @@ test('transfer mismatch and far-away quantities cannot earn high AT1000 evidence
   const heterogeneous = Array.from({ length: 20 }, (_, i) => row(i + 1, 'JACKET', i % 2 ? 100 : 25));
   const result = buildValidatedSharedAtPrediction(target(100), heterogeneous);
   assert.ok(result.validation.reference.score < 70);
+  assert.ok(result.validation.reference.reliabilityPercent < 50);
   const far = Array.from({ length: 30 }, (_, i) => row(i + 1, 'JACKET', 50, 100, [10, 20, 30]));
   const p = buildValidatedSharedAtPrediction(target(100), far);
   assert.ok(p.validation.reference.score < 10);
+  assert.ok(p.validation.reference.reliabilityPercent < 10);
   assert.equal(p.validation.reference.errorP80, null);
 });
 
@@ -143,4 +149,18 @@ test('repeated independent batches at 1000 become highly supported without quant
   assert.ok(large.score >= 95);
   assert.equal(large.independentCount, 20);
   assert.equal(large.errorP80, 0);
+  assert.ok(large.reliabilityPercent >= 95);
+  assert.ok(large.reliabilityPercent > small.reliabilityPercent);
+});
+
+test('reliability measures successful predictions, not a renamed evidence score', () => {
+  const donors = Array.from({length: 25}, (_, i) => row(i + 1));
+  // Transfer to the held-out odd style misses by 15%: within the stated 20%
+  // tolerance, so success remains high despite nonzero prediction error.
+  donors.push(row(50, 'JACKET', 58, 11600));
+  const p = buildValidatedSharedAtPrediction(target(100), donors).validation.reference;
+  assert.ok(p.relativeError > 0);
+  assert.ok(p.reliabilityPercent > 90);
+  assert.notEqual(p.reliabilityPercent, p.score);
+  assert.equal(buildValidatedSharedAtPrediction(target(), []).validation.reference.reliabilityPercent, null);
 });

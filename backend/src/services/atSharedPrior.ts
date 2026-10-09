@@ -95,7 +95,8 @@ export const buildValidatedSharedAtPrediction = (target: Row, candidates: Row[])
         if (quantity && proximity >= 0.5) localUnits.set(key, [...(localUnits.get(key) || []), t.error]);
       }
     }
-    const groups = [...units.entries()].map(([key, v]) => ({ own: key.startsWith('a:'), error: median(v.errors), weight: median(v.weights) }));
+    const groups = [...units.entries()].map(([key, v]) => ({ own: key.startsWith('a:'), error: median(v.errors), weight: median(v.weights),
+      success: v.errors.reduce((s, error, i) => s + (error <= 0.2 + 1e-12 ? v.weights[i]! : 0), 0) / v.weights.reduce((s, w) => s + w, 0) }));
     const support = groups.reduce((s, g) => s + g.weight, 0);
     const meanError = (items: typeof groups) => {
       const weight = items.reduce((s, g) => s + g.weight, 0);
@@ -109,13 +110,31 @@ export const buildValidatedSharedAtPrediction = (target: Row, candidates: Row[])
     // This is a diagnostic score, not a coverage probability.
     const proximityLimit = quantity ? Math.min(1, 2 * Math.max(0, ...groups.map(g => g.weight))) : 1;
     const score = relativeError === null ? 0 : Math.round(100 * (1 - Math.exp(-support / 5)) * Math.exp(-2 * relativeError) * proximityLimit);
+    // Estimated held-out success frequency within a declared 20% tolerance.
+    // Beta(1,1) smoothing avoids reporting certainty from a single success.
+    // One independent assignment/style contributes at most one weighted trial;
+    // repeated process rows cannot inflate the evidence. Own performance takes
+    // precedence as its independent support grows, rather than being swamped
+    // by a large donor pool. Unlike the diagnostic score, data volume is not
+    // multiplied into accuracy and cannot impose an arbitrary low ceiling.
+    const successRate = (items: typeof groups) => {
+      const weight = items.reduce((s, g) => s + g.weight, 0);
+      return { weight, rate: (1 + items.reduce((s, g) => s + g.success * g.weight, 0)) / (2 + weight) };
+    };
+    const ownSuccess = successRate(ownGroups);
+    const sharedSuccess = successRate(groups.filter(g => !g.own));
+    const ownSuccessWeight = sharedSuccess.weight === 0 ? 1 : ownSuccess.weight / (ownSuccess.weight + 3);
+    const success = ownSuccess.weight === 0 ? sharedSuccess.rate
+      : ownSuccess.rate * ownSuccessWeight + sharedSuccess.rate * (1 - ownSuccessWeight);
+    const reliabilityPercent = support > 0 ? Math.round(100 * success * proximityLimit) : null;
     // Keep the worst nearby error within an independent unit; averaging rows
     // must not hide a failed reference-quantity prediction.
     const sorted = [...localUnits.values()].map(values => Math.max(...values)).sort((a, b) => a - b);
     const percentile = (xs: number[]) => xs.sort((a, b) => a - b)[Math.ceil(xs.length * 0.8) - 1] ?? 0;
     const ownLocal = [...localUnits.entries()].filter(([key]) => key.startsWith('a:')).map(([, values]) => Math.max(...values));
     const sharedLocal = [...localUnits.entries()].filter(([key]) => key.startsWith('s:')).map(([, values]) => Math.max(...values));
-    return { score, independentCount: groups.length, effectiveSupport: support, relativeError,
+    return { score, reliabilityPercent, toleranceRelativeError: 0.2,
+      independentCount: groups.length, effectiveSupport: support, relativeError,
       // Empirical 80th percentile of nearby held-out relative errors, NOT a
       // calibrated confidence interval. No nearby trials => no error band.
       errorP80: sorted.length >= 3 ? Math.max(percentile(ownLocal), percentile(sharedLocal)) : null,

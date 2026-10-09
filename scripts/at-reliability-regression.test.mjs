@@ -857,3 +857,15 @@ test('held-out blended evidence is used without own observations and AT1000 stay
   assert.equal(resolveProcessAtReliability(process, 100).percent, 0);
   assert.equal(resolveStyleAtReliability([process, { pt: 50 }], 1000).validationErrorP80, null);
 });
+
+test('style reliability uses validated success percentages and hides unavailable legacy evidence', () => {
+  const make = (pt, percent) => ({ pt, atSharedPrediction: { version: 'shared-at-v1', a: 50, b: 10000, smallQuantityBoundary: 100,
+    validation: { version: 'held-out-shared-v1', referenceQuantity: 1000,
+      reference: {score: 7, reliabilityPercent: percent, independentCount: 20}, overall: {score: 10, reliabilityPercent: 80, independentCount: 20} } } });
+  const result = resolveStyleAtReliability([make(75, 90), make(25, 70)], 1000);
+  assert.equal(result.percent, 85);
+  assert.equal(result.validationReliabilityAvailable, true);
+  assert.equal(resolveStyleAtReliability([make(75, 90), {pt: 25}], 1000).validationReliabilityAvailable, false);
+  assert.equal(resolveStyleAtReliability([make(75, null)], 1000).validationReliabilityAvailable, false);
+  assert.equal(resolveStyleAtReliability([make(75, 0)], 1000).validationReliabilityAvailable, true);
+});
