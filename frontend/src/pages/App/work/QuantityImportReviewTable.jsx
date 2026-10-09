@@ -22,10 +22,23 @@ export const groupQuantityComparison = (rows) => {
   });
 };
 
+export const summarizeProductionMonths = (history = []) => {
+  const months = new Map();
+  history.forEach(row => {
+    const month = /^\d{4}-\d{2}/.test(String(row.date || '')) ? String(row.date).slice(0, 7) : '';
+    months.set(month, (months.get(month) || 0) + (Number(row.quantity) || 0));
+  });
+  return [...months].sort(([a], [b]) => a.localeCompare(b)).map(([month, quantity]) => ({ month, quantity }));
+};
+
 export default function QuantityImportReviewTable({ rows, items, approvedKeys, onToggle, disabled, languageCode }) {
   const text = LABELS[languageCode] || LABELS.en;
   const fmt = value => Number(value || 0).toLocaleString();
   const difference = value => value === 0 ? text.equal : `${fmt(Math.abs(value))}${value > 0 ? text.excess : text.shortage}`;
+  const historyCell = (quantity, history) => <Stack spacing={0.25} alignItems="flex-end">
+    <Typography variant="body2" fontWeight={600}>{fmt(quantity)}</Typography>
+    {summarizeProductionMonths(history).map(item => <Typography key={item.month} variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>{item.month || '—'}: {fmt(item.quantity)}</Typography>)}
+  </Stack>;
   return <Stack spacing={2}>{groupQuantityComparison(rows).map(group => <Paper key={group.key} variant="outlined" sx={{ overflow: 'hidden' }}>
     <Stack spacing={0.5} sx={{ p: 1.5 }}>
       <Typography fontWeight={700}>{group.orderNumber} / {group.styleName}</Typography>
@@ -40,8 +53,8 @@ export default function QuantityImportReviewTable({ rows, items, approvedKeys, o
           <TableCell>{row.processCode} · {row.processName}</TableCell>
           <TableCell>{({ UNISEX: text.shared, MALE_ONLY: text.male, FEMALE_ONLY: text.female })[row.genderScope]}</TableCell>
           <TableCell align="right">{fmt(row.target)}</TableCell>
-          <TableCell align="right"><Tooltip title={(review?.history || []).map(item => `${item.date}: ${item.quantity}`).join(', ')}><span>{fmt(row.previous)}</span></Tooltip></TableCell>
-          <TableCell align="right">{fmt(row.incoming)}</TableCell>
+          <TableCell align="right"><Tooltip title={(row.history || review?.history || []).map(item => `${item.date}: ${item.quantity}`).join(', ')}>{historyCell(row.previous, row.history || review?.history || [])}</Tooltip></TableCell>
+          <TableCell align="right"><Tooltip title={(row.incomingHistory || []).map(item => `${item.date}: ${item.quantity}`).join(', ')}>{historyCell(row.incoming, row.incomingHistory || [])}</Tooltip></TableCell>
           <TableCell align="right">{fmt(row.total)}</TableCell>
           <TableCell sx={{ color: row.difference > 0 ? 'warning.dark' : row.difference < 0 ? 'error.main' : 'success.main', whiteSpace: 'nowrap' }}>{difference(row.difference)}</TableCell>
           <TableCell>{review ? <Checkbox size="small" inputProps={{ 'aria-label': `${row.processCode} ${text.approve}` }} disabled={disabled} checked={approvedKeys.includes(review.key)} onChange={event => onToggle(review.key, event.target.checked)} /> : '—'}</TableCell>

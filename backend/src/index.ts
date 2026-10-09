@@ -11618,7 +11618,10 @@ const appendWorkLogQuantityRemark = async ({ db, orgId, records, note, excludedW
     if (target.unspecified > 0 && group.process.genderScope !== "UNISEX") continue;
     const limit = resolveStyleProcessRowApplicableQuantity(group.process, target);
     const total = previous + group.quantity;
-    if (Array.isArray(comparisonItems)) comparisonItems.push({ requiredSetComplete: plans.filter((p: any) => p.workOrderId === group.plan.workOrderId && p.styleId === group.plan.styleId).every((p: any) => completeRequiredPlanIds.has(p.id) && (requiredIdsByPlan.get(p.id) || []).every(id => processes.some((process: any) => process.id === id))), orderId: group.plan.workOrderId, styleId: group.plan.styleId, styleProcessId: group.process.id, orderNumber: group.plan.workOrder?.orderNumber, styleName: group.plan.style?.name, processCode: group.process.processCode, processName: group.process.processName, genderScope: group.process.genderScope, target: limit, orderQuantity: target.total, previous, incoming: group.quantity, total, difference: total - limit, required: plans.some((p: any) => p.workOrderId === group.plan.workOrderId && p.styleId === group.plan.styleId && (requiredIdsByPlan.get(p.id) || []).includes(group.process.id)) });
+    if (Array.isArray(comparisonItems)) comparisonItems.push({ history: history.map((r: any) => ({ date: r.workLog?.displayDate || '', quantity: Number(r.quantity || 0) })), incomingHistory: records.filter((r: any) => {
+      const plan = plans.find((p: any) => p.id === r.assignmentPlanId);
+      return plan?.workOrderId === group.plan.workOrderId && plan?.styleId === group.plan.styleId && r.styleProcessId === group.process.id;
+    }).map((r: any) => ({ date: r.coverageEndDate || '', quantity: Number(r.quantity || 0) })), requiredSetComplete: plans.filter((p: any) => p.workOrderId === group.plan.workOrderId && p.styleId === group.plan.styleId).every((p: any) => completeRequiredPlanIds.has(p.id) && (requiredIdsByPlan.get(p.id) || []).every(id => processes.some((process: any) => process.id === id))), orderId: group.plan.workOrderId, styleId: group.plan.styleId, styleProcessId: group.process.id, orderNumber: group.plan.workOrder?.orderNumber, styleName: group.plan.style?.name, processCode: group.process.processCode, processName: group.process.processName, genderScope: group.process.genderScope, target: limit, orderQuantity: target.total, previous, incoming: group.quantity, total, difference: total - limit, required: plans.some((p: any) => p.workOrderId === group.plan.workOrderId && p.styleId === group.plan.styleId && (requiredIdsByPlan.get(p.id) || []).includes(group.process.id)) });
     if (group.quantity <= 0 || total <= limit) continue;
     const byDate = new Map<string, number>();
     history.forEach((r: any) => { const date = r.workLog?.displayDate || ""; byDate.set(date, (byDate.get(date) || 0) + Number(r.quantity || 0)); });
@@ -26820,7 +26823,7 @@ app.post("/work-logs/import", async (req, res) => {
         const reviewItems: any[] = [];
         const comparisonItems: any[] = [];
         await appendWorkLogQuantityRemark({ db: tx, orgId: organization.id,
-          records: validatedGroups.flatMap(group => group.normalized.records), note: null, reviewItems, comparisonItems });
+          records: validatedGroups.flatMap(group => group.normalized.records.map((record: any) => ({ ...record, coverageEndDate: group.normalized.coverageEndDate || group.normalized.displayDate }))), note: null, reviewItems, comparisonItems });
         const approvedKeys = new Set(ensureArray(req.body?.approvedQuantityKeys).filter(key => typeof key === "string"));
         if (reviewItems.some(item => !approvedKeys.has(item.key))) {
           throw Object.assign(new Error("Quantity review required"), { quantityReviewItems: reviewItems,

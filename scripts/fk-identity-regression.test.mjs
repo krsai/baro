@@ -108,6 +108,8 @@ test('quantity remark uses order-wide history, permits excess and excludes the l
 test('comparison summarizes finished excess only with complete shared required processes',()=>{
   const source=readFileSync('frontend/src/pages/App/work/QuantityImportReviewTable.jsx','utf8');
   const {groupQuantityComparison:group}=load(source,['groupQuantityComparison']);
+  const {summarizeProductionMonths:months}=load(source,['summarizeProductionMonths']);
+  assert.deepEqual(months([{date:'2026-08-01',quantity:20},{date:'2026-08-31',quantity:20},{date:'2026-09-30',quantity:65}]),[{month:'2026-08',quantity:40},{month:'2026-09',quantity:65}]);
   const base={orderId:1,styleId:2,target:60,orderQuantity:60,genderScope:'UNISEX',required:true,requiredSetComplete:true};
   assert.equal(group([{...base,total:65},{...base,total:65}])[0].finishedQuantity,65);
   assert.equal(group([{...base,total:65},{...base,total:55}])[0].finishedQuantity,55);
