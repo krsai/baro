@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import prior from '../backend/dist/services/atSharedPrior.js';
 const { buildSharedAtPrediction, buildValidatedSharedAtPrediction } = prior;
 const row = (styleId, category = 'JACKET', a = 50, b = 10000, quantities = [100, 500, 1000]) => ({
@@ -106,7 +108,11 @@ test('own assignment holdout does not validate against itself or same-assignment
   const donor = row(1);
   donor.atObservations.forEach(o => { o.assignmentPlanId = own.atObservations[0].assignmentPlanId; });
   const p = buildValidatedSharedAtPrediction(own, [own, donor]);
-  assert.equal(p.validation.ownAssignmentCount, 0);
+  assert.equal(p.validation.ownAssignmentCount, 1);
+  // Every peer record from this assignment is excluded: the remaining
+  // prediction is PT=50, not the leaked fitted 60 seconds at q=1000.
+  assert.ok(Math.abs(p.validation.overall.meanPredictionSeconds - 50) < 1e-9);
+  assert.ok(Math.abs(p.validation.overall.meanAbsoluteErrorSeconds - 10) < 1e-9);
 });
 
 test('many process copies do not inflate independent donor style evidence or error ranges', () => {
@@ -171,4 +177,53 @@ test('a held-out prediction of 60 seconds against actual 72 has 20% error and 80
   assert.ok(Math.abs(result.predictionRelativeError - 0.2) < 1e-9);
   assert.equal(result.reliabilityPercent, 80);
   assert.equal(result.reliabilityMethod, 'predicted-time-absolute-error-v1');
+});
+
+test('overall validation includes small quantities and constant-quantity records without a fitted curve', () => {
+  const own = row(20, 'JACKET', 50, 0, [30,30,30]);
+  const result = buildValidatedSharedAtPrediction(own, []).validation;
+  assert.equal(result.reference.predictionRelativeError, null);
+  assert.equal(result.overall.meanPredictionSeconds, 50);
+  assert.equal(result.overall.meanAbsoluteErrorSeconds, 0);
+  const single = buildValidatedSharedAtPrediction(row(21, 'JACKET', 60, 0, [30]), []).validation.overall;
+  assert.equal(single.meanPredictionSeconds, 50);
+  assert.equal(single.meanAbsoluteErrorSeconds, 10);
+});
+
+function loadDeclarations(source, names, deps) {
+  const require = createRequire(import.meta.url);
+  const ts = require('../backend/node_modules/typescript');
+  const ast = ts.createSourceFile('module.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const declarations=[];
+  function visit(n) { if(ts.isVariableDeclaration(n) && names.includes(n.name.getText(ast))) declarations.push(`const ${n.getText(ast)};`); ts.forEachChild(n,visit); }
+  visit(ast); assert.equal(declarations.length,names.length);
+  const js=ts.transpileModule(declarations.join('\n'),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+  return new Function(...Object.keys(deps),`${js}\nreturn {${names.join(',')}};`)(...Object.values(deps));
+}
+
+test('actual style-list storage and response path delivers overall validation to frontend calculation', async () => {
+  const records=[row(1),row(2),row(3)];
+  const db={styleProcess:{findMany:async()=>records}};
+  const backend=loadDeclarations(readFileSync('backend/src/index.ts','utf8'),
+    ['loadStyleAtPredictions','ensureStyleProcessStorageForStyles','toStyleResponse'],{
+      prisma:db,buildValidatedSharedAtPrediction,AT_V2_MODEL_VERSION:2,
+      ensureArray:x=>Array.isArray(x)?x:[],toPositiveIntOrNull:x=>Number(x)>0?Number(x):null,
+      resolveOptionalString:(x,f)=>x??f,
+      loadStyleProcessRowsByStyleId:async ids=>new Map(records.filter(r=>ids.includes(r.styleId)).map(r=>[r.styleId,[r]])),
+      normalizeStyleProcesses:x=>x??[],isStyleProcessStorageOutOfSync:()=>false,
+      syncStyleProcessStorageForStyle:()=>{throw Error('Unexpected write');},
+      loadStyleProcessNameLookup:async()=>new Map(),
+      buildStyleProcessMirrorFromRows:rows=>rows.map(r=>({styleProcessId:r.id,pt:r.ptSeconds,atV2Observations:r.atObservations})),
+    });
+  const styles=records.map(r=>({id:r.styleId,orgId:1,processes:[]}));
+  const mirrors=await backend.ensureStyleProcessStorageForStyles(styles,{processOrgId:1,db});
+  const response=JSON.parse(JSON.stringify(backend.toStyleResponse(styles[0],{processMirrorMap:mirrors})));
+  assert.ok(response.processes[0].atSharedPrediction.validation.overall.meanPredictionSeconds>0);
+  const frontend=loadDeclarations(readFileSync('frontend/src/utils/processTime.js','utf8'),['resolveStyleAtPredictionReliability'],{
+    normalizeProcesses:x=>x,resolveProcessAtDisplayPerPieceSeconds:()=>{throw Error('Overall must not evaluate q=1000');},
+  });
+  const reliability=frontend.resolveStyleAtPredictionReliability(response.processes);
+  assert.equal(reliability.percent,100);
+  assert.equal(reliability.complete,true);
+  assert.equal(reliability.referenceQuantity,null);
 });

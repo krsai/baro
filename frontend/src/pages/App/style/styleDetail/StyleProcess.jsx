@@ -521,7 +521,7 @@ const AT_RELIABILITY_CHIP_SX = {
 };
 
 const resolveAtReliabilityPalette = (reliability) =>
-  resolveReliabilityRiskColor(reliability?.percent);
+  reliability?.percent == null ? { bg: 'grey.200', text: 'text.secondary' } : resolveReliabilityRiskColor(reliability.percent);
 
 
 const ST_AT_GAP_CHIP_SX = {
@@ -1941,8 +1941,8 @@ const StyleProcess = ({
     []
   );
   const styleAtReliability = useMemo(() => {
-    return resolveStyleAtPredictionReliability(safeProcesses, timeRefQuantity);
-  }, [safeProcesses, timeRefQuantity]);
+    return resolveStyleAtPredictionReliability(safeProcesses);
+  }, [safeProcesses]);
   const totalStGapPercent = useMemo(
     () => (hasAT && hasST ? calculateDivergencePercent(totalST, totalAT) : null),
     [hasAT, hasST, totalAT, totalST]
@@ -3624,11 +3624,11 @@ const StyleProcess = ({
                           {`AT(${timeRefQuantityLabel})`}
                         </Box>
                       </Tooltip>
-                      {hasAT && (
+                      {(hasAT || styleAtReliability?.percent != null) && (
                         <Chip
                           size="small"
-                          label={`${languageCode === 'ko' ? '신뢰도' : languageCode === 'vi' ? 'Độ tin cậy' : 'Reliability'} ${styleAtReliability.percent == null ? '—' : `${styleAtReliability.percent}%`}${styleAtReliability.percent != null && !styleAtReliability.complete ? (languageCode === 'ko' ? ' (일부)' : languageCode === 'vi' ? ' (một phần)' : ' (partial)') : ''}`}
-                          title={languageCode === 'ko' ? `100% − 검증 예상 상대오차. 공정별 예상 오차(초)를 합산합니다. 적중 확률이 아닙니다. 검증 공정 ${styleAtReliability.validatedProcessCount}/${styleAtReliability.processCount}, 시간 비중 ${styleAtReliability.coveragePercent}%.` : languageCode === 'vi' ? `100% − sai số tương đối dự kiến; cộng sai số theo giây, không phải xác suất. Công đoạn ${styleAtReliability.validatedProcessCount}/${styleAtReliability.processCount}; tỷ trọng ${styleAtReliability.coveragePercent}%.` : `100% − expected relative validation error. Absolute error seconds are added; not a probability. Validated processes ${styleAtReliability.validatedProcessCount}/${styleAtReliability.processCount}; time coverage ${styleAtReliability.coveragePercent}%.`}
+                          label={`${languageCode === 'ko' ? '전체 신뢰도' : languageCode === 'vi' ? 'Độ tin cậy tổng thể' : 'Overall reliability'} ${styleAtReliability.percent == null ? '—' : `${styleAtReliability.percent}%`}${styleAtReliability.percent != null && !styleAtReliability.complete ? (languageCode === 'ko' ? ' (일부)' : languageCode === 'vi' ? ' (một phần)' : ' (partial)') : ''}`}
+                          title={languageCode === 'ko' ? `전체 수량 기록의 제외 검증 오차를 합산한 AT 추정 전체 신뢰도입니다. 표시 수량과 무관합니다. 100% − 합산 예상 절대오차/합산 예측 시간. 적중 확률이 아닙니다. 검증 공정 ${styleAtReliability.validatedProcessCount}/${styleAtReliability.processCount}, 시간 비중 ${styleAtReliability.coveragePercent}%.` : languageCode === 'vi' ? `Độ tin cậy AT trên toàn bộ số lượng, không phụ thuộc số lượng hiển thị. 100% − tổng sai số tuyệt đối/tổng thời gian dự đoán; không phải xác suất. Công đoạn ${styleAtReliability.validatedProcessCount}/${styleAtReliability.processCount}; tỷ trọng ${styleAtReliability.coveragePercent}%.` : `Overall AT reliability across all quantities, independent of display quantity. 100% − summed absolute errors/summed predicted times; not a probability. Validated processes ${styleAtReliability.validatedProcessCount}/${styleAtReliability.processCount}; time coverage ${styleAtReliability.coveragePercent}%.`}
                           sx={{
                             ...AT_RELIABILITY_CHIP_SX,
                             backgroundColor: resolveAtReliabilityPalette(styleAtReliability).bg,

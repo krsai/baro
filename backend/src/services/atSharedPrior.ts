@@ -30,7 +30,7 @@ const fitUncached = (row: Row) => {
 // Validate the actual predictor, never its fitted training residuals. Shared trials
 // exclude the entire held-out style; own trials exclude the assignment globally.
 // Caches are request-scoped (the candidate array), not cross-request data caches.
-type Trial = { quantity: number; error: number; predictionRelativeError: number; styleId: number; assignmentId: number };
+type Trial = { quantity: number; error: number; predictionRelativeError: number; predictedSeconds: number; styleId: number; assignmentId: number };
 const validationContexts = new WeakMap<Row[], {
   shared: Map<Row, Trial[]>;
   pools: Map<number, Row[]>;
@@ -47,6 +47,7 @@ export const buildValidatedSharedAtPrediction = (target: Row, candidates: Row[])
   }
   const trial = (p: Row, o: Row, styleId: number): Trial => ({
     quantity: Number(o.quantity), styleId, assignmentId: Number(o.assignmentPlanId),
+    predictedSeconds: predictSeconds(p, Number(o.quantity)),
     error: Math.abs(predictSeconds(p, Number(o.quantity)) - Number(o.allocatedLaborInputSeconds) / Number(o.quantity)) /
       (Number(o.allocatedLaborInputSeconds) / Number(o.quantity)),
     predictionRelativeError: Math.abs(predictSeconds(p, Number(o.quantity)) - Number(o.allocatedLaborInputSeconds) / Number(o.quantity)) /
@@ -61,13 +62,13 @@ export const buildValidatedSharedAtPrediction = (target: Row, candidates: Row[])
     }
     const heldOut = { ...target, atObservations: observations(target).filter((o: Row) => Number(o.assignmentPlanId) !== assignmentId) };
     const p = buildSharedAtPrediction(heldOut, pool);
-    if (p && (p.ownAssignmentCount > 0 || p.donorStyleCount > 0)) {
+    if (p) {
       for (const o of observations(target).filter((o: Row) => Number(o.assignmentPlanId) === assignmentId)) ownTrials.push(trial(p, o, target.styleId));
     }
   }
   const sharedTrials: Trial[] = [];
   const eligible = candidates.filter(row => row.orgId === target.orgId && row.styleId !== target.styleId &&
-    row.productionStage === target.productionStage && row.genderScope === target.genderScope && fit(row));
+    row.productionStage === target.productionStage && row.genderScope === target.genderScope && observations(row).length > 0 && Number(row.ptSeconds) > 0);
   const sameCategory = eligible.filter(row => Number(target.style?.categoryId) > 0 && Number(row.style?.categoryId) === Number(target.style.categoryId));
   const categoryValidation = new Set(sameCategory.map(row => row.styleId)).size >= 3;
   // When enough category peers exist, validate transfer on those peers. Their
@@ -76,7 +77,10 @@ export const buildValidatedSharedAtPrediction = (target: Row, candidates: Row[])
     let trials = context.shared.get(row);
     if (!trials) {
       const p = buildSharedAtPrediction({ ...row, atObservations: [] }, candidates);
-      const computed: Trial[] = p && p.donorStyleCount > 0 ? observations(row).map((o: Row) => trial(p, o, row.styleId)) : [];
+      // PT/ST-prior predictions are also real predictions and can be checked
+      // against held-out records. Quantity diversity is needed to fit a setup
+      // curve, not to measure whether a prediction matches actual work time.
+      const computed: Trial[] = p ? observations(row).map((o: Row) => trial(p, o, row.styleId)) : [];
       trials = computed;
       context.shared.set(row, computed);
     }
@@ -85,15 +89,18 @@ export const buildValidatedSharedAtPrediction = (target: Row, candidates: Row[])
   const summarize = (quantity: number | null) => {
     // One unit per own assignment or donor style. More process rows do not
     // manufacture independent evidence. Quantity proximity is continuous.
-    const units = new Map<string, { errors: number[]; predictionErrors: number[]; weights: number[] }>();
+    const units = new Map<string, { errors: number[]; predictionErrors: number[]; weights: number[]; seconds: number[] }>();
     const localUnits = new Map<string, number[]>();
     for (const [source, trials] of [['own', ownTrials], ['shared', sharedTrials]] as const) {
       for (const t of trials) {
         const key = source === 'own' ? `a:${t.assignmentId}` : `s:${t.styleId}`;
-        const values = units.get(key) || { errors: [], predictionErrors: [], weights: [] };
+        const values = units.get(key) || { errors: [], predictionErrors: [], weights: [], seconds: [] };
         const proximity = quantity ? Math.min(quantity, t.quantity) / Math.max(quantity, t.quantity) : 1;
         values.errors.push(t.error); values.weights.push(proximity);
         values.predictionErrors.push(t.predictionRelativeError);
+        // Own holdout uses actual predicted seconds. Transfer trials are scaled
+        // to this target's complexity rather than summing another style's time.
+        values.seconds.push(source === 'own' ? t.predictedSeconds : predictSeconds(prediction, t.quantity));
         units.set(key, values);
         if (quantity && proximity >= 0.5) localUnits.set(key, [...(localUnits.get(key) || []), t.error]);
       }
@@ -121,8 +128,17 @@ export const buildValidatedSharedAtPrediction = (target: Row, candidates: Row[])
     // A nearby quantity means within a factor of two, as with existing ranges.
     const nearbyOwn = [...localUnits.keys()].some(key => key.startsWith('a:'));
     const nearbyShared = [...localUnits.keys()].some(key => key.startsWith('s:'));
-    const predictionRelativeError = quantity === null ? ownPredictionError ?? sharedPredictionError
+    let predictionRelativeError = quantity === null ? ownPredictionError ?? sharedPredictionError
       : nearbyOwn ? ownPredictionError : nearbyShared ? sharedPredictionError : null;
+    const overallUnits = [...units.entries()].map(([key, v]) => ({ own: key.startsWith('a:'),
+      seconds: v.seconds.reduce((s, t) => s + t, 0) / v.seconds.length,
+      errorSeconds: v.seconds.reduce((s, t, i) => s + t * v.predictionErrors[i]!, 0) / v.seconds.length }));
+    const measuredUnits = overallUnits.some(v => v.own) ? overallUnits.filter(v => v.own) : overallUnits;
+    const meanPredictionSeconds = measuredUnits.length ? measuredUnits.reduce((s, v) => s + v.seconds, 0) / measuredUnits.length : null;
+    const meanAbsoluteErrorSeconds = measuredUnits.length ? measuredUnits.reduce((s, v) => s + v.errorSeconds, 0) / measuredUnits.length : null;
+    if (quantity === null && meanPredictionSeconds !== null && meanPredictionSeconds > 0 && meanAbsoluteErrorSeconds !== null) {
+      predictionRelativeError = meanAbsoluteErrorSeconds / meanPredictionSeconds;
+    }
     // Smooth, uncapped support growth; quality depends on held-out error.
     // This is a diagnostic score, not a coverage probability.
     const proximityLimit = quantity ? Math.min(1, 2 * Math.max(0, ...groups.map(g => g.weight))) : 1;
@@ -135,6 +151,7 @@ export const buildValidatedSharedAtPrediction = (target: Row, candidates: Row[])
     const ownLocal = [...localUnits.entries()].filter(([key]) => key.startsWith('a:')).map(([, values]) => Math.max(...values));
     const sharedLocal = [...localUnits.entries()].filter(([key]) => key.startsWith('s:')).map(([, values]) => Math.max(...values));
     return { score, reliabilityPercent, predictionRelativeError, reliabilityMethod: 'predicted-time-absolute-error-v1',
+      ...(quantity === null ? { meanPredictionSeconds, meanAbsoluteErrorSeconds } : {}),
       independentCount: groups.length, effectiveSupport: support, relativeError,
       // Empirical 80th percentile of nearby held-out relative errors, NOT a
       // calibrated confidence interval. No nearby trials => no error band.

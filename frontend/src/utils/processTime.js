@@ -1024,19 +1024,30 @@ export const resolveStyleAtReliability = (processes = [], referenceQuantity = nu
 // assume independent process errors: their absolute errors can add together.
 // Missing validation remains visible; it never suppresses the whole badge or
 // silently treats unmeasured process time as error-free.
-export const resolveStyleAtPredictionReliability = (processes = [], quantity = 1000) => {
+export const resolveStyleAtPredictionReliability = (processes = [], quantity = null) => {
   const normalized = normalizeProcesses(processes);
   let totalSeconds = 0, validatedSeconds = 0, errorSeconds = 0, validatedProcessCount = 0;
   for (const process of normalized) {
-    const seconds = resolveProcessAtDisplayPerPieceSeconds(process, quantity);
+    const validation = process.atSharedPrediction?.validation;
+    const error = quantity == null ? validation?.overall
+      : validation?.referenceQuantity === Number(quantity) ? validation.reference : null;
+    const overallSeconds = error?.meanPredictionSeconds;
+    const observations = Array.isArray(process.atV2Observations) ? process.atV2Observations : [];
+    const observedTimes = observations.filter(o => Number(o.assignmentPlanId) > 0 && Number(o.quantity) > 0 && Number(o.allocatedLaborInputSeconds) > 0)
+      .map(o => Number(o.allocatedLaborInputSeconds) / Number(o.quantity)).filter(Number.isFinite);
+    const seconds = quantity == null
+      ? Number.isFinite(overallSeconds) && overallSeconds > 0 ? overallSeconds
+        : observedTimes.length ? observedTimes.reduce((s, t) => s + t, 0) / observedTimes.length
+          : Number(process.pt) > 0 ? Number(process.pt) : 0
+      : resolveProcessAtDisplayPerPieceSeconds(process, quantity);
     if (!(seconds > 0)) continue;
     totalSeconds += seconds;
-    const validation = process.atSharedPrediction?.validation;
-    const error = validation?.referenceQuantity === Number(quantity) ? validation.reference : null;
+    const relative = quantity == null && Number.isFinite(error?.meanAbsoluteErrorSeconds) && error.meanAbsoluteErrorSeconds >= 0 && overallSeconds > 0
+      ? error.meanAbsoluteErrorSeconds / overallSeconds : error?.predictionRelativeError;
     if (error?.reliabilityMethod !== 'predicted-time-absolute-error-v1' ||
-      !Number.isFinite(error.predictionRelativeError) || error.predictionRelativeError < 0) continue;
+      !Number.isFinite(relative) || relative < 0) continue;
     validatedSeconds += seconds;
-    errorSeconds += seconds * error.predictionRelativeError;
+    errorSeconds += seconds * relative;
     validatedProcessCount++;
   }
   const relativeError = validatedSeconds > 0 ? errorSeconds / validatedSeconds : null;

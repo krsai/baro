@@ -891,3 +891,14 @@ test('style error adds seconds using predicted times, independent of PT and evid
   assert.equal(resolveStyleAtPredictionReliability([make(100, 2)], 1000).percent, 0);
   assert.equal(resolveStyleAtPredictionReliability([make(100, 0)], 2000).percent, null);
 });
+
+test('overall reliability sums whole-history errors and ignores AT1000 reference validation', () => {
+  const make=(seconds,error)=>({pt:1,atSharedPrediction:{validation:{referenceQuantity:1000,
+    reference:{predictionRelativeError:4,reliabilityMethod:'predicted-time-absolute-error-v1'},
+    overall:{meanPredictionSeconds:seconds,meanAbsoluteErrorSeconds:error,reliabilityMethod:'predicted-time-absolute-error-v1'}}}});
+  const result=resolveStyleAtPredictionReliability([make(1500,60),make(500,40)]);
+  assert.equal(result.percent,95);assert.equal(result.errorSeconds,100);
+  assert.equal(result.totalSeconds,2000);assert.equal(result.referenceQuantity,null);
+  const missing=resolveStyleAtPredictionReliability([{pt:500},make(1500,60)]);
+  assert.equal(missing.percent,96);assert.equal(missing.complete,false);assert.equal(missing.coveragePercent,75);
+});

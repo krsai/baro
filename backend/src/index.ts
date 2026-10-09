@@ -6967,6 +6967,19 @@ const refreshStyleProcessMirrorForStyleIds = async (
   } = {}
 ) => loadStyleProcessRowsByStyleId(styleIds, options);
 
+const loadStyleAtPredictions = async (rowsByStyleId: Map<number, any[]>, db: StyleStorageClient) => {
+  const targetRows = Array.from(rowsByStyleId.values()).flat();
+  if (targetRows.length === 0) return new Map<number, any>();
+  const priorOrgIds = [...new Set(targetRows.map(row => row.orgId))];
+  const donorRows = await db.styleProcess.findMany({
+    where: { orgId: { in: priorOrgIds }, isActive: true },
+    include: { style: { select: { categoryId: true, collection: true } }, atObservations: { where: { modelVersion: AT_V2_MODEL_VERSION } } },
+  });
+  const categoryByStyle = new Map(donorRows.map(row => [row.styleId, row.style]));
+  return new Map(targetRows.map(row => [row.id, buildValidatedSharedAtPrediction({ ...row, style: categoryByStyle.get(row.styleId) }, donorRows)]));
+
+};
+
 const loadStyleProcessMirrorMapForStyleIds = async (
   styleIds: number[],
   options: {
@@ -6997,14 +7010,7 @@ const loadStyleProcessMirrorMapForStyleIds = async (
     db,
   });
 
-  const targetRows = Array.from(rowsByStyleId.values()).flat();
-  const priorOrgIds = [...new Set(targetRows.map(row => row.orgId))];
-  const donorRows = await db.styleProcess.findMany({
-    where: { orgId: { in: priorOrgIds }, isActive: true },
-    include: { style: { select: { categoryId: true, collection: true } }, atObservations: { where: { modelVersion: AT_V2_MODEL_VERSION } } },
-  });
-  const categoryByStyle = new Map(donorRows.map(row => [row.styleId, row.style]));
-  const predictions = new Map(targetRows.map(row => [row.id, buildValidatedSharedAtPrediction({ ...row, style: categoryByStyle.get(row.styleId) }, donorRows)]));
+  const predictions = await loadStyleAtPredictions(rowsByStyleId, db);
 
   return normalizedStyleIds.reduce((map, styleId) => {
     map.set(
@@ -7503,6 +7509,7 @@ const ensureStyleProcessStorageForStyles = async (
     db,
   });
 
+  const predictions = await loadStyleAtPredictions(rowsByStyleId, db);
   return styleRows.reduce((map, style) => {
     const styleId = Number(style.id);
     const rows = rowsByStyleId.get(styleId) || [];
@@ -7514,6 +7521,7 @@ const ensureStyleProcessStorageForStyles = async (
           ? []
           : normalizeStyleProcesses(style.processes)
     );
+    map.set(styleId, (map.get(styleId) || []).map((process: any) => ({ ...process, atSharedPrediction: predictions.get(process.styleProcessId) ?? null })));
     return map;
   }, new Map<number, any[]>());
 };
