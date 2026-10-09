@@ -55,8 +55,8 @@ test('import combines 30 male and 30 female pieces of a shared process by FK whi
   assert.equal(result.records[0].ctSeconds,551);assert.equal(base.quantity,30);
   assert.throws(()=>combine([{...base,quantity:2147483647},base]),/too large/);
   const importRoute=backend.slice(backend.indexOf('app.post("/work-logs/import"'));
-  const confirmation=importRoute.indexOf('requiresMergeConfirmation: true');
-  assert.ok(confirmation>=0&&confirmation<importRoute.indexOf('tx.workLog.create'));
+  assert.doesNotMatch(importRoute,/requiresMergeConfirmation: true/);
+  assert.match(importRoute,/mergedRowGroups: mergeGroups/);
 });
 
 test('quantity remark uses order-wide history, permits excess and excludes the log being edited',async()=>{

@@ -26789,9 +26789,9 @@ app.post("/work-logs/import", async (req, res) => {
     return respondWithIssues();
   }
 
-  if (mergeGroups.length > 0 && req.body?.confirmMerge !== true) {
-    return res.json({ ok: true, requiresMergeConfirmation: true, mergeGroups });
-  }
+  // Repeated rows inside this file are additive production, not duplicate
+  // submissions. They have already been combined by canonical FK and coverage.
+  // Saved-record conflicts still reject a re-upload; excess quantity is a remark.
   const updatedBy = await resolveWorkLogUpdatedBy(organization.id, req);
   const createImportTransaction = async (includeCoverage: boolean) =>
     prisma.$transaction(
@@ -26865,6 +26865,7 @@ app.post("/work-logs/import", async (req, res) => {
     createdCount: createdWorkLogIds.length,
     recordCount: importedRecords.length,
     workLogIds: createdWorkLogIds,
+    mergedRowGroups: mergeGroups,
     warnings: null,
   });
 });
