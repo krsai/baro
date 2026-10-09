@@ -18,6 +18,7 @@ import {
   DialogContentText,
   DialogTitle,
   Tooltip,
+  Typography,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useAppActions } from '../../../context/AppContext';
