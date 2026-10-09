@@ -80,7 +80,7 @@ const formatAtReliabilityLabel = (reliability) => {
 const formatAtReliabilityBadgeLabel = (reliability, languageCode) => {
   const percent = formatAtReliabilityLabel(reliability);
   const partial = reliability?.percent != null && !reliability.complete;
-  return languageCode === 'ko' ? `전체 신뢰도 ${percent}${partial ? ' (일부)' : ''}` : languageCode === 'vi' ? `Độ tin cậy tổng thể ${percent}${partial ? ' (một phần)' : ''}` : `Overall reliability ${percent}${partial ? ' (partial)' : ''}`;
+  return `${percent}${partial ? (languageCode === 'ko' ? ' (일부)' : languageCode === 'vi' ? ' (một phần)' : ' (partial)') : ''}`;
 };
 const resolveStyleDeleteBlockedByWorkRecordsMessage = (languageCode) => {
   if (languageCode === 'en') {
