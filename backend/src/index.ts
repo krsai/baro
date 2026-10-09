@@ -6504,8 +6504,8 @@ const normalizeProcessGenderScope = (value: any): ProcessGenderScopeValue => {
 // Per (workOrder x style) breakdown of order-item quantities by gender, used
 // to scope MALE_ONLY/FEMALE_ONLY StyleProcess rows to only the units they
 // actually apply to instead of the assignment's full quantity. `unspecified`
-// tracks quantity from WorkOrderItem rows with no explicit M/W gender (blank
-// or "U") - unlike display-only gender normalization elsewhere, this is never
+// tracks quantity from WorkOrderItem rows with no explicit gender (blank).
+// Explicit "U" means unisex garments, distinct from a shared process, and is never
 // guessed into male or female, since doing so would silently misattribute
 // production. A style with any non-UNISEX process cannot be assigned while
 // `unspecified > 0` for its order lines (see findStyleProcessGenderScopeAmbiguity).
@@ -6513,6 +6513,7 @@ type StyleProcessGenderQuantities = {
   total: number;
   male: number;
   female: number;
+  unisex?: number;
   unspecified: number;
 };
 
@@ -11621,7 +11622,7 @@ const appendWorkLogQuantityRemark = async ({ db, orgId, records, note, excludedW
     if (Array.isArray(comparisonItems)) comparisonItems.push({ history: history.map((r: any) => ({ date: r.workLog?.displayDate || '', quantity: Number(r.quantity || 0) })), incomingHistory: records.filter((r: any) => {
       const plan = plans.find((p: any) => p.id === r.assignmentPlanId);
       return plan?.workOrderId === group.plan.workOrderId && plan?.styleId === group.plan.styleId && r.styleProcessId === group.process.id;
-    }).map((r: any) => ({ date: r.coverageEndDate || '', quantity: Number(r.quantity || 0) })), requiredSetComplete: plans.filter((p: any) => p.workOrderId === group.plan.workOrderId && p.styleId === group.plan.styleId).every((p: any) => completeRequiredPlanIds.has(p.id) && (requiredIdsByPlan.get(p.id) || []).every(id => processes.some((process: any) => process.id === id))), orderId: group.plan.workOrderId, styleId: group.plan.styleId, styleProcessId: group.process.id, orderNumber: group.plan.workOrder?.orderNumber, styleName: group.plan.style?.name, processCode: group.process.processCode, processName: group.process.processName, genderScope: group.process.genderScope, target: limit, orderQuantity: target.total, orderMaleQuantity: target.male, orderFemaleQuantity: target.female, orderUnspecifiedQuantity: target.unspecified || 0, previous, incoming: group.quantity, total, difference: total - limit, required: plans.some((p: any) => p.workOrderId === group.plan.workOrderId && p.styleId === group.plan.styleId && (requiredIdsByPlan.get(p.id) || []).includes(group.process.id)) });
+    }).map((r: any) => ({ date: r.coverageEndDate || '', quantity: Number(r.quantity || 0) })), requiredSetComplete: plans.filter((p: any) => p.workOrderId === group.plan.workOrderId && p.styleId === group.plan.styleId).every((p: any) => completeRequiredPlanIds.has(p.id) && (requiredIdsByPlan.get(p.id) || []).every(id => processes.some((process: any) => process.id === id))), orderId: group.plan.workOrderId, styleId: group.plan.styleId, styleProcessId: group.process.id, orderNumber: group.plan.workOrder?.orderNumber, styleName: group.plan.style?.name, processCode: group.process.processCode, processName: group.process.processName, genderScope: group.process.genderScope, target: limit, orderQuantity: target.total, orderMaleQuantity: target.male, orderFemaleQuantity: target.female, orderUnisexQuantity: target.unisex || 0, orderUnspecifiedQuantity: target.unspecified || 0, previous, incoming: group.quantity, total, difference: total - limit, required: plans.some((p: any) => p.workOrderId === group.plan.workOrderId && p.styleId === group.plan.styleId && (requiredIdsByPlan.get(p.id) || []).includes(group.process.id)) });
     if (group.quantity <= 0 || total <= limit) continue;
     const byDate = new Map<string, number>();
     history.forEach((r: any) => { const date = r.workLog?.displayDate || ""; byDate.set(date, (byDate.get(date) || 0) + Number(r.quantity || 0)); });
@@ -14787,6 +14788,7 @@ const accumulateStyleProcessGenderQuantity = (
   bucket.total += quantity;
   if (rawGender === "M") bucket.male += quantity;
   else if (rawGender === "W") bucket.female += quantity;
+  else if (rawGender === "U") bucket.unisex = (bucket.unisex || 0) + quantity;
   else bucket.unspecified += quantity;
 };
 

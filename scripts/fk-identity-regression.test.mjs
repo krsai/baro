@@ -132,6 +132,21 @@ test('gender-aware complete sets distinguish extra garments from unmatched proce
   assert.equal(ambiguous.total,1125);
   assert.equal(estimate({...group,orderUnspecifiedQuantity:1}),null);
   assert.equal(estimate({...group,rows:[{...group.rows[0],requiredSetComplete:false}]}),null);
+  const unisex=estimate({...group,orderMaleQuantity:0,orderFemaleQuantity:0,orderUnisexQuantity:100,rows:[row(1,'UNISEX',105,100)]});
+  assert.deepEqual([unisex.total,unisex.maleMax,unisex.femaleMax,unisex.unisexMin,unisex.unisexMax,unisex.hasRemnants],[105,0,0,105,105,false]);
+  const three=estimate({...group,orderUnisexQuantity:100,rows:[row(1,'UNISEX',1225,1220),row(3,'FEMALE_ONLY',560,560)]});
+  assert.deepEqual([three.total,three.maleMin,three.maleMax,three.femaleMin,three.femaleMax,three.unisexMin,three.unisexMax],[1225,560,565,560,560,100,105]);
+});
+
+test('explicit unisex garments remain distinct from missing gender and share common process targets',()=>{
+  const {accumulateStyleProcessGenderQuantity:add,resolveStyleProcessRowApplicableQuantity:target}=load(backend,['accumulateStyleProcessGenderQuantity','resolveStyleProcessRowApplicableQuantity'],{normalizeProcessGenderScope:value=>value});
+  const bucket={total:0,male:0,female:0,unspecified:0};
+  add(bucket,'M',30);add(bucket,'W',30);add(bucket,'U',10);
+  assert.deepEqual(bucket,{total:70,male:30,female:30,unisex:10,unspecified:0});
+  assert.equal(target({genderScope:'UNISEX'},bucket),70);
+  assert.equal(target({genderScope:'MALE_ONLY'},bucket),30);
+  assert.equal(target({genderScope:'FEMALE_ONLY'},bucket),30);
+  add(bucket,null,2);assert.equal(bucket.unspecified,2);assert.equal(bucket.unisex,10);
 });
 
 test('import review precedes every write and requires fresh server quantities and server actor',async()=>{
