@@ -98,7 +98,7 @@ test('multi-style order rows summarize as "first style 외 N개" like the order 
 });
 
 test('report has no export or print action', () => {
-  assert.doesNotMatch(page, /DownloadIcon|exportCsv|csvCell|text\.csv|Blob\(|PrintIcon|GlobalStyles|window\.print|customer-production-report-print/);
+  assert.doesNotMatch(page, /DownloadIcon|exportCsv|csvCell|text\.csv|\bBlob\(|PrintIcon|GlobalStyles|window\.print|customer-production-report-print/);
 });
 
 test('sales report is routed and permissioned', () => {

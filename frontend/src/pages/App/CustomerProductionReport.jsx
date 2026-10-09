@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert, Box, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, FormControl, FormControlLabel, InputLabel,
+  Alert, Box, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, FormControl, FormControlLabel, InputLabel,
   LinearProgress, IconButton, Menu, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Tooltip, Typography, Switch,
 } from '@mui/material';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import AppPageContainer from '../../components/AppPageContainer';
 import PageToolbar from '../../components/PageToolbar';
 import SearchInput from '../../components/SearchInput';
@@ -17,6 +18,7 @@ import { WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
 
 const TEXT = {
   ko: {
+    copy: '이미지 복사', copying: '복사 중…', copied: '이미지가 클립보드에 복사되었습니다. 붙여넣기로 공유하세요.', copyError: '이미지를 복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.',
     title: '보고서', customer: '고객', allCustomers: '전체 고객', search: '주문번호·스타일 검색', orderTotal: '주문 전체',
     generated: '기준 시각', order: '주문번호', style: '스타일', due: '납기',
     quantity: '완성품/주문', produced: '완성품 수량', progress: '공정 진행률', status: '상태', schedule: '스케줄',
@@ -27,6 +29,7 @@ const TEXT = {
     dailyProduced: '일일 내역', dailyProducedTitle: '일일 완성품 수량', close: '닫기', noDailyProduced: '등록된 일일 완성품 내역이 없습니다.',
   },
   en: {
+    copy: 'Copy image', copying: 'Copying…', copied: 'Image copied to clipboard. Paste it to share.', copyError: 'Unable to copy the image. Check your browser clipboard permissions.',
     title: 'Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style', orderTotal: 'Order total',
     generated: 'As of', order: 'Order', style: 'Style', due: 'Due', quantity: 'Finished/Order',
     produced: 'Finished qty', progress: 'Process progress', status: 'Status', schedule: 'Schedule',
@@ -37,6 +40,7 @@ const TEXT = {
     dailyProduced: 'Daily details', dailyProducedTitle: 'Daily finished quantity', close: 'Close', noDailyProduced: 'No daily finished quantities are recorded.',
   },
   vi: {
+    copy: 'Sao chép ảnh', copying: 'Đang sao chép…', copied: 'Đã sao chép ảnh vào bộ nhớ tạm. Dán để chia sẻ.', copyError: 'Không thể sao chép ảnh. Vui lòng kiểm tra quyền truy cập bộ nhớ tạm của trình duyệt.',
     title: 'Báo cáo', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng', orderTotal: 'Toàn bộ đơn hàng',
     generated: 'Thời điểm', order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Thành phẩm/Đơn hàng',
     produced: 'Số lượng thành phẩm', progress: 'Tiến độ công đoạn', status: 'Trạng thái', schedule: 'Lịch',
@@ -175,8 +179,39 @@ const CustomerProductionReport = () => {
   const [contextMenuState, setContextMenuState] = useState(null);
   const [activeQuantityReviewRow, setActiveQuantityReviewRow] = useState(null);
   const [dailyProducedRow, setDailyProducedRow] = useState(null);
+  const scheduleCaptureRef = useRef(null);
+  const [copying, setCopying] = useState(false);
+  const [copyResult, setCopyResult] = useState(null);
+
+  const copyScheduleImage = async () => {
+    const element = scheduleCaptureRef.current;
+    if (!element || copying) return;
+    setCopying(true);
+    setCopyResult(null);
+    try {
+      if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') throw new Error('Clipboard unavailable');
+      // Start the clipboard write during the click gesture; rendering resolves
+      // its PNG promise later so browsers can retain user activation.
+      const imagePromise = (async () => {
+        const { default: html2canvas } = await import('html2canvas');
+        await document.fonts?.ready;
+        const canvas = await html2canvas(element, { backgroundColor: '#ffffff', scale: 2,
+          width: element.scrollWidth, height: element.scrollHeight, logging: false });
+        return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG conversion failed')), 'image/png'));
+      })();
+      // Observe rendering failure even if clipboard permission rejects first.
+      imagePromise.catch(() => {});
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': imagePromise })]);
+      setCopyResult({ severity: 'success', message: text.copied });
+    } catch {
+      setCopyResult({ severity: 'error', message: text.copyError });
+    } finally {
+      setCopying(false);
+    }
+  };
 
   const openDailyProducedCalendar = useCallback((row) => {
+    setCopyResult(null);
     setDailyProducedRow(row);
   }, []);
 
@@ -300,10 +335,16 @@ const CustomerProductionReport = () => {
       headerQuantity={activeQuantityReviewRow?.assignedQuantity ?? activeQuantityReviewRow?.orderedQuantity}
       onClose={handleCloseQuantityReview}
     />
-    <Dialog open={Boolean(dailyProducedRow)} onClose={() => setDailyProducedRow(null)} fullWidth maxWidth="lg">
-      <DialogTitle>{text.schedule} ? {dailyProducedRow?.orderNumber}</DialogTitle>
+    <Dialog open={Boolean(dailyProducedRow)} onClose={() => { if (!copying) setDailyProducedRow(null); }} fullWidth maxWidth="lg">
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+        <span>{text.schedule}: {dailyProducedRow?.orderNumber}</span>
+        <Button variant="outlined" size="small" startIcon={<ContentCopyIcon />} disabled={copying} onClick={copyScheduleImage}>{copying ? text.copying : text.copy}</Button>
+      </DialogTitle>
       <DialogContent dividers>
+        {copyResult ? <Alert severity={copyResult.severity} sx={{ mb: 2 }}>{copyResult.message}</Alert> : null}
+        <Box ref={scheduleCaptureRef} sx={{ bgcolor: '#fff', p: 1 }}>
         <Stack spacing={0.5} sx={{ mb: 2 }}>
+          <Typography fontWeight={700}>{text.customer}: {rowCustomerLabel(dailyProducedRow, languageCode)}</Typography>
           <Typography fontWeight={700}>{dailyProducedRow?.orderNumber || '-'}</Typography>
           <Typography variant="body2" color="text.secondary">{dailyProducedRow?.styles ? resolveStyleSummaryLabel(dailyProducedRow.styles, languageCode) : dailyProducedRow?.styleName || dailyProducedRow?.styleCode || '-'}</Typography>
         </Stack>
@@ -315,7 +356,7 @@ const CustomerProductionReport = () => {
             const calendarDays = buildProductionCalendarDays(dailyProducedRow.dailyProducedQuantities);
             const weekdayLabels = Array.from({ length: 7 }, (_, day) => new Date(Date.UTC(2026, 7, 23 + day)).toLocaleDateString(reportLocale(languageCode), { weekday: 'short', timeZone: 'UTC' }));
             return <Stack spacing={1.5}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', borderTop: '1px solid', borderLeft: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', '& > div': { width: '14.285714%', boxSizing: 'border-box' }, borderTop: '1px solid', borderLeft: '1px solid', borderColor: 'divider' }}>
                 {weekdayLabels.map((label, index) => <Box key={`${label}-${index}`} sx={{ py: 0.75, textAlign: 'center', bgcolor: 'grey.50', borderRight: '1px solid', borderBottom: '1px solid', borderColor: 'divider' }}><Typography sx={{ fontSize: '0.68rem' }} color={index === 0 ? 'error.main' : index === 6 ? 'primary.main' : 'text.secondary'}>{label}</Typography></Box>)}
                 {calendarDays.map((date, index) => {
                   const production = date ? productionByDate.get(date) : null;
@@ -368,6 +409,7 @@ const CustomerProductionReport = () => {
               </TableBody>
             </Table>
           </TableContainer>
+        </Box>
         </Box>
       </DialogContent>
     </Dialog>
