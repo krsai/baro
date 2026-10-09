@@ -1,5 +1,5 @@
 import React from 'react';
-import { Checkbox, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography } from '@mui/material';
+import { Checkbox, FormControlLabel, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography } from '@mui/material';
 
 const LABELS = {
   ko: { process: '공정', scope: '적용 대상', target: '주문량', previous: '기존 생산량', incoming: '이번 입력', total: '누적 생산량', difference: '주문 대비', approve: '이상 없음', excess: '개 초과', shortage: '개 부족', equal: '주문량 일치', finished: '공정 기준 완성 가능 수량', unknown: '완성품 합계는 성별별 공정 구성이 달라 단순 합산하지 않습니다. 공정별 수량을 확인하세요.', shared: '남녀 공용', male: '남성 전용', female: '여성 전용', basis: '필수 공정의 최소 실적 기준이며 실제 완성·검수 수량은 아닙니다.', partial: '전체 필수 공정 연결을 확인할 수 없어 완성 가능 수량을 계산하지 않습니다.' },
@@ -31,7 +31,7 @@ export const summarizeProductionMonths = (history = []) => {
   return [...months].sort(([a], [b]) => a.localeCompare(b)).map(([month, quantity]) => ({ month, quantity }));
 };
 
-export default function QuantityImportReviewTable({ rows, items, approvedKeys, onToggle, disabled, languageCode }) {
+export default function QuantityImportReviewTable({ rows, items, approvedKeys, onToggle, onToggleAll, disabled, languageCode }) {
   const text = LABELS[languageCode] || LABELS.en;
   const fmt = value => Number(value || 0).toLocaleString();
   const difference = value => value === 0 ? text.equal : `${fmt(Math.abs(value))}${value > 0 ? text.excess : text.shortage}`;
@@ -39,9 +39,16 @@ export default function QuantityImportReviewTable({ rows, items, approvedKeys, o
     <Typography component="span" sx={{ fontSize: 12, fontWeight: 600 }}>{fmt(quantity)}</Typography>
     {summarizeProductionMonths(history).map(item => <Typography component="span" key={item.month} color="text.secondary" sx={{ fontSize: 10 }}>{item.month || '—'}: {fmt(item.quantity)}</Typography>)}
   </Stack>;
-  return <Stack spacing={1}>{groupQuantityComparison(rows).map(group => <Paper key={group.key} variant="outlined" sx={{ overflow: 'hidden' }}>
+  const approvedCount = items.filter(item => approvedKeys.includes(item.key)).length;
+  const allApproved = items.length > 0 && approvedCount === items.length;
+  const genderText = languageCode === 'ko' ? { male: '남성복', female: '여성복', other: '성별 미지정', total: '주문 합계', shared: '공용 공정 초과·부족은 남녀 합계 기준입니다. 작업기록에 성별 구분이 없어 초과분을 남성복/여성복으로 나눌 수 없습니다.', all: '일괄 이상 없음' } : languageCode === 'vi' ? { male: 'Nam', female: 'Nữ', other: 'Chưa xác định', total: 'Tổng đơn hàng', shared: 'Công đoạn dùng chung tính tổng nam/nữ. Ghi chép không có giới tính nên không thể chia phần dư theo nam/nữ.', all: 'Tất cả không có vấn đề' } : { male: 'Male', female: 'Female', other: 'Unspecified', total: 'Order total', shared: 'Shared-process differences use the combined target. Work records do not specify gender, so excess cannot be allocated to male/female.', all: 'Mark all as no issue' };
+  return <Stack spacing={1}>
+    <FormControlLabel sx={{ m: 0, '& .MuiTypography-root': { fontSize: 12 }, '& .MuiCheckbox-root': { p: 0.5 } }} label={`${genderText.all} (${approvedCount}/${items.length})`} control={<Checkbox size="small" disabled={disabled || !items.length} checked={allApproved} indeterminate={approvedCount > 0 && !allApproved} onChange={event => onToggleAll(event.target.checked)} />} />
+    {groupQuantityComparison(rows).map(group => <Paper key={group.key} variant="outlined" sx={{ overflow: 'hidden' }}>
     <Stack spacing={0.25} sx={{ px: 1, py: 0.75 }}>
       <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{group.orderNumber} / {group.styleName}</Typography>
+      <Typography sx={{ fontSize: 11 }}>{genderText.male} {fmt(group.orderMaleQuantity)} + {genderText.female} {fmt(group.orderFemaleQuantity)}{group.orderUnspecifiedQuantity > 0 ? ` + ${genderText.other} ${fmt(group.orderUnspecifiedQuantity)}` : ''} = {genderText.total} {fmt(group.orderQuantity)}</Typography>
+      {group.rows.some(row => row.genderScope === 'UNISEX' && row.difference !== 0) ? <Typography sx={{ fontSize: 11 }} color="text.secondary">{genderText.shared}</Typography> : null}
       <Typography sx={{ fontSize: 11 }} color="text.secondary">{group.finishedQuantity == null ? (group.hasRequired ? text.unknown : text.partial) : `${text.finished}: ${fmt(group.finishedQuantity)} / ${fmt(group.orderQuantity)} — ${difference(group.finishedQuantity - group.orderQuantity)}`}</Typography>
       {group.finishedQuantity != null ? <Typography variant="caption" color="text.secondary">{text.basis}</Typography> : null}
     </Stack>
@@ -56,7 +63,7 @@ export default function QuantityImportReviewTable({ rows, items, approvedKeys, o
           <TableCell align="right"><Tooltip title={(row.history || review?.history || []).map(item => `${item.date}: ${item.quantity}`).join(', ')}>{historyCell(row.previous, row.history || review?.history || [])}</Tooltip></TableCell>
           <TableCell align="right"><Tooltip title={(row.incomingHistory || []).map(item => `${item.date}: ${item.quantity}`).join(', ')}>{historyCell(row.incoming, row.incomingHistory || [])}</Tooltip></TableCell>
           <TableCell align="right">{fmt(row.total)}</TableCell>
-          <TableCell sx={{ color: row.difference > 0 ? 'warning.dark' : row.difference < 0 ? 'error.main' : 'success.main', whiteSpace: 'nowrap' }}>{difference(row.difference)}</TableCell>
+          <TableCell sx={{ color: row.difference > 0 ? 'warning.dark' : row.difference < 0 ? 'error.main' : 'success.main', whiteSpace: 'nowrap' }}>{row.difference !== 0 ? `${({ UNISEX: text.shared, MALE_ONLY: genderText.male, FEMALE_ONLY: genderText.female })[row.genderScope]} ` : ''}{difference(row.difference)}</TableCell>
           <TableCell>{review ? <Checkbox size="small" inputProps={{ 'aria-label': `${row.processCode} ${text.approve}` }} disabled={disabled} checked={approvedKeys.includes(review.key)} onChange={event => onToggle(review.key, event.target.checked)} /> : '—'}</TableCell>
         </TableRow>;
       })}</TableBody>
