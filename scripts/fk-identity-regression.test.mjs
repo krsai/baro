@@ -76,6 +76,16 @@ test('quantity remark uses order-wide history, permits excess and excludes the l
   assert.equal(await remark(input),'User note');
   history=[{quantity:20,styleProcessId:648,assignmentPlan:{workOrderId:5,styleId:40},workLog:{displayDate:'2026-09-20'}}];
   const output=await remark(input);
+  const reviewItems=[];
+  await remark({...input,reviewItems});
+  assert.equal(reviewItems.length,1);
+  assert.equal(reviewItems[0].target,60);
+  assert.deepEqual(reviewItems[0].assignmentPlanIds,[7]);
+  assert.equal(reviewItems[0].excess,20);
+  const originalKey=reviewItems[0].key;
+  const changed=[];
+  await remark({...input,records:[{...input.records[0],quantity:61}],reviewItems:changed});
+  assert.notEqual(changed[0].key,originalKey);
   assert.match(output,/기존 20개 \(2026-09-20 20개\) \+ 이번 60개 = 80개, 주문 대상 60개 대비 20개 초과/);
   assert.match(output,/AP1968 name/);assert.match(output,/초과 생산으로 저장함/);
   await remark({...input,excludedWorkLogId:9});assert.deepEqual(excluded,{not:9});
@@ -83,6 +93,29 @@ test('quantity remark uses order-wide history, permits excess and excludes the l
   assert.equal(await remark({...input,note:output}),'User note');
   scope='MALE_ONLY';assert.match(await remark(input),/주문 대상 30개 대비 30개 초과/);
   assert.equal(applicable({genderScope:'UNISEX'},{total:60,male:30,female:30}),60);
+});
+
+test('import review precedes every write and requires fresh server quantities and server actor',async()=>{
+  let creates=0; let reviewKey='original';
+  const deps={
+    prisma:{$transaction:async fn=>fn({workLog:{create:async()=>{creates++;return {id:3};}},workRecord:{createMany:async()=>{}}})},
+    organization:{id:1},validatedGroups:[{normalized:{records:[{assignmentPlanId:7,styleProcessId:648,quantity:60}],note:null}}],
+    req:{body:{}},updatedBy:'Reviewer',ensureArray:v=>Array.isArray(v)?v:[],
+    appendWorkLogQuantityRemark:async args=>{ if(args.reviewItems)args.reviewItems.push({key:reviewKey,assignmentPlanIds:[7],styleProcessId:648,description:'Existing 20 + new 60 = 80; target 60'});return null;},
+    createHttpError:(status,message)=>Object.assign(Error(message),{status}),
+    buildWorkLogWriteDataWithOptionalCoverage:data=>data,Prisma:{DbNull:null},
+    buildCanonicalWorkRecordWriteData:args=>args.record,
+  };
+  let captured;
+  deps.prisma.$transaction=async fn=>fn({workLog:{create:async({data})=>{captured=data;creates++;return {id:3};}},workRecord:{createMany:async()=>{}}});
+  const {createImportTransaction:save}=load(backend,['createImportTransaction'],deps);
+  await assert.rejects(save(true),error=>error.quantityReviewItems[0].key==='original');
+  assert.equal(creates,0);
+  deps.req.body.approvedQuantityKeys=['original'];
+  await save(true);assert.equal(creates,1);assert.match(captured.note,/이상 없음 승인: Reviewer/);
+  reviewKey='changed-history';
+  await assert.rejects(save(true),error=>error.quantityReviewItems[0].key==='changed-history');
+  assert.equal(creates,1);
 });
 
 test('employee duplicate validation returns only the matching saved records with date and quantity',async()=>{

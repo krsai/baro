@@ -11567,7 +11567,7 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
     invalidWorkerRecordIndex: normalizedRecords.invalidWorkerRecordIndex,
   };
 };
-const appendWorkLogQuantityRemark = async ({ db, orgId, records, note, excludedWorkLogId = null }: any) => {
+const appendWorkLogQuantityRemark = async ({ db, orgId, records, note, excludedWorkLogId = null, reviewItems = null, approvedBy = null, approvedAt = null }: any) => {
   const cleaned = String(note || "").replace(/\n?\[생산 수량 확인\][\s\S]*?\[\/생산 수량 확인\]/g, '').trim();
   const planIds = collectWorkRecordAssignmentPlanIds(records);
   if (!planIds.length) return cleaned || null;
@@ -11607,7 +11607,10 @@ const appendWorkLogQuantityRemark = async ({ db, orgId, records, note, excludedW
     const byDate = new Map<string, number>();
     history.forEach((r: any) => { const date = r.workLog?.displayDate || ""; byDate.set(date, (byDate.get(date) || 0) + Number(r.quantity || 0)); });
     const dates = [...byDate].sort(([a], [b]) => a.localeCompare(b)).map(([date, quantity]) => `${date} ${quantity}개`).join(', ');
-    remarks.push(`주문 ${group.plan.workOrder?.orderNumber || ""} / 스타일 ${group.plan.style?.name || ""} / 공정 ${group.process.processCode} ${group.process.processName || ""}: 기존 ${previous}개${dates ? ` (${dates})` : ""} + 이번 ${group.quantity}개 = ${total}개, 주문 대상 ${limit}개 대비 ${total - limit}개 초과. 초과 생산으로 저장함.`);
+    const reviewKey = JSON.stringify([k, group.process.genderScope, limit, previous, group.quantity, dates]);
+    const description = `주문 ${group.plan.workOrder?.orderNumber || ""} / 스타일 ${group.plan.style?.name || ""} / 공정 ${group.process.processCode} ${group.process.processName || ""}: 기존 ${previous}개${dates ? ` (${dates})` : ""} + 이번 ${group.quantity}개 = ${total}개, 주문 대상 ${limit}개 대비 ${total - limit}개 초과.`;
+    if (Array.isArray(reviewItems)) reviewItems.push({ key: reviewKey, assignmentPlanIds: records.filter((r: any) => { const plan = plans.find((p: any) => p.id === r.assignmentPlanId); return plan?.workOrderId === group.plan.workOrderId && plan?.styleId === group.plan.styleId && r.styleProcessId === group.process.id; }).map((r: any) => r.assignmentPlanId), styleProcessId: group.process.id, orderNumber: group.plan.workOrder?.orderNumber, styleName: group.plan.style?.name, processCode: group.process.processCode, processName: group.process.processName, genderScope: group.process.genderScope, previous, incoming: group.quantity, target: limit, total, excess: total - limit, history: [...byDate].map(([date, quantity]) => ({ date, quantity })), description });
+    remarks.push(`${description} ${approvedBy ? `이상 없음 승인: ${approvedBy} / ${approvedAt}.` : "초과 생산으로 저장함."}`);
   }
   // Rebuild just this automatic section when editing; user notes remain intact.
   return [cleaned, remarks.length ? `[생산 수량 확인]\n${remarks.join('\n')}\n[/생산 수량 확인]` : ""].filter(Boolean).join('\n') || null;
@@ -26796,6 +26799,18 @@ app.post("/work-logs/import", async (req, res) => {
   const createImportTransaction = async (includeCoverage: boolean) =>
     prisma.$transaction(
       async (tx) => {
+        // Review the whole file against current history while holding the order
+        // locks. A changed target/history invalidates an earlier checkbox.
+        const reviewItems: any[] = [];
+        await appendWorkLogQuantityRemark({ db: tx, orgId: organization.id,
+          records: validatedGroups.flatMap(group => group.normalized.records), note: null, reviewItems });
+        const approvedKeys = new Set(ensureArray(req.body?.approvedQuantityKeys).filter(key => typeof key === "string"));
+        if (reviewItems.some(item => !approvedKeys.has(item.key))) {
+          throw Object.assign(new Error("Quantity review required"), { quantityReviewItems: reviewItems });
+        }
+        const approvedAt = new Date().toISOString();
+        if (reviewItems.length && !updatedBy) throw createHttpError(403, "An authenticated reviewer is required.");
+        const quantityApprovalText = `이상 없음 승인: ${updatedBy} / ${approvedAt}.`;
         const createdWorkLogIds: number[] = [];
         for (const group of validatedGroups) {
           const {
@@ -26804,7 +26819,12 @@ app.post("/work-logs/import", async (req, res) => {
             factoryName: _factoryName,
             ...workLogData
           } = group.normalized;
-          workLogData.note = await appendWorkLogQuantityRemark({ db: tx, orgId: organization.id, records, note: workLogData.note });
+          const reviewedNotes = reviewItems.filter(item => records.some((record: any) =>
+            item.assignmentPlanIds.includes(record.assignmentPlanId) && record.styleProcessId === item.styleProcessId
+          )).map(item => item.description + ' ' + quantityApprovalText);
+          workLogData.note = reviewedNotes.length
+            ? [workLogData.note, '[초과 생산 승인]\n' + reviewedNotes.join('\n') + '\n[/초과 생산 승인]'].filter(Boolean).join('\n')
+            : await appendWorkLogQuantityRemark({ db: tx, orgId: organization.id, records, note: workLogData.note });
           const createData = {
             orgId: organization.id,
             ...buildWorkLogWriteDataWithOptionalCoverage(workLogData, {
@@ -26841,6 +26861,9 @@ app.post("/work-logs/import", async (req, res) => {
   try {
     createdWorkLogIds = await createImportTransaction(true);
   } catch (error) {
+    if (Array.isArray((error as any)?.quantityReviewItems)) {
+      return res.json({ ok: true, requiresQuantityReview: true, quantityReviewItems: (error as any).quantityReviewItems });
+    }
     if (!isWorkLogCoverageMissingColumnError(error)) throw error;
     console.warn(
       `[work-logs:import] orgId=${organization.id} missing work-log coverage columns; retrying import without coverage fields`

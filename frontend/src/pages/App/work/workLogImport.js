@@ -700,7 +700,7 @@ export const parseWorkLogImportWorkbook = async (file) => {
   return parsedRows;
 };
 
-export const importWorkLogRows = async ({ orgId, fileName, rows }) => {
+export const importWorkLogRows = async ({ orgId, fileName, rows, approvedQuantityKeys = [] }) => {
   const query = buildQueryString({ orgId });
   return requestJSON(`/work-logs/import${query}`, {
     method: 'POST',
@@ -708,6 +708,7 @@ export const importWorkLogRows = async ({ orgId, fileName, rows }) => {
     body: JSON.stringify({
       fileName: toText(fileName),
       rows: Array.isArray(rows) ? rows : [],
+      approvedQuantityKeys,
     }),
   });
 };
