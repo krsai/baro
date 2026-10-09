@@ -30,7 +30,7 @@ const fitUncached = (row: Row) => {
 // Validate the actual predictor, never its fitted training residuals. Shared trials
 // exclude the entire held-out style; own trials exclude the assignment globally.
 // Caches are request-scoped (the candidate array), not cross-request data caches.
-type Trial = { quantity: number; error: number; styleId: number; assignmentId: number };
+type Trial = { quantity: number; error: number; predictionRelativeError: number; styleId: number; assignmentId: number };
 const validationContexts = new WeakMap<Row[], {
   shared: Map<Row, Trial[]>;
   pools: Map<number, Row[]>;
@@ -49,6 +49,8 @@ export const buildValidatedSharedAtPrediction = (target: Row, candidates: Row[])
     quantity: Number(o.quantity), styleId, assignmentId: Number(o.assignmentPlanId),
     error: Math.abs(predictSeconds(p, Number(o.quantity)) - Number(o.allocatedLaborInputSeconds) / Number(o.quantity)) /
       (Number(o.allocatedLaborInputSeconds) / Number(o.quantity)),
+    predictionRelativeError: Math.abs(predictSeconds(p, Number(o.quantity)) - Number(o.allocatedLaborInputSeconds) / Number(o.quantity)) /
+      predictSeconds(p, Number(o.quantity)),
   });
   const ownTrials: Trial[] = [];
   for (const assignmentId of new Set<number>(observations(target).map((o: Row) => Number(o.assignmentPlanId)))) {
@@ -83,22 +85,22 @@ export const buildValidatedSharedAtPrediction = (target: Row, candidates: Row[])
   const summarize = (quantity: number | null) => {
     // One unit per own assignment or donor style. More process rows do not
     // manufacture independent evidence. Quantity proximity is continuous.
-    const units = new Map<string, { errors: number[]; weights: number[] }>();
+    const units = new Map<string, { errors: number[]; predictionErrors: number[]; weights: number[] }>();
     const localUnits = new Map<string, number[]>();
     for (const [source, trials] of [['own', ownTrials], ['shared', sharedTrials]] as const) {
       for (const t of trials) {
         const key = source === 'own' ? `a:${t.assignmentId}` : `s:${t.styleId}`;
-        const values = units.get(key) || { errors: [], weights: [] };
+        const values = units.get(key) || { errors: [], predictionErrors: [], weights: [] };
         const proximity = quantity ? Math.min(quantity, t.quantity) / Math.max(quantity, t.quantity) : 1;
         values.errors.push(t.error); values.weights.push(proximity);
+        values.predictionErrors.push(t.predictionRelativeError);
         units.set(key, values);
         if (quantity && proximity >= 0.5) localUnits.set(key, [...(localUnits.get(key) || []), t.error]);
       }
     }
-    const groups = [...units.entries()].map(([key, v]) => ({ own: key.startsWith('a:'), error: median(v.errors), weight: median(v.weights),
-      success: v.errors.reduce((s, error, i) => s + (error <= 0.2 + 1e-12 ? v.weights[i]! : 0), 0) / v.weights.reduce((s, w) => s + w, 0) }));
+    const groups = [...units.entries()].map(([key, v]) => ({ own: key.startsWith('a:'), error: median(v.errors), weight: median(v.weights) }));
     const support = groups.reduce((s, g) => s + g.weight, 0);
-    const meanError = (items: typeof groups) => {
+    const meanError = (items: { weight: number; error: number }[]) => {
       const weight = items.reduce((s, g) => s + g.weight, 0);
       return weight ? items.reduce((s, g) => s + g.error * g.weight, 0) / weight : null;
     };
@@ -106,34 +108,33 @@ export const buildValidatedSharedAtPrediction = (target: Row, candidates: Row[])
     const ownError = meanError(ownGroups), sharedError = meanError(groups.filter(g => !g.own));
     const ownWeight = sharedError === null ? 1 : ownGroups.length / (ownGroups.length + 3);
     const relativeError = ownError === null ? sharedError : sharedError === null ? ownError : ownError * ownWeight + sharedError * (1 - ownWeight);
+    // Error in predicted-time units: |actual - predicted| / predicted.
+    // Average within independent units first; repeated rows are not new units.
+    const errorGroups = [...units.entries()].map(([key, v]) => ({ own: key.startsWith('a:'),
+      weight: median(v.weights), error: v.predictionErrors.reduce((s, e, i) => s + e * v.weights[i]!, 0) / v.weights.reduce((s, w) => s + w, 0) }));
+    const ownPredictionError = meanError(errorGroups.filter(g => g.own));
+    const sharedPredictionError = meanError(errorGroups.filter(g => !g.own));
+    // Prefer the target's measured errors when available; transfer errors are
+    // used only when the target has no held-out predictions. No sample bonuses,
+    // success threshold, pseudo-counts, or multiplication by evidence scores.
+    // Far extrapolation cannot be validated using a good error at tiny batches.
+    // A nearby quantity means within a factor of two, as with existing ranges.
+    const nearbyOwn = [...localUnits.keys()].some(key => key.startsWith('a:'));
+    const nearbyShared = [...localUnits.keys()].some(key => key.startsWith('s:'));
+    const predictionRelativeError = quantity === null ? ownPredictionError ?? sharedPredictionError
+      : nearbyOwn ? ownPredictionError : nearbyShared ? sharedPredictionError : null;
     // Smooth, uncapped support growth; quality depends on held-out error.
     // This is a diagnostic score, not a coverage probability.
     const proximityLimit = quantity ? Math.min(1, 2 * Math.max(0, ...groups.map(g => g.weight))) : 1;
     const score = relativeError === null ? 0 : Math.round(100 * (1 - Math.exp(-support / 5)) * Math.exp(-2 * relativeError) * proximityLimit);
-    // Estimated held-out success frequency within a declared 20% tolerance.
-    // Beta(1,1) smoothing avoids reporting certainty from a single success.
-    // One independent assignment/style contributes at most one weighted trial;
-    // repeated process rows cannot inflate the evidence. Own performance takes
-    // precedence as its independent support grows, rather than being swamped
-    // by a large donor pool. Unlike the diagnostic score, data volume is not
-    // multiplied into accuracy and cannot impose an arbitrary low ceiling.
-    const successRate = (items: typeof groups) => {
-      const weight = items.reduce((s, g) => s + g.weight, 0);
-      return { weight, rate: (1 + items.reduce((s, g) => s + g.success * g.weight, 0)) / (2 + weight) };
-    };
-    const ownSuccess = successRate(ownGroups);
-    const sharedSuccess = successRate(groups.filter(g => !g.own));
-    const ownSuccessWeight = sharedSuccess.weight === 0 ? 1 : ownSuccess.weight / (ownSuccess.weight + 3);
-    const success = ownSuccess.weight === 0 ? sharedSuccess.rate
-      : ownSuccess.rate * ownSuccessWeight + sharedSuccess.rate * (1 - ownSuccessWeight);
-    const reliabilityPercent = support > 0 ? Math.round(100 * success * proximityLimit) : null;
+    const reliabilityPercent = predictionRelativeError === null ? null : Math.round(100 * Math.max(0, 1 - predictionRelativeError));
     // Keep the worst nearby error within an independent unit; averaging rows
     // must not hide a failed reference-quantity prediction.
     const sorted = [...localUnits.values()].map(values => Math.max(...values)).sort((a, b) => a - b);
     const percentile = (xs: number[]) => xs.sort((a, b) => a - b)[Math.ceil(xs.length * 0.8) - 1] ?? 0;
     const ownLocal = [...localUnits.entries()].filter(([key]) => key.startsWith('a:')).map(([, values]) => Math.max(...values));
     const sharedLocal = [...localUnits.entries()].filter(([key]) => key.startsWith('s:')).map(([, values]) => Math.max(...values));
-    return { score, reliabilityPercent, toleranceRelativeError: 0.2,
+    return { score, reliabilityPercent, predictionRelativeError, reliabilityMethod: 'predicted-time-absolute-error-v1',
       independentCount: groups.length, effectiveSupport: support, relativeError,
       // Empirical 80th percentile of nearby held-out relative errors, NOT a
       // calibrated confidence interval. No nearby trials => no error band.

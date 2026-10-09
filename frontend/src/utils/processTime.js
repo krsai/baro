@@ -1020,6 +1020,33 @@ export const resolveStyleAtReliability = (processes = [], referenceQuantity = nu
     validationComplete: complete };
 };
 
+// Sum absolute error seconds, not process percentages or PT weights. Do not
+// assume independent process errors: their absolute errors can add together.
+// Missing validation remains visible; it never suppresses the whole badge or
+// silently treats unmeasured process time as error-free.
+export const resolveStyleAtPredictionReliability = (processes = [], quantity = 1000) => {
+  const normalized = normalizeProcesses(processes);
+  let totalSeconds = 0, validatedSeconds = 0, errorSeconds = 0, validatedProcessCount = 0;
+  for (const process of normalized) {
+    const seconds = resolveProcessAtDisplayPerPieceSeconds(process, quantity);
+    if (!(seconds > 0)) continue;
+    totalSeconds += seconds;
+    const validation = process.atSharedPrediction?.validation;
+    const error = validation?.referenceQuantity === Number(quantity) ? validation.reference : null;
+    if (error?.reliabilityMethod !== 'predicted-time-absolute-error-v1' ||
+      !Number.isFinite(error.predictionRelativeError) || error.predictionRelativeError < 0) continue;
+    validatedSeconds += seconds;
+    errorSeconds += seconds * error.predictionRelativeError;
+    validatedProcessCount++;
+  }
+  const relativeError = validatedSeconds > 0 ? errorSeconds / validatedSeconds : null;
+  return { percent: relativeError === null ? null : Math.round(100 * Math.max(0, 1 - relativeError)),
+    relativeError, errorSeconds, validatedSeconds, totalSeconds, validatedProcessCount,
+    processCount: normalized.length, complete: validatedProcessCount === normalized.length && normalized.length > 0,
+    coveragePercent: totalSeconds > 0 ? Math.round(100 * validatedSeconds / totalSeconds) : 0,
+    referenceQuantity: quantity };
+};
+
 export const normalizeProcess = (process = {}, index = 0) => {
   const {
     st: _legacySt,

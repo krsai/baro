@@ -46,7 +46,7 @@ import {
   hasAnyProcessTime,
   normalizeProcesses,
   resolveProcessStTotalSecondsForOrderQuantity,
-  resolveStyleAtReliability,
+  resolveStyleAtPredictionReliability,
   resolveProcessStPerPieceSeconds,
 } from '../../../utils/processTime';
 import {
@@ -72,13 +72,15 @@ const ST_AT_GAP_CHIP_SX = {
   '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem', lineHeight: 1.1, fontWeight: 400 },
 };
 const formatAtReliabilityLabel = (reliability) => {
+  if (reliability?.percent == null) return '—';
   const percent = Number(reliability?.percent);
   if (!Number.isFinite(percent)) return '0%';
   return `${Math.max(0, Math.min(100, Math.round(percent)))}%`;
 };
 const formatAtReliabilityBadgeLabel = (reliability, languageCode) => {
   const percent = formatAtReliabilityLabel(reliability);
-  return languageCode === 'ko' ? `신뢰도 ${percent}` : languageCode === 'vi' ? `Độ tin cậy ${percent}` : `Reliability ${percent}`;
+  const partial = reliability?.percent != null && !reliability.complete;
+  return languageCode === 'ko' ? `신뢰도 ${percent}${partial ? ' (일부)' : ''}` : languageCode === 'vi' ? `Độ tin cậy ${percent}${partial ? ' (một phần)' : ''}` : `Reliability ${percent}${partial ? ' (partial)' : ''}`;
 };
 const resolveStyleDeleteBlockedByWorkRecordsMessage = (languageCode) => {
   if (languageCode === 'en') {
@@ -517,7 +519,7 @@ const StyleBoard = () => {
           DEFAULT_TIME_REF_QUANTITY,
           style.timeBucketQuantities
         );
-        const styleAtReliability = resolveStyleAtReliability(processes, DEFAULT_TIME_REF_QUANTITY);
+        const styleAtReliability = resolveStyleAtPredictionReliability(processes, DEFAULT_TIME_REF_QUANTITY);
         const stGapPercent =
           hasTotalAT && hasTotalST
             ? calculateDivergencePercent(totalST, totalAT)
@@ -734,11 +736,11 @@ const StyleBoard = () => {
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                           {style.hasTotalAT ? formatLocalizedSeconds(style.totalAT, languageCode) : '-'}
-                          {style.styleAtReliability?.validationReliabilityAvailable && style.hasTotalAT && (
+                          {style.hasTotalAT && (
                             <Chip
                               size="small"
                               label={formatAtReliabilityBadgeLabel(style.styleAtReliability, languageCode)}
-                              title={languageCode === 'ko' ? 'AT(1,000) 신뢰도: 학습에서 제외한 기록의 실제 작업시간을 ±20% 이내로 예측한 비율을 자료량과 수량 근접도로 보정합니다. 공정별 신뢰도를 PT 비중으로 합산한 값입니다.' : languageCode === 'vi' ? 'Độ tin cậy AT(1.000): tỷ lệ dự đoán thời gian thực tế trong ±20% trên dữ liệu kiểm định độc lập, điều chỉnh theo lượng dữ liệu và độ gần số lượng; tổng hợp theo trọng số PT.' : 'AT(1,000) reliability: held-out predictions within ±20% of actual time, adjusted for evidence and quantity proximity; aggregated by process PT weight.'}
+                              title={languageCode === 'ko' ? `신뢰도 = 100% − 검증 예상 상대오차.${style.styleAtReliability.percent == null ? ' 표시 수량의 예측 오차를 검증할 기록이 부족합니다.' : ` 합산 예상 절대오차 약 ${formatLocalizedSeconds(style.styleAtReliability.errorSeconds, languageCode)}.`} 적중 확률이나 통계적 신뢰구간이 아닙니다. 검증 공정 ${style.styleAtReliability.validatedProcessCount}/${style.styleAtReliability.processCount} · 시간 비중 ${style.styleAtReliability.coveragePercent}%.${style.styleAtReliability.complete ? '' : ' 검증 가능한 공정만의 값입니다.'}` : languageCode === 'vi' ? `Độ tin cậy = 100% − sai số tương đối dự kiến, không phải xác suất hay khoảng tin cậy. Sai số tuyệt đối ${style.styleAtReliability.percent == null ? '—' : formatLocalizedSeconds(style.styleAtReliability.errorSeconds, languageCode)}. Công đoạn kiểm định ${style.styleAtReliability.validatedProcessCount}/${style.styleAtReliability.processCount}; tỷ trọng thời gian ${style.styleAtReliability.coveragePercent}%.` : `Reliability = 100% − expected relative validation error; not a probability or confidence interval. Summed expected absolute error: ${style.styleAtReliability.percent == null ? 'unavailable' : formatLocalizedSeconds(style.styleAtReliability.errorSeconds, languageCode)}. Validated processes ${style.styleAtReliability.validatedProcessCount}/${style.styleAtReliability.processCount}; time coverage ${style.styleAtReliability.coveragePercent}%.`}
                               sx={{
                                 ...AT_RELIABILITY_CHIP_SX,
                                 backgroundColor: resolveReliabilityRiskColor(style.styleAtReliability.percent).bg,

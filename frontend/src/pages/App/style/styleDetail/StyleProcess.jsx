@@ -47,7 +47,7 @@ import {
   parseOptionalSecondsInput,
   resolveProcessAtDisplayPerPieceSeconds,
   resolveStBucketQuantity,
-  resolveStyleAtReliability,
+  resolveStyleAtPredictionReliability,
   resolveProcessStPerPieceSeconds,
 } from '../../../../utils/processTime';
 import {
@@ -1941,7 +1941,7 @@ const StyleProcess = ({
     []
   );
   const styleAtReliability = useMemo(() => {
-    return resolveStyleAtReliability(safeProcesses, timeRefQuantity);
+    return resolveStyleAtPredictionReliability(safeProcesses, timeRefQuantity);
   }, [safeProcesses, timeRefQuantity]);
   const totalStGapPercent = useMemo(
     () => (hasAT && hasST ? calculateDivergencePercent(totalST, totalAT) : null),
@@ -3624,11 +3624,11 @@ const StyleProcess = ({
                           {`AT(${timeRefQuantityLabel})`}
                         </Box>
                       </Tooltip>
-                      {styleAtReliability?.validationReliabilityAvailable && (
+                      {hasAT && (
                         <Chip
                           size="small"
-                          label={`${languageCode === 'ko' ? '신뢰도' : languageCode === 'vi' ? 'Độ tin cậy' : 'Reliability'} ${resolveAtReliabilityPercentLabel(styleAtReliability)}`}
-                          title={languageCode === 'ko' ? '표시 수량의 AT 신뢰도: 학습에서 제외한 기록을 ±20% 이내로 예측한 비율을 자료량과 수량 근접도로 보정한 공정별 신뢰도의 PT 가중 평균입니다.' : languageCode === 'vi' ? 'Độ tin cậy AT: tỷ lệ dự đoán kiểm định trong ±20%, điều chỉnh theo dữ liệu và số lượng; tổng hợp theo trọng số PT.' : 'AT reliability: held-out success rate within ±20%, adjusted for evidence and quantity proximity, aggregated by process PT weight.'}
+                          label={`${languageCode === 'ko' ? '신뢰도' : languageCode === 'vi' ? 'Độ tin cậy' : 'Reliability'} ${styleAtReliability.percent == null ? '—' : `${styleAtReliability.percent}%`}${styleAtReliability.percent != null && !styleAtReliability.complete ? (languageCode === 'ko' ? ' (일부)' : languageCode === 'vi' ? ' (một phần)' : ' (partial)') : ''}`}
+                          title={languageCode === 'ko' ? `100% − 검증 예상 상대오차. 공정별 예상 오차(초)를 합산합니다. 적중 확률이 아닙니다. 검증 공정 ${styleAtReliability.validatedProcessCount}/${styleAtReliability.processCount}, 시간 비중 ${styleAtReliability.coveragePercent}%.` : languageCode === 'vi' ? `100% − sai số tương đối dự kiến; cộng sai số theo giây, không phải xác suất. Công đoạn ${styleAtReliability.validatedProcessCount}/${styleAtReliability.processCount}; tỷ trọng ${styleAtReliability.coveragePercent}%.` : `100% − expected relative validation error. Absolute error seconds are added; not a probability. Validated processes ${styleAtReliability.validatedProcessCount}/${styleAtReliability.processCount}; time coverage ${styleAtReliability.coveragePercent}%.`}
                           sx={{
                             ...AT_RELIABILITY_CHIP_SX,
                             backgroundColor: resolveAtReliabilityPalette(styleAtReliability).bg,

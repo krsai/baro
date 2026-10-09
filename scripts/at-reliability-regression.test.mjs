@@ -11,7 +11,7 @@ const loadProcessTimeModule = () => {
   code = code.replace(/export const /g, 'const ');
   code = code.replace(/export \{[^}]+\};?/g, '');
   code +=
-    '\nmodule.exports = { AT_RELIABILITY_STATUS, calculateProcessDisplayAtTotalForOrderQuantity, resolveProcessAtCellState, resolveProcessAtDisplayPerPieceSeconds, resolveProcessAtPerPieceSeconds, resolveProcessAtReliability, resolveStBucketQuantity, resolveStyleAtReliability };';
+    '\nmodule.exports = { AT_RELIABILITY_STATUS, calculateProcessDisplayAtTotalForOrderQuantity, resolveProcessAtCellState, resolveProcessAtDisplayPerPieceSeconds, resolveProcessAtPerPieceSeconds, resolveProcessAtReliability, resolveStBucketQuantity, resolveStyleAtReliability, resolveStyleAtPredictionReliability };';
   const context = {
     module: { exports: {} },
     exports: {},
@@ -40,6 +40,7 @@ const {
   resolveProcessAtReliability,
   resolveStBucketQuantity,
   resolveStyleAtReliability,
+  resolveStyleAtPredictionReliability,
 } = loadProcessTimeModule();
 
 test('shared prior supplies new-style AT with explicit provenance and nonincreasing per-piece values', () => {
@@ -868,4 +869,25 @@ test('style reliability uses validated success percentages and hides unavailable
   assert.equal(resolveStyleAtReliability([make(75, 90), {pt: 25}], 1000).validationReliabilityAvailable, false);
   assert.equal(resolveStyleAtReliability([make(75, null)], 1000).validationReliabilityAvailable, false);
   assert.equal(resolveStyleAtReliability([make(75, 0)], 1000).validationReliabilityAvailable, true);
+});
+
+test('style error adds seconds using predicted times, independent of PT and evidence scores', () => {
+  const make = (a, error, pt = 999) => ({pt, atV2Observations: [], atSharedPrediction: {version: 'shared-at-v1', a, b: 0,
+    smallQuantityBoundary: 100, validation: {referenceQuantity: 1000,
+      reference: {reliabilityMethod: 'predicted-time-absolute-error-v1', predictionRelativeError: error, score: 0}}}});
+  const result = resolveStyleAtPredictionReliability([make(1500, 0.04, 1), make(500, 0.08, 99999)], 1000);
+  assert.equal(result.totalSeconds, 2000);
+  assert.equal(result.errorSeconds, 100);
+  assert.equal(result.percent, 95);
+  assert.equal(result.complete, true);
+  // An unvalidated process must not erase the badge or claim full coverage.
+  const partial = resolveStyleAtPredictionReliability([make(1500, 0.04), make(500, null)], 1000);
+  assert.equal(partial.percent, 96);
+  assert.equal(partial.complete, false);
+  assert.equal(partial.coveragePercent, 75);
+  assert.equal(partial.validatedProcessCount, 1);
+  assert.equal(resolveStyleAtPredictionReliability([make(100, null)], 1000).percent, null);
+  assert.equal(resolveStyleAtPredictionReliability([make(100, 0)], 1000).percent, 100);
+  assert.equal(resolveStyleAtPredictionReliability([make(100, 2)], 1000).percent, 0);
+  assert.equal(resolveStyleAtPredictionReliability([make(100, 0)], 2000).percent, null);
 });

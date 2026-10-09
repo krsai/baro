@@ -95,8 +95,8 @@ test('validated prediction preserves estimates and gains support beyond old spar
   assert.equal(b.validation.reference.relativeError, 0);
   assert.equal(b.validation.reference.errorP80, 0);
   assert.ok(b.validation.reference.reliabilityPercent > 90);
-  assert.ok(b.validation.reference.reliabilityPercent > a.validation.reference.reliabilityPercent);
-  assert.equal(b.validation.reference.toleranceRelativeError, 0.2);
+  assert.equal(b.validation.reference.reliabilityPercent, a.validation.reference.reliabilityPercent);
+  assert.equal(b.validation.reference.reliabilityMethod, 'predicted-time-absolute-error-v1');
   assert.equal(b.validation.donorStyleCount, 25);
   assert.equal(JSON.stringify(large), before);
 });
@@ -128,7 +128,7 @@ test('transfer mismatch and far-away quantities cannot earn high AT1000 evidence
   const far = Array.from({ length: 30 }, (_, i) => row(i + 1, 'JACKET', 50, 100, [10, 20, 30]));
   const p = buildValidatedSharedAtPrediction(target(100), far);
   assert.ok(p.validation.reference.score < 10);
-  assert.ok(p.validation.reference.reliabilityPercent < 10);
+  assert.equal(p.validation.reference.reliabilityPercent, null);
   assert.equal(p.validation.reference.errorP80, null);
 });
 
@@ -150,10 +150,10 @@ test('repeated independent batches at 1000 become highly supported without quant
   assert.equal(large.independentCount, 20);
   assert.equal(large.errorP80, 0);
   assert.ok(large.reliabilityPercent >= 95);
-  assert.ok(large.reliabilityPercent > small.reliabilityPercent);
+  assert.equal(large.reliabilityPercent, small.reliabilityPercent);
 });
 
-test('reliability measures successful predictions, not a renamed evidence score', () => {
+test('reliability uses measured relative prediction error, not an evidence score', () => {
   const donors = Array.from({length: 25}, (_, i) => row(i + 1));
   // Transfer to the held-out odd style misses by 15%: within the stated 20%
   // tolerance, so success remains high despite nonzero prediction error.
@@ -163,4 +163,12 @@ test('reliability measures successful predictions, not a renamed evidence score'
   assert.ok(p.reliabilityPercent > 90);
   assert.notEqual(p.reliabilityPercent, p.score);
   assert.equal(buildValidatedSharedAtPrediction(target(), []).validation.reference.reliabilityPercent, null);
+});
+
+test('a held-out prediction of 60 seconds against actual 72 has 20% error and 80% reliability', () => {
+  const own = row(20, 'JACKET', 60, 12000, [1000]);
+  const result = buildValidatedSharedAtPrediction(own, [row(1), row(2), own]).validation.reference;
+  assert.ok(Math.abs(result.predictionRelativeError - 0.2) < 1e-9);
+  assert.equal(result.reliabilityPercent, 80);
+  assert.equal(result.reliabilityMethod, 'predicted-time-absolute-error-v1');
 });
