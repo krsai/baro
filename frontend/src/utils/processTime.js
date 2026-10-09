@@ -275,12 +275,12 @@ const resolveAtParamsMeta = (process) => {
     typeof raw.trainedPeriod === 'string' && /^\d{4}-\d{2}$/.test(raw.trainedPeriod)
       ? raw.trainedPeriod
       : null;
-  const attendanceCoverageRaw = Number(raw.attendanceCoverage);
+  const attendanceCoverageRaw = raw.attendanceCoverage == null ? NaN : Number(raw.attendanceCoverage);
   const attendanceCoverage =
     Number.isFinite(attendanceCoverageRaw) && attendanceCoverageRaw >= 0
       ? clamp(attendanceCoverageRaw, 0, 1)
       : null;
-  const attendanceFallbackShareRaw = Number(raw.attendanceFallbackShare);
+  const attendanceFallbackShareRaw = raw.attendanceFallbackShare == null ? NaN : Number(raw.attendanceFallbackShare);
   const attendanceFallbackShare =
     Number.isFinite(attendanceFallbackShareRaw) && attendanceFallbackShareRaw >= 0
       ? clamp(attendanceFallbackShareRaw, 0, 1)
@@ -1288,9 +1288,14 @@ const resolveAssignmentValidation = (observations) => {
 
 export const resolveProcessAtReliability = (process, orderQuantity = 1, options = {}) => {
   const normalized = normalizeProcess(process);
-  const observations = Array.isArray(normalized?.atV2Observations)
+  const rawObservations = Array.isArray(normalized?.atV2Observations)
     ? normalized.atV2Observations
     : [];
+  const validObservations = rawObservations.filter(row => Number(row?.assignmentPlanId) > 0 &&
+      Number.isFinite(Number(row?.assignmentPlanId)) &&
+      Number(row?.quantity) > 0 && Number.isFinite(Number(row?.quantity)) &&
+      Number(row?.allocatedLaborInputSeconds) > 0 && Number.isFinite(Number(row?.allocatedLaborInputSeconds)));
+  const observations = validObservations.length === rawObservations.length ? rawObservations : validObservations;
   const points = resolveAtV2Points(normalized);
   const reliabilityReferenceQuantity = toPositiveInt(
     points[0]?.quantity ?? orderQuantity,

@@ -823,3 +823,23 @@ test('duplicating rows from one assignment cannot create independent validation'
  const row={assignmentPlanId:1,quantity:100,allocatedLaborInputSeconds:10000};
  assert.equal(resolveStyleAtReliability([{atV2Observations:[row,row,row,row]}]).percent,15);
 });
+
+test('invalid observations cannot increase evidence or distort repeated-quantity variation', () => {
+  const valid={assignmentPlanId:1,quantity:100,allocatedLaborInputSeconds:10000};
+  const invalid=[
+    {assignmentPlanId:2,quantity:0,allocatedLaborInputSeconds:10000},
+    {assignmentPlanId:3,quantity:100,allocatedLaborInputSeconds:0},
+    {assignmentPlanId:null,quantity:100,allocatedLaborInputSeconds:100000},
+    {assignmentPlanId:4,quantity:Infinity,allocatedLaborInputSeconds:10000},
+  ];
+  assert.equal(resolveStyleAtReliability([{atV2Observations:[valid,...invalid]}]).percent,
+    resolveStyleAtReliability([{atV2Observations:[valid]}]).percent);
+});
+
+test('unknown attendance metadata is preserved and never treated as measured zero', () => {
+  const process={atParams:{a:100,b:0,attendanceCoverage:null,attendanceFallbackShare:null},atV2Observations:[{assignmentPlanId:1,quantity:100,allocatedLaborInputSeconds:10000}]};
+  const result=resolveProcessAtReliability(process,100);
+  assert.equal(result.attendanceCoverage,null);
+  assert.equal(result.attendanceFallbackShare,null);
+  assert.equal(result.percent,15);
+});
