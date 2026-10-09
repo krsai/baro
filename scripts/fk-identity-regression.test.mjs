@@ -117,6 +117,23 @@ test('comparison summarizes finished excess only with complete shared required p
   assert.equal(group([{...base,total:65},{...base,total:30,target:30,genderScope:'MALE_ONLY'}])[0].finishedQuantity,null);
 });
 
+test('gender-aware complete sets distinguish extra garments from unmatched process output',()=>{
+  const source=readFileSync('frontend/src/pages/App/work/QuantityImportReviewTable.jsx','utf8');
+  const {estimateProductionSets:estimate}=load(source,['estimateProductionSets']);
+  const row=(id,scope,total,target=1120)=>({styleProcessId:id,genderScope:scope,total,target,required:true,requiredSetComplete:true});
+  const group={orderMaleQuantity:560,orderFemaleQuantity:560,orderUnspecifiedQuantity:0,rows:[row(1,'UNISEX',1125),row(2,'UNISEX',1125),row(3,'FEMALE_ONLY',560,560)]};
+  const result=estimate(group);
+  assert.deepEqual([result.total,result.maleMin,result.maleMax,result.femaleMin,result.femaleMax,result.hasRemnants],[1125,565,565,560,560,false]);
+  const unmatched=estimate({...group,rows:[row(1,'UNISEX',1125),row(2,'UNISEX',1120),row(3,'FEMALE_ONLY',560,560)]});
+  assert.equal(unmatched.total,1120);assert.equal(unmatched.maleMin,560);assert.equal(unmatched.femaleMin,560);
+  assert.deepEqual(unmatched.remnants.find(row=>row.styleProcessId===1),{styleProcessId:1,min:5,max:5});
+  const ambiguous=estimate({...group,rows:[row(1,'UNISEX',1125),row(2,'UNISEX',1125)]});
+  assert.deepEqual([ambiguous.maleMin,ambiguous.maleMax,ambiguous.femaleMin,ambiguous.femaleMax],[560,565,560,565]);
+  assert.equal(ambiguous.total,1125);
+  assert.equal(estimate({...group,orderUnspecifiedQuantity:1}),null);
+  assert.equal(estimate({...group,rows:[{...group.rows[0],requiredSetComplete:false}]}),null);
+});
+
 test('import review precedes every write and requires fresh server quantities and server actor',async()=>{
   let creates=0; let reviewKey='original';
   const deps={
