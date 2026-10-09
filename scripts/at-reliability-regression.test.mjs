@@ -843,3 +843,17 @@ test('unknown attendance metadata is preserved and never treated as measured zer
   assert.equal(result.attendanceFallbackShare,null);
   assert.equal(result.percent,15);
 });
+
+test('held-out blended evidence is used without own observations and AT1000 stays quantity-specific', () => {
+  const process = { pt: 50, atSharedPrediction: { version: 'shared-at-v1', a: 50, b: 10000, smallQuantityBoundary: 100,
+    validation: { version: 'held-out-shared-v1', referenceQuantity: 1000, ownAssignmentCount: 0, donorStyleCount: 20,
+      overall: { score: 98, independentCount: 20 }, reference: { score: 85, independentCount: 20, relativeError: 0.05, errorP80: 0.1 } } } };
+  assert.equal(resolveStyleAtReliability([process]).percent, 98);
+  const reference = resolveStyleAtReliability([process], 1000);
+  assert.equal(reference.percent, 85);
+  assert.equal(reference.validationErrorP80, 0.1);
+  assert.equal(reference.validationDonorStyleCount, 20);
+  assert.equal(resolveProcessAtReliability(process, 1000).validationRelativeError, 0.05);
+  assert.equal(resolveProcessAtReliability(process, 100).percent, 0);
+  assert.equal(resolveStyleAtReliability([process, { pt: 50 }], 1000).validationErrorP80, null);
+});

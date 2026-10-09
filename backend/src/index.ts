@@ -2,7 +2,7 @@ import { resolveStyleCategory, syncCategoryCopies } from './services/styleIdenti
 import { planOrderItemWrites } from "./utils/orderItemIdentity";
 import { styleAccessWhere, canManageStyle } from "./utils/styleOwnership";
 import { reconcileAssignmentCards } from "./utils/reconcileAssignmentCards";
-import { buildSharedAtPrediction } from "./services/atSharedPrior";
+import { buildValidatedSharedAtPrediction } from "./services/atSharedPrior";
 import { hasValidAssignmentProcessRefs, invalidAssignmentProcessRefIds, snapshotProcessIds, assertAssignmentProcessRefs, SNAPSHOT_REFERENCE_ERROR } from "./utils/assignmentSnapshotIntegrity";
 import { assignmentBoardRevision, assertEditRevision, editTransaction, commitAssignmentCardRebuild, STALE_EDIT } from "./utils/editRevision";
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -7001,7 +7001,7 @@ const loadStyleProcessMirrorMapForStyleIds = async (
     include: { style: { select: { categoryId: true, collection: true } }, atObservations: { where: { modelVersion: AT_V2_MODEL_VERSION } } },
   });
   const categoryByStyle = new Map(donorRows.map(row => [row.styleId, row.style]));
-  const predictions = new Map(targetRows.map(row => [row.id, buildSharedAtPrediction({ ...row, style: categoryByStyle.get(row.styleId) }, donorRows)]));
+  const predictions = new Map(targetRows.map(row => [row.id, buildValidatedSharedAtPrediction({ ...row, style: categoryByStyle.get(row.styleId) }, donorRows)]));
 
   return normalizedStyleIds.reduce((map, styleId) => {
     map.set(

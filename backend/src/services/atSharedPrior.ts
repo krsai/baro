@@ -7,7 +7,7 @@ const median = (xs: number[]) => {
   return n ? (sorted[Math.floor(n / 2)]! + sorted[Math.floor((n - 1) / 2)]!) / 2 : 0;
 };
 const observations = (row: Row) => (row.atObservations || []).filter((o: Row) =>
-  Number(o.quantity) > 0 && Number.isFinite(Number(o.quantity)) && Number(o.assignmentPlanId) > 0 && Number(o.allocatedLaborInputSeconds) > 0 &&
+  Number(o.quantity) > 0 && Number.isFinite(Number(o.quantity)) && Number(o.assignmentPlanId) > 0 && Number.isFinite(Number(o.assignmentPlanId)) && Number(o.allocatedLaborInputSeconds) > 0 &&
   Number.isFinite(Number(o.allocatedLaborInputSeconds)));
 const fitCache = new WeakMap<object, { a: number; b: number } | null>();
 const fitUncached = (row: Row) => {
@@ -25,6 +25,105 @@ const fitUncached = (row: Row) => {
   const b = median(obs.map((o: Row) => Number(o.allocatedLaborInputSeconds) - a * Number(o.quantity)));
   const error = median(obs.map((o: Row) => Math.abs(a * Number(o.quantity) + b - Number(o.allocatedLaborInputSeconds)) / Number(o.allocatedLaborInputSeconds)));
   return a > 0 && b >= 0 && Number.isFinite(a + b) && error <= 0.5 ? { a, b } : null;
+};
+
+// Validate the actual predictor, never its fitted training residuals. Shared trials
+// exclude the entire held-out style; own trials exclude the assignment globally.
+// Caches are request-scoped (the candidate array), not cross-request data caches.
+type Trial = { quantity: number; error: number; styleId: number; assignmentId: number };
+const validationContexts = new WeakMap<Row[], {
+  shared: Map<Row, Trial[]>;
+  pools: Map<number, Row[]>;
+}>();
+const predictSeconds = (p: Row, q: number) => p.a + p.b *
+  (q < p.smallQuantityBoundary ? (2 - q / p.smallQuantityBoundary) / p.smallQuantityBoundary : 1 / q);
+export const buildValidatedSharedAtPrediction = (target: Row, candidates: Row[]) => {
+  const prediction = buildSharedAtPrediction(target, candidates);
+  if (!prediction) return null;
+  let context = validationContexts.get(candidates);
+  if (!context) {
+    context = { shared: new Map(), pools: new Map() };
+    validationContexts.set(candidates, context);
+  }
+  const trial = (p: Row, o: Row, styleId: number): Trial => ({
+    quantity: Number(o.quantity), styleId, assignmentId: Number(o.assignmentPlanId),
+    error: Math.abs(predictSeconds(p, Number(o.quantity)) - Number(o.allocatedLaborInputSeconds) / Number(o.quantity)) /
+      (Number(o.allocatedLaborInputSeconds) / Number(o.quantity)),
+  });
+  const ownTrials: Trial[] = [];
+  for (const assignmentId of new Set<number>(observations(target).map((o: Row) => Number(o.assignmentPlanId)))) {
+    let pool = context.pools.get(assignmentId);
+    if (!pool) {
+      pool = candidates.map(row => ({ ...row, atObservations: observations(row).filter((o: Row) => Number(o.assignmentPlanId) !== assignmentId) }));
+      context.pools.set(assignmentId, pool);
+    }
+    const heldOut = { ...target, atObservations: observations(target).filter((o: Row) => Number(o.assignmentPlanId) !== assignmentId) };
+    const p = buildSharedAtPrediction(heldOut, pool);
+    if (p && (p.ownAssignmentCount > 0 || p.donorStyleCount > 0)) {
+      for (const o of observations(target).filter((o: Row) => Number(o.assignmentPlanId) === assignmentId)) ownTrials.push(trial(p, o, target.styleId));
+    }
+  }
+  const sharedTrials: Trial[] = [];
+  const eligible = candidates.filter(row => row.orgId === target.orgId && row.styleId !== target.styleId &&
+    row.productionStage === target.productionStage && row.genderScope === target.genderScope && fit(row));
+  const sameCategory = eligible.filter(row => Number(target.style?.categoryId) > 0 && Number(row.style?.categoryId) === Number(target.style.categoryId));
+  const categoryValidation = new Set(sameCategory.map(row => row.styleId)).size >= 3;
+  // When enough category peers exist, validate transfer on those peers. Their
+  // predictions still use the complete common/category mixture, as in the app.
+  for (const row of categoryValidation ? sameCategory : eligible) {
+    let trials = context.shared.get(row);
+    if (!trials) {
+      const p = buildSharedAtPrediction({ ...row, atObservations: [] }, candidates);
+      const computed: Trial[] = p && p.donorStyleCount > 0 ? observations(row).map((o: Row) => trial(p, o, row.styleId)) : [];
+      trials = computed;
+      context.shared.set(row, computed);
+    }
+    sharedTrials.push(...(trials || []));
+  }
+  const summarize = (quantity: number | null) => {
+    // One unit per own assignment or donor style. More process rows do not
+    // manufacture independent evidence. Quantity proximity is continuous.
+    const units = new Map<string, { errors: number[]; weights: number[] }>();
+    const localUnits = new Map<string, number[]>();
+    for (const [source, trials] of [['own', ownTrials], ['shared', sharedTrials]] as const) {
+      for (const t of trials) {
+        const key = source === 'own' ? `a:${t.assignmentId}` : `s:${t.styleId}`;
+        const values = units.get(key) || { errors: [], weights: [] };
+        const proximity = quantity ? Math.min(quantity, t.quantity) / Math.max(quantity, t.quantity) : 1;
+        values.errors.push(t.error); values.weights.push(proximity);
+        units.set(key, values);
+        if (quantity && proximity >= 0.5) localUnits.set(key, [...(localUnits.get(key) || []), t.error]);
+      }
+    }
+    const groups = [...units.entries()].map(([key, v]) => ({ own: key.startsWith('a:'), error: median(v.errors), weight: median(v.weights) }));
+    const support = groups.reduce((s, g) => s + g.weight, 0);
+    const meanError = (items: typeof groups) => {
+      const weight = items.reduce((s, g) => s + g.weight, 0);
+      return weight ? items.reduce((s, g) => s + g.error * g.weight, 0) / weight : null;
+    };
+    const ownGroups = groups.filter(g => g.own);
+    const ownError = meanError(ownGroups), sharedError = meanError(groups.filter(g => !g.own));
+    const ownWeight = sharedError === null ? 1 : ownGroups.length / (ownGroups.length + 3);
+    const relativeError = ownError === null ? sharedError : sharedError === null ? ownError : ownError * ownWeight + sharedError * (1 - ownWeight);
+    // Smooth, uncapped support growth; quality depends on held-out error.
+    // This is a diagnostic score, not a coverage probability.
+    const proximityLimit = quantity ? Math.min(1, 2 * Math.max(0, ...groups.map(g => g.weight))) : 1;
+    const score = relativeError === null ? 0 : Math.round(100 * (1 - Math.exp(-support / 5)) * Math.exp(-2 * relativeError) * proximityLimit);
+    // Keep the worst nearby error within an independent unit; averaging rows
+    // must not hide a failed reference-quantity prediction.
+    const sorted = [...localUnits.values()].map(values => Math.max(...values)).sort((a, b) => a - b);
+    const percentile = (xs: number[]) => xs.sort((a, b) => a - b)[Math.ceil(xs.length * 0.8) - 1] ?? 0;
+    const ownLocal = [...localUnits.entries()].filter(([key]) => key.startsWith('a:')).map(([, values]) => Math.max(...values));
+    const sharedLocal = [...localUnits.entries()].filter(([key]) => key.startsWith('s:')).map(([, values]) => Math.max(...values));
+    return { score, independentCount: groups.length, effectiveSupport: support, relativeError,
+      // Empirical 80th percentile of nearby held-out relative errors, NOT a
+      // calibrated confidence interval. No nearby trials => no error band.
+      errorP80: sorted.length >= 3 ? Math.max(percentile(ownLocal), percentile(sharedLocal)) : null,
+      nearbyTrialCount: sorted.length };
+  };
+  return { ...prediction, validation: { version: 'held-out-shared-v1', overall: summarize(null),
+    referenceQuantity: 1000, reference: summarize(1000), ownAssignmentCount: new Set(ownTrials.map(t => t.assignmentId)).size,
+    donorStyleCount: new Set(sharedTrials.map(t => t.styleId)).size, sharedValidationScope: categoryValidation ? 'CATEGORY' : 'COMMON' } };
 };
 const fit = (row: Row) => {
   if (!fitCache.has(row)) fitCache.set(row, fitUncached(row));

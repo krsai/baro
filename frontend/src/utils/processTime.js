@@ -997,18 +997,25 @@ export const aggregateAtReliability = (entries = []) => {
   };
 };
 
-export const resolveStyleAtReliability = (processes = []) => {
+export const resolveStyleAtReliability = (processes = [], referenceQuantity = null) => {
   const normalized = normalizeProcesses(processes);
   if (normalized.length === 0) return null;
 
   const entries = normalized.map((process) => ({
-    reliability: resolveProcessAtReliability(process, 1, { overall: true }),
+    reliability: resolveProcessAtReliability(process, referenceQuantity ?? 1, { overall: referenceQuantity == null }),
     // Fixed process complexity weights; neither predicted AT nor selected quantity
     // should change the overall evidence score.
     weight: Number(process.pt) > 0 ? Number(process.pt) : 1,
   }));
 
-  return aggregateAtReliability(entries);
+  const result = aggregateAtReliability(entries);
+  const validations = normalized.map(p => p.atSharedPrediction?.validation);
+  const complete = validations.every(v => v?.version === 'held-out-shared-v1' && v.referenceQuantity === referenceQuantity && v.reference.errorP80 != null);
+  return result && { ...result, referenceQuantity,
+    validationOwnAssignmentCount: validations.length && validations.every(v => v?.version === 'held-out-shared-v1') ? Math.min(...validations.map(v => v.ownAssignmentCount)) : null,
+    validationDonorStyleCount: validations.length && validations.every(v => v?.version === 'held-out-shared-v1') ? Math.min(...validations.map(v => v.donorStyleCount)) : null,
+    validationErrorP80: complete ? Math.max(...validations.map(v => v.reference.errorP80)) : null,
+    validationComplete: complete };
 };
 
 export const normalizeProcess = (process = {}, index = 0) => {
@@ -1288,6 +1295,15 @@ const resolveAssignmentValidation = (observations) => {
 
 export const resolveProcessAtReliability = (process, orderQuantity = 1, options = {}) => {
   const normalized = normalizeProcess(process);
+  const validation = normalized?.atSharedPrediction?.validation;
+  const heldOut = validation?.version === 'held-out-shared-v1'
+    ? options.overall ? validation.overall : Number(orderQuantity) === validation.referenceQuantity ? validation.reference : null
+    : null;
+  if (heldOut && Number.isFinite(heldOut.score)) {
+    return { ...toAtReliabilityResult(resolveAtReliabilityStatusFromPercent(heldOut.score), {
+      percent: heldOut.score, version: 3, observationCount: heldOut.independentCount,
+    }), validationRelativeError: heldOut.relativeError, validationErrorP80: heldOut.errorP80 };
+  }
   const rawObservations = Array.isArray(normalized?.atV2Observations)
     ? normalized.atV2Observations
     : [];
@@ -1333,11 +1349,11 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1, options 
   const evidenceScore = Math.max(0, Math.min(95,
     10 + Math.min(60, effectiveObservationCount * 5) +
     quantityDiversityScore + spanScore - repeatVariation.penalty));
-  const validation = resolveAssignmentValidation(observations);
+  const ownValidation = resolveAssignmentValidation(observations);
   // 3/4/5 independent checks have ceilings of 70/80/90 respectively.
   // Error-based quality is a heuristic, not a calibrated probability.
-  const validatedEvidence = validation ? Math.min(95, 40 + validation.assignmentCount * 10,
-    evidenceScore * 0.25 + 95 * Math.max(0, 1 - validation.relativeError * 2) * 0.75) : evidenceScore;
+  const validatedEvidence = ownValidation ? Math.min(95, 40 + ownValidation.assignmentCount * 10,
+    evidenceScore * 0.25 + 95 * Math.max(0, 1 - ownValidation.relativeError * 2) * 0.75) : evidenceScore;
   const q = toPositiveInt(orderQuantity, 1);
   const distance = q < minQuantity ? minQuantity / q : q > maxQuantity ? q / maxQuantity : 1;
   // Overall maturity ignores extrapolation; a quantity-specific score discounts

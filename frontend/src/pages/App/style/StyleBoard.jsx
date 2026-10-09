@@ -517,7 +517,7 @@ const StyleBoard = () => {
           DEFAULT_TIME_REF_QUANTITY,
           style.timeBucketQuantities
         );
-        const styleAtReliability = resolveStyleAtReliability(processes);
+        const styleAtReliability = resolveStyleAtReliability(processes, DEFAULT_TIME_REF_QUANTITY);
         const stGapPercent =
           hasTotalAT && hasTotalST
             ? calculateDivergencePercent(totalST, totalAT)
@@ -738,7 +738,7 @@ const StyleBoard = () => {
                             <Chip
                               size="small"
                               label={formatAtReliabilityBadgeLabel(style.styleAtReliability, languageCode)}
-                          title={languageCode === 'ko' ? '전체 실적 근거 점수: 반복 배정, 수량 다양성, 기록 품질을 종합합니다. 특정 수량의 예측 정확률이 아닙니다.' : languageCode === 'vi' ? 'Điểm bằng chứng tổng thể; không phải độ chính xác ở một số lượng cụ thể.' : 'Overall evidence score; not prediction accuracy at a specific quantity.'}
+                              title={languageCode === 'ko' ? 'AT(1,000) 검증 근거: 배정 또는 스타일을 학습에서 제외한 혼합 추정의 오차·독립 자료량·수량 근접도를 평가합니다. 정확도 확률이 아닙니다.' : languageCode === 'vi' ? 'Bằng chứng AT(1.000): sai số kiểm định bỏ từng phân công hoặc kiểu, số nguồn độc lập và độ gần số lượng; không phải xác suất chính xác.' : 'AT(1,000) evidence: held-out assignment/style errors of the blended predictor, independent support and quantity proximity; not an accuracy probability.'}
                               sx={{
                                 ...AT_RELIABILITY_CHIP_SX,
                                 backgroundColor: resolveReliabilityRiskColor(style.styleAtReliability.percent).bg,
@@ -747,6 +747,19 @@ const StyleBoard = () => {
                             />
                           )}
                         </Box>
+                        {style.hasTotalAT && (
+                          <Typography variant="caption" color="text.secondary" component="div"
+                            title={languageCode === 'ko' ? '500~2,000장 검증의 상대오차 80백분위 중 공정별 최대값으로 계산한 참고 범위입니다. 통계적 신뢰구간이나 실제 작업시간 보장이 아닙니다.' : languageCode === 'vi' ? 'Khoảng tham khảo từ phân vị 80 của sai số tương đối kiểm định 500–2.000 sản phẩm; không phải khoảng tin cậy thống kê.' : 'Reference range using the largest process-level 80th percentile held-out relative error at 500–2,000 units; not a statistical confidence interval.'}>
+                            {style.styleAtReliability?.validationErrorP80 != null && style.styleAtReliability.validationErrorP80 < 1
+                              ? `${languageCode === 'ko' ? '검증 참고' : languageCode === 'vi' ? 'Tham khảo' : 'Validation reference'}: ${formatLocalizedSeconds(style.totalAT / (1 + style.styleAtReliability.validationErrorP80), languageCode)}–${formatLocalizedSeconds(style.totalAT / (1 - style.styleAtReliability.validationErrorP80), languageCode)}`
+                              : languageCode === 'ko' ? '수량별 오차 범위 미확정' : languageCode === 'vi' ? 'Chưa đủ dữ liệu về khoảng sai số' : 'Quantity error range unavailable'}
+                          </Typography>
+                        )}
+                        {style.hasTotalAT && style.styleAtReliability?.validationDonorStyleCount != null && (
+                          <Typography variant="caption" color="text.secondary" component="div">
+                            {languageCode === 'ko' ? `공정별 검증 최소: 자체 ${style.styleAtReliability.validationOwnAssignmentCount}배정 · 공유 ${style.styleAtReliability.validationDonorStyleCount}스타일` : languageCode === 'vi' ? `Tối thiểu mỗi công đoạn: ${style.styleAtReliability.validationOwnAssignmentCount} phân công · ${style.styleAtReliability.validationDonorStyleCount} kiểu tham khảo` : `Minimum per process: ${style.styleAtReliability.validationOwnAssignmentCount} own assignments · ${style.styleAtReliability.validationDonorStyleCount} donor styles`}
+                          </Typography>
+                        )}
                       </TableCell>
                     ) : null}
                     <TableCell>{style.registrationDate || '-'}</TableCell>

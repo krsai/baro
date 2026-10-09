@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import prior from '../backend/dist/services/atSharedPrior.js';
-const { buildSharedAtPrediction } = prior;
+const { buildSharedAtPrediction, buildValidatedSharedAtPrediction } = prior;
 const row = (styleId, category = 'JACKET', a = 50, b = 10000, quantities = [100, 500, 1000]) => ({
   id: styleId, styleId, orgId: 1, productionStage: 'SEWING', genderScope: 'UNISEX', ptSeconds: 50,
   style: { categoryId: ({ JACKET: 1, SHIRT: 2, NEW: 3 })[category] ?? category, collection: category }, atObservations: quantities.map((quantity, index) => ({ assignmentPlanId: styleId * 100 + index, quantity, allocatedLaborInputSeconds: a * quantity + b })),
@@ -80,4 +80,67 @@ test('nearby large batches cannot identify shared setup; own small evidence is p
   const p = buildSharedAtPrediction(row(20, 'JACKET', 50, 10000, [10]), [row(1)]);
   assert.equal(p.smallQuantityBoundary, 10);
   assert.equal(seconds(p, 10), 1050);
+});
+
+test('validated prediction preserves estimates and gains support beyond old sparse score ceilings', () => {
+  const small = Array.from({ length: 3 }, (_, i) => row(i + 1));
+  const large = Array.from({ length: 25 }, (_, i) => row(i + 1));
+  const before = JSON.stringify(large);
+  const a = buildValidatedSharedAtPrediction(target(100), small);
+  const b = buildValidatedSharedAtPrediction(target(100), large);
+  assert.equal(b.a, buildSharedAtPrediction(target(100), large).a);
+  assert.equal(b.b, buildSharedAtPrediction(target(100), large).b);
+  assert.ok(b.validation.reference.score > a.validation.reference.score);
+  assert.ok(b.validation.reference.score > 90);
+  assert.equal(b.validation.reference.relativeError, 0);
+  assert.equal(b.validation.reference.errorP80, 0);
+  assert.equal(b.validation.donorStyleCount, 25);
+  assert.equal(JSON.stringify(large), before);
+});
+
+test('own assignment holdout does not validate against itself or same-assignment donor rows', () => {
+  const own = row(20, 'JACKET', 50, 10000, [1000]);
+  const donor = row(1);
+  donor.atObservations.forEach(o => { o.assignmentPlanId = own.atObservations[0].assignmentPlanId; });
+  const p = buildValidatedSharedAtPrediction(own, [own, donor]);
+  assert.equal(p.validation.ownAssignmentCount, 0);
+});
+
+test('many process copies do not inflate independent donor style evidence or error ranges', () => {
+  const donors = [row(1), row(2)];
+  const copies = [...donors, ...Array.from({ length: 15 }, (_, i) => ({ ...row(1), id: 100 + i }))];
+  const a = buildValidatedSharedAtPrediction(target(), donors).validation;
+  const b = buildValidatedSharedAtPrediction(target(), copies).validation;
+  assert.equal(a.reference.score, b.reference.score);
+  assert.equal(b.reference.independentCount, 2);
+  assert.equal(b.reference.errorP80, null);
+});
+
+test('transfer mismatch and far-away quantities cannot earn high AT1000 evidence', () => {
+  const heterogeneous = Array.from({ length: 20 }, (_, i) => row(i + 1, 'JACKET', i % 2 ? 100 : 25));
+  const result = buildValidatedSharedAtPrediction(target(100), heterogeneous);
+  assert.ok(result.validation.reference.score < 70);
+  const far = Array.from({ length: 30 }, (_, i) => row(i + 1, 'JACKET', 50, 100, [10, 20, 30]));
+  const p = buildValidatedSharedAtPrediction(target(100), far);
+  assert.ok(p.validation.reference.score < 10);
+  assert.equal(p.validation.reference.errorP80, null);
+});
+
+test('category peers validate the full mixture without unrelated category error dominating', () => {
+  const donors = [...Array.from({ length: 15 }, (_, i) => row(i + 1)),
+    ...Array.from({ length: 20 }, (_, i) => row(i + 30, 'SHIRT', i % 2 ? 100 : 25))];
+  const p = buildValidatedSharedAtPrediction(target(100), donors);
+  assert.equal(p.validation.sharedValidationScope, 'CATEGORY');
+  assert.equal(p.validation.donorStyleCount, 15);
+  assert.ok(p.validation.reference.score > 70);
+});
+
+test('repeated independent batches at 1000 become highly supported without quantity diversity', () => {
+  const make = n => row(20, 'JACKET', 50, 10000, Array(n).fill(1000));
+  const small = buildValidatedSharedAtPrediction(make(2), []).validation.reference;
+  const large = buildValidatedSharedAtPrediction(make(20), []).validation.reference;
+  assert.ok(large.score > small.score);
+  assert.ok(large.score >= 95);
+  assert.equal(large.independentCount, 20);
+  assert.equal(large.errorP80, 0);
 });
