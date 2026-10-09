@@ -1,11 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Box, Chip, CircularProgress, Collapse, Dialog, DialogContent, DialogTitle, FormControl, FormControlLabel, InputLabel,
+  Alert, Box, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, FormControl, FormControlLabel, InputLabel,
   LinearProgress, IconButton, Menu, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Tooltip, Typography, Switch,
 } from '@mui/material';
-import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
-import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import AppPageContainer from '../../components/AppPageContainer';
 import PageToolbar from '../../components/PageToolbar';
@@ -19,39 +17,33 @@ import { WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
 
 const TEXT = {
   ko: {
-    title: '보고서', customer: '고객', allCustomers: '전체 고객', search: '주문번호·스타일 검색',
+    title: '보고서', customer: '고객', allCustomers: '전체 고객', search: '주문번호·스타일 검색', orderTotal: '주문 전체',
     generated: '기준 시각', order: '주문번호', style: '스타일', due: '납기',
     quantity: '완성품/주문', produced: '완성품 수량', progress: '공정 진행률', status: '상태', schedule: '스케줄',
     empty: '조건에 맞는 보고서 항목이 없습니다.',
     loadError: '생산 진행 보고서를 불러오지 못했습니다.',
     includeCompleted: '완료 포함',
     completedCount: (count, total) => `완료 ${count}/${total}`,
-    detailToggleOpen: '스타일별 상세 닫기',
-    detailToggleClosed: '스타일별 상세 보기',
     dailyProduced: '일일 내역', dailyProducedTitle: '일일 완성품 수량', close: '닫기', noDailyProduced: '등록된 일일 완성품 내역이 없습니다.',
   },
   en: {
-    title: 'Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style',
+    title: 'Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style', orderTotal: 'Order total',
     generated: 'As of', order: 'Order', style: 'Style', due: 'Due', quantity: 'Finished/Order',
     produced: 'Finished qty', progress: 'Process progress', status: 'Status', schedule: 'Schedule',
     empty: 'No report rows match the filters.',
     loadError: 'Failed to load the production progress report.',
     includeCompleted: 'Include completed',
     completedCount: (count, total) => `${count}/${total} completed`,
-    detailToggleOpen: 'Hide style breakdown',
-    detailToggleClosed: 'Show style breakdown',
     dailyProduced: 'Daily details', dailyProducedTitle: 'Daily finished quantity', close: 'Close', noDailyProduced: 'No daily finished quantities are recorded.',
   },
   vi: {
-    title: 'Báo cáo', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng',
+    title: 'Báo cáo', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng', orderTotal: 'Toàn bộ đơn hàng',
     generated: 'Thời điểm', order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Thành phẩm/Đơn hàng',
     produced: 'Số lượng thành phẩm', progress: 'Tiến độ công đoạn', status: 'Trạng thái', schedule: 'Lịch',
     empty: 'Không có dữ liệu phù hợp.',
     loadError: 'Không thể tải báo cáo tiến độ sản xuất.',
     includeCompleted: 'Bao gồm đã hoàn thành',
     completedCount: (count, total) => `Hoàn thành ${count}/${total}`,
-    detailToggleOpen: 'Ẩn chi tiết theo kiểu dáng',
-    detailToggleClosed: 'Xem chi tiết theo kiểu dáng',
     dailyProduced: 'Chi tiết ngày', dailyProducedTitle: 'Số lượng thành phẩm theo ngày', close: 'Đóng', noDailyProduced: 'Không có số lượng thành phẩm theo ngày.',
   },
 };
@@ -62,8 +54,6 @@ const STATUS = {
   SCHEDULED: { ko: '배정 완료', en: 'Assigned', vi: 'Đã phân công', color: 'info' },
   UNASSIGNED: { ko: '미배정', en: 'Unassigned', vi: 'Chưa phân công', color: 'default' },
 };
-// toggle + customer + order + style + due + finished/order + progress + status + schedule
-const REPORT_COLUMN_COUNT = 9;
 const fmt = (value) => Math.max(0, Number(value) || 0).toLocaleString();
 const reportLocale = (languageCode) => languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US';
 const isReportDateKey = (date) => /^\d{4}-\d{2}-\d{2}$/.test(String(date || ''));
@@ -182,7 +172,6 @@ const CustomerProductionReport = () => {
   const [customerId, setCustomerId] = useState('');
   const [search, setSearch] = useState('');
   const [includeCompleted, setIncludeCompleted] = useState(false);
-  const [expandedOrders, setExpandedOrders] = useState(() => new Set());
   const [contextMenuState, setContextMenuState] = useState(null);
   const [activeQuantityReviewRow, setActiveQuantityReviewRow] = useState(null);
   const [dailyProducedRow, setDailyProducedRow] = useState(null);
@@ -228,14 +217,6 @@ const CustomerProductionReport = () => {
     });
   }, [customerId, data.rows, includeCompleted, search]);
   const selectedCustomer = data.customers.find((item) => String(item.id) === customerId) || null;
-  const toggleOrder = useCallback((key) => {
-    setExpandedOrders((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
   const handleRowContextMenu = useCallback((event, styleRow) => {
     event.preventDefault();
     setContextMenuState({
@@ -266,24 +247,15 @@ const CustomerProductionReport = () => {
       {loading ? <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress size={30} /></Box> : rows.length === 0 ? <Paper variant="outlined" sx={{ p: 5, textAlign: 'center' }}><Typography color="text.secondary">{text.empty}</Typography></Paper> :
         <TableContainer component={Paper} variant="outlined">
           <Table size="small">
-            <TableHead><TableRow><TableCell sx={{ width: 44 }} /><TableCell>{text.customer}</TableCell><TableCell>{text.order}</TableCell><TableCell>{text.style}</TableCell><TableCell>{text.due}</TableCell><TableCell align="right">{text.quantity}</TableCell><TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell><TableCell>{text.status}</TableCell><TableCell align="center">{text.schedule}</TableCell></TableRow></TableHead>
+            <TableHead><TableRow><TableCell>{text.customer}</TableCell><TableCell>{text.order}</TableCell><TableCell>{text.style}</TableCell><TableCell>{text.due}</TableCell><TableCell align="right">{text.quantity}</TableCell><TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell><TableCell>{text.status}</TableCell><TableCell align="center">{text.schedule}</TableCell></TableRow></TableHead>
             <TableBody>{rows.map((row) => {
               const hasMultipleStyles = row.styles.length > 1;
-              const expanded = hasMultipleStyles && expandedOrders.has(row.key);
               const soleStyle = hasMultipleStyles ? null : row.styles[0];
               return <React.Fragment key={row.key}>
                 <TableRow
                   hover
-                  sx={{ '& > td': { backgroundColor: expanded ? '#f4f8ff' : undefined } }}
                   onContextMenu={!hasMultipleStyles && soleStyle ? (event) => handleRowContextMenu(event, soleStyle) : undefined}
                 >
-                  <TableCell sx={{ width: 44 }}>
-                    {hasMultipleStyles
-                      ? <IconButton size="small" onClick={() => toggleOrder(row.key)} aria-label={expanded ? text.detailToggleOpen : text.detailToggleClosed}>
-                          {expanded ? <KeyboardArrowUpIcon fontSize="small" /> : <KeyboardArrowDownIcon fontSize="small" />}
-                        </IconButton>
-                      : null}
-                  </TableCell>
                   <TableCell>{rowCustomerLabel(row, languageCode)}</TableCell>
                   <TableCell>{row.orderNumber}</TableCell>
                   <TableCell>
@@ -298,42 +270,8 @@ const CustomerProductionReport = () => {
                   <TableCell align="right">{fmt(row.producedQuantity)}/{fmt(row.orderedQuantity)}</TableCell>
                   <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={row.progressPercent} /></TableCell>
                   <TableCell><ReportStatusChip status={row.status} languageCode={languageCode} /></TableCell>
-                  <TableCell align="center"><Tooltip title={text.dailyProduced}><IconButton size="small" color="primary" aria-label={text.dailyProduced} onClick={() => openDailyProducedCalendar(row)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></TableCell>
+                  <TableCell align="center"><Tooltip title={text.schedule}><IconButton size="small" color="primary" aria-label={text.schedule} onClick={() => openDailyProducedCalendar(row)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></TableCell>
                 </TableRow>
-                {hasMultipleStyles ? <TableRow>
-                  <TableCell colSpan={REPORT_COLUMN_COUNT} sx={{ p: 0, borderBottom: expanded ? undefined : 'none' }}>
-                    <Collapse in={expanded} timeout="auto" unmountOnExit>
-                      <Box sx={{ m: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1.5, overflow: 'hidden' }}>
-                        <Table size="small">
-                          <TableHead>
-                            <TableRow sx={{ '& > th': { bgcolor: 'grey.50', fontSize: 12, color: 'text.secondary' } }}>
-                              <TableCell>{text.style}</TableCell>
-                              <TableCell>{text.due}</TableCell>
-                              <TableCell align="right">{text.quantity}</TableCell>
-                              <TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell>
-                              <TableCell>{text.status}</TableCell>
-                              <TableCell align="center">{text.schedule}</TableCell>
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>{row.styles.map((styleRow) =>
-                            <TableRow
-                              key={`${styleRow.orderId}:${styleRow.styleId || styleRow.styleCode}`}
-                              sx={{ '&:last-child td': { borderBottom: 0 } }}
-                              onContextMenu={(event) => handleRowContextMenu(event, styleRow)}
-                            >
-                              <TableCell>{styleRow.styleName || styleRow.styleCode || '-'}</TableCell>
-                              <TableCell>{styleRow.dueDate || '-'}</TableCell>
-                              <TableCell align="right">{fmt(styleRow.producedQuantity)}/{fmt(styleRow.orderedQuantity)}</TableCell>
-                              <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={styleRow.progressPercent} /></TableCell>
-                              <TableCell><ReportStatusChip status={styleRow.status} languageCode={languageCode} /></TableCell>
-                              <TableCell align="center"><Tooltip title={text.dailyProduced}><IconButton size="small" color="primary" aria-label={text.dailyProduced} onClick={() => openDailyProducedCalendar(styleRow)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></TableCell>
-                            </TableRow>
-                          )}</TableBody>
-                        </Table>
-                      </Box>
-                    </Collapse>
-                  </TableCell>
-                </TableRow> : null}
               </React.Fragment>;
             })}</TableBody>
           </Table>
@@ -363,12 +301,13 @@ const CustomerProductionReport = () => {
       onClose={handleCloseQuantityReview}
     />
     <Dialog open={Boolean(dailyProducedRow)} onClose={() => setDailyProducedRow(null)} fullWidth maxWidth="lg">
-      <DialogTitle>{text.dailyProducedTitle}</DialogTitle>
+      <DialogTitle>{text.schedule} ? {dailyProducedRow?.orderNumber}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={0.5} sx={{ mb: 2 }}>
           <Typography fontWeight={700}>{dailyProducedRow?.orderNumber || '-'}</Typography>
           <Typography variant="body2" color="text.secondary">{dailyProducedRow?.styles ? resolveStyleSummaryLabel(dailyProducedRow.styles, languageCode) : dailyProducedRow?.styleName || dailyProducedRow?.styleCode || '-'}</Typography>
         </Stack>
+        <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>{text.dailyProducedTitle}</Typography>
         {(dailyProducedRow?.dailyProducedQuantities || []).length === 0
           ? <Typography variant="body2" color="text.secondary">{text.noDailyProduced}</Typography>
           : (() => {
@@ -408,6 +347,28 @@ const CustomerProductionReport = () => {
               </Box>
             </Stack>;
           })()}
+        <Box sx={{ mt: 3 }}>
+          <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>{text.progress}</Typography>
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableHead><TableRow><TableCell>{text.style}</TableCell><TableCell align="right">{text.quantity}</TableCell><TableCell sx={{ minWidth: 180 }}>{text.progress}</TableCell><TableCell>{text.status}</TableCell></TableRow></TableHead>
+              <TableBody>
+                <TableRow sx={{ bgcolor: 'action.hover' }}>
+                  <TableCell sx={{ fontWeight: 700 }}>{text.orderTotal}</TableCell>
+                  <TableCell align="right">{fmt(dailyProducedRow?.producedQuantity)}/{fmt(dailyProducedRow?.orderedQuantity)}</TableCell>
+                  <TableCell><ReportProgressCell percent={dailyProducedRow?.progressPercent || 0} /></TableCell>
+                  <TableCell><ReportStatusChip status={dailyProducedRow?.status} languageCode={languageCode} /></TableCell>
+                </TableRow>
+                {(dailyProducedRow?.styles || []).map((styleRow) => <TableRow key={styleRow.styleId} onContextMenu={(event) => handleRowContextMenu(event, styleRow)}>
+                  <TableCell>{styleRow.styleName || styleRow.styleCode || '-'}</TableCell>
+                  <TableCell align="right">{fmt(styleRow.producedQuantity)}/{fmt(styleRow.orderedQuantity)}</TableCell>
+                  <TableCell><ReportProgressCell percent={styleRow.progressPercent} /></TableCell>
+                  <TableCell><ReportStatusChip status={styleRow.status} languageCode={languageCode} /></TableCell>
+                </TableRow>)}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
       </DialogContent>
     </Dialog>
   </AppPageContainer>;
