@@ -69,6 +69,8 @@ test('quantity remark uses order-wide history, permits excess and excludes the l
     outsourcedWorkRecord:{findMany:async()=>[]},
   };
   const {appendWorkLogQuantityRemark:remark,resolveStyleProcessRowApplicableQuantity:applicable}=load(backend,['appendWorkLogQuantityRemark','resolveStyleProcessRowApplicableQuantity'],{
+    ensureArray:v=>Array.isArray(v)?v:[],toPositiveIntOrNull:positive,
+    resolveNormalizedAssignmentCtSnapshot:()=>({processes:[{styleProcessId:648},{styleProcessId:649}]}),
     collectWorkRecordAssignmentPlanIds:r=>[...new Set(r.map(x=>x.assignmentPlanId))],
     loadStyleGenderQuantityMapForWorkOrderIds:async()=>new Map([['5:40',{total:60,male:30,female:30}]]),normalizeProcessGenderScope:v=>v,
   });
@@ -93,6 +95,24 @@ test('quantity remark uses order-wide history, permits excess and excludes the l
   assert.equal(await remark({...input,note:output}),'User note');
   scope='MALE_ONLY';assert.match(await remark(input),/주문 대상 30개 대비 30개 초과/);
   assert.equal(applicable({genderScope:'UNISEX'},{total:60,male:30,female:30}),60);
+  scope='UNISEX';
+  db.styleProcess.findMany=async()=>[{id:648,processCode:'TT01',genderScope:scope},{id:649,processCode:'TT02',genderScope:scope}];
+  const comparisonItems=[];
+  await remark({...input,comparisonItems});
+  assert.equal(comparisonItems.length,2);
+  assert.equal(comparisonItems.find(row=>row.styleProcessId===649).total,0);
+  assert.equal(comparisonItems.find(row=>row.styleProcessId===649).difference,-60);
+  assert.equal(comparisonItems[0].requiredSetComplete,true);
+});
+
+test('comparison summarizes finished excess only with complete shared required processes',()=>{
+  const source=readFileSync('frontend/src/pages/App/work/QuantityImportReviewTable.jsx','utf8');
+  const {groupQuantityComparison:group}=load(source,['groupQuantityComparison']);
+  const base={orderId:1,styleId:2,target:60,orderQuantity:60,genderScope:'UNISEX',required:true,requiredSetComplete:true};
+  assert.equal(group([{...base,total:65},{...base,total:65}])[0].finishedQuantity,65);
+  assert.equal(group([{...base,total:65},{...base,total:55}])[0].finishedQuantity,55);
+  assert.equal(group([{...base,total:65,requiredSetComplete:false}])[0].finishedQuantity,null);
+  assert.equal(group([{...base,total:65},{...base,total:30,target:30,genderScope:'MALE_ONLY'}])[0].finishedQuantity,null);
 });
 
 test('import review precedes every write and requires fresh server quantities and server actor',async()=>{

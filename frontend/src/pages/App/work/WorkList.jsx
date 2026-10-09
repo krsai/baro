@@ -3,8 +3,6 @@ import {
   Box,
   Button,
   Chip,
-  Checkbox,
-  FormControlLabel,
   Dialog,
   DialogActions,
   DialogContent,
@@ -51,6 +49,7 @@ import {
   resolveScopedFactoryManagementStartDay,
 } from '../../../utils/factoryManagementStart';
 import { deleteWorkLog, loadWorkLogs } from './workLogStorage';
+import QuantityImportReviewTable from './QuantityImportReviewTable';
 import {
   extractWorkLogImportIssueRows,
   formatWorkLogImportError,
@@ -681,7 +680,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
         });
         if (result?.requiresQuantityReview) {
           setQuantityReviewDraft({ orgId: activeOrgId, fileName: file.name, rows,
-            items: result.quantityReviewItems || [], approvedQuantityKeys: [] });
+            items: result.quantityReviewItems || [], comparisons: result.quantityComparisonItems || [], approvedQuantityKeys: [] });
           return;
         }
         setQuantityReviewDraft(null);
@@ -730,7 +729,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
     try {
       const result = await importWorkLogRows(quantityReviewDraft);
       if (result.requiresQuantityReview) {
-        setQuantityReviewDraft({ ...quantityReviewDraft, items: result.quantityReviewItems || [], approvedQuantityKeys: [] });
+        setQuantityReviewDraft({ ...quantityReviewDraft, items: result.quantityReviewItems || [], comparisons: result.quantityComparisonItems || [], approvedQuantityKeys: [] });
         showNotification(languageCode === 'ko' ? '주문 수량이나 기존 실적이 변경되었습니다. 다시 확인해 주세요.' : languageCode === 'vi' ? 'Số lượng đơn hàng hoặc sản lượng đã thay đổi. Vui lòng kiểm tra lại.' : 'Order quantity or production changed. Please review again.', 'warning');
         return;
       }
@@ -845,13 +844,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
           <Button onClick={() => navigateToPath('/order')}>{languageCode === 'ko' ? '주문 확인' : languageCode === 'vi' ? 'Xem đơn hàng' : 'View orders'}</Button>
           <Button onClick={() => navigateToPath('/style')}>{languageCode === 'ko' ? '스타일·공정 확인' : languageCode === 'vi' ? 'Xem kiểu dáng / công đoạn' : 'View styles / processes'}</Button>
         </Stack>
-        <Stack spacing={1}>{quantityReviewDraft.items.map(item => <Paper key={item.key} variant="outlined" sx={{ p: 1.5 }}>
-          <Typography fontWeight={700}>{item.orderNumber} / {item.styleName} / {item.processCode} {item.processName}</Typography>
-          <Typography variant="body2">{languageCode === 'ko' ? ({ UNISEX: '남녀 공용', MALE_ONLY: '남성 전용', FEMALE_ONLY: '여성 전용' }[item.genderScope]) : languageCode === 'vi' ? ({ UNISEX: 'Dùng chung nam/nữ', MALE_ONLY: 'Chỉ nam', FEMALE_ONLY: 'Chỉ nữ' }[item.genderScope]) : ({ UNISEX: 'Shared male/female', MALE_ONLY: 'Male only', FEMALE_ONLY: 'Female only' }[item.genderScope])}</Typography>
-          <Typography variant="body2">{languageCode === 'ko' ? '대상 수량 / 기존 실적 + 이번 입력 = 합계 / 초과' : languageCode === 'vi' ? 'Mục tiêu / Đã có + Nhập lần này = Tổng / Vượt' : 'Target / Previous + This import = Total / Excess'}: {item.target} / {item.previous} + {item.incoming} = {item.total} / +{item.excess}</Typography>
-          <Typography variant="body2" color="text.secondary">{(item.history || []).map(row => `${row.date}: ${row.quantity}`).join(', ')}</Typography>
-          <FormControlLabel label={languageCode === 'ko' ? '이상 없음 — 초과 생산이 맞습니다' : languageCode === 'vi' ? 'Không có vấn đề — xác nhận sản xuất vượt' : 'No issue — excess production is correct'} control={<Checkbox disabled={importing} checked={quantityReviewDraft.approvedQuantityKeys.includes(item.key)} onChange={(event) => setQuantityReviewDraft({ ...quantityReviewDraft, approvedQuantityKeys: event.target.checked ? [...quantityReviewDraft.approvedQuantityKeys, item.key] : quantityReviewDraft.approvedQuantityKeys.filter(key => key !== item.key) })} />} />
-        </Paper>)}</Stack>
+        <QuantityImportReviewTable rows={quantityReviewDraft.comparisons || []} items={quantityReviewDraft.items} approvedKeys={quantityReviewDraft.approvedQuantityKeys} disabled={importing} languageCode={languageCode} onToggle={(key, checked) => setQuantityReviewDraft({ ...quantityReviewDraft, approvedQuantityKeys: checked ? [...quantityReviewDraft.approvedQuantityKeys, key] : quantityReviewDraft.approvedQuantityKeys.filter(value => value !== key) })} />
         <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
           <Button variant="contained" disabled={importing || !quantityReviewDraft.items.length || quantityReviewDraft.items.some(item => !quantityReviewDraft.approvedQuantityKeys.includes(item.key))} onClick={saveReviewedImport}>{languageCode === 'ko' ? '확인 후 저장' : languageCode === 'vi' ? 'Xác nhận và lưu' : 'Confirm and save'}</Button>
           <Button disabled={importing} onClick={() => setQuantityReviewDraft(null)}>{languageCode === 'ko' ? '가져오기 취소' : languageCode === 'vi' ? 'Hủy nhập' : 'Cancel import'}</Button>

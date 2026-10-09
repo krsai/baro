@@ -11567,17 +11567,26 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
     invalidWorkerRecordIndex: normalizedRecords.invalidWorkerRecordIndex,
   };
 };
-const appendWorkLogQuantityRemark = async ({ db, orgId, records, note, excludedWorkLogId = null, reviewItems = null, approvedBy = null, approvedAt = null }: any) => {
+const appendWorkLogQuantityRemark = async ({ db, orgId, records, note, excludedWorkLogId = null, reviewItems = null, comparisonItems = null, approvedBy = null, approvedAt = null }: any) => {
   const cleaned = String(note || "").replace(/\n?\[생산 수량 확인\][\s\S]*?\[\/생산 수량 확인\]/g, '').trim();
   const planIds = collectWorkRecordAssignmentPlanIds(records);
   if (!planIds.length) return cleaned || null;
   const plans = await db.assignmentPlan.findMany({ where: { orgId, id: { in: planIds } },
-    select: { id: true, styleId: true, workOrderId: true, style: { select: { name: true } }, workOrder: { select: { orderNumber: true } } } });
+    select: { id: true, styleId: true, workOrderId: true, assignmentCtSnapshot: true, style: { select: { name: true } }, workOrder: { select: { orderNumber: true } } } });
   const orders = [...new Set(plans.map((p: any) => p.workOrderId).filter(Boolean))] as number[];
   if (!orders.length) return cleaned || null;
   // Serializes cumulative remarks with other writes on the same orders.
   await db.$queryRawUnsafe('SELECT id FROM "WorkOrder" WHERE "orgId"=$1 AND id=ANY($2::int[]) ORDER BY id FOR UPDATE', orgId, orders);
   const processIds = [...new Set(records.map((r: any) => r.styleProcessId).filter(Boolean))];
+  const requiredIdsByPlan = new Map<number, number[]>();
+  const completeRequiredPlanIds = new Set<number>();
+  if (Array.isArray(comparisonItems)) plans.forEach((plan: any) => {
+    const snapshot = resolveNormalizedAssignmentCtSnapshot(plan);
+    const ids = ensureArray(snapshot?.processes).map((p: any) => toPositiveIntOrNull(p.styleProcessId)).filter(Boolean) as number[];
+    requiredIdsByPlan.set(plan.id, ids);
+    if (ids.length > 0 && ids.length === ensureArray(snapshot?.processes).length) completeRequiredPlanIds.add(plan.id);
+    ids.forEach(id => { if (!processIds.includes(id)) processIds.push(id); });
+  });
   const processes = await db.styleProcess.findMany({ where: { orgId, id: { in: processIds } }, select: { id: true, processCode: true, processName: true, genderScope: true } });
   const quantities = await loadStyleGenderQuantityMapForWorkOrderIds(orders, db);
   const existingWhere = { orgId, assignmentPlan: { workOrderId: { in: orders } }, styleProcessId: { in: processIds }, ...(excludedWorkLogId ? { workLogId: { not: excludedWorkLogId } } : {}) };
@@ -11594,6 +11603,12 @@ const appendWorkLogQuantityRemark = async ({ db, orgId, records, note, excludedW
     group.quantity += Number(r.quantity || 0);
     incoming.set(k, group);
   });
+  if (Array.isArray(comparisonItems)) plans.forEach((plan: any) => {
+    (requiredIdsByPlan.get(plan.id) || []).forEach(id => {
+      const process = processes.find((p: any) => p.id === id);
+      if (process && !incoming.has(key(plan.workOrderId, plan.styleId, id))) incoming.set(key(plan.workOrderId, plan.styleId, id), { plan, process, quantity: 0 });
+    });
+  });
   const remarks: string[] = [];
   for (const [k, group] of incoming) {
     const history = [...employeeHistory, ...outsourcedHistory].filter((r: any) => key(r.assignmentPlan?.workOrderId, r.assignmentPlan?.styleId, r.styleProcessId) === k);
@@ -11603,13 +11618,14 @@ const appendWorkLogQuantityRemark = async ({ db, orgId, records, note, excludedW
     if (target.unspecified > 0 && group.process.genderScope !== "UNISEX") continue;
     const limit = resolveStyleProcessRowApplicableQuantity(group.process, target);
     const total = previous + group.quantity;
+    if (Array.isArray(comparisonItems)) comparisonItems.push({ requiredSetComplete: plans.filter((p: any) => p.workOrderId === group.plan.workOrderId && p.styleId === group.plan.styleId).every((p: any) => completeRequiredPlanIds.has(p.id) && (requiredIdsByPlan.get(p.id) || []).every(id => processes.some((process: any) => process.id === id))), orderId: group.plan.workOrderId, styleId: group.plan.styleId, styleProcessId: group.process.id, orderNumber: group.plan.workOrder?.orderNumber, styleName: group.plan.style?.name, processCode: group.process.processCode, processName: group.process.processName, genderScope: group.process.genderScope, target: limit, orderQuantity: target.total, previous, incoming: group.quantity, total, difference: total - limit, required: plans.some((p: any) => p.workOrderId === group.plan.workOrderId && p.styleId === group.plan.styleId && (requiredIdsByPlan.get(p.id) || []).includes(group.process.id)) });
     if (group.quantity <= 0 || total <= limit) continue;
     const byDate = new Map<string, number>();
     history.forEach((r: any) => { const date = r.workLog?.displayDate || ""; byDate.set(date, (byDate.get(date) || 0) + Number(r.quantity || 0)); });
     const dates = [...byDate].sort(([a], [b]) => a.localeCompare(b)).map(([date, quantity]) => `${date} ${quantity}개`).join(', ');
     const reviewKey = JSON.stringify([k, group.process.genderScope, limit, previous, group.quantity, dates]);
     const description = `주문 ${group.plan.workOrder?.orderNumber || ""} / 스타일 ${group.plan.style?.name || ""} / 공정 ${group.process.processCode} ${group.process.processName || ""}: 기존 ${previous}개${dates ? ` (${dates})` : ""} + 이번 ${group.quantity}개 = ${total}개, 주문 대상 ${limit}개 대비 ${total - limit}개 초과.`;
-    if (Array.isArray(reviewItems)) reviewItems.push({ key: reviewKey, assignmentPlanIds: records.filter((r: any) => { const plan = plans.find((p: any) => p.id === r.assignmentPlanId); return plan?.workOrderId === group.plan.workOrderId && plan?.styleId === group.plan.styleId && r.styleProcessId === group.process.id; }).map((r: any) => r.assignmentPlanId), styleProcessId: group.process.id, orderNumber: group.plan.workOrder?.orderNumber, styleName: group.plan.style?.name, processCode: group.process.processCode, processName: group.process.processName, genderScope: group.process.genderScope, previous, incoming: group.quantity, target: limit, total, excess: total - limit, history: [...byDate].map(([date, quantity]) => ({ date, quantity })), description });
+    if (Array.isArray(reviewItems)) reviewItems.push({ key: reviewKey, orderId: group.plan.workOrderId, styleId: group.plan.styleId, assignmentPlanIds: records.filter((r: any) => { const plan = plans.find((p: any) => p.id === r.assignmentPlanId); return plan?.workOrderId === group.plan.workOrderId && plan?.styleId === group.plan.styleId && r.styleProcessId === group.process.id; }).map((r: any) => r.assignmentPlanId), styleProcessId: group.process.id, orderNumber: group.plan.workOrder?.orderNumber, styleName: group.plan.style?.name, processCode: group.process.processCode, processName: group.process.processName, genderScope: group.process.genderScope, previous, incoming: group.quantity, target: limit, total, excess: total - limit, history: [...byDate].map(([date, quantity]) => ({ date, quantity })), description });
     remarks.push(`${description} ${approvedBy ? `이상 없음 승인: ${approvedBy} / ${approvedAt}.` : "초과 생산으로 저장함."}`);
   }
   // Rebuild just this automatic section when editing; user notes remain intact.
@@ -26802,11 +26818,13 @@ app.post("/work-logs/import", async (req, res) => {
         // Review the whole file against current history while holding the order
         // locks. A changed target/history invalidates an earlier checkbox.
         const reviewItems: any[] = [];
+        const comparisonItems: any[] = [];
         await appendWorkLogQuantityRemark({ db: tx, orgId: organization.id,
-          records: validatedGroups.flatMap(group => group.normalized.records), note: null, reviewItems });
+          records: validatedGroups.flatMap(group => group.normalized.records), note: null, reviewItems, comparisonItems });
         const approvedKeys = new Set(ensureArray(req.body?.approvedQuantityKeys).filter(key => typeof key === "string"));
         if (reviewItems.some(item => !approvedKeys.has(item.key))) {
-          throw Object.assign(new Error("Quantity review required"), { quantityReviewItems: reviewItems });
+          throw Object.assign(new Error("Quantity review required"), { quantityReviewItems: reviewItems,
+            quantityComparisonItems: comparisonItems.filter(row => reviewItems.some(item => item.orderId === row.orderId && item.styleId === row.styleId)) });
         }
         const approvedAt = new Date().toISOString();
         if (reviewItems.length && !updatedBy) throw createHttpError(403, "An authenticated reviewer is required.");
@@ -26862,7 +26880,7 @@ app.post("/work-logs/import", async (req, res) => {
     createdWorkLogIds = await createImportTransaction(true);
   } catch (error) {
     if (Array.isArray((error as any)?.quantityReviewItems)) {
-      return res.json({ ok: true, requiresQuantityReview: true, quantityReviewItems: (error as any).quantityReviewItems });
+      return res.json({ ok: true, requiresQuantityReview: true, quantityReviewItems: (error as any).quantityReviewItems, quantityComparisonItems: (error as any).quantityComparisonItems });
     }
     if (!isWorkLogCoverageMissingColumnError(error)) throw error;
     console.warn(
