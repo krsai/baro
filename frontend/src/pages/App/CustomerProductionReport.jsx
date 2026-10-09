@@ -10,11 +10,12 @@ import AppPageContainer from '../../components/AppPageContainer';
 import PageToolbar from '../../components/PageToolbar';
 import SearchInput from '../../components/SearchInput';
 import QuantityReviewDrawer from '../../components/QuantityReviewDrawer';
+import PriorCompletionDialog from '../../components/PriorCompletionDialog';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
 import useWorkspaceRefreshOnEvent from '../../hooks/useWorkspaceRefreshOnEvent';
-import { WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
+import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
 
 const TEXT = {
   ko: {
@@ -167,7 +168,7 @@ const ReportProgressCell = ({ percent }) => (
 );
 
 const CustomerProductionReport = () => {
-  const { activeOrgId } = useAuth();
+  const { activeOrgId, activeOrgRole } = useAuth();
   const { languageCode } = useLanguage();
   const text = TEXT[languageCode] || TEXT.en;
   const [data, setData] = useState({ customers: [], rows: [], generatedAt: null });
@@ -179,6 +180,7 @@ const CustomerProductionReport = () => {
   const [contextMenuState, setContextMenuState] = useState(null);
   const [activeQuantityReviewRow, setActiveQuantityReviewRow] = useState(null);
   const [dailyProducedRow, setDailyProducedRow] = useState(null);
+  const [priorCompletionRow, setPriorCompletionRow] = useState(null);
   const scheduleCaptureRef = useRef(null);
   const [copying, setCopying] = useState(false);
   const [copyResult, setCopyResult] = useState(null);
@@ -222,8 +224,11 @@ const CustomerProductionReport = () => {
         skipGlobalLoading: true, skipCache: true, forceRefresh: true,
       });
       setData({ customers: result?.customers || [], rows: result?.rows || [], generatedAt: result?.generatedAt || null });
+      setDailyProducedRow(current => current ? groupRowsByOrder(result?.rows || []).find(row => row.orderId === current.orderId && row.customerId === current.customerId) || null : null);
+      return result;
     } catch (loadError) {
       setError(loadError?.message || text.loadError);
+      return null;
     } finally { setLoading(false); }
   }, [activeOrgId, text.loadError]);
 
@@ -388,6 +393,10 @@ const CustomerProductionReport = () => {
               </Box>
             </Stack>;
           })()}
+        {(dailyProducedRow?.styles || []).some(row => row.priorQuantity > 0) && <Box sx={{ mt: 2 }}>
+          <Typography variant="subtitle2">{languageCode === 'ko' ? '이전 완료 내역' : languageCode === 'vi' ? 'Sản lượng hoàn thành trước' : 'Previous completion'}</Typography>
+          {(dailyProducedRow?.styles || []).flatMap(row => (row.priorCompletions || []).filter(entry => !entry.canceledAt).map(entry => <Typography key={entry.id} variant="body2">{row.styleName || row.styleCode} · {fmt(entry.quantity)} · {entry.completedPeriod}{entry.completedPeriod.length === 7 ? languageCode === 'ko' ? ' (일자 미상)' : languageCode === 'vi' ? ' (không rõ ngày)' : ' (day unknown)' : ''}</Typography>))}
+        </Box>}
         <Box sx={{ mt: 3 }}>
           <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>{text.progress}</Typography>
           <TableContainer component={Paper} variant="outlined">
@@ -402,9 +411,9 @@ const CustomerProductionReport = () => {
                 </TableRow>
                 {(dailyProducedRow?.styles || []).map((styleRow) => <TableRow key={styleRow.styleId} onContextMenu={(event) => handleRowContextMenu(event, styleRow)}>
                   <TableCell>{styleRow.styleName || styleRow.styleCode || '-'}</TableCell>
-                  <TableCell align="right">{fmt(styleRow.producedQuantity)}/{fmt(styleRow.orderedQuantity)}</TableCell>
+                  <TableCell align="right">{fmt(styleRow.producedQuantity)}/{fmt(styleRow.orderedQuantity)}{styleRow.priorQuantity > 0 && <Typography variant="caption" display="block">{languageCode === 'ko' ? '이전 완료' : languageCode === 'vi' ? 'Hoàn thành trước' : 'Previous completion'} {fmt(styleRow.priorQuantity)}</Typography>}</TableCell>
                   <TableCell><ReportProgressCell percent={styleRow.progressPercent} /></TableCell>
-                  <TableCell><ReportStatusChip status={styleRow.status} languageCode={languageCode} /></TableCell>
+                  <TableCell>{['ADMIN', 'OPERATOR', 'ACCOUNTANT'].includes(activeOrgRole) ? <Button size="small" onClick={() => setPriorCompletionRow(styleRow)}><ReportStatusChip status={styleRow.status} languageCode={languageCode} /></Button> : <ReportStatusChip status={styleRow.status} languageCode={languageCode} />}</TableCell>
                 </TableRow>)}
               </TableBody>
             </Table>
@@ -413,6 +422,8 @@ const CustomerProductionReport = () => {
         </Box>
       </DialogContent>
     </Dialog>
+    {priorCompletionRow && <PriorCompletionDialog rows={dailyProducedRow?.styles || [priorCompletionRow]} selectedStyleId={priorCompletionRow.styleId} orgId={activeOrgId} languageCode={languageCode}
+      onClose={() => setPriorCompletionRow(null)} onSaved={async () => { const refreshed = await load(); if (!refreshed) throw new Error('REPORT_REFRESH_FAILED'); emitWorkspaceDataChanged({ orgId: activeOrgId, topics: [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD] }); }} />}
   </AppPageContainer>;
 };
 

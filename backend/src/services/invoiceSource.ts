@@ -1,4 +1,5 @@
 import { invoiceProducedQuantity } from "./invoiceOrderProgress";
+import { summarizePriorProduction } from './priorProductionCompletion';
 
 // Read-only invoice preparation. Production is known by style, never by size.
 export const buildInvoiceSource = (order: any, plans: any[], progressRows: any[], relationship: any) => {
@@ -12,14 +13,17 @@ export const buildInvoiceSource = (order: any, plans: any[], progressRows: any[]
     const producedQuantities = rows.map((row) => invoiceProducedQuantity(row.progress));
     const ready = Boolean(styleId) && rows.length > 0 && rows.every((row) =>
       row.progress?.isCompleted && !row.progress?.hasInvalidProcessReferences && !row.progress?.isProgressUnknown);
+    const orderedQuantity = styleItems.reduce((sum: number, item: any) => sum + item.totalQuantity, 0);
+    const historical = summarizePriorProduction(orderedQuantity, rows.map(row => row.progress).filter(Boolean), (order.priorCompletions || []).filter((entry: any) => entry.styleId === styleId));
     const override = relationship?.salesBucketOverrides?.find((row: any) => row.styleId === styleId);
     const version = override?.quantityBucketSetVersion || relationship?.salesBucketSetVersion;
     return {
       styleId, code: styleItems[0]?.style?.code || '', name: styleItems[0]?.style?.name || '',
-      orderedQuantity: styleItems.reduce((sum: number, item: any) => sum + item.totalQuantity, 0),
-      producedQuantity: rows.length && producedQuantities.every((quantity) => quantity != null)
+      orderedQuantity,
+      priorQuantity: historical.priorQuantity,
+      producedQuantity: historical.priorQuantity > 0 ? historical.producedQuantity : rows.length && producedQuantities.every((quantity) => quantity != null)
         ? producedQuantities.reduce((sum: number, quantity) => sum + (quantity ?? 0), 0) : null,
-      ready,
+      ready: historical.priorQuantity > 0 ? historical.isCompleted : ready,
       assignments: rows.map((row) => ({ id: row.id, externalId: row.externalId,
         completed: Boolean(row.progress?.isCompleted),
         producedQuantity: invoiceProducedQuantity(row.progress),

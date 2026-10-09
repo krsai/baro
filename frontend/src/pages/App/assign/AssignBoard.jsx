@@ -2293,6 +2293,7 @@ const resolveAssignmentProgressState = ({
     progressPercent: clampPercentValue(rawWorkProgressPercent),
     workProgressPercent: rawWorkProgressPercent,
     producedQuantity: progressRow?.producedQuantity ?? assignment?.producedQuantity ?? null,
+    priorStyleCompletionQuantity: progressRow?.priorStyleCompletionQuantity ?? 0,
     completedAt:
       progressRow?.productionCompletedAt ??
       progressRow?.completedAt ??
@@ -7624,6 +7625,9 @@ const AssignBoard = () => {
                   </Typography>
                 </Paper>
 
+                {detailAssignment?.priorStyleCompletionQuantity > 0 && <Alert severity="info">
+                  {languageCode === 'ko' ? `이 주문·스타일의 이전 완료 수량: ${Number(detailAssignment.priorStyleCompletionQuantity).toLocaleString()}장. 주문·보고서에 합산되며 개별 배정 작업기록과는 별도입니다.` : languageCode === 'vi' ? `Sản lượng hoàn thành trước của đơn hàng/kiểu: ${Number(detailAssignment.priorStyleCompletionQuantity).toLocaleString()}. Được tính trong đơn hàng/báo cáo, tách biệt nhật ký phân công.` : `Previously completed for this order/style: ${Number(detailAssignment.priorStyleCompletionQuantity).toLocaleString()}. Included in the order/report, separate from this assignment's work records.`}
+                </Alert>}
                 {['MANUAL_PROGRESS_ADJUSTMENT', 'RECORD_OMISSION'].includes(detailAssignment?.completionReason) && (
                   <Alert severity="info">
                     {languageCode === 'ko'

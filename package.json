@@ -60,7 +60,9 @@
     "test:invoice-postgres": "npm --prefix backend run build && node scripts/invoice-postgres-integration.test.mjs",
     "test:invoice-browser": "node scripts/invoice-browser-acceptance.test.mjs",
     "test:invoice-credit-reduction": "npm --prefix backend run build && node --test scripts/invoice-credit-reduction.test.mjs",
-    "test:fk-identity": "node --test scripts/fk-identity-regression.test.mjs"
+    "test:fk-identity": "node --test scripts/fk-identity-regression.test.mjs",
+    "test:prior-production-completion": "npm --prefix backend run build && node --test scripts/prior-production-completion.test.mjs",
+    "test:prior-completion-browser": "node scripts/prior-completion-browser.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.15",

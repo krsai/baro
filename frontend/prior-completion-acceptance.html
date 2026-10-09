@@ -1,0 +1,14 @@
+<!doctype html><html><head><meta charset="UTF-8" /></head><body><div id="root"></div><script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import PriorCompletionDialog from '/src/components/PriorCompletionDialog.jsx';
+const languageCode = new URLSearchParams(location.search).get('lang') || 'ko';
+const rows = [
+  { workOrderId: 1, styleId: 1, styleName: 'AA2095', orderedQuantity: 400, producedQuantity: 400, priorQuantity: 0 },
+  { workOrderId: 1, styleId: 2, styleName: 'AM01622', orderedQuantity: 440, producedQuantity: 0, priorQuantity: 0 },
+  { workOrderId: 1, styleId: 3, styleName: 'AM02048', orderedQuantity: 200, producedQuantity: 0, priorQuantity: 0 },
+  { workOrderId: 1, styleId: 4, styleName: 'AP2137', orderedQuantity: 105, producedQuantity: 0, priorQuantity: 0 },
+];
+createRoot(document.getElementById('root')).render(React.createElement(PriorCompletionDialog, { rows, selectedStyleId: 2, orgId: 1, languageCode,
+ onSaved: async () => { document.documentElement.dataset.saved = 'true'; }, onClose: () => { document.documentElement.dataset.closed = 'true'; } }));
+</script></body></html>

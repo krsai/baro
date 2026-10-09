@@ -1,4 +1,5 @@
 // Compact, read-only projection of the existing assignment progress calculation.
+import { summarizePriorProduction } from './priorProductionCompletion';
 export function invoiceProducedQuantity(row: any): number | null {
   const completed = Boolean(row?.isCompleted);
   const known = row && (completed || (!row.isProgressUnknown && !row.hasInvalidProcessReferences));
@@ -34,6 +35,24 @@ export function invoiceOrderProgress(order: any, plans: any[], progress: any[]) 
   const known = assignments.length > 0 && assignments.every(row => row.producedQuantity != null);
   const producedQuantity = known ? assignments.reduce((sum, row) => sum + (row.producedQuantity ?? 0), 0) : null;
   const progressQuantity = known ? assignments.reduce((sum, row) => sum + (row.progressQuantity ?? 0), 0) : null;
+  const activePrior = (order.priorCompletions || []).filter((entry: any) => !entry.canceledAt);
+  if (activePrior.length && Array.isArray(order.workOrderItems)) {
+    const styles = new Map<number, number>();
+    order.workOrderItems.forEach((item: any) => styles.set(item.styleId, (styles.get(item.styleId) || 0) + item.totalQuantity));
+    let totalProduced = 0, totalProgress = 0, productionKnown = true;
+    for (const [styleId, quantity] of styles) {
+      const matchingPlans = plans.filter(plan => plan.workOrderId === order.id && plan.styleId === styleId);
+      const matchingProgress = matchingPlans.map(plan => byId.get(plan.externalId)).filter(Boolean);
+      const result = summarizePriorProduction(quantity, matchingProgress, activePrior.filter((entry: any) => entry.styleId === styleId));
+      if (result.priorQuantity < quantity && (matchingProgress.length !== matchingPlans.length || matchingProgress.some(row => invoiceProducedQuantity(row) == null))) productionKnown = false;
+      totalProduced += result.producedQuantity;
+      totalProgress += quantity * result.progressPercent / 100;
+    }
+    return { orderId: order.orderId, orderNumber: order.orderNumber, dueDate: order.dueDate,
+      totalQuantity: order.totalQuantity, assignments, producedQuantity: productionKnown ? totalProduced : null,
+      priorQuantity: activePrior.reduce((sum: number, entry: any) => sum + entry.quantity, 0),
+      progressPercent: productionKnown && order.totalQuantity > 0 ? Math.min(100, totalProgress / order.totalQuantity * 100) : null };
+  }
   return { orderId: order.orderId, orderNumber: order.orderNumber, dueDate: order.dueDate,
     totalQuantity: order.totalQuantity, assignments, producedQuantity,
     // Order progress includes unassigned quantity in its denominator. It is not

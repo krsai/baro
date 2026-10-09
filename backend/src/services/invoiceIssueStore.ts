@@ -160,7 +160,7 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
     if (!invoiceNumber || invoiceNumber.length > 200 || !Number.isFinite(Date.parse(content.fields?.date || ""))) fail("INVOICE_ISSUE_DOCUMENT_FIELDS_REQUIRED");
     const orders = await tx.workOrder.findMany({ where: { sellerOrgId, buyerOrgId: draft.buyerOrgId,
       orderId: { in: content.orders.map((row: any) => row.orderId) } },
-      include: { workOrderItems: { include: { style: true, color: true } }, buyerOrg: true, sellerOrg: true } });
+      include: { workOrderItems: { include: { style: true, color: true } }, priorCompletions: { where: { canceledAt: null } }, buyerOrg: true, sellerOrg: true } });
     if (orders.length !== content.orders.length) fail("INVOICE_SOURCE_CHANGED");
     for (const requested of content.orders) {
       const row = orders.find((order: any) => order.orderId === requested.orderId);

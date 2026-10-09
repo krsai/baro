@@ -1,4 +1,5 @@
 import { resolveStyleCategory, syncCategoryCopies } from './services/styleIdentity';
+import { priorCompletionInclude, registerPriorCompletion, cancelPriorCompletion, summarizePriorProduction } from './services/priorProductionCompletion';
 import { planOrderItemWrites } from "./utils/orderItemIdentity";
 import { styleAccessWhere, canManageStyle } from "./utils/styleOwnership";
 import { reconcileAssignmentCards } from "./utils/reconcileAssignmentCards";
@@ -799,6 +800,8 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "InvoiceDraftLine", columnName: "draftId" },
   { tableName: "InvoiceDraftLine", columnName: "workOrderItemId" },
   { tableName: "InvoiceDraftLine", columnName: "sourceItemId" },
+  { tableName: "PriorProductionCompletion", columnName: "createdByEmployeeId" },
+  { tableName: "PriorProductionCompletion", columnName: "reasonId" },
   { tableName: "InvoiceDraftLine", columnName: "lineKey" },
   { tableName: "Invoice", columnName: "revisionOfInvoiceId" },
   { tableName: "Invoice", columnName: "rootInvoiceId" },
@@ -8014,6 +8017,7 @@ const WORK_ORDER_PARTY_INCLUDE = {
 const WORK_ORDER_RESPONSE_INCLUDE = {
   ...WORK_ORDER_PARTY_INCLUDE,
   workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE,
+  priorCompletions: { include: priorCompletionInclude },
 };
 
 const resolveCurrencyIdOrThrow = async (
@@ -23805,6 +23809,8 @@ const buildAssignmentPlanProgressRows = async (
     return {
       id: plan.externalId,
       dbId: planId,
+      workOrderId: plan.workOrderId,
+      styleId: plan.styleId,
       factoryId: String(plan.factoryId),
       factoryName: factoryNameById.get(Number(plan.factoryId)) || "",
       // Phase E (AssignmentCard/AssignmentPlan FK+join redesign): orderNo/
@@ -24043,6 +24049,7 @@ const buildAssignmentPlanProgressRows = async (
     });
   });
 
+  const priorRows = await prisma.priorProductionCompletion.findMany({ where: { orgId, canceledAt: null, workOrderId: { in: plans.flatMap(plan => plan.workOrderId ? [plan.workOrderId] : []) } } });
   return rows.map((row) => {
     const {
       _factualStartDateKey: _factualStartDateKey,
@@ -24052,7 +24059,7 @@ const buildAssignmentPlanProgressRows = async (
       _originalEndDateKey: _originalEndDateKey,
       ...rest
     } = row;
-    return rest;
+    return { ...rest, priorStyleCompletionQuantity: priorRows.filter(entry => entry.workOrderId === row.workOrderId && entry.styleId === row.styleId).reduce((sum, entry) => sum + entry.quantity, 0) };
   });
 };
 
@@ -30292,6 +30299,33 @@ app.get("/order-parties", async (req, res) => {
   });
 });
 
+app.get("/prior-completion-reasons", async (req, res) => {
+  const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!access) return;
+  return res.json(await prisma.priorCompletionReason.findMany({ where: { isActive: true }, orderBy: { id: 'asc' } }));
+});
+app.post("/prior-production-completions", async (req, res) => {
+  const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!access) return;
+  const actorId = getCurrentRequestActorEmployeeId();
+  if (!actorId) return res.status(403).json({ error: 'ACTIVE_EMPLOYEE_REQUIRED' });
+  const entries = req.body?.entries;
+  if (!Array.isArray(entries) || entries.length < 1 || entries.length > 100) return res.status(400).json({ error: 'INVALID_PRIOR_COMPLETION' });
+  const saved = await prisma.$transaction(async tx => {
+    const result = [];
+    for (const entry of [...entries].sort((a, b) => a.workOrderId - b.workOrderId || a.styleId - b.styleId)) result.push(await registerPriorCompletion(tx, access.organization.id, actorId, entry));
+    return result;
+  }, { isolationLevel: 'Serializable' });
+  return res.json(saved);
+});
+app.post("/prior-production-completions/:id/cancel", async (req, res) => {
+  const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!access) return;
+  const actorId = getCurrentRequestActorEmployeeId();
+  if (!actorId) return res.status(403).json({ error: 'ACTIVE_EMPLOYEE_REQUIRED' });
+  return res.json(await cancelPriorCompletion(prisma, access.organization.id, actorId, req.params.id, req.body?.note));
+});
+
 app.get("/orders", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {
@@ -30320,6 +30354,7 @@ app.get("/orders", async (req, res) => {
   }) : [];
   const assignedOrderIds = new Set<number>();
   const productionOrderIds = new Set<number>();
+  orders.forEach(order => { if ((order.priorCompletions || []).length > 0) productionOrderIds.add(order.id); });
   for (const plan of deletionPlans) {
     for (const id of [plan.workOrderId, plan.assignmentCard?.workOrderId]) {
       if (id == null) continue;
@@ -30329,7 +30364,7 @@ app.get("/orders", async (req, res) => {
   }
   const orderPlans = orders.length ? await prisma.assignmentPlan.findMany({
     where: { orgId: organization.id, workOrderId: { in: orders.map((order) => order.id) } },
-    select: { externalId: true, workOrderId: true, style: { select: { name: true } } },
+    select: { externalId: true, workOrderId: true, styleId: true, style: { select: { name: true } } },
   }) : [];
   const orderProgressRows = orderPlans.length
     ? await buildAssignmentPlanProgressRows(organization.id, orderPlans.map((plan) => plan.externalId))
@@ -30531,6 +30566,9 @@ app.get("/customer-production-reports", async (req, res) => {
                 ? "IN_PROGRESS"
                 : "SCHEDULED";
 
+      const priorCompletions = order.priorCompletions.filter((entry) => entry.styleId === item.styleId);
+      const historical = summarizePriorProduction(item.orderedQuantity, progress, priorCompletions);
+
       rows.push({
         customerId: order.buyerOrgId ?? order.customerId ?? null,
         customerName: resolveOptionalString(
@@ -30540,6 +30578,7 @@ app.get("/customer-production-reports", async (req, res) => {
         customerNameKo: resolveOptionalString(order?.buyerOrg?.nameKo, null),
         customerNameVi: resolveOptionalString(order?.buyerOrg?.nameVi, null),
         orderId: order.orderId,
+        workOrderId: order.id,
         orderNumber: order.orderNumber,
         orderStatus: order.status,
         dueDate: normalizeDateKey(order.dueDate),
@@ -30549,10 +30588,12 @@ app.get("/customer-production-reports", async (req, res) => {
         orderedQuantity: item.orderedQuantity,
         assignedQuantity,
         unassignedQuantity: Math.max(0, item.orderedQuantity - assignedQuantity),
-        producedQuantity,
+        producedQuantity: historical.priorQuantity > 0 ? historical.producedQuantity : producedQuantity,
+        priorQuantity: historical.priorQuantity,
+        priorCompletions,
         dailyProducedQuantities,
-        progressPercent: reportedProgressPercent,
-        status,
+        progressPercent: historical.priorQuantity > 0 ? historical.progressPercent : reportedProgressPercent,
+        status: historical.priorQuantity > 0 ? historical.isCompleted ? 'COMPLETED' : 'IN_PROGRESS' : status,
         firstWorkDate,
         lastWorkDate,
         estimatedCompletionDate,
@@ -30835,13 +30876,14 @@ app.get("/invoices/orders", async (req, res) => {
         : billingHistory === "EXISTS" ? { invoiceOrders: { some: { invoice: { sellerOrgId: access.organization.id, status: "ISSUED" } } } } : {}) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: page * 50, take: 51,
     select: { id: true, orderId: true, orderNumber: true, totalQuantity: true, dueDate: true,
+      workOrderItems: true, priorCompletions: { where: { canceledAt: null } },
       buyerOrg: { select: { id: true, name: true } } },
   });
   res.setHeader("Cache-Control", "no-store");
   const visible = orders.slice(0, 50);
   const plans = visible.length ? await prisma.assignmentPlan.findMany({
     where: { orgId: access.organization.id, workOrderId: { in: visible.map(order => order.id) } },
-    select: { externalId: true, workOrderId: true, style: { select: { name: true } } },
+    select: { externalId: true, workOrderId: true, styleId: true, style: { select: { name: true } } },
   }) : [];
   const progress = plans.length ? await buildAssignmentPlanProgressRows(access.organization.id, plans.map(plan => plan.externalId)) : [];
   const issuedRows = visible.length ? await prisma.invoiceOrder.findMany({ where: { workOrderId: { in: visible.map(order => order.id) },
@@ -30873,7 +30915,7 @@ app.get(["/invoices/order-source/:orderId", "/orders/:orderId/invoice-source"], 
   const order = await prisma.workOrder.findFirst({
     where: { orderId: String(req.params.orderId), sellerOrgId: organization.id,
       ...(buyerOrgId !== null ? { buyerOrgId } : {}) },
-    include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE, buyerOrg: true, sellerOrg: true },
+    include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE, priorCompletions: { where: { canceledAt: null } }, buyerOrg: true, sellerOrg: true },
   });
   if (!order) return res.status(404).json({ error: "seller order not found" });
   const [plans, relationship] = await Promise.all([
@@ -30959,6 +31001,7 @@ app.delete("/orders/:orderId", async (req, res) => {
       ] }, select: { id: true },
     });
     if (plan) throw createHttpError(409, "ORDER_ASSIGNMENT_REVIEW: order has assignments");
+    if (await tx.priorProductionCompletion.count({ where: { workOrderId: current.id } })) throw createHttpError(409, 'ORDER_PRIOR_COMPLETION_HISTORY');
     // WorkOrder deletion would SET NULL on these cards, leaving an orphan pool.
     // The assignment guard above and this cleanup share the Serializable Tx.
     await tx.assignmentCard.deleteMany({ where: { workOrderId: current.id } });
@@ -32077,6 +32120,7 @@ const deleteUnusedStyle = async (db: any, styleId: number) => {
   return db.$transaction(async (tx: any) => {
     // Serialize deletion with FK writes before inspecting live references.
     await tx.$queryRawUnsafe('SELECT id FROM "Style" WHERE id=$1 FOR UPDATE', styleId);
+    if (await tx.priorProductionCompletion.count({ where: { styleId } })) throw createHttpError(409, 'STYLE_PRIOR_COMPLETION_HISTORY');
     const work = await tx.workRecord.findFirst({ where: { styleId }, select: { id: true } });
     const outsourced = await tx.outsourcedWorkRecord.findFirst({ where: { styleId }, select: { id: true } });
     if (work || outsourced) throw createHttpError(409, "작업기록이 존재해서 삭제할 수 없습니다.");

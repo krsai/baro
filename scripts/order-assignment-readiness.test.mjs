@@ -102,13 +102,13 @@ test('retired manual lock endpoint never invokes the old assignment quantity/ST 
   assert.equal(status, 410); assert.equal(response.error, 'ORDER_MANUAL_LOCK_RETIRED');
 });
 
-function deletion({ assigned = false, stale = false, failCards = false, conflict = false } = {}) {
+function deletion({ assigned = false, historical = false, stale = false, failCards = false, conflict = false } = {}) {
   let handler, committed = false, deleted = false;
   const existing = { id: 1, updatedAt: new Date('2026-09-17'), buyerOrgId: 8, sellerOrgId: 7 };
   const tx = {
     assignmentCard: { deleteMany: async ({ where }) => {
       assert.deepEqual(where, { workOrderId: 1 }); assert.equal(deleted, false);
-    } },
+    } }, priorProductionCompletion: { count: async () => historical ? 1 : 0 },
     workOrder: {
       findFirst: async () => ({ ...existing, updatedAt: stale ? new Date(0) : existing.updatedAt }),
       delete: async () => { deleted = true; },
@@ -148,6 +148,12 @@ test('order deletion commits with both party cards or fails atomically on rebuil
     const app = deletion(options); await assert.rejects(app.run(), /card failure|STALE_EDIT/);
     assert.equal(app.state().committed, false);
   }
+});
+
+test('order deletion preserves prior completion history even without assignments', async () => {
+  const app = deletion({ historical: true });
+  await assert.rejects(app.run(), /ORDER_PRIOR_COMPLETION_HISTORY/);
+  assert.deepEqual(app.state(), { committed: false, deleted: false });
 });
 
 test('frontend fails closed on absent readiness and refreshes saved orders through dirty-tab protection', () => {

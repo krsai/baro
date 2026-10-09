@@ -255,9 +255,10 @@ test('AT source lookup isolates manufacturers sharing a customer',()=>{
 
 test('unused style deletes editable prices atomically and rejects orders, production and assignments', async()=>{
   const {deleteUnusedStyle:remove}=load(backend,['deleteUnusedStyle'],{createHttpError:(status,message)=>Object.assign(new Error(message),{status})});
-  for (const blocked of [null,'workRecord','outsourcedWorkRecord','workOrderItem','assignmentPlan']) {
+  for (const blocked of [null,'workRecord','outsourcedWorkRecord','workOrderItem','assignmentPlan','priorProductionCompletion']) {
     const calls=[];
     const tx={$queryRawUnsafe:async()=>calls.push('lock')};
+    tx.priorProductionCompletion={count:async()=>blocked==='priorProductionCompletion'?1:0};
     for(const model of ['workRecord','outsourcedWorkRecord','workOrderItem','assignmentPlan']) tx[model]={findFirst:async()=>model===blocked?{id:1,workOrder:{orderId:'ORDER'}}:null};
     tx.customerSalesPriceList={deleteMany:async()=>calls.push('prices')};
     tx.style={delete:async()=>calls.push('style')};

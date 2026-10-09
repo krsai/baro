@@ -457,6 +457,8 @@ model Warehouse {
 
 
 model Employee {
+  priorCompletions PriorProductionCompletion[] @relation("PriorCompletionCreator")
+  canceledPriorCompletions PriorProductionCompletion[] @relation("PriorCompletionCanceler")
   id                  Int            @id @default(autoincrement())
   orgId               Int
   email               String?
@@ -572,6 +574,7 @@ model Employee {
   @@index([email])
   @@index([status])
   @@index([orgId, status])
+  @@unique([id, orgId])
 }
 
 model EmployeeGradeSet {
@@ -958,6 +961,7 @@ model AttrProcess {
 }
 
 model Style {
+  priorCompletions PriorProductionCompletion[]
   id                     Int      @id @default(autoincrement())
   /// Authoritative data owner; always a manufacturer.
   orgId                  Int
@@ -1013,6 +1017,7 @@ model Style {
   @@index([orgId])
   @@index([timeBucketSetVersionId])
   @@index([customerOrgId])
+  @@unique([id, orgId])
 }
 
 /// Immutable migration evidence; original entities may later be deleted.
@@ -1257,6 +1262,7 @@ model StyleProcessAtObservation {
 }
 
 model WorkOrder {
+  priorCompletions PriorProductionCompletion[]
   quantityChanges OrderQuantityChange[]
   invoiceDraftOrders InvoiceDraftOrder[]
   invoiceOrders InvoiceOrder[]
@@ -1307,6 +1313,40 @@ model WorkOrder {
   @@index([orgId])
   @@index([orgId, orderNumber])
   @@index([invoiceFinalLockInvoiceId])
+  @@unique([id, orgId])
+}
+
+model PriorCompletionReason {
+  id Int @id @default(autoincrement())
+  code String @unique
+  nameKo String
+  nameEn String
+  nameVi String
+  isActive Boolean @default(true)
+  completions PriorProductionCompletion[]
+}
+
+model PriorProductionCompletion {
+  id String @id @default(cuid())
+  orgId Int
+  workOrderId Int
+  styleId Int
+  quantity Int
+  completedPeriod String
+  reasonId Int
+  clientKey String
+  createdByEmployeeId Int
+  createdAt DateTime @default(now())
+  canceledAt DateTime?
+  canceledByEmployeeId Int?
+  cancellationNote String?
+  workOrder WorkOrder @relation(fields: [workOrderId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
+  style Style @relation(fields: [styleId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
+  reason PriorCompletionReason @relation(fields: [reasonId], references: [id], onDelete: Restrict)
+  createdByEmployee Employee @relation("PriorCompletionCreator", fields: [createdByEmployeeId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
+  canceledByEmployee Employee? @relation("PriorCompletionCanceler", fields: [canceledByEmployeeId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([orgId, clientKey])
+  @@index([workOrderId, styleId, canceledAt])
 }
 
 model OutsourcingServiceType {
