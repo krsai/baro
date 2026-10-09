@@ -35,17 +35,17 @@ export default function QuantityImportReviewTable({ rows, items, approvedKeys, o
   const text = LABELS[languageCode] || LABELS.en;
   const fmt = value => Number(value || 0).toLocaleString();
   const difference = value => value === 0 ? text.equal : `${fmt(Math.abs(value))}${value > 0 ? text.excess : text.shortage}`;
-  const historyCell = (quantity, history) => <Stack spacing={0.25} alignItems="flex-end">
-    <Typography variant="body2" fontWeight={600}>{fmt(quantity)}</Typography>
-    {summarizeProductionMonths(history).map(item => <Typography key={item.month} variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>{item.month || '—'}: {fmt(item.quantity)}</Typography>)}
+  const historyCell = (quantity, history) => <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="baseline" sx={{ whiteSpace: 'nowrap' }}>
+    <Typography component="span" sx={{ fontSize: 12, fontWeight: 600 }}>{fmt(quantity)}</Typography>
+    {summarizeProductionMonths(history).map(item => <Typography component="span" key={item.month} color="text.secondary" sx={{ fontSize: 10 }}>{item.month || '—'}: {fmt(item.quantity)}</Typography>)}
   </Stack>;
-  return <Stack spacing={2}>{groupQuantityComparison(rows).map(group => <Paper key={group.key} variant="outlined" sx={{ overflow: 'hidden' }}>
-    <Stack spacing={0.5} sx={{ p: 1.5 }}>
-      <Typography fontWeight={700}>{group.orderNumber} / {group.styleName}</Typography>
-      <Typography variant="body2" fontWeight={600}>{group.finishedQuantity == null ? (group.hasRequired ? text.unknown : text.partial) : `${text.finished}: ${fmt(group.finishedQuantity)} / ${fmt(group.orderQuantity)} — ${difference(group.finishedQuantity - group.orderQuantity)}`}</Typography>
+  return <Stack spacing={1}>{groupQuantityComparison(rows).map(group => <Paper key={group.key} variant="outlined" sx={{ overflow: 'hidden' }}>
+    <Stack spacing={0.25} sx={{ px: 1, py: 0.75 }}>
+      <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{group.orderNumber} / {group.styleName}</Typography>
+      <Typography sx={{ fontSize: 11 }} color="text.secondary">{group.finishedQuantity == null ? (group.hasRequired ? text.unknown : text.partial) : `${text.finished}: ${fmt(group.finishedQuantity)} / ${fmt(group.orderQuantity)} — ${difference(group.finishedQuantity - group.orderQuantity)}`}</Typography>
       {group.finishedQuantity != null ? <Typography variant="caption" color="text.secondary">{text.basis}</Typography> : null}
     </Stack>
-    <TableContainer><Table size="small" sx={{ minWidth: 850 }}>
+    <TableContainer><Table size="small" sx={{ minWidth: 850, '& th, & td': { px: 1, py: 0.5, fontSize: 12, lineHeight: 1.4 }, '& th': { whiteSpace: 'nowrap' }, '& .MuiCheckbox-root': { p: 0.25 }, '& .MuiSvgIcon-root': { fontSize: 18 } }}>
       <TableHead><TableRow>{['process', 'scope', 'target', 'previous', 'incoming', 'total', 'difference', 'approve'].map((key, index) => <TableCell key={key} align={index >= 2 && index <= 5 ? 'right' : 'left'}>{text[key]}</TableCell>)}</TableRow></TableHead>
       <TableBody>{group.rows.map(row => {
         const review = items.find(item => item.styleProcessId === row.styleProcessId && item.orderId === row.orderId && item.styleId === row.styleId);
