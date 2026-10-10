@@ -168,6 +168,8 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  transactionCosts PartnerTransactionCost[] @relation("TransactionCostOwner")
+  vendorTransactionCosts PartnerTransactionCost[] @relation("TransactionCostVendor")
   /// Data ownership is separate from customer, employer and production scope.
   dataOwnerOrgId Int?
   dataOwner Organization? @relation("OrganizationDataOwner", fields: [dataOwnerOrgId], references: [id], onDelete: Restrict)
@@ -457,6 +459,7 @@ model Warehouse {
 
 
 model Employee {
+  transactionCosts PartnerTransactionCost[] @relation("TransactionCostCreator")
   priorCompletions PriorProductionCompletion[] @relation("PriorCompletionCreator")
   canceledPriorCompletions PriorProductionCompletion[] @relation("PriorCompletionCanceler")
   id                  Int            @id @default(autoincrement())
@@ -1262,6 +1265,7 @@ model StyleProcessAtObservation {
 }
 
 model WorkOrder {
+  transactionCosts PartnerTransactionCost[]
   priorCompletions PriorProductionCompletion[]
   quantityChanges OrderQuantityChange[]
   invoiceDraftOrders InvoiceDraftOrder[]
@@ -1350,6 +1354,9 @@ model PriorProductionCompletion {
 }
 
 model OutsourcingServiceType {
+  entryMode   String @default("PROCESS")
+  requiredFields String[] @default([])
+  transactionCosts PartnerTransactionCost[]
   id          Int      @id @default(autoincrement())
   ownerOrgId  Int
   code        String
@@ -1381,6 +1388,30 @@ model OrganizationOutsourcingServiceType {
 
   @@id([partnerOrgId, serviceTypeId])
   @@index([ownerOrgId, serviceTypeId])
+}
+
+model PartnerTransactionCost {
+  id String @id @default(uuid())
+  orgId Int
+  partnerOrgId Int
+  serviceTypeId Int
+  workOrderId Int?
+  transactionDate String
+  description String
+  amount Decimal @db.Decimal(18, 2)
+  currency String
+  details Json
+  clientKey String
+  createdByEmployeeId Int
+  createdAt DateTime @default(now())
+  organization Organization @relation("TransactionCostOwner", fields: [orgId], references: [id], onDelete: Restrict)
+  partner Organization @relation("TransactionCostVendor", fields: [partnerOrgId, orgId], references: [id, ownerOrgId], onDelete: Restrict, onUpdate: Restrict)
+  serviceType OutsourcingServiceType @relation(fields: [serviceTypeId, orgId], references: [id, ownerOrgId], onDelete: Restrict, onUpdate: Restrict)
+  workOrder WorkOrder? @relation(fields: [workOrderId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
+  createdByEmployee Employee @relation("TransactionCostCreator", fields: [createdByEmployeeId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([orgId, clientKey])
+  @@index([orgId, transactionDate])
+  @@index([orgId, partnerOrgId])
 }
 
 model WorkOrderItem {

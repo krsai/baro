@@ -62,6 +62,8 @@
     "test:invoice-credit-reduction": "npm --prefix backend run build && node --test scripts/invoice-credit-reduction.test.mjs",
     "test:fk-identity": "node --test scripts/fk-identity-regression.test.mjs",
     "test:prior-production-completion": "npm --prefix backend run build && node --test scripts/prior-production-completion.test.mjs",
+    "test:partner-cost-browser": "node scripts/partner-transaction-cost-browser.test.mjs",
+    "test:partner-transaction-cost": "npm --prefix backend run build && node --test scripts/partner-transaction-cost.test.mjs",
     "test:prior-completion-browser": "node scripts/prior-completion-browser.test.mjs"
   },
   "devDependencies": {

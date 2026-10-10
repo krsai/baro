@@ -1,3 +1,4 @@
+import { costInclude, historicalOutsourcingRows, registerPartnerCost, validateServiceDefinition } from './services/partnerTransactionCost';
 import { resolveStyleCategory, syncCategoryCopies } from './services/styleIdentity';
 import { priorCompletionInclude, registerPriorCompletion, cancelPriorCompletion, summarizePriorProduction } from './services/priorProductionCompletion';
 import { planOrderItemWrites } from "./utils/orderItemIdentity";
@@ -802,6 +803,9 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "InvoiceDraftLine", columnName: "sourceItemId" },
   { tableName: "PriorProductionCompletion", columnName: "createdByEmployeeId" },
   { tableName: "PriorProductionCompletion", columnName: "reasonId" },
+  { tableName: "PartnerTransactionCost", columnName: "createdByEmployeeId" },
+  { tableName: "OutsourcingServiceType", columnName: "entryMode" },
+  { tableName: "OutsourcingServiceType", columnName: "requiredFields" },
   { tableName: "InvoiceDraftLine", columnName: "lineKey" },
   { tableName: "Invoice", columnName: "revisionOfInvoiceId" },
   { tableName: "Invoice", columnName: "rootInvoiceId" },
@@ -8994,6 +8998,10 @@ const syncOutsourcedRecordRefs = async ({
           id: { in: outsourcingPartnerIds },
           type: "PROCESS_OUTSOURCING",
           isActive: true,
+          OR: [
+            { outsourcingServiceAssignments: { none: {} } },
+            { outsourcingServiceAssignments: { some: { serviceType: { entryMode: "PROCESS" } } } },
+          ],
         },
         select: { id: true, name: true },
       })
@@ -29142,7 +29150,9 @@ const resolvePartnerServiceTypeIds = async (
   partnerType: string
 ) => {
   if (partnerType !== "PROCESS_OUTSOURCING") return [];
-  const ids = Array.from(new Set(ensureArray(rawIds).map(toPositiveIntOrNull).filter(Boolean))) as number[];
+  if (rawIds == null) return [];
+  if (!Array.isArray(rawIds) || rawIds.some(id => typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0)) throw new Error("INVALID_OUTSOURCING_SERVICE_TYPE");
+  const ids = Array.from(new Set(rawIds)) as number[];
   if (ids.length === 0) return [];
   const rows = await tx.outsourcingServiceType.findMany({
     where: { ownerOrgId, id: { in: ids }, isActive: true },
@@ -29155,11 +29165,64 @@ const resolvePartnerServiceTypeIds = async (
 app.get("/outsourcing-service-types", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
+  const includeInactive = req.query.all === '1';
+  if (includeInactive && !(await requireSystemAdmin(req, res))) return;
   const rows = await prisma.outsourcingServiceType.findMany({
-    where: { ownerOrgId: organization.id, isActive: true },
+    where: { ownerOrgId: organization.id, ...(includeInactive ? {} : { isActive: true }) },
     orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
   });
   res.json(rows);
+});
+
+app.post("/outsourcing-service-types", async (req, res) => {
+  if (!(await requireSystemAdmin(req, res))) return;
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) return res.status(404).json({ error: 'organization not found' });
+  const data = validateServiceDefinition(req.body);
+  if (await prisma.outsourcingServiceType.findUnique({ where: { ownerOrgId_code: { ownerOrgId: organization.id, code: data.code } } })) return res.status(409).json({ error: 'SERVICE_CODE_EXISTS' });
+  return res.status(201).json(await prisma.outsourcingServiceType.create({ data: { ...data, ownerOrgId: organization.id } }));
+});
+app.put("/outsourcing-service-types/:id", async (req, res) => {
+  if (!(await requireSystemAdmin(req, res))) return;
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) return res.status(404).json({ error: 'organization not found' });
+  const id = toPositiveIntOrNull(req.params.id);
+  const existing = id ? await prisma.outsourcingServiceType.findFirst({ where: { id, ownerOrgId: organization.id } }) : null;
+  if (!existing) return res.status(404).json({ error: 'service not found' });
+  const data = validateServiceDefinition(req.body);
+  if (data.code !== existing.code || data.entryMode !== existing.entryMode) return res.status(409).json({ error: 'SERVICE_ENTRY_MODE_IMMUTABLE' });
+  return res.json(await prisma.outsourcingServiceType.update({ where: { id: existing.id }, data: { ...data, isActive: typeof req.body.isActive === 'boolean' ? req.body.isActive : existing.isActive } }));
+});
+
+app.get("/partner-transaction-costs", async (req, res) => {
+  const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!access) return;
+  return res.json(await prisma.partnerTransactionCost.findMany({ where: { orgId: access.organization.id }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }));
+});
+app.get("/outsourcing-requests", async (req, res) => {
+  const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!access) return;
+  const orgId = access.organization.id;
+  const [costs, records] = await Promise.all([
+    prisma.partnerTransactionCost.findMany({ where: { orgId }, include: costInclude }),
+    prisma.outsourcedWorkRecord.findMany({ where: { orgId }, include: {
+      outsourcingPartner: { select: { id: true, name: true } },
+      workLog: { select: { displayDate: true } },
+      assignmentPlan: { select: { workOrderId: true, workOrder: { select: { id: true, orderNumber: true } } } },
+      style: { select: { id: true, name: true } },
+      styleProcess: { select: { id: true, processName: true } },
+      createdByEmployee: { select: { id: true, name: true } },
+    } }),
+  ]);
+  return res.json([...costs.map(row => ({ ...row, sourceKind: 'COST_REQUEST' })), ...historicalOutsourcingRows(records)].sort((a, b) => b.transactionDate.localeCompare(a.transactionDate)));
+});
+app.post("/partner-transaction-costs", async (req, res) => {
+  const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!access) return;
+  const actorId = getCurrentRequestActorEmployeeId();
+  if (!actorId) return res.status(403).json({ error: 'ACTIVE_EMPLOYEE_REQUIRED' });
+  const row = await prisma.$transaction(tx => registerPartnerCost(tx, access.organization.id, actorId, req.body), { isolationLevel: 'Serializable' });
+  return res.status(201).json(row);
 });
 
 app.get("/business-partners", async (req, res) => {
@@ -29186,6 +29249,7 @@ app.post("/business-partners", async (req, res) => {
   const { organization } = accessContext;
   const name = resolveOptionalString(req.body?.name, null);
   const type = resolveOptionalString(req.body?.type, "PROCESS_OUTSOURCING");
+  if (type === "PROCESS_OUTSOURCING" && !(await requireSystemAdmin(req, res))) return;
   const contactName = resolveOptionalString(req.body?.contactName, null);
   const contactPhone = resolveOptionalString(req.body?.contactPhone, null);
   if (!name) return res.status(400).json({ ok: false, error: "partner name is required" });
@@ -29197,6 +29261,7 @@ app.post("/business-partners", async (req, res) => {
   try {
     row = await prisma.$transaction(async (tx) => {
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type || "");
+      if (type === 'PROCESS_OUTSOURCING' && serviceTypeIds.length === 0) throw new Error("INVALID_OUTSOURCING_SERVICE_TYPE");
       const partner = await tx.organization.upsert({
         where: { ownerOrgId_type_name: { ownerOrgId: organization.id, type: type as any, name } },
         create: { ownerOrgId: organization.id, name, type: type as any, representative: contactName, phone: contactPhone, createdBy: actor },
@@ -29229,6 +29294,11 @@ app.put("/business-partners/:id", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid partner type" });
   }
   const type = requestedType || existing.type;
+  if ((existing.type === "PROCESS_OUTSOURCING" || type === "PROCESS_OUTSOURCING") && !(await requireSystemAdmin(req, res))) return;
+  if (type !== existing.type && existing.type === 'PROCESS_OUTSOURCING') {
+    const [workCount, costCount] = await Promise.all([prisma.outsourcedWorkRecord.count({ where: { outsourcingPartnerId: id } }), prisma.partnerTransactionCost.count({ where: { partnerOrgId: id } })]);
+    if (workCount || costCount) return res.status(409).json({ error: 'PARTNER_HAS_TRANSACTION_HISTORY' });
+  }
   const contactName = resolveOptionalString(req.body?.contactName, null);
   const contactPhone = resolveOptionalString(req.body?.contactPhone, null);
   const isActive = typeof req.body?.isActive === "boolean" ? req.body.isActive : existing.isActive;
@@ -29277,6 +29347,7 @@ app.get("/business-partners/:id/history", async (req, res) => {
   });
   res.json({
     partner: toBusinessPartnerResponse(partner),
+    costs: await prisma.partnerTransactionCost.findMany({ where: { orgId: organization.id, partnerOrgId: id }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }),
     records: records.map((record) => ({
       id: record.id,
       workDate: record.workLog?.displayDate || null,
@@ -31010,6 +31081,7 @@ app.delete("/orders/:orderId", async (req, res) => {
     });
     if (plan) throw createHttpError(409, "ORDER_ASSIGNMENT_REVIEW: order has assignments");
     if (await tx.priorProductionCompletion.count({ where: { workOrderId: current.id } })) throw createHttpError(409, 'ORDER_PRIOR_COMPLETION_HISTORY');
+    if (await tx.partnerTransactionCost.count({ where: { workOrderId: current.id } })) throw createHttpError(409, '연결된 거래 비용이 있는 주문은 삭제할 수 없습니다.');
     // WorkOrder deletion would SET NULL on these cards, leaving an orphan pool.
     // The assignment guard above and this cleanup share the Serializable Tx.
     await tx.assignmentCard.deleteMany({ where: { workOrderId: current.id } });

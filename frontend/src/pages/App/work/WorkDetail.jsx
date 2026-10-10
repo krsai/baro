@@ -988,6 +988,7 @@ const mergeProcessWithCatalog = (
 
 const WorkDetail = ({
   initialLog = null,
+  requestedPartnerId = null,
   initialContext = null,
   loading = false,
   saving = false,
@@ -995,7 +996,7 @@ const WorkDetail = ({
   recordKind = 'EMPLOYEE',
 }) => {
   const isOutsourcingMode = recordKind === 'OUTSOURCING';
-  const { activeOrgId, activeFactoryId, activeOrgRole } = useAuth();
+  const { activeOrgId, activeFactoryId, activeOrgRole, accessProfile } = useAuth();
   const { languageCode } = useLanguage();
   const LABELS = WORK_DETAIL_LABELS[languageCode] || WORK_DETAIL_LABELS.en;
   const messages = WORK_DETAIL_MESSAGES[languageCode] || WORK_DETAIL_MESSAGES.en;
@@ -1892,20 +1893,20 @@ const WorkDetail = ({
     (row) => ensureOptionIncluded(
       isOutsourcingMode
         ? [
-            ...outsourcingPartners.map((partner) => ({
+            ...outsourcingPartners.filter(partner => (!requestedPartnerId || partner.id === requestedPartnerId) && (!partner.serviceTypes?.length || partner.serviceTypes.some(service => service.entryMode === 'PROCESS'))).map((partner) => ({
               id: `partner:${partner.id}`,
               partnerId: partner.id,
               name: buildOutsourceWorkerName(partner.name, languageCode),
               vendorName: partner.name,
               isOutsourced: true,
             })),
-            { id: '__add_outsource__', name: LABELS.addOutsourcePartnerOption, isOutsourceAction: true },
+            ...(accessProfile?.systemRole === 'SYSTEM_ADMIN' ? [{ id: '__add_outsource__', name: LABELS.addOutsourcePartnerOption, isOutsourceAction: true }] : []),
           ]
         : factoryScopeWorkers.filter((worker) => !worker?.isOutsourced),
       row?.worker,
       (item) => item?.id || item?.name
     ),
-    [LABELS.addOutsourcePartnerOption, isOutsourcingMode, languageCode, factoryScopeWorkers, outsourcingPartners]
+    [LABELS.addOutsourcePartnerOption, isOutsourcingMode, languageCode, factoryScopeWorkers, outsourcingPartners, accessProfile?.systemRole, requestedPartnerId]
   );
   const resolveStyleOptions = useCallback(
     (row) => {

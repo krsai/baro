@@ -83,6 +83,7 @@ export default function BusinessPartnerDialog({
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
   const save = async () => {
     if (!form.name.trim()) return setError(labels.required);
+    if (!isEdit && form.type === 'PROCESS_OUTSOURCING' && !form.serviceTypeIds.length) return setError(languageCode === 'ko' ? '업종을 선택해 주세요.' : languageCode === 'vi' ? 'Vui lòng chọn ngành dịch vụ.' : 'Select an industry.');
     setSaving(true);
     setError('');
     try {
@@ -126,11 +127,11 @@ export default function BusinessPartnerDialog({
           </FormControl>
           {form.type === 'PROCESS_OUTSOURCING' ? (
             <FormControl fullWidth>
-              <InputLabel>{languageCode === 'ko' ? '외주 작업 종류' : languageCode === 'vi' ? 'Loại gia công' : 'Outsourcing services'}</InputLabel>
+              <InputLabel>{languageCode === 'ko' ? '외주 업종' : languageCode === 'vi' ? 'Ngành dịch vụ' : 'Outsourcing industries'}</InputLabel>
               <Select
                 multiple
                 value={form.serviceTypeIds}
-                label={languageCode === 'ko' ? '외주 작업 종류' : languageCode === 'vi' ? 'Loại gia công' : 'Outsourcing services'}
+                label={languageCode === 'ko' ? '외주 업종' : languageCode === 'vi' ? 'Ngành dịch vụ' : 'Outsourcing industries'}
                 onChange={update('serviceTypeIds')}
                 renderValue={(ids) => ids.map((id) => {
                   const item = serviceTypes.find((candidate) => candidate.id === id);

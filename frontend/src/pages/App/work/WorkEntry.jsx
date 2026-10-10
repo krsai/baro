@@ -237,6 +237,7 @@ const WorkEntry = ({ recordKind = 'EMPLOYEE' } = {}) => {
       saving={saving}
       onSave={handleSave}
       recordKind={recordKind}
+      requestedPartnerId={isOutsourcingMode && !isEditMode ? Number(new URLSearchParams(location.search).get('partnerOrgId')) || null : null}
     />
   );
 };
